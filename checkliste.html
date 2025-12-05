@@ -24,6 +24,34 @@
             position: relative;
         }
 
+        .header-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%);
+            color: white;
+            text-align: center;
+            padding: 15px 20px;
+            z-index: 999;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .header-banner h1 {
+            font-size: 1.4em;
+            color: white;
+            margin: 0 0 5px 0;
+            font-weight: 700;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .header-banner .tagline {
+            font-size: 0.9em;
+            color: white;
+            margin: 0;
+            opacity: 0.95;
+        }
+
         .slide {
             width: 100%;
             height: 100%;
@@ -32,6 +60,7 @@
             justify-content: center;
             align-items: center;
             padding: 50px;
+            padding-top: 120px;
             text-align: center;
             position: absolute;
             top: 0;
@@ -192,7 +221,7 @@
 
         .slide-counter {
             position: fixed;
-            top: 20px;
+            top: 90px;
             right: 20px;
             background: white;
             padding: 10px 20px;
@@ -200,6 +229,7 @@
             font-size: 1em;
             color: #8B7355;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
         }
 
         .grid-2 {
@@ -282,6 +312,18 @@
         }
 
         @media (max-width: 768px) {
+            .header-banner h1 {
+                font-size: 1.1em;
+            }
+            
+            .header-banner .tagline {
+                font-size: 0.75em;
+            }
+            
+            .slide {
+                padding-top: 110px;
+            }
+            
             .slide h1 { font-size: 2em; }
             .slide h2 { font-size: 1.6em; }
             .slide h3 { font-size: 1.2em; }
@@ -293,6 +335,12 @@
     </style>
 </head>
 <body>
+    <!-- Header Banner -->
+    <div class="header-banner">
+        <h1>Let's go free - Freiheit mit DeFi und Krypto</h1>
+        <p class="tagline">Dein Weg in die finanzielle Selbstbestimmung</p>
+    </div>
+
     <div class="presentation">
         <!-- Slide 1: Title -->
         <div class="slide active">
