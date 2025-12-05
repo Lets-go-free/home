@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeFi-Sicherheits-Checkliste | Präsentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #1a1a1a;
+            color: #d4d4d4;
+            overflow: hidden;
+        }
+
+        .presentation {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        .slide {
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 60px;
+            text-align: center;
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .slide.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .slide h1 {
+            font-size: 4em;
+            color: #f4c430;
+            margin-bottom: 30px;
+            font-weight: 700;
+        }
+
+        .slide h2 {
+            font-size: 3em;
+            color: #f4c430;
+            margin-bottom: 40px;
+            font-weight: 700;
+        }
+
+        .slide h3 {
+            font-size: 2.2em;
+            color: #f4c430;
+            margin-bottom: 30px;
+        }
+
+        .subtitle {
+            font-size: 1.8em;
+            color: #d4d4d4;
+            margin-bottom: 40px;
+            max-width: 900px;
+        }
+
+        .content {
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        .content-box {
+            background: rgba(244, 196, 48, 0.05);
+            padding: 40px;
+            border-radius: 15px;
+            margin: 20px 0;
+            border-left: 5px solid #f4c430;
+        }
+
+        .content p {
+            font-size: 1.5em;
+            line-height: 1.8;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .list-item {
+            background: rgba(244, 196, 48, 0.03);
+            padding: 20px 30px;
+            margin: 15px 0;
+            border-radius: 10px;
+            font-size: 1.4em;
+            text-align: left;
+            border-left: 4px solid #f4c430;
+            transition: all 0.3s ease;
+        }
+
+        .list-item:hover {
+            background: rgba(244, 196, 48, 0.1);
+            transform: translateX(10px);
+        }
+
+        .checkmark {
+            color: #4caf50;
+            margin-right: 15px;
+            font-size: 1.2em;
+        }
+
+        .warning {
+            background: rgba(255, 82, 82, 0.15);
+            border-left: 5px solid #ff5252;
+            padding: 30px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .warning h3 {
+            color: #ff5252;
+            margin-bottom: 20px;
+        }
+
+        .warning-icon {
+            font-size: 3em;
+            margin-bottom: 20px;
+        }
+
+        .highlight {
+            color: #f4c430;
+            font-weight: 600;
+        }
+
+        .phase-number {
+            background: #f4c430;
+            color: #1a1a1a;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 2.5em;
+            margin-bottom: 30px;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            z-index: 1000;
+        }
+
+        .btn {
+            background: rgba(244, 196, 48, 0.15);
+            border: 2px solid #f4c430;
+            color: #f4c430;
+            padding: 15px 30px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: #f4c430;
+            color: #1a1a1a;
+        }
+
+        .slide-counter {
+            position: fixed;
+            top: 30px;
+            right: 30px;
+            background: rgba(244, 196, 48, 0.15);
+            padding: 15px 25px;
+            border-radius: 10px;
+            font-size: 1.2em;
+            color: #f4c430;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            width: 100%;
+        }
+
+        .grid-item {
+            background: rgba(244, 196, 48, 0.05);
+            padding: 30px;
+            border-radius: 10px;
+            border-top: 3px solid #f4c430;
+        }
+
+        .grid-item h4 {
+            color: #f4c430;
+            font-size: 1.6em;
+            margin-bottom: 20px;
+        }
+
+        .grid-item ul {
+            list-style: none;
+            text-align: left;
+        }
+
+        .grid-item li {
+            padding: 10px 0;
+            font-size: 1.2em;
+            padding-left: 30px;
+            position: relative;
+        }
+
+        .grid-item li::before {
+            content: '→';
+            position: absolute;
+            left: 0;
+            color: #f4c430;
+        }
+
+        .mistake-item {
+            background: rgba(255, 82, 82, 0.1);
+            padding: 15px 25px;
+            margin: 10px 0;
+            border-radius: 8px;
+            font-size: 1.3em;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .cross {
+            color: #ff5252;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        .big-text {
+            font-size: 2em;
+            line-height: 1.6;
+            color: #d4d4d4;
+        }
+
+        @media (max-width: 768px) {
+            .slide h1 { font-size: 2.5em; }
+            .slide h2 { font-size: 2em; }
+            .slide h3 { font-size: 1.6em; }
+            .subtitle { font-size: 1.3em; }
+            .content p { font-size: 1.2em; }
+            .list-item { font-size: 1.1em; }
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="presentation">
+        <!-- Slide 1: Title -->
+        <div class="slide active">
+            <h1>DeFi-Sicherheits-Checkliste</h1>
+            <div class="subtitle">Dein sicherer Einstieg in die dezentrale Finanzwelt</div>
+            <div class="content-box">
+                <p class="big-text">Schritt für Schritt zu deiner finanziellen Selbstbestimmung</p>
+            </div>
+        </div>
+
+        <!-- Slide 2: Warum diese Checkliste? -->
+        <div class="slide">
+            <h2>Warum diese Checkliste?</h2>
+            <div class="content">
+                <div class="content-box">
+                    <p>Im DeFi bist du deine eigene Bank. Das bedeutet <span class="highlight">Freiheit</span> – aber auch <span class="highlight">Verantwortung</span>.</p>
+                    <p>Diese Checkliste führt dich Schritt für Schritt durch deinen sicheren Einstieg, ohne dass du wichtige Sicherheitsaspekte übersiehst.</p>
+                </div>
+                <div class="warning">
+                    <div class="warning-icon">⚠️</div>
+                    <p style="font-size: 1.4em;"><strong>Wichtig:</strong> Nimm dir Zeit. Überspringe keine Schritte. Deine Sicherheit geht vor.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 3: Übersicht der 6 Phasen -->
+        <div class="slide">
+            <h2>Die 6 Phasen deines sicheren Einstiegs</h2>
+            <div class="content">
+                <div class="list-item"><span class="phase-number" style="width: 50px; height: 50px; font-size: 1.5em; margin-right: 20px; margin-bottom: 0;">1</span> Vorbereitung (BEVOR du ein Wallet erstellst)</div>
+                <div class="list-item"><span class="phase-number" style="width: 50px; height: 50px; font-size: 1.5em; margin-right: 20px; margin-bottom: 0;">2</span> Wallet-Erstellung</div>
+                <div class="list-item"><span class="phase-number" style="width: 50px; height: 50px; font-size: 1.5em; margin-right: 20px; margin-bottom: 0;">3</span> Erste Schritte</div>
+                <div class="list-item"><span class="phase-number" style="width: 50px; height: 50px; font-size: 1.5em; margin-right: 20px; margin-bottom: 0;">4</span> Fiat-Krypto-Brücke einrichten</div>
+                <div class="list-item"><span class="phase-number" style="width: 50px; height: 50px; font-size: 1.5em; margin-right: 20px; margin-bottom: 0;">5</span> Dauerhafte Sicherheit</div>
+                <div class="list-item"><span class="phase-number" style="width: 50px; height: 50px; font-size: 1.5em; margin-right: 20px; margin-bottom: 0;">6</span> Notfallplan</div>
+            </div>
+        </div>
+
+        <!-- Slide 4: Phase 1 - Vorbereitung -->
+        <div class="slide">
+            <div class="phase-number">1</div>
+            <h2>Phase 1: Vorbereitung</h2>
+            <h3>BEVOR du ein Wallet erstellst</h3>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="grid-item">
+                        <h4>✅ Wissen aufbauen</h4>
+                        <ul>
+                            <li>Was ist ein Wallet?</li>
+                            <li>Was ist eine Seed Phrase?</li>
+                            <li>Hot vs. Cold Wallet</li>
+                            <li>"Not your keys, not your coins"</li>
+                        </ul>
+                    </div>
+                    <div class="grid-item">
+                        <h4>✅ Sicherheitsausrüstung</h4>
+                        <ul>
+                            <li>2 physische Notiz-Möglichkeiten</li>
+                            <li>Sicherer Aufbewahrungsort</li>
+                            <li>Zweiter Aufbewahrungsort</li>
+                            <li>KEINE digitale Speicherung</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 5: Phase 1 - Test-Budget -->
+        <div class="slide">
+            <div class="phase-number">1</div>
+            <h2>Test-Budget festlegen</h2>
+            <div class="content">
+                <div class="content-box">
+                    <p><span class="checkmark">✅</span> Kleine Test-Summe überlegen (50-100€)</p>
+                    <p><span class="checkmark">✅</span> Betrag ist verschmerzbar, falls etwas schiefgeht</p>
+                    <p><span class="checkmark">✅</span> NICHT sofort mit grösseren Summen starten</p>
+                </div>
+                <div class="warning">
+                    <p style="font-size: 1.4em;"><strong>Wichtig:</strong> Erst klein testen, dann skalieren!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 6: Phase 2 - Wallet-Erstellung -->
+        <div class="slide">
+            <div class="phase-number">2</div>
+            <h2>Phase 2: Wallet-Erstellung</h2>
+            <div class="content">
+                <div class="list-item"><span class="checkmark">✅</span> Etabliertes Wallet wählen (MetaMask, TokenPocket, SafePal, Trust Wallet)</div>
+                <div class="list-item"><span class="checkmark">✅</span> Nur von offizieller Website/App Store laden</div>
+                <div class="list-item"><span class="checkmark">✅</span> Download-URL überprüfen</div>
+                <div class="list-item"><span class="checkmark">✅</span> Sichere Umgebung (privates WLAN, virenfrei)</div>
+            </div>
+        </div>
+
+        <!-- Slide 7: Phase 2 - Seed Phrase KRITISCH -->
+        <div class="slide">
+            <div class="warning-icon">🚨</div>
+            <h2>KRITISCHSTER SCHRITT</h2>
+            <h3>Seed Phrase sichern</h3>
+            <div class="content">
+                <div class="warning">
+                    <p><span class="checkmark">✅</span> Mit Stift auf Papier/Metall schreiben</p>
+                    <p><span class="cross">❌</span> KEIN Foto machen</p>
+                    <p><span class="cross">❌</span> NICHT digital speichern</p>
+                    <p><span class="checkmark">✅</span> Richtige Reihenfolge beachten</p>
+                    <p><span class="checkmark">✅</span> Sicherungskopie erstellen</p>
+                    <p><span class="checkmark">✅</span> NIEMANDEM zeigen oder schicken</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 8: Phase 3 - Erste Schritte -->
+        <div class="slide">
+            <div class="phase-number">3</div>
+            <h2>Phase 3: Erste Schritte</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="grid-item">
+                        <h4>✅ Test-Transaktion</h4>
+                        <ul>
+                            <li>Nur Test-Summe einzahlen</li>
+                            <li>Adresse doppelt prüfen</li>
+                            <li>Gas Fees verstehen</li>
+                            <li>Ankunft bestätigen</li>
+                        </ul>
+                    </div>
+                    <div class="grid-item">
+                        <h4>✅ Sende-Test</h4>
+                        <ul>
+                            <li>Test an andere Adresse</li>
+                            <li>Empfänger überprüfen</li>
+                            <li>Erfolgreich durchführen</li>
+                            <li>Funktion verstehen</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 9: Phase 3 - Wiederherstellungs-Test -->
+        <div class="slide">
+            <div class="warning-icon">🚨</div>
+            <h2>Wiederherstellungs-Test</h2>
+            <h3>SEHR WICHTIG!</h3>
+            <div class="content">
+                <div class="content-box">
+                    <p style="font-size: 1.4em; margin-bottom: 30px;">Dieser Schritt beweist, dass deine Sicherung funktioniert:</p>
+                    <p><span class="checkmark">✅</span> Wallet-App löschen oder neues Gerät nehmen</p>
+                    <p><span class="checkmark">✅</span> Wallet mit Seed Phrase wiederherstellen</p>
+                    <p><span class="checkmark">✅</span> Guthaben ist wieder sichtbar</p>
+                    <p><span class="checkmark">✅</span> Erst jetzt weisst du sicher, dass dein Backup funktioniert</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 10: Phase 4 - Fiat-Krypto-Brücke -->
+        <div class="slide">
+            <div class="phase-number">4</div>
+            <h2>Phase 4: Fiat-Krypto-Brücke</h2>
+            <div class="content">
+                <div class="list-item"><span class="checkmark">✅</span> Seriöse Plattform wählen</div>
+                <div class="list-item"><span class="checkmark">✅</span> Gebühren verstehen</div>
+                <div class="list-item"><span class="checkmark">✅</span> Identität verifizieren (KYC)</div>
+                <div class="list-item"><span class="checkmark">✅</span> 2-Faktor-Authentifizierung aktivieren</div>
+                <div class="list-item"><span class="checkmark">✅</span> Authenticator-App nutzen (NICHT SMS)</div>
+            </div>
+        </div>
+
+        <!-- Slide 11: Phase 5 - Dauerhafte Sicherheit -->
+        <div class="slide">
+            <div class="phase-number">5</div>
+            <h2>Phase 5: Dauerhafte Sicherheit</h2>
+            <div class="content">
+                <div class="content-box">
+                    <h3 style="text-align: left; margin-bottom: 20px;">Tägliche Sicherheitsregeln</h3>
+                    <p><span class="checkmark">✅</span> Niemals Seed Phrase weitergeben</p>
+                    <p><span class="checkmark">✅</span> Keine verdächtigen Links klicken</p>
+                    <p><span class="checkmark">✅</span> URLs überprüfen (Phishing-Schutz)</p>
+                    <p><span class="checkmark">✅</span> Nur vertrauenswürdige dApps</p>
+                    <p><span class="checkmark">✅</span> Smart Contract-Berechtigungen prüfen</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 12: Phase 5 - Phishing-Schutz -->
+        <div class="slide">
+            <div class="warning-icon">🚨</div>
+            <h2>Phishing-Schutz</h2>
+            <div class="content">
+                <div class="warning">
+                    <p style="font-size: 1.8em; margin-bottom: 30px;"><strong>NIEMALS wird ein Support dich nach deiner Seed Phrase fragen!</strong></p>
+                    <p><span class="checkmark">✅</span> Kein Support braucht deine Seed Phrase</p>
+                    <p><span class="checkmark">✅</span> Phishing-Mails erkennen</p>
+                    <p><span class="checkmark">✅</span> Direkt zur Website gehen, nicht über Links</p>
+                    <p><span class="checkmark">✅</span> Offizielle URLs als Lesezeichen speichern</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 13: Phase 6 - Notfallplan -->
+        <div class="slide">
+            <div class="phase-number">6</div>
+            <h2>Phase 6: Notfallplan</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="grid-item">
+                        <h4>✅ Vorbereitet sein</h4>
+                        <ul>
+                            <li>Wallets dokumentieren</li>
+                            <li>Vertrauensperson informieren</li>
+                            <li>Anweisungen hinterlegen</li>
+                            <li>Erbfall regeln</li>
+                        </ul>
+                    </div>
+                    <div class="grid-item">
+                        <h4>🚨 Bei Verlust</h4>
+                        <ul>
+                            <li>Sofort neues Wallet</li>
+                            <li>Guthaben übertragen</li>
+                            <li>Alte Wallet nicht mehr sicher</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 14: Häufige Fehler -->
+        <div class="slide">
+            <h2 style="color: #ff5252;">❌ Häufige Fehler vermeiden</h2>
+            <h3>Diese Fehler NIEMALS machen:</h3>
+            <div class="content">
+                <div class="mistake-item"><span class="cross">❌</span> Seed Phrase als Screenshot/Foto</div>
+                <div class="mistake-item"><span class="cross">❌</span> Seed Phrase in Cloud speichern</div>
+                <div class="mistake-item"><span class="cross">❌</span> Seed Phrase per Messenger verschicken</div>
+                <div class="mistake-item"><span class="cross">❌</span> Mit "Support" teilen</div>
+                <div class="mistake-item"><span class="cross">❌</span> Auf Phishing-Links klicken</div>
+                <div class="mistake-item"><span class="cross">❌</span> Mehr investieren als du verlieren kannst</div>
+            </div>
+        </div>
+
+        <!-- Slide 15: Dein Fortschritt -->
+        <div class="slide">
+            <h2>Dein Fortschritt</h2>
+            <div class="content">
+                <div class="grid-item" style="margin-bottom: 20px;">
+                    <h4 style="color: #4caf50;">✅ Anfänger-Level (Phase 1-3)</h4>
+                    <ul>
+                        <li>Funktionierendes Wallet</li>
+                        <li>Grundlagen verstanden</li>
+                        <li>Erfolgreich getestet</li>
+                    </ul>
+                </div>
+                <div class="grid-item" style="margin-bottom: 20px;">
+                    <h4 style="color: #4caf50;">✅ Fortgeschritten (Phase 4-5)</h4>
+                    <ul>
+                        <li>Fiat-Krypto-Tausch</li>
+                        <li>Sicherheitsregeln kennen</li>
+                        <li>Sicher in DeFi unterwegs</li>
+                    </ul>
+                </div>
+                <div class="grid-item">
+                    <h4 style="color: #4caf50;">✅ Profi-Level (Phase 6)</h4>
+                    <ul>
+                        <li>Notfallplan vorhanden</li>
+                        <li>Für alle Szenarien vorbereitet</li>
+                        <li>Kannst andere anleiten</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 16: Schlusswort -->
+        <div class="slide">
+            <h2>Schlusswort</h2>
+            <div class="content">
+                <div class="content-box">
+                    <p class="big-text">DeFi bedeutet Selbstbestimmung.</p>
+                    <p class="big-text">Aber Freiheit kommt mit Verantwortung.</p>
+                </div>
+                <div style="margin: 40px 0; padding: 40px; background: rgba(244, 196, 48, 0.1); border-radius: 15px;">
+                    <p style="font-size: 2.2em; color: #f4c430; font-weight: 600; margin-bottom: 20px;">Sicherheit vor Geschwindigkeit.</p>
+                    <p style="font-size: 1.8em; color: #d4d4d4;">Dein Geld. Deine Regeln. Deine Verantwortung.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 17: Kontakt -->
+        <div class="slide">
+            <h1>Let's go free</h1>
+            <div class="content">
+                <div class="content-box">
+                    <p class="big-text">Brauchst du persönliche Begleitung?</p>
+                    <p style="font-size: 1.5em; margin-top: 30px;">1:1 DeFi Coaching – Schritt für Schritt in die Krypto-Welt</p>
+                    <p style="font-size: 1.3em; margin-top: 30px; color: #f4c430;">www.letsgofree.me</p>
+                </div>
+                <div style="margin-top: 40px; font-size: 1.1em; color: #999;">
+                    <p>© 2025 - Christophe Müller</p>
+                    <p style="margin-top: 10px;"><strong>Disclaimer:</strong> Diese Präsentation dient nur zu Informationszwecken und stellt keine Finanzberatung dar.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-counter">
+        <span id="currentSlide">1</span> / <span id="totalSlides">17</span>
+    </div>
+
+    <div class="controls">
+        <button class="btn" onclick="previousSlide()">← Zurück</button>
+        <button class="btn" onclick="nextSlide()">Weiter →</button>
+        <button class="btn" onclick="toggleFullscreen()">Vollbild</button>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+
+        document.getElementById('totalSlides').textContent = totalSlides;
+
+        function showSlide(n) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (n + totalSlides) % totalSlides;
+            slides[currentSlide].classList.add('active');
+            document.getElementById('currentSlide').textContent = currentSlide + 1;
+        }
+
+        function nextSlide() {
+            showSlide(currentSlide + 1);
+        }
+
+        function previousSlide() {
+            showSlide(currentSlide - 1);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                previousSlide();
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            }
+        });
+
+        // Click navigation
+        document.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('btn')) {
+                const clickX = e.clientX;
+                const windowWidth = window.innerWidth;
+                if (clickX > windowWidth / 2) {
+                    nextSlide();
+                } else {
+                    previousSlide();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
