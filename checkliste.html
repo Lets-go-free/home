@@ -12,9 +12,9 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #1a1a1a;
-            color: #d4d4d4;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 50%, #C9A882 100%);
+            color: #333;
             overflow: hidden;
         }
 
@@ -48,27 +48,29 @@
 
         .slide h1 {
             font-size: 3em;
-            color: #f4c430;
+            color: #5a4636;
             margin-bottom: 20px;
             font-weight: 700;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
         }
 
         .slide h2 {
             font-size: 2.2em;
-            color: #f4c430;
+            color: #5a4636;
             margin-bottom: 25px;
             font-weight: 700;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
         }
 
         .slide h3 {
             font-size: 1.6em;
-            color: #f4c430;
+            color: #5a4636;
             margin-bottom: 20px;
         }
 
         .subtitle {
             font-size: 1.3em;
-            color: #d4d4d4;
+            color: #4a3a2a;
             margin-bottom: 30px;
             max-width: 900px;
         }
@@ -79,11 +81,11 @@
         }
 
         .content-box {
-            background: rgba(244, 196, 48, 0.05);
+            background: #F5E6D3;
             padding: 30px;
             border-radius: 15px;
             margin: 15px 0;
-            border-left: 5px solid #f4c430;
+            border-left: 5px solid #8B7355;
         }
 
         .content p {
@@ -91,21 +93,23 @@
             line-height: 1.7;
             margin-bottom: 15px;
             text-align: left;
+            color: #333;
         }
 
         .list-item {
-            background: rgba(244, 196, 48, 0.03);
+            background: #F5E6D3;
             padding: 12px 20px;
             margin: 8px 0;
             border-radius: 8px;
             font-size: 1em;
             text-align: left;
-            border-left: 4px solid #f4c430;
+            border-left: 4px solid #A0826D;
             transition: all 0.3s ease;
+            color: #333;
         }
 
         .list-item:hover {
-            background: rgba(244, 196, 48, 0.1);
+            background: #E8D4BA;
             transform: translateX(5px);
         }
 
@@ -143,8 +147,8 @@
         }
 
         .phase-number {
-            background: #f4c430;
-            color: #1a1a1a;
+            background: #5a4636;
+            color: white;
             width: 60px;
             height: 60px;
             border-radius: 50%;
@@ -154,6 +158,7 @@
             font-weight: bold;
             font-size: 1.8em;
             margin-bottom: 20px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
         }
 
         .controls {
@@ -167,30 +172,34 @@
         }
 
         .btn {
-            background: rgba(244, 196, 48, 0.15);
-            border: 2px solid #f4c430;
-            color: #f4c430;
+            background: white;
+            border: 2px solid #8B7355;
+            color: #8B7355;
             padding: 12px 25px;
             border-radius: 8px;
             cursor: pointer;
             font-size: 0.95em;
             transition: all 0.3s ease;
+            font-weight: 700;
         }
 
         .btn:hover {
-            background: #f4c430;
-            color: #1a1a1a;
+            background: #8B7355;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(139, 115, 85, 0.3);
         }
 
         .slide-counter {
             position: fixed;
             top: 20px;
             right: 20px;
-            background: rgba(244, 196, 48, 0.15);
+            background: white;
             padding: 10px 20px;
             border-radius: 8px;
             font-size: 1em;
-            color: #f4c430;
+            color: #8B7355;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
         .grid-2 {
@@ -208,14 +217,14 @@
         }
 
         .grid-item {
-            background: rgba(244, 196, 48, 0.05);
+            background: #F5E6D3;
             padding: 20px;
             border-radius: 10px;
-            border-top: 3px solid #f4c430;
+            border-top: 3px solid #8B7355;
         }
 
         .grid-item h4 {
-            color: #f4c430;
+            color: #8B7355;
             font-size: 1.2em;
             margin-bottom: 15px;
         }
@@ -230,13 +239,14 @@
             font-size: 0.95em;
             padding-left: 20px;
             position: relative;
+            color: #333;
         }
 
         .grid-item li::before {
             content: '→';
             position: absolute;
             left: 0;
-            color: #f4c430;
+            color: #8B7355;
         }
 
         .mistake-item {
@@ -260,14 +270,15 @@
         .big-text {
             font-size: 1.4em;
             line-height: 1.6;
-            color: #d4d4d4;
+            color: #333;
         }
 
         .section-title {
             font-size: 1.3em;
-            color: #f4c430;
+            color: #5a4636;
             margin: 20px 0 10px 0;
             text-align: left;
+            font-weight: 600;
         }
 
         @media (max-width: 768px) {
@@ -636,9 +647,9 @@
                     <p style="font-size: 1.3em; text-align: center;">DeFi bedeutet Selbstbestimmung. Aber Freiheit kommt mit Verantwortung.</p>
                     <p style="text-align: center; margin-top: 20px;">Mit dieser Checkliste bist du auf dem richtigen Weg. Nimm dir Zeit, überspringe keine Schritte, und denk immer daran:</p>
                 </div>
-                <div style="margin: 30px 0; padding: 35px; background: rgba(244, 196, 48, 0.1); border-radius: 15px;">
-                    <p style="font-size: 1.8em; color: #f4c430; font-weight: 600; text-align: center; margin-bottom: 15px;">Sicherheit vor Geschwindigkeit.</p>
-                    <p style="font-size: 1.4em; color: #d4d4d4; text-align: center;">Dein Geld. Deine Regeln. Deine Verantwortung.</p>
+                <div style="margin: 30px 0; padding: 35px; background: #F5E6D3; border-radius: 15px; border-left: 5px solid #8B7355;">
+                    <p style="font-size: 1.8em; color: #8B7355; font-weight: 600; text-align: center; margin-bottom: 15px;">Sicherheit vor Geschwindigkeit.</p>
+                    <p style="font-size: 1.4em; color: #333; text-align: center;">Dein Geld. Deine Regeln. Deine Verantwortung.</p>
                 </div>
             </div>
         </div>
@@ -650,9 +661,12 @@
                 <div class="content-box">
                     <p style="font-size: 1.3em; text-align: center;">Brauchst du persönliche Begleitung?</p>
                     <p style="font-size: 1.1em; margin-top: 20px; text-align: center;">1:1 DeFi Coaching – Schritt für Schritt in die Krypto-Welt</p>
-                    <p style="font-size: 1.2em; margin-top: 25px; color: #f4c430; text-align: center;"><strong>www.letsgofree.me</strong></p>
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="https://www.letsgofree.me/#angebot" target="_blank" style="display: inline-block; background: #5a4636; color: white; padding: 18px 40px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 1.2em; transition: all 0.3s; box-shadow: 0 5px 15px rgba(0,0,0,0.2);" onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.3)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 5px 15px rgba(0,0,0,0.2)';">Hier zu meinem 1:1 Coaching Angebot</a>
+                    </div>
+                    <p style="font-size: 1.2em; margin-top: 35px; text-align: center;"><a href="https://www.letsgofree.me" target="_blank" style="color: #5a4636; text-decoration: none; font-weight: 600; border-bottom: 2px solid #5a4636;" onmouseover="this.style.borderBottomColor='#8B7355';" onmouseout="this.style.borderBottomColor='#5a4636';"><strong>www.letsgofree.me</strong></a></p>
                 </div>
-                <div style="margin-top: 35px; font-size: 0.95em; color: #999;">
+                <div style="margin-top: 35px; font-size: 0.95em; color: #666;">
                     <p style="text-align: center;">© 2025 - Diese Checkliste darf gerne geteilt werden. Für persönliche Begleitung kontaktiere mich direkt.</p>
                     <p style="margin-top: 10px; text-align: center;"><strong>Disclaimer:</strong> Diese Checkliste dient nur zu Informationszwecken und stellt keine Finanzberatung dar. Jeder ist für seine eigenen Entscheidungen selbst verantwortlich.</p>
                 </div>
