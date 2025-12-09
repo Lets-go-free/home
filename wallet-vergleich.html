@@ -255,6 +255,50 @@
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         }
 
+        .back-to-top {
+            background: #F5E6D3;
+            color: #5a4636;
+            border: 2px solid #8B7355;
+            padding: 12px 30px;
+            font-size: 1em;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin: 0 auto;
+            display: block;
+        }
+
+        .back-to-top:hover {
+            background: #8B7355;
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .footer {
+            text-align: center;
+            color: #777;
+            font-size: 0.9em;
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid #ddd;
+        }
+
+        .footer p {
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+
+        .footer a {
+            color: #8B7355;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 20px;
@@ -358,9 +402,20 @@
             </table>
         </div>
 
+        <div style="background: #FFF3E0; border-left: 5px solid #FF9800; padding: 15px; margin: 30px 0; border-radius: 8px;">
+            <p style="margin: 0; color: #5a4636; font-weight: 600;">⚠️ Hinweis: Stand Januar 2025. Alle Angaben ohne Gewähr. Features, Preise und unterstützte Chains können sich ändern. Bitte prüfe die aktuellen Informationen direkt beim jeweiligen Wallet-Anbieter.</p>
+        </div>
+
         <div class="buttons">
             <a href="https://www.letsgofree.me" class="btn">Startseite</a>
             <button class="btn" onclick="window.print()">Als PDF speichern</button>
+        </div>
+
+        <button class="back-to-top" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">↑ Nach oben</button>
+
+        <div class="footer">
+            <p>© 2025 - <a href="https://www.letsgofree.me" target="_blank">Chris Müller - Let's go free</a></p>
+            <p><a href="https://www.letsgofree.me" target="_blank">www.letsgofree.me</a></p>
         </div>
     </div>
 
@@ -371,7 +426,7 @@
                 type: "hot",
                 rating: 5,
                 chains: "Ethereum, BSC, Polygon, Arbitrum, Optimism, Avalanche",
-                platforms: ["mobile", "desktop", "browser"],
+                platforms: ["mobile", "browser"],
                 nft: true,
                 defi: "Eingebauter Swap, beste dApp Integration",
                 price: "kostenlos",
