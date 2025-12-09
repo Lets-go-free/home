@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wallet-Vergleich</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #8B7355 0%, #5a4636 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            color: #5a4636;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-align: center;
+            border-bottom: 3px solid #8B7355;
+            padding-bottom: 15px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #5a4636;
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            font-weight: 500;
+        }
+
+        .search-filter-section {
+            margin: 30px 0;
+        }
+
+        .search-box {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .search-input {
+            width: 100%;
+            max-width: 600px;
+            padding: 15px 20px;
+            font-size: 1.1em;
+            border: 2px solid #8B7355;
+            border-radius: 10px;
+            outline: none;
+        }
+
+        .filter-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .filter-group {
+            background: #F5E6D3;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .filter-group label {
+            display: block;
+            color: #5a4636;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .filter-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 2px solid #8B7355;
+            border-radius: 6px;
+            font-size: 1em;
+        }
+
+        .recommendation-boxes {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .rec-box {
+            background: #F5E6D3;
+            padding: 20px;
+            border-radius: 12px;
+            border-top: 4px solid #8B7355;
+        }
+
+        .rec-box.beginner {
+            border-top-color: #4CAF50;
+        }
+
+        .rec-box.security {
+            border-top-color: #F44336;
+        }
+
+        .rec-box.defi {
+            border-top-color: #2196F3;
+        }
+
+        .rec-box h3 {
+            color: #5a4636;
+            margin-bottom: 10px;
+            font-size: 1.3em;
+        }
+
+        .rec-box ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .rec-box li {
+            padding: 5px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .rec-box li::before {
+            content: '→';
+            position: absolute;
+            left: 0;
+            color: #8B7355;
+            font-weight: bold;
+        }
+
+        .wallet-table-container {
+            overflow-x: auto;
+            margin: 30px 0;
+        }
+
+        .wallet-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 1000px;
+        }
+
+        .wallet-table th {
+            background: #8B7355;
+            color: white;
+            padding: 15px 10px;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .wallet-table td {
+            padding: 12px 10px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .wallet-table tr:hover {
+            background: #FFF9F0;
+        }
+
+        .wallet-name {
+            font-weight: 700;
+            color: #5a4636;
+            font-size: 1.1em;
+        }
+
+        .rating {
+            color: #FFA500;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            margin: 2px;
+            font-weight: 600;
+        }
+
+        .tag.hot {
+            background: #FFEBEE;
+            color: #C62828;
+        }
+
+        .tag.cold {
+            background: #E3F2FD;
+            color: #1565C0;
+        }
+
+        .tag.hardware {
+            background: #F3E5F5;
+            color: #6A1B9A;
+        }
+
+        .tag.yes {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+
+        .tag.no {
+            background: #FFEBEE;
+            color: #C62828;
+        }
+
+        .tag.free {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+
+        .tag.paid {
+            background: #FFF3E0;
+            color: #E65100;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 30px 0 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: #8B7355;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1em;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            background: #5a4636;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+
+            .recommendation-boxes {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Wallet-Vergleichstabelle</h1>
+        <p class="subtitle">Finde das perfekte Wallet für deine Bedürfnisse</p>
+
+        <div class="search-box">
+            <input type="text" id="searchInput" class="search-input" placeholder="Wallet suchen... (z.B. MetaMask, Ledger)">
+        </div>
+
+        <div class="filter-section">
+            <div class="filter-group">
+                <label for="typeFilter">Wallet-Typ:</label>
+                <select id="typeFilter">
+                    <option value="alle">Alle</option>
+                    <option value="hot">Hot Wallet</option>
+                    <option value="cold">Cold Wallet</option>
+                    <option value="hardware">Hardware</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="platformFilter">Plattform:</label>
+                <select id="platformFilter">
+                    <option value="alle">Alle</option>
+                    <option value="mobile">Mobile App</option>
+                    <option value="desktop">Desktop</option>
+                    <option value="browser">Browser Extension</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="priceFilter">Preis:</label>
+                <select id="priceFilter">
+                    <option value="alle">Alle</option>
+                    <option value="kostenlos">Kostenlos</option>
+                    <option value="einmalig">Einmalig</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="recommendation-boxes">
+            <div class="rec-box beginner">
+                <h3>✅ Für Anfänger</h3>
+                <ul>
+                    <li><strong>Trust Wallet</strong> - Einfach, mobil, viele Chains</li>
+                    <li><strong>MetaMask</strong> - Standard für Web-DeFi</li>
+                    <li><strong>Coinbase Wallet</strong> - Benutzerfreundlich</li>
+                </ul>
+            </div>
+
+            <div class="rec-box security">
+                <h3>🔒 Maximale Sicherheit</h3>
+                <ul>
+                    <li><strong>Ledger Nano X</strong> - Hardware, Bluetooth</li>
+                    <li><strong>Trezor Model T</strong> - Open Source</li>
+                    <li><strong>Tangem Wallet</strong> - Karten-Format, einfach</li>
+                </ul>
+            </div>
+
+            <div class="rec-box defi">
+                <h3>💰 Beste für DeFi</h3>
+                <ul>
+                    <li><strong>Rabby Wallet</strong> - Multi-Chain, intuitiv</li>
+                    <li><strong>MetaMask</strong> - Beste Integration</li>
+                    <li><strong>TokenPocket</strong> - Viele Features</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="wallet-table-container">
+            <table class="wallet-table" id="walletTable">
+                <thead>
+                    <tr>
+                        <th>Wallet</th>
+                        <th>Typ</th>
+                        <th>Bewertung</th>
+                        <th>Chains</th>
+                        <th>Plattformen</th>
+                        <th>NFT</th>
+                        <th>DeFi</th>
+                        <th>Preis</th>
+                        <th>Besonderheiten</th>
+                    </tr>
+                </thead>
+                <tbody id="walletTableBody"></tbody>
+            </table>
+        </div>
+
+        <div class="buttons">
+            <a href="https://www.letsgofree.me" class="btn">Startseite</a>
+            <button class="btn" onclick="window.print()">Als PDF speichern</button>
+        </div>
+    </div>
+
+    <script>
+        const walletData = [
+            {
+                name: "MetaMask",
+                type: "hot",
+                rating: 5,
+                chains: "Ethereum, BSC, Polygon, Arbitrum, Optimism, Avalanche",
+                platforms: ["mobile", "desktop", "browser"],
+                nft: true,
+                defi: "Eingebauter Swap, beste dApp Integration",
+                price: "kostenlos",
+                special: "Standard für Web3, grösste Community"
+            },
+            {
+                name: "Trust Wallet",
+                type: "hot",
+                rating: 5,
+                chains: "65+ Blockchains, fast alles",
+                platforms: ["mobile"],
+                nft: true,
+                defi: "Eingebauter Swap & Staking, Browser integriert",
+                price: "kostenlos",
+                special: "Sehr anfängerfreundlich, von Binance"
+            },
+            {
+                name: "Ledger Nano X",
+                type: "hardware",
+                rating: 5,
+                chains: "5500+ Coins & Token",
+                platforms: ["mobile", "desktop"],
+                nft: true,
+                defi: "Via Ledger Live, limitiert",
+                price: "einmalig",
+                special: "Bluetooth, maximale Sicherheit, €149"
+            },
+            {
+                name: "Ledger Nano S Plus",
+                type: "hardware",
+                rating: 5,
+                chains: "5500+ Coins & Token",
+                platforms: ["desktop"],
+                nft: true,
+                defi: "Via Ledger Live, limitiert",
+                price: "einmalig",
+                special: "Günstigere Alternative, nur USB, €79"
+            },
+            {
+                name: "Trezor Model T",
+                type: "hardware",
+                rating: 4,
+                chains: "1800+ Coins & Token",
+                platforms: ["desktop"],
+                nft: false,
+                defi: "Via Trezor Suite, limitiert",
+                price: "einmalig",
+                special: "Open Source, Touchscreen, €219"
+            },
+            {
+                name: "SafePal S1",
+                type: "hardware",
+                rating: 4,
+                chains: "10000+ Coins & Token",
+                platforms: ["mobile"],
+                nft: true,
+                defi: "Via SafePal App",
+                price: "einmalig",
+                special: "Air-gapped (keine USB/Bluetooth), €50"
+            },
+            {
+                name: "TokenPocket",
+                type: "hot",
+                rating: 4,
+                chains: "30+ Blockchains",
+                platforms: ["mobile", "desktop", "browser"],
+                nft: true,
+                defi: "Sehr umfangreich: Swap, Staking, Farming, etc.",
+                price: "kostenlos",
+                special: "Feature-reich, etwas komplex für Anfänger"
+            },
+            {
+                name: "Coinbase Wallet",
+                type: "hot",
+                rating: 4,
+                chains: "Ethereum, Polygon, BSC, Avalanche, Optimism, Arbitrum",
+                platforms: ["mobile", "browser"],
+                nft: true,
+                defi: "Eingebauter Swap & Browser",
+                price: "kostenlos",
+                special: "Sehr benutzerfreundlich, nicht mit Coinbase Exchange verwechseln!"
+            },
+            {
+                name: "Rabby Wallet",
+                type: "hot",
+                rating: 5,
+                chains: "30+ EVM Chains",
+                platforms: ["browser"],
+                nft: true,
+                defi: "Exzellent: Multi-Chain Übersicht, Pre-Sign Simulation",
+                price: "kostenlos",
+                special: "Beste UX für Multi-Chain DeFi, zeigt richtiges Guthaben pro Chain"
+            },
+            {
+                name: "Rainbow Wallet",
+                type: "hot",
+                rating: 4,
+                chains: "Ethereum, Polygon, Optimism, Arbitrum, BSC, Base",
+                platforms: ["mobile"],
+                nft: true,
+                defi: "Eingebauter Swap, wunderschönes Design",
+                price: "kostenlos",
+                special: "Beste Mobile UX, perfekt für NFT-Sammler"
+            },
+            {
+                name: "Phantom",
+                type: "hot",
+                rating: 4,
+                chains: "Solana, Ethereum, Polygon",
+                platforms: ["mobile", "browser"],
+                nft: true,
+                defi: "Eingebauter Swap für Solana",
+                price: "kostenlos",
+                special: "Das beste Wallet für Solana"
+            },
+            {
+                name: "Exodus",
+                type: "hot",
+                rating: 4,
+                chains: "260+ Coins",
+                platforms: ["mobile", "desktop"],
+                nft: false,
+                defi: "Eingebauter Swap (teuer), Staking",
+                price: "kostenlos",
+                special: "Schönes Design, integriertes Portfolio-Tracking"
+            },
+            {
+                name: "SafePal",
+                type: "hot",
+                rating: 4,
+                chains: "50+ Blockchains",
+                platforms: ["mobile"],
+                nft: true,
+                defi: "Eingebauter Swap, Staking, DApp Browser",
+                price: "kostenlos",
+                special: "Von Binance Labs, sehr günstig, gute Multi-Chain Unterstützung"
+            },
+            {
+                name: "Tangem Wallet",
+                type: "hardware",
+                rating: 4,
+                chains: "6000+ Coins & Token",
+                platforms: ["mobile"],
+                nft: true,
+                defi: "Via Tangem App, eingeschränkt",
+                price: "einmalig",
+                special: "Karten-Format (NFC), sehr einfach, 2-3 Karten als Backup, €50-80"
+            }
+        ];
+
+        function renderTable(data) {
+            const tbody = document.getElementById('walletTableBody');
+            tbody.innerHTML = '';
+
+            data.forEach(wallet => {
+                const row = document.createElement('tr');
+                
+                const typeTag = wallet.type === 'hot' ? 'hot' : 
+                               wallet.type === 'cold' ? 'cold' : 'hardware';
+                const typeText = wallet.type === 'hot' ? 'Hot' : 
+                                wallet.type === 'cold' ? 'Cold' : 'Hardware';
+                
+                const stars = '⭐'.repeat(wallet.rating);
+                
+                const platformTags = wallet.platforms.map(p => {
+                    const text = p === 'mobile' ? '📱' : p === 'desktop' ? '💻' : '🌐';
+                    return text;
+                }).join(' ');
+                
+                const nftTag = wallet.nft ? 
+                    '<span class="tag yes">✓ NFT</span>' : 
+                    '<span class="tag no">✗ NFT</span>';
+                
+                const priceTag = wallet.price === 'kostenlos' ?
+                    '<span class="tag free">Kostenlos</span>' :
+                    '<span class="tag paid">€49-219</span>';
+                
+                row.innerHTML = `
+                    <td class="wallet-name">${wallet.name}</td>
+                    <td><span class="tag ${typeTag}">${typeText}</span></td>
+                    <td class="rating">${stars}</td>
+                    <td>${wallet.chains}</td>
+                    <td>${platformTags}</td>
+                    <td>${nftTag}</td>
+                    <td>${wallet.defi}</td>
+                    <td>${priceTag}</td>
+                    <td>${wallet.special}</td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        function filterWallets() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const typeFilter = document.getElementById('typeFilter').value;
+            const platformFilter = document.getElementById('platformFilter').value;
+            const priceFilter = document.getElementById('priceFilter').value;
+
+            let filtered = walletData;
+
+            // Search filter
+            if (searchTerm) {
+                filtered = filtered.filter(w => 
+                    w.name.toLowerCase().includes(searchTerm) ||
+                    w.special.toLowerCase().includes(searchTerm) ||
+                    w.chains.toLowerCase().includes(searchTerm)
+                );
+            }
+
+            // Type filter
+            if (typeFilter !== 'alle') {
+                filtered = filtered.filter(w => w.type === typeFilter);
+            }
+
+            // Platform filter
+            if (platformFilter !== 'alle') {
+                filtered = filtered.filter(w => w.platforms.includes(platformFilter));
+            }
+
+            // Price filter
+            if (priceFilter !== 'alle') {
+                filtered = filtered.filter(w => w.price === priceFilter);
+            }
+
+            renderTable(filtered);
+        }
+
+        // Initial render
+        renderTable(walletData);
+
+        // Event listeners
+        document.getElementById('searchInput').addEventListener('input', filterWallets);
+        document.getElementById('typeFilter').addEventListener('change', filterWallets);
+        document.getElementById('platformFilter').addEventListener('change', filterWallets);
+        document.getElementById('priceFilter').addEventListener('change', filterWallets);
+    </script>
+</body>
+</html>
