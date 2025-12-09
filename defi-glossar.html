@@ -535,6 +535,13 @@
                 example: "Du willst 1 ETH für 3000 USDC kaufen, bekommst aber nur 2950 USDC wegen Slippage.",
                 warning: "Bei niedrig-liquiden Token Slippage-Toleranz erhöhen, sonst schlägt der Trade fehl!"
             },
+            {
+                term: "Slippage Tolerance",
+                category: "sicherheit",
+                definition: "Die Einstellung, wie viel Preisabweichung du bei einem Trade akzeptierst. Standard ist oft 0.5-1%, bei illiquiden Token brauchst du mehr.",
+                example: "Bei 2% Slippage Tolerance: Wenn du für 1000 USDC kaufst, akzeptierst du, dass du zwischen 980-1000 USDC Gegenwert bekommst. Trade schlägt fehl, wenn Abweichung grösser ist.",
+                warning: "Zu hohe Slippage Tolerance (>5%) = Risiko für Frontrunning! Bots können deinen Trade ausnutzen. Nur bei sehr kleinen/neuen Token nötig."
+            },
 
             // Technisches
             {
