@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gas Fee Tracker Anleitung</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #8B7355 0%, #5a4636 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            color: #5a4636;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-align: center;
+            border-bottom: 3px solid #8B7355;
+            padding-bottom: 15px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #5a4636;
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            font-weight: 500;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .nav-tab {
+            background: #F5E6D3;
+            color: #5a4636;
+            border: 2px solid #8B7355;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .nav-tab:hover {
+            background: #8B7355;
+            color: white;
+        }
+
+        .nav-tab.active {
+            background: #8B7355;
+            color: white;
+        }
+
+        .content-section {
+            display: none;
+            animation: fadeIn 0.5s;
+        }
+
+        .content-section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        h2 {
+            color: #5a4636;
+            font-size: 2em;
+            margin: 30px 0 20px;
+            border-left: 5px solid #8B7355;
+            padding-left: 15px;
+        }
+
+        h3 {
+            color: #5a4636;
+            font-size: 1.5em;
+            margin: 25px 0 15px;
+        }
+
+        .info-box {
+            background: #F5E6D3;
+            border-left: 5px solid #8B7355;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .info-box h4 {
+            color: #5a4636;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .info-box p {
+            color: #5a4636;
+            line-height: 1.6;
+        }
+
+        .tip-box {
+            background: #FFF9F0;
+            border-left: 5px solid #FFA500;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .tip-box::before {
+            content: "💡 Tipp: ";
+            font-weight: bold;
+            color: #FFA500;
+        }
+
+        .warning-box {
+            background: #FFEBEE;
+            border-left: 5px solid #F44336;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .warning-box::before {
+            content: "⚠️ Wichtig: ";
+            font-weight: bold;
+            color: #F44336;
+        }
+
+        .tool-card {
+            background: #F5E6D3;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 12px;
+            border-top: 4px solid #8B7355;
+        }
+
+        .tool-card h4 {
+            color: #5a4636;
+            margin-bottom: 10px;
+            font-size: 1.3em;
+        }
+
+        .tool-card a {
+            color: #2196F3;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .tool-card a:hover {
+            text-decoration: underline;
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+        }
+
+        .comparison-table th {
+            background: #8B7355;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .comparison-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .comparison-table tr:hover {
+            background: #FFF9F0;
+        }
+
+        .time-table {
+            background: #F5E6D3;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+        }
+
+        .time-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .time-table th {
+            background: #8B7355;
+            color: white;
+            padding: 10px;
+            text-align: left;
+        }
+
+        .time-table td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .time-slot {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-weight: 600;
+            margin: 2px;
+        }
+
+        .time-slot.expensive {
+            background: #FFEBEE;
+            color: #C62828;
+        }
+
+        .time-slot.cheap {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+
+        .checklist {
+            background: #F5E6D3;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+        }
+
+        .checklist-item {
+            display: flex;
+            gap: 10px;
+            padding: 10px 0;
+            align-items: flex-start;
+        }
+
+        .checkbox {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #8B7355;
+            border-radius: 4px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 30px 0 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: #8B7355;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1em;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            background: #5a4636;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .back-to-top {
+            background: #F5E6D3;
+            color: #5a4636;
+            border: 2px solid #8B7355;
+            padding: 12px 30px;
+            font-size: 1em;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin: 0 auto;
+            display: block;
+        }
+
+        .back-to-top:hover {
+            background: #8B7355;
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .footer {
+            text-align: center;
+            color: #777;
+            font-size: 0.9em;
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid #ddd;
+        }
+
+        .footer p {
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+
+        .footer a {
+            color: #8B7355;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        ul, ol {
+            margin-left: 25px;
+            line-height: 1.8;
+        }
+
+        li {
+            margin: 10px 0;
+            color: #5a4636;
+        }
+
+        strong {
+            color: #5a4636;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+
+            .comparison-table {
+                font-size: 0.9em;
+            }
+        }
+
+        @media print {
+            .buttons,
+            .btn,
+            .nav-tabs {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Gas Fee Tracker Anleitung</h1>
+        <p class="subtitle">So sparst du bis zu 90% bei Transaktionsgebühren</p>
+
+        <div class="nav-tabs">
+            <button class="nav-tab active" data-tab="basics">Grundlagen</button>
+            <button class="nav-tab" data-tab="tools">Tools & Tracker</button>
+            <button class="nav-tab" data-tab="timing">Bestes Timing</button>
+            <button class="nav-tab" data-tab="spartipps">Spartipps</button>
+            <button class="nav-tab" data-tab="notfall">Notfall-Guide</button>
+        </div>
+
+        <!-- Tab 1: Grundlagen -->
+        <div class="content-section active" data-content="basics">
+            <h2>Was sind Gas Fees?</h2>
+            
+            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Einfach erklärt:</h4>
+                <p style="color: #5a4636;">Gas Fees sind wie Maut auf der Blockchain-Autobahn. Jede Aktion (Transaktion) kostet Gas, weil tausende Computer weltweit die Transaktion verarbeiten und absichern müssen.</p>
+            </div>
+
+            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Was ist Gwei und wie rechnet man Gas Fees?</h4>
+                <p style="color: #5a4636;"><strong>Gwei</strong> ist die Einheit für Gas-Preise auf Ethereum und allen EVM-kompatiblen Chains (Polygon, BSC, Arbitrum, Optimism, Base, Avalanche):</p>
+                <ul style="margin: 10px 0 10px 20px; color: #5a4636;">
+                    <li>1 Gwei = 0.000000001 ETH (ein Milliardstel ETH)</li>
+                    <li>1 ETH = 1'000'000'000 Gwei (1 Milliarde Gwei)</li>
+                </ul>
+                <p style="color: #5a4636;"><strong>Hinweis:</strong> Andere Chains wie Solana oder Bitcoin nutzen andere Einheiten (Lamports, Satoshis).</p>
+                <p style="color: #5a4636; margin-top: 15px;"><strong>So berechnest du die tatsächlichen Kosten:</strong></p>
+                <p style="background: #8B7355; color: white; padding: 15px; border-radius: 8px; margin: 10px 0; font-family: monospace;">
+                    <strong>Kosten = Gas Limit × Gas Price (in Gwei) × ETH-Preis</strong>
+                </p>
+                <p style="color: #5a4636;"><strong>Praktisches Beispiel:</strong></p>
+                <ul style="margin: 10px 0 10px 20px; color: #5a4636;">
+                    <li>Einfache ETH-Überweisung: <strong>21'000 Gas Limit</strong></li>
+                    <li>Aktueller Gas Price: <strong>15 Gwei</strong></li>
+                    <li>ETH-Preis: <strong>$3'000</strong></li>
+                </ul>
+                <p style="background: #E8F5E9; padding: 15px; border-radius: 8px; margin: 10px 0; color: #5a4636;">
+                    <strong>Rechnung:</strong><br>
+                    21'000 × 15 Gwei = 315'000 Gwei = 0.000315 ETH<br>
+                    0.000315 ETH × $3'000 = <strong>$0.95 (ca. 0.85 CHF)</strong>
+                </p>
+                <p style="color: #5a4636;"><strong>Wichtig:</strong> Je höher der Gwei-Preis, desto schneller wird deine Transaktion verarbeitet. Bei 50 Gwei würde die gleiche Transaktion ~$3.15 kosten, geht aber deutlich schneller durch!</p>
+            </div>
+
+            <h3>Warum schwanken Gas Fees?</h3>
+            <ul>
+                <li><strong>Netzwerk-Auslastung:</strong> Mehr Nutzer = höhere Gebühren (wie Stau auf der Autobahn)</li>
+                <li><strong>Dringlichkeit:</strong> Willst du schnell durch? Zahl mehr. Kannst warten? Zahl weniger.</li>
+                <li><strong>Komplexität:</strong> Einfache Überweisung = wenig Gas. Swap auf Uniswap = viel Gas.</li>
+                <li><strong>NFT Drops & Hype:</strong> Wenn alle gleichzeitig eine heisse NFT minten wollen, explodieren die Fees.</li>
+            </ul>
+
+            <h3>Gas Fees nach Blockchain</h3>
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th>Blockchain</th>
+                        <th>Durchschnittliche Fee</th>
+                        <th>Günstigste Zeit</th>
+                        <th>Teuerste Zeit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Ethereum</strong></td>
+                        <td>$1-8 (bei Spitzen bis $20+)</td>
+                        <td>Nachts, Wochenende</td>
+                        <td>Werktags 14-18 Uhr UTC</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Polygon</strong></td>
+                        <td>$0.01-0.20</td>
+                        <td>Jederzeit günstig</td>
+                        <td>Peaks bei ~$0.50-1</td>
+                    </tr>
+                    <tr>
+                        <td><strong>BSC</strong></td>
+                        <td>$0.10-0.50</td>
+                        <td>Nachts</td>
+                        <td>Asien-Geschäftszeiten</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Arbitrum</strong></td>
+                        <td>$0.20-2</td>
+                        <td>Wochenende</td>
+                        <td>Werktags Mittag</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Optimism</strong></td>
+                        <td>$0.20-2</td>
+                        <td>Nachts</td>
+                        <td>US-Geschäftszeiten</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Solana</strong></td>
+                        <td>$0.00025 (extrem günstig!)</td>
+                        <td>Immer günstig</td>
+                        <td>Keine grossen Schwankungen</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Base</strong></td>
+                        <td>$0.10-1</td>
+                        <td>Wochenende</td>
+                        <td>US-Geschäftszeiten</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="tip-box">
+                <strong>Wichtig zu wissen:</strong> Die Fees hängen stark von der Netzwerk-Auslastung ab. Bei NFT Drops oder Token-Launches können die Gebühren auf Ethereum kurzzeitig auf $50-100+ steigen. Normalerweise sind sie aber deutlich niedriger als früher (2021-2022 waren $50-200 Standard).
+            </div>
+
+            <div class="tip-box">
+                Wenn du regelmässig auf Ethereum handelst und die Fees schmerzen, überlege dir Layer-2-Lösungen wie Arbitrum oder Optimism. Gleiche Sicherheit, 10-100x niedrigere Kosten!
+            </div>
+        </div>
+
+        <!-- Tab 2: Tools -->
+        <div class="content-section" data-content="tools">
+            <h2>Die besten Gas Fee Tracker Tools</h2>
+
+            <h3>Für Ethereum:</h3>
+
+            <div class="tool-card">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">1. Etherscan Gas Tracker ⭐⭐⭐⭐⭐</h4>
+                <p style="color: #5a4636;"><strong>Link:</strong> <a href="https://etherscan.io/gastracker" target="_blank">etherscan.io/gastracker</a></p>
+                <p style="color: #5a4636;"><strong>Was es zeigt:</strong></p>
+                <ul>
+                    <li><strong>Low:</strong> Günstige Transaktion (dauert 3-10 Min)</li>
+                    <li><strong>Average:</strong> Standard (dauert 1-3 Min)</li>
+                    <li><strong>High:</strong> Schnell (dauert ~30 Sek)</li>
+                </ul>
+                <p style="color: #5a4636;"><strong>Tipp:</strong> Wenn "Low" unter 15 Gwei ist, ist es ein sehr guter Zeitpunkt! Bei 10 Gwei oder weniger zahlst du minimale Gebühren.</p>
+            </div>
+
+            <div class="tool-card">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">2. Blocknative Gas Estimator ⭐⭐⭐⭐⭐</h4>
+                <p style="color: #5a4636;"><strong>Link:</strong> <a href="https://www.blocknative.com/gas-estimator" target="_blank">blocknative.com/gas-estimator</a></p>
+                <p style="color: #5a4636;"><strong>Besonderheit:</strong> Zeigt Prognosen für die nächsten Minuten/Stunden. Sehr genau!</p>
+                <p style="color: #5a4636;"><strong>Features:</strong></p>
+                <ul>
+                    <li>Real-time Updates</li>
+                    <li>8 Stunden Prognose</li>
+                    <li>Historische Daten</li>
+                </ul>
+            </div>
+
+            <div class="tool-card">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">3. ETH Gas Station ⭐⭐⭐⭐</h4>
+                <p style="color: #5a4636;"><strong>Link:</strong> <a href="https://ethgasstation.info" target="_blank">ethgasstation.info</a></p>
+                <p style="color: #5a4636;"><strong>Gut für:</strong> Visualisierung der Netzwerk-Aktivität. Zeigt, wie voll das Netzwerk gerade ist.</p>
+            </div>
+
+            <div class="tool-card">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">4. Gas Now (von Sparkpool) ⭐⭐⭐⭐</h4>
+                <p style="color: #5a4636;"><strong>Link:</strong> <a href="https://www.gasnow.org" target="_blank">gasnow.org</a></p>
+                <p style="color: #5a4636;"><strong>Features:</strong> Browser Extension verfügbar, Desktop Notifications möglich</p>
+            </div>
+
+            <h3>Für andere Chains:</h3>
+            <div class="tool-card">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">BSC: BscScan Gas Tracker</h4>
+                <p style="color: #5a4636;"><a href="https://bscscan.com/gastracker" target="_blank">bscscan.com/gastracker</a></p>
+            </div>
+
+            <div class="tool-card">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Polygon: PolygonScan Gas Tracker</h4>
+                <p style="color: #5a4636;"><a href="https://polygonscan.com/gastracker" target="_blank">polygonscan.com/gastracker</a></p>
+            </div>
+
+            <div class="tool-card">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Arbitrum: Arbiscan Gas Tracker</h4>
+                <p style="color: #5a4636;"><a href="https://arbiscan.io/gastracker" target="_blank">arbiscan.io/gastracker</a></p>
+            </div>
+
+            <div class="warning-box">
+                Speichere diese Links als Lesezeichen! So checkst du immer schnell die aktuellen Gas Fees bevor du eine Transaktion machst.
+            </div>
+        </div>
+
+        <!-- Tab 3: Timing -->
+        <div class="content-section" data-content="timing">
+            <h2>Wann sind Gas Fees am niedrigsten?</h2>
+
+            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Die Faustregel:</h4>
+                <p style="color: #5a4636;">Gas Fees sind am niedrigsten, wenn die USA und Europa schlafen. Am höchsten während US-Geschäftszeiten.</p>
+            </div>
+
+            <h3>Optimales Timing im Detail:</h3>
+
+            <div class="time-table">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Wochentag-Muster:</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Zeit (UTC)</th>
+                            <th>Status</th>
+                            <th>Warum?</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="time-slot cheap">2-6 Uhr</span></td>
+                            <td><strong>BESTE ZEIT! 🟢</strong></td>
+                            <td>Europa & USA schlafen, Asien wacht gerade auf</td>
+                        </tr>
+                        <tr>
+                            <td><span class="time-slot cheap">8-12 Uhr</span></td>
+                            <td>Günstig 🟢</td>
+                            <td>Europa arbeitet, USA schläft noch</td>
+                        </tr>
+                        <tr>
+                            <td><span class="time-slot expensive">14-18 Uhr</span></td>
+                            <td><strong>TEUERSTE ZEIT! 🔴</strong></td>
+                            <td>US Geschäftszeiten = Peak Activity</td>
+                        </tr>
+                        <tr>
+                            <td><span class="time-slot">20-2 Uhr</span></td>
+                            <td>Mittel 🟡</td>
+                            <td>US noch aktiv, Europa geht schlafen</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="time-table">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Wochenende vs. Werktag:</h4>
+                <ul>
+                    <li><strong>Samstag & Sonntag:</strong> 20-40% günstiger als Werktage</li>
+                    <li><strong>Beste Wochenend-Zeit:</strong> Samstag/Sonntag 2-8 Uhr UTC</li>
+                    <li><strong>Montag:</strong> Oft teurer (Wochenend-Backlog wird abgearbeitet)</li>
+                    <li><strong>Freitag Abend:</strong> Wird günstiger (Leute gehen ins Wochenende)</li>
+                </ul>
+            </div>
+
+            <h3>Historische Erkenntnisse:</h3>
+            <ul>
+                <li><strong>Durchschnittlich günstigste Zeit:</strong> Samstag 4:00 UTC</li>
+                <li><strong>Durchschnittlich teuerste Zeit:</strong> Mittwoch 16:00 UTC</li>
+                <li><strong>Bei NFT Drops:</strong> Gas kann 10x explodieren! Lieber warten.</li>
+                <li><strong>Feiertage:</strong> US-Feiertage = deutlich günstiger!</li>
+            </ul>
+
+            <div class="tip-box">
+                Für deutsche Nutzer: 3-7 Uhr morgens deutsche Zeit ist optimal! Wenn deine Transaktion nicht super dringend ist, stelle einen Wecker und spare 50-80% Gas Fees.
+            </div>
+        </div>
+
+        <!-- Tab 4: Spartipps -->
+        <div class="content-section" data-content="spartipps">
+            <h2>Praktische Gas-Spartipps</h2>
+
+            <h3>1. Transaction Batching</h3>
+            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Was ist das?</h4>
+                <p style="color: #5a4636;">Mehrere Aktionen in einer Transaktion zusammenfassen, statt einzeln.</p>
+            </div>
+            <p style="color: #5a4636;"><strong>Beispiele:</strong></p>
+            <ul>
+                <li>Statt 5x einzeln Token zu swappen → 1x alles auf einmal</li>
+                <li>Tools nutzen die Batching unterstützen (z.B. 1inch für Swaps)</li>
+                <li>Bei NFTs: Bulk-Mint wenn möglich</li>
+            </ul>
+            <p style="color: #5a4636;"><strong>Ersparnis:</strong> 30-50% gegenüber Einzeltransaktionen</p>
+
+            <h3>2. Alternative Chains nutzen</h3>
+            <div class="comparison-table" style="margin: 20px 0;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #8B7355; color: white;">
+                            <th style="padding: 12px; text-align: left;">Aktion</th>
+                            <th style="padding: 12px; text-align: left;">Ethereum</th>
+                            <th style="padding: 12px; text-align: left;">Polygon</th>
+                            <th style="padding: 12px; text-align: left;">Arbitrum</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <td style="padding: 12px;">Token Swap</td>
+                            <td style="padding: 12px;">$3-15</td>
+                            <td style="padding: 12px; color: green; font-weight: bold;">$0.05-0.20</td>
+                            <td style="padding: 12px; color: green; font-weight: bold;">$0.50-2</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <td style="padding: 12px;">NFT Mint</td>
+                            <td style="padding: 12px;">$10-30</td>
+                            <td style="padding: 12px; color: green; font-weight: bold;">$0.10-0.50</td>
+                            <td style="padding: 12px; color: green; font-weight: bold;">$1-5</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 12px;">Token Transfer</td>
+                            <td style="padding: 12px;">$1-5</td>
+                            <td style="padding: 12px; color: green; font-weight: bold;">$0.01-0.05</td>
+                            <td style="padding: 12px; color: green; font-weight: bold;">$0.20-1</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="tip-box">
+                Wenn du DeFi nutzt: Überprüfe ob das Protokoll auf mehreren Chains läuft. Uniswap gibt's z.B. auf Ethereum, Polygon, Arbitrum, Optimism, Base. Gleiche Funktion, bis zu 95% weniger Kosten!
+            </div>
+
+            <h3>3. Wallet-Einstellungen optimieren</h3>
+            <p style="color: #5a4636;"><strong>In MetaMask:</strong></p>
+            <ol>
+                <li>Bei Transaktion auf "Edit" klicken</li>
+                <li>Drei Optionen: Low / Market / Aggressive</li>
+                <li><strong>Nicht dringend?</strong> Wähle "Low" und spare 30-50%</li>
+                <li><strong>Fortgeschritten:</strong> "Advanced" → eigene Gas Werte setzen</li>
+            </ol>
+
+            <div class="warning-box">
+                Bei "Low" kann deine Transaktion 10-30 Minuten dauern. Bei sehr günstigen Gas Settings auch mal Stunden! Nur nutzen wenn nicht dringend.
+            </div>
+
+            <h3>4. Gas Alerts einrichten</h3>
+            <p style="color: #5a4636;">Tools die dich benachrichtigen, wenn Gas günstig ist:</p>
+            <ul>
+                <li><strong>Blocknative Notify:</strong> Browser-Extension, meldet sich bei günstigen Gas Fees</li>
+                <li><strong>IFTTT + Etherscan API:</strong> Custom Alerts einrichten</li>
+                <li><strong>Telegram Bots:</strong> Suche "Ethereum Gas Bot" im Telegram</li>
+            </ul>
+
+            <h3>5. Pending Transactions nutzen</h3>
+            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Wie es funktioniert:</h4>
+                <p style="color: #5a4636;">Sende Transaktion mit sehr niedrigem Gas → sie bleibt pending → wenn Gas günstiger wird, geht sie durch</p>
+            </div>
+            <div class="warning-box">
+                Achtung: Transaktion kann auch nach 24h+ ablaufen ohne durchzugehen. Nur für nicht-zeitkritische Transfers!
+            </div>
+        </div>
+
+        <!-- Tab 5: Notfall -->
+        <div class="content-section" data-content="notfall">
+            <h2>Notfall-Guide: Wenn was schief läuft</h2>
+
+            <h3>Problem 1: Meine Transaktion hängt fest</h3>
+            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Was ist passiert?</h4>
+                <p style="color: #5a4636;">Du hast zu wenig Gas bezahlt, die Transaktion ist im Mempool "stecken geblieben".</p>
+            </div>
+
+            <p style="color: #5a4636;"><strong>Lösung 1: Warten</strong></p>
+            <ul>
+                <li>Oft löst sich das Problem von selbst</li>
+                <li>Nach 24-48h wird die Transaktion automatisch verworfen</li>
+                <li><strong>Wann warten?</strong> Wenn nicht dringend und Gas-Preis aktuell sehr hoch</li>
+            </ul>
+
+            <p style="color: #5a4636;"><strong>Lösung 2: Speed Up (Beschleunigen)</strong></p>
+            <ol>
+                <li>In MetaMask: Auf die pending Transaction klicken</li>
+                <li>"Speed Up" auswählen</li>
+                <li>Höheren Gas-Preis akzeptieren</li>
+                <li>Transaktion wird neu gesendet mit höherer Priorität</li>
+            </ol>
+            <p style="color: #5a4636;"><strong>Kosten:</strong> Du zahlst zusätzliches Gas für die Beschleunigung</p>
+
+            <p style="color: #5a4636;"><strong>Lösung 3: Cancel (Abbrechen)</strong></p>
+            <ol>
+                <li>In MetaMask: Auf die pending Transaction klicken</li>
+                <li>"Cancel" auswählen</li>
+                <li>Gas für Cancel-Transaktion bezahlen</li>
+            </ol>
+            <div class="warning-box">
+                Cancel ist auch eine Transaktion und kostet Gas! Manchmal günstiger als Speed Up.
+            </div>
+
+            <h3>Problem 2: Transaction Failed (Transaktion fehlgeschlagen)</h3>
+            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
+                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Was bedeutet das?</h4>
+                <p style="color: #5a4636;">Die Transaktion wurde verarbeitet, aber ist fehlgeschlagen. Das Gas ist trotzdem weg!</p>
+            </div>
+
+            <p style="color: #5a4636;"><strong>Häufige Gründe:</strong></p>
+            <ul>
+                <li><strong>Slippage zu niedrig:</strong> Preis hat sich während TX geändert</li>
+                <li><strong>Nicht genug Token:</strong> Balance hat sich geändert</li>
+                <li><strong>Gas Limit zu niedrig:</strong> Nicht genug "Benzin" für die Aktion</li>
+                <li><strong>Smart Contract Error:</strong> Fehler im Contract-Code</li>
+            </ul>
+
+            <p style="color: #5a4636;"><strong>Was tun?</strong></p>
+            <ol>
+                <li>Prüfe die Failed-Transaction auf Etherscan</li>
+                <li>Lies die Error-Message</li>
+                <li>Häufig: Erhöhe Slippage-Toleranz (z.B. von 0.5% auf 2-3%)</li>
+                <li>Oder: Erhöhe Gas Limit (aber nicht Gas Price!)</li>
+            </ol>
+
+            <h3>Problem 3: Gas Fees sind plötzlich extrem hoch</h3>
+            <p style="color: #5a4636;"><strong>Gründe:</strong></p>
+            <ul>
+                <li>NFT Drop oder Token Launch → Netzwerk überlastet</li>
+                <li>Wichtige DeFi-News → Alle wollen gleichzeitig handeln</li>
+                <li>Netzwerk-Störung oder Angriff</li>
+            </ul>
+
+            <p style="color: #5a4636;"><strong>Was tun?</strong></p>
+            <ol>
+                <li><strong>Warten:</strong> Nach 2-6 Stunden meist wieder normal</li>
+                <li><strong>Alternative Chain nutzen:</strong> Ist es auf Polygon/Arbitrum möglich?</li>
+                <li><strong>Dringend?</strong> Dann musst du leider beissen und zahlen</li>
+            </ol>
+
+            <h3>Checkliste vor jeder Transaktion</h3>
+            <div class="checklist">
+                <div class="checklist-item">
+                    <div class="checkbox"></div>
+                    <div>Ist die Transaktion jetzt wirklich dringend?</div>
+                </div>
+                <div class="checklist-item">
+                    <div class="checkbox"></div>
+                    <div>Habe ich den aktuellen Gas-Preis auf Etherscan gecheckt?</div>
+                </div>
+                <div class="checklist-item">
+                    <div class="checkbox"></div>
+                    <div>Könnte ich 30 Min - 2 Std warten für günstigere Fees?</div>
+                </div>
+                <div class="checklist-item">
+                    <div class="checkbox"></div>
+                    <div>Gibt es eine günstigere Chain für diese Aktion?</div>
+                </div>
+                <div class="checklist-item">
+                    <div class="checkbox"></div>
+                    <div>Bei grossen Beträgen (>$1000): Lohnt sich das Warten auf günstigeres Gas?</div>
+                </div>
+                <div class="checklist-item">
+                    <div class="checkbox"></div>
+                    <div>Habe ich genug ETH für Gas in der Wallet?</div>
+                </div>
+                <div class="checklist-item">
+                    <div class="checkbox"></div>
+                    <div>Ist meine Slippage-Toleranz richtig eingestellt?</div>
+                </div>
+            </div>
+
+            <div class="tip-box">
+                Die goldene Regel: Bei Beträgen unter $100 ist hohes Gas (>$20) meist nicht lohnenswert. Lieber warten oder alternative Chain nutzen!
+            </div>
+        </div>
+
+        <div class="buttons">
+            <a href="https://www.letsgofree.me" class="btn">Startseite</a>
+            <button class="btn" onclick="window.print()">Als PDF speichern</button>
+        </div>
+
+        <button class="back-to-top" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">↑ Nach oben</button>
+
+        <div class="footer">
+            <p>© 2025 - <a href="https://www.letsgofree.me" target="_blank">Chris Müller - Let's go free</a></p>
+            <p><a href="https://www.letsgofree.me" target="_blank">www.letsgofree.me</a></p>
+        </div>
+    </div>
+
+    <script>
+        // Tab navigation
+        const tabs = document.querySelectorAll('.nav-tab');
+        const contents = document.querySelectorAll('.content-section');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Remove active class from all
+                tabs.forEach(t => t.classList.remove('active'));
+                contents.forEach(c => c.classList.remove('active'));
+
+                // Add active class to clicked tab
+                tab.classList.add('active');
+                const targetContent = tab.dataset.tab;
+                document.querySelector(`[data-content="${targetContent}"]`).classList.add('active');
+
+                // Scroll to top of content
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+        });
+    </script>
+</body>
+</html>
