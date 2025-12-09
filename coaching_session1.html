@@ -214,6 +214,17 @@
             box-shadow: 0 5px 15px rgba(139, 115, 85, 0.3);
         }
 
+        .btn-close {
+            background: #ff5252;
+            border: 2px solid #d32f2f;
+            color: white;
+        }
+
+        .btn-close:hover {
+            background: #d32f2f;
+            border-color: #b71c1c;
+        }
+
         .slide-counter {
             position: fixed;
             top: 90px;
@@ -291,11 +302,23 @@
             text-align: center;
             border-top: 4px solid #8B7355;
             transition: transform 0.3s;
+            cursor: default;
+            pointer-events: none;
         }
 
-        .session-box:hover {
+        .session-box.current {
+            background: #8B7355;
             transform: translateY(-5px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .session-box.current .session-number {
+            background: white;
+            color: #8B7355;
+        }
+
+        .session-box.current .session-title {
+            color: white;
         }
 
         .session-number {
@@ -450,7 +473,7 @@
             <div class="subtitle">Dein Weg zur finanziellen Selbstbestimmung mit DeFi</div>
             <div class="content">
                 <div class="session-timeline">
-                    <div class="session-box">
+                    <div class="session-box current">
                         <div class="session-number">1</div>
                         <div class="session-title">Das Fundament<br>verstehen</div>
                     </div>
@@ -783,19 +806,19 @@
                 </div>
                 <div class="content-box" style="margin-top: 20px; background: #FFF3CD; border-left-color: #FFC107;">
                     <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Praktisches Beispiel:</h4>
-                    <p>Wenn du auf Ethereum etwas machen willst (z.B. USDC versenden), brauchst du:</p>
-                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left; margin-top: 10px;">
-                        <li><strong>ETH (Coin)</strong> für die Gebühren</li>
-                        <li><strong>USDC (Token)</strong> zum Versenden</li>
+                    <p style="font-size: 1.25em;">Wenn du auf Ethereum etwas machen willst (z.B. USDC versenden), brauchst du:</p>
+                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left; margin-top: 10px; font-size: 1.25em;">
+                        <li style="margin: 8px 0;"><strong>ETH (Coin)</strong> für die Gebühren</li>
+                        <li style="margin: 8px 0;"><strong>USDC (Token)</strong> zum Versenden</li>
                     </ul>
                 </div>
                 <div class="warning" style="margin-top: 20px;">
-                    <h4>⚠️ Wichtig für den Alltag:</h4>
-                    <p style="text-align: center;">Wenn du Token besitzt, brauchst du immer etwas vom Coin der Blockchain für Gebühren!</p>
-                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 10px auto 0 auto; text-align: left;">
-                        <li>Token auf Ethereum → brauchst du ETH</li>
-                        <li>Token auf BSC → brauchst du BNB</li>
-                        <li>Token auf Polygon → brauchst du MATIC</li>
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">⚠️ Wichtig für den Alltag:</h4>
+                    <p style="text-align: center; font-size: 1.25em;">Wenn du Token besitzt, brauchst du immer etwas vom Coin der Blockchain für Gebühren!</p>
+                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 10px auto 0 auto; text-align: left; font-size: 1.25em;">
+                        <li style="margin: 8px 0;">Token auf Ethereum → brauchst du ETH</li>
+                        <li style="margin: 8px 0;">Token auf BSC → brauchst du BNB</li>
+                        <li style="margin: 8px 0;">Token auf Polygon → brauchst du MATIC</li>
                     </ul>
                 </div>
             </div>
@@ -826,7 +849,7 @@
                         </tr>
                         <tr>
                             <td><strong>Security Token</strong></td>
-                            <td>Repräsentiert reale Werte oder Beteiligungen (ähnlich Aktie). Tokenisierte Anleihen oder Aktien.</td>
+                            <td>Repräsentiert reale Werte oder Beteiligungen (ähnlich Aktie). Tokenisierte Anleihen oder Aktien. Sind Wertpapiere im rechtlichen Sinne und unterliegen strengen Vorgaben.</td>
                             <td>Tokenisierte Aktien</td>
                         </tr>
                         <tr>
@@ -836,7 +859,7 @@
                         </tr>
                         <tr>
                             <td><strong>NFT</strong></td>
-                            <td>Einzigartiger, nicht teilbarer Token (z.B. Kunst, Zertifikate).</td>
+                            <td>Einzigartiger, nicht teilbarer Token (z.B. Kunst, Zertifikate). In der Regel nicht reguliert, solange sie kein Anlageprodukt sind.</td>
                             <td>BAYC, digitale Kunst</td>
                         </tr>
                     </tbody>
@@ -906,9 +929,9 @@
                         <li style="margin: 10px 0;">Schwierig für Alltag und als „Parkplatz"</li>
                     </ul>
                 </div>
-                <div class="content-box" style="margin-top: 20px; background: #FFF3CD; border-left-color: #FFC107;">
+                <div class="content-box" style="margin-top: 20px; background: #FFF3CD; border-left-color: #FFC107; text-align: center;">
                     <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Lösung: Stablecoins</h4>
-                    <p>Kryptowährungen, die an eine echte Währung gekoppelt sind</p>
+                    <p style="text-align: center;">Kryptowährungen, die an eine echte Währung gekoppelt sind</p>
                 </div>
                 <div class="section-title">Die wichtigsten Stablecoins:</div>
                 <div class="grid-3">
@@ -1081,6 +1104,7 @@
         <button class="btn" onclick="previousSlide()">← Zurück</button>
         <button class="btn" onclick="nextSlide()">Weiter →</button>
         <button class="btn" onclick="toggleFullscreen()">Vollbild</button>
+        <button class="btn btn-close" onclick="closePresentation()" style="display: none;" id="closeBtn">Beenden</button>
     </div>
 
     <script>
@@ -1095,6 +1119,14 @@
             currentSlide = (n + totalSlides) % totalSlides;
             slides[currentSlide].classList.add('active');
             document.getElementById('currentSlide').textContent = currentSlide + 1;
+            
+            // Zeige "Beenden" Button nur auf der letzten Folie
+            const closeBtn = document.getElementById('closeBtn');
+            if (currentSlide === totalSlides - 1) {
+                closeBtn.style.display = 'inline-block';
+            } else {
+                closeBtn.style.display = 'none';
+            }
         }
 
         function nextSlide() {
@@ -1110,6 +1142,16 @@
                 document.documentElement.requestFullscreen();
             } else {
                 document.exitFullscreen();
+            }
+        }
+
+        function closePresentation() {
+            // Versuche das Fenster zu schließen
+            window.close();
+            
+            // Fallback falls window.close() nicht funktioniert
+            if (!window.closed) {
+                alert('Bitte schließe das Browser-Tab manuell oder drücke Alt+F4 / Cmd+W');
             }
         }
 
@@ -1129,44 +1171,7 @@
             }
         });
 
-        document.addEventListener('click', (e) => {
-            // Ignore clicks on buttons, links, and their children
-            if (e.target.classList.contains('btn') || 
-                e.target.closest('.btn') || 
-                e.target.tagName === 'A' || 
-                e.target.closest('a')) {
-                return;
-            }
-            
-            const clickX = e.clientX;
-            const windowWidth = window.innerWidth;
-            if (clickX > windowWidth / 2) {
-                nextSlide();
-            } else {
-                previousSlide();
-            }
-        });
-
-        let touchStartX = 0;
-        let touchEndX = 0;
-
-        document.addEventListener('touchstart', (e) => {
-            touchStartX = e.changedTouches[0].screenX;
-        });
-
-        document.addEventListener('touchend', (e) => {
-            touchEndX = e.changedTouches[0].screenX;
-            handleSwipe();
-        });
-
-        function handleSwipe() {
-            if (touchEndX < touchStartX - 50) {
-                nextSlide();
-            }
-            if (touchEndX > touchStartX + 50) {
-                previousSlide();
-            }
-        }
+        // Navigation nur über Buttons - Click und Swipe deaktiviert
     </script>
 </body>
 </html>
