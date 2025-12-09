@@ -256,6 +256,30 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        @media print {
+            .buttons,
+            .back-to-top,
+            .btn,
+            .search-box,
+            .filter-buttons {
+                display: none !important;
+            }
+
+            .glossary-item {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+
+            body {
+                background: white;
+            }
+
+            .container {
+                background: white;
+                box-shadow: none;
+            }
+        }
     </style>
 </head>
 <body>
