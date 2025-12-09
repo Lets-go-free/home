@@ -1116,9 +1116,7 @@
 
         <!-- Slide 23: Thank You -->
         <div class="slide" style="background-image: url('bilder/coaching/Thank you.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat">
-            <div style="position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%);">
-                <button class="btn btn-close" onclick="closePresentation()">Beenden</button>
-            </div>
+            
         </div>
         </div>
 
@@ -1611,9 +1609,7 @@
 
         <!-- Slide 21: Thank You -->
         <div class="slide" style="background-image: url('bilder/coaching/Thank you.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat">
-            <div style="position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%);">
-                <button class="btn btn-close" onclick="closePresentation()">Beenden</button>
-            </div>
+            
         </div>
         </div>
 
@@ -2035,9 +2031,7 @@
 
         <!-- Slide 17: Thank You -->
         <div class="slide" style="background-image: url('bilder/coaching/Thank you.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat">
-            <div style="position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%);">
-                <button class="btn btn-close" onclick="closePresentation()">Beenden</button>
-            </div>
+            
         </div>
         </div>
 
@@ -2586,9 +2580,7 @@
 
         <!-- Slide 21: Thank You -->
         <div class="slide" style="background-image: url('bilder/coaching/Thank you.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat">
-            <div style="position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%);">
-                <button class="btn btn-close" onclick="closePresentation()">Beenden</button>
-            </div>
+            
         </div>
         </div>
 
@@ -3183,9 +3175,7 @@
 
         <!-- Slide 22: Thank You -->
         <div class="slide" style="background-image: url('bilder/coaching/Thank you.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat">
-            <div style="position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%);">
-                <button class="btn btn-close" onclick="closePresentation()">Beenden</button>
-            </div>
+            
         </div>
         </div>
 
@@ -3216,7 +3206,9 @@
             document.getElementById('currentSlide').textContent = currentSlide + 1;
             
             const closeBtn = document.getElementById('closeBtn');
-            if (currentSlide === totalSlides - 1) {
+            // Thank You Slides: #23, #44, #61, #82, #105 (0-indexed: 22, 43, 60, 81, 104)
+            const thankYouSlides = [22, 43, 60, 81, 104];
+            if (thankYouSlides.includes(currentSlide)) {
                 closeBtn.style.display = 'inline-block';
             } else {
                 closeBtn.style.display = 'none';
