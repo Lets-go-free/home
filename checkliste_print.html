@@ -21,7 +21,7 @@
             background: white;
             margin: 0;
             padding: 0;
-            font-size: 11pt;
+            font-size: 12pt;
         }
 
         .container {
@@ -55,6 +55,7 @@
             margin: 12px 0;
             border-radius: 8px;
             border-left: 5px solid #8B7355;
+            page-break-inside: avoid;
         }
 
         .intro-box h3 {
@@ -103,6 +104,7 @@
             background: #F5E6D3;
             padding: 10px 15px;
             margin-bottom: 2px;
+            page-break-inside: avoid;
         }
 
         .section:last-child {
@@ -165,7 +167,7 @@
         .checklist-text {
             color: #5a4636;
             line-height: 1.4;
-            font-size: 0.9em;
+            font-size: 0.95em;
             flex: 1;
         }
 
@@ -173,7 +175,7 @@
             margin-left: 20px;
             padding: 3px 0;
             color: #5a4636;
-            font-size: 0.85em;
+            font-size: 0.9em;
             line-height: 1.3;
         }
 
@@ -218,7 +220,7 @@
         .progress-section li {
             padding: 4px 0;
             color: #5a4636;
-            font-size: 0.9em;
+            font-size: 0.95em;
             line-height: 1.4;
             padding-left: 20px;
             position: relative;
@@ -238,6 +240,7 @@
             padding: 12px 15px;
             margin: 15px 0;
             border-radius: 8px;
+            page-break-inside: avoid;
         }
 
         .mistakes-section h3 {
@@ -256,6 +259,7 @@
             border-radius: 8px;
             border-top: 3px solid #8B7355;
             text-align: center;
+            page-break-inside: avoid;
         }
 
         .closing-box h3 {
@@ -797,8 +801,13 @@
         </div>
 
         <!-- Häufige Fehler -->
-        <div class="mistakes-section">
-            <h3><span class="warning-icon">✗</span> Diese Fehler NIEMALS machen:</h3>
+        <div style="page-break-before: always;"></div>
+        
+        <h2 style="color: #C62828; text-align: center; margin: 20px 0 15px; font-size: 1.4em; display: flex; align-items: center; justify-content: center; gap: 10px;">
+            <span class="warning-icon">✗</span> Diese Fehler NIEMALS machen:
+        </h2>
+
+        <div class="mistakes-section" style="margin-bottom: 8px;">
             <div class="checklist-item">
                 <div class="checkbox"></div>
                 <div class="checklist-text">Seed Phrase als Screenshot/Foto speichern</div>
@@ -811,6 +820,9 @@
                 <div class="checkbox"></div>
                 <div class="checklist-text">Seed Phrase per E-Mail/WhatsApp/Telegram verschicken</div>
             </div>
+        </div>
+
+        <div class="mistakes-section" style="margin-bottom: 8px;">
             <div class="checklist-item">
                 <div class="checkbox"></div>
                 <div class="checklist-text">Seed Phrase in Passwort-Manager eingeben</div>
@@ -823,6 +835,9 @@
                 <div class="checkbox"></div>
                 <div class="checklist-text">Auf Phishing-Links klicken ("Wallet verifizieren", "Problem mit Account")</div>
             </div>
+        </div>
+
+        <div class="mistakes-section">
             <div class="checklist-item">
                 <div class="checkbox"></div>
                 <div class="checklist-text">Mehr investieren, als ich bereit bin zu verlieren</div>
@@ -878,10 +893,14 @@
         <div class="footer">
             <p><strong>Glückwunsch!</strong> Wenn du alle Punkte dieser Checkliste durchgegangen bist, hast du eine solide Grundlage für deine DeFi-Reise geschaffen.</p>
             <p style="margin-top: 10px;">© 2025 Chris Müller - Let's go free - Diese Checkliste darf gerne geteilt werden.</p>
+            <p style="margin-top: 5px;"><a href="https://www.letsgofree.me" target="_blank" style="color: #8B7355; text-decoration: none;">www.letsgofree.me</a></p>
             <p style="margin-top: 8px; font-size: 0.8em;"><em>Disclaimer: Diese Checkliste dient nur zu Informationszwecken und stellt keine Finanzberatung dar. Jeder ist für seine eigenen Entscheidungen selbst verantwortlich.</em></p>
         </div>
 
-        <button class="print-button" onclick="window.print()">Ausdrucken / Als PDF speichern</button>
+        <div style="display: flex; gap: 15px; justify-content: center; margin-top: 15px;">
+            <button class="print-button" onclick="window.print()">Ausdrucken / Als PDF speichern</button>
+            <button class="print-button" onclick="window.location.href='https://www.letsgofree.me'">Startseite</button>
+        </div>
     </div>
 </body>
 </html>
