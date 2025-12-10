@@ -304,7 +304,7 @@
 <body>
     <div class="container">
         <h1>DeFi-Glossar</h1>
-        <p class="subtitle">Detaillierte Erklärungen der 52 wichtigsten Begriffe - Perfekt für Einsteiger</p>
+        <p class="subtitle">Detaillierte Erklärungen der 53 wichtigsten Begriffe - Perfekt für Einsteiger</p>
 
         <div class="search-box">
             <input type="text" id="searchInput" class="search-input" placeholder="Begriff suchen... (z.B. Wallet, Gas Fee, Smart Contract)">
@@ -444,8 +444,8 @@
             {
                 term: "AMM (Automated Market Maker)",
                 category: "defi",
-                definition: "Ein System, das automatisch Preise für Token-Paare berechnet, basierend auf Angebot und Nachfrage im Pool.",
-                example: "Uniswap nutzt die Formel x*y=k, um faire Preise ohne menschliche Händler zu ermitteln.",
+                definition: "Ein AMM ist ein System, das automatisch Preise für Token-Paare berechnet - ohne dass echte Käufer und Verkäufer direkt miteinander handeln müssen. Statt einem traditionellen Orderbuch (wie an der Börse) nutzt ein AMM mathematische Formeln und Liquidity Pools. Die bekannteste Formel ist x*y=k von Uniswap: Wenn jemand Token X kauft (x wird kleiner), muss automatisch mehr Token Y im Pool sein (y wird grösser), damit das Produkt k konstant bleibt. Dadurch passt sich der Preis automatisch an Angebot und Nachfrage an - je mehr gekauft wird, desto teurer wird es. Kein Mensch, keine Firma stellt die Preise - nur Mathematik.",
+                example: "Pool hat 100 ETH (x) und 300'000 USDC (y). Formel: 100 * 300'000 = 30'000'000 (k muss immer gleich bleiben). Jemand kauft 10 ETH → Pool hat jetzt nur noch 90 ETH. Damit k gleich bleibt, muss y = 30'000'000 / 90 = 333'333 USDC sein. Der Käufer zahlt also 33'333 USDC für 10 ETH = 3'333 USDC pro ETH (teurer als der Startpreis von 3'000!). So regelt sich der Preis automatisch.",
                 warning: null
             },
             {
@@ -488,23 +488,23 @@
             {
                 term: "Utility Token",
                 category: "token",
-                definition: "Ein Token, der Zugang zu einem Service oder Produkt gewährt. Kein Investment-Token.",
-                example: "BNB auf Binance: Damit zahlst du niedrigere Handelsgebühren.",
+                definition: "Ein Utility Token ist ein Token, der dir Zugang zu einem bestimmten Service, Produkt oder einer Funktion innerhalb eines Projekts gewährt. Er ist NICHT primär als Investment gedacht, sondern als 'digitales Nutzungsrecht'. Utility Tokens ermöglichen oft Rabatte, Zugang zu Premium-Features, Bezahlung von Dienstleistungen, oder schnelleren Service. Der Wert eines Utility Tokens hängt davon ab, wie nützlich der Service ist und wie viele Leute ihn nutzen wollen. Viele Projekte kombinieren Utility mit Governance-Funktionen.",
+                example: "BNB (Binance Coin): Zahlst du Handelsgebühren auf Binance mit BNB statt mit anderen Coins, bekommst du 25% Rabatt. FIL (Filecoin): Brauchst du, um dezentralen Speicherplatz zu kaufen. BAT (Basic Attention Token): Nutzer können Werbung schauen und verdienen BAT, Website-Betreiber bekommen BAT für Aufmerksamkeit.",
                 warning: null
             },
             {
                 term: "Governance Token",
                 category: "token",
-                definition: "Ein Token, der dir Mitspracherecht bei Entscheidungen eines Protokolls gibt. Ein Stimmrecht pro Token.",
-                example: "UNI (Uniswap): Besitzer stimmen über Änderungen am Protokoll ab.",
+                definition: "Ein Governance Token gibt dir Stimmrecht bei Entscheidungen über die Zukunft eines DeFi-Protokolls oder Projekts. Eine Token = eine Stimme. Token-Halter können über Vorschläge abstimmen wie: Gebühren ändern, neue Features einführen, Budget verteilen, Parameter anpassen. Das ist wie Aktionärsrechte, aber für DeFi. Je mehr Token du hast, desto mehr Einfluss hast du. Viele Protokolle haben das Ziel, komplett dezentral zu werden - die Community (Token-Halter) entscheidet alles, nicht die Gründer. Oft werden Governance Token als Belohnung an frühe Nutzer verteilt.",
+                example: "UNI (Uniswap): Besitzer stimmen über Protokoll-Upgrades, Fee-Änderungen, Treasury-Verwendung ab. Proposal: 'Sollen wir 0.05% Fee-Tier einführen?' → Abstimmung über 7 Tage → Mehrheit gewinnt. MKR (MakerDAO): Halter entscheiden über Zinssätze für DAI-Kredite, welche Collateral akzeptiert wird, Risiko-Parameter. AAVE: Governance über neue Markets, Listing neuer Assets, Treasury-Management.",
                 warning: null
             },
             {
                 term: "Stablecoin",
                 category: "token",
-                definition: "Ein Krypto-Token, der immer etwa 1$ wert sein soll. Stabilität statt Volatilität.",
-                example: "USDT, USDC, DAI - perfekt, um Gewinne zwischenzuparken ohne zurück in Euro zu tauschen.",
-                warning: "Nicht alle Stablecoins sind sicher (siehe UST-Crash 2022)!"
+                definition: "Ein Stablecoin ist ein Krypto-Token, der seinen Wert stabil bei etwa 1 Dollar (oder 1 Euro, etc.) halten soll - ohne die extremen Preisschwankungen normaler Kryptos. Es gibt verschiedene Arten: 1) Fiat-backed: Für jeden Token liegt echter Dollar auf einem Bankkonto (USDC, USDT). 2) Crypto-backed: Überbesichert mit anderen Kryptos (DAI). 3) Algorithmic: Nutzen Smart Contracts um Angebot/Nachfrage zu steuern (sehr riskant, siehe UST). Stablecoins sind perfekt für: Trading ohne ständig zu Fiat zurückzuwechseln, Gehaltszahlungen in Krypto, Geld in Ländern mit hoher Inflation parken, oder als 'sicherer Hafen' wenn Märkte crashen.",
+                example: "USDC (Circle): Jeder USDC ist 1:1 durch Dollar gedeckt, monatliche Audits. USDT (Tether): Grösster Stablecoin, aber Kontroverse über echte Deckung. DAI (MakerDAO): Dezentral, backed durch ETH und andere Kryptos (überbesichert). BUSD (Binance): Von Binance, reguliert. Nutzung: ETH steigt von $2000 auf $4000 → du verkaufst zu USDC bei $4000 → Crash auf $3000 → du kaufst zurück mit USDC = mehr ETH!",
+                warning: "Nicht alle Stablecoins sind sicher! UST (TerraUSD) war algorithmisch und crashte 2022 von $1 auf $0.00001 - Milliarden verloren. Auch USDT hat Kontroversen. Für grosse Summen: USDC wird als am sichersten angesehen."
             },
             {
                 term: "Wrapped Token",
@@ -526,6 +526,13 @@
                 definition: "Ein einzigartiger Token, der nicht austauschbar ist. Jeder ist anders und hat eine eigene ID.",
                 example: "Digitale Kunst, Sammelkarten, Grundstücke in Metaverse-Spielen.",
                 warning: "Vorsicht vor Fakes! Prüfe den Smart Contract, bevor du kaufst."
+            },
+            {
+                term: "Airdrop",
+                category: "token",
+                definition: "Ein Airdrop ist, wenn ein Projekt kostenlos Token an viele Wallet-Adressen verteilt - meist als Marketing-Massnahme oder Belohnung für frühe Nutzer. Legitime Airdrops wollen eine Community aufbauen und ihre Token verbreiten. Protokolle wie Uniswap, Ethereum Name Service, oder Arbitrum haben ihren frühen Nutzern Tausende Dollar in Token geschenkt. ABER: Es gibt auch massenhaft Scam-Airdrops! Betrüger senden wertlose Token in dein Wallet, die wie echte aussehen. Wenn du versuchst, diese zu verkaufen, musst du einen 'Approval' geben - dabei stehlen sie deine echten Token.",
+                example: "Legitim: Uniswap Airdrop 2020 - jeder Nutzer bekam 400 UNI Token (damals ~$1200, heute ~$2400). Arbitrum 2023 - Nutzer bekamen je nach Aktivität 500-10'000 ARB Token. Optimism 2022 - mehrere Runden an frühe Nutzer. Scam: Du siehst plötzlich 10'000 'SafeMoon2.0' Token in deinem Wallet (Wert angeblich $50'000). Du versuchst zu verkaufen → musst Contract Approval geben → Contract leert dein ganzes Wallet.",
+                warning: "Niemals unbekannte Airdrop-Token verkaufen oder mit ihnen interagieren! Wenn du einen Airdrop nicht erwartet hast und nicht aktiv etwas dafür getan hast, ist es zu 99% ein Scam. Echte Airdrops kündigen sich meist vorher an. Prüfe IMMER den Contract auf Etherscan und Google den Token-Namen + 'scam' bevor du irgendwas machst!"
             },
 
             // Sicherheit
