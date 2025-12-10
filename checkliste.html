@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeFi-Sicherheits-Checkliste - Let's go free</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 50%, #C9A882 100%);
+            color: #333;
+            line-height: 1.7;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%);
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.8em;
+            margin-bottom: 15px;
+            line-height: 1.2;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .header .subtitle {
+            font-size: 1.3em;
+            opacity: 0.95;
+            margin-bottom: 30px;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: white;
+            color: #8B7355;
+            padding: 15px 35px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 1.1em;
+            margin: 10px;
+            transition: all 0.3s;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+
+        /* Content Area */
+        .content {
+            padding: 50px 40px;
+        }
+
+        .intro-box {
+            background: #F5E6D3;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 40px;
+            border-left: 5px solid #8B7355;
+        }
+
+        .intro-box p {
+            font-size: 1.1em;
+            line-height: 1.8;
+            margin-bottom: 15px;
+        }
+
+        .warning {
+            background: rgba(255, 82, 82, 0.15);
+            border-left: 5px solid #ff5252;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .warning p {
+            font-size: 1.05em;
+            color: #333;
+        }
+
+        /* Phase Sections */
+        .phase-section {
+            margin-bottom: 50px;
+        }
+
+        .phase-header {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .phase-number {
+            background: #5a4636;
+            color: white;
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 2em;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+            flex-shrink: 0;
+        }
+
+        .phase-title {
+            flex: 1;
+        }
+
+        .phase-title h2 {
+            color: #5a4636;
+            font-size: 2.2em;
+            margin-bottom: 5px;
+        }
+
+        .phase-title h3 {
+            color: #8B7355;
+            font-size: 1.3em;
+            font-weight: 500;
+        }
+
+        .subsection {
+            background: white;
+            border-left: 4px solid #A0826D;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .subsection-title {
+            color: #8B7355;
+            font-size: 1.4em;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .checklist-item {
+            background: #F5E6D3;
+            padding: 15px 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            font-size: 1em;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            border-left: 4px solid #A0826D;
+            transition: all 0.3s ease;
+        }
+
+        .checklist-item:hover {
+            background: #E8D4BA;
+            transform: translateX(5px);
+        }
+
+        .checkmark {
+            color: #4caf50;
+            font-size: 1.3em;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .checklist-item ul {
+            margin-top: 10px;
+            padding-left: 20px;
+        }
+
+        .checklist-item li {
+            margin: 5px 0;
+        }
+
+        /* Mistakes Section */
+        .mistakes-section {
+            background: rgba(255, 82, 82, 0.08);
+            padding: 40px;
+            border-radius: 15px;
+            margin: 50px 0;
+            border: 2px solid rgba(255, 82, 82, 0.3);
+        }
+
+        .mistakes-section h2 {
+            color: #ff5252;
+            font-size: 2.2em;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .mistakes-section h3 {
+            color: #ff5252;
+            font-size: 1.5em;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .mistake-item {
+            background: rgba(255, 82, 82, 0.1);
+            padding: 15px 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            font-size: 1.05em;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .cross {
+            color: #ff5252;
+            font-size: 1.5em;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        /* Progress Section */
+        .progress-section {
+            background: linear-gradient(135deg, #F5E6D3 0%, #E8D4BA 100%);
+            padding: 50px 40px;
+            margin-top: 50px;
+        }
+
+        .progress-section h2 {
+            color: #5a4636;
+            font-size: 2.2em;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .progress-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .progress-card {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            border-top: 5px solid #4caf50;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        }
+
+        .progress-card h3 {
+            color: #4caf50;
+            font-size: 1.3em;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .progress-card ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .progress-card li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+            color: #333;
+        }
+
+        .progress-card li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #4caf50;
+            font-weight: bold;
+        }
+
+        .conclusion-box {
+            background: white;
+            padding: 35px;
+            border-radius: 15px;
+            margin-top: 30px;
+            border-left: 5px solid #8B7355;
+            text-align: center;
+        }
+
+        .conclusion-box p {
+            font-size: 1.2em;
+            line-height: 1.8;
+            margin: 15px 0;
+        }
+
+        .big-quote {
+            font-size: 1.8em;
+            color: #8B7355;
+            font-weight: 700;
+            margin: 30px 0 15px;
+        }
+
+        /* Footer */
+        .footer {
+            background: #f5f5f5;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .footer p {
+            font-size: 1em;
+            color: #666;
+            margin: 10px 0;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .header .subtitle {
+                font-size: 1.1em;
+            }
+
+            .content {
+                padding: 40px 25px;
+            }
+
+            .phase-header {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .phase-title h2 {
+                font-size: 1.8em;
+            }
+
+            .progress-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🛡️ DeFi-Sicherheits-Checkliste</h1>
+            <p class="subtitle">Dein Schritt-für-Schritt Guide für sicheren Einstieg in DeFi</p>
+            <a href="https://letsgofree.me" class="cta-button">← Zurück zur Startseite</a>
+            <a href="checkliste_print.html" class="cta-button" target="_blank">📄 Druckversion</a>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- Intro -->
+            <div class="intro-box">
+                <p><strong>Warum diese Checkliste?</strong></p>
+                <p>Im DeFi bist du deine eigene Bank. Das bedeutet Freiheit – aber auch Verantwortung. Diese Checkliste führt dich Schritt für Schritt durch deinen sicheren Einstieg, ohne dass du wichtige Sicherheitsaspekte übersiehst.</p>
+            </div>
+
+            <div class="warning">
+                <p><strong>⚠️ Wichtig:</strong> Nimm dir Zeit. Überspringe keine Schritte. Deine Sicherheit geht vor.</p>
+            </div>
+
+            <!-- Phase 1 -->
+            <div class="phase-section">
+                <div class="phase-header">
+                    <div class="phase-number">1</div>
+                    <div class="phase-title">
+                        <h2>Vorbereitung</h2>
+                        <h3>BEVOR du ein Wallet erstellst</h3>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Wissen aufbauen</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich verstehe, was ein Wallet ist (ein Schlüsselbund, keine Geldbörse)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich weiss, was eine Seed Phrase ist (12-24 Wörter = Zugang zu meinem Geld)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Mir ist klar: Verliere ich die Seed Phrase, ist mein Geld unwiederbringlich weg</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich verstehe den Unterschied zwischen Hot Wallet (online) und Cold Wallet (offline)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich kenne das Prinzip: "Not your keys, not your coins"</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Sicherheitsausrüstung besorgen</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Optimal: 2 physische Notiz-Möglichkeiten (z.B. Notizbuch + Metallplatte)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Sicherer Aufbewahrungsort zu Hause (Safe, Tresor oder sehr sicheres Versteck)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <div>
+                            Empfehlenswert: Zweiter Aufbewahrungsort. Beispiele:
+                            <ul>
+                                <li>Vertrauensperson. Alternativ: Seed-Phrase auf zwei Personen verteilen (Wörter 1-6 an 1. Person, Wörter 7-12 an 2. Person)</li>
+                                <li>Bankschliessfach</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Dokumentenhülle für Wasser-/Feuerschutz</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Niemals digitale Speicherung planen (kein USB, keine Cloud, kein Foto)</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Test-Budget festlegen</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe mir eine kleine Test-Summe überlegt (50-100€)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Dieser Betrag ist für mich verschmerzbar, falls etwas schiefgeht</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich werde NICHT sofort mit grösseren Summen starten</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 2 -->
+            <div class="phase-section">
+                <div class="phase-header">
+                    <div class="phase-number">2</div>
+                    <div class="phase-title">
+                        <h2>Wallet-Erstellung</h2>
+                        <h3>Dein Zugang zum DeFi-Universum</h3>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Wallet-Wahl</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe mich für ein etabliertes Wallet entschieden (z.B. MetaMask, TokenPocket, SafePal, Trust Wallet)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich lade die App NUR von der offiziellen Website/App Store herunter</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Download-URL überprüft (keine Phishing-Seite)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Bei Hardware-Wallet: Nur vom Hersteller direkt kaufen (nicht Amazon/eBay)</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Sichere Umgebung</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Mein Gerät ist virenfrei (aktueller Virenscanner)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich bin in einem privaten WLAN (nicht öffentliches Café-WLAN)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Niemand kann mir über die Schulter schauen</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich nehme mir ungestörte Zeit (keine Hektik)</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Seed Phrase sichern</div>
+                    <div class="warning" style="margin-bottom: 20px;">
+                        <p><strong>🚨 KRITISCHSTER SCHRITT - HIER KEINE FEHLER MACHEN</strong></p>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich schreibe die Seed Phrase mit Stift auf Papier/Metall</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe KEIN Foto gemacht</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Wörter NICHT digital gespeichert</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Wörter in der RICHTIGEN REIHENFOLGE notiert</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Schreibweise überprüft (manche Wörter sehen ähnlich aus)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe eine Sicherungskopie erstellt (zweites Papier/Metall)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Seed Phrase NIEMANDEM gezeigt oder geschickt</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Beide Kopien sind sicher verwahrt (verschiedene Orte)</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Wallet-Zugang testen</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe ein sicheres Passwort für die Wallet-App erstellt</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Empfangsadresse notiert</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich kann mich in der Wallet einloggen</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 3 -->
+            <div class="phase-section">
+                <div class="phase-header">
+                    <div class="phase-number">3</div>
+                    <div class="phase-title">
+                        <h2>Erste Schritte</h2>
+                        <h3>Testen, testen, testen!</h3>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Test-Transaktion</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich zahle nur meine kleine Test-Summe ein (50-100€)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Empfangsadresse doppelt überprüft</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich verstehe, dass Transaktionen Gebühren kosten (Gas Fees)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Das Geld ist angekommen - ich sehe es im Wallet</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Sende-Test</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe eine Test-Transaktion an eine andere Adresse gesendet</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Empfängeradresse vorher überprüft</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Die Transaktion wurde erfolgreich durchgeführt</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich verstehe jetzt, wie Transaktionen funktionieren</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Wiederherstellungs-Test (SEHR WICHTIG!)</div>
+                    <div class="warning" style="margin-bottom: 20px;">
+                        <p><strong>🚨 Dieser Schritt beweist, dass deine Sicherung funktioniert</strong></p>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Wallet-App gelöscht oder ein neues Gerät genommen</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Wallet mit meiner Seed Phrase wiederhergestellt</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Mein Guthaben ist wieder sichtbar</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Erst jetzt weiss ich sicher, dass meine Backup funktioniert</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 4 -->
+            <div class="phase-section">
+                <div class="phase-header">
+                    <div class="phase-number">4</div>
+                    <div class="phase-title">
+                        <h2>Fiat-Krypto-Brücke einrichten</h2>
+                        <h3>Von Euro/CHF zu Krypto</h3>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Plattform-Auswahl</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe eine seriöse Fiat-Krypto-Plattform gewählt</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Gebühren verstanden</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Limits und Verifikations-Anforderungen geprüft</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Verifizierung</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe meine Identität verifiziert (KYC - falls erforderlich)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Mein Bankkonto ist verknüpft</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe einen Test-Kauf durchgeführt</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Sicherheit - verfügbar je nach gewählter Wallet</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe 2-Faktor-Authentifizierung aktiviert (2FA)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich nutze eine Authenticator-App (NICHT SMS)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Backup-Codes der 2FA sicher notiert</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 5 -->
+            <div class="phase-section">
+                <div class="phase-header">
+                    <div class="phase-number">5</div>
+                    <div class="phase-title">
+                        <h2>Dauerhafte Sicherheit</h2>
+                        <h3>Bleib wachsam!</h3>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Tägliche Sicherheitsregeln</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich gebe niemals meine Seed Phrase weiter</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich klicke nicht auf verdächtige Links in E-Mails/Nachrichten</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich überprüfe immer die URL der Website (Phishing-Schutz)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich verbinde mein Wallet nur mit vertrauenswürdigen dApps</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich prüfe Smart Contract-Berechtigungen bevor ich sie erteile</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Phishing-Schutz</div>
+                    <div class="warning" style="margin-bottom: 20px;">
+                        <p><strong>🚨 NIEMALS wird ein Support dich nach deiner Seed Phrase fragen!</strong></p>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich weiss: Kein Support, keine Plattform, keine Person braucht meine Seed Phrase</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich erkenne Phishing-Mails (komische Absender, Druck aufbauen)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich gehe immer direkt zur Website, nicht über Links in E-Mails</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die offiziellen URLs als Lesezeichen gespeichert</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Regelmässige Checks</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich überprüfe monatlich meine Wallet-Aktivitäten</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich widerrufe ungenutzten Smart Contract-Zugriff</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich halte meine Wallet-App aktuell</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich überprüfe, dass meine Seed Phrase-Sicherung noch existiert</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 6 -->
+            <div class="phase-section">
+                <div class="phase-header">
+                    <div class="phase-number">6</div>
+                    <div class="phase-title">
+                        <h2>Notfallplan</h2>
+                        <h3>Sei vorbereitet</h3>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Für den Ernstfall vorbereitet</div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe dokumentiert, welche Wallets ich nutze</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Eine Vertrauensperson weiss, wo meine Seed Phrase ist (für Erbfall)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe klare Anweisungen hinterlegt (wie man zugreift)</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe überlegt, wie meine Familie im Notfall zugreifen kann</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Was tun bei Verlust?</div>
+                    <div class="warning" style="margin-bottom: 20px;">
+                        <p><strong>🚨 Wenn Seed Phrase verloren:</strong></p>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Sofort neues Wallet erstellen</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Restliches Guthaben auf neues Wallet übertragen</span>
+                    </div>
+                    <div class="checklist-item">
+                        <span class="checkmark">□</span>
+                        <span>Alte Wallet ist nicht mehr sicher</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mistakes Section -->
+            <div class="mistakes-section">
+                <h2>❌ Häufige Fehler vermeiden</h2>
+                <h3>Diese Fehler NIEMALS machen:</h3>
+                
+                <div class="mistake-item">
+                    <span class="cross">❌</span>
+                    <span>Seed Phrase als Screenshot/Foto speichern</span>
+                </div>
+                <div class="mistake-item">
+                    <span class="cross">❌</span>
+                    <span>Seed Phrase in Cloud (Google Drive, iCloud, Dropbox, etc.)</span>
+                </div>
+                <div class="mistake-item">
+                    <span class="cross">❌</span>
+                    <span>Seed Phrase per E-Mail/WhatsApp/Telegram verschicken</span>
+                </div>
+                <div class="mistake-item">
+                    <span class="cross">❌</span>
+                    <span>Seed Phrase in Passwort-Manager eingeben</span>
+                </div>
+                <div class="mistake-item">
+                    <span class="cross">❌</span>
+                    <span>Seed Phrase mit "Support-Mitarbeitern" teilen</span>
+                </div>
+                <div class="mistake-item">
+                    <span class="cross">❌</span>
+                    <span>Auf Phishing-Links klicken ("Wallet verifizieren", "Problem mit Account")</span>
+                </div>
+                <div class="mistake-item">
+                    <span class="cross">❌</span>
+                    <span>Mehr investieren, als ich bereit bin zu verlieren</span>
+                </div>
+                <div class="mistake-item">
+                    <span class="cross">❌</span>
+                    <span>Wallet-Zugriff auf unbekannte Smart Contracts geben</span>
+                </div>
+                <div class="mistake-item">
+                    <span class="cross">❌</span>
+                    <span>Bei Gier-Versprechen einsteigen ("Garantierte 50% Rendite!")</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Section -->
+        <div class="progress-section">
+            <h2>Dein Fortschritt</h2>
+            
+            <div class="progress-grid">
+                <div class="progress-card">
+                    <h3>✅ Anfänger-Level</h3>
+                    <p style="text-align: center; margin-bottom: 15px; color: #666;">(Phase 1-3 abgeschlossen)</p>
+                    <ul>
+                        <li>Du hast ein funktionierendes Wallet</li>
+                        <li>Du verstehst die Grundlagen</li>
+                        <li>Du hast erfolgreich getestet</li>
+                    </ul>
+                </div>
+
+                <div class="progress-card">
+                    <h3>✅ Fortgeschritten-Level</h3>
+                    <p style="text-align: center; margin-bottom: 15px; color: #666;">(Phase 4-5 abgeschlossen)</p>
+                    <ul>
+                        <li>Du kannst Fiat in Krypto tauschen</li>
+                        <li>Du kennst die wichtigsten Sicherheitsregeln</li>
+                        <li>Du bewegst dich sicher in der DeFi-Welt</li>
+                    </ul>
+                </div>
+
+                <div class="progress-card">
+                    <h3>✅ Profi-Level</h3>
+                    <p style="text-align: center; margin-bottom: 15px; color: #666;">(Phase 6 abgeschlossen)</p>
+                    <ul>
+                        <li>Du hast einen Notfallplan</li>
+                        <li>Du bist für alle Szenarien vorbereitet</li>
+                        <li>Du kannst andere anleiten</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="conclusion-box">
+                <p>DeFi bedeutet Selbstbestimmung. Aber Freiheit kommt mit Verantwortung.</p>
+                <p>Mit dieser Checkliste bist du auf dem richtigen Weg. Nimm dir Zeit, überspringe keine Schritte, und denk immer daran:</p>
+                <p class="big-quote">Sicherheit vor Geschwindigkeit.</p>
+                <p style="font-size: 1.3em; color: #8B7355; font-weight: 600; margin-top: 20px;">Dein Geld. Deine Regeln. Deine Verantwortung.</p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <h3 style="color: #8B7355; margin-bottom: 20px; font-size: 1.8em;">Brauchst du persönliche Begleitung?</h3>
+            <p style="font-size: 1.2em; margin-bottom: 25px;">1:1 DeFi Coaching – Schritt für Schritt in die Krypto-Welt</p>
+            
+            <a href="https://letsgofree.me/#angebot" class="cta-button" style="background: #8B7355; color: white; margin: 10px;">Zum Coaching-Angebot</a>
+            <a href="https://letsgofree.me" class="cta-button">Zur Startseite</a>
+
+            <p style="margin-top: 30px; font-size: 0.95em;">© 2025 Let's go free - Diese Checkliste darf gerne geteilt werden.</p>
+            <p style="margin-top: 10px; font-size: 0.9em;"><strong>Disclaimer:</strong> Diese Checkliste dient nur zu Informationszwecken und stellt keine Finanzberatung dar. Jeder ist für seine eigenen Entscheidungen selbst verantwortlich.</p>
+        </div>
+    </div>
+</body>
+</html>
