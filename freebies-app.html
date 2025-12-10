@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeFi-Tools - Let's go free</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 50%, #C9A882 100%);
+            color: #333;
+            line-height: 1.7;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%);
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.8em;
+            margin-bottom: 15px;
+            line-height: 1.2;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .header .subtitle {
+            font-size: 1.3em;
+            opacity: 0.95;
+            margin-bottom: 30px;
+        }
+
+        /* Navigation */
+        .nav-container {
+            background: #F5E6D3;
+            padding: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            border-bottom: 3px solid #8B7355;
+            justify-content: center;
+        }
+
+        .nav-btn {
+            background: white;
+            color: #5a4636;
+            border: 2px solid #8B7355;
+            padding: 12px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1em;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .nav-btn:hover {
+            background: #8B7355;
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .nav-btn.active {
+            background: #8B7355;
+            color: white;
+        }
+
+        /* Content Area */
+        .content {
+            padding: 50px 40px;
+            min-height: 400px;
+        }
+
+        .view {
+            display: none;
+        }
+
+        .view.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Home View */
+        .welcome-box {
+            background: #F5E6D3;
+            padding: 40px;
+            border-radius: 15px;
+            margin-bottom: 40px;
+            border-left: 5px solid #8B7355;
+        }
+
+        .welcome-box h2 {
+            color: #5a4636;
+            font-size: 2em;
+            margin-bottom: 20px;
+        }
+
+        .welcome-box p {
+            font-size: 1.1em;
+            line-height: 1.8;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .tool-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 40px;
+        }
+
+        .tool-card {
+            background: #F5E6D3;
+            padding: 30px;
+            border-radius: 12px;
+            border-left: 4px solid #8B7355;
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+        }
+
+        .tool-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+
+        .tool-card .icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .tool-card h3 {
+            color: #5a4636;
+            font-size: 1.5em;
+            margin-bottom: 15px;
+        }
+
+        .tool-card p {
+            color: #333;
+            line-height: 1.6;
+        }
+
+        /* Search Box */
+        .search-box {
+            margin: 30px 0;
+            text-align: center;
+        }
+
+        .search-input {
+            width: 100%;
+            max-width: 600px;
+            padding: 15px 20px;
+            font-size: 1.1em;
+            border: 2px solid #8B7355;
+            border-radius: 10px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .search-input:focus {
+            border-color: #5a4636;
+            box-shadow: 0 0 0 3px rgba(139, 115, 85, 0.1);
+        }
+
+        /* Filter Buttons */
+        .filter-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+
+        .filter-btn {
+            background: #F5E6D3;
+            color: #5a4636;
+            border: 2px solid #8B7355;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .filter-btn:hover {
+            background: #8B7355;
+            color: white;
+        }
+
+        .filter-btn.active {
+            background: #8B7355;
+            color: white;
+        }
+
+        /* Progress Bar for Checklist */
+        .progress-container {
+            background: #F5E6D3;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            border-left: 5px solid #8B7355;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-top: 10px;
+            border: 2px solid #8B7355;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #8B7355 0%, #A0826D 100%);
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+        }
+
+        /* Phase Sections */
+        .phase-section {
+            background: #F5E6D3;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            border-left: 5px solid #8B7355;
+        }
+
+        .phase-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+        }
+
+        .phase-title {
+            color: #5a4636;
+            font-size: 1.5em;
+            font-weight: 700;
+        }
+
+        .phase-toggle {
+            font-size: 1.5em;
+            color: #8B7355;
+            transition: transform 0.3s;
+        }
+
+        .phase-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .phase-content.open {
+            max-height: 5000px;
+        }
+
+        .checklist-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+            transition: transform 0.2s;
+        }
+
+        .checklist-item:hover {
+            transform: translateX(5px);
+        }
+
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+        }
+
+        .checkbox {
+            width: 24px;
+            height: 24px;
+            border: 2px solid #8B7355;
+            border-radius: 5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+
+        .checkbox.checked {
+            background: #8B7355;
+        }
+
+        .checkbox.checked::after {
+            content: '✓';
+            color: white;
+            font-weight: bold;
+        }
+
+        .item-text {
+            flex: 1;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        /* Glossary Grid */
+        .glossary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .glossary-item {
+            background: #F5E6D3;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 5px solid #8B7355;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .glossary-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .term-title {
+            color: #5a4636;
+            font-size: 1.4em;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .term-category {
+            display: inline-block;
+            background: #8B7355;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.85em;
+            margin-bottom: 10px;
+        }
+
+        .term-definition {
+            color: #5a4636;
+            line-height: 1.8;
+            margin: 10px 0;
+        }
+
+        .term-example {
+            background: #FFF9F0;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 3px solid #8B7355;
+            margin: 10px 0;
+            font-style: italic;
+        }
+
+        .term-warning {
+            background: rgba(255, 82, 82, 0.15);
+            border-left: 3px solid #ff5252;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        /* Wallet Table */
+        .wallet-table-container {
+            overflow-x: auto;
+            margin-top: 30px;
+        }
+
+        .wallet-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+
+        .wallet-table th {
+            background: #8B7355;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .wallet-table td {
+            padding: 15px;
+            border-bottom: 1px solid #F5E6D3;
+        }
+
+        .wallet-table tr:hover {
+            background: #FFF9F0;
+        }
+
+        .rating {
+            color: #8B7355;
+            font-size: 1.2em;
+        }
+
+        /* Info Boxes */
+        .info-box {
+            background: #F5E6D3;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+            border-left: 5px solid #8B7355;
+        }
+
+        .warning-box {
+            background: rgba(255, 82, 82, 0.15);
+            border-left: 5px solid #ff5252;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+        }
+
+        .success-box {
+            background: rgba(76, 175, 80, 0.15);
+            border-left: 5px solid #4CAF50;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+        }
+
+        /* Buttons */
+        .btn {
+            background: #8B7355;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: inline-block;
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            background: #5a4636;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn-secondary {
+            background: #A0826D;
+        }
+
+        .btn-secondary:hover {
+            background: #8B7355;
+        }
+
+        /* Seed Phrase Sheets */
+        .seed-container {
+            background: #F5E6D3;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 20px 0;
+            border-left: 5px solid #8B7355;
+        }
+
+        .seed-container h3 {
+            color: #5a4636;
+            font-size: 1.5em;
+            margin-bottom: 20px;
+        }
+
+        .download-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin: 15px 0;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .download-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .content {
+                padding: 30px 20px;
+            }
+            
+            .tool-cards {
+                grid-template-columns: 1fr;
+            }
+            
+            .glossary-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .nav-container {
+                flex-direction: column;
+            }
+            
+            .nav-btn {
+                width: 100%;
+            }
+        }
+
+        /* No Results Message */
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #5a4636;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>Let's go free</h1>
+            <p class="subtitle" style="font-size: 1.5em; margin-bottom: 10px;">Freiheit mit DeFi und Krypto</p>
+            <p class="subtitle" style="font-size: 1.1em; opacity: 0.9;">Dein Weg in die finanzielle Selbstbestimmung</p>
+        </div>
+
+        <!-- Navigation -->
+        <div class="nav-container">
+            <button class="nav-btn active" onclick="showView('home')">🏠 Start</button>
+            <button class="nav-btn" onclick="showView('checklist')">✅ Sicherheits-Checkliste</button>
+            <button class="nav-btn" onclick="showView('wallet')">💼 Wallet-Vergleich</button>
+            <button class="nav-btn" onclick="showView('glossary')">📖 DeFi-Glossar</button>
+            <button class="nav-btn" onclick="showView('gasfee')">⛽ Gas-Fee-Guide</button>
+            <button class="nav-btn" onclick="showView('seedphrase')">🔐 Datensicherungsblätter</button>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- HOME VIEW -->
+            <div id="home-view" class="view active">
+                <div class="welcome-box">
+                    <h2>Willkommen zu deinen DeFi-Tools! 👋</h2>
+                    <p>Diese Tools habe ich aus meiner Coaching-Praxis entwickelt, um dir den sicheren Einstieg in die Welt der dezentralen Finanzen (DeFi) zu erleichtern.</p>
+                    <p><strong>So funktioniert's:</strong> Klicke oben in der Navigation auf das Tool, das du nutzen möchtest, oder wähle unten aus den Karten. Ich empfehle dir, die Tools in der angegebenen Reihenfolge durchzugehen – so baust du systematisch dein DeFi-Wissen auf.</p>
+                    <p>Los geht's! 🚀</p>
+                </div>
+
+                <div class="tool-cards">
+                    <div class="tool-card" onclick="showView('checklist')">
+                        <div class="icon">✅</div>
+                        <h3>1. Sicherheits-Checkliste</h3>
+                        <p>Dein Schritt-für-Schritt-Plan durch 6 Sicherheitsphasen. Von den ersten Wallet-Einstellungen bis zu fortgeschrittenen Sicherheitsmassnahmen.</p>
+                    </div>
+
+                    <div class="tool-card" onclick="showView('wallet')">
+                        <div class="icon">💼</div>
+                        <h3>2. Wallet-Vergleich</h3>
+                        <p>14 Wallets im direkten Vergleich mit Filterfunktion. Finde die perfekte Wallet für deine Bedürfnisse.</p>
+                    </div>
+
+                    <div class="tool-card" onclick="showView('glossary')">
+                        <div class="icon">📖</div>
+                        <h3>3. DeFi-Glossar</h3>
+                        <p>52 wichtige DeFi-Begriffe einfach erklärt. Mit Suchfunktion, Beispielen und Warnhinweisen bei Risiken.</p>
+                    </div>
+
+                    <div class="tool-card" onclick="showView('gasfee')">
+                        <div class="icon">⛽</div>
+                        <h3>4. Gas-Fee-Guide</h3>
+                        <p>Verstehe und optimiere deine Transaktionskosten. Mit Tracker-Anleitungen für verschiedene Blockchains.</p>
+                    </div>
+
+                    <div class="tool-card" onclick="showView('seedphrase')">
+                        <div class="icon">🔐</div>
+                        <h3>5. Datensicherungsblätter</h3>
+                        <p>Druckfertige Vorlagen für die sichere Aufbewahrung deiner Seed Phrases. Standard und Split-Version verfügbar.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CHECKLIST VIEW (will be populated by JavaScript) -->
+            <div id="checklist-view" class="view"></div>
+
+            <!-- WALLET VIEW (will be populated by JavaScript) -->
+            <div id="wallet-view" class="view"></div>
+
+            <!-- GLOSSARY VIEW (will be populated by JavaScript) -->
+            <div id="glossary-view" class="view"></div>
+
+            <!-- GAS FEE VIEW (will be populated by JavaScript) -->
+            <div id="gasfee-view" class="view"></div>
+
+            <!-- SEED PHRASE VIEW -->
+            <div id="seedphrase-view" class="view">
+                <h2 style="color: #5a4636; font-size: 2.2em; margin-bottom: 20px;">🔐 Datensicherungsblätter</h2>
+                
+                <div class="warning-box">
+                    <p><strong>⚠️ WICHTIG:</strong> Diese Blätter dienen zur OFFLINE-Sicherung deiner Seed Phrases. Speichere die ausgefüllten Blätter NIEMALS digital (keine Fotos, keine Cloud, keine E-Mails)!</p>
+                </div>
+
+                <div class="seed-container">
+                    <h3>📄 Standard-Version (12 Wörter)</h3>
+                    <div class="download-card">
+                        <h4 style="color: #5a4636; margin-bottom: 15px;">Für die vollständige Seed Phrase</h4>
+                        <p style="margin-bottom: 20px;">Trage alle 12 Wörter deiner Seed Phrase auf einem Blatt ein. Drucke es aus und bewahre es an einem sicheren Ort auf.</p>
+                        <a href="https://letsgofree.me/datensicherungsblatt.html" target="_blank" class="btn">Blatt öffnen & ausdrucken</a>
+                    </div>
+                </div>
+
+                <div class="seed-container">
+                    <h3>🔒 Split-Version (aufgeteilt)</h3>
+                    <div class="download-card">
+                        <h4 style="color: #5a4636; margin-bottom: 15px;">Für erhöhte Sicherheit durch Aufteilung</h4>
+                        <p style="margin-bottom: 20px;">Diese Version teilt deine Seed Phrase auf zwei Blätter auf:<br>
+                        <strong>Blatt 1:</strong> Wörter 1-6<br>
+                        <strong>Blatt 2:</strong> Wörter 7-12<br><br>
+                        Bewahre die beiden Blätter an verschiedenen sicheren Orten oder bei verschiedenen Vertrauenspersonen auf. So ist deine Seed Phrase selbst bei Verlust eines Blattes nicht komplett zugänglich.</p>
+                        <a href="https://letsgofree.me/datensicherungsblatt_split.html" target="_blank" class="btn btn-secondary">Split-Blätter öffnen & ausdrucken</a>
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <h4 style="color: #5a4636; margin-bottom: 15px;">💡 Best Practices für die Aufbewahrung:</h4>
+                    <ul style="margin-left: 20px; line-height: 1.8;">
+                        <li>Bewahre die Blätter an mindestens 2-3 sicheren Orten auf</li>
+                        <li>Verwende feuerfeste und wasserdichte Behälter</li>
+                        <li>Informiere eine Vertrauensperson über die Existenz (aber nicht den Ort!)</li>
+                        <li>Überprüfe regelmässig, ob die Blätter noch lesbar sind</li>
+                        <li>Mache dir bewusst: Wer Zugriff auf diese Blätter hat, hat Zugriff auf deine Krypto-Vermögenswerte</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // VIEW MANAGEMENT
+        function showView(viewName) {
+            // Hide all views
+            document.querySelectorAll('.view').forEach(view => {
+                view.classList.remove('active');
+            });
+            
+            // Remove active class from all nav buttons
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected view
+            document.getElementById(viewName + '-view').classList.add('active');
+            
+            // Set active nav button
+            event.target.classList.add('active');
+            
+            // Initialize view-specific content if needed
+            if (viewName === 'checklist' && !checklistInitialized) {
+                initChecklist();
+            } else if (viewName === 'wallet' && !walletInitialized) {
+                initWallet();
+            } else if (viewName === 'glossary' && !glossaryInitialized) {
+                initGlossary();
+            } else if (viewName === 'gasfee' && !gasfeeInitialized) {
+                initGasFee();
+            }
+            
+            // Scroll to top
+            window.scrollTo(0, 0);
+        }
+
+        // FLAGS FOR INITIALIZATION
+        let checklistInitialized = false;
+        let walletInitialized = false;
+        let glossaryInitialized = false;
+        let gasfeeInitialized = false;
+
+        // CHECKLIST DATA AND FUNCTIONS
+        const checklistData = {
+            phases: [
+                {
+                    id: 'phase1',
+                    title: 'Phase 1: Basis-Setup 🎯',
+                    items: [
+                        'Installiere eine sichere Wallet-App (z.B. Trust Wallet, MetaMask)',
+                        'Erstelle ein neues Wallet (nicht importieren!)',
+                        'Notiere deine 12 Wörter (Seed Phrase) HANDSCHRIFTLICH auf Papier',
+                        'Überprüfe die Reihenfolge der Wörter sorgfältig',
+                        'Bewahre das Papier an einem sicheren Ort auf (Tresor, Safe)',
+                        'Lösche Screenshots und Fotos der Seed Phrase vom Handy',
+                        'Aktiviere Face ID / Fingerprint für die Wallet-App'
+                    ]
+                },
+                {
+                    id: 'phase2',
+                    title: 'Phase 2: Grundlegende Sicherheit 🔒',
+                    items: [
+                        'Aktiviere 2FA (Zwei-Faktor-Authentifizierung) für alle Crypto-Accounts',
+                        'Verwende einen Passwort-Manager (z.B. 1Password, Bitwarden)',
+                        'Erstelle starke, einzigartige Passwörter für jeden Account',
+                        'Speichere KEINE Passwörter oder Seeds in Cloud-Diensten',
+                        'Richte automatische Software-Updates ein (Handy & Computer)',
+                        'Installiere eine Antivirus-Software auf deinem Computer'
+                    ]
+                },
+                {
+                    id: 'phase3',
+                    title: 'Phase 3: Backup-Strategie 💾',
+                    items: [
+                        'Erstelle mindestens 2 physische Kopien deiner Seed Phrase',
+                        'Bewahre Kopien an verschiedenen sicheren Orten auf',
+                        'Erwäge ein Bankschliessfach für eine Kopie',
+                        'Informiere eine Vertrauensperson über die Existenz (nicht den Ort!)',
+                        'Dokumentiere alle deine Wallets und Accounts (ohne Passwörter!)',
+                        'Teste die Wiederherstellung mit einem Test-Wallet'
+                    ]
+                },
+                {
+                    id: 'phase4',
+                    title: 'Phase 4: Transaktionssicherheit 🔐',
+                    items: [
+                        'Prüfe IMMER die vollständige Wallet-Adresse vor dem Senden',
+                        'Sende zuerst einen kleinen Test-Betrag bei neuen Adressen',
+                        'Verwende niemals öffentliches WLAN für Crypto-Transaktionen',
+                        'Aktiviere Transaktions-Benachrichtigungen in deiner Wallet',
+                        'Überprüfe Smart Contract Berechtigungen regelmässig',
+                        'Widerrufe nicht mehr benötigte Token-Approvals (z.B. mit Revoke.cash)'
+                    ]
+                },
+                {
+                    id: 'phase5',
+                    title: 'Phase 5: Fortgeschrittene Sicherheit 🛡️',
+                    items: [
+                        'Erwäge eine Hardware-Wallet (Ledger, Trezor) für grössere Beträge',
+                        'Richte ein separates "Hot Wallet" für DeFi-Interaktionen ein',
+                        'Bewahre grössere Beträge in einem "Cold Wallet" auf',
+                        'Verwende Multi-Sig Wallets für sehr hohe Beträge',
+                        'Installiere Browser-Extensions nur aus offiziellen Quellen',
+                        'Nutze einen separaten Computer/Browser für Crypto-Aktivitäten'
+                    ]
+                },
+                {
+                    id: 'phase6',
+                    title: 'Phase 6: Schutz vor Betrug 🚨',
+                    items: [
+                        'Klicke NIEMALS auf Links in unerwarteten E-Mails oder DMs',
+                        'Teile NIEMALS deine Seed Phrase mit jemandem (auch nicht mit "Support")',
+                        'Überprüfe URLs sorgfältig (Achte auf Phishing-Seiten)',
+                        'Sei vorsichtig bei zu guten Angeboten (Airdrops, Giveaways)',
+                        'Recherchiere Projekte gründlich, bevor du investierst',
+                        'Verwende offizielle Websites (speichere Bookmarks)',
+                        'Sei misstrauisch bei unerwarteten Wallet-Verbindungsanfragen'
+                    ]
+                }
+            ]
+        };
+
+        function initChecklist() {
+            const checklistView = document.getElementById('checklist-view');
+            
+            // Load saved progress
+            const savedProgress = JSON.parse(localStorage.getItem('checklistProgress') || '{}');
+            
+            // Calculate progress
+            let totalItems = 0;
+            let completedItems = 0;
+            checklistData.phases.forEach(phase => {
+                phase.items.forEach((item, index) => {
+                    totalItems++;
+                    const itemId = `${phase.id}-${index}`;
+                    if (savedProgress[itemId]) {
+                        completedItems++;
+                    }
+                });
+            });
+            
+            const progressPercent = Math.round((completedItems / totalItems) * 100);
+            
+            let html = `
+                <h2 style="color: #5a4636; font-size: 2.2em; margin-bottom: 20px;">✅ DeFi-Sicherheits-Checkliste</h2>
+                
+                <div class="info-box">
+                    <p><strong>So funktioniert's:</strong> Diese Checkliste führt dich durch 6 Sicherheitsphasen. Klicke auf eine Phase, um sie zu öffnen, und hake alle Punkte ab, die du umgesetzt hast. Dein Fortschritt wird automatisch gespeichert.</p>
+                </div>
+                
+                <div class="progress-container">
+                    <h3 style="color: #5a4636; margin-bottom: 10px;">Dein Fortschritt</h3>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${progressPercent}%">${progressPercent}%</div>
+                    </div>
+                    <p style="margin-top: 10px; color: #5a4636;">${completedItems} von ${totalItems} Punkten abgeschlossen</p>
+                </div>
+            `;
+            
+            // Add phases
+            checklistData.phases.forEach((phase, phaseIndex) => {
+                html += `
+                    <div class="phase-section">
+                        <div class="phase-header" onclick="togglePhase('${phase.id}')">
+                            <div class="phase-title">${phase.title}</div>
+                            <div class="phase-toggle" id="toggle-${phase.id}">▼</div>
+                        </div>
+                        <div class="phase-content ${phaseIndex === 0 ? 'open' : ''}" id="content-${phase.id}">
+                `;
+                
+                phase.items.forEach((item, index) => {
+                    const itemId = `${phase.id}-${index}`;
+                    const isChecked = savedProgress[itemId] || false;
+                    
+                    html += `
+                        <div class="checklist-item">
+                            <div class="checkbox-container">
+                                <div class="checkbox ${isChecked ? 'checked' : ''}" 
+                                     id="checkbox-${itemId}" 
+                                     onclick="toggleCheckbox('${itemId}')"></div>
+                            </div>
+                            <div class="item-text">${item}</div>
+                        </div>
+                    `;
+                });
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                <div class="success-box" style="margin-top: 30px;">
+                    <h3 style="color: #2E7D32; margin-bottom: 15px;">🎉 Super gemacht!</h3>
+                    <p>Vergiss nicht: Sicherheit ist ein fortlaufender Prozess. Überprüfe diese Checkliste regelmässig und passe deine Sicherheitsmassnahmen an, wenn sich deine Crypto-Aktivitäten verändern.</p>
+                </div>
+            `;
+            
+            checklistView.innerHTML = html;
+            checklistInitialized = true;
+        }
+
+        function togglePhase(phaseId) {
+            const content = document.getElementById(`content-${phaseId}`);
+            const toggle = document.getElementById(`toggle-${phaseId}`);
+            
+            if (content.classList.contains('open')) {
+                content.classList.remove('open');
+                toggle.style.transform = 'rotate(0deg)';
+            } else {
+                content.classList.add('open');
+                toggle.style.transform = 'rotate(180deg)';
+            }
+        }
+
+        function toggleCheckbox(itemId) {
+            const checkbox = document.getElementById(`checkbox-${itemId}`);
+            const savedProgress = JSON.parse(localStorage.getItem('checklistProgress') || '{}');
+            
+            if (checkbox.classList.contains('checked')) {
+                checkbox.classList.remove('checked');
+                delete savedProgress[itemId];
+            } else {
+                checkbox.classList.add('checked');
+                savedProgress[itemId] = true;
+            }
+            
+            localStorage.setItem('checklistProgress', JSON.stringify(savedProgress));
+            
+            // Update progress bar
+            updateProgress();
+        }
+
+        function updateProgress() {
+            const savedProgress = JSON.parse(localStorage.getItem('checklistProgress') || '{}');
+            let totalItems = 0;
+            let completedItems = 0;
+            
+            checklistData.phases.forEach(phase => {
+                phase.items.forEach((item, index) => {
+                    totalItems++;
+                    const itemId = `${phase.id}-${index}`;
+                    if (savedProgress[itemId]) {
+                        completedItems++;
+                    }
+                });
+            });
+            
+            const progressPercent = Math.round((completedItems / totalItems) * 100);
+            const progressFill = document.querySelector('.progress-fill');
+            
+            if (progressFill) {
+                progressFill.style.width = progressPercent + '%';
+                progressFill.textContent = progressPercent + '%';
+                
+                const progressText = progressFill.parentElement.parentElement.querySelector('p');
+                if (progressText) {
+                    progressText.textContent = `${completedItems} von ${totalItems} Punkten abgeschlossen`;
+                }
+            }
+        }
+
+        // WALLET COMPARISON DATA AND FUNCTIONS
+        const walletData = [
+            {
+                name: 'MetaMask',
+                type: 'Hot Wallet',
+                platform: 'Browser, Mobile',
+                chains: 'EVM-Chains (Ethereum, BSC, Polygon, etc.)',
+                security: '⭐⭐⭐⭐',
+                ease: '⭐⭐⭐⭐⭐',
+                features: 'Token Swap, NFT Support, dApp Browser',
+                beginner: '✅',
+                notes: 'Beliebteste Browser-Wallet, sehr benutzerfreundlich'
+            },
+            {
+                name: 'Trust Wallet',
+                type: 'Hot Wallet',
+                platform: 'Mobile',
+                chains: 'Multi-Chain (70+ Blockchains)',
+                security: '⭐⭐⭐⭐',
+                ease: '⭐⭐⭐⭐⭐',
+                features: 'DEX, Staking, NFT, dApp Browser',
+                beginner: '✅',
+                notes: 'Offizielle Binance Wallet, sehr vielseitig'
+            },
+            {
+                name: 'Ledger Nano',
+                type: 'Hardware Wallet',
+                platform: 'Hardware Device',
+                chains: 'Multi-Chain (5500+ Assets)',
+                security: '⭐⭐⭐⭐⭐',
+                ease: '⭐⭐⭐',
+                features: 'Cold Storage, Staking über Ledger Live',
+                beginner: '⚠️',
+                notes: 'Höchste Sicherheit, ideal für grössere Beträge'
+            },
+            {
+                name: 'Trezor',
+                type: 'Hardware Wallet',
+                platform: 'Hardware Device',
+                chains: 'Multi-Chain (1000+ Assets)',
+                security: '⭐⭐⭐⭐⭐',
+                ease: '⭐⭐⭐',
+                features: 'Cold Storage, Open Source',
+                beginner: '⚠️',
+                notes: 'Sehr sicher, Open Source Hardware'
+            },
+            {
+                name: 'Rabby Wallet',
+                type: 'Hot Wallet',
+                platform: 'Browser',
+                chains: 'EVM-Chains',
+                security: '⭐⭐⭐⭐',
+                ease: '⭐⭐⭐⭐',
+                features: 'Multi-Chain Management, Security Alerts',
+                beginner: '✅',
+                notes: 'Gute MetaMask-Alternative mit mehr Features'
+            },
+            {
+                name: 'Phantom',
+                type: 'Hot Wallet',
+                platform: 'Browser, Mobile',
+                chains: 'Solana, Ethereum, Polygon',
+                security: '⭐⭐⭐⭐',
+                ease: '⭐⭐⭐⭐⭐',
+                features: 'NFT Support, Token Swap, Staking',
+                beginner: '✅',
+                notes: 'Beste Wallet für Solana'
+            },
+            {
+                name: 'Exodus',
+                type: 'Hot Wallet',
+                platform: 'Desktop, Mobile',
+                chains: 'Multi-Chain (260+ Assets)',
+                security: '⭐⭐⭐⭐',
+                ease: '⭐⭐⭐⭐⭐',
+                features: 'Portfolio Tracking, Exchange, Staking',
+                beginner: '✅',
+                notes: 'Sehr schöne UI, gut für Einsteiger'
+            },
+            {
+                name: 'Rainbow',
+                type: 'Hot Wallet',
+                platform: 'Mobile',
+                chains: 'Ethereum, Polygon, Arbitrum, Optimism',
+                security: '⭐⭐⭐⭐',
+                ease: '⭐⭐⭐⭐⭐',
+                features: 'NFT Focus, ENS Support, Clean UI',
+                beginner: '✅',
+                notes: 'Moderne, benutzerfreundliche Mobile Wallet'
+            },
+            {
+                name: 'Coinbase Wallet',
+                type: 'Hot Wallet',
+                platform: 'Mobile, Browser',
+                chains: 'Multi-Chain',
+                security: '⭐⭐⭐⭐',
+                ease: '⭐⭐⭐⭐⭐',
+                features: 'dApp Browser, NFT, Integration mit Coinbase',
+                beginner: '✅',
+                notes: 'Nicht verwechseln mit Coinbase Exchange!'
+            },
+            {
+                name: 'Zerion',
+                type: 'Hot Wallet',
+                platform: 'Mobile, Browser',
+                chains: 'Multi-Chain',
+                security: '⭐⭐⭐⭐',
+                ease: '⭐⭐⭐⭐',
+                features: 'Portfolio Tracking, DeFi Dashboard',
+                beginner: '✅',
+                notes: 'Gut für DeFi-Portfolio-Management'
+            },
+            {
+                name: 'SafePal',
+                type: 'Hot & Hardware',
+                platform: 'Mobile, Hardware',
+                chains: 'Multi-Chain (100+ Blockchains)',
+                security: '⭐⭐⭐⭐⭐',
+                ease: '⭐⭐⭐⭐',
+                features: 'Hardware Option, dApp Browser, NFT',
+                beginner: '✅',
+                notes: 'Günstige Hardware-Option verfügbar'
+            },
+            {
+                name: 'Argent',
+                type: 'Hot Wallet',
+                platform: 'Mobile',
+                chains: 'Ethereum, zkSync, Starknet',
+                security: '⭐⭐⭐⭐',
+                ease: '⭐⭐⭐⭐',
+                features: 'Social Recovery, DeFi Integration',
+                beginner: '✅',
+                notes: 'Innovative Social Recovery Funktion'
+            },
+            {
+                name: 'Keplr',
+                type: 'Hot Wallet',
+                platform: 'Browser, Mobile',
+                chains: 'Cosmos Ecosystem',
+                security: '⭐⭐⭐⭐',
+                ease: '⭐⭐⭐',
+                features: 'Staking, IBC Transfers',
+                beginner: '⚠️',
+                notes: 'Die beste Wallet für Cosmos'
+            },
+            {
+                name: 'Tangem',
+                type: 'Hardware Wallet',
+                platform: 'Card + Mobile App',
+                chains: 'Multi-Chain (6000+ Assets)',
+                security: '⭐⭐⭐⭐⭐',
+                ease: '⭐⭐⭐⭐⭐',
+                features: 'Card Form Factor, Very Easy Setup',
+                beginner: '✅',
+                notes: 'Einfachste Hardware-Wallet, Karten-Format'
+            }
+        ];
+
+        function initWallet() {
+            const walletView = document.getElementById('wallet-view');
+            
+            let html = `
+                <h2 style="color: #5a4636; font-size: 2.2em; margin-bottom: 20px;">💼 Wallet-Vergleich</h2>
+                
+                <div class="info-box">
+                    <p><strong>So funktioniert's:</strong> Diese Tabelle vergleicht 14 beliebte Wallets. Nutze die Filter und Suchfunktion, um die passende Wallet für deine Bedürfnisse zu finden.</p>
+                    <p style="margin-top: 10px;">✅ = Anfängerfreundlich | ⚠️ = Für Fortgeschrittene</p>
+                </div>
+                
+                <div class="search-box">
+                    <input type="text" class="search-input" id="wallet-search" placeholder="Suche nach Wallet-Name, Blockchain oder Feature..." onkeyup="filterWallets()">
+                </div>
+                
+                <div class="filter-buttons">
+                    <button class="filter-btn active" onclick="filterByType('all')">Alle</button>
+                    <button class="filter-btn" onclick="filterByType('hot')">Hot Wallets</button>
+                    <button class="filter-btn" onclick="filterByType('hardware')">Hardware Wallets</button>
+                    <button class="filter-btn" onclick="filterByType('beginner')">Anfängerfreundlich</button>
+                </div>
+                
+                <div class="wallet-table-container">
+                    <table class="wallet-table">
+                        <thead>
+                            <tr>
+                                <th>Wallet</th>
+                                <th>Typ</th>
+                                <th>Plattform</th>
+                                <th>Unterstützte Chains</th>
+                                <th>Sicherheit</th>
+                                <th>Benutzerfreundlichkeit</th>
+                                <th>Features</th>
+                                <th>Anfänger</th>
+                                <th>Anmerkungen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="wallet-table-body">
+            `;
+            
+            walletData.forEach(wallet => {
+                html += `
+                    <tr class="wallet-row" data-type="${wallet.type.toLowerCase()}" data-beginner="${wallet.beginner === '✅'}">
+                        <td><strong>${wallet.name}</strong></td>
+                        <td>${wallet.type}</td>
+                        <td>${wallet.platform}</td>
+                        <td>${wallet.chains}</td>
+                        <td class="rating">${wallet.security}</td>
+                        <td class="rating">${wallet.ease}</td>
+                        <td>${wallet.features}</td>
+                        <td style="text-align: center; font-size: 1.3em;">${wallet.beginner}</td>
+                        <td>${wallet.notes}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="warning-box" style="margin-top: 30px;">
+                    <h3 style="color: #5a4636; margin-bottom: 15px;">⚠️ Wichtige Hinweise</h3>
+                    <ul style="margin-left: 20px; line-height: 1.8;">
+                        <li>Lade Wallets IMMER nur von offiziellen Websites herunter</li>
+                        <li>Hardware-Wallets nur direkt vom Hersteller kaufen (nicht gebraucht!)</li>
+                        <li>Teile NIEMALS deine Seed Phrase mit jemandem</li>
+                        <li>Hot Wallets eignen sich für kleinere Beträge und aktives Trading</li>
+                        <li>Hardware-Wallets sind ideal für grössere Beträge zur langfristigen Aufbewahrung</li>
+                    </ul>
+                </div>
+            `;
+            
+            walletView.innerHTML = html;
+            walletInitialized = true;
+        }
+
+        function filterByType(type) {
+            // Update button states
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Filter rows
+            const rows = document.querySelectorAll('.wallet-row');
+            rows.forEach(row => {
+                if (type === 'all') {
+                    row.style.display = '';
+                } else if (type === 'hot') {
+                    row.style.display = row.dataset.type.includes('hot') ? '' : 'none';
+                } else if (type === 'hardware') {
+                    row.style.display = row.dataset.type.includes('hardware') ? '' : 'none';
+                } else if (type === 'beginner') {
+                    row.style.display = row.dataset.beginner === 'true' ? '' : 'none';
+                }
+            });
+        }
+
+        function filterWallets() {
+            const searchTerm = document.getElementById('wallet-search').value.toLowerCase();
+            const rows = document.querySelectorAll('.wallet-row');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
+        }
+
+        // GLOSSARY DATA AND FUNCTIONS
+        const glossaryData = {
+            categories: ['Grundlagen', 'Wallets & Sicherheit', 'DeFi-Protokolle', 'Trading & Finanzen', 'Technologie'],
+            terms: [
+                {
+                    term: 'Blockchain',
+                    category: 'Grundlagen',
+                    definition: 'Eine dezentrale, unveränderliche Datenbank, die Transaktionen in chronologischen Blöcken speichert. Jeder Block ist mit dem vorherigen verknüpft, wodurch eine Kette ("Chain") entsteht.',
+                    example: 'Beispiel: Bitcoin, Ethereum, Solana sind verschiedene Blockchains mit unterschiedlichen Eigenschaften und Zwecken.',
+                    warning: ''
+                },
+                {
+                    term: 'Wallet',
+                    category: 'Wallets & Sicherheit',
+                    definition: 'Eine digitale Geldbörse, die deine privaten Schlüssel verwaltet und dir Zugriff auf deine Kryptowährungen gibt. Die Coins liegen nicht in der Wallet selbst, sondern auf der Blockchain.',
+                    example: 'Beispiel: MetaMask (Browser), Trust Wallet (Mobile), Ledger (Hardware)',
+                    warning: 'Wichtig: Deine Wallet ist nur so sicher wie deine Seed Phrase. Verlierst du diese, verlierst du den Zugang zu deinen Coins!'
+                },
+                {
+                    term: 'Seed Phrase',
+                    category: 'Wallets & Sicherheit',
+                    definition: 'Eine Liste von 12 oder 24 Wörtern, die als Backup für deine Wallet dient. Mit dieser Phrase kannst du deine Wallet auf jedem Gerät wiederherstellen.',
+                    example: 'Beispiel: "cat dog tree house..." (vereinfacht)',
+                    warning: 'KRITISCH: Teile deine Seed Phrase NIEMALS mit jemandem! Wer diese Wörter hat, hat vollen Zugriff auf deine Vermögenswerte. Speichere sie NIEMALS digital!'
+                },
+                {
+                    term: 'Private Key',
+                    category: 'Wallets & Sicherheit',
+                    definition: 'Der geheime kryptografische Schlüssel, der dir Zugriff auf deine Kryptowährungen gibt. Er wird aus deiner Seed Phrase generiert.',
+                    example: 'Beispiel: Eine lange Zeichenkette wie "5Kb8kLf9zgWQnogidDA76MzPL6..."',
+                    warning: 'KRITISCH: Gib deinen Private Key niemals weiter! Behandle ihn wie deine PIN zur Kreditkarte.'
+                },
+                {
+                    term: 'Public Key / Wallet-Adresse',
+                    category: 'Wallets & Sicherheit',
+                    definition: 'Deine öffentliche Adresse, die du mit anderen teilen kannst, um Zahlungen zu empfangen. Ähnlich wie eine Kontonummer.',
+                    example: 'Beispiel: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"',
+                    warning: ''
+                },
+                {
+                    term: 'Gas Fee',
+                    category: 'Trading & Finanzen',
+                    definition: 'Die Gebühr, die du für Transaktionen auf einer Blockchain bezahlst. Diese geht an die Validatoren/Miner, die deine Transaktion verarbeiten.',
+                    example: 'Beispiel: Auf Ethereum können Gas Fees zwischen $1 und $100+ variieren, abhängig von der Netzwerkauslastung.',
+                    warning: 'Tipp: Gas Fees sind zu Spitzenzeiten höher. Nutze Gas Tracker, um günstige Zeiten zu finden.'
+                },
+                {
+                    term: 'Smart Contract',
+                    category: 'Technologie',
+                    definition: 'Ein selbstausführendes Programm auf der Blockchain, das automatisch bestimmte Aktionen ausführt, wenn vordefinierte Bedingungen erfüllt sind.',
+                    example: 'Beispiel: Ein DeFi-Protokoll, das automatisch Zinsen auszahlt, wenn du Token einzahlst.',
+                    warning: 'Achtung: Smart Contracts können Fehler enthalten oder gehackt werden. Prüfe immer, welche Berechtigungen du gibst!'
+                },
+                {
+                    term: 'DeFi (Decentralized Finance)',
+                    category: 'DeFi-Protokolle',
+                    definition: 'Finanzdienstleistungen auf der Blockchain ohne Banken oder Mittelsmänner. Umfasst Lending, Trading, Versicherungen und mehr.',
+                    example: 'Beispiel: Aave (Lending), Uniswap (Trading), Compound (Zinsen verdienen)',
+                    warning: ''
+                },
+                {
+                    term: 'DEX (Decentralized Exchange)',
+                    category: 'DeFi-Protokolle',
+                    definition: 'Eine dezentrale Börse, auf der du Kryptowährungen direkt mit anderen Nutzern tauschen kannst, ohne dass eine zentrale Instanz involviert ist.',
+                    example: 'Beispiel: Uniswap, PancakeSwap, SushiSwap',
+                    warning: ''
+                },
+                {
+                    term: 'Liquidity Pool',
+                    category: 'DeFi-Protokolle',
+                    definition: 'Ein Pool von Token, der für den automatisierten Handel auf DEXs verwendet wird. Nutzer stellen Token bereit und verdienen Gebühren.',
+                    example: 'Beispiel: ETH/USDC Pool auf Uniswap mit $50 Millionen Liquidität',
+                    warning: 'Risiko: Impermanent Loss möglich (siehe eigener Eintrag)'
+                },
+                {
+                    term: 'Impermanent Loss',
+                    category: 'Trading & Finanzen',
+                    definition: 'Der temporäre Verlust, der entstehen kann, wenn du Liquidität in einen Pool einbringst und sich die Preise der Token verändern.',
+                    example: 'Beispiel: Du stellst ETH/USDC bereit, ETH steigt stark → Du hättest mehr verdient, wenn du nur ETH gehalten hättest',
+                    warning: 'Wichtig: Nicht immer profitabel! Verstehe dieses Konzept, bevor du Liquidität bereitstellst.'
+                },
+                {
+                    term: 'Staking',
+                    category: 'DeFi-Protokolle',
+                    definition: 'Das "Sperren" von Kryptowährungen, um das Netzwerk zu sichern und dafür Belohnungen zu erhalten.',
+                    example: 'Beispiel: Ethereum-Staking mit 4% jährlicher Rendite',
+                    warning: 'Beachte: Token sind oft für eine bestimmte Zeit gesperrt und nicht verfügbar.'
+                },
+                {
+                    term: 'Yield Farming',
+                    category: 'DeFi-Protokolle',
+                    definition: 'Das Bewegen von Krypto-Assets zwischen verschiedenen DeFi-Protokollen, um maximale Rendite zu erzielen.',
+                    example: 'Beispiel: Token in verschiedenen Pools bereitstellen, um Belohnungen zu maximieren',
+                    warning: 'Risiko: Hohe Komplexität, Gas-Kosten, Smart Contract Risiken'
+                },
+                {
+                    term: 'APY (Annual Percentage Yield)',
+                    category: 'Trading & Finanzen',
+                    definition: 'Die jährliche Rendite in Prozent, die du durch Staking, Lending oder Liquidity Providing verdienen kannst. Beinhaltet Zinseszins-Effekte.',
+                    example: 'Beispiel: 10% APY bedeutet, dass 100$ nach einem Jahr zu 110$ werden',
+                    warning: 'Achtung: Sehr hohe APYs (>100%) sind oft mit hohen Risiken verbunden!'
+                },
+                {
+                    term: 'Token',
+                    category: 'Grundlagen',
+                    definition: 'Eine digitale Einheit auf einer Blockchain. Kann Wert, Eigentum, Zugangsrechte oder andere Dinge repräsentieren.',
+                    example: 'Beispiel: UNI (Governance Token von Uniswap), USDC (Stablecoin)',
+                    warning: ''
+                },
+                {
+                    term: 'Stablecoin',
+                    category: 'Grundlagen',
+                    definition: 'Eine Kryptowährung, die an eine stabile Währung (meist US-Dollar) gekoppelt ist. Ziel ist es, Preisschwankungen zu vermeiden.',
+                    example: 'Beispiel: USDC, USDT, DAI – alle im Wert von etwa 1 USD',
+                    warning: 'Achtung: Nicht alle Stablecoins sind gleich sicher! USDC und DAI gelten als zuverlässiger als USDT.'
+                },
+                {
+                    term: 'NFT (Non-Fungible Token)',
+                    category: 'Grundlagen',
+                    definition: 'Ein einzigartiger, nicht austauschbarer digitaler Token, der Eigentum an einem bestimmten digitalen oder physischen Gut nachweist.',
+                    example: 'Beispiel: Digitale Kunstwerke, Sammelkarten, virtuelle Grundstücke',
+                    warning: ''
+                },
+                {
+                    term: 'Layer 1',
+                    category: 'Technologie',
+                    definition: 'Die Haupt-Blockchain eines Netzwerks (z.B. Bitcoin, Ethereum), auf der alle Transaktionen direkt gespeichert werden.',
+                    example: 'Beispiel: Ethereum, Solana, Avalanche',
+                    warning: ''
+                },
+                {
+                    term: 'Layer 2',
+                    category: 'Technologie',
+                    definition: 'Eine zusätzliche Schicht über einer Layer-1-Blockchain, die Transaktionen schneller und günstiger macht.',
+                    example: 'Beispiel: Arbitrum, Optimism, Polygon (auf Ethereum)',
+                    warning: ''
+                },
+                {
+                    term: 'Bridge',
+                    category: 'Technologie',
+                    definition: 'Ein Protokoll, das es ermöglicht, Token zwischen verschiedenen Blockchains zu transferieren.',
+                    example: 'Beispiel: Von Ethereum zu Polygon oder von Ethereum zu Arbitrum',
+                    warning: 'Risiko: Bridges sind häufige Angriffsziele für Hacker. Nutze nur bewährte Bridges!'
+                },
+                {
+                    term: 'CEX (Centralized Exchange)',
+                    category: 'Trading & Finanzen',
+                    definition: 'Eine zentrale Börse wie Binance oder Coinbase, auf der du Kryptowährungen kaufen, verkaufen und handeln kannst.',
+                    example: 'Beispiel: Binance, Coinbase, Kraken',
+                    warning: 'Beachte: "Not your keys, not your coins" – Token auf CEX liegen nicht in deiner Wallet!'
+                },
+                {
+                    term: 'KYC (Know Your Customer)',
+                    category: 'Grundlagen',
+                    definition: 'Identitätsprüfung, die von zentralen Börsen verlangt wird. Du musst deinen Ausweis und persönliche Daten angeben.',
+                    example: 'Beispiel: Binance, Coinbase verlangen KYC. DEXs normalerweise nicht.',
+                    warning: ''
+                },
+                {
+                    term: 'Slippage',
+                    category: 'Trading & Finanzen',
+                    definition: 'Der Unterschied zwischen dem erwarteten Preis einer Transaktion und dem tatsächlichen Ausführungspreis.',
+                    example: 'Beispiel: Du willst Token für $100 kaufen, bekommst aber nur $98 Wert → 2% Slippage',
+                    warning: 'Tipp: Setze Slippage-Toleranz nicht zu hoch, um vor Front-Running geschützt zu sein.'
+                },
+                {
+                    term: 'Mempool',
+                    category: 'Technologie',
+                    definition: 'Der "Warteraum" für Transaktionen, bevor sie in einen Block aufgenommen werden.',
+                    example: 'Beispiel: Deine Transaktion wartet im Mempool, bis ein Validator sie verarbeitet',
+                    warning: ''
+                },
+                {
+                    term: 'DAO (Decentralized Autonomous Organization)',
+                    category: 'DeFi-Protokolle',
+                    definition: 'Eine Organisation, die durch Smart Contracts gesteuert wird, wobei Entscheidungen durch Token-Holder getroffen werden.',
+                    example: 'Beispiel: Uniswap DAO – UNI-Token-Holder stimmen über Protokoll-Änderungen ab',
+                    warning: ''
+                },
+                {
+                    term: 'Governance Token',
+                    category: 'DeFi-Protokolle',
+                    definition: 'Ein Token, der Stimmrechte in einem DeFi-Protokoll oder einer DAO gibt.',
+                    example: 'Beispiel: UNI, AAVE, COMP – Halter können über Protokoll-Updates abstimmen',
+                    warning: ''
+                },
+                {
+                    term: 'TVL (Total Value Locked)',
+                    category: 'Trading & Finanzen',
+                    definition: 'Der Gesamtwert aller Vermögenswerte, die in einem DeFi-Protokoll gesperrt sind. Wird oft als Masseinheit für Protokollgrösse verwendet.',
+                    example: 'Beispiel: Aave hat $10 Milliarden TVL → Nutzer haben Token im Wert von $10 Mrd. im Protokoll',
+                    warning: ''
+                },
+                {
+                    term: 'Rugpull',
+                    category: 'Wallets & Sicherheit',
+                    definition: 'Betrug, bei dem Entwickler alle Gelder aus einem Projekt abziehen und mit dem Geld verschwinden.',
+                    example: 'Beispiel: Ein neues DeFi-Projekt sammelt Millionen ein, dann ziehen die Entwicker alle Gelder ab',
+                    warning: 'KRITISCH: Investiere nur in audited Projekte mit bekannten Teams!'
+                },
+                {
+                    term: 'Audit',
+                    category: 'Wallets & Sicherheit',
+                    definition: 'Eine Sicherheitsprüfung des Smart Contract Codes durch Experten, um Schwachstellen zu finden.',
+                    example: 'Beispiel: Aave wurde von CertiK und Trail of Bits geprüft',
+                    warning: 'Wichtig: Auch auditierte Protokolle können Bugs haben, aber es reduziert das Risiko.'
+                },
+                {
+                    term: 'Whale',
+                    category: 'Trading & Finanzen',
+                    definition: 'Eine Wallet oder Person, die sehr grosse Mengen einer Kryptowährung hält und damit den Markt beeinflussen kann.',
+                    example: 'Beispiel: Wallets mit >1000 BTC gelten als Whales',
+                    warning: 'Beachte: Whale-Bewegungen können plötzliche Preisschwankungen verursachen.'
+                },
+                {
+                    term: 'FOMO (Fear of Missing Out)',
+                    category: 'Trading & Finanzen',
+                    definition: 'Die Angst, eine profitable Gelegenheit zu verpassen, was oft zu impulsiven Kaufentscheidungen führt.',
+                    example: 'Beispiel: Ein Token steigt stark, du kaufst aus Angst zu spät zu sein – dann fällt der Preis',
+                    warning: 'Tipp: Lass dich nicht von FOMO leiten. Recherchiere gründlich, bevor du investierst!'
+                },
+                {
+                    term: 'DYOR (Do Your Own Research)',
+                    category: 'Grundlagen',
+                    definition: 'Die wichtigste Regel in Crypto: Mache immer deine eigene Recherche, bevor du investierst.',
+                    example: 'Beispiel: Prüfe Team, Whitepaper, Audits, Community-Feedback',
+                    warning: 'KRITISCH: Vertraue nie blindlings anderen. Recherchiere selbst!'
+                },
+                {
+                    term: 'Whitepaper',
+                    category: 'Grundlagen',
+                    definition: 'Ein technisches Dokument, das ein Krypto-Projekt, seine Technologie und Ziele beschreibt.',
+                    example: 'Beispiel: Das Bitcoin-Whitepaper von Satoshi Nakamoto aus 2008',
+                    warning: ''
+                },
+                {
+                    term: 'Airdrop',
+                    category: 'DeFi-Protokolle',
+                    definition: 'Kostenlose Verteilung von Token an Wallet-Adressen, oft als Marketing oder Belohnung für frühe Nutzer.',
+                    example: 'Beispiel: Uniswap verteilte 400 UNI an jeden, der die Platform vor Sept. 2020 nutzte',
+                    warning: 'Achtung: Viele Airdrops sind Scams! Klicke niemals auf Links in unerwarteten Nachrichten.'
+                },
+                {
+                    term: 'Cold Wallet',
+                    category: 'Wallets & Sicherheit',
+                    definition: 'Eine Wallet, die nicht mit dem Internet verbunden ist (offline). Höchste Sicherheit für langfristige Aufbewahrung.',
+                    example: 'Beispiel: Ledger Nano X, Trezor, Paper Wallet',
+                    warning: ''
+                },
+                {
+                    term: 'Hot Wallet',
+                    category: 'Wallets & Sicherheit',
+                    definition: 'Eine Wallet, die mit dem Internet verbunden ist. Praktisch für tägliche Nutzung, aber weniger sicher.',
+                    example: 'Beispiel: MetaMask, Trust Wallet, Coinbase Wallet',
+                    warning: 'Tipp: Nutze Hot Wallets nur für kleinere Beträge, die du aktiv verwendest.'
+                },
+                {
+                    term: 'Multisig Wallet',
+                    category: 'Wallets & Sicherheit',
+                    definition: 'Eine Wallet, die mehrere Signaturen (von verschiedenen Personen) benötigt, um Transaktionen zu autorisieren.',
+                    example: 'Beispiel: 3-von-5 Multisig – 3 von 5 Personen müssen eine Transaktion bestätigen',
+                    warning: 'Ideal für: Geschäftskonten, DAOs, oder sehr hohe Beträge'
+                },
+                {
+                    term: 'Gas Limit',
+                    category: 'Technologie',
+                    definition: 'Die maximale Menge an Gas (Rechenleistung), die du für eine Transaktion verwenden willst.',
+                    example: 'Beispiel: Einfacher Transfer = 21.000 Gas, komplexer Smart Contract = 200.000+ Gas',
+                    warning: 'Tipp: Zu niedriges Gas Limit = Transaktion schlägt fehl (Gas wird trotzdem bezahlt!)'
+                },
+                {
+                    term: 'ERC-20',
+                    category: 'Technologie',
+                    definition: 'Der Standard für Token auf Ethereum. Die meisten Token auf Ethereum folgen diesem Standard.',
+                    example: 'Beispiel: USDC, UNI, LINK sind alles ERC-20 Token',
+                    warning: ''
+                },
+                {
+                    term: 'ERC-721',
+                    category: 'Technologie',
+                    definition: 'Der Standard für NFTs auf Ethereum. Jeder Token ist einzigartig und nicht austauschbar.',
+                    example: 'Beispiel: CryptoPunks, Bored Apes sind ERC-721 NFTs',
+                    warning: ''
+                },
+                {
+                    term: 'Vesting',
+                    category: 'DeFi-Protokolle',
+                    definition: 'Die schrittweise Freigabe von Token über einen bestimmten Zeitraum. Verhindert sofortigen Massenverkauf.',
+                    example: 'Beispiel: Team erhält 10 Mio. Token über 4 Jahre (25% pro Jahr)',
+                    warning: 'Wichtig: Prüfe Vesting-Perioden vor Investition – plötzliche Token-Freigaben können Preis drücken.'
+                },
+                {
+                    term: 'Flash Loan',
+                    category: 'DeFi-Protokolle',
+                    definition: 'Ein Kredit, der innerhalb einer einzigen Transaktion aufgenommen und zurückgezahlt wird. Keine Sicherheiten nötig.',
+                    example: 'Beispiel: Arbitrage-Bot leiht 1 Mio. USDC, kauft/verkauft, zahlt zurück – alles in Sekunden',
+                    warning: 'Beachte: Für fortgeschrittene Nutzer. Hohe technische Komplexität.'
+                },
+                {
+                    term: 'Liquidation',
+                    category: 'DeFi-Protokolle',
+                    definition: 'Zwangsverkauf von Sicherheiten, wenn ein Kredit nicht mehr ausreichend besichert ist.',
+                    example: 'Beispiel: Du leihst $1000 gegen $2000 ETH. ETH fällt → dein ETH wird verkauft, um den Kredit zu decken',
+                    warning: 'KRITISCH: Überwache deine Positionen! Liquidation führt oft zu Verlusten.'
+                },
+                {
+                    term: 'Oracle',
+                    category: 'Technologie',
+                    definition: 'Ein Service, der externe Daten (z.B. Preise) auf die Blockchain bringt, damit Smart Contracts diese nutzen können.',
+                    example: 'Beispiel: Chainlink liefert Preis-Feeds an DeFi-Protokolle',
+                    warning: 'Wichtig: Qualität des Oracles ist entscheidend für Protokoll-Sicherheit.'
+                },
+                {
+                    term: 'MEV (Maximal Extractable Value)',
+                    category: 'Technologie',
+                    definition: 'Der maximale Gewinn, den Validatoren durch Umordnung, Einfügen oder Zensieren von Transaktionen erzielen können.',
+                    example: 'Beispiel: Sandwich-Attacks, bei denen deine Transaktion zwischen zwei Bot-Trades platziert wird',
+                    warning: 'Schutz: Nutze Private RPC oder MEV-Protection beim Trading'
+                },
+                {
+                    term: 'Testnet',
+                    category: 'Technologie',
+                    definition: 'Eine Test-Version einer Blockchain, auf der Entwickler ohne echtes Geld experimentieren können.',
+                    example: 'Beispiel: Sepolia (Ethereum Testnet), Testnet Token haben keinen echten Wert',
+                    warning: 'Tipp: Teste neue Protokolle zuerst im Testnet, bevor du echtes Geld riskierst!'
+                },
+                {
+                    term: 'Fork',
+                    category: 'Technologie',
+                    definition: 'Eine Abspaltung einer Blockchain in zwei separate Chains, oft durch Änderungen im Protokoll.',
+                    example: 'Beispiel: Bitcoin Cash ist ein Fork von Bitcoin. Ethereum Classic ist ein Fork von Ethereum.',
+                    warning: ''
+                }
+            ]
+        };
+
+        function initGlossary() {
+            const glossaryView = document.getElementById('glossary-view');
+            
+            let html = `
+                <h2 style="color: #5a4636; font-size: 2.2em; margin-bottom: 20px;">📖 DeFi-Glossar</h2>
+                
+                <div class="info-box">
+                    <p><strong>So funktioniert's:</strong> Nutze die Suchfunktion oder die Kategorie-Filter, um schnell die gewünschten Begriffe zu finden. Alle Definitionen sind für Einsteiger verständlich erklärt.</p>
+                </div>
+                
+                <div class="search-box">
+                    <input type="text" class="search-input" id="glossary-search" placeholder="Suche nach Begriff oder Stichwort..." onkeyup="filterGlossary()">
+                </div>
+                
+                <div class="filter-buttons">
+                    <button class="filter-btn active" onclick="filterGlossaryCategory('all')">Alle Kategorien</button>
+            `;
+            
+            glossaryData.categories.forEach(cat => {
+                html += `<button class="filter-btn" onclick="filterGlossaryCategory('${cat}')">${cat}</button>`;
+            });
+            
+            html += `
+                </div>
+                
+                <div class="glossary-grid" id="glossary-grid">
+            `;
+            
+            glossaryData.terms.forEach(term => {
+                html += `
+                    <div class="glossary-item" data-category="${term.category}">
+                        <div class="term-title">${term.term}</div>
+                        <div class="term-category">${term.category}</div>
+                        <div class="term-definition">${term.definition}</div>
+                `;
+                
+                if (term.example) {
+                    html += `<div class="term-example"><strong>💡 ${term.example}</strong></div>`;
+                }
+                
+                if (term.warning) {
+                    html += `<div class="term-warning"><strong>⚠️ ${term.warning}</strong></div>`;
+                }
+                
+                html += `</div>`;
+            });
+            
+            html += `
+                </div>
+                <div id="no-glossary-results" class="no-results" style="display: none;">
+                    Keine Begriffe gefunden. Versuche andere Suchbegriffe.
+                </div>
+            `;
+            
+            glossaryView.innerHTML = html;
+            glossaryInitialized = true;
+        }
+
+        function filterGlossaryCategory(category) {
+            // Update button states
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Filter items
+            const items = document.querySelectorAll('.glossary-item');
+            let visibleCount = 0;
+            
+            items.forEach(item => {
+                if (category === 'all' || item.dataset.category === category) {
+                    item.style.display = '';
+                    visibleCount++;
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+            
+            // Show/hide no results message
+            document.getElementById('no-glossary-results').style.display = visibleCount === 0 ? 'block' : 'none';
+        }
+
+        function filterGlossary() {
+            const searchTerm = document.getElementById('glossary-search').value.toLowerCase();
+            const items = document.querySelectorAll('.glossary-item');
+            let visibleCount = 0;
+            
+            items.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    item.style.display = '';
+                    visibleCount++;
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+            
+            // Show/hide no results message
+            document.getElementById('no-glossary-results').style.display = visibleCount === 0 ? 'block' : 'none';
+        }
+
+        // GAS FEE GUIDE
+        function initGasFee() {
+            const gasfeeView = document.getElementById('gasfee-view');
+            
+            let html = `
+                <h2 style="color: #5a4636; font-size: 2.2em; margin-bottom: 20px;">⛽ Gas-Fee-Guide</h2>
+                
+                <div class="info-box">
+                    <p><strong>Was sind Gas Fees?</strong> Gas Fees sind Transaktionsgebühren, die du bezahlst, wenn du auf einer Blockchain eine Aktion durchführst (z.B. Token senden, swappen, oder Smart Contracts nutzen). Die Höhe variiert je nach Blockchain und Netzwerkauslastung.</p>
+                </div>
+                
+                <div class="warning-box">
+                    <h3 style="color: #5a4636; margin-bottom: 15px;">💡 Wichtigste Tipps</h3>
+                    <ul style="margin-left: 20px; line-height: 1.8;">
+                        <li>Gas Fees sind zu Spitzenzeiten (EU/US Arbeitszeiten) höher</li>
+                        <li>Wochenenden und nachts (EU-Zeit) sind oft günstiger</li>
+                        <li>Layer 2 Lösungen (Arbitrum, Optimism) sind viel billiger als Ethereum Mainnet</li>
+                        <li>Prüfe Gas Fees BEVOR du eine Transaktion bestätigst</li>
+                        <li>Bei DeFi: Mehrere Transaktionen = mehrfache Gas Fees</li>
+                    </ul>
+                </div>
+                
+                <h3 style="color: #5a4636; font-size: 1.8em; margin: 40px 0 20px;">Gas-Tracker Tools</h3>
+                <p style="margin-bottom: 30px;">Nutze diese Tools, um die aktuellen Gas Fees zu prüfen und den besten Zeitpunkt für deine Transaktionen zu finden:</p>
+                
+                <div class="tool-cards">
+                    <div class="tool-card">
+                        <div class="icon">🔷</div>
+                        <h3>Ethereum Gas Tracker</h3>
+                        <p><strong>Etherscan Gas Tracker</strong><br>Zeigt aktuelle Gas Prices in Echtzeit</p>
+                        <a href="https://etherscan.io/gastracker" target="_blank" class="btn" style="margin-top: 15px;">Zu Etherscan</a>
+                    </div>
+                    
+                    <div class="tool-card">
+                        <div class="icon">⚡</div>
+                        <h3>Ethereum Gas Charts</h3>
+                        <p><strong>Ethereum Gas Charts</strong><br>Historische Daten & beste Zeiten</p>
+                        <a href="https://ethereumprice.org/gas/" target="_blank" class="btn" style="margin-top: 15px;">Zu Gas Charts</a>
+                    </div>
+                    
+                    <div class="tool-card">
+                        <div class="icon">🔵</div>
+                        <h3>L2 Fees</h3>
+                        <p><strong>L2 Fees Vergleich</strong><br>Vergleiche Kosten auf Layer 2s</p>
+                        <a href="https://l2fees.info/" target="_blank" class="btn" style="margin-top: 15px;">Zu L2 Fees</a>
+                    </div>
+                    
+                    <div class="tool-card">
+                        <div class="icon">🦊</div>
+                        <h3>MetaMask Gas Estimator</h3>
+                        <p><strong>Eingebaut in MetaMask</strong><br>Zeigt geschätzte Kosten vor Transaktion</p>
+                        <p style="margin-top: 15px; font-style: italic;">Direkt in deiner Wallet</p>
+                    </div>
+                    
+                    <div class="tool-card">
+                        <div class="icon">📊</div>
+                        <h3>DeFi Llama Gas</h3>
+                        <p><strong>Multi-Chain Gas Tracker</strong><br>Gebühren auf verschiedenen Chains</p>
+                        <a href="https://defillama.com/gas" target="_blank" class="btn" style="margin-top: 15px;">Zu DeFi Llama</a>
+                    </div>
+                </div>
+                
+                <h3 style="color: #5a4636; font-size: 1.8em; margin: 40px 0 20px;">Gas Fee Vergleich nach Blockchain</h3>
+                
+                <div class="wallet-table-container">
+                    <table class="wallet-table">
+                        <thead>
+                            <tr>
+                                <th>Blockchain</th>
+                                <th>Durchschnittliche Kosten</th>
+                                <th>Geschwindigkeit</th>
+                                <th>Beste für</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Ethereum</strong></td>
+                                <td>$5 - $50 (je nach Auslastung)</td>
+                                <td>~15 Sekunden</td>
+                                <td>Grosse Transaktionen, etablierte DeFi</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Arbitrum</strong></td>
+                                <td>$0.10 - $2</td>
+                                <td>~2 Sekunden</td>
+                                <td>Günstiges Ethereum DeFi</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Optimism</strong></td>
+                                <td>$0.10 - $2</td>
+                                <td>~2 Sekunden</td>
+                                <td>Günstiges Ethereum DeFi</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Polygon</strong></td>
+                                <td>$0.01 - $0.50</td>
+                                <td>~2 Sekunden</td>
+                                <td>Sehr günstige Transaktionen</td>
+                            </tr>
+                            <tr>
+                                <td><strong>BSC (Binance)</strong></td>
+                                <td>$0.10 - $1</td>
+                                <td>~3 Sekunden</td>
+                                <td>Günstige Alternative zu Ethereum</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Solana</strong></td>
+                                <td>$0.001 - $0.01</td>
+                                <td>~1 Sekunde</td>
+                                <td>Sehr schnell & sehr günstig</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Avalanche</strong></td>
+                                <td>$0.05 - $1</td>
+                                <td>~2 Sekunden</td>
+                                <td>Schnelle Finalität</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="success-box" style="margin-top: 30px;">
+                    <h3 style="color: #2E7D32; margin-bottom: 15px;">💡 Pro-Tipps</h3>
+                    <ul style="margin-left: 20px; line-height: 1.8;">
+                        <li><strong>Batching:</strong> Kombiniere mehrere Transaktionen, um Gas zu sparen</li>
+                        <li><strong>Timing:</strong> Warte auf niedrige Gas-Zeiten (Wochenenden, nachts)</li>
+                        <li><strong>Layer 2:</strong> Nutze L2s für häufige, kleinere Transaktionen</li>
+                        <li><strong>Gas Limit:</strong> Erhöhe es nicht unnötig – ungenutzes Gas wird zurückerstattet</li>
+                        <li><strong>Speed:</strong> "Standard" reicht meist aus, "Fast" ist für eilige Fälle</li>
+                    </ul>
+                </div>
+            `;
+            
+            gasfeeView.innerHTML = html;
+            gasfeeInitialized = true;
+        }
+    </script>
+</body>
+</html>
