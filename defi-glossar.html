@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeFi-Glossar (Ausführlich)</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #8B7355 0%, #5a4636 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            color: #5a4636;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-align: center;
+            border-bottom: 3px solid #8B7355;
+            padding-bottom: 15px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #5a4636;
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            font-weight: 500;
+        }
+
+        .search-box {
+            margin: 30px 0;
+            text-align: center;
+        }
+
+        .search-input {
+            width: 100%;
+            max-width: 600px;
+            padding: 15px 20px;
+            font-size: 1.1em;
+            border: 2px solid #8B7355;
+            border-radius: 10px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .search-input:focus {
+            border-color: #5a4636;
+            box-shadow: 0 0 0 3px rgba(139, 115, 85, 0.1);
+        }
+
+        .filter-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+
+        .filter-btn {
+            background: #F5E6D3;
+            color: #5a4636;
+            border: 2px solid #8B7355;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .filter-btn:hover {
+            background: #8B7355;
+            color: white;
+        }
+
+        .filter-btn.active {
+            background: #8B7355;
+            color: white;
+        }
+
+        .glossary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .glossary-item {
+            background: #F5E6D3;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 5px solid #8B7355;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .glossary-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .term-title {
+            color: #5a4636;
+            font-size: 1.4em;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .term-category {
+            display: inline-block;
+            background: #8B7355;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.85em;
+            margin-bottom: 10px;
+        }
+
+        .term-definition {
+            color: #5a4636;
+            line-height: 1.8;
+            margin: 10px 0;
+            font-size: 1em;
+        }
+
+        .term-example {
+            background: #FFF9F0;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 3px solid #FFA500;
+        }
+
+        .term-example::before {
+            content: "💡 ";
+            font-weight: bold;
+        }
+
+        .term-warning {
+            background: #FFEBEE;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 3px solid #F44336;
+        }
+
+        .term-warning::before {
+            content: "⚠️ ";
+            font-weight: bold;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 60px 20px;
+            color: #777;
+            font-size: 1.2em;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 30px 0 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: #8B7355;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1em;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            background: #5a4636;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .back-to-top {
+            background: #F5E6D3;
+            color: #5a4636;
+            border: 2px solid #8B7355;
+            padding: 12px 30px;
+            font-size: 1em;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin: 0 auto;
+            display: block;
+        }
+
+        .back-to-top:hover {
+            background: #8B7355;
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .footer {
+            text-align: center;
+            color: #777;
+            font-size: 0.9em;
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid #ddd;
+        }
+
+        .footer p {
+            margin: 10px 0;
+            line-height: 1.8;
+        }
+
+        .footer a {
+            color: #8B7355;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+
+            .glossary-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media print {
+            .buttons,
+            .back-to-top,
+            .btn,
+            .search-box,
+            .filter-buttons {
+                display: none !important;
+            }
+
+            .glossary-item {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+
+            body {
+                background: white;
+            }
+
+            .container {
+                background: white;
+                box-shadow: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DeFi-Glossar</h1>
+        <p class="subtitle">Detaillierte Erklärungen der 52 wichtigsten Begriffe - Perfekt für Einsteiger</p>
+
+        <div class="search-box">
+            <input type="text" id="searchInput" class="search-input" placeholder="Begriff suchen... (z.B. Wallet, Gas Fee, Smart Contract)">
+        </div>
+
+        <div class="filter-buttons">
+            <button class="filter-btn active" data-category="alle">Alle</button>
+            <button class="filter-btn" data-category="grundlagen">Grundlagen</button>
+            <button class="filter-btn" data-category="defi">DeFi-Protokolle</button>
+            <button class="filter-btn" data-category="token">Token-Typen</button>
+            <button class="filter-btn" data-category="sicherheit">Sicherheit</button>
+            <button class="filter-btn" data-category="technisch">Technisches</button>
+        </div>
+
+        <div class="glossary-grid" id="glossaryGrid"></div>
+        <div class="no-results" id="noResults" style="display: none;">
+            Keine Ergebnisse gefunden. Versuche einen anderen Suchbegriff.
+        </div>
+
+        <div class="buttons">
+            <a href="https://www.letsgofree.me" class="btn">Startseite</a>
+            <button class="btn" onclick="window.print()">Als PDF speichern</button>
+        </div>
+
+        <button class="back-to-top" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">↑ Nach oben</button>
+
+        <div class="footer">
+            <p><strong>Disclaimer:</strong> Dieses Glossar dient nur zu Informationszwecken und stellt keine Finanz- oder Anlageberatung dar. Jeder ist für seine eigenen Entscheidungen selbst verantwortlich.</p>
+            <p>© 2025 - <a href="https://www.letsgofree.me" target="_blank">Chris Müller - Let's go free</a></p>
+            <p><a href="https://www.letsgofree.me" target="_blank">www.letsgofree.me</a></p>
+        </div>
+    </div>
+
+    <script>
+        const glossaryData = [
+            // Grundlagen
+            {
+                term: "Wallet",
+                category: "grundlagen",
+                definition: "Ein Wallet ist wie ein digitaler Schlüsselbund, der dir Zugriff auf deine Kryptowährungen gibt. Wichtig zu verstehen: Das Wallet speichert NICHT dein Geld selbst! Deine Coins liegen immer auf der Blockchain. Das Wallet speichert nur deine privaten Schlüssel (Private Keys), mit denen du beweisen kannst, dass dir die Coins gehören. Ohne Wallet kannst du zwar sehen, dass Coins auf einer Adresse liegen, aber du kannst sie nicht bewegen oder ausgeben.",
+                example: "Stell dir vor: Die Blockchain ist eine riesige Bank mit Millionen von Schliessfächern. Deine Coins liegen in einem dieser Schliessfächer. Dein Wallet ist der Schlüssel zu genau deinem Schliessfach. Jeder kann sehen, dass in Schliessfach Nr. 12345 etwas drin liegt (Blockchain ist transparent), aber nur du mit deinem Schlüssel kannst es öffnen und den Inhalt bewegen.",
+                warning: "Ohne deine Wallet-Zugangsdaten (Seed Phrase) kommst du nie wieder an dein Geld! Es gibt keine 'Passwort vergessen'-Funktion wie bei deiner Bank!"
+            },
+            {
+                term: "Hot Wallet",
+                category: "grundlagen",
+                definition: "Ein Hot Wallet ist ein Wallet, das permanent mit dem Internet verbunden ist. Es läuft als App auf deinem Handy oder als Extension in deinem Browser. Der grosse Vorteil: Du kannst jederzeit und überall schnell Transaktionen machen. Der Nachteil: Weil es online ist, könnten Hacker theoretisch darauf zugreifen, wenn dein Gerät kompromittiert wird (Virus, Malware, Phishing). Hot Wallets sind perfekt für Beträge, die du täglich brauchst - wie das Bargeld in deinem Portemonnaie.",
+                example: "MetaMask (Browser-Extension für Desktop), Trust Wallet (Handy-App), Coinbase Wallet (Handy-App). Du installierst die App, erstellst dein Wallet in 5 Minuten, und kannst sofort loslegen. Perfekt für DeFi-Trading, NFT-Käufe, oder wenn du öfters Coins verschickst.",
+                warning: "Nie grosse Summen dauerhaft in Hot Wallets aufbewahren! Faustregel: Nur so viel wie du auch in bar im Portemonnaie hättest (für die meisten: $100-1000 maximal). Grössere Beträge gehören ins Cold Wallet!"
+            },
+            {
+                term: "Cold Wallet",
+                category: "grundlagen",
+                definition: "Ein Cold Wallet ist ein Wallet, das OFFLINE aufbewahrt wird und nie direkt mit dem Internet verbunden ist. Deine privaten Schlüssel verlassen nie das Gerät. Wenn du eine Transaktion machen willst, signierst du sie offline auf dem Cold Wallet und überträgst nur die signierte Transaktion (nicht deine Keys!) ans Internet. Hacker können nicht auf etwas zugreifen, das gar nicht online ist. Das ist die sicherste Methode, Krypto aufzubewahren - wie ein Tresor zuhause statt Bargeld im Portemonnaie.",
+                example: "Hardware Wallets wie Ledger Nano oder Trezor sind kleine USB-ähnliche Geräte (ca. €50-150), die deine Keys sicher verwahren. Auch ein Blatt Papier mit deiner Seed Phrase, das du im Safe aufbewahrst, ist technisch ein Cold Wallet (nennt man 'Paper Wallet'). Oder: ein alter Laptop, den du nur für Krypto nutzt und der nie ins Internet geht.",
+                warning: null
+            },
+            {
+                term: "Seed Phrase",
+                category: "grundlagen",
+                definition: "Die Seed Phrase (auch Recovery Phrase oder Backup Phrase genannt) ist eine Liste von 12 oder 24 zufällig gewählten Wörtern, die als ultimatives Backup für dein Wallet dient. Diese Wörter sind nicht einfach zufällig - sie werden nach einem standardisierten Verfahren (BIP39-Standard) aus deinem Private Key abgeleitet. Mit diesen Wörtern in der exakten Reihenfolge kann JEDES kompatible Wallet dein gesamtes Wallet perfekt wiederherstellen - auch wenn du das Original-Wallet verloren hast, dein Handy kaputt ist, oder die App gelöscht wurde. Die Seed Phrase ist der 'Master-Schlüssel' zu all deinen Coins.",
+                example: "Beispiel-Format (NIEMALS EINE ECHTE SEED PHRASE ZEIGEN!): 'apple banana orange grape melon turtle forest mountain river cloud thunder rainbow' - das wären 12 englische Wörter aus einer standardisierten Liste von 2048 möglichen Wörtern. Die Reihenfolge ist entscheidend! Wenn du Wort 5 und 6 vertauschst, funktioniert es nicht mehr.",
+                warning: "NIEMALS fotografieren, in Cloud speichern, per E-Mail/WhatsApp senden, oder digital aufbewahren! Schreib sie auf Papier oder graviere sie in Metall (Feuerschutz). Wer deine Seed Phrase hat, hat dein Geld - für immer! Auch kein Support wird JEMALS nach deiner Seed Phrase fragen. Wer danach fragt, ist 100% ein Betrüger!"
+            },
+            {
+                term: "Private Key",
+                category: "grundlagen",
+                definition: "Der Private Key ist ein geheimer, extrem langer Code (256 Bit = 64 hexadezimale Zeichen), der dir den Zugriff auf deine Kryptowährungen ermöglicht. Er wird mathematisch aus deiner Seed Phrase generiert. Mit diesem Key kannst du Transaktionen signieren (= digital unterschreiben) und damit beweisen, dass du der Besitzer bist. Der Private Key ist wie das Passwort zu deinem Online-Banking - nur dass es niemand zurücksetzen kann! Wenn du ihn verlierst, ist dein Geld weg. Wenn ihn jemand anders hat, kann er all deine Coins stehlen.",
+                example: "Dein Private Key sieht ungefähr so aus: 'E9873D79C6D87DC0FB6A5778633389F4453213303DA61F20BD67FC233AA33262' (das ist nur ein Beispiel!). Aus diesem Private Key wird automatisch deine Public Key (= Wallet-Adresse) berechnet. Du gibst ihn normalerweise nie manuell ein - die Seed Phrase ist benutzerfreundlicher.",
+                warning: "Niemals mit anderen teilen! Auch kein Support wird danach fragen!"
+            },
+            {
+                term: "Public Key / Wallet-Adresse",
+                category: "grundlagen",
+                definition: "Deine Public Key oder Wallet-Adresse ist die öffentliche Adresse, die du zum Empfangen von Kryptowährungen nutzt. Sie wird mathematisch aus deinem Private Key berechnet - aber man kann nicht rückwärts vom Public Key auf den Private Key schliessen (deshalb ist sie sicher). Die Adresse ist wie deine IBAN oder E-Mail-Adresse: Du kannst sie ohne Bedenken mit anderen teilen. Auf Ethereum beginnt sie mit '0x' und ist 42 Zeichen lang.",
+                example: "Beispiel einer Ethereum-Adresse: 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb8. Jeder kann diese Adresse nutzen, um dir ETH oder Token zu schicken. Jeder kann auf Etherscan sehen, wie viel Geld auf dieser Adresse liegt - aber nur du mit deinem Private Key kannst es bewegen.",
+                warning: null
+            },
+            {
+                term: "Blockchain",
+                category: "grundlagen",
+                definition: "Eine Blockchain ist eine dezentrale Datenbank, die alle Transaktionen transparent und unveränderbar speichert. Statt auf einem zentralen Server (wie bei einer Bank) läuft sie auf tausenden Computern weltweit. Jeder Computer hat eine identische Kopie der gesamten Datenbank. Neue Transaktionen werden in 'Blöcken' zusammengefasst und an die 'Kette' (Chain) angehängt - daher der Name. Einmal hinzugefügt, kann ein Block nie mehr geändert werden. Das macht Betrug praktisch unmöglich, weil man tausende Computer gleichzeitig hacken müsste.",
+                example: "Stell dir ein riesiges Excel-Sheet vor, das auf 10'000 Computern gleichzeitig läuft. Jede neue Zeile (Transaktion) muss von der Mehrheit bestätigt werden. Wenn jemand versucht zu betrügen und seine Kopie ändert, fällt das sofort auf, weil seine Version nicht mit den anderen 9'999 Versionen übereinstimmt.",
+                warning: null
+            },
+            {
+                term: "EVM (Ethereum Virtual Machine)",
+                category: "technisch",
+                definition: "EVM steht für Ethereum Virtual Machine - die 'Computer-Engine' oder 'Betriebssystem', das auf Ethereum läuft und Smart Contracts ausführt. Jeder Ethereum-Node hat eine Kopie der EVM. Das geniale: Viele andere Blockchains haben die EVM-Technologie kopiert, um 'EVM-kompatibel' zu sein. Warum? Weil dann alle Ethereum-Tools, Wallets und dApps sofort auch auf ihrer Chain funktionieren. Entwickler können ihren Ethereum-Code 1:1 auf andere Chains deployen. Deshalb funktioniert MetaMask auf Polygon, BSC, Avalanche, etc. - alle nutzen die gleiche EVM-Technologie.",
+                example: "Praktisch bedeutet das: Du entwickelst einen Smart Contract für Ethereum → kannst ihn ohne Änderungen auch auf Polygon, BSC, Arbitrum, Optimism, Avalanche deployen. Dein MetaMask-Wallet hat die gleiche Adresse auf allen EVM-Chains. Ein Uniswap-Fork auf BSC (PancakeSwap) funktioniert fast identisch wie Uniswap auf Ethereum. Nicht-EVM Chains wie Solana oder Cardano brauchen eigene Wallets und komplett andere Entwickler-Tools.",
+                warning: null
+            },
+            {
+                term: "Smart Contract",
+                category: "grundlagen",
+                definition: "Ein Smart Contract ist ein Computerprogramm auf der Blockchain, das automatisch ausgeführt wird, wenn bestimmte Bedingungen erfüllt sind. Es ist wie ein digitaler Vertrag, der sich selbst durchsetzt - ohne Anwalt, ohne Notar, ohne Bank. Der Code läuft auf der Blockchain und kann nicht gestoppt oder geändert werden. Smart Contracts sind die Basis für alle DeFi-Anwendungen: DEXs, Lending-Protokolle, NFT-Marktplätze - alles läuft über Smart Contracts.",
+                example: "Wie ein Getränkeautomat: Du wirfst 2€ ein → Automat prüft automatisch, ob genug Geld da ist → Du wählst Cola → Automat gibt automatisch die Cola raus. Kein Mensch beteiligt. Genauso: Du schickst ETH an einen Uniswap-Contract → Contract prüft den Preis → tauscht automatisch zu USDC → schickt dir die USDC zurück. Alles in einer Transaktion, keine Mittelsmänner.",
+                warning: "Smart Contracts können Fehler enthalten - nur mit vertrauenswürdigen Protokollen interagieren!"
+            },
+            {
+                term: "Gas Fee",
+                category: "grundlagen",
+                definition: "Gas Fee ist die Gebühr, die du für jede Transaktion auf der Blockchain bezahlst. Aber warum überhaupt eine Gebühr? Tausende Computer weltweit (genannt 'Nodes' oder 'Validators') verarbeiten deine Transaktion, prüfen ob sie gültig ist, und fügen sie permanent zur Blockchain hinzu. Diese Computer brauchen Strom und Rechenleistung - dafür werden sie mit deiner Gas Fee bezahlt. Je mehr Leute gleichzeitig Transaktionen machen wollen, desto höher steigen die Fees (wie bei Uber Surge Pricing). Die Höhe der Fee bestimmt auch, wie schnell deine Transaktion durchgeht - höhere Fee = höhere Priorität.",
+                example: "Wie Porto beim Brief: Normalbrief (günstig, dauert 2-3 Tage) vs. Express (teuer, kommt morgen). Bei niedriger Gas Fee dauert deine Transaktion vielleicht 10-30 Minuten. Bei hoher Fee geht's in 30 Sekunden durch. Auf wenig genutzten Chains wie Polygon kostet eine Transaktion nur $0.01, auf Ethereum zur Rush-Hour können es $20+ sein.",
+                warning: "Auf Ethereum können Gas Fees bei hoher Auslastung 50-200€ kosten!"
+            },
+            {
+                term: "Transaction Hash (TX Hash)",
+                category: "grundlagen",
+                definition: "Eine einzigartige ID für jede Transaktion auf der Blockchain. Damit kannst du deine Transaktion nachverfolgen.",
+                example: "Wie eine Sendungsverfolgungsnummer bei einem Paket. Format: 0x1234abc...",
+                warning: null
+            },
+
+            // DeFi-Protokolle
+            {
+                term: "DEX (Decentralized Exchange)",
+                category: "defi",
+                definition: "DEX steht für Decentralized Exchange - eine Tauschbörse ohne zentrale Firma im Hintergrund. Bei einer normalen Börse (Binance, Coinbase) gibst du deine Coins ab und vertraust der Firma. Bei einem DEX behältst du immer die Kontrolle: Du verbindest dein Wallet, der Smart Contract führt den Tausch aus, und die Coins landen direkt in deinem Wallet. Niemand kann dein Konto sperren, niemand kann mit deinen Coins verschwinden. Der Preis wird automatisch durch Angebot und Nachfrage in Liquidity Pools bestimmt.",
+                example: "Uniswap (auf Ethereum), PancakeSwap (auf BSC), Trader Joe (auf Avalanche) - alle funktionieren gleich: Wallet verbinden → Token auswählen → Swap → fertig. In 30 Sekunden hast du getauscht, ohne Registrierung, ohne KYC, ohne dass eine Firma Zugriff auf deine Coins hatte. 'Not your keys, not your coins' - hier hast DU immer die Keys!",
+                warning: null
+            },
+            {
+                term: "CEX (Centralized Exchange)",
+                category: "defi",
+                definition: "Eine zentrale Krypto-Börse wie Binance oder Coinbase. Du vertraust der Firma mit deinen Coins.",
+                example: "Wie eine normale Bank - bequem, aber du bist nicht die Bank (Not your keys, not your coins).",
+                warning: "Risiko: Die Börse kann gehackt werden oder pleite gehen (siehe FTX-Crash 2022)."
+            },
+            {
+                term: "Liquidity Pool",
+                category: "defi",
+                definition: "Ein Liquidity Pool ist ein 'Topf' mit zwei verschiedenen Token (z.B. ETH + USDC), der es anderen ermöglicht zu handeln. Statt einem traditionellen Orderbuch mit Käufern und Verkäufern nutzt ein DEX diese Pools. Wenn jemand ETH gegen USDC tauschen will, nimmt er ETH aus dem Pool und gibt USDC rein. Der Preis wird automatisch durch die Formel x*y=k berechnet. Wer Token in den Pool einzahlt (= Liquidity Provider), bekommt einen Anteil an allen Handelsgebühren. Je mehr Leute traden, desto mehr verdienst du.",
+                example: "Beispiel: Du zahlst 1 ETH ($3000) + $3000 USDC in einen Uniswap-Pool ein. Der Pool hat jetzt z.B. total 100 ETH und 300'000 USDC. Für jeden Trade zahlen Nutzer 0.3% Gebühr. Wenn täglich $1 Million getradet wird, fallen $3000 Gebühren an. Davon bekommst du 1% (weil deine 2*$3000 = 1% des Pools sind) = $30 pro Tag. Nach einem Monat: $900 Gebühren verdient!",
+                warning: "Risiko: Impermanent Loss möglich!"
+            },
+            {
+                term: "AMM (Automated Market Maker)",
+                category: "defi",
+                definition: "Ein System, das automatisch Preise für Token-Paare berechnet, basierend auf Angebot und Nachfrage im Pool.",
+                example: "Uniswap nutzt die Formel x*y=k, um faire Preise ohne menschliche Händler zu ermitteln.",
+                warning: null
+            },
+            {
+                term: "Yield Farming",
+                category: "defi",
+                definition: "Yield Farming (auch 'Liquidity Mining') ist das strategische Verschieben von Krypto zwischen verschiedenen DeFi-Protokollen, um die maximale Rendite (Yield) zu erzielen. Es ist wie ein Schach-Spiel: Du stellst Liquidität bereit, bekommst dafür LP-Token, stakst diese LP-Token in einem anderen Protokoll für weitere Rewards, tauschst die Rewards gegen andere Token, und reinvestierst alles für Compound-Effekt. Fortgeschrittene Yield Farmer verschieben ihr Kapital täglich zu den aktuell profitabelsten Pools. Es kann sehr lukrativ sein (100-1000% APY möglich), aber auch sehr riskant.",
+                example: "Konkrete Strategie: 1) $10'000 in USDC/ETH Pool auf Uniswap → bekommst LP-Token + 0.3% Handelsgebühren. 2) Diese LP-Token stakst du auf Sushi Swap → bekommst SUSHI als Reward (20% APY). 3) SUSHI verkaufst du täglich und reinvestierst in den Pool → Compound-Effekt. 4) Nach 3 Monaten siehst du: Eine neue Farm auf Curve bietet 80% APY → du ziehst alles um. Zeitaufwändig, Gas-intensiv, aber kann sich lohnen!",
+                warning: "Hohe Renditen bedeuten oft hohes Risiko! Viele Projekte sind Scams."
+            },
+            {
+                term: "Staking",
+                category: "defi",
+                definition: "Staking bedeutet, dass du deine Coins für einen bestimmten Zeitraum 'einfrierst' oder sperrst, um das Blockchain-Netzwerk zu sichern und zu betreiben. Bei Proof-of-Stake Blockchains (wie Ethereum 2.0) ersetzen Staker die alten Miner. Deine gestakten Coins dienen als Sicherheit: Wenn du betrügst, verlierst du sie. Als Belohnung für's Staken und Validieren von Transaktionen bekommst du regelmässig neue Coins (wie Zinsen). Die Rendite liegt meist zwischen 3-15% pro Jahr, je nach Blockchain. Während der Stake-Zeit kannst du deine Coins normalerweise nicht bewegen oder verkaufen.",
+                example: "Ethereum: 32 ETH staken (ca. $96'000) für mindestens mehrere Monate, verdienst ca. 3-4% APR = $3200-3800 pro Jahr. Oder: Cardano (ADA) staken - keine Mindestmenge, keine Lock-Period, ca. 5% APR. Oder: Polkadot (DOT) - mindestens 28 Tage Lock, ca. 10-14% APR. Viele Börsen bieten auch 'Liquid Staking' an, wo du einen Token bekommst, der deinen Stake repräsentiert und handelbar bleibt.",
+                warning: null
+            },
+            {
+                term: "Lending / Borrowing",
+                category: "defi",
+                definition: "Krypto verleihen (Lending) und dafür Zinsen kassieren, oder Krypto leihen (Borrowing) gegen Sicherheiten.",
+                example: "Aave: Du leihst 1000 USDC aus, bekommst 5% Jahreszins. Oder du leihst dir USDC, indem du ETH als Sicherheit hinterlegst.",
+                warning: "Bei Borrowing: Liquidation möglich, wenn deine Sicherheiten im Wert fallen!"
+            },
+            {
+                term: "Impermanent Loss",
+                category: "defi",
+                definition: "Impermanent Loss ist ein schwer zu verstehendes, aber extrem wichtiges Konzept: Wenn du zwei Token (z.B. ETH und USDC) in einen Liquidity Pool einzahlst, um Gebühren zu verdienen, kann es passieren, dass du am Ende weniger Wert hast, als wenn du die Token einfach gehalten hättest. Warum? Weil der Pool automatisch die Verhältnisse der Token anpasst, wenn sich Preise ändern. Wenn ETH im Preis stark steigt, verkauft der Pool automatisch einen Teil deines ETH und kauft USDC nach, um das Verhältnis zu halten - du verpasst also einen Teil des ETH-Preisanstiegs. Der Loss ist 'impermanent' (temporär), weil er verschwindet, wenn die Preise auf den Ursprung zurückgehen. Aber wenn du jetzt aussteigst, wird er permanent.",
+                example: "Du zahlst ETH + USDC ein. ETH verdoppelt sich im Preis. Du hättest mehr verdient, wenn du ETH einfach gehalten hättest.",
+                warning: "Kann die Gebühren-Gewinne auffressen! Genau rechnen vor dem Einzahlen!"
+            },
+
+            // Token-Typen
+            {
+                term: "Coin vs. Token",
+                category: "token",
+                definition: "Coin = Hat eine eigene Blockchain (BTC, ETH). Token = Läuft auf einer fremden Blockchain (USDT auf Ethereum).",
+                example: "Bitcoin ist ein Coin, USDT ist ein Token auf mehreren Blockchains.",
+                warning: null
+            },
+            {
+                term: "Utility Token",
+                category: "token",
+                definition: "Ein Token, der Zugang zu einem Service oder Produkt gewährt. Kein Investment-Token.",
+                example: "BNB auf Binance: Damit zahlst du niedrigere Handelsgebühren.",
+                warning: null
+            },
+            {
+                term: "Governance Token",
+                category: "token",
+                definition: "Ein Token, der dir Mitspracherecht bei Entscheidungen eines Protokolls gibt. Ein Stimmrecht pro Token.",
+                example: "UNI (Uniswap): Besitzer stimmen über Änderungen am Protokoll ab.",
+                warning: null
+            },
+            {
+                term: "Stablecoin",
+                category: "token",
+                definition: "Ein Krypto-Token, der immer etwa 1$ wert sein soll. Stabilität statt Volatilität.",
+                example: "USDT, USDC, DAI - perfekt, um Gewinne zwischenzuparken ohne zurück in Euro zu tauschen.",
+                warning: "Nicht alle Stablecoins sind sicher (siehe UST-Crash 2022)!"
+            },
+            {
+                term: "Wrapped Token",
+                category: "token",
+                definition: "Ein Token, der einen Coin von einer anderen Blockchain repräsentiert. Wie eine 'Quittung' für den echten Coin.",
+                example: "WBTC = Bitcoin auf der Ethereum-Blockchain. 1 WBTC = 1 BTC.",
+                warning: null
+            },
+            {
+                term: "LP Token",
+                category: "token",
+                definition: "Ein Beleg-Token, den du bekommst, wenn du Liquidität in einen Pool einzahlst. Repräsentiert deinen Anteil am Pool.",
+                example: "Du zahlst ETH + USDC in Uniswap ein → bekommst ETH-USDC LP Token als Nachweis.",
+                warning: "LP Token niemals verlieren! Ohne sie kommst du nicht mehr an deine eingezahlten Token!"
+            },
+            {
+                term: "NFT (Non-Fungible Token)",
+                category: "token",
+                definition: "Ein einzigartiger Token, der nicht austauschbar ist. Jeder ist anders und hat eine eigene ID.",
+                example: "Digitale Kunst, Sammelkarten, Grundstücke in Metaverse-Spielen.",
+                warning: "Vorsicht vor Fakes! Prüfe den Smart Contract, bevor du kaufst."
+            },
+
+            // Sicherheit
+            {
+                term: "Phishing",
+                category: "sicherheit",
+                definition: "Phishing ist ein Betrugsversuch, bei dem Kriminelle gefälschte Websites erstellen, die aussehen wie echte Krypto-Dienste (Uniswap, MetaMask, OpenSea, etc.), um deine Seed Phrase, Private Keys oder Wallet-Zugang zu stehlen. Die gefälschten Seiten sind oft täuschend echt - nur die URL ist leicht anders (z.B. 'unisvvap' statt 'uniswap'). Oft kommen die Links per E-Mail, Twitter-DM, oder Discord-Nachricht: 'Dein Wallet wurde kompromittiert, gib hier deine Seed Phrase ein, um es zu sichern!' - wer das tut, verliert alles.",
+                example: "Echte URL: app.uniswap.org - Fake URLs: app-uniswap.org, unisvvap.org, uniswap-app.com, uniswap.support. Oder Discord-Nachricht vom 'MetaMask Support': 'Wir haben verdächtige Aktivität erkannt. Klicke hier und gib deine Seed Phrase ein zur Verifizierung.' → 100% Betrug! Echter Support fragt NIE nach Seed Phrase!",
+                warning: "IMMER die URL doppelt prüfen! Lesezeichen nutzen für wichtige Seiten!"
+            },
+            {
+                term: "Rug Pull",
+                category: "sicherheit",
+                definition: "Ein Rug Pull ist ein Exit-Scam, bei dem Projekt-Entwickler ein vielversprechend aussehendes DeFi-Projekt, einen Token oder NFT-Collection starten, massiv Marketing machen, Millionen von Investoren einsammeln - und dann plötzlich mit allem Geld verschwinden. Sie können z.B. eine Hintertür im Smart Contract einbauen, die es ihnen erlaubt, alle Token aus dem Liquidity Pool zu ziehen. Oder sie löschen einfach die Website, Social Media und sind weg. Das Geld ist für immer verloren, weil Krypto-Transaktionen nicht rückgängig gemacht werden können.",
+                example: "Klassisches Beispiel: Ein neuer Token 'SafeRocket' verspricht 10'000% APY beim Staking. Website sieht professionell aus, TikToker bewerben es, Preis steigt. Leute investieren $50 Millionen. Plötzlich: Entwickler ziehen alle Liquidity ab, verkaufen ihre Token, Website offline, Telegram gelöscht. Investoren halten jetzt wertlose Token. Rot-Flags: Anonyme Entwickler, unrealistische Renditen (>100% APY), ungeprüfter Contract-Code.",
+                warning: "Nur etablierte Projekte nutzen! Bei hohen APYs (>100%) extrem vorsichtig sein!"
+            },
+            {
+                term: "Scam / Betrug",
+                category: "sicherheit",
+                definition: "Allgemeine Betrugsmaschen in der Krypto-Welt. Von falschen Airdrops bis zu gefälschten Support-Mitarbeitern.",
+                example: "Discord-Nachricht: 'Support hier - wir brauchen deine Seed Phrase, um dir zu helfen.' → 100% Scam!",
+                warning: "Echter Support fragt NIEMALS nach Seed Phrase oder Private Key!"
+            },
+            {
+                term: "2FA (Two-Factor Authentication)",
+                category: "sicherheit",
+                definition: "Zweistufige Anmeldung mit zusätzlichem Code aus einer App oder per SMS.",
+                example: "Google Authenticator App generiert alle 30 Sekunden einen neuen 6-stelligen Code.",
+                warning: "Nutze Authenticator-Apps, NICHT SMS! SMS können abgefangen werden."
+            },
+            {
+                term: "Whitelisting",
+                category: "sicherheit",
+                definition: "Eine Liste von zugelassenen Wallet-Adressen. Du kannst nur an diese Adressen Coins senden.",
+                example: "Auf Börsen: Nur an Adressen senden, die du vorher registriert hast. Schutz vor Tipp-Fehlern.",
+                warning: null
+            },
+            {
+                term: "Contract Approval",
+                category: "sicherheit",
+                definition: "Contract Approval (auch Token Approval) ist die Erlaubnis, die du einem Smart Contract gibst, um auf bestimmte Token in deinem Wallet zuzugreifen. Ohne diese Erlaubnis kann ein DEX deine Token nicht tauschen, ein Lending-Protokoll kann sie nicht einziehen, etc. Das Problem: Viele Protokolle fragen standardmässig nach 'Unlimited Approval' - das heisst, der Contract kann jederzeit ALLE deine Token dieses Typs nehmen, nicht nur die für den aktuellen Trade. Wenn der Contract gehackt wird oder ein Rug Pull ist, können alle deine Token gestohlen werden. Deshalb: Immer nur die benötigte Menge freigeben!",
+                example: "Du willst 100 USDC auf Uniswap zu ETH tauschen. Uniswap fragt: 'Approve USDC'. Standard-Setting: Unlimited (der Contract kann jederzeit ALLE deine USDC nehmen). Besser: Ändere auf 'Custom Amount' → gib nur 100 USDC frei. Ja, beim nächsten Trade musst du wieder approven (kostet Gas), aber deine restlichen 5'000 USDC sind sicher. Tools wie revoke.cash zeigen dir alle aktiven Approvals und du kannst sie widerrufen.",
+                warning: "Setze Limits! Nicht 'unlimited' approval geben, sondern nur die benötigte Menge!"
+            },
+            {
+                term: "Slippage",
+                category: "sicherheit",
+                definition: "Der Unterschied zwischen erwartetem und tatsächlichem Preis bei einem Trade. Entsteht durch Preisänderungen während der Transaktion.",
+                example: "Du willst 1 ETH für 3000 USDC kaufen, bekommst aber nur 2950 USDC wegen Slippage.",
+                warning: "Bei niedrig-liquiden Token Slippage-Toleranz erhöhen, sonst schlägt der Trade fehl!"
+            },
+            {
+                term: "Slippage Tolerance",
+                category: "sicherheit",
+                definition: "Slippage Tolerance ist die maximale Preisabweichung, die du bei einem Trade akzeptierst. Wenn du z.B. 1 ETH für 3000 USDC kaufen willst, aber in den Sekunden während deine Transaktion verarbeitet wird der Preis auf 2990 USDC fällt, würde der Trade ohne Slippage Tolerance fehlschlagen. Mit 1% Tolerance würde er durchgehen (du bekommst 2970-3030 USDC). Bei hoch-liquiden Paaren (ETH/USDC) reichen 0.5-1%. Bei neuen/kleinen Token musst du oft 3-10% setzen, sonst geht nichts durch. ABER: Je höher deine Tolerance, desto mehr können dich Trading-Bots via Frontrunning ausnutzen!",
+                example: "Standard-Trade auf Uniswap: Du setzt 0.5% Slippage. Preis zeigt: 1 ETH = 3000 USDC. Du kaufst → bekommst zwischen 2985-3015 USDC. Passt. Neuer Shitcoin-Trade: Pool ist klein, wenig Liquidität. Du versuchst 0.5% → Transaction failed. Du erhöhst auf 5% → geht durch, aber du zahlst mehr als erwartet (dein Trade selbst bewegt den Preis stark). Bei >10% Slippage: Gefahr von MEV-Bots, die deinen Trade sehen und vorher kaufen/verkaufen, um an deinem Trade zu verdienen.",
+                warning: "Zu hohe Slippage Tolerance (>5%) = Risiko für Frontrunning! Bots können deinen Trade ausnutzen. Nur bei sehr kleinen/neuen Token nötig."
+            },
+
+            // Technisches
+            {
+                term: "Network / Chain",
+                category: "technisch",
+                definition: "Die spezifische Blockchain, auf der du arbeitest. Jede hat eigene Token und Gebühren.",
+                example: "Ethereum Mainnet, Binance Smart Chain (BSC), Polygon, Arbitrum, Avalanche.",
+                warning: "IMMER die richtige Chain wählen! Token auf falsche Chain senden = Geld verloren!"
+            },
+            {
+                term: "Layer 1",
+                category: "technisch",
+                definition: "Die Haupt-Blockchain selbst. Die Basis-Ebene.",
+                example: "Ethereum, Bitcoin, Solana, Avalanche - alles Layer 1 Blockchains.",
+                warning: null
+            },
+            {
+                term: "Layer 2",
+                category: "technisch",
+                definition: "Eine zusätzliche Ebene, die auf Layer 1 aufbaut, um schnellere und günstigere Transaktionen zu ermöglichen.",
+                example: "Arbitrum und Optimism für Ethereum - gleiche Sicherheit, 10-100x niedrigere Gebühren.",
+                warning: null
+            },
+            {
+                term: "Bridge",
+                category: "technisch",
+                definition: "Ein Tool, um Token von einer Blockchain zu einer anderen zu übertragen.",
+                example: "ETH von Ethereum zu Polygon übertragen mit der offiziellen Polygon Bridge.",
+                warning: "Bridges sind Hacker-Ziele! Nur offizielle Bridges nutzen, nie unbekannte!"
+            },
+            {
+                term: "Mainnet",
+                category: "technisch",
+                definition: "Das 'echte' Netzwerk einer Blockchain, wo echtes Geld fliesst.",
+                example: "Ethereum Mainnet - hier zählt's! Transaktionen sind echt und kosten echtes Geld.",
+                warning: null
+            },
+            {
+                term: "Testnet",
+                category: "technisch",
+                definition: "Ein Test-Netzwerk, wo man mit 'Spielgeld' experimentieren kann. Perfekt zum Üben!",
+                example: "Goerli Testnet für Ethereum - kostenlose Test-ETH zum Ausprobieren.",
+                warning: "Tokens auf Testnet haben keinen echten Wert!"
+            },
+            {
+                term: "Mempool",
+                category: "technisch",
+                definition: "Der 'Wartesaal' für Transaktionen, die noch nicht in einen Block aufgenommen wurden.",
+                example: "Du sendest eine Transaktion mit niedriger Gas Fee → sie wartet im Mempool, bis Gas günstiger wird.",
+                warning: null
+            },
+            {
+                term: "Gas Limit",
+                category: "technisch",
+                definition: "Die maximale Menge an Gas, die du bereit bist für eine Transaktion zu zahlen.",
+                example: "Einfache ETH-Überweisung: ~21.000 Gas Limit. Swap auf Uniswap: ~150.000 Gas Limit.",
+                warning: "Zu niedriges Gas Limit → Transaktion schlägt fehl, aber Gas ist trotzdem verbraucht!"
+            },
+            {
+                term: "Gas Price",
+                category: "technisch",
+                definition: "Der Preis pro Einheit Gas, gemessen in Gwei. Bestimmt, wie schnell deine Transaktion durchgeht.",
+                example: "20 Gwei = langsam/günstig, 50 Gwei = schnell/teuer. 1 Gwei = 0.000000001 ETH.",
+                warning: null
+            },
+            {
+                term: "ERC-20",
+                category: "technisch",
+                definition: "Der Standard für normale Token auf Ethereum. 99% aller Ethereum-Token sind ERC-20.",
+                example: "USDT, LINK, UNI - alles ERC-20 Token auf Ethereum.",
+                warning: null
+            },
+            {
+                term: "BEP-20",
+                category: "technisch",
+                definition: "Der Token-Standard auf Binance Smart Chain (BSC). Equivalent zu ERC-20.",
+                example: "CAKE (PancakeSwap Token) ist ein BEP-20 Token.",
+                warning: "Nicht mit ERC-20 verwechseln! Unterschiedliche Chains!"
+            },
+            {
+                term: "Confirmations",
+                category: "technisch",
+                definition: "Die Anzahl der Blöcke, die nach deiner Transaktion zur Blockchain hinzugefügt wurden. Mehr = sicherer.",
+                example: "Bei Bitcoin wartet man oft auf 6 Confirmations (~60 Min), um sicher zu sein.",
+                warning: null
+            },
+            {
+                term: "APR vs APY",
+                category: "technisch",
+                definition: "APR = Jahreszins ohne Zinseszins. APY = Jahreszins mit Zinseszins (Reinvestierung).",
+                example: "10% APR = 10% Gewinn pro Jahr. 10% APY = ~10.5% wegen Zinseszins-Effekt.",
+                warning: "Immer auf APY achten, nicht APR - das ist die echte Rendite!"
+            }
+        ];
+
+        let currentFilter = 'alle';
+        
+        function renderGlossary(filter = 'alle', searchTerm = '') {
+            const grid = document.getElementById('glossaryGrid');
+            const noResults = document.getElementById('noResults');
+            grid.innerHTML = '';
+            
+            let filteredData = glossaryData;
+            
+            // Filter by category
+            if (filter !== 'alle') {
+                filteredData = filteredData.filter(item => item.category === filter);
+            }
+            
+            // Filter by search term
+            if (searchTerm) {
+                const search = searchTerm.toLowerCase();
+                filteredData = filteredData.filter(item => 
+                    item.term.toLowerCase().includes(search) ||
+                    item.definition.toLowerCase().includes(search) ||
+                    (item.example && item.example.toLowerCase().includes(search))
+                );
+            }
+            
+            if (filteredData.length === 0) {
+                grid.style.display = 'none';
+                noResults.style.display = 'block';
+                return;
+            }
+            
+            grid.style.display = 'grid';
+            noResults.style.display = 'none';
+            
+            filteredData.forEach(item => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'glossary-item';
+                
+                const categoryText = {
+                    'grundlagen': 'Grundlagen',
+                    'defi': 'DeFi-Protokolle',
+                    'token': 'Token-Typen',
+                    'sicherheit': 'Sicherheit',
+                    'technisch': 'Technisches'
+                };
+                
+                itemDiv.innerHTML = `
+                    <div class="term-category">${categoryText[item.category]}</div>
+                    <div class="term-title">${item.term}</div>
+                    <div class="term-definition">${item.definition}</div>
+                    ${item.example ? `<div class="term-example">${item.example}</div>` : ''}
+                    ${item.warning ? `<div class="term-warning">${item.warning}</div>` : ''}
+                `;
+                
+                grid.appendChild(itemDiv);
+            });
+        }
+        
+        // Initial render
+        renderGlossary();
+        
+        // Search functionality
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            renderGlossary(currentFilter, e.target.value);
+        });
+        
+        // Filter buttons
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                currentFilter = e.target.dataset.category;
+                const searchTerm = document.getElementById('searchInput').value;
+                renderGlossary(currentFilter, searchTerm);
+            });
+        });
+    </script>
+</body>
+</html>
