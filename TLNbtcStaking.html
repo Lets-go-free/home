@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TLN BTC Staking Rechner - Let's go free</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            line-height: 1.7; 
+            color: #333; 
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 50%, #C9A882 100%); 
+            min-height: 100vh; 
+            padding: 20px; 
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background: white; 
+            border-radius: 20px; 
+            overflow: hidden; 
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3); 
+        }
+        .hero { 
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%); 
+            color: white; 
+            padding: 40px 40px; 
+            text-align: center; 
+        }
+        .hero h1 { 
+            font-size: 2.5em; 
+            margin-bottom: 15px; 
+            line-height: 1.2; 
+        }
+        .hero p { 
+            font-size: 1.2em; 
+            opacity: 0.95; 
+        }
+        .section { 
+            padding: 40px; 
+        }
+        .section h2 { 
+            font-size: 2em; 
+            color: #8B7355; 
+            margin-bottom: 30px; 
+        }
+        .section h3 { 
+            font-size: 1.5em; 
+            color: #8B7355; 
+            margin: 30px 0 20px 0; 
+        }
+        .input-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            background: #F5E6D3;
+            padding: 25px;
+            border-radius: 12px;
+            border-left: 4px solid #8B7355;
+        }
+        .input-group label {
+            display: block;
+            font-weight: 600;
+            color: #5a4636;
+            margin-bottom: 10px;
+            font-size: 1em;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #d4c4b0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+        .input-group input:focus {
+            outline: none;
+            border-color: #8B7355;
+        }
+        .input-group .hint {
+            display: block;
+            font-size: 0.9em;
+            color: #6B5745;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        .calculate-button {
+            background: #8B7355;
+            color: white;
+            padding: 18px 45px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            display: block;
+            margin: 30px auto;
+        }
+        .calculate-button:hover {
+            background: #6B5745;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+        .results {
+            background: linear-gradient(135deg, #F5E6D3 0%, #E8D4BA 100%);
+            padding: 35px;
+            border-radius: 15px;
+            margin-top: 30px;
+            border-left: 5px solid #8B7355;
+            display: none;
+        }
+        .results.show {
+            display: block;
+        }
+        .results h3 {
+            color: #8B7355;
+            font-size: 1.6em;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+        .result-section {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        }
+        .result-section h4 {
+            color: #8B7355;
+            font-size: 1.3em;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #F5E6D3;
+        }
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        .result-item {
+            background: #F5E6D3;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .result-item .label {
+            font-size: 0.95em;
+            color: #6B5745;
+            margin-bottom: 8px;
+        }
+        .result-item .value {
+            font-size: 1.6em;
+            font-weight: 700;
+            color: #8B7355;
+        }
+        .result-item .value.large {
+            font-size: 2em;
+        }
+        .result-item .value.positive {
+            color: #2d7a2d;
+        }
+        .result-item .value.negative {
+            color: #c94545;
+        }
+        .result-text {
+            background: #F5E6D3;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            line-height: 1.8;
+        }
+        .footer-link {
+            text-align: center;
+            padding: 30px;
+            background: #f9f9f9;
+        }
+        .footer-link a {
+            color: #8B7355;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.1em;
+            transition: color 0.3s;
+        }
+        .footer-link a:hover {
+            color: #6B5745;
+        }
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2em; }
+            .section { padding: 25px; }
+            .input-grid { grid-template-columns: 1fr; }
+            .result-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hero">
+            <h1>TLN BTC Staking Rechner</h1>
+            <p>Berechne deine Rewards und Gewinne aus VOW/BTC Staking mit TLNG Booster</p>
+        </div>
+
+        <div class="section">
+            
+            <h3>Ausgangslage</h3>
+            <div class="input-grid">
+                <div class="input-group">
+                    <label for="vowAmount">Ich habe VOW</label>
+                    <input type="text" id="vowAmount" value="50'000" onchange="formatInputField(this)" onfocus="removeFormatting(this)" onblur="formatInputField(this)">
+                    <span class="hint">Anzahl VOW Token</span>
+                </div>
+                <div class="input-group">
+                    <label for="vowPrice">VOW Kurs (US$)</label>
+                    <input type="text" id="vowPrice" value="0.036" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
+                    <span class="hint">Aktueller VOW Preis</span>
+                </div>
+                <div class="input-group">
+                    <label for="btcbPrice">BTCB Kurs (US$)</label>
+                    <input type="text" id="btcbPrice" value="92'000" onchange="formatInputField(this)" onfocus="removeFormatting(this)" onblur="formatInputField(this)">
+                    <span class="hint">Aktueller BTCB Preis</span>
+                </div>
+            </div>
+
+            <h3>Booster-Parameter</h3>
+            <div class="input-grid">
+                <div class="input-group">
+                    <label for="contractFee">Contract Fee (CF)</label>
+                    <input type="text" id="contractFee" value="0.18" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
+                    <span class="hint">Gebühr für Booster</span>
+                </div>
+                <div class="input-group">
+                    <label for="vowPriceBooster">VOW Kurs für Booster (US$)</label>
+                    <input type="text" id="vowPriceBooster" value="0.09" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
+                    <span class="hint">VOW Preis bei Booster-Kauf</span>
+                </div>
+            </div>
+
+            <h3>Nach 372 Tagen</h3>
+            <div class="input-grid">
+                <div class="input-group">
+                    <label for="vowPriceFuture">VOW Kurs (US$)</label>
+                    <input type="text" id="vowPriceFuture" value="0.3" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
+                    <span class="hint">Erwarteter VOW Preis nach 372 Tagen</span>
+                </div>
+                <div class="input-group">
+                    <label for="vusdPrice">v$ Kurs (US$)</label>
+                    <input type="text" id="vusdPrice" value="0.85" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
+                    <span class="hint">v$ Preis bei Rückzahlung</span>
+                </div>
+            </div>
+
+            <button class="calculate-button" onclick="calculateStaking()">Berechnen</button>
+
+            <div id="stakingResults" class="results">
+                <h3>Ergebnisse</h3>
+                
+                <div class="result-section">
+                    <h4>Staking-Einstieg</h4>
+                    <div class="result-text">
+                        Ich habe <strong><span id="vowSold">-</span> VOW Token</strong> verkauft und dafür <strong><span id="btcbReceived">-</span> BTCB</strong> erhalten.
+                    </div>
+                    <div class="result-text">
+                        Ich stake <strong><span id="vowStaked">-</span> VOW</strong> und die <strong><span id="btcbStaked">-</span> BTCB</strong> welche ich erhalten habe.
+                    </div>
+                    <div class="result-grid">
+                        <div class="result-item">
+                            <div class="label">Staking-Wert</div>
+                            <div class="value" id="stakingValue">-</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="label">LP Wert ca.</div>
+                            <div class="value" id="lpValue">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="result-section">
+                    <h4>TLNG Rewards & Booster</h4>
+                    <div class="result-text">
+                        Ich habe <strong><span id="tlngReceived">-</span> TLNG</strong> erhalten.
+                    </div>
+                    <div class="result-text">
+                        Ich habe für <strong><span id="tlngBooster">-</span> TLNG</strong> einen 1:2 Booster genommen und <strong><span id="vowBooster">-</span> VOW</strong> in den Booster SC erhalten.
+                    </div>
+                    <div class="result-grid">
+                        <div class="result-item">
+                            <div class="label">TLNG 1:2 Booster (v$)</div>
+                            <div class="value" id="boosterVusd">-</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="label">Contract Fee</div>
+                            <div class="value" id="contractFeeAmount">-</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="label">Booster Wert (US$)</div>
+                            <div class="value" id="boosterUsd">-</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="label">VOW aus Booster</div>
+                            <div class="value" id="vowFromBooster">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="result-section">
+                    <h4>Rückzahlung nach 372 Tagen</h4>
+                    <div class="result-text">
+                        Ich zahle <strong><span id="repaymentVusd">-</span> v$</strong> zurück und erhalte die <strong><span id="vowReturned">-</span> VOW Token</strong>.
+                    </div>
+                    <div class="result-text">
+                        Die <strong><span id="vowReturnedValue">-</span> VOW Token</strong> haben dann einen Wert von <strong><span id="vowValueUsd">-</span> US$</strong>.
+                    </div>
+                    <div class="result-text">
+                        Die <strong><span id="vowCostAmount">-</span> v$</strong> kosten mich ca. <strong><span id="vowCostUsd">-</span> US$</strong>.
+                    </div>
+                    <div class="result-grid">
+                        <div class="result-item">
+                            <div class="label">Loan Gewinn</div>
+                            <div class="value positive" id="loanProfit">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="result-section">
+                    <h4>Falls die v$ mit bestehenden VOW zurückbezahlt werden:</h4>
+                    <div class="result-grid">
+                        <div class="result-item">
+                            <div class="label">VOW für Loan-Rückzahlung verkaufen</div>
+                            <div class="value" id="vowToSell">-</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="label">VOW gewonnen/verloren</div>
+                            <div class="value large" id="vowGainLoss">-</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="label">Wert in US$</div>
+                            <div class="value large" id="usdGainLoss">-</div>
+                        </div>
+                    </div>
+                    <div class="result-text" style="margin-top: 20px; background: #e8f4e8; border-left: 4px solid #2d7a2d;">
+                        Anschliessend erhältst du deine LP + die erwirtschafteten Gebühren zurück
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-link">
+            <a href="https://letsgofree.me">← Zurück zu Let's go free</a>
+        </div>
+    </div>
+
+    <script>
+        function calculateStaking() {
+            // Get input values and remove formatting
+            const vowAmount = parseFloat(document.getElementById('vowAmount').value.replace(/'/g, ''));
+            const vowPrice = parseFloat(document.getElementById('vowPrice').value.replace(/'/g, ''));
+            const btcbPrice = parseFloat(document.getElementById('btcbPrice').value.replace(/'/g, ''));
+            const contractFee = parseFloat(document.getElementById('contractFee').value.replace(/'/g, ''));
+            const vowPriceBooster = parseFloat(document.getElementById('vowPriceBooster').value.replace(/'/g, ''));
+            const vowPriceFuture = parseFloat(document.getElementById('vowPriceFuture').value.replace(/'/g, ''));
+            const vusdPrice = parseFloat(document.getElementById('vusdPrice').value.replace(/'/g, ''));
+
+            // Berechnungen - Formeln direkt aus Excel
+            const vowSold = vowAmount / 2; // D5: D2/2
+            const btcbReceived = ((vowAmount * vowPrice) * 0.5) / btcbPrice; // D6: ((D2*B3)*0.5)/B4
+            const vowStaked = vowAmount / 2; // 50% staken
+            
+            // D8: D2*B3
+            const lpValue = vowAmount * vowPrice;
+            
+            // LP Wert für Staking-Anzeige ist aber die korrekte LP-Formel
+            const vowValue = vowStaked * vowPrice;
+            const btcbValue = btcbReceived * btcbPrice;
+            const lpValueCorrect = 2 * Math.sqrt(vowValue * btcbValue);
+            const stakingValue = lpValueCorrect; // B29: D8 (zeigt aber LP Wert an)
+
+            // D11: D8*1.5
+            const tlngReceived = lpValue * 1.5;
+            
+            // TLNG 1:2 Booster
+            const tlngBooster = tlngReceived;
+            const boosterVusd = tlngBooster * 2; // D12: D11*2
+            const contractFeeAmount = boosterVusd * contractFee; // D13: D12*B13
+            
+            // D14: (((D12*0.7)*0.49)*0.984)
+            const boosterUsd = (((boosterVusd * 0.7) * 0.49) * 0.984);
+            
+            // D16: D14/B15
+            const vowFromBooster = boosterUsd / vowPriceBooster;
+
+            // Rückzahlung nach 372 Tagen
+            // D22: D12+D13
+            const loanRepayment = boosterVusd + contractFeeAmount;
+            
+            // D34: D31 (D31 ist D16, also vowFromBooster)
+            const vowReturned = vowFromBooster;
+            
+            // D35: D34*B20
+            const vowValueUsd = vowReturned * vowPriceFuture;
+            
+            // B34: D12+D13
+            const vowCostAmount = loanRepayment;
+            
+            // D36: D22*B21*1.016
+            const vowCostUsd = loanRepayment * vusdPrice * 1.016;
+            
+            // B37: D35-D36
+            const loanProfit = vowValueUsd - vowCostUsd;
+
+            // VOW verkaufen um Loan zurückzuzahlen
+            // D42: B34*B21/B20
+            const vowToSell = loanRepayment * vusdPrice / vowPriceFuture;
+
+            // Endergebnis
+            // D44: D34-D42
+            const vowGainLoss = vowReturned - vowToSell;
+            
+            // D45: D44*B20
+            const usdGainLoss = vowGainLoss * vowPriceFuture;
+
+            // Display results
+            document.getElementById('vowSold').textContent = formatNumber(vowSold);
+            document.getElementById('btcbReceived').textContent = formatNumberDecimal(btcbReceived, 8);
+            document.getElementById('vowStaked').textContent = formatNumber(vowStaked);
+            document.getElementById('btcbStaked').textContent = formatNumberDecimal(btcbReceived, 8);
+            document.getElementById('stakingValue').textContent = formatNumber(stakingValue) + ' US$';
+            document.getElementById('lpValue').textContent = formatNumber(lpValue) + ' US$';
+
+            document.getElementById('tlngReceived').textContent = formatNumber(tlngReceived);
+            document.getElementById('tlngBooster').textContent = formatNumber(tlngBooster);
+            document.getElementById('vowBooster').textContent = formatNumber(vowFromBooster);
+            document.getElementById('boosterVusd').textContent = formatNumber(boosterVusd) + ' v$';
+            document.getElementById('contractFeeAmount').textContent = formatNumber(contractFeeAmount) + ' v$';
+            document.getElementById('boosterUsd').textContent = formatNumber(boosterUsd) + ' US$';
+            document.getElementById('vowFromBooster').textContent = formatNumber(vowFromBooster) + ' VOW';
+
+            document.getElementById('repaymentVusd').textContent = formatNumber(loanRepayment) + ' v$';
+            document.getElementById('vowReturned').textContent = formatNumber(vowReturned);
+            document.getElementById('vowReturnedValue').textContent = formatNumber(vowReturned);
+            document.getElementById('vowValueUsd').textContent = formatNumber(vowValueUsd);
+            document.getElementById('vowCostAmount').textContent = formatNumber(vowCostAmount);
+            document.getElementById('vowCostUsd').textContent = formatNumber(vowCostUsd);
+            document.getElementById('loanProfit').textContent = formatNumber(loanProfit) + ' US$';
+            document.getElementById('vowToSell').textContent = formatNumber(vowToSell) + ' VOW';
+
+            // Endergebnis mit Farbe und dynamischem Label
+            const vowGainLossElement = document.getElementById('vowGainLoss');
+            const usdGainLossElement = document.getElementById('usdGainLoss');
+            const vowGainLossLabel = document.querySelector('#vowGainLoss').parentElement.querySelector('.label');
+            
+            // VOW Label und Farbe
+            if (vowGainLoss >= 0) {
+                vowGainLossLabel.textContent = 'VOW gewonnen';
+                vowGainLossElement.textContent = formatNumber(vowGainLoss) + ' VOW';
+                vowGainLossElement.classList.add('positive');
+                vowGainLossElement.classList.remove('negative');
+            } else {
+                vowGainLossLabel.textContent = 'VOW verloren';
+                vowGainLossElement.textContent = formatNumber(Math.abs(vowGainLoss)) + ' VOW';
+                vowGainLossElement.classList.add('negative');
+                vowGainLossElement.classList.remove('positive');
+            }
+            
+            // USD Farbe
+            usdGainLossElement.textContent = formatNumber(usdGainLoss) + ' US$';
+            if (usdGainLoss >= 0) {
+                usdGainLossElement.classList.add('positive');
+                usdGainLossElement.classList.remove('negative');
+            } else {
+                usdGainLossElement.classList.add('negative');
+                usdGainLossElement.classList.remove('positive');
+            }
+
+            // Show results
+            document.getElementById('stakingResults').classList.add('show');
+        }
+
+        function formatNumber(num) {
+            // Schweizer Format mit Apostroph als Tausendertrennzeichen
+            const parts = num.toFixed(2).split('.');
+            const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+            return integerPart + '.' + parts[1];
+        }
+
+        function formatNumberDecimal(num, decimals) {
+            // Format with specified decimal places
+            const parts = num.toFixed(decimals).split('.');
+            const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+            return integerPart + '.' + parts[1];
+        }
+
+        function formatInputField(input) {
+            // Format input field with thousand separators (for whole numbers)
+            const value = input.value.replace(/'/g, ''); // Remove existing formatting
+            if (value && !isNaN(value)) {
+                const num = parseFloat(value);
+                const formatted = num.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+                input.value = formatted;
+            }
+        }
+
+        function formatInputFieldDecimal(input) {
+            // Format input field with thousand separators (for decimal numbers)
+            const value = input.value.replace(/'/g, ''); // Remove existing formatting
+            if (value && !isNaN(value)) {
+                const num = parseFloat(value);
+                // Determine decimal places from original value
+                const decimalPlaces = value.includes('.') ? value.split('.')[1].length : 0;
+                const parts = num.toFixed(decimalPlaces).split('.');
+                const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+                input.value = decimalPlaces > 0 ? integerPart + '.' + parts[1] : integerPart;
+            }
+        }
+
+        function removeFormatting(input) {
+            // Remove formatting when focusing on input
+            input.value = input.value.replace(/'/g, '');
+        }
+
+        // Initialize with default calculation on page load
+        window.onload = function() {
+            calculateStaking();
+        };
+    </script>
+</body>
+</html>
