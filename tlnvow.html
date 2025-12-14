@@ -6,44 +6,44 @@
     <title>TLN Protocol Berechnungen - Let's go free</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.7; color: #333; background: linear-gradient(135deg, #8B7355 0%, #A0826D 50%, #C9A882 100%); min-height: 100vh; padding: 20px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.7; color: #333; background: linear-gradient(135deg, #1261A0 0%, #2776EA 50%, #58CCED 100%); min-height: 100vh; padding: 20px; }
         .container { max-width: 900px; margin: 0 auto; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
-        .hero { background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%); color: white; padding: 60px 40px; text-align: center; }
+        .hero { background: linear-gradient(135deg, #1261A0 0%, #2776EA 100%); color: white; padding: 60px 40px; text-align: center; }
         .hero h1 { font-size: 2.8em; margin-bottom: 20px; line-height: 1.2; }
         .hero .subtitle { font-size: 1.3em; margin-bottom: 40px; opacity: 0.95; }
-        .cta-button { display: inline-block; background: white; color: #8B7355; padding: 18px 45px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 1.2em; margin: 10px; transition: all 0.3s; box-shadow: 0 5px 20px rgba(0,0,0,0.2); }
+        .cta-button { display: inline-block; background: white; color: #1261A0; padding: 18px 45px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 1.2em; margin: 10px; transition: all 0.3s; box-shadow: 0 5px 20px rgba(0,0,0,0.2); }
         .cta-button:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
         .section { padding: 40px 40px; }
-        .section h2 { font-size: 2em; line-height: 1.2em; color: #8B7355; margin-bottom: 30px; text-align: center; }
+        .section h2 { font-size: 2em; line-height: 1.2em; color: #1261A0; margin-bottom: 30px; text-align: center; }
         .section p { font-size: 1.1em; margin-bottom: 20px; line-height: 1.8; text-align: center; }
         
         /* Calculators Grid */
         .calculators-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin-top: 40px; }
-        .calculator-card { background: #F5E6D3; padding: 30px; border-radius: 12px; border-left: 4px solid #A0826D; transition: transform 0.3s, box-shadow 0.3s; box-shadow: 0 3px 15px rgba(0,0,0,0.1); }
+        .calculator-card { background: #E3F2FD; padding: 30px; border-radius: 12px; border-left: 4px solid #2776EA; transition: transform 0.3s, box-shadow 0.3s; box-shadow: 0 3px 15px rgba(0,0,0,0.1); }
         .calculator-card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
         .calculator-icon { font-size: 3em; display: block; margin-bottom: 15px; text-align: center; }
-        .calculator-card h3 { color: #8B7355; margin-bottom: 15px; font-size: 1.4em; text-align: center; }
+        .calculator-card h3 { color: #1261A0; margin-bottom: 15px; font-size: 1.4em; text-align: center; }
         .calculator-card .description { font-size: 1em; margin-bottom: 20px; line-height: 1.6; text-align: left; }
         
         /* Features List */
         .features { margin: 20px 0; }
         .feature-item { display: flex; align-items: flex-start; margin: 10px 0; font-size: 0.95em; color: #333; }
-        .check { color: #8B7355; font-weight: 700; margin-right: 10px; font-size: 1.2em; flex-shrink: 0; }
+        .check { color: #1261A0; font-weight: 700; margin-right: 10px; font-size: 1.2em; flex-shrink: 0; }
         
         /* Open Button */
-        .open-btn { display: block; width: 100%; background: #8B7355; color: white; padding: 15px; border-radius: 10px; text-align: center; text-decoration: none; font-weight: 700; font-size: 1.05em; margin-top: 20px; transition: all 0.3s; }
-        .open-btn:hover { background: #6B5745; transform: translateY(-2px); box-shadow: 0 5px 20px rgba(0,0,0,0.2); }
+        .open-btn { display: block; width: 100%; background: #1261A0; color: white; padding: 15px; border-radius: 10px; text-align: center; text-decoration: none; font-weight: 700; font-size: 1.05em; margin-top: 20px; transition: all 0.3s; }
+        .open-btn:hover { background: #084387; transform: translateY(-2px); box-shadow: 0 5px 20px rgba(0,0,0,0.2); }
         
         /* Call to Action Section */
-        .call-section { background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%); color: white; padding: 60px 40px; text-align: center; }
+        .call-section { background: linear-gradient(135deg, #1261A0 0%, #2776EA 100%); color: white; padding: 60px 40px; text-align: center; }
         .call-section h2 { color: white; font-size: 2.2em; margin-bottom: 20px; }
         .call-section p { font-size: 1.2em; margin-bottom: 40px; opacity: 0.95; }
         
         /* Social Section */
         .social-section { padding: 40px; text-align: center; background: #f9f9f9; }
         .social-links { display: flex; justify-content: center; gap: 30px; margin-top: 20px; }
-        .social-link { display: inline-flex; align-items: center; justify-content: center; width: 50px; height: 50px; background: #8B7355; border-radius: 50%; transition: all 0.3s; text-decoration: none; }
-        .social-link:hover { background: #6B5745; transform: translateY(-5px); }
+        .social-link { display: inline-flex; align-items: center; justify-content: center; width: 50px; height: 50px; background: #1261A0; border-radius: 50%; transition: all 0.3s; text-decoration: none; }
+        .social-link:hover { background: #084387; transform: translateY(-5px); }
         .social-link svg { width: 24px; height: 24px; fill: white; }
         
         /* Footer */
@@ -101,7 +101,7 @@
         </div>
 
         <div class="footer-link" style="text-align: center; padding: 30px; background: #f9f9f9;">
-            <a href="https://letsgofree.me" style="color: #8B7355; text-decoration: none; font-weight: 600; font-size: 1.1em; transition: color 0.3s;">← Zurück zu Let's go free</a>
+            <a href="https://letsgofree.me" style="color: #1261A0; text-decoration: none; font-weight: 600; font-size: 1.1em; transition: color 0.3s;">← Zurück zu Let's go free</a>
         </div>
     </div>
 </body>
