@@ -21,7 +21,7 @@
         .calculators-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin-top: 40px; }
         .calculator-card { background: #E3F2FD; padding: 30px; border-radius: 12px; border-left: 4px solid #2776EA; transition: transform 0.3s, box-shadow 0.3s; box-shadow: 0 3px 15px rgba(0,0,0,0.1); }
         .calculator-card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
-        .calculator-icon { font-size: 3em; display: block; margin-bottom: 15px; text-align: center; }
+        .calculator-icon { font-size: 3em; display: block; margin-bottom: 10px; text-align: center; }
         .calculator-card h3 { color: #1261A0; margin-bottom: 15px; font-size: 1.4em; text-align: center; }
         .calculator-card .description { font-size: 1em; margin-bottom: 20px; line-height: 1.6; text-align: left; }
         
@@ -50,24 +50,122 @@
         .footer { padding: 40px; text-align: center; background: #f5f5f5; }
         .disclaimer { max-width: 700px; margin: 30px auto 0; padding: 25px; background: #fff3cd; border-radius: 10px; border-left: 4px solid #ffc107; text-align: left; font-size: 0.95em; }
         
+        /* Navigation Menu */
+        .nav-menu { background: #084387; padding: 8px 15px; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .nav-menu-title { color: white; font-weight: 700; font-size: 1.6em; margin-right: 15px; }
+        .nav-menu a { color: white; text-decoration: none; padding: 8px 18px; display: block; font-weight: 600; transition: all 0.3s; border-radius: 8px; background: rgba(255,255,255,0.1); border: 2px solid transparent; }
+        .nav-menu a:hover { background: #1261A0; border-color: #58CCED; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .nav-menu a.active { background: #1261A0; }
+        
+        /* Empty Sections */
+        .empty-section { background: #E3F2FD; padding: 60px 40px; text-align: center; border-radius: 15px; margin: 20px 0; border-left: 4px solid #2776EA; }
+        .empty-section h2 { color: #1261A0; font-size: 2em; margin-bottom: 15px; }
+        .empty-section p { color: #084387; font-size: 1.1em; font-style: italic; }
+        
         @media (max-width: 768px) {
             .hero h1 { font-size: 2em; }
             .hero .subtitle { font-size: 1.1em; }
             .section { padding: 40px 25px; }
             .section h2 { font-size: 1.6em; }
             .calculators-grid { grid-template-columns: 1fr; }
+            .nav-menu { flex-direction: column; }
+            .nav-menu a { text-align: center; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container" id="top">
         <div class="hero">
-            <h1>Let's go free</h1>
-            <h1 style="margin-bottom: 10px;">TLN Protocol Berechnungen</h1>
-            <p class="subtitle" style="font-size: 1.4em; margin-bottom: 30px;">Berechne deine Strategie für TLN Protocol</p>
+            <h1>TLN Business DE 🇩🇪🇦🇹🇨🇭✌️</h1>
+            <h1 style="margin-bottom: 10px; font-size: 1.8em;">Community unabhängiger TLN Liquidity Provider und VOW-Maximalisten</h1>
         </div>
         
-        <div class="section">
+        <!-- Navigation Menu -->
+        <nav class="nav-menu">
+            <span class="nav-menu-title">Inhalt:</span>
+            <a href="#community-infos">Community-Infos</a>
+            <a href="#video-sammlung">Video-Sammlung</a>
+            <a href="#nuetzliche-links">Nützliche Links</a>
+            <a href="#berechnungen">Berechne deine Strategie</a>
+        </nav>
+        
+        <!-- Community-Infos Section -->
+        <div id="community-infos" class="section">
+            <h2 style="font-size: 1.6em; color: #1261A0; margin-bottom: 20px;">📢 Community-Infos</h2>
+            <div style="background: #E3F2FD; padding: 25px; border-radius: 12px; border-left: 4px solid #1261A0; margin-bottom: 20px;">
+                <p style="margin-bottom: 15px; font-size: 1.05em;">
+                    <strong style="color: #0B4A7D;">Unsere Telegram-Gruppe:</strong><br>
+                    <a href="https://t.me/+8rNRNTeYXEQ0MGM1" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600;">
+                        💬 Tritt unserer Telegram-Gruppe bei
+                    </a>
+                </p>
+                <p style="margin-bottom: 0; font-size: 1.05em;">
+                    <strong style="color: #0B4A7D;">Community-Kalender:</strong><br>
+                    <a href="https://kalender.digital/tln-allgemein" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600;">
+                        📅 Hier geht's zu unserem Community-Kalender mit Links zu Aufzeichnungen
+                    </a>
+                </p>
+            </div>
+            <div style="text-align: center; margin-top: 30px;">
+                <a href="#top" style="display: inline-block; background: #1261A0; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.3s;">⬆ Zum Seiten-Anfang</a>
+            </div>
+        </div>
+        
+        <!-- Video-Sammlung Section -->
+        <div id="video-sammlung" class="section">
+            <h2 style="font-size: 1.6em; color: #1261A0; margin-bottom: 20px;">🎥 Video-Sammlung</h2>
+            <div style="background: #E3F2FD; padding: 25px; border-radius: 12px; border-left: 4px solid #1261A0; margin-bottom: 20px;">
+                <p style="margin-bottom: 15px; font-size: 1.05em;">
+                    <strong style="color: #0B4A7D;">Präsentation TLN/VOW von Stefan Baumüller:</strong><br>
+                    Hier geht es zur Präsentation TLN/VOW von Stefan Baumüller vom 14.12.2025.
+                    <a href="https://youtu.be/fHr_neZXBZ4?si=A6oDFk1yphxRNrCj" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;">
+                        <span style="font-size: 1.2em;">▶</span>hier zum Video
+                    </a>
+                </p>
+                <p style="margin-bottom: 0; font-size: 1.05em;">
+                    <strong style="color: #0B4A7D;">LP-Token auflösen und erstellen:</strong><br>
+                    In diesem Video wird dir gezeigt, wie du auf PancakeSwap deine LP-Token auflöst und selber erstellt.
+                    <a href="https://youtu.be/vHWA0BhJgXM?si=fbrYp-13MJ0uvePh" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;">
+                        <span style="font-size: 1.2em;">▶</span>hier zum Video
+                    </a>
+                </p>
+            </div>
+            <div style="text-align: center; margin-top: 30px;">
+                <a href="#top" style="display: inline-block; background: #1261A0; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.3s;">⬆ Zum Seiten-Anfang</a>
+            </div>
+        </div>
+        
+        <!-- Nützliche Links Section -->
+        <div id="nuetzliche-links" class="section">
+            <h2 style="font-size: 1.6em; color: #1261A0; margin-bottom: 20px;">🔗 Nützliche Links</h2>
+            <div style="background: #E3F2FD; padding: 25px; border-radius: 12px; border-left: 4px solid #1261A0; margin-bottom: 20px;">
+                <p style="margin-bottom: 15px; font-size: 1.05em;">
+                    <strong style="color: #0B4A7D;">Offizielle TLN Protocol Seite:</strong><br>
+                    <a href="https://website.tlnprotocol.com" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600;">
+                        🌐 Hier geht es zur offiziellen Seite von TLN Protocol
+                    </a>
+                </p>
+                <p style="margin-bottom: 15px; font-size: 1.05em;">
+                    <strong style="color: #0B4A7D;">Aktuelle Token-Kurse:</strong><br>
+                    <a href="https://website.tlnprotocol.com" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600;">
+                        📊 Hier findest du die aktuellen Kurse der Tokens für das TLN Protocol
+                    </a>
+                </p>
+                <p style="margin-bottom: 0; font-size: 1.05em;">
+                    <strong style="color: #0B4A7D;">Contract-Adressen:</strong><br>
+                    <a href="https://website.tlnprotocol.com/statistics" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600;">
+                        📝 Hier findest du alle Contract-Adressen von den Tokens, SmartContracts und Pools
+                    </a>
+                </p>
+            </div>
+            <div style="text-align: center; margin-top: 30px;">
+                <a href="#top" style="display: inline-block; background: #1261A0; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.3s;">⬆ Zum Seiten-Anfang</a>
+            </div>
+        </div>
+        
+        <!-- Berechnungen Section -->
+        <div id="berechnungen" class="section">
+            <h2 style="font-size: 1.6em; color: #1261A0; margin-bottom: 20px;">Berechne deine Strategie für TLN Protocol</h2>
             <p>Diese Berechnungs-Tools helfen dir, deine TLN Protocol Strategien durchzurechnen und fundierte Entscheidungen zu treffen.</p>
             
             <div class="calculators-grid">
@@ -98,6 +196,14 @@
                     <a href="tlnbtcstaking.html" class="open-btn" target="_blank">Jetzt öffnen</a>
                 </div>
             </div>
+            <div style="text-align: center; margin-top: 30px;">
+                <a href="#top" style="display: inline-block; background: #1261A0; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.3s;">⬆ Zum Seiten-Anfang</a>
+            </div>
+        </div>
+
+        <div style="max-width: 800px; margin: 40px auto 0; padding: 25px 40px; background: #fff3cd; border-radius: 10px; border-left: 4px solid #ffc107; text-align: left; font-size: 0.95em;">
+            <p style="margin-bottom: 10px;"><strong>⚠️ Wichtig:</strong> Dies ist keine Finanzberatung. Alle Informationen dienen ausschliesslich zu Bildungszwecken. Investiere nur, was du bereit bist zu verlieren.</p>
+            <p style="margin-bottom: 0;"><strong>💡 Hinweis:</strong> Diese Seite wird von der Community gepflegt und stellt keine offizielle TLN Protocol Seite dar.</p>
         </div>
 
         <div class="footer-link" style="text-align: center; padding: 30px; background: #f9f9f9;">
