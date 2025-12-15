@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+
+  <url>
+    <loc>https://www.letsgofree.me/</loc>
+    <lastmod>2025-03-01</lastmod>
+    <priority>1.0</priority>
+  </url>
+
+  <url>
+    <loc>https://www.letsgofree.me/defi-glossar</loc>
+    <lastmod>2025-02-25</lastmod>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://www.letsgofree.me/freebies</loc>
+    <lastmod>2025-02-20</lastmod>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://www.letsgofree.me/agb</loc>
+    <lastmod>2025-02-20</lastmod>
+    <priority>0.7</priority>
+  </url>
+  
+  <url>
+    <loc>https://www.letsgofree.me/impressum</loc>
+    <lastmod>2025-02-20</lastmod>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://www.letsgofree.me/buchung</loc>
+    <lastmod>2025-02-20</lastmod>
+    <priority>0.7</priority>
+  </url>
+
+</urlset>
