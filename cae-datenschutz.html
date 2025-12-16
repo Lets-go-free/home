@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="de-CH">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Datenschutzerklärung | CAE Car Solutions GmbH</title>
+    <link rel="icon" type="image/png" href="cae-favicon.png">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #e5e5e5;
+            background-color: #3a3a3a;
+        }
+
+        /* Header & Navigation */
+        header {
+            background-color: #fff;
+            border-bottom: 1px solid #e5e5e5;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1.2rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #2c2c2c;
+            text-decoration: none;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-menu {
+            display: flex;
+            list-style: none;
+            gap: 2.5rem;
+        }
+
+        .nav-menu a {
+            text-decoration: none;
+            color: #2c2c2c;
+            font-size: 0.95rem;
+            font-weight: 400;
+            transition: color 0.3s;
+        }
+
+        .nav-menu a:hover {
+            color: #666;
+        }
+
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #2c2c2c;
+        }
+
+        /* Main Content */
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 5rem 2rem;
+        }
+
+        .page-title {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #e5e5e5;
+            margin-bottom: 1rem;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: #b0b0b0;
+            margin-bottom: 3rem;
+        }
+
+        .datenschutz-section {
+            margin-bottom: 3rem;
+        }
+
+        .datenschutz-section h2 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: #e5e5e5;
+            margin-bottom: 1rem;
+            margin-top: 2rem;
+        }
+
+        .datenschutz-section h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #d0d0d0;
+            margin-bottom: 0.8rem;
+            margin-top: 1.5rem;
+        }
+
+        .datenschutz-section p {
+            font-size: 1.05rem;
+            line-height: 1.8;
+            color: #d0d0d0;
+            margin-bottom: 1rem;
+        }
+
+        .datenschutz-section ul {
+            margin-left: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .datenschutz-section li {
+            font-size: 1.05rem;
+            line-height: 1.8;
+            color: #d0d0d0;
+            margin-bottom: 0.5rem;
+        }
+
+        .datenschutz-section a {
+            color: #8B9DC3;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        .datenschutz-section a:hover {
+            color: #a8b8d8;
+            text-decoration: underline;
+        }
+
+        .info-box {
+            background-color: #2c2c2c;
+            padding: 1.5rem;
+            border-radius: 4px;
+            margin: 1rem 0;
+            border-left: 4px solid #8B9DC3;
+        }
+
+        .info-box p {
+            margin-bottom: 0.5rem;
+        }
+
+        /* Footer */
+        footer {
+            background-color: #2c2c2c;
+            border-top: 1px solid #4a4a4a;
+            padding: 3rem 2rem;
+            margin-top: 4rem;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .footer-content h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #e5e5e5;
+            margin-bottom: 1.5rem;
+            letter-spacing: 1px;
+        }
+
+        .footer-info {
+            margin: 1rem 0;
+            line-height: 1.8;
+        }
+
+        .footer-info p {
+            font-size: 0.95rem;
+            color: #c0c0c0;
+            margin: 0.3rem 0;
+        }
+
+        .footer-info a {
+            color: #c0c0c0;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        .footer-info a:hover {
+            color: #e5e5e5;
+            text-decoration: underline;
+        }
+
+        .footer-bottom {
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #4a4a4a;
+            font-size: 0.85rem;
+            color: #888;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+        }
+
+        .footer-links a {
+            color: #888;
+            text-decoration: none;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .menu-toggle {
+                display: block;
+            }
+
+            .nav-menu {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background-color: #fff;
+                flex-direction: column;
+                padding: 1rem 2rem;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+                gap: 1rem;
+                display: none;
+            }
+
+            .nav-menu.active {
+                display: flex;
+            }
+
+            .page-title {
+                font-size: 2rem;
+            }
+
+            .container {
+                padding: 3rem 1.5rem;
+            }
+
+            .footer-links {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .page-title {
+                font-size: 1.8rem;
+            }
+
+            .container {
+                padding: 2rem 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <nav>
+            <a href="cae-start.html" class="logo">CAE Car Solutions</a>
+            <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+            <ul class="nav-menu" id="navMenu">
+                <li><a href="cae-start.html">Start</a></li>
+                <li><a href="cae-about.html">Über uns</a></li>
+                <li><a href="cae-impressum.html">Impressum</a></li>
+                <li><a href="cae-datenschutz.html">Datenschutz</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container">
+        <h1 class="page-title">Datenschutzerklärung</h1>
+        <p class="subtitle">Gültig ab 1. September 2023 gemäss neuem Schweizer Datenschutzgesetz (nDSG)</p>
+
+        <!-- Einleitung -->
+        <section class="datenschutz-section">
+            <p>Der Schutz Ihrer persönlichen Daten ist uns ein wichtiges Anliegen. In dieser Datenschutzerklärung informieren wir Sie darüber, welche personenbezogenen Daten wir bei Ihrem Besuch auf unserer Website erheben und wie wir diese verwenden.</p>
+            <p>Diese Datenschutzerklärung gilt für die Website von CAE Car Solutions GmbH und richtet sich nach dem schweizerischen Datenschutzgesetz (DSG).</p>
+        </section>
+
+        <!-- Verantwortliche Stelle -->
+        <section class="datenschutz-section">
+            <h2>1. Verantwortliche Stelle</h2>
+            <div class="info-box">
+                <p><strong>CAE Car Solutions GmbH</strong></p>
+                <p>Elias Canellos</p>
+                <p>Weidliweg 8</p>
+                <p>8909 Zwillikon</p>
+                <p>Schweiz</p>
+                <p>Tel: +41 79 911 01 36</p>
+                <p>E-Mail: <a href="mailto:info@cae-carsolutions.ch">info@cae-carsolutions.ch</a></p>
+            </div>
+            <p>Bei Fragen zum Datenschutz können Sie sich jederzeit an die oben genannte Adresse wenden.</p>
+        </section>
+
+        <!-- Erhebung und Verarbeitung -->
+        <section class="datenschutz-section">
+            <h2>2. Erhebung und Verarbeitung personenbezogener Daten</h2>
+            
+            <h3>2.1 Zugriffsdaten und Logfiles</h3>
+            <p>Bei jedem Zugriff auf unsere Website werden automatisch folgende Daten in sogenannten Server-Logfiles gespeichert:</p>
+            <ul>
+                <li>IP-Adresse des anfragenden Geräts</li>
+                <li>Datum und Uhrzeit des Zugriffs</li>
+                <li>Name und URL der abgerufenen Datei</li>
+                <li>Website, von der aus der Zugriff erfolgt (Referrer-URL)</li>
+                <li>Verwendeter Browser und ggf. das Betriebssystem Ihres Rechners</li>
+                <li>Name Ihres Internet-Access-Providers</li>
+            </ul>
+            <p><strong>Zweck der Datenverarbeitung:</strong> Diese Daten werden benötigt, um die Website korrekt auszuliefern, die Stabilität und Sicherheit unseres Systems zu gewährleisten und zur Optimierung unseres Angebots.</p>
+            <p><strong>Rechtsgrundlage:</strong> Berechtigte Interessen (Art. 6 Abs. 1 DSG)</p>
+            <p><strong>Speicherdauer:</strong> Die Logfiles werden nach maximal 30 Tagen gelöscht.</p>
+
+            <h3>2.2 Kontaktaufnahme per E-Mail oder Telefon</h3>
+            <p>Wenn Sie uns per E-Mail oder Telefon kontaktieren, werden die von Ihnen mitgeteilten Daten (Name, E-Mail-Adresse, Telefonnummer, Ihr Anliegen) von uns gespeichert, um Ihre Anfrage zu bearbeiten.</p>
+            <p><strong>Zweck der Datenverarbeitung:</strong> Bearbeitung Ihrer Anfrage und Kundenkommunikation</p>
+            <p><strong>Rechtsgrundlage:</strong> Einwilligung und berechtigte Interessen</p>
+            <p><strong>Speicherdauer:</strong> Die Daten werden gelöscht, sobald sie für die Erreichung des Zwecks ihrer Erhebung nicht mehr erforderlich sind, in der Regel nach Abschluss der Kommunikation.</p>
+        </section>
+
+        <!-- Google Maps -->
+        <section class="datenschutz-section">
+            <h2>3. Google Maps</h2>
+            <p>Diese Website nutzt den Kartendienst Google Maps zur Darstellung unseres Standorts. Anbieter ist die Google Ireland Limited, Gordon House, Barrow Street, Dublin 4, Irland.</p>
+            <p>Bei der Nutzung von Google Maps werden Daten über die Nutzung der Maps-Funktionen durch Besucher an Google übertragen und auf Servern von Google gespeichert. Dies können unter anderem sein:</p>
+            <ul>
+                <li>IP-Adresse</li>
+                <li>Standortdaten</li>
+                <li>Nutzungsverhalten auf der Karte</li>
+            </ul>
+            <p><strong>Zweck:</strong> Darstellung unseres Standorts auf einer interaktiven Karte</p>
+            <p><strong>Rechtsgrundlage:</strong> Berechtigte Interessen an benutzerfreundlicher Darstellung</p>
+            <p>Weitere Informationen zum Umgang mit Nutzerdaten finden Sie in der Datenschutzerklärung von Google: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">https://policies.google.com/privacy</a></p>
+        </section>
+
+        <!-- Cookies -->
+        <section class="datenschutz-section">
+            <h2>4. Cookies</h2>
+            <p>Unsere Website verwendet derzeit keine Cookies. Sollte sich dies ändern, werden wir Sie an dieser Stelle darüber informieren.</p>
+        </section>
+
+        <!-- Weitergabe von Daten -->
+        <section class="datenschutz-section">
+            <h2>5. Weitergabe von Daten an Dritte</h2>
+            <p>Eine Übermittlung Ihrer persönlichen Daten an Dritte zu anderen als den im Folgenden aufgeführten Zwecken findet nicht statt.</p>
+            <p>Wir geben Ihre persönlichen Daten nur an Dritte weiter, wenn:</p>
+            <ul>
+                <li>Sie Ihre ausdrückliche Einwilligung dazu erteilt haben</li>
+                <li>die Weitergabe zur Erfüllung eines Vertrags erforderlich ist</li>
+                <li>eine gesetzliche Verpflichtung zur Weitergabe besteht</li>
+            </ul>
+            <p>Wir arbeiten mit folgenden externen Dienstleistern zusammen:</p>
+            <ul>
+                <li><strong>Hosting-Provider:</strong> Speicherung der Website-Daten auf Servern in der Schweiz oder EU</li>
+                <li><strong>Google Maps:</strong> Kartendarstellung (siehe Punkt 3)</li>
+            </ul>
+        </section>
+
+        <!-- Datensicherheit -->
+        <section class="datenschutz-section">
+            <h2>6. Datensicherheit</h2>
+            <p>Wir setzen technische und organisatorische Sicherheitsmassnahmen ein, um Ihre durch uns verwalteten Daten gegen zufällige oder vorsätzliche Manipulationen, Verlust, Zerstörung oder gegen den Zugriff unberechtigter Personen zu schützen.</p>
+            <p>Unsere Sicherheitsmassnahmen werden entsprechend der technologischen Entwicklung fortlaufend verbessert. Die Datenübertragung im Internet erfolgt über eine SSL-Verschlüsselung (HTTPS).</p>
+        </section>
+
+        <!-- Ihre Rechte -->
+        <section class="datenschutz-section">
+            <h2>7. Ihre Rechte</h2>
+            <p>Nach dem schweizerischen Datenschutzgesetz haben Sie folgende Rechte:</p>
+            
+            <h3>7.1 Recht auf Auskunft</h3>
+            <p>Sie haben das Recht, Auskunft über Ihre von uns verarbeiteten personenbezogenen Daten zu verlangen.</p>
+
+            <h3>7.2 Recht auf Berichtigung</h3>
+            <p>Sie haben das Recht, unverzüglich die Berichtigung unrichtiger oder Vervollständigung unvollständiger personenbezogener Daten zu verlangen.</p>
+
+            <h3>7.3 Recht auf Löschung</h3>
+            <p>Sie haben das Recht, die Löschung Ihrer personenbezogenen Daten zu verlangen, sofern keine gesetzlichen Aufbewahrungspflichten entgegenstehen.</p>
+
+            <h3>7.4 Recht auf Einschränkung der Verarbeitung</h3>
+            <p>Sie haben das Recht, die Einschränkung der Verarbeitung Ihrer personenbezogenen Daten zu verlangen.</p>
+
+            <h3>7.5 Recht auf Datenübertragbarkeit</h3>
+            <p>Sie haben das Recht, Ihre personenbezogenen Daten in einem strukturierten, gängigen und maschinenlesbaren Format zu erhalten.</p>
+
+            <h3>7.6 Widerspruchsrecht</h3>
+            <p>Sie haben das Recht, der Verarbeitung Ihrer personenbezogenen Daten aus Gründen, die sich aus Ihrer besonderen Situation ergeben, zu widersprechen.</p>
+
+            <h3>7.7 Beschwerderecht</h3>
+            <p>Sie haben das Recht, sich bei der zuständigen Aufsichtsbehörde zu beschweren:</p>
+            <div class="info-box">
+                <p><strong>Eidgenössischer Datenschutz- und Öffentlichkeitsbeauftragter (EDÖB)</strong></p>
+                <p>Feldeggweg 1</p>
+                <p>3003 Bern</p>
+                <p>Schweiz</p>
+                <p>Tel: +41 58 462 43 95</p>
+                <p>E-Mail: info@edoeb.admin.ch</p>
+                <p>Website: <a href="https://www.edoeb.admin.ch" target="_blank" rel="noopener">www.edoeb.admin.ch</a></p>
+            </div>
+
+            <p>Zur Ausübung Ihrer Rechte wenden Sie sich bitte an:</p>
+            <p><strong>E-Mail:</strong> <a href="mailto:info@cae-carsolutions.ch">info@cae-carsolutions.ch</a><br>
+            <strong>Telefon:</strong> +41 79 911 01 36</p>
+        </section>
+
+        <!-- Speicherdauer -->
+        <section class="datenschutz-section">
+            <h2>8. Speicherdauer</h2>
+            <p>Wir speichern personenbezogene Daten nur so lange, wie dies für die Erfüllung des jeweiligen Zwecks erforderlich ist oder gesetzliche Aufbewahrungsfristen bestehen.</p>
+            <ul>
+                <li><strong>Logfiles:</strong> Maximal 30 Tage</li>
+                <li><strong>Kontaktanfragen:</strong> Bis zur vollständigen Bearbeitung und Beantwortung</li>
+                <li><strong>Geschäftskorrespondenz:</strong> 10 Jahre (gesetzliche Aufbewahrungspflicht)</li>
+            </ul>
+        </section>
+
+        <!-- Keine automatisierte Entscheidungsfindung -->
+        <section class="datenschutz-section">
+            <h2>9. Automatisierte Entscheidungsfindung</h2>
+            <p>Wir setzen keine automatisierte Entscheidungsfindung oder Profiling ein.</p>
+        </section>
+
+        <!-- Links zu anderen Websites -->
+        <section class="datenschutz-section">
+            <h2>10. Links zu anderen Websites</h2>
+            <p>Unsere Website kann Links zu anderen Websites enthalten. Wir haben keinen Einfluss auf deren Inhalte und Datenschutzpraktiken. Diese Datenschutzerklärung gilt ausschliesslich für unsere Website.</p>
+        </section>
+
+        <!-- Änderungen -->
+        <section class="datenschutz-section">
+            <h2>11. Änderungen dieser Datenschutzerklärung</h2>
+            <p>Wir behalten uns vor, diese Datenschutzerklärung von Zeit zu Zeit anzupassen, um sie an geänderte Rechtslagen oder bei Änderungen unserer Dienstleistungen sowie der Datenverarbeitung anzupassen. Die aktuelle Fassung finden Sie stets auf dieser Seite.</p>
+        </section>
+
+        <p style="margin-top: 3rem; color: #888; font-size: 0.9rem;"><strong>Stand:</strong> Dezember 2024</p>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <h2>CAE CAR SOLUTIONS</h2>
+            <div class="footer-info">
+                <p><strong>Elias Canellos</strong></p>
+                <p>+41 79 911 01 36 | <a href="mailto:info@cae-carsolutions.ch">info@cae-carsolutions.ch</a></p>
+                <p>Weidliweg 8, 8909 Affoltern am Albis, Schweiz</p>
+            </div>
+            <div class="footer-bottom">
+                <div class="footer-links">
+                    <a href="cae-impressum.html">Impressum</a>
+                    <a href="cae-datenschutz.html">Datenschutz</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        function toggleMenu() {
+            const navMenu = document.getElementById('navMenu');
+            navMenu.classList.toggle('active');
+        }
+
+        // Close menu when clicking on a link
+        document.querySelectorAll('.nav-menu a').forEach(link => {
+            link.addEventListener('click', () => {
+                document.getElementById('navMenu').classList.remove('active');
+            });
+        });
+    </script>
+</body>
+</html>

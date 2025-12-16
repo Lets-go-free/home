@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="de-CH">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Impressum | CAE Car Solutions GmbH</title>
+    <link rel="icon" type="image/png" href="cae-favicon.png">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #e5e5e5;
+            background-color: #3a3a3a;
+        }
+
+        /* Header & Navigation */
+        header {
+            background-color: #fff;
+            border-bottom: 1px solid #e5e5e5;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1.2rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #2c2c2c;
+            text-decoration: none;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-menu {
+            display: flex;
+            list-style: none;
+            gap: 2.5rem;
+        }
+
+        .nav-menu a {
+            text-decoration: none;
+            color: #2c2c2c;
+            font-size: 0.95rem;
+            font-weight: 400;
+            transition: color 0.3s;
+        }
+
+        .nav-menu a:hover {
+            color: #666;
+        }
+
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #2c2c2c;
+        }
+
+        /* Main Content */
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 5rem 2rem;
+        }
+
+        .page-title {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #e5e5e5;
+            margin-bottom: 3rem;
+        }
+
+        .impressum-section {
+            margin-bottom: 3rem;
+        }
+
+        .impressum-section h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #e5e5e5;
+            margin-bottom: 1rem;
+            border-bottom: 2px solid #4a4a4a;
+            padding-bottom: 0.5rem;
+        }
+
+        .impressum-section p {
+            font-size: 1.05rem;
+            line-height: 1.8;
+            color: #d0d0d0;
+            margin-bottom: 0.8rem;
+        }
+
+        .impressum-section a {
+            color: #8B9DC3;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        .impressum-section a:hover {
+            color: #a8b8d8;
+            text-decoration: underline;
+        }
+
+        .info-box {
+            background-color: #2c2c2c;
+            padding: 1.5rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+        }
+
+        /* Footer */
+        footer {
+            background-color: #2c2c2c;
+            border-top: 1px solid #4a4a4a;
+            padding: 3rem 2rem;
+            margin-top: 4rem;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .footer-content h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #e5e5e5;
+            margin-bottom: 1.5rem;
+            letter-spacing: 1px;
+        }
+
+        .footer-info {
+            margin: 1rem 0;
+            line-height: 1.8;
+        }
+
+        .footer-info p {
+            font-size: 0.95rem;
+            color: #c0c0c0;
+            margin: 0.3rem 0;
+        }
+
+        .footer-info a {
+            color: #c0c0c0;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        .footer-info a:hover {
+            color: #e5e5e5;
+            text-decoration: underline;
+        }
+
+        .footer-bottom {
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #4a4a4a;
+            font-size: 0.85rem;
+            color: #888;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .menu-toggle {
+                display: block;
+            }
+
+            .nav-menu {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background-color: #fff;
+                flex-direction: column;
+                padding: 1rem 2rem;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+                gap: 1rem;
+                display: none;
+            }
+
+            .nav-menu.active {
+                display: flex;
+            }
+
+            .page-title {
+                font-size: 2rem;
+            }
+
+            .container {
+                padding: 3rem 1.5rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .page-title {
+                font-size: 1.8rem;
+            }
+
+            .container {
+                padding: 2rem 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <nav>
+            <a href="cae-start.html" class="logo">CAE Car Solutions</a>
+            <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+            <ul class="nav-menu" id="navMenu">
+                <li><a href="cae-start.html">Start</a></li>
+                <li><a href="cae-about.html">Über uns</a></li>
+                <li><a href="cae-impressum.html">Impressum</a></li>
+                <li><a href="cae-datenschutz.html">Datenschutz</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container">
+        <h1 class="page-title">Impressum</h1>
+
+        <!-- Angaben gemäss Art. 3 Abs. 1 UWG -->
+        <section class="impressum-section">
+            <h2>Angaben zum Unternehmen</h2>
+            <div class="info-box">
+                <p><strong>Firma:</strong> CAE Car Solutions GmbH</p>
+                <p><strong>Inhaber und Geschäftsführer:</strong> Elias Canellos</p>
+                <p><strong>Adresse:</strong> Weidliweg 8, 8909 Zwillikon, Schweiz</p>
+                <p><strong>Telefon:</strong> +41 79 911 01 36</p>
+                <p><strong>E-Mail:</strong> <a href="mailto:info@cae-carsolutions.ch">info@cae-carsolutions.ch</a></p>
+            </div>
+        </section>
+
+        <!-- Handelsregistereintrag -->
+        <section class="impressum-section">
+            <h2>Handelsregistereintrag</h2>
+            <p><strong>Eingetragen im Handelsregister des Kantons:</strong> Zürich</p>
+            <p><strong>UID (Unternehmens-Identifikationsnummer):</strong> CHE-XXX.XXX.XXX</p>
+            <p><em>Hinweis: Bitte UID-Nummer ergänzen</em></p>
+        </section>
+
+        <!-- Mehrwertsteuer -->
+        <section class="impressum-section">
+            <h2>Mehrwertsteuer</h2>
+            <p><strong>MWST-Nummer:</strong> CHE-XXX.XXX.XXX MWST</p>
+            <p><em>Hinweis: Falls MWST-pflichtig, bitte Nummer ergänzen</em></p>
+        </section>
+
+        <!-- Berufshaftpflicht -->
+        <section class="impressum-section">
+            <h2>Berufshaftpflichtversicherung</h2>
+            <p>CAE Car Solutions GmbH verfügt über eine Berufshaftpflichtversicherung.</p>
+        </section>
+
+        <!-- Aufsichtsbehörde -->
+        <section class="impressum-section">
+            <h2>Zuständige Aufsichtsbehörde</h2>
+            <p><strong>Verband:</strong> Auto Gewerbe Verband Schweiz (AGVS)</p>
+            <p><strong>Berufsbezeichnung:</strong> Automobilgewerbe / Garage</p>
+            <p><strong>Berufsrechtliche Regelungen:</strong> Automobilgewerbeordnung (AGO)</p>
+        </section>
+
+        <!-- Haftungsausschluss -->
+        <section class="impressum-section">
+            <h2>Haftungsausschluss</h2>
+            <p>Der Autor übernimmt keinerlei Gewähr hinsichtlich der inhaltlichen Richtigkeit, Genauigkeit, Aktualität, Zuverlässigkeit und Vollständigkeit der Informationen.</p>
+            <p>Haftungsansprüche gegen den Autor wegen Schäden materieller oder immaterieller Art, welche aus dem Zugriff oder der Nutzung bzw. Nichtnutzung der veröffentlichten Informationen, durch Missbrauch der Verbindung oder durch technische Störungen entstanden sind, werden ausgeschlossen.</p>
+            <p>Alle Angebote sind unverbindlich. Der Autor behält es sich ausdrücklich vor, Teile der Seiten oder das gesamte Angebot ohne besondere Ankündigung zu verändern, zu ergänzen, zu löschen oder die Veröffentlichung zeitweise oder endgültig einzustellen.</p>
+        </section>
+
+        <!-- Haftung für Links -->
+        <section class="impressum-section">
+            <h2>Haftung für Links</h2>
+            <p>Verweise und Links auf Webseiten Dritter liegen ausserhalb unseres Verantwortungsbereichs. Es wird jegliche Verantwortung für solche Webseiten abgelehnt. Der Zugriff und die Nutzung solcher Webseiten erfolgen auf eigene Gefahr des Nutzers oder der Nutzerin.</p>
+        </section>
+
+        <!-- Urheberrechte -->
+        <section class="impressum-section">
+            <h2>Urheberrechte</h2>
+            <p>Die Urheber- und alle anderen Rechte an Inhalten, Bildern, Fotos oder anderen Dateien auf der Website gehören ausschliesslich der Firma CAE Car Solutions GmbH oder den speziell genannten Rechtsinhabern. Für die Reproduktion jeglicher Elemente ist die schriftliche Zustimmung der Urheberrechtsträger im Voraus einzuholen.</p>
+        </section>
+
+        <!-- Datenschutz -->
+        <section class="impressum-section">
+            <h2>Datenschutz</h2>
+            <p>Gestützt auf Artikel 13 der schweizerischen Bundesverfassung und die datenschutzrechtlichen Bestimmungen des Bundes (Datenschutzgesetz, DSG) hat jede Person Anspruch auf Schutz ihrer Privatsphäre sowie auf Schutz vor Missbrauch ihrer persönlichen Daten. Wir halten diese Bestimmungen ein. Persönliche Daten werden streng vertraulich behandelt und weder an Dritte verkauft noch weiter gegeben.</p>
+            <p>In enger Zusammenarbeit mit unseren Hosting-Providern bemühen wir uns, die Datenbanken so gut wie möglich vor fremden Zugriffen, Verlusten, Missbrauch oder vor Fälschung zu schützen.</p>
+            <p>Beim Zugriff auf unsere Webseiten werden folgende Daten in Logfiles gespeichert: IP-Adresse, Datum, Uhrzeit, Browser-Anfrage und allg. übertragene Informationen zum Betriebssystem resp. Browser. Diese Nutzungsdaten bilden die Basis für statistische, anonyme Auswertungen, so dass Trends erkennbar sind, anhand derer wir unsere Angebote entsprechend verbessern können.</p>
+        </section>
+
+        <!-- Kontakt -->
+        <section class="impressum-section">
+            <h2>Kontakt</h2>
+            <p>Bei Fragen, Anregungen oder Beanstandungen können Sie sich jederzeit an uns wenden:</p>
+            <div class="info-box">
+                <p><strong>CAE Car Solutions GmbH</strong></p>
+                <p>Elias Canellos</p>
+                <p>Weidliweg 8</p>
+                <p>8909 Zwillikon</p>
+                <p>Schweiz</p>
+                <p>Tel: +41 79 911 01 36</p>
+                <p>E-Mail: <a href="mailto:info@cae-carsolutions.ch">info@cae-carsolutions.ch</a></p>
+            </div>
+        </section>
+
+        <p style="margin-top: 3rem; color: #888; font-size: 0.9rem;">Stand: Dezember 2024</p>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <h2>CAE CAR SOLUTIONS</h2>
+            <div class="footer-info">
+                <p><strong>Elias Canellos</strong></p>
+                <p>+41 79 911 01 36 | <a href="mailto:info@cae-carsolutions.ch">info@cae-carsolutions.ch</a></p>
+                <p>Weidliweg 8, 8909 Affoltern am Albis, Schweiz</p>
+            </div>
+            <div class="footer-bottom">
+                <p><a href="cae-impressum.html" style="color: #888; text-decoration: none;">Impressum</a> | <a href="cae-datenschutz.html" style="color: #888; text-decoration: none;">Datenschutz</a></p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        function toggleMenu() {
+            const navMenu = document.getElementById('navMenu');
+            navMenu.classList.toggle('active');
+        }
+
+        // Close menu when clicking on a link
+        document.querySelectorAll('.nav-menu a').forEach(link => {
+            link.addEventListener('click', () => {
+                document.getElementById('navMenu').classList.remove('active');
+            });
+        });
+    </script>
+</body>
+</html>
