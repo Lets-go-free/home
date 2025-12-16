@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="de-CH">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Über uns | CAE Car Solutions GmbH</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #e5e5e5;
+            background-color: #3a3a3a;
+        }
+
+        /* Header & Navigation */
+        header {
+            background-color: #fff;
+            border-bottom: 1px solid #e5e5e5;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1.2rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #2c2c2c;
+            text-decoration: none;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-menu {
+            display: flex;
+            list-style: none;
+            gap: 2.5rem;
+        }
+
+        .nav-menu a {
+            text-decoration: none;
+            color: #2c2c2c;
+            font-size: 0.95rem;
+            font-weight: 400;
+            transition: color 0.3s;
+        }
+
+        .nav-menu a:hover {
+            color: #666;
+        }
+
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #2c2c2c;
+        }
+
+        /* Main Content */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 5rem 2rem;
+        }
+
+        .page-title {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #e5e5e5;
+            margin-bottom: 3rem;
+            text-align: center;
+        }
+
+        /* About Section */
+        .about-text {
+            max-width: 900px;
+            margin: 0 auto 5rem;
+            font-size: 1.05rem;
+            line-height: 1.8;
+            color: #d0d0d0;
+        }
+
+        .about-text p {
+            margin-bottom: 1.5rem;
+        }
+
+        /* Team Section */
+        .team-section {
+            margin-bottom: 5rem;
+        }
+
+        .team-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 3rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .team-member {
+            text-align: center;
+        }
+
+        .team-member img {
+            width: 100%;
+            max-width: 251px;
+            height: 314px;
+            object-fit: cover;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+        }
+
+        .team-member h3 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #e5e5e5;
+            margin-bottom: 0.3rem;
+        }
+
+        .team-member p {
+            font-size: 0.95rem;
+            color: #b0b0b0;
+        }
+
+        /* Workshop Gallery Section */
+        .workshop-section {
+            margin-bottom: 5rem;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #e5e5e5;
+            margin-bottom: 3rem;
+            text-align: center;
+        }
+
+        .workshop-gallery {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+
+        .gallery-item {
+            position: relative;
+            overflow: hidden;
+            aspect-ratio: 3/2;
+            border-radius: 4px;
+        }
+
+        .gallery-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transition: transform 0.3s ease;
+        }
+
+        .gallery-item:hover img {
+            transform: scale(1.05);
+        }
+
+        /* Services Section */
+        .services-section {
+            margin-bottom: 5rem;
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .service-card {
+            background-color: #2c2c2c;
+            padding: 2rem 1.5rem;
+            border-radius: 8px;
+            text-align: left;
+        }
+
+        .service-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .service-card h3 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #e5e5e5;
+            margin-bottom: 1rem;
+        }
+
+        .service-card ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .service-card li {
+            font-size: 0.95rem;
+            color: #b0b0b0;
+            margin-bottom: 0.5rem;
+            padding-left: 1.2rem;
+            position: relative;
+        }
+
+        .service-card li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #8B9DC3;
+        }
+
+        .service-highlight {
+            background-color: #2c2c2c;
+            padding: 1.5rem 2rem;
+            border-radius: 8px;
+            text-align: center;
+            border: 2px solid #8B9DC3;
+        }
+
+        .service-highlight p {
+            font-size: 1.1rem;
+            color: #e5e5e5;
+            margin: 0;
+        }
+
+        /* AGVS Section */
+        .agvs-section {
+            margin-bottom: 5rem;
+        }
+
+        .agvs-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+        }
+
+        .agvs-image {
+            width: 100%;
+            border-radius: 4px;
+        }
+
+        .agvs-text {
+            font-size: 1.05rem;
+            line-height: 1.8;
+            color: #d0d0d0;
+        }
+
+        .agvs-text p {
+            margin-bottom: 1rem;
+        }
+
+        /* Footer */
+        footer {
+            background-color: #2c2c2c;
+            border-top: 1px solid #4a4a4a;
+            padding: 3rem 2rem;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .footer-content h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #e5e5e5;
+            margin-bottom: 1.5rem;
+            letter-spacing: 1px;
+        }
+
+        .footer-info {
+            margin: 1rem 0;
+            line-height: 1.8;
+        }
+
+        .footer-info p {
+            font-size: 0.95rem;
+            color: #c0c0c0;
+            margin: 0.3rem 0;
+        }
+
+        .footer-info a {
+            color: #c0c0c0;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        .footer-info a:hover {
+            color: #e5e5e5;
+            text-decoration: underline;
+        }
+
+        .footer-bottom {
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #4a4a4a;
+            font-size: 0.85rem;
+            color: #888;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .menu-toggle {
+                display: block;
+            }
+
+            .nav-menu {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background-color: #fff;
+                flex-direction: column;
+                padding: 1rem 2rem;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+                gap: 1rem;
+                display: none;
+            }
+
+            .nav-menu.active {
+                display: flex;
+            }
+
+            .page-title {
+                font-size: 2rem;
+            }
+
+            .section-title {
+                font-size: 1.8rem;
+            }
+
+            .container {
+                padding: 3rem 1.5rem;
+            }
+
+            .workshop-gallery {
+                grid-template-columns: 1fr;
+            }
+
+            .agvs-content {
+                grid-template-columns: 1fr;
+            }
+
+            .team-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .services-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .page-title {
+                font-size: 1.8rem;
+            }
+
+            .section-title {
+                font-size: 1.5rem;
+            }
+
+            .container {
+                padding: 2rem 1rem;
+            }
+
+            .services-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <nav>
+            <a href="cae-start.html" class="logo">CAE Car Solutions</a>
+            <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+            <ul class="nav-menu" id="navMenu">
+                <li><a href="cae-start.html">Start</a></li>
+                <li><a href="cae-about.html">Über uns</a></li>
+                <li><a href="cae-impressum.html">Impressum</a></li>
+                <li><a href="cae-datenschutz.html">Datenschutz</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container">
+        <h1 class="page-title">Über uns</h1>
+
+        <!-- About Text -->
+        <div class="about-text">
+            <p>Mein Name ist Elias Canellos, und ich habe viele Jahre für renommierte Marken in einer Garage in Zug gearbeitet. Diese Erfahrung hat mir nicht nur handwerkliches Können, sondern auch ein tiefes Verständnis für Qualität und Kundenservice vermittelt.</p>
+            
+            <p>Seit Anfang 2025 habe ich den Schritt in die Selbstständigkeit gewagt. Meine Garage wurde frisch umgebaut und modernisiert, damit ich Ihnen ab sofort ein breites Spektrum an Dienstleistungen rund ums Auto anbieten kann.</p>
+            
+            <p>Mein Ziel ist es, jeden Kunden mit Fachwissen, Leidenschaft und individueller Betreuung zu begeistern. Egal, ob Reparatur, Wartung oder Spezialservice – Ihr Fahrzeug ist bei mir in den besten Händen.</p>
+        </div>
+
+        <!-- Team Section -->
+        <section class="team-section">
+            <div class="team-grid">
+                <div class="team-member">
+                    <img src="cae-images/team-elias.jpg" alt="Elias Canellos">
+                    <h3>Elias Canellos</h3>
+                    <p>Geschäftsführer und Inhaber</p>
+                </div>
+                <div class="team-member">
+                    <img src="cae-images/team-roman.jpg" alt="Roman Odermatt">
+                    <h3>Roman Odermatt</h3>
+                    <p>Automobilmechatroniker</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Workshop Gallery -->
+        <section class="workshop-section">
+            <h2 class="section-title">Die Werkstatt</h2>
+            <div class="workshop-gallery">
+                <div class="gallery-item">
+                    <img src="cae-images/gallery-1.jpg" alt="Werkstatt Bild 1">
+                </div>
+                <div class="gallery-item">
+                    <img src="cae-images/gallery-2.jpg" alt="Werkstatt Bild 2">
+                </div>
+                <div class="gallery-item">
+                    <img src="cae-images/gallery-3.jpg" alt="Werkstatt Bild 3">
+                </div>
+                <div class="gallery-item">
+                    <img src="cae-images/gallery-4.jpg" alt="Werkstatt Bild 4">
+                </div>
+                <div class="gallery-item">
+                    <img src="cae-images/gallery-5.jpg" alt="Werkstatt Bild 5">
+                </div>
+                <div class="gallery-item">
+                    <img src="cae-images/gallery-6.jpg" alt="Werkstatt Bild 6">
+                </div>
+                <div class="gallery-item">
+                    <img src="cae-images/gallery-7.jpg" alt="Werkstatt Bild 7">
+                </div>
+                <div class="gallery-item">
+                    <img src="cae-images/gallery-8.jpg" alt="Werkstatt Bild 8">
+                </div>
+                <div class="gallery-item">
+                    <img src="cae-images/gallery-9.jpg" alt="Werkstatt Bild 9">
+                </div>
+            </div>
+        </section>
+
+        <!-- Services Section -->
+        <section class="services-section">
+            <h2 class="section-title">Unsere Dienstleistungen</h2>
+            
+            <div class="services-grid">
+                <!-- Service & Wartung -->
+                <div class="service-card">
+                    <span class="service-icon">🚗</span>
+                    <h3>Service & Wartung</h3>
+                    <ul>
+                        <li>Ölwechsel</li>
+                        <li>Bremsen</li>
+                        <li>Reifen</li>
+                        <li>Batterie</li>
+                        <li>Klimaservice</li>
+                        <li>Inspektionen</li>
+                    </ul>
+                </div>
+
+                <!-- Reparaturen -->
+                <div class="service-card">
+                    <span class="service-icon">🔧</span>
+                    <h3>Reparaturen</h3>
+                    <ul>
+                        <li>Motor</li>
+                        <li>Getriebe</li>
+                        <li>Elektronik</li>
+                        <li>Fahrwerk</li>
+                        <li>Auspuff</li>
+                        <li>Verschleissteile</li>
+                    </ul>
+                </div>
+
+                <!-- Beratung & Abwicklung -->
+                <div class="service-card">
+                    <span class="service-icon">🎧</span>
+                    <h3>Beratung & Abwicklung</h3>
+                    <ul>
+                        <li>Versicherungsfälle</li>
+                        <li>Kaufberatung</li>
+                        <li>Zubehörverkauf</li>
+                    </ul>
+                </div>
+
+                <!-- Zusatzservices -->
+                <div class="service-card">
+                    <span class="service-icon">➕</span>
+                    <h3>Zusatzservices</h3>
+                    <ul>
+                        <li>Diagnose</li>
+                        <li>MFK-Vorbereitung</li>
+                        <li>Ersatzfahrzeug</li>
+                        <li>Pannendienst</li>
+                        <li>Fahrzeugreinigung</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Highlight Service -->
+            <div class="service-highlight">
+                <p><strong>Optional:</strong> Bring- und Holservice der Fahrzeuge – inklusive Ersatzwagen</p>
+            </div>
+        </section>
+
+        <!-- AGVS Section -->
+        <section class="agvs-section">
+            <h2 class="section-title">Auto Gewerbe Verband Schweiz</h2>
+            <div class="agvs-content">
+                <img src="cae-images/foto-agvs.jpg" alt="AGVS Logo" class="agvs-image">
+                <div class="agvs-text">
+                    <p>Als stolzes Mitglied des Auto Gewerbe Verband Schweiz (AGVS) verpflichten wir uns, die Werte, Richtlinien und hohen Qualitätsstandards des Verbands einzuhalten. Das bedeutet für unsere Kundinnen und Kunden: verlässliche Fachkompetenz, faire Beratung, transparente Arbeit und ein Service auf höchstem Niveau. Wir sind überzeugt, dass nur durch Qualität, Vertrauen und kontinuierliche Weiterbildung langfristige Zufriedenheit entsteht – genau dafür stehen wir als AGVS-Mitgliedsbetrieb.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <h2>CAE CAR SOLUTIONS</h2>
+            <div class="footer-info">
+                <p><strong>Elias Canellos</strong></p>
+                <p>+41 79 911 01 36 | <a href="mailto:info@cae-carsolutions.ch">info@cae-carsolutions.ch</a></p>
+                <p>Weidliweg 8, 8909 Affoltern am Albis, Schweiz</p>
+            </div>
+            <div class="footer-bottom">
+                <p><a href="cae-impressum.html" style="color: #888; text-decoration: none;">Impressum</a> | <a href="cae-datenschutz.html" style="color: #888; text-decoration: none;">Datenschutz</a></p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        function toggleMenu() {
+            const navMenu = document.getElementById('navMenu');
+            navMenu.classList.toggle('active');
+        }
+
+        // Close menu when clicking on a link
+        document.querySelectorAll('.nav-menu a').forEach(link => {
+            link.addEventListener('click', () => {
+                document.getElementById('navMenu').classList.remove('active');
+            });
+        });
+    </script>
+</body>
+</html>
