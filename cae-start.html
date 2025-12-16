@@ -38,8 +38,28 @@
             align-items: center;
         }
 
+        .header-text {
+            flex-grow: 1;
+            text-align: center;
+            margin: 0 2rem;
+        }
+
+        .header-text h1 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #2c2c2c;
+            margin: 0;
+            line-height: 1.2;
+        }
+
+        .header-text p {
+            font-size: 1rem;
+            color: #666;
+            margin: 0.2rem 0 0 0;
+        }
+
         .logo {
-            height: 50px;
+            height: 60px;
             display: block;
         }
 
@@ -250,6 +270,10 @@
                 display: block;
             }
 
+            .header-text {
+                display: none;
+            }
+
             .nav-menu {
                 position: absolute;
                 top: 100%;
@@ -318,6 +342,10 @@
             <a href="cae-start.html" class="logo">
                 <img src="cae-images/cae-logo-header.png" alt="CAE Car Solutions">
             </a>
+            <div class="header-text">
+                <h1>Willkommen bei CAE Car Solutions GmbH</h1>
+                <p>Ihre Experten für Auto-Reparaturen in Affoltern am Albis</p>
+            </div>
             <button class="menu-toggle" onclick="toggleMenu()">☰</button>
             <ul class="nav-menu" id="navMenu">
                 <li><a href="#start">Start</a></li>
