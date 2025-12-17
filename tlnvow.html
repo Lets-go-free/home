@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Community TLN Business DE</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.7; color: #333; background: linear-gradient(135deg, #1261A0 0%, #2776EA 50%, #58CCED 100%); min-height: 100vh; padding: 20px; }
@@ -93,6 +94,24 @@
         <!-- Aktuelles Section -->
         <div id="aktuelles" class="section">
             <h2 style="font-size: 1.6em; color: #1261A0; margin-bottom: 20px;">📰 Aktuelles</h2>
+            
+            <!-- Aktuelle Preise -->
+            <div style="background: #E3F2FD; padding: 25px; border-radius: 12px; border-left: 4px solid #1261A0; margin-bottom: 20px;">
+                <p style="margin-bottom: 15px; font-size: 1.05em;">
+                    <strong style="color: #0B4A7D;">Aktuelle Preise:</strong>
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div>
+                        <label style="display: block; color: #666; font-size: 0.9em; margin-bottom: 5px;">VOW Preis</label>
+                        <input type="text" id="vowPrice" readonly style="width: 100%; padding: 12px; border: 1px solid #BBDEFB; border-radius: 8px; background: white; font-size: 1.1em; font-weight: bold; color: #1261A0; cursor: not-allowed;">
+                    </div>
+                    <div>
+                        <label style="display: block; color: #666; font-size: 0.9em; margin-bottom: 5px;">v$ Preis</label>
+                        <input type="text" id="vusdPrice" readonly style="width: 100%; padding: 12px; border: 1px solid #BBDEFB; border-radius: 8px; background: white; font-size: 1.1em; font-weight: bold; color: #1261A0; cursor: not-allowed;">
+                    </div>
+                </div>
+            </div>
+            
             <div style="background: #E3F2FD; padding: 25px; border-radius: 12px; border-left: 4px solid #1261A0; margin-bottom: 20px;">
                 <p style="margin-bottom: 15px; font-size: 1.05em;">
                     <strong style="color: #0B4A7D;">Swap&Mint:</strong>
@@ -246,6 +265,19 @@
                     </div>
                     <a href="tlnbtcstaking.html" class="open-btn" target="_blank">Jetzt öffnen</a>
                 </div>
+
+                <!-- Calculator 3: Loan-Rückzahlung -->
+                <div class="calculator-card">
+                    <span class="calculator-icon">💰</span>
+                    <h3>Loan-Rückzahlung</h3>
+                    <p class="description">Mit dieser Berechnung siehst du, ob sich eine Rückzahlung für dich lohnt oder nicht. Egal, ob du mit neuem Geld oder mit bestehenden VOW zurückzahlen willst.</p>
+                    <div class="features">
+                        <div class="feature-item"><span class="check">✓</span> Loan-Variante</div>
+                        <div class="feature-item"><span class="check">✓</span> Rückzahlungs-Wert</div>
+                        <div class="feature-item"><span class="check">✓</span> Gewinn/Verlust</div>
+                    </div>
+                    <a href="tlnloan.html" class="open-btn" target="_blank">Jetzt öffnen</a>
+                </div>
             </div>
             <div style="text-align: center; margin-top: 30px;">
                 <a href="#top" style="display: inline-block; background: #1261A0; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.3s;">⬆ Zum Seiten-Anfang</a>
@@ -257,5 +289,69 @@
             <p style="margin-bottom: 0;"><strong>💡 Hinweis:</strong> Diese Seite wird von der Community gepflegt und stellt keine offizielle TLN Protocol Seite dar.</p>
         </div>
     </div>
+    
+    <script>
+        // Load prices from PancakeSwap V2 on-chain
+        (async () => {
+            try {
+                const RPC = "https://bsc-dataseed.binance.org/";
+                const provider = new ethers.JsonRpcProvider(RPC);
+
+                // Token Contracts
+                const VOW = "0xf585b5b4f22816baf7629aea55b701662630397b";
+                const V_DOLLAR = "0x9C23942Ca2C35e06d1d20747F33705983A18d2AB";
+
+                // PancakeSwap V2 Pools
+                const POOL_VOW_USDT = "0xc6585bc17b53792f281a9739579dd60535c1f9fb";
+                const POOL_VOW_VDOLLAR = "0xc51c99af9d5c31d0c37d028500b2b344debdf188";
+
+                const PAIR_ABI = [
+                    "function getReserves() view returns (uint112,uint112,uint32)",
+                    "function token0() view returns (address)",
+                    "function token1() view returns (address)"
+                ];
+
+                async function priceFromPool(poolAddress, baseToken) {
+                    const pair = new ethers.Contract(poolAddress, PAIR_ABI, provider);
+
+                    const [token0, token1, reserves] = await Promise.all([
+                        pair.token0(),
+                        pair.token1(),
+                        pair.getReserves()
+                    ]);
+
+                    const r0 = Number(ethers.formatUnits(reserves[0], 18));
+                    const r1 = Number(ethers.formatUnits(reserves[1], 18));
+
+                    if (token0.toLowerCase() === baseToken.toLowerCase()) return r1 / r0;
+                    if (token1.toLowerCase() === baseToken.toLowerCase()) return r0 / r1;
+
+                    throw new Error("Token nicht im Pool");
+                }
+
+                // Set loading state
+                document.getElementById('vowPrice').value = 'lädt...';
+                document.getElementById('vusdPrice').value = 'lädt...';
+
+                // VOW -> USD (direkt aus VOW/USDT)
+                const vowUsd = await priceFromPool(POOL_VOW_USDT, VOW);
+
+                // v$ -> VOW (aus VOW/v$)
+                const vDollarInVow = await priceFromPool(POOL_VOW_VDOLLAR, V_DOLLAR);
+
+                // v$ -> USD
+                const vDollarUsd = vDollarInVow * vowUsd;
+
+                // Update display
+                document.getElementById('vowPrice').value = '$' + vowUsd.toFixed(6);
+                document.getElementById('vusdPrice').value = '$' + vDollarUsd.toFixed(6);
+
+            } catch (error) {
+                console.log('Fehler beim Laden der Preise:', error);
+                document.getElementById('vowPrice').value = 'Fehler';
+                document.getElementById('vusdPrice').value = 'Fehler';
+            }
+        })();
+    </script>
 </body>
 </html>

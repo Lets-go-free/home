@@ -185,6 +185,7 @@
                     <select id="variante" onchange="calculateLoan()">
                         <option value="1:1">TLN 1:1</option>
                         <option value="1:2">TLN 1:2</option>
+                        <option value="1:4">TLN 1:4 TLNGold</option>
                         <option value="4:1">TLN 4:1</option>
                     </select>
                     <span class="hint">Wähle deine TLN-Variante</span>
@@ -398,7 +399,7 @@
             // Show/hide loan fees frame based on variant
             const loanGebuehrenFrame = document.getElementById('loanGebuehrenFrame');
             const abgezogeneGebuehrenDiv = document.getElementById('abgezogeneGebuehrenDiv');
-            if (variante === '1:2') {
+            if (variante === '1:2' || variante === '1:4') {
                 loanGebuehrenFrame.style.display = 'block';
                 abgezogeneGebuehrenDiv.style.display = 'none';
             } else {
@@ -437,6 +438,12 @@
                 // Loan-Gebühren nur bei 1:2: Erhaltene v$ * Loan-Gebühren / 100
                 loanGebuehrenBetrag = erhalteneVusd * loanGebuehren / 100;
                 abgezogeneGebuehren = 0; // Nicht verwendet bei 1:2
+            } else if (variante === '1:4') {
+                // TLN 1:4 TLNGold: Anz. TLN * 4
+                erhalteneVusd = anzTln * 4;
+                // Loan-Gebühren: Erhaltene v$ * Loan-Gebühren / 100
+                loanGebuehrenBetrag = erhalteneVusd * loanGebuehren / 100;
+                abgezogeneGebuehren = 0; // Nicht verwendet bei 1:4
             } else if (variante === '4:1') {
                 // TLN 4:1: Anz. TLN / 4 * (100 - Loan-Gebühren in %) / 100
                 erhalteneVusd = (anzTln / 4) * (100 - loanGebuehren) / 100;
