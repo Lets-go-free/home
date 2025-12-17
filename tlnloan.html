@@ -197,7 +197,7 @@
                     <span class="hint">Anzahl TLN Token</span>
                     
                     <label for="gelockteVow" style="margin-top: 15px;">Gelockte VOW</label>
-                    <input type="text" id="gelockteVow" value="" onchange="formatInputField(this)" onfocus="removeFormatting(this)" onblur="formatInputField(this)" oninput="calculateLoan()">
+                    <input type="text" id="gelockteVow" value="" onchange="formatInputField(this)" onfocus="removeFormatting(this)" onblur="formatInputField(this)" oninput="handleGelockteVowInput()">
                     <span class="hint">Anzahl gelockte VOW Token</span>
                 </div>
             </div>
@@ -275,6 +275,11 @@
 
             <div id="loanResults" class="results">
                 <h3>Ergebnis</h3>
+                
+                <!-- Hinweis: Freigabe der VOW -->
+                <div style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107; margin-bottom: 20px;">
+                    <p style="margin: 0; color: #856404; font-size: 0.95em;">⏰ Die gelockten VOW's werden 7 Tage nach Ablauf freigegeben.</p>
+                </div>
                 
                 <div class="result-box">
                     <h4>Rückzahlung</h4>
@@ -460,6 +465,44 @@
                 }
             }
             
+            // Prüfe ob beide Felder 0 sind und setze roten Rahmen auf die Eingabefelder
+            if (bezahltNum === 0 && vowNum === 0) {
+                bezahltField.style.borderColor = '#d32f2f';
+                bezahltField.style.borderWidth = '2px';
+                bezahltField.style.borderStyle = 'solid';
+                vowField.style.borderColor = '#d32f2f';
+                vowField.style.borderWidth = '2px';
+                vowField.style.borderStyle = 'solid';
+            } else {
+                // Entferne roten Rahmen wenn mindestens ein Feld > 0
+                if (bezahltNum > 0 || vowNum > 0) {
+                    bezahltField.style.borderColor = '';
+                    bezahltField.style.borderWidth = '';
+                    bezahltField.style.borderStyle = '';
+                    vowField.style.borderColor = '';
+                    vowField.style.borderWidth = '';
+                    vowField.style.borderStyle = '';
+                }
+            }
+            
+            calculateLoan();
+        }
+
+        function handleGelockteVowInput() {
+            const gelockteVowField = document.getElementById('gelockteVow');
+            let value = gelockteVowField.value.replace(/'/g, '').trim();
+            
+            // Prüfe ob Feld leer ist oder 0
+            if (value === '' || parseFloat(value) === 0 || isNaN(parseFloat(value))) {
+                gelockteVowField.style.borderColor = '#d32f2f';
+                gelockteVowField.style.borderWidth = '2px';
+                gelockteVowField.style.borderStyle = 'solid';
+            } else {
+                gelockteVowField.style.borderColor = '';
+                gelockteVowField.style.borderWidth = '';
+                gelockteVowField.style.borderStyle = '';
+            }
+            
             calculateLoan();
         }
 
@@ -596,6 +639,41 @@
             const formattedGewinnVerlustVowUsd = (gewinnVerlustVowUsd >= 0 ? '+' : '') + formatNumber(gewinnVerlustVowUsd) + ' US$';
             gewinnVerlustVowUsdElement.textContent = formattedGewinnVerlustVowUsd;
             gewinnVerlustVowUsdElement.style.color = gewinnVerlustVowUsd >= 0 ? '#2E7D32' : '#C62828';
+            
+            // Validierung: Roter Rahmen für gelockte VOW wenn leer oder 0
+            const gelockteVowField = document.getElementById('gelockteVow');
+            let gelockteVowValue = gelockteVowField.value.replace(/'/g, '').trim();
+            if (gelockteVowValue === '' || parseFloat(gelockteVowValue) === 0 || isNaN(parseFloat(gelockteVowValue))) {
+                gelockteVowField.style.borderColor = '#d32f2f';
+                gelockteVowField.style.borderWidth = '2px';
+                gelockteVowField.style.borderStyle = 'solid';
+            } else {
+                gelockteVowField.style.borderColor = '';
+                gelockteVowField.style.borderWidth = '';
+                gelockteVowField.style.borderStyle = '';
+            }
+            
+            // Validierung: Roter Rahmen für Loan-Gebühren wenn beide 0
+            const bezahltField = document.getElementById('loanGebuehrenBezahlt');
+            const vowField = document.getElementById('loanGebuehrenBezahltVow');
+            const bezahltValue = parseFloat(bezahltField.value.replace(/'/g, '')) || 0;
+            const vowValue = parseFloat(vowField.value.replace(/'/g, '')) || 0;
+            
+            if (bezahltValue === 0 && vowValue === 0) {
+                bezahltField.style.borderColor = '#d32f2f';
+                bezahltField.style.borderWidth = '2px';
+                bezahltField.style.borderStyle = 'solid';
+                vowField.style.borderColor = '#d32f2f';
+                vowField.style.borderWidth = '2px';
+                vowField.style.borderStyle = 'solid';
+            } else {
+                bezahltField.style.borderColor = '';
+                bezahltField.style.borderWidth = '';
+                bezahltField.style.borderStyle = '';
+                vowField.style.borderColor = '';
+                vowField.style.borderWidth = '';
+                vowField.style.borderStyle = '';
+            }
             
             document.getElementById('loanResults').classList.add('show');
         }
