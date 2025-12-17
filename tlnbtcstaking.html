@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TLN BTC Staking Rechner - Let's go free</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -218,23 +219,23 @@
             <div class="input-grid">
                 <div class="input-group">
                     <label for="vowAmount">Ich habe VOW</label>
-                    <input type="text" id="vowAmount" value="50'000" onchange="formatInputField(this)" onfocus="removeFormatting(this)" onblur="formatInputField(this)">
+                    <input type="text" id="vowAmount" value="50'000" onchange="formatInputField(this)" oninput="calculateStaking()" onfocus="removeFormatting(this)" onblur="formatInputField(this)">
                     <span class="hint">Anzahl VOW Token</span>
                 </div>
                 <div class="input-group">
-                    <label for="vowPrice">VOW Kurs (US$)</label>
-                    <input type="text" id="vowPrice" value="0.036" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
+                    <label for="vowPrice">Aktueller VOW Kurs (US$) aus PancakeSwap</label>
+                    <input type="text" id="vowPrice" value="0.036" onchange="formatInputFieldDecimal(this)" oninput="calculateStaking()" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
                     <span class="hint">Aktueller VOW Preis</span>
                 </div>
                 <div class="input-group">
-                    <label for="btcbPrice">BTCB Kurs (US$)</label>
-                    <input type="text" id="btcbPrice" value="92'000" onchange="formatInputField(this)" onfocus="removeFormatting(this)" onblur="formatInputField(this)">
+                    <label for="btcbPrice">Aktueller BTCB-Kurs (US$) aus PancakeSwap</label>
+                    <input type="text" id="btcbPrice" value="92'000" onchange="formatInputField(this)" oninput="calculateStaking()" onfocus="removeFormatting(this)" onblur="formatInputField(this)">
                     <span class="hint">Aktueller BTCB Preis</span>
                 </div>
                 <div class="input-group">
                     <label for="vusdPriceCurrent">v$ Kurs (US$)</label>
                     <input type="text" id="vusdPriceCurrent" value="0.75" onchange="formatInputFieldDecimal(this); updateVusdFactor();" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
-                    <span class="hint">Aktueller v$ Preis</span>
+                    <span class="hint">v$ Preis für Loan (muss bei mind. Preis: 0.75$ liegen)</span>
                 </div>
                 <div class="input-group">
                     <label for="vusdCorrectionFactor">Korrektur-Faktor (30% = Faktor 0.7)</label>
@@ -243,7 +244,7 @@
                 </div>
                 <div class="input-group">
                     <label for="vusdFactor">v$ Kurs (US$) nach Korrektur um 30% (die 30% entfallen ab 01.01.2026)</label>
-                    <input type="text" id="vusdFactor" value="0.525" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
+                    <input type="text" id="vusdFactor" value="0.525" onchange="formatInputFieldDecimal(this)" oninput="calculateStaking()" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
                     <span class="hint">für Loan massgeblicher v$ Preis (US$)</span>
                 </div>
             </div>
@@ -252,12 +253,12 @@
             <div class="input-grid">
                 <div class="input-group">
                     <label for="contractFee">Contract Fee (CF)</label>
-                    <input type="text" id="contractFee" value="0.18" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
+                    <input type="text" id="contractFee" value="0.18" onchange="formatInputFieldDecimal(this)" oninput="calculateStaking()" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
                     <span class="hint">Gebühr für Booster</span>
                 </div>
                 <div class="input-group">
                     <label for="vowPriceBooster">VOW Kurs für Booster (US$)</label>
-                    <input type="text" id="vowPriceBooster" value="0.09" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
+                    <input type="text" id="vowPriceBooster" value="0.09" onchange="formatInputFieldDecimal(this)" oninput="calculateStaking()" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
                     <span class="hint">VOW Preis bei Booster-Kauf</span>
                 </div>
             </div>
@@ -266,17 +267,15 @@
             <div class="input-grid">
                 <div class="input-group">
                     <label for="vowPriceFuture">VOW Kurs (US$)</label>
-                    <input type="text" id="vowPriceFuture" value="0.3" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
+                    <input type="text" id="vowPriceFuture" value="0.3" onchange="formatInputFieldDecimal(this)" oninput="calculateStaking()" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
                     <span class="hint">Erwarteter VOW Preis nach 372 Tagen</span>
                 </div>
                 <div class="input-group">
                     <label for="vusdPrice">v$ Kurs (US$)</label>
-                    <input type="text" id="vusdPrice" value="0.85" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
+                    <input type="text" id="vusdPrice" value="0.85" onchange="formatInputFieldDecimal(this)" oninput="calculateStaking()" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
                     <span class="hint">v$ Preis bei Rückzahlung</span>
                 </div>
             </div>
-
-            <button class="calculate-button" onclick="calculateStaking()">Berechnen</button>
 
             <div id="stakingResults" class="results">
                 <h3>Ergebnisse</h3>
@@ -553,7 +552,21 @@
         function updateVusdFactor() {
             // Berechne vusdFactor als vusdPriceCurrent * vusdCorrectionFactor
             const vusdPriceCurrent = parseFloat(document.getElementById('vusdPriceCurrent').value.replace(/'/g, ''));
-            const vusdCorrectionFactor = parseFloat(document.getElementById('vusdCorrectionFactor').value.replace(/'/g, ''));
+            
+            // Automatische Anpassung des Korrektur-Faktors ab 1.1.2026
+            const today = new Date();
+            const cutoffDate = new Date('2026-01-01');
+            let vusdCorrectionFactor;
+            
+            if (today >= cutoffDate) {
+                // Ab 1.1.2026: Faktor = 1 (keine Korrektur mehr)
+                vusdCorrectionFactor = 1.0;
+                document.getElementById('vusdCorrectionFactor').value = '1.0';
+            } else {
+                // Vor 1.1.2026: Aktuellen Wert verwenden
+                vusdCorrectionFactor = parseFloat(document.getElementById('vusdCorrectionFactor').value.replace(/'/g, ''));
+            }
+            
             if (!isNaN(vusdPriceCurrent) && !isNaN(vusdCorrectionFactor)) {
                 const newVusdFactor = vusdPriceCurrent * vusdCorrectionFactor;
                 document.getElementById('vusdFactor').value = newVusdFactor.toFixed(2);
@@ -561,8 +574,84 @@
             }
         }
 
+        // Load VOW and BTCB prices from PancakeSwap V2 on-chain
+        async function loadPricesFromPancakeSwap() {
+            try {
+                const RPC = "https://bsc-dataseed.binance.org/";
+                const provider = new ethers.JsonRpcProvider(RPC);
+
+                const VOW = "0xf585b5b4f22816baf7629aea55b701662630397b";
+                const BTCB = "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c";
+                const USDT = "0x55d398326f99059fF775485246999027B3197955";
+                const POOL_VOW_USDT = "0xc6585bc17b53792f281a9739579dd60535c1f9fb";
+                const FACTORY = "0xca143ce32fe78f1f7019d7d551a6402fc5350c73"; // PancakeSwap V2 Factory
+
+                const FACTORY_ABI = ["function getPair(address tokenA, address tokenB) external view returns (address pair)"];
+                const PAIR_ABI = [
+                    "function getReserves() view returns (uint112,uint112,uint32)",
+                    "function token0() view returns (address)",
+                    "function token1() view returns (address)"
+                ];
+
+                // Load VOW price
+                const vowPair = new ethers.Contract(POOL_VOW_USDT, PAIR_ABI, provider);
+                const [vowToken0, vowToken1, vowReserves] = await Promise.all([
+                    vowPair.token0(),
+                    vowPair.token1(),
+                    vowPair.getReserves()
+                ]);
+
+                const vowR0 = Number(ethers.formatUnits(vowReserves[0], 18));
+                const vowR1 = Number(ethers.formatUnits(vowReserves[1], 18));
+
+                let vowPrice;
+                if (vowToken0.toLowerCase() === VOW.toLowerCase()) {
+                    vowPrice = vowR1 / vowR0;
+                } else {
+                    vowPrice = vowR0 / vowR1;
+                }
+                document.getElementById('vowPrice').value = vowPrice.toFixed(6);
+
+                // Load BTCB price using Factory
+                const factory = new ethers.Contract(FACTORY, FACTORY_ABI, provider);
+                const btcbPoolAddress = await factory.getPair(BTCB, USDT);
+                
+                if (btcbPoolAddress === ethers.ZeroAddress) {
+                    throw new Error("BTCB/USDT Pool existiert nicht");
+                }
+
+                const btcbPair = new ethers.Contract(btcbPoolAddress, PAIR_ABI, provider);
+                const [btcbToken0, btcbToken1, btcbReserves] = await Promise.all([
+                    btcbPair.token0(),
+                    btcbPair.token1(),
+                    btcbPair.getReserves()
+                ]);
+
+                const btcbR0 = Number(ethers.formatUnits(btcbReserves[0], 18));
+                const btcbR1 = Number(ethers.formatUnits(btcbReserves[1], 18));
+
+                let btcbPrice;
+                if (btcbToken0.toLowerCase() === BTCB.toLowerCase()) {
+                    btcbPrice = btcbR1 / btcbR0;
+                } else if (btcbToken1.toLowerCase() === BTCB.toLowerCase()) {
+                    btcbPrice = btcbR0 / btcbR1;
+                } else {
+                    throw new Error("BTCB nicht im Pool");
+                }
+
+                // Format with thousands separator
+                const btcbFormatted = Math.round(btcbPrice).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+                document.getElementById('btcbPrice').value = btcbFormatted;
+
+            } catch (error) {
+                console.log('Fehler beim Laden der Preise:', error);
+                // Keep default values if loading fails
+            }
+        }
+
         // Initialize with default calculation on page load
-        window.onload = function() {
+        window.onload = async function() {
+            await loadPricesFromPancakeSwap();
             updateVusdFactor(); // Berechne vusdFactor initial
             calculateStaking();
         };
