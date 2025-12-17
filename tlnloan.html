@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TLN Loan-Rückzahlung Rechner</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            line-height: 1.7; 
+            color: #333; 
+            background: linear-gradient(135deg, #1261A0 0%, #2776EA 50%, #58CCED 100%); 
+            min-height: 100vh; 
+            padding: 20px; 
+        }
+        .container { 
+            max-width: 900px; 
+            margin: 0 auto; 
+            background: white; 
+            border-radius: 20px; 
+            overflow: hidden; 
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3); 
+        }
+        .hero { 
+            background: linear-gradient(135deg, #1261A0 0%, #2776EA 100%); 
+            color: white; 
+            padding: 40px 40px; 
+            text-align: center; 
+        }
+        .hero h1 { 
+            font-size: 2.5em; 
+            margin-bottom: 15px; 
+            line-height: 1.2; 
+        }
+        .hero p { 
+            font-size: 1.2em; 
+            opacity: 0.95; 
+        }
+        .section { 
+            padding: 40px; 
+        }
+        .section h3 { 
+            font-size: 1.5em; 
+            color: #1261A0; 
+            margin: 30px 0 20px 0; 
+        }
+        .input-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            background: #E3F2FD;
+            padding: 25px;
+            border-radius: 12px;
+            border-left: 4px solid #1261A0;
+        }
+        .input-group label {
+            display: block;
+            font-weight: 600;
+            color: #0B4A7D;
+            margin-bottom: 10px;
+            font-size: 1em;
+        }
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #90CAF9;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+        .input-group input:focus, .input-group select:focus {
+            outline: none;
+            border-color: #1261A0;
+        }
+        .input-group .hint {
+            display: block;
+            font-size: 0.9em;
+            color: #084387;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        .calculate-button {
+            background: #1261A0;
+            color: white;
+            padding: 18px 45px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            display: block;
+            margin: 30px auto;
+        }
+        .calculate-button:hover {
+            background: #084387;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+        .results {
+            background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+            padding: 35px;
+            border-radius: 15px;
+            margin-top: 30px;
+            border-left: 5px solid #1261A0;
+            display: none;
+        }
+        .results.show {
+            display: block;
+        }
+        .results h3 {
+            color: #1261A0;
+            font-size: 1.6em;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+        .result-box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        }
+        .result-box h4 {
+            color: #1261A0;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+        .result-value {
+            font-size: 1.6em;
+            font-weight: 700;
+            color: #1261A0;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .footer-link {
+            text-align: center;
+            padding: 30px;
+            background: #f9f9f9;
+        }
+        .footer-link a {
+            color: #1261A0;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.1em;
+            transition: color 0.3s;
+        }
+        .footer-link a:hover {
+            color: #084387;
+        }
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2em; }
+            .section { padding: 25px; }
+            .input-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hero">
+            <h1>Berechnung Loan-Rückzahlung nach 372 Tagen</h1>
+            <p>Berechne deine erhaltenen v$ basierend auf TLN-Variante</p>
+        </div>
+
+        <div class="section">
+            
+            <!-- Hinweis Zahlenformat -->
+            <div style="background: #fff3cd; padding: 20px; border-radius: 10px; border-left: 4px solid #ffc107; margin-bottom: 30px;">
+                <p style="margin-bottom: 10px; font-weight: 600; color: #856404;">⚠️ Hinweis: Diese Seite verwendet Schweizer Zahlenformat.</p>
+                <p style="margin-bottom: 5px; font-size: 0.95em; color: #856404;"><strong>Tausender-Trennzeichen:</strong> Hochkomma (z.B. 50'000)</p>
+                <p style="margin-bottom: 5px; font-size: 0.95em; color: #856404;"><strong>Dezimaltrennzeichen:</strong> Punkt → wichtig für Eingabe der Kurse</p>
+                <p style="margin-bottom: 0; font-size: 0.95em; color: #856404;">Korrekt: <strong>0.3</strong> | Falsch: <strong>0,3</strong> (Kalkulation funktioniert dann nicht)</p>
+            </div>
+            
+            <h3>Eingabeparameter</h3>
+            <div class="input-grid">
+                <div class="input-group">
+                    <label for="variante">Variante</label>
+                    <select id="variante" onchange="calculateLoan()">
+                        <option value="TLNG1:1">TLN Gold 1:1</option>
+                        <option value="TLNG1:2">TLN Gold 1:2</option>
+                        <option value="TLNG1:4">TLN Gold 1:4</option>
+                        <option value="TLN+1:1">TLN+ 1:1</option>
+                        <option value="TLN+1:2">TLN+ 1:2</option>
+                        <option value="TLN+4:1">TLN+ 4:1</option>
+                    </select>
+                    <span class="hint">Wähle deine TLN-Variante</span>
+                    
+                    <label for="anzTln" style="margin-top: 15px;">Anz. TLN</label>
+                    <input type="text" id="anzTln" value="10'000" onchange="formatInputField(this)" onfocus="removeFormatting(this)" onblur="formatInputField(this)" oninput="calculateLoan()">
+                    <span class="hint">Anzahl TLN Token</span>
+                    
+                    <label for="gelockteVow" style="margin-top: 15px;">Gelockte VOW</label>
+                    <input type="text" id="gelockteVow" value="" onchange="formatInputField(this)" onfocus="removeFormatting(this)" onblur="formatInputField(this)" oninput="calculateLoan()">
+                    <span class="hint">Anzahl gelockte VOW Token</span>
+                </div>
+            </div>
+
+            <div class="input-grid">
+                <div class="input-group" style="background: #BBDEFB;">
+                    <label for="erhalteneVusd">Erhaltene v$</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <input type="text" id="erhalteneVusd" readonly style="background: #E3F2FD; cursor: not-allowed;">
+                            <span class="hint">Berechnete v$</span>
+                        </div>
+                        <div id="abgezogeneGebuehrenDiv">
+                            <input type="text" id="abgezogeneGebuehren" readonly style="background: #E3F2FD; cursor: not-allowed;">
+                            <span class="hint">Abgezogene Gebühren</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="input-group" id="rueckzahlungsGebuehrenFrame" style="background: #BBDEFB;">
+                    <label for="rueckzahlungsGebuehren">Beim Rückzahlen des Loans zu bezahlende Loan-Gebühren</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <input type="text" id="rueckzahlungsGebuehren" readonly style="background: #E3F2FD; cursor: not-allowed;">
+                            <span class="hint">Zu bezahlende Loan-Gebühren in v$</span>
+                        </div>
+                        <div>
+                            <input type="text" id="loanGebuehrenProzent" readonly style="background: #E3F2FD; cursor: not-allowed;">
+                            <span class="hint">Gebührensatz in %</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="input-group" id="loanGebuehrenFrame" style="background: #BBDEFB;">
+                    <label for="loanGebuehrenBetrag">Im Voraus zu bezahlende Loan-Gebühren</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <input type="text" id="loanGebuehrenBetrag" readonly style="background: #E3F2FD; cursor: not-allowed;">
+                            <span class="hint">In v$</span>
+                        </div>
+                        <div>
+                            <input type="text" id="loanGebuehren" readonly style="background: #E3F2FD; cursor: not-allowed;">
+                            <span class="hint">Gebührensatz in %</span>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px;">
+                        <div>
+                            <input type="text" id="loanGebuehrenBezahlt" value="0" onchange="formatInputField(this)" onfocus="removeFormatting(this)" onblur="formatInputField(this)" oninput="handleLoanGebuehrenInput('loanGebuehrenBezahlt')">
+                            <span class="hint">Bezahlt in $</span>
+                        </div>
+                        <div>
+                            <input type="text" id="loanGebuehrenBezahltVow" value="0" onchange="formatInputField(this)" onfocus="removeFormatting(this)" onblur="formatInputField(this)" oninput="handleLoanGebuehrenInput('loanGebuehrenBezahltVow')">
+                            <span class="hint">Oder mit VOW</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <h3>Eingabeparameter Loan-Rückzahlung</h3>
+            <div class="input-grid">
+                <div class="input-group">
+                    <label for="preisVow">Preis VOW</label>
+                    <input type="text" id="preisVow" value="0.30" onchange="formatDecimalField(this)" onfocus="removeFormatting(this)" onblur="formatDecimalField(this)" oninput="calculateLoan()">
+                    <span class="hint">VOW Kurs in US$</span>
+                    
+                    <label for="preisVusd" style="margin-top: 15px;">Preis v$</label>
+                    <input type="text" id="preisVusd" value="0.80" onchange="formatDecimalField(this)" onfocus="removeFormatting(this)" onblur="formatDecimalField(this)" oninput="calculateLoan()">
+                    <span class="hint">v$ Kurs in US$</span>
+                    
+                    <label for="slippage" style="margin-top: 15px;">Slippage in %</label>
+                    <input type="text" id="slippage" value="0.5" onchange="formatDecimalField(this)" onfocus="removeFormatting(this)" onblur="formatDecimalField(this)" oninput="calculateLoan()">
+                    <span class="hint">Slippage-Toleranz</span>
+                </div>
+            </div>
+
+            <div id="loanResults" class="results">
+                <h3>Ergebnis</h3>
+                
+                <div class="result-box">
+                    <h4>Rückzahlung</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div>
+                            <strong style="color: #0B4A7D;">In v$:</strong>
+                            <div class="result-value" style="font-size: 1.4em; margin: 5px 0;" id="rueckzahlungVusd">-</div>
+                        </div>
+                        <div>
+                            <strong style="color: #0B4A7D;">$-Wert:</strong>
+                            <div class="result-value" style="font-size: 1.4em; margin: 5px 0;" id="rueckzahlungUsd">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="result-box">
+                    <h4>Wert der gelockten VOW's in $</h4>
+                    <div class="result-value" id="wertGelockteVow">-</div>
+                </div>
+
+                <div class="result-box">
+                    <h4>Gewinn/Verlust bei Rückzahlung mit Fiat</h4>
+                    <div class="result-value" id="gewinnVerlust">-</div>
+                </div>
+
+                <div class="result-box">
+                    <h4>Benötigte VOW für Rückzahlung mit VOW (inkl. 1.6% v$ Burning und Slippage)</h4>
+                    <div class="result-value" id="benoetigteVow">-</div>
+                </div>
+
+                <div class="result-box">
+                    <h4>Gewinn/Verlust bei Rückzahlung mit VOW</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div>
+                            <strong style="color: #0B4A7D;">In VOW:</strong>
+                            <div class="result-value" style="font-size: 1.4em; margin: 5px 0;" id="gewinnVerlustVow">-</div>
+                        </div>
+                        <div>
+                            <strong style="color: #0B4A7D;">In $:</strong>
+                            <div class="result-value" style="font-size: 1.4em; margin: 5px 0;" id="gewinnVerlustVowUsd">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-link">
+            <a href="tlnvow.html">← Zur Hauptseite TLN Business DE 🇩🇪🇦🇹🇨🇭✌️</a>
+        </div>
+    </div>
+
+    <script>
+        // Token Contract Adressen
+        const VOW_ADDRESS = '0xf585b5b4f22816baf7629aea55b701662630397b';
+        const VUSD_ADDRESS = '0x9C23942Ca2C35e06d1d20747F33705983A18d2AB';
+        
+        // Preise von DexScreener API laden (zeigt PancakeSwap Preise)
+        async function calculateLoan() {
+            try {
+                // VOW Preis laden
+                const vowResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${VOW_ADDRESS}`);
+                const vowData = await vowResponse.json();
+                
+                // v$ Preis laden
+                const vusdResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${VUSD_ADDRESS}`);
+                const vusdData = await vusdResponse.json();
+                
+                // Ersten PancakeSwap Pair finden und Preis extrahieren
+                if (vowData.pairs && vowData.pairs.length > 0) {
+                    const vowPrice = parseFloat(vowData.pairs[0].priceUsd);
+                    if (!isNaN(vowPrice)) {
+                        document.getElementById('preisVow').value = vowPrice.toFixed(4);
+                    }
+                }
+                
+                if (vusdData.pairs && vusdData.pairs.length > 0) {
+                    const vusdPrice = parseFloat(vusdData.pairs[0].priceUsd);
+                    if (!isNaN(vusdPrice)) {
+                        document.getElementById('preisVusd').value = vusdPrice.toFixed(4);
+                    }
+                }
+                
+                // Nach dem Laden der Preise Berechnung durchführen
+                calculateLoan();
+                
+            } catch (error) {
+                console.log('Fehler beim Laden der Token-Preise:', error);
+                // Bei Fehler werden die Standard-Werte beibehalten
+            }
+        }
+
+        function formatNumber(num, decimals = 0) {
+            // Schweizer Format mit Apostroph als Tausendertrennzeichen und Punkt als Dezimaltrennzeichen
+            if (decimals > 0) {
+                const fixed = num.toFixed(decimals);
+                const parts = fixed.split('.');
+                parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+                return parts.join('.');
+            } else {
+                return Math.round(num).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+            }
+        }
+
+        function formatInputField(input) {
+            // Format input field with thousand separators (for whole numbers)
+            const value = input.value.replace(/'/g, ''); // Remove existing formatting
+            if (value && !isNaN(value)) {
+                const num = parseFloat(value);
+                const formatted = Math.round(num).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+                input.value = formatted;
+            }
+            calculateLoan();
+        }
+
+        function formatDecimalField(input) {
+            // Format decimal field - ensure dot as decimal separator
+            let value = input.value.replace(/,/g, '.'); // Replace comma with dot
+            if (value && !isNaN(value)) {
+                const num = parseFloat(value);
+                // Special handling for slippage: 1 decimal place
+                if (input.id === 'slippage') {
+                    input.value = num.toFixed(1);
+                } else {
+                    input.value = num.toString(); // Keep dot as decimal separator
+                }
+            }
+            calculateLoan();
+        }
+
+        function removeFormatting(input) {
+            // Remove formatting when focusing on input
+            input.value = input.value.replace(/'/g, '');
+        }
+
+        function handleLoanGebuehrenInput(changedFieldId) {
+            const bezahltField = document.getElementById('loanGebuehrenBezahlt');
+            const vowField = document.getElementById('loanGebuehrenBezahltVow');
+            
+            // Entferne Formatierung für Vergleich
+            let bezahltValue = bezahltField.value.replace(/'/g, '').trim();
+            let vowValue = vowField.value.replace(/'/g, '').trim();
+            
+            // Setze leere Felder auf 0
+            if (bezahltValue === '') {
+                bezahltField.value = '0';
+                bezahltValue = '0';
+            }
+            if (vowValue === '') {
+                vowField.value = '0';
+                vowValue = '0';
+            }
+            
+            const bezahltNum = parseFloat(bezahltValue);
+            const vowNum = parseFloat(vowValue);
+            
+            if (changedFieldId === 'loanGebuehrenBezahlt') {
+                // Wenn "Bezahlt in $" geändert wurde
+                if (bezahltNum > 0) {
+                    // Setze VOW-Feld auf 0 und readonly
+                    vowField.value = '0';
+                    vowField.readOnly = true;
+                    vowField.style.cursor = 'not-allowed';
+                    vowField.style.background = '#E3F2FD';
+                } else if (bezahltNum === 0) {
+                    // Wenn auf 0 gesetzt, beide Felder freigeben
+                    vowField.readOnly = false;
+                    vowField.style.cursor = '';
+                    vowField.style.background = '';
+                }
+            } else if (changedFieldId === 'loanGebuehrenBezahltVow') {
+                // Wenn "oder mit VOW" geändert wurde
+                if (vowNum > 0) {
+                    // Setze $-Feld auf 0 und readonly
+                    bezahltField.value = '0';
+                    bezahltField.readOnly = true;
+                    bezahltField.style.cursor = 'not-allowed';
+                    bezahltField.style.background = '#E3F2FD';
+                } else if (vowNum === 0) {
+                    // Wenn auf 0 gesetzt, beide Felder freigeben
+                    bezahltField.readOnly = false;
+                    bezahltField.style.cursor = '';
+                    bezahltField.style.background = '';
+                }
+            }
+            
+            calculateLoan();
+        }
+
+        function calculateLoan() {
+            // Get input values
+            const variante = document.getElementById('variante').value;
+            
+            // abgezogeneGebuehrenDiv nur bei 1:1 und 4:1 anzeigen
+            const abgezogeneGebuehrenDiv = document.getElementById('abgezogeneGebuehrenDiv');
+            if (variante === '1:2' || variante === '1:4') {
+                abgezogeneGebuehrenDiv.style.display = 'none';
+            } else {
+                abgezogeneGebuehrenDiv.style.display = 'block';
+            }
+            
+            const anzTln = parseFloat(document.getElementById('anzTln').value.replace(/'/g, ''));
+            const gelockteVow = parseFloat(document.getElementById('gelockteVow').value.replace(/'/g, '')) || 0;
+            const loanGebuehren = 18; // Fester Wert
+            const preisVow = parseFloat(document.getElementById('preisVow').value);
+            const preisVusd = parseFloat(document.getElementById('preisVusd').value);
+            const slippage = parseFloat(document.getElementById('slippage').value);
+            const loanGebuehrenBezahlt = parseFloat(document.getElementById('loanGebuehrenBezahlt').value.replace(/'/g, '')) || 0;
+            const loanGebuehrenBezahltVow = parseFloat(document.getElementById('loanGebuehrenBezahltVow').value.replace(/'/g, '')) || 0;
+
+            // Validate inputs - gelockteVow is optional
+            if (isNaN(anzTln) || isNaN(loanGebuehren)) {
+                return;
+            }
+
+            let erhalteneVusd = 0;
+            let loanGebuehrenBetrag = 0;
+            let abgezogeneGebuehren = 0;
+
+            // Calculate based on variant
+            if (variante === 'TLNG1:1' || variante === 'TLN+1:1') {
+                // TLN+ 1:1 und TLNGold 1:1: Anz. TLN * (100 - Loan-Gebühren in %) / 100
+                erhalteneVusd = anzTln * (100 - loanGebuehren) / 100;
+                loanGebuehrenBetrag = erhalteneVusd * loanGebuehren / 100;
+                abgezogeneGebuehren = anzTln * loanGebuehren / 100;
+            } else if (variante === 'TLN+1:2') {
+                // TLN+ 1:2: Anz. TLN * 2
+                erhalteneVusd = anzTln * 2;
+                loanGebuehrenBetrag = erhalteneVusd * loanGebuehren / 100;
+                abgezogeneGebuehren = 0;
+            } else if (variante === 'TLNG1:2') {
+                // TLNGold 1:2: Anz. TLN * 2
+                erhalteneVusd = anzTln * 2;
+                loanGebuehrenBetrag = erhalteneVusd * loanGebuehren / 100;
+                abgezogeneGebuehren = 0;
+            } else if (variante === 'TLNG1:4') {
+                // TLNGold 1:4: Anz. TLN * 4
+                erhalteneVusd = anzTln * 4;
+                loanGebuehrenBetrag = erhalteneVusd * loanGebuehren / 100;
+                abgezogeneGebuehren = 0;
+            } else if (variante === 'TLN+4:1') {
+                // TLN+ 4:1: Anz. TLN / 4
+                erhalteneVusd = (anzTln / 4);
+                loanGebuehrenBetrag = erhalteneVusd * loanGebuehren / 100;
+                abgezogeneGebuehren = 0;
+            }
+
+            // Beim Rückzahlen des Loans zu bezahlende Loan-Gebühren
+            // Nur bei TLN+ 4:1 und TLNG 1:2
+            let rueckzahlungsGebuehren = 0;
+            const rueckzahlungsGebuehrenFrame = document.getElementById('rueckzahlungsGebuehrenFrame');
+            if (variante === 'TLN+4:1' || variante === 'TLNG1:2') {
+                rueckzahlungsGebuehren = erhalteneVusd * loanGebuehren / 100;
+                rueckzahlungsGebuehrenFrame.style.display = 'block';
+            } else {
+                rueckzahlungsGebuehrenFrame.style.display = 'none';
+            }
+            document.getElementById('rueckzahlungsGebuehren').value = formatNumber(rueckzahlungsGebuehren) + ' v$';
+            document.getElementById('loanGebuehrenProzent').value = loanGebuehren + ' %';
+
+            // Rückzahlung in v$ = Erhaltene v$ + Abgezogene Loan-Gebühren + Rückzahlungsgebühren (falls vorhanden)
+            const rueckzahlungVusd = erhalteneVusd + abgezogeneGebuehren + rueckzahlungsGebuehren;
+            
+            // Rückzahlung $-Wert = Rückzahlung in v$ * Preis v$
+            const rueckzahlungUsd = rueckzahlungVusd * preisVusd;
+
+            // Wert der gelockten VOW's in $ = gelockte VOW * Preis VOW
+            const wertGelockteVow = gelockteVow * preisVow;
+
+            // Gewinn/Verlust bei Rückzahlung mit Fiat = Wert der gelockten VOW's - Rückzahlung $-Wert - dafür bezahlt in $
+            const gewinnVerlust = wertGelockteVow - rueckzahlungUsd - loanGebuehrenBezahlt;
+
+            // Benötigte VOW für Rückzahlung mit VOW = Rückzahlung in v$ * Preis v$ * 1.016 / Preis VOW * (100 + Slippage) / 100
+            const benoetigteVow = rueckzahlungVusd * preisVusd * 1.016 / preisVow * (100 + slippage) / 100;
+
+            // Gewinn/Verlust bei Rückzahlung mit VOW
+            // In VOW = Gelockte VOW - Benötigte VOW für Rückzahlung mit VOW - oder mit VOW
+            const gewinnVerlustVow = gelockteVow - benoetigteVow - loanGebuehrenBezahltVow;
+            
+            // In $ = In VOW * Preis VOW - dafür bezahlt in $
+            const gewinnVerlustVowUsd = gewinnVerlustVow * preisVow - loanGebuehrenBezahlt;
+
+            // Display values in input fields
+            document.getElementById('erhalteneVusd').value = formatNumber(erhalteneVusd) + ' v$';
+            document.getElementById('loanGebuehren').value = loanGebuehren + ' %';
+            document.getElementById('abgezogeneGebuehren').value = formatNumber(abgezogeneGebuehren) + ' v$';
+            
+            // Im Voraus zu bezahlende Loan-Gebühren - nur bei TLN+ 1:2 und TLNG 1:4 berechnen
+            let displayLoanGebuehrenBetrag = 0;
+            const loanGebuehrenFrame = document.getElementById('loanGebuehrenFrame');
+            if (variante === 'TLN+1:2' || variante === 'TLNG1:4') {
+                displayLoanGebuehrenBetrag = loanGebuehrenBetrag;
+                loanGebuehrenFrame.style.display = 'block';
+            } else {
+                loanGebuehrenFrame.style.display = 'none';
+            }
+            document.getElementById('loanGebuehrenBetrag').value = formatNumber(displayLoanGebuehrenBetrag) + ' v$';
+            
+            // Display results
+            document.getElementById('rueckzahlungVusd').textContent = formatNumber(rueckzahlungVusd) + ' v$';
+            document.getElementById('rueckzahlungUsd').textContent = formatNumber(rueckzahlungUsd) + ' US$';
+            document.getElementById('wertGelockteVow').textContent = formatNumber(wertGelockteVow) + ' US$';
+            
+            // Format Gewinn/Verlust with + or - sign and color
+            const gewinnVerlustElement = document.getElementById('gewinnVerlust');
+            const formattedGewinnVerlust = (gewinnVerlust >= 0 ? '+' : '') + formatNumber(gewinnVerlust) + ' US$';
+            gewinnVerlustElement.textContent = formattedGewinnVerlust;
+            gewinnVerlustElement.style.color = gewinnVerlust >= 0 ? '#2E7D32' : '#C62828';
+            
+            // Benötigte VOW
+            document.getElementById('benoetigteVow').textContent = formatNumber(benoetigteVow) + ' VOW';
+            
+            // Gewinn/Verlust bei Rückzahlung mit VOW
+            const gewinnVerlustVowElement = document.getElementById('gewinnVerlustVow');
+            const formattedGewinnVerlustVow = (gewinnVerlustVow >= 0 ? '+' : '') + formatNumber(gewinnVerlustVow) + ' VOW';
+            gewinnVerlustVowElement.textContent = formattedGewinnVerlustVow;
+            gewinnVerlustVowElement.style.color = gewinnVerlustVow >= 0 ? '#2E7D32' : '#C62828';
+            
+            const gewinnVerlustVowUsdElement = document.getElementById('gewinnVerlustVowUsd');
+            const formattedGewinnVerlustVowUsd = (gewinnVerlustVowUsd >= 0 ? '+' : '') + formatNumber(gewinnVerlustVowUsd) + ' US$';
+            gewinnVerlustVowUsdElement.textContent = formattedGewinnVerlustVowUsd;
+            gewinnVerlustVowUsdElement.style.color = gewinnVerlustVowUsd >= 0 ? '#2E7D32' : '#C62828';
+            
+            document.getElementById('loanResults').classList.add('show');
+        }
+
+
+        // Load prices from PancakeSwap V2 on-chain
+        async function loadPricesFromPancakeSwap() {
+            try {
+                const RPC = "https://bsc-dataseed.binance.org/";
+                const provider = new ethers.JsonRpcProvider(RPC);
+
+                // Token Contracts
+                const VOW = "0xf585b5b4f22816baf7629aea55b701662630397b";
+                const V_DOLLAR = "0x9C23942Ca2C35e06d1d20747F33705983A18d2AB";
+
+                // PancakeSwap V2 Pools
+                const POOL_VOW_USDT = "0xc6585bc17b53792f281a9739579dd60535c1f9fb";
+                const POOL_VOW_VDOLLAR = "0xc51c99af9d5c31d0c37d028500b2b344debdf188";
+
+                const PAIR_ABI = [
+                    "function getReserves() view returns (uint112,uint112,uint32)",
+                    "function token0() view returns (address)",
+                    "function token1() view returns (address)"
+                ];
+
+                async function priceFromPool(poolAddress, baseToken) {
+                    const pair = new ethers.Contract(poolAddress, PAIR_ABI, provider);
+
+                    const [token0, token1, reserves] = await Promise.all([
+                        pair.token0(),
+                        pair.token1(),
+                        pair.getReserves()
+                    ]);
+
+                    const r0 = Number(ethers.formatUnits(reserves[0], 18));
+                    const r1 = Number(ethers.formatUnits(reserves[1], 18));
+
+                    if (token0.toLowerCase() === baseToken.toLowerCase()) return r1 / r0;
+                    if (token1.toLowerCase() === baseToken.toLowerCase()) return r0 / r1;
+
+                    throw new Error("Token nicht im Pool");
+                }
+
+                // VOW -> USD (direkt aus VOW/USDT)
+                const vowUsd = await priceFromPool(POOL_VOW_USDT, VOW);
+
+                // v$ -> VOW (aus VOW/v$)
+                const vDollarInVow = await priceFromPool(POOL_VOW_VDOLLAR, V_DOLLAR);
+
+                // v$ -> USD
+                const vDollarUsd = vDollarInVow * vowUsd;
+
+                // Update input fields
+                document.getElementById('preisVow').value = vowUsd.toFixed(6);
+                document.getElementById('preisVusd').value = vDollarUsd.toFixed(6);
+
+            } catch (error) {
+                console.log('Fehler beim Laden der Preise von PancakeSwap:', error);
+                // Keep default values if loading fails
+            }
+        }
+
+        // Initialize with default calculation on page load
+        window.onload = async function() {
+            await loadPricesFromPancakeSwap();
+            calculateLoan();
+        };
+    </script>
+</body>
+</html>
