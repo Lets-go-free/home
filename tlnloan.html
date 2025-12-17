@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TLN Loan-Rückzahlung Rechner</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -254,8 +255,6 @@
                 </div>
             </div>
 
-            <button class="calculate-button" onclick="calculateLoan()">Berechnen</button>
-
             <div id="loanResults" class="results">
                 <h3>Ergebnis</h3>
                 
@@ -310,6 +309,45 @@
     </div>
 
     <script>
+        // Token Contract Adressen
+        const VOW_ADDRESS = '0xf585b5b4f22816baf7629aea55b701662630397b';
+        const VUSD_ADDRESS = '0x9C23942Ca2C35e06d1d20747F33705983A18d2AB';
+        
+        // Preise von DexScreener API laden (zeigt PancakeSwap Preise)
+        async function calculateLoan() {
+            try {
+                // VOW Preis laden
+                const vowResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${VOW_ADDRESS}`);
+                const vowData = await vowResponse.json();
+                
+                // v$ Preis laden
+                const vusdResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${VUSD_ADDRESS}`);
+                const vusdData = await vusdResponse.json();
+                
+                // Ersten PancakeSwap Pair finden und Preis extrahieren
+                if (vowData.pairs && vowData.pairs.length > 0) {
+                    const vowPrice = parseFloat(vowData.pairs[0].priceUsd);
+                    if (!isNaN(vowPrice)) {
+                        document.getElementById('preisVow').value = vowPrice.toFixed(4);
+                    }
+                }
+                
+                if (vusdData.pairs && vusdData.pairs.length > 0) {
+                    const vusdPrice = parseFloat(vusdData.pairs[0].priceUsd);
+                    if (!isNaN(vusdPrice)) {
+                        document.getElementById('preisVusd').value = vusdPrice.toFixed(4);
+                    }
+                }
+                
+                // Nach dem Laden der Preise Berechnung durchführen
+                calculateLoan();
+                
+            } catch (error) {
+                console.log('Fehler beim Laden der Token-Preise:', error);
+                // Bei Fehler werden die Standard-Werte beibehalten
+            }
+        }
+
         function formatNumber(num, decimals = 0) {
             // Schweizer Format mit Apostroph als Tausendertrennzeichen und Punkt als Dezimaltrennzeichen
             if (decimals > 0) {
@@ -463,8 +501,67 @@
             document.getElementById('loanResults').classList.add('show');
         }
 
+
+        // Load prices from PancakeSwap V2 on-chain
+        async function loadPricesFromPancakeSwap() {
+            try {
+                const RPC = "https://bsc-dataseed.binance.org/";
+                const provider = new ethers.JsonRpcProvider(RPC);
+
+                // Token Contracts
+                const VOW = "0xf585b5b4f22816baf7629aea55b701662630397b";
+                const V_DOLLAR = "0x9C23942Ca2C35e06d1d20747F33705983A18d2AB";
+
+                // PancakeSwap V2 Pools
+                const POOL_VOW_USDT = "0xc6585bc17b53792f281a9739579dd60535c1f9fb";
+                const POOL_VOW_VDOLLAR = "0xc51c99af9d5c31d0c37d028500b2b344debdf188";
+
+                const PAIR_ABI = [
+                    "function getReserves() view returns (uint112,uint112,uint32)",
+                    "function token0() view returns (address)",
+                    "function token1() view returns (address)"
+                ];
+
+                async function priceFromPool(poolAddress, baseToken) {
+                    const pair = new ethers.Contract(poolAddress, PAIR_ABI, provider);
+
+                    const [token0, token1, reserves] = await Promise.all([
+                        pair.token0(),
+                        pair.token1(),
+                        pair.getReserves()
+                    ]);
+
+                    const r0 = Number(ethers.formatUnits(reserves[0], 18));
+                    const r1 = Number(ethers.formatUnits(reserves[1], 18));
+
+                    if (token0.toLowerCase() === baseToken.toLowerCase()) return r1 / r0;
+                    if (token1.toLowerCase() === baseToken.toLowerCase()) return r0 / r1;
+
+                    throw new Error("Token nicht im Pool");
+                }
+
+                // VOW -> USD (direkt aus VOW/USDT)
+                const vowUsd = await priceFromPool(POOL_VOW_USDT, VOW);
+
+                // v$ -> VOW (aus VOW/v$)
+                const vDollarInVow = await priceFromPool(POOL_VOW_VDOLLAR, V_DOLLAR);
+
+                // v$ -> USD
+                const vDollarUsd = vDollarInVow * vowUsd;
+
+                // Update input fields
+                document.getElementById('preisVow').value = vowUsd.toFixed(6);
+                document.getElementById('preisVusd').value = vDollarUsd.toFixed(6);
+
+            } catch (error) {
+                console.log('Fehler beim Laden der Preise von PancakeSwap:', error);
+                // Keep default values if loading fails
+            }
+        }
+
         // Initialize with default calculation on page load
-        window.onload = function() {
+        window.onload = async function() {
+            await loadPricesFromPancakeSwap();
             calculateLoan();
         };
     </script>
