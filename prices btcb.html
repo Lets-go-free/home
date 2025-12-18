@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>BTCB Preis (USD)</title>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  color: #e5e7eb;
+  text-align: center;
+  padding: 50px;
+}
+h1 { font-size: 2rem; margin-bottom: 20px; }
+#price { font-size: 3rem; font-weight: bold; color: #22c55e; }
+</style>
+</head>
+<body>
+
+<h1>BTCB Preis (USD)</h1>
+<div id="price">Lädt…</div>
+
+<script>
+(async () => {
+const RPC = "https://bsc-dataseed.binance.org/";
+const provider = new ethers.JsonRpcProvider(RPC);
+
+const BTCB = "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c";
+const USDT = "0x55d398326f99059fF775485246999027B3197955";
+const FACTORY = "0xca143ce32fe78f1f7019d7d551a6402fc5350c73"; // PancakeSwap V2 Factory
+const FACTORY_ABI = ["function getPair(address tokenA, address tokenB) external view returns (address pair)"];
+const PAIR_ABI = [
+  "function getReserves() view returns (uint112,uint112,uint32)",
+  "function token0() view returns (address)",
+  "function token1() view returns (address)"
+];
+
+try {
+  const factory = new ethers.Contract(FACTORY, FACTORY_ABI, provider);
+  const poolAddress = await factory.getPair(BTCB, USDT);
+  if(poolAddress === ethers.ZeroAddress) throw new Error("Pool existiert nicht");
+
+  const pair = new ethers.Contract(poolAddress, PAIR_ABI, provider);
+  const [token0, token1, reserves] = await Promise.all([
+    pair.token0(), pair.token1(), pair.getReserves()
+  ]);
+
+  const r0 = Number(ethers.formatUnits(reserves[0], 18));
+  const r1 = Number(ethers.formatUnits(reserves[1], 18));
+
+  let price;
+  if(token0.toLowerCase() === BTCB.toLowerCase()) price = r1 / r0;
+  else if(token1.toLowerCase() === BTCB.toLowerCase()) price = r0 / r1;
+  else throw new Error("BTCB nicht im Pool");
+
+  document.getElementById("price").innerText = "$" + price.toFixed(2);
+
+} catch(err) {
+  console.error(err);
+  document.getElementById("price").innerText = "Fehler beim Laden";
+}
+})();
+</script>
+
+</body>
+</html>

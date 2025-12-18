@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>PancakeSwap V2 – VOW & v$ Preise (USD)</title>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  color: #e5e7eb;
+  text-align: center;
+  padding: 40px;
+}
+h1 {
+  margin-bottom: 30px;
+}
+.card {
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 20px auto;
+  width: 360px;
+  background: #020617;
+}
+.token {
+  font-size: 1.2rem;
+  color: #93c5fd;
+}
+.price {
+  font-size: 2.4rem;
+  font-weight: bold;
+  color: #22c55e;
+  margin-top: 8px;
+}
+.small {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-top: 6px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>PancakeSwap V2 – Live On-Chain Preise</h1>
+
+<div class="card">
+  <div class="token">VOW Preis (USD)</div>
+  <div id="vowUsd" class="price">lädt…</div>
+  <div class="small">Pool: VOW / USDT</div>
+</div>
+
+<div class="card">
+  <div class="token">v$ Preis (USD)</div>
+  <div id="vDollarUsd" class="price">lädt…</div>
+  <div class="small">berechnet aus VOW / v$</div>
+</div>
+
+<script>
+(async () => {
+
+const RPC = "https://bsc-dataseed.binance.org/";
+const provider = new ethers.JsonRpcProvider(RPC);
+
+// Token Contracts
+const VOW = "0xf585b5b4f22816baf7629aea55b701662630397b";
+const V_DOLLAR = "0x9C23942Ca2C35e06d1d20747F33705983A18d2AB";
+
+// PancakeSwap V2 Pools
+const POOL_VOW_USDT = "0xc6585bc17b53792f281a9739579dd60535c1f9fb";
+const POOL_VOW_VDOLLAR = "0xc51c99af9d5c31d0c37d028500b2b344debdf188";
+
+const PAIR_ABI = [
+  "function getReserves() view returns (uint112,uint112,uint32)",
+  "function token0() view returns (address)",
+  "function token1() view returns (address)"
+];
+
+async function priceFromPool(poolAddress, baseToken) {
+  const pair = new ethers.Contract(poolAddress, PAIR_ABI, provider);
+
+  const [token0, token1, reserves] = await Promise.all([
+    pair.token0(),
+    pair.token1(),
+    pair.getReserves()
+  ]);
+
+  const r0 = Number(ethers.formatUnits(reserves[0], 18));
+  const r1 = Number(ethers.formatUnits(reserves[1], 18));
+
+  if (token0.toLowerCase() === baseToken.toLowerCase()) return r1 / r0;
+  if (token1.toLowerCase() === baseToken.toLowerCase()) return r0 / r1;
+
+  throw new Error("Token nicht im Pool");
+}
+
+try {
+  // 1️⃣ VOW → USD (direkt aus VOW/USDT)
+  const vowUsd = await priceFromPool(POOL_VOW_USDT, VOW);
+
+  // 2️⃣ v$ → VOW (aus VOW/v$)
+  const vDollarInVow = await priceFromPool(POOL_VOW_VDOLLAR, V_DOLLAR);
+
+  // 3️⃣ v$ → USD
+  const vDollarUsd = vDollarInVow * vowUsd;
+
+  document.getElementById("vowUsd").innerText =
+    "$" + vowUsd.toFixed(6);
+
+  document.getElementById("vDollarUsd").innerText =
+    "$" + vDollarUsd.toFixed(6);
+
+} catch (err) {
+  console.error(err);
+  document.getElementById("vowUsd").innerText = "Fehler";
+  document.getElementById("vDollarUsd").innerText = "Fehler";
+}
+
+})();
+</script>
+
+</body>
+</html>
