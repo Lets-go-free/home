@@ -179,7 +179,7 @@
             <div class="input-group">
                 <label for="vowcollateral">Anz. VOW als Collateral</label>
                 <input type="text" id="vowcollateral" readonly>
-                <span class="hint">Wert v$ ÷ Kurs VOW</span>
+                <span class="hint">Wert v$ ÷ Kurs VOW (abzüglich 1.6% v$ Burning)</span>
             </div>
 
         </div>
@@ -263,7 +263,7 @@ function calculate() {
 
     const targetvaluev$ = stakingvalue * 2.5;
     const swapmintvaluev$ = stakingvalue * pricev$mint;
-    const vowcollateral = pricevowmint !== 0 ? swapmintvaluev$ / pricevowmint : 0;
+    const vowcollateral = pricevowmint !== 0 ? swapmintvaluev$ * 0.986 / pricevowmint : 0;
 
     const valuecollateralv$new = targetvaluev$;
     const pricevownew = vowcollateral !== 0 ? (valuecollateralv$new * pricev$new) / vowcollateral : 0;
