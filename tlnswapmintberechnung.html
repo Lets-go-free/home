@@ -117,187 +117,210 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="hero">
-            <h1>Swap&Mint: Berechnung</h1>
-            <p>Berechne deine Swap&Mint Werte und VOW-Collateral</p>
-        </div>
 
-        <!-- SWAP & MINT SECTION -->
-        <div id="swap-mint" class="section active" style="display: block; padding-top: 20px;">
-            
-            <h3>Werte Swap&Mint</h3>
-            <div class="input-grid">
-                <div class="input-group">
-                    <label for="stakingvalue">Staking-Wert in $</label>
-                    <input type="text" id="stakingvalue" value="10'000" onchange="formatInputField(this); calculate();" onfocus="removeFormatting(this)" onblur="formatInputField(this); calculate();">
-                    <span class="hint">Ursprünglicher Staking-Wert</span>
-                </div>
-                <div class="input-group">
-                    <label for="pricev$mint">Kurs v$ Swap&Mint</label>
-                    <input type="text" id="pricev$mint" value="0.75" onchange="formatInputFieldDecimal(this); calculate();" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this); calculate();">
-                    <span class="hint">Aktueller v$ Kurs</span>
-                </div>
-                <div class="input-group">
-                    <label for="pricevowmint">Kurs VOW Swap&Mint</label>
-                    <input type="text" id="pricevowmint" value="0.05" onchange="formatInputFieldDecimal(this); calculate();" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this); calculate();">
-                    <span class="hint">Aktueller VOW Kurs</span>
-                </div>
-                <div class="input-group">
-                    <label for="swapmintv$">Anz. v$ in Swap&Mint</label>
-                    <input type="text" id="swapmintv$" value="10'000" onchange="formatInputField(this); calculate();" onfocus="removeFormatting(this)" onblur="formatInputField(this); calculate();">
-                    <span class="hint">Anzahl v$ im Swap&Mint</span>
-                </div>
-                <div class="input-group">
-                    <label for="targetvaluev$">Ziel-Wert VOW-Collateral in v$</label>
-                    <input type="text" id="targetvaluev$" readonly>
-                    <span class="hint">Staking-Wert × 2.5</span>
-                </div>
-                <div class="input-group">
-                    <label for="swapmintvaluev$">Wert der v$ in Swap&Mint in $</label>
-                    <input type="text" id="swapmintvaluev$" readonly>
-                    <span class="hint">Staking-Wert × Kurs v$</span>
-                </div>
-                <div class="input-group">
-                    <label for="vowcollateral">Anz. VOW als Collateral</label>
-                    <input type="text" id="vowcollateral" readonly>
-                    <span class="hint">Wert v$ ÷ Kurs VOW</span>
-                </div>
-            </div>
-
-            <h3>Ziel-Kurse</h3>
-            <div class="input-grid">
-                <div class="input-group">
-                    <label for="pricev$new">Kurs v$</label>
-                    <input type="text" id="pricev$new" value="0.70" onchange="formatInputFieldDecimal(this); calculate();" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this); calculate();">
-                    <span class="hint">Neuer v$ Kurs</span>
-                </div>
-                <div class="input-group">
-                    <label for="pricevownew">Kurs VOW</label>
-                    <input type="text" id="pricevownew" readonly>
-                    <span class="hint">Berechneter VOW Kurs</span>
-                </div>
-                <div class="input-group">
-                    <label for="valuecollateralv$new">v$ Wert VOW Collateral</label>
-                    <input type="text" id="valuecollateralv$new" readonly>
-                    <span class="hint">= Ziel-Wert VOW-Collateral</span>
-                </div>
-            </div>
-
-            <h3>Ergebnis</h3>
-            <div class="input-grid">
-                <div class="input-group">
-                    <label for="valuevowv$result">Ich erhalte VOW im Wert von v$</label>
-                    <input type="text" id="valuevowv$result" readonly>
-                    <span class="hint">= Anz. v$ in Swap&Mint</span>
-                </div>
-                <div class="input-group">
-                    <label for="vowresult">Anz. VOW</label>
-                    <input type="text" id="vowresult" readonly>
-                    <span class="hint">VOW Collateral ÷ 2.5</span>
-                </div>
-                <div class="input-group">
-                    <label for="value$result">Wert in $</label>
-                    <input type="text" id="value$result" readonly>
-                    <span class="hint">Anz. VOW × Kurs VOW</span>
-                </div>
-                <div class="input-group">
-                    <label for="targetpricevow">Ziel Wert um Ursprungswert in $ zu haben</label>
-                    <input type="text" id="targetpricevow" readonly>
-                    <span class="hint">Staking-Wert ÷ Anz. VOW</span>
-                </div>
-            </div>
-
-        </div>
-
-        <div class="footer-link">
-            <a href="tlnvow.html">← Zur Hauptseite TLN Business DE 🇩🇪🇦🇹🇨🇭✌️</a>
-        </div>
+<div class="container">
+    <div class="hero">
+        <h1>Swap&Mint: Berechnung</h1>
+        <p>Berechne deine Swap&Mint Werte und VOW-Collateral</p>
     </div>
 
-    <script>
-        function calculate() {
-            // Get input values and remove formatting
-            const stakingvalue = parseFloat(document.getElementById('stakingvalue').value.replace(/'/g, '')) || 0;
-            const pricev$mint = parseFloat(document.getElementById('pricev$mint').value.replace(/'/g, '')) || 0;
-            const pricevowmint = parseFloat(document.getElementById('pricevowmint').value.replace(/'/g, '')) || 0;
-            const swapmintv$ = parseFloat(document.getElementById('swapmintv$').value.replace(/'/g, '')) || 0;
-            const pricev$new = parseFloat(document.getElementById('pricev$new').value.replace(/'/g, '')) || 0;
+    <div id="swap-mint" class="section active" style="display: block; padding-top: 20px;">
 
-            // Frame 1: Werte Swap&Mint - Berechnete Felder
-            const targetvaluev$ = stakingvalue * 2.5;
-            const swapmintvaluev$ = stakingvalue * pricev$mint;
-            const vowcollateral = pricevowmint !== 0 ? swapmintvaluev$ / pricevowmint : 0;
+        <h3>Werte Swap&Mint</h3>
+        <div class="input-grid">
 
-            // Frame 2: Ziel-Kurse
-            const valuecollateralv$new = targetvaluev$;
-            const pricevownew = vowcollateral !== 0 ? (valuecollateralv$new * pricev$new) / vowcollateral : 0;
+            <div class="input-group">
+                <label for="stakingvalue">Staking-Wert in $</label>
+                <input type="text" id="stakingvalue" value="10'000"
+                       onchange="formatInputField(this); calculate();"
+                       onfocus="removeFormatting(this)"
+                       onblur="formatInputField(this); calculate();">
+                <span class="hint">Ursprünglicher Staking-Wert</span>
+            </div>
 
-            // Frame 3: Ergebnis
-            const valuevowv$result = swapmintv$;
-            const vowresult = vowcollateral / 2.5;
-            const value$result = vowresult * pricevownew;
-            const targetpricevow = vowresult !== 0 ? stakingvalue / vowresult : 0;
+            <div class="input-group">
+                <label for="pricev$mint">Kurs v$ Swap&Mint</label>
+                <input type="text" id="pricev$mint" value="0.75"
+                       onfocus="removeFormatting(this)"
+                       onblur="validateAndFormatPriceVMint(); calculate();">
+                <span class="hint">v$ Kurs, muss bei mind. 0.75$ liegen</span>
+            </div>
 
-            // Display results - Frame 1
-            document.getElementById('targetvaluev$').value = formatNumberNoDecimals(targetvaluev$);
-            document.getElementById('swapmintvaluev$').value = formatNumberNoDecimals(swapmintvaluev$);
-            document.getElementById('vowcollateral').value = formatNumberNoDecimals(vowcollateral);
+            <div class="input-group">
+                <label for="pricevowmint">Kurs VOW Swap&Mint</label>
+                <input type="text" id="pricevowmint" value="0.05"
+                       onchange="formatInputFieldDecimal(this); calculate();"
+                       onfocus="removeFormatting(this)"
+                       onblur="formatInputFieldDecimal(this); calculate();">
+                <span class="hint">Aktueller VOW Kurs</span>
+            </div>
 
-            // Display results - Frame 2
-            document.getElementById('pricevownew').value = formatNumberWithDecimals(pricevownew);
-            document.getElementById('valuecollateralv$new').value = formatNumberNoDecimals(valuecollateralv$new);
+            <div class="input-group">
+                <label for="swapmintv$">Anz. v$ in Swap&Mint</label>
+                <input type="text" id="swapmintv$" value="10'000"
+                       onchange="formatInputField(this); calculate();"
+                       onfocus="removeFormatting(this)"
+                       onblur="formatInputField(this); calculate();">
+                <span class="hint">Anzahl v$ im Swap&Mint</span>
+            </div>
 
-            // Display results - Frame 3
-            document.getElementById('valuevowv$result').value = formatNumberNoDecimals(valuevowv$result);
-            document.getElementById('vowresult').value = formatNumberNoDecimals(vowresult);
-            document.getElementById('value$result').value = formatNumberNoDecimals(value$result);
-            document.getElementById('targetpricevow').value = formatNumberWithDecimals(targetpricevow);
-        }
+            <div class="input-group">
+                <label for="targetvaluev$">Ziel-Wert VOW-Collateral in v$</label>
+                <input type="text" id="targetvaluev$" readonly>
+                <span class="hint">Staking-Wert × 2.5</span>
+            </div>
 
-        function formatNumberNoDecimals(num) {
-            // Schweizer Format mit Apostroph, keine Dezimalstellen
-            const rounded = Math.round(num);
-            return rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-        }
+            <div class="input-group">
+                <label for="swapmintvaluev$">Wert der v$ in Swap&Mint in $</label>
+                <input type="text" id="swapmintvaluev$" readonly>
+                <span class="hint">Staking-Wert × Kurs v$</span>
+            </div>
 
-        function formatNumberWithDecimals(num) {
-            // Schweizer Format mit Apostroph, 2 Dezimalstellen
-            const parts = num.toFixed(2).split('.');
-            const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-            return integerPart + '.' + parts[1];
-        }
+            <div class="input-group">
+                <label for="vowcollateral">Anz. VOW als Collateral</label>
+                <input type="text" id="vowcollateral" readonly>
+                <span class="hint">Wert v$ ÷ Kurs VOW</span>
+            </div>
 
-        function formatInputField(input) {
-            // Format input field with thousand separators (for whole numbers)
-            const value = input.value.replace(/'/g, '');
-            if (value && !isNaN(value)) {
-                const num = parseFloat(value);
-                const formatted = num.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-                input.value = formatted;
-            }
-        }
+        </div>
 
-        function formatInputFieldDecimal(input) {
-            // Format input field with 2 decimal places
-            const value = input.value.replace(/'/g, '');
-            if (value && !isNaN(value)) {
-                const num = parseFloat(value);
-                const parts = num.toFixed(2).split('.');
-                const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-                input.value = integerPart + '.' + parts[1];
-            }
-        }
+        <h3>Ziel-Kurse</h3>
+        <div class="input-grid">
 
-        function removeFormatting(input) {
-            // Remove formatting when focusing on input
-            input.value = input.value.replace(/'/g, '');
-        }
+            <div class="input-group">
+                <label for="pricev$new">Kurs v$</label>
+                <input type="text" id="pricev$new" value="0.70"
+                       onchange="formatInputFieldDecimal(this); calculate();"
+                       onfocus="removeFormatting(this)"
+                       onblur="formatInputFieldDecimal(this); calculate();">
+                <span class="hint">Neuer v$ Kurs</span>
+            </div>
 
-        // Initialize with default calculation on page load
-        window.onload = function() {
-            calculate();
-        };
-    </script>
+            <div class="input-group">
+                <label for="pricevownew">Kurs VOW</label>
+                <input type="text" id="pricevownew" readonly>
+                <span class="hint">Berechneter VOW Kurs</span>
+            </div>
+
+            <div class="input-group">
+                <label for="valuecollateralv$new">v$ Wert VOW Collateral</label>
+                <input type="text" id="valuecollateralv$new" readonly>
+                <span class="hint">= Ziel-Wert VOW-Collateral</span>
+            </div>
+
+        </div>
+
+        <h3>Ergebnis</h3>
+        <div class="input-grid">
+
+            <div class="input-group">
+                <label for="valuevowv$result">Ich erhalte VOW im Wert von v$</label>
+                <input type="text" id="valuevowv$result" readonly>
+                <span class="hint">= Anz. v$ in Swap&Mint</span>
+            </div>
+
+            <div class="input-group">
+                <label for="vowresult">Anz. VOW</label>
+                <input type="text" id="vowresult" readonly>
+                <span class="hint">VOW Collateral ÷ 2.5</span>
+            </div>
+
+            <div class="input-group">
+                <label for="value$result">Wert in $</label>
+                <input type="text" id="value$result" readonly>
+                <span class="hint">Anz. VOW × Kurs VOW</span>
+            </div>
+
+            <div class="input-group">
+                <label for="targetpricevow">Ziel Wert um Ursprungswert in $ zu haben</label>
+                <input type="text" id="targetpricevow" readonly>
+                <span class="hint">Staking-Wert ÷ Anz. VOW</span>
+            </div>
+
+        </div>
+
+    </div>
+
+    <div class="footer-link">
+        <a href="tlnvow.html">← Zur Hauptseite TLN Business DE 🇩🇪🇦🇹🇨🇭✌️</a>
+    </div>
+</div>
+
+<script>
+function calculate() {
+
+    const stakingvalue = parseFloat(document.getElementById('stakingvalue').value.replace(/'/g, '')) || 0;
+
+    let pricev$mint = parseFloat(document.getElementById('pricev$mint').value.replace(/'/g, '')) || 0;
+    if (pricev$mint < 0.75) {
+        pricev$mint = 0.75;
+        document.getElementById('pricev$mint').value = '0.75';
+    }
+
+    const pricevowmint = parseFloat(document.getElementById('pricevowmint').value.replace(/'/g, '')) || 0;
+    const swapmintv$ = parseFloat(document.getElementById('swapmintv$').value.replace(/'/g, '')) || 0;
+    const pricev$new = parseFloat(document.getElementById('pricev$new').value.replace(/'/g, '')) || 0;
+
+    const targetvaluev$ = stakingvalue * 2.5;
+    const swapmintvaluev$ = stakingvalue * pricev$mint;
+    const vowcollateral = pricevowmint !== 0 ? swapmintvaluev$ / pricevowmint : 0;
+
+    const valuecollateralv$new = targetvaluev$;
+    const pricevownew = vowcollateral !== 0 ? (valuecollateralv$new * pricev$new) / vowcollateral : 0;
+
+    const valuevowv$result = swapmintv$;
+    const vowresult = vowcollateral / 2.5;
+    const value$result = vowresult * pricevownew;
+    const targetpricevow = vowresult !== 0 ? stakingvalue / vowresult : 0;
+
+    document.getElementById('targetvaluev$').value = formatNumberNoDecimals(targetvaluev$);
+    document.getElementById('swapmintvaluev$').value = formatNumberNoDecimals(swapmintvaluev$);
+    document.getElementById('vowcollateral').value = formatNumberNoDecimals(vowcollateral);
+    document.getElementById('pricevownew').value = formatNumberWithDecimals(pricevownew);
+    document.getElementById('valuecollateralv$new').value = formatNumberNoDecimals(valuecollateralv$new);
+    document.getElementById('valuevowv$result').value = formatNumberNoDecimals(valuevowv$result);
+    document.getElementById('vowresult').value = formatNumberNoDecimals(vowresult);
+    document.getElementById('value$result').value = formatNumberNoDecimals(value$result);
+    document.getElementById('targetpricevow').value = formatNumberWithDecimals(targetpricevow);
+}
+
+function formatNumberNoDecimals(num) {
+    return Math.round(num).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+}
+
+function formatNumberWithDecimals(num) {
+    const parts = num.toFixed(2).split('.');
+    return parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'") + '.' + parts[1];
+}
+
+function formatInputField(input) {
+    const value = input.value.replace(/'/g, '');
+    if (value && !isNaN(value)) {
+        input.value = parseFloat(value).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+    }
+}
+
+function formatInputFieldDecimal(input) {
+    const value = input.value.replace(/'/g, '');
+    if (value && !isNaN(value)) {
+        const num = parseFloat(value);
+        input.value = formatNumberWithDecimals(num);
+    }
+}
+
+function removeFormatting(input) {
+    input.value = input.value.replace(/'/g, '');
+}
+
+function validateAndFormatPriceVMint() {
+    const input = document.getElementById('pricev$mint');
+    let num = parseFloat(input.value.replace(/'/g, ''));
+    if (isNaN(num) || num < 0.75) num = 0.75;
+    input.value = num.toFixed(2);
+}
+
+window.onload = calculate;
+</script>
+
 </body>
 </html>
