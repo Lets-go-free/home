@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeFi-Sicherheits-Checkliste (Freebie) - Let's go free</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 50%, #C9A882 100%);
+            color: #333;
+            line-height: 1.7;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%);
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.8em;
+            margin-bottom: 15px;
+            line-height: 1.2;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .header .subtitle {
+            font-size: 1.3em;
+            opacity: 0.95;
+            margin-bottom: 10px;
+        }
+
+        .header .freebie-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin-top: 15px;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: white;
+            color: #8B7355;
+            padding: 15px 35px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 1.1em;
+            margin: 10px;
+            transition: all 0.3s;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+
+        /* Content Area */
+        .content {
+            padding: 50px 40px;
+        }
+
+        .intro-box {
+            background: #F5E6D3;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 40px;
+            border-left: 5px solid #8B7355;
+        }
+
+        .intro-box p {
+            font-size: 1.1em;
+            line-height: 1.8;
+            margin-bottom: 15px;
+        }
+
+        .warning {
+            background: rgba(255, 82, 82, 0.15);
+            border-left: 5px solid #ff5252;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .warning p {
+            font-size: 1.05em;
+            color: #333;
+        }
+
+        /* Phase Section */
+        .phase-section {
+            margin-bottom: 50px;
+            background: #f9f9f9;
+            padding: 35px;
+            border-radius: 15px;
+        }
+
+        .phase-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 30px;
+            gap: 20px;
+        }
+
+        .phase-number {
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%);
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8em;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .phase-title h2 {
+            color: #8B7355;
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .phase-title h3 {
+            color: #A0826D;
+            font-size: 1.1em;
+            font-weight: 500;
+        }
+
+        .subsection {
+            margin-bottom: 25px;
+        }
+
+        .subsection-title {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: #8B7355;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #F5E6D3;
+        }
+
+        .checklist-item {
+            display: flex;
+            align-items: flex-start;
+            padding: 12px 0;
+            gap: 15px;
+            transition: background 0.2s;
+        }
+
+        .checklist-item:hover {
+            background: rgba(245, 230, 211, 0.3);
+            padding-left: 10px;
+            margin-left: -10px;
+            border-radius: 5px;
+        }
+
+        .checkmark {
+            font-size: 1.5em;
+            color: #8B7355;
+            flex-shrink: 0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .checklist-item.checked .checkmark {
+            color: #4caf50;
+        }
+
+        .checklist-item.checked span:not(.checkmark) {
+            text-decoration: line-through;
+            opacity: 0.6;
+        }
+
+        .upgrade-box {
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 15px;
+            margin: 40px 0;
+            text-align: center;
+        }
+
+        .upgrade-box h3 {
+            font-size: 1.8em;
+            margin-bottom: 20px;
+        }
+
+        .upgrade-box p {
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            opacity: 0.95;
+        }
+
+        .upgrade-box ul {
+            list-style: none;
+            text-align: left;
+            max-width: 600px;
+            margin: 0 auto 30px;
+        }
+
+        .upgrade-box li {
+            padding: 10px 0;
+            padding-left: 30px;
+            position: relative;
+        }
+
+        .upgrade-box li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #4caf50;
+            font-weight: bold;
+            font-size: 1.3em;
+        }
+
+        /* Footer */
+        .footer {
+            background: #f5f5f5;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .footer p {
+            font-size: 1em;
+            color: #666;
+            margin: 10px 0;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .header .subtitle {
+                font-size: 1.1em;
+            }
+
+            .content {
+                padding: 40px 25px;
+            }
+
+            .phase-header {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .phase-title h2 {
+                font-size: 1.8em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🛡️ DeFi-Sicherheits-Checkliste</h1>
+            <p class="subtitle">Die wichtigsten Schritte für deinen sicheren Einstieg</p>
+            <p class="freebie-badge">✨ Kostenlose Basis-Version</p>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- Intro -->
+            <div class="intro-box">
+                <p><strong>Diese Checkliste zeigt dir die 5 wichtigsten Phasen</strong></p>
+                <p>Im DeFi bist du deine eigene Bank. Diese Checkliste führt dich durch die essentiellen Schritte für einen sicheren Einstieg.</p>
+                <p style="margin-top: 20px;"><strong>💡 Hinweis:</strong> Dies ist die Basis-Version mit den wichtigsten Punkten. Die vollständige Checkliste mit allen Details und Erklärungen gibt es im 1:1-Coaching.</p>
+            </div>
+
+            <div class="warning">
+                <p><strong>⚠️ Wichtig:</strong> Nimm dir Zeit. Überspringe keine Schritte. Deine Sicherheit geht vor.</p>
+            </div>
+
+            <!-- Phase 1 -->
+            <div class="phase-section">
+                <div class="phase-header">
+                    <div class="phase-number">1</div>
+                    <div class="phase-title">
+                        <h2>Vorbereitung</h2>
+                        <h3>BEVOR du ein Wallet erstellst</h3>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Grundwissen</div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich verstehe, was ein Wallet ist und wie es funktioniert</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich weiss, was eine Seed Phrase ist (12-24 Wörter = Zugang zu meinem Geld)</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich kenne das Prinzip: "Not your keys, not your coins"</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Sicherheitsausrüstung</div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe Papier/Notizbuch für die Seed Phrase bereit</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe einen sicheren Aufbewahrungsort (Safe oder sicheres Versteck)</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Niemals digitale Speicherung planen (kein USB, keine Cloud, kein Foto)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 2 -->
+            <div class="phase-section">
+                <div class="phase-header">
+                    <div class="phase-number">2</div>
+                    <div class="phase-title">
+                        <h2>Wallet-Erstellung</h2>
+                        <h3>Dein Zugang zum DeFi-Universum</h3>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Wallet-Wahl & Download</div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe ein etabliertes Wallet gewählt</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich lade die App NUR von der offiziellen Website/App Store herunter</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe die Download-URL überprüft (keine Phishing-Seite)</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Seed Phrase sichern (KRITISCH!)</div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich schreibe die Seed Phrase mit Stift auf Papier</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich habe KEIN Foto gemacht und NICHT digital gespeichert</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Sicherungskopie erstellt und sicher verwahrt</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 3 -->
+            <div class="phase-section">
+                <div class="phase-header">
+                    <div class="phase-number">3</div>
+                    <div class="phase-title">
+                        <h2>Erste Schritte</h2>
+                        <h3>Mit kleinen Beträgen starten</h3>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Erste Transaktion</div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich starte mit einer kleinen Test-Summe</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich überprüfe die Wallet-Adresse doppelt vor dem Senden</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich wähle das richtige Netzwerk</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 4 -->
+            <div class="phase-section">
+                <div class="phase-header">
+                    <div class="phase-number">4</div>
+                    <div class="phase-title">
+                        <h2>Schutz vor Betrug</h2>
+                        <h3>Phishing & Scams erkennen</h3>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Wichtigste Schutzregeln</div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>NIEMALS Seed Phrase an Support oder andere Personen geben</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>URLs immer genau prüfen (z.B. "uniswap" vs "unisvvap")</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Wichtige Seiten als Lesezeichen speichern</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 5 -->
+            <div class="phase-section">
+                <div class="phase-header">
+                    <div class="phase-number">5</div>
+                    <div class="phase-title">
+                        <h2>Langfristige Sicherheit</h2>
+                        <h3>Kontinuierlicher Schutz</h3>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <div class="subsection-title">✅ Regelmässige Checks</div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Ich prüfe regelmässig aktive Contract Approvals</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Seed Phrase-Backup regelmässig auf Lesbarkeit prüfen</span>
+                    </div>
+                    <div class="checklist-item" onclick="this.classList.toggle('checked')">
+                        <span class="checkmark">□</span>
+                        <span>Kontinuierlich über neue Scam-Methoden informieren</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upgrade Box -->
+            <div class="upgrade-box">
+                <h3>🚀 Möchtest du die vollständige Checkliste?</h3>
+                <p>Die Vollversion enthält über 100 detaillierte Checkpunkte mit:</p>
+                <ul>
+                    <li>Ausführliche Erklärungen zu jedem Schritt</li>
+                    <li>Konkrete Beispiele und Screenshots</li>
+                    <li>Häufige Fehler und wie du sie vermeidest</li>
+                    <li>Erweiterte Sicherheitsstrategien</li>
+                    <li>Notfallpläne und Recovery-Optionen</li>
+                    <li>Persönliche 1:1-Begleitung durch alle Phasen</li>
+                </ul>
+                <a href="https://www.letsgofree.me/index.html#angebot" class="cta-button">Zum 1:1-Coaching</a>
+            </div>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p><strong>Finanzielle Selbstbestimmung beginnt mit dem ersten Schritt.</strong></p>
+            <p style="margin-top: 20px;">
+                <a href="https://www.letsgofree.me" style="color: #8B7355; text-decoration: none; font-weight: 600;">← Zurück zur Startseite</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Checkboxen sind klickbar
+        document.querySelectorAll('.checklist-item').forEach(item => {
+            item.style.cursor = 'pointer';
+        });
+    </script>
+</body>
+</html>
