@@ -165,12 +165,6 @@
             </div>
 
             <div class="input-group">
-                <label for="targetvaluev$">Ziel-Wert VOW-Collateral in v$</label>
-                <input type="text" id="targetvaluev$" readonly>
-                <span class="hint">Staking-Wert × 2.5</span>
-            </div>
-
-            <div class="input-group">
                 <label for="swapmintvaluev$">Wert der v$ in Swap&Mint in $</label>
                 <input type="text" id="swapmintvaluev$" readonly>
                 <span class="hint">Staking-Wert × Kurs v$</span>
@@ -200,12 +194,6 @@
                 <label for="pricevownew">Kurs VOW</label>
                 <input type="text" id="pricevownew" readonly>
                 <span class="hint">2.5-facher Wert des Collateral Kauf-Preises</span>
-            </div>
-
-            <div class="input-group">
-                <label for="valuecollateralv$new">v$ Wert VOW Collateral</label>
-                <input type="text" id="valuecollateralv$new" readonly>
-                <span class="hint">= Ziel-Wert VOW-Collateral</span>
             </div>
 
         </div>
@@ -267,23 +255,20 @@ function calculate() {
     const swapmintv$ = parseFloat(document.getElementById('swapmintv$').value.replace(/'/g, '')) || 0;
     const pricev$new = parseFloat(document.getElementById('pricev$new').value.replace(/'/g, '')) || 0;
 
-    const targetvaluev$ = stakingvalue * 2.5;
     const swapmintvaluev$ = stakingvalue * pricev$mint;
     const vowcollateral = pricevowmint !== 0 ? swapmintvaluev$ * 0.986 / pricevowmint : 0;
 
-    const valuecollateralv$new = targetvaluev$;
-    const pricevownew = pricevowmint * 2.5 : 0;
+    const valuecollateralv$new = swapmintv$ * 2.5;
+    const pricevownew = pricevowmint * 2.5;
 
     const valuevowv$result = swapmintv$;
     const vowresult = vowcollateral / 2.5;
     const value$result = vowresult * pricevownew;
     const targetpricevow = vowresult !== 0 ? stakingvalue / vowresult : 0;
 
-    document.getElementById('targetvaluev$').value = formatNumberNoDecimals(targetvaluev$);
     document.getElementById('swapmintvaluev$').value = formatNumberNoDecimals(swapmintvaluev$);
     document.getElementById('vowcollateral').value = formatNumberNoDecimals(vowcollateral);
     document.getElementById('pricevownew').value = formatNumberWithDecimals(pricevownew);
-    document.getElementById('valuecollateralv$new').value = formatNumberNoDecimals(valuecollateralv$new);
     document.getElementById('valuevowv$result').value = formatNumberNoDecimals(valuevowv$result);
     document.getElementById('vowresult').value = formatNumberNoDecimals(vowresult);
     document.getElementById('value$result').value = formatNumberNoDecimals(value$result);
