@@ -199,7 +199,7 @@
             <div class="input-group">
                 <label for="pricevownew">Kurs VOW</label>
                 <input type="text" id="pricevownew" readonly>
-                <span class="hint">Berechneter VOW Kurs</span>
+                <span class="hint">2.5-facher Wert des Collateral Kauf-Preises</span>
             </div>
 
             <div class="input-group">
@@ -272,7 +272,7 @@ function calculate() {
     const vowcollateral = pricevowmint !== 0 ? swapmintvaluev$ * 0.986 / pricevowmint : 0;
 
     const valuecollateralv$new = targetvaluev$;
-    const pricevownew = vowcollateral !== 0 ? (valuecollateralv$new * pricev$new) / vowcollateral : 0;
+    const pricevownew = pricevowmint * 2.5 : 0;
 
     const valuevowv$result = swapmintv$;
     const vowresult = vowcollateral / 2.5;
