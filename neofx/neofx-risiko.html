@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>neo.FX Risiko-Rechner - Let's go free</title>
+    <link rel="stylesheet" href="css/neofx-style.css">
+</head>
+<body>
+
+<div class="container">
+    <div class="hero">
+        <h1>neo.FX Risiko-Rechner</h1>
+        <p>Berechne deine Nachzahlung um Total-Liquidation zu verhindern</p>
+    </div>
+
+    <div class="section" style="padding-top: 20px;">
+
+        <!-- Hinweis -->
+        <div class="warning-box">
+            <p><strong>⚠️ Wichtig:</strong> Diese Berechnung hilft dir, rechtzeitig eine Nachzahlung zu leisten, bevor dein Konto liquidiert wird.</p>
+        </div>
+
+        <h3>Hebel-Einstellung</h3>
+        <div class="input-grid">
+            <div class="input-group">
+                <label for="leverage">Hebel</label>
+                <select id="leverage" onchange="calculate();">
+                    <option value="24">x24</option>
+                    <option value="12">x12</option>
+                </select>
+                <span class="hint">Wähle deinen Hebel: x24 oder x12</span>
+            </div>
+        </div>
+
+        <h3>Aktuelle Position</h3>
+        <div class="input-grid">
+
+            <div class="input-group">
+                <label for="initialDeposit">Effektive Einzahlung in USD</label>
+                <input type="text" id="initialDeposit" value="1'280.15"
+                       onchange="formatInputField(this); calculate();"
+                       onfocus="removeFormatting(this)"
+                       onblur="formatInputField(this); calculate();">
+                <span class="hint">Deine ursprüngliche Einzahlung</span>
+            </div>
+
+            <div class="input-group">
+                <label for="depositWithLeverage">Einzahlung mit Hebel</label>
+                <input type="text" id="depositWithLeverage" readonly>
+                <span class="hint">Effektive Einzahlung × Hebel</span>
+            </div>
+
+            <div class="input-group">
+                <label for="currentBalance">Kontostand</label>
+                <input type="text" id="currentBalance" value="30'100"
+                       onchange="formatInputField(this); calculate();"
+                       onfocus="removeFormatting(this)"
+                       onblur="formatInputField(this); calculate();">
+                <span class="hint">Aktueller Kontostand auf MT5</span>
+            </div>
+
+            <div class="input-group">
+                <label for="balancePercent">Kontostand in %</label>
+                <input type="text" id="balancePercent" readonly>
+                <span class="hint">Kontostand ÷ Einzahlung mit Hebel</span>
+            </div>
+
+        </div>
+
+        <h3>Liquidations-Risiko</h3>
+        <div class="input-grid">
+
+            <div class="input-group">
+                <label for="maxLossPercent">Max. Verlust zur Liquidation in %</label>
+                <input type="text" id="maxLossPercent" readonly>
+                <span class="hint">5% bei x24, 10% bei x12</span>
+            </div>
+
+            <div class="input-group">
+                <label for="maxLossUSD">Max. Verlust zur Liquidation in USD</label>
+                <input type="text" id="maxLossUSD" readonly>
+                <span class="hint">Einzahlung mit Hebel × Max. Verlust %</span>
+            </div>
+
+        </div>
+
+        <div class="liquidation-warning">
+            <p>⚠️ Bei diesem Kontostand wird das Konto liquidiert und geschlossen: <span id="liquidationBalance" style="font-size: 1.2em;"></span></p>
+        </div>
+
+        <h3>Kapital aufstocken um Liquidation zu verhindern</h3>
+        <div class="input-grid">
+
+            <div class="input-group">
+                <label for="additionalDeposit">Effektive Einzahlung in USD</label>
+                <input type="text" id="additionalDeposit" value="300"
+                       onchange="formatInputField(this); calculate();"
+                       onfocus="removeFormatting(this)"
+                       onblur="formatInputField(this); calculate();">
+                <span class="hint">Betrag, den du nachzahlen möchtest</span>
+            </div>
+
+            <div class="input-group">
+                <label for="additionalWithLeverage">Einzahlung mit Hebel</label>
+                <input type="text" id="additionalWithLeverage" readonly>
+                <span class="hint">Nachzahlung × Hebel</span>
+            </div>
+
+        </div>
+
+        <h3>Neuer Saldo nach Nachzahlung</h3>
+        <div class="input-grid">
+
+            <div class="input-group">
+                <label for="totalDeposit">Effektive Einzahlung Total</label>
+                <input type="text" id="totalDeposit" readonly>
+                <span class="hint">Ursprüngliche + Nachzahlung</span>
+            </div>
+
+            <div class="input-group">
+                <label for="totalWithLeverage">Einzahlung mit Hebel Total</label>
+                <input type="text" id="totalWithLeverage" readonly>
+                <span class="hint">Total Einzahlung × Hebel</span>
+            </div>
+
+            <div class="input-group">
+                <label for="newBalance">Neuer Kontostand</label>
+                <input type="text" id="newBalance" readonly>
+                <span class="hint">Aktueller Kontostand + Nachzahlung mit Hebel</span>
+            </div>
+
+            <div class="input-group">
+                <label for="newBalancePercent">Neuer Kontostand in %</label>
+                <input type="text" id="newBalancePercent" readonly>
+                <span class="hint">Neuer Kontostand ÷ Total mit Hebel</span>
+            </div>
+
+        </div>
+
+        <div class="liquidation-warning">
+            <p>⚠️ Neuer Liquidations-Kontostand nach Aufstockung: <span id="newLiquidationBalance" style="font-size: 1.2em;"></span></p>
+        </div>
+
+    </div>
+
+    <div class="footer-link">
+        <a href="https://letsgofree.me">← Zurück zu Let's go free</a>
+    </div>
+</div>
+
+<script>
+function calculate() {
+    // Eingabewerte
+    const leverage = parseFloat(document.getElementById('leverage').value) || 24;
+    const initialDeposit = parseFloat(document.getElementById('initialDeposit').value.replace(/'/g, '')) || 0;
+    const currentBalance = parseFloat(document.getElementById('currentBalance').value.replace(/'/g, '')) || 0;
+    const additionalDeposit = parseFloat(document.getElementById('additionalDeposit').value.replace(/'/g, '')) || 0;
+
+    // Berechnungen: Aktuelle Position
+    const depositWithLeverage = initialDeposit * leverage;
+    const balancePercent = depositWithLeverage !== 0 ? (currentBalance / depositWithLeverage) : 0;
+
+    // Max. Verlust zur Liquidation
+    const maxLossPercent = leverage === 24 ? 0.05 : 0.10;
+    const maxLossUSD = depositWithLeverage * maxLossPercent;
+
+    // Liquidations-Kontostand
+    const liquidationBalance = depositWithLeverage - maxLossUSD;
+
+    // Nachzahlung mit Hebel
+    const additionalWithLeverage = additionalDeposit * leverage;
+
+    // Neuer Saldo
+    const totalDeposit = initialDeposit + additionalDeposit;
+    const totalWithLeverage = totalDeposit * leverage;
+    const newBalance = currentBalance + additionalWithLeverage;
+    const newBalancePercent = totalWithLeverage !== 0 ? (newBalance / totalWithLeverage) : 0;
+
+    // Neuer Liquidations-Kontostand
+    const newLiquidationBalance = totalWithLeverage - (totalWithLeverage * maxLossPercent);
+
+    // Ausgabe
+    document.getElementById('depositWithLeverage').value = formatNumber(depositWithLeverage);
+    document.getElementById('balancePercent').value = formatPercent(balancePercent);
+    
+    document.getElementById('maxLossPercent').value = formatPercent(maxLossPercent);
+    document.getElementById('maxLossUSD').value = formatNumber(maxLossUSD);
+    document.getElementById('liquidationBalance').textContent = formatNumber(liquidationBalance) + ' USD';
+    
+    document.getElementById('additionalWithLeverage').value = formatNumber(additionalWithLeverage);
+    
+    document.getElementById('totalDeposit').value = formatNumber(totalDeposit);
+    document.getElementById('totalWithLeverage').value = formatNumber(totalWithLeverage);
+    document.getElementById('newBalance').value = formatNumber(newBalance);
+    document.getElementById('newBalancePercent').value = formatPercent(newBalancePercent);
+    document.getElementById('newLiquidationBalance').textContent = formatNumber(newLiquidationBalance) + ' USD';
+}
+
+function formatNumber(num) {
+    return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'").replace('.', '.');
+}
+
+function formatPercent(num) {
+    return (num * 100).toFixed(2) + '%';
+}
+
+function formatInputField(input) {
+    const value = input.value.replace(/'/g, '');
+    if (value && !isNaN(value)) {
+        input.value = parseFloat(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+    }
+}
+
+function removeFormatting(input) {
+    input.value = input.value.replace(/'/g, '');
+}
+
+window.onload = calculate;
+</script>
+
+</body>
+</html>
