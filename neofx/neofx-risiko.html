@@ -34,6 +34,11 @@
         </div>
 
         <h3>Aktuelle Position</h3>
+        
+        <div style="text-align: center; margin-bottom: 30px;">
+            <img src="bilder/MT5 Balance.png" alt="MT5 Balance Übersicht" style="max-width: 400px; width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        </div>
+
         <div class="input-grid">
 
             <div class="input-group">
@@ -46,13 +51,13 @@
             </div>
 
             <div class="input-group">
-                <label for="depositWithLeverage">Einzahlung mit Hebel</label>
+                <label for="depositWithLeverage">Einzahlung mit Hebel (Bild: Einzahlung)</label>
                 <input type="text" id="depositWithLeverage" readonly>
                 <span class="hint">Effektive Einzahlung × Hebel</span>
             </div>
 
             <div class="input-group">
-                <label for="currentBalance">Kontostand</label>
+                <label for="currentBalance">Kontostand (Bild: Kontostand)</label>
                 <input type="text" id="currentBalance" value="30'100"
                        onchange="formatInputField(this); calculate();"
                        onfocus="removeFormatting(this)"
