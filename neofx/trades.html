@@ -237,35 +237,45 @@ function displayGenericTable(data, headId, bodyId) {
             const cell = tr.insertCell();
             
             const value = row[col] || '';
+            const colName = col.toLowerCase();
             
-            // Erste Spalte = Text, linksbündig
-            if (colIndex === 0) {
+            // Erste Spalte = Text (Typ), linksbündig
+            if (colIndex === 0 || colName.includes('typ')) {
                 cell.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; white-space: nowrap;';
                 cell.textContent = value;
-            } else {
-                // Weitere Spalten = Zahlen, rechtsbündig, kompakt
+            }
+            // Prozent-Spalte
+            else if (colName.includes('%') || colName.includes('prozent') || colName.includes('in %')) {
                 cell.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right; white-space: nowrap;';
-                
-                // Versuche Zahl zu erkennen und zu formatieren
                 const numValue = parseNumber(value);
-                if (value.toString().includes('$') || value.toString().includes('%')) {
-                    // Bereits formatiert, behalte Original
-                    cell.textContent = value;
-                } else if (!isNaN(numValue) && numValue !== 0 && value.toString().trim() !== '') {
-                    // Formatiere als Zahl
-                    cell.textContent = formatCurrency(numValue);
-                    // Färbe positiv/negativ
-                    if (numValue > 0) {
-                        cell.style.color = '#10b981';
-                        cell.style.fontWeight = '600';
-                    } else if (numValue < 0) {
-                        cell.style.color = '#dc2626';
-                        cell.style.fontWeight = '600';
-                    }
-                } else {
-                    // Text
-                    cell.textContent = value;
+                cell.textContent = numValue.toFixed(2) + '%';
+                // Färbe positiv/negativ
+                if (numValue > 0) {
+                    cell.style.color = '#10b981';
+                    cell.style.fontWeight = '600';
+                } else if (numValue < 0) {
+                    cell.style.color = '#dc2626';
+                    cell.style.fontWeight = '600';
                 }
+            }
+            // Dollar-Spalte (Betrag $)
+            else if (colName.includes('$') || colName.includes('betrag') || colName.includes('dollar')) {
+                cell.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right; white-space: nowrap;';
+                const numValue = parseNumber(value);
+                cell.textContent = formatCurrency(numValue);
+                // Färbe positiv/negativ
+                if (numValue > 0) {
+                    cell.style.color = '#10b981';
+                    cell.style.fontWeight = '600';
+                } else if (numValue < 0) {
+                    cell.style.color = '#dc2626';
+                    cell.style.fontWeight = '600';
+                }
+            }
+            // Fallback für andere Spalten
+            else {
+                cell.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right; white-space: nowrap;';
+                cell.textContent = value;
             }
         });
     });
