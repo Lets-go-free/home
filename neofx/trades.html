@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>neo.FX Trades-Übersicht</title>
+    <link rel="stylesheet" href="css/neofx-style.css">
+</head>
+<body>
+
+<div class="container">
+    <div class="hero">
+        <h1>neo.FX Trades-Übersicht</h1>
+        <p>Live-Performance Tracking</p>
+    </div>
+
+    <div class="section" style="padding-top: 20px;">
+
+        <!-- Lade-Indikator -->
+        <div id="loadingIndicator" style="text-align: center; padding: 40px;">
+            <p style="font-size: 1.2em; color: #4a5568;">Lade aktuelle Daten...</p>
+        </div>
+
+        <!-- Fehler-Meldung -->
+        <div id="errorMessage" style="display: none;" class="warning-box">
+            <p><strong>⚠️ Fehler:</strong> Daten konnten nicht geladen werden. Bitte versuche es später erneut.</p>
+        </div>
+
+        <!-- Statistik-Karten -->
+        <div id="statsContainer" style="display: none;">
+            <h3>Statistiken</h3>
+            <div class="input-grid" style="margin-bottom: 30px;">
+                <div class="input-group">
+                    <label>Gesamtsumme Gewinn/Verlust</label>
+                    <p id="totalProfit" style="margin: 10px 0 0 0; font-size: 1.5em; font-weight: 700;"></p>
+                </div>
+                <div class="input-group">
+                    <label>Anzahl Trades</label>
+                    <p id="totalTrades" style="margin: 10px 0 0 0; font-size: 1.5em; font-weight: 700;"></p>
+                </div>
+                <div class="input-group">
+                    <label>Durchschnitt pro Trade</label>
+                    <p id="avgProfit" style="margin: 10px 0 0 0; font-size: 1.5em; font-weight: 700;"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trades Tabelle -->
+        <div id="tradesContainer" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="margin: 0;">Alle Trades</h3>
+                <button onclick="loadData()" style="background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    🔄 Aktualisieren
+                </button>
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table id="tradesTable" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #2d3748; color: white;">
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Datum</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Einzahlung $</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">$ mit 24x Hebel</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Saldo Einzahlung</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Profit</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Gebühren</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Gewinn/Verlust</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Brutto Profit % (24x)</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Brutto Profit % (effektiv)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradesBody">
+                        <!-- Wird dynamisch gefüllt -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="footer-link">
+        <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu neo.FX</a>
+    </div>
+</div>
+
+<script>
+// Google Sheets CSV URL
+const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?output=csv';
+
+async function loadData() {
+    // Zeige Lade-Indikator
+    document.getElementById('loadingIndicator').style.display = 'block';
+    document.getElementById('errorMessage').style.display = 'none';
+    document.getElementById('statsContainer').style.display = 'none';
+    document.getElementById('tradesContainer').style.display = 'none';
+
+    try {
+        // Lade Daten von Google Sheets
+        const response = await fetch(SHEET_URL);
+        
+        if (!response.ok) {
+            throw new Error('Netzwerk-Fehler');
+        }
+        
+        const csvText = await response.text();
+        
+        // Parse CSV manuell
+        const rows = csvText.split('\n');
+        const headers = rows[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+        
+        const trades = [];
+        for (let i = 1; i < rows.length; i++) {
+            if (!rows[i].trim()) continue;
+            
+            const values = parseCSVRow(rows[i]);
+            if (values.length > 0 && values[0]) {
+                const trade = {};
+                headers.forEach((header, index) => {
+                    trade[header] = values[index] || '';
+                });
+                trades.push(trade);
+            }
+        }
+        
+        if (trades.length === 0) {
+            throw new Error('Keine Daten gefunden');
+        }
+        
+        processData(trades);
+        
+    } catch (error) {
+        console.error('Fehler beim Laden:', error);
+        document.getElementById('loadingIndicator').style.display = 'none';
+        document.getElementById('errorMessage').innerHTML = `
+            <p><strong>⚠️ Fehler:</strong> Daten konnten nicht geladen werden.</p>
+            <p style="font-size: 0.9em; margin-top: 10px;">Fehlerdetails: ${error.message}</p>
+            <p style="font-size: 0.9em; margin-top: 10px;">Stelle sicher, dass die Google Sheets Tabelle "Im Web veröffentlicht" ist.</p>
+        `;
+        document.getElementById('errorMessage').style.display = 'block';
+    }
+}
+
+function parseCSVRow(row) {
+    const values = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < row.length; i++) {
+        const char = row[i];
+        
+        if (char === '"') {
+            inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+            values.push(current.trim().replace(/^"|"$/g, ''));
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    
+    values.push(current.trim().replace(/^"|"$/g, ''));
+    return values;
+}
+
+function processData(trades) {
+    console.log('Geladene Trades:', trades);
+    
+    // Berechne Statistiken
+    let totalProfit = 0;
+    let totalTrades = 0;
+
+    trades.forEach(trade => {
+        const gewinnVerlust = parseFloat(trade['Gewinn oder Verlust']?.replace(/[^0-9.-]/g, '')) || 0;
+        totalProfit += gewinnVerlust;
+        totalTrades++;
+    });
+
+    const avgProfit = totalTrades > 0 ? totalProfit / totalTrades : 0;
+
+    // Zeige Statistiken
+    document.getElementById('totalProfit').textContent = formatCurrency(totalProfit);
+    document.getElementById('totalProfit').style.color = totalProfit >= 0 ? '#10b981' : '#dc2626';
+    
+    document.getElementById('totalTrades').textContent = totalTrades;
+    document.getElementById('totalTrades').style.color = '#2d3748';
+    
+    document.getElementById('avgProfit').textContent = formatCurrency(avgProfit);
+    document.getElementById('avgProfit').style.color = avgProfit >= 0 ? '#10b981' : '#dc2626';
+
+    // Fülle Tabelle
+    const tbody = document.getElementById('tradesBody');
+    tbody.innerHTML = '';
+
+    trades.forEach((trade, index) => {
+        const row = tbody.insertRow();
+        
+        // Alternierende Farben
+        row.style.background = index % 2 === 0 ? '#f7fafc' : 'white';
+
+        const gewinnVerlust = parseFloat(trade['Gewinn oder Verlust']?.replace(/[^0-9.-]/g, '')) || 0;
+        
+        // Färbe Zeile bei Gewinn/Verlust
+        if (gewinnVerlust < 0) {
+            row.style.background = '#fee2e2';
+        } else if (gewinnVerlust > 0) {
+            row.style.background = '#d1fae5';
+        }
+
+        // Datum
+        const cell0 = row.insertCell(0);
+        cell0.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0;';
+        cell0.textContent = trade.Datum || '-';
+        
+        // Einzahlung $
+        const cell1 = row.insertCell(1);
+        cell1.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
+        cell1.textContent = formatCurrency(parseFloat(trade['Einzahlung $']?.replace(/[^0-9.-]/g, '')) || 0);
+        
+        // $ mit 24x Hebel
+        const cell2 = row.insertCell(2);
+        cell2.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
+        cell2.textContent = formatCurrency(parseFloat(trade['$ mit 24x Hebel']?.replace(/[^0-9.-]/g, '')) || 0);
+        
+        // Saldo Einzahlung
+        const cell3 = row.insertCell(3);
+        cell3.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
+        cell3.textContent = formatCurrency(parseFloat(trade['Saldo Einzahlung']?.replace(/[^0-9.-]/g, '')) || 0);
+        
+        // Profit
+        const cell4 = row.insertCell(4);
+        cell4.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
+        cell4.textContent = formatCurrency(parseFloat(trade.Profit?.replace(/[^0-9.-]/g, '')) || 0);
+        
+        // Gebühren
+        const cell5 = row.insertCell(5);
+        cell5.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
+        cell5.textContent = formatCurrency(parseFloat(trade['Gebühren']?.replace(/[^0-9.-]/g, '')) || 0);
+        
+        // Gewinn oder Verlust
+        const gwColor = gewinnVerlust >= 0 ? '#10b981' : '#dc2626';
+        const cell6 = row.insertCell(6);
+        cell6.style.cssText = `padding: 10px; border: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: ${gwColor};`;
+        cell6.textContent = formatCurrency(gewinnVerlust);
+        
+        // Brutto Profit % (24x)
+        const profit24x = parseFloat(trade['Brutto Profit in % auf x24 Hebel']?.replace(/[^0-9.-]/g, '')) || 0;
+        const color24x = profit24x >= 0 ? '#10b981' : '#dc2626';
+        const cell7 = row.insertCell(7);
+        cell7.style.cssText = `padding: 10px; border: 1px solid #e2e8f0; text-align: right; color: ${color24x};`;
+        cell7.textContent = profit24x.toFixed(2) + '%';
+        
+        // Brutto Profit % (effektiv)
+        const profitEffektiv = parseFloat(trade['Brutto-Profit in % auf effektive Einzahlung']?.replace(/[^0-9.-]/g, '')) || 0;
+        const colorEffektiv = profitEffektiv >= 0 ? '#10b981' : '#dc2626';
+        const cell8 = row.insertCell(8);
+        cell8.style.cssText = `padding: 10px; border: 1px solid #e2e8f0; text-align: right; color: ${colorEffektiv};`;
+        cell8.textContent = profitEffektiv.toFixed(2) + '%';
+    });
+
+    // Verstecke Lade-Indikator, zeige Daten
+    document.getElementById('loadingIndicator').style.display = 'none';
+    document.getElementById('statsContainer').style.display = 'block';
+    document.getElementById('tradesContainer').style.display = 'block';
+}
+
+function formatCurrency(value) {
+    const formatted = Math.abs(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+    return value < 0 ? '-$' + formatted : '$' + formatted;
+}
+
+// Lade Daten beim Seitenaufruf
+window.onload = loadData;
+</script>
+
+</body>
+</html>
