@@ -170,7 +170,11 @@ function processData(trades) {
     let totalTrades = 0;
 
     trades.forEach(trade => {
-        const gewinnVerlust = parseFloat(trade['Gewinn oder Verlust']?.replace(/[^0-9.-]/g, '')) || 0;
+        // Parse Gewinn/Verlust als Text - entferne $, Kommas, Leerzeichen
+        let gewinnText = trade['Gewinn oder Verlust'] || '0';
+        gewinnText = gewinnText.toString().replace(/[$,\s']/g, '').trim();
+        const gewinnVerlust = parseFloat(gewinnText) || 0;
+        
         totalProfit += gewinnVerlust;
         totalTrades++;
     });
@@ -197,7 +201,10 @@ function processData(trades) {
         // Alternierende Farben
         row.style.background = index % 2 === 0 ? '#f7fafc' : 'white';
 
-        const gewinnVerlust = parseFloat(trade['Gewinn oder Verlust']?.replace(/[^0-9.-]/g, '')) || 0;
+        // Parse Gewinn/Verlust als Text
+        let gewinnText = trade['Gewinn oder Verlust'] || '0';
+        gewinnText = gewinnText.toString().replace(/[$,\s']/g, '').trim();
+        const gewinnVerlust = parseFloat(gewinnText) || 0;
         
         // Färbe Zeile bei Gewinn/Verlust
         if (gewinnVerlust < 0) {
@@ -205,6 +212,13 @@ function processData(trades) {
         } else if (gewinnVerlust > 0) {
             row.style.background = '#d1fae5';
         }
+
+        // Helper function für sicheres Zahlen-Parsing
+        const parseNumber = (value) => {
+            if (!value) return 0;
+            const cleaned = value.toString().replace(/[$,\s']/g, '').trim();
+            return parseFloat(cleaned) || 0;
+        };
 
         // Datum
         const cell0 = row.insertCell(0);
@@ -214,27 +228,27 @@ function processData(trades) {
         // Einzahlung $
         const cell1 = row.insertCell(1);
         cell1.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
-        cell1.textContent = formatCurrency(parseFloat(trade['Einzahlung $']?.replace(/[^0-9.-]/g, '')) || 0);
+        cell1.textContent = formatCurrency(parseNumber(trade['Einzahlung $']));
         
         // $ mit 24x Hebel
         const cell2 = row.insertCell(2);
         cell2.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
-        cell2.textContent = formatCurrency(parseFloat(trade['$ mit 24x Hebel']?.replace(/[^0-9.-]/g, '')) || 0);
+        cell2.textContent = formatCurrency(parseNumber(trade['$ mit 24x Hebel']));
         
         // Saldo Einzahlung
         const cell3 = row.insertCell(3);
         cell3.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
-        cell3.textContent = formatCurrency(parseFloat(trade['Saldo Einzahlung']?.replace(/[^0-9.-]/g, '')) || 0);
+        cell3.textContent = formatCurrency(parseNumber(trade['Saldo Einzahlung']));
         
         // Profit
         const cell4 = row.insertCell(4);
         cell4.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
-        cell4.textContent = formatCurrency(parseFloat(trade.Profit?.replace(/[^0-9.-]/g, '')) || 0);
+        cell4.textContent = formatCurrency(parseNumber(trade.Profit));
         
         // Gebühren
         const cell5 = row.insertCell(5);
         cell5.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
-        cell5.textContent = formatCurrency(parseFloat(trade['Gebühren']?.replace(/[^0-9.-]/g, '')) || 0);
+        cell5.textContent = formatCurrency(parseNumber(trade['Gebühren']));
         
         // Gewinn oder Verlust
         const gwColor = gewinnVerlust >= 0 ? '#10b981' : '#dc2626';
@@ -243,14 +257,14 @@ function processData(trades) {
         cell6.textContent = formatCurrency(gewinnVerlust);
         
         // Brutto Profit % (24x)
-        const profit24x = parseFloat(trade['Brutto Profit in % auf x24 Hebel']?.replace(/[^0-9.-]/g, '')) || 0;
+        const profit24x = parseNumber(trade['Brutto Profit in % auf x24 Hebel']);
         const color24x = profit24x >= 0 ? '#10b981' : '#dc2626';
         const cell7 = row.insertCell(7);
         cell7.style.cssText = `padding: 10px; border: 1px solid #e2e8f0; text-align: right; color: ${color24x};`;
         cell7.textContent = profit24x.toFixed(2) + '%';
         
         // Brutto Profit % (effektiv)
-        const profitEffektiv = parseFloat(trade['Brutto-Profit in % auf effektive Einzahlung']?.replace(/[^0-9.-]/g, '')) || 0;
+        const profitEffektiv = parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
         const colorEffektiv = profitEffektiv >= 0 ? '#10b981' : '#dc2626';
         const cell8 = row.insertCell(8);
         cell8.style.cssText = `padding: 10px; border: 1px solid #e2e8f0; text-align: right; color: ${colorEffektiv};`;
