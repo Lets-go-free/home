@@ -84,8 +84,12 @@
 </div>
 
 <script>
-// Google Sheets CSV URL
-const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?output=csv';
+// Google Sheets CSV URLs
+const SHEET_URLS = {
+    trades: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?gid=0&single=true&output=csv',
+    uebersicht: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?gid=1067049576&single=true&output=csv',
+    gewinne: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?gid=638317550&single=true&output=csv'
+};
 
 async function loadData() {
     // Zeige Lade-Indikator
@@ -95,38 +99,25 @@ async function loadData() {
     document.getElementById('tradesContainer').style.display = 'none';
 
     try {
-        // Lade Daten von Google Sheets
-        const response = await fetch(SHEET_URL);
+        // Lade alle 3 Blätter parallel
+        const [tradesData, uebersichtData, gewinneData] = await Promise.all([
+            loadSheet(SHEET_URLS.trades),
+            loadSheet(SHEET_URLS.uebersicht),
+            loadSheet(SHEET_URLS.gewinne)
+        ]);
         
-        if (!response.ok) {
-            throw new Error('Netzwerk-Fehler');
-        }
+        console.log('Trades:', tradesData);
+        console.log('Uebersicht:', uebersichtData);
+        console.log('Gewinne:', gewinneData);
         
-        const csvText = await response.text();
+        // Verarbeite Daten
+        displayStatistics(uebersichtData, gewinneData);
+        displayTrades(tradesData);
         
-        // Parse CSV manuell
-        const rows = csvText.split('\n');
-        const headers = rows[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-        
-        const trades = [];
-        for (let i = 1; i < rows.length; i++) {
-            if (!rows[i].trim()) continue;
-            
-            const values = parseCSVRow(rows[i]);
-            if (values.length > 0 && values[0]) {
-                const trade = {};
-                headers.forEach((header, index) => {
-                    trade[header] = values[index] || '';
-                });
-                trades.push(trade);
-            }
-        }
-        
-        if (trades.length === 0) {
-            throw new Error('Keine Daten gefunden');
-        }
-        
-        processData(trades);
+        // Verstecke Lade-Indikator, zeige Daten
+        document.getElementById('loadingIndicator').style.display = 'none';
+        document.getElementById('statsContainer').style.display = 'block';
+        document.getElementById('tradesContainer').style.display = 'block';
         
     } catch (error) {
         console.error('Fehler beim Laden:', error);
@@ -134,10 +125,40 @@ async function loadData() {
         document.getElementById('errorMessage').innerHTML = `
             <p><strong>⚠️ Fehler:</strong> Daten konnten nicht geladen werden.</p>
             <p style="font-size: 0.9em; margin-top: 10px;">Fehlerdetails: ${error.message}</p>
-            <p style="font-size: 0.9em; margin-top: 10px;">Stelle sicher, dass die Google Sheets Tabelle "Im Web veröffentlicht" ist.</p>
+            <p style="font-size: 0.9em; margin-top: 10px;">Stelle sicher, dass alle Tabellenblätter "Im Web veröffentlicht" sind.</p>
         `;
         document.getElementById('errorMessage').style.display = 'block';
     }
+}
+
+async function loadSheet(url) {
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+        throw new Error('Netzwerk-Fehler beim Laden der Daten');
+    }
+    
+    const csvText = await response.text();
+    
+    // Parse CSV
+    const rows = csvText.split('\n');
+    const headers = rows[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    
+    const data = [];
+    for (let i = 1; i < rows.length; i++) {
+        if (!rows[i].trim()) continue;
+        
+        const values = parseCSVRow(rows[i]);
+        if (values.length > 0 && values[0]) {
+            const row = {};
+            headers.forEach((header, index) => {
+                row[header] = values[index] || '';
+            });
+            data.push(row);
+        }
+    }
+    
+    return data;
 }
 
 function parseCSVRow(row) {
@@ -162,36 +183,30 @@ function parseCSVRow(row) {
     return values;
 }
 
-function processData(trades) {
-    console.log('Geladene Trades:', trades);
+function displayStatistics(uebersichtData, gewinneData) {
+    // Zeige Statistiken aus den Summary-Blättern
+    // Annahme: Erste Zeile = Labels, Zweite Zeile = Werte
     
-    // Berechne Statistiken
-    let totalProfit = 0;
-    let totalTrades = 0;
-
-    trades.forEach(trade => {
-        // Parse Gewinn/Verlust als Text - entferne $, Kommas, Leerzeichen
-        let gewinnText = trade['Gewinn oder Verlust'] || '0';
-        gewinnText = gewinnText.toString().replace(/[$,\s']/g, '').trim();
-        const gewinnVerlust = parseFloat(gewinnText) || 0;
+    if (uebersichtData.length > 0) {
+        const stats = uebersichtData[0];
         
-        totalProfit += gewinnVerlust;
-        totalTrades++;
-    });
+        // Extrahiere Werte (passe Spaltennamen an deine Tabelle an)
+        const totalProfit = parseNumber(stats['Gesamtgewinn'] || stats['Total'] || stats['Gesamt'] || '0');
+        const totalTrades = parseNumber(stats['Anzahl Trades'] || stats['Trades'] || '0');
+        const avgProfit = parseNumber(stats['Durchschnitt'] || stats['Average'] || '0');
+        
+        document.getElementById('totalProfit').textContent = formatCurrency(totalProfit);
+        document.getElementById('totalProfit').style.color = totalProfit >= 0 ? '#10b981' : '#dc2626';
+        
+        document.getElementById('totalTrades').textContent = totalTrades;
+        document.getElementById('totalTrades').style.color = '#2d3748';
+        
+        document.getElementById('avgProfit').textContent = formatCurrency(avgProfit);
+        document.getElementById('avgProfit').style.color = avgProfit >= 0 ? '#10b981' : '#dc2626';
+    }
+}
 
-    const avgProfit = totalTrades > 0 ? totalProfit / totalTrades : 0;
-
-    // Zeige Statistiken
-    document.getElementById('totalProfit').textContent = formatCurrency(totalProfit);
-    document.getElementById('totalProfit').style.color = totalProfit >= 0 ? '#10b981' : '#dc2626';
-    
-    document.getElementById('totalTrades').textContent = totalTrades;
-    document.getElementById('totalTrades').style.color = '#2d3748';
-    
-    document.getElementById('avgProfit').textContent = formatCurrency(avgProfit);
-    document.getElementById('avgProfit').style.color = avgProfit >= 0 ? '#10b981' : '#dc2626';
-
-    // Fülle Tabelle
+function displayTrades(trades) {
     const tbody = document.getElementById('tradesBody');
     tbody.innerHTML = '';
 
@@ -201,24 +216,17 @@ function processData(trades) {
         // Alternierende Farben
         row.style.background = index % 2 === 0 ? '#f7fafc' : 'white';
 
-        // Parse Gewinn/Verlust als Text
-        let gewinnText = trade['Gewinn oder Verlust'] || '0';
-        gewinnText = gewinnText.toString().replace(/[$,\s']/g, '').trim();
-        const gewinnVerlust = parseFloat(gewinnText) || 0;
+        // Parse Gewinn/Verlust Text
+        const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().toLowerCase();
+        const isGewinn = gewinnVerlustText.includes('gewinn');
+        const isVerlust = gewinnVerlustText.includes('verlust');
         
         // Färbe Zeile bei Gewinn/Verlust
-        if (gewinnVerlust < 0) {
+        if (isVerlust) {
             row.style.background = '#fee2e2';
-        } else if (gewinnVerlust > 0) {
+        } else if (isGewinn) {
             row.style.background = '#d1fae5';
         }
-
-        // Helper function für sicheres Zahlen-Parsing
-        const parseNumber = (value) => {
-            if (!value) return 0;
-            const cleaned = value.toString().replace(/[$,\s']/g, '').trim();
-            return parseFloat(cleaned) || 0;
-        };
 
         // Datum
         const cell0 = row.insertCell(0);
@@ -243,18 +251,26 @@ function processData(trades) {
         // Profit
         const cell4 = row.insertCell(4);
         cell4.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
-        cell4.textContent = formatCurrency(parseNumber(trade.Profit));
+        const profitValue = parseNumber(trade.Profit);
+        cell4.textContent = formatCurrency(profitValue);
+        if (profitValue !== 0) {
+            cell4.style.color = profitValue > 0 ? '#10b981' : '#dc2626';
+        }
         
         // Gebühren
         const cell5 = row.insertCell(5);
         cell5.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
         cell5.textContent = formatCurrency(parseNumber(trade['Gebühren']));
         
-        // Gewinn oder Verlust
-        const gwColor = gewinnVerlust >= 0 ? '#10b981' : '#dc2626';
+        // Gewinn oder Verlust (TEXT)
         const cell6 = row.insertCell(6);
-        cell6.style.cssText = `padding: 10px; border: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: ${gwColor};`;
-        cell6.textContent = formatCurrency(gewinnVerlust);
+        cell6.style.cssText = `padding: 10px; border: 1px solid #e2e8f0; text-align: center; font-weight: 600;`;
+        cell6.textContent = trade['Gewinn oder Verlust'] || '-';
+        if (isGewinn) {
+            cell6.style.color = '#10b981';
+        } else if (isVerlust) {
+            cell6.style.color = '#dc2626';
+        }
         
         // Brutto Profit % (24x)
         const profit24x = parseNumber(trade['Brutto Profit in % auf x24 Hebel']);
@@ -270,11 +286,12 @@ function processData(trades) {
         cell8.style.cssText = `padding: 10px; border: 1px solid #e2e8f0; text-align: right; color: ${colorEffektiv};`;
         cell8.textContent = profitEffektiv.toFixed(2) + '%';
     });
+}
 
-    // Verstecke Lade-Indikator, zeige Daten
-    document.getElementById('loadingIndicator').style.display = 'none';
-    document.getElementById('statsContainer').style.display = 'block';
-    document.getElementById('tradesContainer').style.display = 'block';
+function parseNumber(value) {
+    if (!value) return 0;
+    const cleaned = value.toString().replace(/[$,\s']/g, '').trim();
+    return parseFloat(cleaned) || 0;
 }
 
 function formatCurrency(value) {
