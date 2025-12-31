@@ -98,7 +98,7 @@
 // Google Sheets CSV URLs
 const SHEET_URLS = {
     trades: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?gid=0&single=true&output=csv',
-    uebersicht: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?gid=1067049576&single=true&output=csv',
+    uebersicht: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?gid=475598871&single=true&output=csv',
     gewinne: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?gid=638317550&single=true&output=csv'
 };
 
@@ -153,17 +153,24 @@ async function loadSheet(url) {
     }
     
     const csvText = await response.text();
+    console.log('CSV Raw:', url, csvText.substring(0, 200)); // Debug
     
     // Parse CSV
-    const rows = csvText.split('\n');
-    const headers = rows[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    const rows = csvText.split('\n').filter(row => row.trim());
+    
+    if (rows.length === 0) {
+        return [];
+    }
+    
+    const headers = parseCSVRow(rows[0]);
+    console.log('Headers:', headers); // Debug
     
     const data = [];
     for (let i = 1; i < rows.length; i++) {
-        if (!rows[i].trim()) continue;
-        
         const values = parseCSVRow(rows[i]);
-        if (values.length > 0 && values[0]) {
+        console.log('Row', i, ':', values); // Debug
+        
+        if (values.length > 0 && values[0] && values[0].trim()) {
             const row = {};
             headers.forEach((header, index) => {
                 row[header] = values[index] || '';
@@ -172,6 +179,7 @@ async function loadSheet(url) {
         }
     }
     
+    console.log('Parsed data:', data); // Debug
     return data;
 }
 
