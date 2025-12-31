@@ -215,9 +215,14 @@ function displayGenericTable(data, headId, bodyId) {
     headerRow.style.background = '#2d3748';
     headerRow.style.color = 'white';
     
-    columns.forEach(col => {
+    columns.forEach((col, index) => {
         const th = document.createElement('th');
-        th.style.cssText = 'padding: 12px; text-align: left; border: 1px solid #4a5568;';
+        // Erste Spalte (Text) breiter, Rest kompakt
+        if (index === 0) {
+            th.style.cssText = 'padding: 12px; text-align: left; border: 1px solid #4a5568; white-space: nowrap;';
+        } else {
+            th.style.cssText = 'padding: 12px; text-align: right; border: 1px solid #4a5568; white-space: nowrap; width: 1%;';
+        }
         th.textContent = col;
         headerRow.appendChild(th);
     });
@@ -228,33 +233,39 @@ function displayGenericTable(data, headId, bodyId) {
         const tr = tbody.insertRow();
         tr.style.background = index % 2 === 0 ? '#f7fafc' : 'white';
         
-        columns.forEach(col => {
+        columns.forEach((col, colIndex) => {
             const cell = tr.insertCell();
-            cell.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0;';
             
             const value = row[col] || '';
             
-            // Versuche Zahl zu erkennen und zu formatieren
-            const numValue = parseNumber(value);
-            if (value.toString().includes('$') || value.toString().includes('%')) {
-                // Bereits formatiert, behalte Original
+            // Erste Spalte = Text, linksbündig
+            if (colIndex === 0) {
+                cell.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; white-space: nowrap;';
                 cell.textContent = value;
-                cell.style.textAlign = 'right';
-            } else if (!isNaN(numValue) && numValue !== 0 && value.toString().trim() !== '') {
-                // Formatiere als Zahl
-                cell.textContent = formatCurrency(numValue);
-                cell.style.textAlign = 'right';
-                // Färbe positiv/negativ
-                if (numValue > 0) {
-                    cell.style.color = '#10b981';
-                    cell.style.fontWeight = '600';
-                } else if (numValue < 0) {
-                    cell.style.color = '#dc2626';
-                    cell.style.fontWeight = '600';
-                }
             } else {
-                // Text
-                cell.textContent = value;
+                // Weitere Spalten = Zahlen, rechtsbündig, kompakt
+                cell.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right; white-space: nowrap;';
+                
+                // Versuche Zahl zu erkennen und zu formatieren
+                const numValue = parseNumber(value);
+                if (value.toString().includes('$') || value.toString().includes('%')) {
+                    // Bereits formatiert, behalte Original
+                    cell.textContent = value;
+                } else if (!isNaN(numValue) && numValue !== 0 && value.toString().trim() !== '') {
+                    // Formatiere als Zahl
+                    cell.textContent = formatCurrency(numValue);
+                    // Färbe positiv/negativ
+                    if (numValue > 0) {
+                        cell.style.color = '#10b981';
+                        cell.style.fontWeight = '600';
+                    } else if (numValue < 0) {
+                        cell.style.color = '#dc2626';
+                        cell.style.fontWeight = '600';
+                    }
+                } else {
+                    // Text
+                    cell.textContent = value;
+                }
             }
         });
     });
