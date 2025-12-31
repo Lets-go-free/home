@@ -210,7 +210,19 @@ function displayTrades(trades) {
     const tbody = document.getElementById('tradesBody');
     tbody.innerHTML = '';
 
+    // Heutiges Datum (ohne Uhrzeit)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     trades.forEach((trade, index) => {
+        // Parse Datum
+        const tradeDate = parseDate(trade.Datum);
+        
+        // Überspringe Trades mit Datum > heute
+        if (tradeDate > today) {
+            return;
+        }
+        
         const row = tbody.insertRow();
         
         // Alternierende Farben
@@ -286,6 +298,37 @@ function displayTrades(trades) {
         cell8.style.cssText = `padding: 10px; border: 1px solid #e2e8f0; text-align: right; color: ${colorEffektiv};`;
         cell8.textContent = profitEffektiv.toFixed(2) + '%';
     });
+}
+
+function parseDate(dateString) {
+    if (!dateString) return new Date(0); // Sehr altes Datum falls leer
+    
+    // Unterstütze verschiedene Datumsformate
+    // z.B. "31.12.2024", "2024-12-31", "12/31/2024"
+    
+    // Versuche ISO-Format (YYYY-MM-DD)
+    if (dateString.includes('-')) {
+        return new Date(dateString);
+    }
+    
+    // Versuche DD.MM.YYYY
+    if (dateString.includes('.')) {
+        const parts = dateString.split('.');
+        if (parts.length === 3) {
+            const day = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1; // Monat ist 0-basiert
+            const year = parseInt(parts[2]);
+            return new Date(year, month, day);
+        }
+    }
+    
+    // Versuche MM/DD/YYYY
+    if (dateString.includes('/')) {
+        return new Date(dateString);
+    }
+    
+    // Fallback
+    return new Date(dateString);
 }
 
 function parseNumber(value) {
