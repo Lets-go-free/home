@@ -26,22 +26,33 @@
             <p><strong>⚠️ Fehler:</strong> Daten konnten nicht geladen werden. Bitte versuche es später erneut.</p>
         </div>
 
-        <!-- Statistik-Karten -->
-        <div id="statsContainer" style="display: none;">
-            <h3>Statistiken</h3>
-            <div class="input-grid" style="margin-bottom: 30px;">
-                <div class="input-group">
-                    <label>Gesamtsumme Gewinn/Verlust</label>
-                    <p id="totalProfit" style="margin: 10px 0 0 0; font-size: 1.5em; font-weight: 700;"></p>
-                </div>
-                <div class="input-group">
-                    <label>Anzahl Trades</label>
-                    <p id="totalTrades" style="margin: 10px 0 0 0; font-size: 1.5em; font-weight: 700;"></p>
-                </div>
-                <div class="input-group">
-                    <label>Durchschnitt pro Trade</label>
-                    <p id="avgProfit" style="margin: 10px 0 0 0; font-size: 1.5em; font-weight: 700;"></p>
-                </div>
+        <!-- Uebersicht Trades Tabelle -->
+        <div id="uebersichtContainer" style="display: none;">
+            <h3>Übersicht Trades</h3>
+            <div style="overflow-x: auto; margin-bottom: 30px;">
+                <table id="uebersichtTable" style="width: 100%; border-collapse: collapse;">
+                    <thead id="uebersichtHead">
+                        <!-- Wird dynamisch gefüllt -->
+                    </thead>
+                    <tbody id="uebersichtBody">
+                        <!-- Wird dynamisch gefüllt -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Gewinne Tabelle -->
+        <div id="gewinneContainer" style="display: none;">
+            <h3>Gewinne</h3>
+            <div style="overflow-x: auto; margin-bottom: 30px;">
+                <table id="gewinneTable" style="width: 100%; border-collapse: collapse;">
+                    <thead id="gewinneHead">
+                        <!-- Wird dynamisch gefüllt -->
+                    </thead>
+                    <tbody id="gewinneBody">
+                        <!-- Wird dynamisch gefüllt -->
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -95,7 +106,8 @@ async function loadData() {
     // Zeige Lade-Indikator
     document.getElementById('loadingIndicator').style.display = 'block';
     document.getElementById('errorMessage').style.display = 'none';
-    document.getElementById('statsContainer').style.display = 'none';
+    document.getElementById('uebersichtContainer').style.display = 'none';
+    document.getElementById('gewinneContainer').style.display = 'none';
     document.getElementById('tradesContainer').style.display = 'none';
 
     try {
@@ -111,12 +123,14 @@ async function loadData() {
         console.log('Gewinne:', gewinneData);
         
         // Verarbeite Daten
-        displayStatistics(uebersichtData, gewinneData);
+        displayGenericTable(uebersichtData, 'uebersichtHead', 'uebersichtBody');
+        displayGenericTable(gewinneData, 'gewinneHead', 'gewinneBody');
         displayTrades(tradesData);
         
         // Verstecke Lade-Indikator, zeige Daten
         document.getElementById('loadingIndicator').style.display = 'none';
-        document.getElementById('statsContainer').style.display = 'block';
+        document.getElementById('uebersichtContainer').style.display = 'block';
+        document.getElementById('gewinneContainer').style.display = 'block';
         document.getElementById('tradesContainer').style.display = 'block';
         
     } catch (error) {
@@ -183,27 +197,67 @@ function parseCSVRow(row) {
     return values;
 }
 
-function displayStatistics(uebersichtData, gewinneData) {
-    // Zeige Statistiken aus den Summary-Blättern
-    // Annahme: Erste Zeile = Labels, Zweite Zeile = Werte
+function displayGenericTable(data, headId, bodyId) {
+    if (!data || data.length === 0) return;
     
-    if (uebersichtData.length > 0) {
-        const stats = uebersichtData[0];
+    const thead = document.getElementById(headId);
+    const tbody = document.getElementById(bodyId);
+    
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+    
+    // Hole die Spaltennamen aus dem ersten Datensatz
+    const firstRow = data[0];
+    const columns = Object.keys(firstRow);
+    
+    // Erstelle Header
+    const headerRow = document.createElement('tr');
+    headerRow.style.background = '#2d3748';
+    headerRow.style.color = 'white';
+    
+    columns.forEach(col => {
+        const th = document.createElement('th');
+        th.style.cssText = 'padding: 12px; text-align: left; border: 1px solid #4a5568;';
+        th.textContent = col;
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    
+    // Fülle Daten
+    data.forEach((row, index) => {
+        const tr = tbody.insertRow();
+        tr.style.background = index % 2 === 0 ? '#f7fafc' : 'white';
         
-        // Extrahiere Werte (passe Spaltennamen an deine Tabelle an)
-        const totalProfit = parseNumber(stats['Gesamtgewinn'] || stats['Total'] || stats['Gesamt'] || '0');
-        const totalTrades = parseNumber(stats['Anzahl Trades'] || stats['Trades'] || '0');
-        const avgProfit = parseNumber(stats['Durchschnitt'] || stats['Average'] || '0');
-        
-        document.getElementById('totalProfit').textContent = formatCurrency(totalProfit);
-        document.getElementById('totalProfit').style.color = totalProfit >= 0 ? '#10b981' : '#dc2626';
-        
-        document.getElementById('totalTrades').textContent = totalTrades;
-        document.getElementById('totalTrades').style.color = '#2d3748';
-        
-        document.getElementById('avgProfit').textContent = formatCurrency(avgProfit);
-        document.getElementById('avgProfit').style.color = avgProfit >= 0 ? '#10b981' : '#dc2626';
-    }
+        columns.forEach(col => {
+            const cell = tr.insertCell();
+            cell.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0;';
+            
+            const value = row[col] || '';
+            
+            // Versuche Zahl zu erkennen und zu formatieren
+            const numValue = parseNumber(value);
+            if (value.toString().includes('$') || value.toString().includes('%')) {
+                // Bereits formatiert, behalte Original
+                cell.textContent = value;
+                cell.style.textAlign = 'right';
+            } else if (!isNaN(numValue) && numValue !== 0 && value.toString().trim() !== '') {
+                // Formatiere als Zahl
+                cell.textContent = formatCurrency(numValue);
+                cell.style.textAlign = 'right';
+                // Färbe positiv/negativ
+                if (numValue > 0) {
+                    cell.style.color = '#10b981';
+                    cell.style.fontWeight = '600';
+                } else if (numValue < 0) {
+                    cell.style.color = '#dc2626';
+                    cell.style.fontWeight = '600';
+                }
+            } else {
+                // Text
+                cell.textContent = value;
+            }
+        });
+    });
 }
 
 function displayTrades(trades) {
