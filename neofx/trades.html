@@ -100,9 +100,7 @@
 <script>
 // Google Sheets CSV URLs
 const SHEET_URLS = {
-    trades: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?gid=0&single=true&output=csv',
-    uebersicht: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?gid=475598871&single=true&output=csv',
-    gewinne: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?gid=638317550&single=true&output=csv'
+    trades: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?gid=0&single=true&output=csv'
 };
 
 async function loadData() {
@@ -114,16 +112,10 @@ async function loadData() {
     document.getElementById('tradesContainer').style.display = 'none';
 
     try {
-        // Lade alle 3 Blätter parallel
-        const [tradesData, uebersichtData, gewinneData] = await Promise.all([
-            loadSheet(SHEET_URLS.trades),
-            loadSheet(SHEET_URLS.uebersicht),
-            loadSheet(SHEET_URLS.gewinne)
-        ]);
+        // Lade nur noch Trades-Daten
+        const tradesData = await loadSheet(SHEET_URLS.trades);
         
         console.log('Trades:', tradesData);
-        console.log('Uebersicht:', uebersichtData);
-        console.log('Gewinne:', gewinneData);
         
         // Verarbeite Daten
         const uebersichtCalculated = calculateUebersicht(tradesData);
