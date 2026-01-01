@@ -275,6 +275,38 @@ table tbody td:not(:first-child) {
     text-align: center !important;
 }
 
+/* Hinweis-Box */
+.info-box {
+    margin: 10px 0 15px 0;
+    padding: 12px;
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+    border-radius: 6px;
+    color: #856404;
+    font-size: 0.9em;
+}
+
+.info-box strong {
+    font-weight: 600;
+}
+
+/* Tabellen-Container */
+.table-container {
+    overflow-x: auto;
+    max-height: 600px;
+    overflow-y: auto;
+    border: 1px solid #cbd5e0;
+    border-radius: 8px;
+}
+
+.table-container-small {
+    overflow-x: auto;
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #cbd5e0;
+    border-radius: 8px;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .hero h1 { 

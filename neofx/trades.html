@@ -72,7 +72,10 @@
         <!-- Trades-Übersicht je Woche -->
         <div id="weeklyOverviewContainer" style="display: none; margin-bottom: 30px;">
             <h3>Trades-Übersicht je Woche</h3>
-            <div style="overflow-x: auto; max-height: 400px; overflow-y: auto; border: 1px solid #cbd5e0; border-radius: 8px;">
+            <p class="info-box">
+                <strong>Hinweis:</strong> Gebühren werden üblicherweise am darauffolgenden Montag abgebucht und beeinflussen daher den Netto-Profit % der Folgewoche.
+            </p>
+            <div class="table-container-small">
                 <table id="weeklyOverviewTable" style="width: 100%; border-collapse: collapse;">
                     <thead style="position: sticky; top: 0; z-index: 10;">
                         <tr style="background: #2d3748; color: white;">
@@ -106,7 +109,7 @@
                 </button>
             </div>
 
-            <div style="overflow-x: auto; max-height: 600px; overflow-y: auto; border: 1px solid #cbd5e0; border-radius: 8px;">
+            <div class="table-container">
                 <table id="tradesTable" style="width: 100%; border-collapse: collapse;">
                     <thead style="position: sticky; top: 0; z-index: 10;">
                         <tr style="background: #2d3748; color: white;">
@@ -342,6 +345,7 @@ function calculateWeeklyOverview(trades) {
             weeklyData[weekKey] = {
                 weekStart: monday,
                 trades: [],
+                anzahlTrades: 0,
                 anzahlGewinne: 0,
                 anzahlVerluste: 0,
                 saldoEinzahlungEffektiv: null,
@@ -357,11 +361,18 @@ function calculateWeeklyOverview(trades) {
         const week = weeklyData[weekKey];
         week.trades.push({ date: tradeDate, trade: trade });
         
-        const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().toLowerCase();
-        if (gewinnVerlustText.includes('gewinn')) {
-            week.anzahlGewinne++;
-        } else if (gewinnVerlustText.includes('verlust')) {
-            week.anzahlVerluste++;
+        const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().trim();
+        
+        // Trade zählt nur wenn "Gewinn oder Verlust" nicht leer ist
+        if (gewinnVerlustText !== '') {
+            week.anzahlTrades++;
+            
+            const gewinnVerlustLower = gewinnVerlustText.toLowerCase();
+            if (gewinnVerlustLower.includes('gewinn')) {
+                week.anzahlGewinne++;
+            } else if (gewinnVerlustLower.includes('verlust')) {
+                week.anzahlVerluste++;
+            }
         }
         
         week.bruttoGewinn += parseNumber(trade.Profit);
@@ -396,13 +407,12 @@ function calculateWeeklyOverview(trades) {
             const saldoEinzahlungEffektiv = parseNumber(firstTrade.trade['Saldo Einzahlung effektiv']);
             const saldoEinzahlungMitHebel = parseNumber(firstTrade.trade['Saldo Einzahlung mit Hebel']);
             
-            const anzahlTrades = week.anzahlGewinne + week.anzahlVerluste;
             const nettoGewinn = week.bruttoGewinn - week.gebuehren - week.kommissionen;
             
             return {
                 weekStart: week.weekStart,
                 'Woche vom': formatDateGerman(week.weekStart),
-                'Anzahl Trades': anzahlTrades,
+                'Anzahl Trades': week.anzahlTrades,
                 'Anz. Gewinne': week.anzahlGewinne,
                 'Anz. Verluste': week.anzahlVerluste,
                 'Total einbezahlter Betrag $': saldoEinzahlungEffektiv,
