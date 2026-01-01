@@ -75,7 +75,6 @@
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Saldo Einzahlung</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Profit</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Gebühren</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; background: #fff3cd; color: #856404;">Kommissionen (DEBUG)</th>
                             <th style="padding: 12px; text-align: center; border: 1px solid #4a5568;">Gewinn/Verlust</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Brutto Profit % (24x)</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Brutto Profit % (effektiv)</th>
@@ -260,15 +259,15 @@ function calculateGewinne(trades) {
         bruttoGewinn += parseNumber(trade.Profit);
         gebuehren += parseNumber(trade['Gebühren']);
         
-        // Max Kommissionen (nicht Summe!)
-        const kommission = parseNumber(trade['Kommissionen']);
-        console.log('Trade Kommissionen:', trade['Kommissionen'], '→', kommission); // Debug
+        // Max Kommissionen (nicht Summe!) - flexible Spaltensuche
+        const keys = Object.keys(trade);
+        const kommissionenKey = keys.find(k => k.toLowerCase().includes('kommission'));
+        const kommission = kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
+        
         if (kommission > maxKommissionen) {
             maxKommissionen = kommission;
         }
     });
-    
-    console.log('Max Kommissionen gesamt:', maxKommissionen); // Debug
     
     const nettoGewinn = bruttoGewinn - gebuehren - maxKommissionen;
     
@@ -429,33 +428,29 @@ function displayTrades(trades) {
         const cell5 = row.insertCell(5);
         cell5.textContent = formatCurrency(parseNumber(trade['Gebühren']));
         
-        // Kommissionen - TEMPORÄR ANGEZEIGT zum Debuggen
-        const cell6 = row.insertCell(6);
-        const kommissionenValue = parseNumber(trade['Kommissionen']);
-        cell6.textContent = formatCurrency(kommissionenValue);
-        cell6.style.background = '#fff3cd'; // Gelber Hintergrund zum Hervorheben
-        console.log('Kommissionen Wert:', trade['Kommissionen'], '→ parsed:', kommissionenValue);
+        // Kommissionen - wird NICHT angezeigt, aber Wert ist verfügbar für Berechnungen
+        // (Wird für Gewinne-Tabelle verwendet)
         
         // Gewinn oder Verlust (TEXT)
-        const cell7 = row.insertCell(7);
-        cell7.classList.add('table-center');
-        cell7.textContent = trade['Gewinn oder Verlust'] || '-';
-        if (isGewinn) cell7.classList.add('table-positive');
-        else if (isVerlust) cell7.classList.add('table-negative');
+        const cell6 = row.insertCell(6);
+        cell6.classList.add('table-center');
+        cell6.textContent = trade['Gewinn oder Verlust'] || '-';
+        if (isGewinn) cell6.classList.add('table-positive');
+        else if (isVerlust) cell6.classList.add('table-negative');
         
         // Brutto Profit % (24x)
         const profit24x = parseNumber(trade['Brutto Profit in % auf x24 Hebel']);
-        const cell8 = row.insertCell(8);
-        cell8.textContent = profit24x.toFixed(2) + '%';
-        if (profit24x > 0) cell8.classList.add('table-positive');
-        else if (profit24x < 0) cell8.classList.add('table-negative');
+        const cell7 = row.insertCell(7);
+        cell7.textContent = profit24x.toFixed(2) + '%';
+        if (profit24x > 0) cell7.classList.add('table-positive');
+        else if (profit24x < 0) cell7.classList.add('table-negative');
         
         // Brutto Profit % (effektiv)
         const profitEffektiv = parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
-        const cell9 = row.insertCell(9);
-        cell9.textContent = profitEffektiv.toFixed(2) + '%';
-        if (profitEffektiv > 0) cell9.classList.add('table-positive');
-        else if (profitEffektiv < 0) cell9.classList.add('table-negative');
+        const cell8 = row.insertCell(8);
+        cell8.textContent = profitEffektiv.toFixed(2) + '%';
+        if (profitEffektiv > 0) cell8.classList.add('table-positive');
+        else if (profitEffektiv < 0) cell8.classList.add('table-negative');
     });
 }
 
