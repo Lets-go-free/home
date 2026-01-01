@@ -80,6 +80,7 @@
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anzahl<br>Trades</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Gewinne</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Verluste</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Total<br>einbezahlter<br>Betrag $</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Gehebelter<br>Wert $</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto-<br>Gewinn $</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Brutto-<br>Gewinn %</th>
@@ -113,7 +114,7 @@
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568; width: 100px;">Account</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Einzahlung<br>$</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">$ mit<br>Hebel</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Saldo<br>Einzahlung</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Saldo<br>Einzahlung<br>mit Hebel</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 80px;">Profit</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 80px;">Gebühren</th>
                             <th style="padding: 12px; text-align: center; border: 1px solid #4a5568; width: 80px;">Gewinn/<br>Verlust</th>
@@ -341,12 +342,13 @@ function calculateWeeklyOverview(trades) {
             weeklyData[weekKey] = {
                 weekStart: monday,
                 trades: [],
-                anzahlTrades: 0,
                 anzahlGewinne: 0,
                 anzahlVerluste: 0,
-                saldoEinzahlungMontag: null,
+                saldoEinzahlungEffektiv: null,
+                saldoEinzahlungMitHebel: null,
                 bruttoGewinn: 0,
                 bruttoGewinnProzentSum: 0,
+                nettoGewinnProzentSum: 0,
                 gebuehren: 0,
                 kommissionen: 0
             };
@@ -354,7 +356,6 @@ function calculateWeeklyOverview(trades) {
         
         const week = weeklyData[weekKey];
         week.trades.push({ date: tradeDate, trade: trade });
-        week.anzahlTrades++;
         
         const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().toLowerCase();
         if (gewinnVerlustText.includes('gewinn')) {
@@ -367,6 +368,9 @@ function calculateWeeklyOverview(trades) {
         
         // Brutto-Gewinn % aus Google Sheets summieren
         week.bruttoGewinnProzentSum += parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
+        
+        // Netto-Gewinn % aus Google Sheets summieren
+        week.nettoGewinnProzentSum += parseNumber(trade['Netto-Profit % auf effektive Einzahlung']);
         
         week.gebuehren += parseNumber(trade['Gebühren']);
         
@@ -389,24 +393,26 @@ function calculateWeeklyOverview(trades) {
             
             // Finde Saldo Einzahlung vom Montag oder ersten Tag der Woche
             const firstTrade = week.trades[0];
-            const saldoEinzahlung = parseNumber(firstTrade.trade['Saldo Einzahlung']);
+            const saldoEinzahlungEffektiv = parseNumber(firstTrade.trade['Saldo Einzahlung effektiv']);
+            const saldoEinzahlungMitHebel = parseNumber(firstTrade.trade['Saldo Einzahlung mit Hebel']);
             
+            const anzahlTrades = week.anzahlGewinne + week.anzahlVerluste;
             const nettoGewinn = week.bruttoGewinn - week.gebuehren - week.kommissionen;
-            const nettoGewinnProzent = saldoEinzahlung > 0 ? (nettoGewinn / saldoEinzahlung) * 100 : 0;
             
             return {
                 weekStart: week.weekStart,
                 'Woche vom': formatDateGerman(week.weekStart),
-                'Anzahl Trades': week.anzahlTrades,
+                'Anzahl Trades': anzahlTrades,
                 'Anz. Gewinne': week.anzahlGewinne,
                 'Anz. Verluste': week.anzahlVerluste,
-                'Gehebelter Wert $': saldoEinzahlung,
+                'Total einbezahlter Betrag $': saldoEinzahlungEffektiv,
+                'Gehebelter Wert $': saldoEinzahlungMitHebel,
                 'Brutto-Gewinn $': week.bruttoGewinn,
                 'Brutto-Gewinn %': week.bruttoGewinnProzentSum, // Summe der % aus Google Sheets
                 'Gebühren': week.gebuehren,
                 'Kommissionen': week.kommissionen,
                 'Netto Gewinn $': nettoGewinn,
-                'Netto Gewinn %': nettoGewinnProzent
+                'Netto Gewinn %': week.nettoGewinnProzentSum // Summe der % aus Google Sheets
             };
         })
         .sort((a, b) => b.weekStart - a.weekStart); // Neueste zuerst
@@ -461,41 +467,45 @@ function displayWeeklyOverview(data) {
         cell3.textContent = week['Anz. Verluste'];
         if (week['Anz. Verluste'] > 0) cell3.classList.add('table-negative');
         
-        // Einzahlung mit Hebel -> Gehebelter Wert $
+        // Total einbezahlter Betrag $ (neu)
         const cell4 = row.insertCell(4);
-        cell4.textContent = formatCurrencyNoDecimals(week['Gehebelter Wert $']);
+        cell4.textContent = formatCurrencyNoDecimals(week['Total einbezahlter Betrag $']);
+        
+        // Gehebelter Wert $
+        const cell5 = row.insertCell(5);
+        cell5.textContent = formatCurrencyNoDecimals(week['Gehebelter Wert $']);
         
         // Brutto-Gewinn $
-        const cell5 = row.insertCell(5);
-        cell5.textContent = formatCurrency(week['Brutto-Gewinn $']);
-        if (week['Brutto-Gewinn $'] > 0) cell5.classList.add('table-positive');
-        else if (week['Brutto-Gewinn $'] < 0) cell5.classList.add('table-negative');
+        const cell6 = row.insertCell(6);
+        cell6.textContent = formatCurrency(week['Brutto-Gewinn $']);
+        if (week['Brutto-Gewinn $'] > 0) cell6.classList.add('table-positive');
+        else if (week['Brutto-Gewinn $'] < 0) cell6.classList.add('table-negative');
         
         // Brutto-Gewinn %
-        const cell6 = row.insertCell(6);
-        cell6.textContent = week['Brutto-Gewinn %'].toFixed(2) + '%';
-        if (week['Brutto-Gewinn %'] > 0) cell6.classList.add('table-positive');
-        else if (week['Brutto-Gewinn %'] < 0) cell6.classList.add('table-negative');
+        const cell7 = row.insertCell(7);
+        cell7.textContent = week['Brutto-Gewinn %'].toFixed(2) + '%';
+        if (week['Brutto-Gewinn %'] > 0) cell7.classList.add('table-positive');
+        else if (week['Brutto-Gewinn %'] < 0) cell7.classList.add('table-negative');
         
         // Gebühren
-        const cell7 = row.insertCell(7);
-        cell7.textContent = formatCurrency(week['Gebühren']);
+        const cell8 = row.insertCell(8);
+        cell8.textContent = formatCurrency(week['Gebühren']);
         
         // Kommissionen
-        const cell8 = row.insertCell(8);
-        cell8.textContent = formatCurrency(week['Kommissionen']);
+        const cell9 = row.insertCell(9);
+        cell9.textContent = formatCurrency(week['Kommissionen']);
         
         // Netto Gewinn $
-        const cell9 = row.insertCell(9);
-        cell9.textContent = formatCurrency(week['Netto Gewinn $']);
-        if (week['Netto Gewinn $'] > 0) cell9.classList.add('table-positive');
-        else if (week['Netto Gewinn $'] < 0) cell9.classList.add('table-negative');
+        const cell10 = row.insertCell(10);
+        cell10.textContent = formatCurrency(week['Netto Gewinn $']);
+        if (week['Netto Gewinn $'] > 0) cell10.classList.add('table-positive');
+        else if (week['Netto Gewinn $'] < 0) cell10.classList.add('table-negative');
         
         // Netto Gewinn %
-        const cell10 = row.insertCell(10);
-        cell10.textContent = week['Netto Gewinn %'].toFixed(2) + '%';
-        if (week['Netto Gewinn %'] > 0) cell10.classList.add('table-positive');
-        else if (week['Netto Gewinn %'] < 0) cell10.classList.add('table-negative');
+        const cell11 = row.insertCell(11);
+        cell11.textContent = week['Netto Gewinn %'].toFixed(2) + '%';
+        if (week['Netto Gewinn %'] > 0) cell11.classList.add('table-positive');
+        else if (week['Netto Gewinn %'] < 0) cell11.classList.add('table-negative');
     });
 }
 
@@ -704,9 +714,9 @@ function displayTrades(trades) {
         const hebelValue = parseNumber(trade['$ mit Hebel'] || trade['$ mit 24x Hebel']); // Fallback für alte Daten
         cell3.textContent = formatCurrencyNoDecimals(hebelValue);
         
-        // Saldo Einzahlung (ohne Kommastellen)
+        // Saldo Einzahlung mit Hebel (ohne Kommastellen)
         const cell4 = row.insertCell(4);
-        cell4.textContent = formatCurrencyNoDecimals(parseNumber(trade['Saldo Einzahlung']));
+        cell4.textContent = formatCurrencyNoDecimals(parseNumber(trade['Saldo Einzahlung mit Hebel']));
         
         // Profit
         const cell5 = row.insertCell(5);
