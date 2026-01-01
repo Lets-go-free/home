@@ -295,12 +295,18 @@ function calculateGewinne(trades) {
     
     // Berechne Summen
     let einzahlungEffektiv = 0;
+    let einzahlungMitHebel = 0;
     let bruttoGewinn = 0;
     let gebuehren = 0;
     let maxKommissionen = 0;
     
     validTrades.forEach(trade => {
         einzahlungEffektiv += parseNumber(trade['Einzahlung $']);
+        
+        // $ mit Hebel - Spaltenname geändert, Fallback für alte Daten
+        const hebelValue = parseNumber(trade['$ mit Hebel'] || trade['$ mit 24x Hebel']);
+        einzahlungMitHebel += hebelValue;
+        
         bruttoGewinn += parseNumber(trade.Profit);
         gebuehren += parseNumber(trade['Gebühren']);
         
@@ -324,6 +330,7 @@ function calculateGewinne(trades) {
     
     return [
         { 'Typ': 'Einzahlung effektiv', 'Betrag $': einzahlungEffektiv, 'in %': 100 },
+        { 'Typ': 'Einzahlung mit Hebel', 'Betrag $': einzahlungMitHebel, 'in %': einzahlungEffektiv > 0 ? (einzahlungMitHebel / einzahlungEffektiv) * 100 : 0 },
         { 'Typ': 'Brutto-Gewinn', 'Betrag $': bruttoGewinn, 'in %': bruttoGewinnProzent },
         { 'Typ': 'Gebühren', 'Betrag $': gebuehren, 'in %': gebuehrenProzent },
         { 'Typ': 'Kommissionen', 'Betrag $': maxKommissionen, 'in %': kommissionenProzent },
@@ -430,6 +437,15 @@ function displayTrades(trades) {
         // Überspringe Trades mit Datum > heute
         if (tradeDate > today) {
             return;
+        }
+        
+        // Überspringe leere Zeilen - mind. eine dieser Spalten muss befüllt sein
+        const einzahlung = parseNumber(trade['Einzahlung $']);
+        const profit = parseNumber(trade.Profit);
+        const gebuehren = parseNumber(trade['Gebühren']);
+        
+        if (einzahlung === 0 && profit === 0 && gebuehren === 0) {
+            return; // Zeile überspringen
         }
         
         const row = tbody.insertRow();
