@@ -261,10 +261,13 @@ function calculateGewinne(trades) {
         
         // Max Kommissionen (nicht Summe!)
         const kommission = parseNumber(trade['Kommissionen']);
+        console.log('Trade Kommissionen:', trade['Kommissionen'], '→', kommission); // Debug
         if (kommission > maxKommissionen) {
             maxKommissionen = kommission;
         }
     });
+    
+    console.log('Max Kommissionen gesamt:', maxKommissionen); // Debug
     
     const nettoGewinn = bruttoGewinn - gebuehren - maxKommissionen;
     
@@ -333,15 +336,31 @@ function displayGenericTable(data, headId, bodyId) {
             else if (colName.includes('%') || colName.includes('prozent') || colName.includes('in %')) {
                 const numValue = parseNumber(value);
                 cell.textContent = numValue.toFixed(2) + '%';
-                if (numValue > 0) cell.classList.add('table-positive');
-                else if (numValue < 0) cell.classList.add('table-negative');
+                
+                // Prüfe ob es sich um Gebühren oder Kommissionen handelt
+                const typ = data[data.indexOf(row)]?.Typ?.toLowerCase() || '';
+                const isKosten = typ.includes('gebühr') || typ.includes('kommission');
+                
+                // Färbe nur wenn es KEIN Kosten-Eintrag ist
+                if (!isKosten) {
+                    if (numValue > 0) cell.classList.add('table-positive');
+                    else if (numValue < 0) cell.classList.add('table-negative');
+                }
             }
             // Dollar-Spalte (Betrag $)
             else if (colName.includes('$') || colName.includes('betrag') || colName.includes('dollar')) {
                 const numValue = parseNumber(value);
                 cell.textContent = formatCurrency(numValue);
-                if (numValue > 0) cell.classList.add('table-positive');
-                else if (numValue < 0) cell.classList.add('table-negative');
+                
+                // Prüfe ob es sich um Gebühren oder Kommissionen handelt
+                const typ = data[data.indexOf(row)]?.Typ?.toLowerCase() || '';
+                const isKosten = typ.includes('gebühr') || typ.includes('kommission');
+                
+                // Färbe nur wenn es KEIN Kosten-Eintrag ist
+                if (!isKosten) {
+                    if (numValue > 0) cell.classList.add('table-positive');
+                    else if (numValue < 0) cell.classList.add('table-negative');
+                }
             }
             // Fallback
             else {
