@@ -26,33 +26,36 @@
             <p><strong>⚠️ Fehler:</strong> Daten konnten nicht geladen werden. Bitte versuche es später erneut.</p>
         </div>
 
-        <!-- Uebersicht Trades Tabelle -->
-        <div id="uebersichtContainer" style="display: none;">
-            <h3>Übersicht Trades</h3>
-            <div style="overflow-x: auto; margin-bottom: 30px;">
-                <table id="uebersichtTable" style="width: 100%; border-collapse: collapse;">
-                    <thead id="uebersichtHead">
-                        <!-- Wird dynamisch gefüllt -->
-                    </thead>
-                    <tbody id="uebersichtBody">
-                        <!-- Wird dynamisch gefüllt -->
-                    </tbody>
-                </table>
+        <!-- Uebersicht Trades und Gewinne nebeneinander -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;" id="summaryTablesContainer">
+            <!-- Uebersicht Trades Tabelle -->
+            <div id="uebersichtContainer" style="display: none;">
+                <h3>Übersicht Trades</h3>
+                <div style="overflow-x: auto;">
+                    <table id="uebersichtTable" style="width: 100%; border-collapse: collapse;">
+                        <thead id="uebersichtHead">
+                            <!-- Wird dynamisch gefüllt -->
+                        </thead>
+                        <tbody id="uebersichtBody">
+                            <!-- Wird dynamisch gefüllt -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
 
-        <!-- Gewinne Tabelle -->
-        <div id="gewinneContainer" style="display: none;">
-            <h3>Gewinne</h3>
-            <div style="overflow-x: auto; margin-bottom: 30px;">
-                <table id="gewinneTable" style="width: 100%; border-collapse: collapse;">
-                    <thead id="gewinneHead">
-                        <!-- Wird dynamisch gefüllt -->
-                    </thead>
-                    <tbody id="gewinneBody">
-                        <!-- Wird dynamisch gefüllt -->
-                    </tbody>
-                </table>
+            <!-- Gewinne Tabelle -->
+            <div id="gewinneContainer" style="display: none;">
+                <h3>Gewinne</h3>
+                <div style="overflow-x: auto;">
+                    <table id="gewinneTable" style="width: 100%; border-collapse: collapse;">
+                        <thead id="gewinneHead">
+                            <!-- Wird dynamisch gefüllt -->
+                        </thead>
+                        <tbody id="gewinneBody">
+                            <!-- Wird dynamisch gefüllt -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
