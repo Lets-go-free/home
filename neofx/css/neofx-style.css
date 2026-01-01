@@ -195,6 +195,85 @@ body {
     color: #1a202c;
 }
 
+/* Tabellen-Styles */
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+table thead tr {
+    background: #2d3748;
+    color: white;
+}
+
+table thead th {
+    padding: 12px;
+    border: 1px solid #4a5568;
+    white-space: nowrap;
+}
+
+table thead th:first-child {
+    text-align: left;
+}
+
+table thead th:not(:first-child) {
+    text-align: right;
+    width: 1%;
+}
+
+table tbody tr {
+    transition: background 0.2s;
+}
+
+table tbody tr:nth-child(even) {
+    background: #f7fafc;
+}
+
+table tbody tr:nth-child(odd) {
+    background: white;
+}
+
+table tbody tr.total-row {
+    background: #e2e8f0 !important;
+    font-weight: 700;
+}
+
+table tbody tr.gewinn-row {
+    background: #d1fae5 !important;
+}
+
+table tbody tr.verlust-row {
+    background: #fee2e2 !important;
+}
+
+table tbody td {
+    padding: 10px;
+    border: 1px solid #e2e8f0;
+    white-space: nowrap;
+}
+
+table tbody td:first-child {
+    text-align: left;
+}
+
+table tbody td:not(:first-child) {
+    text-align: right;
+}
+
+.table-positive {
+    color: #10b981;
+    font-weight: 600;
+}
+
+.table-negative {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.table-center {
+    text-align: center !important;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .hero h1 { 

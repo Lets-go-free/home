@@ -123,7 +123,8 @@ async function loadData() {
         console.log('Gewinne:', gewinneData);
         
         // Verarbeite Daten
-        displayGenericTable(uebersichtData, 'uebersichtHead', 'uebersichtBody');
+        const uebersichtCalculated = calculateUebersicht(tradesData);
+        displayGenericTable(uebersichtCalculated, 'uebersichtHead', 'uebersichtBody');
         displayGenericTable(gewinneData, 'gewinneHead', 'gewinneBody');
         displayTrades(tradesData);
         
@@ -205,6 +206,37 @@ function parseCSVRow(row) {
     return values;
 }
 
+function calculateUebersicht(trades) {
+    // Filtere nur Trades mit Datum <= heute
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const validTrades = trades.filter(trade => {
+        const tradeDate = parseDate(trade.Datum);
+        return tradeDate <= today;
+    });
+    
+    let anzahlGewinne = 0;
+    let anzahlVerluste = 0;
+    
+    validTrades.forEach(trade => {
+        const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().toLowerCase();
+        if (gewinnVerlustText.includes('gewinn')) {
+            anzahlGewinne++;
+        } else if (gewinnVerlustText.includes('verlust')) {
+            anzahlVerluste++;
+        }
+    });
+    
+    const totalTrades = anzahlGewinne + anzahlVerluste;
+    
+    return [
+        { 'Typ': 'Anzahl Gewinne', 'Anzahl': anzahlGewinne },
+        { 'Typ': 'Anzahl Verluste', 'Anzahl': anzahlVerluste },
+        { 'Typ': 'Total Anzahl Trades', 'Anzahl': totalTrades, 'isTotal': true }
+    ];
+}
+
 function displayGenericTable(data, headId, bodyId) {
     if (!data || data.length === 0) return;
     
@@ -216,73 +248,57 @@ function displayGenericTable(data, headId, bodyId) {
     
     // Hole die Spaltennamen aus dem ersten Datensatz
     const firstRow = data[0];
-    const columns = Object.keys(firstRow);
+    const columns = Object.keys(firstRow).filter(col => col !== 'isTotal'); // Entferne Hilfsfelder
     
     // Erstelle Header
     const headerRow = document.createElement('tr');
-    headerRow.style.background = '#2d3748';
-    headerRow.style.color = 'white';
     
-    columns.forEach((col, index) => {
+    columns.forEach(col => {
         const th = document.createElement('th');
-        // Erste Spalte (Text) breiter, Rest kompakt
-        if (index === 0) {
-            th.style.cssText = 'padding: 12px; text-align: left; border: 1px solid #4a5568; white-space: nowrap;';
-        } else {
-            th.style.cssText = 'padding: 12px; text-align: right; border: 1px solid #4a5568; white-space: nowrap; width: 1%;';
-        }
         th.textContent = col;
         headerRow.appendChild(th);
     });
     thead.appendChild(headerRow);
     
     // Fülle Daten
-    data.forEach((row, index) => {
+    data.forEach(row => {
         const tr = tbody.insertRow();
-        tr.style.background = index % 2 === 0 ? '#f7fafc' : 'white';
+        
+        // Total-Zeile hervorheben
+        const isTotal = row.isTotal || false;
+        if (isTotal) {
+            tr.classList.add('total-row');
+        }
         
         columns.forEach((col, colIndex) => {
             const cell = tr.insertCell();
-            
             const value = row[col] || '';
             const colName = col.toLowerCase();
             
-            // Erste Spalte = Text (Typ), linksbündig
+            // Erste Spalte = Text (Typ)
             if (colIndex === 0 || colName.includes('typ')) {
-                cell.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; white-space: nowrap;';
+                cell.textContent = value;
+            }
+            // Anzahl-Spalte
+            else if (colName.includes('anzahl')) {
                 cell.textContent = value;
             }
             // Prozent-Spalte
             else if (colName.includes('%') || colName.includes('prozent') || colName.includes('in %')) {
-                cell.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right; white-space: nowrap;';
                 const numValue = parseNumber(value);
                 cell.textContent = numValue.toFixed(2) + '%';
-                // Färbe positiv/negativ
-                if (numValue > 0) {
-                    cell.style.color = '#10b981';
-                    cell.style.fontWeight = '600';
-                } else if (numValue < 0) {
-                    cell.style.color = '#dc2626';
-                    cell.style.fontWeight = '600';
-                }
+                if (numValue > 0) cell.classList.add('table-positive');
+                else if (numValue < 0) cell.classList.add('table-negative');
             }
             // Dollar-Spalte (Betrag $)
             else if (colName.includes('$') || colName.includes('betrag') || colName.includes('dollar')) {
-                cell.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right; white-space: nowrap;';
                 const numValue = parseNumber(value);
                 cell.textContent = formatCurrency(numValue);
-                // Färbe positiv/negativ
-                if (numValue > 0) {
-                    cell.style.color = '#10b981';
-                    cell.style.fontWeight = '600';
-                } else if (numValue < 0) {
-                    cell.style.color = '#dc2626';
-                    cell.style.fontWeight = '600';
-                }
+                if (numValue > 0) cell.classList.add('table-positive');
+                else if (numValue < 0) cell.classList.add('table-negative');
             }
-            // Fallback für andere Spalten
+            // Fallback
             else {
-                cell.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right; white-space: nowrap;';
                 cell.textContent = value;
             }
         });
@@ -297,7 +313,7 @@ function displayTrades(trades) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    trades.forEach((trade, index) => {
+    trades.forEach((trade) => {
         // Parse Datum
         const tradeDate = parseDate(trade.Datum);
         
@@ -307,9 +323,6 @@ function displayTrades(trades) {
         }
         
         const row = tbody.insertRow();
-        
-        // Alternierende Farben
-        row.style.background = index % 2 === 0 ? '#f7fafc' : 'white';
 
         // Parse Gewinn/Verlust Text
         const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().toLowerCase();
@@ -318,68 +331,61 @@ function displayTrades(trades) {
         
         // Färbe Zeile bei Gewinn/Verlust
         if (isVerlust) {
-            row.style.background = '#fee2e2';
+            row.classList.add('verlust-row');
         } else if (isGewinn) {
-            row.style.background = '#d1fae5';
+            row.classList.add('gewinn-row');
         }
 
         // Datum
         const cell0 = row.insertCell(0);
-        cell0.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0;';
         cell0.textContent = trade.Datum || '-';
         
         // Einzahlung $
         const cell1 = row.insertCell(1);
-        cell1.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
         cell1.textContent = formatCurrency(parseNumber(trade['Einzahlung $']));
         
         // $ mit 24x Hebel
         const cell2 = row.insertCell(2);
-        cell2.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
         cell2.textContent = formatCurrency(parseNumber(trade['$ mit 24x Hebel']));
         
         // Saldo Einzahlung
         const cell3 = row.insertCell(3);
-        cell3.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
         cell3.textContent = formatCurrency(parseNumber(trade['Saldo Einzahlung']));
         
         // Profit
         const cell4 = row.insertCell(4);
-        cell4.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
         const profitValue = parseNumber(trade.Profit);
         cell4.textContent = formatCurrency(profitValue);
-        if (profitValue !== 0) {
-            cell4.style.color = profitValue > 0 ? '#10b981' : '#dc2626';
-        }
+        if (profitValue > 0) cell4.classList.add('table-positive');
+        else if (profitValue < 0) cell4.classList.add('table-negative');
         
         // Gebühren
         const cell5 = row.insertCell(5);
-        cell5.style.cssText = 'padding: 10px; border: 1px solid #e2e8f0; text-align: right;';
         cell5.textContent = formatCurrency(parseNumber(trade['Gebühren']));
+        
+        // Kommissionen - wird NICHT angezeigt, aber Wert ist verfügbar für Berechnungen
+        // const kommissionen = parseNumber(trade['Kommissionen']);
         
         // Gewinn oder Verlust (TEXT)
         const cell6 = row.insertCell(6);
-        cell6.style.cssText = `padding: 10px; border: 1px solid #e2e8f0; text-align: center; font-weight: 600;`;
+        cell6.classList.add('table-center');
         cell6.textContent = trade['Gewinn oder Verlust'] || '-';
-        if (isGewinn) {
-            cell6.style.color = '#10b981';
-        } else if (isVerlust) {
-            cell6.style.color = '#dc2626';
-        }
+        if (isGewinn) cell6.classList.add('table-positive');
+        else if (isVerlust) cell6.classList.add('table-negative');
         
         // Brutto Profit % (24x)
         const profit24x = parseNumber(trade['Brutto Profit in % auf x24 Hebel']);
-        const color24x = profit24x >= 0 ? '#10b981' : '#dc2626';
         const cell7 = row.insertCell(7);
-        cell7.style.cssText = `padding: 10px; border: 1px solid #e2e8f0; text-align: right; color: ${color24x};`;
         cell7.textContent = profit24x.toFixed(2) + '%';
+        if (profit24x > 0) cell7.classList.add('table-positive');
+        else if (profit24x < 0) cell7.classList.add('table-negative');
         
         // Brutto Profit % (effektiv)
         const profitEffektiv = parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
-        const colorEffektiv = profitEffektiv >= 0 ? '#10b981' : '#dc2626';
         const cell8 = row.insertCell(8);
-        cell8.style.cssText = `padding: 10px; border: 1px solid #e2e8f0; text-align: right; color: ${colorEffektiv};`;
         cell8.textContent = profitEffektiv.toFixed(2) + '%';
+        if (profitEffektiv > 0) cell8.classList.add('table-positive');
+        else if (profitEffektiv < 0) cell8.classList.add('table-negative');
     });
 }
 
