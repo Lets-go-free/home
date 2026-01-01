@@ -92,6 +92,7 @@
                             <th style="padding: 12px; text-align: center; border: 1px solid #4a5568;">Gewinn/Verlust</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Brutto Profit % (24x)</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Brutto Profit % (effektiv)</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Kommissionen</th>
                         </tr>
                     </thead>
                     <tbody id="tradesBody">
@@ -298,7 +299,7 @@ function calculateGewinne(trades) {
     let einzahlungMitHebel = 0;
     let bruttoGewinn = 0;
     let gebuehren = 0;
-    let maxKommissionen = 0;
+    let summeKommissionen = 0; // Geändert von maxKommissionen zu summeKommissionen
     
     validTrades.forEach(trade => {
         einzahlungEffektiv += parseNumber(trade['Einzahlung $']);
@@ -310,22 +311,19 @@ function calculateGewinne(trades) {
         bruttoGewinn += parseNumber(trade.Profit);
         gebuehren += parseNumber(trade['Gebühren']);
         
-        // Max Kommissionen (nicht Summe!) - flexible Spaltensuche
+        // Summe Kommissionen (nicht MAX!) - flexible Spaltensuche
         const keys = Object.keys(trade);
         const kommissionenKey = keys.find(k => k.toLowerCase().includes('kommission'));
         const kommission = kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
-        
-        if (kommission > maxKommissionen) {
-            maxKommissionen = kommission;
-        }
+        summeKommissionen += kommission;
     });
     
-    const nettoGewinn = bruttoGewinn - gebuehren - maxKommissionen;
+    const nettoGewinn = bruttoGewinn - gebuehren - summeKommissionen;
     
     // Berechne Prozente
     const bruttoGewinnProzent = einzahlungEffektiv > 0 ? (bruttoGewinn / einzahlungEffektiv) * 100 : 0;
     const gebuehrenProzent = einzahlungEffektiv > 0 ? (gebuehren / einzahlungEffektiv) * 100 : 0;
-    const kommissionenProzent = einzahlungEffektiv > 0 ? (maxKommissionen / einzahlungEffektiv) * 100 : 0;
+    const kommissionenProzent = einzahlungEffektiv > 0 ? (summeKommissionen / einzahlungEffektiv) * 100 : 0;
     const nettoGewinnProzent = einzahlungEffektiv > 0 ? (nettoGewinn / einzahlungEffektiv) * 100 : 0;
     
     return [
@@ -333,7 +331,7 @@ function calculateGewinne(trades) {
         { 'Typ': 'Einzahlung mit Hebel', 'Betrag $': einzahlungMitHebel, 'in %': einzahlungEffektiv > 0 ? (einzahlungMitHebel / einzahlungEffektiv) * 100 : 0 },
         { 'Typ': 'Brutto-Gewinn', 'Betrag $': bruttoGewinn, 'in %': bruttoGewinnProzent },
         { 'Typ': 'Gebühren', 'Betrag $': gebuehren, 'in %': gebuehrenProzent },
-        { 'Typ': 'Kommissionen', 'Betrag $': maxKommissionen, 'in %': kommissionenProzent },
+        { 'Typ': 'Kommissionen', 'Betrag $': summeKommissionen, 'in %': kommissionenProzent },
         { 'Typ': 'Netto-Gewinn', 'Betrag $': nettoGewinn, 'in %': nettoGewinnProzent, 'isTotal': true }
     ];
 }
@@ -517,6 +515,13 @@ function displayTrades(trades) {
         cell9.textContent = profitEffektiv.toFixed(2) + '%';
         if (profitEffektiv > 0) cell9.classList.add('table-positive');
         else if (profitEffektiv < 0) cell9.classList.add('table-negative');
+        
+        // Kommissionen - jetzt sichtbar an letzter Stelle
+        const cell10 = row.insertCell(10);
+        const keys = Object.keys(trade);
+        const kommissionenKey = keys.find(k => k.toLowerCase().includes('kommission'));
+        const kommissionenValue = kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
+        cell10.textContent = formatCurrency(kommissionenValue);
     });
 }
 
