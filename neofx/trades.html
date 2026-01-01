@@ -80,7 +80,7 @@
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anzahl<br>Trades</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Gewinne</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Verluste</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Einzahlung<br>mit Hebel</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Gehebelter<br>Wert $</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto-<br>Gewinn $</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Brutto-<br>Gewinn %</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Gebühren</th>
@@ -340,17 +340,20 @@ function calculateWeeklyOverview(trades) {
         if (!weeklyData[weekKey]) {
             weeklyData[weekKey] = {
                 weekStart: monday,
+                trades: [],
                 anzahlTrades: 0,
                 anzahlGewinne: 0,
                 anzahlVerluste: 0,
-                saldoEinzahlung: 0,
+                saldoEinzahlungMontag: null,
                 bruttoGewinn: 0,
+                bruttoGewinnProzentSum: 0,
                 gebuehren: 0,
                 kommissionen: 0
             };
         }
         
         const week = weeklyData[weekKey];
+        week.trades.push({ date: tradeDate, trade: trade });
         week.anzahlTrades++;
         
         const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().toLowerCase();
@@ -360,8 +363,11 @@ function calculateWeeklyOverview(trades) {
             week.anzahlVerluste++;
         }
         
-        week.saldoEinzahlung += parseNumber(trade['Saldo Einzahlung']);
         week.bruttoGewinn += parseNumber(trade.Profit);
+        
+        // Brutto-Gewinn % aus Google Sheets summieren
+        week.bruttoGewinnProzentSum += parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
+        
         week.gebuehren += parseNumber(trade['Gebühren']);
         
         // Kommissionen
@@ -373,13 +379,20 @@ function calculateWeeklyOverview(trades) {
         week.kommissionen += kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
     });
     
-    // Konvertiere zu Array und sortiere nach Datum (neueste zuerst)
+    // Konvertiere zu Array und berechne finale Werte
     const result = Object.keys(weeklyData)
         .map(key => {
             const week = weeklyData[key];
+            
+            // Sortiere Trades der Woche nach Datum
+            week.trades.sort((a, b) => a.date - b.date);
+            
+            // Finde Saldo Einzahlung vom Montag oder ersten Tag der Woche
+            const firstTrade = week.trades[0];
+            const saldoEinzahlung = parseNumber(firstTrade.trade['Saldo Einzahlung']);
+            
             const nettoGewinn = week.bruttoGewinn - week.gebuehren - week.kommissionen;
-            const bruttoGewinnProzent = week.saldoEinzahlung > 0 ? (week.bruttoGewinn / week.saldoEinzahlung) * 100 : 0;
-            const nettoGewinnProzent = week.saldoEinzahlung > 0 ? (nettoGewinn / week.saldoEinzahlung) * 100 : 0;
+            const nettoGewinnProzent = saldoEinzahlung > 0 ? (nettoGewinn / saldoEinzahlung) * 100 : 0;
             
             return {
                 weekStart: week.weekStart,
@@ -387,9 +400,9 @@ function calculateWeeklyOverview(trades) {
                 'Anzahl Trades': week.anzahlTrades,
                 'Anz. Gewinne': week.anzahlGewinne,
                 'Anz. Verluste': week.anzahlVerluste,
-                'Einzahlung mit Hebel': week.saldoEinzahlung,
+                'Gehebelter Wert $': saldoEinzahlung,
                 'Brutto-Gewinn $': week.bruttoGewinn,
-                'Brutto-Gewinn %': bruttoGewinnProzent,
+                'Brutto-Gewinn %': week.bruttoGewinnProzentSum, // Summe der % aus Google Sheets
                 'Gebühren': week.gebuehren,
                 'Kommissionen': week.kommissionen,
                 'Netto Gewinn $': nettoGewinn,
@@ -448,9 +461,9 @@ function displayWeeklyOverview(data) {
         cell3.textContent = week['Anz. Verluste'];
         if (week['Anz. Verluste'] > 0) cell3.classList.add('table-negative');
         
-        // Einzahlung mit Hebel
+        // Einzahlung mit Hebel -> Gehebelter Wert $
         const cell4 = row.insertCell(4);
-        cell4.textContent = formatCurrencyNoDecimals(week['Einzahlung mit Hebel']);
+        cell4.textContent = formatCurrencyNoDecimals(week['Gehebelter Wert $']);
         
         // Brutto-Gewinn $
         const cell5 = row.insertCell(5);
