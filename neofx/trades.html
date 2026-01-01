@@ -102,12 +102,7 @@
 
         <!-- Trades Tabelle -->
         <div id="tradesContainer" style="display: none;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="margin: 0;">Alle Trades</h3>
-                <button onclick="loadData()" style="background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">
-                    🔄 Aktualisieren
-                </button>
-            </div>
+            <h3 style="margin-bottom: 20px;">Alle Trades</h3>
 
             <div class="table-container">
                 <table id="tradesTable" style="width: 100%; border-collapse: collapse;">
@@ -119,10 +114,10 @@
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">$ mit<br>Hebel</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Saldo<br>Einzahlung<br>mit Hebel</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 80px;">Profit</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 80px;">Gebühren</th>
                             <th style="padding: 12px; text-align: center; border: 1px solid #4a5568; width: 80px;">Gewinn/<br>Verlust</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto<br>Profit %<br>(24x)</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto<br>Profit %<br>(effektiv)</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 80px;">Gebühren</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Kommissionen</th>
                         </tr>
                     </thead>
@@ -425,7 +420,7 @@ function calculateWeeklyOverview(trades) {
                 'Netto Gewinn %': week.nettoGewinnProzentSum // Summe der % aus Google Sheets
             };
         })
-        .sort((a, b) => b.weekStart - a.weekStart); // Neueste zuerst
+        .sort((a, b) => a.weekStart - b.weekStart); // Älteste zuerst (aufsteigend)
     
     return result;
 }
@@ -735,35 +730,32 @@ function displayTrades(trades) {
         if (profitValue > 0) cell5.classList.add('table-positive');
         else if (profitValue < 0) cell5.classList.add('table-negative');
         
-        // Gebühren
-        const cell6 = row.insertCell(6);
-        cell6.textContent = formatCurrency(parseNumber(trade['Gebühren']));
-        
-        // Kommissionen - wird NICHT angezeigt, aber Wert ist verfügbar für Berechnungen
-        // (Wird für Gewinne-Tabelle verwendet)
-        
         // Gewinn oder Verlust (TEXT)
-        const cell7 = row.insertCell(7);
-        cell7.classList.add('table-center');
-        cell7.textContent = trade['Gewinn oder Verlust'] || '-';
-        if (isGewinn) cell7.classList.add('table-positive');
-        else if (isVerlust) cell7.classList.add('table-negative');
+        const cell6 = row.insertCell(6);
+        cell6.classList.add('table-center');
+        cell6.textContent = trade['Gewinn oder Verlust'] || '-';
+        if (isGewinn) cell6.classList.add('table-positive');
+        else if (isVerlust) cell6.classList.add('table-negative');
         
         // Brutto Profit % (24x)
         const profit24x = parseNumber(trade['Brutto Profit in % auf x24 Hebel']);
-        const cell8 = row.insertCell(8);
-        cell8.textContent = profit24x.toFixed(2) + '%';
-        if (profit24x > 0) cell8.classList.add('table-positive');
-        else if (profit24x < 0) cell8.classList.add('table-negative');
+        const cell7 = row.insertCell(7);
+        cell7.textContent = profit24x.toFixed(2) + '%';
+        if (profit24x > 0) cell7.classList.add('table-positive');
+        else if (profit24x < 0) cell7.classList.add('table-negative');
         
         // Brutto Profit % (effektiv)
         const profitEffektiv = parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
-        const cell9 = row.insertCell(9);
-        cell9.textContent = profitEffektiv.toFixed(2) + '%';
-        if (profitEffektiv > 0) cell9.classList.add('table-positive');
-        else if (profitEffektiv < 0) cell9.classList.add('table-negative');
+        const cell8 = row.insertCell(8);
+        cell8.textContent = profitEffektiv.toFixed(2) + '%';
+        if (profitEffektiv > 0) cell8.classList.add('table-positive');
+        else if (profitEffektiv < 0) cell8.classList.add('table-negative');
         
-        // Kommissionen - jetzt sichtbar an letzter Stelle
+        // Gebühren (jetzt VOR Kommissionen)
+        const cell9 = row.insertCell(9);
+        cell9.textContent = formatCurrency(parseNumber(trade['Gebühren']));
+        
+        // Kommissionen - jetzt an letzter Stelle
         // Verwende "Kommissionen" (nicht "Kommissionen Total")
         const cell10 = row.insertCell(10);
         const tradeKeys2 = Object.keys(trade);
