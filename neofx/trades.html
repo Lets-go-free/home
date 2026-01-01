@@ -26,6 +26,16 @@
             <p><strong>⚠️ Fehler:</strong> Daten konnten nicht geladen werden. Bitte versuche es später erneut.</p>
         </div>
 
+        <!-- Account Filter -->
+        <div id="accountFilterContainer" style="display: none; margin-bottom: 30px;">
+            <div style="background: linear-gradient(135deg, #ffffff 0%, #f7fafc 100%); padding: 20px; border-radius: 12px; border-left: 4px solid #4a5568;">
+                <label for="accountFilter" style="display: block; margin-bottom: 10px; font-weight: 600; color: #2d3748;">Account wählen:</label>
+                <select id="accountFilter" style="width: 100%; padding: 12px; border: 2px solid #cbd5e0; border-radius: 8px; font-size: 1em; background: white; cursor: pointer;" onchange="filterByAccount()">
+                    <option value="">Alle Accounts</option>
+                </select>
+            </div>
+        </div>
+
         <!-- Uebersicht Trades und Gewinne nebeneinander -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;" id="summaryTablesContainer">
             <!-- Uebersicht Trades Tabelle -->
@@ -73,8 +83,9 @@
                     <thead>
                         <tr style="background: #2d3748; color: white;">
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Datum</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Account</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Einzahlung $</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">$ mit 24x Hebel</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">$ mit Hebel</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Saldo Einzahlung</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Profit</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Gebühren</th>
@@ -103,6 +114,9 @@ const SHEET_URLS = {
     trades: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS51ZXRwqKMXVyH9-EKw2WuDTHZTfW1vRkoGwdHtz55vlprAPX9tbSXghnoujChPN9y_nZwU6BHtMwb/pub?gid=0&single=true&output=csv'
 };
 
+// Globale Variable für alle Trades
+let allTradesData = [];
+
 async function loadData() {
     // Zeige Lade-Indikator
     document.getElementById('loadingIndicator').style.display = 'block';
@@ -117,15 +131,18 @@ async function loadData() {
         
         console.log('Trades:', tradesData);
         
-        // Verarbeite Daten
-        const uebersichtCalculated = calculateUebersicht(tradesData);
-        const gewinneCalculated = calculateGewinne(tradesData);
-        displayGenericTable(uebersichtCalculated, 'uebersichtHead', 'uebersichtBody');
-        displayGenericTable(gewinneCalculated, 'gewinneHead', 'gewinneBody');
-        displayTrades(tradesData);
+        // Speichere alle Trades global
+        allTradesData = tradesData;
         
-        // Verstecke Lade-Indikator, zeige Daten
+        // Erstelle Account-Filter
+        populateAccountFilter(tradesData);
+        
+        // Zeige alle Daten (kein Filter aktiv)
+        filterByAccount();
+        
+        // Verstecke Lade-Indikator, zeige Filter und Daten
         document.getElementById('loadingIndicator').style.display = 'none';
+        document.getElementById('accountFilterContainer').style.display = 'block';
         document.getElementById('uebersichtContainer').style.display = 'block';
         document.getElementById('gewinneContainer').style.display = 'block';
         document.getElementById('tradesContainer').style.display = 'block';
@@ -200,6 +217,39 @@ function parseCSVRow(row) {
     
     values.push(current.trim().replace(/^"|"$/g, ''));
     return values;
+}
+
+function populateAccountFilter(trades) {
+    // Hole eindeutige Account-Werte
+    const accounts = [...new Set(trades.map(t => t.Account).filter(a => a && a.trim()))].sort();
+    
+    const select = document.getElementById('accountFilter');
+    // Behalte "Alle Accounts" Option
+    select.innerHTML = '<option value="">Alle Accounts</option>';
+    
+    accounts.forEach(account => {
+        const option = document.createElement('option');
+        option.value = account;
+        option.textContent = account;
+        select.appendChild(option);
+    });
+}
+
+function filterByAccount() {
+    const selectedAccount = document.getElementById('accountFilter').value;
+    
+    // Filtere Trades
+    let filteredTrades = allTradesData;
+    if (selectedAccount) {
+        filteredTrades = allTradesData.filter(t => t.Account === selectedAccount);
+    }
+    
+    // Verarbeite gefilterte Daten
+    const uebersichtCalculated = calculateUebersicht(filteredTrades);
+    const gewinneCalculated = calculateGewinne(filteredTrades);
+    displayGenericTable(uebersichtCalculated, 'uebersichtHead', 'uebersichtBody');
+    displayGenericTable(gewinneCalculated, 'gewinneHead', 'gewinneBody');
+    displayTrades(filteredTrades);
 }
 
 function calculateUebersicht(trades) {
@@ -400,52 +450,57 @@ function displayTrades(trades) {
         const cell0 = row.insertCell(0);
         cell0.textContent = trade.Datum || '-';
         
-        // Einzahlung $ (ohne Kommastellen)
+        // Account
         const cell1 = row.insertCell(1);
-        cell1.textContent = formatCurrencyNoDecimals(parseNumber(trade['Einzahlung $']));
+        cell1.textContent = trade.Account || '-';
         
-        // $ mit 24x Hebel (ohne Kommastellen)
+        // Einzahlung $ (ohne Kommastellen)
         const cell2 = row.insertCell(2);
-        cell2.textContent = formatCurrencyNoDecimals(parseNumber(trade['$ mit 24x Hebel']));
+        cell2.textContent = formatCurrencyNoDecimals(parseNumber(trade['Einzahlung $']));
+        
+        // $ mit Hebel (ohne Kommastellen) - Spaltenname geändert
+        const cell3 = row.insertCell(3);
+        const hebelValue = parseNumber(trade['$ mit Hebel'] || trade['$ mit 24x Hebel']); // Fallback für alte Daten
+        cell3.textContent = formatCurrencyNoDecimals(hebelValue);
         
         // Saldo Einzahlung (ohne Kommastellen)
-        const cell3 = row.insertCell(3);
-        cell3.textContent = formatCurrencyNoDecimals(parseNumber(trade['Saldo Einzahlung']));
+        const cell4 = row.insertCell(4);
+        cell4.textContent = formatCurrencyNoDecimals(parseNumber(trade['Saldo Einzahlung']));
         
         // Profit
-        const cell4 = row.insertCell(4);
+        const cell5 = row.insertCell(5);
         const profitValue = parseNumber(trade.Profit);
-        cell4.textContent = formatCurrency(profitValue);
-        if (profitValue > 0) cell4.classList.add('table-positive');
-        else if (profitValue < 0) cell4.classList.add('table-negative');
+        cell5.textContent = formatCurrency(profitValue);
+        if (profitValue > 0) cell5.classList.add('table-positive');
+        else if (profitValue < 0) cell5.classList.add('table-negative');
         
         // Gebühren
-        const cell5 = row.insertCell(5);
-        cell5.textContent = formatCurrency(parseNumber(trade['Gebühren']));
+        const cell6 = row.insertCell(6);
+        cell6.textContent = formatCurrency(parseNumber(trade['Gebühren']));
         
         // Kommissionen - wird NICHT angezeigt, aber Wert ist verfügbar für Berechnungen
         // (Wird für Gewinne-Tabelle verwendet)
         
         // Gewinn oder Verlust (TEXT)
-        const cell6 = row.insertCell(6);
-        cell6.classList.add('table-center');
-        cell6.textContent = trade['Gewinn oder Verlust'] || '-';
-        if (isGewinn) cell6.classList.add('table-positive');
-        else if (isVerlust) cell6.classList.add('table-negative');
+        const cell7 = row.insertCell(7);
+        cell7.classList.add('table-center');
+        cell7.textContent = trade['Gewinn oder Verlust'] || '-';
+        if (isGewinn) cell7.classList.add('table-positive');
+        else if (isVerlust) cell7.classList.add('table-negative');
         
         // Brutto Profit % (24x)
         const profit24x = parseNumber(trade['Brutto Profit in % auf x24 Hebel']);
-        const cell7 = row.insertCell(7);
-        cell7.textContent = profit24x.toFixed(2) + '%';
-        if (profit24x > 0) cell7.classList.add('table-positive');
-        else if (profit24x < 0) cell7.classList.add('table-negative');
+        const cell8 = row.insertCell(8);
+        cell8.textContent = profit24x.toFixed(2) + '%';
+        if (profit24x > 0) cell8.classList.add('table-positive');
+        else if (profit24x < 0) cell8.classList.add('table-negative');
         
         // Brutto Profit % (effektiv)
         const profitEffektiv = parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
-        const cell8 = row.insertCell(8);
-        cell8.textContent = profitEffektiv.toFixed(2) + '%';
-        if (profitEffektiv > 0) cell8.classList.add('table-positive');
-        else if (profitEffektiv < 0) cell8.classList.add('table-negative');
+        const cell9 = row.insertCell(9);
+        cell9.textContent = profitEffektiv.toFixed(2) + '%';
+        if (profitEffektiv > 0) cell9.classList.add('table-positive');
+        else if (profitEffektiv < 0) cell9.classList.add('table-negative');
     });
 }
 
