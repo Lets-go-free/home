@@ -69,6 +69,33 @@
             </div>
         </div>
 
+        <!-- Trades-Übersicht je Woche -->
+        <div id="weeklyOverviewContainer" style="display: none; margin-bottom: 30px;">
+            <h3>Trades-Übersicht je Woche</h3>
+            <div style="overflow-x: auto; max-height: 400px; overflow-y: auto; border: 1px solid #cbd5e0; border-radius: 8px;">
+                <table id="weeklyOverviewTable" style="width: 100%; border-collapse: collapse;">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr style="background: #2d3748; color: white;">
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Woche vom</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anzahl<br>Trades</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Gewinne</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Verluste</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Einzahlung<br>mit Hebel</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto-<br>Gewinn $</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Brutto-<br>Gewinn %</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Gebühren</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Kommissionen</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Netto<br>Gewinn $</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Netto<br>Gewinn %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="weeklyOverviewBody">
+                        <!-- Wird dynamisch gefüllt -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- Trades Tabelle -->
         <div id="tradesContainer" style="display: none;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -82,17 +109,17 @@
                 <table id="tradesTable" style="width: 100%; border-collapse: collapse;">
                     <thead style="position: sticky; top: 0; z-index: 10;">
                         <tr style="background: #2d3748; color: white;">
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Datum</th>
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Account</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Einzahlung<br>$</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">$ mit<br>Hebel</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Saldo<br>Einzahlung</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Profit</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Gebühren</th>
-                            <th style="padding: 12px; text-align: center; border: 1px solid #4a5568;">Gewinn/<br>Verlust</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Brutto<br>Profit %<br>(24x)</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Brutto<br>Profit %<br>(effektiv)</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Kommissionen</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568; width: 80px;">Datum</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568; width: 100px;">Account</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Einzahlung<br>$</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">$ mit<br>Hebel</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Saldo<br>Einzahlung</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 80px;">Profit</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 80px;">Gebühren</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #4a5568; width: 80px;">Gewinn/<br>Verlust</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto<br>Profit %<br>(24x)</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto<br>Profit %<br>(effektiv)</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Kommissionen</th>
                         </tr>
                     </thead>
                     <tbody id="tradesBody">
@@ -146,6 +173,7 @@ async function loadData() {
         document.getElementById('accountFilterContainer').style.display = 'block';
         document.getElementById('uebersichtContainer').style.display = 'block';
         document.getElementById('gewinneContainer').style.display = 'block';
+        document.getElementById('weeklyOverviewContainer').style.display = 'block';
         document.getElementById('tradesContainer').style.display = 'block';
         
     } catch (error) {
@@ -248,8 +276,11 @@ function filterByAccount() {
     // Verarbeite gefilterte Daten
     const uebersichtCalculated = calculateUebersicht(filteredTrades);
     const gewinneCalculated = calculateGewinne(filteredTrades);
+    const weeklyOverview = calculateWeeklyOverview(filteredTrades);
+    
     displayGenericTable(uebersichtCalculated, 'uebersichtHead', 'uebersichtBody');
     displayGenericTable(gewinneCalculated, 'gewinneHead', 'gewinneBody');
+    displayWeeklyOverview(weeklyOverview);
     displayTrades(filteredTrades);
 }
 
@@ -286,6 +317,173 @@ function calculateUebersicht(trades) {
         { 'Typ': 'Anzahl Verluste', 'Anzahl': anzahlVerluste, 'in %': verlusteProcessent },
         { 'Typ': 'Total Anzahl Trades', 'Anzahl': totalTrades, 'in %': 100, 'isTotal': true }
     ];
+}
+
+function calculateWeeklyOverview(trades) {
+    // Filtere nur Trades mit Datum <= heute
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const validTrades = trades.filter(trade => {
+        const tradeDate = parseDate(trade.Datum);
+        return tradeDate <= today;
+    });
+    
+    // Gruppiere nach Wochen (Montag als Wochenstart)
+    const weeklyData = {};
+    
+    validTrades.forEach(trade => {
+        const tradeDate = parseDate(trade.Datum);
+        const monday = getMonday(tradeDate);
+        const weekKey = formatDate(monday);
+        
+        if (!weeklyData[weekKey]) {
+            weeklyData[weekKey] = {
+                weekStart: monday,
+                anzahlTrades: 0,
+                anzahlGewinne: 0,
+                anzahlVerluste: 0,
+                saldoEinzahlung: 0,
+                bruttoGewinn: 0,
+                gebuehren: 0,
+                kommissionen: 0
+            };
+        }
+        
+        const week = weeklyData[weekKey];
+        week.anzahlTrades++;
+        
+        const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().toLowerCase();
+        if (gewinnVerlustText.includes('gewinn')) {
+            week.anzahlGewinne++;
+        } else if (gewinnVerlustText.includes('verlust')) {
+            week.anzahlVerluste++;
+        }
+        
+        week.saldoEinzahlung += parseNumber(trade['Saldo Einzahlung']);
+        week.bruttoGewinn += parseNumber(trade.Profit);
+        week.gebuehren += parseNumber(trade['Gebühren']);
+        
+        // Kommissionen
+        const keys = Object.keys(trade);
+        const kommissionenKey = keys.find(k => {
+            const normalized = k.toLowerCase().trim();
+            return normalized === 'kommissionen' || (normalized.includes('kommission') && !normalized.includes('total'));
+        });
+        week.kommissionen += kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
+    });
+    
+    // Konvertiere zu Array und sortiere nach Datum (neueste zuerst)
+    const result = Object.keys(weeklyData)
+        .map(key => {
+            const week = weeklyData[key];
+            const nettoGewinn = week.bruttoGewinn - week.gebuehren - week.kommissionen;
+            const bruttoGewinnProzent = week.saldoEinzahlung > 0 ? (week.bruttoGewinn / week.saldoEinzahlung) * 100 : 0;
+            const nettoGewinnProzent = week.saldoEinzahlung > 0 ? (nettoGewinn / week.saldoEinzahlung) * 100 : 0;
+            
+            return {
+                weekStart: week.weekStart,
+                'Woche vom': formatDateGerman(week.weekStart),
+                'Anzahl Trades': week.anzahlTrades,
+                'Anz. Gewinne': week.anzahlGewinne,
+                'Anz. Verluste': week.anzahlVerluste,
+                'Einzahlung mit Hebel': week.saldoEinzahlung,
+                'Brutto-Gewinn $': week.bruttoGewinn,
+                'Brutto-Gewinn %': bruttoGewinnProzent,
+                'Gebühren': week.gebuehren,
+                'Kommissionen': week.kommissionen,
+                'Netto Gewinn $': nettoGewinn,
+                'Netto Gewinn %': nettoGewinnProzent
+            };
+        })
+        .sort((a, b) => b.weekStart - a.weekStart); // Neueste zuerst
+    
+    return result;
+}
+
+function getMonday(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Montag = 1
+    return new Date(d.setDate(diff));
+}
+
+function formatDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function formatDateGerman(date) {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}.${month}.${year}`;
+}
+
+function displayWeeklyOverview(data) {
+    const tbody = document.getElementById('weeklyOverviewBody');
+    tbody.innerHTML = '';
+    
+    data.forEach((week, index) => {
+        const row = tbody.insertRow();
+        row.style.background = index % 2 === 0 ? '#f7fafc' : 'white';
+        
+        // Woche vom
+        const cell0 = row.insertCell(0);
+        cell0.textContent = week['Woche vom'];
+        
+        // Anzahl Trades
+        const cell1 = row.insertCell(1);
+        cell1.textContent = week['Anzahl Trades'];
+        
+        // Anz. Gewinne
+        const cell2 = row.insertCell(2);
+        cell2.textContent = week['Anz. Gewinne'];
+        cell2.classList.add('table-positive');
+        
+        // Anz. Verluste
+        const cell3 = row.insertCell(3);
+        cell3.textContent = week['Anz. Verluste'];
+        if (week['Anz. Verluste'] > 0) cell3.classList.add('table-negative');
+        
+        // Einzahlung mit Hebel
+        const cell4 = row.insertCell(4);
+        cell4.textContent = formatCurrencyNoDecimals(week['Einzahlung mit Hebel']);
+        
+        // Brutto-Gewinn $
+        const cell5 = row.insertCell(5);
+        cell5.textContent = formatCurrency(week['Brutto-Gewinn $']);
+        if (week['Brutto-Gewinn $'] > 0) cell5.classList.add('table-positive');
+        else if (week['Brutto-Gewinn $'] < 0) cell5.classList.add('table-negative');
+        
+        // Brutto-Gewinn %
+        const cell6 = row.insertCell(6);
+        cell6.textContent = week['Brutto-Gewinn %'].toFixed(2) + '%';
+        if (week['Brutto-Gewinn %'] > 0) cell6.classList.add('table-positive');
+        else if (week['Brutto-Gewinn %'] < 0) cell6.classList.add('table-negative');
+        
+        // Gebühren
+        const cell7 = row.insertCell(7);
+        cell7.textContent = formatCurrency(week['Gebühren']);
+        
+        // Kommissionen
+        const cell8 = row.insertCell(8);
+        cell8.textContent = formatCurrency(week['Kommissionen']);
+        
+        // Netto Gewinn $
+        const cell9 = row.insertCell(9);
+        cell9.textContent = formatCurrency(week['Netto Gewinn $']);
+        if (week['Netto Gewinn $'] > 0) cell9.classList.add('table-positive');
+        else if (week['Netto Gewinn $'] < 0) cell9.classList.add('table-negative');
+        
+        // Netto Gewinn %
+        const cell10 = row.insertCell(10);
+        cell10.textContent = week['Netto Gewinn %'].toFixed(2) + '%';
+        if (week['Netto Gewinn %'] > 0) cell10.classList.add('table-positive');
+        else if (week['Netto Gewinn %'] < 0) cell10.classList.add('table-negative');
+    });
 }
 
 function calculateGewinne(trades) {
