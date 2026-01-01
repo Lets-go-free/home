@@ -277,10 +277,14 @@ function calculateUebersicht(trades) {
     
     const totalTrades = anzahlGewinne + anzahlVerluste;
     
+    // Berechne Prozente
+    const gewinneProcessent = totalTrades > 0 ? (anzahlGewinne / totalTrades) * 100 : 0;
+    const verlusteProcessent = totalTrades > 0 ? (anzahlVerluste / totalTrades) * 100 : 0;
+    
     return [
-        { 'Typ': 'Anzahl Gewinne', 'Anzahl': anzahlGewinne },
-        { 'Typ': 'Anzahl Verluste', 'Anzahl': anzahlVerluste },
-        { 'Typ': 'Total Anzahl Trades', 'Anzahl': totalTrades, 'isTotal': true }
+        { 'Typ': 'Anzahl Gewinne', 'Anzahl': anzahlGewinne, 'in %': gewinneProcessent },
+        { 'Typ': 'Anzahl Verluste', 'Anzahl': anzahlVerluste, 'in %': verlusteProcessent },
+        { 'Typ': 'Total Anzahl Trades', 'Anzahl': totalTrades, 'in %': 100, 'isTotal': true }
     ];
 }
 
