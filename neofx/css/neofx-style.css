@@ -234,8 +234,9 @@ table tbody tr:nth-child(odd) {
 }
 
 table tbody tr.total-row {
-    background: #e2e8f0 !important;
+    background: #cbd5e0 !important;
     font-weight: 700;
+    border-top: 2px solid #4a5568;
 }
 
 table tbody tr.gewinn-row {

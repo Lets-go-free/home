@@ -124,8 +124,9 @@ async function loadData() {
         
         // Verarbeite Daten
         const uebersichtCalculated = calculateUebersicht(tradesData);
+        const gewinneCalculated = calculateGewinne(tradesData);
         displayGenericTable(uebersichtCalculated, 'uebersichtHead', 'uebersichtBody');
-        displayGenericTable(gewinneData, 'gewinneHead', 'gewinneBody');
+        displayGenericTable(gewinneCalculated, 'gewinneHead', 'gewinneBody');
         displayTrades(tradesData);
         
         // Verstecke Lade-Indikator, zeige Daten
@@ -237,6 +238,51 @@ function calculateUebersicht(trades) {
     ];
 }
 
+function calculateGewinne(trades) {
+    // Filtere nur Trades mit Datum <= heute
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const validTrades = trades.filter(trade => {
+        const tradeDate = parseDate(trade.Datum);
+        return tradeDate <= today;
+    });
+    
+    // Berechne Summen
+    let einzahlungEffektiv = 0;
+    let bruttoGewinn = 0;
+    let gebuehren = 0;
+    let maxKommissionen = 0;
+    
+    validTrades.forEach(trade => {
+        einzahlungEffektiv += parseNumber(trade['Einzahlung $']);
+        bruttoGewinn += parseNumber(trade.Profit);
+        gebuehren += parseNumber(trade['Gebühren']);
+        
+        // Max Kommissionen (nicht Summe!)
+        const kommission = parseNumber(trade['Kommissionen']);
+        if (kommission > maxKommissionen) {
+            maxKommissionen = kommission;
+        }
+    });
+    
+    const nettoGewinn = bruttoGewinn - gebuehren - maxKommissionen;
+    
+    // Berechne Prozente
+    const bruttoGewinnProzent = einzahlungEffektiv > 0 ? (bruttoGewinn / einzahlungEffektiv) * 100 : 0;
+    const gebuehrenProzent = einzahlungEffektiv > 0 ? (gebuehren / einzahlungEffektiv) * 100 : 0;
+    const kommissionenProzent = einzahlungEffektiv > 0 ? (maxKommissionen / einzahlungEffektiv) * 100 : 0;
+    const nettoGewinnProzent = einzahlungEffektiv > 0 ? (nettoGewinn / einzahlungEffektiv) * 100 : 0;
+    
+    return [
+        { 'Typ': 'Einzahlung effektiv', 'Betrag $': einzahlungEffektiv, 'in %': 100 },
+        { 'Typ': 'Brutto-Gewinn', 'Betrag $': bruttoGewinn, 'in %': bruttoGewinnProzent },
+        { 'Typ': 'Gebühren', 'Betrag $': gebuehren, 'in %': gebuehrenProzent },
+        { 'Typ': 'Kommissionen', 'Betrag $': maxKommissionen, 'in %': kommissionenProzent },
+        { 'Typ': 'Netto-Gewinn', 'Betrag $': nettoGewinn, 'in %': nettoGewinnProzent, 'isTotal': true }
+    ];
+}
+
 function displayGenericTable(data, headId, bodyId) {
     if (!data || data.length === 0) return;
     
@@ -340,17 +386,17 @@ function displayTrades(trades) {
         const cell0 = row.insertCell(0);
         cell0.textContent = trade.Datum || '-';
         
-        // Einzahlung $
+        // Einzahlung $ (ohne Kommastellen)
         const cell1 = row.insertCell(1);
-        cell1.textContent = formatCurrency(parseNumber(trade['Einzahlung $']));
+        cell1.textContent = formatCurrencyNoDecimals(parseNumber(trade['Einzahlung $']));
         
-        // $ mit 24x Hebel
+        // $ mit 24x Hebel (ohne Kommastellen)
         const cell2 = row.insertCell(2);
-        cell2.textContent = formatCurrency(parseNumber(trade['$ mit 24x Hebel']));
+        cell2.textContent = formatCurrencyNoDecimals(parseNumber(trade['$ mit 24x Hebel']));
         
-        // Saldo Einzahlung
+        // Saldo Einzahlung (ohne Kommastellen)
         const cell3 = row.insertCell(3);
-        cell3.textContent = formatCurrency(parseNumber(trade['Saldo Einzahlung']));
+        cell3.textContent = formatCurrencyNoDecimals(parseNumber(trade['Saldo Einzahlung']));
         
         // Profit
         const cell4 = row.insertCell(4);
@@ -428,6 +474,11 @@ function parseNumber(value) {
 
 function formatCurrency(value) {
     const formatted = Math.abs(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+    return value < 0 ? '-$' + formatted : '$' + formatted;
+}
+
+function formatCurrencyNoDecimals(value) {
+    const formatted = Math.abs(Math.round(value)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
     return value < 0 ? '-$' + formatted : '$' + formatted;
 }
 
