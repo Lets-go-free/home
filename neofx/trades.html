@@ -442,7 +442,12 @@ function displayTrades(trades) {
         const profit = parseNumber(trade.Profit);
         const gebuehren = parseNumber(trade['Gebühren']);
         
-        if (einzahlung === 0 && profit === 0 && gebuehren === 0) {
+        // Kommissionen - flexible Spaltensuche
+        const keys = Object.keys(trade);
+        const kommissionenKey = keys.find(k => k.toLowerCase().includes('kommission'));
+        const kommissionen = kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
+        
+        if (einzahlung === 0 && profit === 0 && gebuehren === 0 && kommissionen === 0) {
             return; // Zeile überspringen
         }
         
