@@ -531,13 +531,13 @@ function displayTrades(trades) {
         // Kommissionen - jetzt sichtbar an letzter Stelle
         // Verwende "Kommissionen" (nicht "Kommissionen Total")
         const cell10 = row.insertCell(10);
-        const keys = Object.keys(trade);
+        const tradeKeys2 = Object.keys(trade);
         // Suche exakt nach "Kommissionen" (ohne "Total")
-        const kommissionenKey = keys.find(k => {
+        const kommissionenKey2 = tradeKeys2.find(k => {
             const normalized = k.toLowerCase().trim();
             return normalized === 'kommissionen' || (normalized.includes('kommission') && !normalized.includes('total'));
         });
-        const kommissionenValue = kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
+        const kommissionenValue = kommissionenKey2 ? parseNumber(trade[kommissionenKey2]) : 0;
         cell10.textContent = formatCurrency(kommissionenValue);
     });
 }
