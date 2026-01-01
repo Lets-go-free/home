@@ -312,8 +312,12 @@ function calculateGewinne(trades) {
         gebuehren += parseNumber(trade['Gebühren']);
         
         // Summe Kommissionen (nicht MAX!) - flexible Spaltensuche
+        // Verwende "Kommissionen" (nicht "Kommissionen Total")
         const keys = Object.keys(trade);
-        const kommissionenKey = keys.find(k => k.toLowerCase().includes('kommission'));
+        const kommissionenKey = keys.find(k => {
+            const normalized = k.toLowerCase().trim();
+            return normalized === 'kommissionen' || (normalized.includes('kommission') && !normalized.includes('total'));
+        });
         const kommission = kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
         summeKommissionen += kommission;
     });
@@ -442,9 +446,12 @@ function displayTrades(trades) {
         const profit = parseNumber(trade.Profit);
         const gebuehren = parseNumber(trade['Gebühren']);
         
-        // Kommissionen - flexible Spaltensuche
+        // Kommissionen - flexible Spaltensuche (nicht "Kommissionen Total")
         const keys = Object.keys(trade);
-        const kommissionenKey = keys.find(k => k.toLowerCase().includes('kommission'));
+        const kommissionenKey = keys.find(k => {
+            const normalized = k.toLowerCase().trim();
+            return normalized === 'kommissionen' || (normalized.includes('kommission') && !normalized.includes('total'));
+        });
         const kommissionen = kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
         
         if (einzahlung === 0 && profit === 0 && gebuehren === 0 && kommissionen === 0) {
@@ -522,9 +529,14 @@ function displayTrades(trades) {
         else if (profitEffektiv < 0) cell9.classList.add('table-negative');
         
         // Kommissionen - jetzt sichtbar an letzter Stelle
+        // Verwende "Kommissionen" (nicht "Kommissionen Total")
         const cell10 = row.insertCell(10);
         const keys = Object.keys(trade);
-        const kommissionenKey = keys.find(k => k.toLowerCase().includes('kommission'));
+        // Suche exakt nach "Kommissionen" (ohne "Total")
+        const kommissionenKey = keys.find(k => {
+            const normalized = k.toLowerCase().trim();
+            return normalized === 'kommissionen' || (normalized.includes('kommission') && !normalized.includes('total'));
+        });
         const kommissionenValue = kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
         cell10.textContent = formatCurrency(kommissionenValue);
     });
