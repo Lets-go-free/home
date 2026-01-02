@@ -184,21 +184,41 @@
         function formatSwissNumber(value) {
             if (value === null || value === undefined || value === '') return '';
             
+            // Remove existing formatting (apostrophes, spaces, commas)
+            let cleanValue = String(value).replace(/[''\s,]/g, '');
+            
             // Try to parse as number
-            const num = parseFloat(value);
+            const num = parseFloat(cleanValue);
             if (isNaN(num)) return value; // Return original if not a number
             
-            // Format with apostrophes
-            const parts = num.toFixed(2).split('.');
+            // Determine decimal places - check if original value has decimals
+            let decimalPlaces = 2;
+            if (cleanValue.includes('.')) {
+                const decimalPart = cleanValue.split('.')[1];
+                decimalPlaces = Math.max(2, decimalPart.length);
+            }
+            
+            // Format with apostrophes as thousand separator, period as decimal separator
+            const parts = num.toFixed(decimalPlaces).split('.');
             parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
             return parts.join('.');
+        }
+        
+        // Parse Swiss formatted number back to float
+        function parseSwissNumber(value) {
+            if (!value) return 0;
+            // Remove apostrophes (thousand separators)
+            const cleanValue = String(value).replace(/['']/g, '');
+            return parseFloat(cleanValue) || 0;
         }
         
         // Check if value looks like a number
         function isNumeric(value) {
             if (typeof value === 'number') return true;
             if (typeof value !== 'string') return false;
-            return !isNaN(value) && !isNaN(parseFloat(value));
+            // Remove Swiss formatting for check
+            const cleanValue = value.replace(/['']/g, '');
+            return !isNaN(cleanValue) && !isNaN(parseFloat(cleanValue));
         }
         
         // Create info table from first 4 rows
@@ -257,8 +277,38 @@
             inputs.forEach(input => {
                 const row = parseInt(input.dataset.row);
                 const col = parseInt(input.dataset.col);
-                // Update the stored data (this could be used for calculations if needed)
-                // For now, we just refresh the display
+                
+                // Update the stored data with parsed Swiss numbers
+                let originalRowCells = allRows[row].filter(cell => cell && cell.trim() !== '');
+                if (originalRowCells[col] !== undefined) {
+                    // If it's a number, parse it from Swiss format
+                    if (isNumeric(originalRowCells[col])) {
+                        const parsedValue = parseSwissNumber(input.value);
+                        // Update in the full allRows array at the correct position
+                        let cellIndex = 0;
+                        for (let i = 0; i < allRows[row].length; i++) {
+                            if (allRows[row][i] && allRows[row][i].trim() !== '') {
+                                if (cellIndex === col) {
+                                    allRows[row][i] = parsedValue.toString();
+                                    break;
+                                }
+                                cellIndex++;
+                            }
+                        }
+                    } else {
+                        // Update text value
+                        let cellIndex = 0;
+                        for (let i = 0; i < allRows[row].length; i++) {
+                            if (allRows[row][i] && allRows[row][i].trim() !== '') {
+                                if (cellIndex === col) {
+                                    allRows[row][i] = input.value;
+                                    break;
+                                }
+                                cellIndex++;
+                            }
+                        }
+                    }
+                }
             });
             
             // Clear and rebuild main table
@@ -351,8 +401,8 @@
                             
                             // Format numbers with Swiss formatting
                             if (isNumeric(cell)) {
-                                const numValue = parseFloat(cell);
-                                td.textContent = formatSwissNumber(cell);
+                                const numValue = parseSwissNumber(cell);
+                                td.textContent = formatSwissNumber(numValue);
                                 
                                 // Accumulate for subtotals
                                 if (!walletTotals[idx]) walletTotals[idx] = 0;
