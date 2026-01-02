@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TLN Daten - Community TLN Business DE</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.7; color: #333; background: linear-gradient(135deg, #1261A0 0%, #2776EA 50%, #58CCED 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .hero { background: linear-gradient(135deg, #1261A0 0%, #2776EA 100%); color: white; padding: 60px 40px; text-align: center; }
+        .hero h1 { font-size: 2.8em; margin-bottom: 20px; line-height: 1.2; }
+        .hero .subtitle { font-size: 1.3em; margin-bottom: 40px; opacity: 0.95; }
+        
+        /* Navigation Menu */
+        .nav-menu { background: #084387; padding: 8px 15px; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .nav-menu a { color: white; text-decoration: none; padding: 8px 18px; display: block; font-weight: 600; transition: all 0.3s; border-radius: 8px; background: rgba(255,255,255,0.1); border: 2px solid transparent; }
+        .nav-menu a:hover { background: #1261A0; border-color: #58CCED; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        
+        .section { padding: 40px 40px; }
+        .section h2 { font-size: 2em; line-height: 1.2em; color: #1261A0; margin-bottom: 30px; text-align: center; }
+        
+        /* Loading State */
+        .loading { text-align: center; padding: 60px 20px; color: #1261A0; font-size: 1.2em; }
+        .loading::after { content: '...'; animation: dots 1.5s steps(4, end) infinite; }
+        @keyframes dots { 0%, 20% { content: '.'; } 40% { content: '..'; } 60%, 100% { content: '...'; } }
+        
+        /* Table Styles */
+        .table-container { overflow-x: auto; margin: 20px 0; background: white; border-radius: 12px; box-shadow: 0 3px 15px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; }
+        thead { background: linear-gradient(135deg, #1261A0 0%, #2776EA 100%); color: white; position: sticky; top: 0; z-index: 10; }
+        th { padding: 15px 12px; text-align: left; font-weight: 700; font-size: 0.95em; border-bottom: 3px solid #084387; }
+        tbody tr { transition: background 0.2s; }
+        tbody tr:nth-child(even) { background: #f8f9fa; }
+        tbody tr:hover { background: #E3F2FD; }
+        td { padding: 12px; border-bottom: 1px solid #e0e0e0; font-size: 0.95em; }
+        td:first-child, th:first-child { padding-left: 20px; }
+        td:last-child, th:last-child { padding-right: 20px; }
+        
+        /* Number formatting */
+        .number { text-align: right; font-family: 'Courier New', monospace; font-weight: 600; color: #1261A0; }
+        
+        /* Footer */
+        .footer { max-width: 800px; margin: 40px auto 0; padding: 25px 40px; background: #fff3cd; border-radius: 10px; border-left: 4px solid #ffc107; text-align: left; font-size: 0.95em; }
+        
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2em; }
+            .hero .subtitle { font-size: 1.1em; }
+            .section { padding: 40px 25px; }
+            .section h2 { font-size: 1.6em; }
+            th, td { padding: 10px 8px; font-size: 0.85em; }
+            td:first-child, th:first-child { padding-left: 10px; }
+            td:last-child, th:last-child { padding-right: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hero">
+            <h1>TLN Daten 📊</h1>
+            <p class="subtitle">Live-Daten aus Google Sheets</p>
+        </div>
+        
+        <!-- Navigation Menu -->
+        <nav class="nav-menu">
+            <a href="index.html">← Zurück zur Startseite</a>
+        </nav>
+        
+        <div class="section">
+            <div id="loadingState" class="loading">
+                Lade Daten aus Google Sheets
+            </div>
+            
+            <div id="tableContainer" class="table-container" style="display: none;">
+                <table id="dataTable">
+                    <thead id="tableHead"></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p style="margin-bottom: 10px;"><strong>⚠️ Wichtig:</strong> Dies ist keine Finanzberatung. Alle Informationen dienen ausschliesslich zu Bildungszwecken. Investiere nur, was du bereit bist zu verlieren.</p>
+            <p style="margin-bottom: 0;"><strong>💡 Hinweis:</strong> Diese Seite wird von der Community gepflegt und stellt keine offizielle TLN Protocol Seite dar.</p>
+        </div>
+    </div>
+    
+    <script>
+        // Swiss number formatting (with apostrophes as thousand separators)
+        function formatSwissNumber(value) {
+            if (value === null || value === undefined || value === '') return '';
+            
+            // Try to parse as number
+            const num = parseFloat(value);
+            if (isNaN(num)) return value; // Return original if not a number
+            
+            // Format with apostrophes
+            const parts = num.toFixed(2).split('.');
+            parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+            return parts.join('.');
+        }
+        
+        // Check if value looks like a number
+        function isNumeric(value) {
+            if (typeof value === 'number') return true;
+            if (typeof value !== 'string') return false;
+            return !isNaN(value) && !isNaN(parseFloat(value));
+        }
+        
+        // Load and display CSV data from Google Sheets
+        async function loadGoogleSheetData() {
+            const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRpTgGXFX6CUlMIxF_53XGCAjcRAeCdq8RyHw2jULbQGwlWzpGTq5o-cOobQxoQ9QpTqBrYe7BkF5Ct/pub?gid=1347502363&single=true&output=csv';
+            
+            try {
+                const response = await fetch(csvUrl);
+                if (!response.ok) throw new Error('Fehler beim Laden der Daten');
+                
+                const csvText = await response.text();
+                const rows = parseCSV(csvText);
+                
+                if (rows.length === 0) {
+                    throw new Error('Keine Daten gefunden');
+                }
+                
+                // Create table header
+                const thead = document.getElementById('tableHead');
+                const headerRow = document.createElement('tr');
+                rows[0].forEach(header => {
+                    const th = document.createElement('th');
+                    th.textContent = header;
+                    headerRow.appendChild(th);
+                });
+                thead.appendChild(headerRow);
+                
+                // Create table body
+                const tbody = document.getElementById('tableBody');
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (row.length === 0 || row.every(cell => !cell)) continue; // Skip empty rows
+                    
+                    const tr = document.createElement('tr');
+                    row.forEach(cell => {
+                        const td = document.createElement('td');
+                        
+                        // Format numbers with Swiss formatting
+                        if (isNumeric(cell)) {
+                            td.textContent = formatSwissNumber(cell);
+                            td.className = 'number';
+                        } else {
+                            td.textContent = cell;
+                        }
+                        
+                        tr.appendChild(td);
+                    });
+                    tbody.appendChild(tr);
+                }
+                
+                // Hide loading, show table
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('tableContainer').style.display = 'block';
+                
+            } catch (error) {
+                console.error('Fehler:', error);
+                document.getElementById('loadingState').innerHTML = 
+                    '❌ Fehler beim Laden der Daten. Bitte versuche es später erneut.';
+            }
+        }
+        
+        // Simple CSV parser
+        function parseCSV(text) {
+            const rows = [];
+            let currentRow = [];
+            let currentCell = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const nextChar = text[i + 1];
+                
+                if (char === '"') {
+                    if (inQuotes && nextChar === '"') {
+                        currentCell += '"';
+                        i++;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === ',' && !inQuotes) {
+                    currentRow.push(currentCell.trim());
+                    currentCell = '';
+                } else if ((char === '\n' || char === '\r') && !inQuotes) {
+                    if (char === '\r' && nextChar === '\n') {
+                        i++;
+                    }
+                    currentRow.push(currentCell.trim());
+                    if (currentRow.length > 0) {
+                        rows.push(currentRow);
+                    }
+                    currentRow = [];
+                    currentCell = '';
+                } else {
+                    currentCell += char;
+                }
+            }
+            
+            // Add last cell and row
+            if (currentCell || currentRow.length > 0) {
+                currentRow.push(currentCell.trim());
+                rows.push(currentRow);
+            }
+            
+            return rows;
+        }
+        
+        // Load data when page loads
+        loadGoogleSheetData();
+    </script>
+</body>
+</html>
