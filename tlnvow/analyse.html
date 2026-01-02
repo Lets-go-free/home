@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Formel Analyse</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .row { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+        .header { background: #1261A0; color: white; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h1>CSV Analyse - Info-Zeilen und Spalten</h1>
+    <div id="output"></div>
+    
+    <script>
+        function parseCSV(text) {
+            const rows = [];
+            let currentRow = [];
+            let currentCell = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const nextChar = text[i + 1];
+                
+                if (char === '"') {
+                    if (inQuotes && nextChar === '"') {
+                        currentCell += '"';
+                        i++;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === ',' && !inQuotes) {
+                    currentRow.push(currentCell.trim());
+                    currentCell = '';
+                } else if ((char === '\n' || char === '\r') && !inQuotes) {
+                    if (char === '\r' && nextChar === '\n') i++;
+                    currentRow.push(currentCell.trim());
+                    if (currentRow.length > 0) rows.push(currentRow);
+                    currentRow = [];
+                    currentCell = '';
+                } else {
+                    currentCell += char;
+                }
+            }
+            if (currentCell || currentRow.length > 0) {
+                currentRow.push(currentCell.trim());
+                rows.push(currentRow);
+            }
+            return rows;
+        }
+
+        async function analyzeData() {
+            const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRpTgGXFX6CUlMIxF_53XGCAjcRAeCdq8RyHw2jULbQGwlWzpGTq5o-cOobQxoQ9QpTqBrYe7BkF5Ct/pub?gid=1347502363&single=true&output=csv';
+            
+            try {
+                const response = await fetch(csvUrl);
+                const csvText = await response.text();
+                const rows = parseCSV(csvText);
+                
+                let html = '<div class="header">INFO-ZEILEN (1-4)</div>';
+                
+                for (let i = 0; i < 4 && i < rows.length; i++) {
+                    html += `<div class="row"><strong>Zeile ${i+1}:</strong><br>`;
+                    const filledCells = rows[i].filter(c => c);
+                    filledCells.forEach((cell, idx) => {
+                        html += `[${idx}] ${cell}<br>`;
+                    });
+                    html += '</div>';
+                }
+                
+                html += '<div class="header" style="margin-top: 20px;">SPALTEN-HEADER (Zeile 5)</div>';
+                html += '<div class="row">';
+                if (rows[4]) {
+                    rows[4].forEach((header, idx) => {
+                        if (header) html += `<strong>[${idx}]</strong> ${header}<br>`;
+                    });
+                }
+                html += '</div>';
+                
+                html += '<div class="header" style="margin-top: 20px;">ERSTE DATENZEILE (Zeile 6)</div>';
+                html += '<div class="row">';
+                if (rows[5]) {
+                    rows[5].forEach((cell, idx) => {
+                        if (rows[4] && rows[4][idx]) {
+                            html += `<strong>${rows[4][idx]}:</strong> ${cell}<br>`;
+                        }
+                    });
+                }
+                html += '</div>';
+                
+                html += '<div class="header" style="margin-top: 20px;">ZWEITE DATENZEILE (Zeile 7)</div>';
+                html += '<div class="row">';
+                if (rows[6]) {
+                    rows[6].forEach((cell, idx) => {
+                        if (rows[4] && rows[4][idx]) {
+                            html += `<strong>${rows[4][idx]}:</strong> ${cell}<br>`;
+                        }
+                    });
+                }
+                html += '</div>';
+                
+                document.getElementById('output').innerHTML = html;
+            } catch (error) {
+                document.getElementById('output').innerHTML = '<div style="color: red;">Fehler: ' + error + '</div>';
+            }
+        }
+        
+        analyzeData();
+    </script>
+</body>
+</html>
