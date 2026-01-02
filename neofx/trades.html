@@ -38,22 +38,7 @@
 
         <!-- Uebersicht Trades und Gewinne nebeneinander -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;" id="summaryTablesContainer">
-            <!-- Uebersicht Trades Tabelle -->
-            <div id="uebersichtContainer" style="display: none;">
-                <h3>Übersicht Trades</h3>
-                <div style="overflow-x: auto;">
-                    <table id="uebersichtTable" style="width: 100%; border-collapse: collapse;">
-                        <thead id="uebersichtHead">
-                            <!-- Wird dynamisch gefüllt -->
-                        </thead>
-                        <tbody id="uebersichtBody">
-                            <!-- Wird dynamisch gefüllt -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Gewinne Tabelle -->
+            <!-- Gewinne Tabelle (jetzt links) -->
             <div id="gewinneContainer" style="display: none;">
                 <h3>Gewinne</h3>
                 <div style="overflow-x: auto;">
@@ -62,6 +47,21 @@
                             <!-- Wird dynamisch gefüllt -->
                         </thead>
                         <tbody id="gewinneBody">
+                            <!-- Wird dynamisch gefüllt -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Uebersicht Trades Tabelle (jetzt rechts) -->
+            <div id="uebersichtContainer" style="display: none;">
+                <h3>Übersicht Trades</h3>
+                <div style="overflow-x: auto;">
+                    <table id="uebersichtTable" style="width: 100%; border-collapse: collapse;">
+                        <thead id="uebersichtHead">
+                            <!-- Wird dynamisch gefüllt -->
+                        </thead>
+                        <tbody id="uebersichtBody">
                             <!-- Wird dynamisch gefüllt -->
                         </tbody>
                     </table>
@@ -115,7 +115,7 @@
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Saldo<br>Einzahlung<br>mit Hebel</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 80px;">Profit</th>
                             <th style="padding: 12px; text-align: center; border: 1px solid #4a5568; width: 80px;">Gewinn/<br>Verlust</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto<br>Profit %<br>(24x)</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto<br>Profit %<br>(Hebel)</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto<br>Profit %<br>(effektiv)</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 80px;">Gebühren</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Kommissionen</th>
@@ -295,6 +295,7 @@ function calculateUebersicht(trades) {
     
     let anzahlGewinne = 0;
     let anzahlVerluste = 0;
+    let nettoGewinnProzentSum = 0;
     
     validTrades.forEach(trade => {
         const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().toLowerCase();
@@ -303,6 +304,9 @@ function calculateUebersicht(trades) {
         } else if (gewinnVerlustText.includes('verlust')) {
             anzahlVerluste++;
         }
+        
+        // Summiere Netto-Gewinn % für Durchschnittsberechnung
+        nettoGewinnProzentSum += parseNumber(trade['Netto-Profit % auf effektive Einzahlung']);
     });
     
     const totalTrades = anzahlGewinne + anzahlVerluste;
@@ -311,10 +315,18 @@ function calculateUebersicht(trades) {
     const gewinneProcessent = totalTrades > 0 ? (anzahlGewinne / totalTrades) * 100 : 0;
     const verlusteProcessent = totalTrades > 0 ? (anzahlVerluste / totalTrades) * 100 : 0;
     
+    // Durchschnittlicher Nettogewinn je Trade
+    const avgNettoGewinnJeTrade = totalTrades > 0 ? nettoGewinnProzentSum / totalTrades : 0;
+    
+    // Anzahl Trades um Einsatz als Gewinn zu erreichen
+    const tradesForBreakeven = avgNettoGewinnJeTrade > 0 ? Math.ceil(100 / avgNettoGewinnJeTrade) : 0;
+    
     return [
         { 'Typ': 'Anzahl Gewinne', 'Anzahl': anzahlGewinne, 'in %': gewinneProcessent },
         { 'Typ': 'Anzahl Verluste', 'Anzahl': anzahlVerluste, 'in %': verlusteProcessent },
-        { 'Typ': 'Total Anzahl Trades', 'Anzahl': totalTrades, 'in %': 100, 'isTotal': true }
+        { 'Typ': 'Total Anzahl Trades', 'Anzahl': totalTrades, 'in %': 100, 'isTotal': true },
+        { 'Typ': 'Ø Nettogewinn je Trade', 'Anzahl': '', 'in %': avgNettoGewinnJeTrade },
+        { 'Typ': 'Anz. Trades, um den Einsatz als Gewinn zu erreichen', 'Anzahl': tradesForBreakeven, 'in %': '' }
     ];
 }
 
@@ -472,7 +484,7 @@ function displayWeeklyOverview(data) {
         cell3.textContent = week['Anz. Verluste'];
         if (week['Anz. Verluste'] > 0) cell3.classList.add('table-negative');
         
-        // Total einbezahlter Betrag $ (neu)
+        // Total einbezahlter Betrag $
         const cell4 = row.insertCell(4);
         cell4.textContent = formatCurrencyNoDecimals(week['Total einbezahlter Betrag $']);
         
@@ -661,6 +673,15 @@ function displayTrades(trades) {
     // Heutiges Datum (ohne Uhrzeit)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    
+    // Initialisiere Summen für Total-Zeile
+    let totalEinzahlung = 0;
+    let totalMitHebel = 0;
+    let totalProfit = 0;
+    let totalBruttoGewinnProzentHebel = 0;
+    let totalBruttoGewinnProzentEffektiv = 0;
+    let totalGebuehren = 0;
+    let totalKommissionen = 0;
 
     trades.forEach((trade) => {
         // Parse Datum
@@ -687,6 +708,15 @@ function displayTrades(trades) {
         if (einzahlung === 0 && profit === 0 && gebuehren === 0 && kommissionen === 0) {
             return; // Zeile überspringen
         }
+        
+        // Sammle Werte für Total-Zeile
+        totalEinzahlung += parseNumber(trade['Einzahlung $']);
+        totalMitHebel += parseNumber(trade['$ mit Hebel'] || trade['$ mit 24x Hebel']);
+        totalProfit += parseNumber(trade.Profit);
+        totalBruttoGewinnProzentHebel += parseNumber(trade['Brutto Profit in % auf x24 Hebel']);
+        totalBruttoGewinnProzentEffektiv += parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
+        totalGebuehren += parseNumber(trade['Gebühren']);
+        totalKommissionen += kommissionen;
         
         const row = tbody.insertRow();
 
@@ -767,6 +797,60 @@ function displayTrades(trades) {
         const kommissionenValue = kommissionenKey2 ? parseNumber(trade[kommissionenKey2]) : 0;
         cell10.textContent = formatCurrency(kommissionenValue);
     });
+    
+    // Füge Total-Zeile hinzu
+    const totalRow = tbody.insertRow();
+    totalRow.classList.add('total-row');
+    
+    // Datum
+    const tcell0 = totalRow.insertCell(0);
+    tcell0.textContent = 'Total';
+    
+    // Account
+    const tcell1 = totalRow.insertCell(1);
+    tcell1.textContent = '';
+    
+    // Einzahlung $
+    const tcell2 = totalRow.insertCell(2);
+    tcell2.textContent = formatCurrencyNoDecimals(totalEinzahlung);
+    
+    // $ mit Hebel
+    const tcell3 = totalRow.insertCell(3);
+    tcell3.textContent = formatCurrencyNoDecimals(totalMitHebel);
+    
+    // Saldo Einzahlung mit Hebel
+    const tcell4 = totalRow.insertCell(4);
+    tcell4.textContent = '';
+    
+    // Profit
+    const tcell5 = totalRow.insertCell(5);
+    tcell5.textContent = formatCurrency(totalProfit);
+    if (totalProfit > 0) tcell5.classList.add('table-positive');
+    else if (totalProfit < 0) tcell5.classList.add('table-negative');
+    
+    // Gewinn/Verlust
+    const tcell6 = totalRow.insertCell(6);
+    tcell6.textContent = '';
+    
+    // Brutto Profit % (Hebel)
+    const tcell7 = totalRow.insertCell(7);
+    tcell7.textContent = totalBruttoGewinnProzentHebel.toFixed(2) + '%';
+    if (totalBruttoGewinnProzentHebel > 0) tcell7.classList.add('table-positive');
+    else if (totalBruttoGewinnProzentHebel < 0) tcell7.classList.add('table-negative');
+    
+    // Brutto Profit % (effektiv)
+    const tcell8 = totalRow.insertCell(8);
+    tcell8.textContent = totalBruttoGewinnProzentEffektiv.toFixed(2) + '%';
+    if (totalBruttoGewinnProzentEffektiv > 0) tcell8.classList.add('table-positive');
+    else if (totalBruttoGewinnProzentEffektiv < 0) tcell8.classList.add('table-negative');
+    
+    // Gebühren
+    const tcell9 = totalRow.insertCell(9);
+    tcell9.textContent = formatCurrency(totalGebuehren);
+    
+    // Kommissionen
+    const tcell10 = totalRow.insertCell(10);
+    tcell10.textContent = formatCurrency(totalKommissionen);
 }
 
 function parseDate(dateString) {
