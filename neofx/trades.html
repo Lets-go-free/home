@@ -717,21 +717,32 @@ function displayGenericTable(data, headId, bodyId) {
             }
             // Anzahl-Spalte
             else if (colName.includes('anzahl')) {
-                cell.textContent = value;
+                // Prüfe ob Wert leer ist
+                if (value === null || value === undefined || value === '') {
+                    cell.textContent = '';
+                } else {
+                    cell.textContent = value;
+                }
             }
             // Prozent-Spalte
             else if (colName.includes('%') || colName.includes('prozent') || colName.includes('in %')) {
                 const numValue = parseNumber(value);
-                cell.textContent = numValue.toFixed(2) + '%';
                 
-                // Prüfe ob es sich um Gebühren oder Kommissionen handelt
-                const typ = data[data.indexOf(row)]?.Typ?.toLowerCase() || '';
-                const isKosten = typ.includes('gebühr') || typ.includes('kommission');
-                
-                // Färbe nur wenn es KEIN Kosten-Eintrag ist
-                if (!isKosten) {
-                    if (numValue > 0) cell.classList.add('table-positive');
-                    else if (numValue < 0) cell.classList.add('table-negative');
+                // Prüfe ob Wert null oder undefined ist - dann nichts anzeigen
+                if (value === null || value === undefined || value === '') {
+                    cell.textContent = '';
+                } else {
+                    cell.textContent = numValue.toFixed(2) + '%';
+                    
+                    // Prüfe ob es sich um Gebühren oder Kommissionen handelt
+                    const typ = data[data.indexOf(row)]?.Typ?.toLowerCase() || '';
+                    const isKosten = typ.includes('gebühr') || typ.includes('kommission');
+                    
+                    // Färbe nur wenn es KEIN Kosten-Eintrag ist
+                    if (!isKosten) {
+                        if (numValue > 0) cell.classList.add('table-positive');
+                        else if (numValue < 0) cell.classList.add('table-negative');
+                    }
                 }
             }
             // Dollar-Spalte (Betrag $)
