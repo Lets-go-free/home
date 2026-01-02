@@ -138,15 +138,40 @@
                 Lade Daten aus Google Sheets
             </div>
             
+            <!-- Google Sheets Embed -->
+            <div id="sheetsEmbed" style="display: none; margin-bottom: 30px;">
+                <h3 style="color: #1261A0; margin-bottom: 15px; text-align: center;">📊 Google Sheets - Original Daten</h3>
+                <div style="border: 3px solid #1261A0; border-radius: 12px; overflow: hidden; margin-bottom: 15px;">
+                    <iframe id="googleSheetsFrame"
+                            src="https://docs.google.com/spreadsheets/d/e/2PACX-1vRpTgGXFX6CUlMIxF_53XGCAjcRAeCdq8RyHw2jULbQGwlWzpGTq5o-cOobQxoQ9QpTqBrYe7BkF5Ct/pubhtml?widget=true&headers=false"
+                            width="100%" 
+                            height="500px" 
+                            frameborder="0"
+                            style="display: block;">
+                    </iframe>
+                </div>
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <button onclick="refreshData()" style="background: #1261A0; color: white; border: none; padding: 12px 30px; border-radius: 8px; font-weight: 700; font-size: 1em; cursor: pointer; transition: all 0.3s; box-shadow: 0 3px 10px rgba(0,0,0,0.2);">
+                        🔄 Daten neu laden
+                    </button>
+                    <p style="margin-top: 10px; color: #666; font-size: 0.9em;">Klicke hier nach Änderungen in Google Sheets</p>
+                </div>
+            </div>
+            
             <!-- Info Box für die ersten 4 Zeilen als editierbare Tabelle -->
             <div id="infoBox" style="display: none; background: #E3F2FD; padding: 25px; border-radius: 12px; border-left: 4px solid #1261A0; margin-bottom: 30px;">
+                <h3 style="color: #1261A0; margin-bottom: 15px; text-align: center;">⚙️ Berechnungs-Parameter (editierbar)</h3>
                 <table class="info-table" id="infoTable">
                     <thead id="infoTableHead"></thead>
                     <tbody id="infoTableBody"></tbody>
                 </table>
+                <p style="margin-top: 15px; color: #666; font-size: 0.9em; text-align: center; font-style: italic;">
+                    💡 Änderungen hier werden automatisch berechnet
+                </p>
             </div>
             
             <div id="tableContainer" class="table-container" style="display: none;">
+                <h3 style="color: #1261A0; margin-bottom: 15px; text-align: center; padding: 0 20px;">📈 Berechnete Ergebnisse</h3>
                 <table id="dataTable">
                     <thead id="tableHead"></thead>
                     <tbody id="tableBody"></tbody>
@@ -748,8 +773,9 @@
                 // Build main table
                 buildMainTable();
                 
-                // Hide loading, show info box and table
+                // Hide loading, show sheets embed, info box and table
                 document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('sheetsEmbed').style.display = 'block';
                 document.getElementById('infoBox').style.display = 'block';
                 document.getElementById('tableContainer').style.display = 'block';
                 
@@ -757,6 +783,54 @@
                 console.error('Fehler:', error);
                 document.getElementById('loadingState').innerHTML = 
                     '❌ Fehler beim Laden der Daten. Bitte versuche es später erneut.';
+            }
+        }
+        
+        // Refresh data from Google Sheets
+        async function refreshData() {
+            // Show loading indicator
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '⏳ Lädt...';
+            btn.disabled = true;
+            
+            try {
+                const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRpTgGXFX6CUlMIxF_53XGCAjcRAeCdq8RyHw2jULbQGwlWzpGTq5o-cOobQxoQ9QpTqBrYe7BkF5Ct/pub?gid=1347502363&single=true&output=csv&timestamp=' + Date.now();
+                
+                const response = await fetch(csvUrl);
+                if (!response.ok) throw new Error('Fehler beim Laden der Daten');
+                
+                const csvText = await response.text();
+                allRows = parseCSV(csvText);
+                
+                if (allRows.length < 5) {
+                    throw new Error('Nicht genügend Daten gefunden');
+                }
+                
+                // Recreate info table with new data
+                createInfoTable(allRows);
+                
+                // Rebuild main table
+                buildMainTable();
+                
+                // Success feedback
+                btn.textContent = '✓ Aktualisiert!';
+                btn.style.background = '#28a745';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '#1261A0';
+                    btn.disabled = false;
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Fehler beim Refresh:', error);
+                btn.textContent = '❌ Fehler';
+                btn.style.background = '#dc3545';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '#1261A0';
+                    btn.disabled = false;
+                }, 2000);
             }
         }
         
