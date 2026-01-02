@@ -721,14 +721,16 @@ function calculateGewinneProAccount(trades) {
             switch(rowDef.type) {
                 case 'count':
                     if (rowDef.name === 'Anzahl Gewinn-Trades') {
+                        const gewinneProcessent = accountInfo.anzahlTradesTotal > 0 ? (accountInfo.anzahlGewinne / accountInfo.anzahlTradesTotal) * 100 : 0;
                         rowData[`${account}_Betrag`] = accountInfo.anzahlGewinne;
-                        rowData[`${account}_Prozent`] = null;
+                        rowData[`${account}_Prozent`] = gewinneProcessent;
                     } else if (rowDef.name === 'Anzahl Verlust-Trades') {
+                        const verlusteProcessent = accountInfo.anzahlTradesTotal > 0 ? (accountInfo.anzahlVerluste / accountInfo.anzahlTradesTotal) * 100 : 0;
                         rowData[`${account}_Betrag`] = accountInfo.anzahlVerluste;
-                        rowData[`${account}_Prozent`] = null;
+                        rowData[`${account}_Prozent`] = verlusteProcessent;
                     } else if (rowDef.name === 'Anzahl Trades Total') {
                         rowData[`${account}_Betrag`] = accountInfo.anzahlTradesTotal;
-                        rowData[`${account}_Prozent`] = null;
+                        rowData[`${account}_Prozent`] = 100;
                     }
                     break;
                     
@@ -768,11 +770,11 @@ function displayGewinneProAccount(accountsData) {
     // Erste Zeile: Account-Namen
     const headerRow1 = document.createElement('tr');
     
-    // Erste Spalte (Typ)
+    // Erste Spalte (Typ) - dynamische Breite
     const th0 = document.createElement('th');
     th0.textContent = 'Typ';
     th0.rowSpan = 2;
-    th0.style.cssText = 'vertical-align: middle; position: sticky; left: 0; z-index: 20; background: #2d3748; width: 200px; min-width: 200px; max-width: 200px;';
+    th0.style.cssText = 'vertical-align: middle; position: sticky; left: 0; z-index: 20; background: #2d3748; white-space: nowrap;';
     headerRow1.appendChild(th0);
     
     // Für jeden Account: colspan 2 für Betrag $ und in %
@@ -780,7 +782,7 @@ function displayGewinneProAccount(accountsData) {
         const thAccount = document.createElement('th');
         thAccount.textContent = account;
         thAccount.colSpan = 2;
-        thAccount.style.textAlign = 'center';
+        thAccount.style.cssText = 'text-align: center; width: 200px; min-width: 200px;';
         headerRow1.appendChild(thAccount);
     });
     
@@ -792,12 +794,12 @@ function displayGewinneProAccount(accountsData) {
     accounts.forEach(account => {
         const thBetrag = document.createElement('th');
         thBetrag.textContent = 'Betrag $';
-        thBetrag.style.textAlign = 'right';
+        thBetrag.style.cssText = 'text-align: right; width: 100px; min-width: 100px;';
         headerRow2.appendChild(thBetrag);
         
         const thProzent = document.createElement('th');
         thProzent.textContent = 'in %';
-        thProzent.style.textAlign = 'right';
+        thProzent.style.cssText = 'text-align: right; width: 100px; min-width: 100px;';
         headerRow2.appendChild(thProzent);
     });
     
@@ -812,10 +814,10 @@ function displayGewinneProAccount(accountsData) {
             tr.classList.add('total-row');
         }
         
-        // Typ-Spalte (fixiert)
+        // Typ-Spalte (fixiert, dynamische Breite)
         const cellTyp = tr.insertCell();
         cellTyp.textContent = row.Typ;
-        cellTyp.style.cssText = 'position: sticky; left: 0; z-index: 10; background: ' + (row.isTotal ? '#cbd5e0' : (data.indexOf(row) % 2 === 0 ? '#f7fafc' : 'white')) + '; width: 200px; min-width: 200px; max-width: 200px;';
+        cellTyp.style.cssText = 'position: sticky; left: 0; z-index: 10; background: ' + (row.isTotal ? '#cbd5e0' : (data.indexOf(row) % 2 === 0 ? '#f7fafc' : 'white')) + '; white-space: nowrap;';
         
         // Für jeden Account: Betrag $ und in %
         accounts.forEach(account => {
@@ -824,6 +826,8 @@ function displayGewinneProAccount(accountsData) {
             
             // Betrag $ (kann Anzahl, Datum oder Währung sein)
             const cellBetrag = tr.insertCell();
+            cellBetrag.style.width = '100px';
+            cellBetrag.style.minWidth = '100px';
             
             if (row.type === 'count') {
                 // Anzahl
@@ -846,18 +850,29 @@ function displayGewinneProAccount(accountsData) {
             
             // in % (nur bei currency-Zeilen)
             const cellProzent = tr.insertCell();
+            cellProzent.style.width = '100px';
+            cellProzent.style.minWidth = '100px';
             
             if (prozentValue === null || prozentValue === undefined) {
                 cellProzent.textContent = '';
             } else {
                 cellProzent.textContent = prozentValue.toFixed(2) + '%';
                 
-                // Prüfe ob Gebühren/Kommissionen
-                const isKosten = row.Typ.toLowerCase().includes('gebühr') || row.Typ.toLowerCase().includes('kommission');
-                
-                if (!isKosten) {
-                    if (prozentValue > 0) cellProzent.classList.add('table-positive');
-                    else if (prozentValue < 0) cellProzent.classList.add('table-negative');
+                // Färbung bei Anzahl-Zeilen
+                if (row.type === 'count') {
+                    if (row.Typ === 'Anzahl Gewinn-Trades') {
+                        cellProzent.classList.add('table-positive');
+                    } else if (row.Typ === 'Anzahl Verlust-Trades' && prozentValue > 0) {
+                        cellProzent.classList.add('table-negative');
+                    }
+                } else {
+                    // Färbung bei Währungs-Zeilen
+                    const isKosten = row.Typ.toLowerCase().includes('gebühr') || row.Typ.toLowerCase().includes('kommission');
+                    
+                    if (!isKosten) {
+                        if (prozentValue > 0) cellProzent.classList.add('table-positive');
+                        else if (prozentValue < 0) cellProzent.classList.add('table-negative');
+                    }
                 }
             }
         });
