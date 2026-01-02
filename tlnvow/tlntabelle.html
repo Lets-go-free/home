@@ -34,7 +34,7 @@
             box-shadow: 0 3px 15px rgba(0,0,0,0.1);
             max-height: 600px;
         }
-        table { width: 100%; border-collapse: collapse; min-width: 800px; }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; }
         thead { 
             background: linear-gradient(135deg, #1261A0 0%, #2776EA 100%); 
             color: white; 
@@ -43,31 +43,36 @@
             z-index: 10; 
         }
         th { 
-            padding: 15px 12px; 
+            padding: 10px 6px; 
             text-align: right; 
             font-weight: 700; 
-            font-size: 0.95em; 
+            font-size: 0.78em; 
             border-bottom: 3px solid #084387;
-            white-space: nowrap;
+            white-space: normal;
+            word-wrap: break-word;
+            line-height: 1.3;
+            vertical-align: top;
+            min-width: 65px;
+            max-width: 120px;
         }
-        th:first-child { text-align: left; }
+        th:first-child { text-align: left; min-width: 80px; }
         tbody tr { transition: background 0.2s; }
         tbody tr:nth-child(even) { background: #f8f9fa; }
         tbody tr:hover { background: #E3F2FD; }
         td { 
-            padding: 8px; 
+            padding: 6px 4px; 
             border-bottom: 1px solid #e0e0e0; 
-            font-size: 0.85em;
+            font-size: 0.82em;
             text-align: right;
+            white-space: nowrap;
         }
         td:first-child { 
             text-align: left;
-            padding-left: 20px; 
+            padding-left: 15px; 
         }
-        th { font-size: 0.85em; }
-        th:first-child { padding-left: 20px; }
-        th:last-child { padding-right: 20px; }
-        td:last-child { padding-right: 20px; }
+        th:first-child { padding-left: 15px; }
+        th:last-child { padding-right: 12px; }
+        td:last-child { padding-right: 12px; }
         
         /* Info Table */
         .info-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
@@ -180,8 +185,17 @@
         let allRows = [];
         let infoRowsData = [];
         
+        // Columns that should have no decimal places
+        const noDecimalColumns = [
+            'tln+',
+            'erhaltene v$',
+            'erhaltene vow\'s (collateral)',
+            'benötigte vow, um v$ für rückzahlung zu kaufen',
+            'gewinn an vow'
+        ];
+        
         // Swiss number formatting (with apostrophes as thousand separators)
-        function formatSwissNumber(value) {
+        function formatSwissNumber(value, columnName = '') {
             if (value === null || value === undefined || value === '') return '';
             
             // Remove existing formatting (apostrophes, spaces, commas)
@@ -191,9 +205,14 @@
             const num = parseFloat(cleanValue);
             if (isNaN(num)) return value; // Return original if not a number
             
-            // Determine decimal places - check if original value has decimals
-            let decimalPlaces = 2;
-            if (cleanValue.includes('.')) {
+            // Check if this column should have no decimals
+            const normalizedColumnName = columnName.toLowerCase().trim();
+            const hasNoDecimals = noDecimalColumns.some(col => normalizedColumnName.includes(col));
+            
+            let decimalPlaces = hasNoDecimals ? 0 : 2;
+            
+            // If not in no-decimal list, determine decimal places from original value
+            if (!hasNoDecimals && cleanValue.includes('.')) {
                 const decimalPart = cleanValue.split('.')[1];
                 decimalPlaces = Math.max(2, decimalPart.length);
             }
@@ -201,6 +220,10 @@
             // Format with apostrophes as thousand separator, period as decimal separator
             const parts = num.toFixed(decimalPlaces).split('.');
             parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+            
+            if (decimalPlaces === 0) {
+                return parts[0];
+            }
             return parts.join('.');
         }
         
@@ -233,35 +256,35 @@
             // Store info rows data
             infoRowsData = rows.slice(0, 4);
             
-            // Find max number of columns in first 4 rows
-            let maxCols = 0;
-            for (let i = 0; i < 4; i++) {
-                const filledCells = rows[i].filter(cell => cell && cell.trim() !== '');
-                maxCols = Math.max(maxCols, filledCells.length);
-            }
-            
-            // Create header row (first row)
+            // Create custom header row
             const headerRow = document.createElement('tr');
-            const firstRowCells = rows[0].filter(cell => cell && cell.trim() !== '');
-            firstRowCells.forEach(cell => {
-                const th = document.createElement('th');
-                th.textContent = cell;
-                headerRow.appendChild(th);
-            });
+            const th = document.createElement('th');
+            th.colSpan = 100; // Span all columns
+            th.textContent = 'Ziel-Kurse und Basis-Informationen für Berechnung der Loan-Rückzahlungen';
+            th.style.textAlign = 'center';
+            headerRow.appendChild(th);
             infoTableHead.appendChild(headerRow);
             
-            // Create data rows (rows 2-4)
-            for (let i = 1; i < 4; i++) {
+            // Create data rows from all 4 rows (all editable now)
+            for (let i = 0; i < 4; i++) {
                 const tr = document.createElement('tr');
-                const rowCells = rows[i].filter(cell => cell && cell.trim() !== '');
+                const row = rows[i];
+                const filledCells = row.filter(cell => cell && cell.trim() !== '');
                 
-                rowCells.forEach((cell, idx) => {
+                filledCells.forEach((cell, idx) => {
                     const td = document.createElement('td');
                     const input = document.createElement('input');
                     input.type = 'text';
                     input.value = cell;
                     input.dataset.row = i;
                     input.dataset.col = idx;
+                    
+                    // First cell of each row can be styled as label-like
+                    if (idx === 0) {
+                        input.style.fontWeight = 'bold';
+                        input.style.background = '#F0F8FF';
+                    }
+                    
                     td.appendChild(input);
                     tr.appendChild(td);
                 });
@@ -399,10 +422,13 @@
                         row.forEach((cell, idx) => {
                             const td = document.createElement('td');
                             
+                            // Get column name for formatting
+                            const columnName = headers[idx] || '';
+                            
                             // Format numbers with Swiss formatting
                             if (isNumeric(cell)) {
                                 const numValue = parseSwissNumber(cell);
-                                td.textContent = formatSwissNumber(numValue);
+                                td.textContent = formatSwissNumber(numValue, columnName);
                                 
                                 // Accumulate for subtotals
                                 if (!walletTotals[idx]) walletTotals[idx] = 0;
@@ -422,18 +448,18 @@
                     });
                     
                     // Insert wallet subtotal
-                    insertWalletSubtotal(tbody, wallet, walletTotals, headers.length);
+                    insertWalletSubtotal(tbody, wallet, walletTotals, headers.length, headers);
                 });
                 
                 // Insert month subtotal
-                insertMonthSubtotal(tbody, monthYear, monthTotals, headers.length);
+                insertMonthSubtotal(tbody, monthYear, monthTotals, headers.length, headers);
             });
             
             // Insert grand total
-            insertGrandTotal(tbody, grandTotals, headers.length);
+            insertGrandTotal(tbody, grandTotals, headers.length, headers);
         }
         
-        function insertWalletSubtotal(tbody, wallet, totals, colCount) {
+        function insertWalletSubtotal(tbody, wallet, totals, colCount, headers) {
             const tr = document.createElement('tr');
             tr.style.background = '#B3D9FF';
             tr.style.fontWeight = 'bold';
@@ -444,14 +470,15 @@
                     td.textContent = '↳ Zwischentotal ' + wallet;
                     td.style.paddingLeft = '30px';
                 } else if (totals[i]) {
-                    td.textContent = formatSwissNumber(totals[i]);
+                    const columnName = headers[i] || '';
+                    td.textContent = formatSwissNumber(totals[i], columnName);
                 }
                 tr.appendChild(td);
             }
             tbody.appendChild(tr);
         }
         
-        function insertMonthSubtotal(tbody, month, totals, colCount) {
+        function insertMonthSubtotal(tbody, month, totals, colCount, headers) {
             const tr = document.createElement('tr');
             tr.style.background = '#1261A0';
             tr.style.color = 'white';
@@ -463,14 +490,15 @@
                     td.textContent = '⚡ Total ' + month;
                     td.style.paddingLeft = '20px';
                 } else if (totals[i]) {
-                    td.textContent = formatSwissNumber(totals[i]);
+                    const columnName = headers[i] || '';
+                    td.textContent = formatSwissNumber(totals[i], columnName);
                 }
                 tr.appendChild(td);
             }
             tbody.appendChild(tr);
         }
         
-        function insertGrandTotal(tbody, totals, colCount) {
+        function insertGrandTotal(tbody, totals, colCount, headers) {
             const tr = document.createElement('tr');
             tr.style.background = '#084387';
             tr.style.color = 'white';
@@ -483,7 +511,8 @@
                     td.textContent = '🎯 GESAMTTOTAL';
                     td.style.paddingLeft = '20px';
                 } else if (totals[i]) {
-                    td.textContent = formatSwissNumber(totals[i]);
+                    const columnName = headers[i] || '';
+                    td.textContent = formatSwissNumber(totals[i], columnName);
                 }
                 tr.appendChild(td);
             }
