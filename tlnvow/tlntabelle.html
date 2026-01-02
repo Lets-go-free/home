@@ -233,11 +233,12 @@
             
             // Get values from current row
             const getRowValue = (searchName) => {
-                // Normalize search string - remove apostrophes for comparison
-                const normalizedSearch = searchName.toLowerCase().replace(/['']/g, '');
+                // Normalize search string - remove all types of apostrophes for comparison
+                // Includes: ' (39), ' (8217), ` (96)
+                const normalizedSearch = searchName.toLowerCase().replace(/[''`'\u2019]/g, '');
                 const idx = headers.findIndex(h => {
                     if (!h) return false;
-                    const normalizedHeader = h.toLowerCase().replace(/['']/g, '');
+                    const normalizedHeader = h.toLowerCase().replace(/[''`'\u2019]/g, '');
                     return normalizedHeader.includes(normalizedSearch);
                 });
                 
