@@ -233,7 +233,14 @@
             
             // Get values from current row
             const getRowValue = (searchName) => {
-                const idx = headers.findIndex(h => h && h.toLowerCase().includes(searchName.toLowerCase()));
+                // Normalize search string - remove apostrophes for comparison
+                const normalizedSearch = searchName.toLowerCase().replace(/['']/g, '');
+                const idx = headers.findIndex(h => {
+                    if (!h) return false;
+                    const normalizedHeader = h.toLowerCase().replace(/['']/g, '');
+                    return normalizedHeader.includes(normalizedSearch);
+                });
+                
                 if (idx !== -1 && rowData[idx]) {
                     const val = parseSwissNumber(rowData[idx]);
                     console.log(`getRowValue("${searchName}"): idx=${idx}, value="${rowData[idx]}", parsed=${val}`);
