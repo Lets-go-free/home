@@ -36,6 +36,11 @@
             </div>
         </div>
 
+        <!-- Hinweis zu Berechnungen -->
+        <p class="info-box">
+            <strong>Hinweis zu den Berechnungen:</strong> Die Werte in den Tabellen "Gewinne" und "Übersicht Trades" basieren auf den kumulierten Einzahlungen, inklusive Aufstockungen und Re-Investitionen von Gewinnen. Für detaillierte Einzelwerte siehe "Trades-Übersicht je Woche" oder "Alle Trades".
+        </p>
+
         <!-- Uebersicht Trades und Gewinne nebeneinander -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;" id="summaryTablesContainer">
             <!-- Gewinne Tabelle (jetzt links) -->
@@ -326,7 +331,7 @@ function calculateUebersicht(trades) {
         { 'Typ': 'Anzahl Verluste', 'Anzahl': anzahlVerluste, 'in %': verlusteProcessent },
         { 'Typ': 'Total Anzahl Trades', 'Anzahl': totalTrades, 'in %': 100, 'isTotal': true },
         { 'Typ': 'Ø Nettogewinn je Trade', 'Anzahl': '', 'in %': avgNettoGewinnJeTrade },
-        { 'Typ': 'Anz. Trades, um den Einsatz als Gewinn zu erreichen', 'Anzahl': tradesForBreakeven, 'in %': '' }
+        { 'Typ': 'Anz. Trades, um den Einsatz als Gewinn zu erreichen', 'Anzahl': tradesForBreakeven, 'in %': null }
     ];
 }
 
@@ -659,7 +664,7 @@ function calculateGewinne(trades) {
     const nettoGewinnProzent = einzahlungEffektiv > 0 ? (nettoGewinn / einzahlungEffektiv) * 100 : 0;
     
     return [
-        { 'Typ': 'Einzahlung effektiv (inkl. Aufstockung/Re-Invest)', 'Betrag $': einzahlungEffektiv, 'in %': 100 },
+        { 'Typ': 'Einzahlung effektiv', 'Betrag $': einzahlungEffektiv, 'in %': 100 },
         { 'Typ': 'Einzahlung mit Hebel', 'Betrag $': einzahlungMitHebel, 'in %': einzahlungEffektiv > 0 ? (einzahlungMitHebel / einzahlungEffektiv) * 100 : 0 },
         { 'Typ': 'Brutto-Gewinn', 'Betrag $': bruttoGewinn, 'in %': bruttoGewinnProzent },
         { 'Typ': 'Gebühren', 'Betrag $': gebuehren, 'in %': gebuehrenProzent },
