@@ -223,8 +223,13 @@
             const colName = columnName.toLowerCase().trim();
             
             // Get values from info table
-            const zielKursVOW = getInfoValue('ziel-kurs vow');
+            const zielKursVOW = getInfoValue('ziel-kurs vow') || 0;
+            const zielKursVDollar = getInfoValue('ziel-kurs v$') || 0;
+            const zielKursVDollarSlippage = getInfoValue('ziel-kurs v$ inkl. slippage') || 0;
+            
             console.log('Ziel-Kurs VOW:', zielKursVOW);
+            console.log('Ziel-Kurs v$:', zielKursVDollar);
+            console.log('Ziel-Kurs v$ inkl. Slippage:', zielKursVDollarSlippage);
             
             // Get values from current row
             const getRowValue = (searchName) => {
@@ -246,17 +251,40 @@
                 return result;
             }
             else if (colName.includes('benötigte vow, um v$ für rückzahlung zu kaufen')) {
-                const vDollar = getRowValue('erhaltene v$');
-                return vDollar / zielKursVOW;
+                const erhalteneVDollar = getRowValue('erhaltene v$');
+                if (!erhalteneVDollar) return null; // Empty if Erhaltene v$ is empty
+                
+                const vDollarZins = getRowValue('v$ zins');
+                const boosterVariante = rowData[headers.findIndex(h => h && h.toLowerCase().includes('booster variante'))];
+                
+                let vDollarTotal = erhalteneVDollar;
+                if (boosterVariante === "4:1" || boosterVariante === "1:1") {
+                    vDollarTotal = erhalteneVDollar + vDollarZins;
+                }
+                
+                const result = (vDollarTotal * zielKursVDollarSlippage) / zielKursVOW;
+                console.log(`Benötigte VOW: (${vDollarTotal} * ${zielKursVDollarSlippage}) / ${zielKursVOW} = ${result}`);
+                return result;
             }
             else if (colName.includes('gewinn an vow')) {
                 const collateral = getRowValue("erhaltene vow's (collateral)");
+                if (!collateral) return null; // Empty if collateral is empty
+                
                 const benoetigteVOW = getRowValue('benötigte vow');
-                return collateral - benoetigteVOW;
+                const vowInVDollar = getRowValue('vow in v$ für zins getauscht');
+                
+                const result = collateral - benoetigteVOW - vowInVDollar;
+                console.log(`Gewinn an VOW: ${collateral} - ${benoetigteVOW} - ${vowInVDollar} = ${result}`);
+                return result;
             }
             else if (colName.includes('gewinn in usdt')) {
+                const collateral = getRowValue("erhaltene vow's (collateral)");
+                if (!collateral) return null; // Empty if collateral is empty
+                
                 const gewinnVOW = getRowValue('gewinn an vow');
-                return gewinnVOW * zielKursVOW;
+                const result = gewinnVOW * zielKursVOW;
+                console.log(`Gewinn in USDT: ${gewinnVOW} * ${zielKursVOW} = ${result}`);
+                return result;
             }
             
             return null;
@@ -446,8 +474,8 @@
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = ''; // Clear existing content
             
-            // Find column indices (only in data table columns A-N)
-            const headers = allRows[4].slice(0, 14); // Only columns A-N
+            // Find column indices
+            const headers = allRows[4];
             const dateColIndex = headers.findIndex(h => h && h.toLowerCase().includes('rückzahlung bis'));
             const walletColIndex = headers.findIndex(h => h && h.toLowerCase().includes('wallet'));
             
@@ -456,7 +484,7 @@
             
             // First pass: group all rows by month/year
             for (let i = 5; i < allRows.length; i++) {
-                const row = allRows[i].slice(0, 14); // Only columns A-N
+                const row = allRows[i];
                 if (row.length === 0 || row.every(cell => !cell)) continue;
                 
                 const dateValue = row[dateColIndex] || '';
@@ -664,10 +692,10 @@
                 // Create info table from first 4 rows
                 createInfoTable(allRows);
                 
-                // Row 5 (index 4) is the header for the table - only columns A-N
+                // Row 5 (index 4) is the header for the table
                 const thead = document.getElementById('tableHead');
                 const headerRow = document.createElement('tr');
-                allRows[4].slice(0, 14).forEach(header => { // Only columns A-N
+                allRows[4].forEach(header => {
                     const th = document.createElement('th');
                     th.textContent = header;
                     headerRow.appendChild(th);
