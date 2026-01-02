@@ -184,6 +184,62 @@
         // Global variables to store data
         let allRows = [];
         let infoRowsData = [];
+        let calculatedColumns = {}; // Store which columns need calculation
+        
+        // Get value from info table by looking for a label
+        function getInfoValue(label) {
+            for (let i = 0; i < 4; i++) {
+                const row = allRows[i];
+                for (let j = 0; j < row.length - 1; j++) {
+                    if (row[j] && row[j].toLowerCase().includes(label.toLowerCase())) {
+                        // Next cell should be the value
+                        const value = row[j + 1];
+                        if (value && value.trim()) {
+                            return parseSwissNumber(value);
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+        
+        // Calculate field based on formula
+        function calculateField(columnName, rowData, headers) {
+            const colName = columnName.toLowerCase().trim();
+            
+            // Get values from info table
+            const zielKursVOW = getInfoValue('ziel-kurs vow');
+            
+            // Get values from current row
+            const getRowValue = (searchName) => {
+                const idx = headers.findIndex(h => h && h.toLowerCase().includes(searchName.toLowerCase()));
+                if (idx !== -1 && rowData[idx]) {
+                    return parseSwissNumber(rowData[idx]);
+                }
+                return 0;
+            };
+            
+            // Formulas based on column name
+            if (colName.includes('$-wert vow in collateral')) {
+                const collateral = getRowValue("erhaltene vow's (collateral)");
+                return collateral * zielKursVOW;
+            }
+            else if (colName.includes('benötigte vow, um v$ für rückzahlung zu kaufen')) {
+                const vDollar = getRowValue('erhaltene v$');
+                return vDollar / zielKursVOW;
+            }
+            else if (colName.includes('gewinn an vow')) {
+                const collateral = getRowValue("erhaltene vow's (collateral)");
+                const benoetigteVOW = getRowValue('benötigte vow');
+                return collateral - benoetigteVOW;
+            }
+            else if (colName.includes('gewinn in usdt')) {
+                const gewinnVOW = getRowValue('gewinn an vow');
+                return gewinnVOW * zielKursVOW;
+            }
+            
+            return null;
+        }
         
         // Columns that should have no decimal places
         const noDecimalColumns = [
@@ -434,9 +490,22 @@
                             // Get column name for formatting
                             const columnName = headers[idx] || '';
                             
+                            // Check if this column needs calculation
+                            const calculatedValue = calculateField(columnName, row, headers);
+                            let displayValue = cell;
+                            let numValue = 0;
+                            
+                            if (calculatedValue !== null) {
+                                // This is a calculated field
+                                numValue = calculatedValue;
+                                displayValue = numValue.toString();
+                                // Update the row data with calculated value
+                                row[idx] = displayValue;
+                            }
+                            
                             // Format numbers with Swiss formatting
-                            if (isNumeric(cell)) {
-                                const numValue = parseSwissNumber(cell);
+                            if (isNumeric(displayValue)) {
+                                numValue = calculatedValue !== null ? calculatedValue : parseSwissNumber(displayValue);
                                 td.textContent = formatSwissNumber(numValue, columnName);
                                 
                                 // Accumulate for subtotals
@@ -448,7 +517,7 @@
                                 monthTotals[idx] += numValue;
                                 grandTotals[idx] += numValue;
                             } else {
-                                td.textContent = cell;
+                                td.textContent = displayValue;
                             }
                             
                             tr.appendChild(td);
