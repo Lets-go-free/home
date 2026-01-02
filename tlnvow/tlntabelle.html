@@ -105,25 +105,6 @@
             box-shadow: 0 0 0 2px rgba(39, 118, 234, 0.2);
         }
         
-        /* Recalculate Button */
-        .recalc-btn {
-            background: #1261A0;
-            color: white;
-            border: none;
-            padding: 10px 25px;
-            border-radius: 8px;
-            font-weight: 700;
-            font-size: 0.95em;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 15px;
-        }
-        .recalc-btn:hover {
-            background: #084387;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        }
-        
         /* Number formatting - removed separate class styling */
         
         /* Footer */
@@ -163,7 +144,6 @@
                     <thead id="infoTableHead"></thead>
                     <tbody id="infoTableBody"></tbody>
                 </table>
-                <button class="recalc-btn" onclick="recalculateTable()">🔄 Tabelle neu berechnen</button>
             </div>
             
             <div id="tableContainer" class="table-container" style="display: none;">
@@ -426,6 +406,27 @@
                     inputValue.value = row[11] || '';
                     inputValue.dataset.row = i;
                     inputValue.dataset.col = 11;
+                    
+                    // Format numbers with 2 decimals on blur (when field loses focus)
+                    inputValue.addEventListener('blur', function() {
+                        const val = this.value.trim();
+                        
+                        // Handle percentage values
+                        if (val.includes('%')) {
+                            const numPart = val.replace('%', '').trim();
+                            if (isNumeric(numPart)) {
+                                const num = parseFloat(numPart);
+                                this.value = num.toFixed(2) + '%';
+                            }
+                            return;
+                        }
+                        
+                        // Regular numbers
+                        if (isNumeric(val)) {
+                            const num = parseSwissNumber(val);
+                            this.value = num.toFixed(2);
+                        }
+                    });
                     
                     // Add auto-recalculate on change
                     inputValue.addEventListener('input', () => {
