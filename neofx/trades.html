@@ -553,8 +553,8 @@ function calculateGewinne(trades) {
         
         bruttoGewinn += parseNumber(trade.Profit);
         
-        // Brutto-Gewinn %: Summe aus Google Sheets Spalte "Brutto Profit in % auf x24 Hebel"
-        bruttoGewinnProzentHebel += parseNumber(trade['Brutto Profit in % auf x24 Hebel']);
+        // Brutto-Gewinn %: Summe aus Google Sheets Spalte "Brutto-Profit in % auf effektive Einzahlung"
+        bruttoGewinnProzentHebel += parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
         
         gebuehren += parseNumber(trade['Gebühren']);
         
@@ -717,7 +717,7 @@ function displayTrades(trades) {
         totalEinzahlung += parseNumber(trade['Einzahlung $']);
         totalMitHebel += parseNumber(trade['$ mit Hebel'] || trade['$ mit 24x Hebel']);
         totalProfit += parseNumber(trade.Profit);
-        totalBruttoGewinnProzentHebel += parseNumber(trade['Brutto Profit in % auf x24 Hebel']);
+        totalBruttoGewinnProzentHebel += parseNumber(trade['Brutto Profit in % auf Hebel']);
         totalBruttoGewinnProzentEffektiv += parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
         totalGebuehren += parseNumber(trade['Gebühren']);
         totalKommissionen += kommissionen;
@@ -771,8 +771,8 @@ function displayTrades(trades) {
         if (isGewinn) cell6.classList.add('table-positive');
         else if (isVerlust) cell6.classList.add('table-negative');
         
-        // Brutto Profit % (24x)
-        const profit24x = parseNumber(trade['Brutto Profit in % auf x24 Hebel']);
+        // Brutto Profit % (Hebel)
+        const profit24x = parseNumber(trade['Brutto Profit in % auf Hebel']);
         const cell7 = row.insertCell(7);
         cell7.textContent = profit24x.toFixed(3) + '%';
         if (profit24x > 0) cell7.classList.add('table-positive');
