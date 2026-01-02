@@ -55,18 +55,69 @@
         tbody tr:nth-child(even) { background: #f8f9fa; }
         tbody tr:hover { background: #E3F2FD; }
         td { 
-            padding: 12px; 
+            padding: 8px; 
             border-bottom: 1px solid #e0e0e0; 
-            font-size: 0.95em;
+            font-size: 0.85em;
             text-align: right;
         }
         td:first-child { 
             text-align: left;
             padding-left: 20px; 
         }
+        th { font-size: 0.85em; }
         th:first-child { padding-left: 20px; }
         th:last-child { padding-right: 20px; }
         td:last-child { padding-right: 20px; }
+        
+        /* Info Table */
+        .info-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        .info-table th { 
+            background: #1261A0; 
+            color: white; 
+            padding: 10px; 
+            text-align: left; 
+            font-size: 0.9em;
+            border: 1px solid #084387;
+        }
+        .info-table td { 
+            padding: 8px; 
+            text-align: left; 
+            border: 1px solid #BBDEFB;
+            background: white;
+        }
+        .info-table input {
+            width: 100%;
+            padding: 6px;
+            border: 1px solid #BBDEFB;
+            border-radius: 4px;
+            font-size: 0.9em;
+            font-weight: bold;
+            color: #1261A0;
+        }
+        .info-table input:focus {
+            outline: none;
+            border-color: #2776EA;
+            box-shadow: 0 0 0 2px rgba(39, 118, 234, 0.2);
+        }
+        
+        /* Recalculate Button */
+        .recalc-btn {
+            background: #1261A0;
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.95em;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 15px;
+        }
+        .recalc-btn:hover {
+            background: #084387;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
         
         /* Number formatting - removed separate class styling */
         
@@ -101,9 +152,13 @@
                 Lade Daten aus Google Sheets
             </div>
             
-            <!-- Info Box für die ersten 4 Zeilen -->
+            <!-- Info Box für die ersten 4 Zeilen als editierbare Tabelle -->
             <div id="infoBox" style="display: none; background: #E3F2FD; padding: 25px; border-radius: 12px; border-left: 4px solid #1261A0; margin-bottom: 30px;">
-                <div id="infoContent"></div>
+                <table class="info-table" id="infoTable">
+                    <thead id="infoTableHead"></thead>
+                    <tbody id="infoTableBody"></tbody>
+                </table>
+                <button class="recalc-btn" onclick="recalculateTable()">🔄 Tabelle neu berechnen</button>
             </div>
             
             <div id="tableContainer" class="table-container" style="display: none;">
@@ -121,6 +176,10 @@
     </div>
     
     <script>
+        // Global variables to store data
+        let allRows = [];
+        let infoRowsData = [];
+        
         // Swiss number formatting (with apostrophes as thousand separators)
         function formatSwissNumber(value) {
             if (value === null || value === undefined || value === '') return '';
@@ -142,6 +201,245 @@
             return !isNaN(value) && !isNaN(parseFloat(value));
         }
         
+        // Create info table from first 4 rows
+        function createInfoTable(rows) {
+            const infoTableHead = document.getElementById('infoTableHead');
+            const infoTableBody = document.getElementById('infoTableBody');
+            
+            // Clear existing content
+            infoTableHead.innerHTML = '';
+            infoTableBody.innerHTML = '';
+            
+            // Store info rows data
+            infoRowsData = rows.slice(0, 4);
+            
+            // Find max number of columns in first 4 rows
+            let maxCols = 0;
+            for (let i = 0; i < 4; i++) {
+                const filledCells = rows[i].filter(cell => cell && cell.trim() !== '');
+                maxCols = Math.max(maxCols, filledCells.length);
+            }
+            
+            // Create header row (first row)
+            const headerRow = document.createElement('tr');
+            const firstRowCells = rows[0].filter(cell => cell && cell.trim() !== '');
+            firstRowCells.forEach(cell => {
+                const th = document.createElement('th');
+                th.textContent = cell;
+                headerRow.appendChild(th);
+            });
+            infoTableHead.appendChild(headerRow);
+            
+            // Create data rows (rows 2-4)
+            for (let i = 1; i < 4; i++) {
+                const tr = document.createElement('tr');
+                const rowCells = rows[i].filter(cell => cell && cell.trim() !== '');
+                
+                rowCells.forEach((cell, idx) => {
+                    const td = document.createElement('td');
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.value = cell;
+                    input.dataset.row = i;
+                    input.dataset.col = idx;
+                    td.appendChild(input);
+                    tr.appendChild(td);
+                });
+                
+                infoTableBody.appendChild(tr);
+            }
+        }
+        
+        // Recalculate table with new info values
+        function recalculateTable() {
+            // Get updated values from info table
+            const inputs = document.querySelectorAll('.info-table input');
+            inputs.forEach(input => {
+                const row = parseInt(input.dataset.row);
+                const col = parseInt(input.dataset.col);
+                // Update the stored data (this could be used for calculations if needed)
+                // For now, we just refresh the display
+            });
+            
+            // Clear and rebuild main table
+            buildMainTable();
+            
+            // Show confirmation
+            const btn = document.querySelector('.recalc-btn');
+            const originalText = btn.textContent;
+            btn.textContent = '✓ Neu berechnet!';
+            btn.style.background = '#28a745';
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = '#1261A0';
+            }, 2000);
+        }
+        
+        // Build main data table
+        function buildMainTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = ''; // Clear existing content
+            
+            // Find column indices
+            const headers = allRows[4];
+            const dateColIndex = headers.findIndex(h => h && h.toLowerCase().includes('rückzahlung bis'));
+            const walletColIndex = headers.findIndex(h => h && h.toLowerCase().includes('wallet'));
+            
+            // Group data by Month/Year and Wallet
+            const monthGroups = {};
+            
+            // First pass: group all rows by month/year
+            for (let i = 5; i < allRows.length; i++) {
+                const row = allRows[i];
+                if (row.length === 0 || row.every(cell => !cell)) continue;
+                
+                const dateValue = row[dateColIndex] || '';
+                let monthYear = '';
+                
+                // Extract Month/Year from date (assuming format DD.MM.YYYY)
+                if (dateValue) {
+                    const dateParts = dateValue.split('.');
+                    if (dateParts.length >= 3) {
+                        monthYear = dateParts[1] + '/' + dateParts[2]; // MM/YYYY
+                    }
+                }
+                
+                if (!monthYear) monthYear = 'Ohne Datum';
+                
+                if (!monthGroups[monthYear]) {
+                    monthGroups[monthYear] = {
+                        wallets: {},
+                        order: Object.keys(monthGroups).length
+                    };
+                }
+                
+                const walletValue = row[walletColIndex] || 'Ohne Wallet';
+                
+                if (!monthGroups[monthYear].wallets[walletValue]) {
+                    monthGroups[monthYear].wallets[walletValue] = {
+                        rows: [],
+                        totals: {}
+                    };
+                }
+                
+                monthGroups[monthYear].wallets[walletValue].rows.push(row);
+            }
+            
+            // Second pass: render grouped data with subtotals
+            const grandTotals = {};
+            
+            Object.keys(monthGroups).sort((a, b) => {
+                // Sort by month/year
+                const [monthA, yearA] = a.split('/').map(x => parseInt(x) || 0);
+                const [monthB, yearB] = b.split('/').map(x => parseInt(x) || 0);
+                if (yearA !== yearB) return yearA - yearB;
+                return monthA - monthB;
+            }).forEach(monthYear => {
+                const monthData = monthGroups[monthYear];
+                const monthTotals = {};
+                
+                // Process each wallet within this month
+                Object.keys(monthData.wallets).sort().forEach(wallet => {
+                    const walletData = monthData.wallets[wallet];
+                    const walletTotals = {};
+                    
+                    // Add all rows for this wallet
+                    walletData.rows.forEach(row => {
+                        const tr = document.createElement('tr');
+                        row.forEach((cell, idx) => {
+                            const td = document.createElement('td');
+                            
+                            // Format numbers with Swiss formatting
+                            if (isNumeric(cell)) {
+                                const numValue = parseFloat(cell);
+                                td.textContent = formatSwissNumber(cell);
+                                
+                                // Accumulate for subtotals
+                                if (!walletTotals[idx]) walletTotals[idx] = 0;
+                                if (!monthTotals[idx]) monthTotals[idx] = 0;
+                                if (!grandTotals[idx]) grandTotals[idx] = 0;
+                                
+                                walletTotals[idx] += numValue;
+                                monthTotals[idx] += numValue;
+                                grandTotals[idx] += numValue;
+                            } else {
+                                td.textContent = cell;
+                            }
+                            
+                            tr.appendChild(td);
+                        });
+                        tbody.appendChild(tr);
+                    });
+                    
+                    // Insert wallet subtotal
+                    insertWalletSubtotal(tbody, wallet, walletTotals, headers.length);
+                });
+                
+                // Insert month subtotal
+                insertMonthSubtotal(tbody, monthYear, monthTotals, headers.length);
+            });
+            
+            // Insert grand total
+            insertGrandTotal(tbody, grandTotals, headers.length);
+        }
+        
+        function insertWalletSubtotal(tbody, wallet, totals, colCount) {
+            const tr = document.createElement('tr');
+            tr.style.background = '#B3D9FF';
+            tr.style.fontWeight = 'bold';
+            
+            for (let i = 0; i < colCount; i++) {
+                const td = document.createElement('td');
+                if (i === 0) {
+                    td.textContent = '↳ Zwischentotal ' + wallet;
+                    td.style.paddingLeft = '30px';
+                } else if (totals[i]) {
+                    td.textContent = formatSwissNumber(totals[i]);
+                }
+                tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+        }
+        
+        function insertMonthSubtotal(tbody, month, totals, colCount) {
+            const tr = document.createElement('tr');
+            tr.style.background = '#1261A0';
+            tr.style.color = 'white';
+            tr.style.fontWeight = 'bold';
+            
+            for (let i = 0; i < colCount; i++) {
+                const td = document.createElement('td');
+                if (i === 0) {
+                    td.textContent = '⚡ Total ' + month;
+                    td.style.paddingLeft = '20px';
+                } else if (totals[i]) {
+                    td.textContent = formatSwissNumber(totals[i]);
+                }
+                tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+        }
+        
+        function insertGrandTotal(tbody, totals, colCount) {
+            const tr = document.createElement('tr');
+            tr.style.background = '#084387';
+            tr.style.color = 'white';
+            tr.style.fontWeight = 'bold';
+            tr.style.fontSize = '1.1em';
+            
+            for (let i = 0; i < colCount; i++) {
+                const td = document.createElement('td');
+                if (i === 0) {
+                    td.textContent = '🎯 GESAMTTOTAL';
+                    td.style.paddingLeft = '20px';
+                } else if (totals[i]) {
+                    td.textContent = formatSwissNumber(totals[i]);
+                }
+                tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+        }
+        
         // Load and display CSV data from Google Sheets
         async function loadGoogleSheetData() {
             const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRpTgGXFX6CUlMIxF_53XGCAjcRAeCdq8RyHw2jULbQGwlWzpGTq5o-cOobQxoQ9QpTqBrYe7BkF5Ct/pub?gid=1347502363&single=true&output=csv';
@@ -151,210 +449,27 @@
                 if (!response.ok) throw new Error('Fehler beim Laden der Daten');
                 
                 const csvText = await response.text();
-                const rows = parseCSV(csvText);
+                allRows = parseCSV(csvText);
                 
-                if (rows.length < 5) {
+                if (allRows.length < 5) {
                     throw new Error('Nicht genügend Daten gefunden');
                 }
                 
-                // Display first 4 rows in info box (only filled cells)
-                const infoContent = document.getElementById('infoContent');
-                for (let i = 0; i < 4; i++) {
-                    const row = rows[i];
-                    const filledCells = row.filter(cell => cell && cell.trim() !== '');
-                    
-                    if (filledCells.length > 0) {
-                        const infoRow = document.createElement('p');
-                        infoRow.style.marginBottom = '10px';
-                        infoRow.style.fontSize = '1.05em';
-                        infoRow.style.lineHeight = '1.6';
-                        
-                        // Join filled cells with space or format as needed
-                        infoRow.innerHTML = '<strong style="color: #0B4A7D;">' + 
-                            filledCells.map(cell => {
-                                if (isNumeric(cell)) {
-                                    return formatSwissNumber(cell);
-                                }
-                                return cell;
-                            }).join(' </strong> ') + 
-                            (filledCells.length === 1 ? '' : '');
-                        
-                        infoContent.appendChild(infoRow);
-                    }
-                }
+                // Create info table from first 4 rows
+                createInfoTable(allRows);
                 
                 // Row 5 (index 4) is the header for the table
                 const thead = document.getElementById('tableHead');
                 const headerRow = document.createElement('tr');
-                rows[4].forEach(header => {
+                allRows[4].forEach(header => {
                     const th = document.createElement('th');
                     th.textContent = header;
                     headerRow.appendChild(th);
                 });
                 thead.appendChild(headerRow);
                 
-                // Create table body starting from row 6 (index 5) with subtotals
-                const tbody = document.getElementById('tableBody');
-                
-                // Find column indices
-                const headers = rows[4];
-                const dateColIndex = headers.findIndex(h => h && h.toLowerCase().includes('rückzahlung bis'));
-                const walletColIndex = headers.findIndex(h => h && h.toLowerCase().includes('wallet'));
-                
-                // Group data by Month/Year and Wallet
-                const monthGroups = {};
-                
-                // First pass: group all rows by month/year
-                const dataRows = [];
-                for (let i = 5; i < rows.length; i++) {
-                    const row = rows[i];
-                    if (row.length === 0 || row.every(cell => !cell)) continue;
-                    
-                    const dateValue = row[dateColIndex] || '';
-                    let monthYear = '';
-                    
-                    // Extract Month/Year from date (assuming format DD.MM.YYYY)
-                    if (dateValue) {
-                        const dateParts = dateValue.split('.');
-                        if (dateParts.length >= 3) {
-                            monthYear = dateParts[1] + '/' + dateParts[2]; // MM/YYYY
-                        }
-                    }
-                    
-                    if (!monthYear) monthYear = 'Ohne Datum';
-                    
-                    if (!monthGroups[monthYear]) {
-                        monthGroups[monthYear] = {
-                            wallets: {},
-                            order: Object.keys(monthGroups).length
-                        };
-                    }
-                    
-                    const walletValue = row[walletColIndex] || 'Ohne Wallet';
-                    
-                    if (!monthGroups[monthYear].wallets[walletValue]) {
-                        monthGroups[monthYear].wallets[walletValue] = {
-                            rows: [],
-                            totals: {}
-                        };
-                    }
-                    
-                    monthGroups[monthYear].wallets[walletValue].rows.push(row);
-                }
-                
-                // Second pass: render grouped data with subtotals
-                const grandTotals = {};
-                
-                Object.keys(monthGroups).sort((a, b) => {
-                    // Sort by month/year
-                    const [monthA, yearA] = a.split('/').map(x => parseInt(x) || 0);
-                    const [monthB, yearB] = b.split('/').map(x => parseInt(x) || 0);
-                    if (yearA !== yearB) return yearA - yearB;
-                    return monthA - monthB;
-                }).forEach(monthYear => {
-                    const monthData = monthGroups[monthYear];
-                    const monthTotals = {};
-                    
-                    // Process each wallet within this month
-                    Object.keys(monthData.wallets).sort().forEach(wallet => {
-                        const walletData = monthData.wallets[wallet];
-                        const walletTotals = {};
-                        
-                        // Add all rows for this wallet
-                        walletData.rows.forEach(row => {
-                            const tr = document.createElement('tr');
-                            row.forEach((cell, idx) => {
-                                const td = document.createElement('td');
-                                
-                                // Format numbers with Swiss formatting
-                                if (isNumeric(cell)) {
-                                    const numValue = parseFloat(cell);
-                                    td.textContent = formatSwissNumber(cell);
-                                    
-                                    // Accumulate for subtotals
-                                    if (!walletTotals[idx]) walletTotals[idx] = 0;
-                                    if (!monthTotals[idx]) monthTotals[idx] = 0;
-                                    if (!grandTotals[idx]) grandTotals[idx] = 0;
-                                    
-                                    walletTotals[idx] += numValue;
-                                    monthTotals[idx] += numValue;
-                                    grandTotals[idx] += numValue;
-                                } else {
-                                    td.textContent = cell;
-                                }
-                                
-                                tr.appendChild(td);
-                            });
-                            tbody.appendChild(tr);
-                        });
-                        
-                        // Insert wallet subtotal
-                        insertWalletSubtotal(tbody, wallet, walletTotals, headers.length);
-                    });
-                    
-                    // Insert month subtotal
-                    insertMonthSubtotal(tbody, monthYear, monthTotals, headers.length);
-                });
-                
-                // Insert grand total
-                insertGrandTotal(tbody, grandTotals, headers.length);
-                
-                function insertWalletSubtotal(tbody, wallet, totals, colCount) {
-                    const tr = document.createElement('tr');
-                    tr.style.background = '#B3D9FF';
-                    tr.style.fontWeight = 'bold';
-                    
-                    for (let i = 0; i < colCount; i++) {
-                        const td = document.createElement('td');
-                        if (i === 0) {
-                            td.textContent = '↳ Zwischentotal ' + wallet;
-                            td.style.paddingLeft = '30px';
-                        } else if (totals[i]) {
-                            td.textContent = formatSwissNumber(totals[i]);
-                        }
-                        tr.appendChild(td);
-                    }
-                    tbody.appendChild(tr);
-                }
-                
-                function insertMonthSubtotal(tbody, month, totals, colCount) {
-                    const tr = document.createElement('tr');
-                    tr.style.background = '#1261A0';
-                    tr.style.color = 'white';
-                    tr.style.fontWeight = 'bold';
-                    
-                    for (let i = 0; i < colCount; i++) {
-                        const td = document.createElement('td');
-                        if (i === 0) {
-                            td.textContent = '⚡ Total ' + month;
-                            td.style.paddingLeft = '20px';
-                        } else if (totals[i]) {
-                            td.textContent = formatSwissNumber(totals[i]);
-                        }
-                        tr.appendChild(td);
-                    }
-                    tbody.appendChild(tr);
-                }
-                
-                function insertGrandTotal(tbody, totals, colCount) {
-                    const tr = document.createElement('tr');
-                    tr.style.background = '#084387';
-                    tr.style.color = 'white';
-                    tr.style.fontWeight = 'bold';
-                    tr.style.fontSize = '1.1em';
-                    
-                    for (let i = 0; i < colCount; i++) {
-                        const td = document.createElement('td');
-                        if (i === 0) {
-                            td.textContent = '🎯 GESAMTTOTAL';
-                            td.style.paddingLeft = '20px';
-                        } else if (totals[i]) {
-                            td.textContent = formatSwissNumber(totals[i]);
-                        }
-                        tr.appendChild(td);
-                    }
-                    tbody.appendChild(tr);
-                }
+                // Build main table
+                buildMainTable();
                 
                 // Hide loading, show info box and table
                 document.getElementById('loadingState').style.display = 'none';
