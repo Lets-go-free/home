@@ -451,6 +451,50 @@
                 console.log(`Updated: allRows[${row}][${col}] = "${allRows[row][col]}"`);
             });
             
+            // Calculate "Ziel-Kurs v$ inkl. Slippage" = Ziel-Kurs v$ * (1 + Slippage Tolerance)
+            // Find the rows
+            let zielKursVDollarRow = -1;
+            let slippageRow = -1;
+            let zielKursVDollarSlippageRow = -1;
+            
+            for (let i = 0; i < 4; i++) {
+                const label = allRows[i][10] ? allRows[i][10].toLowerCase() : '';
+                if (label.includes('ziel-kurs v$') && !label.includes('slippage')) {
+                    zielKursVDollarRow = i;
+                } else if (label.includes('slippage tolerance')) {
+                    slippageRow = i;
+                } else if (label.includes('ziel-kurs v$') && label.includes('slippage')) {
+                    zielKursVDollarSlippageRow = i;
+                }
+            }
+            
+            // Calculate if all rows found
+            if (zielKursVDollarRow !== -1 && slippageRow !== -1 && zielKursVDollarSlippageRow !== -1) {
+                const zielKursVDollar = parseSwissNumber(allRows[zielKursVDollarRow][11]);
+                const slippageStr = allRows[slippageRow][11];
+                
+                // Parse slippage (could be "5.0%" or "5" or "0.05")
+                let slippageValue = 0;
+                if (slippageStr.includes('%')) {
+                    slippageValue = parseFloat(slippageStr.replace('%', '')) / 100;
+                } else {
+                    const num = parseFloat(slippageStr);
+                    // If > 1, assume it's percentage (e.g., 5 = 5%)
+                    slippageValue = num > 1 ? num / 100 : num;
+                }
+                
+                const calculated = zielKursVDollar * (1 + slippageValue);
+                allRows[zielKursVDollarSlippageRow][11] = calculated.toString();
+                
+                console.log(`Berechnet: Ziel-Kurs v$ inkl. Slippage = ${zielKursVDollar} * (1 + ${slippageValue}) = ${calculated}`);
+                
+                // Update the input field display
+                const slippageInput = document.querySelector(`.info-table input[data-row="${zielKursVDollarSlippageRow}"][data-col="11"]`);
+                if (slippageInput) {
+                    slippageInput.value = calculated.toFixed(4);
+                }
+            }
+            
             // Clear and rebuild main table
             buildMainTable();
             
