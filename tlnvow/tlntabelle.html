@@ -75,34 +75,45 @@
         td:last-child { padding-right: 12px; }
         
         /* Info Table */
-        .info-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        .info-table { 
+            width: auto; 
+            max-width: 600px;
+            margin: 0 auto 20px auto;
+            border-collapse: collapse; 
+        }
         .info-table th { 
             background: #1261A0; 
             color: white; 
-            padding: 10px; 
+            padding: 8px 12px; 
             text-align: left; 
             font-size: 0.9em;
             border: 1px solid #084387;
         }
         .info-table td { 
-            padding: 8px; 
+            padding: 0; 
             text-align: left; 
             border: 1px solid #BBDEFB;
             background: white;
         }
+        .info-table td:first-child {
+            width: 250px;
+        }
+        .info-table td:last-child {
+            width: 120px;
+        }
         .info-table input {
             width: 100%;
-            padding: 6px;
-            border: 1px solid #BBDEFB;
-            border-radius: 4px;
+            padding: 6px 8px;
+            border: none;
             font-size: 0.9em;
             font-weight: bold;
             color: #1261A0;
+            margin: 0;
+            box-sizing: border-box;
         }
         .info-table input:focus {
-            outline: none;
-            border-color: #2776EA;
-            box-shadow: 0 0 0 2px rgba(39, 118, 234, 0.2);
+            outline: 2px solid #2776EA;
+            outline-offset: -2px;
         }
         
         /* Number formatting - removed separate class styling */
