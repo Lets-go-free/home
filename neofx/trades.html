@@ -462,9 +462,31 @@ function displayWeeklyOverview(data) {
     const tbody = document.getElementById('weeklyOverviewBody');
     tbody.innerHTML = '';
     
+    // Initialisiere Summen für Total-Zeile
+    let totalAnzahlTrades = 0;
+    let totalAnzahlGewinne = 0;
+    let totalAnzahlVerluste = 0;
+    let totalBruttoGewinn = 0;
+    let totalBruttoGewinnProzent = 0;
+    let totalGebuehren = 0;
+    let totalKommissionen = 0;
+    let totalNettoGewinn = 0;
+    let totalNettoGewinnProzent = 0;
+    
     data.forEach((week, index) => {
         const row = tbody.insertRow();
         row.style.background = index % 2 === 0 ? '#f7fafc' : 'white';
+        
+        // Sammle Werte für Total-Zeile
+        totalAnzahlTrades += week['Anzahl Trades'];
+        totalAnzahlGewinne += week['Anz. Gewinne'];
+        totalAnzahlVerluste += week['Anz. Verluste'];
+        totalBruttoGewinn += week['Brutto-Gewinn $'];
+        totalBruttoGewinnProzent += week['Brutto-Gewinn %'];
+        totalGebuehren += week['Gebühren'];
+        totalKommissionen += week['Kommissionen'];
+        totalNettoGewinn += week['Netto Gewinn $'];
+        totalNettoGewinnProzent += week['Netto Gewinn %'];
         
         // Woche vom
         const cell0 = row.insertCell(0);
@@ -524,6 +546,68 @@ function displayWeeklyOverview(data) {
         if (week['Netto Gewinn %'] > 0) cell11.classList.add('table-positive');
         else if (week['Netto Gewinn %'] < 0) cell11.classList.add('table-negative');
     });
+    
+    // Füge Total-Zeile hinzu
+    const totalRow = tbody.insertRow();
+    totalRow.classList.add('total-row');
+    
+    // Woche vom
+    const tcell0 = totalRow.insertCell(0);
+    tcell0.textContent = 'Total';
+    
+    // Anzahl Trades
+    const tcell1 = totalRow.insertCell(1);
+    tcell1.textContent = totalAnzahlTrades;
+    
+    // Anz. Gewinne
+    const tcell2 = totalRow.insertCell(2);
+    tcell2.textContent = totalAnzahlGewinne;
+    tcell2.classList.add('table-positive');
+    
+    // Anz. Verluste
+    const tcell3 = totalRow.insertCell(3);
+    tcell3.textContent = totalAnzahlVerluste;
+    if (totalAnzahlVerluste > 0) tcell3.classList.add('table-negative');
+    
+    // Total einbezahlter Betrag $ - leer
+    const tcell4 = totalRow.insertCell(4);
+    tcell4.textContent = '';
+    
+    // Gehebelter Wert $ - leer
+    const tcell5 = totalRow.insertCell(5);
+    tcell5.textContent = '';
+    
+    // Brutto-Gewinn $
+    const tcell6 = totalRow.insertCell(6);
+    tcell6.textContent = formatCurrency(totalBruttoGewinn);
+    if (totalBruttoGewinn > 0) tcell6.classList.add('table-positive');
+    else if (totalBruttoGewinn < 0) tcell6.classList.add('table-negative');
+    
+    // Brutto-Gewinn %
+    const tcell7 = totalRow.insertCell(7);
+    tcell7.textContent = totalBruttoGewinnProzent.toFixed(3) + '%';
+    if (totalBruttoGewinnProzent > 0) tcell7.classList.add('table-positive');
+    else if (totalBruttoGewinnProzent < 0) tcell7.classList.add('table-negative');
+    
+    // Gebühren
+    const tcell8 = totalRow.insertCell(8);
+    tcell8.textContent = formatCurrency(totalGebuehren);
+    
+    // Kommissionen
+    const tcell9 = totalRow.insertCell(9);
+    tcell9.textContent = formatCurrency(totalKommissionen);
+    
+    // Netto Gewinn $
+    const tcell10 = totalRow.insertCell(10);
+    tcell10.textContent = formatCurrency(totalNettoGewinn);
+    if (totalNettoGewinn > 0) tcell10.classList.add('table-positive');
+    else if (totalNettoGewinn < 0) tcell10.classList.add('table-negative');
+    
+    // Netto Gewinn %
+    const tcell11 = totalRow.insertCell(11);
+    tcell11.textContent = totalNettoGewinnProzent.toFixed(3) + '%';
+    if (totalNettoGewinnProzent > 0) tcell11.classList.add('table-positive');
+    else if (totalNettoGewinnProzent < 0) tcell11.classList.add('table-negative');
 }
 
 function calculateGewinne(trades) {
@@ -553,9 +637,6 @@ function calculateGewinne(trades) {
         
         bruttoGewinn += parseNumber(trade.Profit);
         
-        // Brutto-Gewinn %: Summe aus Google Sheets Spalte "Brutto-Profit in % auf effektive Einzahlung"
-        bruttoGewinnProzentHebel += parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
-        
         gebuehren += parseNumber(trade['Gebühren']);
         
         // Summe Kommissionen (nicht MAX!) - flexible Spaltensuche
@@ -572,14 +653,15 @@ function calculateGewinne(trades) {
     const nettoGewinn = bruttoGewinn - gebuehren - summeKommissionen;
     
     // Berechne Prozente
+    const bruttoGewinnProzent = einzahlungEffektiv > 0 ? (bruttoGewinn / einzahlungEffektiv) * 100 : 0;
     const gebuehrenProzent = einzahlungEffektiv > 0 ? (gebuehren / einzahlungEffektiv) * 100 : 0;
     const kommissionenProzent = einzahlungEffektiv > 0 ? (summeKommissionen / einzahlungEffektiv) * 100 : 0;
     const nettoGewinnProzent = einzahlungEffektiv > 0 ? (nettoGewinn / einzahlungEffektiv) * 100 : 0;
     
     return [
-        { 'Typ': 'Einzahlung effektiv', 'Betrag $': einzahlungEffektiv, 'in %': 100 },
+        { 'Typ': 'Einzahlung effektiv (inkl. Aufstockung/Re-Invest)', 'Betrag $': einzahlungEffektiv, 'in %': 100 },
         { 'Typ': 'Einzahlung mit Hebel', 'Betrag $': einzahlungMitHebel, 'in %': einzahlungEffektiv > 0 ? (einzahlungMitHebel / einzahlungEffektiv) * 100 : 0 },
-        { 'Typ': 'Brutto-Gewinn', 'Betrag $': bruttoGewinn, 'in %': bruttoGewinnProzentHebel },
+        { 'Typ': 'Brutto-Gewinn', 'Betrag $': bruttoGewinn, 'in %': bruttoGewinnProzent },
         { 'Typ': 'Gebühren', 'Betrag $': gebuehren, 'in %': gebuehrenProzent },
         { 'Typ': 'Kommissionen', 'Betrag $': summeKommissionen, 'in %': kommissionenProzent },
         { 'Typ': 'Netto-Gewinn', 'Betrag $': nettoGewinn, 'in %': nettoGewinnProzent, 'isTotal': true }
