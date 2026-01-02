@@ -430,37 +430,25 @@
         
         // Recalculate table with new info values
         function recalculateTable() {
-            // Get updated values from info table
+            // Get updated values from info table inputs
             const inputs = document.querySelectorAll('.info-table input');
+            
             inputs.forEach(input => {
                 const row = parseInt(input.dataset.row);
-                const col = parseInt(input.dataset.col);
+                const col = parseInt(input.dataset.col); // This is already the correct column index (10 or 11)
                 const newValue = input.value.trim();
                 
-                // Find the correct cell index in the full row array
-                let cellIndex = 0;
-                let targetIndex = -1;
+                console.log(`Updating allRows[${row}][${col}] from "${allRows[row][col]}" to "${newValue}"`);
                 
-                for (let i = 0; i < allRows[row].length; i++) {
-                    if (allRows[row][i] && allRows[row][i].trim() !== '') {
-                        if (cellIndex === col) {
-                            targetIndex = i;
-                            break;
-                        }
-                        cellIndex++;
-                    }
+                // Update the value directly at the column index
+                if (isNumeric(newValue)) {
+                    const parsedValue = parseSwissNumber(newValue);
+                    allRows[row][col] = parsedValue.toString();
+                } else {
+                    allRows[row][col] = newValue;
                 }
                 
-                // Update the value at the correct position
-                if (targetIndex !== -1) {
-                    // Check if the new value is numeric
-                    if (isNumeric(newValue)) {
-                        const parsedValue = parseSwissNumber(newValue);
-                        allRows[row][targetIndex] = parsedValue.toString();
-                    } else {
-                        allRows[row][targetIndex] = newValue;
-                    }
-                }
+                console.log(`Updated: allRows[${row}][${col}] = "${allRows[row][col]}"`);
             });
             
             // Clear and rebuild main table
