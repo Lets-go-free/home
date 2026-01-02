@@ -163,26 +163,168 @@
                 });
                 thead.appendChild(headerRow);
                 
-                // Create table body starting from row 6 (index 5)
+                // Create table body starting from row 6 (index 5) with subtotals
                 const tbody = document.getElementById('tableBody');
+                
+                // Find column indices
+                const headers = rows[4];
+                const dateColIndex = headers.findIndex(h => h.toLowerCase().includes('rückzahlung bis'));
+                const walletColIndex = headers.findIndex(h => h.toLowerCase().includes('wallet'));
+                
+                // Group data by Month/Year and Wallet
+                let currentMonth = '';
+                let currentWallet = '';
+                let monthSubtotals = {};
+                let walletSubtotals = {};
+                let grandTotals = {};
+                
+                // First pass: collect data and calculate subtotals
+                const dataRows = [];
                 for (let i = 5; i < rows.length; i++) {
                     const row = rows[i];
-                    if (row.length === 0 || row.every(cell => !cell)) continue; // Skip empty rows
+                    if (row.length === 0 || row.every(cell => !cell)) continue;
+                    dataRows.push(row);
+                }
+                
+                // Process rows and insert subtotals
+                for (let i = 0; i < dataRows.length; i++) {
+                    const row = dataRows[i];
+                    const dateValue = row[dateColIndex] || '';
+                    const walletValue = row[walletColIndex] || '';
                     
+                    // Extract Month/Year from date (assuming format DD.MM.YYYY or similar)
+                    let monthYear = '';
+                    if (dateValue) {
+                        const dateParts = dateValue.split('.');
+                        if (dateParts.length >= 3) {
+                            monthYear = dateParts[1] + '.' + dateParts[2]; // MM.YYYY
+                        }
+                    }
+                    
+                    // Check if month changed
+                    if (monthYear && monthYear !== currentMonth && currentMonth !== '') {
+                        // Insert wallet subtotal if exists
+                        if (currentWallet) {
+                            insertWalletSubtotal(tbody, currentWallet, walletSubtotals[currentWallet], headers.length);
+                        }
+                        // Insert month subtotal
+                        insertMonthSubtotal(tbody, currentMonth, monthSubtotals[currentMonth], headers.length);
+                        
+                        // Reset for new month
+                        walletSubtotals = {};
+                        currentWallet = '';
+                    }
+                    
+                    // Check if wallet changed within same month
+                    if (walletValue && walletValue !== currentWallet && currentWallet !== '' && monthYear === currentMonth) {
+                        insertWalletSubtotal(tbody, currentWallet, walletSubtotals[currentWallet], headers.length);
+                    }
+                    
+                    // Update current grouping
+                    if (monthYear) currentMonth = monthYear;
+                    if (walletValue) currentWallet = walletValue;
+                    
+                    // Initialize subtotals if needed
+                    if (!monthSubtotals[currentMonth]) monthSubtotals[currentMonth] = {};
+                    if (!walletSubtotals[currentWallet]) walletSubtotals[currentWallet] = {};
+                    if (!grandTotals['total']) grandTotals['total'] = {};
+                    
+                    // Add data row
                     const tr = document.createElement('tr');
-                    row.forEach(cell => {
+                    row.forEach((cell, idx) => {
                         const td = document.createElement('td');
                         
                         // Format numbers with Swiss formatting
                         if (isNumeric(cell)) {
+                            const numValue = parseFloat(cell);
                             td.textContent = formatSwissNumber(cell);
                             td.className = 'number';
+                            
+                            // Accumulate for subtotals
+                            if (!monthSubtotals[currentMonth][idx]) monthSubtotals[currentMonth][idx] = 0;
+                            if (!walletSubtotals[currentWallet][idx]) walletSubtotals[currentWallet][idx] = 0;
+                            if (!grandTotals['total'][idx]) grandTotals['total'][idx] = 0;
+                            
+                            monthSubtotals[currentMonth][idx] += numValue;
+                            walletSubtotals[currentWallet][idx] += numValue;
+                            grandTotals['total'][idx] += numValue;
                         } else {
                             td.textContent = cell;
                         }
                         
                         tr.appendChild(td);
                     });
+                    tbody.appendChild(tr);
+                }
+                
+                // Insert final subtotals
+                if (currentWallet) {
+                    insertWalletSubtotal(tbody, currentWallet, walletSubtotals[currentWallet], headers.length);
+                }
+                if (currentMonth) {
+                    insertMonthSubtotal(tbody, currentMonth, monthSubtotals[currentMonth], headers.length);
+                }
+                
+                // Insert grand total
+                insertGrandTotal(tbody, grandTotals['total'], headers.length);
+                
+                function insertWalletSubtotal(tbody, wallet, totals, colCount) {
+                    const tr = document.createElement('tr');
+                    tr.style.background = '#B3D9FF';
+                    tr.style.fontWeight = 'bold';
+                    
+                    for (let i = 0; i < colCount; i++) {
+                        const td = document.createElement('td');
+                        if (i === 0) {
+                            td.textContent = '↳ Zwischentotal ' + wallet;
+                            td.style.paddingLeft = '30px';
+                        } else if (totals[i]) {
+                            td.textContent = formatSwissNumber(totals[i]);
+                            td.className = 'number';
+                        }
+                        tr.appendChild(td);
+                    }
+                    tbody.appendChild(tr);
+                }
+                
+                function insertMonthSubtotal(tbody, month, totals, colCount) {
+                    const tr = document.createElement('tr');
+                    tr.style.background = '#1261A0';
+                    tr.style.color = 'white';
+                    tr.style.fontWeight = 'bold';
+                    
+                    for (let i = 0; i < colCount; i++) {
+                        const td = document.createElement('td');
+                        if (i === 0) {
+                            td.textContent = '⚡ Total ' + month;
+                            td.style.paddingLeft = '20px';
+                        } else if (totals[i]) {
+                            td.textContent = formatSwissNumber(totals[i]);
+                            td.className = 'number';
+                        }
+                        tr.appendChild(td);
+                    }
+                    tbody.appendChild(tr);
+                }
+                
+                function insertGrandTotal(tbody, totals, colCount) {
+                    const tr = document.createElement('tr');
+                    tr.style.background = '#084387';
+                    tr.style.color = 'white';
+                    tr.style.fontWeight = 'bold';
+                    tr.style.fontSize = '1.1em';
+                    
+                    for (let i = 0; i < colCount; i++) {
+                        const td = document.createElement('td');
+                        if (i === 0) {
+                            td.textContent = '🎯 GESAMTTOTAL';
+                            td.style.paddingLeft = '20px';
+                        } else if (totals[i]) {
+                            td.textContent = formatSwissNumber(totals[i]);
+                            td.className = 'number';
+                        }
+                        tr.appendChild(td);
+                    }
                     tbody.appendChild(tr);
                 }
                 
