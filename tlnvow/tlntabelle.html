@@ -26,19 +26,49 @@
         @keyframes dots { 0%, 20% { content: '.'; } 40% { content: '..'; } 60%, 100% { content: '...'; } }
         
         /* Table Styles */
-        .table-container { overflow-x: auto; margin: 20px 0; background: white; border-radius: 12px; box-shadow: 0 3px 15px rgba(0,0,0,0.1); }
-        table { width: 100%; border-collapse: collapse; }
-        thead { background: linear-gradient(135deg, #1261A0 0%, #2776EA 100%); color: white; position: sticky; top: 0; z-index: 10; }
-        th { padding: 15px 12px; text-align: left; font-weight: 700; font-size: 0.95em; border-bottom: 3px solid #084387; }
+        .table-container { 
+            overflow: auto; 
+            margin: 20px 0; 
+            background: white; 
+            border-radius: 12px; 
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+            max-height: 600px;
+        }
+        table { width: 100%; border-collapse: collapse; min-width: 800px; }
+        thead { 
+            background: linear-gradient(135deg, #1261A0 0%, #2776EA 100%); 
+            color: white; 
+            position: sticky; 
+            top: 0; 
+            z-index: 10; 
+        }
+        th { 
+            padding: 15px 12px; 
+            text-align: right; 
+            font-weight: 700; 
+            font-size: 0.95em; 
+            border-bottom: 3px solid #084387;
+            white-space: nowrap;
+        }
+        th:first-child { text-align: left; }
         tbody tr { transition: background 0.2s; }
         tbody tr:nth-child(even) { background: #f8f9fa; }
         tbody tr:hover { background: #E3F2FD; }
-        td { padding: 12px; border-bottom: 1px solid #e0e0e0; font-size: 0.95em; }
-        td:first-child, th:first-child { padding-left: 20px; }
-        td:last-child, th:last-child { padding-right: 20px; }
+        td { 
+            padding: 12px; 
+            border-bottom: 1px solid #e0e0e0; 
+            font-size: 0.95em;
+            text-align: right;
+        }
+        td:first-child { 
+            text-align: left;
+            padding-left: 20px; 
+        }
+        th:first-child { padding-left: 20px; }
+        th:last-child { padding-right: 20px; }
+        td:last-child { padding-right: 20px; }
         
-        /* Number formatting */
-        .number { text-align: right; font-family: 'Courier New', monospace; font-weight: 600; color: #1261A0; }
+        /* Number formatting - removed separate class styling */
         
         /* Footer */
         .footer { max-width: 800px; margin: 40px auto 0; padding: 25px 40px; background: #fff3cd; border-radius: 10px; border-left: 4px solid #ffc107; text-align: left; font-size: 0.95em; }
@@ -168,105 +198,106 @@
                 
                 // Find column indices
                 const headers = rows[4];
-                const dateColIndex = headers.findIndex(h => h.toLowerCase().includes('rückzahlung bis'));
-                const walletColIndex = headers.findIndex(h => h.toLowerCase().includes('wallet'));
+                const dateColIndex = headers.findIndex(h => h && h.toLowerCase().includes('rückzahlung bis'));
+                const walletColIndex = headers.findIndex(h => h && h.toLowerCase().includes('wallet'));
                 
                 // Group data by Month/Year and Wallet
-                let currentMonth = '';
-                let currentWallet = '';
-                let monthSubtotals = {};
-                let walletSubtotals = {};
-                let grandTotals = {};
+                const monthGroups = {};
                 
-                // First pass: collect data and calculate subtotals
+                // First pass: group all rows by month/year
                 const dataRows = [];
                 for (let i = 5; i < rows.length; i++) {
                     const row = rows[i];
                     if (row.length === 0 || row.every(cell => !cell)) continue;
-                    dataRows.push(row);
-                }
-                
-                // Process rows and insert subtotals
-                for (let i = 0; i < dataRows.length; i++) {
-                    const row = dataRows[i];
-                    const dateValue = row[dateColIndex] || '';
-                    const walletValue = row[walletColIndex] || '';
                     
-                    // Extract Month/Year from date (assuming format DD.MM.YYYY or similar)
+                    const dateValue = row[dateColIndex] || '';
                     let monthYear = '';
+                    
+                    // Extract Month/Year from date (assuming format DD.MM.YYYY)
                     if (dateValue) {
                         const dateParts = dateValue.split('.');
                         if (dateParts.length >= 3) {
-                            monthYear = dateParts[1] + '.' + dateParts[2]; // MM.YYYY
+                            monthYear = dateParts[1] + '/' + dateParts[2]; // MM/YYYY
                         }
                     }
                     
-                    // Check if month changed
-                    if (monthYear && monthYear !== currentMonth && currentMonth !== '') {
-                        // Insert wallet subtotal if exists
-                        if (currentWallet) {
-                            insertWalletSubtotal(tbody, currentWallet, walletSubtotals[currentWallet], headers.length);
-                        }
-                        // Insert month subtotal
-                        insertMonthSubtotal(tbody, currentMonth, monthSubtotals[currentMonth], headers.length);
-                        
-                        // Reset for new month
-                        walletSubtotals = {};
-                        currentWallet = '';
+                    if (!monthYear) monthYear = 'Ohne Datum';
+                    
+                    if (!monthGroups[monthYear]) {
+                        monthGroups[monthYear] = {
+                            wallets: {},
+                            order: Object.keys(monthGroups).length
+                        };
                     }
                     
-                    // Check if wallet changed within same month
-                    if (walletValue && walletValue !== currentWallet && currentWallet !== '' && monthYear === currentMonth) {
-                        insertWalletSubtotal(tbody, currentWallet, walletSubtotals[currentWallet], headers.length);
+                    const walletValue = row[walletColIndex] || 'Ohne Wallet';
+                    
+                    if (!monthGroups[monthYear].wallets[walletValue]) {
+                        monthGroups[monthYear].wallets[walletValue] = {
+                            rows: [],
+                            totals: {}
+                        };
                     }
                     
-                    // Update current grouping
-                    if (monthYear) currentMonth = monthYear;
-                    if (walletValue) currentWallet = walletValue;
-                    
-                    // Initialize subtotals if needed
-                    if (!monthSubtotals[currentMonth]) monthSubtotals[currentMonth] = {};
-                    if (!walletSubtotals[currentWallet]) walletSubtotals[currentWallet] = {};
-                    if (!grandTotals['total']) grandTotals['total'] = {};
-                    
-                    // Add data row
-                    const tr = document.createElement('tr');
-                    row.forEach((cell, idx) => {
-                        const td = document.createElement('td');
-                        
-                        // Format numbers with Swiss formatting
-                        if (isNumeric(cell)) {
-                            const numValue = parseFloat(cell);
-                            td.textContent = formatSwissNumber(cell);
-                            td.className = 'number';
-                            
-                            // Accumulate for subtotals
-                            if (!monthSubtotals[currentMonth][idx]) monthSubtotals[currentMonth][idx] = 0;
-                            if (!walletSubtotals[currentWallet][idx]) walletSubtotals[currentWallet][idx] = 0;
-                            if (!grandTotals['total'][idx]) grandTotals['total'][idx] = 0;
-                            
-                            monthSubtotals[currentMonth][idx] += numValue;
-                            walletSubtotals[currentWallet][idx] += numValue;
-                            grandTotals['total'][idx] += numValue;
-                        } else {
-                            td.textContent = cell;
-                        }
-                        
-                        tr.appendChild(td);
-                    });
-                    tbody.appendChild(tr);
+                    monthGroups[monthYear].wallets[walletValue].rows.push(row);
                 }
                 
-                // Insert final subtotals
-                if (currentWallet) {
-                    insertWalletSubtotal(tbody, currentWallet, walletSubtotals[currentWallet], headers.length);
-                }
-                if (currentMonth) {
-                    insertMonthSubtotal(tbody, currentMonth, monthSubtotals[currentMonth], headers.length);
-                }
+                // Second pass: render grouped data with subtotals
+                const grandTotals = {};
+                
+                Object.keys(monthGroups).sort((a, b) => {
+                    // Sort by month/year
+                    const [monthA, yearA] = a.split('/').map(x => parseInt(x) || 0);
+                    const [monthB, yearB] = b.split('/').map(x => parseInt(x) || 0);
+                    if (yearA !== yearB) return yearA - yearB;
+                    return monthA - monthB;
+                }).forEach(monthYear => {
+                    const monthData = monthGroups[monthYear];
+                    const monthTotals = {};
+                    
+                    // Process each wallet within this month
+                    Object.keys(monthData.wallets).sort().forEach(wallet => {
+                        const walletData = monthData.wallets[wallet];
+                        const walletTotals = {};
+                        
+                        // Add all rows for this wallet
+                        walletData.rows.forEach(row => {
+                            const tr = document.createElement('tr');
+                            row.forEach((cell, idx) => {
+                                const td = document.createElement('td');
+                                
+                                // Format numbers with Swiss formatting
+                                if (isNumeric(cell)) {
+                                    const numValue = parseFloat(cell);
+                                    td.textContent = formatSwissNumber(cell);
+                                    
+                                    // Accumulate for subtotals
+                                    if (!walletTotals[idx]) walletTotals[idx] = 0;
+                                    if (!monthTotals[idx]) monthTotals[idx] = 0;
+                                    if (!grandTotals[idx]) grandTotals[idx] = 0;
+                                    
+                                    walletTotals[idx] += numValue;
+                                    monthTotals[idx] += numValue;
+                                    grandTotals[idx] += numValue;
+                                } else {
+                                    td.textContent = cell;
+                                }
+                                
+                                tr.appendChild(td);
+                            });
+                            tbody.appendChild(tr);
+                        });
+                        
+                        // Insert wallet subtotal
+                        insertWalletSubtotal(tbody, wallet, walletTotals, headers.length);
+                    });
+                    
+                    // Insert month subtotal
+                    insertMonthSubtotal(tbody, monthYear, monthTotals, headers.length);
+                });
                 
                 // Insert grand total
-                insertGrandTotal(tbody, grandTotals['total'], headers.length);
+                insertGrandTotal(tbody, grandTotals, headers.length);
                 
                 function insertWalletSubtotal(tbody, wallet, totals, colCount) {
                     const tr = document.createElement('tr');
@@ -280,7 +311,6 @@
                             td.style.paddingLeft = '30px';
                         } else if (totals[i]) {
                             td.textContent = formatSwissNumber(totals[i]);
-                            td.className = 'number';
                         }
                         tr.appendChild(td);
                     }
@@ -300,7 +330,6 @@
                             td.style.paddingLeft = '20px';
                         } else if (totals[i]) {
                             td.textContent = formatSwissNumber(totals[i]);
-                            td.className = 'number';
                         }
                         tr.appendChild(td);
                     }
@@ -321,7 +350,6 @@
                             td.style.paddingLeft = '20px';
                         } else if (totals[i]) {
                             td.textContent = formatSwissNumber(totals[i]);
-                            td.className = 'number';
                         }
                         tr.appendChild(td);
                     }
