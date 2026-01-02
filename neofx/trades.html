@@ -351,7 +351,7 @@ function calculateUebersicht(trades) {
         { 'Typ': 'Anzahl Verluste', 'Anzahl': anzahlVerluste, 'in %': verlusteProcessent },
         { 'Typ': 'Total Anzahl Trades', 'Anzahl': totalTrades, 'in %': 100, 'isTotal': true },
         { 'Typ': 'Ø Nettogewinn je Trade', 'Anzahl': '', 'in %': avgNettoGewinnJeTrade },
-        { 'Typ': 'Anz. Trades, um den Einsatz als Gewinn zu erreichen', 'Anzahl': tradesForBreakeven, 'in %': null }
+        { 'Typ': 'Anz. Trades, um den Einsatz<br>als Gewinn zu erreichen', 'Anzahl': tradesForBreakeven, 'in %': null }
     ];
 }
 
@@ -975,9 +975,9 @@ function displayGenericTable(data, headId, bodyId) {
             const value = row[col] || '';
             const colName = col.toLowerCase();
             
-            // Erste Spalte = Text (Typ)
+            // Erste Spalte = Text (Typ) - erlaubt HTML für Zeilenumbrüche
             if (colIndex === 0 || colName.includes('typ')) {
-                cell.textContent = value;
+                cell.innerHTML = value;
             }
             // Anzahl-Spalte
             else if (colName.includes('anzahl')) {
