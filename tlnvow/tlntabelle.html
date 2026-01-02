@@ -188,18 +188,24 @@
         
         // Get value from info table by looking for a label
         function getInfoValue(label) {
+            console.log('Suche nach:', label);
             for (let i = 0; i < 4; i++) {
                 const row = allRows[i];
+                console.log(`Info-Zeile ${i}:`, row);
                 for (let j = 0; j < row.length - 1; j++) {
                     if (row[j] && row[j].toLowerCase().includes(label.toLowerCase())) {
                         // Next cell should be the value
                         const value = row[j + 1];
+                        console.log(`Gefunden! Label: "${row[j]}", Wert: "${value}"`);
                         if (value && value.trim()) {
-                            return parseSwissNumber(value);
+                            const parsed = parseSwissNumber(value);
+                            console.log(`Parsed value: ${parsed}`);
+                            return parsed;
                         }
                     }
                 }
             }
+            console.log('Nicht gefunden!');
             return null;
         }
         
@@ -209,20 +215,26 @@
             
             // Get values from info table
             const zielKursVOW = getInfoValue('ziel-kurs vow');
+            console.log('Ziel-Kurs VOW:', zielKursVOW);
             
             // Get values from current row
             const getRowValue = (searchName) => {
                 const idx = headers.findIndex(h => h && h.toLowerCase().includes(searchName.toLowerCase()));
                 if (idx !== -1 && rowData[idx]) {
-                    return parseSwissNumber(rowData[idx]);
+                    const val = parseSwissNumber(rowData[idx]);
+                    console.log(`getRowValue("${searchName}"): idx=${idx}, value="${rowData[idx]}", parsed=${val}`);
+                    return val;
                 }
+                console.log(`getRowValue("${searchName}"): nicht gefunden`);
                 return 0;
             };
             
             // Formulas based on column name
             if (colName.includes('$-wert vow in collateral')) {
                 const collateral = getRowValue("erhaltene vow's (collateral)");
-                return collateral * zielKursVOW;
+                const result = collateral * zielKursVOW;
+                console.log(`$-Wert Berechnung: ${collateral} * ${zielKursVOW} = ${result}`);
+                return result;
             }
             else if (colName.includes('benötigte vow, um v$ für rückzahlung zu kaufen')) {
                 const vDollar = getRowValue('erhaltene v$');
