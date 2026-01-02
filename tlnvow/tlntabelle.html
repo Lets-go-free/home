@@ -186,26 +186,35 @@
         let infoRowsData = [];
         let calculatedColumns = {}; // Store which columns need calculation
         
-        // Get value from info table by looking for a label
+        // Get value from info table by looking for a label in columns K:L (indices 10:11)
         function getInfoValue(label) {
             console.log('Suche nach:', label);
-            for (let i = 0; i < 4; i++) {
+            console.log('Anzahl Info-Zeilen:', allRows.length >= 4 ? 4 : allRows.length);
+            
+            for (let i = 0; i < 4 && i < allRows.length; i++) {
                 const row = allRows[i];
-                console.log(`Info-Zeile ${i}:`, row);
-                for (let j = 0; j < row.length - 1; j++) {
-                    if (row[j] && row[j].toLowerCase().includes(label.toLowerCase())) {
-                        // Next cell should be the value
-                        const value = row[j + 1];
-                        console.log(`Gefunden! Label: "${row[j]}", Wert: "${value}"`);
-                        if (value && value.trim()) {
+                console.log(`Info-Zeile ${i+1}:`, row);
+                
+                // Check column K (index 10) for the label
+                if (row[10]) {
+                    const labelCell = row[10].toString().toLowerCase();
+                    console.log(`Zeile ${i+1}, Spalte K (idx 10): "${row[10]}"`);
+                    
+                    if (labelCell.includes(label.toLowerCase())) {
+                        // Value should be in column L (index 11)
+                        if (row[11] && row[11].toString().trim()) {
+                            const value = row[11].toString().trim();
+                            console.log(`✓ Gefunden! Label: "${row[10]}", Wert in Spalte L: "${value}"`);
                             const parsed = parseSwissNumber(value);
                             console.log(`Parsed value: ${parsed}`);
                             return parsed;
+                        } else {
+                            console.log(`Label gefunden, aber kein Wert in Spalte L (idx 11)`);
                         }
                     }
                 }
             }
-            console.log('Nicht gefunden!');
+            console.log('❌ Nicht gefunden!');
             return null;
         }
         
@@ -327,7 +336,7 @@
             return !isNaN(cleanValue) && !isNaN(parseFloat(cleanValue));
         }
         
-        // Create info table from first 4 rows
+        // Create info table from first 4 rows, columns K:L (indices 10:11)
         function createInfoTable(rows) {
             const infoTableHead = document.getElementById('infoTableHead');
             const infoTableBody = document.getElementById('infoTableBody');
@@ -336,43 +345,50 @@
             infoTableHead.innerHTML = '';
             infoTableBody.innerHTML = '';
             
-            // Store info rows data
+            // Store info rows data - COMPLETE ROWS
             infoRowsData = rows.slice(0, 4);
             
             // Create custom header row
             const headerRow = document.createElement('tr');
             const th = document.createElement('th');
-            th.colSpan = 100; // Span all columns
+            th.colSpan = 2;
             th.textContent = 'Ziel-Kurse und Basis-Informationen für Berechnung der Loan-Rückzahlungen';
             th.style.textAlign = 'center';
             headerRow.appendChild(th);
             infoTableHead.appendChild(headerRow);
             
-            // Create data rows from all 4 rows (all editable now)
-            for (let i = 0; i < 4; i++) {
-                const tr = document.createElement('tr');
+            // Create data rows from columns K:L (indices 10:11) of first 4 rows
+            for (let i = 0; i < 4 && i < rows.length; i++) {
                 const row = rows[i];
-                const filledCells = row.filter(cell => cell && cell.trim() !== '');
                 
-                filledCells.forEach((cell, idx) => {
-                    const td = document.createElement('td');
-                    const input = document.createElement('input');
-                    input.type = 'text';
-                    input.value = cell;
-                    input.dataset.row = i;
-                    input.dataset.col = idx;
+                // Only show rows that have content in column K or L
+                if ((row[10] && row[10].trim()) || (row[11] && row[11].trim())) {
+                    const tr = document.createElement('tr');
                     
-                    // First cell of each row can be styled as label-like
-                    if (idx === 0) {
-                        input.style.fontWeight = 'bold';
-                        input.style.background = '#F0F8FF';
-                    }
+                    // Column K - Label
+                    const tdLabel = document.createElement('td');
+                    const inputLabel = document.createElement('input');
+                    inputLabel.type = 'text';
+                    inputLabel.value = row[10] || '';
+                    inputLabel.dataset.row = i;
+                    inputLabel.dataset.col = 10;
+                    inputLabel.style.fontWeight = 'bold';
+                    inputLabel.style.background = '#F0F8FF';
+                    tdLabel.appendChild(inputLabel);
+                    tr.appendChild(tdLabel);
                     
-                    td.appendChild(input);
-                    tr.appendChild(td);
-                });
-                
-                infoTableBody.appendChild(tr);
+                    // Column L - Value
+                    const tdValue = document.createElement('td');
+                    const inputValue = document.createElement('input');
+                    inputValue.type = 'text';
+                    inputValue.value = row[11] || '';
+                    inputValue.dataset.row = i;
+                    inputValue.dataset.col = 11;
+                    tdValue.appendChild(inputValue);
+                    tr.appendChild(tdValue);
+                    
+                    infoTableBody.appendChild(tr);
+                }
             }
         }
         
