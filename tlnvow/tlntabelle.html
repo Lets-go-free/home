@@ -446,8 +446,8 @@
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = ''; // Clear existing content
             
-            // Find column indices
-            const headers = allRows[4];
+            // Find column indices (only in data table columns A-N)
+            const headers = allRows[4].slice(0, 14); // Only columns A-N
             const dateColIndex = headers.findIndex(h => h && h.toLowerCase().includes('rückzahlung bis'));
             const walletColIndex = headers.findIndex(h => h && h.toLowerCase().includes('wallet'));
             
@@ -456,7 +456,7 @@
             
             // First pass: group all rows by month/year
             for (let i = 5; i < allRows.length; i++) {
-                const row = allRows[i];
+                const row = allRows[i].slice(0, 14); // Only columns A-N
                 if (row.length === 0 || row.every(cell => !cell)) continue;
                 
                 const dateValue = row[dateColIndex] || '';
@@ -664,10 +664,10 @@
                 // Create info table from first 4 rows
                 createInfoTable(allRows);
                 
-                // Row 5 (index 4) is the header for the table
+                // Row 5 (index 4) is the header for the table - only columns A-N
                 const thead = document.getElementById('tableHead');
                 const headerRow = document.createElement('tr');
-                allRows[4].forEach(header => {
+                allRows[4].slice(0, 14).forEach(header => { // Only columns A-N
                     const th = document.createElement('th');
                     th.textContent = header;
                     headerRow.appendChild(th);
