@@ -41,6 +41,21 @@
             <strong>Hinweis zu den Berechnungen:</strong> Die Werte in den Tabellen "Gewinne" und "Übersicht Trades" basieren auf den kumulierten Einzahlungen, inklusive Aufstockungen und Re-Investitionen von Gewinnen. Für detaillierte Einzelwerte siehe "Trades-Übersicht je Woche" oder "Alle Trades".
         </p>
 
+        <!-- Gewinne pro Account Tabelle (alle Accounts) -->
+        <div id="gewinneProAccountContainer" style="display: none; margin-bottom: 30px;">
+            <h3>Gewinne pro Account</h3>
+            <div style="overflow-x: auto;">
+                <table id="gewinneProAccountTable" style="width: 100%; border-collapse: collapse;">
+                    <thead id="gewinneProAccountHead">
+                        <!-- Wird dynamisch gefüllt -->
+                    </thead>
+                    <tbody id="gewinneProAccountBody">
+                        <!-- Wird dynamisch gefüllt -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- Uebersicht Trades und Gewinne nebeneinander -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;" id="summaryTablesContainer">
             <!-- Gewinne Tabelle (jetzt links) -->
@@ -175,6 +190,7 @@ async function loadData() {
         // Verstecke Lade-Indikator, zeige Filter und Daten
         document.getElementById('loadingIndicator').style.display = 'none';
         document.getElementById('accountFilterContainer').style.display = 'block';
+        document.getElementById('gewinneProAccountContainer').style.display = 'block';
         document.getElementById('uebersichtContainer').style.display = 'block';
         document.getElementById('gewinneContainer').style.display = 'block';
         document.getElementById('weeklyOverviewContainer').style.display = 'block';
@@ -282,8 +298,12 @@ function filterByAccount() {
     const gewinneCalculated = calculateGewinne(filteredTrades);
     const weeklyOverview = calculateWeeklyOverview(filteredTrades);
     
+    // Gewinne pro Account (immer alle Accounts, unabhängig vom Filter)
+    const gewinneProAccount = calculateGewinneProAccount(allTradesData);
+    
     displayGenericTable(uebersichtCalculated, 'uebersichtHead', 'uebersichtBody');
     displayGenericTable(gewinneCalculated, 'gewinneHead', 'gewinneBody');
+    displayGewinneProAccount(gewinneProAccount);
     displayWeeklyOverview(weeklyOverview);
     displayTrades(filteredTrades);
 }
@@ -613,6 +633,143 @@ function displayWeeklyOverview(data) {
     tcell11.textContent = totalNettoGewinnProzent.toFixed(3) + '%';
     if (totalNettoGewinnProzent > 0) tcell11.classList.add('table-positive');
     else if (totalNettoGewinnProzent < 0) tcell11.classList.add('table-negative');
+}
+
+function calculateGewinneProAccount(trades) {
+    // Hole alle eindeutigen Accounts
+    const accounts = [...new Set(trades.map(t => t.Account).filter(a => a && a.trim()))].sort();
+    
+    if (accounts.length === 0) return { accounts: [], data: [] };
+    
+    // Berechne Gewinne für jeden Account
+    const accountData = {};
+    
+    accounts.forEach(account => {
+        const accountTrades = trades.filter(t => t.Account === account);
+        const gewinneData = calculateGewinne(accountTrades);
+        accountData[account] = gewinneData;
+    });
+    
+    // Erstelle Datenstruktur: Zeilen mit Werten für jeden Account
+    const rows = [
+        'Einzahlung effektiv',
+        'Einzahlung mit Hebel',
+        'Brutto-Gewinn',
+        'Gebühren',
+        'Kommissionen',
+        'Netto-Gewinn'
+    ];
+    
+    const result = rows.map(rowName => {
+        const rowData = { 'Typ': rowName };
+        let isTotal = false;
+        
+        accounts.forEach(account => {
+            const accountGewinne = accountData[account];
+            const item = accountGewinne.find(g => g.Typ === rowName);
+            
+            if (item) {
+                rowData[`${account}_Betrag`] = item['Betrag $'];
+                rowData[`${account}_Prozent`] = item['in %'];
+                if (item.isTotal) isTotal = true;
+            }
+        });
+        
+        rowData.isTotal = isTotal;
+        return rowData;
+    });
+    
+    return { accounts, data: result };
+}
+
+function displayGewinneProAccount(accountsData) {
+    const { accounts, data } = accountsData;
+    
+    if (accounts.length === 0 || data.length === 0) return;
+    
+    const thead = document.getElementById('gewinneProAccountHead');
+    const tbody = document.getElementById('gewinneProAccountBody');
+    
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+    
+    // Erstelle Header mit 2 Zeilen
+    // Erste Zeile: Account-Namen
+    const headerRow1 = document.createElement('tr');
+    
+    // Erste Spalte (Typ)
+    const th0 = document.createElement('th');
+    th0.textContent = 'Typ';
+    th0.rowSpan = 2;
+    th0.style.verticalAlign = 'middle';
+    headerRow1.appendChild(th0);
+    
+    // Für jeden Account: colspan 2 für Betrag $ und in %
+    accounts.forEach(account => {
+        const thAccount = document.createElement('th');
+        thAccount.textContent = account;
+        thAccount.colSpan = 2;
+        thAccount.style.textAlign = 'center';
+        headerRow1.appendChild(thAccount);
+    });
+    
+    thead.appendChild(headerRow1);
+    
+    // Zweite Zeile: "Betrag $" und "in %" für jeden Account
+    const headerRow2 = document.createElement('tr');
+    
+    accounts.forEach(account => {
+        const thBetrag = document.createElement('th');
+        thBetrag.textContent = 'Betrag $';
+        headerRow2.appendChild(thBetrag);
+        
+        const thProzent = document.createElement('th');
+        thProzent.textContent = 'in %';
+        headerRow2.appendChild(thProzent);
+    });
+    
+    thead.appendChild(headerRow2);
+    
+    // Fülle Daten
+    data.forEach(row => {
+        const tr = tbody.insertRow();
+        
+        // Total-Zeile hervorheben
+        if (row.isTotal) {
+            tr.classList.add('total-row');
+        }
+        
+        // Typ-Spalte
+        const cellTyp = tr.insertCell();
+        cellTyp.textContent = row.Typ;
+        
+        // Für jeden Account: Betrag $ und in %
+        accounts.forEach(account => {
+            const betragValue = row[`${account}_Betrag`] || 0;
+            const prozentValue = row[`${account}_Prozent`] || 0;
+            
+            // Betrag $
+            const cellBetrag = tr.insertCell();
+            cellBetrag.textContent = formatCurrency(betragValue);
+            
+            // Prüfe ob Gebühren/Kommissionen
+            const isKosten = row.Typ.toLowerCase().includes('gebühr') || row.Typ.toLowerCase().includes('kommission');
+            
+            if (!isKosten) {
+                if (betragValue > 0) cellBetrag.classList.add('table-positive');
+                else if (betragValue < 0) cellBetrag.classList.add('table-negative');
+            }
+            
+            // in %
+            const cellProzent = tr.insertCell();
+            cellProzent.textContent = prozentValue.toFixed(2) + '%';
+            
+            if (!isKosten) {
+                if (prozentValue > 0) cellProzent.classList.add('table-positive');
+                else if (prozentValue < 0) cellProzent.classList.add('table-negative');
+            }
+        });
+    });
 }
 
 function calculateGewinne(trades) {
