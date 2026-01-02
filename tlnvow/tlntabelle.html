@@ -410,6 +410,12 @@
                     inputLabel.dataset.col = 10;
                     inputLabel.style.fontWeight = 'bold';
                     inputLabel.style.background = '#F0F8FF';
+                    
+                    // Add auto-recalculate on change
+                    inputLabel.addEventListener('input', () => {
+                        setTimeout(() => recalculateTable(), 500); // Delay for better UX
+                    });
+                    
                     tdLabel.appendChild(inputLabel);
                     tr.appendChild(tdLabel);
                     
@@ -420,6 +426,12 @@
                     inputValue.value = row[11] || '';
                     inputValue.dataset.row = i;
                     inputValue.dataset.col = 11;
+                    
+                    // Add auto-recalculate on change
+                    inputValue.addEventListener('input', () => {
+                        setTimeout(() => recalculateTable(), 500); // Delay for better UX
+                    });
+                    
                     tdValue.appendChild(inputValue);
                     tr.appendChild(tdValue);
                     
@@ -497,16 +509,6 @@
             
             // Clear and rebuild main table
             buildMainTable();
-            
-            // Show confirmation
-            const btn = document.querySelector('.recalc-btn');
-            const originalText = btn.textContent;
-            btn.textContent = '✓ Neu berechnet!';
-            btn.style.background = '#28a745';
-            setTimeout(() => {
-                btn.textContent = originalText;
-                btn.style.background = '#1261A0';
-            }, 2000);
         }
         
         // Build main data table
