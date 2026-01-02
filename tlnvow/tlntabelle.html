@@ -71,6 +71,11 @@
                 Lade Daten aus Google Sheets
             </div>
             
+            <!-- Info Box für die ersten 4 Zeilen -->
+            <div id="infoBox" style="display: none; background: #E3F2FD; padding: 25px; border-radius: 12px; border-left: 4px solid #1261A0; margin-bottom: 30px;">
+                <div id="infoContent"></div>
+            </div>
+            
             <div id="tableContainer" class="table-container" style="display: none;">
                 <table id="dataTable">
                     <thead id="tableHead"></thead>
@@ -118,23 +123,49 @@
                 const csvText = await response.text();
                 const rows = parseCSV(csvText);
                 
-                if (rows.length === 0) {
-                    throw new Error('Keine Daten gefunden');
+                if (rows.length < 5) {
+                    throw new Error('Nicht genügend Daten gefunden');
                 }
                 
-                // Create table header
+                // Display first 4 rows in info box (only filled cells)
+                const infoContent = document.getElementById('infoContent');
+                for (let i = 0; i < 4; i++) {
+                    const row = rows[i];
+                    const filledCells = row.filter(cell => cell && cell.trim() !== '');
+                    
+                    if (filledCells.length > 0) {
+                        const infoRow = document.createElement('p');
+                        infoRow.style.marginBottom = '10px';
+                        infoRow.style.fontSize = '1.05em';
+                        infoRow.style.lineHeight = '1.6';
+                        
+                        // Join filled cells with space or format as needed
+                        infoRow.innerHTML = '<strong style="color: #0B4A7D;">' + 
+                            filledCells.map(cell => {
+                                if (isNumeric(cell)) {
+                                    return formatSwissNumber(cell);
+                                }
+                                return cell;
+                            }).join(' </strong> ') + 
+                            (filledCells.length === 1 ? '' : '');
+                        
+                        infoContent.appendChild(infoRow);
+                    }
+                }
+                
+                // Row 5 (index 4) is the header for the table
                 const thead = document.getElementById('tableHead');
                 const headerRow = document.createElement('tr');
-                rows[0].forEach(header => {
+                rows[4].forEach(header => {
                     const th = document.createElement('th');
                     th.textContent = header;
                     headerRow.appendChild(th);
                 });
                 thead.appendChild(headerRow);
                 
-                // Create table body
+                // Create table body starting from row 6 (index 5)
                 const tbody = document.getElementById('tableBody');
-                for (let i = 1; i < rows.length; i++) {
+                for (let i = 5; i < rows.length; i++) {
                     const row = rows[i];
                     if (row.length === 0 || row.every(cell => !cell)) continue; // Skip empty rows
                     
@@ -155,8 +186,9 @@
                     tbody.appendChild(tr);
                 }
                 
-                // Hide loading, show table
+                // Hide loading, show info box and table
                 document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('infoBox').style.display = 'block';
                 document.getElementById('tableContainer').style.display = 'block';
                 
             } catch (error) {
