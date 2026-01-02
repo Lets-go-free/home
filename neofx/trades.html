@@ -500,7 +500,7 @@ function displayWeeklyOverview(data) {
         
         // Brutto-Gewinn %
         const cell7 = row.insertCell(7);
-        cell7.textContent = week['Brutto-Gewinn %'].toFixed(2) + '%';
+        cell7.textContent = week['Brutto-Gewinn %'].toFixed(3) + '%';
         if (week['Brutto-Gewinn %'] > 0) cell7.classList.add('table-positive');
         else if (week['Brutto-Gewinn %'] < 0) cell7.classList.add('table-negative');
         
@@ -520,7 +520,7 @@ function displayWeeklyOverview(data) {
         
         // Netto Gewinn %
         const cell11 = row.insertCell(11);
-        cell11.textContent = week['Netto Gewinn %'].toFixed(2) + '%';
+        cell11.textContent = week['Netto Gewinn %'].toFixed(3) + '%';
         if (week['Netto Gewinn %'] > 0) cell11.classList.add('table-positive');
         else if (week['Netto Gewinn %'] < 0) cell11.classList.add('table-negative');
     });
@@ -540,8 +540,9 @@ function calculateGewinne(trades) {
     let einzahlungEffektiv = 0;
     let einzahlungMitHebel = 0;
     let bruttoGewinn = 0;
+    let bruttoGewinnProzentHebel = 0; // Neue Variable für Summe aus Google Sheets
     let gebuehren = 0;
-    let summeKommissionen = 0; // Geändert von maxKommissionen zu summeKommissionen
+    let summeKommissionen = 0;
     
     validTrades.forEach(trade => {
         einzahlungEffektiv += parseNumber(trade['Einzahlung $']);
@@ -551,6 +552,10 @@ function calculateGewinne(trades) {
         einzahlungMitHebel += hebelValue;
         
         bruttoGewinn += parseNumber(trade.Profit);
+        
+        // Brutto-Gewinn %: Summe aus Google Sheets Spalte "Brutto Profit in % auf x24 Hebel"
+        bruttoGewinnProzentHebel += parseNumber(trade['Brutto Profit in % auf x24 Hebel']);
+        
         gebuehren += parseNumber(trade['Gebühren']);
         
         // Summe Kommissionen (nicht MAX!) - flexible Spaltensuche
@@ -567,7 +572,6 @@ function calculateGewinne(trades) {
     const nettoGewinn = bruttoGewinn - gebuehren - summeKommissionen;
     
     // Berechne Prozente
-    const bruttoGewinnProzent = einzahlungEffektiv > 0 ? (bruttoGewinn / einzahlungEffektiv) * 100 : 0;
     const gebuehrenProzent = einzahlungEffektiv > 0 ? (gebuehren / einzahlungEffektiv) * 100 : 0;
     const kommissionenProzent = einzahlungEffektiv > 0 ? (summeKommissionen / einzahlungEffektiv) * 100 : 0;
     const nettoGewinnProzent = einzahlungEffektiv > 0 ? (nettoGewinn / einzahlungEffektiv) * 100 : 0;
@@ -575,7 +579,7 @@ function calculateGewinne(trades) {
     return [
         { 'Typ': 'Einzahlung effektiv', 'Betrag $': einzahlungEffektiv, 'in %': 100 },
         { 'Typ': 'Einzahlung mit Hebel', 'Betrag $': einzahlungMitHebel, 'in %': einzahlungEffektiv > 0 ? (einzahlungMitHebel / einzahlungEffektiv) * 100 : 0 },
-        { 'Typ': 'Brutto-Gewinn', 'Betrag $': bruttoGewinn, 'in %': bruttoGewinnProzent },
+        { 'Typ': 'Brutto-Gewinn', 'Betrag $': bruttoGewinn, 'in %': bruttoGewinnProzentHebel },
         { 'Typ': 'Gebühren', 'Betrag $': gebuehren, 'in %': gebuehrenProzent },
         { 'Typ': 'Kommissionen', 'Betrag $': summeKommissionen, 'in %': kommissionenProzent },
         { 'Typ': 'Netto-Gewinn', 'Betrag $': nettoGewinn, 'in %': nettoGewinnProzent, 'isTotal': true }
@@ -770,14 +774,14 @@ function displayTrades(trades) {
         // Brutto Profit % (24x)
         const profit24x = parseNumber(trade['Brutto Profit in % auf x24 Hebel']);
         const cell7 = row.insertCell(7);
-        cell7.textContent = profit24x.toFixed(2) + '%';
+        cell7.textContent = profit24x.toFixed(3) + '%';
         if (profit24x > 0) cell7.classList.add('table-positive');
         else if (profit24x < 0) cell7.classList.add('table-negative');
         
         // Brutto Profit % (effektiv)
         const profitEffektiv = parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
         const cell8 = row.insertCell(8);
-        cell8.textContent = profitEffektiv.toFixed(2) + '%';
+        cell8.textContent = profitEffektiv.toFixed(3) + '%';
         if (profitEffektiv > 0) cell8.classList.add('table-positive');
         else if (profitEffektiv < 0) cell8.classList.add('table-negative');
         
@@ -834,13 +838,13 @@ function displayTrades(trades) {
     
     // Brutto Profit % (Hebel)
     const tcell7 = totalRow.insertCell(7);
-    tcell7.textContent = totalBruttoGewinnProzentHebel.toFixed(2) + '%';
+    tcell7.textContent = totalBruttoGewinnProzentHebel.toFixed(3) + '%';
     if (totalBruttoGewinnProzentHebel > 0) tcell7.classList.add('table-positive');
     else if (totalBruttoGewinnProzentHebel < 0) tcell7.classList.add('table-negative');
     
     // Brutto Profit % (effektiv)
     const tcell8 = totalRow.insertCell(8);
-    tcell8.textContent = totalBruttoGewinnProzentEffektiv.toFixed(2) + '%';
+    tcell8.textContent = totalBruttoGewinnProzentEffektiv.toFixed(3) + '%';
     if (totalBruttoGewinnProzentEffektiv > 0) tcell8.classList.add('table-positive');
     else if (totalBruttoGewinnProzentEffektiv < 0) tcell8.classList.add('table-negative');
     
