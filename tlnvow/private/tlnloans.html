@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TLN Loans - Community TLN Business DE</title>
     <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
+    <script src="tlnprices.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <link rel="stylesheet" href="tlnloans.css">
@@ -15,7 +16,7 @@
             <h1>TLN Loans 📊</h1>
             <p class="subtitle">Loan-Rückzahlungen berechnen mit Google Sheets API</p>
             <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">
-                Version: 2026-01-03 19:30:33 CET
+                Version: 2026-01-03 19:38:59 CET
             </p>
         </div>
         
@@ -310,59 +311,21 @@
         let calculatedColumns = {}; // Store which columns need calculation
         
         // Fetch current prices from PancakeSwap
+        // Fetch current prices using tlnprices.js module
         async function fetchCurrentPrices() {
             try {
-                const RPC = "https://bsc-dataseed.binance.org/";
-                const provider = new ethers.JsonRpcProvider(RPC);
-
-                // Token Contracts
-                const VOW = "0xf585b5b4f22816baf7629aea55b701662630397b";
-                const V_DOLLAR = "0x9C23942Ca2C35e06d1d20747F33705983A18d2AB";
-
-                // PancakeSwap V2 Pools
-                const POOL_VOW_USDT = "0xc6585bc17b53792f281a9739579dd60535c1f9fb";
-                const POOL_VOW_VDOLLAR = "0xc51c99af9d5c31d0c37d028500b2b344debdf188";
-
-                const PAIR_ABI = [
-                    "function getReserves() view returns (uint112,uint112,uint32)",
-                    "function token0() view returns (address)",
-                    "function token1() view returns (address)"
-                ];
-
-                async function priceFromPool(poolAddress, baseToken) {
-                    const pair = new ethers.Contract(poolAddress, PAIR_ABI, provider);
-
-                    const [token0, token1, reserves] = await Promise.all([
-                        pair.token0(),
-                        pair.token1(),
-                        pair.getReserves()
-                    ]);
-
-                    const r0 = Number(ethers.formatUnits(reserves[0], 18));
-                    const r1 = Number(ethers.formatUnits(reserves[1], 18));
-
-                    if (token0.toLowerCase() === baseToken.toLowerCase()) return r1 / r0;
-                    if (token1.toLowerCase() === baseToken.toLowerCase()) return r0 / r1;
-
-                    throw new Error("Token nicht im Pool");
-                }
-
-                // VOW -> USD (direkt aus VOW/USDT)
-                const vowUsd = await priceFromPool(POOL_VOW_USDT, VOW);
-
-                // v$ -> VOW (aus VOW/v$)
-                const vDollarInVow = await priceFromPool(POOL_VOW_VDOLLAR, V_DOLLAR);
-
-                // v$ -> USD
-                const vDollarUsd = vDollarInVow * vowUsd;
-
-                // Update Info-Tabelle (Row 0 = Ziel-Kurs VOW, Row 1 = Ziel-Kurs v$)
-                const price0 = document.getElementById('currentPrice0');
-                const price1 = document.getElementById('currentPrice1');
+                const prices = await fetchTLNPrices();
                 
-                if (price0) price0.value = '$' + vowUsd.toFixed(6);
-                if (price1) price1.value = '$' + vDollarUsd.toFixed(6);
-
+                if (prices.success) {
+                    // Update Info-Tabelle (Row 0 = Ziel-Kurs VOW, Row 1 = Ziel-Kurs v$)
+                    const price0 = document.getElementById('currentPrice0');
+                    const price1 = document.getElementById('currentPrice1');
+                    
+                    if (price0) price0.value = formatTLNPrice(prices.vowPrice);
+                    if (price1) price1.value = formatTLNPrice(prices.vDollarPrice);
+                } else {
+                    throw new Error(prices.error);
+                }
             } catch (error) {
                 console.log('Fehler beim Laden der Preise:', error);
                 const price0 = document.getElementById('currentPrice0');
