@@ -140,13 +140,13 @@
             <h1>TLN Loans 📊</h1>
             <p class="subtitle">Loan-Rückzahlungen berechnen mit Google Sheets API</p>
             <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">
-                Version: 2026-01-03 11:54:04 CET
+                Version: 2026-01-03 12:05:39 CET
             </p>
         </div>
         
         <!-- Navigation Menu -->
         <nav class="nav-menu">
-            <a href="index.html">← Zurück zur Startseite</a>
+            <a href="../index.html">← Zurück zur Startseite</a>
         </nav>
         
         <div class="section">
@@ -186,17 +186,6 @@
                     </button>
                     <p style="margin-top: 10px; color: #666; font-size: 0.9em;">Lädt Daten aus Google Sheets</p>
                 </div>
-                
-                <!-- Summary Table -->
-                <div id="summaryContainer" style="margin-bottom: 30px;">
-                    <h3 style="color: #1261A0; margin-bottom: 15px; text-align: center;">📊 Zusammenfassung</h3>
-                    <div style="background: #F5F5F5; padding: 20px; border-radius: 12px;">
-                        <table id="summaryTable" style="width: 100%; border-collapse: collapse;">
-                            <thead id="summaryTableHead"></thead>
-                            <tbody id="summaryTableBody"></tbody>
-                        </table>
-                    </div>
-                </div>
             </div>
             
             <!-- Info Box für die ersten 4 Zeilen als editierbare Tabelle -->
@@ -210,6 +199,29 @@
                     💡 Änderungen hier werden automatisch berechnet
                 </p>
             </div>
+            
+            <!-- Grand Summary Table (nur nach Loan Status) -->
+            <div id="grandSummaryContainer" style="display: none; margin-bottom: 30px;">
+                <h3 style="color: #1261A0; margin-bottom: 15px; text-align: center;">📈 Gesamt-Übersicht</h3>
+                <div style="background: #F5F5F5; padding: 20px; border-radius: 12px;">
+                    <table id="grandSummaryTable" style="width: 100%; border-collapse: collapse;">
+                        <thead id="grandSummaryTableHead"></thead>
+                        <tbody id="grandSummaryTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+                
+            <!-- Summary Table -->
+            <div id="summaryContainer" style="display: none; margin-bottom: 30px;">
+                <h3 style="color: #1261A0; margin-bottom: 15px; text-align: center;">📊 Zusammenfassung (nach Monat)</h3>
+                <div style="background: #F5F5F5; padding: 20px; border-radius: 12px;">
+                    <table id="summaryTable" style="width: 100%; border-collapse: collapse;">
+                        <thead id="summaryTableHead"></thead>
+                        <tbody id="summaryTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            
             
             <div id="tableContainer" class="table-container" style="display: none;">
                 <h3 style="color: #1261A0; margin-bottom: 15px; text-align: center; padding: 0 20px;">📈 Berechnete Ergebnisse</h3>
@@ -353,6 +365,9 @@
                 // Build main table
                 buildMainTable();
                 
+                // Build grand summary table
+                buildGrandSummary();
+                
                 // Build summary table
                 buildSummaryTable();
                 
@@ -360,6 +375,8 @@
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('sheetsEmbed').style.display = 'block';
                 document.getElementById('infoBox').style.display = 'block';
+                document.getElementById('grandSummaryContainer').style.display = 'block';
+                document.getElementById('summaryContainer').style.display = 'block';
                 document.getElementById('tableContainer').style.display = 'block';
                 
             } catch (error) {
@@ -735,8 +752,115 @@
             // Clear and rebuild main table
             buildMainTable();
             
+            // Rebuild grand summary table
+            buildGrandSummary();
+            
             // Rebuild summary table
             buildSummaryTable();
+        }
+        
+        // Build grand summary table (only grouped by loan status)
+        function buildGrandSummary() {
+            const grandSummaryHead = document.getElementById('grandSummaryTableHead');
+            const grandSummaryBody = document.getElementById('grandSummaryTableBody');
+            
+            if (!grandSummaryHead || !grandSummaryBody) return;
+            
+            grandSummaryHead.innerHTML = '';
+            grandSummaryBody.innerHTML = '';
+            
+            // Create header
+            const headerRow = document.createElement('tr');
+            ['Loan zurück bezahlt?', 'Erhaltene v$', "Erhaltene VOW's (Collateral)", 'v$ Zins', 'VOW in v$ für Zins getauscht', "eingesetzte VOW's", 'Gewinn an VOW', 'Gewinn in USDT'].forEach(h => {
+                const th = document.createElement('th');
+                th.textContent = h;
+                th.style.background = '#1261A0';
+                th.style.color = 'white';
+                th.style.padding = '12px';
+                th.style.textAlign = h === 'Loan zurück bezahlt?' ? 'left' : 'right';
+                th.style.border = '1px solid #084387';
+                th.style.fontWeight = 'bold';
+                headerRow.appendChild(th);
+            });
+            grandSummaryHead.appendChild(headerRow);
+            
+            // Get column indices
+            const headers = allRows[0];
+            const normalizeForSearch = (str) => str.toLowerCase().replace(/[''`'\u2019]/g, '');
+            
+            const loanPaidIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('loan zuruck bezahlt'));
+            const erhalteneVDollarIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('erhaltene v$') && !normalizeForSearch(h).includes('collateral'));
+            const collateralIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('erhaltene vows (collateral)'));
+            const vDollarZinsIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('v$ zins'));
+            const vowInVDollarIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('vow in v$ fur zins'));
+            const eingesetzteVOWIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('eingesetzte vows'));
+            
+            // Group by loan status only
+            const loanGroups = {};
+            
+            for (let i = 1; i < allRows.length; i++) {
+                const row = allRows[i];
+                if (row.length === 0 || row.every(cell => !cell)) continue;
+                
+                const loanPaid = row[loanPaidIdx] || 'Offen';
+                
+                if (!loanGroups[loanPaid]) {
+                    loanGroups[loanPaid] = {
+                        erhalteneVDollar: 0,
+                        collateral: 0,
+                        vDollarZins: 0,
+                        vowInVDollar: 0,
+                        eingesetzteVOW: 0,
+                        gewinnVOW: 0,
+                        gewinnUSDT: 0
+                    };
+                }
+                
+                loanGroups[loanPaid].erhalteneVDollar += parseSwissNumber(row[erhalteneVDollarIdx]);
+                loanGroups[loanPaid].collateral += parseSwissNumber(row[collateralIdx]);
+                loanGroups[loanPaid].vDollarZins += parseSwissNumber(row[vDollarZinsIdx]);
+                loanGroups[loanPaid].vowInVDollar += parseSwissNumber(row[vowInVDollarIdx]);
+                loanGroups[loanPaid].eingesetzteVOW += parseSwissNumber(row[eingesetzteVOWIdx]);
+                
+                // Calculate Gewinn
+                const gewinnVOW = calculateField('Gewinn an VOW', row, headers);
+                const gewinnUSDT = calculateField('Gewinn in USDT', row, headers);
+                
+                loanGroups[loanPaid].gewinnVOW += gewinnVOW || 0;
+                loanGroups[loanPaid].gewinnUSDT += gewinnUSDT || 0;
+            }
+            
+            // Display rows
+            const sortedStatuses = Object.keys(loanGroups).sort();
+            
+            sortedStatuses.forEach(status => {
+                const g = loanGroups[status];
+                const tr = document.createElement('tr');
+                tr.style.background = '#2776EA';
+                tr.style.color = 'white';
+                tr.style.fontWeight = 'bold';
+                
+                // Status cell
+                const tdStatus = document.createElement('td');
+                tdStatus.textContent = status;
+                tdStatus.style.padding = '12px';
+                tdStatus.style.textAlign = 'left';
+                tdStatus.style.border = '1px solid #084387';
+                tr.appendChild(tdStatus);
+                
+                // Value cells
+                [g.erhalteneVDollar, g.collateral, g.vDollarZins, g.vowInVDollar, g.eingesetzteVOW, g.gewinnVOW, g.gewinnUSDT].forEach((val, idx) => {
+                    const td = document.createElement('td');
+                    const colNames = ['erhaltene v$', "erhaltene vow's (collateral)", 'v$ zins', '', "eingesetzte vow's", 'gewinn an vow', 'gewinn in usdt'];
+                    td.textContent = formatSwissNumber(val, colNames[idx]);
+                    td.style.padding = '12px';
+                    td.style.textAlign = 'right';
+                    td.style.border = '1px solid #084387';
+                    tr.appendChild(td);
+                });
+                
+                grandSummaryBody.appendChild(tr);
+            });
         }
         
         // Build summary table
@@ -761,15 +885,17 @@
             });
             summaryHead.appendChild(headerRow);
             
-            // Get column indices
+            // Get column indices - normalize apostrophes
             const headers = allRows[0];
-            const loanPaidIdx = headers.findIndex(h => h && h.toLowerCase().includes('loan zurück bezahlt'));
-            const dateIdx = headers.findIndex(h => h && h.toLowerCase().includes('rückzahlung bis'));
-            const erhalteneVDollarIdx = headers.findIndex(h => h && h.toLowerCase().includes('erhaltene v$') && !h.toLowerCase().includes('collateral'));
-            const collateralIdx = headers.findIndex(h => h && h.toLowerCase().includes("erhaltene vow's (collateral)"));
-            const vDollarZinsIdx = headers.findIndex(h => h && h.toLowerCase().includes('v$ zins'));
-            const vowInVDollarIdx = headers.findIndex(h => h && h.toLowerCase().includes('vow in v$ für zins'));
-            const eingesetzteVOWIdx = headers.findIndex(h => h && h.toLowerCase().includes("eingesetzte vow's"));
+            const normalizeForSearch = (str) => str.toLowerCase().replace(/[''`'\u2019]/g, '');
+            
+            const loanPaidIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('loan zuruck bezahlt'));
+            const dateIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('ruckzahlung bis'));
+            const erhalteneVDollarIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('erhaltene v$') && !normalizeForSearch(h).includes('collateral'));
+            const collateralIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('erhaltene vows (collateral)'));
+            const vDollarZinsIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('v$ zins'));
+            const vowInVDollarIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('vow in v$ fur zins'));
+            const eingesetzteVOWIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('eingesetzte vows'));
             
             // Group data
             const groups = {};
@@ -778,7 +904,7 @@
                 const row = allRows[i];
                 if (row.length === 0 || row.every(cell => !cell)) continue;
                 
-                const loanPaid = row[loanPaidIdx] || 'Unbekannt';
+                const loanPaid = row[loanPaidIdx] || 'Offen';
                 const dateValue = row[dateIdx] || '';
                 
                 // Extract Month/Year
