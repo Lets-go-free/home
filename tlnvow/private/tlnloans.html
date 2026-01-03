@@ -14,7 +14,7 @@
             <h1>TLN Loans 📊</h1>
             <p class="subtitle">Loan-Rückzahlungen berechnen mit Google Sheets API</p>
             <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">
-                Version: 2026-01-03 12:10:51 CET
+                Version: 2026-01-03 17:30:49 CET
             </p>
         </div>
         
@@ -98,7 +98,7 @@
             
             
             <div id="tableContainer" class="table-container" style="display: none;">
-                <h3 style="color: #1261A0; margin-bottom: 15px; text-align: center; padding: 0 20px;">📈 Berechnete Ergebnisse</h3>
+                <h3 style="color: #1261A0; margin-bottom: 15px; text-align: center; padding: 0 20px;">📋 Details zu unseren Loans</h3>
                 <table id="dataTable">
                     <thead id="tableHead"></thead>
                     <tbody id="tableBody"></tbody>
@@ -374,6 +374,20 @@
             const vDollarZins = getRowValue('v$ zins');
             const boosterVariante = rowData[headers.findIndex(h => h && h.toLowerCase().includes('booster variante'))];
             const vowInVDollar = getRowValue('vow in v$ für zins getauscht');
+            const eingesetzteVOW = getRowValue("eingesetzte vow's");
+            
+            // Get Loan Status
+            const loanPaidIdx = headers.findIndex(h => {
+                if (!h) return false;
+                const normalized = h.toLowerCase()
+                    .replace(/[''`'\u2019]/g, '')
+                    .replace(/ü/g, 'u')
+                    .replace(/ä/g, 'a')
+                    .replace(/ö/g, 'o')
+                    .replace(/\?/g, '');
+                return normalized.includes('loan zuruck bezahlt');
+            });
+            const loanStatus = loanPaidIdx !== -1 ? (rowData[loanPaidIdx] || 'Offen') : 'Offen';
             
             // Calculate vDollarTotal based on booster
             let vDollarTotal = erhalteneVDollar;
@@ -384,8 +398,18 @@
             // Calculate benötigte VOW
             const benoetigteVOW = (vDollarTotal * zielKursVDollarSlippage) / zielKursVOW;
             
-            // Calculate gewinn an VOW
-            const gewinnVOW = collateral - benoetigteVOW - vowInVDollar;
+            // Calculate gewinn an VOW based on loan status
+            let gewinnVOW = 0;
+            if (loanStatus === 'Ja') {
+                // Loan zurückbezahlt: eingesetzte VOW's - Erhaltene VOW's (Collateral) - VOW in v$ für Zins getauscht
+                gewinnVOW = eingesetzteVOW - collateral - vowInVDollar;
+            } else if (loanStatus === 'Nein') {
+                // Loan nicht zurückbezahlt: (VOW in v$ für Zins getauscht) * -1
+                gewinnVOW = vowInVDollar * -1;
+            } else {
+                // Offen oder andere: Original-Formel (collateral - benoetigteVOW - vowInVDollar)
+                gewinnVOW = collateral - benoetigteVOW - vowInVDollar;
+            }
             
             // Now return the requested field
             if (colName.includes('$-wert vow in collateral')) {
@@ -399,8 +423,8 @@
                 return benoetigteVOW;
             }
             else if (colName.includes('gewinn an vow')) {
-                if (!collateral) return null;
-                console.log(`Gewinn an VOW: ${collateral} - ${benoetigteVOW} - ${vowInVDollar} = ${gewinnVOW}`);
+                if (!collateral && loanStatus !== 'Nein') return null;
+                console.log(`Gewinn an VOW (Status: ${loanStatus}):`, gewinnVOW);
                 return gewinnVOW;
             }
             else if (colName.includes('gewinn in usdt')) {
