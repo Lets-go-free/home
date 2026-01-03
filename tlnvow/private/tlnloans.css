@@ -1,5 +1,5 @@
 /* TLN Loans - Stylesheet */
-/* Version: 2026-01-03 18:00:28 CET */
+/* Version: 2026-01-03 19:30:33 CET */
 
 /* Base Styles */
 * { 
@@ -213,8 +213,12 @@ td:last-child {
     width: 250px;
 }
 
-.info-table td:last-child {
+.info-table td:nth-child(2) {
     width: 120px;
+}
+
+.info-table td:last-child {
+    width: 150px;
 }
 
 .info-table input {
