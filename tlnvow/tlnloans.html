@@ -140,7 +140,7 @@
             <h1>TLN Loans 📊</h1>
             <p class="subtitle">Loan-Rückzahlungen berechnen mit Google Sheets API</p>
             <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">
-                Version: 2026-01-03 09:34:00 CET
+                Version: 2026-01-03 11:54:04 CET
             </p>
         </div>
         
@@ -185,6 +185,17 @@
                         🔄 Daten neu laden
                     </button>
                     <p style="margin-top: 10px; color: #666; font-size: 0.9em;">Lädt Daten aus Google Sheets</p>
+                </div>
+                
+                <!-- Summary Table -->
+                <div id="summaryContainer" style="margin-bottom: 30px;">
+                    <h3 style="color: #1261A0; margin-bottom: 15px; text-align: center;">📊 Zusammenfassung</h3>
+                    <div style="background: #F5F5F5; padding: 20px; border-radius: 12px;">
+                        <table id="summaryTable" style="width: 100%; border-collapse: collapse;">
+                            <thead id="summaryTableHead"></thead>
+                            <tbody id="summaryTableBody"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             
@@ -341,6 +352,9 @@
                 
                 // Build main table
                 buildMainTable();
+                
+                // Build summary table
+                buildSummaryTable();
                 
                 // Show everything
                 document.getElementById('loadingState').style.display = 'none';
@@ -720,6 +734,187 @@
             
             // Clear and rebuild main table
             buildMainTable();
+            
+            // Rebuild summary table
+            buildSummaryTable();
+        }
+        
+        // Build summary table
+        function buildSummaryTable() {
+            const summaryHead = document.getElementById('summaryTableHead');
+            const summaryBody = document.getElementById('summaryTableBody');
+            
+            summaryHead.innerHTML = '';
+            summaryBody.innerHTML = '';
+            
+            // Create header
+            const headerRow = document.createElement('tr');
+            ['Loan zurück bezahlt?', 'Monat/Jahr', 'Erhaltene v$', "Erhaltene VOW's (Collateral)", 'v$ Zins', 'VOW in v$ für Zins getauscht', "eingesetzte VOW's", 'Gewinn an VOW', 'Gewinn in USDT'].forEach(h => {
+                const th = document.createElement('th');
+                th.textContent = h;
+                th.style.background = '#1261A0';
+                th.style.color = 'white';
+                th.style.padding = '10px';
+                th.style.textAlign = h === 'Loan zurück bezahlt?' || h === 'Monat/Jahr' ? 'left' : 'right';
+                th.style.border = '1px solid #084387';
+                headerRow.appendChild(th);
+            });
+            summaryHead.appendChild(headerRow);
+            
+            // Get column indices
+            const headers = allRows[0];
+            const loanPaidIdx = headers.findIndex(h => h && h.toLowerCase().includes('loan zurück bezahlt'));
+            const dateIdx = headers.findIndex(h => h && h.toLowerCase().includes('rückzahlung bis'));
+            const erhalteneVDollarIdx = headers.findIndex(h => h && h.toLowerCase().includes('erhaltene v$') && !h.toLowerCase().includes('collateral'));
+            const collateralIdx = headers.findIndex(h => h && h.toLowerCase().includes("erhaltene vow's (collateral)"));
+            const vDollarZinsIdx = headers.findIndex(h => h && h.toLowerCase().includes('v$ zins'));
+            const vowInVDollarIdx = headers.findIndex(h => h && h.toLowerCase().includes('vow in v$ für zins'));
+            const eingesetzteVOWIdx = headers.findIndex(h => h && h.toLowerCase().includes("eingesetzte vow's"));
+            
+            // Group data
+            const groups = {};
+            
+            for (let i = 1; i < allRows.length; i++) {
+                const row = allRows[i];
+                if (row.length === 0 || row.every(cell => !cell)) continue;
+                
+                const loanPaid = row[loanPaidIdx] || 'Unbekannt';
+                const dateValue = row[dateIdx] || '';
+                
+                // Extract Month/Year
+                let monthYear = 'Ohne Datum';
+                if (dateValue) {
+                    const dateParts = dateValue.split('.');
+                    if (dateParts.length >= 3) {
+                        monthYear = dateParts[1] + '/' + dateParts[2]; // MM/YYYY
+                    }
+                }
+                
+                const key = loanPaid + '|||' + monthYear;
+                
+                if (!groups[key]) {
+                    groups[key] = {
+                        loanPaid,
+                        monthYear,
+                        erhalteneVDollar: 0,
+                        collateral: 0,
+                        vDollarZins: 0,
+                        vowInVDollar: 0,
+                        eingesetzteVOW: 0,
+                        gewinnVOW: 0,
+                        gewinnUSDT: 0
+                    };
+                }
+                
+                groups[key].erhalteneVDollar += parseSwissNumber(row[erhalteneVDollarIdx]);
+                groups[key].collateral += parseSwissNumber(row[collateralIdx]);
+                groups[key].vDollarZins += parseSwissNumber(row[vDollarZinsIdx]);
+                groups[key].vowInVDollar += parseSwissNumber(row[vowInVDollarIdx]);
+                groups[key].eingesetzteVOW += parseSwissNumber(row[eingesetzteVOWIdx]);
+                
+                // Calculate Gewinn an VOW and Gewinn in USDT for this row
+                const calculatedHeaders = [
+                    '$-Wert VOW in Collateral',
+                    'Benötigte VOW, um v$ für Rückzahlung zu kaufen',
+                    'Gewinn an VOW',
+                    'Gewinn in USDT'
+                ];
+                const gewinnVOW = calculateField('Gewinn an VOW', row, headers);
+                const gewinnUSDT = calculateField('Gewinn in USDT', row, headers);
+                
+                groups[key].gewinnVOW += gewinnVOW || 0;
+                groups[key].gewinnUSDT += gewinnUSDT || 0;
+            }
+            
+            // Calculate totals by loan status
+            const loanTotals = {};
+            Object.values(groups).forEach(g => {
+                if (!loanTotals[g.loanPaid]) {
+                    loanTotals[g.loanPaid] = {
+                        erhalteneVDollar: 0,
+                        collateral: 0,
+                        vDollarZins: 0,
+                        vowInVDollar: 0,
+                        eingesetzteVOW: 0,
+                        gewinnVOW: 0,
+                        gewinnUSDT: 0
+                    };
+                }
+                loanTotals[g.loanPaid].erhalteneVDollar += g.erhalteneVDollar;
+                loanTotals[g.loanPaid].collateral += g.collateral;
+                loanTotals[g.loanPaid].vDollarZins += g.vDollarZins;
+                loanTotals[g.loanPaid].vowInVDollar += g.vowInVDollar;
+                loanTotals[g.loanPaid].eingesetzteVOW += g.eingesetzteVOW;
+                loanTotals[g.loanPaid].gewinnVOW += g.gewinnVOW;
+                loanTotals[g.loanPaid].gewinnUSDT += g.gewinnUSDT;
+            });
+            
+            // Sort and display
+            const sortedKeys = Object.keys(groups).sort();
+            let currentLoanStatus = null;
+            
+            sortedKeys.forEach(key => {
+                const g = groups[key];
+                
+                // Insert loan total when status changes
+                if (currentLoanStatus !== null && currentLoanStatus !== g.loanPaid) {
+                    insertLoanTotal(summaryBody, currentLoanStatus, loanTotals[currentLoanStatus]);
+                }
+                currentLoanStatus = g.loanPaid;
+                
+                // Insert detail row
+                const tr = document.createElement('tr');
+                tr.style.background = 'white';
+                
+                [g.loanPaid, g.monthYear, g.erhalteneVDollar, g.collateral, g.vDollarZins, g.vowInVDollar, g.eingesetzteVOW, g.gewinnVOW, g.gewinnUSDT].forEach((val, idx) => {
+                    const td = document.createElement('td');
+                    td.style.padding = '8px';
+                    td.style.border = '1px solid #E0E0E0';
+                    
+                    if (idx < 2) {
+                        td.textContent = val;
+                        td.style.textAlign = 'left';
+                    } else {
+                        const colNames = ['erhaltene v$', "erhaltene vow's (collateral)", 'v$ zins', '', "eingesetzte vow's", 'gewinn an vow', 'gewinn in usdt'];
+                        td.textContent = formatSwissNumber(val, colNames[idx - 2]);
+                        td.style.textAlign = 'right';
+                    }
+                    tr.appendChild(td);
+                });
+                summaryBody.appendChild(tr);
+            });
+            
+            // Insert last loan total
+            if (currentLoanStatus !== null) {
+                insertLoanTotal(summaryBody, currentLoanStatus, loanTotals[currentLoanStatus]);
+            }
+        }
+        
+        function insertLoanTotal(tbody, loanStatus, totals) {
+            const tr = document.createElement('tr');
+            tr.style.background = '#2776EA';
+            tr.style.color = 'white';
+            tr.style.fontWeight = 'bold';
+            
+            const tdLabel = document.createElement('td');
+            tdLabel.colSpan = 2;
+            tdLabel.textContent = `⚡ Total: ${loanStatus}`;
+            tdLabel.style.padding = '10px';
+            tdLabel.style.textAlign = 'left';
+            tdLabel.style.border = '1px solid #084387';
+            tr.appendChild(tdLabel);
+            
+            [totals.erhalteneVDollar, totals.collateral, totals.vDollarZins, totals.vowInVDollar, totals.eingesetzteVOW, totals.gewinnVOW, totals.gewinnUSDT].forEach((val, idx) => {
+                const td = document.createElement('td');
+                const colNames = ['erhaltene v$', "erhaltene vow's (collateral)", 'v$ zins', '', "eingesetzte vow's", 'gewinn an vow', 'gewinn in usdt'];
+                td.textContent = formatSwissNumber(val, colNames[idx]);
+                td.style.padding = '10px';
+                td.style.textAlign = 'right';
+                td.style.border = '1px solid #084387';
+                tr.appendChild(td);
+            });
+            
+            tbody.appendChild(tr);
         }
         
         // Build main data table
