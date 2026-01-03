@@ -140,7 +140,7 @@
             <h1>TLN Loans 📊</h1>
             <p class="subtitle">Loan-Rückzahlungen berechnen mit Google Sheets API</p>
             <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">
-                Version: 2026-01-03 01:07:19 CET
+                Version: 2026-01-03 01:11:18 CET
             </p>
         </div>
         
@@ -315,15 +315,31 @@
                 ];
                 createInfoTable(defaultInfoRows);
                 
-                // Create table header from first row of Google Sheets
+                // Create table header from first row of Google Sheets + calculated columns
                 const thead = document.getElementById('tableHead');
                 thead.innerHTML = '';
                 const headerRow = document.createElement('tr');
+                
+                // Add headers from Google Sheets (A-J)
                 allRows[0].forEach(header => {
                     const th = document.createElement('th');
                     th.textContent = header;
                     headerRow.appendChild(th);
                 });
+                
+                // Add calculated column headers (K-N)
+                const calculatedHeaders = [
+                    '$-Wert VOW in Collateral',
+                    'Benötigte VOW, um v$ für Rückzahlung zu kaufen',
+                    'Gewinn an VOW',
+                    'Gewinn in USDT'
+                ];
+                calculatedHeaders.forEach(header => {
+                    const th = document.createElement('th');
+                    th.textContent = header;
+                    headerRow.appendChild(th);
+                });
+                
                 thead.appendChild(headerRow);
                 
                 // Build main table
@@ -716,7 +732,7 @@
             // Find column indices - header is now at row 0
             const headers = allRows[0];
             
-            // Add calculated columns to headers if not already present
+            // Calculated column headers (already added to table header in loadGoogleSheetDataFromAPI)
             const calculatedHeaders = [
                 '$-Wert VOW in Collateral',
                 'Benötigte VOW, um v$ für Rückzahlung zu kaufen',
@@ -725,17 +741,6 @@
             ];
             
             const fullHeaders = [...headers, ...calculatedHeaders];
-            
-            // Update table header to include calculated columns
-            const thead = document.getElementById('tableHead');
-            thead.innerHTML = '';
-            const headerRow = document.createElement('tr');
-            fullHeaders.forEach(header => {
-                const th = document.createElement('th');
-                th.textContent = header;
-                headerRow.appendChild(th);
-            });
-            thead.appendChild(headerRow);
             
             const dateColIndex = headers.findIndex(h => h && h.toLowerCase().includes('rückzahlung bis'));
             const walletColIndex = headers.findIndex(h => h && h.toLowerCase().includes('wallet'));
