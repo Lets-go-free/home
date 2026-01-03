@@ -1,5 +1,5 @@
 /* TLN Loans - Stylesheet */
-/* Version: 2026-01-03 17:41:53 CET */
+/* Version: 2026-01-03 18:00:28 CET */
 
 /* Base Styles */
 * { 
@@ -199,7 +199,6 @@ td:last-child {
     color: white; 
     padding: 8px 12px; 
     text-align: left; 
-    font-size: 0.9em;
     border: 1px solid #084387;
 }
 
@@ -222,7 +221,6 @@ td:last-child {
     width: 100%;
     padding: 6px 8px;
     border: none;
-    font-size: 0.9em;
     font-weight: bold;
     color: #1261A0;
     margin: 0;
