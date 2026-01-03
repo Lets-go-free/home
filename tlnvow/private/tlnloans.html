@@ -16,7 +16,7 @@
             <h1>TLN Loans 📊</h1>
             <p class="subtitle">Loan-Rückzahlungen berechnen mit Google Sheets API</p>
             <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">
-                Version: 2026-01-03 19:54:22 CET
+                Version: 2026-01-03 19:58:20 CET
             </p>
         </div>
         
@@ -309,6 +309,9 @@
         let allRows = [];
         let infoRowsData = [];
         let calculatedColumns = {}; // Store which columns need calculation
+        
+        // Forward declarations - Funktionen werden später definiert
+        let buildMainTable, buildGrandSummary, buildSummaryTable, recalculateTable, insertLoanTotal;
         
         // Create Info Table - MUST BE DEFINED BEFORE USE
         function createInfoTable(rows) {
@@ -647,7 +650,7 @@
         }
         
         // Recalculate table with new info values
-        function recalculateTable() {
+        recalculateTable = function() {
             // Info table values are now stored in the input fields directly
             // No need to update allRows for info data
             
@@ -701,7 +704,7 @@
         }
         
         // Build grand summary table (only grouped by loan status)
-        function buildGrandSummary() {
+        buildGrandSummary = function() {
             const grandSummaryHead = document.getElementById('grandSummaryTableHead');
             const grandSummaryBody = document.getElementById('grandSummaryTableBody');
             
@@ -813,7 +816,7 @@
         }
         
         // Build summary table
-        function buildSummaryTable() {
+        buildSummaryTable = function() {
             const summaryHead = document.getElementById('summaryTableHead');
             const summaryBody = document.getElementById('summaryTableBody');
             
@@ -973,7 +976,7 @@
             }
         }
         
-        function insertLoanTotal(tbody, loanStatus, totals) {
+        insertLoanTotal = function(tbody, loanStatus, totals) {
             const tr = document.createElement('tr');
             tr.style.background = '#2776EA';
             tr.style.color = 'white';
@@ -1001,7 +1004,7 @@
         }
         
         // Build main data table
-        function buildMainTable() {
+        buildMainTable = function() {
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = ''; // Clear existing content
             
