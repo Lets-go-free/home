@@ -140,7 +140,7 @@
             <h1>TLN Loans 📊</h1>
             <p class="subtitle">Loan-Rückzahlungen berechnen mit Google Sheets API</p>
             <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">
-                Version: 2026-01-03 09:09:17 CET
+                Version: 2026-01-03 09:29:01 CET
             </p>
         </div>
         
@@ -290,7 +290,7 @@
             try {
                 const response = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: SPREADSHEET_ID,
-                    range: 'TLN Loans!A1:J1000',
+                    range: 'TLN Loans!A1:L1000',
                 });
                 
                 const rows = response.result.values || [];
@@ -513,13 +513,16 @@
             'tln+',
             'erhaltene v$',
             "erhaltene vow's (collateral)",
-            'benötigte vow, um v$ für rückzahlung zu kaufen',
+            "eingesetzte vow's",
             'gewinn an vow'
         ];
         
         // Columns that should always have 2 decimal places
         const twoDecimalColumns = [
-            '$-wert vow in collateral'
+            '$-wert vow in collateral',
+            'v$ zins',
+            'gewinn in usdt',
+            'benötigte vow'
         ];
         
         // Columns that should not have subtotals
