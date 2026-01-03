@@ -6,133 +6,7 @@
     <title>TLN Loans - Community TLN Business DE</title>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.7; color: #333; background: linear-gradient(135deg, #1261A0 0%, #2776EA 50%, #58CCED 100%); min-height: 100vh; padding: 20px; }
-        .container { max-width: 1600px; margin: 0 auto; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
-        .hero { background: linear-gradient(135deg, #1261A0 0%, #2776EA 100%); color: white; padding: 60px 40px; text-align: center; }
-        .hero h1 { font-size: 2.8em; margin-bottom: 20px; line-height: 1.2; }
-        .hero .subtitle { font-size: 1.3em; margin-bottom: 40px; opacity: 0.95; }
-        
-        /* Navigation Menu */
-        .nav-menu { background: #084387; padding: 8px 15px; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 8px; }
-        .nav-menu a { color: white; text-decoration: none; padding: 8px 18px; display: block; font-weight: 600; transition: all 0.3s; border-radius: 8px; background: rgba(255,255,255,0.1); border: 2px solid transparent; }
-        .nav-menu a:hover { background: #1261A0; border-color: #58CCED; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
-        
-        .section { padding: 40px 40px; }
-        .section h2 { font-size: 2em; line-height: 1.2em; color: #1261A0; margin-bottom: 30px; text-align: center; }
-        
-        /* Loading State */
-        .loading { text-align: center; padding: 60px 20px; color: #1261A0; font-size: 1.2em; }
-        .loading::after { content: '...'; animation: dots 1.5s steps(4, end) infinite; }
-        @keyframes dots { 0%, 20% { content: '.'; } 40% { content: '..'; } 60%, 100% { content: '...'; } }
-        
-        /* Table Styles */
-        .table-container { 
-            overflow: auto; 
-            margin: 20px 0; 
-            background: white; 
-            border-radius: 12px; 
-            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
-            max-height: 600px;
-        }
-        table { width: 100%; border-collapse: collapse; min-width: 600px; }
-        thead { 
-            background: linear-gradient(135deg, #1261A0 0%, #2776EA 100%); 
-            color: white; 
-            position: sticky; 
-            top: 0; 
-            z-index: 10; 
-        }
-        th { 
-            padding: 10px 6px; 
-            text-align: right; 
-            font-weight: 700; 
-            font-size: 0.78em; 
-            border-bottom: 3px solid #084387;
-            white-space: normal;
-            word-wrap: break-word;
-            line-height: 1.3;
-            vertical-align: top;
-            min-width: 65px;
-            max-width: 120px;
-        }
-        th:first-child { text-align: left; min-width: 80px; }
-        tbody tr { transition: background 0.2s; }
-        tbody tr:nth-child(even) { background: #f8f9fa; }
-        tbody tr:hover { background: #E3F2FD; }
-        td { 
-            padding: 6px 4px; 
-            border-bottom: 1px solid #e0e0e0; 
-            font-size: 0.82em;
-            text-align: right;
-            white-space: nowrap;
-        }
-        td:first-child { 
-            text-align: left;
-            padding-left: 15px; 
-        }
-        th:first-child { padding-left: 15px; }
-        th:last-child { padding-right: 12px; }
-        td:last-child { padding-right: 12px; }
-        
-        /* Info Table */
-        .info-table { 
-            width: auto; 
-            max-width: 600px;
-            margin: 0 auto 20px auto;
-            border-collapse: collapse; 
-        }
-        .info-table th { 
-            background: #1261A0; 
-            color: white; 
-            padding: 8px 12px; 
-            text-align: left; 
-            font-size: 0.9em;
-            border: 1px solid #084387;
-        }
-        .info-table td { 
-            padding: 0; 
-            text-align: left; 
-            border: 1px solid #BBDEFB;
-            background: white;
-        }
-        .info-table td:first-child {
-            width: 250px;
-        }
-        .info-table td:last-child {
-            width: 120px;
-        }
-        .info-table input {
-            width: 100%;
-            padding: 6px 8px;
-            border: none;
-            font-size: 0.9em;
-            font-weight: bold;
-            color: #1261A0;
-            margin: 0;
-            box-sizing: border-box;
-        }
-        .info-table input:focus {
-            outline: 2px solid #2776EA;
-            outline-offset: -2px;
-        }
-        
-        /* Number formatting - removed separate class styling */
-        
-        /* Footer */
-        .footer { max-width: 800px; margin: 40px auto 0; padding: 25px 40px; background: #fff3cd; border-radius: 10px; border-left: 4px solid #ffc107; text-align: left; font-size: 0.95em; }
-        
-        @media (max-width: 768px) {
-            .hero h1 { font-size: 2em; }
-            .hero .subtitle { font-size: 1.1em; }
-            .section { padding: 40px 25px; }
-            .section h2 { font-size: 1.6em; }
-            th, td { padding: 10px 8px; font-size: 0.85em; }
-            td:first-child, th:first-child { padding-left: 10px; }
-            td:last-child, th:last-child { padding-right: 10px; }
-        }
-    </style>
+    <link rel="stylesheet" href="tlnloans.css">
 </head>
 <body>
     <div class="container">
@@ -140,7 +14,7 @@
             <h1>TLN Loans 📊</h1>
             <p class="subtitle">Loan-Rückzahlungen berechnen mit Google Sheets API</p>
             <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">
-                Version: 2026-01-03 12:05:39 CET
+                Version: 2026-01-03 12:10:51 CET
             </p>
         </div>
         
@@ -784,9 +658,17 @@
             });
             grandSummaryHead.appendChild(headerRow);
             
-            // Get column indices
+            // Get column indices - normalize apostrophes and umlauts
             const headers = allRows[0];
-            const normalizeForSearch = (str) => str.toLowerCase().replace(/[''`'\u2019]/g, '');
+            const normalizeForSearch = (str) => {
+                return str.toLowerCase()
+                    .replace(/[''`'\u2019]/g, '')  // Remove all apostrophe types
+                    .replace(/ü/g, 'u')
+                    .replace(/ä/g, 'a')
+                    .replace(/ö/g, 'o')
+                    .replace(/ß/g, 'ss')
+                    .replace(/\?/g, '');  // Remove question marks
+            };
             
             const loanPaidIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('loan zuruck bezahlt'));
             const erhalteneVDollarIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('erhaltene v$') && !normalizeForSearch(h).includes('collateral'));
@@ -885,9 +767,17 @@
             });
             summaryHead.appendChild(headerRow);
             
-            // Get column indices - normalize apostrophes
+            // Get column indices - normalize apostrophes and umlauts
             const headers = allRows[0];
-            const normalizeForSearch = (str) => str.toLowerCase().replace(/[''`'\u2019]/g, '');
+            const normalizeForSearch = (str) => {
+                return str.toLowerCase()
+                    .replace(/[''`'\u2019]/g, '')  // Remove all apostrophe types
+                    .replace(/ü/g, 'u')
+                    .replace(/ä/g, 'a')
+                    .replace(/ö/g, 'o')
+                    .replace(/ß/g, 'ss')
+                    .replace(/\?/g, '');  // Remove question marks
+            };
             
             const loanPaidIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('loan zuruck bezahlt'));
             const dateIdx = headers.findIndex(h => h && normalizeForSearch(h).includes('ruckzahlung bis'));
