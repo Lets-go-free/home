@@ -140,7 +140,7 @@
             <h1>TLN Loans 📊</h1>
             <p class="subtitle">Loan-Rückzahlungen berechnen mit Google Sheets API</p>
             <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">
-                Version: 2026-01-03 01:28:48 CET
+                Version: 2026-01-03 09:09:17 CET
             </p>
         </div>
         
@@ -745,8 +745,14 @@
             
             // First pass: group all rows by month/year (data starts at row 1)
             for (let i = 1; i < allRows.length; i++) {
-                const row = allRows[i];
+                let row = allRows[i];
                 if (row.length === 0 || row.every(cell => !cell)) continue;
+                
+                // Pad row with empty strings if shorter than headers
+                while (row.length < headers.length) {
+                    row.push('');
+                }
+                allRows[i] = row; // Update the row in allRows
                 
                 const dateValue = row[dateColIndex] || '';
                 let monthYear = '';
