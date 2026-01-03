@@ -16,7 +16,7 @@
             <h1>TLN Loans 📊</h1>
             <p class="subtitle">Loan-Rückzahlungen berechnen mit Google Sheets API</p>
             <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">
-                Version: 2026-01-03 19:38:59 CET
+                Version: 2026-01-03 19:54:22 CET
             </p>
         </div>
         
@@ -310,7 +310,110 @@
         let infoRowsData = [];
         let calculatedColumns = {}; // Store which columns need calculation
         
-        // Fetch current prices from PancakeSwap
+        // Create Info Table - MUST BE DEFINED BEFORE USE
+        function createInfoTable(rows) {
+            const infoTableHead = document.getElementById('infoTableHead');
+            const infoTableBody = document.getElementById('infoTableBody');
+            
+            // Clear existing content
+            infoTableHead.innerHTML = '';
+            infoTableBody.innerHTML = '';
+            
+            // Store info rows data - COMPLETE ROWS
+            infoRowsData = rows.slice(0, 4);
+            
+            // Create custom header row
+            const headerRow = document.createElement('tr');
+            ['Ziel-Kurse und Basis-Informationen für Berechnung der Loan-Rückzahlungen', 'aktuelle Kurse $'].forEach(headerText => {
+                const th = document.createElement('th');
+                th.textContent = headerText;
+                th.style.textAlign = 'center';
+                headerRow.appendChild(th);
+            });
+            infoTableHead.appendChild(headerRow);
+            
+            // Create data rows from columns K:L (indices 10:11) of first 4 rows
+            for (let i = 0; i < 4 && i < rows.length; i++) {
+                const row = rows[i];
+                
+                // Only show rows that have content in column K or L
+                if ((row[10] && row[10].trim()) || (row[11] && row[11].trim())) {
+                    const tr = document.createElement('tr');
+                    
+                    // Column K - Label
+                    const tdLabel = document.createElement('td');
+                    const inputLabel = document.createElement('input');
+                    inputLabel.type = 'text';
+                    inputLabel.value = row[10] || '';
+                    inputLabel.dataset.row = i;
+                    inputLabel.dataset.col = 10;
+                    inputLabel.style.fontWeight = 'bold';
+                    inputLabel.style.background = '#F0F8FF';
+                    
+                    // Add auto-recalculate on change
+                    inputLabel.addEventListener('input', () => {
+                        setTimeout(() => recalculateTable(), 500); // Delay for better UX
+                    });
+                    
+                    tdLabel.appendChild(inputLabel);
+                    tr.appendChild(tdLabel);
+                    
+                    // Column L - Value
+                    const tdValue = document.createElement('td');
+                    const inputValue = document.createElement('input');
+                    inputValue.type = 'text';
+                    inputValue.value = row[11] || '';
+                    inputValue.dataset.row = i;
+                    inputValue.dataset.col = 11;
+                    
+                    // Format numbers with 2 decimals on blur (when field loses focus)
+                    inputValue.addEventListener('blur', function() {
+                        const val = this.value.trim();
+                        
+                        // Handle percentage values
+                        if (val.includes('%')) {
+                            const numPart = val.replace('%', '').trim();
+                            if (isNumeric(numPart)) {
+                                const num = parseFloat(numPart);
+                                this.value = num.toFixed(2) + '%';
+                            }
+                            return;
+                        }
+                        
+                        // Regular numbers
+                        if (isNumeric(val)) {
+                            const num = parseSwissNumber(val);
+                            this.value = num.toFixed(2);
+                        }
+                    });
+                    
+                    // Add auto-recalculate on change
+                    inputValue.addEventListener('input', () => {
+                        setTimeout(() => recalculateTable(), 500); // Delay for better UX
+                    });
+                    
+                    tdValue.appendChild(inputValue);
+                    tr.appendChild(tdValue);
+                    
+                    // Third column - Current Price (read-only)
+                    const tdPrice = document.createElement('td');
+                    const inputPrice = document.createElement('input');
+                    inputPrice.type = 'text';
+                    inputPrice.value = ''; // Will be filled by fetchPrices()
+                    inputPrice.id = `currentPrice${i}`; // ID for updating
+                    inputPrice.readOnly = true;
+                    inputPrice.style.background = '#F5F5F5';
+                    inputPrice.style.cursor = 'not-allowed';
+                    inputPrice.style.color = '#666';
+                    
+                    tdPrice.appendChild(inputPrice);
+                    tr.appendChild(tdPrice);
+                    
+                    infoTableBody.appendChild(tr);
+                }
+            }
+        }
+        
         // Fetch current prices using tlnprices.js module
         async function fetchCurrentPrices() {
             try {
@@ -541,110 +644,6 @@
             // Remove Swiss formatting for check
             const cleanValue = value.replace(/['']/g, '');
             return !isNaN(cleanValue) && !isNaN(parseFloat(cleanValue));
-        }
-        
-        // Create info table from first 4 rows, columns K:L (indices 10:11)
-        function createInfoTable(rows) {
-            const infoTableHead = document.getElementById('infoTableHead');
-            const infoTableBody = document.getElementById('infoTableBody');
-            
-            // Clear existing content
-            infoTableHead.innerHTML = '';
-            infoTableBody.innerHTML = '';
-            
-            // Store info rows data - COMPLETE ROWS
-            infoRowsData = rows.slice(0, 4);
-            
-            // Create custom header row
-            const headerRow = document.createElement('tr');
-            ['Ziel-Kurse und Basis-Informationen für Berechnung der Loan-Rückzahlungen', 'aktuelle Kurse $'].forEach(headerText => {
-                const th = document.createElement('th');
-                th.textContent = headerText;
-                th.style.textAlign = 'center';
-                headerRow.appendChild(th);
-            });
-            infoTableHead.appendChild(headerRow);
-            
-            // Create data rows from columns K:L (indices 10:11) of first 4 rows
-            for (let i = 0; i < 4 && i < rows.length; i++) {
-                const row = rows[i];
-                
-                // Only show rows that have content in column K or L
-                if ((row[10] && row[10].trim()) || (row[11] && row[11].trim())) {
-                    const tr = document.createElement('tr');
-                    
-                    // Column K - Label
-                    const tdLabel = document.createElement('td');
-                    const inputLabel = document.createElement('input');
-                    inputLabel.type = 'text';
-                    inputLabel.value = row[10] || '';
-                    inputLabel.dataset.row = i;
-                    inputLabel.dataset.col = 10;
-                    inputLabel.style.fontWeight = 'bold';
-                    inputLabel.style.background = '#F0F8FF';
-                    
-                    // Add auto-recalculate on change
-                    inputLabel.addEventListener('input', () => {
-                        setTimeout(() => recalculateTable(), 500); // Delay for better UX
-                    });
-                    
-                    tdLabel.appendChild(inputLabel);
-                    tr.appendChild(tdLabel);
-                    
-                    // Column L - Value
-                    const tdValue = document.createElement('td');
-                    const inputValue = document.createElement('input');
-                    inputValue.type = 'text';
-                    inputValue.value = row[11] || '';
-                    inputValue.dataset.row = i;
-                    inputValue.dataset.col = 11;
-                    
-                    // Format numbers with 2 decimals on blur (when field loses focus)
-                    inputValue.addEventListener('blur', function() {
-                        const val = this.value.trim();
-                        
-                        // Handle percentage values
-                        if (val.includes('%')) {
-                            const numPart = val.replace('%', '').trim();
-                            if (isNumeric(numPart)) {
-                                const num = parseFloat(numPart);
-                                this.value = num.toFixed(2) + '%';
-                            }
-                            return;
-                        }
-                        
-                        // Regular numbers
-                        if (isNumeric(val)) {
-                            const num = parseSwissNumber(val);
-                            this.value = num.toFixed(2);
-                        }
-                    });
-                    
-                    // Add auto-recalculate on change
-                    inputValue.addEventListener('input', () => {
-                        setTimeout(() => recalculateTable(), 500); // Delay for better UX
-                    });
-                    
-                    tdValue.appendChild(inputValue);
-                    tr.appendChild(tdValue);
-                    
-                    // Third column - Current Price (read-only)
-                    const tdPrice = document.createElement('td');
-                    const inputPrice = document.createElement('input');
-                    inputPrice.type = 'text';
-                    inputPrice.value = ''; // Will be filled by fetchPrices()
-                    inputPrice.id = `currentPrice${i}`; // ID for updating
-                    inputPrice.readOnly = true;
-                    inputPrice.style.background = '#F5F5F5';
-                    inputPrice.style.cursor = 'not-allowed';
-                    inputPrice.style.color = '#666';
-                    
-                    tdPrice.appendChild(inputPrice);
-                    tr.appendChild(tdPrice);
-                    
-                    infoTableBody.appendChild(tr);
-                }
-            }
         }
         
         // Recalculate table with new info values
