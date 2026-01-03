@@ -140,7 +140,7 @@
             <h1>TLN Loans 📊</h1>
             <p class="subtitle">Loan-Rückzahlungen berechnen mit Google Sheets API</p>
             <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">
-                Version: 2026-01-03 01:20:22 CET
+                Version: 2026-01-03 01:24:16 CET
             </p>
         </div>
         
@@ -461,45 +461,43 @@
                 return 0;
             };
             
-            // Formulas based on column name
+            // Calculate intermediate values first
+            const collateral = getRowValue("erhaltene vow's (collateral)");
+            const erhalteneVDollar = getRowValue('erhaltene v$');
+            const vDollarZins = getRowValue('v$ zins');
+            const boosterVariante = rowData[headers.findIndex(h => h && h.toLowerCase().includes('booster variante'))];
+            const vowInVDollar = getRowValue('vow in v$ für zins getauscht');
+            
+            // Calculate vDollarTotal based on booster
+            let vDollarTotal = erhalteneVDollar;
+            if (boosterVariante === "4:1" || boosterVariante === "1:1") {
+                vDollarTotal = erhalteneVDollar + vDollarZins;
+            }
+            
+            // Calculate benötigte VOW
+            const benoetigteVOW = (vDollarTotal * zielKursVDollarSlippage) / zielKursVOW;
+            
+            // Calculate gewinn an VOW
+            const gewinnVOW = collateral - benoetigteVOW - vowInVDollar;
+            
+            // Now return the requested field
             if (colName.includes('$-wert vow in collateral')) {
-                const collateral = getRowValue("erhaltene vow's (collateral)");
                 const result = collateral * zielKursVOW;
                 console.log(`$-Wert Berechnung: ${collateral} * ${zielKursVOW} = ${result}`);
                 return result;
             }
             else if (colName.includes('benötigte vow, um v$ für rückzahlung zu kaufen')) {
-                const erhalteneVDollar = getRowValue('erhaltene v$');
-                if (!erhalteneVDollar) return null; // Empty if Erhaltene v$ is empty
-                
-                const vDollarZins = getRowValue('v$ zins');
-                const boosterVariante = rowData[headers.findIndex(h => h && h.toLowerCase().includes('booster variante'))];
-                
-                let vDollarTotal = erhalteneVDollar;
-                if (boosterVariante === "4:1" || boosterVariante === "1:1") {
-                    vDollarTotal = erhalteneVDollar + vDollarZins;
-                }
-                
-                const result = (vDollarTotal * zielKursVDollarSlippage) / zielKursVOW;
-                console.log(`Benötigte VOW: (${vDollarTotal} * ${zielKursVDollarSlippage}) / ${zielKursVOW} = ${result}`);
-                return result;
+                if (!erhalteneVDollar) return null;
+                console.log(`Benötigte VOW: (${vDollarTotal} * ${zielKursVDollarSlippage}) / ${zielKursVOW} = ${benoetigteVOW}`);
+                return benoetigteVOW;
             }
             else if (colName.includes('gewinn an vow')) {
-                const collateral = getRowValue("erhaltene vow's (collateral)");
-                if (!collateral) return null; // Empty if collateral is empty
-                
-                const benoetigteVOW = getRowValue('benötigte vow');
-                const vowInVDollar = getRowValue('vow in v$ für zins getauscht');
-                
-                const result = collateral - benoetigteVOW - vowInVDollar;
-                console.log(`Gewinn an VOW: ${collateral} - ${benoetigteVOW} - ${vowInVDollar} = ${result}`);
-                return result;
+                if (!collateral) return null;
+                console.log(`Gewinn an VOW: ${collateral} - ${benoetigteVOW} - ${vowInVDollar} = ${gewinnVOW}`);
+                return gewinnVOW;
             }
             else if (colName.includes('gewinn in usdt')) {
-                const collateral = getRowValue("erhaltene vow's (collateral)");
-                if (!collateral) return null; // Empty if collateral is empty
-                
-                const gewinnVOW = getRowValue('gewinn an vow');
+                if (!collateral) return null;
                 const result = gewinnVOW * zielKursVOW;
                 console.log(`Gewinn in USDT: ${gewinnVOW} * ${zielKursVOW} = ${result}`);
                 return result;
