@@ -140,7 +140,7 @@
             <h1>TLN Loans 📊</h1>
             <p class="subtitle">Loan-Rückzahlungen berechnen mit Google Sheets API</p>
             <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">
-                Version: 2026-01-03 00:53:26 CET
+                Version: 2026-01-03 01:07:19 CET
             </p>
         </div>
         
@@ -178,7 +178,7 @@
                 <h3 style="color: #1261A0; margin-bottom: 15px; text-align: center;">📊 Google Sheets - Direkt bearbeiten</h3>
                 <div style="border: 3px solid #1261A0; border-radius: 12px; overflow: hidden; margin-bottom: 15px;">
                     <iframe id="googleSheetsFrame"
-                            src="https://docs.google.com/spreadsheets/d/1pC1FQ8F-CdcblapRtytzQLDfvCCQ6JVSG_7G8rRT5X4/edit?gid=1347502363"
+                            src="https://docs.google.com/spreadsheets/d/1pC1FQ8F-CdcblapRtytzQLDfvCCQ6JVSG_7G8rRT5X4/edit?gid=893929268"
                             width="100%" 
                             height="500px" 
                             frameborder="0"
@@ -296,24 +296,30 @@
             try {
                 const response = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: SPREADSHEET_ID,
-                    range: 'A1:N1000', // Adjust range as needed
+                    range: 'TLN Loans!A1:J1000',
                 });
                 
                 const rows = response.result.values || [];
                 allRows = rows;
                 
-                if (allRows.length < 5) {
+                if (allRows.length < 2) {
                     throw new Error('Nicht genügend Daten gefunden');
                 }
                 
-                // Create info table
-                createInfoTable(allRows);
+                // Create info table with default values (no longer from Google Sheets)
+                const defaultInfoRows = [
+                    ['', '', '', '', '', '', '', '', '', '', 'Ziel-Kurs VOW:', '0.11', '', ''],
+                    ['', '', '', '', '', '', '', '', '', '', 'Ziel-Kurs v$:', '0.90', '', ''],
+                    ['', '', '', '', '', '', '', '', '', '', 'Slippage Tolerance', '5.0%', '', ''],
+                    ['', '', '', '', '', '', '', '', '', '', 'Ziel-Kurs v$ inkl. Slippage:', '0.95', '', '']
+                ];
+                createInfoTable(defaultInfoRows);
                 
-                // Create table header
+                // Create table header from first row of Google Sheets
                 const thead = document.getElementById('tableHead');
                 thead.innerHTML = '';
                 const headerRow = document.createElement('tr');
-                allRows[4].forEach(header => {
+                allRows[0].forEach(header => {
                     const th = document.createElement('th');
                     th.textContent = header;
                     headerRow.appendChild(th);
@@ -386,31 +392,27 @@
         // Get value from info table by looking for a label in columns K:L (indices 10:11)
         function getInfoValue(label) {
             console.log('Suche nach:', label);
-            console.log('Anzahl Info-Zeilen:', allRows.length >= 4 ? 4 : allRows.length);
             
-            for (let i = 0; i < 4 && i < allRows.length; i++) {
-                const row = allRows[i];
-                console.log(`Info-Zeile ${i+1}:`, row);
-                
-                // Check column K (index 10) for the label
-                if (row[10]) {
-                    const labelCell = row[10].toString().toLowerCase();
-                    console.log(`Zeile ${i+1}, Spalte K (idx 10): "${row[10]}"`);
-                    
-                    if (labelCell.includes(label.toLowerCase())) {
-                        // Value should be in column L (index 11)
-                        if (row[11] && row[11].toString().trim()) {
-                            const value = row[11].toString().trim();
-                            console.log(`✓ Gefunden! Label: "${row[10]}", Wert in Spalte L: "${value}"`);
-                            const parsed = parseSwissNumber(value);
-                            console.log(`Parsed value: ${parsed}`);
-                            return parsed;
-                        } else {
-                            console.log(`Label gefunden, aber kein Wert in Spalte L (idx 11)`);
-                        }
+            // Info table now has fixed structure in defaultInfoRows (0-3)
+            // We need to look in the created info table inputs instead
+            const inputs = document.querySelectorAll('.info-table input');
+            
+            for (let input of inputs) {
+                const labelCell = input.dataset.col === '10' ? input.value : null;
+                if (labelCell && labelCell.toLowerCase().includes(label.toLowerCase())) {
+                    // Find the corresponding value input (same row, col 11)
+                    const row = input.dataset.row;
+                    const valueInput = document.querySelector(`.info-table input[data-row="${row}"][data-col="11"]`);
+                    if (valueInput) {
+                        const value = valueInput.value.trim();
+                        console.log(`✓ Gefunden! Label: "${labelCell}", Wert: "${value}"`);
+                        const parsed = parseSwissNumber(value);
+                        console.log(`Parsed value: ${parsed}`);
+                        return parsed;
                     }
                 }
             }
+            
             console.log('❌ Nicht gefunden!');
             return null;
         }
@@ -660,68 +662,45 @@
         
         // Recalculate table with new info values
         function recalculateTable() {
-            // Get updated values from info table inputs
-            const inputs = document.querySelectorAll('.info-table input');
-            
-            inputs.forEach(input => {
-                const row = parseInt(input.dataset.row);
-                const col = parseInt(input.dataset.col); // This is already the correct column index (10 or 11)
-                const newValue = input.value.trim();
-                
-                console.log(`Updating allRows[${row}][${col}] from "${allRows[row][col]}" to "${newValue}"`);
-                
-                // Update the value directly at the column index
-                if (isNumeric(newValue)) {
-                    const parsedValue = parseSwissNumber(newValue);
-                    allRows[row][col] = parsedValue.toString();
-                } else {
-                    allRows[row][col] = newValue;
-                }
-                
-                console.log(`Updated: allRows[${row}][${col}] = "${allRows[row][col]}"`);
-            });
+            // Info table values are now stored in the input fields directly
+            // No need to update allRows for info data
             
             // Calculate "Ziel-Kurs v$ inkl. Slippage" = Ziel-Kurs v$ * (1 + Slippage Tolerance)
-            // Find the rows
-            let zielKursVDollarRow = -1;
-            let slippageRow = -1;
-            let zielKursVDollarSlippageRow = -1;
+            // Calculate "Ziel-Kurs v$ inkl. Slippage" = Ziel-Kurs v$ * (1 + Slippage Tolerance)
+            const zielKursVDollar = getInfoValue('ziel-kurs v$') || 0;
+            const slippageInputs = document.querySelectorAll('.info-table input[data-col="10"]');
+            let slippageValue = 0;
             
-            for (let i = 0; i < 4; i++) {
-                const label = allRows[i][10] ? allRows[i][10].toLowerCase() : '';
-                if (label.includes('ziel-kurs v$') && !label.includes('slippage')) {
-                    zielKursVDollarRow = i;
-                } else if (label.includes('slippage tolerance')) {
-                    slippageRow = i;
-                } else if (label.includes('ziel-kurs v$') && label.includes('slippage')) {
-                    zielKursVDollarSlippageRow = i;
+            for (let input of slippageInputs) {
+                if (input.value.toLowerCase().includes('slippage')) {
+                    const row = input.dataset.row;
+                    const valueInput = document.querySelector(`.info-table input[data-row="${row}"][data-col="11"]`);
+                    if (valueInput) {
+                        const slippageStr = valueInput.value;
+                        if (slippageStr.includes('%')) {
+                            slippageValue = parseFloat(slippageStr.replace('%', '')) / 100;
+                        } else {
+                            const num = parseFloat(slippageStr);
+                            slippageValue = num > 1 ? num / 100 : num;
+                        }
+                    }
+                    break;
                 }
             }
             
-            // Calculate if all rows found
-            if (zielKursVDollarRow !== -1 && slippageRow !== -1 && zielKursVDollarSlippageRow !== -1) {
-                const zielKursVDollar = parseSwissNumber(allRows[zielKursVDollarRow][11]);
-                const slippageStr = allRows[slippageRow][11];
-                
-                // Parse slippage (could be "5.0%" or "5" or "0.05")
-                let slippageValue = 0;
-                if (slippageStr.includes('%')) {
-                    slippageValue = parseFloat(slippageStr.replace('%', '')) / 100;
-                } else {
-                    const num = parseFloat(slippageStr);
-                    // If > 1, assume it's percentage (e.g., 5 = 5%)
-                    slippageValue = num > 1 ? num / 100 : num;
-                }
-                
-                const calculated = zielKursVDollar * (1 + slippageValue);
-                allRows[zielKursVDollarSlippageRow][11] = calculated.toString();
-                
-                console.log(`Berechnet: Ziel-Kurs v$ inkl. Slippage = ${zielKursVDollar} * (1 + ${slippageValue}) = ${calculated}`);
-                
-                // Update the input field display
-                const slippageInput = document.querySelector(`.info-table input[data-row="${zielKursVDollarSlippageRow}"][data-col="11"]`);
-                if (slippageInput) {
-                    slippageInput.value = calculated.toFixed(4);
+            const calculated = zielKursVDollar * (1 + slippageValue);
+            console.log(`Berechnet: Ziel-Kurs v$ inkl. Slippage = ${zielKursVDollar} * (1 + ${slippageValue}) = ${calculated}`);
+            
+            // Update the "Ziel-Kurs v$ inkl. Slippage" input field
+            const slippageResultInputs = document.querySelectorAll('.info-table input[data-col="10"]');
+            for (let input of slippageResultInputs) {
+                if (input.value.toLowerCase().includes('ziel-kurs v$') && input.value.toLowerCase().includes('slippage')) {
+                    const row = input.dataset.row;
+                    const valueInput = document.querySelector(`.info-table input[data-row="${row}"][data-col="11"]`);
+                    if (valueInput) {
+                        valueInput.value = calculated.toFixed(2);
+                    }
+                    break;
                 }
             }
             
@@ -734,16 +713,38 @@
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = ''; // Clear existing content
             
-            // Find column indices
-            const headers = allRows[4];
+            // Find column indices - header is now at row 0
+            const headers = allRows[0];
+            
+            // Add calculated columns to headers if not already present
+            const calculatedHeaders = [
+                '$-Wert VOW in Collateral',
+                'Benötigte VOW, um v$ für Rückzahlung zu kaufen',
+                'Gewinn an VOW',
+                'Gewinn in USDT'
+            ];
+            
+            const fullHeaders = [...headers, ...calculatedHeaders];
+            
+            // Update table header to include calculated columns
+            const thead = document.getElementById('tableHead');
+            thead.innerHTML = '';
+            const headerRow = document.createElement('tr');
+            fullHeaders.forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            
             const dateColIndex = headers.findIndex(h => h && h.toLowerCase().includes('rückzahlung bis'));
             const walletColIndex = headers.findIndex(h => h && h.toLowerCase().includes('wallet'));
             
             // Group data by Month/Year and Wallet
             const monthGroups = {};
             
-            // First pass: group all rows by month/year
-            for (let i = 5; i < allRows.length; i++) {
+            // First pass: group all rows by month/year (data starts at row 1)
+            for (let i = 1; i < allRows.length; i++) {
                 const row = allRows[i];
                 if (row.length === 0 || row.every(cell => !cell)) continue;
                 
@@ -800,28 +801,15 @@
                     // Add all rows for this wallet
                     walletData.rows.forEach(row => {
                         const tr = document.createElement('tr');
+                        
+                        // Add original columns from Google Sheets (A-J)
                         row.forEach((cell, idx) => {
                             const td = document.createElement('td');
-                            
-                            // Get column name for formatting
                             const columnName = headers[idx] || '';
                             
-                            // Check if this column needs calculation
-                            const calculatedValue = calculateField(columnName, row, headers);
-                            let displayValue = cell;
-                            let numValue = 0;
-                            
-                            if (calculatedValue !== null) {
-                                // This is a calculated field
-                                numValue = calculatedValue;
-                                displayValue = numValue.toString();
-                                // Update the row data with calculated value
-                                row[idx] = displayValue;
-                            }
-                            
                             // Format numbers with Swiss formatting
-                            if (isNumeric(displayValue)) {
-                                numValue = calculatedValue !== null ? calculatedValue : parseSwissNumber(displayValue);
+                            if (isNumeric(cell)) {
+                                const numValue = parseSwissNumber(cell);
                                 td.textContent = formatSwissNumber(numValue, columnName);
                                 
                                 // Accumulate for subtotals
@@ -833,24 +821,52 @@
                                 monthTotals[idx] += numValue;
                                 grandTotals[idx] += numValue;
                             } else {
-                                td.textContent = displayValue;
+                                td.textContent = cell;
                             }
                             
                             tr.appendChild(td);
                         });
+                        
+                        // Add calculated columns (K-N)
+                        calculatedHeaders.forEach((calcHeader, calcIdx) => {
+                            const td = document.createElement('td');
+                            const columnIdx = headers.length + calcIdx;
+                            
+                            const calculatedValue = calculateField(calcHeader, row, headers);
+                            let numValue = 0;
+                            
+                            if (calculatedValue !== null) {
+                                numValue = calculatedValue;
+                                td.textContent = formatSwissNumber(numValue, calcHeader);
+                                
+                                // Accumulate for subtotals
+                                if (!walletTotals[columnIdx]) walletTotals[columnIdx] = 0;
+                                if (!monthTotals[columnIdx]) monthTotals[columnIdx] = 0;
+                                if (!grandTotals[columnIdx]) grandTotals[columnIdx] = 0;
+                                
+                                walletTotals[columnIdx] += numValue;
+                                monthTotals[columnIdx] += numValue;
+                                grandTotals[columnIdx] += numValue;
+                            } else {
+                                td.textContent = '';
+                            }
+                            
+                            tr.appendChild(td);
+                        });
+                        
                         tbody.appendChild(tr);
                     });
                     
                     // Insert wallet subtotal
-                    insertWalletSubtotal(tbody, wallet, walletTotals, headers.length, headers);
+                    insertWalletSubtotal(tbody, wallet, walletTotals, fullHeaders.length, fullHeaders);
                 });
                 
                 // Insert month subtotal
-                insertMonthSubtotal(tbody, monthYear, monthTotals, headers.length, headers);
+                insertMonthSubtotal(tbody, monthYear, monthTotals, fullHeaders.length, fullHeaders);
             });
             
             // Insert grand total
-            insertGrandTotal(tbody, grandTotals, headers.length, headers);
+            insertGrandTotal(tbody, grandTotals, fullHeaders.length, fullHeaders);
         }
         
         function insertWalletSubtotal(tbody, wallet, totals, colCount, headers) {
