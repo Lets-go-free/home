@@ -16,7 +16,7 @@
             <h1>TLN Loans 📊</h1>
             <p class="subtitle">Loan-Rückzahlungen berechnen mit Google Sheets API</p>
             <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">
-                Version: 2026-01-03 21:49:56 CET
+                Version: 2026-01-04 15:25:36 CET
             </p>
         </div>
         
@@ -218,21 +218,27 @@
                 thead.innerHTML = '';
                 const headerRow = document.createElement('tr');
                 
-                // Add headers from Google Sheets (A-J)
-                allRows[0].forEach(header => {
-                    const th = document.createElement('th');
-                    th.textContent = header;
-                    headerRow.appendChild(th);
-                });
-                
-                // Add calculated column headers (K-N)
-                const calculatedHeaders = [
-                    '$-Wert VOW in Collateral',
-                    'Benötigte VOW, um v$ für Rückzahlung zu kaufen',
-                    'Gewinn an VOW',
-                    'Gewinn in USDT'
+                // Gewünschte Spaltenreihenfolge (Mix aus Google Sheets A-L und berechneten Spalten)
+                const headerOrder = [
+                    allRows[0][0],  // A: Wallet
+                    allRows[0][1],  // B: Datum
+                    allRows[0][2],  // C: Rückzahlung bis
+                    allRows[0][3],  // D: Booster Variante
+                    allRows[0][4],  // E: v$ je TLN+
+                    allRows[0][5],  // F: TLN+
+                    allRows[0][6],  // G: Erhaltene v$
+                    allRows[0][7],  // H: Erhaltene VOW's (Collateral)
+                    '$-Wert VOW in Collateral',  // Berechnet
+                    allRows[0][8],  // I: v$ Zins
+                    allRows[0][9],  // J: VOW in v$ für Zins getauscht
+                    'Benötigte VOW, um v$ für Rückzahlung zu kaufen',  // Berechnet
+                    allRows[0][10], // K: Loan zurück bezahlt?
+                    allRows[0][11], // L: eingesetzte VOW's
+                    'Gewinn an VOW',  // Berechnet
+                    'Gewinn in USDT'  // Berechnet
                 ];
-                calculatedHeaders.forEach(header => {
+                
+                headerOrder.forEach(header => {
                     const th = document.createElement('th');
                     th.textContent = header;
                     headerRow.appendChild(th);
@@ -570,8 +576,23 @@
             }
             else if (colName.includes('gewinn in usdt')) {
                 if (!collateral) return null;
-                const result = gewinnVOW * zielKursVOW;
-                console.log(`Gewinn in USDT: ${gewinnVOW} * ${zielKursVOW} = ${result}`);
+                
+                // Wenn Loan zurückbezahlt (Status = "Ja"), verwende aktuellen Kurs statt Ziel-Kurs
+                let kursToUse = zielKursVOW;
+                if (loanStatus === 'Ja') {
+                    // Hole aktuellen Kurs aus Info-Tabelle (Spalte 3 von Zeile 0)
+                    const currentPriceInput = document.getElementById('currentPrice0');
+                    if (currentPriceInput && currentPriceInput.value) {
+                        // Entferne "$" und parse den Wert
+                        const currentPrice = parseFloat(currentPriceInput.value.replace('$', ''));
+                        if (!isNaN(currentPrice) && currentPrice > 0) {
+                            kursToUse = currentPrice;
+                        }
+                    }
+                }
+                
+                const result = gewinnVOW * kursToUse;
+                console.log(`Gewinn in USDT (Status: ${loanStatus}): ${gewinnVOW} * ${kursToUse} = ${result}`);
                 return result;
             }
             
@@ -1017,7 +1038,7 @@
             // Find column indices - header is now at row 0
             const headers = allRows[0];
             
-            // Calculated column headers (already added to table header in loadGoogleSheetDataFromAPI)
+            // Calculated column headers
             const calculatedHeaders = [
                 '$-Wert VOW in Collateral',
                 'Benötigte VOW, um v$ für Rückzahlung zu kaufen',
@@ -1025,7 +1046,25 @@
                 'Gewinn in USDT'
             ];
             
-            const fullHeaders = [...headers, ...calculatedHeaders];
+            // Full headers in display order (16 columns total)
+            const fullHeaders = [
+                headers[0],  // A: Wallet
+                headers[1],  // B: Datum
+                headers[2],  // C: Rückzahlung bis
+                headers[3],  // D: Booster Variante
+                headers[4],  // E: v$ je TLN+
+                headers[5],  // F: TLN+
+                headers[6],  // G: Erhaltene v$
+                headers[7],  // H: Erhaltene VOW's (Collateral)
+                '$-Wert VOW in Collateral',
+                headers[8],  // I: v$ Zins
+                headers[9],  // J: VOW in v$ für Zins getauscht
+                'Benötigte VOW, um v$ für Rückzahlung zu kaufen',
+                headers[10], // K: Loan zurück bezahlt?
+                headers[11], // L: eingesetzte VOW's
+                'Gewinn an VOW',
+                'Gewinn in USDT'
+            ];
             
             const dateColIndex = headers.findIndex(h => h && h.toLowerCase().includes('rückzahlung bis'));
             const walletColIndex = headers.findIndex(h => h && h.toLowerCase().includes('wallet'));
@@ -1098,53 +1137,70 @@
                     walletData.rows.forEach(row => {
                         const tr = document.createElement('tr');
                         
-                        // Add original columns from Google Sheets (A-J)
-                        row.forEach((cell, idx) => {
-                            const td = document.createElement('td');
-                            const columnName = headers[idx] || '';
-                            
-                            // Format numbers with Swiss formatting
-                            if (isNumeric(cell)) {
-                                const numValue = parseSwissNumber(cell);
-                                td.textContent = formatSwissNumber(numValue, columnName);
-                                
-                                // Accumulate for subtotals
-                                if (!walletTotals[idx]) walletTotals[idx] = 0;
-                                if (!monthTotals[idx]) monthTotals[idx] = 0;
-                                if (!grandTotals[idx]) grandTotals[idx] = 0;
-                                
-                                walletTotals[idx] += numValue;
-                                monthTotals[idx] += numValue;
-                                grandTotals[idx] += numValue;
-                            } else {
-                                td.textContent = cell;
-                            }
-                            
-                            tr.appendChild(td);
-                        });
+                        // Spaltenreihenfolge: A,B,C,D,E,F,G,H,calc1,I,J,calc2,K,L,calc3,calc4
+                        // A-L sind indices 0-11, calc sind berechnet
+                        const columnOrder = [
+                            0,  // A: Wallet
+                            1,  // B: Datum
+                            2,  // C: Rückzahlung bis
+                            3,  // D: Booster Variante
+                            4,  // E: v$ je TLN+
+                            5,  // F: TLN+
+                            6,  // G: Erhaltene v$
+                            7,  // H: Erhaltene VOW's (Collateral)
+                            '$-Wert VOW in Collateral',  // Berechnet
+                            8,  // I: v$ Zins
+                            9,  // J: VOW in v$ für Zins getauscht
+                            'Benötigte VOW, um v$ für Rückzahlung zu kaufen',  // Berechnet
+                            10, // K: Loan zurück bezahlt?
+                            11, // L: eingesetzte VOW's
+                            'Gewinn an VOW',  // Berechnet
+                            'Gewinn in USDT'   // Berechnet
+                        ];
                         
-                        // Add calculated columns (K-N)
-                        calculatedHeaders.forEach((calcHeader, calcIdx) => {
+                        columnOrder.forEach((colIdentifier, displayIdx) => {
                             const td = document.createElement('td');
-                            const columnIdx = headers.length + calcIdx;
                             
-                            const calculatedValue = calculateField(calcHeader, row, headers);
-                            let numValue = 0;
-                            
-                            if (calculatedValue !== null) {
-                                numValue = calculatedValue;
-                                td.textContent = formatSwissNumber(numValue, calcHeader);
+                            if (typeof colIdentifier === 'number') {
+                                // Google Sheets Spalte (A-L = 0-11)
+                                const cell = row[colIdentifier] || '';
+                                const columnName = headers[colIdentifier] || '';
                                 
-                                // Accumulate for subtotals
-                                if (!walletTotals[columnIdx]) walletTotals[columnIdx] = 0;
-                                if (!monthTotals[columnIdx]) monthTotals[columnIdx] = 0;
-                                if (!grandTotals[columnIdx]) grandTotals[columnIdx] = 0;
-                                
-                                walletTotals[columnIdx] += numValue;
-                                monthTotals[columnIdx] += numValue;
-                                grandTotals[columnIdx] += numValue;
+                                if (isNumeric(cell)) {
+                                    const numValue = parseSwissNumber(cell);
+                                    td.textContent = formatSwissNumber(numValue, columnName);
+                                    
+                                    // Accumulate for subtotals (using display index)
+                                    if (!walletTotals[displayIdx]) walletTotals[displayIdx] = 0;
+                                    if (!monthTotals[displayIdx]) monthTotals[displayIdx] = 0;
+                                    if (!grandTotals[displayIdx]) grandTotals[displayIdx] = 0;
+                                    
+                                    walletTotals[displayIdx] += numValue;
+                                    monthTotals[displayIdx] += numValue;
+                                    grandTotals[displayIdx] += numValue;
+                                } else {
+                                    td.textContent = cell;
+                                }
                             } else {
-                                td.textContent = '';
+                                // Berechnete Spalte
+                                const calculatedValue = calculateField(colIdentifier, row, headers);
+                                let numValue = 0;
+                                
+                                if (calculatedValue !== null) {
+                                    numValue = calculatedValue;
+                                    td.textContent = formatSwissNumber(numValue, colIdentifier);
+                                    
+                                    // Accumulate for subtotals (using display index)
+                                    if (!walletTotals[displayIdx]) walletTotals[displayIdx] = 0;
+                                    if (!monthTotals[displayIdx]) monthTotals[displayIdx] = 0;
+                                    if (!grandTotals[displayIdx]) grandTotals[displayIdx] = 0;
+                                    
+                                    walletTotals[displayIdx] += numValue;
+                                    monthTotals[displayIdx] += numValue;
+                                    grandTotals[displayIdx] += numValue;
+                                } else {
+                                    td.textContent = '';
+                                }
                             }
                             
                             tr.appendChild(td);
