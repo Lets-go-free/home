@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wallet Token Viewer</title>
+    <title>Apertum Wallet Token Viewer</title>
     <style>
         * {
             margin: 0;
@@ -33,8 +33,20 @@
 
         h1 {
             color: #2d3748;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             font-size: 28px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .chain-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
         }
 
         .wallet-address {
@@ -45,6 +57,7 @@
             font-size: 14px;
             color: #4a5568;
             word-break: break-all;
+            margin-top: 15px;
         }
 
         .stats {
@@ -84,10 +97,30 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .tokens-header h2 {
             font-size: 22px;
+        }
+
+        .refresh-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .refresh-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-1px);
         }
 
         .loading {
@@ -206,25 +239,8 @@
             opacity: 0.3;
         }
 
-        .refresh-btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            margin-top: 20px;
-            transition: transform 0.2s;
-        }
-
-        .refresh-btn:hover {
-            transform: translateY(-2px);
-        }
-
-        .refresh-btn:active {
-            transform: translateY(0);
+        .native-token {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
         }
 
         @media (max-width: 768px) {
@@ -243,7 +259,10 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔐 Wallet Token Viewer</h1>
+            <h1>
+                🔐 Wallet Token Viewer
+                <span class="chain-badge">Apertum Chain</span>
+            </h1>
             <div class="wallet-address" id="walletAddress">
                 0xC7e112D6Db20A4A9213834B2Cb235c34733e6591
             </div>
@@ -255,99 +274,211 @@
                 <div class="stat-value" id="tokenCount">-</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">ETH Balance</div>
-                <div class="stat-value" id="ethBalance">-</div>
+                <div class="stat-label">APTM Balance</div>
+                <div class="stat-value" id="nativeBalance">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Chain ID</div>
+                <div class="stat-value">2786</div>
             </div>
         </div>
 
         <div class="tokens-container">
             <div class="tokens-header">
                 <h2>📊 Token Bestände</h2>
+                <button class="refresh-btn" onclick="loadWalletData()">🔄 Aktualisieren</button>
             </div>
             <div id="tokenContent">
                 <div class="loading">
                     <div class="spinner"></div>
-                    <p>Lade Token-Daten von der Blockchain...</p>
+                    <p>Lade Token-Daten von der Apertum Blockchain...</p>
                 </div>
             </div>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/web3@4.3.0/dist/web3.min.js"></script>
     <script>
         const walletAddress = '0xC7e112D6Db20A4A9213834B2Cb235c34733e6591';
-        const etherscanApiKey = 'YourApiKeyToken'; // Free API key - funktioniert auch ohne
+        const rpcUrl = 'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc';
+        
+        // Web3 initialisieren
+        const web3 = new Web3(rpcUrl);
+
+        // ERC-20 Token ABI (nur die Funktionen, die wir brauchen)
+        const ERC20_ABI = [
+            {
+                "constant": true,
+                "inputs": [],
+                "name": "name",
+                "outputs": [{"name": "", "type": "string"}],
+                "type": "function"
+            },
+            {
+                "constant": true,
+                "inputs": [],
+                "name": "symbol",
+                "outputs": [{"name": "", "type": "string"}],
+                "type": "function"
+            },
+            {
+                "constant": true,
+                "inputs": [],
+                "name": "decimals",
+                "outputs": [{"name": "", "type": "uint8"}],
+                "type": "function"
+            },
+            {
+                "constant": true,
+                "inputs": [{"name": "_owner", "type": "address"}],
+                "name": "balanceOf",
+                "outputs": [{"name": "balance", "type": "uint256"}],
+                "type": "function"
+            }
+        ];
+
+        // Transfer Event Signature für ERC-20 Token
+        const TRANSFER_EVENT_SIGNATURE = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
         async function loadWalletData() {
             try {
-                // ETH Balance abrufen
-                const ethBalanceResponse = await fetch(
-                    `https://api.etherscan.io/api?module=account&action=balance&address=${walletAddress}&tag=latest&apikey=${etherscanApiKey}`
-                );
-                const ethBalanceData = await ethBalanceResponse.json();
+                const content = document.getElementById('tokenContent');
+                content.innerHTML = `
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Scanne Blockchain nach Token-Transaktionen...</p>
+                        <p style="font-size: 12px; margin-top: 10px;">Dies kann einen Moment dauern...</p>
+                    </div>
+                `;
+
+                // Native APTM Balance abrufen
+                const nativeBalance = await web3.eth.getBalance(walletAddress);
+                const aptmBalance = web3.utils.fromWei(nativeBalance, 'ether');
+                document.getElementById('nativeBalance').textContent = `${parseFloat(aptmBalance).toFixed(4)} APTM`;
+
+                // Token-Liste erstellen
+                const tokens = [];
                 
-                if (ethBalanceData.status === '1') {
-                    const ethBalance = (parseInt(ethBalanceData.result) / 1e18).toFixed(4);
-                    document.getElementById('ethBalance').textContent = `${ethBalance} ETH`;
-                }
+                // Native Token hinzufügen
+                tokens.push({
+                    name: 'Apertum',
+                    symbol: 'APTM',
+                    address: 'native',
+                    balance: parseFloat(aptmBalance),
+                    decimals: 18,
+                    isNative: true
+                });
 
-                // Token Liste abrufen
-                const tokenResponse = await fetch(
-                    `https://api.etherscan.io/api?module=account&action=tokentx&address=${walletAddress}&startblock=0&endblock=99999999&sort=asc&apikey=${etherscanApiKey}`
-                );
-                const tokenData = await tokenResponse.json();
+                // Token automatisch finden durch Log-Scanning
+                const foundTokens = await scanForTokens(walletAddress);
+                
+                // Token-Balances abrufen
+                for (const tokenAddress of foundTokens) {
+                    try {
+                        const tokenContract = new web3.eth.Contract(ERC20_ABI, tokenAddress);
+                        
+                        // Token-Infos abrufen
+                        const [name, symbol, decimals, balance] = await Promise.all([
+                            tokenContract.methods.name().call().catch(() => 'Unknown Token'),
+                            tokenContract.methods.symbol().call().catch(() => 'UNKNOWN'),
+                            tokenContract.methods.decimals().call().catch(() => 18),
+                            tokenContract.methods.balanceOf(walletAddress).call()
+                        ]);
 
-                if (tokenData.status === '1' && tokenData.result.length > 0) {
-                    // Unique tokens extrahieren
-                    const uniqueTokens = {};
-                    
-                    tokenData.result.forEach(tx => {
-                        const tokenAddress = tx.contractAddress;
-                        if (!uniqueTokens[tokenAddress]) {
-                            uniqueTokens[tokenAddress] = {
-                                name: tx.tokenName,
-                                symbol: tx.tokenSymbol,
+                        const tokenBalance = parseFloat(balance) / Math.pow(10, decimals);
+
+                        if (tokenBalance > 0) {
+                            tokens.push({
+                                name: name,
+                                symbol: symbol,
                                 address: tokenAddress,
-                                decimals: parseInt(tx.tokenDecimal)
-                            };
+                                balance: tokenBalance,
+                                decimals: decimals,
+                                isNative: false
+                            });
                         }
-                    });
-
-                    // Balance für jeden Token abrufen
-                    const tokenArray = Object.values(uniqueTokens);
-                    const balancePromises = tokenArray.map(token => getTokenBalance(token));
-                    const tokensWithBalance = await Promise.all(balancePromises);
-                    
-                    // Nur Token mit Balance > 0 anzeigen
-                    const activeTokens = tokensWithBalance.filter(token => token.balance > 0);
-                    
-                    displayTokens(activeTokens);
-                    document.getElementById('tokenCount').textContent = activeTokens.length;
-                } else {
-                    displayEmptyState();
+                    } catch (error) {
+                        console.error(`Fehler bei Token ${tokenAddress}:`, error);
+                    }
                 }
+
+                displayTokens(tokens);
+                document.getElementById('tokenCount').textContent = tokens.length;
 
             } catch (error) {
                 console.error('Fehler beim Laden der Daten:', error);
-                displayError('Fehler beim Laden der Token-Daten. Bitte versuche es später nochmal.');
+                displayError('Fehler beim Laden der Token-Daten. Bitte stelle sicher, dass der RPC-Endpunkt erreichbar ist.');
             }
         }
 
-        async function getTokenBalance(token) {
+        async function scanForTokens(address) {
+            const tokenAddresses = new Set();
+            
             try {
-                const response = await fetch(
-                    `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=${token.address}&address=${walletAddress}&tag=latest&apikey=${etherscanApiKey}`
-                );
-                const data = await response.json();
+                // Aktuellen Block holen
+                const latestBlock = await web3.eth.getBlockNumber();
+                const startBlock = Math.max(0, Number(latestBlock) - 50000); // Letzte ~50k Blocks scannen
                 
-                if (data.status === '1') {
-                    const balance = parseInt(data.result) / Math.pow(10, token.decimals);
-                    return { ...token, balance };
-                }
-                return { ...token, balance: 0 };
+                console.log(`Scanne Blocks ${startBlock} bis ${latestBlock}...`);
+                
+                // Logs für eingehende Transfers (an deine Wallet)
+                const incomingLogs = await web3.eth.getPastLogs({
+                    fromBlock: startBlock,
+                    toBlock: 'latest',
+                    topics: [
+                        TRANSFER_EVENT_SIGNATURE,
+                        null,
+                        web3.utils.padLeft(address.toLowerCase(), 64)
+                    ]
+                });
+
+                // Logs für ausgehende Transfers (von deiner Wallet)
+                const outgoingLogs = await web3.eth.getPastLogs({
+                    fromBlock: startBlock,
+                    toBlock: 'latest',
+                    topics: [
+                        TRANSFER_EVENT_SIGNATURE,
+                        web3.utils.padLeft(address.toLowerCase(), 64)
+                    ]
+                });
+
+                // Token-Adressen sammeln
+                [...incomingLogs, ...outgoingLogs].forEach(log => {
+                    if (log.address) {
+                        tokenAddresses.add(log.address);
+                    }
+                });
+
+                console.log(`${tokenAddresses.size} Token-Contracts gefunden`);
+                
             } catch (error) {
-                console.error(`Fehler bei Token ${token.symbol}:`, error);
-                return { ...token, balance: 0 };
+                console.error('Fehler beim Scannen der Logs:', error);
+                // Fallback: Versuche kleineren Block-Range
+                try {
+                    const latestBlock = await web3.eth.getBlockNumber();
+                    const startBlock = Math.max(0, Number(latestBlock) - 10000);
+                    
+                    const logs = await web3.eth.getPastLogs({
+                        fromBlock: startBlock,
+                        toBlock: 'latest',
+                        topics: [
+                            TRANSFER_EVENT_SIGNATURE,
+                            null,
+                            web3.utils.padLeft(address.toLowerCase(), 64)
+                        ]
+                    });
+
+                    logs.forEach(log => {
+                        if (log.address) {
+                            tokenAddresses.add(log.address);
+                        }
+                    });
+                } catch (fallbackError) {
+                    console.error('Auch Fallback-Scan fehlgeschlagen:', fallbackError);
+                }
             }
+            
+            return Array.from(tokenAddresses);
         }
 
         function displayTokens(tokens) {
@@ -359,7 +490,7 @@
             }
 
             const tokenListHTML = tokens.map(token => `
-                <div class="token-item">
+                <div class="token-item ${token.isNative ? 'native-token' : ''}">
                     <div class="token-info">
                         <div class="token-icon">
                             ${token.symbol.charAt(0)}
@@ -371,7 +502,7 @@
                     </div>
                     <div class="token-balance">
                         <div class="balance-amount">${formatNumber(token.balance)} ${token.symbol}</div>
-                        <div class="token-address">${shortenAddress(token.address)}</div>
+                        <div class="token-address">${token.isNative ? 'Native Token' : shortenAddress(token.address)}</div>
                     </div>
                 </div>
             `).join('');
@@ -387,8 +518,8 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
                     </svg>
                     <h3>Keine Token gefunden</h3>
-                    <p>Diese Wallet hat aktuell keine ERC-20 Token.</p>
-                    <button class="refresh-btn" onclick="loadWalletData()">Neu laden</button>
+                    <p>Diese Wallet hat aktuell keine Token auf Apertum.</p>
+                    <button class="refresh-btn" onclick="loadWalletData()" style="margin-top: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;">Neu laden</button>
                 </div>
             `;
             document.getElementById('tokenCount').textContent = '0';
@@ -398,8 +529,9 @@
             const content = document.getElementById('tokenContent');
             content.innerHTML = `
                 <div class="error">
-                    <strong>Fehler:</strong> ${message}
-                    <button class="refresh-btn" onclick="loadWalletData()">Erneut versuchen</button>
+                    <strong>⚠️ Fehler:</strong> ${message}
+                    <br><br>
+                    <button class="refresh-btn" onclick="loadWalletData()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; color: white; cursor: pointer;">Erneut versuchen</button>
                 </div>
             `;
         }
@@ -409,10 +541,12 @@
                 return (num / 1000000).toFixed(2) + 'M';
             } else if (num >= 1000) {
                 return (num / 1000).toFixed(2) + 'K';
+            } else if (num < 0.01) {
+                return num.toFixed(8);
             } else if (num < 1) {
                 return num.toFixed(6);
             }
-            return num.toFixed(2);
+            return num.toFixed(4);
         }
 
         function shortenAddress(address) {
