@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Wallet Token Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #2d3748;
+            margin-bottom: 8px;
+            font-size: 28px;
+        }
+
+        .timestamp {
+            color: #718096;
+            font-size: 13px;
+            margin-top: 8px;
+            font-weight: 400;
+        }
+
+        .controls {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .filter-group label {
+            color: #4a5568;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .filter-input {
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 14px;
+            min-width: 200px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e0;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .stat-label {
+            color: #718096;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            color: #2d3748;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .table-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .table-header h2 {
+            font-size: 22px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #718096;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: #f7fafc;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        th {
+            padding: 15px 20px;
+            text-align: left;
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 14px;
+            border-bottom: 2px solid #e2e8f0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        th:hover {
+            background: #edf2f7;
+        }
+
+        th.sortable::after {
+            content: ' ⇅';
+            opacity: 0.3;
+            font-size: 12px;
+        }
+
+        th.sort-asc::after {
+            content: ' ▲';
+            opacity: 1;
+        }
+
+        th.sort-desc::after {
+            content: ' ▼';
+            opacity: 1;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid #e2e8f0;
+            transition: background 0.2s;
+        }
+
+        tbody tr:hover {
+            background: #f7fafc;
+        }
+
+        tbody tr.hidden {
+            display: none;
+        }
+
+        td {
+            padding: 15px 20px;
+            color: #4a5568;
+            font-size: 14px;
+        }
+
+        .wallet-name {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .token-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .token-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .token-details {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .token-symbol {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .token-chain {
+            font-size: 11px;
+            color: #a0aec0;
+            text-transform: uppercase;
+        }
+
+        .balance {
+            font-weight: 600;
+            color: #2d3748;
+            text-align: right;
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 20px;
+            margin: 20px;
+            border-radius: 8px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #718096;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-input {
+                min-width: 100%;
+            }
+
+            table {
+                font-size: 12px;
+            }
+
+            th, td {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Multi-Wallet Token Viewer</h1>
+            <div class="timestamp" id="timestamp">Lädt...</div>
+        </div>
+
+        <div class="controls">
+            <div class="filter-group">
+                <label for="walletFilter">Wallet:</label>
+                <input type="text" id="walletFilter" class="filter-input" placeholder="Wallet filtern...">
+            </div>
+            <div class="filter-group">
+                <label for="tokenFilter">Token:</label>
+                <input type="text" id="tokenFilter" class="filter-input" placeholder="Token filtern...">
+            </div>
+            <button class="btn btn-primary" onclick="updateTimestamp(); loadAllWallets()">🔄 Aktualisieren</button>
+            <button class="btn btn-secondary" onclick="scanForMoreTokens()">🔍 Weitere Token scannen</button>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-label">Wallets</div>
+                <div class="stat-value" id="walletCount">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Token gesamt</div>
+                <div class="stat-value" id="tokenCount">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Chains</div>
+                <div class="stat-value" id="chainCount">-</div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <div class="table-header">
+                <h2>📊 Token Übersicht</h2>
+            </div>
+            <div id="tableContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Lade Wallet-Daten...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/web3@4.3.0/dist/web3.min.js"></script>
+    <script>
+        // Wallet-Konfiguration
+        const wallets = [
+            { name: 'dao1 Dubai', address: '0xC7e112D6Db20A4A9213834B2Cb235c34733e6591' },
+            { name: 'Dubai trustyfy', address: '0x59dc6669c1eb40df7b36be58812202a09c4491bf' },
+            { name: 'Dubai Mt. Pelerin', address: '0x76882e6fc045391ba4f19d8a15ea4d8699ff7382' },
+            { name: 'TLN Chris', address: '0xbE44d90daD6308AE0b762908D70260c62410346E' }
+        ];
+
+        // Token-Konfiguration
+        const tokens = {
+            apertum: [
+                { symbol: 'APTM', name: 'Apertum', address: 'native', decimals: 18 },
+                { symbol: 'wAPTM', name: 'Wrapped APTM', address: '0x110ac02ba3384bc055c13a87766049a74517beda', decimals: 18 },
+                { symbol: 'wUSDT', name: 'Wrapped USDT', address: '0x1487db421f6b58e77bfefc905fdc1ede5fb85c7f', decimals: 6 },
+                { symbol: 'wUSDC', name: 'Wrapped USDC', address: '0xd979f41e12a69aa82f04866444ea91e8e8faefd9', decimals: 6 },
+                { symbol: 'wBTC', name: 'Wrapped BTC', address: '0x75598b9f54df1472bb2bdc3b5dc791bdb109a52b', decimals: 8 },
+                { symbol: 'wSOL', name: 'Wrapped SOL', address: '0xf081daa36f367f4a5f93ac68c14fb39b50a58ef8', decimals: 9 },
+                { symbol: 'wETH', name: 'Wrapped ETH', address: '0x01882c43aa0bee891b54857c15cc19a3df946f01', decimals: 18 },
+                { symbol: 'wBNB', name: 'Wrapped BNB', address: '0xf3074054737b9e83d73c3c17a007939e12698d5c', decimals: 18 },
+                { symbol: 'wAVAX', name: 'Wrapped AVAX', address: '0xf75dd43f59cba81329f2fa3d98d0c0908cffebb8', decimals: 18 }
+            ],
+            bsc: [
+                { symbol: 'BNB', name: 'BNB', address: 'native', decimals: 18 },
+                { symbol: 'USDT', name: 'Tether USD', address: '0x55d398326f99059ff775485246999027b3197955', decimals: 18 },
+                { symbol: 'USDC', name: 'USD Coin', address: '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d', decimals: 18 }
+            ],
+            eth: [
+                { symbol: 'ETH', name: 'Ethereum', address: 'native', decimals: 18 },
+                { symbol: 'USDT', name: 'Tether USD', address: '0xdac17f958d2ee523a2206206994597c13d831ec7', decimals: 6 },
+                { symbol: 'USDC', name: 'USD Coin', address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6 }
+            ],
+            polygon: [
+                { symbol: 'POL', name: 'Polygon', address: 'native', decimals: 18 }
+            ]
+        };
+
+        // RPC-Endpunkte
+        const rpcEndpoints = {
+            apertum: 'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc',
+            bsc: 'https://bsc-dataseed.binance.org/',
+            eth: 'https://eth.llamarpc.com',
+            polygon: 'https://polygon-rpc.com'
+        };
+
+        // Web3 Instanzen
+        const web3Instances = {};
+        for (const [chain, rpc] of Object.entries(rpcEndpoints)) {
+            web3Instances[chain] = new Web3(rpc);
+        }
+
+        // ERC-20 ABI
+        const ERC20_ABI = [
+            {
+                "constant": true,
+                "inputs": [{"name": "_owner", "type": "address"}],
+                "name": "balanceOf",
+                "outputs": [{"name": "balance", "type": "uint256"}],
+                "type": "function"
+            }
+        ];
+
+        let allBalances = [];
+        let currentSort = { column: null, direction: 'asc' };
+
+        async function loadAllWallets() {
+            try {
+                const content = document.getElementById('tableContent');
+                content.innerHTML = `
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Lade Token-Daten von allen Chains...</p>
+                    </div>
+                `;
+
+                allBalances = [];
+
+                // Für jedes Wallet alle Token auf allen Chains laden
+                for (const wallet of wallets) {
+                    for (const [chain, tokenList] of Object.entries(tokens)) {
+                        const web3 = web3Instances[chain];
+                        
+                        for (const token of tokenList) {
+                            try {
+                                let balance;
+                                
+                                if (token.address === 'native') {
+                                    // Native Token (ETH, BNB, etc.)
+                                    const weiBalance = await web3.eth.getBalance(wallet.address);
+                                    balance = parseFloat(web3.utils.fromWei(weiBalance, 'ether'));
+                                } else {
+                                    // ERC-20 Token
+                                    const contract = new web3.eth.Contract(ERC20_ABI, token.address);
+                                    const rawBalance = await contract.methods.balanceOf(wallet.address).call();
+                                    balance = parseFloat(rawBalance) / Math.pow(10, token.decimals);
+                                }
+
+                                if (balance > 0) {
+                                    allBalances.push({
+                                        wallet: wallet.name,
+                                        walletAddress: wallet.address,
+                                        tokenSymbol: token.symbol,
+                                        tokenName: token.name,
+                                        chain: chain,
+                                        balance: balance,
+                                        tokenAddress: token.address
+                                    });
+                                }
+                            } catch (error) {
+                                console.error(`Fehler bei ${wallet.name} - ${token.symbol} auf ${chain}:`, error);
+                            }
+                        }
+                    }
+                }
+
+                displayTable();
+                updateStats();
+
+            } catch (error) {
+                console.error('Fehler beim Laden:', error);
+                displayError('Fehler beim Laden der Wallet-Daten. Bitte versuche es später nochmal.');
+            }
+        }
+
+        function displayTable() {
+            const content = document.getElementById('tableContent');
+            
+            if (allBalances.length === 0) {
+                content.innerHTML = `
+                    <div class="empty-state">
+                        <p>Keine Token mit Balance gefunden.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const tableHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="sortable" onclick="sortTable('wallet')">Wallet</th>
+                            <th class="sortable" onclick="sortTable('tokenSymbol')">Token</th>
+                            <th class="sortable" onclick="sortTable('balance')">Anzahl</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        ${generateTableRows()}
+                    </tbody>
+                </table>
+            `;
+
+            content.innerHTML = tableHTML;
+        }
+
+        function generateTableRows() {
+            return allBalances.map((item, index) => `
+                <tr data-index="${index}">
+                    <td class="wallet-name">${item.wallet}</td>
+                    <td>
+                        <div class="token-info">
+                            <div class="token-icon">${item.tokenSymbol.charAt(0)}</div>
+                            <div class="token-details">
+                                <div class="token-symbol">${item.tokenSymbol}</div>
+                                <div class="token-chain">${item.chain}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="balance">${formatNumber(item.balance)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function sortTable(column) {
+            // Sortierrichtung bestimmen
+            if (currentSort.column === column) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = column;
+                currentSort.direction = 'asc';
+            }
+
+            // Sortieren
+            allBalances.sort((a, b) => {
+                let valA = a[column];
+                let valB = b[column];
+
+                if (typeof valA === 'string') {
+                    valA = valA.toLowerCase();
+                    valB = valB.toLowerCase();
+                }
+
+                if (currentSort.direction === 'asc') {
+                    return valA > valB ? 1 : -1;
+                } else {
+                    return valA < valB ? 1 : -1;
+                }
+            });
+
+            // Tabelle neu rendern
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = generateTableRows();
+
+            // Sort-Indicator aktualisieren
+            document.querySelectorAll('th').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+            });
+            
+            const clickedHeader = Array.from(document.querySelectorAll('th')).find(th => 
+                th.textContent.includes(column === 'wallet' ? 'Wallet' : 
+                                       column === 'tokenSymbol' ? 'Token' : 'Anzahl')
+            );
+            
+            if (clickedHeader) {
+                clickedHeader.classList.add(currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+            }
+
+            // Filter neu anwenden
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const walletFilter = document.getElementById('walletFilter').value.toLowerCase();
+            const tokenFilter = document.getElementById('tokenFilter').value.toLowerCase();
+
+            const rows = document.querySelectorAll('#tableBody tr');
+            
+            rows.forEach((row, index) => {
+                const item = allBalances[index];
+                const matchesWallet = item.wallet.toLowerCase().includes(walletFilter);
+                const matchesToken = item.tokenSymbol.toLowerCase().includes(tokenFilter);
+
+                if (matchesWallet && matchesToken) {
+                    row.classList.remove('hidden');
+                } else {
+                    row.classList.add('hidden');
+                }
+            });
+        }
+
+        function updateStats() {
+            document.getElementById('walletCount').textContent = wallets.length;
+            document.getElementById('tokenCount').textContent = allBalances.length;
+            document.getElementById('chainCount').textContent = Object.keys(tokens).length;
+        }
+
+        function displayError(message) {
+            const content = document.getElementById('tableContent');
+            content.innerHTML = `
+                <div class="error">
+                    <strong>⚠️ Fehler:</strong> ${message}
+                </div>
+            `;
+        }
+
+        function formatNumber(num) {
+            if (num >= 1000000) {
+                return (num / 1000000).toFixed(2) + 'M';
+            } else if (num >= 1000) {
+                return (num / 1000).toFixed(2) + 'K';
+            } else if (num < 0.01) {
+                return num.toFixed(8);
+            } else if (num < 1) {
+                return num.toFixed(6);
+            }
+            return num.toFixed(4);
+        }
+
+        function updateTimestamp() {
+            const now = new Date();
+            const swissTime = new Intl.DateTimeFormat('de-CH', {
+                timeZone: 'Europe/Zurich',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            }).format(now);
+            
+            document.getElementById('timestamp').textContent = `Letzte Aktualisierung: ${swissTime} (Schweizer Zeit)`;
+        }
+
+        function scanForMoreTokens() {
+            alert('Token-Scan-Funktion wird implementiert. Diese Funktion durchsucht die Blockchain nach zusätzlichen Token, die noch nicht in der Liste sind.');
+            // Hier könnte die Scan-Funktion aus der vorherigen Version eingefügt werden
+        }
+
+        // Event Listener für Filter
+        document.getElementById('walletFilter').addEventListener('input', applyFilters);
+        document.getElementById('tokenFilter').addEventListener('input', applyFilters);
+
+        // Beim Laden der Seite
+        updateTimestamp();
+        loadAllWallets();
+    </script>
+</body>
+</html>
