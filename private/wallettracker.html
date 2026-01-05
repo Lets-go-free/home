@@ -506,6 +506,8 @@
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: GOOGLE_CONFIG.clientId,
                 scope: GOOGLE_CONFIG.scopes,
+                redirect_uri: window.location.origin + window.location.pathname,
+                ux_mode: 'popup',
                 callback: async (response) => {
                     if (response.error !== undefined) {
                         console.error('Token Error:', response);
@@ -528,6 +530,7 @@
                 },
             });
             console.log('✓ GIS initialisiert');
+            console.log('Redirect URI:', window.location.origin + window.location.pathname);
             maybeEnableButtons();
         }
 
