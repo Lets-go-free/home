@@ -364,6 +364,13 @@ async function fetchPancakeSwapPrice(address) {
 }
 
 async function fetchTokenPrice(token) {
+  // Stablecoins → Immer $1.00
+  const stablecoins = ['USDT', 'USDC', 'wUSDT', 'wUSDC', 'vUSD'];
+  if (stablecoins.includes(token.symbol)) {
+    return { price: 1.00, source: 'Stablecoin (fest)' };
+  }
+  
+  // Native Tokens → CoinGecko
   if (token.address === 'native') {
     const coinId = COINGECKO_IDS[`${token.chain}-native`];
     if (coinId) {
@@ -372,11 +379,13 @@ async function fetchTokenPrice(token) {
     }
   }
   
+  // BSC Tokens → PancakeSwap zuerst
   if (token.chain === 'bsc' && token.address !== 'native') {
     const price = await fetchPancakeSwapPrice(token.address);
     if (price) return { price, source: 'PancakeSwap V2' };
   }
   
+  // Fallback → DexScreener
   if (token.address !== 'native') {
     const price = await fetchDexScreenerPrice(token.address, token.chain);
     if (price) return { price, source: 'DexScreener' };
