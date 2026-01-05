@@ -1,105 +1,247 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <title>Wallet Tracker</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Wallet Tracker</title>
 
-    <style>
-        /* ===== ORIGINAL CSS – UNVERÄNDERT ===== */
-        body {
-            margin: 0;
-            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #fff;
-        }
-        /* … restliches ORIGINAL-CSS unverändert … */
-    </style>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen;
+  background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+  min-height:100vh;padding:20px;color:#1a202c
+}
+.container{max-width:1400px;margin:0 auto}
+.header{color:#fff;text-align:center;margin-bottom:30px}
+.login{background:#fff;border-radius:14px;padding:30px;max-width:420px;margin:80px auto;text-align:center}
+.app{display:none}
+.app.loaded{display:block}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}
+th,td{padding:10px 14px;font-size:13px}
+th{background:#f7fafc;border-bottom:2px solid #e2e8f0;text-align:left}
+tr{border-bottom:1px solid #e2e8f0}
+.right{text-align:right}
+.mono{font-family:monospace;font-size:11px}
+.loading{text-align:center;padding:60px}
+</style>
 </head>
 
 <body>
+<div class="container">
+  <div class="header">
+    <h1>Wallet Tracker</h1>
+  </div>
 
-<!-- ===== ORIGINAL BODY – UNVERÄNDERT ===== -->
-<!-- Login, UI, Tabelle, Buttons usw. -->
+  <div id="login" class="login">
+    <h3>Google Anmeldung</h3>
+    <p>Bitte anmelden, um Google Sheets zu laden</p>
+    <div id="signin"></div>
+  </div>
 
-<script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+  <div id="app" class="app">
+    <div id="out" class="loading">Lade Daten…</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/web3@1.10.4/dist/web3.min.js"></script>
 <script src="https://apis.google.com/js/api.js"></script>
 
 <script>
-/* =========================================================
-   ORIGINAL JAVASCRIPT – UNVERÄNDERT BIS ZUR PREISLOGIK
-========================================================= */
-
-/* ===== FIX #1: KORREKTE COINGECKO IDS ===== */
-const coinIds = {
-    eth: 'ethereum',
-    bsc: 'binancecoin',
-    polygon: 'polygon-ecosystem-token', // ✔ FIX
-    apertum: 'apertum'                  // ✔ FIX
+/* =================== CONFIG =================== */
+const GOOGLE = {
+  apiKey: 'DEIN_API_KEY',
+  clientId: 'DEINE_CLIENT_ID.apps.googleusercontent.com',
+  sheetId: 'DEIN_SHEET_ID',
+  scopes: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+  discovery: ['https://sheets.googleapis.com/$discovery/rest?version=v4']
 };
 
-/* ===== FIX #2: MINI CACHE ===== */
-const nativeTokenPriceCache = {};
-const COINGECKO_TTL = 60 * 1000;
+// erwartete Sheets:
+// Wallets!A2:B  -> Name | Address
+// Tokens!A2:E   -> Chain | Symbol | Name | Address | Decimals
 
-/* ===== PATCHED fetchTokenPrice (SIGNATUR BLEIBT GLEICH) ===== */
-async function fetchTokenPrice(tokenAddress, chain) {
+const RPC = {
+  eth: 'https://eth.llamarpc.com',
+  bsc: 'https://bsc-dataseed.binance.org/',
+  polygon: 'https://polygon-rpc.com',
+  apertum: 'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc'
+};
 
-    // ===== Native Tokens =====
-    if (tokenAddress === 'native') {
-        const coinId = coinIds[chain];
-        if (!coinId) return null;
+const COINGECKO_NATIVE = {
+  eth: 'ethereum',
+  bsc: 'binancecoin',
+  polygon: 'polygon-ecosystem-token',
+  apertum: 'apertum'
+};
 
-        const cached = nativeTokenPriceCache[coinId];
-        if (cached && Date.now() - cached.ts < COINGECKO_TTL) {
-            return cached.price;
-        }
+/* =================== STATE =================== */
+let wallets = [];
+let tokensByChain = {};
+let web3 = {};
+let tokenClient;
+let gapiReady=false;
 
-        try {
-            const url =
-                `https://api.coingecko.com/api/v3/simple/price` +
-                `?ids=${coinId}&vs_currencies=usd`;
-
-            const response = await fetch(url);
-            if (!response.ok) return null;
-
-            const data = await response.json();
-            if (data?.[coinId]?.usd) {
-                nativeTokenPriceCache[coinId] = {
-                    price: data[coinId].usd,
-                    ts: Date.now()
-                };
-                return data[coinId].usd;
-            }
-        } catch {
-            return null;
-        }
+/* =================== GOOGLE INIT =================== */
+function gapiLoaded(){
+  gapi.load('client', async ()=>{
+    await gapi.client.init({apiKey:GOOGLE.apiKey, discoveryDocs:GOOGLE.discovery});
+    gapiReady=true;
+    maybeEnableLogin();
+  });
+}
+function gisLoaded(){
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE.clientId,
+    scope: GOOGLE.scopes,
+    callback: async ()=>{
+      await loadSheets();
+      initWeb3();
+      document.getElementById('login').style.display='none';
+      document.getElementById('app').classList.add('loaded');
+      loadAll();
     }
+  });
+  maybeEnableLogin();
+}
+function maybeEnableLogin(){
+  if(gapiReady && tokenClient){
+    document.getElementById('signin').innerHTML =
+      `<button onclick="tokenClient.requestAccessToken()">Mit Google anmelden</button>`;
+  }
+}
+window.onload=()=>{
+  gapiLoaded();
+  const s=document.createElement('script');
+  s.src='https://accounts.google.com/gsi/client';
+  s.onload=gisLoaded;
+  document.head.appendChild(s);
+};
 
-    // ===== ERC20 TOKENS (ORIGINAL LOGIK UNVERÄNDERT) =====
-    try {
-        const response = await fetch(
-            `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`
-        );
-        const data = await response.json();
+/* =================== LOAD SHEETS =================== */
+async function loadSheets(){
+  const w = await gapi.client.sheets.spreadsheets.values.get({
+    spreadsheetId: GOOGLE.sheetId,
+    range: 'Wallets!A2:B'
+  });
+  wallets = (w.result.values||[]).map(r=>({name:r[0], address:r[1]}));
 
-        if (data.pairs && data.pairs.length > 0) {
-            const bestPair = data.pairs.sort(
-                (a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
-            )[0];
-            return bestPair?.priceUsd ? parseFloat(bestPair.priceUsd) : null;
-        }
-    } catch {
-        return null;
-    }
-
-    return null;
+  const t = await gapi.client.sheets.spreadsheets.values.get({
+    spreadsheetId: GOOGLE.sheetId,
+    range: 'Tokens!A2:E'
+  });
+  tokensByChain = {};
+  (t.result.values||[]).forEach(r=>{
+    const chain=r[0];
+    if(!tokensByChain[chain]) tokensByChain[chain]=[];
+    tokensByChain[chain].push({
+      symbol:r[1],
+      name:r[2],
+      address:r[3],     // 'native' oder ERC-20
+      decimals: Number(r[4]||18)
+    });
+  });
 }
 
-/* =========================================================
-   RESTLICHER ORIGINAL-CODE – UNVERÄNDERT
-========================================================= */
-</script>
+/* =================== WEB3 =================== */
+function initWeb3(){
+  for(const c in RPC) web3[c]=new Web3(RPC[c]);
+}
 
+/* =================== ERC20 ABI =================== */
+const ERC20_ABI = [
+  {"constant":true,"inputs":[{"name":"_owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"balance","type":"uint256"}],"type":"function"}
+];
+
+/* =================== PRICE =================== */
+const priceCache={};
+const TTL=60000;
+
+async function priceNative(chain){
+  const id=COINGECKO_NATIVE[chain];
+  if(!id) return null;
+  const c=priceCache[id];
+  if(c && Date.now()-c.ts<TTL) return c.p;
+  try{
+    const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`);
+    const j=await r.json();
+    if(j[id]?.usd){
+      priceCache[id]={p:j[id].usd,ts:Date.now()};
+      return j[id].usd;
+    }
+  }catch{}
+  return null;
+}
+
+async function priceToken(address){
+  try{
+    const r=await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
+    const j=await r.json();
+    if(j.pairs?.length) return Number(j.pairs[0].priceUsd);
+  }catch{}
+  return null;
+}
+
+/* =================== LOAD ALL =================== */
+async function loadAll(){
+  const rows=[];
+  for(const w of wallets){
+    for(const chain in tokensByChain){
+      for(const t of tokensByChain[chain]){
+        let balance='—';
+
+        // Native
+        if(t.address==='native' && web3[chain]){
+          try{
+            const wei=await web3[chain].eth.getBalance(w.address);
+            balance = Number(wei)/(10**18);
+          }catch{}
+        }
+
+        // ERC20
+        if(t.address!=='native' && web3[chain]){
+          try{
+            const c=new web3[chain].eth.Contract(ERC20_ABI,t.address);
+            const raw=await c.methods.balanceOf(w.address).call();
+            balance = Number(raw)/(10**t.decimals);
+          }catch{}
+        }
+
+        // Preis (optional)
+        let price=null;
+        if(t.address==='native') price = await priceNative(chain);
+        else price = await priceToken(t.address);
+
+        rows.push({
+          wallet:w.name, chain, symbol:t.symbol,
+          address:t.address, balance, price
+        });
+      }
+    }
+  }
+  render(rows);
+}
+
+/* =================== RENDER =================== */
+function render(rows){
+  let h=`<table>
+    <tr>
+      <th>Wallet</th><th>Chain</th><th>Token</th>
+      <th class="right">Balance</th>
+      <th class="right">Preis USD</th>
+    </tr>`;
+  rows.forEach(r=>{
+    h+=`<tr>
+      <td>${r.wallet}</td>
+      <td>${r.chain}</td>
+      <td>${r.symbol}</td>
+      <td class="right">${typeof r.balance==='number'?r.balance.toFixed(6):'—'}</td>
+      <td class="right">${r.price?('$'+r.price.toFixed(4)):'—'}</td>
+    </tr>`;
+  });
+  h+=`</table>`;
+  document.getElementById('out').innerHTML=h;
+}
+</script>
 </body>
 </html>
