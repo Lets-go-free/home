@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Token Preise – PancakeSwap V2</title>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  color: #e5e7eb;
+  text-align: center;
+  padding: 40px;
+  margin: 0;
+}
+h1 {
+  margin-bottom: 10px;
+  font-size: 2rem;
+}
+.subtitle {
+  color: #94a3b8;
+  margin-bottom: 40px;
+  font-size: 1rem;
+}
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+.card {
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 30px 20px;
+  background: #020617;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.2);
+}
+.token {
+  font-size: 1.4rem;
+  color: #93c5fd;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.price {
+  font-size: 2.8rem;
+  font-weight: bold;
+  color: #22c55e;
+  margin: 16px 0;
+}
+.small {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-top: 12px;
+}
+.loading {
+  color: #fbbf24;
+}
+.error {
+  color: #ef4444;
+}
+.timestamp {
+  text-align: center;
+  color: #64748b;
+  font-size: 0.85rem;
+  margin-top: 40px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🔗 Token Preise – Live On-Chain</h1>
+<div class="subtitle">PancakeSwap V2 auf Binance Smart Chain</div>
+
+<div class="container">
+  <!-- BTCB Card -->
+  <div class="card">
+    <div class="token">BTCB</div>
+    <div id="btcbPrice" class="price loading">Lädt…</div>
+    <div class="small">Pool: BTCB / USDT</div>
+  </div>
+
+  <!-- VOW Card -->
+  <div class="card">
+    <div class="token">VOW</div>
+    <div id="vowPrice" class="price loading">Lädt…</div>
+    <div class="small">Pool: VOW / USDT</div>
+  </div>
+
+  <!-- v$ Card -->
+  <div class="card">
+    <div class="token">v$ (VOW Dollar)</div>
+    <div id="vDollarPrice" class="price loading">Lädt…</div>
+    <div class="small">Berechnet aus VOW / v$</div>
+  </div>
+</div>
+
+<div class="timestamp" id="timestamp"></div>
+
+<script>
+(async () => {
+
+const RPC = "https://bsc-dataseed.binance.org/";
+const provider = new ethers.JsonRpcProvider(RPC);
+
+// Token Adressen
+const BTCB = "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c";
+const USDT = "0x55d398326f99059fF775485246999027B3197955";
+const VOW = "0xf585b5b4f22816baf7629aea55b701662630397b";
+const V_DOLLAR = "0x9C23942Ca2C35e06d1d20747F33705983A18d2AB";
+
+// PancakeSwap V2 Factory & Pools
+const FACTORY = "0xca143ce32fe78f1f7019d7d551a6402fc5350c73";
+const POOL_VOW_USDT = "0xc6585bc17b53792f281a9739579dd60535c1f9fb";
+const POOL_VOW_VDOLLAR = "0xc51c99af9d5c31d0c37d028500b2b344debdf188";
+
+const FACTORY_ABI = [
+  "function getPair(address tokenA, address tokenB) external view returns (address pair)"
+];
+
+const PAIR_ABI = [
+  "function getReserves() view returns (uint112,uint112,uint32)",
+  "function token0() view returns (address)",
+  "function token1() view returns (address)"
+];
+
+// Hilfsfunktion: Preis aus Pool berechnen
+async function priceFromPool(poolAddress, baseToken) {
+  const pair = new ethers.Contract(poolAddress, PAIR_ABI, provider);
+
+  const [token0, token1, reserves] = await Promise.all([
+    pair.token0(),
+    pair.token1(),
+    pair.getReserves()
+  ]);
+
+  const r0 = Number(ethers.formatUnits(reserves[0], 18));
+  const r1 = Number(ethers.formatUnits(reserves[1], 18));
+
+  if (token0.toLowerCase() === baseToken.toLowerCase()) return r1 / r0;
+  if (token1.toLowerCase() === baseToken.toLowerCase()) return r0 / r1;
+
+  throw new Error("Token nicht im Pool");
+}
+
+// Schweizer Zahlenformat mit Apostroph
+function formatSwiss(num, decimals = 2) {
+  const fixed = num.toFixed(decimals);
+  const parts = fixed.split('.');
+  const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+  return parts[1] ? `${integerPart}.${parts[1]}` : integerPart;
+}
+
+try {
+  // === BTCB Preis ===
+  try {
+    const factory = new ethers.Contract(FACTORY, FACTORY_ABI, provider);
+    const btcbPoolAddress = await factory.getPair(BTCB, USDT);
+    
+    if (btcbPoolAddress === ethers.ZeroAddress) {
+      throw new Error("BTCB Pool existiert nicht");
+    }
+
+    const btcbPrice = await priceFromPool(btcbPoolAddress, BTCB);
+    document.getElementById("btcbPrice").innerHTML = `$${formatSwiss(btcbPrice, 2)}`;
+    document.getElementById("btcbPrice").classList.remove("loading");
+  } catch (err) {
+    console.error("BTCB Error:", err);
+    document.getElementById("btcbPrice").innerHTML = "Fehler";
+    document.getElementById("btcbPrice").classList.remove("loading");
+    document.getElementById("btcbPrice").classList.add("error");
+  }
+
+  // === VOW Preis ===
+  try {
+    const vowPrice = await priceFromPool(POOL_VOW_USDT, VOW);
+    document.getElementById("vowPrice").innerHTML = `$${formatSwiss(vowPrice, 6)}`;
+    document.getElementById("vowPrice").classList.remove("loading");
+
+    // === v$ Preis (berechnet aus VOW) ===
+    try {
+      const vDollarInVow = await priceFromPool(POOL_VOW_VDOLLAR, V_DOLLAR);
+      const vDollarPrice = vDollarInVow * vowPrice;
+      document.getElementById("vDollarPrice").innerHTML = `$${formatSwiss(vDollarPrice, 6)}`;
+      document.getElementById("vDollarPrice").classList.remove("loading");
+    } catch (err) {
+      console.error("v$ Error:", err);
+      document.getElementById("vDollarPrice").innerHTML = "Fehler";
+      document.getElementById("vDollarPrice").classList.remove("loading");
+      document.getElementById("vDollarPrice").classList.add("error");
+    }
+
+  } catch (err) {
+    console.error("VOW Error:", err);
+    document.getElementById("vowPrice").innerHTML = "Fehler";
+    document.getElementById("vowPrice").classList.remove("loading");
+    document.getElementById("vowPrice").classList.add("error");
+    
+    document.getElementById("vDollarPrice").innerHTML = "Fehler";
+    document.getElementById("vDollarPrice").classList.remove("loading");
+    document.getElementById("vDollarPrice").classList.add("error");
+  }
+
+  // Timestamp
+  const now = new Date();
+  const swissTime = new Intl.DateTimeFormat('de-CH', {
+    timeZone: 'Europe/Zurich',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(now);
+  
+  document.getElementById("timestamp").innerHTML = `Letzte Aktualisierung: ${swissTime} (Schweizer Zeit)`;
+
+} catch (err) {
+  console.error("Genereller Fehler:", err);
+}
+
+})();
+</script>
+
+</body>
+</html>
