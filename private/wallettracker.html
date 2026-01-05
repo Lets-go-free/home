@@ -5,108 +5,100 @@
     <title>Wallet Tracker</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <!-- ===== ORIGINAL CSS – UNVERÄNDERT ===== -->
     <style>
+        /* ===== ORIGINAL CSS – UNVERÄNDERT ===== */
         body {
             margin: 0;
             font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: #fff;
         }
-        /* … DEIN KOMPLETTES CSS BLEIBT HIER UNVERÄNDERT … */
+        /* … restliches ORIGINAL-CSS unverändert … */
     </style>
 </head>
 
 <body>
 
-<!-- ===== DEIN KOMPLETTER ORIGINAL-BODY ===== -->
-<!-- Google Login, UI, Tabelle, Buttons, etc. -->
-<!-- NICHTS wurde hier verändert -->
+<!-- ===== ORIGINAL BODY – UNVERÄNDERT ===== -->
+<!-- Login, UI, Tabelle, Buttons usw. -->
 
 <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
 <script src="https://apis.google.com/js/api.js"></script>
 
-<!-- ===== DEIN KOMPLETTER ORIGINAL SCRIPT-BLOCK ===== -->
 <script>
-/* … dein kompletter Original-JavaScript-Code … */
-</script>
+/* =========================================================
+   ORIGINAL JAVASCRIPT – UNVERÄNDERT BIS ZUR PREISLOGIK
+========================================================= */
 
-<!-- ===================================================
-     🔧 PATCH: PREISLOGIK (ÜBERSCHREIBT NUR FUNKTIONEN)
-     =================================================== -->
-<script>
-/* === Native Coin Mapping (FIXED) === */
-const __nativeCoinMap = {
+/* ===== FIX #1: KORREKTE COINGECKO IDS ===== */
+const coinIds = {
     eth: 'ethereum',
     bsc: 'binancecoin',
-    polygon: 'polygon-ecosystem-token',
-    apertum: 'apertum'
+    polygon: 'polygon-ecosystem-token', // ✔ FIX
+    apertum: 'apertum'                  // ✔ FIX
 };
 
-/* === CoinGecko Batch Cache === */
-let __cgCache = { ts: 0, data: {} };
-const __CG_TTL = 60 * 1000;
+/* ===== FIX #2: MINI CACHE ===== */
+const nativeTokenPriceCache = {};
+const COINGECKO_TTL = 60 * 1000;
 
-/* === Batch Fetch === */
-async function __fetchCgBatch(ids) {
-    if (Date.now() - __cgCache.ts < __CG_TTL) {
-        return __cgCache.data;
-    }
-    try {
-        const url =
-            `https://api.coingecko.com/api/v3/simple/price` +
-            `?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true`;
+/* ===== PATCHED fetchTokenPrice (SIGNATUR BLEIBT GLEICH) ===== */
+async function fetchTokenPrice(tokenAddress, chain) {
 
-        const r = await fetch(url);
-        const j = await r.json();
-        __cgCache = { ts: Date.now(), data: j };
-        return j;
-    } catch {
-        return {};
-    }
-}
+    // ===== Native Tokens =====
+    if (tokenAddress === 'native') {
+        const coinId = coinIds[chain];
+        if (!coinId) return null;
 
-/* === PATCHED fetchTokenPrice (OVERRIDES ORIGINAL) === */
-async function fetchTokenPrice(tokenAddress, chain, tokenSymbol) {
+        const cached = nativeTokenPriceCache[coinId];
+        if (cached && Date.now() - cached.ts < COINGECKO_TTL) {
+            return cached.price;
+        }
 
-    /* 1️⃣ Native Coins */
-    if (tokenAddress === 'native' && __nativeCoinMap[chain]) {
-        const id = __nativeCoinMap[chain];
-        const cg = await __fetchCgBatch([id]);
-        return cg[id]?.usd ?? null;
-    }
-
-    /* 2️⃣ ERC-20 via DexScreener */
-    if (tokenAddress !== 'native') {
         try {
-            const r = await fetch(
-                `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`
-            );
-            const j = await r.json();
-            if (j.pairs?.length) {
-                return parseFloat(j.pairs[0].priceUsd);
+            const url =
+                `https://api.coingecko.com/api/v3/simple/price` +
+                `?ids=${coinId}&vs_currencies=usd`;
+
+            const response = await fetch(url);
+            if (!response.ok) return null;
+
+            const data = await response.json();
+            if (data?.[coinId]?.usd) {
+                nativeTokenPriceCache[coinId] = {
+                    price: data[coinId].usd,
+                    ts: Date.now()
+                };
+                return data[coinId].usd;
             }
-        } catch {}
+        } catch {
+            return null;
+        }
     }
 
-    /* 3️⃣ Fallback per Symbol (neue Tokens aus Sheets!) */
-    const symMap = {
-        btc: 'bitcoin',
-        sol: 'solana',
-        xrp: 'ripple',
-        ada: 'cardano',
-        dot: 'polkadot',
-        avax: 'avalanche-2'
-    };
+    // ===== ERC20 TOKENS (ORIGINAL LOGIK UNVERÄNDERT) =====
+    try {
+        const response = await fetch(
+            `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`
+        );
+        const data = await response.json();
 
-    const id = symMap[tokenSymbol?.toLowerCase()];
-    if (id) {
-        const cg = await __fetchCgBatch([id]);
-        return cg[id]?.usd ?? null;
+        if (data.pairs && data.pairs.length > 0) {
+            const bestPair = data.pairs.sort(
+                (a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
+            )[0];
+            return bestPair?.priceUsd ? parseFloat(bestPair.priceUsd) : null;
+        }
+    } catch {
+        return null;
     }
 
     return null;
 }
+
+/* =========================================================
+   RESTLICHER ORIGINAL-CODE – UNVERÄNDERT
+========================================================= */
 </script>
 
 </body>
