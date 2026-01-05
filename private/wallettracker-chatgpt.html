@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Wallet Tracker (CORS & 429 FIX)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body { font-family: system-ui; background:#0f172a; color:#e5e7eb; padding:20px }
+table { width:100%; border-collapse:collapse; margin-top:20px }
+th,td { padding:10px; border-bottom:1px solid #334155 }
+th { text-align:left }
+td { text-align:right }
+.up { color:#22c55e }
+.down { color:#ef4444 }
+.neutral { color:#94a3b8 }
+</style>
+</head>
+
+<body>
+
+<h1>🔐 Wallet Tracker</h1>
+<div id="output">Lade…</div>
+
+<script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+
+<script>
+/* ================= CONFIG ================= */
+
+const RPC = {
+  eth: 'https://eth.llamarpc.com',
+  polygon: 'https://polygon-rpc.com',
+  bsc: 'https://bsc-dataseed.binance.org/',
+  apertum: 'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc'
+};
+
+const COINGECKO_IDS = {
+  eth: 'ethereum',
+  polygon: 'polygon-ecosystem-token',
+  bsc: 'binancecoin',
+  apertum: 'apertum',
+  btc: 'bitcoin',
+  sol: 'solana',
+  xrp: 'ripple'
+};
+
+const wallets = [
+  { name:'Main', address:'0x000000000000000000000000000000000000dead' }
+];
+
+const tokens = {
+  eth: [{ symbol:'ETH', address:'native' }],
+  polygon: [{ symbol:'POL', address:'native' }],
+  apertum: [{ symbol:'APTM', address:'native' }],
+  nonEvm: [
+    { symbol:'BTC', chain:'btc' },
+    { symbol:'SOL', chain:'sol' },
+    { symbol:'XRP', chain:'xrp' }
+  ]
+};
+
+/* ================= WEB3 ================= */
+
+const web3 = {};
+for (const c in RPC) web3[c] = new Web3(RPC[c]);
+
+function isEvmChain(chain) {
+  return !!web3[chain];
+}
+
+/* ================= COINGECKO BATCH ================= */
+
+async function fetchAllPrices() {
+  const ids = Object.values(COINGECKO_IDS).join(',');
+  try {
+    const r = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price` +
+      `?ids=${ids}&vs_currencies=usd&include_24hr_change=true`
+    );
+    if (!r.ok) throw new Error('CG error');
+    return await r.json();
+  } catch {
+    return {};
+  }
+}
+
+/* ================= LOAD ================= */
+
+async function load() {
+  const rows = [];
+  const prices = await fetchAllPrices();
+
+  for (const chain in tokens) {
+    if (chain === 'nonEvm') continue;
+
+    for (const t of tokens[chain]) {
+      for (const w of wallets) {
+        let balance = null;
+
+        if (isEvmChain(chain) && t.address === 'native') {
+          try {
+            const wei = await web3[chain].eth.getBalance(w.address);
+            balance = parseFloat(Web3.utils.fromWei(wei, 'ether'));
+          } catch {}
+        }
+
+        if (typeof balance === 'number' && balance > 0) {
+          const cg = prices[COINGECKO_IDS[chain]] || {};
+          rows.push({
+            wallet: w.name,
+            token: t.symbol,
+            chain,
+            balance,
+            price: cg.usd ?? null,
+            change24h: cg.usd_24h_change ?? null
+          });
+        }
+      }
+    }
+  }
+
+  for (const t of tokens.nonEvm) {
+    const cg = prices[COINGECKO_IDS[t.chain]] || {};
+    rows.push({
+      wallet: '—',
+      token: t.symbol,
+      chain: t.chain,
+      balance: '—',
+      price: cg.usd ?? null,
+      change24h: cg.usd_24h_change ?? null
+    });
+  }
+
+  render(rows);
+}
+
+/* ================= RENDER ================= */
+
+function render(rows) {
+  let html = `<table>
+  <tr>
+    <th>Wallet</th>
+    <th>Token</th>
+    <th>Chain</th>
+    <th>Balance</th>
+    <th>Preis (USD)</th>
+    <th>24h</th>
+    <th>Wert (USD)</th>
+  </tr>`;
+
+  rows.forEach(r => {
+    const cls =
+      r.change24h > 0 ? 'up' :
+      r.change24h < 0 ? 'down' : 'neutral';
+
+    const value =
+      typeof r.balance === 'number' && r.price
+        ? (r.balance * r.price).toFixed(2)
+        : '—';
+
+    html += `<tr>
+      <td>${r.wallet}</td>
+      <td>${r.token}</td>
+      <td>${r.chain.toUpperCase()}</td>
+      <td>${typeof r.balance === 'number' ? r.balance.toFixed(6) : '—'}</td>
+      <td>${r.price ? '$'+r.price.toFixed(4) : '—'}</td>
+      <td class="${cls}">${r.change24h ? r.change24h.toFixed(2)+'%' : '—'}</td>
+      <td>${value !== '—' ? '$'+value : '—'}</td>
+    </tr>`;
+  });
+
+  html += '</table>';
+  document.getElementById('output').innerHTML = html;
+}
+
+load();
+</script>
+
+</body>
+</html>
