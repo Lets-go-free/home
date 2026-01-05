@@ -2,69 +2,219 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>Wallet Tracker</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    ……………
-    (CSS und Head INHALT UNVERÄNDERT – exakt wie in deiner Datei)
-    ……………
+    <title>🔐 Multi-Wallet Token Viewer</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;
+        background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding:20px}
+        .container{max-width:1400px;margin:0 auto}
+        .header{text-align:center;color:white;margin-bottom:30px}
+        .header h1{font-size:32px;margin-bottom:10px}
+        .timestamp{font-size:14px;opacity:.9}
+        .login-box{background:white;border-radius:15px;padding:40px;max-width:400px;margin:100px auto;
+        box-shadow:0 10px 30px rgba(0,0,0,.2);text-align:center}
+        .login-box h2{margin-bottom:20px;color:#2d3748}
+        .login-box p{margin-bottom:30px;color:#718096}
+        .app-content{display:none}
+        .app-content.loaded{display:block}
+        table{width:100%;border-collapse:collapse}
+        th,td{padding:10px 15px;font-size:13px}
+        th{background:#f7fafc;border-bottom:2px solid #e2e8f0;text-align:left}
+        tbody tr{border-bottom:1px solid #e2e8f0}
+        .balance{text-align:right;font-weight:600}
+        .token-address-cell{font-family:monospace;font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .loading{text-align:center;padding:60px;color:#4a5568}
+        .spinner{border:4px solid #e2e8f0;border-top:4px solid #667eea;border-radius:50%;
+        width:50px;height:50px;animation:spin 1s linear infinite;margin:0 auto 20px}
+        @keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+    </style>
 </head>
 
-<body onload="gapiLoaded()">
+<body>
+<div class="container">
+    <div class="header">
+        <h1>🔐 Multi-Wallet Token Viewer</h1>
+        <div class="timestamp">Version: 04.01.2026</div>
+    </div>
 
-……………
-(GANZER ORIGINAL BODY UNVERÄNDERT)
-……………
+    <div id="loginBox" class="login-box">
+        <h2>Google Anmeldung erforderlich</h2>
+        <p>Bitte anmelden, um Wallet-Daten zu laden.</p>
+        <div id="google-signin-button"></div>
+        <p id="loginStatus"></p>
+    </div>
+
+    <div id="appContent" class="app-content">
+        <div id="tableContent">
+            <div class="loading">
+                <div class="spinner"></div>
+                Lade Daten…
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+<script src="https://apis.google.com/js/api.js"></script>
 
 <script>
-/* ================= ORIGINAL CODE ================= */
-
-/* ===== FIX: korrekte CoinGecko IDs ===== */
-const coinIds = {
-    eth: 'ethereum',
-    bsc: 'binancecoin',
-    polygon: 'polygon-ecosystem-token', // FIX
-    apertum: 'apertum'                  // FIX
+/* ================= GOOGLE CONFIG ================= */
+const GOOGLE_CONFIG={
+ apiKey:'AIzaSyCoJAYF8BVhYk8k2Zr2MbDAt2qwkaGEM8w',
+ clientId:'42198403966-ovpg5lar1qso4vqfl9rd4ebeunltpegs.apps.googleusercontent.com',
+ spreadsheetId:'1M0HycCitzlkgk_uG1Y-iLeYKthdUaRGnCvv3Hxv0yww',
+ discoveryDocs:['https://sheets.googleapis.com/$discovery/rest?version=v4'],
+ scopes:'https://www.googleapis.com/auth/spreadsheets.readonly'
 };
 
-/* ===== FIX: Mini Cache ===== */
-const nativeTokenPriceCache = {};
-const COINGECKO_TTL = 60 * 1000;
+let wallets=[],tokens={},allBalances=[],web3Instances={};
+let gapiInited=false,tokenClient,accessToken=null;
 
-/* ===== ORIGINAL fetchTokenPrice – nur nativer Teil gepatcht ===== */
-async function fetchTokenPrice(tokenAddress, chain) {
+/* ================= RPC ================= */
+const rpcEndpoints={
+ eth:'https://eth.llamarpc.com',
+ bsc:'https://bsc-dataseed.binance.org/',
+ polygon:'https://polygon-rpc.com',
+ apertum:'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc'
+};
 
-    if (tokenAddress === 'native') {
-        const coinId = coinIds[chain];
-        if (!coinId) return null;
+const dexScreenerChainIds={
+ eth:'ethereum',bsc:'bsc',polygon:'polygon',apertum:'avalanche'
+};
 
-        const cached = nativeTokenPriceCache[coinId];
-        if (cached && Date.now() - cached.ts < COINGECKO_TTL) {
-            return cached.price;
-        }
+/* ================= PRICE CACHE ================= */
+const nativeTokenPriceCache={};
+const COINGECKO_TTL=60000;
 
-        try {
-            const url =
-              `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`;
+/* ================= GOOGLE INIT ================= */
+function gapiLoaded(){
+ gapi.load('client',async()=>{
+  await gapi.client.init({apiKey:GOOGLE_CONFIG.apiKey,discoveryDocs:GOOGLE_CONFIG.discoveryDocs});
+  gapiInited=true;
+  maybeEnableButtons();
+ });
+}
 
-            const response = await fetch(url);
-            if (!response.ok) return null;
+function gisLoaded(){
+ tokenClient=google.accounts.oauth2.initTokenClient({
+  client_id:GOOGLE_CONFIG.clientId,
+  scope:GOOGLE_CONFIG.scopes,
+  callback:async(resp)=>{
+   accessToken=resp.access_token;
+   await loadSheetsData();
+   document.getElementById('loginBox').style.display='none';
+   document.getElementById('appContent').classList.add('loaded');
+   initializeWeb3();
+  }
+ });
+ maybeEnableButtons();
+}
 
-            const data = await response.json();
-            if (data?.[coinId]?.usd) {
-                nativeTokenPriceCache[coinId] = {
-                    price: data[coinId].usd,
-                    ts: Date.now()
-                };
-                return data[coinId].usd;
-            }
-        } catch {}
-        return null;
+function maybeEnableButtons(){
+ if(gapiInited && tokenClient){
+  document.getElementById('google-signin-button').innerHTML=
+   `<button onclick="handleAuthClick()">Mit Google anmelden</button>`;
+ }
+}
+
+function handleAuthClick(){
+ tokenClient.requestAccessToken({prompt:'consent'});
+}
+
+window.addEventListener('load',()=>{
+ gapiLoaded();
+ const s=document.createElement('script');
+ s.src='https://accounts.google.com/gsi/client';
+ s.onload=gisLoaded;
+ document.head.appendChild(s);
+});
+
+/* ================= SHEETS ================= */
+async function loadSheetsData(){
+ const w=await gapi.client.sheets.spreadsheets.values.get({
+  spreadsheetId:GOOGLE_CONFIG.spreadsheetId,range:'Wallets!A2:B'});
+ wallets=w.result.values.map(r=>({name:r[0],address:r[1]}));
+
+ const t=await gapi.client.sheets.spreadsheets.values.get({
+  spreadsheetId:GOOGLE_CONFIG.spreadsheetId,range:'Tokens!A2:E'});
+ tokens={};
+ t.result.values.forEach(r=>{
+  if(!tokens[r[0]])tokens[r[0]]=[];
+  tokens[r[0]].push({symbol:r[1],name:r[2],address:r[3],decimals:18});
+ });
+}
+
+/* ================= WEB3 ================= */
+function initializeWeb3(){
+ for(const c in rpcEndpoints) web3Instances[c]=new Web3(rpcEndpoints[c]);
+ loadAllWallets();
+}
+
+/* ================= PRICE LOGIC (FIXED) ================= */
+async function fetchTokenPrice(tokenAddress,chain){
+ if(tokenAddress==='native'){
+  const coinIds={
+   eth:'ethereum',
+   bsc:'binancecoin',
+   polygon:'polygon-ecosystem-token',
+   apertum:'apertum'
+  };
+  const id=coinIds[chain];
+  if(!id) return null;
+
+  const cached=nativeTokenPriceCache[id];
+  if(cached && Date.now()-cached.ts<COINGECKO_TTL) return cached.price;
+
+  const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`);
+  if(!r.ok) return null;
+  const j=await r.json();
+  if(j[id]?.usd){
+   nativeTokenPriceCache[id]={price:j[id].usd,ts:Date.now()};
+   return j[id].usd;
+  }
+  return null;
+ }
+
+ const r=await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
+ if(!r.ok) return null;
+ const j=await r.json();
+ const pairs=j.pairs?.filter(p=>p.chainId===dexScreenerChainIds[chain])||[];
+ if(!pairs.length) return null;
+ return parseFloat(pairs[0].priceUsd);
+}
+
+/* ================= LOAD ================= */
+async function loadAllWallets(){
+ allBalances=[];
+ for(const w of wallets){
+  for(const c in tokens){
+   for(const t of tokens[c]){
+    let bal=0;
+    if(t.address==='native'){
+     const wei=await web3Instances[c].eth.getBalance(w.address);
+     bal=parseFloat(web3Instances[c].utils.fromWei(wei,'ether'));
     }
+    if(bal>0){
+     const p=await fetchTokenPrice(t.address,c);
+     allBalances.push({wallet:w.name,token:t.symbol,chain:c,balance:bal,price:p});
+    }
+   }
+  }
+ }
+ render();
+}
 
-    /* ===== REST: ERC20 ORIGINAL CODE UNVERÄNDERT ===== */
-    …
+function render(){
+ let h=`<table><tr><th>Wallet</th><th>Token</th><th>Chain</th><th>Anzahl</th><th>Preis USD</th></tr>`;
+ allBalances.forEach(i=>{
+  h+=`<tr><td>${i.wallet}</td><td>${i.token}</td><td>${i.chain}</td>
+  <td class="balance">${i.balance.toFixed(4)}</td>
+  <td class="balance">${i.price?('$'+i.price):'-'}</td></tr>`;
+ });
+ h+='</table>';
+ document.getElementById('tableContent').innerHTML=h;
 }
 </script>
-
 </body>
 </html>
