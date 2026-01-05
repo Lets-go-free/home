@@ -2,31 +2,15 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Multi-Wallet Token Viewer – Cached</title>
+<title>Multi-Wallet Token Viewer (Fixed)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
-body {
-  font-family: system-ui, -apple-system;
-  background:#0f172a;
-  color:#e5e7eb;
-  padding:20px;
-}
-h1 { margin-bottom:4px }
-small { color:#94a3b8 }
-
-table {
-  width:100%;
-  border-collapse:collapse;
-  margin-top:20px;
-}
-th, td {
-  padding:10px;
-  border-bottom:1px solid #334155;
-}
-th { text-align:left; color:#cbd5f5 }
+body { font-family: system-ui; background:#0f172a; color:#e5e7eb; padding:20px }
+table { width:100%; border-collapse:collapse; margin-top:20px }
+th,td { padding:10px; border-bottom:1px solid #334155 }
+th { text-align:left }
 td { text-align:right }
-
 .up { color:#22c55e }
 .down { color:#ef4444 }
 .neutral { color:#94a3b8 }
@@ -36,18 +20,13 @@ td { text-align:right }
 <body>
 
 <h1>🔐 Multi-Wallet Token Viewer</h1>
-<small>Preis-Caching + 24h-Change · CoinGecko + DexScreener</small>
-
-<div id="output">Lade Daten…</div>
+<div id="output">Lade…</div>
 
 <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
 
 <script>
-/* ======================================================
-   CONFIG
-====================================================== */
+/* ================= CONFIG ================= */
 
-// RPCs (nur EVM)
 const RPC = {
   eth: 'https://eth.llamarpc.com',
   polygon: 'https://polygon-rpc.com',
@@ -55,37 +34,24 @@ const RPC = {
   apertum: 'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc'
 };
 
-// CoinGecko IDs
 const COINGECKO = {
   eth: 'ethereum',
-  bsc: 'binancecoin',
   polygon: 'polygon-ecosystem-token',
+  bsc: 'binancecoin',
   apertum: 'apertum',
-
   btc: 'bitcoin',
   sol: 'solana',
-  xrp: 'ripple',
-  ada: 'cardano'
+  xrp: 'ripple'
 };
 
-// DexScreener Chains
-const DEX_CHAIN = {
-  eth: 'ethereum',
-  bsc: 'bsc',
-  polygon: 'polygon'
-};
-
-// Wallets (Beispiel)
 const wallets = [
   { name:'Main', address:'0x000000000000000000000000000000000000dead' }
 ];
 
-// Tokens
 const tokens = {
   eth: [{ symbol:'ETH', address:'native' }],
   polygon: [{ symbol:'POL', address:'native' }],
   apertum: [{ symbol:'APTM', address:'native' }],
-
   nonEvm: [
     { symbol:'BTC', chain:'btc' },
     { symbol:'SOL', chain:'sol' },
@@ -93,17 +59,18 @@ const tokens = {
   ]
 };
 
-/* ======================================================
-   WEB3
-====================================================== */
+/* ================= WEB3 ================= */
+
 const web3 = {};
 for (const c in RPC) web3[c] = new Web3(RPC[c]);
 
-/* ======================================================
-   PRICE CACHE (localStorage)
-====================================================== */
+function isEvmChain(chain) {
+  return typeof web3[chain] !== 'undefined';
+}
 
-const CACHE_TTL = 60_000; // 60 Sekunden
+/* ================= CACHE ================= */
+
+const CACHE_TTL = 60000;
 
 function getCache(key) {
   const raw = localStorage.getItem(key);
@@ -114,26 +81,19 @@ function getCache(key) {
 }
 
 function setCache(key, value) {
-  localStorage.setItem(key, JSON.stringify({
-    ...value,
-    time: Date.now()
-  }));
+  localStorage.setItem(key, JSON.stringify({ ...value, time: Date.now() }));
 }
 
-/* ======================================================
-   PRICE FETCH
-====================================================== */
+/* ================= PRICES ================= */
 
 async function fetchCoingecko(id) {
-  const cacheKey = `cg_${id}`;
-  const cached = getCache(cacheKey);
+  const ck = 'cg_' + id;
+  const cached = getCache(ck);
   if (cached) return cached;
 
-  const url =
-    `https://api.coingecko.com/api/v3/simple/price` +
-    `?ids=${id}&vs_currencies=usd&include_24hr_change=true`;
-
-  const r = await fetch(url);
+  const r = await fetch(
+    `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd&include_24hr_change=true`
+  );
   const j = await r.json();
   if (!j[id]) return null;
 
@@ -141,103 +101,75 @@ async function fetchCoingecko(id) {
     price: j[id].usd,
     change24h: j[id].usd_24h_change
   };
-  setCache(cacheKey, data);
+  setCache(ck, data);
   return data;
 }
 
-async function fetchDex(tokenAddress, chain) {
-  const cacheKey = `dex_${chain}_${tokenAddress}`;
-  const cached = getCache(cacheKey);
-  if (cached) return cached;
-
-  const r = await fetch(
-    `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`
-  );
-  const j = await r.json();
-  if (!j.pairs) return null;
-
-  const pairs = j.pairs.filter(p => p.chainId === DEX_CHAIN[chain]);
-  if (!pairs.length) return null;
-
-  const best = pairs.sort(
-    (a,b)=>(b.liquidity?.usd||0)-(a.liquidity?.usd||0)
-  )[0];
-
-  const data = {
-    price: parseFloat(best.priceUsd),
-    change24h: parseFloat(best.priceChange?.h24 ?? 0)
-  };
-  setCache(cacheKey, data);
-  return data;
-}
-
-/* ======================================================
-   LOAD DATA
-====================================================== */
+/* ================= LOAD ================= */
 
 async function load() {
   const rows = [];
 
-  // EVM native tokens
   for (const chain in tokens) {
     if (chain === 'nonEvm') continue;
 
     for (const t of tokens[chain]) {
       for (const w of wallets) {
-        let balance = 0;
+        let balance = null;
 
-        if (t.address === 'native') {
-          const wei = await web3[chain].eth.getBalance(w.address);
-          balance = parseFloat(Web3.utils.fromWei(wei));
+        if (isEvmChain(chain) && t.address === 'native') {
+          try {
+            const wei = await web3[chain].eth.getBalance(w.address);
+            if (wei !== undefined) {
+              balance = parseFloat(Web3.utils.fromWei(wei, 'ether'));
+            }
+          } catch {}
         }
 
-        if (balance > 0) {
-          const priceData = await fetchCoingecko(COINGECKO[chain]);
+        if (typeof balance === 'number' && balance > 0) {
+          const p = await fetchCoingecko(COINGECKO[chain]);
           rows.push({
             wallet: w.name,
             token: t.symbol,
             chain,
             balance,
-            ...priceData
+            ...p
           });
         }
       }
     }
   }
 
-  // Non-EVM coins (Preis only)
   for (const t of tokens.nonEvm) {
-    const priceData = await fetchCoingecko(COINGECKO[t.chain]);
+    const p = await fetchCoingecko(COINGECKO[t.chain]);
     rows.push({
       wallet: '—',
       token: t.symbol,
       chain: t.chain,
       balance: '—',
-      ...priceData
+      ...p
     });
   }
 
   render(rows);
 }
 
-/* ======================================================
-   RENDER
-====================================================== */
+/* ================= RENDER ================= */
 
 function render(rows) {
   let html = `<table>
-    <tr>
-      <th>Wallet</th>
-      <th>Token</th>
-      <th>Chain</th>
-      <th>Balance</th>
-      <th>Preis (USD)</th>
-      <th>24h</th>
-      <th>Wert (USD)</th>
-    </tr>`;
+  <tr>
+    <th>Wallet</th>
+    <th>Token</th>
+    <th>Chain</th>
+    <th>Balance</th>
+    <th>Preis (USD)</th>
+    <th>24h</th>
+    <th>Wert (USD)</th>
+  </tr>`;
 
   rows.forEach(r => {
-    const changeClass =
+    const cls =
       r.change24h > 0 ? 'up' :
       r.change24h < 0 ? 'down' : 'neutral';
 
@@ -252,9 +184,7 @@ function render(rows) {
       <td>${r.chain.toUpperCase()}</td>
       <td>${typeof r.balance === 'number' ? r.balance.toFixed(6) : '—'}</td>
       <td>${r.price ? '$'+r.price.toFixed(4) : '—'}</td>
-      <td class="${changeClass}">
-        ${r.change24h ? r.change24h.toFixed(2)+'%' : '—'}
-      </td>
+      <td class="${cls}">${r.change24h ? r.change24h.toFixed(2)+'%' : '—'}</td>
       <td>${value !== '—' ? '$'+value : '—'}</td>
     </tr>`;
   });
