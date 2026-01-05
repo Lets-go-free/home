@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Multi-Wallet Token Viewer (Fixed)</title>
+<title>Wallet Tracker (CORS & 429 FIX)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
@@ -19,7 +19,7 @@ td { text-align:right }
 
 <body>
 
-<h1>🔐 Multi-Wallet Token Viewer</h1>
+<h1>🔐 Wallet Tracker</h1>
 <div id="output">Lade…</div>
 
 <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
@@ -34,7 +34,7 @@ const RPC = {
   apertum: 'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc'
 };
 
-const COINGECKO = {
+const COINGECKO_IDS = {
   eth: 'ethereum',
   polygon: 'polygon-ecosystem-token',
   bsc: 'binancecoin',
@@ -65,50 +65,30 @@ const web3 = {};
 for (const c in RPC) web3[c] = new Web3(RPC[c]);
 
 function isEvmChain(chain) {
-  return typeof web3[chain] !== 'undefined';
+  return !!web3[chain];
 }
 
-/* ================= CACHE ================= */
+/* ================= COINGECKO BATCH ================= */
 
-const CACHE_TTL = 60000;
-
-function getCache(key) {
-  const raw = localStorage.getItem(key);
-  if (!raw) return null;
-  const data = JSON.parse(raw);
-  if (Date.now() - data.time > CACHE_TTL) return null;
-  return data;
-}
-
-function setCache(key, value) {
-  localStorage.setItem(key, JSON.stringify({ ...value, time: Date.now() }));
-}
-
-/* ================= PRICES ================= */
-
-async function fetchCoingecko(id) {
-  const ck = 'cg_' + id;
-  const cached = getCache(ck);
-  if (cached) return cached;
-
-  const r = await fetch(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd&include_24hr_change=true`
-  );
-  const j = await r.json();
-  if (!j[id]) return null;
-
-  const data = {
-    price: j[id].usd,
-    change24h: j[id].usd_24h_change
-  };
-  setCache(ck, data);
-  return data;
+async function fetchAllPrices() {
+  const ids = Object.values(COINGECKO_IDS).join(',');
+  try {
+    const r = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price` +
+      `?ids=${ids}&vs_currencies=usd&include_24hr_change=true`
+    );
+    if (!r.ok) throw new Error('CG error');
+    return await r.json();
+  } catch {
+    return {};
+  }
 }
 
 /* ================= LOAD ================= */
 
 async function load() {
   const rows = [];
+  const prices = await fetchAllPrices();
 
   for (const chain in tokens) {
     if (chain === 'nonEvm') continue;
@@ -120,20 +100,19 @@ async function load() {
         if (isEvmChain(chain) && t.address === 'native') {
           try {
             const wei = await web3[chain].eth.getBalance(w.address);
-            if (wei !== undefined) {
-              balance = parseFloat(Web3.utils.fromWei(wei, 'ether'));
-            }
+            balance = parseFloat(Web3.utils.fromWei(wei, 'ether'));
           } catch {}
         }
 
         if (typeof balance === 'number' && balance > 0) {
-          const p = await fetchCoingecko(COINGECKO[chain]);
+          const cg = prices[COINGECKO_IDS[chain]] || {};
           rows.push({
             wallet: w.name,
             token: t.symbol,
             chain,
             balance,
-            ...p
+            price: cg.usd ?? null,
+            change24h: cg.usd_24h_change ?? null
           });
         }
       }
@@ -141,13 +120,14 @@ async function load() {
   }
 
   for (const t of tokens.nonEvm) {
-    const p = await fetchCoingecko(COINGECKO[t.chain]);
+    const cg = prices[COINGECKO_IDS[t.chain]] || {};
     rows.push({
       wallet: '—',
       token: t.symbol,
       chain: t.chain,
       balance: '—',
-      ...p
+      price: cg.usd ?? null,
+      change24h: cg.usd_24h_change ?? null
     });
   }
 
