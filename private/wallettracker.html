@@ -151,12 +151,29 @@ const status=document.getElementById('priceTableStatus');
 btn.disabled=true;
 btn.textContent='⏳ Lädt...';
 status.textContent='Lade Preise...';
+
+// Sammle ALLE Tokens aus dem Google Sheet (nicht nur mit Balance)
 const uniqueTokens=new Map();
-allBalances.forEach(item=>{const key=`${item.chain}-${item.tokenAddress}`;if(!uniqueTokens.has(key)){uniqueTokens.set(key,{chain:item.chain,address:item.tokenAddress,symbol:item.tokenSymbol,name:item.tokenName});}});
-console.log(`📊 Lade ${uniqueTokens.size} unique Token-Preise...`);
+for(const [chain, tokenList] of Object.entries(tokens)){
+    tokenList.forEach(token => {
+        const key=`${chain}-${token.address}`;
+        if(!uniqueTokens.has(key)){
+            uniqueTokens.set(key, {
+                chain: chain,
+                address: token.address,
+                symbol: token.symbol,
+                name: token.name
+            });
+        }
+    });
+}
+
+console.log(`📊 Lade ${uniqueTokens.size} Token-Preise...`);
 status.textContent=`Lade ${uniqueTokens.size} Token-Preise...`;
+
 const priceData=[];
 let loaded=0;
+
 for(const [key,token] of uniqueTokens){
 try{
 const startTime=Date.now();
@@ -169,6 +186,16 @@ loaded++;
 status.textContent=`Geladen: ${loaded}/${uniqueTokens.size} (${priceInfo.symbol}: ${price?'$'+formatNumber(price):'N/A'})`;
 displayPriceTable(priceData);
 }catch(e){console.error(`Fehler bei ${token.symbol}:`,e);}
+}
+
+console.log(`✅ ${loaded} Preise geladen`);
+status.textContent=`${loaded} Preise geladen - Letzte Aktualisierung: ${new Date().toLocaleTimeString('de-CH')}`;
+btn.textContent='🔄 Neu laden';
+btn.disabled=false;
+updateBalanceTableWithPrices();
+if(!priceTableVisible)togglePriceTable();
+}catch(e){console.error('Fehler:',e);document.getElementById('priceTableStatus').textContent='Fehler: '+e.message;document.getElementById('loadPricesBtn').disabled=false;}
+}
 }
 console.log(`✅ ${loaded} Preise geladen`);
 status.textContent=`${loaded} Preise geladen - Letzte Aktualisierung: ${new Date().toLocaleTimeString('de-CH')}`;
