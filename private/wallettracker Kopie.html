@@ -3,1053 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🔐 Multi-Wallet Token Viewer</title>
+    <title>🔍 Multi-Wallet Token Viewer</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
-        .header {
-            text-align: center;
-            color: white;
-            margin-bottom: 30px;
-        }
-
-        .header h1 {
-            font-size: 32px;
-            margin-bottom: 10px;
-        }
-
-        .timestamp {
-            font-size: 14px;
-            opacity: 0.9;
-        }
-
-        .login-box {
-            background: white;
-            border-radius: 15px;
-            padding: 40px;
-            max-width: 400px;
-            margin: 100px auto;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            text-align: center;
-        }
-
-        .login-box h2 {
-            margin-bottom: 20px;
-            color: #2d3748;
-        }
-
-        .login-box p {
-            margin-bottom: 30px;
-            color: #718096;
-        }
-
-        #google-signin-button {
-            margin: 0 auto;
-        }
-
-        .app-content {
-            display: none;
-        }
-
-        .app-content.loaded {
-            display: block;
-        }
-
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .stat-card {
-            background: white;
-            border-radius: 15px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-
-        .stat-label {
-            font-size: 14px;
-            color: #718096;
-            margin-bottom: 8px;
-        }
-
-        .stat-value {
-            font-size: 28px;
-            font-weight: 700;
-            color: #2d3748;
-        }
-
-        .controls {
-            background: white;
-            border-radius: 15px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-
-        .filter-group {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        .filter-group label {
-            color: #4a5568;
-            font-size: 14px;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-
-        .filter-select {
-            padding: 8px 12px;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            font-size: 14px;
-            min-width: 200px;
-            background: white;
-            cursor: pointer;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
-
-        .btn-secondary {
-            background: #e2e8f0;
-            color: #4a5568;
-        }
-
-        .btn-secondary:hover {
-            background: #cbd5e0;
-        }
-
-        .table-container {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            overflow: hidden;
-        }
-
-        .table-wrapper {
-            overflow-y: auto;
-            overflow-x: auto;
-            max-height: 60vh;
-        }
-
-        .table-wrapper::-webkit-scrollbar {
-            width: 10px;
-        }
-
-        .table-wrapper::-webkit-scrollbar-track {
-            background: #f1f1f1;
-        }
-
-        .table-wrapper::-webkit-scrollbar-thumb {
-            background: #cbd5e0;
-            border-radius: 5px;
-        }
-
-        .table-wrapper::-webkit-scrollbar-thumb:hover {
-            background: #a0aec0;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th {
-            padding: 12px 15px;
-            text-align: left;
-            font-weight: 600;
-            color: #2d3748;
-            font-size: 13px;
-            border-bottom: 2px solid #e2e8f0;
-            cursor: pointer;
-            user-select: none;
-            background: #f7fafc;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-
-        th:hover {
-            background: #edf2f7;
-        }
-
-        tbody tr {
-            border-bottom: 1px solid #e2e8f0;
-            transition: background 0.2s;
-        }
-
-        tbody tr:hover {
-            background: #f7fafc;
-        }
-
-        tr.group-header {
-            background: #edf2f7;
-            font-weight: 600;
-        }
-
-        tr.group-header td {
-            padding: 12px 15px;
-            color: #2d3748;
-            font-size: 14px;
-            border-top: 2px solid #cbd5e0;
-        }
-
-        tr.subtotal-row {
-            background: #f7fafc;
-            font-weight: 600;
-            border-top: 1px solid #cbd5e0;
-        }
-
-        tr.subtotal-row td {
-            color: #4a5568;
-            font-style: italic;
-        }
-
-        tr.total-row {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-            font-weight: 700;
-            border-top: 2px solid #667eea;
-            border-bottom: 2px solid #667eea;
-        }
-
-        tr.total-row td {
-            color: #2d3748;
-            font-size: 14px;
-            padding: 15px;
-        }
-
-        td {
-            padding: 10px 15px;
-            color: #4a5568;
-            font-size: 13px;
-        }
-
-        .token-info {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .token-icon {
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 600;
-            font-size: 11px;
-        }
-
-        .token-details {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .token-symbol {
-            font-weight: 600;
-            color: #2d3748;
-            font-size: 13px;
-        }
-
-        .token-chain {
-            font-size: 10px;
-            color: #a0aec0;
-            text-transform: uppercase;
-        }
-
-        .balance {
-            font-weight: 600;
-            color: #2d3748;
-            text-align: right;
-            font-size: 13px;
-        }
-
-        .token-address-cell {
-            font-family: 'Courier New', monospace;
-            font-size: 11px;
-            color: #718096;
-            max-width: 150px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 60px 20px;
-            color: #4a5568;
-        }
-
-        .spinner {
-            border: 4px solid #e2e8f0;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .error {
-            background: #fed7d7;
-            color: #c53030;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #718096;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header { text-align: center; color: white; margin-bottom: 30px; }
+        .header h1 { font-size: 32px; margin-bottom: 10px; }
+        .timestamp { font-size: 14px; opacity: 0.9; }
+        .login-box { background: white; border-radius: 15px; padding: 40px; max-width: 400px; margin: 100px auto; box-shadow: 0 10px 30px rgba(0,0,0,0.2); text-align: center; }
+        .login-box h2 { margin-bottom: 20px; color: #2d3748; }
+        .login-box p { margin-bottom: 30px; color: #718096; }
+        #google-signin-button { margin: 0 auto; }
+        .app-content { display: none; }
+        .app-content.loaded { display: block; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px; }
+        .stat-card { background: white; border-radius: 15px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .stat-label { font-size: 14px; color: #718096; margin-bottom: 8px; }
+        .stat-value { font-size: 28px; font-weight: 700; color: #2d3748; }
+        .controls { background: white; border-radius: 15px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; gap: 15px; flex-wrap: wrap; align-items: center; }
+        .filter-group { display: flex; gap: 10px; align-items: center; }
+        .filter-group label { color: #4a5568; font-size: 14px; font-weight: 600; white-space: nowrap; }
+        .filter-select { padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; min-width: 200px; background: white; cursor: pointer; }
+        .btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+        .table-container { background: white; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; }
+        .table-wrapper { overflow-y: auto; overflow-x: auto; max-height: 60vh; }
+        .table-wrapper::-webkit-scrollbar { width: 10px; }
+        .table-wrapper::-webkit-scrollbar-track { background: #f1f1f1; }
+        .table-wrapper::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 5px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { padding: 12px 15px; text-align: left; font-weight: 600; color: #2d3748; font-size: 13px; border-bottom: 2px solid #e2e8f0; cursor: pointer; user-select: none; background: #f7fafc; position: sticky; top: 0; z-index: 10; }
+        th:hover { background: #edf2f7; }
+        tbody tr { border-bottom: 1px solid #e2e8f0; transition: background 0.2s; }
+        tbody tr:hover { background: #f7fafc; }
+        tr.group-header { background: #edf2f7; font-weight: 600; }
+        tr.group-header td { padding: 12px 15px; color: #2d3748; font-size: 14px; border-top: 2px solid #cbd5e0; }
+        tr.subtotal-row { background: #f7fafc; font-weight: 600; border-top: 1px solid #cbd5e0; }
+        tr.subtotal-row td { color: #4a5568; font-style: italic; }
+        tr.total-row { background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%); font-weight: 700; border-top: 2px solid #667eea; border-bottom: 2px solid #667eea; }
+        tr.total-row td { color: #2d3748; font-size: 14px; padding: 15px; }
+        td { padding: 10px 15px; color: #4a5568; font-size: 13px; }
+        .token-info { display: flex; align-items: center; gap: 12px; }
+        .token-icon { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 11px; }
+        .token-details { display: flex; flex-direction: column; }
+        .token-symbol { font-weight: 600; color: #2d3748; font-size: 13px; }
+        .token-chain { font-size: 10px; color: #a0aec0; text-transform: uppercase; }
+        .balance { font-weight: 600; color: #2d3748; text-align: right; font-size: 13px; }
+        .token-address-cell { font-family: 'Courier New', monospace; font-size: 11px; color: #718096; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .loading { text-align: center; padding: 60px 20px; color: #4a5568; }
+        .spinner { border: 4px solid #e2e8f0; border-top: 4px solid #667eea; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .error { background: #fed7d7; color: #c53030; padding: 20px; border-radius: 8px; margin: 20px; }
+        .empty-state { text-align: center; padding: 60px 20px; color: #718096; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔐 Multi-Wallet Token Viewer</h1>
-            <div class="timestamp">Version: 04.01.2026, 20:45:00 (Schweizer Zeit)</div>
+            <h1>🔍 Multi-Wallet Token Viewer</h1>
+            <div class="timestamp">Version: 06.01.2026</div>
         </div>
-
-        <!-- Google Login -->
         <div id="loginBox" class="login-box">
             <h2>Google Anmeldung erforderlich</h2>
-            <p>Bitte melde dich mit deinem Google-Konto an, um auf die Wallet-Daten zuzugreifen.</p>
+            <p>Bitte melde dich mit deinem Google-Konto an.</p>
             <div id="google-signin-button"></div>
             <p id="loginStatus" style="margin-top: 20px; color: #718096; font-size: 14px;"></p>
         </div>
-
-        <!-- App Content -->
         <div id="appContent" class="app-content">
-            <div class="stats">
-                <div class="stat-card">
-                    <div class="stat-label">Wallets</div>
-                    <div class="stat-value" id="walletCount">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Token gesamt</div>
-                    <div class="stat-value" id="tokenCount">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Portfolio-Wert</div>
-                    <div class="stat-value" id="portfolioValue">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Chains</div>
-                    <div class="stat-value" id="chainCount">-</div>
-                </div>
-            </div>
-
             <div class="controls">
-                <div class="filter-group">
-                    <label for="walletFilter">Wallet:</label>
-                    <select id="walletFilter" class="filter-select">
-                        <option value="">Alle Wallets</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label for="chainFilter">Chain:</label>
-                    <select id="chainFilter" class="filter-select">
-                        <option value="">Alle Chains</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label for="tokenFilter">Token:</label>
-                    <select id="tokenFilter" class="filter-select">
-                        <option value="">Alle Token</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label for="groupByFilter">Gruppierung:</label>
-                    <select id="groupByFilter" class="filter-select">
-                        <option value="none">Keine</option>
-                        <option value="wallet">Nach Wallet</option>
-                        <option value="chain">Nach Chain</option>
-                        <option value="token">Nach Token</option>
-                    </select>
-                </div>
+                <div class="filter-group"><label for="walletFilter">Wallet:</label><select id="walletFilter" class="filter-select"><option value="">Alle Wallets</option></select></div>
+                <div class="filter-group"><label for="chainFilter">Chain:</label><select id="chainFilter" class="filter-select"><option value="">Alle Chains</option></select></div>
+                <div class="filter-group"><label for="tokenFilter">Token:</label><select id="tokenFilter" class="filter-select"><option value="">Alle Token</option></select></div>
+                <div class="filter-group"><label for="groupByFilter">Gruppierung:</label><select id="groupByFilter" class="filter-select"><option value="none">Keine</option><option value="wallet">Nach Wallet</option><option value="chain">Nach Chain</option><option value="token">Nach Token</option></select></div>
                 <button class="btn btn-primary" onclick="loadAllWallets()">🔄 Aktualisieren</button>
             </div>
-
-            <div class="table-container">
-                <div id="tableContent">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p>Lade Token-Daten...</p>
-                    </div>
-                </div>
+            <div class="stats">
+                <div class="stat-card"><div class="stat-label">Wallets</div><div class="stat-value" id="walletCount">-</div></div>
+                <div class="stat-card"><div class="stat-label">Token gesamt</div><div class="stat-value" id="tokenCount">-</div></div>
+                <div class="stat-card"><div class="stat-label">Portfolio-Wert</div><div class="stat-value" id="portfolioValue">-</div></div>
+                <div class="stat-card"><div class="stat-label">Chains</div><div class="stat-value" id="chainCount">-</div></div>
             </div>
+            <div class="table-container"><div id="tableContent"><div class="loading"><div class="spinner"></div><p>Lade Token-Daten...</p></div></div></div>
         </div>
     </div>
-
     <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script>
-        // Google Sheets Konfiguration
-        const GOOGLE_CONFIG = {
-            apiKey: 'AIzaSyCoJAYF8BVhYk8k2Zr2MbDAt2qwkaGEM8w',
-            clientId: '42198403966-ovpg5lar1qso4vqfl9rd4ebeunltpegs.apps.googleusercontent.com',
-            spreadsheetId: '1M0HycCitzlkgk_uG1Y-iLeYKthdUaRGnCvv3Hxv0yww',
-            discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
-            scopes: 'https://www.googleapis.com/auth/spreadsheets.readonly'
-        };
-
-        let gapiInited = false;
-        let tokenClient;
-        let accessToken = null;
-
-        // Wallets und Tokens (werden aus Google Sheets geladen)
-        let wallets = [];
-        let tokens = {};
-        let allBalances = [];
-
-        // Web3 Instanzen
-        let web3Instances = {};
-
-        // RPC-Endpunkte
-        const rpcEndpoints = {
-            apertum: 'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc',
-            bsc: 'https://bsc-dataseed.binance.org/',
-            eth: 'https://eth.llamarpc.com',
-            polygon: 'https://polygon-rpc.com'
-        };
-
-        // Chain IDs für DexScreener API
-        const dexScreenerChainIds = {
-            apertum: 'avalanche',
-            bsc: 'bsc',
-            eth: 'ethereum',
-            polygon: 'polygon'
-        };
-
-        // ERC-20 ABI (minimal)
-        const ERC20_ABI = [
-            { "constant": true, "inputs": [], "name": "name", "outputs": [{"name": "", "type": "string"}], "type": "function" },
-            { "constant": true, "inputs": [], "name": "decimals", "outputs": [{"name": "", "type": "uint8"}], "type": "function" },
-            { "constant": true, "inputs": [{"name": "_owner", "type": "address"}], "name": "balanceOf", "outputs": [{"name": "balance", "type": "uint256"}], "type": "function" },
-            { "constant": true, "inputs": [], "name": "symbol", "outputs": [{"name": "", "type": "string"}], "type": "function" }
-        ];
-
-        // Cache für Native Token Preise
-        const nativeTokenPriceCache = {};
-
-        // ============================================
-        // GOOGLE AUTH & SHEETS
-        // ============================================
-
-        // GAPI initialisieren
-        function gapiLoaded() {
-            gapi.load('client', async () => {
-                await gapi.client.init({
-                    apiKey: GOOGLE_CONFIG.apiKey,
-                    discoveryDocs: GOOGLE_CONFIG.discoveryDocs,
-                });
-                gapiInited = true;
-                console.log('✓ GAPI initialisiert');
-                maybeEnableButtons();
-            });
-        }
-
-        // GIS Token Client initialisieren
-        function gisLoaded() {
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: GOOGLE_CONFIG.clientId,
-                scope: GOOGLE_CONFIG.scopes,
-                redirect_uri: window.location.origin + window.location.pathname,
-                ux_mode: 'popup',
-                callback: async (response) => {
-                    if (response.error !== undefined) {
-                        console.error('Token Error:', response);
-                        document.getElementById('loginStatus').textContent = 'Fehler: ' + response.error;
-                        return;
-                    }
-                    
-                    console.log('✓ Access Token erhalten');
-                    accessToken = response.access_token;
-                    
-                    // Sheets laden
-                    await loadSheetsData();
-                    
-                    // UI umschalten
-                    document.getElementById('loginBox').style.display = 'none';
-                    document.getElementById('appContent').classList.add('loaded');
-                    
-                    // App starten
-                    initializeWeb3();
-                },
-            });
-            console.log('✓ GIS initialisiert');
-            console.log('Redirect URI:', window.location.origin + window.location.pathname);
-            maybeEnableButtons();
-        }
-
-        function maybeEnableButtons() {
-            if (gapiInited && tokenClient) {
-                document.getElementById('loginStatus').textContent = 'Bereit zur Anmeldung';
-                document.getElementById('google-signin-button').innerHTML = `
-                    <button class="btn btn-primary" onclick="handleAuthClick()" style="width: 100%; padding: 12px 24px; font-size: 16px;">
-                        🔐 Mit Google anmelden
-                    </button>
-                `;
-            }
-        }
-
-        // Auth-Button Click Handler
-        function handleAuthClick() {
-            console.log('🔑 Starte Authentifizierung...');
-            document.getElementById('loginStatus').textContent = 'Authentifiziere...';
-            
-            // Token anfordern
-            if (gapi.client.getToken() === null) {
-                // Erste Authentifizierung - mit Consent
-                tokenClient.requestAccessToken({prompt: 'consent'});
-            } else {
-                // Token existiert bereits
-                tokenClient.requestAccessToken({prompt: ''});
-            }
-        }
-
-        // Beim Laden der Seite
-        window.addEventListener('load', () => {
-            // Lade Google APIs
-            gapiLoaded();
-            
-            // Lade Google Identity Services
-            const script = document.createElement('script');
-            script.src = 'https://accounts.google.com/gsi/client';
-            script.onload = gisLoaded;
-            document.head.appendChild(script);
-        });
-
-        // Google Sheets Daten laden
-        async function loadSheetsData() {
-            try {
-                console.log('📊 Lade Daten aus Google Sheets...');
-                
-                // Wallets laden
-                const walletsResponse = await gapi.client.sheets.spreadsheets.values.get({
-                    spreadsheetId: GOOGLE_CONFIG.spreadsheetId,
-                    range: 'Wallets!A2:B',
-                });
-                
-                const walletsRows = walletsResponse.result.values;
-                if (walletsRows && walletsRows.length > 0) {
-                    wallets = walletsRows.map(row => ({
-                        name: row[0],
-                        address: row[1]
-                    }));
-                    console.log(`✓ ${wallets.length} Wallets geladen`);
-                }
-
-                // Tokens laden
-                const tokensResponse = await gapi.client.sheets.spreadsheets.values.get({
-                    spreadsheetId: GOOGLE_CONFIG.spreadsheetId,
-                    range: 'Tokens!A2:E',
-                });
-                
-                const tokensRows = tokensResponse.result.values;
-                if (tokensRows && tokensRows.length > 0) {
-                    tokens = {};
-                    tokensRows.forEach(row => {
-                        const chain = row[0];
-                        if (!tokens[chain]) {
-                            tokens[chain] = [];
-                        }
-                        tokens[chain].push({
-                            symbol: row[1],
-                            name: row[2],
-                            address: row[3],
-                            decimals: 18 // Default, wird aus Blockchain ausgelesen
-                        });
-                    });
-                    console.log(`✓ ${tokensRows.length} Tokens geladen`);
-                    console.log('Chains:', Object.keys(tokens));
-                }
-
-            } catch (error) {
-                console.error('Fehler beim Laden der Sheets:', error);
-                document.getElementById('loginStatus').textContent = 'Fehler: ' + error.message;
-            }
-        }
-
-        // ============================================
-        // WEB3 & BLOCKCHAIN
-        // ============================================
-
-        async function initializeWeb3() {
-            console.log('🔧 Initialisiere Web3...');
-            
-            for (const [chain, rpc] of Object.entries(rpcEndpoints)) {
-                web3Instances[chain] = new Web3(rpc);
-                console.log(`✓ Web3 für ${chain} initialisiert`);
-            }
-            
-            loadAllWallets();
-        }
-
-        // Token-Preise abrufen
-        async function fetchTokenPrice(tokenAddress, chain) {
-            try {
-                if (tokenAddress === 'native') {
-                    const coinIds = {
-                        'eth': 'ethereum',
-                        'bsc': 'binancecoin',
-                        'polygon': 'matic-network',
-                        'apertum': 'aptm'
-                    };
-                    
-                    const coinId = coinIds[chain];
-                    if (!coinId) return null;
-
-                    if (nativeTokenPriceCache[coinId]) {
-                        return nativeTokenPriceCache[coinId];
-                    }
-
-                    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`;
-                    const response = await fetch(url);
-                    
-                    if (!response.ok) return null;
-                    
-                    const data = await response.json();
-                    
-                    if (data && data[coinId] && data[coinId].usd) {
-                        const priceUsd = data[coinId].usd;
-                        nativeTokenPriceCache[coinId] = priceUsd;
-                        return priceUsd;
-                    }
-                    return null;
-                }
-
-                const chainId = dexScreenerChainIds[chain];
-                const url = `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`;
-                
-                const response = await fetch(url);
-                if (!response.ok) return null;
-                
-                const data = await response.json();
-                
-                if (data && data.pairs && data.pairs.length > 0) {
-                    let pairsOnChain = data.pairs.filter(pair => pair.chainId === chainId);
-                    
-                    if (pairsOnChain.length === 0) {
-                        pairsOnChain = data.pairs;
-                    }
-                    
-                    if (pairsOnChain.length > 0) {
-                        const bestPair = pairsOnChain.reduce((best, current) => {
-                            const bestLiquidity = parseFloat(best.liquidity?.usd || 0);
-                            const currentLiquidity = parseFloat(current.liquidity?.usd || 0);
-                            return currentLiquidity > bestLiquidity ? current : best;
-                        });
-                        
-                        return parseFloat(bestPair.priceUsd);
-                    }
-                }
-                
-                return null;
-            } catch (error) {
-                return null;
-            }
-        }
-
-        // Alle Wallets laden
-        async function loadAllWallets() {
-            try {
-                console.log('🚀 Starte Laden der Wallets...');
-                const content = document.getElementById('tableContent');
-                content.innerHTML = `
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p>Lade Token-Daten...</p>
-                        <p style="font-size: 12px; margin-top: 10px;" id="loadingStatus">Initialisiere...</p>
-                    </div>
-                `;
-
-                allBalances = [];
-                const loadTasks = [];
-                
-                for (const wallet of wallets) {
-                    for (const [chain, tokenList] of Object.entries(tokens)) {
-                        const web3 = web3Instances[chain];
-                        
-                        for (const token of tokenList) {
-                            const task = (async () => {
-                                try {
-                                    let balance;
-                                    let tokenName = token.name;
-                                    let tokenSymbol = token.symbol;
-                                    let actualDecimals = token.decimals;
-                                    
-                                    if (token.address === 'native') {
-                                        const weiBalance = await web3.eth.getBalance(wallet.address);
-                                        balance = parseFloat(web3.utils.fromWei(weiBalance, 'ether'));
-                                    } else {
-                                        const contract = new web3.eth.Contract(ERC20_ABI, token.address);
-                                        
-                                        try {
-                                            actualDecimals = await contract.methods.decimals().call();
-                                            actualDecimals = parseInt(actualDecimals);
-                                        } catch {
-                                            return null;
-                                        }
-                                        
-                                        try {
-                                            const rawBalance = await contract.methods.balanceOf(wallet.address).call();
-                                            balance = parseFloat(rawBalance) / Math.pow(10, actualDecimals);
-                                        } catch {
-                                            return null;
-                                        }
-                                        
-                                        if (balance > 0) {
-                                            try {
-                                                const [fetchedName, fetchedSymbol] = await Promise.all([
-                                                    contract.methods.name().call().catch(() => token.name),
-                                                    contract.methods.symbol().call().catch(() => token.symbol)
-                                                ]);
-                                                tokenName = fetchedName;
-                                                tokenSymbol = fetchedSymbol;
-                                            } catch {}
-                                        }
-                                    }
-
-                                    if (balance > 0) {
-                                        return {
-                                            wallet: wallet.name,
-                                            walletAddress: wallet.address,
-                                            tokenSymbol: tokenSymbol,
-                                            tokenName: tokenName,
-                                            chain: chain,
-                                            balance: balance,
-                                            tokenAddress: token.address,
-                                            decimals: actualDecimals,
-                                            priceUsd: null,
-                                            valueUsd: null
-                                        };
-                                    }
-                                    return null;
-                                } catch {
-                                    return null;
-                                }
-                            })();
-                            
-                            loadTasks.push(task);
-                        }
-                    }
-                }
-
-                console.log(`⚡ Lade ${loadTasks.length} Token parallel...`);
-                const results = await Promise.all(loadTasks);
-                allBalances = results.filter(item => item !== null);
-                console.log(`✅ ${allBalances.length} Token mit Balance gefunden`);
-
-                const statusEl = document.getElementById('loadingStatus');
-                if (statusEl) {
-                    statusEl.textContent = `Lade Preise für ${allBalances.length} Token...`;
-                }
-
-                // Preise laden
-                const batchSize = 5;
-                for (let i = 0; i < allBalances.length; i += batchSize) {
-                    const batch = allBalances.slice(i, i + batchSize);
-                    
-                    await Promise.all(batch.map(async (item) => {
-                        try {
-                            item.priceUsd = await fetchTokenPrice(item.tokenAddress, item.chain);
-                            if (item.priceUsd && item.balance > 0) {
-                                item.valueUsd = item.balance * item.priceUsd;
-                            }
-                        } catch {}
-                    }));
-                    
-                    if (statusEl) {
-                        statusEl.textContent = `Preise geladen: ${Math.min(i + batchSize, allBalances.length)} von ${allBalances.length}`;
-                    }
-                }
-
-                console.log(`✅ Laden abgeschlossen`);
-                displayTable();
-                updateStats();
-
-            } catch (error) {
-                console.error('Fehler:', error);
-                displayError('Fehler beim Laden: ' + error.message);
-            }
-        }
-
-        // Tabelle anzeigen
-        function displayTable() {
-            const content = document.getElementById('tableContent');
-            
-            if (allBalances.length === 0) {
-                content.innerHTML = '<div class="empty-state"><p>Keine Token mit Balance gefunden.</p></div>';
-                return;
-            }
-
-            const tableHTML = `
-                <div class="table-wrapper">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Wallet</th>
-                                <th>Token</th>
-                                <th>Token-Adresse</th>
-                                <th>Anzahl</th>
-                                <th>Preis (USD)</th>
-                                <th>Wert (USD)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tableBody">
-                            ${generateTableRows()}
-                        </tbody>
-                    </table>
-                </div>
-            `;
-
-            content.innerHTML = tableHTML;
-            populateFilters();
-        }
-
-        function generateTableRows() {
-            const groupBy = document.getElementById('groupByFilter')?.value || 'none';
-            
-            if (groupBy === 'none') {
-                return allBalances.map((item, index) => `
-                    <tr data-index="${index}">
-                        <td>${item.wallet}</td>
-                        <td>
-                            <div class="token-info">
-                                <div class="token-icon">${item.tokenSymbol.charAt(0)}</div>
-                                <div class="token-details">
-                                    <div class="token-symbol">${item.tokenSymbol}</div>
-                                    <div class="token-chain">${item.chain}</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="token-address-cell" title="${item.tokenAddress}">${item.tokenAddress === 'native' ? 'Native' : item.tokenAddress}</td>
-                        <td class="balance">${formatNumber(item.balance)}</td>
-                        <td class="balance">${item.priceUsd ? '$' + formatNumber(item.priceUsd) : '-'}</td>
-                        <td class="balance">${item.valueUsd ? '$' + formatNumber(item.valueUsd) : '-'}</td>
-                    </tr>
-                `).join('');
-            } else {
-                const grouped = {};
-                allBalances.forEach((item, index) => {
-                    const groupKey = item[groupBy] || 'Unbekannt';
-                    if (!grouped[groupKey]) grouped[groupKey] = [];
-                    grouped[groupKey].push({ ...item, originalIndex: index });
-                });
-
-                let html = '';
-                Object.keys(grouped).sort().forEach(groupKey => {
-                    const items = grouped[groupKey];
-                    const subtotal = items.reduce((sum, item) => sum + (item.valueUsd || 0), 0);
-                    
-                    html += `
-                        <tr class="group-header">
-                            <td colspan="6"><strong>${getGroupLabel(groupBy)}:</strong> ${groupKey.toUpperCase()} ${subtotal > 0 ? `(Zwischentotal: $${formatNumber(subtotal)})` : ''}</td>
-                        </tr>
-                    `;
-                    
-                    items.forEach(item => {
-                        html += `
-                            <tr data-index="${item.originalIndex}">
-                                <td>${item.wallet}</td>
-                                <td>
-                                    <div class="token-info">
-                                        <div class="token-icon">${item.tokenSymbol.charAt(0)}</div>
-                                        <div class="token-details">
-                                            <div class="token-symbol">${item.tokenSymbol}</div>
-                                            <div class="token-chain">${item.chain}</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td class="token-address-cell" title="${item.tokenAddress}">${item.tokenAddress === 'native' ? 'Native' : item.tokenAddress}</td>
-                                <td class="balance">${formatNumber(item.balance)}</td>
-                                <td class="balance">${item.priceUsd ? '$' + formatNumber(item.priceUsd) : '-'}</td>
-                                <td class="balance">${item.valueUsd ? '$' + formatNumber(item.valueUsd) : '-'}</td>
-                            </tr>
-                        `;
-                    });
-                    
-                    if (subtotal > 0) {
-                        html += `
-                            <tr class="subtotal-row">
-                                <td colspan="5" style="text-align: right;">Zwischentotal ${groupKey}:</td>
-                                <td class="balance">$${formatNumber(subtotal)}</td>
-                            </tr>
-                        `;
-                    }
-                });
-                
-                const grandTotal = allBalances.reduce((sum, item) => sum + (item.valueUsd || 0), 0);
-                if (grandTotal > 0) {
-                    html += `
-                        <tr class="total-row">
-                            <td colspan="5" style="text-align: right;"><strong>GESAMT-TOTAL:</strong></td>
-                            <td class="balance"><strong>$${formatNumber(grandTotal)}</strong></td>
-                        </tr>
-                    `;
-                }
-                
-                return html;
-            }
-        }
-
-        function getGroupLabel(groupBy) {
-            const labels = { 'wallet': 'Wallet', 'chain': 'Chain', 'token': 'Token' };
-            return labels[groupBy] || groupBy;
-        }
-
-        function populateFilters() {
-            const uniqueWallets = [...new Set(allBalances.map(item => item.wallet))].sort();
-            const walletFilter = document.getElementById('walletFilter');
-            walletFilter.innerHTML = '<option value="">Alle Wallets</option>';
-            uniqueWallets.forEach(wallet => {
-                walletFilter.innerHTML += `<option value="${wallet}">${wallet}</option>`;
-            });
-
-            const uniqueChains = [...new Set(allBalances.map(item => item.chain))].sort();
-            const chainFilter = document.getElementById('chainFilter');
-            chainFilter.innerHTML = '<option value="">Alle Chains</option>';
-            uniqueChains.forEach(chain => {
-                chainFilter.innerHTML += `<option value="${chain}">${chain.toUpperCase()}</option>`;
-            });
-
-            const uniqueTokens = [...new Set(allBalances.map(item => item.tokenSymbol))].sort();
-            const tokenFilter = document.getElementById('tokenFilter');
-            tokenFilter.innerHTML = '<option value="">Alle Token</option>';
-            uniqueTokens.forEach(token => {
-                tokenFilter.innerHTML += `<option value="${token}">${token}</option>`;
-            });
-        }
-
-        function applyFilters() {
-            const walletFilter = document.getElementById('walletFilter').value;
-            const chainFilter = document.getElementById('chainFilter').value;
-            const tokenFilter = document.getElementById('tokenFilter').value;
-
-            const filteredBalances = allBalances.filter(item => {
-                const matchesWallet = !walletFilter || item.wallet === walletFilter;
-                const matchesChain = !chainFilter || item.chain === chainFilter;
-                const matchesToken = !tokenFilter || item.tokenSymbol === tokenFilter;
-                return matchesWallet && matchesChain && matchesToken;
-            });
-
-            const tempAllBalances = allBalances;
-            allBalances = filteredBalances;
-            
-            const tbody = document.getElementById('tableBody');
-            if (tbody) {
-                tbody.parentElement.parentElement.innerHTML = `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Wallet</th>
-                                <th>Token</th>
-                                <th>Token-Adresse</th>
-                                <th>Anzahl</th>
-                                <th>Preis (USD)</th>
-                                <th>Wert (USD)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tableBody">
-                            ${generateTableRows()}
-                        </tbody>
-                    </table>
-                `;
-            }
-            
-            allBalances = tempAllBalances;
-        }
-
-        function updateStats() {
-            document.getElementById('walletCount').textContent = wallets.length;
-            document.getElementById('tokenCount').textContent = allBalances.length;
-            document.getElementById('chainCount').textContent = Object.keys(tokens).length;
-            
-            const totalValue = allBalances.reduce((sum, item) => sum + (item.valueUsd || 0), 0);
-            document.getElementById('portfolioValue').textContent = totalValue > 0 ? '$' + formatNumber(totalValue) : '-';
-        }
-
-        function formatNumber(num) {
-            if (num === null || num === undefined) return '-';
-            
-            let decimals;
-            if (num >= 1000) decimals = 2;
-            else if (num >= 1) decimals = 4;
-            else if (num >= 0.01) decimals = 6;
-            else decimals = 8;
-            
-            const fixed = num.toFixed(decimals);
-            const parts = fixed.split('.');
-            const integerPart = parts[0];
-            const decimalPart = parts[1];
-            const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-            
-            return decimalPart ? `${formattedInteger}.${decimalPart}` : formattedInteger;
-        }
-
-        function displayError(message) {
-            const content = document.getElementById('tableContent');
-            content.innerHTML = `<div class="error">${message}</div>`;
-        }
-
-        // Event Listeners
-        document.getElementById('walletFilter').addEventListener('change', applyFilters);
-        document.getElementById('chainFilter').addEventListener('change', applyFilters);
-        document.getElementById('tokenFilter').addEventListener('change', applyFilters);
-        document.getElementById('groupByFilter').addEventListener('change', applyFilters);
+const GOOGLE_CONFIG={apiKey:'AIzaSyCoJAYF8BVhYk8k2Zr2MbDAt2qwkaGEM8w',clientId:'42198403966-ovpg5lar1qso4vqfl9rd4ebeunltpegs.apps.googleusercontent.com',spreadsheetId:'1M0HycCitzlkgk_uG1Y-iLeYKthdUaRGnCvv3Hxv0yww',discoveryDocs:['https://sheets.googleapis.com/$discovery/rest?version=v4'],scopes:'https://www.googleapis.com/auth/spreadsheets.readonly'};
+let gapiInited=false,tokenClient,accessToken=null,wallets=[],tokens={},allBalances=[],web3Instances={};
+const rpcEndpoints={apertum:'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc',bsc:'https://bsc-dataseed.binance.org/',eth:'https://eth.llamarpc.com',polygon:'https://polygon-rpc.com'};
+const dexScreenerChainIds={apertum:'avalanche',bsc:'bsc',eth:'ethereum',polygon:'polygon'};
+const ERC20_ABI=[{"constant":true,"inputs":[],"name":"name","outputs":[{"name":"","type":"string"}],"type":"function"},{"constant":true,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"type":"function"},{"constant":true,"inputs":[{"name":"_owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"balance","type":"uint256"}],"type":"function"},{"constant":true,"inputs":[],"name":"symbol","outputs":[{"name":"","type":"string"}],"type":"function"}];
+const nativeTokenPriceCache={};
+function gapiLoaded(){gapi.load('client',async()=>{await gapi.client.init({apiKey:GOOGLE_CONFIG.apiKey,discoveryDocs:GOOGLE_CONFIG.discoveryDocs});gapiInited=true;console.log('✓ GAPI initialisiert');maybeEnableButtons();});}
+function gisLoaded(){tokenClient=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CONFIG.clientId,scope:GOOGLE_CONFIG.scopes,redirect_uri:window.location.origin+window.location.pathname,ux_mode:'popup',callback:async(r)=>{if(r.error!==undefined){console.error('Token Error:',r);document.getElementById('loginStatus').textContent='Fehler: '+r.error;return;}console.log('✓ Access Token erhalten');accessToken=r.access_token;await loadSheetsData();document.getElementById('loginBox').style.display='none';document.getElementById('appContent').classList.add('loaded');initializeWeb3();}});console.log('✓ GIS initialisiert');maybeEnableButtons();}
+function maybeEnableButtons(){if(gapiInited&&tokenClient){document.getElementById('loginStatus').textContent='Bereit zur Anmeldung';document.getElementById('google-signin-button').innerHTML='<button class="btn btn-primary" onclick="handleAuthClick()" style="width:100%;padding:12px 24px;font-size:16px;">🔐 Mit Google anmelden</button>';}}
+function handleAuthClick(){console.log('🔐 Starte Authentifizierung...');document.getElementById('loginStatus').textContent='Authentifiziere...';if(gapi.client.getToken()===null){tokenClient.requestAccessToken({prompt:'consent'});}else{tokenClient.requestAccessToken({prompt:''});}}
+window.addEventListener('load',()=>{gapiLoaded();const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.onload=gisLoaded;document.head.appendChild(s);});
+async function loadSheetsData(){try{console.log('📊 Lade Daten aus Google Sheets...');const wr=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:GOOGLE_CONFIG.spreadsheetId,range:'Wallets!A2:B'});const wRows=wr.result.values;if(wRows&&wRows.length>0){wallets=wRows.map(r=>({name:r[0],address:r[1]}));console.log(`✓ ${wallets.length} Wallets geladen`);}const tr=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:GOOGLE_CONFIG.spreadsheetId,range:'Tokens!A2:E'});const tRows=tr.result.values;if(tRows&&tRows.length>0){tokens={};tRows.forEach(r=>{const c=r[0];if(!tokens[c])tokens[c]=[];tokens[c].push({symbol:r[1],name:r[2],address:r[3],decimals:18});});console.log(`✓ ${tRows.length} Tokens geladen`);}}catch(e){console.error('Fehler beim Laden der Sheets:',e);document.getElementById('loginStatus').textContent='Fehler: '+e.message;}}
+async function initializeWeb3(){console.log('🔧 Initialisiere Web3...');for(const[c,r]of Object.entries(rpcEndpoints)){web3Instances[c]=new Web3(r);console.log(`✓ Web3 für ${c} initialisiert`);}loadAllWallets();}
+async function fetchTokenPrice(addr,chain){try{if(addr==='native'){const coinIds={'eth':'ethereum','bsc':'binancecoin','polygon':'matic-network','apertum':'aptm'};const cid=coinIds[chain];if(!cid)return null;if(nativeTokenPriceCache[cid])return nativeTokenPriceCache[cid];const u=`https://api.coingecko.com/api/v3/simple/price?ids=${cid}&vs_currencies=usd`;const r=await fetch(u);if(!r.ok)return null;const d=await r.json();if(d&&d[cid]&&d[cid].usd){nativeTokenPriceCache[cid]=d[cid].usd;return d[cid].usd;}return null;}const cid=dexScreenerChainIds[chain];const u=`https://api.dexscreener.com/latest/dex/tokens/${addr}`;const r=await fetch(u);if(!r.ok)return null;const d=await r.json();if(d&&d.pairs&&d.pairs.length>0){let p=d.pairs.filter(x=>x.chainId===cid);if(p.length===0)p=d.pairs;if(p.length>0){const best=p.reduce((b,c)=>{const bL=parseFloat(b.liquidity?.usd||0);const cL=parseFloat(c.liquidity?.usd||0);return cL>bL?c:b;});return parseFloat(best.priceUsd);}}return null;}catch{return null;}}
+async function loadAllWallets(){try{console.log('🚀 Starte Laden der Wallets...');const c=document.getElementById('tableContent');c.innerHTML='<div class="loading"><div class="spinner"></div><p>Lade Token-Daten...</p><p style="font-size:12px;margin-top:10px;" id="loadingStatus">Initialisiere...</p></div>';allBalances=[];const tasks=[];for(const w of wallets){for(const[ch,tl]of Object.entries(tokens)){const w3=web3Instances[ch];for(const t of tl){const task=(async()=>{try{let bal,tn=t.name,ts=t.symbol,dec=t.decimals;if(t.address==='native'){const wb=await w3.eth.getBalance(w.address);bal=parseFloat(w3.utils.fromWei(wb,'ether'));}else{const ct=new w3.eth.Contract(ERC20_ABI,t.address);try{dec=await ct.methods.decimals().call();dec=parseInt(dec);}catch{return null;}try{const rb=await ct.methods.balanceOf(w.address).call();bal=parseFloat(rb)/Math.pow(10,dec);}catch{return null;}if(bal>0){try{const[fn,fs]=await Promise.all([ct.methods.name().call().catch(()=>t.name),ct.methods.symbol().call().catch(()=>t.symbol)]);tn=fn;ts=fs;}catch{}}}if(bal>0){return{wallet:w.name,walletAddress:w.address,tokenSymbol:ts,tokenName:tn,chain:ch,balance:bal,tokenAddress:t.address,decimals:dec,priceUsd:null,valueUsd:null};}return null;}catch{return null;}})();tasks.push(task);}}}console.log(`⚡ Lade ${tasks.length} Token parallel...`);const res=await Promise.all(tasks);allBalances=res.filter(i=>i!==null);console.log(`✅ ${allBalances.length} Token mit Balance gefunden`);const se=document.getElementById('loadingStatus');if(se)se.textContent=`Lade Preise für ${allBalances.length} Token...`;const bs=5;for(let i=0;i<allBalances.length;i+=bs){const b=allBalances.slice(i,i+bs);await Promise.all(b.map(async(it)=>{try{it.priceUsd=await fetchTokenPrice(it.tokenAddress,it.chain);if(it.priceUsd&&it.balance>0)it.valueUsd=it.balance*it.priceUsd;}catch{}}));if(se)se.textContent=`Preise geladen: ${Math.min(i+bs,allBalances.length)} von ${allBalances.length}`;}console.log(`✅ Laden abgeschlossen`);displayTable();updateStats();}catch(e){console.error('Fehler:',e);displayError('Fehler beim Laden: '+e.message);}}
+function displayTable(){const c=document.getElementById('tableContent');if(allBalances.length===0){c.innerHTML='<div class="empty-state"><p>Keine Token mit Balance gefunden.</p></div>';return;}const h='<div class="table-wrapper"><table><thead><tr><th>Wallet</th><th>Token</th><th>Token-Adresse</th><th>Anzahl</th><th>Preis (USD)</th><th>Wert (USD)</th></tr></thead><tbody id="tableBody">'+generateTableRows()+'</tbody></table></div>';c.innerHTML=h;populateFilters();}
+function generateTableRows(){const gb=document.getElementById('groupByFilter')?.value||'none';if(gb==='none'){return allBalances.map((it,i)=>`<tr data-index="${i}"><td>${it.wallet}</td><td><div class="token-info"><div class="token-icon">${it.tokenSymbol.charAt(0)}</div><div class="token-details"><div class="token-symbol">${it.tokenSymbol}</div><div class="token-chain">${it.chain}</div></div></div></td><td class="token-address-cell" title="${it.tokenAddress}">${it.tokenAddress==='native'?'Native':it.tokenAddress}</td><td class="balance">${formatNumber(it.balance)}</td><td class="balance">${it.priceUsd?'$'+formatNumber(it.priceUsd):'-'}</td><td class="balance">${it.valueUsd?'$'+formatNumber(it.valueUsd):'-'}</td></tr>`).join('');}else{const g={};allBalances.forEach((it,i)=>{const k=it[gb]||'Unbekannt';if(!g[k])g[k]=[];g[k].push({...it,originalIndex:i});});let h='';Object.keys(g).sort().forEach(k=>{const its=g[k];const st=its.reduce((s,it)=>s+(it.valueUsd||0),0);h+=`<tr class="group-header"><td colspan="6"><strong>${getGroupLabel(gb)}:</strong> ${k.toUpperCase()} ${st>0?`(Zwischentotal: $${formatNumber(st)})`:''}</td></tr>`;its.forEach(it=>{h+=`<tr data-index="${it.originalIndex}"><td>${it.wallet}</td><td><div class="token-info"><div class="token-icon">${it.tokenSymbol.charAt(0)}</div><div class="token-details"><div class="token-symbol">${it.tokenSymbol}</div><div class="token-chain">${it.chain}</div></div></div></td><td class="token-address-cell" title="${it.tokenAddress}">${it.tokenAddress==='native'?'Native':it.tokenAddress}</td><td class="balance">${formatNumber(it.balance)}</td><td class="balance">${it.priceUsd?'$'+formatNumber(it.priceUsd):'-'}</td><td class="balance">${it.valueUsd?'$'+formatNumber(it.valueUsd):'-'}</td></tr>`;});if(st>0){h+=`<tr class="subtotal-row"><td colspan="5" style="text-align:right;">Zwischentotal ${k}:</td><td class="balance">$${formatNumber(st)}</td></tr>`;}});const gt=allBalances.reduce((s,it)=>s+(it.valueUsd||0),0);if(gt>0){h+=`<tr class="total-row"><td colspan="5" style="text-align:right;"><strong>GESAMT-TOTAL:</strong></td><td class="balance"><strong>$${formatNumber(gt)}</strong></td></tr>`;}return h;}}
+function getGroupLabel(gb){const l={'wallet':'Wallet','chain':'Chain','token':'Token'};return l[gb]||gb;}
+function populateFilters(){const uw=[...new Set(allBalances.map(i=>i.wallet))].sort();const wf=document.getElementById('walletFilter');wf.innerHTML='<option value="">Alle Wallets</option>';uw.forEach(w=>{wf.innerHTML+=`<option value="${w}">${w}</option>`;});const uc=[...new Set(allBalances.map(i=>i.chain))].sort();const cf=document.getElementById('chainFilter');cf.innerHTML='<option value="">Alle Chains</option>';uc.forEach(c=>{cf.innerHTML+=`<option value="${c}">${c.toUpperCase()}</option>`;});const ut=[...new Set(allBalances.map(i=>i.tokenSymbol))].sort();const tf=document.getElementById('tokenFilter');tf.innerHTML='<option value="">Alle Token</option>';ut.forEach(t=>{tf.innerHTML+=`<option value="${t}">${t}</option>`;});}
+function applyFilters(){const wf=document.getElementById('walletFilter').value;const cf=document.getElementById('chainFilter').value;const tf=document.getElementById('tokenFilter').value;const fb=allBalances.filter(i=>{const mw=!wf||i.wallet===wf;const mc=!cf||i.chain===cf;const mt=!tf||i.tokenSymbol===tf;return mw&&mc&&mt;});const tmp=allBalances;allBalances=fb;const tb=document.getElementById('tableBody');if(tb){tb.parentElement.parentElement.innerHTML='<table><thead><tr><th>Wallet</th><th>Token</th><th>Token-Adresse</th><th>Anzahl</th><th>Preis (USD)</th><th>Wert (USD)</th></tr></thead><tbody id="tableBody">'+generateTableRows()+'</tbody></table>';}allBalances=tmp;updateStatsFiltered(fb);}
+function updateStats(){document.getElementById('walletCount').textContent=wallets.length;document.getElementById('tokenCount').textContent=allBalances.length;document.getElementById('chainCount').textContent=Object.keys(tokens).length;const tv=allBalances.reduce((s,i)=>s+(i.valueUsd||0),0);document.getElementById('portfolioValue').textContent=tv>0?'$'+formatNumber(tv):'-';}
+function updateStatsFiltered(fb){const uw=new Set(fb.map(i=>i.wallet));document.getElementById('walletCount').textContent=uw.size;document.getElementById('tokenCount').textContent=fb.length;const uc=new Set(fb.map(i=>i.chain));document.getElementById('chainCount').textContent=uc.size;const tv=fb.reduce((s,i)=>s+(i.valueUsd||0),0);document.getElementById('portfolioValue').textContent=tv>0?'$'+formatNumber(tv):'-';}
+function formatNumber(n){if(n===null||n===undefined)return'-';let d;if(n>=1000)d=2;else if(n>=1)d=4;else if(n>=0.01)d=6;else d=8;const f=n.toFixed(d);const p=f.split('.');const ip=p[0];const dp=p[1];const fi=ip.replace(/\B(?=(\d{3})+(?!\d))/g,"'");return dp?`${fi}.${dp}`:fi;}
+function displayError(m){const c=document.getElementById('tableContent');c.innerHTML=`<div class="error">${m}</div>`;}
+document.getElementById('walletFilter').addEventListener('change',applyFilters);
+document.getElementById('chainFilter').addEventListener('change',applyFilters);
+document.getElementById('tokenFilter').addEventListener('change',applyFilters);
+document.getElementById('groupByFilter').addEventListener('change',applyFilters);
     </script>
 </body>
 </html>
