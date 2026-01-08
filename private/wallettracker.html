@@ -311,7 +311,7 @@ return null;
 const ERC20_ABI=[{constant:true,inputs:[],name:'name',outputs:[{name:'',type:'string'}],type:'function'},{constant:true,inputs:[],name:'symbol',outputs:[{name:'',type:'string'}],type:'function'},{constant:true,inputs:[],name:'decimals',outputs:[{name:'',type:'uint8'}],type:'function'},{constant:true,inputs:[{name:'account',type:'address'}],name:'balanceOf',outputs:[{name:'',type:'uint256'}],type:'function'}];
 
 // RPC Endpoints
-const rpcEndpoints={apertum:'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc',bsc:'https://bsc-dataseed.binance.org/',eth:'https://rpc.ankr.com/eth',polygon:'https://polygon-rpc.com'};
+const rpcEndpoints={apertum:'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc',bsc:'https://bsc-dataseed.binance.org/',eth:['https://eth.llamarpc.com','https://rpc.ankr.com/eth','https://cloudflare-eth.com','https://ethereum.publicnode.com'],polygon:'https://polygon-rpc.com'};
 
 // Google Auth
 function gapiLoaded(){gapi.load('client',async()=>{await gapi.client.init({apiKey:GOOGLE_CONFIG.apiKey,discoveryDocs:GOOGLE_CONFIG.discoveryDocs});gapiInited=true;console.log('✓ GAPI initialisiert');maybeEnableButtons();});}
@@ -337,7 +337,13 @@ console.log(`✓ ${trows.length} Tokens geladen`);
 // Web3
 function initializeWeb3(){
 console.log('🔧 Initialisiere Web3...');
-Object.keys(tokens).forEach(chain=>{web3Instances[chain]=new Web3(rpcEndpoints[chain]);console.log(`✓ Web3 für ${chain} initialisiert`);});
+Object.keys(tokens).forEach(chain=>{
+const endpoint = rpcEndpoints[chain];
+// Wenn es ein Array ist, nimm den ersten RPC
+const rpc = Array.isArray(endpoint) ? endpoint[0] : endpoint;
+web3Instances[chain]=new Web3(rpc);
+console.log(`✓ Web3 für ${chain} initialisiert (RPC: ${Array.isArray(endpoint) ? endpoint.length + ' Fallbacks' : 'einzeln'})`);
+});
 loadAllWallets();
 }
 
