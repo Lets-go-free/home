@@ -93,7 +93,7 @@
     <script>
 const GOOGLE_CONFIG={apiKey:'AIzaSyCoJAYF8BVhYk8k2Zr2MbDAt2qwkaGEM8w',clientId:'42198403966-ovpg5lar1qso4vqfl9rd4ebeunltpegs.apps.googleusercontent.com',spreadsheetId:'1M0HycCitzlkgk_uG1Y-iLeYKthdUaRGnCvv3Hxv0yww',discoveryDocs:['https://sheets.googleapis.com/$discovery/rest?version=v4'],scopes:'https://www.googleapis.com/auth/spreadsheets.readonly'};
 let gapiInited=false,tokenClient,accessToken=null,wallets=[],tokens={},allBalances=[],web3Instances={};
-const rpcEndpoints={apertum:'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc',bsc:'https://bsc-dataseed.binance.org/',eth:'https://eth.llamarpc.com',polygon:'https://polygon-rpc.com'};
+const rpcEndpoints={apertum:'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc',bsc:'https://bsc-dataseed.binance.org/',eth:'https://rpc.ankr.com/eth',polygon:'https://polygon-rpc.com'};
 const dexScreenerChainIds={apertum:'avalanche',bsc:'bsc',eth:'ethereum',polygon:'polygon'};
 const ERC20_ABI=[{"constant":true,"inputs":[],"name":"name","outputs":[{"name":"","type":"string"}],"type":"function"},{"constant":true,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"type":"function"},{"constant":true,"inputs":[{"name":"_owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"balance","type":"uint256"}],"type":"function"},{"constant":true,"inputs":[],"name":"symbol","outputs":[{"name":"","type":"string"}],"type":"function"}];
 const nativeTokenPriceCache={};
@@ -104,8 +104,113 @@ function handleAuthClick(){console.log('🔐 Starte Authentifizierung...');docum
 window.addEventListener('load',()=>{gapiLoaded();const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.onload=gisLoaded;document.head.appendChild(s);});
 async function loadSheetsData(){try{console.log('📊 Lade Daten aus Google Sheets...');const wr=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:GOOGLE_CONFIG.spreadsheetId,range:'Wallets!A2:B'});const wRows=wr.result.values;if(wRows&&wRows.length>0){wallets=wRows.map(r=>({name:r[0],address:r[1]}));console.log(`✓ ${wallets.length} Wallets geladen`);}const tr=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:GOOGLE_CONFIG.spreadsheetId,range:'Tokens!A2:E'});const tRows=tr.result.values;if(tRows&&tRows.length>0){tokens={};tRows.forEach(r=>{const c=r[0];if(!tokens[c])tokens[c]=[];tokens[c].push({symbol:r[1],name:r[2],address:r[3],decimals:18});});console.log(`✓ ${tRows.length} Tokens geladen`);}}catch(e){console.error('Fehler beim Laden der Sheets:',e);document.getElementById('loginStatus').textContent='Fehler: '+e.message;}}
 async function initializeWeb3(){console.log('🔧 Initialisiere Web3...');for(const[c,r]of Object.entries(rpcEndpoints)){web3Instances[c]=new Web3(r);console.log(`✓ Web3 für ${c} initialisiert`);}loadAllWallets();}
-async function fetchTokenPrice(addr,chain){try{if(addr==='native'){const coinIds={'eth':'ethereum','bsc':'binancecoin','polygon':'matic-network','apertum':'aptm'};const cid=coinIds[chain];if(!cid)return null;if(nativeTokenPriceCache[cid])return nativeTokenPriceCache[cid];const u=`https://api.coingecko.com/api/v3/simple/price?ids=${cid}&vs_currencies=usd`;const r=await fetch(u);if(!r.ok)return null;const d=await r.json();if(d&&d[cid]&&d[cid].usd){nativeTokenPriceCache[cid]=d[cid].usd;return d[cid].usd;}return null;}const cid=dexScreenerChainIds[chain];const u=`https://api.dexscreener.com/latest/dex/tokens/${addr}`;const r=await fetch(u);if(!r.ok)return null;const d=await r.json();if(d&&d.pairs&&d.pairs.length>0){let p=d.pairs.filter(x=>x.chainId===cid);if(p.length===0)p=d.pairs;if(p.length>0){const best=p.reduce((b,c)=>{const bL=parseFloat(b.liquidity?.usd||0);const cL=parseFloat(c.liquidity?.usd||0);return cL>bL?c:b;});return parseFloat(best.priceUsd);}}return null;}catch{return null;}}
-async function loadAllWallets(){try{console.log('🚀 Starte Laden der Wallets...');const c=document.getElementById('tableContent');c.innerHTML='<div class="loading"><div class="spinner"></div><p>Lade Token-Daten...</p><p style="font-size:12px;margin-top:10px;" id="loadingStatus">Initialisiere...</p></div>';allBalances=[];const tasks=[];for(const w of wallets){for(const[ch,tl]of Object.entries(tokens)){const w3=web3Instances[ch];for(const t of tl){const task=(async()=>{try{let bal,tn=t.name,ts=t.symbol,dec=t.decimals;if(t.address==='native'){const wb=await w3.eth.getBalance(w.address);bal=parseFloat(w3.utils.fromWei(wb,'ether'));}else{const ct=new w3.eth.Contract(ERC20_ABI,t.address);try{dec=await ct.methods.decimals().call();dec=parseInt(dec);}catch{return null;}try{const rb=await ct.methods.balanceOf(w.address).call();bal=parseFloat(rb)/Math.pow(10,dec);}catch{return null;}if(bal>0){try{const[fn,fs]=await Promise.all([ct.methods.name().call().catch(()=>t.name),ct.methods.symbol().call().catch(()=>t.symbol)]);tn=fn;ts=fs;}catch{}}}if(bal>0){return{wallet:w.name,walletAddress:w.address,tokenSymbol:ts,tokenName:tn,chain:ch,balance:bal,tokenAddress:t.address,decimals:dec,priceUsd:null,valueUsd:null};}return null;}catch{return null;}})();tasks.push(task);}}}console.log(`⚡ Lade ${tasks.length} Token parallel...`);const res=await Promise.all(tasks);allBalances=res.filter(i=>i!==null);console.log(`✅ ${allBalances.length} Token mit Balance gefunden`);const se=document.getElementById('loadingStatus');if(se)se.textContent=`Lade Preise für ${allBalances.length} Token...`;const bs=5;for(let i=0;i<allBalances.length;i+=bs){const b=allBalances.slice(i,i+bs);await Promise.all(b.map(async(it)=>{try{it.priceUsd=await fetchTokenPrice(it.tokenAddress,it.chain);if(it.priceUsd&&it.balance>0)it.valueUsd=it.balance*it.priceUsd;}catch{}}));if(se)se.textContent=`Preise geladen: ${Math.min(i+bs,allBalances.length)} von ${allBalances.length}`;}console.log(`✅ Laden abgeschlossen`);displayTable();updateStats();}catch(e){console.error('Fehler:',e);displayError('Fehler beim Laden: '+e.message);}}
+async function fetchUniswapV2Price(addr,w3){
+const cacheKey=`uni-v2-${addr}`;
+const cached=getCachedPrice(cacheKey);
+if(cached){console.log(`    ✓ Cache: Uniswap V2`);return cached;}
+try{
+await delay(1500);
+console.log(`  💱 Uniswap V2: ${addr}`);
+const F="0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f";
+const U="0xdAC17F958D2ee523a2206206994597C13D831ec7";
+const FA=["function getPair(address,address) external view returns (address)"];
+const PA=["function getReserves() view returns (uint112,uint112,uint32)","function token0() view returns (address)","function token1() view returns (address)"];
+const fc=new w3.eth.Contract(FA,F);
+const pool=await fc.methods.getPair(addr,U).call();
+if(pool==='0x0000000000000000000000000000000000000000')return null;
+await delay(500);
+const pc=new w3.eth.Contract(PA,pool);
+const[t0,t1,res]=await Promise.all([pc.methods.token0().call(),pc.methods.token1().call(),pc.methods.getReserves().call()]);
+let tR,uR;
+if(t0.toLowerCase()===addr.toLowerCase()){tR=parseFloat(res[0])/Math.pow(10,18);uR=parseFloat(res[1])/Math.pow(10,6);}
+else if(t1.toLowerCase()===addr.toLowerCase()){tR=parseFloat(res[1])/Math.pow(10,18);uR=parseFloat(res[0])/Math.pow(10,6);}
+else return null;
+const p=uR/tR;
+console.log(`    ✓ Uniswap V2: $${p.toFixed(6)}`);
+setCachedPrice(cacheKey,p);
+return p;
+}catch(e){console.log(`    ⚠️ Uniswap V2:`,e.message);return null;}
+}
+async function fetchUniswapV2ViaWETH(addr,w3){
+const cacheKey=`uni-v2-weth-${addr}`;
+const cached=getCachedPrice(cacheKey);
+if(cached){console.log(`    ✓ Cache: Uniswap V2 via WETH`);return cached;}
+try{
+await delay(1500);
+const F="0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f";
+const W="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+const U="0xdAC17F958D2ee523a2206206994597C13D831ec7";
+const FA=["function getPair(address,address) external view returns (address)"];
+const PA=["function getReserves() view returns (uint112,uint112,uint32)","function token0() view returns (address)","function token1() view returns (address)"];
+const fc=new w3.eth.Contract(FA,F);
+const twp=await fc.methods.getPair(addr,W).call();
+if(twp==='0x0000000000000000000000000000000000000000')return null;
+await delay(500);
+const twc=new w3.eth.Contract(PA,twp);
+const[tw0,tw1,twr]=await Promise.all([twc.methods.token0().call(),twc.methods.token1().call(),twc.methods.getReserves().call()]);
+let tR,wR;
+if(tw0.toLowerCase()===addr.toLowerCase()){tR=parseFloat(twr[0])/Math.pow(10,18);wR=parseFloat(twr[1])/Math.pow(10,18);}
+else{tR=parseFloat(twr[1])/Math.pow(10,18);wR=parseFloat(twr[0])/Math.pow(10,18);}
+const tpw=wR/tR;
+await delay(500);
+const wup=await fc.methods.getPair(W,U).call();
+if(wup==='0x0000000000000000000000000000000000000000')return null;
+const wuc=new w3.eth.Contract(PA,wup);
+const[wu0,wu1,wur]=await Promise.all([wuc.methods.token0().call(),wuc.methods.token1().call(),wuc.methods.getReserves().call()]);
+let wRu,uR;
+if(wu0.toLowerCase()===W.toLowerCase()){wRu=parseFloat(wur[0])/Math.pow(10,18);uR=parseFloat(wur[1])/Math.pow(10,6);}
+else{wRu=parseFloat(wur[1])/Math.pow(10,18);uR=parseFloat(wur[0])/Math.pow(10,6);}
+const wpu=uR/wRu;
+const p=tpw*wpu;
+console.log(`    ✓ Uniswap V2 via WETH: $${p.toFixed(6)}`);
+setCachedPrice(cacheKey,p);
+return p;
+}catch(e){console.log(`    ⚠️ Uniswap V2 via WETH:`,e.message);return null;}
+}
+async function fetchTokenPrice(addr,chain){
+try{
+if(addr==='native'){
+const coinIds={'eth':'ethereum','bsc':'binancecoin','polygon':'matic-network','apertum':'aptm'};
+const cid=coinIds[chain];
+if(!cid)return null;
+if(nativeTokenPriceCache[cid])return nativeTokenPriceCache[cid];
+await delay(800);
+const u=`https://api.coingecko.com/api/v3/simple/price?ids=${cid}&vs_currencies=usd`;
+const r=await fetch(u);
+if(!r.ok)return null;
+const d=await r.json();
+if(d&&d[cid]&&d[cid].usd){nativeTokenPriceCache[cid]=d[cid].usd;return d[cid].usd;}
+return null;
+}
+if(chain==='eth'){
+let p=await fetchUniswapV2Price(addr,web3Instances['eth']);
+if(p)return p;
+p=await fetchUniswapV2ViaWETH(addr,web3Instances['eth']);
+if(p)return p;
+}
+const dexKey=`dex-${chain}-${addr}`;
+const dexCached=getCachedPrice(dexKey);
+if(dexCached){console.log(`    ✓ Cache: DexScreener`);return dexCached;}
+await delay(800);
+const cid=dexScreenerChainIds[chain];
+const u=`https://api.dexscreener.com/latest/dex/tokens/${addr}`;
+const r=await fetch(u);
+if(!r.ok)return null;
+const d=await r.json();
+if(d&&d.pairs&&d.pairs.length>0){
+let p=d.pairs.filter(x=>x.chainId===cid);
+if(p.length===0)p=d.pairs;
+if(p.length>0){
+const best=p.reduce((b,c)=>{const bL=parseFloat(b.liquidity?.usd||0);const cL=parseFloat(c.liquidity?.usd||0);return cL>bL?c:b;});
+const price=parseFloat(best.priceUsd);
+setCachedPrice(dexKey,price);
+return price;
+}
+}
+return null;
+}catch(e){console.log(`    ⚠️ fetchTokenPrice:`,e.message);return null;}
+}
+async function loadAllWallets(){try{console.log('🚀 Starte Laden der Wallets...');const c=document.getElementById('tableContent');c.innerHTML='<div class="loading"><div class="spinner"></div><p>Lade Token-Daten...</p><p style="font-size:12px;margin-top:10px;" id="loadingStatus">Initialisiere...</p></div>';allBalances=[];const tasks=[];for(const w of wallets){for(const[ch,tl]of Object.entries(tokens)){const w3=web3Instances[ch];for(const t of tl){const task=(async()=>{try{let bal,tn=t.name,ts=t.symbol,dec=t.decimals;if(t.address==='native'){const wb=await w3.eth.getBalance(w.address);bal=parseFloat(w3.utils.fromWei(wb,'ether'));}else{const ct=new w3.eth.Contract(ERC20_ABI,t.address);try{dec=await ct.methods.decimals().call();dec=parseInt(dec);}catch{return null;}try{const rb=await ct.methods.balanceOf(w.address).call();bal=parseFloat(rb)/Math.pow(10,dec);}catch{return null;}if(bal>0){try{const[fn,fs]=await Promise.all([ct.methods.name().call().catch(()=>t.name),ct.methods.symbol().call().catch(()=>t.symbol)]);tn=fn;ts=fs;}catch{}}}if(bal>0){return{wallet:w.name,walletAddress:w.address,tokenSymbol:ts,tokenName:tn,chain:ch,balance:bal,tokenAddress:t.address,decimals:dec,priceUsd:null,valueUsd:null};}return null;}catch{return null;}})();tasks.push(task);}}}console.log(`⚡ Lade ${tasks.length} Token parallel...`);const res=await Promise.all(tasks);allBalances=res.filter(i=>i!==null);console.log(`✅ ${allBalances.length} Token mit Balance gefunden`);const se=document.getElementById('loadingStatus');if(se)se.textContent=`Lade Preise für ${allBalances.length} Token...`;const uniqueTokens=new Map();allBalances.forEach(item=>{const key=`${item.chain}-${item.tokenAddress}`;if(!uniqueTokens.has(key)){uniqueTokens.set(key,{chain:item.chain,address:item.tokenAddress});}});console.log(`💰 Lade Preise für ${uniqueTokens.size} unique Tokens (statt ${allBalances.length})...`);const priceMap=new Map();const uniqueArray=Array.from(uniqueTokens.values());const bs=1;for(let i=0;i<uniqueArray.length;i+=bs){const token=uniqueArray[i];try{const price=await fetchTokenPrice(token.address,token.chain);const key=`${token.chain}-${token.address}`;priceMap.set(key,price);}catch{}if(se)se.textContent=`Preise geladen: ${i+1} von ${uniqueArray.length} unique Tokens`;}allBalances.forEach(item=>{const key=`${item.chain}-${item.tokenAddress}`;item.priceUsd=priceMap.get(key);if(item.priceUsd&&item.balance>0){item.valueUsd=item.balance*item.priceUsd;}});console.log(`✅ Laden abgeschlossen`);displayTable();updateStats();}catch(e){console.error('Fehler:',e);displayError('Fehler beim Laden: '+e.message);}}
 function displayTable(){const c=document.getElementById('tableContent');if(allBalances.length===0){c.innerHTML='<div class="empty-state"><p>Keine Token mit Balance gefunden.</p></div>';return;}const h='<div class="table-wrapper"><table><thead><tr><th>Wallet</th><th>Token</th><th>Token-Adresse</th><th>Anzahl</th><th>Preis (USD)</th><th>Wert (USD)</th></tr></thead><tbody id="tableBody">'+generateTableRows()+'</tbody></table></div>';c.innerHTML=h;populateFilters();}
 function generateTableRows(){const gb=document.getElementById('groupByFilter')?.value||'none';if(gb==='none'){return allBalances.map((it,i)=>`<tr data-index="${i}"><td>${it.wallet}</td><td><div class="token-info"><div class="token-icon">${it.tokenSymbol.charAt(0)}</div><div class="token-details"><div class="token-symbol">${it.tokenSymbol}</div><div class="token-chain">${it.chain}</div></div></div></td><td class="token-address-cell" title="${it.tokenAddress}">${it.tokenAddress==='native'?'Native':it.tokenAddress}</td><td class="balance">${formatNumber(it.balance)}</td><td class="balance">${it.priceUsd?'$'+formatNumber(it.priceUsd):'-'}</td><td class="balance">${it.valueUsd?'$'+formatNumber(it.valueUsd):'-'}</td></tr>`).join('');}else{const g={};allBalances.forEach((it,i)=>{const k=it[gb]||'Unbekannt';if(!g[k])g[k]=[];g[k].push({...it,originalIndex:i});});let h='';Object.keys(g).sort().forEach(k=>{const its=g[k];const st=its.reduce((s,it)=>s+(it.valueUsd||0),0);h+=`<tr class="group-header"><td colspan="6"><strong>${getGroupLabel(gb)}:</strong> ${k.toUpperCase()} ${st>0?`(Zwischentotal: $${formatNumber(st)})`:''}</td></tr>`;its.forEach(it=>{h+=`<tr data-index="${it.originalIndex}"><td>${it.wallet}</td><td><div class="token-info"><div class="token-icon">${it.tokenSymbol.charAt(0)}</div><div class="token-details"><div class="token-symbol">${it.tokenSymbol}</div><div class="token-chain">${it.chain}</div></div></div></td><td class="token-address-cell" title="${it.tokenAddress}">${it.tokenAddress==='native'?'Native':it.tokenAddress}</td><td class="balance">${formatNumber(it.balance)}</td><td class="balance">${it.priceUsd?'$'+formatNumber(it.priceUsd):'-'}</td><td class="balance">${it.valueUsd?'$'+formatNumber(it.valueUsd):'-'}</td></tr>`;});if(st>0){h+=`<tr class="subtotal-row"><td colspan="5" style="text-align:right;">Zwischentotal ${k}:</td><td class="balance">$${formatNumber(st)}</td></tr>`;}});const gt=allBalances.reduce((s,it)=>s+(it.valueUsd||0),0);if(gt>0){h+=`<tr class="total-row"><td colspan="5" style="text-align:right;"><strong>GESAMT-TOTAL:</strong></td><td class="balance"><strong>$${formatNumber(gt)}</strong></td></tr>`;}return h;}}
 function getGroupLabel(gb){const l={'wallet':'Wallet','chain':'Chain','token':'Token'};return l[gb]||gb;}
