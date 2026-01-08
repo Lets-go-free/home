@@ -81,6 +81,24 @@
             </div>
             <div class="stats">
                 <div class="stat-card"><div class="stat-label">Wallets</div><div class="stat-value" id="walletCount">-</div></div>
+
+            <!-- Preis-Tabelle -->
+            <div class="price-table-section" style="margin-bottom: 20px;">
+                <div class="price-table-header" style="background: white; border-radius: 15px; padding: 15px 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="togglePriceTable()">
+                    <div>
+                        <h3 style="margin: 0; font-size: 18px; color: #2d3748;">💰 Token-Preise</h3>
+                        <p style="margin: 5px 0 0 0; font-size: 13px; color: #718096;" id="priceTableStatus">Klicken zum Laden der Preise</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="event.stopPropagation(); loadPrices();" id="loadPricesBtn" style="padding: 8px 16px;">
+                        🔄 Preise laden
+                    </button>
+                </div>
+                <div id="priceTableContent" style="display: none; background: white; border-radius: 15px; margin-top: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">
+                    <div style="padding: 20px;">
+                        <p style="color: #718096; text-align: center;">Preise noch nicht geladen</p>
+                    </div>
+                </div>
+            </div>
                 <div class="stat-card"><div class="stat-label">Token gesamt</div><div class="stat-value" id="tokenCount">-</div></div>
                 <div class="stat-card"><div class="stat-label">Portfolio-Wert</div><div class="stat-value" id="portfolioValue">-</div></div>
                 <div class="stat-card"><div class="stat-label">Chains</div><div class="stat-value" id="chainCount">-</div></div>
@@ -88,7 +106,349 @@
             <div class="table-container"><div id="tableContent"><div class="loading"><div class="spinner"></div><p>Lade Token-Daten...</p></div></div></div>
         </div>
     </div>
+// ========================================
+// PRICE TABLE FUNCTIONS
+// Globale Preis-Map
+const globalPriceMap = new Map();
+let priceTableVisible = false;
+
+// Toggle Preis-Tabelle
+function togglePriceTable(){
+    priceTableVisible = !priceTableVisible;
+    const content = document.getElementById('priceTableContent');
+    content.style.display = priceTableVisible ? 'block' : 'none';
+}
+
+// Preise laden (nur unique Tokens)
+async function loadPrices(){
+    try{
+        console.log('💰 Starte Preis-Ladung...');
+        const btn = document.getElementById('loadPricesBtn');
+        const status = document.getElementById('priceTableStatus');
+        
+        btn.disabled = true;
+        btn.textContent = '⏳ Lädt...';
+        status.textContent = 'Lade Preise...';
+        
+        // Sammle unique Tokens
+        const uniqueTokens = new Map();
+        allBalances.forEach(item => {
+            const key = `${item.chain}-${item.tokenAddress}`;
+            if(!uniqueTokens.has(key)){
+                uniqueTokens.set(key, {
+                    chain: item.chain,
+                    address: item.tokenAddress,
+                    symbol: item.tokenSymbol,
+                    name: item.tokenName
+                });
+            }
+        });
+        
+        console.log(`📊 Lade ${uniqueTokens.size} unique Token-Preise...`);
+        status.textContent = `Lade ${uniqueTokens.size} Token-Preise...`;
+        
+        // Lade Preise sequentiell (1 nach dem anderen)
+        const priceData = [];
+        let loaded = 0;
+        
+        for(const [key, token] of uniqueTokens){
+            try{
+                const startTime = Date.now();
+                const price = await fetchTokenPrice(token.address, token.chain);
+                const loadTime = Date.now() - startTime;
+                
+                const priceInfo = {
+                    chain: token.chain,
+                    symbol: token.symbol,
+                    name: token.name,
+                    address: token.address,
+                    price: price,
+                    source: price ? 'API' : 'N/A',
+                    timestamp: new Date().toLocaleTimeString('de-CH'),
+                    loadTime: loadTime
+                };
+                
+                priceData.push(priceInfo);
+                globalPriceMap.set(key, price);
+                loaded++;
+                
+                status.textContent = `Geladen: ${loaded}/${uniqueTokens.size} (${priceInfo.symbol}: ${price ? '$'+formatNumber(price) : 'N/A'})`;
+                
+                // Update Preis-Tabelle live
+                displayPriceTable(priceData);
+                
+            }catch(e){
+                console.error(`Fehler bei ${token.symbol}:`, e);
+            }
+        }
+        
+        console.log(`✅ ${loaded} Preise geladen`);
+        status.textContent = `${loaded} Preise geladen - Letzte Aktualisierung: ${new Date().toLocaleTimeString('de-CH')}`;
+        btn.textContent = '🔄 Neu laden';
+        btn.disabled = false;
+        
+        // Aktualisiere Balance-Tabelle mit Preisen
+        updateBalanceTableWithPrices();
+        
+        // Öffne Preis-Tabelle automatisch
+        if(!priceTableVisible) togglePriceTable();
+        
+    }catch(e){
+        console.error('Fehler beim Laden:', e);
+        document.getElementById('priceTableStatus').textContent = 'Fehler: ' + e.message;
+        document.getElementById('loadPricesBtn').disabled = false;
+    }
+}
+
+// Zeige Preis-Tabelle
+function displayPriceTable(priceData){
+    const content = document.getElementById('priceTableContent');
+    
+    if(priceData.length === 0){
+        content.innerHTML = '<div style="padding:20px;text-align:center;color:#718096;">Keine Preise geladen</div>';
+        return;
+    }
+    
+    let html = `
+        <div style="overflow-x: auto; max-height: 400px; overflow-y: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead style="position: sticky; top: 0; background: #f7fafc; z-index: 10;">
+                    <tr>
+                        <th style="padding: 12px 15px; text-align: left; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Chain</th>
+                        <th style="padding: 12px 15px; text-align: left; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Token</th>
+                        <th style="padding: 12px 15px; text-align: right; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Preis (USD)</th>
+                        <th style="padding: 12px 15px; text-align: center; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Quelle</th>
+                        <th style="padding: 12px 15px; text-align: center; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Zeit</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    priceData.forEach((item, index) => {
+        const bgColor = index % 2 === 0 ? '#ffffff' : '#f7fafc';
+        html += `
+            <tr style="background: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 10px 15px;">
+                    <span style="display: inline-block; padding: 4px 8px; background: rgba(102,126,234,0.1); color: #667eea; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                        ${item.chain.toUpperCase()}
+                    </span>
+                </td>
+                <td style="padding: 10px 15px;">
+                    <div style="font-weight: 600; color: #2d3748; font-size: 13px;">${item.symbol}</div>
+                    <div style="font-size: 11px; color: #94a3b8;">${item.name}</div>
+                </td>
+                <td style="padding: 10px 15px; text-align: right; font-family: monospace; font-weight: 600; color: ${item.price ? '#22c55e' : '#ef4444'};">
+                    ${item.price ? '$' + formatNumber(item.price) : 'N/A'}
+                </td>
+                <td style="padding: 10px 15px; text-align: center; font-size: 11px; color: #718096;">
+                    ${item.source}
+                </td>
+                <td style="padding: 10px 15px; text-align: center; font-size: 11px; color: #94a3b8;">
+                    ${item.timestamp}
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    content.innerHTML = html;
+}
+
+// Aktualisiere Balance-Tabelle mit geladenen Preisen
+function updateBalanceTableWithPrices(){
+    allBalances.forEach(item => {
+        const key = `${item.chain}-${item.tokenAddress}`;
+        const price = globalPriceMap.get(key);
+        if(price){
+            item.priceUsd = price;
+            if(item.balance > 0){
+                item.valueUsd = item.balance * price;
+            }
+        }
+    });
+    
+    // Zeige aktualisierte Balance-Tabelle
+    displayTable();
+    updateStats();
+}
+// ========================================
     <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+// ========================================
+// PRICE TABLE FUNCTIONS
+// Globale Preis-Map
+const globalPriceMap = new Map();
+let priceTableVisible = false;
+
+// Toggle Preis-Tabelle
+function togglePriceTable(){
+    priceTableVisible = !priceTableVisible;
+    const content = document.getElementById('priceTableContent');
+    content.style.display = priceTableVisible ? 'block' : 'none';
+}
+
+// Preise laden (nur unique Tokens)
+async function loadPrices(){
+    try{
+        console.log('💰 Starte Preis-Ladung...');
+        const btn = document.getElementById('loadPricesBtn');
+        const status = document.getElementById('priceTableStatus');
+        
+        btn.disabled = true;
+        btn.textContent = '⏳ Lädt...';
+        status.textContent = 'Lade Preise...';
+        
+        // Sammle unique Tokens
+        const uniqueTokens = new Map();
+        allBalances.forEach(item => {
+            const key = `${item.chain}-${item.tokenAddress}`;
+            if(!uniqueTokens.has(key)){
+                uniqueTokens.set(key, {
+                    chain: item.chain,
+                    address: item.tokenAddress,
+                    symbol: item.tokenSymbol,
+                    name: item.tokenName
+                });
+            }
+        });
+        
+        console.log(`📊 Lade ${uniqueTokens.size} unique Token-Preise...`);
+        status.textContent = `Lade ${uniqueTokens.size} Token-Preise...`;
+        
+        // Lade Preise sequentiell (1 nach dem anderen)
+        const priceData = [];
+        let loaded = 0;
+        
+        for(const [key, token] of uniqueTokens){
+            try{
+                const startTime = Date.now();
+                const price = await fetchTokenPrice(token.address, token.chain);
+                const loadTime = Date.now() - startTime;
+                
+                const priceInfo = {
+                    chain: token.chain,
+                    symbol: token.symbol,
+                    name: token.name,
+                    address: token.address,
+                    price: price,
+                    source: price ? 'API' : 'N/A',
+                    timestamp: new Date().toLocaleTimeString('de-CH'),
+                    loadTime: loadTime
+                };
+                
+                priceData.push(priceInfo);
+                globalPriceMap.set(key, price);
+                loaded++;
+                
+                status.textContent = `Geladen: ${loaded}/${uniqueTokens.size} (${priceInfo.symbol}: ${price ? '$'+formatNumber(price) : 'N/A'})`;
+                
+                // Update Preis-Tabelle live
+                displayPriceTable(priceData);
+                
+            }catch(e){
+                console.error(`Fehler bei ${token.symbol}:`, e);
+            }
+        }
+        
+        console.log(`✅ ${loaded} Preise geladen`);
+        status.textContent = `${loaded} Preise geladen - Letzte Aktualisierung: ${new Date().toLocaleTimeString('de-CH')}`;
+        btn.textContent = '🔄 Neu laden';
+        btn.disabled = false;
+        
+        // Aktualisiere Balance-Tabelle mit Preisen
+        updateBalanceTableWithPrices();
+        
+        // Öffne Preis-Tabelle automatisch
+        if(!priceTableVisible) togglePriceTable();
+        
+    }catch(e){
+        console.error('Fehler beim Laden:', e);
+        document.getElementById('priceTableStatus').textContent = 'Fehler: ' + e.message;
+        document.getElementById('loadPricesBtn').disabled = false;
+    }
+}
+
+// Zeige Preis-Tabelle
+function displayPriceTable(priceData){
+    const content = document.getElementById('priceTableContent');
+    
+    if(priceData.length === 0){
+        content.innerHTML = '<div style="padding:20px;text-align:center;color:#718096;">Keine Preise geladen</div>';
+        return;
+    }
+    
+    let html = `
+        <div style="overflow-x: auto; max-height: 400px; overflow-y: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead style="position: sticky; top: 0; background: #f7fafc; z-index: 10;">
+                    <tr>
+                        <th style="padding: 12px 15px; text-align: left; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Chain</th>
+                        <th style="padding: 12px 15px; text-align: left; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Token</th>
+                        <th style="padding: 12px 15px; text-align: right; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Preis (USD)</th>
+                        <th style="padding: 12px 15px; text-align: center; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Quelle</th>
+                        <th style="padding: 12px 15px; text-align: center; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Zeit</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    priceData.forEach((item, index) => {
+        const bgColor = index % 2 === 0 ? '#ffffff' : '#f7fafc';
+        html += `
+            <tr style="background: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 10px 15px;">
+                    <span style="display: inline-block; padding: 4px 8px; background: rgba(102,126,234,0.1); color: #667eea; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                        ${item.chain.toUpperCase()}
+                    </span>
+                </td>
+                <td style="padding: 10px 15px;">
+                    <div style="font-weight: 600; color: #2d3748; font-size: 13px;">${item.symbol}</div>
+                    <div style="font-size: 11px; color: #94a3b8;">${item.name}</div>
+                </td>
+                <td style="padding: 10px 15px; text-align: right; font-family: monospace; font-weight: 600; color: ${item.price ? '#22c55e' : '#ef4444'};">
+                    ${item.price ? '$' + formatNumber(item.price) : 'N/A'}
+                </td>
+                <td style="padding: 10px 15px; text-align: center; font-size: 11px; color: #718096;">
+                    ${item.source}
+                </td>
+                <td style="padding: 10px 15px; text-align: center; font-size: 11px; color: #94a3b8;">
+                    ${item.timestamp}
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    content.innerHTML = html;
+}
+
+// Aktualisiere Balance-Tabelle mit geladenen Preisen
+function updateBalanceTableWithPrices(){
+    allBalances.forEach(item => {
+        const key = `${item.chain}-${item.tokenAddress}`;
+        const price = globalPriceMap.get(key);
+        if(price){
+            item.priceUsd = price;
+            if(item.balance > 0){
+                item.valueUsd = item.balance * price;
+            }
+        }
+    });
+    
+    // Zeige aktualisierte Balance-Tabelle
+    displayTable();
+    updateStats();
+}
+// ========================================
     <script src="https://apis.google.com/js/api.js"></script>
     <script>
 const GOOGLE_CONFIG={apiKey:'AIzaSyCoJAYF8BVhYk8k2Zr2MbDAt2qwkaGEM8w',clientId:'42198403966-ovpg5lar1qso4vqfl9rd4ebeunltpegs.apps.googleusercontent.com',spreadsheetId:'1M0HycCitzlkgk_uG1Y-iLeYKthdUaRGnCvv3Hxv0yww',discoveryDocs:['https://sheets.googleapis.com/$discovery/rest?version=v4'],scopes:'https://www.googleapis.com/auth/spreadsheets.readonly'};
@@ -224,6 +584,177 @@ document.getElementById('walletFilter').addEventListener('change',applyFilters);
 document.getElementById('chainFilter').addEventListener('change',applyFilters);
 document.getElementById('tokenFilter').addEventListener('change',applyFilters);
 document.getElementById('groupByFilter').addEventListener('change',applyFilters);
+// ========================================
+// PRICE TABLE FUNCTIONS
+// Globale Preis-Map
+const globalPriceMap = new Map();
+let priceTableVisible = false;
+
+// Toggle Preis-Tabelle
+function togglePriceTable(){
+    priceTableVisible = !priceTableVisible;
+    const content = document.getElementById('priceTableContent');
+    content.style.display = priceTableVisible ? 'block' : 'none';
+}
+
+// Preise laden (nur unique Tokens)
+async function loadPrices(){
+    try{
+        console.log('💰 Starte Preis-Ladung...');
+        const btn = document.getElementById('loadPricesBtn');
+        const status = document.getElementById('priceTableStatus');
+        
+        btn.disabled = true;
+        btn.textContent = '⏳ Lädt...';
+        status.textContent = 'Lade Preise...';
+        
+        // Sammle unique Tokens
+        const uniqueTokens = new Map();
+        allBalances.forEach(item => {
+            const key = `${item.chain}-${item.tokenAddress}`;
+            if(!uniqueTokens.has(key)){
+                uniqueTokens.set(key, {
+                    chain: item.chain,
+                    address: item.tokenAddress,
+                    symbol: item.tokenSymbol,
+                    name: item.tokenName
+                });
+            }
+        });
+        
+        console.log(`📊 Lade ${uniqueTokens.size} unique Token-Preise...`);
+        status.textContent = `Lade ${uniqueTokens.size} Token-Preise...`;
+        
+        // Lade Preise sequentiell (1 nach dem anderen)
+        const priceData = [];
+        let loaded = 0;
+        
+        for(const [key, token] of uniqueTokens){
+            try{
+                const startTime = Date.now();
+                const price = await fetchTokenPrice(token.address, token.chain);
+                const loadTime = Date.now() - startTime;
+                
+                const priceInfo = {
+                    chain: token.chain,
+                    symbol: token.symbol,
+                    name: token.name,
+                    address: token.address,
+                    price: price,
+                    source: price ? 'API' : 'N/A',
+                    timestamp: new Date().toLocaleTimeString('de-CH'),
+                    loadTime: loadTime
+                };
+                
+                priceData.push(priceInfo);
+                globalPriceMap.set(key, price);
+                loaded++;
+                
+                status.textContent = `Geladen: ${loaded}/${uniqueTokens.size} (${priceInfo.symbol}: ${price ? '$'+formatNumber(price) : 'N/A'})`;
+                
+                // Update Preis-Tabelle live
+                displayPriceTable(priceData);
+                
+            }catch(e){
+                console.error(`Fehler bei ${token.symbol}:`, e);
+            }
+        }
+        
+        console.log(`✅ ${loaded} Preise geladen`);
+        status.textContent = `${loaded} Preise geladen - Letzte Aktualisierung: ${new Date().toLocaleTimeString('de-CH')}`;
+        btn.textContent = '🔄 Neu laden';
+        btn.disabled = false;
+        
+        // Aktualisiere Balance-Tabelle mit Preisen
+        updateBalanceTableWithPrices();
+        
+        // Öffne Preis-Tabelle automatisch
+        if(!priceTableVisible) togglePriceTable();
+        
+    }catch(e){
+        console.error('Fehler beim Laden:', e);
+        document.getElementById('priceTableStatus').textContent = 'Fehler: ' + e.message;
+        document.getElementById('loadPricesBtn').disabled = false;
+    }
+}
+
+// Zeige Preis-Tabelle
+function displayPriceTable(priceData){
+    const content = document.getElementById('priceTableContent');
+    
+    if(priceData.length === 0){
+        content.innerHTML = '<div style="padding:20px;text-align:center;color:#718096;">Keine Preise geladen</div>';
+        return;
+    }
+    
+    let html = `
+        <div style="overflow-x: auto; max-height: 400px; overflow-y: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead style="position: sticky; top: 0; background: #f7fafc; z-index: 10;">
+                    <tr>
+                        <th style="padding: 12px 15px; text-align: left; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Chain</th>
+                        <th style="padding: 12px 15px; text-align: left; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Token</th>
+                        <th style="padding: 12px 15px; text-align: right; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Preis (USD)</th>
+                        <th style="padding: 12px 15px; text-align: center; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Quelle</th>
+                        <th style="padding: 12px 15px; text-align: center; font-size: 12px; color: #2d3748; border-bottom: 2px solid #e2e8f0;">Zeit</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    priceData.forEach((item, index) => {
+        const bgColor = index % 2 === 0 ? '#ffffff' : '#f7fafc';
+        html += `
+            <tr style="background: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 10px 15px;">
+                    <span style="display: inline-block; padding: 4px 8px; background: rgba(102,126,234,0.1); color: #667eea; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                        ${item.chain.toUpperCase()}
+                    </span>
+                </td>
+                <td style="padding: 10px 15px;">
+                    <div style="font-weight: 600; color: #2d3748; font-size: 13px;">${item.symbol}</div>
+                    <div style="font-size: 11px; color: #94a3b8;">${item.name}</div>
+                </td>
+                <td style="padding: 10px 15px; text-align: right; font-family: monospace; font-weight: 600; color: ${item.price ? '#22c55e' : '#ef4444'};">
+                    ${item.price ? '$' + formatNumber(item.price) : 'N/A'}
+                </td>
+                <td style="padding: 10px 15px; text-align: center; font-size: 11px; color: #718096;">
+                    ${item.source}
+                </td>
+                <td style="padding: 10px 15px; text-align: center; font-size: 11px; color: #94a3b8;">
+                    ${item.timestamp}
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    content.innerHTML = html;
+}
+
+// Aktualisiere Balance-Tabelle mit geladenen Preisen
+function updateBalanceTableWithPrices(){
+    allBalances.forEach(item => {
+        const key = `${item.chain}-${item.tokenAddress}`;
+        const price = globalPriceMap.get(key);
+        if(price){
+            item.priceUsd = price;
+            if(item.balance > 0){
+                item.valueUsd = item.balance * price;
+            }
+        }
+    });
+    
+    // Zeige aktualisierte Balance-Tabelle
+    displayTable();
+    updateStats();
+}
+// ========================================
     </script>
 </body>
 </html>
