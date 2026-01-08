@@ -59,6 +59,7 @@
 <body>
     <div class="container">
         <div class="header">
+        <div style="text-align: center; color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 10px;">Version: 08.01.2026 20:14:19</div>
             <h1>🔍 Multi-Wallet Token Viewer</h1>
             <div class="timestamp" id="timestamp"></div>
         </div>
@@ -151,29 +152,12 @@ const status=document.getElementById('priceTableStatus');
 btn.disabled=true;
 btn.textContent='⏳ Lädt...';
 status.textContent='Lade Preise...';
-
-// Sammle ALLE Tokens aus dem Google Sheet (nicht nur mit Balance)
 const uniqueTokens=new Map();
-for(const [chain, tokenList] of Object.entries(tokens)){
-    tokenList.forEach(token => {
-        const key=`${chain}-${token.address}`;
-        if(!uniqueTokens.has(key)){
-            uniqueTokens.set(key, {
-                chain: chain,
-                address: token.address,
-                symbol: token.symbol,
-                name: token.name
-            });
-        }
-    });
-}
-
-console.log(`📊 Lade ${uniqueTokens.size} Token-Preise...`);
+allBalances.forEach(item=>{const key=`${item.chain}-${item.tokenAddress}`;if(!uniqueTokens.has(key)){uniqueTokens.set(key,{chain:item.chain,address:item.tokenAddress,symbol:item.tokenSymbol,name:item.tokenName});}});
+console.log(`📊 Lade ${uniqueTokens.size} unique Token-Preise...`);
 status.textContent=`Lade ${uniqueTokens.size} Token-Preise...`;
-
 const priceData=[];
 let loaded=0;
-
 for(const [key,token] of uniqueTokens){
 try{
 const startTime=Date.now();
@@ -186,16 +170,6 @@ loaded++;
 status.textContent=`Geladen: ${loaded}/${uniqueTokens.size} (${priceInfo.symbol}: ${price?'$'+formatNumber(price):'N/A'})`;
 displayPriceTable(priceData);
 }catch(e){console.error(`Fehler bei ${token.symbol}:`,e);}
-}
-
-console.log(`✅ ${loaded} Preise geladen`);
-status.textContent=`${loaded} Preise geladen - Letzte Aktualisierung: ${new Date().toLocaleTimeString('de-CH')}`;
-btn.textContent='🔄 Neu laden';
-btn.disabled=false;
-updateBalanceTableWithPrices();
-if(!priceTableVisible)togglePriceTable();
-}catch(e){console.error('Fehler:',e);document.getElementById('priceTableStatus').textContent='Fehler: '+e.message;document.getElementById('loadPricesBtn').disabled=false;}
-}
 }
 console.log(`✅ ${loaded} Preise geladen`);
 status.textContent=`${loaded} Preise geladen - Letzte Aktualisierung: ${new Date().toLocaleTimeString('de-CH')}`;
