@@ -59,7 +59,7 @@
 <body>
     <div class="container">
         <div class="header">
-        <div style="text-align: center; color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 10px;">Version: 08.01.2026 20:14:19</div>
+        <div style="text-align: center; color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 10px;">Version: 08.01.2026 20:40:09</div>
             <h1>🔍 Multi-Wallet Token Viewer</h1>
             <div class="timestamp" id="timestamp"></div>
         </div>
@@ -383,10 +383,17 @@ tasks.push(task);
 }
 }
 }
-console.log(`⚡ Lade ${tasks.length} Token parallel...`);
-const res=await Promise.all(tasks);
-allBalances=res.filter(i=>i!==null);
-console.log(`✅ ${allBalances.length} Token mit Balance gefunden`);
+console.log(`⚡ Lade ${tasks.length} Token sequentiell (mit Delays)...`);
+const results=[];
+for(let i=0;i<tasks.length;i++){
+const result=await tasks[i];
+results.push(result);
+if((i+1)%10===0){
+console.log(`  → ${i+1}/${tasks.length} geprüft...`);
+await delay(2000);
+}
+}
+allBalances=results.filter(i=>i!==null);
 displayTable();
 updateStats();
 }catch(e){console.error('Fehler:',e);displayError('Fehler beim Laden: '+e.message);}
