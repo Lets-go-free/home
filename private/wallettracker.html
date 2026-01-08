@@ -153,7 +153,7 @@ btn.disabled=true;
 btn.textContent='⏳ Lädt...';
 status.textContent='Lade Preise...';
 const uniqueTokens=new Map();
-allBalances.forEach(item=>{const key=`${item.chain}-${item.tokenAddress}`;if(!uniqueTokens.has(key)){uniqueTokens.set(key,{chain:item.chain,address:item.tokenAddress,symbol:item.tokenSymbol,name:item.tokenName});}});
+for(const [chain,tokenList] of Object.entries(tokens)){tokenList.forEach(token=>{const key=`${chain}-${token.address}`;if(!uniqueTokens.has(key)){uniqueTokens.set(key,{chain:chain,address:token.address,symbol:token.symbol,name:token.name});}});}
 console.log(`📊 Lade ${uniqueTokens.size} unique Token-Preise...`);
 status.textContent=`Lade ${uniqueTokens.size} Token-Preise...`;
 const priceData=[];
