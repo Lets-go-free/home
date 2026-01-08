@@ -11,6 +11,7 @@
         .header { text-align: center; color: white; margin-bottom: 30px; }
         .header h1 { font-size: 32px; margin-bottom: 10px; }
         .timestamp { font-size: 14px; opacity: 0.9; }
+        .version { font-size: 12px; opacity: 0.7; margin-top: 5px; }
         .login-box { background: white; border-radius: 15px; padding: 40px; max-width: 400px; margin: 100px auto; box-shadow: 0 10px 30px rgba(0,0,0,0.2); text-align: center; }
         .login-box h2 { margin-bottom: 20px; color: #2d3748; }
         .login-box p { margin-bottom: 30px; color: #718096; }
@@ -59,8 +60,8 @@
 <body>
     <div class="container">
         <div class="header">
-        <div style="text-align: center; color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 10px;">Version: 08.01.2026 20:44:08</div>
             <h1>🔍 Multi-Wallet Token Viewer</h1>
+            <div class="version">Version: 08.01.2026 21:40:13 (Cloudflare Worker)</div>
             <div class="timestamp" id="timestamp"></div>
         </div>
         
@@ -127,13 +128,15 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script>
-const GOOGLE_CONFIG={apiKey:'AIzaSyCoJAYF8BVhYk8k2Zr2MbDAt2qwkaGEM8w',clientId:'42198403966-ovpg5lar1qso4vqfl9rd4ebeunltpegs.apps.googleusercontent.com',spreadsheetId:'1M0HycCitzlkgk_uG1Y-iLeYKthdUaRGnCvv3Hxv0yww',discoveryDocs:['https://sheets.googleapis.com/$discovery/rest?version=v4'],scopes:'https://www.googleapis.com/auth/spreadsheets.readonly'};
-let gapiInited=false,tokenClient,accessToken=null,wallets=[],tokens={},allBalances=[],web3Instances={};
+// Cloudflare Worker URL
+const WORKER_URL = 'https://wallet-api.chrisdefi.workers.dev';
 
-// Price Cache & Delay
+const GOOGLE_CONFIG={apiKey:'AIzaSyCoJAYF8BVhYk8k2Zr2MbDAt2qwkaGEM8w',clientId:'42198403966-ovpg5lar1qso4vqfl9rd4ebeunltpegs.apps.googleusercontent.com',spreadsheetId:'1M0HycCitzlkgk_uG1Y-iLeYKthdUaRGnCvv3Hxv0yww',discoveryDocs:['https://sheets.googleapis.com/$discovery/rest?version=v4'],scopes:'https://www.googleapis.com/auth/spreadsheets.readonly'};
+let gapiInited=false,tokenClient,accessToken=null,wallets=[],tokens={},allBalances=[];
+
+// Price Cache
 const priceCache={},CACHE_DURATION=60000;
 function getCachedPrice(key){const cached=priceCache[key];if(!cached)return null;if(Date.now()-cached.timestamp>CACHE_DURATION){delete priceCache[key];return null;}return cached.price;}
 function setCachedPrice(key,price){priceCache[key]={price:price,timestamp:Date.now()};}
@@ -153,8 +156,10 @@ btn.disabled=true;
 btn.textContent='⏳ Lädt...';
 status.textContent='Lade Preise...';
 const uniqueTokens=new Map();
-for(const [chain,tokenList] of Object.entries(tokens)){tokenList.forEach(token=>{const key=`${chain}-${token.address}`;if(!uniqueTokens.has(key)){uniqueTokens.set(key,{chain:chain,address:token.address,symbol:token.symbol,name:token.name});}});}
-console.log(`📊 Lade ${uniqueTokens.size} unique Token-Preise...`);
+for(const [chain,tokenList] of Object.entries(tokens)){
+tokenList.forEach(token=>{const key=`${chain}-${token.address}`;if(!uniqueTokens.has(key)){uniqueTokens.set(key,{chain:chain,address:token.address,symbol:token.symbol,name:token.name});}});
+}
+console.log(`📊 Lade ${uniqueTokens.size} Token-Preise...`);
 status.textContent=`Lade ${uniqueTokens.size} Token-Preise...`;
 const priceData=[];
 let loaded=0;
@@ -195,72 +200,7 @@ displayTable();
 updateStats();
 }
 
-// Uniswap V2
-async function fetchUniswapV2Price(addr,w3){
-const cacheKey=`uni-v2-${addr}`;
-const cached=getCachedPrice(cacheKey);
-if(cached){console.log(`    ✓ Cache: Uniswap V2`);return cached;}
-try{
-await delay(1500);
-const F="0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f";
-const U="0xdAC17F958D2ee523a2206206994597C13D831ec7";
-const FA=["function getPair(address,address) external view returns (address)"];
-const PA=["function getReserves() view returns (uint112,uint112,uint32)","function token0() view returns (address)","function token1() view returns (address)"];
-const fc=new w3.eth.Contract(FA,F);
-const pool=await fc.methods.getPair(addr,U).call();
-if(pool==='0x0000000000000000000000000000000000000000')return null;
-await delay(500);
-const pc=new w3.eth.Contract(PA,pool);
-const[t0,t1,res]=await Promise.all([pc.methods.token0().call(),pc.methods.token1().call(),pc.methods.getReserves().call()]);
-let tR,uR;
-if(t0.toLowerCase()===addr.toLowerCase()){tR=parseFloat(res[0])/Math.pow(10,18);uR=parseFloat(res[1])/Math.pow(10,6);}
-else if(t1.toLowerCase()===addr.toLowerCase()){tR=parseFloat(res[1])/Math.pow(10,18);uR=parseFloat(res[0])/Math.pow(10,6);}
-else return null;
-const p=uR/tR;
-console.log(`    ✓ Uniswap V2: $${p.toFixed(6)}`);
-setCachedPrice(cacheKey,p);
-return p;
-}catch(e){console.log(`    ⚠️ Uniswap V2:`,e.message);return null;}
-}
-
-async function fetchUniswapV2ViaWETH(addr,w3){
-const cacheKey=`uni-v2-weth-${addr}`;
-const cached=getCachedPrice(cacheKey);
-if(cached){console.log(`    ✓ Cache: Uniswap V2 via WETH`);return cached;}
-try{
-await delay(1500);
-const F="0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f";
-const W="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
-const U="0xdAC17F958D2ee523a2206206994597C13D831ec7";
-const FA=["function getPair(address,address) external view returns (address)"];
-const PA=["function getReserves() view returns (uint112,uint112,uint32)","function token0() view returns (address)","function token1() view returns (address)"];
-const fc=new w3.eth.Contract(FA,F);
-const twp=await fc.methods.getPair(addr,W).call();
-if(twp==='0x0000000000000000000000000000000000000000')return null;
-await delay(500);
-const twc=new w3.eth.Contract(PA,twp);
-const[tw0,tw1,twr]=await Promise.all([twc.methods.token0().call(),twc.methods.token1().call(),twc.methods.getReserves().call()]);
-let tR,wR;
-if(tw0.toLowerCase()===addr.toLowerCase()){tR=parseFloat(twr[0])/Math.pow(10,18);wR=parseFloat(twr[1])/Math.pow(10,18);}
-else{tR=parseFloat(twr[1])/Math.pow(10,18);wR=parseFloat(twr[0])/Math.pow(10,18);}
-const tpw=wR/tR;
-await delay(500);
-const wup=await fc.methods.getPair(W,U).call();
-if(wup==='0x0000000000000000000000000000000000000000')return null;
-const wuc=new w3.eth.Contract(PA,wup);
-const[wu0,wu1,wur]=await Promise.all([wuc.methods.token0().call(),wuc.methods.token1().call(),wuc.methods.getReserves().call()]);
-let wRu,uR;
-if(wu0.toLowerCase()===W.toLowerCase()){wRu=parseFloat(wur[0])/Math.pow(10,18);uR=parseFloat(wur[1])/Math.pow(10,6);}
-else{wRu=parseFloat(wur[1])/Math.pow(10,18);uR=parseFloat(wur[0])/Math.pow(10,6);}
-const wpu=uR/wRu;
-const p=tpw*wpu;
-console.log(`    ✓ Uniswap V2 via WETH: $${p.toFixed(6)}`);
-setCachedPrice(cacheKey,p);
-return p;
-}catch(e){console.log(`    ⚠️ Uniswap V2 via WETH:`,e.message);return null;}
-}
-
-// Fetch Token Price
+// Fetch Token Price (simplified)
 const nativeTokenPriceCache={};
 const dexScreenerChainIds={apertum:'apertum',bsc:'bsc',eth:'ethereum',polygon:'polygon'};
 async function fetchTokenPrice(addr,chain){
@@ -277,12 +217,6 @@ if(!r.ok)return null;
 const d=await r.json();
 if(d&&d[cid]&&d[cid].usd){nativeTokenPriceCache[cid]=d[cid].usd;return d[cid].usd;}
 return null;
-}
-if(chain==='eth'){
-let p=await fetchUniswapV2Price(addr,web3Instances['eth']);
-if(p)return p;
-p=await fetchUniswapV2ViaWETH(addr,web3Instances['eth']);
-if(p)return p;
 }
 const dexKey=`dex-${chain}-${addr}`;
 const dexCached=getCachedPrice(dexKey);
@@ -307,15 +241,9 @@ return null;
 }catch(e){console.log(`    ⚠️ fetchTokenPrice:`,e.message);return null;}
 }
 
-// ERC20 ABI
-const ERC20_ABI=[{constant:true,inputs:[],name:'name',outputs:[{name:'',type:'string'}],type:'function'},{constant:true,inputs:[],name:'symbol',outputs:[{name:'',type:'string'}],type:'function'},{constant:true,inputs:[],name:'decimals',outputs:[{name:'',type:'uint8'}],type:'function'},{constant:true,inputs:[{name:'account',type:'address'}],name:'balanceOf',outputs:[{name:'',type:'uint256'}],type:'function'}];
-
-// RPC Endpoints
-const rpcEndpoints={apertum:'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc',bsc:'https://bsc-dataseed.binance.org/',eth:'https://ethereum.publicnode.com',polygon:'https://polygon-rpc.com'};
-
 // Google Auth
 function gapiLoaded(){gapi.load('client',async()=>{await gapi.client.init({apiKey:GOOGLE_CONFIG.apiKey,discoveryDocs:GOOGLE_CONFIG.discoveryDocs});gapiInited=true;console.log('✓ GAPI initialisiert');maybeEnableButtons();});}
-function gisLoaded(){tokenClient=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CONFIG.clientId,scope:GOOGLE_CONFIG.scopes,redirect_uri:window.location.origin+window.location.pathname,ux_mode:'popup',callback:async(r)=>{if(r.error!==undefined){console.error('Token Error:',r);document.getElementById('loginStatus').textContent='Fehler: '+r.error;return;}console.log('✓ Access Token erhalten');accessToken=r.access_token;await loadSheetsData();document.getElementById('loginBox').style.display='none';document.getElementById('appContent').classList.add('loaded');initializeWeb3();}});console.log('✓ GIS initialisiert');maybeEnableButtons();}
+function gisLoaded(){tokenClient=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CONFIG.clientId,scope:GOOGLE_CONFIG.scopes,redirect_uri:window.location.origin+window.location.pathname,ux_mode:'popup',callback:async(r)=>{if(r.error!==undefined){console.error('Token Error:',r);document.getElementById('loginStatus').textContent='Fehler: '+r.error;return;}console.log('✓ Access Token erhalten');accessToken=r.access_token;await loadSheetsData();document.getElementById('loginBox').style.display='none';document.getElementById('appContent').classList.add('loaded');loadAllWallets();}});console.log('✓ GIS initialisiert');maybeEnableButtons();}
 function maybeEnableButtons(){if(gapiInited&&tokenClient){document.getElementById('loginStatus').textContent='Bereit zur Anmeldung';document.getElementById('google-signin-button').innerHTML='<button class="btn btn-primary" onclick="handleAuthClick()" style="width:100%;padding:12px 24px;font-size:16px;">🔐 Mit Google anmelden</button>';}}
 function handleAuthClick(){console.log('🔐 Starte Authentifizierung...');tokenClient.requestAccessToken();}
 window.addEventListener('load',()=>{console.log('🔧 Initialisiere Google Auth...');gapiLoaded();const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.onload=gisLoaded;s.onerror=()=>{console.error('❌ Google GSI Script konnte nicht geladen werden');document.getElementById('loginStatus').textContent='Fehler: Google Auth konnte nicht geladen werden.';};document.head.appendChild(s);});
@@ -334,69 +262,46 @@ trows.forEach(r=>{const chain=r[0];if(!tokens[chain])tokens[chain]=[];tokens[cha
 console.log(`✓ ${trows.length} Tokens geladen`);
 }
 
-// Web3
-function initializeWeb3(){
-console.log('🔧 Initialisiere Web3...');
-Object.keys(tokens).forEach(chain=>{
-const endpoint = rpcEndpoints[chain];
-// Wenn es ein Array ist, nimm den ersten RPC
-const rpc = Array.isArray(endpoint) ? endpoint[0] : endpoint;
-web3Instances[chain]=new Web3(rpc);
-console.log(`✓ Web3 für ${chain} initialisiert (RPC: ${Array.isArray(endpoint) ? endpoint.length + ' Fallbacks' : 'einzeln'})`);
-});
-loadAllWallets();
-}
-
-// Load Wallets
+// Load Wallets via Cloudflare Worker
 async function loadAllWallets(){
 try{
-console.log('🚀 Starte Laden der Wallets...');
+console.log('🚀 Starte Laden der Wallets via Cloudflare Worker...');
 const c=document.getElementById('tableContent');
-c.innerHTML='<div class="loading"><div class="spinner"></div><p>Lade Token-Daten...</p><p style="font-size:12px;margin-top:10px;" id="loadingStatus">Initialisiere...</p></div>';
-allBalances=[];
-const tasks=[];
-for(const w of wallets){
-for(const[ch,tl]of Object.entries(tokens)){
-const w3=web3Instances[ch];
-for(const t of tl){
-const task=(async()=>{
-console.log(`🔍 ${w.name} - ${t.symbol} (${ch})`);
+c.innerHTML='<div class="loading"><div class="spinner"></div><p>Lade Token-Daten via Backend...</p><p style="font-size:12px;margin-top:10px;" id="loadingStatus">Sende Anfrage an Worker...</p></div>';
 
-try{
-let bal,tn=t.name,ts=t.symbol,dec=t.decimals;
-if(t.address==='native'){
-const wb=await w3.eth.getBalance(w.address);
-bal=parseFloat(w3.utils.fromWei(wb,'ether'));
-}else{
-const ct=new w3.eth.Contract(ERC20_ABI,t.address);
-try{dec=await ct.methods.decimals().call();dec=parseInt(dec);}catch(e){console.log(`    ✗ ${w.name}-${t.symbol}(${ch}): ${e.message}`);return null;}
-try{const rb=await ct.methods.balanceOf(w.address).call();bal=parseFloat(rb)/Math.pow(10,dec);}catch(e){console.log(`    ✗ ${w.name}-${t.symbol}(${ch}): ${e.message}`);return null;}
-if(bal>0){
-try{const[fn,fs]=await Promise.all([ct.methods.name().call().catch(()=>t.name),ct.methods.symbol().call().catch(()=>t.symbol)]);tn=fn;ts=fs;}catch(e){console.log(`    ⚠️ Name/Symbol Fehler: ${e.message}`)}
+const se=document.getElementById('loadingStatus');
+se.textContent='Lade Balances vom Worker...';
+console.log('📡 Sende Request an:', WORKER_URL);
+
+const response = await fetch(WORKER_URL, {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({wallets: wallets, tokens: tokens})
+});
+
+console.log('📥 Response Status:', response.status);
+
+if(!response.ok){
+  const errorText = await response.text();
+  throw new Error(`Worker Error: ${response.status} - ${errorText}`);
 }
+
+const data = await response.json();
+
+if(!data.success){
+  throw new Error(data.error || 'Unknown worker error');
 }
-if(bal>0){return{wallet:w.name,walletAddress:w.address,tokenSymbol:ts,tokenName:tn,chain:ch,balance:bal,tokenAddress:t.address,decimals:dec,priceUsd:null,valueUsd:null};}
-return null;
-}catch(e){console.log(`    ✗ ${w.name}-${t.symbol}(${ch}): ${e.message}`);return null;}
-})();
-tasks.push(task);
-}
-}
-}
-console.log(`⚡ Lade ${tasks.length} Token sequentiell (mit Delays)...`);
-const results=[];
-for(let i=0;i<tasks.length;i++){
-const result=await tasks[i];
-results.push(result);
-if((i+1)%10===0){
-console.log(`  → ${i+1}/${tasks.length} geprüft...`);
-await delay(100);
-}
-}
-allBalances=results.filter(i=>i!==null);
+
+allBalances = data.balances;
+console.log(`✅ ${allBalances.length} Token mit Balance gefunden`);
+
 displayTable();
 updateStats();
-}catch(e){console.error('Fehler:',e);displayError('Fehler beim Laden: '+e.message);}
+
+}catch(e){
+console.error('Fehler:',e);
+displayError('Fehler beim Laden: '+e.message + '<br><br>Worker URL: ' + WORKER_URL);
+}
 }
 
 // Display
