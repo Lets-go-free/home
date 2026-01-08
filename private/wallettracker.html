@@ -360,6 +360,8 @@ for(const[ch,tl]of Object.entries(tokens)){
 const w3=web3Instances[ch];
 for(const t of tl){
 const task=(async()=>{
+console.log(`🔍 ${w.name} - ${t.symbol} (${ch})`);
+
 try{
 let bal,tn=t.name,ts=t.symbol,dec=t.decimals;
 if(t.address==='native'){
@@ -367,15 +369,15 @@ const wb=await w3.eth.getBalance(w.address);
 bal=parseFloat(w3.utils.fromWei(wb,'ether'));
 }else{
 const ct=new w3.eth.Contract(ERC20_ABI,t.address);
-try{dec=await ct.methods.decimals().call();dec=parseInt(dec);}catch{return null;}
-try{const rb=await ct.methods.balanceOf(w.address).call();bal=parseFloat(rb)/Math.pow(10,dec);}catch{return null;}
+try{dec=await ct.methods.decimals().call();dec=parseInt(dec);}catch(e){console.log(`    ✗ ${w.name}-${t.symbol}(${ch}): ${e.message}`);return null;}
+try{const rb=await ct.methods.balanceOf(w.address).call();bal=parseFloat(rb)/Math.pow(10,dec);}catch(e){console.log(`    ✗ ${w.name}-${t.symbol}(${ch}): ${e.message}`);return null;}
 if(bal>0){
-try{const[fn,fs]=await Promise.all([ct.methods.name().call().catch(()=>t.name),ct.methods.symbol().call().catch(()=>t.symbol)]);tn=fn;ts=fs;}catch{}
+try{const[fn,fs]=await Promise.all([ct.methods.name().call().catch(()=>t.name),ct.methods.symbol().call().catch(()=>t.symbol)]);tn=fn;ts=fs;}catch(e){console.log(`    ⚠️ Name/Symbol Fehler: ${e.message}`)}
 }
 }
 if(bal>0){return{wallet:w.name,walletAddress:w.address,tokenSymbol:ts,tokenName:tn,chain:ch,balance:bal,tokenAddress:t.address,decimals:dec,priceUsd:null,valueUsd:null};}
 return null;
-}catch{return null;}
+}catch(e){console.log(`    ✗ ${w.name}-${t.symbol}(${ch}): ${e.message}`);return null;}
 })();
 tasks.push(task);
 }
