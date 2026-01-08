@@ -173,8 +173,51 @@ return p;
 return null;
 }
 }
-if(chain==="eth"){let p=await fetchUniswapV2Price(addr,web3Instances["eth"]);if(p)return p;p=await fetchUniswapV2ViaWETH(addr,web3Instances["eth"]);if(p)return p;}
-async function fetchTokenPrice(addr,chain){try{if(addr==='native'){const coinIds={'eth':'ethereum','bsc':'binancecoin','polygon':'matic-network','apertum':'aptm'};const cid=coinIds[chain];if(!cid)return null;if(nativeTokenPriceCache[cid])return nativeTokenPriceCache[cid];const u=`https://api.coingecko.com/api/v3/simple/price?ids=${cid}&vs_currencies=usd`;const r=await fetch(u);if(!r.ok)return null;const d=await r.json();if(d&&d[cid]&&d[cid].usd){nativeTokenPriceCache[cid]=d[cid].usd;return d[cid].usd;}return null;}const cid=dexScreenerChainIds[chain];const u=`https://api.dexscreener.com/latest/dex/tokens/${addr}`;const r=await fetch(u);if(!r.ok)return null;const d=await r.json();if(d&&d.pairs&&d.pairs.length>0){let p=d.pairs.filter(x=>x.chainId===cid);if(p.length===0)p=d.pairs;if(p.length>0){const best=p.reduce((b,c)=>{const bL=parseFloat(b.liquidity?.usd||0);const cL=parseFloat(c.liquidity?.usd||0);return cL>bL?c:b;});return parseFloat(best.priceUsd);}}return null;}catch{return null;}}
+async function fetchTokenPrice(addr,chain){
+try{
+if(addr==='native'){
+const coinIds={'eth':'ethereum','bsc':'binancecoin','polygon':'matic-network','apertum':'aptm'};
+const cid=coinIds[chain];
+if(!cid)return null;
+if(nativeTokenPriceCache[cid])return nativeTokenPriceCache[cid];
+const u=`https://api.coingecko.com/api/v3/simple/price?ids=${cid}&vs_currencies=usd`;
+const r=await fetch(u);
+if(!r.ok)return null;
+const d=await r.json();
+if(d&&d[cid]&&d[cid].usd){
+nativeTokenPriceCache[cid]=d[cid].usd;
+return d[cid].usd;
+}
+return null;
+}
+if(chain==="eth"){
+let p=await fetchUniswapV2Price(addr,web3Instances["eth"]);
+if(p)return p;
+p=await fetchUniswapV2ViaWETH(addr,web3Instances["eth"]);
+if(p)return p;
+}
+const cid=dexScreenerChainIds[chain];
+const u=`https://api.dexscreener.com/latest/dex/tokens/${addr}`;
+const r=await fetch(u);
+if(!r.ok)return null;
+const d=await r.json();
+if(d&&d.pairs&&d.pairs.length>0){
+let p=d.pairs.filter(x=>x.chainId===cid);
+if(p.length===0)p=d.pairs;
+if(p.length>0){
+const best=p.reduce((b,c)=>{
+const bL=parseFloat(b.liquidity?.usd||0);
+const cL=parseFloat(c.liquidity?.usd||0);
+return cL>bL?c:b;
+});
+return parseFloat(best.priceUsd);
+}
+}
+return null;
+}catch{
+return null;
+}
+}
 async function loadAllWallets(){try{console.log('🚀 Starte Laden der Wallets...');const c=document.getElementById('tableContent');c.innerHTML='<div class="loading"><div class="spinner"></div><p>Lade Token-Daten...</p><p style="font-size:12px;margin-top:10px;" id="loadingStatus">Initialisiere...</p></div>';allBalances=[];const tasks=[];for(const w of wallets){for(const[ch,tl]of Object.entries(tokens)){const w3=web3Instances[ch];for(const t of tl){const task=(async()=>{try{let bal,tn=t.name,ts=t.symbol,dec=t.decimals;if(t.address==='native'){const wb=await w3.eth.getBalance(w.address);bal=parseFloat(w3.utils.fromWei(wb,'ether'));}else{const ct=new w3.eth.Contract(ERC20_ABI,t.address);try{dec=await ct.methods.decimals().call();dec=parseInt(dec);}catch{return null;}try{const rb=await ct.methods.balanceOf(w.address).call();bal=parseFloat(rb)/Math.pow(10,dec);}catch{return null;}if(bal>0){try{const[fn,fs]=await Promise.all([ct.methods.name().call().catch(()=>t.name),ct.methods.symbol().call().catch(()=>t.symbol)]);tn=fn;ts=fs;}catch{}}}if(bal>0){return{wallet:w.name,walletAddress:w.address,tokenSymbol:ts,tokenName:tn,chain:ch,balance:bal,tokenAddress:t.address,decimals:dec,priceUsd:null,valueUsd:null};}return null;}catch{return null;}})();tasks.push(task);}}}console.log(`⚡ Lade ${tasks.length} Token parallel...`);const res=await Promise.all(tasks);allBalances=res.filter(i=>i!==null);console.log(`✅ ${allBalances.length} Token mit Balance gefunden`);const se=document.getElementById('loadingStatus');if(se)se.textContent=`Lade Preise für ${allBalances.length} Token...`;const bs=5;for(let i=0;i<allBalances.length;i+=bs){const b=allBalances.slice(i,i+bs);await Promise.all(b.map(async(it)=>{try{it.priceUsd=await fetchTokenPrice(it.tokenAddress,it.chain);if(it.priceUsd&&it.balance>0)it.valueUsd=it.balance*it.priceUsd;}catch{}}));if(se)se.textContent=`Preise geladen: ${Math.min(i+bs,allBalances.length)} von ${allBalances.length}`;}console.log(`✅ Laden abgeschlossen`);displayTable();updateStats();}catch(e){console.error('Fehler:',e);displayError('Fehler beim Laden: '+e.message);}}
 function displayTable(){const c=document.getElementById('tableContent');if(allBalances.length===0){c.innerHTML='<div class="empty-state"><p>Keine Token mit Balance gefunden.</p></div>';return;}const h='<div class="table-wrapper"><table><thead><tr><th>Wallet</th><th>Token</th><th>Token-Adresse</th><th>Anzahl</th><th>Preis (USD)</th><th>Wert (USD)</th></tr></thead><tbody id="tableBody">'+generateTableRows()+'</tbody></table></div>';c.innerHTML=h;populateFilters();}
 function generateTableRows(){const gb=document.getElementById('groupByFilter')?.value||'none';if(gb==='none'){return allBalances.map((it,i)=>`<tr data-index="${i}"><td>${it.wallet}</td><td><div class="token-info"><div class="token-icon">${it.tokenSymbol.charAt(0)}</div><div class="token-details"><div class="token-symbol">${it.tokenSymbol}</div><div class="token-chain">${it.chain}</div></div></div></td><td class="token-address-cell" title="${it.tokenAddress}">${it.tokenAddress==='native'?'Native':it.tokenAddress}</td><td class="balance">${formatNumber(it.balance)}</td><td class="balance">${it.priceUsd?'$'+formatNumber(it.priceUsd):'-'}</td><td class="balance">${it.valueUsd?'$'+formatNumber(it.valueUsd):'-'}</td></tr>`).join('');}else{const g={};allBalances.forEach((it,i)=>{const k=it[gb]||'Unbekannt';if(!g[k])g[k]=[];g[k].push({...it,originalIndex:i});});let h='';Object.keys(g).sort().forEach(k=>{const its=g[k];const st=its.reduce((s,it)=>s+(it.valueUsd||0),0);h+=`<tr class="group-header"><td colspan="6"><strong>${getGroupLabel(gb)}:</strong> ${k.toUpperCase()} ${st>0?`(Zwischentotal: $${formatNumber(st)})`:''}</td></tr>`;its.forEach(it=>{h+=`<tr data-index="${it.originalIndex}"><td>${it.wallet}</td><td><div class="token-info"><div class="token-icon">${it.tokenSymbol.charAt(0)}</div><div class="token-details"><div class="token-symbol">${it.tokenSymbol}</div><div class="token-chain">${it.chain}</div></div></div></td><td class="token-address-cell" title="${it.tokenAddress}">${it.tokenAddress==='native'?'Native':it.tokenAddress}</td><td class="balance">${formatNumber(it.balance)}</td><td class="balance">${it.priceUsd?'$'+formatNumber(it.priceUsd):'-'}</td><td class="balance">${it.valueUsd?'$'+formatNumber(it.valueUsd):'-'}</td></tr>`;});if(st>0){h+=`<tr class="subtotal-row"><td colspan="5" style="text-align:right;">Zwischentotal ${k}:</td><td class="balance">$${formatNumber(st)}</td></tr>`;}});const gt=allBalances.reduce((s,it)=>s+(it.valueUsd||0),0);if(gt>0){h+=`<tr class="total-row"><td colspan="5" style="text-align:right;"><strong>GESAMT-TOTAL:</strong></td><td class="balance"><strong>$${formatNumber(gt)}</strong></td></tr>`;}return h;}}
