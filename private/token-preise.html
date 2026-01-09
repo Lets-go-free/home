@@ -381,14 +381,36 @@ async function getPriceFromPoolWithDecimals(provider, poolAddress, baseToken) {
       pair.getReserves()
     ]);
 
-    // Get decimals for both tokens
-    const token0Contract = new ethers.Contract(token0Addr, ERC20_ABI, provider);
-    const token1Contract = new ethers.Contract(token1Addr, ERC20_ABI, provider);
+    // Bekannte Token Decimals (fallback wenn Abfrage fehlschlägt)
+    const KNOWN_DECIMALS = {
+      // ETH Chain
+      "0x1bbf25e71ec48b84d773809b4ba55b6f4be946fb": 18, // VOW on ETH
+      "0xba7fe208e0167e4047a996e1efea830515f433f8": 18, // v$ on ETH
+      "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": 18, // WETH
+      // BSC Chain
+      "0xf585b5b4f22816baf7629aea55b701662630397b": 18, // VOW on BSC
+      "0x9c23942ca2c35e06d1d20747f33705983a18d2ab": 18, // v$ on BSC
+      "0x55d398326f99059ff775485246999027b3197955": 18, // USDT on BSC
+    };
+
+    // Try to get decimals, use known values as fallback
+    let decimals0, decimals1;
     
-    const [decimals0, decimals1] = await Promise.all([
-      token0Contract.decimals(),
-      token1Contract.decimals()
-    ]);
+    try {
+      const token0Contract = new ethers.Contract(token0Addr, ERC20_ABI, provider);
+      decimals0 = await token0Contract.decimals();
+    } catch (e) {
+      decimals0 = KNOWN_DECIMALS[token0Addr.toLowerCase()] || 18;
+      console.log(`Using known decimals for token0: ${decimals0}`);
+    }
+    
+    try {
+      const token1Contract = new ethers.Contract(token1Addr, ERC20_ABI, provider);
+      decimals1 = await token1Contract.decimals();
+    } catch (e) {
+      decimals1 = KNOWN_DECIMALS[token1Addr.toLowerCase()] || 18;
+      console.log(`Using known decimals for token1: ${decimals1}`);
+    }
 
     const r0 = Number(ethers.formatUnits(reserves[0], decimals0));
     const r1 = Number(ethers.formatUnits(reserves[1], decimals1));
