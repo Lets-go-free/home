@@ -28,7 +28,7 @@ body {
 .stat-value { font-size: 24px; font-weight: bold; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 10px; border-bottom: 1px solid #eee; }
-th { background: #f5f5f5; cursor: pointer; }
+th { background: #f5f5f5; }
 .balance { text-align: right; font-weight: 600; }
 .loading { text-align: center; padding: 40px; }
 .error { background: #fed7d7; padding: 20px; border-radius: 8px; }
@@ -39,7 +39,6 @@ th { background: #f5f5f5; cursor: pointer; }
 <div class="container">
     <div class="header">
         <h1>🔐 Multi-Wallet Token Viewer</h1>
-        <div style="font-size:13px;color:#666">Preis-Engine: CoinGecko → CoinMarketCap → DexScreener</div>
     </div>
 
     <div class="controls">
@@ -60,11 +59,7 @@ th { background: #f5f5f5; cursor: pointer; }
 <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
 
 <script>
-/* ======================================================
-   KONFIGURATION
-====================================================== */
-
-const CMC_API_KEY = ''; // optional
+const CMC_API_KEY = '';
 
 const wallets = [
     { name: 'dao1 Dubai', address: '0xC7e112D6Db20A4A9213834B2Cb235c34733e6591' },
@@ -97,10 +92,6 @@ const tokens = {
         { symbol:'APTM', address:'native', decimals:18 }
     ]
 };
-
-/* ======================================================
-   PREIS ENGINE
-====================================================== */
 
 const priceCache = new Map();
 
@@ -154,10 +145,6 @@ async function fetchTokenPrice(token, chain) {
     return price;
 }
 
-/* ======================================================
-   APP
-====================================================== */
-
 let web3 = {};
 let allBalances = [];
 
@@ -176,13 +163,14 @@ async function loadAllWallets() {
 
                 if (t.address === 'native') {
                     const wei = await web3[chain].eth.getBalance(w.address);
-                    balance = parseFloat(web3[chain].utils.fromWei(wei));
+                    balance = parseFloat(web3[chain].utils.fromWei(wei, 'ether'));
                 } else {
-                    const c = new web3[chain].eth.Contract([
-                        {"name":"balanceOf","inputs":[{"name":"o","type":"address"}],"outputs":[{"type":"uint256"}],"type":"function"}
-                    ], t.address);
+                    const c = new web3[chain].eth.Contract(
+                        [{"name":"balanceOf","inputs":[{"name":"o","type":"address"}],"outputs":[{"type":"uint256"}],"type":"function"}],
+                        t.address
+                    );
                     const raw = await c.methods.balanceOf(w.address).call();
-                    balance = raw / 10**t.decimals;
+                    balance = Number(raw) / Math.pow(10, t.decimals);
                 }
 
                 if (balance > 0) {
@@ -204,7 +192,15 @@ async function loadAllWallets() {
 }
 
 function render() {
-    let html = `<table><tr><th>Wallet</th><th>Token</th><th>Chain</th><th>Anzahl</th><th>Preis</th><th>Wert</th></tr>`;
+    let html = `<table>
+        <tr>
+            <th>Wallet</th>
+            <th>Token</th>
+            <th>Chain</th>
+            <th>Anzahl</th>
+            <th>Preis</th>
+            <th>Wert</th>
+        </tr>`;
     let total = 0;
 
     for (const i of allBalances) {
