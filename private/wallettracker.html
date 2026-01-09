@@ -53,7 +53,7 @@
     <div class="container">
         <div class="header">
             <h1>🔍 Multi-Wallet Token Viewer</h1>
-            <div class="version">Version: 09.01.2026 11:19:11 (Explorer API)</div>
+            <div class="version">Version: 09.01.2026 12:02:13 (Explorer API - Fixed)</div>
             <div class="timestamp" id="timestamp"></div>
         </div>
         
@@ -185,62 +185,32 @@ async function getTokenBalancesFromExplorer(chain, address, walletName){
       });
     }
     
-    // Get ERC20 token balances
-    const apiUrl = EXPLORER_APIS[chain];
-    let url;
+    // Get ERC20 token balances - only check tokens from our Google Sheet
+    const chainTokens = tokens[chain] || [];
     
-    if(chain === 'apertum'){
-      // Apertum uses different API format
-      url = `${apiUrl}?module=account&action=tokenlist&address=${address}`;
-    }else{
-      // Standard etherscan-like API
-      url = `${apiUrl}?module=account&action=tokentx&address=${address}&startblock=0&endblock=99999999&sort=asc`;
-    }
-    
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    if(data.status === '1' && data.result){
-      // Group by token address and sum balances
-      const tokenMap = new Map();
+    for(const sheetToken of chainTokens){
+      if(sheetToken.address === 'native') continue; // Skip native, already handled
       
-      data.result.forEach(tx => {
-        const tokenAddr = tx.contractAddress || tx.token;
-        if(!tokenAddr) return;
-        
-        if(!tokenMap.has(tokenAddr)){
-          tokenMap.set(tokenAddr, {
-            address: tokenAddr,
-            symbol: tx.tokenSymbol || 'UNKNOWN',
-            name: tx.tokenName || 'Unknown Token',
-            decimals: parseInt(tx.tokenDecimal || 18),
-            balance: 0
+      try{
+        const balance = await getTokenBalanceFromExplorer(chain, address, sheetToken.address);
+        if(balance > 0){
+          const decimals = sheetToken.decimals || 18;
+          results.push({
+            wallet: walletName,
+            walletAddress: address,
+            tokenSymbol: sheetToken.symbol,
+            tokenName: sheetToken.name,
+            chain: chain,
+            balance: balance / Math.pow(10, decimals),
+            tokenAddress: sheetToken.address,
+            decimals: decimals,
+            priceUsd: null,
+            valueUsd: null
           });
         }
-      });
-      
-      // Now fetch current balance for each token we found
-      for(const [tokenAddr, tokenInfo] of tokenMap){
-        try{
-          const balance = await getTokenBalanceFromExplorer(chain, address, tokenAddr);
-          if(balance > 0){
-            results.push({
-              wallet: walletName,
-              walletAddress: address,
-              tokenSymbol: tokenInfo.symbol,
-              tokenName: tokenInfo.name,
-              chain: chain,
-              balance: balance / Math.pow(10, tokenInfo.decimals),
-              tokenAddress: tokenAddr,
-              decimals: tokenInfo.decimals,
-              priceUsd: null,
-              valueUsd: null
-            });
-          }
-          await delay(200); // Rate limit protection
-        }catch(e){
-          console.error(`    ✗ ${tokenInfo.symbol}:`, e.message);
-        }
+        await delay(200); // Rate limit protection
+      }catch(e){
+        console.error(`    ✗ ${sheetToken.symbol}:`, e.message);
       }
     }
     
