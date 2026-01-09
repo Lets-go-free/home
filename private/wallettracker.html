@@ -53,7 +53,7 @@
     <div class="container">
         <div class="header">
             <h1>🔍 Multi-Wallet Token Viewer</h1>
-            <div class="version">Version: 09.01.2026 12:31:43 (Explorer API - All Chains)</div>
+            <div class="version">Version: 09.01.2026 12:42:22 (Debug)</div>
             <div class="timestamp" id="timestamp"></div>
         </div>
         
@@ -258,8 +258,16 @@ async function getTokenBalanceFromExplorer(chain, walletAddr, tokenAddr){
   const response = await fetch(url);
   const data = await response.json();
   
+  console.log(`  API Response for ${tokenAddr.slice(0,8)}... on ${chain}:`, data);
+  
   if(data.status === '1' && data.result){
-    return parseFloat(data.result);
+    const balance = parseFloat(data.result);
+    if(balance > 0) console.log(`    ✓ Balance: ${balance}`);
+    return balance;
+  }
+  
+  if(data.status === '0'){
+    console.log(`    ⚠️ API returned status 0:`, data.message);
   }
   
   return 0;
