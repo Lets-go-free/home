@@ -53,7 +53,7 @@
     <div class="container">
         <div class="header">
             <h1>🔍 Multi-Wallet Token Viewer</h1>
-            <div class="version">Version: 09.01.2026 12:57:38 (API V2)</div>
+            <div class="version">Version: 09.01.2026 13:02:49 (Hybrid API)</div>
             <div class="timestamp" id="timestamp"></div>
         </div>
         
@@ -106,15 +106,21 @@
 
     <script src="https://apis.google.com/js/api.js"></script>
     <script>
-// Block Explorer APIs (V2 for Etherscan)
+// Block Explorer APIs
 const EXPLORER_APIS = {
-  bsc: 'https://api.bscscan.com/v2/api',
-  eth: 'https://api.etherscan.io/v2/api',
-  polygon: 'https://api.polygonscan.com/v2/api',
+  bsc: 'https://api.bscscan.com/api', // V1 - V2 doesn't exist for BSC
+  eth: 'https://api.etherscan.io/v2/api', // V2
+  polygon: 'https://api.polygonscan.com/api', // V1 - V2 doesn't exist for Polygon
   apertum: 'https://explorer.apertum.io/api'
 };
 
-const API_KEY = 'HTXWS7BQ6F2QJNR4C1QAZW7JFGG2S5PEPZ'; // Etherscan V2 API Key (works for BSC, ETH, Polygon)
+const CHAIN_IDS = {
+  eth: 1, // Ethereum Mainnet
+  bsc: 56, // BSC doesn't use chainid in V1
+  polygon: 137 // Polygon doesn't use chainid in V1
+};
+
+const API_KEY = 'HTXWS7BQ6F2QJNR4C1QAZW7JFGG2S5PEPZ';
 
 const GOOGLE_CONFIG={apiKey:'AIzaSyCoJAYF8BVhYk8k2Zr2MbDAt2qwkaGEM8w',clientId:'42198403966-ovpg5lar1qso4vqfl9rd4ebeunltpegs.apps.googleusercontent.com',spreadsheetId:'1M0HycCitzlkgk_uG1Y-iLeYKthdUaRGnCvv3Hxv0yww',discoveryDocs:['https://sheets.googleapis.com/$discovery/rest?version=v4'],scopes:'https://www.googleapis.com/auth/spreadsheets.readonly'};
 let gapiInited=false,tokenClient,accessToken=null,wallets=[],tokens={},allBalances=[];
@@ -230,7 +236,11 @@ async function getNativeBalanceFromExplorer(chain, address){
   
   if(chain === 'apertum'){
     url = `${apiUrl}?module=account&action=balance&address=${address}`;
+  }else if(chain === 'eth'){
+    // ETH uses V2 API with chainid
+    url = `${apiUrl}?chainid=${CHAIN_IDS.eth}&module=account&action=balance&address=${address}&tag=latest&apikey=${API_KEY}`;
   }else{
+    // BSC and Polygon use V1 API
     url = `${apiUrl}?module=account&action=balance&address=${address}&tag=latest&apikey=${API_KEY}`;
   }
   
@@ -251,7 +261,11 @@ async function getTokenBalanceFromExplorer(chain, walletAddr, tokenAddr){
   
   if(chain === 'apertum'){
     url = `${apiUrl}?module=account&action=tokenbalance&contractaddress=${tokenAddr}&address=${walletAddr}`;
+  }else if(chain === 'eth'){
+    // ETH uses V2 API with chainid
+    url = `${apiUrl}?chainid=${CHAIN_IDS.eth}&module=account&action=tokenbalance&contractaddress=${tokenAddr}&address=${walletAddr}&tag=latest&apikey=${API_KEY}`;
   }else{
+    // BSC and Polygon use V1 API
     url = `${apiUrl}?module=account&action=tokenbalance&contractaddress=${tokenAddr}&address=${walletAddr}&tag=latest&apikey=${API_KEY}`;
   }
   
