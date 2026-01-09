@@ -272,8 +272,8 @@ const BSC_POOLS = {
 
 // Uniswap V2 Pool addresses for ETH price calculation
 const ETH_POOLS = {
-  VOW_WETH: "0x1E49768714E438E789047f48FD386686A5707DB2",
-  VDOLLAR_WETH: "0xb9FF2FFF0a78D0087E9FDb12325dc30655Ac5A1A"
+  VOW_WETH: "0x1e49768714e438e789047f48fd386686a5707db2",
+  VDOLLAR_WETH: "0xb9ff2fff0a78d0087e9fdb12325dc30655ac5a1a"
 };
 
 // ABIs
@@ -371,6 +371,53 @@ async function getPriceFromPool(provider, poolAddress, baseToken, quoteDecimals 
   }
 }
 
+// Verbesserte Funktion die Decimals dynamisch abfragt
+async function getPriceFromPoolWithDecimals(provider, poolAddress, baseToken) {
+  try {
+    const pair = new ethers.Contract(poolAddress, PAIR_ABI, provider);
+    const [token0Addr, token1Addr, reserves] = await Promise.all([
+      pair.token0(),
+      pair.token1(),
+      pair.getReserves()
+    ]);
+
+    // Get decimals for both tokens
+    const token0Contract = new ethers.Contract(token0Addr, ERC20_ABI, provider);
+    const token1Contract = new ethers.Contract(token1Addr, ERC20_ABI, provider);
+    
+    const [decimals0, decimals1] = await Promise.all([
+      token0Contract.decimals(),
+      token1Contract.decimals()
+    ]);
+
+    const r0 = Number(ethers.formatUnits(reserves[0], decimals0));
+    const r1 = Number(ethers.formatUnits(reserves[1], decimals1));
+
+    console.log(`Pool ${poolAddress}:`);
+    console.log(`  Token0: ${token0Addr} (${decimals0} decimals) - Reserve: ${r0}`);
+    console.log(`  Token1: ${token1Addr} (${decimals1} decimals) - Reserve: ${r1}`);
+
+    // baseToken ist der Token dessen Preis wir wollen
+    // Preis = andere Reserve / base Reserve
+    if (token0Addr.toLowerCase() === baseToken.toLowerCase()) {
+      // baseToken ist token0, Preis in token1
+      const price = r1 / r0;
+      console.log(`  Price of token0 in token1: ${price}`);
+      return price;
+    }
+    if (token1Addr.toLowerCase() === baseToken.toLowerCase()) {
+      // baseToken ist token1, Preis in token0
+      const price = r0 / r1;
+      console.log(`  Price of token1 in token0: ${price}`);
+      return price;
+    }
+    return null;
+  } catch (err) {
+    console.error('Pool price error:', poolAddress, err);
+    return null;
+  }
+}
+
 async function calculateBscPrices() {
   const prices = {};
   const provider = providers.bsc;
@@ -417,17 +464,20 @@ async function calculateEthPrices() {
   
   try {
     // VOW price from VOW/WETH Uniswap pool
+    // VOW ist gepaart mit WETH, wir wollen den VOW Preis in ETH
     const vowAddress = "0x1BBf25e71EC48B84d773809B4bA55B6F4bE946Fb".toLowerCase();
-    const vowInEth = await getPriceFromPool(provider, ETH_POOLS.VOW_WETH, vowAddress);
+    const vowInEth = await getPriceFromPoolWithDecimals(provider, ETH_POOLS.VOW_WETH, vowAddress);
     if (vowInEth) {
       prices['VOW'] = vowInEth * nativePrices.eth;
+      console.log(`ETH VOW Price: ${vowInEth} ETH = $${prices['VOW']}`);
     }
     
     // v$ price from v$/WETH Uniswap pool
     const vDollarAddress = "0xBa7fE208E0167e4047a996e1Efea830515F433F8".toLowerCase();
-    const vDollarInEth = await getPriceFromPool(provider, ETH_POOLS.VDOLLAR_WETH, vDollarAddress);
+    const vDollarInEth = await getPriceFromPoolWithDecimals(provider, ETH_POOLS.VDOLLAR_WETH, vDollarAddress);
     if (vDollarInEth) {
       prices['v$'] = vDollarInEth * nativePrices.eth;
+      console.log(`ETH v$ Price: ${vDollarInEth} ETH = $${prices['v$']}`);
     }
   } catch (err) {
     console.error('ETH price calculation error:', err);
