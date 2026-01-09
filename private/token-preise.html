@@ -2,137 +2,229 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Wallet Token Tracker mit Preisen</title>
-<!-- ethers v5 für Browser -->
-<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Wallet Token Viewer</title>
+
 <style>
-body { font-family: sans-serif; padding: 20px; }
-table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
-th { background: #f0f0f0; }
+body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px;
+}
+.container { max-width: 1400px; margin: auto; }
+.header, .controls, .stat-card, .table-container {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+.stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+.stat-value { font-size: 24px; font-weight: bold; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 10px; border-bottom: 1px solid #eee; }
+th { background: #f5f5f5; cursor: pointer; }
+.balance { text-align: right; font-weight: 600; }
+.loading { text-align: center; padding: 40px; }
+.error { background: #fed7d7; padding: 20px; border-radius: 8px; }
 </style>
 </head>
+
 <body>
+<div class="container">
+    <div class="header">
+        <h1>🔐 Multi-Wallet Token Viewer</h1>
+        <div style="font-size:13px;color:#666">Preis-Engine: CoinGecko → CoinMarketCap → DexScreener</div>
+    </div>
 
-<h2>Wallet Token Tracker mit Preisen</h2>
+    <div class="controls">
+        <button onclick="loadAllWallets()">🔄 Aktualisieren</button>
+    </div>
 
-<label>Chain: </label>
-<select id="chain">
-  <option value="bsc">BSC</option>
-  <option value="eth">ETH</option>
-  <option value="polygon">Polygon</option>
-</select>
-<button onclick="loadBalances()">Laden</button>
+    <div class="stats">
+        <div class="stat-card"><div>Wallets</div><div id="walletCount" class="stat-value">-</div></div>
+        <div class="stat-card"><div>Token</div><div id="tokenCount" class="stat-value">-</div></div>
+        <div class="stat-card"><div>Portfolio</div><div id="portfolioValue" class="stat-value">-</div></div>
+    </div>
 
-<table>
-<thead>
-<tr>
-  <th>Wallet</th>
-  <th>Token</th>
-  <th>Symbol</th>
-  <th>Balance</th>
-  <th>Preis (USD)</th>
-  <th>Wert (USD)</th>
-</tr>
-</thead>
-<tbody id="result"></tbody>
-</table>
+    <div class="table-container" id="tableContent">
+        <div class="loading">Bereit…</div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
 
 <script>
-// ==========================
-// CONFIG
-// ==========================
+/* ======================================================
+   KONFIGURATION
+====================================================== */
+
+const CMC_API_KEY = ''; // optional
+
 const wallets = [
-  "0x59dc6669c1eb40df7b36be58812202a09c4491bf",
-  "0x76882e6fc045391ba4f19d8a15ea4d8699ff7382"
+    { name: 'dao1 Dubai', address: '0xC7e112D6Db20A4A9213834B2Cb235c34733e6591' },
+    { name: 'Dubai trustyfy', address: '0x59dc6669c1eb40df7b36be58812202a09c4491bf' }
 ];
 
-const tokens = [
-  {chain:'bsc', symbol:'BNB', name:'BNB', address:'native'},
-  {chain:'bsc', symbol:'USDT', name:'Tether USD', address:'0x55d398326f99059ff775485246999027b3197955'},
-  {chain:'eth', symbol:'ETH', name:'Ethereum', address:'native'},
-  {chain:'eth', symbol:'VOW', name:'Vow Token', address:'0x1BBf25e71EC48B84d773809B4bA55B6F4bE946Fb'},
-  {chain:'polygon', symbol:'POL', name:'Polygon', address:'native'},
-  // Füge hier alle weiteren Tokens aus deiner Liste ein
-];
-
-// RPCs für Chains
-const RPC = {
-  bsc: "https://bsc-dataseed.binance.org/",
-  eth: "https://mainnet.infura.io/v3/YOUR_INFURA_KEY", // optional
-  polygon: "https://polygon-rpc.com/"
+const rpcEndpoints = {
+    eth: 'https://eth.llamarpc.com',
+    bsc: 'https://bsc-dataseed.binance.org/',
+    polygon: 'https://polygon-rpc.com',
+    apertum: 'https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc'
 };
 
-// ==========================
-// HELPER
-// ==========================
-function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+const dexScreenerChainIds = {
+    eth: 'ethereum',
+    bsc: 'bsc',
+    polygon: 'polygon'
+};
 
-function addRow(wallet, token, symbol, balance, price){
-  const valueUSD = (balance*price).toFixed(2);
-  const tr = document.createElement("tr");
-  tr.innerHTML = `
-    <td>${wallet}</td>
-    <td>${token}</td>
-    <td>${symbol}</td>
-    <td>${balance}</td>
-    <td>${price}</td>
-    <td>${valueUSD}</td>
-  `;
-  document.getElementById("result").appendChild(tr);
+const tokens = {
+    eth: [
+        { symbol:'ETH', address:'native', decimals:18, coingeckoId:'ethereum', cmcId:1027 },
+        { symbol:'USDT', address:'0xdac17f958d2ee523a2206206994597c13d831ec7', decimals:6, stable:true }
+    ],
+    bsc: [
+        { symbol:'BNB', address:'native', decimals:18, coingeckoId:'binancecoin', cmcId:1839 },
+        { symbol:'USDT', address:'0x55d398326f99059ff775485246999027b3197955', decimals:18, stable:true }
+    ],
+    apertum: [
+        { symbol:'APTM', address:'native', decimals:18 }
+    ]
+};
+
+/* ======================================================
+   PREIS ENGINE
+====================================================== */
+
+const priceCache = new Map();
+
+async function fetchPriceFromCoinGecko(id) {
+    const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d?.[id]?.usd ?? null;
 }
 
-// ==========================
-// MAIN
-// ==========================
-async function loadBalances(){
-  const chain = document.getElementById("chain").value;
-  const provider = new ethers.providers.JsonRpcProvider(RPC[chain]);
-  const resultEl = document.getElementById("result");
-  resultEl.innerHTML = "";
+async function fetchPriceFromCMC(id) {
+    if (!CMC_API_KEY) return null;
+    const r = await fetch(`https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?id=${id}`, {
+        headers: { 'X-CMC_PRO_API_KEY': CMC_API_KEY }
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d?.data?.[id]?.quote?.USD?.price ?? null;
+}
 
-  const chainTokens = tokens.filter(t => t.chain === chain);
+async function fetchPriceFromDex(tokenAddress, chain) {
+    const chainId = dexScreenerChainIds[chain];
+    if (!chainId) return null;
 
-  // Coingecko IDs für native Tokens (Demo)
-  const coingeckoNative = { bsc:'binancecoin', eth:'ethereum', polygon:'matic-network' };
+    const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
+    if (!r.ok) return null;
 
-  for(const wallet of wallets){
-    for(const token of chainTokens){
-      let balance = 0;
+    const d = await r.json();
+    const pairs = d?.pairs?.filter(p =>
+        p.chainId === chainId &&
+        p.liquidity?.usd > 10000 &&
+        p.quoteToken?.symbol?.includes('USD')
+    );
 
-      if(token.address === 'native'){
-        try {
-          balance = await provider.getBalance(wallet);
-          balance = Number(ethers.utils.formatEther(balance));
-        } catch(e){ console.warn("Fehler native", token.symbol, e); continue; }
-      } else {
-        const contract = new ethers.Contract(token.address, [
-          "function balanceOf(address) view returns (uint256)",
-          "function decimals() view returns (uint8)"
-        ], provider);
-        try {
-          const rawBal = await contract.balanceOf(wallet);
-          const decimals = await contract.decimals();
-          balance = Number(rawBal) / Math.pow(10, decimals);
-        } catch(e){ console.warn("Fehler ERC20", token.symbol, e); continue; }
-      }
+    if (!pairs?.length) return null;
+    pairs.sort((a,b)=>(b.liquidity.usd||0)-(a.liquidity.usd||0));
+    return parseFloat(pairs[0].priceUsd);
+}
 
-      // Preis via Coingecko nur für native Tokens (weitere Tokens kann man erweitern)
-      let price = 0;
-      try{
-        if(token.address === 'native'){
-          const resp = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoNative[chain]}&vs_currencies=usd`);
-          const data = await resp.json();
-          price = data[coingeckoNative[chain]].usd;
-        }
-      } catch(e){ price = 0; }
+async function fetchTokenPrice(token, chain) {
+    const key = `${chain}|${token.address}`;
+    if (priceCache.has(key)) return priceCache.get(key);
 
-      addRow(wallet, token.name, token.symbol, balance, price);
-      await sleep(200); // friendly RPC pacing
+    let price = null;
+    if (token.stable) price = 1;
+    else if (token.coingeckoId) price = await fetchPriceFromCoinGecko(token.coingeckoId);
+    if (!price && token.cmcId) price = await fetchPriceFromCMC(token.cmcId);
+    if (!price && token.address !== 'native') price = await fetchPriceFromDex(token.address, chain);
+
+    priceCache.set(key, price);
+    return price;
+}
+
+/* ======================================================
+   APP
+====================================================== */
+
+let web3 = {};
+let allBalances = [];
+
+async function loadAllWallets() {
+    allBalances = [];
+    document.getElementById('tableContent').innerHTML = '<div class="loading">Lade…</div>';
+
+    for (const [chain,rpc] of Object.entries(rpcEndpoints)) {
+        web3[chain] = new Web3(rpc);
     }
-  }
+
+    for (const w of wallets) {
+        for (const [chain,list] of Object.entries(tokens)) {
+            for (const t of list) {
+                let balance = 0;
+
+                if (t.address === 'native') {
+                    const wei = await web3[chain].eth.getBalance(w.address);
+                    balance = parseFloat(web3[chain].utils.fromWei(wei));
+                } else {
+                    const c = new web3[chain].eth.Contract([
+                        {"name":"balanceOf","inputs":[{"name":"o","type":"address"}],"outputs":[{"type":"uint256"}],"type":"function"}
+                    ], t.address);
+                    const raw = await c.methods.balanceOf(w.address).call();
+                    balance = raw / 10**t.decimals;
+                }
+
+                if (balance > 0) {
+                    const price = await fetchTokenPrice(t, chain);
+                    allBalances.push({
+                        wallet: w.name,
+                        token: t.symbol,
+                        chain,
+                        balance,
+                        price,
+                        value: price ? balance * price : null
+                    });
+                }
+            }
+        }
+    }
+
+    render();
+}
+
+function render() {
+    let html = `<table><tr><th>Wallet</th><th>Token</th><th>Chain</th><th>Anzahl</th><th>Preis</th><th>Wert</th></tr>`;
+    let total = 0;
+
+    for (const i of allBalances) {
+        total += i.value || 0;
+        html += `<tr>
+            <td>${i.wallet}</td>
+            <td>${i.token}</td>
+            <td>${i.chain}</td>
+            <td class="balance">${i.balance.toFixed(6)}</td>
+            <td class="balance">${i.price ? '$'+i.price.toFixed(4) : '-'}</td>
+            <td class="balance">${i.value ? '$'+i.value.toFixed(2) : '-'}</td>
+        </tr>`;
+    }
+    html += '</table>';
+
+    document.getElementById('tableContent').innerHTML = html;
+    document.getElementById('walletCount').textContent = wallets.length;
+    document.getElementById('tokenCount').textContent = allBalances.length;
+    document.getElementById('portfolioValue').textContent = '$' + total.toFixed(2);
 }
 </script>
-
 </body>
 </html>
