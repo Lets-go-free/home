@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <title>Wallet Token Tracker mit Preisen</title>
-<script src="https://cdn.jsdelivr.net/npm/ethers/dist/ethers.min.js"></script>
+<!-- ethers v5 für Browser -->
+<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
 <style>
 body { font-family: sans-serif; padding: 20px; }
 table { border-collapse: collapse; width: 100%; margin-top: 20px; }
@@ -52,53 +53,73 @@ const tokens = [
   {chain:'eth', symbol:'ETH', name:'Ethereum', address:'native'},
   {chain:'eth', symbol:'VOW', name:'Vow Token', address:'0x1BBf25e71EC48B84d773809B4bA55B6F4bE946Fb'},
   {chain:'polygon', symbol:'POL', name:'Polygon', address:'native'},
-  // ... du kannst hier deine volle Liste einfügen
+  // Füge hier alle weiteren Tokens aus deiner Liste ein
 ];
 
 // RPCs für Chains
 const RPC = {
   bsc: "https://bsc-dataseed.binance.org/",
-  eth: "https://mainnet.infura.io/v3/YOUR_INFURA_KEY", // optional Infura-Key
+  eth: "https://mainnet.infura.io/v3/YOUR_INFURA_KEY", // optional
   polygon: "https://polygon-rpc.com/"
 };
 
 // ==========================
+// HELPER
+// ==========================
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+function addRow(wallet, token, symbol, balance, price){
+  const valueUSD = (balance*price).toFixed(2);
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td>${wallet}</td>
+    <td>${token}</td>
+    <td>${symbol}</td>
+    <td>${balance}</td>
+    <td>${price}</td>
+    <td>${valueUSD}</td>
+  `;
+  document.getElementById("result").appendChild(tr);
+}
+
+// ==========================
 // MAIN
 // ==========================
-async function loadBalances() {
+async function loadBalances(){
   const chain = document.getElementById("chain").value;
-  const provider = new ethers.JsonRpcProvider(RPC[chain]);
+  const provider = new ethers.providers.JsonRpcProvider(RPC[chain]);
   const resultEl = document.getElementById("result");
   resultEl.innerHTML = "";
 
   const chainTokens = tokens.filter(t => t.chain === chain);
 
-  // Coingecko Token IDs mapping (nur die nativen für Demo)
+  // Coingecko IDs für native Tokens (Demo)
   const coingeckoNative = { bsc:'binancecoin', eth:'ethereum', polygon:'matic-network' };
 
-  for(const wallet of wallets) {
+  for(const wallet of wallets){
     for(const token of chainTokens){
       let balance = 0;
+
       if(token.address === 'native'){
-        balance = await provider.getBalance(wallet);
-        balance = Number(ethers.formatEther(balance));
+        try {
+          balance = await provider.getBalance(wallet);
+          balance = Number(ethers.utils.formatEther(balance));
+        } catch(e){ console.warn("Fehler native", token.symbol, e); continue; }
       } else {
         const contract = new ethers.Contract(token.address, [
           "function balanceOf(address) view returns (uint256)",
           "function decimals() view returns (uint8)"
         ], provider);
         try {
-          const [rawBal, decimals] = await Promise.all([contract.balanceOf(wallet), contract.decimals()]);
-          balance = Number(rawBal)/Math.pow(10, decimals);
-        } catch(e) {
-          console.warn("Fehler bei", token.symbol, e);
-          continue;
-        }
+          const rawBal = await contract.balanceOf(wallet);
+          const decimals = await contract.decimals();
+          balance = Number(rawBal) / Math.pow(10, decimals);
+        } catch(e){ console.warn("Fehler ERC20", token.symbol, e); continue; }
       }
 
-      // Preis abfragen über Coingecko (nur native Tokens Demo)
+      // Preis via Coingecko nur für native Tokens (weitere Tokens kann man erweitern)
       let price = 0;
-      try {
+      try{
         if(token.address === 'native'){
           const resp = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoNative[chain]}&vs_currencies=usd`);
           const data = await resp.json();
@@ -106,19 +127,8 @@ async function loadBalances() {
         }
       } catch(e){ price = 0; }
 
-      const valueUSD = (balance*price).toFixed(2);
-
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${wallet}</td>
-        <td>${token.name}</td>
-        <td>${token.symbol}</td>
-        <td>${balance}</td>
-        <td>${price}</td>
-        <td>${valueUSD}</td>
-      `;
-      resultEl.appendChild(tr);
-      await new Promise(r => setTimeout(r, 200)); // friendly RPC pacing
+      addRow(wallet, token.name, token.symbol, balance, price);
+      await sleep(200); // friendly RPC pacing
     }
   }
 }
