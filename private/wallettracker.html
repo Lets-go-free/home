@@ -25,14 +25,6 @@
         .controls { background: white; border-radius: 15px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; gap: 15px; flex-wrap: wrap; align-items: center; }
         .controls label { font-size: 14px; color: #2d3748; font-weight: 600; }
         .controls select { padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 14px; background: white; cursor: pointer; min-width: 150px; }
-        .price-table-header { background: white; border-radius: 15px; padding: 15px 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 20px; }
-        .price-table-header h3 { margin: 0; font-size: 18px; color: #2d3748; }
-        .price-table-header p { margin: 5px 0 0 0; font-size: 13px; color: #718096; }
-        .btn { padding: 8px 16px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-        .btn-primary { background: #667eea; color: white; }
-        .btn-primary:hover:not(:disabled) { background: #5568d3; }
-        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-        #priceTableContent { display: none; background: white; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden; }
         .table-wrapper { background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         table { width: 100%; border-collapse: collapse; }
         thead { background: #f7fafc; position: sticky; top: 0; z-index: 10; }
@@ -61,7 +53,7 @@
     <div class="container">
         <div class="header">
             <h1>🔍 Multi-Wallet Token Viewer</h1>
-            <div class="version">Version: 08.01.2026 21:40:13 (Cloudflare Worker)</div>
+            <div class="version">Version: 09.01.2026 11:19:11 (Explorer API)</div>
             <div class="timestamp" id="timestamp"></div>
         </div>
         
@@ -92,22 +84,6 @@
                 </div>
             </div>
 
-            <div class="price-table-header" onclick="togglePriceTable()">
-                <div>
-                    <h3>💰 Token-Preise</h3>
-                    <p id="priceTableStatus">Klicken zum Laden der Preise</p>
-                </div>
-                <button class="btn btn-primary" onclick="event.stopPropagation(); loadPrices();" id="loadPricesBtn">
-                    🔄 Preise laden
-                </button>
-            </div>
-            
-            <div id="priceTableContent">
-                <div style="padding: 20px; text-align: center; color: #718096;">
-                    Preise noch nicht geladen
-                </div>
-            </div>
-
             <div class="controls">
                 <label>Wallet:</label>
                 <select id="walletFilter"><option value="">Alle Wallets</option></select>
@@ -130,121 +106,197 @@
 
     <script src="https://apis.google.com/js/api.js"></script>
     <script>
-// Cloudflare Worker URL
-const WORKER_URL = 'https://wallet-api.chrisdefi.workers.dev';
+// Block Explorer APIs
+const EXPLORER_APIS = {
+  bsc: 'https://api.bscscan.com/api',
+  eth: 'https://api.etherscan.io/api',
+  polygon: 'https://api.polygonscan.com/api',
+  apertum: 'https://explorer.apertum.io/api'
+};
 
 const GOOGLE_CONFIG={apiKey:'AIzaSyCoJAYF8BVhYk8k2Zr2MbDAt2qwkaGEM8w',clientId:'42198403966-ovpg5lar1qso4vqfl9rd4ebeunltpegs.apps.googleusercontent.com',spreadsheetId:'1M0HycCitzlkgk_uG1Y-iLeYKthdUaRGnCvv3Hxv0yww',discoveryDocs:['https://sheets.googleapis.com/$discovery/rest?version=v4'],scopes:'https://www.googleapis.com/auth/spreadsheets.readonly'};
 let gapiInited=false,tokenClient,accessToken=null,wallets=[],tokens={},allBalances=[];
 
-// Price Cache
-const priceCache={},CACHE_DURATION=60000;
-function getCachedPrice(key){const cached=priceCache[key];if(!cached)return null;if(Date.now()-cached.timestamp>CACHE_DURATION){delete priceCache[key];return null;}return cached.price;}
-function setCachedPrice(key,price){priceCache[key]={price:price,timestamp:Date.now()};}
 function delay(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 
-// Price Table
-const globalPriceMap=new Map();
-let priceTableVisible=false;
-function togglePriceTable(){priceTableVisible=!priceTableVisible;document.getElementById('priceTableContent').style.display=priceTableVisible?'block':'none';}
-
-async function loadPrices(){
+// Load balances via Block Explorer APIs
+async function loadAllWallets(){
 try{
-console.log('💰 Starte Preis-Ladung...');
-const btn=document.getElementById('loadPricesBtn');
-const status=document.getElementById('priceTableStatus');
-btn.disabled=true;
-btn.textContent='⏳ Lädt...';
-status.textContent='Lade Preise...';
-const uniqueTokens=new Map();
-for(const [chain,tokenList] of Object.entries(tokens)){
-tokenList.forEach(token=>{const key=`${chain}-${token.address}`;if(!uniqueTokens.has(key)){uniqueTokens.set(key,{chain:chain,address:token.address,symbol:token.symbol,name:token.name});}});
-}
-console.log(`📊 Lade ${uniqueTokens.size} Token-Preise...`);
-status.textContent=`Lade ${uniqueTokens.size} Token-Preise...`;
-const priceData=[];
-let loaded=0;
-for(const [key,token] of uniqueTokens){
-try{
-const startTime=Date.now();
-const price=await fetchTokenPrice(token.address,token.chain);
-const loadTime=Date.now()-startTime;
-const priceInfo={chain:token.chain,symbol:token.symbol,name:token.name,address:token.address,price:price,source:price?'API':'N/A',timestamp:new Date().toLocaleTimeString('de-CH'),loadTime:loadTime};
-priceData.push(priceInfo);
-globalPriceMap.set(key,price);
-loaded++;
-status.textContent=`Geladen: ${loaded}/${uniqueTokens.size} (${priceInfo.symbol}: ${price?'$'+formatNumber(price):'N/A'})`;
-displayPriceTable(priceData);
-}catch(e){console.error(`Fehler bei ${token.symbol}:`,e);}
-}
-console.log(`✅ ${loaded} Preise geladen`);
-status.textContent=`${loaded} Preise geladen - Letzte Aktualisierung: ${new Date().toLocaleTimeString('de-CH')}`;
-btn.textContent='🔄 Neu laden';
-btn.disabled=false;
-updateBalanceTableWithPrices();
-if(!priceTableVisible)togglePriceTable();
-}catch(e){console.error('Fehler:',e);document.getElementById('priceTableStatus').textContent='Fehler: '+e.message;document.getElementById('loadPricesBtn').disabled=false;}
+console.log('🚀 Starte Laden via Block Explorer APIs...');
+const c=document.getElementById('tableContent');
+c.innerHTML='<div class="loading"><div class="spinner"></div><p>Lade Token-Daten via Explorer APIs...</p><p style="font-size:12px;margin-top:10px;" id="loadingStatus">Initialisiere...</p></div>';
+
+const se=document.getElementById('loadingStatus');
+allBalances=[];
+
+for(const wallet of wallets){
+  for(const chain of Object.keys(tokens)){
+    se.textContent=`Lade ${wallet.name} auf ${chain.toUpperCase()}...`;
+    console.log(`📡 Lade ${wallet.name} auf ${chain}`);
+    
+    try{
+      const balances = await getTokenBalancesFromExplorer(chain, wallet.address, wallet.name);
+      allBalances.push(...balances);
+      console.log(`  ✓ ${balances.length} Tokens gefunden`);
+    }catch(e){
+      console.error(`  ✗ Fehler bei ${wallet.name} (${chain}):`, e.message);
+    }
+    
+    await delay(300); // Kurze Pause zwischen Chains
+  }
 }
 
-function displayPriceTable(priceData){
-const content=document.getElementById('priceTableContent');
-if(priceData.length===0){content.innerHTML='<div style="padding:20px;text-align:center;color:#718096;">Keine Preise geladen</div>';return;}
-let html='<div style="overflow-x:auto;max-height:400px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;"><thead style="position:sticky;top:0;background:#f7fafc;z-index:10;"><tr><th style="padding:12px 15px;text-align:left;font-size:12px;color:#2d3748;border-bottom:2px solid #e2e8f0;">Chain</th><th style="padding:12px 15px;text-align:left;font-size:12px;color:#2d3748;border-bottom:2px solid #e2e8f0;">Token</th><th style="padding:12px 15px;text-align:right;font-size:12px;color:#2d3748;border-bottom:2px solid #e2e8f0;">Preis (USD)</th><th style="padding:12px 15px;text-align:center;font-size:12px;color:#2d3748;border-bottom:2px solid #e2e8f0;">Quelle</th><th style="padding:12px 15px;text-align:center;font-size:12px;color:#2d3748;border-bottom:2px solid #e2e8f0;">Zeit</th></tr></thead><tbody>';
-priceData.forEach((item,index)=>{const bgColor=index%2===0?'#ffffff':'#f7fafc';html+=`<tr style="background:${bgColor};border-bottom:1px solid #e2e8f0;"><td style="padding:10px 15px;"><span style="display:inline-block;padding:4px 8px;background:rgba(102,126,234,0.1);color:#667eea;border-radius:4px;font-size:11px;font-weight:600;">${item.chain.toUpperCase()}</span></td><td style="padding:10px 15px;"><div style="font-weight:600;color:#2d3748;font-size:13px;">${item.symbol}</div><div style="font-size:11px;color:#94a3b8;">${item.name}</div></td><td style="padding:10px 15px;text-align:right;font-family:monospace;font-weight:600;color:${item.price?'#22c55e':'#ef4444'};">${item.price?'$'+formatNumber(item.price):'N/A'}</td><td style="padding:10px 15px;text-align:center;font-size:11px;color:#718096;">${item.source}</td><td style="padding:10px 15px;text-align:center;font-size:11px;color:#94a3b8;">${item.timestamp}</td></tr>`;});
-html+='</tbody></table></div>';
-content.innerHTML=html;
-}
-
-function updateBalanceTableWithPrices(){
-allBalances.forEach(item=>{const key=`${item.chain}-${item.tokenAddress}`;const price=globalPriceMap.get(key);if(price){item.priceUsd=price;if(item.balance>0){item.valueUsd=item.balance*price;}}});
+console.log(`✅ ${allBalances.length} Token mit Balance gefunden`);
 displayTable();
 updateStats();
+
+}catch(e){
+console.error('Fehler:',e);
+displayError('Fehler beim Laden: '+e.message);
+}
 }
 
-// Fetch Token Price (simplified)
-const nativeTokenPriceCache={};
-const dexScreenerChainIds={apertum:'apertum',bsc:'bsc',eth:'ethereum',polygon:'polygon'};
-async function fetchTokenPrice(addr,chain){
-try{
-if(addr==='native'){
-const coinIds={'eth':'ethereum','bsc':'binancecoin','polygon':'matic-network','apertum':'aptm'};
-const cid=coinIds[chain];
-if(!cid)return null;
-if(nativeTokenPriceCache[cid])return nativeTokenPriceCache[cid];
-await delay(800);
-const u=`https://api.coingecko.com/api/v3/simple/price?ids=${cid}&vs_currencies=usd`;
-const r=await fetch(u);
-if(!r.ok)return null;
-const d=await r.json();
-if(d&&d[cid]&&d[cid].usd){nativeTokenPriceCache[cid]=d[cid].usd;return d[cid].usd;}
-return null;
+// Get token balances from explorer API
+async function getTokenBalancesFromExplorer(chain, address, walletName){
+  const results = [];
+  
+  try{
+    // Get native balance first
+    const nativeBalance = await getNativeBalanceFromExplorer(chain, address);
+    if(nativeBalance > 0){
+      const nativeTokens = {
+        apertum: {symbol: 'APTM', name: 'APTM'},
+        bsc: {symbol: 'BNB', name: 'BNB'},
+        eth: {symbol: 'ETH', name: 'ETH'},
+        polygon: {symbol: 'POL', name: 'POL'}
+      };
+      const token = nativeTokens[chain];
+      results.push({
+        wallet: walletName,
+        walletAddress: address,
+        tokenSymbol: token.symbol,
+        tokenName: token.name,
+        chain: chain,
+        balance: nativeBalance,
+        tokenAddress: 'native',
+        decimals: 18,
+        priceUsd: null,
+        valueUsd: null
+      });
+    }
+    
+    // Get ERC20 token balances
+    const apiUrl = EXPLORER_APIS[chain];
+    let url;
+    
+    if(chain === 'apertum'){
+      // Apertum uses different API format
+      url = `${apiUrl}?module=account&action=tokenlist&address=${address}`;
+    }else{
+      // Standard etherscan-like API
+      url = `${apiUrl}?module=account&action=tokentx&address=${address}&startblock=0&endblock=99999999&sort=asc`;
+    }
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if(data.status === '1' && data.result){
+      // Group by token address and sum balances
+      const tokenMap = new Map();
+      
+      data.result.forEach(tx => {
+        const tokenAddr = tx.contractAddress || tx.token;
+        if(!tokenAddr) return;
+        
+        if(!tokenMap.has(tokenAddr)){
+          tokenMap.set(tokenAddr, {
+            address: tokenAddr,
+            symbol: tx.tokenSymbol || 'UNKNOWN',
+            name: tx.tokenName || 'Unknown Token',
+            decimals: parseInt(tx.tokenDecimal || 18),
+            balance: 0
+          });
+        }
+      });
+      
+      // Now fetch current balance for each token we found
+      for(const [tokenAddr, tokenInfo] of tokenMap){
+        try{
+          const balance = await getTokenBalanceFromExplorer(chain, address, tokenAddr);
+          if(balance > 0){
+            results.push({
+              wallet: walletName,
+              walletAddress: address,
+              tokenSymbol: tokenInfo.symbol,
+              tokenName: tokenInfo.name,
+              chain: chain,
+              balance: balance / Math.pow(10, tokenInfo.decimals),
+              tokenAddress: tokenAddr,
+              decimals: tokenInfo.decimals,
+              priceUsd: null,
+              valueUsd: null
+            });
+          }
+          await delay(200); // Rate limit protection
+        }catch(e){
+          console.error(`    ✗ ${tokenInfo.symbol}:`, e.message);
+        }
+      }
+    }
+    
+  }catch(e){
+    console.error(`Error loading ${chain}:`, e);
+  }
+  
+  return results;
 }
-const dexKey=`dex-${chain}-${addr}`;
-const dexCached=getCachedPrice(dexKey);
-if(dexCached){console.log(`    ✓ Cache: DexScreener`);return dexCached;}
-await delay(800);
-const cid=dexScreenerChainIds[chain];
-const u=`https://api.dexscreener.com/latest/dex/tokens/${addr}`;
-const r=await fetch(u);
-if(!r.ok)return null;
-const d=await r.json();
-if(d&&d.pairs&&d.pairs.length>0){
-let p=d.pairs.filter(x=>x.chainId===cid);
-if(p.length===0)p=d.pairs;
-if(p.length>0){
-const best=p.reduce((b,c)=>{const bL=parseFloat(b.liquidity?.usd||0);const cL=parseFloat(c.liquidity?.usd||0);return cL>bL?c:b;});
-const price=parseFloat(best.priceUsd);
-setCachedPrice(dexKey,price);
-return price;
+
+// Get native balance from explorer
+async function getNativeBalanceFromExplorer(chain, address){
+  const apiUrl = EXPLORER_APIS[chain];
+  let url;
+  
+  if(chain === 'apertum'){
+    url = `${apiUrl}?module=account&action=balance&address=${address}`;
+  }else{
+    url = `${apiUrl}?module=account&action=balance&address=${address}&tag=latest`;
+  }
+  
+  const response = await fetch(url);
+  const data = await response.json();
+  
+  if(data.status === '1' && data.result){
+    return parseFloat(data.result) / 1e18;
+  }
+  
+  return 0;
 }
-}
-return null;
-}catch(e){console.log(`    ⚠️ fetchTokenPrice:`,e.message);return null;}
+
+// Get specific token balance from explorer
+async function getTokenBalanceFromExplorer(chain, walletAddr, tokenAddr){
+  const apiUrl = EXPLORER_APIS[chain];
+  let url;
+  
+  if(chain === 'apertum'){
+    url = `${apiUrl}?module=account&action=tokenbalance&contractaddress=${tokenAddr}&address=${walletAddr}`;
+  }else{
+    url = `${apiUrl}?module=account&action=tokenbalance&contractaddress=${tokenAddr}&address=${walletAddr}&tag=latest`;
+  }
+  
+  const response = await fetch(url);
+  const data = await response.json();
+  
+  if(data.status === '1' && data.result){
+    return parseFloat(data.result);
+  }
+  
+  return 0;
 }
 
 // Google Auth
 function gapiLoaded(){gapi.load('client',async()=>{await gapi.client.init({apiKey:GOOGLE_CONFIG.apiKey,discoveryDocs:GOOGLE_CONFIG.discoveryDocs});gapiInited=true;console.log('✓ GAPI initialisiert');maybeEnableButtons();});}
 function gisLoaded(){tokenClient=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CONFIG.clientId,scope:GOOGLE_CONFIG.scopes,redirect_uri:window.location.origin+window.location.pathname,ux_mode:'popup',callback:async(r)=>{if(r.error!==undefined){console.error('Token Error:',r);document.getElementById('loginStatus').textContent='Fehler: '+r.error;return;}console.log('✓ Access Token erhalten');accessToken=r.access_token;await loadSheetsData();document.getElementById('loginBox').style.display='none';document.getElementById('appContent').classList.add('loaded');loadAllWallets();}});console.log('✓ GIS initialisiert');maybeEnableButtons();}
-function maybeEnableButtons(){if(gapiInited&&tokenClient){document.getElementById('loginStatus').textContent='Bereit zur Anmeldung';document.getElementById('google-signin-button').innerHTML='<button class="btn btn-primary" onclick="handleAuthClick()" style="width:100%;padding:12px 24px;font-size:16px;">🔐 Mit Google anmelden</button>';}}
+function maybeEnableButtons(){if(gapiInited&&tokenClient){document.getElementById('loginStatus').textContent='Bereit zur Anmeldung';document.getElementById('google-signin-button').innerHTML='<button class="btn btn-primary" onclick="handleAuthClick()" style="width:100%;padding:12px 24px;font-size:16px;background:#667eea;color:white;border:none;border-radius:8px;cursor:pointer;">🔐 Mit Google anmelden</button>';}}
 function handleAuthClick(){console.log('🔐 Starte Authentifizierung...');tokenClient.requestAccessToken();}
 window.addEventListener('load',()=>{console.log('🔧 Initialisiere Google Auth...');gapiLoaded();const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.onload=gisLoaded;s.onerror=()=>{console.error('❌ Google GSI Script konnte nicht geladen werden');document.getElementById('loginStatus').textContent='Fehler: Google Auth konnte nicht geladen werden.';};document.head.appendChild(s);});
 
@@ -262,53 +314,11 @@ trows.forEach(r=>{const chain=r[0];if(!tokens[chain])tokens[chain]=[];tokens[cha
 console.log(`✓ ${trows.length} Tokens geladen`);
 }
 
-// Load Wallets via Cloudflare Worker
-async function loadAllWallets(){
-try{
-console.log('🚀 Starte Laden der Wallets via Cloudflare Worker...');
-const c=document.getElementById('tableContent');
-c.innerHTML='<div class="loading"><div class="spinner"></div><p>Lade Token-Daten via Backend...</p><p style="font-size:12px;margin-top:10px;" id="loadingStatus">Sende Anfrage an Worker...</p></div>';
-
-const se=document.getElementById('loadingStatus');
-se.textContent='Lade Balances vom Worker...';
-console.log('📡 Sende Request an:', WORKER_URL);
-
-const response = await fetch(WORKER_URL, {
-  method: 'POST',
-  headers: {'Content-Type': 'application/json'},
-  body: JSON.stringify({wallets: wallets, tokens: tokens})
-});
-
-console.log('📥 Response Status:', response.status);
-
-if(!response.ok){
-  const errorText = await response.text();
-  throw new Error(`Worker Error: ${response.status} - ${errorText}`);
-}
-
-const data = await response.json();
-
-if(!data.success){
-  throw new Error(data.error || 'Unknown worker error');
-}
-
-allBalances = data.balances;
-console.log(`✅ ${allBalances.length} Token mit Balance gefunden`);
-
-displayTable();
-updateStats();
-
-}catch(e){
-console.error('Fehler:',e);
-displayError('Fehler beim Laden: '+e.message + '<br><br>Worker URL: ' + WORKER_URL);
-}
-}
-
 // Display
 function displayTable(){
 const c=document.getElementById('tableContent');
 if(allBalances.length===0){c.innerHTML='<div class="empty-state"><p>Keine Token mit Balance gefunden.</p></div>';return;}
-const h='<div class="table-wrapper"><table><thead><tr><th>Wallet</th><th>Token</th><th>Token-Adresse</th><th>Anzahl</th><th>Preis (USD)</th><th>Wert (USD)</th></tr></thead><tbody id="tableBody">'+generateTableRows()+'</tbody></table></div>';
+const h='<div class="table-wrapper"><table><thead><tr><th>Wallet</th><th>Token</th><th>Token-Adresse</th><th>Anzahl</th></tr></thead><tbody id="tableBody">'+generateTableRows()+'</tbody></table></div>';
 c.innerHTML=h;
 populateFilters();
 }
@@ -316,20 +326,16 @@ populateFilters();
 function generateTableRows(){
 const gb=document.getElementById('groupByFilter')?.value||'none';
 if(gb==='none'){
-return allBalances.map((it,i)=>`<tr data-index="${i}"><td>${it.wallet}</td><td><div class="token-info"><div class="token-icon">${it.tokenSymbol.charAt(0)}</div><div class="token-details"><div class="token-symbol">${it.tokenSymbol}</div><div class="token-chain">${it.chain}</div></div></div></td><td class="token-address-cell" title="${it.tokenAddress}">${it.tokenAddress==='native'?'Native':it.tokenAddress}</td><td class="balance">${formatNumber(it.balance)}</td><td class="balance">${it.priceUsd?'$'+formatNumber(it.priceUsd):'-'}</td><td class="balance">${it.valueUsd?'$'+formatNumber(it.valueUsd):'-'}</td></tr>`).join('');
+return allBalances.map((it,i)=>`<tr data-index="${i}"><td>${it.wallet}</td><td><div class="token-info"><div class="token-icon">${it.tokenSymbol.charAt(0)}</div><div class="token-details"><div class="token-symbol">${it.tokenSymbol}</div><div class="token-chain">${it.chain}</div></div></div></td><td class="token-address-cell" title="${it.tokenAddress}">${it.tokenAddress==='native'?'Native':it.tokenAddress}</td><td class="balance">${formatNumber(it.balance)}</td></tr>`).join('');
 }else{
 const g={};
 allBalances.forEach((it,i)=>{const k=it[gb]||'Unbekannt';if(!g[k])g[k]=[];g[k].push({...it,originalIndex:i});});
 let h='';
 Object.keys(g).sort().forEach(k=>{
 const its=g[k];
-const st=its.reduce((s,it)=>s+(it.valueUsd||0),0);
-h+=`<tr class="group-header"><td colspan="6"><strong>${getGroupLabel(gb)}:</strong> ${k.toUpperCase()} ${st>0?`(Zwischentotal: $${formatNumber(st)})`:''}</td></tr>`;
-its.forEach(it=>{h+=`<tr data-index="${it.originalIndex}"><td>${it.wallet}</td><td><div class="token-info"><div class="token-icon">${it.tokenSymbol.charAt(0)}</div><div class="token-details"><div class="token-symbol">${it.tokenSymbol}</div><div class="token-chain">${it.chain}</div></div></div></td><td class="token-address-cell" title="${it.tokenAddress}">${it.tokenAddress==='native'?'Native':it.tokenAddress}</td><td class="balance">${formatNumber(it.balance)}</td><td class="balance">${it.priceUsd?'$'+formatNumber(it.priceUsd):'-'}</td><td class="balance">${it.valueUsd?'$'+formatNumber(it.valueUsd):'-'}</td></tr>`;});
-if(st>0){h+=`<tr class="subtotal-row"><td colspan="5" style="text-align:right;">Zwischentotal ${k}:</td><td class="balance">$${formatNumber(st)}</td></tr>`;}
+h+=`<tr class="group-header"><td colspan="4"><strong>${getGroupLabel(gb)}:</strong> ${k.toUpperCase()}</td></tr>`;
+its.forEach(it=>{h+=`<tr data-index="${it.originalIndex}"><td>${it.wallet}</td><td><div class="token-info"><div class="token-icon">${it.tokenSymbol.charAt(0)}</div><div class="token-details"><div class="token-symbol">${it.tokenSymbol}</div><div class="token-chain">${it.chain}</div></div></div></td><td class="token-address-cell" title="${it.tokenAddress}">${it.tokenAddress==='native'?'Native':it.tokenAddress}</td><td class="balance">${formatNumber(it.balance)}</td></tr>`;});
 });
-const gt=allBalances.reduce((s,it)=>s+(it.valueUsd||0),0);
-if(gt>0){h+=`<tr class="total-row"><td colspan="5" style="text-align:right;"><strong>GESAMT-TOTAL:</strong></td><td class="balance"><strong>$${formatNumber(gt)}</strong></td></tr>`;}
 return h;
 }
 }
@@ -359,7 +365,7 @@ const fb=allBalances.filter(i=>{const mw=!wf||i.wallet===wf;const mc=!cf||i.chai
 const tmp=allBalances;
 allBalances=fb;
 const tbody=document.getElementById('tableBody');
-if(tbody){tbody.parentElement.parentElement.innerHTML='<table><thead><tr><th>Wallet</th><th>Token</th><th>Token-Adresse</th><th>Anzahl</th><th>Preis (USD)</th><th>Wert (USD)</th></tr></thead><tbody id="tableBody">'+generateTableRows()+'</tbody></table>';}
+if(tbody){tbody.parentElement.parentElement.innerHTML='<table><thead><tr><th>Wallet</th><th>Token</th><th>Token-Adresse</th><th>Anzahl</th></tr></thead><tbody id="tableBody">'+generateTableRows()+'</tbody></table>';}
 allBalances=tmp;
 updateStatsFiltered(fb);
 }
