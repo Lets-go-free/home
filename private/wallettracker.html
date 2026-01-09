@@ -47,13 +47,19 @@
         .total-row { background: #d1fae5; font-weight: bold; font-size: 16px; }
         .empty-state { text-align: center; padding: 60px 20px; color: #94a3b8; }
         .error { background: #fee2e2; color: #dc2626; padding: 20px; border-radius: 8px; margin: 20px 0; }
+        .price-overview { margin-bottom: 20px; }
+        .price-overview h3 { color: white; margin-bottom: 15px; font-size: 18px; }
+        .price-positive { color: #10b981; font-weight: 600; }
+        .price-negative { color: #ef4444; font-weight: 600; }
+        .price-neutral { color: #6b7280; }
+        .last-updated { font-size: 11px; color: #94a3b8; font-style: italic; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>🔍 Multi-Wallet Token Viewer</h1>
-            <div class="version">Version: 09.01.2026 16:04:28 (Hybrid: Explorer + Web3)</div>
+            <div class="version">Version: 09.01.2026 16:18:01 (Hybrid + Prices)</div>
             <div class="timestamp" id="timestamp"></div>
         </div>
         
@@ -100,6 +106,24 @@
                 </select>
             </div>
             
+            <div id="priceOverview" class="price-overview" style="display:none;">
+                <h3 style="color: white; margin-bottom: 15px; font-size: 18px;">📊 Token Preise</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Token</th>
+                                <th>Chain</th>
+                                <th>Preis (USD)</th>
+                                <th>24h Änderung</th>
+                                <th>Zuletzt aktualisiert</th>
+                            </tr>
+                        </thead>
+                        <tbody id="priceTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            
             <div id="tableContent"></div>
         </div>
     </div>
@@ -130,6 +154,93 @@ const ERC20_ABI = [
 
 const GOOGLE_CONFIG={apiKey:'AIzaSyCoJAYF8BVhYk8k2Zr2MbDAt2qwkaGEM8w',clientId:'42198403966-ovpg5lar1qso4vqfl9rd4ebeunltpegs.apps.googleusercontent.com',spreadsheetId:'1M0HycCitzlkgk_uG1Y-iLeYKthdUaRGnCvv3Hxv0yww',discoveryDocs:['https://sheets.googleapis.com/$discovery/rest?version=v4'],scopes:'https://www.googleapis.com/auth/spreadsheets.readonly'};
 let gapiInited=false,tokenClient,accessToken=null,wallets=[],tokens={},allBalances=[],web3Instances={};
+
+// Price cache with 5 minute expiry
+const priceCache = new Map();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// CoinGecko API mapping (contract address to CoinGecko ID)
+const COINGECKO_IDS = {
+  // Add known token mappings here
+  'ethereum': 'ethereum',
+  'binancecoin': 'binancecoin',
+  'matic-network': 'matic-network'
+};
+
+async function fetchTokenPrice(tokenAddress, chain){
+  const cacheKey = `${chain}-${tokenAddress.toLowerCase()}`;
+  const now = Date.now();
+  
+  // Check cache
+  if(priceCache.has(cacheKey)){
+    const cached = priceCache.get(cacheKey);
+    if(now - cached.timestamp < CACHE_DURATION){
+      return cached.data;
+    }
+  }
+  
+  try{
+    // Try CoinGecko API
+    let coinId = null;
+    
+    // Map chain + address to CoinGecko platform
+    const platformMap = {
+      'eth': 'ethereum',
+      'bsc': 'binance-smart-chain',
+      'polygon': 'polygon-pos',
+      'apertum': null // Not supported by CoinGecko
+    };
+    
+    const platform = platformMap[chain];
+    if(!platform) return null;
+    
+    // For native tokens
+    if(tokenAddress === 'native'){
+      const nativeIds = {
+        'eth': 'ethereum',
+        'bsc': 'binancecoin',
+        'polygon': 'matic-network'
+      };
+      coinId = nativeIds[chain];
+    }
+    
+    if(coinId){
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`;
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if(data[coinId]){
+        const priceData = {
+          price: data[coinId].usd,
+          change24h: data[coinId].usd_24h_change || 0,
+          timestamp: now
+        };
+        priceCache.set(cacheKey, { data: priceData, timestamp: now });
+        return priceData;
+      }
+    }else{
+      // Try by contract address
+      const url = `https://api.coingecko.com/api/v3/simple/token_price/${platform}?contract_addresses=${tokenAddress}&vs_currencies=usd&include_24hr_change=true`;
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      const key = tokenAddress.toLowerCase();
+      if(data[key]){
+        const priceData = {
+          price: data[key].usd,
+          change24h: data[key].usd_24h_change || 0,
+          timestamp: now
+        };
+        priceCache.set(cacheKey, { data: priceData, timestamp: now });
+        return priceData;
+      }
+    }
+  }catch(e){
+    console.error(`Price fetch error for ${tokenAddress}:`, e);
+  }
+  
+  return null;
+}
 
 function delay(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 
@@ -188,6 +299,13 @@ for(const wallet of wallets){
 
 console.log(`✅ ${allBalances.length} Token mit Balance gefunden`);
 displayTable();
+updateStats();
+
+// Load prices
+se.textContent='Lade Token-Preise...';
+await loadPrices();
+displayPriceOverview();
+displayTable(); // Refresh with prices
 updateStats();
 
 }catch(e){
@@ -391,6 +509,110 @@ const trows=tresp.result.values||[];
 tokens={};
 trows.forEach(r=>{const chain=r[0];if(!tokens[chain])tokens[chain]=[];tokens[chain].push({chain:chain,symbol:r[1],name:r[2],address:r[3],decimals:r[4]?parseInt(r[4]):null});});
 console.log(`✓ ${trows.length} Tokens geladen`);
+}
+
+// Load prices for all unique tokens
+async function loadPrices(){
+  const uniqueTokens = new Map();
+  
+  // Get unique tokens
+  allBalances.forEach(item => {
+    const key = `${item.chain}-${item.tokenAddress}`;
+    if(!uniqueTokens.has(key)){
+      uniqueTokens.set(key, {
+        symbol: item.tokenSymbol,
+        name: item.tokenName,
+        chain: item.chain,
+        address: item.tokenAddress
+      });
+    }
+  });
+  
+  console.log(`💰 Lade Preise für ${uniqueTokens.size} einzigartige Tokens...`);
+  
+  // Fetch prices with delay to avoid rate limits
+  let count = 0;
+  for(const [key, token] of uniqueTokens){
+    try{
+      const priceData = await fetchTokenPrice(token.address, token.chain);
+      if(priceData){
+        // Update all balances with this token
+        allBalances.forEach(item => {
+          if(item.chain === token.chain && item.tokenAddress === token.address){
+            item.priceUsd = priceData.price;
+            item.change24h = priceData.change24h;
+            if(item.balance && item.priceUsd){
+              item.valueUsd = item.balance * item.priceUsd;
+            }
+          }
+        });
+        count++;
+      }
+      await delay(1000); // 1 second delay between price requests
+    }catch(e){
+      console.error(`Price error for ${token.symbol}:`, e);
+    }
+  }
+  
+  console.log(`✓ ${count} Preise geladen`);
+}
+
+// Display price overview table
+function displayPriceOverview(){
+  const uniqueTokens = new Map();
+  
+  // Get unique tokens with prices
+  allBalances.forEach(item => {
+    if(item.priceUsd){
+      const key = `${item.chain}-${item.tokenSymbol}`;
+      if(!uniqueTokens.has(key)){
+        uniqueTokens.set(key, {
+          symbol: item.tokenSymbol,
+          name: item.tokenName,
+          chain: item.chain,
+          price: item.priceUsd,
+          change24h: item.change24h || 0
+        });
+      }
+    }
+  });
+  
+  if(uniqueTokens.size === 0){
+    document.getElementById('priceOverview').style.display = 'none';
+    return;
+  }
+  
+  // Sort by chain then symbol
+  const sorted = Array.from(uniqueTokens.values()).sort((a,b) => {
+    if(a.chain !== b.chain) return a.chain.localeCompare(b.chain);
+    return a.symbol.localeCompare(b.symbol);
+  });
+  
+  const tbody = document.getElementById('priceTableBody');
+  tbody.innerHTML = sorted.map(token => {
+    const changeClass = token.change24h > 0 ? 'price-positive' : token.change24h < 0 ? 'price-negative' : 'price-neutral';
+    const changeSign = token.change24h > 0 ? '+' : '';
+    const now = new Date().toLocaleTimeString('de-CH');
+    
+    return `
+      <tr>
+        <td>
+          <div class="token-info">
+            <div class="token-icon">${token.symbol.charAt(0)}</div>
+            <div class="token-details">
+              <div class="token-symbol">${token.symbol}</div>
+            </div>
+          </div>
+        </td>
+        <td><span class="token-chain">${token.chain.toUpperCase()}</span></td>
+        <td class="balance">$${formatNumber(token.price)}</td>
+        <td class="${changeClass}">${changeSign}${token.change24h.toFixed(2)}%</td>
+        <td class="last-updated">${now}</td>
+      </tr>
+    `;
+  }).join('');
+  
+  document.getElementById('priceOverview').style.display = 'block';
 }
 
 // Display functions
