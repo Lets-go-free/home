@@ -59,7 +59,7 @@
     <div class="container">
         <div class="header">
             <h1>🔍 Multi-Wallet Token Viewer</h1>
-            <div class="version">Version: 09.01.2026 18:51:24 (Hybrid - No External APIs)</div>
+            <div class="version">Version: 09.01.2026 16:18:01 (Hybrid + Prices)</div>
             <div class="timestamp" id="timestamp"></div>
         </div>
         
@@ -159,40 +159,15 @@ let gapiInited=false,tokenClient,accessToken=null,wallets=[],tokens={},allBalanc
 const priceCache = new Map();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-// Uniswap V2 Pair ABI (minimal)
-const PAIR_ABI = [
-  {constant: true, inputs: [], name: 'getReserves', outputs: [{name: 'reserve0', type: 'uint112'}, {name: 'reserve1', type: 'uint112'}, {name: 'blockTimestampLast', type: 'uint32'}], type: 'function'},
-  {constant: true, inputs: [], name: 'token0', outputs: [{name: '', type: 'address'}], type: 'function'},
-  {constant: true, inputs: [], name: 'token1', outputs: [{name: '', type: 'address'}], type: 'function'}
-];
-
-// Known pair addresses for price calculation
-const PRICE_PAIRS = {
-  bsc: {
-    // USDT/WBNB on PancakeSwap
-    'USDT-WBNB': '0x16b9a82891338f9bA80E2D6970FddA79D1eb0daE',
-    // You can add more pairs here from your Google Sheet
-  },
-  eth: {
-    // USDT/WETH on Uniswap V2
-    'USDT-WETH': '0x0d4a11d5EEaaC28EC3F61d100daF4d40471f1852'
-  },
-  polygon: {
-    // USDT/WMATIC on QuickSwap
-    'USDT-WMATIC': '0x604229c960e5CACF2aaEAc8Be68Ac07BA9dF81c3'
-  }
-};
-
-// Known stablecoin addresses
-const STABLECOINS = {
-  bsc: ['0x55d398326f99059fF775485246999027B3197955'], // USDT
-  eth: ['0xdAC17F958D2ee523a2206206994597C13D831ec7'], // USDT
-  polygon: ['0xc2132D05D31c914a87C6611C10748AEb04B58e8F'] // USDT
+// CoinGecko API mapping (contract address to CoinGecko ID)
+const COINGECKO_IDS = {
+  // Add known token mappings here
+  'ethereum': 'ethereum',
+  'binancecoin': 'binancecoin',
+  'matic-network': 'matic-network'
 };
 
 async function fetchTokenPrice(tokenAddress, chain){
-  if(chain === 'apertum') return null; // No DEX for Apertum
-  
   const cacheKey = `${chain}-${tokenAddress.toLowerCase()}`;
   const now = Date.now();
   
@@ -205,31 +180,61 @@ async function fetchTokenPrice(tokenAddress, chain){
   }
   
   try{
-    // Native tokens - hardcoded approximate prices (can be updated manually)
+    // Try CoinGecko API
+    let coinId = null;
+    
+    // Map chain + address to CoinGecko platform
+    const platformMap = {
+      'eth': 'ethereum',
+      'bsc': 'binance-smart-chain',
+      'polygon': 'polygon-pos',
+      'apertum': null // Not supported by CoinGecko
+    };
+    
+    const platform = platformMap[chain];
+    if(!platform) return null;
+    
+    // For native tokens
     if(tokenAddress === 'native'){
-      const nativePrices = {
-        'eth': { price: 3300, change24h: 0 }, // Update manually
-        'bsc': { price: 600, change24h: 0 },  // BNB price
-        'polygon': { price: 1.05, change24h: 0 } // POL price
+      const nativeIds = {
+        'eth': 'ethereum',
+        'bsc': 'binancecoin',
+        'polygon': 'matic-network'
       };
-      const priceData = nativePrices[chain];
-      if(priceData){
+      coinId = nativeIds[chain];
+    }
+    
+    if(coinId){
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`;
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if(data[coinId]){
+        const priceData = {
+          price: data[coinId].usd,
+          change24h: data[coinId].usd_24h_change || 0,
+          timestamp: now
+        };
+        priceCache.set(cacheKey, { data: priceData, timestamp: now });
+        return priceData;
+      }
+    }else{
+      // Try by contract address
+      const url = `https://api.coingecko.com/api/v3/simple/token_price/${platform}?contract_addresses=${tokenAddress}&vs_currencies=usd&include_24hr_change=true`;
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      const key = tokenAddress.toLowerCase();
+      if(data[key]){
+        const priceData = {
+          price: data[key].usd,
+          change24h: data[key].usd_24h_change || 0,
+          timestamp: now
+        };
         priceCache.set(cacheKey, { data: priceData, timestamp: now });
         return priceData;
       }
     }
-    
-    // Check if token is a stablecoin
-    if(STABLECOINS[chain] && STABLECOINS[chain].includes(tokenAddress)){
-      const priceData = { price: 1.0, change24h: 0 };
-      priceCache.set(cacheKey, { data: priceData, timestamp: now });
-      return priceData;
-    }
-    
-    // Try to get price from DEX pair (simplified - would need pair addresses from Sheet)
-    // For now, return null for other tokens
-    return null;
-    
   }catch(e){
     console.error(`Price fetch error for ${tokenAddress}:`, e);
   }
@@ -543,7 +548,7 @@ async function loadPrices(){
         });
         count++;
       }
-      await delay(100); // Short delay for local calculations
+      await delay(1000); // 1 second delay between price requests
     }catch(e){
       console.error(`Price error for ${token.symbol}:`, e);
     }
