@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Token Kurse - CoinMarketCap</title>
+    <style>
+        /* [BEHALTE ALLEN CSS CODE VON OBEN BEI] */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui; background: #0f172a; color: #f8fafc; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+        .container { width: 100%; max-width: 600px; }
+        header { text-align: center; margin-bottom: 40px; }
+        h1 { font-size: 2.2rem; color: #60a5fa; margin-bottom: 10px; }
+        .api-source { color: #94a3b8; font-size: 0.9rem; background: #1e293b; padding: 4px 12px; border-radius: 12px; }
+        .token-card { background: #1e293b; border-radius: 16px; padding: 30px; margin-bottom: 20px; border: 1px solid #334155; }
+        /* ... restlicher CSS bleibt gleich ... */
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Live Token Kurse</h1>
+            <div class="api-source">CoinMarketCap API</div>
+        </header>
+        
+        <div class="token-card">
+            <div class="token-header">
+                <div class="token-info">
+                    <div class="token-icon aptm-icon">A</div>
+                    <div>
+                        <div class="token-name" id="aptm-name">Apertum</div>
+                        <div class="token-symbol" id="aptm-symbol">APTM</div>
+                    </div>
+                </div>
+                <div class="token-id">#-</div>
+            </div>
+            <div class="price-section">
+                <div class="price-label">Aktueller Kurs</div>
+                <div class="price-value aptm-price" id="aptm-price"><div class="loading"></div></div>
+                <div class="price-change" id="aptm-change">Lädt...</div>
+            </div>
+        </div>
+        
+        <div class="token-card">
+            <div class="token-header">
+                <div class="token-info">
+                    <div class="token-icon matic-icon">M</div>
+                    <div>
+                        <div class="token-name" id="matic-name">Polygon</div>
+                        <div class="token-symbol" id="matic-symbol">MATIC</div>
+                    </div>
+                </div>
+                <div class="token-id">#3890</div>
+            </div>
+            <div class="price-section">
+                <div class="price-label">Aktueller Kurs</div>
+                <div class="price-value matic-price" id="matic-price"><div class="loading"></div></div>
+                <div class="price-change" id="matic-change">Lädt...</div>
+            </div>
+        </div>
+        
+        <button class="refresh-btn" id="refresh-btn">
+            <i class="fas fa-sync-alt"></i>
+            <span>Kurse aktualisieren</span>
+        </button>
+        
+        <div class="last-updated" id="last-updated">
+            <i class="far fa-clock"></i> <span id="update-time">Noch nicht aktualisiert</span>
+        </div>
+    </div>
+
+    <script>
+        // 🔒 DEIN API KEY HIER EINTRAGEN (lokal auf deinem Computer)
+        const CMC_API_KEY = '8f56a698ad02408581110ed684e780be'; // ← HIER EINTRAGEN
+        
+        const TOKEN_IDS = {
+            MATIC: '3890',
+            APTM: ''
+        };
+        
+        // DOM Elemente
+        const elements = {
+            aptmPrice: document.getElementById('aptm-price'),
+            aptmChange: document.getElementById('aptm-change'),
+            aptmName: document.getElementById('aptm-name'),
+            aptmId: document.querySelector('.token-card:first-child .token-id'),
+            maticPrice: document.getElementById('matic-price'),
+            maticChange: document.getElementById('matic-change'),
+            lastUpdated: document.getElementById('update-time'),
+            refreshBtn: document.getElementById('refresh-btn')
+        };
+        
+        // Formatierung
+        function formatPrice(price) {
+            if (!price || isNaN(price)) return '-';
+            return '$' + (price < 0.01 ? price.toFixed(6) : price.toFixed(4));
+        }
+        
+        function formatTime() {
+            return new Date().toLocaleTimeString('de-DE', {
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+        }
+        
+        // Suche APTM ID
+        async function findApertumId() {
+            if (!CMC_API_KEY.includes('DEIN_COINMARKETCAP_API_KEY')) {
+                try {
+                    const response = await fetch(
+                        'https://pro-api.coinmarketcap.com/v1/cryptocurrency/map?symbol=APTM',
+                        { headers: { 'X-CMC_PRO_API_KEY': CMC_API_KEY } }
+                    );
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.data?.length > 0) {
+                            TOKEN_IDS.APTM = data.data[0].id.toString();
+                            elements.aptmName.textContent = data.data[0].name;
+                            elements.aptmId.textContent = `#${TOKEN_IDS.APTM}`;
+                            console.log('✅ APTM gefunden:', data.data[0]);
+                            return true;
+                        }
+                    }
+                } catch (error) {
+                    console.warn('APTM Suche fehlgeschlagen:', error);
+                }
+            }
+            return false;
+        }
+        
+        // Hole Preise
+        async function fetchPrices() {
+            if (CMC_API_KEY.includes('DEIN_COINMARKETCAP_API_KEY')) {
+                elements.aptmPrice.innerHTML = '<div style="color:#f87171;text-align:center;padding:20px;">API Key benötigt<br><small>Siehe Code Zeile 81</small></div>';
+                elements.maticPrice.innerHTML = '<div style="color:#f87171;text-align:center;padding:20px;">API Key benötigt<br><small>Siehe Code Zeile 81</small></div>';
+                return null;
+            }
+            
+            // Suche APTM falls noch nicht gefunden
+            if (!TOKEN_IDS.APTM) {
+                await findApertumId();
+            }
+            
+            const ids = [TOKEN_IDS.MATIC];
+            if (TOKEN_IDS.APTM) ids.push(TOKEN_IDS.APTM);
+            
+            try {
+                const response = await fetch(
+                    `https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?id=${ids.join(',')}`,
+                    { headers: { 'X-CMC_PRO_API_KEY': CMC_API_KEY } }
+                );
+                
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch (error) {
+                console.error('API Fehler:', error);
+            }
+            return null;
+        }
+        
+        // Aktualisiere Anzeige
+        async function updatePrices() {
+            elements.refreshBtn.innerHTML = '<div class="loading"></div><span>Aktualisiere...</span>';
+            
+            const data = await fetchPrices();
+            
+            if (data?.data) {
+                // Polygon
+                if (data.data[TOKEN_IDS.MATIC]) {
+                    const matic = data.data[TOKEN_IDS.MATIC];
+                    const quote = matic.quote.USD;
+                    elements.maticPrice.textContent = formatPrice(quote.price);
+                    const change = quote.percent_change_24h || 0;
+                    elements.maticChange.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+                    elements.maticChange.className = `price-change ${change >= 0 ? 'positive' : 'negative'}`;
+                }
+                
+                // Apertum
+                if (TOKEN_IDS.APTM && data.data[TOKEN_IDS.APTM]) {
+                    const aptm = data.data[TOKEN_IDS.APTM];
+                    const quote = aptm.quote.USD;
+                    elements.aptmPrice.textContent = formatPrice(quote.price);
+                    const change = quote.percent_change_24h || 0;
+                    elements.aptmChange.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+                    elements.aptmChange.className = `price-change ${change >= 0 ? 'positive' : 'negative'}`;
+                } else if (!TOKEN_IDS.APTM) {
+                    elements.aptmPrice.textContent = '-';
+                    elements.aptmChange.textContent = 'Nicht auf CMC';
+                    elements.aptmChange.className = 'price-change negative';
+                }
+            } else if (!CMC_API_KEY.includes('DEIN_COINMARKETCAP_API_KEY')) {
+                elements.aptmPrice.textContent = '-';
+                elements.aptmChange.textContent = 'API Fehler';
+                elements.maticPrice.textContent = '-';
+                elements.maticChange.textContent = 'API Fehler';
+            }
+            
+            elements.lastUpdated.textContent = formatTime();
+            elements.refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i><span>Kurse aktualisieren</span>';
+        }
+        
+        // Event Listener
+        elements.refreshBtn.addEventListener('click', updatePrices);
+        
+        // Start
+        updatePrices();
+        setInterval(updatePrices, 60000);
+        
+        // Debug Info
+        console.log('🔧 Token Kurs Anzeige gestartet');
+        console.log('📌 API Key gesetzt:', !CMC_API_KEY.includes('DEIN_COINMARKETCAP_API_KEY'));
+        console.log('📌 MATIC ID:', TOKEN_IDS.MATIC);
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</body>
+</html>
