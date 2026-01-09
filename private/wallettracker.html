@@ -53,7 +53,7 @@
     <div class="container">
         <div class="header">
             <h1>🔍 Multi-Wallet Token Viewer</h1>
-            <div class="version">Version: 09.01.2026 12:02:13 (Explorer API - Fixed)</div>
+            <div class="version">Version: 09.01.2026 12:31:43 (Explorer API - All Chains)</div>
             <div class="timestamp" id="timestamp"></div>
         </div>
         
@@ -113,6 +113,8 @@ const EXPLORER_APIS = {
   polygon: 'https://api.polygonscan.com/api',
   apertum: 'https://explorer.apertum.io/api'
 };
+
+const API_KEY = 'HTXWS7BQ6F2QJNR4C1QAZW7JFGG2S5PEPZ'; // Etherscan V2 API Key (works for BSC, ETH, Polygon)
 
 const GOOGLE_CONFIG={apiKey:'AIzaSyCoJAYF8BVhYk8k2Zr2MbDAt2qwkaGEM8w',clientId:'42198403966-ovpg5lar1qso4vqfl9rd4ebeunltpegs.apps.googleusercontent.com',spreadsheetId:'1M0HycCitzlkgk_uG1Y-iLeYKthdUaRGnCvv3Hxv0yww',discoveryDocs:['https://sheets.googleapis.com/$discovery/rest?version=v4'],scopes:'https://www.googleapis.com/auth/spreadsheets.readonly'};
 let gapiInited=false,tokenClient,accessToken=null,wallets=[],tokens={},allBalances=[];
@@ -229,7 +231,7 @@ async function getNativeBalanceFromExplorer(chain, address){
   if(chain === 'apertum'){
     url = `${apiUrl}?module=account&action=balance&address=${address}`;
   }else{
-    url = `${apiUrl}?module=account&action=balance&address=${address}&tag=latest`;
+    url = `${apiUrl}?module=account&action=balance&address=${address}&tag=latest&apikey=${API_KEY}`;
   }
   
   const response = await fetch(url);
@@ -250,7 +252,7 @@ async function getTokenBalanceFromExplorer(chain, walletAddr, tokenAddr){
   if(chain === 'apertum'){
     url = `${apiUrl}?module=account&action=tokenbalance&contractaddress=${tokenAddr}&address=${walletAddr}`;
   }else{
-    url = `${apiUrl}?module=account&action=tokenbalance&contractaddress=${tokenAddr}&address=${walletAddr}&tag=latest`;
+    url = `${apiUrl}?module=account&action=tokenbalance&contractaddress=${tokenAddr}&address=${walletAddr}&tag=latest&apikey=${API_KEY}`;
   }
   
   const response = await fetch(url);
