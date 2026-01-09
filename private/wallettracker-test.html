@@ -2,38 +2,61 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Token Balances (Etherscan V2)</title>
+<title>Wallet Token Tracker (Etherscan V2)</title>
+
 <style>
-body { font-family: Arial, sans-serif; padding: 20px; }
-select, button { padding: 6px; margin-right: 10px; }
-table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
-th { background: #f2f2f2; }
-.small { font-size: 12px; color: #666; }
+body {
+  font-family: Arial, sans-serif;
+  padding: 20px;
+}
+select, button {
+  padding: 6px;
+  margin-right: 10px;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 20px;
+}
+th, td {
+  border: 1px solid #ccc;
+  padding: 6px;
+  font-size: 14px;
+}
+th {
+  background: #f0f0f0;
+}
+.small {
+  font-size: 12px;
+  color: #666;
+}
 </style>
 </head>
+
 <body>
 
-<h2>Token Balances</h2>
+<h2>Wallet Token Tracker</h2>
 
 <div>
-Chain:
-<select id="chain">
-  <option value="56">BSC</option>
-  <option value="137">Polygon</option>
-</select>
+  Chain:
+  <select id="chain">
+    <option value="56">BSC</option>
+    <option value="137">Polygon</option>
+  </select>
 
-<button onclick="loadAll()">Laden</button>
+  <button onclick="loadAll()">Laden</button>
 </div>
 
-<p class="small">Etherscan API V2 · Free Tier · Aggregation über tokentx</p>
+<p class="small">
+  Etherscan API V2 · Free Tier · Tokens werden über Transfer-Historie ermittelt
+</p>
 
 <table>
 <thead>
 <tr>
   <th>Wallet</th>
-  <th>Token Adresse</th>
-  <th>Token Name</th>
+  <th>Token-Adresse</th>
+  <th>Token-Name</th>
   <th>Balance</th>
 </tr>
 </thead>
@@ -41,6 +64,9 @@ Chain:
 </table>
 
 <script>
+// ==========================
+// CONFIG
+// ==========================
 const API_KEY = "DEIN_ETHERSCAN_V2_API_KEY";
 
 const wallets = [
@@ -48,55 +74,16 @@ const wallets = [
   "0x76882e6fc045391ba4f19d8a15ea4d8699ff7382"
 ];
 
+// ==========================
+// HELPER
+// ==========================
 async function api(url) {
   const r = await fetch(url);
   return r.json();
 }
 
-async function loadAll() {
-  document.getElementById("result").innerHTML = "";
-  const chainid = document.getElementById("chain").value;
-
-  for (const wallet of wallets) {
-    await loadWallet(chainid, wallet);
-  }
-}
-
-async function loadWallet(chainid, wallet) {
-  const txUrl =
-    `https://api.etherscan.io/v2/api?chainid=${chainid}` +
-    `&module=account&action=tokentx&address=${wallet}` +
-    `&page=1&offset=1000&sort=asc&apikey=${API_KEY}`;
-
-  const txData = await api(txUrl);
-  if (!txData.result) return;
-
-  const tokens = {};
-  txData.result.forEach(tx => {
-    tokens[tx.contractAddress] = {
-      name: tx.tokenName,
-      decimals: tx.tokenDecimal
-    };
-  });
-
-  for (const token in tokens) {
-    const balUrl =
-      `https://api.etherscan.io/v2/api?chainid=${chainid}` +
-      `&module=account&action=tokenbalance` +
-      `&contractaddress=${token}` +
-      `&address=${wallet}` +
-      `&tag=latest&apikey=${API_KEY}`;
-
-    const balData = await api(balUrl);
-    if (!balData.result || balData.result === "0") continue;
-
-    const balance =
-      Number(balData.result) /
-      Math.pow(10, tokens[token].decimals);
-
-    addRow(wallet, token, tokens[token].name, balance);
-    await sleep(220); // Rate-Limit freundlich
-  }
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
 }
 
 function addRow(wallet, token, name, balance) {
@@ -110,8 +97,75 @@ function addRow(wallet, token, name, balance) {
   document.getElementById("result").appendChild(tr);
 }
 
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
+// ==========================
+// MAIN
+// ==========================
+async function loadAll() {
+  document.getElementById("result").innerHTML = "";
+  const chainid = document.getElementById("chain").value;
+
+  for (const wallet of wallets) {
+    await loadWallet(chainid, wallet);
+  }
+}
+
+async function loadWallet(chainid, wallet) {
+
+  const txUrl =
+    `https://api.etherscan.io/v2/api` +
+    `?chainid=${chainid}` +
+    `&module=account` +
+    `&action=tokentx` +
+    `&address=${wallet}` +
+    `&page=1` +
+    `&offset=1000` +
+    `&sort=asc` +
+    `&apikey=${API_KEY}`;
+
+  const txData = await api(txUrl);
+
+  // 🔴 WICHTIGER FIX:
+  // Wenn keine Transfers existieren, ist result KEIN Array
+  if (!Array.isArray(txData.result)) {
+    console.warn("Keine Token-Transfers für", wallet, txData.result);
+    return;
+  }
+
+  // Tokens deduplizieren
+  const tokens = {};
+  txData.result.forEach(tx => {
+    tokens[tx.contractAddress] = {
+      name: tx.tokenName,
+      decimals: Number(tx.tokenDecimal)
+    };
+  });
+
+  // Für jedes Token Balance abfragen
+  for (const token in tokens) {
+
+    const balUrl =
+      `https://api.etherscan.io/v2/api` +
+      `?chainid=${chainid}` +
+      `&module=account` +
+      `&action=tokenbalance` +
+      `&contractaddress=${token}` +
+      `&address=${wallet}` +
+      `&tag=latest` +
+      `&apikey=${API_KEY}`;
+
+    const balData = await api(balUrl);
+
+    if (!balData.result || balData.result === "0") continue;
+
+    const balance =
+      Number(balData.result) /
+      Math.pow(10, tokens[token].decimals);
+
+    addRow(wallet, token, tokens[token].name, balance);
+
+    // Rate-Limit freundlich
+    await sleep(250);
+  }
 }
 </script>
 
