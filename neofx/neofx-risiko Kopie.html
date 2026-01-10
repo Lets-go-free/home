@@ -19,8 +19,6 @@
         <!-- Hinweis -->
         <div class="warning-box">
             <p><strong>⚠️ Wichtig:</strong> Diese Berechnung hilft dir, rechtzeitig eine Nachzahlung zu leisten, bevor dein Konto liquidiert wird.</p>
-            <p style="margin-top: 15px;">Bei neo.fx wird mit einem 12x- oder 24x-Hebel gehandelt. Das bedeutet: Du nutzt geliehenes Kapital von Liquiditätsbereitstellern, um mit einem grösseren Handelsvolumen zu traden. Dein eigener Einsatz dient dabei als Sicherheitsleistung (Margin) für den Broker.</p>
-            <p style="margin-top: 10px;">Sinkt dein Kontostand gegenüber deiner Einlage um 10% bei 12x Hebel bzw. um 5% bei 24x Hebel, wird das Konto automatisch liquidiert. Dabei wird die Position geschlossen und deine Einlage geht an den Broker, um weitere Verluste zu verhindern.</p>
         </div>
 
         <h3>Hebel-Einstellung</h3>
@@ -44,7 +42,7 @@
         <div class="input-grid">
 
             <div class="input-group">
-                <label for="initialDeposit">Effektive Nachzahlung in USD</label>
+                <label for="initialDeposit">Effektive Einzahlung in USD</label>
                 <input type="text" id="initialDeposit" value="1'280.15"
                        onchange="formatInputField(this); calculate();"
                        onfocus="removeFormatting(this)"
@@ -53,9 +51,9 @@
             </div>
 
             <div class="input-group">
-                <label for="depositWithLeverage">Nachzahlung mit Hebel (Bild: Einzahlung)</label>
+                <label for="depositWithLeverage">Einzahlung mit Hebel (Bild: Einzahlung)</label>
                 <input type="text" id="depositWithLeverage" readonly>
-                <span class="hint">Effektive Nachzahlung × Hebel</span>
+                <span class="hint">Effektive Einzahlung × Hebel</span>
             </div>
 
             <div class="input-group">
@@ -135,7 +133,7 @@
         <div class="input-grid">
 
             <div class="input-group">
-                <label for="additionalDeposit">Effektive Nachzahlung in USD</label>
+                <label for="additionalDeposit">Effektive Einzahlung in USD</label>
                 <input type="text" id="additionalDeposit" value="300"
                        onchange="formatInputField(this); calculate();"
                        onfocus="removeFormatting(this)"
@@ -144,7 +142,7 @@
             </div>
 
             <div class="input-group">
-                <label for="additionalWithLeverage">Nachzahlung mit Hebel</label>
+                <label for="additionalWithLeverage">Einzahlung mit Hebel</label>
                 <input type="text" id="additionalWithLeverage" readonly>
                 <span class="hint">Nachzahlung × Hebel</span>
             </div>
@@ -155,15 +153,15 @@
         <div class="input-grid">
 
             <div class="input-group">
-                <label for="totalDeposit">Kontostand vor Nachzahlung</label>
+                <label for="totalDeposit">Effektive Einzahlung Total</label>
                 <input type="text" id="totalDeposit" readonly>
-                <span class="hint">Kontostand (Bild: Kontostand)</span>
+                <span class="hint">Ursprüngliche + Nachzahlung</span>
             </div>
 
             <div class="input-group">
-                <label for="totalWithLeverage">Nachzahlung mit Hebel</label>
+                <label for="totalWithLeverage">Einzahlung mit Hebel Total</label>
                 <input type="text" id="totalWithLeverage" readonly>
-                <span class="hint">Nachzahlung × Hebel</span>
+                <span class="hint">Total Einzahlung × Hebel</span>
             </div>
 
             <div class="input-group">
@@ -181,7 +179,7 @@
         </div>
 
         <div class="liquidation-warning">
-            <p>⚠️ Bei diesem Kontostand wird das aufgestockte Konto liquidiert und geschlossen: <span id="newLiquidationBalance" style="font-size: 1.2em;"></span></p>
+            <p>⚠️ Neuer Liquidations-Kontostand nach Aufstockung: <span id="newLiquidationBalance" style="font-size: 1.2em;"></span></p>
         </div>
 
     </div>
@@ -213,19 +211,14 @@ function calculate() {
     // Nachzahlung mit Hebel
     const additionalWithLeverage = additionalDeposit * leverage;
 
-    // Neuer Saldo nach Nachzahlung
-    // totalDeposit = Kontostand vor Nachzahlung (= currentBalance)
-    // totalWithLeverage = Nachzahlung mit Hebel (= additionalWithLeverage)
-    const totalDeposit = currentBalance;
-    const totalWithLeverage = additionalWithLeverage;
+    // Neuer Saldo
+    const totalDeposit = initialDeposit + additionalDeposit;
+    const totalWithLeverage = totalDeposit * leverage;
     const newBalance = currentBalance + additionalWithLeverage;
-    
-    // Für Liquidations-Berechnung: neue Gesamteinzahlung mit Hebel
-    const totalDepositWithLeverageForLiquidation = (initialDeposit + additionalDeposit) * leverage;
-    const newBalancePercent = totalDepositWithLeverageForLiquidation !== 0 ? (newBalance / totalDepositWithLeverageForLiquidation) : 0;
+    const newBalancePercent = totalWithLeverage !== 0 ? (newBalance / totalWithLeverage) : 0;
 
     // Neuer Liquidations-Kontostand
-    const newLiquidationBalance = totalDepositWithLeverageForLiquidation - (totalDepositWithLeverageForLiquidation * maxLossPercent);
+    const newLiquidationBalance = totalWithLeverage - (totalWithLeverage * maxLossPercent);
 
     // Ausgabe
     document.getElementById('depositWithLeverage').value = formatNumber(depositWithLeverage);
