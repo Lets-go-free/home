@@ -28,8 +28,8 @@
             <div class="input-group">
                 <label for="leverage">Hebel</label>
                 <select id="leverage" onchange="calculate();">
-                    <option value="24">x24</option>
                     <option value="12">x12</option>
+                    <option value="24">x24</option>
                 </select>
                 <span class="hint">Wähle deinen Hebel: x24 oder x12</span>
             </div>
@@ -45,7 +45,7 @@
 
             <div class="input-group">
                 <label for="initialDeposit">Effektive Nachzahlung in USD</label>
-                <input type="text" id="initialDeposit" value="1'280.15"
+                <input type="text" id="initialDeposit" value="1'200.70"
                        onchange="formatInputField(this); calculate();"
                        onfocus="removeFormatting(this)"
                        onblur="formatInputField(this); calculate();">
@@ -96,47 +96,12 @@
             <p>⚠️ Bei diesem Kontostand wird das Konto liquidiert und geschlossen: <span id="liquidationBalance" style="font-size: 1.2em;"></span></p>
         </div>
 
-        <h3>Tagesverlust-Simulation</h3>
-        <div class="warning-box" style="margin-bottom: 20px;">
-            <p style="margin: 0 0 15px 0; line-height: 1.8;">
-                <strong>ℹ️ Hinweis:</strong> Der maximal mögliche Tagesverlust liegt bei 0.5% des Kontostandes. Der Broker arbeitet eher vorsichtig und setzt normalerweise einen viel weniger risikoreichen Stop Loss.
-            </p>
-            <p style="margin: 0; line-height: 1.8; padding-top: 15px; border-top: 1px solid #e2e8f0;">
-                <strong>📊 Reale Performance:</strong> Im Zeitraum vom 9.11.2025 bis 29.12.2025 gab es lediglich 3 kleinere Verlust-Trades. Das zeigt die seriöse und vorsichtige Arbeitsweise des Brokers!
-            </p>
-        </div>
-
-        <div id="dailyLossContainer" style="background: linear-gradient(135deg, #ffffff 0%, #f7fafc 100%); padding: 25px; border-radius: 12px; border-left: 4px solid #4a5568; margin-bottom: 30px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; cursor: pointer;" onclick="toggleDailyLossTable()">
-                <h4 style="color: #2d3748; margin: 0;">Wie viele Tage mit 0.5% Verlust bis zur Liquidation?</h4>
-                <button id="toggleButton" style="background: #4a5568; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600;">
-                    ▼ Anzeigen
-                </button>
-            </div>
-            <div id="dailyLossTableContainer" style="display: none; overflow-x: auto;">
-                <table id="dailyLossTable" style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background: #2d3748; color: white;">
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Tag</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Kontostand</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Verlust (0.5%)</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Neuer Kontostand</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Drawdown</th>
-                        </tr>
-                    </thead>
-                    <tbody id="dailyLossBody">
-                        <!-- Wird dynamisch gefüllt -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
         <h3>Kapital aufstocken um Liquidation zu verhindern</h3>
         <div class="input-grid">
 
             <div class="input-group">
                 <label for="additionalDeposit">Effektive Nachzahlung in USD</label>
-                <input type="text" id="additionalDeposit" value="300"
+                <input type="text" id="additionalDeposit" value="100"
                        onchange="formatInputField(this); calculate();"
                        onfocus="removeFormatting(this)"
                        onblur="formatInputField(this); calculate();">
@@ -182,6 +147,41 @@
 
         <div class="liquidation-warning">
             <p>⚠️ Bei diesem Kontostand wird das aufgestockte Konto liquidiert und geschlossen: <span id="newLiquidationBalance" style="font-size: 1.2em;"></span></p>
+        </div>
+
+        <h3>Tagesverlust-Simulation</h3>
+        <div class="warning-box" style="margin-bottom: 20px;">
+            <p style="margin: 0 0 15px 0; line-height: 1.8;">
+                <strong>ℹ️ Hinweis:</strong> Der maximal mögliche Tagesverlust liegt bei 0.5% des Kontostandes. Der Broker arbeitet eher vorsichtig und setzt normalerweise einen viel weniger risikoreichen Stop Loss.
+            </p>
+            <p style="margin: 0; line-height: 1.8; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+                <strong>📊 Reale Performance:</strong> Im Zeitraum vom 9.11.2025 bis 29.12.2025 gab es lediglich 3 kleinere Verlust-Trades. Das zeigt die seriöse und vorsichtige Arbeitsweise des Brokers!
+            </p>
+        </div>
+
+        <div id="dailyLossContainer" style="background: linear-gradient(135deg, #ffffff 0%, #f7fafc 100%); padding: 25px; border-radius: 12px; border-left: 4px solid #4a5568; margin-bottom: 30px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; cursor: pointer;" onclick="toggleDailyLossTable()">
+                <h4 style="color: #2d3748; margin: 0;">Wie viele Tage mit 0.5% Verlust bis zur Liquidation?</h4>
+                <button id="toggleButton" style="background: #4a5568; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    ▼ Anzeigen
+                </button>
+            </div>
+            <div id="dailyLossTableContainer" style="display: none; overflow-x: auto;">
+                <table id="dailyLossTable" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #2d3748; color: white;">
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Tag</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Kontostand</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Verlust (0.5%)</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Neuer Kontostand</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Drawdown</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dailyLossBody">
+                        <!-- Wird dynamisch gefüllt -->
+                    </tbody>
+                </table>
+            </div>
         </div>
 
     </div>
