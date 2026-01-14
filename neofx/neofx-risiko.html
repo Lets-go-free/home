@@ -11,7 +11,7 @@
 <div class="container">
     <div class="hero">
         <h1>neo.FX Risiko-Rechner</h1>
-        <p>Berechne deine Nachzahlung um eine Total-Liquidation zu verhindern</p>
+        <p>Berechne deine Nachzahlung um Total-Liquidation zu verhindern</p>
     </div>
 
     <div class="section" style="padding-top: 20px;">
@@ -103,6 +103,12 @@
 
         <h3>Kapital aufstocken um Liquidation zu verhindern</h3>
         <div class="input-grid">
+
+            <div class="input-group">
+                <label for="depositFor99Percent">Nachzahlung in USD, um auf Kontostand von 99% zu kommen</label>
+                <input type="text" id="depositFor99Percent" readonly style="background: #fef3c7; font-weight: 600;">
+                <span class="hint">Berechneter Betrag für 99% Kontostand</span>
+            </div>
 
             <div class="input-group">
                 <label for="additionalDeposit">Effektive Nachzahlung in USD</label>
@@ -214,6 +220,13 @@ function calculate() {
 
     // Liquidations-Kontostand
     const liquidationBalance = depositWithLeverage - maxLossUSD;
+    
+    // Berechne Nachzahlung um auf 99% zu kommen
+    // Formel: Neuer Kontostand % = (currentBalance + Nachzahlung × Hebel) / ((initialDeposit + Nachzahlung) × Hebel) = 0.99
+    // Umgestellt: Nachzahlung = (0.99 × initialDeposit × leverage - currentBalance) / (leverage - 0.99 × leverage)
+    // Vereinfacht: Nachzahlung = (0.99 × initialDeposit × leverage - currentBalance) / (0.01 × leverage)
+    const targetPercent = 0.99;
+    const depositFor99Percent = (targetPercent * initialDeposit * leverage - currentBalance) / (leverage * (1 - targetPercent));
 
     // Nachzahlung mit Hebel
     const additionalWithLeverage = additionalDeposit * leverage;
@@ -240,6 +253,7 @@ function calculate() {
     document.getElementById('maxLossUSD').value = formatNumber(maxLossUSD);
     document.getElementById('liquidationBalance').textContent = formatNumber(liquidationBalance) + ' USD';
     
+    document.getElementById('depositFor99Percent').value = formatNumber(Math.max(0, depositFor99Percent));
     document.getElementById('additionalWithLeverage').value = formatNumber(additionalWithLeverage);
     
     document.getElementById('totalDeposit').value = formatNumber(totalDeposit);
