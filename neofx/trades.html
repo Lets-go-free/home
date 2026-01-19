@@ -325,13 +325,19 @@ function calculateUebersicht(trades) {
     
     validTrades.forEach(trade => {
         const profitValue = parseNumber(trade.Profit);
+        const profitRaw = trade.Profit;
         
-        if (profitValue > 0) {
-            anzahlGewinne++;
-        } else if (profitValue < 0) {
-            anzahlVerluste++;
-        } else if (profitValue === 0) {
-            anzahlOhneTrade++;
+        // Prüfe ob Profit-Zelle leer ist (null, undefined, leerer String)
+        const isEmpty = profitRaw === null || profitRaw === undefined || profitRaw === '';
+        
+        if (!isEmpty) {
+            if (profitValue > 0) {
+                anzahlGewinne++;
+            } else if (profitValue < 0) {
+                anzahlVerluste++;
+            } else if (profitValue === 0) {
+                anzahlOhneTrade++;
+            }
         }
         
         // Summiere Netto-Gewinn % für Durchschnittsberechnung
@@ -671,13 +677,19 @@ function calculateGewinneProAccount(trades) {
         
         validTrades.forEach(trade => {
             const profitValue = parseNumber(trade.Profit);
+            const profitRaw = trade.Profit;
             
-            if (profitValue > 0) {
-                anzahlGewinne++;
-            } else if (profitValue < 0) {
-                anzahlVerluste++;
-            } else if (profitValue === 0) {
-                anzahlOhneTrade++;
+            // Prüfe ob Profit-Zelle leer ist (null, undefined, leerer String)
+            const isEmpty = profitRaw === null || profitRaw === undefined || profitRaw === '';
+            
+            if (!isEmpty) {
+                if (profitValue > 0) {
+                    anzahlGewinne++;
+                } else if (profitValue < 0) {
+                    anzahlVerluste++;
+                } else if (profitValue === 0) {
+                    anzahlOhneTrade++;
+                }
             }
         });
         
