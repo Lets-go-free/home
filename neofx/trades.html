@@ -320,14 +320,18 @@ function calculateUebersicht(trades) {
     
     let anzahlGewinne = 0;
     let anzahlVerluste = 0;
+    let anzahlOhneTrade = 0;
     let nettoGewinnProzentSum = 0;
     
     validTrades.forEach(trade => {
-        const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().toLowerCase();
-        if (gewinnVerlustText.includes('gewinn')) {
+        const profitValue = parseNumber(trade.Profit);
+        
+        if (profitValue > 0) {
             anzahlGewinne++;
-        } else if (gewinnVerlustText.includes('verlust')) {
+        } else if (profitValue < 0) {
             anzahlVerluste++;
+        } else if (profitValue === 0) {
+            anzahlOhneTrade++;
         }
         
         // Summiere Netto-Gewinn % für Durchschnittsberechnung
@@ -335,10 +339,12 @@ function calculateUebersicht(trades) {
     });
     
     const totalTrades = anzahlGewinne + anzahlVerluste;
+    const totalWithOhneTrade = totalTrades + anzahlOhneTrade;
     
     // Berechne Prozente
     const gewinneProcessent = totalTrades > 0 ? (anzahlGewinne / totalTrades) * 100 : 0;
     const verlusteProcessent = totalTrades > 0 ? (anzahlVerluste / totalTrades) * 100 : 0;
+    const ohneTradeProcessent = totalWithOhneTrade > 0 ? (anzahlOhneTrade / totalWithOhneTrade) * 100 : 0;
     
     // Durchschnittlicher Nettogewinn je Trade
     const avgNettoGewinnJeTrade = totalTrades > 0 ? nettoGewinnProzentSum / totalTrades : 0;
@@ -347,8 +353,9 @@ function calculateUebersicht(trades) {
     const tradesForBreakeven = avgNettoGewinnJeTrade > 0 ? Math.ceil(100 / avgNettoGewinnJeTrade) : 0;
     
     return [
-        { 'Typ': 'Anzahl Gewinne', 'Anzahl': anzahlGewinne, 'in %': gewinneProcessent },
-        { 'Typ': 'Anzahl Verluste', 'Anzahl': anzahlVerluste, 'in %': verlusteProcessent },
+        { 'Typ': 'Anzahl Gewinn-Trades', 'Anzahl': anzahlGewinne, 'in %': gewinneProcessent },
+        { 'Typ': 'Anzahl Verlust-Trades', 'Anzahl': anzahlVerluste, 'in %': verlusteProcessent },
+        { 'Typ': 'Anzahl Tage ohne Trade', 'Anzahl': anzahlOhneTrade, 'in %': ohneTradeProcessent },
         { 'Typ': 'Total Anzahl Trades', 'Anzahl': totalTrades, 'in %': 100, 'isTotal': true },
         { 'Typ': 'Ø Nettogewinn je Trade', 'Anzahl': '', 'in %': avgNettoGewinnJeTrade },
         { 'Typ': 'Anz. Trades, um den Einsatz<br>als Gewinn zu erreichen', 'Anzahl': tradesForBreakeven, 'in %': null }
@@ -657,19 +664,20 @@ function calculateGewinneProAccount(trades) {
             return tradeDate <= today;
         });
         
-        // Zähle Gewinn/Verlust Trades
+        // Zähle Gewinn/Verlust Trades nach Profit-Wert
         let anzahlGewinne = 0;
         let anzahlVerluste = 0;
+        let anzahlOhneTrade = 0;
         
         validTrades.forEach(trade => {
-            const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().trim();
-            if (gewinnVerlustText !== '') {
-                const gewinnVerlustLower = gewinnVerlustText.toLowerCase();
-                if (gewinnVerlustLower.includes('gewinn')) {
-                    anzahlGewinne++;
-                } else if (gewinnVerlustLower.includes('verlust')) {
-                    anzahlVerluste++;
-                }
+            const profitValue = parseNumber(trade.Profit);
+            
+            if (profitValue > 0) {
+                anzahlGewinne++;
+            } else if (profitValue < 0) {
+                anzahlVerluste++;
+            } else if (profitValue === 0) {
+                anzahlOhneTrade++;
             }
         });
         
@@ -690,6 +698,7 @@ function calculateGewinneProAccount(trades) {
         accountData[account] = {
             anzahlGewinne,
             anzahlVerluste,
+            anzahlOhneTrade,
             anzahlTradesTotal,
             erstesTradesDatum,
             gewinneData
@@ -700,6 +709,7 @@ function calculateGewinneProAccount(trades) {
     const rows = [
         { name: 'Anzahl Gewinn-Trades', type: 'count' },
         { name: 'Anzahl Verlust-Trades', type: 'count' },
+        { name: 'Anzahl Tage ohne Trade', type: 'count' },
         { name: 'Anzahl Trades Total', type: 'count', isTotal: true },
         { name: '1. Trade', type: 'date' },
         { name: 'Einzahlung effektiv', type: 'currency' },
@@ -730,6 +740,11 @@ function calculateGewinneProAccount(trades) {
                         const verlusteProcessent = accountInfo.anzahlTradesTotal > 0 ? (accountInfo.anzahlVerluste / accountInfo.anzahlTradesTotal) * 100 : 0;
                         rowData[`${account}_Betrag`] = accountInfo.anzahlVerluste;
                         rowData[`${account}_Prozent`] = verlusteProcessent;
+                    } else if (rowDef.name === 'Anzahl Tage ohne Trade') {
+                        const totalWithOhneTrade = accountInfo.anzahlTradesTotal + accountInfo.anzahlOhneTrade;
+                        const ohneTradeProcessent = totalWithOhneTrade > 0 ? (accountInfo.anzahlOhneTrade / totalWithOhneTrade) * 100 : 0;
+                        rowData[`${account}_Betrag`] = accountInfo.anzahlOhneTrade;
+                        rowData[`${account}_Prozent`] = ohneTradeProcessent;
                     } else if (rowDef.name === 'Anzahl Trades Total') {
                         rowData[`${account}_Betrag`] = accountInfo.anzahlTradesTotal;
                         rowData[`${account}_Prozent`] = 100;

@@ -457,7 +457,7 @@ function calculateWeeklyOverview(trades) {
                 'Netto Gewinn %': week.nettoGewinnProzentSum // Summe der % aus Google Sheets
             };
         })
-        .sort((a, b) => a.weekStart - b.weekStart); // Älteste zuerst (aufsteigend)
+        .sort((a, b) => b.weekStart - a.weekStart); // Neueste zuerst (absteigend)
     
     return result;
 }
@@ -1042,6 +1042,13 @@ function displayTrades(trades) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
+    // Sortiere Trades nach Datum absteigend (neueste zuerst)
+    const sortedTrades = [...trades].sort((a, b) => {
+        const dateA = parseDate(a.Datum);
+        const dateB = parseDate(b.Datum);
+        return dateB - dateA; // Absteigend
+    });
+    
     // Initialisiere Summen für Total-Zeile
     let totalEinzahlung = 0;
     let totalMitHebel = 0;
@@ -1051,7 +1058,7 @@ function displayTrades(trades) {
     let totalGebuehren = 0;
     let totalKommissionen = 0;
 
-    trades.forEach((trade) => {
+    sortedTrades.forEach((trade) => {
         // Parse Datum
         const tradeDate = parseDate(trade.Datum);
         
