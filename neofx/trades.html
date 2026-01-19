@@ -362,7 +362,7 @@ function calculateUebersicht(trades) {
         { 'Typ': 'Anzahl Gewinn-Trades', 'Anzahl': anzahlGewinne, 'in %': gewinneProcessent },
         { 'Typ': 'Anzahl Verlust-Trades', 'Anzahl': anzahlVerluste, 'in %': verlusteProcessent },
         { 'Typ': 'Anzahl Tage ohne Trade', 'Anzahl': anzahlOhneTrade, 'in %': ohneTradeProcessent },
-        { 'Typ': 'Total Anzahl Trades', 'Anzahl': totalTrades, 'in %': 100, 'isTotal': true },
+        { 'Typ': 'Anzahl Trading-Tage', 'Anzahl': totalMitOhneTrade, 'in %': 100, 'isTotal': true },
         { 'Typ': 'Ø Nettogewinn je Trade', 'Anzahl': '', 'in %': avgNettoGewinnJeTrade },
         { 'Typ': 'Anz. Trades, um den Einsatz<br>als Gewinn zu erreichen', 'Anzahl': tradesForBreakeven, 'in %': null }
     ];
@@ -722,7 +722,7 @@ function calculateGewinneProAccount(trades) {
         { name: 'Anzahl Gewinn-Trades', type: 'count' },
         { name: 'Anzahl Verlust-Trades', type: 'count' },
         { name: 'Anzahl Tage ohne Trade', type: 'count' },
-        { name: 'Anzahl Trades Total', type: 'count', isTotal: true },
+        { name: 'Anzahl Trading-Tage', type: 'count', isTotal: true },
         { name: '1. Trade', type: 'date' },
         { name: 'Einzahlung effektiv', type: 'currency' },
         { name: 'Einzahlung mit Hebel', type: 'currency' },
@@ -759,8 +759,9 @@ function calculateGewinneProAccount(trades) {
                         const ohneTradeProcessent = totalMitOhneTrade > 0 ? (accountInfo.anzahlOhneTrade / totalMitOhneTrade) * 100 : 0;
                         rowData[`${account}_Betrag`] = accountInfo.anzahlOhneTrade;
                         rowData[`${account}_Prozent`] = ohneTradeProcessent;
-                    } else if (rowDef.name === 'Anzahl Trades Total') {
-                        rowData[`${account}_Betrag`] = accountInfo.anzahlTradesTotal;
+                    } else if (rowDef.name === 'Anzahl Trading-Tage') {
+                        const totalMitOhneTrade = accountInfo.anzahlTradesTotal + accountInfo.anzahlOhneTrade;
+                        rowData[`${account}_Betrag`] = totalMitOhneTrade;
                         rowData[`${account}_Prozent`] = 100;
                     }
                     break;
