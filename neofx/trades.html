@@ -345,12 +345,12 @@ function calculateUebersicht(trades) {
     });
     
     const totalTrades = anzahlGewinne + anzahlVerluste;
-    const totalWithOhneTrade = totalTrades + anzahlOhneTrade;
+    const totalMitOhneTrade = totalTrades + anzahlOhneTrade;
     
-    // Berechne Prozente
-    const gewinneProcessent = totalTrades > 0 ? (anzahlGewinne / totalTrades) * 100 : 0;
-    const verlusteProcessent = totalTrades > 0 ? (anzahlVerluste / totalTrades) * 100 : 0;
-    const ohneTradeProcessent = totalWithOhneTrade > 0 ? (anzahlOhneTrade / totalWithOhneTrade) * 100 : 0;
+    // Berechne Prozente - Basis ist Summe aller Einträge mit Wert (inkl. ohne Trade)
+    const gewinneProcessent = totalMitOhneTrade > 0 ? (anzahlGewinne / totalMitOhneTrade) * 100 : 0;
+    const verlusteProcessent = totalMitOhneTrade > 0 ? (anzahlVerluste / totalMitOhneTrade) * 100 : 0;
+    const ohneTradeProcessent = totalMitOhneTrade > 0 ? (anzahlOhneTrade / totalMitOhneTrade) * 100 : 0;
     
     // Durchschnittlicher Nettogewinn je Trade
     const avgNettoGewinnJeTrade = totalTrades > 0 ? nettoGewinnProzentSum / totalTrades : 0;
@@ -745,16 +745,18 @@ function calculateGewinneProAccount(trades) {
             switch(rowDef.type) {
                 case 'count':
                     if (rowDef.name === 'Anzahl Gewinn-Trades') {
-                        const gewinneProcessent = accountInfo.anzahlTradesTotal > 0 ? (accountInfo.anzahlGewinne / accountInfo.anzahlTradesTotal) * 100 : 0;
+                        const totalMitOhneTrade = accountInfo.anzahlTradesTotal + accountInfo.anzahlOhneTrade;
+                        const gewinneProcessent = totalMitOhneTrade > 0 ? (accountInfo.anzahlGewinne / totalMitOhneTrade) * 100 : 0;
                         rowData[`${account}_Betrag`] = accountInfo.anzahlGewinne;
                         rowData[`${account}_Prozent`] = gewinneProcessent;
                     } else if (rowDef.name === 'Anzahl Verlust-Trades') {
-                        const verlusteProcessent = accountInfo.anzahlTradesTotal > 0 ? (accountInfo.anzahlVerluste / accountInfo.anzahlTradesTotal) * 100 : 0;
+                        const totalMitOhneTrade = accountInfo.anzahlTradesTotal + accountInfo.anzahlOhneTrade;
+                        const verlusteProcessent = totalMitOhneTrade > 0 ? (accountInfo.anzahlVerluste / totalMitOhneTrade) * 100 : 0;
                         rowData[`${account}_Betrag`] = accountInfo.anzahlVerluste;
                         rowData[`${account}_Prozent`] = verlusteProcessent;
                     } else if (rowDef.name === 'Anzahl Tage ohne Trade') {
-                        const totalWithOhneTrade = accountInfo.anzahlTradesTotal + accountInfo.anzahlOhneTrade;
-                        const ohneTradeProcessent = totalWithOhneTrade > 0 ? (accountInfo.anzahlOhneTrade / totalWithOhneTrade) * 100 : 0;
+                        const totalMitOhneTrade = accountInfo.anzahlTradesTotal + accountInfo.anzahlOhneTrade;
+                        const ohneTradeProcessent = totalMitOhneTrade > 0 ? (accountInfo.anzahlOhneTrade / totalMitOhneTrade) * 100 : 0;
                         rowData[`${account}_Betrag`] = accountInfo.anzahlOhneTrade;
                         rowData[`${account}_Prozent`] = ohneTradeProcessent;
                     } else if (rowDef.name === 'Anzahl Trades Total') {
