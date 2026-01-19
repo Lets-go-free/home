@@ -16,7 +16,7 @@ body {
 }
 
 .container { 
-    max-width: 1600px; 
+    max-width: 1400px; 
     margin: 0 auto; 
     background: linear-gradient(to bottom, #e2e8f0 0%, #edf2f7 100%); 
     border-radius: 20px; 
