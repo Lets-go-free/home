@@ -100,7 +100,7 @@
                 <p style="margin-bottom: 15px; font-size: 1.05em;">
                     <strong style="color: #0B4A7D;">Aktuelle Preise:</strong>
                 </p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
                     <div>
                         <label style="display: block; color: #666; font-size: 0.9em; margin-bottom: 5px;">VOW Preis</label>
                         <input type="text" id="vowPrice" readonly style="width: 100%; padding: 12px; border: 1px solid #BBDEFB; border-radius: 8px; background: white; font-size: 1.1em; font-weight: bold; color: #1261A0; cursor: not-allowed;">
@@ -108,6 +108,10 @@
                     <div>
                         <label style="display: block; color: #666; font-size: 0.9em; margin-bottom: 5px;">v$ Preis</label>
                         <input type="text" id="vusdPrice" readonly style="width: 100%; padding: 12px; border: 1px solid #BBDEFB; border-radius: 8px; background: white; font-size: 1.1em; font-weight: bold; color: #1261A0; cursor: not-allowed;">
+                    </div>
+                    <div>
+                        <label style="display: block; color: #666; font-size: 0.9em; margin-bottom: 5px;">TLN Gold Preis</label>
+                        <input type="text" id="tlnGoldPrice" readonly style="width: 100%; padding: 12px; border: 1px solid #BBDEFB; border-radius: 8px; background: white; font-size: 1.1em; font-weight: bold; color: #1261A0; cursor: not-allowed;">
                     </div>
                 </div>
             </div>
@@ -347,10 +351,12 @@
                 // Token Contracts
                 const VOW = "0xf585b5b4f22816baf7629aea55b701662630397b";
                 const V_DOLLAR = "0x9C23942Ca2C35e06d1d20747F33705983A18d2AB";
+                const TLN_GOLD = "0xAa90a8CDAB8B8E902293a2817d1d286f66cBcec5";
 
                 // PancakeSwap V2 Pools
                 const POOL_VOW_USDT = "0xc6585bc17b53792f281a9739579dd60535c1f9fb";
                 const POOL_VOW_VDOLLAR = "0xc51c99af9d5c31d0c37d028500b2b344debdf188";
+                const POOL_TLNGOLD_USDT = "0x1e7Ea2ec47199191Dc3B642BB6c24ED03Cc1a641";
 
                 const PAIR_ABI = [
                     "function getReserves() view returns (uint112,uint112,uint32)",
@@ -379,6 +385,7 @@
                 // Set loading state
                 document.getElementById('vowPrice').value = 'lädt...';
                 document.getElementById('vusdPrice').value = 'lädt...';
+                document.getElementById('tlnGoldPrice').value = 'lädt...';
 
                 // VOW -> USD (direkt aus VOW/USDT)
                 const vowUsd = await priceFromPool(POOL_VOW_USDT, VOW);
@@ -389,14 +396,19 @@
                 // v$ -> USD
                 const vDollarUsd = vDollarInVow * vowUsd;
 
+                // TLN Gold -> USD (direkt aus TLN Gold/USDT)
+                const tlnGoldUsd = await priceFromPool(POOL_TLNGOLD_USDT, TLN_GOLD);
+
                 // Update display
                 document.getElementById('vowPrice').value = '$' + vowUsd.toFixed(6);
                 document.getElementById('vusdPrice').value = '$' + vDollarUsd.toFixed(6);
+                document.getElementById('tlnGoldPrice').value = '$' + tlnGoldUsd.toFixed(6);
 
             } catch (error) {
                 console.log('Fehler beim Laden der Preise:', error);
                 document.getElementById('vowPrice').value = 'Fehler';
                 document.getElementById('vusdPrice').value = 'Fehler';
+                document.getElementById('tlnGoldPrice').value = 'Fehler';
             }
         })();
         
