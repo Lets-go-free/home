@@ -41,6 +41,11 @@
             <strong>Hinweis zu den Berechnungen:</strong> Die Werte in den Tabellen "Gewinne" und "Übersicht Trades" basieren auf den kumulierten Einzahlungen, inklusive Aufstockungen und Re-Investitionen von Gewinnen. Für detaillierte Einzelwerte siehe "Trades-Übersicht je Woche" oder "Alle Trades".
         </p>
 
+        <!-- Hinweis zu Tage ohne Trade -->
+        <p class="info-box" style="margin-top: 20px;">
+            <strong>Bemerkung zu "Anzahl Tage ohne Trade":</strong> Gehandelt wird ausschliesslich von Montag bis Freitag, an Feiertagen bleibt die Börse geschlossen. Es kann aber durchaus vorkommen, dass der Broker sich gegen einen Trade entscheidet, weil die Signale unklar sind. Das ist nicht feige, sondern professionell! Lieber kein Trade als ein Verlust. In dieser Zeile werden genau diese Nicht-Trades aufgeführt, Wochenende und Feiertage werden nicht aufgeführt.
+        </p>
+
         <!-- Gewinne pro Account Tabelle (alle Accounts) -->
         <div id="gewinneProAccountContainer" style="display: none; margin-bottom: 30px;">
             <h3>Gewinne pro Account</h3>
@@ -100,9 +105,10 @@
                     <thead style="position: sticky; top: 0; z-index: 10;">
                         <tr style="background: #2d3748; color: white;">
                             <th style="padding: 12px; text-align: left; border: 1px solid #4a5568; position: sticky; left: 0; z-index: 20; background: #2d3748; white-space: nowrap;">Woche vom</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anzahl<br>Trades</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Trading-Tage</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Gewinne</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Verluste</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">ohne<br>Trade</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Total<br>einbezahlter<br>Betrag $</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Gehebelter<br>Wert $</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto-<br>Gewinn $</th>
@@ -393,6 +399,7 @@ function calculateWeeklyOverview(trades) {
                 anzahlTrades: 0,
                 anzahlGewinne: 0,
                 anzahlVerluste: 0,
+                anzahlOhneTrade: 0,
                 saldoEinzahlungEffektiv: null,
                 saldoEinzahlungMitHebel: null,
                 bruttoGewinn: 0,
@@ -406,19 +413,23 @@ function calculateWeeklyOverview(trades) {
         const week = weeklyData[weekKey];
         week.trades.push({ date: tradeDate, trade: trade });
         
-        const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().trim();
+        const profitValue = parseNumber(trade.Profit);
+        const profitRaw = trade.Profit;
         
-        // Trade zählt nur wenn "Gewinn oder Verlust" nicht leer ist
-        if (gewinnVerlustText !== '') {
-            week.anzahlTrades++;
-            
-            const gewinnVerlustLower = gewinnVerlustText.toLowerCase();
-            if (gewinnVerlustLower.includes('gewinn')) {
+        // Prüfe ob Profit-Zelle leer ist
+        const isEmpty = profitRaw === null || profitRaw === undefined || profitRaw === '';
+        
+        if (!isEmpty) {
+            if (profitValue > 0) {
                 week.anzahlGewinne++;
-            } else if (gewinnVerlustLower.includes('verlust')) {
+            } else if (profitValue < 0) {
                 week.anzahlVerluste++;
+            } else if (profitValue === 0) {
+                week.anzahlOhneTrade++;
             }
         }
+        
+        week.anzahlTrades = week.anzahlGewinne + week.anzahlVerluste + week.anzahlOhneTrade;
         
         week.bruttoGewinn += parseNumber(trade.Profit);
         
@@ -457,9 +468,10 @@ function calculateWeeklyOverview(trades) {
             return {
                 weekStart: week.weekStart,
                 'Woche vom': formatDateGerman(week.weekStart),
-                'Anzahl Trades': week.anzahlTrades,
+                'Anz. Trading-Tage': week.anzahlTrades,
                 'Anz. Gewinne': week.anzahlGewinne,
                 'Anz. Verluste': week.anzahlVerluste,
+                'ohne Trade': week.anzahlOhneTrade,
                 'Total einbezahlter Betrag $': saldoEinzahlungEffektiv,
                 'Gehebelter Wert $': saldoEinzahlungMitHebel,
                 'Brutto-Gewinn $': week.bruttoGewinn,
@@ -504,6 +516,7 @@ function displayWeeklyOverview(data) {
     let totalAnzahlTrades = 0;
     let totalAnzahlGewinne = 0;
     let totalAnzahlVerluste = 0;
+    let totalAnzahlOhneTrade = 0;
     let totalBruttoGewinn = 0;
     let totalBruttoGewinnProzent = 0;
     let totalGebuehren = 0;
@@ -516,9 +529,10 @@ function displayWeeklyOverview(data) {
         row.style.background = index % 2 === 0 ? '#f7fafc' : 'white';
         
         // Sammle Werte für Total-Zeile
-        totalAnzahlTrades += week['Anzahl Trades'];
+        totalAnzahlTrades += week['Anz. Trading-Tage'];
         totalAnzahlGewinne += week['Anz. Gewinne'];
         totalAnzahlVerluste += week['Anz. Verluste'];
+        totalAnzahlOhneTrade += week['ohne Trade'];
         totalBruttoGewinn += week['Brutto-Gewinn $'];
         totalBruttoGewinnProzent += week['Brutto-Gewinn %'];
         totalGebuehren += week['Gebühren'];
@@ -531,9 +545,9 @@ function displayWeeklyOverview(data) {
         cell0.textContent = week['Woche vom'];
         cell0.style.cssText = 'position: sticky; left: 0; z-index: 10; background: ' + (index % 2 === 0 ? '#f7fafc' : 'white') + '; white-space: nowrap;';
         
-        // Anzahl Trades
+        // Anz. Trading-Tage
         const cell1 = row.insertCell(1);
-        cell1.textContent = week['Anzahl Trades'];
+        cell1.textContent = week['Anz. Trading-Tage'];
         
         // Anz. Gewinne
         const cell2 = row.insertCell(2);
@@ -545,42 +559,46 @@ function displayWeeklyOverview(data) {
         cell3.textContent = week['Anz. Verluste'];
         if (week['Anz. Verluste'] > 0) cell3.classList.add('table-negative');
         
+        // ohne Trade
+        const cell3a = row.insertCell(4);
+        cell3a.textContent = week['ohne Trade'];
+        
         // Total einbezahlter Betrag $
-        const cell4 = row.insertCell(4);
+        const cell4 = row.insertCell(5);
         cell4.textContent = formatCurrencyNoDecimals(week['Total einbezahlter Betrag $']);
         
         // Gehebelter Wert $
-        const cell5 = row.insertCell(5);
+        const cell5 = row.insertCell(6);
         cell5.textContent = formatCurrencyNoDecimals(week['Gehebelter Wert $']);
         
         // Brutto-Gewinn $
-        const cell6 = row.insertCell(6);
+        const cell6 = row.insertCell(7);
         cell6.textContent = formatCurrency(week['Brutto-Gewinn $']);
         if (week['Brutto-Gewinn $'] > 0) cell6.classList.add('table-positive');
         else if (week['Brutto-Gewinn $'] < 0) cell6.classList.add('table-negative');
         
         // Brutto-Gewinn %
-        const cell7 = row.insertCell(7);
+        const cell7 = row.insertCell(8);
         cell7.textContent = week['Brutto-Gewinn %'].toFixed(3) + '%';
         if (week['Brutto-Gewinn %'] > 0) cell7.classList.add('table-positive');
         else if (week['Brutto-Gewinn %'] < 0) cell7.classList.add('table-negative');
         
         // Gebühren
-        const cell8 = row.insertCell(8);
+        const cell8 = row.insertCell(9);
         cell8.textContent = formatCurrency(week['Gebühren']);
         
         // Kommissionen
-        const cell9 = row.insertCell(9);
+        const cell9 = row.insertCell(10);
         cell9.textContent = formatCurrency(week['Kommissionen']);
         
         // Netto Gewinn $
-        const cell10 = row.insertCell(10);
+        const cell10 = row.insertCell(11);
         cell10.textContent = formatCurrency(week['Netto Gewinn $']);
         if (week['Netto Gewinn $'] > 0) cell10.classList.add('table-positive');
         else if (week['Netto Gewinn $'] < 0) cell10.classList.add('table-negative');
         
         // Netto Gewinn %
-        const cell11 = row.insertCell(11);
+        const cell11 = row.insertCell(12);
         cell11.textContent = week['Netto Gewinn %'].toFixed(3) + '%';
         if (week['Netto Gewinn %'] > 0) cell11.classList.add('table-positive');
         else if (week['Netto Gewinn %'] < 0) cell11.classList.add('table-negative');
@@ -595,7 +613,7 @@ function displayWeeklyOverview(data) {
     tcell0.textContent = 'Total';
     tcell0.style.cssText = 'position: sticky; left: 0; z-index: 10; background: #cbd5e0; white-space: nowrap;';
     
-    // Anzahl Trades
+    // Anz. Trading-Tage
     const tcell1 = totalRow.insertCell(1);
     tcell1.textContent = totalAnzahlTrades;
     
@@ -609,42 +627,46 @@ function displayWeeklyOverview(data) {
     tcell3.textContent = totalAnzahlVerluste;
     if (totalAnzahlVerluste > 0) tcell3.classList.add('table-negative');
     
+    // ohne Trade
+    const tcell3a = totalRow.insertCell(4);
+    tcell3a.textContent = totalAnzahlOhneTrade;
+    
     // Total einbezahlter Betrag $ - leer
-    const tcell4 = totalRow.insertCell(4);
+    const tcell4 = totalRow.insertCell(5);
     tcell4.textContent = '';
     
     // Gehebelter Wert $ - leer
-    const tcell5 = totalRow.insertCell(5);
+    const tcell5 = totalRow.insertCell(6);
     tcell5.textContent = '';
     
     // Brutto-Gewinn $
-    const tcell6 = totalRow.insertCell(6);
+    const tcell6 = totalRow.insertCell(7);
     tcell6.textContent = formatCurrency(totalBruttoGewinn);
     if (totalBruttoGewinn > 0) tcell6.classList.add('table-positive');
     else if (totalBruttoGewinn < 0) tcell6.classList.add('table-negative');
     
     // Brutto-Gewinn %
-    const tcell7 = totalRow.insertCell(7);
+    const tcell7 = totalRow.insertCell(8);
     tcell7.textContent = totalBruttoGewinnProzent.toFixed(3) + '%';
     if (totalBruttoGewinnProzent > 0) tcell7.classList.add('table-positive');
     else if (totalBruttoGewinnProzent < 0) tcell7.classList.add('table-negative');
     
     // Gebühren
-    const tcell8 = totalRow.insertCell(8);
+    const tcell8 = totalRow.insertCell(9);
     tcell8.textContent = formatCurrency(totalGebuehren);
     
     // Kommissionen
-    const tcell9 = totalRow.insertCell(9);
+    const tcell9 = totalRow.insertCell(10);
     tcell9.textContent = formatCurrency(totalKommissionen);
     
     // Netto Gewinn $
-    const tcell10 = totalRow.insertCell(10);
+    const tcell10 = totalRow.insertCell(11);
     tcell10.textContent = formatCurrency(totalNettoGewinn);
     if (totalNettoGewinn > 0) tcell10.classList.add('table-positive');
     else if (totalNettoGewinn < 0) tcell10.classList.add('table-negative');
     
     // Netto Gewinn %
-    const tcell11 = totalRow.insertCell(11);
+    const tcell11 = totalRow.insertCell(12);
     tcell11.textContent = totalNettoGewinnProzent.toFixed(3) + '%';
     if (totalNettoGewinnProzent > 0) tcell11.classList.add('table-positive');
     else if (totalNettoGewinnProzent < 0) tcell11.classList.add('table-negative');
