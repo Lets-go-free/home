@@ -595,23 +595,6 @@
                 console.log(`Gewinn in USDT (Status: ${loanStatus}): ${gewinnVOW} * ${kursToUse} = ${result}`);
                 return result;
             }
-            else if (colName.includes('mind. vow-kurs für 1% profit')) {
-                if (!collateral) return null;
-                
-                // Berechne VOW-Kurs, bei dem Gewinn in VOW 1% des Collateral-Werts entspricht
-                // Formel: gewinnVOW >= collateral * 0.01
-                // collateral - benoetigteVOW - vowInVDollar >= collateral * 0.01
-                // collateral * 0.99 - vowInVDollar >= benoetigteVOW
-                // collateral * 0.99 - vowInVDollar >= (vDollarTotal * zielKursVDollarSlippage) / VOW_Kurs
-                // VOW_Kurs >= (vDollarTotal * zielKursVDollarSlippage) / (collateral * 0.99 - vowInVDollar)
-                
-                const denominator = collateral * 0.99 - vowInVDollar;
-                if (denominator <= 0) return null; // Verhindere Division durch Null oder negative Werte
-                
-                const minVowKurs = (vDollarTotal * zielKursVDollarSlippage) / denominator;
-                console.log(`Min. VOW-Kurs für 1% Profit: (${vDollarTotal} * ${zielKursVDollarSlippage}) / (${collateral} * 0.99 - ${vowInVDollar}) = ${minVowKurs}`);
-                return minVowKurs;
-            }
             
             return null;
         }
@@ -635,8 +618,7 @@
         
         // Columns that should not have subtotals
         const noSubtotalColumns = [
-            'v$ je tln+',
-            'mind. vow-kurs für 1% profit'
+            'v$ je tln+'
         ];
         
         // Swiss number formatting (with apostrophes as thousand separators)
@@ -1061,11 +1043,10 @@
                 '$-Wert VOW in Collateral',
                 'Benötigte VOW, um v$ für Rückzahlung zu kaufen',
                 'Gewinn an VOW',
-                'Gewinn in USDT',
-                'mind. VOW-Kurs für 1% Profit'
+                'Gewinn in USDT'
             ];
             
-            // Full headers in display order (17 columns total)
+            // Full headers in display order (16 columns total)
             const fullHeaders = [
                 headers[0],  // A: Wallet
                 headers[1],  // B: Datum
@@ -1082,8 +1063,7 @@
                 headers[10], // K: Loan zurück bezahlt?
                 headers[11], // L: eingesetzte VOW's
                 'Gewinn an VOW',
-                'Gewinn in USDT',
-                'mind. VOW-Kurs für 1% Profit'
+                'Gewinn in USDT'
             ];
             
             const dateColIndex = headers.findIndex(h => h && h.toLowerCase().includes('rückzahlung bis'));
@@ -1157,7 +1137,7 @@
                     walletData.rows.forEach(row => {
                         const tr = document.createElement('tr');
                         
-                        // Spaltenreihenfolge: A,B,C,D,E,F,G,H,calc1,I,J,calc2,K,L,calc3,calc4,calc5
+                        // Spaltenreihenfolge: A,B,C,D,E,F,G,H,calc1,I,J,calc2,K,L,calc3,calc4
                         // A-L sind indices 0-11, calc sind berechnet
                         const columnOrder = [
                             0,  // A: Wallet
@@ -1175,8 +1155,7 @@
                             10, // K: Loan zurück bezahlt?
                             11, // L: eingesetzte VOW's
                             'Gewinn an VOW',  // Berechnet
-                            'Gewinn in USDT',  // Berechnet
-                            'mind. VOW-Kurs für 1% Profit'  // Berechnet
+                            'Gewinn in USDT'   // Berechnet
                         ];
                         
                         columnOrder.forEach((colIdentifier, displayIdx) => {
