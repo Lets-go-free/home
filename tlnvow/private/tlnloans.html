@@ -203,7 +203,7 @@
                 if (document.querySelectorAll('.info-table input').length === 0) {
                     const defaultInfoRows = [
                         ['', '', '', '', '', '', '', '', '', '', 'Ziel-Kurs VOW:', '0.11', '', ''],
-                        ['', '', '', '', '', '', '', '', '', '', 'Ziel-Kurs v$:', '0.90', '', ''],
+                        ['', '', '', '', '', '', '', '', '', '', 'Ziel-Kurs v$:', '0.80', '', ''],
                         ['', '', '', '', '', '', '', '', '', '', 'Slippage Tolerance', '5.00%', '', ''],
                         ['', '', '', '', '', '', '', '', '', '', 'Ziel-Kurs v$ inkl. Slippage:', '0.95', '', '']
                     ];
@@ -235,7 +235,8 @@
                     allRows[0][10], // K: Loan zurück bezahlt?
                     allRows[0][11], // L: eingesetzte VOW's
                     'Gewinn an VOW',  // Berechnet
-                    'Gewinn in USDT'  // Berechnet
+                    'Gewinn in USDT',  // Berechnet
+                    'mind. VOW-Kurs für 1% Profit'  // Berechnet
                 ];
                 
                 headerOrder.forEach(header => {
@@ -633,6 +634,11 @@
             'benötigte vow'
         ];
         
+        // Columns that should always have 3 decimal places
+        const threeDecimalColumns = [
+            'mind. vow-kurs für 1% profit'
+        ];
+        
         // Columns that should not have subtotals
         const noSubtotalColumns = [
             'v$ je tln+',
@@ -659,6 +665,8 @@
                 decimalPlaces = forceDecimals;
             } else if (noDecimalColumns.some(col => normalizedColumnName.includes(col))) {
                 decimalPlaces = 0;
+            } else if (threeDecimalColumns.some(col => normalizedColumnName.includes(col))) {
+                decimalPlaces = 3;
             } else if (twoDecimalColumns.some(col => normalizedColumnName.includes(col))) {
                 decimalPlaces = 2;
             } else if (cleanValue.includes('.')) {
