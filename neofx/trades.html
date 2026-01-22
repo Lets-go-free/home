@@ -109,8 +109,8 @@
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Gewinne</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Verluste</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">ohne<br>Trade</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Saldo<br>Einzahlung<br>effektiv (Mo)</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Saldo<br>Einzahlung<br>mit Hebel (Mo)</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Saldo<br>Einzahlung<br>effektiv</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Saldo<br>Einzahlung<br>mit Hebel</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto-<br>Gewinn $</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Brutto-<br>Gewinn %</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Gebühren</th>
@@ -458,38 +458,23 @@ function calculateWeeklyOverview(trades) {
             // Sortiere Trades der Woche nach Datum
             week.trades.sort((a, b) => a.date - b.date);
             
-            // Summiere Saldo Einzahlung nur vom Montag (alle Accounts)
+            // Nimm Saldo Einzahlung vom ersten Eintrag der Woche pro Account
             let saldoEinzahlungEffektiv = 0;
             let saldoEinzahlungMitHebel = 0;
             const accountsProcessed = new Set(); // Track welche Accounts bereits verarbeitet wurden
             
-            // Finde Montag der Woche
-            const monday = week.weekStart;
-            const mondayKey = formatDate(monday);
-            
             week.trades.forEach(t => {
-                const tradeKey = formatDate(t.date);
                 const profitRaw = t.trade.Profit;
                 const isEmpty = profitRaw === null || profitRaw === undefined || profitRaw === '';
                 const account = t.trade.Account;
                 
-                // Nur Trades vom Montag mit Profit-Wert berücksichtigen
-                // UND nur wenn dieser Account noch nicht verarbeitet wurde (= erster Eintrag pro Account)
-                if (tradeKey === mondayKey && !isEmpty && !accountsProcessed.has(account)) {
+                // Nur erster Eintrag pro Account mit Profit-Wert
+                if (!isEmpty && !accountsProcessed.has(account)) {
                     const effektiv = parseNumber(t.trade['Saldo Einzahlung effektiv']);
                     const mitHebel = parseNumber(t.trade['Saldo Einzahlung mit Hebel']);
                     saldoEinzahlungEffektiv += effektiv;
                     saldoEinzahlungMitHebel += mitHebel;
                     accountsProcessed.add(account); // Markiere Account als verarbeitet
-                    
-                    // Debug: Zeige was vom Montag genommen wird
-                    console.log('Montag Trade (erster pro Account):', {
-                        woche: mondayKey,
-                        account: account,
-                        datum: t.trade.Datum,
-                        effektiv: effektiv,
-                        mitHebel: mitHebel
-                    });
                 }
             });
             
@@ -502,8 +487,8 @@ function calculateWeeklyOverview(trades) {
                 'Anz. Gewinne': week.anzahlGewinne,
                 'Anz. Verluste': week.anzahlVerluste,
                 'ohne Trade': week.anzahlOhneTrade,
-                'Saldo Einzahlung effektiv (Mo)': saldoEinzahlungEffektiv,
-                'Saldo Einzahlung mit Hebel (Mo)': saldoEinzahlungMitHebel,
+                'Saldo Einzahlung effektiv': saldoEinzahlungEffektiv,
+                'Saldo Einzahlung mit Hebel': saldoEinzahlungMitHebel,
                 'Brutto-Gewinn $': week.bruttoGewinn,
                 'Brutto-Gewinn %': week.bruttoGewinnProzentSum, // Summe der % aus Google Sheets
                 'Gebühren': week.gebuehren,
@@ -593,13 +578,13 @@ function displayWeeklyOverview(data) {
         const cell3a = row.insertCell(4);
         cell3a.textContent = week['ohne Trade'];
         
-        // Saldo Einzahlung effektiv (Mo)
+        // Saldo Einzahlung effektiv
         const cell4 = row.insertCell(5);
-        cell4.textContent = formatCurrencyNoDecimals(week['Saldo Einzahlung effektiv (Mo)']);
+        cell4.textContent = formatCurrencyNoDecimals(week['Saldo Einzahlung effektiv']);
         
-        // Saldo Einzahlung mit Hebel (Mo)
+        // Saldo Einzahlung mit Hebel
         const cell5 = row.insertCell(6);
-        cell5.textContent = formatCurrencyNoDecimals(week['Saldo Einzahlung mit Hebel (Mo)']);
+        cell5.textContent = formatCurrencyNoDecimals(week['Saldo Einzahlung mit Hebel']);
         
         // Brutto-Gewinn $
         const cell6 = row.insertCell(7);
