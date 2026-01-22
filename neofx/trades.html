@@ -109,8 +109,8 @@
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Gewinne</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Verluste</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">ohne<br>Trade</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Total<br>einbezahlter<br>Betrag $ (Mo)</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Gehebelter<br>Wert $ (Mo)</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Saldo<br>Einzahlung<br>effektiv (Mo)</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Saldo<br>Einzahlung<br>mit Hebel (Mo)</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto-<br>Gewinn $</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Brutto-<br>Gewinn %</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Gebühren</th>
@@ -487,8 +487,8 @@ function calculateWeeklyOverview(trades) {
                 'Anz. Gewinne': week.anzahlGewinne,
                 'Anz. Verluste': week.anzahlVerluste,
                 'ohne Trade': week.anzahlOhneTrade,
-                'Total einbezahlter Betrag $ (Mo)': saldoEinzahlungEffektiv,
-                'Gehebelter Wert $ (Mo)': saldoEinzahlungMitHebel,
+                'Saldo Einzahlung effektiv (Mo)': saldoEinzahlungEffektiv,
+                'Saldo Einzahlung mit Hebel (Mo)': saldoEinzahlungMitHebel,
                 'Brutto-Gewinn $': week.bruttoGewinn,
                 'Brutto-Gewinn %': week.bruttoGewinnProzentSum, // Summe der % aus Google Sheets
                 'Gebühren': week.gebuehren,
@@ -578,13 +578,13 @@ function displayWeeklyOverview(data) {
         const cell3a = row.insertCell(4);
         cell3a.textContent = week['ohne Trade'];
         
-        // Total einbezahlter Betrag $ (Mo)
+        // Saldo Einzahlung effektiv (Mo)
         const cell4 = row.insertCell(5);
-        cell4.textContent = formatCurrencyNoDecimals(week['Total einbezahlter Betrag $ (Mo)']);
+        cell4.textContent = formatCurrencyNoDecimals(week['Saldo Einzahlung effektiv (Mo)']);
         
-        // Gehebelter Wert $ (Mo)
+        // Saldo Einzahlung mit Hebel (Mo)
         const cell5 = row.insertCell(6);
-        cell5.textContent = formatCurrencyNoDecimals(week['Gehebelter Wert $ (Mo)']);
+        cell5.textContent = formatCurrencyNoDecimals(week['Saldo Einzahlung mit Hebel (Mo)']);
         
         // Brutto-Gewinn $
         const cell6 = row.insertCell(7);
