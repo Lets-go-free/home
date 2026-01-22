@@ -109,8 +109,8 @@
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Gewinne</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Anz.<br>Verluste</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">ohne<br>Trade</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Total<br>einbezahlter<br>Betrag $ (Mo)</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Gehebelter<br>Wert $ (Mo)</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Total<br>einbezahlter<br>Betrag $</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 100px;">Gehebelter<br>Wert $</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto-<br>Gewinn $</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 70px;">Brutto-<br>Gewinn %</th>
                             <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Gebühren</th>
@@ -458,23 +458,20 @@ function calculateWeeklyOverview(trades) {
             // Sortiere Trades der Woche nach Datum
             week.trades.sort((a, b) => a.date - b.date);
             
-            // Summiere Saldo Einzahlung nur vom Montag (alle Accounts)
+            // Summiere Saldo Einzahlung von allen Trades der Woche mit Profit-Wert
             let saldoEinzahlungEffektiv = 0;
             let saldoEinzahlungMitHebel = 0;
-            
-            // Finde Montag der Woche
-            const monday = week.weekStart;
-            const mondayKey = formatDate(monday);
+            let countTradesWithProfit = 0;
             
             week.trades.forEach(t => {
-                const tradeKey = formatDate(t.date);
                 const profitRaw = t.trade.Profit;
                 const isEmpty = profitRaw === null || profitRaw === undefined || profitRaw === '';
                 
-                // Nur Trades vom Montag mit Profit-Wert berücksichtigen
-                if (tradeKey === mondayKey && !isEmpty) {
+                // Nur Trades mit explizitem Profit-Wert berücksichtigen
+                if (!isEmpty) {
                     saldoEinzahlungEffektiv += parseNumber(t.trade['Saldo Einzahlung effektiv']);
                     saldoEinzahlungMitHebel += parseNumber(t.trade['Saldo Einzahlung mit Hebel']);
+                    countTradesWithProfit++;
                 }
             });
             
@@ -487,8 +484,8 @@ function calculateWeeklyOverview(trades) {
                 'Anz. Gewinne': week.anzahlGewinne,
                 'Anz. Verluste': week.anzahlVerluste,
                 'ohne Trade': week.anzahlOhneTrade,
-                'Total einbezahlter Betrag $ (Mo)': saldoEinzahlungEffektiv,
-                'Gehebelter Wert $ (Mo)': saldoEinzahlungMitHebel,
+                'Total einbezahlter Betrag $': saldoEinzahlungEffektiv,
+                'Gehebelter Wert $': saldoEinzahlungMitHebel,
                 'Brutto-Gewinn $': week.bruttoGewinn,
                 'Brutto-Gewinn %': week.bruttoGewinnProzentSum, // Summe der % aus Google Sheets
                 'Gebühren': week.gebuehren,
@@ -578,13 +575,13 @@ function displayWeeklyOverview(data) {
         const cell3a = row.insertCell(4);
         cell3a.textContent = week['ohne Trade'];
         
-        // Total einbezahlter Betrag $ (Mo)
+        // Total einbezahlter Betrag $
         const cell4 = row.insertCell(5);
-        cell4.textContent = formatCurrencyNoDecimals(week['Total einbezahlter Betrag $ (Mo)']);
+        cell4.textContent = formatCurrencyNoDecimals(week['Total einbezahlter Betrag $']);
         
-        // Gehebelter Wert $ (Mo)
+        // Gehebelter Wert $
         const cell5 = row.insertCell(6);
-        cell5.textContent = formatCurrencyNoDecimals(week['Gehebelter Wert $ (Mo)']);
+        cell5.textContent = formatCurrencyNoDecimals(week['Gehebelter Wert $']);
         
         // Brutto-Gewinn $
         const cell6 = row.insertCell(7);
