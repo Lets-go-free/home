@@ -458,10 +458,22 @@ function calculateWeeklyOverview(trades) {
             // Sortiere Trades der Woche nach Datum
             week.trades.sort((a, b) => a.date - b.date);
             
-            // Finde Saldo Einzahlung vom Montag oder ersten Tag der Woche
-            const firstTrade = week.trades[0];
-            const saldoEinzahlungEffektiv = parseNumber(firstTrade.trade['Saldo Einzahlung effektiv']);
-            const saldoEinzahlungMitHebel = parseNumber(firstTrade.trade['Saldo Einzahlung mit Hebel']);
+            // Summiere Saldo Einzahlung von allen Trades der Woche mit Profit-Wert
+            let saldoEinzahlungEffektiv = 0;
+            let saldoEinzahlungMitHebel = 0;
+            let countTradesWithProfit = 0;
+            
+            week.trades.forEach(t => {
+                const profitRaw = t.trade.Profit;
+                const isEmpty = profitRaw === null || profitRaw === undefined || profitRaw === '';
+                
+                // Nur Trades mit explizitem Profit-Wert berücksichtigen
+                if (!isEmpty) {
+                    saldoEinzahlungEffektiv += parseNumber(t.trade['Saldo Einzahlung effektiv']);
+                    saldoEinzahlungMitHebel += parseNumber(t.trade['Saldo Einzahlung mit Hebel']);
+                    countTradesWithProfit++;
+                }
+            });
             
             const nettoGewinn = week.bruttoGewinn - week.gebuehren - week.kommissionen;
             
