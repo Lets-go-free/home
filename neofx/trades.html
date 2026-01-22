@@ -461,6 +461,7 @@ function calculateWeeklyOverview(trades) {
             // Summiere Saldo Einzahlung nur vom Montag (alle Accounts)
             let saldoEinzahlungEffektiv = 0;
             let saldoEinzahlungMitHebel = 0;
+            const accountsProcessed = new Set(); // Track welche Accounts bereits verarbeitet wurden
             
             // Finde Montag der Woche
             const monday = week.weekStart;
@@ -470,11 +471,25 @@ function calculateWeeklyOverview(trades) {
                 const tradeKey = formatDate(t.date);
                 const profitRaw = t.trade.Profit;
                 const isEmpty = profitRaw === null || profitRaw === undefined || profitRaw === '';
+                const account = t.trade.Account;
                 
                 // Nur Trades vom Montag mit Profit-Wert berücksichtigen
-                if (tradeKey === mondayKey && !isEmpty) {
-                    saldoEinzahlungEffektiv += parseNumber(t.trade['Saldo Einzahlung effektiv']);
-                    saldoEinzahlungMitHebel += parseNumber(t.trade['Saldo Einzahlung mit Hebel']);
+                // UND nur wenn dieser Account noch nicht verarbeitet wurde (= erster Eintrag pro Account)
+                if (tradeKey === mondayKey && !isEmpty && !accountsProcessed.has(account)) {
+                    const effektiv = parseNumber(t.trade['Saldo Einzahlung effektiv']);
+                    const mitHebel = parseNumber(t.trade['Saldo Einzahlung mit Hebel']);
+                    saldoEinzahlungEffektiv += effektiv;
+                    saldoEinzahlungMitHebel += mitHebel;
+                    accountsProcessed.add(account); // Markiere Account als verarbeitet
+                    
+                    // Debug: Zeige was vom Montag genommen wird
+                    console.log('Montag Trade (erster pro Account):', {
+                        woche: mondayKey,
+                        account: account,
+                        datum: t.trade.Datum,
+                        effektiv: effektiv,
+                        mitHebel: mitHebel
+                    });
                 }
             });
             
