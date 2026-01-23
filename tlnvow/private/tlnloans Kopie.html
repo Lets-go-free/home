@@ -210,8 +210,7 @@
                         ['', '', '', '', '', '', '', '', '', '', 'Ziel-Kurs VOW:', '0.11', '', ''],
                         ['', '', '', '', '', '', '', '', '', '', 'Ziel-Kurs v$:', '0.80', '', ''],
                         ['', '', '', '', '', '', '', '', '', '', 'Slippage Tolerance', '5.00%', '', ''],
-                        ['', '', '', '', '', '', '', '', '', '', 'Ziel-Kurs v$ inkl. Slippage:', '0.95', '', ''],
-                        ['', '', '', '', '', '', '', '', '', '', 'Min. Gewinn %:', '5.00%', '', '']
+                        ['', '', '', '', '', '', '', '', '', '', 'Ziel-Kurs v$ inkl. Slippage:', '0.95', '', '']
                     ];
                     createInfoTable(defaultInfoRows);
                     // Load current prices after table is created
@@ -605,22 +604,18 @@
             else if (colName.includes('mind. vow-kurs für 1% profit')) {
                 if (!collateral) return null;
                 
-                // Hole Min. Gewinn % aus Info-Tabelle
-                const minGewinnPercent = getInfoValue('min. gewinn %') || 5.0; // Default 5%
-                const minGewinnFaktor = minGewinnPercent / 100; // Convert % to decimal (5% -> 0.05)
+                // Berechne VOW-Kurs, bei dem Gewinn in VOW 1% des Collateral-Werts entspricht
+                // Formel: gewinnVOW >= collateral * 0.01
+                // collateral - benoetigteVOW - vowInVDollar >= collateral * 0.01
+                // collateral * 0.99 - vowInVDollar >= benoetigteVOW
+                // collateral * 0.99 - vowInVDollar >= (vDollarTotal * zielKursVDollarSlippage) / VOW_Kurs
+                // VOW_Kurs >= (vDollarTotal * zielKursVDollarSlippage) / (collateral * 0.99 - vowInVDollar)
                 
-                // Berechne VOW-Kurs, bei dem Gewinn in VOW X% des Collateral-Werts entspricht
-                // Formel: gewinnVOW >= collateral * minGewinnFaktor
-                // collateral - benoetigteVOW - vowInVDollar >= collateral * minGewinnFaktor
-                // collateral * (1 - minGewinnFaktor) - vowInVDollar >= benoetigteVOW
-                // collateral * (1 - minGewinnFaktor) - vowInVDollar >= (vDollarTotal * zielKursVDollarSlippage) / VOW_Kurs
-                // VOW_Kurs >= (vDollarTotal * zielKursVDollarSlippage) / (collateral * (1 - minGewinnFaktor) - vowInVDollar)
-                
-                const denominator = collateral * (1 - minGewinnFaktor) - vowInVDollar;
+                const denominator = collateral * 0.99 - vowInVDollar;
                 if (denominator <= 0) return null; // Verhindere Division durch Null oder negative Werte
                 
                 const minVowKurs = (vDollarTotal * zielKursVDollarSlippage) / denominator;
-                console.log(`Min. VOW-Kurs für ${minGewinnPercent}% Profit: (${vDollarTotal} * ${zielKursVDollarSlippage}) / (${collateral} * ${1 - minGewinnFaktor} - ${vowInVDollar}) = ${minVowKurs}`);
+                console.log(`Min. VOW-Kurs für 1% Profit: (${vDollarTotal} * ${zielKursVDollarSlippage}) / (${collateral} * 0.99 - ${vowInVDollar}) = ${minVowKurs}`);
                 return minVowKurs;
             }
             
