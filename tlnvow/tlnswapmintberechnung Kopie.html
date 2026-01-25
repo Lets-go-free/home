@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rebound PCLP(old): Berechnung - Let's go free</title>
+    <title>Swap&Mint: Berechnung - Let's go free</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -120,8 +120,8 @@
 
 <div class="container">
     <div class="hero">
-        <h1>Rebound PCLP(old): Berechnung</h1>
-        <p>Berechne deine Rebound PCLP(old) Werte und VOW-Collateral</p>
+        <h1>Swap&Mint: Berechnung</h1>
+        <p>Berechne deine Swap&Mint Werte und VOW-Collateral</p>
     </div>
 
     <div id="swap-mint" class="section active" style="display: block; padding-top: 20px;">
@@ -131,7 +131,7 @@
             <p style="margin: 0; color: #856404; font-size: 0.95em;"><strong>⚠️ Wichtig:</strong> Die genauen Werte stehen erst fest, wenn der SmartContract live geht. Diese Berechnung nutzt die aktuellen Informationen und gibt dir eine Orientierung.</p>
         </div>
 
-        <h3>Werte Rebound PCLP(old)</h3>
+        <h3>Werte Swap&Mint</h3>
         <div class="input-grid">
 
             <div class="input-group">
@@ -144,16 +144,16 @@
             </div>
 
             <div class="input-group">
-                <label for="pricev$mint">Kurs v$ Rebound PCLP(old)</label>
-                <input type="text" id="pricev$mint" value="0.7500"
+                <label for="pricev$mint">Kurs v$ Swap&Mint</label>
+                <input type="text" id="pricev$mint" value="0.75"
                        onfocus="removeFormatting(this)"
                        onblur="validateAndFormatPriceVMint(); calculate();">
                 <span class="hint">v$ Kurs, muss bei mind. 0.75$ liegen</span>
             </div>
 
             <div class="input-group">
-                <label for="pricevowmint">Kurs VOW Rebound PCLP(old)</label>
-                <input type="text" id="pricevowmint" value="0.0500"
+                <label for="pricevowmint">Kurs VOW Swap&Mint</label>
+                <input type="text" id="pricevowmint" value="0.05"
                        onchange="formatInputFieldDecimal(this); calculate();"
                        onfocus="removeFormatting(this)"
                        onblur="formatInputFieldDecimal(this); calculate();">
@@ -161,16 +161,16 @@
             </div>
 
             <div class="input-group">
-                <label for="swapmintv$">Anz. v$ in Rebound PCLP(old)</label>
+                <label for="swapmintv$">Anz. v$ in Swap&Mint</label>
                 <input type="text" id="swapmintv$" value="10'000"
                        onchange="formatInputField(this); calculate();"
                        onfocus="removeFormatting(this)"
                        onblur="formatInputField(this); calculate();">
-                <span class="hint">Anzahl v$ im Rebound PCLP(old)</span>
+                <span class="hint">Anzahl v$ im Swap&Mint</span>
             </div>
 
             <div class="input-group">
-                <label for="swapmintvaluev$">Wert der v$ in Rebound PCLP(old) in $</label>
+                <label for="swapmintvaluev$">Wert der v$ in Swap&Mint in $</label>
                 <input type="text" id="swapmintvaluev$" readonly>
                 <span class="hint">Staking-Wert × Kurs v$</span>
             </div>
@@ -187,6 +187,15 @@
         <div class="input-grid">
 
             <div class="input-group">
+                <label for="pricev$new">Kurs v$</label>
+                <input type="text" id="pricev$new" value="0.70"
+                       onchange="formatInputFieldDecimal(this); calculate();"
+                       onfocus="removeFormatting(this)"
+                       onblur="formatInputFieldDecimal(this); calculate();">
+                <span class="hint">Neuer v$ Kurs</span>
+            </div>
+
+            <div class="input-group">
                 <label for="pricevownew">Kurs VOW</label>
                 <input type="text" id="pricevownew" readonly>
                 <span class="hint">2.5-facher Wert des Collateral Kauf-Preises</span>
@@ -198,15 +207,33 @@
         <div class="input-grid">
 
             <div class="input-group">
-                <label for="valuevowv$result">Ich erhalte VOW im Wert von $</label>
+                <label for="valuevowv$result">Ich erhalte VOW im Wert von v$</label>
                 <input type="text" id="valuevowv$result" readonly>
-                <span class="hint">der ursprünglich gestakte Betrag wird in VOW zurückgegeben</span>
+                <span class="hint">= Anz. v$ in Swap&Mint</span>
             </div>
 
             <div class="input-group">
                 <label for="vowresult">Anz. VOW</label>
                 <input type="text" id="vowresult" readonly>
-                <span class="hint">Staking-Wert ÷ Kurs VOW (Ziel-Kurse)</span>
+                <span class="hint">VOW Collateral ÷ 2.5</span>
+            </div>
+
+            <div class="input-group">
+                <label for="value$result">Wert in $</label>
+                <input type="text" id="value$result" readonly>
+                <span class="hint">Anz. VOW × Kurs VOW</span>
+            </div>
+
+        </div>
+
+
+        <h3>Individuell: VOW in Wallet behalten, bis der ursprüngliche Staking-Wert in $ erreicht ist</h3>
+        <div class="input-grid">
+
+            <div class="input-group">
+                <label for="targetpricevow">Ziel-Wert VOW-Kurs, um Ursprungswert in $ zu haben</label>
+                <input type="text" id="targetpricevow" readonly>
+                <span class="hint">Staking-Wert ÷ Anz. VOW</span>
             </div>
 
         </div>
@@ -226,11 +253,12 @@ function calculate() {
     let pricev$mint = parseFloat(document.getElementById('pricev$mint').value.replace(/'/g, '')) || 0;
     if (pricev$mint < 0.75) {
         pricev$mint = 0.75;
-        document.getElementById('pricev$mint').value = '0.7500';
+        document.getElementById('pricev$mint').value = '0.75';
     }
 
     const pricevowmint = parseFloat(document.getElementById('pricevowmint').value.replace(/'/g, '')) || 0;
     const swapmintv$ = parseFloat(document.getElementById('swapmintv$').value.replace(/'/g, '')) || 0;
+    const pricev$new = parseFloat(document.getElementById('pricev$new').value.replace(/'/g, '')) || 0;
 
     const swapmintvaluev$ = stakingvalue * pricev$mint;
     const vowcollateral = pricevowmint !== 0 ? swapmintvaluev$ * 0.986 / pricevowmint : 0;
@@ -239,14 +267,17 @@ function calculate() {
     const pricevownew = pricevowmint * 2.5;
 
     const valuevowv$result = swapmintv$;
-    // Neue Formel: Anz. VOW = Staking-Wert / Kurs VOW (Ziel-Kurse)
-    const vowresult = pricevownew !== 0 ? stakingvalue / pricevownew : 0;
+    const vowresult = vowcollateral / 2.5;
+    const value$result = vowresult * pricevownew;
+    const targetpricevow = vowresult !== 0 ? stakingvalue / vowresult : 0;
 
     document.getElementById('swapmintvaluev$').value = formatNumberNoDecimals(swapmintvaluev$);
     document.getElementById('vowcollateral').value = formatNumberNoDecimals(vowcollateral);
     document.getElementById('pricevownew').value = formatNumberWithDecimals(pricevownew);
     document.getElementById('valuevowv$result').value = formatNumberNoDecimals(valuevowv$result);
     document.getElementById('vowresult').value = formatNumberNoDecimals(vowresult);
+    document.getElementById('value$result').value = formatNumberNoDecimals(value$result);
+    document.getElementById('targetpricevow').value = formatNumberWithDecimals(targetpricevow);
 }
 
 function formatNumberNoDecimals(num) {
@@ -254,7 +285,7 @@ function formatNumberNoDecimals(num) {
 }
 
 function formatNumberWithDecimals(num) {
-    const parts = num.toFixed(4).split('.');
+    const parts = num.toFixed(2).split('.');
     return parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'") + '.' + parts[1];
 }
 
@@ -281,7 +312,7 @@ function validateAndFormatPriceVMint() {
     const input = document.getElementById('pricev$mint');
     let num = parseFloat(input.value.replace(/'/g, ''));
     if (isNaN(num) || num < 0.75) num = 0.75;
-    input.value = num.toFixed(4);
+    input.value = num.toFixed(2);
 }
 
 window.onload = calculate;
