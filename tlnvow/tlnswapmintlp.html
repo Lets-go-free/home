@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rebound PCLP(old): Berechnung zur Wieder-Erstellung von LP's - Let's go free</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -244,16 +245,16 @@
             <p>Annahme: die alten vUSD wurden damals in VOW getauscht</p>
         </div>
 
-        <!-- ROUNDTABLE AUFZEICHNUNG SECTION -->
+        <!-- TECHNIK-CALL SECTION -->
         <div class="section" style="padding-top: 25px; padding-bottom: 20px;">
-            <h3>Roundtable vom 18.12.2025</h3>
+            <h3>Technik-Call vom 25.01.2026</h3>
             <div style="background: #E3F2FD; padding: 25px; border-radius: 12px; border-left: 4px solid #1261A0; margin-bottom: 20px;">
                 <p style="margin-bottom: 15px; font-size: 1.05em; line-height: 1.8;">
-                    <strong style="color: #0B4A7D;">Aufzeichnung Roundtable vom 18.12.2025</strong>
+                    <strong style="color: #0B4A7D;">Aufzeichnung Technik-Call vom 25.01.2026</strong>
                 </p>
                 <p style="margin-bottom: 10px; font-size: 1.05em; line-height: 1.8;">
-                    In diesem Roundtable wurde das Prinzip und Chancen von Rebound PCLP(old) ausführlich erklärt und präsentiert. Hier geht's zur Aufzeichnung.
-                    <a href="https://youtu.be/PoOLQMnYmu8?si=zpoJkdmYB1DkJbJE&t=129" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;">
+                    In diesem Technik-Call wurde das Prinzip und Chancen von Rebound PCLP(old) ausführlich erklärt und präsentiert. Hier geht's zur Aufzeichnung.
+                    <a href="https://youtu.be/rwTt0kapg3M" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;">
                         <span style="font-size: 1.2em;">▶</span>hier zum Video
                     </a>
                 </p>
@@ -270,8 +271,8 @@
                     Öffne untenstehenden Link in deiner Wallet, um deine ursprüngliche Anzahl LP's zu sehen. Du musst dieselbe Anzahl LP auf deinem Wallet haben, damit Rebound PCLP(old) funktioniert. Empfehlung: runde auf den nächsten ganzen LP auf.
                 </p>
                 <p style="margin-bottom: 0; font-size: 1.05em;">
-                    <a href="https://www.tlnprotocol.com/app/rewards" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;">
-                        🔗 https://www.tlnprotocol.com/app/rewards
+                    <a href="https://www.tlnprotocol.com/app/tln" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;">
+                        🔗 https://www.tlnprotocol.com/app/tln
                     </a>
                 </p>
             </div>
@@ -293,54 +294,20 @@
             <div class="input-grid">
                 <div class="input-group">
                     <label for="targetLP">Ursprüngliche Anzahl LP</label>
-                    <input type="text" id="targetLP" value="100'000" onchange="formatInputField(this); calculateSwapMint();" onfocus="removeFormatting(this)" onblur="formatInputField(this); calculateSwapMint();" oninput="calculateSwapMint();">
+                    <input type="text" id="targetLP" value="10'000" onchange="formatInputField(this); calculateSwapMint();" onfocus="removeFormatting(this)" onblur="formatInputField(this); calculateSwapMint();" oninput="calculateSwapMint();">
                     <span class="hint">Gewünschte LP-Menge</span>
                 </div>
             </div>
 
-            <h3>Simulation LP-Erstellung in PancakeSwap</h3>
-            <div style="background: #E3F2FD; padding: 20px; border-radius: 12px; border-left: 4px solid #1261A0; margin-bottom: 20px;">
-                <p style="margin-bottom: 10px; font-size: 1.1em; color: #0B4A7D; font-weight: 600;">LP Token erstellen und Auflösen in PancakeSwap</p>
-                <p style="margin-bottom: 0;">
-                    <a href="https://youtu.be/vHWA0BhJgXM?si=2Gxpd9qLP6_45JGP" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 1.2em;">▶</span> hier zum Video
-                    </a>
-                </p>
-            </div>
-            
-            <!-- Gelbes Info-Feld -->
-            <div style="background: #fff3cd; padding: 20px; border-radius: 10px; border-left: 4px solid #ffc107; margin-bottom: 20px;">
-                <p style="margin: 0; color: #856404; font-size: 1em; line-height: 1.7;">
-                    <strong>ℹ️ Info:</strong> Um in PancakeSwap eine Simulation erfassen zu können, sind sowohl VOW wie auch vUSD notwendig. Tausche dafür 1000 VOW in vUSD, um diese Simulation erfassen zu können. Übernehme die Werte aus der Simulation in diese Berechnung, um zu berechnen, wieviel VOW du insgesamt benötigst, um die ursprüngliche Anzahl LP wieder herzustellen.
-                </p>
-            </div>
-            
-            <div style="margin: 20px 0;">
-                <img src="bilder/SimulationLP.jpeg" alt="Simulation LP-Erstellung" style="width: 100%; max-width: 600px; height: auto; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.15); display: block; margin: 0 auto;">
-            </div>
-            <div class="input-grid">
-                <div class="input-group">
-                    <label for="vowRate">gemäss Simulation: 1 VOW = x vUSD</label>
-                    <input type="text" id="vowRate" value="11.9839" onchange="formatInputFieldDecimal(this); calculateSwapMint();" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this); calculateSwapMint();" oninput="calculateSwapMint();">
-                    <span class="hint">Aktueller Wechselkurs</span>
-                </div>
-                <div class="input-group">
-                    <label for="testVOW">Anzahl VOW eingesetzt</label>
-                    <input type="text" id="testVOW" value="1000" onchange="formatInputFieldDecimal(this); calculateSwapMint();" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this); calculateSwapMint();" oninput="calculateSwapMint();">
-                </div>
-                <div class="input-group">
-                    <label for="testVUSD">Anzahl vUSD berechnet</label>
-                    <input type="text" id="testVUSD" value="11'983.9" readonly>
-                    <span class="hint">Anzahl VOW eingesetzt × gemäss Simulation</span>
-                </div>
-                <div class="input-group">
-                    <label for="receivedLP">Erhaltene LP</label>
-                    <input type="text" id="receivedLP" value="3236.78" onchange="formatInputFieldDecimal(this); calculateSwapMint();" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this); calculateSwapMint();" oninput="calculateSwapMint();">
+            <h3>Live Pool-Daten von PancakeSwap</h3>
+            <div style="background: #E3F2FD; padding: 20px; border-radius: 12px; border-left: 4px solid #1261A0; margin-bottom: 30px;">
+                <div id="poolInfo" style="color: #0B4A7D;">
+                    <p style="margin: 0;">Lade Pool-Daten von der Blockchain...</p>
                 </div>
             </div>
 
             <div id="swapMintResults" class="results show">
-                <h3>Ergebnisse (automatisch gerechnet)</h3>
+                <h3>Ergebnisse</h3>
                 <div class="result-grid">
                     <div class="result-item" style="grid-column: 1 / -1;">
                         <div class="label">Total benötigte VOW</div>
@@ -368,29 +335,120 @@
     </div>
 
     <script>
-        function calculateSwapMint() {
-            // Get input values and remove formatting
-            const slippage = parseFloat(document.getElementById('slippage').value) / 100; // Convert from % to decimal
-            const burningRate = parseFloat(document.getElementById('burningRate').value) / 100; // Convert from % to decimal
-            const vowRate = parseFloat(document.getElementById('vowRate').value.replace(/'/g, '')); // Remove formatting
-            const targetLP = parseFloat(document.getElementById('targetLP').value.replace(/'/g, '')); // Remove formatting
-            const testVOW = parseFloat(document.getElementById('testVOW').value.replace(/'/g, '')); // Remove formatting
-            const receivedLP = parseFloat(document.getElementById('receivedLP').value.replace(/'/g, '')); // Remove formatting
-            
-            // Berechne testVUSD automatisch: Anzahl VOW eingesetzt × gemäss Simulation
-            const testVUSD = testVOW * vowRate;
-            document.getElementById('testVUSD').value = formatNumber(testVUSD);
+        // Blockchain Configuration
+        const RPC = "https://bsc-dataseed.binance.org/";
+        const provider = new ethers.JsonRpcProvider(RPC);
 
-            // Calculate VOW and vUSD per LP (based on test creation)
-            const vowPerLP = (testVOW / receivedLP) * targetLP;
-            const vusdPerLP = (testVUSD / receivedLP) * targetLP;
+        // LP Pool Contract
+        const LP_POOL = "0x72dCf845AE36401e82e681B0E063d0703bAC0Bba";
+
+        // Token Contracts
+        const VUSD = "0xc0D8DaA6516BaB4eFCe440860987E735BaB44160";
+        const VOW = "0xF585B5b4f22816BAf7629AEA55B701662630397b";
+
+        const LP_ABI = [
+            "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
+            "function token0() view returns (address)",
+            "function token1() view returns (address)",
+            "function totalSupply() view returns (uint256)"
+        ];
+
+        let poolData = null;
+
+        async function loadPoolData() {
+            try {
+                const lpContract = new ethers.Contract(LP_POOL, LP_ABI, provider);
+                
+                const [token0, token1, reserves, totalSupply] = await Promise.all([
+                    lpContract.token0(),
+                    lpContract.token1(),
+                    lpContract.getReserves(),
+                    lpContract.totalSupply()
+                ]);
+
+                const reserve0 = reserves[0];
+                const reserve1 = reserves[1];
+                
+                // Determine which token is which
+                const isVUSDToken0 = token0.toLowerCase() === VUSD.toLowerCase();
+                
+                poolData = {
+                    token0: token0.toLowerCase(),
+                    token1: token1.toLowerCase(),
+                    reserve0: reserve0,
+                    reserve1: reserve1,
+                    totalSupply: totalSupply,
+                    vusdReserve: isVUSDToken0 ? reserve0 : reserve1,
+                    vowReserve: isVUSDToken0 ? reserve1 : reserve0
+                };
+
+                // Display pool info
+                const vusdReserveFormatted = Number(ethers.formatUnits(poolData.vusdReserve, 18)).toLocaleString('de-CH', {maximumFractionDigits: 2});
+                const vowReserveFormatted = Number(ethers.formatUnits(poolData.vowReserve, 18)).toLocaleString('de-CH', {maximumFractionDigits: 2});
+                const totalSupplyFormatted = Number(ethers.formatUnits(poolData.totalSupply, 18)).toLocaleString('de-CH', {maximumFractionDigits: 2});
+                
+                // Calculate current ratio
+                const vowPerVusd = Number(ethers.formatUnits(poolData.vowReserve, 18)) / Number(ethers.formatUnits(poolData.vusdReserve, 18));
+                const vusdPerVow = Number(ethers.formatUnits(poolData.vusdReserve, 18)) / Number(ethers.formatUnits(poolData.vowReserve, 18));
+
+                document.getElementById("poolInfo").innerHTML = `
+                    <p style="margin: 0 0 10px 0; font-weight: 600;">VUSD/VOW Pool auf PancakeSwap V2</p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                        <div><strong>VUSD im Pool:</strong> ${vusdReserveFormatted}</div>
+                        <div><strong>VOW im Pool:</strong> ${vowReserveFormatted}</div>
+                    </div>
+                    <div style="margin-bottom: 10px;"><strong>Total LP Supply:</strong> ${totalSupplyFormatted}</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; padding-top: 10px; border-top: 1px solid #90CAF9;">
+                        <div><strong>1 VOW =</strong> ${vusdPerVow.toFixed(4)} vUSD</div>
+                        <div><strong>1 vUSD =</strong> ${vowPerVusd.toFixed(4)} VOW</div>
+                    </div>
+                    <div style="font-size: 0.85em; color: #666; margin-top: 10px;">Pool: ${LP_POOL}</div>
+                `;
+
+                // Calculate after loading pool data
+                calculateSwapMint();
+
+            } catch (err) {
+                console.error("Fehler beim Laden der Pool-Daten:", err);
+                document.getElementById("poolInfo").innerHTML = `
+                    <div style="color: #d32f2f;">Fehler beim Laden der Pool-Daten: ${err.message}</div>
+                `;
+            }
+        }
+
+        function calculateSwapMint() {
+            if (!poolData) {
+                // Pool data not loaded yet
+                return;
+            }
+
+            // Get input values
+            const slippage = parseFloat(document.getElementById('slippage').value) / 100;
+            const burningRate = parseFloat(document.getElementById('burningRate').value) / 100;
+            const targetLP = parseFloat(document.getElementById('targetLP').value.replace(/'/g, ''));
+
+            // Convert input to Wei (18 decimals)
+            const lpAmountWei = ethers.parseUnits(targetLP.toString(), 18);
+
+            // Calculate required tokens using the formula:
+            // tokenAmount = (lpAmount * tokenReserve) / totalSupply
+            const vusdNeededWei = (lpAmountWei * poolData.vusdReserve) / poolData.totalSupply;
+            const vowNeededWei = (lpAmountWei * poolData.vowReserve) / poolData.totalSupply;
+
+            // Format for display
+            const vusdPerLP = Number(ethers.formatUnits(vusdNeededWei, 18));
+            const vowPerLP = Number(ethers.formatUnits(vowNeededWei, 18));
 
             // Calculate VOW needed to buy vUSD
             // vUSD needed, considering burning rate
             const vusdNeeded = vusdPerLP * (1 + burningRate);
-            const vowForVUSD = vusdNeeded / vowRate * (1 + slippage);
+            
+            // Calculate current VOW/vUSD ratio from pool
+            const vowPerVusd = Number(ethers.formatUnits(poolData.vowReserve, 18)) / Number(ethers.formatUnits(poolData.vusdReserve, 18));
+            
+            const vowForVUSD = vusdNeeded * vowPerVusd * (1 + slippage);
 
-            // Total VOW needed (sum of vowPerLP and vowForVUSD)
+            // Total VOW needed
             const totalVOW = vowPerLP + vowForVUSD;
 
             // Display results
@@ -420,27 +478,14 @@
             }
         }
 
-        function formatInputFieldDecimal(input) {
-            // Format input field with thousand separators (for decimal numbers)
-            const value = input.value.replace(/'/g, ''); // Remove existing formatting
-            if (value && !isNaN(value)) {
-                const num = parseFloat(value);
-                // Determine decimal places from original value
-                const decimalPlaces = value.includes('.') ? value.split('.')[1].length : 0;
-                const parts = num.toFixed(decimalPlaces).split('.');
-                const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-                input.value = decimalPlaces > 0 ? integerPart + '.' + parts[1] : integerPart;
-            }
-        }
-
         function removeFormatting(input) {
             // Remove formatting when focusing on input
             input.value = input.value.replace(/'/g, '');
         }
 
-        // Initialize with default calculation on page load
+        // Load pool data on page load
         window.onload = function() {
-            calculateSwapMint();
+            loadPoolData();
         };
     </script>
 </body>
