@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rebound PCLP(old): Berechnung zur Wieder-Erstellung von LP's - Let's go free</title>
+    <title>Swap&Mint: Berechnung zur Wieder-Erstellung von LP's - Let's go free</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -80,12 +80,6 @@
         .input-group input:focus {
             outline: none;
             border-color: #1261A0;
-        }
-        .input-group input:read-only {
-            background: #f5f5f5;
-            cursor: not-allowed;
-            font-weight: 700;
-            color: #1261A0;
         }
         .input-group .hint {
             display: block;
@@ -239,7 +233,7 @@
 <body>
     <div class="container">
         <div class="hero">
-            <h1>Rebound PCLP(old): Berechnung zur Wieder-Erstellung von LP's</h1>
+            <h1>Swap&Mint: Berechnung zur Wieder-Erstellung von LP's</h1>
             <p>Berechne die benötigten VOW für die LP-Erstellung</p>
             <p>Annahme: die alten vUSD wurden damals in VOW getauscht</p>
         </div>
@@ -252,7 +246,7 @@
                     <strong style="color: #0B4A7D;">Aufzeichnung Roundtable vom 18.12.2025</strong>
                 </p>
                 <p style="margin-bottom: 10px; font-size: 1.05em; line-height: 1.8;">
-                    In diesem Roundtable wurde das Prinzip und Chancen von Rebound PCLP(old) ausführlich erklärt und präsentiert. Hier geht's zur Aufzeichnung.
+                    In diesem Roundtable wurde das Prinzip und Chancen von Swap&Mint ausführlich erklärt und präsentiert. Hier geht's zur Aufzeichnung.
                     <a href="https://youtu.be/PoOLQMnYmu8?si=zpoJkdmYB1DkJbJE&t=129" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;">
                         <span style="font-size: 1.2em;">▶</span>hier zum Video
                     </a>
@@ -267,7 +261,7 @@
             <h3>Ursprüngliche Anzahl LP</h3>
             <div style="background: #E3F2FD; padding: 25px; border-radius: 12px; border-left: 4px solid #1261A0; margin-bottom: 30px;">
                 <p style="margin-bottom: 10px; font-size: 1.05em; line-height: 1.8; color: #0B4A7D;">
-                    Öffne untenstehenden Link in deiner Wallet, um deine ursprüngliche Anzahl LP's zu sehen. Du musst dieselbe Anzahl LP auf deinem Wallet haben, damit Rebound PCLP(old) funktioniert. Empfehlung: runde auf den nächsten ganzen LP auf.
+                    Öffne untenstehenden Link in deiner Wallet, um deine ursprüngliche Anzahl LP's zu sehen. Du musst dieselbe Anzahl LP auf deinem Wallet haben, damit Swap&Mint funktioniert. Empfehlung: runde auf den nächsten ganzen LP auf.
                 </p>
                 <p style="margin-bottom: 0; font-size: 1.05em;">
                     <a href="https://www.tlnprotocol.com/app/rewards" target="_blank" rel="noopener noreferrer" style="color: #2776EA; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;">
@@ -280,12 +274,12 @@
             <div class="input-grid">
                 <div class="input-group">
                     <label for="slippage">Slippage Tolerance (%)</label>
-                    <input type="number" id="slippage" value="1.5" step="0.1" oninput="calculateSwapMint();">
+                    <input type="number" id="slippage" value="1.5" step="0.1">
                     <span class="hint">Standardwert: 1.5%</span>
                 </div>
                 <div class="input-group">
                     <label for="burningRate">vUSD Burning-Rate (%)</label>
-                    <input type="number" id="burningRate" value="1.6" step="0.1" oninput="calculateSwapMint();">
+                    <input type="number" id="burningRate" value="1.6" step="0.1">
                     <span class="hint">Standardwert: 1.6%</span>
                 </div>
             </div>
@@ -293,7 +287,7 @@
             <div class="input-grid">
                 <div class="input-group">
                     <label for="targetLP">Ursprüngliche Anzahl LP</label>
-                    <input type="text" id="targetLP" value="100'000" onchange="formatInputField(this); calculateSwapMint();" onfocus="removeFormatting(this)" onblur="formatInputField(this); calculateSwapMint();" oninput="calculateSwapMint();">
+                    <input type="text" id="targetLP" value="100'000" onchange="formatInputField(this)" onfocus="removeFormatting(this)" onblur="formatInputField(this)">
                     <span class="hint">Gewünschte LP-Menge</span>
                 </div>
             </div>
@@ -307,45 +301,37 @@
                     </a>
                 </p>
             </div>
-            
-            <!-- Gelbes Info-Feld -->
-            <div style="background: #fff3cd; padding: 20px; border-radius: 10px; border-left: 4px solid #ffc107; margin-bottom: 20px;">
-                <p style="margin: 0; color: #856404; font-size: 1em; line-height: 1.7;">
-                    <strong>ℹ️ Info:</strong> Um in PancakeSwap eine Simulation erfassen zu können, sind sowohl VOW wie auch vUSD notwendig. Tausche dafür 1000 VOW in vUSD, um diese Simulation erfassen zu können. Übernehme die Werte aus der Simulation in diese Berechnung, um zu berechnen, wieviel VOW du insgesamt benötigst, um die ursprüngliche Anzahl LP wieder herzustellen.
-                </p>
-            </div>
-            
-            <div style="margin: 20px 0;">
-                <img src="bilder/SimulationLP.jpeg" alt="Simulation LP-Erstellung" style="width: 100%; max-width: 600px; height: auto; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.15); display: block; margin: 0 auto;">
+            <div style="display: flex; gap: 25px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
+                <img src="bilder/SimulationLP.jpeg" alt="Simulation LP-Erstellung" style="width: 100%; max-width: 350px; height: auto; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.15); flex-shrink: 0;">
+                <div style="background: #E3F2FD; padding: 20px; border-radius: 10px; border-left: 4px solid #1261A0; flex: 1; min-width: 300px;">
+                    <p style="margin: 0; line-height: 1.6; color: #0B4A7D;">Um in PancakeSwap eine Simulation erfassen zu können, sind sowohl VOW wie auch vUSD notwendig. Tausche dafür 1000 VOW in vUSD, um diese Simulation erfassen zu können. Übernehme die Werte aus der Simulation in diese Berechnung, um zu berechnen, wieviel VOW du insgesamt benötigst, um die ursprüngliche Anzahl LP wieder herzustellen.</p>
+                </div>
             </div>
             <div class="input-grid">
                 <div class="input-group">
                     <label for="vowRate">gemäss Simulation: 1 VOW = x vUSD</label>
-                    <input type="text" id="vowRate" value="12.6452" onchange="formatInputFieldDecimal(this); calculateSwapMint();" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this); calculateSwapMint();" oninput="calculateSwapMint();">
+                    <input type="text" id="vowRate" value="12.6452" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
                     <span class="hint">Aktueller Wechselkurs</span>
                 </div>
                 <div class="input-group">
                     <label for="testVOW">Anzahl VOW eingesetzt</label>
-                    <input type="text" id="testVOW" value="900" onchange="formatInputFieldDecimal(this); calculateSwapMint();" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this); calculateSwapMint();" oninput="calculateSwapMint();">
+                    <input type="text" id="testVOW" value="900" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
                 </div>
                 <div class="input-group">
                     <label for="testVUSD">Anzahl vUSD berechnet</label>
-                    <input type="text" id="testVUSD" value="11'381.1" readonly>
-                    <span class="hint">Anzahl VOW eingesetzt × gemäss Simulation</span>
+                    <input type="text" id="testVUSD" value="11'381.1" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
                 </div>
                 <div class="input-group">
                     <label for="receivedLP">Erhaltene LP</label>
-                    <input type="text" id="receivedLP" value="2'976.8" onchange="formatInputFieldDecimal(this); calculateSwapMint();" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this); calculateSwapMint();" oninput="calculateSwapMint();">
+                    <input type="text" id="receivedLP" value="2'976.8" onchange="formatInputFieldDecimal(this)" onfocus="removeFormatting(this)" onblur="formatInputFieldDecimal(this)">
                 </div>
             </div>
 
-            <div id="swapMintResults" class="results show">
-                <h3>Ergebnisse (automatisch gerechnet)</h3>
+            <button class="calculate-button" onclick="calculateSwapMint()">Berechnen</button>
+
+            <div id="swapMintResults" class="results">
+                <h3>Ergebnisse</h3>
                 <div class="result-grid">
-                    <div class="result-item" style="grid-column: 1 / -1;">
-                        <div class="label">Total benötigte VOW</div>
-                        <div class="value large" id="totalVOW">-</div>
-                    </div>
                     <div class="result-item">
                         <div class="label">Benötigte VOW für LP's</div>
                         <div class="value" id="vowPerLP">-</div>
@@ -357,6 +343,10 @@
                     <div class="result-item">
                         <div class="label">Benötigte VOW für Kauf von vUSD</div>
                         <div class="value" id="vowForVUSD">-</div>
+                    </div>
+                    <div class="result-item" style="grid-column: 1 / -1;">
+                        <div class="label">Total benötigte VOW</div>
+                        <div class="value large" id="totalVOW">-</div>
                     </div>
                 </div>
             </div>
@@ -375,11 +365,8 @@
             const vowRate = parseFloat(document.getElementById('vowRate').value.replace(/'/g, '')); // Remove formatting
             const targetLP = parseFloat(document.getElementById('targetLP').value.replace(/'/g, '')); // Remove formatting
             const testVOW = parseFloat(document.getElementById('testVOW').value.replace(/'/g, '')); // Remove formatting
+            const testVUSD = parseFloat(document.getElementById('testVUSD').value.replace(/'/g, '')); // Remove formatting
             const receivedLP = parseFloat(document.getElementById('receivedLP').value.replace(/'/g, '')); // Remove formatting
-            
-            // Berechne testVUSD automatisch: Anzahl VOW eingesetzt × gemäss Simulation
-            const testVUSD = testVOW * vowRate;
-            document.getElementById('testVUSD').value = formatNumber(testVUSD);
 
             // Calculate VOW and vUSD per LP (based on test creation)
             const vowPerLP = (testVOW / receivedLP) * targetLP;
