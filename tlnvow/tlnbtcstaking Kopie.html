@@ -215,7 +215,7 @@
                     <span class="unit">$</span>
                 </div>
                 <div style="text-align: center; margin-top: 15px;">
-                    <button onclick="loadPrices(); loadLPPoolData();" style="background: #2776EA; color: white; border: none; padding: 12px 30px; border-radius: 8px; font-weight: 600; font-size: 1em; cursor: pointer; transition: all 0.3s;">
+                    <button onclick="loadPrices()" style="background: #2776EA; color: white; border: none; padding: 12px 30px; border-radius: 8px; font-weight: 600; font-size: 1em; cursor: pointer; transition: all 0.3s;">
                         🔄 Kurse neu laden
                     </button>
                 </div>
@@ -228,47 +228,15 @@
                     <input type="text" id="stakingValue" value="1'000" onfocus="removeFormatting(this)" onblur="formatAndCalculate(this, 0)" oninput="calculate()">
                     <span class="unit">$</span>
                 </div>
-            </div>
-
-            <!-- LP Calculator Informationen -->
-            <div class="result-box" id="lpCalculatorResults" style="display: none;">
-                <h3 style="margin-bottom: 15px;">Du brauchst für deine LP's:</h3>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                    <div style="background: white; padding: 10px; border-radius: 6px;">
-                        <div style="color: #1261A0; font-weight: 600; font-size: 0.9em; margin-bottom: 5px;">VOW</div>
-                        <div style="font-size: 1.3em; font-weight: 700; color: #1261A0;" id="vowNeeded">-</div>
-                        <div style="font-size: 0.8rem; color: #666; margin-top: 2px;" id="vowUsdValue">-</div>
-                    </div>
-
-                    <div style="background: white; padding: 10px; border-radius: 6px;">
-                        <div style="color: #1261A0; font-weight: 600; font-size: 0.9em; margin-bottom: 5px;">BTCB</div>
-                        <div style="font-size: 1.3em; font-weight: 700; color: #1261A0;" id="btcNeeded">-</div>
-                        <div style="font-size: 0.8rem; color: #666; margin-top: 2px;" id="btcUsdValue">-</div>
-                    </div>
-                </div>
-
-                <div style="background: #FFF9C4; padding: 10px; border-radius: 6px; border: 2px solid #FBC02D; text-align: center;">
-                    <div style="color: #1261A0; font-weight: 600; font-size: 0.9em; margin-bottom: 5px;">Du erhältst</div>
-                    <div style="font-size: 1.5em; font-weight: 700; color: #E65100;" id="lpTokensReceived">-</div>
-                    <div style="font-size: 0.8rem; color: #666; margin-top: 2px;">LP-Token</div>
-                </div>
-            </div>
-
-            <div class="result-box" id="poolInfoBox" style="display: none;">
-                <h3>Pool & Preis Informationen</h3>
-                <div id="poolInfoDisplay" style="text-align: left; font-size: 0.9em; color: #666;">
-                    Lade Daten von der Blockchain...
-                </div>
-            </div>
-
-            <h2>🎯 Variante wählen</h2>
-            <div class="input-group">
                 <div class="input-row">
                     <label>Rewards (Staking-Wert × 1.5):</label>
                     <input type="text" id="rewardsInput" readonly style="cursor: not-allowed; background: #E3F2FD; font-weight: bold; color: #1261A0;">
                     <span class="unit">TLN Gold</span>
                 </div>
+            </div>
+
+            <h2>🎯 Variante wählen</h2>
+            <div class="input-group">
                 <div class="input-row">
                     <label>Staking-Variante:</label>
                     <select id="variant" onchange="calculate()" style="padding: 12px; border: 2px solid #BBDEFB; border-radius: 8px; font-size: 1.1em; font-weight: 600;">
@@ -626,160 +594,6 @@
             }
         }
 
-        // LP Calculator Global Variables
-        let lpPoolData = null;
-
-        // Load LP Pool Data from blockchain
-        async function loadLPPoolData() {
-            try {
-                const RPC = "https://bsc-dataseed.binance.org/";
-                const provider = new ethers.JsonRpcProvider(RPC);
-
-                // Contracts
-                const LP_POOL = "0x6B27bB584F44f55E865432dCeb9eBBE9A17fd4A8";
-                const VOW = "0xF585B5b4f22816BAf7629AEA55B701662630397b";
-                const BTCB = "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c";
-                const POOL_VOW_USDT = "0xc6585bc17b53792f281a9739579dd60535c1f9fb";
-
-                const PAIR_ABI = [
-                    "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
-                    "function token0() view returns (address)",
-                    "function token1() view returns (address)",
-                    "function totalSupply() view returns (uint256)"
-                ];
-
-                async function getPriceFromPool(poolAddress, baseToken) {
-                    const pair = new ethers.Contract(poolAddress, PAIR_ABI, provider);
-
-                    const [token0, token1, reserves] = await Promise.all([
-                        pair.token0(),
-                        pair.token1(),
-                        pair.getReserves()
-                    ]);
-
-                    const r0 = Number(ethers.formatUnits(reserves[0], 18));
-                    const r1 = Number(ethers.formatUnits(reserves[1], 18));
-
-                    if (token0.toLowerCase() === baseToken.toLowerCase()) return r1 / r0;
-                    if (token1.toLowerCase() === baseToken.toLowerCase()) return r0 / r1;
-
-                    throw new Error("Token nicht im Pool");
-                }
-
-                const lpContract = new ethers.Contract(LP_POOL, PAIR_ABI, provider);
-                
-                const [token0, token1, reserves, totalSupply] = await Promise.all([
-                    lpContract.token0(),
-                    lpContract.token1(),
-                    lpContract.getReserves(),
-                    lpContract.totalSupply()
-                ]);
-
-                // Get VOW price in USD
-                const vowPriceUSD = await getPriceFromPool(POOL_VOW_USDT, VOW);
-
-                const reserve0 = reserves[0];
-                const reserve1 = reserves[1];
-                
-                const isVOWToken0 = token0.toLowerCase() === VOW.toLowerCase();
-                
-                const vowReserve = isVOWToken0 ? reserve0 : reserve1;
-                const btcReserve = isVOWToken0 ? reserve1 : reserve0;
-
-                const vowReserveNum = Number(ethers.formatUnits(vowReserve, 18));
-                const btcReserveNum = Number(ethers.formatUnits(btcReserve, 18));
-                
-                const btcPriceUSD = (vowReserveNum * vowPriceUSD) / btcReserveNum;
-
-                const vowValueUSD = vowReserveNum * vowPriceUSD;
-                const btcValueUSD = btcReserveNum * btcPriceUSD;
-                const totalPoolValueUSD = vowValueUSD + btcValueUSD;
-
-                lpPoolData = {
-                    vowReserve: vowReserve,
-                    btcReserve: btcReserve,
-                    totalSupply: totalSupply,
-                    vowPriceUSD: vowPriceUSD,
-                    btcPriceUSD: btcPriceUSD,
-                    totalPoolValueUSD: totalPoolValueUSD,
-                    vowReserveNum: vowReserveNum,
-                    btcReserveNum: btcReserveNum
-                };
-
-                // Display pool info
-                document.getElementById('poolInfoDisplay').innerHTML = `
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9em;">
-                        <div style="padding: 8px; background: white; border-radius: 6px;">
-                            <strong>VOW im Pool:</strong><br>
-                            ${vowReserveNum.toLocaleString('de-CH', {maximumFractionDigits: 2})}
-                        </div>
-                        <div style="padding: 8px; background: white; border-radius: 6px;">
-                            <strong>BTCB im Pool:</strong><br>
-                            ${btcReserveNum.toLocaleString('de-CH', {maximumFractionDigits: 6})}
-                        </div>
-                        <div style="padding: 8px; background: white; border-radius: 6px;">
-                            <strong>Total LP Supply:</strong><br>
-                            ${Number(ethers.formatUnits(totalSupply, 18)).toLocaleString('de-CH', {maximumFractionDigits: 2})}
-                        </div>
-                        <div style="padding: 8px; background: white; border-radius: 6px;">
-                            <strong>Total Pool Wert:</strong><br>
-                            $${totalPoolValueUSD.toLocaleString('de-CH', {maximumFractionDigits: 2})}
-                        </div>
-                        <div style="padding: 8px; background: white; border-radius: 6px;">
-                            <strong>VOW Preis:</strong><br>
-                            $${vowPriceUSD.toFixed(6)}
-                        </div>
-                        <div style="padding: 8px; background: white; border-radius: 6px;">
-                            <strong>BTCB Preis:</strong><br>
-                            $${btcPriceUSD.toLocaleString('de-CH', {maximumFractionDigits: 2})}
-                        </div>
-                    </div>
-                `;
-
-                document.getElementById('poolInfoBox').style.display = 'block';
-
-                // Calculate LP tokens after pool data is loaded
-                calculateLPTokens();
-
-            } catch (err) {
-                console.error("Fehler beim Laden der Pool-Daten:", err);
-                document.getElementById('poolInfoDisplay').innerHTML = `
-                    <div style="color: #d32f2f;">Fehler beim Laden der Pool-Daten: ${err.message}</div>
-                `;
-            }
-        }
-
-        // Calculate LP tokens needed
-        function calculateLPTokens() {
-            if (!lpPoolData) {
-                return;
-            }
-
-            const stakingValue = parseSwissNumber(document.getElementById('stakingValue').value);
-            
-            if (!stakingValue || stakingValue <= 0) {
-                document.getElementById('lpCalculatorResults').style.display = 'none';
-                return;
-            }
-
-            const usdPerToken = stakingValue / 2;
-
-            const vowNeeded = usdPerToken / lpPoolData.vowPriceUSD;
-            const btcNeeded = usdPerToken / lpPoolData.btcPriceUSD;
-
-            const lpTokensReceived = (stakingValue / lpPoolData.totalPoolValueUSD) * Number(ethers.formatUnits(lpPoolData.totalSupply, 18));
-
-            document.getElementById('vowNeeded').textContent = vowNeeded.toLocaleString('de-CH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('vowUsdValue').textContent = `≈ $${usdPerToken.toLocaleString('de-CH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            
-            document.getElementById('btcNeeded').textContent = btcNeeded.toLocaleString('de-CH', {minimumFractionDigits: 6, maximumFractionDigits: 8});
-            document.getElementById('btcUsdValue').textContent = `≈ $${usdPerToken.toLocaleString('de-CH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            
-            document.getElementById('lpTokensReceived').textContent = lpTokensReceived.toLocaleString('de-CH', {minimumFractionDigits: 2, maximumFractionDigits: 6});
-
-            document.getElementById('lpCalculatorResults').style.display = 'block';
-        }
-
         // Calculate all values
         function calculate() {
             // Get input values
@@ -792,9 +606,6 @@
             // Calculate and display rewards (for all variants)
             const rewards = stakingValue * 1.5;
             document.getElementById('rewardsInput').value = formatSwissNumber(rewards, 0);
-
-            // Calculate LP tokens needed
-            calculateLPTokens();
 
             // Show/hide variant 2 and 3 specific fields
             if (variant === 'variant2' || variant === 'variant3') {
@@ -1009,7 +820,6 @@
         // Load prices on page load
         window.addEventListener('DOMContentLoaded', () => {
             loadPrices();
-            loadLPPoolData();
         });
     </script>
 </body>
