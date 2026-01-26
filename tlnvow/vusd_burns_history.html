@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VUSD Burns Verlauf - Let's go free</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            line-height: 1.7; 
+            color: #333; 
+            background: linear-gradient(135deg, #1261A0 0%, #2776EA 50%, #58CCED 100%); 
+            min-height: 100vh; 
+            padding: 20px; 
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background: white; 
+            border-radius: 20px; 
+            overflow: hidden; 
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3); 
+        }
+        .hero { 
+            background: linear-gradient(135deg, #1261A0 0%, #2776EA 100%); 
+            color: white; 
+            padding: 40px 40px; 
+            text-align: center; 
+        }
+        .hero h1 { 
+            font-size: 2.5em; 
+            margin-bottom: 15px; 
+            line-height: 1.2; 
+        }
+        .hero p { 
+            font-size: 1.2em; 
+            opacity: 0.95; 
+        }
+        .section { 
+            padding: 40px; 
+        }
+        .section h2 { 
+            font-size: 2em; 
+            color: #1261A0; 
+            margin-bottom: 30px; 
+        }
+        .input-group {
+            background: #E3F2FD;
+            padding: 25px;
+            border-radius: 12px;
+            border-left: 4px solid #1261A0;
+            margin-bottom: 30px;
+        }
+        .input-group label {
+            display: block;
+            font-weight: 600;
+            color: #0B4A7D;
+            margin-bottom: 10px;
+            font-size: 1em;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #90CAF9;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+        .input-group input:focus {
+            outline: none;
+            border-color: #1261A0;
+        }
+        .input-group .hint {
+            display: block;
+            font-size: 0.9em;
+            color: #084387;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        .calculate-button {
+            background: #1261A0;
+            color: white;
+            padding: 18px 45px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            display: block;
+            margin: 0 auto 30px auto;
+        }
+        .calculate-button:hover {
+            background: #084387;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+        .calculate-button:disabled {
+            background: #90CAF9;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .loading-message {
+            text-align: center;
+            color: #1261A0;
+            font-size: 1.1em;
+            padding: 40px;
+        }
+        .error-message {
+            background: #ffebee;
+            color: #c62828;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 4px solid #c62828;
+            margin-bottom: 30px;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .summary-item {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+            border-left: 4px solid #1261A0;
+        }
+        .summary-item .label {
+            font-size: 0.95em;
+            color: #084387;
+            margin-bottom: 8px;
+        }
+        .summary-item .value {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: #1261A0;
+        }
+        .summary-item .sub {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 5px;
+        }
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            overflow-x: auto;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th {
+            background: #1261A0;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        th.number-col {
+            text-align: right;
+        }
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #E3F2FD;
+        }
+        td.number-col {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+        }
+        td.date-col {
+            color: #1261A0;
+            font-weight: 500;
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
+        tr:hover {
+            background: #E3F2FD;
+        }
+        .diff-positive {
+            color: #c62828;
+            font-weight: 600;
+        }
+        .diff-negative {
+            color: #2e7d32;
+            font-weight: 600;
+        }
+        .footer-link {
+            background: #E3F2FD;
+            padding: 20px;
+            text-align: center;
+        }
+        .footer-link a {
+            color: #1261A0;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+        .footer-link a:hover {
+            color: #084387;
+            text-decoration: underline;
+        }
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 1.8em; }
+            .hero p { font-size: 1em; }
+            .section { padding: 20px; }
+            .summary-item .value { font-size: 1.4em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hero">
+            <h1>🔥 VUSD Burns Verlauf</h1>
+            <p>Tägliche Übersicht der verbrannten VUSD (BSC Chain)</p>
+        </div>
+
+        <div class="section">
+            <div id="loading" class="loading-message" style="display: none;">
+                Lade Daten von Google Sheets...
+            </div>
+
+            <div id="error" class="error-message" style="display: none;"></div>
+
+            <div id="content" style="display: none;">
+                <h2>Zusammenfassung</h2>
+                <div class="summary-grid" id="summary"></div>
+
+                <h2>Verlauf</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Datum</th>
+                                <th class="number-col">vUSD verbrannt</th>
+                                <th class="number-col">Differenz</th>
+                                <th class="number-col">vUSD Kurs</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-link">
+            <a href="index.html">← Zur Hauptseite TLN Business DE 🇩🇪🇦🇹🇨🇭✌️</a>
+        </div>
+    </div>
+
+    <script>
+        // Parse Google Sheets URL and convert to CSV export URL
+        function getCSVUrl(url) {
+            try {
+                let sheetId;
+                
+                // Handle /e/2PACX format (published links)
+                if (url.includes('/e/2PACX')) {
+                    const match = url.match(/\/e\/(2PACX-[^\/\?]+)/);
+                    if (match) {
+                        sheetId = match[1];
+                    }
+                }
+                // Handle /d/ format (regular spreadsheet links)
+                else if (url.includes('/d/')) {
+                    sheetId = url.split('/d/')[1].split('/')[0];
+                } 
+                else if (url.includes('spreadsheets/d/')) {
+                    sheetId = url.split('spreadsheets/d/')[1].split('/')[0];
+                }
+                
+                if (!sheetId) {
+                    throw new Error('Konnte Sheet-ID nicht finden');
+                }
+                
+                // For published sheets (2PACX format), use the /e/ export URL
+                let csvUrl;
+                if (sheetId.startsWith('2PACX')) {
+                    csvUrl = `https://docs.google.com/spreadsheets/d/e/${sheetId}/pub?output=csv`;
+                } else {
+                    csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+                }
+                
+                // Use corsproxy.io which works better with Safari
+                return `https://corsproxy.io/?${encodeURIComponent(csvUrl)}`;
+            } catch (err) {
+                throw new Error('Konnte Sheet-ID nicht extrahieren. Stelle sicher, dass du eine gültige Google Sheets URL verwendest.');
+            }
+        }
+
+        // Parse CSV data - handle quoted values and commas in numbers
+        function parseCSV(text) {
+            const lines = text.trim().split('\n');
+            const headers = parseCSVLine(lines[0]);
+            
+            const data = [];
+            for (let i = 1; i < lines.length; i++) {
+                const values = parseCSVLine(lines[i]);
+                const row = {};
+                headers.forEach((header, index) => {
+                    row[header.trim()] = values[index]?.trim() || '';
+                });
+                data.push(row);
+            }
+            
+            return data;
+        }
+
+        // Parse a single CSV line (handles quoted values)
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current);
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current);
+            
+            return result;
+        }
+
+        // Clean and parse number (handles German and Swiss formats)
+        function parseNumber(value) {
+            if (!value) return 0;
+            
+            // Remove dollar sign, spaces, quotes
+            let cleaned = value.toString().replace(/[$\s"']/g, '');
+            
+            // Check if it's a large number with dots as thousand separators
+            // e.g., "32.287.330" or "1.234.567"
+            const hasMultipleDots = (cleaned.match(/\./g) || []).length > 1;
+            
+            if (hasMultipleDots) {
+                // Remove all dots (thousand separators) and replace comma with dot
+                cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+            } else {
+                // Only one dot - replace comma with dot for decimal
+                cleaned = cleaned.replace(',', '.');
+            }
+            
+            return parseFloat(cleaned) || 0;
+        }
+
+        // Format number (Swiss format with apostrophe)
+        function formatNumber(num) {
+            const parts = Math.round(num).toString().split('.');
+            const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+            return integerPart;
+        }
+
+        // Format date
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            
+            // Try to parse different date formats
+            let date;
+            
+            // Check if it's in DD.MM.YYYY HH:MM:SS format (German format from Google Sheets)
+            if (dateStr.match(/^\d{2}\.\d{2}\.\d{4}/)) {
+                const parts = dateStr.split(/[\s.:]+/);
+                // parts: [DD, MM, YYYY, HH, MM, SS]
+                const day = parseInt(parts[0]);
+                const month = parseInt(parts[1]) - 1; // Month is 0-indexed
+                const year = parseInt(parts[2]);
+                const hour = parseInt(parts[3]) || 0;
+                const minute = parseInt(parts[4]) || 0;
+                const second = parseInt(parts[5]) || 0;
+                
+                date = new Date(year, month, day, hour, minute, second);
+            } else {
+                // Try standard date parsing
+                date = new Date(dateStr);
+            }
+            
+            // Check if date is valid
+            if (isNaN(date.getTime())) {
+                return dateStr; // Return original string if can't parse
+            }
+            
+            return date.toLocaleDateString('de-CH', { 
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Load and display data
+        async function loadData() {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const content = document.getElementById('content');
+            
+            // Hardcoded Google Sheets URL
+            const url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS8UPZa3b0V9gmc8jJIyky3vbMvv0-WxiKiKIcjAd41JGZnMVUeUTnD1pjsz_Uxk5On9h2pDuW9ireE/pubhtml';
+            
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            content.style.display = 'none';
+            
+            try {
+                const csvUrl = getCSVUrl(url);
+                
+                const response = await fetch(csvUrl);
+                if (!response.ok) {
+                    throw new Error('Sheet konnte nicht geladen werden. Ist es öffentlich freigegeben?');
+                }
+                
+                const csvText = await response.text();
+                console.log('CSV Data:', csvText); // Debug
+                
+                const data = parseCSV(csvText);
+                console.log('Parsed Data:', data); // Debug
+                
+                if (data.length === 0) {
+                    throw new Error('Keine Daten im Sheet gefunden');
+                }
+                
+                // Find the correct column names
+                const firstRow = data[0];
+                const colNames = Object.keys(firstRow);
+                console.log('Column Names:', colNames); // Debug
+                
+                // Try to find timestamp column
+                const timeCol = colNames.find(c => 
+                    c.toLowerCase().includes('zeit') || 
+                    c.toLowerCase().includes('timestamp') ||
+                    c.toLowerCase().includes('datum')
+                ) || colNames[0];
+                
+                // Try to find burned column
+                const burnedCol = colNames.find(c => 
+                    c.toLowerCase().includes('verbrannt') ||
+                    c.toLowerCase().includes('burn')
+                ) || colNames[1];
+                
+                // Try to find price column
+                const priceCol = colNames.find(c => 
+                    c.toLowerCase().includes('kurs') ||
+                    c.toLowerCase().includes('price')
+                ) || colNames[2];
+                
+                console.log('Using columns:', {timeCol, burnedCol, priceCol}); // Debug
+                
+                // Sort by date descending
+                data.sort((a, b) => new Date(b[timeCol]) - new Date(a[timeCol]));
+                
+                // Calculate summary
+                const latestBurned = parseNumber(data[0][burnedCol]);
+                const oldestBurned = parseNumber(data[data.length - 1][burnedCol]);
+                const totalIncrease = latestBurned - oldestBurned;
+                const avgDaily = totalIncrease / (data.length - 1);
+                const latestPrice = parseNumber(data[0][priceCol]);
+                
+                console.log('Calculations:', {latestBurned, oldestBurned, avgDaily, latestPrice}); // Debug
+                
+                // Display summary
+                const summary = document.getElementById('summary');
+                summary.innerHTML = `
+                    <div class="summary-item">
+                        <div class="label">Total verbrannt</div>
+                        <div class="value">${formatNumber(latestBurned)}</div>
+                        <div class="sub">vUSD (BSC)</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="label">Ø pro Tag</div>
+                        <div class="value">${formatNumber(avgDaily)}</div>
+                        <div class="sub">vUSD</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="label">Aktueller Kurs</div>
+                        <div class="value">$${latestPrice.toFixed(6)}</div>
+                        <div class="sub">pro vUSD</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="label">Einträge</div>
+                        <div class="value">${data.length}</div>
+                        <div class="sub">Tage</div>
+                    </div>
+                `;
+                
+                // Display table
+                const tableBody = document.getElementById('tableBody');
+                let html = '';
+                
+                for (let i = 0; i < data.length; i++) {
+                    const row = data[i];
+                    const burned = parseNumber(row[burnedCol]);
+                    const price = parseNumber(row[priceCol]);
+                    const date = formatDate(row[timeCol]);
+                    
+                    // Calculate difference to previous day
+                    let diffHtml = '-';
+                    
+                    if (i < data.length - 1) {
+                        const prevBurned = parseNumber(data[i + 1][burnedCol]);
+                        const diff = burned - prevBurned;
+                        
+                        if (diff > 0) {
+                            diffHtml = `<span class="diff-positive">+${formatNumber(diff)}</span>`;
+                        } else if (diff < 0) {
+                            diffHtml = `<span class="diff-negative">${formatNumber(diff)}</span>`;
+                        } else {
+                            diffHtml = '0';
+                        }
+                    }
+                    
+                    html += `
+                        <tr>
+                            <td class="date-col">${date}</td>
+                            <td class="number-col">${formatNumber(burned)}</td>
+                            <td class="number-col">${diffHtml}</td>
+                            <td class="number-col">$${price.toFixed(6)}</td>
+                        </tr>
+                    `;
+                }
+                
+                tableBody.innerHTML = html;
+                
+                loading.style.display = 'none';
+                content.style.display = 'block';
+                
+            } catch (err) {
+                console.error('Error:', err); // Debug
+                loading.style.display = 'none';
+                error.textContent = `Fehler: ${err.message}`;
+                error.style.display = 'block';
+            }
+        }
+
+        // Auto-load data on page load
+        window.addEventListener('load', () => {
+            loadData();
+        });
+    </script>
+</body>
+</html>
