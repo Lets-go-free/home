@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Übersicht vUSD Burning - Let's go free</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -201,6 +202,25 @@
         </div>
 
         <div class="section">
+            <h2>vUSD Total Supply</h2>
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <div class="label">BSC Chain</div>
+                    <div class="value" id="totalSupplyBSC">-</div>
+                    <div class="subtext">vUSD Total Supply</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">Ethereum Chain</div>
+                    <div class="value" id="totalSupplyETH">-</div>
+                    <div class="subtext">vUSD Total Supply</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">Total</div>
+                    <div class="value" id="totalSupplyAll">-</div>
+                    <div class="subtext">vUSD Total Supply</div>
+                </div>
+            </div>
+
             <h2>Gesamthaft verbrannte vUSD</h2>
             
             <div class="info-box">
@@ -278,6 +298,54 @@
         // Exakte Tabellenblatt-Namen (case-sensitive!)
         const BSC_SHEET_NAME = 'vUSD burning bsc';
         const ETH_SHEET_NAME = 'vUSD burning eth';
+
+        // Smart Contract Adressen
+        const BSC_VUSD_CONTRACT = '0xc0D8DaA6516BaB4eFCe440860987E735BaB44160';
+        const ETH_VUSD_CONTRACT = '0x0fc6C0465C9739d4a42dAca22eB3b2CB0Eb9937A';
+        
+        // RPC Endpoints
+        const BSC_RPC = 'https://bsc-dataseed.binance.org/';
+        const ETH_RPC = 'https://eth.llamarpc.com';
+
+        // ERC20 ABI (nur totalSupply Funktion)
+        const ERC20_ABI = [
+            'function totalSupply() view returns (uint256)'
+        ];
+
+        // Lade Total Supply von beiden Chains
+        async function loadTotalSupply() {
+            try {
+                // BSC Provider
+                const bscProvider = new ethers.JsonRpcProvider(BSC_RPC);
+                const bscContract = new ethers.Contract(BSC_VUSD_CONTRACT, ERC20_ABI, bscProvider);
+                
+                // ETH Provider
+                const ethProvider = new ethers.JsonRpcProvider(ETH_RPC);
+                const ethContract = new ethers.Contract(ETH_VUSD_CONTRACT, ERC20_ABI, ethProvider);
+                
+                // Parallel laden
+                const [bscSupply, ethSupply] = await Promise.all([
+                    bscContract.totalSupply(),
+                    ethContract.totalSupply()
+                ]);
+                
+                // Konvertiere von Wei zu Token (18 Decimals)
+                const bscTotal = Number(ethers.formatUnits(bscSupply, 18));
+                const ethTotal = Number(ethers.formatUnits(ethSupply, 18));
+                const total = bscTotal + ethTotal;
+                
+                // Zeige Werte
+                document.getElementById('totalSupplyBSC').textContent = formatNumberNoDecimals(bscTotal);
+                document.getElementById('totalSupplyETH').textContent = formatNumberNoDecimals(ethTotal);
+                document.getElementById('totalSupplyAll').textContent = formatNumberNoDecimals(total);
+                
+            } catch (error) {
+                console.error('Fehler beim Laden der Total Supply:', error);
+                document.getElementById('totalSupplyBSC').textContent = 'Fehler';
+                document.getElementById('totalSupplyETH').textContent = 'Fehler';
+                document.getElementById('totalSupplyAll').textContent = 'Fehler';
+            }
+        }
 
         // Schweizer Zahlenformat
         function formatNumber(num) {
@@ -536,6 +604,7 @@
         }
 
         // Lade beim Start
+        loadTotalSupply();
         loadData();
     </script>
 </body>
