@@ -112,12 +112,23 @@
         td {
             padding: 12px 15px;
             border-bottom: 1px solid #E3F2FD;
+            font-size: 0.9em;
         }
         tr:last-child td {
             border-bottom: none;
         }
         tr:hover {
             background: #E3F2FD;
+        }
+        th {
+            background: #1261A0;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            font-size: 0.95em;
         }
         .total-row {
             font-weight: 700;
@@ -185,7 +196,7 @@
                 </div>
             </div>
 
-            <h3>Tägliche Burns (ab 01.01.2026)</h3>
+            <h3>vUSD Burns der letzten 30 Tage</h3>
             <div class="table-container">
                 <div id="dailyLoading" class="loading">Lade Daten</div>
                 <table id="dailyTable" style="display:none;">
@@ -241,6 +252,24 @@
             return num.toLocaleString('de-CH', { 
                 minimumFractionDigits: 2, 
                 maximumFractionDigits: 2 
+            });
+        }
+        
+        // Schweizer Zahlenformat ohne Dezimalstellen
+        function formatNumberNoDecimals(num) {
+            if (num === null || num === undefined || isNaN(num)) return '-';
+            return num.toLocaleString('de-CH', { 
+                minimumFractionDigits: 0, 
+                maximumFractionDigits: 0 
+            });
+        }
+
+        // Schweizer Zahlenformat ohne Dezimalstellen
+        function formatNumberNoDecimals(num) {
+            if (num === null || num === undefined || isNaN(num)) return '-';
+            return num.toLocaleString('de-CH', { 
+                minimumFractionDigits: 0, 
+                maximumFractionDigits: 0 
             });
         }
 
@@ -323,9 +352,9 @@
                 const totalAll = totalBSC + totalETH;
 
                 // Zeige Summary
-                document.getElementById('totalBSC').textContent = formatNumber(totalBSC);
-                document.getElementById('totalETH').textContent = formatNumber(totalETH);
-                document.getElementById('totalAll').textContent = formatNumber(totalAll);
+                document.getElementById('totalBSC').textContent = formatNumberNoDecimals(totalBSC);
+                document.getElementById('totalETH').textContent = formatNumberNoDecimals(totalETH);
+                document.getElementById('totalAll').textContent = formatNumberNoDecimals(totalAll);
 
                 // Erstelle kombinierte Daten
                 const combinedData = {};
@@ -344,11 +373,14 @@
                     combinedData[item.date].eth = item.amount;
                 });
 
-                // Filtere ab 01.01.2026
-                const cutoffDate = new Date('2026-01-01');
+                // Filtere letzte 30 Tage
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+                
                 const filteredDates = Object.keys(combinedData).filter(dateStr => {
                     const date = parseDate(dateStr);
-                    return date >= cutoffDate;
+                    return date >= thirtyDaysAgo && date <= today;
                 }).sort((a, b) => parseDate(b) - parseDate(a)); // Absteigend
 
                 // Erstelle tägliche Tabelle
@@ -400,9 +432,9 @@
                 const row = tbody.insertRow();
                 row.innerHTML = `
                     <td>${formatDate(dateStr)}</td>
-                    <td class="right-align">${formatNumber(item.bsc)}</td>
-                    <td class="right-align">${formatNumber(item.eth)}</td>
-                    <td class="right-align"><strong>${formatNumber(total)}</strong></td>
+                    <td class="right-align">${formatNumberNoDecimals(item.bsc)}</td>
+                    <td class="right-align">${formatNumberNoDecimals(item.eth)}</td>
+                    <td class="right-align"><strong>${formatNumberNoDecimals(total)}</strong></td>
                 `;
             });
 
@@ -450,9 +482,9 @@
                 const row = tbody.insertRow();
                 row.innerHTML = `
                     <td>${monthName} ${year}</td>
-                    <td class="right-align">${formatNumber(item.bsc)}</td>
-                    <td class="right-align">${formatNumber(item.eth)}</td>
-                    <td class="right-align"><strong>${formatNumber(total)}</strong></td>
+                    <td class="right-align">${formatNumberNoDecimals(item.bsc)}</td>
+                    <td class="right-align">${formatNumberNoDecimals(item.eth)}</td>
+                    <td class="right-align"><strong>${formatNumberNoDecimals(total)}</strong></td>
                 `;
             });
 
@@ -461,9 +493,9 @@
             totalRow.className = 'total-row';
             totalRow.innerHTML = `
                 <td><strong>Total</strong></td>
-                <td class="right-align"><strong>${formatNumber(totalBSC)}</strong></td>
-                <td class="right-align"><strong>${formatNumber(totalETH)}</strong></td>
-                <td class="right-align"><strong>${formatNumber(totalBSC + totalETH)}</strong></td>
+                <td class="right-align"><strong>${formatNumberNoDecimals(totalBSC)}</strong></td>
+                <td class="right-align"><strong>${formatNumberNoDecimals(totalETH)}</strong></td>
+                <td class="right-align"><strong>${formatNumberNoDecimals(totalBSC + totalETH)}</strong></td>
             `;
 
             document.getElementById('monthlyLoading').style.display = 'none';
