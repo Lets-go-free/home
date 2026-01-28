@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Übersicht vUSD Burning - Let's go free</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            line-height: 1.7; 
+            color: #333; 
+            background: linear-gradient(135deg, #1261A0 0%, #2776EA 50%, #58CCED 100%); 
+            min-height: 100vh; 
+            padding: 20px; 
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background: white; 
+            border-radius: 20px; 
+            overflow: hidden; 
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3); 
+        }
+        .hero { 
+            background: linear-gradient(135deg, #1261A0 0%, #2776EA 100%); 
+            color: white; 
+            padding: 40px 40px; 
+            text-align: center; 
+        }
+        .hero h1 { 
+            font-size: 2.5em; 
+            margin-bottom: 15px; 
+            line-height: 1.2; 
+        }
+        .hero p { 
+            font-size: 1.2em; 
+            opacity: 0.95; 
+        }
+        .section { 
+            padding: 40px; 
+        }
+        .section h2 { 
+            font-size: 2em; 
+            color: #1261A0; 
+            margin-bottom: 30px; 
+        }
+        .section h3 { 
+            font-size: 1.5em; 
+            color: #1261A0; 
+            margin: 30px 0 20px 0; 
+        }
+        
+        /* Summary Cards */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+        .summary-card {
+            background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+            padding: 30px;
+            border-radius: 15px;
+            border-left: 5px solid #1261A0;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .summary-card .label {
+            font-size: 1.1em;
+            color: #084387;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        .summary-card .value {
+            font-size: 2.5em;
+            font-weight: 700;
+            color: #1261A0;
+            margin-bottom: 5px;
+        }
+        .summary-card .subtext {
+            font-size: 0.9em;
+            color: #555;
+            margin-top: 10px;
+        }
+        
+        /* Tables */
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-top: 30px;
+            overflow-x: auto;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th {
+            background: #1261A0;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        th.right-align, td.right-align {
+            text-align: right;
+        }
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #E3F2FD;
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
+        tr:hover {
+            background: #E3F2FD;
+        }
+        .total-row {
+            font-weight: 700;
+            background: #BBDEFB !important;
+            border-top: 2px solid #1261A0;
+        }
+        
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #084387;
+        }
+        .loading:after {
+            content: '...';
+            animation: dots 1.5s steps(3, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 30px;
+            background: #f5f5f5;
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2em; }
+            .section { padding: 25px; }
+            .summary-card .value { font-size: 2em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hero">
+            <h1>Übersicht vUSD Burning</h1>
+            <p>Verbrannte vUSD Tokens auf BSC und Ethereum</p>
+        </div>
+
+        <div class="section">
+            <h2>Gesamthaft verbrannte vUSD</h2>
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <div class="label">BSC Chain</div>
+                    <div class="value" id="totalBSC">-</div>
+                    <div class="subtext">vUSD verbrannt</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">Ethereum Chain</div>
+                    <div class="value" id="totalETH">-</div>
+                    <div class="subtext">vUSD verbrannt</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">Total</div>
+                    <div class="value" id="totalAll">-</div>
+                    <div class="subtext">vUSD verbrannt</div>
+                </div>
+            </div>
+
+            <h3>Tägliche Burns (ab 01.01.2026)</h3>
+            <div class="table-container">
+                <div id="dailyLoading" class="loading">Lade Daten</div>
+                <table id="dailyTable" style="display:none;">
+                    <thead>
+                        <tr>
+                            <th>Datum</th>
+                            <th class="right-align">BSC</th>
+                            <th class="right-align">Ethereum</th>
+                            <th class="right-align">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dailyTableBody">
+                    </tbody>
+                </table>
+            </div>
+
+            <h3>Monatliche Übersicht</h3>
+            <div class="table-container">
+                <div id="monthlyLoading" class="loading">Lade Daten</div>
+                <table id="monthlyTable" style="display:none;">
+                    <thead>
+                        <tr>
+                            <th>Monat</th>
+                            <th class="right-align">BSC</th>
+                            <th class="right-align">Ethereum</th>
+                            <th class="right-align">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="monthlyTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="footer">
+            Datenquelle: <a href="https://docs.google.com/spreadsheets/d/e/2PACX-1vQlANZVRcWpvNeSqnZMg8GEWryGZvnFz_ffltzfgMvISXhlcsIXTS_Ws2Bnafc4OVFnCG2VvOqU6riU/pubhtml" target="_blank">Google Sheets</a>
+            <br>Automatisch aktualisiert
+        </div>
+    </div>
+
+    <script>
+        // Google Sheets Published URLs
+        // Wichtig: Sheet muss auf "Im Web veröffentlichen" gesetzt sein!
+        const SHEET_ID = '1vQlANZVRcWpvNeSqnZMg8GEWryGZvnFz_ffltzfgMvISXhlcsIXTS_Ws2Bnafc4OVFnCG2VvOqU6riU';
+        
+        // GIDs müssen angepasst werden!
+        const BSC_SHEET_NAME = 'vUSD burning bsc'; // Exakter Tabellenblatt-Name
+        const ETH_SHEET_NAME = 'vUSD burning eth'; // Exakter Tabellenblatt-Name
+
+        // Schweizer Zahlenformat
+        function formatNumber(num) {
+            if (num === null || num === undefined || isNaN(num)) return '-';
+            return num.toLocaleString('de-CH', { 
+                minimumFractionDigits: 2, 
+                maximumFractionDigits: 2 
+            });
+        }
+
+        // Lade Daten via Google Sheets HTML Publish
+        async function loadSheetData(sheetName) {
+            // Verwende die HTML-Version und parse daraus
+            const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+            
+            try {
+                const response = await fetch(url);
+                const text = await response.text();
+                
+                // Google gibt JSON mit Prefix zurück: /*O_o*/\ngoogle.visualization.Query.setResponse(...)
+                const jsonString = text.substring(47).slice(0, -2); // Entferne Prefix und Suffix
+                const data = JSON.parse(jsonString);
+                
+                const rows = [];
+                
+                if (data.table && data.table.rows) {
+                    data.table.rows.forEach(row => {
+                        if (row.c && row.c.length >= 2) {
+                            const dateCell = row.c[0];
+                            const amountCell = row.c[1];
+                            const countCell = row.c[2];
+                            
+                            if (dateCell && dateCell.v && amountCell) {
+                                let dateStr;
+                                
+                                // Datum kann als Date-Object oder String kommen
+                                if (dateCell.f) {
+                                    dateStr = dateCell.f; // Formatierter Wert
+                                } else if (typeof dateCell.v === 'string') {
+                                    dateStr = dateCell.v;
+                                } else {
+                                    // Datum als "Date(2026,0,1)" Format
+                                    const match = dateCell.v.match(/Date\((\d+),(\d+),(\d+)\)/);
+                                    if (match) {
+                                        const year = match[1];
+                                        const month = String(parseInt(match[2]) + 1).padStart(2, '0');
+                                        const day = String(match[3]).padStart(2, '0');
+                                        dateStr = `${day}.${month}.${year}`;
+                                    }
+                                }
+                                
+                                if (dateStr) {
+                                    rows.push({
+                                        date: dateStr,
+                                        amount: parseFloat(amountCell.v) || 0,
+                                        count: countCell ? (parseInt(countCell.v) || 0) : 0
+                                    });
+                                }
+                            }
+                        }
+                    });
+                }
+                
+                return rows;
+                
+            } catch (error) {
+                console.error(`Fehler beim Laden von ${sheetName}:`, error);
+                throw error;
+            }
+        }
+
+        // Lade Daten
+        async function loadData() {
+            try {
+                // Lade BSC und ETH Daten parallel
+                const [bscData, ethData] = await Promise.all([
+                    loadSheetData(BSC_SHEET_NAME),
+                    loadSheetData(ETH_SHEET_NAME)
+                ]);
+
+                console.log('BSC Daten:', bscData.length, 'Zeilen');
+                console.log('ETH Daten:', ethData.length, 'Zeilen');
+
+                // Berechne Totals
+                const totalBSC = bscData.reduce((sum, item) => sum + item.amount, 0);
+                const totalETH = ethData.reduce((sum, item) => sum + item.amount, 0);
+                const totalAll = totalBSC + totalETH;
+
+                // Zeige Summary
+                document.getElementById('totalBSC').textContent = formatNumber(totalBSC);
+                document.getElementById('totalETH').textContent = formatNumber(totalETH);
+                document.getElementById('totalAll').textContent = formatNumber(totalAll);
+
+                // Erstelle kombinierte Daten
+                const combinedData = {};
+                
+                bscData.forEach(item => {
+                    if (!combinedData[item.date]) {
+                        combinedData[item.date] = { bsc: 0, eth: 0 };
+                    }
+                    combinedData[item.date].bsc = item.amount;
+                });
+                
+                ethData.forEach(item => {
+                    if (!combinedData[item.date]) {
+                        combinedData[item.date] = { bsc: 0, eth: 0 };
+                    }
+                    combinedData[item.date].eth = item.amount;
+                });
+
+                // Filtere ab 01.01.2026
+                const cutoffDate = new Date('2026-01-01');
+                const filteredDates = Object.keys(combinedData).filter(dateStr => {
+                    const date = parseDate(dateStr);
+                    return date >= cutoffDate;
+                }).sort((a, b) => parseDate(b) - parseDate(a)); // Absteigend
+
+                // Erstelle tägliche Tabelle
+                createDailyTable(filteredDates, combinedData);
+
+                // Erstelle monatliche Tabelle
+                createMonthlyTable(combinedData);
+
+            } catch (error) {
+                console.error('Fehler beim Laden der Daten:', error);
+                document.getElementById('dailyLoading').textContent = 'Fehler beim Laden der Daten. Stelle sicher dass das Sheet veröffentlicht ist!';
+                document.getElementById('monthlyLoading').textContent = 'Fehler beim Laden der Daten';
+            }
+        }
+
+        // Parse Datum (flexibel für verschiedene Formate)
+        function parseDate(dateStr) {
+            // Versuche verschiedene Formate
+            const parts = dateStr.split(/[.\-\/]/);
+            if (parts.length === 3) {
+                // dd.mm.yyyy oder dd-mm-yyyy
+                if (parts[0].length <= 2) {
+                    return new Date(parts[2], parts[1] - 1, parts[0]);
+                }
+                // yyyy-mm-dd
+                return new Date(parts[0], parts[1] - 1, parts[2]);
+            }
+            return new Date(dateStr);
+        }
+
+        // Formatiere Datum für Anzeige
+        function formatDate(dateStr) {
+            const date = parseDate(dateStr);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}.${month}.${year}`;
+        }
+
+        // Erstelle tägliche Tabelle
+        function createDailyTable(dates, data) {
+            const tbody = document.getElementById('dailyTableBody');
+            tbody.innerHTML = '';
+
+            dates.forEach(dateStr => {
+                const item = data[dateStr];
+                const total = item.bsc + item.eth;
+                
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${formatDate(dateStr)}</td>
+                    <td class="right-align">${formatNumber(item.bsc)}</td>
+                    <td class="right-align">${formatNumber(item.eth)}</td>
+                    <td class="right-align"><strong>${formatNumber(total)}</strong></td>
+                `;
+            });
+
+            document.getElementById('dailyLoading').style.display = 'none';
+            document.getElementById('dailyTable').style.display = 'table';
+        }
+
+        // Erstelle monatliche Tabelle
+        function createMonthlyTable(data) {
+            const monthlyData = {};
+            
+            // Gruppiere nach Monat
+            Object.keys(data).forEach(dateStr => {
+                const date = parseDate(dateStr);
+                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                
+                if (!monthlyData[monthKey]) {
+                    monthlyData[monthKey] = { bsc: 0, eth: 0 };
+                }
+                
+                monthlyData[monthKey].bsc += data[dateStr].bsc;
+                monthlyData[monthKey].eth += data[dateStr].eth;
+            });
+
+            // Sortiere absteigend
+            const sortedMonths = Object.keys(monthlyData).sort().reverse();
+
+            const tbody = document.getElementById('monthlyTableBody');
+            tbody.innerHTML = '';
+
+            let totalBSC = 0;
+            let totalETH = 0;
+
+            sortedMonths.forEach(monthKey => {
+                const item = monthlyData[monthKey];
+                const total = item.bsc + item.eth;
+                
+                totalBSC += item.bsc;
+                totalETH += item.eth;
+                
+                const [year, month] = monthKey.split('-');
+                const monthNames = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+                const monthName = monthNames[parseInt(month) - 1];
+                
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${monthName} ${year}</td>
+                    <td class="right-align">${formatNumber(item.bsc)}</td>
+                    <td class="right-align">${formatNumber(item.eth)}</td>
+                    <td class="right-align"><strong>${formatNumber(total)}</strong></td>
+                `;
+            });
+
+            // Total-Zeile
+            const totalRow = tbody.insertRow();
+            totalRow.className = 'total-row';
+            totalRow.innerHTML = `
+                <td><strong>Total</strong></td>
+                <td class="right-align"><strong>${formatNumber(totalBSC)}</strong></td>
+                <td class="right-align"><strong>${formatNumber(totalETH)}</strong></td>
+                <td class="right-align"><strong>${formatNumber(totalBSC + totalETH)}</strong></td>
+            `;
+
+            document.getElementById('monthlyLoading').style.display = 'none';
+            document.getElementById('monthlyTable').style.display = 'table';
+        }
+
+        // Lade beim Start
+        loadData();
+    </script>
+</body>
+</html>

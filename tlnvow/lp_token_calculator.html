@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>LP Token Calculator - VUSD/VOW</title>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  color: #e5e7eb;
+  text-align: center;
+  padding: 40px;
+}
+h1 {
+  margin-bottom: 30px;
+  color: #93c5fd;
+}
+.card {
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 25px;
+  margin: 20px auto;
+  max-width: 500px;
+  background: #020617;
+}
+.input-group {
+  margin: 20px 0;
+  text-align: left;
+}
+label {
+  display: block;
+  margin-bottom: 8px;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+input {
+  width: 100%;
+  padding: 12px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #e5e7eb;
+  font-size: 1.1rem;
+  box-sizing: border-box;
+}
+button {
+  background: #22c55e;
+  color: #020617;
+  border: none;
+  padding: 14px 30px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 20px;
+}
+button:hover {
+  background: #16a34a;
+}
+button:disabled {
+  background: #334155;
+  cursor: not-allowed;
+}
+.result {
+  margin-top: 30px;
+  padding: 20px;
+  background: #1e293b;
+  border-radius: 8px;
+  display: none;
+}
+.result.show {
+  display: block;
+}
+.token-amount {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: #22c55e;
+  margin: 10px 0;
+}
+.token-label {
+  color: #93c5fd;
+  font-size: 1rem;
+  margin-bottom: 5px;
+}
+.pool-info {
+  margin-top: 20px;
+  padding: 15px;
+  background: #1e293b;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  text-align: left;
+}
+.pool-info-title {
+  color: #93c5fd;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+.error {
+  color: #ef4444;
+  margin-top: 20px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>LP Token Calculator</h1>
+<h2 style="color: #94a3b8; font-size: 1.2rem; margin-top: -20px;">VUSD / VOW auf PancakeSwap V2</h2>
+
+<div class="card">
+  <div class="input-group">
+    <label for="lpAmount">Wieviele LP-Token möchtest du erstellen?</label>
+    <input 
+      type="number" 
+      id="lpAmount" 
+      placeholder="z.B. 10000" 
+      value="10000"
+      step="0.01"
+    />
+  </div>
+
+  <button id="calculateBtn" onclick="calculateTokens()">Berechnen</button>
+
+  <div id="result" class="result">
+    <div class="token-label">Du brauchst:</div>
+    
+    <div style="margin: 20px 0;">
+      <div class="token-label">VUSD</div>
+      <div id="vusdAmount" class="token-amount">-</div>
+    </div>
+
+    <div style="margin: 20px 0;">
+      <div class="token-label">VOW</div>
+      <div id="vowAmount" class="token-amount">-</div>
+    </div>
+  </div>
+
+  <div id="error" class="error"></div>
+</div>
+
+<div class="card">
+  <div class="pool-info-title">Pool Informationen</div>
+  <div id="poolInfo" class="pool-info">
+    Lade Daten...
+  </div>
+</div>
+
+<script>
+const RPC = "https://bsc-dataseed.binance.org/";
+const provider = new ethers.JsonRpcProvider(RPC);
+
+// LP Pool Contract
+const LP_POOL = "0x72dCf845AE36401e82e681B0E063d0703bAC0Bba";
+
+// Token Contracts
+const VUSD = "0xc0D8DaA6516BaB4eFCe440860987E735BaB44160";
+const VOW = "0xF585B5b4f22816BAf7629AEA55B701662630397b";
+
+const LP_ABI = [
+  "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
+  "function token0() view returns (address)",
+  "function token1() view returns (address)",
+  "function totalSupply() view returns (uint256)"
+];
+
+let poolData = null;
+
+async function loadPoolData() {
+  try {
+    const lpContract = new ethers.Contract(LP_POOL, LP_ABI, provider);
+    
+    const [token0, token1, reserves, totalSupply] = await Promise.all([
+      lpContract.token0(),
+      lpContract.token1(),
+      lpContract.getReserves(),
+      lpContract.totalSupply()
+    ]);
+
+    const reserve0 = reserves[0];
+    const reserve1 = reserves[1];
+    
+    // Determine which token is which
+    const isVUSDToken0 = token0.toLowerCase() === VUSD.toLowerCase();
+    
+    poolData = {
+      token0: token0.toLowerCase(),
+      token1: token1.toLowerCase(),
+      reserve0: reserve0,
+      reserve1: reserve1,
+      totalSupply: totalSupply,
+      vusdReserve: isVUSDToken0 ? reserve0 : reserve1,
+      vowReserve: isVUSDToken0 ? reserve1 : reserve0
+    };
+
+    // Display pool info
+    const vusdReserveFormatted = Number(ethers.formatUnits(poolData.vusdReserve, 18)).toLocaleString('de-CH', {maximumFractionDigits: 2});
+    const vowReserveFormatted = Number(ethers.formatUnits(poolData.vowReserve, 18)).toLocaleString('de-CH', {maximumFractionDigits: 2});
+    const totalSupplyFormatted = Number(ethers.formatUnits(poolData.totalSupply, 18)).toLocaleString('de-CH', {maximumFractionDigits: 2});
+
+    document.getElementById("poolInfo").innerHTML = `
+      <div><strong>VUSD im Pool:</strong> ${vusdReserveFormatted}</div>
+      <div><strong>VOW im Pool:</strong> ${vowReserveFormatted}</div>
+      <div><strong>Total LP Supply:</strong> ${totalSupplyFormatted}</div>
+      <div style="margin-top: 10px;"><strong>Pool Address:</strong><br/>${LP_POOL}</div>
+    `;
+
+  } catch (err) {
+    console.error("Fehler beim Laden der Pool-Daten:", err);
+    document.getElementById("poolInfo").innerHTML = `
+      <div style="color: #ef4444;">Fehler beim Laden der Pool-Daten: ${err.message}</div>
+    `;
+  }
+}
+
+async function calculateTokens() {
+  const errorDiv = document.getElementById("error");
+  const resultDiv = document.getElementById("result");
+  const calculateBtn = document.getElementById("calculateBtn");
+  
+  errorDiv.textContent = "";
+  resultDiv.classList.remove("show");
+
+  const lpAmountInput = document.getElementById("lpAmount").value;
+  
+  if (!lpAmountInput || parseFloat(lpAmountInput) <= 0) {
+    errorDiv.textContent = "Bitte gib eine gültige Anzahl LP-Token ein.";
+    return;
+  }
+
+  if (!poolData) {
+    errorDiv.textContent = "Pool-Daten werden noch geladen...";
+    return;
+  }
+
+  try {
+    calculateBtn.disabled = true;
+    calculateBtn.textContent = "Berechne...";
+
+    // Convert input to Wei (18 decimals)
+    const lpAmountWei = ethers.parseUnits(lpAmountInput, 18);
+
+    // Calculate required tokens using the formula:
+    // tokenAmount = (lpAmount * tokenReserve) / totalSupply
+    
+    const vusdNeededWei = (lpAmountWei * poolData.vusdReserve) / poolData.totalSupply;
+    const vowNeededWei = (lpAmountWei * poolData.vowReserve) / poolData.totalSupply;
+
+    // Format for display
+    const vusdNeeded = Number(ethers.formatUnits(vusdNeededWei, 18));
+    const vowNeeded = Number(ethers.formatUnits(vowNeededWei, 18));
+
+    document.getElementById("vusdAmount").textContent = 
+      vusdNeeded.toLocaleString('de-CH', {minimumFractionDigits: 2, maximumFractionDigits: 6});
+    
+    document.getElementById("vowAmount").textContent = 
+      vowNeeded.toLocaleString('de-CH', {minimumFractionDigits: 2, maximumFractionDigits: 6});
+
+    resultDiv.classList.add("show");
+
+  } catch (err) {
+    console.error("Berechnungsfehler:", err);
+    errorDiv.textContent = "Fehler bei der Berechnung: " + err.message;
+  } finally {
+    calculateBtn.disabled = false;
+    calculateBtn.textContent = "Berechnen";
+  }
+}
+
+// Load pool data on page load
+loadPoolData();
+
+// Allow Enter key to trigger calculation
+document.getElementById("lpAmount").addEventListener("keypress", (e) => {
+  if (e.key === "Enter") {
+    calculateTokens();
+  }
+});
+</script>
+
+</body>
+</html>

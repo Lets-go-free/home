@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>LP Calculator - VOW/BTC für USD-Betrag</title>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  color: #e5e7eb;
+  text-align: center;
+  padding: 40px;
+}
+h1 {
+  margin-bottom: 10px;
+  color: #93c5fd;
+}
+h2 {
+  color: #94a3b8;
+  font-size: 1.1rem;
+  margin-top: -5px;
+  font-weight: normal;
+}
+.card {
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 25px;
+  margin: 20px auto;
+  max-width: 500px;
+  background: #020617;
+}
+.input-group {
+  margin: 20px 0;
+  text-align: left;
+}
+label {
+  display: block;
+  margin-bottom: 8px;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+input {
+  width: 100%;
+  padding: 12px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #e5e7eb;
+  font-size: 1.1rem;
+  box-sizing: border-box;
+}
+button {
+  background: #22c55e;
+  color: #020617;
+  border: none;
+  padding: 14px 30px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 20px;
+}
+button:hover {
+  background: #16a34a;
+}
+button:disabled {
+  background: #334155;
+  cursor: not-allowed;
+}
+.result {
+  margin-top: 30px;
+  padding: 20px;
+  background: #1e293b;
+  border-radius: 8px;
+  display: none;
+}
+.result.show {
+  display: block;
+}
+.token-amount {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: #22c55e;
+  margin: 10px 0;
+}
+.token-label {
+  color: #93c5fd;
+  font-size: 1rem;
+  margin-bottom: 5px;
+}
+.pool-info {
+  margin-top: 20px;
+  padding: 15px;
+  background: #1e293b;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  text-align: left;
+}
+.info-row {
+  margin: 8px 0;
+}
+.error {
+  color: #ef4444;
+  margin-top: 20px;
+}
+.loading {
+  color: #fbbf24;
+}
+</style>
+</head>
+
+<body>
+
+<h1>LP Calculator für USD-Betrag</h1>
+<h2>VOW / BTC auf PancakeSwap V2</h2>
+
+<div class="card">
+  <div class="input-group">
+    <label for="usdAmount">Wieviel USD möchtest du in LP's investieren?</label>
+    <input 
+      type="number" 
+      id="usdAmount" 
+      placeholder="z.B. 1000" 
+      value="1000"
+      step="0.01"
+    />
+  </div>
+
+  <button id="calculateBtn" onclick="calculateTokens()">Berechnen</button>
+
+  <div id="result" class="result">
+    <div class="token-label">Du brauchst:</div>
+    
+    <div style="margin: 20px 0;">
+      <div class="token-label">VOW</div>
+      <div id="vowAmount" class="token-amount">-</div>
+      <div style="font-size: 0.9rem; color: #94a3b8;" id="vowUsdValue">-</div>
+    </div>
+
+    <div style="margin: 20px 0;">
+      <div class="token-label">BTCB</div>
+      <div id="btcAmount" class="token-amount">-</div>
+      <div style="font-size: 0.9rem; color: #94a3b8;" id="btcUsdValue">-</div>
+    </div>
+
+    <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #334155;">
+      <div class="token-label">Du erhältst</div>
+      <div id="lpTokens" class="token-amount" style="color: #fbbf24;">-</div>
+      <div style="font-size: 0.9rem; color: #94a3b8;">LP-Token</div>
+    </div>
+  </div>
+
+  <div id="error" class="error"></div>
+</div>
+
+<div class="card">
+  <div style="color: #93c5fd; font-weight: bold; margin-bottom: 15px;">Pool & Preis Informationen</div>
+  <div id="poolInfo" class="pool-info loading">
+    Lade Daten von der Blockchain...
+  </div>
+</div>
+
+<script>
+const RPC = "https://bsc-dataseed.binance.org/";
+const provider = new ethers.JsonRpcProvider(RPC);
+
+// Contracts
+const LP_POOL = "0x6B27bB584F44f55E865432dCeb9eBBE9A17fd4A8";
+const VOW = "0xF585B5b4f22816BAf7629AEA55B701662630397b";
+const BTCB = "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c";
+
+// VOW/USDT Pool für VOW-Preis
+const POOL_VOW_USDT = "0xc6585bc17b53792f281a9739579dd60535c1f9fb";
+
+const PAIR_ABI = [
+  "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
+  "function token0() view returns (address)",
+  "function token1() view returns (address)",
+  "function totalSupply() view returns (uint256)"
+];
+
+let poolData = null;
+
+async function getPriceFromPool(poolAddress, baseToken) {
+  const pair = new ethers.Contract(poolAddress, PAIR_ABI, provider);
+
+  const [token0, token1, reserves] = await Promise.all([
+    pair.token0(),
+    pair.token1(),
+    pair.getReserves()
+  ]);
+
+  const r0 = Number(ethers.formatUnits(reserves[0], 18));
+  const r1 = Number(ethers.formatUnits(reserves[1], 18));
+
+  if (token0.toLowerCase() === baseToken.toLowerCase()) return r1 / r0;
+  if (token1.toLowerCase() === baseToken.toLowerCase()) return r0 / r1;
+
+  throw new Error("Token nicht im Pool");
+}
+
+async function loadPoolData() {
+  try {
+    const lpContract = new ethers.Contract(LP_POOL, PAIR_ABI, provider);
+    
+    // Get pool data
+    const [token0, token1, reserves, totalSupply] = await Promise.all([
+      lpContract.token0(),
+      lpContract.token1(),
+      lpContract.getReserves(),
+      lpContract.totalSupply()
+    ]);
+
+    // Get VOW price in USD
+    const vowPriceUSD = await getPriceFromPool(POOL_VOW_USDT, VOW);
+
+    const reserve0 = reserves[0];
+    const reserve1 = reserves[1];
+    
+    // Determine which token is which
+    const isVOWToken0 = token0.toLowerCase() === VOW.toLowerCase();
+    
+    const vowReserve = isVOWToken0 ? reserve0 : reserve1;
+    const btcReserve = isVOWToken0 ? reserve1 : reserve0;
+
+    // Calculate BTC price from pool ratio
+    const vowReserveNum = Number(ethers.formatUnits(vowReserve, 18));
+    const btcReserveNum = Number(ethers.formatUnits(btcReserve, 18));
+    
+    // BTC price = (VOW reserve * VOW price) / BTC reserve
+    const btcPriceUSD = (vowReserveNum * vowPriceUSD) / btcReserveNum;
+
+    // Calculate total pool value
+    const vowValueUSD = vowReserveNum * vowPriceUSD;
+    const btcValueUSD = btcReserveNum * btcPriceUSD;
+    const totalPoolValueUSD = vowValueUSD + btcValueUSD;
+
+    poolData = {
+      vowReserve: vowReserve,
+      btcReserve: btcReserve,
+      totalSupply: totalSupply,
+      vowPriceUSD: vowPriceUSD,
+      btcPriceUSD: btcPriceUSD,
+      totalPoolValueUSD: totalPoolValueUSD
+    };
+
+    // Display pool info
+    document.getElementById("poolInfo").innerHTML = `
+      <div class="info-row"><strong>VOW im Pool:</strong> ${vowReserveNum.toLocaleString('de-CH', {maximumFractionDigits: 2})}</div>
+      <div class="info-row"><strong>BTCB im Pool:</strong> ${btcReserveNum.toLocaleString('de-CH', {maximumFractionDigits: 6})}</div>
+      <div class="info-row"><strong>Total LP Supply:</strong> ${Number(ethers.formatUnits(totalSupply, 18)).toLocaleString('de-CH', {maximumFractionDigits: 2})}</div>
+      <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #334155;">
+        <div class="info-row"><strong>VOW Preis:</strong> $${vowPriceUSD.toFixed(6)}</div>
+        <div class="info-row"><strong>BTCB Preis:</strong> $${btcPriceUSD.toLocaleString('de-CH', {maximumFractionDigits: 2})}</div>
+        <div class="info-row"><strong>Total Pool Wert:</strong> $${totalPoolValueUSD.toLocaleString('de-CH', {maximumFractionDigits: 2})}</div>
+      </div>
+    `;
+
+  } catch (err) {
+    console.error("Fehler beim Laden der Pool-Daten:", err);
+    document.getElementById("poolInfo").innerHTML = `
+      <div style="color: #ef4444;">Fehler beim Laden der Pool-Daten: ${err.message}</div>
+    `;
+  }
+}
+
+async function calculateTokens() {
+  const errorDiv = document.getElementById("error");
+  const resultDiv = document.getElementById("result");
+  const calculateBtn = document.getElementById("calculateBtn");
+  
+  errorDiv.textContent = "";
+  resultDiv.classList.remove("show");
+
+  const usdAmountInput = document.getElementById("usdAmount").value;
+  
+  if (!usdAmountInput || parseFloat(usdAmountInput) <= 0) {
+    errorDiv.textContent = "Bitte gib einen gültigen USD-Betrag ein.";
+    return;
+  }
+
+  if (!poolData) {
+    errorDiv.textContent = "Pool-Daten werden noch geladen...";
+    return;
+  }
+
+  try {
+    calculateBtn.disabled = true;
+    calculateBtn.textContent = "Berechne...";
+
+    const usdAmount = parseFloat(usdAmountInput);
+
+    // Split USD amount 50/50 between both tokens
+    const usdPerToken = usdAmount / 2;
+
+    // Calculate token amounts needed
+    const vowNeeded = usdPerToken / poolData.vowPriceUSD;
+    const btcNeeded = usdPerToken / poolData.btcPriceUSD;
+
+    // Calculate LP tokens received
+    // LP tokens = (investment value / total pool value) * total LP supply
+    const lpTokensReceived = (usdAmount / poolData.totalPoolValueUSD) * Number(ethers.formatUnits(poolData.totalSupply, 18));
+
+    // Display results
+    document.getElementById("vowAmount").textContent = 
+      vowNeeded.toLocaleString('de-CH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    
+    document.getElementById("vowUsdValue").textContent = 
+      `≈ $${usdPerToken.toLocaleString('de-CH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+    document.getElementById("btcAmount").textContent = 
+      btcNeeded.toLocaleString('de-CH', {minimumFractionDigits: 6, maximumFractionDigits: 8});
+    
+    document.getElementById("btcUsdValue").textContent = 
+      `≈ $${usdPerToken.toLocaleString('de-CH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+    document.getElementById("lpTokens").textContent = 
+      lpTokensReceived.toLocaleString('de-CH', {minimumFractionDigits: 2, maximumFractionDigits: 6});
+
+    resultDiv.classList.add("show");
+
+  } catch (err) {
+    console.error("Berechnungsfehler:", err);
+    errorDiv.textContent = "Fehler bei der Berechnung: " + err.message;
+  } finally {
+    calculateBtn.disabled = false;
+    calculateBtn.textContent = "Berechnen";
+  }
+}
+
+// Load pool data on page load
+loadPoolData();
+
+// Allow Enter key to trigger calculation
+document.getElementById("usdAmount").addEventListener("keypress", (e) => {
+  if (e.key === "Enter") {
+    calculateTokens();
+  }
+});
+</script>
+
+</body>
+</html>
