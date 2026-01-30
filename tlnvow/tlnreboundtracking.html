@@ -253,8 +253,8 @@
                     csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
                 }
                 
-                // Use corsproxy.io which works better with Safari
-                return `https://corsproxy.io/?${encodeURIComponent(csvUrl)}`;
+                // Return direct URL without proxy
+                return csvUrl;
             } catch (err) {
                 throw new Error('Konnte Sheet-ID nicht extrahieren.');
             }
