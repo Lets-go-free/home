@@ -405,6 +405,8 @@
                 // Sort descending (newest first)
                 data.sort((a, b) => parseDate(b[timeCol]) - parseDate(a[timeCol]));
                 
+                // Calculate total sum of all balances
+                const totalBalance = data.reduce((sum, row) => sum + parseNumber(row[balanceCol]), 0);
                 const latestBalance = parseNumber(data[0][balanceCol]);
                 const oldestBalance = parseNumber(data[data.length - 1][balanceCol]);
                 const totalIncrease = latestBalance - oldestBalance;
@@ -414,7 +416,7 @@
                 summary.innerHTML = `
                     <div class="summary-item">
                         <div class="label">Total Anz. PCLP an SC Rebound gesendet</div>
-                        <div class="value">${formatNumber(latestBalance)}</div>
+                        <div class="value">${formatNumber(totalBalance)}</div>
                         <div class="sub">PCLP(old) Tokens</div>
                     </div>
                     <div class="summary-item">
