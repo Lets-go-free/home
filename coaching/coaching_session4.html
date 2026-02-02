@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session 4 - Sicherheit mit Cold Wallet | Let's go free</title>
+    <link rel="stylesheet" href="coaching-styles.css">
+    
+</head>
+<body>
+    <!-- Header Banner -->
+    <div class="header-banner">
+        <h1>Let's go free - Freiheit mit DeFi und Krypto</h1>
+        <p class="tagline">Dein Weg in die finanzielle Selbstbestimmung</p>
+    </div>
+
+    <div class="presentation">
+        <!-- Slide 1: Cover -->
+        <div class="slide active">
+            <h1>Dein leichter Einstieg<br>in die Krypto-Welt</h1>
+            <div class="subtitle">Dein persönliches 1:1 Coaching von A-Z</div>
+            <div style="font-size: 1.3em; margin-top: 30px; color: #5a4636;">Let's go free - Chris Müller</div>
+        </div>
+
+        <!-- Slide 2: Sessions Overview -->
+        <div class="slide">
+            <h2>SESSIONS DEINES 1:1 COACHINGS</h2>
+            <div class="subtitle">Dein Weg zur finanziellen Selbstbestimmung mit DeFi</div>
+            <div class="content">
+                <div class="session-timeline">
+                    <div class="session-box">
+                        <div class="session-number">1</div>
+                        <div class="session-title">Das Fundament<br>verstehen</div>
+                    </div>
+                    <div class="session-box">
+                        <div class="session-number">2</div>
+                        <div class="session-title">Dein Wallet<br>einrichten</div>
+                    </div>
+                    <div class="session-box">
+                        <div class="session-number">3</div>
+                        <div class="session-title">Dein erster<br>Krypto-Kauf</div>
+                    </div>
+                    <div class="session-box">
+                        <div class="session-number">4</div>
+                        <div class="session-title">Sicherheit mit<br>Cold Wallet</div>
+                    </div>
+                    <div class="session-box">
+                        <div class="session-number">5</div>
+                        <div class="session-title">Krypto im<br>echten Leben<br>nutzen</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 3: Disclaimer -->
+        <div class="slide">
+            <h2>DISCLAIMER / HAFTUNGSAUSSCHLUSS</h2>
+            <div class="content">
+                <div class="warning">
+                    <p><strong>Das angebotene Coaching dient ausschließlich zu Informations- und Bildungszwecken.</strong></p>
+                </div>
+                <div class="content-box">
+                    <p>Ich erteile keine Finanz-, Anlage-, Steuer- oder Rechtsberatung im Sinne geltender Gesetze.</p>
+                    <p>Alle im Coaching gezeigten Beispiele, Transaktionen oder Anwendungen (z. B. Wallet-Erstellung, Kauf/Verkauf, Swaps, Nutzung von DeFi-Plattformen oder Krypto-Debitkarten) dienen nur der Veranschaulichung.</p>
+                    <p>Jeder TeilnehmerIn handelt eigenverantwortlich und sollte vor finanziellen Entscheidungen ggf. eine qualifizierte Fachperson (z. B. Steuerberaterin oder Finanzberaterin) konsultieren.</p>
+                    <p>Ich übernehme keine Haftung für Verluste, Risiken oder technische Probleme, die aus der Nutzung der vermittelten Inhalte oder gezeigten Tools entstehen.</p>
+                </div>
+                <div class="warning">
+                    <p><strong>⚠️ Der Handel mit Kryptowährungen ist mit hohem Risiko verbunden und kann zum Totalverlust des eingesetzten Kapitals führen.</strong></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 4: Session 4 Intro -->
+        <div class="slide" style="background-image: url('../bilder/coaching/Session4.png'); background-size: cover; background-position: center; background-repeat: no-repeat;">
+            <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(139, 115, 85, 0.7);"></div>
+            <div style="position: relative; z-index: 1;">
+                <div class="phase-number">4</div>
+                <h1 style="color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">SESSION 4</h1>
+                <h2 style="color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">SICHERHEIT MIT COLD WALLET</h2>
+            </div>
+        </div>
+
+        <!-- Slide 5: Ziele -->
+        <div class="slide">
+            <h2>ZIELE VON SESSION 4</h2>
+            <h3>Sicherheit mit Cold Wallet</h3>
+            <div class="content">
+                <div class="section-title">Am Ende dieser Session hast Du:</div>
+                <div class="list-item"><span class="checkmark">✅</span> Verstanden, warum Cold Wallets wichtig sind</div>
+                <div class="list-item"><span class="checkmark">✅</span> Eine klare Strategie für Hot vs. Cold Wallet entwickelt</div>
+                <div class="section-title" style="margin-top: 30px;">Optional:</div>
+                <div class="list-item"><span class="checkmark">✅</span> Eine Cold Wallet eingerichtet (Tangem)</div>
+                <div class="list-item"><span class="checkmark">✅</span> Backup-System eingerichtet (2-3 Karten)</div>
+                <div class="list-item"><span class="checkmark">✅</span> Erfolgreich Tokens von Hot auf Cold Wallet übertragen</div>
+                <div class="list-item"><span class="checkmark">✅</span> Deine Kryptos maximal sicher verwahrt</div>
+            </div>
+        </div>
+
+        <!-- Slide 6: Warum Cold Wallet -->
+        <div class="slide">
+            <h2>WARUM COLD WALLET?</h2>
+            <div class="content">
+                <div class="content-box">
+                    <p>Eine Cold Wallet bewahrt deine Private Keys offline auf – das ist die sicherste Methode, um deine Krypto-Vermögenswerte vor Hackern, Malware und Phishing zu schützen.</p>
+                    <p style="margin-top: 15px;"><strong>Unterschied zur Hot Wallet:</strong> Eine Hot Wallet (z.B. MetaMask, Trust Wallet) ist ständig mit dem Internet verbunden und dadurch bequemer für den täglichen Handel, aber auch anfälliger für Angriffe – nutze sie für kleinere Beträge, die du oft bewegst.</p>
+                    <p style="margin-top: 15px;"><strong>Der Kern:</strong> Deine Selbstbestimmung bedeutet auch Eigenverantwortung – mit einer Cold Wallet hast du maximale Kontrolle UND maximale Sicherheit für grosse Beträge, während die Hot Wallet dein "digitales Portemonnaie" für den Alltag ist.</p>
+                    <p style="margin-top: 15px; font-size: 1.3em; font-weight: 700; text-align: center;">💡 Merksatz: Cold Wallet = Tresor, Hot Wallet = Geldbörse.</p>
+                </div>
+                <div class="warning" style="margin-top: 20px;">
+                    <h4 style="text-align: center;">⚠️ Wichtiger Sicherheitshinweis</h4>
+                    <p style="text-align: center; font-weight: 700;">Kaufe nur auf offizieller Website!</p>
+                    <p style="text-align: center; font-weight: 700;">Kaufe NIE auf Amazon oder eBay, kaufe NIEMALS gebraucht!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 7: Tangem Vergleich -->
+        <div class="slide">
+            <h2>WELCHE COLD WALLET? - TANGEM</h2>
+            <h3>Empfehlung für Einsteiger und Fortgeschrittene</h3>
+            <div class="content">
+                <div class="content-box" style="margin-bottom: 20px;">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Was ist Tangem?</h4>
+                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                        <li style="margin: 8px 0;">Kartenformat (wie Kreditkarte) und/oder Ring</li>
+                        <li style="margin: 8px 0;">NFC-Technologie</li>
+                        <li style="margin: 8px 0;">2-3 Karten im Set</li>
+                    </ul>
+                </div>
+                <div class="grid-2">
+                    <div class="comparison-box" style="background: #E8F5E9; border-left-color: #4caf50;">
+                        <h4>✅ Vorteile</h4>
+                        <ul>
+                            <li>Sehr einfach zu bedienen</li>
+                            <li>Kein Bildschirm = nichts, was kaputtgehen kann</li>
+                            <li>Keine Batterien</li>
+                            <li>Wasserdicht, hitzebeständig, robust</li>
+                            <li>Günstiger (ca. 50-80 EUR/CHF)</li>
+                            <li>Backup durch mehrere Karten</li>
+                            <li>Es gibt keine Verbindung zum Internet, also kein Risiko durch Malware oder Remote-Hacks</li>
+                            <li>Mit der Tangem-App kannst du Coins und Tokens verwalten, ohne komplizierte Software</li>
+                        </ul>
+                    </div>
+                    <div class="comparison-box" style="background: #FFEBEE; border-left-color: #f44336;">
+                        <h4>❌ Nachteile</h4>
+                        <ul>
+                            <li>NFC-fähiges Handy nötig</li>
+                            <li>Weniger Funktionen als Ledger/Trezor</li>
+                            <li>Seed Phrase auf Karte gespeichert (nicht selbst notiert)</li>
+                            <li>Die Verwaltung läuft über die Tangem-App (auch wenn sie Open Source ist, bleibt eine gewisse Abhängigkeit vom Hersteller)</li>
+                            <li>Keine Integration mit DeFi-Tools</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 8: Ledger & Trezor -->
+        <div class="slide">
+            <h2>WEITERE OPTIONEN</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="comparison-box">
+                        <h4>Option 2: Ledger Nano S/X<br>(für Fortgeschrittene)</h4>
+                        <p style="margin-bottom: 15px; font-weight: 600;">Was ist Ledger?</p>
+                        <ul style="margin-bottom: 20px;">
+                            <li>USB-Stick Format</li>
+                            <li>Display für Transaktionen</li>
+                            <li>Buttons zum Bestätigen</li>
+                        </ul>
+                        <div style="margin-top: 20px;">
+                            <p style="font-weight: 600; color: #4caf50; margin-bottom: 10px;">✅ Vorteile:</p>
+                            <ul>
+                                <li>Display zeigt Transaktionen</li>
+                                <li>Mehr Kontrolle</li>
+                                <li>Bluetooth-Option (Nano X)</li>
+                                <li>Grosse App-Unterstützung</li>
+                            </ul>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <p style="font-weight: 600; color: #f44336; margin-bottom: 10px;">❌ Nachteile:</p>
+                            <ul>
+                                <li>Teurer</li>
+                                <li>Komplizierter für Einsteiger</li>
+                                <li>Bildschirm/Batterie kann kaputt gehen</li>
+                                <li>USB-Anschluss nötig</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="comparison-box">
+                        <h4>Option 3: Trezor<br>(Open Source)</h4>
+                        <p style="margin-bottom: 15px; font-weight: 600;">Was ist Trezor?</p>
+                        <ul style="margin-bottom: 20px;">
+                            <li>Ähnlich wie Ledger</li>
+                            <li>Displays und Buttons</li>
+                            <li>Open Source (Code einsehbar)</li>
+                            <li>Sehr sicher</li>
+                        </ul>
+                        <div style="margin-top: 20px;">
+                            <p style="font-weight: 600; color: #4caf50; margin-bottom: 10px;">✅ Vorteile:</p>
+                            <ul>
+                                <li>Open Source = maximale Transparenz</li>
+                                <li>Keine Closed Source Chips</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 9: Empfehlung -->
+        <div class="slide">
+            <h2>MEINE EMPFEHLUNG</h2>
+            <div class="content">
+                <div class="content-box" style="background: #E8F5E9; border-left-color: #4caf50;">
+                    <h4 style="color: #2e7d32; text-align: center; font-size: 1.6em; margin-bottom: 20px;">💳 Tangem-Wallet (Set mit 3 Karten)</h4>
+                    <p style="text-align: center; font-size: 1.2em; margin-top: 20px;">Kaufe Deine Tangem-Wallet mit folgendem Link und profitiere von einem Rabatt:</p>
+                    <p style="text-align: center; font-size: 1.3em; margin-top: 15px; font-weight: 700;"><a href="https://tangem.com/invite/TNLSKH" target="_blank" style="color: #2e7d32; text-decoration: none; border-bottom: 2px solid #4caf50;">https://tangem.com/invite/TNLSKH</a></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 10: Praxis - Vorbereitung -->
+        <div class="slide">
+            <h2>PRAXIS: TANGEM EINRICHTEN</h2>
+            <div class="content">
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 20px; font-size: 1.4em; text-align: center;">Was du brauchst:</h4>
+                    <div class="list-item">✅ Tangem-Karten (Empfehlung: 3 Stück im Set)</div>
+                    <div class="list-item">✅ Smartphone mit NFC</div>
+                    <div class="list-item">✅ Tangem-App (aus App Store/Play Store)</div>
+                    <div class="list-item">✅ 20 Minuten Zeit</div>
+                    <div class="list-item">✅ Ruhiger Ort</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 11: Schritt 1 & 2 -->
+        <div class="slide">
+            <h2>PRAXIS: TANGEM EINRICHTEN</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Schritt 1: Karten auspacken</h4>
+                        <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                            <li style="margin: 8px 0;">2-3 identische Karten</li>
+                            <li style="margin: 8px 0;">Alle haben die gleichen Funktionen</li>
+                            <li style="margin: 8px 0;">Jede Karte kann allein genutzt werden</li>
+                            <li style="margin: 8px 0;">Zusammen sind sie ein Backup-System</li>
+                        </ul>
+                        <p style="margin-top: 20px; font-weight: 600;">Wichtig:</p>
+                        <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 10px auto 0 auto; text-align: left;">
+                            <li style="margin: 8px 0;">Verpackung aufbewahren (für Support-Fälle)</li>
+                            <li style="margin: 8px 0;">Karten nicht knicken oder beschädigen</li>
+                            <li style="margin: 8px 0;">Noch nicht magnetisch lagern (kein Problem, aber Vorsicht)</li>
+                        </ul>
+                    </div>
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Schritt 2: App installieren</h4>
+                        <p style="font-weight: 600; margin-bottom: 10px;">iOS:</p>
+                        <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                            <li style="margin: 8px 0;">App Store öffnen, nach "Tangem" suchen</li>
+                            <li style="margin: 8px 0;">App mit blauem T-Logo</li>
+                            <li style="margin: 8px 0;">Herausgeber: "Tangem AG"</li>
+                        </ul>
+                        <p style="font-weight: 600; margin: 20px 0 10px 0;">Android:</p>
+                        <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                            <li style="margin: 8px 0;">Google Play Store, nach "Tangem" suchen</li>
+                            <li style="margin: 8px 0;">App mit blauem T-Logo</li>
+                            <li style="margin: 8px 0;">Herausgeber: "Tangem AG"</li>
+                        </ul>
+                        <div class="warning" style="margin-top: 20px;">
+                            <p style="text-align: center; font-weight: 700;">⚠️ Nur offizielle App nutzen!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 12: Schritt 3 & 4 -->
+        <div class="slide">
+            <h2>PRAXIS: TANGEM EINRICHTEN</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Schritt 3: Wallet erstellen</h4>
+                        <ul style="list-style: decimal; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                            <li style="margin: 8px 0;">App öffnen</li>
+                            <li style="margin: 8px 0;">Erste Karte scannen</li>
+                            <li style="margin: 8px 0;">"Create Wallet" wählen</li>
+                            <li style="margin: 8px 0;">Zugangscode festlegen<br>• 4-6 stelliger Code<br>• Wie PIN bei Kreditkarte<br>• Gut merken oder notieren!<br>• 2x eingeben zur Bestätigung</li>
+                            <li style="margin: 8px 0;">Wallet wird erstellt</li>
+                        </ul>
+                        <p style="margin-top: 20px; text-align: center; font-weight: 700; color: #4caf50;">✅ Fertig! Erste Karte ist aktiv</p>
+                    </div>
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Schritt 4: Backup-Karten einrichten</h4>
+                        <p style="font-weight: 700; margin-bottom: 15px;">WICHTIG: Backup-System nutzen!</p>
+                        <ul style="list-style: decimal; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                            <li style="margin: 8px 0;">In App: "Add Backup Card"</li>
+                            <li style="margin: 8px 0;">Zweite Karte scannen</li>
+                            <li style="margin: 8px 0;">Bestätigung</li>
+                            <li style="margin: 8px 0;">Dritte Karte scannen</li>
+                            <li style="margin: 8px 0;">Bestätigung</li>
+                        </ul>
+                        <p style="margin-top: 20px; font-weight: 600;">Ergebnis:</p>
+                        <ul style="list-style: none; padding-left: 20px; margin-top: 10px;">
+                            <li style="margin: 8px 0;">✅ Alle Karten greifen auf dasselbe Wallet zu</li>
+                            <li style="margin: 8px 0;">✅ Karte verloren? Andere funktionieren weiter!</li>
+                            <li style="margin: 8px 0;">✅ Maximale Sicherheit</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 13: Schritt 5 - Karten sicher verwahren -->
+        <div class="slide">
+            <h2>SCHRITT 5: KARTEN SICHER VERWAHREN</h2>
+            <div class="content">
+                <div class="grid-3">
+                    <div class="comparison-box">
+                        <h4>Karte 1 (Hauptkarte)</h4>
+                        <ul>
+                            <li>Bei dir zuhause (Schublade, kleiner Tresor)</li>
+                            <li>Für regelmässigen Zugriff</li>
+                        </ul>
+                    </div>
+                    <div class="comparison-box">
+                        <h4>Karte 2 (Backup)</h4>
+                        <ul>
+                            <li>Anderer Ort: Bei Vertrauensperson, Bankschliessfach</li>
+                            <li>Falls Karte 1 verloren geht oder Haus abbrennt</li>
+                        </ul>
+                    </div>
+                    <div class="comparison-box">
+                        <h4>Karte 3 (Extra-Backup)</h4>
+                        <ul>
+                            <li>Dritter sicherer Ort</li>
+                            <li>Maximale Redundanz</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="content-box" style="margin-top: 20px;">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Zugangscode:</h4>
+                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 900px; margin: 0 auto; text-align: left;">
+                        <li style="margin: 8px 0;">Separat notieren (nicht mit Karte lagern!)</li>
+                        <li style="margin: 8px 0;">An 2 verschiedenen Orten</li>
+                        <li style="margin: 8px 0;">Passwort-Manager (optional)</li>
+                    </ul>
+                </div>
+                <div class="warning" style="margin-top: 20px;">
+                    <p style="text-align: center;"><strong>⚠️ Wenn du den Code vergisst, brauchst du zwei Karten aus dem gleichen Set, um deinen Code zurückzusetzen.</strong></p>
+                    <p style="text-align: center; margin-top: 10px; font-weight: 700;">Deshalb empfehle ich dir immer das 3er Set!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 14: Transfer Vorbereitung -->
+        <div class="slide">
+            <h2>TOKENS VON HOT AUF COLD WALLET ÜBERTRAGEN</h2>
+            <div class="content">
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 20px; font-size: 1.4em; text-align: center;">Vorbereitung: Checkliste</h4>
+                    <div class="list-item">✅ Cold Wallet eingerichtet (Tangem)</div>
+                    <div class="list-item">✅ Hot Wallet bereit (MetaMask)</div>
+                    <div class="list-item">✅ Genug Geld für Gebühren im Hot Wallet</div>
+                    <div class="list-item">✅ Zieladresse aus Cold Wallet kopiert</div>
+                    <div class="list-item">✅ Ruhiger Moment, kein Stress</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 15: Transfer Schritt 1 & 2 -->
+        <div class="slide">
+            <h2>TOKENS ÜBERTRAGEN</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Schritt 1: Zieladresse kopieren</h4>
+                        <ul style="list-style: decimal; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                            <li style="margin: 8px 0;">Tangem-App öffnen</li>
+                            <li style="margin: 8px 0;">Blockchain auswählen (z.B. BSC)</li>
+                            <li style="margin: 8px 0;">"Receive" tippen</li>
+                            <li style="margin: 8px 0;">Adresse wird angezeigt</li>
+                            <li style="margin: 8px 0;">Adresse kopieren (auf Symbol tippen)</li>
+                            <li style="margin: 8px 0;">Adresse ist jetzt in Zwischenablage</li>
+                        </ul>
+                    </div>
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Schritt 2: MetaMask öffnen</h4>
+                        <ul style="list-style: decimal; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                            <li style="margin: 8px 0;">MetaMask-App öffnen</li>
+                            <li style="margin: 8px 0;">Richtige Blockchain wählen<br>• Oben in der Mitte: Netzwerk-Auswahl<br>• Muss zu Tangem-Adresse passen!<br>• BSC zu BSC, Ethereum zu Ethereum</li>
+                            <li style="margin: 8px 0;">Token auswählen den du senden willst<br>• z.B. USDT, BNB</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 16: Transfer Schritt 3 & 4 -->
+        <div class="slide">
+            <h2>TOKENS ÜBERTRAGEN</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Schritt 3: Transaktion vorbereiten</h4>
+                        <ul style="list-style: decimal; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                            <li style="margin: 8px 0;">"Send" / "Senden" tippen</li>
+                            <li style="margin: 8px 0;">Adresse einfügen:<br>• Adressfeld antippen<br>• Einfügen (aus Zwischenablage)<br>• <strong style="color: #ff5252;">KRITISCH: Adresse prüfen!</strong><br>• Erste 4-5 Zeichen, letzte 4-5 Zeichen<br>• Bei grossem Betrag: Mittlerer Teil auch</li>
+                            <li style="margin: 8px 0;">Betrag eingeben:<br>• Empfehlung: Erst Teilbetrag testen!</li>
+                            <li style="margin: 8px 0;">Gebühren anschauen:<br>• Werden automatisch berechnet<br>• BSC: ca. 0.01-0.50 EUR<br>• Wichtig: Genug für Gebühren übrig lassen!</li>
+                        </ul>
+                    </div>
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Schritt 4: Transaktion durchführen</h4>
+                        <ul style="list-style: decimal; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                            <li style="margin: 8px 0;">Alles nochmal prüfen:<br>✅ Richtige Adresse?<br>✅ Richtiger Betrag?<br>✅ Richtige Blockchain?<br>✅ Gebühren OK?</li>
+                            <li style="margin: 8px 0;">"Bestätigen" / "Confirm"</li>
+                            <li style="margin: 8px 0;">Warten:<br>• Polygon/BSC: 10-30 Sekunden<br>• Ethereum: 1-5 Minuten<br>• Bitcoin: 10-60 Minuten</li>
+                            <li style="margin: 8px 0;">Status prüfen:<br>• "Pending" = wird verarbeitet<br>• "Success" = angekommen ✅</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 17: Transfer Schritt 5 & 6 -->
+        <div class="slide">
+            <h2>TOKENS ÜBERTRAGEN</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Schritt 5: In Cold Wallet prüfen</h4>
+                        <ul style="list-style: decimal; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                            <li style="margin: 8px 0;">Tangem-App öffnen</li>
+                            <li style="margin: 8px 0;">Blockchain auswählen</li>
+                            <li style="margin: 8px 0;">Balance prüfen:<br>• Sind Tokens angekommen? ✅<br>• Stimmt der Betrag? ✅</li>
+                            <li style="margin: 8px 0;">Falls nicht sofort sichtbar:<br>• Refresh/Aktualisieren<br>• 1-2 Minuten warten<br>• App neu starten</li>
+                        </ul>
+                    </div>
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Schritt 6: Rest übertragen (optional)</h4>
+                        <p style="margin-bottom: 15px;">Wenn Test erfolgreich war:</p>
+                        <ul style="list-style: decimal; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                            <li style="margin: 8px 0;">Gleicher Prozess wie oben</li>
+                            <li style="margin: 8px 0;">Diesmal "Max" wählen (alles)</li>
+                            <li style="margin: 8px 0;">Oder weiteren Teilbetrag</li>
+                        </ul>
+                        <div class="content-box" style="margin-top: 20px; background: #FFF3CD; border-left-color: #FFC107;">
+                            <p><strong>💡 Tipp:</strong> Kleinen Betrag im Hot Wallet lassen (für Gebühren bei zukünftigen Transaktionen)</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 18: Sicherheitshinweise -->
+        <div class="slide">
+            <h2>WICHTIGE SICHERHEITSHINWEISE</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="comparison-box" style="background: #E8F5E9; border-left-color: #4caf50;">
+                        <h4>✅ Vor jeder Transaktion:</h4>
+                        <p style="margin-bottom: 15px; font-weight: 600;">Die 4 Prüfungen:</p>
+                        <ul>
+                            <li>1. Adresse: Erste und letzte Zeichen stimmen?</li>
+                            <li>2. Betrag: Ist er korrekt?</li>
+                            <li>3. Blockchain: Richtige Blockchain gewählt?</li>
+                            <li>4. Gebühren: Sind sie normal?</li>
+                        </ul>
+                        <p style="margin-top: 20px; font-weight: 600;">Bei "Ja" auf alle 4: ✅ Bestätigen</p>
+                        <p style="margin-top: 10px; font-weight: 600;">Bei "Nein" auf eine: ❌ Abbrechen und prüfen</p>
+                    </div>
+                    <div class="comparison-box" style="background: #FFEBEE; border-left-color: #f44336;">
+                        <h4>⚠️ Häufige Fehler vermeiden:</h4>
+                        <p style="margin-bottom: 10px; font-weight: 600;">Fehler 1: Falsche Blockchain</p>
+                        <ul style="margin-bottom: 15px;">
+                            <li>USDC auf Ethereum senden → Polygon-Adresse = Verlust!</li>
+                            <li>Immer: Gleiche Blockchain wählen</li>
+                        </ul>
+                        <p style="margin-bottom: 10px; font-weight: 600;">Fehler 2: Nicht genug für Gebühren</p>
+                        <ul style="margin-bottom: 15px;">
+                            <li>"Max" gewählt, aber Gebühren vergessen</li>
+                            <li>Transaktion schlägt fehl</li>
+                            <li>Lösung: Immer etwas für Gebühren übrig lassen</li>
+                        </ul>
+                        <p style="margin-bottom: 10px; font-weight: 600;">Fehler 3: Adresse nicht geprüft</p>
+                        <ul>
+                            <li>Malware kann Adressen ändern!</li>
+                            <li>Immer visuell prüfen</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 19: Cold Wallet Sicherheit -->
+        <div class="slide">
+            <h2>COLD WALLET SICHERHEIT</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Physische Sicherheit</h4>
+                        <div class="list-item">✅ Karten getrennt lagern</div>
+                        <div class="list-item">✅ Nicht zusammen mit Zugangscode</div>
+                        <div class="list-item">✅ Feuer-/Wasserschutz überlegen</div>
+                        <h4 style="color: #5a4636; margin: 25px 0 15px 0; font-size: 1.4em;">Zugangscode</h4>
+                        <div class="list-item">✅ An zwei Orten notiert</div>
+                        <div class="list-item">✅ Nicht auf Handy</div>
+                        <div class="list-item">✅ Nicht zusammen mit Karte</div>
+                        <div class="list-item">✅ Bei 3x Falscheingabe: Karte gesperrt (Entsperrung mit Backup-Karte)</div>
+                    </div>
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Regelmässige Checks</h4>
+                        <div class="list-item">✅ Alle 3-6 Monate prüfen, ob Karten noch funktionieren</div>
+                        <div class="list-item">✅ Balance checken</div>
+                        <div class="list-item">✅ Backup-Karten testen</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 20: Hot vs Cold im Alltag -->
+        <div class="slide">
+            <h2>WANN NUTZE ICH WAS?</h2>
+            <h3>Hot vs. Cold Wallet im Alltag</h3>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="comparison-box">
+                        <h4>Hot Wallet (MetaMask) verwenden für:</h4>
+                        <ul>
+                            <li>DeFi-Anwendungen (Staking, Liquidity Mining)</li>
+                            <li>Häufige Transaktionen</li>
+                            <li>Kleinere Beträge (100-5'000 EUR/CHF)</li>
+                            <li>Trading, Swaps</li>
+                            <li>NFT-Käufe</li>
+                            <li>Experimentieren, Lernen</li>
+                            <li>"Girokonto"</li>
+                        </ul>
+                    </div>
+                    <div class="comparison-box">
+                        <h4>Cold Wallet (Tangem) verwenden für:</h4>
+                        <ul>
+                            <li>Grosse Beträge (5'000+ EUR/CHF)</li>
+                            <li>Tokens, die du selten bewegst</li>
+                            <li>Langfristige Aufbewahrung (HODL)</li>
+                            <li>"Sparkonto" / "Tresor"</li>
+                            <li>Bitcoin/Ethereum für Jahre halten</li>
+                            <li>Erbschaft, Altersvorsorge</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 21: Thank You -->
+        <div class="slide" style="background-image: url('../bilder/coaching/Thank you.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat;">
+        </div>
+    </div>
+
+    <div class="slide-counter">
+        <span id="currentSlide">1</span> / <span id="totalSlides">21</span>
+    </div>
+
+    <div class="controls">
+        <button class="btn" onclick="previousSlide()">← Zurück</button>
+        <button class="btn" onclick="nextSlide()">Weiter →</button>
+        <button class="btn" onclick="toggleFullscreen()">Vollbild</button>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+
+        document.getElementById('totalSlides').textContent = totalSlides;
+
+        function showSlide(n) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (n + totalSlides) % totalSlides;
+            slides[currentSlide].classList.add('active');
+            document.getElementById('currentSlide').textContent = currentSlide + 1;
+        }
+
+        function nextSlide() {
+            showSlide(currentSlide + 1);
+        }
+
+        function previousSlide() {
+            showSlide(currentSlide - 1);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                e.preventDefault();
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                previousSlide();
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'Home') {
+                showSlide(0);
+            } else if (e.key === 'End') {
+                showSlide(totalSlides - 1);
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('btn') || 
+                e.target.closest('.btn') || 
+                e.target.tagName === 'A' || 
+                e.target.closest('a')) {
+                return;
+            }
+            
+            const clickX = e.clientX;
+            const windowWidth = window.innerWidth;
+            if (clickX > windowWidth / 2) {
+                nextSlide();
+            } else {
+                previousSlide();
+            }
+        });
+
+        let touchStartX = 0;
+        let touchEndX = 0;
+
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+
+        document.addEventListener('touchend', (e) => {
+            touchEndX = e.changedTouches[0].screenX;
+            handleSwipe();
+        });
+
+        function handleSwipe() {
+            if (touchEndX < touchStartX - 50) {
+                nextSlide();
+            }
+            if (touchEndX > touchStartX + 50) {
+                previousSlide();
+            }
+        }
+    </script>
+</body>
+</html>

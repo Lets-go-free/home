@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session 1 - Das Fundament verstehen | Let's go free</title>
+    <link rel="stylesheet" href="coaching-styles.css">
+    
+</head>
+<body>
+    <!-- Header Banner -->
+    <div class="header-banner">
+        <h1>Let's go free - Freiheit mit DeFi und Krypto</h1>
+        <p class="tagline">Dein Weg in die finanzielle Selbstbestimmung</p>
+    </div>
+
+    <div class="presentation">
+        <!-- Slide 1: Cover -->
+        <div class="slide active">
+            <h1>Dein leichter Einstieg<br>in die Krypto-Welt</h1>
+            <div class="subtitle">Dein persönliches 1:1 Coaching von A-Z</div>
+            <div style="font-size: 1.3em; margin-top: 30px; color: #5a4636;">Let's go free - Chris Müller</div>
+        </div>
+
+        <!-- Slide 2: Sessions Overview -->
+        <div class="slide">
+            <h2>SESSIONS DEINES 1:1 COACHINGS</h2>
+            <div class="subtitle">Dein Weg zur finanziellen Selbstbestimmung mit DeFi</div>
+            <div class="content">
+                <div class="session-timeline">
+                    <div class="session-box current">
+                        <div class="session-number">1</div>
+                        <div class="session-title">Das Fundament<br>verstehen</div>
+                    </div>
+                    <div class="session-box">
+                        <div class="session-number">2</div>
+                        <div class="session-title">Dein Wallet<br>einrichten</div>
+                    </div>
+                    <div class="session-box">
+                        <div class="session-number">3</div>
+                        <div class="session-title">Dein erster<br>Krypto-Kauf</div>
+                    </div>
+                    <div class="session-box">
+                        <div class="session-number">4</div>
+                        <div class="session-title">Sicherheit mit<br>Cold Wallet</div>
+                    </div>
+                    <div class="session-box">
+                        <div class="session-number">5</div>
+                        <div class="session-title">Krypto im<br>echten Leben<br>nutzen</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 3: Disclaimer -->
+        <div class="slide">
+            <h2>DISCLAIMER / HAFTUNGSAUSSCHLUSS</h2>
+            <div class="content">
+                <div class="warning">
+                    <p><strong>Das angebotene Coaching dient ausschließlich zu Informations- und Bildungszwecken.</strong></p>
+                </div>
+                <div class="content-box">
+                    <p>Ich erteile keine Finanz-, Anlage-, Steuer- oder Rechtsberatung im Sinne geltender Gesetze.</p>
+                    <p>Alle im Coaching gezeigten Beispiele, Transaktionen oder Anwendungen (z. B. Wallet-Erstellung, Kauf/Verkauf, Swaps, Nutzung von DeFi-Plattformen oder Krypto-Debitkarten) dienen nur der Veranschaulichung.</p>
+                    <p>Jeder TeilnehmerIn handelt eigenverantwortlich und sollte vor finanziellen Entscheidungen ggf. eine qualifizierte Fachperson (z. B. Steuerberaterin oder Finanzberaterin) konsultieren.</p>
+                    <p>Ich übernehme keine Haftung für Verluste, Risiken oder technische Probleme, die aus der Nutzung der vermittelten Inhalte oder gezeigten Tools entstehen.</p>
+                </div>
+                <div class="warning">
+                    <p><strong>⚠️ Der Handel mit Kryptowährungen ist mit hohem Risiko verbunden und kann zum Totalverlust des eingesetzten Kapitals führen.</strong></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 4: Session 1 Intro -->
+        <div class="slide" style="background-image: url('../bilder/coaching/Session1.png'); background-size: cover; background-position: center; background-repeat: no-repeat;">
+            <!-- Optional: Halbtransparenter Overlay für bessere Lesbarkeit -->
+            <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(139, 115, 85, 0.7);"></div>
+            
+            <!-- Content -->
+            <div style="position: relative; z-index: 1;">
+                <div class="phase-number">1</div>
+                <h1 style="color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">SESSION 1</h1>
+                <h2 style="color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">DAS FUNDAMENT VERSTEHEN</h2>
+            </div>
+        </div>
+
+        <!-- Slide 5: Ziele -->
+        <div class="slide">
+            <h2>ZIELE VON SESSION 1</h2>
+            <h3>Das Fundament verstehen</h3>
+            <div class="content">
+                <div class="section-title">Am Ende dieser Session kannst Du:</div>
+                <div class="list-item"><span class="checkmark">✅</span> Erklären, was eine Blockchain ist</div>
+                <div class="list-item"><span class="checkmark">✅</span> Den Unterschied zwischen Fiat und Krypto verstehen</div>
+                <div class="list-item"><span class="checkmark">✅</span> Verstehen, warum es verschiedene Blockchains gibt</div>
+                <div class="list-item"><span class="checkmark">✅</span> Den Unterschied zwischen CEX und DEX kennen</div>
+                <div class="list-item"><span class="checkmark">✅</span> Wissen, warum Transaktionen Gebühren kosten</div>
+                <div class="list-item"><span class="checkmark">✅</span> Coin vs. Token unterscheiden</div>
+                <div class="list-item"><span class="checkmark">✅</span> Verstehen, was Stablecoins sind und wofür sie gut sind</div>
+                <div class="list-item"><span class="checkmark">✅</span> Die wichtigsten Informations-Plattformen kennen</div>
+            </div>
+        </div>
+
+        <!-- Slide 6: Was ist Krypto - Vergleich -->
+        <div class="slide">
+            <h2>WAS IST KRYPTO UND WIE FUNKTIONIERT BLOCKCHAIN?</h2>
+            <div class="content">
+                <div class="grid-3">
+                    <div class="comparison-box">
+                        <h4>Klassisches Geld (Fiat)</h4>
+                        <ul>
+                            <li>Die Bank ist wie ein Buchhalter, der aufschreibt, wer wie viel Geld hat</li>
+                            <li>Du musst der Bank vertrauen</li>
+                            <li>Die Bank kann dein Konto sperren oder einfrieren</li>
+                        </ul>
+                    </div>
+                    <div class="comparison-box">
+                        <h4>Krypto</h4>
+                        <ul>
+                            <li>Statt einem Buchhalter gibt es ein digitales Kassenbuch, das jeder einsehen kann</li>
+                            <li>Tausende Computer weltweit prüfen jede Transaktion</li>
+                            <li>Niemand kann das Buch fälschen</li>
+                            <li>Niemand kann dich aussperren</li>
+                        </ul>
+                    </div>
+                    <div class="comparison-box">
+                        <h4>Blockchain = digitales Kassenbuch</h4>
+                        <ul>
+                            <li>Jede Transaktion wird in einem "Block" gespeichert</li>
+                            <li>Diese Blöcke werden aneinandergereiht = Blockchain</li>
+                            <li>Jeder kann die Blockchain einsehen, aber niemand kann sie nachträglich ändern</li>
+                            <li>Keine zentrale Stelle kontrolliert sie</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 7: Dezentralisierung -->
+        <div class="slide">
+            <h2>DEZENTRALISIERUNG & PEER-TO-PEER</h2>
+            <div class="content">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: center;">
+                    <div>
+                        <div class="content-box">
+                            <p><strong>Eine Blockchain arbeitet als dezentrales System, um P2P-Transaktionen zu ermöglichen, die von freiwilligen Netzwerkbeteiligten validiert werden.</strong></p>
+                            <p>In der Blockchain bezieht sich Dezentralisierung auf die Übertragung der Kontrolle und Entscheidungsfindung von einer zentralisierten Einheit (Einzelpersonen, Organisation oder Gruppe) auf ein verteiltes Netzwerk.</p>
+                            <p>In einem zentralisierten Banksystem wird alles von einer Instanz kontrolliert.</p>
+                        </div>
+                        <div class="content-box" style="margin-top: 20px;">
+                            <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Peer-to-Peer (P2P)-Netzwerk</h4>
+                            <p>Ein P2P-Netzwerk ist eine Gruppe von Computern, von denen jeder als gleichberechtigter Peer-Knoten für den Austausch von Dateien innerhalb der Gruppe dient. Anstelle eines zentralen Servers, der als gemeinsames Laufwerk fungiert, fungiert jeder Computer als Server für die auf ihm gespeicherten Dateien.</p>
+                        </div>
+                    </div>
+                    <div>
+                        <img src="../bilder/coaching/Zentral_Dezentral.jpg" style="max-width: 100%; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);" alt="Zentrales vs Dezentrales Netzwerk">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 8: Blockchain Bild -->
+        <div class="slide">
+            <h2>WIE FUNKTIONIERT BLOCKCHAIN?</h2>
+            <div class="content">
+                <img src="../bilder/coaching/Blockchain.jpg" style="max-width: 90%; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);" alt="Blockchain Funktionsweise">
+            </div>
+        </div>
+
+        <!-- Slide 9: Verschiedene Blockchains -->
+        <div class="slide">
+            <h2>WARUM GIBT ES VERSCHIEDENE BLOCKCHAINS?</h2>
+            <div class="content">
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Vergleich mit Strassen:</h4>
+                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                        <li style="margin: 10px 0;">Jede Blockchain ist wie eine eigene Strasse/Autobahn</li>
+                        <li style="margin: 10px 0;">Manche sind schnell, aber teuer (z.B. Ethereum)</li>
+                        <li style="margin: 10px 0;">Andere sind günstiger, aber weniger bekannt (z.B. Polygon, BSC)</li>
+                        <li style="margin: 10px 0;">Jede hat andere Eigenschaften und Geschwindigkeiten</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 10: Wichtigste Blockchains -->
+        <div class="slide">
+            <h2>WICHTIGSTE BLOCKCHAINS FÜR DEN EINSTIEG</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="grid-item">
+                        <h4>Bitcoin (BTC) - 2009</h4>
+                        <ul>
+                            <li>Die erste und bekannteste</li>
+                            <li>Gilt als "digitales Gold"</li>
+                            <li>Langsam, teuer, aber maximal sicher und dezentral</li>
+                        </ul>
+                    </div>
+                    <div class="grid-item">
+                        <h4>Ethereum (ETH) - 2015</h4>
+                        <ul>
+                            <li>Die zweitgrößte</li>
+                            <li>Ermöglicht Smart Contracts</li>
+                            <li>Basis für die meisten DeFi-Anwendungen</li>
+                        </ul>
+                    </div>
+                    <div class="grid-item">
+                        <h4>Binance Smart Chain (BSC) - 2020</h4>
+                        <ul>
+                            <li>Günstiger, schneller, aber zentraler</li>
+                            <li>Gut für Einsteiger wegen niedriger Gebühren</li>
+                        </ul>
+                    </div>
+                    <div class="grid-item">
+                        <h4>Polygon - 2017</h4>
+                        <ul>
+                            <li>Günstiges "Nebengleis" von Ethereum</li>
+                            <li>Sehr niedrige Gebühren</li>
+                            <li>Schnellere Variante von Ethereum</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 11: CEX vs DEX -->
+        <div class="slide">
+            <h2>WAS SIND DEZENTRALE BÖRSEN (DEX)?</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="comparison-box">
+                        <h4>Zentrale Börse (CEX)</h4>
+                        <p style="font-size: 1.1em; margin-bottom: 10px; opacity: 0.8;">wie Binance, Crypto.com, Bitpanda</p>
+                        <ul>
+                            <li>Funktioniert wie eine normale Bank</li>
+                            <li>Die Börse verwahrt dein Geld</li>
+                            <li>Du musst dich anmelden, verifizieren</li>
+                            <li>Einfach zu bedienen</li>
+                            <li><strong>ABER:</strong> "Not your keys, not your coins"</li>
+                        </ul>
+                    </div>
+                    <div class="comparison-box">
+                        <h4>Dezentrale Börse (DEX)</h4>
+                        <p style="font-size: 1.1em; margin-bottom: 10px; opacity: 0.8;">wie Uniswap, PancakeSwap</p>
+                        <ul>
+                            <li>Keine Firma im Hintergrund</li>
+                            <li>Du behältst die Kontrolle über dein Geld</li>
+                            <li>Direkt aus deinem Wallet handeln</li>
+                            <li>Anonymer, aber am Anfang komplizierter</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="content-box" style="margin-top: 20px;">
+                    <p><strong>CEX = Centralized Exchange:</strong> Wechselstube am Bahnhof (du gibst dein Geld ab, sie wechseln es)</p>
+                    <p><strong>DEX = Decentralized Exchange:</strong> Automat (du behältst dein Geld, tauschst direkt)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 12: Transaktionsgebühren -->
+        <div class="slide">
+            <h2>WARUM GIBT ES GEBÜHREN BEI JEDER TRANSAKTION?</h2>
+            <div class="content">
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Die Wahrheit über Gebühren:</h4>
+                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                        <li style="margin: 10px 0;">Transaktionen müssen von Computern (Nodes) verarbeitet werden</li>
+                        <li style="margin: 10px 0;">Diese Computer brauchen Strom und Rechenleistung</li>
+                        <li style="margin: 10px 0;">Die Gebühr bezahlt die Betreiber dieser Computer (Miner/Validatoren)</li>
+                    </ul>
+                </div>
+                <div class="section-title">Gebühren-Unterschiede:</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Blockchain</th>
+                            <th>Geschwindigkeit</th>
+                            <th>Gebühren</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Bitcoin</td>
+                            <td>Langsam (10 Min)</td>
+                            <td>5-50$</td>
+                        </tr>
+                        <tr>
+                            <td>Ethereum</td>
+                            <td>Mittel (15 Sek)</td>
+                            <td>0.50-100$</td>
+                        </tr>
+                        <tr>
+                            <td>BSC</td>
+                            <td>Schnell (3 Sek)</td>
+                            <td>0.01-2$</td>
+                        </tr>
+                        <tr>
+                            <td>Polygon</td>
+                            <td>Schnell (2 Sek)</td>
+                            <td>0.01-0.10$</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="content-box" style="margin-top: 20px; background: #FFF3CD; border-left-color: #FFC107;">
+                    <p><strong>💡 Tipp:</strong> Deshalb starten wir mit günstigen Blockchains wie BSC oder Polygon!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 13: Coin vs Token -->
+        <div class="slide">
+            <h2>UNTERSCHIED ZWISCHEN COIN UND TOKEN</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="comparison-box">
+                        <h4>Coin</h4>
+                        <ul>
+                            <li>Hat eine eigene Blockchain</li>
+                            <li>Ist die "Hauptwährung" dieser Blockchain</li>
+                            <li>Wird für Gebühren (Gas Fees) verwendet</li>
+                        </ul>
+                        <p style="margin-top: 15px; font-weight: 600;">Beispiele:</p>
+                        <ul style="margin-top: 8px;">
+                            <li><strong>Bitcoin (BTC)</strong> = Coin auf der Bitcoin-Blockchain</li>
+                            <li><strong>Ether (ETH)</strong> = Coin auf der Ethereum-Blockchain</li>
+                            <li><strong>BNB</strong> = Coin auf der Binance Smart Chain</li>
+                        </ul>
+                    </div>
+                    <div class="comparison-box">
+                        <h4>Token</h4>
+                        <ul>
+                            <li>Hat KEINE eigene Blockchain</li>
+                            <li>Läuft auf einer bestehenden Blockchain (meist Ethereum)</li>
+                            <li>Wird für verschiedene Zwecke erstellt</li>
+                        </ul>
+                        <p style="margin-top: 15px; font-weight: 600;">Beispiele:</p>
+                        <ul style="margin-top: 8px;">
+                            <li><strong>USDC</strong> = Token auf Ethereum (und anderen Blockchains)</li>
+                            <li><strong>LINK</strong> = Token auf Ethereum</li>
+                            <li><strong>UNI</strong> = Token auf Ethereum</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="content-box" style="margin-top: 20px;">
+                    <p>🔹 <strong>Coins</strong> sind die Basiswährungen ihrer eigenen Blockchain → sie werden direkt im Protokoll verwaltet.</p>
+                    <p>🔹 <strong>Tokens</strong> existieren auf einer bereits bestehenden Blockchain (z.B. Ethereum, Solana, BNB Chain) → sie sind programmiert, existieren als Smart Contracts innerhalb des Protokolls.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 14: Coin vs Token Alltag -->
+        <div class="slide">
+            <h2>COIN VS TOKEN - ALLTAGSVERGLEICH</h2>
+            <div class="content">
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Alltagsvergleich:</h4>
+                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                        <li style="margin: 10px 0;"><strong>Coin</strong> = Landeswährung (CHF in der Schweiz, EUR in der EU)</li>
+                        <li style="margin: 10px 0;"><strong>Token</strong> = Gutschein oder Spielgeld in einem bestimmten Geschäft/Park</li>
+                    </ul>
+                </div>
+                <div class="content-box" style="margin-top: 20px; background: #FFF3CD; border-left-color: #FFC107;">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Praktisches Beispiel:</h4>
+                    <p style="font-size: 1.25em;">Wenn du auf Ethereum etwas machen willst (z.B. USDC versenden), brauchst du:</p>
+                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left; margin-top: 10px; font-size: 1.25em;">
+                        <li style="margin: 8px 0;"><strong>ETH (Coin)</strong> für die Gebühren</li>
+                        <li style="margin: 8px 0;"><strong>USDC (Token)</strong> zum Versenden</li>
+                    </ul>
+                </div>
+                <div class="warning" style="margin-top: 20px;">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">⚠️ Wichtig für den Alltag:</h4>
+                    <p style="text-align: center; font-size: 1.25em;">Wenn du Token besitzt, brauchst du immer etwas vom Coin der Blockchain für Gebühren!</p>
+                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 10px auto 0 auto; text-align: left; font-size: 1.25em;">
+                        <li style="margin: 8px 0;">Token auf Ethereum → brauchst du ETH</li>
+                        <li style="margin: 8px 0;">Token auf BSC → brauchst du BNB</li>
+                        <li style="margin: 8px 0;">Token auf Polygon → brauchst du MATIC</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 15: Token Arten -->
+        <div class="slide">
+            <h2>ARTEN VON TOKENS/COINS</h2>
+            <div class="content">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Typ</th>
+                            <th>Beschreibung</th>
+                            <th>Beispiel</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Utility Token</strong></td>
+                            <td>Gibt Zugang zu einem Produkt, Service oder einer Plattform. Token hat funktionalen Nutzen innerhalb des Projekts.</td>
+                            <td>BTC, BNB, ETH, UNI</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Governance Token</strong></td>
+                            <td>Ermöglicht Abstimmungen über Protokoll-Entscheidungen (DAO).</td>
+                            <td>AAVE, COMP</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Security Token</strong></td>
+                            <td>Repräsentiert reale Werte oder Beteiligungen (ähnlich Aktie). Tokenisierte Anleihen oder Aktien. Sind Wertpapiere im rechtlichen Sinne und unterliegen strengen Vorgaben.</td>
+                            <td>Tokenisierte Aktien</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Stablecoin</strong></td>
+                            <td>An Fiatwährung oder Rohstoff gekoppelt (z.B. USD, Gold).</td>
+                            <td>USDT, USDC, DAI</td>
+                        </tr>
+                        <tr>
+                            <td><strong>NFT</strong></td>
+                            <td>Einzigartiger, nicht teilbarer Token (z.B. Kunst, Zertifikate). In der Regel nicht reguliert, solange sie kein Anlageprodukt sind.</td>
+                            <td>BAYC, digitale Kunst</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p style="margin-top: 15px; font-style: italic; font-size: 1.1em;">💡 Tokens können mehreren Kategorien gleichzeitig angehören. In der Praxis sind viele DeFi-Token Hybrid-Token, die mehrere Rollen kombinieren.</p>
+            </div>
+        </div>
+
+        <!-- Slide 16: Token Attribute -->
+        <div class="slide">
+            <h2>WICHTIGSTE ATTRIBUTE VON TOKENS/COINS</h2>
+            <div class="content">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 30%;">Attribut</th>
+                            <th>Beschreibung</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Contract Address</strong></td>
+                            <td>Die eindeutige Blockchain-Adresse des Smart Contracts, der den Token definiert.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Name</strong></td>
+                            <td>Der ausgeschriebene Name des Tokens. z.B. „Uniswap"</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Symbol / Ticker</strong></td>
+                            <td>Kürzel für den Token. z.B. „UNI"</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Decimals</strong></td>
+                            <td>Gibt an, wie viele Nachkommastellen der Token hat (meist 18 bei ERC-20).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Chain / Network</strong></td>
+                            <td>Auf welcher Blockchain der Token läuft. z.B. Ethereum, BNB Chain, Polygon</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Max Supply</strong></td>
+                            <td>Maximale Anzahl an Token, die jemals existieren können. Festgelegte Obergrenze.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Total Supply</strong></td>
+                            <td>Aktuell existierende Token, inklusive gesperrter Token.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Circulating Supply</strong></td>
+                            <td>Token, die aktuell im Umlauf sind und gehandelt werden können.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Slide 17: Stablecoins -->
+        <div class="slide">
+            <h2>WAS IST EIN STABLECOIN?</h2>
+            <div class="content">
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Problem mit normalen Kryptos:</h4>
+                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                        <li style="margin: 10px 0;">Bitcoin, Ethereum schwanken stark im Preis (Volatilität)</li>
+                        <li style="margin: 10px 0;">Heute 50'000 CHF/EUR, morgen 45'000 CHF/EUR</li>
+                        <li style="margin: 10px 0;">Schwierig für Alltag und als „Parkplatz"</li>
+                    </ul>
+                </div>
+                <div class="content-box" style="margin-top: 20px; background: #FFF3CD; border-left-color: #FFC107; text-align: center;">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Lösung: Stablecoins</h4>
+                    <p style="text-align: center;">Kryptowährungen, die an eine echte Währung gekoppelt sind</p>
+                </div>
+                <div class="section-title">Die wichtigsten Stablecoins:</div>
+                <div class="grid-3">
+                    <div class="grid-item">
+                        <h4>USDC (USD Coin)</h4>
+                        <ul>
+                            <li>1 USDC = 1 US-Dollar</li>
+                            <li>Herausgegeben von Circle (reguliertes US-Unternehmen)</li>
+                            <li>Jeder USDC ist durch echte Dollars gedeckt</li>
+                            <li>Regelmäßige Audits, transparent</li>
+                            <li><strong>✅ Empfehlung: Der sicherste Stablecoin</strong></li>
+                        </ul>
+                    </div>
+                    <div class="grid-item">
+                        <h4>USDT (Tether)</h4>
+                        <ul>
+                            <li>1 USDT = 1 US-Dollar</li>
+                            <li>Beliebtester Stablecoin weltweit</li>
+                            <li>Etwas umstrittener (Transparenz-Diskussion)</li>
+                            <li>Funktioniert aber seit Jahren</li>
+                        </ul>
+                    </div>
+                    <div class="grid-item">
+                        <h4>EURC (Euro Coin)</h4>
+                        <ul>
+                            <li>1 EURC = 1 Euro</li>
+                            <li>Wie USDC, nur für Euro</li>
+                            <li>Noch weniger verbreitet</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 18: Warum Stablecoins wichtig -->
+        <div class="slide">
+            <h2>WARUM SIND STABLECOINS SO WICHTIG?</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="grid-item">
+                        <h4>✅ Sicherer Hafen</h4>
+                        <p>Krypto-Markt fällt? Tausche in USDC und behalte deinen Wert</p>
+                    </div>
+                    <div class="grid-item">
+                        <h4>✅ Für DeFi</h4>
+                        <p>Viele DeFi-Plattformen arbeiten mit Stablecoins. Verdiene Zinsen ohne Volatilitäts-Risiko</p>
+                    </div>
+                    <div class="grid-item">
+                        <h4>✅ Überweisungen</h4>
+                        <p>Schnell und günstig Geld weltweit schicken – ohne Bank, ohne SWIFT</p>
+                    </div>
+                    <div class="grid-item">
+                        <h4>✅ Einstieg</h4>
+                        <p>Perfekt für erste Schritte (kein Kurs-Risiko)</p>
+                    </div>
+                </div>
+                <div class="content-box" style="margin-top: 30px; background: #FFF3CD; border-left-color: #FFC107;">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">💡 Das wichtigste Tool für Einsteiger!</h4>
+                    <p>"Für den Start empfehle ich USDT oder USDC. Damit kannst du erste Erfahrungen sammeln ohne Angst vor Kursschwankungen. Später kannst du in andere Kryptos tauschen."</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 19: Stablecoin Koppelung -->
+        <div class="slide">
+            <h2>WIE FUNKTIONIERT DIE KOPPELUNG?</h2>
+            <div class="content">
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Bei USDC/USDT (zentralisiert):</h4>
+                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left;">
+                        <li style="margin: 10px 0;">Firma verwahrt echte Dollars auf Bankkonten</li>
+                        <li style="margin: 10px 0;">Für jeden ausgegebenen USDC liegt 1 Dollar in Reserve</li>
+                        <li style="margin: 10px 0;">Regelmäßige Audits (bei USDC transparent)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 20: Info-Plattformen -->
+        <div class="slide">
+            <h2>AUF WELCHEN PLATTFORMEN INFORMIERE ICH MICH?</h2>
+            <div class="content">
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;"><a href="https://coinmarketcap.com" target="_blank" style="color: #5a4636; text-decoration: none; border-bottom: 2px solid #8B7355;">CoinMarketCap</a></h4>
+                    <p>CoinMarketCap ist die weltweit größte Informationsplattform für Kryptowährungen.</p>
+                    <p style="margin-top: 15px;"><strong>Hier findest du in Echtzeit:</strong></p>
+                    <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 800px; margin: 0 auto; text-align: left; margin-top: 10px;">
+                        <li style="margin: 5px 0;">Preise aller wichtigen Coins und Tokens</li>
+                        <li style="margin: 5px 0;">Marktkapitalisierung und Handelsvolumen</li>
+                        <li style="margin: 5px 0;">Charts zur Kursentwicklung</li>
+                        <li style="margin: 5px 0;">Rankings der Kryptowährungen nach Größe</li>
+                    </ul>
+                    <p style="margin-top: 15px;"><strong>Warum wichtig für dich?</strong> CoinMarketCap ist dein zentrales Tool, um den Überblick zu behalten - welche Coins es gibt, wie sie performen und wo du sie handeln kannst. Es ist wie eine Suchmaschine für die Krypto-Welt.</p>
+                </div>
+                <div class="content-box" style="margin-top: 20px; background: #FFF3CD; border-left-color: #FFC107;">
+                    <p><strong>💡 Einfach zu merken:</strong> Willst du wissen, was ein Coin wert ist oder wie er sich entwickelt? → <a href="https://coinmarketcap.com" target="_blank" style="color: #5a4636; font-weight: 700; text-decoration: none; border-bottom: 2px solid #8B7355;">CoinMarketCap</a> ist deine erste Anlaufstelle.</p>
+                    <p>Die Seite ist kostenlos und braucht keine Anmeldung für die Grundfunktionen.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 21: Weitere Info-Quellen -->
+        <div class="slide">
+            <h2>WEITERE INFORMATIONSQUELLEN</h2>
+            <div class="content">
+                <div class="grid-item">
+                    <h4>Nachrichten & Bildung:</h4>
+                    <ul>
+                        <li><a href="https://www.btc-echo.de" target="_blank" style="color: #333; text-decoration: none; border-bottom: 1px solid #8B7355;"><strong>BTC-ECHO</strong></a> - Grösstes deutschsprachiges Krypto-Portal mit News, Analysen und Kursen</li>
+                        <li><a href="https://www.blocktrainer.de" target="_blank" style="color: #333; text-decoration: none; border-bottom: 1px solid #8B7355;"><strong>blocktrainer.de</strong></a> - Sehr gut für Einsteiger, viele Erklärvideos und Tutorials (Fokus Bitcoin)</li>
+                        <li><a href="https://www.coin-update.de" target="_blank" style="color: #333; text-decoration: none; border-bottom: 1px solid #8B7355;"><strong>Coin-Update.de</strong></a> - News und Analysen zu verschiedenen Kryptowährungen</li>
+                        <li><a href="https://www.kryptoszene.de" target="_blank" style="color: #333; text-decoration: none; border-bottom: 1px solid #8B7355;"><strong>kryptoszene.de</strong></a> - Nachrichten, Ratgeber und Vergleiche</li>
+                    </ul>
+                </div>
+                <div class="grid-item" style="margin-top: 20px;">
+                    <h4>Preise & Marktdaten:</h4>
+                    <ul>
+                        <li><a href="https://www.coingecko.com" target="_blank" style="color: #333; text-decoration: none; border-bottom: 1px solid #8B7355;"><strong>coingecko.de</strong></a> - Alternative zu CoinMarketCap, ebenfalls sehr umfangreich</li>
+                        <li><a href="https://de.investing.com/crypto" target="_blank" style="color: #333; text-decoration: none; border-bottom: 1px solid #8B7355;"><strong>investing.com</strong></a> (deutsche Version) - Auch Krypto-Kurse und Charts</li>
+                    </ul>
+                </div>
+                <div class="grid-item" style="margin-top: 20px;">
+                    <h4>YouTube-Kanäle (deutschsprachig):</h4>
+                    <ul>
+                        <li><a href="https://www.youtube.com/@CryptoFamilie" target="_blank" style="color: #333; text-decoration: none; border-bottom: 1px solid #8B7355;"><strong>CryptoFamilie</strong></a> - Sehr ausführliche Erklärungen über Krypto, Wirtschafts-News, Sicherheit</li>
+                        <li><a href="https://www.youtube.com/@MissCrypto" target="_blank" style="color: #333; text-decoration: none; border-bottom: 1px solid #8B7355;"><strong>MissCrypto</strong></a> - Crypto und Blockchain für alle verständlich</li>
+                        <li><a href="https://www.youtube.com/@Blocktrainer" target="_blank" style="color: #333; text-decoration: none; border-bottom: 1px solid #8B7355;"><strong>Blocktrainer</strong></a> - Sehr ausführliche Erklärungen, besonders für Einsteiger</li>
+                        <li><a href="https://www.youtube.com/@KryptoMagazin" target="_blank" style="color: #333; text-decoration: none; border-bottom: 1px solid #8B7355;"><strong>Krypto Magazin</strong></a></li>
+                    </ul>
+                </div>
+                <div class="grid-item" style="margin-top: 20px;">
+                    <h4>Community & Forum:</h4>
+                    <ul>
+                        <li><a href="https://www.coinforum.de" target="_blank" style="color: #333; text-decoration: none; border-bottom: 1px solid #8B7355;"><strong>coinforum.de</strong></a> - Deutschsprachiges Diskussionsforum</li>
+                    </ul>
+                </div>
+                <div class="content-box" style="margin-top: 20px; background: #FFF3CD; border-left-color: #FFC107;">
+                    <p><strong>💡 Meine Empfehlung:</strong></p>
+                    <p>Für Marktdaten: <a href="https://coinmarketcap.com" target="_blank" style="color: #5a4636; font-weight: 700; text-decoration: none; border-bottom: 2px solid #8B7355;">CoinMarketCap</a> oder <a href="https://www.coingecko.com" target="_blank" style="color: #5a4636; font-weight: 700; text-decoration: none; border-bottom: 2px solid #8B7355;">Coingecko</a> | Für den Einstieg: <a href="https://www.blocktrainer.de" target="_blank" style="color: #5a4636; font-weight: 700; text-decoration: none; border-bottom: 2px solid #8B7355;">Blocktrainer</a> (sehr verständlich, ehrlich) | Für News: <a href="https://www.btc-echo.de" target="_blank" style="color: #5a4636; font-weight: 700; text-decoration: none; border-bottom: 2px solid #8B7355;">BTC-ECHO</a></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 22: Vorbereitung Session 2 -->
+        <div class="slide">
+            <h2>🎯 VORBEREITUNG AUF SESSION 2</h2>
+            <div class="content">
+                <div class="content-box">
+                    <p style="font-size: 1.2em; margin-bottom: 20px;">In der nächsten Session richten wir dein erstes Wallet ein. Das wird der wichtigste Schritt!</p>
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Bitte mitbringen:</h4>
+                    <div class="list-item">Handy (voll aufgeladen) und/oder Laptop</div>
+                    <div class="list-item">Zoom auf Handy und/oder Laptop installiert haben</div>
+                    <div class="list-item">PDF "Sicherungsblatt für SeedPhrase" ausdrucken + Schreiber bereit haben</div>
+                    <div class="list-item">Ruhiger Ort ohne Ablenkung</div>
+                    <div class="list-item">Zeit (wir lassen uns Zeit für die Sicherheit)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 23: Thank You -->
+        <div class="slide" style="background-image: url('../bilder/coaching/Thank you.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat;">
+        </div>
+    </div>
+
+    <div class="slide-counter">
+        <span id="currentSlide">1</span> / <span id="totalSlides">23</span>
+    </div>
+
+    <div class="controls">
+        <button class="btn" onclick="previousSlide()">← Zurück</button>
+        <button class="btn" onclick="nextSlide()">Weiter →</button>
+        <button class="btn" onclick="toggleFullscreen()">Vollbild</button>
+        <button class="btn btn-close" onclick="closePresentation()" style="display: none;" id="closeBtn">Beenden</button>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+
+        document.getElementById('totalSlides').textContent = totalSlides;
+
+        function showSlide(n) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (n + totalSlides) % totalSlides;
+            slides[currentSlide].classList.add('active');
+            document.getElementById('currentSlide').textContent = currentSlide + 1;
+            
+            // Zeige "Beenden" Button nur auf der letzten Folie
+            const closeBtn = document.getElementById('closeBtn');
+            if (currentSlide === totalSlides - 1) {
+                closeBtn.style.display = 'inline-block';
+            } else {
+                closeBtn.style.display = 'none';
+            }
+        }
+
+        function nextSlide() {
+            showSlide(currentSlide + 1);
+        }
+
+        function previousSlide() {
+            showSlide(currentSlide - 1);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function closePresentation() {
+            // Versuche das Fenster zu schließen
+            window.close();
+            
+            // Fallback falls window.close() nicht funktioniert
+            if (!window.closed) {
+                alert('Bitte schließe das Browser-Tab manuell oder drücke Alt+F4 / Cmd+W');
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                e.preventDefault();
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                previousSlide();
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'Home') {
+                showSlide(0);
+            } else if (e.key === 'End') {
+                showSlide(totalSlides - 1);
+            }
+        });
+
+        // Navigation nur über Buttons - Click und Swipe deaktiviert
+    </script>
+</body>
+</html>
