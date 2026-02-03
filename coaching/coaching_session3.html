@@ -104,46 +104,46 @@
                     <div class="comparison-box">
                         <h4>Option 1: Brückensysteme</h4>
                         <ul>
-                            <li>• dfx.swiss - Direkt CHF zu Krypto</li>
-                            <li>• Bridge - Schweizer Anbieter</li>
-                            <li>• Trustyfy - Einfach und sicher</li>
+                            <li>dfx.swiss - Direkt CHF zu Krypto</li>
+                            <li>Bridge - Schweizer Anbieter</li>
+                            <li>Trustyfy - Einfach und sicher</li>
                         </ul>
                         <div style="margin-top: 20px;">
                             <p style="font-weight: 600; margin-bottom: 10px;">Vorteil:</p>
                             <ul>
-                                <li>• Direkt von Bankkonto auf Wallet</li>
-                                <li>• reguliert, sicher</li>
+                                <li>Direkt von Bankkonto auf Wallet</li>
+                                <li>reguliert, sicher</li>
                             </ul>
                         </div>
                         <div style="margin-top: 15px;">
                             <p style="font-weight: 600; margin-bottom: 10px;">Nachteil:</p>
                             <ul>
-                                <li>• Etwas höhere Gebühren</li>
+                                <li>Etwas höhere Gebühren</li>
                             </ul>
                         </div>
                     </div>
                     <div class="comparison-box">
                         <h4>Option 2: Zentrale Börsen (CEX)</h4>
                         <ul>
-                            <li>• Bitpanda 🇦🇹 sehr beliebt im DACH-Raum</li>
-                            <li>• Bitvavo 🇳🇱 günstige Gebühren, SEPA</li>
-                            <li>• Kraken 🇺🇸 US-Börse mit deutscher Lizenz, sehr sicher</li>
-                            <li>• Crypto.com 🌍 Weltweit, DACH-freundlich</li>
-                            <li>• Binance 🌍 Weltweit grösste, aber Regulierungs-Diskussionen in EU</li>
+                            <li>Bitpanda 🇦🇹 sehr beliebt im DACH-Raum</li>
+                            <li>Bitvavo 🇳🇱 günstige Gebühren, SEPA</li>
+                            <li>Kraken 🇺🇸 US-Börse mit deutscher Lizenz, sehr sicher</li>
+                            <li>Crypto.com 🌍 Weltweit, DACH-freundlich</li>
+                            <li>Binance 🌍 Weltweit grösste, aber Regulierungs-Diskussionen in EU</li>
                         </ul>
                         <div style="margin-top: 20px;">
                             <p style="font-weight: 600; margin-bottom: 10px;">Vorteil:</p>
                             <ul>
-                                <li>• Günstigere Gebühren</li>
-                                <li>• Grosse Auswahl an Kryptos</li>
-                                <li>• Einfache Bedienung</li>
+                                <li>Günstigere Gebühren</li>
+                                <li>Grosse Auswahl an Kryptos</li>
+                                <li>Einfache Bedienung</li>
                             </ul>
                         </div>
                         <div style="margin-top: 15px;">
                             <p style="font-weight: 600; margin-bottom: 10px;">Nachteil:</p>
                             <ul>
-                                <li>• Kryptos liegen erstmal bei der Börse ("Not your keys, not your coins")</li>
-                                <li>• Muss auf eigenes Wallet übertragen werden, falls möglich</li>
+                                <li>Kryptos liegen erstmal bei der Börse ("Not your keys, not your coins")</li>
+                                <li>Muss auf eigenes Wallet übertragen werden, falls möglich</li>
                             </ul>
                         </div>
                     </div>
@@ -366,21 +366,21 @@
                     <div class="comparison-box" style="background: #E8F5E9; border-left-color: #4caf50;">
                         <h4>✅ Niedrigere Gebühren</h4>
                         <ul>
-                            <li>• Ethereum ist teuer (3-100 EUR pro Transaktion)</li>
-                            <li>• Polygon ist günstig (wenige Cents)</li>
-                            <li>• BSC ist günstig (wenige Cents)</li>
+                            <li>Ethereum ist teuer (3-100 EUR pro Transaktion)</li>
+                            <li>Polygon ist günstig (wenige Cents)</li>
+                            <li>BSC ist günstig (wenige Cents)</li>
                         </ul>
                     </div>
                     <div class="comparison-box" style="background: #E8F5E9; border-left-color: #4caf50;">
                         <h4>✅ Zugang zu anderen Tokens oder DeFi-Plattformen</h4>
                         <ul>
-                            <li>• Manche Token oder Plattformen sind nur auf bestimmten Blockchains verfügbar</li>
+                            <li>Manche Token oder Plattformen sind nur auf bestimmten Blockchains verfügbar</li>
                         </ul>
                     </div>
                     <div class="comparison-box" style="background: #E8F5E9; border-left-color: #4caf50;">
                         <h4>✅ Flexibilität</h4>
                         <ul>
-                            <li>• Du kannst überall hin, wo es günstiger ist</li>
+                            <li>Du kannst überall hin, wo es günstiger ist</li>
                         </ul>
                     </div>
                 </div>
@@ -442,7 +442,6 @@
         <button class="btn" onclick="previousSlide()">← Zurück</button>
         <button class="btn" onclick="nextSlide()">Weiter →</button>
         <button class="btn" onclick="toggleFullscreen()">Vollbild</button>
-        <button class="btn btn-close" onclick="closePresentation()" style="display: none" id="closeBtn">Beenden</button>
     </div>
 
     <script>
@@ -491,9 +490,40 @@
             }
         });
 
-        // Click-Navigation deaktiviert
+        document.addEventListener('click', (e) => {
+            // Ignore clicks on buttons, links, and their children
+            if (e.target.classList.contains('btn') || 
+                e.target.closest('.btn') || 
+                e.target.tagName === 'A' || 
+                e.target.closest('a')) {
+                return;
+            }
+            
+            const clickX = e.clientX;
+            const windowWidth = window.innerWidth;
+            if (clickX > windowWidth / 2) {
+                nextSlide();
+            } else {
+                previousSlide();
+            }
+        });
 
-        // Touch-Navigation deaktiviert
+        let touchStartX = 0;
+        let touchEndX = 0;
+
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+
+        document.addEventListener('touchend', (e) => {
+            touchEndX = e.changedTouches[0].screenX;
+            handleSwipe();
+        });
+
+        function handleSwipe() {
+            if (touchEndX < touchStartX - 50) {
+                nextSlide();
+            }
             if (touchEndX > touchStartX + 50) {
                 previousSlide();
             }

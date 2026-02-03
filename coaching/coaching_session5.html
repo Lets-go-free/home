@@ -615,7 +615,6 @@
         <button class="btn" onclick="previousSlide()">← Zurück</button>
         <button class="btn" onclick="nextSlide()">Weiter →</button>
         <button class="btn" onclick="toggleFullscreen()">Vollbild</button>
-        <button class="btn btn-close" onclick="closePresentation()" style="display: none" id="closeBtn">Beenden</button>
     </div>
 
     <script>
@@ -664,9 +663,39 @@
             }
         });
 
-        // Click-Navigation deaktiviert
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('btn') || 
+                e.target.closest('.btn') || 
+                e.target.tagName === 'A' || 
+                e.target.closest('a')) {
+                return;
+            }
+            
+            const clickX = e.clientX;
+            const windowWidth = window.innerWidth;
+            if (clickX > windowWidth / 2) {
+                nextSlide();
+            } else {
+                previousSlide();
+            }
+        });
 
-        // Touch-Navigation deaktiviert
+        let touchStartX = 0;
+        let touchEndX = 0;
+
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+
+        document.addEventListener('touchend', (e) => {
+            touchEndX = e.changedTouches[0].screenX;
+            handleSwipe();
+        });
+
+        function handleSwipe() {
+            if (touchEndX < touchStartX - 50) {
+                nextSlide();
+            }
             if (touchEndX > touchStartX + 50) {
                 previousSlide();
             }
