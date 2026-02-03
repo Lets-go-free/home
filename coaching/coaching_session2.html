@@ -467,9 +467,9 @@
                     <h4>⚠️ Seed Phrase verloren?</h4>
                     <p style="text-align: center; margin-bottom: 15px;">Das ist kritisch! Solange du noch Zugriff auf die App hast:</p>
                     <ul style="list-style: disc; padding-left: 40px; display: inline-block; max-width: 900px; margin: 10px auto 0 auto; text-align: left;">
-                        <li style="margin: 8px 0;">Sofort neues Wallet erstellen</li>
-                        <li style="margin: 8px 0;">Alle Kryptos auf neues Wallet übertragen</li>
-                        <li style="margin: 8px 0;">Neues Backup sicher verwahren</li>
+                        <li style="margin: 8px 0; font-size: 1.25em;">Sofort neues Wallet erstellen</li>
+                        <li style="margin: 8px 0; font-size: 1.25em;">Alle Kryptos auf neues Wallet übertragen</li>
+                        <li style="margin: 8px 0; font-size: 1.25em;">Neues Backup sicher verwahren</li>
                     </ul>
                 </div>
                 <div class="content-box" style="margin-top: 20px; background: #E8F5E9; border-left-color: #4caf50;">
@@ -561,8 +561,7 @@
             }
         });
 
-        // Klick-Navigation deaktiviert
-        // document.addEventListener('click', (e) => {
+        document.addEventListener('click', (e) => {
             // Ignore clicks on buttons, links, and their children
             if (e.target.classList.contains('btn') || 
                 e.target.closest('.btn') || 
