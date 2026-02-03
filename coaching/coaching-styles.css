@@ -199,6 +199,12 @@ body {
     font-size: 1.4em;
 }
 
+.content-box ul {
+    text-align: left;
+    list-style-position: outside;
+    padding-left: 20px;
+}
+
 .content-box ul li {
     font-size: 1.2em;
     line-height: 1.6;
