@@ -663,22 +663,7 @@
             }
         });
 
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('btn') || 
-                e.target.closest('.btn') || 
-                e.target.tagName === 'A' || 
-                e.target.closest('a')) {
-                return;
-            }
-            
-            const clickX = e.clientX;
-            const windowWidth = window.innerWidth;
-            if (clickX > windowWidth / 2) {
-                nextSlide();
-            } else {
-                previousSlide();
-            }
-        });
+        
 
         let touchStartX = 0;
         let touchEndX = 0;

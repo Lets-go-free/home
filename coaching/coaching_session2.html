@@ -561,7 +561,8 @@
             }
         });
 
-        document.addEventListener('click', (e) => {
+        // Klick-Navigation deaktiviert
+        // document.addEventListener('click', (e) => {
             // Ignore clicks on buttons, links, and their children
             if (e.target.classList.contains('btn') || 
                 e.target.closest('.btn') || 

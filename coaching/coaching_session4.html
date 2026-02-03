@@ -532,24 +532,24 @@
                     <div class="comparison-box">
                         <h4>Hot Wallet (MetaMask) verwenden für:</h4>
                         <ul>
-                            <li>DeFi-Anwendungen (Staking, Liquidity Mining)</li>
-                            <li>Häufige Transaktionen</li>
-                            <li>Kleinere Beträge (100-5'000 EUR/CHF)</li>
-                            <li>Trading, Swaps</li>
-                            <li>NFT-Käufe</li>
-                            <li>Experimentieren, Lernen</li>
-                            <li>"Girokonto"</li>
+                            <li>• DeFi-Anwendungen (Staking, Liquidity Mining)</li>
+                            <li>• Häufige Transaktionen</li>
+                            <li>• Kleinere Beträge (100-5'000 EUR/CHF)</li>
+                            <li>• Trading, Swaps</li>
+                            <li>• NFT-Käufe</li>
+                            <li>• Experimentieren, Lernen</li>
+                            <li>• "Girokonto"</li>
                         </ul>
                     </div>
                     <div class="comparison-box">
                         <h4>Cold Wallet (Tangem) verwenden für:</h4>
                         <ul>
-                            <li>Grosse Beträge (5'000+ EUR/CHF)</li>
-                            <li>Tokens, die du selten bewegst</li>
-                            <li>Langfristige Aufbewahrung (HODL)</li>
-                            <li>"Sparkonto" / "Tresor"</li>
-                            <li>Bitcoin/Ethereum für Jahre halten</li>
-                            <li>Erbschaft, Altersvorsorge</li>
+                            <li>• Grosse Beträge (5'000+ EUR/CHF)</li>
+                            <li>• Tokens, die du selten bewegst</li>
+                            <li>• Langfristige Aufbewahrung (HODL)</li>
+                            <li>• "Sparkonto" / "Tresor"</li>
+                            <li>• Bitcoin/Ethereum für Jahre halten</li>
+                            <li>• Erbschaft, Altersvorsorge</li>
                         </ul>
                     </div>
                 </div>
@@ -617,22 +617,7 @@
             }
         });
 
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('btn') || 
-                e.target.closest('.btn') || 
-                e.target.tagName === 'A' || 
-                e.target.closest('a')) {
-                return;
-            }
-            
-            const clickX = e.clientX;
-            const windowWidth = window.innerWidth;
-            if (clickX > windowWidth / 2) {
-                nextSlide();
-            } else {
-                previousSlide();
-            }
-        });
+        
 
         let touchStartX = 0;
         let touchEndX = 0;
