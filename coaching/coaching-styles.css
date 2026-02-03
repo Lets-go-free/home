@@ -498,10 +498,9 @@ table thead {
 table thead th {
     color: white;
     padding: 18px 20px;
-    text-align: left;
+    text-align: center;
     font-weight: 700;
     font-size: 1.15em;
-    text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
