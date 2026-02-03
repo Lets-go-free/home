@@ -245,8 +245,15 @@ body {
     margin: var(--spacing-sm) 0;
 }
 
+.warning ul {
+    text-align: left;
+    list-style-position: outside;
+    padding-left: 20px;
+}
+
 .warning li {
     font-size: 1.1em;
+    text-align: left;
 }
 
 .warning h3,
