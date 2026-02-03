@@ -203,8 +203,8 @@ body {
     font-size: 1.2em;
     line-height: 1.6;
 
-    padding-left: 0.5em;
-    text-indent: -0.5em;}
+    padding-left: 0.7em;
+    text-indent: -0.7em;}
 
 /* =========================================
    LISTEN & LIST-ITEMS
@@ -243,6 +243,10 @@ body {
     padding: var(--spacing-md);
     border-radius: var(--radius-md);
     margin: var(--spacing-sm) 0;
+}
+
+.warning li {
+    font-size: 1.1em;
 }
 
 .warning h3,
@@ -322,8 +326,8 @@ body {
     position: relative;
     color: #333;
 
-    padding-left: 0.5em;
-    text-indent: -0.5em;}
+    padding-left: 0.7em;
+    text-indent: -0.7em;}
 
 .grid-item li::before {
     content: '→';
@@ -480,8 +484,8 @@ body {
     line-height: 1.6;
     color: #333;
 
-    padding-left: 0.5em;
-    text-indent: -0.5em;}
+    padding-left: 0.7em;
+    text-indent: -0.7em;}
 
 /* =========================================
    TABELLEN
