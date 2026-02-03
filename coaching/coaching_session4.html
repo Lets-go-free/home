@@ -617,9 +617,40 @@
                 showSlide(totalSlides - 1);
             }
         });
-        // Click-Navigation deaktiviert
-        // Touch-Navigation deaktiviert
 
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('btn') || 
+                e.target.closest('.btn') || 
+                e.target.tagName === 'A' || 
+                e.target.closest('a')) {
+                return;
+            }
+            
+            const clickX = e.clientX;
+            const windowWidth = window.innerWidth;
+            if (clickX > windowWidth / 2) {
+                nextSlide();
+            } else {
+                previousSlide();
+            }
+        });
+
+        let touchStartX = 0;
+        let touchEndX = 0;
+
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+
+        document.addEventListener('touchend', (e) => {
+            touchEndX = e.changedTouches[0].screenX;
+            handleSwipe();
+        });
+
+        function handleSwipe() {
+            if (touchEndX < touchStartX - 50) {
+                nextSlide();
+            }
             if (touchEndX > touchStartX + 50) {
                 previousSlide();
             }
