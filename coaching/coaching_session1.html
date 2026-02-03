@@ -637,11 +637,11 @@
                 <div class="content-box">
                     <p style="font-size: 1.2em; margin-bottom: 20px;">In der nächsten Session richten wir dein erstes Wallet ein. Das wird der wichtigste Schritt!</p>
                     <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Bitte mitbringen:</h4>
-                    <div class="list-item">Handy (voll aufgeladen) und/oder Laptop</div>
-                    <div class="list-item">Zoom auf Handy und/oder Laptop installiert haben</div>
-                    <div class="list-item">PDF "Sicherungsblatt für SeedPhrase" ausdrucken + Schreiber bereit haben</div>
-                    <div class="list-item">Ruhiger Ort ohne Ablenkung</div>
-                    <div class="list-item">Zeit (wir lassen uns Zeit für die Sicherheit)</div>
+                    <div class="list-item">✅ Handy (voll aufgeladen) und/oder Laptop</div>
+                    <div class="list-item">✅ Zoom auf Handy und/oder Laptop installiert haben</div>
+                    <div class="list-item">✅ PDF "Sicherungsblatt für SeedPhrase" ausdrucken + Schreiber bereit haben</div>
+                    <div class="list-item">✅ Ruhiger Ort ohne Ablenkung</div>
+                    <div class="list-item">✅ Zeit (wir lassen uns Zeit für die Sicherheit)</div>
                 </div>
             </div>
         </div>
@@ -676,8 +676,8 @@
             document.getElementById('currentSlide').textContent = currentSlide + 1;
             
             // Zeige "Beenden" Button nur auf der letzten Folie
-            const closeBtn = document.getElementById('closeBtn');
-            if (currentSlide === totalSlides - 1) {
+            
+            if (currentSlide === 22) {
                 closeBtn.style.display = 'inline-block';
             } else {
                 closeBtn.style.display = 'none';
@@ -701,13 +701,8 @@
         }
 
         function closePresentation() {
-            // Versuche das Fenster zu schließen
-            window.close();
-            
-            // Fallback falls window.close() nicht funktioniert
-            if (!window.closed) {
-                alert('Bitte schließe das Browser-Tab manuell oder drücke Alt+F4 / Cmd+W');
-            }
+            window.location.href = 'index.html';
+        }
         }
 
         document.addEventListener('keydown', (e) => {

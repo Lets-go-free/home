@@ -513,6 +513,7 @@
         <button class="btn" onclick="previousSlide()">← Zurück</button>
         <button class="btn" onclick="nextSlide()">Weiter →</button>
         <button class="btn" onclick="toggleFullscreen()">Vollbild</button>
+        <button class="btn btn-close" onclick="closePresentation()" style="display: none" id="closeBtn">Beenden</button>
     </div>
 
     <script>
@@ -562,8 +563,9 @@
         });
 
         // Click-Navigation deaktiviert
+
         // Touch-Navigation deaktiviert
-if (touchEndX > touchStartX + 50) {
+            if (touchEndX > touchStartX + 50) {
                 previousSlide();
             }
         }
