@@ -343,7 +343,7 @@ body {
     text-indent: -0.6em;}
 
 .grid-item li::before {
-    content: '→';
+    content: '• ';
     position: absolute;
     left: 0;
     color: var(--color-primary);
