@@ -209,8 +209,8 @@ body {
     font-size: 1.2em;
     line-height: 1.6;
 
-    padding-left: 0.7em;
-    text-indent: -0.7em;}
+    padding-left: 0.6em;
+    text-indent: -0.6em;}
 
 /* =========================================
    LISTEN & LIST-ITEMS
@@ -339,8 +339,8 @@ body {
     position: relative;
     color: #333;
 
-    padding-left: 0.7em;
-    text-indent: -0.7em;}
+    padding-left: 0.6em;
+    text-indent: -0.6em;}
 
 .grid-item li::before {
     content: '→';
@@ -497,8 +497,8 @@ body {
     line-height: 1.6;
     color: #333;
 
-    padding-left: 0.7em;
-    text-indent: -0.7em;}
+    padding-left: 0.6em;
+    text-indent: -0.6em;}
 
 /* =========================================
    TABELLEN
