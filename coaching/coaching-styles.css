@@ -320,6 +320,26 @@ body {
     border-top: 3px solid var(--color-primary);
 }
 
+.grid-item ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.grid-item li {
+    padding: 6px 0 6px 20px;
+    font-size: 1.1em;
+    position: relative;
+    color: #333;
+}
+
+.grid-item li::before {
+    content: '• ';
+    position: absolute;
+    left: 0;
+    color: var(--color-primary);
+}
+
+
 .grid-item h4 {
     color: var(--color-primary);
     font-size: 1.4em;
@@ -332,22 +352,9 @@ body {
 
     list-style-position: outside;}
 
-.grid-item li {
-    padding: 6px 0;
-    font-size: 1.1em;
-    padding-left: 20px;
-    position: relative;
-    color: #333;
 
-    padding-left: 0.6em;
-    text-indent: -0.6em;}
 
-.grid-item li::before {
-    content: '• ';
-    position: absolute;
-    left: 0;
-    color: var(--color-primary);
-}
+
 
 /* =========================================
    BUTTONS & CONTROLS
