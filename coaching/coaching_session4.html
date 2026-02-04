@@ -572,7 +572,7 @@
         <button class="btn btn-close" onclick="closePresentation()" style="display: none" id="closeBtn">Beenden</button>
     </div>
 
-    <script>
+        <script>
         let currentSlide = 0;
         const slides = document.querySelectorAll('.slide');
         const totalSlides = slides.length;
@@ -584,6 +584,14 @@
             currentSlide = (n + totalSlides) % totalSlides;
             slides[currentSlide].classList.add('active');
             document.getElementById('currentSlide').textContent = currentSlide + 1;
+            
+            // Zeige "Beenden" Button nur auf der letzten Folie
+            const closeBtn = document.getElementById('closeBtn');
+            if (currentSlide === totalSlides - 1) {
+                closeBtn.style.display = 'inline-block';
+            } else {
+                closeBtn.style.display = 'none';
+            }
         }
 
         function nextSlide() {
@@ -602,6 +610,10 @@
             }
         }
 
+        function closePresentation() {
+            window.location.href = 'index.html';
+        }
+
         document.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowRight' || e.key === ' ') {
                 e.preventDefault();
@@ -618,43 +630,7 @@
             }
         });
 
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('btn') || 
-                e.target.closest('.btn') || 
-                e.target.tagName === 'A' || 
-                e.target.closest('a')) {
-                return;
-            }
-            
-            const clickX = e.clientX;
-            const windowWidth = window.innerWidth;
-            if (clickX > windowWidth / 2) {
-                nextSlide();
-            } else {
-                previousSlide();
-            }
-        });
-
-        let touchStartX = 0;
-        let touchEndX = 0;
-
-        document.addEventListener('touchstart', (e) => {
-            touchStartX = e.changedTouches[0].screenX;
-        });
-
-        document.addEventListener('touchend', (e) => {
-            touchEndX = e.changedTouches[0].screenX;
-            handleSwipe();
-        });
-
-        function handleSwipe() {
-            if (touchEndX < touchStartX - 50) {
-                nextSlide();
-            }
-            if (touchEndX > touchStartX + 50) {
-                previousSlide();
-            }
-        }
+        // Navigation nur über Buttons - Click und Swipe deaktiviert
     </script>
 </body>
 </html>
