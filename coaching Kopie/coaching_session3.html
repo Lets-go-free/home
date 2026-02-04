@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session 3 - Dein erster Krypto-Kauf | Let's go free</title>
+    <link rel="stylesheet" href="coaching-styles.css">
+    
+</head>
+<body>
+    <!-- Header Banner -->
+    <div class="header-banner">
+        <h1>Let's go free - Freiheit mit DeFi und Krypto</h1>
+        <p class="tagline">Dein Weg in die finanzielle Selbstbestimmung</p>
+    </div>
+
+    <div class="presentation">
+        <!-- Slide 1: Cover -->
+        <div class="slide active">
+            <h1>Dein leichter Einstieg<br>in die Krypto-Welt</h1>
+            <div class="subtitle">Dein persönliches 1:1 Coaching von A-Z</div>
+            <div style="font-size: 1.3em; margin-top: 30px; color: #5a4636;">Let's go free - Chris Müller</div>
+        </div>
+
+        <!-- Slide 2: Sessions Overview -->
+        <div class="slide">
+            <h2>SESSIONS DEINES 1:1 COACHINGS</h2>
+            <div class="subtitle">Dein Weg zur finanziellen Selbstbestimmung mit DeFi</div>
+            <div class="content">
+                <div class="session-timeline">
+                    <div class="session-box">
+                        <div class="session-number">1</div>
+                        <div class="session-title">Das Fundament<br>verstehen</div>
+                    </div>
+                    <div class="session-box">
+                        <div class="session-number">2</div>
+                        <div class="session-title">Dein Wallet<br>einrichten</div>
+                    </div>
+                    <div class="session-box">
+                        <div class="session-number">3</div>
+                        <div class="session-title">Dein erster<br>Krypto-Kauf</div>
+                    </div>
+                    <div class="session-box">
+                        <div class="session-number">4</div>
+                        <div class="session-title">Sicherheit mit<br>Cold Wallet</div>
+                    </div>
+                    <div class="session-box">
+                        <div class="session-number">5</div>
+                        <div class="session-title">Krypto im<br>echten Leben<br>nutzen</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 3: Disclaimer -->
+        <div class="slide">
+            <h2>DISCLAIMER / HAFTUNGSAUSSCHLUSS</h2>
+            <div class="content">
+                <div class="warning">
+                    <p><strong>Das angebotene Coaching dient ausschliesslich zu Informations- und Bildungszwecken.</strong></p>
+                </div>
+                <div class="content-box">
+                    <p>Ich erteile keine Finanz-, Anlage-, Steuer- oder Rechtsberatung im Sinne geltender Gesetze.</p>
+                    <p>Alle im Coaching gezeigten Beispiele, Transaktionen oder Anwendungen (z. B. Wallet-Erstellung, Kauf/Verkauf, Swaps, Nutzung von DeFi-Plattformen oder Krypto-Debitkarten) dienen nur der Veranschaulichung.</p>
+                    <p>Jeder TeilnehmerIn handelt eigenverantwortlich und sollte vor finanziellen Entscheidungen ggf. eine qualifizierte Fachperson (z. B. Steuerberaterin oder Finanzberaterin) konsultieren.</p>
+                    <p>Ich übernehme keine Haftung für Verluste, Risiken oder technische Probleme, die aus der Nutzung der vermittelten Inhalte oder gezeigten Tools entstehen.</p>
+                </div>
+                <div class="warning">
+                    <p><strong>⚠️ Der Handel mit Kryptowährungen ist mit hohem Risiko verbunden und kann zum Totalverlust des eingesetzten Kapitals führen.</strong></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 4: Session 3 Intro -->
+        <div class="slide" style="background-image: url('../bilder/coaching/Session3.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat;">
+            <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(139, 115, 85, 0.7);"></div>
+            <div style="position: relative; z-index: 1;">
+                <div class="phase-number">3</div>
+                <h1 style="color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">SESSION 3</h1>
+                <h2 style="color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">DEIN ERSTER KRYPTO-KAUF</h2>
+            </div>
+        </div>
+
+        <!-- Slide 5: Ziele -->
+        <div class="slide">
+            <h2>ZIELE VON SESSION 3</h2>
+            <h3>Dein erster Krypto-Kauf</h3>
+            <div class="content">
+                <div class="section-title">Am Ende dieser Session hast Du:</div>
+                <div class="list-item"><span class="checkmark">✅</span> Verschiedene Kaufmöglichkeiten kennengelernt (Bridges, CEX)</div>
+                <div class="list-item"><span class="checkmark">✅</span> Deinen ersten Krypto-Kauf erfolgreich durchgeführt</div>
+                <div class="list-item"><span class="checkmark">✅</span> Tokens im eigenen Wallet empfangen, swappen und versenden</div>
+                <div class="list-item"><span class="checkmark">✅</span> Verstanden, wie Bridging funktioniert</div>
+                <div class="list-item"><span class="checkmark">✅</span> Erste praktische Erfahrung mit Transaktionen gesammelt</div>
+                <div class="list-item"><span class="checkmark">✅</span> Alle Sicherheitsaspekte beim Kauf verstanden</div>
+            </div>
+        </div>
+
+        <!-- Slide 6: Überblick Kaufmöglichkeiten -->
+        <div class="slide">
+            <h2>ÜBERBLICK - VERSCHIEDENE KAUFMÖGLICHKEITEN</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="comparison-box">
+                        <h4>Option 1: Brückensysteme</h4>
+                        <ul>
+                            <li>dfx.swiss - Direkt CHF zu Krypto</li>
+                            <li>Bridge - Schweizer Anbieter</li>
+                            <li>Trustyfy - Einfach und sicher</li>
+                        </ul>
+                        <div style="margin-top: 20px;">
+                            <p style="font-weight: 600; margin-bottom: 10px;">Vorteil:</p>
+                            <ul>
+                                <li>Direkt von Bankkonto auf Wallet</li>
+                                <li>reguliert, sicher</li>
+                            </ul>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <p style="font-weight: 600; margin-bottom: 10px;">Nachteil:</p>
+                            <ul>
+                                <li>Etwas höhere Gebühren</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="comparison-box">
+                        <h4>Option 2: Zentrale Börsen (CEX)</h4>
+                        <ul>
+                            <li>Bitpanda 🇦🇹 sehr beliebt im DACH-Raum</li>
+                            <li>Bitvavo 🇳🇱 günstige Gebühren, SEPA</li>
+                            <li>Kraken 🇺🇸 US-Börse mit deutscher Lizenz, sehr sicher</li>
+                            <li>Crypto.com 🌍 Weltweit, DACH-freundlich</li>
+                            <li>Binance 🌍 Weltweit grösste, aber Regulierungs-Diskussionen in EU</li>
+                        </ul>
+                        <div style="margin-top: 20px;">
+                            <p style="font-weight: 600; margin-bottom: 10px;">Vorteil:</p>
+                            <ul>
+                                <li>Günstigere Gebühren</li>
+                                <li>Grosse Auswahl an Kryptos</li>
+                                <li>Einfache Bedienung</li>
+                            </ul>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <p style="font-weight: 600; margin-bottom: 10px;">Nachteil:</p>
+                            <ul>
+                                <li>Kryptos liegen erstmal bei der Börse ("Not your keys, not your coins")</li>
+                                <li>Muss auf eigenes Wallet übertragen werden, falls möglich</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 7: Praxis dfx.swiss - Teil 1 -->
+        <div class="slide">
+            <h2>PRAXIS: ERSTER KAUF ÜBER dfx.swiss</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">1. KYC - Registrierung durchführen</h4>
+                        <ul>
+                            <li>• dfx-Website* besuchen</li>
+                            <li>• Oben rechts: "Buy Crypto" klicken</li>
+                            <li>• Blockchain auswählen<br>Zum Starten: <strong>Binance Smart Chain BSC</strong></li>
+                            <li>• Token auswählen<br>Zum Starten: <strong>USDT</strong> (Stablecoin, kein Kurs-Risiko)</li>
+                        </ul>
+                        <p style="margin-top: 20px; font-size: 0.9em; font-style: italic;">* Bei diesem Link handelt es sich um einen Referral-Link.</p>
+                    </div>
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">2. Wallet verbinden</h4>
+                        <ul>
+                            <li>• "Connect Wallet" klicken</li>
+                            <li>• MetaMask auswählen - Wallet wird geöffnet</li>
+                            <li>• "Verbinden" bestätigen</li>
+                            <li>• Deine Wallet-Adresse wird jetzt angezeigt</li>
+                        </ul>
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em; margin-top: 30px;">3. KYC durchführen</h4>
+                        <ul>
+                            <li>• KYC durchführen und auf Bestätigung warten</li>
+                            <li>• Betrag auswählen → Gebühren werden angezeigt</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 8: Praxis dfx.swiss - Teil 2 -->
+        <div class="slide">
+            <h2>PRAXIS: ERSTER KAUF ÜBER dfx.swiss</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">4. Kauf durchführen</h4>
+                        <ul>
+                            <li>• IBAN wird angezeigt (von dfx.swiss)</li>
+                            <li>• Verwendungszweck wird angezeigt<br><strong style="color: #ff5252;">• KRITISCH: Exakt kopieren!</strong><br>• Ein Fehler = Geld kommt nicht an</li>
+                            <li>• Banküberweisung durchführen<br>• Idealerweise per QR-Rechnung<br>• E-Banking → Neue Überweisung<br>• IBAN von dfx.swiss einfügen<br>• Betrag eingeben (z.B. 100 CHF)<br>• Verwendungszweck EXAKT kopieren!<br>• Überweisung bestätigen</li>
+                        </ul>
+                    </div>
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">5. Warten auf Überweisung</h4>
+                        <ul>
+                            <li>• Überweisung dauert 1-2 Werktage</li>
+                            <li>• Du erhältst E-Mail von dfx.swiss</li>
+                            <li>• Tokens erscheinen dann automatisch in deinem Wallet</li>
+                            <li>• In MetaMask unter "Tokens" prüfen</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 9: Praxis trustyfy - Voraussetzungen -->
+        <div class="slide">
+            <h2>PRAXIS: ERSTER KAUF ÜBER trustyfy</h2>
+            <div class="content">
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 20px; font-size: 1.4em;">Was du für die Registrierung brauchst:</h4>
+                    <ul>
+                        <li>• Einen gültigen Personalausweis oder Reisepass</li>
+                        <li>• Einen Adressnachweis z.B. Bankauszug, Telefonrechnung, amtliches Dokument o.ä. das nicht älter als 3 Monate ist</li>
+                        <li>• Kamera an Deinem Rechner oder Smartphone sowie guter Internetzugang</li>
+                        <li>• Einen Empfehlungslink von einem Partner</li>
+                        <li>• Eine Kreditkarte (muss nicht auf Deinen Namen ausgestellt sein)</li>
+                    </ul>
+                    <p style="margin-top: 20px; font-style: italic;">Es ist möglich die Einrichtung am Handy zu machen, jedoch ist es sinnvoller am PC. Da sind die Angaben besser zu verfolgen.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 10: Praxis trustyfy - Registrierung -->
+        <div class="slide">
+            <h2>PRAXIS: ERSTER KAUF ÜBER trustyfy</h2>
+            <div class="content">
+                <div class="grid-2">
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">KYC - Registrierung durchführen</h4>
+                        <ul>
+                            <li>• trustyfy-Website* besuchen</li>
+                            <li>• Mit Mail-Adresse registrieren</li>
+                            <li>• Wallet von ETH auf Fiat ändern (oben rechts), damit du ein eigenes IBAN-Konto erhältst</li>
+                            <li>• Mit Kreditkarte die 15$ bezahlen</li>
+                            <li>• KYC durchführen</li>
+                            <li>• Bankkonto € hinzufügen</li>
+                            <li>• Einbezahlten Betrag in Polygon swappen</li>
+                            <li>• An dein Metamask-Wallet senden</li>
+                        </ul>
+                        <p style="margin-top: 20px; font-size: 0.9em; font-style: italic;">* Bei diesem Link handelt es sich um einen Referral-Link.</p>
+                    </div>
+                    <div class="content-box">
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Wallet verbinden</h4>
+                        <ul>
+                            <li>• "Connect Wallet" klicken</li>
+                            <li>• MetaMask auswählen - Wallet wird geöffnet</li>
+                            <li>• "Verbinden" bestätigen</li>
+                            <li>• Deine Wallet-Adresse wird jetzt angezeigt</li>
+                        </ul>
+                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em; margin-top: 30px;">KYC durchführen</h4>
+                        <ul>
+                            <li>• KYC durchführen und auf Bestätigung warten</li>
+                            <li>• Betrag auswählen → Gebühren werden angezeigt</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 11: Swap - Option 1 -->
+        <div class="slide">
+            <h2>DEIN ERSTER SWAP, SENDEN UND VERSENDEN</h2>
+            <h3>Hier tauschst du direkt aus deiner Wallet heraus, ohne Registrierung oder KYC</h3>
+            <div class="content">
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Option 1: Wallet-integrierte Tauschoption</h4>
+                    <p><strong>MetaMask Swaps</strong> ist eine integrierte Tauschfunktion in der MetaMask-Wallet, mit der du Krypto-Token direkt aus deiner Wallet heraus handeln kannst – ganz ohne externe Börse.</p>
+                    <p style="margin-top: 15px;">Dabei vergleicht MetaMask automatisch die Kurse verschiedener dezentraler Börsen (DEXs) wie Uniswap, 1inch oder Paraswap und wählt das beste verfügbare Angebot für dich aus.</p>
+                    <p style="margin-top: 15px;">Du bezahlst dafür eine kleine Servicegebühr, und die Transaktion wird anschliessend wie gewohnt über dein Wallet und das jeweilige Netzwerk (z. B. Ethereum oder Polygon) ausgeführt.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 12: Swap - Option 2 -->
+        <div class="slide">
+            <h2>DEIN ERSTER SWAP, SENDEN UND VERSENDEN</h2>
+            <h3>Hier tauschst du direkt aus deiner Wallet heraus, ohne Registrierung oder KYC</h3>
+            <div class="content">
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Option 2: DEX-Börsen als dApp</h4>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Börse</th>
+                                <th>Unterstützte Blockchains</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Uniswap</strong></td>
+                                <td>Ethereum, Arbitrum, Optimism, Polygon, Base</td>
+                            </tr>
+                            <tr>
+                                <td><strong>PancakeSwap</strong></td>
+                                <td>BNB Smart Chain</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Sushi (mit Bridge-Funktion)</strong></td>
+                                <td>Ethereum, BNB, Polygon, Arbitrum, Optimism, Avalanche, Fantom und weitere</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p style="margin-top: 20px; text-align: center;">Du startest diese dezentralen Börsen (DEX), indem du den Link im Metamask-internen Browser eingibst und dein Wallet mit der DEX verbindest.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 13: Wichtiger Check -->
+        <div class="slide">
+            <h2>WICHTIGER CHECK VOR DER SWAP-BESTÄTIGUNG</h2>
+            <div class="content">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: start;">
+                    <div>
+                        <div class="warning">
+                            <h4>‼️ Unbedingt prüfen:</h4>
+                            <ul>
+                                <li>Prüfe die gewählten Token und den eingetragenen Wert. Unbedingt auf den errechneten $-Wert achten. Bei Token mit einem hohen Wert (z.B. Bitcoin) geht eine Dezimalstelle schnell mal vergessen.</li>
+                                <li>Ziel-Token: erhalte ich den erwarteten Wert? Genauer Bereich ersichtlich unter "Max received" und "Min. received".</li>
+                                <li>Je nachdem muss die Slippage Tolerante (Price Impact) angepasst werden (v.a. bei Token mit niedriger Liquidität).</li>
+                                <li>Achte auf die Fees (Gebühren). Diese können je nach Netzwerk von wenigen Cents bis zu einigen $ variieren. Zu hohe Gebühren weisen auf eine Falsch-Eingabe hin.</li>
+                                <li>Empfänger-Adresse: prüfe jeweils die ersten 4 und letzten 4 Zeichen.</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div>
+                        <img src="../bilder/coaching/Swap.jpg" style="max-width: 100%; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);" alt="Swap Check">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 14: Empfangen, Swappen, Versenden -->
+        <div class="slide">
+            <h2>TOKENS EMPFANGEN, SWAPPEN UND VERSENDEN</h2>
+            <div class="content">
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 20px; font-size: 1.4em; text-align: center;">Praktische Übung</h4>
+                    <ul>
+                        <li>• Du erhältst von mir BNB (den Coin der Binance Smart Chain) im Wert von 1 $.<br>👉 Diese BNB brauchst du später, um deine Transaktionsgebühren (Gas Fees) zu bezahlen.</li>
+                        <li>• Du kaufst dir selbst BNB<br>Verwende deine USDT, um dir BNB im Wert von ca. 3 $ zu kaufen. Das machst du direkt in deiner Wallet oder auf einer DEX (z. B. PancakeSwap).</li>
+                        <li>• Jetzt überweist du mir einfach wieder BNB im Wert von 1 $.</li>
+                    </ul>
+                </div>
+                <div class="content-box" style="margin-top: 30px; background: #E8F5E9; border-left-color: #4caf50;">
+                    <h4 style="color: #2e7d32; text-align: center; font-size: 1.5em; margin-bottom: 15px;">🎉 Gratuliere!</h4>
+                    <p style="text-align: center; font-size: 1.2em;">Du hast soeben erfolgreich Tokens empfangen, selbst geswappt und versendet.</p>
+                    <p style="text-align: center; font-size: 1.2em; margin-top: 10px;">Wie du siehst – einfacher und schneller als eBanking!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 15: Bridging Einführung -->
+        <div class="slide">
+            <h2>ZWISCHEN BLOCKCHAINS WECHSELN (BRIDGING)</h2>
+            <div class="content">
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Was ist Bridging?</h4>
+                    <p>Tokens von einer Blockchain auf eine andere übertragen. Beispiel: USDT von BSC → Ethereum übertragen.</p>
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em; margin-top: 25px;">Weshalb und wann braucht es ein Bridging?</h4>
+                </div>
+                <div class="grid-3" style="margin-top: 20px;">
+                    <div class="comparison-box" style="background: #E8F5E9; border-left-color: #4caf50;">
+                        <h4>✅ Niedrigere Gebühren</h4>
+                        <ul>
+                            <li>Ethereum ist teuer (3-100 EUR pro Transaktion)</li>
+                            <li>Polygon ist günstig (wenige Cents)</li>
+                            <li>BSC ist günstig (wenige Cents)</li>
+                        </ul>
+                    </div>
+                    <div class="comparison-box" style="background: #E8F5E9; border-left-color: #4caf50;">
+                        <h4>✅ Zugang zu anderen Tokens oder DeFi-Plattformen</h4>
+                        <ul>
+                            <li>Manche Token oder Plattformen sind nur auf bestimmten Blockchains verfügbar</li>
+                        </ul>
+                    </div>
+                    <div class="comparison-box" style="background: #E8F5E9; border-left-color: #4caf50;">
+                        <h4>✅ Flexibilität</h4>
+                        <ul>
+                            <li>Du kannst überall hin, wo es günstiger ist</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 16: Bridging Optionen -->
+        <div class="slide">
+            <h2>DIE BELIEBTESTEN CROSS-CHAIN BRIDGES</h2>
+            <div class="content">
+                <div class="content-box" style="margin-bottom: 20px;">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Option 1: Wallet-integrierte Bridge-Option</h4>
+                    <p><strong>MetaMask Bridge:</strong> MetaMask bietet neben Swaps auch eine integrierte Bridging-Funktion an.</p>
+                    <p style="margin-top: 10px;">Damit kannst du Token sicher zwischen verschiedenen Blockchains (z. B. Ethereum, Arbitrum, Optimism oder Polygon) übertragen, ohne eine externe Bridge-DApp aufrufen zu müssen.</p>
+                    <p style="margin-top: 10px;">MetaMask vergleicht dabei automatisch mehrere Bridge-Anbieter, um dir den besten Weg mit den geringsten Gebühren anzubieten – direkt in der vertrauten Wallet-Oberfläche.</p>
+                </div>
+                <div class="content-box">
+                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Option 2: Externe Bridge-Plattformen</h4>
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Bridge</th>
+                            <th>Unterstützte Blockchains</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr>
+                            <td><strong>deBridge</strong></td>
+                            <td>Ethereum, BNB Chain, Polygon, Avalanche, Arbitrum, Optimism, Base, Solana</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Sushi</strong></td>
+                            <td>Ethereum, BNB Chain, Polygon, Avalanche, Arbitrum, Optimism, Fantom</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Synapse Protocol</strong></td>
+                            <td>Ethereum, BNB Chain, Polygon, Avalanche, Arbitrum, Optimism, Fantom</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Stargate Finance</strong></td>
+                            <td>Ethereum, BNB Chain, Polygon, Avalanche, Arbitrum, Optimism, Base</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Across Protocol</strong></td>
+                            <td>Ethereum, Arbitrum, Optimism, Polygon, Base</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 17: Thank You -->
+        <div class="slide" style="background-image: url('../bilder/coaching/Thank you.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat;">
+        </div>
+    </div>
+
+    <div class="slide-counter">
+        <span id="currentSlide">1</span> / <span id="totalSlides">17</span>
+    </div>
+
+    <div class="controls">
+        <button class="btn" onclick="previousSlide()">← Zurück</button>
+        <button class="btn" onclick="nextSlide()">Weiter →</button>
+        <button class="btn" onclick="toggleFullscreen()">Vollbild</button>
+        <button class="btn btn-close" onclick="closePresentation()" style="display: none" id="closeBtn">Beenden</button>
+    </div>
+
+        <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+
+        document.getElementById('totalSlides').textContent = totalSlides;
+
+        function showSlide(n) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (n + totalSlides) % totalSlides;
+            slides[currentSlide].classList.add('active');
+            document.getElementById('currentSlide').textContent = currentSlide + 1;
+            
+            // Zeige "Beenden" Button nur auf der letzten Folie
+            const closeBtn = document.getElementById('closeBtn');
+            if (currentSlide === totalSlides - 1) {
+                closeBtn.style.display = 'inline-block';
+            } else {
+                closeBtn.style.display = 'none';
+            }
+        }
+
+        function nextSlide() {
+            showSlide(currentSlide + 1);
+        }
+
+        function previousSlide() {
+            showSlide(currentSlide - 1);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function closePresentation() {
+            window.location.href = 'index.html';
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                e.preventDefault();
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                previousSlide();
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'Home') {
+                showSlide(0);
+            } else if (e.key === 'End') {
+                showSlide(totalSlides - 1);
+            }
+        });
+
+        // Navigation nur über Buttons - Click und Swipe deaktiviert
+    </script>
+</body>
+</html>
