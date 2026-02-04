@@ -200,6 +200,7 @@ body {
 }
 
 .content-box ul {
+    list-style: none;
     text-align: left;
     list-style-position: outside;
     padding-left: 20px;
