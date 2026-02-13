@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#2c1e0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Let's go free" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="description" content="Krypto-Einsteiger-Guide und gratis Lernmaterialien von letsgofree.me" />
+  <title>Let's go free – Downloads</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --brown-dark:  #2c1e0f;
+      --brown-mid:   #5a4636;
+      --brown-main:  #8B7355;
+      --brown-light: #b89a76;
+      --cream:       #F5E6D3;
+      --cream-light: #fdf6ee;
+      --accent:      #c4a265;
+      --green:       #4caf78;
+      --red:         #e07070;
+      --radius:      18px;
+      --radius-sm:   10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      min-height: 100%;
+      font-family: 'DM Sans', sans-serif;
+      background: var(--brown-dark);
+      color: var(--cream);
+      -webkit-font-smoothing: antialiased;
+    }
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 10% 0%, rgba(196,162,101,.18) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 80% at 90% 100%, rgba(90,70,54,.35) 0%, transparent 60%);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ────────── LAYOUT ────────── */
+    .wrapper {
+      position: relative; z-index: 1;
+      max-width: 480px; margin: 0 auto;
+      padding: 0 0 80px;
+    }
+
+    /* ────────── HEADER ────────── */
+    .header {
+      padding: 54px 28px 28px;
+      text-align: center;
+    }
+    .logo-chain { font-size: 38px; margin-bottom: 10px; display: block; filter: drop-shadow(0 2px 8px rgba(196,162,101,.4)); }
+    .site-title { font-family: 'Playfair Display', serif; font-size: clamp(26px,7vw,32px); font-weight: 700; color: var(--accent); letter-spacing: .02em; line-height: 1.1; }
+    .site-subtitle { margin-top: 7px; font-size: 13px; font-weight: 300; color: var(--brown-light); letter-spacing: .06em; text-transform: uppercase; }
+    .divider { width: 48px; height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); margin: 16px auto 0; }
+
+    /* ────────── UPDATE BANNER ────────── */
+    #update-banner {
+      display: none;
+      margin: 0 20px 20px;
+      background: linear-gradient(135deg, rgba(76,175,120,.15), rgba(76,175,120,.06));
+      border: 1px solid rgba(76,175,120,.4);
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      align-items: center; gap: 14px;
+    }
+    #update-banner.show { display: flex; }
+    .update-icon { font-size: 22px; }
+    .update-text { flex: 1; font-size: 13.5px; line-height: 1.45; color: var(--cream); }
+    .update-text strong { color: var(--green); }
+    .btn-update {
+      background: var(--green); color: #fff;
+      border: none; border-radius: 8px;
+      padding: 8px 14px; font-size: 13px; font-weight: 500;
+      cursor: pointer; white-space: nowrap;
+      font-family: 'DM Sans', sans-serif;
+    }
+    .btn-update:active { filter: brightness(.9); }
+
+    /* ────────── OFFLINE BADGE ────────── */
+    .offline-badge {
+      display: none;
+      margin: 0 20px 16px;
+      background: rgba(90,70,54,.5);
+      border: 1px solid rgba(196,162,101,.2);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 12.5px; color: var(--brown-light);
+      text-align: center;
+    }
+    .offline-badge.show { display: block; }
+
+    /* ────────── SECTION LABEL ────────── */
+    .section-label {
+      font-size: 11px; font-weight: 500; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--brown-light);
+      padding: 0 28px; margin-bottom: 14px;
+    }
+
+    /* ────────── E-BOOK CARD ────────── */
+    .ebook-card {
+      margin: 0 20px 32px;
+      background: linear-gradient(145deg, var(--brown-mid) 0%, #3d2d1e 100%);
+      border: 1px solid rgba(196,162,101,.25);
+      border-radius: var(--radius);
+      padding: 26px 22px;
+      position: relative; overflow: hidden;
+      box-shadow: 0 8px 40px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
+      animation: fadeUp .5s ease both;
+    }
+    .ebook-card::before {
+      content: ''; position: absolute; top: -30px; right: -30px;
+      width: 160px; height: 160px;
+      background: radial-gradient(circle, rgba(196,162,101,.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .ebook-tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; font-weight: 500; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--accent);
+      background: rgba(196,162,101,.12); border: 1px solid rgba(196,162,101,.3);
+      border-radius: 20px; padding: 4px 12px; margin-bottom: 14px;
+    }
+    .ebook-title {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(19px, 5.5vw, 23px); font-weight: 700;
+      line-height: 1.25; color: var(--cream); margin-bottom: 8px;
+    }
+    .ebook-desc { font-size: 13px; font-weight: 300; line-height: 1.6; color: var(--brown-light); margin-bottom: 20px; }
+    .ebook-meta { display: flex; gap: 18px; margin-bottom: 20px; }
+    .meta-item { display: flex; flex-direction: column; gap: 2px; }
+    .meta-value { font-size: 15px; font-weight: 500; color: var(--accent); }
+    .meta-label { font-size: 11px; color: var(--brown-light); text-transform: uppercase; letter-spacing: .08em; }
+
+    .btn-primary {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%;
+      background: linear-gradient(135deg, var(--accent) 0%, #a0784a 100%);
+      color: var(--brown-dark);
+      font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 500;
+      border: none; border-radius: var(--radius-sm);
+      padding: 15px 24px; cursor: pointer; text-decoration: none;
+      transition: transform .15s, filter .15s;
+      box-shadow: 0 4px 20px rgba(196,162,101,.35);
+      animation: pulse-glow 3s ease-in-out infinite;
+    }
+    .btn-primary:active { transform: scale(.97); filter: brightness(.95); }
+
+    /* ────────── FREEBIE CARDS ────────── */
+    .freebies-grid { padding: 0 20px; display: flex; flex-direction: column; gap: 12px; }
+
+    .freebie-card {
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(196,162,101,.18);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      display: flex; align-items: center; gap: 16px;
+      text-decoration: none; color: inherit;
+      transition: background .2s, transform .15s;
+      box-shadow: 0 2px 12px rgba(0,0,0,.2);
+      position: relative; overflow: hidden;
+      animation: fadeUp .5s ease both;
+    }
+    .freebie-card:active { transform: scale(.98); background: rgba(196,162,101,.1); }
+
+    .freebie-icon-wrap {
+      width: 50px; height: 50px; min-width: 50px;
+      background: linear-gradient(145deg, rgba(196,162,101,.2), rgba(90,70,54,.4));
+      border: 1px solid rgba(196,162,101,.25);
+      border-radius: 13px;
+      display: flex; align-items: center; justify-content: center; font-size: 22px;
+    }
+    .freebie-info { flex: 1; }
+    .freebie-name { font-size: 14.5px; font-weight: 500; color: var(--cream); margin-bottom: 3px; line-height: 1.3; }
+    .freebie-desc { font-size: 12px; font-weight: 300; color: var(--brown-light); line-height: 1.4; }
+    .freebie-arrow { color: var(--accent); font-size: 18px; opacity: .7; }
+
+    /* NEW badge */
+    .badge-new {
+      position: absolute; top: 10px; right: 10px;
+      background: var(--green); color: #fff;
+      font-size: 10px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; border-radius: 6px; padding: 2px 7px;
+    }
+
+    /* ────────── VERSION INFO ────────── */
+    .version-row {
+      text-align: center; padding: 20px 28px 0;
+      font-size: 11px; color: rgba(139,115,85,.45);
+      letter-spacing: .05em;
+    }
+
+    /* ────────── FOOTER ────────── */
+    .footer { text-align: center; padding: 28px 28px 20px; }
+    .footer-logo { font-family: 'Playfair Display', serif; font-size: 13px; color: var(--brown-main); letter-spacing: .06em; }
+    .footer-url { font-size: 11px; color: rgba(139,115,85,.45); margin-top: 3px; letter-spacing: .05em; }
+    .footer-admin { margin-top: 14px; }
+    .btn-admin {
+      background: none; border: 1px solid rgba(139,115,85,.25); border-radius: 8px;
+      color: rgba(139,115,85,.5); font-size: 11px; padding: 6px 14px; cursor: pointer;
+      font-family: 'DM Sans', sans-serif; letter-spacing: .05em;
+      transition: all .2s;
+    }
+    .btn-admin:hover { border-color: var(--brown-main); color: var(--brown-main); }
+
+    /* ────────── ADMIN MODAL ────────── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.75); backdrop-filter: blur(4px);
+      align-items: flex-end; justify-content: center;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      width: 100%; max-width: 480px;
+      background: #2a1e13;
+      border: 1px solid rgba(196,162,101,.25);
+      border-radius: var(--radius) var(--radius) 0 0;
+      padding: 28px 24px 40px;
+      animation: slideUp .3s ease;
+      max-height: 90vh; overflow-y: auto;
+    }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+    .modal-title { font-family: 'Playfair Display', serif; font-size: 19px; color: var(--accent); }
+    .modal-close { background: none; border: none; color: var(--brown-light); font-size: 22px; cursor: pointer; }
+
+    /* Login form */
+    .login-form { display: flex; flex-direction: column; gap: 12px; }
+    .login-form input {
+      background: rgba(255,255,255,.05); border: 1px solid rgba(196,162,101,.2);
+      border-radius: var(--radius-sm); padding: 13px 16px;
+      color: var(--cream); font-size: 15px; font-family: 'DM Sans', sans-serif;
+      outline: none; transition: border-color .2s;
+    }
+    .login-form input:focus { border-color: var(--accent); }
+    .btn-login {
+      background: linear-gradient(135deg, var(--accent), #a0784a);
+      color: var(--brown-dark); border: none; border-radius: var(--radius-sm);
+      padding: 13px; font-size: 15px; font-weight: 500; cursor: pointer;
+      font-family: 'DM Sans', sans-serif; margin-top: 4px;
+    }
+    .login-error { font-size: 13px; color: var(--red); text-align: center; display: none; }
+    .login-error.show { display: block; }
+
+    /* Admin panel */
+    #admin-panel { display: none; }
+    #admin-panel.show { display: block; }
+
+    .admin-section { margin-bottom: 24px; }
+    .admin-section-title { font-size: 12px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--brown-light); margin-bottom: 14px; }
+
+    .freebie-admin-item {
+      background: rgba(255,255,255,.04); border: 1px solid rgba(196,162,101,.15);
+      border-radius: var(--radius-sm); padding: 14px 16px;
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 8px;
+    }
+    .freebie-admin-info { flex: 1; }
+    .freebie-admin-name { font-size: 13.5px; font-weight: 500; color: var(--cream); }
+    .freebie-admin-url { font-size: 11px; color: var(--brown-main); margin-top: 2px; word-break: break-all; }
+
+    .btn-edit { background: rgba(196,162,101,.15); border: 1px solid rgba(196,162,101,.25); color: var(--accent); font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-family: 'DM Sans', sans-serif; white-space: nowrap; }
+    .btn-remove { background: rgba(224,112,112,.1); border: 1px solid rgba(224,112,112,.2); color: var(--red); font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+
+    /* Add freebie form */
+    .add-form { display: flex; flex-direction: column; gap: 10px; }
+    .form-row { display: flex; flex-direction: column; gap: 5px; }
+    .form-label { font-size: 12px; color: var(--brown-light); letter-spacing: .04em; }
+    .form-input {
+      background: rgba(255,255,255,.05); border: 1px solid rgba(196,162,101,.2);
+      border-radius: 8px; padding: 11px 14px;
+      color: var(--cream); font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none;
+      transition: border-color .2s;
+    }
+    .form-input:focus { border-color: var(--accent); }
+    .form-select {
+      background: #3d2d1e; border: 1px solid rgba(196,162,101,.2);
+      border-radius: 8px; padding: 11px 14px;
+      color: var(--cream); font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none;
+    }
+    .btn-add {
+      background: linear-gradient(135deg, var(--accent), #a0784a);
+      color: var(--brown-dark); border: none; border-radius: 8px;
+      padding: 12px; font-size: 14px; font-weight: 500; cursor: pointer;
+      font-family: 'DM Sans', sans-serif; margin-top: 4px;
+    }
+
+    .admin-actions { display: flex; flex-direction: column; gap: 10px; }
+    .btn-action {
+      background: rgba(255,255,255,.04); border: 1px solid rgba(196,162,101,.2);
+      color: var(--cream); border-radius: 8px; padding: 12px 16px;
+      font-size: 13.5px; cursor: pointer; font-family: 'DM Sans', sans-serif;
+      text-align: left; transition: background .2s;
+    }
+    .btn-action:hover { background: rgba(196,162,101,.1); }
+
+    .status-msg { font-size: 13px; text-align: center; padding: 10px; border-radius: 8px; margin-top: 8px; display: none; }
+    .status-msg.success { display: block; background: rgba(76,175,120,.15); color: var(--green); border: 1px solid rgba(76,175,120,.3); }
+    .status-msg.error   { display: block; background: rgba(224,112,112,.1); color: var(--red); border: 1px solid rgba(224,112,112,.25); }
+
+    /* ────────── INSTALL BANNER ────────── */
+    #install-banner {
+      display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: linear-gradient(135deg, var(--brown-mid), #2c1e0f);
+      border: 1px solid rgba(196,162,101,.35);
+      border-radius: 14px; padding: 14px 18px;
+      width: calc(100% - 40px); max-width: 440px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.6);
+      z-index: 100; align-items: center; gap: 12px;
+    }
+    #install-banner.show { display: flex; }
+    .install-text { flex: 1; font-size: 13px; line-height: 1.45; color: var(--cream); }
+    .install-text strong { color: var(--accent); }
+    .install-close { background: none; border: none; color: var(--brown-light); font-size: 20px; cursor: pointer; padding: 4px; line-height: 1; }
+
+    /* ────────── ANIMATIONS ────────── */
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 4px 20px rgba(196,162,101,.35); }
+      50%       { box-shadow: 0 4px 32px rgba(196,162,101,.6); }
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .freebie-card:nth-child(1) { animation-delay: .05s; }
+    .freebie-card:nth-child(2) { animation-delay: .12s; }
+    .freebie-card:nth-child(3) { animation-delay: .19s; }
+    .freebie-card:nth-child(4) { animation-delay: .26s; }
+    .freebie-card:nth-child(5) { animation-delay: .33s; }
+  </style>
+</head>
+<body>
+
+<div class="wrapper">
+
+  <!-- HEADER -->
+  <header class="header">
+    <span class="logo-chain">⛓️‍💥</span>
+    <h1 class="site-title">Let's go free</h1>
+    <p class="site-subtitle">Krypto-Bildung · Selbstbestimmung · DeFi</p>
+    <div class="divider"></div>
+  </header>
+
+  <!-- UPDATE BANNER -->
+  <div id="update-banner">
+    <span class="update-icon">🔄</span>
+    <div class="update-text">
+      <strong>Update verfügbar!</strong><br>
+      Es gibt neue oder aktualisierte Inhalte.
+    </div>
+    <button class="btn-update" onclick="applyUpdate()">Jetzt laden</button>
+  </div>
+
+  <!-- OFFLINE BADGE -->
+  <div id="offline-badge" class="offline-badge">
+    📴 Du bist offline – du siehst die zwischengespeicherte Version
+  </div>
+
+  <!-- E-BOOK -->
+  <p class="section-label">📖 E-Book</p>
+  <div class="ebook-card">
+    <span class="ebook-tag">✦ Kostenloser Download</span>
+    <h2 class="ebook-title">Krypto-Einsteiger-Guide</h2>
+    <p class="ebook-desc">
+      Dein praktischer Einstieg in die Welt der Kryptowährungen – von der sicheren Wallet bis zum ersten DeFi-Schritt. Klar, ehrlich, ohne Fachjargon.
+    </p>
+    <div class="ebook-meta">
+      <div class="meta-item">
+        <span class="meta-value">PDF</span>
+        <span class="meta-label">Format</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-value">Gratis</span>
+        <span class="meta-label">Preis</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-value">Sofort</span>
+        <span class="meta-label">Verfügbar</span>
+      </div>
+    </div>
+    <a href="PLATZHALTER_EBOOK_LINK" class="btn-primary" download>
+      <span>⬇</span> E-Book herunterladen
+    </a>
+  </div>
+
+  <!-- FREEBIES -->
+  <p class="section-label">🎁 Gratis-Materialien</p>
+  <div class="freebies-grid" id="freebies-container">
+    <!-- Dynamisch aus localStorage geladen -->
+  </div>
+
+  <!-- VERSION -->
+  <p class="version-row" id="version-row"></p>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <p class="footer-logo">Let's go free · Chris</p>
+    <p class="footer-url">letsgofree.me</p>
+    <div class="footer-admin">
+      <button class="btn-admin" onclick="openAdmin()">⚙ Admin</button>
+    </div>
+  </footer>
+</div>
+
+<!-- INSTALL BANNER (iOS) -->
+<div id="install-banner">
+  <span style="font-size:22px">📲</span>
+  <p class="install-text">
+    <strong>Zum Startbildschirm:</strong><br>
+    Tippe auf <strong>Teilen</strong> → <strong>«Zum Home-Bildschirm»</strong>
+  </p>
+  <button class="install-close" onclick="closeBanner()">✕</button>
+</div>
+
+<!-- ADMIN MODAL -->
+<div class="modal-overlay" id="admin-modal" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">⚙ Admin-Bereich</h2>
+      <button class="modal-close" onclick="closeAdmin()">✕</button>
+    </div>
+
+    <!-- Login -->
+    <div id="login-section">
+      <div class="login-form">
+        <input type="password" id="admin-pw" placeholder="Passwort eingeben…" onkeydown="if(event.key==='Enter')checkLogin()" />
+        <p class="login-error" id="login-error">Falsches Passwort</p>
+        <button class="btn-login" onclick="checkLogin()">Anmelden</button>
+      </div>
+    </div>
+
+    <!-- Admin Panel -->
+    <div id="admin-panel">
+
+      <!-- Bestehende Freebies -->
+      <div class="admin-section">
+        <p class="admin-section-title">📋 Bestehende Freebies</p>
+        <div id="admin-freebie-list"></div>
+      </div>
+
+      <!-- Neues Freebie hinzufügen / bearbeiten -->
+      <div class="admin-section">
+        <p class="admin-section-title" id="form-title">➕ Neues Freebie hinzufügen</p>
+        <div class="add-form">
+          <input type="hidden" id="edit-index" value="-1" />
+          <div class="form-row">
+            <label class="form-label">Name des Freebies</label>
+            <input class="form-input" id="new-name" type="text" placeholder="z.B. DeFi-Glossar" />
+          </div>
+          <div class="form-row">
+            <label class="form-label">Beschreibung (kurz)</label>
+            <input class="form-input" id="new-desc" type="text" placeholder="z.B. 62 Begriffe erklärt" />
+          </div>
+          <div class="form-row">
+            <label class="form-label">URL (Link zur Seite oder Datei)</label>
+            <input class="form-input" id="new-url" type="url" placeholder="https://letsgofree.me/freebie-..." />
+          </div>
+          <div class="form-row">
+            <label class="form-label">Icon (Emoji)</label>
+            <input class="form-input" id="new-icon" type="text" placeholder="📄" maxlength="4" />
+          </div>
+          <button class="btn-add" onclick="saveFreebie()">Speichern</button>
+          <div class="status-msg" id="save-status"></div>
+        </div>
+      </div>
+
+      <!-- Aktionen -->
+      <div class="admin-section">
+        <p class="admin-section-title">⚡ Aktionen</p>
+        <div class="admin-actions">
+          <button class="btn-action" onclick="triggerUpdate()">🔄 Update-Hinweis für alle Nutzer auslösen</button>
+          <button class="btn-action" onclick="recacheAll()">📥 Alle Freebies jetzt cachen (Offline vorbereiten)</button>
+          <button class="btn-action" onclick="adminLogout()">🔒 Abmelden</button>
+        </div>
+        <div class="status-msg" id="action-status"></div>
+      </div>
+
+    </div><!-- /admin-panel -->
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  KONFIGURATION
+// ═══════════════════════════════════════════════════════════
+const ADMIN_PASSWORD  = 'lgf2024';   // ← hier dein Passwort setzen
+const APP_VERSION_KEY = 'lgf_app_version';
+const FREEBIES_KEY    = 'lgf_freebies';
+const UPDATE_KEY      = 'lgf_update_available';
+const CURRENT_VERSION = '1.0.0';     // ← wird bei Updates erhöht
+
+// ═══════════════════════════════════════════════════════════
+//  DEFAULT FREEBIES (erste Ausführung)
+// ═══════════════════════════════════════════════════════════
+const DEFAULT_FREEBIES = [
+  {
+    icon: '📖',
+    name: 'DeFi-Glossar',
+    desc: '62 wichtige Begriffe klar erklärt – perfekt für Einsteiger',
+    url:  'https://www.letsgofree.me/freebie-defi-glossar.html',
+    addedAt: Date.now()
+  },
+  {
+    icon: '🛡️',
+    name: 'DeFi-Sicherheits-Checkliste',
+    desc: 'Die 5 wichtigsten Phasen für deinen sicheren DeFi-Einstieg',
+    url:  'https://www.letsgofree.me/freebie-checkliste.html',
+    addedAt: Date.now()
+  },
+  {
+    icon: '📋',
+    name: 'Seed Phrase Backup-Sheet',
+    desc: 'Sicher notieren und verwahren – dein Wiederherstellungsblatt',
+    url:  'https://www.letsgofree.me/freebie-datensicherungsblatt.html',
+    addedAt: Date.now()
+  },
+  {
+    icon: '🔐',
+    name: 'Seed Phrase Backup (Split)',
+    desc: 'Erweiterte Methode: Split-Backup für maximale Sicherheit',
+    url:  'https://www.letsgofree.me/freebie-datensicherungsblatt_split.html',
+    addedAt: Date.now()
+  },
+  {
+    icon: '⚖️',
+    name: 'Wallet-Vergleichstabelle',
+    desc: 'Welches Wallet passt zu mir? Alle Optionen auf einen Blick',
+    url:  'https://www.letsgofree.me/freebie-wallet-vergleich.html',
+    addedAt: Date.now()
+  }
+];
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+let freebies = [];
+const seenVersion = localStorage.getItem(APP_VERSION_KEY);
+const updatePending = localStorage.getItem(UPDATE_KEY) === 'true';
+
+function init() {
+  // Load freebies from storage, fallback to defaults
+  const stored = localStorage.getItem(FREEBIES_KEY);
+  freebies = stored ? JSON.parse(stored) : DEFAULT_FREEBIES;
+  if (!stored) saveFreebies();
+
+  renderFreebies();
+  checkVersion();
+  checkOnline();
+  registerSW();
+  showInstallHint();
+}
+
+function saveFreebies() {
+  localStorage.setItem(FREEBIES_KEY, JSON.stringify(freebies));
+}
+
+// ═══════════════════════════════════════════════════════════
+//  RENDER FREEBIES
+// ═══════════════════════════════════════════════════════════
+function renderFreebies() {
+  const container = document.getElementById('freebies-container');
+  const lastSeen  = parseInt(localStorage.getItem('lgf_last_seen') || '0');
+
+  container.innerHTML = freebies.map((f, i) => {
+    const isNew = f.addedAt && f.addedAt > lastSeen && lastSeen > 0;
+    return `
+      <a href="${f.url}" class="freebie-card" target="_blank" rel="noopener">
+        ${isNew ? '<span class="badge-new">Neu</span>' : ''}
+        <div class="freebie-icon-wrap">${f.icon || '📄'}</div>
+        <div class="freebie-info">
+          <p class="freebie-name">${escHtml(f.name)}</p>
+          <p class="freebie-desc">${escHtml(f.desc)}</p>
+        </div>
+        <span class="freebie-arrow">›</span>
+      </a>`;
+  }).join('');
+
+  // Mark current visit time
+  localStorage.setItem('lgf_last_seen', Date.now().toString());
+
+  // Version row
+  document.getElementById('version-row').textContent = `Version ${CURRENT_VERSION}`;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  VERSION / UPDATE
+// ═══════════════════════════════════════════════════════════
+function checkVersion() {
+  const stored = localStorage.getItem(APP_VERSION_KEY);
+  if (!stored) {
+    localStorage.setItem(APP_VERSION_KEY, CURRENT_VERSION);
+    return;
+  }
+  if (stored !== CURRENT_VERSION || updatePending) {
+    document.getElementById('update-banner').classList.add('show');
+  }
+}
+
+function applyUpdate() {
+  localStorage.setItem(APP_VERSION_KEY, CURRENT_VERSION);
+  localStorage.removeItem(UPDATE_KEY);
+  document.getElementById('update-banner').classList.remove('show');
+  recacheAll(true);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  OFFLINE DETECTION
+// ═══════════════════════════════════════════════════════════
+function checkOnline() {
+  const badge = document.getElementById('offline-badge');
+  if (!navigator.onLine) badge.classList.add('show');
+  window.addEventListener('online',  () => badge.classList.remove('show'));
+  window.addEventListener('offline', () => badge.classList.add('show'));
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SERVICE WORKER
+// ═══════════════════════════════════════════════════════════
+function registerSW() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    reg.addEventListener('updatefound', () => {
+      document.getElementById('update-banner').classList.add('show');
+    });
+  });
+}
+
+function recacheAll(silent) {
+  if (!('serviceWorker' in navigator)) return;
+  const urls = freebies.map(f => f.url);
+  navigator.serviceWorker.ready.then(sw => {
+    sw.active.postMessage({ type: 'CACHE_URLS', urls });
+  });
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data.type === 'CACHE_COMPLETE' && !silent) {
+      showActionStatus('✅ Alle Freebies wurden gecacht – jetzt offline verfügbar!', 'success');
+    }
+  }, { once: true });
+  if (!silent) showActionStatus('⏳ Caching läuft…', 'success');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ADMIN
+// ═══════════════════════════════════════════════════════════
+function openAdmin() {
+  document.getElementById('admin-modal').classList.add('show');
+  document.getElementById('admin-pw').focus();
+}
+function closeAdmin() {
+  document.getElementById('admin-modal').classList.remove('show');
+}
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById('admin-modal')) closeAdmin();
+}
+
+function checkLogin() {
+  const pw = document.getElementById('admin-pw').value;
+  if (pw === ADMIN_PASSWORD) {
+    document.getElementById('login-section').style.display = 'none';
+    document.getElementById('admin-panel').classList.add('show');
+    renderAdminList();
+  } else {
+    document.getElementById('login-error').classList.add('show');
+    document.getElementById('admin-pw').value = '';
+  }
+}
+
+function adminLogout() {
+  document.getElementById('admin-panel').classList.remove('show');
+  document.getElementById('login-section').style.display = '';
+  document.getElementById('admin-pw').value = '';
+  document.getElementById('login-error').classList.remove('show');
+}
+
+function renderAdminList() {
+  const list = document.getElementById('admin-freebie-list');
+  list.innerHTML = freebies.map((f, i) => `
+    <div class="freebie-admin-item">
+      <div class="freebie-admin-info">
+        <p class="freebie-admin-name">${f.icon} ${escHtml(f.name)}</p>
+        <p class="freebie-admin-url">${escHtml(f.url)}</p>
+      </div>
+      <button class="btn-edit" onclick="editFreebie(${i})">Bearbeiten</button>
+      <button class="btn-remove" onclick="removeFreebie(${i})">✕</button>
+    </div>`).join('');
+}
+
+function editFreebie(i) {
+  const f = freebies[i];
+  document.getElementById('edit-index').value = i;
+  document.getElementById('new-name').value = f.name;
+  document.getElementById('new-desc').value = f.desc;
+  document.getElementById('new-url').value  = f.url;
+  document.getElementById('new-icon').value = f.icon || '📄';
+  document.getElementById('form-title').textContent = '✏️ Freebie bearbeiten';
+  document.getElementById('new-name').scrollIntoView({ behavior: 'smooth' });
+}
+
+function saveFreebie() {
+  const name = document.getElementById('new-name').value.trim();
+  const desc = document.getElementById('new-desc').value.trim();
+  const url  = document.getElementById('new-url').value.trim();
+  const icon = document.getElementById('new-icon').value.trim() || '📄';
+  const idx  = parseInt(document.getElementById('edit-index').value);
+
+  if (!name || !url) {
+    showSaveStatus('Name und URL sind erforderlich.', 'error');
+    return;
+  }
+
+  const entry = { icon, name, desc, url, addedAt: Date.now() };
+
+  if (idx >= 0) {
+    freebies[idx] = entry;
+    showSaveStatus('✅ Freebie aktualisiert!', 'success');
+  } else {
+    freebies.push(entry);
+    showSaveStatus('✅ Freebie hinzugefügt!', 'success');
+  }
+
+  saveFreebies();
+  renderFreebies();
+  renderAdminList();
+  resetForm();
+}
+
+function removeFreebie(i) {
+  if (!confirm(`«${freebies[i].name}» wirklich entfernen?`)) return;
+  freebies.splice(i, 1);
+  saveFreebies();
+  renderFreebies();
+  renderAdminList();
+}
+
+function resetForm() {
+  document.getElementById('edit-index').value = '-1';
+  document.getElementById('new-name').value = '';
+  document.getElementById('new-desc').value = '';
+  document.getElementById('new-url').value  = '';
+  document.getElementById('new-icon').value = '';
+  document.getElementById('form-title').textContent = '➕ Neues Freebie hinzufügen';
+}
+
+function triggerUpdate() {
+  // Sets a flag – next time any user opens the app, they see the update banner
+  localStorage.setItem(UPDATE_KEY, 'true');
+  showActionStatus('✅ Update-Hinweis gesetzt. Alle Nutzer sehen ihn beim nächsten Öffnen.', 'success');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════
+function showSaveStatus(msg, type) {
+  const el = document.getElementById('save-status');
+  el.textContent = msg;
+  el.className = `status-msg ${type}`;
+  setTimeout(() => el.className = 'status-msg', 4000);
+}
+function showActionStatus(msg, type) {
+  const el = document.getElementById('action-status');
+  el.textContent = msg;
+  el.className = `status-msg ${type}`;
+  setTimeout(() => el.className = 'status-msg', 5000);
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INSTALL HINT (iOS)
+// ═══════════════════════════════════════════════════════════
+function showInstallHint() {
+  const isIos        = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = window.navigator.standalone === true;
+  const dismissed    = sessionStorage.getItem('installDismissed');
+  if (isIos && !isStandalone && !dismissed) {
+    setTimeout(() => document.getElementById('install-banner').classList.add('show'), 2500);
+  }
+}
+function closeBanner() {
+  document.getElementById('install-banner').classList.remove('show');
+  sessionStorage.setItem('installDismissed', '1');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  START
+// ═══════════════════════════════════════════════════════════
+init();
+</script>
+
+</body>
+</html>
