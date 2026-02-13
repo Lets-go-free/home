@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="Let's go free" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="description" content="Krypto-Einsteiger-Guide und gratis Lernmaterialien von letsgofree.me" />
-  <title>Let's go free – Downloads</title>
+  <title>Let's go free – App</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,7 +22,6 @@
       --brown-main:  #8B7355;
       --brown-light: #b89a76;
       --cream:       #F5E6D3;
-      --cream-light: #fdf6ee;
       --accent:      #c4a265;
       --green:       #4caf78;
       --red:         #e07070;
@@ -31,42 +30,122 @@
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
-      min-height: 100%;
+      min-height: 100%; height: 100%;
       font-family: 'DM Sans', sans-serif;
       background: var(--brown-dark);
       color: var(--cream);
       -webkit-font-smoothing: antialiased;
     }
     body::before {
-      content: '';
-      position: fixed; inset: 0;
+      content: ''; position: fixed; inset: 0;
       background:
         radial-gradient(ellipse 80% 60% at 10% 0%, rgba(196,162,101,.18) 0%, transparent 60%),
         radial-gradient(ellipse 60% 80% at 90% 100%, rgba(90,70,54,.35) 0%, transparent 60%);
       pointer-events: none; z-index: 0;
     }
 
-    /* ────────── LAYOUT ────────── */
-    .wrapper {
-      position: relative; z-index: 1;
-      max-width: 480px; margin: 0 auto;
-      padding: 0 0 80px;
+    /* ────────── SCREENS ────────── */
+    .screen {
+      display: none; position: relative; z-index: 1;
+      min-height: 100vh;
     }
+    .screen.active { display: block; }
 
-    /* ────────── HEADER ────────── */
-    .header {
-      padding: 54px 28px 28px;
-      text-align: center;
+    /* ════════════════════════════════
+       LOGIN SCREEN
+    ════════════════════════════════ */
+    #screen-login {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 100vh; padding: 40px 28px;
     }
+    #screen-login.active { display: flex; }
+
+    .login-logo { font-size: 44px; margin-bottom: 14px; filter: drop-shadow(0 2px 12px rgba(196,162,101,.4)); }
+    .login-title { font-family: 'Playfair Display', serif; font-size: clamp(24px,7vw,30px); font-weight: 700; color: var(--accent); text-align: center; line-height: 1.15; margin-bottom: 6px; }
+    .login-sub { font-size: 13px; color: var(--brown-light); text-align: center; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 10px; }
+    .login-divider { width: 44px; height: 2px; background: linear-gradient(90deg,transparent,var(--accent),transparent); margin: 0 auto 36px; }
+
+    .login-box {
+      width: 100%; max-width: 400px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(196,162,101,.2);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.4);
+    }
+    .login-box-title { font-size: 13px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--brown-light); margin-bottom: 18px; text-align: center; }
+
+    .code-input-wrap { position: relative; margin-bottom: 14px; }
+    .code-input {
+      width: 100%;
+      background: rgba(255,255,255,.06);
+      border: 1.5px solid rgba(196,162,101,.25);
+      border-radius: var(--radius-sm);
+      padding: 15px 18px;
+      color: var(--cream);
+      font-size: 20px;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 500;
+      letter-spacing: .12em;
+      text-align: center;
+      text-transform: uppercase;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .code-input:focus { border-color: var(--accent); }
+    .code-input::placeholder { font-size: 14px; letter-spacing: .05em; color: rgba(184,154,118,.4); }
+
+    .btn-unlock {
+      width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
+      background: linear-gradient(135deg, var(--accent), #a0784a);
+      color: var(--brown-dark);
+      font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 500;
+      border: none; border-radius: var(--radius-sm);
+      padding: 15px; cursor: pointer;
+      transition: filter .15s, transform .15s;
+      box-shadow: 0 4px 20px rgba(196,162,101,.35);
+    }
+    .btn-unlock:active { transform: scale(.97); filter: brightness(.93); }
+    .btn-unlock:disabled { opacity: .6; cursor: not-allowed; }
+
+    .login-error {
+      display: none; text-align: center;
+      font-size: 13px; color: var(--red);
+      margin-top: 12px;
+    }
+    .login-error.show { display: block; }
+
+    .login-hint {
+      margin-top: 20px; text-align: center;
+      font-size: 12px; color: rgba(184,154,118,.5); line-height: 1.5;
+    }
+    .login-hint a { color: var(--brown-main); text-decoration: none; }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block; width: 18px; height: 18px;
+      border: 2px solid rgba(44,30,15,.3);
+      border-top-color: var(--brown-dark);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ════════════════════════════════
+       MAIN APP SCREEN
+    ════════════════════════════════ */
+    .wrapper { max-width: 480px; margin: 0 auto; padding: 0 0 80px; }
+
+    .header { padding: 54px 28px 28px; text-align: center; }
     .logo-chain { font-size: 38px; margin-bottom: 10px; display: block; filter: drop-shadow(0 2px 8px rgba(196,162,101,.4)); }
     .site-title { font-family: 'Playfair Display', serif; font-size: clamp(26px,7vw,32px); font-weight: 700; color: var(--accent); letter-spacing: .02em; line-height: 1.1; }
     .site-subtitle { margin-top: 7px; font-size: 13px; font-weight: 300; color: var(--brown-light); letter-spacing: .06em; text-transform: uppercase; }
-    .divider { width: 48px; height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); margin: 16px auto 0; }
+    .divider { width: 48px; height: 2px; background: linear-gradient(90deg,transparent,var(--accent),transparent); margin: 16px auto 0; }
 
-    /* ────────── UPDATE BANNER ────────── */
+    /* Update banner */
     #update-banner {
-      display: none;
-      margin: 0 20px 20px;
+      display: none; margin: 0 20px 20px;
       background: linear-gradient(135deg, rgba(76,175,120,.15), rgba(76,175,120,.06));
       border: 1px solid rgba(76,175,120,.4);
       border-radius: var(--radius-sm);
@@ -74,8 +153,7 @@
       align-items: center; gap: 14px;
     }
     #update-banner.show { display: flex; }
-    .update-icon { font-size: 22px; }
-    .update-text { flex: 1; font-size: 13.5px; line-height: 1.45; color: var(--cream); }
+    .update-text { flex: 1; font-size: 13.5px; line-height: 1.45; }
     .update-text strong { color: var(--green); }
     .btn-update {
       background: var(--green); color: #fff;
@@ -84,29 +162,24 @@
       cursor: pointer; white-space: nowrap;
       font-family: 'DM Sans', sans-serif;
     }
-    .btn-update:active { filter: brightness(.9); }
 
-    /* ────────── OFFLINE BADGE ────────── */
+    /* Offline badge */
     .offline-badge {
-      display: none;
-      margin: 0 20px 16px;
+      display: none; margin: 0 20px 16px;
       background: rgba(90,70,54,.5);
       border: 1px solid rgba(196,162,101,.2);
-      border-radius: 8px;
-      padding: 10px 16px;
-      font-size: 12.5px; color: var(--brown-light);
-      text-align: center;
+      border-radius: 8px; padding: 10px 16px;
+      font-size: 12.5px; color: var(--brown-light); text-align: center;
     }
     .offline-badge.show { display: block; }
 
-    /* ────────── SECTION LABEL ────────── */
     .section-label {
       font-size: 11px; font-weight: 500; letter-spacing: .14em;
       text-transform: uppercase; color: var(--brown-light);
       padding: 0 28px; margin-bottom: 14px;
     }
 
-    /* ────────── E-BOOK CARD ────────── */
+    /* E-Book Card */
     .ebook-card {
       margin: 0 20px 32px;
       background: linear-gradient(145deg, var(--brown-mid) 0%, #3d2d1e 100%);
@@ -130,11 +203,7 @@
       background: rgba(196,162,101,.12); border: 1px solid rgba(196,162,101,.3);
       border-radius: 20px; padding: 4px 12px; margin-bottom: 14px;
     }
-    .ebook-title {
-      font-family: 'Playfair Display', serif;
-      font-size: clamp(19px, 5.5vw, 23px); font-weight: 700;
-      line-height: 1.25; color: var(--cream); margin-bottom: 8px;
-    }
+    .ebook-title { font-family: 'Playfair Display', serif; font-size: clamp(19px,5.5vw,23px); font-weight: 700; line-height: 1.25; color: var(--cream); margin-bottom: 8px; }
     .ebook-desc { font-size: 13px; font-weight: 300; line-height: 1.6; color: var(--brown-light); margin-bottom: 20px; }
     .ebook-meta { display: flex; gap: 18px; margin-bottom: 20px; }
     .meta-item { display: flex; flex-direction: column; gap: 2px; }
@@ -155,9 +224,8 @@
     }
     .btn-primary:active { transform: scale(.97); filter: brightness(.95); }
 
-    /* ────────── FREEBIE CARDS ────────── */
+    /* Freebie Cards */
     .freebies-grid { padding: 0 20px; display: flex; flex-direction: column; gap: 12px; }
-
     .freebie-card {
       background: rgba(255,255,255,.04);
       border: 1px solid rgba(196,162,101,.18);
@@ -171,7 +239,6 @@
       animation: fadeUp .5s ease both;
     }
     .freebie-card:active { transform: scale(.98); background: rgba(196,162,101,.1); }
-
     .freebie-icon-wrap {
       width: 50px; height: 50px; min-width: 50px;
       background: linear-gradient(145deg, rgba(196,162,101,.2), rgba(90,70,54,.4));
@@ -183,8 +250,6 @@
     .freebie-name { font-size: 14.5px; font-weight: 500; color: var(--cream); margin-bottom: 3px; line-height: 1.3; }
     .freebie-desc { font-size: 12px; font-weight: 300; color: var(--brown-light); line-height: 1.4; }
     .freebie-arrow { color: var(--accent); font-size: 18px; opacity: .7; }
-
-    /* NEW badge */
     .badge-new {
       position: absolute; top: 10px; right: 10px;
       background: var(--green); color: #fff;
@@ -192,23 +257,16 @@
       text-transform: uppercase; border-radius: 6px; padding: 2px 7px;
     }
 
-    /* ────────── VERSION INFO ────────── */
-    .version-row {
-      text-align: center; padding: 20px 28px 0;
-      font-size: 11px; color: rgba(139,115,85,.45);
-      letter-spacing: .05em;
-    }
+    .version-row { text-align: center; padding: 20px 28px 0; font-size: 11px; color: rgba(139,115,85,.4); letter-spacing: .05em; }
 
-    /* ────────── FOOTER ────────── */
     .footer { text-align: center; padding: 28px 28px 20px; }
     .footer-logo { font-family: 'Playfair Display', serif; font-size: 13px; color: var(--brown-main); letter-spacing: .06em; }
-    .footer-url { font-size: 11px; color: rgba(139,115,85,.45); margin-top: 3px; letter-spacing: .05em; }
+    .footer-url { font-size: 11px; color: rgba(139,115,85,.4); margin-top: 3px; }
     .footer-admin { margin-top: 14px; }
     .btn-admin {
-      background: none; border: 1px solid rgba(139,115,85,.25); border-radius: 8px;
-      color: rgba(139,115,85,.5); font-size: 11px; padding: 6px 14px; cursor: pointer;
-      font-family: 'DM Sans', sans-serif; letter-spacing: .05em;
-      transition: all .2s;
+      background: none; border: 1px solid rgba(139,115,85,.2); border-radius: 8px;
+      color: rgba(139,115,85,.45); font-size: 11px; padding: 6px 14px; cursor: pointer;
+      font-family: 'DM Sans', sans-serif; letter-spacing: .05em; transition: all .2s;
     }
     .btn-admin:hover { border-color: var(--brown-main); color: var(--brown-main); }
 
@@ -228,54 +286,46 @@
       animation: slideUp .3s ease;
       max-height: 90vh; overflow-y: auto;
     }
-    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-
     .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
     .modal-title { font-family: 'Playfair Display', serif; font-size: 19px; color: var(--accent); }
     .modal-close { background: none; border: none; color: var(--brown-light); font-size: 22px; cursor: pointer; }
 
-    /* Login form */
-    .login-form { display: flex; flex-direction: column; gap: 12px; }
-    .login-form input {
+    .admin-login-form { display: flex; flex-direction: column; gap: 12px; }
+    .admin-input {
       background: rgba(255,255,255,.05); border: 1px solid rgba(196,162,101,.2);
       border-radius: var(--radius-sm); padding: 13px 16px;
-      color: var(--cream); font-size: 15px; font-family: 'DM Sans', sans-serif;
-      outline: none; transition: border-color .2s;
+      color: var(--cream); font-size: 15px; font-family: 'DM Sans', sans-serif; outline: none;
+      transition: border-color .2s;
     }
-    .login-form input:focus { border-color: var(--accent); }
-    .btn-login {
+    .admin-input:focus { border-color: var(--accent); }
+    .btn-admin-login {
       background: linear-gradient(135deg, var(--accent), #a0784a);
       color: var(--brown-dark); border: none; border-radius: var(--radius-sm);
       padding: 13px; font-size: 15px; font-weight: 500; cursor: pointer;
-      font-family: 'DM Sans', sans-serif; margin-top: 4px;
+      font-family: 'DM Sans', sans-serif;
     }
-    .login-error { font-size: 13px; color: var(--red); text-align: center; display: none; }
-    .login-error.show { display: block; }
+    .admin-err { font-size: 13px; color: var(--red); text-align: center; display: none; }
+    .admin-err.show { display: block; }
 
-    /* Admin panel */
     #admin-panel { display: none; }
     #admin-panel.show { display: block; }
 
-    .admin-section { margin-bottom: 24px; }
+    .admin-section { margin-bottom: 26px; }
     .admin-section-title { font-size: 12px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--brown-light); margin-bottom: 14px; }
 
     .freebie-admin-item {
       background: rgba(255,255,255,.04); border: 1px solid rgba(196,162,101,.15);
-      border-radius: var(--radius-sm); padding: 14px 16px;
-      display: flex; align-items: center; gap: 12px;
-      margin-bottom: 8px;
+      border-radius: var(--radius-sm); padding: 13px 15px;
+      display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
     }
     .freebie-admin-info { flex: 1; }
     .freebie-admin-name { font-size: 13.5px; font-weight: 500; color: var(--cream); }
     .freebie-admin-url { font-size: 11px; color: var(--brown-main); margin-top: 2px; word-break: break-all; }
-
     .btn-edit { background: rgba(196,162,101,.15); border: 1px solid rgba(196,162,101,.25); color: var(--accent); font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-family: 'DM Sans', sans-serif; white-space: nowrap; }
     .btn-remove { background: rgba(224,112,112,.1); border: 1px solid rgba(224,112,112,.2); color: var(--red); font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
 
-    /* Add freebie form */
-    .add-form { display: flex; flex-direction: column; gap: 10px; }
-    .form-row { display: flex; flex-direction: column; gap: 5px; }
-    .form-label { font-size: 12px; color: var(--brown-light); letter-spacing: .04em; }
+    .form-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+    .form-label { font-size: 12px; color: var(--brown-light); }
     .form-input {
       background: rgba(255,255,255,.05); border: 1px solid rgba(196,162,101,.2);
       border-radius: 8px; padding: 11px 14px;
@@ -283,19 +333,31 @@
       transition: border-color .2s;
     }
     .form-input:focus { border-color: var(--accent); }
-    .form-select {
-      background: #3d2d1e; border: 1px solid rgba(196,162,101,.2);
-      border-radius: 8px; padding: 11px 14px;
-      color: var(--cream); font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none;
-    }
     .btn-add {
-      background: linear-gradient(135deg, var(--accent), #a0784a);
+      width: 100%; background: linear-gradient(135deg, var(--accent), #a0784a);
       color: var(--brown-dark); border: none; border-radius: 8px;
       padding: 12px; font-size: 14px; font-weight: 500; cursor: pointer;
       font-family: 'DM Sans', sans-serif; margin-top: 4px;
     }
 
-    .admin-actions { display: flex; flex-direction: column; gap: 10px; }
+    /* Code-Generator im Admin */
+    .code-generator {
+      background: rgba(255,255,255,.04); border: 1px solid rgba(196,162,101,.15);
+      border-radius: var(--radius-sm); padding: 16px;
+    }
+    .generated-code {
+      font-size: 22px; font-weight: 500; letter-spacing: .15em;
+      color: var(--accent); text-align: center;
+      padding: 14px; margin: 12px 0;
+      background: rgba(196,162,101,.08); border-radius: 8px;
+      border: 1px dashed rgba(196,162,101,.3);
+      cursor: pointer; user-select: all;
+    }
+    .code-hint { font-size: 11px; color: var(--brown-light); text-align: center; margin-bottom: 10px; }
+    .btn-gen { background: rgba(196,162,101,.15); border: 1px solid rgba(196,162,101,.25); color: var(--accent); font-size: 13px; padding: 9px 16px; border-radius: 8px; cursor: pointer; font-family: 'DM Sans', sans-serif; width: 100%; }
+    .btn-copy-code { background: var(--green); color: #fff; border: none; font-size: 12px; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-family: 'DM Sans', sans-serif; width: 100%; margin-top: 6px; }
+
+    .admin-actions { display: flex; flex-direction: column; gap: 8px; }
     .btn-action {
       background: rgba(255,255,255,.04); border: 1px solid rgba(196,162,101,.2);
       color: var(--cream); border-radius: 8px; padding: 12px 16px;
@@ -308,30 +370,31 @@
     .status-msg.success { display: block; background: rgba(76,175,120,.15); color: var(--green); border: 1px solid rgba(76,175,120,.3); }
     .status-msg.error   { display: block; background: rgba(224,112,112,.1); color: var(--red); border: 1px solid rgba(224,112,112,.25); }
 
-    /* ────────── INSTALL BANNER ────────── */
+    /* Install banner */
     #install-banner {
       display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
       background: linear-gradient(135deg, var(--brown-mid), #2c1e0f);
-      border: 1px solid rgba(196,162,101,.35);
-      border-radius: 14px; padding: 14px 18px;
+      border: 1px solid rgba(196,162,101,.35); border-radius: 14px; padding: 14px 18px;
       width: calc(100% - 40px); max-width: 440px;
-      box-shadow: 0 8px 40px rgba(0,0,0,.6);
-      z-index: 100; align-items: center; gap: 12px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.6); z-index: 100;
+      align-items: center; gap: 12px;
     }
     #install-banner.show { display: flex; }
-    .install-text { flex: 1; font-size: 13px; line-height: 1.45; color: var(--cream); }
+    .install-text { flex: 1; font-size: 13px; line-height: 1.45; }
     .install-text strong { color: var(--accent); }
-    .install-close { background: none; border: none; color: var(--brown-light); font-size: 20px; cursor: pointer; padding: 4px; line-height: 1; }
+    .install-close { background: none; border: none; color: var(--brown-light); font-size: 20px; cursor: pointer; }
 
-    /* ────────── ANIMATIONS ────────── */
+    /* Animations */
     @keyframes pulse-glow {
-      0%, 100% { box-shadow: 0 4px 20px rgba(196,162,101,.35); }
-      50%       { box-shadow: 0 4px 32px rgba(196,162,101,.6); }
+      0%,100% { box-shadow: 0 4px 20px rgba(196,162,101,.35); }
+      50%      { box-shadow: 0 4px 32px rgba(196,162,101,.6); }
     }
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(18px); }
       to   { opacity: 1; transform: translateY(0); }
     }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
     .freebie-card:nth-child(1) { animation-delay: .05s; }
     .freebie-card:nth-child(2) { animation-delay: .12s; }
     .freebie-card:nth-child(3) { animation-delay: .19s; }
@@ -341,78 +404,97 @@
 </head>
 <body>
 
-<div class="wrapper">
+<!-- ════════════════════════════════════════════
+     SCREEN 1: LOGIN / ZUGANGSCODE
+════════════════════════════════════════════ -->
+<div id="screen-login" class="screen">
+  <span class="login-logo">⛓️‍💥</span>
+  <h1 class="login-title">Let's go free</h1>
+  <p class="login-sub">Krypto-Bildung · Selbstbestimmung</p>
+  <div class="login-divider"></div>
 
-  <!-- HEADER -->
-  <header class="header">
-    <span class="logo-chain">⛓️‍💥</span>
-    <h1 class="site-title">Let's go free</h1>
-    <p class="site-subtitle">Krypto-Bildung · Selbstbestimmung · DeFi</p>
-    <div class="divider"></div>
-  </header>
-
-  <!-- UPDATE BANNER -->
-  <div id="update-banner">
-    <span class="update-icon">🔄</span>
-    <div class="update-text">
-      <strong>Update verfügbar!</strong><br>
-      Es gibt neue oder aktualisierte Inhalte.
+  <div class="login-box">
+    <p class="login-box-title">🔐 Zugangscode eingeben</p>
+    <div class="code-input-wrap">
+      <input
+        type="text"
+        id="code-input"
+        class="code-input"
+        placeholder="z.B. LGF-XXXXX"
+        maxlength="12"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="characters"
+        spellcheck="false"
+        onkeydown="if(event.key==='Enter')submitCode()"
+      />
     </div>
-    <button class="btn-update" onclick="applyUpdate()">Jetzt laden</button>
-  </div>
-
-  <!-- OFFLINE BADGE -->
-  <div id="offline-badge" class="offline-badge">
-    📴 Du bist offline – du siehst die zwischengespeicherte Version
-  </div>
-
-  <!-- E-BOOK -->
-  <p class="section-label">📖 E-Book</p>
-  <div class="ebook-card">
-    <span class="ebook-tag">✦ Kostenloser Download</span>
-    <h2 class="ebook-title">Krypto-Einsteiger-Guide</h2>
-    <p class="ebook-desc">
-      Dein praktischer Einstieg in die Welt der Kryptowährungen – von der sicheren Wallet bis zum ersten DeFi-Schritt. Klar, ehrlich, ohne Fachjargon.
+    <button class="btn-unlock" id="btn-unlock" onclick="submitCode()">
+      <span id="unlock-label">Freischalten</span>
+    </button>
+    <p class="login-error" id="login-error">Ungültiger Code – bitte prüfe die Eingabe.</p>
+    <p class="login-hint">
+      Noch kein Zugang? <a href="https://www.letsgofree.me" target="_blank">Hier kaufen →</a>
     </p>
-    <div class="ebook-meta">
-      <div class="meta-item">
-        <span class="meta-value">PDF</span>
-        <span class="meta-label">Format</span>
-      </div>
-      <div class="meta-item">
-        <span class="meta-value">Gratis</span>
-        <span class="meta-label">Preis</span>
-      </div>
-      <div class="meta-item">
-        <span class="meta-value">Sofort</span>
-        <span class="meta-label">Verfügbar</span>
-      </div>
-    </div>
-    <a href="PLATZHALTER_EBOOK_LINK" class="btn-primary" download>
-      <span>⬇</span> E-Book herunterladen
-    </a>
   </div>
-
-  <!-- FREEBIES -->
-  <p class="section-label">🎁 Gratis-Materialien</p>
-  <div class="freebies-grid" id="freebies-container">
-    <!-- Dynamisch aus localStorage geladen -->
-  </div>
-
-  <!-- VERSION -->
-  <p class="version-row" id="version-row"></p>
-
-  <!-- FOOTER -->
-  <footer class="footer">
-    <p class="footer-logo">Let's go free · Chris</p>
-    <p class="footer-url">letsgofree.me</p>
-    <div class="footer-admin">
-      <button class="btn-admin" onclick="openAdmin()">⚙ Admin</button>
-    </div>
-  </footer>
 </div>
 
-<!-- INSTALL BANNER (iOS) -->
+<!-- ════════════════════════════════════════════
+     SCREEN 2: HAUPT-APP
+════════════════════════════════════════════ -->
+<div id="screen-app" class="screen">
+  <div class="wrapper">
+
+    <header class="header">
+      <span class="logo-chain">⛓️‍💥</span>
+      <h1 class="site-title">Let's go free</h1>
+      <p class="site-subtitle">Krypto-Bildung · Selbstbestimmung · DeFi</p>
+      <div class="divider"></div>
+    </header>
+
+    <div id="update-banner">
+      <span style="font-size:20px">🔄</span>
+      <div class="update-text">
+        <strong>Update verfügbar!</strong><br>Es gibt neue Inhalte.
+      </div>
+      <button class="btn-update" onclick="applyUpdate()">Laden</button>
+    </div>
+
+    <div id="offline-badge" class="offline-badge">
+      📴 Offline – du siehst die zwischengespeicherte Version
+    </div>
+
+    <p class="section-label">📖 E-Book</p>
+    <div class="ebook-card">
+      <span class="ebook-tag">✦ Inklusive im Paket</span>
+      <h2 class="ebook-title">Krypto-Einsteiger-Guide</h2>
+      <p class="ebook-desc">Dein praktischer Einstieg in die Welt der Kryptowährungen – von der sicheren Wallet bis zum ersten DeFi-Schritt. Klar, ehrlich, ohne Fachjargon.</p>
+      <div class="ebook-meta">
+        <div class="meta-item"><span class="meta-value">PDF</span><span class="meta-label">Format</span></div>
+        <div class="meta-item"><span class="meta-value">Inklusive</span><span class="meta-label">Paket</span></div>
+        <div class="meta-item"><span class="meta-value">Sofort</span><span class="meta-label">Verfügbar</span></div>
+      </div>
+      <a href="./dateien/krypto-einsteiger-guide.pdf" class="btn-primary" download>
+        <span>⬇</span> E-Book herunterladen
+      </a>
+    </div>
+
+    <p class="section-label">🎁 Gratis-Materialien</p>
+    <div class="freebies-grid" id="freebies-container"></div>
+
+    <p class="version-row" id="version-row"></p>
+
+    <footer class="footer">
+      <p class="footer-logo">Let's go free · Chris</p>
+      <p class="footer-url">letsgofree.me</p>
+      <div class="footer-admin">
+        <button class="btn-admin" onclick="openAdmin()">⚙ Admin</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- Install Banner -->
 <div id="install-banner">
   <span style="font-size:22px">📲</span>
   <p class="install-text">
@@ -422,157 +504,186 @@
   <button class="install-close" onclick="closeBanner()">✕</button>
 </div>
 
-<!-- ADMIN MODAL -->
+<!-- Admin Modal -->
 <div class="modal-overlay" id="admin-modal" onclick="handleOverlayClick(event)">
   <div class="modal">
     <div class="modal-header">
-      <h2 class="modal-title">⚙ Admin-Bereich</h2>
+      <h2 class="modal-title">⚙ Admin</h2>
       <button class="modal-close" onclick="closeAdmin()">✕</button>
     </div>
 
-    <!-- Login -->
-    <div id="login-section">
-      <div class="login-form">
-        <input type="password" id="admin-pw" placeholder="Passwort eingeben…" onkeydown="if(event.key==='Enter')checkLogin()" />
-        <p class="login-error" id="login-error">Falsches Passwort</p>
-        <button class="btn-login" onclick="checkLogin()">Anmelden</button>
+    <div id="admin-login-section">
+      <div class="admin-login-form">
+        <input type="password" id="admin-pw" class="admin-input" placeholder="Admin-Passwort…" onkeydown="if(event.key==='Enter')checkAdminLogin()" />
+        <p class="admin-err" id="admin-err">Falsches Passwort</p>
+        <button class="btn-admin-login" onclick="checkAdminLogin()">Anmelden</button>
       </div>
     </div>
 
-    <!-- Admin Panel -->
     <div id="admin-panel">
 
-      <!-- Bestehende Freebies -->
+      <!-- Code Generator -->
       <div class="admin-section">
-        <p class="admin-section-title">📋 Bestehende Freebies</p>
+        <p class="admin-section-title">🎟 Zugangscode generieren</p>
+        <div class="code-generator">
+          <p class="code-hint">Tippe auf den Code um ihn zu kopieren</p>
+          <div class="generated-code" id="generated-code" onclick="copyCode()">—</div>
+          <button class="btn-gen" onclick="generateCode()">Neuen Code generieren</button>
+          <button class="btn-copy-code" onclick="copyCode()">📋 Code kopieren</button>
+          <p class="code-hint" style="margin-top:10px">⚠️ Neuen Code in Netlify → Environment Variables als <strong>LGF_CODES</strong> hinzufügen</p>
+        </div>
+        <div class="status-msg" id="copy-status"></div>
+      </div>
+
+      <!-- Freebies verwalten -->
+      <div class="admin-section">
+        <p class="admin-section-title">📋 Freebies verwalten</p>
         <div id="admin-freebie-list"></div>
       </div>
 
-      <!-- Neues Freebie hinzufügen / bearbeiten -->
+      <!-- Freebie hinzufügen/bearbeiten -->
       <div class="admin-section">
-        <p class="admin-section-title" id="form-title">➕ Neues Freebie hinzufügen</p>
-        <div class="add-form">
-          <input type="hidden" id="edit-index" value="-1" />
-          <div class="form-row">
-            <label class="form-label">Name des Freebies</label>
-            <input class="form-input" id="new-name" type="text" placeholder="z.B. DeFi-Glossar" />
-          </div>
-          <div class="form-row">
-            <label class="form-label">Beschreibung (kurz)</label>
-            <input class="form-input" id="new-desc" type="text" placeholder="z.B. 62 Begriffe erklärt" />
-          </div>
-          <div class="form-row">
-            <label class="form-label">URL (Link zur Seite oder Datei)</label>
-            <input class="form-input" id="new-url" type="url" placeholder="https://letsgofree.me/freebie-..." />
-          </div>
-          <div class="form-row">
-            <label class="form-label">Icon (Emoji)</label>
-            <input class="form-input" id="new-icon" type="text" placeholder="📄" maxlength="4" />
-          </div>
-          <button class="btn-add" onclick="saveFreebie()">Speichern</button>
-          <div class="status-msg" id="save-status"></div>
+        <p class="admin-section-title" id="form-title">➕ Neues Freebie</p>
+        <input type="hidden" id="edit-index" value="-1" />
+        <div class="form-row">
+          <label class="form-label">Name</label>
+          <input class="form-input" id="new-name" type="text" placeholder="z.B. DeFi-Glossar" />
         </div>
+        <div class="form-row">
+          <label class="form-label">Beschreibung</label>
+          <input class="form-input" id="new-desc" type="text" placeholder="Kurze Beschreibung" />
+        </div>
+        <div class="form-row">
+          <label class="form-label">URL</label>
+          <input class="form-input" id="new-url" type="url" placeholder="https://letsgofree.me/freebie-..." />
+        </div>
+        <div class="form-row">
+          <label class="form-label">Icon (Emoji)</label>
+          <input class="form-input" id="new-icon" type="text" placeholder="📄" maxlength="4" />
+        </div>
+        <button class="btn-add" onclick="saveFreebie()">Speichern</button>
+        <div class="status-msg" id="save-status"></div>
       </div>
 
       <!-- Aktionen -->
       <div class="admin-section">
         <p class="admin-section-title">⚡ Aktionen</p>
         <div class="admin-actions">
-          <button class="btn-action" onclick="triggerUpdate()">🔄 Update-Hinweis für alle Nutzer auslösen</button>
-          <button class="btn-action" onclick="recacheAll()">📥 Alle Freebies jetzt cachen (Offline vorbereiten)</button>
+          <button class="btn-action" onclick="triggerUpdate()">🔄 Update-Hinweis für Nutzer setzen</button>
+          <button class="btn-action" onclick="recacheAll()">📥 Alle Freebies offline cachen</button>
           <button class="btn-action" onclick="adminLogout()">🔒 Abmelden</button>
         </div>
         <div class="status-msg" id="action-status"></div>
       </div>
 
-    </div><!-- /admin-panel -->
+    </div>
   </div>
 </div>
 
 <script>
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 //  KONFIGURATION
-// ═══════════════════════════════════════════════════════════
-const ADMIN_PASSWORD  = 'lgf2024';   // ← hier dein Passwort setzen
+// ═══════════════════════════════════════════════
+const ADMIN_PASSWORD  = 'lgf2024';   // ← hier ändern
 const APP_VERSION_KEY = 'lgf_app_version';
 const FREEBIES_KEY    = 'lgf_freebies';
 const UPDATE_KEY      = 'lgf_update_available';
-const CURRENT_VERSION = '1.0.0';     // ← wird bei Updates erhöht
+const ACCESS_KEY      = 'lgf_access_granted';
+const CURRENT_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════
-//  DEFAULT FREEBIES (erste Ausführung)
-// ═══════════════════════════════════════════════════════════
 const DEFAULT_FREEBIES = [
-  {
-    icon: '📖',
-    name: 'DeFi-Glossar',
-    desc: '62 wichtige Begriffe klar erklärt – perfekt für Einsteiger',
-    url:  'https://www.letsgofree.me/freebie-defi-glossar.html',
-    addedAt: Date.now()
-  },
-  {
-    icon: '🛡️',
-    name: 'DeFi-Sicherheits-Checkliste',
-    desc: 'Die 5 wichtigsten Phasen für deinen sicheren DeFi-Einstieg',
-    url:  'https://www.letsgofree.me/freebie-checkliste.html',
-    addedAt: Date.now()
-  },
-  {
-    icon: '📋',
-    name: 'Seed Phrase Backup-Sheet',
-    desc: 'Sicher notieren und verwahren – dein Wiederherstellungsblatt',
-    url:  'https://www.letsgofree.me/freebie-datensicherungsblatt.html',
-    addedAt: Date.now()
-  },
-  {
-    icon: '🔐',
-    name: 'Seed Phrase Backup (Split)',
-    desc: 'Erweiterte Methode: Split-Backup für maximale Sicherheit',
-    url:  'https://www.letsgofree.me/freebie-datensicherungsblatt_split.html',
-    addedAt: Date.now()
-  },
-  {
-    icon: '⚖️',
-    name: 'Wallet-Vergleichstabelle',
-    desc: 'Welches Wallet passt zu mir? Alle Optionen auf einen Blick',
-    url:  'https://www.letsgofree.me/freebie-wallet-vergleich.html',
-    addedAt: Date.now()
-  }
+  { icon:'📖', name:'DeFi-Glossar',                    desc:'62 wichtige Begriffe klar erklärt – perfekt für Einsteiger',           url:'https://www.letsgofree.me/freebie-defi-glossar.html',             addedAt: 1 },
+  { icon:'🛡️', name:'DeFi-Sicherheits-Checkliste',     desc:'Die 5 wichtigsten Phasen für deinen sicheren DeFi-Einstieg',          url:'https://www.letsgofree.me/freebie-checkliste.html',                addedAt: 1 },
+  { icon:'📋', name:'Seed Phrase Backup-Sheet',          desc:'Sicher notieren und verwahren – dein Wiederherstellungsblatt',         url:'https://www.letsgofree.me/freebie-datensicherungsblatt.html',      addedAt: 1 },
+  { icon:'🔐', name:'Seed Phrase Backup (Split)',         desc:'Erweiterte Methode: Split-Backup für maximale Sicherheit',             url:'https://www.letsgofree.me/freebie-datensicherungsblatt_split.html',addedAt: 1 },
+  { icon:'⚖️', name:'Wallet-Vergleichstabelle',          desc:'Welches Wallet passt zu mir? Alle Optionen auf einen Blick',           url:'https://www.letsgofree.me/freebie-wallet-vergleich.html',          addedAt: 1 }
 ];
 
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 //  INIT
-// ═══════════════════════════════════════════════════════════
-let freebies = [];
-const seenVersion = localStorage.getItem(APP_VERSION_KEY);
-const updatePending = localStorage.getItem(UPDATE_KEY) === 'true';
-
+// ═══════════════════════════════════════════════
 function init() {
-  // Load freebies from storage, fallback to defaults
-  const stored = localStorage.getItem(FREEBIES_KEY);
-  freebies = stored ? JSON.parse(stored) : DEFAULT_FREEBIES;
-  if (!stored) saveFreebies();
-
-  renderFreebies();
-  checkVersion();
-  checkOnline();
+  const hasAccess = localStorage.getItem(ACCESS_KEY) === 'true';
+  if (hasAccess) {
+    showApp();
+  } else {
+    showLogin();
+  }
   registerSW();
   showInstallHint();
 }
 
-function saveFreebies() {
-  localStorage.setItem(FREEBIES_KEY, JSON.stringify(freebies));
+function showLogin() {
+  document.getElementById('screen-login').classList.add('active');
+  document.getElementById('screen-app').classList.remove('active');
 }
 
-// ═══════════════════════════════════════════════════════════
-//  RENDER FREEBIES
-// ═══════════════════════════════════════════════════════════
+function showApp() {
+  document.getElementById('screen-login').classList.remove('active');
+  document.getElementById('screen-app').classList.add('active');
+  loadApp();
+}
+
+function loadApp() {
+  const stored = localStorage.getItem(FREEBIES_KEY);
+  freebies = stored ? JSON.parse(stored) : DEFAULT_FREEBIES;
+  if (!stored) localStorage.setItem(FREEBIES_KEY, JSON.stringify(freebies));
+  renderFreebies();
+  checkVersion();
+  checkOnline();
+}
+
+// ═══════════════════════════════════════════════
+//  LOGIN / CODE PRÜFUNG
+// ═══════════════════════════════════════════════
+let freebies = [];
+
+async function submitCode() {
+  const code = document.getElementById('code-input').value.trim().toUpperCase();
+  if (!code) return;
+
+  const btn   = document.getElementById('btn-unlock');
+  const label = document.getElementById('unlock-label');
+  const err   = document.getElementById('login-error');
+
+  btn.disabled = true;
+  label.innerHTML = '<span class="spinner"></span>';
+  err.classList.remove('show');
+
+  try {
+    const res = await fetch('/.netlify/functions/verify-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    const data = await res.json();
+
+    if (data.valid) {
+      localStorage.setItem(ACCESS_KEY, 'true');
+      showApp();
+    } else {
+      err.classList.add('show');
+      document.getElementById('code-input').value = '';
+      document.getElementById('code-input').focus();
+    }
+  } catch {
+    err.textContent = 'Verbindungsfehler – bitte nochmals versuchen.';
+    err.classList.add('show');
+  }
+
+  btn.disabled = false;
+  label.textContent = 'Freischalten';
+}
+
+// ═══════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════
 function renderFreebies() {
   const container = document.getElementById('freebies-container');
   const lastSeen  = parseInt(localStorage.getItem('lgf_last_seen') || '0');
 
-  container.innerHTML = freebies.map((f, i) => {
-    const isNew = f.addedAt && f.addedAt > lastSeen && lastSeen > 0;
+  container.innerHTML = freebies.map(f => {
+    const isNew = f.addedAt && f.addedAt > lastSeen && lastSeen > 0 && f.addedAt > 1;
     return `
       <a href="${f.url}" class="freebie-card" target="_blank" rel="noopener">
         ${isNew ? '<span class="badge-new">Neu</span>' : ''}
@@ -585,27 +696,21 @@ function renderFreebies() {
       </a>`;
   }).join('');
 
-  // Mark current visit time
   localStorage.setItem('lgf_last_seen', Date.now().toString());
-
-  // Version row
   document.getElementById('version-row').textContent = `Version ${CURRENT_VERSION}`;
 }
 
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 //  VERSION / UPDATE
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 function checkVersion() {
   const stored = localStorage.getItem(APP_VERSION_KEY);
-  if (!stored) {
-    localStorage.setItem(APP_VERSION_KEY, CURRENT_VERSION);
-    return;
-  }
+  const updatePending = localStorage.getItem(UPDATE_KEY) === 'true';
+  if (!stored) { localStorage.setItem(APP_VERSION_KEY, CURRENT_VERSION); return; }
   if (stored !== CURRENT_VERSION || updatePending) {
     document.getElementById('update-banner').classList.add('show');
   }
 }
-
 function applyUpdate() {
   localStorage.setItem(APP_VERSION_KEY, CURRENT_VERSION);
   localStorage.removeItem(UPDATE_KEY);
@@ -613,9 +718,9 @@ function applyUpdate() {
   recacheAll(true);
 }
 
-// ═══════════════════════════════════════════════════════════
-//  OFFLINE DETECTION
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+//  OFFLINE
+// ═══════════════════════════════════════════════
 function checkOnline() {
   const badge = document.getElementById('offline-badge');
   if (!navigator.onLine) badge.classList.add('show');
@@ -623,180 +728,152 @@ function checkOnline() {
   window.addEventListener('offline', () => badge.classList.add('show'));
 }
 
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 //  SERVICE WORKER
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 function registerSW() {
   if (!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.register('./sw.js').then(reg => {
+  navigator.serviceWorker.register('/sw.js').then(reg => {
     reg.addEventListener('updatefound', () => {
       document.getElementById('update-banner').classList.add('show');
     });
   });
 }
-
 function recacheAll(silent) {
   if (!('serviceWorker' in navigator)) return;
   const urls = freebies.map(f => f.url);
   navigator.serviceWorker.ready.then(sw => {
     sw.active.postMessage({ type: 'CACHE_URLS', urls });
   });
-  navigator.serviceWorker.addEventListener('message', e => {
-    if (e.data.type === 'CACHE_COMPLETE' && !silent) {
-      showActionStatus('✅ Alle Freebies wurden gecacht – jetzt offline verfügbar!', 'success');
-    }
-  }, { once: true });
-  if (!silent) showActionStatus('⏳ Caching läuft…', 'success');
-}
-
-// ═══════════════════════════════════════════════════════════
-//  ADMIN
-// ═══════════════════════════════════════════════════════════
-function openAdmin() {
-  document.getElementById('admin-modal').classList.add('show');
-  document.getElementById('admin-pw').focus();
-}
-function closeAdmin() {
-  document.getElementById('admin-modal').classList.remove('show');
-}
-function handleOverlayClick(e) {
-  if (e.target === document.getElementById('admin-modal')) closeAdmin();
-}
-
-function checkLogin() {
-  const pw = document.getElementById('admin-pw').value;
-  if (pw === ADMIN_PASSWORD) {
-    document.getElementById('login-section').style.display = 'none';
-    document.getElementById('admin-panel').classList.add('show');
-    renderAdminList();
-  } else {
-    document.getElementById('login-error').classList.add('show');
-    document.getElementById('admin-pw').value = '';
+  if (!silent) {
+    navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data.type === 'CACHE_COMPLETE') showActionStatus('✅ Offline-Cache aktualisiert!', 'success');
+    }, { once: true });
+    showActionStatus('⏳ Caching läuft…', 'success');
   }
 }
 
+// ═══════════════════════════════════════════════
+//  ADMIN
+// ═══════════════════════════════════════════════
+function openAdmin() { document.getElementById('admin-modal').classList.add('show'); }
+function closeAdmin() { document.getElementById('admin-modal').classList.remove('show'); }
+function handleOverlayClick(e) { if (e.target === document.getElementById('admin-modal')) closeAdmin(); }
+
+function checkAdminLogin() {
+  const pw = document.getElementById('admin-pw').value;
+  if (pw === ADMIN_PASSWORD) {
+    document.getElementById('admin-login-section').style.display = 'none';
+    document.getElementById('admin-panel').classList.add('show');
+    renderAdminList();
+    generateCode();
+  } else {
+    document.getElementById('admin-err').classList.add('show');
+    document.getElementById('admin-pw').value = '';
+  }
+}
 function adminLogout() {
   document.getElementById('admin-panel').classList.remove('show');
-  document.getElementById('login-section').style.display = '';
+  document.getElementById('admin-login-section').style.display = '';
   document.getElementById('admin-pw').value = '';
-  document.getElementById('login-error').classList.remove('show');
+  document.getElementById('admin-err').classList.remove('show');
 }
 
+// Code Generator
+function generateCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = 'LGF-';
+  for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  document.getElementById('generated-code').textContent = code;
+}
+function copyCode() {
+  const code = document.getElementById('generated-code').textContent;
+  if (code === '—') return;
+  navigator.clipboard.writeText(code).then(() => {
+    showStatus('copy-status', '✅ Code kopiert: ' + code, 'success');
+  });
+}
+
+// Freebies
 function renderAdminList() {
-  const list = document.getElementById('admin-freebie-list');
-  list.innerHTML = freebies.map((f, i) => `
+  document.getElementById('admin-freebie-list').innerHTML = freebies.map((f, i) => `
     <div class="freebie-admin-item">
       <div class="freebie-admin-info">
         <p class="freebie-admin-name">${f.icon} ${escHtml(f.name)}</p>
         <p class="freebie-admin-url">${escHtml(f.url)}</p>
       </div>
-      <button class="btn-edit" onclick="editFreebie(${i})">Bearbeiten</button>
+      <button class="btn-edit" onclick="editFreebie(${i})">✏️</button>
       <button class="btn-remove" onclick="removeFreebie(${i})">✕</button>
     </div>`).join('');
 }
-
 function editFreebie(i) {
   const f = freebies[i];
   document.getElementById('edit-index').value = i;
   document.getElementById('new-name').value = f.name;
   document.getElementById('new-desc').value = f.desc;
   document.getElementById('new-url').value  = f.url;
-  document.getElementById('new-icon').value = f.icon || '📄';
+  document.getElementById('new-icon').value = f.icon || '';
   document.getElementById('form-title').textContent = '✏️ Freebie bearbeiten';
   document.getElementById('new-name').scrollIntoView({ behavior: 'smooth' });
 }
-
 function saveFreebie() {
   const name = document.getElementById('new-name').value.trim();
   const desc = document.getElementById('new-desc').value.trim();
   const url  = document.getElementById('new-url').value.trim();
   const icon = document.getElementById('new-icon').value.trim() || '📄';
   const idx  = parseInt(document.getElementById('edit-index').value);
-
-  if (!name || !url) {
-    showSaveStatus('Name und URL sind erforderlich.', 'error');
-    return;
-  }
-
+  if (!name || !url) { showStatus('save-status','Name und URL sind erforderlich.','error'); return; }
   const entry = { icon, name, desc, url, addedAt: Date.now() };
-
-  if (idx >= 0) {
-    freebies[idx] = entry;
-    showSaveStatus('✅ Freebie aktualisiert!', 'success');
-  } else {
-    freebies.push(entry);
-    showSaveStatus('✅ Freebie hinzugefügt!', 'success');
-  }
-
-  saveFreebies();
-  renderFreebies();
-  renderAdminList();
-  resetForm();
+  if (idx >= 0) freebies[idx] = entry; else freebies.push(entry);
+  localStorage.setItem(FREEBIES_KEY, JSON.stringify(freebies));
+  renderFreebies(); renderAdminList(); resetForm();
+  showStatus('save-status', idx >= 0 ? '✅ Aktualisiert!' : '✅ Hinzugefügt!', 'success');
 }
-
 function removeFreebie(i) {
-  if (!confirm(`«${freebies[i].name}» wirklich entfernen?`)) return;
+  if (!confirm(`«${freebies[i].name}» entfernen?`)) return;
   freebies.splice(i, 1);
-  saveFreebies();
-  renderFreebies();
-  renderAdminList();
+  localStorage.setItem(FREEBIES_KEY, JSON.stringify(freebies));
+  renderFreebies(); renderAdminList();
 }
-
 function resetForm() {
   document.getElementById('edit-index').value = '-1';
-  document.getElementById('new-name').value = '';
-  document.getElementById('new-desc').value = '';
-  document.getElementById('new-url').value  = '';
-  document.getElementById('new-icon').value = '';
-  document.getElementById('form-title').textContent = '➕ Neues Freebie hinzufügen';
+  ['new-name','new-desc','new-url','new-icon'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('form-title').textContent = '➕ Neues Freebie';
 }
-
 function triggerUpdate() {
-  // Sets a flag – next time any user opens the app, they see the update banner
   localStorage.setItem(UPDATE_KEY, 'true');
-  showActionStatus('✅ Update-Hinweis gesetzt. Alle Nutzer sehen ihn beim nächsten Öffnen.', 'success');
+  showActionStatus('✅ Update-Hinweis gesetzt.', 'success');
 }
 
-// ═══════════════════════════════════════════════════════════
-//  HELPERS
-// ═══════════════════════════════════════════════════════════
-function showSaveStatus(msg, type) {
-  const el = document.getElementById('save-status');
-  el.textContent = msg;
-  el.className = `status-msg ${type}`;
-  setTimeout(() => el.className = 'status-msg', 4000);
-}
-function showActionStatus(msg, type) {
-  const el = document.getElementById('action-status');
-  el.textContent = msg;
-  el.className = `status-msg ${type}`;
-  setTimeout(() => el.className = 'status-msg', 5000);
-}
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// ═══════════════════════════════════════════════════════════
-//  INSTALL HINT (iOS)
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+//  INSTALL HINT
+// ═══════════════════════════════════════════════
 function showInstallHint() {
   const isIos        = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const isStandalone = window.navigator.standalone === true;
-  const dismissed    = sessionStorage.getItem('installDismissed');
-  if (isIos && !isStandalone && !dismissed) {
+  if (isIos && !isStandalone && !sessionStorage.getItem('installDismissed')) {
     setTimeout(() => document.getElementById('install-banner').classList.add('show'), 2500);
   }
 }
 function closeBanner() {
   document.getElementById('install-banner').classList.remove('show');
-  sessionStorage.setItem('installDismissed', '1');
+  sessionStorage.setItem('installDismissed','1');
 }
 
-// ═══════════════════════════════════════════════════════════
-//  START
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════
+function showStatus(id, msg, type) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.className = `status-msg ${type}`;
+  setTimeout(() => el.className = 'status-msg', 4500);
+}
+function showActionStatus(m, t) { showStatus('action-status', m, t); }
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 init();
 </script>
-
 </body>
 </html>
