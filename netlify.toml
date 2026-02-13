@@ -1,0 +1,9 @@
+[build]
+  base      = "app"
+  functions = "app/netlify/functions"
+  publish   = "app"
+
+[[redirects]]
+  from = "/*"
+  to   = "/index.html"
+  status = 200
