@@ -1,7 +1,7 @@
 [build]
   base      = "app"
-  functions = "app/netlify/functions"
-  publish   = "app"
+  functions = "netlify/functions"
+  publish   = "."
 
 [[redirects]]
   from = "/*"
