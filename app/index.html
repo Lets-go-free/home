@@ -493,7 +493,7 @@
 </div>
 
 <!-- Freebie Viewer -->
-<div id="screen-viewer" class="screen">
+<div id="screen-viewer" class="screen" style="display:none">
   <div class="viewer-bar">
     <button class="btn-back" onclick="closeViewer()">‹</button>
     <span class="viewer-title" id="viewer-title"></span>
@@ -895,16 +895,21 @@ function escHtml(s) {
 //  FREEBIE VIEWER
 // ═══════════════════════════════════════════════
 function openViewer(url, title) {
-  document.getElementById('freebie-frame').src = url;
+  const viewer = document.getElementById('screen-viewer');
+  const frame  = document.getElementById('freebie-frame');
   document.getElementById('viewer-title').textContent = title;
-  document.getElementById('screen-viewer').classList.add('active');
-  document.getElementById('screen-viewer').style.display = 'flex';
+  viewer.style.display = 'flex';
+  viewer.classList.add('active');
+  // Set src after display to avoid flicker
+  setTimeout(() => { frame.src = url; }, 50);
 }
 
 function closeViewer() {
-  document.getElementById('screen-viewer').classList.remove('active');
-  document.getElementById('screen-viewer').style.display = 'none';
-  document.getElementById('freebie-frame').src = '';
+  const viewer = document.getElementById('screen-viewer');
+  const frame  = document.getElementById('freebie-frame');
+  frame.src = 'about:blank';
+  viewer.classList.remove('active');
+  viewer.style.display = 'none';
 }
 
 init();
