@@ -17,6 +17,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 
   <style>
+    /* Hide everything until standalone check passes */
+    body > *:not(#install-wall) { visibility: hidden; }
+
     :root {
       --brown-dark:  #2c1e0f;
       --brown-mid:   #5a4636;
@@ -630,28 +633,26 @@ const DEFAULT_FREEBIES = [
 //  INIT
 // ═══════════════════════════════════════════════
 function init() {
-  // Strict standalone check:
-  // iOS: window.navigator.standalone === true (only when added to homescreen)
-  // Android/Desktop: display-mode: standalone (only when installed as PWA)
-  const isIos        = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const isAndroid    = /android/i.test(navigator.userAgent);
-  const isMac        = /macintosh/i.test(navigator.userAgent);
+  const isIos     = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isAndroid = /android/i.test(navigator.userAgent);
 
-  const iosStandalone      = window.navigator.standalone === true;
-  const pwaStandalone      = window.matchMedia('(display-mode: standalone)').matches;
+  const iosStandalone = window.navigator.standalone === true;
+  const pwaStandalone = window.matchMedia('(display-mode: standalone)').matches;
 
-  // On iOS: only allow if standalone
-  // On Android: only allow if standalone
-  // On Mac/Desktop: block always (no desktop PWA install expected)
   let isStandalone = false;
-  if (isIos)     isStandalone = iosStandalone;
+  if (isIos)          isStandalone = iosStandalone;
   else if (isAndroid) isStandalone = pwaStandalone;
-  else           isStandalone = false; // Mac/Desktop always blocked
+  else                isStandalone = false;
 
   if (!isStandalone) {
+    // Show only the install wall, everything else stays hidden
     document.getElementById('install-wall').classList.add('show');
+    document.getElementById('install-wall').style.visibility = 'visible';
     return;
   }
+
+  // Standalone confirmed – reveal app
+  document.querySelectorAll('body > *').forEach(el => el.style.visibility = 'visible');
 
   const hasAccess = localStorage.getItem(ACCESS_KEY) === 'true';
   if (hasAccess) {
