@@ -630,13 +630,27 @@ const DEFAULT_FREEBIES = [
 //  INIT
 // ═══════════════════════════════════════════════
 function init() {
-  // Check if running as installed PWA
-  const isStandalone = window.navigator.standalone === true ||
-                       window.matchMedia('(display-mode: standalone)').matches;
+  // Strict standalone check:
+  // iOS: window.navigator.standalone === true (only when added to homescreen)
+  // Android/Desktop: display-mode: standalone (only when installed as PWA)
+  const isIos        = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isAndroid    = /android/i.test(navigator.userAgent);
+  const isMac        = /macintosh/i.test(navigator.userAgent);
+
+  const iosStandalone      = window.navigator.standalone === true;
+  const pwaStandalone      = window.matchMedia('(display-mode: standalone)').matches;
+
+  // On iOS: only allow if standalone
+  // On Android: only allow if standalone
+  // On Mac/Desktop: block always (no desktop PWA install expected)
+  let isStandalone = false;
+  if (isIos)     isStandalone = iosStandalone;
+  else if (isAndroid) isStandalone = pwaStandalone;
+  else           isStandalone = false; // Mac/Desktop always blocked
 
   if (!isStandalone) {
     document.getElementById('install-wall').classList.add('show');
-    return; // Stop here – don't show app in browser
+    return;
   }
 
   const hasAccess = localStorage.getItem(ACCESS_KEY) === 'true';
