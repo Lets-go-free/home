@@ -407,7 +407,7 @@
 <!-- ════════════════════════════════════════════
      SCREEN 1: LOGIN / ZUGANGSCODE
 ════════════════════════════════════════════ -->
-<div id="screen-login" class="screen">
+<div id="screen-login" class="screen active">
   <span class="login-logo">⛓️‍💥</span>
   <h1 class="login-title">Let's go free</h1>
   <p class="login-sub">Krypto-Bildung · Selbstbestimmung</p>
@@ -650,6 +650,11 @@ async function submitCode() {
   label.innerHTML = '<span class="spinner"></span>';
   err.classList.remove('show');
 
+  const reset = () => {
+    btn.disabled = false;
+    label.textContent = 'Freischalten';
+  };
+
   try {
     const res = await fetch('/.netlify/functions/verify-code', {
       method: 'POST',
@@ -660,19 +665,19 @@ async function submitCode() {
 
     if (data.valid) {
       localStorage.setItem(ACCESS_KEY, 'true');
+      reset();
       showApp();
     } else {
+      reset();
       err.classList.add('show');
       document.getElementById('code-input').value = '';
       document.getElementById('code-input').focus();
     }
-  } catch {
+  } catch(e) {
+    reset();
     err.textContent = 'Verbindungsfehler – bitte nochmals versuchen.';
     err.classList.add('show');
   }
-
-  btn.disabled = false;
-  label.textContent = 'Freischalten';
 }
 
 // ═══════════════════════════════════════════════
