@@ -45,17 +45,14 @@
     }
 
     /* ────────── SCREENS ────────── */
-    .screen {
-      display: none; position: relative; z-index: 1;
-      min-height: 100vh;
-    }
+    .screen { display: none; position: relative; z-index: 1; min-height: 100vh; }
     .screen.active { display: block; }
 
     /* ════════════════════════════════
        LOGIN SCREEN
     ════════════════════════════════ */
     #screen-login {
-      display: flex; flex-direction: column;
+      flex-direction: column;
       align-items: center; justify-content: center;
       min-height: 100vh; padding: 40px 28px;
     }
@@ -620,11 +617,16 @@ function showLogin() {
 
 function showApp() {
   document.getElementById('screen-login').classList.remove('active');
+  document.getElementById('screen-login').style.display = 'none';
   document.getElementById('screen-app').classList.add('active');
+  document.getElementById('screen-app').style.display = 'block';
   loadApp();
 }
 
+let appLoaded = false;
 function loadApp() {
+  if (appLoaded) return;
+  appLoaded = true;
   const stored = localStorage.getItem(FREEBIES_KEY);
   freebies = stored ? JSON.parse(stored) : DEFAULT_FREEBIES;
   if (!stored) localStorage.setItem(FREEBIES_KEY, JSON.stringify(freebies));
@@ -685,6 +687,7 @@ async function submitCode() {
 // ═══════════════════════════════════════════════
 function renderFreebies() {
   const container = document.getElementById('freebies-container');
+  if (!container) return;
   const lastSeen  = parseInt(localStorage.getItem('lgf_last_seen') || '0');
 
   container.innerHTML = freebies.map(f => {
