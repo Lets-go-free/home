@@ -5,6 +5,11 @@ const CACHE_NAME = `letsgofree-${CACHE_VERSION}`;
 const APP_SHELL = [
   '/',
   '/index.html',
+  '/dateien/freebie-defi-glossar.html',
+  '/dateien/freebie-checkliste.html',
+  '/dateien/freebie-datensicherungsblatt.html',
+  '/dateien/freebie-datensicherungsblatt_split.html',
+  '/dateien/freebie-wallet-vergleich.html',
 ];
 
 self.addEventListener('install', event => {

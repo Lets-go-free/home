@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kostenlose DeFi-Tools - Let's go free</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.7; color: #333; background: linear-gradient(135deg, #8B7355 0%, #A0826D 50%, #C9A882 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .hero { background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%); color: white; padding: 60px 40px; text-align: center; }
+        .hero h1 { font-size: 2.8em; margin-bottom: 20px; line-height: 1.2; }
+        .hero .subtitle { font-size: 1.3em; margin-bottom: 40px; opacity: 0.95; }
+        .cta-button { display: inline-block; background: white; color: #8B7355; padding: 18px 45px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 1.2em; margin: 10px; transition: all 0.3s; box-shadow: 0 5px 20px rgba(0,0,0,0.2); }
+        .cta-button:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+        .section { padding: 40px 40px; }
+        .section h2 { font-size: 2em; line-height: 1.2em; color: #8B7355; margin-bottom: 30px; text-align: center; }
+        .section p { font-size: 1.1em; margin-bottom: 20px; line-height: 1.8; text-align: center; }
+        
+        /* Freebies Grid */
+        .freebies-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin-top: 40px; }
+        .freebie-card { background: #F5E6D3; padding: 30px; border-radius: 12px; border-left: 4px solid #A0826D; transition: transform 0.3s, box-shadow 0.3s; box-shadow: 0 3px 15px rgba(0,0,0,0.1); }
+        .freebie-card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
+        .freebie-icon { font-size: 3em; display: block; margin-bottom: 15px; text-align: center; }
+        .freebie-card h3 { color: #8B7355; margin-bottom: 15px; font-size: 1.4em; text-align: center; }
+        .freebie-card .description { font-size: 1em; margin-bottom: 20px; line-height: 1.6; text-align: left; }
+        
+        /* Features List */
+        .features { margin: 20px 0; }
+        .feature-item { display: flex; align-items: flex-start; margin: 10px 0; font-size: 0.95em; color: #333; }
+        .check { color: #8B7355; font-weight: 700; margin-right: 10px; font-size: 1.2em; flex-shrink: 0; }
+        
+        /* Download Button */
+        .download-btn { display: block; width: 100%; background: #8B7355; color: white; padding: 15px; border-radius: 10px; text-align: center; text-decoration: none; font-weight: 700; font-size: 1.05em; margin-top: 20px; transition: all 0.3s; }
+        .download-btn:hover { background: #6B5745; transform: translateY(-2px); box-shadow: 0 5px 20px rgba(0,0,0,0.2); }
+        
+        /* Call to Action Section */
+        .call-section { background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%); color: white; padding: 60px 40px; text-align: center; }
+        .call-section h2 { color: white; font-size: 2.2em; margin-bottom: 20px; }
+        .call-section p { font-size: 1.2em; margin-bottom: 40px; opacity: 0.95; }
+        
+        /* Social Section */
+        .social-section { padding: 40px; text-align: center; background: #f9f9f9; }
+        .social-links { display: flex; justify-content: center; gap: 30px; margin-top: 20px; }
+        .social-link { display: inline-flex; align-items: center; justify-content: center; width: 50px; height: 50px; background: #8B7355; border-radius: 50%; transition: all 0.3s; text-decoration: none; }
+        .social-link:hover { background: #6B5745; transform: translateY(-5px); }
+        .social-link svg { width: 24px; height: 24px; fill: white; }
+        
+        /* Footer */
+        .footer { padding: 40px; text-align: center; background: #f5f5f5; }
+        .disclaimer { max-width: 700px; margin: 30px auto 0; padding: 25px; background: #fff3cd; border-radius: 10px; border-left: 4px solid #ffc107; text-align: left; font-size: 0.95em; }
+        
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2em; }
+            .hero .subtitle { font-size: 1.1em; }
+            .section { padding: 40px 25px; }
+            .section h2 { font-size: 1.6em; }
+            .freebies-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hero">
+            <h1>Let's go free</h1>
+            <h1 style="margin-bottom: 10px;">Freiheit mit DeFi und Krypto</h1>
+            <p class="subtitle" style="font-size: 1.4em; margin-bottom: 30px;">Dein Weg in die finanzielle Selbstbestimmung</p>
+        </div>
+        
+        <div class="section">
+            <h2>Deine kostenlosen DeFi-Ressourcen</h2>
+            <p>Diese Tools habe ich aus meiner Coaching-Praxis entwickelt. Sie helfen dir, die wichtigsten DeFi-Grundlagen zu verstehen und sicher anzuwenden – komplett kostenlos.</p>
+            
+            <div class="freebies-grid">
+                <!-- Freebie 1: DeFi Glossar -->
+                <div class="freebie-card">
+                    <span class="freebie-icon">📖</span>
+                    <h3>DeFi-Glossar</h3>
+                    <p class="description">50+ wichtige DeFi-Begriffe einfach und verständlich erklärt – von Wallet bis Impermanent Loss.</p>
+                    <div class="features">
+                        <div class="feature-item"><span class="check">✓</span> Live-Suchfunktion</div>
+                        <div class="feature-item"><span class="check">✓</span> 5 übersichtliche Kategorien</div>
+                        <div class="feature-item"><span class="check">✓</span> Praktische Beispiele</div>
+                        <div class="feature-item"><span class="check">✓</span> Warnhinweise bei Risiken</div>
+                    </div>
+                    <a href="https://letsgofree.me/freebie-defi-glossar.html" class="download-btn" target="_blank">Jetzt öffnen</a>
+                </div>
+
+                <!-- Freebie 2: DeFi-Sicherheits-Checkliste -->
+                <div class="freebie-card">
+                    <span class="freebie-icon">✅</span>
+                    <h3>DeFi-Sicherheits-Checkliste</h3>
+                    <p class="description">Schritt-für-Schritt Anleitung durch 6 Phasen – vom ersten Wallet-Setup bis zu fortgeschrittenen Sicherheitsmassnahmen.</p>
+                    <div class="features">
+                        <div class="feature-item"><span class="check">✓</span> 5 Sicherheitsphasen</div>
+                        <div class="feature-item"><span class="check">✓</span> Für Anfänger & Fortgeschrittene</div>
+                        <div class="feature-item"><span class="check">✓</span> Praxis-Tipps</div>
+                    </div>
+                    <a href="https://letsgofree.me/freebie-checkliste.html" class="download-btn" target="_blank">Jetzt öffnen</a>
+                </div>
+
+                <!-- Freebie 3: Seed Phrase Backup -->
+                <div class="freebie-card">
+                    <span class="freebie-icon">🔐</span>
+                    <h3>Seed Phrase Backup-Sheet</h3>
+                    <p class="description">Sichere Aufbewahrung deiner Recovery-Phrase mit strukturiertem Backup-System.</p>
+                    <div class="features">
+                        <div class="feature-item"><span class="check">✓</span> Druckfertige Vorlage</div>
+                        <div class="feature-item"><span class="check">✓</span> 3-faches Backup-System</div>
+                        <div class="feature-item"><span class="check">✓</span> Sicherheits-Checkliste</div>
+                        <div class="feature-item"><span class="check">✓</span> Schritt-für-Schritt Anleitung</div>
+                    </div>
+                    <a href="https://letsgofree.me/freebie-datensicherungsblatt.html" class="download-btn" target="_blank">Jetzt öffnen</a>
+                    <a href="https://letsgofree.me/freebie-datensicherungsblatt_split.html" class="download-btn" target="_blank" style="margin-top: 10px; background: #A0826D;">🔒 Erweitert: Split-Backup</a>
+                </div>
+
+                <!-- Freebie 4: Wallet Vergleich -->
+                <div class="freebie-card">
+                    <span class="freebie-icon">💼</span>
+                    <h3>Wallet-Vergleichstabelle</h3>
+                    <p class="description">14 Wallets im direkten Vergleich – finde die perfekte Wallet für deine Bedürfnisse.</p>
+                    <div class="features">
+                        <div class="feature-item"><span class="check">✓</span> Detaillierte Bewertungen</div>
+                        <div class="feature-item"><span class="check">✓</span> Filter nach Typ & Plattform</div>
+                        <div class="feature-item"><span class="check">✓</span> Empfehlungen für Anfänger</div>
+                        <div class="feature-item"><span class="check">✓</span> Sicherheits-Ranking</div>
+                    </div>
+                    <a href="https://letsgofree.me/freebie-wallet-vergleich.html" class="download-btn" target="_blank">Jetzt öffnen</a>
+                </div>
+
+                <!-- Freebie 5: Gas Fee Guide -->
+                <div class="freebie-card">
+                    <span class="freebie-icon">⛽</span>
+                    <h3>Gas Fee Tracker Anleitung</h3>
+                    <p class="description">Spare Geld durch optimales Timing – lerne, wann du Transaktionen am günstigsten durchführst.</p>
+                    <div class="features">
+                        <div class="feature-item"><span class="check">✓</span> 5 interaktive Anleitungen</div>
+                        <div class="feature-item"><span class="check">✓</span> Chain-Vergleich</div>
+                        <div class="feature-item"><span class="check">✓</span> Beste Tools & Ressourcen</div>
+                        <div class="feature-item"><span class="check">✓</span> Timing-Strategien</div>
+                    </div>
+                    <a href="https://letsgofree.me/freebie-gas-fee-guide.html" class="download-btn" target="_blank">Jetzt öffnen</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="call-section">
+            <h2>🚀 Bereit für den nächsten Schritt?</h2>
+            <p>Diese Freebies geben dir die Grundlagen. Aber wenn du DeFi wirklich meistern und sicher durchstarten willst, braucht es mehr als nur Theorie.</p>
+            <p style="margin-bottom: 30px;"><strong>In meinem 1:1 Coaching lernst du:</strong><br>
+            ✓ Wie du deine erste Wallet sicher einrichtest<br>
+            ✓ Wie du DeFi-Protokolle Schritt für Schritt nutzt<br>
+            ✓ Wie du Risiken erkennst und vermeidest<br>
+            ✓ Wie du deine ersten DeFi-Transaktionen durchführst</p>
+            <a href="https://letsgofree.me/index.html#angebot" class="cta-button">Zum Coaching-Angebot</a>
+            <a href="https://letsgofree.me/index.html" class="cta-button">Zu meiner Homepage</a>
+        </div>
+
+        <div class="social-section">
+            <p style="color: #555; margin-bottom: 15px; font-size: 1.1em;">Folge mir auf Social Media für mehr Einblicke in DeFi und finanzielle Selbstbestimmung:</p>
+            <div class="social-links">
+                <a href="https://www.instagram.com/chris.freiheit/" target="_blank" rel="noopener noreferrer" class="social-link" aria-label="Instagram">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                    </svg>
+                </a>
+                <a href="https://www.facebook.com/profile.php?id=100008222589751" target="_blank" rel="noopener noreferrer" class="social-link" aria-label="Facebook">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p style="font-size: 1.1em; color: #8B7355; font-weight: 600;">Finanzielle Selbstbestimmung beginnt mit dem ersten Schritt.<br>Let's go free! 🚀</p>
+            
+            <div class="disclaimer">
+                <p><strong>⚠️ Wichtiger Hinweis:</strong></p>
+                <p style="margin-top: 10px;">Diese Tools dienen ausschliesslich der Bildung und Wissensvermittlung über dezentrale Finanzsysteme. Die Inhalte stellen keine Finanzberatung, Anlageempfehlung oder Kaufempfehlung dar.<br>Ich teile lediglich meine persönlichen Erfahrungen und Kenntnisse zu Bildungszwecken.<br>Alle Investitionsentscheidungen triffst du eigenverantwortlich. Informiere dich umfassend und investiere nur, was du bereit bist zu verlieren.</p>
+            </div>
+            
+            <div class="legal-links" style="margin-top: 25px; font-size: 0.9em; color: #8B7355;">
+                <p style="text-align: center; color: #6E4A2E;">Chris Müller</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
