@@ -492,6 +492,15 @@
   </div>
 </div>
 
+<!-- Freebie Viewer -->
+<div id="screen-viewer" class="screen">
+  <div class="viewer-bar">
+    <button class="btn-back" onclick="closeViewer()">‹</button>
+    <span class="viewer-title" id="viewer-title"></span>
+  </div>
+  <iframe id="freebie-frame" src="" allowfullscreen></iframe>
+</div>
+
 <!-- Install Banner -->
 <div id="install-banner">
   <span style="font-size:22px">📲</span>
@@ -694,7 +703,7 @@ function renderFreebies() {
   container.innerHTML = freebies.map(f => {
     const isNew = f.addedAt && f.addedAt > lastSeen && lastSeen > 0 && f.addedAt > 1;
     return `
-      <a href="${f.url}" class="freebie-card" target="_blank" rel="noopener">
+      <div class="freebie-card" onclick="openViewer('${f.url}','${escHtml(f.name)}')">
         ${isNew ? '<span class="badge-new">Neu</span>' : ''}
         <div class="freebie-icon-wrap">${f.icon || '📄'}</div>
         <div class="freebie-info">
@@ -702,7 +711,7 @@ function renderFreebies() {
           <p class="freebie-desc">${escHtml(f.desc)}</p>
         </div>
         <span class="freebie-arrow">›</span>
-      </a>`;
+      </div>`;
   }).join('');
 
   localStorage.setItem('lgf_last_seen', Date.now().toString());
@@ -880,6 +889,22 @@ function showStatus(id, msg, type) {
 function showActionStatus(m, t) { showStatus('action-status', m, t); }
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════
+//  FREEBIE VIEWER
+// ═══════════════════════════════════════════════
+function openViewer(url, title) {
+  document.getElementById('freebie-frame').src = url;
+  document.getElementById('viewer-title').textContent = title;
+  document.getElementById('screen-viewer').classList.add('active');
+  document.getElementById('screen-viewer').style.display = 'flex';
+}
+
+function closeViewer() {
+  document.getElementById('screen-viewer').classList.remove('active');
+  document.getElementById('screen-viewer').style.display = 'none';
+  document.getElementById('freebie-frame').src = '';
 }
 
 init();
