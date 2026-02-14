@@ -492,6 +492,35 @@
   </div>
 </div>
 
+<!-- Install Wall -->
+<div id="install-wall">
+  <span class="wall-icon">⛓️‍💥</span>
+  <h1 class="wall-title">Let's go free</h1>
+  <p class="wall-sub">Diese App muss auf dem Startbildschirm installiert werden um sie zu nutzen.</p>
+
+  <div class="wall-box">
+    <p class="wall-box-title">📱 iPhone / iPad – So geht's:</p>
+    <div class="wall-step">
+      <span class="wall-step-num">1</span>
+      <p class="wall-step-text">Tippe unten auf das <strong>Teilen-Symbol</strong> (□↑)</p>
+    </div>
+    <div class="wall-step">
+      <span class="wall-step-num">2</span>
+      <p class="wall-step-text">Wähle <strong>«Zum Home-Bildschirm»</strong></p>
+    </div>
+    <div class="wall-step">
+      <span class="wall-step-num">3</span>
+      <p class="wall-step-text">Tippe oben rechts auf <strong>«Hinzufügen»</strong></p>
+    </div>
+    <div class="wall-step">
+      <span class="wall-step-num">4</span>
+      <p class="wall-step-text">App vom Startbildschirm öffnen</p>
+    </div>
+  </div>
+
+  <p class="wall-android">Android: Chrome → Menü (⋮) → «Zum Startbildschirm hinzufügen»</p>
+</div>
+
 <!-- Install Banner -->
 <div id="install-banner">
   <span style="font-size:22px">📲</span>
@@ -601,6 +630,15 @@ const DEFAULT_FREEBIES = [
 //  INIT
 // ═══════════════════════════════════════════════
 function init() {
+  // Check if running as installed PWA
+  const isStandalone = window.navigator.standalone === true ||
+                       window.matchMedia('(display-mode: standalone)').matches;
+
+  if (!isStandalone) {
+    document.getElementById('install-wall').classList.add('show');
+    return; // Stop here – don't show app in browser
+  }
+
   const hasAccess = localStorage.getItem(ACCESS_KEY) === 'true';
   if (hasAccess) {
     showApp();
