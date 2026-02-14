@@ -492,15 +492,6 @@
   </div>
 </div>
 
-<!-- Freebie Viewer -->
-<div id="screen-viewer" class="screen" style="display:none">
-  <div class="viewer-bar">
-    <button class="btn-back" onclick="closeViewer()">‹</button>
-    <span class="viewer-title" id="viewer-title"></span>
-  </div>
-  <iframe id="freebie-frame" src="" allowfullscreen></iframe>
-</div>
-
 <!-- Install Banner -->
 <div id="install-banner">
   <span style="font-size:22px">📲</span>
@@ -892,24 +883,10 @@ function escHtml(s) {
 }
 
 // ═══════════════════════════════════════════════
-//  FREEBIE VIEWER
+//  FREEBIE VIEWER - opens in same window, back = history.back()
 // ═══════════════════════════════════════════════
 function openViewer(url, title) {
-  const viewer = document.getElementById('screen-viewer');
-  const frame  = document.getElementById('freebie-frame');
-  document.getElementById('viewer-title').textContent = title;
-  viewer.style.display = 'flex';
-  viewer.classList.add('active');
-  // Set src after display to avoid flicker
-  setTimeout(() => { frame.src = url; }, 50);
-}
-
-function closeViewer() {
-  const viewer = document.getElementById('screen-viewer');
-  const frame  = document.getElementById('freebie-frame');
-  frame.src = 'about:blank';
-  viewer.classList.remove('active');
-  viewer.style.display = 'none';
+  window.location.href = url;
 }
 
 init();
