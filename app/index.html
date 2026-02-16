@@ -475,7 +475,7 @@
         <div class="meta-item"><span class="meta-value">Inklusive</span><span class="meta-label">Paket</span></div>
         <div class="meta-item"><span class="meta-value">Sofort</span><span class="meta-label">Verfügbar</span></div>
       </div>
-      <a href="./dateien/krypto-einsteiger-guide.pdf" class="btn-primary" target="_blank" rel="noopener">
+      <a href="./dateien/krypto-einsteiger-guide.pdf" class="btn-primary" onclick="openPdf(event)">
         <span>📖</span> E-Book öffnen
       </a>
     </div>
@@ -493,6 +493,16 @@
       </div>
     </footer>
   </div>
+</div>
+
+<!-- PDF Viewer -->
+<div id="screen-pdf" class="screen">
+  <div class="pdf-bar">
+    <button class="btn-pdf-back" onclick="closePdf()">‹</button>
+    <span class="pdf-bar-title">Krypto-Einsteiger-Guide</span>
+    <button class="btn-pdf-print" onclick="printPdf()">🖨 Drucken</button>
+  </div>
+  <iframe id="pdf-frame" src=""></iframe>
 </div>
 
 <!-- Install Wall -->
@@ -934,6 +944,36 @@ function showStatus(id, msg, type) {
 function showActionStatus(m, t) { showStatus('action-status', m, t); }
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════
+//  PDF ÖFFNER
+// ═══════════════════════════════════════════════
+function openPdf(e) {
+  e.preventDefault();
+  const frame = document.getElementById('pdf-frame');
+  const viewer = document.getElementById('screen-pdf');
+  frame.src = './dateien/krypto-einsteiger-guide.pdf';
+  viewer.style.display = 'flex';
+  viewer.classList.add('active');
+}
+
+function closePdf() {
+  const viewer = document.getElementById('screen-pdf');
+  const frame  = document.getElementById('pdf-frame');
+  viewer.classList.remove('active');
+  viewer.style.display = 'none';
+  frame.src = '';
+}
+
+function printPdf() {
+  const frame = document.getElementById('pdf-frame');
+  try {
+    frame.contentWindow.print();
+  } catch(e) {
+    // Fallback: open in new tab for printing
+    window.open('./dateien/krypto-einsteiger-guide.pdf', '_blank');
+  }
 }
 
 // ═══════════════════════════════════════════════
