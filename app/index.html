@@ -475,8 +475,8 @@
         <div class="meta-item"><span class="meta-value">Inklusive</span><span class="meta-label">Paket</span></div>
         <div class="meta-item"><span class="meta-value">Sofort</span><span class="meta-label">Verfügbar</span></div>
       </div>
-      <a href="./dateien/krypto-einsteiger-guide.pdf" class="btn-primary" download>
-        <span>⬇</span> E-Book herunterladen
+      <a href="./dateien/krypto-einsteiger-guide.pdf" class="btn-primary" target="_blank" rel="noopener">
+        <span>📖</span> E-Book öffnen
       </a>
     </div>
 
@@ -635,6 +635,7 @@ const DEFAULT_FREEBIES = [
 function init() {
   const isIos     = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const isAndroid = /android/i.test(navigator.userAgent);
+  const isMobile  = isIos || isAndroid;
 
   const iosStandalone = window.navigator.standalone === true;
   const pwaStandalone = window.matchMedia('(display-mode: standalone)').matches;
@@ -642,16 +643,16 @@ function init() {
   let isStandalone = false;
   if (isIos)          isStandalone = iosStandalone;
   else if (isAndroid) isStandalone = pwaStandalone;
-  else                isStandalone = false;
+  else                isStandalone = true; // Desktop: immer erlaubt
 
   if (!isStandalone) {
-    // Show only the install wall, everything else stays hidden
+    // Mobile im Browser – Installations-Anleitung zeigen
     document.getElementById('install-wall').classList.add('show');
     document.getElementById('install-wall').style.visibility = 'visible';
     return;
   }
 
-  // Standalone confirmed – reveal app
+  // Zugang erlaubt – App anzeigen
   document.querySelectorAll('body > *').forEach(el => el.style.visibility = 'visible');
 
   const hasAccess = localStorage.getItem(ACCESS_KEY) === 'true';
