@@ -978,6 +978,7 @@ function printPdf() {
 //  FREEBIE VIEWER - opens in same window, back = history.back()
 // ═══════════════════════════════════════════════
 function openViewer(url, title) {
+  sessionStorage.setItem('lgf_from_app', '1');
   window.location.href = url;
 }
 
