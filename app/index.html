@@ -714,6 +714,15 @@ let appLoaded = false;
 function loadApp() {
   if (appLoaded) return;
   appLoaded = true;
+
+  // Wenn App-Version neu ist, Freebies automatisch aktualisieren
+  const storedVersion = localStorage.getItem(APP_VERSION_KEY);
+  if (storedVersion !== CURRENT_VERSION) {
+    localStorage.setItem(FREEBIES_KEY, JSON.stringify(DEFAULT_FREEBIES));
+    localStorage.setItem(APP_VERSION_KEY, CURRENT_VERSION);
+    localStorage.removeItem(UPDATE_KEY);
+  }
+
   const stored = localStorage.getItem(FREEBIES_KEY);
   freebies = stored ? JSON.parse(stored) : DEFAULT_FREEBIES;
   if (!stored) localStorage.setItem(FREEBIES_KEY, JSON.stringify(freebies));
