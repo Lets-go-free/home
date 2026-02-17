@@ -211,6 +211,22 @@
     .meta-value { font-size: 15px; font-weight: 500; color: var(--accent); }
     .meta-label { font-size: 11px; color: var(--brown-light); text-transform: uppercase; letter-spacing: .08em; }
 
+    .btn-secondary {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%;
+      background: rgba(139,115,85,.15);
+      border: 1px solid rgba(139,115,85,.3);
+      color: #8B7355;
+      font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500;
+      border-radius: var(--radius-sm);
+      padding: 13px 24px; cursor: pointer; text-decoration: none;
+      transition: all .15s;
+    }
+    .btn-secondary:hover {
+      background: rgba(139,115,85,.25);
+      border-color: rgba(139,115,85,.5);
+    }
+
     .btn-primary {
       display: flex; align-items: center; justify-content: center; gap: 10px;
       width: 100%;
@@ -479,6 +495,9 @@
       <a href="./dateien/krypto-einsteiger-guide.pdf" class="btn-primary" onclick="openPdf(event)">
         <span>📖</span> E-Book öffnen
       </a>
+      <a href="./dateien/krypto-einsteiger-guide.pdf" class="btn-secondary" target="_blank" rel="noopener" style="margin-top: 12px;">
+        <span>💾</span> Als PDF speichern
+      </a>
     </div>
 
     <p class="section-label">🎁 Gratis-Materialien</p>
@@ -609,7 +628,7 @@ const APP_VERSION_KEY = 'lgf_app_version';
 const FREEBIES_KEY    = 'lgf_freebies';
 const UPDATE_KEY      = 'lgf_update_available';
 const ACCESS_KEY      = 'lgf_access_granted';
-const CURRENT_VERSION = '0.9';
+const CURRENT_VERSION = '2.1.0';
 
 const DEFAULT_FREEBIES = [
   { icon:'📖', name:'DeFi-Glossar',                    desc:'62 wichtige Begriffe klar erklärt – perfekt für Einsteiger',           url:'./dateien/freebie-defi-glossar.html',             addedAt: 1 },
