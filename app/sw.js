@@ -1,15 +1,17 @@
 // ─── Let's go free · Service Worker ───────────────────────────────────────
-const CACHE_VERSION = 'lgf-v14.0.0';
+const CACHE_VERSION = 'lgf-v14.1.0';
 const CACHE_NAME = `letsgofree-${CACHE_VERSION}`;
 
 const APP_SHELL = [
   '/',
   '/index.html',
+  '/app-styles.css',
   '/dateien/freebie-defi-glossar.html',
   '/dateien/freebie-checkliste.html',
   '/dateien/freebie-datensicherungsblatt.html',
   '/dateien/freebie-datensicherungsblatt_split.html',
   '/dateien/freebie-wallet-vergleich.html',
+  '/dateien/freebie-empfehlungen.html',
 ];
 
 self.addEventListener('install', event => {
