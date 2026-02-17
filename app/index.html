@@ -653,6 +653,7 @@ function init() {
   }
   registerSW();
   showInstallHint();
+  checkVersion(); // Update-Banner sofort beim Start prüfen
 }
 
 function showLogin() {
@@ -685,7 +686,6 @@ function loadApp() {
   freebies = stored ? JSON.parse(stored) : DEFAULT_FREEBIES;
   if (!stored) localStorage.setItem(FREEBIES_KEY, JSON.stringify(freebies));
   renderFreebies();
-  checkVersion();
   checkOnline();
 }
 
