@@ -965,9 +965,11 @@ function escHtml(s) {
 function openPdf(e) {
   e.preventDefault();
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const isAndroid = /android/i.test(navigator.userAgent);
-  if (isIos || isAndroid) {
-    // Mobil: iframe-Viewer in der App
+  if (isIos) {
+    // iOS: direkt öffnen, Safari zeigt Teilen/Drucken-Button
+    window.location.href = './dateien/krypto-einsteiger-guide.pdf';
+  } else if (/android/i.test(navigator.userAgent)) {
+    // Android: iframe-Viewer
     const frame = document.getElementById('pdf-frame');
     const viewer = document.getElementById('screen-pdf');
     frame.src = './dateien/krypto-einsteiger-guide.pdf';
