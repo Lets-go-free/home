@@ -255,26 +255,28 @@
           gap: 10px;
           background: #3d2d1e;
           border-bottom: 1px solid rgba(196,162,101,0.25);
-          padding: 12px 16px;
+          padding: 10px 16px;
           font-family: -apple-system, sans-serif;
-          height: 50px;
         }
+      }
+      @media print {
+        #lgf-back-bar { display: none !important; }
+        #lgf-screen-padding { display: none !important; }
       }
     </style>
     <div id="lgf-back-bar">
       <button onclick="history.back()" style="background:none;border:none;color:#c4a265;font-size:24px;cursor:pointer;padding:0 6px;line-height:1;">‹</button>
       <span style="font-size:13px;color:#b89a76;font-weight:500;">Let's go free</span>
     </div>
+    <div id="lgf-screen-padding" style="height:0"></div>
     <script>
     (function() {
       if (sessionStorage.getItem('lgf_from_app') !== '1') return;
       var bar = document.getElementById('lgf-back-bar');
       bar.classList.add('visible');
-      // Füge padding-top zum body hinzu nur auf dem Bildschirm, nicht beim Drucken
-      var style = document.createElement('style');
-      style.id = 'lgf-screen-padding';
-      style.innerHTML = '@media screen { body { padding-top: 50px !important; } } @media print { #lgf-back-bar { display: none !important; } }';
-      document.head.appendChild(style);
+      window.addEventListener('load', function() {
+        document.getElementById('lgf-screen-padding').style.height = bar.offsetHeight + 'px';
+      });
     })();
     </script>
     <!-- ════════════════════════════════════════════════════════════════════════════ -->
