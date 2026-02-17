@@ -2,6 +2,11 @@
     /* Hide everything until standalone check passes */
     body { visibility: hidden; }
 
+    html {
+      background: linear-gradient(135deg, #2c1e0f 0%, #3d2d1e 100%);
+      min-height: 100%;
+    }
+    
     :root {
       --brown-dark:  #2c1e0f;
       --brown-mid:   #5a4636;
