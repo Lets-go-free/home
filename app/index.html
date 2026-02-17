@@ -53,7 +53,7 @@
     .screen.active { display: block; }
 
     /* ════════════════════════════════
-       LOGIN SCREEN 
+       LOGIN SCREEN
     ════════════════════════════════ */
     #screen-login {
       flex-direction: column;
@@ -776,13 +776,19 @@ async function submitCode() {
       else                isStandalone = true;
 
       if (isStandalone) {
+        // Desktop oder installierte App – direkt zur App
         showApp();
       } else {
-        // Show install guide
+        // Mobil im Browser – Installations-Anleitung zeigen
         document.getElementById('screen-login').classList.remove('active');
         document.getElementById('screen-login').style.display = 'none';
-        document.getElementById('screen-install').classList.add('active');
-        document.getElementById('screen-install').style.display = 'flex';
+        const installScreen = document.getElementById('screen-install');
+        installScreen.style.position = 'fixed';
+        installScreen.style.inset = '0';
+        installScreen.style.zIndex = '9999';
+        installScreen.style.overflowY = 'auto';
+        installScreen.classList.add('active');
+        installScreen.style.display = 'flex';
         document.querySelectorAll('body > *').forEach(el => el.style.visibility = 'visible');
       }
     } else {
