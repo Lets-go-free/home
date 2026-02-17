@@ -949,11 +949,19 @@ function escHtml(s) {
 // ═══════════════════════════════════════════════
 function openPdf(e) {
   e.preventDefault();
-  const frame = document.getElementById('pdf-frame');
-  const viewer = document.getElementById('screen-pdf');
-  frame.src = './dateien/krypto-einsteiger-guide.pdf';
-  viewer.style.display = 'flex';
-  viewer.classList.add('active');
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isAndroid = /android/i.test(navigator.userAgent);
+  if (isIos || isAndroid) {
+    // Mobil: iframe-Viewer in der App
+    const frame = document.getElementById('pdf-frame');
+    const viewer = document.getElementById('screen-pdf');
+    frame.src = './dateien/krypto-einsteiger-guide.pdf';
+    viewer.style.display = 'flex';
+    viewer.classList.add('active');
+  } else {
+    // Mac/Desktop: neuer Tab
+    window.open('./dateien/krypto-einsteiger-guide.pdf', '_blank');
+  }
 }
 
 function closePdf() {
