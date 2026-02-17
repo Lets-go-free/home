@@ -13,6 +13,9 @@ const VALID_CODES = [
 //   'Wichtiges Update – bitte App löschen und neu installieren.'
 const UPDATE_MESSAGE = 'Technisches Update, keine weitere Aktion notwendig.';
 
+// Aktuelle App-Version (muss mit CURRENT_VERSION in index.html übereinstimmen)
+const CURRENT_VERSION = '1.0';
+
 exports.handler = async function(event) {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
@@ -37,7 +40,8 @@ exports.handler = async function(event) {
     body: JSON.stringify({
       valid: isValid,
       message: isValid ? 'Zugang freigeschaltet!' : 'Ungültiger Code',
-      updateMessage: UPDATE_MESSAGE
+      updateMessage: UPDATE_MESSAGE,
+      currentVersion: CURRENT_VERSION
     })
   };
 };
