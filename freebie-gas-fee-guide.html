@@ -371,6 +371,45 @@
     </style>
 </head>
 <body>
+    <!-- ══ Let's go free · Zurück-Button (einmalig einfügen, nie mehr anfassen) ══ -->
+    <style>
+      #lgf-back-bar { display: none; }
+      @media screen {
+        #lgf-back-bar.visible {
+          display: flex;
+          position: fixed;
+          top: 0; left: 0; right: 0;
+          z-index: 9999;
+          align-items: center;
+          gap: 10px;
+          background: #3d2d1e;
+          border-bottom: 1px solid rgba(196,162,101,0.25);
+          padding: 10px 16px;
+          font-family: -apple-system, sans-serif;
+        }
+      }
+      @media print {
+        #lgf-back-bar { display: none !important; }
+        #lgf-screen-padding { display: none !important; }
+      }
+    </style>
+    <div id="lgf-back-bar">
+      <button onclick="history.back()" style="background:none;border:none;color:#c4a265;font-size:24px;cursor:pointer;padding:0 6px;line-height:1;">‹</button>
+      <span style="font-size:13px;color:#b89a76;font-weight:500;">Let's go free</span>
+    </div>
+    <div id="lgf-screen-padding" style="height:0"></div>
+    <script>
+    (function() {
+      if (sessionStorage.getItem('lgf_from_app') !== '1') return;
+      var bar = document.getElementById('lgf-back-bar');
+      bar.classList.add('visible');
+      window.addEventListener('load', function() {
+        document.getElementById('lgf-screen-padding').style.height = bar.offsetHeight + 'px';
+      });
+    })();
+    </script>
+    <!-- ════════════════════════════════════════════════════════════════════════════ -->
+
     <div class="container">
         <h1>Gas Fee Tracker Anleitung</h1>
         <p class="subtitle">So sparst du bis zu 90% bei Transaktionsgebühren</p>
