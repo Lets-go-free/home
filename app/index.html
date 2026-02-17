@@ -18,7 +18,7 @@
 
   <style>
     /* Hide everything until standalone check passes */
-    body > *:not(#install-wall) { visibility: hidden; }
+    body { visibility: hidden; }
 
     :root {
       --brown-dark:  #2c1e0f;
@@ -505,18 +505,6 @@
   <iframe id="pdf-frame" src=""></iframe>
 </div>
 
-<!-- Install Wall -->
-<div id="install-wall">
-  <span class="wall-icon">⛓️‍💥</span>
-  <h1 class="wall-title">Let's go free</h1>
-  <p class="wall-sub">Diese App muss auf dem Startbildschirm installiert werden um sie zu nutzen.</p>
-
-  <div class="wall-box">
-    <p class="wall-box-title">📱 iPhone / iPad – So geht's:</p>
-    <div class="wall-step">
-      <span class="wall-step-num">1</span>
-      <p class="wall-step-text">Tippe unten auf das <strong>Teilen-Symbol</strong> (□↑)</p>
-    </div>
     <div class="wall-step">
       <span class="wall-step-num">2</span>
       <p class="wall-step-text">Wähle <strong>«Zum Home-Bildschirm»</strong></p>
@@ -651,8 +639,8 @@ function init() {
   document.querySelectorAll('body > *').forEach(el => el.style.visibility = 'visible');
 
   if (!isStandalone) {
-    // Mobil im Browser: Install Wall zeigen (kein Zugang)
-    document.getElementById('install-wall').classList.add('show');
+    // Mobil im Browser: Weiterleitung auf separate Seite
+    window.location.href = '/install-wall.html';
     return;
   }
 

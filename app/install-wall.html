@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Let's go free · App installieren</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: #2c1e0f;
+      font-family: 'DM Sans', sans-serif;
+      color: #e8d5b7;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 40px 24px; text-align: center;
+    }
+    .icon  { font-size: 52px; margin-bottom: 16px; }
+    h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(22px,6vw,28px);
+      color: #c4a265; margin-bottom: 10px;
+    }
+    .sub {
+      font-size: 14px; color: #8B7355;
+      line-height: 1.6; margin-bottom: 32px; max-width: 340px;
+    }
+    .box {
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(196,162,101,.2);
+      border-radius: 16px; padding: 22px;
+      width: 100%; max-width: 360px;
+      text-align: left; margin-bottom: 16px;
+    }
+    .box-title {
+      font-size: 12px; font-weight: 500;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: #8B7355; margin-bottom: 16px;
+    }
+    .step { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+    .step:last-child { margin-bottom: 0; }
+    .num {
+      width: 26px; height: 26px; min-width: 26px;
+      background: rgba(196,162,101,.15);
+      border: 1px solid rgba(196,162,101,.3);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 600; color: #c4a265;
+    }
+    .step-text { font-size: 13px; color: #e8d5b7; line-height: 1.5; padding-top: 4px; }
+    .step-text strong { color: #c4a265; }
+    .android { font-size: 12px; color: #5a4636; }
+  </style>
+</head>
+<body>
+  <span class="icon">⛓️‍💥</span>
+  <h1>Let's go free</h1>
+  <p class="sub">Diese App muss auf dem Startbildschirm installiert werden um sie zu nutzen.</p>
+
+  <div class="box">
+    <p class="box-title">📱 iPhone / iPad – So geht's:</p>
+    <div class="step">
+      <span class="num">1</span>
+      <p class="step-text">Tippe unten auf das <strong>Teilen-Symbol</strong> (□↑)</p>
+    </div>
+    <div class="step">
+      <span class="num">2</span>
+      <p class="step-text">Wähle <strong>«Zum Home-Bildschirm»</strong></p>
+    </div>
+    <div class="step">
+      <span class="num">3</span>
+      <p class="step-text">Tippe oben rechts auf <strong>«Hinzufügen»</strong></p>
+    </div>
+    <div class="step">
+      <span class="num">4</span>
+      <p class="step-text">App vom Startbildschirm öffnen – fertig!</p>
+    </div>
+  </div>
+
+  <p class="android">🤖 Android: Chrome → Menü (⋮) → «Zum Startbildschirm hinzufügen»</p>
+</body>
+</html>
