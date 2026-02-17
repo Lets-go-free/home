@@ -6,6 +6,13 @@ const VALID_CODES = [
   'LGF-2026',
 ];
 
+// Update-Bemerkung – erscheint im Update-Banner der App
+// Beispiele:
+//   'Technisches Update, keine weitere Aktion notwendig.'
+//   'Neues Freebie verfügbar – tippe auf «Aktualisieren».'
+//   'Wichtiges Update – bitte App löschen und neu installieren.'
+const UPDATE_MESSAGE = 'Technisches Update, keine weitere Aktion notwendig.';
+
 exports.handler = async function(event) {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
@@ -29,7 +36,8 @@ exports.handler = async function(event) {
     },
     body: JSON.stringify({
       valid: isValid,
-      message: isValid ? 'Zugang freigeschaltet!' : 'Ungültiger Code'
+      message: isValid ? 'Zugang freigeschaltet!' : 'Ungültiger Code',
+      updateMessage: UPDATE_MESSAGE
     })
   };
 };
