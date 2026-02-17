@@ -94,8 +94,8 @@
       <a href="./dateien/krypto-einsteiger-guide.pdf" class="btn-primary" onclick="openPdf(event)">
         <span>📖</span> E-Book öffnen
       </a>
-      <a href="https://app.letsgofree.me/dateien/krypto-einsteiger-guide.pdf" class="btn-secondary" rel="noopener noreferrer" style="margin-top: 12px;">
-        <span>🌐</span> In Safari öffnen
+      <a href="https://app.letsgofree.me/dateien/krypto-einsteiger-guide.pdf" class="btn-secondary" onclick="openInBrowser(event)" style="margin-top: 12px;">
+        <span>🌐</span> Im Browser öffnen
       </a>
     </div>
 
@@ -561,6 +561,23 @@ function showStatus(id, msg, type) {
 function showActionStatus(m, t) { showStatus('action-status', m, t); }
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════
+//  BROWSER ÖFFNER (für PDF außerhalb der App)
+// ═══════════════════════════════════════════════
+function openInBrowser(e) {
+  e.preventDefault();
+  const url = 'https://app.letsgofree.me/dateien/krypto-einsteiger-guide.pdf';
+  // Auf iOS: App verlassen und in Safari öffnen
+  window.location.href = url;
+  setTimeout(() => {
+    // Fallback falls window.location nicht funktioniert
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_system'; // iOS erkennt _system als "extern"
+    a.click();
+  }, 300);
 }
 
 // ═══════════════════════════════════════════════
