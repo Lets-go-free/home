@@ -668,26 +668,25 @@ const DEFAULT_FREEBIES = [
 function init() {
   const isIos     = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const isAndroid = /android/i.test(navigator.userAgent);
-  const isMobile  = isIos || isAndroid;
 
   const iosStandalone = window.navigator.standalone === true;
   const pwaStandalone = window.matchMedia('(display-mode: standalone)').matches;
 
-  let isStandalone = false;
+  // Desktop immer erlaubt, Mobile nur wenn installiert
+  let isStandalone = true;
   if (isIos)          isStandalone = iosStandalone;
   else if (isAndroid) isStandalone = pwaStandalone;
-  else                isStandalone = true; // Desktop: immer erlaubt
+
+  // Alles sichtbar machen
+  document.querySelectorAll('body > *').forEach(el => el.style.visibility = 'visible');
 
   if (!isStandalone) {
-    // Mobile im Browser – Installations-Anleitung zeigen
+    // Mobil im Browser: Install Wall zeigen (kein Zugang)
     document.getElementById('install-wall').classList.add('show');
-    document.getElementById('install-wall').style.visibility = 'visible';
     return;
   }
 
-  // Zugang erlaubt – App anzeigen
-  document.querySelectorAll('body > *').forEach(el => el.style.visibility = 'visible');
-
+  // Standalone oder Desktop: normaler Ablauf
   const hasAccess = localStorage.getItem(ACCESS_KEY) === 'true';
   if (hasAccess) {
     showApp();
@@ -775,21 +774,26 @@ async function submitCode() {
       else if (isAndroid) isStandalone = pwaStandalone;
       else                isStandalone = true;
 
-      if (isStandalone) {
-        // Desktop oder installierte App – direkt zur App
-        showApp();
-      } else {
-        // Mobil im Browser – Installations-Anleitung zeigen
+      // Zeige Installations-Anleitung nur auf Mobilgeräten im Browser
+      const _isIos     = /iphone|ipad|ipod/i.test(navigator.userAgent);
+      const _isAndroid = /android/i.test(navigator.userAgent);
+      const _isMobile  = _isIos || _isAndroid;
+      const _iosStandalone = window.navigator.standalone === true;
+      const _pwaStandalone = window.matchMedia('(display-mode: standalone)').matches;
+      let _isStandalone = true;
+      if (_isIos)          _isStandalone = _iosStandalone;
+      else if (_isAndroid) _isStandalone = _pwaStandalone;
+
+      if (_isMobile && !_isStandalone) {
+        // Mobil im Browser nach Code-Eingabe: Installations-Anleitung zeigen
         document.getElementById('screen-login').classList.remove('active');
         document.getElementById('screen-login').style.display = 'none';
         const installScreen = document.getElementById('screen-install');
-        installScreen.style.position = 'fixed';
-        installScreen.style.inset = '0';
-        installScreen.style.zIndex = '9999';
-        installScreen.style.overflowY = 'auto';
         installScreen.classList.add('active');
         installScreen.style.display = 'flex';
-        document.querySelectorAll('body > *').forEach(el => el.style.visibility = 'visible');
+      } else {
+        // Desktop oder installierte App: direkt zur App
+        showApp();
       }
     } else {
       reset();
