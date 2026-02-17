@@ -505,6 +505,36 @@
   <iframe id="pdf-frame" src=""></iframe>
 </div>
 
+<!-- Install Guide (nach Code-Eingabe) -->
+<div id="screen-install">
+  <span class="guide-check">✅</span>
+  <h2 class="guide-title">Zugang freigeschaltet!</h2>
+  <p class="guide-sub">Füge die App jetzt zum Startbildschirm hinzu – so hast du immer direkten Zugang, auch offline.</p>
+
+  <div class="guide-box">
+    <p class="guide-box-title">📱 iPhone / iPad</p>
+    <div class="guide-step">
+      <span class="guide-step-num">1</span>
+      <p class="guide-step-text">Tippe unten auf das <strong>Teilen-Symbol</strong> (□↑)</p>
+    </div>
+    <div class="guide-step">
+      <span class="guide-step-num">2</span>
+      <p class="guide-step-text">Scrolle und wähle <strong>«Zum Home-Bildschirm»</strong></p>
+    </div>
+    <div class="guide-step">
+      <span class="guide-step-num">3</span>
+      <p class="guide-step-text">Tippe oben rechts auf <strong>«Hinzufügen»</strong></p>
+    </div>
+    <div class="guide-step">
+      <span class="guide-step-num">4</span>
+      <p class="guide-step-text">App vom Startbildschirm öffnen – fertig!</p>
+    </div>
+  </div>
+
+  <p class="guide-android">🤖 Android: Chrome → Menü (⋮) → «Zum Startbildschirm hinzufügen»</p>
+  <button class="btn-guide-skip" onclick="skipInstallGuide()">Ich habe die App bereits installiert →</button>
+</div>
+
 <!-- Install Wall -->
 <div id="install-wall">
   <span class="wall-icon">⛓️‍💥</span>
@@ -534,15 +564,7 @@
   <p class="wall-android">Android: Chrome → Menü (⋮) → «Zum Startbildschirm hinzufügen»</p>
 </div>
 
-<!-- Install Banner -->
-<div id="install-banner">
-  <span style="font-size:22px">📲</span>
-  <p class="install-text">
-    <strong>Zum Startbildschirm:</strong><br>
-    Tippe auf <strong>Teilen</strong> → <strong>«Zum Home-Bildschirm»</strong>
-  </p>
-  <button class="install-close" onclick="closeBanner()">✕</button>
-</div>
+<!-- Install Banner entfernt – ersetzt durch screen-install -->
 
 <!-- Admin Modal -->
 <div class="modal-overlay" id="admin-modal" onclick="handleOverlayClick(event)">
@@ -733,7 +755,26 @@ async function submitCode() {
     if (data.valid) {
       localStorage.setItem(ACCESS_KEY, 'true');
       reset();
-      showApp();
+      // Check if already installed – if so, go straight to app
+      const isIos     = /iphone|ipad|ipod/i.test(navigator.userAgent);
+      const isAndroid = /android/i.test(navigator.userAgent);
+      const iosStandalone = window.navigator.standalone === true;
+      const pwaStandalone = window.matchMedia('(display-mode: standalone)').matches;
+      let isStandalone = false;
+      if (isIos)          isStandalone = iosStandalone;
+      else if (isAndroid) isStandalone = pwaStandalone;
+      else                isStandalone = true;
+
+      if (isStandalone) {
+        showApp();
+      } else {
+        // Show install guide
+        document.getElementById('screen-login').classList.remove('active');
+        document.getElementById('screen-login').style.display = 'none';
+        document.getElementById('screen-install').classList.add('active');
+        document.getElementById('screen-install').style.display = 'flex';
+        document.querySelectorAll('body > *').forEach(el => el.style.visibility = 'visible');
+      }
     } else {
       reset();
       err.classList.add('show');
@@ -944,6 +985,15 @@ function showStatus(id, msg, type) {
 function showActionStatus(m, t) { showStatus('action-status', m, t); }
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════
+//  INSTALL GUIDE
+// ═══════════════════════════════════════════════
+function skipInstallGuide() {
+  document.getElementById('screen-install').classList.remove('active');
+  document.getElementById('screen-install').style.display = 'none';
+  showApp();
 }
 
 // ═══════════════════════════════════════════════
