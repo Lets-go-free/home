@@ -244,7 +244,7 @@
 <body>
     <!-- ══ Let's go free · Zurück-Button (einmalig einfügen, nie mehr anfassen) ══ -->
     <style>
-      #lgf-back-bar, #lgf-back-spacer { display: none; }
+      #lgf-back-bar { display: none; }
       @media screen {
         #lgf-back-bar.visible {
           display: flex;
@@ -259,22 +259,22 @@
           font-family: -apple-system, sans-serif;
           height: 50px;
         }
-        #lgf-back-spacer.visible {
-          display: block;
-          height: 50px;
-        }
       }
     </style>
     <div id="lgf-back-bar">
       <button onclick="history.back()" style="background:none;border:none;color:#c4a265;font-size:24px;cursor:pointer;padding:0 6px;line-height:1;">‹</button>
       <span style="font-size:13px;color:#b89a76;font-weight:500;">Let's go free</span>
     </div>
-    <div id="lgf-back-spacer"></div>
     <script>
     (function() {
       if (sessionStorage.getItem('lgf_from_app') !== '1') return;
-      document.getElementById('lgf-back-bar').classList.add('visible');
-      document.getElementById('lgf-back-spacer').classList.add('visible');
+      var bar = document.getElementById('lgf-back-bar');
+      bar.classList.add('visible');
+      // Füge padding-top zum body hinzu nur auf dem Bildschirm, nicht beim Drucken
+      var style = document.createElement('style');
+      style.id = 'lgf-screen-padding';
+      style.innerHTML = '@media screen { body { padding-top: 50px !important; } } @media print { #lgf-back-bar { display: none !important; } }';
+      document.head.appendChild(style);
     })();
     </script>
     <!-- ════════════════════════════════════════════════════════════════════════════ -->
