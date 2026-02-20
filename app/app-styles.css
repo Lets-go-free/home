@@ -77,14 +77,14 @@ body::before {
 #screen-login.active { display: flex; }
 
 .login-logo {
-  font-size: 44px; margin-bottom: 14px;
+  font-size: 52.8px; margin-bottom: 14px;
   filter: drop-shadow(0 2px 14px rgba(201,168,130,.45));
 }
 
 .login-title {
   font-family: 'Poppins', sans-serif;
   font-weight: 700;
-  font-size: clamp(24px, 7vw, 30px);
+  font-size: clamp(28.8px, 7vw, 36.0px);
   color: var(--gold);
   text-align: center;
   line-height: 1.15;
@@ -93,7 +93,7 @@ body::before {
 }
 
 .login-sub {
-  font-size: 11px;
+  font-size: 13.2px;
   color: var(--gold-d);
   text-align: center;
   letter-spacing: .14em;
@@ -118,7 +118,7 @@ body::before {
 }
 
 .login-box-title {
-  font-size: 11px; font-weight: 500;
+  font-size: 13.2px; font-weight: 500;
   letter-spacing: .12em; text-transform: uppercase;
   color: var(--gold-d);
   margin-bottom: 18px; text-align: center;
@@ -133,7 +133,7 @@ body::before {
   border-radius: var(--radius-sm);
   padding: 15px 18px;
   color: var(--cream);
-  font-size: 20px;
+  font-size: 24.0px;
   font-family: 'DM Mono', 'Courier New', monospace;
   font-weight: 500;
   letter-spacing: .14em;
@@ -143,7 +143,7 @@ body::before {
   transition: border-color .2s;
 }
 .code-input:focus { border-color: var(--gold); }
-.code-input::placeholder { font-size: 14px; letter-spacing: .05em; color: rgba(139,115,85,.4); }
+.code-input::placeholder { font-size: 16.8px; letter-spacing: .05em; color: rgba(139,115,85,.4); }
 
 /* Spinner */
 .spinner {
@@ -157,14 +157,14 @@ body::before {
 
 .login-error {
   display: none; text-align: center;
-  font-size: 13px; color: var(--red);
+  font-size: 15.6px; color: var(--red);
   margin-top: 12px;
 }
 .login-error.show { display: block; }
 
 .login-hint {
   margin-top: 20px; text-align: center;
-  font-size: 12px; color: rgba(139,115,85,.5); line-height: 1.5;
+  font-size: 14.4px; color: rgba(139,115,85,.5); line-height: 1.5;
 }
 .login-hint a { color: var(--gold-d); text-decoration: none; }
 
@@ -176,14 +176,14 @@ body::before {
 .header { padding: 54px 28px 28px; text-align: center; }
 
 .logo-chain {
-  font-size: 38px; margin-bottom: 10px; display: block;
+  font-size: 45.6px; margin-bottom: 10px; display: block;
   filter: drop-shadow(0 2px 10px rgba(201,168,130,.4));
 }
 
 .site-title {
   font-family: 'Poppins', sans-serif;
   font-weight: 700;
-  font-size: clamp(26px, 7vw, 32px);
+  font-size: clamp(31.2px, 7vw, 38.4px);
   color: var(--gold);
   letter-spacing: .03em;
   line-height: 1.1;
@@ -191,7 +191,7 @@ body::before {
 
 .site-subtitle {
   margin-top: 7px;
-  font-size: 11px; font-weight: 300;
+  font-size: 13.2px; font-weight: 300;
   color: var(--gold-d);
   letter-spacing: .1em; text-transform: uppercase;
 }
@@ -212,12 +212,12 @@ body::before {
   align-items: center; gap: 14px;
 }
 #update-banner.show { display: flex; }
-.update-text { flex: 1; font-size: 13.5px; line-height: 1.45; }
+.update-text { flex: 1; font-size: 16.2px; line-height: 1.45; }
 .update-text strong { color: var(--green); }
 .btn-update {
   background: var(--green); color: #fff;
   border: none; border-radius: 8px;
-  padding: 8px 14px; font-size: 13px; font-weight: 500;
+  padding: 8px 14px; font-size: 15.6px; font-weight: 500;
   cursor: pointer; white-space: nowrap;
   font-family: 'Poppins', sans-serif;
 }
@@ -228,12 +228,12 @@ body::before {
   background: rgba(42,34,24,.6);
   border: 1px solid rgba(201,168,130,.18);
   border-radius: 8px; padding: 10px 16px;
-  font-size: 12.5px; color: var(--gold-d); text-align: center;
+  font-size: 15.0px; color: var(--gold-d); text-align: center;
 }
 .offline-badge.show { display: block; }
 
 .section-label {
-  font-size: 11px; font-weight: 500; letter-spacing: .14em;
+  font-size: 13.2px; font-weight: 500; letter-spacing: .14em;
   text-transform: uppercase; color: var(--gold-d);
   padding: 0 28px; margin-bottom: 14px;
 }
@@ -260,7 +260,7 @@ body::before {
 
 .ebook-tag {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: 10px; font-weight: 500; letter-spacing: .1em;
+  font-size: 12.0px; font-weight: 500; letter-spacing: .1em;
   text-transform: uppercase; color: var(--gold);
   background: rgba(201,168,130,.1); border: 1px solid rgba(201,168,130,.28);
   border-radius: 20px; padding: 4px 12px; margin-bottom: 14px;
@@ -269,19 +269,19 @@ body::before {
 .ebook-title {
   font-family: 'Poppins', sans-serif;
   font-weight: 700;
-  font-size: clamp(18px, 5.5vw, 22px);
+  font-size: clamp(21.6px, 5.5vw, 26.4px);
   line-height: 1.25; color: var(--cream); margin-bottom: 8px;
 }
 
 .ebook-desc {
-  font-size: 13px; font-weight: 300;
+  font-size: 15.6px; font-weight: 300;
   line-height: 1.65; color: var(--gold-d); margin-bottom: 20px;
 }
 
 .ebook-meta { display: flex; gap: 18px; margin-bottom: 20px; }
 .meta-item { display: flex; flex-direction: column; gap: 2px; }
-.meta-value { font-size: 15px; font-weight: 500; color: var(--gold); }
-.meta-label { font-size: 10px; color: var(--gold-d); text-transform: uppercase; letter-spacing: .1em; }
+.meta-value { font-size: 18.0px; font-weight: 500; color: var(--gold); }
+.meta-label { font-size: 12.0px; color: var(--gold-d); text-transform: uppercase; letter-spacing: .1em; }
 
 /* ─── Buttons ────────────────────────────────────────────────── */
 .btn-primary {
@@ -289,7 +289,7 @@ body::before {
   width: 100%;
   background: linear-gradient(135deg, var(--gold) 0%, var(--gold-deep) 100%);
   color: var(--dark);
-  font-family: 'Poppins', sans-serif; font-size: 14px; font-weight: 600;
+  font-family: 'Poppins', sans-serif; font-size: 16.8px; font-weight: 600;
   border: none; border-radius: var(--radius-sm);
   padding: 15px 24px; cursor: pointer; text-decoration: none;
   transition: transform .15s, filter .15s;
@@ -304,7 +304,7 @@ body::before {
   background: rgba(139,115,85,.1);
   border: 1px solid rgba(139,115,85,.28);
   color: var(--gold-d);
-  font-family: 'Poppins', sans-serif; font-size: 14px; font-weight: 500;
+  font-family: 'Poppins', sans-serif; font-size: 16.8px; font-weight: 500;
   border-radius: var(--radius-sm);
   padding: 13px 24px; cursor: pointer; text-decoration: none;
   transition: all .15s;
@@ -318,7 +318,7 @@ body::before {
   width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
   background: linear-gradient(135deg, var(--gold) 0%, var(--gold-deep) 100%);
   color: var(--dark);
-  font-family: 'Poppins', sans-serif; font-size: 15px; font-weight: 600;
+  font-family: 'Poppins', sans-serif; font-size: 18.0px; font-weight: 600;
   border: none; border-radius: var(--radius-sm);
   padding: 15px; cursor: pointer;
   transition: filter .15s, transform .15s;
@@ -366,19 +366,19 @@ body::before {
 }
 
 /* ─── Footer ─────────────────────────────────────────────────── */
-.version-row { text-align: center; padding: 20px 28px 0; font-size: 11px; color: rgba(139,115,85,.35); letter-spacing: .05em; }
+.version-row { text-align: center; padding: 20px 28px 0; font-size: 13.2px; color: rgba(139,115,85,.35); letter-spacing: .05em; }
 
 .footer { text-align: center; padding: 28px 28px 20px; }
 .footer-logo {
   font-family: 'Poppins', sans-serif;
-  font-weight: 600; font-size: 12px; color: var(--gold-d); letter-spacing: .08em;
+  font-weight: 600; font-size: 14.4px; color: var(--gold-d); letter-spacing: .08em;
 }
-.footer-url { font-size: 11px; color: rgba(139,115,85,.35); margin-top: 3px; }
+.footer-url { font-size: 13.2px; color: rgba(139,115,85,.35); margin-top: 3px; }
 .footer-admin { margin-top: 14px; }
 
 .btn-admin {
   background: none; border: 1px solid rgba(139,115,85,.18); border-radius: 8px;
-  color: rgba(139,115,85,.4); font-size: 11px; padding: 6px 14px; cursor: pointer;
+  color: rgba(139,115,85,.4); font-size: 13.2px; padding: 6px 14px; cursor: pointer;
   font-family: 'Poppins', sans-serif; letter-spacing: .05em; transition: all .2s;
 }
 .btn-admin:hover { border-color: var(--gold-d); color: var(--gold-d); }
@@ -403,15 +403,15 @@ body::before {
 }
 
 .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
-.modal-title { font-family: 'Poppins', sans-serif; font-weight: 700; font-size: 18px; color: var(--gold); }
-.modal-close { background: none; border: none; color: var(--gold-d); font-size: 22px; cursor: pointer; }
+.modal-title { font-family: 'Poppins', sans-serif; font-weight: 700; font-size: 21.6px; color: var(--gold); }
+.modal-close { background: none; border: none; color: var(--gold-d); font-size: 26.4px; cursor: pointer; }
 
 .admin-login-form { display: flex; flex-direction: column; gap: 12px; }
 
 .admin-input {
   background: rgba(201,168,130,.05); border: 1px solid rgba(201,168,130,.18);
   border-radius: var(--radius-sm); padding: 13px 16px;
-  color: var(--cream); font-size: 15px; font-family: 'Poppins', sans-serif; outline: none;
+  color: var(--cream); font-size: 18.0px; font-family: 'Poppins', sans-serif; outline: none;
   transition: border-color .2s;
 }
 .admin-input:focus { border-color: var(--gold); }
@@ -419,18 +419,18 @@ body::before {
 .btn-admin-login {
   background: linear-gradient(135deg, var(--gold), var(--gold-deep));
   color: var(--dark); border: none; border-radius: var(--radius-sm);
-  padding: 13px; font-size: 15px; font-weight: 600; cursor: pointer;
+  padding: 13px; font-size: 18.0px; font-weight: 600; cursor: pointer;
   font-family: 'Poppins', sans-serif;
 }
 
-.admin-err { font-size: 13px; color: var(--red); text-align: center; display: none; }
+.admin-err { font-size: 15.6px; color: var(--red); text-align: center; display: none; }
 .admin-err.show { display: block; }
 
 #admin-panel { display: none; }
 #admin-panel.show { display: block; }
 
 .admin-section { margin-bottom: 26px; }
-.admin-section-title { font-size: 11px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--gold-d); margin-bottom: 14px; }
+.admin-section-title { font-size: 13.2px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--gold-d); margin-bottom: 14px; }
 
 .freebie-admin-item {
   background: rgba(201,168,130,.04); border: 1px solid rgba(201,168,130,.13);
@@ -438,19 +438,19 @@ body::before {
   display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
 }
 .freebie-admin-info { flex: 1; }
-.freebie-admin-name { font-size: 13px; font-weight: 500; color: var(--cream); }
-.freebie-admin-url { font-size: 11px; color: var(--gold-d); margin-top: 2px; word-break: break-all; }
+.freebie-admin-name { font-size: 15.6px; font-weight: 500; color: var(--cream); }
+.freebie-admin-url { font-size: 13.2px; color: var(--gold-d); margin-top: 2px; word-break: break-all; }
 
-.btn-edit { background: rgba(201,168,130,.12); border: 1px solid rgba(201,168,130,.22); color: var(--gold); font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-family: 'Poppins', sans-serif; white-space: nowrap; }
-.btn-remove { background: rgba(224,112,112,.08); border: 1px solid rgba(224,112,112,.18); color: var(--red); font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-family: 'Poppins', sans-serif; }
+.btn-edit { background: rgba(201,168,130,.12); border: 1px solid rgba(201,168,130,.22); color: var(--gold); font-size: 14.4px; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-family: 'Poppins', sans-serif; white-space: nowrap; }
+.btn-remove { background: rgba(224,112,112,.08); border: 1px solid rgba(224,112,112,.18); color: var(--red); font-size: 14.4px; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-family: 'Poppins', sans-serif; }
 
 .form-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
-.form-label { font-size: 11px; color: var(--gold-d); }
+.form-label { font-size: 13.2px; color: var(--gold-d); }
 
 .form-input {
   background: rgba(201,168,130,.05); border: 1px solid rgba(201,168,130,.18);
   border-radius: 8px; padding: 11px 14px;
-  color: var(--cream); font-size: 14px; font-family: 'Poppins', sans-serif; outline: none;
+  color: var(--cream); font-size: 16.8px; font-family: 'Poppins', sans-serif; outline: none;
   transition: border-color .2s;
 }
 .form-input:focus { border-color: var(--gold); }
@@ -458,7 +458,7 @@ body::before {
 .btn-add {
   width: 100%; background: linear-gradient(135deg, var(--gold), var(--gold-deep));
   color: var(--dark); border: none; border-radius: 8px;
-  padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer;
+  padding: 12px; font-size: 16.8px; font-weight: 600; cursor: pointer;
   font-family: 'Poppins', sans-serif; margin-top: 4px;
 }
 
@@ -468,7 +468,7 @@ body::before {
   border-radius: var(--radius-sm); padding: 16px;
 }
 .generated-code {
-  font-size: 22px; font-weight: 500; letter-spacing: .15em;
+  font-size: 26.4px; font-weight: 500; letter-spacing: .15em;
   color: var(--gold); text-align: center;
   padding: 14px; margin: 12px 0;
   background: rgba(201,168,130,.07); border-radius: 8px;
@@ -476,20 +476,20 @@ body::before {
   cursor: pointer; user-select: all;
   font-family: 'DM Mono', 'Courier New', monospace;
 }
-.code-hint { font-size: 11px; color: var(--gold-d); text-align: center; margin-bottom: 10px; }
-.btn-gen { background: rgba(201,168,130,.12); border: 1px solid rgba(201,168,130,.22); color: var(--gold); font-size: 13px; padding: 9px 16px; border-radius: 8px; cursor: pointer; font-family: 'Poppins', sans-serif; width: 100%; }
-.btn-copy-code { background: var(--green); color: #fff; border: none; font-size: 12px; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-family: 'Poppins', sans-serif; width: 100%; margin-top: 6px; }
+.code-hint { font-size: 13.2px; color: var(--gold-d); text-align: center; margin-bottom: 10px; }
+.btn-gen { background: rgba(201,168,130,.12); border: 1px solid rgba(201,168,130,.22); color: var(--gold); font-size: 15.6px; padding: 9px 16px; border-radius: 8px; cursor: pointer; font-family: 'Poppins', sans-serif; width: 100%; }
+.btn-copy-code { background: var(--green); color: #fff; border: none; font-size: 14.4px; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-family: 'Poppins', sans-serif; width: 100%; margin-top: 6px; }
 
 .admin-actions { display: flex; flex-direction: column; gap: 8px; }
 .btn-action {
   background: rgba(201,168,130,.04); border: 1px solid rgba(201,168,130,.16);
   color: var(--cream); border-radius: 8px; padding: 12px 16px;
-  font-size: 13px; cursor: pointer; font-family: 'Poppins', sans-serif;
+  font-size: 15.6px; cursor: pointer; font-family: 'Poppins', sans-serif;
   text-align: left; transition: background .2s;
 }
 .btn-action:hover { background: rgba(201,168,130,.1); }
 
-.status-msg { font-size: 13px; text-align: center; padding: 10px; border-radius: 8px; margin-top: 8px; display: none; }
+.status-msg { font-size: 15.6px; text-align: center; padding: 10px; border-radius: 8px; margin-top: 8px; display: none; }
 .status-msg.success { display: block; background: rgba(76,175,120,.12); color: var(--green); border: 1px solid rgba(76,175,120,.28); }
 .status-msg.error   { display: block; background: rgba(224,112,112,.08); color: var(--red); border: 1px solid rgba(224,112,112,.22); }
 
@@ -503,9 +503,9 @@ body::before {
   align-items: center; gap: 12px;
 }
 #install-banner.show { display: flex; }
-.install-text { flex: 1; font-size: 13px; line-height: 1.45; }
+.install-text { flex: 1; font-size: 15.6px; line-height: 1.45; }
 .install-text strong { color: var(--gold); }
-.install-close { background: none; border: none; color: var(--gold-d); font-size: 20px; cursor: pointer; }
+.install-close { background: none; border: none; color: var(--gold-d); font-size: 24.0px; cursor: pointer; }
 
 /* ─── PDF Screen ─────────────────────────────────────────────── */
 #screen-pdf {
@@ -566,7 +566,7 @@ body:not(:has(.screen)) {
 }
 
 .icon, .check {
-  font-size: 52px;
+  font-size: 62.4px;
   margin-bottom: 16px;
   display: block;
   filter: drop-shadow(0 2px 12px rgba(201,168,130,.4));
@@ -575,14 +575,14 @@ body:not(:has(.screen)) {
 h1 {
   font-family: 'Poppins', sans-serif;
   font-weight: 700;
-  font-size: clamp(22px, 6vw, 28px);
+  font-size: clamp(26.4px, 6vw, 33.6px);
   color: var(--gold);
   margin-bottom: 10px;
   letter-spacing: .02em;
 }
 
 .sub, .guide-sub {
-  font-size: 14px;
+  font-size: 16.8px;
   color: var(--gold-d);
   line-height: 1.65;
   margin-bottom: 32px;
@@ -602,7 +602,7 @@ h1 {
 }
 
 .box-title, .guide-box-title {
-  font-size: 11px;
+  font-size: 13.2px;
   font-weight: 500;
   letter-spacing: .12em;
   text-transform: uppercase;
@@ -624,18 +624,18 @@ h1 {
   border: 1px solid rgba(201,168,130,.28);
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 600;
+  font-size: 14.4px; font-weight: 600;
   color: var(--gold);
   font-family: 'Poppins', sans-serif;
 }
 
 .step-text, .guide-step-text {
-  font-size: 13px; color: var(--cream); line-height: 1.55; padding-top: 4px;
+  font-size: 15.6px; color: var(--cream); line-height: 1.55; padding-top: 4px;
 }
 .step-text strong, .guide-step-text strong { color: var(--gold); }
 
 .android, .guide-android {
-  font-size: 12px; color: var(--gold-d); margin-bottom: 24px;
+  font-size: 14.4px; color: var(--gold-d); margin-bottom: 24px;
 }
 
 .btn-skip, .btn-guide-skip {
@@ -643,7 +643,7 @@ h1 {
   border: 1px solid rgba(139,115,85,.22);
   border-radius: 8px;
   color: rgba(139,115,85,.5);
-  font-size: 12px;
+  font-size: 14.4px;
   padding: 10px 24px;
   cursor: pointer;
   font-family: 'Poppins', sans-serif;
@@ -655,16 +655,16 @@ h1 {
 }
 
 .hint {
-  font-size: 12px; color: var(--gold-d);
+  font-size: 14.4px; color: var(--gold-d);
   margin-top: 8px; max-width: 320px; line-height: 1.5;
 }
 .hint a { color: var(--gold); }
 
-.guide-check { font-size: 52px; margin-bottom: 12px; display: block; }
+.guide-check { font-size: 62.4px; margin-bottom: 12px; display: block; }
 .guide-title {
   font-family: 'Poppins', sans-serif;
   font-weight: 700;
-  font-size: clamp(20px, 6vw, 26px);
+  font-size: clamp(24.0px, 6vw, 31.2px);
   color: var(--gold);
   margin-bottom: 8px; line-height: 1.2;
 }
