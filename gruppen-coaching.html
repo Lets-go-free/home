@@ -569,6 +569,7 @@
                         frei = Math.max(0, frei);
 
                         const card = document.querySelector(`.course-card[data-course="${num}"]`);
+                        console.log(`Suche nach Kurs ${num}:`, card ? 'gefunden' : 'NICHT GEFUNDEN');
                         if (!card) continue;
 
                         const countEl = card.querySelector('.spots-count');
