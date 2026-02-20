@@ -1,5 +1,5 @@
 // ─── Let's go free · Service Worker ───────────────────────────────────────
-const CACHE_VERSION = 'lgf-v26.0';
+const CACHE_VERSION = 'lgf-v27.0';
 const CACHE_NAME = `letsgofree-${CACHE_VERSION}`;
 
 const APP_SHELL = [

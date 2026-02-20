@@ -231,7 +231,8 @@ function init() {
   const isIos     = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const isAndroid = /android/i.test(navigator.userAgent);
 
-  const iosStandalone = window.navigator.standalone === true;
+  const iosStandalone = window.navigator.standalone === true || 
+                        window.matchMedia('(display-mode: standalone)').matches;
   const pwaStandalone = window.matchMedia('(display-mode: standalone)').matches;
 
   // Desktop immer erlaubt, Mobile nur wenn installiert
@@ -329,7 +330,8 @@ async function submitCode() {
       // Check if already installed – if so, go straight to app
       const isIos     = /iphone|ipad|ipod/i.test(navigator.userAgent);
       const isAndroid = /android/i.test(navigator.userAgent);
-      const iosStandalone = window.navigator.standalone === true;
+      const iosStandalone = window.navigator.standalone === true || 
+                            window.matchMedia('(display-mode: standalone)').matches;
       const pwaStandalone = window.matchMedia('(display-mode: standalone)').matches;
       let isStandalone = false;
       if (isIos)          isStandalone = iosStandalone;
@@ -340,7 +342,8 @@ async function submitCode() {
       const _isIos     = /iphone|ipad|ipod/i.test(navigator.userAgent);
       const _isAndroid = /android/i.test(navigator.userAgent);
       const _isMobile  = _isIos || _isAndroid;
-      const _iosStandalone = window.navigator.standalone === true;
+      const _iosStandalone = window.navigator.standalone === true || 
+                             window.matchMedia('(display-mode: standalone)').matches;
       const _pwaStandalone = window.matchMedia('(display-mode: standalone)').matches;
       let _isStandalone = true;
       if (_isIos)          _isStandalone = _iosStandalone;
