@@ -5,7 +5,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 /* Hide everything until standalone check passes */
-body { visibility: hidden; }
+/*body { visibility: hidden; }*/
 
 /* ─── CSS-Variablen (Ebook-Palette) ─────────────────────────── */
 :root {
