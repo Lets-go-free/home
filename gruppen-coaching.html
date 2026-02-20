@@ -1,164 +1,702 @@
-<script type="module">
-  // =============================================
-  // FIREBASE INTEGRATION – globale Plätze-Zählung
-  // =============================================
-
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-  import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-
-  // === HIER DEINEN FIREBASE-CONFIG EINFÜGEN ===
-  const firebaseConfig = {
-    // ← kopiere deinen gesamten firebaseConfig-Block hierher
-    // apiKey: "...",
-    // authDomain: "...",
-    // projectId: "...",
-    // storageBucket: "...",
-    // messagingSenderId: "...",
-    // appId: "..."
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-
-  signInAnonymously(auth)
-    .then(() => console.log("Anonym angemeldet → Schreibrechte vorhanden"))
-    .catch(err => console.error("Anonym-Anmeldung fehlgeschlagen:", err.code, err.message));
-
-  async function updateSpotsUI() {
-    for (let num = 1; num <= 3; num++) {
-      const ref = doc(db, "kurse", `kurs${num}`);
-      try {
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          let frei = snap.data().freiePlaetze ?? 7;
-          frei = Math.max(0, frei); // nicht negativ werden
-
-          const card = document.querySelector(`.course-card[data-course="${num}"]`);
-          if (!card) continue;
-
-          const countEl = card.querySelector('.spots-count');
-          const textEl  = card.querySelector('.spots-left');
-          const btn     = card.querySelector('.register-btn');
-          const dots    = card.querySelectorAll('.spot');
-
-          countEl.textContent = frei;
-
-          if (frei === 0) {
-            textEl.innerHTML = 'Ausgebucht';
-            btn.disabled = true;
-            btn.textContent = 'Ausgebucht';
-            if (!card.querySelector('.full-badge')) {
-              const badge = document.createElement('div');
-              badge.className = 'full-badge';
-              badge.textContent = 'Ausgebucht';
-              card.querySelector('.course-header').appendChild(badge);
-            }
-          } else if (frei === 1) {
-            textEl.innerHTML = '1 Platz frei';
-            btn.disabled = false;
-            btn.textContent = 'Jetzt anmelden';
-          } else {
-            textEl.innerHTML = `${frei} Plätze frei`;
-            btn.disabled = false;
-            btn.textContent = 'Jetzt anmelden';
-          }
-
-          dots.forEach((dot, i) => {
-            if (i < 7 - frei) dot.classList.add('filled');
-            else dot.classList.remove('filled');
-          });
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gruppen-Coaching - Let's go free</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.7; 
+            color: #333; 
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 50%, #C9A882 100%);
+            min-height: 100vh;
+            padding: 20px;
         }
-      } catch (err) {
-        console.error(`Fehler Kurs ${num}:`, err);
-      }
-    }
-  }
+        
+        .container { 
+            max-width: 900px; 
+            margin: 0 auto; 
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        .hero { 
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%);
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
+        }
+        
+        .hero h1 { 
+            font-size: 2.8em; 
+            margin-bottom: 20px; 
+            line-height: 1.2;
+        }
+        
+        .hero p { 
+            font-size: 1.3em; 
+            margin-bottom: 40px;
+            opacity: 0.95;
+        }
+        
+        .intro {
+            padding: 40px 40px;
+        }
+        
+        .intro h2 {
+            font-size: 2em;
+            line-height: 1.2em;
+            color: #8B7355;
+            margin-bottom: 30px;
+        }
+        
+        .intro p {
+            font-size: 1.1em;
+            margin-bottom: 20px;
+            line-height: 1.8;
+        }
+        
+        .courses-section {
+            padding: 40px 40px;
+            background: linear-gradient(135deg, #F5E6D3 0%, #E8D4BA 100%);
+        }
+        
+        .courses-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+        
+        .course-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+        }
+        
+        .course-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+        }
+        
+        .course-header {
+            background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%);
+            color: white;
+            padding: 30px 25px;
+            position: relative;
+        }
+        
+        .course-number {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-bottom: 5px;
+            letter-spacing: 1px;
+        }
+        
+        .course-title {
+            font-size: 1.5em;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        
+        .course-date {
+            font-size: 0.95em;
+            opacity: 0.95;
+        }
+        
+        .availability {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 12px 15px;
+            margin-top: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .spots-left {
+            font-weight: 600;
+            font-size: 1em;
+        }
+        
+        .spots-indicator {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .spot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transition: background 0.3s;
+        }
+        
+        .spot.filled {
+            background: rgba(255, 255, 255, 0.9);
+        }
+        
+        .course-body {
+            padding: 25px 25px;
+        }
+        
+        .sessions-list {
+            list-style: none;
+        }
+        
+        .session-item {
+            padding: 15px 0;
+            border-bottom: 1px solid #f0e8dc;
+        }
+        
+        .session-item:last-child {
+            border-bottom: none;
+        }
+        
+        .session-title {
+            font-weight: 600;
+            color: #8B7355;
+            font-size: 1em;
+            margin-bottom: 5px;
+        }
+        
+        .session-desc {
+            color: #666;
+            font-size: 0.95em;
+            line-height: 1.5;
+        }
+        
+        .course-footer {
+            padding: 0 25px 25px;
+        }
+        
+        .register-btn {
+            display: block;
+            width: 100%;
+            background: #8B7355;
+            color: white;
+            padding: 18px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .register-btn:hover {
+            background: #6B5745;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+        
+        .register-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .register-btn:disabled:hover {
+            box-shadow: none;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+        
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            max-width: 550px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        .close-modal {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            font-size: 2em;
+            cursor: pointer;
+            color: #999;
+            line-height: 1;
+            transition: color 0.3s;
+        }
+        
+        .close-modal:hover {
+            color: #333;
+        }
+        
+        .modal h2 {
+            font-size: 2em;
+            color: #8B7355;
+            margin-bottom: 10px;
+        }
+        
+        .modal h3 {
+            font-size: 1.2em;
+            color: #666;
+            margin-bottom: 30px;
+            font-weight: 500;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            background: #f9f9f9;
+            transition: all 0.3s;
+        }
+        
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            background: #fff;
+            box-shadow: 0 0 0 2px #8B7355;
+        }
+        
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+            font-family: inherit;
+            line-height: 1.5;
+        }
+        
+        .submit-btn {
+            width: 100%;
+            background: #8B7355;
+            color: white;
+            padding: 18px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.2em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .submit-btn:hover {
+            background: #6B5745;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+        
+        .submit-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .success-message {
+            display: none;
+            background: #d4edda;
+            color: #155724;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .full-badge {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(0, 0, 0, 0.4);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .hero { padding: 40px 25px; }
+            .hero h1 { font-size: 2em; }
+            .hero p { font-size: 1.1em; }
+            .intro { padding: 40px 25px; }
+            .intro h2 { font-size: 1.6em; }
+            .courses-section { padding: 40px 25px; }
+            .courses-grid { grid-template-columns: 1fr; }
+            .modal-content { padding: 35px 25px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hero">
+            <h1>Let's go free<br><span style="display: block; margin-top: 15px;">Gruppen-Coaching<br>DeFi & Krypto</span></h1>
+            <p>Gemeinsam in die Welt der dezentralen Finanzen – in kleinen Gruppen mit maximal 7 Teilnehmern</p>
+        </div>
+        
+        <div class="intro">
+            <h2>Lerne DeFi in der Gruppe</h2>
+            <p>In meinem Gruppen-Coaching begleite ich dich und maximal 6 weitere Teilnehmer durch die spannende Welt von DeFi und Krypto. In 4 lockeren Sessions begleite ich dich und deine Gruppe durch die DeFi-Welt. Wir nehmen uns Zeit für deine Fragen, arbeiten praktisch am Bildschirm und du machst deine ersten eigenen Schritte – ganz ohne Zeitdruck.</p>
+            <p>Der Vorteil: Du profitierst nicht nur von meiner Erfahrung, sondern auch vom Austausch mit anderen Teilnehmern. Gemeinsam lernt es sich leichter!</p>
+            
+            <div style="margin: 35px 0; padding: 30px; background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%); border-radius: 15px; text-align: center; box-shadow: 0 5px 20px rgba(139, 115, 85, 0.3);">
+                <p style="font-size: 2.5em; color: white; font-weight: 700; margin-bottom: 15px; line-height: 1.2;">Preis: CHF 280.–</p>
+                <p style="font-size: 1.1em; color: white; opacity: 0.95; line-height: 1.6;">Wie möchtest du bezahlen? Bitte bei Anmeldung angeben.<br>Bevorzugt wird 1. Twint | 2. Krypto | 3. Bankzahlung</p>
+            </div>
+            
+            <p style="margin-top: 20px; padding: 20px; background: #F5E6D3; border-radius: 10px; border-left: 4px solid #8B7355;">
+                <strong>Wichtige Hinweise:</strong>
+                <ul style="margin-top: 10px; margin-left: 20px; line-height: 1.8;">
+                    <li>Die unten aufgeführten Inhalte sind nicht fix an eine bestimmte Session gebunden. Je nach Tempo und Fragen der Gruppe passen wir die Reihenfolge flexibel an – du bestimmst das Lerntempo mit.</li>
+                    <li>Das Coaching findet über Zoom statt. Der Zoom-Link wird dir nach der Anmeldung bekannt gegeben.</li>
+                    <li>Die Calls werden aufgezeichnet und den Teilnehmern online zur Verfügung gestellt.</li>
+                </ul>
+            </p>
+            <p style="margin-top: 15px; padding: 20px; background: #F5E6D3; border-radius: 10px; border-left: 4px solid #8B7355;"><strong>Flexibilität:</strong> Solltest du an einem Abend nicht teilnehmen können, kannst du diesen nach Absprache an einem anderen Kurs nachholen (sollte die Ausnahme sein, da die Sessions aufeinander aufbauen).</p>
+        </div>
+        
+        <div class="courses-section">
+            <h2 style="text-align: center; margin-bottom: 40px; color: #8B7355;">Aktuelle Kurse</h2>
+            <div class="courses-grid">
+                <!-- Kurs 1 -->
+                <div class="course-card" data-course="1">
+                    <div class="course-header">
+                        <div class="course-number">KURS 1</div>
+                        <h3 class="course-title">Februar 2026</h3>
+                        <div class="course-date">Start: Mittwoch, 18.02.2026<br>Nächste Sessions: 25.02., 04.03., 11.03.2026<br><br>Uhrzeit: 19:30 Uhr<br><span style="font-size: 0.9em; opacity: 0.85;">Bitte sei 5 Minuten vorher da, damit wir pünktlich starten können.</span></div>
+                        <div class="availability">
+                            <div class="spots-left">
+                                <span class="spots-count">7</span> Plätze frei
+                            </div>
+                            <div class="spots-indicator">
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="course-body">
+                        <p style="text-align: center; padding: 30px 20px; color: #666; font-size: 1.05em;">4 Sessions à ca. 60-90 Minuten<br>Alle Inhalte siehe oben<br><br><span style="font-weight: 600; color: #8B7355;">Mindest-Teilnehmerzahl: 2 Personen</span></p>
+                    </div>
+                    <div class="course-footer">
+                        <button class="register-btn" onclick="openModal(1)">Jetzt anmelden</button>
+                    </div>
+                </div>
 
-  // Realtime-Listener für alle 3 Kurse
-  [1,2,3].forEach(n => {
-    onSnapshot(doc(db, "kurse", `kurs${n}`), () => updateSpotsUI());
-  });
+                <!-- Kurs 2 -->
+                <div class="course-card" data-course="2">
+                    <div class="course-header">
+                        <div class="course-number">KURS 2</div>
+                        <h3 class="course-title">Februar 2026</h3>
+                        <div class="course-date">Start: Sonntag, 22.02.2026<br>Nächste Sessions: 01.03., 08.03., 15.03.2026<br><br>Uhrzeit: 19:30 Uhr<br><span style="font-size: 0.9em; opacity: 0.85;">Bitte sei 5 Minuten vorher da, damit wir pünktlich starten können.</span></div>
+                        <div class="availability">
+                            <div class="spots-left">
+                                <span class="spots-count">7</span> Plätze frei
+                            </div>
+                            <div class="spots-indicator">
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="course-body">
+                        <p style="text-align: center; padding: 30px 20px; color: #666; font-size: 1.05em;">4 Sessions à ca. 60-90 Minuten<br>Alle Inhalte siehe oben<br><br><span style="font-weight: 600; color: #8B7355;">Mindest-Teilnehmerzahl: 2 Personen</span></p>
+                    </div>
+                    <div class="course-footer">
+                        <button class="register-btn" onclick="openModal(2)">Jetzt anmelden</button>
+                    </div>
+                </div>
 
-  // Initial laden
-  updateSpotsUI();
+                <!-- Kurs 3 -->
+                <div class="course-card" data-course="3">
+                    <div class="course-header">
+                        <div class="course-number">KURS 3</div>
+                        <h3 class="course-title">Februar/März 2026</h3>
+                        <div class="course-date">Start: Donnerstag, 26.02.2026<br>Nächste Sessions: 05.03., 12.03., 19.03.2026<br><br>Uhrzeit: 19:30 Uhr<br><span style="font-size: 0.9em; opacity: 0.85;">Bitte sei 5 Minuten vorher da, damit wir pünktlich starten können.</span></div>
+                        <div class="availability">
+                            <div class="spots-left">
+                                <span class="spots-count">7</span> Plätze frei
+                            </div>
+                            <div class="spots-indicator">
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                                <div class="spot"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="course-body">
+                        <p style="text-align: center; padding: 30px 20px; color: #666; font-size: 1.05em;">4 Sessions à ca. 60-90 Minuten<br>Alle Inhalte siehe oben<br><br><span style="font-weight: 600; color: #8B7355;">Mindest-Teilnehmerzahl: 2 Personen</span></p>
+                    </div>
+                    <div class="course-footer">
+                        <button class="register-btn" onclick="openModal(3)">Jetzt anmelden</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-  // =============================================
-  // Dein bestehender Modal- & Form-Code (angepasst)
-  // =============================================
+        <div class="footer" style="padding: 40px; text-align: center; background: #f5f5f5; margin-top: 60px;">
+            <p style="font-size: 1.1em; color: #8B7355; font-weight: 600; margin-bottom: 20px;">Finanzielle Selbstbestimmung beginnt mit dem ersten Schritt.<br>Let's go free! 🚀</p>
+            <p style="margin-bottom: 25px;">
+                <a href="https://www.letsgofree.me" style="color: #8B7355; text-decoration: none; font-size: 1.05em; font-weight: 500; border-bottom: 2px solid #8B7355; padding-bottom: 2px;">← Zurück zur Hauptseite</a>
+            </p>
+            
+            <div class="disclaimer" style="max-width: 700px; margin: 30px auto; padding: 25px; background: #fff3cd; border-radius: 10px; border-left: 4px solid #ffc107; text-align: left; font-size: 0.95em;">
+                <p style="font-weight: 600; margin-bottom: 10px; color: #333;">⚠️ DISCLAIMER / HAFTUNGSAUSSCHLUSS</p>
+                <p style="margin-top: 10px; color: #333; line-height: 1.6;">Das angebotene Coaching dient ausschliesslich zu Informations- und Bildungszwecken.<br>Ich erteile keine Finanz-, Anlage-, Steuer- oder Rechtsberatung im Sinne geltender Gesetze.</p>
+            </div>
+            
+            <div style="margin-top: 25px; font-size: 0.9em; color: #8B7355;">
+                <p style="text-align: center; color: #6E4A2E;">Chris Müller</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Registration Modal -->
+    <div class="modal" id="registrationModal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal()">×</button>
+            <h2>Anmeldung</h2>
+            <h3 id="modalCourseTitle">Kurs 1 - Frühjahr 2026</h3>
+            
+            <form id="registrationForm">
+                <input type="hidden" name="course" id="courseInput">
+                
+                <div class="form-group">
+                    <label for="name">Dein Name *</label>
+                    <input type="text" id="name" name="name" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="email">Deine E-Mail-Adresse *</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="phone">Telefonnummer (optional)</label>
+                    <input type="tel" id="phone" name="phone">
+                </div>
+                
+                <div class="form-group">
+                    <label for="message">Was möchtest du noch mitteilen?</label>
+                    <textarea id="message" name="message" placeholder="Hast du bereits Erfahrung mit Krypto? Gibt es spezielle Themen, die dich interessieren?"></textarea>
+                </div>
+                
+                <button type="submit" class="submit-btn" id="submitBtn">Verbindlich anmelden</button>
+            </form>
+            
+            <div class="success-message" id="successMessage">
+                ✓ Vielen Dank für deine Anmeldung! Ich melde mich in Kürze bei dir.
+            </div>
+        </div>
+    </div>
 
-  function openModal(courseNum) {
-    const modal = document.getElementById('registrationModal');
-    const courseInput = document.getElementById('courseInput');
-    const modalTitle = document.getElementById('modalCourseTitle');
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-    const titles = {
-      1: 'Kurs 1 - Start: 18.02.2026',
-      2: 'Kurs 2 - Start: 22.02.2026',
-      3: 'Kurs 3 - Start: 26.02.2026'
-    };
+        const firebaseConfig = {
+            apiKey: "AIzaSyDGjwxdKwU-jloaWPTT2YKW19kb5u3T9_I",
+            authDomain: "letsgofree-coaching.firebaseapp.com",
+            projectId: "letsgofree-coaching",
+            storageBucket: "letsgofree-coaching.firebasestorage.app",
+            messagingSenderId: "982968675336",
+            appId: "1:982968675336:web:4ab786d323a6cdc933b5bd"
+        };
 
-    modalTitle.textContent = titles[courseNum] || `Kurs ${courseNum}`;
-    courseInput.value = `Kurs ${courseNum}`;
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
 
-    modal.classList.add('active');
-    document.body.style.overflow = 'hidden';
-  }
+        signInAnonymously(auth)
+            .then(() => console.log("✅ Anonym angemeldet – Schreibrechte vorhanden"))
+            .catch(err => console.error("❌ Anonyme Anmeldung fehlgeschlagen:", err.code, err.message));
 
-  function closeModal() {
-    const modal = document.getElementById('registrationModal');
-    modal.classList.remove('active');
-    document.body.style.overflow = 'auto';
-    document.getElementById('registrationForm').reset();
-    document.getElementById('successMessage').style.display = 'none';
-  }
+        async function updateSpotsUI() {
+            for (let num = 1; num <= 3; num++) {
+                const ref = doc(db, "kurse", `kurs${num}`);
+                try {
+                    const snap = await getDoc(ref);
+                    if (!snap.exists()) continue;
 
-  document.getElementById('registrationModal').addEventListener('click', e => {
-    if (e.target === document.getElementById('registrationModal')) closeModal();
-  });
+                    let frei = Math.max(0, snap.data().freiePlaetze ?? 7);
 
-  document.getElementById('registrationForm').addEventListener('submit', async e => {
-    e.preventDefault();
+                    const card = document.querySelector(`.course-card[data-course="${num}"]`);
+                    console.log(`Suche nach Kurs ${num}:`, card ? 'gefunden' : 'NICHT GEFUNDEN');
+                    if (!card) continue;
 
-    const btn = document.getElementById('submitBtn');
-    const orig = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = 'Wird gesendet...';
+                    const countEl = card.querySelector('.spots-count');
+                    const textEl  = card.querySelector('.spots-left');
+                    const btn     = card.querySelector('.register-btn');
+                    const dots    = card.querySelectorAll('.spot');
 
-    const formData = new FormData(e.target);
-    const course = formData.get('course');
-    const kursNum = course.match(/\d+/)?.[0];
+                    if (!countEl || !textEl || !btn) {
+                        console.warn(`Kurs ${num}: Mindestens ein UI-Element fehlt (.spots-count, .spots-left oder .register-btn)`);
+                        continue;
+                    }
 
-    try {
-      const res = await fetch('https://formspree.io/f/xqaynybo', {
-        method: 'POST',
-        body: formData,
-        headers: { 'Accept': 'application/json' }
-      });
+                    countEl.textContent = frei;
 
-      if (!res.ok) throw new Error('Formspree Fehler');
+                    if (frei === 0) {
+                        textEl.innerHTML = 'Ausgebucht';
+                        btn.disabled = true;
+                        btn.textContent = 'Ausgebucht';
+                        if (!card.querySelector('.full-badge')) {
+                            const badge = document.createElement('div');
+                            badge.className = 'full-badge';
+                            badge.textContent = 'Ausgebucht';
+                            card.querySelector('.course-header')?.appendChild(badge);
+                        }
+                    } else if (frei === 1) {
+                        textEl.innerHTML = '1 Platz frei';
+                        btn.disabled = false;
+                        btn.textContent = 'Jetzt anmelden';
+                    } else {
+                        textEl.innerHTML = `${frei} Plätze frei`;
+                        btn.disabled = false;
+                        btn.textContent = 'Jetzt anmelden';
+                    }
 
-      // Firestore-Platz reduzieren
-      if (kursNum) {
-        const ref = doc(db, "kurse", `kurs${kursNum}`);
-        await updateDoc(ref, { freiePlaetze: increment(-1) });
-        console.log(`Kurs ${kursNum}: Platz reduziert`);
-      }
+                    dots.forEach((dot, i) => {
+                        if (i < 7 - frei) dot.classList.add('filled');
+                        else dot.classList.remove('filled');
+                    });
+                } catch (err) {
+                    console.error(`Fehler beim Laden von kurs${num}:`, err);
+                }
+            }
+        }
 
-      e.target.style.display = 'none';
-      document.getElementById('successMessage').style.display = 'block';
-      setTimeout(() => {
-        closeModal();
-        e.target.style.display = 'block';
-      }, 3000);
+        [1,2,3].forEach(n => {
+            onSnapshot(doc(db, "kurse", `kurs${n}`), () => updateSpotsUI());
+        });
 
-    } catch (err) {
-      console.error('Anmeldefehler:', err);
-      alert('Leider gab es ein Problem. Bitte versuche es erneut oder schreib mir direkt.');
-    } finally {
-      btn.disabled = false;
-      btn.textContent = orig;
-    }
-  });
-</script>
+        updateSpotsUI();
+
+        function openModal(courseNum) {
+            const modal = document.getElementById('registrationModal');
+            const courseInput = document.getElementById('courseInput');
+            const modalTitle = document.getElementById('modalCourseTitle');
+
+            const titles = {
+                1: 'Kurs 1 - Start: 18.02.2026',
+                2: 'Kurs 2 - Start: 22.02.2026',
+                3: 'Kurs 3 - Start: 26.02.2026'
+            };
+
+            modalTitle.textContent = titles[courseNum] || `Kurs ${courseNum}`;
+            courseInput.value = `Kurs ${courseNum}`;
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('registrationModal');
+            modal.classList.remove('active');
+            document.body.style.overflow = 'auto';
+            document.getElementById('registrationForm').reset();
+            document.getElementById('successMessage').style.display = 'none';
+        }
+
+        document.getElementById('registrationModal').addEventListener('click', e => {
+            if (e.target === document.getElementById('registrationModal')) closeModal();
+        });
+
+        document.getElementById('registrationForm').addEventListener('submit', async e => {
+            e.preventDefault();
+
+            const btn = document.getElementById('submitBtn');
+            const orig = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Wird gesendet...';
+
+            const formData = new FormData(e.target);
+            const course = formData.get('course');
+            const kursNum = course?.match(/\d+/)?.[0];
+
+            try {
+                const res = await fetch('https://formspree.io/f/xqaynybo', {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                if (!res.ok) throw new Error(`Formspree Status: ${res.status}`);
+
+                if (kursNum) {
+                    const ref = doc(db, "kurse", `kurs${kursNum}`);
+                    await updateDoc(ref, { freiePlaetze: increment(-1) });
+                    console.log(`Kurs ${kursNum}: freie Plätze um 1 reduziert`);
+                }
+
+                e.target.style.display = 'none';
+                document.getElementById('successMessage').style.display = 'block';
+                setTimeout(() => {
+                    closeModal();
+                    e.target.style.display = 'block';
+                }, 3000);
+
+            } catch (err) {
+                console.error('Anmeldefehler:', err);
+                alert('Leider gab es ein Problem beim Senden. Bitte versuche es erneut oder schreib mir direkt.');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = orig;
+            }
+        });
+
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+    </script>
+</body>
+</html>
