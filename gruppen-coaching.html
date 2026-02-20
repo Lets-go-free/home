@@ -1,114 +1,164 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gruppen-Coaching - Let's go free</title>
-    <style>
-        /* Dein kompletter CSS-Bereich bleibt unverändert – aus Platzgründen hier nicht wiederholt */
-        /* ... (alles wie bei dir) ... */
-    </style>
-</head>
-<body>
-    <!-- Dein gesamter HTML-Inhalt (Hero, Intro, Footer, Modal) bleibt 1:1 gleich wie du ihn geschickt hast -->
-    <!-- Ich habe nur die Kurs-Cards und das Script angepasst -->
+<script type="module">
+  // =============================================
+  // FIREBASE INTEGRATION – globale Plätze-Zählung
+  // =============================================
 
-    <div class="container">
-        <!-- ... dein ganzer Content bis zur courses-grid ... -->
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+  import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-        <div class="courses-section">
-            <h2 style="text-align: center; margin-bottom: 40px; color: #8B7355;">Aktuelle Kurse</h2>
-            <div class="courses-grid">
-                <!-- Kurs 1, 2, 3 – exakt wie bei dir, nur zur Sicherheit nochmal hier -->
-                <!-- (kopiere einfach deine drei course-card Blöcke hier rein – sie sind identisch) -->
-            </div>
-        </div>
+  // === HIER DEINEN FIREBASE-CONFIG EINFÜGEN ===
+  const firebaseConfig = {
+    // ← kopiere deinen gesamten firebaseConfig-Block hierher
+    // apiKey: "...",
+    // authDomain: "...",
+    // projectId: "...",
+    // storageBucket: "...",
+    // messagingSenderId: "...",
+    // appId: "..."
+  };
 
-        <!-- Footer, Disclaimer, Modal – alles wie bei dir -->
-    </div>
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
-    <!-- Registration Modal – unverändert -->
-    <div class="modal" id="registrationModal"> ... </div>
+  signInAnonymously(auth)
+    .then(() => console.log("Anonym angemeldet → Schreibrechte vorhanden"))
+    .catch(err => console.error("Anonym-Anmeldung fehlgeschlagen:", err.code, err.message));
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+  async function updateSpotsUI() {
+    for (let num = 1; num <= 3; num++) {
+      const ref = doc(db, "kurse", `kurs${num}`);
+      try {
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          let frei = snap.data().freiePlaetze ?? 7;
+          frei = Math.max(0, frei); // nicht negativ werden
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyDGjwxdKwU-jloaWPTT2YKW19kb5u3T9_I",
-            authDomain: "letsgofree-coaching.firebaseapp.com",
-            projectId: "letsgofree-coaching",
-            storageBucket: "letsgofree-coaching.firebasestorage.app",
-            messagingSenderId: "982968675336",
-            appId: "1:982968675336:web:4ab786d323a6cdc933b5bd"
-        };
+          const card = document.querySelector(`.course-card[data-course="${num}"]`);
+          if (!card) continue;
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+          const countEl = card.querySelector('.spots-count');
+          const textEl  = card.querySelector('.spots-left');
+          const btn     = card.querySelector('.register-btn');
+          const dots    = card.querySelectorAll('.spot');
 
-        signInAnonymously(auth)
-            .then(() => console.log("✅ Anonym angemeldet – Schreibrechte vorhanden"))
-            .catch(err => console.error("❌ Anonyme Anmeldung fehlgeschlagen:", err));
+          countEl.textContent = frei;
 
-        async function updateSpotsUI() {
-            for (let num = 1; num <= 3; num++) {
-                const ref = doc(db, "kurse", `kurs${num}`);
-                try {
-                    const snap = await getDoc(ref);
-                    if (!snap.exists()) continue;
-
-                    let frei = Math.max(0, snap.data().freiePlaetze ?? 7);
-
-                    const card = document.querySelector(`.course-card[data-course="${num}"]`);
-                    if (!card) continue;
-
-                    const countEl = card.querySelector('.spots-count');
-                    const textEl  = card.querySelector('.spots-left');
-                    const btn     = card.querySelector('.register-btn');
-                    const dots    = card.querySelectorAll('.spot');
-
-                    // SICHERHEITS-CHECK – verhindert den Crash
-                    if (!countEl || !textEl || !btn) {
-                        console.warn(`Kurs ${num}: Ein UI-Element fehlt! (spots-count / spots-left / register-btn)`);
-                        continue;
-                    }
-
-                    countEl.textContent = frei;
-
-                    if (frei === 0) {
-                        textEl.innerHTML = 'Ausgebucht';
-                        btn.disabled = true;
-                        btn.textContent = 'Ausgebucht';
-                    } else if (frei === 1) {
-                        textEl.innerHTML = '1 Platz frei';
-                        btn.disabled = false;
-                        btn.textContent = 'Jetzt anmelden';
-                    } else {
-                        textEl.innerHTML = `${frei} Plätze frei`;
-                        btn.disabled = false;
-                        btn.textContent = 'Jetzt anmelden';
-                    }
-
-                    dots.forEach((dot, i) => {
-                        i < 7 - frei ? dot.classList.add('filled') : dot.classList.remove('filled');
-                    });
-
-                } catch (err) {
-                    console.error(`Fehler Kurs ${num}:`, err);
-                }
+          if (frei === 0) {
+            textEl.innerHTML = 'Ausgebucht';
+            btn.disabled = true;
+            btn.textContent = 'Ausgebucht';
+            if (!card.querySelector('.full-badge')) {
+              const badge = document.createElement('div');
+              badge.className = 'full-badge';
+              badge.textContent = 'Ausgebucht';
+              card.querySelector('.course-header').appendChild(badge);
             }
+          } else if (frei === 1) {
+            textEl.innerHTML = '1 Platz frei';
+            btn.disabled = false;
+            btn.textContent = 'Jetzt anmelden';
+          } else {
+            textEl.innerHTML = `${frei} Plätze frei`;
+            btn.disabled = false;
+            btn.textContent = 'Jetzt anmelden';
+          }
+
+          dots.forEach((dot, i) => {
+            if (i < 7 - frei) dot.classList.add('filled');
+            else dot.classList.remove('filled');
+          });
         }
+      } catch (err) {
+        console.error(`Fehler Kurs ${num}:`, err);
+      }
+    }
+  }
 
-        [1,2,3].forEach(n => {
-            onSnapshot(doc(db, "kurse", `kurs${n}`), () => updateSpotsUI());
-        });
+  // Realtime-Listener für alle 3 Kurse
+  [1,2,3].forEach(n => {
+    onSnapshot(doc(db, "kurse", `kurs${n}`), () => updateSpotsUI());
+  });
 
-        updateSpotsUI();
+  // Initial laden
+  updateSpotsUI();
 
-        // Deine openModal, closeModal und Form-Submit-Funktion bleiben unverändert
-        // (ich habe sie aus Platzgründen weggelassen – einfach deine Version behalten)
-    </script>
-</body>
-</html>
+  // =============================================
+  // Dein bestehender Modal- & Form-Code (angepasst)
+  // =============================================
+
+  function openModal(courseNum) {
+    const modal = document.getElementById('registrationModal');
+    const courseInput = document.getElementById('courseInput');
+    const modalTitle = document.getElementById('modalCourseTitle');
+
+    const titles = {
+      1: 'Kurs 1 - Start: 18.02.2026',
+      2: 'Kurs 2 - Start: 22.02.2026',
+      3: 'Kurs 3 - Start: 26.02.2026'
+    };
+
+    modalTitle.textContent = titles[courseNum] || `Kurs ${courseNum}`;
+    courseInput.value = `Kurs ${courseNum}`;
+
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeModal() {
+    const modal = document.getElementById('registrationModal');
+    modal.classList.remove('active');
+    document.body.style.overflow = 'auto';
+    document.getElementById('registrationForm').reset();
+    document.getElementById('successMessage').style.display = 'none';
+  }
+
+  document.getElementById('registrationModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('registrationModal')) closeModal();
+  });
+
+  document.getElementById('registrationForm').addEventListener('submit', async e => {
+    e.preventDefault();
+
+    const btn = document.getElementById('submitBtn');
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Wird gesendet...';
+
+    const formData = new FormData(e.target);
+    const course = formData.get('course');
+    const kursNum = course.match(/\d+/)?.[0];
+
+    try {
+      const res = await fetch('https://formspree.io/f/xqaynybo', {
+        method: 'POST',
+        body: formData,
+        headers: { 'Accept': 'application/json' }
+      });
+
+      if (!res.ok) throw new Error('Formspree Fehler');
+
+      // Firestore-Platz reduzieren
+      if (kursNum) {
+        const ref = doc(db, "kurse", `kurs${kursNum}`);
+        await updateDoc(ref, { freiePlaetze: increment(-1) });
+        console.log(`Kurs ${kursNum}: Platz reduziert`);
+      }
+
+      e.target.style.display = 'none';
+      document.getElementById('successMessage').style.display = 'block';
+      setTimeout(() => {
+        closeModal();
+        e.target.style.display = 'block';
+      }, 3000);
+
+    } catch (err) {
+      console.error('Anmeldefehler:', err);
+      alert('Leider gab es ein Problem. Bitte versuche es erneut oder schreib mir direkt.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = orig;
+    }
+  });
+</script>
