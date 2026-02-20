@@ -240,8 +240,7 @@ function init() {
   if (isIos)          isStandalone = iosStandalone;
   else if (isAndroid) isStandalone = pwaStandalone;
 
-  // Alles sichtbar machen
-  document.querySelectorAll('body > *').forEach(el => el.style.visibility = 'visible');
+
 
   if (!isStandalone) {
     // Mobil im Browser: Weiterleitung auf separate Seite
