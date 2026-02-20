@@ -10,6 +10,7 @@
   <meta name="apple-mobile-web-app-title" content="Let's go free" />
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/dateien/icon-192.png" />
   <meta name="description" content="Krypto-Einsteiger-Guide und gratis Lernmaterialien von letsgofree.me" />
   <title>Let's go free – App</title>
 
@@ -94,9 +95,9 @@
       <a href="./dateien/krypto-einsteiger-guide.pdf" class="btn-primary" onclick="openPdf(event)">
         <span>📖</span> E-Book öffnen
       </a>
-      <a href="./dateien/krypto-einsteiger-guide.pdf" class="btn-secondary" download="Krypto-Einsteiger-Guide.pdf" style="margin-top: 12px;">
+      <button class="btn-secondary" onclick="downloadPdf()" style="margin-top: 12px;">
         <span>⬇️</span> E-Book herunterladen
-      </a>
+      </button>
     </div>
 
     <p class="section-label">🎁 Gratis-Materialien</p>
@@ -619,6 +620,37 @@ function printPdf() {
   } catch(e) {
     // Fallback: open in new tab for printing
     window.open('./dateien/krypto-einsteiger-guide.pdf', '_blank');
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  PDF DOWNLOAD (iOS-kompatibel via Blob / Share API)
+// ═══════════════════════════════════════════════
+async function downloadPdf() {
+  const url = './dateien/krypto-einsteiger-guide.pdf';
+  const filename = 'Krypto-Einsteiger-Guide.pdf';
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const file = new File([blob], filename, { type: 'application/pdf' });
+
+    // iOS 15+: Share Sheet – ermöglicht "In Dateien sichern"
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: filename });
+      return;
+    }
+
+    // Alle anderen (Android, Desktop): direkt herunterladen
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); }, 1000);
+  } catch (err) {
+    // Fallback: direkt öffnen
+    window.location.href = url;
   }
 }
 
