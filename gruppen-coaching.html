@@ -568,50 +568,60 @@
                     const snap = await getDoc(ref);
                     if (!snap.exists()) continue;
 
-                    let frei = Math.max(0, snap.data().freiePlaetze ?? 7);
+                    const data = snap.data() || {};
+                    const frei = Math.max(0, data.freiePlaetze ?? 7);
+                    const status = data.status || 'aktiv';
 
                     const card = document.querySelector(`.course-card[data-course="${num}"]`);
-                    console.log(`Suche nach Kurs ${num}:`, card ? 'gefunden' : 'NICHT GEFUNDEN');
                     if (!card) continue;
 
                     const countEl = card.querySelector('.spots-count');
                     const textEl  = card.querySelector('.spots-left');
                     const btn     = card.querySelector('.register-btn');
-                    const dots    = card.querySelectorAll('.spot');
+                    const dotsContainer = card.querySelector('.spots-indicator');
 
                     if (!countEl || !textEl || !btn) {
-                        console.warn(`Kurs ${num}: Mindestens ein UI-Element fehlt (.spots-count, .spots-left oder .register-btn)`);
+                        console.warn(`Kurs ${num}: Mindestens ein UI-Element fehlt`);
                         continue;
                     }
 
-                    countEl.textContent = frei;
-
-                    if (frei === 0) {
-                        textEl.innerHTML = 'Ausgebucht';
+                    // Status-Logik mit Priorität
+                    if (status === 'keine-durchfuehrung') {
+                        textEl.innerHTML = '<strong style="color: #d32f2f; font-size: 1.4em;">Keine Durchführung</strong>';
+                        btn.disabled = true;
+                        btn.textContent = 'Nicht durchgeführt';
+                        btn.style.background = '#d32f2f';
+                        countEl.style.display = 'none';
+                        if (dotsContainer) dotsContainer.style.display = 'none';
+                        textEl.parentElement.style.justifyContent = 'center';
+                    } else if (status === 'ausgebucht' || frei <= 0) {
+                        textEl.innerHTML = '<strong style="color: #f57c00; font-size: 1.3em;">Ausgebucht</strong>';
                         btn.disabled = true;
                         btn.textContent = 'Ausgebucht';
-                        if (!card.querySelector('.full-badge')) {
-                            const badge = document.createElement('div');
-                            badge.className = 'full-badge';
-                            badge.textContent = 'Ausgebucht';
-                            card.querySelector('.course-header')?.appendChild(badge);
-                        }
-                    } else if (frei === 1) {
-                        textEl.innerHTML = '1 Platz frei';
-                        btn.disabled = false;
-                        btn.textContent = 'Jetzt anmelden';
+                        btn.style.background = '#f57c00';
+                        countEl.style.display = 'none';
+                        if (dotsContainer) dotsContainer.style.display = 'none';
+                        textEl.parentElement.style.justifyContent = 'center';
                     } else {
-                        textEl.innerHTML = `${frei} Plätze frei`;
+                        // Normaler, buchbarer Zustand
+                        countEl.textContent = frei;
+                        countEl.style.display = 'inline';
+                        textEl.innerHTML = frei === 1 ? '1 Platz frei' : `${frei} Plätze frei`;
                         btn.disabled = false;
                         btn.textContent = 'Jetzt anmelden';
+                        btn.style.background = '#8B7355';
+                        if (dotsContainer) dotsContainer.style.display = 'flex';
                     }
 
+                    // Dots aktualisieren (nur wenn sichtbar)
+                    const dots = card.querySelectorAll('.spot');
                     dots.forEach((dot, i) => {
                         if (i < 7 - frei) dot.classList.add('filled');
                         else dot.classList.remove('filled');
                     });
+
                 } catch (err) {
-                    console.error(`Fehler beim Laden von kurs${num}:`, err);
+                    console.error(`Fehler Kurs ${num}:`, err);
                 }
             }
         }
