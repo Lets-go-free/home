@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meine Empfehlungen · Let's go free</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --gold:     #C9A882;
+      --gold-d:   #8B7355;
+      --gold-dk:  #4a3d2a;
+      --dark:     #0f0d0a;
+      --dark2:    #1a1612;
+      --dark3:    #2a2218;
+      --cream:    #F5E6D3;
+      --cream2:   #FAF0E6;
+      --bg:       #f4ede4;
+      --body:     #3a2d20;
+      --muted:    #7a6a58;
+      --border:   #E2D0BC;
+      --white:    #ffffff;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Poppins', 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--body);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Back bar ─────────────────────────────────────────────────────── */
+    .back-bar {
+      position: sticky; top: 0; z-index: 999;
+      display: flex; align-items: center; gap: 10px;
+      background: var(--gold-dk);
+      border-bottom: 1px solid rgba(201,168,130,.3);
+      padding: 10px 16px;
+    }
+    .back-bar button {
+      background: none; border: none; color: var(--gold);
+      font-size: 24px; cursor: pointer; padding: 0 6px; line-height: 1;
+    }
+    .back-bar span { font-size: 13px; color: #b89a76; font-weight: 500; }
+
+    /* ── Header ───────────────────────────────────────────────────────── */
+    header {
+      background: var(--gold-dk);
+      color: var(--cream);
+      text-align: center;
+      padding: 32px 20px 26px;
+      border-top: 4px solid var(--gold);   /* PDF: gold top stripe */
+      border-bottom: 3px solid var(--gold-d);
+      position: relative;
+    }
+    /* PDF: tricolor sidebar accent on header */
+    header::before {
+      content: '';
+      position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+      background: linear-gradient(to bottom, var(--gold-d) 0%, var(--gold) 50%, var(--gold-d) 100%);
+    }
+    header .brand {
+      font-size: 11px; font-weight: 600; letter-spacing: .18em;
+      text-transform: uppercase; color: var(--gold); margin-bottom: 6px;
+    }
+    header h1 {
+      font-size: clamp(1.3rem, 4vw, 1.8rem); font-weight: 700;
+      color: var(--cream2); line-height: 1.3; margin-bottom: 6px;
+    }
+    header .sub {
+      font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65);
+      font-style: italic;
+    }
+
+    /* ── Layout ───────────────────────────────────────────────────────── */
+    main {
+      max-width: 740px; margin: 0 auto;
+      padding: 36px 20px 64px;
+    }
+
+    /* ── Intro ────────────────────────────────────────────────────────── */
+    .intro-box {
+      border-left: 4px solid var(--gold);
+      background: white;
+      border-radius: 0 12px 12px 0;
+      padding: 18px 22px; margin-bottom: 18px;
+      box-shadow: 0 2px 10px rgba(74,61,42,.07);
+    }
+    .intro-box p {
+      font-size: .9rem; font-weight: 300; color: var(--body);
+      line-height: 1.7;
+    }
+
+    .disclaimer-box {
+      background: #FFF8F0;
+      border-left: 4px solid var(--gold-d);
+      border-radius: 0 10px 10px 0;
+      padding: 13px 18px; margin-bottom: 28px;
+    }
+    .disclaimer-box p {
+      font-size: .82rem; color: var(--muted); line-height: 1.55;
+    }
+    .disclaimer-box strong { color: var(--gold-dk); font-weight: 600; }
+
+    /* ── Section label ────────────────────────────────────────────────── */
+    .section-label {
+      display: inline-block;
+      font-size: .72rem; font-weight: 600; letter-spacing: .13em;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, var(--gold-dk), var(--gold-d));
+      color: #d4b896;
+      padding: 5px 14px 5px 10px;
+      border-radius: 4px;
+      margin-bottom: 16px; margin-top: 8px;
+    }
+
+    .section-intro {
+      font-size: .88rem; font-weight: 300; color: var(--muted);
+      font-style: italic; line-height: 1.65;
+      margin-bottom: 20px;
+      padding-left: 14px;
+      border-left: 2px solid var(--border);
+    }
+
+    /* ── Card ─────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-top: 3px solid var(--gold-d);
+      border-radius: 0 0 12px 12px;
+      padding: 22px 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 12px rgba(74,61,42,.07);
+      transition: box-shadow .2s, transform .2s;
+    }
+    .card:hover {
+      box-shadow: 0 6px 24px rgba(74,61,42,.13);
+      transform: translateY(-2px);
+    }
+
+    .card-header {
+      display: flex; align-items: flex-start; gap: 14px; margin-bottom: 14px;
+    }
+    .card-icon {
+      font-size: 1.6rem; line-height: 1; flex-shrink: 0;
+      width: 46px; height: 46px;
+      background: var(--cream); border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border);
+    }
+    .card-title-block h3 {
+      font-size: 1rem; font-weight: 700; color: var(--gold-dk); margin-bottom: 3px;
+    }
+    .card-category {
+      font-size: .72rem; font-weight: 600; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--gold-d);
+    }
+
+    .card-desc {
+      font-size: .88rem; font-weight: 300; line-height: 1.7;
+      color: var(--body); margin-bottom: 14px;
+    }
+
+    .personal-note {
+      background: var(--dark3);
+      border-left: 4px solid var(--gold);
+      border-radius: 0 8px 8px 0;
+      padding: 12px 16px; margin-bottom: 16px;
+      font-size: .83rem; font-style: italic; color: var(--gold);
+    }
+    .personal-note::before { content: "💬 "; font-style: normal; }
+
+    .features {
+      list-style: none; display: flex; flex-wrap: wrap;
+      gap: 7px; margin-bottom: 18px;
+    }
+    .features li {
+      font-size: .72rem; font-weight: 500; letter-spacing: .06em;
+      font-family: 'Courier New', monospace;
+      background: var(--dark3); color: var(--gold);
+      padding: 4px 11px; border-radius: 4px;
+      border: none;
+    }
+    .features li::before { content: "✓ "; color: var(--gold-d); }
+
+    /* ── Buttons ──────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-block;
+      background: var(--dark);
+      color: var(--gold);
+      border: 1px solid var(--gold-d);
+      padding: 10px 22px; border-radius: 6px;
+      text-decoration: none; font-size: .85rem; font-weight: 600;
+      letter-spacing: .06em; text-transform: uppercase;
+      font-family: 'Courier New', monospace;
+      transition: background .2s, color .2s;
+    }
+    .btn:hover { background: var(--gold-dk); color: var(--cream); border-color: var(--gold); }
+
+    .btn-secondary {
+      display: inline-block; color: var(--muted);
+      font-size: .82rem; font-weight: 300;
+      margin-left: 14px; padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      text-decoration: none; transition: color .2s;
+    }
+    .btn-secondary:hover { color: var(--gold-dk); border-color: var(--gold-d); }
+
+    /* ── Divider ──────────────────────────────────────────────────────── */
+    .divider {
+      border: none;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
+      margin: 28px 0;
+    }
+
+    /* ── CTA block ────────────────────────────────────────────────────── */
+    .cta-block {
+      background: var(--dark);
+      border-left: 4px solid var(--gold);
+      border-radius: 0 12px 12px 0;
+      padding: 30px 28px; text-align: center; margin-top: 40px;
+    }
+    .cta-block h3 { font-size: 1.1rem; font-weight: 700; color: var(--gold); margin-bottom: 8px; }
+    .cta-block p  { font-size: .88rem; font-weight: 300; color: rgba(201,168,130,.75); margin-bottom: 20px; line-height: 1.6; }
+    .btn-light {
+      display: inline-block;
+      background: var(--gold-dk); color: var(--cream2);
+      border: 1px solid var(--gold-d);
+      padding: 10px 22px; border-radius: 6px;
+      text-decoration: none; font-size: .85rem; font-weight: 600;
+      letter-spacing: .04em; margin: 5px; transition: background .2s, color .2s;
+    }
+    .btn-light:hover { background: var(--gold-d); color: var(--dark); }
+
+    /* ── Footer ───────────────────────────────────────────────────────── */
+    footer {
+      background: var(--gold-dk);
+      border-top: 2px solid var(--gold-d);
+      text-align: center;
+      padding: 28px 20px;
+    }
+    footer .footer-brand { font-size: .95rem; font-weight: 700; color: var(--cream2); margin-bottom: 4px; }
+    footer .footer-tag   { font-size: .82rem; font-style: italic; color: rgba(245,230,211,.65); margin-bottom: 12px; }
+    footer .footer-links { font-size: .8rem; color: rgba(245,230,211,.55); }
+    footer .footer-links a { color: var(--gold); text-decoration: none; }
+    footer .footer-links a:hover { color: var(--cream2); }
+    footer .copyright { font-size: .75rem; color: rgba(245,230,211,.4); margin-top: 8px; }
+
+    @media (max-width: 480px) {
+      .card-header { gap: 10px; }
+      .card-icon { width: 40px; height: 40px; font-size: 1.3rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Back bar -->
+<div class="back-bar">
+  <button onclick="history.back()">‹</button>
+  <span>Let's go free</span>
+</div>
+
+<!-- Header -->
+<header>
+  <p class="brand">Let's go free · letsgofree.me</p>
+  <h1>Meine Empfehlungen</h1>
+  <p class="sub">Tools und Anbieter, die ich selbst nutze und weiterempfehle</p>
+</header>
+
+<main>
+
+  <!-- Intro -->
+  <div class="intro-box">
+    <p>Diese Tools und Anbieter nutze ich selbst und empfehle sie aus eigener Erfahrung. Ich verdiene eine kleine Provision, wenn du über meine Links kaufst – für dich entstehen dabei keine Mehrkosten. Meine Empfehlung ändert das nicht: Ich liste hier nur, was ich wirklich für gut halte.</p>
+  </div>
+
+  <div class="disclaimer-box">
+    <p><strong>⚠️ Hinweis:</strong> Diese Seite enthält Affiliate-Links. Die Inhalte stellen keine Finanzberatung dar. Alle Entscheidungen triffst du eigenverantwortlich.</p>
+  </div>
+
+  <!-- ── HARDWARE WALLETS ── -->
+  <div class="section-label">🔐 Hardware Wallets</div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">🃏</div>
+      <div class="card-title-block">
+        <h3>Tangem Wallet</h3>
+        <span class="card-category">Cold Wallet · Hardware</span>
+      </div>
+    </div>
+    <p class="card-desc">Tangem ist meine persönliche Empfehlung für alle, die ihre Kryptos sicher und einfach verwahren wollen. Keine Seedphrase, die du irgendwo aufschreiben musst – stattdessen drei physische Karten. Funktioniert per NFC direkt mit dem Smartphone. Perfekt für Einsteiger.</p>
+    <div class="personal-note">Nutze ich selbst seit 2024. Einrichtung in unter 10 Minuten, robustes Design, und günstiger als Ledger oder Trezor. Im Coaching empfehle ich es als ersten Cold-Wallet-Einstieg.</div>
+    <ul class="features">
+      <li>Kein PC nötig</li>
+      <li>NFC per Smartphone</li>
+      <li>3 Karten im Set</li>
+      <li>Kein Seed-Aufschreiben</li>
+      <li>Einfache Einrichtung</li>
+      <li>Günstiger Einstieg</li>
+    </ul>
+    <a class="btn" href="https://tangem.com/invite/TNLSKH" target="_blank" rel="noopener">Jetzt bestellen</a>
+    <a class="btn-secondary" href="https://tangem.com/invite/TNLSKH" target="_blank" rel="noopener">tangem.com/invite/TNLSKH</a>
+  </div>
+
+  <hr class="divider">
+
+  <!-- ── FIAT-TO-CRYPTO ── -->
+  <div class="section-label">🌉 Fiat-zu-Krypto Brücken</div>
+  <p class="section-intro">Diese Anbieter nutze ich, um CHF/EUR direkt in mein Wallet zu bringen – ohne Zwischenstopp auf einer Exchange. Ich aktualisiere diese Liste regelmässig.</p>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">🇨🇭</div>
+      <div class="card-title-block">
+        <h3>DFX Swiss</h3>
+        <span class="card-category">Fiat On-Ramp · Schweiz / DACH</span>
+      </div>
+    </div>
+    <p class="card-desc">Schweizer Anbieter – CHF und EUR direkt per Banküberweisung in dein Wallet. Kein Umweg über eine Exchange, kein KYC-Aufwand für kleinere Beträge. Einer meiner meistgenutzten Dienste für den Einstieg.</p>
+    <div class="personal-note">Selber im Einsatz, mehrfach erprobt. Ideal für den DACH-Raum – unkompliziert und direkt.</div>
+    <ul class="features">
+      <li>CHF &amp; EUR</li>
+      <li>Banküberweisung</li>
+      <li>Direkt ins Wallet</li>
+      <li>Schweizer Anbieter</li>
+    </ul>
+    <a class="btn" href="https://dfx.swiss/app/services/?code=167-982" target="_blank" rel="noopener">Jetzt nutzen</a>
+    <a class="btn-secondary" href="https://dfx.swiss/app/services/?code=167-982" target="_blank" rel="noopener">dfx.swiss</a>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">🏔️</div>
+      <div class="card-title-block">
+        <h3>Mt. Pelerin / Bridge App</h3>
+        <span class="card-category">Fiat On-Ramp · Schweiz</span>
+      </div>
+    </div>
+    <p class="card-desc">Weiterer Schweizer Anbieter mit einer sehr sauberen App-Oberfläche. Fiat zu Krypto per Überweisung oder Karte – direkt in dein Wallet, ohne Zwischenlagerung.</p>
+    <div class="personal-note">Selber im Einsatz, mehrfach erprobt. Gute Alternative zu DFX, besonders wenn man die App-Oberfläche bevorzugt.</div>
+    <ul class="features">
+      <li>CHF &amp; EUR</li>
+      <li>Karte &amp; Überweisung</li>
+      <li>Direkt ins Wallet</li>
+      <li>Schweizer Anbieter</li>
+    </ul>
+    <a class="btn" href="https://mtpelerin.com/de/join?rfr=X3iooZj2" target="_blank" rel="noopener">Jetzt nutzen</a>
+    <a class="btn-secondary" href="https://mtpelerin.com" target="_blank" rel="noopener">mtpelerin.com</a>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">🔄</div>
+      <div class="card-title-block">
+        <h3>Trustyfy</h3>
+        <span class="card-category">Fiat On-Ramp &amp; Krypto-Zahlung</span>
+      </div>
+    </div>
+    <p class="card-desc">Trustyfy kann beides: als Brücke (Fiat zu Krypto) und als Zahlungslösung im Alltag. Einfache Oberfläche, schnelle Abwicklung – ich nutze es regelmässig für beide Anwendungsfälle.</p>
+    <div class="personal-note">Selber im Einsatz, mehrfach erprobt. Besonders praktisch, da man es für Ein- und Auszahlungen sowie für Alltagszahlungen verwenden kann.</div>
+    <ul class="features">
+      <li>Fiat On-Ramp</li>
+      <li>Alltagszahlungen</li>
+      <li>Einfache Bedienung</li>
+    </ul>
+    <a class="btn" href="https://app.trustyfy.com?by=101mge" target="_blank" rel="noopener">Jetzt nutzen</a>
+    <a class="btn-secondary" href="https://trustyfy.com" target="_blank" rel="noopener">trustyfy.com</a>
+  </div>
+
+  <hr class="divider">
+
+  <!-- ── KRYPTO IM ALLTAG ── -->
+  <div class="section-label">💳 Krypto im Alltag bezahlen</div>
+  <p class="section-intro">Diese Karten und Apps nutze ich selbst für alltägliche Zahlungen mit Krypto – im Laden, online, weltweit.</p>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">🔴</div>
+      <div class="card-title-block">
+        <h3>RedotPay</h3>
+        <span class="card-category">Krypto-Karte · Weltweit</span>
+      </div>
+    </div>
+    <p class="card-desc">Visa-Karte, die direkt mit deinem Krypto-Guthaben funktioniert. Überall dort nutzbar, wo Visa akzeptiert wird – online und im Laden. Einfache App, schnelle Aktivierung.</p>
+    <div class="personal-note">Ständig im Einsatz, mehrfach erprobt. Meine bevorzugte Karte für alltägliche Ausgaben mit Krypto.</div>
+    <ul class="features">
+      <li>Visa-Karte</li>
+      <li>Weltweit nutzbar</li>
+      <li>Krypto direkt ausgeben</li>
+      <li>Einfache App</li>
+    </ul>
+    <a class="btn" href="https://url.hk/i/en/3w1wf" target="_blank" rel="noopener">Jetzt registrieren</a>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">🔵</div>
+      <div class="card-title-block">
+        <h3>Crypto.com</h3>
+        <span class="card-category">Krypto-Karte · Weltweit</span>
+      </div>
+    </div>
+    <p class="card-desc">Eine der bekanntesten Krypto-Karten weltweit. Visa-Prepaidkarte mit Cashback in Krypto, breite Coin-Unterstützung und eine ausgereifte App. Besonders gut für alle, die regelmässig mit Krypto bezahlen wollen.</p>
+    <div class="personal-note">Ständig im Einsatz, mehrfach erprobt. Gut etabliert, breite Akzeptanz und zuverlässige App.</div>
+    <ul class="features">
+      <li>Visa-Karte</li>
+      <li>Cashback in Krypto</li>
+      <li>Viele Coins</li>
+      <li>Weltweit nutzbar</li>
+    </ul>
+    <a class="btn" href="https://crypto.com/app/8dwmqk2ffb" target="_blank" rel="noopener">Jetzt registrieren</a>
+    <a class="btn-secondary" href="https://crypto.com" target="_blank" rel="noopener">crypto.com</a>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">⚡</div>
+      <div class="card-title-block">
+        <h3>Zypto Pay</h3>
+        <span class="card-category">Krypto-Zahlung · Direktzahlung</span>
+      </div>
+    </div>
+    <p class="card-desc">Zypto ermöglicht direkte Krypto-Zahlungen ohne den Umweg über eine Karte. Praktisch für alle, die Krypto möglichst direkt und ohne Zwischenstufen einsetzen wollen.</p>
+    <div class="personal-note">Ständig im Einsatz, mehrfach erprobt. Gute Ergänzung zu den Karten-Lösungen für direkte Zahlungen.</div>
+    <ul class="features">
+      <li>Direktzahlung</li>
+      <li>Keine Karte nötig</li>
+      <li>Mehrere Coins</li>
+    </ul>
+    <a class="btn" href="https://zypto.com/crypto-payment-gateway?ref=50821714" target="_blank" rel="noopener">Jetzt nutzen</a>
+    <a class="btn-secondary" href="https://zypto.com" target="_blank" rel="noopener">zypto.com</a>
+  </div>
+
+  <!-- CTA -->
+  <div class="cta-block">
+    <h3>🚀 Bereit für den nächsten Schritt?</h3>
+    <p>Im 1:1 Coaching zeige ich dir genau, welche Tools für dich am besten passen – und wir richten alles gemeinsam ein, Schritt für Schritt.</p>
+    <a class="btn-light" href="https://letsgofree.me/index.html#angebot">Zum Coaching-Angebot</a>
+    <a class="btn-light" href="https://letsgofree.me/freebies.html">Kostenlose Ressourcen</a>
+  </div>
+
+</main>
+
+<footer>
+  <div class="footer-brand">Let's go free</div>
+  <div class="footer-tag">Finanzielle Selbstbestimmung beginnt mit dem ersten Schritt.</div>
+  <div class="footer-links">
+    <a href="https://letsgofree.me/agb.html">AGB &amp; Datenschutz</a> ·
+    <a href="https://letsgofree.me/index.html">Zur Homepage</a>
+  </div>
+  <div class="copyright">© Chris Müller · Let's go free</div>
+</footer>
+
+</body>
+</html>
