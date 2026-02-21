@@ -535,35 +535,57 @@
 
                 const card = coursesGrid.lastElementChild;
 
-                // Status-Logik
+                // Sicherheitsabfrage für UI-Elemente
+                const spotsLeft = card.querySelector('.spots-left');
+                const countEl = card.querySelector('.spots-count');
+                const indicator = card.querySelector('.spots-indicator');
+                const btn = card.querySelector('.register-btn');
+
+                if (!spotsLeft || !countEl || !btn || !indicator) {
+                    console.warn(`Kurs ${num} hat unvollständige UI-Elemente – überprüfe das Template`);
+                }
+
+                // Status-Logik – null-sicher
                 if (status === 'keine-durchfuehrung' || status === 'abgesagt' || isPast) {
-                    card.querySelector('.spots-left').innerHTML = '<strong style="color:#d32f2f; font-size:1.4em;">Keine Durchführung</strong>';
-                    const btn = card.querySelector('.register-btn');
-                    btn.disabled = true;
-                    btn.textContent = 'Nicht durchgeführt';
-                    btn.style.background = '#d32f2f';
-                    card.querySelector('.spots-count').style.display = 'none';
-                    card.querySelector('.spots-indicator').style.display = 'none';
+                    if (spotsLeft) {
+                        spotsLeft.innerHTML = '<strong style="color:#d32f2f; font-size:1.4em;">Keine Durchführung</strong>';
+                    }
+                    if (btn) {
+                        btn.disabled = true;
+                        btn.textContent = 'Nicht durchgeführt';
+                        btn.style.background = '#d32f2f';
+                    }
+                    if (countEl) countEl.style.display = 'none';
+                    if (indicator) indicator.style.display = 'none';
                 } else if (status === 'anmeldung-geschlossen') {
-                    card.querySelector('.spots-left').innerHTML = '<strong style="color:#757575; font-size:1.3em;">Anmeldung nicht mehr möglich</strong>';
-                    const btn = card.querySelector('.register-btn');
-                    btn.disabled = true;
-                    btn.textContent = 'Anmeldung geschlossen';
-                    btn.style.background = '#757575';
-                    card.querySelector('.spots-count').style.display = 'none';
-                    card.querySelector('.spots-indicator').style.display = 'none';
+                    if (spotsLeft) {
+                        spotsLeft.innerHTML = '<strong style="color:#757575; font-size:1.3em;">Anmeldung nicht mehr möglich</strong>';
+                    }
+                    if (btn) {
+                        btn.disabled = true;
+                        btn.textContent = 'Anmeldung geschlossen';
+                        btn.style.background = '#757575';
+                    }
+                    if (countEl) countEl.style.display = 'none';
+                    if (indicator) indicator.style.display = 'none';
                 } else if (status === 'ausgebucht' || frei <= 0) {
-                    card.querySelector('.spots-left').innerHTML = '<strong style="color:#f57c00; font-size:1.3em;">Ausgebucht</strong>';
-                    const btn = card.querySelector('.register-btn');
-                    btn.disabled = true;
-                    btn.textContent = 'Ausgebucht';
-                    btn.style.background = '#f57c00';
-                    card.querySelector('.spots-count').style.display = 'none';
-                    card.querySelector('.spots-indicator').style.display = 'none';
+                    if (spotsLeft) {
+                        spotsLeft.innerHTML = '<strong style="color:#f57c00; font-size:1.3em;">Ausgebucht</strong>';
+                    }
+                    if (btn) {
+                        btn.disabled = true;
+                        btn.textContent = 'Ausgebucht';
+                        btn.style.background = '#f57c00';
+                    }
+                    if (countEl) countEl.style.display = 'none';
+                    if (indicator) indicator.style.display = 'none';
                 } else {
-                    const countEl = card.querySelector('.spots-count');
-                    countEl.textContent = frei;
-                    card.querySelector('.spots-left').innerHTML = frei === 1 ? '1 Platz frei' : `${frei} Plätze frei`;
+                    if (countEl) {
+                        countEl.textContent = frei;
+                        if (spotsLeft) {
+                            spotsLeft.innerHTML = frei === 1 ? '1 Platz frei' : `${frei} Plätze frei`;
+                        }
+                    }
                 }
             });
         }
