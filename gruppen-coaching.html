@@ -441,11 +441,24 @@
             .catch(err => console.error("❌ Anonyme Anmeldung fehlgeschlagen:", err));
 
         function formatSwissDate(isoDate) {
-            if (!isoDate) return 'Termin folgt';
+            if (!isoDate || !isoDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                return 'Termin folgt';
+            }
+        
             try {
-                const [year, month, day] = isoDate.split('-');
-                return `${day}.${month}.${year}`;
+                const date = new Date(isoDate);
+                if (isNaN(date.getTime())) return 'Termin folgt';
+        
+                const weekdays = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+                const weekday = weekdays[date.getDay()];
+        
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+        
+                return `${weekday}, ${day}.${month}.${year}`;
             } catch (e) {
+                console.warn('Fehler beim Formatieren von Datum:', isoDate, e);
                 return isoDate;
             }
         }
@@ -494,9 +507,9 @@ async function renderCourses() {
 
         const sessions = data.sessions || [];
         const sessionsHtml = sessions.length > 0 
-            ? `<br>Nächste Sessions:<br>• ${sessions.join('<br>• ')}` 
+            ? `<br>Nächste Sessions:<br>• ${sessions.map(dateStr => formatSwissDate(dateStr)).join('<br>• ')}` 
             : '';
-
+            
         const startDateStr = data.startDate ? formatSwissDate(data.startDate) : 'Termin folgt';
 
         const cardHtml = `
