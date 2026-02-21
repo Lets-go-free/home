@@ -92,7 +92,7 @@
         <div class="meta-item"><span class="meta-value">Inklusive</span><span class="meta-label">Paket</span></div>
         <div class="meta-item"><span class="meta-value">Sofort</span><span class="meta-label">Verfügbar</span></div>
       </div>
-      <a href="./dateien/krypto-einsteiger-guide.pdf" class="btn-primary" onclick="openPdf(event)">
+      <a href="./ebook/ebook-kap1.html" class="btn-primary" onclick="openViewer('./ebook/ebook-kap1.html', 'Krypto-Einsteiger-Guide'); return false;">
         <span>📖</span> E-Book öffnen
       </a>
       <button class="btn-secondary" onclick="downloadPdf()" style="margin-top: 12px;">
@@ -222,7 +222,7 @@ const APP_VERSION_KEY = 'lgf_app_version';
 const FREEBIES_KEY    = 'lgf_freebies';
 const UPDATE_KEY      = 'lgf_update_available';
 const ACCESS_KEY      = 'lgf_access_granted';
-const CURRENT_VERSION = '1.0.0';
+const CURRENT_VERSION = '1.0.1';
 
 const DEFAULT_FREEBIES = [
   { icon:'📖', name:'DeFi-Glossar',                    desc:'62 wichtige Begriffe klar erklärt – perfekt für Einsteiger',           url:'./dateien/freebie-defi-glossar.html',             addedAt: 1 },
@@ -579,7 +579,7 @@ function escHtml(s) {
 // ═══════════════════════════════════════════════
 function openInBrowser(e) {
   e.preventDefault();
-  const url = 'https://app.letsgofree.me/dateien/krypto-einsteiger-guide.pdf';
+  const url = 'https://app.letsgofree.me/ebook/krypto-einsteiger-guide.pdf';
   // Auf iOS: App verlassen und in Safari öffnen
   window.location.href = url;
   setTimeout(() => {
@@ -599,17 +599,17 @@ function openPdf(e) {
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
   if (isIos) {
     // iOS: direkt öffnen, Safari zeigt Teilen/Drucken-Button
-    window.location.href = './dateien/krypto-einsteiger-guide.pdf';
+    window.location.href = './ebook/krypto-einsteiger-guide.pdf';
   } else if (/android/i.test(navigator.userAgent)) {
     // Android: iframe-Viewer
     const frame = document.getElementById('pdf-frame');
     const viewer = document.getElementById('screen-pdf');
-    frame.src = './dateien/krypto-einsteiger-guide.pdf';
+    frame.src = './ebook/krypto-einsteiger-guide.pdf';
     viewer.style.display = 'flex';
     viewer.classList.add('active');
   } else {
     // Mac/Desktop: neuer Tab
-    window.open('./dateien/krypto-einsteiger-guide.pdf', '_blank');
+    window.open('./ebook/krypto-einsteiger-guide.pdf', '_blank');
   }
 }
 
@@ -627,7 +627,7 @@ function printPdf() {
     frame.contentWindow.print();
   } catch(e) {
     // Fallback: open in new tab for printing
-    window.open('./dateien/krypto-einsteiger-guide.pdf', '_blank');
+    window.open('./ebook/krypto-einsteiger-guide.pdf', '_blank');
   }
 }
 
@@ -635,7 +635,7 @@ function printPdf() {
 //  PDF DOWNLOAD (iOS-kompatibel via Blob / Share API)
 // ═══════════════════════════════════════════════
 async function downloadPdf() {
-  const url = './dateien/krypto-einsteiger-guide.pdf';
+  const url = './ebook/krypto-einsteiger-guide.pdf';
   const filename = 'Krypto-Einsteiger-Guide.pdf';
   try {
     const response = await fetch(url);
