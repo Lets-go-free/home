@@ -452,143 +452,136 @@
 
         const coursesGrid = document.getElementById('coursesGrid');
 
-        async function renderCourses() {
-            coursesGrid.innerHTML = '';
+async function renderCourses() {
+    coursesGrid.innerHTML = '';  // Sicher leeren
 
-            const querySnapshot = await getDocs(collection(db, "kurse"));
+    const querySnapshot = await getDocs(collection(db, "kurse"));
 
-            console.log(`Anzahl gefundene Dokumente in Firestore: ${querySnapshot.size}`);
+    console.log(`Anzahl gefundene Dokumente in Firestore: ${querySnapshot.size}`);
 
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-            querySnapshot.forEach(docSnap => {
-                const id = docSnap.id;
-                console.log(`Verarbeite Dokument-ID: ${id}`);
+    let cardsHtml = '';
 
-                // Sicherheitsabfrage: nur IDs der Form "kurs" + Zahl
-                const match = id.match(/^kurs(\d+)$/);
-                if (!match) {
-                    console.warn(`Ungültige Kurs-ID gefunden: ${id} – wird übersprungen`);
-                    return;
-                }
+    querySnapshot.forEach(docSnap => {
+        const id = docSnap.id;
+        console.log(`Verarbeite Dokument-ID: ${id}`);
 
-                const num = match[1];
+        const match = id.match(/^kurs(\d+)$/);
+        if (!match) {
+            console.warn(`Ungültige Kurs-ID gefunden: ${id} – wird übersprungen`);
+            return;
+        }
 
-                const data = docSnap.data();
+        const num = match[1];
 
-                const visible = data.visible !== false;
-                if (!visible) {
-                    console.log(`Kurs ${num} ist unsichtbar (visible=false)`);
-                    return;
-                }
+        const data = docSnap.data();
 
-                const startDate = data.startDate ? new Date(data.startDate) : null;
-                const isPast = startDate && startDate < today;
+        const visible = data.visible !== false;
+        if (!visible) {
+            console.log(`Kurs ${num} ist unsichtbar (visible=false)`);
+            return;
+        }
 
-                const status = data.status || 'aktiv';
-                const frei = Math.max(0, data.freiePlaetze ?? 7);
+        const startDate = data.startDate ? new Date(data.startDate) : null;
+        const isPast = startDate && startDate < today;
 
-                const sessionTime = data.sessionTime || '19:30 Uhr';
+        const status = data.status || 'aktiv';
+        const frei = Math.max(0, data.freiePlaetze ?? 7);
 
-                const sessions = data.sessions || [];
-                const sessionsHtml = sessions.length > 0 
-                    ? `<br>Nächste Sessions:<br>• ${sessions.join('<br>• ')}` 
-                    : '';
+        const sessionTime = data.sessionTime || '19:30 Uhr';
 
-                const startDateStr = data.startDate ? formatSwissDate(data.startDate) : 'Termin folgt';
+        const sessions = data.sessions || [];
+        const sessionsHtml = sessions.length > 0 
+            ? `<br>Nächste Sessions:<br>• ${sessions.join('<br>• ')}` 
+            : '';
 
-                const cardHtml = `
-                    <div class="course-card" data-course="${num}">
-                        <div class="course-header">
-                            <div class="course-number">KURS ${num}</div>
-                            <h3 class="course-title">${data.title || 'Kurs'}</h3>
-                            <div class="course-date">
-                                Start: ${startDateStr}<br>
-                                ${sessionsHtml}<br><br>
-                                Uhrzeit: ${sessionTime}<br>
-                                <span style="font-size: 0.9em; opacity: 0.85;">Bitte sei 5 Minuten vorher da, damit wir pünktlich starten können.</span>
-                            </div>
-                            <div class="availability">
-                                <div class="spots-left">
-                                    <span class="spots-count">${frei}</span> Plätze frei
-                                </div>
-                                <div class="spots-indicator">
-                                    ${'<div class="spot"></div>'.repeat(7)}
-                                </div>
-                            </div>
+        const startDateStr = data.startDate ? formatSwissDate(data.startDate) : 'Termin folgt';
+
+        const cardHtml = `
+            <div class="course-card" data-course="${num}">
+                <div class="course-header">
+                    <div class="course-number">KURS ${num}</div>
+                    <h3 class="course-title">${data.title || 'Kurs'}</h3>
+                    <div class="course-date">
+                        Start: ${startDateStr}<br>
+                        ${sessionsHtml}<br><br>
+                        Uhrzeit: ${sessionTime}<br>
+                        <span style="font-size: 0.9em; opacity: 0.85;">Bitte sei 5 Minuten vorher da, damit wir pünktlich starten können.</span>
+                    </div>
+                    <div class="availability">
+                        <div class="spots-left">
+                            <span class="spots-count">${frei}</span> Plätze frei
                         </div>
-                        <div class="course-body">
-                            <p style="text-align: center; padding: 30px 20px; color: #666; font-size: 1.05em;">
-                                4 Sessions à ca. 60-90 Minuten<br>
-                                Alle Inhalte siehe oben<br><br>
-                                <span style="font-weight: 600; color: #8B7355;">Mindest-Teilnehmerzahl: 2 Personen</span>
-                            </p>
-                        </div>
-                        <div class="course-footer">
-                            <button class="register-btn" onclick="openModal('${id}')">Jetzt anmelden</button>
+                        <div class="spots-indicator">
+                            ${'<div class="spot"></div>'.repeat(7)}
                         </div>
                     </div>
-                `;
+                </div>
+                <div class="course-body">
+                    <p style="text-align: center; padding: 30px 20px; color: #666; font-size: 1.05em;">
+                        4 Sessions à ca. 60-90 Minuten<br>
+                        Alle Inhalte siehe oben<br><br>
+                        <span style="font-weight: 600; color: #8B7355;">Mindest-Teilnehmerzahl: 2 Personen</span>
+                    </p>
+                </div>
+                <div class="course-footer">
+                    <button class="register-btn" onclick="openModal('${id}')">Jetzt anmelden</button>
+                </div>
+            </div>
+        `;
 
-                coursesGrid.innerHTML += cardHtml;
+        cardsHtml += cardHtml;
+    });
 
-                const card = coursesGrid.lastElementChild;
+    coursesGrid.innerHTML = cardsHtml;  // ← nur EINMAL setzen
 
-                // Sicherheitsabfrage für UI-Elemente
-                const spotsLeft = card.querySelector('.spots-left');
-                const countEl = card.querySelector('.spots-count');
-                const indicator = card.querySelector('.spots-indicator');
-                const btn = card.querySelector('.register-btn');
+    // Status-Logik auf alle Karten anwenden (nach dem Rendern)
+    document.querySelectorAll('.course-card').forEach(card => {
+        const dataCourse = card.dataset.course;
+        const data = querySnapshot.docs.find(d => d.id === `kurs${dataCourse}`)?.data();
+        if (!data) return;
 
-                if (!spotsLeft || !countEl || !btn || !indicator) {
-                    console.warn(`Kurs ${num} hat unvollständige UI-Elemente – überprüfe das Template`);
-                }
+        const status = data.status || 'aktiv';
+        const frei = Math.max(0, data.freiePlaetze ?? 7);
+        const startDate = data.startDate ? new Date(data.startDate) : null;
+        const isPast = startDate && startDate < today;
 
-                // Status-Logik – null-sicher
-                if (status === 'keine-durchfuehrung' || status === 'abgesagt' || isPast) {
-                    if (spotsLeft) {
-                        spotsLeft.innerHTML = '<strong style="color:#d32f2f; font-size:1.4em;">Keine Durchführung</strong>';
-                    }
-                    if (btn) {
-                        btn.disabled = true;
-                        btn.textContent = 'Nicht durchgeführt';
-                        btn.style.background = '#d32f2f';
-                    }
-                    if (countEl) countEl.style.display = 'none';
-                    if (indicator) indicator.style.display = 'none';
-                } else if (status === 'anmeldung-geschlossen') {
-                    if (spotsLeft) {
-                        spotsLeft.innerHTML = '<strong style="color:#757575; font-size:1.3em;">Anmeldung nicht mehr möglich</strong>';
-                    }
-                    if (btn) {
-                        btn.disabled = true;
-                        btn.textContent = 'Anmeldung geschlossen';
-                        btn.style.background = '#757575';
-                    }
-                    if (countEl) countEl.style.display = 'none';
-                    if (indicator) indicator.style.display = 'none';
-                } else if (status === 'ausgebucht' || frei <= 0) {
-                    if (spotsLeft) {
-                        spotsLeft.innerHTML = '<strong style="color:#f57c00; font-size:1.3em;">Ausgebucht</strong>';
-                    }
-                    if (btn) {
-                        btn.disabled = true;
-                        btn.textContent = 'Ausgebucht';
-                        btn.style.background = '#f57c00';
-                    }
-                    if (countEl) countEl.style.display = 'none';
-                    if (indicator) indicator.style.display = 'none';
-                } else {
-                    if (countEl) {
-                        countEl.textContent = frei;
-                        if (spotsLeft) {
-                            spotsLeft.innerHTML = frei === 1 ? '1 Platz frei' : `${frei} Plätze frei`;
-                        }
-                    }
-                }
-            });
+        const spotsLeft = card.querySelector('.spots-left');
+        const countEl = card.querySelector('.spots-count');
+        const indicator = card.querySelector('.spots-indicator');
+        const btn = card.querySelector('.register-btn');
+
+        if (!spotsLeft || !countEl || !btn || !indicator) return;
+
+        if (status === 'keine-durchfuehrung' || status === 'abgesagt' || isPast) {
+            spotsLeft.innerHTML = '<strong style="color:#d32f2f; font-size:1.4em;">Keine Durchführung</strong>';
+            btn.disabled = true;
+            btn.textContent = 'Nicht durchgeführt';
+            btn.style.background = '#d32f2f';
+            countEl.style.display = 'none';
+            indicator.style.display = 'none';
+        } else if (status === 'anmeldung-geschlossen') {
+            spotsLeft.innerHTML = '<strong style="color:#757575; font-size:1.3em;">Anmeldung nicht mehr möglich</strong>';
+            btn.disabled = true;
+            btn.textContent = 'Anmeldung geschlossen';
+            btn.style.background = '#757575';
+            countEl.style.display = 'none';
+            indicator.style.display = 'none';
+        } else if (status === 'ausgebucht' || frei <= 0) {
+            spotsLeft.innerHTML = '<strong style="color:#f57c00; font-size:1.3em;">Ausgebucht</strong>';
+            btn.disabled = true;
+            btn.textContent = 'Ausgebucht';
+            btn.style.background = '#f57c00';
+            countEl.style.display = 'none';
+            indicator.style.display = 'none';
+        } else {
+            countEl.textContent = frei;
+            spotsLeft.innerHTML = frei === 1 ? '1 Platz frei' : `${frei} Plätze frei`;
         }
+    });
+}
 
         // Realtime-Updates
         onSnapshot(collection(db, "kurse"), renderCourses);
