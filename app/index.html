@@ -111,9 +111,9 @@
       <div class="footer-font-size">
         <span class="font-size-label">Schrift</span>
         <div class="font-size-btns">
-          <button class="btn-font" data-size="normal"  onclick="setFontSize('normal')">A</button>
-          <button class="btn-font" data-size="large"   onclick="setFontSize('large')">A+</button>
-          <button class="btn-font" data-size="xlarge"  onclick="setFontSize('xlarge')">A++</button>
+          <button class="btn-font" data-size="normal"  onclick="setFontSize('normal')">A-</button>
+          <button class="btn-font" data-size="large"   onclick="setFontSize('large')">A</button>
+          <button class="btn-font" data-size="xlarge"  onclick="setFontSize('xlarge')">A+</button>
         </div>
       </div>
       <div class="footer-admin">
@@ -691,7 +691,7 @@ function applyFontSize(size) {
 }
 
 function loadFontSize() {
-  const saved = localStorage.getItem(FONT_SIZE_KEY) || 'normal';
+  const saved = localStorage.getItem(FONT_SIZE_KEY) || 'large';
   applyFontSize(saved);
 }
 
