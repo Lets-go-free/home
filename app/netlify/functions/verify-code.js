@@ -12,7 +12,6 @@ const VALID_CODES = [
 //   'Neues Freebie verfügbar – tippe auf «Aktualisieren».'
 //   'Wichtiges Update – bitte App löschen und neu installieren.'
 //const UPDATE_MESSAGE = 'Technisches Update, keine weitere Aktion notwendig.';
-const UPDATE_MESSAGE = 'Das eBook ist sowohl als Website wie auch als PDF verfügbar.';
 
 // Aktuelle App-Version (muss mit CURRENT_VERSION in index.html übereinstimmen)
 const CURRENT_VERSION = '1.0.1';

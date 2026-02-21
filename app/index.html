@@ -73,7 +73,7 @@
       <span style="font-size:20px">🔄</span>
       <div class="update-text">
         <strong>Update verfügbar!</strong><br>
-        <span id="update-message">Technisches Update, keine weitere Aktion notwendig.</span>
+        <span id="update-message"></span>
       </div>
       <button class="btn-update" onclick="applyUpdate()">Laden</button>
     </div>
@@ -223,6 +223,8 @@ const FREEBIES_KEY    = 'lgf_freebies';
 const UPDATE_KEY      = 'lgf_update_available';
 const ACCESS_KEY      = 'lgf_access_granted';
 const CURRENT_VERSION = '1.0.1';
+//const UPDATE_MESSAGE  = 'Technisches Update, keine weitere Aktion notwendig.';
+const UPDATE_MESSAGE  = 'Das eBook ist sowohl als Website wie auch als PDF verfügbar.';
 
 const DEFAULT_FREEBIES = [
   { icon:'📖', name:'DeFi-Glossar',                    desc:'62 wichtige Begriffe klar erklärt – perfekt für Einsteiger',           url:'./dateien/freebie-defi-glossar.html',             addedAt: 1 },
@@ -409,6 +411,7 @@ function checkVersion() {
   const updatePending = localStorage.getItem(UPDATE_KEY) === 'true';
   if (!stored) { localStorage.setItem(APP_VERSION_KEY, CURRENT_VERSION); return; }
   if (stored !== CURRENT_VERSION || updatePending) {
+    document.getElementById('update-message').textContent = UPDATE_MESSAGE;
     document.getElementById('update-banner').classList.add('show');
   }
 }
