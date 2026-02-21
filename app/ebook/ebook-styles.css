@@ -97,3 +97,20 @@ tr:nth-child(even) td{background:rgba(42,34,24,.4)}
 .ebook-figure{margin:28px 0;border-radius:12px;overflow:hidden;border:1px solid rgba(201,168,130,.2)}
 .ebook-figure img{width:100%;display:block}
 .ebook-caption{font-size:12.6px;font-weight:300;color:var(--gold-d);text-align:center;padding:10px 16px;background:rgba(201,168,130,.06);line-height:1.5;font-style:italic}
+
+/* ── Back to App button ───────────────────────────────────────────────── */
+.btn-back-app{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:12.6px;font-weight:500;
+  color:var(--gold-d);
+  background:rgba(201,168,130,.08);
+  border:1px solid rgba(201,168,130,.2);
+  border-radius:20px;
+  padding:5px 12px;
+  text-decoration:none;
+  letter-spacing:.04em;
+  transition:all .2s;
+  white-space:nowrap;
+}
+.btn-back-app:hover{background:rgba(201,168,130,.18);color:var(--gold)}
+.nav-left{display:flex;align-items:center;gap:10px}
