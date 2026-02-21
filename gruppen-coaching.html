@@ -177,6 +177,10 @@
             transform: none;
         }
         
+        .register-btn:disabled:hover {
+            box-shadow: none;
+        }
+        
         .modal {
             display: none;
             position: fixed;
@@ -453,16 +457,31 @@
 
             const querySnapshot = await getDocs(collection(db, "kurse"));
 
+            console.log(`Anzahl gefundene Dokumente in Firestore: ${querySnapshot.size}`);
+
             const today = new Date();
             today.setHours(0, 0, 0, 0);
 
             querySnapshot.forEach(docSnap => {
-                const data = docSnap.data();
                 const id = docSnap.id;
-                const num = id.replace('kurs', '');
+                console.log(`Verarbeite Dokument-ID: ${id}`);
+
+                // Sicherheitsabfrage: nur IDs der Form "kurs" + Zahl
+                const match = id.match(/^kurs(\d+)$/);
+                if (!match) {
+                    console.warn(`Ungültige Kurs-ID gefunden: ${id} – wird übersprungen`);
+                    return;
+                }
+
+                const num = match[1];
+
+                const data = docSnap.data();
 
                 const visible = data.visible !== false;
-                if (!visible) return;
+                if (!visible) {
+                    console.log(`Kurs ${num} ist unsichtbar (visible=false)`);
+                    return;
+                }
 
                 const startDate = data.startDate ? new Date(data.startDate) : null;
                 const isPast = startDate && startDate < today;
@@ -549,7 +568,10 @@
             });
         }
 
+        // Realtime-Updates
         onSnapshot(collection(db, "kurse"), renderCourses);
+
+        // Initiales Laden
         renderCourses();
 
         function openModal(kursId) {
