@@ -210,7 +210,7 @@
        PRINT – weisses, druckfreundliches Layout
     ══════════════════════════════════════════════════════════════════════ */
     @media print {
-      @page { size: A4; margin: 12mm 14mm 10mm 14mm; }
+      @page { size: A4; margin: 12mm 14mm 7mm 14mm; }
 
       body {
         font-family: 'Poppins', 'Segoe UI', sans-serif;
@@ -262,6 +262,8 @@
 
       /* Phase */
       .phase-section { margin-bottom: 18pt; page-break-inside: avoid; }
+      .pb-before { page-break-before: always; }
+      .pb-avoid  { page-break-inside: avoid; }
       .phase-header { display: flex; align-items: center; gap: 12pt; margin-bottom: 10pt; }
       .phase-num {
         width: 38pt; height: 38pt; min-width: 38pt;
@@ -468,7 +470,7 @@
   </div>
 
   <!-- Phase 2 -->
-  <div class="phase-section">
+  <div class="phase-section pb-before">
     <div class="phase-header">
       <div class="phase-num">2</div>
       <div class="phase-title"><h2>Wallet-Erstellung</h2><h3>Dein Zugang zum DeFi-Universum</h3></div>
@@ -512,7 +514,7 @@
   </div>
 
   <!-- Phase 3 -->
-  <div class="phase-section">
+  <div class="phase-section pb-before">
     <div class="phase-header">
       <div class="phase-num">3</div>
       <div class="phase-title"><h2>Erste Schritte</h2><h3>Testen, testen, testen!</h3></div>
@@ -545,7 +547,7 @@
   </div>
 
   <!-- Phase 4 -->
-  <div class="phase-section">
+  <div class="phase-section pb-before">
     <div class="phase-header">
       <div class="phase-num">4</div>
       <div class="phase-title"><h2>Fiat-Krypto-Brücke einrichten</h2><h3>Von Euro/CHF zu Krypto</h3></div>
@@ -574,7 +576,7 @@
   </div>
 
   <!-- Phase 5 -->
-  <div class="phase-section">
+  <div class="phase-section pb-before">
     <div class="phase-header">
       <div class="phase-num">5</div>
       <div class="phase-title"><h2>Dauerhafte Sicherheit</h2><h3>Bleib wachsam!</h3></div>
@@ -608,7 +610,7 @@
   </div>
 
   <!-- Phase 6 -->
-  <div class="phase-section">
+  <div class="phase-section pb-before">
     <div class="phase-header">
       <div class="phase-num">6</div>
       <div class="phase-title"><h2>Notfallplan</h2><h3>Sei vorbereitet</h3></div>
@@ -634,7 +636,7 @@
   <div class="sep"></div>
 
   <!-- Mistakes -->
-  <div class="mistakes-section">
+  <div class="mistakes-section pb-before">
     <h2>❌ Häufige Fehler vermeiden</h2>
     <h3>Diese Fehler NIEMALS machen:</h3>
     <div class="mistake-item"><span class="cross">❌</span><span>Seed Phrase als Screenshot/Foto speichern</span></div>
@@ -649,7 +651,7 @@
   </div>
 
   <!-- Progress -->
-  <div class="progress-section">
+  <div class="progress-section pb-before">
     <h2>Dein Fortschritt</h2>
     <div class="progress-grid">
       <div class="progress-card">
@@ -694,8 +696,7 @@
     <p>1:1 DeFi Coaching – Schritt für Schritt in die Krypto-Welt</p>
     <a href="https://letsgofree.me/#angebot" class="btn-cta no-print">Zum Coaching-Angebot</a>
     <a href="https://letsgofree.me" class="btn-cta outline no-print">Startseite</a>
-    <p class="disclaimer">© 2026 Let's go free – Diese Checkliste darf gerne geteilt werden.<br>
-    Disclaimer: Nur zu Informationszwecken. Keine Finanzberatung. Jeder ist für seine eigenen Entscheidungen selbst verantwortlich.</p>
+    <p class="disclaimer">© 2026 Let's go free – Nur zu Informationszwecken, keine Finanzberatung. Jeder ist für seine eigenen Entscheidungen selbst verantwortlich.</p>
   </div>
 
 </div>
