@@ -466,7 +466,7 @@
         const coursesGrid = document.getElementById('coursesGrid');
 
 async function renderCourses() {
-    coursesGrid.innerHTML = '';  // Sicher leeren
+    coursesGrid.innerHTML = '';
 
     const querySnapshot = await getDocs(collection(db, "kurse"));
 
@@ -509,8 +509,15 @@ async function renderCourses() {
         const sessionsHtml = sessions.length > 0 
             ? `<br>Nächste Sessions:<br>• ${sessions.map(dateStr => formatSwissDate(dateStr)).join('<br>• ')}` 
             : '';
-            
+
         const startDateStr = data.startDate ? formatSwissDate(data.startDate) : 'Termin folgt';
+
+        // Dots direkt dynamisch generieren (gefüllt = gefüllt)
+        let spotsHtml = '';
+        for (let i = 0; i < 7; i++) {
+            const filled = i >= frei ? 'filled' : '';
+            spotsHtml += `<div class="spot ${filled}"></div>`;
+        }
 
         const cardHtml = `
             <div class="course-card" data-course="${num}">
@@ -528,7 +535,7 @@ async function renderCourses() {
                             <span class="spots-count">${frei}</span> Plätze frei
                         </div>
                         <div class="spots-indicator">
-                            ${'<div class="spot"></div>'.repeat(7)}
+                            ${spotsHtml}
                         </div>
                     </div>
                 </div>
@@ -548,9 +555,9 @@ async function renderCourses() {
         cardsHtml += cardHtml;
     });
 
-    coursesGrid.innerHTML = cardsHtml;  // ← nur EINMAL setzen
+    coursesGrid.innerHTML = cardsHtml;
 
-    // Status-Logik auf alle Karten anwenden (nach dem Rendern)
+    // Status-Logik (nach dem Rendern)
     document.querySelectorAll('.course-card').forEach(card => {
         const dataCourse = card.dataset.course;
         const data = querySnapshot.docs.find(d => d.id === `kurs${dataCourse}`)?.data();
@@ -592,6 +599,7 @@ async function renderCourses() {
         } else {
             countEl.textContent = frei;
             spotsLeft.innerHTML = frei === 1 ? '1 Platz frei' : `${frei} Plätze frei`;
+            // Dots werden bereits beim Rendern gefüllt – kein nachträglicher Zugriff nötig
         }
     });
 }
