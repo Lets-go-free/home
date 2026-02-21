@@ -147,32 +147,6 @@
             padding: 25px 25px;
         }
         
-        .sessions-list {
-            list-style: none;
-        }
-        
-        .session-item {
-            padding: 15px 0;
-            border-bottom: 1px solid #f0e8dc;
-        }
-        
-        .session-item:last-child {
-            border-bottom: none;
-        }
-        
-        .session-title {
-            font-weight: 600;
-            color: #8B7355;
-            font-size: 1em;
-            margin-bottom: 5px;
-        }
-        
-        .session-desc {
-            color: #666;
-            font-size: 0.95em;
-            line-height: 1.5;
-        }
-        
         .course-footer {
             padding: 0 25px 25px;
         }
@@ -201,10 +175,6 @@
             background: #ccc;
             cursor: not-allowed;
             transform: none;
-        }
-        
-        .register-btn:disabled:hover {
-            box-shadow: none;
         }
         
         .modal {
@@ -338,18 +308,6 @@
             text-align: center;
         }
         
-        .full-badge {
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            background: rgba(0, 0, 0, 0.4);
-            color: white;
-            padding: 6px 12px;
-            border-radius: 15px;
-            font-size: 0.85em;
-            font-weight: 600;
-        }
-        
         @media (max-width: 768px) {
             body { padding: 10px; }
             .hero { padding: 40px 25px; }
@@ -388,98 +346,15 @@
                     <li>Die Calls werden aufgezeichnet und den Teilnehmern online zur Verfügung gestellt.</li>
                 </ul>
             </p>
-            <p style="margin-top: 15px; padding: 20px; background: #F5E6D3; border-radius: 10px; border-left: 4px solid #8B7355;"><strong>Flexibilität:</strong> Solltest du an einem Abend nicht teilnehmen können, kannst du diesen nach Absprache an einem anderen Kurs nachholen (sollte die Ausnahme sein, da die Sessions aufeinander aufbauen).</p>
+            <p style="margin-top: 15px; padding: 20px; background: #F5E6D3; border-radius: 10px; border-left: 4px solid #8B7355;">
+                <strong>Flexibilität:</strong> Solltest du an einem Abend nicht teilnehmen können, kannst du diesen nach Absprache an einem anderen Kurs nachholen (sollte die Ausnahme sein, da die Sessions aufeinander aufbauen).
+            </p>
         </div>
         
         <div class="courses-section">
             <h2 style="text-align: center; margin-bottom: 40px; color: #8B7355;">Aktuelle Kurse</h2>
-            <div class="courses-grid">
-                <!-- Kurs 1 -->
-                <div class="course-card" data-course="1">
-                    <div class="course-header">
-                        <div class="course-number">KURS 1</div>
-                        <h3 class="course-title">Februar 2026</h3>
-                        <div class="course-date">Start: Mittwoch, 18.02.2026<br>Nächste Sessions: 25.02., 04.03., 11.03.2026<br><br>Uhrzeit: 19:30 Uhr<br><span style="font-size: 0.9em; opacity: 0.85;">Bitte sei 5 Minuten vorher da, damit wir pünktlich starten können.</span></div>
-                        <div class="availability">
-                            <div class="spots-left">
-                                <span class="spots-count">7</span> Plätze frei
-                            </div>
-                            <div class="spots-indicator">
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="course-body">
-                        <p style="text-align: center; padding: 30px 20px; color: #666; font-size: 1.05em;">4 Sessions à ca. 60-90 Minuten<br>Alle Inhalte siehe oben<br><br><span style="font-weight: 600; color: #8B7355;">Mindest-Teilnehmerzahl: 2 Personen</span></p>
-                    </div>
-                    <div class="course-footer">
-                        <button class="register-btn" onclick="openModal(1)">Jetzt anmelden</button>
-                    </div>
-                </div>
-
-                <!-- Kurs 2 -->
-                <div class="course-card" data-course="2">
-                    <div class="course-header">
-                        <div class="course-number">KURS 2</div>
-                        <h3 class="course-title">Februar 2026</h3>
-                        <div class="course-date">Start: Sonntag, 22.02.2026<br>Nächste Sessions: 01.03., 08.03., 15.03.2026<br><br>Uhrzeit: 19:30 Uhr<br><span style="font-size: 0.9em; opacity: 0.85;">Bitte sei 5 Minuten vorher da, damit wir pünktlich starten können.</span></div>
-                        <div class="availability">
-                            <div class="spots-left">
-                                <span class="spots-count">7</span> Plätze frei
-                            </div>
-                            <div class="spots-indicator">
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="course-body">
-                        <p style="text-align: center; padding: 30px 20px; color: #666; font-size: 1.05em;">4 Sessions à ca. 60-90 Minuten<br>Alle Inhalte siehe oben<br><br><span style="font-weight: 600; color: #8B7355;">Mindest-Teilnehmerzahl: 2 Personen</span></p>
-                    </div>
-                    <div class="course-footer">
-                        <button class="register-btn" onclick="openModal(2)">Jetzt anmelden</button>
-                    </div>
-                </div>
-
-                <!-- Kurs 3 -->
-                <div class="course-card" data-course="3">
-                    <div class="course-header">
-                        <div class="course-number">KURS 3</div>
-                        <h3 class="course-title">Februar/März 2026</h3>
-                        <div class="course-date">Start: Donnerstag, 26.02.2026<br>Nächste Sessions: 05.03., 12.03., 19.03.2026<br><br>Uhrzeit: 19:30 Uhr<br><span style="font-size: 0.9em; opacity: 0.85;">Bitte sei 5 Minuten vorher da, damit wir pünktlich starten können.</span></div>
-                        <div class="availability">
-                            <div class="spots-left">
-                                <span class="spots-count">7</span> Plätze frei
-                            </div>
-                            <div class="spots-indicator">
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                                <div class="spot"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="course-body">
-                        <p style="text-align: center; padding: 30px 20px; color: #666; font-size: 1.05em;">4 Sessions à ca. 60-90 Minuten<br>Alle Inhalte siehe oben<br><br><span style="font-weight: 600; color: #8B7355;">Mindest-Teilnehmerzahl: 2 Personen</span></p>
-                    </div>
-                    <div class="course-footer">
-                        <button class="register-btn" onclick="openModal(3)">Jetzt anmelden</button>
-                    </div>
-                </div>
+            <div class="courses-grid" id="coursesGrid">
+                <!-- Dynamisch gefüllt -->
             </div>
         </div>
 
@@ -505,7 +380,7 @@
         <div class="modal-content">
             <button class="close-modal" onclick="closeModal()">×</button>
             <h2>Anmeldung</h2>
-            <h3 id="modalCourseTitle">Kurs 1 - Frühjahr 2026</h3>
+            <h3 id="modalCourseTitle">Kurs - Anmeldung</h3>
             
             <form id="registrationForm">
                 <input type="hidden" name="course" id="courseInput">
@@ -542,7 +417,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, onSnapshot, doc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDGjwxdKwU-jloaWPTT2YKW19kb5u3T9_I",
@@ -559,92 +434,131 @@
 
         signInAnonymously(auth)
             .then(() => console.log("✅ Anonym angemeldet – Schreibrechte vorhanden"))
-            .catch(err => console.error("❌ Anonyme Anmeldung fehlgeschlagen:", err.code, err.message));
+            .catch(err => console.error("❌ Anonyme Anmeldung fehlgeschlagen:", err));
 
-        async function updateSpotsUI() {
-            for (let num = 1; num <= 3; num++) {
-                const ref = doc(db, "kurse", `kurs${num}`);
-                try {
-                    const snap = await getDoc(ref);
-                    if (!snap.exists()) continue;
-
-                    const data = snap.data() || {};
-                    const frei = Math.max(0, data.freiePlaetze ?? 7);
-                    const status = data.status || 'aktiv';
-
-                    const card = document.querySelector(`.course-card[data-course="${num}"]`);
-                    if (!card) continue;
-
-                    const countEl = card.querySelector('.spots-count');
-                    const textEl  = card.querySelector('.spots-left');
-                    const btn     = card.querySelector('.register-btn');
-                    const dotsContainer = card.querySelector('.spots-indicator');
-
-                    if (!countEl || !textEl || !btn) {
-                        console.warn(`Kurs ${num}: Mindestens ein UI-Element fehlt`);
-                        continue;
-                    }
-
-                    // Status-Logik mit Priorität
-                    if (status === 'keine-durchfuehrung') {
-                        textEl.innerHTML = '<strong style="color: #d32f2f; font-size: 1.4em;">Keine Durchführung</strong>';
-                        btn.disabled = true;
-                        btn.textContent = 'Nicht durchgeführt';
-                        btn.style.background = '#d32f2f';
-                        countEl.style.display = 'none';
-                        if (dotsContainer) dotsContainer.style.display = 'none';
-                        textEl.parentElement.style.justifyContent = 'center';
-                    } else if (status === 'ausgebucht' || frei <= 0) {
-                        textEl.innerHTML = '<strong style="color: #f57c00; font-size: 1.3em;">Ausgebucht</strong>';
-                        btn.disabled = true;
-                        btn.textContent = 'Ausgebucht';
-                        btn.style.background = '#f57c00';
-                        countEl.style.display = 'none';
-                        if (dotsContainer) dotsContainer.style.display = 'none';
-                        textEl.parentElement.style.justifyContent = 'center';
-                    } else {
-                        // Normaler, buchbarer Zustand
-                        countEl.textContent = frei;
-                        countEl.style.display = 'inline';
-                        textEl.innerHTML = frei === 1 ? '1 Platz frei' : `${frei} Plätze frei`;
-                        btn.disabled = false;
-                        btn.textContent = 'Jetzt anmelden';
-                        btn.style.background = '#8B7355';
-                        if (dotsContainer) dotsContainer.style.display = 'flex';
-                    }
-
-                    // Dots aktualisieren (nur wenn sichtbar)
-                    const dots = card.querySelectorAll('.spot');
-                    dots.forEach((dot, i) => {
-                        if (i < 7 - frei) dot.classList.add('filled');
-                        else dot.classList.remove('filled');
-                    });
-
-                } catch (err) {
-                    console.error(`Fehler Kurs ${num}:`, err);
-                }
+        function formatSwissDate(isoDate) {
+            if (!isoDate) return 'Termin folgt';
+            try {
+                const [year, month, day] = isoDate.split('-');
+                return `${day}.${month}.${year}`;
+            } catch (e) {
+                return isoDate;
             }
         }
 
-        [1,2,3].forEach(n => {
-            onSnapshot(doc(db, "kurse", `kurs${n}`), () => updateSpotsUI());
-        });
+        const coursesGrid = document.getElementById('coursesGrid');
 
-        updateSpotsUI();
+        async function renderCourses() {
+            coursesGrid.innerHTML = '';
 
-        function openModal(courseNum) {
+            const querySnapshot = await getDocs(collection(db, "kurse"));
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            querySnapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                const id = docSnap.id;
+                const num = id.replace('kurs', '');
+
+                const visible = data.visible !== false;
+                if (!visible) return;
+
+                const startDate = data.startDate ? new Date(data.startDate) : null;
+                const isPast = startDate && startDate < today;
+
+                const status = data.status || 'aktiv';
+                const frei = Math.max(0, data.freiePlaetze ?? 7);
+
+                const sessionTime = data.sessionTime || '19:30 Uhr';
+
+                const sessions = data.sessions || [];
+                const sessionsHtml = sessions.length > 0 
+                    ? `<br>Nächste Sessions:<br>• ${sessions.join('<br>• ')}` 
+                    : '';
+
+                const startDateStr = data.startDate ? formatSwissDate(data.startDate) : 'Termin folgt';
+
+                const cardHtml = `
+                    <div class="course-card" data-course="${num}">
+                        <div class="course-header">
+                            <div class="course-number">KURS ${num}</div>
+                            <h3 class="course-title">${data.title || 'Kurs'}</h3>
+                            <div class="course-date">
+                                Start: ${startDateStr}<br>
+                                ${sessionsHtml}<br><br>
+                                Uhrzeit: ${sessionTime}<br>
+                                <span style="font-size: 0.9em; opacity: 0.85;">Bitte sei 5 Minuten vorher da, damit wir pünktlich starten können.</span>
+                            </div>
+                            <div class="availability">
+                                <div class="spots-left">
+                                    <span class="spots-count">${frei}</span> Plätze frei
+                                </div>
+                                <div class="spots-indicator">
+                                    ${'<div class="spot"></div>'.repeat(7)}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="course-body">
+                            <p style="text-align: center; padding: 30px 20px; color: #666; font-size: 1.05em;">
+                                4 Sessions à ca. 60-90 Minuten<br>
+                                Alle Inhalte siehe oben<br><br>
+                                <span style="font-weight: 600; color: #8B7355;">Mindest-Teilnehmerzahl: 2 Personen</span>
+                            </p>
+                        </div>
+                        <div class="course-footer">
+                            <button class="register-btn" onclick="openModal('${id}')">Jetzt anmelden</button>
+                        </div>
+                    </div>
+                `;
+
+                coursesGrid.innerHTML += cardHtml;
+
+                const card = coursesGrid.lastElementChild;
+
+                // Status-Logik
+                if (status === 'keine-durchfuehrung' || status === 'abgesagt' || isPast) {
+                    card.querySelector('.spots-left').innerHTML = '<strong style="color:#d32f2f; font-size:1.4em;">Keine Durchführung</strong>';
+                    const btn = card.querySelector('.register-btn');
+                    btn.disabled = true;
+                    btn.textContent = 'Nicht durchgeführt';
+                    btn.style.background = '#d32f2f';
+                    card.querySelector('.spots-count').style.display = 'none';
+                    card.querySelector('.spots-indicator').style.display = 'none';
+                } else if (status === 'anmeldung-geschlossen') {
+                    card.querySelector('.spots-left').innerHTML = '<strong style="color:#757575; font-size:1.3em;">Anmeldung nicht mehr möglich</strong>';
+                    const btn = card.querySelector('.register-btn');
+                    btn.disabled = true;
+                    btn.textContent = 'Anmeldung geschlossen';
+                    btn.style.background = '#757575';
+                    card.querySelector('.spots-count').style.display = 'none';
+                    card.querySelector('.spots-indicator').style.display = 'none';
+                } else if (status === 'ausgebucht' || frei <= 0) {
+                    card.querySelector('.spots-left').innerHTML = '<strong style="color:#f57c00; font-size:1.3em;">Ausgebucht</strong>';
+                    const btn = card.querySelector('.register-btn');
+                    btn.disabled = true;
+                    btn.textContent = 'Ausgebucht';
+                    btn.style.background = '#f57c00';
+                    card.querySelector('.spots-count').style.display = 'none';
+                    card.querySelector('.spots-indicator').style.display = 'none';
+                } else {
+                    const countEl = card.querySelector('.spots-count');
+                    countEl.textContent = frei;
+                    card.querySelector('.spots-left').innerHTML = frei === 1 ? '1 Platz frei' : `${frei} Plätze frei`;
+                }
+            });
+        }
+
+        onSnapshot(collection(db, "kurse"), renderCourses);
+        renderCourses();
+
+        function openModal(kursId) {
             const modal = document.getElementById('registrationModal');
             const courseInput = document.getElementById('courseInput');
             const modalTitle = document.getElementById('modalCourseTitle');
 
-            const titles = {
-                1: 'Kurs 1 - Start: 18.02.2026',
-                2: 'Kurs 2 - Start: 22.02.2026',
-                3: 'Kurs 3 - Start: 26.02.2026'
-            };
-
-            modalTitle.textContent = titles[courseNum] || `Kurs ${courseNum}`;
-            courseInput.value = `Kurs ${courseNum}`;
+            modalTitle.textContent = `Anmeldung für Kurs ${kursId.replace('kurs', '')}`;
+            courseInput.value = kursId;
 
             modal.classList.add('active');
             document.body.style.overflow = 'hidden';
@@ -672,7 +586,6 @@
 
             const formData = new FormData(e.target);
             const course = formData.get('course');
-            const kursNum = course?.match(/\d+/)?.[0];
 
             try {
                 const res = await fetch('https://formspree.io/f/xqaynybo', {
@@ -683,10 +596,10 @@
 
                 if (!res.ok) throw new Error(`Formspree Status: ${res.status}`);
 
-                if (kursNum) {
-                    const ref = doc(db, "kurse", `kurs${kursNum}`);
+                if (course) {
+                    const ref = doc(db, "kurse", course);
                     await updateDoc(ref, { freiePlaetze: increment(-1) });
-                    console.log(`Kurs ${kursNum}: freie Plätze um 1 reduziert`);
+                    console.log(`Kurs ${course}: freie Plätze um 1 reduziert`);
                 }
 
                 e.target.style.display = 'none';
