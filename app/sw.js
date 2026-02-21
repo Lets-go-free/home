@@ -1,13 +1,13 @@
 // ─── Let's go free · Service Worker ───────────────────────────────────────
-const CACHE_VERSION = 'lgf-v32.0';
+const CACHE_VERSION = 'lgf-v33.0';
 const CACHE_NAME = `letsgofree-${CACHE_VERSION}`;
 
 const APP_SHELL = [
   '/',
   '/index.html',
   '/app-styles.css',
-  '/dateien/icon-192.png',
-  '/dateien/icon-512.png',
+  '/dateien/icon-192-v2.png',
+  '/dateien/icon-512-v2.png',
   '/dateien/freebie-defi-glossar.html',
   '/dateien/freebie-checkliste.html',
   '/dateien/freebie-datensicherungsblatt.html',
