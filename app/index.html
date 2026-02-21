@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="dateien/icon-192-v2.png" />
-  <meta name="description" content="Krypto-Einsteiger-Guide und gratis Lernmaterialien von letsgofree.me" />
+  <meta name="description" content="Krypto-Einsteiger-Guide mit Bonus-Material und Freebies von letsgofree.me" />
   <title>Let's go free – App</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -86,7 +86,7 @@
     <div class="ebook-card">
       <span class="ebook-tag">✦ Inklusive im Paket</span>
       <h2 class="ebook-title">Krypto-Einsteiger-Guide</h2>
-      <p class="ebook-desc">Dein praktischer Einstieg in die Welt der Kryptowährungen – von der sicheren Wallet bis zum ersten DeFi-Schritt. Klar, ehrlich, ohne Fachjargon.</p>
+      <p class="ebook-desc">Dein praktischer Einstieg in die Welt von Krypto und Defi – von der sicheren Wallet bis zum ersten DeFi-Schritt. Klar, ehrlich, ohne Fachjargon.</p>
       <div class="ebook-meta">
         <div class="meta-item"><span class="meta-value">PDF</span><span class="meta-label">Format</span></div>
         <div class="meta-item"><span class="meta-value">Inklusive</span><span class="meta-label">Paket</span></div>
@@ -98,6 +98,16 @@
       <button class="btn-secondary" onclick="downloadPdf()" style="margin-top: 12px;">
         <span>⬇️</span> E-Book herunterladen
       </button>
+    </div>
+
+    <p class="section-label">⭐ Bonus-Material</p>
+    <div class="ebook-card">
+      <span class="ebook-tag">✦ Inklusive im Paket</span>
+      <h2 class="ebook-title">DeFi-Sicherheits-Checkliste</h2>
+      <p class="ebook-desc">Die vollständige Checkliste für deinen sicheren DeFi-Einstieg – alle Phasen, alle Schritte, kein Detail ausgelassen.</p>
+      <a href="./dateien/checkliste.html" class="btn-primary" onclick="openViewer('./dateien/checkliste.html', 'DeFi-Sicherheits-Checkliste'); return false;">
+        <span>✅</span> Checkliste öffnen
+      </a>
     </div>
 
     <p class="section-label">🎁 Gratis-Materialien</p>
@@ -221,9 +231,9 @@ const APP_VERSION_KEY = 'lgf_app_version';
 const FREEBIES_KEY    = 'lgf_freebies';
 const UPDATE_KEY      = 'lgf_update_available';
 const ACCESS_KEY      = 'lgf_access_granted';
-const CURRENT_VERSION = '1.0.3';
+const CURRENT_VERSION = '1.0.5';
 const UPDATE_MESSAGEx = 'Technisches Update, keine weitere Aktion notwendig.';
-const UPDATE_MESSAGE  = 'Das eBook ist sowohl als Website wie auch als PDF verfügbar.';
+const UPDATE_MESSAGE  = 'Das eBook ist sowohl als Website wie auch als PDF verfügbar. Neu: Bonusmaterial';
 
 const DEFAULT_FREEBIES = [
   { icon:'📖', name:'DeFi-Glossar',                    desc:'62 wichtige Begriffe klar erklärt – perfekt für Einsteiger',           url:'./dateien/freebie-defi-glossar.html',             addedAt: 1 },
