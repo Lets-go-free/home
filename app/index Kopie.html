@@ -108,14 +108,6 @@
     <footer class="footer">
       <p class="footer-logo">Let's go free · Chris</p>
       <p class="footer-url">letsgofree.me</p>
-      <div class="footer-font-size">
-        <span class="font-size-label">Schrift</span>
-        <div class="font-size-btns">
-          <button class="btn-font" data-size="normal"  onclick="setFontSize('normal')">A</button>
-          <button class="btn-font" data-size="large"   onclick="setFontSize('large')">A+</button>
-          <button class="btn-font" data-size="xlarge"  onclick="setFontSize('xlarge')">A++</button>
-        </div>
-      </div>
       <div class="footer-admin">
         <button class="btn-admin" onclick="openAdmin()">⚙ Admin</button>
       </div>
@@ -670,33 +662,7 @@ function openViewer(url, title) {
   window.location.href = url;
 }
 
-// ═══════════════════════════════════════════════
-//  SCHRIFTGRÖSSE
-// ═══════════════════════════════════════════════
-const FONT_SIZE_KEY = 'lgf_font_size';
-
-function setFontSize(size) {
-  localStorage.setItem(FONT_SIZE_KEY, size);
-  applyFontSize(size);
-}
-
-function applyFontSize(size) {
-  const wrapper = document.querySelector('.wrapper');
-  if (!wrapper) return;
-  const zoomMap = { normal: 1, large: 1.15, xlarge: 1.30 };
-  wrapper.style.zoom = zoomMap[size] || 1;
-  document.querySelectorAll('.btn-font').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.size === size);
-  });
-}
-
-function loadFontSize() {
-  const saved = localStorage.getItem(FONT_SIZE_KEY) || 'normal';
-  applyFontSize(saved);
-}
-
 init();
-loadFontSize();
 </script>
 </body>
 </html>
