@@ -14,7 +14,7 @@ const VALID_CODES = [
 const UPDATE_MESSAGE = 'Technisches Update, keine weitere Aktion notwendig.';
 
 // Aktuelle App-Version (muss mit CURRENT_VERSION in index.html übereinstimmen)
-const CURRENT_VERSION = '1.1';
+const CURRENT_VERSION = '1.2';
 
 exports.handler = async function(event) {
   if (event.httpMethod !== 'POST') {
