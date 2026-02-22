@@ -3,280 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buchung & Bezahlung - Let's go free</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            line-height: 1.7;
-            color: #333;
-            background: linear-gradient(135deg, #8B7355 0%, #A0826D 50%, #C9A882 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            overflow: hidden;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        
-        .hero {
-            background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%);
-            color: white;
-            padding: 50px 40px;
-            text-align: center;
-        }
-        
-        .hero h1 {
-            font-size: 2.5em;
-            margin-bottom: 15px;
-            line-height: 1.2;
-        }
-        
-        .hero .subtitle {
-            font-size: 1.2em;
-            opacity: 0.95;
-        }
-        
-        .content {
-            padding: 50px 40px;
-        }
-        
-        .price-box {
-            background: #F5E6D3;
-            padding: 40px;
-            border-radius: 15px;
-            margin: 30px 0;
-            border-left: 5px solid #8B7355;
-        }
-        
-        .price {
-            font-size: 3em;
-            color: #8B7355;
-            font-weight: 700;
-            margin: 20px 0;
-            text-align: center;
-        }
-        
-        .price-note {
-            text-align: center;
-            font-size: 1.1em;
-            color: #666;
-            margin-bottom: 25px;
-        }
-        
-        .included-list {
-            text-align: left;
-            margin: 25px auto;
-            max-width: 500px;
-        }
-        
-        .included-list li {
-            margin-bottom: 12px;
-            padding-left: 10px;
-            font-size: 1.05em;
-        }
-        
-        .highlight-box {
-            background: #F5E6D3;
-            padding: 25px;
-            border-radius: 12px;
-            margin: 30px 0;
-            border-left: 5px solid #8B7355;
-        }
-        
-        .payment-button {
-            display: inline-block;
-            background: white;
-            color: #8B7355;
-            padding: 18px 45px;
-            border-radius: 10px;
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 1.2em;
-            transition: all 0.3s;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
-        }
-        
-        .payment-button:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-        }
-        
-        .back-link {
-            text-align: center;
-            margin-top: 40px;
-            padding: 30px 0;
-            border-top: 1px solid #ddd;
-        }
-        
-        .back-link a {
-            color: #8B7355;
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        
-        .back-link a:hover {
-            text-decoration: underline;
-        }
-        
-        .info-section {
-            background: #fff3cd;
-            padding: 25px;
-            border-radius: 10px;
-            border-left: 4px solid #ffc107;
-            margin: 30px 0;
-        }
-        
-        .info-section h3 {
-            color: #8B7355;
-            margin-bottom: 15px;
-        }
-        
-        .info-section p {
-            font-size: 1em;
-            line-height: 1.7;
-            margin-bottom: 10px;
-        }
-        
-        @media (max-width: 768px) {
-            .hero h1 {
-                font-size: 2em;
-            }
-            
-            .hero .subtitle {
-                font-size: 1.1em;
-            }
-            
-            .content {
-                padding: 30px 25px;
-            }
-            
-            .price {
-                font-size: 2.5em;
-            }
-            
-            .price-box {
-                padding: 25px;
-            }
-        }
-    </style>
+    <title>Buchung &amp; Bezahlung – Let's go free</title>
+    <link rel="stylesheet" href="homepage-styles.css">
 </head>
-<body>
-    <div class="container">
-        <!-- HERO SECTION -->
-        <div class="hero">
-            <h1>Buchung & Bezahlung</h1>
-            <p class="subtitle">Dein 1:1-Coaching in die Krypto-Welt</p>
+<body class="page-simple">
+    <div class="page-container" style="max-width:800px;">
+        <div class="page-hero">
+            <h1>Buchung &amp; Bezahlung</h1>
+            <p>Dein 1:1-Coaching in die Krypto-Welt</p>
         </div>
-        
-        <!-- MAIN CONTENT -->
-        <div class="content">
-            
-            <!-- PRICE BOX -->
-            <div class="price-box">
-                <p style="font-size: 1.2em; color: #666; margin-bottom: 10px; text-align: center;">Komplettes Starter-Paket</p>
-                <div class="price">CHF 777–</div>
-                <p class="price-note">5 persönliche Sessions à ca 90 Minuten<br>über 2-4 Wochen verteilt, flexibel nach deinem Tempo</p>
-                
-                <div class="included-list">
-                    <p style="font-weight: 600; margin-bottom: 15px; color: #8B7355;">✓ Im Preis enthalten:</p>
-                    <ul style="list-style: none;">
-                        <li>✓ Individuelle 1:1-Begleitung per Video-Call</li>
-                        <li>✓ Screen-Sharing für gemeinsames Einrichten</li>
-                        <li>✓ Meine Sicherheits-Checkliste</li>
-                        <li>✓ Zugang zu meinen bewährten Tools & Plattformen</li>
-                        <li>✓ Support auch zwischen den Sessions</li>
-                        <li>✓ Kein Zeitdruck – wir gehen in deinem Rhythmus</li>
-                    </ul>
-                </div>
+        <div class="page-body">
+
+            <!-- PREIS BOX -->
+            <div class="buchung-price-box">
+                <p style="text-align:center; font-size:1em; color:var(--muted); font-weight:300; margin-bottom:6px;">Komplettes Starter-Paket</p>
+                <div class="buchung-price-amount">CHF 777.–</div>
+                <p class="buchung-price-note">5 persönliche Sessions à ca. 90 Minuten<br>über 2–4 Wochen verteilt, flexibel nach deinem Tempo</p>
+                <p style="font-weight:600; color:var(--gold-dk); margin-bottom:12px; font-size:.98em;">✓ Im Preis enthalten:</p>
+                <ul class="buchung-features">
+                    <li><span class="check">✓</span> Individuelle 1:1-Begleitung per Video-Call</li>
+                    <li><span class="check">✓</span> Screen-Sharing für gemeinsames Einrichten</li>
+                    <li><span class="check">✓</span> Meine Sicherheits-Checkliste</li>
+                    <li><span class="check">✓</span> Zugang zu meinen bewährten Tools &amp; Plattformen</li>
+                    <li><span class="check">✓</span> Support auch zwischen den Sessions</li>
+                    <li><span class="check">✓</span> Kein Zeitdruck – wir gehen in deinem Rhythmus</li>
+                </ul>
             </div>
-            
-            <!-- HIGHLIGHT BOX -->
-            <div class="highlight-box">
-                <p style="font-size: 1.05em; line-height: 1.8; color: #333; margin: 0; text-align: center;">
-                    Du hattest dein kostenloses Erstgespräch und hast dich für das 1:1-Coaching entschieden? 
-                    <strong style="color: #8B7355;">Herzlichen Dank!</strong><br><br>
-                    Hier geht's zur Buchung und Zahlung. Ich freue mich auf dich! 🚀
-                </p>
+
+            <!-- HERZLICHEN DANK -->
+            <div class="highlight-box" style="text-align:center;">
+                <p>Du hattest dein kostenloses Erstgespräch und hast dich für das 1:1-Coaching entschieden? <strong>Herzlichen Dank!</strong></p>
+                <p>Hier geht's zur Buchung und Zahlung. Ich freue mich auf dich! 🚀</p>
             </div>
-            
-            <!-- PAYMENT SECTION -->
-            <div style="text-align: center; margin: 40px 0;">
-                <p style="font-size: 1.1em; color: #8B7355; margin-bottom: 20px; font-weight: 600;">
-                    Bezahlen mit Kreditkarte oder PayPal
-                </p>
-                <a href="https://www.paypal.com/ncp/payment/PUR9TX6NP6DA4" 
-                   target="_blank"
-                   class="payment-button">
-                    💳 Jetzt buchen und bezahlen
-                </a>
-                <p style="margin-top: 20px; font-size: 0.95em; color: #666;">
+
+            <!-- PAYMENT -->
+            <div style="text-align:center; margin:36px 0;">
+                <p style="font-size:1em; color:var(--gold-dk); margin-bottom:18px; font-weight:600;">Bezahlen mit Kreditkarte oder PayPal</p>
+                <a href="https://www.paypal.com/ncp/payment/PUR9TX6NP6DA4" target="_blank" class="buchung-pay-btn">💳 Jetzt buchen und bezahlen</a>
+                <p style="margin-top:18px; font-size:.88em; color:var(--muted); font-weight:300; line-height:1.8;">
                     ✓ Sichere Zahlung über PayPal<br>
                     ✓ Nach Zahlung erhältst du eine Bestätigung per E-Mail<br>
                     ✓ Ich melde mich innerhalb von 24h zur Terminvereinbarung
                 </p>
             </div>
-            
-            <!-- INFO SECTION -->
-            <div class="info-section">
-                <h3>Was passiert nach der Buchung?</h3>
-                <p><strong>1. Zahlungsbestätigung:</strong> Du erhältst sofort eine Bestätigung per E-Mail.</p>
-                <p><strong>2. Willkommens-E-Mail:</strong> Innerhalb von 24 Stunden sende ich dir eine persönliche E-Mail mit allen weiteren Informationen.</p>
-                <p><strong>3. Terminvereinbarung:</strong> Wir vereinbaren gemeinsam die Termine für deine 5 Sessions – flexibel nach deinem Zeitplan.</p>
-                <p><strong>4. Los geht's:</strong> Wir starten mit Session 1 und gehen Schritt für Schritt deinen Weg in die Krypto-Welt!</p>
+
+            <!-- WAS PASSIERT NACH DER BUCHUNG -->
+            <div class="info-block">
+                <h2>Was passiert nach der Buchung?</h2>
+                <ul>
+                    <li><strong>1. Zahlungsbestätigung</strong>Du erhältst sofort eine Bestätigung per E-Mail.</li>
+                    <li><strong>2. Willkommens-E-Mail</strong>Innerhalb von 24 Stunden sende ich dir eine persönliche E-Mail mit allen weiteren Informationen.</li>
+                    <li><strong>3. Terminvereinbarung</strong>Wir vereinbaren gemeinsam die Termine für deine 5 Sessions – flexibel nach deinem Zeitplan.</li>
+                    <li><strong>4. Los geht's!</strong>Wir starten mit Session 1 und gehen Schritt für Schritt deinen Weg in die Krypto-Welt.</li>
+                </ul>
             </div>
-            
-            <!-- ALTERNATIVE -->
-            <div style="text-align: center; margin: 40px 0; padding: 30px; background: #f9f9f9; border-radius: 12px;">
-                <p style="font-size: 1.1em; color: #666; margin-bottom: 15px;">
-                    <strong>Noch Fragen oder unsicher?</strong>
-                </p>
-                <p style="font-size: 1em; color: #666; margin-bottom: 20px;">
-                    Kein Problem! Buche zuerst ein kostenloses Erstgespräch,<br>
-                    damit wir uns kennenlernen und all deine Fragen klären können.
-                </p>
-                <a href="index.html#call" 
-                   style="display: inline-block;
-                          background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%);
-                          color: white;
-                          padding: 15px 35px;
-                          border-radius: 10px;
-                          text-decoration: none;
-                          font-weight: 600;
-                          transition: all 0.3s;">
-                    📞 Kostenloses Erstgespräch buchen
-                </a>
+
+            <!-- NOCH FRAGEN -->
+            <div style="text-align:center; margin:32px 0; padding:28px; background:var(--cream2); border-radius:var(--radius-md);">
+                <p style="font-size:1em; font-weight:600; color:var(--gold-dk); margin-bottom:10px;">Noch Fragen oder unsicher?</p>
+                <p style="font-size:.95em; font-weight:300; color:var(--muted); margin-bottom:20px;">Kein Problem! Buche zuerst ein kostenloses Erstgespräch, damit wir uns kennenlernen und all deine Fragen klären können.</p>
+                <a href="index.html#call" class="buchung-pay-btn" style="font-size:.88em; padding:13px 28px;">📞 Kostenloses Erstgespräch buchen</a>
             </div>
-            
-            <!-- OPTIONAL SESSIONS 
-            <div style="text-align: center; padding: 25px; background: #F5E6D3; border-radius: 12px; margin: 30px 0;">
-                <p style="font-size: 1.1em; color: #8B7355; font-weight: 600; margin-bottom: 10px;">
-                    Optional: Folge-Sessions
-                </p>
-                <p style="font-size: 1em; color: #666;">
-                    Nach Abschluss der 5 Basis-Sessions kannst du bei Bedarf<br>
-                    einzelne Folge-Sessions à CHF 180.– buchen.
-                </p>
-            </div>-->
-            
-            <!-- BACK LINK -->
-            <div class="back-link">
-                <p>
-                    <a href="index.html">← Zurück zur Hauptseite</a>
-                </p>
+
+            <!-- BACK -->
+            <div style="text-align:center; padding-top:24px; border-top:1px solid var(--border);">
+                <a href="index.html" class="back-btn">← Zurück zur Hauptseite</a>
             </div>
-            
+
         </div>
     </div>
 </body>

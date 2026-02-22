@@ -3,422 +3,296 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gruppen-Coaching - Let's go free</title>
+    <title>Gruppen-Coaching – Let's go free</title>
+    <link rel="stylesheet" href="homepage-styles.css">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.7; 
-            color: #333; 
-            background: linear-gradient(135deg, #8B7355 0%, #A0826D 50%, #C9A882 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container { 
-            max-width: 900px; 
-            margin: 0 auto; 
-            background: white;
-            border-radius: 20px;
-            overflow: hidden;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        
-        .hero { 
-            background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%);
-            color: white;
-            padding: 60px 40px;
-            text-align: center;
-        }
-        
-        .hero h1 { 
-            font-size: 2.8em; 
-            margin-bottom: 20px; 
-            line-height: 1.2;
-        }
-        
-        .hero p { 
-            font-size: 1.3em; 
-            margin-bottom: 40px;
-            opacity: 0.95;
-        }
-        
-        .intro {
-            padding: 40px 40px;
-        }
-        
-        .intro h2 {
-            font-size: 2em;
-            line-height: 1.2em;
-            color: #8B7355;
-            margin-bottom: 30px;
-        }
-        
-        .intro p {
-            font-size: 1.1em;
-            margin-bottom: 20px;
-            line-height: 1.8;
-        }
-        
+        /* Gruppen-Coaching spezifisch */
+        body { overflow: auto; background: linear-gradient(145deg, var(--dark2) 0%, var(--dark3) 40%, #3a2e1a 100%); min-height: 100vh; padding: 0; display: block; }
+        .container { max-width: 960px; }
+
         .courses-section {
-            padding: 40px 40px;
-            background: linear-gradient(135deg, #F5E6D3 0%, #E8D4BA 100%);
+            background: var(--cream3);
+            padding: 50px 50px;
         }
-        
+        .courses-section h2 {
+            text-align: center;
+            margin-bottom: 36px;
+            font-size: 1.8em;
+            color: var(--gold-dk);
+        }
         .courses-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 30px;
-            margin-top: 40px;
+            gap: 26px;
+            margin-top: 20px;
         }
-        
         .course-card {
-            background: white;
-            border-radius: 12px;
+            background: var(--white);
+            border-radius: var(--radius-md);
             overflow: hidden;
-            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
-            transition: all 0.3s;
+            box-shadow: var(--shadow-sm);
+            transition: all .25s ease;
         }
-        
         .course-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-md);
         }
-        
         .course-header {
-            background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%);
-            color: white;
-            padding: 30px 25px;
+            background: var(--dark2);
+            color: var(--cream);
+            padding: 26px 22px;
             position: relative;
+            border-top: 3px solid var(--gold);
         }
-        
         .course-number {
-            font-size: 0.9em;
-            opacity: 0.9;
-            margin-bottom: 5px;
-            letter-spacing: 1px;
+            font-size: .82em;
+            color: var(--gold);
+            font-family: 'Courier New', monospace;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            margin-bottom: 6px;
         }
-        
         .course-title {
-            font-size: 1.5em;
+            font-size: 1.3em;
             font-weight: 700;
-            margin-bottom: 10px;
+            color: var(--cream);
+            margin-bottom: 8px;
         }
-        
         .course-date {
-            font-size: 0.95em;
-            opacity: 0.95;
+            font-size: .88em;
+            color: rgba(245,230,211,.75);
+            font-weight: 300;
+            line-height: 1.65;
         }
-        
         .availability {
-            background: rgba(255, 255, 255, 0.2);
-            padding: 12px 15px;
-            margin-top: 15px;
-            border-radius: 8px;
+            background: rgba(201,168,130,.12);
+            border: 1px solid rgba(201,168,130,.2);
+            padding: 10px 14px;
+            margin-top: 14px;
+            border-radius: var(--radius-sm);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        
-        .spots-left {
-            font-weight: 600;
-            font-size: 1em;
-        }
-        
-        .spots-indicator {
-            display: flex;
-            gap: 5px;
-        }
-        
-        .spot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.3);
-            transition: background 0.3s;
-        }
-        
-        .spot.filled {
-            background: rgba(255, 255, 255, 0.9);
-        }
-        
-        .course-body {
-            padding: 25px 25px;
-        }
-        
-        .course-footer {
-            padding: 0 25px 25px;
-        }
-        
+        .spots-left { font-weight: 600; font-size: .95em; color: var(--cream); }
+        .spots-indicator { display: flex; gap: 5px; }
+        .spot { width: 11px; height: 11px; border-radius: 50%; background: rgba(201,168,130,.25); transition: background .3s; }
+        .spot.filled { background: var(--gold); }
+        .course-body { padding: 22px; }
+        .course-footer { padding: 0 22px 22px; }
         .register-btn {
             display: block;
             width: 100%;
-            background: #8B7355;
-            color: white;
-            padding: 18px;
-            border: none;
-            border-radius: 10px;
-            font-size: 1.1em;
+            background: var(--dark2);
+            color: var(--gold);
+            border: 1px solid var(--gold-d);
+            padding: 15px;
+            border-radius: var(--radius-sm);
+            font-size: .95em;
             font-weight: 700;
+            font-family: 'Courier New', monospace;
+            letter-spacing: .05em;
+            text-transform: uppercase;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all .25s ease;
         }
-        
-        .register-btn:hover {
-            background: #6B5745;
+        .register-btn:hover:not(:disabled) {
+            background: var(--gold-dk);
+            color: var(--cream);
+            border-color: var(--gold);
             transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
         }
-        
         .register-btn:disabled {
-            background: #ccc;
+            background: #555;
+            border-color: #666;
+            color: #999;
             cursor: not-allowed;
             transform: none;
         }
-        
-        .register-btn:disabled:hover {
-            box-shadow: none;
-        }
-        
+        /* MODAL */
         .modal {
             display: none;
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,.7);
             z-index: 1000;
-            backdrop-filter: blur(5px);
+            backdrop-filter: blur(4px);
         }
-        
-        .modal.active {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        
+        .modal.active { display: flex; align-items: center; justify-content: center; padding: 20px; }
         .modal-content {
-            background: white;
+            background: var(--white);
             padding: 40px;
-            border-radius: 15px;
-            max-width: 550px;
+            border-radius: var(--radius-lg);
+            max-width: 540px;
             width: 100%;
             max-height: 90vh;
             overflow-y: auto;
             position: relative;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            box-shadow: var(--shadow-lg);
+            border-top: 4px solid var(--gold);
         }
-        
         .close-modal {
             position: absolute;
-            top: 15px;
-            right: 15px;
+            top: 14px; right: 18px;
             background: none;
             border: none;
-            font-size: 2em;
+            font-size: 1.8em;
             cursor: pointer;
-            color: #999;
+            color: var(--muted);
             line-height: 1;
-            transition: color 0.3s;
+            transition: color .2s;
         }
-        
-        .close-modal:hover {
-            color: #333;
-        }
-        
-        .modal h2 {
-            font-size: 2em;
-            color: #8B7355;
-            margin-bottom: 10px;
-        }
-        
-        .modal h3 {
-            font-size: 1.2em;
-            color: #666;
-            margin-bottom: 30px;
-            font-weight: 500;
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            color: #555;
-            font-weight: 500;
-        }
-        
+        .close-modal:hover { color: var(--gold-dk); }
+        .modal h2 { font-size: 1.7em; color: var(--gold-dk); margin-bottom: 6px; }
+        .modal h3 { font-size: 1em; color: var(--muted); margin-bottom: 24px; font-weight: 300; }
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; margin-bottom: 7px; color: var(--text); font-weight: 500; font-size: .95em; }
         .form-group input,
         .form-group textarea {
             width: 100%;
-            padding: 15px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1em;
-            background: #f9f9f9;
-            transition: all 0.3s;
+            padding: 13px 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: .98em;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 300;
+            background: var(--cream2);
+            color: var(--text);
+            transition: border-color .2s, background .2s;
         }
-        
         .form-group input:focus,
         .form-group textarea:focus {
             outline: none;
-            background: #fff;
-            box-shadow: 0 0 0 2px #8B7355;
+            border-color: var(--gold-d);
+            background: var(--white);
         }
-        
-        .form-group textarea {
-            resize: vertical;
-            min-height: 100px;
-            font-family: inherit;
-            line-height: 1.5;
-        }
-        
+        .form-group textarea { resize: vertical; min-height: 90px; line-height: 1.6; }
         .submit-btn {
             width: 100%;
-            background: #8B7355;
-            color: white;
-            padding: 18px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1.2em;
+            background: var(--dark2);
+            color: var(--gold);
+            border: 1px solid var(--gold-d);
+            padding: 15px;
+            border-radius: var(--radius-sm);
+            font-size: 1em;
             font-weight: 700;
+            font-family: 'Courier New', monospace;
+            letter-spacing: .05em;
+            text-transform: uppercase;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all .25s ease;
         }
-        
-        .submit-btn:hover {
-            background: #6B5745;
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-        }
-        
-        .submit-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        
+        .submit-btn:hover:not(:disabled) { background: var(--gold-dk); color: var(--cream); }
+        .submit-btn:disabled { background: #ccc; cursor: not-allowed; }
         .success-message {
             display: none;
-            background: #d4edda;
-            color: #155724;
-            padding: 20px;
-            border-radius: 10px;
-            margin-top: 20px;
+            background: rgba(76,175,80,.1);
+            border: 1px solid #4caf50;
+            color: #2e7d32;
+            padding: 18px;
+            border-radius: var(--radius-sm);
+            margin-top: 18px;
             text-align: center;
+            font-weight: 600;
         }
-        
         @media (max-width: 768px) {
-            body { padding: 10px; }
-            .hero { padding: 40px 25px; }
-            .hero h1 { font-size: 2em; }
-            .hero p { font-size: 1.1em; }
-            .intro { padding: 40px 25px; }
-            .intro h2 { font-size: 1.6em; }
-            .courses-section { padding: 40px 25px; }
+            .courses-section { padding: 36px 24px; }
             .courses-grid { grid-template-columns: 1fr; }
-            .modal-content { padding: 35px 25px; }
+            .modal-content { padding: 32px 22px; }
         }
     </style>
 </head>
 <body>
     <div class="container">
+
+        <!-- HERO -->
         <div class="hero">
-            <h1>Let's go free<br><span style="display: block; margin-top: 15px;">Gruppen-Coaching<br>DeFi & Krypto</span></h1>
-            <p>Gemeinsam in die Welt der dezentralen Finanzen – in kleinen Gruppen mit maximal 7 Teilnehmern</p>
+            <h1>Gruppen-Coaching<br>DeFi &amp; Krypto</h1>
+            <p class="subtitle">Gemeinsam in die Welt der dezentralen Finanzen – in kleinen Gruppen mit maximal 7 Teilnehmern</p>
         </div>
-        
-        <div class="intro">
+
+        <!-- INTRO -->
+        <div class="section section-white">
+            <span class="section-label">Das Gruppen-Coaching</span>
             <h2>Lerne DeFi in der Gruppe</h2>
             <p>In meinem Gruppen-Coaching begleite ich dich und maximal 6 weitere Teilnehmer durch die spannende Welt von DeFi und Krypto. In 4 lockeren Sessions begleite ich dich und deine Gruppe durch die DeFi-Welt. Wir nehmen uns Zeit für deine Fragen, arbeiten praktisch am Bildschirm und du machst deine ersten eigenen Schritte – ganz ohne Zeitdruck.</p>
             <p>Der Vorteil: Du profitierst nicht nur von meiner Erfahrung, sondern auch vom Austausch mit anderen Teilnehmern. Gemeinsam lernt es sich leichter!</p>
-            
-            <div style="margin: 35px 0; padding: 30px; background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%); border-radius: 15px; text-align: center; box-shadow: 0 5px 20px rgba(139, 115, 85, 0.3);">
-                <p style="font-size: 2.5em; color: white; font-weight: 700; margin-bottom: 15px; line-height: 1.2;">Preis: CHF 280.–</p>
-                <p style="font-size: 1.1em; color: white; opacity: 0.95; line-height: 1.6;">Wie möchtest du bezahlen? Bitte bei Anmeldung angeben.<br>Bevorzugt wird 1. Twint | 2. Krypto | 3. Bankzahlung</p>
+
+            <!-- PREIS -->
+            <div style="margin:32px 0; background:var(--dark2); border-radius:var(--radius-md); padding:32px; text-align:center; border:1px solid rgba(201,168,130,.2); border-top:4px solid var(--gold);">
+                <p style="font-size:2.6em; color:var(--gold); font-weight:700; margin-bottom:12px; line-height:1.1;">CHF 280.–</p>
+                <p style="font-size:.98em; color:rgba(245,230,211,.8); font-weight:300; line-height:1.7;">Wie möchtest du bezahlen? Bitte bei Anmeldung angeben.<br>Bevorzugt wird 1. Twint &nbsp;|&nbsp; 2. Krypto &nbsp;|&nbsp; 3. Bankzahlung</p>
             </div>
-            
-            <p style="margin-top: 20px; padding: 20px; background: #F5E6D3; border-radius: 10px; border-left: 4px solid #8B7355;">
-                <strong>Wichtige Hinweise:</strong>
-                <ul style="margin-top: 10px; margin-left: 20px; line-height: 1.8;">
-                    <li>Die unten aufgeführten Inhalte sind nicht fix an eine bestimmte Session gebunden. Je nach Tempo und Fragen der Gruppe passen wir die Reihenfolge flexibel an – du bestimmst das Lerntempo mit.</li>
-                    <li>Das Coaching findet über Zoom statt. Der Zoom-Link wird dir nach der Anmeldung bekannt gegeben.</li>
-                    <li>Die Calls werden aufgezeichnet und den Teilnehmern online zur Verfügung gestellt.</li>
+
+            <div class="highlight-box">
+                <p><strong>Wichtige Hinweise:</strong></p>
+                <ul style="list-style:disc; padding-left:22px; margin-top:10px;">
+                    <li style="margin-bottom:8px; font-size:.98em; font-weight:300; line-height:1.7;">Die unten aufgeführten Inhalte sind nicht fix an eine bestimmte Session gebunden. Je nach Tempo und Fragen der Gruppe passen wir die Reihenfolge flexibel an – du bestimmst das Lerntempo mit.</li>
+                    <li style="margin-bottom:8px; font-size:.98em; font-weight:300; line-height:1.7;">Das Coaching findet über Zoom statt. Der Zoom-Link wird dir nach der Anmeldung bekannt gegeben.</li>
+                    <li style="font-size:.98em; font-weight:300; line-height:1.7;">Die Calls werden aufgezeichnet und den Teilnehmern online zur Verfügung gestellt.</li>
                 </ul>
-            </p>
-            <p style="margin-top: 15px; padding: 20px; background: #F5E6D3; border-radius: 10px; border-left: 4px solid #8B7355;">
-                <strong>Flexibilität:</strong> Solltest du an einem Abend nicht teilnehmen können, kannst du diesen nach Absprache an einem anderen Kurs nachholen (sollte die Ausnahme sein, da die Sessions aufeinander aufbauen).
-            </p>
+            </div>
+            <div class="highlight-box" style="margin-top:14px;">
+                <p><strong>Flexibilität:</strong> Solltest du an einem Abend nicht teilnehmen können, kannst du diesen nach Absprache an einem anderen Kurs nachholen (sollte die Ausnahme sein, da die Sessions aufeinander aufbauen).</p>
+            </div>
         </div>
-        
+
+        <!-- KURSE -->
         <div class="courses-section">
-            <h2 style="text-align: center; margin-bottom: 40px; color: #8B7355;">Aktuelle Kurse</h2>
+            <h2>Aktuelle Kurse</h2>
             <div class="courses-grid" id="coursesGrid">
                 <!-- Dynamisch gefüllt -->
             </div>
         </div>
 
-        <div class="footer" style="padding: 40px; text-align: center; background: #f5f5f5; margin-top: 60px;">
-            <p style="font-size: 1.1em; color: #8B7355; font-weight: 600; margin-bottom: 20px;">Finanzielle Selbstbestimmung beginnt mit dem ersten Schritt.<br>Let's go free! 🚀</p>
-            <p style="margin-bottom: 25px;">
-                <a href="https://www.letsgofree.me" style="color: #8B7355; text-decoration: none; font-size: 1.05em; font-weight: 500; border-bottom: 2px solid #8B7355; padding-bottom: 2px;">← Zurück zur Hauptseite</a>
-            </p>
-            
-            <div class="disclaimer" style="max-width: 700px; margin: 30px auto; padding: 25px; background: #fff3cd; border-radius: 10px; border-left: 4px solid #ffc107; text-align: left; font-size: 0.95em;">
-                <p style="font-weight: 600; margin-bottom: 10px; color: #333;">⚠️ DISCLAIMER / HAFTUNGSAUSSCHLUSS</p>
-                <p style="margin-top: 10px; color: #333; line-height: 1.6;">Das angebotene Coaching dient ausschliesslich zu Informations- und Bildungszwecken.<br>Ich erteile keine Finanz-, Anlage-, Steuer- oder Rechtsberatung im Sinne geltender Gesetze.</p>
+        <!-- FOOTER -->
+        <div class="footer">
+            <p class="footer-tagline">Finanzielle Selbstbestimmung beginnt mit dem ersten Schritt.<br>Let's go free! 🚀</p>
+            <div style="margin-bottom:24px;">
+                <a href="https://www.letsgofree.me" style="color:var(--gold); text-decoration:none; font-size:.95em; font-weight:500; border-bottom:1px solid rgba(201,168,130,.4); padding-bottom:2px;">← Zurück zur Hauptseite</a>
             </div>
-            
-            <div style="margin-top: 25px; font-size: 0.9em; color: #8B7355;">
-                <p style="text-align: center; color: #6E4A2E;">Chris Müller</p>
+            <div class="disclaimer">
+                <p><strong>⚠️ Disclaimer / Haftungsausschluss</strong></p>
+                <p style="margin-top:8px;">Das angebotene Coaching dient ausschliesslich zu Informations- und Bildungszwecken. Ich erteile keine Finanz-, Anlage-, Steuer- oder Rechtsberatung im Sinne geltender Gesetze.</p>
             </div>
+            <div class="legal-links"><p>Chris Müller</p></div>
         </div>
     </div>
-    
-    <!-- Registration Modal -->
+
+    <!-- MODAL -->
     <div class="modal" id="registrationModal">
         <div class="modal-content">
             <button class="close-modal" onclick="closeModal()">×</button>
             <h2>Anmeldung</h2>
-            <h3 id="modalCourseTitle">Kurs - Anmeldung</h3>
-            
+            <h3 id="modalCourseTitle">Kurs – Anmeldung</h3>
             <form id="registrationForm">
                 <input type="hidden" name="course" id="courseInput">
-                
                 <div class="form-group">
                     <label for="name">Dein Name *</label>
                     <input type="text" id="name" name="name" required>
                 </div>
-                
                 <div class="form-group">
                     <label for="email">Deine E-Mail-Adresse *</label>
                     <input type="email" id="email" name="email" required>
                 </div>
-                
                 <div class="form-group">
                     <label for="phone">Telefonnummer (optional)</label>
                     <input type="tel" id="phone" name="phone">
                 </div>
-                
                 <div class="form-group">
                     <label for="message">Was möchtest du noch mitteilen?</label>
                     <textarea id="message" name="message" placeholder="Hast du bereits Erfahrung mit Krypto? Gibt es spezielle Themen, die dich interessieren?"></textarea>
                 </div>
-                
                 <button type="submit" class="submit-btn" id="submitBtn">Verbindlich anmelden</button>
             </form>
-            
             <div class="success-message" id="successMessage">
                 ✓ Vielen Dank für deine Anmeldung! Ich melde mich in Kürze bei dir.
             </div>
         </div>
     </div>
 
-    <script type="module">
+<script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
         import { getFirestore, collection, getDocs, onSnapshot, doc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
