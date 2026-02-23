@@ -73,7 +73,7 @@
       <span style="font-size:20px">🔄</span>
       <div class="update-text">
         <strong>Update verfügbar!</strong><br>
-        <span id="update-message">Technisches Update, keine weitere Aktion notwendig.</span>
+        <span id="update-message"></span>
       </div>
       <button class="btn-update" onclick="applyUpdate()">Laden</button>
     </div>
@@ -92,7 +92,7 @@
         <div class="meta-item"><span class="meta-value">Inklusive</span><span class="meta-label">Paket</span></div>
         <div class="meta-item"><span class="meta-value">Sofort</span><span class="meta-label">Verfügbar</span></div>
       </div>
-      <a href="./dateien/krypto-einsteiger-guide.pdf" class="btn-primary" onclick="openPdf(event)">
+      <a href="./ebook/ebook-kap1.html" class="btn-primary" onclick="openViewer('./ebook/ebook-kap1.html', 'Krypto-Einsteiger-Guide'); return false;">
         <span>📖</span> E-Book öffnen
       </a>
       <button class="btn-secondary" onclick="downloadPdf()" style="margin-top: 12px;">
@@ -100,7 +100,25 @@
       </button>
     </div>
 
-    <p class="section-label">🎁 Gratis-Materialien</p>
+    <p class="section-label">⭐ Bonus-Material</p>
+    <div class="ebook-card">
+      <span class="ebook-tag">✦ Inklusive im Paket</span>
+      <h2 class="ebook-title">DeFi-Sicherheits-Checkliste</h2>
+      <p class="ebook-desc">Die vollständige Checkliste für deinen sicheren DeFi-Einstieg – alle Phasen, alle Schritte, kein Detail ausgelassen.</p>
+      <a href="./dateien/bonus-checkliste.html" class="btn-primary" onclick="openViewer('./dateien/bonus-checkliste.html', 'DeFi-Sicherheits-Checkliste'); return false;">
+        <span>✅</span> Checkliste öffnen
+      </a>
+    </div>
+    <div class="ebook-card">
+      <span class="ebook-tag">✦ Inklusive im Paket</span>
+      <h2 class="ebook-title">Meine Empfehlungen</h2>
+      <p class="ebook-desc">Brücken, Krypto Debit-Karten und mehr – alles erprobt und täglich im Einsatz.</p>
+      <a href="./dateien/bonus-empfehlungen.html" class="btn-primary" onclick="openViewer('./dateien/bonus-empfehlungen.html', 'Meine Empfehlungen'); return false;">
+        <span>⭐</span> Empfehlungen öffnen
+      </a>
+    </div>
+
+    <p class="section-label">🎁 Freebies</p>
     <div class="freebies-grid" id="freebies-container"></div>
 
     <p class="version-row" id="version-row"></p>
@@ -132,7 +150,6 @@
   </div>
   <iframe id="pdf-frame" src=""></iframe>
 </div>
-
 
 
 
@@ -222,15 +239,16 @@ const APP_VERSION_KEY = 'lgf_app_version';
 const FREEBIES_KEY    = 'lgf_freebies';
 const UPDATE_KEY      = 'lgf_update_available';
 const ACCESS_KEY      = 'lgf_access_granted';
-const CURRENT_VERSION = '1.0.0';
+const CURRENT_VERSION = '1.0.6';
+const UPDATE_MESSAGEx = 'Technisches Update, keine weitere Aktion notwendig.';
+const UPDATE_MESSAGE  = 'Das eBook ist sowohl als Website wie auch als PDF verfügbar. Neu: Bonusmaterial';
 
 const DEFAULT_FREEBIES = [
   { icon:'📖', name:'DeFi-Glossar',                    desc:'62 wichtige Begriffe klar erklärt – perfekt für Einsteiger',           url:'./dateien/freebie-defi-glossar.html',             addedAt: 1 },
-  { icon:'🛡️', name:'DeFi-Sicherheits-Checkliste',     desc:'Die 5 wichtigsten Phasen für deinen sicheren DeFi-Einstieg',          url:'./dateien/freebie-checkliste.html',                addedAt: 1 },
+  
   { icon:'📋', name:'Seed Phrase Backup-Sheet',          desc:'Sicher notieren und verwahren – dein Wiederherstellungsblatt',         url:'./dateien/freebie-datensicherungsblatt.html',      addedAt: 1 },
   { icon:'🔐', name:'Seed Phrase Backup (Split)',         desc:'Erweiterte Methode: Split-Backup für maximale Sicherheit',             url:'./dateien/freebie-datensicherungsblatt_split.html',addedAt: 1 },
-  { icon:'⚖️', name:'Wallet-Vergleichstabelle',          desc:'Welches Wallet passt zu mir? Alle Optionen auf einen Blick',           url:'./dateien/freebie-wallet-vergleich.html',          addedAt: 1 },
-  { icon:'⭐', name:'Meine Empfehlungen',                desc:'Brücken, Krypto Debit-Karten und mehr – alles erprobt und täglich im Einsatz.',    url:'./dateien/freebie-empfehlungen.html',              addedAt: 1 }
+  { icon:'⚖️', name:'Wallet-Vergleichstabelle',          desc:'Welches Wallet passt zu mir? Alle Optionen auf einen Blick',           url:'./dateien/freebie-wallet-vergleich.html',          addedAt: 1 }
 ];
 
 // ═══════════════════════════════════════════════
@@ -409,6 +427,7 @@ function checkVersion() {
   const updatePending = localStorage.getItem(UPDATE_KEY) === 'true';
   if (!stored) { localStorage.setItem(APP_VERSION_KEY, CURRENT_VERSION); return; }
   if (stored !== CURRENT_VERSION || updatePending) {
+    document.getElementById('update-message').textContent = UPDATE_MESSAGE;
     document.getElementById('update-banner').classList.add('show');
   }
 }
@@ -436,6 +455,7 @@ function registerSW() {
   if (!('serviceWorker' in navigator)) return;
   navigator.serviceWorker.register('/sw.js').then(reg => {
     reg.addEventListener('updatefound', () => {
+      document.getElementById('update-message').textContent = UPDATE_MESSAGE;
       document.getElementById('update-banner').classList.add('show');
     });
   });
@@ -579,7 +599,7 @@ function escHtml(s) {
 // ═══════════════════════════════════════════════
 function openInBrowser(e) {
   e.preventDefault();
-  const url = 'https://app.letsgofree.me/dateien/krypto-einsteiger-guide.pdf';
+  const url = 'https://app.letsgofree.me/ebook/krypto-einsteiger-guide.pdf';
   // Auf iOS: App verlassen und in Safari öffnen
   window.location.href = url;
   setTimeout(() => {
@@ -599,17 +619,17 @@ function openPdf(e) {
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
   if (isIos) {
     // iOS: direkt öffnen, Safari zeigt Teilen/Drucken-Button
-    window.location.href = './dateien/krypto-einsteiger-guide.pdf';
+    window.location.href = './ebook/krypto-einsteiger-guide.pdf';
   } else if (/android/i.test(navigator.userAgent)) {
     // Android: iframe-Viewer
     const frame = document.getElementById('pdf-frame');
     const viewer = document.getElementById('screen-pdf');
-    frame.src = './dateien/krypto-einsteiger-guide.pdf';
+    frame.src = './ebook/krypto-einsteiger-guide.pdf';
     viewer.style.display = 'flex';
     viewer.classList.add('active');
   } else {
     // Mac/Desktop: neuer Tab
-    window.open('./dateien/krypto-einsteiger-guide.pdf', '_blank');
+    window.open('./ebook/krypto-einsteiger-guide.pdf', '_blank');
   }
 }
 
@@ -627,7 +647,7 @@ function printPdf() {
     frame.contentWindow.print();
   } catch(e) {
     // Fallback: open in new tab for printing
-    window.open('./dateien/krypto-einsteiger-guide.pdf', '_blank');
+    window.open('./ebook/krypto-einsteiger-guide.pdf', '_blank');
   }
 }
 
@@ -635,7 +655,7 @@ function printPdf() {
 //  PDF DOWNLOAD (iOS-kompatibel via Blob / Share API)
 // ═══════════════════════════════════════════════
 async function downloadPdf() {
-  const url = './dateien/krypto-einsteiger-guide.pdf';
+  const url = './ebook/krypto-einsteiger-guide.pdf';
   const filename = 'Krypto-Einsteiger-Guide.pdf';
   try {
     const response = await fetch(url);
