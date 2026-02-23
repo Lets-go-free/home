@@ -1,460 +1,436 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gas Fee Tracker Anleitung</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gas Fee Guide · Let's go free</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&display=swap" rel="stylesheet">
+  <style>
+/* ═══════════════════════════════════════════════════════════════════════
+   SHARED FREEBIE CSS – Let's go free
+   Gleiche Variablen/Design wie bonus-empfehlungen.html
+   ═══════════════════════════════════════════════════════════════════════ */
+:root {
+  --gold:    #C9A882;
+  --gold-d:  #8B7355;
+  --gold-dk: #4a3d2a;
+  --dark:    #0f0d0a;
+  --dark2:   #1a1612;
+  --dark3:   #2a2218;
+  --cream:   #F5E6D3;
+  --cream2:  #FAF0E6;
+  --bg:      #f4ede4;
+  --body:    #3a2d20;
+  --muted:   #7a6a58;
+  --border:  #E2D0BC;
+  --white:   #ffffff;
+}
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #8B7355 0%, #5a4636 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            padding: 40px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-        }
+body {
+  font-family: 'Poppins', 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--body);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
 
-        h1 {
-            color: #5a4636;
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            text-align: center;
-            border-bottom: 3px solid #8B7355;
-            padding-bottom: 15px;
-        }
+/* ── Back bar ── */
+.back-bar {
+  position: sticky; top: 0; z-index: 999;
+  display: flex; align-items: center; gap: 10px;
+  background: var(--gold-dk);
+  border-bottom: 1px solid rgba(201,168,130,.3);
+  padding: 10px 16px;
+}
+.back-bar button { background: none; border: none; color: var(--gold); font-size: 24px; cursor: pointer; padding: 0 6px; line-height: 1; }
+.back-bar span { font-size: 13px; color: #b89a76; font-weight: 500; }
 
-        .subtitle {
-            text-align: center;
-            color: #5a4636;
-            font-size: 1.2em;
-            margin-bottom: 30px;
-            font-weight: 500;
-        }
+/* ── Header ── */
+header {
+  background: var(--gold-dk);
+  color: var(--cream);
+  text-align: center;
+  padding: 32px 20px 26px;
+  border-top: 4px solid var(--gold);
+  border-bottom: 3px solid var(--gold-d);
+  position: relative;
+}
+header::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+  background: linear-gradient(to bottom, var(--gold-d) 0%, var(--gold) 50%, var(--gold-d) 100%);
+}
+header .brand { font-size: 11px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--gold); margin-bottom: 6px; }
+header h1 { font-size: clamp(1.3rem, 4vw, 1.8rem); font-weight: 700; color: var(--cream2); line-height: 1.3; margin-bottom: 6px; }
+header .sub { font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65); font-style: italic; }
 
-        .nav-tabs {
-            display: flex;
-            gap: 10px;
-            margin: 30px 0;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
+/* ── Container ── */
+.container { max-width: 860px; margin: 0 auto; padding: 36px 20px 64px; }
 
-        .nav-tab {
-            background: #F5E6D3;
-            color: #5a4636;
-            border: 2px solid #8B7355;
-            padding: 12px 25px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
+/* ── Section label (PDF phase-bar style) ── */
+.section-label {
+  display: inline-block;
+  font-size: .72rem; font-weight: 600; letter-spacing: .13em; text-transform: uppercase;
+  background: linear-gradient(90deg, var(--gold-dk), var(--gold-d));
+  color: #d4b896;
+  padding: 5px 14px 5px 10px; border-radius: 4px;
+  margin-bottom: 16px; margin-top: 24px;
+}
 
-        .nav-tab:hover {
-            background: #8B7355;
-            color: white;
-        }
+/* ── Cards ── */
+.card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--gold-d);
+  border-radius: 0 0 12px 12px;
+  padding: 22px 24px; margin-bottom: 20px;
+  box-shadow: 0 2px 12px rgba(74,61,42,.07);
+  transition: box-shadow .2s, transform .2s;
+}
+.card:hover { box-shadow: 0 6px 24px rgba(74,61,42,.13); transform: translateY(-2px); }
 
-        .nav-tab.active {
-            background: #8B7355;
-            color: white;
-        }
+/* ── Info/warn/tip boxes ── */
+.info-box {
+  background: var(--cream2);
+  border-left: 4px solid var(--gold);
+  border-radius: 0 10px 10px 0;
+  padding: 16px 20px; margin: 16px 0;
+}
+.info-box h4 { font-size: .9rem; font-weight: 600; color: var(--gold-dk); margin-bottom: 8px; }
+.info-box p, .info-box li { font-size: .88rem; font-weight: 300; color: var(--body); line-height: 1.7; }
+.info-box ul { padding-left: 18px; margin-top: 6px; }
 
-        .content-section {
-            display: none;
-            animation: fadeIn 0.5s;
-        }
+.warn-box {
+  background: rgba(224,112,112,.06);
+  border-left: 4px solid #c07070;
+  border-radius: 0 10px 10px 0;
+  padding: 14px 20px; margin: 14px 0;
+}
+.warn-box p { font-size: .86rem; color: #8a3030; }
+.warn-box strong { color: #7a2020; }
 
-        .content-section.active {
-            display: block;
-        }
+.tip-box {
+  background: rgba(201,168,130,.08);
+  border-left: 4px solid var(--gold-d);
+  border-radius: 0 10px 10px 0;
+  padding: 14px 20px; margin: 14px 0;
+}
+.tip-box p { font-size: .86rem; color: var(--body); font-weight: 300; }
+.tip-box strong { color: var(--gold-dk); }
 
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
+/* ── HL Box (PDF dark style) ── */
+.hl-box {
+  background: var(--dark);
+  border-left: 4px solid var(--gold);
+  border-radius: 0 10px 10px 0;
+  padding: 16px 20px; margin: 20px 0;
+}
+.hl-box h3, .hl-box h4 { font-size: .9rem; font-weight: 700; color: var(--gold); margin-bottom: 8px; }
+.hl-box p, .hl-box li { font-size: .86rem; font-weight: 300; color: rgba(201,168,130,.8); line-height: 1.7; }
+.hl-box ul { padding-left: 18px; margin-top: 6px; }
 
-        h2 {
-            color: #5a4636;
-            font-size: 2em;
-            margin: 30px 0 20px;
-            border-left: 5px solid #8B7355;
-            padding-left: 15px;
-        }
+/* ── Tags / Feature badges (PDF mono style) ── */
+.tag {
+  display: inline-block;
+  font-size: .72rem; font-weight: 500; letter-spacing: .06em;
+  font-family: 'Courier New', monospace;
+  background: var(--dark3); color: var(--gold);
+  padding: 3px 10px; border-radius: 4px; margin: 2px;
+}
+.tag.yes { background: rgba(80,120,80,.4); color: #a0d0a0; }
+.tag.no  { background: rgba(120,60,60,.35); color: #d09090; }
+.tag.partial { background: rgba(120,100,40,.4); color: #d4c070; }
 
-        h3 {
-            color: #5a4636;
-            font-size: 1.5em;
-            margin: 25px 0 15px;
-        }
+/* ── Buttons ── */
+.btn {
+  display: inline-block;
+  background: var(--dark); color: var(--gold);
+  border: 1px solid var(--gold-d);
+  padding: 10px 22px; border-radius: 6px;
+  text-decoration: none; cursor: pointer;
+  font-family: 'Poppins', sans-serif; font-size: .85rem; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase;
+  font-family: 'Courier New', monospace;
+  transition: background .2s, color .2s;
+}
+.btn:hover { background: var(--gold-dk); color: var(--cream); border-color: var(--gold); }
+.btn.active { background: var(--gold-dk); color: var(--cream); }
 
-        .info-box {
-            background: #F5E6D3;
-            border-left: 5px solid #8B7355;
-            padding: 20px;
-            margin: 20px 0;
-            border-radius: 8px;
-        }
+/* ── Search ── */
+.search-box { margin: 20px 0; }
+.search-input {
+  width: 100%; padding: 12px 16px;
+  font-family: 'Poppins', sans-serif; font-size: .9rem;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  background: var(--white); color: var(--body);
+  transition: border-color .2s;
+}
+.search-input:focus { outline: none; border-color: var(--gold); }
 
-        .info-box h4 {
-            color: #5a4636;
-            margin-bottom: 10px;
-            font-size: 1.2em;
-        }
+/* ── Filter buttons ── */
+.filter-buttons, .nav-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.filter-btn, .nav-tab {
+  font-family: 'Poppins', sans-serif; font-size: .78rem; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase;
+  background: var(--white); color: var(--muted);
+  border: 1.5px solid var(--border); border-radius: 6px;
+  padding: 7px 14px; cursor: pointer; transition: all .15s;
+}
+.filter-btn:hover, .nav-tab:hover { border-color: var(--gold-d); color: var(--gold-dk); }
+.filter-btn.active, .nav-tab.active { background: var(--gold-dk); color: var(--cream); border-color: var(--gold-dk); }
 
-        .info-box p {
-            color: #5a4636;
-            line-height: 1.6;
-        }
+/* ── Filter selects ── */
+.filter-section { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
+.filter-group { display: flex; align-items: center; gap: 8px; }
+.filter-group label { font-size: .8rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.filter-group select {
+  font-family: 'Poppins', sans-serif; font-size: .82rem;
+  padding: 7px 12px; border: 1.5px solid var(--border);
+  border-radius: 6px; background: var(--white); color: var(--body); cursor: pointer;
+}
+.filter-group select:focus { outline: none; border-color: var(--gold); }
 
-        .tip-box {
-            background: #FFF9F0;
-            border-left: 5px solid #FFA500;
-            padding: 20px;
-            margin: 20px 0;
-            border-radius: 8px;
-        }
+/* ── Tables ── */
+.comparison-table, .wallet-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: .84rem; }
+.comparison-table th, .wallet-table th {
+  background: var(--gold-dk); color: var(--cream);
+  font-weight: 600; padding: 10px 14px; text-align: left;
+  font-size: .78rem; letter-spacing: .06em; text-transform: uppercase;
+}
+.comparison-table td, .wallet-table td {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  color: var(--body); font-weight: 300; vertical-align: middle;
+}
+.comparison-table tr:nth-child(even) td, .wallet-table tr:nth-child(even) td { background: var(--cream2); }
+.comparison-table tr:hover td, .wallet-table tr:hover td { background: var(--cream); }
+.cheap  { color: #3a7a3a; font-weight: 600; }
+.expensive { color: #a04040; font-weight: 600; }
 
-        .tip-box::before {
-            content: "💡 Tipp: ";
-            font-weight: bold;
-            color: #FFA500;
-        }
+/* ── Content sections ── */
+.content-section { display: none; }
+.content-section.active { display: block; }
 
-        .warning-box {
-            background: #FFEBEE;
-            border-left: 5px solid #F44336;
-            padding: 20px;
-            margin: 20px 0;
-            border-radius: 8px;
-        }
+/* ── Rec boxes ── */
+.recommendation-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 20px 0; }
+.rec-box {
+  background: var(--white); border: 1px solid var(--border);
+  border-top: 3px solid var(--gold-d); border-radius: 0 0 10px 10px;
+  padding: 18px 20px; box-shadow: 0 2px 8px rgba(74,61,42,.06);
+}
+.rec-box h3 { font-size: .9rem; font-weight: 700; color: var(--gold-dk); margin-bottom: 12px; }
+.rec-box ul { list-style: none; }
+.rec-box li { font-size: .84rem; font-weight: 300; color: var(--body); padding: 5px 0; padding-left: 16px; position: relative; }
+.rec-box li::before { content: '→'; position: absolute; left: 0; color: var(--gold-d); font-weight: 700; }
 
-        .warning-box::before {
-            content: "⚠️ Wichtig: ";
-            font-weight: bold;
-            color: #F44336;
-        }
+/* ── Tool cards ── */
+.tool-card {
+  background: var(--white); border: 1px solid var(--border);
+  border-top: 3px solid var(--gold-d); border-radius: 0 0 12px 12px;
+  padding: 20px 22px; margin-bottom: 16px;
+  box-shadow: 0 2px 10px rgba(74,61,42,.07);
+}
+.tool-card h3 { font-size: 1rem; font-weight: 700; color: var(--gold-dk); margin-bottom: 6px; }
+.tool-card .tool-url { font-size: .78rem; color: var(--gold-d); font-family: monospace; }
+.tool-card p { font-size: .86rem; font-weight: 300; color: var(--body); margin-top: 8px; line-height: 1.65; }
 
-        .tool-card {
-            background: #F5E6D3;
-            padding: 20px;
-            margin: 15px 0;
-            border-radius: 12px;
-            border-top: 4px solid #8B7355;
-        }
+/* ── Checklist ── */
+.checklist { list-style: none; margin: 12px 0; }
+.checklist-item {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: var(--cream2); border: 1px solid var(--border);
+  border-radius: 7px; padding: 10px 14px; margin-bottom: 7px;
+  font-size: .86rem; font-weight: 300; color: var(--body);
+}
+.checkbox {
+  width: 18px; height: 18px; min-width: 18px;
+  border: 2px solid var(--gold-d); border-radius: 3px;
+  cursor: pointer; margin-top: 1px; transition: all .15s; background: var(--white);
+}
+.checkbox.checked { background: var(--gold); border-color: var(--gold); }
 
-        .tool-card h4 {
-            color: #5a4636;
-            margin-bottom: 10px;
-            font-size: 1.3em;
-        }
+/* ── Time table ── */
+.time-table { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 14px 0; }
+.time-slot {
+  background: var(--white); border: 1.5px solid var(--border);
+  border-radius: 8px; padding: 12px 14px; text-align: center;
+}
+.time-slot.cheap-time { border-color: #6BAE6B; background: #f0faf0; }
+.time-slot.expensive-time { border-color: #c07070; background: #fff4f4; }
 
-        .tool-card a {
-            color: #2196F3;
-            text-decoration: none;
-            font-weight: 600;
-        }
+/* ── No results ── */
+.no-results { text-align: center; color: var(--muted); font-size: .9rem; padding: 32px; font-style: italic; }
 
-        .tool-card a:hover {
-            text-decoration: underline;
-        }
+/* ── Back to top ── */
+.back-to-top {
+  display: block; margin: 32px auto 0;
+  background: none; border: 1.5px solid var(--border);
+  border-radius: 8px; color: var(--muted);
+  font-family: 'Poppins', sans-serif; font-size: .82rem; font-weight: 500;
+  padding: 8px 20px; cursor: pointer; transition: all .15s;
+}
+.back-to-top:hover { border-color: var(--gold-d); color: var(--gold-dk); }
 
-        .comparison-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-            background: white;
-        }
+/* ── Buttons container ── */
+.buttons { display: flex; flex-wrap: wrap; gap: 10px; margin: 28px 0 16px; }
 
-        .comparison-table th {
-            background: #8B7355;
-            color: white;
-            padding: 15px;
-            text-align: left;
-            font-weight: 600;
-        }
+/* ── Footer ── */
+.footer {
+  background: var(--gold-dk);
+  border-top: 2px solid var(--gold-d);
+  border-radius: 12px; padding: 24px 28px;
+  margin-top: 40px;
+}
+.footer p { font-size: .8rem; color: rgba(245,230,211,.6); margin-bottom: 6px; line-height: 1.6; }
+.footer p:last-child { margin-bottom: 0; }
+.footer a { color: var(--gold); text-decoration: none; }
+.footer a:hover { color: var(--cream); }
+.footer strong { color: rgba(245,230,211,.85); }
 
-        .comparison-table td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #ddd;
-        }
+/* ── Responsive ── */
+@media (max-width: 560px) {
+  .filter-section { flex-direction: column; }
+  .recommendation-boxes { grid-template-columns: 1fr; }
+}
 
-        .comparison-table tr:hover {
-            background: #FFF9F0;
-        }
 
-        .time-table {
-            background: #F5E6D3;
-            padding: 20px;
-            border-radius: 12px;
-            margin: 20px 0;
-        }
+    /* ── Gas Fee spezifisch ── */
+    .content-section h2 {
+      font-size: 1.25rem; font-weight: 700; color: var(--gold-dk);
+      margin-bottom: 18px; padding-bottom: 10px;
+      border-bottom: 2px solid var(--border);
+    }
+    .content-section h3 {
+      font-size: 1rem; font-weight: 600; color: var(--gold-dk);
+      margin: 22px 0 10px;
+    }
+    .content-section h4 {
+      font-size: .92rem; font-weight: 600; color: var(--gold-dk);
+      margin-bottom: 8px;
+    }
+    .content-section ul, .content-section ol {
+      padding-left: 20px; margin: 10px 0;
+    }
+    .content-section li {
+      font-size: .88rem; font-weight: 300; color: var(--body);
+      margin-bottom: 5px; line-height: 1.65;
+    }
+    .content-section p {
+      font-size: .88rem; font-weight: 300; color: var(--body);
+      line-height: 1.7; margin-bottom: 10px;
+    }
+    .content-section strong { color: var(--gold-dk); font-weight: 600; }
+    .content-section a { color: var(--gold-d); }
 
-        .time-table table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .time-table th {
-            background: #8B7355;
-            color: white;
-            padding: 10px;
-            text-align: left;
-        }
-
-        .time-table td {
-            padding: 10px;
-            border-bottom: 1px solid #ddd;
-        }
-
-        .time-slot {
-            display: inline-block;
-            padding: 5px 12px;
-            border-radius: 15px;
-            font-weight: 600;
-            margin: 2px;
-        }
-
-        .time-slot.expensive {
-            background: #FFEBEE;
-            color: #C62828;
-        }
-
-        .time-slot.cheap {
-            background: #E8F5E9;
-            color: #2E7D32;
-        }
-
-        .checklist {
-            background: #F5E6D3;
-            padding: 20px;
-            border-radius: 12px;
-            margin: 20px 0;
-        }
-
-        .checklist-item {
-            display: flex;
-            gap: 10px;
-            padding: 10px 0;
-            align-items: flex-start;
-        }
-
-        .checkbox {
-            width: 20px;
-            height: 20px;
-            border: 2px solid #8B7355;
-            border-radius: 4px;
-            flex-shrink: 0;
-            margin-top: 2px;
-        }
-
-        .buttons {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            margin: 30px 0 20px;
-            flex-wrap: wrap;
-        }
-
-        .btn {
-            background: #8B7355;
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            font-size: 1em;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-            text-decoration: none;
-            display: inline-block;
-        }
-
-        .btn:hover {
-            background: #5a4636;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
-
-        .back-to-top {
-            background: #F5E6D3;
-            color: #5a4636;
-            border: 2px solid #8B7355;
-            padding: 12px 30px;
-            font-size: 1em;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-            margin: 0 auto;
-            display: block;
-        }
-
-        .back-to-top:hover {
-            background: #8B7355;
-            color: white;
-            transform: translateY(-2px);
-        }
-
-        .footer {
-            text-align: center;
-            color: #777;
-            font-size: 0.9em;
-            margin-top: 40px;
-            padding-top: 30px;
-            border-top: 2px solid #ddd;
-        }
-
-        .footer p {
-            margin: 10px 0;
-            line-height: 1.6;
-        }
-
-        .footer a {
-            color: #8B7355;
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        .footer a:hover {
-            text-decoration: underline;
-        }
-
-        ul, ol {
-            margin-left: 25px;
-            line-height: 1.8;
-        }
-
-        li {
-            margin: 10px 0;
-            color: #5a4636;
-        }
-
-        strong {
-            color: #5a4636;
-        }
-
-        @media (max-width: 768px) {
-            .container {
-                padding: 20px;
-            }
-
-            h1 {
-                font-size: 2em;
-            }
-
-            .comparison-table {
-                font-size: 0.9em;
-            }
-        }
-
-        @media print {
-            .buttons,
-            .btn,
-            .nav-tabs {
-                display: none !important;
-            }
-        }
-    </style>
+    .time-table { margin: 16px 0; }
+    .time-table h4 { font-size: .9rem; font-weight: 600; color: var(--gold-dk); margin-bottom: 10px; }
+    .time-table table { width: 100%; border-collapse: collapse; }
+    .time-table th {
+      background: var(--gold-dk); color: var(--cream);
+      font-size: .78rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+      padding: 9px 14px; text-align: left;
+    }
+    .time-table td {
+      padding: 9px 14px; border-bottom: 1px solid var(--border);
+      font-size: .84rem; font-weight: 300; color: var(--body);
+    }
+    .time-table tr:nth-child(even) td { background: var(--cream2); }
+    .time-slot { font-family: 'Courier New', monospace; font-size: .82rem; font-weight: 600; }
+    .time-slot.cheap {
+      background: rgba(80,130,80,.15); color: #3a6a3a;
+      padding: 2px 8px; border-radius: 4px;
+    }
+    .time-slot.expensive {
+      background: rgba(180,60,60,.12); color: #8a2020;
+      padding: 2px 8px; border-radius: 4px;
+    }
+    .checklist { list-style: none; margin: 12px 0; }
+    .checklist-item {
+      display: flex; gap: 10px; align-items: flex-start;
+      background: var(--cream2); border: 1px solid var(--border);
+      border-radius: 7px; padding: 10px 14px; margin-bottom: 7px;
+      font-size: .86rem; font-weight: 300; color: var(--body);
+    }
+    .checkbox {
+      width: 18px; height: 18px; min-width: 18px;
+      border: 2px solid var(--gold-d); border-radius: 3px;
+      cursor: pointer; margin-top: 1px; background: var(--white);
+      transition: all .15s; flex-shrink: 0;
+    }
+    .checkbox:hover { background: var(--cream); }
+  </style>
 </head>
 <body>
-    <!-- ══ Let's go free · Zurück-Button (einmalig einfügen, nie mehr anfassen) ══ -->
-    <style>
-      #lgf-back-bar { display: none; }
-      @media screen {
-        #lgf-back-bar.visible {
-          display: flex;
-          position: fixed;
-          top: 0; left: 0; right: 0;
-          z-index: 9999;
-          align-items: center;
-          gap: 10px;
-          background: #3d2d1e;
-          border-bottom: 1px solid rgba(196,162,101,0.25);
-          padding: 10px 16px;
-          font-family: -apple-system, sans-serif;
-        }
-      }
-      @media print {
-        #lgf-back-bar { display: none !important; }
-        #lgf-screen-padding { display: none !important; }
-      }
-    </style>
-    <div id="lgf-back-bar">
-      <button onclick="history.back()" style="background:none;border:none;color:#c4a265;font-size:24px;cursor:pointer;padding:0 6px;line-height:1;">‹</button>
-      <span style="font-size:13px;color:#b89a76;font-weight:500;">Let's go free</span>
-    </div>
-    <div id="lgf-screen-padding" style="height:0"></div>
-    <script>
-    (function() {
-      if (sessionStorage.getItem('lgf_from_app') !== '1') return;
-      var bar = document.getElementById('lgf-back-bar');
-      bar.classList.add('visible');
-      window.addEventListener('load', function() {
-        document.getElementById('lgf-screen-padding').style.height = bar.offsetHeight + 'px';
-      });
-    })();
-    </script>
-    <!-- ════════════════════════════════════════════════════════════════════════════ -->
 
-    <div class="container">
-        <h1>Gas Fee Tracker Anleitung</h1>
-        <p class="subtitle">So sparst du bis zu 90% bei Transaktionsgebühren</p>
+<div id="lgf-back-bar" style="display:none">
+  <button onclick="history.back()" style="background:none;border:none;color:#C9A882;font-size:24px;cursor:pointer;padding:0 6px;line-height:1;">‹</button>
+  <span style="font-size:13px;color:#b89a76;font-weight:500;">Let's go free</span>
+</div>
+<div id="lgf-screen-padding" style="height:0"></div>
+<script>
+(function(){
+  if(sessionStorage.getItem('lgf_from_app')!=='1') return;
+  var bar=document.getElementById('lgf-back-bar');
+  bar.style.display='flex';
+  bar.style.cssText+='position:sticky;top:0;z-index:999;align-items:center;gap:10px;background:#4a3d2a;border-bottom:1px solid rgba(201,168,130,.3);padding:10px 16px;';
+  window.addEventListener('load',function(){document.getElementById('lgf-screen-padding').style.height=bar.offsetHeight+'px';});
+})();
+</script>
 
-        <div class="nav-tabs">
-            <button class="nav-tab active" data-tab="basics">Grundlagen</button>
-            <button class="nav-tab" data-tab="tools">Tools & Tracker</button>
-            <button class="nav-tab" data-tab="timing">Bestes Timing</button>
-            <button class="nav-tab" data-tab="spartipps">Spartipps</button>
-            <button class="nav-tab" data-tab="notfall">Notfall-Guide</button>
-        </div>
+<header>
+  <p class="brand">Let's go free · letsgofree.me</p>
+  <h1>⛽ Gas Fee Guide</h1>
+  <p class="sub">So sparst du bis zu 90% bei Transaktionsgebühren</p>
+</header>
 
-        <!-- Tab 1: Grundlagen -->
+<div class="container">
+
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-tab="basics">Grundlagen</button>
+    <button class="nav-tab" data-tab="tools">Tools &amp; Tracker</button>
+    <button class="nav-tab" data-tab="timing">Bestes Timing</button>
+    <button class="nav-tab" data-tab="spartipps">Spartipps</button>
+    <button class="nav-tab" data-tab="notfall">Notfall-Guide</button>
+  </div>
+
+
+
+
+        
         <div class="content-section active" data-content="basics">
             <h2>Was sind Gas Fees?</h2>
             
-            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Einfach erklärt:</h4>
-                <p style="color: #5a4636;">Gas Fees sind wie Maut auf der Blockchain-Autobahn. Jede Aktion (Transaktion) kostet Gas, weil tausende Computer weltweit die Transaktion verarbeiten und absichern müssen.</p>
+            <div class="info-box">
+                <h4>Einfach erklärt:</h4>
+                <p>Gas Fees sind wie Maut auf der Blockchain-Autobahn. Jede Aktion (Transaktion) kostet Gas, weil tausende Computer weltweit die Transaktion verarbeiten und absichern müssen.</p>
             </div>
 
-            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Was ist Gwei und wie rechnet man Gas Fees?</h4>
-                <p style="color: #5a4636;"><strong>Gwei</strong> ist die Einheit für Gas-Preise auf Ethereum und allen EVM-kompatiblen Chains (Polygon, BSC, Arbitrum, Optimism, Base, Avalanche):</p>
+            <div class="info-box">
+                <h4>Was ist Gwei und wie rechnet man Gas Fees?</h4>
+                <p><strong>Gwei</strong> ist die Einheit für Gas-Preise auf Ethereum und allen EVM-kompatiblen Chains (Polygon, BSC, Arbitrum, Optimism, Base, Avalanche):</p>
                 <ul style="margin: 10px 0 10px 20px; color: #5a4636;">
                     <li>1 Gwei = 0.000000001 ETH (ein Milliardstel ETH)</li>
                     <li>1 ETH = 1'000'000'000 Gwei (1 Milliarde Gwei)</li>
                 </ul>
-                <p style="color: #5a4636;"><strong>Hinweis:</strong> Andere Chains wie Solana oder Bitcoin nutzen andere Einheiten (Lamports, Satoshis).</p>
+                <p><strong>Hinweis:</strong> Andere Chains wie Solana oder Bitcoin nutzen andere Einheiten (Lamports, Satoshis).</p>
                 <p style="color: #5a4636; margin-top: 15px;"><strong>So berechnest du die tatsächlichen Kosten:</strong></p>
-                <p style="background: #8B7355; color: white; padding: 15px; border-radius: 8px; margin: 10px 0; font-family: monospace;">
+                <p class="hl-box" style="font-family:monospace;border-radius:8px;">
                     <strong>Kosten = Gas Limit × Gas Price (in Gwei) × ETH-Preis</strong>
                 </p>
-                <p style="color: #5a4636;"><strong>Praktisches Beispiel:</strong></p>
+                <p><strong>Praktisches Beispiel:</strong></p>
                 <ul style="margin: 10px 0 10px 20px; color: #5a4636;">
                     <li>Einfache ETH-Überweisung: <strong>21'000 Gas Limit</strong></li>
                     <li>Aktueller Gas Price: <strong>15 Gwei</strong></li>
                     <li>ETH-Preis: <strong>$3'000</strong></li>
                 </ul>
-                <p style="background: #E8F5E9; padding: 15px; border-radius: 8px; margin: 10px 0; color: #5a4636;">
+                <p class="info-box">
                     <strong>Rechnung:</strong><br>
                     21'000 × 15 Gwei = 315'000 Gwei = 0.000315 ETH<br>
                     0.000315 ETH × $3'000 = <strong>$0.95 (ca. 0.85 CHF)</strong>
                 </p>
-                <p style="color: #5a4636;"><strong>Wichtig:</strong> Je höher der Gwei-Preis, desto schneller wird deine Transaktion verarbeitet. Bei 50 Gwei würde die gleiche Transaktion ~$3.15 kosten, geht aber deutlich schneller durch!</p>
+                <p><strong>Wichtig:</strong> Je höher der Gwei-Preis, desto schneller wird deine Transaktion verarbeitet. Bei 50 Gwei würde die gleiche Transaktion ~$3.15 kosten, geht aber deutlich schneller durch!</p>
             </div>
 
             <h3>Warum schwanken Gas Fees?</h3>
@@ -478,43 +454,43 @@
                 <tbody>
                     <tr>
                         <td><strong>Ethereum</strong></td>
-                        <td>$1-8 (bei Spitzen bis $20+)</td>
+                        <td>$0.05–0.33 (Spitzen bis $5+)</td>
                         <td>Nachts, Wochenende</td>
-                        <td>Werktags 14-18 Uhr UTC</td>
+                        <td>Werktags 14–18 Uhr UTC</td>
                     </tr>
                     <tr>
                         <td><strong>Polygon</strong></td>
-                        <td>$0.01-0.20</td>
+                        <td>$0.002–0.01</td>
                         <td>Jederzeit günstig</td>
-                        <td>Peaks bei ~$0.50-1</td>
+                        <td>Peaks bei ~$0.05–0.10</td>
                     </tr>
                     <tr>
                         <td><strong>BSC</strong></td>
-                        <td>$0.10-0.50</td>
+                        <td>$0.05–0.20</td>
                         <td>Nachts</td>
                         <td>Asien-Geschäftszeiten</td>
                     </tr>
                     <tr>
                         <td><strong>Arbitrum</strong></td>
-                        <td>$0.20-2</td>
+                        <td>$0.01–0.05</td>
                         <td>Wochenende</td>
                         <td>Werktags Mittag</td>
                     </tr>
                     <tr>
                         <td><strong>Optimism</strong></td>
-                        <td>$0.20-2</td>
+                        <td>$0.01–0.05</td>
                         <td>Nachts</td>
                         <td>US-Geschäftszeiten</td>
                     </tr>
                     <tr>
                         <td><strong>Solana</strong></td>
-                        <td>$0.00025 (extrem günstig!)</td>
+                        <td>~$0.00025 (extrem günstig!)</td>
                         <td>Immer günstig</td>
                         <td>Keine grossen Schwankungen</td>
                     </tr>
                     <tr>
                         <td><strong>Base</strong></td>
-                        <td>$0.10-1</td>
+                        <td>$0.001–0.01</td>
                         <td>Wochenende</td>
                         <td>US-Geschäftszeiten</td>
                     </tr>
@@ -522,7 +498,7 @@
             </table>
 
             <div class="tip-box">
-                <strong>Wichtig zu wissen:</strong> Die Fees hängen stark von der Netzwerk-Auslastung ab. Bei NFT Drops oder Token-Launches können die Gebühren auf Ethereum kurzzeitig auf $50-100+ steigen. Normalerweise sind sie aber deutlich niedriger als früher (2021-2022 waren $50-200 Standard).
+                <strong>Stand Februar 2026:</strong> Ethereum-Fees sind massiv gesunken (–93% seit Jan 2025 dank EIP-4844 und L2-Migration). Spitzen bei NFT-Drops oder Token-Launches können kurzfristig auf $5+ steigen – sind aber viel seltener als früher (2021–2022 waren $50–200 Standard).
             </div>
 
             <div class="tip-box">
@@ -530,29 +506,29 @@
             </div>
         </div>
 
-        <!-- Tab 2: Tools -->
+        
         <div class="content-section" data-content="tools">
             <h2>Die besten Gas Fee Tracker Tools</h2>
 
             <h3>Für Ethereum:</h3>
 
             <div class="tool-card">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">1. Etherscan Gas Tracker ⭐⭐⭐⭐⭐</h4>
-                <p style="color: #5a4636;"><strong>Link:</strong> <a href="https://etherscan.io/gastracker" target="_blank">etherscan.io/gastracker</a></p>
-                <p style="color: #5a4636;"><strong>Was es zeigt:</strong></p>
+                <h4>1. Etherscan Gas Tracker ⭐⭐⭐⭐⭐</h4>
+                <p><strong>Link:</strong> <a href="https://etherscan.io/gastracker" target="_blank">etherscan.io/gastracker</a></p>
+                <p><strong>Was es zeigt:</strong></p>
                 <ul>
                     <li><strong>Low:</strong> Günstige Transaktion (dauert 3-10 Min)</li>
                     <li><strong>Average:</strong> Standard (dauert 1-3 Min)</li>
                     <li><strong>High:</strong> Schnell (dauert ~30 Sek)</li>
                 </ul>
-                <p style="color: #5a4636;"><strong>Tipp:</strong> Wenn "Low" unter 15 Gwei ist, ist es ein sehr guter Zeitpunkt! Bei 10 Gwei oder weniger zahlst du minimale Gebühren.</p>
+                <p><strong>Tipp:</strong> Wenn "Low" unter 15 Gwei ist, ist es ein sehr guter Zeitpunkt! Bei 10 Gwei oder weniger zahlst du minimale Gebühren.</p>
             </div>
 
             <div class="tool-card">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">2. Blocknative Gas Estimator ⭐⭐⭐⭐⭐</h4>
-                <p style="color: #5a4636;"><strong>Link:</strong> <a href="https://www.blocknative.com/gas-estimator" target="_blank">blocknative.com/gas-estimator</a></p>
-                <p style="color: #5a4636;"><strong>Besonderheit:</strong> Zeigt Prognosen für die nächsten Minuten/Stunden. Sehr genau!</p>
-                <p style="color: #5a4636;"><strong>Features:</strong></p>
+                <h4>2. Blocknative Gas Estimator ⭐⭐⭐⭐⭐</h4>
+                <p><strong>Link:</strong> <a href="https://www.blocknative.com/gas-estimator" target="_blank">blocknative.com/gas-estimator</a></p>
+                <p><strong>Besonderheit:</strong> Zeigt Prognosen für die nächsten Minuten/Stunden. Sehr genau!</p>
+                <p><strong>Features:</strong></p>
                 <ul>
                     <li>Real-time Updates</li>
                     <li>8 Stunden Prognose</li>
@@ -561,31 +537,31 @@
             </div>
 
             <div class="tool-card">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">3. ETH Gas Station ⭐⭐⭐⭐</h4>
-                <p style="color: #5a4636;"><strong>Link:</strong> <a href="https://ethgasstation.info" target="_blank">ethgasstation.info</a></p>
-                <p style="color: #5a4636;"><strong>Gut für:</strong> Visualisierung der Netzwerk-Aktivität. Zeigt, wie voll das Netzwerk gerade ist.</p>
+                <h4>3. ETH Gas Station ⭐⭐⭐⭐</h4>
+                <p><strong>Link:</strong> <a href="https://ethgasstation.info" target="_blank">ethgasstation.info</a></p>
+                <p><strong>Gut für:</strong> Visualisierung der Netzwerk-Aktivität. Zeigt, wie voll das Netzwerk gerade ist.</p>
             </div>
 
             <div class="tool-card">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">4. Gas Now (von Sparkpool) ⭐⭐⭐⭐</h4>
-                <p style="color: #5a4636;"><strong>Link:</strong> <a href="https://www.gasnow.org" target="_blank">gasnow.org</a></p>
-                <p style="color: #5a4636;"><strong>Features:</strong> Browser Extension verfügbar, Desktop Notifications möglich</p>
+                <h4>4. Gas Now (von Sparkpool) ⭐⭐⭐⭐</h4>
+                <p><strong>Link:</strong> <a href="https://www.gasnow.org" target="_blank">gasnow.org</a></p>
+                <p><strong>Features:</strong> Browser Extension verfügbar, Desktop Notifications möglich</p>
             </div>
 
             <h3>Für andere Chains:</h3>
             <div class="tool-card">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">BSC: BscScan Gas Tracker</h4>
-                <p style="color: #5a4636;"><a href="https://bscscan.com/gastracker" target="_blank">bscscan.com/gastracker</a></p>
+                <h4>BSC: BscScan Gas Tracker</h4>
+                <p><a href="https://bscscan.com/gastracker" target="_blank">bscscan.com/gastracker</a></p>
             </div>
 
             <div class="tool-card">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Polygon: PolygonScan Gas Tracker</h4>
-                <p style="color: #5a4636;"><a href="https://polygonscan.com/gastracker" target="_blank">polygonscan.com/gastracker</a></p>
+                <h4>Polygon: PolygonScan Gas Tracker</h4>
+                <p><a href="https://polygonscan.com/gastracker" target="_blank">polygonscan.com/gastracker</a></p>
             </div>
 
             <div class="tool-card">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Arbitrum: Arbiscan Gas Tracker</h4>
-                <p style="color: #5a4636;"><a href="https://arbiscan.io/gastracker" target="_blank">arbiscan.io/gastracker</a></p>
+                <h4>Arbitrum: Arbiscan Gas Tracker</h4>
+                <p><a href="https://arbiscan.io/gastracker" target="_blank">arbiscan.io/gastracker</a></p>
             </div>
 
             <div class="warning-box">
@@ -593,19 +569,19 @@
             </div>
         </div>
 
-        <!-- Tab 3: Timing -->
+        
         <div class="content-section" data-content="timing">
             <h2>Wann sind Gas Fees am niedrigsten?</h2>
 
-            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Die Faustregel:</h4>
-                <p style="color: #5a4636;">Gas Fees sind am niedrigsten, wenn die USA und Europa schlafen. Am höchsten während US-Geschäftszeiten.</p>
+            <div class="info-box">
+                <h4>Die Faustregel:</h4>
+                <p>Gas Fees sind am niedrigsten, wenn die USA und Europa schlafen. Am höchsten während US-Geschäftszeiten.</p>
             </div>
 
             <h3>Optimales Timing im Detail:</h3>
 
             <div class="time-table">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Wochentag-Muster:</h4>
+                <h4>Wochentag-Muster:</h4>
                 <table>
                     <thead>
                         <tr>
@@ -640,7 +616,7 @@
             </div>
 
             <div class="time-table">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Wochenende vs. Werktag:</h4>
+                <h4>Wochenende vs. Werktag:</h4>
                 <ul>
                     <li><strong>Samstag & Sonntag:</strong> 20-40% günstiger als Werktage</li>
                     <li><strong>Beste Wochenend-Zeit:</strong> Samstag/Sonntag 2-8 Uhr UTC</li>
@@ -662,22 +638,22 @@
             </div>
         </div>
 
-        <!-- Tab 4: Spartipps -->
+        
         <div class="content-section" data-content="spartipps">
             <h2>Praktische Gas-Spartipps</h2>
 
             <h3>1. Transaction Batching</h3>
-            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Was ist das?</h4>
-                <p style="color: #5a4636;">Mehrere Aktionen in einer Transaktion zusammenfassen, statt einzeln.</p>
+            <div class="info-box">
+                <h4>Was ist das?</h4>
+                <p>Mehrere Aktionen in einer Transaktion zusammenfassen, statt einzeln.</p>
             </div>
-            <p style="color: #5a4636;"><strong>Beispiele:</strong></p>
+            <p><strong>Beispiele:</strong></p>
             <ul>
                 <li>Statt 5x einzeln Token zu swappen → 1x alles auf einmal</li>
                 <li>Tools nutzen die Batching unterstützen (z.B. 1inch für Swaps)</li>
                 <li>Bei NFTs: Bulk-Mint wenn möglich</li>
             </ul>
-            <p style="color: #5a4636;"><strong>Ersparnis:</strong> 30-50% gegenüber Einzeltransaktionen</p>
+            <p><strong>Ersparnis:</strong> 30-50% gegenüber Einzeltransaktionen</p>
 
             <h3>2. Alternative Chains nutzen</h3>
             <div class="comparison-table" style="margin: 20px 0;">
@@ -718,7 +694,7 @@
             </div>
 
             <h3>3. Wallet-Einstellungen optimieren</h3>
-            <p style="color: #5a4636;"><strong>In MetaMask:</strong></p>
+            <p><strong>In MetaMask:</strong></p>
             <ol>
                 <li>Bei Transaktion auf "Edit" klicken</li>
                 <li>Drei Optionen: Low / Market / Aggressive</li>
@@ -731,7 +707,7 @@
             </div>
 
             <h3>4. Gas Alerts einrichten</h3>
-            <p style="color: #5a4636;">Tools die dich benachrichtigen, wenn Gas günstig ist:</p>
+            <p>Tools die dich benachrichtigen, wenn Gas günstig ist:</p>
             <ul>
                 <li><strong>Blocknative Notify:</strong> Browser-Extension, meldet sich bei günstigen Gas Fees</li>
                 <li><strong>IFTTT + Etherscan API:</strong> Custom Alerts einrichten</li>
@@ -739,42 +715,42 @@
             </ul>
 
             <h3>5. Pending Transactions nutzen</h3>
-            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Wie es funktioniert:</h4>
-                <p style="color: #5a4636;">Sende Transaktion mit sehr niedrigem Gas → sie bleibt pending → wenn Gas günstiger wird, geht sie durch</p>
+            <div class="info-box">
+                <h4>Wie es funktioniert:</h4>
+                <p>Sende Transaktion mit sehr niedrigem Gas → sie bleibt pending → wenn Gas günstiger wird, geht sie durch</p>
             </div>
             <div class="warning-box">
                 Achtung: Transaktion kann auch nach 24h+ ablaufen ohne durchzugehen. Nur für nicht-zeitkritische Transfers!
             </div>
         </div>
 
-        <!-- Tab 5: Notfall -->
+        
         <div class="content-section" data-content="notfall">
             <h2>Notfall-Guide: Wenn was schief läuft</h2>
 
             <h3>Problem 1: Meine Transaktion hängt fest</h3>
-            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Was ist passiert?</h4>
-                <p style="color: #5a4636;">Du hast zu wenig Gas bezahlt, die Transaktion ist im Mempool "stecken geblieben".</p>
+            <div class="info-box">
+                <h4>Was ist passiert?</h4>
+                <p>Du hast zu wenig Gas bezahlt, die Transaktion ist im Mempool "stecken geblieben".</p>
             </div>
 
-            <p style="color: #5a4636;"><strong>Lösung 1: Warten</strong></p>
+            <p><strong>Lösung 1: Warten</strong></p>
             <ul>
                 <li>Oft löst sich das Problem von selbst</li>
                 <li>Nach 24-48h wird die Transaktion automatisch verworfen</li>
                 <li><strong>Wann warten?</strong> Wenn nicht dringend und Gas-Preis aktuell sehr hoch</li>
             </ul>
 
-            <p style="color: #5a4636;"><strong>Lösung 2: Speed Up (Beschleunigen)</strong></p>
+            <p><strong>Lösung 2: Speed Up (Beschleunigen)</strong></p>
             <ol>
                 <li>In MetaMask: Auf die pending Transaction klicken</li>
                 <li>"Speed Up" auswählen</li>
                 <li>Höheren Gas-Preis akzeptieren</li>
                 <li>Transaktion wird neu gesendet mit höherer Priorität</li>
             </ol>
-            <p style="color: #5a4636;"><strong>Kosten:</strong> Du zahlst zusätzliches Gas für die Beschleunigung</p>
+            <p><strong>Kosten:</strong> Du zahlst zusätzliches Gas für die Beschleunigung</p>
 
-            <p style="color: #5a4636;"><strong>Lösung 3: Cancel (Abbrechen)</strong></p>
+            <p><strong>Lösung 3: Cancel (Abbrechen)</strong></p>
             <ol>
                 <li>In MetaMask: Auf die pending Transaction klicken</li>
                 <li>"Cancel" auswählen</li>
@@ -785,12 +761,12 @@
             </div>
 
             <h3>Problem 2: Transaction Failed (Transaktion fehlgeschlagen)</h3>
-            <div style="background: #F5E6D3; border-left: 5px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 8px;">
-                <h4 style="color: #5a4636; margin-bottom: 10px; font-size: 1.2em;">Was bedeutet das?</h4>
-                <p style="color: #5a4636;">Die Transaktion wurde verarbeitet, aber ist fehlgeschlagen. Das Gas ist trotzdem weg!</p>
+            <div class="info-box">
+                <h4>Was bedeutet das?</h4>
+                <p>Die Transaktion wurde verarbeitet, aber ist fehlgeschlagen. Das Gas ist trotzdem weg!</p>
             </div>
 
-            <p style="color: #5a4636;"><strong>Häufige Gründe:</strong></p>
+            <p><strong>Häufige Gründe:</strong></p>
             <ul>
                 <li><strong>Slippage zu niedrig:</strong> Preis hat sich während TX geändert</li>
                 <li><strong>Nicht genug Token:</strong> Balance hat sich geändert</li>
@@ -798,7 +774,7 @@
                 <li><strong>Smart Contract Error:</strong> Fehler im Contract-Code</li>
             </ul>
 
-            <p style="color: #5a4636;"><strong>Was tun?</strong></p>
+            <p><strong>Was tun?</strong></p>
             <ol>
                 <li>Prüfe die Failed-Transaction auf Etherscan</li>
                 <li>Lies die Error-Message</li>
@@ -807,14 +783,14 @@
             </ol>
 
             <h3>Problem 3: Gas Fees sind plötzlich extrem hoch</h3>
-            <p style="color: #5a4636;"><strong>Gründe:</strong></p>
+            <p><strong>Gründe:</strong></p>
             <ul>
                 <li>NFT Drop oder Token Launch → Netzwerk überlastet</li>
                 <li>Wichtige DeFi-News → Alle wollen gleichzeitig handeln</li>
                 <li>Netzwerk-Störung oder Angriff</li>
             </ul>
 
-            <p style="color: #5a4636;"><strong>Was tun?</strong></p>
+            <p><strong>Was tun?</strong></p>
             <ol>
                 <li><strong>Warten:</strong> Nach 2-6 Stunden meist wieder normal</li>
                 <li><strong>Alternative Chain nutzen:</strong> Ist es auf Polygon/Arbitrum möglich?</li>
@@ -858,20 +834,23 @@
             </div>
         </div>
 
-        <div class="buttons">
-            <a href="https://www.letsgofree.me" class="btn">Startseite</a>
-            <button class="btn" onclick="window.print()">Als PDF speichern</button>
-        </div>
+        
 
-        <button class="back-to-top" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">↑ Nach oben</button>
+  <div class="buttons">
+    <a href="https://www.letsgofree.me" class="btn">Startseite</a>
+    <button class="btn" onclick="window.print()">🖨 Drucken / PDF</button>
+  </div>
 
-        <div class="footer">
-            <p>© 2025 - <a href="https://www.letsgofree.me" target="_blank">Chris Müller - Let's go free</a></p>
-            <p><a href="https://www.letsgofree.me" target="_blank">www.letsgofree.me</a></p>
-        </div>
-    </div>
+  <button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ Nach oben</button>
 
-    <script>
+  <div class="footer">
+    <p><strong>Disclaimer:</strong> Nur zu Informationszwecken, keine Finanzberatung.</p>
+    <p>© 2025 · <a href="https://www.letsgofree.me" target="_blank">Chris Müller – Let's go free</a></p>
+  </div>
+</div>
+
+<script>
+
         // Tab navigation
         const tabs = document.querySelectorAll('.nav-tab');
         const contents = document.querySelectorAll('.content-section');
@@ -891,6 +870,11 @@
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             });
         });
-    </script>
+    
+// Checkbox toggle
+document.querySelectorAll('.checkbox').forEach(cb => {
+  cb.addEventListener('click', () => cb.classList.toggle('checked'));
+});
+</script>
 </body>
 </html>
