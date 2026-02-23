@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Let's go free – Die Krypto-Einsteiger-App kaufen</title>
+  <link rel="stylesheet" href="homepage-styles.css">
+  <style>
+    /* ── HERO ── */
+    .hero {
+      background: linear-gradient(160deg, var(--dark2) 0%, var(--dark3) 60%, #3a2e1a 100%);
+      padding: 70px 50px 60px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      border-bottom: 3px solid var(--gold);
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 5px;
+      background: linear-gradient(to bottom, var(--gold), var(--gold-d), var(--gold-dk));
+    }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(201,168,130,.15);
+      border: 1px solid rgba(201,168,130,.35);
+      color: var(--gold);
+      font-size: .78rem;
+      font-weight: 600;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      padding: 6px 16px;
+      border-radius: 20px;
+      margin-bottom: 22px;
+    }
+    .hero h1 {
+      font-size: 2.3rem;
+      font-weight: 700;
+      color: var(--cream);
+      line-height: 1.25;
+      margin-bottom: 16px;
+    }
+    .hero h1 span { color: var(--gold); }
+    .hero-sub {
+      font-size: 1.05rem;
+      color: rgba(245,230,211,.7);
+      font-weight: 300;
+      max-width: 560px;
+      margin: 0 auto 36px;
+      font-style: italic;
+    }
+
+    /* ── PREIS-BOX ── */
+    .price-box {
+      background: var(--white);
+      border-radius: var(--radius-lg);
+      padding: 36px 40px 40px;
+      max-width: 480px;
+      margin: 0 auto;
+      box-shadow: 0 8px 40px rgba(0,0,0,.35);
+      border-top: 4px solid var(--gold);
+      text-align: center;
+    }
+    .price-label {
+      font-size: .8rem;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .price-main {
+      font-size: 3rem;
+      font-weight: 700;
+      color: var(--gold-dk);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .price-sub {
+      font-size: .85rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    /* ── RABATTCODE ── */
+    .discount-wrap {
+      margin-bottom: 20px;
+    }
+    .discount-label {
+      font-size: .78rem;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+      text-align: left;
+    }
+    .discount-row {
+      display: flex;
+      gap: 8px;
+    }
+    .discount-input {
+      flex: 1;
+      font-family: 'Courier New', monospace;
+      font-size: .95rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: 11px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--cream2);
+      color: var(--gold-dk);
+      outline: none;
+      transition: border-color .2s;
+    }
+    .discount-input:focus { border-color: var(--gold); }
+    .discount-apply {
+      background: var(--dark2);
+      color: var(--gold);
+      border: 1.5px solid var(--gold-d);
+      font-family: 'Poppins', sans-serif;
+      font-size: .82rem;
+      font-weight: 600;
+      padding: 11px 16px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all .2s;
+      white-space: nowrap;
+    }
+    .discount-apply:hover { background: var(--gold-dk); color: var(--cream); }
+    .discount-msg {
+      font-size: .8rem;
+      margin-top: 7px;
+      min-height: 18px;
+      text-align: left;
+      font-weight: 600;
+    }
+    .discount-msg.ok  { color: #2e7d32; }
+    .discount-msg.err { color: var(--red); }
+
+    /* ── PREIS DYNAMISCH ── */
+    #price-display {
+      transition: all .2s;
+    }
+    .btn-paypal {
+      display: block;
+      width: 100%;
+      background: #0070ba;
+      color: white;
+      font-family: 'Poppins', sans-serif;
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 15px 24px;
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      transition: all .2s;
+      margin-bottom: 12px;
+      letter-spacing: .02em;
+    }
+    .btn-paypal:hover {
+      background: #005ea6;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,112,186,.35);
+    }
+    .btn-paypal-icon { margin-right: 8px; font-size: 1.1em; }
+    .price-guarantee {
+      font-size: .78rem;
+      color: var(--muted);
+      margin-top: 14px;
+      font-style: italic;
+    }
+
+    /* ── CONTENT ── */
+    .content { background: var(--white); padding: 0 50px 60px; }
+
+    /* ── WAS IST DABEI ── */
+    .section { padding: 50px 0 0; }
+    .section-label {
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--gold-d);
+      margin-bottom: 8px;
+    }
+    .section h2 {
+      font-size: 1.55rem;
+      font-weight: 700;
+      color: var(--gold-dk);
+      margin-bottom: 28px;
+      line-height: 1.3;
+    }
+
+    /* ── FEATURE CARDS ── */
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 10px;
+    }
+    .feature-card {
+      background: var(--cream2);
+      border-radius: var(--radius-md);
+      padding: 22px 24px;
+      border-top: 3px solid var(--gold);
+      box-shadow: var(--shadow-sm);
+    }
+    .feature-icon {
+      font-size: 1.6rem;
+      margin-bottom: 10px;
+      display: block;
+    }
+    .feature-card h3 {
+      font-size: .95rem;
+      font-weight: 700;
+      color: var(--gold-dk);
+      margin-bottom: 6px;
+    }
+    .feature-card p {
+      font-size: .85rem;
+      font-weight: 300;
+      color: var(--muted);
+      line-height: 1.6;
+      margin: 0;
+    }
+
+    /* ── BONUS ── */
+    .bonus-list { list-style: none; padding: 0; }
+    .bonus-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 14px 18px;
+      background: var(--cream2);
+      border-radius: var(--radius-sm);
+      margin-bottom: 10px;
+      border-left: 4px solid var(--gold);
+      font-size: .92rem;
+      color: var(--text);
+      font-weight: 300;
+    }
+    .bonus-list li strong { color: var(--gold-dk); font-weight: 600; }
+    .bonus-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 1px; }
+
+    /* ── BESCHREIBUNG ── */
+    .desc-box {
+      background: var(--cream2);
+      border-left: 4px solid var(--gold-d);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+      padding: 24px 28px;
+      margin-bottom: 0;
+    }
+    .desc-box p {
+      font-size: .95rem;
+      font-weight: 300;
+      line-height: 1.8;
+      color: var(--text);
+      margin: 0;
+    }
+
+    /* ── ABLAUF ── */
+    .steps { list-style: none; padding: 0; counter-reset: steps; }
+    .steps li {
+      display: flex;
+      align-items: flex-start;
+      gap: 18px;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: .92rem;
+      font-weight: 300;
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .steps li:last-child { border-bottom: none; }
+    .step-num {
+      background: var(--dark2);
+      color: var(--gold);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: .8rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* ── CTA UNTEN ── */
+    .cta-bottom {
+      background: linear-gradient(135deg, var(--dark2) 0%, var(--dark3) 100%);
+      border-radius: var(--radius-lg);
+      padding: 40px;
+      text-align: center;
+      margin-top: 50px;
+      border-top: 3px solid var(--gold);
+    }
+    .cta-bottom h3 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--cream);
+      margin-bottom: 8px;
+    }
+    .cta-bottom p {
+      font-size: .9rem;
+      color: rgba(245,230,211,.65);
+      font-weight: 300;
+      font-style: italic;
+      margin-bottom: 24px;
+    }
+    .cta-price {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--gold);
+      margin-bottom: 20px;
+    }
+    .cta-price small {
+      font-size: .9rem;
+      font-weight: 300;
+      color: rgba(201,168,130,.7);
+      display: block;
+      margin-top: 2px;
+    }
+
+    /* ── FOOTER ── */
+    .page-footer {
+      background: var(--dark2);
+      padding: 24px 50px;
+      text-align: center;
+      border-top: 2px solid rgba(201,168,130,.2);
+    }
+    .page-footer a {
+      color: var(--gold);
+      text-decoration: none;
+      font-size: .8rem;
+      margin: 0 12px;
+      opacity: .8;
+    }
+    .page-footer a:hover { opacity: 1; }
+    .page-footer p {
+      font-size: .78rem;
+      color: var(--muted);
+      margin-top: 10px;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 640px) {
+      .hero { padding: 50px 24px 40px; }
+      .hero h1 { font-size: 1.65rem; }
+      .price-box { padding: 28px 24px 32px; }
+      .content { padding: 0 24px 50px; }
+      .features { grid-template-columns: 1fr; }
+      .cta-bottom { padding: 28px 24px; }
+      .page-footer { padding: 20px 24px; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-badge">🎁 Starter-Bonus aktiv – Code EARLY33 für CHF 33.–</div>
+    <h1>Let's go free –<br><span>Die Krypto-Einsteiger-App</span></h1>
+    <p class="hero-sub">Dein vollständiger Begleiter in die Welt von Krypto und DeFi – klar, sicher und ohne unnötigen Fachjargon.</p>
+
+    <!-- PREIS-BOX -->
+    <div class="price-box">
+      <div class="price-label">Einmaliger Kaufpreis</div>
+      <div class="price-main" id="price-display">CHF 49.–</div>
+      <div class="price-sub">Einmalzahlung · dauerhafter Zugang</div>
+
+      <!-- STARTER BONUS -->
+      <div style="background: linear-gradient(135deg, var(--gold-dk) 0%, #6b5030 100%); border-radius: var(--radius-sm); padding: 14px 18px; margin: 14px 0 18px; text-align: left; border: 1px solid var(--gold);">
+        <div style="font-size:.7rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); margin-bottom:5px;">🎁 Starter-Bonus</div>
+        <div style="font-size:.92rem; color:var(--cream); font-weight:300; line-height:1.5;">Jetzt mit Code <strong style="font-family:'Courier New',monospace; font-size:1.05em; color:var(--gold); letter-spacing:.1em;">EARLY33</strong> nur <strong style="color:var(--gold);">CHF 33.–</strong> statt CHF 49.–</div>
+        <div style="font-size:.75rem; color:rgba(245,230,211,.6); margin-top:4px; font-style:italic;">Limitiertes Einführungsangebot – Code unten eingeben</div>
+      </div>
+
+      <!-- RABATTCODE -->
+      <div class="discount-wrap">
+        <div class="discount-label">Hast du einen Rabattcode?</div>
+        <div class="discount-row">
+          <input type="text" id="discount-input" class="discount-input" placeholder="z.B. EARLY33" maxlength="12" autocomplete="off">
+          <button class="discount-apply" onclick="applyCode()">Einlösen</button>
+        </div>
+        <div class="discount-msg" id="discount-msg"></div>
+      </div>
+
+      <!-- PAYPAL BUTTON 1: CHF 49 (Standard, sichtbar) -->
+      <form id="btn-49" action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_top">
+        <input type="hidden" name="cmd" value="_xclick">
+        <input type="hidden" name="business" value="DEINE-PAYPAL-EMAIL">
+        <input type="hidden" name="item_name" value="Let's go free – Die Krypto-Einsteiger-App">
+        <input type="hidden" name="amount" value="49.00">
+        <input type="hidden" name="currency_code" value="CHF">
+        <input type="hidden" name="return" value="https://letsgofree.me/danke_app_k7xP2q.html">
+        <input type="hidden" name="cancel_return" value="https://letsgofree.me/app-kaufen.html">
+        <input type="hidden" name="no_shipping" value="1">
+        <input type="hidden" name="lc" value="de_CH">
+        <button type="submit" class="btn-paypal">
+          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal kaufen – CHF 49.–
+        </button>
+      </form>
+
+      <!-- PAYPAL BUTTON 2: CHF 33 (EARLY33, versteckt) -->
+      <form id="btn-33" action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_top" style="display:none;">
+        <input type="hidden" name="cmd" value="_xclick">
+        <input type="hidden" name="business" value="DEINE-PAYPAL-EMAIL">
+        <input type="hidden" name="item_name" value="Let's go free – Die Krypto-Einsteiger-App (EARLY33)">
+        <input type="hidden" name="amount" value="33.00">
+        <input type="hidden" name="currency_code" value="CHF">
+        <input type="hidden" name="return" value="https://letsgofree.me/danke_app_k7xP2q.html">
+        <input type="hidden" name="cancel_return" value="https://letsgofree.me/app-kaufen.html">
+        <input type="hidden" name="no_shipping" value="1">
+        <input type="hidden" name="lc" value="de_CH">
+        <button type="submit" class="btn-paypal">
+          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal kaufen – CHF 33.–
+        </button>
+      </form>
+
+      <!-- PAYPAL BUTTON 3: CHF 5 (FRIENDS5, versteckt) -->
+      <form id="btn-5" action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_top" style="display:none;">
+        <input type="hidden" name="cmd" value="_xclick">
+        <input type="hidden" name="business" value="DEINE-PAYPAL-EMAIL">
+        <input type="hidden" name="item_name" value="Let's go free – Die Krypto-Einsteiger-App (FRIENDS5)">
+        <input type="hidden" name="amount" value="5.00">
+        <input type="hidden" name="currency_code" value="CHF">
+        <input type="hidden" name="return" value="https://letsgofree.me/danke_app_k7xP2q.html">
+        <input type="hidden" name="cancel_return" value="https://letsgofree.me/app-kaufen.html">
+        <input type="hidden" name="no_shipping" value="1">
+        <input type="hidden" name="lc" value="de_CH">
+        <button type="submit" class="btn-paypal">
+          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal kaufen – CHF 5.–
+        </button>
+      </form>
+
+      <div class="price-guarantee">🔒 Sichere Zahlung über PayPal · Sofortzugang nach Zahlung</div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- BESCHREIBUNG -->
+    <div class="section">
+      <div class="section-label">Was dich erwartet</div>
+      <h2>Krypto ist kompliziert?<br>Nicht mit der richtigen Anleitung.</h2>
+      <div class="desc-box">
+        <p>Die App enthält den Krypto-Einsteiger-Guide als vollständiges Ebook – als Online-Reader zum Lesen direkt in der App, und als PDF zum Herunterladen und Speichern. Er zeigt dir, wie du sicher einsteigst – von der Wallet-Einrichtung bis zu deinem ersten DeFi-Schritt. Klar, ehrlich und ohne unnötigen Fachjargon.<br><br>Dazu gibt's praktisches Bonus-Material: meine Sicherheits-Checkliste, Tools die ich selbst täglich nutze, Möglichkeiten mit Krypto zu bezahlen und weitere Freebies. Für alle, die es richtig machen wollen – von Anfang an.</p>
+      </div>
+    </div>
+
+    <!-- FEATURES -->
+    <div class="section">
+      <div class="section-label">Inhalt der App</div>
+      <h2>Was ist in der App enthalten?</h2>
+      <div class="features">
+        <div class="feature-card">
+          <span class="feature-icon">📖</span>
+          <h3>Ebook als Online-Reader</h3>
+          <p>Lies den vollständigen Krypto-Einsteiger-Guide direkt in der App – jederzeit und auf jedem Gerät.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">⬇️</span>
+          <h3>PDF-Download</h3>
+          <p>Lade das Ebook als PDF herunter und speichere es lokal – offline verfügbar, jederzeit griffbereit.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">✅</span>
+          <h3>Sicherheits-Checkliste</h3>
+          <p>Meine persönliche Checkliste für maximale Sicherheit mit deinen Krypto-Assets.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🎁</span>
+          <h3>Bonus-Freebies</h3>
+          <p>Tools, Wallets und Ressourcen die ich selbst täglich nutze – direkt in der App verfügbar.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- BONUS -->
+    <div class="section">
+      <div class="section-label">Bonus-Material</div>
+      <h2>Mehr als nur ein Ebook</h2>
+      <ul class="bonus-list">
+        <li>
+          <span class="bonus-icon">🛡️</span>
+          <div><strong>Sicherheits-Checkliste</strong><br>Schritt für Schritt: So sicherst du deine Wallets und Seed Phrases richtig ab.</div>
+        </li>
+        <li>
+          <span class="bonus-icon">🔧</span>
+          <div><strong>Meine Tool-Empfehlungen</strong><br>Die Apps, Wallets und Plattformen die ich selbst täglich im Einsatz habe – mit kurzer Erklärung warum.</div>
+        </li>
+        <li>
+          <span class="bonus-icon">💳</span>
+          <div><strong>Mit Krypto bezahlen</strong><br>Möglichkeiten wie du Krypto im Alltag einsetzen kannst – praxisnah und aktuell.</div>
+        </li>
+        <li>
+          <span class="bonus-icon">📚</span>
+          <div><strong>Weitere Freebies</strong><br>DeFi-Glossar, Gas-Fee-Guide, Wallet-Vergleich und mehr – alles direkt in der App.</div>
+        </li>
+      </ul>
+    </div>
+
+    <!-- ABLAUF -->
+    <div class="section">
+      <div class="section-label">So funktioniert's</div>
+      <h2>In 3 Schritten zu deiner App</h2>
+      <ol class="steps">
+        <li>
+          <div class="step-num">1</div>
+          <div><strong>Jetzt kaufen</strong> – Klicke auf den PayPal-Button und schliesse die Zahlung ab. Der Vorgang dauert weniger als 2 Minuten.</div>
+        </li>
+        <li>
+          <div class="step-num">2</div>
+          <div><strong>Link und Zugangscode erhalten</strong> – Du wirst direkt auf die Danke-Seite weitergeleitet und erhältst den Download-Link (Web-App) und deinen persönlichen App-Zugangscode.</div>
+        </li>
+        <li>
+          <div class="step-num">3</div>
+          <div><strong>App installieren & loslegen</strong> – Öffne den Link, speichere die App auf deinem Startbildschirm und gib deinen Code ein. Sofortiger Zugang zu allen Inhalten.</div>
+        </li>
+      </ol>
+    </div>
+
+    <!-- CTA UNTEN -->
+    <div class="cta-bottom">
+      <h3>Bereit für deinen Krypto-Start?</h3>
+      <p>Einmal kaufen, dauerhaft nutzen – auf jedem Gerät.</p>
+      <div class="cta-price">CHF 49.– <small>oder CHF 33.– mit Starter-Code <span style="font-family:'Courier New',monospace; letter-spacing:.08em;">EARLY33</span></small></div>
+      <a href="#top" class="btn-paypal" style="max-width:360px; margin:0 auto; display:block; text-decoration:none;">
+        ↑ Zum Kaufen-Button
+      </a>
+    </div>
+
+  </div><!-- /content -->
+
+  <!-- FOOTER -->
+  <div class="page-footer">
+    <p style="font-size:.88rem; color:rgba(245,230,211,.75); font-style:italic; margin-bottom:16px;">Finanzielle Selbstbestimmung beginnt mit dem ersten Schritt.<br>Let's go free! 🚀</p>
+    <div style="background:rgba(255,255,255,.05); border:1px solid rgba(201,168,130,.2); border-radius:var(--radius-sm); padding:16px 20px; margin-bottom:18px; text-align:left; max-width:700px; margin-left:auto; margin-right:auto;">
+      <p style="font-size:.78rem; color:var(--gold); font-weight:600; margin-bottom:6px;">⚠️ Wichtiger Hinweis:</p>
+      <p style="font-size:.78rem; color:rgba(245,230,211,.6); font-weight:300; line-height:1.7; margin:0;">Diese Website dient ausschliesslich der Bildung und Wissensvermittlung über dezentrale Finanzsysteme. Die Inhalte stellen keine Finanzberatung, Anlageempfehlung oder Kaufempfehlung dar. Ich teile lediglich meine persönlichen Erfahrungen und Kenntnisse zu Bildungszwecken. Alle Investitionsentscheidungen triffst du eigenverantwortlich. Informiere dich umfassend und investiere nur, was du bereit bist zu verlieren.</p>
+    </div>
+    <div class="legal-links" style="margin-top:8px;">
+      <p>Chris Müller</p>
+      <a href="agb.html">AGB, Datenschutzerklärung, Impressum</a>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+  const CODES = {
+    'EARLY33':  { price: 'CHF 33.–', btn: 'btn-33', msg: '✅ Rabattcode eingelöst – Preis: CHF 33.–' },
+    'FRIENDS5': { price: 'CHF 5.–',  btn: 'btn-5',  msg: '✅ Freundes-Rabatt eingelöst – Preis: CHF 5.–' }
+  };
+
+  function applyCode() {
+    const input = document.getElementById('discount-input').value.trim().toUpperCase();
+    const msgEl = document.getElementById('discount-msg');
+    const priceEl = document.getElementById('price-display');
+
+    // Alle Buttons zurücksetzen
+    document.getElementById('btn-49').style.display = 'none';
+    document.getElementById('btn-33').style.display = 'none';
+    document.getElementById('btn-5').style.display  = 'none';
+
+    if (input === '') {
+      // Kein Code – Standard
+      document.getElementById('btn-49').style.display = 'block';
+      priceEl.textContent = 'CHF 49.–';
+      msgEl.textContent = '';
+      msgEl.className = 'discount-msg';
+      return;
+    }
+
+    if (CODES[input]) {
+      const c = CODES[input];
+      document.getElementById(c.btn).style.display = 'block';
+      priceEl.textContent = c.price;
+      msgEl.textContent = c.msg;
+      msgEl.className = 'discount-msg ok';
+    } else {
+      document.getElementById('btn-49').style.display = 'block';
+      priceEl.textContent = 'CHF 49.–';
+      msgEl.textContent = '❌ Ungültiger Rabattcode';
+      msgEl.className = 'discount-msg err';
+    }
+  }
+
+  // Enter-Taste im Input-Feld
+  document.getElementById('discount-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') applyCode();
+  });
+
+  // EARLY33 beim Laden vorausfüllen und aktivieren
+  window.addEventListener('load', function() {
+    document.getElementById('discount-input').value = 'EARLY33';
+    applyCode();
+  });
+</script>
+</body>
+</html>

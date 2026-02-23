@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dein Zugang – Let's go free</title>
+    <link rel="stylesheet" href="homepage-styles.css">
+    <style>
+        .code-box {
+            background: var(--dark2);
+            border: 2px solid var(--gold);
+            border-radius: var(--radius-md);
+            padding: 20px 28px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .code-label {
+            font-size: .75rem;
+            font-weight: 600;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: var(--gold-d);
+            margin-bottom: 8px;
+        }
+        .code-value {
+            font-family: 'Courier New', monospace;
+            font-size: 1.9rem;
+            font-weight: 700;
+            color: var(--gold);
+            letter-spacing: .18em;
+        }
+        .steps-mini {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .steps-mini li {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: .92rem;
+            font-weight: 300;
+            color: var(--text);
+            line-height: 1.6;
+            text-align: left;
+        }
+        .steps-mini li:last-child { border-bottom: none; }
+        .step-dot {
+            background: var(--gold);
+            color: var(--dark2);
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: .75rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body class="page-simple" style="align-items:center;">
+    <div class="page-container" style="max-width:560px; border-radius:var(--radius-lg);">
+
+        <!-- HERO -->
+        <div class="page-hero" style="text-align:center; padding:44px 44px 36px;">
+            <div class="danke-icon" style="margin:0 auto 24px;">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                </svg>
+            </div>
+            <h1 style="font-size:1.9em; color:var(--cream);">Zahlung erhalten!</h1>
+            <p style="margin-top:6px; color:rgba(245,230,211,.75); font-weight:300;">Dein Zugangscode und die nächsten Schritte</p>
+        </div>
+
+        <!-- BODY -->
+        <div class="page-body" style="text-align:center;">
+
+            <p style="font-size:.95rem; font-weight:300; color:var(--text); margin-bottom:6px;">
+                Herzlichen Glückwunsch – du hast jetzt dauerhaften Zugang zur<br>
+                <strong style="color:var(--gold-dk);">Let's go free – Krypto-Einsteiger-App.</strong>
+            </p>
+
+            <!-- CODE -->
+            <div class="code-box">
+                <div class="code-label">Dein persönlicher Zugangscode</div>
+                <div class="code-value">LGF-2026</div>
+            </div>
+
+            <p style="font-size:.82rem; color:var(--muted); font-style:italic; margin-bottom:22px;">
+                Speichere diesen Code – du brauchst ihn bei jeder Neuinstallation.
+            </p>
+
+            <!-- SCHRITTE -->
+            <div class="info-block" style="text-align:left; margin-bottom:22px;">
+                <p style="font-size:.8rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--gold-d); margin-bottom:14px;">So geht's weiter</p>
+                <ul class="steps-mini">
+                    <li>
+                        <div class="step-dot">1</div>
+                        <div>Öffne <a href="https://app.letsgofree.me" style="color:var(--gold-dk); font-weight:600; text-decoration:underline;">app.letsgofree.me</a> auf deinem Smartphone in Safari (iOS) oder Chrome (Android).</div>
+                    </li>
+                    <li>
+                        <div class="step-dot">2</div>
+                        <div>Folge der <strong>Installations-Anleitung</strong> auf der Seite.</div>
+                    </li>
+                    <li>
+                        <div class="step-dot">3</div>
+                        <div>Gib deinen persönlichen <strong>Zugangscode</strong> ein.</div>
+                    </li>
+                    <li>
+                        <div class="step-dot">4</div>
+                        <div>🎉 <strong>Geschafft!</strong> Du hast sofortigen Zugang zu allen Inhalten. Viel Spass mit der App!</div>
+                    </li>
+                </ul>
+            </div>
+
+            <p style="margin:20px 0 8px; font-size:.9rem; font-weight:300; color:var(--muted);">
+                Bei technischen Problemen oder Fragen – <a href="mailto:chris@letsgofree.me" style="color:var(--gold-dk); font-weight:600;">schreib mir gerne</a>.<br>
+                <strong style="color:var(--gold-dk);">Liebe Grüsse – Chris</strong>
+            </p>
+
+            <a href="index.html" class="back-btn" style="margin-top:16px;">← Zurück zur Startseite</a>
+        </div>
+
+    </div>
+</body>
+</html>
