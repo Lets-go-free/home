@@ -68,7 +68,7 @@ header h1 { font-size: clamp(1.3rem, 4vw, 1.8rem); font-weight: 700; color: var(
 header .sub { font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65); font-style: italic; }
 
 /* ── Container ── */
-.container { max-width: 860px; margin: 0 auto; padding: 36px 20px 64px; }
+.container { max-width: 1200px; margin: 0 auto; padding: 36px 20px 64px; }
 
 /* ── Section label (PDF phase-bar style) ── */
 .section-label {
@@ -301,22 +301,34 @@ header .sub { font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65);
       overflow-x: auto; margin: 20px 0;
       border: 1px solid var(--border); border-radius: 10px;
       box-shadow: 0 2px 12px rgba(74,61,42,.07);
+      -webkit-overflow-scrolling: touch;
     }
-    .wallet-table { width: 100%; border-collapse: collapse; min-width: 760px; }
+    .wallet-table { width: 100%; border-collapse: collapse; table-layout: auto; }
     .wallet-table th {
       background: var(--gold-dk); color: var(--cream);
-      font-size: .74rem; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
-      padding: 11px 14px; text-align: left; white-space: nowrap;
+      font-size: .70rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+      padding: 9px 10px; text-align: left; white-space: nowrap;
     }
     .wallet-table td {
-      padding: 10px 14px; border-bottom: 1px solid var(--border);
-      font-size: .82rem; font-weight: 300; color: var(--body); vertical-align: middle;
+      padding: 9px 10px; border-bottom: 1px solid var(--border);
+      font-size: .78rem; font-weight: 300; color: var(--body); vertical-align: middle;
     }
     .wallet-table tr:last-child td { border-bottom: none; }
     .wallet-table tr:nth-child(even) td { background: var(--cream2); }
     .wallet-table tr:hover td { background: var(--cream); }
     .wallet-name { font-weight: 600; color: var(--gold-dk); white-space: nowrap; }
-    .rating { white-space: nowrap; font-size: .9rem; }
+    .rating { white-space: nowrap; font-size: .88rem; }
+    /* Besonderheit-Spalte darf umbrechen, andere Spalten bleiben kompakt */
+    .wallet-table td:last-child { 
+      white-space: normal; 
+      min-width: 180px;
+      max-width: 280px;
+      line-height: 1.5;
+    }
+    /* Auf kleinen Screens: Tabelle scrollbar */
+    @media (max-width: 900px) {
+      .wallet-table { min-width: 720px; }
+    }
     .tag {
       display: inline-block;
       font-size: .7rem; font-weight: 600; letter-spacing: .05em;
