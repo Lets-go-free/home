@@ -6,92 +6,9 @@
   <title>DeFi-Sicherheits-Checkliste kompakt · Let's go free</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="freebie-shared.css">
   <style>
-/* ═══════════════════════════════════════════════════════════════════════
-   SHARED FREEBIE CSS – Let's go free
-   ═══════════════════════════════════════════════════════════════════════ */
-:root {
-  --gold:    #C9A882;
-  --gold-d:  #8B7355;
-  --gold-dk: #4a3d2a;
-  --dark:    #0f0d0a;
-  --dark2:   #1a1612;
-  --dark3:   #2a2218;
-  --cream:   #F5E6D3;
-  --cream2:  #FAF0E6;
-  --bg:      #f4ede4;
-  --body:    #3a2d20;
-  --muted:   #7a6a58;
-  --border:  #E2D0BC;
-  --white:   #ffffff;
-}
-
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  font-family: 'Poppins', 'Segoe UI', sans-serif;
-  background: var(--bg);
-  color: var(--body);
-  line-height: 1.7;
-  -webkit-font-smoothing: antialiased;
-}
-
-/* ── Back bar (App) ── */
-#lgf-back-bar { display: none; align-items: center; gap: 10px; }
-
-/* ── Header ── */
-header {
-  background: var(--gold-dk);
-  color: var(--cream);
-  text-align: center;
-  padding: 36px 20px 28px;
-  border-top: 4px solid var(--gold);
-  border-bottom: 3px solid var(--gold-d);
-  position: relative;
-}
-header::before {
-  content: '';
-  position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
-  background: linear-gradient(to bottom, var(--gold-d) 0%, var(--gold) 50%, var(--gold-d) 100%);
-}
-header .brand { font-size: 11px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--gold); margin-bottom: 6px; }
-header h1 { font-size: clamp(1.3rem, 4vw, 1.9rem); font-weight: 700; color: var(--cream2); line-height: 1.3; margin-bottom: 6px; }
-header .sub { font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65); font-style: italic; }
-
-/* ── Container ── */
-.container { max-width: 860px; margin: 0 auto; padding: 36px 20px 64px; }
-
-/* ── Section label ── */
-.section-label {
-  display: inline-block;
-  font-size: .72rem; font-weight: 600; letter-spacing: .13em; text-transform: uppercase;
-  background: linear-gradient(90deg, var(--gold-dk), var(--gold-d));
-  color: #d4b896;
-  padding: 5px 14px 5px 10px; border-radius: 4px;
-  margin-bottom: 16px; margin-top: 8px;
-}
-
-/* ── Info / warn / tip boxes ── */
-.info-box {
-  background: var(--cream2);
-  border-left: 4px solid var(--gold);
-  border-radius: 0 10px 10px 0;
-  padding: 16px 20px; margin: 20px 0;
-}
-.info-box p { font-size: .88rem; font-weight: 300; color: var(--body); line-height: 1.7; }
-.info-box p + p { margin-top: 8px; }
-.info-box strong { color: var(--gold-dk); font-weight: 600; }
-
-.warn-box {
-  background: rgba(224,112,112,.06);
-  border-left: 4px solid #c07070;
-  border-radius: 0 10px 10px 0;
-  padding: 14px 20px; margin: 16px 0;
-}
-.warn-box p { font-size: .86rem; color: #8a3030; }
-.warn-box strong { color: #7a2020; }
-
-/* ── Phase card ── */
+/* ── Phase cards ── */
 .phase-card {
   background: var(--white);
   border: 1px solid var(--border);
@@ -120,18 +37,16 @@ header .sub { font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65);
 }
 .phase-title h2 {
   font-size: 1.05rem; font-weight: 700;
-  color: var(--gold-dk); line-height: 1.2;
-  margin-bottom: 2px;
+  color: var(--gold-dk); line-height: 1.2; margin-bottom: 2px;
 }
 .phase-title h3 {
   font-size: .8rem; font-weight: 400;
   color: var(--muted); font-style: italic;
 }
 
-/* ── Subsection ── */
+/* ── Subsections ── */
 .subsection { margin-bottom: 18px; }
 .subsection:last-child { margin-bottom: 0; }
-
 .subsection-title {
   font-size: .75rem; font-weight: 600;
   letter-spacing: .1em; text-transform: uppercase;
@@ -141,7 +56,7 @@ header .sub { font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65);
   margin-bottom: 10px;
 }
 
-/* ── Checklist items ── */
+/* ── Interaktive Checkliste ── */
 .checklist-item {
   display: flex;
   align-items: flex-start;
@@ -153,7 +68,6 @@ header .sub { font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65);
   user-select: none;
 }
 .checklist-item:hover { background: var(--cream2); }
-
 .checkmark {
   font-size: 1.1rem;
   color: var(--gold-d);
@@ -173,7 +87,7 @@ header .sub { font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65);
   opacity: .5;
 }
 
-/* ── CTA Box ── */
+/* ── CTA box ── */
 .cta-box {
   background: var(--dark);
   border-left: 4px solid var(--gold);
@@ -182,11 +96,10 @@ header .sub { font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65);
   margin-top: 36px;
 }
 .cta-box h3 { font-size: 1rem; font-weight: 700; color: var(--gold); margin-bottom: 10px; }
-.cta-box p { font-size: .86rem; font-weight: 300; color: rgba(201,168,130,.8); line-height: 1.7; margin-bottom: 14px; }
+.cta-box p  { font-size: .86rem; font-weight: 300; color: rgba(201,168,130,.8); line-height: 1.7; margin-bottom: 14px; }
 .cta-list { list-style: none; margin-bottom: 20px; }
 .cta-list li {
-  font-size: .85rem; font-weight: 300;
-  color: rgba(201,168,130,.8);
+  font-size: .85rem; font-weight: 300; color: rgba(201,168,130,.8);
   padding: 4px 0 4px 20px; position: relative;
 }
 .cta-list li::before { content: '→'; position: absolute; left: 0; color: var(--gold); font-weight: 700; }
@@ -202,19 +115,7 @@ header .sub { font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65);
 }
 .cta-btn:hover { background: var(--gold); color: var(--dark); border-color: var(--gold); }
 
-/* ── Footer ── */
-.footer {
-  background: var(--gold-dk);
-  border-top: 2px solid var(--gold-d);
-  border-radius: 12px; padding: 24px 28px;
-  margin-top: 40px;
-}
-.footer p { font-size: .8rem; color: rgba(245,230,211,.6); margin-bottom: 6px; line-height: 1.6; }
-.footer p:last-child { margin-bottom: 0; }
-.footer a { color: var(--gold); text-decoration: none; }
-.footer a:hover { color: var(--cream); }
-.footer strong { color: rgba(245,230,211,.85); }
-
+/* ── Disclaimer (im Footer) ── */
 .disclaimer {
   background: rgba(201,168,130,.07);
   border-left: 3px solid var(--gold-d);

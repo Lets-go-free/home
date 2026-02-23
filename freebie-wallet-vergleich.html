@@ -6,329 +6,29 @@
   <title>Wallet-Vergleich · Let's go free</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="freebie-shared.css">
   <style>
-/* ═══════════════════════════════════════════════════════════════════════
-   SHARED FREEBIE CSS – Let's go free
-   Gleiche Variablen/Design wie bonus-empfehlungen.html
-   ═══════════════════════════════════════════════════════════════════════ */
-:root {
-  --gold:    #C9A882;
-  --gold-d:  #8B7355;
-  --gold-dk: #4a3d2a;
-  --dark:    #0f0d0a;
-  --dark2:   #1a1612;
-  --dark3:   #2a2218;
-  --cream:   #F5E6D3;
-  --cream2:  #FAF0E6;
-  --bg:      #f4ede4;
-  --body:    #3a2d20;
-  --muted:   #7a6a58;
-  --border:  #E2D0BC;
-  --white:   #ffffff;
-}
-
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  font-family: 'Poppins', 'Segoe UI', sans-serif;
-  background: var(--bg);
-  color: var(--body);
-  line-height: 1.7;
-  -webkit-font-smoothing: antialiased;
-}
-
-/* ── Back bar ── */
-.back-bar {
-  position: sticky; top: 0; z-index: 999;
-  display: flex; align-items: center; gap: 10px;
-  background: var(--gold-dk);
-  border-bottom: 1px solid rgba(201,168,130,.3);
-  padding: 10px 16px;
-}
-.back-bar button { background: none; border: none; color: var(--gold); font-size: 24px; cursor: pointer; padding: 0 6px; line-height: 1; }
-.back-bar span { font-size: 13px; color: #b89a76; font-weight: 500; }
-
-/* ── Header ── */
-header {
-  background: var(--gold-dk);
-  color: var(--cream);
-  text-align: center;
-  padding: 32px 20px 26px;
-  border-top: 4px solid var(--gold);
-  border-bottom: 3px solid var(--gold-d);
-  position: relative;
-}
-header::before {
-  content: '';
-  position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
-  background: linear-gradient(to bottom, var(--gold-d) 0%, var(--gold) 50%, var(--gold-d) 100%);
-}
-header .brand { font-size: 11px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--gold); margin-bottom: 6px; }
-header h1 { font-size: clamp(1.3rem, 4vw, 1.8rem); font-weight: 700; color: var(--cream2); line-height: 1.3; margin-bottom: 6px; }
-header .sub { font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65); font-style: italic; }
-
-/* ── Container ── */
-.container { max-width: 1200px; margin: 0 auto; padding: 36px 20px 64px; }
-
-/* ── Section label (PDF phase-bar style) ── */
-.section-label {
-  display: inline-block;
-  font-size: .72rem; font-weight: 600; letter-spacing: .13em; text-transform: uppercase;
-  background: linear-gradient(90deg, var(--gold-dk), var(--gold-d));
-  color: #d4b896;
-  padding: 5px 14px 5px 10px; border-radius: 4px;
-  margin-bottom: 16px; margin-top: 24px;
-}
-
-/* ── Cards ── */
-.card {
-  background: var(--white);
-  border: 1px solid var(--border);
-  border-top: 3px solid var(--gold-d);
-  border-radius: 0 0 12px 12px;
-  padding: 22px 24px; margin-bottom: 20px;
-  box-shadow: 0 2px 12px rgba(74,61,42,.07);
-  transition: box-shadow .2s, transform .2s;
-}
-.card:hover { box-shadow: 0 6px 24px rgba(74,61,42,.13); transform: translateY(-2px); }
-
-/* ── Info/warn/tip boxes ── */
-.info-box {
-  background: var(--cream2);
-  border-left: 4px solid var(--gold);
-  border-radius: 0 10px 10px 0;
-  padding: 16px 20px; margin: 16px 0;
-}
-.info-box h4 { font-size: .9rem; font-weight: 600; color: var(--gold-dk); margin-bottom: 8px; }
-.info-box p, .info-box li { font-size: .88rem; font-weight: 300; color: var(--body); line-height: 1.7; }
-.info-box ul { padding-left: 18px; margin-top: 6px; }
-
-.warn-box {
-  background: rgba(224,112,112,.06);
-  border-left: 4px solid #c07070;
-  border-radius: 0 10px 10px 0;
-  padding: 14px 20px; margin: 14px 0;
-}
-.warn-box p { font-size: .86rem; color: #8a3030; }
-.warn-box strong { color: #7a2020; }
-
-.tip-box {
-  background: rgba(201,168,130,.08);
-  border-left: 4px solid var(--gold-d);
-  border-radius: 0 10px 10px 0;
-  padding: 14px 20px; margin: 14px 0;
-}
-.tip-box p { font-size: .86rem; color: var(--body); font-weight: 300; }
-.tip-box strong { color: var(--gold-dk); }
-
-/* ── HL Box (PDF dark style) ── */
-.hl-box {
-  background: var(--dark);
-  border-left: 4px solid var(--gold);
-  border-radius: 0 10px 10px 0;
-  padding: 16px 20px; margin: 20px 0;
-}
-.hl-box h3, .hl-box h4 { font-size: .9rem; font-weight: 700; color: var(--gold); margin-bottom: 8px; }
-.hl-box p, .hl-box li { font-size: .86rem; font-weight: 300; color: rgba(201,168,130,.8); line-height: 1.7; }
-.hl-box ul { padding-left: 18px; margin-top: 6px; }
-
-/* ── Tags / Feature badges (PDF mono style) ── */
-.tag {
-  display: inline-block;
-  font-size: .72rem; font-weight: 500; letter-spacing: .06em;
-  font-family: 'Courier New', monospace;
-  background: var(--dark3); color: var(--gold);
-  padding: 3px 10px; border-radius: 4px; margin: 2px;
-}
-.tag.yes { background: rgba(80,120,80,.4); color: #a0d0a0; }
-.tag.no  { background: rgba(120,60,60,.35); color: #d09090; }
-.tag.partial { background: rgba(120,100,40,.4); color: #d4c070; }
-
-/* ── Buttons ── */
-.btn {
-  display: inline-block;
-  background: var(--dark); color: var(--gold);
-  border: 1px solid var(--gold-d);
-  padding: 10px 22px; border-radius: 6px;
-  text-decoration: none; cursor: pointer;
-  font-family: 'Poppins', sans-serif; font-size: .85rem; font-weight: 600;
-  letter-spacing: .06em; text-transform: uppercase;
-  font-family: 'Courier New', monospace;
-  transition: background .2s, color .2s;
-}
-.btn:hover { background: var(--gold-dk); color: var(--cream); border-color: var(--gold); }
-.btn.active { background: var(--gold-dk); color: var(--cream); }
-
-/* ── Search ── */
-.search-box { margin: 20px 0; }
-.search-input {
-  width: 100%; padding: 12px 16px;
-  font-family: 'Poppins', sans-serif; font-size: .9rem;
-  border: 1.5px solid var(--border); border-radius: 8px;
-  background: var(--white); color: var(--body);
-  transition: border-color .2s;
-}
-.search-input:focus { outline: none; border-color: var(--gold); }
-
-/* ── Filter buttons ── */
-.filter-buttons, .nav-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
-.filter-btn, .nav-tab {
-  font-family: 'Poppins', sans-serif; font-size: .78rem; font-weight: 600;
-  letter-spacing: .06em; text-transform: uppercase;
-  background: var(--white); color: var(--muted);
-  border: 1.5px solid var(--border); border-radius: 6px;
-  padding: 7px 14px; cursor: pointer; transition: all .15s;
-}
-.filter-btn:hover, .nav-tab:hover { border-color: var(--gold-d); color: var(--gold-dk); }
-.filter-btn.active, .nav-tab.active { background: var(--gold-dk); color: var(--cream); border-color: var(--gold-dk); }
-
-/* ── Filter selects ── */
-.filter-section { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
-.filter-group { display: flex; align-items: center; gap: 8px; }
-.filter-group label { font-size: .8rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
-.filter-group select {
-  font-family: 'Poppins', sans-serif; font-size: .82rem;
-  padding: 7px 12px; border: 1.5px solid var(--border);
-  border-radius: 6px; background: var(--white); color: var(--body); cursor: pointer;
-}
-.filter-group select:focus { outline: none; border-color: var(--gold); }
-
-/* ── Tables ── */
-.comparison-table, .wallet-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: .84rem; }
-.comparison-table th, .wallet-table th {
-  background: var(--gold-dk); color: var(--cream);
-  font-weight: 600; padding: 10px 14px; text-align: left;
-  font-size: .78rem; letter-spacing: .06em; text-transform: uppercase;
-}
-.comparison-table td, .wallet-table td {
-  padding: 10px 14px; border-bottom: 1px solid var(--border);
-  color: var(--body); font-weight: 300; vertical-align: middle;
-}
-.comparison-table tr:nth-child(even) td, .wallet-table tr:nth-child(even) td { background: var(--cream2); }
-.comparison-table tr:hover td, .wallet-table tr:hover td { background: var(--cream); }
-.cheap  { color: #3a7a3a; font-weight: 600; }
-.expensive { color: #a04040; font-weight: 600; }
-
-/* ── Content sections ── */
-.content-section { display: none; }
-.content-section.active { display: block; }
-
-/* ── Rec boxes ── */
-.recommendation-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 20px 0; }
-.rec-box {
-  background: var(--white); border: 1px solid var(--border);
-  border-top: 3px solid var(--gold-d); border-radius: 0 0 10px 10px;
-  padding: 18px 20px; box-shadow: 0 2px 8px rgba(74,61,42,.06);
-}
-.rec-box h3 { font-size: .9rem; font-weight: 700; color: var(--gold-dk); margin-bottom: 12px; }
-.rec-box ul { list-style: none; }
-.rec-box li { font-size: .84rem; font-weight: 300; color: var(--body); padding: 5px 0; padding-left: 16px; position: relative; }
-.rec-box li::before { content: '→'; position: absolute; left: 0; color: var(--gold-d); font-weight: 700; }
-
-/* ── Tool cards ── */
-.tool-card {
-  background: var(--white); border: 1px solid var(--border);
-  border-top: 3px solid var(--gold-d); border-radius: 0 0 12px 12px;
-  padding: 20px 22px; margin-bottom: 16px;
-  box-shadow: 0 2px 10px rgba(74,61,42,.07);
-}
-.tool-card h3 { font-size: 1rem; font-weight: 700; color: var(--gold-dk); margin-bottom: 6px; }
-.tool-card .tool-url { font-size: .78rem; color: var(--gold-d); font-family: monospace; }
-.tool-card p { font-size: .86rem; font-weight: 300; color: var(--body); margin-top: 8px; line-height: 1.65; }
-
-/* ── Checklist ── */
-.checklist { list-style: none; margin: 12px 0; }
-.checklist-item {
-  display: flex; gap: 10px; align-items: flex-start;
-  background: var(--cream2); border: 1px solid var(--border);
-  border-radius: 7px; padding: 10px 14px; margin-bottom: 7px;
-  font-size: .86rem; font-weight: 300; color: var(--body);
-}
-.checkbox {
-  width: 18px; height: 18px; min-width: 18px;
-  border: 2px solid var(--gold-d); border-radius: 3px;
-  cursor: pointer; margin-top: 1px; transition: all .15s; background: var(--white);
-}
-.checkbox.checked { background: var(--gold); border-color: var(--gold); }
-
-/* ── Time table ── */
-.time-table { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 14px 0; }
-.time-slot {
-  background: var(--white); border: 1.5px solid var(--border);
-  border-radius: 8px; padding: 12px 14px; text-align: center;
-}
-.time-slot.cheap-time { border-color: #6BAE6B; background: #f0faf0; }
-.time-slot.expensive-time { border-color: #c07070; background: #fff4f4; }
-
-/* ── No results ── */
-.no-results { text-align: center; color: var(--muted); font-size: .9rem; padding: 32px; font-style: italic; }
-
-/* ── Back to top ── */
-.back-to-top {
-  display: block; margin: 32px auto 0;
-  background: none; border: 1.5px solid var(--border);
-  border-radius: 8px; color: var(--muted);
-  font-family: 'Poppins', sans-serif; font-size: .82rem; font-weight: 500;
-  padding: 8px 20px; cursor: pointer; transition: all .15s;
-}
-.back-to-top:hover { border-color: var(--gold-d); color: var(--gold-dk); }
-
-/* ── Buttons container ── */
-.buttons { display: flex; flex-wrap: wrap; gap: 10px; margin: 28px 0 16px; }
-
-/* ── Footer ── */
-.footer {
-  background: var(--gold-dk);
-  border-top: 2px solid var(--gold-d);
-  border-radius: 12px; padding: 24px 28px;
-  margin-top: 40px;
-}
-.footer p { font-size: .8rem; color: rgba(245,230,211,.6); margin-bottom: 6px; line-height: 1.6; }
-.footer p:last-child { margin-bottom: 0; }
-.footer a { color: var(--gold); text-decoration: none; }
-.footer a:hover { color: var(--cream); }
-.footer strong { color: rgba(245,230,211,.85); }
-
-/* ── Responsive ── */
-@media (max-width: 560px) {
-  .filter-section { flex-direction: column; }
-  .recommendation-boxes { grid-template-columns: 1fr; }
-}
-
-
-    /* ── Wallet Vergleich spezifisch ── */
+/* ── Wallet Vergleich spezifisch ── */
     .wallet-table-container {
       overflow-x: auto; margin: 20px 0;
       border: 1px solid var(--border); border-radius: 10px;
       box-shadow: 0 2px 12px rgba(74,61,42,.07);
-      -webkit-overflow-scrolling: touch;
     }
-    .wallet-table { width: 100%; border-collapse: collapse; table-layout: auto; }
+    .wallet-table { width: 100%; border-collapse: collapse; min-width: 760px; }
     .wallet-table th {
       background: var(--gold-dk); color: var(--cream);
-      font-size: .70rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
-      padding: 9px 10px; text-align: left; white-space: nowrap;
+      font-size: .74rem; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+      padding: 11px 14px; text-align: left; white-space: nowrap;
     }
     .wallet-table td {
-      padding: 9px 10px; border-bottom: 1px solid var(--border);
-      font-size: .78rem; font-weight: 300; color: var(--body); vertical-align: middle;
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      font-size: .82rem; font-weight: 300; color: var(--body); vertical-align: middle;
     }
     .wallet-table tr:last-child td { border-bottom: none; }
     .wallet-table tr:nth-child(even) td { background: var(--cream2); }
     .wallet-table tr:hover td { background: var(--cream); }
     .wallet-name { font-weight: 600; color: var(--gold-dk); white-space: nowrap; }
-    .rating { white-space: nowrap; font-size: .88rem; }
-    /* Besonderheit-Spalte darf umbrechen, andere Spalten bleiben kompakt */
-    .wallet-table td:last-child { 
-      white-space: normal; 
-      min-width: 180px;
-      max-width: 280px;
-      line-height: 1.5;
-    }
-    /* Auf kleinen Screens: Tabelle scrollbar */
-    @media (max-width: 900px) {
-      .wallet-table { min-width: 720px; }
-    }
+    .rating { white-space: nowrap; font-size: .9rem; }
     .tag {
       display: inline-block;
       font-size: .7rem; font-weight: 600; letter-spacing: .05em;
@@ -406,15 +106,15 @@ header .sub { font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65);
     <div class="rec-box">
       <h3>✅ Für Anfänger</h3>
       <ul>
-        <li><strong>Rabby Wallet</strong> – Intuitiv, Multi-Chain, DeFi-ready</li>
+        <li><strong>Trust Wallet</strong> – Einfach, mobil, viele Chains</li>
         <li><strong>MetaMask</strong> – Standard für Web-DeFi</li>
-        <li><strong>SafePal</strong> – Benutzerfreundlich, viele Chains</li>
+        <li><strong>Coinbase Wallet</strong> – Benutzerfreundlich</li>
       </ul>
     </div>
     <div class="rec-box">
       <h3>🔒 Maximale Sicherheit</h3>
       <ul>
-        <li><strong>Ledger Nano Gen 5</strong> – Bluetooth, NFC, neu 2025</li>
+        <li><strong>Ledger Nano X</strong> – Hardware, Bluetooth</li>
         <li><strong>Trezor Model T</strong> – Open Source</li>
         <li><strong>Tangem Wallet</strong> – Karten-Format, einfach</li>
       </ul>
@@ -499,59 +199,37 @@ header .sub { font-size: .88rem; font-weight: 300; color: rgba(245,230,211,.65);
                 special: "Standard für Web3, grösste Community"
             },
             {
-                name: "Ledger Nano S Plus",
-                type: "hardware",
-                rating: 4,
-                chains: "15000+ Coins & Token",
-                platforms: ["desktop"],
+                name: "Trust Wallet",
+                type: "hot",
+                rating: 5,
+                chains: "65+ Blockchains, fast alles",
+                platforms: ["mobile"],
                 nft: true,
-                defi: "Via Ledger Wallet App, limitiert",
-                price: "einmalig",
-                special: "Einstiegsmodell $79 · nur USB-C, kein Bluetooth · WalletConnect: ✓ (via Desktop) · kein Smartphone-Betrieb"
+                defi: "Eingebauter Swap & Staking, Browser integriert",
+                price: "kostenlos",
+                special: "Sehr anfängerfreundlich, von Binance"
             },
             {
                 name: "Ledger Nano X",
                 type: "hardware",
-                rating: 4,
-                chains: "15000+ Coins & Token",
-                platforms: ["mobile", "desktop"],
-                nft: true,
-                defi: "Via Ledger Wallet App, limitiert",
-                price: "einmalig",
-                special: "Bewährtes Modell $149 · Bluetooth 5.0 ✓ · Smartphone ✓ · WalletConnect ✓ · USB-C"
-            },
-            {
-                name: "Ledger Nano Gen 5",
-                type: "hardware",
                 rating: 5,
                 chains: "15000+ Coins & Token",
                 platforms: ["mobile", "desktop"],
                 nft: true,
-                defi: "Via Ledger Wallet App, limitiert",
+                defi: "Via Ledger Live, limitiert",
                 price: "einmalig",
-                special: "NEU Okt. 2025 · $179 · E-Ink Screen · Bluetooth 5.2 ✓ · NFC ✓ · Smartphone ✓ · WalletConnect ✓"
+                special: "Bluetooth, maximale Sicherheit, $149"
             },
             {
-                name: "Ledger Flex",
+                name: "Ledger Nano S Plus",
                 type: "hardware",
                 rating: 5,
                 chains: "15000+ Coins & Token",
-                platforms: ["mobile", "desktop"],
+                platforms: ["desktop"],
                 nft: true,
-                defi: "Via Ledger Wallet App, limitiert",
+                defi: "Via Ledger Live, limitiert",
                 price: "einmalig",
-                special: "2024 · $249 · E-Ink Touchscreen · Bluetooth ✓ · NFC ✓ · Smartphone ✓ · WalletConnect ✓"
-            },
-            {
-                name: "Ledger Stax",
-                type: "hardware",
-                rating: 5,
-                chains: "15000+ Coins & Token",
-                platforms: ["mobile", "desktop"],
-                nft: true,
-                defi: "Via Ledger Wallet App, limitiert",
-                price: "einmalig",
-                special: "Premium 2024 · $279 · Grosser E-Ink Touchscreen · Bluetooth ✓ · NFC ✓ · Wireless Charging ✓ · Smartphone ✓ · WalletConnect ✓"
+                special: "Günstigere Alternative, nur USB, $79"
             },
             {
                 name: "Trezor Model T",
