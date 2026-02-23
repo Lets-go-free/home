@@ -9,39 +9,56 @@
   <link rel="stylesheet" href="freebie-shared.css">
   <style>
 /* ── Wallet Vergleich spezifisch ── */
+
+    /* Breiter Container für Desktop */
+    .container { max-width: 1280px; }
+
     .wallet-table-container {
       overflow-x: auto; margin: 20px 0;
       border: 1px solid var(--border); border-radius: 10px;
       box-shadow: 0 2px 12px rgba(74,61,42,.07);
+      -webkit-overflow-scrolling: touch;
     }
-    .wallet-table { width: 100%; border-collapse: collapse; min-width: 760px; }
+    .wallet-table { width: 100%; border-collapse: collapse; table-layout: auto; }
     .wallet-table th {
       background: var(--gold-dk); color: var(--cream);
-      font-size: .74rem; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
-      padding: 11px 14px; text-align: left; white-space: nowrap;
+      font-size: .70rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+      padding: 9px 10px; text-align: left; white-space: nowrap;
     }
     .wallet-table td {
-      padding: 10px 14px; border-bottom: 1px solid var(--border);
-      font-size: .82rem; font-weight: 300; color: var(--body); vertical-align: middle;
+      padding: 9px 10px; border-bottom: 1px solid var(--border);
+      font-size: .78rem; font-weight: 300; color: var(--body); vertical-align: middle;
     }
     .wallet-table tr:last-child td { border-bottom: none; }
     .wallet-table tr:nth-child(even) td { background: var(--cream2); }
     .wallet-table tr:hover td { background: var(--cream); }
     .wallet-name { font-weight: 600; color: var(--gold-dk); white-space: nowrap; }
-    .rating { white-space: nowrap; font-size: .9rem; }
+    .rating { white-space: nowrap; font-size: .88rem; }
+    /* Besonderheit-Spalte darf umbrechen, andere Spalten bleiben kompakt */
+    .wallet-table td:last-child {
+      white-space: normal;
+      min-width: 180px;
+      max-width: 280px;
+      line-height: 1.5;
+    }
+    /* Smartphone: Tabelle scrollbar */
+    @media (max-width: 900px) {
+      .wallet-table { min-width: 720px; }
+      .container { max-width: 100%; }
+    }
     .tag {
       display: inline-block;
       font-size: .7rem; font-weight: 600; letter-spacing: .05em;
       font-family: 'Courier New', monospace;
       padding: 2px 8px; border-radius: 3px; white-space: nowrap;
     }
-    .tag.hot { background: rgba(201,100,60,.15); color: #a04020; border: 1px solid rgba(201,100,60,.3); }
-    .tag.cold { background: rgba(60,100,180,.15); color: #203080; border: 1px solid rgba(60,100,180,.3); }
+    .tag.hot      { background: rgba(201,100,60,.15); color: #a04020; border: 1px solid rgba(201,100,60,.3); }
+    .tag.cold     { background: rgba(60,100,180,.15); color: #203080; border: 1px solid rgba(60,100,180,.3); }
     .tag.hardware { background: var(--dark3); color: var(--gold); }
-    .tag.yes { background: rgba(60,120,60,.15); color: #2a6a2a; border: 1px solid rgba(60,120,60,.3); }
-    .tag.no { background: rgba(180,60,60,.12); color: #8a2020; border: 1px solid rgba(180,60,60,.2); }
-    .tag.free { background: rgba(60,150,60,.12); color: #2a6a2a; }
-    .tag.paid { background: rgba(201,168,130,.15); color: var(--gold-dk); }
+    .tag.yes      { background: rgba(60,120,60,.15);  color: #2a6a2a; border: 1px solid rgba(60,120,60,.3); }
+    .tag.no       { background: rgba(180,60,60,.12);  color: #8a2020; border: 1px solid rgba(180,60,60,.2); }
+    .tag.free     { background: rgba(60,150,60,.12);  color: #2a6a2a; }
+    .tag.paid     { background: rgba(201,168,130,.15); color: var(--gold-dk); }
   </style>
 </head>
 <body>
@@ -106,15 +123,15 @@
     <div class="rec-box">
       <h3>✅ Für Anfänger</h3>
       <ul>
-        <li><strong>Trust Wallet</strong> – Einfach, mobil, viele Chains</li>
+        <li><strong>Rabby Wallet</strong> – Intuitiv, Multi-Chain, DeFi-ready</li>
         <li><strong>MetaMask</strong> – Standard für Web-DeFi</li>
-        <li><strong>Coinbase Wallet</strong> – Benutzerfreundlich</li>
+        <li><strong>SafePal</strong> – Benutzerfreundlich, viele Chains</li>
       </ul>
     </div>
     <div class="rec-box">
       <h3>🔒 Maximale Sicherheit</h3>
       <ul>
-        <li><strong>Ledger Nano X</strong> – Hardware, Bluetooth</li>
+        <li><strong>Ledger Nano Gen 5</strong> – Bluetooth, NFC, neu 2025</li>
         <li><strong>Trezor Model T</strong> – Open Source</li>
         <li><strong>Tangem Wallet</strong> – Karten-Format, einfach</li>
       </ul>
@@ -199,37 +216,59 @@
                 special: "Standard für Web3, grösste Community"
             },
             {
-                name: "Trust Wallet",
-                type: "hot",
-                rating: 5,
-                chains: "65+ Blockchains, fast alles",
-                platforms: ["mobile"],
+                name: "Ledger Nano S Plus",
+                type: "hardware",
+                rating: 4,
+                chains: "15000+ Coins & Token",
+                platforms: ["desktop"],
                 nft: true,
-                defi: "Eingebauter Swap & Staking, Browser integriert",
-                price: "kostenlos",
-                special: "Sehr anfängerfreundlich, von Binance"
+                defi: "Via Ledger Wallet App, limitiert",
+                price: "einmalig",
+                special: "Einstiegsmodell $79 · nur USB-C, kein Bluetooth · WalletConnect: ✓ (via Desktop) · kein Smartphone-Betrieb"
             },
             {
                 name: "Ledger Nano X",
+                type: "hardware",
+                rating: 4,
+                chains: "15000+ Coins & Token",
+                platforms: ["mobile", "desktop"],
+                nft: true,
+                defi: "Via Ledger Wallet App, limitiert",
+                price: "einmalig",
+                special: "Bewährtes Modell $149 · Bluetooth 5.0 ✓ · Smartphone ✓ · WalletConnect ✓ · USB-C"
+            },
+            {
+                name: "Ledger Nano Gen 5",
                 type: "hardware",
                 rating: 5,
                 chains: "15000+ Coins & Token",
                 platforms: ["mobile", "desktop"],
                 nft: true,
-                defi: "Via Ledger Live, limitiert",
+                defi: "Via Ledger Wallet App, limitiert",
                 price: "einmalig",
-                special: "Bluetooth, maximale Sicherheit, $149"
+                special: "NEU Okt. 2025 · $179 · E-Ink Screen · Bluetooth 5.2 ✓ · NFC ✓ · Smartphone ✓ · WalletConnect ✓"
             },
             {
-                name: "Ledger Nano S Plus",
+                name: "Ledger Flex",
                 type: "hardware",
                 rating: 5,
                 chains: "15000+ Coins & Token",
-                platforms: ["desktop"],
+                platforms: ["mobile", "desktop"],
                 nft: true,
-                defi: "Via Ledger Live, limitiert",
+                defi: "Via Ledger Wallet App, limitiert",
                 price: "einmalig",
-                special: "Günstigere Alternative, nur USB, $79"
+                special: "2024 · $249 · E-Ink Touchscreen · Bluetooth ✓ · NFC ✓ · Smartphone ✓ · WalletConnect ✓"
+            },
+            {
+                name: "Ledger Stax",
+                type: "hardware",
+                rating: 5,
+                chains: "15000+ Coins & Token",
+                platforms: ["mobile", "desktop"],
+                nft: true,
+                defi: "Via Ledger Wallet App, limitiert",
+                price: "einmalig",
+                special: "Premium 2024 · $279 · Grosser E-Ink Touchscreen · Bluetooth ✓ · NFC ✓ · Wireless Charging ✓ · Smartphone ✓ · WalletConnect ✓"
             },
             {
                 name: "Trezor Model T",
