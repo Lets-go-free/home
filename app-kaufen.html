@@ -414,6 +414,13 @@
         </a>
       </div>
 
+      <!-- PAYPAL BUTTON 4: CHF 1 (CHF1, versteckt) -->
+      <div id="btn-1" style="display:none;">
+        <a href="https://www.paypal.com/ncp/payment/2W4VWBNYJAHLS" class="btn-paypal">
+          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal kaufen – CHF 1.–
+        </a>
+      </div>
+
       <div class="price-guarantee">🔒 Sichere Zahlung über PayPal · Sofortzugang nach Zahlung</div>
     </div>
   </div>
@@ -532,7 +539,8 @@
 <script>
   const CODES = {
     'EARLY33':  { price: 'CHF 33.–', btn: 'btn-33', msg: '✅ Rabattcode eingelöst – Preis: CHF 33.–' },
-    'FRIENDS5': { price: 'CHF 5.–',  btn: 'btn-5',  msg: '✅ Freundes-Rabatt eingelöst – Preis: CHF 5.–' }
+    'FRIENDS5': { price: 'CHF 5.–',  btn: 'btn-5',  msg: '✅ Freundes-Rabatt eingelöst – Preis: CHF 5.–' },
+    'CHF1':     { price: 'CHF 1.–',  btn: 'btn-1',  msg: '✅ Rabattcode eingelöst – Preis: CHF 1.–' }
   };
 
   function applyCode() {
@@ -544,6 +552,7 @@
     document.getElementById('btn-49').style.display = 'none';
     document.getElementById('btn-33').style.display = 'none';
     document.getElementById('btn-5').style.display  = 'none';
+    document.getElementById('btn-1').style.display  = 'none';
 
     if (input === '') {
       // Kein Code – Standard
