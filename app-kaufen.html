@@ -366,20 +366,20 @@
 
   <!-- HERO -->
   <div class="hero">
-    <div class="hero-badge">🎁 Starter-Bonus aktiv – Code EARLY33 für CHF 33.–</div>
+    <div class="hero-badge">🎁 Starter-Bonus aktiv – Code EARLY33 für CHF 26.–</div>
     <h1>Let's go free –<br><span>Die Krypto-Einsteiger-App</span></h1>
     <p class="hero-sub">Dein vollständiger Begleiter in die Welt von Krypto und DeFi – klar, sicher und ohne unnötigen Fachjargon.</p>
 
     <!-- PREIS-BOX -->
     <div class="price-box">
       <div class="price-label">Einmaliger Kaufpreis</div>
-      <div class="price-main" id="price-display">CHF 49.–</div>
+      <div class="price-main" id="price-display">CHF 39.–</div>
       <div class="price-sub">Einmalzahlung · dauerhafter Zugang</div>
 
       <!-- STARTER BONUS -->
       <div style="background: linear-gradient(135deg, var(--gold-dk) 0%, #6b5030 100%); border-radius: var(--radius-sm); padding: 14px 18px; margin: 14px 0 18px; text-align: left; border: 1px solid var(--gold);">
         <div style="font-size:.7rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); margin-bottom:5px;">🎁 Starter-Bonus</div>
-        <div style="font-size:.92rem; color:var(--cream); font-weight:300; line-height:1.5;">Jetzt mit Code <strong style="font-family:'Courier New',monospace; font-size:1.05em; color:var(--gold); letter-spacing:.1em;">EARLY33</strong> nur <strong style="color:var(--gold);">CHF 33.–</strong> statt CHF 49.–</div>
+        <div style="font-size:.92rem; color:var(--cream); font-weight:300; line-height:1.5;">Jetzt mit Code <strong style="font-family:'Courier New',monospace; font-size:1.05em; color:var(--gold); letter-spacing:.1em;">EARLY33</strong> nur <strong style="color:var(--gold);">CHF 26.–</strong> statt CHF 39.–</div>
         <div style="font-size:.75rem; color:rgba(245,230,211,.6); margin-top:4px; font-style:italic;">Limitiertes Einführungsangebot – Code unten eingeben</div>
       </div>
 
@@ -393,17 +393,17 @@
         <div class="discount-msg" id="discount-msg"></div>
       </div>
 
-      <!-- PAYPAL BUTTON 1: CHF 49 (Standard, sichtbar) -->
+      <!-- PAYPAL BUTTON 1: CHF 39 (Standard, sichtbar) -->
       <div id="btn-49">
         <a href="https://www.paypal.com/ncp/payment/4BB8SYJDMHCKG" class="btn-paypal">
-          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal oder Kreditkarte kaufen – CHF 49.–
+          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal oder Kreditkarte kaufen – CHF 39.–
         </a>
       </div>
 
-      <!-- PAYPAL BUTTON 2: CHF 33 (EARLY33, versteckt) -->
+      <!-- PAYPAL BUTTON 2: CHF 26 (EARLY33, versteckt) -->
       <div id="btn-33" style="display:none;">
         <a href="https://www.paypal.com/ncp/payment/WDH26292XCEVA" class="btn-paypal">
-          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal oder Kreditkarte kaufen – CHF 33.–
+          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal oder Kreditkarte kaufen – CHF 26.–
         </a>
       </div>
 
@@ -513,7 +513,7 @@
     <div class="cta-bottom">
       <h3>Bereit für deinen Krypto-Start?</h3>
       <p>Einmal kaufen, dauerhaft nutzen – auf jedem Gerät.</p>
-      <div class="cta-price">CHF 49.– <small>oder CHF 33.– mit Starter-Code <span style="font-family:'Courier New',monospace; letter-spacing:.08em;">EARLY33</span></small></div>
+      <div class="cta-price">CHF 39.– <small>oder CHF 26.– mit Starter-Code <span style="font-family:'Courier New',monospace; letter-spacing:.08em;">EARLY33</span></small></div>
       <a href="#top" class="btn-paypal" style="max-width:360px; margin:0 auto; display:block; text-decoration:none;">
         ↑ Zum Kaufen-Button
       </a>
@@ -538,7 +538,7 @@
 
 <script>
   const CODES = {
-    'EARLY33':  { price: 'CHF 33.–', btn: 'btn-33', msg: '✅ Rabattcode eingelöst – Preis: CHF 33.–' },
+    'EARLY33':  { price: 'CHF 26.–', btn: 'btn-33', msg: '✅ Rabattcode eingelöst – Preis: CHF 26.–' },
     'FRIENDS5': { price: 'CHF 5.–',  btn: 'btn-5',  msg: '✅ Freundes-Rabatt eingelöst – Preis: CHF 5.–' },
     'CHF1':     { price: 'CHF 1.–',  btn: 'btn-1',  msg: '✅ Rabattcode eingelöst – Preis: CHF 1.–' }
   };
@@ -557,7 +557,7 @@
     if (input === '') {
       // Kein Code – Standard
       document.getElementById('btn-49').style.display = 'block';
-      priceEl.textContent = 'CHF 49.–';
+      priceEl.textContent = 'CHF 39.–';
       msgEl.textContent = '';
       msgEl.className = 'discount-msg';
       return;
@@ -571,7 +571,7 @@
       msgEl.className = 'discount-msg ok';
     } else {
       document.getElementById('btn-49').style.display = 'block';
-      priceEl.textContent = 'CHF 49.–';
+      priceEl.textContent = 'CHF 39.–';
       msgEl.textContent = '❌ Ungültiger Rabattcode';
       msgEl.className = 'discount-msg err';
     }
