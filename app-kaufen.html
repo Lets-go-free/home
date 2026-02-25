@@ -361,87 +361,6 @@
     <div class="hero-badge">🎁 Starter-Bonus aktiv – Code EARLY33 für CHF 19.–</div>
     <h1>Let's go free –<br><span>Die Krypto-Einsteiger-App</span></h1>
     <p class="hero-sub">Dein vollständiger Begleiter in die Welt von Krypto und DeFi – klar, sicher und ohne unnötigen Fachjargon.</p>
-
-    <!-- PREIS-BOX -->
-    <div class="price-box">
-      <div class="price-label">Einmaliger Kaufpreis</div>
-      <div class="price-main" id="price-display">CHF 29.–</div>
-      <div class="price-sub">Einmalzahlung · dauerhafter Zugang</div>
-
-      <!-- STARTER BONUS -->
-      <div style="background: linear-gradient(135deg, var(--gold-dk) 0%, #6b5030 100%); border-radius: var(--radius-sm); padding: 14px 18px; margin: 14px 0 18px; text-align: left; border: 1px solid var(--gold);">
-        <div style="font-size:.7rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); margin-bottom:5px;">🎁 Starter-Bonus</div>
-        <div style="font-size:.92rem; color:var(--cream); font-weight:300; line-height:1.5;">Jetzt mit Code <strong style="font-family:'Courier New',monospace; font-size:1.05em; color:var(--gold); letter-spacing:.1em;">EARLY33</strong> nur <strong style="color:var(--gold);">CHF 19.–</strong> statt CHF 29.–</div>
-        <div style="font-size:.75rem; color:rgba(245,230,211,.6); margin-top:4px; font-style:italic;">Limitiertes Einführungsangebot – Code unten eingeben</div>
-      </div>
-
-      <!-- RABATTCODE -->
-      <div class="discount-wrap">
-        <div class="discount-label">Hast du einen Rabattcode?</div>
-        <div class="discount-row">
-          <input type="text" id="discount-input" class="discount-input" placeholder="z.B. EARLY33" maxlength="12" autocomplete="off">
-          <button class="discount-apply" onclick="applyCode()">Einlösen</button>
-        </div>
-        <div class="discount-msg" id="discount-msg"></div>
-      </div>
-
-      <!-- PAYPAL BUTTON 1: CHF 29 (Standard, sichtbar) -->
-      <div id="btn-49">
-        <a href="https://www.paypal.com/ncp/payment/4BB8SYJDMHCKG" class="btn-paypal">
-          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal oder Kreditkarte kaufen – CHF 29.–
-        </a>
-      </div>
-
-      <!-- PAYPAL BUTTON 2: CHF 19 (EARLY33, versteckt) -->
-      <div id="btn-33" style="display:none;">
-        <a href="https://www.paypal.com/ncp/payment/WDH26292XCEVA" class="btn-paypal">
-          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal oder Kreditkarte kaufen – CHF 19.–
-        </a>
-      </div>
-
-      <!-- PAYPAL BUTTON 3: CHF 5 (FRIENDS5, versteckt) -->
-      <div id="btn-5" style="display:none;">
-        <a href="https://www.paypal.com/ncp/payment/72TWCA9ADYYZ4" class="btn-paypal">
-          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal oder Kreditkarte kaufen – CHF 5.–
-        </a>
-      </div>
-
-      <!-- PAYPAL BUTTON 4: CHF 1 (CHF1, versteckt) -->
-      <div id="btn-1" style="display:none;">
-        <a href="https://www.paypal.com/ncp/payment/2W4VWBNYJAHLS" class="btn-paypal">
-          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal oder Kreditkarte kaufen – CHF 1.–
-        </a>
-      </div>
-
-      <div class="price-guarantee">🔒 Sichere Zahlung über PayPal · Sofortzugang nach Zahlung</div>
-
-      <!-- NEWSLETTER OPT-IN -->
-      <div style="margin-top:22px; padding-top:20px; border-top:1px solid var(--border);">
-        <p style="font-size:.82rem; color:var(--muted); font-weight:600; margin-bottom:12px; text-align:left;">📬 App-Updates &amp; News erhalten (optional)</p>
-        <div id="nl-form-wrap"><form id="nl-form" action="https://formspree.io/f/mdalyjno" method="POST" style="text-align:left;" onsubmit="submitNewsletter(event)">
-          <input type="hidden" name="_subject" value="Newsletter-Einwilligung – Krypto-Einsteiger-App">
-          <div style="margin-bottom:10px;">
-            <input type="email" name="email" id="nl-email" placeholder="Deine E-Mail-Adresse" oninput="checkNewsletter()"
-              style="width:100%; box-sizing:border-box; padding:10px 14px; border:1.5px solid var(--border); border-radius:var(--radius-sm); font-family:'Poppins',sans-serif; font-size:.9rem; background:var(--cream2); color:var(--text); outline:none;">
-          </div>
-          <label style="display:flex; align-items:flex-start; gap:10px; font-size:.82rem; color:var(--muted); font-weight:300; line-height:1.5; cursor:pointer;">
-            <input type="checkbox" name="newsletter_einwilligung" id="nl-check" value="ja" onchange="checkNewsletter()"
-              style="margin-top:3px; flex-shrink:0; accent-color:var(--gold-dk);">
-            <span>Ich bin einverstanden, dass meine E-Mail-Adresse für Infos zu App-Updates und News von Let's go free verwendet wird. Keine Weitergabe an Dritte. Abmeldung jederzeit möglich.</span>
-          </label>
-          <button type="submit" id="newsletter-submit" disabled
-            style="margin-top:12px; background:var(--dark2); color:var(--gold); border:1.5px solid var(--gold-d); font-family:'Poppins',sans-serif; font-size:.82rem; font-weight:600; padding:10px 20px; border-radius:var(--radius-sm); cursor:not-allowed; width:100%; opacity:.4; transition: opacity .2s, cursor .2s;">
-            Eintragen
-          </button>
-        </form>
-        </div>
-        <div id="nl-success" style="display:none; text-align:center; padding:16px 0;">
-          <span style="font-size:1.4rem;">✅</span>
-          <p style="font-size:.88rem; color:#2e7d32; font-weight:600; margin:6px 0 2px;">Danke! Du wirst über Updates informiert.</p>
-          <p style="font-size:.78rem; color:var(--muted); font-weight:300;">Du kannst dich jederzeit abmelden.</p>
-        </div>
-      </div>
-    </div>
   </div>
 
   <!-- CONTENT -->
@@ -528,14 +447,93 @@
       </ol>
     </div>
 
-    <!-- CTA UNTEN -->
-    <div class="cta-bottom">
-      <h3>Bereit für deinen Krypto-Start?</h3>
-      <p>Einmal kaufen, dauerhaft nutzen – auf jedem Gerät.</p>
-      <div class="cta-price">CHF 29.– <small>oder CHF 19.– mit Starter-Code <span style="font-family:'Courier New',monospace; letter-spacing:.08em;">EARLY33</span></small></div>
-      <a href="#top" class="btn-paypal" style="max-width:360px; margin:0 auto; display:block; text-decoration:none;">
-        ↑ Zum Kaufen-Button
-      </a>
+    <!-- KAUFEN BLOCK -->
+    <div class="section" style="padding-bottom:50px;">
+      <div class="section-label">Jetzt kaufen</div>
+      <h2>Bereit für deinen Krypto-Start?</h2>
+      <p style="font-size:.92rem; color:var(--muted); font-weight:300; margin-bottom:28px;">Einmal kaufen, dauerhaft nutzen – auf jedem Gerät.</p>
+      <div style="max-width:480px;">
+<!-- PREIS-BOX -->
+    <div class="price-box">
+      <div class="price-label">Einmaliger Kaufpreis</div>
+      <div class="price-main" id="price-display">CHF 29.–</div>
+      <div class="price-sub">Einmalzahlung · dauerhafter Zugang</div>
+
+      <!-- STARTER BONUS -->
+      <div style="background: linear-gradient(135deg, var(--gold-dk) 0%, #6b5030 100%); border-radius: var(--radius-sm); padding: 14px 18px; margin: 14px 0 18px; text-align: left; border: 1px solid var(--gold);">
+        <div style="font-size:.7rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); margin-bottom:5px;">🎁 Starter-Bonus</div>
+        <div style="font-size:.92rem; color:var(--cream); font-weight:300; line-height:1.5;">Jetzt mit Code <strong style="font-family:'Courier New',monospace; font-size:1.05em; color:var(--gold); letter-spacing:.1em;">EARLY33</strong> nur <strong style="color:var(--gold);">CHF 19.–</strong> statt CHF 29.–</div>
+        <div style="font-size:.75rem; color:rgba(245,230,211,.6); margin-top:4px; font-style:italic;">Limitiertes Einführungsangebot – Code unten eingeben</div>
+      </div>
+
+      <!-- RABATTCODE -->
+      <div class="discount-wrap">
+        <div class="discount-label">Hast du einen Rabattcode?</div>
+        <div class="discount-row">
+          <input type="text" id="discount-input" class="discount-input" placeholder="z.B. EARLY33" maxlength="12" autocomplete="off">
+          <button class="discount-apply" onclick="applyCode()">Einlösen</button>
+        </div>
+        <div class="discount-msg" id="discount-msg"></div>
+      </div>
+
+      <!-- PAYPAL BUTTON 1: CHF 29 (Standard, sichtbar) -->
+      <div id="btn-49">
+        <a href="https://www.paypal.com/ncp/payment/4BB8SYJDMHCKG" class="btn-paypal">
+          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal oder Kreditkarte kaufen – CHF 29.–
+        </a>
+      </div>
+
+      <!-- PAYPAL BUTTON 2: CHF 19 (EARLY33, versteckt) -->
+      <div id="btn-33" style="display:none;">
+        <a href="https://www.paypal.com/ncp/payment/WDH26292XCEVA" class="btn-paypal">
+          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal oder Kreditkarte kaufen – CHF 19.–
+        </a>
+      </div>
+
+      <!-- PAYPAL BUTTON 3: CHF 5 (FRIENDS5, versteckt) -->
+      <div id="btn-5" style="display:none;">
+        <a href="https://www.paypal.com/ncp/payment/72TWCA9ADYYZ4" class="btn-paypal">
+          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal oder Kreditkarte kaufen – CHF 5.–
+        </a>
+      </div>
+
+      <!-- PAYPAL BUTTON 4: CHF 1 (CHF1, versteckt) -->
+      <div id="btn-1" style="display:none;">
+        <a href="https://www.paypal.com/ncp/payment/2W4VWBNYJAHLS" class="btn-paypal">
+          <span class="btn-paypal-icon">💳</span> Jetzt mit PayPal oder Kreditkarte kaufen – CHF 1.–
+        </a>
+      </div>
+
+      <div class="price-guarantee">🔒 Sichere Zahlung über PayPal · Sofortzugang nach Zahlung</div>
+
+      <!-- NEWSLETTER OPT-IN -->
+      <div style="margin-top:22px; padding-top:20px; border-top:1px solid var(--border);">
+        <p style="font-size:.82rem; color:var(--muted); font-weight:600; margin-bottom:12px; text-align:left;">📬 App-Updates &amp; News erhalten (optional)</p>
+        <div id="nl-form-wrap"><form id="nl-form" action="https://formspree.io/f/mdalyjno" method="POST" style="text-align:left;" onsubmit="submitNewsletter(event)">
+          <input type="hidden" name="_subject" value="Newsletter-Einwilligung – Krypto-Einsteiger-App">
+          <div style="margin-bottom:10px;">
+            <input type="email" name="email" id="nl-email" placeholder="Deine E-Mail-Adresse" oninput="checkNewsletter()"
+              style="width:100%; box-sizing:border-box; padding:10px 14px; border:1.5px solid var(--border); border-radius:var(--radius-sm); font-family:'Poppins',sans-serif; font-size:.9rem; background:var(--cream2); color:var(--text); outline:none;">
+          </div>
+          <label style="display:flex; align-items:flex-start; gap:10px; font-size:.82rem; color:var(--muted); font-weight:300; line-height:1.5; cursor:pointer;">
+            <input type="checkbox" name="newsletter_einwilligung" id="nl-check" value="ja" onchange="checkNewsletter()"
+              style="margin-top:3px; flex-shrink:0; accent-color:var(--gold-dk);">
+            <span>Ich bin einverstanden, dass meine E-Mail-Adresse für Infos zu App-Updates und News von Let's go free verwendet wird. Keine Weitergabe an Dritte. Abmeldung jederzeit möglich.</span>
+          </label>
+          <button type="submit" id="newsletter-submit" disabled
+            style="margin-top:12px; background:var(--dark2); color:var(--gold); border:1.5px solid var(--gold-d); font-family:'Poppins',sans-serif; font-size:.82rem; font-weight:600; padding:10px 20px; border-radius:var(--radius-sm); cursor:not-allowed; width:100%; opacity:.4; transition: opacity .2s, cursor .2s;">
+            Eintragen
+          </button>
+        </form>
+        </div>
+        <div id="nl-success" style="display:none; text-align:center; padding:16px 0;">
+          <span style="font-size:1.4rem;">✅</span>
+          <p style="font-size:.88rem; color:#2e7d32; font-weight:600; margin:6px 0 2px;">Danke! Du wirst über Updates informiert.</p>
+          <p style="font-size:.78rem; color:var(--muted); font-weight:300;">Du kannst dich jederzeit abmelden.</p>
+        </div>
+      </div>
+    </div>
+      </div>
     </div>
 
   </div><!-- /content -->
