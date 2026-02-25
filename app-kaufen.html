@@ -418,7 +418,7 @@
       <!-- NEWSLETTER OPT-IN -->
       <div style="margin-top:22px; padding-top:20px; border-top:1px solid var(--border);">
         <p style="font-size:.82rem; color:var(--muted); font-weight:600; margin-bottom:12px; text-align:left;">📬 App-Updates &amp; News erhalten (optional)</p>
-        <form action="https://formspree.io/f/mdalyjno" method="POST" style="text-align:left;">
+        <div id="nl-form-wrap"><form id="nl-form" action="https://formspree.io/f/mdalyjno" method="POST" style="text-align:left;" onsubmit="submitNewsletter(event)">
           <input type="hidden" name="_subject" value="Newsletter-Einwilligung – Krypto-Einsteiger-App">
           <div style="margin-bottom:10px;">
             <input type="email" name="email" id="nl-email" placeholder="Deine E-Mail-Adresse" oninput="checkNewsletter()"
@@ -434,6 +434,12 @@
             Eintragen
           </button>
         </form>
+        </div>
+        <div id="nl-success" style="display:none; text-align:center; padding:16px 0;">
+          <span style="font-size:1.4rem;">✅</span>
+          <p style="font-size:.88rem; color:#2e7d32; font-weight:600; margin:6px 0 2px;">Danke! Du wirst über Updates informiert.</p>
+          <p style="font-size:.78rem; color:var(--muted); font-weight:300;">Du kannst dich jederzeit abmelden.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -611,6 +617,21 @@
     btn.disabled = !valid;
     btn.style.opacity  = valid ? '1'       : '0.4';
     btn.style.cursor   = valid ? 'pointer' : 'not-allowed';
+  }
+
+  async function submitNewsletter(e) {
+    e.preventDefault();
+    const form = document.getElementById('nl-form');
+    const data = new FormData(form);
+    try {
+      await fetch(form.action, {
+        method: 'POST',
+        body: data,
+        headers: { 'Accept': 'application/json' }
+      });
+    } catch(err) {}
+    document.getElementById('nl-form-wrap').style.display = 'none';
+    document.getElementById('nl-success').style.display   = 'block';
   }
 </script>
 </body>
