@@ -418,19 +418,19 @@
       <!-- NEWSLETTER OPT-IN -->
       <div style="margin-top:22px; padding-top:20px; border-top:1px solid var(--border);">
         <p style="font-size:.82rem; color:var(--muted); font-weight:600; margin-bottom:12px; text-align:left;">📬 App-Updates &amp; News erhalten (optional)</p>
-        <form action="https://formspree.io/f/DEINE_FORMSPREE_ID" method="POST" style="text-align:left;">
+        <form action="https://formspree.io/f/mdalyjno" method="POST" style="text-align:left;">
           <input type="hidden" name="_subject" value="Newsletter-Einwilligung – Krypto-Einsteiger-App">
           <div style="margin-bottom:10px;">
-            <input type="email" name="email" placeholder="Deine E-Mail-Adresse"
+            <input type="email" name="email" id="nl-email" placeholder="Deine E-Mail-Adresse" oninput="checkNewsletter()"
               style="width:100%; box-sizing:border-box; padding:10px 14px; border:1.5px solid var(--border); border-radius:var(--radius-sm); font-family:'Poppins',sans-serif; font-size:.9rem; background:var(--cream2); color:var(--text); outline:none;">
           </div>
           <label style="display:flex; align-items:flex-start; gap:10px; font-size:.82rem; color:var(--muted); font-weight:300; line-height:1.5; cursor:pointer;">
-            <input type="checkbox" name="newsletter_einwilligung" value="ja"
+            <input type="checkbox" name="newsletter_einwilligung" id="nl-check" value="ja" onchange="checkNewsletter()"
               style="margin-top:3px; flex-shrink:0; accent-color:var(--gold-dk);">
             <span>Ich bin einverstanden, dass meine E-Mail-Adresse für Infos zu App-Updates und News von Let's go free verwendet wird. Keine Weitergabe an Dritte. Abmeldung jederzeit möglich.</span>
           </label>
-          <button type="submit"
-            style="margin-top:12px; background:var(--dark2); color:var(--gold); border:1.5px solid var(--gold-d); font-family:'Poppins',sans-serif; font-size:.82rem; font-weight:600; padding:10px 20px; border-radius:var(--radius-sm); cursor:pointer; width:100%;">
+          <button type="submit" id="newsletter-submit" disabled
+            style="margin-top:12px; background:var(--dark2); color:var(--gold); border:1.5px solid var(--gold-d); font-family:'Poppins',sans-serif; font-size:.82rem; font-weight:600; padding:10px 20px; border-radius:var(--radius-sm); cursor:not-allowed; width:100%; opacity:.4; transition: opacity .2s, cursor .2s;">
             Eintragen
           </button>
         </form>
@@ -600,6 +600,18 @@
     document.getElementById('discount-input').value = 'EARLY33';
     applyCode();
   });
+</script>
+
+<script>
+  function checkNewsletter() {
+    const email = document.getElementById('nl-email');
+    const check = document.getElementById('nl-check');
+    const btn   = document.getElementById('newsletter-submit');
+    const valid = email && email.value.includes('@') && check && check.checked;
+    btn.disabled = !valid;
+    btn.style.opacity  = valid ? '1'       : '0.4';
+    btn.style.cursor   = valid ? 'pointer' : 'not-allowed';
+  }
 </script>
 </body>
 </html>
