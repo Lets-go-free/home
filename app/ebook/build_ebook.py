@@ -642,16 +642,16 @@ def toc(d: P):
     d.h1('Was dich erwartet')
     d.sp(8)
     entries = [
-        ('Über dieses eBook',                      '2'),
-        ('Kapitel 1: Meine Geschichte',             '4'),
-        ('Kapitel 2: Die Wahrheit über Krypto',     '5'),
-        ('Kapitel 3: Phase 1 – Vorbereitung',       '14'),
-        ('Kapitel 4: Phase 2 – Dein erstes Wallet', '17'),
-        ('Kapitel 5: Phase 3 – Der erste Kauf',     '20'),
-        ('Kapitel 6: Phase 4 – DeFi verstehen',     '23'),
-        ('Kapitel 7: Phase 5 – Langfristige Sicherheit', '27'),
-        ('Kapitel 8: Deine nächsten Schritte',      '31'),
-        ('Anhang: Glossar',                         '36'),
+        ('Über dieses eBook',                      '3'),
+        ('Kapitel 1: Meine Geschichte',             '5'),
+        ('Kapitel 2: Die Wahrheit über Krypto',     '8'),
+        ('Kapitel 3: Phase 1 – Vorbereitung',       '19'),
+        ('Kapitel 4: Phase 2 – Dein erstes Wallet', '23'),
+        ('Kapitel 5: Phase 3 – Der erste Kauf',     '27'),
+        ('Kapitel 6: Phase 4 – DeFi verstehen',     '37'),
+        ('Kapitel 7: Phase 5 – Langfristige Sicherheit', '41'),
+        ('Kapitel 8: Deine nächsten Schritte',      '47'),
+        ('Anhang: Glossar',                         '51'),
     ]
     for i, (title, pg) in enumerate(entries):
         d.guard(20)
@@ -976,15 +976,17 @@ def kap2(d: P):
 
     d.sp(4)
     d.h3('Verschiedene Blockchains – Ein Ökosystem')
-    d.para('Es gibt hunderte Blockchains, jede mit eigenen Eigenschaften:')
-    for txt in [
-        'Bitcoin: Die Erste. Langsam, teuer, aber extrem sicher. "Digitales Gold".',
-        'Ethereum: Ermöglicht Smart Contracts, DeFi, NFTs. Etabliert, aber teurer.',
-        'BNB Chain: Schneller und günstiger, aber zentraler kontrolliert.',
-        'Polygon / Arbitrum: Layer-2 für Ethereum. Schnell, günstig, kompatibel.',
-    ]:
-        d.bullet(txt)
-    d.tip('Für den Anfang reicht es, bei einer Blockchain zu bleiben (Ethereum oder Polygon). Nicht alle Coins funktionieren auf allen Chains.')
+    d.para('Es gibt hunderte Blockchains – jede mit eigenen Stärken. Stell sie dir wie verschiedene Länder vor: Jedes hat seine eigene Währung, seine eigenen Regeln und seine eigenen Gebühren. Du brauchst immer die «Landeswährung» einer Chain, um dort Transaktionen durchzuführen.')
+    d.sp(4)
+    d.table([
+        ['Chain',         'Native Coin',  'Gas Fees',       'Für wen'],
+        ['BNB Chain  ★',  'BNB',          '0.01–0.10 $',   'Ideal für Einsteiger – dfx.swiss liefert direkt hier'],
+        ['Ethereum',      'ETH',          '0.01–0.50 $',   'Grösste DeFi-Plattform, seit 2024 deutlich günstiger'],
+        ['Polygon',       'MATIC/POL',    '< 0.001 $',      'Ethereum-kompatibel, extrem günstige Alternative'],
+        ['Bitcoin',       'BTC',          '1–5 $',          'Digitales Gold – kein DeFi, nur Senden/Empfangen'],
+    ], col_widths=[90, 72, 75, TW - 237])
+    d.warn('Gleicher Token, verschiedene Chains: USDT auf BSC ist ein anderer Token als USDT auf Ethereum. Beide sind 1 Dollar wert – aber auf verschiedenen Netzwerken. Falsche Chain = Tokens weg.')
+    d.tip('Für den Anfang: Bleib auf BNB Chain. Günstig, schnell, und dfx.swiss liefert direkt dorthin.')
 
     d.sp(4)
     d.para('Das waren die wichtigsten Grundlagen. Klingt viel? Ist es auch. Aber du musst nicht alles im Detail verstehen. Wichtig ist, dass du das grosse Bild siehst:')
@@ -1445,6 +1447,7 @@ def kap5(d: P):
                               ('Breite Chain-Unterstützung, gut für Stablecoins', ''),                'Fortgeschrittene'],
     ], col_widths=[145, 220, TW - 365])
     d.warn('Vor der Bestätigung immer prüfen: Token und Betrag korrekt? Ziel-Wert unter "Min. received" prüfen. Slippage-Toleranz bei wenig liquiden Tokens auf 1–3% setzen. Empfänger-Adresse: erste und letzte 4 Zeichen prüfen.')
+    d.tip('Wichtig: Die URLs der DEX-Plattformen (PancakeSwap, Uniswap etc.) gibst du nicht im normalen Browser ein – also nicht in Safari oder Chrome. Du öffnest sie im wallet-internen Browser deiner MetaMask App. Den findest du meistens unter «Entdecken» oder «Erkunden». Nur so ist deine Wallet automatisch verbunden.')
 
     d.new_page(dark=False)
     d.tag('KAPITEL 5 · BRIDGING')
@@ -1484,6 +1487,7 @@ def kap5(d: P):
         'Kleinen Testbetrag zuerst. Auch beim Bridging gilt: erst testen, dann den vollen Betrag übertragen.',
     ]:
         d.bullet(txt)
+    d.tip('Auch Bridge-Plattformen öffnest du im wallet-internen Browser deiner MetaMask App – nicht in Safari oder Chrome. Nur so ist deine Wallet direkt verbunden. Den integrierten Browser findest du in MetaMask unter «Entdecken» oder «Erkunden».')
 
     d.new_page(dark=False)
     d.tag('KAPITEL 5 · TOKENS SICHTBAR MACHEN')
@@ -1513,6 +1517,83 @@ def kap5(d: P):
 
     d.sp(6)
     d.hl_box('SCAM-TOKENS: DIE REGEL', 'Tokens, die du nicht selbst gekauft hast und die plötzlich auftauchen: Ignorieren. Niemals versuchen zu verkaufen, zu swappen oder zu claimen – auch nicht wenn sie auf dem Explorer einen Wert anzeigen. Dieser Wert ist meistens gefälscht.')
+
+    # ── Zurück zu Fiat ──────────────────────────────────────────────────────────────
+    d.new_page(dark=False)
+    d.tag('KAPITEL 5 · ZURÜCK ZU FIAT')
+    d.sp(16)
+    d.h2('Zurück zu Fiat – Krypto wieder verkaufen')
+    d.para('Du weisst jetzt, wie Krypto kaufen geht. Aber irgendwann willst du vielleicht auch wieder verkaufen – einen Teil der Gewinne sichern, Geld für etwas brauchen, oder einfach den Rückweg testen. Das ist kein Rückschritt. Es ist Selbstbestimmung.')
+    d.para('Der einfachste Weg: dfx.swiss in die andere Richtung. Derselbe Anbieter, denselben Weg – aber umgekehrt. Du sendest Krypto an dfx.swiss und bekommst CHF oder EUR direkt auf dein Bankkonto.')
+
+    d.sp(6)
+    # Flow-Diagramm: 3 Nodes mit Doppelpfeilen
+    node_w = 130
+    node_h = 54
+    gap = 22
+    total_w = 3 * node_w + 2 * gap
+    start_x = ML + (TW - total_w) / 2
+    d.guard(node_h + 80)
+    ny = d.y - node_h
+    # Reihenfolge: Wallet → dfx.swiss → Bankkonto (Verkaufsrichtung)
+    nodes_data = [
+        ('Wallet', 'MetaMask / Tangem', 'Krypto senden →'),
+        ('dfx.swiss', 'Tauscht Krypto', 'CHF/EUR senden →'),
+        ('Bankkonto', 'CHF / EUR | IBAN', ''),
+    ]
+    for i, (title, sub, arrow_label) in enumerate(nodes_data):
+        nx = start_x + i * (node_w + gap)
+        d.rect(nx, ny, node_w, node_h, DARK3, GOLD_DEEP, 0.8)
+        d.c.setFillColor(GOLD)
+        d.c.setFont('H-Med', 9.5)
+        d.c.drawCentredString(nx + node_w / 2, ny + node_h - 16, title)
+        d.c.setFillColor(GOLD_D)
+        d.c.setFont('Body-L', 7.5)
+        d.c.drawCentredString(nx + node_w / 2, ny + node_h - 30, sub)
+        if i < 2:
+            ax = nx + node_w + 2
+            ay = ny + node_h / 2
+            # Linie
+            d.c.setStrokeColor(GOLD_D)
+            d.c.setLineWidth(1)
+            d.c.line(ax + 2, ay, ax + gap - 6, ay)
+            # Pfeil rechts (Richtung Bankkonto)
+            d.c.setFillColor(GOLD_D)
+            p = d.c.beginPath()
+            p.moveTo(ax + gap - 6, ay)
+            p.lineTo(ax + gap - 12, ay + 4)
+            p.lineTo(ax + gap - 12, ay - 4)
+            p.close()
+            d.c.drawPath(p, fill=1, stroke=0)
+            # Pfeil-Beschriftung oberhalb
+            d.c.setFillColor(GOLD_D)
+            d.c.setFont('Body-L', 6.5)
+            mid_x = ax + gap / 2
+            d.c.drawCentredString(mid_x, ny + node_h + 4, arrow_label)
+    d.y = ny - 16
+
+    d.sp(8)
+    d.h3('Schritt für Schritt: Krypto verkaufen über dfx.swiss')
+    for num, title, lines in [
+        (1, 'dfx.swiss öffnen und «Sell» wählen',
+             ['Referral-Link: dfx.swiss/app/services/?code=167-982']),
+        (2, 'Coin und Netzwerk auswählen',
+             ['z.B. USDT auf BNB Chain',
+              'Das Netzwerk muss exakt stimmen – genau wie beim Kaufen']),
+        (3, 'IBAN eingeben',
+             ['Deine Schweizer oder europäische Bankkontonummer']),
+        (4, 'Wallet-Adresse von dfx.swiss kopieren',
+             ['dfx.swiss zeigt dir eine Empfangsadresse – dorthin sendest du deine Kryptos']),
+        (5, 'Betrag aus dem Wallet senden',
+             ['In MetaMask oder Tangem den Betrag an die dfx.swiss-Adresse senden',
+              '! Netzwerk prüfen – falsche Chain = Tokens weg']),
+        (6, 'Warten',
+             ['Überweisung auf dein Bankkonto kommt in der Regel innerhalb von 1–3 Werktagen']),
+    ]:
+        d.step(num, title, lines)
+
+    d.warn('Auch hier gilt: Zuerst mit einem kleinen Testbetrag üben – z.B. 20 CHF. Erst wenn das Geld auf dem Konto angekommen ist, grössere Beträge senden.')
+    d.tip('Übe den Rückweg, bevor du ihn brauchst. Sende dir selbst einmal 20 CHF zurück aufs Bankkonto – nur um sicher zu sein, dass du den Prozess kennst.')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1650,6 +1731,60 @@ def kap7(d: P):
     d.hl_box('TANGEM REFERRAL-LINK', 'https://tangem.com/invite/TNLSKH – Profitiere von einem Rabatt beim Kauf.')
 
     d.sp(6)
+    d.h3('Tangem einrichten – Schritt für Schritt')
+    d.para('Du hast eine Tangem gekauft. Gut. Hier ist die Einrichtung – einfach, aber mit ein paar Punkten, die du unbedingt beachten musst.')
+    d.warn('Meine klare Empfehlung: Immer das 3er-Karten-Set kaufen. Drei Karten = maximale Redundanz. Falls eine Karte verloren geht oder beschädigt wird, hast du immer noch zwei weitere.')
+
+    for num, title, lines in [
+        (1, 'App herunterladen',
+             ['App Store (iOS) oder Play Store (Android) → Tangem Wallet suchen',
+              '! Nur die offizielle App von Tangem AG – URL prüfen: tangem.com']),
+        (2, 'Erste Karte aktivieren & Passwort setzen',
+             ['Tangem App öffnen → Karte ans Handy halten (NFC)',
+              'Die App erkennt die Karte automatisch – Passwort setzen',
+              '! Passwort absolut entscheidend. Separat aufbewahren – getrennt von den Karten.',
+              'Passwort vergessen? Mit mind. 1 Backup-Karte wiederherstellbar – Grund für das 3er-Set.']),
+        (3, 'Alle Backup-Karten sofort einrichten',
+             ['Alle drei Karten jetzt in einem Durchgang einrichten – nicht später',
+              'Nacheinander alle Karten ans Handy halten und verknüpfen',
+              '! Backup-Karten können nur während des ersten Einrichtens hinzugefügt werden']),
+        (4, 'Karten sicher verteilen',
+             ['Karte 1: Zu Hause im Tresor',
+              'Karte 2: Bankschliessfach oder Vertrauensperson',
+              'Karte 3: Reserve oder tägliche Nutzungskarte',
+              'Passwort immer separat – niemals zusammen mit einer Karte']),
+        (5, 'Testbetrag senden',
+             ['In der Tangem App BSC-Adresse kopieren',
+              'Kleinen Testbetrag (z.B. 5 USDT) von MetaMask dorthin senden',
+              'Wenn der Betrag ankommt: Tangem ist bereit']),
+        (6, 'Grössere Beträge verschieben',
+             ['Nach erfolgreichem Test schrittweise grössere Beträge von MetaMask auf Tangem',
+              'Nie alles auf einmal – immer schrittweise und prüfen']),
+    ]:
+        d.step(num, title, lines)
+
+    d.tip('Tangem funktioniert anders als andere Hardware Wallets: Es gibt keine klassische Seedphrase. Die Sicherheit liegt in den physischen Karten und dem Passwort. Beides zusammen ist dein Zugang.')
+
+    d.sp(6)
+    d.h3('Seedphrase bei Cold Wallets – was du wissen musst')
+    d.para('Bei anderen Cold Wallets wie Ledger oder Trezor wird beim ersten Einrichten eine Seedphrase (12 oder 24 Wörter) generiert und auf dem Bildschirm des Geräts angezeigt. Diese musst du sofort auf Papier aufschreiben – denn nur damit kannst du dein Wallet wiederherstellen, falls das Gerät verloren geht oder kaputt geht. Es gibt keine Backup-Geräte wie bei Tangem.')
+    d.two_box(
+        'Tangem', [
+            'Kein Seed-Phrase-Backup nötig (Standard-Setup)',
+            'Private Key lebt im Chip – verlässt ihn nie',
+            'Backup = die physischen Karten selbst',
+            'Deshalb: alle 3 Karten einrichten und verteilen',
+        ],
+        'Ledger / Trezor', [
+            'Seedphrase wird beim Setup angezeigt',
+            'Muss zwingend auf Papier gesichert werden',
+            'Kein Backup-Gerät – nur die Seedphrase schützt',
+            'Seedphrase verloren = Geld weg, wenn Gerät kaputt',
+        ],
+    )
+    d.warn('Wenn du dich für ein Ledger oder Trezor entscheidest: Die Seedphrase, die beim ersten Einrichten erscheint, ist dein einziges Backup. Sie muss sofort, korrekt und mehrfach auf Papier gesichert werden. Verlierst du sie und das Gerät geht kaputt, ist dein Geld unwiederbringlich weg.')
+
+    d.sp(6)
     d.h2('Backup-Strategien: Redundanz ist alles')
     d.para('Ein einziges Backup reicht nicht. Was passiert, wenn dein Haus abbrennt? Wenn du ausgeraubt wirst? Hier meine persönliche Strategie – mit drei verschiedenen Ansätzen:')
 
@@ -1660,6 +1795,7 @@ def kap7(d: P):
     d.para('Teile deine 12 Wörter auf: Wörter 1–6 gibst du Person A, Wörter 7–12 Person B. Beide Hälften sind für sich alleine nutzlos – erst zusammen ergeben sie die vollständige Seedphrase. Sollte eine Person das Blatt verlieren, kann niemand damit etwas anfangen. Das reduziert das Risiko massiv.')
     d.para('Die Druckvorlage für diese aufgesplittete Sicherung findest du in der App.')
 
+    d.guard(120)
     d.h3('Optional – Backup 3: Bankschliessfach')
     d.para('Eine weitere Kopie im Bankschliessfach ist eine solide Ergänzung – aber bewusst als letzte Option, denn Banken haben Öffnungszeiten und können theoretisch den Zugang verwehren. Als zusätzliche Sicherheitsstufe trotzdem sinnvoll.')
 
@@ -1885,10 +2021,38 @@ def kap8(d: P):
     d.hl_box('JETZT STARTEN', 'Bereit für den ersten Schritt? Buche dir ein kostenloses 30-minütiges Erstgespräch auf letsgofree.me – wir schauen gemeinsam, wo du stehst und wie ich dich unterstützen kann.')
 
     d.sp(6)
-    d.h2('Zum Abschluss')
-    d.para('Im Sommer 2023 habe ich den Schritt gewagt. Als meine Frau durch eine Freundin auf Krypto aufmerksam wurde, war ich erst skeptisch. Aber ich habe mich reingearbeitet, Schritt für Schritt gelernt und dabei Fehler gemacht. Heute geniesse ich eine finanzielle Freiheit und Selbstbestimmung, die ich vorher nicht für möglich gehalten hätte.')
-    d.para('Du kannst diesen Weg auch gehen. Du hast jetzt das Wissen. Du hast den Plan. Du brauchst nur noch eins: Den ersten Schritt zu machen.')
+    d.h2('Was kommt als Nächstes?')
+    d.para('Du hast jetzt eine Grundlage, die die meisten Krypto-Einsteiger nie aufbauen. Du verstehst wie das System funktioniert. Du hast dein Wallet, dein erstes Krypto, deine Sicherheits-Strategie.')
+    d.para('Was jetzt? Ein ehrlicher Ausblick – ohne Hektik.')
+
     d.sp(4)
+    d.h3('Die nächste Stufe: Was erfahrene Nutzer machen')
+    d.two_box(
+        'Cold Wallet nutzen', [
+            'Hot Wallet für kleine Beträge und Experimente',
+            'Tangem für alles Ernste',
+            'Verschiebe den Grossteil deines Kryptos dorthin, sobald du dich sicher fühlst',
+        ],
+        'Rückweg üben', [
+            'Sende dir einmal 20 CHF über dfx.swiss zurück aufs Bankkonto',
+            'Nur um zu wissen wie es geht – bevor du es brauchst',
+            'Kapitel 5 erklärt den Ablauf Schritt für Schritt',
+        ],
+    )
+
+    d.sp(4)
+    d.h3('Was in der Krypto-Welt gerade passiert')
+    d.para('Krypto hat sich verändert – nicht ruhiger, aber seriöser. Grosse Fonds investieren. Regulierung kommt. Bitcoin hat seinen vierten Halving hinter sich. Ethereum ist nach dem Dencun-Upgrade deutlich günstiger geworden. Layer-2-Netzwerke wachsen. Die Technologie reift.')
+    d.para('Was das bedeutet: Die Chancen bleiben – aber auch die Risiken. Informiere dich laufend, bleib kritisch, vertrau niemandem blind.')
+
+    d.sp(4)
+    d.h3('Was ich dir mitgeben möchte')
+    d.para('Krypto ist kein Sprint. Die meisten Fehler entstehen aus Ungeduld oder Gier. Die besten Entscheidungen entstehen aus Ruhe und Verständnis. Du musst nicht jeden Trend mitmachen. Du musst nicht alles sofort verstehen. Fang klein an, lerne dabei, und bau dein Wissen in deinem Tempo auf.')
+
+    d.sp(4)
+    d.para('Ich freue mich, dass du dir die Zeit genommen hast – und noch mehr, dass du den Schritt wagst. Den Schritt in deine finanzielle Selbstbestimmung. Das ist ein grosser Schritt. Ich freue mich, dich vielleicht persönlich auf diesem Weg begleiten zu dürfen.')
+
+    d.sp(6)
     d.hl_box('WILLKOMMEN', 'Willkommen auf dem Weg zu deiner finanziellen Selbstbestimmung.')
 
 

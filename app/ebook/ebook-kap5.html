@@ -360,26 +360,28 @@
 <div class="flow-diagram">
   <div class="flow-row">
     <div class="flow-node">
-      <div class="flow-node-icon">🏦</div>
-      <div class="flow-node-title">Dein Bankkonto</div>
-      <div class="flow-node-sub">CHF / EUR<br>IBAN</div>
-    </div>
-    <div class="flow-arrow">⇄</div>
-    <div class="flow-node">
-      <div class="flow-node-icon">🌉</div>
-      <div class="flow-node-title">dfx.swiss</div>
-      <div class="flow-node-sub">Schweizer<br>Fiat-Brücke</div>
-    </div>
-    <div class="flow-arrow">⇄</div>
-    <div class="flow-node">
       <div class="flow-node-icon">👛</div>
       <div class="flow-node-title">Dein Wallet</div>
       <div class="flow-node-sub">MetaMask<br>Tangem etc.</div>
     </div>
-  </div>
-  <div class="flow-direction">
-    <div class="flow-dir-label">← Verkaufen: Krypto → CHF/EUR</div>
-    <div class="flow-dir-label">Kaufen: CHF/EUR → Krypto →</div>
+    <div class="flow-arrow" style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+      <span style="font-size:0.7em;color:var(--gold-d);">Krypto senden</span>
+      <span>→</span>
+    </div>
+    <div class="flow-node">
+      <div class="flow-node-icon">🌉</div>
+      <div class="flow-node-title">dfx.swiss</div>
+      <div class="flow-node-sub">tauscht Krypto<br>in CHF / EUR</div>
+    </div>
+    <div class="flow-arrow" style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+      <span style="font-size:0.7em;color:var(--gold-d);">CHF/EUR senden</span>
+      <span>→</span>
+    </div>
+    <div class="flow-node">
+      <div class="flow-node-icon">🏦</div>
+      <div class="flow-node-title">Dein Bankkonto</div>
+      <div class="flow-node-sub">CHF / EUR<br>auf deiner IBAN</div>
+    </div>
   </div>
 </div>
 
