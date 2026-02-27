@@ -214,12 +214,8 @@
 </div>
 
 <h3>Wo kann ich swappen?</h3>
-<table style="table-layout:fixed; width:100%;">
-  <colgroup>
-    <col style="width:28%">
-    <col style="width:48%">
-    <col style="width:24%">
-  </colgroup>
+<div class="table-scroll">
+<table>
   <tr><th>Wo</th><th>Wie</th><th>Für wen</th></tr>
   <tr>
     <td>MetaMask (intern)</td>
@@ -252,7 +248,9 @@
     <td>Fortgeschrittene</td>
   </tr>
 </table>
+</div>
 
+<div class="tip-box"><p>💡 <strong>Wichtig:</strong> Die URLs der DEX-Plattformen (PancakeSwap, Uniswap etc.) gibst du nicht im normalen Browser ein – also nicht in Safari oder Chrome. Du öffnest sie im <strong>wallet-internen Browser</strong> deiner MetaMask App. Den findest du meistens unter «Entdecken» oder «Erkunden». Nur so ist deine Wallet automatisch verbunden und kann die Transaktion signieren.</p></div>
 <div class="warn-box"><p>⚠️ Wichtiger Check vor der Bestätigung: Token und Betrag korrekt? Ziel-Wert unter «Min. received» prüfen. Slippage-Toleranz bei wenig liquiden Tokens auf 1–3% setzen. Gebühren plausibel? Empfänger-Adresse: erste und letzte 4 Zeichen prüfen.</p></div>
 
 <h2>3 – Bridging: Zwischen Blockchains wechseln</h2>
@@ -266,12 +264,8 @@
 </ul>
 
 <h3>Wie geht Bridging?</h3>
-<table style="table-layout:fixed; width:100%;">
-  <colgroup>
-    <col style="width:28%">
-    <col style="width:48%">
-    <col style="width:24%">
-  </colgroup>
+<div class="table-scroll">
+<table>
   <tr><th>Methode</th><th>Beschreibung</th><th>Empfehlung</th></tr>
   <tr>
     <td>MetaMask Bridge</td>
@@ -299,6 +293,7 @@
     <td>Fortgeschrittene</td>
   </tr>
 </table>
+</div>
 
 <h3>Was du beim Bridging beachten musst</h3>
 <ul class="bullets">
@@ -307,6 +302,8 @@
   <li>Nur seriöse Bridges nutzen. Fake-Bridge-Websites sind ein bekanntes Betrugsschema. URL selbst eintippen.</li>
   <li>Kleinen Testbetrag zuerst. Auch beim Bridging gilt: erst testen, dann den vollen Betrag übertragen.</li>
 </ul>
+
+<div class="tip-box"><p>💡 <strong>Wichtig:</strong> Auch Bridge-Plattformen öffnest du im <strong>wallet-internen Browser</strong> deiner MetaMask App – nicht in Safari oder Chrome. Nur so ist deine Wallet direkt verbunden. Den integrierten Browser findest du in MetaMask unter «Entdecken» oder «Erkunden».</p></div>
 
 <div class="sep"></div>
 
@@ -352,6 +349,97 @@
   <p class="hl-box-label">Scam-Tokens: Die Regel</p>
   <p>Tokens, die du nicht selbst gekauft hast und die plötzlich auftauchen: Ignorieren. Niemals versuchen zu verkaufen, zu swappen oder zu claimen – auch nicht wenn sie auf dem Explorer einen Wert anzeigen. Dieser Wert ist meistens gefälscht.</p>
 </div>
+
+<div class="sep"></div>
+
+<h2>Zurück zu Fiat – Krypto wieder verkaufen</h2>
+<p>Du weisst jetzt, wie Krypto kaufen geht. Aber irgendwann willst du vielleicht auch wieder verkaufen – einen Teil der Gewinne sichern, Geld für etwas brauchen, oder einfach den Rückweg testen. Das ist kein Rückschritt. Es ist Selbstbestimmung.</p>
+
+<p>Der einfachste Weg: <strong>dfx.swiss in die andere Richtung.</strong> Derselbe Anbieter, denselben Weg – aber umgekehrt. Du sendest Krypto an dfx.swiss und bekommst CHF oder EUR direkt auf dein Bankkonto.</p>
+
+<div class="flow-diagram">
+  <div class="flow-row">
+    <div class="flow-node">
+      <div class="flow-node-icon">👛</div>
+      <div class="flow-node-title">Dein Wallet</div>
+      <div class="flow-node-sub">MetaMask<br>Tangem etc.</div>
+    </div>
+    <div class="flow-arrow" style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+      <span style="font-size:0.7em;color:var(--gold-d);">Krypto senden</span>
+      <span>→</span>
+    </div>
+    <div class="flow-node">
+      <div class="flow-node-icon">🌉</div>
+      <div class="flow-node-title">dfx.swiss</div>
+      <div class="flow-node-sub">tauscht Krypto<br>in CHF / EUR</div>
+    </div>
+    <div class="flow-arrow" style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+      <span style="font-size:0.7em;color:var(--gold-d);">CHF/EUR senden</span>
+      <span>→</span>
+    </div>
+    <div class="flow-node">
+      <div class="flow-node-icon">🏦</div>
+      <div class="flow-node-title">Dein Bankkonto</div>
+      <div class="flow-node-sub">CHF / EUR<br>auf deiner IBAN</div>
+    </div>
+  </div>
+</div>
+
+<h3>Schritt für Schritt: Krypto verkaufen über dfx.swiss</h3>
+<div class="steps">
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-content">
+      <h4>dfx.swiss öffnen und «Sell» wählen</h4>
+      <ul><li>Referral-Link: dfx.swiss/app/services/?code=167-982</li></ul>
+    </div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-content">
+      <h4>Coin und Netzwerk auswählen</h4>
+      <ul>
+        <li>z.B. USDT auf BNB Chain</li>
+        <li>Das Netzwerk muss exakt stimmen – genau wie beim Kaufen</li>
+      </ul>
+    </div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-content">
+      <h4>IBAN eingeben</h4>
+      <ul><li>Deine Schweizer oder europäische Bankkontonummer</li></ul>
+    </div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-content">
+      <h4>Wallet-Adresse von dfx.swiss kopieren</h4>
+      <ul><li>dfx.swiss zeigt dir eine Empfangsadresse – dorthin sendest du deine Kryptos aus deinem Wallet</li></ul>
+    </div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-content">
+      <h4>Betrag aus dem Wallet senden</h4>
+      <ul>
+        <li>In MetaMask oder Tangem den gewünschten Betrag an die dfx.swiss-Adresse senden</li>
+        <li class="warn-li">Netzwerk prüfen – falsche Chain = Tokens weg</li>
+      </ul>
+    </div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">6</div>
+    <div class="step-content">
+      <h4>Warten</h4>
+      <ul><li>Die Überweisung auf dein Bankkonto kommt in der Regel innerhalb von 1–3 Werktagen an</li></ul>
+    </div>
+  </div>
+</div>
+
+<div class="warn-box"><p>⚠️ Auch hier gilt: Zuerst mit einem kleinen Testbetrag üben – z.B. 20 CHF. Erst wenn das Geld auf dem Konto angekommen ist, grössere Beträge senden.</p></div>
+
+<div class="tip-box"><p>💡 Übe den Rückweg, bevor du ihn brauchst. Sende dir selbst einmal 20 CHF zurück aufs Bankkonto – nur um sicher zu sein, dass du den Prozess kennst und alles funktioniert.</p></div>
 
 <div class="bottom-nav">
   <a class="btn-nav prev" href="ebook-kap4.html">← Kapitel 4</a>
