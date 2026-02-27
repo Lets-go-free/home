@@ -97,7 +97,6 @@
         <option value="alle">Alle</option>
         <option value="hot">Hot Wallet</option>
         <option value="cold">Cold Wallet</option>
-        <option value="hardware">Hardware</option>
       </select>
     </div>
     <div class="filter-group">
@@ -164,6 +163,13 @@
           <li style="padding:6px 0 6px 20px;position:relative;font-size:.88rem;font-weight:300;"><span style="position:absolute;left:0;color:#C9A882;">→</span><strong>Tangem Wallet</strong> – <a href="https://tangem.com/invite/TNLSKH" target="_blank" style="color:#C9A882;">Mein Empfehlungslink</a></li>
         </ul>
       </div>
+      <div>
+        <h4>⚡ Bitcoin/Lightning:</h4>
+        <ul style="list-style:none;padding:0;margin-top:8px;">
+          <li style="padding:6px 0 6px 20px;position:relative;font-size:.88rem;font-weight:300;"><span style="position:absolute;left:0;color:#C9A882;">→</span><strong>Phoenix Wallet</strong></li>
+          <li style="padding:6px 0 6px 20px;position:relative;font-size:.88rem;font-weight:300;"><span style="position:absolute;left:0;color:#C9A882;">→</span><strong>BlueWallet</strong></li>
+        </ul>
+      </div>
     </div>
   </div>
 
@@ -217,9 +223,9 @@
             },
             {
                 name: "Ledger Nano S Plus",
-                type: "hardware",
+                type: "cold",
                 rating: 4,
-                chains: "15000+ Coins & Token",
+                chains: "15000+ Coins & Token · Bitcoin ✓ · Lightning ✓ (via Apps)",
                 platforms: ["desktop"],
                 nft: true,
                 defi: "Via Ledger Wallet App, limitiert",
@@ -228,9 +234,9 @@
             },
             {
                 name: "Ledger Nano X",
-                type: "hardware",
+                type: "cold",
                 rating: 4,
-                chains: "15000+ Coins & Token",
+                chains: "15000+ Coins & Token · Bitcoin ✓ · Lightning ✓ (via Apps)",
                 platforms: ["mobile", "desktop"],
                 nft: true,
                 defi: "Via Ledger Wallet App, limitiert",
@@ -239,9 +245,9 @@
             },
             {
                 name: "Ledger Nano Gen 5",
-                type: "hardware",
+                type: "cold",
                 rating: 5,
-                chains: "15000+ Coins & Token",
+                chains: "15000+ Coins & Token · Bitcoin ✓ · Lightning ✓ (via Apps)",
                 platforms: ["mobile", "desktop"],
                 nft: true,
                 defi: "Via Ledger Wallet App, limitiert",
@@ -250,9 +256,9 @@
             },
             {
                 name: "Ledger Flex",
-                type: "hardware",
+                type: "cold",
                 rating: 5,
-                chains: "15000+ Coins & Token",
+                chains: "15000+ Coins & Token · Bitcoin ✓ · Lightning ✓ (via Apps)",
                 platforms: ["mobile", "desktop"],
                 nft: true,
                 defi: "Via Ledger Wallet App, limitiert",
@@ -261,9 +267,9 @@
             },
             {
                 name: "Ledger Stax",
-                type: "hardware",
+                type: "cold",
                 rating: 5,
-                chains: "15000+ Coins & Token",
+                chains: "15000+ Coins & Token · Bitcoin ✓ · Lightning ✓ (via Apps)",
                 platforms: ["mobile", "desktop"],
                 nft: true,
                 defi: "Via Ledger Wallet App, limitiert",
@@ -272,9 +278,9 @@
             },
             {
                 name: "Trezor Model T",
-                type: "hardware",
+                type: "cold",
                 rating: 4,
-                chains: "1800+ Coins & Token",
+                chains: "1800+ Coins & Token · Bitcoin ✓ · Lightning ✓ (via Apps)",
                 platforms: ["desktop"],
                 nft: false,
                 defi: "Via Trezor Suite, limitiert",
@@ -283,9 +289,9 @@
             },
             {
                 name: "SafePal S1",
-                type: "hardware",
+                type: "cold",
                 rating: 4,
-                chains: "10000+ Coins & Token",
+                chains: "10000+ Coins & Token · Bitcoin ✓",
                 platforms: ["mobile"],
                 nft: true,
                 defi: "Via SafePal App",
@@ -296,7 +302,7 @@
                 name: "TokenPocket",
                 type: "hot",
                 rating: 4,
-                chains: "30+ Blockchains",
+                chains: "30+ Blockchains · Bitcoin ✓",
                 platforms: ["mobile", "desktop", "browser"],
                 nft: true,
                 defi: "Sehr umfangreich: Swap, Staking, Farming, etc.",
@@ -351,7 +357,7 @@
                 name: "Exodus",
                 type: "hot",
                 rating: 4,
-                chains: "260+ Coins",
+                chains: "260+ Coins · Bitcoin ✓",
                 platforms: ["mobile", "desktop"],
                 nft: false,
                 defi: "Eingebauter Swap (teuer), Staking",
@@ -362,7 +368,7 @@
                 name: "SafePal",
                 type: "hot",
                 rating: 4,
-                chains: "50+ Blockchains",
+                chains: "50+ Blockchains · Bitcoin ✓",
                 platforms: ["mobile"],
                 nft: true,
                 defi: "Eingebauter Swap, Staking, DApp Browser",
@@ -371,15 +377,38 @@
             },
             {
                 name: "Tangem Wallet",
-                type: "hardware",
+                type: "cold",
                 rating: 4,
-                chains: "13000+ Coins & Token über 70+ Blockchains",
+                chains: "13000+ Coins & Token über 70+ Blockchains · Bitcoin ✓",
                 platforms: ["mobile"],
                 nft: true,
                 defi: "Via Tangem App, eingeschränkt",
                 price: "einmalig",
                 special: "Karten-Format (NFC), sehr einfach, 2-3 Karten als Backup, $55-70"
             }
+,
+            {
+                name: "Phoenix Wallet",
+                type: "hot",
+                rating: 5,
+                chains: "Bitcoin Lightning Network",
+                platforms: ["mobile"],
+                nft: false,
+                defi: "Keine DeFi-Integration",
+                price: "kostenlos",
+                special: "Lightning-spezialisiert · automatisches Channel-Management · sehr einfach · non-custodial"
+            },
+            {
+                name: "BlueWallet",
+                type: "hot",
+                rating: 4,
+                chains: "Bitcoin · Lightning Network",
+                platforms: ["mobile"],
+                nft: false,
+                defi: "Keine DeFi-Integration",
+                price: "kostenlos",
+                special: "Bitcoin-fokussiert · Lightning-Ready · open source · Multisig-Support"
+            },
         ];
 
         function renderTable(data) {
