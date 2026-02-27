@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quickstart 5: Mit RedotPay bezahlen · Let's go free</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="ebook-styles.css">
+</head>
+<body>
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ZUGANGS-SCHUTZ SNIPPET
+     Dieses Snippet in JEDE kompakt-kap*.html Datei einfügen
+     Position: Direkt nach dem <body> Tag (oder nach Zurück-Button falls vorhanden)
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<script>
+(function() {
+  // Prüfe ob gültiger Zugang vorhanden
+  const hasAccess = localStorage.getItem('lgf_access') === 'true';
+  
+  if (!hasAccess) {
+    // Kein Zugang - zeige Sperrbildschirm
+    document.addEventListener('DOMContentLoaded', function() {
+      document.body.innerHTML = `
+        <div style="
+          position: fixed; inset: 0;
+          background: linear-gradient(135deg, #2c1e0f 0%, #3d2d1e 100%);
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          padding: 40px 24px; text-align: center;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        ">
+          <div style="font-size: 64px; margin-bottom: 24px;">🔒</div>
+          <h1 style="
+            font-size: clamp(24px, 6vw, 32px);
+            font-weight: 700; color: #c4a265;
+            margin-bottom: 16px; line-height: 1.2;
+          ">Zugang verweigert</h1>
+          <p style="
+            font-size: 16px; color: #b89a76;
+            line-height: 1.6; margin-bottom: 32px;
+            max-width: 400px;
+          ">
+            Dieser Inhalt ist nur mit einem gültigen Zugangs-Code verfügbar.
+          </p>
+          <a href="https://app.letsgofree.me" style="
+            display: inline-flex; align-items: center; gap: 10px;
+            background: linear-gradient(135deg, #c4a265, #a0784a);
+            color: #2c1e0f; text-decoration: none;
+            font-size: 16px; font-weight: 600;
+            padding: 14px 28px; border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(196,162,101,.35);
+          ">
+            <span>🔓</span> Zur App
+          </a>
+        </div>
+      `;
+    });
+  }
+})();
+</script>
+<!-- ════════════════════════════════════════════════════════════════════════════ -->
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+<div class="page">
+
+<nav class="topnav">
+  <div class="nav-left">
+    <a class="btn-back-app" href="https://app.letsgofree.me">← App</a>
+    <a class="nav-brand" href="kompakt-kap1.html">Quickstart</a>
+  </div>
+  <div class="nav-chapters">
+    <a class="nav-dot" href="kompakt-kap1.html" title="Wallet">1</a>
+    <a class="nav-dot" href="kompakt-kap2.html" title="dfx.swiss">2</a>
+    <a class="nav-dot" href="kompakt-kap3.html" title="Krypto kaufen">3</a>
+    <a class="nav-dot" href="kompakt-kap4.html" title="Krypto zu Fiat">4</a>
+    <a class="nav-dot active" href="kompakt-kap5.html" title="RedotPay">5</a>
+  </div>
+</nav>
+
+<span class="section-tag">Quickstart · Schritt 5 von 5</span>
+<h1>Bezahlen mit <span>RedotPay</span></h1>
+<div class="rule"></div>
+
+<p>RedotPay ist eine Visa-Prepaid-Karte aus Hongkong. Du lädst sie mit USDT oder USDC aus deinem Wallet auf und kannst damit überall bezahlen, wo Visa akzeptiert wird – inkl. Apple Pay und Google Pay.</p>
+
+<div class="two-box">
+  <div class="two-box-item">
+    <p class="two-box-title">Fakten</p>
+    <ul>
+      <li>Visa Prepaid, virtuell &amp; physisch</li>
+      <li>Virtuelle Karte: 10 USD einmalig</li>
+      <li>Coins: USDT, USDC, BTC, ETH, SOL</li>
+      <li>Apple Pay &amp; Google Pay: ✓</li>
+    </ul>
+  </div>
+  <div class="two-box-item">
+    <p class="two-box-title">Gebühren</p>
+    <ul>
+      <li>Zahlung CHF / EUR: 1 %</li>
+      <li>Fremdwährung: 2,2 %</li>
+      <li>Krypto einzahlen: nur Gas Fees</li>
+      <li>KYC / Konto: kostenlos</li>
+    </ul>
+  </div>
+</div>
+
+<div class="sep"></div>
+
+<h2>Einrichten – Schritt für Schritt</h2>
+
+<div class="steps">
+
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-content">
+      <h4>App herunterladen &amp; Konto erstellen</h4>
+      <ul>
+        <li>App Store oder Google Play: «RedotPay» suchen</li>
+        <li>Offizielle Website: redotpay.com – URL selbst eintippen</li>
+        <li>E-Mail registrieren und bestätigen</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-content">
+      <h4>KYC abschliessen</h4>
+      <ul>
+        <li>In der App «Verify» öffnen</li>
+        <li>Ausweis oder Pass fotografieren (Vorder- &amp; Rückseite)</li>
+        <li>Selfie mit Ausweis aufnehmen</li>
+        <li>Dauert meist weniger als 5 Minuten</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-content">
+      <h4>Karte aufladen</h4>
+      <ul>
+        <li>In der App auf «Deposit» tippen</li>
+        <li>Netzwerk wählen: BNB Chain (BEP20) oder Polygon für tiefe Gas Fees</li>
+        <li>RedotPay zeigt eine Empfangsadresse an</li>
+        <li>In MetaMask oder Tangem USDT an diese Adresse senden</li>
+        <li class="warn-li">Netzwerk muss exakt übereinstimmen</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-content">
+      <h4>Virtuelle Karte erstellen</h4>
+      <ul>
+        <li>In der App auf «Card» tippen</li>
+        <li>«Virtuelle Karte» wählen – Kosten: 10 USD</li>
+        <li class="warn-li">Das 5 USDS Startguthaben ist nicht für die Kartengebühr verwendbar – du brauchst eigenes Guthaben</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-content">
+      <h4>Apple Pay einrichten</h4>
+      <ul>
+        <li>In der RedotPay-App: «Card» → «Add to Apple Wallet» tippen</li>
+        <li>Alternativ: Apple Wallet → «+» → «Debit- oder Kreditkarte» → Kartendaten manuell eingeben</li>
+        <li>Apple Wallet validiert die Karte automatisch</li>
+        <li>Fertig – ab sofort kontaktlos mit Face ID bezahlen</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<div class="tip-box"><p>💡 Lade die Karte zuerst mit einem kleinen Betrag auf und teste sie mit einem Online-Kauf. Sobald alles klappt, Apple Pay einrichten und im Alltag nutzen.</p></div>
+
+<div class="warn-box"><p>⚠️ Gebühren können sich ändern. Aktuelle Konditionen immer direkt in der RedotPay-App oder auf redotpay.com prüfen.</p></div>
+
+<div class="sep"></div>
+
+<div class="hl-box">
+  <p class="hl-box-label">Du hast es geschafft</p>
+  <p>Wallet erstellt. dfx.swiss eingerichtet. Krypto gekauft. Den Rückweg geübt. Mit RedotPay bezahlt. Das ist kein kleines Wissen – das ist Selbstbestimmung.</p>
+</div>
+
+<p style="text-align:center; margin-top:32px; font-size:14px; opacity:.6;">Für mehr Tiefe gibt es das ausführliche Ebook in der App.</p>
+<p style="text-align:center; font-size:clamp(18px,4vw,24px); font-weight:700; color:var(--gold); letter-spacing:.04em; margin-bottom:40px;">letsgofree.me</p>
+
+<div class="bottom-nav">
+  <a class="btn-nav prev" href="kompakt-kap4.html">← Schritt 4: Krypto zu Fiat</a>
+  <span></span>
+</div>
+
+</div>
+<script>
+  const fill = document.getElementById('progress');
+  window.addEventListener('scroll', () => {
+    const h = document.documentElement.scrollHeight - window.innerHeight;
+    fill.style.width = (window.scrollY / h * 100) + '%';
+  }, { passive: true });
+</script>
+</body>
+</html>

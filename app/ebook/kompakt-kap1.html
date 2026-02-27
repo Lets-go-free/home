@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quickstart 1: Wallet eröffnen · Let's go free</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="ebook-styles.css">
+</head>
+<body>
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ZUGANGS-SCHUTZ SNIPPET
+     Dieses Snippet in JEDE kompakt-kap*.html Datei einfügen
+     Position: Direkt nach dem <body> Tag (oder nach Zurück-Button falls vorhanden)
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<script>
+(function() {
+  // Prüfe ob gültiger Zugang vorhanden
+  const hasAccess = localStorage.getItem('lgf_access') === 'true';
+  
+  if (!hasAccess) {
+    // Kein Zugang - zeige Sperrbildschirm
+    document.addEventListener('DOMContentLoaded', function() {
+      document.body.innerHTML = `
+        <div style="
+          position: fixed; inset: 0;
+          background: linear-gradient(135deg, #2c1e0f 0%, #3d2d1e 100%);
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          padding: 40px 24px; text-align: center;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        ">
+          <div style="font-size: 64px; margin-bottom: 24px;">🔒</div>
+          <h1 style="
+            font-size: clamp(24px, 6vw, 32px);
+            font-weight: 700; color: #c4a265;
+            margin-bottom: 16px; line-height: 1.2;
+          ">Zugang verweigert</h1>
+          <p style="
+            font-size: 16px; color: #b89a76;
+            line-height: 1.6; margin-bottom: 32px;
+            max-width: 400px;
+          ">
+            Dieser Inhalt ist nur mit einem gültigen Zugangs-Code verfügbar.
+          </p>
+          <a href="https://app.letsgofree.me" style="
+            display: inline-flex; align-items: center; gap: 10px;
+            background: linear-gradient(135deg, #c4a265, #a0784a);
+            color: #2c1e0f; text-decoration: none;
+            font-size: 16px; font-weight: 600;
+            padding: 14px 28px; border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(196,162,101,.35);
+          ">
+            <span>🔓</span> Zur App
+          </a>
+        </div>
+      `;
+    });
+  }
+})();
+</script>
+<!-- ════════════════════════════════════════════════════════════════════════════ -->
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+<div class="page">
+
+<nav class="topnav">
+  <div class="nav-left">
+    <a class="btn-back-app" href="https://app.letsgofree.me">← App</a>
+    <a class="nav-brand" href="kompakt-kap1.html">Quickstart</a>
+  </div>
+  <div class="nav-chapters">
+    <a class="nav-dot active" href="kompakt-kap1.html" title="Wallet">1</a>
+    <a class="nav-dot" href="kompakt-kap2.html" title="dfx.swiss">2</a>
+    <a class="nav-dot" href="kompakt-kap3.html" title="Krypto kaufen">3</a>
+    <a class="nav-dot" href="kompakt-kap4.html" title="Krypto zu Fiat">4</a>
+    <a class="nav-dot" href="kompakt-kap5.html" title="RedotPay">5</a>
+  </div>
+</nav>
+
+<span class="section-tag">Quickstart · Schritt 1 von 5</span>
+<h1>Wallet <span>eröffnen</span></h1>
+<div class="rule"></div>
+
+<p>Das Wallet ist dein persönlicher Schlüssel zur Blockchain. Nicht die App – der Schlüssel. Die App ist nur das Fenster. Verlierst du die App, stellst du das Wallet mit deiner Seedphrase wieder her. Verlierst du die Seedphrase, ist alles weg.</p>
+
+<div class="hl-box" style="border-left:4px solid var(--gold-d);">
+  <p class="hl-box-label">Begriffserklärung</p>
+  <p><strong style="color:var(--gold-d);">Wallet (Konzept)</strong> – deine Schlüssel zur Blockchain. Unabhängig von jeder Software. Funktioniert in jeder Wallet-App, auf jedem Gerät.</p>
+  <p style="margin-top:8px;"><strong style="color:var(--gold-d);">Wallet (Software)</strong> – die App, durch die du auf deine Schlüssel zugreifst. Z.&thinsp;B. MetaMask, Trust Wallet, SafePal.</p>
+</div>
+
+<div class="sep"></div>
+
+<h2>Welche App?</h2>
+<p>Für den Start empfehle ich ein Hot Wallet – kostenlos, einfach einzurichten, reicht für erste Schritte vollkommen.</p>
+
+<div class="two-box">
+  <div class="two-box-item">
+    <p class="two-box-title">Empfohlen für Einsteiger</p>
+    <ul>
+      <li>MetaMask (Browser & App)</li>
+      <li>Trust Wallet (App)</li>
+      <li>SafePal (App)</li>
+    </ul>
+  </div>
+  <div class="two-box-item">
+    <p class="two-box-title">Später: Hardware Wallet</p>
+    <ul>
+      <li>Tangem (einfachste Lösung)</li>
+      <li>Ledger (für Fortgeschrittene)</li>
+      <li>Erst nötig ab grösseren Beträgen</li>
+    </ul>
+  </div>
+</div>
+
+<div class="sep"></div>
+
+<h2>Schritt für Schritt</h2>
+
+<div class="steps">
+
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-content">
+      <h4>App herunterladen</h4>
+      <ul>
+        <li>Nur von offizieller Website oder offiziellem App Store</li>
+        <li class="warn-li">NIEMALS von Drittanbieter-Links herunterladen</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-content">
+      <h4>Neues Wallet erstellen</h4>
+      <ul>
+        <li>«Neues Wallet erstellen» wählen (nicht importieren)</li>
+        <li>Starkes Passwort setzen (mind. 12 Zeichen)</li>
+        <li>Gross-/Kleinbuchstaben, Zahlen und Symbole mischen</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-content">
+      <h4>Seedphrase aufschreiben</h4>
+      <ul>
+        <li>12 Wörter erscheinen – alle auf Papier notieren, in richtiger Reihenfolge</li>
+        <li class="warn-li">KEIN Screenshot, KEIN Foto, KEIN Cloud-Upload</li>
+        <li class="warn-li">Nur Papier – niemals digital speichern</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-content">
+      <h4>Seedphrase verifizieren</h4>
+      <ul>
+        <li>Die App fragt die Wörter in zufälliger Reihenfolge ab</li>
+        <li>Nur bestätigen wenn du sie korrekt notiert hast</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-content">
+      <h4>Sicher aufbewahren</h4>
+      <ul>
+        <li>Papier an sicherem Ort lagern – Tresor oder Bankschliessfach</li>
+        <li>Zweite Kopie an einem anderen Ort</li>
+        <li>Papier laminieren empfohlen</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<div class="tip-box"><p>💡 Deine Seedphrase ist portabel. Du kannst dein Wallet jederzeit auf einem anderen Gerät oder in einer anderen App wiederherstellen – indem du die 12 Wörter eingibst. Du kannst es gleichzeitig auf mehreren Geräten nutzen. Die Seedphrase bleibt immer dieselbe.</p></div>
+
+<div class="warn-box"><p>⚠️ Wer deine Seedphrase kennt, hat vollen Zugriff auf alle deine Wallets – sofort, auf jedem Gerät. Niemals teilen, auch nicht mit vermeintlichem Support.</p></div>
+
+<div class="hl-box">
+  <p class="hl-box-label">Mein Tipp</p>
+  <p>«Die fünf Minuten, die du jetzt in die korrekte Sicherung deiner Seedphrase investierst, können später Tausende Franken wert sein.»</p>
+</div>
+
+<div class="bottom-nav">
+  <span></span>
+  <a class="btn-nav" href="kompakt-kap2.html">Schritt 2: dfx.swiss →</a>
+</div>
+
+</div>
+<script>
+  const fill = document.getElementById('progress');
+  window.addEventListener('scroll', () => {
+    const h = document.documentElement.scrollHeight - window.innerHeight;
+    fill.style.width = (window.scrollY / h * 100) + '%';
+  }, { passive: true });
+</script>
+</body>
+</html>

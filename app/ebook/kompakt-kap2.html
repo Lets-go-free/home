@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quickstart 2: dfx.swiss Registrierung · Let's go free</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="ebook-styles.css">
+</head>
+<body>
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ZUGANGS-SCHUTZ SNIPPET
+     Dieses Snippet in JEDE kompakt-kap*.html Datei einfügen
+     Position: Direkt nach dem <body> Tag (oder nach Zurück-Button falls vorhanden)
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<script>
+(function() {
+  // Prüfe ob gültiger Zugang vorhanden
+  const hasAccess = localStorage.getItem('lgf_access') === 'true';
+  
+  if (!hasAccess) {
+    // Kein Zugang - zeige Sperrbildschirm
+    document.addEventListener('DOMContentLoaded', function() {
+      document.body.innerHTML = `
+        <div style="
+          position: fixed; inset: 0;
+          background: linear-gradient(135deg, #2c1e0f 0%, #3d2d1e 100%);
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          padding: 40px 24px; text-align: center;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        ">
+          <div style="font-size: 64px; margin-bottom: 24px;">🔒</div>
+          <h1 style="
+            font-size: clamp(24px, 6vw, 32px);
+            font-weight: 700; color: #c4a265;
+            margin-bottom: 16px; line-height: 1.2;
+          ">Zugang verweigert</h1>
+          <p style="
+            font-size: 16px; color: #b89a76;
+            line-height: 1.6; margin-bottom: 32px;
+            max-width: 400px;
+          ">
+            Dieser Inhalt ist nur mit einem gültigen Zugangs-Code verfügbar.
+          </p>
+          <a href="https://app.letsgofree.me" style="
+            display: inline-flex; align-items: center; gap: 10px;
+            background: linear-gradient(135deg, #c4a265, #a0784a);
+            color: #2c1e0f; text-decoration: none;
+            font-size: 16px; font-weight: 600;
+            padding: 14px 28px; border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(196,162,101,.35);
+          ">
+            <span>🔓</span> Zur App
+          </a>
+        </div>
+      `;
+    });
+  }
+})();
+</script>
+<!-- ════════════════════════════════════════════════════════════════════════════ -->
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+<div class="page">
+
+<nav class="topnav">
+  <div class="nav-left">
+    <a class="btn-back-app" href="https://app.letsgofree.me">← App</a>
+    <a class="nav-brand" href="kompakt-kap1.html">Quickstart</a>
+  </div>
+  <div class="nav-chapters">
+    <a class="nav-dot" href="kompakt-kap1.html" title="Wallet">1</a>
+    <a class="nav-dot active" href="kompakt-kap2.html" title="dfx.swiss">2</a>
+    <a class="nav-dot" href="kompakt-kap3.html" title="Krypto kaufen">3</a>
+    <a class="nav-dot" href="kompakt-kap4.html" title="Krypto zu Fiat">4</a>
+    <a class="nav-dot" href="kompakt-kap5.html" title="RedotPay">5</a>
+  </div>
+</nav>
+
+<span class="section-tag">Quickstart · Schritt 2 von 5</span>
+<h1>dfx.swiss <span>Registrierung</span></h1>
+<div class="rule"></div>
+
+<p>dfx.swiss ist eine Schweizer Fiat-Krypto-Brücke. Du überweist CHF oder EUR von deinem Bankkonto und erhältst Krypto direkt in dein eigenes Wallet – ohne Umweg über eine Börse, ohne dass du Krypto auf einer Plattform lagern musst.</p>
+
+<div class="two-box">
+  <div class="two-box-item">
+    <p class="two-box-title">Vorteile</p>
+    <ul>
+      <li>Schweizer Anbieter, reguliert</li>
+      <li>Direkt auf dein Wallet</li>
+      <li>SEPA & Schweizer Banküberweisung</li>
+      <li>Kein CEX-Konto nötig</li>
+    </ul>
+  </div>
+  <div class="two-box-item">
+    <p class="two-box-title">Was du brauchst</p>
+    <ul>
+      <li>Dein Wallet (Schritt 1)</li>
+      <li>IBAN deines Bankkontos</li>
+      <li>Ausweis für KYC</li>
+      <li>Smartphone oder Browser</li>
+    </ul>
+  </div>
+</div>
+
+<div class="sep"></div>
+
+<h2>Schritt für Schritt</h2>
+
+<div class="steps">
+
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-content">
+      <h4>dfx.swiss aufrufen</h4>
+      <ul>
+        <li>Referral-Link: dfx.swiss/app/services/?code=167-982</li>
+        <li>URL selbst eintippen oder Referral-Link aus der App nutzen</li>
+        <li class="warn-li">Nicht über Suchergebnisse gehen – direkt eintippen</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-content">
+      <h4>Wallet verbinden</h4>
+      <ul>
+        <li>«Connect Wallet» klicken</li>
+        <li>Deine Wallet-App auswählen (z.&thinsp;B. MetaMask)</li>
+        <li>Verbindung in der App bestätigen</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-content">
+      <h4>KYC abschliessen (nur beim ersten Mal)</h4>
+      <ul>
+        <li>dfx.swiss führt dich durch den Verifizierungsprozess</li>
+        <li>Ausweis oder Pass bereithalten</li>
+        <li>Dauert wenige Minuten – danach dauerhaft freigeschaltet</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-content">
+      <h4>«Buy Crypto» auswählen</h4>
+      <ul>
+        <li>Oben rechts auf «Buy Crypto» klicken</li>
+        <li>Coin und Netzwerk auswählen – Empfehlung: USDT auf BNB Chain</li>
+        <li>Betrag eingeben</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-content">
+      <h4>IBAN von dfx.swiss notieren</h4>
+      <ul>
+        <li>dfx.swiss zeigt dir eine IBAN an – das ist ihre Bankkontonummer</li>
+        <li>Diese IBAN brauchst du für Schritt 3 (Überweisung)</li>
+        <li>IBAN und Verwendungszweck exakt so verwenden wie angezeigt</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<div class="tip-box"><p>💡 Die Registrierung und das KYC machst du nur einmal. Danach kannst du jederzeit direkt kaufen oder verkaufen – dein Wallet bleibt immer verbunden.</p></div>
+
+<div class="warn-box"><p>⚠️ dfx.swiss speichert keine Kryptos für dich. Deine Coins gehen sofort in dein eigenes Wallet. Du brauchst dort also kein «Konto» im klassischen Sinne.</p></div>
+
+<div class="bottom-nav">
+  <a class="btn-nav prev" href="kompakt-kap1.html">← Schritt 1: Wallet</a>
+  <a class="btn-nav" href="kompakt-kap3.html">Schritt 3: Krypto kaufen →</a>
+</div>
+
+</div>
+<script>
+  const fill = document.getElementById('progress');
+  window.addEventListener('scroll', () => {
+    const h = document.documentElement.scrollHeight - window.innerHeight;
+    fill.style.width = (window.scrollY / h * 100) + '%';
+  }, { passive: true });
+</script>
+</body>
+</html>

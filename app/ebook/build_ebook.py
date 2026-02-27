@@ -1035,6 +1035,106 @@ def kap2(d: P):
 
     d.sp(4)
     d.hl_box('MEIN TIPP', '"Für den Start empfehle ich USDT oder USDC. Damit kannst du erste Erfahrungen sammeln ohne Angst vor Kursschwankungen. Kein Kursrisiko, trotzdem echte Krypto-Erfahrung. Später kannst du in Bitcoin oder Ethereum tauschen."')
+
+    # ── Coin vs. Token & Token-Arten ─────────────────────────────────────────
+    d.new_page(dark=False)
+    d.tag('KAPITEL 2 · COIN VS. TOKEN')
+    d.sp(16)
+    d.h2('Coin oder Token – was ist der Unterschied?')
+    d.para('Bevor wir uns die verschiedenen Token-Arten anschauen, müssen wir eine Grundunterscheidung klären, die im Alltag ständig auftaucht.')
+
+    d.sp(4)
+    d.two_box(
+        'Coin', [
+            'Gehört direkt zur eigenen Blockchain',
+            'Wird für Gas Fees benötigt',
+            'Existiert ohne Smart Contract',
+            'Beispiele: BTC, ETH, BNB, MATIC',
+        ],
+        'Token', [
+            'Läuft auf einer bestehenden Blockchain',
+            'Wird über Smart Contract definiert',
+            'Braucht Coin der Host-Chain für Fees',
+            'Beispiele: USDC, UNI, AAVE, LINK',
+        ],
+    )
+
+    d.sp(4)
+    d.hl_box('ALLTAGSVERGLEICH', 'Coin = Landeswährung. CHF in der Schweiz, EUR in der EU. Überall gültig. – Token = Gutschein in einem bestimmten Geschäft. Nur dort gültig – und du brauchst trotzdem die Landeswährung, um dorthin zu gelangen.')
+
+    d.sp(4)
+    d.warn('Wenn du Tokens besitzt, brauchst du immer auch etwas vom nativen Coin der Blockchain für Gebühren. Tokens auf Ethereum → ETH. Tokens auf BSC → BNB. Tokens auf Polygon → MATIC.')
+
+    d.sp(8)
+    d.h2('Token-Arten – ein Überblick')
+    d.para('Nicht alle Tokens sind gleich. Je nach Zweck unterscheidet man verschiedene Kategorien. In der Praxis sind viele Tokens Hybrid-Tokens – sie erfüllen mehrere Rollen gleichzeitig.')
+
+    d.sp(4)
+    for name, sub, desc, examples in [
+        ('Utility Token',
+         'Zugang und Funktion',
+         'Hat einen konkreten funktionalen Nutzen: Bezahlen von Gebühren, Freischalten von Features oder internes Zahlungsmittel eines Ökosystems. Die häufigste Token-Art im DeFi-Bereich.',
+         'Beispiele: BNB, ETH, UNI, LINK'),
+        ('Governance Token',
+         'Mitspracherecht im Protokoll',
+         'Wer diese Tokens hält, kann über Änderungen am Protokoll abstimmen. DeFi-Projekte werden oft als DAO (Decentralized Autonomous Organization) geführt – die Token-Inhaber entscheiden gemeinsam.',
+         'Beispiele: AAVE, COMP, CRV'),
+        ('Stablecoin',
+         'An Fiatwährung gekoppelt',
+         'Immer ~1 Dollar oder 1 Euro wert. Kein Kursrisiko. Das Fundament von DeFi – und der ideale Einstiegspunkt. Ausführlicher im vorherigen Abschnitt.',
+         'Beispiele: USDT, USDC, EURC, DAI'),
+        ('LP Token',
+         'Nachweis über bereitgestellte Liquidität',
+         'Wenn du Liquidität in einem DeFi-Pool bereitstellst, hinterlegst du immer zwei Kryptowährungen gleichzeitig – z. B. BNB und USDT im gleichen Gegenwert. Als Quittung erhältst du LP Tokens, die deinen Anteil am Pool belegen.',
+         'Beispiele: CAKE-LP, UNI-V2'),
+        ('NFT',
+         'Non-Fungible Token – einzigartig, unteilbar',
+         'Jedes NFT ist einmalig – kein Token ist identisch mit einem anderen. Häufig für digitale Kunst, Sammlerstücke oder Zertifikate. Im Gegensatz zu normalen Tokens nicht einfach austauschbar.',
+         'Beispiele: BAYC, digitale Kunst, Zertifikate'),
+        ('Meme Coin',
+         'Community und Hype – hohes Risiko',
+         'Meme Coins haben meist keine technische Grundlage oder realen Nutzen. Ihr Kurs wird durch Social Media und kurzfristigen Hype getrieben. Du wirst ihnen begegnen. Investiere dort nie mehr, als du bereit bist vollständig zu verlieren.',
+         'Beispiele: DOGE, SHIB, PEPE'),
+        ('Security Token',
+         'Tokenisierte Wertpapiere – rechtlich reguliert',
+         'Repräsentiert reale Werte oder Beteiligungen – ähnlich einer Aktie oder Anleihe, aber auf der Blockchain. Security Tokens sind Wertpapiere im rechtlichen Sinne. Für den DeFi-Einstieg kaum relevant – wichtig ist, den Begriff zu kennen.',
+         ''),
+    ]:
+        row_h = 13
+        lines_desc = d.wrap_text(desc, 'Body-L', 8.5, TW - 14)
+        lines_ex   = d.wrap_text(examples, 'Body-L', 7.5, TW - 14) if examples else []
+        bh = 14 + 12 + len(lines_desc) * row_h + (len(lines_ex) * 11 + 4 if lines_ex else 0) + 10
+        d.guard(bh + 8)
+        bx, by = ML - 4, d.y - bh
+        d.rect(bx, by, TW + 8, bh, DARK3)
+        d.rect(bx, by, 4, bh, GOLD_D)
+        d.c.setFillColor(GOLD)
+        d.c.setFont('H-Med', 9.5)
+        d.c.drawString(bx + 12, by + bh - 13, name)
+        d.c.setFillColor(GOLD_D)
+        d.c.setFont('Body-L', 7.5)
+        d.c.drawString(bx + 12, by + bh - 24, sub)
+        ty = by + bh - 38
+        d.c.setFillColor(HexColor('#a89880'))
+        d.c.setFont('Body-L', 8.5)
+        for line in lines_desc:
+            d.c.drawString(bx + 12, ty, line)
+            ty -= row_h
+        if lines_ex:
+            ty -= 2
+            d.c.setFillColor(GOLD_D)
+            d.c.setFont('Body-L', 7.5)
+            for line in lines_ex:
+                d.c.drawString(bx + 12, ty, line)
+                ty -= 11
+        d.y = by - 8
+
+    d.sp(4)
+    d.tip('Tokens können mehreren Kategorien gleichzeitig angehören. BNB ist zum Beispiel gleichzeitig Utility Token und Governance Token. Diese Einteilung ist ein Orientierungsrahmen – kein starres System.')
+
+    d.sp(4)
+    d.hl_box('MEIN TIPP', '«Für den Start brauchst du nur zwei Kategorien wirklich zu kennen: Stablecoins für Sicherheit und Utility Coins für Gas Fees. Governance, LP Tokens, NFTs und Security Tokens kommen, wenn du sie brauchst. Schritt für Schritt.»')
+
     d.new_page(dark=False)
     d.tag('KAPITEL 2 · HÄUFIGE FEHLER')
     d.sp(16)
@@ -1185,6 +1285,14 @@ def kap4(d: P):
     d.para('Ein Wallet ist NICHT ein Ort, wo deine Kryptos gespeichert sind. Deine Kryptos existieren auf der Blockchain. Das Wallet ist nur der Schlüssel, um darauf zuzugreifen. Stell es dir vor wie einen Briefkasten: Die Post (Kryptos) liegt drin, aber nur du hast den Schlüssel (Seedphrase).')
 
     d.sp(4)
+    d.hl_box('BEGRIFFSERKLÄRUNG – «WALLET»',
+        'Im Krypto-Bereich sprechen wir mit dem gleichen Wort «Wallet» über zwei verschiedene Dinge. '
+        'Wallet als Konzept: dein persönlicher Schlüssel zur Blockchain, unabhängig von einer Software. '
+        'Wer deine Seedphrase hat, hat dieses Wallet. Du kannst es jederzeit auf einem anderen Gerät oder in einer anderen App wiederherstellen. – '
+        'Wallet als Software: die App oder Browser-Erweiterung, die du nutzt, um auf dein Wallet zuzugreifen '
+        '(z. B. MetaMask, Trust Wallet, SafePal). Die Software ist nur das Fenster. Das eigentliche Wallet sind deine Schlüssel.')
+
+    d.sp(4)
     d.h2('Wallet-Typen: Was passt zu dir?')
     d.table_wrapped([
         ['Typ', 'Vorteile', 'Nachteile', 'Für wen?'],
@@ -1204,9 +1312,11 @@ def kap4(d: P):
         (1, 'Wallet-App herunterladen',
              ['Von der offiziellen Website (URL selbst eintippen!)',
               '! NIEMALS von Drittanbieter-Links – nur offizielle Quellen!']),
-        (2, 'Wallet erstellen',
-             ['Mit einem starken Passwort (mind. 12 Zeichen)',
-              'Mix aus Gross-/Kleinbuchstaben, Zahlen, Symbolen']),
+        (2, 'Neues Wallet erstellen',
+             ['Nach dem Start erscheint die Auswahl: «Neues Wallet erstellen» oder «Bestehendes importieren»',
+              'Wir wählen: Neues Wallet erstellen',
+              'Starkes Passwort wählen (mind. 12 Zeichen, Gross-/Kleinbuchstaben, Zahlen, Symbole)',
+              '→ «Wallet importieren» brauchst du erst später – wenn du auf einem neuen Gerät wiederherstellen willst']),
         (3, 'Seedphrase sichern',
              ['12 Wörter auf Papier schreiben (NIEMALS digital!)',
               '! Kein Screenshot – kein Cloud-Upload – kein Foto!',
@@ -1225,6 +1335,12 @@ def kap4(d: P):
 
     d.sp(4)
     d.hl_box('WICHTIG', '"Die fünf Minuten, die du jetzt in die korrekte Sicherung deiner Seedphrase investierst, können später Tausende Euro/Franken wert sein."')
+
+    d.sp(4)
+    d.tip('Was du mit der Seedphrase alles kannst: Wallet auf einem neuen Gerät wiederherstellen, wenn das alte kaputt geht. Wallet gleichzeitig auf mehreren Geräten nutzen. Wallet in einer anderen Wallet-Software öffnen. Zugang zurückgewinnen, wenn du das App-Passwort vergessen hast.')
+
+    d.sp(4)
+    d.warn('Diese Flexibilität hat eine Kehrseite: Wer deine Seedphrase kennt, hat denselben Zugang – auf jedem Gerät, sofort. Deshalb gilt: Seedphrase niemals teilen, niemals digital speichern.')
 
     d.sp(4)
     d.para('Wichtig: Die genaue Durchführung dieser Schritte ist kritisch für deine Sicherheit. In meinem 1:1-Coaching gehen wir jeden Schritt gemeinsam durch, damit nichts schiefgeht. Hier im Buch gebe ich bewusst nur die Grundstruktur weiter – für die sichere Umsetzung empfehle ich professionelle Begleitung.')
@@ -1565,11 +1681,11 @@ def kap5(d: P):
             p.lineTo(ax + gap - 12, ay - 4)
             p.close()
             d.c.drawPath(p, fill=1, stroke=0)
-            # Pfeil-Beschriftung oberhalb
+            # Pfeil-Beschriftung: zentriert über dem Pfeil, innerhalb der Node-Höhe
             d.c.setFillColor(GOLD_D)
             d.c.setFont('Body-L', 6.5)
             mid_x = ax + gap / 2
-            d.c.drawCentredString(mid_x, ny + node_h + 4, arrow_label)
+            d.c.drawCentredString(mid_x, ay + 6, arrow_label)
     d.y = ny - 16
 
     d.sp(8)
@@ -1635,7 +1751,8 @@ def kap6(d: P):
 
     d.h3('4. Liquidity Pools')
     d.para('Plattformen: Uniswap, Curve')
-    d.para('Du stellst deine Kryptos als Liquidität für Trades bereit und verdienst Gebühren.')
+    d.para('Du stellst deine Kryptos als Liquidität für Trades bereit und verdienst Gebühren. Dafür hinterlegst du immer zwei Kryptowährungen gleichzeitig – z. B. BNB und USDT im gleichen Gegenwert. Als Bestätigung erhältst du LP Tokens in dein Wallet, die deinen Anteil am Pool belegen.')
+    d.tip('Wie LP Tokens funktionieren: Deine LP Tokens liegen sicher in deinem Wallet – sie sind deine Quittung. Die eigentlichen Kryptowährungen liegen im Smart Contract des Pools. Wird dieser kompromittiert, werden deine LP Tokens wertlos – weil nichts mehr dahintersteht. Deshalb: Nur etablierte, geaudittete Plattformen nutzen.')
     d.warn('Risiko: Hoch. "Impermanent Loss" ist real und kann deine Gewinne auffressen. Nur für Fortgeschrittene, nicht für Anfänger.')
 
     d.new_page(dark=False)
@@ -1893,24 +2010,6 @@ def kap8(d: P):
     d.sp(6)
     d.hl_box('MOTIVATION', '"Der schwierigste Schritt ist der erste. Danach wird es einfacher. Versprochen."')
 
-    d.sp(6)
-    d.h2('Ressourcen für deine weitere Reise')
-    d.para('Dieses Buch ist der Anfang – Krypto entwickelt sich ständig weiter. Hier sind meine Top-Ressourcen, damit du am Ball bleibst:')
-    d.info_box('YouTube-Kanäle', [
-        'CryptoFamilie – youtube.com/@CryptoFamilie',
-        'MissCrypto – youtube.com/@MissCrypto',
-        'Blocktrainer – youtube.com/@Blocktrainer',
-        'Krypto Magazin – youtube.com/@KryptoMagazin',
-    ])
-    d.sp(4)
-    d.info_box('News & Marktdaten', [
-        'CoinMarketCap – coinmarketcap.com',
-        'CoinGecko – coingecko.com',
-        'BTC-ECHO – btc-echo.de',
-        'Blocktrainer – blocktrainer.de',
-        'Kryptoszene – kryptoszene.de',
-    ])
-
     # ── Bezahlen mit Krypto ───────────────────────────────────────────────────
     d.new_page(dark=False)
     d.tag('KAPITEL 8 · BEZAHLEN MIT KRYPTO')
@@ -1967,13 +2066,93 @@ def kap8(d: P):
     d.sp(4)
     d.tip('Meine Empfehlung: RedotPay für internationale Nutzung ohne viel Aufwand, Trustyfy für einfache CHF/EUR-Integration. Revolut eignet sich gut als Einstieg, da die App für viele bereits vertraut ist.')
 
+    # ── RedotPay Einrichtung ──────────────────────────────────────────────────
+    d.new_page(dark=False)
+    d.tag('KAPITEL 8 · REDOTPAY EINRICHTEN')
+    d.sp(16)
+    d.h2('RedotPay einrichten – Schritt für Schritt')
+    d.para('RedotPay ist eine Visa-Prepaid-Karte aus Hongkong. Du lädst sie mit USDT oder USDC aus deinem Wallet auf und kannst damit überall bezahlen, wo Visa akzeptiert wird. Über 130 Millionen Händler weltweit – inkl. Apple Pay und Google Pay.')
+
+    d.sp(4)
+    d.two_box(
+        'Fakten', [
+            'Visa Prepaid, virtuell & physisch',
+            'Virtuelle Karte: 10 USD einmalig',
+            'Coins: USDT, USDC, BTC, ETH, SOL',
+            'Netzwerke: BNB Chain, Polygon, Arbitrum u. a.',
+            'Apple Pay & Google Pay: ✓',
+            'KYC: Ja, ca. 5 Minuten',
+        ],
+        'Gebühren', [
+            'Zahlung in CHF / EUR: 1 %',
+            'Zahlung in Fremdwährung: 2,2 %',
+            'Krypto einzahlen: nur Gas Fees',
+            'KYC / Konto: kostenlos',
+            'Aktuelle Gebühren immer in der App prüfen',
+        ],
+    )
+
+    d.sp(6)
+    for num, title, lines in [
+        (1, 'App herunterladen & Konto erstellen', [
+            'App Store oder Google Play: «RedotPay» suchen',
+            'Offizielle Website: redotpay.com – URL selbst eintippen',
+            'E-Mail registrieren und bestätigen',
+        ]),
+        (2, 'KYC abschliessen (Identitätsverifikation)', [
+            'In der App «Verify» öffnen',
+            'Ausweis oder Pass fotografieren (Vorder- & Rückseite)',
+            'Selfie mit Ausweis aufnehmen',
+            'Dauert meist weniger als 5 Minuten',
+        ]),
+        (3, 'Virtuelle Karte erstellen', [
+            'In der App auf «Card» tippen',
+            '«Virtuelle Karte» wählen – Kosten: 10 USD',
+            '! Das 5 USDS Startguthaben kann nicht für die Kartengebühr verwendet werden',
+        ]),
+        (4, 'Karte aufladen (USDT aus Wallet senden)', [
+            'In der App auf «Deposit» tippen',
+            'Netzwerk wählen: BNB Chain (BEP20) oder Polygon für tiefe Gas Fees',
+            'RedotPay zeigt eine Empfangsadresse an',
+            'In MetaMask oder Tangem USDT an diese Adresse senden',
+            '! Netzwerk muss exakt übereinstimmen – falsche Chain = Tokens weg',
+        ]),
+        (5, 'Mit Karte bezahlen', [
+            'Online: Kartennummer, Ablaufdatum und CVV aus der App',
+            'Im Laden: Apple Pay oder Google Pay (nächster Schritt)',
+            'Am Bankomat: Bargeld abheben möglich',
+        ]),
+    ]:
+        d.step(num, title, lines)
+
+    d.sp(6)
+    d.h3('Apple Pay einrichten')
+    d.para('Sobald die virtuelle Karte aktiv ist, kannst du sie zu Apple Pay hinzufügen und kontaktlos bezahlen.')
+
+    for num, title, lines in [
+        (1, 'Direkt aus der RedotPay-App', [
+            'App öffnen → «Card» tippen → «Add to Apple Wallet»',
+            'Das ist der einfachste Weg – empfohlen',
+        ]),
+        (2, 'Alternativ: manuell über Apple Wallet', [
+            'Apple Wallet öffnen → «+» oben rechts tippen',
+            '«Debit- oder Kreditkarte» wählen',
+            'Kartennummer, Ablaufdatum und CVV aus der RedotPay-App eingeben',
+            'Apple Wallet validiert die Karte automatisch',
+        ]),
+    ]:
+        d.step(num, title, lines)
+
+    d.sp(4)
+    d.tip('Stell RedotPay als Standardkarte in Apple Wallet ein, wenn du sie regelmässig nutzt. Die Option findest du direkt in den Einstellungen der Apple Wallet App.')
+
     d.sp(8)
     d.new_page(dark=False)
     d.tag('KAPITEL 8 · PERSÖNLICHE BEGLEITUNG')
     d.sp(16)
     d.h2('Wenn du mehr Unterstützung brauchst')
-    d.para('Dieses Buch gibt dir das Fundament. Aber manchmal brauchst du persönliche Begleitung. Jemanden, der deine spezifischen Fragen beantwortet. Der mit dir zusammen dein Wallet aufsetzt. Der dich Schritt für Schritt durch den Prozess führt.')
-    d.para('Genau dafür biete ich mein 1:1 Coaching an. In fünf Sessions gehen wir deinen individuellen Weg:')
+    d.para('Du hast jetzt das Fundament. Du weisst, wie ein Wallet funktioniert, wie du Krypto kaufst, sicherst und wieder zurück in Fiat tauschst. Du kannst mit einer Krypto-Karte im Alltag bezahlen. Das ist kein kleines Wissen – das ist Selbstbestimmung.')
+    d.para('Manche Schritte macht man lieber nicht alleine. Wenn du jemanden an deiner Seite willst, der mit dir zusammen das Wallet aufsetzt, deine spezifischen Fragen beantwortet und dich durch den gesamten Prozess begleitet – genau dafür ist mein 1: 1 Coaching da.')
 
     for sess, title, content in [
         ('Session 1', 'Das Fundament verstehen',
@@ -2050,7 +2229,9 @@ def kap8(d: P):
     d.para('Krypto ist kein Sprint. Die meisten Fehler entstehen aus Ungeduld oder Gier. Die besten Entscheidungen entstehen aus Ruhe und Verständnis. Du musst nicht jeden Trend mitmachen. Du musst nicht alles sofort verstehen. Fang klein an, lerne dabei, und bau dein Wissen in deinem Tempo auf.')
 
     d.sp(4)
-    d.para('Ich freue mich, dass du dir die Zeit genommen hast – und noch mehr, dass du den Schritt wagst. Den Schritt in deine finanzielle Selbstbestimmung. Das ist ein grosser Schritt. Ich freue mich, dich vielleicht persönlich auf diesem Weg begleiten zu dürfen.')
+    d.para('Im Sommer 2023 habe ich den Schritt gewagt, obwohl ich zuerst skeptisch war. Meine Frau hatte durch eine Freundin von Krypto gehört, und ich habe mitgemacht. Ich habe mich Schritt für Schritt reingearbeitet, Fehler gemacht, Dinge zweimal falsch verstanden und nochmal von vorne angefangen. Genau so lernt man.')
+    d.para('Heute weiss ich, wie mein Geld funktioniert. Ich entscheide selbst, wo es liegt, wie es sich bewegt und wer Zugriff darauf hat. Keine Bank, die mir sagt, was geht und was nicht. Kein System, dem ich blind vertrauen muss. Das ist kein grosses Versprechen – das ist einfach Selbstbestimmung.')
+    d.para('Dieser Weg steht auch dir offen. Du hast jetzt das Wissen. Du hast den Plan. Du brauchst nur noch eines: den ersten Schritt zu machen.')
 
     d.sp(6)
     d.hl_box('WILLKOMMEN', 'Willkommen auf dem Weg zu deiner finanziellen Selbstbestimmung.')

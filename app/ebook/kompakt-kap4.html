@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quickstart 4: Krypto zu Fiat · Let's go free</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="ebook-styles.css">
+</head>
+<body>
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ZUGANGS-SCHUTZ SNIPPET
+     Dieses Snippet in JEDE kompakt-kap*.html Datei einfügen
+     Position: Direkt nach dem <body> Tag (oder nach Zurück-Button falls vorhanden)
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<script>
+(function() {
+  // Prüfe ob gültiger Zugang vorhanden
+  const hasAccess = localStorage.getItem('lgf_access') === 'true';
+  
+  if (!hasAccess) {
+    // Kein Zugang - zeige Sperrbildschirm
+    document.addEventListener('DOMContentLoaded', function() {
+      document.body.innerHTML = `
+        <div style="
+          position: fixed; inset: 0;
+          background: linear-gradient(135deg, #2c1e0f 0%, #3d2d1e 100%);
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          padding: 40px 24px; text-align: center;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        ">
+          <div style="font-size: 64px; margin-bottom: 24px;">🔒</div>
+          <h1 style="
+            font-size: clamp(24px, 6vw, 32px);
+            font-weight: 700; color: #c4a265;
+            margin-bottom: 16px; line-height: 1.2;
+          ">Zugang verweigert</h1>
+          <p style="
+            font-size: 16px; color: #b89a76;
+            line-height: 1.6; margin-bottom: 32px;
+            max-width: 400px;
+          ">
+            Dieser Inhalt ist nur mit einem gültigen Zugangs-Code verfügbar.
+          </p>
+          <a href="https://app.letsgofree.me" style="
+            display: inline-flex; align-items: center; gap: 10px;
+            background: linear-gradient(135deg, #c4a265, #a0784a);
+            color: #2c1e0f; text-decoration: none;
+            font-size: 16px; font-weight: 600;
+            padding: 14px 28px; border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(196,162,101,.35);
+          ">
+            <span>🔓</span> Zur App
+          </a>
+        </div>
+      `;
+    });
+  }
+})();
+</script>
+<!-- ════════════════════════════════════════════════════════════════════════════ -->
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+<div class="page">
+
+<nav class="topnav">
+  <div class="nav-left">
+    <a class="btn-back-app" href="https://app.letsgofree.me">← App</a>
+    <a class="nav-brand" href="kompakt-kap1.html">Quickstart</a>
+  </div>
+  <div class="nav-chapters">
+    <a class="nav-dot" href="kompakt-kap1.html" title="Wallet">1</a>
+    <a class="nav-dot" href="kompakt-kap2.html" title="dfx.swiss">2</a>
+    <a class="nav-dot" href="kompakt-kap3.html" title="Krypto kaufen">3</a>
+    <a class="nav-dot active" href="kompakt-kap4.html" title="Krypto zu Fiat">4</a>
+    <a class="nav-dot" href="kompakt-kap5.html" title="RedotPay">5</a>
+  </div>
+</nav>
+
+<span class="section-tag">Quickstart · Schritt 4 von 5</span>
+<h1>Krypto zu <span>Fiat</span></h1>
+<div class="rule"></div>
+
+<p>Derselbe Anbieter, derselbe Weg – aber umgekehrt. Du sendest Krypto an dfx.swiss und bekommst CHF oder EUR direkt auf dein Bankkonto überwiesen.</p>
+
+<div class="flow-diagram">
+  <div class="flow-row">
+    <div class="flow-node">
+      <div class="flow-node-icon">👛</div>
+      <div class="flow-node-title">Dein Wallet</div>
+      <div class="flow-node-sub">MetaMask<br>Tangem etc.</div>
+    </div>
+    <div class="flow-connector">
+      <div class="flow-connector-label">Krypto<br>senden</div>
+      <div class="flow-connector-arrow">→</div>
+    </div>
+    <div class="flow-node">
+      <div class="flow-node-icon">🌉</div>
+      <div class="flow-node-title">dfx.swiss</div>
+      <div class="flow-node-sub">tauscht Krypto<br>in CHF / EUR</div>
+    </div>
+    <div class="flow-connector">
+      <div class="flow-connector-label">CHF / EUR<br>überweisen</div>
+      <div class="flow-connector-arrow">→</div>
+    </div>
+    <div class="flow-node">
+      <div class="flow-node-icon">🏦</div>
+      <div class="flow-node-title">Dein Bankkonto</div>
+      <div class="flow-node-sub">CHF / EUR<br>auf deiner IBAN</div>
+    </div>
+  </div>
+</div>
+
+<div class="sep"></div>
+
+<h2>Schritt für Schritt</h2>
+
+<div class="steps">
+
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-content">
+      <h4>dfx.swiss öffnen und «Sell» wählen</h4>
+      <ul>
+        <li>dfx.swiss/app/services/?code=167-982 aufrufen</li>
+        <li>Wallet verbinden (falls noch nicht verbunden)</li>
+        <li>«Sell Crypto» klicken</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-content">
+      <h4>Coin und Netzwerk auswählen</h4>
+      <ul>
+        <li>z.&thinsp;B. USDT auf BNB Chain</li>
+        <li class="warn-li">Netzwerk muss exakt stimmen – genau wie beim Kaufen</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-content">
+      <h4>IBAN eingeben</h4>
+      <ul>
+        <li>Deine Schweizer oder europäische Bankkontonummer</li>
+        <li>Nur beim ersten Mal nötig – danach gespeichert</li>
+        <li>dfx.swiss verifiziert deine IBAN einmalig</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-content">
+      <h4>Wallet-Adresse von dfx.swiss kopieren</h4>
+      <ul>
+        <li>dfx.swiss zeigt dir eine Empfangsadresse</li>
+        <li>Diese Adresse gehört dfx.swiss – dorthin sendest du deine Kryptos</li>
+        <li class="warn-li">Adresse sorgfältig prüfen – erste und letzte Zeichen vergleichen</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-content">
+      <h4>Betrag aus dem Wallet senden</h4>
+      <ul>
+        <li>In MetaMask oder Tangem den Betrag an die dfx.swiss-Adresse senden</li>
+        <li class="warn-li">Netzwerk prüfen – falsche Chain = Tokens weg</li>
+        <li>Du brauchst BNB für Gas Fees (kleine Menge reicht)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">6</div>
+    <div class="step-content">
+      <h4>Warten</h4>
+      <ul>
+        <li>Die Überweisung auf dein Bankkonto kommt in der Regel innerhalb von 1–3 Werktagen</li>
+        <li>Du erhältst eine Bestätigung per E-Mail</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<div class="warn-box"><p>⚠️ Übe den Rückweg, bevor du ihn brauchst. Sende dir selbst einmal 20 CHF zurück aufs Bankkonto – nur um sicher zu sein, dass du den Prozess kennst und alles funktioniert.</p></div>
+
+<div class="tip-box"><p>💡 Beim ersten Verkauf verifiziert dfx.swiss deine IBAN. Das geht schnell, kann aber 1–2 Tage dauern. Danach läuft alles ohne Verzögerung.</p></div>
+
+<div class="bottom-nav">
+  <a class="btn-nav prev" href="kompakt-kap3.html">← Schritt 3: Krypto kaufen</a>
+  <a class="btn-nav" href="kompakt-kap5.html">Schritt 5: RedotPay →</a>
+</div>
+
+</div>
+<script>
+  const fill = document.getElementById('progress');
+  window.addEventListener('scroll', () => {
+    const h = document.documentElement.scrollHeight - window.innerHeight;
+    fill.style.width = (window.scrollY / h * 100) + '%';
+  }, { passive: true });
+</script>
+</body>
+</html>

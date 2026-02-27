@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quickstart 3: Krypto kaufen · Let's go free</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="ebook-styles.css">
+</head>
+<body>
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ZUGANGS-SCHUTZ SNIPPET
+     Dieses Snippet in JEDE kompakt-kap*.html Datei einfügen
+     Position: Direkt nach dem <body> Tag (oder nach Zurück-Button falls vorhanden)
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<script>
+(function() {
+  // Prüfe ob gültiger Zugang vorhanden
+  const hasAccess = localStorage.getItem('lgf_access') === 'true';
+  
+  if (!hasAccess) {
+    // Kein Zugang - zeige Sperrbildschirm
+    document.addEventListener('DOMContentLoaded', function() {
+      document.body.innerHTML = `
+        <div style="
+          position: fixed; inset: 0;
+          background: linear-gradient(135deg, #2c1e0f 0%, #3d2d1e 100%);
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          padding: 40px 24px; text-align: center;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        ">
+          <div style="font-size: 64px; margin-bottom: 24px;">🔒</div>
+          <h1 style="
+            font-size: clamp(24px, 6vw, 32px);
+            font-weight: 700; color: #c4a265;
+            margin-bottom: 16px; line-height: 1.2;
+          ">Zugang verweigert</h1>
+          <p style="
+            font-size: 16px; color: #b89a76;
+            line-height: 1.6; margin-bottom: 32px;
+            max-width: 400px;
+          ">
+            Dieser Inhalt ist nur mit einem gültigen Zugangs-Code verfügbar.
+          </p>
+          <a href="https://app.letsgofree.me" style="
+            display: inline-flex; align-items: center; gap: 10px;
+            background: linear-gradient(135deg, #c4a265, #a0784a);
+            color: #2c1e0f; text-decoration: none;
+            font-size: 16px; font-weight: 600;
+            padding: 14px 28px; border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(196,162,101,.35);
+          ">
+            <span>🔓</span> Zur App
+          </a>
+        </div>
+      `;
+    });
+  }
+})();
+</script>
+<!-- ════════════════════════════════════════════════════════════════════════════ -->
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+<div class="page">
+
+<nav class="topnav">
+  <div class="nav-left">
+    <a class="btn-back-app" href="https://app.letsgofree.me">← App</a>
+    <a class="nav-brand" href="kompakt-kap1.html">Quickstart</a>
+  </div>
+  <div class="nav-chapters">
+    <a class="nav-dot" href="kompakt-kap1.html" title="Wallet">1</a>
+    <a class="nav-dot" href="kompakt-kap2.html" title="dfx.swiss">2</a>
+    <a class="nav-dot active" href="kompakt-kap3.html" title="Krypto kaufen">3</a>
+    <a class="nav-dot" href="kompakt-kap4.html" title="Krypto zu Fiat">4</a>
+    <a class="nav-dot" href="kompakt-kap5.html" title="RedotPay">5</a>
+  </div>
+</nav>
+
+<span class="section-tag">Quickstart · Schritt 3 von 5</span>
+<h1>Krypto <span>kaufen</span></h1>
+<div class="rule"></div>
+
+<p>Jetzt überweist du CHF oder EUR an dfx.swiss – und erhältst Krypto direkt in dein Wallet. Fang mit einem kleinen Betrag an. Nicht weil Krypto gefährlich ist, sondern weil du den Prozess zuerst kennenlernen sollst.</p>
+
+<div class="hl-box" style="border-left:4px solid var(--gold-d);">
+  <p class="hl-box-label">Empfehlung für den ersten Kauf</p>
+  <p>Coin: <strong style="color:var(--gold-d);">USDT</strong> oder <strong style="color:var(--gold-d);">USDC</strong> (Stablecoin, immer ~1 USD) · Netzwerk: <strong style="color:var(--gold-d);">BNB Chain (BSC)</strong> · Betrag: 50–100 CHF zum Starten</p>
+  <p style="margin-top:6px; font-size:0.9em; opacity:.8;">Stablecoins haben kein Kursrisiko. Du lernst den Prozess, ohne gleich Wertschwankungen ausgesetzt zu sein.</p>
+</div>
+
+<div class="sep"></div>
+
+<h2>Schritt für Schritt</h2>
+
+<div class="steps">
+
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-content">
+      <h4>dfx.swiss öffnen und Kauf konfigurieren</h4>
+      <ul>
+        <li>dfx.swiss/app/services/?code=167-982 aufrufen</li>
+        <li>«Buy Crypto» klicken</li>
+        <li>Coin: USDT · Netzwerk: BNB Chain (BSC)</li>
+        <li>Betrag eingeben (z.&thinsp;B. 50 CHF)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-content">
+      <h4>IBAN und Verwendungszweck von dfx.swiss notieren</h4>
+      <ul>
+        <li>dfx.swiss zeigt eine IBAN und einen Verwendungszweck an</li>
+        <li class="warn-li">Verwendungszweck exakt so kopieren wie angegeben – kein Zeichen verändern</li>
+        <li>Ohne korrekten Verwendungszweck kann dfx.swiss die Zahlung nicht zuordnen</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-content">
+      <h4>Banküberweisung ausführen</h4>
+      <ul>
+        <li>In deinem E-Banking eine neue Überweisung erstellen</li>
+        <li>IBAN von dfx.swiss als Empfänger eingeben</li>
+        <li>Verwendungszweck exakt übernehmen</li>
+        <li>Betrag und Währung (CHF oder EUR) eingeben und senden</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-content">
+      <h4>Warten und prüfen</h4>
+      <ul>
+        <li>Du erhältst eine E-Mail von dfx.swiss zur Bestätigung</li>
+        <li>SEPA-Überweisung: 1–2 Werktage · Schweizer Inlandüberweisung: oft am selben Tag</li>
+        <li>Danach erscheinen die Tokens in deinem Wallet</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-content">
+      <h4>Tokens im Wallet sichtbar machen</h4>
+      <ul>
+        <li>Falls USDT nicht automatisch erscheint: Token manuell hinzufügen</li>
+        <li>In MetaMask: «Tokens importieren» → Vertragsadresse von USDT auf BSC einfügen</li>
+        <li>Netzwerk in der Wallet-App auf «BNB Chain» stellen</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<div class="tip-box"><p>💡 Kaufe zusätzlich eine kleine Menge BNB (ca. 5–10 CHF) für Gas Fees. Ohne BNB kannst du auf der BNB Chain keine Transaktionen ausführen. Das gilt für alle Tokens auf dieser Chain.</p></div>
+
+<div class="warn-box"><p>⚠️ Netzwerk und Coin müssen immer übereinstimmen. USDT auf BNB Chain ist technisch ein anderer Token als USDT auf Ethereum. Wer auf die falsche Chain sendet, verliert die Tokens.</p></div>
+
+<div class="bottom-nav">
+  <a class="btn-nav prev" href="kompakt-kap2.html">← Schritt 2: dfx.swiss</a>
+  <a class="btn-nav" href="kompakt-kap4.html">Schritt 4: Zurück zu Fiat →</a>
+</div>
+
+</div>
+<script>
+  const fill = document.getElementById('progress');
+  window.addEventListener('scroll', () => {
+    const h = document.documentElement.scrollHeight - window.innerHeight;
+    fill.style.width = (window.scrollY / h * 100) + '%';
+  }, { passive: true });
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 // ─── Let's go free · Service Worker ───────────────────────────────────────
-const CACHE_VERSION = 'lgf-v82.0';
+const CACHE_VERSION = 'lgf-v83.0';
 const CACHE_NAME = `letsgofree-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -22,6 +22,11 @@ const APP_SHELL = [
   '/ebook/ebook-kap6.html',
   '/ebook/ebook-kap7.html',
   '/ebook/ebook-kap8.html',
+  '/ebook/kompakt-kap1.html',
+  '/ebook/kompakt-kap2.html',
+  '/ebook/kompakt-kap3.html',
+  '/ebook/kompakt-kap4.html',
+  '/ebook/kompakt-kap5.html',
   '/ebook/krypto-einsteiger-guide.pdf',
   '/dateien/bonus-checkliste.html',
   '/dateien/bonus-bonus-empfehlungen.html',
