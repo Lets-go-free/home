@@ -122,25 +122,25 @@
     <div class="rec-box">
       <h3>✅ Für Anfänger</h3>
       <ul>
-        <li><strong>Rabby Wallet</strong> – Intuitiv, Multi-Chain, DeFi-ready</li>
         <li><strong>MetaMask</strong> – Standard für Web-DeFi</li>
         <li><strong>SafePal</strong> – Benutzerfreundlich, viele Chains</li>
+        <li><strong>Rabby Wallet</strong> – Intuitiv, Multi-Chain, DeFi-ready</li>
       </ul>
     </div>
     <div class="rec-box">
       <h3>🔒 Maximale Sicherheit</h3>
       <ul>
+        <li><strong>Tangem Wallet</strong> – Karten-Format, sehr einfach, Smart Gas</li>
         <li><strong>Ledger Nano Gen 5</strong> – Bluetooth, NFC, neu 2025</li>
         <li><strong>Trezor Model T</strong> – Open Source</li>
-        <li><strong>Tangem Wallet</strong> – Karten-Format, einfach</li>
       </ul>
     </div>
     <div class="rec-box">
       <h3>💰 Beste für DeFi</h3>
       <ul>
-        <li><strong>Rabby Wallet</strong> – Multi-Chain, intuitiv</li>
-        <li><strong>MetaMask</strong> – Beste Integration</li>
-        <li><strong>TokenPocket</strong> – Viele Features</li>
+        <li><strong>MetaMask</strong> – Beste Integration, Multi-Token Gas</li>
+        <li><strong>SafePal</strong> – Viele Chains, Gas Station</li>
+        <li><strong>Rabby Wallet</strong> – Multi-Chain, GasAccount</li>
       </ul>
     </div>
   </div>
@@ -185,11 +185,26 @@
           <th>NFT</th>
           <th>DeFi</th>
           <th>Preis</th>
+          <th>Smart Gas</th>
           <th>Besonderheit</th>
         </tr>
       </thead>
       <tbody id="walletTableBody"></tbody>
     </table>
+  </div>
+
+
+  <div class="hl-box" style="margin:28px 0;">
+    <h3>💡 Was ist Smart Gas?</h3>
+    <p style="font-size:.88rem;line-height:1.6;margin-top:12px;">
+      Normalerweise brauchst du für jede Blockchain den <strong>nativen Token</strong> (ETH für Ethereum, BNB für BSC, etc.), um Gas Fees zu bezahlen – auch wenn du nur Stablecoins versenden willst. Das nervt, besonders wenn du mehrere Wallets oder Chains nutzt.
+    </p>
+    <p style="font-size:.88rem;line-height:1.6;margin-top:12px;">
+      <strong>Smart Gas</strong> löst dieses Problem: Du kannst die Gas Fees mit <strong>Stablecoins wie USDT oder USDC</strong> bezahlen. Das Wallet tauscht im Hintergrund automatisch einen kleinen Betrag in den nativen Token um und bezahlt damit die Gebühr. Du merkst davon nichts – für dich fühlt es sich an, als würdest du nur USDT versenden.
+    </p>
+    <p style="font-size:.88rem;line-height:1.6;margin-top:12px;">
+      <strong>Vorteil:</strong> Du musst nicht mehr für jede Chain extra ETH, BNB, MATIC etc. kaufen und rumjonglieren – ein USDT-Guthaben reicht für Gas Fees auf mehreren Chains.
+    </p>
   </div>
 
   <div class="no-results" id="noResults" style="display:none;">Keine Wallets gefunden. Versuche andere Filter.</div>
@@ -219,6 +234,7 @@
                 nft: true,
                 defi: "Eingebauter Swap, beste dApp Integration",
                 price: "kostenlos",
+                smartGas: "✅ Multi-Token Gas",
                 special: "Standard für Web3, grösste Community"
             },
             {
@@ -230,6 +246,7 @@
                 nft: true,
                 defi: "Via Ledger Wallet App, limitiert",
                 price: "einmalig",
+                smartGas: "❌",
                 special: "Einstiegsmodell $79 · nur USB-C, kein Bluetooth · WalletConnect: ✓ (via Desktop) · kein Smartphone-Betrieb"
             },
             {
@@ -241,6 +258,7 @@
                 nft: true,
                 defi: "Via Ledger Wallet App, limitiert",
                 price: "einmalig",
+                smartGas: "❌",
                 special: "Bewährtes Modell $149 · Bluetooth 5.0 ✓ · Smartphone ✓ · WalletConnect ✓ · USB-C"
             },
             {
@@ -252,6 +270,7 @@
                 nft: true,
                 defi: "Via Ledger Wallet App, limitiert",
                 price: "einmalig",
+                smartGas: "❌",
                 special: "NEU Okt. 2025 · $179 · E-Ink Screen · Bluetooth 5.2 ✓ · NFC ✓ · Smartphone ✓ · WalletConnect ✓"
             },
             {
@@ -263,6 +282,7 @@
                 nft: true,
                 defi: "Via Ledger Wallet App, limitiert",
                 price: "einmalig",
+                smartGas: "❌",
                 special: "2024 · $249 · E-Ink Touchscreen · Bluetooth ✓ · NFC ✓ · Smartphone ✓ · WalletConnect ✓"
             },
             {
@@ -274,6 +294,7 @@
                 nft: true,
                 defi: "Via Ledger Wallet App, limitiert",
                 price: "einmalig",
+                smartGas: "❌",
                 special: "Premium 2024 · $279 · Grosser E-Ink Touchscreen · Bluetooth ✓ · NFC ✓ · Wireless Charging ✓ · Smartphone ✓ · WalletConnect ✓"
             },
             {
@@ -285,6 +306,7 @@
                 nft: false,
                 defi: "Via Trezor Suite, limitiert",
                 price: "einmalig",
+                smartGas: "❌",
                 special: "Open Source, Touchscreen, $219"
             },
             {
@@ -296,6 +318,7 @@
                 nft: true,
                 defi: "Via SafePal App",
                 price: "einmalig",
+                smartGas: "❌",
                 special: "Air-gapped (keine USB/Bluetooth), $50"
             },
             {
@@ -307,6 +330,7 @@
                 nft: true,
                 defi: "Sehr umfangreich: Swap, Staking, Farming, etc.",
                 price: "kostenlos",
+                smartGas: "✅ Gas Station (USDT, USDC, USD1)",
                 special: "Feature-reich, etwas komplex für Anfänger"
             },
             {
@@ -318,6 +342,7 @@
                 nft: true,
                 defi: "Eingebauter Swap & Browser",
                 price: "kostenlos",
+                smartGas: "❌",
                 special: "Sehr benutzerfreundlich, nicht mit Coinbase Exchange verwechseln!"
             },
             {
@@ -329,6 +354,7 @@
                 nft: true,
                 defi: "Exzellent: Multi-Chain Übersicht, Pre-Sign Simulation",
                 price: "kostenlos",
+                smartGas: "✅ GasAccount (USDT, USDC)",
                 special: "Beste UX für Multi-Chain DeFi, zeigt richtiges Guthaben pro Chain"
             },
             {
@@ -340,6 +366,7 @@
                 nft: true,
                 defi: "Eingebauter Swap, wunderschönes Design",
                 price: "kostenlos",
+                smartGas: "❌",
                 special: "Beste Mobile UX, perfekt für NFT-Sammler"
             },
             {
@@ -351,6 +378,7 @@
                 nft: true,
                 defi: "Eingebauter Swap für Solana",
                 price: "kostenlos",
+                smartGas: "❌",
                 special: "Das beste Wallet für Solana"
             },
             {
@@ -362,6 +390,7 @@
                 nft: false,
                 defi: "Eingebauter Swap (teuer), Staking",
                 price: "kostenlos",
+                smartGas: "❌",
                 special: "Schönes Design, integriertes Portfolio-Tracking"
             },
             {
@@ -373,6 +402,7 @@
                 nft: true,
                 defi: "Eingebauter Swap, Staking, DApp Browser",
                 price: "kostenlos",
+                smartGas: "✅ Gas Station (SFP, Stablecoins)",
                 special: "Von Binance Labs, sehr günstig, gute Multi-Chain Unterstützung"
             },
             {
@@ -384,6 +414,7 @@
                 nft: true,
                 defi: "Via Tangem App, eingeschränkt",
                 price: "einmalig",
+                smartGas: "✅ Smart Gas (USDT, USDC)",
                 special: "Karten-Format (NFC), sehr einfach, 2-3 Karten als Backup, $55-70"
             }
 ,
@@ -396,7 +427,20 @@
                 nft: false,
                 defi: "Keine DeFi-Integration",
                 price: "kostenlos",
+                smartGas: "❌",
                 special: "Lightning-spezialisiert · automatisches Channel-Management · sehr einfach · non-custodial"
+            },
+            {
+                name: "Xova Wallet",
+                type: "hot",
+                rating: 3,
+                chains: "100+ Blockchains (Bitcoin, Ethereum, Solana, Cosmos, etc.)",
+                platforms: ["mobile"],
+                nft: true,
+                defi: "dApp-Browser integriert",
+                price: "kostenlos",
+                smartGas: "❌",
+                special: "⚠️ Sehr neu (Sep 2025) – noch wenige Bewertungen · Multi-Chain · Non-custodial"
             },
             {
                 name: "BlueWallet",
@@ -407,6 +451,7 @@
                 nft: false,
                 defi: "Keine DeFi-Integration",
                 price: "kostenlos",
+                smartGas: "❌",
                 special: "Bitcoin-fokussiert · Lightning-Ready · open source · Multisig-Support"
             },
         ];
@@ -438,6 +483,8 @@
                     '<span class="tag free">Kostenlos</span>' :
                     '<span class="tag paid">$50-219</span>';
                 
+                const smartGasDisplay = wallet.smartGas || '❌';
+                
                 row.innerHTML = `
                     <td class="wallet-name">${wallet.name}</td>
                     <td><span class="tag ${typeTag}">${typeText}</span></td>
@@ -447,6 +494,7 @@
                     <td>${nftTag}</td>
                     <td>${wallet.defi}</td>
                     <td>${priceTag}</td>
+                    <td style="font-size:.75rem;">${smartGasDisplay}</td>
                     <td>${wallet.special}</td>
                 `;
                 
