@@ -64,6 +64,7 @@
 })();
 </script>
 <!-- ════════════════════════════════════════════════════════════════════════════ -->
+
 <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
 <div class="page">
 
@@ -240,7 +241,7 @@
 
 <h3>Private Key & Seedphrase – Dein Zugangscode</h3>
 <p>Der Private Key ist eine lange Zeichenkette aus Zahlen und Buchstaben – technisch korrekt, aber für Menschen unpraktisch. Deshalb gibt es die Seedphrase: 12 normale Wörter (z.B. "ocean hidden spring mountain..."), aus denen alle deine Private Keys mathematisch berechnet werden.</p>
-<p>Wichtig zu verstehen: Eine Seedphrase erzeugt nicht einen einzigen Private Key, sondern je einen pro Blockchain. Dein Wallet leitet also für Ethereum einen Private Key ab, für BNB Chain einen anderen, für Polygon wieder einen anderen – alles aus denselben 12 Wörtern. Die Seedphrase ist damit der Master-Schlüssel zu allem.</p>
+<p>Wichtig zu verstehen: Alle EVM-kompatiblen Chains &ndash; also Ethereum, BNB Chain, Polygon, Arbitrum und andere &ndash; teilen sich denselben Private Key und dieselbe Wallet-Adresse. Deine Adresse &laquo;0xABC...&raquo; auf Ethereum ist identisch mit deiner Adresse auf BNB Chain. Separate Private Keys entstehen nur bei anderen Blockchain-Familien wie Bitcoin oder Solana. Die Seedphrase ist damit der Master-Schlüssel zu allem.</p>
 <div class="warn-box"><p>⚠️ Wer deine 12 Wörter hat, hat vollen Zugriff auf sämtliche deiner Wallets auf allen Blockchains. Deshalb: Nur auf Papier, niemals digital, an mehreren sicheren Orten aufbewahren.</p></div>
 
 <h3>Public Key & Adressen – Deine Kontonummer</h3>

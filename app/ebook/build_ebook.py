@@ -940,7 +940,7 @@ def kap2(d: P):
     d.sp(4)
     d.h3('Private Key & Seedphrase – Dein Zugangscode')
     d.para('Der Private Key ist eine lange Zeichenkette aus Zahlen und Buchstaben – technisch korrekt, aber für Menschen unpraktisch. Deshalb gibt es die Seedphrase: 12 normale Wörter (z.B. "ocean hidden spring mountain..."), aus denen alle deine Private Keys mathematisch berechnet werden.')
-    d.para('Wichtig zu verstehen: Eine Seedphrase erzeugt nicht einen einzigen Private Key, sondern je einen pro Blockchain. Dein Wallet leitet also für Ethereum einen Private Key ab, für BNB Chain einen anderen, für Polygon wieder einen anderen – alles aus denselben 12 Wörtern. Die Seedphrase ist damit der Master-Schlüssel zu allem.')
+    d.para('Wichtig zu verstehen: Alle EVM-kompatiblen Chains – also Ethereum, BNB Chain, Polygon, Arbitrum und andere – teilen sich denselben Private Key und dieselbe Wallet-Adresse. Deine Adresse «0xABC...» auf Ethereum ist identisch mit deiner Adresse auf BNB Chain. Separate Private Keys entstehen nur bei anderen Blockchain-Familien wie Bitcoin oder Solana. Die Seedphrase ist damit der Master-Schlüssel zu allem.')
     d.warn('Wer deine 12 Wörter hat, hat vollen Zugriff auf sämtliche deiner Wallets auf allen Blockchains. Deshalb: Nur auf Papier, niemals digital, an mehreren sicheren Orten aufbewahren.')
     d.sp(6)
     d.insert_image(
@@ -1657,9 +1657,29 @@ def kap5(d: P):
         ('dfx.swiss', 'Tauscht Krypto', 'CHF/EUR senden →'),
         ('Bankkonto', 'CHF / EUR | IBAN', ''),
     ]
+    # Pass 1: alle Rechtecke zuerst (damit Text immer darüber liegt)
     for i, (title, sub, arrow_label) in enumerate(nodes_data):
         nx = start_x + i * (node_w + gap)
         d.rect(nx, ny, node_w, node_h, DARK3, GOLD_DEEP, 0.8)
+    # Pass 2: Linien und Pfeile
+    for i, (title, sub, arrow_label) in enumerate(nodes_data):
+        nx = start_x + i * (node_w + gap)
+        if i < 2:
+            ax = nx + node_w + 2
+            ay = ny + node_h / 2
+            d.c.setStrokeColor(GOLD_D)
+            d.c.setLineWidth(1)
+            d.c.line(ax + 2, ay, ax + gap - 6, ay)
+            d.c.setFillColor(GOLD_D)
+            p = d.c.beginPath()
+            p.moveTo(ax + gap - 6, ay)
+            p.lineTo(ax + gap - 12, ay + 4)
+            p.lineTo(ax + gap - 12, ay - 4)
+            p.close()
+            d.c.drawPath(p, fill=1, stroke=0)
+    # Pass 3: alle Texte (immer über Rechtecken und Pfeilen)
+    for i, (title, sub, arrow_label) in enumerate(nodes_data):
+        nx = start_x + i * (node_w + gap)
         d.c.setFillColor(GOLD)
         d.c.setFont('H-Med', 9.5)
         d.c.drawCentredString(nx + node_w / 2, ny + node_h - 16, title)
@@ -1669,22 +1689,9 @@ def kap5(d: P):
         if i < 2:
             ax = nx + node_w + 2
             ay = ny + node_h / 2
-            # Linie
-            d.c.setStrokeColor(GOLD_D)
-            d.c.setLineWidth(1)
-            d.c.line(ax + 2, ay, ax + gap - 6, ay)
-            # Pfeil rechts (Richtung Bankkonto)
-            d.c.setFillColor(GOLD_D)
-            p = d.c.beginPath()
-            p.moveTo(ax + gap - 6, ay)
-            p.lineTo(ax + gap - 12, ay + 4)
-            p.lineTo(ax + gap - 12, ay - 4)
-            p.close()
-            d.c.drawPath(p, fill=1, stroke=0)
-            # Pfeil-Beschriftung: zentriert über dem Pfeil, innerhalb der Node-Höhe
+            mid_x = ax + gap / 2
             d.c.setFillColor(GOLD_D)
             d.c.setFont('Body-L', 6.5)
-            mid_x = ax + gap / 2
             d.c.drawCentredString(mid_x, ay + 6, arrow_label)
     d.y = ny - 16
 
@@ -1732,25 +1739,25 @@ def kap6(d: P):
     d.h2('Die wichtigsten DeFi-Anwendungen für Anfänger')
 
     d.h3('1. Lending/Borrowing (Verleihen/Leihen)')
-    d.para('Plattformen: Aave, Compound')
+    d.para('Plattformen: Aave (app.aave.com) · Compound (app.compound.finance)')
     d.para('Du hinterlegst deine Kryptos und verdienst Zinsen. Oder du leihst dir gegen Sicherheiten Kryptos.')
     d.para('Risiko: Mittel. Smart Contract Risiko, Liquidationsrisiko bei Krediten.')
     d.para('Für wen: Leute, die ihre Kryptos nicht nur liegen lassen wollen.')
 
     d.h3('2. Staking')
-    d.para('Plattformen: Lido, Rocket Pool (für Ethereum)')
+    d.para('Plattformen: Lido (lido.fi) · Rocket Pool (rocketpool.net) – für Ethereum')
     d.para('Du "stakst" deine Kryptos, um das Netzwerk zu sichern und verdienst dafür Rewards (oft 4–8% pro Jahr).')
     d.para('Risiko: Niedrig bis Mittel. Je nach Plattform können Kryptos "locked" sein (nicht sofort abrufbar).')
     d.para('Für wen: Langfrist-Holder, die passives Einkommen wollen.')
 
     d.h3('3. Decentralized Exchanges (DEX)')
-    d.para('Plattformen: Uniswap, PancakeSwap, SushiSwap')
+    d.para('Plattformen: Uniswap (app.uniswap.org) · PancakeSwap (pancakeswap.finance) · SushiSwap (app.sushi.com)')
     d.para('Kryptos tauschen ohne zentrale Exchange. Direkt aus deinem Wallet.')
     d.para('Risiko: Niedrig (solange du bei etablierten DEXes bleibst). Aber: Gas Fees können hoch sein.')
     d.para('Für wen: Jeder, der Kryptos tauschen will ohne CEX.')
 
     d.h3('4. Liquidity Pools')
-    d.para('Plattformen: Uniswap, Curve')
+    d.para('Plattformen: Uniswap (app.uniswap.org) · Curve (curve.fi)')
     d.para('Du stellst deine Kryptos als Liquidität für Trades bereit und verdienst Gebühren. Dafür hinterlegst du immer zwei Kryptowährungen gleichzeitig – z. B. BNB und USDT im gleichen Gegenwert. Als Bestätigung erhältst du LP Tokens in dein Wallet, die deinen Anteil am Pool belegen.')
     d.tip('Wie LP Tokens funktionieren: Deine LP Tokens liegen sicher in deinem Wallet – sie sind deine Quittung. Die eigentlichen Kryptowährungen liegen im Smart Contract des Pools. Wird dieser kompromittiert, werden deine LP Tokens wertlos – weil nichts mehr dahintersteht. Deshalb: Nur etablierte, geaudittete Plattformen nutzen.')
     d.warn('Risiko: Hoch. "Impermanent Loss" ist real und kann deine Gewinne auffressen. Nur für Fortgeschrittene, nicht für Anfänger.')
