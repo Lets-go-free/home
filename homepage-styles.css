@@ -127,6 +127,28 @@ body {
     box-shadow: var(--shadow-md);
 }
 
+/* ── NEW BUTTON BADGE ── */
+.cta-button-new {
+    position: relative;
+}
+
+.new-badge {
+    display: inline-block;
+    background: var(--gold);
+    color: var(--dark);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75em;
+    font-weight: 700;
+    margin-right: 8px;
+    animation: blink 1.5s ease-in-out infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
 /* ── SECTIONS ── */
 .section {
     padding: 56px 50px;
