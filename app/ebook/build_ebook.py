@@ -67,6 +67,24 @@ class P:
         else:
             self.c.rect(x, y, w, h, fill=1, stroke=0)
 
+    def draw_emoji(self, emoji, cx, cy, px=28):
+        """Rendert ein Emoji via PIL und bettet es zentriert auf cx/cy ein."""
+        from PIL import Image, ImageDraw, ImageFont
+        import io
+        font = ImageFont.truetype('/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf', 109)
+        size = 120
+        img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        draw.text((0, 0), emoji, font=font, embedded_color=True)
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        buf.seek(0)
+        # Zentriert platzieren
+        self.c.drawImage(
+            __import__('reportlab.lib.utils', fromlist=['ImageReader']).ImageReader(buf),
+            cx - px / 2, cy - px / 2, width=px, height=px, mask='auto'
+        )
+
     def line(self, x0, y0, x1, y1, col=LINE, lw=0.5):
         self.c.setStrokeColor(col)
         self.c.setLineWidth(lw)
@@ -105,6 +123,77 @@ class P:
 
     def need(self, h):
         return self.y - h > 52
+
+    def flow_diagram(self, nodes):
+        """
+        Zeichnet ein horizontales 3-Node-Flow-Diagramm mit Emojis.
+        nodes = [(emoji, title, sub, connector_label), ...]
+        letzter Node hat kein connector_label (wird ignoriert).
+        """
+        node_w  = 124
+        node_h  = 72
+        gap     = 52   # Platz für Connector-Text + Pfeil
+        n       = len(nodes)
+        total_w = n * node_w + (n - 1) * gap
+        sx      = ML + (TW - total_w) / 2
+        self.guard(node_h + 24)
+        ny = self.y - node_h
+
+        # Pass 1: alle Rechtecke
+        for i in range(n):
+            nx = sx + i * (node_w + gap)
+            self.rect(nx, ny, node_w, node_h, DARK3, GOLD_DEEP, 0.6)
+
+        # Pass 2: Connector-Linien, Pfeile und Labels
+        for i, (emoji, title, sub, lbl) in enumerate(nodes[:-1]):
+            nx = sx + i * (node_w + gap)
+            ax  = nx + node_w          # Beginn Connector-Zone
+            cx  = ax + gap / 2         # Mitte Connector
+            ay  = ny + node_h / 2      # Vertikale Mitte
+
+            # Linie
+            self.c.setStrokeColor(GOLD_D)
+            self.c.setLineWidth(1)
+            self.c.line(ax + 4, ay, ax + gap - 8, ay)
+
+            # Pfeilspitze
+            self.c.setFillColor(GOLD_D)
+            p = self.c.beginPath()
+            p.moveTo(ax + gap - 8, ay)
+            p.lineTo(ax + gap - 14, ay + 4)
+            p.lineTo(ax + gap - 14, ay - 4)
+            p.close()
+            self.c.drawPath(p, fill=1, stroke=0)
+
+            # Label über dem Pfeil
+            if lbl:
+                self.c.setFillColor(GOLD)
+                self.c.setFont('Body-L', 7)
+                self.c.drawCentredString(cx, ay + 8, lbl)
+
+        # Pass 3: Emojis und Texte (immer über Rechtecken)
+        for i, (emoji, title, sub, lbl) in enumerate(nodes):
+            nx  = sx + i * (node_w + gap)
+            mcx = nx + node_w / 2
+
+            # Emoji
+            self.draw_emoji(emoji, mcx, ny + node_h - 18, px=26)
+
+            # Titel
+            self.c.setFillColor(GOLD)
+            self.c.setFont('H-Med', 8.5)
+            self.c.drawCentredString(mcx, ny + node_h - 38, title)
+
+            # Untertitel (2 Zeilen möglich)
+            self.c.setFillColor(GOLD_D)
+            self.c.setFont('Body-L', 7)
+            sub_lines = sub.split('\n')
+            ty = ny + node_h - 50
+            for sl in sub_lines:
+                self.c.drawCentredString(mcx, ty, sl)
+                ty -= 10
+
+        self.y = ny - 12
 
     def guard(self, h, dark=None):
         if not self.need(h):
@@ -1403,12 +1492,12 @@ def kap5(d: P):
 
     d.sp(6)
     d.h3('So läuft der Kauf über eine Fiat-Brücke ab:')
-    d.insert_image(
-        '/mnt/user-data/uploads/ebook-img-kauf.png',
-        caption='Dein Geld fliesst direkt von deiner Bank über die Fiat-Brücke in dein eigenes Wallet.',
-        max_w=TW,
-        max_h=150
-    )
+    d.sp(4)
+    d.flow_diagram([
+        ('🏦', 'Dein Bankkonto', 'CHF / EUR\nBanküberweisung', 'CHF / EUR überweisen'),
+        ('🌉', 'dfx.swiss',      'tauscht CHF / EUR\nin Krypto',    'Krypto senden'),
+        ('👛', 'Dein Wallet',    'MetaMask\nTangem etc.',            ''),
+    ])
 
     d.new_page(dark=False)
     d.tag('KAPITEL 5 · KAUF SCHRITT FÜR SCHRITT')
@@ -1643,57 +1732,11 @@ def kap5(d: P):
     d.para('Der einfachste Weg: dfx.swiss in die andere Richtung. Derselbe Anbieter, denselben Weg – aber umgekehrt. Du sendest Krypto an dfx.swiss und bekommst CHF oder EUR direkt auf dein Bankkonto.')
 
     d.sp(6)
-    # Flow-Diagramm: 3 Nodes mit Doppelpfeilen
-    node_w = 130
-    node_h = 54
-    gap = 22
-    total_w = 3 * node_w + 2 * gap
-    start_x = ML + (TW - total_w) / 2
-    d.guard(node_h + 80)
-    ny = d.y - node_h
-    # Reihenfolge: Wallet → dfx.swiss → Bankkonto (Verkaufsrichtung)
-    nodes_data = [
-        ('Wallet', 'MetaMask / Tangem', 'Krypto senden →'),
-        ('dfx.swiss', 'Tauscht Krypto', 'CHF/EUR senden →'),
-        ('Bankkonto', 'CHF / EUR | IBAN', ''),
-    ]
-    # Pass 1: alle Rechtecke zuerst (damit Text immer darüber liegt)
-    for i, (title, sub, arrow_label) in enumerate(nodes_data):
-        nx = start_x + i * (node_w + gap)
-        d.rect(nx, ny, node_w, node_h, DARK3, GOLD_DEEP, 0.8)
-    # Pass 2: Linien und Pfeile
-    for i, (title, sub, arrow_label) in enumerate(nodes_data):
-        nx = start_x + i * (node_w + gap)
-        if i < 2:
-            ax = nx + node_w + 2
-            ay = ny + node_h / 2
-            d.c.setStrokeColor(GOLD_D)
-            d.c.setLineWidth(1)
-            d.c.line(ax + 2, ay, ax + gap - 6, ay)
-            d.c.setFillColor(GOLD_D)
-            p = d.c.beginPath()
-            p.moveTo(ax + gap - 6, ay)
-            p.lineTo(ax + gap - 12, ay + 4)
-            p.lineTo(ax + gap - 12, ay - 4)
-            p.close()
-            d.c.drawPath(p, fill=1, stroke=0)
-    # Pass 3: alle Texte (immer über Rechtecken und Pfeilen)
-    for i, (title, sub, arrow_label) in enumerate(nodes_data):
-        nx = start_x + i * (node_w + gap)
-        d.c.setFillColor(GOLD)
-        d.c.setFont('H-Med', 9.5)
-        d.c.drawCentredString(nx + node_w / 2, ny + node_h - 16, title)
-        d.c.setFillColor(GOLD_D)
-        d.c.setFont('Body-L', 7.5)
-        d.c.drawCentredString(nx + node_w / 2, ny + node_h - 30, sub)
-        if i < 2:
-            ax = nx + node_w + 2
-            ay = ny + node_h / 2
-            mid_x = ax + gap / 2
-            d.c.setFillColor(GOLD_D)
-            d.c.setFont('Body-L', 6.5)
-            d.c.drawCentredString(mid_x, ay + 6, arrow_label)
-    d.y = ny - 16
+    d.flow_diagram([
+        ('👛', 'Dein Wallet',    'MetaMask\nTangem etc.',         'Krypto senden'),
+        ('🌉', 'dfx.swiss',      'tauscht Krypto\nin CHF / EUR',  'CHF / EUR überweisen'),
+        ('🏦', 'Dein Bankkonto', 'CHF / EUR\nauf deiner IBAN',    ''),
+    ])
 
     d.sp(8)
     d.h3('Schritt für Schritt: Krypto verkaufen über dfx.swiss')

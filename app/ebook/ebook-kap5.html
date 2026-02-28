@@ -8,62 +8,6 @@
   <link rel="stylesheet" href="ebook-styles.css">
 </head>
 <body>
-<!-- ══════════════════════════════════════════════════════════════════════════
-     ZUGANGS-SCHUTZ SNIPPET - KORRIGIERT
-     NUR in kompakt-kap*.html einfügen, NICHT in index.html!
-     Position: Direkt nach dem <body> Tag
-     
-     WICHTIG: Verwendet jetzt den richtigen Key 'lgf_access_granted'
-     ══════════════════════════════════════════════════════════════════════════ -->
-
-<script>
-(function() {
-  // Prüfe ob gültiger Zugang vorhanden (RICHTIGER KEY!)
-  const hasAccess = localStorage.getItem('lgf_access_granted') === 'true';
-  
-  if (!hasAccess) {
-    // Kein Zugang - überschreibe sofort den Body-Inhalt
-    document.write(`
-      <div style="
-        position: fixed; inset: 0;
-        background: linear-gradient(135deg, #2c1e0f 0%, #3d2d1e 100%);
-        display: flex; flex-direction: column;
-        align-items: center; justify-content: center;
-        padding: 40px 24px; text-align: center;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      ">
-        <div style="font-size: 64px; margin-bottom: 24px;">🔒</div>
-        <h1 style="
-          font-size: clamp(24px, 6vw, 32px);
-          font-weight: 700; color: #c4a265;
-          margin-bottom: 16px; line-height: 1.2;
-        ">Zugang verweigert</h1>
-        <p style="
-          font-size: 16px; color: #b89a76;
-          line-height: 1.6; margin-bottom: 32px;
-          max-width: 400px;
-        ">
-          Dieser Inhalt ist nur mit einem gültigen Zugangs-Code verfügbar.
-        </p>
-        <a href="https://app.letsgofree.me" style="
-          display: inline-flex; align-items: center; gap: 10px;
-          background: linear-gradient(135deg, #c4a265, #a0784a);
-          color: #2c1e0f; text-decoration: none;
-          font-size: 16px; font-weight: 600;
-          padding: 14px 28px; border-radius: 12px;
-          box-shadow: 0 4px 20px rgba(196,162,101,.35);
-        ">
-          <span>🔓</span> Zur App
-        </a>
-      </div>
-    `);
-    document.close();
-  }
-  // Wenn hasAccess true ist, passiert nichts - normaler Inhalt wird geladen
-})();
-</script>
-<!-- ════════════════════════════════════════════════════════════════════════════ -->
-
 <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
 <div class="page">
 <nav class="topnav">
@@ -130,6 +74,16 @@
 <div class="tip-box"><p>💡 Meine generelle Empfehlung: Nutze eine Fiat-Krypto-Brücke wie dfx.swiss. Das ist der direkteste und sicherste Weg – dein Geld geht sofort in DEIN Wallet, ohne Zwischenstopp. Du behältst die Kontrolle von Anfang an.</p></div>
 
 
+<style>
+/* Flow-Diagramm override: immer horizontal */
+.flow-diagram{overflow:hidden}
+.flow-row{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center;justify-content:center;gap:0;width:100%}
+.flow-node{flex:1 1 0!important;min-width:0!important;padding:12px 6px!important}
+.flow-node-title{font-size:12px!important}
+.flow-node-sub{font-size:10px!important}
+.flow-connector{flex:0 0 44px!important}
+.flow-connector-label{font-size:9px!important;white-space:nowrap}
+</style>
 <div class="flow-diagram">
   <div class="flow-row">
     <div class="flow-node">
