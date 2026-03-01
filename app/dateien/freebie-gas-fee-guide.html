@@ -131,6 +131,29 @@
                 <p class="hl-box" style="font-family:monospace;border-radius:8px;">
                     <strong>Kosten = Gas Limit × Gas Price (in Gwei) × ETH-Preis</strong>
                 </p>
+                
+                <div class="info-box" style="margin-top: 15px; background: #E8F5E9; border-left: 4px solid #4CAF50;">
+                    <h4 style="color: #2E7D32; margin-bottom: 10px;">💡 Was bedeutet "Gas Limit"?</h4>
+                    <p><strong>Gas Limit</strong> ist die maximale Menge an Gas, die du für eine Transaktion bereitstellst. Denk daran wie ein Benzin-Budget:</p>
+                    <ul style="margin: 10px 0 10px 20px; color: #5a4636;">
+                        <li>Du sagst: "Ich stelle maximal 50 Liter Benzin zur Verfügung"</li>
+                        <li>Wenn die Fahrt nur 30 Liter braucht → du zahlst nur für 30 Liter</li>
+                        <li>Wenn die Fahrt 60 Liter bräuchte → Transaktion schlägt fehl</li>
+                    </ul>
+                    <p><strong>Verschiedene Aktionen brauchen unterschiedlich viel Gas:</strong></p>
+                    <ul style="margin: 10px 0 10px 20px; color: #5a4636;">
+                        <li>Einfache ETH-Überweisung: ~21'000 Gas Limit</li>
+                        <li>Token-Swap auf Uniswap: ~150'000 Gas Limit</li>
+                        <li>Komplexer Smart Contract: 500'000+ Gas Limit</li>
+                    </ul>
+                    <p style="margin-top: 12px; padding: 10px; background: #FFF9C4; border-left: 3px solid #FBC02D; border-radius: 4px;">
+                        <strong>⚠️ Wichtig:</strong> Zu niedriges Gas Limit → Transaktion schlägt fehl, aber Gas wird trotzdem verbraucht! Zu hohes Gas Limit → Kein Problem, du zahlst nur das was wirklich verbraucht wird.
+                    </p>
+                    <p style="margin-top: 12px; padding: 10px; background: #F5E6D3; border-left: 3px solid #8B7355; border-radius: 4px;">
+                        <strong>👍 Faustregel:</strong> Lass das Gas Limit auf der Voreinstellung deines Wallets (MetaMask, Trust Wallet etc.). Das Wallet berechnet automatisch das benötigte Gas Limit. Du beeinflusst die Kosten viel mehr über den <strong>Gas Price</strong> (wie schnell die Transaktion durchgehen soll).
+                    </p>
+                </div>
+                
                 <p><strong>Praktisches Beispiel:</strong></p>
                 <ul style="margin: 10px 0 10px 20px; color: #5a4636;">
                     <li>Einfache ETH-Überweisung: <strong>21'000 Gas Limit</strong></li>
