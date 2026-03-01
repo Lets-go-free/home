@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phishing erkennen · Let's go free</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="freebie-shared.css">
+  <style>
+:root {
+  --danger: #d32f2f;
+  --safe: #388e3c;
+}
+
+/* ── Comparison Card ──────────────────────────────────────────────── */
+.comparison-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.fake-box {
+  background: #ffebee;
+  border: 2px solid var(--danger);
+  border-radius: 12px;
+  padding: 18px;
+}
+.fake-box h4 {
+  font-size: .9rem; font-weight: 700; color: #c62828;
+  margin-bottom: 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+
+.real-box {
+  background: #e8f5e9;
+  border: 2px solid var(--safe);
+  border-radius: 12px;
+  padding: 18px;
+}
+.real-box h4 {
+  font-size: .9rem; font-weight: 700; color: #2e7d32;
+  margin-bottom: 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+
+.url-box {
+  background: var(--white);
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: .83rem;
+  margin: 8px 0;
+  word-break: break-all;
+  border: 1px solid rgba(0,0,0,0.1);
+}
+
+.fake-box .url-box { border-color: var(--danger); }
+.real-box .url-box { border-color: var(--safe); }
+
+.warning-list, .safe-list {
+  list-style: none;
+  margin: 12px 0;
+}
+.warning-list li, .safe-list li {
+  padding: 6px 0 6px 24px;
+  position: relative;
+  font-size: .83rem;
+  line-height: 1.6;
+  color: var(--body);
+}
+.warning-list li::before { content: '🚨'; position: absolute; left: 0; font-size: 1em; }
+.safe-list li::before { content: '✅'; position: absolute; left: 0; font-size: 1em; }
+
+.scam-example {
+  background: #fff9f5;
+  border-left: 3px solid var(--danger);
+  border-radius: 0 8px 8px 0;
+  padding: 14px 16px;
+  margin: 12px 0;
+  font-size: .85rem;
+  font-style: italic;
+  color: var(--body);
+  line-height: 1.6;
+}
+
+.emergency-box {
+  background: #fff3f0;
+  border: 2px solid var(--danger);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 24px 0;
+}
+.emergency-box h4 {
+  font-size: 1rem; font-weight: 700; color: #c62828;
+  margin-bottom: 14px;
+}
+.emergency-box ol {
+  margin: 12px 0 0 20px;
+  line-height: 1.8;
+}
+.emergency-box li {
+  font-size: .86rem;
+  color: var(--body);
+  margin-bottom: 8px;
+}
+.emergency-box strong { color: #c62828; font-weight: 600; }
+.emergency-box a { color: #c62828; font-weight: 600; }
+
+.intro-box {
+  border-left: 4px solid var(--danger);
+  background: #fff3f0;
+}
+.intro-box strong { color: var(--danger); }
+
+.disclaimer-box {
+  background: #e8f5e9;
+  border-left: 4px solid var(--safe);
+}
+.disclaimer-box p { color: #2e7d32; }
+.disclaimer-box strong { color: #1b5e20; }
+
+.tip-box h4 { margin-bottom: 10px; }
+.tip-box p { margin-bottom: 8px; }
+
+@media (max-width: 640px) {
+  .comparison-card {
+    grid-template-columns: 1fr;
+  }
+}
+  </style>
+</head>
+<body>
+
+<div id="lgf-back-bar" style="display:none">
+  <button onclick="history.back()" style="background:none;border:none;color:#C9A882;font-size:24px;cursor:pointer;padding:0 6px;line-height:1;">‹</button>
+  <span style="font-size:13px;color:#b89a76;font-weight:500;">Let's go free</span>
+</div>
+<div id="lgf-screen-padding" style="height:0"></div>
+<script>
+(function(){
+  if(sessionStorage.getItem('lgf_from_app')!=='1') return;
+  var bar=document.getElementById('lgf-back-bar');
+  bar.style.display='flex';
+  bar.style.cssText+='position:sticky;top:0;z-index:999;align-items:center;gap:10px;background:#4a3d2a;border-bottom:1px solid rgba(201,168,130,.3);padding:10px 16px;';
+  window.addEventListener('load',function(){document.getElementById('lgf-screen-padding').style.height=bar.offsetHeight+'px';});
+})();
+</script>
+
+<header>
+  <p class="brand">Let's go free · letsgofree.me</p>
+  <h1>🛡️ Phishing erkennen</h1>
+  <p class="sub">So schützt du dich vor Betrug und gefälschten Websites</p>
+</header>
+
+<div class="container">
+
+  <div class="intro-box">
+    <p><strong>⚠️ Phishing ist die Hauptursache für Krypto-Verluste!</strong></p>
+    <p>Über 90% aller Krypto-Diebstähle passieren durch Phishing – nicht durch gehackte Wallets. Betrüger erstellen täuschend echte Fake-Websites, um deine Seed Phrase oder Wallet-Zugang zu stehlen.</p>
+  </div>
+
+  <div class="disclaimer-box">
+    <p><strong>Die gute Nachricht:</strong> Mit etwas Wissen kannst du dich zu 99% schützen! Diese Seite zeigt dir echte Beispiele und wie du Fakes erkennst.</p>
+  </div>
+
+  <div class="section-label">1. URL-Phishing</div>
+  <p class="section-intro">Betrüger erstellen Fake-URLs, die fast identisch aussehen wie die echten. Ein kleiner Buchstabendreher – und du bist auf einer gefälschten Seite.</p>
+
+  <div class="comparison-card">
+    <div class="fake-box">
+      <h4>❌ FAKE – Nicht besuchen!</h4>
+      <div class="url-box">unisvvap.org</div>
+      <div class="url-box">app-uniswap.com</div>
+      <div class="url-box">uniswap-app.org</div>
+      <div class="url-box">uniswap.support</div>
+      <ul class="warning-list">
+        <li>Doppel-V statt W (svvap)</li>
+        <li>Zusätzliches "app-" davor</li>
+        <li>Falsche Endung (.com)</li>
+        <li>".support" ist nie offiziell</li>
+      </ul>
+    </div>
+
+    <div class="real-box">
+      <h4>✅ ECHT – Sicher!</h4>
+      <div class="url-box">app.uniswap.org</div>
+      <p style="margin-top: 14px; font-size: .85rem; line-height: 1.6;"><strong>So erkennst du die echte URL:</strong></p>
+      <ul class="safe-list">
+        <li>Offizielle Domain: .org</li>
+        <li>Subdomain: app.</li>
+        <li>Keine Rechtschreibfehler</li>
+        <li>HTTPS mit Schloss-Symbol</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="comparison-card">
+    <div class="fake-box">
+      <h4>❌ MetaMask Fakes</h4>
+      <div class="url-box">metamask-wallet.com</div>
+      <div class="url-box">metanask.io</div>
+      <div class="url-box">metamask.support</div>
+    </div>
+
+    <div class="real-box">
+      <h4>✅ MetaMask Echt</h4>
+      <div class="url-box">metamask.io</div>
+      <p style="margin-top: 10px; font-size: .85rem;">Nur diese eine offizielle Domain!</p>
+    </div>
+  </div>
+
+  <div class="comparison-card">
+    <div class="fake-box">
+      <h4>❌ OpenSea Fakes</h4>
+      <div class="url-box">opensea-nft.com</div>
+      <div class="url-box">opensea.support</div>
+      <div class="url-box">open-sea.io</div>
+    </div>
+
+    <div class="real-box">
+      <h4>✅ OpenSea Echt</h4>
+      <div class="url-box">opensea.io</div>
+      <p style="margin-top: 10px; font-size: .85rem;">Ohne Bindestrich!</p>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section-label">2. Phishing per Nachricht</div>
+  <p class="section-intro">Betrüger kontaktieren dich per E-Mail, Discord oder Twitter mit gefälschten Nachrichten.</p>
+
+  <div class="card">
+    <h3>🚨 Beispiel 1 – Fake Support</h3>
+    <div class="scam-example">
+      "Hallo, hier ist der MetaMask Support. Wir haben verdächtige Aktivität auf deinem Wallet festgestellt. Bitte gib hier deine Seed Phrase ein, um dein Konto zu verifizieren: [Link]"
+    </div>
+    <ul class="warning-list">
+      <li><strong>NIEMALS</strong> wird echter Support nach deiner Seed Phrase fragen!</li>
+      <li><strong>NIEMALS</strong> musst du deine Seed Phrase "verifizieren"</li>
+      <li>Echter Support kontaktiert dich nicht unaufgefordert</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>🚨 Beispiel 2 – Fake Airdrop</h3>
+    <div class="scam-example">
+      "🎉 Glückwunsch! Du wurdest für den Uniswap Airdrop ausgewählt! Verbinde dein Wallet hier: [Link] um 400 UNI Token zu claimen!"
+    </div>
+    <ul class="warning-list">
+      <li>Echte Airdrops kommen über offizielle Kanäle</li>
+      <li>Du musst nie deine Seed Phrase eingeben</li>
+      <li>Wenn du nichts dafür getan hast → 99% Scam</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>🚨 Beispiel 3 – Dringlichkeit als Druckmittel</h3>
+    <div class="scam-example">
+      "⚠️ DRINGEND! Dein Wallet wird in 24 Stunden gesperrt! Klicke hier sofort um es zu entsperren!"
+    </div>
+    <ul class="warning-list">
+      <li>Wallets werden nicht "gesperrt"</li>
+      <li>Druck und Dringlichkeit sind typische Betrugs-Taktiken</li>
+      <li>Nimm dir immer Zeit zu prüfen</li>
+    </ul>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section-label">3. Schutz-Massnahmen</div>
+
+  <div class="tip-box">
+    <h4>✅ Deine Schutz-Checkliste:</h4>
+    <ul>
+      <li><strong>Speichere offizielle Websites als Lesezeichen</strong> – Nutze nur deine gespeicherten Links</li>
+      <li><strong>Prüfe URLs immer doppelt</strong> – Vor allem vor dem Verbinden deines Wallets</li>
+      <li><strong>Seed Phrase NIEMALS eingeben</strong> – Kein echter Service fragt danach</li>
+      <li><strong>Misstraue E-Mails und DMs</strong> – Gehe direkt auf die offizielle Website</li>
+      <li><strong>Bei Unsicherheit: Nicht klicken</strong> – Lieber im offiziellen Discord/Twitter fragen</li>
+      <li><strong>Google den Service + "scam"</strong> – Oft findest du Warnungen von anderen</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>💡 Browser-Erweiterung als Extra-Schutz</h3>
+    <p><strong>Empfehlung:</strong> Installiere "MetaMask" oder "Rabby Wallet" – diese warnen dich vor bekannten Phishing-Seiten!</p>
+    <p style="margin-top: 12px;">Auch hilfreich: <strong>Pocket Universe</strong> oder <strong>Fire</strong> – zeigen dir vor jeder Transaktion, was genau passieren wird (z.B. "Du gibst diesem Contract Zugriff auf all deine USDC").</p>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section-label">4. Aktuelle Betrugsmaschen</div>
+
+  <div class="card">
+    <h3>⚠️ Stand 2026 – Diese Maschen sind aktuell:</h3>
+    <p><strong>1. NFT-Phishing:</strong> Fake OpenSea-Seiten sehen 1:1 aus wie das Original. Du "kaufst" ein NFT, aber der Smart Contract leert dein ganzes Wallet.</p>
+    
+    <p style="margin-top: 14px;"><strong>2. Fake Token-Approvals:</strong> Du siehst einen unbekannten Token in deinem Wallet. Wenn du versuchst ihn zu verkaufen, musst du einen Contract genehmigen – dieser stiehlt deine echten Token.</p>
+    
+    <p style="margin-top: 14px;"><strong>3. Discord-Hacks:</strong> Offizielle Discord-Server werden gehackt, Betrüger posten "Surprise Airdrop!" Links im Announcements-Channel.</p>
+    
+    <p style="margin-top: 14px;"><strong>4. Google Ads Scam:</strong> Du googlest "MetaMask" – die erste Anzeige ist eine Fake-Seite! Echte MetaMask würde nie für Google Ads zahlen.</p>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section-label">5. Notfall-Massnahmen</div>
+
+  <div class="emergency-box">
+    <h4>🚨 Was tun, wenn du auf Phishing hereingefallen bist?</h4>
+    <ol>
+      <li><strong>Seed Phrase eingegeben?</strong> → Erstelle SOFORT ein neues Wallet und transferiere alle Coins rüber (falls noch vorhanden)</li>
+      <li><strong>Contract genehmigt?</strong> → Gehe auf <a href="https://revoke.cash" target="_blank">revoke.cash</a> und widerrufe alle Approvals</li>
+      <li><strong>Transaktion noch ausstehend?</strong> → Versuche sie mit höherer Gas Fee zu überholen (schwierig, meist zu spät)</li>
+      <li><strong>Geld bereits weg?</strong> → Ist leider unwiederbringlich verloren. Lerne daraus.</li>
+    </ol>
+  </div>
+
+  <div class="cta-block">
+    <h3>🛡️ Lerne DeFi sicher von Anfang an</h3>
+    <p>Im 1:1-Coaching zeige ich dir alle aktuellen Scam-Methoden und begleite dich Schritt für Schritt – damit du sicher in DeFi startest, ohne Angst vor Betrug haben zu müssen.</p>
+    <a href="https://www.letsgofree.me/index.html#angebot" class="btn-light">Zum 1:1-Coaching</a>
+  </div>
+
+</div>
+
+<footer>
+  <p class="footer-brand">Let's go free</p>
+  <p class="footer-tag">Finanzielle Selbstbestimmung mit DeFi</p>
+  <p class="footer-links">
+    <a href="https://www.letsgofree.me">Startseite</a> ·
+    <a href="https://www.letsgofree.me/freebies.html">Alle Freebies</a>
+  </p>
+</footer>
+
+</body>
+</html>
