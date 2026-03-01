@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Session 2 - Dein Wallet einrichten | Let's go free</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,600;0,700;1,300&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="coaching-styles.css">
     
 </head>
@@ -19,7 +21,7 @@
         <div class="slide active">
             <h1>Dein leichter Einstieg<br>in die Krypto-Welt</h1>
             <div class="subtitle">Dein persönliches 1:1 Coaching von A-Z</div>
-            <div style="font-size: 1.3em; margin-top: 30px; color: #5a4636;">Let's go free - Chris Müller</div>
+            <div style="font-size: 1.15em; margin-top: 28px; color: var(--gold-d); font-weight: 300; font-style: italic;">Let's go free · Chris Müller</div>
         </div>
 
         <!-- Slide 2: Sessions Overview -->
@@ -106,8 +108,8 @@
                     <p>Eine Krypto-Wallet ist eine digitale Geldbörse oder ein Gerät, das Ihre privaten und öffentlichen Schlüssel für Kryptowährungen speichert, um Senden, Empfangen und Verwalten zu ermöglichen.</p>
                     <p><strong>Sie fungiert wie ein digitales Bankschliessfach</strong></p>
                 </div>
-                <div class="content-box" style="margin-top: 20px; background: #FFF3CD; border-left-color: #FFC107;">
-                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Die Wahrheit:</h4>
+                <div class="content-box" style="margin-top: 20px; background: rgba(201,168,130,.12); border-left-color: var(--gold);">
+                    <h4 style="color: var(--gold-dk); margin-bottom: 12px; font-size: 1.3em;">Die Wahrheit:</h4>
                     <ul>
                         <li>Deine Kryptos liegen auf der Blockchain (wie Geld auf einem Bankkonto)</li>
                         <li>Dein Wallet ist der Schlüssel, um darauf zuzugreifen</li>
@@ -121,6 +123,9 @@
         <div class="slide">
             <h2>PUBLIC ADDRESS VS PRIVATE KEY</h2>
             <div class="content">
+                <div class="content-box" style="margin-bottom: 20px;">
+                    <p><strong>Die Seed Phrase (12-24 Wörter) ist dein Master-Schlüssel</strong>, aus dem automatisch alle deine Wallet-Adressen und deren Private Keys erzeugt werden. Der Private Key ist der Einzelschlüssel für genau eine Wallet-Adresse – die Seed Phrase kontrolliert also alle deine Adressen, der Private Key nur eine einzige.</p>
+                </div>
                 <div class="grid-2">
                     <div class="comparison-box">
                         <h4>Public Address<br>(Öffentliche Adresse)</h4>
@@ -133,30 +138,14 @@
                         <p style="font-family: monospace; font-size: 0.9em; word-break: break-all; background: white; padding: 10px; border-radius: 5px; margin-top: 8px;">0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb</p>
                     </div>
                     <div class="comparison-box">
-                        <h4>Private Key</h4>
+                        <h4>Private Key / Seed Phrase</h4>
                         <ul>
                             <li>Wie dein PIN/Passwort</li>
                             <li><strong>NIEMALS weitergeben!</strong></li>
-                            <li>Gibt Zugriff auf EINE spezifische Adresse</li>
-                            <li>Wird aus der Seed Phrase generiert</li>
+                            <li>Wer sie hat, hat ALLE deine Kryptos</li>
+                            <li>Verlierst du sie = Geld weg, für immer!</li>
                         </ul>
                     </div>
-                </div>
-                
-                <div class="content-box" style="margin-top: 25px; background: #FFF3CD; border-left-color: #FFC107;">
-                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">🔑 Seed Phrase = Master-Schlüssel</h4>
-                    <p><strong>Die Seed Phrase (12-24 Wörter)</strong> ist dein Master-Schlüssel, aus dem automatisch alle deine Private Keys und Wallet-Adressen erzeugt werden.</p>
-                    <p style="margin-top: 12px;"><strong>Wichtig:</strong> Die Seed Phrase kontrolliert ALLE deine Adressen auf verschiedenen Blockchains. Der Private Key nur eine einzige Adresse.</p>
-                </div>
-
-                <div class="content-box" style="margin-top: 20px; background: #E8F5E9; border-left-color: #4caf50;">
-                    <h4 style="color: #2e7d32; margin-bottom: 15px; font-size: 1.4em;">🌐 Multi-Chain: Ein Wallet, viele Blockchains</h4>
-                    <p><strong>Alle EVM-Chains</strong> (Ethereum, BSC, Polygon, Avalanche, Arbitrum...) nutzen denselben Private Key:</p>
-                    <p style="margin: 10px 0 10px 20px;">→ Deine 0x-Adresse ist auf allen EVM-Chains identisch!</p>
-                    <p style="margin-top: 15px;"><strong>Andere Blockchains</strong> haben jeweils ihren eigenen Private Key aus derselben Seed Phrase:</p>
-                    <p style="margin: 10px 0 5px 20px;">→ Solana: Eigene Adresse</p>
-                    <p style="margin: 5px 0 5px 20px;">→ Bitcoin: Eigene Adresse</p>
-                    <p style="margin: 5px 0 5px 20px;">→ Ripple (XRP): Eigene Adresse</p>
                 </div>
             </div>
         </div>
@@ -191,7 +180,7 @@
                         </ul>
                     </div>
                 </div>
-                <div class="content-box" style="margin-top: 20px; background: #FFF3CD; border-left-color: #FFC107;">
+                <div class="content-box" style="margin-top: 20px; background: rgba(201,168,130,.12); border-left-color: var(--gold);">
                     <p><strong>💡 Next Level:</strong> Eigenes Handy EXKLUSIV für Wallet, ohne weitere Apps/Accounts</p>
                 </div>
                 <div class="grid-2" style="margin-top: 20px;">
@@ -246,7 +235,7 @@
                         </ul>
                     </div>
                 </div>
-                <div class="content-box" style="margin-top: 20px; background: #FFF3CD; border-left-color: #FFC107;">
+                <div class="content-box" style="margin-top: 20px; background: rgba(201,168,130,.12); border-left-color: var(--gold);">
                     <p><strong>💡 Empfehlung für den Start:</strong> Hot Wallet für kleine Beträge und tägliche Nutzung → später Cold Wallet für grössere Beträge</p>
                 </div>
             </div>
@@ -277,8 +266,8 @@
                         </ul>
                     </div>
                 </div>
-                <div class="content-box" style="margin-top: 30px; background: #FFF3CD; border-left-color: #FFC107;">
-                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">💡 Denk wie bei echtem Geld:</h4>
+                <div class="content-box" style="margin-top: 30px; background: rgba(201,168,130,.12); border-left-color: var(--gold);">
+                    <h4 style="color: var(--gold-dk); margin-bottom: 12px; font-size: 1.3em;">💡 Denk wie bei echtem Geld:</h4>
                     <p><strong>Hot Wallet</strong> = Portemonnaie in der Hosentasche (Kleingeld für den Alltag)</p>
                     <p><strong>Cold Wallet</strong> = Sparkonto bei der Bank (Grössere Summen, selten angefasst)</p>
                     <p style="margin-top: 15px; font-style: italic;">Du würdest auch nicht 10'000 EUR in bar herumtragen, oder?</p>
@@ -338,7 +327,7 @@
             <div class="content">
                 <div class="grid-2">
                     <div class="content-box">
-                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Wallet einrichten</h4>
+                        <h4 style="color: var(--gold-dk); margin-bottom: 12px; font-size: 1.3em;">Wallet einrichten</h4>
                         <ul>
                             <li>Öffne die App und tippe auf "Neues Wallet erstellen"</li>
                             <li>Lies die Hinweise zur Sicherheit und stimme den Nutzungsbedingungen zu</li>
@@ -366,7 +355,7 @@
                 <div class="content-box">
                     <ul>
                         <li>Nach dem Passwort zeigt dir MetaMask deine Seed Phrase (12 Wörter) an</li>
-                        <li>Schreibe sie von Hand auf das ausgedruckte PDF "<a href="https://www.letsgofree.me/freebie-datensicherungsblatt.html" target="_blank" style="color: #5a4636; font-weight: 700; text-decoration: none; border-bottom: 2px solid #8B7355;">Datensicherungs-Blatt</a>" – niemals digital speichern (kein Screenshot, keine Cloud)</li>
+                        <li>Schreibe sie von Hand auf das ausgedruckte PDF "<a href="https://www.letsgofree.me/freebie-datensicherungsblatt.html" target="_blank" style="color: var(--gold-dk); font-weight: 600; text-decoration: none; border-bottom: 1px solid var(--gold-d);">Datensicherungs-Blatt</a>" – niemals digital speichern (kein Screenshot, keine Cloud)</li>
                         <li>Bewahre sie offline und sicher auf (z. B. in einem Safe)</li>
                         <li>MetaMask überprüft anschliessend, ob du die Wörter korrekt notiert hast</li>
                     </ul>
@@ -396,7 +385,7 @@
         <div class="slide">
             <h2>WALLET NEU ERSTELLEN</h2>
             <div class="content">
-                <div class="content-box" style="background: #FFF3CD; border-left-color: #FFC107;">
+                <div class="content-box" style="background: rgba(201,168,130,.12); border-left-color: var(--gold);">
                     <p style="font-size: 1.2em;"><strong>Super gemacht – du hast dein erstes Wallet erfolgreich eröffnet!</strong></p>
                     <p style="margin-top: 15px;">Da ich bei diesem Durchgang deine Seed Phrase sehen konnte, werden wir das Wallet jetzt gemeinsam löschen und ein neues erstellen.</p>
                     <p style="margin-top: 15px;">Diesmal unterbrichst du die Bildschirmfreigabe, sobald du dein Passwort festlegst und deine Seed Phrase sicherst, damit diese ausschliesslich bei dir bleibt.</p>
@@ -444,8 +433,8 @@
                         </ul>
                     </div>
                 </div>
-                <div class="content-box" style="margin-top: 20px; background: #FFF3CD; border-left-color: #FFC107;">
-                    <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">💡 Regeln:</h4>
+                <div class="content-box" style="margin-top: 20px; background: rgba(201,168,130,.12); border-left-color: var(--gold);">
+                    <h4 style="color: var(--gold-dk); margin-bottom: 12px; font-size: 1.3em;">💡 Regeln:</h4>
                     <ul>
                         <li>Niemals auf verdächtige Links klicken</li>
                         <li>Niemals Seed Phrase eingeben (ausser beim Wiederherstellen auf neuem Gerät)</li>
@@ -462,14 +451,14 @@
             <div class="content">
                 <div class="grid-2">
                     <div class="content-box">
-                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Wallet versehentlich gelöscht?</h4>
+                        <h4 style="color: var(--gold-dk); margin-bottom: 12px; font-size: 1.3em;">Wallet versehentlich gelöscht?</h4>
                         <ul>
                             <li>Kein Problem! Mit deiner Seed Phrase kannst du es wiederherstellen</li>
                             <li>"Import using Secret Recovery Phrase" in MetaMask</li>
                         </ul>
                     </div>
                     <div class="content-box">
-                        <h4 style="color: #5a4636; margin-bottom: 15px; font-size: 1.4em;">Handy verloren?</h4>
+                        <h4 style="color: var(--gold-dk); margin-bottom: 12px; font-size: 1.3em;">Handy verloren?</h4>
                         <ul>
                             <li>Mit Seed Phrase auf neuem Handy wiederherstellen</li>
                             <li>Deshalb ist das Backup so wichtig!</li>
