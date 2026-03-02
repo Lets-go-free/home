@@ -1032,12 +1032,119 @@ def kap2(d: P):
     d.para('Wichtig zu verstehen: Alle EVM-kompatiblen Chains – also Ethereum, BNB Chain, Polygon, Arbitrum und andere – teilen sich denselben Private Key und dieselbe Wallet-Adresse. Deine Adresse «0xABC...» auf Ethereum ist identisch mit deiner Adresse auf BNB Chain. Separate Private Keys entstehen nur bei anderen Blockchain-Familien wie Bitcoin oder Solana. Die Seedphrase ist damit der Master-Schlüssel zu allem.')
     d.warn('Wer deine 12 Wörter hat, hat vollen Zugriff auf sämtliche deiner Wallets auf allen Blockchains. Deshalb: Nur auf Papier, niemals digital, an mehreren sicheren Orten aufbewahren.')
     d.sp(6)
-    d.insert_image(
-        '/mnt/user-data/uploads/ebook-img-keys.png',
-        caption='Seedphrase → Private Key → Public Key / Wallet-Adresse',
-        max_w=TW,
-        max_h=210
-    )
+    # ── Seedphrase-Diagramm: Baumstruktur ────────────────────────────────────
+    row1_h  = 28   # Seedphrase-Box
+    row2_h  = 46   # Private Key Boxes
+    row3_h  = 40   # Adress-Boxes
+    v_gap   = 34   # Vertikaler Abstand zwischen Reihen
+    total_h = row1_h + v_gap + row2_h + v_gap + row3_h + 10
+    d.guard(total_h + 20)
+
+    bx = ML - 4           # Linker Rand
+    bw = TW + 8           # Gesamtbreite inkl. Margin
+    COL_SEED  = HexColor('#6b3a3a')
+    COL_PK    = HexColor('#3a4a6b')
+    COL_ADDR  = HexColor('#2a5a3a')
+    COL_TEXT  = HexColor('#F0E8DC')
+    COL_LINE  = HexColor('#8B7355')
+
+    # Y-Positionen (ReportLab: von unten)
+    y3 = d.y - total_h           # Adress-Boxes (unten)
+    y2 = y3 + row3_h + v_gap     # Private Key Boxes (mitte)
+    y1 = y2 + row2_h + v_gap     # Seedphrase (oben)
+
+    # ── Zeile 1: Seedphrase ───────────────────────────────────────────────────
+    d.rect(bx, y1, bw, row1_h, COL_SEED)
+    d.c.setFillColor(COL_TEXT)
+    d.c.setFont('H-Med', 9)
+    d.c.drawCentredString(ML + TW / 2, y1 + 10, 'Seedphrase – 12 Wörter')
+
+    # ── 3 Kind-Boxes: Position berechnen ─────────────────────────────────────
+    n_cols  = 3
+    col_gap = 10
+    col_w   = (bw - (n_cols - 1) * col_gap) / n_cols
+    col_xs  = [bx + i * (col_w + col_gap) for i in range(n_cols)]
+
+    pk_labels = [
+        ('BTC', 'Private Key'),
+        ('EVM', 'Private Key\n(ETH, BSC, POL …)'),
+        ('Solana', 'Private Key'),
+    ]
+    addr_labels = [
+        ('BTC', 'Adresse'),
+        ('EVM', 'Adresse (0x…)\nalle Chains gleich'),
+        ('Solana', 'Adresse'),
+    ]
+
+    # ── Pfeile Seedphrase → Private Keys ─────────────────────────────────────
+    seed_cx = ML + TW / 2
+    seed_by  = y1   # Unterkante Seedphrase-Box
+    for i in range(n_cols):
+        cx = col_xs[i] + col_w / 2
+        # Linie von Seedphrase-Mitte-Unten nach PK-Box-Mitte-Oben
+        d.c.setStrokeColor(COL_LINE)
+        d.c.setLineWidth(1.2)
+        d.c.line(seed_cx, seed_by, seed_cx, seed_by - 10)   # vertikaler Stammstrich
+        d.c.line(seed_cx, seed_by - 10, cx, seed_by - 10)   # horizontaler Ast
+        d.c.line(cx, seed_by - 10, cx, y2 + row2_h + 4)     # nach unten zur Box
+        # Pfeilspitze
+        d.c.setFillColor(COL_LINE)
+        p = d.c.beginPath()
+        p.moveTo(cx, y2 + row2_h)
+        p.lineTo(cx - 4, y2 + row2_h + 7)
+        p.lineTo(cx + 4, y2 + row2_h + 7)
+        p.close()
+        d.c.drawPath(p, fill=1, stroke=0)
+
+    # ── Zeile 2: Private Key Boxes ────────────────────────────────────────────
+    for i, (chain, label) in enumerate(pk_labels):
+        d.rect(col_xs[i], y2, col_w, row2_h, COL_PK)
+        cx = col_xs[i] + col_w / 2
+        # Chain-Name oben (gross)
+        d.c.setFillColor(GOLD)
+        d.c.setFont('H-Med', 9)
+        d.c.drawCentredString(cx, y2 + row2_h - 14, chain)
+        # Sublabel darunter (klein)
+        d.c.setFillColor(HexColor('#a0b8d8'))
+        d.c.setFont('Body-L', 7)
+        lines = label.split('\n')
+        ty = y2 + row2_h - 26
+        for ln in lines:
+            d.c.drawCentredString(cx, ty, ln)
+            ty -= 10
+
+    # ── Pfeile Private Keys → Adressen ───────────────────────────────────────
+    for i in range(n_cols):
+        cx = col_xs[i] + col_w / 2
+        d.c.setStrokeColor(COL_LINE)
+        d.c.setLineWidth(1.2)
+        d.c.line(cx, y2, cx, y3 + row3_h + 4)
+        d.c.setFillColor(COL_LINE)
+        p = d.c.beginPath()
+        p.moveTo(cx, y3 + row3_h)
+        p.lineTo(cx - 4, y3 + row3_h + 7)
+        p.lineTo(cx + 4, y3 + row3_h + 7)
+        p.close()
+        d.c.drawPath(p, fill=1, stroke=0)
+
+    # ── Zeile 3: Adress-Boxes ─────────────────────────────────────────────────
+    for i, (chain, label) in enumerate(addr_labels):
+        d.rect(col_xs[i], y3, col_w, row3_h, COL_ADDR)
+        cx = col_xs[i] + col_w / 2
+        # Chain-Name oben
+        d.c.setFillColor(HexColor('#a8d8b8'))
+        d.c.setFont('H-Med', 8.5)
+        d.c.drawCentredString(cx, y3 + row3_h - 13, chain)
+        # Sublabel darunter
+        d.c.setFillColor(COL_TEXT)
+        d.c.setFont('Body-L', 7)
+        lines = label.split('\n')
+        ty = y3 + row3_h - 24
+        for ln in lines:
+            d.c.drawCentredString(cx, ty, ln)
+            ty -= 10
+
+    d.y = y3 - 10
     d.new_page(dark=False)
     d.tag('KAPITEL 2 · TECHNISCHE GRUNDLAGEN')
     d.sp(16)

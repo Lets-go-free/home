@@ -9,6 +9,62 @@
   <link rel="stylesheet" href="ebook-styles.css">
 </head>
 <body>
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ZUGANGS-SCHUTZ SNIPPET - KORRIGIERT
+     NUR in kompakt-kap*.html einfügen, NICHT in index.html!
+     Position: Direkt nach dem <body> Tag
+     
+     WICHTIG: Verwendet jetzt den richtigen Key 'lgf_access_granted'
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<script>
+(function() {
+  // Prüfe ob gültiger Zugang vorhanden (RICHTIGER KEY!)
+  const hasAccess = localStorage.getItem('lgf_access_granted') === 'true';
+  
+  if (!hasAccess) {
+    // Kein Zugang - überschreibe sofort den Body-Inhalt
+    document.write(`
+      <div style="
+        position: fixed; inset: 0;
+        background: linear-gradient(135deg, #2c1e0f 0%, #3d2d1e 100%);
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        padding: 40px 24px; text-align: center;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      ">
+        <div style="font-size: 64px; margin-bottom: 24px;">🔒</div>
+        <h1 style="
+          font-size: clamp(24px, 6vw, 32px);
+          font-weight: 700; color: #c4a265;
+          margin-bottom: 16px; line-height: 1.2;
+        ">Zugang verweigert</h1>
+        <p style="
+          font-size: 16px; color: #b89a76;
+          line-height: 1.6; margin-bottom: 32px;
+          max-width: 400px;
+        ">
+          Dieser Inhalt ist nur mit einem gültigen Zugangs-Code verfügbar.
+        </p>
+        <a href="https://app.letsgofree.me" style="
+          display: inline-flex; align-items: center; gap: 10px;
+          background: linear-gradient(135deg, #c4a265, #a0784a);
+          color: #2c1e0f; text-decoration: none;
+          font-size: 16px; font-weight: 600;
+          padding: 14px 28px; border-radius: 12px;
+          box-shadow: 0 4px 20px rgba(196,162,101,.35);
+        ">
+          <span>🔓</span> Zur App
+        </a>
+      </div>
+    `);
+    document.close();
+  }
+  // Wenn hasAccess true ist, passiert nichts - normaler Inhalt wird geladen
+})();
+</script>
+<!-- ════════════════════════════════════════════════════════════════════════════ -->
+
 <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
 <div class="page">
 
@@ -186,98 +242,6 @@
 <h3>Private Key & Seedphrase – Dein Zugangscode</h3>
 <p>Der Private Key ist eine lange Zeichenkette aus Zahlen und Buchstaben – technisch korrekt, aber für Menschen unpraktisch. Deshalb gibt es die Seedphrase: 12 normale Wörter (z.B. "ocean hidden spring mountain..."), aus denen alle deine Private Keys mathematisch berechnet werden.</p>
 <p>Wichtig zu verstehen: Alle EVM-kompatiblen Chains &ndash; also Ethereum, BNB Chain, Polygon, Arbitrum und andere &ndash; teilen sich denselben Private Key und dieselbe Wallet-Adresse. Deine Adresse &laquo;0xABC...&raquo; auf Ethereum ist identisch mit deiner Adresse auf BNB Chain. Separate Private Keys entstehen nur bei anderen Blockchain-Familien wie Bitcoin oder Solana. Die Seedphrase ist damit der Master-Schlüssel zu allem.</p>
-
-<div class="seed-diagram">
-  <!-- Zeile 1: Seedphrase -->
-  <div class="sd-row sd-row-seed">
-    <div class="sd-seed-box">🔑 Seedphrase – 12 Wörter</div>
-  </div>
-
-  <!-- Pfeile Ebene 1→2 -->
-  <div class="sd-row sd-row-arrows">
-    <div class="sd-arrow-block">
-      <svg viewBox="0 0 300 40" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
-        <!-- Stammstrich -->
-        <line x1="150" y1="0" x2="150" y2="14" stroke="#8B7355" stroke-width="1.5"/>
-        <!-- Horizontaler Ast -->
-        <line x1="50" y1="14" x2="250" y2="14" stroke="#8B7355" stroke-width="1.5"/>
-        <!-- 3 senkrechte Äste -->
-        <line x1="50"  y1="14" x2="50"  y2="32" stroke="#8B7355" stroke-width="1.5"/>
-        <line x1="150" y1="14" x2="150" y2="32" stroke="#8B7355" stroke-width="1.5"/>
-        <line x1="250" y1="14" x2="250" y2="32" stroke="#8B7355" stroke-width="1.5"/>
-        <!-- Pfeilspitzen -->
-        <polygon points="50,40 46,30 54,30"  fill="#8B7355"/>
-        <polygon points="150,40 146,30 154,30" fill="#8B7355"/>
-        <polygon points="250,40 246,30 254,30" fill="#8B7355"/>
-      </svg>
-    </div>
-  </div>
-
-  <!-- Zeile 2: Private Keys -->
-  <div class="sd-row sd-row-pk">
-    <div class="sd-pk-box">
-      <div class="sd-chain">BTC</div>
-      <div class="sd-label">Private Key</div>
-    </div>
-    <div class="sd-pk-box sd-pk-evm">
-      <div class="sd-chain">EVM</div>
-      <div class="sd-label">Private Key</div>
-      <div class="sd-sub">(ETH, BSC, POL&nbsp;…)</div>
-    </div>
-    <div class="sd-pk-box">
-      <div class="sd-chain">Solana</div>
-      <div class="sd-label">Private Key</div>
-    </div>
-  </div>
-
-  <!-- Pfeile Ebene 2→3 -->
-  <div class="sd-row sd-row-arrows2">
-    <div class="sd-arrow-col">↓</div>
-    <div class="sd-arrow-col">↓</div>
-    <div class="sd-arrow-col">↓</div>
-  </div>
-
-  <!-- Zeile 3: Adressen -->
-  <div class="sd-row sd-row-addr">
-    <div class="sd-addr-box">
-      <div class="sd-chain sd-chain-addr">BTC</div>
-      <div class="sd-label">Adresse</div>
-    </div>
-    <div class="sd-addr-box sd-addr-evm">
-      <div class="sd-chain sd-chain-addr">EVM</div>
-      <div class="sd-label">Adresse (0x…)</div>
-      <div class="sd-sub">alle Chains gleich</div>
-    </div>
-    <div class="sd-addr-box">
-      <div class="sd-chain sd-chain-addr">Solana</div>
-      <div class="sd-label">Adresse</div>
-    </div>
-  </div>
-</div>
-
-<style>
-.seed-diagram{margin:28px 0;padding:20px 12px;background:rgba(201,168,130,.04);border:1px solid rgba(201,168,130,.15);border-radius:12px}
-.sd-row{display:flex;align-items:stretch;justify-content:center}
-.sd-row-seed{margin-bottom:0}
-.sd-seed-box{flex:1;background:#5a2e2e;border:1px solid #8B5a3a;border-radius:8px;padding:12px 20px;text-align:center;font-size:14px;font-weight:600;color:var(--gold);letter-spacing:.03em}
-.sd-row-arrows{margin:0}
-.sd-arrow-block{flex:1;height:44px}
-.sd-arrow-block svg{width:100%;height:44px;display:block}
-.sd-row-pk{gap:10px;margin-bottom:0}
-.sd-pk-box{flex:1;background:#2a3a5a;border:1px solid #4a6a9a;border-radius:8px;padding:10px 8px;text-align:center}
-.sd-pk-evm{border-color:#6a8aba}
-.sd-row-arrows2{gap:10px;margin:6px 0}
-.sd-arrow-col{flex:1;text-align:center;font-size:18px;color:#8B7355;line-height:1}
-.sd-row-addr{gap:10px}
-.sd-addr-box{flex:1;background:#1e4030;border:1px solid #3a7055;border-radius:8px;padding:10px 8px;text-align:center}
-.sd-addr-evm{border-color:#5a9a78}
-.sd-chain{font-size:13px;font-weight:700;color:var(--gold);margin-bottom:3px}
-.sd-chain-addr{color:#7ad4a8}
-.sd-label{font-size:11px;color:var(--cream);opacity:.9}
-.sd-sub{font-size:10px;color:var(--gold-d);margin-top:2px}
-@media(max-width:480px){.sd-chain{font-size:11px}.sd-label{font-size:10px}.sd-sub{font-size:9px}.sd-seed-box{font-size:12px;padding:10px 8px}}
-</style>
-
 <div class="warn-box"><p>⚠️ Wer deine 12 Wörter hat, hat vollen Zugriff auf sämtliche deiner Wallets auf allen Blockchains. Deshalb: Nur auf Papier, niemals digital, an mehreren sicheren Orten aufbewahren.</p></div>
 
 <h3>Public Key & Adressen – Deine Kontonummer</h3>
