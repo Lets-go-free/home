@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notfall-Informationsblatt · Let's go free</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="freebie-shared.css">
+  <style>
+/* ── Zusätzliche Styles für Notfall-Formular ── */
+.form-section {
+  background: white;
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--gold-d);
+  border-radius: 0 0 12px 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 12px rgba(74,61,42,.07);
+}
+
+.form-section h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--gold-dk);
+  margin-bottom: 18px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--cream);
+}
+
+.form-row {
+  margin-bottom: 20px;
+}
+
+.form-row label {
+  display: block;
+  font-size: .88rem;
+  font-weight: 600;
+  color: var(--gold-dk);
+  margin-bottom: 8px;
+}
+
+.form-row input[type="text"],
+.form-row input[type="tel"],
+.form-row input[type="email"],
+.form-row textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-family: 'Poppins', sans-serif;
+  font-size: .88rem;
+  background: var(--cream2);
+  transition: border-color .2s;
+}
+
+.form-row input:focus,
+.form-row textarea:focus {
+  outline: none;
+  border-color: var(--gold-d);
+  background: white;
+}
+
+.form-row textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.form-row small {
+  display: block;
+  font-size: .76rem;
+  color: var(--muted);
+  margin-top: 6px;
+  font-style: italic;
+}
+
+.two-column {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.checkbox-group {
+  margin: 16px 0;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px;
+  background: var(--cream2);
+  border-radius: 6px;
+}
+
+.checkbox-item input[type="checkbox"] {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.checkbox-item label {
+  font-size: .85rem;
+  font-weight: 400;
+  color: var(--body);
+  cursor: pointer;
+  margin: 0;
+}
+
+.warning-note {
+  background: #fff3e0;
+  border-left: 4px solid #ff9800;
+  border-radius: 0 8px 8px 0;
+  padding: 14px 18px;
+  margin: 20px 0;
+}
+
+.warning-note p {
+  font-size: .85rem;
+  color: var(--body);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.warning-note strong {
+  color: #e65100;
+}
+
+.info-note {
+  background: #e8f5e9;
+  border-left: 4px solid #4caf50;
+  border-radius: 0 8px 8px 0;
+  padding: 14px 18px;
+  margin: 20px 0;
+}
+
+.info-note p {
+  font-size: .85rem;
+  color: var(--body);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.info-note strong {
+  color: #2e7d32;
+}
+
+.print-instructions {
+  background: var(--dark3);
+  border-left: 4px solid var(--gold);
+  border-radius: 0 8px 8px 0;
+  padding: 18px 20px;
+  margin: 30px 0;
+  text-align: center;
+}
+
+.print-instructions h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--gold);
+  margin-bottom: 12px;
+}
+
+.print-instructions p {
+  font-size: .85rem;
+  color: rgba(201,168,130,.8);
+  line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .two-column {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  .buttons,
+  .back-to-top,
+  .print-instructions,
+  header .brand,
+  #lgf-back-bar {
+    display: none !important;
+  }
+  
+  .form-section {
+    page-break-inside: avoid;
+  }
+  
+  body {
+    background: white;
+  }
+}
+  </style>
+</head>
+<body>
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ZUGANGS-SCHUTZ SNIPPET - KORRIGIERT
+     NUR in kompakt-kap*.html einfügen, NICHT in index.html!
+     Position: Direkt nach dem <body> Tag
+     
+     WICHTIG: Verwendet jetzt den richtigen Key 'lgf_access_granted'
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<script>
+(function() {
+  // Prüfe ob gültiger Zugang vorhanden (RICHTIGER KEY!)
+  const hasAccess = localStorage.getItem('lgf_access_granted') === 'true';
+  
+  if (!hasAccess) {
+    // Kein Zugang - überschreibe sofort den Body-Inhalt
+    document.write(`
+      <div style="
+        position: fixed; inset: 0;
+        background: linear-gradient(135deg, #2c1e0f 0%, #3d2d1e 100%);
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        padding: 40px 24px; text-align: center;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      ">
+        <div style="font-size: 64px; margin-bottom: 24px;">🔒</div>
+        <h1 style="
+          font-size: clamp(24px, 6vw, 32px);
+          font-weight: 700; color: #c4a265;
+          margin-bottom: 16px; line-height: 1.2;
+        ">Zugang verweigert</h1>
+        <p style="
+          font-size: 16px; color: #b89a76;
+          line-height: 1.6; margin-bottom: 32px;
+          max-width: 400px;
+        ">
+          Dieser Inhalt ist nur mit einem gültigen Zugangs-Code verfügbar.
+        </p>
+        <a href="https://app.letsgofree.me" style="
+          display: inline-flex; align-items: center; gap: 10px;
+          background: linear-gradient(135deg, #c4a265, #a0784a);
+          color: #2c1e0f; text-decoration: none;
+          font-size: 16px; font-weight: 600;
+          padding: 14px 28px; border-radius: 12px;
+          box-shadow: 0 4px 20px rgba(196,162,101,.35);
+        ">
+          <span>🔓</span> Zur App
+        </a>
+      </div>
+    `);
+    document.close();
+  }
+  // Wenn hasAccess true ist, passiert nichts - normaler Inhalt wird geladen
+})();
+</script>
+<!-- ════════════════════════════════════════════════════════════════════════════ -->
+
+<div id="lgf-back-bar" style="display:none">
+  <button onclick="history.back()" style="background:none;border:none;color:#C9A882;font-size:24px;cursor:pointer;padding:0 6px;line-height:1;">‹</button>
+  <span style="font-size:13px;color:#b89a76;font-weight:500;">Let's go free</span>
+</div>
+<div id="lgf-screen-padding" style="height:0"></div>
+<script>
+(function(){
+  if(sessionStorage.getItem('lgf_from_app')!=='1') return;
+  var bar=document.getElementById('lgf-back-bar');
+  bar.style.display='flex';
+  bar.style.cssText+='position:sticky;top:0;z-index:999;align-items:center;gap:10px;background:#4a3d2a;border-bottom:1px solid rgba(201,168,130,.3);padding:10px 16px;';
+  window.addEventListener('load',function(){document.getElementById('lgf-screen-padding').style.height=bar.offsetHeight+'px';});
+})();
+</script>
+
+<header>
+  <p class="brand">Let's go free · letsgofree.me</p>
+  <h1>📋 Notfall-Informationsblatt</h1>
+  <p class="sub">Wichtige Informationen für deine Vertrauenspersonen</p>
+</header>
+
+<div class="container">
+
+  <div class="intro-box">
+    <p><strong>Warum dieses Dokument wichtig ist:</strong></p>
+    <p>Falls dir etwas zustösst, müssen deine Angehörigen wissen, wo deine Krypto-Wallets sind und wie sie darauf zugreifen können. Ohne diese Informationen sind deine Krypto-Assets unwiederbringlich verloren.</p>
+    <p style="margin-top: 12px;">Dieses Blatt hilft dir, alle wichtigen Informationen strukturiert festzuhalten – ohne sensible Daten wie die Seed Phrase selbst aufzuschreiben.</p>
+  </div>
+
+  <div class="warning-note">
+    <p><strong>⚠️ Wichtig:</strong> Schreibe NIEMALS deine Seed Phrase auf dieses Dokument! Notiere nur, WO sie aufbewahrt wird.</p>
+  </div>
+
+  <div class="section-label">1. Persönliche Daten</div>
+
+  <div class="form-section">
+    <h3>Meine Kontaktdaten</h3>
+    
+    <div class="form-row">
+      <label for="name">Vollständiger Name:</label>
+      <input type="text" id="name" placeholder="Max Muster">
+    </div>
+
+    <div class="two-column">
+      <div class="form-row">
+        <label for="geburtsdatum">Geburtsdatum:</label>
+        <input type="text" id="geburtsdatum" placeholder="01.01.1980">
+      </div>
+
+      <div class="form-row">
+        <label for="telefon">Telefon:</label>
+        <input type="tel" id="telefon" placeholder="+41 79 123 45 67">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label for="email">E-Mail:</label>
+      <input type="email" id="email" placeholder="max@beispiel.ch">
+    </div>
+
+    <div class="form-row">
+      <label for="adresse">Adresse:</label>
+      <input type="text" id="adresse" placeholder="Musterstrasse 123, 8000 Zürich">
+    </div>
+  </div>
+
+  <div class="section-label">2. Notfall-Kontakte</div>
+
+  <div class="form-section">
+    <h3>Vertrauensperson 1 (Hauptkontakt)</h3>
+    
+    <div class="form-row">
+      <label for="vp1-name">Name & Beziehung:</label>
+      <input type="text" id="vp1-name" placeholder="z.B. Maria Muster (Ehefrau)">
+    </div>
+
+    <div class="two-column">
+      <div class="form-row">
+        <label for="vp1-telefon">Telefon:</label>
+        <input type="tel" id="vp1-telefon" placeholder="+41 79 123 45 67">
+      </div>
+
+      <div class="form-row">
+        <label for="vp1-email">E-Mail:</label>
+        <input type="email" id="vp1-email" placeholder="maria@beispiel.ch">
+      </div>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <h3>Vertrauensperson 2 (optional)</h3>
+    
+    <div class="form-row">
+      <label for="vp2-name">Name & Beziehung:</label>
+      <input type="text" id="vp2-name" placeholder="z.B. Thomas Muster (Bruder)">
+    </div>
+
+    <div class="two-column">
+      <div class="form-row">
+        <label for="vp2-telefon">Telefon:</label>
+        <input type="tel" id="vp2-telefon" placeholder="+41 79 123 45 67">
+      </div>
+
+      <div class="form-row">
+        <label for="vp2-email">E-Mail:</label>
+        <input type="email" id="vp2-email" placeholder="thomas@beispiel.ch">
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">3. Wallet-Übersicht</div>
+
+  <div class="info-note">
+    <p><strong>💡 Hinweis:</strong> Beschreibe hier nur, WELCHE Wallets du hast – nicht die Seed Phrase selbst!</p>
+  </div>
+
+  <div class="form-section">
+    <h3>Wallet 1 (Hot Wallet)</h3>
+    
+    <div class="form-row">
+      <label for="wallet1-typ">Wallet-Typ & Name:</label>
+      <input type="text" id="wallet1-typ" placeholder="z.B. MetaMask, Trust Wallet, Rabby">
+    </div>
+
+    <div class="form-row">
+      <label for="wallet1-zweck">Verwendungszweck:</label>
+      <input type="text" id="wallet1-zweck" placeholder="z.B. Tägliche Transaktionen, DeFi Trading">
+    </div>
+
+    <div class="form-row">
+      <label for="wallet1-wert">Ungefährer Wert (CHF/EUR):</label>
+      <input type="text" id="wallet1-wert" placeholder="ca. 5'000 CHF">
+      <small>Nur zur Orientierung, Wert ändert sich täglich</small>
+    </div>
+
+    <div class="form-row">
+      <label for="wallet1-aufbewahrung">Wo ist die Seed Phrase aufbewahrt?</label>
+      <textarea id="wallet1-aufbewahrung" placeholder="Beispiel: Im Safe im Schlafzimmer, rechtes Fach, in blauem Umschlag
+ODER: Bei Vertrauensperson Maria, in versiegeltem Briefumschlag"></textarea>
+      <small>Sei so genau wie möglich, aber schreibe die Seed Phrase NICHT hierhin!</small>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <h3>Wallet 2 (Cold Wallet / Hardware Wallet)</h3>
+    
+    <div class="form-row">
+      <label for="wallet2-typ">Wallet-Typ & Modell:</label>
+      <input type="text" id="wallet2-typ" placeholder="z.B. Ledger Nano X, Trezor Model T">
+    </div>
+
+    <div class="form-row">
+      <label for="wallet2-zweck">Verwendungszweck:</label>
+      <input type="text" id="wallet2-zweck" placeholder="z.B. Langfristige Aufbewahrung, Sparwallet">
+    </div>
+
+    <div class="form-row">
+      <label for="wallet2-wert">Ungefährer Wert (CHF/EUR):</label>
+      <input type="text" id="wallet2-wert" placeholder="ca. 50'000 CHF">
+    </div>
+
+    <div class="form-row">
+      <label for="wallet2-geraet">Wo ist das Gerät?</label>
+      <input type="text" id="wallet2-geraet" placeholder="z.B. Im Safe im Schlafzimmer, im schwarzen Etui">
+    </div>
+
+    <div class="form-row">
+      <label for="wallet2-pin">Wo ist der PIN/Passwort-Hinweis?</label>
+      <input type="text" id="wallet2-pin" placeholder="z.B. Notiert in Passwort-Manager (Bitwarden)">
+      <small>Nicht den PIN selbst aufschreiben, nur wo er zu finden ist</small>
+    </div>
+
+    <div class="form-row">
+      <label for="wallet2-aufbewahrung">Wo ist die Seed Phrase aufbewahrt?</label>
+      <textarea id="wallet2-aufbewahrung" placeholder="Beispiel: Im Bankschliessfach, Postfach 12345 bei Bank XY
+ODER: Bei Notar Dr. Schmidt in Zürich"></textarea>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <h3>Weitere Wallets (optional)</h3>
+    
+    <div class="form-row">
+      <label for="wallet-weitere">Weitere Wallets & Aufbewahrungsorte:</label>
+      <textarea id="wallet-weitere" placeholder="Falls du mehr als 2 Wallets hast, liste sie hier auf mit Name, Zweck und Aufbewahrungsort der Seed Phrase"></textarea>
+    </div>
+  </div>
+
+  <div class="section-label">4. Börsen & Exchange Accounts</div>
+
+  <div class="form-section">
+    <h3>Exchange-Konten</h3>
+    
+    <div class="checkbox-group">
+      <p style="font-size: .88rem; font-weight: 600; color: var(--gold-dk); margin-bottom: 12px;">Ich habe Konten bei folgenden Börsen:</p>
+      
+      <div class="checkbox-item">
+        <input type="checkbox" id="exchange-binance">
+        <label for="exchange-binance">Binance</label>
+      </div>
+      
+      <div class="checkbox-item">
+        <input type="checkbox" id="exchange-kraken">
+        <label for="exchange-kraken">Kraken</label>
+      </div>
+      
+      <div class="checkbox-item">
+        <input type="checkbox" id="exchange-coinbase">
+        <label for="exchange-coinbase">Coinbase</label>
+      </div>
+      
+      <div class="checkbox-item">
+        <input type="checkbox" id="exchange-bitstamp">
+        <label for="exchange-bitstamp">Bitstamp</label>
+      </div>
+      
+      <div class="checkbox-item">
+        <input type="checkbox" id="exchange-andere">
+        <label for="exchange-andere">Andere (siehe unten)</label>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label for="exchange-details">Exchange-Details & Login-Informationen:</label>
+      <textarea id="exchange-details" placeholder="Beispiel:
+- Kraken: E-Mail login@beispiel.ch, 2FA im Authy App
+- Binance: E-Mail crypto@beispiel.ch, 2FA im Google Authenticator
+
+Passwörter sind im Passwort-Manager (Bitwarden) gespeichert"></textarea>
+      <small>Schreibe NICHT die Passwörter hier auf! Nur wo sie zu finden sind.</small>
+    </div>
+
+    <div class="form-row">
+      <label for="exchange-wert">Ungefährer Gesamtwert auf Exchanges:</label>
+      <input type="text" id="exchange-wert" placeholder="ca. 10'000 CHF">
+    </div>
+  </div>
+
+  <div class="section-label">5. Passwort-Manager & 2FA</div>
+
+  <div class="form-section">
+    <h3>Zugang zu meinen Passwörtern</h3>
+    
+    <div class="form-row">
+      <label for="pwmanager">Welchen Passwort-Manager nutze ich?</label>
+      <input type="text" id="pwmanager" placeholder="z.B. Bitwarden, 1Password, LastPass, KeePass">
+    </div>
+
+    <div class="form-row">
+      <label for="pwmanager-zugang">Wo ist das Master-Passwort / Recovery Key?</label>
+      <textarea id="pwmanager-zugang" placeholder="Beispiel: Master-Passwort ist notiert auf Papier im Safe, rechtes Fach, gelber Umschlag
+ODER: Vertrauensperson Maria kennt das Master-Passwort"></textarea>
+    </div>
+
+    <div class="form-row">
+      <label for="2fa">Wo sind meine 2FA Codes?</label>
+      <input type="text" id="2fa" placeholder="z.B. Google Authenticator App auf iPhone, Authy App">
+      <small>Wichtig: 2FA Backup-Codes sollten im Passwort-Manager oder Safe sein</small>
+    </div>
+  </div>
+
+  <div class="section-label">6. Wichtige Hinweise</div>
+
+  <div class="form-section">
+    <h3>Zusätzliche Informationen für meine Vertrauenspersonen</h3>
+    
+    <div class="form-row">
+      <label for="hinweise">Besondere Hinweise, Warnungen oder Anweisungen:</label>
+      <textarea id="hinweise" style="min-height: 140px;" placeholder="Beispiel:
+- Bei Fragen wende dich an Chris von Let's go free (coaching@letsgofree.me)
+- NIEMALS auf unaufgeforderte Nachrichten reagieren (Phishing!)
+- Nimm dir Zeit und überprüfe alles doppelt
+- Falls unklar: Professionelle Hilfe holen, nicht selbst raten"></textarea>
+    </div>
+
+    <div class="form-row">
+      <label for="datum">Dokument erstellt/aktualisiert am:</label>
+      <input type="text" id="datum" placeholder="01.03.2026">
+    </div>
+  </div>
+
+  <div class="warning-note">
+    <p><strong>⚠️ Sicherheitshinweise:</strong></p>
+    <p>• Bewahre dieses Dokument an einem sicheren Ort auf (Safe, Bankschliessfach)</p>
+    <p>• Gib es nur deinen engsten Vertrauenspersonen</p>
+    <p>• Aktualisiere es regelmässig (mindestens 1x pro Jahr)</p>
+    <p>• Schreibe NIEMALS Seed Phrases, PINs oder Passwörter direkt auf dieses Blatt</p>
+  </div>
+
+  <div class="print-instructions">
+    <h4>📄 So verwendest du dieses Dokument:</h4>
+    <p>1. Fülle alle Felder aus (digital oder nach dem Ausdrucken per Hand)</p>
+    <p>2. Drucke es aus oder speichere es als PDF</p>
+    <p>3. Bewahre es an einem sicheren Ort auf</p>
+    <p>4. Informiere deine Vertrauenspersonen, dass dieses Dokument existiert</p>
+  </div>
+
+  <div class="cta-block">
+    <h3>🛡️ Brauchst du Hilfe beim sicheren Setup?</h3>
+    <p>Im 1:1-Coaching zeige ich dir, wie du deine Wallets sicher einrichtest und ein wasserdichtes Backup-System aufbaust – damit deine Assets auch im Notfall geschützt sind.</p>
+    <a href="https://www.letsgofree.me/index.html#angebot" class="btn-light">Zum 1:1-Coaching</a>
+  </div>
+
+  <div class="buttons">
+    <a href="https://www.letsgofree.me" class="btn">Startseite</a>
+    <button class="btn" onclick="window.print()">🖨 Drucken / PDF</button>
+  </div>
+
+  <button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ Nach oben</button>
+
+  <div class="footer">
+    <p><strong>Disclaimer:</strong> Nur zu Informationszwecken, keine Rechtsberatung.</p>
+    <p>© 2025 · <a href="https://www.letsgofree.me" target="_blank">Chris Müller – Let's go free</a></p>
+  </div>
+
+</div>
+
+</body>
+</html>
