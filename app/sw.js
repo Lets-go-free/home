@@ -1,5 +1,5 @@
 // ─── Let's go free · Service Worker ───────────────────────────────────────
-const CACHE_VERSION = 'lgf-v99.0';
+const CACHE_VERSION = 'lgf-v100.0';
 const CACHE_NAME = `letsgofree-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -29,6 +29,7 @@ const APP_SHELL = [
   '/ebook/krypto-einsteiger-guide.pdf',
   '/dateien/bonus-checkliste.html',
   '/dateien/bonus-bonus-empfehlungen.html',
+  '/dateien/bonus-notfall-info.html',
 ];
 
 self.addEventListener('install', event => {
