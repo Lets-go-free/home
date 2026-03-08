@@ -343,7 +343,6 @@ async function loadData() {
     if (parsed.length < 2) throw new Error('Keine Daten gefunden');
     headers = parsed[0];
     allRows = parsed.slice(1).filter(r => r.some(v=>v!==''));
-    buildFilters();
     applyFilters();
   } catch(e) {
     document.getElementById('tableWrapper').innerHTML =
