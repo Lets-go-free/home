@@ -200,7 +200,10 @@
     padding: 9px 16px;
     color: #333;
     border-right: 1px solid #e8f0fe;
-    white-space: nowrap;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-width: 320px;
+    min-width: 80px;
   }
   tbody td:last-child { border-right: none; }
 
@@ -283,11 +286,10 @@
     <h3>Anbieter-Vergleich</h3>
 
     <div class="toolbar">
-      <div class="toolbar-group" style="flex: 2; min-width: 240px;">
+      <div class="toolbar-group" style="flex: 2; min-width: 280px;">
         <label>🔍 Suche (alle Felder)</label>
         <input type="text" id="globalSearch" class="search-input" placeholder="Suchbegriff eingeben…" oninput="applyFilters()">
       </div>
-      <div id="filterContainer" style="display:flex; flex-wrap:wrap; gap:12px; flex:3;"></div>
       <button class="btn-reset" onclick="resetAll()">↺ Zurücksetzen</button>
     </div>
 
@@ -357,8 +359,11 @@ function buildFilters() {
   const fcols = [];
   headers.forEach((h,i) => {
     const vals = [...new Set(allRows.map(r=>r[i]||'').filter(v=>v!==''))];
-    if (vals.length>=2 && vals.length<=25) fcols.push(i);
+    const isCheckbox = vals.every(v => YES.has(v.toLowerCase()) || NO.has(v.toLowerCase()));
+    if (!isCheckbox && vals.length>=2 && vals.length<=25) fcols.push(i);
   });
+  // Spaltenindizes merken für Filter-Suche
+  window._filterColIndices = fcols;
   fcols.slice(0,5).forEach(i => {
     const vals = [...new Set(allRows.map(r=>r[i]||'').filter(v=>v!==''))].sort();
     filterValues[i] = '';
@@ -374,23 +379,25 @@ function buildFilters() {
   });
 }
 
+// Finde Spaltenindex anhand Spaltenname (case-insensitive, partial match)
+function findCol(keywords) {
+  return headers.findIndex(h =>
+    keywords.some(kw => h.toLowerCase().includes(kw.toLowerCase()))
+  );
+}
+
 function applyFilters() {
-  const search = document.getElementById('globalSearch').value.trim().toLowerCase();
-  // Spalten mit Dropdown-Filter
-  const filterCols = Object.keys(filterValues).map(Number);
+  const global = document.getElementById('globalSearch').value.trim().toLowerCase();
 
   const filtered = allRows.filter(row => {
-    // Suche nur in Dropdown-Spalten (wenn Filter-Spalten vorhanden) + alle Spalten für Freitext
-    if (search) {
-      const searchCols = filterCols.length > 0 ? filterCols : row.map((_,i)=>i);
-      if (!searchCols.some(i => (row[i]||'').toLowerCase().includes(search))) return false;
-    }
-    for (const [col,val] of Object.entries(filterValues)) {
-      if (val && (row[col]||'')!==val) return false;
-    }
+    // Zeilen ohne Eintrag in 1. Spalte ausblenden
+    if (!(row[0]||'').trim()) return false;
+    // Globale Suche über alle Spalten
+    if (global && !row.some(v => v.toLowerCase().includes(global))) return false;
     return true;
   });
-  renderTable(filtered, search);
+
+  renderTable(filtered, global ? [global] : []);
   document.getElementById('statsCount').innerHTML =
     `<strong>${filtered.length}</strong> von <strong>${allRows.length}</strong> Einträgen`;
 }
@@ -401,14 +408,20 @@ const NO  = new Set(['nein','no','✗','✘','false','falsch','0','-']);
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-function hi(text, term) {
-  if (!term) return esc(text);
-  return esc(text).replace(new RegExp('('+term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<mark>$1</mark>');
+function hi(text, terms) {
+  let result = esc(text);
+  if (!terms || !terms.length) return result;
+  terms.forEach(term => {
+    if (!term) return;
+    result = result.replace(new RegExp('('+term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<mark>$1</mark>');
+  });
+  return result;
 }
 
-function renderTable(rows, search) {
+function renderTable(rows, terms) {
   const w = document.getElementById('tableWrapper');
   if (!rows.length) { w.innerHTML='<div class="status-msg">Keine Einträge gefunden.</div>'; return; }
+  const searchTerms = Array.isArray(terms) ? terms : (terms ? [terms] : []);
 
   // Spalten-Klassen für sticky
   const stickyClass = (i) => {
@@ -429,8 +442,9 @@ function renderTable(rows, search) {
       if (/^https?:\/\//i.test(v)) cell=`<a href="${esc(v)}" target="_blank" class="cell-url">🔗 Link</a>`;
       else if (YES.has(lc)) cell=`<span class="cell-yes">✔</span>`;
       else if (NO.has(lc))  cell=`<span class="cell-no">✘</span>`;
-      else cell=hi(v,search);
-      html+=`<td${stickyClass(i)}>${cell}</td>`;
+      else cell=hi(v,searchTerms).replace(/\n/g,'<br>');
+      const isCheckbox = YES.has(lc) || NO.has(lc);
+      html+=`<td${stickyClass(i)}${isCheckbox ? ' style="text-align:center;"' : ''}>${cell}</td>`;
     });
     html+='</tr>';
   });
@@ -450,8 +464,6 @@ function renderTable(rows, search) {
 
 function resetAll() {
   document.getElementById('globalSearch').value='';
-  document.querySelectorAll('.filter-select').forEach(s=>s.value='');
-  Object.keys(filterValues).forEach(k=>filterValues[k]='');
   applyFilters();
 }
 
