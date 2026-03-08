@@ -150,7 +150,8 @@
   }
 
   table {
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     width: max-content;
     min-width: 100%;
     font-size: 0.9em;
@@ -169,35 +170,45 @@
     text-align: left;
     white-space: nowrap;
     border-right: 1px solid rgba(255,255,255,0.15);
+    border-bottom: 2px solid #0d5090;
   }
   thead th:last-child { border-right: none; }
   thead th.col-center { text-align: center; }
 
-  tbody tr { border-bottom: 1px solid #e8f0fe; transition: background 0.15s; }
+  tbody tr { transition: filter 0.15s; }
   tbody tr:hover { filter: brightness(0.95); }
 
   tbody td {
     padding: 9px 16px;
     color: #333;
     border-right: 1px solid #e8f0fe;
+    border-bottom: 1px solid #e8f0fe;
     white-space: pre-wrap;
     word-break: break-word;
     max-width: 320px;
     min-width: 80px;
     vertical-align: top;
+    background: white;
   }
+  tbody tr:nth-child(even) td { background: #f5f9ff; }
   tbody td:last-child { border-right: none; }
   tbody td.col-center { text-align: center; }
 
-  /* Sticky erste 2 Spalten */
-  th.sticky, td.sticky { position: sticky; z-index: 2; }
+  /* Sticky erste 2 Spalten — Safari-kompatibel */
+  th.sticky, td.sticky {
+    position: -webkit-sticky;
+    position: sticky;
+    z-index: 2;
+  }
   th.sticky { z-index: 12; background: linear-gradient(180deg, #1261A0 0%, #0d5090 100%); }
-  td.sticky { }
   th.sticky-last, td.sticky-last {
     box-shadow: 4px 0 8px -2px rgba(18,97,160,0.2);
     border-right: 2px solid #90CAF9 !important;
   }
   th.sticky-last { box-shadow: 4px 0 8px -2px rgba(0,0,30,0.3); }
+  /* Zebra für sticky td erhalten */
+  tbody tr:nth-child(even) td.sticky { background: #f5f9ff; }
+  tbody tr:hover td.sticky { filter: brightness(0.95); }
 
   .cell-yes { color: #2e7d32; font-weight: 700; font-size: 1.4em; line-height: 1; }
   .cell-no  { color: #c62828; font-size: 1.4em; line-height: 1; }
@@ -461,13 +472,21 @@ function renderTable(rows, term) {
       const sc   = stickyClass(ci);
       const ctr  = centerCols.has(ci) ? ' col-center' : '';
 
-      // Inline Style: Hintergrund + Textfarbe aus Sheets
+      // Hintergrund: Sheets-Farbe > Zebra
+      let bgColor = cell.bg || (rows.indexOf(row) % 2 === 1 ? '#f5f9ff' : '#ffffff');
       let styleProps = '';
-      if (cell.bg) {
-        const fg = cell.tc || textColorForBg(cell.bg) || '#111';
+      if (bgColor && bgColor !== '#ffffff') {
+        const fg = cell.tc || textColorForBg(bgColor) || '#111';
+        styleProps += `background:${bgColor}; color:${fg};`;
+      } else if (cell.bg) {
+        const fg = cell.tc || '#111';
         styleProps += `background:${cell.bg}; color:${fg};`;
       } else if (cell.tc) {
         styleProps += `color:${cell.tc};`;
+      }
+      // Sticky-Zellen brauchen explizit einen Hintergrund
+      if (sc && !styleProps.includes('background')) {
+        styleProps += `background:${bgColor};`;
       }
       if (cell.bold)   styleProps += 'font-weight:700;';
       if (cell.italic) styleProps += 'font-style:italic;';
