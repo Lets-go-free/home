@@ -366,7 +366,7 @@ function parseSheet(sheetData) {
   const headerRow = rowData[0].values || [];
   const headers = headerRow.map(cell => ({
     value: cell.formattedValue || cell.effectiveValue?.stringValue || cell.effectiveValue?.numberValue?.toString() || '',
-    bg: rgbFromApi(cell.effectiveFormat?.backgroundColor)
+    bg: rgbFromApi(cell.effectiveFormat?.backgroundColorStyle?.rgbColor || cell.effectiveFormat?.backgroundColor)
   }));
 
   const allRows = [];
@@ -375,10 +375,13 @@ function parseSheet(sheetData) {
     const cells = headers.map((_, ci) => {
       const cell = values[ci] || {};
       const fmt  = cell.effectiveFormat || {};
+      // Dropdown-Chips: Farbe in backgroundColorStyle.rgbColor, sonst backgroundColor
+      const bgSrc = fmt.backgroundColorStyle?.rgbColor || fmt.backgroundColor;
+      const tcSrc = fmt.textFormat?.foregroundColorStyle?.rgbColor || fmt.textFormat?.foregroundColor;
       return {
         value:  cell.formattedValue || cell.effectiveValue?.stringValue || (cell.effectiveValue?.numberValue !== undefined ? cell.effectiveValue.numberValue.toString() : '') || '',
-        bg:     rgbFromApi(fmt.backgroundColor),
-        tc:     rgbFromApi(fmt.textFormat?.foregroundColor || fmt.foregroundColorStyle?.rgbColor),
+        bg:     rgbFromApi(bgSrc),
+        tc:     rgbFromApi(tcSrc),
         bold:   fmt.textFormat?.bold   || false,
         italic: fmt.textFormat?.italic || false
       };
