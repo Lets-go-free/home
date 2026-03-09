@@ -105,6 +105,20 @@
   .search-input:focus { border-color: #1261A0; box-shadow: 0 0 0 3px rgba(18,97,160,0.1); }
   .search-input::placeholder { color: #90a4ae; }
 
+  .filter-select {
+    border: 2px solid #90CAF9;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 0.88em;
+    color: #333;
+    width: 100%;
+    outline: none;
+    cursor: pointer;
+    background: white;
+    transition: border-color 0.2s;
+  }
+  .filter-select:focus { border-color: #1261A0; }
+
   .btn-reset {
     background: white;
     border: 2px solid #1261A0;
@@ -271,6 +285,12 @@
       <div class="toolbar-group">
         <label>🔍 Suche (alle Felder)</label>
         <input type="text" id="search1" class="search-input" placeholder="Suchbegriff eingeben…" oninput="tables[0].apply()">
+      </div>
+      <div class="toolbar-group" style="min-width: 160px; max-width: 200px;">
+        <label>🌍 Land</label>
+        <select id="filter1Land" class="filter-select" onchange="tables[0].apply()">
+          <option value="">Alle</option>
+        </select>
       </div>
       <button class="btn-reset" onclick="tables[0].reset()">↺ Zurücksetzen</button>
     </div>
@@ -455,7 +475,7 @@ function renderTable(wrapperId, headers, rows, centerCols, term) {
 }
 
 /* ── TABLE INSTANZ ─────────────────────────────────── */
-function createTable({ gid, titleId, wrapperId, statsId, searchId }) {
+function createTable({ gid, titleId, wrapperId, statsId, searchId, landFilterId }) {
   let headers = [], allRows = [], centerCols = new Set();
 
   async function load() {
@@ -463,26 +483,47 @@ function createTable({ gid, titleId, wrapperId, statsId, searchId }) {
       '<div class="status-msg"><div class="spinner"></div><br>Daten werden geladen…</div>';
     document.getElementById(statsId).textContent = 'Lade…';
     try {
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?includeGridData=true&ranges=${gid ? `gid=${gid}` : ''}&key=${API_KEY}`;
-      // Lade alle Sheets und finde das richtige anhand gid
       const fullUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?includeGridData=true&key=${API_KEY}`;
       const res = await fetch(fullUrl);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const json = await res.json();
 
-      // Sheet anhand gid finden
       const sheet = gid
         ? json.sheets.find(s => s.properties.sheetId == gid)
         : json.sheets[0];
       if (!sheet) throw new Error('Tabellenblatt nicht gefunden (gid=' + gid + ')');
 
-      // Sheet-Namen als Titel setzen
       document.getElementById(titleId).textContent = sheet.properties.title;
+
+      // DEBUG: erste Datenzelle mit Farbe in Konsole ausgeben
+      const firstDataRow = sheet.data[0].rowData?.[1]?.values || [];
+      firstDataRow.slice(0, 5).forEach((cell, i) => {
+        const fmt = cell.effectiveFormat || {};
+        console.log(`Spalte ${i}:`, JSON.stringify({
+          bg: fmt.backgroundColor,
+          bgStyle: fmt.backgroundColorStyle,
+          textFmt: fmt.textFormat
+        }, null, 2));
+      });
 
       const parsed = parseSheet(sheet);
       headers    = parsed.headers;
       allRows    = parsed.allRows;
       centerCols = parsed.centerCols;
+
+      // Land-Dropdown befüllen
+      if (landFilterId) {
+        const sel = document.getElementById(landFilterId);
+        if (sel) {
+          const landIdx = headers.findIndex(h => h.value.toLowerCase().includes('land'));
+          if (landIdx >= 0) {
+            const vals = [...new Set(allRows.map(r => r[landIdx]?.value || '').filter(v => v))].sort();
+            sel.innerHTML = '<option value="">Alle</option>' +
+              vals.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+          }
+        }
+      }
+
       apply();
     } catch(e) {
       document.getElementById(wrapperId).innerHTML =
@@ -493,7 +534,14 @@ function createTable({ gid, titleId, wrapperId, statsId, searchId }) {
 
   function apply() {
     const term = document.getElementById(searchId).value.trim().toLowerCase();
-    const filtered = allRows.filter(row => !term || row.some(c => c.value.toLowerCase().includes(term)));
+    const landVal = landFilterId ? (document.getElementById(landFilterId)?.value || '') : '';
+    const landIdx = landVal ? headers.findIndex(h => h.value.toLowerCase().includes('land')) : -1;
+
+    const filtered = allRows.filter(row => {
+      if (term && !row.some(c => c.value.toLowerCase().includes(term))) return false;
+      if (landVal && landIdx >= 0 && (row[landIdx]?.value || '') !== landVal) return false;
+      return true;
+    });
     renderTable(wrapperId, headers, filtered, centerCols, term);
     document.getElementById(statsId).innerHTML =
       `<strong>${filtered.length}</strong> von <strong>${allRows.length}</strong> Einträgen`;
@@ -501,6 +549,7 @@ function createTable({ gid, titleId, wrapperId, statsId, searchId }) {
 
   function reset() {
     document.getElementById(searchId).value = '';
+    if (landFilterId) { const s = document.getElementById(landFilterId); if (s) s.value = ''; }
     apply();
   }
 
@@ -509,7 +558,7 @@ function createTable({ gid, titleId, wrapperId, statsId, searchId }) {
 
 /* ── INIT ──────────────────────────────────────────── */
 const tables = [
-  createTable({ gid: 844786138, titleId: 'title1', wrapperId: 'wrapper1', statsId: 'stats1', searchId: 'search1' }),
+  createTable({ gid: 844786138, titleId: 'title1', wrapperId: 'wrapper1', statsId: 'stats1', searchId: 'search1', landFilterId: 'filter1Land' }),
   createTable({ gid: 0,         titleId: 'title2', wrapperId: 'wrapper2', statsId: 'stats2', searchId: 'search2' })
 ];
 
