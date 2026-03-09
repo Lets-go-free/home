@@ -265,22 +265,39 @@
 
 
   <div class="section">
-    <h3>Anbieter-Vergleich</h3>
+    <h3 id="title1">Tabelle wird geladen…</h3>
 
     <div class="toolbar">
       <div class="toolbar-group">
         <label>🔍 Suche (alle Felder)</label>
-        <input type="text" id="globalSearch" class="search-input" placeholder="Suchbegriff eingeben…" oninput="applyFilters()">
+        <input type="text" id="search1" class="search-input" placeholder="Suchbegriff eingeben…" oninput="tables[0].apply()">
       </div>
-      <button class="btn-reset" onclick="resetAll()">↺ Zurücksetzen</button>
+      <button class="btn-reset" onclick="tables[0].reset()">↺ Zurücksetzen</button>
     </div>
-
     <div class="stats-bar">
-      <div class="stats-count" id="statsCount">Lade Daten…</div>
-      <button class="reload-btn" onclick="loadData()">⟳ Neu laden</button>
+      <div class="stats-count" id="stats1">Lade Daten…</div>
+      <button class="reload-btn" onclick="tables[0].load()">⟳ Neu laden</button>
     </div>
+    <div class="table-wrapper" id="wrapper1">
+      <div class="status-msg"><div class="spinner"></div><br>Daten werden geladen…</div>
+    </div>
+  </div>
 
-    <div class="table-wrapper" id="tableWrapper">
+  <div class="section">
+    <h3 id="title2">Tabelle wird geladen…</h3>
+
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <label>🔍 Suche (alle Felder)</label>
+        <input type="text" id="search2" class="search-input" placeholder="Suchbegriff eingeben…" oninput="tables[1].apply()">
+      </div>
+      <button class="btn-reset" onclick="tables[1].reset()">↺ Zurücksetzen</button>
+    </div>
+    <div class="stats-bar">
+      <div class="stats-count" id="stats2">Lade Daten…</div>
+      <button class="reload-btn" onclick="tables[1].load()">⟳ Neu laden</button>
+    </div>
+    <div class="table-wrapper" id="wrapper2">
       <div class="status-msg"><div class="spinner"></div><br>Daten werden geladen…</div>
     </div>
   </div>
@@ -296,144 +313,41 @@
 
 </div>
 <script>
-const API_KEY      = 'AIzaSyCoqox11k_H-pWwp95RNKAadzaeAYB4ONc';
-const SHEET_ID     = '1572OYI3LfaFIx1ApYdNhJmvDp5K0KuTA33Aq-zXkLA4';
-const API_URL      = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?includeGridData=true&key=${API_KEY}`;
+const API_KEY  = 'AIzaSyCoqox11k_H-pWwp95RNKAadzaeAYB4ONc';
+const SHEET_ID = '1572OYI3LfaFIx1ApYdNhJmvDp5K0KuTA33Aq-zXkLA4';
 
 const YES = new Set(['ja','yes','true','wahr','✓','✔','1','x']);
 const NO  = new Set(['nein','no','false','falsch','✗','✘','0','-']);
 
-let allRows    = [];   // [{cells: [{value, bg, bold, italic, color, wrap}]}]
-let headers    = [];   // [{value, bg}]
-let centerCols = new Set();
-
-/* ── COLOUR HELPER ─────────────────────────────────── */
+/* ── FARB-HELPER ───────────────────────────────────── */
 function rgbFromApi(c) {
   if (!c) return null;
   const r = Math.round((c.red   || 0) * 255);
   const g = Math.round((c.green || 0) * 255);
   const b = Math.round((c.blue  || 0) * 255);
-  // Weiss / fast weiss ignorieren
   if (r > 250 && g > 250 && b > 250) return null;
   return `rgb(${r},${g},${b})`;
 }
-
 function luminance(r,g,b) {
-  const a = [r,g,b].map(v => {
+  return [r,g,b].reduce((s,v,i) => {
     v /= 255;
-    return v <= 0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4);
-  });
-  return 0.2126*a[0] + 0.7152*a[1] + 0.0722*a[2];
+    v = v <= 0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4);
+    return s + v * [0.2126,0.7152,0.0722][i];
+  }, 0);
 }
-
 function textColorForBg(bg) {
-  if (!bg) return null;
-  const m = bg.match(/\d+/g);
+  const m = bg && bg.match(/\d+/g);
   if (!m) return null;
-  const lum = luminance(+m[0], +m[1], +m[2]);
-  return lum < 0.35 ? '#ffffff' : '#111111';
-}
-
-/* ── LOAD ──────────────────────────────────────────── */
-async function loadData() {
-  document.getElementById('tableWrapper').innerHTML =
-    '<div class="status-msg"><div class="spinner"></div><br>Daten werden geladen…</div>';
-  document.getElementById('statsCount').textContent = 'Lade…';
-
-  try {
-    const res = await fetch(API_URL);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const json = await res.json();
-
-    const sheet    = json.sheets[0];
-    const gridData = sheet.data[0];
-    const rowData  = gridData.rowData || [];
-
-    if (rowData.length < 2) throw new Error('Keine Daten gefunden');
-
-    // Header-Zeile
-    const headerRow = rowData[0].values || [];
-    headers = headerRow.map(cell => {
-      const fmt  = cell.effectiveFormat || {};
-      const bg   = rgbFromApi((fmt.backgroundColor));
-      const val  = cell.effectiveValue?.stringValue ||
-                   cell.effectiveValue?.numberValue?.toString() ||
-                   cell.formattedValue || '';
-      return { value: val, bg };
-    });
-
-    // Daten-Zeilen
-    allRows = [];
-    for (let ri = 1; ri < rowData.length; ri++) {
-      const row    = rowData[ri];
-      const values = row.values || [];
-      const cells  = headers.map((_, ci) => {
-        const cell = values[ci] || {};
-        const fmt  = cell.effectiveFormat || {};
-        const bg   = rgbFromApi(fmt.backgroundColor);
-        const tc   = rgbFromApi(fmt.foregroundColor || fmt.foregroundColorStyle?.rgbColor);
-        const bold = fmt.textFormat?.bold || false;
-        const italic = fmt.textFormat?.italic || false;
-        // Wert: formattedValue bevorzugen (enthält Formatierung aus Sheets)
-        const val  = cell.formattedValue ||
-                     cell.effectiveValue?.stringValue ||
-                     (cell.effectiveValue?.numberValue !== undefined
-                       ? cell.effectiveValue.numberValue.toString() : '') ||
-                     '';
-        return { value: val, bg, tc, bold, italic };
-      });
-      // Zeilen ohne 1. Spalte überspringen
-      if (!cells[0].value.trim()) continue;
-      allRows.push(cells);
-    }
-
-    // Checkbox-Spalten erkennen → zentrieren
-    centerCols = new Set();
-    headers.forEach((_,ci) => {
-      const filled = allRows.map(r => r[ci]?.value || '').filter(v => v !== '');
-      if (!filled.length) return;
-      const boolCount = filled.filter(v => YES.has(v.toLowerCase()) || NO.has(v.toLowerCase())).length;
-      if (boolCount / filled.length >= 0.5) centerCols.add(ci);
-    });
-
-    applyFilters();
-  } catch(e) {
-    document.getElementById('tableWrapper').innerHTML =
-      `<div class="status-msg" style="color:#c62828;">⚠️ Fehler: ${e.message}<br>
-       <small>API-Key oder Spreadsheet-ID prüfen, Sheet muss öffentlich sein.</small></div>`;
-    document.getElementById('statsCount').textContent = 'Fehler';
-  }
-}
-
-/* ── FILTER ────────────────────────────────────────── */
-function applyFilters() {
-  const term = document.getElementById('globalSearch').value.trim().toLowerCase();
-  const filtered = allRows.filter(row => {
-    if (!term) return true;
-    return row.some(c => c.value.toLowerCase().includes(term));
-  });
-  renderTable(filtered, term);
-  document.getElementById('statsCount').innerHTML =
-    `<strong>${filtered.length}</strong> von <strong>${allRows.length}</strong> Einträgen`;
-}
-
-function resetAll() {
-  document.getElementById('globalSearch').value = '';
-  applyFilters();
+  return luminance(+m[0],+m[1],+m[2]) < 0.35 ? '#ffffff' : '#111111';
 }
 
 /* ── ESCAPE / HIGHLIGHT ────────────────────────────── */
 function esc(s) {
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function hi(text, term) {
   if (!term) return esc(text);
-  return esc(text).replace(
-    new RegExp('(' + term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi'),
-    '<mark>$1</mark>'
-  );
+  return esc(text).replace(new RegExp('('+term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<mark>$1</mark>');
 }
 
 /* ── STICKY CLASS ──────────────────────────────────── */
@@ -443,74 +357,89 @@ function stickyClass(i) {
   return '';
 }
 
-/* ── RENDER ────────────────────────────────────────── */
-function renderTable(rows, term) {
-  const w = document.getElementById('tableWrapper');
-  if (!rows.length) {
-    w.innerHTML = '<div class="status-msg">Keine Einträge gefunden.</div>';
-    return;
+/* ── SHEET PARSER ──────────────────────────────────── */
+function parseSheet(sheetData) {
+  const rowData = sheetData.data[0].rowData || [];
+  if (rowData.length < 2) throw new Error('Keine Daten gefunden');
+
+  const headerRow = rowData[0].values || [];
+  const headers = headerRow.map(cell => ({
+    value: cell.formattedValue || cell.effectiveValue?.stringValue || cell.effectiveValue?.numberValue?.toString() || '',
+    bg: rgbFromApi(cell.effectiveFormat?.backgroundColor)
+  }));
+
+  const allRows = [];
+  for (let ri = 1; ri < rowData.length; ri++) {
+    const values = rowData[ri].values || [];
+    const cells = headers.map((_, ci) => {
+      const cell = values[ci] || {};
+      const fmt  = cell.effectiveFormat || {};
+      return {
+        value:  cell.formattedValue || cell.effectiveValue?.stringValue || (cell.effectiveValue?.numberValue !== undefined ? cell.effectiveValue.numberValue.toString() : '') || '',
+        bg:     rgbFromApi(fmt.backgroundColor),
+        tc:     rgbFromApi(fmt.textFormat?.foregroundColor || fmt.foregroundColorStyle?.rgbColor),
+        bold:   fmt.textFormat?.bold   || false,
+        italic: fmt.textFormat?.italic || false
+      };
+    });
+    if (!cells[0].value.trim()) continue;
+    allRows.push(cells);
   }
 
-  // TH
+  // Checkbox-Spalten erkennen
+  const centerCols = new Set();
+  headers.forEach((_,ci) => {
+    const filled = allRows.map(r => r[ci]?.value || '').filter(v => v !== '');
+    if (!filled.length) return;
+    const boolCount = filled.filter(v => YES.has(v.toLowerCase()) || NO.has(v.toLowerCase())).length;
+    if (boolCount / filled.length >= 0.5) centerCols.add(ci);
+  });
+
+  return { headers, allRows, centerCols };
+}
+
+/* ── RENDER ────────────────────────────────────────── */
+function renderTable(wrapperId, headers, rows, centerCols, term) {
+  const w = document.getElementById(wrapperId);
+  if (!rows.length) { w.innerHTML='<div class="status-msg">Keine Einträge gefunden.</div>'; return; }
+
   let html = '<table><thead><tr>';
-  headers.forEach((h, ci) => {
-    const sc    = stickyClass(ci);
-    const ctr   = centerCols.has(ci) ? ' col-center' : '';
-    const style = h.bg ? ` style="background:${h.bg}; color:${textColorForBg(h.bg)||'white'};"` : '';
-    html += `<th class="${sc}${ctr}"${style}>${esc(h.value)}</th>`;
+  headers.forEach((h,ci) => {
+    const sc  = stickyClass(ci);
+    const ctr = centerCols.has(ci) ? ' col-center' : '';
+    const sty = h.bg ? ` style="background:${h.bg}; color:${textColorForBg(h.bg)||'white'};"` : '';
+    html += `<th class="${sc}${ctr}"${sty}>${esc(h.value)}</th>`;
   });
   html += '</tr></thead><tbody>';
 
-  // TD
-  rows.forEach(row => {
+  rows.forEach((row, ri) => {
     html += '<tr>';
-    headers.forEach((_, ci) => {
+    headers.forEach((_,ci) => {
       const cell = row[ci] || { value:'', bg:null, tc:null, bold:false, italic:false };
-      const v    = cell.value;
-      const lc   = v.toLowerCase();
-      const sc   = stickyClass(ci);
-      const ctr  = centerCols.has(ci) ? ' col-center' : '';
-
-      // Hintergrund: Sheets-Farbe > Zebra
-      let bgColor = cell.bg || (rows.indexOf(row) % 2 === 1 ? '#f5f9ff' : '#ffffff');
-      let styleProps = '';
-      if (bgColor && bgColor !== '#ffffff') {
-        const fg = cell.tc || textColorForBg(bgColor) || '#111';
-        styleProps += `background:${bgColor}; color:${fg};`;
-      } else if (cell.bg) {
-        const fg = cell.tc || '#111';
-        styleProps += `background:${cell.bg}; color:${fg};`;
-      } else if (cell.tc) {
-        styleProps += `color:${cell.tc};`;
-      }
-      // Sticky-Zellen brauchen explizit einen Hintergrund
-      if (sc && !styleProps.includes('background')) {
-        styleProps += `background:${bgColor};`;
-      }
-      if (cell.bold)   styleProps += 'font-weight:700;';
-      if (cell.italic) styleProps += 'font-style:italic;';
-      const styleAttr = styleProps ? ` style="${styleProps}"` : '';
+      const v = cell.value, lc = v.toLowerCase();
+      const sc  = stickyClass(ci);
+      const ctr = centerCols.has(ci) ? ' col-center' : '';
+      let bgColor = cell.bg || (ri % 2 === 1 ? '#f5f9ff' : '#ffffff');
+      let sp = '';
+      if (cell.bg) { sp += `background:${cell.bg}; color:${cell.tc || textColorForBg(cell.bg) || '#111'};`; }
+      else if (cell.tc) { sp += `color:${cell.tc};`; }
+      if (sc && !sp.includes('background')) sp += `background:${bgColor};`;
+      if (cell.bold)   sp += 'font-weight:700;';
+      if (cell.italic) sp += 'font-style:italic;';
 
       let content;
-      if (/^https?:\/\//i.test(v)) {
-        content = `<a href="${esc(v)}" target="_blank" class="cell-url">🔗 Link</a>`;
-      } else if (YES.has(lc)) {
-        content = `<span class="cell-yes">✔</span>`;
-      } else if (NO.has(lc)) {
-        content = `<span class="cell-no">✘</span>`;
-      } else {
-        content = hi(v, term).replace(/\n/g, '<br>');
-      }
+      if (/^https?:\/\//i.test(v)) content = `<a href="${esc(v)}" target="_blank" class="cell-url">🔗 Link</a>`;
+      else if (YES.has(lc)) content = `<span class="cell-yes">✔</span>`;
+      else if (NO.has(lc))  content = `<span class="cell-no">✘</span>`;
+      else content = hi(v, term).replace(/\n/g,'<br>');
 
-      html += `<td class="${sc}${ctr}"${styleAttr}>${content}</td>`;
+      html += `<td class="${sc}${ctr}"${sp ? ` style="${sp}"` : ''}>${content}</td>`;
     });
     html += '</tr>';
   });
-
   html += '</tbody></table>';
   w.innerHTML = html;
 
-  // Sticky left-Offsets setzen
   requestAnimationFrame(() => {
     const first = w.querySelector('th.sticky:not(.sticky-last)');
     if (first) {
@@ -521,7 +450,67 @@ function renderTable(rows, term) {
   });
 }
 
-loadData();
+/* ── TABLE INSTANZ ─────────────────────────────────── */
+function createTable({ gid, titleId, wrapperId, statsId, searchId }) {
+  let headers = [], allRows = [], centerCols = new Set();
+
+  async function load() {
+    document.getElementById(wrapperId).innerHTML =
+      '<div class="status-msg"><div class="spinner"></div><br>Daten werden geladen…</div>';
+    document.getElementById(statsId).textContent = 'Lade…';
+    try {
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?includeGridData=true&ranges=${gid ? `gid=${gid}` : ''}&key=${API_KEY}`;
+      // Lade alle Sheets und finde das richtige anhand gid
+      const fullUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?includeGridData=true&key=${API_KEY}`;
+      const res = await fetch(fullUrl);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const json = await res.json();
+
+      // Sheet anhand gid finden
+      const sheet = gid
+        ? json.sheets.find(s => s.properties.sheetId == gid)
+        : json.sheets[0];
+      if (!sheet) throw new Error('Tabellenblatt nicht gefunden (gid=' + gid + ')');
+
+      // Sheet-Namen als Titel setzen
+      document.getElementById(titleId).textContent = sheet.properties.title;
+
+      const parsed = parseSheet(sheet);
+      headers    = parsed.headers;
+      allRows    = parsed.allRows;
+      centerCols = parsed.centerCols;
+      apply();
+    } catch(e) {
+      document.getElementById(wrapperId).innerHTML =
+        `<div class="status-msg" style="color:#c62828;">⚠️ Fehler: ${e.message}</div>`;
+      document.getElementById(statsId).textContent = 'Fehler';
+    }
+  }
+
+  function apply() {
+    const term = document.getElementById(searchId).value.trim().toLowerCase();
+    const filtered = allRows.filter(row => !term || row.some(c => c.value.toLowerCase().includes(term)));
+    renderTable(wrapperId, headers, filtered, centerCols, term);
+    document.getElementById(statsId).innerHTML =
+      `<strong>${filtered.length}</strong> von <strong>${allRows.length}</strong> Einträgen`;
+  }
+
+  function reset() {
+    document.getElementById(searchId).value = '';
+    apply();
+  }
+
+  return { load, apply, reset };
+}
+
+/* ── INIT ──────────────────────────────────────────── */
+const tables = [
+  createTable({ gid: 844786138, titleId: 'title1', wrapperId: 'wrapper1', statsId: 'stats1', searchId: 'search1' }),
+  createTable({ gid: 0,         titleId: 'title2', wrapperId: 'wrapper2', statsId: 'stats2', searchId: 'search2' })
+];
+
+// Beide Tabellen laden (API wird nur einmal gecacht vom Browser)
+tables.forEach(t => t.load());
 </script>
 </body>
 </html>
