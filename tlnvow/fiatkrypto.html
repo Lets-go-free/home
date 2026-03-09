@@ -395,15 +395,16 @@ function parseSheet(sheetData) {
     const cells = headers.map((_, ci) => {
       const cell = values[ci] || {};
       const fmt  = cell.effectiveFormat || {};
-      // Dropdown-Chips: Farbe in backgroundColorStyle.rgbColor, sonst backgroundColor
-      const bgSrc = fmt.backgroundColorStyle?.rgbColor || fmt.backgroundColor;
-      const tcSrc = fmt.textFormat?.foregroundColorStyle?.rgbColor || fmt.textFormat?.foregroundColor;
+      const uFmt = cell.userEnteredFormat || {};
+      // Dropdown-Chips speichern Farbe in userEnteredFormat, nicht effectiveFormat
+      const bgSrc = uFmt.backgroundColorStyle?.rgbColor || uFmt.backgroundColor || fmt.backgroundColorStyle?.rgbColor || fmt.backgroundColor;
+      const tcSrc = uFmt.textFormat?.foregroundColorStyle?.rgbColor || uFmt.textFormat?.foregroundColor || fmt.textFormat?.foregroundColorStyle?.rgbColor || fmt.textFormat?.foregroundColor;
       return {
         value:  cell.formattedValue || cell.effectiveValue?.stringValue || (cell.effectiveValue?.numberValue !== undefined ? cell.effectiveValue.numberValue.toString() : '') || '',
         bg:     rgbFromApi(bgSrc),
         tc:     rgbFromApi(tcSrc),
-        bold:   fmt.textFormat?.bold   || false,
-        italic: fmt.textFormat?.italic || false
+        bold:   (uFmt.textFormat?.bold || fmt.textFormat?.bold) || false,
+        italic: (uFmt.textFormat?.italic || fmt.textFormat?.italic) || false
       };
     });
     if (!cells[0].value.trim()) continue;
@@ -498,11 +499,13 @@ function createTable({ gid, titleId, wrapperId, statsId, searchId, landFilterId 
       // DEBUG: erste Datenzelle mit Farbe in Konsole ausgeben
       const firstDataRow = sheet.data[0].rowData?.[1]?.values || [];
       firstDataRow.slice(0, 5).forEach((cell, i) => {
-        const fmt = cell.effectiveFormat || {};
+        const fmt  = cell.effectiveFormat || {};
+        const uFmt = cell.userEnteredFormat || {};
         console.log(`Spalte ${i}:`, JSON.stringify({
-          bg: fmt.backgroundColor,
-          bgStyle: fmt.backgroundColorStyle,
-          textFmt: fmt.textFormat
+          userEntered_bg:      uFmt.backgroundColor,
+          userEntered_bgStyle: uFmt.backgroundColorStyle,
+          effective_bg:        fmt.backgroundColor,
+          effective_bgStyle:   fmt.backgroundColorStyle,
         }, null, 2));
       });
 
