@@ -190,4 +190,127 @@
   const fill=document.getElementById('progress');
   window.addEventListener('scroll',()=>{const h=document.documentElement.scrollHeight-window.innerHeight;fill.style.width=(window.scrollY/h*100)+'%';},{passive:true});
 </script>
-</body></html>
+<!-- ══════════════════════════════════════════════════════════════════════════
+     AUTOMATISCHES LESEZEICHEN - Für jede E-Book-Seite
+     
+     Einfügen: Am Ende jeder ebook-kap*.html Datei (vor </body>)
+     WICHTIG: CHAPTER_ID für jedes Kapitel anpassen!
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<script>
+(function() {
+  // ═══════════════════════════════════════════════════════════════
+  // WICHTIG: Für jedes Kapitel anpassen!
+  // ═══════════════════════════════════════════════════════════════
+  const CHAPTER_ID = 'ebook-kap3';  // ← Anpassen: kap1, kap2, kap3, etc.
+  
+  const STORAGE_KEY = 'lgf_reading_position';
+  
+  // ═══════════════════════════════════════════════════════════════
+  // BEIM LADEN: Zur letzten Position springen
+  // ═══════════════════════════════════════════════════════════════
+  window.addEventListener('load', function() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const data = JSON.parse(saved);
+        
+        // Nur wenn wir auf der gleichen Seite waren
+        if (data.chapter === CHAPTER_ID && data.scrollY > 100) {
+          // Kleine Verzögerung damit Seite vollständig geladen ist
+          setTimeout(function() {
+            window.scrollTo({
+              top: data.scrollY,
+              behavior: 'smooth'
+            });
+          }, 100);
+        }
+      }
+    } catch (e) {
+      // Fehler ignorieren
+    }
+  });
+  
+  // ═══════════════════════════════════════════════════════════════
+  // BEIM SCROLLEN: Position speichern (mit Verzögerung)
+  // ═══════════════════════════════════════════════════════════════
+  let saveTimeout;
+  
+  window.addEventListener('scroll', function() {
+    // Vorherige Speicherung abbrechen
+    clearTimeout(saveTimeout);
+    
+    // Nach 500ms ohne Scrollen speichern
+    saveTimeout = setTimeout(function() {
+      try {
+        const position = {
+          chapter: CHAPTER_ID,
+          scrollY: window.scrollY,
+          timestamp: Date.now()
+        };
+        
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(position));
+      } catch (e) {
+        // Fehler ignorieren (z.B. wenn localStorage voll)
+      }
+    }, 500);
+  });
+  
+  // ═══════════════════════════════════════════════════════════════
+  // BEIM VERLASSEN: Aktuelle Position ein letztes Mal speichern
+  // ═══════════════════════════════════════════════════════════════
+  window.addEventListener('beforeunload', function() {
+    try {
+      const position = {
+        chapter: CHAPTER_ID,
+        scrollY: window.scrollY,
+        timestamp: Date.now()
+      };
+      
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(position));
+    } catch (e) {
+      // Fehler ignorieren
+    }
+  });
+})();
+</script>
+
+<!-- Optional: "Zurück zum Anfang" Button (falls gewünscht) -->
+<button id="reset-bookmark-btn" style="
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(139, 115, 85, 0.9);
+  color: #F0E8DC;
+  border: none;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  display: none;
+" onclick="
+  if (confirm('Lesezeichen zurücksetzen und zum Anfang springen?')) {
+    localStorage.removeItem('lgf_reading_position');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+">
+  ↑ Zum Anfang
+</button>
+
+<script>
+// Button nur anzeigen wenn wir gescrollt haben
+window.addEventListener('scroll', function() {
+  const btn = document.getElementById('reset-bookmark-btn');
+  if (window.scrollY > 300) {
+    btn.style.display = 'block';
+  } else {
+    btn.style.display = 'none';
+  }
+});
+</script>
+<!-- ════════════════════════════════════════════════════════════════════════════ -->
+</body>
+</html>
