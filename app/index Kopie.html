@@ -92,76 +92,9 @@
         <div class="meta-item"><span class="meta-value">Inklusive</span><span class="meta-label">Paket</span></div>
         <div class="meta-item"><span class="meta-value">Sofort</span><span class="meta-label">Verfügbar</span></div>
       </div>
-<!-- ══════════════════════════════════════════════════════════════════════════
-     "E-BOOK ÖFFNEN" BUTTON - MIT AUTO-RESUME
-     
-     Ersetzt den bestehenden "E-Book öffnen" Button in index.html
-     Öffnet automatisch das letzte gelesene Kapitel statt immer Kapitel 1
-     ══════════════════════════════════════════════════════════════════════════ -->
-
-<!-- ALTER BUTTON (ersetzen): -->
-<!-- 
-<a href="./ebook/ebook-kap1.html" class="btn-primary" onclick="openViewer('./ebook/ebook-kap1.html', 'Krypto-Einsteiger-Guide'); return false;">
-  <span>📖</span> E-Book öffnen
-</a>
--->
-
-<!-- NEUER BUTTON (damit ersetzen): -->
-<a href="./ebook/ebook-kap1.html" class="btn-primary" onclick="openEbookWithResume(); return false;">
-  <span>📖</span> E-Book öffnen
-</a>
-
-<!-- NEUE FUNKTION (irgendwo im <script> Bereich hinzufügen): -->
-<script>
-function openEbookWithResume() {
-  try {
-    // Prüfe ob Lesezeichen existiert
-    const saved = localStorage.getItem('lgf_reading_position');
-    
-    if (saved) {
-      // Lesezeichen vorhanden
-      const data = JSON.parse(saved);
-      
-      // Kapitel-URL konstruieren
-      const chapterUrl = `./ebook/${data.chapter}.html`;
-      
-      // Kapitel-Namen für schönere Anzeige (optional)
-      const chapterNames = {
-        'ebook-kap1': 'Krypto-Einsteiger-Guide - Kapitel 1',
-        'ebook-kap2': 'Krypto-Einsteiger-Guide - Kapitel 2',
-        'ebook-kap3': 'Krypto-Einsteiger-Guide - Kapitel 3',
-        'ebook-kap4': 'Krypto-Einsteiger-Guide - Kapitel 4',
-        'ebook-kap5': 'Krypto-Einsteiger-Guide - Kapitel 5'
-      };
-      const chapterName = chapterNames[data.chapter] || 'Krypto-Einsteiger-Guide';
-      
-      // Öffne das letzte Kapitel
-      if (typeof openViewer === 'function') {
-        openViewer(chapterUrl, chapterName);
-      } else {
-        window.location.href = chapterUrl;
-      }
-    } else {
-      // Kein Lesezeichen → Starte bei Kapitel 1
-      if (typeof openViewer === 'function') {
-        openViewer('./ebook/ebook-kap1.html', 'Krypto-Einsteiger-Guide');
-      } else {
-        window.location.href = './ebook/ebook-kap1.html';
-      }
-    }
-  } catch (e) {
-    // Bei Fehler: Standard-Verhalten (Kapitel 1)
-    if (typeof openViewer === 'function') {
-      openViewer('./ebook/ebook-kap1.html', 'Krypto-Einsteiger-Guide');
-    } else {
-      window.location.href = './ebook/ebook-kap1.html';
-    }
-  }
-}
-</script>
-
-<!-- ════════════════════════════════════════════════════════════════════════════ -->
-
+      <a href="./ebook/ebook-kap1.html" class="btn-primary" onclick="openViewer('./ebook/ebook-kap1.html', 'Krypto-Einsteiger-Guide'); return false;">
+        <span>📖</span> E-Book öffnen
+      </a>
       <button class="btn-secondary" onclick="downloadPdf()" style="margin-top: 12px;">
         <span>⬇️</span> E-Book herunterladen
       </button>
