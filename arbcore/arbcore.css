@@ -457,3 +457,54 @@ footer a:hover { text-decoration: underline; }
   .partner-box   { flex-direction: column; text-align: center; }
   .stats-row     { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ── AUFZEICHNUNG BOX ── */
+.aufzeichnung-box {
+  display: flex;
+  align-items: center;
+  gap: 2.5rem;
+  background: var(--card);
+  border: 1px solid rgba(79, 195, 247, 0.3);
+  border-radius: var(--radius-lg);
+  padding: 2.8rem 3rem;
+  max-width: 780px;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--card) 50%, rgba(79,195,247,.05));
+}
+
+.aufzeichnung-box::before {
+  content: '';
+  position: absolute;
+  top: -60px; right: -60px;
+  width: 240px; height: 240px;
+  background: radial-gradient(circle, rgba(79,195,247,.08) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+.aufzeichnung-icon {
+  font-size: 3.5rem;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 12px rgba(79,195,247,.3));
+}
+
+.aufzeichnung-text h2 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: clamp(1.2rem, 3vw, 1.6rem);
+  line-height: 1.25;
+  margin-bottom: .7rem;
+}
+
+.aufzeichnung-text p {
+  color: var(--text-sub);
+  font-size: 1rem;
+  line-height: 1.68;
+  max-width: 460px;
+}
+
+@media (max-width: 600px) {
+  .aufzeichnung-box { flex-direction: column; text-align: center; padding: 2rem 1.5rem; }
+  .aufzeichnung-text p { max-width: 100%; }
+}
