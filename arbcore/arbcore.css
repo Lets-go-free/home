@@ -511,3 +511,74 @@ footer a:hover { text-decoration: underline; }
   .aufzeichnung-box { flex-direction: column; text-align: center; padding: 2rem 1.5rem; }
   .aufzeichnung-text p { max-width: 100%; }
 }
+
+/* ── WARUM ES FUNKTIONIERT ── */
+.warum-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.2rem;
+  margin-top: 3rem;
+}
+
+.warum-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  transition: border-color .2s, transform .2s;
+}
+
+.warum-card:hover {
+  border-color: var(--border-hi);
+  transform: translateY(-2px);
+}
+
+.warum-icon { font-size: 1.6rem; }
+
+.warum-card h3 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.warum-card p {
+  color: var(--text-sub);
+  font-size: 1rem;
+  line-height: 1.72;
+}
+
+.warum-fazit {
+  margin-top: 1.5rem;
+  background: linear-gradient(135deg, var(--card) 50%, rgba(0,210,200,.05));
+  border: 1px solid rgba(0,210,200,.25);
+  border-radius: var(--radius-lg);
+  padding: 2rem 2.2rem;
+}
+
+.warum-fazit h3 {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .75rem;
+  color: var(--teal);
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  margin-bottom: .8rem;
+}
+
+.warum-fazit p {
+  color: var(--text-sub);
+  font-size: 1.02rem;
+  line-height: 1.75;
+}
+
+.warum-fazit strong {
+  color: var(--cyan);
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .warum-grid { grid-template-columns: 1fr; }
+}
