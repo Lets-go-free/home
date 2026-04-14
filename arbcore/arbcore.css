@@ -582,3 +582,565 @@ footer a:hover { text-decoration: underline; }
 @media (max-width: 768px) {
   .warum-grid { grid-template-columns: 1fr; }
 }
+
+/* ── SIMULATION 2 ── */
+#simulation { background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+
+.sim2-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-top: 2.5rem;
+  margin-bottom: 2rem;
+}
+
+.sim2-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+}
+
+.sim2-input-group label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .7rem;
+  color: var(--teal);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.sim2-input-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.sim2-input-wrap:focus-within { border-color: var(--teal); }
+
+.sim2-input-wrap input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  padding: .65rem 1rem;
+  width: 140px;
+}
+
+.sim2-unit {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .78rem;
+  color: var(--muted);
+  padding: 0 .9rem 0 0;
+}
+
+.sim2-info-pill {
+  background: var(--cyan-dim);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: .5rem 1.1rem;
+  font-size: .85rem;
+  color: var(--text-sub);
+  align-self: flex-end;
+  margin-bottom: .1rem;
+}
+.sim2-info-pill strong { color: var(--cyan); }
+
+/* Monats-Akkordeon */
+.sim2-results { display: flex; flex-direction: column; gap: .7rem; }
+
+.sim2-monat {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.sim2-monat:hover { border-color: var(--border-hi); }
+
+.sim2-monat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.4rem;
+  cursor: pointer;
+  user-select: none;
+  gap: 1rem;
+}
+
+.sim2-monat-left {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+}
+
+.sim2-monat-name {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  min-width: 90px;
+}
+
+.sim2-monat-summary {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .82rem;
+  color: var(--text-sub);
+  flex-wrap: wrap;
+}
+
+.sim2-monat-gewinn { color: var(--green); }
+.sim2-monat-pct    { color: var(--cyan); }
+
+.sim2-chevron {
+  color: var(--muted);
+  font-size: .9rem;
+  transition: color .2s;
+  flex-shrink: 0;
+}
+.sim2-monat-header:hover .sim2-chevron { color: var(--cyan); }
+
+/* Aufklappbarer Body */
+.sim2-monat-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .35s ease;
+}
+.sim2-monat-body.sim2-open {
+  max-height: 9999px;
+}
+
+/* Tabelle */
+.sim2-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .8rem;
+}
+
+.sim2-table thead tr {
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+}
+
+.sim2-table th {
+  padding: .6rem 1rem;
+  text-align: left;
+  color: var(--muted);
+  font-size: .68rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.sim2-table tbody tr {
+  border-top: 1px solid rgba(79,195,247,.05);
+  transition: background .15s;
+}
+.sim2-table tbody tr:hover { background: rgba(79,195,247,.03); }
+
+.sim2-table td {
+  padding: .5rem 1rem;
+  color: var(--text-sub);
+}
+
+.sim2-table td:first-child { color: var(--muted); }
+
+.sim2-td-green { color: var(--green) !important; }
+.sim2-td-cyan  { color: var(--cyan) !important; }
+
+/* Reinvest-Zeile */
+.sim2-reinvest td:first-child::after {
+  content: ' ↺';
+  color: var(--teal);
+  font-size: .75rem;
+}
+.sim2-reinvest { background: rgba(0,210,200,.03) !important; }
+
+@media (max-width: 640px) {
+  .sim2-controls { flex-direction: column; align-items: flex-start; }
+  .sim2-table th:nth-child(2), .sim2-table td:nth-child(2) { display: none; }
+}
+
+/* ── SIMULATION ── */
+#simulation { background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+
+.sim2-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-top: 2.5rem;
+  margin-bottom: 2rem;
+}
+
+.sim2-input-group { display: flex; flex-direction: column; gap: .45rem; }
+
+.sim2-input-group label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .7rem;
+  color: var(--teal);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.sim2-input-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.sim2-input-wrap:focus-within { border-color: var(--teal); }
+
+.sim2-input-wrap input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  padding: .65rem 1rem;
+  width: 140px;
+}
+
+.sim2-unit {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .78rem;
+  color: var(--muted);
+  padding: 0 .9rem 0 0;
+}
+
+.sim2-info-pill {
+  background: var(--cyan-dim);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: .5rem 1.1rem;
+  font-size: .85rem;
+  color: var(--text-sub);
+  align-self: flex-end;
+  margin-bottom: .1rem;
+}
+.sim2-info-pill strong { color: var(--cyan); }
+
+/* Summary-Grid */
+.sim2-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.sim2-sum-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+
+.sim2-sum-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .65rem;
+  color: var(--muted);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.sim2-sum-val {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+.sim2-green { color: var(--green) !important; }
+.sim2-cyan  { color: var(--cyan) !important; }
+
+/* Monats-Akkordeon */
+.sim2-results { display: flex; flex-direction: column; gap: .6rem; }
+
+.sim2-monat {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.sim2-monat:hover { border-color: var(--border-hi); }
+
+.sim2-monat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.4rem;
+  cursor: pointer;
+  user-select: none;
+  gap: 1rem;
+}
+
+.sim2-monat-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.sim2-monat-name {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  min-width: 90px;
+}
+
+.sim2-monat-summary {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .78rem;
+  color: var(--text-sub);
+  flex-wrap: wrap;
+}
+
+.sim2-monat-gewinn { color: var(--green); }
+.sim2-monat-freig  { color: var(--cyan); font-weight: 600; }
+.sim2-monat-pct    { color: var(--muted); }
+
+.sim2-chevron { color: var(--muted); font-size: .9rem; flex-shrink: 0; transition: color .2s; }
+.sim2-monat-header:hover .sim2-chevron { color: var(--cyan); }
+
+.sim2-monat-body { max-height: 0; overflow: hidden; transition: max-height .35s ease; }
+.sim2-monat-body.sim2-open { max-height: 99999px; }
+
+/* Tabelle */
+.sim2-table { width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono', monospace; font-size: .78rem; }
+
+.sim2-table thead tr { background: var(--bg2); border-top: 1px solid var(--border); }
+
+.sim2-table th {
+  padding: .55rem 1rem;
+  text-align: left;
+  color: var(--muted);
+  font-size: .64rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.sim2-table tbody tr { border-top: 1px solid rgba(79,195,247,.05); transition: background .15s; }
+.sim2-table tbody tr:hover { background: rgba(79,195,247,.03); }
+.sim2-table td { padding: .5rem 1rem; color: var(--text-sub); vertical-align: middle; }
+.sim2-table td:first-child { color: var(--muted); }
+
+.sim2-td-green { color: var(--green) !important; }
+.sim2-td-cyan  { color: var(--cyan) !important; }
+.sim2-td-muted { color: var(--muted) !important; text-align: center; }
+.sim2-td-freig { vertical-align: middle; }
+
+/* Reinvest-Zeile */
+.sim2-reinvest-row { background: rgba(0,210,200,.025) !important; }
+.sim2-badge-reinvest {
+  display: inline-block;
+  font-size: .6rem;
+  background: rgba(0,210,200,.12);
+  color: var(--teal);
+  border: 1px solid rgba(0,210,200,.25);
+  border-radius: 5px;
+  padding: .05rem .35rem;
+  margin-left: .35rem;
+  vertical-align: middle;
+}
+
+/* Freigabe-Zeile */
+.sim2-release-row { background: rgba(79,195,247,.04) !important; border-left: 2px solid var(--cyan) !important; }
+
+.sim2-freig-val {
+  display: block;
+  color: var(--cyan);
+  font-weight: 600;
+  font-size: .8rem;
+}
+.sim2-freig-count {
+  display: block;
+  color: var(--muted);
+  font-size: .65rem;
+  margin-top: .1rem;
+}
+
+@media (max-width: 768px) {
+  .sim2-summary-grid { grid-template-columns: repeat(2, 1fr); }
+  .sim2-table th:nth-child(2), .sim2-table td:nth-child(2),
+  .sim2-table th:nth-child(3), .sim2-table td:nth-child(3) { display: none; }
+}
+@media (max-width: 480px) {
+  .sim2-controls { flex-direction: column; align-items: flex-start; }
+  .sim2-summary-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── KAPITAL FREI BANNER ── */
+.sim2-kapital-frei {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  background: linear-gradient(135deg, rgba(79,195,247,.08), rgba(0,210,200,.06));
+  border: 1px solid rgba(79,195,247,.35);
+  border-radius: var(--radius);
+  padding: 1.2rem 1.5rem;
+  margin-bottom: 1.2rem;
+}
+
+.sim2-kf-icon { font-size: 1.8rem; flex-shrink: 0; }
+
+.sim2-kf-text { display: flex; flex-direction: column; gap: .2rem; }
+
+.sim2-kf-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .68rem;
+  color: var(--teal);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.sim2-kf-val {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--cyan);
+}
+
+.sim2-kf-sub {
+  font-size: .82rem;
+  color: var(--text-sub);
+}
+
+/* Monat mit Initialfreigabe */
+.sim2-monat-highlight { border-color: rgba(79,195,247,.4) !important; }
+
+.sim2-badge-initial {
+  font-size: .7rem;
+  background: rgba(79,195,247,.12);
+  color: var(--cyan);
+  border: 1px solid rgba(79,195,247,.3);
+  border-radius: 5px;
+  padding: .1rem .4rem;
+  margin-left: .4rem;
+  vertical-align: middle;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.sim2-badge-initial-inline {
+  margin-left: .3rem;
+  font-size: .85rem;
+}
+
+/* Initialfreigabe-Zeile */
+.sim2-initial-row {
+  background: rgba(79,195,247,.06) !important;
+  border-left: 2px solid var(--cyan) !important;
+  font-weight: 600;
+}
+
+/* Investition-zurück-Zeile */
+.sim2-investback-row {
+  background: rgba(0,210,200,.08) !important;
+  border-left: 3px solid var(--teal) !important;
+  font-weight: 700;
+}
+
+.sim2-badge-investback {
+  display: inline-block;
+  font-size: .62rem;
+  background: rgba(0,210,200,.15);
+  color: var(--teal);
+  border: 1px solid rgba(0,210,200,.4);
+  border-radius: 5px;
+  padding: .05rem .4rem;
+  margin-left: .35rem;
+  vertical-align: middle;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.sim2-td-red { color: var(--red) !important; font-weight: 600; }
+
+/* ── TOKEN SELECT ── */
+.sim2-select-wrap {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.sim2-select-wrap:focus-within { border-color: var(--teal); }
+
+.sim2-select-wrap select {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: 'Outfit', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: .65rem 1rem;
+  width: 200px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2300d2c8' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: 2.5rem;
+}
+
+.sim2-select-wrap select option {
+  background: var(--card);
+  color: var(--text);
+}
+
+/* Token-Info-Pills */
+.sim2-token-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  align-items: center;
+}
+
+.sim2-token-pill {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: .3rem .85rem;
+  font-size: .82rem;
+  color: var(--text-sub);
+}
+
+.sim2-token-rate {
+  color: var(--green);
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Ohne-Reinvest-Box */
+.sim2-ohne-reinvest { margin-bottom: 1.2rem; }
+
+.sim2-ohne-box {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  background: linear-gradient(135deg, rgba(79,195,247,.06), rgba(0,210,200,.04));
+  border: 1px solid rgba(79,195,247,.25);
+  border-radius: var(--radius);
+  padding: 1.2rem 1.5rem;
+}

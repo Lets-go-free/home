@@ -467,6 +467,49 @@
   </div>
 </section>
 
+<!-- SIMULATION -->
+<section id="simulation">
+  <div class="container">
+    <p class="section-label fade-in">Simulation</p>
+    <h2 class="section-title fade-in">Was wächst, wenn der Bot für dich arbeitet?</h2>
+    <p class="section-desc fade-in">Jede Einzahlung und jeder Reinvest öffnet einen eigenen Vertrag. Jeder Vertrag läuft bis 150% Gewinn – dann wird das Kapital freigegeben.</p>
+
+    <div class="sim2-controls fade-in">
+
+      <div class="sim2-input-group">
+        <label>Währung</label>
+        <div class="sim2-select-wrap">
+          <select id="s2Token" onchange="sim2TokenWechsel()">
+            <option value="USDT">Tether USDT</option>
+            <option value="SOL">Solana SOL</option>
+            <option value="BTC">Bitcoin BTC</option>
+            <option value="BNB">BNB</option>
+            <option value="ETH">Ethereum ETH</option>
+            <option value="MATIC">Polygon MATIC</option>
+            <option value="XRP">XRP Ledger XRP</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="sim2-input-group">
+        <label id="s2BetragLabel">Betrag in USDT</label>
+        <div class="sim2-input-wrap">
+          <input type="number" id="s2Betrag" value="1000" min="0" step="1" oninput="sim2Berechne()" />
+          <span class="sim2-unit" id="s2Unit">USDT</span>
+        </div>
+      </div>
+
+      <div class="sim2-token-info" id="s2TokenInfo"></div>
+
+    </div>
+
+    <div class="sim2-ohne-reinvest fade-in" id="s2OhneReinvest"></div>
+    <div class="sim2-summary fade-in" id="sim2Summary"></div>
+    <div class="sim2-results fade-in" id="sim2Results"></div>
+
+  </div>
+</section>
+
 <!-- CTA -->
 <section class="cta-section" id="freischalten">
   <div class="container" style="display:flex;justify-content:center">
@@ -493,14 +536,292 @@
   // Scroll-triggered fade-ins
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => {
-      if (e.isIntersecting) {
-        e.target.classList.add('visible');
-        observer.unobserve(e.target);
-      }
+      if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); }
     });
   }, { threshold: 0.12 });
-
   document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+  // ── TOKEN-DATEN ──────────────────────────────────────────
+  const TOKENS = {
+    USDT:  { name: 'Tether USDT',    symbol: 'USDT',  rate: 0.0136, minDeposit: 50,    minWithdraw: 10,   decimals: 2 },
+    SOL:   { name: 'Solana',         symbol: 'SOL',   rate: 0.0125, minDeposit: 0.5,   minWithdraw: 0.1,  decimals: 4 },
+    BTC:   { name: 'Bitcoin',        symbol: 'BTC',   rate: 0.0438, minDeposit: 0.05,  minWithdraw: 0.01, decimals: 6 },
+    BNB:   { name: 'BNB',            symbol: 'BNB',   rate: 0.0146, minDeposit: 1,     minWithdraw: 0.2,  decimals: 4 },
+    ETH:   { name: 'Ethereum',       symbol: 'ETH',   rate: 0.0297, minDeposit: 0.5,   minWithdraw: 0.1,  decimals: 5 },
+    MATIC: { name: 'Polygon',        symbol: 'MATIC', rate: 0.0136, minDeposit: 500,   minWithdraw: 100,  decimals: 2 },
+    XRP:   { name: 'XRP Ledger',     symbol: 'XRP',   rate: 0.0410, minDeposit: 1000,  minWithdraw: 100,  decimals: 2 },
+  };
+
+  // ── HILFSFUNKTIONEN ──────────────────────────────────────
+  function fmt(n, dec) {
+    const d = dec ?? 2;
+    return n.toLocaleString('de-CH', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+
+  function fmtT(n, token) {
+    return fmt(n, token.decimals) + ' ' + token.symbol;
+  }
+
+  function datumAb(tag) {
+    const d = new Date();
+    d.setDate(d.getDate() + tag - 1);
+    return d.toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
+  function tagVonHeute(tag) {
+    const d = new Date();
+    d.setDate(d.getDate() + tag - 1);
+    return d;
+  }
+
+  // ── TOKEN-WECHSEL ────────────────────────────────────────
+  function sim2TokenWechsel() {
+    const sym   = document.getElementById('s2Token').value;
+    const token = TOKENS[sym];
+    document.getElementById('s2BetragLabel').textContent = `Betrag in ${token.symbol}`;
+    document.getElementById('s2Unit').textContent = token.symbol;
+    document.getElementById('s2Betrag').value = token.minDeposit;
+    document.getElementById('s2Betrag').min   = token.minDeposit;
+    document.getElementById('s2Betrag').step  = token.minDeposit;
+
+    document.getElementById('s2TokenInfo').innerHTML = `
+      <div class="sim2-token-pill"><span class="sim2-token-rate">${(token.rate * 100).toFixed(2)}% / Tag</span></div>
+      <div class="sim2-token-pill">Min. Einzahlung: <strong>${fmtT(token.minDeposit, token)}</strong></div>
+      <div class="sim2-token-pill">Reinvest ab: <strong>${fmtT(token.minWithdraw, token)}</strong></div>
+      <div class="sim2-token-pill">Vertrag endet bei: <strong>+150%</strong></div>
+    `;
+    sim2Berechne();
+  }
+
+  // ── HAUPTBERECHNUNG ──────────────────────────────────────
+  function sim2Berechne() {
+    const sym         = document.getElementById('s2Token').value;
+    const token       = TOKENS[sym];
+    const einzahlung  = parseFloat(document.getElementById('s2Betrag').value) || token.minDeposit;
+    const zins        = token.rate;
+    const reinvestMin = token.minWithdraw;
+    const gesamtTage  = 365;
+    const daysToComplete = Math.ceil(1.5 / zins);
+    const initialFreiAb  = 1 + daysToComplete;
+
+    if (einzahlung < token.minDeposit) {
+      document.getElementById('sim2Summary').innerHTML =
+        `<p style="color:var(--red);font-size:.9rem;margin-top:1rem;">Mindesteinlage: ${fmtT(token.minDeposit, token)}</p>`;
+      document.getElementById('sim2Results').innerHTML = '';
+      document.getElementById('s2OhneReinvest').innerHTML = '';
+      return;
+    }
+
+    // ── OHNE REINVEST (Einfachzins) ──────────────────────
+    const tageOhneReinvest = Math.ceil(1 / zins);
+    const taeglicherGewinnSimple = einzahlung * zins;
+    document.getElementById('s2OhneReinvest').innerHTML = `
+      <div class="sim2-ohne-box">
+        <div class="sim2-kf-icon">📊</div>
+        <div class="sim2-kf-text">
+          <span class="sim2-kf-label">Ohne Reinvest – wann ist der Einsatz als Gewinn erreicht?</span>
+          <span class="sim2-kf-val">Nach ${tageOhneReinvest} Tagen · ${datumAb(tageOhneReinvest)}</span>
+          <span class="sim2-kf-sub">
+            Bei ${fmtT(einzahlung, token)} Einlage und ${(zins*100).toFixed(2)}% täglich ergibt das
+            ${fmtT(taeglicherGewinnSimple, token)} Tagesgewinn (ohne Reinvest).
+            Nach ${tageOhneReinvest} Tagen ist der gesamte Einsatz als Gewinn ausgezahlt.
+          </span>
+        </div>
+      </div>
+    `;
+
+    // ── MIT REINVEST (Vertragslogik) ─────────────────────
+    let contracts         = [];
+    let contractId        = 0;
+    let puffer            = 0;
+    let kumulGewinn       = 0;
+    let kumulFreigabe     = 0;
+    let investitionZurueckAb = null;
+
+    function openContract(day, principal) {
+      contracts.push({
+        id:            ++contractId,
+        startDay:      day,
+        principal,
+        releaseDay:    day + daysToComplete,
+        releaseAmount: principal * 2.5,
+        dailyProfit:   principal * zins
+      });
+    }
+
+    openContract(1, einzahlung);
+
+    const tage = [];
+
+    for (let t = 1; t <= gesamtTage; t++) {
+      const releasedToday    = contracts.filter(c => c.releaseDay === t);
+      const freigegebenHeute = releasedToday.reduce((s, c) => s + c.releaseAmount, 0);
+      kumulFreigabe += freigegebenHeute;
+      if (!investitionZurueckAb && kumulFreigabe >= einzahlung) investitionZurueckAb = t;
+
+      const activeContracts = contracts.filter(c => c.startDay <= t && c.releaseDay > t);
+      const tagesgewinn     = activeContracts.reduce((s, c) => s + c.dailyProfit, 0);
+      puffer      += tagesgewinn;
+      kumulGewinn += tagesgewinn;
+
+      let reinvestiert    = false;
+      let reinvestedAmount = 0;
+      if (puffer >= reinvestMin) {
+        reinvestedAmount = puffer;
+        openContract(t, puffer);
+        puffer = 0;
+        reinvestiert = true;
+      }
+
+      const aktivNach = contracts
+        .filter(c => c.startDay <= t && c.releaseDay > t)
+        .reduce((s, c) => s + c.principal, 0);
+
+      tage.push({
+        tag:              t,
+        datum:            tagVonHeute(t),
+        aktivKapital:     aktivNach + puffer,
+        reinvestedAmount,
+        anzahlVertraege:  contracts.filter(c => c.startDay <= t && c.releaseDay > t).length,
+        tagesgewinn,
+        kumulGewinn,
+        kumulProzent:     (kumulGewinn / einzahlung) * 100,
+        freigegebenHeute,
+        kumulFreigabe,
+        reinvestiert,
+        releasedContracts: releasedToday,
+        istInitialFreigabe:    t === initialFreiAb,
+        istInvestitionZurueck: t === investitionZurueckAb
+      });
+    }
+
+    const letzterTag      = tage[tage.length - 1];
+    const gesamtVertraege = contracts.length;
+
+    // ── SUMMARY ──────────────────────────────────────────
+    document.getElementById('sim2Summary').innerHTML = `
+      <div class="sim2-kapital-frei">
+        <div class="sim2-kf-icon">🔓</div>
+        <div class="sim2-kf-text">
+          <span class="sim2-kf-label">Anfangsinvestition durch abgeschlossene Verträge zurück</span>
+          <span class="sim2-kf-val">Ab Tag ${investitionZurueckAb ?? '> 1 Jahr'} · ${investitionZurueckAb ? datumAb(investitionZurueckAb) : ''}</span>
+          <span class="sim2-kf-sub">
+            Ab diesem Tag übersteigt die Summe aller freigegebenen Verträge deine Einzahlung von ${fmtT(einzahlung, token)}.
+            ${investitionZurueckAb ? 'Freigegeben bis dann: ' + fmtT(tage[investitionZurueckAb-1].kumulFreigabe, token) : ''}
+          </span>
+        </div>
+      </div>
+      <div class="sim2-summary-grid">
+        <div class="sim2-sum-card">
+          <span class="sim2-sum-label">Einzahlung</span>
+          <span class="sim2-sum-val">${fmtT(einzahlung, token)}</span>
+        </div>
+        <div class="sim2-sum-card">
+          <span class="sim2-sum-label">Gewinn nach 1 Jahr</span>
+          <span class="sim2-sum-val sim2-green">+${fmtT(letzterTag.kumulGewinn, token)}</span>
+        </div>
+        <div class="sim2-sum-card">
+          <span class="sim2-sum-label">Freigegeben total</span>
+          <span class="sim2-sum-val sim2-cyan">${fmtT(letzterTag.kumulFreigabe, token)}</span>
+        </div>
+        <div class="sim2-sum-card">
+          <span class="sim2-sum-label">Verträge gesamt</span>
+          <span class="sim2-sum-val">${gesamtVertraege}</span>
+        </div>
+        <div class="sim2-sum-card">
+          <span class="sim2-sum-label">Laufzeit pro Vertrag</span>
+          <span class="sim2-sum-val">${daysToComplete} Tage</span>
+        </div>
+        <div class="sim2-sum-card">
+          <span class="sim2-sum-label">Tageszins</span>
+          <span class="sim2-sum-val sim2-cyan">${(zins*100).toFixed(2)}%</span>
+        </div>
+      </div>
+    `;
+
+    // ── MONATE ────────────────────────────────────────────
+    const heute = new Date();
+    let html = '';
+
+    for (let m = 0; m < 12; m++) {
+      const vonTag    = m * 30 + 1;
+      const bisTag    = Math.min((m + 1) * 30, gesamtTage);
+      const tageDaten = tage.slice(vonTag - 1, bisTag);
+      const letzter   = tageDaten[tageDaten.length - 1];
+      const monGewinn = tageDaten.reduce((s, d) => s + d.tagesgewinn, 0);
+      const monFreig  = tageDaten.reduce((s, d) => s + d.freigegebenHeute, 0);
+      const hatInitial = tageDaten.some(d => d.istInitialFreigabe);
+
+      // Monatsname aus dem Datum berechnen
+      const monatsDatum = new Date(heute);
+      monatsDatum.setDate(heute.getDate() + vonTag - 1);
+      const monName = monatsDatum.toLocaleDateString('de-CH', { month: 'long', year: 'numeric' });
+
+      html += `
+        <div class="sim2-monat ${hatInitial ? 'sim2-monat-highlight' : ''}">
+          <div class="sim2-monat-header" onclick="sim2Toggle(this)">
+            <div class="sim2-monat-left">
+              <span class="sim2-monat-name">${monName}${hatInitial ? ' <span class="sim2-badge-initial">🔓 Initialvertrag</span>' : ''}</span>
+              <span class="sim2-monat-summary">
+                <span class="sim2-monat-gewinn">+${fmtT(monGewinn, token)} Gewinn</span>
+                ${monFreig > 0 ? `<span class="sim2-monat-freig">↩ ${fmtT(monFreig, token)} freigegeben</span>` : ''}
+                <span class="sim2-monat-pct">+${fmt(letzter.kumulProzent)}% kum.</span>
+              </span>
+            </div>
+            <span class="sim2-chevron">▾</span>
+          </div>
+          <div class="sim2-monat-body">
+            <table class="sim2-table">
+              <thead>
+                <tr>
+                  <th>Datum</th>
+                  <th>Verträge</th>
+                  <th>Gewinn / Tag</th>
+                  <th>Gew. kum.</th>
+                  <th>Gew. %</th>
+                  <th>Re-Invest</th>
+                  <th>Freigabe heute</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tageDaten.map(d => `
+                  <tr class="${d.istInvestitionZurueck ? 'sim2-investback-row' : d.istInitialFreigabe ? 'sim2-initial-row' : d.freigegebenHeute > 0 ? 'sim2-release-row' : ''} ${d.reinvestiert ? 'sim2-reinvest-row' : ''}">
+                    <td>
+                      ${d.datum.toLocaleDateString('de-CH')}
+                      ${d.reinvestiert ? '<span class="sim2-badge-reinvest">↺</span>' : ''}
+                      ${d.istInvestitionZurueck ? '<span class="sim2-badge-investback">🔓</span>' : d.istInitialFreigabe ? '<span class="sim2-badge-initial-inline">🔓</span>' : ''}
+                    </td>
+                    <td>${d.anzahlVertraege}</td>
+                    <td class="sim2-td-green">+${fmtT(d.tagesgewinn, token)}</td>
+                    <td class="sim2-td-green">+${fmtT(d.kumulGewinn, token)}</td>
+                    <td class="sim2-td-cyan">+${fmt(d.kumulProzent)}%</td>
+                    <td class="sim2-td-green">${d.reinvestiert ? '↺ ' + fmtT(d.reinvestedAmount, token) : ''}</td>
+                    <td class="${d.freigegebenHeute > 0 ? 'sim2-td-freig' : ''}">
+                      ${d.freigegebenHeute > 0
+                        ? d.releasedContracts.map(c =>
+                            `<span class="sim2-freig-val">↩ Vertrag ${fmtT(c.principal, token)} eingesetzt. Ziel von ${fmtT(c.releaseAmount, token)} erreicht</span>`
+                          ).join('')
+                        : ''}
+                    </td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    document.getElementById('sim2Results').innerHTML = html;
+  }
+
+  function sim2Toggle(header) {
+    const body    = header.nextElementSibling;
+    const chevron = header.querySelector('.sim2-chevron');
+    const open    = body.classList.toggle('sim2-open');
+    chevron.textContent = open ? '▴' : '▾';
+  }
+
+  // Beim Laden initialisieren
+  sim2TokenWechsel();
 </script>
 </body>
 </html>
