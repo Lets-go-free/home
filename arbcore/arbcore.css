@@ -235,7 +235,7 @@ section { padding: 5.5rem 2rem; position: relative; z-index: 1; }
 .stat-val { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 2.2rem; background: linear-gradient(135deg, var(--cyan), var(--teal)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; letter-spacing: -.02em; display: block; }
 .stat-label { color: var(--text-sub); font-size: 1rem; margin-top: .35rem; }
 
-.token-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1rem; }
+.token-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1rem; }
 .token-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.4rem .8rem; display: flex; flex-direction: column; align-items: center; gap: .4rem; text-align: center; transition: border-color .2s, transform .2s, box-shadow .2s; cursor: default; }
 .token-card:hover { border-color: var(--border-hi); transform: translateY(-4px); box-shadow: 0 8px 24px rgba(79,195,247,.1); }
 .token-icon { font-size: 1.5rem; color: var(--cyan); line-height: 1; }
@@ -1143,4 +1143,32 @@ footer a:hover { text-decoration: underline; }
   border: 1px solid rgba(79,195,247,.25);
   border-radius: var(--radius);
   padding: 1.2rem 1.5rem;
+}
+
+/* ── MONATE GRUPPE ── */
+.sim2-monate-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.4rem;
+  cursor: pointer;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 1rem;
+  margin-top: 1.2rem;
+  transition: border-color .2s;
+  user-select: none;
+}
+.sim2-monate-toggle:hover { border-color: var(--border-hi); }
+
+.sim2-monate-wrap {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .4s ease;
+}
+.sim2-monate-wrap.sim2-monate-open {
+  max-height: 99999px;
 }

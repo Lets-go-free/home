@@ -140,12 +140,12 @@
       <div class="step">
         <div class="step-num">02</div>
         <h3>Token einzahlen</h3>
-        <p>Zahle deinen gewünschten Token in dein Arbcore-Konto ein. Du behältst jederzeit die volle Kontrolle über dein Geld.</p>
+        <p>Wähle einen oder mehrere der 7 unterstützten Token: USDT, SOL, BTC, BNB, ETH, MATIC oder XRP. Du kannst parallel in mehrere Währungen investieren. Die Gewinne werden jeweils in der investierten Währung ausbezahlt.</p>
       </div>
       <div class="step">
         <div class="step-num">03</div>
         <h3>Bot läuft – fertig</h3>
-        <p>Der Bot übernimmt ab sofort automatisch. Er sucht, handelt und verdient – du lehnst dich zurück.</p>
+        <p>Der Bot übernimmt ab sofort automatisch. Je nach Token liegt der tägliche Netto-Spread zwischen 1.1% und 4.4% – du lehnst dich zurück.</p>
       </div>
     </div>
   </div>
@@ -164,12 +164,12 @@
         <span class="stat-label">Mindesteinlage je nach Token</span>
       </div>
       <div class="stat">
-        <span class="stat-val">6</span>
+        <span class="stat-val">7</span>
         <span class="stat-label">unterstützte Kryptowährungen</span>
       </div>
       <div class="stat">
-        <span class="stat-val">~1%</span>
-        <span class="stat-label">Netto-Spread täglich</span>
+        <span class="stat-val">1.1–4.4%</span>
+        <span class="stat-label">Netto-Spread täglich je Token</span>
       </div>
       <div class="stat">
         <span class="stat-val">~33%</span>
@@ -221,6 +221,11 @@
         <span class="token-icon">⬟</span>
         <span class="token-name">Polygon</span>
         <span class="token-ticker">POL</span>
+      </div>
+      <div class="token-card">
+        <span class="token-icon">✕</span>
+        <span class="token-name">XRP Ledger</span>
+        <span class="token-ticker">XRP</span>
       </div>
     </div>
   </div>
@@ -447,7 +452,7 @@
         <p class="section-label" style="margin-bottom:.4rem;">Exklusiv</p>
         <h2>Warum deine Position im System<br>den Unterschied macht</h2>
         <p>Schau dir die Aufzeichnung an und versteh, warum der Einstiegszeitpunkt bei Arbcore eine entscheidende Rolle spielt.</p>
-        <a href="https://youtu.be/xjtmwABHj4o" target="_blank" class="btn-primary" style="display:inline-block;margin-top:1.4rem;">🎬 Hier geht's zur Aufzeichnung</a>
+        <a href="https://www.youtube.com/watch?v=rc0bn2lrNHw" target="_blank" class="btn-primary" style="display:inline-block;margin-top:1.4rem;">🎬 Hier geht's zur Aufzeichnung</a>
       </div>
     </div>
   </div>
@@ -505,7 +510,13 @@
 
     <div class="sim2-ohne-reinvest fade-in" id="s2OhneReinvest"></div>
     <div class="sim2-summary fade-in" id="sim2Summary"></div>
-    <div class="sim2-results fade-in" id="sim2Results"></div>
+    <div class="sim2-monate-toggle fade-in" onclick="sim2MonateToggle(this)">
+      <span>Monatliche Detailansicht</span>
+      <span class="sim2-chevron" id="sim2MonateChevron">▾</span>
+    </div>
+    <div class="sim2-monate-wrap" id="sim2MonateWrap">
+      <div class="sim2-results" id="sim2Results"></div>
+    </div>
 
   </div>
 </section>
@@ -811,6 +822,13 @@
     }
 
     document.getElementById('sim2Results').innerHTML = html;
+  }
+
+  function sim2MonateToggle(btn) {
+    const wrap    = document.getElementById('sim2MonateWrap');
+    const chevron = document.getElementById('sim2MonateChevron');
+    const open    = wrap.classList.toggle('sim2-monate-open');
+    chevron.textContent = open ? '▴' : '▾';
   }
 
   function sim2Toggle(header) {
