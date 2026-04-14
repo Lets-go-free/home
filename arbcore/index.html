@@ -510,7 +510,7 @@
 
     <div class="sim2-ohne-reinvest fade-in" id="s2OhneReinvest"></div>
     <div class="sim2-summary fade-in" id="sim2Summary"></div>
-    <div class="sim2-monate-toggle fade-in" onclick="sim2MonateToggle(this)">
+    <div class="sim2-monate-toggle" onclick="sim2MonateToggle(this)">
       <span>Monatliche Detailansicht</span>
       <span class="sim2-chevron" id="sim2MonateChevron">▾</span>
     </div>
@@ -822,6 +822,12 @@
     }
 
     document.getElementById('sim2Results').innerHTML = html;
+
+    // Toggle-Button sichtbar machen (wird nach Berechnung eingeblendet)
+    document.querySelector('.sim2-monate-toggle').style.display = 'flex';
+    // Sicherstellen dass Monate zugeklappt bleiben
+    document.getElementById('sim2MonateWrap').classList.remove('sim2-monate-open');
+    document.getElementById('sim2MonateChevron').textContent = '▾';
   }
 
   function sim2MonateToggle(btn) {
