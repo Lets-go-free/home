@@ -1165,10 +1165,8 @@ footer a:hover { text-decoration: underline; }
 .sim2-monate-toggle:hover { border-color: var(--border-hi); }
 
 .sim2-monate-wrap {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height .4s ease;
+  display: none;
 }
 .sim2-monate-wrap.sim2-monate-open {
-  max-height: 99999px;
+  display: block;
 }

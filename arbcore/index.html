@@ -825,16 +825,21 @@
 
     // Toggle-Button sichtbar machen (wird nach Berechnung eingeblendet)
     document.querySelector('.sim2-monate-toggle').style.display = 'flex';
-    // Sicherstellen dass Monate zugeklappt bleiben
-    document.getElementById('sim2MonateWrap').classList.remove('sim2-monate-open');
+    const wrap = document.getElementById('sim2MonateWrap');
+    wrap.style.display = 'none';
     document.getElementById('sim2MonateChevron').textContent = '▾';
   }
 
   function sim2MonateToggle(btn) {
     const wrap    = document.getElementById('sim2MonateWrap');
     const chevron = document.getElementById('sim2MonateChevron');
-    const open    = wrap.classList.toggle('sim2-monate-open');
-    chevron.textContent = open ? '▴' : '▾';
+    if (wrap.style.display === 'block') {
+      wrap.style.display = 'none';
+      chevron.textContent = '▾';
+    } else {
+      wrap.style.display = 'block';
+      chevron.textContent = '▴';
+    }
   }
 
   function sim2Toggle(header) {
