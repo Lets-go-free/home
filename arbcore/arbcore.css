@@ -1260,3 +1260,106 @@ footer a:hover { text-decoration: underline; }
 .sim2-monat-kum-item { display: flex; align-items: center; gap: .3rem; }
 .sim2-monat-kum .sim2-green { color: var(--green); }
 .sim2-monat-kum .sim2-cyan  { color: var(--cyan); }
+
+/* ── NAV LINKS ─────────────────────────────────────────── */
+nav {
+  gap: 1.5rem;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: .25rem;
+}
+
+.nav-link {
+  font-family: 'Outfit', sans-serif;
+  font-size: .9rem;
+  font-weight: 500;
+  color: var(--text-sub);
+  text-decoration: none;
+  padding: .4rem .75rem;
+  border-radius: 8px;
+  transition: color .18s, background .18s;
+  white-space: nowrap;
+}
+.nav-link:hover {
+  color: var(--cyan);
+  background: var(--cyan-dim);
+}
+
+.nav-link--cta {
+  background: linear-gradient(135deg, var(--cyan), var(--teal));
+  color: #050a0f !important;
+  font-weight: 700;
+  padding: .4rem 1rem;
+  box-shadow: 0 2px 12px var(--cyan-glow);
+}
+.nav-link--cta:hover {
+  background: linear-gradient(135deg, var(--teal), var(--cyan));
+  opacity: .9;
+  color: #050a0f !important;
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Burger-Button */
+.nav-burger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: .35rem;
+  width: 32px;
+  height: 32px;
+}
+.nav-burger span {
+  display: block;
+  height: 2px;
+  background: var(--text-sub);
+  border-radius: 2px;
+  transition: transform .25s, opacity .2s, background .2s;
+}
+.nav-burger--open span:nth-child(1) { transform: translateY(7px) rotate(45deg); background: var(--cyan); }
+.nav-burger--open span:nth-child(2) { opacity: 0; }
+.nav-burger--open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); background: var(--cyan); }
+
+/* Mobile */
+@media (max-width: 860px) {
+  .nav-burger { display: flex; }
+
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    background: rgba(7,9,15,.97);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 1.4rem 1.4rem;
+    gap: .3rem;
+    z-index: 99;
+  }
+  .nav-links--open {
+    display: flex;
+  }
+  .nav-link {
+    font-size: 1rem;
+    padding: .65rem .9rem;
+  }
+  .nav-link--cta {
+    text-align: center;
+    margin-top: .4rem;
+    padding: .7rem 1rem;
+  }
+}

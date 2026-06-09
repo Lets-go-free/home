@@ -18,9 +18,21 @@
     </svg>
     <span class="nav-logo-text">One Trade Ltd</span>
   </a>
-  <a class="nav-back" href="https://www.letsgofree.me">
-    ← letsgofree.me
-  </a>
+
+  <div class="nav-links" id="navLinks">
+    <a class="nav-link" href="#how">So funktionierts</a>
+    <a class="nav-link" href="#strategie">Strategie</a>
+    <a class="nav-link" href="#simulation">Simulation</a>
+    <a class="nav-link" href="#transparenz">Warum?</a>
+    <a class="nav-link nav-link--cta" href="#freischalten">Ref-Link</a>
+  </div>
+
+  <div class="nav-right">
+    <button class="nav-burger" id="navBurger" aria-label="Menü öffnen">
+      <span></span><span></span><span></span>
+    </button>
+    <a class="nav-back" href="https://www.letsgofree.me">← letsgofree.me</a>
+  </div>
 </nav>
 
 <!-- HERO -->
@@ -553,6 +565,21 @@
 </footer>
 
 <script>
+  // ── BURGER MENU ─────────────────────────────────────────
+  const burger  = document.getElementById('navBurger');
+  const navLinks = document.getElementById('navLinks');
+  burger.addEventListener('click', () => {
+    const open = navLinks.classList.toggle('nav-links--open');
+    burger.classList.toggle('nav-burger--open', open);
+  });
+  // Menü schliessen beim Klick auf einen Link
+  navLinks.querySelectorAll('a').forEach(a => {
+    a.addEventListener('click', () => {
+      navLinks.classList.remove('nav-links--open');
+      burger.classList.remove('nav-burger--open');
+    });
+  });
+
   // Scroll-triggered fade-ins
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => {
