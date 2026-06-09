@@ -613,17 +613,18 @@
   }
 
   // ── TOKEN-WECHSEL ────────────────────────────────────────
-  function sim2TokenWechsel() {
+  function sim2TokenWechsel(isInit = false) {
     const sym   = document.getElementById('s2Token').value;
     const token = TOKENS[sym];
     document.getElementById('s2BetragLabel').textContent = `Betrag in ${token.symbol}`;
     document.getElementById('s2Unit').textContent = token.symbol;
     document.getElementById('s2AuszahlLabel').textContent = `Erst auszahlen bis (${token.symbol})`;
     document.getElementById('s2AuszahlUnit').textContent = token.symbol;
-    document.getElementById('s2Betrag').value = token.minDeposit;
+    const startVal = isInit ? 1000 : token.minDeposit;
+    document.getElementById('s2Betrag').value = startVal;
     document.getElementById('s2Betrag').min   = token.minDeposit;
     document.getElementById('s2Betrag').step  = token.minDeposit;
-    document.getElementById('s2Auszahl').value = token.minDeposit;
+    document.getElementById('s2Auszahl').value = startVal;
     document.getElementById('s2Auszahl').step  = token.minWithdraw;
     document.getElementById('s2TokenInfo').innerHTML = `
       <div class="sim2-token-pill"><span class="sim2-token-rate">${(token.rate*100).toFixed(2)}% / Tag</span></div>
@@ -935,7 +936,7 @@
     chevron.textContent = open ? '▴' : '▾';
   }
 
-  sim2TokenWechsel();
+  sim2TokenWechsel(true);
 </script>
 </body>
 </html>
