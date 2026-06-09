@@ -64,6 +64,7 @@ nav {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 2rem;
   padding: 1.1rem 2.5rem;
   background: rgba(7,9,15,.88);
   backdrop-filter: blur(16px);
@@ -1262,26 +1263,24 @@ footer a:hover { text-decoration: underline; }
 .sim2-monat-kum .sim2-cyan  { color: var(--cyan); }
 
 /* ── NAV LINKS ─────────────────────────────────────────── */
-nav {
-  gap: 1.5rem;
-}
 
 .nav-links {
   display: flex;
   align-items: center;
-  gap: .25rem;
+  gap: .15rem;
 }
 
 .nav-link {
   font-family: 'Outfit', sans-serif;
-  font-size: .9rem;
+  font-size: .88rem;
   font-weight: 500;
   color: var(--text-sub);
   text-decoration: none;
-  padding: .4rem .75rem;
+  padding: .45rem .9rem;
   border-radius: 8px;
   transition: color .18s, background .18s;
   white-space: nowrap;
+  letter-spacing: .01em;
 }
 .nav-link:hover {
   color: var(--cyan);
@@ -1292,13 +1291,15 @@ nav {
   background: linear-gradient(135deg, var(--cyan), var(--teal));
   color: #050a0f !important;
   font-weight: 700;
-  padding: .4rem 1rem;
+  padding: .45rem 1.1rem;
+  border-radius: 8px;
   box-shadow: 0 2px 12px var(--cyan-glow);
+  margin-left: .5rem;
 }
 .nav-link--cta:hover {
-  background: linear-gradient(135deg, var(--teal), var(--cyan));
-  opacity: .9;
+  opacity: .88;
   color: #050a0f !important;
+  background: linear-gradient(135deg, var(--teal), var(--cyan));
 }
 
 .nav-right {
