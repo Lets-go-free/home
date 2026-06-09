@@ -1150,19 +1150,30 @@ footer a:hover { text-decoration: underline; }
   display: none;
   justify-content: space-between;
   align-items: center;
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: linear-gradient(135deg, var(--card) 60%, rgba(79,195,247,.05));
+  border: 1px solid var(--border-hi);
   border-radius: var(--radius);
-  padding: 1rem 1.4rem;
+  padding: 1.2rem 1.6rem;
   cursor: pointer;
   font-family: 'Outfit', sans-serif;
-  font-weight: 600;
-  font-size: 1rem;
-  margin-top: 1.2rem;
-  transition: border-color .2s;
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-top: 1.4rem;
+  transition: border-color .2s, background .2s, box-shadow .2s;
   user-select: none;
+  box-shadow: 0 2px 12px rgba(79,195,247,.08);
+  color: var(--cyan);
+  letter-spacing: .01em;
 }
-.sim2-monate-toggle:hover { border-color: var(--border-hi); }
+.sim2-monate-toggle:hover {
+  border-color: var(--cyan);
+  box-shadow: 0 4px 20px rgba(79,195,247,.18);
+  background: linear-gradient(135deg, var(--card) 40%, rgba(79,195,247,.09));
+}
+.sim2-monate-toggle .sim2-chevron {
+  font-size: 1.1rem;
+  color: var(--cyan);
+}
 
 .sim2-monate-wrap {
   display: none;
@@ -1170,3 +1181,82 @@ footer a:hover { text-decoration: underline; }
 .sim2-monate-wrap.sim2-monate-open {
   display: block;
 }
+
+/* ── SIMULATION HINWEIS ── */
+.sim2-hinweis {
+  margin-top: 1rem;
+  padding: .8rem 1.1rem;
+  background: rgba(79,195,247,.05);
+  border: 1px solid rgba(79,195,247,.15);
+  border-radius: var(--radius);
+  font-size: .82rem;
+  color: var(--text-sub);
+  line-height: 1.6;
+}
+.sim2-hinweis strong { color: var(--cyan); }
+
+/* ── TAGESGEWINN BOX ── */
+.sim2-tagesgewinn-box {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--card);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius);
+  margin-bottom: 1.2rem;
+  overflow: hidden;
+}
+
+.sim2-tg-item {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  padding: 1rem 1.5rem;
+  flex: 1;
+}
+
+.sim2-tg-highlight {
+  background: rgba(79,195,247,.06);
+}
+
+.sim2-tg-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.sim2-tg-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .65rem;
+  color: var(--muted);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.sim2-tg-val {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--cyan);
+}
+
+@media (max-width: 600px) {
+  .sim2-tagesgewinn-box { flex-direction: column; }
+  .sim2-tg-divider { width: 100%; height: 1px; }
+}
+
+/* ── MONATSHEADER 2. ZEILE ── */
+.sim2-monat-kum {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: .3rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .72rem;
+  color: var(--muted);
+}
+
+.sim2-monat-kum-item { display: flex; align-items: center; gap: .3rem; }
+.sim2-monat-kum .sim2-green { color: var(--green); }
+.sim2-monat-kum .sim2-cyan  { color: var(--cyan); }
