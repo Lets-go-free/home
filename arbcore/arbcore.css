@@ -64,6 +64,7 @@ nav {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 2rem;
   padding: 1.1rem 2.5rem;
   background: rgba(7,9,15,.88);
   backdrop-filter: blur(16px);
@@ -1150,23 +1151,216 @@ footer a:hover { text-decoration: underline; }
   display: none;
   justify-content: space-between;
   align-items: center;
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: linear-gradient(135deg, var(--card) 60%, rgba(79,195,247,.05));
+  border: 1px solid var(--border-hi);
   border-radius: var(--radius);
-  padding: 1rem 1.4rem;
+  padding: 1.2rem 1.6rem;
   cursor: pointer;
   font-family: 'Outfit', sans-serif;
-  font-weight: 600;
-  font-size: 1rem;
-  margin-top: 1.2rem;
-  transition: border-color .2s;
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-top: 1.4rem;
+  transition: border-color .2s, background .2s, box-shadow .2s;
   user-select: none;
+  box-shadow: 0 2px 12px rgba(79,195,247,.08);
+  color: var(--cyan);
+  letter-spacing: .01em;
 }
-.sim2-monate-toggle:hover { border-color: var(--border-hi); }
+.sim2-monate-toggle:hover {
+  border-color: var(--cyan);
+  box-shadow: 0 4px 20px rgba(79,195,247,.18);
+  background: linear-gradient(135deg, var(--card) 40%, rgba(79,195,247,.09));
+}
+.sim2-monate-toggle .sim2-chevron {
+  font-size: 1.1rem;
+  color: var(--cyan);
+}
 
 .sim2-monate-wrap {
   display: none;
 }
 .sim2-monate-wrap.sim2-monate-open {
   display: block;
+}
+
+/* ── SIMULATION HINWEIS ── */
+.sim2-hinweis {
+  margin-top: 1rem;
+  padding: .8rem 1.1rem;
+  background: rgba(79,195,247,.05);
+  border: 1px solid rgba(79,195,247,.15);
+  border-radius: var(--radius);
+  font-size: .82rem;
+  color: var(--text-sub);
+  line-height: 1.6;
+}
+.sim2-hinweis strong { color: var(--cyan); }
+
+/* ── TAGESGEWINN BOX ── */
+.sim2-tagesgewinn-box {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--card);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius);
+  margin-bottom: 1.2rem;
+  overflow: hidden;
+}
+
+.sim2-tg-item {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  padding: 1rem 1.5rem;
+  flex: 1;
+}
+
+.sim2-tg-highlight {
+  background: rgba(79,195,247,.06);
+}
+
+.sim2-tg-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.sim2-tg-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .65rem;
+  color: var(--muted);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.sim2-tg-val {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--cyan);
+}
+
+@media (max-width: 600px) {
+  .sim2-tagesgewinn-box { flex-direction: column; }
+  .sim2-tg-divider { width: 100%; height: 1px; }
+}
+
+/* ── MONATSHEADER 2. ZEILE ── */
+.sim2-monat-kum {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: .3rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .72rem;
+  color: var(--muted);
+}
+
+.sim2-monat-kum-item { display: flex; align-items: center; gap: .3rem; }
+.sim2-monat-kum .sim2-green { color: var(--green); }
+.sim2-monat-kum .sim2-cyan  { color: var(--cyan); }
+
+/* ── NAV LINKS ─────────────────────────────────────────── */
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: .15rem;
+}
+
+.nav-link {
+  font-family: 'Outfit', sans-serif;
+  font-size: .88rem;
+  font-weight: 500;
+  color: var(--text-sub);
+  text-decoration: none;
+  padding: .45rem .9rem;
+  border-radius: 8px;
+  transition: color .18s, background .18s;
+  white-space: nowrap;
+  letter-spacing: .01em;
+}
+.nav-link:hover {
+  color: var(--cyan);
+  background: var(--cyan-dim);
+}
+
+.nav-link--cta {
+  background: linear-gradient(135deg, var(--cyan), var(--teal));
+  color: #050a0f !important;
+  font-weight: 700;
+  padding: .45rem 1.1rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px var(--cyan-glow);
+  margin-left: .5rem;
+}
+.nav-link--cta:hover {
+  opacity: .88;
+  color: #050a0f !important;
+  background: linear-gradient(135deg, var(--teal), var(--cyan));
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Burger-Button */
+.nav-burger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: .35rem;
+  width: 32px;
+  height: 32px;
+}
+.nav-burger span {
+  display: block;
+  height: 2px;
+  background: var(--text-sub);
+  border-radius: 2px;
+  transition: transform .25s, opacity .2s, background .2s;
+}
+.nav-burger--open span:nth-child(1) { transform: translateY(7px) rotate(45deg); background: var(--cyan); }
+.nav-burger--open span:nth-child(2) { opacity: 0; }
+.nav-burger--open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); background: var(--cyan); }
+
+/* Mobile */
+@media (max-width: 860px) {
+  .nav-burger { display: flex; }
+
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    background: rgba(7,9,15,.97);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 1.4rem 1.4rem;
+    gap: .3rem;
+    z-index: 99;
+  }
+  .nav-links--open {
+    display: flex;
+  }
+  .nav-link {
+    font-size: 1rem;
+    padding: .65rem .9rem;
+  }
+  .nav-link--cta {
+    text-align: center;
+    margin-top: .4rem;
+    padding: .7rem 1rem;
+  }
 }
