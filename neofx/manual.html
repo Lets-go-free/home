@@ -17,6 +17,7 @@
         }
         .img-placeholder img {
             display: block;
+            width: 414px;
             max-width: 100%;
             border-radius: 6px;
             margin: 0 auto;
@@ -57,6 +58,101 @@
             font-size: 0.9em;
             margin-right: 10px;
         }
+        .layout {
+            display: flex;
+            align-items: flex-start;
+        }
+        .sidebar {
+            width: 260px;
+            flex-shrink: 0;
+            background: #1a202c;
+            min-height: 100%;
+            position: sticky;
+            top: 0;
+            align-self: stretch;
+            padding: 25px 0;
+        }
+        .sidebar-title {
+            color: #718096;
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            font-weight: 700;
+            padding: 0 22px 14px 22px;
+        }
+        .tree-item {
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .tree-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            background: none;
+            border: none;
+            text-align: left;
+            cursor: pointer;
+            padding: 13px 22px;
+            color: #cbd5e0;
+            font-size: 0.95em;
+            font-weight: 600;
+            font-family: inherit;
+            transition: all 0.2s ease;
+        }
+        .tree-toggle:hover {
+            color: #ffffff;
+            background: rgba(255,255,255,0.06);
+        }
+        .tree-toggle .arrow {
+            display: inline-block;
+            transition: transform 0.25s ease;
+            font-size: 0.8em;
+            color: #718096;
+        }
+        .tree-toggle.open .arrow {
+            transform: rotate(90deg);
+        }
+        .tree-children {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.25s ease;
+            background: rgba(0,0,0,0.15);
+        }
+        .tree-children a {
+            display: block;
+            padding: 10px 22px 10px 42px;
+            color: #a0aec0;
+            text-decoration: none;
+            font-size: 0.88em;
+            border-left: 3px solid transparent;
+            transition: all 0.2s ease;
+        }
+        .tree-children a:hover {
+            color: #ffffff;
+            background: rgba(255,255,255,0.06);
+        }
+        .tree-children a.active {
+            color: #ffffff;
+            border-left-color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+        }
+        .main-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .section h3[id] {
+            scroll-margin-top: 20px;
+        }
+        @media (max-width: 768px) {
+            .layout {
+                flex-direction: column;
+            }
+            .sidebar {
+                width: 100%;
+                position: relative;
+                top: 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -67,9 +163,57 @@
         <p>Tag Markets – Gewinne re-investieren und auszahlen</p>
     </div>
 
+    <div class="layout">
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-title">Inhalt</div>
+
+        <div class="tree-item">
+            <button class="tree-toggle open" onclick="toggleTree(this)">
+                <span>1. Dashboard</span>
+                <span class="arrow">▶</span>
+            </button>
+            <div class="tree-children" style="max-height: 100px;">
+                <a href="#dashboard">Übersicht Dashboard</a>
+            </div>
+        </div>
+
+        <div class="tree-item">
+            <button class="tree-toggle open" onclick="toggleTree(this)">
+                <span>2. Zur Investition</span>
+                <span class="arrow">▶</span>
+            </button>
+            <div class="tree-children" style="max-height: 300px;">
+                <a href="#investition">Schritte zur Investition</a>
+                <a href="#buttons">Bedeutung der Buttons</a>
+            </div>
+        </div>
+
+        <div class="tree-item">
+            <button class="tree-toggle open" onclick="toggleTree(this)">
+                <span>3. Wichtig zu wissen</span>
+                <span class="arrow">▶</span>
+            </button>
+            <div class="tree-children" style="max-height: 100px;">
+                <a href="#wichtig">Sperrfrist & Liquidation</a>
+            </div>
+        </div>
+
+        <div class="tree-item">
+            <button class="tree-toggle open" onclick="toggleTree(this)">
+                <span>4. Geld bewegen</span>
+                <span class="arrow">▶</span>
+            </button>
+            <div class="tree-children" style="max-height: 100px;">
+                <a href="#withdraw">Withdraw</a>
+                <a href="#reinvest">Reinvest</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="main-content">
     <div class="section" style="padding-top: 20px;">
 
-        <h3>Dashboard</h3>
+        <h3 id="dashboard">Dashboard</h3>
         <p style="margin-bottom: 20px; line-height: 1.8;">
             Nach dem Login befindest du dich auf dem Dashboard. Hier siehst du unter anderem auch deine Wallet-Balance.
             Dies ist weder dein investiertes Kapital noch dein Gewinn. Bezahlst du etwas ein, landet das Geld hier.
@@ -83,7 +227,7 @@
             <span>bilder/manual/1 Dashboard.jpeg</span>
         </div>
 
-        <h3>Wie gelange ich zu meiner Investition</h3>
+        <h3 id="investition">Wie gelange ich zu meiner Investition</h3>
 
         <div class="button-list">
             <ul>
@@ -143,7 +287,7 @@
             <span>bilder/manual/6 Strategies.jpeg</span>
         </div>
 
-        <h3>Bedeutung der einzelnen Buttons</h3>
+        <h3 id="buttons">Bedeutung der einzelnen Buttons</h3>
         <div class="button-list">
             <ul>
                 <li><strong>Reinvest:</strong> Hier kannst du den Gewinn direkt reinvestieren. Mindestbetrag ist 1$.</li>
@@ -154,7 +298,7 @@
             </ul>
         </div>
 
-        <h3>Wichtig zu wissen</h3>
+        <h3 id="wichtig">Wichtig zu wissen</h3>
         <div class="warning-box">
             <p><strong>⚠️ Sperrfrist und Liquidationsrisiko:</strong></p>
             <ul style="margin: 10px 0 0 0; padding-left: 20px; line-height: 1.8;">
@@ -176,7 +320,7 @@
             </p>
         </div>
 
-        <h3>Withdraw</h3>
+        <h3 id="withdraw">Withdraw</h3>
         <p style="margin-bottom: 20px; line-height: 1.8;">
             Bei Klick auf Withdraw siehst du den aktuellen Bruttogewinn, welcher ausbezahlt werden kann.
             <strong>Wichtig</strong> – es handelt sich um den Brutto-Gewinn! Die Gebühren von ca. 30% werden
@@ -194,7 +338,7 @@
             <span>bilder/manual/7 Withdraw.jpeg</span>
         </div>
 
-        <h3>Reinvest</h3>
+        <h3 id="reinvest">Reinvest</h3>
         <p style="margin-bottom: 20px; line-height: 1.8;">
             Bei Klick auf Reinvest siehst du den verfügbaren Bruttogewinn für die Reinvestition. Hier spielt
             der Zeitpunkt keine Rolle, da du ja den Betrag wieder auf die gleiche Strategie reinvestierst.
@@ -210,11 +354,50 @@
         </div>
 
     </div>
+    </div>
+    </div>
 
     <div class="footer-link">
         <a href="index.html">← Zurück zur Übersicht</a>
     </div>
 </div>
+
+<script>
+function toggleTree(btn) {
+    const children = btn.nextElementSibling;
+    const isOpen = btn.classList.contains('open');
+    if (isOpen) {
+        btn.classList.remove('open');
+        children.style.maxHeight = '0px';
+    } else {
+        btn.classList.add('open');
+        children.style.maxHeight = children.scrollHeight + 'px';
+    }
+}
+
+// Aktiven Link beim Scrollen markieren
+const sections = document.querySelectorAll('.section h3[id]');
+const navLinks = document.querySelectorAll('.tree-children a');
+
+function updateActiveLink() {
+    let current = '';
+    sections.forEach(section => {
+        const rect = section.getBoundingClientRect();
+        if (rect.top <= 120) {
+            current = section.id;
+        }
+    });
+    navLinks.forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === '#' + current) {
+            link.classList.add('active');
+        }
+    });
+}
+
+window.addEventListener('scroll', updateActiveLink);
+updateActiveLink();
+</script>
 
 </body>
 </html>
