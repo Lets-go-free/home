@@ -209,6 +209,17 @@
                 <a href="#reinvest">Reinvest</a>
             </div>
         </div>
+
+        <div class="tree-item">
+            <button class="tree-toggle open" onclick="toggleTree(this)">
+                <span>5. MetaTrader 5</span>
+                <span class="arrow">▶</span>
+            </button>
+            <div class="tree-children" style="max-height: 200px;">
+                <a href="#mt5-setup">Konto importieren</a>
+                <a href="#mt5-historie">Historie & Buchungen</a>
+            </div>
+        </div>
     </nav>
 
     <div class="main-content">
@@ -352,6 +363,133 @@
             <img src="bilder/manual/9 Reinvest .jpeg" alt="Reinvest" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
             <div class="fallback" style="display:none;">🖼️ Bild fehlt</div>
             <span>bilder/manual/9 Reinvest .jpeg</span>
+        </div>
+
+        <h3 id="mt5-setup">MetaTrader 5</h3>
+        <p style="margin-bottom: 20px; line-height: 1.8;">
+            Wie kann ich die Trades und Profite meiner Strategien verfolgen?
+        </p>
+        <p style="margin-bottom: 20px; line-height: 1.8;">
+            Am einfachsten erfolgt dies über die separate App «MetaTrader 5». Lade dir diese im App Store herunter.
+            Nun kannst du jede Strategie einzeln importieren. Gehe dazu wie folgt vor:
+        </p>
+
+        <div class="img-placeholder">
+            <img src="bilder/manual/MT5/0 MT5 downloaden.png" alt="MT5 downloaden" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+            <div class="fallback" style="display:none;">🖼️ Bild fehlt</div>
+            <span>bilder/manual/MT5/0 MT5 downloaden.png</span>
+        </div>
+
+        <div class="button-list">
+            <ul>
+                <li><span class="step-number">1</span> Logge dich dafür in TagMarkets ein und gehe zur ersten Strategie. Dort siehst du ein Auge-Symbol. Klicke darauf, dann findest du die Zugangsdaten für MetaTrader 5.</li>
+            </ul>
+        </div>
+
+        <div class="img-placeholder">
+            <img src="bilder/manual/MT5/1 Strategie auswählen.PNG" alt="Strategie auswählen" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+            <div class="fallback" style="display:none;">🖼️ Bild fehlt</div>
+            <span>bilder/manual/MT5/1 Strategie auswählen.PNG</span>
+        </div>
+
+        <div class="button-list">
+            <ul>
+                <li><span class="step-number">2</span> Du brauchst die Informationen «Account#» und «Investor Password». <strong>Wichtig:</strong> Bitte nur das «Investor Password» verwenden, nie das Master Password.</li>
+            </ul>
+        </div>
+
+        <div class="img-placeholder">
+            <img src="bilder/manual/MT5/2 Zugangsdaten.PNG" alt="Zugangsdaten" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+            <div class="fallback" style="display:none;">🖼️ Bild fehlt</div>
+            <span>bilder/manual/MT5/2 Zugangsdaten.PNG</span>
+        </div>
+
+        <div class="button-list">
+            <ul>
+                <li><span class="step-number">3</span> Gehe in die App MetaTrader 5. Wähle unten in der Menu-Leiste «Einstellungen» aus und klicke auf «Neues Konto».</li>
+            </ul>
+        </div>
+
+        <div class="img-placeholder">
+            <img src="bilder/manual/MT5/3 Konto hinzufügen.PNG" alt="Konto hinzufügen" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+            <div class="fallback" style="display:none;">🖼️ Bild fehlt</div>
+            <span>bilder/manual/MT5/3 Konto hinzufügen.PNG</span>
+        </div>
+
+        <div class="button-list">
+            <ul>
+                <li><span class="step-number">4</span> Nun musst du den Broker auswählen. Dazu klicke unten in die Such-Leiste und gib T.M. ein – dann solltest du den Eintrag T.M. Financials Ltd sehen. Diesen anklicken.</li>
+            </ul>
+        </div>
+
+        <div class="img-placeholder">
+            <img src="bilder/manual/MT5/4 MT5 Broker wählen.PNG" alt="MT5 Broker wählen" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+            <div class="fallback" style="display:none;">🖼️ Bild fehlt</div>
+            <span>bilder/manual/MT5/4 MT5 Broker wählen.PNG</span>
+        </div>
+
+        <div class="button-list">
+            <ul>
+                <li><span class="step-number">5</span> Nun die Zugangsdaten aus TagMarkets eingeben. Unter Login gibst du den Account# ein, unter Passwort den Wert aus «Investor Password». Beim Bestätigen nicht vergessen, das Passwort zu speichern, ansonsten musst du es jedes Mal wieder eingeben!</li>
+            </ul>
+        </div>
+
+        <div class="img-placeholder">
+            <img src="bilder/manual/MT5/5 Zugangsdaten eingeben.PNG" alt="Zugangsdaten eingeben" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+            <div class="fallback" style="display:none;">🖼️ Bild fehlt</div>
+            <span>bilder/manual/MT5/5 Zugangsdaten eingeben.PNG</span>
+        </div>
+
+        <div class="button-list">
+            <ul>
+                <li><span class="step-number">6</span> Nun solltest du deinen Kontostand sehen. <strong>Hinweis:</strong> Du siehst jeweils den gehebelten Betrag, also deine Investition x12 oder x24.</li>
+            </ul>
+        </div>
+
+        <div class="img-placeholder">
+            <img src="bilder/manual/MT5/6 Kontostand wird angezeigt.PNG" alt="Kontostand wird angezeigt" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+            <div class="fallback" style="display:none;">🖼️ Bild fehlt</div>
+            <span>bilder/manual/MT5/6 Kontostand wird angezeigt.PNG</span>
+        </div>
+
+        <div class="button-list">
+            <ul>
+                <li><span class="step-number">7</span> Unten in der Menu-Leiste kannst du auf «Historie» wechseln, da siehst du alle Trades, Gewinn-Entnahmen und neue Einzahlungen/Reinvests.</li>
+            </ul>
+        </div>
+
+        <div class="img-placeholder">
+            <img src="bilder/manual/MT5/7 Historie.PNG" alt="Historie" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+            <div class="fallback" style="display:none;">🖼️ Bild fehlt</div>
+            <span>bilder/manual/MT5/7 Historie.PNG</span>
+        </div>
+
+        <div class="button-list">
+            <ul>
+                <li><span class="step-number">8</span> Du kannst beliebig viele Konten importieren. Um von einem Konto auf das andere zu wechseln, klicke unten in der Menu-Leiste auf «Einstellungen» und wähle oben das gewünschte Konto aus.</li>
+            </ul>
+        </div>
+
+        <div class="img-placeholder">
+            <img src="bilder/manual/MT5/8 Konto wechseln.PNG" alt="Konto wechseln" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+            <div class="fallback" style="display:none;">🖼️ Bild fehlt</div>
+            <span>bilder/manual/MT5/8 Konto wechseln.PNG</span>
+        </div>
+
+        <h3 id="mt5-historie">Erklärungen zu den Einträgen in Historie</h3>
+        <div class="button-list">
+            <ul>
+                <li>Balance-Einträge sind immer Ein- oder Auszahlungen. Es wird unterschieden zwischen:</li>
+            </ul>
+        </div>
+        <div class="button-list">
+            <ul>
+                <li><strong>Deposit:</strong> Einzahlungen</li>
+                <li><strong>Profit Withdrawal:</strong> Gewinne herausgenommen</li>
+                <li><strong>Adjust:</strong> Rundungskorrekturen</li>
+                <li><strong>Upgrade:</strong> Reinvests</li>
+                <li><strong>PF Deduction:</strong> Gebühren – sobald die Gebühren abgezogen wurden (aktuell jeweils samstags), kannst du deine ganzen Gewinne herausnehmen (Withdraw) und in eine andere Strategie investieren oder auch wieder auf dein persönliches Wallet verschieben.</li>
+            </ul>
         </div>
 
     </div>
