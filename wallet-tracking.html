@@ -488,13 +488,27 @@ const EVM_NATIVE_SYMBOL = { eth: "ETH", bsc: "BNB", matic: "POL", arb: "ETH", ba
 const NATIVE_SYMBOL = { ...EVM_NATIVE_SYMBOL, apertum: "APTM", tron: "TRX", btc: "BTC", xrp: "XRP", sol: "SOL" };
 
 // RPC-Endpunkt (PublicNode, kein Key nötig) pro EVM-Chain - für native Balance und Token-Checks
+// Kostenloser PublicNode/Allnodes-Token - hebt die Archiv-Sperre auf (nötig für den
+// Discovery-Scan über weiter zurückliegende Blöcke) und erhöht generell die Rate-Limits.
+// Kostenloser PublicNode/Allnodes-Token - hebt die Archiv-Sperre auf (nötig für den
+// Discovery-Scan über weiter zurückliegende Blöcke) und erhöht generell die Rate-Limits.
+// PublicNode scheint pro Chain einen eigenen Token zu vergeben statt eines einzigen
+// chain-übergreifenden Tokens - darum eine Map statt einer einzelnen Konstante.
+// Kostenloser PublicNode/Allnodes-Token - hebt die Archiv-Sperre auf (nötig für den
+// Discovery-Scan über weiter zurückliegende Blöcke) und erhöht generell die Rate-Limits.
+// Ein einziger Token gilt chain-übergreifend (bestätigt: ETH und BSC haben denselben Wert geliefert).
+const PUBLICNODE_TOKEN = "a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36";
+function publicnodeToken(chain) {
+  return PUBLICNODE_TOKEN;
+}
+
 const EVM_RPC_URLS = {
-  eth: "https://ethereum-rpc.publicnode.com",
-  bsc: "https://bsc-rpc.publicnode.com",
-  matic: "https://polygon-bor-rpc.publicnode.com",
-  arb: "https://arbitrum-one-rpc.publicnode.com",
-  base: "https://base-rpc.publicnode.com",
-  avax: "https://avalanche-c-chain-rpc.publicnode.com"
+  eth: "https://ethereum-rpc.publicnode.com/" + publicnodeToken("eth"),
+  bsc: "https://bsc-rpc.publicnode.com/" + publicnodeToken("bsc"),
+  matic: "https://polygon-bor-rpc.publicnode.com/" + publicnodeToken("matic"),
+  arb: "https://arbitrum-one-rpc.publicnode.com/" + publicnodeToken("arb"),
+  base: "https://base-rpc.publicnode.com/" + publicnodeToken("base"),
+  avax: "https://avalanche-c-chain-rpc.publicnode.com/" + publicnodeToken("avax")
 };
 
 // Holt Name/Dezimalstellen direkt vom Contract für vordefinierte Token, die noch nie
@@ -1267,7 +1281,7 @@ async function fetchXrpBalance(address) {
 }
 
 async function fetchSolanaBalance(address) {
-  const res = await fetch("https://solana-rpc.publicnode.com", {
+  const res = await fetch("https://solana-rpc.publicnode.com/" + publicnodeToken("sol"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getBalance", params: [address] })
