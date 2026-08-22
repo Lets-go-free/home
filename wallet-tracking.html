@@ -208,6 +208,7 @@
       <button class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
       <button class="tab-btn" data-tab="predefined" onclick="showTab('predefined')">Vordefinierte Token</button>
       <button class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
+      <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
     </div>
 
     <div id="tab-tracking" class="tab-panel">
@@ -305,6 +306,20 @@
         <div id="customTokenList" class="custom-token-list"></div>
         <div class="note">Diese Token sind an deinen Account gebunden (Supabase) - sichtbar und bearbeitbar auf jedem Gerät, auf dem du dich einloggst.</div>
       </div>
+    </div>
+
+    <div id="tab-discovery" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">
+          Sucht in deinen Wallets nach Token, die du tatsächlich hältst, aber die noch nicht auf der sicheren Liste stehen.
+          Apertum und Tron laufen über die ohnehin bereits geladenen Daten. EVM-Chains (Ethereum/BSC/Polygon/Arbitrum/Base/Avalanche)
+          durchsuchen die letzten ca. 300'000 Blöcke nach Token-Transfers an deine Wallet - das deckt die letzten paar Monate ab,
+          nicht zwingend die komplette Wallet-Historie. Läuft nur, wenn du auf "Scan starten" klickst, nicht automatisch.
+        </div>
+        <button id="discoveryBtn" onclick="runDiscoveryScan()">Scan starten</button>
+        <div id="discoveryStatus" class="note" style="margin-top:10px"></div>
+      </div>
+      <div id="discoveryResults"></div>
     </div>
 
   </div>
@@ -853,12 +868,21 @@ async function removeWallet(id) {
 function updateWalletField(id, field, value) {
   const w = wallets.find(w => w.id === id);
   if (w) w[field] = value;
+  updateAllValidationIcons();
 }
 
 async function saveWallet(id) {
   const w = wallets.find(w => w.id === id);
   if (!w) return;
   const statusEl = document.getElementById("saveStatus-" + id);
+
+  const dupeFields = ["evm", "btc", "xrp", "sol", "tron"].filter(f => findDuplicateWalletLabels(f, w[f], id).length > 0);
+  if (dupeFields.length > 0) {
+    if (!confirm("Diese Wallet hat dieselbe Adresse wie eine andere erfasste Wallet (" + dupeFields.join(", ") + "). Trotzdem speichern?")) {
+      return;
+    }
+  }
+
   if (statusEl) statusEl.textContent = "Speichere...";
 
   const payload = {
@@ -887,6 +911,40 @@ async function saveWallet(id) {
   loadAll();
 }
 
+// Prüft, ob eine Wallet-Adresse in einem anderen Wallet-Eintrag doppelt vorkommt.
+// EVM-Adressen werden gross-/kleinschreibungsunabhängig verglichen (Standard bei EVM),
+// alle anderen (Tron, Bitcoin, XRP, Solana) exakt - dort ist Gross-/Kleinschreibung relevant.
+function walletFieldsMatch(field, a, b) {
+  if (!a || !b) return false;
+  if (field === "evm") return a.trim().toLowerCase() === b.trim().toLowerCase();
+  return a.trim() === b.trim();
+}
+
+function findDuplicateWalletLabels(field, value, excludeId) {
+  if (!value) return [];
+  return wallets.filter(w => w.id !== excludeId && walletFieldsMatch(field, w[field], value)).map(w => w.label);
+}
+
+function renderValidationIconInner(field, value, walletId) {
+  if (!value) return "";
+  const dupes = findDuplicateWalletLabels(field, value, walletId);
+  if (dupes.length > 0) {
+    return `<span style="color:var(--danger);font-size:0.75rem;display:block;margin-top:3px">✗ Doppelt (auch bei: ${escapeAttr(dupes.join(", "))})</span>`;
+  }
+  return `<span style="color:#46c878;font-size:0.75rem;display:block;margin-top:3px">✓ eindeutig</span>`;
+}
+
+// Leichte Update-Funktion (nur die Icon-Spans, nicht die ganzen Eingabefelder neu rendern) -
+// sonst würde bei jedem Tastenanschlag der Fokus aus dem Eingabefeld springen.
+function updateAllValidationIcons() {
+  ["evm", "btc", "xrp", "sol", "tron"].forEach(field => {
+    wallets.forEach(w => {
+      const el = document.getElementById(`dup-${w.id}-${field}`);
+      if (el) el.innerHTML = renderValidationIconInner(field, w[field], w.id);
+    });
+  });
+}
+
 function renderWalletInputs() {
   const container = document.getElementById("walletInputsContainer");
   container.innerHTML = wallets.map(w => `
@@ -899,22 +957,27 @@ function renderWalletInputs() {
         <div>
           <span class="field-label">EVM-Adresse</span>
           <input type="text" value="${escapeAttr(w.evm)}" oninput="updateWalletField('${w.id}','evm',this.value)" placeholder="0x..." />
+          <div id="dup-${w.id}-evm">${renderValidationIconInner("evm", w.evm, w.id)}</div>
         </div>
         <div>
           <span class="field-label">Bitcoin-Adresse</span>
           <input type="text" value="${escapeAttr(w.btc)}" oninput="updateWalletField('${w.id}','btc',this.value)" placeholder="bc1... / 1... / 3..." />
+          <div id="dup-${w.id}-btc">${renderValidationIconInner("btc", w.btc, w.id)}</div>
         </div>
         <div>
           <span class="field-label">XRP-Adresse</span>
           <input type="text" value="${escapeAttr(w.xrp)}" oninput="updateWalletField('${w.id}','xrp',this.value)" placeholder="r..." />
+          <div id="dup-${w.id}-xrp">${renderValidationIconInner("xrp", w.xrp, w.id)}</div>
         </div>
         <div>
           <span class="field-label">Solana-Adresse</span>
           <input type="text" value="${escapeAttr(w.sol)}" oninput="updateWalletField('${w.id}','sol',this.value)" placeholder="Base58-Adresse" />
+          <div id="dup-${w.id}-sol">${renderValidationIconInner("sol", w.sol, w.id)}</div>
         </div>
         <div>
           <span class="field-label">Tron-Adresse</span>
           <input type="text" value="${escapeAttr(w.tron)}" oninput="updateWalletField('${w.id}','tron',this.value)" placeholder="T..." />
+          <div id="dup-${w.id}-tron">${renderValidationIconInner("tron", w.tron, w.id)}</div>
         </div>
       </div>
       <div class="action-row" style="margin:10px 0 0;align-items:center">
@@ -1174,13 +1237,14 @@ async function fetchTronAddressInfo(address) {
   const account = (data.data || [])[0];
   const native = account && account.balance ? account.balance / 1e6 : 0;
 
+  // Volle Liste (nicht vorab gefiltert) - so kann sowohl die normale Ansicht (nur sichere
+  // Token, siehe chainRows) als auch die "Entdecken"-Funktion (auch unsichere Token) darauf zugreifen.
   const tokens = [];
   const trc20List = (account && account.trc20) || [];
   trc20List.forEach(entry => {
     const contractAddress = Object.keys(entry)[0];
     const rawStr = entry[contractAddress];
     if (!contractAddress || !rawStr) return;
-    if (!isSafeTokenAddress(contractAddress, "tron")) return; // nur sichere/eigene Token, kein Auto-Discovery unbekannter Token
 
     const raw = BigInt(rawStr);
     if (raw <= 0n) return;
@@ -1477,6 +1541,191 @@ function renderResults() {
   }).join("");
 
   summaryContainer.innerHTML = summaryCards || '<div class="empty">Keine Bestände gefunden.</div>';
+}
+
+// ============================================================
+// "Entdecken" - findet Token, die eine Wallet hält, aber die
+// noch nicht auf der sicheren Liste stehen. Läuft nur auf Klick.
+// ============================================================
+
+const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const DISCOVERY_BLOCK_WINDOW = 300000; // grobe Abdeckung, je nach Chain ein paar Wochen bis Monate
+
+async function discoverEvmTokens(chain, address) {
+  const rpcUrl = EVM_RPC_URLS[chain];
+  const latestHex = await evmRpcCall(rpcUrl, "eth_blockNumber", []);
+  const latest = parseInt(latestHex, 16);
+  const fromBlock = Math.max(0, latest - DISCOVERY_BLOCK_WINDOW);
+  const paddedAddress = "0x" + address.toLowerCase().replace("0x", "").padStart(64, "0");
+
+  const logs = await evmRpcCall(rpcUrl, "eth_getLogs", [{
+    fromBlock: "0x" + fromBlock.toString(16),
+    toBlock: "latest",
+    topics: [TRANSFER_TOPIC, null, paddedAddress]
+  }]);
+
+  const contractSet = new Set((logs || []).map(l => l.address.toLowerCase()));
+  const known = new Set(
+    (SAFE_ADDRESSES[chain] || []).concat(customSafeTokens.filter(t => t.chain === chain).map(t => t.address))
+  );
+  const unknownAddrs = [...contractSet].filter(a => !known.has(a));
+  if (unknownAddrs.length === 0) return [];
+
+  const balanceData = "0x70a08231" + address.toLowerCase().replace("0x", "").padStart(64, "0");
+  const calls = [];
+  const plan = [];
+  unknownAddrs.forEach((addr, idx) => {
+    calls.push({ to: addr, data: balanceData }); plan.push({ idx, type: "balance" });
+    calls.push({ to: addr, data: "0x313ce567" }); plan.push({ idx, type: "decimals" });
+    calls.push({ to: addr, data: "0x95d89b41" }); plan.push({ idx, type: "symbol" });
+  });
+  const results = await evmRpcBatch(rpcUrl, calls);
+  const perToken = unknownAddrs.map(() => ({}));
+  results.forEach((hex, i) => {
+    const { idx, type } = plan[i];
+    perToken[idx][type] = hex;
+  });
+
+  const found = [];
+  unknownAddrs.forEach((addr, idx) => {
+    const balHex = perToken[idx].balance;
+    if (!balHex || balHex === "0x") return;
+    const raw = BigInt(balHex);
+    if (raw <= 0n) return;
+    const decHex = perToken[idx].decimals;
+    const decimals = decHex && decHex !== "0x" ? parseInt(decHex, 16) : 18;
+    const symbol = decodeAbiString(perToken[idx].symbol) || (addr.slice(0, 8) + "…");
+    found.push({ chain, address: addr, symbol, amount: Number(raw) / Math.pow(10, decimals) });
+  });
+  return found;
+}
+
+// GoPlus Security: kostenlose Risiko-Einschätzung für EVM-Token (kein Key nötig).
+// Kein hartes Urteil, nur Signale - Apertum/Tron werden von GoPlus nicht abgedeckt.
+const GOPLUS_CHAIN_ID = { eth: "1", bsc: "56", matic: "137", arb: "42161", base: "8453", avax: "43114" };
+
+async function checkGoPlusRisk(chain, addresses) {
+  const chainId = GOPLUS_CHAIN_ID[chain];
+  if (!chainId || addresses.length === 0) return {};
+  try {
+    const res = await fetch(`https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${addresses.join(",")}`);
+    if (!res.ok) return {};
+    const data = await res.json();
+    return data.result || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function riskFlags(info) {
+  if (!info) return [];
+  const flags = [];
+  if (info.is_honeypot === "1") flags.push("Honeypot");
+  if (info.is_blacklisted === "1") flags.push("gelistet als bösartig");
+  if (info.cannot_sell_all === "1") flags.push("evtl. nicht verkaufbar");
+  if (info.is_mintable === "1") flags.push("beliebig nachprägbar");
+  if (info.is_open_source === "0") flags.push("Contract nicht verifiziert");
+  return flags;
+}
+
+async function runDiscoveryScan() {
+  const btn = document.getElementById("discoveryBtn");
+  const status = document.getElementById("discoveryStatus");
+  const resultsEl = document.getElementById("discoveryResults");
+  btn.disabled = true;
+  resultsEl.innerHTML = "";
+
+  if (wallets.length === 0) {
+    status.textContent = "Keine Wallets erfasst.";
+    btn.disabled = false;
+    return;
+  }
+
+  const allFindings = []; // {walletLabel, chain, address, symbol, amount, risk: [] | null}
+
+  for (const w of wallets) {
+    // Apertum + Tron: volle Liste liegt schon in walletData (aus dem normalen Laden)
+    ["apertum", "tron"].forEach(chain => {
+      const cd = (walletData[w.id] || {})[chain];
+      if (!cd || cd.error) return;
+      (cd.tokens || []).forEach(t => {
+        if (!isSafeTokenAddress(t.address, chain) && t.amount >= DUST_THRESHOLD) {
+          allFindings.push({ walletLabel: w.label, chain, address: t.address, symbol: t.symbol, amount: t.amount, risk: null });
+        }
+      });
+    });
+
+    // EVM-Chains: aktiver Scan über eth_getLogs
+    if (w.evm) {
+      for (const chain of Object.keys(EVM_RPC_URLS)) {
+        status.textContent = `Durchsuche ${w.label} auf ${CHAIN_META[chain].label}...`;
+        try {
+          const found = await discoverEvmTokens(chain, w.evm);
+          found.forEach(f => allFindings.push({ walletLabel: w.label, ...f, risk: null }));
+        } catch (e) {
+          console.error(`Discovery-Fehler ${chain} für ${w.label}:`, e.message);
+        }
+      }
+    }
+  }
+
+  // GoPlus-Risiko-Check, gebündelt pro Chain
+  status.textContent = "Prüfe Risiko-Signale...";
+  const byChain = {};
+  allFindings.forEach(f => {
+    if (!GOPLUS_CHAIN_ID[f.chain]) return;
+    byChain[f.chain] = byChain[f.chain] || new Set();
+    byChain[f.chain].add(f.address);
+  });
+  for (const chain of Object.keys(byChain)) {
+    const addrs = [...byChain[chain]];
+    const result = await checkGoPlusRisk(chain, addrs);
+    allFindings.forEach(f => {
+      if (f.chain === chain && result[f.address.toLowerCase()]) {
+        f.risk = riskFlags(result[f.address.toLowerCase()]);
+      }
+    });
+  }
+
+  renderDiscoveryResults(allFindings);
+  status.textContent = `Fertig. ${allFindings.length} unbekannte(r) Token gefunden.`;
+  btn.disabled = false;
+}
+
+function renderDiscoveryResults(findings) {
+  const el = document.getElementById("discoveryResults");
+  if (findings.length === 0) {
+    el.innerHTML = `<div class="empty">Keine unbekannten Token gefunden - alles, was deine Wallets halten, steht bereits auf der sicheren Liste (oder es gibt nichts Nennenswertes).</div>`;
+    return;
+  }
+
+  el.innerHTML = findings.map(f => {
+    const meta = CHAIN_META[f.chain];
+    let riskHtml = "";
+    if (f.risk === null) {
+      riskHtml = `<span class="badge unsafe">kein Risiko-Check verfügbar</span>`;
+    } else if (f.risk.length === 0) {
+      riskHtml = `<span class="badge safe">keine GoPlus-Warnung</span>`;
+    } else {
+      riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.15);color:var(--danger)">⚠ ${f.risk.join(", ")}</span>`;
+    }
+    return `<div class="custom-token-row" style="align-items:flex-start">
+      <div>
+        <div><span class="dot ${meta.dot}" style="margin-right:6px"></span>${escapeAttr(f.symbol)} · ${fmt(f.amount)} · <span class="note" style="display:inline">${escapeAttr(f.walletLabel)}</span></div>
+        <div class="meta">${meta.label} · ${f.address}</div>
+        <div style="margin-top:6px">${riskHtml}</div>
+      </div>
+      <button onclick="addDiscoveredToken('${f.chain}','${f.address}','${escapeAttr(f.symbol)}')">Als sicher hinzufügen</button>
+    </div>`;
+  }).join("");
+}
+
+async function addDiscoveredToken(chain, address, symbol) {
+  document.getElementById("customChain").value = chain;
+  document.getElementById("customAddress").value = address;
+  document.getElementById("customLabel").value = symbol;
+  await addCustomSafeToken();
+  showTab("custom");
 }
 
 // ---- Initialisierung ----
