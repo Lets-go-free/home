@@ -204,7 +204,13 @@
       </div>
 
       <div class="custom-token-card">
-        <span class="field-label" style="display:block;margin-bottom:8px">Chains anzeigen</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains anzeigen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllChainFilter(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllChainFilter(false)">Alle abwählen</button>
+          </div>
+        </div>
         <div id="chainFilterContainer" style="display:flex;flex-wrap:wrap;gap:14px"></div>
       </div>
 
@@ -379,6 +385,12 @@ function renderChainFilter() {
 function toggleChainFilter(chain, isChecked) {
   if (isChecked) activeChainFilter.add(chain);
   else activeChainFilter.delete(chain);
+  renderResults();
+}
+
+function setAllChainFilter(selectAll) {
+  activeChainFilter = selectAll ? new Set(Object.keys(CHAIN_META)) : new Set();
+  renderChainFilter();
   renderResults();
 }
 
@@ -1154,7 +1166,10 @@ const EXPLORER_URLS = {
   base: (w) => w.evm ? `https://basescan.org/address/${w.evm}` : null,
   avax: (w) => w.evm ? `https://snowtrace.io/address/${w.evm}` : null,
   apertum: (w) => w.evm ? `https://explorer.apertum.io/address/${w.evm}` : null,
-  tron: (w) => w.tron ? `https://tronscan.org/#/address/${w.tron}` : null
+  tron: (w) => w.tron ? `https://tronscan.org/#/address/${w.tron}` : null,
+  btc: (w) => w.btc ? `https://blockstream.info/address/${w.btc}` : null,
+  xrp: (w) => w.xrp ? `https://xrpscan.com/account/${w.xrp}` : null,
+  sol: (w) => w.sol ? `https://solscan.io/account/${w.sol}` : null
 };
 
 function renderResults() {
