@@ -189,6 +189,20 @@
         <button id="loadBtn" onclick="loadAll()">Alle laden</button>
       </div>
 
+      <div class="custom-token-card">
+        <span class="field-label" style="display:block;margin-bottom:8px">Chains anzeigen</span>
+        <div id="chainFilterContainer" style="display:flex;flex-wrap:wrap;gap:14px"></div>
+      </div>
+
+      <div class="field-grid" style="grid-template-columns:220px auto;align-items:end;margin-bottom:20px">
+        <div>
+          <span class="field-label">Gehe zu Wallet</span>
+          <select id="walletNav" onchange="goToWallet(this.value)">
+            <option value="">– auswählen –</option>
+          </select>
+        </div>
+      </div>
+
       <h2>Summary (alle Wallets)</h2>
       <div id="summaryContainer"></div>
 
@@ -222,11 +236,12 @@
               <option value="base">Base</option>
               <option value="avax">Avalanche</option>
               <option value="apertum">Apertum</option>
+              <option value="tron">Tron</option>
             </select>
           </div>
           <div>
             <span class="field-label">Contract-Adresse</span>
-            <input type="text" id="customAddress" placeholder="0x..." />
+            <input type="text" id="customAddress" placeholder="0x... oder T... (Tron)" />
           </div>
           <div>
             <span class="field-label">Label (optional)</span>
@@ -298,6 +313,7 @@ async function onLoggedIn(session) {
   await loadPredefinedTokensFromDb();
   await loadWalletsFromDb();
   await loadCustomSafeTokensFromDb();
+  renderChainFilter();
   renderWalletInputs();
   renderCustomTokenList();
   renderSafeTokenTable();
@@ -328,6 +344,44 @@ const CHAIN_META = {
   xrp:     { label: "XRP",                  dot: "xrp",     coingeckoId: "ripple" },
   sol:     { label: "Solana (SOL)",         dot: "sol",     coingeckoId: "solana" }
 };
+
+// ---- Chain-Filter (Wallet-Tracking-Tab) - standardmässig sind alle Chains aktiv ----
+let activeChainFilter = new Set(Object.keys(CHAIN_META));
+
+function renderChainFilter() {
+  const el = document.getElementById("chainFilterContainer");
+  if (!el) return;
+  el.innerHTML = Object.keys(CHAIN_META).map(chain => {
+    const meta = CHAIN_META[chain];
+    const checked = activeChainFilter.has(chain) ? "checked" : "";
+    return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
+      <input type="checkbox" ${checked} onchange="toggleChainFilter('${chain}', this.checked)" style="width:auto" />
+      <span class="dot ${meta.dot}"></span> ${meta.label}
+    </label>`;
+  }).join("");
+}
+
+function toggleChainFilter(chain, isChecked) {
+  if (isChecked) activeChainFilter.add(chain);
+  else activeChainFilter.delete(chain);
+  renderResults();
+}
+
+// ---- Navigation "Gehe zu Wallet" ----
+function renderWalletNav() {
+  const el = document.getElementById("walletNav");
+  if (!el) return;
+  const current = el.value;
+  el.innerHTML = `<option value="">– auswählen –</option>` +
+    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (wallets.some(w => w.id === current)) el.value = current;
+}
+
+function goToWallet(id) {
+  if (!id) return;
+  const el = document.getElementById("wallet-block-" + id);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 // Native-Coin-Symbol pro EVM-Chain (Arbitrum/Base nutzen ETH als Gas-Token, kein eigenes Coin)
 const EVM_NATIVE_SYMBOL = { eth: "ETH", bsc: "BNB", matic: "POL", arb: "ETH", base: "ETH", avax: "AVAX" };
@@ -389,6 +443,12 @@ async function ensurePredefinedNames() {
 let SAFE_ADDRESSES = {};
 let predefinedTokenLabels = {}; // Key "chain|adresse" -> Label
 
+// Adressen case-sensitiv normalisieren - EVM/Apertum-Adressen sind Hex (Gross-/Klein-
+// schreibung egal), Tron-Adressen sind Base58 und GROSS-/KLEINSCHREIBUNG IST RELEVANT.
+function normalizeAddress(address, chain) {
+  return chain === "tron" ? address.trim() : address.trim().toLowerCase();
+}
+
 async function loadPredefinedTokensFromDb() {
   const { data, error } = await sb.from("predefined_tokens").select("*");
   if (error) { console.error(error); return; }
@@ -396,7 +456,7 @@ async function loadPredefinedTokensFromDb() {
   const labels = {};
   data.forEach(row => {
     const chain = row.chain;
-    const address = row.address.toLowerCase();
+    const address = normalizeAddress(row.address, chain);
     addresses[chain] = addresses[chain] || [];
     addresses[chain].push(address);
     if (row.label) labels[chain + "|" + address] = row.label;
@@ -409,7 +469,7 @@ async function loadPredefinedTokensFromDb() {
 const APERTUM_EXPLORER_API = "https://explorer.apertum.io/api/v2";
 function isSafeTokenAddress(address, chain) {
   if (!address) return false;
-  const a = address.trim().toLowerCase();
+  const a = normalizeAddress(address, chain);
   if ((SAFE_ADDRESSES[chain] || []).includes(a)) return true;
   return customSafeTokens.some(t => t.chain === chain && t.address === a);
 }
@@ -425,11 +485,16 @@ async function loadCustomSafeTokensFromDb() {
 
 async function addCustomSafeToken() {
   const chain = document.getElementById("customChain").value;
-  const address = document.getElementById("customAddress").value.trim().toLowerCase();
+  const rawAddress = document.getElementById("customAddress").value.trim();
+  const address = normalizeAddress(rawAddress, chain);
   const label = document.getElementById("customLabel").value.trim();
 
-  if (!address || !address.startsWith("0x") || address.length !== 42) {
-    alert("Bitte eine gültige Contract-Adresse eingeben (0x... mit 42 Zeichen).");
+  const isValidEvm = address.startsWith("0x") && address.length === 42;
+  const isValidTron = chain === "tron" && address.startsWith("T") && address.length === 34;
+  if (!address || (!isValidEvm && !isValidTron)) {
+    alert(chain === "tron"
+      ? "Bitte eine gültige Tron-Adresse eingeben (beginnt mit T, 34 Zeichen)."
+      : "Bitte eine gültige Contract-Adresse eingeben (0x... mit 42 Zeichen).");
     return;
   }
   if (customSafeTokens.some(t => t.chain === chain && t.address === address)) {
@@ -893,14 +958,40 @@ async function fetchSolanaBalance(address) {
 }
 
 // ---- Tron (native TRX, vorerst ohne TRC20-Token) ----
-async function fetchTronBalance(address) {
+// ---- Tron: nativer TRX-Bestand + sichere TRC20-Token (z.B. USDT-TRC20) ----
+// Bekannte TRC20-Dezimalstellen - TronGrid liefert nur den rohen Betrag, keine Dezimalstellen.
+// Deckt aktuell die grossen Stablecoins ab (alle 6 Dezimalstellen, Branchenstandard).
+const TRON_TOKEN_DECIMALS_DEFAULT = 6;
+
+async function fetchTronAddressInfo(address) {
   const res = await fetch(`https://api.trongrid.io/v1/accounts/${address}`);
   if (!res.ok) throw new Error("HTTP " + res.status);
   const data = await res.json();
   if (!data.success) throw new Error(data.error || "Unbekannter Fehler");
   const account = (data.data || [])[0];
-  const balanceSun = account && account.balance ? account.balance : 0;
-  return balanceSun / 1e6;
+  const native = account && account.balance ? account.balance / 1e6 : 0;
+
+  const tokens = [];
+  const trc20List = (account && account.trc20) || [];
+  trc20List.forEach(entry => {
+    const contractAddress = Object.keys(entry)[0];
+    const rawStr = entry[contractAddress];
+    if (!contractAddress || !rawStr) return;
+    if (!isSafeTokenAddress(contractAddress, "tron")) return; // nur sichere/eigene Token, kein Auto-Discovery unbekannter Token
+
+    const raw = BigInt(rawStr);
+    if (raw <= 0n) return;
+
+    const custom = customSafeTokens.find(t => t.chain === "tron" && t.address === contractAddress);
+    const label = predefinedTokenLabels["tron|" + contractAddress] || (custom ? custom.label : null) || (contractAddress.slice(0, 8) + "…");
+    tokens.push({
+      symbol: label,
+      address: contractAddress,
+      amount: Number(raw) / Math.pow(10, TRON_TOKEN_DECIMALS_DEFAULT)
+    });
+  });
+
+  return { native, tokens };
 }
 
 // ---- Apertum (EVM, chain-id 2786) ----
@@ -959,8 +1050,8 @@ async function loadWalletChain(wallet, chain) {
       walletData[wallet.id].sol = { native: amount, nativeSymbol: "SOL", tokens: [] };
     } else if (chain === "tron") {
       if (!wallet.tron) { delete walletData[wallet.id].tron; return; }
-      const amount = await fetchTronBalance(wallet.tron);
-      walletData[wallet.id].tron = { native: amount, nativeSymbol: "TRX", tokens: [] };
+      const r = await fetchTronAddressInfo(wallet.tron);
+      walletData[wallet.id].tron = { native: r.native, nativeSymbol: "TRX", tokens: r.tokens };
     }
   } catch (err) {
     walletData[wallet.id][chain] = { error: err.message };
@@ -1059,7 +1150,7 @@ function renderResults() {
   } else {
     resultsContainer.innerHTML = wallets.map(w => {
       const data = walletData[w.id] || {};
-      const chainCards = Object.keys(CHAIN_META).map(chain => {
+      const chainCards = Object.keys(CHAIN_META).filter(chain => activeChainFilter.has(chain)).map(chain => {
         const meta = CHAIN_META[chain];
         const result = chainRows(data[chain], chain);
         if (!result) return ""; // keine Adresse eingegeben -> gar nicht anzeigen
@@ -1080,16 +1171,18 @@ function renderResults() {
         </div>`;
       }).join("");
 
-      return `<div class="wallet-block">
+      return `<div class="wallet-block" id="wallet-block-${w.id}">
         <div class="wallet-block-title">${escapeAttr(w.label)}</div>
         ${chainCards || '<div class="empty">Keine Bestände gefunden.</div>'}
       </div>`;
     }).join("");
   }
 
+  renderWalletNav();
+
   // --- Summary über alle Wallets, pro Chain aggregiert ---
   const summaryContainer = document.getElementById("summaryContainer");
-  const summaryCards = Object.keys(CHAIN_META).map(chain => {
+  const summaryCards = Object.keys(CHAIN_META).filter(chain => activeChainFilter.has(chain)).map(chain => {
     const meta = CHAIN_META[chain];
     const totals = {}; // key -> {symbol, amount, safe, isNative}
     let hadError = false;
