@@ -300,6 +300,46 @@ function showTab(name) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
   const panel = document.getElementById("tab-" + name);
   if (panel) panel.classList.add("active");
+  if (name === "predefined") ensurePredefinedNames();
+}
+
+// Holt Name/Dezimalstellen direkt vom Contract für vordefinierte Token, die noch nie
+// eine Wallet mit Bestand hatten (darum bisher nicht im Cache) - unabhängig vom Bestand.
+const PREDEFINED_RPC = { eth: "https://ethereum-rpc.publicnode.com", bsc: "https://bsc-rpc.publicnode.com" };
+async function ensurePredefinedNames() {
+  for (const chain of Object.keys(PREDEFINED_RPC)) {
+    const missing = (SAFE_ADDRESSES[chain] || []).filter(a => !tokenMetaCache[chain + "|" + a]);
+    if (missing.length === 0) continue;
+
+    const calls = [];
+    const plan = [];
+    missing.forEach((addr, idx) => {
+      calls.push({ to: addr, data: "0x313ce567" }); plan.push({ idx, type: "decimals" });
+      calls.push({ to: addr, data: "0x95d89b41" }); plan.push({ idx, type: "symbol" });
+    });
+
+    let results;
+    try {
+      results = await evmRpcBatch(PREDEFINED_RPC[chain], calls);
+    } catch (e) {
+      continue; // Netzwerkfehler - Namen bleiben unbekannt, nächster Tab-Aufruf versucht's erneut
+    }
+
+    const perToken = missing.map(() => ({}));
+    results.forEach((hex, i) => {
+      const { idx, type } = plan[i];
+      perToken[idx][type] = hex;
+    });
+
+    missing.forEach((addr, idx) => {
+      const decHex = perToken[idx].decimals;
+      const decimals = decHex && decHex !== "0x" ? parseInt(decHex, 16) : 18;
+      const symbol = decodeAbiString(perToken[idx].symbol) || (addr.slice(0, 8) + "…");
+      tokenMetaCache[chain + "|" + addr] = { decimals, symbol };
+    });
+  }
+  saveTokenMetaCache();
+  renderSafeTokenTable();
 }
 
 
