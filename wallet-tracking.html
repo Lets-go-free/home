@@ -112,13 +112,25 @@
   .dot.avax { background: var(--avax); }
   .dot.apertum { background: var(--apertum); }
 
-  table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.87rem; table-layout: fixed; }
   th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--border); }
   th { color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .empty, .status { color: var(--muted); font-size: 0.85rem; padding: 6px 0; }
   .error { color: var(--danger); font-size: 0.85rem; padding: 6px 0; }
   .native-row td { font-weight: 600; }
+
+  /* Feste Spaltenbreiten - identisch über ALLE Tabellen hinweg, damit Chain-Karten
+     untereinander sauber ausgerichtet bleiben statt sich am eigenen Inhalt zu orientieren. */
+  .balance-table col.col-token { width: 32%; }
+  .balance-table col.col-amount { width: 17%; }
+  .balance-table col.col-price { width: 19%; }
+  .balance-table col.col-change { width: 12%; }
+  .balance-table col.col-value { width: 20%; }
+  .balance-table td:first-child, .balance-table th:first-child {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .price-source { display: block; font-size: 0.66rem; color: var(--muted); font-weight: 400; margin-top: 1px; }
 
   .wallet-block {
     margin-bottom: 36px;
@@ -297,7 +309,7 @@
 
   </div>
 
-  <footer>Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.</footer>
+  <footer>Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.</footer>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -661,22 +673,31 @@ function populateSelectPreserving(selectId, values, labelFn, placeholderLabel) {
   if (values.includes(current)) el.value = current;
 }
 
-// ---- Live-Kurse (nur native Coins, via CoinGecko, kein API-Key nötig) ----
-let nativePrices = {}; // chainKey -> USD-Preis
+// ---- Live-Kurse: native Coins + möglichst viele Token ----
+let nativePrices = {}; // chainKey -> {price, change24h}
+let tokenPrices = {}; // "chain|adresse" -> {price, change24h, source}
 
-// Kurse für die häufigsten Stablecoin-Token (nur exaktes USDT/USDC, keine gewrappten
-// Varianten wie wUSDT - deren tatsächliche Kurs-Parität haben wir nicht verifiziert).
+// Grosse, kuratierte Coins (USDT/USDC) über die reguläre CoinGecko-Kursliste - zuverlässigste Quelle.
 const TOKEN_COINGECKO_IDS = { USDT: "tether", USDC: "usd-coin" };
-let tokenPrices = {}; // "USDT"/"USDC" -> {price, change24h}
+
+// GeckoTerminal (dieselbe Firma wie CoinGecko, DEX-basierte Kurse) als Ergänzung für alle
+// anderen sicheren Token - deckt auch kleinere/eigene Token ab, sofern sie irgendwo auf
+// einer DEX gehandelt werden. Kein API-Key nötig, kostenlos. LP-Token und Token ohne
+// eigenen Handelsplatz liefern hier bewusst keinen Kurs (kein Rätselraten).
+const GECKOTERMINAL_NETWORK = { eth: "eth", bsc: "bsc", matic: "polygon_pos", arb: "arbitrum", base: "base", avax: "avax", tron: "tron" };
 
 async function loadNativePrices() {
   const ids = Object.values(CHAIN_META).map(m => m.coingeckoId)
     .concat(Object.values(TOKEN_COINGECKO_IDS))
     .join(",");
+
+  const alreadyPriced = {}; // "chain|adresse" -> true, deckt USDT/USDC ab (kein Doppel-Fetch via GeckoTerminal)
+
   try {
     const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
+
     const prices = {};
     Object.keys(CHAIN_META).forEach(chain => {
       const id = CHAIN_META[chain].coingeckoId;
@@ -690,14 +711,20 @@ async function loadNativePrices() {
     nativePrices = prices;
 
     const tPrices = {};
-    Object.keys(TOKEN_COINGECKO_IDS).forEach(symbol => {
-      const id = TOKEN_COINGECKO_IDS[symbol];
-      if (data[id] && typeof data[id].usd === "number") {
-        tPrices[symbol] = {
-          price: data[id].usd,
-          change24h: typeof data[id].usd_24h_change === "number" ? data[id].usd_24h_change : undefined
-        };
-      }
+    Object.keys(SAFE_ADDRESSES).forEach(chain => {
+      (SAFE_ADDRESSES[chain] || []).forEach(address => {
+        const label = predefinedTokenLabels[chain + "|" + address];
+        const cgId = label && TOKEN_COINGECKO_IDS[label.toUpperCase()];
+        if (cgId && data[cgId] && typeof data[cgId].usd === "number") {
+          const key = chain + "|" + address;
+          tPrices[key] = {
+            price: data[cgId].usd,
+            change24h: typeof data[cgId].usd_24h_change === "number" ? data[cgId].usd_24h_change : undefined,
+            source: "CoinGecko"
+          };
+          alreadyPriced[key] = true;
+        }
+      });
     });
     tokenPrices = tPrices;
   } catch (e) {
@@ -705,7 +732,49 @@ async function loadNativePrices() {
     nativePrices = {};
     tokenPrices = {};
   }
+
+  await loadTokenPricesViaGeckoTerminal(alreadyPriced);
 }
+
+async function loadTokenPricesViaGeckoTerminal(alreadyPriced) {
+  for (const chain of Object.keys(GECKOTERMINAL_NETWORK)) {
+    const network = GECKOTERMINAL_NETWORK[chain];
+    const list = (SAFE_ADDRESSES[chain] || [])
+      .concat(customSafeTokens.filter(t => t.chain === chain).map(t => t.address))
+      .filter((addr, idx, arr) => arr.indexOf(addr) === idx) // Duplikate raus
+      .filter(addr => !alreadyPriced[chain + "|" + addr]);
+
+    if (list.length === 0) continue;
+
+    // GeckoTerminal erlaubt max. ~30 Adressen pro Anfrage - in Batches aufteilen
+    for (let i = 0; i < list.length; i += 30) {
+      const batch = list.slice(i, i + 30);
+      try {
+        const res = await fetch(`https://api.geckoterminal.com/api/v2/simple/networks/${network}/token_price/${batch.join(",")}`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        const attrs = data && data.data && data.data.attributes;
+        if (!attrs || !attrs.token_prices) continue;
+        Object.keys(attrs.token_prices).forEach(addr => {
+          const price = parseFloat(attrs.token_prices[addr]);
+          if (!isFinite(price)) return;
+          const changeRaw = attrs.h24_price_change_percentage ? attrs.h24_price_change_percentage[addr] : undefined;
+          const change = changeRaw !== undefined ? parseFloat(changeRaw) : undefined;
+          const key = chain + "|" + normalizeAddress(addr, chain);
+          tokenPrices[key] = {
+            price,
+            change24h: isFinite(change) ? change : undefined,
+            source: "GeckoTerminal (DEX)"
+          };
+        });
+      } catch (e) {
+        // Fehler bei einer Chain sollen die anderen nicht blockieren
+      }
+    }
+  }
+}
+
+
 
 function fmtUsd(n) {
   return "$" + Number(n).toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1190,8 +1259,9 @@ function fmt(n) {
 const DUST_THRESHOLD = 1e-25;
 
 // Kurs für Token-Zeilen anhand des Symbols (nur exaktes USDT/USDC, siehe oben)
-function priceForToken(symbol) {
-  const key = (symbol || "").trim().toUpperCase();
+function priceForToken(chain, address) {
+  if (!address) return null;
+  const key = chain + "|" + normalizeAddress(address, chain);
   return tokenPrices[key] || null;
 }
 
@@ -1208,13 +1278,14 @@ function chainRows(chainData, chainKey) {
       isNative: true,
       price: p ? p.price : undefined,
       change24h: p ? p.change24h : undefined,
+      source: p ? "CoinGecko" : undefined,
       usdValue: p ? chainData.native * p.price : undefined
     });
   }
   (chainData.tokens || []).forEach(t => {
     const safe = isSafeTokenAddress(t.address, chainKey);
     if (t.amount >= DUST_THRESHOLD && safe) {
-      const p = priceForToken(t.symbol);
+      const p = priceForToken(chainKey, t.address);
       rows.push({
         symbol: t.symbol,
         amount: t.amount,
@@ -1223,6 +1294,7 @@ function chainRows(chainData, chainKey) {
         address: t.address,
         price: p ? p.price : undefined,
         change24h: p ? p.change24h : undefined,
+        source: p ? p.source : undefined,
         usdValue: p ? t.amount * p.price : undefined
       });
     }
@@ -1242,8 +1314,19 @@ function fmtChange(pct) {
 
 function renderTable(rows) {
   if (!rows || rows.length === 0) return null;
-  return `<table><thead><tr><th>Token</th><th style="text-align:right">Anzahl</th><th style="text-align:right">Kurs (USD)</th><th style="text-align:right">24h %</th><th style="text-align:right">Wert (USD)</th></tr></thead><tbody>
-    ${rows.map(r => `<tr class="${r.isNative ? 'native-row' : ''}"><td>${r.symbol} ${badge(r.safe)}</td><td class="num">${fmt(r.amount)}</td><td class="num">${r.price !== undefined ? fmtPrice(r.price) : '<span style="color:var(--muted)">–</span>'}</td><td class="num">${fmtChange(r.change24h)}</td><td class="num">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td></tr>`).join("")}
+  return `<table class="balance-table">
+    <colgroup>
+      <col class="col-token"><col class="col-amount"><col class="col-price"><col class="col-change"><col class="col-value">
+    </colgroup>
+    <thead><tr><th>Token</th><th style="text-align:right">Anzahl</th><th style="text-align:right">Kurs (USD)</th><th style="text-align:right">24h %</th><th style="text-align:right">Wert (USD)</th></tr></thead>
+    <tbody>
+    ${rows.map(r => `<tr class="${r.isNative ? 'native-row' : ''}">
+      <td>${r.symbol} ${badge(r.safe)}</td>
+      <td class="num">${fmt(r.amount)}</td>
+      <td class="num">${r.price !== undefined ? fmtPrice(r.price) + (r.source ? `<span class="price-source">${r.source}</span>` : "") : '<span style="color:var(--muted)">–</span>'}</td>
+      <td class="num">${fmtChange(r.change24h)}</td>
+      <td class="num">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td>
+    </tr>`).join("")}
   </tbody></table>`;
 }
 
@@ -1319,7 +1402,7 @@ function renderResults() {
         if (t.amount <= 0) return;
         const safe = isSafeTokenAddress(t.address, chain);
         const key = (t.address || t.symbol).toLowerCase();
-        totals[key] = totals[key] || { symbol: t.symbol, amount: 0, safe, isNative: false };
+        totals[key] = totals[key] || { symbol: t.symbol, amount: 0, safe, isNative: false, address: t.address };
         totals[key].amount += t.amount;
       });
     });
@@ -1332,12 +1415,14 @@ function renderResults() {
       if (r.isNative && p) {
         r.price = p.price;
         r.change24h = p.change24h;
+        r.source = "CoinGecko";
         r.usdValue = r.amount * p.price;
       } else if (!r.isNative) {
-        const tp = priceForToken(r.symbol);
+        const tp = priceForToken(chain, r.address);
         if (tp) {
           r.price = tp.price;
           r.change24h = tp.change24h;
+          r.source = tp.source;
           r.usdValue = r.amount * tp.price;
         }
       }
