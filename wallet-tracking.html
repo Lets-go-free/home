@@ -597,15 +597,22 @@ function renderCustomTokenList() {
     el.innerHTML = `<div class="empty">Noch keine eigenen Token erfasst.</div>`;
     return;
   }
-  el.innerHTML = customSafeTokens.map(t => `
+  el.innerHTML = customSafeTokens.map(t => {
+    const p = priceForToken(t.chain, t.address);
+    const priceHtml = p
+      ? `<div style="margin-top:4px">${fmtPrice(p.price)}<span class="price-source">${p.source}</span></div>`
+      : `<div style="margin-top:4px;color:var(--muted);font-size:0.78rem">Kein Kurs gefunden</div>`;
+    return `
     <div class="custom-token-row">
       <div>
         <div>${escapeAttr(t.label)} <span class="badge safe">sicher</span></div>
         <div class="meta">${t.chain.toUpperCase()} · ${t.address}</div>
+        ${priceHtml}
       </div>
       <button class="remove" onclick="removeCustomSafeToken('${t.chain}','${t.address}')">Entfernen</button>
     </div>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function renderSafeTokenTable() {
@@ -654,12 +661,19 @@ function renderSafeTokenTable() {
 
   filtered.sort((a, b) => a.chain.localeCompare(b.chain));
 
-  el.innerHTML = `<table><thead><tr><th>Chain</th><th>Token</th><th>Adresse</th></tr></thead><tbody>
-    ${filtered.map(r => `<tr>
+  el.innerHTML = `<table><thead><tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th></tr></thead><tbody>
+    ${filtered.map(r => {
+      const p = priceForToken(r.chain, r.address);
+      const priceCell = p
+        ? `${fmtPrice(p.price)}<span class="price-source">${p.source}</span>`
+        : '<span style="color:var(--muted)">–</span>';
+      return `<tr>
       <td>${r.chain.toUpperCase()}</td>
       <td>${r.label ? escapeAttr(r.label) : '<span style="color:var(--muted)">unbekannt (noch kein Bestand gefunden)</span>'}</td>
       <td style="font-size:0.78rem;word-break:break-all">${r.address}</td>
-    </tr>`).join("")}
+      <td style="text-align:right">${priceCell}</td>
+    </tr>`;
+    }).join("")}
   </tbody></table>`;
 }
 
@@ -1239,6 +1253,7 @@ async function loadAll() {
   await Promise.all(jobs);
   renderResults();
   renderSafeTokenTable();
+  renderCustomTokenList();
   btn.disabled = false;
 }
 
