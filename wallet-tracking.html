@@ -611,8 +611,15 @@ function renderSafeTokenTable() {
 // ---- Live-Kurse (nur native Coins, via CoinGecko, kein API-Key nötig) ----
 let nativePrices = {}; // chainKey -> USD-Preis
 
+// Kurse für die häufigsten Stablecoin-Token (nur exaktes USDT/USDC, keine gewrappten
+// Varianten wie wUSDT - deren tatsächliche Kurs-Parität haben wir nicht verifiziert).
+const TOKEN_COINGECKO_IDS = { USDT: "tether", USDC: "usd-coin" };
+let tokenPrices = {}; // "USDT"/"USDC" -> {price, change24h}
+
 async function loadNativePrices() {
-  const ids = Object.values(CHAIN_META).map(m => m.coingeckoId).join(",");
+  const ids = Object.values(CHAIN_META).map(m => m.coingeckoId)
+    .concat(Object.values(TOKEN_COINGECKO_IDS))
+    .join(",");
   try {
     const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -628,9 +635,22 @@ async function loadNativePrices() {
       }
     });
     nativePrices = prices;
+
+    const tPrices = {};
+    Object.keys(TOKEN_COINGECKO_IDS).forEach(symbol => {
+      const id = TOKEN_COINGECKO_IDS[symbol];
+      if (data[id] && typeof data[id].usd === "number") {
+        tPrices[symbol] = {
+          price: data[id].usd,
+          change24h: typeof data[id].usd_24h_change === "number" ? data[id].usd_24h_change : undefined
+        };
+      }
+    });
+    tokenPrices = tPrices;
   } catch (e) {
     // Kurse sind ein Zusatz - falls das fehlschlägt, laufen Bestände trotzdem normal weiter
     nativePrices = {};
+    tokenPrices = {};
   }
 }
 
@@ -1116,6 +1136,12 @@ function fmt(n) {
 // der nicht fälschlich ausgeblendet werden soll.
 const DUST_THRESHOLD = 1e-25;
 
+// Kurs für Token-Zeilen anhand des Symbols (nur exaktes USDT/USDC, siehe oben)
+function priceForToken(symbol) {
+  const key = (symbol || "").trim().toUpperCase();
+  return tokenPrices[key] || null;
+}
+
 function chainRows(chainData, chainKey) {
   if (!chainData) return null;
   if (chainData.error) return { error: chainData.error };
@@ -1135,7 +1161,17 @@ function chainRows(chainData, chainKey) {
   (chainData.tokens || []).forEach(t => {
     const safe = isSafeTokenAddress(t.address, chainKey);
     if (t.amount >= DUST_THRESHOLD && safe) {
-      rows.push({ symbol: t.symbol, amount: t.amount, safe, isNative: false, address: t.address });
+      const p = priceForToken(t.symbol);
+      rows.push({
+        symbol: t.symbol,
+        amount: t.amount,
+        safe,
+        isNative: false,
+        address: t.address,
+        price: p ? p.price : undefined,
+        change24h: p ? p.change24h : undefined,
+        usdValue: p ? t.amount * p.price : undefined
+      });
     }
   });
   return { rows };
@@ -1244,6 +1280,13 @@ function renderResults() {
         r.price = p.price;
         r.change24h = p.change24h;
         r.usdValue = r.amount * p.price;
+      } else if (!r.isNative) {
+        const tp = priceForToken(r.symbol);
+        if (tp) {
+          r.price = tp.price;
+          r.change24h = tp.change24h;
+          r.usdValue = r.amount * tp.price;
+        }
       }
     });
 
