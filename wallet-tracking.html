@@ -444,6 +444,10 @@ function goToWallet(id) {
 // Native-Coin-Symbol pro EVM-Chain (Arbitrum/Base nutzen ETH als Gas-Token, kein eigenes Coin)
 const EVM_NATIVE_SYMBOL = { eth: "ETH", bsc: "BNB", matic: "POL", arb: "ETH", base: "ETH", avax: "AVAX" };
 
+// Native Symbole für ALLE Chains (auch nicht-EVM) - für die Anzeige nativer Coins
+// in der Liste der sicheren Token.
+const NATIVE_SYMBOL = { ...EVM_NATIVE_SYMBOL, apertum: "APTM", tron: "TRX", btc: "BTC", xrp: "XRP", sol: "SOL" };
+
 // RPC-Endpunkt (PublicNode, kein Key nötig) pro EVM-Chain - für native Balance und Token-Checks
 const EVM_RPC_URLS = {
   eth: "https://ethereum-rpc.publicnode.com",
@@ -619,6 +623,11 @@ function renderSafeTokenTable() {
   const el = document.getElementById("safeTokenTable");
   const rows = [];
 
+  // Native Coins zuerst - eine Zeile pro Chain
+  Object.keys(CHAIN_META).forEach(chain => {
+    rows.push({ chain, address: null, label: (NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)", isNative: true });
+  });
+
   Object.keys(SAFE_ADDRESSES).forEach(chain => {
     (SAFE_ADDRESSES[chain] || []).forEach(address => {
       let label = predefinedTokenLabels[chain + "|" + address] || null;
@@ -646,7 +655,7 @@ function renderSafeTokenTable() {
   if (textFilter) {
     filtered = filtered.filter(r =>
       (r.label || "").toLowerCase().includes(textFilter) ||
-      r.address.toLowerCase().includes(textFilter)
+      (r.address || "").toLowerCase().includes(textFilter)
     );
   }
 
@@ -663,14 +672,20 @@ function renderSafeTokenTable() {
 
   el.innerHTML = `<table><thead><tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th></tr></thead><tbody>
     ${filtered.map(r => {
-      const p = priceForToken(r.chain, r.address);
+      let p;
+      if (r.isNative) {
+        const np = nativePrices[r.chain];
+        p = np ? { price: np.price, source: "CoinGecko" } : null;
+      } else {
+        p = priceForToken(r.chain, r.address);
+      }
       const priceCell = p
         ? `${fmtPrice(p.price)}<span class="price-source">${p.source}</span>`
         : '<span style="color:var(--muted)">–</span>';
       return `<tr>
       <td>${r.chain.toUpperCase()}</td>
       <td>${r.label ? escapeAttr(r.label) : '<span style="color:var(--muted)">unbekannt (noch kein Bestand gefunden)</span>'}</td>
-      <td style="font-size:0.78rem;word-break:break-all">${r.address}</td>
+      <td style="font-size:0.78rem;word-break:break-all">${r.isNative ? '<span style="color:var(--muted)">– (nativ)</span>' : r.address}</td>
       <td style="text-align:right">${priceCell}</td>
     </tr>`;
     }).join("")}
