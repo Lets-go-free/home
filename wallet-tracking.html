@@ -716,10 +716,11 @@ function decodeAbiString(hex) {
     const lengthHex = data.slice(64, 128);
     const length = parseInt(lengthHex, 16);
     const strHex = data.slice(128, 128 + length * 2);
-    let str = "";
+    const bytes = new Uint8Array(strHex.length / 2);
     for (let i = 0; i < strHex.length; i += 2) {
-      str += String.fromCharCode(parseInt(strHex.substr(i, 2), 16));
+      bytes[i / 2] = parseInt(strHex.substr(i, 2), 16);
     }
+    const str = new TextDecoder("utf-8").decode(bytes);
     return str.replace(/\0/g, "").trim();
   } catch (e) {
     return "";
@@ -762,10 +763,20 @@ async function evmRpcBatch(rpcUrl, calls) {
 // in localStorage gespeichert: nach dem allerersten Laden entfällt dieser Abruf
 // bei jedem weiteren Seitenaufruf komplett, auch nach einem Browser-Neustart.
 const TOKEN_META_CACHE_KEY = "tokenMetaCache";
+const TOKEN_META_CACHE_VERSION_KEY = "tokenMetaCacheVersion";
+const TOKEN_META_CACHE_VERSION = 2; // hochzählen, wenn sich das Cache-Format/die Dekodierung ändert
 let tokenMetaCache = {};
 
 function loadTokenMetaCache() {
   try {
+    const storedVersion = localStorage.getItem(TOKEN_META_CACHE_VERSION_KEY);
+    if (storedVersion !== String(TOKEN_META_CACHE_VERSION)) {
+      // Alter/fehlerhafter Cache (z.B. falsch dekodierte Sonderzeichen) - verwerfen und neu aufbauen
+      localStorage.removeItem(TOKEN_META_CACHE_KEY);
+      localStorage.setItem(TOKEN_META_CACHE_VERSION_KEY, String(TOKEN_META_CACHE_VERSION));
+      tokenMetaCache = {};
+      return;
+    }
     const raw = localStorage.getItem(TOKEN_META_CACHE_KEY);
     tokenMetaCache = raw ? JSON.parse(raw) : {};
   } catch (e) {
