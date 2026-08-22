@@ -99,7 +99,7 @@
   .chain-title {
     display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 12px; font-size: 0.92rem;
   }
-  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block; vertical-align: middle; }
   .dot.eth { background: var(--eth); }
   .dot.bsc { background: var(--bsc); }
   .dot.matic { background: var(--matic); }
@@ -516,12 +516,17 @@ async function loadPredefinedTokensFromDb() {
   if (error) { console.error(error); return; }
   const addresses = {};
   const labels = {};
+  const seen = new Set(); // Dedupe für den Fall, dass dieselbe Adresse mit unterschiedlicher
+                           // Gross-/Kleinschreibung mehrfach in der DB steht (case-sensitiver PK)
   data.forEach(row => {
     const chain = row.chain;
     const address = normalizeAddress(row.address, chain);
+    const dedupeKey = chain + "|" + address;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
     addresses[chain] = addresses[chain] || [];
     addresses[chain].push(address);
-    if (row.label) labels[chain + "|" + address] = row.label;
+    if (row.label) labels[dedupeKey] = row.label;
   });
   SAFE_ADDRESSES = addresses;
   predefinedTokenLabels = labels;
@@ -683,7 +688,7 @@ function renderSafeTokenTable() {
         ? `${fmtPrice(p.price)}<span class="price-source">${p.source}</span>`
         : '<span style="color:var(--muted)">–</span>';
       return `<tr>
-      <td>${r.chain.toUpperCase()}</td>
+      <td><span class="dot ${CHAIN_META[r.chain] ? CHAIN_META[r.chain].dot : ''}" style="margin-right:6px"></span>${r.chain.toUpperCase()}</td>
       <td>${r.label ? escapeAttr(r.label) : '<span style="color:var(--muted)">unbekannt (noch kein Bestand gefunden)</span>'}</td>
       <td style="font-size:0.78rem;word-break:break-all">${r.isNative ? '<span style="color:var(--muted)">– (nativ)</span>' : r.address}</td>
       <td style="text-align:right">${priceCell}</td>
