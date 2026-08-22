@@ -284,6 +284,7 @@ async function onLoggedIn(session) {
   document.getElementById("userEmailLabel").textContent = "Eingeloggt als " + currentUser.email;
 
   loadTokenMetaCache();
+  await loadPredefinedTokensFromDb();
   await loadWalletsFromDb();
   await loadCustomSafeTokensFromDb();
   renderWalletInputs();
@@ -309,7 +310,7 @@ const PREDEFINED_RPC = { eth: "https://ethereum-rpc.publicnode.com", bsc: "https
 async function ensurePredefinedNames() {
   for (const chain of Object.keys(PREDEFINED_RPC)) {
     const missing = (SAFE_ADDRESSES[chain] || []).filter(a =>
-      !tokenMetaCache[chain + "|" + a] && !(chain === "bsc" && PCLP_TOKEN_NAMES[a])
+      !tokenMetaCache[chain + "|" + a] && !predefinedTokenLabels[chain + "|" + a]
     );
     if (missing.length === 0) continue;
 
@@ -345,57 +346,26 @@ async function ensurePredefinedNames() {
 }
 
 
-const SAFE_ADDRESSES = {
-  bsc: [
-    "0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c",
-    "0x55d398326f99059ff775485246999027b3197955",
-    "0xf585b5b4f22816baf7629aea55b701662630397b",
-    "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
-    "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
-    "0x9c23942ca2c35e06d1d20747f33705983a18d2ab",
-    "0x3745e245612f130b57589688060454a8ae43276c",
-    "0x6ea1734df1627453daa6834776cb0403abc401b1",
-    "0xc0d8daa6516bab4efce440860987e735bab44160",
-    "0x6c559d849f70477723dc94405018a436fa9fdc12",
-    "0xaa90a8cdab8b8e902293a2817d1d286f66cbcec5",
-    "0x3dda9ea88136ecede768cd374a2af37219da55e7",
-    "0x6b27bb584f44f55e865432dceb9ebbe9a17fd4a8",
-    "0xc6585bc17b53792f281a9739579dd60535c1f9fb",
-    "0x8b0b4c7878623db8e5e6cb9bd0fa85c07c3b85f1",
-    "0x72dcf845ae36401e82e681b0e063d0703bac0bba",
-    "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
-    "0xc51c99af9d5c31d0c37d028500b2b344debdf188",
-    "0x4ce91c45c140486a3a9d52b16015dd58254115b9",
-    "0x1c8dd0dc515166b4349a9b8bd7db3945445c5e52",
-    "0x2182aad4bf07a96d347c653a126e2016edf0eff3",
-    "0x8fc5e4cc4768449bc7feb0bf094bcdc3e4b16975",
-    "0x8f1d83feb2d65f04ce7da4f1f476f5272821dfdf",
-    "0x1e7ea2ec47199191dc3b642bb6c24ed03cc1a641",
-    "0x387afa0ece06b1bd60c407f3b916b7bbc4575bbf"
-  ],
-  eth: [
-    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
-    "0x1bbf25e71ec48b84d773809b4ba55b6f4be946fb",
-    "0xba7fe208e0167e4047a996e1efea830515f433f8",
-    "0x0fc6c0465c9739d4a42daca22eb3b2cb0eb9937a",
-    "0x72bf018df20fbacf542f5ec159c6a7f0d7850967",
-    "0x448fa53be5b9f792d6f799428df8d4c89eb9f04a",
-    "0x97be09f2523b39b835da9ea3857cfa1d3c660cbb",
-    "0x7fdeb46b3a0916630f36e886d675602b1007fcbb",
-    "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
-    "0x1e49768714e438e789047f48fd386686a5707db2"
-  ],
-  apertum: [
-    "0x110ac02ba3384bc055c13a87766049a74517beda",
-    "0x1487db421f6b58e77bfefc905fdc1ede5fb85c7f",
-    "0xd979f41e12a69aa82f04866444ea91e8e8faefd9",
-    "0x75598b9f54df1472bb2bdc3b5dc791bdb109a52b",
-    "0xf081daa36f367f4a5f93ac68c14fb39b50a58ef8",
-    "0x01882c43aa0bee891b54857c15cc19a3df946f01",
-    "0xf3074054737b9e83d73c3c17a007939e12698d5c",
-    "0xf75dd43f59cba81329f2fa3d98d0c0908cffebb8"
-  ]
-};
+// Vordefinierte sichere Token kommen jetzt aus Supabase (Tabelle predefined_tokens),
+// nicht mehr fest im Code - siehe loadPredefinedTokensFromDb().
+let SAFE_ADDRESSES = {};
+let predefinedTokenLabels = {}; // Key "chain|adresse" -> Label
+
+async function loadPredefinedTokensFromDb() {
+  const { data, error } = await sb.from("predefined_tokens").select("*");
+  if (error) { console.error(error); return; }
+  const addresses = {};
+  const labels = {};
+  data.forEach(row => {
+    const chain = row.chain;
+    const address = row.address.toLowerCase();
+    addresses[chain] = addresses[chain] || [];
+    addresses[chain].push(address);
+    if (row.label) labels[chain + "|" + address] = row.label;
+  });
+  SAFE_ADDRESSES = addresses;
+  predefinedTokenLabels = labels;
+}
 
 // Apertum: Balance-Abfrage über die öffentliche Blockscout-Explorer-API (CORS-freundlich für Browser-Zugriffe)
 const APERTUM_EXPLORER_API = "https://explorer.apertum.io/api/v2";
@@ -477,47 +447,14 @@ function renderCustomTokenList() {
   `).join("");
 }
 
-// Feste Namenszuordnung für Apertum-Token, da diese Chain über die Blockscout-API
-// läuft (nicht über den RPC-Metadaten-Cache) und darum sonst ohne Namen bliebe.
-const APERTUM_TOKEN_NAMES = {
-  "0x110ac02ba3384bc055c13a87766049a74517beda": "wAPTM",
-  "0x1487db421f6b58e77bfefc905fdc1ede5fb85c7f": "wUSDT",
-  "0xd979f41e12a69aa82f04866444ea91e8e8faefd9": "wUSDC",
-  "0x75598b9f54df1472bb2bdc3b5dc791bdb109a52b": "wBTC",
-  "0xf081daa36f367f4a5f93ac68c14fb39b50a58ef8": "wSOL",
-  "0x01882c43aa0bee891b54857c15cc19a3df946f01": "wETH",
-  "0xf3074054737b9e83d73c3c17a007939e12698d5c": "wBNB",
-  "0xf75dd43f59cba81329f2fa3d98d0c0908cffebb8": "wAVAX"
-};
-
-// Feste Namenszuordnung für BSC-PancakeSwap-LP-Token (Namen selbst geliefert,
-// da der Contract dafür meist keinen aussagekräftigen symbol()-Namen liefert).
-const PCLP_TOKEN_NAMES = {
-  "0x6b27bb584f44f55e865432dceb9ebbe9a17fd4a8": "PCLP VOW/BTCB",
-  "0xc6585bc17b53792f281a9739579dd60535c1f9fb": "PCLP VOW/USDT",
-  "0x8b0b4c7878623db8e5e6cb9bd0fa85c07c3b85f1": "PCLP v£/v€",
-  "0x72dcf845ae36401e82e681b0e063d0703bac0bba": "PCLP VOW/vUSD",
-  "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16": "PCLP vUSD/VOW",
-  "0xc51c99af9d5c31d0c37d028500b2b344debdf188": "PCLP VOW/v$",
-  "0x1c8dd0dc515166b4349a9b8bd7db3945445c5e52": "PCLP v€/VOW",
-  "0x4ce91c45c140486a3a9d52b16015dd58254115b9": "PCLP USDC/v$",
-  "0x2182aad4bf07a96d347c653a126e2016edf0eff3": "PCLP TLN Gold/v$",
-  "0x1e7ea2ec47199191dc3b642bb6c24ed03cc1a641": "PCLP TLN Gold/USDT",
-  "0x387afa0ece06b1bd60c407f3b916b7bbc4575bbf": "PCLP v£/VOW"
-};
-
 function renderSafeTokenTable() {
   const el = document.getElementById("safeTokenTable");
   const rows = [];
 
   Object.keys(SAFE_ADDRESSES).forEach(chain => {
     (SAFE_ADDRESSES[chain] || []).forEach(address => {
-      let label = null;
-      if (chain === "apertum") {
-        label = APERTUM_TOKEN_NAMES[address] || null;
-      } else if (chain === "bsc" && PCLP_TOKEN_NAMES[address]) {
-        label = PCLP_TOKEN_NAMES[address];
-      } else {
+      let label = predefinedTokenLabels[chain + "|" + address] || null;
+      if (!label) {
         const cached = tokenMetaCache[chain + "|" + address];
         label = cached ? cached.symbol : null;
       }
