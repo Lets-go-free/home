@@ -885,7 +885,7 @@ async function fetchApertumAddressInfo(address) {
           amount: Number(raw) / Math.pow(10, decimals)
         };
       })
-      .filter(t => t.amount > 0);
+      .filter(t => t.amount >= DUST_THRESHOLD);
   }
   return { native, tokens };
 }
@@ -953,11 +953,16 @@ function fmt(n) {
   return Number(n).toLocaleString('de-CH', { maximumFractionDigits: 6 });
 }
 
+// Nur noch echte Nullen/Rundungsrauschen gelten als Staub - Token mit z.B. 18
+// Dezimalstellen können einen realen, aber winzigen Bestand haben (bis zur 18. Stelle),
+// der nicht fälschlich ausgeblendet werden soll.
+const DUST_THRESHOLD = 1e-25;
+
 function chainRows(chainData, chainKey) {
   if (!chainData) return null;
   if (chainData.error) return { error: chainData.error };
   const rows = [];
-  if (chainData.native !== null && chainData.native !== undefined && chainData.native > 0) {
+  if (chainData.native !== null && chainData.native !== undefined && chainData.native >= DUST_THRESHOLD) {
     const p = nativePrices[chainKey];
     rows.push({
       symbol: chainData.nativeSymbol + " (nativ)",
@@ -971,7 +976,7 @@ function chainRows(chainData, chainKey) {
   }
   (chainData.tokens || []).forEach(t => {
     const safe = isSafeTokenAddress(t.address, chainKey);
-    if (t.amount > 0 && safe) {
+    if (t.amount >= DUST_THRESHOLD && safe) {
       rows.push({ symbol: t.symbol, amount: t.amount, safe, isNative: false, address: t.address });
     }
   });
@@ -1063,7 +1068,9 @@ function renderResults() {
       });
     });
 
-    const rows = Object.values(totals).filter(r => r.safe);
+    // Erst NACH dem Aufsummieren über alle Wallets filtern - eine Summe kann trotz
+    // einzelner Mini-Beträge unter der Sichtbarkeitsschwelle liegen.
+    const rows = Object.values(totals).filter(r => r.safe && r.amount >= DUST_THRESHOLD);
     const p = nativePrices[chain];
     rows.forEach(r => {
       if (r.isNative && p) {
