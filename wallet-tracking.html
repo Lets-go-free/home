@@ -211,6 +211,7 @@
     </div>
 
     <div id="tab-wallets" class="tab-panel">
+      <div class="note" style="margin-bottom:14px">EVM-Adresse gilt für: Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche, Apertum – ist bei allen diesen Chains dieselbe Adresse.</div>
       <div id="walletInputsContainer"></div>
       <div class="action-row">
         <button class="secondary" onclick="addWallet()">+ Wallet hinzufügen</button>
@@ -694,7 +695,7 @@ function renderWalletInputs() {
       </div>
       <div class="field-grid">
         <div>
-          <span class="field-label">EVM-Adresse (Ethereum / BSC / Polygon)</span>
+          <span class="field-label">EVM-Adresse</span>
           <input type="text" value="${escapeAttr(w.evm)}" oninput="updateWalletField('${w.id}','evm',this.value)" placeholder="0x..." />
         </div>
         <div>
