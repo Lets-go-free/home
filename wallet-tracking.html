@@ -876,6 +876,12 @@ async function saveWallet(id) {
   if (!w) return;
   const statusEl = document.getElementById("saveStatus-" + id);
 
+  const invalidFields = ["evm", "btc", "xrp", "sol", "tron"].filter(f => w[f] && !isValidAddressFormat(f, w[f]));
+  if (invalidFields.length > 0) {
+    alert("Ungültiges Adressformat bei: " + invalidFields.join(", ") + ". Bitte korrigieren, bevor du speicherst.");
+    return;
+  }
+
   const dupeFields = ["evm", "btc", "xrp", "sol", "tron"].filter(f => findDuplicateWalletLabels(f, w[f], id).length > 0);
   if (dupeFields.length > 0) {
     if (!confirm("Diese Wallet hat dieselbe Adresse wie eine andere erfasste Wallet (" + dupeFields.join(", ") + "). Trotzdem speichern?")) {
@@ -911,6 +917,27 @@ async function saveWallet(id) {
   loadAll();
 }
 
+// Format-Validierung pro Chain (Länge/Präfix/Zeichensatz) - rein strukturell, keine
+// Checksum-Prüfung, aber fängt Tippfehler und falsch eingefügte Adressen zuverlässig ab.
+function isValidAddressFormat(field, value) {
+  if (!value) return true; // leer = nichts zu prüfen
+  const v = value.trim();
+  switch (field) {
+    case "evm":
+      return /^0x[0-9a-fA-F]{40}$/.test(v);
+    case "tron":
+      return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(v);
+    case "sol":
+      return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v);
+    case "xrp":
+      return /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(v);
+    case "btc":
+      return /^(bc1[0-9a-z]{25,62}|[13][1-9A-HJ-NP-Za-km-z]{25,34})$/i.test(v);
+    default:
+      return true;
+  }
+}
+
 // Prüft, ob eine Wallet-Adresse in einem anderen Wallet-Eintrag doppelt vorkommt.
 // EVM-Adressen werden gross-/kleinschreibungsunabhängig verglichen (Standard bei EVM),
 // alle anderen (Tron, Bitcoin, XRP, Solana) exakt - dort ist Gross-/Kleinschreibung relevant.
@@ -927,6 +954,9 @@ function findDuplicateWalletLabels(field, value, excludeId) {
 
 function renderValidationIconInner(field, value, walletId) {
   if (!value) return "";
+  if (!isValidAddressFormat(field, value)) {
+    return `<span style="color:var(--danger);font-size:0.75rem;display:block;margin-top:3px">✗ Ungültiges Adressformat</span>`;
+  }
   const dupes = findDuplicateWalletLabels(field, value, walletId);
   if (dupes.length > 0) {
     return `<span style="color:var(--danger);font-size:0.75rem;display:block;margin-top:3px">✗ Doppelt (auch bei: ${escapeAttr(dupes.join(", "))})</span>`;
@@ -1550,26 +1580,59 @@ function renderResults() {
 
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const DISCOVERY_BLOCK_WINDOW = 300000; // grobe Abdeckung, je nach Chain ein paar Wochen bis Monate
+const DISCOVERY_CHUNK_SIZE = 2000; // konservativ - viele Gratis-RPC-Anbieter blocken alles darüber
 
-async function discoverEvmTokens(chain, address) {
+// Erkennt typische Phishing-/Airdrop-Scam-Muster im Token-Namen oder -Symbol
+// (z.B. "Visit claim-rewards.xyz", "$1000 USDT Bonus" o.ä.) - eine der häufigsten
+// Betrugsmaschen bei unaufgeforderten Token-Airdrops.
+function isLikelyScamName(text) {
+  if (!text) return false;
+  return /https?:\/\/|www\.|\.(com|io|net|org|xyz|app|finance|claim|airdrop|site|click|link|gift|bonus|vip|top)\b|visit |claim now|reward|bonus|voucher/i.test(text);
+}
+
+// eth_getLogs in kleinen Blockfenstern abfragen - viele Gratis-RPC-Anbieter (auch PublicNode)
+// blockieren Anfragen mit zu grossem Blockbereich, ohne dass das ohne Pagination auffällt.
+async function fetchLogsInWindows(rpcUrl, paddedAddress, fromBlock, toBlock, onProgress) {
+  const allLogs = [];
+  let failedWindows = 0;
+  let cursor = fromBlock;
+  const totalWindows = Math.ceil((toBlock - fromBlock) / DISCOVERY_CHUNK_SIZE);
+  let windowIndex = 0;
+
+  while (cursor <= toBlock) {
+    const windowEnd = Math.min(cursor + DISCOVERY_CHUNK_SIZE - 1, toBlock);
+    windowIndex++;
+    if (onProgress) onProgress(windowIndex, totalWindows);
+    try {
+      const logs = await evmRpcCall(rpcUrl, "eth_getLogs", [{
+        fromBlock: "0x" + cursor.toString(16),
+        toBlock: "0x" + windowEnd.toString(16),
+        topics: [TRANSFER_TOPIC, null, paddedAddress]
+      }]);
+      allLogs.push(...(logs || []));
+    } catch (e) {
+      failedWindows++; // einzelnes Fenster übersprungen, Scan läuft trotzdem weiter
+    }
+    cursor = windowEnd + 1;
+  }
+  return { logs: allLogs, failedWindows, totalWindows };
+}
+
+async function discoverEvmTokens(chain, address, onProgress) {
   const rpcUrl = EVM_RPC_URLS[chain];
   const latestHex = await evmRpcCall(rpcUrl, "eth_blockNumber", []);
   const latest = parseInt(latestHex, 16);
   const fromBlock = Math.max(0, latest - DISCOVERY_BLOCK_WINDOW);
   const paddedAddress = "0x" + address.toLowerCase().replace("0x", "").padStart(64, "0");
 
-  const logs = await evmRpcCall(rpcUrl, "eth_getLogs", [{
-    fromBlock: "0x" + fromBlock.toString(16),
-    toBlock: "latest",
-    topics: [TRANSFER_TOPIC, null, paddedAddress]
-  }]);
+  const { logs, failedWindows, totalWindows } = await fetchLogsInWindows(rpcUrl, paddedAddress, fromBlock, latest, onProgress);
 
-  const contractSet = new Set((logs || []).map(l => l.address.toLowerCase()));
+  const contractSet = new Set(logs.map(l => l.address.toLowerCase()));
   const known = new Set(
     (SAFE_ADDRESSES[chain] || []).concat(customSafeTokens.filter(t => t.chain === chain).map(t => t.address))
   );
   const unknownAddrs = [...contractSet].filter(a => !known.has(a));
-  if (unknownAddrs.length === 0) return [];
+  if (unknownAddrs.length === 0) return { found: [], failedWindows, totalWindows };
 
   const balanceData = "0x70a08231" + address.toLowerCase().replace("0x", "").padStart(64, "0");
   const calls = [];
@@ -1578,6 +1641,7 @@ async function discoverEvmTokens(chain, address) {
     calls.push({ to: addr, data: balanceData }); plan.push({ idx, type: "balance" });
     calls.push({ to: addr, data: "0x313ce567" }); plan.push({ idx, type: "decimals" });
     calls.push({ to: addr, data: "0x95d89b41" }); plan.push({ idx, type: "symbol" });
+    calls.push({ to: addr, data: "0x06fdde03" }); plan.push({ idx, type: "name" }); // name() - Scam-Text steckt oft hier, nicht im Symbol
   });
   const results = await evmRpcBatch(rpcUrl, calls);
   const perToken = unknownAddrs.map(() => ({}));
@@ -1595,9 +1659,15 @@ async function discoverEvmTokens(chain, address) {
     const decHex = perToken[idx].decimals;
     const decimals = decHex && decHex !== "0x" ? parseInt(decHex, 16) : 18;
     const symbol = decodeAbiString(perToken[idx].symbol) || (addr.slice(0, 8) + "…");
-    found.push({ chain, address: addr, symbol, amount: Number(raw) / Math.pow(10, decimals) });
+    const name = decodeAbiString(perToken[idx].name);
+    const nameScam = isLikelyScamName(symbol) || isLikelyScamName(name);
+    found.push({
+      chain, address: addr, symbol, name,
+      amount: Number(raw) / Math.pow(10, decimals),
+      nameScamFlag: nameScam
+    });
   });
-  return found;
+  return { found, failedWindows, totalWindows };
 }
 
 // GoPlus Security: kostenlose Risiko-Einschätzung für EVM-Token (kein Key nötig).
@@ -1641,7 +1711,8 @@ async function runDiscoveryScan() {
     return;
   }
 
-  const allFindings = []; // {walletLabel, chain, address, symbol, amount, risk: [] | null}
+  const allFindings = []; // {walletLabel, chain, address, symbol, name, amount, risk: [] | null, nameScamFlag}
+  const scanNotes = [];
 
   for (const w of wallets) {
     // Apertum + Tron: volle Liste liegt schon in walletData (aus dem normalen Laden)
@@ -1650,20 +1721,25 @@ async function runDiscoveryScan() {
       if (!cd || cd.error) return;
       (cd.tokens || []).forEach(t => {
         if (!isSafeTokenAddress(t.address, chain) && t.amount >= DUST_THRESHOLD) {
-          allFindings.push({ walletLabel: w.label, chain, address: t.address, symbol: t.symbol, amount: t.amount, risk: null });
+          const nameScamFlag = isLikelyScamName(t.symbol) || isLikelyScamName(t.name);
+          allFindings.push({ walletLabel: w.label, chain, address: t.address, symbol: t.symbol, name: t.name, amount: t.amount, risk: null, nameScamFlag });
         }
       });
     });
 
-    // EVM-Chains: aktiver Scan über eth_getLogs
+    // EVM-Chains: aktiver Scan über eth_getLogs (paginiert)
     if (w.evm) {
       for (const chain of Object.keys(EVM_RPC_URLS)) {
-        status.textContent = `Durchsuche ${w.label} auf ${CHAIN_META[chain].label}...`;
         try {
-          const found = await discoverEvmTokens(chain, w.evm);
+          const { found, failedWindows, totalWindows } = await discoverEvmTokens(chain, w.evm, (i, total) => {
+            status.textContent = `Durchsuche ${w.label} auf ${CHAIN_META[chain].label}... (Fenster ${i}/${total})`;
+          });
           found.forEach(f => allFindings.push({ walletLabel: w.label, ...f, risk: null }));
+          if (failedWindows > 0) {
+            scanNotes.push(`${w.label} / ${CHAIN_META[chain].label}: ${failedWindows} von ${totalWindows} Blockfenstern übersprungen (Anbieter hat abgelehnt) - Ergebnis evtl. unvollständig.`);
+          }
         } catch (e) {
-          console.error(`Discovery-Fehler ${chain} für ${w.label}:`, e.message);
+          scanNotes.push(`${w.label} / ${CHAIN_META[chain].label}: Scan fehlgeschlagen (${e.message}).`);
         }
       }
     }
@@ -1687,10 +1763,23 @@ async function runDiscoveryScan() {
     });
   }
 
+  lastDiscoveryFindings = allFindings;
   renderDiscoveryResults(allFindings);
-  status.textContent = `Fertig. ${allFindings.length} unbekannte(r) Token gefunden.`;
+  const scamCount = allFindings.filter(f => isFindingScam(f)).length;
+  let statusText = `Fertig. ${allFindings.length} unbekannte(r) Token gefunden` + (scamCount > 0 ? `, davon ${scamCount} als möglicher Scam markiert.` : ".");
+  if (scanNotes.length > 0) statusText += " Hinweis: " + scanNotes.join(" ");
+  status.textContent = statusText;
   btn.disabled = false;
 }
+
+// Fasst GoPlus-Risiko-Flags + Namens-Heuristik zu einer einzigen Scam-Einschätzung zusammen
+function isFindingScam(f) {
+  if (f.nameScamFlag) return true;
+  if (f.risk && f.risk.length > 0) return true;
+  return false;
+}
+
+let lastDiscoveryFindings = [];
 
 function renderDiscoveryResults(findings) {
   const el = document.getElementById("discoveryResults");
@@ -1699,23 +1788,42 @@ function renderDiscoveryResults(findings) {
     return;
   }
 
-  el.innerHTML = findings.map(f => {
+  const hideScam = document.getElementById("hideScamToggle") && document.getElementById("hideScamToggle").checked;
+  const visible = hideScam ? findings.filter(f => !isFindingScam(f)) : findings;
+
+  const filterBar = `<div class="custom-token-card" style="margin-bottom:14px">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
+      <input type="checkbox" id="hideScamToggle" style="width:auto" onchange="renderDiscoveryResults(lastDiscoveryFindings)" ${hideScam ? "checked" : ""} />
+      Scam-verdächtige Token ausblenden (${findings.filter(f => isFindingScam(f)).length} von ${findings.length})
+    </label>
+  </div>`;
+
+  if (visible.length === 0) {
+    el.innerHTML = filterBar + `<div class="empty">Alle gefundenen Token sind als Scam-verdächtig markiert und aktuell ausgeblendet.</div>`;
+    return;
+  }
+
+  el.innerHTML = filterBar + visible.map(f => {
     const meta = CHAIN_META[f.chain];
+    const scam = isFindingScam(f);
     let riskHtml = "";
-    if (f.risk === null) {
+    if (scam) {
+      const reasons = [];
+      if (f.nameScamFlag) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
+      if (f.risk && f.risk.length > 0) reasons.push(...f.risk);
+      riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger);font-weight:700">⚠ VERDACHT AUF SCAM: ${reasons.join(", ")}</span>`;
+    } else if (f.risk === null) {
       riskHtml = `<span class="badge unsafe">kein Risiko-Check verfügbar</span>`;
-    } else if (f.risk.length === 0) {
-      riskHtml = `<span class="badge safe">keine GoPlus-Warnung</span>`;
     } else {
-      riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.15);color:var(--danger)">⚠ ${f.risk.join(", ")}</span>`;
+      riskHtml = `<span class="badge safe">keine Warnung</span>`;
     }
-    return `<div class="custom-token-row" style="align-items:flex-start">
+    return `<div class="custom-token-row" style="align-items:flex-start;${scam ? 'border-color:var(--danger)' : ''}">
       <div>
-        <div><span class="dot ${meta.dot}" style="margin-right:6px"></span>${escapeAttr(f.symbol)} · ${fmt(f.amount)} · <span class="note" style="display:inline">${escapeAttr(f.walletLabel)}</span></div>
+        <div><span class="dot ${meta.dot}" style="margin-right:6px"></span>${escapeAttr(f.symbol)}${f.name && f.name !== f.symbol ? ' <span class="note" style="display:inline">(' + escapeAttr(f.name) + ')</span>' : ''} · ${fmt(f.amount)} · <span class="note" style="display:inline">${escapeAttr(f.walletLabel)}</span></div>
         <div class="meta">${meta.label} · ${f.address}</div>
         <div style="margin-top:6px">${riskHtml}</div>
       </div>
-      <button onclick="addDiscoveredToken('${f.chain}','${f.address}','${escapeAttr(f.symbol)}')">Als sicher hinzufügen</button>
+      ${scam ? '' : `<button onclick="addDiscoveredToken('${f.chain}','${f.address}','${escapeAttr(f.symbol)}')">Als sicher hinzufügen</button>`}
     </div>`;
   }).join("");
 }
