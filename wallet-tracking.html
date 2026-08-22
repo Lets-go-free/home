@@ -20,6 +20,10 @@
     --btc: #f7931a;
     --sol: #14f195;
     --apertum: #00c2a8;
+    --tron: #ff060a;
+    --arb: #28a0f0;
+    --base: #0052ff;
+    --avax: #e84142;
   }
   * { box-sizing: border-box; }
   body {
@@ -102,6 +106,10 @@
   .dot.btc { background: var(--btc); }
   .dot.xrp { background: #6b7280; }
   .dot.sol { background: var(--sol); }
+  .dot.tron { background: var(--tron); }
+  .dot.arb { background: var(--arb); }
+  .dot.base { background: var(--base); }
+  .dot.avax { background: var(--avax); }
   .dot.apertum { background: var(--apertum); }
 
   table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
@@ -210,6 +218,9 @@
               <option value="eth">Ethereum</option>
               <option value="bsc">BSC</option>
               <option value="matic">Polygon</option>
+              <option value="arb">Arbitrum</option>
+              <option value="base">Base</option>
+              <option value="avax">Avalanche</option>
               <option value="apertum">Apertum</option>
             </select>
           </div>
@@ -232,7 +243,7 @@
 
   </div>
 
-  <footer>Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, explorer.apertum.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.</footer>
+  <footer>Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.</footer>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -304,9 +315,36 @@ function showTab(name) {
   if (name === "predefined") ensurePredefinedNames();
 }
 
+const CHAIN_META = {
+  eth:     { label: "Ethereum (ETH)",       dot: "eth",     coingeckoId: "ethereum" },
+  bsc:     { label: "BNB Smart Chain (BSC)", dot: "bsc",    coingeckoId: "binancecoin" },
+  matic:   { label: "Polygon (POL)",        dot: "matic",   coingeckoId: "polygon" },
+  arb:     { label: "Arbitrum (ETH)",       dot: "arb",     coingeckoId: "ethereum" },
+  base:    { label: "Base (ETH)",           dot: "base",    coingeckoId: "ethereum" },
+  avax:    { label: "Avalanche (AVAX)",     dot: "avax",    coingeckoId: "avalanche-2" },
+  apertum: { label: "Apertum (APTM)",       dot: "apertum", coingeckoId: "apertum" },
+  tron:    { label: "Tron (TRX)",           dot: "tron",    coingeckoId: "tron" },
+  btc:     { label: "Bitcoin (BTC)",        dot: "btc",     coingeckoId: "bitcoin" },
+  xrp:     { label: "XRP",                  dot: "xrp",     coingeckoId: "ripple" },
+  sol:     { label: "Solana (SOL)",         dot: "sol",     coingeckoId: "solana" }
+};
+
+// Native-Coin-Symbol pro EVM-Chain (Arbitrum/Base nutzen ETH als Gas-Token, kein eigenes Coin)
+const EVM_NATIVE_SYMBOL = { eth: "ETH", bsc: "BNB", matic: "POL", arb: "ETH", base: "ETH", avax: "AVAX" };
+
+// RPC-Endpunkt (PublicNode, kein Key nötig) pro EVM-Chain - für native Balance und Token-Checks
+const EVM_RPC_URLS = {
+  eth: "https://ethereum-rpc.publicnode.com",
+  bsc: "https://bsc-rpc.publicnode.com",
+  matic: "https://polygon-bor-rpc.publicnode.com",
+  arb: "https://arbitrum-one-rpc.publicnode.com",
+  base: "https://base-rpc.publicnode.com",
+  avax: "https://avalanche-c-chain-rpc.publicnode.com"
+};
+
 // Holt Name/Dezimalstellen direkt vom Contract für vordefinierte Token, die noch nie
 // eine Wallet mit Bestand hatten (darum bisher nicht im Cache) - unabhängig vom Bestand.
-const PREDEFINED_RPC = { eth: "https://ethereum-rpc.publicnode.com", bsc: "https://bsc-rpc.publicnode.com" };
+const PREDEFINED_RPC = { eth: EVM_RPC_URLS.eth, bsc: EVM_RPC_URLS.bsc, arb: EVM_RPC_URLS.arb, base: EVM_RPC_URLS.base, avax: EVM_RPC_URLS.avax };
 async function ensurePredefinedNames() {
   for (const chain of Object.keys(PREDEFINED_RPC)) {
     const missing = (SAFE_ADDRESSES[chain] || []).filter(a =>
@@ -478,16 +516,6 @@ function renderSafeTokenTable() {
   </tbody></table>`;
 }
 
-const CHAIN_META = {
-  eth:     { label: "Ethereum (ETH)",       dot: "eth",     coingeckoId: "ethereum" },
-  bsc:     { label: "BNB Smart Chain (BSC)", dot: "bsc",    coingeckoId: "binancecoin" },
-  matic:   { label: "Polygon (POL)",        dot: "matic",   coingeckoId: "polygon" },
-  apertum: { label: "Apertum (APTM)",       dot: "apertum", coingeckoId: "apertum" },
-  btc:     { label: "Bitcoin (BTC)",        dot: "btc",     coingeckoId: "bitcoin" },
-  xrp:     { label: "XRP",                  dot: "xrp",     coingeckoId: "ripple" },
-  sol:     { label: "Solana (SOL)",         dot: "sol",     coingeckoId: "solana" }
-};
-
 // ---- Live-Kurse (nur native Coins, via CoinGecko, kein API-Key nötig) ----
 let nativePrices = {}; // chainKey -> USD-Preis
 
@@ -527,15 +555,15 @@ let walletCounter = 0;
 let wallets = [];
 let walletData = {}; // id -> { eth:{native, tokens}|{error}, bsc:{...}, matic:{...}, btc:{...}, xrp:{...}, sol:{...} }
 
-function newWallet(label, evm, btc, xrp, sol, dbId) {
+function newWallet(label, evm, btc, xrp, sol, tron, dbId) {
   walletCounter++;
-  return { id: dbId || ("local" + walletCounter), dbId: dbId || null, label: label || ("Wallet " + walletCounter), evm: evm || "", btc: btc || "", xrp: xrp || "", sol: sol || "" };
+  return { id: dbId || ("local" + walletCounter), dbId: dbId || null, label: label || ("Wallet " + walletCounter), evm: evm || "", btc: btc || "", xrp: xrp || "", sol: sol || "", tron: tron || "" };
 }
 
 async function loadWalletsFromDb() {
   const { data, error } = await sb.from("wallets").select("*").order("created_at");
   if (error) { console.error(error); wallets = []; return; }
-  wallets = data.map(row => newWallet(row.label, row.evm_address, row.btc_address, row.xrp_address, row.sol_address, row.id));
+  wallets = data.map(row => newWallet(row.label, row.evm_address, row.btc_address, row.xrp_address, row.sol_address, row.tron_address, row.id));
 }
 
 function addWallet() {
@@ -571,7 +599,8 @@ async function saveWallet(id) {
     evm_address: w.evm,
     btc_address: w.btc,
     xrp_address: w.xrp,
-    sol_address: w.sol
+    sol_address: w.sol,
+    tron_address: w.tron
   };
 
   if (w.dbId) {
@@ -614,6 +643,10 @@ function renderWalletInputs() {
         <div>
           <span class="field-label">Solana-Adresse</span>
           <input type="text" value="${escapeAttr(w.sol)}" oninput="updateWalletField('${w.id}','sol',this.value)" placeholder="Base58-Adresse" />
+        </div>
+        <div>
+          <span class="field-label">Tron-Adresse</span>
+          <input type="text" value="${escapeAttr(w.tron)}" oninput="updateWalletField('${w.id}','tron',this.value)" placeholder="T..." />
         </div>
       </div>
       <div class="action-row" style="margin:10px 0 0;align-items:center">
@@ -859,6 +892,17 @@ async function fetchSolanaBalance(address) {
   return data.result.value / 1e9;
 }
 
+// ---- Tron (native TRX, vorerst ohne TRC20-Token) ----
+async function fetchTronBalance(address) {
+  const res = await fetch(`https://api.trongrid.io/v1/accounts/${address}`);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error || "Unbekannter Fehler");
+  const account = (data.data || [])[0];
+  const balanceSun = account && account.balance ? account.balance : 0;
+  return balanceSun / 1e6;
+}
+
 // ---- Apertum (EVM, chain-id 2786) ----
 // Es gibt keine Ethplorer-artige Auto-Discovery-API für diese Chain, darum werden
 // nur die bekannten (sicheren + selbst erfassten) Token-Adressen gezielt per eth_call geprüft.
@@ -893,18 +937,10 @@ async function fetchApertumAddressInfo(address) {
 async function loadWalletChain(wallet, chain) {
   walletData[wallet.id] = walletData[wallet.id] || {};
   try {
-    if (chain === "eth") {
-      if (!wallet.evm) { delete walletData[wallet.id].eth; return; }
-      const r = await fetchEvmAddressInfo("eth", "https://ethereum-rpc.publicnode.com", wallet.evm);
-      walletData[wallet.id].eth = { native: r.native, nativeSymbol: "ETH", tokens: r.tokens };
-    } else if (chain === "bsc") {
-      if (!wallet.evm) { delete walletData[wallet.id].bsc; return; }
-      const r = await fetchEvmAddressInfo("bsc", "https://bsc-rpc.publicnode.com", wallet.evm);
-      walletData[wallet.id].bsc = { native: r.native, nativeSymbol: "BNB", tokens: r.tokens };
-    } else if (chain === "matic") {
-      if (!wallet.evm) { delete walletData[wallet.id].matic; return; }
-      const r = await fetchEvmAddressInfo("matic", "https://polygon-bor-rpc.publicnode.com", wallet.evm);
-      walletData[wallet.id].matic = { native: r.native, nativeSymbol: "POL", tokens: r.tokens };
+    if (chain === "eth" || chain === "bsc" || chain === "matic" || chain === "arb" || chain === "base" || chain === "avax") {
+      if (!wallet.evm) { delete walletData[wallet.id][chain]; return; }
+      const r = await fetchEvmAddressInfo(chain, EVM_RPC_URLS[chain], wallet.evm);
+      walletData[wallet.id][chain] = { native: r.native, nativeSymbol: EVM_NATIVE_SYMBOL[chain], tokens: r.tokens };
     } else if (chain === "apertum") {
       if (!wallet.evm) { delete walletData[wallet.id].apertum; return; }
       const r = await fetchApertumAddressInfo(wallet.evm);
@@ -921,6 +957,10 @@ async function loadWalletChain(wallet, chain) {
       if (!wallet.sol) { delete walletData[wallet.id].sol; return; }
       const amount = await fetchSolanaBalance(wallet.sol);
       walletData[wallet.id].sol = { native: amount, nativeSymbol: "SOL", tokens: [] };
+    } else if (chain === "tron") {
+      if (!wallet.tron) { delete walletData[wallet.id].tron; return; }
+      const amount = await fetchTronBalance(wallet.tron);
+      walletData[wallet.id].tron = { native: amount, nativeSymbol: "TRX", tokens: [] };
     }
   } catch (err) {
     walletData[wallet.id][chain] = { error: err.message };
@@ -932,7 +972,7 @@ async function loadAll() {
   btn.disabled = true;
   const jobs = [loadNativePrices()];
   wallets.forEach(w => {
-    ["eth", "bsc", "matic", "apertum", "btc", "xrp", "sol"].forEach(chain => {
+    ["eth", "bsc", "matic", "arb", "base", "avax", "apertum", "tron", "btc", "xrp", "sol"].forEach(chain => {
       jobs.push(loadWalletChain(w, chain));
     });
   });
@@ -1004,7 +1044,11 @@ const EXPLORER_URLS = {
   eth: (w) => w.evm ? `https://etherscan.io/address/${w.evm}` : null,
   bsc: (w) => w.evm ? `https://bscscan.com/address/${w.evm}` : null,
   matic: (w) => w.evm ? `https://polygonscan.com/address/${w.evm}` : null,
-  apertum: (w) => w.evm ? `https://explorer.apertum.io/address/${w.evm}` : null
+  arb: (w) => w.evm ? `https://arbiscan.io/address/${w.evm}` : null,
+  base: (w) => w.evm ? `https://basescan.org/address/${w.evm}` : null,
+  avax: (w) => w.evm ? `https://snowtrace.io/address/${w.evm}` : null,
+  apertum: (w) => w.evm ? `https://explorer.apertum.io/address/${w.evm}` : null,
+  tron: (w) => w.tron ? `https://tronscan.org/#/address/${w.tron}` : null
 };
 
 function renderResults() {
