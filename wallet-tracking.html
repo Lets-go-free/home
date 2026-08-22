@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Token-Übersicht Wallets</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --card2: #1d212b;
+    --border: #2a2e38;
+    --text: #e8e9ec;
+    --muted: #9aa0ac;
+    --accent: #6c8cff;
+    --danger: #ff6b6b;
+    --eth: #627eea;
+    --bsc: #f0b90b;
+    --matic: #8247e5;
+    --btc: #f7931a;
+    --sol: #14f195;
+    --apertum: #00c2a8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.3rem; margin-bottom: 4px; }
+  h2 { font-size: 1.05rem; margin: 30px 0 12px; }
+  h3 { font-size: 0.82rem; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 20px; }
+  input {
+    width: 100%; background: var(--card); border: 1px solid var(--border);
+    color: var(--text); padding: 9px 11px; border-radius: 8px; font-size: 0.87rem;
+  }
+  button {
+    background: var(--accent); color: #fff; border: none; padding: 10px 18px;
+    border-radius: 8px; font-size: 0.9rem; cursor: pointer;
+  }
+  button.secondary { background: var(--card2); color: var(--text); border: 1px solid var(--border); }
+  button.remove {
+    background: transparent; color: var(--danger); border: 1px solid var(--border);
+    padding: 6px 10px; font-size: 0.78rem;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .action-row { display: flex; gap: 10px; margin: 16px 0 20px; flex-wrap: wrap; }
+
+  .wallet-input-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; margin-bottom: 12px;
+  }
+  .wallet-input-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .wallet-input-head input { font-weight: 600; }
+  .field-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .field-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 3px; display: block; }
+
+  .filter-row {
+    display: flex; align-items: center; gap: 8px; margin: 4px 0 20px;
+    font-size: 0.88rem; color: var(--text);
+  }
+  .filter-row input[type="checkbox"] { width: auto; }
+
+  .custom-token-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; margin-bottom: 20px;
+  }
+  .custom-token-grid { display: grid; grid-template-columns: 100px 1fr 1fr auto; gap: 8px; align-items: end; margin-bottom: 12px; }
+  select {
+    width: 100%; background: var(--card2); border: 1px solid var(--border);
+    color: var(--text); padding: 9px 8px; border-radius: 8px; font-size: 0.85rem;
+  }
+  .custom-token-list { display: flex; flex-direction: column; gap: 6px; }
+  .custom-token-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    background: var(--card2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 0.82rem;
+  }
+  .custom-token-row .meta { color: var(--muted); font-size: 0.72rem; word-break: break-all; }
+  .note {
+    font-size: 0.75rem; color: var(--muted); margin-top: 8px;
+  }
+  @media (max-width: 559px) {
+    .custom-token-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  .chain-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; margin-bottom: 14px;
+  }
+  .chain-title {
+    display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 12px; font-size: 0.92rem;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .dot.eth { background: var(--eth); }
+  .dot.bsc { background: var(--bsc); }
+  .dot.matic { background: var(--matic); }
+  .dot.btc { background: var(--btc); }
+  .dot.xrp { background: #6b7280; }
+  .dot.sol { background: var(--sol); }
+  .dot.apertum { background: var(--apertum); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .empty, .status { color: var(--muted); font-size: 0.85rem; padding: 6px 0; }
+  .error { color: var(--danger); font-size: 0.85rem; padding: 6px 0; }
+  .native-row td { font-weight: 600; }
+
+  .wallet-block { margin-bottom: 28px; }
+  .wallet-block-title { font-size: 1rem; font-weight: 600; margin-bottom: 10px; }
+
+  .badge {
+    display: inline-block; font-size: 0.66rem; padding: 2px 7px; border-radius: 10px;
+    margin-left: 6px; font-weight: 600; vertical-align: middle;
+  }
+  .badge.safe { background: rgba(70, 200, 120, 0.15); color: #46c878; }
+  .badge.unsafe { background: rgba(154, 160, 172, 0.15); color: var(--muted); }
+
+  footer { color: var(--muted); font-size: 0.72rem; margin-top: 24px; text-align: center; }
+
+  @media (min-width: 560px) {
+    .field-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Token-Übersicht Wallets</h1>
+  <div class="sub">Live-Abfrage über öffentliche Blockchain-APIs, direkt in deinem Browser. Wallets und sichere Token werden verschlüsselt in deinem Account gespeichert.</div>
+
+  <!-- Login-Bereich: sichtbar solange niemand eingeloggt ist -->
+  <div id="authGate" class="custom-token-card">
+    <h3 style="margin-top:0">Login</h3>
+    <div class="field-grid" style="grid-template-columns:1fr auto;align-items:end">
+      <div>
+        <span class="field-label">E-Mail-Adresse</span>
+        <input type="email" id="authEmail" placeholder="deine@email.ch" />
+      </div>
+      <div>
+        <button onclick="sendMagicLink()">Login-Link senden</button>
+      </div>
+    </div>
+    <div id="authStatus" class="note" style="margin-top:10px"></div>
+  </div>
+
+  <!-- App-Inhalt: nur sichtbar, wenn eingeloggt -->
+  <div id="appContent" style="display:none">
+
+    <div class="action-row" style="justify-content:space-between;align-items:center">
+      <span id="userEmailLabel" class="note" style="margin:0"></span>
+      <button class="secondary" onclick="logout()">Logout</button>
+    </div>
+
+    <div id="walletsContainer"></div>
+
+    <div class="action-row">
+      <button class="secondary" onclick="addWallet()">+ Wallet hinzufügen</button>
+      <button id="loadBtn" onclick="loadAll()">Alle laden</button>
+    </div>
+
+    <h2>Eigene sichere Token</h2>
+    <div class="custom-token-card">
+      <div class="custom-token-grid">
+        <div>
+          <span class="field-label">Chain</span>
+          <select id="customChain">
+            <option value="eth">Ethereum</option>
+            <option value="bsc">BSC</option>
+            <option value="matic">Polygon</option>
+            <option value="apertum">Apertum</option>
+          </select>
+        </div>
+        <div>
+          <span class="field-label">Contract-Adresse</span>
+          <input type="text" id="customAddress" placeholder="0x..." />
+        </div>
+        <div>
+          <span class="field-label">Label (optional)</span>
+          <input type="text" id="customLabel" placeholder="z.B. MEIN Token" />
+        </div>
+        <div>
+          <button onclick="addCustomSafeToken()">Hinzufügen</button>
+        </div>
+      </div>
+      <div id="customTokenList" class="custom-token-list"></div>
+      <div class="note">Diese Token sind an deinen Account gebunden (Supabase) - sichtbar und bearbeitbar auf jedem Gerät, auf dem du dich einloggst.</div>
+    </div>
+
+    <details class="custom-token-card">
+      <summary style="cursor:pointer;font-weight:600;font-size:0.92rem">Alle sicheren Token anzeigen</summary>
+      <div id="safeTokenTable" style="margin-top:12px"></div>
+    </details>
+
+    <h2>Summary (alle Wallets)</h2>
+    <div id="summaryContainer"></div>
+
+    <h2>Details je Wallet</h2>
+    <div id="resultsContainer"></div>
+
+  </div>
+
+  <footer>Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, explorer.apertum.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+// ---- Supabase: Auth + Datenbank ----
+const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N";
+const REDIRECT_URL = "https://letsgofree.me/wallet-tracking.html";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+
+async function sendMagicLink() {
+  const email = document.getElementById("authEmail").value.trim();
+  const statusEl = document.getElementById("authStatus");
+  if (!email) { statusEl.textContent = "Bitte E-Mail-Adresse eingeben."; return; }
+  statusEl.textContent = "Sende Login-Link...";
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: REDIRECT_URL }
+  });
+  statusEl.textContent = error
+    ? "Fehler: " + error.message
+    : "Link verschickt - check dein E-Mail-Postfach und klick auf den Link.";
+}
+
+async function logout() {
+  await sb.auth.signOut();
+  location.reload();
+}
+
+async function initAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  sb.auth.onAuthStateChange((event, newSession) => {
+    if (newSession && !currentUser) {
+      onLoggedIn(newSession);
+    }
+  });
+  if (session) {
+    await onLoggedIn(session);
+  }
+}
+
+async function onLoggedIn(session) {
+  currentUser = session.user;
+  document.getElementById("authGate").style.display = "none";
+  document.getElementById("appContent").style.display = "block";
+  document.getElementById("userEmailLabel").textContent = "Eingeloggt als " + currentUser.email;
+
+  loadTokenMetaCache();
+  await loadWalletsFromDb();
+  await loadCustomSafeTokensFromDb();
+  renderWalletInputs();
+  renderCustomTokenList();
+  renderSafeTokenTable();
+  renderResults();
+  loadAll();
+}
+
+
+const SAFE_ADDRESSES = {
+  bsc: [
+    "0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c",
+    "0x55d398326f99059ff775485246999027b3197955",
+    "0xf585b5b4f22816baf7629aea55b701662630397b",
+    "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+    "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+    "0x9c23942ca2c35e06d1d20747f33705983a18d2ab",
+    "0x3745e245612f130b57589688060454a8ae43276c",
+    "0x6ea1734df1627453daa6834776cb0403abc401b1",
+    "0xc0d8daa6516bab4efce440860987e735bab44160",
+    "0x6c559d849f70477723dc94405018a436fa9fdc12",
+    "0xaa90a8cdab8b8e902293a2817d1d286f66cbcec5",
+    "0x3dda9ea88136ecede768cd374a2af37219da55e7",
+    "0x6b27bb584f44f55e865432dceb9ebbe9a17fd4a8",
+    "0xc6585bc17b53792f281a9739579dd60535c1f9fb",
+    "0x8b0b4c7878623db8e5e6cb9bd0fa85c07c3b85f1",
+    "0x72dcf845ae36401e82e681b0e063d0703bac0bba",
+    "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
+    "0xc51c99af9d5c31d0c37d028500b2b344debdf188",
+    "0x4ce91c45c140486a3a9d52b16015dd58254115b9",
+    "0x1c8dd0dc515166b4349a9b8bd7db3945445c5e52",
+    "0x2182aad4bf07a96d347c653a126e2016edf0eff3",
+    "0x8fc5e4cc4768449bc7feb0bf094bcdc3e4b16975",
+    "0x8f1d83feb2d65f04ce7da4f1f476f5272821dfdf",
+    "0x1e7ea2ec47199191dc3b642bb6c24ed03cc1a641"
+  ],
+  eth: [
+    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    "0x1bbf25e71ec48b84d773809b4ba55b6f4be946fb",
+    "0xba7fe208e0167e4047a996e1efea830515f433f8",
+    "0x0fc6c0465c9739d4a42daca22eb3b2cb0eb9937a",
+    "0x72bf018df20fbacf542f5ec159c6a7f0d7850967",
+    "0x448fa53be5b9f792d6f799428df8d4c89eb9f04a",
+    "0x97be09f2523b39b835da9ea3857cfa1d3c660cbb",
+    "0x7fdeb46b3a0916630f36e886d675602b1007fcbb",
+    "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+    "0x1e49768714e438e789047f48fd386686a5707db2"
+  ],
+  apertum: [
+    "0x110ac02ba3384bc055c13a87766049a74517beda",
+    "0x1487db421f6b58e77bfefc905fdc1ede5fb85c7f",
+    "0xd979f41e12a69aa82f04866444ea91e8e8faefd9",
+    "0x75598b9f54df1472bb2bdc3b5dc791bdb109a52b",
+    "0xf081daa36f367f4a5f93ac68c14fb39b50a58ef8",
+    "0x01882c43aa0bee891b54857c15cc19a3df946f01",
+    "0xf3074054737b9e83d73c3c17a007939e12698d5c",
+    "0xf75dd43f59cba81329f2fa3d98d0c0908cffebb8"
+  ]
+};
+
+// Apertum: Balance-Abfrage über die öffentliche Blockscout-Explorer-API (CORS-freundlich für Browser-Zugriffe)
+const APERTUM_EXPLORER_API = "https://explorer.apertum.io/api/v2";
+function isSafeTokenAddress(address, chain) {
+  if (!address) return false;
+  const a = address.trim().toLowerCase();
+  if ((SAFE_ADDRESSES[chain] || []).includes(a)) return true;
+  return customSafeTokens.some(t => t.chain === chain && t.address === a);
+}
+
+// ---- Eigene sichere Token (Supabase-gestützt, an den Account gebunden) ----
+let customSafeTokens = [];
+
+async function loadCustomSafeTokensFromDb() {
+  const { data, error } = await sb.from("safe_tokens").select("*").order("created_at");
+  if (error) { console.error(error); customSafeTokens = []; return; }
+  customSafeTokens = data.map(row => ({ dbId: row.id, chain: row.chain, address: row.address, label: row.label }));
+}
+
+async function addCustomSafeToken() {
+  const chain = document.getElementById("customChain").value;
+  const address = document.getElementById("customAddress").value.trim().toLowerCase();
+  const label = document.getElementById("customLabel").value.trim();
+
+  if (!address || !address.startsWith("0x") || address.length !== 42) {
+    alert("Bitte eine gültige Contract-Adresse eingeben (0x... mit 42 Zeichen).");
+    return;
+  }
+  if (customSafeTokens.some(t => t.chain === chain && t.address === address)) {
+    alert("Dieser Token ist für diese Chain bereits erfasst.");
+    return;
+  }
+
+  const { data, error } = await sb.from("safe_tokens").insert({
+    user_id: currentUser.id,
+    chain,
+    address,
+    label: label || address
+  }).select().single();
+
+  if (error) {
+    alert("Fehler beim Speichern: " + error.message);
+    return;
+  }
+
+  customSafeTokens.push({ dbId: data.id, chain, address, label: label || address });
+  document.getElementById("customAddress").value = "";
+  document.getElementById("customLabel").value = "";
+  renderCustomTokenList();
+  renderSafeTokenTable();
+  renderResults();
+}
+
+async function removeCustomSafeToken(chain, address) {
+  const t = customSafeTokens.find(t => t.chain === chain && t.address === address);
+  if (t && t.dbId) {
+    await sb.from("safe_tokens").delete().eq("id", t.dbId);
+  }
+  customSafeTokens = customSafeTokens.filter(t => !(t.chain === chain && t.address === address));
+  renderCustomTokenList();
+  renderSafeTokenTable();
+  renderResults();
+}
+
+function renderCustomTokenList() {
+  const el = document.getElementById("customTokenList");
+  if (customSafeTokens.length === 0) {
+    el.innerHTML = `<div class="empty">Noch keine eigenen Token erfasst.</div>`;
+    return;
+  }
+  el.innerHTML = customSafeTokens.map(t => `
+    <div class="custom-token-row">
+      <div>
+        <div>${escapeAttr(t.label)} <span class="badge safe">sicher</span></div>
+        <div class="meta">${t.chain.toUpperCase()} · ${t.address}</div>
+      </div>
+      <button class="remove" onclick="removeCustomSafeToken('${t.chain}','${t.address}')">Entfernen</button>
+    </div>
+  `).join("");
+}
+
+// Feste Namenszuordnung für Apertum-Token, da diese Chain über die Blockscout-API
+// läuft (nicht über den RPC-Metadaten-Cache) und darum sonst ohne Namen bliebe.
+const APERTUM_TOKEN_NAMES = {
+  "0x110ac02ba3384bc055c13a87766049a74517beda": "wAPTM",
+  "0x1487db421f6b58e77bfefc905fdc1ede5fb85c7f": "wUSDT",
+  "0xd979f41e12a69aa82f04866444ea91e8e8faefd9": "wUSDC",
+  "0x75598b9f54df1472bb2bdc3b5dc791bdb109a52b": "wBTC",
+  "0xf081daa36f367f4a5f93ac68c14fb39b50a58ef8": "wSOL",
+  "0x01882c43aa0bee891b54857c15cc19a3df946f01": "wETH",
+  "0xf3074054737b9e83d73c3c17a007939e12698d5c": "wBNB",
+  "0xf75dd43f59cba81329f2fa3d98d0c0908cffebb8": "wAVAX"
+};
+
+function renderSafeTokenTable() {
+  const el = document.getElementById("safeTokenTable");
+  const rows = [];
+
+  Object.keys(SAFE_ADDRESSES).forEach(chain => {
+    (SAFE_ADDRESSES[chain] || []).forEach(address => {
+      let label = null;
+      if (chain === "apertum") {
+        label = APERTUM_TOKEN_NAMES[address] || null;
+      } else {
+        const cached = tokenMetaCache[chain + "|" + address];
+        label = cached ? cached.symbol : null;
+      }
+      rows.push({ chain, address, label, source: "fest hinterlegt" });
+    });
+  });
+  customSafeTokens.forEach(t => {
+    rows.push({ chain: t.chain, address: t.address, label: t.label, source: "eigene Liste" });
+  });
+
+  if (rows.length === 0) {
+    el.innerHTML = `<div class="empty">Keine sicheren Token hinterlegt.</div>`;
+    return;
+  }
+
+  rows.sort((a, b) => a.chain.localeCompare(b.chain));
+
+  el.innerHTML = `<table><thead><tr><th>Chain</th><th>Token</th><th>Adresse</th><th>Quelle</th></tr></thead><tbody>
+    ${rows.map(r => `<tr>
+      <td>${r.chain.toUpperCase()}</td>
+      <td>${r.label ? escapeAttr(r.label) : '<span style="color:var(--muted)">unbekannt (noch kein Bestand gefunden)</span>'}</td>
+      <td style="font-size:0.78rem;word-break:break-all">${r.address}</td>
+      <td style="color:var(--muted);font-size:0.78rem">${r.source}</td>
+    </tr>`).join("")}
+  </tbody></table>`;
+}
+
+const CHAIN_META = {
+  eth:     { label: "Ethereum (ETH)",       dot: "eth",     coingeckoId: "ethereum" },
+  bsc:     { label: "BNB Smart Chain (BSC)", dot: "bsc",    coingeckoId: "binancecoin" },
+  matic:   { label: "Polygon (POL)",        dot: "matic",   coingeckoId: "polygon" },
+  apertum: { label: "Apertum (APTM)",       dot: "apertum", coingeckoId: "apertum" },
+  btc:     { label: "Bitcoin (BTC)",        dot: "btc",     coingeckoId: "bitcoin" },
+  xrp:     { label: "XRP",                  dot: "xrp",     coingeckoId: "ripple" },
+  sol:     { label: "Solana (SOL)",         dot: "sol",     coingeckoId: "solana" }
+};
+
+// ---- Live-Kurse (nur native Coins, via CoinGecko, kein API-Key nötig) ----
+let nativePrices = {}; // chainKey -> USD-Preis
+
+async function loadNativePrices() {
+  const ids = Object.values(CHAIN_META).map(m => m.coingeckoId).join(",");
+  try {
+    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    const prices = {};
+    Object.keys(CHAIN_META).forEach(chain => {
+      const id = CHAIN_META[chain].coingeckoId;
+      if (data[id] && typeof data[id].usd === "number") {
+        prices[chain] = {
+          price: data[id].usd,
+          change24h: typeof data[id].usd_24h_change === "number" ? data[id].usd_24h_change : undefined
+        };
+      }
+    });
+    nativePrices = prices;
+  } catch (e) {
+    // Kurse sind ein Zusatz - falls das fehlschlägt, laufen Bestände trotzdem normal weiter
+    nativePrices = {};
+  }
+}
+
+function fmtUsd(n) {
+  return "$" + Number(n).toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtPrice(n) {
+  return "$" + Number(n).toLocaleString('de-CH', { minimumFractionDigits: 5, maximumFractionDigits: 5 });
+}
+
+// ---- Wallet-Verwaltung (Supabase-gestützt) ----
+let walletCounter = 0;
+let wallets = [];
+let walletData = {}; // id -> { eth:{native, tokens}|{error}, bsc:{...}, matic:{...}, btc:{...}, xrp:{...}, sol:{...} }
+
+function newWallet(label, evm, btc, xrp, sol, dbId) {
+  walletCounter++;
+  return { id: dbId || ("local" + walletCounter), dbId: dbId || null, label: label || ("Wallet " + walletCounter), evm: evm || "", btc: btc || "", xrp: xrp || "", sol: sol || "" };
+}
+
+async function loadWalletsFromDb() {
+  const { data, error } = await sb.from("wallets").select("*").order("created_at");
+  if (error) { console.error(error); wallets = []; return; }
+  wallets = data.map(row => newWallet(row.label, row.evm_address, row.btc_address, row.xrp_address, row.sol_address, row.id));
+}
+
+function addWallet() {
+  wallets.push(newWallet());
+  renderWalletInputs();
+}
+
+async function removeWallet(id) {
+  const w = wallets.find(w => w.id === id);
+  if (w && w.dbId) {
+    await sb.from("wallets").delete().eq("id", w.dbId);
+  }
+  wallets = wallets.filter(w => w.id !== id);
+  delete walletData[id];
+  renderWalletInputs();
+  renderResults();
+}
+
+function updateWalletField(id, field, value) {
+  const w = wallets.find(w => w.id === id);
+  if (w) w[field] = value;
+}
+
+async function saveWallet(id) {
+  const w = wallets.find(w => w.id === id);
+  if (!w) return;
+  const statusEl = document.getElementById("saveStatus-" + id);
+  if (statusEl) statusEl.textContent = "Speichere...";
+
+  const payload = {
+    user_id: currentUser.id,
+    label: w.label,
+    evm_address: w.evm,
+    btc_address: w.btc,
+    xrp_address: w.xrp,
+    sol_address: w.sol
+  };
+
+  if (w.dbId) {
+    const { error } = await sb.from("wallets").update(payload).eq("id", w.dbId);
+    if (statusEl) statusEl.textContent = error ? "Fehler: " + error.message : "Gespeichert.";
+  } else {
+    const { data, error } = await sb.from("wallets").insert(payload).select().single();
+    if (error) {
+      if (statusEl) statusEl.textContent = "Fehler: " + error.message;
+    } else {
+      w.dbId = data.id;
+      w.id = data.id;
+      if (statusEl) statusEl.textContent = "Gespeichert.";
+    }
+  }
+  loadAll();
+}
+
+function renderWalletInputs() {
+  const container = document.getElementById("walletsContainer");
+  container.innerHTML = wallets.map(w => `
+    <div class="wallet-input-card">
+      <div class="wallet-input-head">
+        <input type="text" value="${escapeAttr(w.label)}" oninput="updateWalletField('${w.id}','label',this.value)" />
+        <button class="remove" onclick="removeWallet('${w.id}')">Entfernen</button>
+      </div>
+      <div class="field-grid">
+        <div>
+          <span class="field-label">EVM-Adresse (Ethereum / BSC / Polygon)</span>
+          <input type="text" value="${escapeAttr(w.evm)}" oninput="updateWalletField('${w.id}','evm',this.value)" placeholder="0x..." />
+        </div>
+        <div>
+          <span class="field-label">Bitcoin-Adresse</span>
+          <input type="text" value="${escapeAttr(w.btc)}" oninput="updateWalletField('${w.id}','btc',this.value)" placeholder="bc1... / 1... / 3..." />
+        </div>
+        <div>
+          <span class="field-label">XRP-Adresse</span>
+          <input type="text" value="${escapeAttr(w.xrp)}" oninput="updateWalletField('${w.id}','xrp',this.value)" placeholder="r..." />
+        </div>
+        <div>
+          <span class="field-label">Solana-Adresse</span>
+          <input type="text" value="${escapeAttr(w.sol)}" oninput="updateWalletField('${w.id}','sol',this.value)" placeholder="Base58-Adresse" />
+        </div>
+      </div>
+      <div class="action-row" style="margin:10px 0 0;align-items:center">
+        <button onclick="saveWallet('${w.id}')">Speichern</button>
+        <span id="saveStatus-${w.id}" class="note" style="margin:0"></span>
+      </div>
+    </div>
+  `).join("");
+}
+
+function escapeAttr(s) {
+  return (s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+// ---- Datenabruf ----
+
+// Etherscan API V2: dein eigener kostenloser Key - im Free-Tier nur für Ethereum selbst nutzbar (nicht BSC/Polygon)
+const ETHERSCAN_API_KEY = "HTXWS7BQ6F2QJNR4C1QAZW7JFGG2S5PEPZ";
+const ETHERSCAN_CHAIN_ID = { eth: 1 };
+
+// Warteschlange, damit wir das Free-Tier-Limit (3 Anfragen/Sekunde) nicht überschreiten,
+// auch wenn mehrere Wallets gleichzeitig laden.
+let etherscanQueue = Promise.resolve();
+function queuedEtherscanCall(fn) {
+  const run = etherscanQueue.then(fn);
+  etherscanQueue = run.catch(() => {}).then(() => new Promise(r => setTimeout(r, 400)));
+  return run;
+}
+
+async function fetchEtherscanNative(chain, address) {
+  const chainId = ETHERSCAN_CHAIN_ID[chain];
+  return queuedEtherscanCall(async () => {
+    const url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=balance&address=${address}&tag=latest&apikey=${ETHERSCAN_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    if (data.status !== "1") throw new Error(data.message === "NOTOK" ? data.result : (data.message || "Etherscan-Fehler"));
+    return Number(BigInt(data.result)) / 1e18;
+  });
+}
+
+// Generische EVM-RPC-Hilfsfunktionen (für gezielte Balance-Abfrage bekannter Token-Adressen)
+async function evmRpcCall(rpcUrl, method, params) {
+  const res = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.result;
+}
+
+function decodeAbiString(hex) {
+  if (!hex || hex === "0x") return "";
+  try {
+    const data = hex.slice(2);
+    const lengthHex = data.slice(64, 128);
+    const length = parseInt(lengthHex, 16);
+    const strHex = data.slice(128, 128 + length * 2);
+    let str = "";
+    for (let i = 0; i < strHex.length; i += 2) {
+      str += String.fromCharCode(parseInt(strHex.substr(i, 2), 16));
+    }
+    return str.replace(/\0/g, "").trim();
+  } catch (e) {
+    return "";
+  }
+}
+
+async function fetchNativeViaRpc(rpcUrl, address) {
+  const result = await evmRpcCall(rpcUrl, "eth_getBalance", [address, "latest"]);
+  return Number(BigInt(result)) / 1e18;
+}
+
+// Bündelt mehrere eth_call-Anfragen in einer einzigen HTTP-Anfrage (JSON-RPC Batch),
+// statt für jeden Token einzeln zum Server zu gehen - das ist der Haupt-Geschwindigkeitshebel.
+async function evmRpcBatch(rpcUrl, calls) {
+  if (calls.length === 0) return [];
+  const body = calls.map((c, i) => ({
+    jsonrpc: "2.0",
+    id: i,
+    method: "eth_call",
+    params: [{ to: c.to, data: c.data }, "latest"]
+  }));
+  const res = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  const arr = Array.isArray(data) ? data : [data];
+  const byId = {};
+  arr.forEach(d => { byId[d.id] = d; });
+  return calls.map((c, i) => {
+    const d = byId[i];
+    if (!d || d.error) return null;
+    return d.result;
+  });
+}
+
+// Cache für Dezimalstellen/Symbol pro Chain+Adresse - diese ändern sich nie,
+// darum werden sie nur einmal abgefragt statt für jede Wallet neu. Wird dauerhaft
+// in localStorage gespeichert: nach dem allerersten Laden entfällt dieser Abruf
+// bei jedem weiteren Seitenaufruf komplett, auch nach einem Browser-Neustart.
+const TOKEN_META_CACHE_KEY = "tokenMetaCache";
+let tokenMetaCache = {};
+
+function loadTokenMetaCache() {
+  try {
+    const raw = localStorage.getItem(TOKEN_META_CACHE_KEY);
+    tokenMetaCache = raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    tokenMetaCache = {};
+  }
+}
+
+function saveTokenMetaCache() {
+  try {
+    localStorage.setItem(TOKEN_META_CACHE_KEY, JSON.stringify(tokenMetaCache));
+  } catch (e) {
+    // localStorage evtl. nicht verfügbar - dann gilt der Cache nur für diese Sitzung
+  }
+}
+
+// Prüft gezielt die Balance der sicheren + selbst erfassten Token für eine Chain,
+// gebündelt in möglichst wenigen Anfragen (kein Auto-Discovery unbekannter Token,
+// siehe Erklärung im Chat).
+async function fetchKnownTokenBalances(rpcUrl, address, chain) {
+  const list = (SAFE_ADDRESSES[chain] || []).map(a => ({ address: a, label: null }))
+    .concat(customSafeTokens.filter(t => t.chain === chain).map(t => ({ address: t.address, label: t.label })));
+
+  const seen = new Set();
+  const unique = list.filter(t => {
+    if (seen.has(t.address)) return false;
+    seen.add(t.address);
+    return true;
+  });
+  if (unique.length === 0) return [];
+
+  // Balance IMMER abfragen, Dezimalstellen/Symbol nur für noch nicht gecachte Token -
+  // alles zusammen in einer einzigen Anfrage (ein Netzwerk-Umlauf statt zwei).
+  const balanceData = "0x70a08231" + address.toLowerCase().replace("0x", "").padStart(64, "0");
+  const calls = [];
+  const plan = []; // parallel zu calls: was die jeweilige Antwort bedeutet
+
+  unique.forEach((t, idx) => {
+    calls.push({ to: t.address, data: balanceData });
+    plan.push({ idx, type: "balance" });
+
+    const cacheKey = chain + "|" + t.address;
+    if (!tokenMetaCache[cacheKey]) {
+      calls.push({ to: t.address, data: "0x313ce567" });
+      plan.push({ idx, type: "decimals" });
+      calls.push({ to: t.address, data: "0x95d89b41" });
+      plan.push({ idx, type: "symbol" });
+    }
+  });
+
+  const results = await evmRpcBatch(rpcUrl, calls);
+
+  const perToken = unique.map(() => ({}));
+  results.forEach((hex, i) => {
+    const { idx, type } = plan[i];
+    perToken[idx][type] = hex;
+  });
+
+  const withBalance = [];
+  let cacheChanged = false;
+  unique.forEach((t, idx) => {
+    const hex = perToken[idx].balance;
+    if (!hex || hex === "0x") return;
+    const raw = BigInt(hex);
+    if (raw <= 0n) return;
+
+    const cacheKey = chain + "|" + t.address;
+    if (!tokenMetaCache[cacheKey]) {
+      const decHex = perToken[idx].decimals;
+      const decimals = decHex && decHex !== "0x" ? parseInt(decHex, 16) : 18;
+      const symbol = t.label || decodeAbiString(perToken[idx].symbol) || (t.address.slice(0, 8) + "…");
+      tokenMetaCache[cacheKey] = { decimals, symbol };
+      cacheChanged = true;
+    }
+    const meta = tokenMetaCache[cacheKey];
+    withBalance.push({
+      symbol: meta.symbol,
+      address: t.address,
+      amount: Number(raw) / Math.pow(10, meta.decimals)
+    });
+  });
+  if (cacheChanged) saveTokenMetaCache();
+
+  return withBalance;
+}
+
+async function fetchEvmAddressInfo(chain, rpcUrl, address) {
+  const nativeFn = ETHERSCAN_CHAIN_ID[chain]
+    ? fetchEtherscanNative(chain, address)
+    : fetchNativeViaRpc(rpcUrl, address);
+  const [native, tokens] = await Promise.all([
+    nativeFn,
+    fetchKnownTokenBalances(rpcUrl, address, chain)
+  ]);
+  return { native, tokens };
+}
+
+async function fetchBitcoinBalance(address) {
+  const res = await fetch(`https://blockstream.info/api/address/${address}`);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  const funded = data.chain_stats.funded_txo_sum + data.mempool_stats.funded_txo_sum;
+  const spent = data.chain_stats.spent_txo_sum + data.mempool_stats.spent_txo_sum;
+  return (funded - spent) / 1e8;
+}
+
+async function fetchXrpBalance(address) {
+  const res = await fetch(`https://api.xrpscan.com/api/v1/account/${address}`);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  if (data.xrpBalance === undefined) throw new Error("Keine Balance gefunden");
+  return parseFloat(data.xrpBalance);
+}
+
+async function fetchSolanaBalance(address) {
+  const res = await fetch("https://solana-rpc.publicnode.com", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getBalance", params: [address] })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.result.value / 1e9;
+}
+
+// ---- Apertum (EVM, chain-id 2786) ----
+// Es gibt keine Ethplorer-artige Auto-Discovery-API für diese Chain, darum werden
+// nur die bekannten (sicheren + selbst erfassten) Token-Adressen gezielt per eth_call geprüft.
+async function fetchApertumAddressInfo(address) {
+  const [balRes, tokRes] = await Promise.all([
+    fetch(`${APERTUM_EXPLORER_API}/addresses/${address}`),
+    fetch(`${APERTUM_EXPLORER_API}/addresses/${address}/tokens?type=ERC-20`)
+  ]);
+  if (!balRes.ok) throw new Error("HTTP " + balRes.status + " (Balance)");
+  const balData = await balRes.json();
+  const native = balData.coin_balance ? Number(BigInt(balData.coin_balance)) / 1e18 : 0;
+
+  let tokens = [];
+  if (tokRes.ok) {
+    const tokData = await tokRes.json();
+    tokens = (tokData.items || [])
+      .filter(item => item.token)
+      .map(item => {
+        const decimals = parseInt(item.token.decimals || "18", 10);
+        const raw = BigInt(item.value || "0");
+        return {
+          symbol: item.token.symbol || item.token.name || "?",
+          address: (item.token.address || "").toLowerCase(),
+          amount: Number(raw) / Math.pow(10, decimals)
+        };
+      })
+      .filter(t => t.amount > 0);
+  }
+  return { native, tokens };
+}
+
+async function loadWalletChain(wallet, chain) {
+  walletData[wallet.id] = walletData[wallet.id] || {};
+  try {
+    if (chain === "eth") {
+      if (!wallet.evm) { delete walletData[wallet.id].eth; return; }
+      const r = await fetchEvmAddressInfo("eth", "https://ethereum-rpc.publicnode.com", wallet.evm);
+      walletData[wallet.id].eth = { native: r.native, nativeSymbol: "ETH", tokens: r.tokens };
+    } else if (chain === "bsc") {
+      if (!wallet.evm) { delete walletData[wallet.id].bsc; return; }
+      const r = await fetchEvmAddressInfo("bsc", "https://bsc-rpc.publicnode.com", wallet.evm);
+      walletData[wallet.id].bsc = { native: r.native, nativeSymbol: "BNB", tokens: r.tokens };
+    } else if (chain === "matic") {
+      if (!wallet.evm) { delete walletData[wallet.id].matic; return; }
+      const r = await fetchEvmAddressInfo("matic", "https://polygon-bor-rpc.publicnode.com", wallet.evm);
+      walletData[wallet.id].matic = { native: r.native, nativeSymbol: "POL", tokens: r.tokens };
+    } else if (chain === "apertum") {
+      if (!wallet.evm) { delete walletData[wallet.id].apertum; return; }
+      const r = await fetchApertumAddressInfo(wallet.evm);
+      walletData[wallet.id].apertum = { native: r.native, nativeSymbol: "APTM", tokens: r.tokens };
+    } else if (chain === "btc") {
+      if (!wallet.btc) { delete walletData[wallet.id].btc; return; }
+      const amount = await fetchBitcoinBalance(wallet.btc);
+      walletData[wallet.id].btc = { native: amount, nativeSymbol: "BTC", tokens: [] };
+    } else if (chain === "xrp") {
+      if (!wallet.xrp) { delete walletData[wallet.id].xrp; return; }
+      const amount = await fetchXrpBalance(wallet.xrp);
+      walletData[wallet.id].xrp = { native: amount, nativeSymbol: "XRP", tokens: [] };
+    } else if (chain === "sol") {
+      if (!wallet.sol) { delete walletData[wallet.id].sol; return; }
+      const amount = await fetchSolanaBalance(wallet.sol);
+      walletData[wallet.id].sol = { native: amount, nativeSymbol: "SOL", tokens: [] };
+    }
+  } catch (err) {
+    walletData[wallet.id][chain] = { error: err.message };
+  }
+}
+
+async function loadAll() {
+  const btn = document.getElementById("loadBtn");
+  btn.disabled = true;
+  const jobs = [loadNativePrices()];
+  wallets.forEach(w => {
+    ["eth", "bsc", "matic", "apertum", "btc", "xrp", "sol"].forEach(chain => {
+      jobs.push(loadWalletChain(w, chain));
+    });
+  });
+  await Promise.all(jobs);
+  renderResults();
+  renderSafeTokenTable();
+  btn.disabled = false;
+}
+
+// ---- Rendering ----
+function badge(safe) {
+  return safe
+    ? `<span class="badge safe">sicher</span>`
+    : `<span class="badge unsafe">ungeprüft</span>`;
+}
+
+function fmt(n) {
+  return Number(n).toLocaleString('de-CH', { maximumFractionDigits: 6 });
+}
+
+function chainRows(chainData, chainKey) {
+  if (!chainData) return null;
+  if (chainData.error) return { error: chainData.error };
+  const rows = [];
+  if (chainData.native !== null && chainData.native !== undefined && chainData.native > 0) {
+    const p = nativePrices[chainKey];
+    rows.push({
+      symbol: chainData.nativeSymbol + " (nativ)",
+      amount: chainData.native,
+      safe: true,
+      isNative: true,
+      price: p ? p.price : undefined,
+      change24h: p ? p.change24h : undefined,
+      usdValue: p ? chainData.native * p.price : undefined
+    });
+  }
+  (chainData.tokens || []).forEach(t => {
+    const safe = isSafeTokenAddress(t.address, chainKey);
+    if (t.amount > 0 && safe) {
+      rows.push({ symbol: t.symbol, amount: t.amount, safe, isNative: false, address: t.address });
+    }
+  });
+  return { rows };
+}
+
+function fmtChange(pct) {
+  if (pct === undefined || pct === null || isNaN(pct)) {
+    return '<span style="color:var(--muted)">–</span>';
+  }
+  const positive = pct >= 0;
+  const color = positive ? "#46c878" : "var(--danger)";
+  const sign = positive ? "+" : "";
+  return `<span style="color:${color}">${sign}${pct.toFixed(2)}%</span>`;
+}
+
+function renderTable(rows) {
+  if (!rows || rows.length === 0) return null;
+  return `<table><thead><tr><th>Token</th><th style="text-align:right">Anzahl</th><th style="text-align:right">Kurs (USD)</th><th style="text-align:right">24h %</th><th style="text-align:right">Wert (USD)</th></tr></thead><tbody>
+    ${rows.map(r => `<tr class="${r.isNative ? 'native-row' : ''}"><td>${r.symbol} ${badge(r.safe)}</td><td class="num">${fmt(r.amount)}</td><td class="num">${r.price !== undefined ? fmtPrice(r.price) : '<span style="color:var(--muted)">–</span>'}</td><td class="num">${fmtChange(r.change24h)}</td><td class="num">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td></tr>`).join("")}
+  </tbody></table>`;
+}
+
+const EXPLORER_URLS = {
+  eth: (w) => w.evm ? `https://etherscan.io/address/${w.evm}` : null,
+  bsc: (w) => w.evm ? `https://bscscan.com/address/${w.evm}` : null,
+  matic: (w) => w.evm ? `https://polygonscan.com/address/${w.evm}` : null,
+  apertum: (w) => w.evm ? `https://explorer.apertum.io/address/${w.evm}` : null
+};
+
+function renderResults() {
+  // --- Details je Wallet ---
+  const resultsContainer = document.getElementById("resultsContainer");
+  if (wallets.length === 0) {
+    resultsContainer.innerHTML = `<div class="empty">Keine Wallets erfasst.</div>`;
+  } else {
+    resultsContainer.innerHTML = wallets.map(w => {
+      const data = walletData[w.id] || {};
+      const chainCards = Object.keys(CHAIN_META).map(chain => {
+        const meta = CHAIN_META[chain];
+        const result = chainRows(data[chain], chain);
+        if (!result) return ""; // keine Adresse eingegeben -> gar nicht anzeigen
+        if (!result.error && result.rows.length === 0) return ""; // keine Bestände -> gar nicht anzeigen
+
+        let body;
+        if (result.error) {
+          body = `<div class="error">Fehler beim Laden: ${result.error}</div>`;
+        } else {
+          body = renderTable(result.rows);
+        }
+        const explorerFn = EXPLORER_URLS[chain];
+        const explorerUrl = explorerFn ? explorerFn(w) : null;
+        const explorerLink = explorerUrl ? ` <a href="${explorerUrl}" target="_blank" rel="noopener" style="font-size:0.72rem;color:var(--accent);font-weight:400;margin-left:6px">Auf Explorer ansehen ↗</a>` : "";
+        return `<div class="chain-card">
+          <div class="chain-title"><span class="dot ${meta.dot}"></span> ${meta.label}${explorerLink}</div>
+          ${body}
+        </div>`;
+      }).join("");
+
+      return `<div class="wallet-block">
+        <div class="wallet-block-title">${escapeAttr(w.label)}</div>
+        ${chainCards || '<div class="empty">Keine Bestände gefunden.</div>'}
+      </div>`;
+    }).join("");
+  }
+
+  // --- Summary über alle Wallets, pro Chain aggregiert ---
+  const summaryContainer = document.getElementById("summaryContainer");
+  const summaryCards = Object.keys(CHAIN_META).map(chain => {
+    const meta = CHAIN_META[chain];
+    const totals = {}; // key -> {symbol, amount, safe, isNative}
+    let hadError = false;
+
+    wallets.forEach(w => {
+      const cd = (walletData[w.id] || {})[chain];
+      if (!cd) return;
+      if (cd.error) { hadError = true; return; }
+      if (cd.native !== null && cd.native !== undefined && cd.native > 0) {
+        const key = "native";
+        totals[key] = totals[key] || { symbol: cd.nativeSymbol + " (nativ)", amount: 0, safe: true, isNative: true };
+        totals[key].amount += cd.native;
+      }
+      (cd.tokens || []).forEach(t => {
+        if (t.amount <= 0) return;
+        const safe = isSafeTokenAddress(t.address, chain);
+        const key = (t.address || t.symbol).toLowerCase();
+        totals[key] = totals[key] || { symbol: t.symbol, amount: 0, safe, isNative: false };
+        totals[key].amount += t.amount;
+      });
+    });
+
+    const rows = Object.values(totals).filter(r => r.safe);
+    const p = nativePrices[chain];
+    rows.forEach(r => {
+      if (r.isNative && p) {
+        r.price = p.price;
+        r.change24h = p.change24h;
+        r.usdValue = r.amount * p.price;
+      }
+    });
+
+    if (rows.length === 0 && !hadError) return ""; // keine Bestände auf dieser Chain -> gar nicht anzeigen
+
+    let body = rows.length > 0 ? renderTable(rows.sort((a, b) => b.amount - a.amount)) : "";
+    if (hadError) {
+      body += `<div class="error" style="margin-top:6px">Hinweis: Bei mindestens einem Wallet trat auf dieser Chain ein Fehler auf — Summe ist unvollständig.</div>`;
+    }
+
+    return `<div class="chain-card">
+      <div class="chain-title"><span class="dot ${meta.dot}"></span> ${meta.label} — Total</div>
+      ${body}
+    </div>`;
+  }).join("");
+
+  summaryContainer.innerHTML = summaryCards || '<div class="empty">Keine Bestände gefunden.</div>';
+}
+
+// ---- Initialisierung ----
+// Alles Weitere (Wallets/Token laden, rendern) passiert erst nach erfolgreichem
+// Login in initAuth() -> onLoggedIn(), siehe oben.
+initAuth();
+</script>
+</body>
+</html>
