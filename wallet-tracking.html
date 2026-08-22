@@ -120,8 +120,22 @@
   .error { color: var(--danger); font-size: 0.85rem; padding: 6px 0; }
   .native-row td { font-weight: 600; }
 
-  .wallet-block { margin-bottom: 28px; }
-  .wallet-block-title { font-size: 1rem; font-weight: 600; margin-bottom: 10px; }
+  .wallet-block {
+    margin-bottom: 36px;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 14px;
+    padding: 18px 18px 4px;
+  }
+  .wallet-block-title {
+    font-size: 1.05rem; font-weight: 700; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .wallet-block-title::before {
+    content: "💼";
+    font-size: 0.9em;
+  }
 
   .badge {
     display: inline-block; font-size: 0.66rem; padding: 2px 7px; border-radius: 10px;
