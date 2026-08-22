@@ -308,7 +308,9 @@ function showTab(name) {
 const PREDEFINED_RPC = { eth: "https://ethereum-rpc.publicnode.com", bsc: "https://bsc-rpc.publicnode.com" };
 async function ensurePredefinedNames() {
   for (const chain of Object.keys(PREDEFINED_RPC)) {
-    const missing = (SAFE_ADDRESSES[chain] || []).filter(a => !tokenMetaCache[chain + "|" + a]);
+    const missing = (SAFE_ADDRESSES[chain] || []).filter(a =>
+      !tokenMetaCache[chain + "|" + a] && !(chain === "bsc" && PCLP_TOKEN_NAMES[a])
+    );
     if (missing.length === 0) continue;
 
     const calls = [];
@@ -368,7 +370,8 @@ const SAFE_ADDRESSES = {
     "0x2182aad4bf07a96d347c653a126e2016edf0eff3",
     "0x8fc5e4cc4768449bc7feb0bf094bcdc3e4b16975",
     "0x8f1d83feb2d65f04ce7da4f1f476f5272821dfdf",
-    "0x1e7ea2ec47199191dc3b642bb6c24ed03cc1a641"
+    "0x1e7ea2ec47199191dc3b642bb6c24ed03cc1a641",
+    "0x387afa0ece06b1bd60c407f3b916b7bbc4575bbf"
   ],
   eth: [
     "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
@@ -487,6 +490,22 @@ const APERTUM_TOKEN_NAMES = {
   "0xf75dd43f59cba81329f2fa3d98d0c0908cffebb8": "wAVAX"
 };
 
+// Feste Namenszuordnung für BSC-PancakeSwap-LP-Token (Namen selbst geliefert,
+// da der Contract dafür meist keinen aussagekräftigen symbol()-Namen liefert).
+const PCLP_TOKEN_NAMES = {
+  "0x6b27bb584f44f55e865432dceb9ebbe9a17fd4a8": "PCLP VOW/BTCB",
+  "0xc6585bc17b53792f281a9739579dd60535c1f9fb": "PCLP VOW/USDT",
+  "0x8b0b4c7878623db8e5e6cb9bd0fa85c07c3b85f1": "PCLP v£/v€",
+  "0x72dcf845ae36401e82e681b0e063d0703bac0bba": "PCLP VOW/vUSD",
+  "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16": "PCLP vUSD/VOW",
+  "0xc51c99af9d5c31d0c37d028500b2b344debdf188": "PCLP VOW/v$",
+  "0x1c8dd0dc515166b4349a9b8bd7db3945445c5e52": "PCLP v€/VOW",
+  "0x4ce91c45c140486a3a9d52b16015dd58254115b9": "PCLP USDC/v$",
+  "0x2182aad4bf07a96d347c653a126e2016edf0eff3": "PCLP TLN Gold/v$",
+  "0x1e7ea2ec47199191dc3b642bb6c24ed03cc1a641": "PCLP TLN Gold/USDT",
+  "0x387afa0ece06b1bd60c407f3b916b7bbc4575bbf": "PCLP v£/VOW"
+};
+
 function renderSafeTokenTable() {
   const el = document.getElementById("safeTokenTable");
   const rows = [];
@@ -496,6 +515,8 @@ function renderSafeTokenTable() {
       let label = null;
       if (chain === "apertum") {
         label = APERTUM_TOKEN_NAMES[address] || null;
+      } else if (chain === "bsc" && PCLP_TOKEN_NAMES[address]) {
+        label = PCLP_TOKEN_NAMES[address];
       } else {
         const cached = tokenMetaCache[chain + "|" + address];
         label = cached ? cached.symbol : null;
