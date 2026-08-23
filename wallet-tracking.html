@@ -726,7 +726,11 @@ function renderSafeTokenTable() {
     return;
   }
 
-  filtered.sort((a, b) => a.chain.localeCompare(b.chain));
+  filtered.sort((a, b) => {
+    const chainCompare = a.chain.localeCompare(b.chain);
+    if (chainCompare !== 0) return chainCompare;
+    return (a.label || "").localeCompare(b.label || "");
+  });
 
   el.innerHTML = `<table><thead><tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th></tr></thead><tbody>
     ${filtered.map(r => {
