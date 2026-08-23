@@ -355,7 +355,7 @@
   </div>
 
   <footer>
-    Version vom 23.08.2026, 18:58 Uhr<br>
+    Version vom 23.08.2026, 19:02 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -851,16 +851,18 @@ async function loadNativePrices() {
 }
 
 async function loadTokenPricesViaGeckoTerminal(alreadyPriced) {
-  for (const chain of Object.keys(GECKOTERMINAL_NETWORK)) {
+  // Alle Chains parallel abfragen statt nacheinander - das war der Haupt-Geschwindigkeitsverlust.
+  const chainJobs = Object.keys(GECKOTERMINAL_NETWORK).map(async chain => {
     const network = GECKOTERMINAL_NETWORK[chain];
     const list = (SAFE_ADDRESSES[chain] || [])
       .concat(customSafeTokens.filter(t => t.chain === chain).map(t => t.address))
       .filter((addr, idx, arr) => arr.indexOf(addr) === idx) // Duplikate raus
       .filter(addr => !alreadyPriced[chain + "|" + addr]);
 
-    if (list.length === 0) continue;
+    if (list.length === 0) return;
 
-    // GeckoTerminal erlaubt max. ~30 Adressen pro Anfrage - in Batches aufteilen
+    // Innerhalb einer Chain bleiben Batches sequenziell (kommt praktisch nie vor,
+    // da selten >30 Token pro Chain), aber die Chains selbst laufen jetzt parallel.
     for (let i = 0; i < list.length; i += 30) {
       const batch = list.slice(i, i + 30);
       try {
@@ -885,7 +887,8 @@ async function loadTokenPricesViaGeckoTerminal(alreadyPriced) {
         // Fehler bei einer Chain sollen die anderen nicht blockieren
       }
     }
-  }
+  });
+  await Promise.all(chainJobs);
 }
 
 
