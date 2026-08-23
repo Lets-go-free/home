@@ -355,7 +355,7 @@
   </div>
 
   <footer>
-    Version vom 23.08.2026, 18:53 Uhr<br>
+    Version vom 23.08.2026, 18:58 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1618,27 +1618,67 @@ function visibleSnapshots() {
   return snapshots.filter(s => s.visible).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
-function findSnapshotAmount(snap, wallet, chain, row) {
-  const items = snap.items.filter(it => it.chain === chain && (
-    (wallet.dbId && it.wallet_id === wallet.dbId) || (!wallet.dbId && it.wallet_label === wallet.label)
-  ));
-  let match;
-  if (row.isNative) {
-    match = items.find(it => it.is_native);
-  } else {
-    const addr = (row.address || "").toLowerCase();
-    match = items.find(it => !it.is_native && (it.address || "").toLowerCase() === addr);
-  }
-  return match ? Number(match.amount) : null;
-}
-
 // ---- Bestands-Tabelle. wallet+chain optional: nur bei Angabe werden Snapshot-Spalten
 // (fixierte Hauptspalten, seitlich scrollbar) angehängt - Summary bleibt unverändert. ----
-const SNAPSHOT_COL_WIDTHS = { token: 200, amount: 100, price: 100, change: 70, value: 110, snap: 130 };
-function renderTable(rows, wallet, chain) {
+const SNAPSHOT_COL_WIDTHS = { token: 260, amount: 140, price: 140, change: 90, value: 150, snap: 170 };
+
+function rowKey(row) {
+  return row.isNative ? "native" : (row.address || "").toLowerCase();
+}
+
+// Summiert den Bestand eines Tokens in einem Snapshot - entweder für EIN Wallet (matchWallet
+// gesetzt) oder über ALLE Wallets summiert (matchWallet null, für die Summary-Tabelle).
+function snapshotValueForKey(snap, chain, key, matchWallet) {
+  const items = snap.items.filter(it => it.chain === chain &&
+    (!matchWallet || (matchWallet.dbId ? it.wallet_id === matchWallet.dbId : it.wallet_label === matchWallet.label))
+  );
+  const matching = items.filter(it => (it.is_native ? "native" : (it.address || "").toLowerCase()) === key);
+  if (matching.length === 0) return null;
+  return matching.reduce((sum, it) => sum + Number(it.amount), 0);
+}
+
+// Hängt an jede Zeile die Werte aus den sichtbaren Snapshots an (r.snapshotValues) und ergänzt
+// Zeilen für Token, die aktuell 0 Bestand haben, aber in einem Snapshot vorkamen.
+// matchWallet: ein Wallet-Objekt (Einzelwallet-Ansicht) oder null (Summary, über alle Wallets).
+function attachSnapshotColumns(rows, chain, matchWallet) {
+  const snaps = visibleSnapshots();
+  if (snaps.length === 0) return rows;
+
+  rows.forEach(r => {
+    r.snapshotValues = {};
+    snaps.forEach(s => { r.snapshotValues[s.id] = snapshotValueForKey(s, chain, rowKey(r), matchWallet); });
+  });
+
+  const presentKeys = new Set(rows.map(rowKey));
+  const extraKeys = new Set();
+  const extraRows = [];
+  snaps.forEach(s => {
+    s.items
+      .filter(it => it.chain === chain &&
+        (!matchWallet || (matchWallet.dbId ? it.wallet_id === matchWallet.dbId : it.wallet_label === matchWallet.label))
+      )
+      .forEach(it => {
+        const key = it.is_native ? "native" : (it.address || "").toLowerCase();
+        if (presentKeys.has(key) || extraKeys.has(key)) return;
+        extraKeys.add(key);
+        const p = it.is_native ? nativePrices[chain] : priceForToken(chain, it.address);
+        const extraRow = {
+          symbol: it.symbol + " (aktuell 0)",
+          amount: 0, safe: true, isNative: it.is_native, address: it.address,
+          price: p ? p.price : undefined, usdValue: 0, isHistoricalOnly: true,
+          snapshotValues: {}
+        };
+        snaps.forEach(s2 => { extraRow.snapshotValues[s2.id] = snapshotValueForKey(s2, chain, key, matchWallet); });
+        extraRows.push(extraRow);
+      });
+  });
+  return rows.concat(extraRows);
+}
+
+function renderTable(rows) {
   if (!rows || rows.length === 0) return null;
-  const snaps = wallet ? visibleSnapshots() : [];
-  const hasSnaps = snaps.length > 0;
+  const snaps = visibleSnapshots();
+  const hasSnaps = snaps.length > 0 && rows.some(r => r.snapshotValues);
 
   if (!hasSnaps) {
     return `<table class="balance-table">
@@ -1661,33 +1701,6 @@ function renderTable(rows, wallet, chain) {
   const left = { token: 0, amount: w.token, price: w.token + w.amount, change: w.token + w.amount + w.price, value: w.token + w.amount + w.price + w.change };
   const sticky = (l) => `position:sticky;left:${l}px;background:var(--card);z-index:2;`;
 
-  // Token ergänzen, die aktuell 0 Bestand haben, aber in mindestens einem sichtbaren
-  // Snapshot einen Bestand hatten - sonst würden sie trotz sichtbarer Snapshot-Spalte fehlen.
-  const presentKeys = new Set(rows.map(r => r.isNative ? "native" : (r.address || "").toLowerCase()));
-  const extraKeys = new Set();
-  const extraRows = [];
-  snaps.forEach(s => {
-    s.items
-      .filter(it => it.chain === chain && ((wallet.dbId && it.wallet_id === wallet.dbId) || (!wallet.dbId && it.wallet_label === wallet.label)))
-      .forEach(it => {
-        const key = it.is_native ? "native" : (it.address || "").toLowerCase();
-        if (presentKeys.has(key) || extraKeys.has(key)) return;
-        extraKeys.add(key);
-        const p = it.is_native ? nativePrices[chain] : priceForToken(chain, it.address);
-        extraRows.push({
-          symbol: it.symbol + " (aktuell 0)",
-          amount: 0,
-          safe: true,
-          isNative: it.is_native,
-          address: it.address,
-          price: p ? p.price : undefined,
-          usdValue: 0,
-          isHistoricalOnly: true
-        });
-      });
-  });
-  rows = rows.concat(extraRows);
-
   const colgroup = `<colgroup>
     <col style="width:${w.token}px"><col style="width:${w.amount}px"><col style="width:${w.price}px"><col style="width:${w.change}px"><col style="width:${w.value}px">
     ${snaps.map(() => `<col style="width:${w.snap}px">`).join("")}
@@ -1704,8 +1717,8 @@ function renderTable(rows, wallet, chain) {
 
   const bodyRows = rows.map(r => {
     const snapCells = snaps.map(s => {
-      const amt = findSnapshotAmount(s, wallet, chain, r);
-      return `<td class="num">${amt !== null ? fmt(amt) : '<span style="color:var(--muted)">–</span>'}</td>`;
+      const amt = r.snapshotValues ? r.snapshotValues[s.id] : null;
+      return `<td class="num">${amt !== null && amt !== undefined ? fmt(amt) : '<span style="color:var(--muted)">–</span>'}</td>`;
     }).join("");
     const mutedStyle = r.isHistoricalOnly ? "opacity:0.6;" : "";
     return `<tr class="${r.isNative ? 'native-row' : ''}" style="${mutedStyle}">
@@ -1753,7 +1766,7 @@ function renderResults() {
         if (result.error) {
           body = `<div class="error">Fehler beim Laden: ${result.error}</div>`;
         } else {
-          body = renderTable(result.rows, w, chain);
+          body = renderTable(attachSnapshotColumns(result.rows, chain, w));
         }
         const explorerFn = EXPLORER_URLS[chain];
         const explorerUrl = explorerFn ? explorerFn(w) : null;
@@ -1821,7 +1834,8 @@ function renderResults() {
 
     if (rows.length === 0 && !hadError) return ""; // keine Bestände auf dieser Chain -> gar nicht anzeigen
 
-    let body = rows.length > 0 ? renderTable(rows.sort((a, b) => b.amount - a.amount)) : "";
+    const sortedRows = rows.sort((a, b) => b.amount - a.amount);
+    let body = sortedRows.length > 0 ? renderTable(attachSnapshotColumns(sortedRows, chain, null)) : "";
     if (hadError) {
       body += `<div class="error" style="margin-top:6px">Hinweis: Bei mindestens einem Wallet trat auf dieser Chain ein Fehler auf — Summe ist unvollständig.</div>`;
     }
