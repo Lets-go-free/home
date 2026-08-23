@@ -347,7 +347,7 @@
   </div>
 
   <footer>
-    Version vom 23.08.2026, 19:28 Uhr<br>
+    Version vom 23.08.2026, 19:32 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -903,14 +903,23 @@ function newWallet(label, evm, btc, xrp, sol, tron, dbId) {
   return { id: dbId || ("local" + walletCounter), dbId: dbId || null, label: label || ("Wallet " + walletCounter), evm: evm || "", btc: btc || "", xrp: xrp || "", sol: sol || "", tron: tron || "" };
 }
 
+// Zentrale Sortierung nach Wallet-Bezeichnung (alphabetisch) - nach jeder Änderung
+// aufgerufen, damit ALLE Stellen (Liste, "Gehe zu Wallet", Details je Wallet,
+// Discovery-Dropdown) automatisch konsistent sortiert bleiben.
+function sortWalletsByLabel() {
+  wallets.sort((a, b) => a.label.localeCompare(b.label, "de"));
+}
+
 async function loadWalletsFromDb() {
   const { data, error } = await sb.from("wallets").select("*").order("created_at");
   if (error) { console.error(error); wallets = []; return; }
   wallets = data.map(row => newWallet(row.label, row.evm_address, row.btc_address, row.xrp_address, row.sol_address, row.tron_address, row.id));
+  sortWalletsByLabel();
 }
 
 function addWallet() {
   wallets.push(newWallet());
+  sortWalletsByLabel();
   renderWalletInputs();
 }
 
@@ -974,6 +983,8 @@ async function saveWallet(id) {
       if (statusEl) statusEl.textContent = "Gespeichert.";
     }
   }
+  sortWalletsByLabel();
+  renderWalletInputs();
   loadAll();
 }
 
