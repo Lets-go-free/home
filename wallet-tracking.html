@@ -355,7 +355,7 @@
   </div>
 
   <footer>
-    Version vom 23.08.2026, 19:02 Uhr<br>
+    Version vom 23.08.2026, 19:08 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1621,6 +1621,15 @@ function visibleSnapshots() {
   return snapshots.filter(s => s.visible).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
+// Prüft, ob für eine Chain (+ optional ein bestimmtes Wallet) überhaupt Snapshot-Daten
+// existieren - damit eine Chain-Karte nicht ausgeblendet wird, nur weil der AKTUELLE
+// Bestand 0 ist, obwohl ein Snapshot noch etwas zeigen würde.
+function hasVisibleSnapshotDataForChain(chain, matchWallet) {
+  return visibleSnapshots().some(s => s.items.some(it => it.chain === chain &&
+    (!matchWallet || (matchWallet.dbId ? it.wallet_id === matchWallet.dbId : it.wallet_label === matchWallet.label))
+  ));
+}
+
 // ---- Bestands-Tabelle. wallet+chain optional: nur bei Angabe werden Snapshot-Spalten
 // (fixierte Hauptspalten, seitlich scrollbar) angehängt - Summary bleibt unverändert. ----
 const SNAPSHOT_COL_WIDTHS = { token: 260, amount: 140, price: 140, change: 90, value: 150, snap: 170 };
@@ -1763,13 +1772,16 @@ function renderResults() {
         const meta = CHAIN_META[chain];
         const result = chainRows(data[chain], chain);
         if (!result) return ""; // keine Adresse eingegeben -> gar nicht anzeigen
-        if (!result.error && result.rows.length === 0) return ""; // keine Bestände -> gar nicht anzeigen
+        // Nicht ausblenden, wenn zwar aktuell 0 Bestand da ist, aber ein sichtbarer
+        // Snapshot für diese Wallet+Chain existiert - sonst verschwindet die Karte
+        // komplett und der Snapshot ist nie sichtbar.
+        if (!result.error && result.rows.length === 0 && !hasVisibleSnapshotDataForChain(chain, w)) return "";
 
         let body;
         if (result.error) {
           body = `<div class="error">Fehler beim Laden: ${result.error}</div>`;
         } else {
-          body = renderTable(attachSnapshotColumns(result.rows, chain, w));
+          body = renderTable(attachSnapshotColumns(result.rows, chain, w)) || '<div class="empty">Keine aktuellen Bestände, aber Snapshot-Daten vorhanden.</div>';
         }
         const explorerFn = EXPLORER_URLS[chain];
         const explorerUrl = explorerFn ? explorerFn(w) : null;
@@ -1835,10 +1847,10 @@ function renderResults() {
       }
     });
 
-    if (rows.length === 0 && !hadError) return ""; // keine Bestände auf dieser Chain -> gar nicht anzeigen
+    if (rows.length === 0 && !hadError && !hasVisibleSnapshotDataForChain(chain, null)) return ""; // keine Bestände -> gar nicht anzeigen
 
     const sortedRows = rows.sort((a, b) => b.amount - a.amount);
-    let body = sortedRows.length > 0 ? renderTable(attachSnapshotColumns(sortedRows, chain, null)) : "";
+    let body = renderTable(attachSnapshotColumns(sortedRows, chain, null)) || '<div class="empty">Keine aktuellen Bestände, aber Snapshot-Daten vorhanden.</div>';
     if (hadError) {
       body += `<div class="error" style="margin-top:6px">Hinweis: Bei mindestens einem Wallet trat auf dieser Chain ein Fehler auf — Summe ist unvollständig.</div>`;
     }
