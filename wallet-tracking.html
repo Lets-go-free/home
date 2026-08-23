@@ -252,6 +252,9 @@
     </div>
 
     <div id="tab-predefined" class="tab-panel">
+      <div class="action-row">
+        <button class="secondary" onclick="refreshPredefinedTokens()">🔄 Liste neu laden (nach SQL-Änderungen)</button>
+      </div>
       <div class="custom-token-card">
         <div class="field-grid" style="margin-bottom:14px">
           <div>
@@ -564,6 +567,12 @@ function normalizeAddress(address, chain) {
   return chain === "tron" ? address.trim() : address.trim().toLowerCase();
 }
 
+async function refreshPredefinedTokens() {
+  await loadPredefinedTokensFromDb();
+  renderSafeTokenTable();
+  loadAll(); // neue/geänderte vordefinierte Token sollen sofort im Wallet-Tracking berücksichtigt werden
+}
+
 async function loadPredefinedTokensFromDb() {
   const { data, error } = await sb.from("predefined_tokens").select("*");
   if (error) { console.error(error); return; }
@@ -639,6 +648,7 @@ async function addCustomSafeToken() {
   document.getElementById("customLabel").value = "";
   renderCustomTokenList();
   renderSafeTokenTable();
+  loadAll(); // neuer Token soll sofort im Wallet-Tracking berücksichtigt werden, nicht erst nach manuellem Neuladen
   renderResults();
 }
 
@@ -650,7 +660,7 @@ async function removeCustomSafeToken(chain, address) {
   customSafeTokens = customSafeTokens.filter(t => !(t.chain === chain && t.address === address));
   renderCustomTokenList();
   renderSafeTokenTable();
-  renderResults();
+  loadAll(); // Entfernter Token soll sofort aus dem Wallet-Tracking verschwinden, falls dort ein Bestand angezeigt war
 }
 
 function renderCustomTokenList() {
