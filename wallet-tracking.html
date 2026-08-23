@@ -1652,104 +1652,58 @@ function renderDiscoveryWalletSelect() {
   if (wallets.some(w => w.id === current)) el.value = current;
 }
 
-// Kleine Pause zwischen eth_getLogs-Anfragen, sonst drosseln viele Gratis-RPC-Anbieter
-// nach den ersten paar Anfragen alles Weitere ab ("Anbieter hat abgelehnt").
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-const DISCOVERY_REQUEST_DELAY = 150;
-
-const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-const DISCOVERY_BLOCK_WINDOW = 300000; // grobe Abdeckung, je nach Chain ein paar Wochen bis Monate
-const DISCOVERY_CHUNK_SIZE = 2000; // konservativ - viele Gratis-RPC-Anbieter blocken alles darüber
-
 // Erkennt typische Phishing-/Airdrop-Scam-Muster im Token-Namen oder -Symbol
 // (z.B. "Visit claim-rewards.xyz", "$1000 USDT Bonus" o.ä.) - eine der häufigsten
-// Betrugsmaschen bei unaufgeforderten Token-Airdrops.
+// Betrugsmaschen bei unaufgeforderten Token-Airdrops. Läuft zusätzlich zu Moralis'
+// eigener possible_spam-Erkennung, nicht statt ihr.
 function isLikelyScamName(text) {
   if (!text) return false;
   return /https?:\/\/|www\.|\.(com|io|net|org|xyz|app|finance|claim|airdrop|site|click|link|gift|bonus|vip|top)\b|visit |claim now|reward|bonus|voucher/i.test(text);
 }
 
-// eth_getLogs in kleinen Blockfenstern abfragen - viele Gratis-RPC-Anbieter (auch PublicNode)
-// blockieren Anfragen mit zu grossem Blockbereich, ohne dass das ohne Pagination auffällt.
-async function fetchLogsInWindows(rpcUrl, paddedAddress, fromBlock, toBlock, onProgress) {
-  const allLogs = [];
-  let failedWindows = 0;
-  let firstErrorMessage = null;
-  let cursor = fromBlock;
-  const totalWindows = Math.ceil((toBlock - fromBlock) / DISCOVERY_CHUNK_SIZE);
-  let windowIndex = 0;
+// Moralis Web3 Data API: liefert ALLE ERC20-Token einer Wallet in einem einzigen Aufruf,
+// inkl. eingebauter Spam-Erkennung (possible_spam) - viel zuverlässiger als eine
+// selbstgebaute eth_getLogs-Suche, die bei den meisten Gratis-RPC-Anbietern ohnehin
+// an Adress-/Blockbereichs-Einschränkungen scheitert.
+const MORALIS_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjE0ODhmZDQzLTI5YjMtNGE2MC04YTI2LTI5NmUyZjBhN2VhMyIsIm9yZ0lkIjoiNDg4NzA2IiwidXNlcklkIjoiNTAyODE0IiwidHlwZSI6IlBST0pFQ1QiLCJ0eXBlSWQiOiI2OGRiNzk3OC04Mzc4LTRlYzQtYjUzMi1jYzQ1M2E3NjI3ZWUiLCJpYXQiOjE3Njc2MDYzNDEsImV4cCI6NDkyMzM2NjM0MX0.JxTFbn9XUAGC2DY3jh15pPBwEPk35c5GYa_quyDP_Hg";
+const MORALIS_CHAIN_HEX = { eth: "0x1", bsc: "0x38", matic: "0x89", arb: "0xa4b1", base: "0x2105", avax: "0xa86a" };
 
-  while (cursor <= toBlock) {
-    const windowEnd = Math.min(cursor + DISCOVERY_CHUNK_SIZE - 1, toBlock);
-    windowIndex++;
-    if (onProgress) onProgress(windowIndex, totalWindows);
-    try {
-      const logs = await evmRpcCall(rpcUrl, "eth_getLogs", [{
-        fromBlock: "0x" + cursor.toString(16),
-        toBlock: "0x" + windowEnd.toString(16),
-        topics: [TRANSFER_TOPIC, null, paddedAddress]
-      }]);
-      allLogs.push(...(logs || []));
-    } catch (e) {
-      failedWindows++; // einzelnes Fenster übersprungen, Scan läuft trotzdem weiter
-      if (!firstErrorMessage) firstErrorMessage = e.message;
-    }
-    cursor = windowEnd + 1;
-    if (cursor <= toBlock) await sleep(DISCOVERY_REQUEST_DELAY); // Anbieter nicht überrennen
-  }
-  return { logs: allLogs, failedWindows, totalWindows, firstErrorMessage };
-}
+async function discoverEvmTokens(chain, address) {
+  const chainHex = MORALIS_CHAIN_HEX[chain];
+  const res = await fetch(`https://deep-index.moralis.io/api/v2.2/${address}/erc20?chain=${chainHex}`, {
+    headers: { "X-API-Key": MORALIS_API_KEY, "Accept": "application/json" }
+  });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  const list = Array.isArray(data) ? data : (data.result || []);
 
-async function discoverEvmTokens(chain, address, onProgress) {
-  const rpcUrl = EVM_RPC_URLS[chain];
-  const latestHex = await evmRpcCall(rpcUrl, "eth_blockNumber", []);
-  const latest = parseInt(latestHex, 16);
-  const fromBlock = Math.max(0, latest - DISCOVERY_BLOCK_WINDOW);
-  const paddedAddress = "0x" + address.toLowerCase().replace("0x", "").padStart(64, "0");
-
-  const { logs, failedWindows, totalWindows, firstErrorMessage } = await fetchLogsInWindows(rpcUrl, paddedAddress, fromBlock, latest, onProgress);
-
-  const contractSet = new Set(logs.map(l => l.address.toLowerCase()));
   const known = new Set(
     (SAFE_ADDRESSES[chain] || []).concat(customSafeTokens.filter(t => t.chain === chain).map(t => t.address))
   );
-  const unknownAddrs = [...contractSet].filter(a => !known.has(a));
-  if (unknownAddrs.length === 0) return { found: [], failedWindows, totalWindows, firstErrorMessage };
-
-  const balanceData = "0x70a08231" + address.toLowerCase().replace("0x", "").padStart(64, "0");
-  const calls = [];
-  const plan = [];
-  unknownAddrs.forEach((addr, idx) => {
-    calls.push({ to: addr, data: balanceData }); plan.push({ idx, type: "balance" });
-    calls.push({ to: addr, data: "0x313ce567" }); plan.push({ idx, type: "decimals" });
-    calls.push({ to: addr, data: "0x95d89b41" }); plan.push({ idx, type: "symbol" });
-    calls.push({ to: addr, data: "0x06fdde03" }); plan.push({ idx, type: "name" }); // name() - Scam-Text steckt oft hier, nicht im Symbol
-  });
-  const results = await evmRpcBatch(rpcUrl, calls);
-  const perToken = unknownAddrs.map(() => ({}));
-  results.forEach((hex, i) => {
-    const { idx, type } = plan[i];
-    perToken[idx][type] = hex;
-  });
 
   const found = [];
-  unknownAddrs.forEach((addr, idx) => {
-    const balHex = perToken[idx].balance;
-    if (!balHex || balHex === "0x") return;
-    const raw = BigInt(balHex);
+  list.forEach(t => {
+    const addr = (t.token_address || "").toLowerCase();
+    if (!addr || known.has(addr)) return;
+    const decimals = typeof t.decimals === "number" ? t.decimals : 18;
+    let raw;
+    try { raw = BigInt(t.balance || "0"); } catch (e) { return; }
     if (raw <= 0n) return;
-    const decHex = perToken[idx].decimals;
-    const decimals = decHex && decHex !== "0x" ? parseInt(decHex, 16) : 18;
-    const symbol = decodeAbiString(perToken[idx].symbol) || (addr.slice(0, 8) + "…");
-    const name = decodeAbiString(perToken[idx].name);
-    const nameScam = isLikelyScamName(symbol) || isLikelyScamName(name);
+    const amount = Number(raw) / Math.pow(10, decimals);
+    if (amount < DUST_THRESHOLD) return;
+
+    const moralisSpam = t.possible_spam === true;
+    const nameScamFlag = moralisSpam || isLikelyScamName(t.symbol) || isLikelyScamName(t.name);
     found.push({
-      chain, address: addr, symbol, name,
-      amount: Number(raw) / Math.pow(10, decimals),
-      nameScamFlag: nameScam
+      chain, address: addr,
+      symbol: t.symbol || (addr.slice(0, 8) + "…"),
+      name: t.name,
+      amount,
+      nameScamFlag,
+      moralisSpam
     });
   });
-  return { found, failedWindows, totalWindows, firstErrorMessage };
+  return found;
 }
 
 // GoPlus Security: kostenlose Risiko-Einschätzung für EVM-Token (kein Key nötig).
@@ -1816,17 +1770,13 @@ async function runDiscoveryScan() {
     });
   });
 
-  // EVM-Chains: aktiver Scan über eth_getLogs (paginiert, gedrosselt), nur ausgewählte Chains
+  // EVM-Chains: ein Moralis-Aufruf pro Chain, liefert alle Token direkt mit Spam-Einschätzung
   if (w.evm) {
-    for (const chain of Object.keys(EVM_RPC_URLS).filter(c => activeDiscoveryChains.has(c))) {
+    for (const chain of Object.keys(MORALIS_CHAIN_HEX).filter(c => activeDiscoveryChains.has(c))) {
+      status.textContent = `Durchsuche ${w.label} auf ${CHAIN_META[chain].label}...`;
       try {
-        const { found, failedWindows, totalWindows, firstErrorMessage } = await discoverEvmTokens(chain, w.evm, (i, total) => {
-          status.textContent = `Durchsuche ${w.label} auf ${CHAIN_META[chain].label}... (Fenster ${i}/${total})`;
-        });
+        const found = await discoverEvmTokens(chain, w.evm);
         found.forEach(f => allFindings.push({ walletLabel: w.label, ...f, risk: null }));
-        if (failedWindows > 0) {
-          scanNotes.push(`${CHAIN_META[chain].label}: ${failedWindows} von ${totalWindows} Blockfenstern übersprungen${firstErrorMessage ? " (" + firstErrorMessage + ")" : ""} - Ergebnis evtl. unvollständig.`);
-        }
       } catch (e) {
         scanNotes.push(`${CHAIN_META[chain].label}: Scan fehlgeschlagen (${e.message}).`);
       }
@@ -1897,7 +1847,8 @@ function renderDiscoveryResults(findings) {
     let riskHtml = "";
     if (scam) {
       const reasons = [];
-      if (f.nameScamFlag) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
+      if (f.moralisSpam) reasons.push("von Moralis als Spam eingestuft");
+      if (f.nameScamFlag && !f.moralisSpam) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
       if (f.risk && f.risk.length > 0) reasons.push(...f.risk);
       riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger);font-weight:700">⚠ VERDACHT AUF SCAM: ${reasons.join(", ")}</span>`;
     } else if (f.risk === null) {
