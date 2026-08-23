@@ -355,7 +355,7 @@
   </div>
 
   <footer>
-    Version vom 23.08.2026, 19:13 Uhr<br>
+    Version vom 23.08.2026, 19:20 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1710,8 +1710,7 @@ function renderTable(rows) {
   }
 
   const w = SNAPSHOT_COL_WIDTHS;
-  const left = { token: 0, amount: w.token, price: w.token + w.amount, change: w.token + w.amount + w.price, value: w.token + w.amount + w.price + w.change };
-  const sticky = (l) => `position:sticky;left:${l}px;background:var(--card);z-index:2;`;
+  const sticky = `position:sticky;left:0px;background:var(--card);z-index:2;`;
 
   const colgroup = `<colgroup>
     <col style="width:${w.token}px"><col style="width:${w.amount}px"><col style="width:${w.price}px"><col style="width:${w.change}px"><col style="width:${w.value}px">
@@ -1719,11 +1718,11 @@ function renderTable(rows) {
   </colgroup>`;
 
   const headerRow = `<tr>
-    <th style="${sticky(left.token)}">Token</th>
-    <th style="text-align:right;${sticky(left.amount)}">Anzahl</th>
-    <th style="text-align:right;${sticky(left.price)}">Kurs (USD)</th>
-    <th style="text-align:right;${sticky(left.change)}">24h %</th>
-    <th style="text-align:right;${sticky(left.value)}">Wert (USD)</th>
+    <th style="${sticky}">Token</th>
+    <th style="text-align:right">Anzahl</th>
+    <th style="text-align:right">Kurs (USD)</th>
+    <th style="text-align:right">24h %</th>
+    <th style="text-align:right">Wert (USD)</th>
     ${snaps.map(s => `<th style="text-align:right;white-space:normal">${fmtSnapshotDateTime(s.createdAt)}</th>`).join("")}
   </tr>`;
 
@@ -1734,11 +1733,11 @@ function renderTable(rows) {
     }).join("");
     const mutedStyle = r.isHistoricalOnly ? "opacity:0.6;" : "";
     return `<tr class="${r.isNative ? 'native-row' : ''}" style="${mutedStyle}">
-      <td style="${sticky(left.token)}${mutedStyle}">${r.symbol}${r.isHistoricalOnly ? '' : ' ' + badge(r.safe)}</td>
-      <td class="num" style="${sticky(left.amount)}${mutedStyle}">${fmt(r.amount)}</td>
-      <td class="num" style="${sticky(left.price)}${mutedStyle}">${r.price !== undefined ? fmtPrice(r.price) + (r.source ? `<span class="price-source">${r.source}</span>` : "") : '<span style="color:var(--muted)">–</span>'}</td>
-      <td class="num" style="${sticky(left.change)}${mutedStyle}">${fmtChange(r.change24h)}</td>
-      <td class="num" style="${sticky(left.value)}${mutedStyle}">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td>
+      <td style="${sticky}${mutedStyle}">${r.symbol}${r.isHistoricalOnly ? '' : ' ' + badge(r.safe)}</td>
+      <td class="num" style="${mutedStyle}">${fmt(r.amount)}</td>
+      <td class="num" style="${mutedStyle}">${r.price !== undefined ? fmtPrice(r.price) + (r.source ? `<span class="price-source">${r.source}</span>` : "") : '<span style="color:var(--muted)">–</span>'}</td>
+      <td class="num" style="${mutedStyle}">${fmtChange(r.change24h)}</td>
+      <td class="num" style="${mutedStyle}">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td>
       ${snapCells}
     </tr>`;
   }).join("");
