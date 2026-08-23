@@ -236,6 +236,14 @@
         </div>
       </div>
 
+      <div class="custom-token-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="field-label" style="margin:0">Snapshots (Token-Bestand zu einem Zeitpunkt, als zusätzliche Spalten je Wallet)</span>
+          <button onclick="createSnapshot()">📸 Snapshot erstellen</button>
+        </div>
+        <div id="snapshotManagerList"></div>
+      </div>
+
       <h2>Summary (alle Wallets)</h2>
       <div id="summaryContainer"></div>
 
@@ -401,11 +409,13 @@ async function onLoggedIn(session) {
   await loadPredefinedTokensFromDb();
   await loadWalletsFromDb();
   await loadCustomSafeTokensFromDb();
+  await loadSnapshotsFromDb();
   activeChainFilter = new Set(Object.keys(CHAIN_META)); // Chain-Filter IMMER mit allen Chains starten
   renderChainFilter();
   renderWalletInputs();
   renderCustomTokenList();
   renderSafeTokenTable();
+  renderSnapshotManager();
   renderResults();
   activeDiscoveryChains = new Set(DISCOVERY_CHAINS);
   renderDiscoveryChainFilter();
@@ -1493,22 +1503,219 @@ function fmtChange(pct) {
   return `<span style="color:${color}">${sign}${pct.toFixed(2)}%</span>`;
 }
 
-function renderTable(rows) {
+// ---- Snapshots (Token-Bestand zu einem Zeitpunkt) ----
+let snapshots = []; // [{id, createdAt, visible, items: [...]}]
+
+async function loadSnapshotsFromDb() {
+  const { data: snapRows, error: e1 } = await sb.from("snapshots").select("*").order("created_at", { ascending: false });
+  if (e1) { console.error(e1); snapshots = []; return; }
+  const { data: itemRows, error: e2 } = await sb.from("snapshot_items").select("*");
+  if (e2) console.error(e2);
+  const byId = {};
+  (itemRows || []).forEach(it => {
+    byId[it.snapshot_id] = byId[it.snapshot_id] || [];
+    byId[it.snapshot_id].push(it);
+  });
+  const prevVisibility = {};
+  snapshots.forEach(s => { prevVisibility[s.id] = s.visible; });
+  snapshots = (snapRows || []).map(s => ({
+    id: s.id,
+    createdAt: s.created_at,
+    visible: prevVisibility.hasOwnProperty(s.id) ? prevVisibility[s.id] : true,
+    items: byId[s.id] || []
+  }));
+}
+
+async function createSnapshot() {
+  const items = [];
+  wallets.forEach(w => {
+    Object.keys(CHAIN_META).forEach(chain => {
+      const result = chainRows((walletData[w.id] || {})[chain], chain);
+      if (!result || result.error) return;
+      result.rows.forEach(r => {
+        items.push({
+          wallet_id: w.dbId || null,
+          wallet_label: w.label,
+          chain,
+          symbol: r.symbol,
+          address: r.isNative ? null : (r.address || null),
+          is_native: !!r.isNative,
+          amount: r.amount,
+          user_id: currentUser.id
+        });
+      });
+    });
+  });
+
+  if (items.length === 0) {
+    alert("Keine Bestände gefunden, die gespeichert werden können. Erst 'Alle laden' ausführen und warten, bis Daten da sind.");
+    return;
+  }
+
+  const { data: snap, error: snapErr } = await sb.from("snapshots").insert({ user_id: currentUser.id }).select().single();
+  if (snapErr) { alert("Fehler beim Erstellen des Snapshots: " + snapErr.message); return; }
+
+  const rows = items.map(it => ({ ...it, snapshot_id: snap.id }));
+  const { error: itemsErr } = await sb.from("snapshot_items").insert(rows);
+  if (itemsErr) { alert("Fehler beim Speichern der Snapshot-Daten: " + itemsErr.message); return; }
+
+  await loadSnapshotsFromDb();
+  renderSnapshotManager();
+  renderResults();
+}
+
+async function deleteSnapshot(id) {
+  if (!confirm("Diesen Snapshot unwiderruflich löschen?")) return;
+  await sb.from("snapshots").delete().eq("id", id);
+  snapshots = snapshots.filter(s => s.id !== id);
+  renderSnapshotManager();
+  renderResults();
+}
+
+function toggleSnapshotVisible(id, isVisible) {
+  const s = snapshots.find(s => s.id === id);
+  if (s) s.visible = isVisible;
+  renderResults();
+}
+
+function setAllSnapshotsVisible(visible) {
+  snapshots.forEach(s => { s.visible = visible; });
+  renderSnapshotManager();
+  renderResults();
+}
+
+function fmtSnapshotDateTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('de-CH') + ", " + d.toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderSnapshotManager() {
+  const el = document.getElementById("snapshotManagerList");
+  if (!el) return;
+  if (snapshots.length === 0) {
+    el.innerHTML = `<div class="empty">Noch keine Snapshots erstellt.</div>`;
+    return;
+  }
+  const actions = `<div class="action-row" style="margin-bottom:10px">
+    <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllSnapshotsVisible(true)">Alle einblenden</button>
+    <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllSnapshotsVisible(false)">Alle ausblenden</button>
+  </div>`;
+  el.innerHTML = actions + snapshots.map(s => `
+    <div class="custom-token-row">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0">
+        <input type="checkbox" ${s.visible ? "checked" : ""} onchange="toggleSnapshotVisible('${s.id}', this.checked)" style="width:auto" />
+        ${fmtSnapshotDateTime(s.createdAt)}
+      </label>
+      <button class="remove" onclick="deleteSnapshot('${s.id}')">Löschen</button>
+    </div>
+  `).join("");
+}
+
+function visibleSnapshots() {
+  return snapshots.filter(s => s.visible).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function findSnapshotAmount(snap, wallet, chain, row) {
+  const items = snap.items.filter(it => it.chain === chain && (
+    (wallet.dbId && it.wallet_id === wallet.dbId) || (!wallet.dbId && it.wallet_label === wallet.label)
+  ));
+  let match;
+  if (row.isNative) {
+    match = items.find(it => it.is_native);
+  } else {
+    const addr = (row.address || "").toLowerCase();
+    match = items.find(it => !it.is_native && (it.address || "").toLowerCase() === addr);
+  }
+  return match ? Number(match.amount) : null;
+}
+
+// ---- Bestands-Tabelle. wallet+chain optional: nur bei Angabe werden Snapshot-Spalten
+// (fixierte Hauptspalten, seitlich scrollbar) angehängt - Summary bleibt unverändert. ----
+const SNAPSHOT_COL_WIDTHS = { token: 200, amount: 100, price: 100, change: 70, value: 110, snap: 130 };
+function renderTable(rows, wallet, chain) {
   if (!rows || rows.length === 0) return null;
-  return `<table class="balance-table">
-    <colgroup>
-      <col class="col-token"><col class="col-amount"><col class="col-price"><col class="col-change"><col class="col-value">
-    </colgroup>
-    <thead><tr><th>Token</th><th style="text-align:right">Anzahl</th><th style="text-align:right">Kurs (USD)</th><th style="text-align:right">24h %</th><th style="text-align:right">Wert (USD)</th></tr></thead>
-    <tbody>
-    ${rows.map(r => `<tr class="${r.isNative ? 'native-row' : ''}">
-      <td>${r.symbol} ${badge(r.safe)}</td>
-      <td class="num">${fmt(r.amount)}</td>
-      <td class="num">${r.price !== undefined ? fmtPrice(r.price) + (r.source ? `<span class="price-source">${r.source}</span>` : "") : '<span style="color:var(--muted)">–</span>'}</td>
-      <td class="num">${fmtChange(r.change24h)}</td>
-      <td class="num">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td>
-    </tr>`).join("")}
-  </tbody></table>`;
+  const snaps = wallet ? visibleSnapshots() : [];
+  const hasSnaps = snaps.length > 0;
+
+  if (!hasSnaps) {
+    return `<table class="balance-table">
+      <colgroup>
+        <col class="col-token"><col class="col-amount"><col class="col-price"><col class="col-change"><col class="col-value">
+      </colgroup>
+      <thead><tr><th>Token</th><th style="text-align:right">Anzahl</th><th style="text-align:right">Kurs (USD)</th><th style="text-align:right">24h %</th><th style="text-align:right">Wert (USD)</th></tr></thead>
+      <tbody>
+      ${rows.map(r => `<tr class="${r.isNative ? 'native-row' : ''}">
+        <td>${r.symbol} ${badge(r.safe)}</td>
+        <td class="num">${fmt(r.amount)}</td>
+        <td class="num">${r.price !== undefined ? fmtPrice(r.price) + (r.source ? `<span class="price-source">${r.source}</span>` : "") : '<span style="color:var(--muted)">–</span>'}</td>
+        <td class="num">${fmtChange(r.change24h)}</td>
+        <td class="num">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td>
+      </tr>`).join("")}
+    </tbody></table>`;
+  }
+
+  const w = SNAPSHOT_COL_WIDTHS;
+  const left = { token: 0, amount: w.token, price: w.token + w.amount, change: w.token + w.amount + w.price, value: w.token + w.amount + w.price + w.change };
+  const sticky = (l) => `position:sticky;left:${l}px;background:var(--card);z-index:2;`;
+
+  // Token ergänzen, die aktuell 0 Bestand haben, aber in mindestens einem sichtbaren
+  // Snapshot einen Bestand hatten - sonst würden sie trotz sichtbarer Snapshot-Spalte fehlen.
+  const presentKeys = new Set(rows.map(r => r.isNative ? "native" : (r.address || "").toLowerCase()));
+  const extraKeys = new Set();
+  const extraRows = [];
+  snaps.forEach(s => {
+    s.items
+      .filter(it => it.chain === chain && ((wallet.dbId && it.wallet_id === wallet.dbId) || (!wallet.dbId && it.wallet_label === wallet.label)))
+      .forEach(it => {
+        const key = it.is_native ? "native" : (it.address || "").toLowerCase();
+        if (presentKeys.has(key) || extraKeys.has(key)) return;
+        extraKeys.add(key);
+        const p = it.is_native ? nativePrices[chain] : priceForToken(chain, it.address);
+        extraRows.push({
+          symbol: it.symbol + " (aktuell 0)",
+          amount: 0,
+          safe: true,
+          isNative: it.is_native,
+          address: it.address,
+          price: p ? p.price : undefined,
+          usdValue: 0,
+          isHistoricalOnly: true
+        });
+      });
+  });
+  rows = rows.concat(extraRows);
+
+  const colgroup = `<colgroup>
+    <col style="width:${w.token}px"><col style="width:${w.amount}px"><col style="width:${w.price}px"><col style="width:${w.change}px"><col style="width:${w.value}px">
+    ${snaps.map(() => `<col style="width:${w.snap}px">`).join("")}
+  </colgroup>`;
+
+  const headerRow = `<tr>
+    <th style="${sticky(left.token)}">Token</th>
+    <th style="text-align:right;${sticky(left.amount)}">Anzahl</th>
+    <th style="text-align:right;${sticky(left.price)}">Kurs (USD)</th>
+    <th style="text-align:right;${sticky(left.change)}">24h %</th>
+    <th style="text-align:right;${sticky(left.value)}">Wert (USD)</th>
+    ${snaps.map(s => `<th style="text-align:right;white-space:normal">${fmtSnapshotDateTime(s.createdAt)}</th>`).join("")}
+  </tr>`;
+
+  const bodyRows = rows.map(r => {
+    const snapCells = snaps.map(s => {
+      const amt = findSnapshotAmount(s, wallet, chain, r);
+      return `<td class="num">${amt !== null ? fmt(amt) : '<span style="color:var(--muted)">–</span>'}</td>`;
+    }).join("");
+    const mutedStyle = r.isHistoricalOnly ? "opacity:0.6;" : "";
+    return `<tr class="${r.isNative ? 'native-row' : ''}" style="${mutedStyle}">
+      <td style="${sticky(left.token)}${mutedStyle}">${r.symbol}${r.isHistoricalOnly ? '' : ' ' + badge(r.safe)}</td>
+      <td class="num" style="${sticky(left.amount)}${mutedStyle}">${fmt(r.amount)}</td>
+      <td class="num" style="${sticky(left.price)}${mutedStyle}">${r.price !== undefined ? fmtPrice(r.price) + (r.source ? `<span class="price-source">${r.source}</span>` : "") : '<span style="color:var(--muted)">–</span>'}</td>
+      <td class="num" style="${sticky(left.change)}${mutedStyle}">${fmtChange(r.change24h)}</td>
+      <td class="num" style="${sticky(left.value)}${mutedStyle}">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td>
+      ${snapCells}
+    </tr>`;
+  }).join("");
+
+  return `<div style="overflow-x:auto"><table class="balance-table" style="width:max-content;min-width:100%">${colgroup}<thead>${headerRow}</thead><tbody>${bodyRows}</tbody></table></div>`;
 }
 
 const EXPLORER_URLS = {
@@ -1543,7 +1750,7 @@ function renderResults() {
         if (result.error) {
           body = `<div class="error">Fehler beim Laden: ${result.error}</div>`;
         } else {
-          body = renderTable(result.rows);
+          body = renderTable(result.rows, w, chain);
         }
         const explorerFn = EXPLORER_URLS[chain];
         const explorerUrl = explorerFn ? explorerFn(w) : null;
