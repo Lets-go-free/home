@@ -385,8 +385,8 @@
           bei denen diese Wallet die Absenderin war, zählen (nur die zahlt die Gebühr). Läuft nur auf Knopfdruck.
         </div>
         <div class="note" style="margin-bottom:12px">
-          <strong>Erfasst:</strong> Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche, XRP, Solana.<br>
-          <strong>Nicht erfasst:</strong> Apertum und Tron (technisch möglich, aber noch nicht gebaut) sowie Bitcoin (bei Bitcoin ist "wer zahlt" wegen mehrerer möglicher Inputs pro Transaktion nicht immer eindeutig, das braucht eine eigene Lösung).
+          <strong>Erfasst:</strong> Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche, Apertum, XRP, Solana.<br>
+          <strong>Nicht erfasst:</strong> Tron (technisch möglich, aber noch nicht gebaut) sowie Bitcoin (bei Bitcoin ist "wer zahlt" wegen mehrerer möglicher Inputs pro Transaktion nicht immer eindeutig, das braucht eine eigene Lösung).
         </div>
 
         <div class="field-grid" style="margin-bottom:14px">
@@ -416,7 +416,7 @@
   </div>
 
   <footer>
-    Version vom 24.08.2026, 03:18 Uhr<br>
+    Version vom 24.08.2026, 03:23 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -2178,7 +2178,7 @@ function setAllDiscoveryChains(selectAll) {
 }
 
 // ---- Gebühren-Auswertung (EVM-Chains, via Moralis Wallet History) ----
-const FEES_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax", "xrp", "sol"];
+const FEES_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax", "apertum", "xrp", "sol"];
 let activeFeesChains = new Set(FEES_CHAINS);
 
 function renderFeesChainFilter() {
@@ -2328,6 +2328,39 @@ async function fetchSolanaFees(address, onProgress) {
   return { totalFee: totalFeeLamports / 1e9, txCount, truncated: page >= SOLANA_FEES_MAX_PAGES };
 }
 
+// Apertum: gleiche Blockscout-API wie für den Bestand, liefert die Gebühr pro Transaktion
+// direkt mit (fee.value, in Wei). Paginierung über next_page_params (exakt zurückschicken).
+async function fetchApertumFees(address, onProgress) {
+  let nextParams = null;
+  let totalFeeWei = 0n;
+  let txCount = 0;
+  let page = 0;
+  const addrLower = address.toLowerCase();
+
+  do {
+    page++;
+    if (onProgress) onProgress(page);
+    let url = `${APERTUM_EXPLORER_API}/addresses/${address}/transactions`;
+    if (nextParams) url += "?" + new URLSearchParams(nextParams).toString();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    (data.items || []).forEach(tx => {
+      const fromAddr = ((tx.from && tx.from.hash) || tx.from_address || "").toLowerCase();
+      if (fromAddr !== addrLower) return;
+      let feeWei = null;
+      try {
+        if (tx.fee && tx.fee.value) feeWei = BigInt(tx.fee.value);
+        else if (tx.gas_used && tx.gas_price) feeWei = BigInt(tx.gas_used) * BigInt(tx.gas_price);
+      } catch (e) { /* Zeile überspringen, falls Format unerwartet ist */ }
+      if (feeWei !== null) { totalFeeWei += feeWei; txCount++; }
+    });
+    nextParams = data.next_page_params || null;
+  } while (nextParams && page < FEES_MAX_PAGES);
+
+  return { totalFee: Number(totalFeeWei) / 1e18, txCount, truncated: !!nextParams && page >= FEES_MAX_PAGES };
+}
+
 async function runFeesCalculation() {
   const btn = document.getElementById("feesBtn");
   const status = document.getElementById("feesStatus");
@@ -2357,6 +2390,9 @@ async function runFeesCalculation() {
       } else if (chain === "sol") {
         if (!w.sol) { results.push({ chain, error: "Keine Solana-Adresse bei dieser Wallet erfasst" }); continue; }
         r = await fetchSolanaFees(w.sol, onProgress);
+      } else if (chain === "apertum") {
+        if (!w.evm) { results.push({ chain, error: "Keine EVM-Adresse bei dieser Wallet erfasst" }); continue; }
+        r = await fetchApertumFees(w.evm, onProgress);
       } else {
         if (!w.evm) { results.push({ chain, error: "Keine EVM-Adresse bei dieser Wallet erfasst" }); continue; }
         r = await fetchWalletFeesForChain(chain, w.evm, onProgress);
