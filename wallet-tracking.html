@@ -163,6 +163,16 @@
   .tab-panel.active { display: block; }
   .admin-tab-panel { display: none; }
   .admin-tab-panel.active { display: block; }
+  .nft-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px;
+  }
+  .nft-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  .nft-card img { width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--card2); display: block; }
+  .nft-card .nft-info { padding: 8px 10px; }
+  .nft-card .nft-name { font-size: 0.8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nft-card .nft-id { font-size: 0.72rem; color: var(--muted); }
 
   @media (min-width: 560px) {
     .field-grid { grid-template-columns: 1fr 1fr; }
@@ -197,8 +207,6 @@
       <button class="secondary" onclick="logout()">Logout</button>
     </div>
 
-    <div id="autoScamBanner"></div>
-
     <div class="tab-nav">
       <button class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking - Token-Übersicht</button>
       <button class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
@@ -207,6 +215,7 @@
       <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
       <button class="tab-btn" data-tab="fees" onclick="showTab('fees')">💸 Gebühren</button>
       <button class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
+      <button class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
       <button class="tab-btn" id="adminTabBtn" data-tab="admin" onclick="showTab('admin')" style="display:none">⚙️ Admin</button>
     </div>
 
@@ -482,6 +491,37 @@
       <div id="approvalsResults"></div>
     </div>
 
+    <div id="tab-nfts" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">
+          Zeigt die NFTs (ERC-721/ERC-1155) einer Wallet. Nutzt ebenfalls Moralis - läuft daher
+          bewusst nur auf Knopfdruck, nicht automatisch.
+        </div>
+
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Wallet (Pflicht)</span>
+            <select id="nftWalletSelect">
+              <option value="">– Wallet wählen –</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains einbeziehen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllNftChains(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllNftChains(false)">Alle abwählen</button>
+          </div>
+        </div>
+        <div id="nftChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
+
+        <button id="nftBtn" onclick="runNftLoad()">NFTs laden</button>
+        <div id="nftStatus" class="note" style="margin-top:10px"></div>
+      </div>
+      <div id="nftResults"></div>
+    </div>
+
     <div id="tab-admin" class="tab-panel">
       <div class="tab-nav" style="margin-top:0">
         <button class="tab-btn active" data-admin-tab="customtokens" onclick="showAdminTab('customtokens')">Eigene sichere Token (alle User)</button>
@@ -510,7 +550,7 @@
   </div>
 
   <footer>
-    Version vom 24.08.2026, 17:50 Uhr<br>
+    Version vom 24.08.2026, 18:13 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -577,7 +617,6 @@ async function onLoggedIn(session) {
 
   isAdmin = await checkIsAdmin();
   document.getElementById("adminTabBtn").style.display = isAdmin ? "inline-block" : "none";
-  await loadUserSettings();
 
   loadTokenMetaCache();
   await loadPredefinedTokensFromDb();
@@ -603,25 +642,22 @@ async function onLoggedIn(session) {
   activeApprovalsChains = new Set(APPROVALS_CHAINS);
   renderApprovalsChainFilter();
   renderApprovalsWalletSelect();
+  activeNftChains = new Set(NFT_CHAINS);
+  renderNftChainFilter();
+  renderNftWalletSelect();
 
-  // Bestände: max. 1x/Tag live abfragen, sonst aus dem Tages-Cache (DB, kontogebunden).
-  const today = new Date().toDateString();
-  if (userSettings.last_auto_load_date === today) {
-    const cachedAt = await loadFromAutomatedCache();
-    if (cachedAt) {
-      await loadNativePrices(); // Kurse bleiben trotzdem frisch - schnell/günstig, im Gegensatz zu den Balances
-      renderResults();
-      renderSafeTokenTable();
-      renderCustomTokenList();
-      renderAllocationChart();
-      renderCacheStatusNote("Bestände vom " + fmtSnapshotDateTime(cachedAt) + " (automatisch, heute schon geladen).");
-      runAutoScamCheck();
-    } else {
-      // Datum sagt "heute schon geladen", aber kein Cache gefunden (Rand-Fall) - sicherheitshalber live laden
-      loadAll().then(() => runAutoScamCheck());
-    }
+  // Bestände werden NIE automatisch live abgefragt - nur der letzte Stand (Cache/Snapshot)
+  // wird angezeigt, mit Zeitstempel. Für frische Daten muss "Alle laden" geklickt werden.
+  const cachedAt = await loadFromAutomatedCache();
+  if (cachedAt) {
+    await loadNativePrices(); // Kurse bleiben trotzdem frisch - schnell/günstig, kein Moralis nötig dafür
+    renderResults();
+    renderSafeTokenTable();
+    renderCustomTokenList();
+    renderAllocationChart();
+    renderCacheStatusNote("Bestände vom " + fmtSnapshotDateTime(cachedAt) + " - für aktuelle Daten \"Alle laden\" klicken.");
   } else {
-    loadAll().then(() => runAutoScamCheck()); // Scam-Check erst NACH dem Laden, aber ohne die Seite zu blockieren
+    renderCacheStatusNote("Noch keine Daten geladen - bitte \"Alle laden\" klicken.");
   }
 
   showTab(wallets.length === 0 ? "wallets" : "tracking");
@@ -772,6 +808,7 @@ function renderWalletNav() {
   renderAllocWalletSelect();
   renderFeesWalletSelect();
   renderApprovalsWalletSelect();
+  renderNftWalletSelect();
 }
 
 function goToWallet(id) {
@@ -1735,10 +1772,8 @@ async function loadAll() {
   renderAllocationChart();
   btn.disabled = false;
 
-  // Tages-Cache aktualisieren - egal ob Auto-Login oder manueller Klick ausgelöst hat,
-  // damit ein Reload heute nicht wieder auf einen veralteten Stand zurückfällt.
+  // Cache aktualisieren, damit beim nächsten Login der neue Zeitstempel angezeigt wird
   await createSnapshot(true);
-  await saveUserSettings({ last_auto_load_date: new Date().toDateString() });
   renderCacheStatusNote("Gerade eben live aktualisiert.");
 }
 
@@ -2835,6 +2870,149 @@ function renderApprovalsResults(wallet, approvals) {
   `;
 }
 
+// ---- NFTs (nur auf Knopfdruck, nutzt ebenfalls Moralis) ----
+const NFT_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax"];
+let activeNftChains = new Set(NFT_CHAINS);
+
+function renderNftChainFilter() {
+  const el = document.getElementById("nftChainContainer");
+  if (!el) return;
+  el.innerHTML = NFT_CHAINS.map(chain => {
+    const meta = CHAIN_META[chain];
+    const checked = activeNftChains.has(chain) ? "checked" : "";
+    return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
+      <input type="checkbox" ${checked} onchange="toggleNftChain('${chain}', this.checked)" style="width:auto" />
+      <span class="dot ${meta.dot}"></span> ${meta.label}
+    </label>`;
+  }).join("");
+}
+function toggleNftChain(chain, isChecked) {
+  if (isChecked) activeNftChains.add(chain);
+  else activeNftChains.delete(chain);
+}
+function setAllNftChains(selectAll) {
+  activeNftChains = selectAll ? new Set(NFT_CHAINS) : new Set();
+  renderNftChainFilter();
+}
+
+function renderNftWalletSelect() {
+  const el = document.getElementById("nftWalletSelect");
+  if (!el) return;
+  const current = el.value;
+  el.innerHTML = `<option value="all">Alle Wallets</option>` +
+    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (current === "all" || wallets.some(w => w.id === current)) el.value = current;
+}
+
+async function fetchNftsForChain(chain, address, onProgress) {
+  const chainHex = MORALIS_CHAIN_HEX[chain];
+  let cursor = null;
+  const nfts = [];
+  let page = 0;
+
+  do {
+    page++;
+    if (onProgress) onProgress(page);
+    const url = `https://deep-index.moralis.io/api/v2.2/${address}/nft?chain=${chainHex}&format=decimal&normalizeMetadata=true` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+    const res = await fetch(url, { headers: { "X-API-Key": MORALIS_API_KEY, "Accept": "application/json" } });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    (data.result || []).forEach(n => {
+      const meta = n.normalized_metadata || {};
+      nfts.push({
+        chain,
+        tokenAddress: n.token_address,
+        tokenId: n.token_id,
+        name: meta.name || n.name || "Unbenannt",
+        image: normalizeNftImageUrl(meta.image),
+        collectionName: n.name,
+        possibleSpam: !!n.possible_spam,
+        contractType: n.contract_type
+      });
+    });
+    cursor = data.cursor || null;
+  } while (cursor && page < FEES_MAX_PAGES);
+
+  return nfts;
+}
+
+// IPFS-Links (ipfs://...) funktionieren nicht direkt im <img>-Tag - über ein öffentliches Gateway umleiten.
+function normalizeNftImageUrl(url) {
+  if (!url) return null;
+  if (url.startsWith("ipfs://")) return "https://ipfs.io/ipfs/" + url.replace("ipfs://", "");
+  return url;
+}
+
+async function runNftLoad() {
+  const btn = document.getElementById("nftBtn");
+  const status = document.getElementById("nftStatus");
+  const resultsEl = document.getElementById("nftResults");
+  const walletId = document.getElementById("nftWalletSelect").value;
+
+  if (activeNftChains.size === 0) { status.textContent = "Bitte mindestens eine Chain auswählen."; return; }
+
+  const targetWallets = walletId === "all"
+    ? wallets.filter(w => !!w.evm)
+    : (wallets.find(x => x.id === walletId && x.evm) ? [wallets.find(x => x.id === walletId)] : []);
+
+  if (targetWallets.length === 0) { status.textContent = "Keine Wallet mit EVM-Adresse gefunden."; return; }
+
+  btn.disabled = true;
+  resultsEl.innerHTML = "";
+  let allNfts = [];
+  const errors = [];
+
+  for (const w of targetWallets) {
+    for (const chain of NFT_CHAINS.filter(c => activeNftChains.has(c))) {
+      status.textContent = `Lade NFTs für ${w.label} auf ${CHAIN_META[chain].label}...`;
+      try {
+        const found = await fetchNftsForChain(chain, w.evm, (page) => {
+          status.textContent = `Lade NFTs für ${w.label} auf ${CHAIN_META[chain].label}... (Seite ${page})`;
+        });
+        found.forEach(n => { n.walletLabel = w.label; });
+        allNfts = allNfts.concat(found);
+      } catch (e) {
+        errors.push(`${w.label} / ${CHAIN_META[chain].label}: ${e.message}`);
+      }
+    }
+  }
+
+  renderNftResults(allNfts, errors);
+  status.textContent = "Fertig.";
+  btn.disabled = false;
+}
+
+function renderNftResults(nfts, errors) {
+  const el = document.getElementById("nftResults");
+  const errorNote = errors.length > 0 ? `<div class="error" style="margin-bottom:12px">Fehler bei: ${errors.join(", ")}</div>` : "";
+
+  if (nfts.length === 0) {
+    el.innerHTML = errorNote + `<div class="empty">Keine NFTs gefunden.</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    ${errorNote}
+    <div class="note" style="margin-bottom:12px">${nfts.length} NFT(s) gefunden</div>
+    <div class="nft-grid">
+      ${nfts.map(n => {
+        const meta = CHAIN_META[n.chain];
+        return `<div class="nft-card">
+          ${n.image ? `<img src="${n.image}" loading="lazy" onerror="this.style.display='none'">` : `<div style="aspect-ratio:1;background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:0.75rem">Kein Bild</div>`}
+          <div class="nft-info">
+            <div class="nft-name" title="${escapeAttr(n.name)}">${escapeAttr(n.name)}</div>
+            <div class="nft-id">${n.collectionName ? escapeAttr(n.collectionName) + " · " : ""}#${n.tokenId}</div>
+            <div class="nft-id" style="margin-top:3px;display:flex;align-items:center;gap:5px">
+              <span class="dot ${meta.dot}" style="width:7px;height:7px"></span> ${meta.label} · ${escapeAttr(n.walletLabel)}
+            </div>
+            ${n.possibleSpam ? '<div style="margin-top:4px"><span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger)">⚠ Spam-Verdacht</span></div>' : ""}
+          </div>
+        </div>`;
+      }).join("")}
+    </div>
+  `;
+}
+
 async function runFeesCalculation() {
   const btn = document.getElementById("feesBtn");
   const status = document.getElementById("feesStatus");
@@ -3018,119 +3196,6 @@ function riskFlags(info) {
   if (info.is_mintable === "1") flags.push("beliebig nachprägbar");
   if (info.is_open_source === "0") flags.push("Contract nicht verifiziert");
   return flags;
-}
-
-// ---- Automatischer Scam-Hinweis beim Login (kein Button nötig, max. 1x pro Tag) ----
-// Läuft über die DB (user_settings), nicht localStorage - damit "schon gesehen"/"letzter
-// Check" geräte- und browserübergreifend konsistent bleiben, nicht nur auf einem Gerät.
-let userSettings = { last_scam_check_date: null, seen_scam_addresses: [] };
-
-async function loadUserSettings() {
-  const { data, error } = await sb.from("user_settings").select("*").eq("user_id", currentUser.id).maybeSingle();
-  if (error) { console.error(error); return; }
-  if (data) {
-    userSettings = data;
-  } else {
-    // Erste Anmeldung dieses Users - Zeile anlegen
-    const { data: created, error: insertError } = await sb.from("user_settings")
-      .insert({ user_id: currentUser.id }).select().single();
-    if (!insertError) userSettings = created;
-  }
-}
-
-async function saveUserSettings(patch) {
-  Object.assign(userSettings, patch);
-  const { error } = await sb.from("user_settings").update(patch).eq("user_id", currentUser.id);
-  if (error) console.error(error);
-}
-
-// ---- Automatisierter Tages-Cache (Bestände) ----
-// Rekonstruiert walletData aus dem automatisierten Snapshot, statt live abzufragen.
-// Gibt den Zeitstempel des Snapshots zurück (für die "zuletzt geladen"-Anzeige) oder null,
-// falls noch kein Cache existiert (z.B. beim allerersten Login).
-async function loadFromAutomatedCache() {
-  const { data: snap, error: e1 } = await sb.from("snapshots").select("*").eq("user_id", currentUser.id).eq("is_automated", true).maybeSingle();
-  if (e1) { console.error(e1); return null; }
-  if (!snap) return null;
-
-  const { data: items, error: e2 } = await sb.from("snapshot_items").select("*").eq("snapshot_id", snap.id);
-  if (e2) { console.error(e2); return null; }
-
-  const byWalletChain = {};
-  (items || []).forEach(it => {
-    byWalletChain[it.wallet_id] = byWalletChain[it.wallet_id] || {};
-    const entry = byWalletChain[it.wallet_id][it.chain] = byWalletChain[it.wallet_id][it.chain] || { native: null, nativeSymbol: null, tokens: [] };
-    if (it.is_native) {
-      entry.native = Number(it.amount);
-      entry.nativeSymbol = (it.symbol || "").replace(" (nativ)", "");
-    } else {
-      entry.tokens.push({ symbol: it.symbol, address: it.address, amount: Number(it.amount) });
-    }
-  });
-  walletData = byWalletChain;
-  return snap.created_at;
-}
-
-function renderCacheStatusNote(text) {
-  const el = document.getElementById("cacheStatusNote");
-  if (el) el.textContent = text;
-}
-
-async function runAutoScamCheck() {
-  if (wallets.length === 0) return;
-  const today = new Date().toDateString();
-  if (userSettings.last_scam_check_date === today) return; // spart API-Anfragen - läuft nur einmal pro Kalendertag, kontogebunden
-
-  const seen = new Set(userSettings.seen_scam_addresses || []);
-  const newFindings = [];
-
-  // Apertum + Tron: aus den ohnehin schon geladenen Daten, keine Zusatz-Anfrage nötig
-  wallets.forEach(w => {
-    ["apertum", "tron"].forEach(chain => {
-      const cd = (walletData[w.id] || {})[chain];
-      if (!cd || cd.error) return;
-      (cd.tokens || []).forEach(t => {
-        if (!isSafeTokenAddress(t.address, chain) && t.amount >= DUST_THRESHOLD) {
-          const key = chain + "|" + (t.address || "").toLowerCase();
-          if (seen.has(key)) return;
-          newFindings.push({ key, walletLabel: w.label, chain, symbol: t.symbol, nameScamFlag: isLikelyScamName(t.symbol) || isLikelyScamName(t.name) });
-        }
-      });
-    });
-  });
-
-  // EVM-Chains: über Moralis, für ALLE Wallets mit EVM-Adresse (mehr Anfragen als der manuelle
-  // Scan, der ja bewusst nur eine Wallet abfragt - hier ist das Absicht, da automatisch).
-  for (const w of wallets) {
-    if (!w.evm) continue;
-    for (const chain of Object.keys(MORALIS_CHAIN_HEX)) {
-      try {
-        const found = await discoverEvmTokens(chain, w.evm);
-        found.forEach(f => {
-          const key = chain + "|" + f.address.toLowerCase();
-          if (seen.has(key)) return;
-          newFindings.push({ key, walletLabel: w.label, chain, symbol: f.symbol, nameScamFlag: f.nameScamFlag, moralisSpam: f.moralisSpam });
-        });
-      } catch (e) { /* einzelne Chain-Fehler ignorieren - ist nur ein Hintergrund-Hinweis */ }
-    }
-  }
-
-  newFindings.forEach(f => seen.add(f.key));
-  await saveUserSettings({ last_scam_check_date: today, seen_scam_addresses: [...seen] });
-
-  if (newFindings.length === 0) return;
-
-  const scamCount = newFindings.filter(f => f.nameScamFlag || f.moralisSpam).length;
-  const banner = document.getElementById("autoScamBanner");
-  banner.innerHTML = `<div class="custom-token-card" style="border-color:${scamCount > 0 ? "var(--danger)" : "var(--border)"};margin-bottom:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-      <div>⚠ ${newFindings.length} neue unbekannte Token seit dem letzten Besuch gefunden${scamCount > 0 ? `, davon ${scamCount} mit Scam-Verdacht` : ""}.</div>
-      <div style="display:flex;gap:8px">
-        <button onclick="showTab('discovery');document.getElementById('autoScamBanner').innerHTML=''">Ansehen</button>
-        <button class="secondary" onclick="document.getElementById('autoScamBanner').innerHTML=''">Ausblenden</button>
-      </div>
-    </div>
-  </div>`;
 }
 
 async function runDiscoveryScan() {
