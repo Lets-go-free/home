@@ -161,6 +161,8 @@
   .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
+  .admin-tab-panel { display: none; }
+  .admin-tab-panel.active { display: block; }
 
   @media (min-width: 560px) {
     .field-grid { grid-template-columns: 1fr 1fr; }
@@ -195,6 +197,8 @@
       <button class="secondary" onclick="logout()">Logout</button>
     </div>
 
+    <div id="autoScamBanner"></div>
+
     <div class="tab-nav">
       <button class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking - Token-Übersicht</button>
       <button class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
@@ -202,6 +206,7 @@
       <button class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
       <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
       <button class="tab-btn" data-tab="fees" onclick="showTab('fees')">💸 Gebühren</button>
+      <button class="tab-btn" id="adminTabBtn" data-tab="admin" onclick="showTab('admin')" style="display:none">⚙️ Admin</button>
     </div>
 
     <div id="tab-tracking" class="tab-panel">
@@ -283,7 +288,7 @@
             <span class="field-label">Gruppierung</span>
             <select id="allocGroupSelect" onchange="renderAllocationChart()">
               <option value="chain">Nach Chain</option>
-              <option value="token">Nach Token</option>
+              <option value="token" selected>Nach Token</option>
             </select>
           </div>
         </div>
@@ -433,10 +438,35 @@
       <div id="feesResults"></div>
     </div>
 
+    <div id="tab-admin" class="tab-panel">
+      <div class="tab-nav" style="margin-top:0">
+        <button class="tab-btn active" data-admin-tab="customtokens" onclick="showAdminTab('customtokens')">Eigene sichere Token (alle User)</button>
+      </div>
+
+      <div id="admintab-customtokens" class="admin-tab-panel active">
+        <div class="note" style="margin-bottom:12px">
+          Zeigt die von Usern selbst erfassten "eigenen sicheren Token" – so siehst du, was Kunden zusätzlich eintragen,
+          und kannst Sinnvolles in die vordefinierte Liste übernehmen (für alle sichtbar) oder ignorieren.
+        </div>
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Status</span>
+            <select id="adminTokenStatusFilter" onchange="renderAdminCustomTokens()">
+              <option value="pending">Ausstehend</option>
+              <option value="ignored">Ignoriert</option>
+              <option value="promoted">Übernommen</option>
+              <option value="all">Alle</option>
+            </select>
+          </div>
+        </div>
+        <div id="adminCustomTokensList"></div>
+      </div>
+    </div>
+
   </div>
 
   <footer>
-    Version vom 24.08.2026, 11:53 Uhr<br>
+    Version vom 24.08.2026, 14:03 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -452,6 +482,17 @@ const REDIRECT_URL = "https://letsgofree.me/wallet-tracking.html";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
+let isAdmin = false;
+
+async function checkIsAdmin() {
+  try {
+    const { data, error } = await sb.from("admins").select("email").eq("email", currentUser.email).maybeSingle();
+    if (error) { console.error(error); return false; }
+    return !!data;
+  } catch (e) {
+    return false;
+  }
+}
 
 async function sendMagicLink() {
   const email = document.getElementById("authEmail").value.trim();
@@ -490,6 +531,10 @@ async function onLoggedIn(session) {
   document.getElementById("appContent").style.display = "block";
   document.getElementById("userEmailLabel").textContent = "Eingeloggt als " + currentUser.email;
 
+  isAdmin = await checkIsAdmin();
+  document.getElementById("adminTabBtn").style.display = isAdmin ? "inline-block" : "none";
+  await loadUserSettings();
+
   loadTokenMetaCache();
   await loadPredefinedTokensFromDb();
   await loadWalletsFromDb();
@@ -511,7 +556,7 @@ async function onLoggedIn(session) {
   activeFeesChains = new Set(FEES_CHAINS);
   renderFeesChainFilter();
   renderFeesWalletSelect();
-  loadAll();
+  loadAll().then(() => runAutoScamCheck()); // Scam-Check erst NACH dem Laden, aber ohne die Seite zu blockieren
 
   showTab(wallets.length === 0 ? "wallets" : "tracking");
 }
@@ -522,6 +567,87 @@ function showTab(name) {
   const panel = document.getElementById("tab-" + name);
   if (panel) panel.classList.add("active");
   if (name === "predefined") ensurePredefinedNames();
+  if (name === "admin") showAdminTab("customtokens");
+}
+
+function showAdminTab(name) {
+  document.querySelectorAll(".admin-tab-panel").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll("[data-admin-tab]").forEach(b => b.classList.toggle("active", b.dataset.adminTab === name));
+  const panel = document.getElementById("admintab-" + name);
+  if (panel) panel.classList.add("active");
+  if (name === "customtokens") renderAdminCustomTokens();
+}
+
+// ---- Admin: eigene sichere Token aller User einsehen/übernehmen/ignorieren ----
+let adminAllCustomTokens = []; // rohe Zeilen aus der DB (alle User)
+
+async function loadAdminCustomTokens() {
+  const { data, error } = await sb.from("safe_tokens").select("*").order("created_at", { ascending: false });
+  if (error) { console.error(error); adminAllCustomTokens = []; return; }
+  adminAllCustomTokens = data || [];
+}
+
+async function renderAdminCustomTokens() {
+  const el = document.getElementById("adminCustomTokensList");
+  el.innerHTML = `<div class="status">Lade...</div>`;
+  await loadAdminCustomTokens();
+
+  const statusFilter = document.getElementById("adminTokenStatusFilter").value;
+  let rows = adminAllCustomTokens;
+  if (statusFilter !== "all") {
+    rows = rows.filter(r => (r.admin_status || "pending") === statusFilter);
+  }
+
+  if (rows.length === 0) {
+    el.innerHTML = `<div class="empty">Keine Einträge mit diesem Status.</div>`;
+    return;
+  }
+
+  el.innerHTML = rows.map(r => {
+    const chainMeta = CHAIN_META[r.chain];
+    const alreadyPredefined = (SAFE_ADDRESSES[r.chain] || []).includes(normalizeAddress(r.address, r.chain));
+    const status = r.admin_status || "pending";
+    const statusBadge = status === "promoted" ? '<span class="badge safe">übernommen</span>'
+      : status === "ignored" ? '<span class="badge unsafe">ignoriert</span>'
+      : '<span class="badge unsafe" style="background:rgba(240,185,11,0.15);color:#f0b90b">ausstehend</span>';
+
+    return `<div class="custom-token-row" style="align-items:flex-start;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <div><span class="dot ${chainMeta ? chainMeta.dot : ''}" style="margin-right:6px"></span>${chainMeta ? chainMeta.label : r.chain} ${statusBadge} ${alreadyPredefined ? '<span class="note" style="display:inline">(bereits vordefiniert)</span>' : ''}</div>
+        <div class="meta">User-Label: "${escapeAttr(r.label)}" · ${r.address}</div>
+      </div>
+      ${status === "pending" ? `
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="admin-label-${r.id}" value="${escapeAttr(r.label)}" style="width:160px" placeholder="Label für vordefinierte Liste" />
+          <button onclick="adminPromoteToken('${r.id}','${r.chain}','${r.address}')">Als vordefiniert übernehmen</button>
+          <button class="remove" onclick="adminIgnoreToken('${r.id}')">Ignorieren</button>
+        </div>
+      ` : ''}
+    </div>`;
+  }).join("");
+}
+
+async function adminIgnoreToken(id) {
+  const { error } = await sb.from("safe_tokens").update({ admin_status: "ignored" }).eq("id", id);
+  if (error) { alert("Fehler: " + error.message); return; }
+  renderAdminCustomTokens();
+}
+
+async function adminPromoteToken(id, chain, address) {
+  const labelInput = document.getElementById("admin-label-" + id);
+  const label = labelInput ? labelInput.value.trim() : "";
+  if (!label) { alert("Bitte ein Label eingeben."); return; }
+
+  const { error: insertError } = await sb.from("predefined_tokens")
+    .upsert({ chain, address: address.toLowerCase(), label }, { onConflict: "chain,address" });
+  if (insertError) { alert("Fehler beim Übernehmen: " + insertError.message); return; }
+
+  const { error: updateError } = await sb.from("safe_tokens").update({ admin_status: "promoted" }).eq("id", id);
+  if (updateError) { alert("Fehler beim Markieren: " + updateError.message); return; }
+
+  await loadPredefinedTokensFromDb(); // damit die neue Liste sofort überall greift
+  renderSafeTokenTable();
+  renderAdminCustomTokens();
 }
 
 const CHAIN_META = {
@@ -2649,6 +2775,87 @@ function riskFlags(info) {
   if (info.is_mintable === "1") flags.push("beliebig nachprägbar");
   if (info.is_open_source === "0") flags.push("Contract nicht verifiziert");
   return flags;
+}
+
+// ---- Automatischer Scam-Hinweis beim Login (kein Button nötig, max. 1x pro Tag) ----
+// Läuft über die DB (user_settings), nicht localStorage - damit "schon gesehen"/"letzter
+// Check" geräte- und browserübergreifend konsistent bleiben, nicht nur auf einem Gerät.
+let userSettings = { last_scam_check_date: null, seen_scam_addresses: [] };
+
+async function loadUserSettings() {
+  const { data, error } = await sb.from("user_settings").select("*").eq("user_id", currentUser.id).maybeSingle();
+  if (error) { console.error(error); return; }
+  if (data) {
+    userSettings = data;
+  } else {
+    // Erste Anmeldung dieses Users - Zeile anlegen
+    const { data: created, error: insertError } = await sb.from("user_settings")
+      .insert({ user_id: currentUser.id }).select().single();
+    if (!insertError) userSettings = created;
+  }
+}
+
+async function saveUserSettings(patch) {
+  Object.assign(userSettings, patch);
+  const { error } = await sb.from("user_settings").update(patch).eq("user_id", currentUser.id);
+  if (error) console.error(error);
+}
+
+async function runAutoScamCheck() {
+  if (wallets.length === 0) return;
+  const today = new Date().toDateString();
+  if (userSettings.last_scam_check_date === today) return; // spart API-Anfragen - läuft nur einmal pro Kalendertag, kontogebunden
+
+  const seen = new Set(userSettings.seen_scam_addresses || []);
+  const newFindings = [];
+
+  // Apertum + Tron: aus den ohnehin schon geladenen Daten, keine Zusatz-Anfrage nötig
+  wallets.forEach(w => {
+    ["apertum", "tron"].forEach(chain => {
+      const cd = (walletData[w.id] || {})[chain];
+      if (!cd || cd.error) return;
+      (cd.tokens || []).forEach(t => {
+        if (!isSafeTokenAddress(t.address, chain) && t.amount >= DUST_THRESHOLD) {
+          const key = chain + "|" + (t.address || "").toLowerCase();
+          if (seen.has(key)) return;
+          newFindings.push({ key, walletLabel: w.label, chain, symbol: t.symbol, nameScamFlag: isLikelyScamName(t.symbol) || isLikelyScamName(t.name) });
+        }
+      });
+    });
+  });
+
+  // EVM-Chains: über Moralis, für ALLE Wallets mit EVM-Adresse (mehr Anfragen als der manuelle
+  // Scan, der ja bewusst nur eine Wallet abfragt - hier ist das Absicht, da automatisch).
+  for (const w of wallets) {
+    if (!w.evm) continue;
+    for (const chain of Object.keys(MORALIS_CHAIN_HEX)) {
+      try {
+        const found = await discoverEvmTokens(chain, w.evm);
+        found.forEach(f => {
+          const key = chain + "|" + f.address.toLowerCase();
+          if (seen.has(key)) return;
+          newFindings.push({ key, walletLabel: w.label, chain, symbol: f.symbol, nameScamFlag: f.nameScamFlag, moralisSpam: f.moralisSpam });
+        });
+      } catch (e) { /* einzelne Chain-Fehler ignorieren - ist nur ein Hintergrund-Hinweis */ }
+    }
+  }
+
+  newFindings.forEach(f => seen.add(f.key));
+  await saveUserSettings({ last_scam_check_date: today, seen_scam_addresses: [...seen] });
+
+  if (newFindings.length === 0) return;
+
+  const scamCount = newFindings.filter(f => f.nameScamFlag || f.moralisSpam).length;
+  const banner = document.getElementById("autoScamBanner");
+  banner.innerHTML = `<div class="custom-token-card" style="border-color:${scamCount > 0 ? "var(--danger)" : "var(--border)"};margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div>⚠ ${newFindings.length} neue unbekannte Token seit dem letzten Besuch gefunden${scamCount > 0 ? `, davon ${scamCount} mit Scam-Verdacht` : ""}.</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="showTab('discovery');document.getElementById('autoScamBanner').innerHTML=''">Ansehen</button>
+        <button class="secondary" onclick="document.getElementById('autoScamBanner').innerHTML=''">Ausblenden</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 async function runDiscoveryScan() {
