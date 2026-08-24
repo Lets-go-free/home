@@ -248,8 +248,9 @@
         <span id="cacheStatusNote" class="note" style="margin:0"></span>
       </div>
       <div class="note" style="margin-bottom:14px">
-        Bestände werden automatisch max. 1x pro Tag live abgefragt (kontogebunden, geräteübergreifend). Für eine
-        Aktualisierung zwischendurch bitte "Alle laden" klicken. Kurse werden davon unabhängig immer frisch geholt.
+        Bestände werden NIE automatisch live abgefragt – beim Login siehst du immer den letzten gespeicherten
+        Stand (mit Zeitstempel oben). Für frische Zahlen bitte "Alle laden" klicken. Kurse werden davon
+        unabhängig immer frisch geholt.
       </div>
 
       <div class="custom-token-card">
@@ -614,8 +615,8 @@
           <tbody>
             <tr>
               <td>Bestände (Wallet-Tracking)</td>
-              <td><span class="badge safe">1x/Tag automatisch</span></td>
-              <td>Beim Login wird der letzte gespeicherte Stand angezeigt (mit Zeitstempel). Für frische Zahlen zwischendurch selbst auf "Alle laden" klicken.</td>
+              <td><span class="badge unsafe">nur manuell</span></td>
+              <td>Beim Login wird immer nur der letzte gespeicherte Stand angezeigt (mit Zeitstempel) – nie automatisch neu abgefragt. Für frische Zahlen selbst auf "Alle laden" klicken.</td>
             </tr>
             <tr>
               <td>Kurse</td>
@@ -690,7 +691,7 @@
   </div>
 
   <footer>
-    Version vom 25.08.2026, 01:23 Uhr<br>
+    Version vom 25.08.2026, 01:48 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
