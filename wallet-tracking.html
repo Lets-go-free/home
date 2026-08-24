@@ -210,8 +210,13 @@
     </div>
 
     <div id="tab-tracking" class="tab-panel">
-      <div class="action-row">
+      <div class="action-row" style="align-items:center">
         <button id="loadBtn" onclick="loadAll()">Alle laden</button>
+        <span id="cacheStatusNote" class="note" style="margin:0"></span>
+      </div>
+      <div class="note" style="margin-bottom:14px">
+        Bestände werden automatisch max. 1x pro Tag live abgefragt (kontogebunden, geräteübergreifend). Für eine
+        Aktualisierung zwischendurch bitte "Alle laden" klicken. Kurse werden davon unabhängig immer frisch geholt.
       </div>
 
       <div class="custom-token-card">
@@ -466,7 +471,7 @@
   </div>
 
   <footer>
-    Version vom 24.08.2026, 16:47 Uhr<br>
+    Version vom 24.08.2026, 17:36 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -556,7 +561,26 @@ async function onLoggedIn(session) {
   activeFeesChains = new Set(FEES_CHAINS);
   renderFeesChainFilter();
   renderFeesWalletSelect();
-  loadAll().then(() => runAutoScamCheck()); // Scam-Check erst NACH dem Laden, aber ohne die Seite zu blockieren
+
+  // Bestände: max. 1x/Tag live abfragen, sonst aus dem Tages-Cache (DB, kontogebunden).
+  const today = new Date().toDateString();
+  if (userSettings.last_auto_load_date === today) {
+    const cachedAt = await loadFromAutomatedCache();
+    if (cachedAt) {
+      await loadNativePrices(); // Kurse bleiben trotzdem frisch - schnell/günstig, im Gegensatz zu den Balances
+      renderResults();
+      renderSafeTokenTable();
+      renderCustomTokenList();
+      renderAllocationChart();
+      renderCacheStatusNote("Bestände vom " + fmtSnapshotDateTime(cachedAt) + " (automatisch, heute schon geladen).");
+      runAutoScamCheck();
+    } else {
+      // Datum sagt "heute schon geladen", aber kein Cache gefunden (Rand-Fall) - sicherheitshalber live laden
+      loadAll().then(() => runAutoScamCheck());
+    }
+  } else {
+    loadAll().then(() => runAutoScamCheck()); // Scam-Check erst NACH dem Laden, aber ohne die Seite zu blockieren
+  }
 
   showTab(wallets.length === 0 ? "wallets" : "tracking");
 }
@@ -1654,6 +1678,7 @@ async function loadWalletChain(wallet, chain) {
 async function loadAll() {
   const btn = document.getElementById("loadBtn");
   btn.disabled = true;
+  renderCacheStatusNote("Lade...");
   const jobs = [loadNativePrices()];
   wallets.forEach(w => {
     ["eth", "bsc", "matic", "arb", "base", "avax", "apertum", "tron", "btc", "xrp", "sol"].forEach(chain => {
@@ -1666,6 +1691,12 @@ async function loadAll() {
   renderCustomTokenList();
   renderAllocationChart();
   btn.disabled = false;
+
+  // Tages-Cache aktualisieren - egal ob Auto-Login oder manueller Klick ausgelöst hat,
+  // damit ein Reload heute nicht wieder auf einen veralteten Stand zurückfällt.
+  await createSnapshot(true);
+  await saveUserSettings({ last_auto_load_date: new Date().toDateString() });
+  renderCacheStatusNote("Gerade eben live aktualisiert.");
 }
 
 // ---- Rendering ----
@@ -1742,7 +1773,7 @@ function fmtChange(pct) {
 let snapshots = []; // [{id, createdAt, visible, items: [...]}]
 
 async function loadSnapshotsFromDb() {
-  const { data: snapRows, error: e1 } = await sb.from("snapshots").select("*").order("created_at", { ascending: false });
+  const { data: snapRows, error: e1 } = await sb.from("snapshots").select("*").eq("is_automated", false).order("created_at", { ascending: false });
   if (e1) { console.error(e1); snapshots = []; return; }
   const { data: itemRows, error: e2 } = await sb.from("snapshot_items").select("*");
   if (e2) console.error(e2);
@@ -1761,7 +1792,7 @@ async function loadSnapshotsFromDb() {
   }));
 }
 
-async function createSnapshot() {
+function buildCurrentSnapshotItems() {
   const items = [];
   wallets.forEach(w => {
     Object.keys(CHAIN_META).forEach(chain => {
@@ -1781,22 +1812,38 @@ async function createSnapshot() {
       });
     });
   });
+  return items;
+}
+
+// isAutomated=false (Standard): manueller Snapshot, bleibt dauerhaft, taucht in der Verwaltung
+// und der Verlauf-Grafik auf. isAutomated=true: interner Tages-Cache, ersetzt sich selbst bei
+// jedem echten Neuladen, taucht NICHT in der normalen Snapshot-Liste/Grafik auf.
+async function createSnapshot(isAutomated) {
+  isAutomated = !!isAutomated;
+  const items = buildCurrentSnapshotItems();
 
   if (items.length === 0) {
-    alert("Keine Bestände gefunden, die gespeichert werden können. Erst 'Alle laden' ausführen und warten, bis Daten da sind.");
+    if (!isAutomated) alert("Keine Bestände gefunden, die gespeichert werden können. Erst 'Alle laden' ausführen und warten, bis Daten da sind.");
     return;
   }
 
-  const { data: snap, error: snapErr } = await sb.from("snapshots").insert({ user_id: currentUser.id }).select().single();
-  if (snapErr) { alert("Fehler beim Erstellen des Snapshots: " + snapErr.message); return; }
+  if (isAutomated) {
+    // alten Cache-Snapshot ersetzen statt anzuhäufen
+    await sb.from("snapshots").delete().eq("user_id", currentUser.id).eq("is_automated", true);
+  }
+
+  const { data: snap, error: snapErr } = await sb.from("snapshots").insert({ user_id: currentUser.id, is_automated: isAutomated }).select().single();
+  if (snapErr) { if (!isAutomated) alert("Fehler beim Erstellen des Snapshots: " + snapErr.message); return; }
 
   const rows = items.map(it => ({ ...it, snapshot_id: snap.id }));
   const { error: itemsErr } = await sb.from("snapshot_items").insert(rows);
-  if (itemsErr) { alert("Fehler beim Speichern der Snapshot-Daten: " + itemsErr.message); return; }
+  if (itemsErr) { if (!isAutomated) alert("Fehler beim Speichern der Snapshot-Daten: " + itemsErr.message); return; }
 
-  await loadSnapshotsFromDb();
-  renderSnapshotManager();
-  renderResults();
+  if (!isAutomated) {
+    await loadSnapshotsFromDb();
+    renderSnapshotManager();
+    renderResults();
+  }
 }
 
 async function deleteSnapshot(id) {
@@ -2799,6 +2846,38 @@ async function saveUserSettings(patch) {
   Object.assign(userSettings, patch);
   const { error } = await sb.from("user_settings").update(patch).eq("user_id", currentUser.id);
   if (error) console.error(error);
+}
+
+// ---- Automatisierter Tages-Cache (Bestände) ----
+// Rekonstruiert walletData aus dem automatisierten Snapshot, statt live abzufragen.
+// Gibt den Zeitstempel des Snapshots zurück (für die "zuletzt geladen"-Anzeige) oder null,
+// falls noch kein Cache existiert (z.B. beim allerersten Login).
+async function loadFromAutomatedCache() {
+  const { data: snap, error: e1 } = await sb.from("snapshots").select("*").eq("user_id", currentUser.id).eq("is_automated", true).maybeSingle();
+  if (e1) { console.error(e1); return null; }
+  if (!snap) return null;
+
+  const { data: items, error: e2 } = await sb.from("snapshot_items").select("*").eq("snapshot_id", snap.id);
+  if (e2) { console.error(e2); return null; }
+
+  const byWalletChain = {};
+  (items || []).forEach(it => {
+    byWalletChain[it.wallet_id] = byWalletChain[it.wallet_id] || {};
+    const entry = byWalletChain[it.wallet_id][it.chain] = byWalletChain[it.wallet_id][it.chain] || { native: null, nativeSymbol: null, tokens: [] };
+    if (it.is_native) {
+      entry.native = Number(it.amount);
+      entry.nativeSymbol = (it.symbol || "").replace(" (nativ)", "");
+    } else {
+      entry.tokens.push({ symbol: it.symbol, address: it.address, amount: Number(it.amount) });
+    }
+  });
+  walletData = byWalletChain;
+  return snap.created_at;
+}
+
+function renderCacheStatusNote(text) {
+  const el = document.getElementById("cacheStatusNote");
+  if (el) el.textContent = text;
 }
 
 async function runAutoScamCheck() {
