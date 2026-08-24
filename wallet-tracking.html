@@ -159,6 +159,9 @@
     padding: 10px 4px; font-size: 0.88rem; cursor: pointer; margin-right: 14px; border-radius: 0;
   }
   .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab-nav-divider {
+    width: 1px; align-self: stretch; background: var(--border); margin: 4px 8px;
+  }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
   .admin-tab-panel { display: none; }
@@ -209,15 +212,18 @@
 
     <div class="tab-nav">
       <button class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking - Token-Übersicht</button>
+      <button class="tab-btn" data-tab="fees" onclick="showTab('fees')">💸 Gebühren</button>
+      <button class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
+      <button class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
+      <span class="tab-nav-divider"></span>
       <button class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
       <button class="tab-btn" data-tab="predefined" onclick="showTab('predefined')">Vordefinierte Token</button>
       <button class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
       <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
-      <button class="tab-btn" data-tab="fees" onclick="showTab('fees')">💸 Gebühren</button>
-      <button class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
-      <button class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
+      <span class="tab-nav-divider"></span>
       <button class="tab-btn" data-tab="chat" onclick="showTab('chat')">💬 Chat</button>
       <button class="tab-btn" id="adminTabBtn" data-tab="admin" onclick="showTab('admin')" style="display:none">⚙️ Admin</button>
+      <button class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
     </div>
 
     <div id="tab-tracking" class="tab-panel">
@@ -584,10 +590,44 @@
       </div>
     </div>
 
+    <div id="tab-help" class="tab-panel">
+      <div class="custom-token-card">
+        <h3 style="margin-top:0">Wallet-Tracking - Token-Übersicht</h3>
+        <p class="note">Zeigt deine aktuellen Bestände über alle Wallets und Chains hinweg – als Gesamtsumme ("Summary") und aufgeschlüsselt je Wallet ("Details je Wallet"). Nur Token, die auf der sicheren Liste stehen (vordefiniert oder von dir selbst hinzugefügt), werden angezeigt. Bestände werden max. 1x pro Tag automatisch geladen; für frische Zahlen zwischendurch auf "Alle laden" klicken. Du kannst hier auch Snapshots (Momentaufnahmen deines Bestands) erstellen, einen Verlauf als Grafik anzeigen und die Portfolio-Allokation als Kreisdiagramm ansehen.</p>
+
+        <h3>💸 Gebühren</h3>
+        <p class="note">Summiert die Netzwerk-Gebühren, die eine Wallet über ihre komplette Historie bezahlt hat – je Chain aufgeschlüsselt. Wallet auswählen, Chains wählen, "Gebühren berechnen" klicken. Läuft nur auf Knopfdruck, nicht automatisch.</p>
+
+        <h3>🖼️ NFTs</h3>
+        <p class="note">Zeigt die NFTs (Sammelbilder/Collectibles) einer oder aller Wallets, inklusive Warnung bei Spam-Verdacht. Mit dem Filter "Spam-Verdacht ausblenden" lassen sich verdächtige Funde ausblenden.</p>
+
+        <h3>🔓 Freigaben</h3>
+        <p class="note">Zeigt aktive Token-Freigaben ("Approvals") an Dapps/Contracts – ein häufig unterschätztes Sicherheitsrisiko, v.a. bei unlimitierten Freigaben. Diese Seite kann nichts widerrufen (rein lesend); zum Widerrufen verlinkt sie auf revoke.cash, das <strong>im Browser deiner Wallet-App</strong> geöffnet werden muss, nicht in einem gewöhnlichen Browser.</p>
+
+        <h3>Meine Wallets</h3>
+        <p class="note">Hier erfasst du deine Wallet-Adressen (eine pro Chain-Typ: EVM, Bitcoin, XRP, Solana, Tron). Die EVM-Adresse gilt für Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche und Apertum gleichzeitig. Nicht vergessen: nach dem Eintragen auf "Speichern" klicken – ungespeicherte Wallets werden nirgends sonst berücksichtigt (auch nicht in Snapshots).</p>
+
+        <h3>Vordefinierte Token</h3>
+        <p class="note">Die globale Liste sicherer Token, die für alle User gilt. Kann gefiltert und durchsucht werden. Neue Einträge kommen nur über die Admins rein.</p>
+
+        <h3>Eigene sichere Token</h3>
+        <p class="note">Zusätzliche Token, die nur du siehst – falls ein Token noch nicht auf der vordefinierten Liste steht, du ihm aber vertraust, kannst du ihn hier selbst hinzufügen.</p>
+
+        <h3>🔍 Entdecken</h3>
+        <p class="note">Durchsucht eine Wallet aktiv nach Token, die du zwar besitzt, die aber noch nicht auf der sicheren Liste stehen – inklusive Einschätzung, ob es sich um Scam/Spam handeln könnte. Wallet und Chains auswählen, dann "Scan starten". Läuft nur auf Knopfdruck.</p>
+
+        <h3>💬 Chat</h3>
+        <p class="note">Direkter Draht zum Support – Nachrichten hier sind nur für dich und die Admins sichtbar.</p>
+
+        <h3>⚙️ Admin</h3>
+        <p class="note">Nur für Admins sichtbar. Verwaltung der von Usern selbst erfassten Token, offene Erweiterungsideen, und Einsicht in alle Chat-Konversationen.</p>
+      </div>
+    </div>
+
   </div>
 
   <footer>
-    Version vom 25.08.2026, 01:01 Uhr<br>
+    Version vom 25.08.2026, 01:13 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -654,6 +694,7 @@ async function onLoggedIn(session) {
 
   isAdmin = await checkIsAdmin();
   document.getElementById("adminTabBtn").style.display = isAdmin ? "inline-block" : "none";
+  setupChatRealtime();
 
   loadTokenMetaCache();
   await loadPredefinedTokensFromDb();
@@ -3210,6 +3251,35 @@ function renderNftResults(nfts, errors) {
 }
 
 // ---- Chat (User <-> Admin) ----
+
+// Realtime-Abo: läuft einmal pro Login, unabhängig davon, welcher Tab gerade offen ist -
+// so kommt eine neue Nachricht auch an, wenn man den Chat-Tab gerade nicht anschaut.
+let chatRealtimeChannel = null;
+
+function setupChatRealtime() {
+  if (chatRealtimeChannel) sb.removeChannel(chatRealtimeChannel); // altes Abo aufräumen, falls schon vorhanden
+
+  if (isAdmin) {
+    // Admins: auf ALLE neuen Nachrichten reagieren (kein Filter), da unklar ist, welcher
+    // User als nächstes schreibt.
+    chatRealtimeChannel = sb.channel("chat-admin-" + currentUser.id)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, (payload) => {
+        renderAdminChatUserSelect(); // falls ein User zum ersten Mal schreibt, taucht er neu in der Liste auf
+        const selectedUserId = document.getElementById("adminChatUserSelect") ? document.getElementById("adminChatUserSelect").value : "";
+        if (selectedUserId && payload.new.user_id === selectedUserId) loadAdminChat();
+      })
+      .subscribe();
+  } else {
+    // Normale User: nur auf die eigene Konversation gefiltert (RLS würde ohnehin nichts
+    // anderes durchlassen, aber der Filter spart unnötige Events).
+    chatRealtimeChannel = sb.channel("chat-user-" + currentUser.id)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages", filter: `user_id=eq.${currentUser.id}` }, () => {
+        loadOwnChat();
+      })
+      .subscribe();
+  }
+}
+
 function renderChatBubble(msg, isOwnSide) {
   const isAdmin = msg.sender_type === "admin";
   const align = isOwnSide ? "flex-end" : "flex-start";
