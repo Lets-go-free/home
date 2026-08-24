@@ -556,7 +556,7 @@
   </div>
 
   <footer>
-    Version vom 25.08.2026, 00:37 Uhr<br>
+    Version vom 25.08.2026, 00:45 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -2975,7 +2975,7 @@ function renderApprovalsResults(wallet, approvals) {
 }
 
 // ---- NFTs (nur auf Knopfdruck, nutzt ebenfalls Moralis) ----
-const NFT_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax"];
+const NFT_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax", "apertum"];
 let activeNftChains = new Set(NFT_CHAINS);
 
 function renderNftChainFilter() {
@@ -3047,6 +3047,42 @@ function normalizeNftImageUrl(url) {
   return url;
 }
 
+// Apertum: eigene Blockscout-API statt Moralis (Moralis deckt Apertum nicht ab).
+async function fetchApertumNfts(address, onProgress) {
+  let nextParams = null;
+  let page = 0;
+  const nfts = [];
+
+  do {
+    page++;
+    if (onProgress) onProgress(page);
+    let url = `${APERTUM_EXPLORER_API}/addresses/${address}/nft/collections`;
+    if (nextParams) url += "?" + new URLSearchParams(nextParams).toString();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    (data.items || []).forEach(coll => {
+      const collectionName = coll.token && (coll.token.name || coll.token.symbol);
+      (coll.token_instances || []).forEach(inst => {
+        const meta = inst.metadata || {};
+        nfts.push({
+          chain: "apertum",
+          tokenAddress: coll.token && coll.token.address,
+          tokenId: inst.id,
+          name: meta.name || (collectionName ? collectionName + " #" + inst.id : "Unbenannt"),
+          image: normalizeNftImageUrl(inst.image_url || meta.image),
+          collectionName,
+          possibleSpam: false, // Blockscout liefert keine eigene Spam-Einschätzung wie Moralis
+          contractType: coll.token && coll.token.type
+        });
+      });
+    });
+    nextParams = data.next_page_params || null;
+  } while (nextParams && page < FEES_MAX_PAGES);
+
+  return nfts;
+}
+
 async function runNftLoad() {
   const btn = document.getElementById("nftBtn");
   const status = document.getElementById("nftStatus");
@@ -3070,9 +3106,12 @@ async function runNftLoad() {
     for (const chain of NFT_CHAINS.filter(c => activeNftChains.has(c))) {
       status.textContent = `Lade NFTs für ${w.label} auf ${CHAIN_META[chain].label}...`;
       try {
-        const found = await fetchNftsForChain(chain, w.evm, (page) => {
+        const onProgress = (page) => {
           status.textContent = `Lade NFTs für ${w.label} auf ${CHAIN_META[chain].label}... (Seite ${page})`;
-        });
+        };
+        const found = chain === "apertum"
+          ? await fetchApertumNfts(w.evm, onProgress)
+          : await fetchNftsForChain(chain, w.evm, onProgress);
         found.forEach(n => { n.walletLabel = w.label; });
         allNfts = allNfts.concat(found);
       } catch (e) {
@@ -3081,10 +3120,13 @@ async function runNftLoad() {
     }
   }
 
+  lastNftFindings = allNfts;
   renderNftResults(allNfts, errors);
   status.textContent = "Fertig.";
   btn.disabled = false;
 }
+
+let lastNftFindings = [];
 
 function renderNftResults(nfts, errors) {
   const el = document.getElementById("nftResults");
@@ -3095,11 +3137,28 @@ function renderNftResults(nfts, errors) {
     return;
   }
 
+  const hideSpam = document.getElementById("nftHideSpamToggle") && document.getElementById("nftHideSpamToggle").checked;
+  const spamCount = nfts.filter(n => n.possibleSpam).length;
+  const visible = hideSpam ? nfts.filter(n => !n.possibleSpam) : nfts;
+
+  const filterBar = `<div class="custom-token-card" style="margin-bottom:14px">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
+      <input type="checkbox" id="nftHideSpamToggle" style="width:auto" onchange="renderNftResults(lastNftFindings, [])" ${hideSpam ? "checked" : ""} />
+      Spam-Verdacht ausblenden (${spamCount} von ${nfts.length})
+    </label>
+  </div>`;
+
+  if (visible.length === 0) {
+    el.innerHTML = errorNote + filterBar + `<div class="empty">Alle gefundenen NFTs sind als Spam-verdächtig markiert und aktuell ausgeblendet.</div>`;
+    return;
+  }
+
   el.innerHTML = `
     ${errorNote}
-    <div class="note" style="margin-bottom:12px">${nfts.length} NFT(s) gefunden</div>
+    ${filterBar}
+    <div class="note" style="margin-bottom:12px">${visible.length} von ${nfts.length} NFT(s) angezeigt</div>
     <div class="nft-grid">
-      ${nfts.map(n => {
+      ${visible.map(n => {
         const meta = CHAIN_META[n.chain];
         return `<div class="nft-card">
           ${n.image ? `<img src="${n.image}" loading="lazy" onerror="this.style.display='none'">` : `<div style="aspect-ratio:1;background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:0.75rem">Kein Bild</div>`}
