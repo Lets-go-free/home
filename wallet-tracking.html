@@ -556,7 +556,7 @@
   </div>
 
   <footer>
-    Version vom 24.08.2026, 23:02 Uhr<br>
+    Version vom 25.08.2026, 00:12 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1926,12 +1926,14 @@ async function loadSnapshotsFromDb() {
 function buildCurrentSnapshotItems() {
   const items = [];
   wallets.forEach(w => {
+    if (!w.dbId) return; // ungespeicherte Wallet (noch keine DB-ID) - nicht in den Snapshot aufnehmen,
+                          // sonst gibt's später keine zuverlässige Zuordnung mehr möglich
     Object.keys(CHAIN_META).forEach(chain => {
       const result = chainRows((walletData[w.id] || {})[chain], chain);
       if (!result || result.error) return;
       result.rows.forEach(r => {
         items.push({
-          wallet_id: w.dbId || null,
+          wallet_id: w.dbId,
           wallet_label: w.label,
           chain,
           symbol: r.symbol,
@@ -1952,6 +1954,18 @@ function buildCurrentSnapshotItems() {
 // jedem echten Neuladen, taucht NICHT in der normalen Snapshot-Liste/Grafik auf.
 async function createSnapshot(isAutomated) {
   isAutomated = !!isAutomated;
+
+  if (!isAutomated) {
+    const unsaved = wallets.filter(w => !w.dbId);
+    if (unsaved.length > 0) {
+      const proceed = confirm(
+        `Diese Wallet(s) sind noch nicht gespeichert und werden im Snapshot fehlen: ${unsaved.map(w => w.label).join(", ")}.\n\n` +
+        `Zuerst auf "Speichern" klicken (im Tab "Meine Wallets") und danach den Snapshot erstellen? Trotzdem jetzt fortfahren?`
+      );
+      if (!proceed) return;
+    }
+  }
+
   const items = buildCurrentSnapshotItems();
 
   if (items.length === 0) {
@@ -2275,10 +2289,18 @@ function visibleSnapshots() {
 // Prüft, ob für eine Chain (+ optional ein bestimmtes Wallet) überhaupt Snapshot-Daten
 // existieren - damit eine Chain-Karte nicht ausgeblendet wird, nur weil der AKTUELLE
 // Bestand 0 ist, obwohl ein Snapshot noch etwas zeigen würde.
+// Ordnet eine Snapshot-Position einer Wallet zu - zuerst über die DB-ID (stabiler Normalfall),
+// falls die nicht passt zusätzlich über den Wallet-Namen (Fallback, falls eine Wallet
+// zwischenzeitlich neu gespeichert wurde und dadurch eine neue ID bekommen hat - der Name
+// bleibt in dem Fall meist gleich, die ID aber nicht mehr).
+function snapshotItemBelongsToWallet(it, matchWallet) {
+  if (!matchWallet) return true;
+  if (matchWallet.dbId && it.wallet_id === matchWallet.dbId) return true;
+  return it.wallet_label === matchWallet.label;
+}
+
 function hasVisibleSnapshotDataForChain(chain, matchWallet) {
-  return visibleSnapshots().some(s => s.items.some(it => it.chain === chain &&
-    (!matchWallet || (matchWallet.dbId ? it.wallet_id === matchWallet.dbId : it.wallet_label === matchWallet.label))
-  ));
+  return visibleSnapshots().some(s => s.items.some(it => it.chain === chain && snapshotItemBelongsToWallet(it, matchWallet)));
 }
 
 // ---- Bestands-Tabelle. wallet+chain optional: nur bei Angabe werden Snapshot-Spalten
@@ -2292,9 +2314,7 @@ function rowKey(row) {
 // Summiert den Bestand eines Tokens in einem Snapshot - entweder für EIN Wallet (matchWallet
 // gesetzt) oder über ALLE Wallets summiert (matchWallet null, für die Summary-Tabelle).
 function snapshotValueForKey(snap, chain, key, matchWallet) {
-  const items = snap.items.filter(it => it.chain === chain &&
-    (!matchWallet || (matchWallet.dbId ? it.wallet_id === matchWallet.dbId : it.wallet_label === matchWallet.label))
-  );
+  const items = snap.items.filter(it => it.chain === chain && snapshotItemBelongsToWallet(it, matchWallet));
   const matching = items.filter(it => (it.is_native ? "native" : (it.address || "").toLowerCase()) === key);
   if (matching.length === 0) return null;
   return matching.reduce((sum, it) => sum + Number(it.amount), 0);
@@ -2317,9 +2337,7 @@ function attachSnapshotColumns(rows, chain, matchWallet) {
   const extraRows = [];
   snaps.forEach(s => {
     s.items
-      .filter(it => it.chain === chain &&
-        (!matchWallet || (matchWallet.dbId ? it.wallet_id === matchWallet.dbId : it.wallet_label === matchWallet.label))
-      )
+      .filter(it => it.chain === chain && snapshotItemBelongsToWallet(it, matchWallet))
       .forEach(it => {
         const key = it.is_native ? "native" : (it.address || "").toLowerCase();
         if (presentKeys.has(key) || extraKeys.has(key)) return;
