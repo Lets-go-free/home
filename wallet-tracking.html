@@ -556,7 +556,7 @@
   </div>
 
   <footer>
-    Version vom 24.08.2026, 18:19 Uhr<br>
+    Version vom 24.08.2026, 23:02 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -689,9 +689,21 @@ function showAdminTab(name) {
 
 // Rein statische Übersicht, keine DB-Anbindung nötig - hier einfach die Liste pflegen.
 const ADMIN_IDEAS = [
-  { status: "open", title: "Steuer-Report (Schweiz)", desc: "Stichtag-Snapshot 31.12. + druckbarer PDF/CSV-Export (Wallet, Chain, Token, Bestand, Kurs, Wert CHF) für die Steuererklärung." },
+  { status: "open", title: "Steuer-Report (Schweiz)", desc: "Stichtag-Snapshot 31.12. + druckbarer PDF/CSV-Export (Wallet, Chain, Token, Bestand, Kurs, Wert CHF) für die Steuererklärung. Läuft über manuell/automatisch erstellte Snapshots (siehe Punkt unten) statt einer eigenen On-Chain-Nachrechnung, da Letzteres nur EVM-Chains abdecken würde - so bekommt man alle Chains gleich." },
   { status: "open", title: "Gewinn/Verlust statt nur Bestand", desc: "Einstandspreis-Feld pro Wallet/Snapshot, um Performance (im Plus/Minus, %) statt nur den heutigen Wert zu zeigen." },
   { status: "clarifying", title: "Staking-Anzeige (PancakeSwap V2/V3 Liquidity Pools)", desc: "Gestakte LP-Token liegen im Farm-/Staking-Contract, nicht im Wallet - aktuell nicht sichtbar. Braucht die genaue Contract-Adresse + Funktionsnamen des Staking-Contracts (offiziell PancakeSwap oder eigener Contract?). Noch in Abklärung." },
+  {
+    status: "paused",
+    title: "Automatisierte monatliche Snapshots (1. jedes Monats)",
+    desc: "Läuft NICHT im Browser, sondern als Supabase Edge Function + pg_cron-Zeitplan - unabhängig vom Gerät/Browser. Kompletter Code bereits geschrieben und Syntax-geprüft (aber NICHT live getestet, da keine Deno-Umgebung zum Testen verfügbar war): " +
+      "Edge Function supabase/functions/monthly-snapshot/index.ts (holt Bestände + Kurse ZUM ZEITPUNKT des Snapshots, alle Chains ausser Solana-Token/Apertum-Token teilweise eingeschränkt), " +
+      "migration-monthly-cron.sql (pg_cron-Zeitplan, 00:05 UTC am 1. jedes Monats), " +
+      "migration-snapshot-price.sql (price_usd-Spalte in snapshot_items, Voraussetzung dafür). " +
+      "Pausiert, weil: (1) Deployment braucht Docker + Supabase CLI auf einem Mac (einmalig, aber Einrichtungsaufwand), " +
+      "(2) Supabase pausiert Gratis-Projekte nach 7 Tagen Inaktivität - pg_cron pausiert dann mit, braucht zusätzlich einen externen Wachhalte-Mechanismus (siehe eigener Punkt). " +
+      "Wieder aufnehmen, sobald Zeit für den Deployment-Aufwand da ist."
+  },
+  { status: "done", title: "Wachhalte-Mechanismus gegen Supabase-Inaktivitäts-Pause", desc: "GitHub Actions Workflow, pingt wöchentlich die Supabase REST API extern an - verhindert die automatische 7-Tage-Pausierung des Gratis-Tarifs. Nötig, bevor die automatisierten Snapshots (siehe oben) sinnvoll sind." },
   { status: "done", title: "Token-Approval-Checker", desc: "Zeigt aktive/unlimitierte Freigaben, Revoke läuft extern über revoke.cash (bewusst rein lesend)." },
   { status: "done", title: "Portfolio-Allokation als Grafik", desc: "Kreisdiagramm nach Chain/Token, Total oder je Wallet." },
   { status: "done", title: "NFT-Anzeige", desc: "NFTs je Wallet/Chain, inkl. Spam-Verdacht-Badge." },
@@ -707,7 +719,8 @@ function renderAdminIdeas() {
     open: { label: "Offen", color: "#9aa0ac" },
     clarifying: { label: "In Abklärung", color: "#f0b90b" },
     done: { label: "Umgesetzt", color: "#46c878" },
-    reverted: { label: "Umgesetzt, dann zurückgebaut", color: "var(--danger)" }
+    reverted: { label: "Umgesetzt, dann zurückgebaut", color: "var(--danger)" },
+    paused: { label: "Code fertig, Deployment pausiert", color: "#8247e5" }
   };
   el.innerHTML = ADMIN_IDEAS.map(idea => {
     const s = statusMeta[idea.status];
@@ -1925,6 +1938,7 @@ function buildCurrentSnapshotItems() {
           address: r.isNative ? null : (r.address || null),
           is_native: !!r.isNative,
           amount: r.amount,
+          price_usd: r.price !== undefined ? r.price : null, // Kurs ZUM ZEITPUNKT des Snapshots, nicht live nachträglich
           user_id: currentUser.id
         });
       });
