@@ -206,6 +206,7 @@
       <button class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
       <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
       <button class="tab-btn" data-tab="fees" onclick="showTab('fees')">💸 Gebühren</button>
+      <button class="tab-btn" data-tab="apertumtx" onclick="showTab('apertumtx')">📜 Apertum-Tx</button>
       <button class="tab-btn" id="adminTabBtn" data-tab="admin" onclick="showTab('admin')" style="display:none">⚙️ Admin</button>
     </div>
 
@@ -438,6 +439,56 @@
       <div id="feesResults"></div>
     </div>
 
+    <div id="tab-apertumtx" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">
+          Zeigt die komplette Transaktionshistorie einer Wallet auf Apertum (nativer APTM-Bestand,
+          keine Token). Nützlich z.B. um Mining-Auszahlungen zu erkennen (falls du die Absender-Adresse
+          deines Pools kennst, gib sie unten im Filter ein) und um bezahlte Gebühren einzusehen.
+        </div>
+
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Wallet (Pflicht)</span>
+            <select id="apertumTxWalletSelect">
+              <option value="">– Wallet wählen –</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="custom-token-grid" style="grid-template-columns:1fr 1fr 1fr 1fr">
+          <div>
+            <span class="field-label">Von Datum</span>
+            <input type="date" id="apertumTxFromDate" />
+          </div>
+          <div>
+            <span class="field-label">Bis Datum</span>
+            <input type="date" id="apertumTxToDate" />
+          </div>
+          <div>
+            <span class="field-label">Gegenpartei-Adresse (optional)</span>
+            <input type="text" id="apertumTxCounterparty" placeholder="0x... (z.B. Mining-Pool)" />
+          </div>
+          <div>
+            <span class="field-label">Richtung</span>
+            <select id="apertumTxDirection">
+              <option value="all">Alle</option>
+              <option value="in">Nur eingehend</option>
+              <option value="out">Nur ausgehend</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button id="apertumTxBtn" onclick="loadApertumTransactions()">Transaktionen laden</button>
+          <button class="secondary" onclick="applyApertumTxFilters()">Filter anwenden</button>
+        </div>
+        <div id="apertumTxStatus" class="note" style="margin-top:10px"></div>
+      </div>
+      <div id="apertumTxSummary"></div>
+      <div id="apertumTxResults"></div>
+    </div>
+
     <div id="tab-admin" class="tab-panel">
       <div class="tab-nav" style="margin-top:0">
         <button class="tab-btn active" data-admin-tab="customtokens" onclick="showAdminTab('customtokens')">Eigene sichere Token (alle User)</button>
@@ -466,7 +517,7 @@
   </div>
 
   <footer>
-    Version vom 24.08.2026, 14:03 Uhr<br>
+    Version vom 24.08.2026, 14:19 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -556,6 +607,7 @@ async function onLoggedIn(session) {
   activeFeesChains = new Set(FEES_CHAINS);
   renderFeesChainFilter();
   renderFeesWalletSelect();
+  renderApertumTxWalletSelect();
   loadAll().then(() => runAutoScamCheck()); // Scam-Check erst NACH dem Laden, aber ohne die Seite zu blockieren
 
   showTab(wallets.length === 0 ? "wallets" : "tracking");
@@ -705,6 +757,7 @@ function renderWalletNav() {
   renderChartWalletSelect();
   renderAllocWalletSelect();
   renderFeesWalletSelect();
+  renderApertumTxWalletSelect();
 }
 
 function goToWallet(id) {
@@ -2444,6 +2497,15 @@ function renderFeesWalletSelect() {
   if (wallets.some(w => w.id === current)) el.value = current;
 }
 
+function renderApertumTxWalletSelect() {
+  const el = document.getElementById("apertumTxWalletSelect");
+  if (!el) return;
+  const current = el.value;
+  el.innerHTML = `<option value="">– Wallet wählen –</option>` +
+    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (wallets.some(w => w.id === current)) el.value = current;
+}
+
 // Holt die komplette Transaktionshistorie einer Wallet auf einer Chain über Moralis
 // (paginiert via Cursor) und summiert die Gebühren aller Transaktionen, bei denen diese
 // Wallet die Absenderin war. Moralis liefert die Gebühr pro Transaktion direkt in nativen
@@ -2590,6 +2652,146 @@ async function fetchApertumFees(address, onProgress) {
   } while (nextParams && page < FEES_MAX_PAGES);
 
   return { totalFee: Number(totalFeeWei) / 1e18, txCount, truncated: !!nextParams && page >= FEES_MAX_PAGES };
+}
+
+// ---- Apertum: volle Transaktionshistorie (für den eigenen Tx-Tabellen-Tab) ----
+async function fetchApertumTransactions(address, onProgress) {
+  let nextParams = null;
+  let page = 0;
+  const txs = [];
+
+  do {
+    page++;
+    if (onProgress) onProgress(page);
+    let url = `${APERTUM_EXPLORER_API}/addresses/${address}/transactions`;
+    if (nextParams) url += "?" + new URLSearchParams(nextParams).toString();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    (data.items || []).forEach(tx => {
+      const fromAddr = (tx.from && tx.from.hash) || "";
+      const toAddr = (tx.to && tx.to.hash) || "";
+      let feeWei = null;
+      try {
+        if (tx.fee && tx.fee.value) feeWei = BigInt(tx.fee.value);
+        else if (tx.gas_used && tx.gas_price) feeWei = BigInt(tx.gas_used) * BigInt(tx.gas_price);
+      } catch (e) { /* egal, Gebühr bleibt leer */ }
+      let valueWei = null;
+      try { valueWei = tx.value ? BigInt(tx.value) : 0n; } catch (e) { valueWei = 0n; }
+
+      txs.push({
+        hash: tx.hash,
+        timestamp: tx.timestamp,
+        from: fromAddr,
+        to: toAddr,
+        isOutgoing: fromAddr.toLowerCase() === address.toLowerCase(),
+        value: Number(valueWei) / 1e18,
+        fee: feeWei !== null ? Number(feeWei) / 1e18 : null
+      });
+    });
+    nextParams = data.next_page_params || null;
+  } while (nextParams && page < FEES_MAX_PAGES);
+
+  return { txs, truncated: !!nextParams && page >= FEES_MAX_PAGES };
+}
+
+let apertumTxAll = []; // ungefilterte, geladene Transaktionen dieser Session
+
+async function loadApertumTransactions() {
+  const btn = document.getElementById("apertumTxBtn");
+  const status = document.getElementById("apertumTxStatus");
+  const walletId = document.getElementById("apertumTxWalletSelect").value;
+
+  if (!walletId) { status.textContent = "Bitte zuerst eine Wallet auswählen."; return; }
+  const w = wallets.find(x => x.id === walletId);
+  if (!w || !w.evm) { status.textContent = "Diese Wallet hat keine EVM-/Apertum-Adresse erfasst."; return; }
+
+  btn.disabled = true;
+  status.textContent = "Lade Transaktionen...";
+  document.getElementById("apertumTxResults").innerHTML = "";
+  document.getElementById("apertumTxSummary").innerHTML = "";
+
+  try {
+    const { txs, truncated } = await fetchApertumTransactions(w.evm, (page) => {
+      status.textContent = `Lade Transaktionen... (Seite ${page})`;
+    });
+    apertumTxAll = txs;
+    status.textContent = `Fertig. ${txs.length} Transaktionen geladen${truncated ? " (Sicherheitslimit erreicht, evtl. unvollständig)" : ""}.`;
+    applyApertumTxFilters();
+  } catch (e) {
+    status.textContent = "Fehler: " + e.message;
+  }
+  btn.disabled = false;
+}
+
+function applyApertumTxFilters() {
+  if (apertumTxAll.length === 0) {
+    document.getElementById("apertumTxResults").innerHTML = `<div class="empty">Noch keine Transaktionen geladen - zuerst "Transaktionen laden" klicken.</div>`;
+    return;
+  }
+
+  const fromDate = document.getElementById("apertumTxFromDate").value; // "YYYY-MM-DD" oder ""
+  const toDate = document.getElementById("apertumTxToDate").value;
+  const counterparty = document.getElementById("apertumTxCounterparty").value.trim().toLowerCase();
+  const direction = document.getElementById("apertumTxDirection").value;
+
+  let filtered = apertumTxAll.filter(tx => {
+    const txDate = tx.timestamp ? tx.timestamp.substring(0, 10) : null; // ISO-Datum-Teil
+    if (fromDate && txDate && txDate < fromDate) return false;
+    if (toDate && txDate && txDate > toDate) return false;
+    if (counterparty) {
+      const other = (tx.isOutgoing ? tx.to : tx.from).toLowerCase();
+      if (other !== counterparty) return false;
+    }
+    if (direction === "in" && tx.isOutgoing) return false;
+    if (direction === "out" && !tx.isOutgoing) return false;
+    return true;
+  });
+
+  filtered.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+  // Summary
+  const totalIn = filtered.filter(t => !t.isOutgoing).reduce((s, t) => s + t.value, 0);
+  const totalOut = filtered.filter(t => t.isOutgoing).reduce((s, t) => s + t.value, 0);
+  const totalFees = filtered.filter(t => t.isOutgoing && t.fee !== null).reduce((s, t) => s + t.fee, 0);
+
+  document.getElementById("apertumTxSummary").innerHTML = `
+    <div class="custom-token-card">
+      <table>
+        <thead><tr><th>Anzahl Tx</th><th style="text-align:right">Eingehend (APTM)</th><th style="text-align:right">Ausgehend (APTM)</th><th style="text-align:right">Gebühren gesamt (APTM)</th></tr></thead>
+        <tbody><tr>
+          <td>${filtered.length}</td>
+          <td class="num" style="color:#46c878">+${fmt(totalIn)}</td>
+          <td class="num" style="color:var(--danger)">-${fmt(totalOut)}</td>
+          <td class="num">${fmt(totalFees)}</td>
+        </tr></tbody>
+      </table>
+    </div>
+  `;
+
+  const el = document.getElementById("apertumTxResults");
+  if (filtered.length === 0) {
+    el.innerHTML = `<div class="empty">Keine Transaktionen mit diesen Filtern.</div>`;
+    return;
+  }
+
+  el.innerHTML = `<div class="custom-token-card"><div style="overflow-x:auto"><table>
+    <thead><tr><th>Datum/Zeit</th><th>Richtung</th><th>Gegenpartei</th><th style="text-align:right">Betrag (APTM)</th><th style="text-align:right">Gebühr (APTM)</th><th>Tx</th></tr></thead>
+    <tbody>
+      ${filtered.map(tx => {
+        const dt = tx.timestamp ? new Date(tx.timestamp) : null;
+        const dtStr = dt ? dt.toLocaleDateString("de-CH") + ", " + dt.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" }) : "–";
+        return `<tr>
+          <td>${dtStr}</td>
+          <td>${tx.isOutgoing ? '<span style="color:var(--danger)">Ausgehend</span>' : '<span style="color:#46c878">Eingehend</span>'}</td>
+          <td style="font-size:0.78rem;word-break:break-all">${tx.isOutgoing ? tx.to : tx.from}</td>
+          <td class="num">${tx.isOutgoing ? "-" : "+"}${fmt(tx.value)}</td>
+          <td class="num">${tx.isOutgoing && tx.fee !== null ? fmt(tx.fee) : '<span style="color:var(--muted)">–</span>'}</td>
+          <td><a href="https://explorer.apertum.io/tx/${tx.hash}" target="_blank" rel="noopener" style="color:var(--accent);font-size:0.78rem">↗</a></td>
+        </tr>`;
+      }).join("")}
+    </tbody>
+  </table></div></div>`;
 }
 
 async function runFeesCalculation() {
