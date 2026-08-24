@@ -233,10 +233,42 @@
           <span class="field-label" style="margin:0">Snapshots (Token-Bestand zu einem Zeitpunkt, als zusätzliche Spalten je Wallet)</span>
           <button onclick="createSnapshot()">📸 Snapshot erstellen</button>
         </div>
-        <div id="snapshotManagerList"></div>
+        <details>
+          <summary style="cursor:pointer;font-size:0.85rem;color:var(--muted)">Erstellte Snapshots anzeigen/verwalten</summary>
+          <div id="snapshotManagerList" style="margin-top:10px"></div>
+        </details>
       </div>
 
       <h2>Summary (alle Wallets)</h2>
+
+      <div class="custom-token-card">
+        <span class="field-label" style="display:block;margin-bottom:8px">Verlauf-Grafik (ein Token über Zeit, aus Snapshots + aktuellem Bestand)</span>
+        <div class="custom-token-grid" style="grid-template-columns:1fr 1fr 1fr auto">
+          <div>
+            <span class="field-label">Wallet</span>
+            <select id="chartWalletSelect">
+              <option value="">Total (alle Wallets)</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Chain</span>
+            <select id="chartChainSelect" onchange="populateChartTokenSelect()">
+              <option value="">– Chain wählen –</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Token</span>
+            <select id="chartTokenSelect" disabled>
+              <option value="">– zuerst Chain wählen –</option>
+            </select>
+          </div>
+          <div>
+            <button onclick="generateSnapshotChart()">📈 Grafik erstellen</button>
+          </div>
+        </div>
+        <div id="snapshotChartContainer" style="margin-top:16px"></div>
+      </div>
+
       <div id="summaryContainer"></div>
 
       <h2>Details je Wallet</h2>
@@ -347,12 +379,13 @@
   </div>
 
   <footer>
-    Version vom 23.08.2026, 19:32 Uhr<br>
+    Version vom 23.08.2026, 22:35 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 
 <script>
 // ---- Supabase: Auth + Datenbank ----
@@ -411,6 +444,8 @@ async function onLoggedIn(session) {
   renderCustomTokenList();
   renderSafeTokenTable();
   renderSnapshotManager();
+  renderChartWalletSelect();
+  renderChartChainSelect();
   renderResults();
   activeDiscoveryChains = new Set(DISCOVERY_CHAINS);
   renderDiscoveryChainFilter();
@@ -480,6 +515,7 @@ function renderWalletNav() {
     if (wallets.some(w => w.id === current)) el.value = current;
   }
   renderDiscoveryWalletSelect();
+  renderChartWalletSelect();
 }
 
 function goToWallet(id) {
@@ -1618,6 +1654,133 @@ function renderSnapshotManager() {
       <button class="remove" onclick="deleteSnapshot('${s.id}')">Löschen</button>
     </div>
   `).join("");
+}
+
+// ---- Verlauf-Grafik (ein Token über Zeit, Snapshots + aktueller Bestand) ----
+let snapshotChartInstance = null;
+
+function renderChartWalletSelect() {
+  const el = document.getElementById("chartWalletSelect");
+  if (!el) return;
+  const current = el.value;
+  el.innerHTML = `<option value="">Total (alle Wallets)</option>` +
+    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (current === "" || wallets.some(w => w.id === current)) el.value = current;
+}
+
+function renderChartChainSelect() {
+  const el = document.getElementById("chartChainSelect");
+  if (!el) return;
+  el.innerHTML = `<option value="">– Chain wählen –</option>` +
+    Object.keys(CHAIN_META).map(c => `<option value="${c}">${CHAIN_META[c].label}</option>`).join("");
+}
+
+function populateChartTokenSelect() {
+  const chain = document.getElementById("chartChainSelect").value;
+  const tokenSelect = document.getElementById("chartTokenSelect");
+  if (!chain) {
+    tokenSelect.innerHTML = `<option value="">– zuerst Chain wählen –</option>`;
+    tokenSelect.disabled = true;
+    document.getElementById("snapshotChartContainer").innerHTML = "";
+    return;
+  }
+  const nativeLabel = (NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)";
+  const options = [`<option value="">– Token wählen –</option>`, `<option value="native">${nativeLabel}</option>`];
+
+  const addrs = (SAFE_ADDRESSES[chain] || []).concat(customSafeTokens.filter(t => t.chain === chain).map(t => t.address));
+  const seen = new Set();
+  addrs.forEach(addr => {
+    const key = addr.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    const custom = customSafeTokens.find(t => t.chain === chain && t.address.toLowerCase() === key);
+    const label = predefinedTokenLabels[chain + "|" + key] || (custom ? custom.label : null) || (addr.slice(0, 8) + "…");
+    options.push(`<option value="${addr}">${escapeAttr(label)}</option>`);
+  });
+
+  tokenSelect.innerHTML = options.join("");
+  tokenSelect.disabled = false;
+  document.getElementById("snapshotChartContainer").innerHTML = "";
+}
+
+function generateSnapshotChart() {
+  const walletId = document.getElementById("chartWalletSelect").value;
+  const chain = document.getElementById("chartChainSelect").value;
+  const tokenVal = document.getElementById("chartTokenSelect").value;
+  const container = document.getElementById("snapshotChartContainer");
+
+  if (!chain || !tokenVal) {
+    container.innerHTML = "";
+    return;
+  }
+
+  const matchWallet = walletId ? wallets.find(w => w.id === walletId) : null;
+  const isNative = tokenVal === "native";
+  const key = isNative ? "native" : tokenVal.toLowerCase();
+
+  // Historische Punkte aus ALLEN Snapshots (unabhängig von deren Ein-/Ausblenden-Status
+  // in der Tabellen-Ansicht), chronologisch aufsteigend sortiert.
+  const sortedSnaps = snapshots.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const points = sortedSnaps.map(s => ({
+    label: fmtSnapshotDateTime(s.createdAt),
+    value: snapshotValueForKey(s, chain, key, matchWallet) || 0
+  }));
+
+  // Aktueller Live-Bestand als letzter Punkt
+  let currentVal = 0;
+  const wallets_ = matchWallet ? [matchWallet] : wallets;
+  wallets_.forEach(w => {
+    const cd = (walletData[w.id] || {})[chain];
+    if (!cd) return;
+    if (isNative) {
+      currentVal += cd.native || 0;
+    } else {
+      const t = (cd.tokens || []).find(t => (t.address || "").toLowerCase() === key);
+      if (t) currentVal += t.amount;
+    }
+  });
+  points.push({ label: "Jetzt", value: currentVal });
+
+  if (points.length < 2) {
+    container.innerHTML = `<div class="empty">Zu wenig Datenpunkte (mind. 1 Snapshot nötig, um einen Verlauf zu zeigen).</div>`;
+    return;
+  }
+
+  const tokenLabel = isNative
+    ? (NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)"
+    : (document.getElementById("chartTokenSelect").selectedOptions[0].textContent);
+  const walletLabel = matchWallet ? matchWallet.label : "Total (alle Wallets)";
+
+  container.innerHTML = `<canvas id="snapshotChartCanvas" height="90"></canvas>`;
+  const ctx = document.getElementById("snapshotChartCanvas").getContext("2d");
+  if (snapshotChartInstance) snapshotChartInstance.destroy();
+  snapshotChartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: points.map(p => p.label),
+      datasets: [{
+        label: `${tokenLabel} · ${CHAIN_META[chain].label} · ${walletLabel}`,
+        data: points.map(p => p.value),
+        borderColor: "#6c8cff",
+        backgroundColor: "rgba(108,140,255,0.15)",
+        fill: true,
+        tension: 0.2,
+        pointRadius: 4,
+        pointBackgroundColor: "#6c8cff"
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: "#e8e9ec" } },
+        tooltip: { callbacks: { label: (ctx) => fmt(ctx.parsed.y) } }
+      },
+      scales: {
+        x: { ticks: { color: "#9aa0ac" }, grid: { color: "#2a2e38" } },
+        y: { ticks: { color: "#9aa0ac", callback: (v) => fmt(v) }, grid: { color: "#2a2e38" } }
+      }
+    }
+  });
 }
 
 function visibleSnapshots() {
