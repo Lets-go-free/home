@@ -201,6 +201,7 @@
       <button class="tab-btn" data-tab="predefined" onclick="showTab('predefined')">Vordefinierte Token</button>
       <button class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
       <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
+      <button class="tab-btn" data-tab="fees" onclick="showTab('fees')">💸 Gebühren</button>
     </div>
 
     <div id="tab-tracking" class="tab-panel">
@@ -376,10 +377,42 @@
       <div id="discoveryResults"></div>
     </div>
 
+    <div id="tab-fees" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">
+          Summiert die tatsächlich bezahlten Netzwerk-Gebühren einer Wallet, je EVM-Chain (Ethereum/BSC/Polygon/Arbitrum/Base/Avalanche).
+          Deckt die komplette Historie ab (kann bei sehr aktiven Wallets dauern, läuft über mehrere Seiten). Nur Transaktionen,
+          bei denen diese Wallet die Absenderin war, zählen (nur die zahlt die Gebühr). Läuft nur auf Knopfdruck.
+        </div>
+
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Wallet (Pflicht)</span>
+            <select id="feesWalletSelect">
+              <option value="">– Wallet wählen –</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains einbeziehen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllFeesChains(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllFeesChains(false)">Alle abwählen</button>
+          </div>
+        </div>
+        <div id="feesChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
+
+        <button id="feesBtn" onclick="runFeesCalculation()">Gebühren berechnen</button>
+        <div id="feesStatus" class="note" style="margin-top:10px"></div>
+      </div>
+      <div id="feesResults"></div>
+    </div>
+
   </div>
 
   <footer>
-    Version vom 23.08.2026, 22:35 Uhr<br>
+    Version vom 24.08.2026, 03:12 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -450,6 +483,9 @@ async function onLoggedIn(session) {
   activeDiscoveryChains = new Set(DISCOVERY_CHAINS);
   renderDiscoveryChainFilter();
   renderDiscoveryWalletSelect();
+  activeFeesChains = new Set(FEES_CHAINS);
+  renderFeesChainFilter();
+  renderFeesWalletSelect();
   loadAll();
 
   showTab(wallets.length === 0 ? "wallets" : "tracking");
@@ -516,6 +552,7 @@ function renderWalletNav() {
   }
   renderDiscoveryWalletSelect();
   renderChartWalletSelect();
+  renderFeesWalletSelect();
 }
 
 function goToWallet(id) {
@@ -1668,11 +1705,52 @@ function renderChartWalletSelect() {
   if (current === "" || wallets.some(w => w.id === current)) el.value = current;
 }
 
+// Ermittelt genau die Chain/Token-Kombinationen, die auch in der Summary-Tabelle
+// auftauchen würden (aktueller Bestand > 0 ODER in irgendeinem Snapshot vorhanden) -
+// unabhängig vom Chain-Sichtbarkeits-Filter oben, damit die Grafik-Auswahl stabil bleibt.
+function computeAvailableChartOptions() {
+  const options = [];
+  Object.keys(CHAIN_META).forEach(chain => {
+    const found = {}; // key -> {label, isNative}
+
+    wallets.forEach(w => {
+      const cd = (walletData[w.id] || {})[chain];
+      if (!cd || cd.error) return;
+      if (cd.native !== null && cd.native !== undefined && cd.native > 0) {
+        found.native = { label: (NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)", isNative: true };
+      }
+      (cd.tokens || []).forEach(t => {
+        if (t.amount <= 0 || !isSafeTokenAddress(t.address, chain)) return;
+        found[(t.address || "").toLowerCase()] = { label: t.symbol, isNative: false };
+      });
+    });
+
+    snapshots.forEach(s => {
+      s.items.filter(it => it.chain === chain).forEach(it => {
+        const key = it.is_native ? "native" : (it.address || "").toLowerCase();
+        if (!found[key]) {
+          found[key] = { label: it.is_native ? (NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)" : it.symbol, isNative: it.is_native };
+        }
+      });
+    });
+
+    Object.keys(found).forEach(key => {
+      options.push({ chain, key, label: found[key].label, isNative: found[key].isNative });
+    });
+  });
+  return options;
+}
+
 function renderChartChainSelect() {
   const el = document.getElementById("chartChainSelect");
   if (!el) return;
+  const available = computeAvailableChartOptions();
+  const chainsWithData = Object.keys(CHAIN_META).filter(c => available.some(o => o.chain === c));
   el.innerHTML = `<option value="">– Chain wählen –</option>` +
-    Object.keys(CHAIN_META).map(c => `<option value="${c}">${CHAIN_META[c].label}</option>`).join("");
+    chainsWithData.map(c => `<option value="${c}">${CHAIN_META[c].label}</option>`).join("");
+  if (chainsWithData.length === 0) {
+    el.innerHTML = `<option value="">Keine Bestände/Snapshots vorhanden</option>`;
+  }
 }
 
 function populateChartTokenSelect() {
@@ -1684,18 +1762,11 @@ function populateChartTokenSelect() {
     document.getElementById("snapshotChartContainer").innerHTML = "";
     return;
   }
-  const nativeLabel = (NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)";
-  const options = [`<option value="">– Token wählen –</option>`, `<option value="native">${nativeLabel}</option>`];
-
-  const addrs = (SAFE_ADDRESSES[chain] || []).concat(customSafeTokens.filter(t => t.chain === chain).map(t => t.address));
-  const seen = new Set();
-  addrs.forEach(addr => {
-    const key = addr.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    const custom = customSafeTokens.find(t => t.chain === chain && t.address.toLowerCase() === key);
-    const label = predefinedTokenLabels[chain + "|" + key] || (custom ? custom.label : null) || (addr.slice(0, 8) + "…");
-    options.push(`<option value="${addr}">${escapeAttr(label)}</option>`);
+  const available = computeAvailableChartOptions().filter(o => o.chain === chain);
+  const options = [`<option value="">– Token wählen –</option>`];
+  available.forEach(o => {
+    const value = o.isNative ? "native" : o.key;
+    options.push(`<option value="${value}">${escapeAttr(o.label)}</option>`);
   });
 
   tokenSelect.innerHTML = options.join("");
@@ -2005,6 +2076,7 @@ function renderResults() {
   }
 
   renderWalletNav();
+  renderChartChainSelect(); // Verfügbare Chains/Token für die Grafik hängen von Bestand+Snapshots ab, hier immer aktuell halten
 
   // --- Summary über alle Wallets, pro Chain aggregiert ---
   const summaryContainer = document.getElementById("summaryContainer");
@@ -2099,6 +2171,156 @@ function toggleDiscoveryChain(chain, isChecked) {
 function setAllDiscoveryChains(selectAll) {
   activeDiscoveryChains = selectAll ? new Set(DISCOVERY_CHAINS) : new Set();
   renderDiscoveryChainFilter();
+}
+
+// ---- Gebühren-Auswertung (EVM-Chains, via Moralis Wallet History) ----
+const FEES_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax"];
+let activeFeesChains = new Set(FEES_CHAINS);
+
+function renderFeesChainFilter() {
+  const el = document.getElementById("feesChainContainer");
+  if (!el) return;
+  el.innerHTML = FEES_CHAINS.map(chain => {
+    const meta = CHAIN_META[chain];
+    const checked = activeFeesChains.has(chain) ? "checked" : "";
+    return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
+      <input type="checkbox" ${checked} onchange="toggleFeesChain('${chain}', this.checked)" style="width:auto" />
+      <span class="dot ${meta.dot}"></span> ${meta.label}
+    </label>`;
+  }).join("");
+}
+
+function toggleFeesChain(chain, isChecked) {
+  if (isChecked) activeFeesChains.add(chain);
+  else activeFeesChains.delete(chain);
+}
+
+function setAllFeesChains(selectAll) {
+  activeFeesChains = selectAll ? new Set(FEES_CHAINS) : new Set();
+  renderFeesChainFilter();
+}
+
+function renderFeesWalletSelect() {
+  const el = document.getElementById("feesWalletSelect");
+  if (!el) return;
+  const current = el.value;
+  el.innerHTML = `<option value="">– Wallet wählen –</option>` +
+    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (wallets.some(w => w.id === current)) el.value = current;
+}
+
+// Holt die komplette Transaktionshistorie einer Wallet auf einer Chain über Moralis
+// (paginiert via Cursor) und summiert die Gebühren aller Transaktionen, bei denen diese
+// Wallet die Absenderin war. Moralis liefert die Gebühr pro Transaktion direkt in nativen
+// Einheiten mit (transaction_fee), kein manuelles Gas x Preis nötig.
+const FEES_MAX_PAGES = 50; // Sicherheitslimit gegen Endlos-Pagination bei extrem aktiven Wallets
+
+async function fetchWalletFeesForChain(chain, address, onProgress) {
+  const chainHex = MORALIS_CHAIN_HEX[chain];
+  const addrLower = address.toLowerCase();
+  let cursor = null;
+  let totalFee = 0;
+  let txCount = 0;
+  let page = 0;
+
+  do {
+    page++;
+    if (onProgress) onProgress(page);
+    const url = `https://deep-index.moralis.io/api/v2.2/wallets/${address}/history?chain=${chainHex}${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
+    const res = await fetch(url, { headers: { "X-API-Key": MORALIS_API_KEY, "Accept": "application/json" } });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    (data.result || []).forEach(tx => {
+      if ((tx.from_address || "").toLowerCase() === addrLower) {
+        const fee = parseFloat(tx.transaction_fee || "0");
+        if (isFinite(fee)) { totalFee += fee; txCount++; }
+      }
+    });
+    cursor = data.cursor || null;
+  } while (cursor && page < FEES_MAX_PAGES);
+
+  return { totalFee, txCount, truncated: !!cursor && page >= FEES_MAX_PAGES };
+}
+
+async function runFeesCalculation() {
+  const btn = document.getElementById("feesBtn");
+  const status = document.getElementById("feesStatus");
+  const resultsEl = document.getElementById("feesResults");
+  const walletId = document.getElementById("feesWalletSelect").value;
+
+  if (!walletId) { status.textContent = "Bitte zuerst eine Wallet auswählen."; return; }
+  if (activeFeesChains.size === 0) { status.textContent = "Bitte mindestens eine Chain auswählen."; return; }
+
+  const w = wallets.find(x => x.id === walletId);
+  if (!w) { status.textContent = "Wallet nicht gefunden."; return; }
+  if (!w.evm) { status.textContent = "Diese Wallet hat keine EVM-Adresse erfasst."; return; }
+
+  btn.disabled = true;
+  resultsEl.innerHTML = "";
+  const results = []; // {chain, totalFee, txCount, truncated, error}
+
+  for (const chain of FEES_CHAINS.filter(c => activeFeesChains.has(c))) {
+    status.textContent = `Berechne Gebühren für ${w.label} auf ${CHAIN_META[chain].label}...`;
+    try {
+      const r = await fetchWalletFeesForChain(chain, w.evm, (page) => {
+        status.textContent = `Berechne Gebühren für ${w.label} auf ${CHAIN_META[chain].label}... (Seite ${page})`;
+      });
+      results.push({ chain, ...r });
+    } catch (e) {
+      results.push({ chain, error: e.message });
+    }
+  }
+
+  renderFeesResults(w, results);
+  status.textContent = "Fertig.";
+  btn.disabled = false;
+}
+
+function renderFeesResults(wallet, results) {
+  const el = document.getElementById("feesResults");
+  const rowsWithFees = results.filter(r => !r.error && r.txCount > 0);
+
+  if (results.every(r => r.error)) {
+    el.innerHTML = `<div class="error">Alle Abfragen sind fehlgeschlagen. Bitte später nochmal versuchen.</div>`;
+    return;
+  }
+
+  const grandTotalUsd = rowsWithFees.reduce((sum, r) => {
+    const p = nativePrices[r.chain];
+    return sum + (p ? r.totalFee * p.price : 0);
+  }, 0);
+
+  el.innerHTML = `
+    <div class="custom-token-card">
+      <h3 style="margin:0 0 10px">${escapeAttr(wallet.label)} — Gebühren-Total</h3>
+      <table>
+        <thead><tr><th>Chain</th><th style="text-align:right">Anzahl Tx</th><th style="text-align:right">Gebühren (nativ)</th><th style="text-align:right">Wert (USD)</th></tr></thead>
+        <tbody>
+          ${results.map(r => {
+            if (r.error) {
+              return `<tr><td><span class="dot ${CHAIN_META[r.chain].dot}"></span> ${CHAIN_META[r.chain].label}</td><td colspan="3" class="error" style="text-align:left">Fehler: ${r.error}</td></tr>`;
+            }
+            const p = nativePrices[r.chain];
+            const usd = p ? r.totalFee * p.price : null;
+            const nativeSym = NATIVE_SYMBOL[r.chain] || r.chain.toUpperCase();
+            return `<tr>
+              <td><span class="dot ${CHAIN_META[r.chain].dot}"></span> ${CHAIN_META[r.chain].label}${r.truncated ? ' <span class="badge unsafe" title="Sehr aktive Wallet - Historie evtl. unvollständig">gekürzt</span>' : ''}</td>
+              <td class="num">${r.txCount}</td>
+              <td class="num">${fmt(r.totalFee)} ${nativeSym}</td>
+              <td class="num">${usd !== null ? fmtUsd(usd) : '<span style="color:var(--muted)">–</span>'}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+        <tfoot>
+          <tr style="font-weight:700;border-top:2px solid var(--border)">
+            <td colspan="3" style="padding-top:10px">Total (alle ausgewählten Chains)</td>
+            <td class="num" style="padding-top:10px">${fmtUsd(grandTotalUsd)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <div class="note" style="margin-top:10px">"gekürzt" heisst: die Historie war so lang, dass das Sicherheitslimit (${FEES_MAX_PAGES} Seiten) erreicht wurde - die Summe ist dann eine Untergrenze, nicht die komplette Historie.</div>
+    </div>
+  `;
 }
 
 function renderDiscoveryWalletSelect() {
