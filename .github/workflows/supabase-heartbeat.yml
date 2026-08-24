@@ -1,0 +1,32 @@
+# Verhindert, dass Supabase das Projekt nach 7 Tagen Inaktivität automatisch pausiert.
+# WICHTIG: pg_cron kann sich NICHT selbst wachhalten - wenn das Projekt pausiert, pausiert
+# pg_cron gleich mit. Es braucht einen Anstoss von AUSSEN, darum läuft das hier über
+# GitHub Actions (extern, unabhängig von Supabase selbst) statt über einen Cron-Job in der DB.
+#
+# Einrichtung (einmalig):
+#   1. Diese Datei im Repo ablegen unter: .github/workflows/supabase-heartbeat.yml
+#   2. Im GitHub-Repo unter Settings -> Secrets and variables -> Actions -> "New repository secret"
+#      zwei Secrets anlegen:
+#        SUPABASE_URL      = https://<dein-projekt-ref>.supabase.co
+#        SUPABASE_ANON_KEY = dein anon/publishable Key (steht schon so im HTML-Code, unproblematisch öffentlich)
+#   3. Fertig - läuft automatisch, kein weiterer Schritt nötig.
+#
+# Zum manuellen Testen: im GitHub-Repo unter "Actions" -> "Supabase Heartbeat" -> "Run workflow"
+
+name: Supabase Heartbeat
+
+on:
+  schedule:
+    # Jeden Montag um 03:00 UTC - deutlich öfter als die 7-Tage-Grenze, genug Sicherheitsabstand
+    - cron: "0 3 * * 1"
+  workflow_dispatch: {} # erlaubt manuelles Auslösen zum Testen
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API (echte API-Aktivität, zählt als "aktiv")
+        run: |
+          curl -sf -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/predefined_tokens?select=chain&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
