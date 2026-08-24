@@ -216,6 +216,7 @@
       <button class="tab-btn" data-tab="fees" onclick="showTab('fees')">💸 Gebühren</button>
       <button class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
       <button class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
+      <button class="tab-btn" data-tab="chat" onclick="showTab('chat')">💬 Chat</button>
       <button class="tab-btn" id="adminTabBtn" data-tab="admin" onclick="showTab('admin')" style="display:none">⚙️ Admin</button>
     </div>
 
@@ -522,10 +523,23 @@
       <div id="nftResults"></div>
     </div>
 
+    <div id="tab-chat" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">Direkter Draht zum Support – Nachrichten hier sind nur für dich und die Admins sichtbar.</div>
+        <div id="chatMessagesContainer" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding:4px"></div>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="chatMessageInput" placeholder="Nachricht schreiben..." style="flex:1" onkeydown="if(event.key==='Enter') sendChatMessage()" />
+          <button onclick="sendChatMessage()">Senden</button>
+        </div>
+        <button class="secondary" style="margin-top:10px" onclick="loadOwnChat()">🔄 Aktualisieren</button>
+      </div>
+    </div>
+
     <div id="tab-admin" class="tab-panel">
       <div class="tab-nav" style="margin-top:0">
         <button class="tab-btn active" data-admin-tab="customtokens" onclick="showAdminTab('customtokens')">Eigene sichere Token (alle User)</button>
         <button class="tab-btn" data-admin-tab="ideas" onclick="showAdminTab('ideas')">💡 Ideen</button>
+        <button class="tab-btn" data-admin-tab="chats" onclick="showAdminTab('chats')">💬 Chats</button>
       </div>
 
       <div id="admintab-customtokens" class="admin-tab-panel active">
@@ -551,12 +565,29 @@
         <div class="note" style="margin-bottom:14px">Offene Erweiterungsideen, nur für Admins sichtbar. Nichts davon ist umgesetzt, ausser explizit markiert.</div>
         <div id="adminIdeasList"></div>
       </div>
+
+      <div id="admintab-chats" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">Zeigt alle Konversationen, in denen bereits mindestens eine Nachricht geschrieben wurde.</div>
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Konversation</span>
+            <select id="adminChatUserSelect" onchange="loadAdminChat()">
+              <option value="">– auswählen –</option>
+            </select>
+          </div>
+        </div>
+        <div id="adminChatMessagesContainer" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding:4px"></div>
+        <div id="adminChatInputRow" style="display:none;gap:8px">
+          <input type="text" id="adminChatMessageInput" placeholder="Antwort schreiben..." style="flex:1" onkeydown="if(event.key==='Enter') sendAdminChatMessage()" />
+          <button onclick="sendAdminChatMessage()">Senden</button>
+        </div>
+      </div>
     </div>
 
   </div>
 
   <footer>
-    Version vom 25.08.2026, 00:52 Uhr<br>
+    Version vom 25.08.2026, 01:01 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -676,6 +707,7 @@ function showTab(name) {
   if (panel) panel.classList.add("active");
   if (name === "predefined") ensurePredefinedNames();
   if (name === "admin") showAdminTab("customtokens");
+  if (name === "chat") loadOwnChat();
 }
 
 function showAdminTab(name) {
@@ -685,6 +717,7 @@ function showAdminTab(name) {
   if (panel) panel.classList.add("active");
   if (name === "customtokens") renderAdminCustomTokens();
   if (name === "ideas") renderAdminIdeas();
+  if (name === "chats") renderAdminChatUserSelect();
 }
 
 // Rein statische Übersicht, keine DB-Anbindung nötig - hier einfach die Liste pflegen.
@@ -3174,6 +3207,90 @@ function renderNftResults(nfts, errors) {
       }).join("")}
     </div>
   `;
+}
+
+// ---- Chat (User <-> Admin) ----
+function renderChatBubble(msg, isOwnSide) {
+  const isAdmin = msg.sender_type === "admin";
+  const align = isOwnSide ? "flex-end" : "flex-start";
+  const bg = isAdmin ? "var(--card2)" : "var(--accent)";
+  const color = isAdmin ? "var(--text)" : "#fff";
+  const dt = new Date(msg.created_at);
+  const dtStr = dt.toLocaleDateString("de-CH") + ", " + dt.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" });
+  return `<div style="align-self:${align};max-width:75%;">
+    <div style="background:${bg};color:${color};padding:8px 12px;border-radius:12px;font-size:0.9rem;white-space:pre-wrap;word-break:break-word">${escapeAttr(msg.message)}</div>
+    <div class="note" style="margin:2px 4px 0;font-size:0.68rem">${isAdmin ? "Support" : "Du"} · ${dtStr}</div>
+  </div>`;
+}
+
+async function loadOwnChat() {
+  const el = document.getElementById("chatMessagesContainer");
+  const { data, error } = await sb.from("chat_messages").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: true });
+  if (error) { el.innerHTML = `<div class="error">Fehler beim Laden: ${error.message}</div>`; return; }
+  if (!data || data.length === 0) {
+    el.innerHTML = `<div class="empty">Noch keine Nachrichten - schreib uns gern etwas!</div>`;
+  } else {
+    el.innerHTML = data.map(m => renderChatBubble(m, m.sender_type === "user")).join("");
+    el.scrollTop = el.scrollHeight;
+  }
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById("chatMessageInput");
+  const text = input.value.trim();
+  if (!text) return;
+  const { error } = await sb.from("chat_messages").insert({
+    user_id: currentUser.id,
+    sender_type: "user",
+    sender_email: currentUser.email,
+    message: text
+  });
+  if (error) { alert("Fehler beim Senden: " + error.message); return; }
+  input.value = "";
+  loadOwnChat();
+}
+
+// ---- Chat: Admin-Seite ----
+async function renderAdminChatUserSelect() {
+  const el = document.getElementById("adminChatUserSelect");
+  const current = el.value;
+  const { data, error } = await sb.from("chat_messages").select("user_id, sender_email, sender_type").eq("sender_type", "user");
+  if (error) { console.error(error); return; }
+  const users = {};
+  (data || []).forEach(r => { users[r.user_id] = r.sender_email || r.user_id; });
+  el.innerHTML = `<option value="">– auswählen –</option>` +
+    Object.entries(users).map(([uid, email]) => `<option value="${uid}">${escapeAttr(email)}</option>`).join("");
+  if (Object.keys(users).some(uid => uid === current)) el.value = current;
+}
+
+async function loadAdminChat() {
+  const userId = document.getElementById("adminChatUserSelect").value;
+  const el = document.getElementById("adminChatMessagesContainer");
+  const inputRow = document.getElementById("adminChatInputRow");
+  if (!userId) { el.innerHTML = ""; inputRow.style.display = "none"; return; }
+
+  const { data, error } = await sb.from("chat_messages").select("*").eq("user_id", userId).order("created_at", { ascending: true });
+  if (error) { el.innerHTML = `<div class="error">Fehler beim Laden: ${error.message}</div>`; return; }
+  el.innerHTML = (data || []).map(m => renderChatBubble(m, m.sender_type === "admin")).join("") || `<div class="empty">Noch keine Nachrichten.</div>`;
+  el.scrollTop = el.scrollHeight;
+  inputRow.style.display = "flex";
+}
+
+async function sendAdminChatMessage() {
+  const userId = document.getElementById("adminChatUserSelect").value;
+  if (!userId) return;
+  const input = document.getElementById("adminChatMessageInput");
+  const text = input.value.trim();
+  if (!text) return;
+  const { error } = await sb.from("chat_messages").insert({
+    user_id: userId,
+    sender_type: "admin",
+    sender_email: currentUser.email,
+    message: text
+  });
+  if (error) { alert("Fehler beim Senden: " + error.message); return; }
+  input.value = "";
+  loadAdminChat();
 }
 
 async function runFeesCalculation() {
