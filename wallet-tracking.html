@@ -525,6 +525,7 @@
     <div id="tab-admin" class="tab-panel">
       <div class="tab-nav" style="margin-top:0">
         <button class="tab-btn active" data-admin-tab="customtokens" onclick="showAdminTab('customtokens')">Eigene sichere Token (alle User)</button>
+        <button class="tab-btn" data-admin-tab="ideas" onclick="showAdminTab('ideas')">💡 Ideen</button>
       </div>
 
       <div id="admintab-customtokens" class="admin-tab-panel active">
@@ -545,12 +546,17 @@
         </div>
         <div id="adminCustomTokensList"></div>
       </div>
+
+      <div id="admintab-ideas" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">Offene Erweiterungsideen, nur für Admins sichtbar. Nichts davon ist umgesetzt, ausser explizit markiert.</div>
+        <div id="adminIdeasList"></div>
+      </div>
     </div>
 
   </div>
 
   <footer>
-    Version vom 24.08.2026, 18:13 Uhr<br>
+    Version vom 24.08.2026, 18:19 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -678,6 +684,40 @@ function showAdminTab(name) {
   const panel = document.getElementById("admintab-" + name);
   if (panel) panel.classList.add("active");
   if (name === "customtokens") renderAdminCustomTokens();
+  if (name === "ideas") renderAdminIdeas();
+}
+
+// Rein statische Übersicht, keine DB-Anbindung nötig - hier einfach die Liste pflegen.
+const ADMIN_IDEAS = [
+  { status: "open", title: "Steuer-Report (Schweiz)", desc: "Stichtag-Snapshot 31.12. + druckbarer PDF/CSV-Export (Wallet, Chain, Token, Bestand, Kurs, Wert CHF) für die Steuererklärung." },
+  { status: "open", title: "Gewinn/Verlust statt nur Bestand", desc: "Einstandspreis-Feld pro Wallet/Snapshot, um Performance (im Plus/Minus, %) statt nur den heutigen Wert zu zeigen." },
+  { status: "clarifying", title: "Staking-Anzeige (PancakeSwap V2/V3 Liquidity Pools)", desc: "Gestakte LP-Token liegen im Farm-/Staking-Contract, nicht im Wallet - aktuell nicht sichtbar. Braucht die genaue Contract-Adresse + Funktionsnamen des Staking-Contracts (offiziell PancakeSwap oder eigener Contract?). Noch in Abklärung." },
+  { status: "done", title: "Token-Approval-Checker", desc: "Zeigt aktive/unlimitierte Freigaben, Revoke läuft extern über revoke.cash (bewusst rein lesend)." },
+  { status: "done", title: "Portfolio-Allokation als Grafik", desc: "Kreisdiagramm nach Chain/Token, Total oder je Wallet." },
+  { status: "done", title: "NFT-Anzeige", desc: "NFTs je Wallet/Chain, inkl. Spam-Verdacht-Badge." },
+  { status: "reverted", title: "Automatischer Scam-Hinweis beim Login", desc: "War umgesetzt, aber wieder entfernt - hat den kostenlosen Moralis-Tages-Rahmen gesprengt. Manueller \"Entdecken\"-Tab deckt denselben Bedarf ab." },
+  { status: "open", title: "CSV-Export der aktuellen Bestände", desc: "Für eigene Excel-Auswertungen der Kunden." },
+  { status: "open", title: "Mehrsprachigkeit (DE/FR/IT/EN)", desc: "Für einen breiteren Kundenkreis." },
+  { status: "open", title: "Als installierbare Mobile-App (PWA)", desc: "Statt nur Browser-Tab - Icon auf dem Homescreen, App-artiges Gefühl." }
+];
+
+function renderAdminIdeas() {
+  const el = document.getElementById("adminIdeasList");
+  const statusMeta = {
+    open: { label: "Offen", color: "#9aa0ac" },
+    clarifying: { label: "In Abklärung", color: "#f0b90b" },
+    done: { label: "Umgesetzt", color: "#46c878" },
+    reverted: { label: "Umgesetzt, dann zurückgebaut", color: "var(--danger)" }
+  };
+  el.innerHTML = ADMIN_IDEAS.map(idea => {
+    const s = statusMeta[idea.status];
+    return `<div class="custom-token-row" style="align-items:flex-start">
+      <div>
+        <div><strong>${escapeAttr(idea.title)}</strong> <span class="badge" style="background:${s.color}22;color:${s.color}">${s.label}</span></div>
+        <div class="meta" style="margin-top:4px">${escapeAttr(idea.desc)}</div>
+      </div>
+    </div>`;
+  }).join("");
 }
 
 // ---- Admin: eigene sichere Token aller User einsehen/übernehmen/ignorieren ----
