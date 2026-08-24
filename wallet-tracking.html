@@ -150,8 +150,14 @@
 
   footer { color: var(--muted); font-size: 0.72rem; margin-top: 24px; text-align: center; }
 
+  .tab-nav-groups { margin: 20px 0 22px; }
+  .tab-nav-group { margin-bottom: 4px; }
+  .tab-nav-group-label {
+    display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--muted); margin-bottom: 6px;
+  }
   .tab-nav {
-    display: flex; gap: 6px; flex-wrap: wrap; margin: 20px 0 22px;
+    display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px;
     border-bottom: 1px solid var(--border); padding-bottom: 0;
   }
   .tab-btn {
@@ -159,9 +165,6 @@
     padding: 10px 4px; font-size: 0.88rem; cursor: pointer; margin-right: 14px; border-radius: 0;
   }
   .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
-  .tab-nav-divider {
-    width: 1px; align-self: stretch; background: var(--border); margin: 4px 8px;
-  }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
   .admin-tab-panel { display: none; }
@@ -210,20 +213,33 @@
       <button class="secondary" onclick="logout()">Logout</button>
     </div>
 
-    <div class="tab-nav">
-      <button class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking - Token-Übersicht</button>
-      <button class="tab-btn" data-tab="fees" onclick="showTab('fees')">💸 Gebühren</button>
-      <button class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
-      <button class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
-      <span class="tab-nav-divider"></span>
-      <button class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
-      <button class="tab-btn" data-tab="predefined" onclick="showTab('predefined')">Vordefinierte Token</button>
-      <button class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
-      <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
-      <span class="tab-nav-divider"></span>
-      <button class="tab-btn" data-tab="chat" onclick="showTab('chat')">💬 Chat</button>
-      <button class="tab-btn" id="adminTabBtn" data-tab="admin" onclick="showTab('admin')" style="display:none">⚙️ Admin</button>
-      <button class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
+    <div class="tab-nav-groups">
+      <div class="tab-nav-group">
+        <span class="tab-nav-group-label">📊 Übersicht &amp; Analyse</span>
+        <div class="tab-nav">
+          <button class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking - Token-Übersicht</button>
+          <button class="tab-btn" data-tab="fees" onclick="showTab('fees')">💸 Gebühren</button>
+          <button class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
+          <button class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
+        </div>
+      </div>
+      <div class="tab-nav-group">
+        <span class="tab-nav-group-label">⚙️ Verwaltung</span>
+        <div class="tab-nav">
+          <button class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
+          <button class="tab-btn" data-tab="predefined" onclick="showTab('predefined')">Vordefinierte Token</button>
+          <button class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
+          <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
+        </div>
+      </div>
+      <div class="tab-nav-group">
+        <span class="tab-nav-group-label">💬 Support &amp; Info</span>
+        <div class="tab-nav">
+          <button class="tab-btn" data-tab="chat" onclick="showTab('chat')">💬 Chat</button>
+          <button class="tab-btn" id="adminTabBtn" data-tab="admin" onclick="showTab('admin')" style="display:none">⚙️ Admin</button>
+          <button class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
+        </div>
+      </div>
     </div>
 
     <div id="tab-tracking" class="tab-panel">
@@ -591,43 +607,90 @@
     </div>
 
     <div id="tab-help" class="tab-panel">
+      <div class="custom-token-card" style="border-color:var(--accent)">
+        <h3 style="margin-top:0">⏱️ Was läuft automatisch, was manuell?</h3>
+        <table>
+          <thead><tr><th>Bereich</th><th>Automatisch?</th><th>Details</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Bestände (Wallet-Tracking)</td>
+              <td><span class="badge safe">1x/Tag automatisch</span></td>
+              <td>Beim Login wird der letzte gespeicherte Stand angezeigt (mit Zeitstempel). Für frische Zahlen zwischendurch selbst auf "Alle laden" klicken.</td>
+            </tr>
+            <tr>
+              <td>Kurse</td>
+              <td><span class="badge safe">immer frisch</span></td>
+              <td>Werden bei jedem Laden/Login neu abgefragt (CoinGecko/GeckoTerminal) – unabhängig vom Bestands-Cache, da schnell und kostenlos.</td>
+            </tr>
+            <tr>
+              <td>🔍 Entdecken, 💸 Gebühren, 🔓 Freigaben, 🖼️ NFTs</td>
+              <td><span class="badge unsafe">nur manuell</span></td>
+              <td>Laufen ausschliesslich auf Knopfdruck. Diese nutzen einen Drittanbieter (Moralis) mit begrenztem Gratis-Kontingent, darum bewusst nicht automatisch.</td>
+            </tr>
+            <tr>
+              <td>Snapshots</td>
+              <td><span class="badge unsafe">nur manuell</span></td>
+              <td>Werden nur erstellt, wenn du aktiv auf "Snapshot erstellen" klickst. Für einen Stichtag (z.B. Jahresende) rechtzeitig selbst daran denken.</td>
+            </tr>
+            <tr>
+              <td>💬 Chat</td>
+              <td><span class="badge safe">live (Realtime)</span></td>
+              <td>Neue Nachrichten erscheinen automatisch, ohne dass du etwas klicken musst.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>📊 Übersicht &amp; Analyse</h2>
+
       <div class="custom-token-card">
         <h3 style="margin-top:0">Wallet-Tracking - Token-Übersicht</h3>
-        <p class="note">Zeigt deine aktuellen Bestände über alle Wallets und Chains hinweg – als Gesamtsumme ("Summary") und aufgeschlüsselt je Wallet ("Details je Wallet"). Nur Token, die auf der sicheren Liste stehen (vordefiniert oder von dir selbst hinzugefügt), werden angezeigt. Bestände werden max. 1x pro Tag automatisch geladen; für frische Zahlen zwischendurch auf "Alle laden" klicken. Du kannst hier auch Snapshots (Momentaufnahmen deines Bestands) erstellen, einen Verlauf als Grafik anzeigen und die Portfolio-Allokation als Kreisdiagramm ansehen.</p>
+        <p class="note">Zeigt deine Bestände über alle Wallets und Chains hinweg – als Gesamtsumme ("Summary") und aufgeschlüsselt je Wallet ("Details je Wallet"). Nur Token auf der sicheren Liste (vordefiniert oder selbst hinzugefügt) werden angezeigt, alles andere wird bewusst ausgeblendet (Schutz vor Scam-Token). Zusätzlich verfügbar: Snapshots (Momentaufnahmen deines Bestands, samt Kurs zum jeweiligen Zeitpunkt), eine Verlauf-Grafik über die Zeit, und die Portfolio-Allokation als Kreisdiagramm.</p>
 
         <h3>💸 Gebühren</h3>
-        <p class="note">Summiert die Netzwerk-Gebühren, die eine Wallet über ihre komplette Historie bezahlt hat – je Chain aufgeschlüsselt. Wallet auswählen, Chains wählen, "Gebühren berechnen" klicken. Läuft nur auf Knopfdruck, nicht automatisch.</p>
+        <p class="note">Summiert die Netzwerk-Gebühren, die eine Wallet über ihre komplette Historie bezahlt hat – je Chain aufgeschlüsselt (Anzahl Transaktionen, Gebühren nativ und in USD). Wallet auswählen, Chains wählen, "Gebühren berechnen" klicken. Kann bei sehr aktiven Wallets etwas dauern.</p>
 
         <h3>🖼️ NFTs</h3>
-        <p class="note">Zeigt die NFTs (Sammelbilder/Collectibles) einer oder aller Wallets, inklusive Warnung bei Spam-Verdacht. Mit dem Filter "Spam-Verdacht ausblenden" lassen sich verdächtige Funde ausblenden.</p>
+        <p class="note">Zeigt die NFTs (Sammelbilder/Collectibles) einer oder aller Wallets, inklusive Warnung bei Spam-Verdacht (unaufgeforderte, wertlose NFT-"Geschenke" sind eine verbreitete Betrugsmasche). Mit "Spam-Verdacht ausblenden" lassen sich verdächtige Funde ausblenden.</p>
 
         <h3>🔓 Freigaben</h3>
-        <p class="note">Zeigt aktive Token-Freigaben ("Approvals") an Dapps/Contracts – ein häufig unterschätztes Sicherheitsrisiko, v.a. bei unlimitierten Freigaben. Diese Seite kann nichts widerrufen (rein lesend); zum Widerrufen verlinkt sie auf revoke.cash, das <strong>im Browser deiner Wallet-App</strong> geöffnet werden muss, nicht in einem gewöhnlichen Browser.</p>
+        <p class="note">Zeigt aktive Token-Freigaben ("Approvals") an Dapps/Contracts – ein häufig unterschätztes Sicherheitsrisiko, v.a. bei unlimitierten Freigaben (rot markiert). Diese Seite kann selbst nichts widerrufen (rein lesend, kein Zugriff auf deinen Private Key). Zum Widerrufen verlinkt sie auf revoke.cash – <strong>wichtig: dort im Browser deiner Wallet-App öffnen</strong> (z.B. in MetaMask/Trust Wallet unter "Browser"), nicht in einem gewöhnlichen Browser, sonst kann nichts signiert werden.</p>
+      </div>
 
-        <h3>Meine Wallets</h3>
-        <p class="note">Hier erfasst du deine Wallet-Adressen (eine pro Chain-Typ: EVM, Bitcoin, XRP, Solana, Tron). Die EVM-Adresse gilt für Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche und Apertum gleichzeitig. Nicht vergessen: nach dem Eintragen auf "Speichern" klicken – ungespeicherte Wallets werden nirgends sonst berücksichtigt (auch nicht in Snapshots).</p>
+      <h2>⚙️ Verwaltung</h2>
+
+      <div class="custom-token-card">
+        <h3 style="margin-top:0">Meine Wallets</h3>
+        <p class="note">Hier erfasst du deine Wallet-Adressen (eine pro Chain-Typ: EVM, Bitcoin, XRP, Solana, Tron). Die EVM-Adresse gilt gleichzeitig für Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche und Apertum. Jedes Feld zeigt live an, ob das Adressformat gültig ist und ob die Adresse schon bei einer anderen Wallet erfasst ist. <strong>Wichtig: nach dem Eintragen auf "Speichern" klicken</strong> – ungespeicherte Wallets werden bei Snapshots und in anderen Bereichen nicht mitberücksichtigt.</p>
 
         <h3>Vordefinierte Token</h3>
-        <p class="note">Die globale Liste sicherer Token, die für alle User gilt. Kann gefiltert und durchsucht werden. Neue Einträge kommen nur über die Admins rein.</p>
+        <p class="note">Die globale Liste sicherer Token, die für alle User gilt (inkl. native Coins). Kann nach Chain/Token gefiltert und per Suchfeld durchsucht werden. Neue Einträge kommen nur über die Admins rein (z.B. nachdem du einen sinnvollen eigenen Token vorgeschlagen hast).</p>
 
         <h3>Eigene sichere Token</h3>
-        <p class="note">Zusätzliche Token, die nur du siehst – falls ein Token noch nicht auf der vordefinierten Liste steht, du ihm aber vertraust, kannst du ihn hier selbst hinzufügen.</p>
+        <p class="note">Zusätzliche Token, die nur du siehst – falls ein Token noch nicht auf der vordefinierten Liste steht, du ihm aber vertraust, kannst du ihn hier selbst mit Adresse und Label hinzufügen. Taucht danach in deiner Wallet-Übersicht mit auf.</p>
 
         <h3>🔍 Entdecken</h3>
-        <p class="note">Durchsucht eine Wallet aktiv nach Token, die du zwar besitzt, die aber noch nicht auf der sicheren Liste stehen – inklusive Einschätzung, ob es sich um Scam/Spam handeln könnte. Wallet und Chains auswählen, dann "Scan starten". Läuft nur auf Knopfdruck.</p>
+        <p class="note">Durchsucht eine Wallet aktiv nach Token, die du zwar besitzt, die aber noch nicht auf der sicheren Liste stehen – inklusive Einschätzung, ob es sich um Scam/Spam handeln könnte (verdächtiger Name, bekannte Spam-Markierung). Wallet und Chains auswählen, dann "Scan starten". Gefundene, unverdächtige Token lassen sich direkt als "eigene sichere Token" übernehmen.</p>
+      </div>
 
-        <h3>💬 Chat</h3>
-        <p class="note">Direkter Draht zum Support – Nachrichten hier sind nur für dich und die Admins sichtbar.</p>
+      <h2>💬 Support &amp; Info</h2>
+
+      <div class="custom-token-card">
+        <h3 style="margin-top:0">💬 Chat</h3>
+        <p class="note">Direkter Draht zum Support – Nachrichten hier sind nur für dich und die Admins sichtbar, sonst niemanden. Neue Antworten erscheinen automatisch (Realtime), ohne dass du die Seite neu laden musst.</p>
 
         <h3>⚙️ Admin</h3>
-        <p class="note">Nur für Admins sichtbar. Verwaltung der von Usern selbst erfassten Token, offene Erweiterungsideen, und Einsicht in alle Chat-Konversationen.</p>
+        <p class="note">Nur für die hinterlegten Admin-Konten sichtbar. Verwaltung der von Usern selbst erfassten Token (übernehmen/ignorieren), offene Erweiterungsideen mit Status, und Einsicht in alle Chat-Konversationen aller User.</p>
+
+        <h3>❓ Hilfe</h3>
+        <p class="note">Diese Seite hier.</p>
       </div>
     </div>
 
   </div>
 
   <footer>
-    Version vom 25.08.2026, 01:13 Uhr<br>
+    Version vom 25.08.2026, 01:23 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
