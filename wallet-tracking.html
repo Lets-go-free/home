@@ -736,7 +736,7 @@
   </div>
 
   <footer>
-    Version vom 25.08.2026, 21:19 Uhr<br>
+    Version vom 25.08.2026, 21:21 Uhrr<br>
     Datenquellen: Alchemy (EVM Discovery, Historie/Gebühren, Approvals, NFTs), api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -2377,7 +2377,7 @@ async function loadSnapshotsFromDb() {
 }
 
 // ---- Automatisierter Tages-Cache (Bestände) ----
-// Rekonstruiert walletData aus dem automatisierten Snapshot, statt live abzufragen.
+// Rekonstruiert walletData je Wallet + Chain aus dem automatisierten Snapshot, statt live abzufragen.
 // Gibt den Zeitstempel des Snapshots zurück (für die "zuletzt geladen"-Anzeige) oder null,
 // falls noch kein Cache existiert (z.B. beim allerersten Login).
 async function loadFromAutomatedCache() {
@@ -2388,10 +2388,24 @@ async function loadFromAutomatedCache() {
   const { data: items, error: e2 } = await sb.from("snapshot_items").select("*").eq("snapshot_id", snap.id);
   if (e2) { console.error(e2); return null; }
 
+  // Snapshot-Items wieder den aktuell geladenen Wallet-Objekten zuordnen.
+  // Primär über die stabile DB-ID, zusätzlich über das gespeicherte Wallet-Label als
+  // Fallback (z.B. falls eine Wallet zwischenzeitlich neu gespeichert wurde).
   const byWalletChain = {};
+  wallets.forEach(w => { byWalletChain[w.id] = {}; });
+
   (items || []).forEach(it => {
-    byWalletChain[it.wallet_id] = byWalletChain[it.wallet_id] || {};
-    const entry = byWalletChain[it.wallet_id][it.chain] = byWalletChain[it.wallet_id][it.chain] || { native: null, nativeSymbol: null, tokens: [] };
+    const matchingWallet = wallets.find(w =>
+      (w.dbId && String(w.dbId) === String(it.wallet_id)) ||
+      (it.wallet_label && w.label === it.wallet_label)
+    );
+    if (!matchingWallet) return;
+
+    const walletKey = matchingWallet.id;
+    byWalletChain[walletKey] = byWalletChain[walletKey] || {};
+    const entry = byWalletChain[walletKey][it.chain] =
+      byWalletChain[walletKey][it.chain] || { native: null, nativeSymbol: null, tokens: [] };
+
     if (it.is_native) {
       entry.native = Number(it.amount);
       entry.nativeSymbol = (it.symbol || "").replace(" (nativ)", "");
@@ -2399,6 +2413,7 @@ async function loadFromAutomatedCache() {
       entry.tokens.push({ symbol: it.symbol, address: it.address, amount: Number(it.amount) });
     }
   });
+
   walletData = byWalletChain;
   return snap.created_at;
 }
@@ -2963,12 +2978,19 @@ function renderResults() {
       const data = walletData[w.id] || {};
       const chainCards = Object.keys(CHAIN_META).filter(chain => activeChainFilter.has(chain)).map(chain => {
         const meta = CHAIN_META[chain];
-        const result = chainRows(data[chain], chain);
-        if (!result) return ""; // keine Adresse eingegeben -> gar nicht anzeigen
-        // Nicht ausblenden, wenn zwar aktuell 0 Bestand da ist, aber ein sichtbarer
-        // Snapshot für diese Wallet+Chain existiert - sonst verschwindet die Karte
-        // komplett und der Snapshot ist nie sichtbar.
-        if (!result.error && result.rows.length === 0 && !hasVisibleSnapshotDataForChain(chain, w)) return "";
+        const hasSnapshotData = hasVisibleSnapshotDataForChain(chain, w);
+        let result = chainRows(data[chain], chain);
+
+        // Wichtig: Wenn beim Seitenstart noch kein aktueller Chain-Datensatz vorhanden ist,
+        // aber ein sichtbarer Snapshot Werte für dieses Wallet enthält, trotzdem eine
+        // Detailkarte erzeugen. Früher wurde hier sofort return "" ausgeführt; dadurch war
+        // die Summary sichtbar, die Detailansicht je Wallet aber leer.
+        if (!result) {
+          if (!hasSnapshotData) return "";
+          result = { rows: [] };
+        }
+
+        if (!result.error && result.rows.length === 0 && !hasSnapshotData) return "";
 
         let body;
         if (result.error) {
