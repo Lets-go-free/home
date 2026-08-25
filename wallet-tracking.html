@@ -736,7 +736,7 @@
   </div>
 
   <footer>
-    Version vom 25.08.2026, 21:05 Uhr<br>
+    Version vom 25.08.2026, 21:19 Uhr<br>
     Datenquellen: Alchemy (EVM Discovery, Historie/Gebühren, Approvals, NFTs), api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1033,24 +1033,33 @@ async function alchemyRpc(chain, method, params) {
   const base = ALCHEMY_RPC_URL[chain];
   if (!base) throw new Error("Alchemy ist für diese Chain nicht konfiguriert");
   const url = `${base}/${encodeURIComponent(ALCHEMY_API_KEY)}`;
-  let res;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
-    });
-  } catch (e) {
-    throw new Error(`${CHAIN_META[chain]?.label || chain}: Netzwerkfehler bei ${method} (${e.message || e})`);
+  const delays = [0, 600, 1500];
+  let lastNetworkError = null;
+
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt]) await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+    let res;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+      });
+    } catch (e) {
+      lastNetworkError = e;
+      continue;
+    }
+    if (!res.ok) {
+      let detail = "";
+      try { detail = await res.text(); } catch (_) {}
+      if ((res.status === 429 || res.status >= 500) && attempt < delays.length - 1) continue;
+      throw new Error(`${CHAIN_META[chain]?.label || chain}: Alchemy HTTP ${res.status}${detail ? " – " + detail.slice(0, 180) : ""}`);
+    }
+    const data = await res.json();
+    if (data.error) throw new Error(`${CHAIN_META[chain]?.label || chain}: ${method}: ${data.error.message || "Alchemy RPC-Fehler"}`);
+    return data.result;
   }
-  if (!res.ok) {
-    let detail = "";
-    try { detail = await res.text(); } catch (_) {}
-    throw new Error(`${CHAIN_META[chain]?.label || chain}: Alchemy HTTP ${res.status}${detail ? " – " + detail.slice(0, 180) : ""}`);
-  }
-  const data = await res.json();
-  if (data.error) throw new Error(`${CHAIN_META[chain]?.label || chain}: ${method}: ${data.error.message || "Alchemy RPC-Fehler"}`);
-  return data.result;
+  throw new Error(`${CHAIN_META[chain]?.label || chain}: Netzwerkfehler bei ${method} nach 3 Versuchen (${lastNetworkError?.message || lastNetworkError || "Load failed"})`);
 }
 
 async function alchemyRpcBatch(chain, calls) {
@@ -1060,10 +1069,11 @@ async function alchemyRpcBatch(chain, calls) {
   // Große Wallet-Historien erzeugen sehr viele Receipt-/TX-Abfragen.
   // Browser (insb. Safari/iOS) können bei großen JSON-RPC-Batches mit "Load failed"
   // abbrechen. Deshalb intern immer in kleine Pakete aufteilen.
-  const MAX_CALLS_PER_HTTP_BATCH = 20;
+  const MAX_CALLS_PER_HTTP_BATCH = 10;
   if (calls.length > MAX_CALLS_PER_HTTP_BATCH) {
     const allRows = [];
     for (let offset = 0; offset < calls.length; offset += MAX_CALLS_PER_HTTP_BATCH) {
+      if (offset > 0) await new Promise(resolve => setTimeout(resolve, 200));
       const part = calls.slice(offset, offset + MAX_CALLS_PER_HTTP_BATCH);
       const rows = await alchemyRpcBatch(chain, part);
       allRows.push(...rows);
@@ -1147,7 +1157,7 @@ async function fetchAlchemyOutgoingTxHashes(chain, address, onProgress) {
       fromAddress: address,
       category: ["external", "erc20", "erc721", "erc1155"],
       excludeZeroValue: false,
-      maxCount: "0x3e8"
+      maxCount: "0x64" // 100 statt 1000: kleinere Antworten für alte/aktive Wallets
     };
     if (pageKey) filter.pageKey = pageKey;
     let result;
@@ -1161,6 +1171,7 @@ async function fetchAlchemyOutgoingTxHashes(chain, address, onProgress) {
     }
     (result.transfers || []).forEach(t => { if (t.hash) hashes.add(t.hash); });
     pageKey = result.pageKey || null;
+    if (pageKey) await new Promise(resolve => setTimeout(resolve, 150));
   } while (pageKey && page < FEES_MAX_PAGES);
 
   if (pageKey) truncated = true;
@@ -3125,30 +3136,25 @@ async function fetchWalletFeesForChain(chain, address, onProgress) {
   let totalWei = 0n;
   let txCount = 0;
 
-  // Receipts + Transaktionen gebündelt laden; Deduplizierung erfolgt bereits über Hash-Set.
-  const chunkSize = 10; // 10 TX = 20 RPC-Calls; bewusst klein für große/alte Wallet-Historien
+  // Receipt enthält bereits from, gasUsed und effectiveGasPrice:
+  // kein zusätzliches eth_getTransactionByHash nötig.
+  const chunkSize = 10;
   for (let offset = 0; offset < history.hashes.length; offset += chunkSize) {
+    if (offset > 0) await new Promise(resolve => setTimeout(resolve, 200));
     const chunk = history.hashes.slice(offset, offset + chunkSize);
-    const calls = [];
-    chunk.forEach(h => {
-      calls.push({ method: "eth_getTransactionByHash", params: [h] });
-      calls.push({ method: "eth_getTransactionReceipt", params: [h] });
-    });
-    const rows = await alchemyRpcBatch(chain, calls);
-    for (let i = 0; i < chunk.length; i++) {
-      const tx = rows[i * 2];
-      const receipt = rows[i * 2 + 1];
-      if (!tx || tx.__error || !receipt || receipt.__error) continue;
-      if ((tx.from || "").toLowerCase() !== addrLower) continue;
+    const receipts = await alchemyRpcBatch(
+      chain,
+      chunk.map(h => ({ method: "eth_getTransactionReceipt", params: [h] }))
+    );
+    for (const receipt of receipts) {
+      if (!receipt || receipt.__error) continue;
+      if ((receipt.from || "").toLowerCase() !== addrLower) continue;
       try {
-        const gasUsed = BigInt(receipt.gasUsed || "0x0");
-        const gasPrice = BigInt(receipt.effectiveGasPrice || tx.gasPrice || "0x0");
-        totalWei += gasUsed * gasPrice;
+        totalWei += BigInt(receipt.gasUsed || "0x0") * BigInt(receipt.effectiveGasPrice || "0x0");
         txCount++;
-      } catch (e) { /* einzelne kaputte Antwort ignorieren */ }
+      } catch (e) {}
     }
   }
-
   return { totalFee: Number(totalWei) / 1e18, txCount, truncated: history.truncated };
 }
 
