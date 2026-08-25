@@ -556,8 +556,8 @@
     <div id="tab-nfts" class="tab-panel">
       <div class="custom-token-card">
         <div class="note" style="margin-bottom:12px">
-          Zeigt die NFTs (ERC-721/ERC-1155) einer Wallet. Nutzt ebenfalls Moralis - läuft daher
-          bewusst nur auf Knopfdruck, nicht automatisch.
+          Zeigt die NFTs (ERC-721/ERC-1155) einer Wallet. Nutzt Alchemy - läuft bewusst
+          nur auf Knopfdruck, nicht automatisch.
         </div>
 
         <div class="field-grid" style="margin-bottom:14px">
@@ -664,7 +664,7 @@
             <tr>
               <td>🔍 Entdecken, 💸 Gebühren, 🔓 Freigaben, 🖼️ NFTs</td>
               <td><span class="badge unsafe">nur manuell</span></td>
-              <td>Laufen ausschliesslich auf Knopfdruck. Diese nutzen einen Drittanbieter (Moralis) mit begrenztem Gratis-Kontingent, darum bewusst nicht automatisch.</td>
+              <td>Laufen ausschliesslich auf Knopfdruck. Für EVM-Chains wird Alchemy verwendet; andere Chains nutzen ihre bisherigen APIs. Dadurch bleiben aufwendige Historien-Abfragen bewusst manuell.</td>
             </tr>
             <tr>
               <td>Snapshots</td>
@@ -736,8 +736,8 @@
   </div>
 
   <footer>
-    Version vom 25.08.2026, 18:44 Uhr<br>
-    Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
+    Version vom 25.08.2026, Alchemy-Migration<br>
+    Datenquellen: Alchemy (EVM Discovery, Historie/Gebühren, Approvals, NFTs), api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
 
@@ -841,7 +841,7 @@ async function onLoggedIn(session) {
   // wird angezeigt, mit Zeitstempel. Für frische Daten muss "Alle laden" geklickt werden.
   const cachedAt = await loadFromAutomatedCache();
   if (cachedAt) {
-    await loadNativePrices(); // Kurse bleiben trotzdem frisch - schnell/günstig, kein Moralis nötig dafür
+    await loadNativePrices(); // Kurse bleiben trotzdem frisch - schnell/günstig, kein Alchemy nötig dafür
     renderResults();
     renderSafeTokenTable();
     renderCustomTokenList();
@@ -900,7 +900,7 @@ const ADMIN_IDEAS = [
   { status: "done", title: "Token-Approval-Checker", desc: "Zeigt aktive/unlimitierte Freigaben, Revoke läuft extern über revoke.cash (bewusst rein lesend)." },
   { status: "done", title: "Portfolio-Allokation als Grafik", desc: "Kreisdiagramm nach Chain/Token, Total oder je Wallet." },
   { status: "done", title: "NFT-Anzeige", desc: "NFTs je Wallet/Chain, inkl. Spam-Verdacht-Badge." },
-  { status: "reverted", title: "Automatischer Scam-Hinweis beim Login", desc: "War umgesetzt, aber wieder entfernt - hat den kostenlosen Moralis-Tages-Rahmen gesprengt. Manueller \"Entdecken\"-Tab deckt denselben Bedarf ab." },
+  { status: "reverted", title: "Automatischer Scam-Hinweis beim Login", desc: "War umgesetzt, aber wieder entfernt - hat das damalige API-Tageskontingent gesprengt. Manueller \"Entdecken\"-Tab deckt denselben Bedarf ab." },
   { status: "open", title: "CSV-Export der aktuellen Bestände", desc: "Für eigene Excel-Auswertungen der Kunden." },
   { status: "open", title: "Mehrsprachigkeit (DE/FR/IT/EN)", desc: "Für einen breiteren Kundenkreis." },
   { status: "open", title: "Als installierbare Mobile-App (PWA)", desc: "Statt nur Browser-Tab - Icon auf dem Homescreen, App-artiges Gefühl." }
@@ -996,6 +996,114 @@ async function adminPromoteToken(id, chain, address) {
   await loadPredefinedTokensFromDb(); // damit die neue Liste sofort überall greift
   renderSafeTokenTable();
   renderAdminCustomTokens();
+}
+
+// ---- Alchemy: EVM-Daten (ersetzt Moralis) ----
+// WICHTIG: Hier den API-Key deiner Alchemy-App eintragen.
+// Da diese Seite statisch auf GitHub Pages läuft, ist ein Frontend-Key grundsätzlich sichtbar.
+// Deshalb in Alchemy unbedingt die Domain-Allowlist auf deine Website beschränken.
+const ALCHEMY_API_KEY = "alch_UMCNBKNtoimHNHHPBk7kV";
+
+const ALCHEMY_RPC_URL = {
+  eth:   "https://eth-mainnet.g.alchemy.com/v2",
+  bsc:   "https://bnb-mainnet.g.alchemy.com/v2",
+  matic: "https://polygon-mainnet.g.alchemy.com/v2",
+  arb:   "https://arb-mainnet.g.alchemy.com/v2",
+  base:  "https://base-mainnet.g.alchemy.com/v2",
+  avax:  "https://avax-mainnet.g.alchemy.com/v2"
+};
+
+const ALCHEMY_NFT_URL = {
+  eth:   "https://eth-mainnet.g.alchemy.com/nft/v3",
+  bsc:   "https://bnb-mainnet.g.alchemy.com/nft/v3",
+  matic: "https://polygon-mainnet.g.alchemy.com/nft/v3",
+  arb:   "https://arb-mainnet.g.alchemy.com/nft/v3",
+  base:  "https://base-mainnet.g.alchemy.com/nft/v3",
+  avax:  "https://avax-mainnet.g.alchemy.com/nft/v3"
+};
+
+function assertAlchemyConfigured() {
+  if (!ALCHEMY_API_KEY || ALCHEMY_API_KEY.startsWith("HIER_")) {
+    throw new Error("Alchemy API-Key fehlt – bitte ALCHEMY_API_KEY im HTML eintragen.");
+  }
+}
+
+async function alchemyRpc(chain, method, params) {
+  assertAlchemyConfigured();
+  const url = ALCHEMY_RPC_URL[chain];
+  if (!url) throw new Error("Alchemy ist für diese Chain nicht konfiguriert");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${ALCHEMY_API_KEY}`
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+  });
+  if (!res.ok) throw new Error("Alchemy HTTP " + res.status);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || "Alchemy RPC-Fehler");
+  return data.result;
+}
+
+async function alchemyRpcBatch(chain, calls) {
+  if (!calls.length) return [];
+  assertAlchemyConfigured();
+  const url = ALCHEMY_RPC_URL[chain];
+  const payload = calls.map((c, i) => ({ jsonrpc: "2.0", id: i + 1, method: c.method, params: c.params }));
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${ALCHEMY_API_KEY}`
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error("Alchemy HTTP " + res.status);
+  const data = await res.json();
+  if (!Array.isArray(data)) throw new Error("Unerwartete Alchemy-Batch-Antwort");
+  const byId = new Map(data.map(x => [x.id, x]));
+  return payload.map(p => {
+    const x = byId.get(p.id);
+    if (!x) return null;
+    if (x.error) return { __error: x.error.message || "RPC-Fehler" };
+    return x.result;
+  });
+}
+
+async function fetchAlchemyOutgoingTxHashes(chain, address, onProgress) {
+  const hashes = new Set();
+  let pageKey = null;
+  let page = 0;
+  let truncated = false;
+
+  do {
+    page++;
+    if (onProgress) onProgress(page);
+    const filter = {
+      fromBlock: "0x0",
+      toBlock: "latest",
+      fromAddress: address,
+      category: ["external", "erc20", "erc721", "erc1155"],
+      excludeZeroValue: false,
+      maxCount: "0x3e8"
+    };
+    if (pageKey) filter.pageKey = pageKey;
+    let result;
+    try {
+      result = await alchemyRpc(chain, "alchemy_getAssetTransfers", [filter]);
+    } catch (e) {
+      // Einige Netzwerke unterstützen nicht jede NFT-Kategorie. Für Gebühren/Approvals
+      // reicht als Fallback die externe + ERC20-Historie.
+      filter.category = ["external", "erc20"];
+      result = await alchemyRpc(chain, "alchemy_getAssetTransfers", [filter]);
+    }
+    (result.transfers || []).forEach(t => { if (t.hash) hashes.add(t.hash); });
+    pageKey = result.pageKey || null;
+  } while (pageKey && page < FEES_MAX_PAGES);
+
+  if (pageKey) truncated = true;
+  return { hashes: [...hashes], truncated };
 }
 
 const CHAIN_META = {
@@ -2910,7 +3018,7 @@ function setAllDiscoveryChains(selectAll) {
   renderDiscoveryChainFilter();
 }
 
-// ---- Gebühren-Auswertung (EVM-Chains, via Moralis Wallet History) ----
+// ---- Gebühren-Auswertung (EVM-Chains via Alchemy) ----
 const FEES_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax", "apertum", "xrp", "sol"];
 let activeFeesChains = new Set(FEES_CHAINS);
 
@@ -2946,37 +3054,41 @@ function renderFeesWalletSelect() {
   if (wallets.some(w => w.id === current)) el.value = current;
 }
 
-// Holt die komplette Transaktionshistorie einer Wallet auf einer Chain über Moralis
-// (paginiert via Cursor) und summiert die Gebühren aller Transaktionen, bei denen diese
-// Wallet die Absenderin war. Moralis liefert die Gebühr pro Transaktion direkt in nativen
-// Einheiten mit (transaction_fee), kein manuelles Gas x Preis nötig.
-const FEES_MAX_PAGES = 50; // Sicherheitslimit gegen Endlos-Pagination bei extrem aktiven Wallets
+// Holt die ausgehende Transaktionshistorie über Alchemy und berechnet die tatsächlich
+// bezahlte Netzwerkgebühr aus Transaction Receipt (gasUsed) × effectiveGasPrice.
+const FEES_MAX_PAGES = 50; // max. 50 x 1000 indexierte Transfers pro Chain
 
 async function fetchWalletFeesForChain(chain, address, onProgress) {
-  const chainHex = MORALIS_CHAIN_HEX[chain];
   const addrLower = address.toLowerCase();
-  let cursor = null;
-  let totalFee = 0;
+  const history = await fetchAlchemyOutgoingTxHashes(chain, address, onProgress);
+  let totalWei = 0n;
   let txCount = 0;
-  let page = 0;
 
-  do {
-    page++;
-    if (onProgress) onProgress(page);
-    const url = `https://deep-index.moralis.io/api/v2.2/wallets/${address}/history?chain=${chainHex}${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
-    const res = await fetch(url, { headers: { "X-API-Key": MORALIS_API_KEY, "Accept": "application/json" } });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    (data.result || []).forEach(tx => {
-      if ((tx.from_address || "").toLowerCase() === addrLower) {
-        const fee = parseFloat(tx.transaction_fee || "0");
-        if (isFinite(fee)) { totalFee += fee; txCount++; }
-      }
+  // Receipts + Transaktionen gebündelt laden; Deduplizierung erfolgt bereits über Hash-Set.
+  const chunkSize = 40;
+  for (let offset = 0; offset < history.hashes.length; offset += chunkSize) {
+    const chunk = history.hashes.slice(offset, offset + chunkSize);
+    const calls = [];
+    chunk.forEach(h => {
+      calls.push({ method: "eth_getTransactionByHash", params: [h] });
+      calls.push({ method: "eth_getTransactionReceipt", params: [h] });
     });
-    cursor = data.cursor || null;
-  } while (cursor && page < FEES_MAX_PAGES);
+    const rows = await alchemyRpcBatch(chain, calls);
+    for (let i = 0; i < chunk.length; i++) {
+      const tx = rows[i * 2];
+      const receipt = rows[i * 2 + 1];
+      if (!tx || tx.__error || !receipt || receipt.__error) continue;
+      if ((tx.from || "").toLowerCase() !== addrLower) continue;
+      try {
+        const gasUsed = BigInt(receipt.gasUsed || "0x0");
+        const gasPrice = BigInt(receipt.effectiveGasPrice || tx.gasPrice || "0x0");
+        totalWei += gasUsed * gasPrice;
+        txCount++;
+      } catch (e) { /* einzelne kaputte Antwort ignorieren */ }
+    }
+  }
 
-  return { totalFee, txCount, truncated: !!cursor && page >= FEES_MAX_PAGES };
+  return { totalFee: Number(totalWei) / 1e18, txCount, truncated: history.truncated };
 }
 
 // XRP: xrpscan.com liefert die Gebühr (in Drops, 1 XRP = 1'000'000 Drops) direkt pro
@@ -3006,7 +3118,7 @@ async function fetchXrpFees(address, onProgress) {
   return { totalFee: totalFeeDrops / 1e6, txCount, truncated: !!marker && page >= FEES_MAX_PAGES };
 }
 
-// Solana: es gibt keine fertige "Historie mit Gebühren"-Antwort wie bei Moralis - erst alle
+// Solana: eigene RPC-Logik - erst alle
 // Signaturen holen, dann die Gebühr pro Transaktion per gebündelter RPC-Anfrage nachladen
 // (mehrere getTransaction-Aufrufe in einem einzigen HTTP-Request, wie bei den EVM-Batches).
 // Der "Fee Payer" ist bei Solana immer der erste Account in der Transaktion (Protokoll-Standard).
@@ -3134,37 +3246,78 @@ function renderApprovalsWalletSelect() {
 const APPROVAL_UNLIMITED_THRESHOLD = 2n ** 255n;
 
 async function fetchApprovalsForChain(chain, address, onProgress) {
-  const chainHex = MORALIS_CHAIN_HEX[chain];
-  let cursor = null;
-  const results = [];
-  let page = 0;
+  const ownerLower = address.toLowerCase();
+  const history = await fetchAlchemyOutgoingTxHashes(chain, address, onProgress);
+  const approvalPairs = new Map(); // token|spender -> letzter gefundener Block
+  const chunkSize = 50;
 
-  do {
-    page++;
-    if (onProgress) onProgress(page);
-    const url = `https://deep-index.moralis.io/api/v2.2/wallets/${address}/approvals?chain=${chainHex}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
-    const res = await fetch(url, { headers: { "X-API-Key": MORALIS_API_KEY, "Accept": "application/json" } });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    (data.result || []).forEach(a => {
-      let isUnlimited = false;
-      try { isUnlimited = BigInt(a.value || "0") > APPROVAL_UNLIMITED_THRESHOLD; } catch (e) { /* egal */ }
-      results.push({
-        chain,
-        tokenSymbol: (a.token && a.token.symbol) || "?",
-        tokenAddress: a.token && a.token.address,
-        spenderAddress: a.spender && a.spender.address,
-        spenderLabel: (a.spender && (a.spender.address_label || a.spender.entity)) || null,
-        valueFormatted: a.value_formatted,
-        isUnlimited,
-        usdAtRisk: a.token ? a.token.usd_at_risk : null,
-        timestamp: a.block_timestamp
+  // Approval-Events aus den Receipts der Wallet-Transaktionen auslesen.
+  // topic0 beginnt für ERC20 Approval(address,address,uint256) mit 0x8c5be1e5.
+  for (let offset = 0; offset < history.hashes.length; offset += chunkSize) {
+    const chunk = history.hashes.slice(offset, offset + chunkSize);
+    const receipts = await alchemyRpcBatch(chain, chunk.map(h => ({ method: "eth_getTransactionReceipt", params: [h] })));
+    receipts.forEach(receipt => {
+      if (!receipt || receipt.__error) return;
+      (receipt.logs || []).forEach(log => {
+        const topics = log.topics || [];
+        if (topics.length < 3 || !(topics[0] || "").toLowerCase().startsWith("0x8c5be1e5")) return;
+        const owner = "0x" + topics[1].slice(-40).toLowerCase();
+        if (owner !== ownerLower) return;
+        const spender = "0x" + topics[2].slice(-40);
+        const token = (log.address || "").toLowerCase();
+        if (!token) return;
+        approvalPairs.set(token + "|" + spender.toLowerCase(), { token, spender, blockNumber: receipt.blockNumber });
       });
     });
-    cursor = data.cursor || null;
-  } while (cursor && page < FEES_MAX_PAGES);
+  }
 
-  return results;
+  const pairs = [...approvalPairs.values()];
+  if (!pairs.length) return [];
+
+  // Aktuelle Allowance + Token-Metadaten abfragen. Alte, bereits auf 0 gesetzte Freigaben
+  // werden dadurch nicht mehr angezeigt.
+  const calls = [];
+  pairs.forEach(p => {
+    const ownerArg = address.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+    const spenderArg = p.spender.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+    calls.push({ method: "eth_call", params: [{ to: p.token, data: "0xdd62ed3e" + ownerArg + spenderArg }, "latest"] });
+    calls.push({ method: "alchemy_getTokenMetadata", params: [p.token] });
+  });
+  const rows = await alchemyRpcBatch(chain, calls);
+
+  // Block-Zeitstempel nur für aktive Freigaben nachladen.
+  const active = [];
+  for (let i = 0; i < pairs.length; i++) {
+    const rawAllowance = rows[i * 2];
+    const meta = rows[i * 2 + 1];
+    if (!rawAllowance || rawAllowance.__error) continue;
+    let raw;
+    try { raw = BigInt(rawAllowance); } catch (e) { continue; }
+    if (raw <= 0n) continue;
+    const decimals = meta && !meta.__error && Number.isFinite(Number(meta.decimals)) ? Number(meta.decimals) : 18;
+    const valueFormatted = Number(raw) / Math.pow(10, decimals);
+    active.push({ ...pairs[i], raw, meta: meta && !meta.__error ? meta : {}, valueFormatted });
+  }
+
+  const uniqueBlocks = [...new Set(active.map(a => a.blockNumber).filter(Boolean))];
+  const blockRows = await alchemyRpcBatch(chain, uniqueBlocks.map(b => ({ method: "eth_getBlockByNumber", params: [b, false] })));
+  const blockTs = new Map();
+  uniqueBlocks.forEach((b, i) => {
+    const row = blockRows[i];
+    if (row && !row.__error && row.timestamp) blockTs.set(b, Number(BigInt(row.timestamp)) * 1000);
+  });
+
+  return active.map(a => ({
+    chain,
+    tokenSymbol: a.meta.symbol || (a.token.slice(0, 8) + "…"),
+    tokenAddress: a.token,
+    spenderAddress: a.spender,
+    spenderLabel: null,
+    valueFormatted: String(a.valueFormatted),
+    isUnlimited: a.raw > APPROVAL_UNLIMITED_THRESHOLD,
+    usdAtRisk: null,
+    timestamp: blockTs.has(a.blockNumber) ? new Date(blockTs.get(a.blockNumber)).toISOString() : null
+  }));
 }
 
 async function runApprovalsCheck() {
@@ -3247,7 +3400,7 @@ function renderApprovalsResults(wallet, approvals) {
   `;
 }
 
-// ---- NFTs (nur auf Knopfdruck, nutzt ebenfalls Moralis) ----
+// ---- NFTs (nur auf Knopfdruck, via Alchemy) ----
 const NFT_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax", "apertum"];
 let activeNftChains = new Set(NFT_CHAINS);
 
@@ -3282,33 +3435,39 @@ function renderNftWalletSelect() {
 }
 
 async function fetchNftsForChain(chain, address, onProgress) {
-  const chainHex = MORALIS_CHAIN_HEX[chain];
-  let cursor = null;
+  assertAlchemyConfigured();
+  const base = ALCHEMY_NFT_URL[chain];
+  if (!base) throw new Error("Alchemy NFT API ist für diese Chain nicht konfiguriert");
   const nfts = [];
+  let pageKey = null;
   let page = 0;
 
   do {
     page++;
     if (onProgress) onProgress(page);
-    const url = `https://deep-index.moralis.io/api/v2.2/${address}/nft?chain=${chainHex}&format=decimal&normalizeMetadata=true` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
-    const res = await fetch(url, { headers: { "X-API-Key": MORALIS_API_KEY, "Accept": "application/json" } });
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    const qs = new URLSearchParams({ owner: address, withMetadata: "true", pageSize: "100" });
+    if (pageKey) qs.set("pageKey", pageKey);
+    const res = await fetch(`${base}/getNFTsForOwner?${qs.toString()}`, {
+      headers: { "Authorization": `Bearer ${ALCHEMY_API_KEY}`, "Accept": "application/json" }
+    });
+    if (!res.ok) throw new Error("Alchemy NFT HTTP " + res.status);
     const data = await res.json();
-    (data.result || []).forEach(n => {
-      const meta = n.normalized_metadata || {};
+    (data.ownedNfts || []).forEach(n => {
+      const contract = n.contract || {};
+      const image = n.image || {};
       nfts.push({
         chain,
-        tokenAddress: n.token_address,
-        tokenId: n.token_id,
-        name: meta.name || n.name || "Unbenannt",
-        image: normalizeNftImageUrl(meta.image),
-        collectionName: n.name,
-        possibleSpam: !!n.possible_spam,
-        contractType: n.contract_type
+        tokenAddress: contract.address,
+        tokenId: n.tokenId,
+        name: n.name || (n.raw && n.raw.metadata && n.raw.metadata.name) || contract.name || "Unbenannt",
+        image: normalizeNftImageUrl(image.cachedUrl || image.thumbnailUrl || image.originalUrl || (n.raw && n.raw.metadata && n.raw.metadata.image)),
+        collectionName: (n.collection && n.collection.name) || (contract.openSeaMetadata && contract.openSeaMetadata.collectionName) || contract.name,
+        possibleSpam: contract.isSpam === true || contract.isSpam === "true" || (contract.spamClassifications || []).length > 0,
+        contractType: n.tokenType || contract.tokenType
       });
     });
-    cursor = data.cursor || null;
-  } while (cursor && page < FEES_MAX_PAGES);
+    pageKey = data.pageKey || null;
+  } while (pageKey && page < FEES_MAX_PAGES);
 
   return nfts;
 }
@@ -3320,7 +3479,7 @@ function normalizeNftImageUrl(url) {
   return url;
 }
 
-// Apertum: eigene Blockscout-API statt Moralis (Moralis deckt Apertum nicht ab).
+// Apertum: eigene Blockscout-API (Alchemy wird dafür hier nicht verwendet).
 async function fetchApertumNfts(address, onProgress) {
   let nextParams = null;
   let page = 0;
@@ -3345,7 +3504,7 @@ async function fetchApertumNfts(address, onProgress) {
           name: meta.name || (collectionName ? collectionName + " #" + inst.id : "Unbenannt"),
           image: normalizeNftImageUrl(inst.image_url || meta.image),
           collectionName,
-          possibleSpam: false, // Blockscout liefert keine eigene Spam-Einschätzung wie Moralis
+          possibleSpam: false, // Blockscout liefert hier keine eigene Spam-Einschätzung
           contractType: coll.token && coll.token.type
         });
       });
@@ -3667,53 +3826,48 @@ function renderDiscoveryWalletSelect() {
 
 // Erkennt typische Phishing-/Airdrop-Scam-Muster im Token-Namen oder -Symbol
 // (z.B. "Visit claim-rewards.xyz", "$1000 USDT Bonus" o.ä.) - eine der häufigsten
-// Betrugsmaschen bei unaufgeforderten Token-Airdrops. Läuft zusätzlich zu Moralis'
-// eigener possible_spam-Erkennung, nicht statt ihr.
+// Betrugsmaschen bei unaufgeforderten Token-Airdrops. Läuft zusätzlich zur GoPlus-Prüfung.
 function isLikelyScamName(text) {
   if (!text) return false;
   return /https?:\/\/|www\.|\.(com|io|net|org|xyz|app|finance|claim|airdrop|site|click|link|gift|bonus|vip|top)\b|visit |claim now|reward|bonus|voucher/i.test(text);
 }
 
-// Moralis Web3 Data API: liefert ALLE ERC20-Token einer Wallet in einem einzigen Aufruf,
-// inkl. eingebauter Spam-Erkennung (possible_spam) - viel zuverlässiger als eine
-// selbstgebaute eth_getLogs-Suche, die bei den meisten Gratis-RPC-Anbietern ohnehin
-// an Adress-/Blockbereichs-Einschränkungen scheitert.
-const MORALIS_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjE0ODhmZDQzLTI5YjMtNGE2MC04YTI2LTI5NmUyZjBhN2VhMyIsIm9yZ0lkIjoiNDg4NzA2IiwidXNlcklkIjoiNTAyODE0IiwidHlwZSI6IlBST0pFQ1QiLCJ0eXBlSWQiOiI2OGRiNzk3OC04Mzc4LTRlYzQtYjUzMi1jYzQ1M2E3NjI3ZWUiLCJpYXQiOjE3Njc2MDYzNDEsImV4cCI6NDkyMzM2NjM0MX0.JxTFbn9XUAGC2DY3jh15pPBwEPk35c5GYa_quyDP_Hg";
-const MORALIS_CHAIN_HEX = { eth: "0x1", bsc: "0x38", matic: "0x89", arb: "0xa4b1", base: "0x2105", avax: "0xa86a" };
+// Alchemy Token API: liest alle ERC20-Bestände einer Wallet auf der gewählten Chain.
+// Die Scam-Einschätzung erfolgt weiterhin über Namens-Heuristik + GoPlus; Moralis-spezifische
+// possible_spam-Daten gibt es hier nicht mehr.
+const ALCHEMY_EVM_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax"];
 
 async function discoverEvmTokens(chain, address) {
-  const chainHex = MORALIS_CHAIN_HEX[chain];
-  const res = await fetch(`https://deep-index.moralis.io/api/v2.2/${address}/erc20?chain=${chainHex}`, {
-    headers: { "X-API-Key": MORALIS_API_KEY, "Accept": "application/json" }
+  const result = await alchemyRpc(chain, "alchemy_getTokenBalances", [address, "erc20"]);
+  const balances = (result && result.tokenBalances) || [];
+  const nonZero = balances.filter(t => {
+    try { return BigInt(t.tokenBalance || "0x0") > 0n; } catch (e) { return false; }
   });
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  const data = await res.json();
-  const list = Array.isArray(data) ? data : (data.result || []);
 
   const known = new Set(
     (SAFE_ADDRESSES[chain] || []).concat(customSafeTokens.filter(t => t.chain === chain).map(t => t.address))
   );
+  const unknown = nonZero.filter(t => t.contractAddress && !known.has(t.contractAddress.toLowerCase()));
 
+  // Metadaten gebündelt in Alchemy laden.
+  const metas = await alchemyRpcBatch(chain, unknown.map(t => ({ method: "alchemy_getTokenMetadata", params: [t.contractAddress] })));
   const found = [];
-  list.forEach(t => {
-    const addr = (t.token_address || "").toLowerCase();
-    if (!addr || known.has(addr)) return;
-    const decimals = typeof t.decimals === "number" ? t.decimals : 18;
+  unknown.forEach((t, i) => {
+    const addr = t.contractAddress.toLowerCase();
+    const meta = metas[i] && !metas[i].__error ? metas[i] : {};
+    const decimals = Number.isFinite(Number(meta.decimals)) ? Number(meta.decimals) : 18;
     let raw;
-    try { raw = BigInt(t.balance || "0"); } catch (e) { return; }
-    if (raw <= 0n) return;
+    try { raw = BigInt(t.tokenBalance || "0x0"); } catch (e) { return; }
     const amount = Number(raw) / Math.pow(10, decimals);
-    if (amount < DUST_THRESHOLD) return;
-
-    const moralisSpam = t.possible_spam === true;
-    const nameScamFlag = moralisSpam || isLikelyScamName(t.symbol) || isLikelyScamName(t.name);
+    if (!isFinite(amount) || amount < DUST_THRESHOLD) return;
+    const nameScamFlag = isLikelyScamName(meta.symbol) || isLikelyScamName(meta.name);
     found.push({
       chain, address: addr,
-      symbol: t.symbol || (addr.slice(0, 8) + "…"),
-      name: t.name,
+      symbol: meta.symbol || (addr.slice(0, 8) + "…"),
+      name: meta.name,
       amount,
       nameScamFlag,
-      moralisSpam
+      alchemySpam: false
     });
   });
   return found;
@@ -3783,9 +3937,9 @@ async function runDiscoveryScan() {
     });
   });
 
-  // EVM-Chains: ein Moralis-Aufruf pro Chain, liefert alle Token direkt mit Spam-Einschätzung
+  // EVM-Chains: Alchemy Token API pro Chain
   if (w.evm) {
-    for (const chain of Object.keys(MORALIS_CHAIN_HEX).filter(c => activeDiscoveryChains.has(c))) {
+    for (const chain of ALCHEMY_EVM_CHAINS.filter(c => activeDiscoveryChains.has(c))) {
       status.textContent = `Durchsuche ${w.label} auf ${CHAIN_META[chain].label}...`;
       try {
         const found = await discoverEvmTokens(chain, w.evm);
@@ -3860,8 +4014,7 @@ function renderDiscoveryResults(findings) {
     let riskHtml = "";
     if (scam) {
       const reasons = [];
-      if (f.moralisSpam) reasons.push("von Moralis als Spam eingestuft");
-      if (f.nameScamFlag && !f.moralisSpam) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
+      if (f.nameScamFlag) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
       if (f.risk && f.risk.length > 0) reasons.push(...f.risk);
       riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger);font-weight:700">⚠ VERDACHT AUF SCAM: ${reasons.join(", ")}</span>`;
     } else if (f.risk === null) {
