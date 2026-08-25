@@ -722,7 +722,7 @@
   </div>
 
   <footer>
-    Version vom 25.08.2026, 15:54 Uhr<br>
+    Version vom 25.08.2026, 16:33 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1160,17 +1160,25 @@ async function addPredefinedToken() {
   await refreshPredefinedTokens();
 }
 
+// Case-insensitiver Adress-Abgleich für UPDATE/DELETE-Abfragen (ausser Tron, dort ist
+// Gross-/Kleinschreibung bewusst relevant) - die Adresse im Code ist normalisiert
+// (kleingeschrieben), in der DB steht teils noch die Original-Schreibweise, darum darf
+// hier kein exaktes .eq() auf die Adresse verwendet werden, sonst wird still nichts gefunden.
+function matchAddressQuery(query, chain, address) {
+  return chain === "tron" ? query.eq("address", address) : query.ilike("address", address);
+}
+
 async function updatePredefinedTokenLabel(chain, address, newLabel) {
   newLabel = newLabel.trim();
   if (!newLabel) return;
-  const { error } = await sb.from("predefined_tokens").update({ label: newLabel }).eq("chain", chain).eq("address", address);
+  const { error } = await matchAddressQuery(sb.from("predefined_tokens").update({ label: newLabel }).eq("chain", chain), chain, address);
   if (error) { alert("Fehler beim Speichern: " + error.message); return; }
   predefinedTokenLabels[chain + "|" + address] = newLabel;
 }
 
 async function deletePredefinedToken(chain, address, label) {
   if (!confirm(`"${label}" (${chain}) wirklich aus der vordefinierten Liste löschen? Betrifft ALLE User.`)) return;
-  const { error } = await sb.from("predefined_tokens").delete().eq("chain", chain).eq("address", address);
+  const { error } = await matchAddressQuery(sb.from("predefined_tokens").delete().eq("chain", chain), chain, address);
   if (error) { alert("Fehler beim Löschen: " + error.message); return; }
   await refreshPredefinedTokens();
 }
@@ -1389,7 +1397,7 @@ function renderSafeTokenTable() {
 }
 
 async function togglePredefinedTokenFlag(chain, address, flagName, isChecked) {
-  const { error } = await sb.from("predefined_tokens").update({ [flagName]: isChecked }).eq("chain", chain).eq("address", address);
+  const { error } = await matchAddressQuery(sb.from("predefined_tokens").update({ [flagName]: isChecked }).eq("chain", chain), chain, address);
   if (error) { alert("Fehler beim Speichern: " + error.message); return; }
   const flagKey = chain + "|" + address;
   predefinedTokenFlags[flagKey] = predefinedTokenFlags[flagKey] || {};
