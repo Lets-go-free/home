@@ -1,0 +1,4050 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Token-Übersicht Wallets</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --card2: #1d212b;
+    --border: #2a2e38;
+    --text: #e8e9ec;
+    --muted: #9aa0ac;
+    --accent: #6c8cff;
+    --danger: #ff6b6b;
+    --eth: #627eea;
+    --bsc: #f0b90b;
+    --matic: #8247e5;
+    --btc: #f7931a;
+    --sol: #14f195;
+    --apertum: #00c2a8;
+    --tron: #ff060a;
+    --arb: #28a0f0;
+    --base: #0052ff;
+    --avax: #e84142;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 1.3rem; margin-bottom: 4px; }
+  h2 { font-size: 1.05rem; margin: 30px 0 12px; }
+  h3 { font-size: 0.82rem; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 20px; }
+  input {
+    width: 100%; background: var(--card); border: 1px solid var(--border);
+    color: var(--text); padding: 9px 11px; border-radius: 8px; font-size: 0.87rem;
+  }
+  button {
+    background: var(--accent); color: #fff; border: none; padding: 10px 18px;
+    border-radius: 8px; font-size: 0.9rem; cursor: pointer;
+  }
+  button.secondary { background: var(--card2); color: var(--text); border: 1px solid var(--border); }
+  button.remove {
+    background: transparent; color: var(--danger); border: 1px solid var(--border);
+    padding: 6px 10px; font-size: 0.78rem;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .action-row { display: flex; gap: 10px; margin: 16px 0 20px; flex-wrap: wrap; }
+
+  .wallet-input-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; margin-bottom: 12px;
+  }
+  .wallet-input-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .wallet-input-head input { font-weight: 600; }
+  .field-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .field-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 3px; display: block; }
+
+  .filter-row {
+    display: flex; align-items: center; gap: 8px; margin: 4px 0 20px;
+    font-size: 0.88rem; color: var(--text);
+  }
+  .filter-row input[type="checkbox"] { width: auto; }
+
+  .custom-token-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; margin-bottom: 20px;
+  }
+  .custom-token-grid { display: grid; grid-template-columns: 100px 1fr 1fr auto; gap: 8px; align-items: end; margin-bottom: 12px; }
+  select {
+    width: 100%; background: var(--card2); border: 1px solid var(--border);
+    color: var(--text); padding: 9px 8px; border-radius: 8px; font-size: 0.85rem;
+  }
+  .custom-token-list { display: flex; flex-direction: column; gap: 6px; }
+  .custom-token-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    background: var(--card2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 0.82rem;
+  }
+  .custom-token-row .meta { color: var(--muted); font-size: 0.72rem; word-break: break-all; }
+  .note {
+    font-size: 0.75rem; color: var(--muted); margin-top: 8px;
+  }
+  @media (max-width: 559px) {
+    .custom-token-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  .chain-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; margin-bottom: 14px;
+  }
+  .chain-title {
+    display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 12px; font-size: 0.92rem;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block; vertical-align: middle; }
+  .dot.eth { background: var(--eth); }
+  .dot.bsc { background: var(--bsc); }
+  .dot.matic { background: var(--matic); }
+  .dot.btc { background: var(--btc); }
+  .dot.xrp { background: #6b7280; }
+  .dot.sol { background: var(--sol); }
+  .dot.tron { background: var(--tron); }
+  .dot.arb { background: var(--arb); }
+  .dot.base { background: var(--base); }
+  .dot.avax { background: var(--avax); }
+  .dot.apertum { background: var(--apertum); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.87rem; table-layout: fixed; }
+  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .empty, .status { color: var(--muted); font-size: 0.85rem; padding: 6px 0; }
+  .error { color: var(--danger); font-size: 0.85rem; padding: 6px 0; }
+  .native-row td { font-weight: 600; }
+
+  /* Feste Spaltenbreiten - identisch über ALLE Tabellen hinweg, damit Chain-Karten
+     untereinander sauber ausgerichtet bleiben statt sich am eigenen Inhalt zu orientieren. */
+  .balance-table col.col-token { width: 32%; }
+  .balance-table col.col-amount { width: 17%; }
+  .balance-table col.col-price { width: 19%; }
+  .balance-table col.col-change { width: 12%; }
+  .balance-table col.col-value { width: 20%; }
+  .balance-table td:first-child, .balance-table th:first-child {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .price-source { display: block; font-size: 0.66rem; color: var(--muted); font-weight: 400; margin-top: 1px; }
+
+  .wallet-block {
+    margin-bottom: 36px;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 14px;
+    padding: 18px 18px 4px;
+  }
+
+  .badge {
+    display: inline-block; font-size: 0.66rem; padding: 2px 7px; border-radius: 10px;
+    margin-left: 6px; font-weight: 600; vertical-align: middle;
+  }
+  .badge.safe { background: rgba(70, 200, 120, 0.15); color: #46c878; }
+  .badge.unsafe { background: rgba(154, 160, 172, 0.15); color: var(--muted); }
+
+  footer { color: var(--muted); font-size: 0.72rem; margin-top: 24px; text-align: center; }
+
+  .tab-nav-groups { margin: 20px 0 22px; }
+  .tab-nav-group { margin-bottom: 4px; }
+  .tab-nav-group-label {
+    display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--muted); margin-bottom: 6px;
+  }
+  .tab-nav {
+    display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px;
+    border-bottom: 1px solid var(--border); padding-bottom: 0;
+  }
+  .tab-btn {
+    background: transparent; color: var(--muted); border: none; border-bottom: 2px solid transparent;
+    padding: 10px 4px; font-size: 0.88rem; cursor: pointer; margin-right: 14px; border-radius: 0;
+  }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .admin-tab-panel { display: none; }
+  .admin-tab-panel.active { display: block; }
+  .nft-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px;
+  }
+  .nft-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  .nft-card img { width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--card2); display: block; }
+  .nft-card .nft-info { padding: 8px 10px; }
+  .nft-card .nft-name { font-size: 0.8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nft-card .nft-id { font-size: 0.72rem; color: var(--muted); }
+
+  @media (min-width: 560px) {
+    .field-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Token-Übersicht Wallets</h1>
+  <div class="sub">Live-Abfrage über öffentliche Blockchain-APIs, direkt in deinem Browser. Wallets und sichere Token werden verschlüsselt in deinem Account gespeichert.</div>
+
+  <!-- Login-Bereich: sichtbar solange niemand eingeloggt ist -->
+  <div id="authGate" class="custom-token-card">
+    <h3 style="margin-top:0">Login</h3>
+    <div class="field-grid" style="grid-template-columns:1fr auto;align-items:end">
+      <div>
+        <span class="field-label">E-Mail-Adresse</span>
+        <input type="email" id="authEmail" placeholder="deine@email.ch" />
+      </div>
+      <div>
+        <button onclick="sendMagicLink()">Login-Link senden</button>
+      </div>
+    </div>
+    <div id="authStatus" class="note" style="margin-top:10px"></div>
+  </div>
+
+  <!-- App-Inhalt: nur sichtbar, wenn eingeloggt -->
+  <div id="appContent" style="display:none">
+
+    <div class="action-row" style="justify-content:space-between;align-items:center">
+      <span id="userEmailLabel" class="note" style="margin:0"></span>
+      <button class="secondary" onclick="logout()">Logout</button>
+    </div>
+
+    <div class="tab-nav-groups">
+      <div class="tab-nav-group">
+        <span class="tab-nav-group-label">📊 Übersicht &amp; Analyse</span>
+        <div class="tab-nav">
+          <button class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking - Token-Übersicht</button>
+          <button class="tab-btn" data-tab="fees" onclick="showTab('fees')">💸 Gebühren</button>
+          <button class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
+          <button class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
+        </div>
+      </div>
+      <div class="tab-nav-group">
+        <span class="tab-nav-group-label">⚙️ Verwaltung</span>
+        <div class="tab-nav">
+          <button class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
+          <button class="tab-btn" data-tab="predefined" onclick="showTab('predefined')">Vordefinierte Token</button>
+          <button class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
+          <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
+        </div>
+      </div>
+      <div class="tab-nav-group">
+        <span class="tab-nav-group-label">💬 Support &amp; Info</span>
+        <div class="tab-nav">
+          <button class="tab-btn" data-tab="chat" onclick="showTab('chat')">💬 Chat</button>
+          <button class="tab-btn" id="adminTabBtn" data-tab="admin" onclick="showTab('admin')" style="display:none">⚙️ Admin</button>
+          <button class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
+        </div>
+      </div>
+      <div class="tab-nav-group">
+        <span class="tab-nav-group-label">🏦 Defi-Projekte</span>
+        <div class="tab-nav">
+          <button class="tab-btn" data-tab="tlnvow" onclick="showTab('tlnvow')">TLN/VOW</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-tracking" class="tab-panel">
+      <div class="action-row" style="align-items:center">
+        <button id="loadBtn" onclick="loadAll()">Alle laden</button>
+        <span id="cacheStatusNote" class="note" style="margin:0"></span>
+      </div>
+      <div class="note" style="margin-bottom:14px">
+        Bestände werden NIE automatisch live abgefragt – beim Login siehst du immer den letzten gespeicherten
+        Stand (mit Zeitstempel oben). Für frische Zahlen bitte "Alle laden" klicken. Kurse werden davon
+        unabhängig immer frisch geholt.
+      </div>
+
+      <div class="custom-token-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains anzeigen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllChainFilter(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllChainFilter(false)">Alle abwählen</button>
+          </div>
+        </div>
+        <div id="chainFilterContainer" style="display:flex;flex-wrap:wrap;gap:14px"></div>
+      </div>
+
+      <div class="field-grid" style="grid-template-columns:220px auto;align-items:end;margin-bottom:20px">
+        <div>
+          <span class="field-label">Gehe zu Wallet</span>
+          <select id="walletNav" onchange="goToWallet(this.value)">
+            <option value="">– auswählen –</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="custom-token-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="field-label" style="margin:0">Snapshots (Token-Bestand zu einem Zeitpunkt, als zusätzliche Spalten je Wallet)</span>
+          <button onclick="createSnapshot()">📸 Snapshot erstellen</button>
+        </div>
+        <details>
+          <summary style="cursor:pointer;font-size:0.85rem;color:var(--muted)">Erstellte Snapshots anzeigen/verwalten</summary>
+          <div id="snapshotManagerList" style="margin-top:10px"></div>
+        </details>
+      </div>
+
+      <h2>Summary (alle Wallets)</h2>
+
+      <div class="custom-token-card">
+        <span class="field-label" style="display:block;margin-bottom:8px">Verlauf-Grafik (ein Token über Zeit, aus Snapshots + aktuellem Bestand)</span>
+        <div class="custom-token-grid" style="grid-template-columns:1fr 1fr 1fr auto">
+          <div>
+            <span class="field-label">Wallet</span>
+            <select id="chartWalletSelect">
+              <option value="">Total (alle Wallets)</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Chain</span>
+            <select id="chartChainSelect" onchange="populateChartTokenSelect()">
+              <option value="">– Chain wählen –</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Token</span>
+            <select id="chartTokenSelect" disabled>
+              <option value="">– zuerst Chain wählen –</option>
+            </select>
+          </div>
+          <div>
+            <button onclick="generateSnapshotChart()">📈 Grafik erstellen</button>
+          </div>
+        </div>
+        <div id="snapshotChartContainer" style="margin-top:16px"></div>
+      </div>
+
+      <div class="custom-token-card">
+        <span class="field-label" style="display:block;margin-bottom:8px">Portfolio-Allokation (nach USD-Wert, nur Token mit bekanntem Kurs)</span>
+        <div class="custom-token-grid" style="grid-template-columns:1fr 1fr">
+          <div>
+            <span class="field-label">Wallet</span>
+            <select id="allocWalletSelect" onchange="renderAllocationChart()">
+              <option value="">Total (alle Wallets)</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Gruppierung</span>
+            <select id="allocGroupSelect" onchange="renderAllocationChart()">
+              <option value="chain">Nach Chain</option>
+              <option value="token" selected>Nach Token</option>
+            </select>
+          </div>
+        </div>
+        <div id="allocationChartContainer" style="margin-top:16px;max-width:420px;margin-left:auto;margin-right:auto"></div>
+      </div>
+
+      <div id="summaryContainer"></div>
+
+      <h2>Details je Wallet</h2>
+      <div id="resultsContainer"></div>
+    </div>
+
+    <div id="tab-wallets" class="tab-panel">
+      <div class="note" style="margin-bottom:14px">EVM-Adresse gilt für: Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche, Apertum – ist bei allen diesen Chains dieselbe Adresse.</div>
+      <div id="walletInputsContainer"></div>
+      <div class="action-row">
+        <button class="secondary" onclick="addWallet()">+ Wallet hinzufügen</button>
+      </div>
+    </div>
+
+    <div id="tab-predefined" class="tab-panel">
+      <div class="action-row">
+        <button class="secondary" onclick="refreshPredefinedTokens()">🔄 Liste neu laden (nach SQL-Änderungen)</button>
+      </div>
+
+      <div id="adminAddPredefinedTokenCard" class="custom-token-card" style="display:none">
+        <span class="field-label" style="display:block;margin-bottom:8px">Neuen vordefinierten Token hinzufügen (nur Admins)</span>
+        <div class="custom-token-grid" style="grid-template-columns:1fr 2fr 1fr 1fr auto">
+          <div>
+            <span class="field-label">Chain</span>
+            <select id="newPredefChain"></select>
+          </div>
+          <div>
+            <span class="field-label">Adresse</span>
+            <input type="text" id="newPredefAddress" placeholder="0x..." />
+          </div>
+          <div>
+            <span class="field-label">Label</span>
+            <input type="text" id="newPredefLabel" placeholder="z.B. USDT" />
+          </div>
+          <div>
+            <span class="field-label">TLN/VOW</span>
+            <select id="newPredefTlnVowCategory">
+              <option value="">– keine –</option>
+              <option value="v_currency">v-Währung</option>
+              <option value="lp_token">LP Token</option>
+              <option value="tln_vow_token">TLN/VOW Token</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">&nbsp;</span>
+            <button onclick="addPredefinedToken()">Hinzufügen</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="custom-token-card">
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Chain</span>
+            <select id="predefChainFilter" onchange="renderSafeTokenTable()">
+              <option value="">Alle Chains</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Token</span>
+            <select id="predefTokenFilter" onchange="renderSafeTokenTable()">
+              <option value="">Alle Token</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Suche (Name oder Adresse)</span>
+            <input type="text" id="predefTextFilter" placeholder="z.B. USDT oder 0x..." oninput="renderSafeTokenTable()" />
+          </div>
+        </div>
+        <div id="safeTokenTable"></div>
+      </div>
+    </div>
+
+    <div id="tab-custom" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="custom-token-grid">
+          <div>
+            <span class="field-label">Chain</span>
+            <select id="customChain">
+              <option value="eth">Ethereum</option>
+              <option value="bsc">BSC</option>
+              <option value="matic">Polygon</option>
+              <option value="arb">Arbitrum</option>
+              <option value="base">Base</option>
+              <option value="avax">Avalanche</option>
+              <option value="apertum">Apertum</option>
+              <option value="tron">Tron</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Contract-Adresse</span>
+            <input type="text" id="customAddress" placeholder="0x... oder T... (Tron)" />
+          </div>
+          <div>
+            <span class="field-label">Label (optional)</span>
+            <input type="text" id="customLabel" placeholder="z.B. MEIN Token" />
+          </div>
+          <div>
+            <button onclick="addCustomSafeToken()">Hinzufügen</button>
+          </div>
+        </div>
+        <div id="customTokenList" class="custom-token-list"></div>
+        <div class="note">Diese Token sind an deinen Account gebunden (Supabase) - sichtbar und bearbeitbar auf jedem Gerät, auf dem du dich einloggst.</div>
+      </div>
+    </div>
+
+    <div id="tab-discovery" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">
+          Sucht in einer Wallet nach Token, die du tatsächlich hältst, aber die noch nicht auf der sicheren Liste stehen.
+          Apertum und Tron laufen über die ohnehin bereits geladenen Daten. EVM-Chains durchsuchen die letzten ca. 300'000
+          Blöcke nach Token-Transfers - das deckt die letzten paar Monate ab, nicht zwingend die komplette Wallet-Historie.
+          Läuft nur, wenn du auf "Scan starten" klickst, nicht automatisch.
+        </div>
+
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Wallet (Pflicht)</span>
+            <select id="discoveryWalletSelect">
+              <option value="">– Wallet wählen –</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains einbeziehen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllDiscoveryChains(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllDiscoveryChains(false)">Alle abwählen</button>
+          </div>
+        </div>
+        <div id="discoveryChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
+
+        <button id="discoveryBtn" onclick="runDiscoveryScan()">Scan starten</button>
+        <div id="discoveryStatus" class="note" style="margin-top:10px"></div>
+      </div>
+      <div id="discoveryResults"></div>
+    </div>
+
+    <div id="tab-fees" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">
+          Summiert die tatsächlich bezahlten Netzwerk-Gebühren einer Wallet.
+          Deckt die komplette Historie ab (kann bei sehr aktiven Wallets dauern, läuft über mehrere Seiten). Nur Transaktionen,
+          bei denen diese Wallet die Absenderin war, zählen (nur die zahlt die Gebühr). Läuft nur auf Knopfdruck.
+        </div>
+        <div class="note" style="margin-bottom:12px">
+          <strong>Erfasst:</strong> Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche, Apertum, XRP, Solana.<br>
+          <strong>Nicht erfasst:</strong> Tron (technisch möglich, aber noch nicht gebaut) sowie Bitcoin (bei Bitcoin ist "wer zahlt" wegen mehrerer möglicher Inputs pro Transaktion nicht immer eindeutig, das braucht eine eigene Lösung).
+        </div>
+
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Wallet (Pflicht)</span>
+            <select id="feesWalletSelect">
+              <option value="">– Wallet wählen –</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains einbeziehen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllFeesChains(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllFeesChains(false)">Alle abwählen</button>
+          </div>
+        </div>
+        <div id="feesChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
+
+        <button id="feesBtn" onclick="runFeesCalculation()">Gebühren berechnen</button>
+        <div id="feesStatus" class="note" style="margin-top:10px"></div>
+      </div>
+      <div id="feesResults"></div>
+    </div>
+
+    <div id="tab-approvals" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">
+          Zeigt aktive Token-Freigaben ("Approvals") an Dapps/Contracts – ein häufig unterschätztes Sicherheitsrisiko,
+          v.a. bei unlimitierten Freigaben. Diese Seite liest nur, sie kann nie etwas widerrufen (dafür bräuchte es
+          Zugriff auf deinen Private Key, den diese Seite bewusst nie hat und nie haben wird).
+        </div>
+        <div class="custom-token-card" style="border-color:#f0b90b;background:rgba(240,185,11,0.08);margin-bottom:12px">
+          <strong>⚠️ Wichtig beim Widerrufen (Revoke):</strong> Öffne den "Revoke"-Link unten <strong>nicht in einem normalen
+          Browser</strong>, sondern im <strong>eingebauten Browser deiner Wallet-App</strong> (z.B. in MetaMask, Trust Wallet
+          oder Rabby unter "Browser"/"Dapp-Browser"). Nur so kann sich revoke.cash mit deiner Wallet verbinden und du kannst die
+          Transaktion tatsächlich signieren. Ein normaler Browser ohne Wallet-Erweiterung kann nichts widerrufen, nur anzeigen.
+        </div>
+
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Wallet (Pflicht)</span>
+            <select id="approvalsWalletSelect">
+              <option value="">– Wallet wählen –</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains einbeziehen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllApprovalsChains(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllApprovalsChains(false)">Alle abwählen</button>
+          </div>
+        </div>
+        <div id="approvalsChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
+
+        <button id="approvalsBtn" onclick="runApprovalsCheck()">Freigaben prüfen</button>
+        <div id="approvalsStatus" class="note" style="margin-top:10px"></div>
+      </div>
+      <div id="approvalsResults"></div>
+    </div>
+
+    <div id="tab-nfts" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">
+          Zeigt die NFTs (ERC-721/ERC-1155) einer Wallet. Nutzt Alchemy - läuft bewusst
+          nur auf Knopfdruck, nicht automatisch.
+        </div>
+
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Wallet (Pflicht)</span>
+            <select id="nftWalletSelect">
+              <option value="">– Wallet wählen –</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains einbeziehen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllNftChains(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllNftChains(false)">Alle abwählen</button>
+          </div>
+        </div>
+        <div id="nftChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
+
+        <button id="nftBtn" onclick="runNftLoad()">NFTs laden</button>
+        <div id="nftStatus" class="note" style="margin-top:10px"></div>
+      </div>
+      <div id="nftResults"></div>
+    </div>
+
+    <div id="tab-chat" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">Direkter Draht zum Support – Nachrichten hier sind nur für dich und die Admins sichtbar.</div>
+        <div id="chatMessagesContainer" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding:4px"></div>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="chatMessageInput" placeholder="Nachricht schreiben..." style="flex:1" onkeydown="if(event.key==='Enter') sendChatMessage()" />
+          <button onclick="sendChatMessage()">Senden</button>
+        </div>
+        <button class="secondary" style="margin-top:10px" onclick="loadOwnChat()">🔄 Aktualisieren</button>
+      </div>
+    </div>
+
+    <div id="tab-admin" class="tab-panel">
+      <div class="tab-nav" style="margin-top:0">
+        <button class="tab-btn active" data-admin-tab="customtokens" onclick="showAdminTab('customtokens')">Eigene sichere Token (alle User)</button>
+        <button class="tab-btn" data-admin-tab="ideas" onclick="showAdminTab('ideas')">💡 Ideen</button>
+        <button class="tab-btn" data-admin-tab="chats" onclick="showAdminTab('chats')">💬 Chats</button>
+      </div>
+
+      <div id="admintab-customtokens" class="admin-tab-panel active">
+        <div class="note" style="margin-bottom:12px">
+          Zeigt die von Usern selbst erfassten "eigenen sicheren Token" – so siehst du, was Kunden zusätzlich eintragen,
+          und kannst Sinnvolles in die vordefinierte Liste übernehmen (für alle sichtbar) oder ignorieren.
+        </div>
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Status</span>
+            <select id="adminTokenStatusFilter" onchange="renderAdminCustomTokens()">
+              <option value="pending">Ausstehend</option>
+              <option value="ignored">Ignoriert</option>
+              <option value="promoted">Übernommen</option>
+              <option value="all">Alle</option>
+            </select>
+          </div>
+        </div>
+        <div id="adminCustomTokensList"></div>
+      </div>
+
+      <div id="admintab-ideas" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">Offene Erweiterungsideen, nur für Admins sichtbar. Nichts davon ist umgesetzt, ausser explizit markiert.</div>
+        <div id="adminIdeasList"></div>
+      </div>
+
+      <div id="admintab-chats" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">Zeigt alle Konversationen, in denen bereits mindestens eine Nachricht geschrieben wurde.</div>
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Konversation</span>
+            <select id="adminChatUserSelect" onchange="loadAdminChat()">
+              <option value="">– auswählen –</option>
+            </select>
+          </div>
+        </div>
+        <div id="adminChatMessagesContainer" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding:4px"></div>
+        <div id="adminChatInputRow" style="display:none;gap:8px">
+          <input type="text" id="adminChatMessageInput" placeholder="Antwort schreiben..." style="flex:1" onkeydown="if(event.key==='Enter') sendAdminChatMessage()" />
+          <button onclick="sendAdminChatMessage()">Senden</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-help" class="tab-panel">
+      <div class="custom-token-card" style="border-color:var(--accent)">
+        <h3 style="margin-top:0">⏱️ Was läuft automatisch, was manuell?</h3>
+        <table>
+          <thead><tr><th>Bereich</th><th>Automatisch?</th><th>Details</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Bestände (Wallet-Tracking)</td>
+              <td><span class="badge unsafe">nur manuell</span></td>
+              <td>Beim Login wird immer nur der letzte gespeicherte Stand angezeigt (mit Zeitstempel) – nie automatisch neu abgefragt. Für frische Zahlen selbst auf "Alle laden" klicken.</td>
+            </tr>
+            <tr>
+              <td>Kurse</td>
+              <td><span class="badge safe">immer frisch</span></td>
+              <td>Werden bei jedem Laden/Login neu abgefragt (CoinGecko/GeckoTerminal) – unabhängig vom Bestands-Cache, da schnell und kostenlos.</td>
+            </tr>
+            <tr>
+              <td>🔍 Entdecken, 💸 Gebühren, 🔓 Freigaben, 🖼️ NFTs</td>
+              <td><span class="badge unsafe">nur manuell</span></td>
+              <td>Laufen ausschliesslich auf Knopfdruck. Für EVM-Chains wird Alchemy verwendet; andere Chains nutzen ihre bisherigen APIs. Dadurch bleiben aufwendige Historien-Abfragen bewusst manuell.</td>
+            </tr>
+            <tr>
+              <td>Snapshots</td>
+              <td><span class="badge unsafe">nur manuell</span></td>
+              <td>Werden nur erstellt, wenn du aktiv auf "Snapshot erstellen" klickst. Für einen Stichtag (z.B. Jahresende) rechtzeitig selbst daran denken.</td>
+            </tr>
+            <tr>
+              <td>💬 Chat</td>
+              <td><span class="badge safe">live (Realtime)</span></td>
+              <td>Neue Nachrichten erscheinen automatisch, ohne dass du etwas klicken musst.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>📊 Übersicht &amp; Analyse</h2>
+
+      <div class="custom-token-card">
+        <h3 style="margin-top:0">Wallet-Tracking - Token-Übersicht</h3>
+        <p class="note">Zeigt deine Bestände über alle Wallets und Chains hinweg – als Gesamtsumme ("Summary") und aufgeschlüsselt je Wallet ("Details je Wallet"). Nur Token auf der sicheren Liste (vordefiniert oder selbst hinzugefügt) werden angezeigt, alles andere wird bewusst ausgeblendet (Schutz vor Scam-Token). Zusätzlich verfügbar: Snapshots (Momentaufnahmen deines Bestands, samt Kurs zum jeweiligen Zeitpunkt), eine Verlauf-Grafik über die Zeit, und die Portfolio-Allokation als Kreisdiagramm.</p>
+
+        <h3>💸 Gebühren</h3>
+        <p class="note">Summiert die Netzwerk-Gebühren, die eine Wallet über ihre komplette Historie bezahlt hat – je Chain aufgeschlüsselt (Anzahl Transaktionen, Gebühren nativ und in USD). Wallet auswählen, Chains wählen, "Gebühren berechnen" klicken. Kann bei sehr aktiven Wallets etwas dauern.</p>
+
+        <h3>🖼️ NFTs</h3>
+        <p class="note">Zeigt die NFTs (Sammelbilder/Collectibles) einer oder aller Wallets, inklusive Warnung bei Spam-Verdacht (unaufgeforderte, wertlose NFT-"Geschenke" sind eine verbreitete Betrugsmasche). Mit "Spam-Verdacht ausblenden" lassen sich verdächtige Funde ausblenden.</p>
+
+        <h3>🔓 Freigaben</h3>
+        <p class="note">Zeigt aktive Token-Freigaben ("Approvals") an Dapps/Contracts – ein häufig unterschätztes Sicherheitsrisiko, v.a. bei unlimitierten Freigaben (rot markiert). Diese Seite kann selbst nichts widerrufen (rein lesend, kein Zugriff auf deinen Private Key). Zum Widerrufen verlinkt sie auf revoke.cash – <strong>wichtig: dort im Browser deiner Wallet-App öffnen</strong> (z.B. in MetaMask/Trust Wallet unter "Browser"), nicht in einem gewöhnlichen Browser, sonst kann nichts signiert werden.</p>
+      </div>
+
+      <h2>⚙️ Verwaltung</h2>
+
+      <div class="custom-token-card">
+        <h3 style="margin-top:0">Meine Wallets</h3>
+        <p class="note">Hier erfasst du deine Wallet-Adressen (eine pro Chain-Typ: EVM, Bitcoin, XRP, Solana, Tron). Die EVM-Adresse gilt gleichzeitig für Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche und Apertum. Jedes Feld zeigt live an, ob das Adressformat gültig ist und ob die Adresse schon bei einer anderen Wallet erfasst ist. <strong>Wichtig: nach dem Eintragen auf "Speichern" klicken</strong> – ungespeicherte Wallets werden bei Snapshots und in anderen Bereichen nicht mitberücksichtigt.</p>
+
+        <h3>Vordefinierte Token</h3>
+        <p class="note">Die globale Liste sicherer Token, die für alle User gilt (inkl. native Coins). Kann nach Chain/Token gefiltert und per Suchfeld durchsucht werden. Neue Einträge kommen nur über die Admins rein (z.B. nachdem du einen sinnvollen eigenen Token vorgeschlagen hast).</p>
+
+        <h3>Eigene sichere Token</h3>
+        <p class="note">Zusätzliche Token, die nur du siehst – falls ein Token noch nicht auf der vordefinierten Liste steht, du ihm aber vertraust, kannst du ihn hier selbst mit Adresse und Label hinzufügen. Taucht danach in deiner Wallet-Übersicht mit auf.</p>
+
+        <h3>🔍 Entdecken</h3>
+        <p class="note">Durchsucht eine Wallet aktiv nach Token, die du zwar besitzt, die aber noch nicht auf der sicheren Liste stehen – inklusive Einschätzung, ob es sich um Scam/Spam handeln könnte (verdächtiger Name, bekannte Spam-Markierung). Wallet und Chains auswählen, dann "Scan starten". Gefundene, unverdächtige Token lassen sich direkt als "eigene sichere Token" übernehmen.</p>
+      </div>
+
+      <h2>💬 Support &amp; Info</h2>
+
+      <div class="custom-token-card">
+        <h3 style="margin-top:0">💬 Chat</h3>
+        <p class="note">Direkter Draht zum Support – Nachrichten hier sind nur für dich und die Admins sichtbar, sonst niemanden. Neue Antworten erscheinen automatisch (Realtime), ohne dass du die Seite neu laden musst.</p>
+
+        <h3>⚙️ Admin</h3>
+        <p class="note">Nur für die hinterlegten Admin-Konten sichtbar. Verwaltung der von Usern selbst erfassten Token (übernehmen/ignorieren), offene Erweiterungsideen mit Status, und Einsicht in alle Chat-Konversationen aller User.</p>
+
+        <h3>❓ Hilfe</h3>
+        <p class="note">Diese Seite hier.</p>
+      </div>
+    </div>
+
+    <div id="tab-tlnvow" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">Eigene TLN/VOW-Kurs-Seite, direkt eingebettet (liegt als separate Datei im selben GitHub-Verzeichnis).</div>
+        <iframe id="tlnVowIframe" style="width:100%;height:80vh;border:1px solid var(--border);border-radius:10px;background:#fff"></iframe>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    Version vom 25.08.2026, 20:15 Uhr<br>
+    Datenquellen: Alchemy (EVM Discovery, Historie/Gebühren, Approvals, NFTs), api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
+<script>
+// ---- Supabase: Auth + Datenbank ----
+const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N";
+const REDIRECT_URL = "https://letsgofree.me/wallet-tracking.html";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+let isAdmin = false;
+
+async function checkIsAdmin() {
+  try {
+    const { data, error } = await sb.from("admins").select("email").eq("email", currentUser.email).maybeSingle();
+    if (error) { console.error(error); return false; }
+    return !!data;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function sendMagicLink() {
+  const email = document.getElementById("authEmail").value.trim();
+  const statusEl = document.getElementById("authStatus");
+  if (!email) { statusEl.textContent = "Bitte E-Mail-Adresse eingeben."; return; }
+  statusEl.textContent = "Sende Login-Link...";
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: REDIRECT_URL }
+  });
+  statusEl.textContent = error
+    ? "Fehler: " + error.message
+    : "Link verschickt - check dein E-Mail-Postfach und klick auf den Link.";
+}
+
+async function logout() {
+  await sb.auth.signOut();
+  location.reload();
+}
+
+async function initAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  sb.auth.onAuthStateChange((event, newSession) => {
+    if (newSession && !currentUser) {
+      onLoggedIn(newSession);
+    }
+  });
+  if (session) {
+    await onLoggedIn(session);
+  }
+}
+
+async function onLoggedIn(session) {
+  currentUser = session.user;
+  document.getElementById("authGate").style.display = "none";
+  document.getElementById("appContent").style.display = "block";
+  document.getElementById("userEmailLabel").textContent = "Eingeloggt als " + currentUser.email;
+
+  isAdmin = await checkIsAdmin();
+  document.getElementById("adminTabBtn").style.display = isAdmin ? "inline-block" : "none";
+  document.getElementById("adminAddPredefinedTokenCard").style.display = isAdmin ? "block" : "none";
+  if (isAdmin) {
+    document.getElementById("newPredefChain").innerHTML = Object.keys(CHAIN_META).map(c => `<option value="${c}">${CHAIN_META[c].label}</option>`).join("");
+  }
+  setupChatRealtime();
+
+  loadTokenMetaCache();
+  await loadPredefinedTokensFromDb();
+  await loadWalletsFromDb();
+  await loadCustomSafeTokensFromDb();
+  await loadSnapshotsFromDb();
+  activeChainFilter = new Set(Object.keys(CHAIN_META)); // Chain-Filter IMMER mit allen Chains starten
+  renderChainFilter();
+  renderWalletInputs();
+  renderCustomTokenList();
+  renderSafeTokenTable();
+  renderSnapshotManager();
+  renderChartWalletSelect();
+  renderChartChainSelect();
+  renderAllocWalletSelect();
+  renderResults();
+  activeDiscoveryChains = new Set(DISCOVERY_CHAINS);
+  renderDiscoveryChainFilter();
+  renderDiscoveryWalletSelect();
+  activeFeesChains = new Set(FEES_CHAINS);
+  renderFeesChainFilter();
+  renderFeesWalletSelect();
+  activeApprovalsChains = new Set(APPROVALS_CHAINS);
+  renderApprovalsChainFilter();
+  renderApprovalsWalletSelect();
+  activeNftChains = new Set(NFT_CHAINS);
+  renderNftChainFilter();
+  renderNftWalletSelect();
+
+  // Bestände werden NIE automatisch live abgefragt - nur der letzte Stand (Cache/Snapshot)
+  // wird angezeigt, mit Zeitstempel. Für frische Daten muss "Alle laden" geklickt werden.
+  const cachedAt = await loadFromAutomatedCache();
+  if (cachedAt) {
+    await loadNativePrices(); // Kurse bleiben trotzdem frisch - schnell/günstig, kein Alchemy nötig dafür
+    renderResults();
+    renderSafeTokenTable();
+    renderCustomTokenList();
+    renderAllocationChart();
+    renderCacheStatusNote("Bestände vom " + fmtSnapshotDateTime(cachedAt) + " - für aktuelle Daten \"Alle laden\" klicken.");
+  } else {
+    renderCacheStatusNote("Noch keine Daten geladen - bitte \"Alle laden\" klicken.");
+  }
+
+  showTab(wallets.length === 0 ? "wallets" : "tracking");
+}
+
+function showTab(name) {
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  const panel = document.getElementById("tab-" + name);
+  if (panel) panel.classList.add("active");
+  if (name === "predefined") ensurePredefinedNames();
+  if (name === "admin") showAdminTab("customtokens");
+  if (name === "chat") loadOwnChat();
+  if (name === "tlnvow") {
+    const iframe = document.getElementById("tlnVowIframe");
+    if (iframe && !iframe.src) iframe.src = "TLN_Kurse.html"; // nur beim ersten Öffnen laden
+  }
+}
+
+function showAdminTab(name) {
+  document.querySelectorAll(".admin-tab-panel").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll("[data-admin-tab]").forEach(b => b.classList.toggle("active", b.dataset.adminTab === name));
+  const panel = document.getElementById("admintab-" + name);
+  if (panel) panel.classList.add("active");
+  if (name === "customtokens") renderAdminCustomTokens();
+  if (name === "ideas") renderAdminIdeas();
+  if (name === "chats") renderAdminChatUserSelect();
+}
+
+// Rein statische Übersicht, keine DB-Anbindung nötig - hier einfach die Liste pflegen.
+const ADMIN_IDEAS = [
+  { status: "open", title: "Steuer-Report (Schweiz)", desc: "Stichtag-Snapshot 31.12. + druckbarer PDF/CSV-Export (Wallet, Chain, Token, Bestand, Kurs, Wert CHF) für die Steuererklärung. Läuft über manuell/automatisch erstellte Snapshots (siehe Punkt unten) statt einer eigenen On-Chain-Nachrechnung, da Letzteres nur EVM-Chains abdecken würde - so bekommt man alle Chains gleich." },
+  { status: "open", title: "Gewinn/Verlust statt nur Bestand", desc: "Einstandspreis-Feld pro Wallet/Snapshot, um Performance (im Plus/Minus, %) statt nur den heutigen Wert zu zeigen." },
+  { status: "clarifying", title: "Staking-Anzeige (PancakeSwap V2/V3 Liquidity Pools)", desc: "Gestakte LP-Token liegen im Farm-/Staking-Contract, nicht im Wallet - aktuell nicht sichtbar. Braucht die genaue Contract-Adresse + Funktionsnamen des Staking-Contracts (offiziell PancakeSwap oder eigener Contract?). Noch in Abklärung." },
+  { status: "clarifying", title: "Korrekte Kurse für VOW und v-Währungen (v$, vUSD, v€, ...)", desc: "GeckoTerminal findet für diese Token keinen/keinen zuverlässigen Kurs. Lösung: Kurs über einen Referenz-Pool herleiten (z.B. v$-Kurs aus dem v$/VOW-Pool + bereits bekanntem VOW-Kurs), analog einem vom User bereitgestellten Beispiel-Script. DB-Spalte für predefined_tokens ist vorbereitet (\"tln_vow_category\": v-Währung / LP Token / TLN/VOW Token), die eigentliche Kurslogik in der App fehlt noch - wartet auf die vollständige Liste der Pool-Adressen je Token vom User, plus Klärung ob VOW selbst auch eine Pool-Herleitung braucht oder direkt über GeckoTerminal funktioniert." },
+  { status: "open", title: "Wallet-Bezeichnungen verschlüsseln (Stufe 1)", desc: "Nur die Labels (\"Dao1 Chris\" etc.) client- oder serverseitig verschlüsseln, nicht die Adressen selbst (Adressen sind ohnehin öffentlich einsehbar, Labels sind der personenidentifizierende Teil). Schützt zusätzlich gegen den Fall eines reinen DB-Zugriffs (z.B. Datenbank-Leck), nicht gegen jemanden mit Zugriff auf DB + App-Code gleichzeitig (Schlüssel müsste im Code liegen, da kein Passwort-basiertes Login vorhanden ist)." },
+  {
+    status: "paused",
+    title: "Automatisierte monatliche Snapshots (1. jedes Monats)",
+    desc: "Läuft NICHT im Browser, sondern als Supabase Edge Function + pg_cron-Zeitplan - unabhängig vom Gerät/Browser. Kompletter Code bereits geschrieben und Syntax-geprüft (aber NICHT live getestet, da keine Deno-Umgebung zum Testen verfügbar war): " +
+      "Edge Function supabase/functions/monthly-snapshot/index.ts (holt Bestände + Kurse ZUM ZEITPUNKT des Snapshots, alle Chains ausser Solana-Token/Apertum-Token teilweise eingeschränkt), " +
+      "migration-monthly-cron.sql (pg_cron-Zeitplan, 00:05 UTC am 1. jedes Monats), " +
+      "migration-snapshot-price.sql (price_usd-Spalte in snapshot_items, Voraussetzung dafür). " +
+      "Pausiert, weil: (1) Deployment braucht Docker + Supabase CLI auf einem Mac (einmalig, aber Einrichtungsaufwand), " +
+      "(2) Supabase pausiert Gratis-Projekte nach 7 Tagen Inaktivität - pg_cron pausiert dann mit, braucht zusätzlich einen externen Wachhalte-Mechanismus (siehe eigener Punkt). " +
+      "Wieder aufnehmen, sobald Zeit für den Deployment-Aufwand da ist."
+  },
+  { status: "done", title: "Wachhalte-Mechanismus gegen Supabase-Inaktivitäts-Pause", desc: "GitHub Actions Workflow, pingt wöchentlich die Supabase REST API extern an - verhindert die automatische 7-Tage-Pausierung des Gratis-Tarifs. Nötig, bevor die automatisierten Snapshots (siehe oben) sinnvoll sind." },
+  { status: "done", title: "Token-Approval-Checker", desc: "Zeigt aktive/unlimitierte Freigaben, Revoke läuft extern über revoke.cash (bewusst rein lesend)." },
+  { status: "done", title: "Portfolio-Allokation als Grafik", desc: "Kreisdiagramm nach Chain/Token, Total oder je Wallet." },
+  { status: "done", title: "NFT-Anzeige", desc: "NFTs je Wallet/Chain, inkl. Spam-Verdacht-Badge." },
+  { status: "reverted", title: "Automatischer Scam-Hinweis beim Login", desc: "War umgesetzt, aber wieder entfernt - hat das damalige API-Tageskontingent gesprengt. Manueller \"Entdecken\"-Tab deckt denselben Bedarf ab." },
+  { status: "open", title: "CSV-Export der aktuellen Bestände", desc: "Für eigene Excel-Auswertungen der Kunden." },
+  { status: "open", title: "Mehrsprachigkeit (DE/FR/IT/EN)", desc: "Für einen breiteren Kundenkreis." },
+  { status: "open", title: "Als installierbare Mobile-App (PWA)", desc: "Statt nur Browser-Tab - Icon auf dem Homescreen, App-artiges Gefühl." }
+];
+
+function renderAdminIdeas() {
+  const el = document.getElementById("adminIdeasList");
+  const statusMeta = {
+    open: { label: "Offen", color: "#9aa0ac" },
+    clarifying: { label: "In Abklärung", color: "#f0b90b" },
+    done: { label: "Umgesetzt", color: "#46c878" },
+    reverted: { label: "Umgesetzt, dann zurückgebaut", color: "var(--danger)" },
+    paused: { label: "Code fertig, Deployment pausiert", color: "#8247e5" }
+  };
+  el.innerHTML = ADMIN_IDEAS.map(idea => {
+    const s = statusMeta[idea.status];
+    return `<div class="custom-token-row" style="align-items:flex-start">
+      <div>
+        <div><strong>${escapeAttr(idea.title)}</strong> <span class="badge" style="background:${s.color}22;color:${s.color}">${s.label}</span></div>
+        <div class="meta" style="margin-top:4px">${escapeAttr(idea.desc)}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ---- Admin: eigene sichere Token aller User einsehen/übernehmen/ignorieren ----
+let adminAllCustomTokens = []; // rohe Zeilen aus der DB (alle User)
+
+async function loadAdminCustomTokens() {
+  const { data, error } = await sb.from("safe_tokens").select("*").order("created_at", { ascending: false });
+  if (error) { console.error(error); adminAllCustomTokens = []; return; }
+  adminAllCustomTokens = data || [];
+}
+
+async function renderAdminCustomTokens() {
+  const el = document.getElementById("adminCustomTokensList");
+  el.innerHTML = `<div class="status">Lade...</div>`;
+  await loadAdminCustomTokens();
+
+  const statusFilter = document.getElementById("adminTokenStatusFilter").value;
+  let rows = adminAllCustomTokens;
+  if (statusFilter !== "all") {
+    rows = rows.filter(r => (r.admin_status || "pending") === statusFilter);
+  }
+
+  if (rows.length === 0) {
+    el.innerHTML = `<div class="empty">Keine Einträge mit diesem Status.</div>`;
+    return;
+  }
+
+  el.innerHTML = rows.map(r => {
+    const chainMeta = CHAIN_META[r.chain];
+    const alreadyPredefined = (SAFE_ADDRESSES[r.chain] || []).includes(normalizeAddress(r.address, r.chain));
+    const status = r.admin_status || "pending";
+    const statusBadge = status === "promoted" ? '<span class="badge safe">übernommen</span>'
+      : status === "ignored" ? '<span class="badge unsafe">ignoriert</span>'
+      : '<span class="badge unsafe" style="background:rgba(240,185,11,0.15);color:#f0b90b">ausstehend</span>';
+
+    return `<div class="custom-token-row" style="align-items:flex-start;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <div><span class="dot ${chainMeta ? chainMeta.dot : ''}" style="margin-right:6px"></span>${chainMeta ? chainMeta.label : r.chain} ${statusBadge} ${alreadyPredefined ? '<span class="note" style="display:inline">(bereits vordefiniert)</span>' : ''}</div>
+        <div class="meta">User-Label: "${escapeAttr(r.label)}" · ${r.address}</div>
+      </div>
+      ${status === "pending" ? `
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="admin-label-${r.id}" value="${escapeAttr(r.label)}" style="width:160px" placeholder="Label für vordefinierte Liste" />
+          <button onclick="adminPromoteToken('${r.id}','${r.chain}','${r.address}')">Als vordefiniert übernehmen</button>
+          <button class="remove" onclick="adminIgnoreToken('${r.id}')">Ignorieren</button>
+        </div>
+      ` : ''}
+    </div>`;
+  }).join("");
+}
+
+async function adminIgnoreToken(id) {
+  const { error } = await sb.from("safe_tokens").update({ admin_status: "ignored" }).eq("id", id);
+  if (error) { alert("Fehler: " + error.message); return; }
+  renderAdminCustomTokens();
+}
+
+async function adminPromoteToken(id, chain, address) {
+  const labelInput = document.getElementById("admin-label-" + id);
+  const label = labelInput ? labelInput.value.trim() : "";
+  if (!label) { alert("Bitte ein Label eingeben."); return; }
+
+  const { error: insertError } = await sb.from("predefined_tokens")
+    .upsert({ chain, address: address.toLowerCase(), label }, { onConflict: "chain,address" });
+  if (insertError) { alert("Fehler beim Übernehmen: " + insertError.message); return; }
+
+  const { error: updateError } = await sb.from("safe_tokens").update({ admin_status: "promoted" }).eq("id", id);
+  if (updateError) { alert("Fehler beim Markieren: " + updateError.message); return; }
+
+  await loadPredefinedTokensFromDb(); // damit die neue Liste sofort überall greift
+  renderSafeTokenTable();
+  renderAdminCustomTokens();
+}
+
+// ---- Alchemy: EVM-Daten (ersetzt Moralis) ----
+// WICHTIG: Hier den API-Key deiner Alchemy-App eintragen.
+// Da diese Seite statisch auf GitHub Pages läuft, ist ein Frontend-Key grundsätzlich sichtbar.
+// Deshalb in Alchemy unbedingt die Domain-Allowlist auf deine Website beschränken.
+const ALCHEMY_API_KEY = "alch_UMCNBKNtoimHNHHPBk7kV";
+
+const ALCHEMY_RPC_URL = {
+  eth:   "https://eth-mainnet.g.alchemy.com/v2",
+  bsc:   "https://bnb-mainnet.g.alchemy.com/v2",
+  matic: "https://polygon-mainnet.g.alchemy.com/v2",
+  arb:   "https://arb-mainnet.g.alchemy.com/v2",
+  base:  "https://base-mainnet.g.alchemy.com/v2",
+  avax:  "https://avax-mainnet.g.alchemy.com/v2"
+};
+
+const ALCHEMY_NFT_URL = {
+  eth:   "https://eth-mainnet.g.alchemy.com/nft/v3",
+  bsc:   "https://bnb-mainnet.g.alchemy.com/nft/v3",
+  matic: "https://polygon-mainnet.g.alchemy.com/nft/v3",
+  arb:   "https://arb-mainnet.g.alchemy.com/nft/v3",
+  base:  "https://base-mainnet.g.alchemy.com/nft/v3",
+  avax:  "https://avax-mainnet.g.alchemy.com/nft/v3"
+};
+
+function assertAlchemyConfigured() {
+  if (!ALCHEMY_API_KEY || ALCHEMY_API_KEY.startsWith("HIER_")) {
+    throw new Error("Alchemy API-Key fehlt – bitte ALCHEMY_API_KEY im HTML eintragen.");
+  }
+}
+
+async function alchemyRpc(chain, method, params) {
+  assertAlchemyConfigured();
+  const url = ALCHEMY_RPC_URL[chain];
+  if (!url) throw new Error("Alchemy ist für diese Chain nicht konfiguriert");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${ALCHEMY_API_KEY}`
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+  });
+  if (!res.ok) throw new Error("Alchemy HTTP " + res.status);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || "Alchemy RPC-Fehler");
+  return data.result;
+}
+
+async function alchemyRpcBatch(chain, calls) {
+  if (!calls.length) return [];
+  assertAlchemyConfigured();
+  const url = ALCHEMY_RPC_URL[chain];
+  const payload = calls.map((c, i) => ({ jsonrpc: "2.0", id: i + 1, method: c.method, params: c.params }));
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${ALCHEMY_API_KEY}`
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error("Alchemy HTTP " + res.status);
+  const data = await res.json();
+  if (!Array.isArray(data)) throw new Error("Unerwartete Alchemy-Batch-Antwort");
+  const byId = new Map(data.map(x => [x.id, x]));
+  return payload.map(p => {
+    const x = byId.get(p.id);
+    if (!x) return null;
+    if (x.error) return { __error: x.error.message || "RPC-Fehler" };
+    return x.result;
+  });
+}
+
+async function fetchAlchemyOutgoingTxHashes(chain, address, onProgress) {
+  const hashes = new Set();
+  let pageKey = null;
+  let page = 0;
+  let truncated = false;
+
+  do {
+    page++;
+    if (onProgress) onProgress(page);
+    const filter = {
+      fromBlock: "0x0",
+      toBlock: "latest",
+      fromAddress: address,
+      category: ["external", "erc20", "erc721", "erc1155"],
+      excludeZeroValue: false,
+      maxCount: "0x3e8"
+    };
+    if (pageKey) filter.pageKey = pageKey;
+    let result;
+    try {
+      result = await alchemyRpc(chain, "alchemy_getAssetTransfers", [filter]);
+    } catch (e) {
+      // Einige Netzwerke unterstützen nicht jede NFT-Kategorie. Für Gebühren/Approvals
+      // reicht als Fallback die externe + ERC20-Historie.
+      filter.category = ["external", "erc20"];
+      result = await alchemyRpc(chain, "alchemy_getAssetTransfers", [filter]);
+    }
+    (result.transfers || []).forEach(t => { if (t.hash) hashes.add(t.hash); });
+    pageKey = result.pageKey || null;
+  } while (pageKey && page < FEES_MAX_PAGES);
+
+  if (pageKey) truncated = true;
+  return { hashes: [...hashes], truncated };
+}
+
+const CHAIN_META = {
+  eth:     { label: "Ethereum (ETH)",       dot: "eth",     coingeckoId: "ethereum" },
+  bsc:     { label: "BNB Smart Chain (BSC)", dot: "bsc",    coingeckoId: "binancecoin" },
+  matic:   { label: "Polygon (POL)",        dot: "matic",   coingeckoId: "polygon-ecosystem-token" },
+  arb:     { label: "Arbitrum (ETH)",       dot: "arb",     coingeckoId: "ethereum" },
+  base:    { label: "Base (ETH)",           dot: "base",    coingeckoId: "ethereum" },
+  avax:    { label: "Avalanche (AVAX)",     dot: "avax",    coingeckoId: "avalanche-2" },
+  apertum: { label: "Apertum (APTM)",       dot: "apertum", coingeckoId: "apertum" },
+  tron:    { label: "Tron (TRX)",           dot: "tron",    coingeckoId: "tron" },
+  btc:     { label: "Bitcoin (BTC)",        dot: "btc",     coingeckoId: "bitcoin" },
+  xrp:     { label: "XRP",                  dot: "xrp",     coingeckoId: "ripple" },
+  sol:     { label: "Solana (SOL)",         dot: "sol",     coingeckoId: "solana" }
+};
+
+// ---- Chain-Filter (Wallet-Tracking-Tab) - standardmässig sind alle Chains aktiv ----
+let activeChainFilter = new Set(Object.keys(CHAIN_META));
+
+function renderChainFilter() {
+  const el = document.getElementById("chainFilterContainer");
+  if (!el) return;
+  el.innerHTML = Object.keys(CHAIN_META).map(chain => {
+    const meta = CHAIN_META[chain];
+    const checked = activeChainFilter.has(chain) ? "checked" : "";
+    return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
+      <input type="checkbox" ${checked} onchange="toggleChainFilter('${chain}', this.checked)" style="width:auto" />
+      <span class="dot ${meta.dot}"></span> ${meta.label}
+    </label>`;
+  }).join("");
+}
+
+function toggleChainFilter(chain, isChecked) {
+  if (isChecked) activeChainFilter.add(chain);
+  else activeChainFilter.delete(chain);
+  renderResults();
+}
+
+function setAllChainFilter(selectAll) {
+  activeChainFilter = selectAll ? new Set(Object.keys(CHAIN_META)) : new Set();
+  renderChainFilter();
+  renderResults();
+}
+
+// ---- Navigation "Gehe zu Wallet" ----
+function renderWalletNav() {
+  const el = document.getElementById("walletNav");
+  if (el) {
+    const current = el.value;
+    el.innerHTML = `<option value="">– auswählen –</option>` +
+      wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+    if (wallets.some(w => w.id === current)) el.value = current;
+  }
+  renderDiscoveryWalletSelect();
+  renderChartWalletSelect();
+  renderAllocWalletSelect();
+  renderFeesWalletSelect();
+  renderApprovalsWalletSelect();
+  renderNftWalletSelect();
+}
+
+function goToWallet(id) {
+  if (!id) return;
+  const el = document.getElementById("wallet-block-" + id);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// Native-Coin-Symbol pro EVM-Chain (Arbitrum/Base nutzen ETH als Gas-Token, kein eigenes Coin)
+const EVM_NATIVE_SYMBOL = { eth: "ETH", bsc: "BNB", matic: "POL", arb: "ETH", base: "ETH", avax: "AVAX" };
+
+// Native Symbole für ALLE Chains (auch nicht-EVM) - für die Anzeige nativer Coins
+// in der Liste der sicheren Token.
+const NATIVE_SYMBOL = { ...EVM_NATIVE_SYMBOL, apertum: "APTM", tron: "TRX", btc: "BTC", xrp: "XRP", sol: "SOL" };
+
+// RPC-Endpunkt (PublicNode, kein Key nötig) pro EVM-Chain - für native Balance und Token-Checks
+// Kostenloser PublicNode/Allnodes-Token - hebt die Archiv-Sperre auf (nötig für den
+// Discovery-Scan über weiter zurückliegende Blöcke) und erhöht generell die Rate-Limits.
+// Kostenloser PublicNode/Allnodes-Token - hebt die Archiv-Sperre auf (nötig für den
+// Discovery-Scan über weiter zurückliegende Blöcke) und erhöht generell die Rate-Limits.
+// PublicNode scheint pro Chain einen eigenen Token zu vergeben statt eines einzigen
+// chain-übergreifenden Tokens - darum eine Map statt einer einzelnen Konstante.
+// Kostenloser PublicNode/Allnodes-Token - hebt die Archiv-Sperre auf (nötig für den
+// Discovery-Scan über weiter zurückliegende Blöcke) und erhöht generell die Rate-Limits.
+// Ein einziger Token gilt chain-übergreifend (bestätigt: ETH und BSC haben denselben Wert geliefert).
+const PUBLICNODE_TOKEN = "a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36";
+function publicnodeToken(chain) {
+  return PUBLICNODE_TOKEN;
+}
+
+const EVM_RPC_URLS = {
+  eth: "https://ethereum-rpc.publicnode.com/" + publicnodeToken("eth"),
+  bsc: "https://bsc-rpc.publicnode.com/" + publicnodeToken("bsc"),
+  matic: "https://polygon-bor-rpc.publicnode.com/" + publicnodeToken("matic"),
+  arb: "https://arbitrum-one-rpc.publicnode.com/" + publicnodeToken("arb"),
+  base: "https://base-rpc.publicnode.com/" + publicnodeToken("base"),
+  avax: "https://avalanche-c-chain-rpc.publicnode.com/" + publicnodeToken("avax")
+};
+
+// Holt Name/Dezimalstellen direkt vom Contract für vordefinierte Token, die noch nie
+// eine Wallet mit Bestand hatten (darum bisher nicht im Cache) - unabhängig vom Bestand.
+const PREDEFINED_RPC = { eth: EVM_RPC_URLS.eth, bsc: EVM_RPC_URLS.bsc, arb: EVM_RPC_URLS.arb, base: EVM_RPC_URLS.base, avax: EVM_RPC_URLS.avax };
+async function ensurePredefinedNames() {
+  for (const chain of Object.keys(PREDEFINED_RPC)) {
+    const missing = (SAFE_ADDRESSES[chain] || []).filter(a =>
+      !tokenMetaCache[chain + "|" + a] && !predefinedTokenLabels[chain + "|" + a]
+    );
+    if (missing.length === 0) continue;
+
+    const calls = [];
+    const plan = [];
+    missing.forEach((addr, idx) => {
+      calls.push({ to: addr, data: "0x313ce567" }); plan.push({ idx, type: "decimals" });
+      calls.push({ to: addr, data: "0x95d89b41" }); plan.push({ idx, type: "symbol" });
+    });
+
+    let results;
+    try {
+      results = await evmRpcBatch(PREDEFINED_RPC[chain], calls);
+    } catch (e) {
+      continue; // Netzwerkfehler - Namen bleiben unbekannt, nächster Tab-Aufruf versucht's erneut
+    }
+
+    const perToken = missing.map(() => ({}));
+    results.forEach((hex, i) => {
+      const { idx, type } = plan[i];
+      perToken[idx][type] = hex;
+    });
+
+    missing.forEach((addr, idx) => {
+      const decHex = perToken[idx].decimals;
+      const decimals = decHex && decHex !== "0x" ? parseInt(decHex, 16) : 18;
+      const symbol = decodeAbiString(perToken[idx].symbol) || (addr.slice(0, 8) + "…");
+      tokenMetaCache[chain + "|" + addr] = { decimals, symbol };
+    });
+  }
+  saveTokenMetaCache();
+  renderSafeTokenTable();
+}
+
+
+// Vordefinierte sichere Token kommen jetzt aus Supabase (Tabelle predefined_tokens),
+// nicht mehr fest im Code - siehe loadPredefinedTokensFromDb().
+let SAFE_ADDRESSES = {};
+let predefinedTokenLabels = {}; // Key "chain|adresse" -> Label
+let predefinedTokenCategory = {}; // Key "chain|adresse" -> "v_currency" | "lp_token" | "tln_vow_token" | null
+
+// Adressen case-sensitiv normalisieren - EVM/Apertum-Adressen sind Hex (Gross-/Klein-
+// schreibung egal), Tron-Adressen sind Base58 und GROSS-/KLEINSCHREIBUNG IST RELEVANT.
+function normalizeAddress(address, chain) {
+  return chain === "tron" ? address.trim() : address.trim().toLowerCase();
+}
+
+async function refreshPredefinedTokens() {
+  await loadPredefinedTokensFromDb();
+  renderSafeTokenTable();
+  loadAll(); // neue/geänderte vordefinierte Token sollen sofort im Wallet-Tracking berücksichtigt werden
+}
+
+async function addPredefinedToken() {
+  const chain = document.getElementById("newPredefChain").value;
+  const addressRaw = document.getElementById("newPredefAddress").value.trim();
+  const label = document.getElementById("newPredefLabel").value.trim();
+  const tlnVowCategory = document.getElementById("newPredefTlnVowCategory").value || null;
+
+  if (!addressRaw || !label) { alert("Bitte Adresse und Label ausfüllen."); return; }
+  const address = normalizeAddress(addressRaw, chain);
+
+  const { error } = await sb.from("predefined_tokens").insert({
+    chain, address, label,
+    tln_vow_category: tlnVowCategory
+  });
+  if (error) { alert("Fehler beim Hinzufügen: " + error.message); return; }
+
+  document.getElementById("newPredefAddress").value = "";
+  document.getElementById("newPredefLabel").value = "";
+  document.getElementById("newPredefTlnVowCategory").value = "";
+  await refreshPredefinedTokens();
+}
+
+// Case-insensitiver Adress-Abgleich für UPDATE/DELETE-Abfragen (ausser Tron, dort ist
+// Gross-/Kleinschreibung bewusst relevant) - die Adresse im Code ist normalisiert
+// (kleingeschrieben), in der DB steht teils noch die Original-Schreibweise, darum darf
+// hier kein exaktes .eq() auf die Adresse verwendet werden, sonst wird still nichts gefunden.
+function matchAddressQuery(query, chain, address) {
+  return chain === "tron" ? query.eq("address", address) : query.ilike("address", address);
+}
+
+async function updatePredefinedTokenLabel(chain, address, newLabel) {
+  newLabel = newLabel.trim();
+  if (!newLabel) return;
+  const { error } = await matchAddressQuery(sb.from("predefined_tokens").update({ label: newLabel }).eq("chain", chain), chain, address);
+  if (error) { alert("Fehler beim Speichern: " + error.message); return; }
+  predefinedTokenLabels[chain + "|" + address] = newLabel;
+}
+
+async function deletePredefinedToken(chain, address, label) {
+  if (!confirm(`"${label}" (${chain}) wirklich aus der vordefinierten Liste löschen? Betrifft ALLE User.`)) return;
+  const { error } = await matchAddressQuery(sb.from("predefined_tokens").delete().eq("chain", chain), chain, address);
+  if (error) { alert("Fehler beim Löschen: " + error.message); return; }
+  await refreshPredefinedTokens();
+}
+
+async function loadPredefinedTokensFromDb() {
+  const { data, error } = await sb.from("predefined_tokens").select("*");
+  if (error) { console.error(error); return; }
+  const addresses = {};
+  const labels = {};
+  const categories = {}; // "chain|adresse" -> "v_currency" | "lp_token" | "tln_vow_token" | null
+  const seen = new Set(); // Dedupe für den Fall, dass dieselbe Adresse mit unterschiedlicher
+                           // Gross-/Kleinschreibung mehrfach in der DB steht (case-sensitiver PK)
+  data.forEach(row => {
+    const chain = row.chain;
+    const address = normalizeAddress(row.address, chain);
+    const dedupeKey = chain + "|" + address;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    addresses[chain] = addresses[chain] || [];
+    addresses[chain].push(address);
+    if (row.label) labels[dedupeKey] = row.label;
+    categories[dedupeKey] = row.tln_vow_category || null;
+  });
+  SAFE_ADDRESSES = addresses;
+  predefinedTokenLabels = labels;
+  predefinedTokenCategory = categories;
+}
+
+// Apertum: Balance-Abfrage über die öffentliche Blockscout-Explorer-API (CORS-freundlich für Browser-Zugriffe)
+const APERTUM_EXPLORER_API = "https://explorer.apertum.io/api/v2";
+function isSafeTokenAddress(address, chain) {
+  if (!address) return false;
+  const a = normalizeAddress(address, chain);
+  if ((SAFE_ADDRESSES[chain] || []).includes(a)) return true;
+  return customSafeTokens.some(t => t.chain === chain && t.address === a);
+}
+
+// ---- Eigene sichere Token (Supabase-gestützt, an den Account gebunden) ----
+let customSafeTokens = [];
+
+async function loadCustomSafeTokensFromDb() {
+  const { data, error } = await sb.from("safe_tokens").select("*").order("created_at");
+  if (error) { console.error(error); customSafeTokens = []; return; }
+  customSafeTokens = data.map(row => ({ dbId: row.id, chain: row.chain, address: row.address, label: row.label }));
+}
+
+async function addCustomSafeToken() {
+  const chain = document.getElementById("customChain").value;
+  const rawAddress = document.getElementById("customAddress").value.trim();
+  const address = normalizeAddress(rawAddress, chain);
+  const label = document.getElementById("customLabel").value.trim();
+
+  const isValidEvm = address.startsWith("0x") && address.length === 42;
+  const isValidTron = chain === "tron" && address.startsWith("T") && address.length === 34;
+  if (!address || (!isValidEvm && !isValidTron)) {
+    alert(chain === "tron"
+      ? "Bitte eine gültige Tron-Adresse eingeben (beginnt mit T, 34 Zeichen)."
+      : "Bitte eine gültige Contract-Adresse eingeben (0x... mit 42 Zeichen).");
+    return;
+  }
+  if (customSafeTokens.some(t => t.chain === chain && t.address === address)) {
+    alert("Dieser Token ist für diese Chain bereits erfasst.");
+    return;
+  }
+
+  const { data, error } = await sb.from("safe_tokens").insert({
+    user_id: currentUser.id,
+    chain,
+    address,
+    label: label || address
+  }).select().single();
+
+  if (error) {
+    alert("Fehler beim Speichern: " + error.message);
+    return;
+  }
+
+  customSafeTokens.push({ dbId: data.id, chain, address, label: label || address });
+  document.getElementById("customAddress").value = "";
+  document.getElementById("customLabel").value = "";
+  renderCustomTokenList();
+  renderSafeTokenTable();
+  loadAll(); // neuer Token soll sofort im Wallet-Tracking berücksichtigt werden, nicht erst nach manuellem Neuladen
+  renderResults();
+}
+
+async function removeCustomSafeToken(chain, address) {
+  const t = customSafeTokens.find(t => t.chain === chain && t.address === address);
+  if (t && t.dbId) {
+    await sb.from("safe_tokens").delete().eq("id", t.dbId);
+  }
+  customSafeTokens = customSafeTokens.filter(t => !(t.chain === chain && t.address === address));
+  renderCustomTokenList();
+  renderSafeTokenTable();
+  loadAll(); // Entfernter Token soll sofort aus dem Wallet-Tracking verschwinden, falls dort ein Bestand angezeigt war
+}
+
+function renderCustomTokenList() {
+  const el = document.getElementById("customTokenList");
+  if (customSafeTokens.length === 0) {
+    el.innerHTML = `<div class="empty">Noch keine eigenen Token erfasst.</div>`;
+    return;
+  }
+  el.innerHTML = customSafeTokens.map(t => {
+    const p = priceForToken(t.chain, t.address);
+    const priceHtml = p
+      ? `<div style="margin-top:4px">${fmtPrice(p.price)}<span class="price-source">${p.source}</span></div>`
+      : `<div style="margin-top:4px;color:var(--muted);font-size:0.78rem">Kein Kurs gefunden</div>`;
+    return `
+    <div class="custom-token-row">
+      <div>
+        <div>${escapeAttr(t.label)} <span class="badge safe">sicher</span></div>
+        <div class="meta">${t.chain.toUpperCase()} · ${t.address}</div>
+        ${priceHtml}
+      </div>
+      <button class="remove" onclick="removeCustomSafeToken('${t.chain}','${t.address}')">Entfernen</button>
+    </div>
+  `;
+  }).join("");
+}
+
+function renderSafeTokenTable() {
+  const el = document.getElementById("safeTokenTable");
+  const rows = [];
+
+  // Native Coins zuerst - eine Zeile pro Chain
+  Object.keys(CHAIN_META).forEach(chain => {
+    rows.push({ chain, address: null, label: (NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)", isNative: true });
+  });
+
+  Object.keys(SAFE_ADDRESSES).forEach(chain => {
+    (SAFE_ADDRESSES[chain] || []).forEach(address => {
+      let label = predefinedTokenLabels[chain + "|" + address] || null;
+      if (!label) {
+        const cached = tokenMetaCache[chain + "|" + address];
+        label = cached ? cached.symbol : null;
+      }
+      rows.push({ chain, address, label });
+    });
+  });
+
+  // Filter-Dropdowns befüllen (Auswahl dabei erhalten)
+  populateSelectPreserving("predefChainFilter", Object.keys(CHAIN_META).sort(), c => c.toUpperCase(), "Alle Chains");
+  const distinctLabels = [...new Set(rows.map(r => r.label).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  populateSelectPreserving("predefTokenFilter", distinctLabels, l => l, "Alle Token");
+
+  // Filter anwenden
+  const chainFilter = document.getElementById("predefChainFilter").value;
+  const tokenFilter = document.getElementById("predefTokenFilter").value;
+  const textFilter = document.getElementById("predefTextFilter").value.trim().toLowerCase();
+
+  let filtered = rows;
+  if (chainFilter) filtered = filtered.filter(r => r.chain === chainFilter);
+  if (tokenFilter) filtered = filtered.filter(r => r.label === tokenFilter);
+  if (textFilter) {
+    filtered = filtered.filter(r =>
+      (r.label || "").toLowerCase().includes(textFilter) ||
+      (r.address || "").toLowerCase().includes(textFilter)
+    );
+  }
+
+  if (rows.length === 0) {
+    el.innerHTML = `<div class="empty">Keine vordefinierten Token hinterlegt.</div>`;
+    return;
+  }
+  if (filtered.length === 0) {
+    el.innerHTML = `<div class="empty">Keine Token gefunden, die zu den Filtern passen.</div>`;
+    return;
+  }
+
+  filtered.sort((a, b) => {
+    const chainCompare = a.chain.localeCompare(b.chain);
+    if (chainCompare !== 0) return chainCompare;
+    return (a.label || "").localeCompare(b.label || "");
+  });
+
+  const TLN_VOW_LABELS = { v_currency: "v-Währung", lp_token: "LP Token", tln_vow_token: "TLN/VOW Token" };
+
+  el.innerHTML = `<table><thead><tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th><th>TLN/VOW</th>${isAdmin ? '<th></th>' : ''}</tr></thead><tbody>
+    ${filtered.map(r => {
+      let p;
+      if (r.isNative) {
+        const np = nativePrices[r.chain];
+        p = np ? { price: np.price, source: "CoinGecko" } : null;
+      } else {
+        p = priceForToken(r.chain, r.address);
+      }
+      const priceCell = p
+        ? `${fmtPrice(p.price)}<span class="price-source">${p.source}</span>`
+        : '<span style="color:var(--muted)">–</span>';
+
+      const categoryKey = r.chain + "|" + (r.address || "");
+      const category = predefinedTokenCategory[categoryKey] || "";
+      const categoryCell = r.isNative ? '<span style="color:var(--muted)">–</span>' :
+        (isAdmin
+          ? `<select onchange="setPredefinedTokenCategory('${r.chain}','${r.address}', this.value)">
+              <option value="" ${category === "" ? "selected" : ""}>– keine –</option>
+              <option value="v_currency" ${category === "v_currency" ? "selected" : ""}>v-Währung</option>
+              <option value="lp_token" ${category === "lp_token" ? "selected" : ""}>LP Token</option>
+              <option value="tln_vow_token" ${category === "tln_vow_token" ? "selected" : ""}>TLN/VOW Token</option>
+            </select>`
+          : (category ? escapeAttr(TLN_VOW_LABELS[category] || category) : '<span style="color:var(--muted)">–</span>'));
+
+      const labelCell = (isAdmin && !r.isNative)
+        ? `<input type="text" value="${escapeAttr(r.label || "")}" style="font-size:0.85rem;padding:4px 6px" onblur="updatePredefinedTokenLabel('${r.chain}','${r.address}', this.value)" onkeydown="if(event.key==='Enter') this.blur()" />`
+        : (r.label ? escapeAttr(r.label) : '<span style="color:var(--muted)">unbekannt (noch kein Bestand gefunden)</span>');
+
+      const deleteCell = (isAdmin && !r.isNative)
+        ? `<button class="remove" onclick="deletePredefinedToken('${r.chain}','${r.address}','${escapeAttr(r.label || r.address)}')">Löschen</button>`
+        : "";
+
+      return `<tr>
+      <td><span class="dot ${CHAIN_META[r.chain] ? CHAIN_META[r.chain].dot : ''}" style="margin-right:6px"></span>${r.chain.toUpperCase()}</td>
+      <td>${labelCell}</td>
+      <td style="font-size:0.78rem;word-break:break-all">${r.isNative ? '<span style="color:var(--muted)">– (nativ)</span>' : r.address}</td>
+      <td style="text-align:right">${priceCell}</td>
+      <td>${categoryCell}</td>
+      ${isAdmin ? `<td>${deleteCell}</td>` : ""}
+    </tr>`;
+    }).join("")}
+  </tbody></table>`;
+}
+
+async function setPredefinedTokenCategory(chain, address, category) {
+  const value = category || null; // leere Auswahl -> null ("keine Kategorie")
+  const { error } = await matchAddressQuery(sb.from("predefined_tokens").update({ tln_vow_category: value }).eq("chain", chain), chain, address);
+  if (error) { alert("Fehler beim Speichern: " + error.message); return; }
+  predefinedTokenCategory[chain + "|" + address] = value;
+}
+
+// Befüllt ein <select> mit Optionen und behält die bisherige Auswahl bei, falls sie noch existiert
+function populateSelectPreserving(selectId, values, labelFn, placeholderLabel) {
+  const el = document.getElementById(selectId);
+  if (!el) return;
+  const current = el.value;
+  el.innerHTML = `<option value="">${placeholderLabel}</option>` +
+    values.map(v => `<option value="${escapeAttr(v)}">${escapeAttr(labelFn(v))}</option>`).join("");
+  if (values.includes(current)) el.value = current;
+}
+
+// ---- Live-Kurse: native Coins + möglichst viele Token ----
+let nativePrices = {}; // chainKey -> {price, change24h}
+let tokenPrices = {}; // "chain|adresse" -> {price, change24h, source}
+
+// Grosse, kuratierte Coins (USDT/USDC) über die reguläre CoinGecko-Kursliste - zuverlässigste Quelle.
+const TOKEN_COINGECKO_IDS = { USDT: "tether", USDC: "usd-coin" };
+
+// GeckoTerminal (dieselbe Firma wie CoinGecko, DEX-basierte Kurse) als Ergänzung für alle
+// anderen sicheren Token - deckt auch kleinere/eigene Token ab, sofern sie irgendwo auf
+// einer DEX gehandelt werden. Kein API-Key nötig, kostenlos. LP-Token und Token ohne
+// eigenen Handelsplatz liefern hier bewusst keinen Kurs (kein Rätselraten).
+const GECKOTERMINAL_NETWORK = { eth: "eth", bsc: "bsc", matic: "polygon_pos", arb: "arbitrum", base: "base", avax: "avax", tron: "tron" };
+
+async function loadNativePrices() {
+  const ids = Object.values(CHAIN_META).map(m => m.coingeckoId)
+    .concat(Object.values(TOKEN_COINGECKO_IDS))
+    .join(",");
+
+  const alreadyPriced = {}; // "chain|adresse" -> true, deckt USDT/USDC ab (kein Doppel-Fetch via GeckoTerminal)
+
+  try {
+    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+
+    const prices = {};
+    Object.keys(CHAIN_META).forEach(chain => {
+      const id = CHAIN_META[chain].coingeckoId;
+      if (data[id] && typeof data[id].usd === "number") {
+        prices[chain] = {
+          price: data[id].usd,
+          change24h: typeof data[id].usd_24h_change === "number" ? data[id].usd_24h_change : undefined
+        };
+      }
+    });
+    nativePrices = prices;
+
+    const tPrices = {};
+    Object.keys(SAFE_ADDRESSES).forEach(chain => {
+      (SAFE_ADDRESSES[chain] || []).forEach(address => {
+        const label = predefinedTokenLabels[chain + "|" + address];
+        const cgId = label && TOKEN_COINGECKO_IDS[label.toUpperCase()];
+        if (cgId && data[cgId] && typeof data[cgId].usd === "number") {
+          const key = chain + "|" + address;
+          tPrices[key] = {
+            price: data[cgId].usd,
+            change24h: typeof data[cgId].usd_24h_change === "number" ? data[cgId].usd_24h_change : undefined,
+            source: "CoinGecko"
+          };
+          alreadyPriced[key] = true;
+        }
+      });
+    });
+    tokenPrices = tPrices;
+  } catch (e) {
+    // Kurse sind ein Zusatz - falls das fehlschlägt, laufen Bestände trotzdem normal weiter
+    nativePrices = {};
+    tokenPrices = {};
+  }
+
+  await loadTokenPricesViaGeckoTerminal(alreadyPriced);
+}
+
+async function loadTokenPricesViaGeckoTerminal(alreadyPriced) {
+  // Alle Chains parallel abfragen statt nacheinander - das war der Haupt-Geschwindigkeitsverlust.
+  const chainJobs = Object.keys(GECKOTERMINAL_NETWORK).map(async chain => {
+    const network = GECKOTERMINAL_NETWORK[chain];
+    const list = (SAFE_ADDRESSES[chain] || [])
+      .concat(customSafeTokens.filter(t => t.chain === chain).map(t => t.address))
+      .filter((addr, idx, arr) => arr.indexOf(addr) === idx) // Duplikate raus
+      .filter(addr => !alreadyPriced[chain + "|" + addr]);
+
+    if (list.length === 0) return;
+
+    // Innerhalb einer Chain bleiben Batches sequenziell (kommt praktisch nie vor,
+    // da selten >30 Token pro Chain), aber die Chains selbst laufen jetzt parallel.
+    for (let i = 0; i < list.length; i += 30) {
+      const batch = list.slice(i, i + 30);
+      try {
+        const res = await fetch(`https://api.geckoterminal.com/api/v2/simple/networks/${network}/token_price/${batch.join(",")}`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        const attrs = data && data.data && data.data.attributes;
+        if (!attrs || !attrs.token_prices) continue;
+        Object.keys(attrs.token_prices).forEach(addr => {
+          const price = parseFloat(attrs.token_prices[addr]);
+          if (!isFinite(price)) return;
+          const changeRaw = attrs.h24_price_change_percentage ? attrs.h24_price_change_percentage[addr] : undefined;
+          const change = changeRaw !== undefined ? parseFloat(changeRaw) : undefined;
+          const key = chain + "|" + normalizeAddress(addr, chain);
+          tokenPrices[key] = {
+            price,
+            change24h: isFinite(change) ? change : undefined,
+            source: "GeckoTerminal (DEX)"
+          };
+        });
+      } catch (e) {
+        // Fehler bei einer Chain sollen die anderen nicht blockieren
+      }
+    }
+  });
+  await Promise.all(chainJobs);
+}
+
+
+
+function fmtUsd(n) {
+  return "$" + Number(n).toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtPrice(n) {
+  return "$" + Number(n).toLocaleString('de-CH', { minimumFractionDigits: 5, maximumFractionDigits: 5 });
+}
+
+// ---- Wallet-Verwaltung (Supabase-gestützt) ----
+let walletCounter = 0;
+let wallets = [];
+let walletData = {}; // id -> { eth:{native, tokens}|{error}, bsc:{...}, matic:{...}, btc:{...}, xrp:{...}, sol:{...} }
+
+function newWallet(label, evm, btc, xrp, sol, tron, dbId) {
+  walletCounter++;
+  return { id: dbId || ("local" + walletCounter), dbId: dbId || null, label: label || ("Wallet " + walletCounter), evm: evm || "", btc: btc || "", xrp: xrp || "", sol: sol || "", tron: tron || "" };
+}
+
+// Zentrale Sortierung nach Wallet-Bezeichnung (alphabetisch) - nach jeder Änderung
+// aufgerufen, damit ALLE Stellen (Liste, "Gehe zu Wallet", Details je Wallet,
+// Discovery-Dropdown) automatisch konsistent sortiert bleiben.
+function sortWalletsByLabel() {
+  wallets.sort((a, b) => a.label.localeCompare(b.label, "de"));
+}
+
+async function loadWalletsFromDb() {
+  const { data, error } = await sb.from("wallets").select("*").order("created_at");
+  if (error) { console.error(error); wallets = []; return; }
+  wallets = data.map(row => newWallet(row.label, row.evm_address, row.btc_address, row.xrp_address, row.sol_address, row.tron_address, row.id));
+  sortWalletsByLabel();
+}
+
+function addWallet() {
+  wallets.push(newWallet());
+  sortWalletsByLabel();
+  renderWalletInputs();
+}
+
+async function removeWallet(id) {
+  const w = wallets.find(w => w.id === id);
+  if (w && w.dbId) {
+    await sb.from("wallets").delete().eq("id", w.dbId);
+  }
+  wallets = wallets.filter(w => w.id !== id);
+  delete walletData[id];
+  renderWalletInputs();
+  renderResults();
+}
+
+function updateWalletField(id, field, value) {
+  const w = wallets.find(w => w.id === id);
+  if (w) w[field] = value;
+  updateAllValidationIcons();
+}
+
+async function saveWallet(id) {
+  const w = wallets.find(w => w.id === id);
+  if (!w) return;
+  const statusEl = document.getElementById("saveStatus-" + id);
+
+  const invalidFields = ["evm", "btc", "xrp", "sol", "tron"].filter(f => w[f] && !isValidAddressFormat(f, w[f]));
+  if (invalidFields.length > 0) {
+    alert("Ungültiges Adressformat bei: " + invalidFields.join(", ") + ". Bitte korrigieren, bevor du speicherst.");
+    return;
+  }
+
+  const dupeFields = ["evm", "btc", "xrp", "sol", "tron"].filter(f => findDuplicateWalletLabels(f, w[f], id).length > 0);
+  if (dupeFields.length > 0) {
+    if (!confirm("Diese Wallet hat dieselbe Adresse wie eine andere erfasste Wallet (" + dupeFields.join(", ") + "). Trotzdem speichern?")) {
+      return;
+    }
+  }
+
+  if (statusEl) statusEl.textContent = "Speichere...";
+
+  const payload = {
+    user_id: currentUser.id,
+    label: w.label,
+    evm_address: w.evm,
+    btc_address: w.btc,
+    xrp_address: w.xrp,
+    sol_address: w.sol,
+    tron_address: w.tron
+  };
+
+  if (w.dbId) {
+    const { error } = await sb.from("wallets").update(payload).eq("id", w.dbId);
+    if (statusEl) statusEl.textContent = error ? "Fehler: " + error.message : "Gespeichert.";
+  } else {
+    const { data, error } = await sb.from("wallets").insert(payload).select().single();
+    if (error) {
+      if (statusEl) statusEl.textContent = "Fehler: " + error.message;
+    } else {
+      w.dbId = data.id;
+      w.id = data.id;
+      if (statusEl) statusEl.textContent = "Gespeichert.";
+    }
+  }
+  sortWalletsByLabel();
+  renderWalletInputs();
+  loadAll();
+}
+
+// Format-Validierung pro Chain (Länge/Präfix/Zeichensatz) - rein strukturell, keine
+// Checksum-Prüfung, aber fängt Tippfehler und falsch eingefügte Adressen zuverlässig ab.
+function isValidAddressFormat(field, value) {
+  if (!value) return true; // leer = nichts zu prüfen
+  const v = value.trim();
+  switch (field) {
+    case "evm":
+      return /^0x[0-9a-fA-F]{40}$/.test(v);
+    case "tron":
+      return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(v);
+    case "sol":
+      return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v);
+    case "xrp":
+      return /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(v);
+    case "btc":
+      return /^(bc1[0-9a-z]{25,62}|[13][1-9A-HJ-NP-Za-km-z]{25,34})$/i.test(v);
+    default:
+      return true;
+  }
+}
+
+// Prüft, ob eine Wallet-Adresse in einem anderen Wallet-Eintrag doppelt vorkommt.
+// EVM-Adressen werden gross-/kleinschreibungsunabhängig verglichen (Standard bei EVM),
+// alle anderen (Tron, Bitcoin, XRP, Solana) exakt - dort ist Gross-/Kleinschreibung relevant.
+function walletFieldsMatch(field, a, b) {
+  if (!a || !b) return false;
+  if (field === "evm") return a.trim().toLowerCase() === b.trim().toLowerCase();
+  return a.trim() === b.trim();
+}
+
+function findDuplicateWalletLabels(field, value, excludeId) {
+  if (!value) return [];
+  return wallets.filter(w => w.id !== excludeId && walletFieldsMatch(field, w[field], value)).map(w => w.label);
+}
+
+function renderValidationIconInner(field, value, walletId) {
+  if (!value) return "";
+  if (!isValidAddressFormat(field, value)) {
+    return `<span style="color:var(--danger);font-size:0.75rem;display:block;margin-top:3px">✗ Ungültiges Adressformat</span>`;
+  }
+  const dupes = findDuplicateWalletLabels(field, value, walletId);
+  if (dupes.length > 0) {
+    return `<span style="color:var(--danger);font-size:0.75rem;display:block;margin-top:3px">✗ Doppelt (auch bei: ${escapeAttr(dupes.join(", "))})</span>`;
+  }
+  return `<span style="color:#46c878;font-size:0.75rem;display:block;margin-top:3px">✓ eindeutig</span>`;
+}
+
+// Leichte Update-Funktion (nur die Icon-Spans, nicht die ganzen Eingabefelder neu rendern) -
+// sonst würde bei jedem Tastenanschlag der Fokus aus dem Eingabefeld springen.
+function updateAllValidationIcons() {
+  ["evm", "btc", "xrp", "sol", "tron"].forEach(field => {
+    wallets.forEach(w => {
+      const el = document.getElementById(`dup-${w.id}-${field}`);
+      if (el) el.innerHTML = renderValidationIconInner(field, w[field], w.id);
+    });
+  });
+}
+
+function renderWalletInputs() {
+  const container = document.getElementById("walletInputsContainer");
+  container.innerHTML = wallets.map(w => `
+    <div class="wallet-input-card">
+      <div class="wallet-input-head">
+        <input type="text" value="${escapeAttr(w.label)}" oninput="updateWalletField('${w.id}','label',this.value)" />
+        <button class="remove" onclick="removeWallet('${w.id}')">Entfernen</button>
+      </div>
+      <div class="field-grid">
+        <div>
+          <span class="field-label">EVM-Adresse</span>
+          <input type="text" value="${escapeAttr(w.evm)}" oninput="updateWalletField('${w.id}','evm',this.value)" placeholder="0x..." />
+          <div id="dup-${w.id}-evm">${renderValidationIconInner("evm", w.evm, w.id)}</div>
+        </div>
+        <div>
+          <span class="field-label">Bitcoin-Adresse</span>
+          <input type="text" value="${escapeAttr(w.btc)}" oninput="updateWalletField('${w.id}','btc',this.value)" placeholder="bc1... / 1... / 3..." />
+          <div id="dup-${w.id}-btc">${renderValidationIconInner("btc", w.btc, w.id)}</div>
+        </div>
+        <div>
+          <span class="field-label">XRP-Adresse</span>
+          <input type="text" value="${escapeAttr(w.xrp)}" oninput="updateWalletField('${w.id}','xrp',this.value)" placeholder="r..." />
+          <div id="dup-${w.id}-xrp">${renderValidationIconInner("xrp", w.xrp, w.id)}</div>
+        </div>
+        <div>
+          <span class="field-label">Solana-Adresse</span>
+          <input type="text" value="${escapeAttr(w.sol)}" oninput="updateWalletField('${w.id}','sol',this.value)" placeholder="Base58-Adresse" />
+          <div id="dup-${w.id}-sol">${renderValidationIconInner("sol", w.sol, w.id)}</div>
+        </div>
+        <div>
+          <span class="field-label">Tron-Adresse</span>
+          <input type="text" value="${escapeAttr(w.tron)}" oninput="updateWalletField('${w.id}','tron',this.value)" placeholder="T..." />
+          <div id="dup-${w.id}-tron">${renderValidationIconInner("tron", w.tron, w.id)}</div>
+        </div>
+      </div>
+      <div class="action-row" style="margin:10px 0 0;align-items:center">
+        <button onclick="saveWallet('${w.id}')">Speichern</button>
+        <span id="saveStatus-${w.id}" class="note" style="margin:0"></span>
+      </div>
+    </div>
+  `).join("");
+}
+
+function escapeAttr(s) {
+  return String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+// ---- Datenabruf ----
+
+// Etherscan API V2: dein eigener kostenloser Key - im Free-Tier nur für Ethereum selbst nutzbar (nicht BSC/Polygon)
+const ETHERSCAN_API_KEY = "HTXWS7BQ6F2QJNR4C1QAZW7JFGG2S5PEPZ";
+const ETHERSCAN_CHAIN_ID = { eth: 1 };
+
+// Warteschlange, damit wir das Free-Tier-Limit (3 Anfragen/Sekunde) nicht überschreiten,
+// auch wenn mehrere Wallets gleichzeitig laden.
+let etherscanQueue = Promise.resolve();
+function queuedEtherscanCall(fn) {
+  const run = etherscanQueue.then(fn);
+  etherscanQueue = run.catch(() => {}).then(() => new Promise(r => setTimeout(r, 400)));
+  return run;
+}
+
+async function fetchEtherscanNative(chain, address) {
+  const chainId = ETHERSCAN_CHAIN_ID[chain];
+  return queuedEtherscanCall(async () => {
+    const url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=balance&address=${address}&tag=latest&apikey=${ETHERSCAN_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    if (data.status !== "1") throw new Error(data.message === "NOTOK" ? data.result : (data.message || "Etherscan-Fehler"));
+    return Number(BigInt(data.result)) / 1e18;
+  });
+}
+
+// Generische EVM-RPC-Hilfsfunktionen (für gezielte Balance-Abfrage bekannter Token-Adressen)
+async function evmRpcCall(rpcUrl, method, params) {
+  const res = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.result;
+}
+
+function decodeAbiString(hex) {
+  if (!hex || hex === "0x") return "";
+  try {
+    const data = hex.slice(2);
+    const lengthHex = data.slice(64, 128);
+    const length = parseInt(lengthHex, 16);
+    const strHex = data.slice(128, 128 + length * 2);
+    const bytes = new Uint8Array(strHex.length / 2);
+    for (let i = 0; i < strHex.length; i += 2) {
+      bytes[i / 2] = parseInt(strHex.substr(i, 2), 16);
+    }
+    const str = new TextDecoder("utf-8").decode(bytes);
+    return str.replace(/\0/g, "").trim();
+  } catch (e) {
+    return "";
+  }
+}
+
+async function fetchNativeViaRpc(rpcUrl, address) {
+  const result = await evmRpcCall(rpcUrl, "eth_getBalance", [address, "latest"]);
+  return Number(BigInt(result)) / 1e18;
+}
+
+// Bündelt mehrere eth_call-Anfragen in einer einzigen HTTP-Anfrage (JSON-RPC Batch),
+// statt für jeden Token einzeln zum Server zu gehen - das ist der Haupt-Geschwindigkeitshebel.
+async function evmRpcBatch(rpcUrl, calls) {
+  if (calls.length === 0) return [];
+  const body = calls.map((c, i) => ({
+    jsonrpc: "2.0",
+    id: i,
+    method: "eth_call",
+    params: [{ to: c.to, data: c.data }, "latest"]
+  }));
+  const res = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  const arr = Array.isArray(data) ? data : [data];
+  const byId = {};
+  arr.forEach(d => { byId[d.id] = d; });
+  return calls.map((c, i) => {
+    const d = byId[i];
+    if (!d || d.error) return null;
+    return d.result;
+  });
+}
+
+// Cache für Dezimalstellen/Symbol pro Chain+Adresse - diese ändern sich nie,
+// darum werden sie nur einmal abgefragt statt für jede Wallet neu. Wird dauerhaft
+// in localStorage gespeichert: nach dem allerersten Laden entfällt dieser Abruf
+// bei jedem weiteren Seitenaufruf komplett, auch nach einem Browser-Neustart.
+const TOKEN_META_CACHE_KEY = "tokenMetaCache";
+const TOKEN_META_CACHE_VERSION_KEY = "tokenMetaCacheVersion";
+const TOKEN_META_CACHE_VERSION = 2; // hochzählen, wenn sich das Cache-Format/die Dekodierung ändert
+let tokenMetaCache = {};
+
+function loadTokenMetaCache() {
+  try {
+    const storedVersion = localStorage.getItem(TOKEN_META_CACHE_VERSION_KEY);
+    if (storedVersion !== String(TOKEN_META_CACHE_VERSION)) {
+      // Alter/fehlerhafter Cache (z.B. falsch dekodierte Sonderzeichen) - verwerfen und neu aufbauen
+      localStorage.removeItem(TOKEN_META_CACHE_KEY);
+      localStorage.setItem(TOKEN_META_CACHE_VERSION_KEY, String(TOKEN_META_CACHE_VERSION));
+      tokenMetaCache = {};
+      return;
+    }
+    const raw = localStorage.getItem(TOKEN_META_CACHE_KEY);
+    tokenMetaCache = raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    tokenMetaCache = {};
+  }
+}
+
+function saveTokenMetaCache() {
+  try {
+    localStorage.setItem(TOKEN_META_CACHE_KEY, JSON.stringify(tokenMetaCache));
+  } catch (e) {
+    // localStorage evtl. nicht verfügbar - dann gilt der Cache nur für diese Sitzung
+  }
+}
+
+// Prüft gezielt die Balance der sicheren + selbst erfassten Token für eine Chain,
+// gebündelt in möglichst wenigen Anfragen (kein Auto-Discovery unbekannter Token,
+// siehe Erklärung im Chat).
+async function fetchKnownTokenBalances(rpcUrl, address, chain) {
+  const list = (SAFE_ADDRESSES[chain] || []).map(a => ({ address: a, label: null }))
+    .concat(customSafeTokens.filter(t => t.chain === chain).map(t => ({ address: t.address, label: t.label })));
+
+  const seen = new Set();
+  const unique = list.filter(t => {
+    if (seen.has(t.address)) return false;
+    seen.add(t.address);
+    return true;
+  });
+  if (unique.length === 0) return [];
+
+  // Balance IMMER abfragen, Dezimalstellen/Symbol nur für noch nicht gecachte Token -
+  // alles zusammen in einer einzigen Anfrage (ein Netzwerk-Umlauf statt zwei).
+  const balanceData = "0x70a08231" + address.toLowerCase().replace("0x", "").padStart(64, "0");
+  const calls = [];
+  const plan = []; // parallel zu calls: was die jeweilige Antwort bedeutet
+
+  unique.forEach((t, idx) => {
+    calls.push({ to: t.address, data: balanceData });
+    plan.push({ idx, type: "balance" });
+
+    const cacheKey = chain + "|" + t.address;
+    if (!tokenMetaCache[cacheKey]) {
+      calls.push({ to: t.address, data: "0x313ce567" });
+      plan.push({ idx, type: "decimals" });
+      calls.push({ to: t.address, data: "0x95d89b41" });
+      plan.push({ idx, type: "symbol" });
+    }
+  });
+
+  const results = await evmRpcBatch(rpcUrl, calls);
+
+  const perToken = unique.map(() => ({}));
+  results.forEach((hex, i) => {
+    const { idx, type } = plan[i];
+    perToken[idx][type] = hex;
+  });
+
+  const withBalance = [];
+  let cacheChanged = false;
+  unique.forEach((t, idx) => {
+    const hex = perToken[idx].balance;
+    if (!hex || hex === "0x") return;
+    const raw = BigInt(hex);
+    if (raw <= 0n) return;
+
+    const cacheKey = chain + "|" + t.address;
+    if (!tokenMetaCache[cacheKey]) {
+      const decHex = perToken[idx].decimals;
+      const decimals = decHex && decHex !== "0x" ? parseInt(decHex, 16) : 18;
+      const symbol = t.label || decodeAbiString(perToken[idx].symbol) || (t.address.slice(0, 8) + "…");
+      tokenMetaCache[cacheKey] = { decimals, symbol };
+      cacheChanged = true;
+    }
+    const meta = tokenMetaCache[cacheKey];
+    withBalance.push({
+      symbol: meta.symbol,
+      address: t.address,
+      amount: Number(raw) / Math.pow(10, meta.decimals)
+    });
+  });
+  if (cacheChanged) saveTokenMetaCache();
+
+  return withBalance;
+}
+
+async function fetchEvmAddressInfo(chain, rpcUrl, address) {
+  const nativeFn = ETHERSCAN_CHAIN_ID[chain]
+    ? fetchEtherscanNative(chain, address)
+    : fetchNativeViaRpc(rpcUrl, address);
+  const [native, tokens] = await Promise.all([
+    nativeFn,
+    fetchKnownTokenBalances(rpcUrl, address, chain)
+  ]);
+  return { native, tokens };
+}
+
+async function fetchBitcoinBalance(address) {
+  const res = await fetch(`https://blockstream.info/api/address/${address}`);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  const funded = data.chain_stats.funded_txo_sum + data.mempool_stats.funded_txo_sum;
+  const spent = data.chain_stats.spent_txo_sum + data.mempool_stats.spent_txo_sum;
+  return (funded - spent) / 1e8;
+}
+
+async function fetchXrpBalance(address) {
+  const res = await fetch(`https://api.xrpscan.com/api/v1/account/${address}`);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  if (data.xrpBalance === undefined) throw new Error("Keine Balance gefunden");
+  return parseFloat(data.xrpBalance);
+}
+
+async function fetchSolanaBalance(address) {
+  const res = await fetch("https://solana-rpc.publicnode.com/" + publicnodeToken("sol"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getBalance", params: [address] })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.result.value / 1e9;
+}
+
+// ---- Tron (native TRX, vorerst ohne TRC20-Token) ----
+// ---- Tron: nativer TRX-Bestand + sichere TRC20-Token (z.B. USDT-TRC20) ----
+// Bekannte TRC20-Dezimalstellen - TronGrid liefert nur den rohen Betrag, keine Dezimalstellen.
+// Deckt aktuell die grossen Stablecoins ab (alle 6 Dezimalstellen, Branchenstandard).
+const TRON_TOKEN_DECIMALS_DEFAULT = 6;
+
+async function fetchTronAddressInfo(address) {
+  const res = await fetch(`https://api.trongrid.io/v1/accounts/${address}`);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error || "Unbekannter Fehler");
+  const account = (data.data || [])[0];
+  const native = account && account.balance ? account.balance / 1e6 : 0;
+
+  // Volle Liste (nicht vorab gefiltert) - so kann sowohl die normale Ansicht (nur sichere
+  // Token, siehe chainRows) als auch die "Entdecken"-Funktion (auch unsichere Token) darauf zugreifen.
+  const tokens = [];
+  const trc20List = (account && account.trc20) || [];
+  trc20List.forEach(entry => {
+    const contractAddress = Object.keys(entry)[0];
+    const rawStr = entry[contractAddress];
+    if (!contractAddress || !rawStr) return;
+
+    const raw = BigInt(rawStr);
+    if (raw <= 0n) return;
+
+    const custom = customSafeTokens.find(t => t.chain === "tron" && t.address === contractAddress);
+    const label = predefinedTokenLabels["tron|" + contractAddress] || (custom ? custom.label : null) || (contractAddress.slice(0, 8) + "…");
+    tokens.push({
+      symbol: label,
+      address: contractAddress,
+      amount: Number(raw) / Math.pow(10, TRON_TOKEN_DECIMALS_DEFAULT)
+    });
+  });
+
+  return { native, tokens };
+}
+
+// ---- Apertum (EVM, chain-id 2786) ----
+// Es gibt keine Ethplorer-artige Auto-Discovery-API für diese Chain, darum werden
+// nur die bekannten (sicheren + selbst erfassten) Token-Adressen gezielt per eth_call geprüft.
+async function fetchApertumAddressInfo(address) {
+  const [balRes, tokRes] = await Promise.all([
+    fetch(`${APERTUM_EXPLORER_API}/addresses/${address}`),
+    fetch(`${APERTUM_EXPLORER_API}/addresses/${address}/tokens?type=ERC-20`)
+  ]);
+  if (!balRes.ok) throw new Error("HTTP " + balRes.status + " (Balance)");
+  const balData = await balRes.json();
+  const native = balData.coin_balance ? Number(BigInt(balData.coin_balance)) / 1e18 : 0;
+
+  let tokens = [];
+  if (tokRes.ok) {
+    const tokData = await tokRes.json();
+    tokens = (tokData.items || [])
+      .filter(item => item.token)
+      .map(item => {
+        const decimals = parseInt(item.token.decimals || "18", 10);
+        const raw = BigInt(item.value || "0");
+        return {
+          symbol: item.token.symbol || item.token.name || "?",
+          address: (item.token.address || "").toLowerCase(),
+          amount: Number(raw) / Math.pow(10, decimals)
+        };
+      })
+      .filter(t => t.amount >= DUST_THRESHOLD);
+  }
+  return { native, tokens };
+}
+
+async function loadWalletChain(wallet, chain) {
+  walletData[wallet.id] = walletData[wallet.id] || {};
+  try {
+    if (chain === "eth" || chain === "bsc" || chain === "matic" || chain === "arb" || chain === "base" || chain === "avax") {
+      if (!wallet.evm) { delete walletData[wallet.id][chain]; return; }
+      const r = await fetchEvmAddressInfo(chain, EVM_RPC_URLS[chain], wallet.evm);
+      walletData[wallet.id][chain] = { native: r.native, nativeSymbol: EVM_NATIVE_SYMBOL[chain], tokens: r.tokens };
+    } else if (chain === "apertum") {
+      if (!wallet.evm) { delete walletData[wallet.id].apertum; return; }
+      const r = await fetchApertumAddressInfo(wallet.evm);
+      walletData[wallet.id].apertum = { native: r.native, nativeSymbol: "APTM", tokens: r.tokens };
+    } else if (chain === "btc") {
+      if (!wallet.btc) { delete walletData[wallet.id].btc; return; }
+      const amount = await fetchBitcoinBalance(wallet.btc);
+      walletData[wallet.id].btc = { native: amount, nativeSymbol: "BTC", tokens: [] };
+    } else if (chain === "xrp") {
+      if (!wallet.xrp) { delete walletData[wallet.id].xrp; return; }
+      const amount = await fetchXrpBalance(wallet.xrp);
+      walletData[wallet.id].xrp = { native: amount, nativeSymbol: "XRP", tokens: [] };
+    } else if (chain === "sol") {
+      if (!wallet.sol) { delete walletData[wallet.id].sol; return; }
+      const amount = await fetchSolanaBalance(wallet.sol);
+      walletData[wallet.id].sol = { native: amount, nativeSymbol: "SOL", tokens: [] };
+    } else if (chain === "tron") {
+      if (!wallet.tron) { delete walletData[wallet.id].tron; return; }
+      const r = await fetchTronAddressInfo(wallet.tron);
+      walletData[wallet.id].tron = { native: r.native, nativeSymbol: "TRX", tokens: r.tokens };
+    }
+  } catch (err) {
+    walletData[wallet.id][chain] = { error: err.message };
+  }
+}
+
+async function loadAll() {
+  const btn = document.getElementById("loadBtn");
+  btn.disabled = true;
+  renderCacheStatusNote("Lade...");
+  const jobs = [loadNativePrices()];
+  wallets.forEach(w => {
+    ["eth", "bsc", "matic", "arb", "base", "avax", "apertum", "tron", "btc", "xrp", "sol"].forEach(chain => {
+      jobs.push(loadWalletChain(w, chain));
+    });
+  });
+  await Promise.all(jobs);
+  renderResults();
+  renderSafeTokenTable();
+  renderCustomTokenList();
+  renderAllocationChart();
+  btn.disabled = false;
+
+  // Cache aktualisieren, damit beim nächsten Login der neue Zeitstempel angezeigt wird
+  await createSnapshot(true);
+  renderCacheStatusNote("Gerade eben live aktualisiert.");
+}
+
+// ---- Rendering ----
+function badge(safe) {
+  return safe
+    ? `<span class="badge safe">sicher</span>`
+    : `<span class="badge unsafe">ungeprüft</span>`;
+}
+
+function fmt(n) {
+  return Number(n).toLocaleString('de-CH', { maximumFractionDigits: 6 });
+}
+
+// Nur noch echte Nullen/Rundungsrauschen gelten als Staub - Token mit z.B. 18
+// Dezimalstellen können einen realen, aber winzigen Bestand haben (bis zur 18. Stelle),
+// der nicht fälschlich ausgeblendet werden soll.
+const DUST_THRESHOLD = 1e-25;
+
+// Kurs für Token-Zeilen anhand des Symbols (nur exaktes USDT/USDC, siehe oben)
+function priceForToken(chain, address) {
+  if (!address) return null;
+  const key = chain + "|" + normalizeAddress(address, chain);
+  return tokenPrices[key] || null;
+}
+
+function chainRows(chainData, chainKey) {
+  if (!chainData) return null;
+  if (chainData.error) return { error: chainData.error };
+  const rows = [];
+  if (chainData.native !== null && chainData.native !== undefined && chainData.native >= DUST_THRESHOLD) {
+    const p = nativePrices[chainKey];
+    rows.push({
+      symbol: chainData.nativeSymbol + " (nativ)",
+      amount: chainData.native,
+      safe: true,
+      isNative: true,
+      price: p ? p.price : undefined,
+      change24h: p ? p.change24h : undefined,
+      source: p ? "CoinGecko" : undefined,
+      usdValue: p ? chainData.native * p.price : undefined
+    });
+  }
+  (chainData.tokens || []).forEach(t => {
+    const safe = isSafeTokenAddress(t.address, chainKey);
+    if (t.amount >= DUST_THRESHOLD && safe) {
+      const p = priceForToken(chainKey, t.address);
+      rows.push({
+        symbol: t.symbol,
+        amount: t.amount,
+        safe,
+        isNative: false,
+        address: t.address,
+        price: p ? p.price : undefined,
+        change24h: p ? p.change24h : undefined,
+        source: p ? p.source : undefined,
+        usdValue: p ? t.amount * p.price : undefined
+      });
+    }
+  });
+  return { rows };
+}
+
+function fmtChange(pct) {
+  if (pct === undefined || pct === null || isNaN(pct)) {
+    return '<span style="color:var(--muted)">–</span>';
+  }
+  const positive = pct >= 0;
+  const color = positive ? "#46c878" : "var(--danger)";
+  const sign = positive ? "+" : "";
+  return `<span style="color:${color}">${sign}${pct.toFixed(2)}%</span>`;
+}
+
+// ---- Snapshots (Token-Bestand zu einem Zeitpunkt) ----
+let snapshots = []; // [{id, createdAt, visible, items: [...]}]
+
+async function loadSnapshotsFromDb() {
+  const { data: snapRows, error: e1 } = await sb.from("snapshots").select("*").eq("is_automated", false).order("created_at", { ascending: false });
+  if (e1) { console.error(e1); snapshots = []; return; }
+  const { data: itemRows, error: e2 } = await sb.from("snapshot_items").select("*");
+  if (e2) console.error(e2);
+  const byId = {};
+  (itemRows || []).forEach(it => {
+    byId[it.snapshot_id] = byId[it.snapshot_id] || [];
+    byId[it.snapshot_id].push(it);
+  });
+  const prevVisibility = {};
+  snapshots.forEach(s => { prevVisibility[s.id] = s.visible; });
+  snapshots = (snapRows || []).map(s => ({
+    id: s.id,
+    createdAt: s.created_at,
+    visible: prevVisibility.hasOwnProperty(s.id) ? prevVisibility[s.id] : true,
+    items: byId[s.id] || []
+  }));
+}
+
+// ---- Automatisierter Tages-Cache (Bestände) ----
+// Rekonstruiert walletData aus dem automatisierten Snapshot, statt live abzufragen.
+// Gibt den Zeitstempel des Snapshots zurück (für die "zuletzt geladen"-Anzeige) oder null,
+// falls noch kein Cache existiert (z.B. beim allerersten Login).
+async function loadFromAutomatedCache() {
+  const { data: snap, error: e1 } = await sb.from("snapshots").select("*").eq("user_id", currentUser.id).eq("is_automated", true).maybeSingle();
+  if (e1) { console.error(e1); return null; }
+  if (!snap) return null;
+
+  const { data: items, error: e2 } = await sb.from("snapshot_items").select("*").eq("snapshot_id", snap.id);
+  if (e2) { console.error(e2); return null; }
+
+  const byWalletChain = {};
+  (items || []).forEach(it => {
+    byWalletChain[it.wallet_id] = byWalletChain[it.wallet_id] || {};
+    const entry = byWalletChain[it.wallet_id][it.chain] = byWalletChain[it.wallet_id][it.chain] || { native: null, nativeSymbol: null, tokens: [] };
+    if (it.is_native) {
+      entry.native = Number(it.amount);
+      entry.nativeSymbol = (it.symbol || "").replace(" (nativ)", "");
+    } else {
+      entry.tokens.push({ symbol: it.symbol, address: it.address, amount: Number(it.amount) });
+    }
+  });
+  walletData = byWalletChain;
+  return snap.created_at;
+}
+
+function renderCacheStatusNote(text) {
+  const el = document.getElementById("cacheStatusNote");
+  if (el) el.textContent = text;
+}
+
+function buildCurrentSnapshotItems() {
+  const items = [];
+  wallets.forEach(w => {
+    if (!w.dbId) return; // ungespeicherte Wallet (noch keine DB-ID) - nicht in den Snapshot aufnehmen,
+                          // sonst gibt's später keine zuverlässige Zuordnung mehr möglich
+    Object.keys(CHAIN_META).forEach(chain => {
+      const result = chainRows((walletData[w.id] || {})[chain], chain);
+      if (!result || result.error) return;
+      result.rows.forEach(r => {
+        items.push({
+          wallet_id: w.dbId,
+          wallet_label: w.label,
+          chain,
+          symbol: r.symbol,
+          address: r.isNative ? null : (r.address || null),
+          is_native: !!r.isNative,
+          amount: r.amount,
+          price_usd: r.price !== undefined ? r.price : null, // Kurs ZUM ZEITPUNKT des Snapshots, nicht live nachträglich
+          user_id: currentUser.id
+        });
+      });
+    });
+  });
+  return items;
+}
+
+// isAutomated=false (Standard): manueller Snapshot, bleibt dauerhaft, taucht in der Verwaltung
+// und der Verlauf-Grafik auf. isAutomated=true: interner Tages-Cache, ersetzt sich selbst bei
+// jedem echten Neuladen, taucht NICHT in der normalen Snapshot-Liste/Grafik auf.
+async function createSnapshot(isAutomated) {
+  isAutomated = !!isAutomated;
+
+  if (!isAutomated) {
+    const unsaved = wallets.filter(w => !w.dbId);
+    if (unsaved.length > 0) {
+      const proceed = confirm(
+        `Diese Wallet(s) sind noch nicht gespeichert und werden im Snapshot fehlen: ${unsaved.map(w => w.label).join(", ")}.\n\n` +
+        `Zuerst auf "Speichern" klicken (im Tab "Meine Wallets") und danach den Snapshot erstellen? Trotzdem jetzt fortfahren?`
+      );
+      if (!proceed) return;
+    }
+  }
+
+  const items = buildCurrentSnapshotItems();
+
+  if (items.length === 0) {
+    if (!isAutomated) alert("Keine Bestände gefunden, die gespeichert werden können. Erst 'Alle laden' ausführen und warten, bis Daten da sind.");
+    return;
+  }
+
+  if (isAutomated) {
+    // alten Cache-Snapshot ersetzen statt anzuhäufen
+    await sb.from("snapshots").delete().eq("user_id", currentUser.id).eq("is_automated", true);
+  }
+
+  const { data: snap, error: snapErr } = await sb.from("snapshots").insert({ user_id: currentUser.id, is_automated: isAutomated }).select().single();
+  if (snapErr) { if (!isAutomated) alert("Fehler beim Erstellen des Snapshots: " + snapErr.message); return; }
+
+  const rows = items.map(it => ({ ...it, snapshot_id: snap.id }));
+  const { error: itemsErr } = await sb.from("snapshot_items").insert(rows);
+  if (itemsErr) { if (!isAutomated) alert("Fehler beim Speichern der Snapshot-Daten: " + itemsErr.message); return; }
+
+  if (!isAutomated) {
+    await loadSnapshotsFromDb();
+    renderSnapshotManager();
+    renderResults();
+  }
+}
+
+async function deleteSnapshot(id) {
+  if (!confirm("Diesen Snapshot unwiderruflich löschen?")) return;
+  await sb.from("snapshots").delete().eq("id", id);
+  snapshots = snapshots.filter(s => s.id !== id);
+  renderSnapshotManager();
+  renderResults();
+}
+
+function toggleSnapshotVisible(id, isVisible) {
+  const s = snapshots.find(s => s.id === id);
+  if (s) s.visible = isVisible;
+  renderResults();
+}
+
+function setAllSnapshotsVisible(visible) {
+  snapshots.forEach(s => { s.visible = visible; });
+  renderSnapshotManager();
+  renderResults();
+}
+
+function fmtSnapshotDateTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('de-CH') + ", " + d.toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderSnapshotManager() {
+  const el = document.getElementById("snapshotManagerList");
+  if (!el) return;
+  if (snapshots.length === 0) {
+    el.innerHTML = `<div class="empty">Noch keine Snapshots erstellt.</div>`;
+    return;
+  }
+  const actions = `<div class="action-row" style="margin-bottom:10px">
+    <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllSnapshotsVisible(true)">Alle einblenden</button>
+    <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllSnapshotsVisible(false)">Alle ausblenden</button>
+  </div>`;
+  el.innerHTML = actions + snapshots.map(s => `
+    <div class="custom-token-row">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0">
+        <input type="checkbox" ${s.visible ? "checked" : ""} onchange="toggleSnapshotVisible('${s.id}', this.checked)" style="width:auto" />
+        ${fmtSnapshotDateTime(s.createdAt)}
+      </label>
+      <button class="remove" onclick="deleteSnapshot('${s.id}')">Löschen</button>
+    </div>
+  `).join("");
+}
+
+// ---- Verlauf-Grafik (ein Token über Zeit, Snapshots + aktueller Bestand) ----
+let snapshotChartInstance = null;
+
+function renderChartWalletSelect() {
+  const el = document.getElementById("chartWalletSelect");
+  if (!el) return;
+  const current = el.value;
+  el.innerHTML = `<option value="">Total (alle Wallets)</option>` +
+    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (current === "" || wallets.some(w => w.id === current)) el.value = current;
+}
+
+// Ermittelt genau die Chain/Token-Kombinationen, die auch in der Summary-Tabelle
+// auftauchen würden (aktueller Bestand > 0 ODER in irgendeinem Snapshot vorhanden) -
+// unabhängig vom Chain-Sichtbarkeits-Filter oben, damit die Grafik-Auswahl stabil bleibt.
+function computeAvailableChartOptions() {
+  const options = [];
+  Object.keys(CHAIN_META).forEach(chain => {
+    const found = {}; // key -> {label, isNative}
+
+    wallets.forEach(w => {
+      const cd = (walletData[w.id] || {})[chain];
+      if (!cd || cd.error) return;
+      if (cd.native !== null && cd.native !== undefined && cd.native > 0) {
+        found.native = { label: (NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)", isNative: true };
+      }
+      (cd.tokens || []).forEach(t => {
+        if (t.amount <= 0 || !isSafeTokenAddress(t.address, chain)) return;
+        found[(t.address || "").toLowerCase()] = { label: t.symbol, isNative: false };
+      });
+    });
+
+    snapshots.forEach(s => {
+      s.items.filter(it => it.chain === chain).forEach(it => {
+        const key = it.is_native ? "native" : (it.address || "").toLowerCase();
+        if (!found[key]) {
+          found[key] = { label: it.is_native ? (NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)" : it.symbol, isNative: it.is_native };
+        }
+      });
+    });
+
+    Object.keys(found).forEach(key => {
+      options.push({ chain, key, label: found[key].label, isNative: found[key].isNative });
+    });
+  });
+  return options;
+}
+
+function renderChartChainSelect() {
+  const el = document.getElementById("chartChainSelect");
+  if (!el) return;
+  const available = computeAvailableChartOptions();
+  const chainsWithData = Object.keys(CHAIN_META).filter(c => available.some(o => o.chain === c));
+  el.innerHTML = `<option value="">– Chain wählen –</option>` +
+    chainsWithData.map(c => `<option value="${c}">${CHAIN_META[c].label}</option>`).join("");
+  if (chainsWithData.length === 0) {
+    el.innerHTML = `<option value="">Keine Bestände/Snapshots vorhanden</option>`;
+  }
+}
+
+function populateChartTokenSelect() {
+  const chain = document.getElementById("chartChainSelect").value;
+  const tokenSelect = document.getElementById("chartTokenSelect");
+  if (!chain) {
+    tokenSelect.innerHTML = `<option value="">– zuerst Chain wählen –</option>`;
+    tokenSelect.disabled = true;
+    document.getElementById("snapshotChartContainer").innerHTML = "";
+    return;
+  }
+  const available = computeAvailableChartOptions().filter(o => o.chain === chain);
+  const options = [`<option value="">– Token wählen –</option>`];
+  available.forEach(o => {
+    const value = o.isNative ? "native" : o.key;
+    options.push(`<option value="${value}">${escapeAttr(o.label)}</option>`);
+  });
+
+  tokenSelect.innerHTML = options.join("");
+  tokenSelect.disabled = false;
+  document.getElementById("snapshotChartContainer").innerHTML = "";
+}
+
+function generateSnapshotChart() {
+  const walletId = document.getElementById("chartWalletSelect").value;
+  const chain = document.getElementById("chartChainSelect").value;
+  const tokenVal = document.getElementById("chartTokenSelect").value;
+  const container = document.getElementById("snapshotChartContainer");
+
+  if (!chain || !tokenVal) {
+    container.innerHTML = "";
+    return;
+  }
+
+  const matchWallet = walletId ? wallets.find(w => w.id === walletId) : null;
+  const isNative = tokenVal === "native";
+  const key = isNative ? "native" : tokenVal.toLowerCase();
+
+  // Historische Punkte aus ALLEN Snapshots (unabhängig von deren Ein-/Ausblenden-Status
+  // in der Tabellen-Ansicht), chronologisch aufsteigend sortiert.
+  const sortedSnaps = snapshots.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const points = sortedSnaps.map(s => ({
+    label: fmtSnapshotDateTime(s.createdAt),
+    value: snapshotValueForKey(s, chain, key, matchWallet) || 0
+  }));
+
+  // Aktueller Live-Bestand als letzter Punkt
+  let currentVal = 0;
+  const wallets_ = matchWallet ? [matchWallet] : wallets;
+  wallets_.forEach(w => {
+    const cd = (walletData[w.id] || {})[chain];
+    if (!cd) return;
+    if (isNative) {
+      currentVal += cd.native || 0;
+    } else {
+      const t = (cd.tokens || []).find(t => (t.address || "").toLowerCase() === key);
+      if (t) currentVal += t.amount;
+    }
+  });
+  points.push({ label: "Jetzt", value: currentVal });
+
+  if (points.length < 2) {
+    container.innerHTML = `<div class="empty">Zu wenig Datenpunkte (mind. 1 Snapshot nötig, um einen Verlauf zu zeigen).</div>`;
+    return;
+  }
+
+  const tokenLabel = isNative
+    ? (NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)"
+    : (document.getElementById("chartTokenSelect").selectedOptions[0].textContent);
+  const walletLabel = matchWallet ? matchWallet.label : "Total (alle Wallets)";
+
+  container.innerHTML = `<canvas id="snapshotChartCanvas" height="90"></canvas>`;
+  const ctx = document.getElementById("snapshotChartCanvas").getContext("2d");
+  if (snapshotChartInstance) snapshotChartInstance.destroy();
+  snapshotChartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: points.map(p => p.label),
+      datasets: [{
+        label: `${tokenLabel} · ${CHAIN_META[chain].label} · ${walletLabel}`,
+        data: points.map(p => p.value),
+        borderColor: "#6c8cff",
+        backgroundColor: "rgba(108,140,255,0.15)",
+        fill: true,
+        tension: 0.2,
+        pointRadius: 4,
+        pointBackgroundColor: "#6c8cff"
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: "#e8e9ec" } },
+        tooltip: { callbacks: { label: (ctx) => fmt(ctx.parsed.y) } }
+      },
+      scales: {
+        x: { ticks: { color: "#9aa0ac" }, grid: { color: "#2a2e38" } },
+        y: { ticks: { color: "#9aa0ac", callback: (v) => fmt(v) }, grid: { color: "#2a2e38" } }
+      }
+    }
+  });
+}
+
+// ---- Portfolio-Allokation (Kreisdiagramm, nach USD-Wert) ----
+let allocationChartInstance = null;
+const ALLOC_COLORS = ["#6c8cff", "#f0b90b", "#8247e5", "#28a0f0", "#0052ff", "#e84142", "#00c2a8", "#ff060a", "#f7931a", "#14f195", "#46c878", "#ff6b6b", "#9aa0ac"];
+
+function renderAllocWalletSelect() {
+  const el = document.getElementById("allocWalletSelect");
+  if (!el) return;
+  const current = el.value;
+  el.innerHTML = `<option value="">Total (alle Wallets)</option>` +
+    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (current === "" || wallets.some(w => w.id === current)) el.value = current;
+}
+
+function renderAllocationChart() {
+  const container = document.getElementById("allocationChartContainer");
+  if (!container) return;
+  const walletId = document.getElementById("allocWalletSelect").value;
+  const groupBy = document.getElementById("allocGroupSelect").value; // "chain" | "token"
+  const targetWallets = walletId ? wallets.filter(w => w.id === walletId) : wallets;
+
+  const totals = {}; // key -> {label, value}
+  let hasAnyValue = false;
+
+  targetWallets.forEach(w => {
+    Object.keys(CHAIN_META).forEach(chain => {
+      const result = chainRows((walletData[w.id] || {})[chain], chain);
+      if (!result || result.error) return;
+      result.rows.forEach(r => {
+        const key = groupBy === "chain" ? chain : r.symbol.replace(" (nativ)", "");
+        const label = groupBy === "chain" ? CHAIN_META[chain].label : key;
+        if (!totals[key]) totals[key] = { label, value: 0 };
+        if (r.usdValue !== undefined) {
+          totals[key].value += r.usdValue;
+          hasAnyValue = true;
+        } else {
+          totals["_unknown"] = totals["_unknown"] || { label: "Unbekannt (kein Kurs)", value: 0 };
+          // ohne Kurs kann kein USD-Wert beigetragen werden - Menge lässt sich nicht sinnvoll mit anderen mischen,
+          // wird nur als Hinweis separat ausgewiesen (0 USD, taucht nicht im Kreis auf, aber im Hinweistext).
+        }
+      });
+    });
+  });
+
+  if (!hasAnyValue) {
+    container.innerHTML = `<div class="empty">Keine Bestände mit bekanntem Kurs vorhanden.</div>`;
+    return;
+  }
+
+  const entries = Object.entries(totals).filter(([k, v]) => k !== "_unknown" && v.value > 0).sort((a, b) => b[1].value - a[1].value);
+
+  container.innerHTML = `<canvas id="allocationChartCanvas"></canvas>`;
+  const ctx = document.getElementById("allocationChartCanvas").getContext("2d");
+  if (allocationChartInstance) allocationChartInstance.destroy();
+  allocationChartInstance = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: entries.map(([k, v]) => v.label),
+      datasets: [{
+        data: entries.map(([k, v]) => v.value),
+        backgroundColor: entries.map((_, i) => ALLOC_COLORS[i % ALLOC_COLORS.length]),
+        borderColor: "#171a21",
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: "bottom", labels: { color: "#e8e9ec", boxWidth: 12, padding: 10 } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const total = entries.reduce((s, [, v]) => s + v.value, 0);
+              const pct = total > 0 ? (ctx.parsed / total * 100).toFixed(1) : "0";
+              return ` ${ctx.label}: ${fmtUsd(ctx.parsed)} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function visibleSnapshots() {
+  return snapshots.filter(s => s.visible).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+// Prüft, ob für eine Chain (+ optional ein bestimmtes Wallet) überhaupt Snapshot-Daten
+// existieren - damit eine Chain-Karte nicht ausgeblendet wird, nur weil der AKTUELLE
+// Bestand 0 ist, obwohl ein Snapshot noch etwas zeigen würde.
+// Ordnet eine Snapshot-Position einer Wallet zu - zuerst über die DB-ID (stabiler Normalfall),
+// falls die nicht passt zusätzlich über den Wallet-Namen (Fallback, falls eine Wallet
+// zwischenzeitlich neu gespeichert wurde und dadurch eine neue ID bekommen hat - der Name
+// bleibt in dem Fall meist gleich, die ID aber nicht mehr).
+function snapshotItemBelongsToWallet(it, matchWallet) {
+  if (!matchWallet) return true;
+  if (matchWallet.dbId && it.wallet_id === matchWallet.dbId) return true;
+  return it.wallet_label === matchWallet.label;
+}
+
+function hasVisibleSnapshotDataForChain(chain, matchWallet) {
+  return visibleSnapshots().some(s => s.items.some(it => it.chain === chain && snapshotItemBelongsToWallet(it, matchWallet)));
+}
+
+// ---- Bestands-Tabelle. wallet+chain optional: nur bei Angabe werden Snapshot-Spalten
+// (fixierte Hauptspalten, seitlich scrollbar) angehängt - Summary bleibt unverändert. ----
+const SNAPSHOT_COL_WIDTHS = { token: 260, amount: 140, price: 140, change: 90, value: 150, snap: 170 };
+
+function rowKey(row) {
+  return row.isNative ? "native" : (row.address || "").toLowerCase();
+}
+
+// Summiert den Bestand eines Tokens in einem Snapshot - entweder für EIN Wallet (matchWallet
+// gesetzt) oder über ALLE Wallets summiert (matchWallet null, für die Summary-Tabelle).
+function snapshotValueForKey(snap, chain, key, matchWallet) {
+  const items = snap.items.filter(it => it.chain === chain && snapshotItemBelongsToWallet(it, matchWallet));
+  const matching = items.filter(it => (it.is_native ? "native" : (it.address || "").toLowerCase()) === key);
+  if (matching.length === 0) return null;
+  return matching.reduce((sum, it) => sum + Number(it.amount), 0);
+}
+
+// Hängt an jede Zeile die Werte aus den sichtbaren Snapshots an (r.snapshotValues) und ergänzt
+// Zeilen für Token, die aktuell 0 Bestand haben, aber in einem Snapshot vorkamen.
+// matchWallet: ein Wallet-Objekt (Einzelwallet-Ansicht) oder null (Summary, über alle Wallets).
+function attachSnapshotColumns(rows, chain, matchWallet) {
+  const snaps = visibleSnapshots();
+  if (snaps.length === 0) return rows;
+
+  rows.forEach(r => {
+    r.snapshotValues = {};
+    snaps.forEach(s => { r.snapshotValues[s.id] = snapshotValueForKey(s, chain, rowKey(r), matchWallet); });
+  });
+
+  const presentKeys = new Set(rows.map(rowKey));
+  const extraKeys = new Set();
+  const extraRows = [];
+  snaps.forEach(s => {
+    s.items
+      .filter(it => it.chain === chain && snapshotItemBelongsToWallet(it, matchWallet))
+      .forEach(it => {
+        const key = it.is_native ? "native" : (it.address || "").toLowerCase();
+        if (presentKeys.has(key) || extraKeys.has(key)) return;
+        extraKeys.add(key);
+        const p = it.is_native ? nativePrices[chain] : priceForToken(chain, it.address);
+        const extraRow = {
+          symbol: it.symbol + " (aktuell 0)",
+          amount: 0, safe: true, isNative: it.is_native, address: it.address,
+          price: p ? p.price : undefined, usdValue: 0, isHistoricalOnly: true,
+          snapshotValues: {}
+        };
+        snaps.forEach(s2 => { extraRow.snapshotValues[s2.id] = snapshotValueForKey(s2, chain, key, matchWallet); });
+        extraRows.push(extraRow);
+      });
+  });
+  return rows.concat(extraRows);
+}
+
+function renderTable(rows, skipHeader) {
+  if (!rows || rows.length === 0) return null;
+  const snaps = visibleSnapshots();
+  const hasSnaps = snaps.length > 0 && rows.some(r => r.snapshotValues);
+
+  if (!hasSnaps) {
+    return `<table class="balance-table">
+      <colgroup>
+        <col class="col-token"><col class="col-amount"><col class="col-price"><col class="col-change"><col class="col-value">
+      </colgroup>
+      ${skipHeader ? "" : '<thead><tr><th>Token</th><th style="text-align:right">Anzahl</th><th style="text-align:right">Kurs (USD)</th><th style="text-align:right">24h %</th><th style="text-align:right">Wert (USD)</th></tr></thead>'}
+      <tbody>
+      ${rows.map(r => `<tr class="${r.isNative ? 'native-row' : ''}">
+        <td>${r.symbol} ${badge(r.safe)}</td>
+        <td class="num">${fmt(r.amount)}</td>
+        <td class="num">${r.price !== undefined ? fmtPrice(r.price) + (r.source ? `<span class="price-source">${r.source}</span>` : "") : '<span style="color:var(--muted)">–</span>'}</td>
+        <td class="num">${fmtChange(r.change24h)}</td>
+        <td class="num">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td>
+      </tr>`).join("")}
+    </tbody></table>`;
+  }
+
+  const w = SNAPSHOT_COL_WIDTHS;
+  const sticky = `position:sticky;left:0px;background:var(--card);z-index:2;`;
+
+  const colgroup = `<colgroup>
+    <col style="width:${w.token}px"><col style="width:${w.amount}px"><col style="width:${w.price}px"><col style="width:${w.change}px"><col style="width:${w.value}px">
+    ${snaps.map(() => `<col style="width:${w.snap}px">`).join("")}
+  </colgroup>`;
+
+  const headerRow = skipHeader ? "" : `<thead><tr>
+    <th style="${sticky}">Token</th>
+    <th style="text-align:right">Anzahl</th>
+    <th style="text-align:right">Kurs (USD)</th>
+    <th style="text-align:right">24h %</th>
+    <th style="text-align:right">Wert (USD)</th>
+    ${snaps.map(s => `<th style="text-align:right;white-space:normal">${fmtSnapshotDateTime(s.createdAt)}</th>`).join("")}
+  </tr></thead>`;
+
+  const bodyRows = rows.map(r => {
+    const snapCells = snaps.map(s => {
+      const amt = r.snapshotValues ? r.snapshotValues[s.id] : null;
+      return `<td class="num">${amt !== null && amt !== undefined ? fmt(amt) : '<span style="color:var(--muted)">–</span>'}</td>`;
+    }).join("");
+    const mutedStyle = r.isHistoricalOnly ? "opacity:0.6;" : "";
+    return `<tr class="${r.isNative ? 'native-row' : ''}" style="${mutedStyle}">
+      <td style="${sticky}${mutedStyle}">${r.symbol}${r.isHistoricalOnly ? '' : ' ' + badge(r.safe)}</td>
+      <td class="num" style="${mutedStyle}">${fmt(r.amount)}</td>
+      <td class="num" style="${mutedStyle}">${r.price !== undefined ? fmtPrice(r.price) + (r.source ? `<span class="price-source">${r.source}</span>` : "") : '<span style="color:var(--muted)">–</span>'}</td>
+      <td class="num" style="${mutedStyle}">${fmtChange(r.change24h)}</td>
+      <td class="num" style="${mutedStyle}">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td>
+      ${snapCells}
+    </tr>`;
+  }).join("");
+
+  return `<div style="overflow-x:auto"><table class="balance-table" style="width:max-content;min-width:100%">${colgroup}${headerRow}<tbody>${bodyRows}</tbody></table></div>`;
+}
+
+// Eine einzige Spaltenüberschrift-Zeile pro Wallet, mit dem Wallet-Namen anstelle von
+// "Token" - spart die sonst pro Chain-Karte wiederholte Kopfzeile. Lange Wallet-Namen
+// brechen dank normaler Tabellenzelle von selbst um, statt die Spalten zu überlagern.
+function renderWalletHeader(walletLabel) {
+  const snaps = visibleSnapshots();
+  const w = SNAPSHOT_COL_WIDTHS;
+  const titleStyle = "font-size:1.05rem;font-weight:700;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.3;text-transform:none;color:var(--text);";
+
+  if (snaps.length === 0) {
+    return `<table class="balance-table" style="margin-bottom:2px">
+      <colgroup><col class="col-token"><col class="col-amount"><col class="col-price"><col class="col-change"><col class="col-value"></colgroup>
+      <thead><tr>
+        <th style="${titleStyle}">💼 ${escapeAttr(walletLabel)}</th>
+        <th style="text-align:right">Anzahl</th>
+        <th style="text-align:right">Kurs (USD)</th>
+        <th style="text-align:right">24h %</th>
+        <th style="text-align:right">Wert (USD)</th>
+      </tr></thead>
+    </table>`;
+  }
+
+  const colgroup = `<colgroup>
+    <col style="width:${w.token}px"><col style="width:${w.amount}px"><col style="width:${w.price}px"><col style="width:${w.change}px"><col style="width:${w.value}px">
+    ${snaps.map(() => `<col style="width:${w.snap}px">`).join("")}
+  </colgroup>`;
+  const sticky = `position:sticky;left:0px;background:var(--card2);z-index:2;`;
+
+  return `<div style="overflow-x:auto"><table class="balance-table" style="width:max-content;min-width:100%;margin-bottom:2px">
+    ${colgroup}
+    <thead><tr>
+      <th style="${sticky}${titleStyle}">💼 ${escapeAttr(walletLabel)}</th>
+      <th style="text-align:right">Anzahl</th>
+      <th style="text-align:right">Kurs (USD)</th>
+      <th style="text-align:right">24h %</th>
+      <th style="text-align:right">Wert (USD)</th>
+      ${snaps.map(s => `<th style="text-align:right;white-space:normal">${fmtSnapshotDateTime(s.createdAt)}</th>`).join("")}
+    </tr></thead>
+  </table></div>`;
+}
+
+const EXPLORER_URLS = {
+  eth: (w) => w.evm ? `https://etherscan.io/address/${w.evm}` : null,
+  bsc: (w) => w.evm ? `https://bscscan.com/address/${w.evm}` : null,
+  matic: (w) => w.evm ? `https://polygonscan.com/address/${w.evm}` : null,
+  arb: (w) => w.evm ? `https://arbiscan.io/address/${w.evm}` : null,
+  base: (w) => w.evm ? `https://basescan.org/address/${w.evm}` : null,
+  avax: (w) => w.evm ? `https://snowtrace.io/address/${w.evm}` : null,
+  apertum: (w) => w.evm ? `https://explorer.apertum.io/address/${w.evm}` : null,
+  tron: (w) => w.tron ? `https://tronscan.org/#/address/${w.tron}` : null,
+  btc: (w) => w.btc ? `https://blockstream.info/address/${w.btc}` : null,
+  xrp: (w) => w.xrp ? `https://xrpscan.com/account/${w.xrp}` : null,
+  sol: (w) => w.sol ? `https://solscan.io/account/${w.sol}` : null
+};
+
+function renderResults() {
+  // --- Details je Wallet ---
+  const resultsContainer = document.getElementById("resultsContainer");
+  if (wallets.length === 0) {
+    resultsContainer.innerHTML = `<div class="empty">Keine Wallets erfasst.</div>`;
+  } else {
+    resultsContainer.innerHTML = wallets.map(w => {
+      const data = walletData[w.id] || {};
+      const chainCards = Object.keys(CHAIN_META).filter(chain => activeChainFilter.has(chain)).map(chain => {
+        const meta = CHAIN_META[chain];
+        const result = chainRows(data[chain], chain);
+        if (!result) return ""; // keine Adresse eingegeben -> gar nicht anzeigen
+        // Nicht ausblenden, wenn zwar aktuell 0 Bestand da ist, aber ein sichtbarer
+        // Snapshot für diese Wallet+Chain existiert - sonst verschwindet die Karte
+        // komplett und der Snapshot ist nie sichtbar.
+        if (!result.error && result.rows.length === 0 && !hasVisibleSnapshotDataForChain(chain, w)) return "";
+
+        let body;
+        if (result.error) {
+          body = `<div class="error">Fehler beim Laden: ${result.error}</div>`;
+        } else {
+          body = renderTable(attachSnapshotColumns(result.rows, chain, w), true) || '<div class="empty">Keine aktuellen Bestände, aber Snapshot-Daten vorhanden.</div>';
+        }
+        const explorerFn = EXPLORER_URLS[chain];
+        const explorerUrl = explorerFn ? explorerFn(w) : null;
+        const explorerLink = explorerUrl ? ` <a href="${explorerUrl}" target="_blank" rel="noopener" style="font-size:0.72rem;color:var(--accent);font-weight:400;margin-left:6px">Auf Explorer ansehen ↗</a>` : "";
+        return `<div class="chain-card">
+          <div class="chain-title"><span class="dot ${meta.dot}"></span> ${meta.label}${explorerLink}</div>
+          ${body}
+        </div>`;
+      }).join("");
+
+      return `<div class="wallet-block" id="wallet-block-${w.id}">
+        ${renderWalletHeader(w.label)}
+        ${chainCards || '<div class="empty">Keine Bestände gefunden.</div>'}
+      </div>`;
+    }).join("");
+  }
+
+  renderWalletNav();
+  renderChartChainSelect(); // Verfügbare Chains/Token für die Grafik hängen von Bestand+Snapshots ab, hier immer aktuell halten
+
+  // --- Summary über alle Wallets, pro Chain aggregiert ---
+  const summaryContainer = document.getElementById("summaryContainer");
+  const summaryCards = Object.keys(CHAIN_META).filter(chain => activeChainFilter.has(chain)).map(chain => {
+    const meta = CHAIN_META[chain];
+    const totals = {}; // key -> {symbol, amount, safe, isNative}
+    let hadError = false;
+
+    wallets.forEach(w => {
+      const cd = (walletData[w.id] || {})[chain];
+      if (!cd) return;
+      if (cd.error) { hadError = true; return; }
+      if (cd.native !== null && cd.native !== undefined && cd.native > 0) {
+        const key = "native";
+        totals[key] = totals[key] || { symbol: cd.nativeSymbol + " (nativ)", amount: 0, safe: true, isNative: true };
+        totals[key].amount += cd.native;
+      }
+      (cd.tokens || []).forEach(t => {
+        if (t.amount <= 0) return;
+        const safe = isSafeTokenAddress(t.address, chain);
+        const key = (t.address || t.symbol).toLowerCase();
+        totals[key] = totals[key] || { symbol: t.symbol, amount: 0, safe, isNative: false, address: t.address };
+        totals[key].amount += t.amount;
+      });
+    });
+
+    // Erst NACH dem Aufsummieren über alle Wallets filtern - eine Summe kann trotz
+    // einzelner Mini-Beträge unter der Sichtbarkeitsschwelle liegen.
+    const rows = Object.values(totals).filter(r => r.safe && r.amount >= DUST_THRESHOLD);
+    const p = nativePrices[chain];
+    rows.forEach(r => {
+      if (r.isNative && p) {
+        r.price = p.price;
+        r.change24h = p.change24h;
+        r.source = "CoinGecko";
+        r.usdValue = r.amount * p.price;
+      } else if (!r.isNative) {
+        const tp = priceForToken(chain, r.address);
+        if (tp) {
+          r.price = tp.price;
+          r.change24h = tp.change24h;
+          r.source = tp.source;
+          r.usdValue = r.amount * tp.price;
+        }
+      }
+    });
+
+    if (rows.length === 0 && !hadError && !hasVisibleSnapshotDataForChain(chain, null)) return ""; // keine Bestände -> gar nicht anzeigen
+
+    const sortedRows = rows.sort((a, b) => b.amount - a.amount);
+    let body = renderTable(attachSnapshotColumns(sortedRows, chain, null)) || '<div class="empty">Keine aktuellen Bestände, aber Snapshot-Daten vorhanden.</div>';
+    if (hadError) {
+      body += `<div class="error" style="margin-top:6px">Hinweis: Bei mindestens einem Wallet trat auf dieser Chain ein Fehler auf — Summe ist unvollständig.</div>`;
+    }
+
+    return `<div class="chain-card">
+      <div class="chain-title"><span class="dot ${meta.dot}"></span> ${meta.label} — Total</div>
+      ${body}
+    </div>`;
+  }).join("");
+
+  summaryContainer.innerHTML = summaryCards || '<div class="empty">Keine Bestände gefunden.</div>';
+}
+
+// ============================================================
+// "Entdecken" - findet Token, die eine Wallet hält, aber die
+// noch nicht auf der sicheren Liste stehen. Läuft nur auf Klick.
+// ============================================================
+
+// ---- Discovery: Wallet-Pflichtauswahl + Chain-Filter ----
+const DISCOVERY_CHAINS = ["apertum", "tron", "eth", "bsc", "matic", "arb", "base", "avax"];
+let activeDiscoveryChains = new Set(DISCOVERY_CHAINS);
+
+function renderDiscoveryChainFilter() {
+  const el = document.getElementById("discoveryChainContainer");
+  if (!el) return;
+  el.innerHTML = DISCOVERY_CHAINS.map(chain => {
+    const meta = CHAIN_META[chain];
+    const checked = activeDiscoveryChains.has(chain) ? "checked" : "";
+    return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
+      <input type="checkbox" ${checked} onchange="toggleDiscoveryChain('${chain}', this.checked)" style="width:auto" />
+      <span class="dot ${meta.dot}"></span> ${meta.label}
+    </label>`;
+  }).join("");
+}
+
+function toggleDiscoveryChain(chain, isChecked) {
+  if (isChecked) activeDiscoveryChains.add(chain);
+  else activeDiscoveryChains.delete(chain);
+}
+
+function setAllDiscoveryChains(selectAll) {
+  activeDiscoveryChains = selectAll ? new Set(DISCOVERY_CHAINS) : new Set();
+  renderDiscoveryChainFilter();
+}
+
+// ---- Gebühren-Auswertung (EVM-Chains via Alchemy) ----
+const FEES_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax", "apertum", "xrp", "sol"];
+let activeFeesChains = new Set(FEES_CHAINS);
+
+function renderFeesChainFilter() {
+  const el = document.getElementById("feesChainContainer");
+  if (!el) return;
+  el.innerHTML = FEES_CHAINS.map(chain => {
+    const meta = CHAIN_META[chain];
+    const checked = activeFeesChains.has(chain) ? "checked" : "";
+    return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
+      <input type="checkbox" ${checked} onchange="toggleFeesChain('${chain}', this.checked)" style="width:auto" />
+      <span class="dot ${meta.dot}"></span> ${meta.label}
+    </label>`;
+  }).join("");
+}
+
+function toggleFeesChain(chain, isChecked) {
+  if (isChecked) activeFeesChains.add(chain);
+  else activeFeesChains.delete(chain);
+}
+
+function setAllFeesChains(selectAll) {
+  activeFeesChains = selectAll ? new Set(FEES_CHAINS) : new Set();
+  renderFeesChainFilter();
+}
+
+function renderFeesWalletSelect() {
+  const el = document.getElementById("feesWalletSelect");
+  if (!el) return;
+  const current = el.value;
+  el.innerHTML = `<option value="">– Wallet wählen –</option>` +
+    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (wallets.some(w => w.id === current)) el.value = current;
+}
+
+// Holt die ausgehende Transaktionshistorie über Alchemy und berechnet die tatsächlich
+// bezahlte Netzwerkgebühr aus Transaction Receipt (gasUsed) × effectiveGasPrice.
+const FEES_MAX_PAGES = 50; // max. 50 x 1000 indexierte Transfers pro Chain
+
+async function fetchWalletFeesForChain(chain, address, onProgress) {
+  const addrLower = address.toLowerCase();
+  const history = await fetchAlchemyOutgoingTxHashes(chain, address, onProgress);
+  let totalWei = 0n;
+  let txCount = 0;
+
+  // Receipts + Transaktionen gebündelt laden; Deduplizierung erfolgt bereits über Hash-Set.
+  const chunkSize = 40;
+  for (let offset = 0; offset < history.hashes.length; offset += chunkSize) {
+    const chunk = history.hashes.slice(offset, offset + chunkSize);
+    const calls = [];
+    chunk.forEach(h => {
+      calls.push({ method: "eth_getTransactionByHash", params: [h] });
+      calls.push({ method: "eth_getTransactionReceipt", params: [h] });
+    });
+    const rows = await alchemyRpcBatch(chain, calls);
+    for (let i = 0; i < chunk.length; i++) {
+      const tx = rows[i * 2];
+      const receipt = rows[i * 2 + 1];
+      if (!tx || tx.__error || !receipt || receipt.__error) continue;
+      if ((tx.from || "").toLowerCase() !== addrLower) continue;
+      try {
+        const gasUsed = BigInt(receipt.gasUsed || "0x0");
+        const gasPrice = BigInt(receipt.effectiveGasPrice || tx.gasPrice || "0x0");
+        totalWei += gasUsed * gasPrice;
+        txCount++;
+      } catch (e) { /* einzelne kaputte Antwort ignorieren */ }
+    }
+  }
+
+  return { totalFee: Number(totalWei) / 1e18, txCount, truncated: history.truncated };
+}
+
+// XRP: xrpscan.com liefert die Gebühr (in Drops, 1 XRP = 1'000'000 Drops) direkt pro
+// Transaktion mit. Paginierung über den "marker"-Parameter (Standard-Konvention der XRPL-APIs).
+async function fetchXrpFees(address, onProgress) {
+  let marker = null;
+  let totalFeeDrops = 0;
+  let txCount = 0;
+  let page = 0;
+
+  do {
+    page++;
+    if (onProgress) onProgress(page);
+    const url = `https://api.xrpscan.com/api/v1/account/${address}/transactions` + (marker ? `?marker=${encodeURIComponent(marker)}` : "");
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    (data.transactions || []).forEach(tx => {
+      if (tx.Account === address) {
+        const fee = parseFloat(tx.Fee || "0");
+        if (isFinite(fee)) { totalFeeDrops += fee; txCount++; }
+      }
+    });
+    marker = data.marker || null;
+  } while (marker && page < FEES_MAX_PAGES);
+
+  return { totalFee: totalFeeDrops / 1e6, txCount, truncated: !!marker && page >= FEES_MAX_PAGES };
+}
+
+// Solana: eigene RPC-Logik - erst alle
+// Signaturen holen, dann die Gebühr pro Transaktion per gebündelter RPC-Anfrage nachladen
+// (mehrere getTransaction-Aufrufe in einem einzigen HTTP-Request, wie bei den EVM-Batches).
+// Der "Fee Payer" ist bei Solana immer der erste Account in der Transaktion (Protokoll-Standard).
+const SOLANA_FEES_MAX_PAGES = 20; // 20 x 1000 Signaturen = 20'000 Transaktionen Sicherheitslimit
+
+async function fetchSolanaFees(address, onProgress) {
+  const rpcUrl = "https://solana-rpc.publicnode.com/" + publicnodeToken("sol");
+  let before;
+  let totalFeeLamports = 0;
+  let txCount = 0;
+  let page = 0;
+
+  while (page < SOLANA_FEES_MAX_PAGES) {
+    page++;
+    if (onProgress) onProgress(page);
+    const params = before ? [address, { limit: 1000, before }] : [address, { limit: 1000 }];
+    const res = await fetch(rpcUrl, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getSignaturesForAddress", params })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    const sigs = data.result || [];
+    if (sigs.length === 0) break;
+
+    for (let i = 0; i < sigs.length; i += 20) {
+      const chunk = sigs.slice(i, i + 20);
+      const batchBody = chunk.map((s, idx) => ({
+        jsonrpc: "2.0", id: idx, method: "getTransaction",
+        params: [s.signature, { maxSupportedTransactionVersion: 0 }]
+      }));
+      const bres = await fetch(rpcUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(batchBody) });
+      const bdata = await bres.json();
+      const arr = Array.isArray(bdata) ? bdata : [bdata];
+      arr.forEach(r => {
+        const tx = r && r.result;
+        if (!tx || !tx.meta) return;
+        const keys = tx.transaction && tx.transaction.message && tx.transaction.message.accountKeys;
+        if (!keys || keys.length === 0) return;
+        const feePayer = typeof keys[0] === "string" ? keys[0] : (keys[0].pubkey || "");
+        if (feePayer === address) {
+          totalFeeLamports += tx.meta.fee || 0;
+          txCount++;
+        }
+      });
+    }
+
+    before = sigs[sigs.length - 1].signature;
+    if (sigs.length < 1000) break; // letzte Seite erreicht
+  }
+
+  return { totalFee: totalFeeLamports / 1e9, txCount, truncated: page >= SOLANA_FEES_MAX_PAGES };
+}
+
+// Apertum: gleiche Blockscout-API wie für den Bestand, liefert die Gebühr pro Transaktion
+// direkt mit (fee.value, in Wei). Paginierung über next_page_params (exakt zurückschicken).
+async function fetchApertumFees(address, onProgress) {
+  let nextParams = null;
+  let totalFeeWei = 0n;
+  let txCount = 0;
+  let page = 0;
+  const addrLower = address.toLowerCase();
+
+  do {
+    page++;
+    if (onProgress) onProgress(page);
+    let url = `${APERTUM_EXPLORER_API}/addresses/${address}/transactions`;
+    if (nextParams) url += "?" + new URLSearchParams(nextParams).toString();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    (data.items || []).forEach(tx => {
+      const fromAddr = ((tx.from && tx.from.hash) || tx.from_address || "").toLowerCase();
+      if (fromAddr !== addrLower) return;
+      let feeWei = null;
+      try {
+        if (tx.fee && tx.fee.value) feeWei = BigInt(tx.fee.value);
+        else if (tx.gas_used && tx.gas_price) feeWei = BigInt(tx.gas_used) * BigInt(tx.gas_price);
+      } catch (e) { /* Zeile überspringen, falls Format unerwartet ist */ }
+      if (feeWei !== null) { totalFeeWei += feeWei; txCount++; }
+    });
+    nextParams = data.next_page_params || null;
+  } while (nextParams && page < FEES_MAX_PAGES);
+
+  return { totalFee: Number(totalFeeWei) / 1e18, txCount, truncated: !!nextParams && page >= FEES_MAX_PAGES };
+}
+
+// ---- Token-Approval-Checker (nur lesend, Revoke passiert extern über revoke.cash) ----
+const APPROVALS_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax"];
+let activeApprovalsChains = new Set(APPROVALS_CHAINS);
+
+function renderApprovalsChainFilter() {
+  const el = document.getElementById("approvalsChainContainer");
+  if (!el) return;
+  el.innerHTML = APPROVALS_CHAINS.map(chain => {
+    const meta = CHAIN_META[chain];
+    const checked = activeApprovalsChains.has(chain) ? "checked" : "";
+    return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
+      <input type="checkbox" ${checked} onchange="toggleApprovalsChain('${chain}', this.checked)" style="width:auto" />
+      <span class="dot ${meta.dot}"></span> ${meta.label}
+    </label>`;
+  }).join("");
+}
+function toggleApprovalsChain(chain, isChecked) {
+  if (isChecked) activeApprovalsChains.add(chain);
+  else activeApprovalsChains.delete(chain);
+}
+function setAllApprovalsChains(selectAll) {
+  activeApprovalsChains = selectAll ? new Set(APPROVALS_CHAINS) : new Set();
+  renderApprovalsChainFilter();
+}
+
+function renderApprovalsWalletSelect() {
+  const el = document.getElementById("approvalsWalletSelect");
+  if (!el) return;
+  const current = el.value;
+  el.innerHTML = `<option value="">– Wallet wählen –</option>` +
+    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (wallets.some(w => w.id === current)) el.value = current;
+}
+
+// "Unlimitiert" ist bei ERC20-Freigaben keine feste Zahl, sondern Konvention - Wallets/Dapps
+// setzen dafür meist den maximal möglichen uint256-Wert. Alles über 2^255 wird hier als
+// praktisch unlimitiert behandelt (deckt auch leicht abweichende "Fast-Maximalwerte" ab).
+const APPROVAL_UNLIMITED_THRESHOLD = 2n ** 255n;
+
+async function fetchApprovalsForChain(chain, address, onProgress) {
+  const ownerLower = address.toLowerCase();
+  const history = await fetchAlchemyOutgoingTxHashes(chain, address, onProgress);
+  const approvalPairs = new Map(); // token|spender -> letzter gefundener Block
+  const chunkSize = 50;
+
+  // Approval-Events aus den Receipts der Wallet-Transaktionen auslesen.
+  // topic0 beginnt für ERC20 Approval(address,address,uint256) mit 0x8c5be1e5.
+  for (let offset = 0; offset < history.hashes.length; offset += chunkSize) {
+    const chunk = history.hashes.slice(offset, offset + chunkSize);
+    const receipts = await alchemyRpcBatch(chain, chunk.map(h => ({ method: "eth_getTransactionReceipt", params: [h] })));
+    receipts.forEach(receipt => {
+      if (!receipt || receipt.__error) return;
+      (receipt.logs || []).forEach(log => {
+        const topics = log.topics || [];
+        if (topics.length < 3 || !(topics[0] || "").toLowerCase().startsWith("0x8c5be1e5")) return;
+        const owner = "0x" + topics[1].slice(-40).toLowerCase();
+        if (owner !== ownerLower) return;
+        const spender = "0x" + topics[2].slice(-40);
+        const token = (log.address || "").toLowerCase();
+        if (!token) return;
+        approvalPairs.set(token + "|" + spender.toLowerCase(), { token, spender, blockNumber: receipt.blockNumber });
+      });
+    });
+  }
+
+  const pairs = [...approvalPairs.values()];
+  if (!pairs.length) return [];
+
+  // Aktuelle Allowance + Token-Metadaten abfragen. Alte, bereits auf 0 gesetzte Freigaben
+  // werden dadurch nicht mehr angezeigt.
+  const calls = [];
+  pairs.forEach(p => {
+    const ownerArg = address.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+    const spenderArg = p.spender.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+    calls.push({ method: "eth_call", params: [{ to: p.token, data: "0xdd62ed3e" + ownerArg + spenderArg }, "latest"] });
+    calls.push({ method: "alchemy_getTokenMetadata", params: [p.token] });
+  });
+  const rows = await alchemyRpcBatch(chain, calls);
+
+  // Block-Zeitstempel nur für aktive Freigaben nachladen.
+  const active = [];
+  for (let i = 0; i < pairs.length; i++) {
+    const rawAllowance = rows[i * 2];
+    const meta = rows[i * 2 + 1];
+    if (!rawAllowance || rawAllowance.__error) continue;
+    let raw;
+    try { raw = BigInt(rawAllowance); } catch (e) { continue; }
+    if (raw <= 0n) continue;
+    const decimals = meta && !meta.__error && Number.isFinite(Number(meta.decimals)) ? Number(meta.decimals) : 18;
+    const valueFormatted = Number(raw) / Math.pow(10, decimals);
+    active.push({ ...pairs[i], raw, meta: meta && !meta.__error ? meta : {}, valueFormatted });
+  }
+
+  const uniqueBlocks = [...new Set(active.map(a => a.blockNumber).filter(Boolean))];
+  const blockRows = await alchemyRpcBatch(chain, uniqueBlocks.map(b => ({ method: "eth_getBlockByNumber", params: [b, false] })));
+  const blockTs = new Map();
+  uniqueBlocks.forEach((b, i) => {
+    const row = blockRows[i];
+    if (row && !row.__error && row.timestamp) blockTs.set(b, Number(BigInt(row.timestamp)) * 1000);
+  });
+
+  return active.map(a => ({
+    chain,
+    tokenSymbol: a.meta.symbol || (a.token.slice(0, 8) + "…"),
+    tokenAddress: a.token,
+    spenderAddress: a.spender,
+    spenderLabel: null,
+    valueFormatted: String(a.valueFormatted),
+    isUnlimited: a.raw > APPROVAL_UNLIMITED_THRESHOLD,
+    usdAtRisk: null,
+    timestamp: blockTs.has(a.blockNumber) ? new Date(blockTs.get(a.blockNumber)).toISOString() : null
+  }));
+}
+
+async function runApprovalsCheck() {
+  const btn = document.getElementById("approvalsBtn");
+  const status = document.getElementById("approvalsStatus");
+  const resultsEl = document.getElementById("approvalsResults");
+  const walletId = document.getElementById("approvalsWalletSelect").value;
+
+  if (!walletId) { status.textContent = "Bitte zuerst eine Wallet auswählen."; return; }
+  if (activeApprovalsChains.size === 0) { status.textContent = "Bitte mindestens eine Chain auswählen."; return; }
+
+  const w = wallets.find(x => x.id === walletId);
+  if (!w || !w.evm) { status.textContent = "Diese Wallet hat keine EVM-Adresse erfasst."; return; }
+
+  btn.disabled = true;
+  resultsEl.innerHTML = "";
+  let allApprovals = [];
+
+  for (const chain of APPROVALS_CHAINS.filter(c => activeApprovalsChains.has(c))) {
+    status.textContent = `Prüfe Freigaben für ${w.label} auf ${CHAIN_META[chain].label}...`;
+    try {
+      const found = await fetchApprovalsForChain(chain, w.evm, (page) => {
+        status.textContent = `Prüfe Freigaben für ${w.label} auf ${CHAIN_META[chain].label}... (Seite ${page})`;
+      });
+      allApprovals = allApprovals.concat(found);
+    } catch (e) {
+      allApprovals.push({ chain, error: e.message });
+    }
+  }
+
+  renderApprovalsResults(w, allApprovals);
+  status.textContent = "Fertig.";
+  btn.disabled = false;
+}
+
+function renderApprovalsResults(wallet, approvals) {
+  const el = document.getElementById("approvalsResults");
+  const errors = approvals.filter(a => a.error);
+  const valid = approvals.filter(a => !a.error);
+
+  if (valid.length === 0 && errors.length === 0) {
+    el.innerHTML = `<div class="empty">Keine aktiven Freigaben gefunden - sauber!</div>`;
+    return;
+  }
+
+  const unlimitedCount = valid.filter(a => a.isUnlimited).length;
+  const revokeUrl = `https://revoke.cash/address/${wallet.evm}`;
+
+  const errorNote = errors.length > 0
+    ? `<div class="error" style="margin-bottom:10px">Fehler bei: ${errors.map(e => CHAIN_META[e.chain].label + " (" + e.error + ")").join(", ")}</div>`
+    : "";
+
+  el.innerHTML = `
+    <div class="custom-token-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+        <h3 style="margin:0">${escapeAttr(wallet.label)} — ${valid.length} aktive Freigabe(n)${unlimitedCount > 0 ? `, ${unlimitedCount} davon unlimitiert` : ""}</h3>
+        <a href="${revokeUrl}" target="_blank" rel="noopener"><button class="secondary">Alle auf revoke.cash ansehen ↗</button></a>
+      </div>
+      ${errorNote}
+      <table>
+        <thead><tr><th>Chain</th><th>Token</th><th>An (Spender)</th><th style="text-align:right">Freigabe</th><th style="text-align:right">USD-Risiko</th><th>Datum</th></tr></thead>
+        <tbody>
+          ${valid.map(a => {
+            const meta = CHAIN_META[a.chain];
+            const spenderText = a.spenderLabel ? escapeAttr(a.spenderLabel) : (a.spenderAddress || "").slice(0, 10) + "…";
+            const dt = a.timestamp ? new Date(a.timestamp).toLocaleDateString("de-CH") : "–";
+            return `<tr style="${a.isUnlimited ? 'background:rgba(255,107,107,0.08)' : ''}">
+              <td><span class="dot ${meta.dot}"></span> ${meta.label}</td>
+              <td>${escapeAttr(a.tokenSymbol)}</td>
+              <td style="font-size:0.78rem" title="${a.spenderAddress || ''}">${spenderText}</td>
+              <td class="num">${a.isUnlimited ? '<span style="color:var(--danger);font-weight:700">⚠ Unlimitiert</span>' : fmt(parseFloat(a.valueFormatted || "0"))}</td>
+              <td class="num">${a.usdAtRisk ? fmtUsd(parseFloat(a.usdAtRisk)) : '<span style="color:var(--muted)">–</span>'}</td>
+              <td style="font-size:0.78rem">${dt}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+      <div class="note" style="margin-top:10px">Zum Widerrufen: Link oben in deiner Wallet-App öffnen (siehe Hinweis oben), dort verbinden und "Revoke" pro Freigabe klicken.</div>
+    </div>
+  `;
+}
+
+// ---- NFTs (nur auf Knopfdruck, via Alchemy) ----
+const NFT_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax", "apertum"];
+let activeNftChains = new Set(NFT_CHAINS);
+
+function renderNftChainFilter() {
+  const el = document.getElementById("nftChainContainer");
+  if (!el) return;
+  el.innerHTML = NFT_CHAINS.map(chain => {
+    const meta = CHAIN_META[chain];
+    const checked = activeNftChains.has(chain) ? "checked" : "";
+    return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
+      <input type="checkbox" ${checked} onchange="toggleNftChain('${chain}', this.checked)" style="width:auto" />
+      <span class="dot ${meta.dot}"></span> ${meta.label}
+    </label>`;
+  }).join("");
+}
+function toggleNftChain(chain, isChecked) {
+  if (isChecked) activeNftChains.add(chain);
+  else activeNftChains.delete(chain);
+}
+function setAllNftChains(selectAll) {
+  activeNftChains = selectAll ? new Set(NFT_CHAINS) : new Set();
+  renderNftChainFilter();
+}
+
+function renderNftWalletSelect() {
+  const el = document.getElementById("nftWalletSelect");
+  if (!el) return;
+  const current = el.value;
+  el.innerHTML = `<option value="all">Alle Wallets</option>` +
+    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (current === "all" || wallets.some(w => w.id === current)) el.value = current;
+}
+
+async function fetchNftsForChain(chain, address, onProgress) {
+  assertAlchemyConfigured();
+  const base = ALCHEMY_NFT_URL[chain];
+  if (!base) throw new Error("Alchemy NFT API ist für diese Chain nicht konfiguriert");
+  const nfts = [];
+  let pageKey = null;
+  let page = 0;
+
+  do {
+    page++;
+    if (onProgress) onProgress(page);
+    const qs = new URLSearchParams({ owner: address, withMetadata: "true", pageSize: "100" });
+    if (pageKey) qs.set("pageKey", pageKey);
+    const res = await fetch(`${base}/getNFTsForOwner?${qs.toString()}`, {
+      headers: { "Authorization": `Bearer ${ALCHEMY_API_KEY}`, "Accept": "application/json" }
+    });
+    if (!res.ok) throw new Error("Alchemy NFT HTTP " + res.status);
+    const data = await res.json();
+    (data.ownedNfts || []).forEach(n => {
+      const contract = n.contract || {};
+      const image = n.image || {};
+      nfts.push({
+        chain,
+        tokenAddress: contract.address,
+        tokenId: n.tokenId,
+        name: n.name || (n.raw && n.raw.metadata && n.raw.metadata.name) || contract.name || "Unbenannt",
+        image: normalizeNftImageUrl(image.cachedUrl || image.thumbnailUrl || image.originalUrl || (n.raw && n.raw.metadata && n.raw.metadata.image)),
+        collectionName: (n.collection && n.collection.name) || (contract.openSeaMetadata && contract.openSeaMetadata.collectionName) || contract.name,
+        possibleSpam: contract.isSpam === true || contract.isSpam === "true" || (contract.spamClassifications || []).length > 0,
+        contractType: n.tokenType || contract.tokenType
+      });
+    });
+    pageKey = data.pageKey || null;
+  } while (pageKey && page < FEES_MAX_PAGES);
+
+  return nfts;
+}
+
+// IPFS-Links (ipfs://...) funktionieren nicht direkt im <img>-Tag - über ein öffentliches Gateway umleiten.
+function normalizeNftImageUrl(url) {
+  if (!url) return null;
+  if (url.startsWith("ipfs://")) return "https://ipfs.io/ipfs/" + url.replace("ipfs://", "");
+  return url;
+}
+
+// Apertum: eigene Blockscout-API (Alchemy wird dafür hier nicht verwendet).
+async function fetchApertumNfts(address, onProgress) {
+  let nextParams = null;
+  let page = 0;
+  const nfts = [];
+
+  do {
+    page++;
+    if (onProgress) onProgress(page);
+    let url = `${APERTUM_EXPLORER_API}/addresses/${address}/nft/collections`;
+    if (nextParams) url += "?" + new URLSearchParams(nextParams).toString();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    (data.items || []).forEach(coll => {
+      const collectionName = coll.token && (coll.token.name || coll.token.symbol);
+      (coll.token_instances || []).forEach(inst => {
+        const meta = inst.metadata || {};
+        nfts.push({
+          chain: "apertum",
+          tokenAddress: coll.token && coll.token.address,
+          tokenId: inst.id,
+          name: meta.name || (collectionName ? collectionName + " #" + inst.id : "Unbenannt"),
+          image: normalizeNftImageUrl(inst.image_url || meta.image),
+          collectionName,
+          possibleSpam: false, // Blockscout liefert hier keine eigene Spam-Einschätzung
+          contractType: coll.token && coll.token.type
+        });
+      });
+    });
+    nextParams = data.next_page_params || null;
+  } while (nextParams && page < FEES_MAX_PAGES);
+
+  return nfts;
+}
+
+async function runNftLoad() {
+  const btn = document.getElementById("nftBtn");
+  const status = document.getElementById("nftStatus");
+  const resultsEl = document.getElementById("nftResults");
+  const walletId = document.getElementById("nftWalletSelect").value;
+
+  if (activeNftChains.size === 0) { status.textContent = "Bitte mindestens eine Chain auswählen."; return; }
+
+  const targetWallets = walletId === "all"
+    ? wallets.filter(w => !!w.evm)
+    : (wallets.find(x => x.id === walletId && x.evm) ? [wallets.find(x => x.id === walletId)] : []);
+
+  if (targetWallets.length === 0) { status.textContent = "Keine Wallet mit EVM-Adresse gefunden."; return; }
+
+  btn.disabled = true;
+  resultsEl.innerHTML = "";
+  let allNfts = [];
+  const errors = [];
+
+  for (const w of targetWallets) {
+    for (const chain of NFT_CHAINS.filter(c => activeNftChains.has(c))) {
+      status.textContent = `Lade NFTs für ${w.label} auf ${CHAIN_META[chain].label}...`;
+      try {
+        const onProgress = (page) => {
+          status.textContent = `Lade NFTs für ${w.label} auf ${CHAIN_META[chain].label}... (Seite ${page})`;
+        };
+        const found = chain === "apertum"
+          ? await fetchApertumNfts(w.evm, onProgress)
+          : await fetchNftsForChain(chain, w.evm, onProgress);
+        found.forEach(n => { n.walletLabel = w.label; });
+        allNfts = allNfts.concat(found);
+      } catch (e) {
+        errors.push(`${w.label} / ${CHAIN_META[chain].label}: ${e.message}`);
+      }
+    }
+  }
+
+  lastNftFindings = allNfts;
+  renderNftResults(allNfts, errors);
+  status.textContent = "Fertig.";
+  btn.disabled = false;
+}
+
+let lastNftFindings = [];
+
+function renderNftResults(nfts, errors) {
+  const el = document.getElementById("nftResults");
+  const errorNote = errors.length > 0 ? `<div class="error" style="margin-bottom:12px">Fehler bei: ${errors.join(", ")}</div>` : "";
+
+  if (nfts.length === 0) {
+    el.innerHTML = errorNote + `<div class="empty">Keine NFTs gefunden.</div>`;
+    return;
+  }
+
+  const hideSpam = document.getElementById("nftHideSpamToggle") && document.getElementById("nftHideSpamToggle").checked;
+  const spamCount = nfts.filter(n => n.possibleSpam).length;
+  const visible = hideSpam ? nfts.filter(n => !n.possibleSpam) : nfts;
+
+  const filterBar = `<div class="custom-token-card" style="margin-bottom:14px">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
+      <input type="checkbox" id="nftHideSpamToggle" style="width:auto" onchange="renderNftResults(lastNftFindings, [])" ${hideSpam ? "checked" : ""} />
+      Spam-Verdacht ausblenden (${spamCount} von ${nfts.length})
+    </label>
+  </div>`;
+
+  if (visible.length === 0) {
+    el.innerHTML = errorNote + filterBar + `<div class="empty">Alle gefundenen NFTs sind als Spam-verdächtig markiert und aktuell ausgeblendet.</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    ${errorNote}
+    ${filterBar}
+    <div class="note" style="margin-bottom:12px">${visible.length} von ${nfts.length} NFT(s) angezeigt</div>
+    <div class="nft-grid">
+      ${visible.map(n => {
+        const meta = CHAIN_META[n.chain];
+        return `<div class="nft-card">
+          ${n.image ? `<img src="${n.image}" loading="lazy" onerror="this.style.display='none'">` : `<div style="aspect-ratio:1;background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:0.75rem">Kein Bild</div>`}
+          <div class="nft-info">
+            <div class="nft-name" title="${escapeAttr(n.name)}">${escapeAttr(n.name)}</div>
+            <div class="nft-id">${n.collectionName ? escapeAttr(n.collectionName) + " · " : ""}#${n.tokenId}</div>
+            <div class="nft-id" style="margin-top:3px;display:flex;align-items:center;gap:5px">
+              <span class="dot ${meta.dot}" style="width:7px;height:7px"></span> ${meta.label} · ${escapeAttr(n.walletLabel)}
+            </div>
+            ${n.possibleSpam ? '<div style="margin-top:4px"><span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger)">⚠ Spam-Verdacht</span></div>' : ""}
+          </div>
+        </div>`;
+      }).join("")}
+    </div>
+  `;
+}
+
+// ---- Chat (User <-> Admin) ----
+
+// Realtime-Abo: läuft einmal pro Login, unabhängig davon, welcher Tab gerade offen ist -
+// so kommt eine neue Nachricht auch an, wenn man den Chat-Tab gerade nicht anschaut.
+let chatRealtimeChannel = null;
+
+function setupChatRealtime() {
+  if (chatRealtimeChannel) sb.removeChannel(chatRealtimeChannel); // altes Abo aufräumen, falls schon vorhanden
+
+  if (isAdmin) {
+    // Admins: auf ALLE neuen Nachrichten reagieren (kein Filter), da unklar ist, welcher
+    // User als nächstes schreibt.
+    chatRealtimeChannel = sb.channel("chat-admin-" + currentUser.id)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, (payload) => {
+        renderAdminChatUserSelect(); // falls ein User zum ersten Mal schreibt, taucht er neu in der Liste auf
+        const selectedUserId = document.getElementById("adminChatUserSelect") ? document.getElementById("adminChatUserSelect").value : "";
+        if (selectedUserId && payload.new.user_id === selectedUserId) loadAdminChat();
+      })
+      .subscribe();
+  } else {
+    // Normale User: nur auf die eigene Konversation gefiltert (RLS würde ohnehin nichts
+    // anderes durchlassen, aber der Filter spart unnötige Events).
+    chatRealtimeChannel = sb.channel("chat-user-" + currentUser.id)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages", filter: `user_id=eq.${currentUser.id}` }, () => {
+        loadOwnChat();
+      })
+      .subscribe();
+  }
+}
+
+function renderChatBubble(msg, isOwnSide) {
+  const isAdmin = msg.sender_type === "admin";
+  const align = isOwnSide ? "flex-end" : "flex-start";
+  const bg = isAdmin ? "var(--card2)" : "var(--accent)";
+  const color = isAdmin ? "var(--text)" : "#fff";
+  const dt = new Date(msg.created_at);
+  const dtStr = dt.toLocaleDateString("de-CH") + ", " + dt.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" });
+  return `<div style="align-self:${align};max-width:75%;">
+    <div style="background:${bg};color:${color};padding:8px 12px;border-radius:12px;font-size:0.9rem;white-space:pre-wrap;word-break:break-word">${escapeAttr(msg.message)}</div>
+    <div class="note" style="margin:2px 4px 0;font-size:0.68rem">${isAdmin ? "Support" : "Du"} · ${dtStr}</div>
+  </div>`;
+}
+
+async function loadOwnChat() {
+  const el = document.getElementById("chatMessagesContainer");
+  const { data, error } = await sb.from("chat_messages").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: true });
+  if (error) { el.innerHTML = `<div class="error">Fehler beim Laden: ${error.message}</div>`; return; }
+  if (!data || data.length === 0) {
+    el.innerHTML = `<div class="empty">Noch keine Nachrichten - schreib uns gern etwas!</div>`;
+  } else {
+    el.innerHTML = data.map(m => renderChatBubble(m, m.sender_type === "user")).join("");
+    el.scrollTop = el.scrollHeight;
+  }
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById("chatMessageInput");
+  const text = input.value.trim();
+  if (!text) return;
+  const { error } = await sb.from("chat_messages").insert({
+    user_id: currentUser.id,
+    sender_type: "user",
+    sender_email: currentUser.email,
+    message: text
+  });
+  if (error) { alert("Fehler beim Senden: " + error.message); return; }
+  input.value = "";
+  loadOwnChat();
+}
+
+// ---- Chat: Admin-Seite ----
+async function renderAdminChatUserSelect() {
+  const el = document.getElementById("adminChatUserSelect");
+  const current = el.value;
+  const { data, error } = await sb.from("chat_messages").select("user_id, sender_email, sender_type").eq("sender_type", "user");
+  if (error) { console.error(error); return; }
+  const users = {};
+  (data || []).forEach(r => { users[r.user_id] = r.sender_email || r.user_id; });
+  el.innerHTML = `<option value="">– auswählen –</option>` +
+    Object.entries(users).map(([uid, email]) => `<option value="${uid}">${escapeAttr(email)}</option>`).join("");
+  if (Object.keys(users).some(uid => uid === current)) el.value = current;
+}
+
+async function loadAdminChat() {
+  const userId = document.getElementById("adminChatUserSelect").value;
+  const el = document.getElementById("adminChatMessagesContainer");
+  const inputRow = document.getElementById("adminChatInputRow");
+  if (!userId) { el.innerHTML = ""; inputRow.style.display = "none"; return; }
+
+  const { data, error } = await sb.from("chat_messages").select("*").eq("user_id", userId).order("created_at", { ascending: true });
+  if (error) { el.innerHTML = `<div class="error">Fehler beim Laden: ${error.message}</div>`; return; }
+  el.innerHTML = (data || []).map(m => renderChatBubble(m, m.sender_type === "admin")).join("") || `<div class="empty">Noch keine Nachrichten.</div>`;
+  el.scrollTop = el.scrollHeight;
+  inputRow.style.display = "flex";
+}
+
+async function sendAdminChatMessage() {
+  const userId = document.getElementById("adminChatUserSelect").value;
+  if (!userId) return;
+  const input = document.getElementById("adminChatMessageInput");
+  const text = input.value.trim();
+  if (!text) return;
+  const { error } = await sb.from("chat_messages").insert({
+    user_id: userId,
+    sender_type: "admin",
+    sender_email: currentUser.email,
+    message: text
+  });
+  if (error) { alert("Fehler beim Senden: " + error.message); return; }
+  input.value = "";
+  loadAdminChat();
+}
+
+async function runFeesCalculation() {
+  const btn = document.getElementById("feesBtn");
+  const status = document.getElementById("feesStatus");
+  const resultsEl = document.getElementById("feesResults");
+  const walletId = document.getElementById("feesWalletSelect").value;
+
+  if (!walletId) { status.textContent = "Bitte zuerst eine Wallet auswählen."; return; }
+  if (activeFeesChains.size === 0) { status.textContent = "Bitte mindestens eine Chain auswählen."; return; }
+
+  const w = wallets.find(x => x.id === walletId);
+  if (!w) { status.textContent = "Wallet nicht gefunden."; return; }
+
+  btn.disabled = true;
+  resultsEl.innerHTML = "";
+  const results = []; // {chain, totalFee, txCount, truncated, error}
+
+  for (const chain of FEES_CHAINS.filter(c => activeFeesChains.has(c))) {
+    status.textContent = `Berechne Gebühren für ${w.label} auf ${CHAIN_META[chain].label}...`;
+    const onProgress = (page) => {
+      status.textContent = `Berechne Gebühren für ${w.label} auf ${CHAIN_META[chain].label}... (Seite ${page})`;
+    };
+    try {
+      let r;
+      if (chain === "xrp") {
+        if (!w.xrp) { results.push({ chain, error: "Keine XRP-Adresse bei dieser Wallet erfasst" }); continue; }
+        r = await fetchXrpFees(w.xrp, onProgress);
+      } else if (chain === "sol") {
+        if (!w.sol) { results.push({ chain, error: "Keine Solana-Adresse bei dieser Wallet erfasst" }); continue; }
+        r = await fetchSolanaFees(w.sol, onProgress);
+      } else if (chain === "apertum") {
+        if (!w.evm) { results.push({ chain, error: "Keine EVM-Adresse bei dieser Wallet erfasst" }); continue; }
+        r = await fetchApertumFees(w.evm, onProgress);
+      } else {
+        if (!w.evm) { results.push({ chain, error: "Keine EVM-Adresse bei dieser Wallet erfasst" }); continue; }
+        r = await fetchWalletFeesForChain(chain, w.evm, onProgress);
+      }
+      results.push({ chain, ...r });
+    } catch (e) {
+      results.push({ chain, error: e.message });
+    }
+  }
+
+  renderFeesResults(w, results);
+  status.textContent = "Fertig.";
+  btn.disabled = false;
+}
+
+function renderFeesResults(wallet, results) {
+  const el = document.getElementById("feesResults");
+  const rowsWithFees = results.filter(r => !r.error && r.txCount > 0);
+
+  if (results.every(r => r.error)) {
+    el.innerHTML = `<div class="error">Alle Abfragen sind fehlgeschlagen. Bitte später nochmal versuchen.</div>`;
+    return;
+  }
+
+  const grandTotalUsd = rowsWithFees.reduce((sum, r) => {
+    const p = nativePrices[r.chain];
+    return sum + (p ? r.totalFee * p.price : 0);
+  }, 0);
+
+  el.innerHTML = `
+    <div class="custom-token-card">
+      <h3 style="margin:0 0 10px">${escapeAttr(wallet.label)} — Gebühren-Total</h3>
+      <table>
+        <thead><tr><th>Chain</th><th style="text-align:right">Anzahl Tx</th><th style="text-align:right">Gebühren (nativ)</th><th style="text-align:right">Wert (USD)</th></tr></thead>
+        <tbody>
+          ${results.map(r => {
+            if (r.error) {
+              return `<tr><td><span class="dot ${CHAIN_META[r.chain].dot}"></span> ${CHAIN_META[r.chain].label}</td><td colspan="3" class="error" style="text-align:left">Fehler: ${r.error}</td></tr>`;
+            }
+            const p = nativePrices[r.chain];
+            const usd = p ? r.totalFee * p.price : null;
+            const nativeSym = NATIVE_SYMBOL[r.chain] || r.chain.toUpperCase();
+            return `<tr>
+              <td><span class="dot ${CHAIN_META[r.chain].dot}"></span> ${CHAIN_META[r.chain].label}${r.truncated ? ' <span class="badge unsafe" title="Sehr aktive Wallet - Historie evtl. unvollständig">gekürzt</span>' : ''}</td>
+              <td class="num">${r.txCount}</td>
+              <td class="num">${fmt(r.totalFee)} ${nativeSym}</td>
+              <td class="num">${usd !== null ? fmtUsd(usd) : '<span style="color:var(--muted)">–</span>'}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+        <tfoot>
+          <tr style="font-weight:700;border-top:2px solid var(--border)">
+            <td colspan="3" style="padding-top:10px">Total (alle ausgewählten Chains)</td>
+            <td class="num" style="padding-top:10px">${fmtUsd(grandTotalUsd)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <div class="note" style="margin-top:10px">"gekürzt" heisst: die Historie war so lang, dass das Sicherheitslimit (${FEES_MAX_PAGES} Seiten) erreicht wurde - die Summe ist dann eine Untergrenze, nicht die komplette Historie.</div>
+    </div>
+  `;
+}
+
+function renderDiscoveryWalletSelect() {
+  const el = document.getElementById("discoveryWalletSelect");
+  if (!el) return;
+  const current = el.value;
+  el.innerHTML = `<option value="">– Wallet wählen –</option>` +
+    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (wallets.some(w => w.id === current)) el.value = current;
+}
+
+// Erkennt typische Phishing-/Airdrop-Scam-Muster im Token-Namen oder -Symbol
+// (z.B. "Visit claim-rewards.xyz", "$1000 USDT Bonus" o.ä.) - eine der häufigsten
+// Betrugsmaschen bei unaufgeforderten Token-Airdrops. Läuft zusätzlich zur GoPlus-Prüfung.
+function isLikelyScamName(text) {
+  if (!text) return false;
+  return /https?:\/\/|www\.|\.(com|io|net|org|xyz|app|finance|claim|airdrop|site|click|link|gift|bonus|vip|top)\b|visit |claim now|reward|bonus|voucher/i.test(text);
+}
+
+// Alchemy Token API: liest alle ERC20-Bestände einer Wallet auf der gewählten Chain.
+// Die Scam-Einschätzung erfolgt weiterhin über Namens-Heuristik + GoPlus; Moralis-spezifische
+// possible_spam-Daten gibt es hier nicht mehr.
+const ALCHEMY_EVM_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax"];
+
+async function discoverEvmTokens(chain, address) {
+  const result = await alchemyRpc(chain, "alchemy_getTokenBalances", [address, "erc20"]);
+  const balances = (result && result.tokenBalances) || [];
+  const nonZero = balances.filter(t => {
+    try { return BigInt(t.tokenBalance || "0x0") > 0n; } catch (e) { return false; }
+  });
+
+  const known = new Set(
+    (SAFE_ADDRESSES[chain] || []).concat(customSafeTokens.filter(t => t.chain === chain).map(t => t.address))
+  );
+  const unknown = nonZero.filter(t => t.contractAddress && !known.has(t.contractAddress.toLowerCase()));
+
+  // Metadaten gebündelt in Alchemy laden.
+  const metas = await alchemyRpcBatch(chain, unknown.map(t => ({ method: "alchemy_getTokenMetadata", params: [t.contractAddress] })));
+  const found = [];
+  unknown.forEach((t, i) => {
+    const addr = t.contractAddress.toLowerCase();
+    const meta = metas[i] && !metas[i].__error ? metas[i] : {};
+    const decimals = Number.isFinite(Number(meta.decimals)) ? Number(meta.decimals) : 18;
+    let raw;
+    try { raw = BigInt(t.tokenBalance || "0x0"); } catch (e) { return; }
+    const amount = Number(raw) / Math.pow(10, decimals);
+    if (!isFinite(amount) || amount < DUST_THRESHOLD) return;
+    const nameScamFlag = isLikelyScamName(meta.symbol) || isLikelyScamName(meta.name);
+    found.push({
+      chain, address: addr,
+      symbol: meta.symbol || (addr.slice(0, 8) + "…"),
+      name: meta.name,
+      amount,
+      nameScamFlag,
+      alchemySpam: false
+    });
+  });
+  return found;
+}
+
+// GoPlus Security: kostenlose Risiko-Einschätzung für EVM-Token (kein Key nötig).
+// Kein hartes Urteil, nur Signale - Apertum/Tron werden von GoPlus nicht abgedeckt.
+const GOPLUS_CHAIN_ID = { eth: "1", bsc: "56", matic: "137", arb: "42161", base: "8453", avax: "43114" };
+
+async function checkGoPlusRisk(chain, addresses) {
+  const chainId = GOPLUS_CHAIN_ID[chain];
+  if (!chainId || addresses.length === 0) return {};
+  try {
+    const res = await fetch(`https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${addresses.join(",")}`);
+    if (!res.ok) return {};
+    const data = await res.json();
+    return data.result || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function riskFlags(info) {
+  if (!info) return [];
+  const flags = [];
+  if (info.is_honeypot === "1") flags.push("Honeypot");
+  if (info.is_blacklisted === "1") flags.push("gelistet als bösartig");
+  if (info.cannot_sell_all === "1") flags.push("evtl. nicht verkaufbar");
+  if (info.is_mintable === "1") flags.push("beliebig nachprägbar");
+  if (info.is_open_source === "0") flags.push("Contract nicht verifiziert");
+  return flags;
+}
+
+async function runDiscoveryScan() {
+  const btn = document.getElementById("discoveryBtn");
+  const status = document.getElementById("discoveryStatus");
+  const resultsEl = document.getElementById("discoveryResults");
+  const walletId = document.getElementById("discoveryWalletSelect").value;
+
+  if (!walletId) {
+    status.textContent = "Bitte zuerst eine Wallet auswählen.";
+    return;
+  }
+  if (activeDiscoveryChains.size === 0) {
+    status.textContent = "Bitte mindestens eine Chain auswählen.";
+    return;
+  }
+
+  const w = wallets.find(x => x.id === walletId);
+  if (!w) { status.textContent = "Wallet nicht gefunden."; return; }
+
+  btn.disabled = true;
+  resultsEl.innerHTML = "";
+
+  const allFindings = []; // {walletLabel, chain, address, symbol, name, amount, risk: [] | null, nameScamFlag}
+  const scanNotes = [];
+
+  // Apertum + Tron: volle Liste liegt schon in walletData (aus dem normalen Laden)
+  ["apertum", "tron"].filter(c => activeDiscoveryChains.has(c)).forEach(chain => {
+    const cd = (walletData[w.id] || {})[chain];
+    if (!cd || cd.error) return;
+    (cd.tokens || []).forEach(t => {
+      if (!isSafeTokenAddress(t.address, chain) && t.amount >= DUST_THRESHOLD) {
+        const nameScamFlag = isLikelyScamName(t.symbol) || isLikelyScamName(t.name);
+        allFindings.push({ walletLabel: w.label, chain, address: t.address, symbol: t.symbol, name: t.name, amount: t.amount, risk: null, nameScamFlag });
+      }
+    });
+  });
+
+  // EVM-Chains: Alchemy Token API pro Chain
+  if (w.evm) {
+    for (const chain of ALCHEMY_EVM_CHAINS.filter(c => activeDiscoveryChains.has(c))) {
+      status.textContent = `Durchsuche ${w.label} auf ${CHAIN_META[chain].label}...`;
+      try {
+        const found = await discoverEvmTokens(chain, w.evm);
+        found.forEach(f => allFindings.push({ walletLabel: w.label, ...f, risk: null }));
+      } catch (e) {
+        scanNotes.push(`${CHAIN_META[chain].label}: Scan fehlgeschlagen (${e.message}).`);
+      }
+    }
+  }
+
+  // GoPlus-Risiko-Check, gebündelt pro Chain
+  status.textContent = "Prüfe Risiko-Signale...";
+  const byChain = {};
+  allFindings.forEach(f => {
+    if (!GOPLUS_CHAIN_ID[f.chain]) return;
+    byChain[f.chain] = byChain[f.chain] || new Set();
+    byChain[f.chain].add(f.address);
+  });
+  for (const chain of Object.keys(byChain)) {
+    const addrs = [...byChain[chain]];
+    const result = await checkGoPlusRisk(chain, addrs);
+    allFindings.forEach(f => {
+      if (f.chain === chain && result[f.address.toLowerCase()]) {
+        f.risk = riskFlags(result[f.address.toLowerCase()]);
+      }
+    });
+  }
+
+  lastDiscoveryFindings = allFindings;
+  renderDiscoveryResults(allFindings);
+  const scamCount = allFindings.filter(f => isFindingScam(f)).length;
+  let statusText = `Fertig. ${allFindings.length} unbekannte(r) Token gefunden` + (scamCount > 0 ? `, davon ${scamCount} als möglicher Scam markiert.` : ".");
+  if (scanNotes.length > 0) statusText += " Hinweis: " + scanNotes.join(" ");
+  status.textContent = statusText;
+  btn.disabled = false;
+}
+
+// Fasst GoPlus-Risiko-Flags + Namens-Heuristik zu einer einzigen Scam-Einschätzung zusammen
+function isFindingScam(f) {
+  if (f.nameScamFlag) return true;
+  if (f.risk && f.risk.length > 0) return true;
+  return false;
+}
+
+let lastDiscoveryFindings = [];
+
+function renderDiscoveryResults(findings) {
+  const el = document.getElementById("discoveryResults");
+  if (findings.length === 0) {
+    el.innerHTML = `<div class="empty">Keine unbekannten Token gefunden - alles, was deine Wallets halten, steht bereits auf der sicheren Liste (oder es gibt nichts Nennenswertes).</div>`;
+    return;
+  }
+
+  const hideScam = document.getElementById("hideScamToggle") && document.getElementById("hideScamToggle").checked;
+  const visible = hideScam ? findings.filter(f => !isFindingScam(f)) : findings;
+
+  const filterBar = `<div class="custom-token-card" style="margin-bottom:14px">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
+      <input type="checkbox" id="hideScamToggle" style="width:auto" onchange="renderDiscoveryResults(lastDiscoveryFindings)" ${hideScam ? "checked" : ""} />
+      Scam-verdächtige Token ausblenden (${findings.filter(f => isFindingScam(f)).length} von ${findings.length})
+    </label>
+  </div>`;
+
+  if (visible.length === 0) {
+    el.innerHTML = filterBar + `<div class="empty">Alle gefundenen Token sind als Scam-verdächtig markiert und aktuell ausgeblendet.</div>`;
+    return;
+  }
+
+  el.innerHTML = filterBar + visible.map(f => {
+    const meta = CHAIN_META[f.chain];
+    const scam = isFindingScam(f);
+    let riskHtml = "";
+    if (scam) {
+      const reasons = [];
+      if (f.nameScamFlag) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
+      if (f.risk && f.risk.length > 0) reasons.push(...f.risk);
+      riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger);font-weight:700">⚠ VERDACHT AUF SCAM: ${reasons.join(", ")}</span>`;
+    } else if (f.risk === null) {
+      riskHtml = `<span class="badge unsafe">kein Risiko-Check verfügbar</span>`;
+    } else {
+      riskHtml = `<span class="badge safe">keine Warnung</span>`;
+    }
+    return `<div class="custom-token-row" style="align-items:flex-start;${scam ? 'border-color:var(--danger)' : ''}">
+      <div>
+        <div><span class="dot ${meta.dot}" style="margin-right:6px"></span>${escapeAttr(f.symbol)}${f.name && f.name !== f.symbol ? ' <span class="note" style="display:inline">(' + escapeAttr(f.name) + ')</span>' : ''} · ${fmt(f.amount)} · <span class="note" style="display:inline">${escapeAttr(f.walletLabel)}</span></div>
+        <div class="meta">${meta.label} · ${f.address}</div>
+        <div style="margin-top:6px">${riskHtml}</div>
+      </div>
+      ${scam ? '' : `<button onclick="addDiscoveredToken('${f.chain}','${f.address}','${escapeAttr(f.symbol)}')">Als sicher hinzufügen</button>`}
+    </div>`;
+  }).join("");
+}
+
+async function addDiscoveredToken(chain, address, symbol) {
+  document.getElementById("customChain").value = chain;
+  document.getElementById("customAddress").value = address;
+  document.getElementById("customLabel").value = symbol;
+  await addCustomSafeToken();
+  showTab("custom");
+}
+
+// ---- Initialisierung ----
+// Alles Weitere (Wallets/Token laden, rendern) passiert erst nach erfolgreichem
+// Login in initAuth() -> onLoggedIn(), siehe oben.
+initAuth();
+</script>
+</body>
+</html>
