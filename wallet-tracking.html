@@ -736,7 +736,7 @@
   </div>
 
   <footer>
-    Version vom 25.08.2026, 20:15 Uhr<br>
+    Version vom 25.08.2026, 20:52 Uhr<br>
     Datenquellen: Alchemy (EVM Discovery, Historie/Gebühren, Approvals, NFTs), api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1001,7 +1001,7 @@ async function adminPromoteToken(id, chain, address) {
 // ---- Alchemy: EVM-Daten (ersetzt Moralis) ----
 // WICHTIG: Hier den API-Key deiner Alchemy-App eintragen.
 // Da diese Seite statisch auf GitHub Pages läuft, ist ein Frontend-Key grundsätzlich sichtbar.
-// Deshalb in Alchemy unbedingt die Domain-Allowlist auf deine Website beschränken.
+// Testversion: API-Key wird im Request-Pfad verwendet. Deshalb die Domain-Allowlist in Alchemy auf deine Website beschränken.
 const ALCHEMY_API_KEY = "alch_UMCNBKNtoimHNHHPBk7kV";
 
 const ALCHEMY_RPC_URL = {
@@ -1030,38 +1030,53 @@ function assertAlchemyConfigured() {
 
 async function alchemyRpc(chain, method, params) {
   assertAlchemyConfigured();
-  const url = ALCHEMY_RPC_URL[chain];
-  if (!url) throw new Error("Alchemy ist für diese Chain nicht konfiguriert");
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${ALCHEMY_API_KEY}`
-    },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
-  });
-  if (!res.ok) throw new Error("Alchemy HTTP " + res.status);
+  const base = ALCHEMY_RPC_URL[chain];
+  if (!base) throw new Error("Alchemy ist für diese Chain nicht konfiguriert");
+  const url = `${base}/${encodeURIComponent(ALCHEMY_API_KEY)}`;
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+    });
+  } catch (e) {
+    throw new Error(`${CHAIN_META[chain]?.label || chain}: Netzwerkfehler bei ${method} (${e.message || e})`);
+  }
+  if (!res.ok) {
+    let detail = "";
+    try { detail = await res.text(); } catch (_) {}
+    throw new Error(`${CHAIN_META[chain]?.label || chain}: Alchemy HTTP ${res.status}${detail ? " – " + detail.slice(0, 180) : ""}`);
+  }
   const data = await res.json();
-  if (data.error) throw new Error(data.error.message || "Alchemy RPC-Fehler");
+  if (data.error) throw new Error(`${CHAIN_META[chain]?.label || chain}: ${method}: ${data.error.message || "Alchemy RPC-Fehler"}`);
   return data.result;
 }
 
 async function alchemyRpcBatch(chain, calls) {
   if (!calls.length) return [];
   assertAlchemyConfigured();
-  const url = ALCHEMY_RPC_URL[chain];
+  const base = ALCHEMY_RPC_URL[chain];
+  if (!base) throw new Error("Alchemy ist für diese Chain nicht konfiguriert");
+  const url = `${base}/${encodeURIComponent(ALCHEMY_API_KEY)}`;
   const payload = calls.map((c, i) => ({ jsonrpc: "2.0", id: i + 1, method: c.method, params: c.params }));
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${ALCHEMY_API_KEY}`
-    },
-    body: JSON.stringify(payload)
-  });
-  if (!res.ok) throw new Error("Alchemy HTTP " + res.status);
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {
+    throw new Error(`${CHAIN_META[chain]?.label || chain}: Netzwerkfehler bei RPC-Batch (${e.message || e})`);
+  }
+  if (!res.ok) {
+    let detail = "";
+    try { detail = await res.text(); } catch (_) {}
+    throw new Error(`${CHAIN_META[chain]?.label || chain}: Alchemy Batch HTTP ${res.status}${detail ? " – " + detail.slice(0, 180) : ""}`);
+  }
   const data = await res.json();
-  if (!Array.isArray(data)) throw new Error("Unerwartete Alchemy-Batch-Antwort");
+  if (!Array.isArray(data)) throw new Error(`${CHAIN_META[chain]?.label || chain}: Unerwartete Alchemy-Batch-Antwort`);
   const byId = new Map(data.map(x => [x.id, x]));
   return payload.map(p => {
     const x = byId.get(p.id);
@@ -3447,8 +3462,8 @@ async function fetchNftsForChain(chain, address, onProgress) {
     if (onProgress) onProgress(page);
     const qs = new URLSearchParams({ owner: address, withMetadata: "true", pageSize: "100" });
     if (pageKey) qs.set("pageKey", pageKey);
-    const res = await fetch(`${base}/getNFTsForOwner?${qs.toString()}`, {
-      headers: { "Authorization": `Bearer ${ALCHEMY_API_KEY}`, "Accept": "application/json" }
+    const res = await fetch(`${base}/${encodeURIComponent(ALCHEMY_API_KEY)}/getNFTsForOwner?${qs.toString()}`, {
+      headers: { "Accept": "application/json" }
     });
     if (!res.ok) throw new Error("Alchemy NFT HTTP " + res.status);
     const data = await res.json();
