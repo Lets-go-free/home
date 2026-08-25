@@ -240,6 +240,12 @@
           <button class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
         </div>
       </div>
+      <div class="tab-nav-group">
+        <span class="tab-nav-group-label">🏦 Defi-Projekte</span>
+        <div class="tab-nav">
+          <button class="tab-btn" data-tab="tlnvow" onclick="showTab('tlnvow')">TLN/VOW</button>
+        </div>
+      </div>
     </div>
 
     <div id="tab-tracking" class="tab-panel">
@@ -720,10 +726,17 @@
       </div>
     </div>
 
+    <div id="tab-tlnvow" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">Eigene TLN/VOW-Kurs-Seite, direkt eingebettet (liegt als separate Datei im selben GitHub-Verzeichnis).</div>
+        <iframe id="tlnVowIframe" style="width:100%;height:80vh;border:1px solid var(--border);border-radius:10px;background:#fff"></iframe>
+      </div>
+    </div>
+
   </div>
 
   <footer>
-    Version vom 25.08.2026, 18:10 Uhr<br>
+    Version vom 25.08.2026, 18:44 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -849,6 +862,10 @@ function showTab(name) {
   if (name === "predefined") ensurePredefinedNames();
   if (name === "admin") showAdminTab("customtokens");
   if (name === "chat") loadOwnChat();
+  if (name === "tlnvow") {
+    const iframe = document.getElementById("tlnVowIframe");
+    if (iframe && !iframe.src) iframe.src = "TLN_Kurse.html"; // nur beim ersten Öffnen laden
+  }
 }
 
 function showAdminTab(name) {
