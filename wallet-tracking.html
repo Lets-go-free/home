@@ -355,7 +355,7 @@
 
       <div id="adminAddPredefinedTokenCard" class="custom-token-card" style="display:none">
         <span class="field-label" style="display:block;margin-bottom:8px">Neuen vordefinierten Token hinzufügen (nur Admins)</span>
-        <div class="custom-token-grid" style="grid-template-columns:1fr 2fr 1fr auto auto auto">
+        <div class="custom-token-grid" style="grid-template-columns:1fr 2fr 1fr 1fr auto">
           <div>
             <span class="field-label">Chain</span>
             <select id="newPredefChain"></select>
@@ -369,12 +369,13 @@
             <input type="text" id="newPredefLabel" placeholder="z.B. USDT" />
           </div>
           <div>
-            <span class="field-label">v-Währung</span>
-            <input type="checkbox" id="newPredefIsVCurrency" style="width:auto" />
-          </div>
-          <div>
-            <span class="field-label">LP Token</span>
-            <input type="checkbox" id="newPredefIsLpToken" style="width:auto" />
+            <span class="field-label">TLN/VOW</span>
+            <select id="newPredefTlnVowCategory">
+              <option value="">– keine –</option>
+              <option value="v_currency">v-Währung</option>
+              <option value="lp_token">LP Token</option>
+              <option value="tln_vow_token">TLN/VOW Token</option>
+            </select>
           </div>
           <div>
             <span class="field-label">&nbsp;</span>
@@ -722,7 +723,7 @@
   </div>
 
   <footer>
-    Version vom 25.08.2026, 16:33 Uhr<br>
+    Version vom 25.08.2026, 18:10 Uhr<br>
     Datenquellen: api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -865,7 +866,7 @@ const ADMIN_IDEAS = [
   { status: "open", title: "Steuer-Report (Schweiz)", desc: "Stichtag-Snapshot 31.12. + druckbarer PDF/CSV-Export (Wallet, Chain, Token, Bestand, Kurs, Wert CHF) für die Steuererklärung. Läuft über manuell/automatisch erstellte Snapshots (siehe Punkt unten) statt einer eigenen On-Chain-Nachrechnung, da Letzteres nur EVM-Chains abdecken würde - so bekommt man alle Chains gleich." },
   { status: "open", title: "Gewinn/Verlust statt nur Bestand", desc: "Einstandspreis-Feld pro Wallet/Snapshot, um Performance (im Plus/Minus, %) statt nur den heutigen Wert zu zeigen." },
   { status: "clarifying", title: "Staking-Anzeige (PancakeSwap V2/V3 Liquidity Pools)", desc: "Gestakte LP-Token liegen im Farm-/Staking-Contract, nicht im Wallet - aktuell nicht sichtbar. Braucht die genaue Contract-Adresse + Funktionsnamen des Staking-Contracts (offiziell PancakeSwap oder eigener Contract?). Noch in Abklärung." },
-  { status: "clarifying", title: "Korrekte Kurse für VOW und v-Währungen (v$, vUSD, v€, ...)", desc: "GeckoTerminal findet für diese Token keinen/keinen zuverlässigen Kurs. Lösung: Kurs über einen Referenz-Pool herleiten (z.B. v$-Kurs aus dem v$/VOW-Pool + bereits bekanntem VOW-Kurs), analog einem vom User bereitgestellten Beispiel-Script. DB-Spalten für predefined_tokens sind vorbereitet (\"TLN v-Währung\", \"TLN LP Token\"), die eigentliche Kurslogik in der App fehlt noch - wartet auf die vollständige Liste der Pool-Adressen je Token vom User, plus Klärung ob VOW selbst auch eine Pool-Herleitung braucht oder direkt über GeckoTerminal funktioniert." },
+  { status: "clarifying", title: "Korrekte Kurse für VOW und v-Währungen (v$, vUSD, v€, ...)", desc: "GeckoTerminal findet für diese Token keinen/keinen zuverlässigen Kurs. Lösung: Kurs über einen Referenz-Pool herleiten (z.B. v$-Kurs aus dem v$/VOW-Pool + bereits bekanntem VOW-Kurs), analog einem vom User bereitgestellten Beispiel-Script. DB-Spalte für predefined_tokens ist vorbereitet (\"tln_vow_category\": v-Währung / LP Token / TLN/VOW Token), die eigentliche Kurslogik in der App fehlt noch - wartet auf die vollständige Liste der Pool-Adressen je Token vom User, plus Klärung ob VOW selbst auch eine Pool-Herleitung braucht oder direkt über GeckoTerminal funktioniert." },
   { status: "open", title: "Wallet-Bezeichnungen verschlüsseln (Stufe 1)", desc: "Nur die Labels (\"Dao1 Chris\" etc.) client- oder serverseitig verschlüsseln, nicht die Adressen selbst (Adressen sind ohnehin öffentlich einsehbar, Labels sind der personenidentifizierende Teil). Schützt zusätzlich gegen den Fall eines reinen DB-Zugriffs (z.B. Datenbank-Leck), nicht gegen jemanden mit Zugriff auf DB + App-Code gleichzeitig (Schlüssel müsste im Code liegen, da kein Passwort-basiertes Login vorhanden ist)." },
   {
     status: "paused",
@@ -1122,7 +1123,7 @@ async function ensurePredefinedNames() {
 // nicht mehr fest im Code - siehe loadPredefinedTokensFromDb().
 let SAFE_ADDRESSES = {};
 let predefinedTokenLabels = {}; // Key "chain|adresse" -> Label
-let predefinedTokenFlags = {}; // Key "chain|adresse" -> { is_tln_v_currency, is_tln_lp_token }
+let predefinedTokenCategory = {}; // Key "chain|adresse" -> "v_currency" | "lp_token" | "tln_vow_token" | null
 
 // Adressen case-sensitiv normalisieren - EVM/Apertum-Adressen sind Hex (Gross-/Klein-
 // schreibung egal), Tron-Adressen sind Base58 und GROSS-/KLEINSCHREIBUNG IST RELEVANT.
@@ -1140,23 +1141,20 @@ async function addPredefinedToken() {
   const chain = document.getElementById("newPredefChain").value;
   const addressRaw = document.getElementById("newPredefAddress").value.trim();
   const label = document.getElementById("newPredefLabel").value.trim();
-  const isVCurrency = document.getElementById("newPredefIsVCurrency").checked;
-  const isLpToken = document.getElementById("newPredefIsLpToken").checked;
+  const tlnVowCategory = document.getElementById("newPredefTlnVowCategory").value || null;
 
   if (!addressRaw || !label) { alert("Bitte Adresse und Label ausfüllen."); return; }
   const address = normalizeAddress(addressRaw, chain);
 
   const { error } = await sb.from("predefined_tokens").insert({
     chain, address, label,
-    is_tln_v_currency: isVCurrency,
-    is_tln_lp_token: isLpToken
+    tln_vow_category: tlnVowCategory
   });
   if (error) { alert("Fehler beim Hinzufügen: " + error.message); return; }
 
   document.getElementById("newPredefAddress").value = "";
   document.getElementById("newPredefLabel").value = "";
-  document.getElementById("newPredefIsVCurrency").checked = false;
-  document.getElementById("newPredefIsLpToken").checked = false;
+  document.getElementById("newPredefTlnVowCategory").value = "";
   await refreshPredefinedTokens();
 }
 
@@ -1188,7 +1186,7 @@ async function loadPredefinedTokensFromDb() {
   if (error) { console.error(error); return; }
   const addresses = {};
   const labels = {};
-  const flags = {}; // "chain|adresse" -> { is_tln_v_currency, is_tln_lp_token }
+  const categories = {}; // "chain|adresse" -> "v_currency" | "lp_token" | "tln_vow_token" | null
   const seen = new Set(); // Dedupe für den Fall, dass dieselbe Adresse mit unterschiedlicher
                            // Gross-/Kleinschreibung mehrfach in der DB steht (case-sensitiver PK)
   data.forEach(row => {
@@ -1200,11 +1198,11 @@ async function loadPredefinedTokensFromDb() {
     addresses[chain] = addresses[chain] || [];
     addresses[chain].push(address);
     if (row.label) labels[dedupeKey] = row.label;
-    flags[dedupeKey] = { is_tln_v_currency: !!row.is_tln_v_currency, is_tln_lp_token: !!row.is_tln_lp_token };
+    categories[dedupeKey] = row.tln_vow_category || null;
   });
   SAFE_ADDRESSES = addresses;
   predefinedTokenLabels = labels;
-  predefinedTokenFlags = flags;
+  predefinedTokenCategory = categories;
 }
 
 // Apertum: Balance-Abfrage über die öffentliche Blockscout-Explorer-API (CORS-freundlich für Browser-Zugriffe)
@@ -1355,7 +1353,9 @@ function renderSafeTokenTable() {
     return (a.label || "").localeCompare(b.label || "");
   });
 
-  el.innerHTML = `<table><thead><tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th><th style="text-align:center">TLN v-Währung</th><th style="text-align:center">TLN LP Token</th>${isAdmin ? '<th></th>' : ''}</tr></thead><tbody>
+  const TLN_VOW_LABELS = { v_currency: "v-Währung", lp_token: "LP Token", tln_vow_token: "TLN/VOW Token" };
+
+  el.innerHTML = `<table><thead><tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th><th>TLN/VOW</th>${isAdmin ? '<th></th>' : ''}</tr></thead><tbody>
     ${filtered.map(r => {
       let p;
       if (r.isNative) {
@@ -1368,12 +1368,17 @@ function renderSafeTokenTable() {
         ? `${fmtPrice(p.price)}<span class="price-source">${p.source}</span>`
         : '<span style="color:var(--muted)">–</span>';
 
-      const flagKey = r.chain + "|" + (r.address || "");
-      const flags = predefinedTokenFlags[flagKey] || { is_tln_v_currency: false, is_tln_lp_token: false };
-      const flagCell = (flagName, checked) => r.isNative ? '<span style="color:var(--muted)">–</span>' :
+      const categoryKey = r.chain + "|" + (r.address || "");
+      const category = predefinedTokenCategory[categoryKey] || "";
+      const categoryCell = r.isNative ? '<span style="color:var(--muted)">–</span>' :
         (isAdmin
-          ? `<input type="checkbox" ${checked ? "checked" : ""} style="width:auto" onchange="togglePredefinedTokenFlag('${r.chain}','${r.address}','${flagName}', this.checked)" />`
-          : (checked ? "✓" : '<span style="color:var(--muted)">–</span>'));
+          ? `<select onchange="setPredefinedTokenCategory('${r.chain}','${r.address}', this.value)">
+              <option value="" ${category === "" ? "selected" : ""}>– keine –</option>
+              <option value="v_currency" ${category === "v_currency" ? "selected" : ""}>v-Währung</option>
+              <option value="lp_token" ${category === "lp_token" ? "selected" : ""}>LP Token</option>
+              <option value="tln_vow_token" ${category === "tln_vow_token" ? "selected" : ""}>TLN/VOW Token</option>
+            </select>`
+          : (category ? escapeAttr(TLN_VOW_LABELS[category] || category) : '<span style="color:var(--muted)">–</span>'));
 
       const labelCell = (isAdmin && !r.isNative)
         ? `<input type="text" value="${escapeAttr(r.label || "")}" style="font-size:0.85rem;padding:4px 6px" onblur="updatePredefinedTokenLabel('${r.chain}','${r.address}', this.value)" onkeydown="if(event.key==='Enter') this.blur()" />`
@@ -1388,20 +1393,18 @@ function renderSafeTokenTable() {
       <td>${labelCell}</td>
       <td style="font-size:0.78rem;word-break:break-all">${r.isNative ? '<span style="color:var(--muted)">– (nativ)</span>' : r.address}</td>
       <td style="text-align:right">${priceCell}</td>
-      <td style="text-align:center">${flagCell("is_tln_v_currency", flags.is_tln_v_currency)}</td>
-      <td style="text-align:center">${flagCell("is_tln_lp_token", flags.is_tln_lp_token)}</td>
+      <td>${categoryCell}</td>
       ${isAdmin ? `<td>${deleteCell}</td>` : ""}
     </tr>`;
     }).join("")}
   </tbody></table>`;
 }
 
-async function togglePredefinedTokenFlag(chain, address, flagName, isChecked) {
-  const { error } = await matchAddressQuery(sb.from("predefined_tokens").update({ [flagName]: isChecked }).eq("chain", chain), chain, address);
+async function setPredefinedTokenCategory(chain, address, category) {
+  const value = category || null; // leere Auswahl -> null ("keine Kategorie")
+  const { error } = await matchAddressQuery(sb.from("predefined_tokens").update({ tln_vow_category: value }).eq("chain", chain), chain, address);
   if (error) { alert("Fehler beim Speichern: " + error.message); return; }
-  const flagKey = chain + "|" + address;
-  predefinedTokenFlags[flagKey] = predefinedTokenFlags[flagKey] || {};
-  predefinedTokenFlags[flagKey][flagName] = isChecked;
+  predefinedTokenCategory[chain + "|" + address] = value;
 }
 
 // Befüllt ein <select> mit Optionen und behält die bisherige Auswahl bei, falls sie noch existiert
