@@ -505,7 +505,7 @@
         <div class="field-grid" style="margin-bottom:14px">
           <div>
             <span class="field-label">Wallet (Pflicht)</span>
-            <select id="discoveryWalletSelect">
+            <select id="discoveryWalletSelect" onchange="onDiscoveryWalletChange()">
               <option value="">– Wallet wählen –</option>
             </select>
           </div>
@@ -757,7 +757,7 @@
         <p class="note">Zusätzliche Token, die nur du siehst – falls ein Token noch nicht auf der vordefinierten Liste steht, du ihm aber vertraust, kannst du ihn hier selbst mit Adresse und Label hinzufügen. Taucht danach in deiner Wallet-Übersicht mit auf.</p>
 
         <h3>🔍 Entdecken</h3>
-        <p class="note">Durchsucht eine Wallet aktiv nach Token, die du zwar besitzt, die aber noch nicht auf der sicheren Liste stehen. Wegen des aktuell noch verwendeten Alchemy-Indexers ist pro Benutzer nur ein Scan alle 30 Tage möglich. Das komplette Ergebnis wird in Supabase gespeichert und bis zur nächsten Aktualisierung wieder angezeigt. Gefundene, unverdächtige Token lassen sich direkt als "eigene sichere Token" übernehmen.</p>
+        <p class="note">Durchsucht eine Wallet aktiv nach Token, die du zwar besitzt, die aber noch nicht auf der sicheren Liste stehen. Wegen des aktuell noch verwendeten Alchemy-Indexers ist pro Wallet nur ein Scan alle 30 Tage möglich. Das komplette Ergebnis wird in Supabase gespeichert und bis zur nächsten Aktualisierung wieder angezeigt. Gefundene, unverdächtige Token lassen sich direkt als "eigene sichere Token" übernehmen.</p>
       </div>
 
       <h2>💬 Support &amp; Info</h2>
@@ -859,7 +859,7 @@
   </div>
 
   <footer>
-    Version vom 25.08.2026, 22:44 Uhr<br>
+    Version vom 26.08.2026, 00:22 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für manuelle Spezialfunktionen (Entdecken, Admin-Gebühren, Freigaben, NFTs) verwendet. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -5845,8 +5845,17 @@ async function runFeesCalculation() {
   if (!walletId) { status.textContent = "Bitte zuerst eine Wallet auswählen."; return; }
   if (activeFeesChains.size === 0) { status.textContent = "Bitte mindestens eine Chain auswählen."; return; }
 
-  const w = wallets.find(x => x.id === walletId);
+  const w = wallets.find(x => String(x.id) === String(walletId));
   if (!w) { status.textContent = "Wallet nicht gefunden."; return; }
+
+  discoveryCache = getDiscoveryCacheForWallet(String(walletId));
+  if (!discoveryScanAllowed(discoveryCache)) {
+    const next = discoveryNextAllowedDate(discoveryCache);
+    status.textContent = "Der Discovery-Scan für diese Wallet ist noch gesperrt. Nächster Scan ab " +
+      (next ? formatDiscoveryDate(next.toISOString()) : "später") + ".";
+    renderDiscoveryCacheState();
+    return;
+  }
 
   btn.disabled = true;
   resultsEl.innerHTML = "";
@@ -6017,18 +6026,29 @@ function riskFlags(info) {
 }
 
 
-// ---- Discovery-Cache (Supabase): max. 1 Scan pro User alle 30 Tage ----
+// ---- Discovery-Cache (Supabase): max. 1 Scan pro Wallet alle 30 Tage ----
 const DISCOVERY_COOLDOWN_DAYS = 30;
-let discoveryCache = null; // {wallet_id,wallet_label,selected_chains,findings,scan_notes,scanned_at,next_scan_at}
+let discoveryCaches = new Map(); // wallet_id -> Cache-Zeile
+let discoveryCache = null;       // Cache der aktuell ausgewählten Wallet
 
-function discoveryNextAllowedDate() {
-  if (!discoveryCache || !discoveryCache.next_scan_at) return null;
-  const d = new Date(discoveryCache.next_scan_at);
+function currentDiscoveryWalletId() {
+  const select = document.getElementById("discoveryWalletSelect");
+  return select ? String(select.value || "") : "";
+}
+
+function getDiscoveryCacheForWallet(walletId) {
+  if (!walletId) return null;
+  return discoveryCaches.get(String(walletId)) || null;
+}
+
+function discoveryNextAllowedDate(cache = discoveryCache) {
+  if (!cache || !cache.next_scan_at) return null;
+  const d = new Date(cache.next_scan_at);
   return isNaN(d.getTime()) ? null : d;
 }
 
-function discoveryScanAllowed() {
-  const next = discoveryNextAllowedDate();
+function discoveryScanAllowed(cache = discoveryCache) {
+  const next = discoveryNextAllowedDate(cache);
   return !next || Date.now() >= next.getTime();
 }
 
@@ -6045,33 +6065,42 @@ async function loadDiscoveryCacheFromDb() {
     .from("discovery_cache")
     .select("*")
     .eq("user_id", currentUser.id)
-    .maybeSingle();
+    .order("scanned_at", { ascending: false });
 
   if (error) {
     console.error("Discovery-Cache:", error);
+    discoveryCaches = new Map();
     discoveryCache = null;
     renderDiscoveryCacheState("Discovery-Cache konnte nicht geladen werden.");
     return;
   }
 
-  discoveryCache = data || null;
-  lastDiscoveryFindings = Array.isArray(data && data.findings) ? data.findings : [];
-
-  // Wenn die gespeicherte Wallet noch existiert, im Dropdown vorauswählen.
-  if (data && data.wallet_id) {
-    const select = document.getElementById("discoveryWalletSelect");
-    if (select && wallets.some(w => String(w.id) === String(data.wallet_id))) {
-      select.value = String(data.wallet_id);
+  discoveryCaches = new Map();
+  (data || []).forEach(row => {
+    if (row.wallet_id !== null && row.wallet_id !== undefined) {
+      discoveryCaches.set(String(row.wallet_id), row);
     }
-  }
+  });
 
-  if (data && Array.isArray(data.selected_chains) && data.selected_chains.length > 0) {
-    activeDiscoveryChains = new Set(data.selected_chains.filter(c => DISCOVERY_CHAINS.includes(c)));
-    renderDiscoveryChainFilter();
+  onDiscoveryWalletChange();
+}
+
+function onDiscoveryWalletChange() {
+  const walletId = currentDiscoveryWalletId();
+  discoveryCache = getDiscoveryCacheForWallet(walletId);
+
+  if (discoveryCache) {
+    lastDiscoveryFindings = Array.isArray(discoveryCache.findings) ? discoveryCache.findings : [];
+    if (Array.isArray(discoveryCache.selected_chains) && discoveryCache.selected_chains.length > 0) {
+      activeDiscoveryChains = new Set(discoveryCache.selected_chains.filter(c => DISCOVERY_CHAINS.includes(c)));
+      renderDiscoveryChainFilter();
+    }
+  } else {
+    lastDiscoveryFindings = [];
   }
 
   renderDiscoveryCacheState();
-  if (lastDiscoveryFindings.length > 0) renderDiscoveryResults(lastDiscoveryFindings);
+  renderDiscoveryResults(lastDiscoveryFindings);
 }
 
 function renderDiscoveryCacheState(extraMessage) {
@@ -6079,14 +6108,23 @@ function renderDiscoveryCacheState(extraMessage) {
   const info = document.getElementById("discoveryCacheInfo");
   if (!btn || !info) return;
 
-  if (!discoveryCache) {
+  const walletId = currentDiscoveryWalletId();
+  if (!walletId) {
     btn.disabled = false;
     btn.textContent = "Scan starten";
-    info.textContent = extraMessage || "Noch kein gespeicherter Discovery-Scan vorhanden.";
+    info.textContent = extraMessage || "Bitte zuerst eine Wallet auswählen.";
     return;
   }
 
-  const allowed = discoveryScanAllowed();
+  discoveryCache = getDiscoveryCacheForWallet(walletId);
+  if (!discoveryCache) {
+    btn.disabled = false;
+    btn.textContent = "Scan starten";
+    info.textContent = extraMessage || "Für diese Wallet gibt es noch keinen gespeicherten Discovery-Scan.";
+    return;
+  }
+
+  const allowed = discoveryScanAllowed(discoveryCache);
   const scanned = formatDiscoveryDate(discoveryCache.scanned_at);
   const next = formatDiscoveryDate(discoveryCache.next_scan_at);
   const walletText = discoveryCache.wallet_label ? ` · Wallet: ${discoveryCache.wallet_label}` : "";
@@ -6100,13 +6138,14 @@ function renderDiscoveryCacheState(extraMessage) {
 async function saveDiscoveryCache(w, findings, scanNotes) {
   const scannedAt = new Date();
   const nextAt = new Date(scannedAt.getTime() + DISCOVERY_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+  const walletId = String(w.dbId || w.id);
 
   const payload = {
     user_id: currentUser.id,
-    wallet_id: w.dbId ? String(w.dbId) : null,
+    wallet_id: walletId,
     wallet_label: w.label,
     selected_chains: [...activeDiscoveryChains],
-    findings: findings,
+    findings,
     scan_notes: scanNotes || [],
     scanned_at: scannedAt.toISOString(),
     next_scan_at: nextAt.toISOString()
@@ -6114,11 +6153,13 @@ async function saveDiscoveryCache(w, findings, scanNotes) {
 
   const { data, error } = await sb
     .from("discovery_cache")
-    .upsert(payload, { onConflict: "user_id" })
+    .upsert(payload, { onConflict: "user_id,wallet_id" })
     .select()
     .single();
 
   if (error) throw new Error("Discovery-Ergebnis konnte nicht gespeichert werden: " + error.message);
+
+  discoveryCaches.set(walletId, data);
   discoveryCache = data;
   renderDiscoveryCacheState();
 }
@@ -6128,16 +6169,6 @@ async function runDiscoveryScan() {
   const status = document.getElementById("discoveryStatus");
   const resultsEl = document.getElementById("discoveryResults");
   const walletId = document.getElementById("discoveryWalletSelect").value;
-
-  // Clientseitige Sperre für UX; Supabase erzwingt denselben 30-Tage-Abstand
-  // zusätzlich serverseitig per Trigger.
-  if (!discoveryScanAllowed()) {
-    const next = discoveryNextAllowedDate();
-    status.textContent = "Der Discovery-Scan ist noch gesperrt. Nächster Scan ab " +
-      (next ? formatDiscoveryDate(next.toISOString()) : "später") + ".";
-    renderDiscoveryCacheState();
-    return;
-  }
 
   if (!walletId) {
     status.textContent = "Bitte zuerst eine Wallet auswählen.";
@@ -6220,6 +6251,7 @@ async function runDiscoveryScan() {
 
 // Fasst GoPlus-Risiko-Flags + Namens-Heuristik zu einer einzigen Scam-Einschätzung zusammen
 function isFindingScam(f) {
+  if (f.userMarkedScam) return true;
   if (f.nameScamFlag) return true;
   if (f.risk && f.risk.length > 0) return true;
   return false;
@@ -6255,6 +6287,7 @@ function renderDiscoveryResults(findings) {
     let riskHtml = "";
     if (scam) {
       const reasons = [];
+      if (f.userMarkedScam) reasons.push("vom Benutzer als Scam markiert");
       if (f.nameScamFlag) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
       if (f.risk && f.risk.length > 0) reasons.push(...f.risk);
       riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger);font-weight:700">⚠ VERDACHT AUF SCAM: ${reasons.join(", ")}</span>`;
@@ -6269,9 +6302,61 @@ function renderDiscoveryResults(findings) {
         <div class="meta">${meta.label} · ${f.address}</div>
         <div style="margin-top:6px">${riskHtml}</div>
       </div>
-      ${scam ? '' : `<button onclick="addDiscoveredToken('${f.chain}','${f.address}','${escapeAttr(f.symbol)}')">Als sicher hinzufügen</button>`}
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        ${scam && f.userMarkedScam
+          ? `<button class="secondary" onclick="setDiscoveryUserScam('${f.chain}','${f.address}',false)">Scam-Markierung entfernen</button>`
+          : `<button class="remove" onclick="setDiscoveryUserScam('${f.chain}','${f.address}',true)">Als Scam markieren</button>`}
+        ${scam ? '' : `<button onclick="addDiscoveredToken('${f.chain}','${f.address}','${escapeAttr(f.symbol)}')">Als sicher hinzufügen</button>`}
+      </div>
     </div>`;
   }).join("");
+}
+
+
+async function setDiscoveryUserScam(chain, address, marked) {
+  const normAddr = normalizeAddress(address, chain);
+  let changed = false;
+
+  lastDiscoveryFindings = lastDiscoveryFindings.map(f => {
+    if (f.chain === chain && normalizeAddress(f.address, chain) === normAddr) {
+      changed = true;
+      return { ...f, userMarkedScam: !!marked };
+    }
+    return f;
+  });
+
+  if (!changed) return;
+
+  renderDiscoveryResults(lastDiscoveryFindings);
+
+  // Den aktuellen wallet-spezifischen Discovery-Cache aktualisieren.
+  // Dies ist KEIN neuer Scan und darf deshalb den 30-Tage-Cooldown nicht neu starten.
+  const walletId = currentDiscoveryWalletId();
+  const cache = getDiscoveryCacheForWallet(walletId);
+  if (!cache) return;
+
+  const updatedCache = {
+    ...cache,
+    findings: lastDiscoveryFindings
+  };
+
+  const { data, error } = await sb
+    .from("discovery_cache")
+    .update({ findings: lastDiscoveryFindings })
+    .eq("user_id", currentUser.id)
+    .eq("wallet_id", String(walletId))
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Scam-Markierung speichern:", error);
+    alert("Die Scam-Markierung konnte nicht gespeichert werden: " + error.message);
+    return;
+  }
+
+  discoveryCaches.set(String(walletId), data || updatedCache);
+  discoveryCache = data || updatedCache;
+  renderDiscoveryCacheState();
 }
 
 async function addDiscoveredToken(chain, address, symbol) {
