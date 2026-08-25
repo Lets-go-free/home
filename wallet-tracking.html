@@ -150,21 +150,49 @@
 
   footer { color: var(--muted); font-size: 0.72rem; margin-top: 24px; text-align: center; }
 
-  .tab-nav-groups { margin: 20px 0 22px; }
-  .tab-nav-group { margin-bottom: 4px; }
+  .app-hero {
+    display:flex; justify-content:space-between; align-items:center; gap:20px;
+    padding:24px 26px; margin-bottom:18px; border:1px solid var(--border);
+    border-radius:16px; background:linear-gradient(135deg,var(--card),var(--card2));
+  }
+  .app-hero h1 { font-size:clamp(1.75rem,4vw,2.7rem); line-height:1.08; margin:0 0 8px; letter-spacing:-0.035em; }
+  .app-hero .sub { margin:0; max-width:760px; }
+  .app-hero-mark {
+    flex:0 0 auto; width:58px; height:58px; border-radius:15px; display:grid; place-items:center;
+    background:var(--accent); color:#071018; font-weight:900; font-size:1.1rem; letter-spacing:.04em;
+  }
+  .tab-nav-groups {
+    margin:18px 0 24px; padding:14px; background:var(--card); border:1px solid var(--border);
+    border-radius:14px; box-shadow:0 8px 28px rgba(0,0,0,.12);
+  }
+  .tab-nav-groups::before {
+    content:"NAVIGATION"; display:block; color:var(--muted); font-size:.68rem; font-weight:800;
+    letter-spacing:.12em; margin:0 0 12px 3px;
+  }
+  .tab-nav-group { display:flex; align-items:flex-start; gap:12px; padding:9px 0; border-top:1px solid var(--border); }
+  .tab-nav-group:first-of-type { border-top:0; padding-top:0; }
+  .tab-nav-group:last-child { padding-bottom:0; }
   .tab-nav-group-label {
-    display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.04em; color: var(--muted); margin-bottom: 6px;
+    flex:0 0 150px; padding:9px 4px; font-size:.72rem; font-weight:750; text-transform:uppercase;
+    letter-spacing:.045em; color:var(--muted);
   }
-  .tab-nav {
-    display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px;
-    border-bottom: 1px solid var(--border); padding-bottom: 0;
-  }
+  .tab-nav { display:flex; gap:8px; flex-wrap:wrap; margin:0; border:0; padding:0; }
   .tab-btn {
-    background: transparent; color: var(--muted); border: none; border-bottom: 2px solid transparent;
-    padding: 10px 4px; font-size: 0.88rem; cursor: pointer; margin-right: 14px; border-radius: 0;
+    background:var(--card2); color:var(--text); border:1px solid var(--border);
+    padding:9px 13px; font-size:.84rem; cursor:pointer; margin:0; border-radius:9px;
+    transition:border-color .15s, background .15s, transform .15s;
   }
-  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab-btn:hover { border-color:var(--accent); transform:translateY(-1px); }
+  .tab-btn.active {
+    color:#071018; background:var(--accent); border-color:var(--accent); font-weight:750;
+    box-shadow:0 3px 12px rgba(0,0,0,.18);
+  }
+  @media(max-width:720px){
+    .app-hero { padding:19px; }
+    .app-hero-mark { display:none; }
+    .tab-nav-group { display:block; }
+    .tab-nav-group-label { display:block; padding:3px 2px 8px; }
+  }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
   .admin-tab-panel { display: none; }
@@ -234,8 +262,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Token-Übersicht Wallets</h1>
-  <div class="sub">Live-Abfrage über öffentliche Blockchain-APIs, direkt in deinem Browser. Wallets und sichere Token werden verschlüsselt in deinem Account gespeichert.</div>
+  <div class="app-hero"><div><h1>Wallet-Tracking inkl. Token-Übersicht und Kurse</h1><div class="sub">Wallet-Bestände, Token, Kurse, DeFi-Projekte und Analysen an einem Ort.</div></div><div class="app-hero-mark">WT</div></div>
 
   <!-- Login-Bereich: sichtbar solange niemand eingeloggt ist -->
   <div id="authGate" class="custom-token-card">
@@ -287,10 +314,10 @@
           <button class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
         </div>
       </div>
-      <div class="tab-nav-group">
+      <div class="tab-nav-group" id="defiProjectsNavGroup" style="display:none">
         <span class="tab-nav-group-label">🏦 Defi-Projekte</span>
         <div class="tab-nav">
-          <button class="tab-btn" data-tab="tlnvow" onclick="showTab('tlnvow')">TLN/VOW</button>
+          <button class="tab-btn" id="tlnVowTabBtn" data-tab="tlnvow" onclick="showTab('tlnvow')">TLN/VOW</button>
         </div>
       </div>
     </div>
@@ -611,7 +638,7 @@
         <div class="field-grid" style="margin-bottom:14px">
           <div>
             <span class="field-label">Wallet (Pflicht)</span>
-            <select id="nftWalletSelect">
+            <select id="nftWalletSelect" onchange="onNftWalletChange()">
               <option value="">– Wallet wählen –</option>
             </select>
           </div>
@@ -626,7 +653,8 @@
         </div>
         <div id="nftChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
 
-        <button id="nftBtn" onclick="runNftLoad()">NFTs laden</button>
+        <button id="nftBtn" onclick="runNftLoad()">NFTs jetzt aktualisieren</button>
+        <div id="nftCacheInfo" class="note" style="margin-top:7px">Gespeicherte NFTs werden aus Supabase geladen. Eine Live-Abfrage erfolgt nur auf Knopfdruck.</div>
         <div id="nftStatus" class="note" style="margin-top:10px"></div>
       </div>
       <div id="nftResults"></div>
@@ -713,6 +741,11 @@
               <td>🔍 Entdecken, 💸 Gebühren, 🔓 Freigaben, 🖼️ NFTs</td>
               <td><span class="badge unsafe">nur manuell</span></td>
               <td>Laufen ausschliesslich auf Knopfdruck. Für EVM-Chains wird Alchemy verwendet; andere Chains nutzen ihre bisherigen APIs. Dadurch bleiben aufwendige Historien-Abfragen bewusst manuell.</td>
+            </tr>
+            <tr>
+              <td>🖼️ NFTs</td>
+              <td><span class="badge safe">Supabase-Cache</span></td>
+              <td>Gespeicherte NFTs werden aus Supabase angezeigt. Eine neue Alchemy-/Apertum-Abfrage erfolgt nur über „NFTs jetzt aktualisieren“. Manuelle Spam-Markierungen werden ebenfalls gespeichert.</td>
             </tr>
             <tr>
               <td>Snapshots</td>
@@ -816,7 +849,7 @@
           <h3 style="margin-top:0">Liquidity Pools</h3>
           <div class="project-table-wrap">
             <table>
-              <thead><tr><th>Pool</th><th>Token 0</th><th>Token 1</th><th>Reserven</th><th>Poolpreis</th><th>USD</th><th>TVL</th><th>LP-Preis</th><th>Wallet</th></tr></thead>
+              <thead><tr><th>Pool</th><th>Token 0</th><th>Token 1</th><th>Reserven</th><th>Poolpreis</th><th>USD</th><th>TVL</th><th>LP-Preis</th></tr></thead>
               <tbody id="bscPoolBody"></tbody>
             </table>
           </div>
@@ -848,7 +881,7 @@
           <h3 style="margin-top:0">Liquidity Pools</h3>
           <div class="project-table-wrap">
             <table>
-              <thead><tr><th>Pool</th><th>Token 0</th><th>Token 1</th><th>Reserven/Liquidität</th><th>Poolpreis</th><th>USD</th><th>TVL</th><th>LP-Preis</th><th>Wallet</th></tr></thead>
+              <thead><tr><th>Pool</th><th>Token 0</th><th>Token 1</th><th>Reserven/Liquidität</th><th>Poolpreis</th><th>USD</th><th>TVL</th><th>LP-Preis</th></tr></thead>
               <tbody id="ethPoolBody"></tbody>
             </table>
           </div>
@@ -859,7 +892,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 00:22 Uhr<br>
+    Version vom 26.08.2026, 00:48 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für manuelle Spezialfunktionen (Entdecken, Admin-Gebühren, Freigaben, NFTs) verwendet. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -2332,22 +2365,6 @@ async function renderTokenTable(chain){
 /* =========================================================
    V2 WALLET
 ========================================================= */
-async function walletV2(chain,pool,wallet){
-  if(!wallet) return null;
-  if(!ethers.isAddress(wallet)) throw new Error("Wallet-Adresse ist ungültig.");
-
-  const contract = new ethers.Contract(pool.address,V2_ABI,providers[chain]);
-  const balance = await contract.balanceOf(wallet);
-  const lpAmount = Number(ethers.formatUnits(balance,pool.lpDecimals));
-  const share = pool.lpSupply > 0 ? lpAmount/pool.lpSupply : 0;
-
-  return {
-    lpAmount,
-    share,
-    token0:pool.r0*share,
-    token1:pool.r1*share
-  };
-}
 
 /* =========================================================
    RENDER V2
@@ -2376,8 +2393,6 @@ async function renderV2Pool(chain,dbPool,wallet){
     });
   }
 
-  const walletInfo = await walletV2(chain,pool,wallet);
-  const walletValue = walletInfo && lpPrice !== null ? walletInfo.lpAmount*lpPrice : null;
 
   const tr = document.createElement("tr");
   tr.innerHTML = `
@@ -2435,23 +2450,11 @@ async function renderV2Pool(chain,dbPool,wallet){
         ${pool.lpSupply ? fmt(pool.r1/pool.lpSupply,12) : "-"} ${pool.token1.symbol}
       </div>
     </td>
-    <td>
-      ${walletInfo ? `
-        <b>${fmt(walletInfo.lpAmount,8)} ${pool.lpSymbol}</b>
-        <div class="small">
-          Pool-Anteil: ${(walletInfo.share*100).toFixed(8)}%<br>
-          ${fmt(walletInfo.token0,10)} ${pool.token0.symbol}<br>
-          ${fmt(walletInfo.token1,10)} ${pool.token1.symbol}
-        </div>
-        <hr>
-        <b>${walletValue !== null ? usd(walletValue) : "USD nicht verfügbar"}</b>
-      ` : `<span class="small">Keine Wallet angegeben</span>`}
-    </td>`;
+  `;
 
   return {
     row:tr,
-    tvl:tvl || 0,
-    walletValue:walletValue || 0
+    tvl:tvl || 0
   };
 }
 
@@ -2514,11 +2517,9 @@ async function renderV3Pool(chain,dbPool){
       <div class="lp">Kein LP-Token</div>
       <div class="small">Uniswap V3 verwendet NFT-Liquiditätspositionen.</div>
     </td>
-    <td>
-      <span class="small">V3-NFT-Wallet-Auswertung ist in dieser Version nicht enthalten.</span>
-    </td>`;
+    `;
 
-  return {row:tr,tvl:0,walletValue:0};
+  return {row:tr,tvl:0};
 }
 
 /* =========================================================
@@ -2528,7 +2529,7 @@ async function renderPools(chain){
   const body = document.getElementById(chain+"PoolBody");
   const pools = configuredLPs(chain);
 
-  body.innerHTML = '<tr><td colspan="9" class="loading">Pools werden geladen…</td></tr>';
+  body.innerHTML = '<tr><td colspan="8" class="loading">Pools werden geladen…</td></tr>';
 
   let totalTVL = 0;
   let processed = 0;
@@ -2536,7 +2537,7 @@ async function renderPools(chain){
 
   for(const dbPool of pools){
     const loading = document.createElement("tr");
-    loading.innerHTML = `<td colspan="9" class="loading">${dbPool.label || dbPool.address}<br>lese Blockchain-Daten…</td>`;
+    loading.innerHTML = `<td colspan="8" class="loading">${dbPool.label || dbPool.address}<br>lese Blockchain-Daten…</td>`;
     body.appendChild(loading);
 
     try{
@@ -2551,7 +2552,7 @@ async function renderPools(chain){
     }catch(e){
       console.error("Poolfehler",dbPool.address,e);
       loading.innerHTML = `
-        <td colspan="9" class="error">
+        <td colspan="8" class="error">
           <b>${dbPool.label || "Pool"}</b><br>
           ${dbPool.address}<br><br>
           ${e.message}
@@ -2747,6 +2748,7 @@ async function onLoggedIn(session) {
   activeNftChains = new Set(NFT_CHAINS);
   renderNftChainFilter();
   renderNftWalletSelect();
+  await loadNftCacheFromDb();
 
   // Zuerst letzten automatischen Snapshot sofort anzeigen, damit die Seite ohne
   // Wartezeit gefüllt ist. Danach werden die Bestände automatisch kostenlos live
@@ -2787,6 +2789,9 @@ async function onLoggedIn(session) {
 }
 
 function showTab(name) {
+  // TLN/VOW ist nur erreichbar, wenn ein passender Projekt-Token im Summary-Bestand liegt.
+  if (name === "tlnvow" && !hasTlnVowTokenInSummary()) name = "tracking";
+
   // Gebühren sind vorerst nur für Admins freigeschaltet, da die historische
   // Auswertung weiterhin Alchemy verbraucht.
   if (name === "fees" && !isAdmin) name = "tracking";
@@ -2797,6 +2802,7 @@ function showTab(name) {
   if (name === "predefined") ensurePredefinedNames();
   if (name === "admin") showAdminTab("customtokens");
   if (name === "chat") loadOwnChat();
+  if (name === "nfts") onNftWalletChange();
   if (name === "discovery") {
     renderDiscoveryCacheState();
     if (lastDiscoveryFindings.length > 0) renderDiscoveryResults(lastDiscoveryFindings);
@@ -3540,6 +3546,7 @@ async function setPredefinedTokenCategory(chain, address, category) {
   const { error } = await matchAddressQuery(sb.from("predefined_tokens").update({ tln_vow_category: value }).eq("chain", chain), chain, address);
   if (error) { alert("Fehler beim Speichern: " + error.message); return; }
   predefinedTokenCategory[chain + "|" + address] = value;
+  updateTlnVowTabVisibility();
 }
 
 // Befüllt ein <select> mit Optionen und behält die bisherige Auswahl bei, falls sie noch existiert
@@ -4993,6 +5000,61 @@ const EXPLORER_URLS = {
   sol: (w) => w.sol ? `https://solscan.io/account/${w.sol}` : null
 };
 
+
+// TLN/VOW-Tab nur anzeigen, wenn die aktuelle Gesamtübersicht tatsächlich
+// mindestens einen gehaltenen TLN/VOW-klassifizierten Token enthält.
+// Zuordnung ausschließlich über Chain + Contract-Adresse, nie über Symbol/Name.
+function hasTlnVowTokenInSummary() {
+  for (const chain of Object.keys(CHAIN_META)) {
+    const totals = {};
+
+    for (const w of wallets) {
+      const cd = (walletData[w.id] || {})[chain];
+      if (!cd || cd.error) continue;
+
+      for (const token of (cd.tokens || [])) {
+        if (!token.address || Number(token.amount) <= 0) continue;
+        if (!isSafeTokenAddress(token.address, chain)) continue;
+
+        const address = normalizeAddress(token.address, chain);
+        const key = chain + "|" + address;
+        totals[key] = (totals[key] || 0) + Number(token.amount);
+      }
+    }
+
+    for (const [key, amount] of Object.entries(totals)) {
+      // Gleiche Sichtbarkeitsschwelle wie in der Summary.
+      if (amount < DUST_THRESHOLD) continue;
+
+      // Wert der Kategorie ist egal: v_currency, lp_token oder tln_vow_token
+      // zählen alle. Entscheidend ist nur, dass die TLN/VOW-Spalte nicht leer ist.
+      const category = predefinedTokenCategory[key];
+      if (category !== null && category !== undefined && String(category).trim() !== "") {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function updateTlnVowTabVisibility() {
+  const group = document.getElementById("defiProjectsNavGroup");
+  const btn = document.getElementById("tlnVowTabBtn");
+  const visible = hasTlnVowTokenInSummary();
+
+  if (group) group.style.display = visible ? "flex" : "none";
+  if (btn) btn.style.display = visible ? "inline-block" : "none";
+
+  // Falls der User gerade im Projekt-Tab ist und der letzte passende Bestand
+  // verschwindet, automatisch zurück zum Wallet-Tracking.
+  const panel = document.getElementById("tab-tlnvow");
+  if (!visible && panel && panel.classList.contains("active")) {
+    showTab("tracking");
+  }
+
+  return visible;
+}
+
 function renderResults() {
   // --- Details je Wallet ---
   const resultsContainer = document.getElementById("resultsContainer");
@@ -5103,6 +5165,7 @@ function renderResults() {
   }).join("");
 
   summaryContainer.innerHTML = summaryCards || '<div class="empty">Keine Bestände gefunden.</div>';
+  updateTlnVowTabVisibility();
 }
 
 // ============================================================
@@ -5630,97 +5693,190 @@ async function fetchApertumNfts(address, onProgress) {
   return nfts;
 }
 
+// ---- NFT-Cache in Supabase: Live-Abfrage nur auf Knopfdruck ----
+let nftCaches = new Map(); // wallet_id -> DB-Zeile
+let lastNftFindings = [];
+
+function nftKey(n) {
+  return `${n.chain}|${normalizeAddress(n.tokenAddress || "", n.chain)}|${String(n.tokenId)}`;
+}
+function isNftSpam(n) {
+  return !!(n.possibleSpam || n.userMarkedSpam);
+}
+
+async function loadNftCacheFromDb() {
+  if (!currentUser) return;
+  const { data, error } = await sb.from("nft_cache").select("*").eq("user_id", currentUser.id);
+  if (error) {
+    console.error("NFT-Cache:", error);
+    return;
+  }
+  nftCaches = new Map();
+  (data || []).forEach(row => nftCaches.set(String(row.wallet_id), row));
+  onNftWalletChange();
+}
+
+function cachedNftsForSelection() {
+  const walletId = document.getElementById("nftWalletSelect")?.value || "";
+  const rows = walletId === "all"
+    ? [...nftCaches.values()]
+    : (nftCaches.get(String(walletId)) ? [nftCaches.get(String(walletId))] : []);
+  return rows.flatMap(r => Array.isArray(r.nfts) ? r.nfts : []);
+}
+
+function onNftWalletChange() {
+  lastNftFindings = cachedNftsForSelection();
+  renderNftResults(lastNftFindings, []);
+  const info = document.getElementById("nftCacheInfo");
+  if (!info) return;
+  const walletId = document.getElementById("nftWalletSelect")?.value || "";
+  const rows = walletId === "all" ? [...nftCaches.values()] : [nftCaches.get(String(walletId))].filter(Boolean);
+  if (!rows.length) {
+    info.textContent = "Für diese Auswahl sind noch keine NFTs in Supabase gespeichert.";
+  } else {
+    const latest = rows.map(r => new Date(r.refreshed_at)).filter(d => !isNaN(d)).sort((a,b)=>b-a)[0];
+    info.textContent = `Gespeicherter NFT-Stand${latest ? " · zuletzt aktualisiert " + latest.toLocaleString("de-CH") : ""}. Live-Abfrage nur über „NFTs jetzt aktualisieren“.`;
+  }
+}
+
+async function saveNftCacheForWallet(w, nfts, chains) {
+  const payload = {
+    user_id: currentUser.id,
+    wallet_id: String(w.dbId || w.id),
+    wallet_label: w.label,
+    selected_chains: chains,
+    nfts,
+    refreshed_at: new Date().toISOString()
+  };
+  const { data, error } = await sb.from("nft_cache")
+    .upsert(payload, { onConflict: "user_id,wallet_id" }).select().single();
+  if (error) throw new Error("NFT-Cache konnte nicht gespeichert werden: " + error.message);
+  nftCaches.set(String(w.dbId || w.id), data);
+}
+
 async function runNftLoad() {
   const btn = document.getElementById("nftBtn");
   const status = document.getElementById("nftStatus");
-  const resultsEl = document.getElementById("nftResults");
   const walletId = document.getElementById("nftWalletSelect").value;
 
   if (activeNftChains.size === 0) { status.textContent = "Bitte mindestens eine Chain auswählen."; return; }
 
   const targetWallets = walletId === "all"
     ? wallets.filter(w => !!w.evm)
-    : (wallets.find(x => x.id === walletId && x.evm) ? [wallets.find(x => x.id === walletId)] : []);
+    : (wallets.find(x => String(x.id) === String(walletId) && x.evm)
+        ? [wallets.find(x => String(x.id) === String(walletId))] : []);
 
   if (targetWallets.length === 0) { status.textContent = "Keine Wallet mit EVM-Adresse gefunden."; return; }
 
   btn.disabled = true;
-  resultsEl.innerHTML = "";
-  let allNfts = [];
+  btn.textContent = "NFTs werden aktualisiert…";
   const errors = [];
 
   for (const w of targetWallets) {
+    let walletNfts = [];
     for (const chain of NFT_CHAINS.filter(c => activeNftChains.has(c))) {
       status.textContent = `Lade NFTs für ${w.label} auf ${CHAIN_META[chain].label}...`;
       try {
-        const onProgress = (page) => {
-          status.textContent = `Lade NFTs für ${w.label} auf ${CHAIN_META[chain].label}... (Seite ${page})`;
-        };
         const found = chain === "apertum"
-          ? await fetchApertumNfts(w.evm, onProgress)
-          : await fetchNftsForChain(chain, w.evm, onProgress);
-        found.forEach(n => { n.walletLabel = w.label; });
-        allNfts = allNfts.concat(found);
+          ? await fetchApertumNfts(w.evm, page => status.textContent = `Lade NFTs für ${w.label} auf ${CHAIN_META[chain].label}... (Seite ${page})`)
+          : await fetchNftsForChain(chain, w.evm, page => status.textContent = `Lade NFTs für ${w.label} auf ${CHAIN_META[chain].label}... (Seite ${page})`);
+        found.forEach(n => { n.walletLabel = w.label; n.walletId = String(w.dbId || w.id); });
+
+        // vorhandene manuelle Spam-Markierungen über Contract + Token-ID übernehmen
+        const old = nftCaches.get(String(w.dbId || w.id));
+        const oldMap = new Map(((old && old.nfts) || []).map(n => [nftKey(n), !!n.userMarkedSpam]));
+        found.forEach(n => { if (oldMap.get(nftKey(n))) n.userMarkedSpam = true; });
+        walletNfts = walletNfts.concat(found);
       } catch (e) {
         errors.push(`${w.label} / ${CHAIN_META[chain].label}: ${e.message}`);
       }
     }
+    try {
+      await saveNftCacheForWallet(w, walletNfts, [...activeNftChains]);
+    } catch(e) {
+      errors.push(`${w.label}: ${e.message}`);
+    }
   }
 
-  lastNftFindings = allNfts;
-  renderNftResults(allNfts, errors);
-  status.textContent = "Fertig.";
+  lastNftFindings = cachedNftsForSelection();
+  renderNftResults(lastNftFindings, errors);
+  onNftWalletChange();
+  status.textContent = errors.length ? "Aktualisierung mit Hinweisen abgeschlossen." : "NFTs aktualisiert und in Supabase gespeichert.";
   btn.disabled = false;
+  btn.textContent = "NFTs jetzt aktualisieren";
 }
 
-let lastNftFindings = [];
+async function setNftUserSpam(walletId, chain, tokenAddress, tokenId, marked) {
+  const cache = nftCaches.get(String(walletId));
+  if (!cache) return;
+  const key = `${chain}|${normalizeAddress(tokenAddress || "", chain)}|${String(tokenId)}`;
+  const updated = (cache.nfts || []).map(n =>
+    nftKey(n) === key ? { ...n, userMarkedSpam: !!marked } : n
+  );
+  const { data, error } = await sb.from("nft_cache")
+    .update({ nfts: updated })
+    .eq("user_id", currentUser.id)
+    .eq("wallet_id", String(walletId))
+    .select().single();
+  if (error) {
+    alert("Spam-Markierung konnte nicht gespeichert werden: " + error.message);
+    return;
+  }
+  nftCaches.set(String(walletId), data);
+  lastNftFindings = cachedNftsForSelection();
+  renderNftResults(lastNftFindings, []);
+}
 
-function renderNftResults(nfts, errors) {
+function renderNftResults(nfts, errors = []) {
   const el = document.getElementById("nftResults");
   const errorNote = errors.length > 0 ? `<div class="error" style="margin-bottom:12px">Fehler bei: ${errors.join(", ")}</div>` : "";
 
-  if (nfts.length === 0) {
-    el.innerHTML = errorNote + `<div class="empty">Keine NFTs gefunden.</div>`;
-    return;
-  }
-
-  const hideSpam = document.getElementById("nftHideSpamToggle") && document.getElementById("nftHideSpamToggle").checked;
-  const spamCount = nfts.filter(n => n.possibleSpam).length;
-  const visible = hideSpam ? nfts.filter(n => !n.possibleSpam) : nfts;
+  const oldToggle = document.getElementById("nftHideSpamToggle");
+  const hideSpam = oldToggle ? oldToggle.checked : true;
+  const spamCount = nfts.filter(isNftSpam).length;
+  const visible = hideSpam ? nfts.filter(n => !isNftSpam(n)) : nfts;
 
   const filterBar = `<div class="custom-token-card" style="margin-bottom:14px">
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
       <input type="checkbox" id="nftHideSpamToggle" style="width:auto" onchange="renderNftResults(lastNftFindings, [])" ${hideSpam ? "checked" : ""} />
-      Spam-Verdacht ausblenden (${spamCount} von ${nfts.length})
+      Spam-verdächtige NFTs ausblenden (${spamCount} von ${nfts.length})
     </label>
   </div>`;
 
+  if (nfts.length === 0) {
+    el.innerHTML = errorNote + `<div class="empty">Keine gespeicherten NFTs für diese Auswahl vorhanden.</div>`;
+    return;
+  }
   if (visible.length === 0) {
-    el.innerHTML = errorNote + filterBar + `<div class="empty">Alle gefundenen NFTs sind als Spam-verdächtig markiert und aktuell ausgeblendet.</div>`;
+    el.innerHTML = errorNote + filterBar + `<div class="empty">Alle gespeicherten NFTs sind als Spam-verdächtig markiert und ausgeblendet.</div>`;
     return;
   }
 
-  el.innerHTML = `
-    ${errorNote}
-    ${filterBar}
+  el.innerHTML = `${errorNote}${filterBar}
     <div class="note" style="margin-bottom:12px">${visible.length} von ${nfts.length} NFT(s) angezeigt</div>
     <div class="nft-grid">
       ${visible.map(n => {
-        const meta = CHAIN_META[n.chain];
+        const meta = CHAIN_META[n.chain] || {dot:"",label:n.chain};
+        const spam = isNftSpam(n);
         return `<div class="nft-card">
           ${n.image ? `<img src="${n.image}" loading="lazy" onerror="this.style.display='none'">` : `<div style="aspect-ratio:1;background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:0.75rem">Kein Bild</div>`}
           <div class="nft-info">
             <div class="nft-name" title="${escapeAttr(n.name)}">${escapeAttr(n.name)}</div>
-            <div class="nft-id">${n.collectionName ? escapeAttr(n.collectionName) + " · " : ""}#${n.tokenId}</div>
+            <div class="nft-id">${n.collectionName ? escapeAttr(n.collectionName) + " · " : ""}#${escapeAttr(String(n.tokenId))}</div>
             <div class="nft-id" style="margin-top:3px;display:flex;align-items:center;gap:5px">
-              <span class="dot ${meta.dot}" style="width:7px;height:7px"></span> ${meta.label} · ${escapeAttr(n.walletLabel)}
+              <span class="dot ${meta.dot}" style="width:7px;height:7px"></span> ${meta.label} · ${escapeAttr(n.walletLabel || "")}
             </div>
-            ${n.possibleSpam ? '<div style="margin-top:4px"><span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger)">⚠ Spam-Verdacht</span></div>' : ""}
+            ${spam ? `<div style="margin-top:5px"><span class="badge unsafe">⚠ ${n.userMarkedSpam ? "Manuell als Spam markiert" : "Spam-Verdacht"}</span></div>` : ""}
+            <div style="margin-top:8px">
+              <button class="${n.userMarkedSpam ? "secondary" : "remove"}" style="padding:6px 8px;font-size:.72rem"
+                onclick="setNftUserSpam('${escapeAttr(String(n.walletId || ""))}','${n.chain}','${escapeAttr(n.tokenAddress || "")}','${escapeAttr(String(n.tokenId))}',${n.userMarkedSpam ? "false" : "true"})">
+                ${n.userMarkedSpam ? "Spam-Markierung entfernen" : "Als Spam markieren"}
+              </button>
+            </div>
           </div>
         </div>`;
       }).join("")}
-    </div>
-  `;
+    </div>`;
 }
 
 // ---- Chat (User <-> Admin) ----
