@@ -736,7 +736,7 @@
   </div>
 
   <footer>
-    Version vom 25.08.2026, 20:52 Uhr<br>
+    Version vom 25.08.2026, 21:05 Uhr<br>
     Datenquellen: Alchemy (EVM Discovery, Historie/Gebühren, Approvals, NFTs), api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1056,34 +1056,80 @@ async function alchemyRpc(chain, method, params) {
 async function alchemyRpcBatch(chain, calls) {
   if (!calls.length) return [];
   assertAlchemyConfigured();
+
+  // Große Wallet-Historien erzeugen sehr viele Receipt-/TX-Abfragen.
+  // Browser (insb. Safari/iOS) können bei großen JSON-RPC-Batches mit "Load failed"
+  // abbrechen. Deshalb intern immer in kleine Pakete aufteilen.
+  const MAX_CALLS_PER_HTTP_BATCH = 20;
+  if (calls.length > MAX_CALLS_PER_HTTP_BATCH) {
+    const allRows = [];
+    for (let offset = 0; offset < calls.length; offset += MAX_CALLS_PER_HTTP_BATCH) {
+      const part = calls.slice(offset, offset + MAX_CALLS_PER_HTTP_BATCH);
+      const rows = await alchemyRpcBatch(chain, part);
+      allRows.push(...rows);
+    }
+    return allRows;
+  }
+
   const base = ALCHEMY_RPC_URL[chain];
   if (!base) throw new Error("Alchemy ist für diese Chain nicht konfiguriert");
   const url = `${base}/${encodeURIComponent(ALCHEMY_API_KEY)}`;
-  const payload = calls.map((c, i) => ({ jsonrpc: "2.0", id: i + 1, method: c.method, params: c.params }));
-  let res;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+  const payload = calls.map((c, i) => ({
+    jsonrpc: "2.0",
+    id: i + 1,
+    method: c.method,
+    params: c.params
+  }));
+
+  // Bei älteren/aktiven Wallets laufen viele Requests nacheinander.
+  // Kurzzeitige Browser-/Netzwerkabbrüche automatisch bis zu 3x wiederholen.
+  const delays = [0, 500, 1200];
+  let lastNetworkError = null;
+
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt]) await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+
+    let res;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      lastNetworkError = e;
+      continue;
+    }
+
+    if (!res.ok) {
+      let detail = "";
+      try { detail = await res.text(); } catch (_) {}
+
+      // Rate-Limit / temporäre Serverfehler ebenfalls nochmals versuchen.
+      if ((res.status === 429 || res.status >= 500) && attempt < delays.length - 1) {
+        continue;
+      }
+
+      throw new Error(`${CHAIN_META[chain]?.label || chain}: Alchemy Batch HTTP ${res.status}${detail ? " – " + detail.slice(0, 180) : ""}`);
+    }
+
+    const data = await res.json();
+    if (!Array.isArray(data)) {
+      throw new Error(`${CHAIN_META[chain]?.label || chain}: Unerwartete Alchemy-Batch-Antwort`);
+    }
+
+    const byId = new Map(data.map(x => [x.id, x]));
+    return payload.map(p => {
+      const x = byId.get(p.id);
+      if (!x) return null;
+      if (x.error) return { __error: x.error.message || "RPC-Fehler" };
+      return x.result;
     });
-  } catch (e) {
-    throw new Error(`${CHAIN_META[chain]?.label || chain}: Netzwerkfehler bei RPC-Batch (${e.message || e})`);
   }
-  if (!res.ok) {
-    let detail = "";
-    try { detail = await res.text(); } catch (_) {}
-    throw new Error(`${CHAIN_META[chain]?.label || chain}: Alchemy Batch HTTP ${res.status}${detail ? " – " + detail.slice(0, 180) : ""}`);
-  }
-  const data = await res.json();
-  if (!Array.isArray(data)) throw new Error(`${CHAIN_META[chain]?.label || chain}: Unerwartete Alchemy-Batch-Antwort`);
-  const byId = new Map(data.map(x => [x.id, x]));
-  return payload.map(p => {
-    const x = byId.get(p.id);
-    if (!x) return null;
-    if (x.error) return { __error: x.error.message || "RPC-Fehler" };
-    return x.result;
-  });
+
+  throw new Error(
+    `${CHAIN_META[chain]?.label || chain}: Netzwerkfehler bei RPC-Batch nach 3 Versuchen (${lastNetworkError?.message || lastNetworkError || "Load failed"})`
+  );
 }
 
 async function fetchAlchemyOutgoingTxHashes(chain, address, onProgress) {
@@ -3080,7 +3126,7 @@ async function fetchWalletFeesForChain(chain, address, onProgress) {
   let txCount = 0;
 
   // Receipts + Transaktionen gebündelt laden; Deduplizierung erfolgt bereits über Hash-Set.
-  const chunkSize = 40;
+  const chunkSize = 10; // 10 TX = 20 RPC-Calls; bewusst klein für große/alte Wallet-Historien
   for (let offset = 0; offset < history.hashes.length; offset += chunkSize) {
     const chunk = history.hashes.slice(offset, offset + chunkSize);
     const calls = [];
