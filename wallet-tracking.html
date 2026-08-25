@@ -218,7 +218,7 @@
         <span class="tab-nav-group-label">📊 Übersicht &amp; Analyse</span>
         <div class="tab-nav">
           <button class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking - Token-Übersicht</button>
-          <button class="tab-btn" data-tab="fees" onclick="showTab('fees')">💸 Gebühren</button>
+          <button class="tab-btn" id="feesTabBtn" data-tab="fees" onclick="showTab('fees')" style="display:none">💸 Gebühren</button>
           <button class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
           <button class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
         </div>
@@ -250,13 +250,13 @@
 
     <div id="tab-tracking" class="tab-panel">
       <div class="action-row" style="align-items:center">
-        <button id="loadBtn" onclick="loadAll()">Alle laden</button>
+        <button id="loadBtn" onclick="loadAll()">Jetzt live aktualisieren</button>
         <span id="cacheStatusNote" class="note" style="margin:0"></span>
       </div>
       <div class="note" style="margin-bottom:14px">
-        Bestände werden NIE automatisch live abgefragt – beim Login siehst du immer den letzten gespeicherten
-        Stand (mit Zeitstempel oben). Für frische Zahlen bitte "Alle laden" klicken. Kurse werden davon
-        unabhängig immer frisch geholt.
+        Beim Login wird zuerst der letzte gespeicherte Stand angezeigt und anschließend automatisch live aktualisiert.
+        Für EVM-Chains werden nur native Coins sowie vordefinierte und eigene sichere Token über kostenlose öffentliche RPCs abgefragt.
+        "Alle laden" kann weiterhin für eine manuelle Aktualisierung verwendet werden.
       </div>
 
       <div class="custom-token-card">
@@ -653,8 +653,8 @@
           <tbody>
             <tr>
               <td>Bestände (Wallet-Tracking)</td>
-              <td><span class="badge unsafe">nur manuell</span></td>
-              <td>Beim Login wird immer nur der letzte gespeicherte Stand angezeigt (mit Zeitstempel) – nie automatisch neu abgefragt. Für frische Zahlen selbst auf "Alle laden" klicken.</td>
+              <td><span class="badge safe">automatisch live</span></td>
+              <td>Der letzte gespeicherte Stand erscheint sofort; danach werden die Bestände automatisch live über kostenlose APIs/RPCs aktualisiert. Bei einem Ausfall bleibt der letzte Stand als Fallback sichtbar.</td>
             </tr>
             <tr>
               <td>Kurse</td>
@@ -687,7 +687,7 @@
         <p class="note">Zeigt deine Bestände über alle Wallets und Chains hinweg – als Gesamtsumme ("Summary") und aufgeschlüsselt je Wallet ("Details je Wallet"). Nur Token auf der sicheren Liste (vordefiniert oder selbst hinzugefügt) werden angezeigt, alles andere wird bewusst ausgeblendet (Schutz vor Scam-Token). Zusätzlich verfügbar: Snapshots (Momentaufnahmen deines Bestands, samt Kurs zum jeweiligen Zeitpunkt), eine Verlauf-Grafik über die Zeit, und die Portfolio-Allokation als Kreisdiagramm.</p>
 
         <h3>💸 Gebühren</h3>
-        <p class="note">Summiert die Netzwerk-Gebühren, die eine Wallet über ihre komplette Historie bezahlt hat – je Chain aufgeschlüsselt (Anzahl Transaktionen, Gebühren nativ und in USD). Wallet auswählen, Chains wählen, "Gebühren berechnen" klicken. Kann bei sehr aktiven Wallets etwas dauern.</p>
+        <p class="note">Nur für Admins sichtbar. Summiert die Netzwerk-Gebühren, die eine Wallet über ihre komplette Historie bezahlt hat. Die EVM-Historie nutzt aktuell noch Alchemy und läuft deshalb ausschließlich manuell.</p>
 
         <h3>🖼️ NFTs</h3>
         <p class="note">Zeigt die NFTs (Sammelbilder/Collectibles) einer oder aller Wallets, inklusive Warnung bei Spam-Verdacht (unaufgeforderte, wertlose NFT-"Geschenke" sind eine verbreitete Betrugsmasche). Mit "Spam-Verdacht ausblenden" lassen sich verdächtige Funde ausblenden.</p>
@@ -736,8 +736,8 @@
   </div>
 
   <footer>
-    Version vom 25.08.2026, 21:21 Uhrr<br>
-    Datenquellen: Alchemy (EVM Discovery, Historie/Gebühren, Approvals, NFTs), api.etherscan.io (eigener Key, nur Ethereum), ethereum-rpc.publicnode.com, bsc-rpc.publicnode.com, polygon-bor-rpc.publicnode.com, arbitrum-one-rpc.publicnode.com, base-rpc.publicnode.com, avalanche-c-chain-rpc.publicnode.com, explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
+    Version vom 25.08.2026, 21:58 Uhrrr<br>
+    Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Kurse). Alchemy wird aktuell nur noch für manuelle Spezialfunktionen (Entdecken, Admin-Gebühren, Freigaben, NFTs) verwendet. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
 
@@ -803,6 +803,7 @@ async function onLoggedIn(session) {
 
   isAdmin = await checkIsAdmin();
   document.getElementById("adminTabBtn").style.display = isAdmin ? "inline-block" : "none";
+  document.getElementById("feesTabBtn").style.display = isAdmin ? "inline-block" : "none";
   document.getElementById("adminAddPredefinedTokenCard").style.display = isAdmin ? "block" : "none";
   if (isAdmin) {
     document.getElementById("newPredefChain").innerHTML = Object.keys(CHAIN_META).map(c => `<option value="${c}">${CHAIN_META[c].label}</option>`).join("");
@@ -837,24 +838,36 @@ async function onLoggedIn(session) {
   renderNftChainFilter();
   renderNftWalletSelect();
 
-  // Bestände werden NIE automatisch live abgefragt - nur der letzte Stand (Cache/Snapshot)
-  // wird angezeigt, mit Zeitstempel. Für frische Daten muss "Alle laden" geklickt werden.
+  // Zuerst letzten automatischen Snapshot sofort anzeigen, damit die Seite ohne
+  // Wartezeit gefüllt ist. Danach werden die Bestände automatisch kostenlos live
+  // aktualisiert (native Coins + vordefinierte/eigene sichere Token).
   const cachedAt = await loadFromAutomatedCache();
   if (cachedAt) {
-    await loadNativePrices(); // Kurse bleiben trotzdem frisch - schnell/günstig, kein Alchemy nötig dafür
+    await loadNativePrices();
     renderResults();
     renderSafeTokenTable();
     renderCustomTokenList();
     renderAllocationChart();
-    renderCacheStatusNote("Bestände vom " + fmtSnapshotDateTime(cachedAt) + " - für aktuelle Daten \"Alle laden\" klicken.");
+    renderCacheStatusNote("Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – Live-Aktualisierung startet…");
   } else {
-    renderCacheStatusNote("Noch keine Daten geladen - bitte \"Alle laden\" klicken.");
+    renderCacheStatusNote("Noch kein gespeicherter Stand – Live-Aktualisierung startet…");
   }
 
   showTab(wallets.length === 0 ? "wallets" : "tracking");
+
+  // Nicht blockierend: Snapshot ist bereits sichtbar, Live-Daten kommen danach.
+  if (wallets.length > 0) {
+    loadAll({ automatic: true }).catch(e => {
+      console.error("Automatische Live-Aktualisierung:", e);
+      renderCacheStatusNote("Automatische Live-Aktualisierung fehlgeschlagen – letzter gespeicherter Stand bleibt sichtbar.");
+    });
+  }
 }
 
 function showTab(name) {
+  // Gebühren sind vorerst nur für Admins freigeschaltet, da die historische
+  // Auswertung weiterhin Alchemy verbraucht.
+  if (name === "fees" && !isAdmin) name = "tracking";
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
   const panel = document.getElementById("tab-" + name);
@@ -1930,41 +1943,30 @@ function escapeAttr(s) {
 
 // ---- Datenabruf ----
 
-// Etherscan API V2: dein eigener kostenloser Key - im Free-Tier nur für Ethereum selbst nutzbar (nicht BSC/Polygon)
-const ETHERSCAN_API_KEY = "HTXWS7BQ6F2QJNR4C1QAZW7JFGG2S5PEPZ";
-const ETHERSCAN_CHAIN_ID = { eth: 1 };
-
-// Warteschlange, damit wir das Free-Tier-Limit (3 Anfragen/Sekunde) nicht überschreiten,
-// auch wenn mehrere Wallets gleichzeitig laden.
-let etherscanQueue = Promise.resolve();
-function queuedEtherscanCall(fn) {
-  const run = etherscanQueue.then(fn);
-  etherscanQueue = run.catch(() => {}).then(() => new Promise(r => setTimeout(r, 400)));
-  return run;
-}
-
-async function fetchEtherscanNative(chain, address) {
-  const chainId = ETHERSCAN_CHAIN_ID[chain];
-  return queuedEtherscanCall(async () => {
-    const url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=balance&address=${address}&tag=latest&apikey=${ETHERSCAN_API_KEY}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    if (data.status !== "1") throw new Error(data.message === "NOTOK" ? data.result : (data.message || "Etherscan-Fehler"));
-    return Number(BigInt(data.result)) / 1e18;
-  });
-}
+// EVM-Bestände werden in Phase 1 vollständig über kostenlose öffentliche RPCs geladen.
+// Kein Etherscan/Moralis/Alchemy wird für das normale Wallet-Tracking benötigt.
 
 // Generische EVM-RPC-Hilfsfunktionen (für gezielte Balance-Abfrage bekannter Token-Adressen)
 async function evmRpcCall(rpcUrl, method, params) {
-  const res = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
-  });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  return data.result;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      signal: controller.signal
+    });
+    if (!res.ok) throw new Error("RPC HTTP " + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return data.result;
+  } catch (e) {
+    if (e && e.name === "AbortError") throw new Error("RPC Timeout");
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function decodeAbiString(hex) {
@@ -1994,26 +1996,50 @@ async function fetchNativeViaRpc(rpcUrl, address) {
 // statt für jeden Token einzeln zum Server zu gehen - das ist der Haupt-Geschwindigkeitshebel.
 async function evmRpcBatch(rpcUrl, calls) {
   if (calls.length === 0) return [];
+
+  // Kleine Batches sind bei öffentlichen RPCs stabiler als ein sehr großer Request.
+  const MAX_CALLS = 40;
+  if (calls.length > MAX_CALLS) {
+    const all = [];
+    for (let i = 0; i < calls.length; i += MAX_CALLS) {
+      const part = await evmRpcBatch(rpcUrl, calls.slice(i, i + MAX_CALLS));
+      all.push(...part);
+      if (i + MAX_CALLS < calls.length) await new Promise(r => setTimeout(r, 80));
+    }
+    return all;
+  }
+
   const body = calls.map((c, i) => ({
     jsonrpc: "2.0",
     id: i,
     method: "eth_call",
     params: [{ to: c.to, data: c.data }, "latest"]
   }));
-  const res = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  const data = await res.json();
-  const arr = Array.isArray(data) ? data : [data];
-  const byId = {};
-  arr.forEach(d => { byId[d.id] = d; });
-  return calls.map((c, i) => {
-    const d = byId[i];
-    if (!d || d.error) return null;
-    return d.result;
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    if (!res.ok) throw new Error("RPC HTTP " + res.status);
+    const data = await res.json();
+    const arr = Array.isArray(data) ? data : [data];
+    const byId = {};
+    arr.forEach(d => { byId[d.id] = d; });
+    return calls.map((c, i) => {
+      const d = byId[i];
+      if (!d || d.error) return null;
+      return d.result;
+    });
+  } catch (e) {
+    if (e && e.name === "AbortError") throw new Error("RPC Timeout");
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // Cache für Dezimalstellen/Symbol pro Chain+Adresse - diese ändern sich nie,
@@ -2121,11 +2147,9 @@ async function fetchKnownTokenBalances(rpcUrl, address, chain) {
 }
 
 async function fetchEvmAddressInfo(chain, rpcUrl, address) {
-  const nativeFn = ETHERSCAN_CHAIN_ID[chain]
-    ? fetchEtherscanNative(chain, address)
-    : fetchNativeViaRpc(rpcUrl, address);
+  // Nativer Coin + ausschließlich vordefinierte/eigene sichere Token.
   const [native, tokens] = await Promise.all([
-    nativeFn,
+    fetchNativeViaRpc(rpcUrl, address),
     fetchKnownTokenBalances(rpcUrl, address, chain)
   ]);
   return { native, tokens };
@@ -2185,11 +2209,13 @@ async function fetchTronAddressInfo(address) {
     const raw = BigInt(rawStr);
     if (raw <= 0n) return;
 
-    const custom = customSafeTokens.find(t => t.chain === "tron" && t.address === contractAddress);
-    const label = predefinedTokenLabels["tron|" + contractAddress] || (custom ? custom.label : null) || (contractAddress.slice(0, 8) + "…");
+    const normalizedContract = normalizeAddress(contractAddress, "tron");
+    if (!isSafeTokenAddress(normalizedContract, "tron")) return;
+    const custom = customSafeTokens.find(t => t.chain === "tron" && t.address === normalizedContract);
+    const label = predefinedTokenLabels["tron|" + normalizedContract] || (custom ? custom.label : null) || (contractAddress.slice(0, 8) + "…");
     tokens.push({
       symbol: label,
-      address: contractAddress,
+      address: normalizedContract,
       amount: Number(raw) / Math.pow(10, TRON_TOKEN_DECIMALS_DEFAULT)
     });
   });
@@ -2198,8 +2224,8 @@ async function fetchTronAddressInfo(address) {
 }
 
 // ---- Apertum (EVM, chain-id 2786) ----
-// Es gibt keine Ethplorer-artige Auto-Discovery-API für diese Chain, darum werden
-// nur die bekannten (sicheren + selbst erfassten) Token-Adressen gezielt per eth_call geprüft.
+// Der kostenlose Blockscout-Explorer liefert die Wallet-Tokenliste; fürs normale
+// Tracking übernehmen wir daraus ausschließlich vordefinierte/eigene sichere Token.
 async function fetchApertumAddressInfo(address) {
   const [balRes, tokRes] = await Promise.all([
     fetch(`${APERTUM_EXPLORER_API}/addresses/${address}`),
@@ -2223,64 +2249,95 @@ async function fetchApertumAddressInfo(address) {
           amount: Number(raw) / Math.pow(10, decimals)
         };
       })
-      .filter(t => t.amount >= DUST_THRESHOLD);
+      .filter(t => t.amount >= DUST_THRESHOLD && isSafeTokenAddress(t.address, "apertum"));
   }
   return { native, tokens };
 }
 
-async function loadWalletChain(wallet, chain) {
+async function loadWalletChain(wallet, chain, preserveCachedOnError = false) {
   walletData[wallet.id] = walletData[wallet.id] || {};
+  const previous = walletData[wallet.id][chain];
+
   try {
     if (chain === "eth" || chain === "bsc" || chain === "matic" || chain === "arb" || chain === "base" || chain === "avax") {
-      if (!wallet.evm) { delete walletData[wallet.id][chain]; return; }
+      if (!wallet.evm) { delete walletData[wallet.id][chain]; return { ok: true, skipped: true }; }
       const r = await fetchEvmAddressInfo(chain, EVM_RPC_URLS[chain], wallet.evm);
       walletData[wallet.id][chain] = { native: r.native, nativeSymbol: EVM_NATIVE_SYMBOL[chain], tokens: r.tokens };
     } else if (chain === "apertum") {
-      if (!wallet.evm) { delete walletData[wallet.id].apertum; return; }
+      if (!wallet.evm) { delete walletData[wallet.id].apertum; return { ok: true, skipped: true }; }
       const r = await fetchApertumAddressInfo(wallet.evm);
       walletData[wallet.id].apertum = { native: r.native, nativeSymbol: "APTM", tokens: r.tokens };
     } else if (chain === "btc") {
-      if (!wallet.btc) { delete walletData[wallet.id].btc; return; }
+      if (!wallet.btc) { delete walletData[wallet.id].btc; return { ok: true, skipped: true }; }
       const amount = await fetchBitcoinBalance(wallet.btc);
       walletData[wallet.id].btc = { native: amount, nativeSymbol: "BTC", tokens: [] };
     } else if (chain === "xrp") {
-      if (!wallet.xrp) { delete walletData[wallet.id].xrp; return; }
+      if (!wallet.xrp) { delete walletData[wallet.id].xrp; return { ok: true, skipped: true }; }
       const amount = await fetchXrpBalance(wallet.xrp);
       walletData[wallet.id].xrp = { native: amount, nativeSymbol: "XRP", tokens: [] };
     } else if (chain === "sol") {
-      if (!wallet.sol) { delete walletData[wallet.id].sol; return; }
+      if (!wallet.sol) { delete walletData[wallet.id].sol; return { ok: true, skipped: true }; }
       const amount = await fetchSolanaBalance(wallet.sol);
       walletData[wallet.id].sol = { native: amount, nativeSymbol: "SOL", tokens: [] };
     } else if (chain === "tron") {
-      if (!wallet.tron) { delete walletData[wallet.id].tron; return; }
+      if (!wallet.tron) { delete walletData[wallet.id].tron; return { ok: true, skipped: true }; }
       const r = await fetchTronAddressInfo(wallet.tron);
       walletData[wallet.id].tron = { native: r.native, nativeSymbol: "TRX", tokens: r.tokens };
     }
+    return { ok: true };
   } catch (err) {
-    walletData[wallet.id][chain] = { error: err.message };
+    // Beim automatischen Login-Refresh soll ein temporärer API/RPC-Ausfall den
+    // bereits sichtbaren Snapshot nicht durch einen Fehler ersetzen.
+    if (preserveCachedOnError && previous && !previous.error) {
+      walletData[wallet.id][chain] = previous;
+    } else {
+      walletData[wallet.id][chain] = { error: err.message };
+    }
+    return { ok: false, error: err.message };
   }
 }
 
-async function loadAll() {
+async function loadAll(options = {}) {
+  const automatic = !!options.automatic;
   const btn = document.getElementById("loadBtn");
-  btn.disabled = true;
-  renderCacheStatusNote("Lade...");
-  const jobs = [loadNativePrices()];
+  if (btn) btn.disabled = true;
+  renderCacheStatusNote(automatic ? "Prüfe Bestände live…" : "Lade Bestände live…");
+
+  // Preise parallel laden; sie sind unabhängig von den Balance-RPCs.
+  const priceJob = loadNativePrices().catch(e => console.warn("Preisabruf:", e));
+
+  const chainJobs = [];
   wallets.forEach(w => {
     ["eth", "bsc", "matic", "arb", "base", "avax", "apertum", "tron", "btc", "xrp", "sol"].forEach(chain => {
-      jobs.push(loadWalletChain(w, chain));
+      chainJobs.push(loadWalletChain(w, chain, automatic));
     });
   });
-  await Promise.all(jobs);
+
+  const results = await Promise.all(chainJobs);
+  await priceJob;
+
   renderResults();
   renderSafeTokenTable();
   renderCustomTokenList();
   renderAllocationChart();
-  btn.disabled = false;
+  if (btn) btn.disabled = false;
 
-  // Cache aktualisieren, damit beim nächsten Login der neue Zeitstempel angezeigt wird
-  await createSnapshot(true);
-  renderCacheStatusNote("Gerade eben live aktualisiert.");
+  const failures = results.filter(r => r && r.ok === false);
+
+  // Den automatischen Snapshot nur ersetzen, wenn ALLE tatsächlich abgefragten
+  // Chains erfolgreich waren. So bleibt der letzte vollständige Stand als Fallback erhalten.
+  if (failures.length === 0) {
+    await createSnapshot(true);
+    renderCacheStatusNote(automatic ? "Bestände gerade eben automatisch live aktualisiert." : "Gerade eben live aktualisiert.");
+  } else {
+    const failedCount = failures.length;
+    renderCacheStatusNote(
+      `Live-Aktualisierung teilweise fehlgeschlagen (${failedCount} Abfrage${failedCount === 1 ? "" : "n"}). ` +
+      `Für betroffene Chains bleibt der letzte gespeicherte Stand sichtbar.`
+    );
+  }
+
+  return { failures };
 }
 
 // ---- Rendering ----
