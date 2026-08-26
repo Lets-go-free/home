@@ -583,16 +583,6 @@
           </div>
         </div>
         <div id="feesChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
-
-        <div class="custom-token-card" style="margin:12px 0;border-color:var(--border)">
-          <span class="field-label">NodeReal API-Key für BSC</span>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input type="password" id="nodeRealApiKeyInput" placeholder="NodeReal API-Key (wird nur lokal in diesem Browser gespeichert)" autocomplete="off" />
-            <button class="secondary" onclick="saveNodeRealApiKey()">Key lokal speichern</button>
-          </div>
-          <div class="note">Der Key wird nicht in Supabase und nicht im HTML gespeichert. Er liegt nur im lokalen Browser-Speicher dieses Geräts.</div>
-        </div>
-
         <button id="feesBtn" onclick="runFeesCalculation()">Gebühren aktualisieren</button>
         <div id="feesCacheInfo" class="note" style="margin-top:8px"></div>
         <div id="feesStatus" class="note" style="margin-top:10px"></div>
@@ -902,7 +892,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 13:30 Uhr<br>
+    Version vom 26.08.2026, 14:12 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen bzw. noch nicht migrierte Chains (Entdecken, Teile der Gebühren, Freigaben, NFTs) verwendet. ETH-Gebühren laufen über Routescan, BSC-Gebühren über NodeReal/BSCTrace. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -2752,7 +2742,6 @@ async function onLoggedIn(session) {
   activeFeesChains = new Set(FEES_CHAINS);
   renderFeesChainFilter();
   renderFeesWalletSelect();
-  loadNodeRealKeyIntoField();
   activeApprovalsChains = new Set(APPROVALS_CHAINS);
   renderApprovalsChainFilter();
   renderApprovalsWalletSelect();
@@ -5222,7 +5211,6 @@ const FEES_MAX_PAGES = 50; // nur für die bisherigen Legacy-Provider / XRP / Ap
 const FEE_COOLDOWN_DAYS = 30;
 const FEE_OVERLAP_BLOCKS = { eth: 64, bsc: 200 };
 const FEE_FINALITY_LAG = { eth: 64, bsc: 200 };
-const NODEREAL_LOCAL_STORAGE_KEY = "walletTrackingNodeRealApiKey";
 let feeCaches = new Map(); // key walletId|chain -> DB row
 
 function feeCacheKey(walletId, chain) { return String(walletId) + "|" + chain; }
@@ -5276,24 +5264,6 @@ function renderFeesWalletSelect() {
   if (wallets.some(w => String(w.id) === String(current))) el.value = current;
 }
 
-function loadNodeRealKeyIntoField() {
-  const el = document.getElementById("nodeRealApiKeyInput");
-  if (!el) return;
-  try { if (!el.value) el.value = localStorage.getItem(NODEREAL_LOCAL_STORAGE_KEY) || ""; } catch (e) {}
-}
-function saveNodeRealApiKey() {
-  const el = document.getElementById("nodeRealApiKeyInput");
-  const key = el ? el.value.trim() : "";
-  if (!key) { alert("Bitte NodeReal API-Key eingeben."); return; }
-  try { localStorage.setItem(NODEREAL_LOCAL_STORAGE_KEY, key); alert("NodeReal API-Key wurde nur lokal in diesem Browser gespeichert."); }
-  catch (e) { alert("Der Browser konnte den Key nicht lokal speichern."); }
-}
-function getNodeRealApiKey() {
-  const el = document.getElementById("nodeRealApiKeyInput");
-  let key = el ? el.value.trim() : "";
-  if (!key) { try { key = localStorage.getItem(NODEREAL_LOCAL_STORAGE_KEY) || ""; } catch (e) {} }
-  return key;
-}
 
 async function loadFeeCacheForWallet(walletId) {
   if (!currentUser || !walletId) return [];
@@ -5313,7 +5283,6 @@ function feeNextAllowedDate(cache) {
 function feeScanAllowed(cache) { return isAdmin || !feeNextAllowedDate(cache) || Date.now() >= feeNextAllowedDate(cache).getTime(); }
 
 async function onFeesWalletChange() {
-  loadNodeRealKeyIntoField();
   const select = document.getElementById("feesWalletSelect");
   const walletId = select ? select.value : "";
   const info = document.getElementById("feesCacheInfo");
@@ -5377,15 +5346,20 @@ async function fetchEthereumFeeTransactions(address, startBlock, endBlock, onPro
 }
 
 async function nodeRealRpc(method, params) {
-  const key = getNodeRealApiKey();
-  if (!key) throw new Error("NodeReal API-Key fehlt. Bitte oben im Gebühren-Tab einmal lokal speichern.");
-  const res = await fetch(`https://bsc-mainnet.nodereal.io/v1/${encodeURIComponent(key)}`, {
-    method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({jsonrpc:"2.0", method, params:[params], id:1})
+  const { data: sessionData } = await sb.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) throw new Error("Nicht angemeldet.");
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/nodereal-bsc`, {
+    method: "POST",
+    headers: {"Content-Type":"application/json","Authorization":`Bearer ${accessToken}`,"apikey":SUPABASE_ANON_KEY},
+    body: JSON.stringify({ method, params })
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error("NodeReal HTTP " + res.status);
-  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-  return data.result || {};
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) {}
+  if (!res.ok) throw new Error((data && data.error) || `BSC Proxy HTTP ${res.status}`);
+  if (data && data.error) throw new Error(data.error);
+  return data?.result || {};
 }
 async function fetchNodeRealRange(address, fromBlock, toBlock, onProgress, progressState) {
   let pageKey = null;
@@ -5460,8 +5434,24 @@ async function upsertFeeCache(walletId, chain, totalWei, txCount, lastScannedBlo
   return data || row;
 }
 
+async function storedFeeTransactionCount(walletId, chain) {
+  const { count, error } = await sb.from("wallet_fee_transactions")
+    .select("id", { count:"exact", head:true })
+    .eq("user_id", currentUser.id).eq("wallet_id", String(walletId)).eq("chain", chain);
+  if (error) throw new Error("Supabase Gebühren-TX Count: " + error.message);
+  return Number(count || 0);
+}
+
 async function scanCachedEvmFees(chain, wallet, onProgress) {
-  const cache = feeCaches.get(feeCacheKey(wallet.id, chain)) || null;
+  let cache = feeCaches.get(feeCacheKey(wallet.id, chain)) || null;
+  if (cache) {
+    const storedCount = await storedFeeTransactionCount(wallet.id, chain);
+    const cacheCount = Number(cache.tx_count || 0);
+    if (storedCount !== cacheCount || (cacheCount === 0 && storedCount === 0)) {
+      cache = null;
+      feeCaches.delete(feeCacheKey(wallet.id, chain));
+    }
+  }
   if (!feeScanAllowed(cache)) {
     const next = feeNextAllowedDate(cache);
     return { chain, totalFee:Number(cache.total_fee_native || 0), txCount:Number(cache.tx_count || 0), cached:true, cachedAt:cache.last_scanned_at,
