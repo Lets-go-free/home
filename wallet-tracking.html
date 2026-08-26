@@ -557,7 +557,7 @@
     <div id="tab-fees" class="tab-panel">
       <div class="custom-token-card">
         <div class="note" style="margin-bottom:12px">
-          Summiert die tatsächlich bezahlten Netzwerk-Gebühren einer Wallet. Für ETH/BSC wird zusätzlich der historische USD-Wert zum Zeitpunkt der jeweiligen Transaktion ermittelt. Gespeicherte ETH/BSC-Werte werden sofort aus Supabase angezeigt;
+          Summiert die tatsächlich bezahlten Netzwerk-Gebühren einer Wallet. In Phase 1 werden ausschließlich die tatsächlich bezahlten Gebühren im jeweiligen nativen Coin angezeigt. Gespeicherte ETH/BSC-Werte werden sofort aus Supabase angezeigt;
           beim Aktualisieren wird nach dem ersten Vollscan nur noch inkrementell mit Sicherheits-Overlap weitergescannt. Nur Transaktionen,
           bei denen diese Wallet die Absenderin war, zählen (nur die zahlt die Gebühr).
         </div>
@@ -892,7 +892,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 16:18 Uhr<br>
+    Version vom 26.08.2026, 16:20 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen bzw. noch nicht migrierte Chains (Entdecken, Teile der Gebühren, Freigaben, NFTs) verwendet. ETH-Gebühren laufen über Routescan, BSC-Gebühren über NodeReal/BSCTrace. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -5292,7 +5292,7 @@ async function onFeesWalletChange() {
   if (!w) return;
   const rows = await loadFeeCacheForWallet(walletId);
   if (rows.length) {
-    const results = rows.map(r => ({ chain:r.chain, totalFee:Number(r.total_fee_native || 0), totalFeeUsd:r.total_fee_usd === null || r.total_fee_usd === undefined ? null : Number(r.total_fee_usd), usdComplete:!!r.usd_complete, txCount:Number(r.tx_count || 0), cached:true, cachedAt:r.last_scanned_at, source:r.data_source }));
+    const results = rows.map(r => ({ chain:r.chain, totalFee:Number(r.total_fee_native || 0), txCount:Number(r.tx_count || 0), cached:true, cachedAt:r.last_scanned_at, source:r.data_source }));
     renderFeesResults(w, results);
     const newest = rows.map(r => r.last_scanned_at).filter(Boolean).sort().pop();
     if (info) info.textContent = newest ? `Gespeicherter Gebührenstand geladen · letzte Aktualisierung ${new Date(newest).toLocaleString("de-CH")}` : "Gespeicherter Gebührenstand geladen.";
@@ -5425,88 +5425,6 @@ async function loadExistingFeeHashes(walletId, chain, startBlock) {
   return hashes;
 }
 
-const HISTORICAL_PRICE_WINDOW_SECONDS = 360 * 24 * 60 * 60;
-const historicalPriceSeriesCache = new Map();
-
-function historicalPriceCoinId(chain) {
-  return CHAIN_META[chain]?.coingeckoId || null;
-}
-
-async function fetchHistoricalPriceSeries(chain, txs) {
-  const coinId = historicalPriceCoinId(chain);
-  const timestamps = txs
-    .map(tx => tx.tx_timestamp ? new Date(tx.tx_timestamp).getTime() : NaN)
-    .filter(Number.isFinite);
-  if (!coinId || timestamps.length === 0) return [];
-
-  const minSec = Math.floor(Math.min(...timestamps) / 1000) - 86400;
-  const maxSec = Math.ceil(Math.max(...timestamps) / 1000) + 86400;
-  const cacheKey = `${chain}|${Math.floor(minSec / 86400)}|${Math.floor(maxSec / 86400)}`;
-  if (historicalPriceSeriesCache.has(cacheKey)) return historicalPriceSeriesCache.get(cacheKey);
-
-  const points = [];
-  let from = minSec;
-  while (from < maxSec) {
-    const to = Math.min(maxSec, from + HISTORICAL_PRICE_WINDOW_SECONDS);
-    const url = `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coinId)}/market_chart/range?vs_currency=usd&from=${from}&to=${to}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`CoinGecko Historie HTTP ${res.status}`);
-    const data = await res.json();
-    for (const p of (data.prices || [])) {
-      if (Array.isArray(p) && Number.isFinite(Number(p[0])) && Number.isFinite(Number(p[1]))) {
-        points.push([Number(p[0]), Number(p[1])]);
-      }
-    }
-    from = to + 1;
-    if (from < maxSec) await sleepMs(1200);
-  }
-  points.sort((a,b) => a[0] - b[0]);
-  historicalPriceSeriesCache.set(cacheKey, points);
-  return points;
-}
-
-function nearestHistoricalPrice(points, isoTimestamp) {
-  if (!points.length || !isoTimestamp) return null;
-  const target = new Date(isoTimestamp).getTime();
-  if (!Number.isFinite(target)) return null;
-  let lo = 0, hi = points.length - 1;
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    if (points[mid][0] < target) lo = mid + 1;
-    else hi = mid;
-  }
-  const a = points[lo];
-  const b = lo > 0 ? points[lo - 1] : null;
-  if (!b) return a[1];
-  return Math.abs(a[0] - target) < Math.abs(b[0] - target) ? a[1] : b[1];
-}
-
-async function enrichFeeTransactionsWithHistoricalUsd(chain, txs) {
-  if (!txs.length) return { txs, complete:true };
-  try {
-    const points = await fetchHistoricalPriceSeries(chain, txs);
-    let complete = points.length > 0;
-    const enriched = txs.map(tx => {
-      const price = nearestHistoricalPrice(points, tx.tx_timestamp);
-      const nativeFee = Number(tx.fee_native || 0);
-      const feeUsd = Number.isFinite(price) && Number.isFinite(nativeFee) ? nativeFee * price : null;
-      if (!Number.isFinite(price) || !Number.isFinite(feeUsd)) complete = false;
-      return {
-        ...tx,
-        native_price_usd: Number.isFinite(price) ? price : null,
-        fee_usd: Number.isFinite(feeUsd) ? feeUsd : null
-      };
-    });
-    return { txs: enriched, complete };
-  } catch (e) {
-    console.warn("Historische USD-Kurse konnten nicht vollständig geladen werden:", e);
-    return {
-      txs: txs.map(tx => ({ ...tx, native_price_usd:null, fee_usd:null })),
-      complete:false
-    };
-  }
-}
-
 async function insertNewFeeTransactions(walletId, chain, txs) {
   for (let i=0; i<txs.length; i+=500) {
     const rows = txs.slice(i, i+500).map(tx => ({ user_id:currentUser.id, wallet_id:String(walletId), chain, ...tx }));
@@ -5514,14 +5432,12 @@ async function insertNewFeeTransactions(walletId, chain, txs) {
     if (error) throw new Error("Supabase Gebühren-TX speichern: " + error.message);
   }
 }
-async function upsertFeeCache(walletId, chain, totalWei, totalUsd, usdComplete, txCount, lastScannedBlock, source) {
+async function upsertFeeCache(walletId, chain, totalWei, txCount, lastScannedBlock, source) {
   const row = {
     user_id:currentUser.id,
     wallet_id:String(walletId),
     chain,
     total_fee_native:weiToDecimalString(totalWei),
-    total_fee_usd:Number.isFinite(Number(totalUsd)) ? Number(totalUsd) : null,
-    usd_complete:!!usdComplete,
     tx_count:txCount,
     last_scanned_block:lastScannedBlock,
     last_scanned_at:new Date().toISOString(),
@@ -5550,8 +5466,7 @@ async function scanCachedEvmFees(chain, wallet, onProgress) {
   if (cache) {
     const storedCount = await storedFeeTransactionCount(wallet.id, chain);
     const cacheCount = Number(cache.tx_count || 0);
-    // Alte Null-Caches sowie Caches ohne historische USD-Bewertung werden einmalig neu aufgebaut.
-    if (storedCount !== cacheCount || (cacheCount === 0 && storedCount === 0) || cache.usd_complete !== true) {
+    if (storedCount !== cacheCount || (cacheCount === 0 && storedCount === 0)) {
       cache = null;
       feeCaches.delete(feeCacheKey(wallet.id, chain));
     }
@@ -5562,8 +5477,6 @@ async function scanCachedEvmFees(chain, wallet, onProgress) {
     return {
       chain,
       totalFee:Number(cache.total_fee_native || 0),
-      totalFeeUsd:cache.total_fee_usd === null || cache.total_fee_usd === undefined ? null : Number(cache.total_fee_usd),
-      usdComplete:!!cache.usd_complete,
       txCount:Number(cache.tx_count || 0),
       cached:true,
       cachedAt:cache.last_scanned_at,
@@ -5586,45 +5499,26 @@ async function scanCachedEvmFees(chain, wallet, onProgress) {
   for (const tx of txs) if (tx.tx_hash) unique.set(tx.tx_hash, tx);
 
   const existing = cache ? await loadExistingFeeHashes(wallet.id, chain, startBlock) : new Set();
-  let candidates = cache
+  const candidates = cache
     ? [...unique.values()].filter(tx => !existing.has(tx.tx_hash))
     : [...unique.values()];
 
-  const priced = await enrichFeeTransactionsWithHistoricalUsd(chain, candidates);
-  candidates = priced.txs;
-
-  // Beim kompletten Neuaufbau aktualisieren wir bestehende Detailzeilen ebenfalls,
-  // damit alte Einträge die historischen USD-Felder erhalten.
   await insertNewFeeTransactions(wallet.id, chain, candidates);
 
   const addedWei = candidates.reduce((sum, tx) => sum + decimalStringToWei(tx.fee_native), 0n);
-  const addedUsd = candidates.reduce((sum, tx) => sum + (Number.isFinite(Number(tx.fee_usd)) ? Number(tx.fee_usd) : 0), 0);
   const oldWei = cache ? decimalStringToWei(cache.total_fee_native) : 0n;
-  const oldUsd = cache && Number.isFinite(Number(cache.total_fee_usd)) ? Number(cache.total_fee_usd) : 0;
   const oldCount = cache ? Number(cache.tx_count || 0) : 0;
-
-  const source = chain === "eth" ? "routescan + coingecko-historisch" : "nodereal + coingecko-historisch";
-  const saved = await upsertFeeCache(
-    wallet.id,
-    chain,
-    oldWei + addedWei,
-    oldUsd + addedUsd,
-    priced.complete && (!cache || cache.usd_complete === true),
-    oldCount + candidates.length,
-    safeHead,
-    source
-  );
+  const source = chain === "eth" ? "routescan" : "nodereal";
+  const saved = await upsertFeeCache(wallet.id, chain, oldWei + addedWei, oldCount + candidates.length, safeHead, source);
 
   return {
     chain,
     totalFee:Number(saved.total_fee_native || 0),
-    totalFeeUsd:saved.total_fee_usd === null || saved.total_fee_usd === undefined ? null : Number(saved.total_fee_usd),
-    usdComplete:!!saved.usd_complete,
     txCount:Number(saved.tx_count || 0),
     cached:false,
     cachedAt:saved.last_scanned_at,
     source,
-    note:candidates.length ? `${candidates.length} neue/neu bewertete TX verarbeitet` : "Keine neuen TX"
+    note:candidates.length ? `${candidates.length} neue TX hinzugefügt` : "Keine neuen TX"
   };
 }
 
@@ -6337,33 +6231,22 @@ async function runFeesCalculation() {
 function renderFeesResults(wallet,results){
   const el=document.getElementById("feesResults");
   if(!results||results.length===0){el.innerHTML="";return;}
-  const rowsWithHistoricalUsd=results.filter(r=>!r.error&&Number.isFinite(Number(r.totalFeeUsd)));
   if(results.every(r=>r.error)){el.innerHTML=`<div class="error">Alle Abfragen sind fehlgeschlagen. Bitte später nochmal versuchen.</div>`;return;}
-  const grandTotalUsd=rowsWithHistoricalUsd.reduce((sum,r)=>sum+Number(r.totalFeeUsd||0),0);
 
   el.innerHTML=`<div class="custom-token-card"><h3 style="margin:0 0 10px">${escapeAttr(wallet.label)} — Gebühren-Total</h3>
-    <table><thead><tr><th>Chain</th><th style="text-align:right">Anzahl Tx</th><th style="text-align:right">Gebühren (nativ)</th><th style="text-align:right">Historischer Wert (USD)</th><th>Quelle / Stand</th></tr></thead><tbody>
+    <table><thead><tr><th>Chain</th><th style="text-align:right">Anzahl Tx</th><th style="text-align:right">Gebühren (nativ)</th><th>Quelle / Stand</th></tr></thead><tbody>
     ${results.map(r=>{
-      if(r.error)return `<tr><td><span class="dot ${CHAIN_META[r.chain].dot}"></span> ${CHAIN_META[r.chain].label}</td><td colspan="4" class="error" style="text-align:left">Fehler: ${escapeAttr(r.error)}</td></tr>`;
-      const usd=Number.isFinite(Number(r.totalFeeUsd))?Number(r.totalFeeUsd):null;
+      if(r.error)return `<tr><td><span class="dot ${CHAIN_META[r.chain].dot}"></span> ${CHAIN_META[r.chain].label}</td><td colspan="3" class="error" style="text-align:left">Fehler: ${escapeAttr(r.error)}</td></tr>`;
       const nativeSym=NATIVE_SYMBOL[r.chain]||r.chain.toUpperCase();
       const source=r.source||"bisherige API";
       const when=r.cachedAt?new Date(r.cachedAt).toLocaleString("de-CH"):"live";
-      const usdNote=(r.chain==="eth"||r.chain==="bsc")
-        ? (r.usdComplete ? "historisch bewertet" : "historische USD-Bewertung unvollständig")
-        : "historische USD-Bewertung noch nicht migriert";
       return `<tr><td><span class="dot ${CHAIN_META[r.chain].dot}"></span> ${CHAIN_META[r.chain].label}${r.truncated?' <span class="badge unsafe">gekürzt</span>':''}${r.cached?' <span class="badge safe">Cache</span>':''}</td>
         <td class="num">${r.txCount}</td>
         <td class="num">${fmt(r.totalFee)} ${nativeSym}</td>
-        <td class="num">${usd!==null?fmtUsd(usd):'<span style="color:var(--muted)">–</span>'}</td>
-        <td><span class="note">${escapeAttr(source)} · ${escapeAttr(when)}<br>${escapeAttr(usdNote)}${r.note?'<br>'+escapeAttr(r.note):''}</span></td></tr>`;
-    }).join("")}</tbody>
-    <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
-      <td colspan="3" style="padding-top:10px">Total historisch bewertete Chains</td>
-      <td class="num" style="padding-top:10px">${rowsWithHistoricalUsd.length?fmtUsd(grandTotalUsd):'–'}</td><td></td>
-    </tr></tfoot></table>
+        <td><span class="note">${escapeAttr(source)} · ${escapeAttr(when)}${r.note?'<br>'+escapeAttr(r.note):''}</span></td></tr>`;
+    }).join("")}</tbody></table>
     <div class="note" style="margin-top:10px">
-      ETH/BSC: native Gebühr je Transaktion = gasUsed × damaliger gasPrice. USD-Wert = native Gebühr × historischer CoinGecko-Kurs am nächstgelegenen verfügbaren Datenpunkt (bei älteren Daten typischerweise Tageskurs). Der erste Lauf ist ein Vollscan; danach wird inkrementell mit Sicherheits-Overlap und TX-Hash-Deduplizierung aktualisiert.
+      Phase 1: Es werden nur die tatsächlich bezahlten Netzwerkgebühren im nativen Coin angezeigt. Bei EVM-Chains gilt je Transaktion: gasUsed × damaliger gasPrice. Eine historische USD-Bewertung ist bewusst nicht enthalten und folgt separat in Phase 2.
     </div></div>`;
 }
 
