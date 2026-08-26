@@ -643,7 +643,7 @@
         <div class="note" style="margin-bottom:12px">
           Sucht in der ausgewählten Wallet nach Token, die du tatsächlich hältst, aber die noch nicht auf der sicheren Liste stehen.
           EVM-Chains nutzen dafür aktuell noch Alchemy. Um das API-Kontingent zu schützen, ist pro Benutzer nur
-          <strong>ein Discovery-Scan alle 30 Tage</strong> möglich. Das Ergebnis wird in Supabase gespeichert und bis zum nächsten
+          <strong>ein Discovery-Scan alle 30 Tage</strong> möglich; Admins sind von dieser Sperre ausgenommen. Das Ergebnis wird in Supabase gespeichert und bis zum nächsten
           möglichen Scan hier wieder angezeigt. Apertum/Tron werden soweit verfügbar aus kostenlosen Datenquellen ergänzt.
         </div>
 
@@ -919,7 +919,7 @@
         <p class="note">Zusätzliche Token, die nur du siehst – falls ein Token noch nicht auf der vordefinierten Liste steht, du ihm aber vertraust, kannst du ihn hier selbst mit Adresse und Label hinzufügen. Taucht danach in deiner Wallet-Übersicht mit auf.</p>
 
         <h3>🔍 Entdecken</h3>
-        <p class="note">Durchsucht eine Wallet aktiv nach Token, die du zwar besitzt, die aber noch nicht auf der sicheren Liste stehen. Wegen des aktuell noch verwendeten Alchemy-Indexers ist pro Wallet nur ein Scan alle 30 Tage möglich. Das komplette Ergebnis wird in Supabase gespeichert und bis zur nächsten Aktualisierung wieder angezeigt. Gefundene, unverdächtige Token lassen sich direkt als "eigene sichere Token" übernehmen.</p>
+        <p class="note">Durchsucht eine Wallet aktiv nach Token, die du zwar besitzt, die aber noch nicht auf der sicheren Liste stehen. Wegen des aktuell noch verwendeten Alchemy-Indexers ist für normale Benutzer pro Wallet nur ein Scan alle 30 Tage möglich; Admins können jederzeit neu scannen. Das komplette Ergebnis wird in Supabase gespeichert und bis zur nächsten Aktualisierung wieder angezeigt. Gefundene, unverdächtige Token lassen sich direkt als "eigene sichere Token" übernehmen.</p>
       </div>
 
       <h2>💬 Support &amp; Info</h2>
@@ -1059,7 +1059,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 20:27 Uhr<br>
+    Version vom 26.08.2026, 20:37 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -3210,7 +3210,7 @@ const ADMIN_IDEAS = [
   {
     status: "in_progress",
     title: "Konfiguration aus HTML nach Supabase verlagern",
-    desc: "Umbau gestartet 26.08.2026. ZIEL: neue Chains/Token und Preis-Zuordnungen möglichst ohne HTML-Änderung verwalten. PHASE 1b umgesetzt: public.chains ist jetzt Single Source of Truth für Chain-Label, Native-Symbol, CoinGecko-ID, Wallet-Typ, Explorer-URL und GeckoTerminal-Netzwerk. Der HTML-Fallback für diese Chain-Metadaten wurde vollständig entfernt; bei DB-/Konfigurationsfehler startet das Dashboard bewusst nicht. predefined_tokens um symbol, name, coingecko_id, decimals, price_source und enabled erweitert; CoinGecko-Zuordnung der vordefinierten Token läuft nun über chain+Contract statt Kürzel. PHASE 2 in Umsetzung: Admin-Tab „Chains“ vorhanden. Gebühren-Chain-Auswahl ist jetzt DB-gesteuert über fees_enabled + fee_provider; EVM-Gebühren verwenden evm_chain_id, fee_api_base, Finality und Overlap aus public.chains. EVM-Balance-/RPC-Zugriffe verwenden rpc_url aus public.chains. Feste FEES_CHAINS-, Routescan-, Blockscout-, Finality-/Overlap- und EVM-RPC-Maps wurden entfernt. Discovery/Approvals/NFT sind jetzt nicht nur über Aktiv-Flags, sondern auch über Provider + API-Basis in public.chains konfiguriert. Harte Alchemy-RPC-/NFT-URL-Maps und die GoPlus-Chain-ID-Map wurden entfernt; GoPlus nutzt die EVM Chain-ID aus der DB. NOCH OFFEN: Balance-Provider und Balance-API-Basis sind jetzt ebenfalls DB-gesteuert; auch Bitcoin, XRP, Solana, Tron, Akash und Apertum verwenden keine fest eingetragenen API-Endpunkte mehr. loadAll() iteriert dynamisch über konfigurierte Chains statt über eine feste Chain-Liste. NOCH OFFEN: verbliebene Alchemy-Abhängigkeit fachlich ersetzen wo sinnvoll, Token-spezifische Sonderwerte prüfen, danach DEX-/TLN-VOW-Infrastruktur auslagern. API-Secrets bleiben ausdrücklich ausserhalb normaler DB-Tabellen."
+    desc: "Umbau gestartet 26.08.2026. ZIEL: neue Chains/Token und Preis-Zuordnungen möglichst ohne HTML-Änderung verwalten. PHASE 1b umgesetzt: public.chains ist jetzt Single Source of Truth für Chain-Label, Native-Symbol, CoinGecko-ID, Wallet-Typ, Explorer-URL und GeckoTerminal-Netzwerk. Der HTML-Fallback für diese Chain-Metadaten wurde vollständig entfernt; bei DB-/Konfigurationsfehler startet das Dashboard bewusst nicht. predefined_tokens um symbol, name, coingecko_id, decimals, price_source und enabled erweitert; CoinGecko-Zuordnung der vordefinierten Token läuft nun über chain+Contract statt Kürzel. PHASE 2 in Umsetzung: Admin-Tab „Chains“ vorhanden. Gebühren-Chain-Auswahl ist jetzt DB-gesteuert über fees_enabled + fee_provider; EVM-Gebühren verwenden evm_chain_id, fee_api_base, Finality und Overlap aus public.chains. EVM-Balance-/RPC-Zugriffe verwenden rpc_url aus public.chains. Feste FEES_CHAINS-, Routescan-, Blockscout-, Finality-/Overlap- und EVM-RPC-Maps wurden entfernt. Discovery/Approvals/NFT sind jetzt nicht nur über Aktiv-Flags, sondern auch über Provider + API-Basis in public.chains konfiguriert. Apertum-Freigaben werden über Blockscout-Transaktionen/Logs erkannt und aktuelle allowance-Werte direkt über den Apertum-RPC geprüft. Harte Alchemy-RPC-/NFT-URL-Maps und die GoPlus-Chain-ID-Map wurden entfernt; GoPlus nutzt die EVM Chain-ID aus der DB. NOCH OFFEN: Balance-Provider und Balance-API-Basis sind jetzt ebenfalls DB-gesteuert; auch Bitcoin, XRP, Solana, Tron, Akash und Apertum verwenden keine fest eingetragenen API-Endpunkte mehr. loadAll() iteriert dynamisch über konfigurierte Chains statt über eine feste Chain-Liste. NOCH OFFEN: verbliebene Alchemy-Abhängigkeit fachlich ersetzen wo sinnvoll, Token-spezifische Sonderwerte prüfen, danach DEX-/TLN-VOW-Infrastruktur auslagern. API-Secrets bleiben ausdrücklich ausserhalb normaler DB-Tabellen."
   },
   { status: "open", title: "Steuer-Report (Schweiz)", desc: "Stichtag-Snapshot 31.12. + druckbarer PDF/CSV-Export (Wallet, Chain, Token, Bestand, Kurs, Wert CHF) für die Steuererklärung. Läuft über manuell/automatisch erstellte Snapshots statt eigener On-Chain-Nachrechnung, damit alle Chains gleich behandelt werden." },
   { status: "open", title: "Gewinn/Verlust statt nur Bestand", desc: "Einstandspreis-Feld bzw. Transaktions-/Kostenbasis-Konzept definieren, um Performance (Plus/Minus, %) statt nur heutigen Bestand zu zeigen." },
@@ -3223,7 +3223,7 @@ const ADMIN_IDEAS = [
     desc: "Geplant als Supabase Edge Function + pg_cron, unabhängig vom Browser. Code/Migrationen wurden vorbereitet, Deployment aber pausiert. Vor Wiederaufnahme prüfen, ob die inzwischen hinzugekommenen Chains (u.a. Akash) und aktuelle Preislogik vollständig im Snapshot-Job berücksichtigt werden."
   },
   { status: "done", title: "Wachhalte-Mechanismus gegen Supabase-Inaktivitäts-Pause", desc: "GitHub Actions Workflow pingt Supabase regelmäßig extern an." },
-  { status: "done", title: "Netzwerkgebühren ohne Alchemy", desc: "Gebührenprovider migriert: Ethereum Routescan, BSC NodeReal, Polygon/Arbitrum/Base Blockscout, Avalanche Routescan; Apertum/XRP/Solana über eigene kostenlose Quellen. Supabase-Cache + inkrementelle Aktualisierung; für Nicht-Admins 30-Tage-Regel. Historische USD-Bewertung bewusst als spätere Phase offen." },
+  { status: "done", title: "Netzwerkgebühren ohne Alchemy", desc: "Gebührenprovider migriert: Ethereum Routescan, BSC NodeReal, Polygon/Arbitrum/Base Blockscout, Avalanche Routescan; Apertum/XRP/Solana über eigene kostenlose Quellen. Supabase-Cache + inkrementelle Aktualisierung; alle 30-Tage-Sperren gelten nur für Nicht-Admins. Historische USD-Bewertung bewusst als spätere Phase offen." },
   { status: "open", title: "Historischer USD-Wert der Netzwerkgebühren", desc: "Phase 2 der Gebührenanzeige. Native Gebühren sind vorhanden; gesucht wird noch eine praktikable historische Preisquelle über mehr als 365 Tage für ETH, BNB, POL, AVAX usw. CoinGecko Public API reicht dafür nicht." },
   { status: "done", title: "Token-Approval-Checker", desc: "Zeigt aktive/unlimitierte Freigaben; Revoke läuft extern über revoke.cash (bewusst rein lesend)." },
   { status: "done", title: "Portfolio-Allokation als Grafik", desc: "Kreisdiagramm nach Chain/Token, Total oder je Wallet." },
@@ -6254,10 +6254,134 @@ function renderApprovalsWalletSelect() {
 // praktisch unlimitiert behandelt (deckt auch leicht abweichende "Fast-Maximalwerte" ab).
 const APPROVAL_UNLIMITED_THRESHOLD = 2n ** 255n;
 
-async function fetchApprovalsForChain(chain, address, onProgress) {
-  if (CHAIN_CONFIG[chain]?.approvalsProvider !== "alchemy") {
-    throw new Error(`Freigaben-Provider "${CHAIN_CONFIG[chain]?.approvalsProvider || "–"}" ist nicht implementiert`);
+async function genericRpcCall(url, method, params) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type":"application/json" },
+    body: JSON.stringify({ jsonrpc:"2.0", id:1, method, params })
+  });
+  if (!res.ok) throw new Error("RPC HTTP " + res.status);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || "RPC-Fehler");
+  return data.result;
+}
+
+async function fetchBlockscoutApprovalPairs(chain, address, onProgress) {
+  const base = CHAIN_CONFIG[chain]?.approvalsApiBase;
+  if (!base) throw new Error("Freigaben API-Basis fehlt in public.chains");
+  const ownerLower = address.toLowerCase();
+  const pairs = new Map();
+  let nextParams = null;
+  let page = 0;
+
+  // Blockscout liefert die ausgehenden Transaktionen der Wallet. Für jede Transaktion
+  // lesen wir die Logs und suchen ERC-20 Approval(address,address,uint256).
+  do {
+    page++;
+    if (onProgress) onProgress(page);
+    let url = `${base.replace(/\/+$/,"")}/addresses/${address}/transactions`;
+    if (nextParams) url += "?" + new URLSearchParams(nextParams).toString();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Blockscout HTTP " + res.status);
+    const data = await res.json();
+
+    const outgoing = (data.items || []).filter(tx => {
+      const fromAddr = ((tx.from && tx.from.hash) || tx.from_address || "").toLowerCase();
+      return fromAddr === ownerLower && tx.hash;
+    });
+
+    // Begrenzte Parallelität, um den Explorer nicht unnötig zu belasten.
+    for (let i=0; i<outgoing.length; i+=8) {
+      const chunk=outgoing.slice(i,i+8);
+      const logRows=await Promise.all(chunk.map(async tx=>{
+        const lr=await fetch(`${base.replace(/\/+$/,"")}/transactions/${tx.hash}/logs`);
+        if(!lr.ok) return [];
+        const ld=await lr.json();
+        return (ld.items || []).map(log=>({log,tx}));
+      }));
+      logRows.flat().forEach(({log,tx})=>{
+        const topics=log.topics || [];
+        if(topics.length<3) return;
+        const topic0=String(topics[0]||"").toLowerCase();
+        if(!topic0.startsWith("0x8c5be1e5")) return;
+        const owner="0x"+String(topics[1]).slice(-40).toLowerCase();
+        if(owner!==ownerLower) return;
+        const spender="0x"+String(topics[2]).slice(-40);
+        const token=((log.address && (log.address.hash || log.address)) || "").toLowerCase();
+        if(!/^0x[0-9a-f]{40}$/.test(token)) return;
+        pairs.set(token+"|"+spender.toLowerCase(), {
+          token, spender,
+          blockNumber: tx.block_number || tx.blockNumber || null,
+          timestamp: tx.timestamp || null
+        });
+      });
+    }
+
+    nextParams = data.next_page_params || null;
+  } while (nextParams && page < FEES_MAX_PAGES);
+
+  return [...pairs.values()];
+}
+
+async function fetchBlockscoutApprovalsForChain(chain,address,onProgress) {
+  const cfg=CHAIN_CONFIG[chain]||{};
+  const rpcUrl=cfg.rpcUrl;
+  if(!rpcUrl) throw new Error("RPC-URL für aktuelle Allowance fehlt in public.chains");
+
+  const pairs=await fetchBlockscoutApprovalPairs(chain,address,onProgress);
+  if(!pairs.length) return [];
+
+  const ownerArg=address.toLowerCase().replace(/^0x/,"").padStart(64,"0");
+  const active=[];
+
+  // Aktuelle allowance() direkt on-chain prüfen. Damit verschwinden historisch
+  // widerrufene Approvals aus der Anzeige.
+  for(let i=0;i<pairs.length;i+=10){
+    const chunk=pairs.slice(i,i+10);
+    const rows=await Promise.all(chunk.map(async p=>{
+      const spenderArg=p.spender.toLowerCase().replace(/^0x/,"").padStart(64,"0");
+      const data="0xdd62ed3e"+ownerArg+spenderArg;
+      try {
+        const rawHex=await genericRpcCall(rpcUrl,"eth_call",[{to:p.token,data},"latest"]);
+        const raw=BigInt(rawHex||"0x0");
+        if(raw<=0n) return null;
+
+        // Symbol/Decimals über Standard-ERC20 eth_call. Fehlende Metadaten sind kein Abbruchgrund.
+        let decimals=18, symbol=null;
+        try {
+          const d=await genericRpcCall(rpcUrl,"eth_call",[{to:p.token,data:"0x313ce567"},"latest"]);
+          if(d) decimals=Number(BigInt(d));
+        } catch(_){}
+        try {
+          const sym=await genericRpcCall(rpcUrl,"eth_call",[{to:p.token,data:"0x95d89b41"},"latest"]);
+          if(sym && sym.length>=130){
+            const len=Number(BigInt("0x"+sym.slice(66,130)));
+            const hex=sym.slice(130,130+len*2);
+            symbol=new TextDecoder().decode(new Uint8Array(hex.match(/.{1,2}/g).map(b=>parseInt(b,16))));
+          }
+        } catch(_){}
+
+        return {
+          chain,
+          tokenSymbol:symbol || (p.token.slice(0,8)+"…"),
+          tokenAddress:p.token,
+          spenderAddress:p.spender,
+          spenderLabel:null,
+          valueFormatted:String(Number(raw)/Math.pow(10,decimals)),
+          isUnlimited:raw > APPROVAL_UNLIMITED_THRESHOLD,
+          usdAtRisk:null,
+          timestamp:p.timestamp || null
+        };
+      } catch(e) {
+        return null;
+      }
+    }));
+    active.push(...rows.filter(Boolean));
   }
+  return active;
+}
+
+async function fetchAlchemyApprovalsForChain(chain, address, onProgress) {
   const ownerLower = address.toLowerCase();
   const history = await fetchAlchemyOutgoingTxHashes(chain, address, onProgress);
   const approvalPairs = new Map(); // token|spender -> letzter gefundener Block
@@ -6332,10 +6456,16 @@ async function fetchApprovalsForChain(chain, address, onProgress) {
   }));
 }
 
+async function fetchApprovalsForChain(chain,address,onProgress){
+  const provider=CHAIN_CONFIG[chain]?.approvalsProvider;
+  if(provider==="alchemy") return fetchAlchemyApprovalsForChain(chain,address,onProgress);
+  if(provider==="blockscout") return fetchBlockscoutApprovalsForChain(chain,address,onProgress);
+  throw new Error(`Freigaben-Provider "${provider||"–"}" ist nicht implementiert`);
+}
+
 async function runApprovalsCheck() {
   const btn = document.getElementById("approvalsBtn");
   const status = document.getElementById("approvalsStatus");
-  const resultsEl = document.getElementById("approvalsResults");
   const walletId = document.getElementById("approvalsWalletSelect").value;
 
   if (!walletId) { status.textContent = "Bitte zuerst eine Wallet auswählen."; return; }
@@ -6346,24 +6476,27 @@ async function runApprovalsCheck() {
 
   btn.disabled = true;
   btn.textContent = "Scan läuft…";
-  // Altes Cache-Ergebnis während des Scans sichtbar lassen.
   let allApprovals = [];
 
-  for (const chain of approvalsChains().filter(c => activeApprovalsChains.has(c))) {
-    status.textContent = `Prüfe Freigaben für ${w.label} auf ${CHAIN_META[chain].label}...`;
-    try {
-      const found = await fetchApprovalsForChain(chain, w.evm, (page) => {
-        status.textContent = `Prüfe Freigaben für ${w.label} auf ${CHAIN_META[chain].label}... (Seite ${page})`;
-      });
-      allApprovals = allApprovals.concat(found);
-    } catch (e) {
-      allApprovals.push({ chain, error: e.message });
+  try {
+    for (const chain of approvalsChains().filter(c => activeApprovalsChains.has(c))) {
+      status.textContent = `Prüfe Freigaben für ${w.label} auf ${CHAIN_META[chain].label}...`;
+      try {
+        const found = await fetchApprovalsForChain(chain, w.evm, (page) => {
+          status.textContent = `Prüfe Freigaben für ${w.label} auf ${CHAIN_META[chain].label}... (Seite ${page})`;
+        });
+        allApprovals = allApprovals.concat(found);
+      } catch (e) {
+        allApprovals.push({ chain, error: e.message });
+      }
     }
-  }
 
-  renderApprovalsResults(w, allApprovals);
-  status.textContent = "Fertig.";
-  btn.disabled = false;
+    renderApprovalsResults(w, allApprovals);
+    status.textContent = "Fertig.";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Freigaben prüfen";
+  }
 }
 
 function renderApprovalsResults(wallet, approvals) {
@@ -7008,7 +7141,7 @@ function riskFlags(info) {
 }
 
 
-// ---- Discovery-Cache (Supabase): max. 1 Scan pro Wallet alle 30 Tage ----
+// ---- Discovery-Cache (Supabase): Nicht-Admins max. 1 Scan pro Wallet alle 30 Tage; Admins ohne Sperre ----
 const DISCOVERY_COOLDOWN_DAYS = 30;
 let discoveryCaches = new Map(); // wallet_id -> Cache-Zeile
 let discoveryCache = null;       // Cache der aktuell ausgewählten Wallet
@@ -7030,6 +7163,7 @@ function discoveryNextAllowedDate(cache = discoveryCache) {
 }
 
 function discoveryScanAllowed(cache = discoveryCache) {
+  if (isAdmin) return true;
   const next = discoveryNextAllowedDate(cache);
   return !next || Date.now() >= next.getTime();
 }
@@ -7114,7 +7248,9 @@ function renderDiscoveryCacheState(extraMessage) {
   btn.disabled = !allowed;
   btn.textContent = allowed ? "Discovery aktualisieren" : "Scan noch gesperrt";
   info.textContent = extraMessage ||
-    `Gespeicherter Scan: ${scanned}${walletText}. ${allowed ? "Ein neuer Scan ist jetzt möglich." : `Nächster Scan ab ${next}.`}`;
+    (isAdmin
+      ? `Gespeicherter Scan: ${scanned}${walletText}. Admin: Aktualisierung ohne 30-Tage-Sperre.`
+      : `Gespeicherter Scan: ${scanned}${walletText}. ${allowed ? "Ein neuer Scan ist jetzt möglich." : `Nächster Scan ab ${next}.`}`);
 }
 
 async function saveDiscoveryCache(w, findings, scanNotes) {
