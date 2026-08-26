@@ -429,6 +429,8 @@
         <div class="tab-nav">
           <button class="tab-btn" data-tab="admin" data-open-admin="customtokens" onclick="showTab('admin');showAdminTab('customtokens')">Eigene sichere Token</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="chains" onclick="showTab('admin');showAdminTab('chains')">⛓️ Chains</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="defiprojects" onclick="showTab('admin');showAdminTab('defiprojects')">🏦 DeFi-Projekte</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="dex" onclick="showTab('admin');showAdminTab('dex')">🔄 DEX</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="ideas" onclick="showTab('admin');showAdminTab('ideas')">💡 Ideen / Umbau</button>
         </div>
       </div>
@@ -553,7 +555,7 @@
 
       <div id="adminAddPredefinedTokenCard" class="custom-token-card" style="display:none">
         <span class="field-label" style="display:block;margin-bottom:8px">Neuen vordefinierten Token hinzufügen (nur Admins)</span>
-        <div class="custom-token-grid" style="grid-template-columns:1fr 2fr 1fr 1fr auto">
+        <div class="custom-token-grid" style="grid-template-columns:1fr 2fr 1fr 1fr 1fr auto">
           <div>
             <span class="field-label">Chain</span>
             <select id="newPredefChain"></select>
@@ -567,12 +569,16 @@
             <input type="text" id="newPredefLabel" placeholder="z.B. USDT" />
           </div>
           <div>
-            <span class="field-label">TLN/VOW</span>
-            <select id="newPredefTlnVowCategory">
+            <span class="field-label">DeFi-Projekt</span>
+            <select id="newPredefDefiProject"><option value="">– keines –</option></select>
+          </div>
+          <div>
+            <span class="field-label">Projekt-Kategorie</span>
+            <select id="newPredefDefiCategory">
               <option value="">– keine –</option>
-              <option value="v_currency">v-Währung</option>
+              <option value="voucher_currency">Voucher-Währung</option>
               <option value="lp_token">LP Token</option>
-              <option value="tln_vow_token">TLN/VOW Token</option>
+              <option value="defi_token">DeFi-Token</option>
             </select>
           </div>
           <div>
@@ -843,6 +849,32 @@
         <div id="adminChainsList"></div>
       </div>
 
+      <div id="admintab-defiprojects" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">
+          Allgemeine DeFi-Projektverwaltung. TLN/VOW ist nur das erste Projekt. Projekt-Referenz-Token werden separat nach Chain und Rolle gepflegt.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button onclick="addDefiProjectRow()">＋ Projekt</button>
+          <button onclick="addDefiProjectTokenRow()">＋ Projekt-Token / Referenz</button>
+          <button class="secondary" onclick="loadAdminDefiProjects()">🔄 Neu laden</button>
+        </div>
+        <h3>Projekte</h3>
+        <div id="adminDefiProjectsList"></div>
+        <h3 style="margin-top:22px">Projekt-Token / Referenzen</h3>
+        <div id="adminDefiProjectTokensList"></div>
+      </div>
+
+      <div id="admintab-dex" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">
+          Allgemeine DEX-Infrastruktur. Diese Einträge gehören nicht zu einem einzelnen DeFi-Projekt und können von mehreren Projekten wiederverwendet werden.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button onclick="addDexConfigRow()">＋ DEX-Konfiguration</button>
+          <button class="secondary" onclick="loadAdminDexConfigs()">🔄 Neu laden</button>
+        </div>
+        <div id="adminDexConfigsList"></div>
+      </div>
+
       <div id="admintab-ideas" class="admin-tab-panel">
         <div class="note" style="margin-bottom:14px">Offene Erweiterungsideen, nur für Admins sichtbar. Nichts davon ist umgesetzt, ausser explizit markiert.</div>
         <div id="adminIdeasList"></div>
@@ -1059,7 +1091,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 20:48 Uhr<br>
+    Version vom 26.08.2026, 21:02 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1072,31 +1104,13 @@
 window.TLNVOWProject = (() => {
 
 /* =========================================================
-   SUPABASE
+   GENERISCHE DEFI-/DEX-KONFIGURATION AUS SUPABASE
 ========================================================= */
-const SUPABASE_REST = "https://cfnxuesibpnlgyklzqkj.supabase.co/rest/v1/predefined_tokens";
-const SUPABASE_KEY  = "sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N";
-
-/* =========================================================
-   FIXE INFRASTRUKTUR-ADRESSEN
-   (keine TLN/VOW Token- oder LP-Adressen)
-========================================================= */
-const CONFIG = {
-  bsc: {
-    rpc: "https://bsc-dataseed.binance.org/",
-    v2Factory: "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73"
-  },
-  eth: {
-    rpc: "https://ethereum-rpc.publicnode.com",
-    v2Factory: "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
-    v3Factory: "0x1F98431c8aD98523631AE4a59f267346ea31F984"
-  }
-};
-
-const providers = {
-  bsc: new ethers.JsonRpcProvider(CONFIG.bsc.rpc),
-  eth: new ethers.JsonRpcProvider(CONFIG.eth.rpc)
-};
+const PROJECT_KEY = "tln_vow";
+let PROJECT_NAME = "TLN/VOW";
+let CONFIG = {};
+let providers = {};
+let projectChains = [];
 
 /* =========================================================
    ABIs
@@ -1136,22 +1150,7 @@ const V3_ABI = [
    STATE / CACHE
 ========================================================= */
 let database = { bsc: [], eth: [] };
-let references = {
-  bsc: {
-    vow:"0xf585b5b4f22816baf7629aea55b701662630397b",
-    usdt:null,
-    usdc:null,
-    busd:null,
-    wbnb:null,
-    btcb:null
-  },
-  eth: {
-    vow:"0x1bbf25e71ec48b84d773809b4ba55b6f4be946fb",
-    usdt:null,
-    usdc:null,
-    weth:null
-  }
-};
+let references = {};
 
 const tokenCache = new Map();
 const pairCache  = new Map();
@@ -1164,7 +1163,7 @@ function exportProjectPrice(chain,address,result,kind="token"){
   exportedPrices.set(chain + "|" + norm(address), {
     price:Number(result.price),
     change24h:undefined,
-    source:"Projekt TLN/VOW",
+    source:"Projekt " + PROJECT_NAME,
     route:result.route || null,
     kind
   });
@@ -1176,10 +1175,7 @@ const poolTypeCache = new Map();
  * Preisgraph pro Chain.
  * Voucher-Währungen werden NICHT mehr automatisch über VOW geroutet.
  */
-const graphCache = {
-  bsc: null,
-  eth: null
-};
+const graphCache = {};
 
 /* =========================================================
    BASICS
@@ -1204,34 +1200,28 @@ function usd(value){
 /*
  * Neue Supabase-Klassifikation.
  *
- * Erlaubte Werte:
- *   v_currency
+ * Generische Werte:
+ *   voucher_currency
  *   lp_token
- *   tln_vow_token
+ *   defi_token
  *
- * Supabase-Spalte:
- *   tln_vow_category
+ * Supabase-Spalten:
+ *   defi_project_key
+ *   defi_category
  */
 function rowType(row){
   if(!row) return "";
-  return norm(row.tln_vow_category);
+  return norm(row.defi_category);
 }
 
 function isAllowedRow(row){
-  return ["v_currency","lp_token","tln_vow_token"].includes(rowType(row));
+  return norm(row?.defi_project_key) === PROJECT_KEY &&
+    ["voucher_currency","lp_token","defi_token"].includes(rowType(row));
 }
 
-function isLP(row){
-  return rowType(row) === "lp_token";
-}
-
-function isVoucherRow(row){
-  return rowType(row) === "v_currency";
-}
-
-function isProjectToken(row){
-  return rowType(row) === "tln_vow_token";
-}
+function isLP(row){ return rowType(row) === "lp_token"; }
+function isVoucherRow(row){ return rowType(row) === "voucher_currency"; }
+function isProjectToken(row){ return rowType(row) === "defi_token"; }
 
 function chainRows(chain){
   return (database[chain] || []).filter(isAllowedRow);
@@ -1244,7 +1234,7 @@ function configuredTokens(chain){
     const type = rowType(r);
 
     // Token-Übersicht: ausschließlich echte Projekt-/Voucher-Tokens.
-    if(type !== "v_currency" && type !== "tln_vow_token"){
+    if(type !== "voucher_currency" && type !== "defi_token"){
       return false;
     }
 
@@ -1282,6 +1272,49 @@ function displayPoolLabel(dbRow,pool){
  * Für USDT/USDC/BUSD/WBNB/BTCB/WETH wird das tatsächliche On-Chain-Symbol
  * des Token-Contracts verwendet. VOW bleibt bewusst fix hinterlegt.
  */
+async function loadProjectInfrastructure(){
+  const [{data:project,error:projectError},{data:tokens,error:tokenError},{data:dexRows,error:dexError}] = await Promise.all([
+    sb.from("defi_projects").select("*").eq("project_key",PROJECT_KEY).eq("enabled",true).maybeSingle(),
+    sb.from("defi_project_tokens").select("*").eq("project_key",PROJECT_KEY).eq("enabled",true),
+    sb.from("dex_configs").select("*").eq("enabled",true)
+  ]);
+  if(projectError) throw projectError;
+  if(tokenError) throw tokenError;
+  if(dexError) throw dexError;
+  if(!project) throw new Error(`DeFi-Projekt ${PROJECT_KEY} ist in Supabase nicht aktiv konfiguriert.`);
+
+  PROJECT_NAME = project.name || PROJECT_KEY;
+  CONFIG = {};
+  providers = {};
+  references = {};
+  projectChains = [];
+
+  const referenceTokens = (tokens||[]).filter(t => norm(t.role)==="reference");
+  for(const ref of referenceTokens){
+    const chain = norm(ref.chain_key);
+    if(!chain || !CHAIN_CONFIG[chain]) continue;
+    if(!CONFIG[chain]) CONFIG[chain]={};
+    if(!references[chain]) references[chain]={};
+    references[chain].vow = ref.contract_address;
+    if(!projectChains.includes(chain)) projectChains.push(chain);
+  }
+
+  for(const chain of projectChains){
+    const chainDex=(dexRows||[]).filter(d => norm(d.chain_key)===chain);
+    const v2=chainDex.find(d => norm(d.version)==="v2");
+    const v3=chainDex.find(d => norm(d.version)==="v3");
+    CONFIG[chain]={
+      rpc: configuredRpcUrl(chain),
+      v2Factory:v2?.factory_address || null,
+      v3Factory:v3?.factory_address || null
+    };
+    if(!CONFIG[chain].v2Factory) throw new Error(`${PROJECT_NAME}: Für ${chain} fehlt eine aktive V2-DEX-Factory.`);
+    providers[chain]=new ethers.JsonRpcProvider(CONFIG[chain].rpc);
+    graphCache[chain]=null;
+    references[chain]=references[chain] || {};
+  }
+}
+
 async function resolveReferences(chain){
   /*
    * WICHTIG:
@@ -1343,17 +1376,13 @@ async function resolveReferences(chain){
     }
   }
 
-  if(chain === "bsc"){
-    references.bsc.usdt = found.USDT || null;
-    references.bsc.usdc = found.USDC || null;
-    references.bsc.busd = found.BUSD || null;
-    references.bsc.wbnb = found.WBNB || null;
-    references.bsc.btcb = found.BTCB || null;
-  }else{
-    references.eth.usdt = found.USDT || null;
-    references.eth.usdc = found.USDC || null;
-    references.eth.weth = found.WETH || null;
-  }
+  references[chain] = references[chain] || {};
+  references[chain].usdt = found.USDT || null;
+  references[chain].usdc = found.USDC || null;
+  references[chain].busd = found.BUSD || null;
+  references[chain].wbnb = found.WBNB || null;
+  references[chain].btcb = found.BTCB || null;
+  references[chain].weth = found.WETH || null;
 
   console.log("Resolved references",chain,references[chain]);
 }
@@ -1362,32 +1391,16 @@ async function resolveReferences(chain){
    SUPABASE
 ========================================================= */
 async function loadSupabase(){
-  const response = await fetch(
-    SUPABASE_REST + "?select=*",
-    {
-      headers:{
-        "apikey":SUPABASE_KEY,
-        "Authorization":"Bearer " + SUPABASE_KEY
-      }
-    }
-  );
+  const {data:rows,error}=await sb.from("predefined_tokens")
+    .select("*")
+    .eq("defi_project_key",PROJECT_KEY)
+    .eq("enabled",true);
+  if(error) throw error;
 
-  if(!response.ok){
-    throw new Error("Supabase Fehler " + response.status + ": " + await response.text());
+  database={};
+  for(const chain of projectChains){
+    database[chain]=(rows||[]).filter(r => norm(r.chain)===chain && isAllowedRow(r));
   }
-
-  const rows = await response.json();
-
-  database.bsc = rows.filter(
-    r => norm(r.chain) === "bsc" && isAllowedRow(r)
-  );
-  database.eth = rows.filter(
-    r => ["eth","ethereum"].includes(norm(r.chain)) && isAllowedRow(r)
-  );
-
-  // VOW ist bewusst fix im HTML hinterlegt.
-  // Alle anderen Referenz-Tokens werden nach dem Laden über ihr
-  // tatsächliches On-Chain-Symbol identifiziert (nicht über das Label).
 }
 
 /* =========================================================
@@ -2378,7 +2391,7 @@ async function detectPoolType(chain,address){
 
   let type = null;
   if(same(factory,CONFIG[chain].v2Factory)) type = "v2";
-  if(chain === "eth" && same(factory,CONFIG.eth.v3Factory)) type = "v3";
+  if(CONFIG[chain]?.v3Factory && same(factory,CONFIG[chain].v3Factory)) type = "v3";
 
   if(!type) throw new Error("Pool gehört weder zur erwarteten V2- noch V3-Factory.");
   poolTypeCache.set(key,type);
@@ -2440,7 +2453,7 @@ async function readV3Pool(chain,address){
     pool.factory()
   ]);
 
-  if(!same(factory,CONFIG.eth.v3Factory)){
+  if(!CONFIG[chain]?.v3Factory || !same(factory,CONFIG[chain].v3Factory)){
     throw new Error("Pool gehört nicht zur Uniswap-V3-Factory.");
   }
 
@@ -2748,8 +2761,7 @@ async function loadDashboard(chain){
     priceCache.clear();
     v3PoolCache.clear();
     poolTypeCache.clear();
-    graphCache.bsc = null;
-    graphCache.eth = null;
+    projectChains.forEach(c => graphCache[c]=null);
 
     // USDT, USDC, WETH, WBNB, BTCB, BUSD anhand der echten
     // On-Chain-Symbole der in Supabase gepflegten Token bestimmen.
@@ -2800,10 +2812,11 @@ let initPromise = null;
 
 function ensureLoaded(){
   if(!initPromise){
-    initPromise = Promise.all([
-      loadDashboard("bsc"),
-      loadDashboard("eth")
-    ]).then(() => true);
+    initPromise = (async()=>{
+      await loadProjectInfrastructure();
+      await Promise.all(projectChains.filter(c => ["bsc","eth"].includes(c)).map(loadDashboard));
+      return true;
+    })();
   }
   return initPromise;
 }
@@ -2831,6 +2844,9 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
 let isAdmin = false;
+let defiProjectsCache = [];
+let predefinedTokenProject = {};
+
 
 async function checkIsAdmin() {
   try {
@@ -2961,6 +2977,7 @@ async function onLoggedIn(session) {
   setupChatRealtime();
 
   loadTokenMetaCache();
+  await loadDefiProjectsCache();
   await loadPredefinedTokensFromDb();
   await loadWalletsFromDb();
   await loadCustomSafeTokensFromDb();
@@ -3066,10 +3083,145 @@ function showAdminTab(name) {
   if (panel) panel.classList.add("active");
   if (name === "customtokens") renderAdminCustomTokens();
   if (name === "chains") loadAdminChains();
+  if (name === "defiprojects") loadAdminDefiProjects();
+  if (name === "dex") loadAdminDexConfigs();
   if (name === "ideas") renderAdminIdeas();
 }
 
 
+
+
+function adminSimpleInput(value,key,type="text",extra=""){
+  if(type==="checkbox") return `<input data-field="${key}" type="checkbox" ${value!==false?"checked":""}>`;
+  return `<input data-field="${key}" type="${type}" value="${escapeAttr(value??"")}" ${extra}>`;
+}
+function adminSelect(value,key,options){
+  return `<select data-field="${key}">${options.map(([v,l])=>`<option value="${escapeAttr(v)}" ${String(value??"")===v?"selected":""}>${escapeAttr(l)}</option>`).join("")}</select>`;
+}
+function readAdminRow(root,fields){
+  const out={};
+  fields.forEach(([k,type])=>{
+    const el=root.querySelector(`[data-field="${k}"]`);
+    if(!el)return;
+    if(type==="checkbox")out[k]=el.checked;
+    else if(type==="number")out[k]=el.value===""?null:Number(el.value);
+    else out[k]=el.value.trim()||null;
+  });
+  return out;
+}
+
+async function loadAdminDefiProjects(){
+  if(!isAdmin)return;
+  await loadDefiProjectsCache();
+  const [{data:projects,error:pErr},{data:tokens,error:tErr}]=await Promise.all([
+    sb.from("defi_projects").select("*").order("sort_order",{ascending:true}),
+    sb.from("defi_project_tokens").select("*").order("project_key").order("chain_key")
+  ]);
+  const pEl=document.getElementById("adminDefiProjectsList");
+  const tEl=document.getElementById("adminDefiProjectTokensList");
+  if(pErr){pEl.innerHTML=`<div class="error">${escapeAttr(pErr.message)}</div>`;return;}
+  if(tErr){tEl.innerHTML=`<div class="error">${escapeAttr(tErr.message)}</div>`;return;}
+
+  pEl.innerHTML=`<div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:900px"><thead><tr>
+    <th>Projekt-Key</th><th>Name</th><th>Beschreibung</th><th>Sortierung</th><th>Aktiv</th><th>Aktion</th>
+  </tr></thead><tbody>${(projects||[]).map(p=>`<tr data-defi-project="${escapeAttr(p.project_key)}">
+    <td>${adminSimpleInput(p.project_key,"project_key","text","disabled")}</td>
+    <td>${adminSimpleInput(p.name,"name")}</td>
+    <td>${adminSimpleInput(p.description,"description")}</td>
+    <td>${adminSimpleInput(p.sort_order,"sort_order","number")}</td>
+    <td>${adminSimpleInput(p.enabled,"enabled","checkbox")}</td>
+    <td><button onclick="saveDefiProject('${escapeAttr(p.project_key)}')">💾</button> <button class="remove" onclick="deleteDefiProject('${escapeAttr(p.project_key)}')">Löschen</button></td>
+  </tr>`).join("")}</tbody></table></div>`;
+
+  const projectOpts=(projects||[]).map(p=>[p.project_key,p.name]);
+  const chainOpts=Object.keys(CHAIN_META).map(c=>[c,CHAIN_META[c].label]);
+  tEl.innerHTML=`<div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1200px"><thead><tr>
+    <th>Projekt</th><th>Chain</th><th>Rolle</th><th>Symbol</th><th>Contract</th><th>Aktiv</th><th>Aktion</th>
+  </tr></thead><tbody>${(tokens||[]).map(t=>`<tr data-defi-token="${t.id}">
+    <td>${adminSelect(t.project_key,"project_key",projectOpts)}</td>
+    <td>${adminSelect(t.chain_key,"chain_key",chainOpts)}</td>
+    <td>${adminSimpleInput(t.role,"role")}</td>
+    <td>${adminSimpleInput(t.symbol,"symbol")}</td>
+    <td>${adminSimpleInput(t.contract_address,"contract_address")}</td>
+    <td>${adminSimpleInput(t.enabled,"enabled","checkbox")}</td>
+    <td><button onclick="saveDefiProjectToken('${t.id}')">💾</button> <button class="remove" onclick="deleteDefiProjectToken('${t.id}')">Löschen</button></td>
+  </tr>`).join("")}</tbody></table></div>`;
+}
+function addDefiProjectRow(){
+  const key=prompt("Projekt-Key (z.B. projekt_xyz):");
+  if(!key)return;
+  const name=prompt("Anzeigename:",key)||key;
+  sb.from("defi_projects").insert({project_key:key.trim().toLowerCase(),name,enabled:true,sort_order:100}).then(({error})=>{
+    if(error)alert(error.message);else loadAdminDefiProjects();
+  });
+}
+async function saveDefiProject(key){
+  const root=document.querySelector(`[data-defi-project="${CSS.escape(key)}"]`);
+  const row=readAdminRow(root,[["name","text"],["description","text"],["sort_order","number"],["enabled","checkbox"]]);
+  const {error}=await sb.from("defi_projects").update(row).eq("project_key",key);
+  if(error)alert(error.message);else{await loadDefiProjectsCache();await loadAdminDefiProjects();renderSafeTokenTable();}
+}
+async function deleteDefiProject(key){
+  if(!confirm(`Projekt "${key}" inkl. Projekt-Referenzen wirklich löschen?`))return;
+  const {error}=await sb.from("defi_projects").delete().eq("project_key",key);
+  if(error)alert(error.message);else loadAdminDefiProjects();
+}
+async function addDefiProjectTokenRow(){
+  await loadDefiProjectsCache();
+  if(!defiProjectsCache.length){alert("Bitte zuerst ein DeFi-Projekt anlegen.");return;}
+  const project_key=defiProjectsCache[0].project_key;
+  const chain_key=Object.keys(CHAIN_META)[0];
+  const {error}=await sb.from("defi_project_tokens").insert({project_key,chain_key,role:"reference",symbol:"",contract_address:"",enabled:true});
+  if(error)alert(error.message);else loadAdminDefiProjects();
+}
+async function saveDefiProjectToken(id){
+  const root=document.querySelector(`[data-defi-token="${CSS.escape(String(id))}"]`);
+  const row=readAdminRow(root,[["project_key","text"],["chain_key","text"],["role","text"],["symbol","text"],["contract_address","text"],["enabled","checkbox"]]);
+  const {error}=await sb.from("defi_project_tokens").update(row).eq("id",id);
+  if(error)alert(error.message);else loadAdminDefiProjects();
+}
+async function deleteDefiProjectToken(id){
+  if(!confirm("Projekt-Token/Referenz löschen?"))return;
+  const {error}=await sb.from("defi_project_tokens").delete().eq("id",id);
+  if(error)alert(error.message);else loadAdminDefiProjects();
+}
+
+async function loadAdminDexConfigs(){
+  if(!isAdmin)return;
+  const {data,error}=await sb.from("dex_configs").select("*").order("chain_key").order("dex_key");
+  const el=document.getElementById("adminDexConfigsList");
+  if(error){el.innerHTML=`<div class="error">${escapeAttr(error.message)}</div>`;return;}
+  const chainOpts=Object.keys(CHAIN_META).map(c=>[c,CHAIN_META[c].label]);
+  el.innerHTML=`<div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1500px"><thead><tr>
+    <th>Chain</th><th>DEX-Key</th><th>Name</th><th>Protokoll</th><th>Version</th><th>Factory</th><th>Router optional</th><th>Aktiv</th><th>Aktion</th>
+  </tr></thead><tbody>${(data||[]).map(d=>`<tr data-dex="${d.id}">
+    <td>${adminSelect(d.chain_key,"chain_key",chainOpts)}</td>
+    <td>${adminSimpleInput(d.dex_key,"dex_key")}</td>
+    <td>${adminSimpleInput(d.name,"name")}</td>
+    <td>${adminSimpleInput(d.protocol,"protocol")}</td>
+    <td>${adminSelect(d.version,"version",[["v2","V2"],["v3","V3"]])}</td>
+    <td>${adminSimpleInput(d.factory_address,"factory_address")}</td>
+    <td>${adminSimpleInput(d.router_address,"router_address")}</td>
+    <td>${adminSimpleInput(d.enabled,"enabled","checkbox")}</td>
+    <td><button onclick="saveDexConfig('${d.id}')">💾</button> <button class="remove" onclick="deleteDexConfig('${d.id}')">Löschen</button></td>
+  </tr>`).join("")}</tbody></table></div>`;
+}
+async function addDexConfigRow(){
+  const chain_key=Object.keys(CHAIN_META)[0];
+  const {error}=await sb.from("dex_configs").insert({chain_key,dex_key:"new_dex",name:"Neue DEX",protocol:"",version:"v2",factory_address:"",enabled:true});
+  if(error)alert(error.message);else loadAdminDexConfigs();
+}
+async function saveDexConfig(id){
+  const root=document.querySelector(`[data-dex="${CSS.escape(String(id))}"]`);
+  const row=readAdminRow(root,[["chain_key","text"],["dex_key","text"],["name","text"],["protocol","text"],["version","text"],["factory_address","text"],["router_address","text"],["enabled","checkbox"]]);
+  const {error}=await sb.from("dex_configs").update(row).eq("id",id);
+  if(error)alert(error.message);else loadAdminDexConfigs();
+}
+async function deleteDexConfig(id){
+  if(!confirm("DEX-Konfiguration löschen?"))return;
+  const {error}=await sb.from("dex_configs").delete().eq("id",id);
+  if(error)alert(error.message);else loadAdminDexConfigs();
+}
 
 const ADMIN_CHAIN_FIELDS = [
   {k:"chain_key", l:"Chain-Key", critical:true, type:"text", sticky:1},
@@ -3210,12 +3362,12 @@ const ADMIN_IDEAS = [
   {
     status: "in_progress",
     title: "Konfiguration aus HTML nach Supabase verlagern",
-    desc: "Umbau gestartet 26.08.2026. HAUPTTEIL ERLEDIGT, ABER NACH AUDIT NOCH NICHT GANZ ABSCHLIESSEN: public.chains ist Single Source of Truth für Chain-Stammdaten sowie Balance-, Gebühren-, Discovery-, Approval- und NFT-Provider/API-Konfiguration. predefined_tokens enthält Token-Metadaten und Preis-Zuordnung. loadAll() ist dynamisch; die früheren Chain-Maps für Fees/RPC/Alchemy/GoPlus sind entfernt. AUDIT 26.08.2026: Im separaten TLN/VOW-Preis-Modul stehen noch echte Chain-/DEX-Konfigurationen im HTML (BSC/ETH RPCs, PancakeSwap-V2-Factory, Uniswap-V2-/V3-Factory sowie die VOW-Referenz-Contracts). Außerdem existiert in Routescan noch ein URL-Fallback, falls fee_api_base fehlt. Diese Punkte müssen noch zentralisiert/entfernt werden, bevor dieser Umbau auf DONE gesetzt wird. Globale App-/Service-Konfigurationen wie Supabase-Projekt, CoinGecko/GeckoTerminal/GoPlus, CDN-URLs, revoke.cash und IPFS-Gateway sind keine Chain-Stammdaten und müssen nicht zwingend in public.chains. Credentials/Keys (Alchemy, PublicNode, NodeReal) gehören ausdrücklich NICHT in eine normale öffentliche DB-Tabelle."
+    desc: "Umbau gestartet 26.08.2026. HAUPTTEIL ERLEDIGT, ABER NACH AUDIT NOCH NICHT GANZ ABSCHLIESSEN: public.chains ist Single Source of Truth für Chain-Stammdaten sowie Balance-, Gebühren-, Discovery-, Approval- und NFT-Provider/API-Konfiguration. predefined_tokens enthält Token-Metadaten und Preis-Zuordnung. loadAll() ist dynamisch; die früheren Chain-Maps für Fees/RPC/Alchemy/GoPlus sind entfernt. AUDIT 26.08.2026: DeFi-/DEX-Struktur umgesetzt: TLN/VOW ist nun als erstes generisches DeFi-Projekt modelliert; VOW-Referenz-Contracts liegen in defi_project_tokens, PancakeSwap-/Uniswap-Factorys in dex_configs und RPCs werden aus public.chains wiederverwendet. Die bestehenden Werte werden durch das Migrations-SQL automatisch übernommen. Noch offen: Routescan-URL-Fallback entfernen und Tron-Decimallogik bereinigen; danach erneuter Hardcoding-Audit. Globale App-/Service-Konfigurationen wie Supabase-Projekt, CoinGecko/GeckoTerminal/GoPlus, CDN-URLs, revoke.cash und IPFS-Gateway sind keine Chain-Stammdaten und müssen nicht zwingend in public.chains. Credentials/Keys (Alchemy, PublicNode, NodeReal) gehören ausdrücklich NICHT in eine normale öffentliche DB-Tabelle."
   },
   {
     status: "in_progress",
     title: "Hardcoding-Audit / Restbereinigung",
-    desc: "Audit gestartet 26.08.2026. PRIORITÄT A – noch auslagern: TLN/VOW-Modul enthält CONFIG für BSC/ETH mit RPCs und DEX-Factory-Adressen (PancakeSwap V2 0xcA143C..., Uniswap V2 0x5C69bE..., Uniswap V3 0x1F9843...) sowie feste VOW-Referenz-Contracts auf BSC/ETH. Empfehlung: eigene Supabase-Tabelle für DEX/Projekt-Infrastruktur statt public.chains; RPCs daraus nicht duplizieren, sondern CHAIN_CONFIG verwenden. Routescan-Funktion hat noch einen hartcodierten API-URL-Fallback; entfernen, sodass fehlendes fee_api_base als Konfigurationsfehler sichtbar wird. PRIORITÄT B – fachlich prüfen: TRON_TOKEN_DECIMALS_DEFAULT=6 wird aktuell pauschal auf TRC20 angewendet; besser decimals aus predefined_tokens/Token-Metadaten verwenden. NodeReal-BSC-URL enthält den Key direkt; PublicNode- und Alchemy-Keys stehen ebenfalls im Frontend. Das ist derzeit bewusst so, sollte bei späterer Secret-/Proxy-Lösung separat behandelt werden und NICHT in public.chains landen. PRIORITÄT C – bewusst im HTML belassen: Supabase-App-URL/Publishable-Key, CDN-Bibliotheken, globale CoinGecko-/GeckoTerminal-/GoPlus-Endpunkte, revoke.cash-Link, IPFS-Gateway, Redirect-URL sowie UI-spezifische Spenden-Auswahl. NÄCHSTE SCHRITTE: (1) DEX/TLN-VOW-Infrastruktur-Tabelle definieren; (2) TLN/VOW-Modul auf CHAIN_CONFIG + neue Tabelle umstellen; (3) Routescan-Fallback entfernen; (4) Tron-Decimallogik korrigieren; (5) danach erneut automatisierten URL/Contract-/Chain-Literal-Scan durchführen und diesen Punkt auf DONE setzen."
+    desc: "Audit gestartet 26.08.2026. PRIORITÄT A – umgesetzt: generische Tabellen defi_projects, defi_project_tokens und dex_configs; TLN/VOW/VOW-Referenzen und PancakeSwap-/Uniswap-Factorys werden per Migration übernommen, RPCs kommen aus CHAIN_CONFIG. Admin-Masken DeFi-Projekte und DEX sind vorhanden. Routescan-Funktion hat noch einen hartcodierten API-URL-Fallback; entfernen, sodass fehlendes fee_api_base als Konfigurationsfehler sichtbar wird. PRIORITÄT B – fachlich prüfen: TRON_TOKEN_DECIMALS_DEFAULT=6 wird aktuell pauschal auf TRC20 angewendet; besser decimals aus predefined_tokens/Token-Metadaten verwenden. NodeReal-BSC-URL enthält den Key direkt; PublicNode- und Alchemy-Keys stehen ebenfalls im Frontend. Das ist derzeit bewusst so, sollte bei späterer Secret-/Proxy-Lösung separat behandelt werden und NICHT in public.chains landen. PRIORITÄT C – bewusst im HTML belassen: Supabase-App-URL/Publishable-Key, CDN-Bibliotheken, globale CoinGecko-/GeckoTerminal-/GoPlus-Endpunkte, revoke.cash-Link, IPFS-Gateway, Redirect-URL sowie UI-spezifische Spenden-Auswahl. NÄCHSTE SCHRITTE: (1) DEX/TLN-VOW-Infrastruktur-Tabelle definieren; (2) TLN/VOW-Modul auf CHAIN_CONFIG + neue Tabelle umstellen; (3) Routescan-Fallback entfernen; (4) Tron-Decimallogik korrigieren; (5) danach erneut automatisierten URL/Contract-/Chain-Literal-Scan durchführen und diesen Punkt auf DONE setzen."
   },
   {
     status: "open",
@@ -3740,24 +3892,39 @@ async function refreshPredefinedTokens() {
   loadAll(); // neue/geänderte vordefinierte Token sollen sofort im Wallet-Tracking berücksichtigt werden
 }
 
+async function loadDefiProjectsCache(){
+  const {data,error}=await sb.from("defi_projects").select("*").eq("enabled",true).order("sort_order",{ascending:true});
+  if(error){ console.error(error); defiProjectsCache=[]; return; }
+  defiProjectsCache=data||[];
+  const sel=document.getElementById("newPredefDefiProject");
+  if(sel){
+    const current=sel.value;
+    sel.innerHTML='<option value="">– keines –</option>'+defiProjectsCache.map(p=>`<option value="${escapeAttr(p.project_key)}">${escapeAttr(p.name)}</option>`).join("");
+    if(defiProjectsCache.some(p=>p.project_key===current)) sel.value=current;
+  }
+}
+
 async function addPredefinedToken() {
   const chain = document.getElementById("newPredefChain").value;
   const addressRaw = document.getElementById("newPredefAddress").value.trim();
   const label = document.getElementById("newPredefLabel").value.trim();
-  const tlnVowCategory = document.getElementById("newPredefTlnVowCategory").value || null;
+  const defiProjectKey = document.getElementById("newPredefDefiProject").value || null;
+  const defiCategory = document.getElementById("newPredefDefiCategory").value || null;
 
   if (!addressRaw || !label) { alert("Bitte Adresse und Label ausfüllen."); return; }
   const address = normalizeAddress(addressRaw, chain);
 
   const { error } = await sb.from("predefined_tokens").insert({
     chain, address, label,
-    tln_vow_category: tlnVowCategory
+    defi_project_key: defiProjectKey,
+    defi_category: defiCategory
   });
   if (error) { alert("Fehler beim Hinzufügen: " + error.message); return; }
 
   document.getElementById("newPredefAddress").value = "";
   document.getElementById("newPredefLabel").value = "";
-  document.getElementById("newPredefTlnVowCategory").value = "";
+  document.getElementById("newPredefDefiProject").value = "";
+  document.getElementById("newPredefDefiCategory").value = "";
   await refreshPredefinedTokens();
 }
 
@@ -3789,7 +3956,8 @@ async function loadPredefinedTokensFromDb() {
   if (error) { console.error(error); return; }
   const addresses = {};
   const labels = {};
-  const categories = {}; // "chain|adresse" -> "v_currency" | "lp_token" | "tln_vow_token" | null
+  const categories = {}; // "chain|adresse" -> generische DeFi-Kategorie
+  const projects = {}; // "chain|adresse" -> project_key
   const coinGeckoIds = {};
   const symbols = {};
   const names = {};
@@ -3806,7 +3974,8 @@ async function loadPredefinedTokensFromDb() {
     addresses[chain] = addresses[chain] || [];
     addresses[chain].push(address);
     if (row.label) labels[dedupeKey] = row.label;
-    categories[dedupeKey] = row.tln_vow_category || null;
+    categories[dedupeKey] = row.defi_category || null;
+    projects[dedupeKey] = row.defi_project_key || null;
     if (row.coingecko_id) coinGeckoIds[dedupeKey] = row.coingecko_id;
     if (row.symbol) symbols[dedupeKey] = row.symbol;
     if (row.name) names[dedupeKey] = row.name;
@@ -3815,6 +3984,7 @@ async function loadPredefinedTokensFromDb() {
   SAFE_ADDRESSES = addresses;
   predefinedTokenLabels = labels;
   predefinedTokenCategory = categories;
+  predefinedTokenProject = projects;
   predefinedTokenCoinGeckoIds = coinGeckoIds;
   predefinedTokenSymbols = symbols;
   predefinedTokenNames = names;
@@ -3968,9 +4138,9 @@ function renderSafeTokenTable() {
     return (a.label || "").localeCompare(b.label || "");
   });
 
-  const TLN_VOW_LABELS = { v_currency: "v-Währung", lp_token: "LP Token", tln_vow_token: "TLN/VOW Token" };
+  const DEFI_CATEGORY_LABELS = { voucher_currency:"Voucher-Währung", lp_token:"LP Token", defi_token:"DeFi-Token" };
 
-  el.innerHTML = `<table><thead><tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th><th>TLN/VOW</th>${isAdmin ? '<th></th>' : ''}</tr></thead><tbody>
+  el.innerHTML = `<table><thead><tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th><th>DeFi-Projekt</th><th>Projekt-Kategorie</th>${isAdmin ? '<th></th>' : ''}</tr></thead><tbody>
     ${filtered.map(r => {
       let p;
       if (r.isNative) {
@@ -3985,15 +4155,24 @@ function renderSafeTokenTable() {
 
       const categoryKey = r.chain + "|" + (r.address || "");
       const category = predefinedTokenCategory[categoryKey] || "";
+      const projectKey = predefinedTokenProject[categoryKey] || "";
+      const projectName = defiProjectsCache.find(p=>p.project_key===projectKey)?.name || projectKey;
+      const projectCell = r.isNative ? '<span style="color:var(--muted)">–</span>' :
+        (isAdmin
+          ? `<select onchange="setPredefinedTokenDefi('${r.chain}','${r.address}','defi_project_key',this.value)">
+              <option value="" ${projectKey===""?"selected":""}>– keines –</option>
+              ${defiProjectsCache.map(p=>`<option value="${escapeAttr(p.project_key)}" ${projectKey===p.project_key?"selected":""}>${escapeAttr(p.name)}</option>`).join("")}
+            </select>`
+          : (projectKey ? escapeAttr(projectName) : '<span style="color:var(--muted)">–</span>'));
       const categoryCell = r.isNative ? '<span style="color:var(--muted)">–</span>' :
         (isAdmin
-          ? `<select onchange="setPredefinedTokenCategory('${r.chain}','${r.address}', this.value)">
-              <option value="" ${category === "" ? "selected" : ""}>– keine –</option>
-              <option value="v_currency" ${category === "v_currency" ? "selected" : ""}>v-Währung</option>
-              <option value="lp_token" ${category === "lp_token" ? "selected" : ""}>LP Token</option>
-              <option value="tln_vow_token" ${category === "tln_vow_token" ? "selected" : ""}>TLN/VOW Token</option>
+          ? `<select onchange="setPredefinedTokenDefi('${r.chain}','${r.address}','defi_category',this.value)">
+              <option value="" ${category===""?"selected":""}>– keine –</option>
+              <option value="voucher_currency" ${category==="voucher_currency"?"selected":""}>Voucher-Währung</option>
+              <option value="lp_token" ${category==="lp_token"?"selected":""}>LP Token</option>
+              <option value="defi_token" ${category==="defi_token"?"selected":""}>DeFi-Token</option>
             </select>`
-          : (category ? escapeAttr(TLN_VOW_LABELS[category] || category) : '<span style="color:var(--muted)">–</span>'));
+          : (category ? escapeAttr(DEFI_CATEGORY_LABELS[category] || category) : '<span style="color:var(--muted)">–</span>'));
 
       const labelCell = (isAdmin && !r.isNative)
         ? `<input type="text" value="${escapeAttr(r.label || "")}" style="font-size:0.85rem;padding:4px 6px" onblur="updatePredefinedTokenLabel('${r.chain}','${r.address}', this.value)" onkeydown="if(event.key==='Enter') this.blur()" />`
@@ -4008,6 +4187,7 @@ function renderSafeTokenTable() {
       <td>${labelCell}</td>
       <td style="font-size:0.78rem;word-break:break-all">${r.isNative ? '<span style="color:var(--muted)">– (nativ)</span>' : r.address}</td>
       <td style="text-align:right">${priceCell}</td>
+      <td>${projectCell}</td>
       <td>${categoryCell}</td>
       ${isAdmin ? `<td>${deleteCell}</td>` : ""}
     </tr>`;
@@ -4015,11 +4195,13 @@ function renderSafeTokenTable() {
   </tbody></table>`;
 }
 
-async function setPredefinedTokenCategory(chain, address, category) {
-  const value = category || null; // leere Auswahl -> null ("keine Kategorie")
-  const { error } = await matchAddressQuery(sb.from("predefined_tokens").update({ tln_vow_category: value }).eq("chain", chain), chain, address);
-  if (error) { alert("Fehler beim Speichern: " + error.message); return; }
-  predefinedTokenCategory[chain + "|" + address] = value;
+async function setPredefinedTokenDefi(chain,address,field,value){
+  const dbValue=value||null;
+  const {error}=await matchAddressQuery(sb.from("predefined_tokens").update({[field]:dbValue}).eq("chain",chain),chain,address);
+  if(error){ alert("Fehler beim Speichern: "+error.message); return; }
+  const key=chain+"|"+address;
+  if(field==="defi_project_key") predefinedTokenProject[key]=dbValue;
+  if(field==="defi_category") predefinedTokenCategory[key]=dbValue;
   updateTlnVowTabVisibility();
 }
 
@@ -5583,9 +5765,8 @@ function hasTlnVowTokenInSummary() {
       // Wert der Kategorie ist egal: v_currency, lp_token oder tln_vow_token
       // zählen alle. Entscheidend ist nur, dass die TLN/VOW-Spalte nicht leer ist.
       const category = predefinedTokenCategory[key];
-      if (category !== null && category !== undefined && String(category).trim() !== "") {
-        return true;
-      }
+      const project = predefinedTokenProject[key];
+      if (project === "tln_vow" && category) return true;
     }
   }
   return false;
