@@ -959,7 +959,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 18:32 Uhr<br>
+    Version vom 26.08.2026, 19:08 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -2831,6 +2831,10 @@ async function onLoggedIn(session) {
   document.getElementById("userEmailLabel").textContent = "Eingeloggt als " + currentUser.email;
   document.getElementById("heroUserActions").style.display = "block";
 
+  // Zuerst die zentrale Chain-Konfiguration laden. Falls die Migration noch nicht
+  // ausgeführt wurde oder Supabase kurz nicht erreichbar ist, bleiben die HTML-Fallbacks aktiv.
+  await loadChainConfigFromDb();
+
   isAdmin = await checkIsAdmin();
   document.getElementById("adminTabBtn").style.display = isAdmin ? "inline-block" : "none";
   document.getElementById("feesTabBtn").style.display = "inline-block";
@@ -2944,36 +2948,40 @@ function showAdminTab(name) {
 
 // Rein statische Übersicht, keine DB-Anbindung nötig - hier einfach die Liste pflegen.
 const ADMIN_IDEAS = [
-  { status: "open", title: "Steuer-Report (Schweiz)", desc: "Stichtag-Snapshot 31.12. + druckbarer PDF/CSV-Export (Wallet, Chain, Token, Bestand, Kurs, Wert CHF) für die Steuererklärung. Läuft über manuell/automatisch erstellte Snapshots (siehe Punkt unten) statt einer eigenen On-Chain-Nachrechnung, da Letzteres nur EVM-Chains abdecken würde - so bekommt man alle Chains gleich." },
-  { status: "open", title: "Gewinn/Verlust statt nur Bestand", desc: "Einstandspreis-Feld pro Wallet/Snapshot, um Performance (im Plus/Minus, %) statt nur den heutigen Wert zu zeigen." },
-  { status: "clarifying", title: "Staking-Anzeige (PancakeSwap V2/V3 Liquidity Pools)", desc: "Gestakte LP-Token liegen im Farm-/Staking-Contract, nicht im Wallet - aktuell nicht sichtbar. Braucht die genaue Contract-Adresse + Funktionsnamen des Staking-Contracts (offiziell PancakeSwap oder eigener Contract?). Noch in Abklärung." },
-  { status: "clarifying", title: "Korrekte Kurse für VOW und v-Währungen (v$, vUSD, v€, ...)", desc: "GeckoTerminal findet für diese Token keinen/keinen zuverlässigen Kurs. Lösung: Kurs über einen Referenz-Pool herleiten (z.B. v$-Kurs aus dem v$/VOW-Pool + bereits bekanntem VOW-Kurs), analog einem vom User bereitgestellten Beispiel-Script. DB-Spalte für predefined_tokens ist vorbereitet (\"tln_vow_category\": v-Währung / LP Token / TLN/VOW Token), die eigentliche Kurslogik in der App fehlt noch - wartet auf die vollständige Liste der Pool-Adressen je Token vom User, plus Klärung ob VOW selbst auch eine Pool-Herleitung braucht oder direkt über GeckoTerminal funktioniert." },
-  { status: "open", title: "Wallet-Bezeichnungen verschlüsseln (Stufe 1)", desc: "Nur die Labels (\"Dao1 Chris\" etc.) client- oder serverseitig verschlüsseln, nicht die Adressen selbst (Adressen sind ohnehin öffentlich einsehbar, Labels sind der personenidentifizierende Teil). Schützt zusätzlich gegen den Fall eines reinen DB-Zugriffs (z.B. Datenbank-Leck), nicht gegen jemanden mit Zugriff auf DB + App-Code gleichzeitig (Schlüssel müsste im Code liegen, da kein Passwort-basiertes Login vorhanden ist)." },
+  {
+    status: "in_progress",
+    title: "Konfiguration aus HTML nach Supabase verlagern",
+    desc: "Umbau gestartet 26.08.2026. ZIEL: neue Chains/Token und Preis-Zuordnungen möglichst ohne HTML-Änderung verwalten. PHASE 1 umgesetzt: neue Tabelle chains; Chain-Label, Native-Symbol, CoinGecko-ID und GeckoTerminal-Netzwerk werden aus Supabase geladen (HTML bleibt als Fallback). predefined_tokens um symbol, name, coingecko_id, decimals, price_source und enabled erweitert; CoinGecko-Zuordnung der vordefinierten Token läuft nun über chain+Contract statt Kürzel. NOCH OFFEN: (1) Admin-Oberfläche für diese neuen Felder, (2) Explorer-URL aus chains verwenden, (3) öffentliche RPC-/REST-Endpunkte und Balance-Provider konfigurierbar machen, (4) Gebühren-Provider/Chain-ID/Finality/Overlap nach chains verschieben, (5) DEX-/TLN-VOW-Infrastrukturadressen in eigene Konfig-Tabelle verschieben, (6) danach alte Fallback-Konstanten im HTML schrittweise entfernen. API-Secrets bleiben ausdrücklich ausserhalb normaler DB-Tabellen."
+  },
+  { status: "open", title: "Steuer-Report (Schweiz)", desc: "Stichtag-Snapshot 31.12. + druckbarer PDF/CSV-Export (Wallet, Chain, Token, Bestand, Kurs, Wert CHF) für die Steuererklärung. Läuft über manuell/automatisch erstellte Snapshots statt eigener On-Chain-Nachrechnung, damit alle Chains gleich behandelt werden." },
+  { status: "open", title: "Gewinn/Verlust statt nur Bestand", desc: "Einstandspreis-Feld bzw. Transaktions-/Kostenbasis-Konzept definieren, um Performance (Plus/Minus, %) statt nur heutigen Bestand zu zeigen." },
+  { status: "clarifying", title: "Staking-Anzeige / gestakte LP-Positionen", desc: "Gestakte LP-Token liegen im Staking-/Farm-Contract und nicht im Wallet. Für TLN/VOW wurden einzelne Contracts/Pools bereits untersucht; für eine allgemeine Anzeige fehlt noch ein belastbares Modell pro Staking-Contract (Contract-Adresse, Stake-/Unstake-Events bzw. View-Funktionen, LP-Zuordnung)." },
+  { status: "done", title: "TLN/VOW- und v-Währungs-Preislogik", desc: "On-chain umgesetzt: v_currency über direkten v/VOW-Pool und VOW/USDT; tln_vow_token bevorzugt TOKEN/VOW→VOW/USDT, sonst TOKEN/USDT; VOW selbst direkt VOW/USDT. Zuordnung erfolgt über Contract-Adressen und Supabase-Kategorien." },
+  { status: "open", title: "Wallet-Bezeichnungen verschlüsseln (Stufe 1)", desc: "Nur Labels verschlüsseln, nicht öffentliche Blockchain-Adressen. Vor Umsetzung Schlüsselverwaltung und Auswirkungen auf Suche/Sortierung klären." },
   {
     status: "paused",
     title: "Automatisierte monatliche Snapshots (1. jedes Monats)",
-    desc: "Läuft NICHT im Browser, sondern als Supabase Edge Function + pg_cron-Zeitplan - unabhängig vom Gerät/Browser. Kompletter Code bereits geschrieben und Syntax-geprüft (aber NICHT live getestet, da keine Deno-Umgebung zum Testen verfügbar war): " +
-      "Edge Function supabase/functions/monthly-snapshot/index.ts (holt Bestände + Kurse ZUM ZEITPUNKT des Snapshots, alle Chains ausser Solana-Token/Apertum-Token teilweise eingeschränkt), " +
-      "migration-monthly-cron.sql (pg_cron-Zeitplan, 00:05 UTC am 1. jedes Monats), " +
-      "migration-snapshot-price.sql (price_usd-Spalte in snapshot_items, Voraussetzung dafür). " +
-      "Pausiert, weil: (1) Deployment braucht Docker + Supabase CLI auf einem Mac (einmalig, aber Einrichtungsaufwand), " +
-      "(2) Supabase pausiert Gratis-Projekte nach 7 Tagen Inaktivität - pg_cron pausiert dann mit, braucht zusätzlich einen externen Wachhalte-Mechanismus (siehe eigener Punkt). " +
-      "Wieder aufnehmen, sobald Zeit für den Deployment-Aufwand da ist."
+    desc: "Geplant als Supabase Edge Function + pg_cron, unabhängig vom Browser. Code/Migrationen wurden vorbereitet, Deployment aber pausiert. Vor Wiederaufnahme prüfen, ob die inzwischen hinzugekommenen Chains (u.a. Akash) und aktuelle Preislogik vollständig im Snapshot-Job berücksichtigt werden."
   },
-  { status: "done", title: "Wachhalte-Mechanismus gegen Supabase-Inaktivitäts-Pause", desc: "GitHub Actions Workflow, pingt wöchentlich die Supabase REST API extern an - verhindert die automatische 7-Tage-Pausierung des Gratis-Tarifs. Nötig, bevor die automatisierten Snapshots (siehe oben) sinnvoll sind." },
-  { status: "done", title: "Token-Approval-Checker", desc: "Zeigt aktive/unlimitierte Freigaben, Revoke läuft extern über revoke.cash (bewusst rein lesend)." },
+  { status: "done", title: "Wachhalte-Mechanismus gegen Supabase-Inaktivitäts-Pause", desc: "GitHub Actions Workflow pingt Supabase regelmäßig extern an." },
+  { status: "done", title: "Netzwerkgebühren ohne Alchemy", desc: "Gebührenprovider migriert: Ethereum Routescan, BSC NodeReal, Polygon/Arbitrum/Base Blockscout, Avalanche Routescan; Apertum/XRP/Solana über eigene kostenlose Quellen. Supabase-Cache + inkrementelle Aktualisierung; für Nicht-Admins 30-Tage-Regel. Historische USD-Bewertung bewusst als spätere Phase offen." },
+  { status: "open", title: "Historischer USD-Wert der Netzwerkgebühren", desc: "Phase 2 der Gebührenanzeige. Native Gebühren sind vorhanden; gesucht wird noch eine praktikable historische Preisquelle über mehr als 365 Tage für ETH, BNB, POL, AVAX usw. CoinGecko Public API reicht dafür nicht." },
+  { status: "done", title: "Token-Approval-Checker", desc: "Zeigt aktive/unlimitierte Freigaben; Revoke läuft extern über revoke.cash (bewusst rein lesend)." },
   { status: "done", title: "Portfolio-Allokation als Grafik", desc: "Kreisdiagramm nach Chain/Token, Total oder je Wallet." },
-  { status: "done", title: "NFT-Anzeige", desc: "NFTs je Wallet/Chain, inkl. Spam-Verdacht-Badge." },
-  { status: "reverted", title: "Automatischer Scam-Hinweis beim Login", desc: "War umgesetzt, aber wieder entfernt - hat das damalige API-Tageskontingent gesprengt. Manueller \"Entdecken\"-Tab deckt denselben Bedarf ab." },
-  { status: "open", title: "CSV-Export der aktuellen Bestände", desc: "Für eigene Excel-Auswertungen der Kunden." },
-  { status: "open", title: "Mehrsprachigkeit (DE/FR/IT/EN)", desc: "Für einen breiteren Kundenkreis." },
-  { status: "open", title: "Als installierbare Mobile-App (PWA)", desc: "Statt nur Browser-Tab - Icon auf dem Homescreen, App-artiges Gefühl." }
+  { status: "done", title: "NFT-Anzeige", desc: "NFTs je Wallet/Chain inkl. Spam-Verdacht und Supabase-Cache." },
+  { status: "done", title: "Willkommen + Hilfe + Krypto-Unterstützung", desc: "Willkommensdialog für neue und bestehende User mit 'Nicht mehr anzeigen', aktualisierte Hilfe sowie Unterstützen-Dialog mit USDT/USDC auf Ethereum/BSC/Polygon und QR-Code." },
+  { status: "done", title: "Akash Network", desc: "Akash-Wallet-Adresse, native AKT-Balance und aktueller AKT-Kurs integriert. Akash-Gebühren sind noch nicht Bestandteil des Gebührenmoduls." },
+  { status: "reverted", title: "Automatischer Scam-Hinweis beim Login", desc: "War umgesetzt und wurde wieder entfernt, weil die damaligen API-Abfragen das Tageskontingent stark belasteten. Manueller Entdecken-Tab bleibt der Ersatz." },
+  { status: "open", title: "CSV-Export der aktuellen Bestände", desc: "Export für eigene Excel-/Steuer-Auswertungen." },
+  { status: "open", title: "Mehrsprachigkeit (DE/FR/IT/EN)", desc: "Für einen breiteren Nutzerkreis." },
+  { status: "open", title: "Als installierbare Mobile-App (PWA)", desc: "Homescreen-Installation und app-artige Nutzung." }
 ];
 
 function renderAdminIdeas() {
   const el = document.getElementById("adminIdeasList");
   const statusMeta = {
     open: { label: "Offen", color: "#9aa0ac" },
+    in_progress: { label: "In Umsetzung", color: "#3b82f6" },
     clarifying: { label: "In Abklärung", color: "#f0b90b" },
     done: { label: "Umgesetzt", color: "#46c878" },
     reverted: { label: "Umgesetzt, dann zurückgebaut", color: "var(--danger)" },
@@ -3257,6 +3265,45 @@ const CHAIN_META = {
   akash:   { label: "Akash Network (AKT)",  dot: "akash",   coingeckoId: "akash-network" }
 };
 
+// Phase 1 des Konfigurations-Umbaus:
+// Die Werte oben bleiben als Fallback, damit das Dashboard auch dann startet, wenn die neue
+// Supabase-Tabelle "chains" vorübergehend nicht erreichbar ist. Sobald sie erreichbar ist,
+// werden Label, Native-Symbol, CoinGecko-ID und GeckoTerminal-Netzwerk aus der DB übernommen.
+async function loadChainConfigFromDb() {
+  try {
+    const { data, error } = await sb.from("chains")
+      .select("chain_key,label,native_symbol,coingecko_id,geckoterminal_network,sort_order,enabled")
+      .eq("enabled", true)
+      .order("sort_order", { ascending: true });
+
+    if (error) throw error;
+    if (!Array.isArray(data) || data.length === 0) return false;
+
+    const current = { ...CHAIN_META };
+    Object.keys(CHAIN_META).forEach(k => delete CHAIN_META[k]);
+
+    data.forEach(row => {
+      const key = row.chain_key;
+      if (!key) return;
+      const fallback = current[key] || {};
+      CHAIN_META[key] = {
+        ...fallback,
+        label: row.label || fallback.label || key,
+        dot: fallback.dot || key,
+        coingeckoId: row.coingecko_id || fallback.coingeckoId || null
+      };
+      if (row.native_symbol) NATIVE_SYMBOL[key] = row.native_symbol;
+      if (row.geckoterminal_network) GECKOTERMINAL_NETWORK[key] = row.geckoterminal_network;
+      else delete GECKOTERMINAL_NETWORK[key];
+    });
+    return true;
+  } catch (e) {
+    console.warn("Chain-Konfiguration aus Supabase nicht verfügbar – HTML-Fallback wird verwendet:", e);
+    return false;
+  }
+}
+
+
 // ---- Chain-Filter (Wallet-Tracking-Tab) - standardmässig sind alle Chains aktiv ----
 let activeChainFilter = new Set(Object.keys(CHAIN_META));
 
@@ -3449,9 +3496,14 @@ async function loadPredefinedTokensFromDb() {
   const addresses = {};
   const labels = {};
   const categories = {}; // "chain|adresse" -> "v_currency" | "lp_token" | "tln_vow_token" | null
+  const coinGeckoIds = {};
+  const symbols = {};
+  const names = {};
+  const decimals = {};
   const seen = new Set(); // Dedupe für den Fall, dass dieselbe Adresse mit unterschiedlicher
                            // Gross-/Kleinschreibung mehrfach in der DB steht (case-sensitiver PK)
   data.forEach(row => {
+    if (row.enabled === false) return;
     const chain = row.chain;
     const address = normalizeAddress(row.address, chain);
     const dedupeKey = chain + "|" + address;
@@ -3461,10 +3513,18 @@ async function loadPredefinedTokensFromDb() {
     addresses[chain].push(address);
     if (row.label) labels[dedupeKey] = row.label;
     categories[dedupeKey] = row.tln_vow_category || null;
+    if (row.coingecko_id) coinGeckoIds[dedupeKey] = row.coingecko_id;
+    if (row.symbol) symbols[dedupeKey] = row.symbol;
+    if (row.name) names[dedupeKey] = row.name;
+    if (row.decimals !== null && row.decimals !== undefined) decimals[dedupeKey] = Number(row.decimals);
   });
   SAFE_ADDRESSES = addresses;
   predefinedTokenLabels = labels;
   predefinedTokenCategory = categories;
+  predefinedTokenCoinGeckoIds = coinGeckoIds;
+  predefinedTokenSymbols = symbols;
+  predefinedTokenNames = names;
+  predefinedTokenDecimals = decimals;
 }
 
 // Apertum: Balance-Abfrage über die öffentliche Blockscout-Explorer-API (CORS-freundlich für Browser-Zugriffe)
@@ -3684,15 +3744,13 @@ function populateSelectPreserving(selectId, values, labelFn, placeholderLabel) {
 let nativePrices = {}; // chainKey -> {price, change24h}
 let tokenPrices = {}; // "chain|adresse" -> {price, change24h, source}
 
-// Grosse, kuratierte Coins (USDT/USDC) über die reguläre CoinGecko-Kursliste - zuverlässigste Quelle.
-const TOKEN_COINGECKO_IDS = {
-  USDT: "tether",
-  USDC: "usd-coin",
-  QNT: "quant-network",
-  LCX: "lcx",
-  IMX: "immutable-x",
-  RSR: "reserve-rights"
-};
+// Preis-/Token-Metadaten der vordefinierten Token kommen ab Phase 1 aus Supabase.
+// Schlüssel ist immer "chain|contract", nie nur das Kürzel – dadurch bleiben gleichnamige
+// Token auf unterschiedlichen Chains eindeutig.
+let predefinedTokenCoinGeckoIds = {}; // "chain|adresse" -> CoinGecko-ID
+let predefinedTokenSymbols = {};      // "chain|adresse" -> Symbol
+let predefinedTokenNames = {};        // "chain|adresse" -> Name
+let predefinedTokenDecimals = {};     // "chain|adresse" -> decimals
 
 // GeckoTerminal (dieselbe Firma wie CoinGecko, DEX-basierte Kurse) als Ergänzung für alle
 // anderen sicheren Token - deckt auch kleinere/eigene Token ab, sofern sie irgendwo auf
@@ -3701,9 +3759,11 @@ const TOKEN_COINGECKO_IDS = {
 const GECKOTERMINAL_NETWORK = { eth: "eth", bsc: "bsc", matic: "polygon_pos", arb: "arbitrum", base: "base", avax: "avax", tron: "tron" };
 
 async function loadNativePrices() {
-  const ids = Object.values(CHAIN_META).map(m => m.coingeckoId)
-    .concat(Object.values(TOKEN_COINGECKO_IDS))
-    .join(",");
+  const ids = [...new Set(
+    Object.values(CHAIN_META).map(m => m.coingeckoId)
+      .concat(Object.values(predefinedTokenCoinGeckoIds))
+      .filter(Boolean)
+  )].join(",");
 
   const alreadyPriced = {}; // "chain|adresse" -> true, deckt USDT/USDC ab (kein Doppel-Fetch via GeckoTerminal)
 
@@ -3727,8 +3787,8 @@ async function loadNativePrices() {
     const tPrices = {};
     Object.keys(SAFE_ADDRESSES).forEach(chain => {
       (SAFE_ADDRESSES[chain] || []).forEach(address => {
-        const label = predefinedTokenLabels[chain + "|" + address];
-        const cgId = label && TOKEN_COINGECKO_IDS[label.toUpperCase()];
+        const tokenKey = chain + "|" + address;
+        const cgId = predefinedTokenCoinGeckoIds[tokenKey];
         if (cgId && data[cgId] && typeof data[cgId].usd === "number") {
           const key = chain + "|" + address;
           tPrices[key] = {
