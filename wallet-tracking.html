@@ -557,9 +557,9 @@
     <div id="tab-fees" class="tab-panel">
       <div class="custom-token-card">
         <div class="note" style="margin-bottom:12px">
-          Summiert die tatsächlich bezahlten Netzwerk-Gebühren einer Wallet.
-          Deckt die komplette Historie ab (kann bei sehr aktiven Wallets dauern, läuft über mehrere Seiten). Nur Transaktionen,
-          bei denen diese Wallet die Absenderin war, zählen (nur die zahlt die Gebühr). Läuft nur auf Knopfdruck.
+          Summiert die tatsächlich bezahlten Netzwerk-Gebühren einer Wallet. Gespeicherte ETH/BSC-Werte werden sofort aus Supabase angezeigt;
+          beim Aktualisieren wird nach dem ersten Vollscan nur noch inkrementell mit Sicherheits-Overlap weitergescannt. Nur Transaktionen,
+          bei denen diese Wallet die Absenderin war, zählen (nur die zahlt die Gebühr).
         </div>
         <div class="note" style="margin-bottom:12px">
           <strong>Erfasst:</strong> Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche, Apertum, XRP, Solana.<br>
@@ -569,7 +569,7 @@
         <div class="field-grid" style="margin-bottom:14px">
           <div>
             <span class="field-label">Wallet (Pflicht)</span>
-            <select id="feesWalletSelect">
+            <select id="feesWalletSelect" onchange="onFeesWalletChange()">
               <option value="">– Wallet wählen –</option>
             </select>
           </div>
@@ -584,7 +584,17 @@
         </div>
         <div id="feesChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
 
-        <button id="feesBtn" onclick="runFeesCalculation()">Gebühren berechnen</button>
+        <div class="custom-token-card" style="margin:12px 0;border-color:var(--border)">
+          <span class="field-label">NodeReal API-Key für BSC</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="password" id="nodeRealApiKeyInput" placeholder="NodeReal API-Key (wird nur lokal in diesem Browser gespeichert)" autocomplete="off" />
+            <button class="secondary" onclick="saveNodeRealApiKey()">Key lokal speichern</button>
+          </div>
+          <div class="note">Der Key wird nicht in Supabase und nicht im HTML gespeichert. Er liegt nur im lokalen Browser-Speicher dieses Geräts.</div>
+        </div>
+
+        <button id="feesBtn" onclick="runFeesCalculation()">Gebühren aktualisieren</button>
+        <div id="feesCacheInfo" class="note" style="margin-top:8px"></div>
         <div id="feesStatus" class="note" style="margin-top:10px"></div>
       </div>
       <div id="feesResults"></div>
@@ -740,7 +750,7 @@
             <tr>
               <td>🔍 Entdecken, 💸 Gebühren, 🔓 Freigaben, 🖼️ NFTs</td>
               <td><span class="badge unsafe">nur manuell</span></td>
-              <td>Laufen ausschliesslich auf Knopfdruck. Für EVM-Chains wird Alchemy verwendet; andere Chains nutzen ihre bisherigen APIs. Dadurch bleiben aufwendige Historien-Abfragen bewusst manuell.</td>
+              <td>Laufen ausschliesslich auf Knopfdruck. Ethereum nutzt Routescan und BSC NodeReal/BSCTrace; andere Chains nutzen vorläufig ihre bisherigen Datenquellen. Aufwendige Historien-Abfragen bleiben bewusst manuell.</td>
             </tr>
             <tr>
               <td>🖼️ NFTs</td>
@@ -768,7 +778,7 @@
         <p class="note">Zeigt deine Bestände über alle Wallets und Chains hinweg – als Gesamtsumme ("Summary") und aufgeschlüsselt je Wallet ("Details je Wallet"). Nur Token auf der sicheren Liste (vordefiniert oder selbst hinzugefügt) werden angezeigt, alles andere wird bewusst ausgeblendet (Schutz vor Scam-Token). Zusätzlich verfügbar: Snapshots (Momentaufnahmen deines Bestands, samt Kurs zum jeweiligen Zeitpunkt), eine Verlauf-Grafik über die Zeit, und die Portfolio-Allokation als Kreisdiagramm.</p>
 
         <h3>💸 Gebühren</h3>
-        <p class="note">Nur für Admins sichtbar. Summiert die Netzwerk-Gebühren, die eine Wallet über ihre komplette Historie bezahlt hat. Die EVM-Historie nutzt aktuell noch Alchemy und läuft deshalb ausschließlich manuell.</p>
+        <p class="note">Nur für Admins sichtbar. Summiert die Netzwerk-Gebühren, die eine Wallet über ihre komplette Historie bezahlt hat. Ethereum nutzt Routescan, BSC nutzt NodeReal/BSCTrace; die Ergebnisse werden in Supabase gecacht und inkrementell aktualisiert. Andere EVM-Chains verwenden vorläufig noch die bisherige Logik.</p>
 
         <h3>🖼️ NFTs</h3>
         <p class="note">Zeigt die NFTs (Sammelbilder/Collectibles) einer oder aller Wallets, inklusive Warnung bei Spam-Verdacht (unaufgeforderte, wertlose NFT-"Geschenke" sind eine verbreitete Betrugsmasche). Mit "Spam-Verdacht ausblenden" lassen sich verdächtige Funde ausblenden.</p>
@@ -892,8 +902,8 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 00:48 Uhr<br>
-    Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für manuelle Spezialfunktionen (Entdecken, Admin-Gebühren, Freigaben, NFTs) verwendet. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
+    Version vom 26.08.2026, 13:30 Uhr<br>
+    Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen bzw. noch nicht migrierte Chains (Entdecken, Teile der Gebühren, Freigaben, NFTs) verwendet. ETH-Gebühren laufen über Routescan, BSC-Gebühren über NodeReal/BSCTrace. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
 
@@ -2742,6 +2752,7 @@ async function onLoggedIn(session) {
   activeFeesChains = new Set(FEES_CHAINS);
   renderFeesChainFilter();
   renderFeesWalletSelect();
+  loadNodeRealKeyIntoField();
   activeApprovalsChains = new Set(APPROVALS_CHAINS);
   renderApprovalsChainFilter();
   renderApprovalsWalletSelect();
@@ -2792,8 +2803,8 @@ function showTab(name) {
   // TLN/VOW ist nur erreichbar, wenn ein passender Projekt-Token im Summary-Bestand liegt.
   if (name === "tlnvow" && !hasTlnVowTokenInSummary()) name = "tracking";
 
-  // Gebühren sind vorerst nur für Admins freigeschaltet, da die historische
-  // Auswertung weiterhin Alchemy verbraucht.
+  // Gebühren sind vorerst nur für Admins freigeschaltet. ETH/BSC laufen inzwischen
+  // über kostenlose Provider mit Supabase-Cache; weitere Chains werden schrittweise migriert.
   if (name === "fees" && !isAdmin) name = "tracking";
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
@@ -2803,6 +2814,7 @@ function showTab(name) {
   if (name === "admin") showAdminTab("customtokens");
   if (name === "chat") loadOwnChat();
   if (name === "nfts") onNftWalletChange();
+  if (name === "fees") onFeesWalletChange();
   if (name === "discovery") {
     renderDiscoveryCacheState();
     if (lastDiscoveryFindings.length > 0) renderDiscoveryResults(lastDiscoveryFindings);
@@ -5200,9 +5212,47 @@ function setAllDiscoveryChains(selectAll) {
   renderDiscoveryChainFilter();
 }
 
-// ---- Gebühren-Auswertung (EVM-Chains via Alchemy) ----
+// ---- Gebühren-Auswertung ----
+// ETH: Routescan (keyless), BSC: NodeReal/BSCTrace. Beide werden in Supabase
+// inkrementell gecacht. Die übrigen bereits vorhandenen Chains behalten vorläufig
+// ihre bisherige Logik, bis die kostenlosen Provider ebenfalls validiert sind.
 const FEES_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax", "apertum", "xrp", "sol"];
 let activeFeesChains = new Set(FEES_CHAINS);
+const FEES_MAX_PAGES = 50; // nur für die bisherigen Legacy-Provider / XRP / Apertum
+const FEE_COOLDOWN_DAYS = 30;
+const FEE_OVERLAP_BLOCKS = { eth: 64, bsc: 200 };
+const FEE_FINALITY_LAG = { eth: 64, bsc: 200 };
+const NODEREAL_LOCAL_STORAGE_KEY = "walletTrackingNodeRealApiKey";
+let feeCaches = new Map(); // key walletId|chain -> DB row
+
+function feeCacheKey(walletId, chain) { return String(walletId) + "|" + chain; }
+function sleepMs(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function bigIntSafe(v) { try { return BigInt(v ?? 0); } catch { return 0n; } }
+function weiToDecimalString(wei) {
+  const x = bigIntSafe(wei), d = 1000000000000000000n;
+  const whole = x / d;
+  const frac = (x % d).toString().padStart(18, "0").replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole.toString();
+}
+function decimalStringToWei(v) {
+  const s = String(v ?? "0").trim();
+  if (!s || !/^[-+]?\d+(\.\d+)?$/.test(s)) return 0n;
+  const neg = s.startsWith("-");
+  const clean = s.replace(/^[-+]/, "");
+  const [a, b = ""] = clean.split(".");
+  const out = BigInt(a || "0") * 1000000000000000000n + BigInt((b + "0".repeat(18)).slice(0, 18));
+  return neg ? -out : out;
+}
+function normalizeTxTimestamp(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "string" && !/^\d+$/.test(v)) {
+    const d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  let n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  if (n < 1e12) n *= 1000;
+  const d = new Date(n); return isNaN(d.getTime()) ? null : d.toISOString();
+}
 
 function renderFeesChainFilter() {
   const el = document.getElementById("feesChainContainer");
@@ -5216,171 +5266,291 @@ function renderFeesChainFilter() {
     </label>`;
   }).join("");
 }
-
-function toggleFeesChain(chain, isChecked) {
-  if (isChecked) activeFeesChains.add(chain);
-  else activeFeesChains.delete(chain);
-}
-
-function setAllFeesChains(selectAll) {
-  activeFeesChains = selectAll ? new Set(FEES_CHAINS) : new Set();
-  renderFeesChainFilter();
-}
-
+function toggleFeesChain(chain, isChecked) { if (isChecked) activeFeesChains.add(chain); else activeFeesChains.delete(chain); }
+function setAllFeesChains(selectAll) { activeFeesChains = selectAll ? new Set(FEES_CHAINS) : new Set(); renderFeesChainFilter(); }
 function renderFeesWalletSelect() {
   const el = document.getElementById("feesWalletSelect");
   if (!el) return;
   const current = el.value;
-  el.innerHTML = `<option value="">– Wallet wählen –</option>` +
-    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
-  if (wallets.some(w => w.id === current)) el.value = current;
+  el.innerHTML = `<option value="">– Wallet wählen –</option>` + wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (wallets.some(w => String(w.id) === String(current))) el.value = current;
 }
 
-// Holt die ausgehende Transaktionshistorie über Alchemy und berechnet die tatsächlich
-// bezahlte Netzwerkgebühr aus Transaction Receipt (gasUsed) × effectiveGasPrice.
-const FEES_MAX_PAGES = 50; // max. 50 x 1000 indexierte Transfers pro Chain
+function loadNodeRealKeyIntoField() {
+  const el = document.getElementById("nodeRealApiKeyInput");
+  if (!el) return;
+  try { if (!el.value) el.value = localStorage.getItem(NODEREAL_LOCAL_STORAGE_KEY) || ""; } catch (e) {}
+}
+function saveNodeRealApiKey() {
+  const el = document.getElementById("nodeRealApiKeyInput");
+  const key = el ? el.value.trim() : "";
+  if (!key) { alert("Bitte NodeReal API-Key eingeben."); return; }
+  try { localStorage.setItem(NODEREAL_LOCAL_STORAGE_KEY, key); alert("NodeReal API-Key wurde nur lokal in diesem Browser gespeichert."); }
+  catch (e) { alert("Der Browser konnte den Key nicht lokal speichern."); }
+}
+function getNodeRealApiKey() {
+  const el = document.getElementById("nodeRealApiKeyInput");
+  let key = el ? el.value.trim() : "";
+  if (!key) { try { key = localStorage.getItem(NODEREAL_LOCAL_STORAGE_KEY) || ""; } catch (e) {} }
+  return key;
+}
 
+async function loadFeeCacheForWallet(walletId) {
+  if (!currentUser || !walletId) return [];
+  const { data, error } = await sb.from("wallet_fee_cache").select("*")
+    .eq("user_id", currentUser.id).eq("wallet_id", String(walletId));
+  if (error) { console.error("Gebühren-Cache laden:", error); return []; }
+  for (const row of (data || [])) feeCaches.set(feeCacheKey(walletId, row.chain), row);
+  return data || [];
+}
+function feeNextAllowedDate(cache) {
+  if (!cache || !cache.last_scanned_at) return null;
+  const d = new Date(cache.last_scanned_at);
+  if (isNaN(d.getTime())) return null;
+  d.setDate(d.getDate() + FEE_COOLDOWN_DAYS);
+  return d;
+}
+function feeScanAllowed(cache) { return isAdmin || !feeNextAllowedDate(cache) || Date.now() >= feeNextAllowedDate(cache).getTime(); }
+
+async function onFeesWalletChange() {
+  loadNodeRealKeyIntoField();
+  const select = document.getElementById("feesWalletSelect");
+  const walletId = select ? select.value : "";
+  const info = document.getElementById("feesCacheInfo");
+  if (!walletId) { if (info) info.textContent = ""; return; }
+  const w = wallets.find(x => String(x.id) === String(walletId));
+  if (!w) return;
+  const rows = await loadFeeCacheForWallet(walletId);
+  if (rows.length) {
+    const results = rows.map(r => ({ chain:r.chain, totalFee:Number(r.total_fee_native || 0), txCount:Number(r.tx_count || 0), cached:true, cachedAt:r.last_scanned_at, source:r.data_source }));
+    renderFeesResults(w, results);
+    const newest = rows.map(r => r.last_scanned_at).filter(Boolean).sort().pop();
+    if (info) info.textContent = newest ? `Gespeicherter Gebührenstand geladen · letzte Aktualisierung ${new Date(newest).toLocaleString("de-CH")}` : "Gespeicherter Gebührenstand geladen.";
+  } else {
+    if (info) info.textContent = "Noch kein gespeicherter ETH/BSC-Gebührenstand für diese Wallet.";
+  }
+}
+
+async function currentSafeBlock(chain) {
+  const latestHex = await evmRpcCall(EVM_RPC_URLS[chain], "eth_blockNumber", []);
+  const latest = Number(bigIntSafe(latestHex));
+  return Math.max(0, latest - (FEE_FINALITY_LAG[chain] || 0));
+}
+
+function routescanFeeWei(tx) {
+  const used = bigIntSafe(tx.gasUsed ?? tx.receipt?.gasUsed ?? tx.gas?.used);
+  const price = bigIntSafe(tx.effectiveGasPrice ?? tx.gasPrice ?? tx.receipt?.effectiveGasPrice ?? tx.gas?.price);
+  if (used && price) return used * price;
+  for (const k of ["fee", "txFee", "transactionFee"]) {
+    if (tx[k] !== undefined && tx[k] !== null) { const b = bigIntSafe(tx[k]); if (b) return b; }
+  }
+  return 0n;
+}
+
+async function fetchEthereumFeeTransactions(address, startBlock, endBlock, onProgress) {
+  let next = null, page = 0;
+  const out = [];
+  do {
+    page++; if (onProgress) onProgress(page);
+    const u = new URL(`https://api.routescan.io/v2/network/mainnet/evm/1/address/${address}/transactions`);
+    u.searchParams.set("categories", "evm_tx"); u.searchParams.set("direction", "sent"); u.searchParams.set("sort", "asc"); u.searchParams.set("limit", "100");
+    if (startBlock !== null && startBlock !== undefined) u.searchParams.set("blockNumberFrom", String(startBlock));
+    if (endBlock !== null && endBlock !== undefined) u.searchParams.set("blockNumberTo", String(endBlock + 1)); // API: obere Grenze exklusiv
+    if (next) u.searchParams.set("next", next);
+    const res = await fetch(u);
+    if (!res.ok) throw new Error("Routescan HTTP " + res.status);
+    const data = await res.json();
+    if (!Array.isArray(data.items)) throw new Error("Unerwartete Routescan-Antwort");
+    for (const tx of data.items) {
+      const hash = tx.txHash || tx.hash || tx.transactionHash || "";
+      const block = Number(tx.blockNumber ?? tx.block ?? 0) || 0;
+      if (!hash || !block || block > endBlock) continue;
+      const feeWei = routescanFeeWei(tx);
+      if (feeWei === 0n && bigIntSafe(tx.gasUsed ?? tx.receipt?.gasUsed ?? tx.gas?.used) > 0n) throw new Error("Routescan: Fee-Feld fehlt bei " + hash);
+      out.push({ tx_hash:hash.toLowerCase(), block_number:block, fee_native:weiToDecimalString(feeWei), tx_timestamp:normalizeTxTimestamp(tx.timestamp ?? tx.createdAt ?? tx.timeStamp) });
+    }
+    next = data?.link?.nextToken || null;
+    if (next) await sleepMs(520);
+    if (page > 5000) throw new Error("Routescan Sicherheitsabbruch nach 5000 Seiten");
+  } while (next);
+  return out;
+}
+
+async function nodeRealRpc(method, params) {
+  const key = getNodeRealApiKey();
+  if (!key) throw new Error("NodeReal API-Key fehlt. Bitte oben im Gebühren-Tab einmal lokal speichern.");
+  const res = await fetch(`https://bsc-mainnet.nodereal.io/v1/${encodeURIComponent(key)}`, {
+    method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({jsonrpc:"2.0", method, params:[params], id:1})
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error("NodeReal HTTP " + res.status);
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  return data.result || {};
+}
+async function fetchNodeRealRange(address, fromBlock, toBlock, onProgress, progressState) {
+  let pageKey = null;
+  const out = [];
+  do {
+    progressState.page++; if (onProgress) onProgress(progressState.page);
+    const p = { category:["external"], fromAddress:address, order:"asc", maxCount:"0x3E8" };
+    if (fromBlock !== null && fromBlock !== undefined) p.fromBlock = "0x" + Number(fromBlock).toString(16);
+    if (toBlock !== null && toBlock !== undefined) p.toBlock = "0x" + Number(toBlock).toString(16);
+    if (pageKey) p.pageKey = pageKey;
+    const r = await nodeRealRpc("nr_getAssetTransfers", p);
+    const txs = Array.isArray(r.transfers) ? r.transfers : [];
+    for (const tx of txs) {
+      if (String(tx.from || "").toLowerCase() !== address.toLowerCase()) continue;
+      const block = Number(bigIntSafe(tx.blockNum));
+      if (toBlock !== null && block > toBlock) continue;
+      const feeWei = bigIntSafe(tx.gasUsed || 0) * bigIntSafe(tx.gasPrice || 0);
+      out.push({ tx_hash:String(tx.hash || "").toLowerCase(), block_number:block, fee_native:weiToDecimalString(feeWei), tx_timestamp:normalizeTxTimestamp(tx.blockTimestamp ?? tx.blockTimeStamp) });
+    }
+    pageKey = r.pageKey || r.PageKey || null;
+    if (pageKey) await sleepMs(250);
+  } while (pageKey);
+  return out;
+}
+async function fetchBscFeeTransactions(address, startBlock, endBlock, onProgress) {
+  const progressState = {page:0};
+  if (startBlock === null || startBlock === undefined) {
+    // Vollscan: ohne Blockfilter, damit NodeReal nicht automatisch auf 100k Blöcke begrenzt.
+    const all = await fetchNodeRealRange(address, null, null, onProgress, progressState);
+    return all.filter(tx => tx.block_number <= endBlock);
+  }
+  const out = [];
+  let from = startBlock;
+  while (from <= endBlock) {
+    const to = Math.min(endBlock, from + 99999); // NodeReal erlaubt max. 100k Blockspanne
+    out.push(...await fetchNodeRealRange(address, from, to, onProgress, progressState));
+    from = to + 1;
+  }
+  return out;
+}
+
+async function loadExistingFeeHashes(walletId, chain, startBlock) {
+  const hashes = new Set();
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    let q = sb.from("wallet_fee_transactions").select("tx_hash,block_number")
+      .eq("user_id", currentUser.id).eq("wallet_id", String(walletId)).eq("chain", chain)
+      .order("block_number", {ascending:true}).range(from, from + pageSize - 1);
+    if (startBlock !== null && startBlock !== undefined) q = q.gte("block_number", startBlock);
+    const { data, error } = await q;
+    if (error) throw new Error("Supabase TX-Hash-Abgleich: " + error.message);
+    for (const row of (data || [])) hashes.add(String(row.tx_hash || "").toLowerCase());
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return hashes;
+}
+async function insertNewFeeTransactions(walletId, chain, txs) {
+  for (let i=0; i<txs.length; i+=500) {
+    const rows = txs.slice(i, i+500).map(tx => ({ user_id:currentUser.id, wallet_id:String(walletId), chain, ...tx }));
+    const { error } = await sb.from("wallet_fee_transactions").upsert(rows, {onConflict:"user_id,wallet_id,chain,tx_hash", ignoreDuplicates:true});
+    if (error) throw new Error("Supabase Gebühren-TX speichern: " + error.message);
+  }
+}
+async function upsertFeeCache(walletId, chain, totalWei, txCount, lastScannedBlock, source) {
+  const row = { user_id:currentUser.id, wallet_id:String(walletId), chain, total_fee_native:weiToDecimalString(totalWei), tx_count:txCount,
+    last_scanned_block:lastScannedBlock, last_scanned_at:new Date().toISOString(), data_source:source, updated_at:new Date().toISOString() };
+  const { data, error } = await sb.from("wallet_fee_cache").upsert(row, {onConflict:"user_id,wallet_id,chain"}).select().single();
+  if (error) throw new Error("Supabase Gebühren-Cache speichern: " + error.message);
+  feeCaches.set(feeCacheKey(walletId, chain), data || row);
+  return data || row;
+}
+
+async function scanCachedEvmFees(chain, wallet, onProgress) {
+  const cache = feeCaches.get(feeCacheKey(wallet.id, chain)) || null;
+  if (!feeScanAllowed(cache)) {
+    const next = feeNextAllowedDate(cache);
+    return { chain, totalFee:Number(cache.total_fee_native || 0), txCount:Number(cache.tx_count || 0), cached:true, cachedAt:cache.last_scanned_at,
+      source:cache.data_source, note:`Nächste Aktualisierung ab ${next.toLocaleString("de-CH")}` };
+  }
+  const safeHead = await currentSafeBlock(chain);
+  const startBlock = cache && cache.last_scanned_block !== null && cache.last_scanned_block !== undefined
+    ? Math.max(0, Number(cache.last_scanned_block) - (FEE_OVERLAP_BLOCKS[chain] || 0)) : null;
+  let txs;
+  if (chain === "eth") txs = await fetchEthereumFeeTransactions(wallet.evm, startBlock, safeHead, onProgress);
+  else if (chain === "bsc") txs = await fetchBscFeeTransactions(wallet.evm, startBlock, safeHead, onProgress);
+  else throw new Error("Kein inkrementeller Provider für " + chain);
+
+  const existing = cache ? await loadExistingFeeHashes(wallet.id, chain, startBlock) : new Set();
+  const unique = new Map();
+  for (const tx of txs) if (tx.tx_hash) unique.set(tx.tx_hash, tx);
+  const newTxs = [...unique.values()].filter(tx => !existing.has(tx.tx_hash));
+  await insertNewFeeTransactions(wallet.id, chain, newTxs);
+  const addedWei = newTxs.reduce((sum, tx) => sum + decimalStringToWei(tx.fee_native), 0n);
+  const oldWei = cache ? decimalStringToWei(cache.total_fee_native) : 0n;
+  const oldCount = cache ? Number(cache.tx_count || 0) : 0;
+  const source = chain === "eth" ? "routescan" : "nodereal";
+  const saved = await upsertFeeCache(wallet.id, chain, oldWei + addedWei, oldCount + newTxs.length, safeHead, source);
+  return { chain, totalFee:Number(saved.total_fee_native || 0), txCount:Number(saved.tx_count || 0), cached:false, cachedAt:saved.last_scanned_at,
+    source, note:newTxs.length ? `${newTxs.length} neue TX hinzugefügt` : "Keine neuen TX" };
+}
+
+// Legacy-Fallback für Polygon/Arbitrum/Base/Avalanche, bis deren kostenlose Provider validiert sind.
 async function fetchWalletFeesForChain(chain, address, onProgress) {
   const addrLower = address.toLowerCase();
   const history = await fetchAlchemyOutgoingTxHashes(chain, address, onProgress);
-  let totalWei = 0n;
-  let txCount = 0;
-
-  // Receipt enthält bereits from, gasUsed und effectiveGasPrice:
-  // kein zusätzliches eth_getTransactionByHash nötig.
+  let totalWei = 0n, txCount = 0;
   const chunkSize = 10;
   for (let offset = 0; offset < history.hashes.length; offset += chunkSize) {
-    if (offset > 0) await new Promise(resolve => setTimeout(resolve, 200));
+    if (offset > 0) await sleepMs(200);
     const chunk = history.hashes.slice(offset, offset + chunkSize);
-    const receipts = await alchemyRpcBatch(
-      chain,
-      chunk.map(h => ({ method: "eth_getTransactionReceipt", params: [h] }))
-    );
+    const receipts = await alchemyRpcBatch(chain, chunk.map(h => ({ method:"eth_getTransactionReceipt", params:[h] })));
     for (const receipt of receipts) {
-      if (!receipt || receipt.__error) continue;
-      if ((receipt.from || "").toLowerCase() !== addrLower) continue;
-      try {
-        totalWei += BigInt(receipt.gasUsed || "0x0") * BigInt(receipt.effectiveGasPrice || "0x0");
-        txCount++;
-      } catch (e) {}
+      if (!receipt || receipt.__error || (receipt.from || "").toLowerCase() !== addrLower) continue;
+      try { totalWei += BigInt(receipt.gasUsed || "0x0") * BigInt(receipt.effectiveGasPrice || "0x0"); txCount++; } catch (e) {}
     }
   }
-  return { totalFee: Number(totalWei) / 1e18, txCount, truncated: history.truncated };
+  return { totalFee:Number(totalWei)/1e18, txCount, truncated:history.truncated, source:"alchemy-fallback" };
 }
 
-// XRP: xrpscan.com liefert die Gebühr (in Drops, 1 XRP = 1'000'000 Drops) direkt pro
-// Transaktion mit. Paginierung über den "marker"-Parameter (Standard-Konvention der XRPL-APIs).
+// XRP: xrpscan.com liefert die Gebühr direkt in Drops.
 async function fetchXrpFees(address, onProgress) {
-  let marker = null;
-  let totalFeeDrops = 0;
-  let txCount = 0;
-  let page = 0;
-
+  let marker=null,totalFeeDrops=0,txCount=0,page=0;
   do {
-    page++;
-    if (onProgress) onProgress(page);
-    const url = `https://api.xrpscan.com/api/v1/account/${address}/transactions` + (marker ? `?marker=${encodeURIComponent(marker)}` : "");
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    (data.transactions || []).forEach(tx => {
-      if (tx.Account === address) {
-        const fee = parseFloat(tx.Fee || "0");
-        if (isFinite(fee)) { totalFeeDrops += fee; txCount++; }
-      }
-    });
-    marker = data.marker || null;
-  } while (marker && page < FEES_MAX_PAGES);
-
-  return { totalFee: totalFeeDrops / 1e6, txCount, truncated: !!marker && page >= FEES_MAX_PAGES };
+    page++; if (onProgress) onProgress(page);
+    const url=`https://api.xrpscan.com/api/v1/account/${address}/transactions`+(marker?`?marker=${encodeURIComponent(marker)}`:"");
+    const res=await fetch(url); if(!res.ok) throw new Error("HTTP "+res.status);
+    const data=await res.json();
+    (data.transactions||[]).forEach(tx=>{ if(tx.Account===address){ const fee=parseFloat(tx.Fee||"0"); if(isFinite(fee)){totalFeeDrops+=fee;txCount++;} } });
+    marker=data.marker||null;
+  } while(marker&&page<FEES_MAX_PAGES);
+  return {totalFee:totalFeeDrops/1e6,txCount,truncated:!!marker&&page>=FEES_MAX_PAGES,source:"xrpscan"};
 }
 
-// Solana: eigene RPC-Logik - erst alle
-// Signaturen holen, dann die Gebühr pro Transaktion per gebündelter RPC-Anfrage nachladen
-// (mehrere getTransaction-Aufrufe in einem einzigen HTTP-Request, wie bei den EVM-Batches).
-// Der "Fee Payer" ist bei Solana immer der erste Account in der Transaktion (Protokoll-Standard).
-const SOLANA_FEES_MAX_PAGES = 20; // 20 x 1000 Signaturen = 20'000 Transaktionen Sicherheitslimit
-
-async function fetchSolanaFees(address, onProgress) {
-  const rpcUrl = "https://solana-rpc.publicnode.com/" + publicnodeToken("sol");
-  let before;
-  let totalFeeLamports = 0;
-  let txCount = 0;
-  let page = 0;
-
-  while (page < SOLANA_FEES_MAX_PAGES) {
-    page++;
-    if (onProgress) onProgress(page);
-    const params = before ? [address, { limit: 1000, before }] : [address, { limit: 1000 }];
-    const res = await fetch(rpcUrl, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getSignaturesForAddress", params })
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    const sigs = data.result || [];
-    if (sigs.length === 0) break;
-
-    for (let i = 0; i < sigs.length; i += 20) {
-      const chunk = sigs.slice(i, i + 20);
-      const batchBody = chunk.map((s, idx) => ({
-        jsonrpc: "2.0", id: idx, method: "getTransaction",
-        params: [s.signature, { maxSupportedTransactionVersion: 0 }]
-      }));
-      const bres = await fetch(rpcUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(batchBody) });
-      const bdata = await bres.json();
-      const arr = Array.isArray(bdata) ? bdata : [bdata];
-      arr.forEach(r => {
-        const tx = r && r.result;
-        if (!tx || !tx.meta) return;
-        const keys = tx.transaction && tx.transaction.message && tx.transaction.message.accountKeys;
-        if (!keys || keys.length === 0) return;
-        const feePayer = typeof keys[0] === "string" ? keys[0] : (keys[0].pubkey || "");
-        if (feePayer === address) {
-          totalFeeLamports += tx.meta.fee || 0;
-          txCount++;
-        }
-      });
+const SOLANA_FEES_MAX_PAGES = 20;
+async function fetchSolanaFees(address,onProgress){
+  const rpcUrl="https://solana-rpc.publicnode.com/"+publicnodeToken("sol");
+  let before,totalFeeLamports=0,txCount=0,page=0;
+  while(page<SOLANA_FEES_MAX_PAGES){
+    page++; if(onProgress)onProgress(page);
+    const params=before?[address,{limit:1000,before}]:[address,{limit:1000}];
+    const res=await fetch(rpcUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"getSignaturesForAddress",params})});
+    const data=await res.json(); if(data.error)throw new Error(data.error.message);
+    const sigs=data.result||[]; if(sigs.length===0)break;
+    for(let i=0;i<sigs.length;i+=20){
+      const chunk=sigs.slice(i,i+20),batchBody=chunk.map((x,idx)=>({jsonrpc:"2.0",id:idx,method:"getTransaction",params:[x.signature,{maxSupportedTransactionVersion:0}]}));
+      const bres=await fetch(rpcUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(batchBody)}),bdata=await bres.json();
+      const arr=Array.isArray(bdata)?bdata:[bdata];
+      arr.forEach(r=>{const tx=r&&r.result;if(!tx||!tx.meta)return;const keys=tx.transaction&&tx.transaction.message&&tx.transaction.message.accountKeys;if(!keys||!keys.length)return;const payer=typeof keys[0]==="string"?keys[0]:(keys[0].pubkey||"");if(payer===address){totalFeeLamports+=tx.meta.fee||0;txCount++;}});
     }
-
-    before = sigs[sigs.length - 1].signature;
-    if (sigs.length < 1000) break; // letzte Seite erreicht
+    before=sigs[sigs.length-1].signature;if(sigs.length<1000)break;
   }
-
-  return { totalFee: totalFeeLamports / 1e9, txCount, truncated: page >= SOLANA_FEES_MAX_PAGES };
+  return {totalFee:totalFeeLamports/1e9,txCount,truncated:page>=SOLANA_FEES_MAX_PAGES,source:"publicnode-solana"};
 }
 
-// Apertum: gleiche Blockscout-API wie für den Bestand, liefert die Gebühr pro Transaktion
-// direkt mit (fee.value, in Wei). Paginierung über next_page_params (exakt zurückschicken).
-async function fetchApertumFees(address, onProgress) {
-  let nextParams = null;
-  let totalFeeWei = 0n;
-  let txCount = 0;
-  let page = 0;
-  const addrLower = address.toLowerCase();
-
-  do {
-    page++;
-    if (onProgress) onProgress(page);
-    let url = `${APERTUM_EXPLORER_API}/addresses/${address}/transactions`;
-    if (nextParams) url += "?" + new URLSearchParams(nextParams).toString();
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    (data.items || []).forEach(tx => {
-      const fromAddr = ((tx.from && tx.from.hash) || tx.from_address || "").toLowerCase();
-      if (fromAddr !== addrLower) return;
-      let feeWei = null;
-      try {
-        if (tx.fee && tx.fee.value) feeWei = BigInt(tx.fee.value);
-        else if (tx.gas_used && tx.gas_price) feeWei = BigInt(tx.gas_used) * BigInt(tx.gas_price);
-      } catch (e) { /* Zeile überspringen, falls Format unerwartet ist */ }
-      if (feeWei !== null) { totalFeeWei += feeWei; txCount++; }
-    });
-    nextParams = data.next_page_params || null;
-  } while (nextParams && page < FEES_MAX_PAGES);
-
-  return { totalFee: Number(totalFeeWei) / 1e18, txCount, truncated: !!nextParams && page >= FEES_MAX_PAGES };
+async function fetchApertumFees(address,onProgress){
+  let nextParams=null,totalFeeWei=0n,txCount=0,page=0;const addrLower=address.toLowerCase();
+  do{
+    page++;if(onProgress)onProgress(page);let url=`${APERTUM_EXPLORER_API}/addresses/${address}/transactions`;if(nextParams)url+="?"+new URLSearchParams(nextParams).toString();
+    const res=await fetch(url);if(!res.ok)throw new Error("HTTP "+res.status);const data=await res.json();
+    (data.items||[]).forEach(tx=>{const fromAddr=((tx.from&&tx.from.hash)||tx.from_address||"").toLowerCase();if(fromAddr!==addrLower)return;let feeWei=null;try{if(tx.fee&&tx.fee.value)feeWei=BigInt(tx.fee.value);else if(tx.gas_used&&tx.gas_price)feeWei=BigInt(tx.gas_used)*BigInt(tx.gas_price);}catch(e){}if(feeWei!==null){totalFeeWei+=feeWei;txCount++;}});
+    nextParams=data.next_page_params||null;
+  }while(nextParams&&page<FEES_MAX_PAGES);
+  return {totalFee:Number(totalFeeWei)/1e18,txCount,truncated:!!nextParams&&page>=FEES_MAX_PAGES,source:"apertum-explorer"};
 }
 
 // ---- Token-Approval-Checker (nur lesend, Revoke passiert extern über revoke.cash) ----
@@ -5993,106 +6163,55 @@ async function sendAdminChatMessage() {
 }
 
 async function runFeesCalculation() {
-  const btn = document.getElementById("feesBtn");
-  const status = document.getElementById("feesStatus");
-  const resultsEl = document.getElementById("feesResults");
-  const walletId = document.getElementById("feesWalletSelect").value;
-
-  if (!walletId) { status.textContent = "Bitte zuerst eine Wallet auswählen."; return; }
-  if (activeFeesChains.size === 0) { status.textContent = "Bitte mindestens eine Chain auswählen."; return; }
-
-  const w = wallets.find(x => String(x.id) === String(walletId));
-  if (!w) { status.textContent = "Wallet nicht gefunden."; return; }
-
-  discoveryCache = getDiscoveryCacheForWallet(String(walletId));
-  if (!discoveryScanAllowed(discoveryCache)) {
-    const next = discoveryNextAllowedDate(discoveryCache);
-    status.textContent = "Der Discovery-Scan für diese Wallet ist noch gesperrt. Nächster Scan ab " +
-      (next ? formatDiscoveryDate(next.toISOString()) : "später") + ".";
-    renderDiscoveryCacheState();
-    return;
-  }
-
-  btn.disabled = true;
-  resultsEl.innerHTML = "";
-  const results = []; // {chain, totalFee, txCount, truncated, error}
-
-  for (const chain of FEES_CHAINS.filter(c => activeFeesChains.has(c))) {
-    status.textContent = `Berechne Gebühren für ${w.label} auf ${CHAIN_META[chain].label}...`;
-    const onProgress = (page) => {
-      status.textContent = `Berechne Gebühren für ${w.label} auf ${CHAIN_META[chain].label}... (Seite ${page})`;
-    };
-    try {
-      let r;
-      if (chain === "xrp") {
-        if (!w.xrp) { results.push({ chain, error: "Keine XRP-Adresse bei dieser Wallet erfasst" }); continue; }
-        r = await fetchXrpFees(w.xrp, onProgress);
-      } else if (chain === "sol") {
-        if (!w.sol) { results.push({ chain, error: "Keine Solana-Adresse bei dieser Wallet erfasst" }); continue; }
-        r = await fetchSolanaFees(w.sol, onProgress);
-      } else if (chain === "apertum") {
-        if (!w.evm) { results.push({ chain, error: "Keine EVM-Adresse bei dieser Wallet erfasst" }); continue; }
-        r = await fetchApertumFees(w.evm, onProgress);
-      } else {
-        if (!w.evm) { results.push({ chain, error: "Keine EVM-Adresse bei dieser Wallet erfasst" }); continue; }
-        r = await fetchWalletFeesForChain(chain, w.evm, onProgress);
-      }
-      results.push({ chain, ...r });
-    } catch (e) {
-      results.push({ chain, error: e.message });
+  const btn=document.getElementById("feesBtn"),status=document.getElementById("feesStatus"),resultsEl=document.getElementById("feesResults");
+  const walletId=document.getElementById("feesWalletSelect").value;
+  if(!walletId){status.textContent="Bitte zuerst eine Wallet auswählen.";return;}
+  if(activeFeesChains.size===0){status.textContent="Bitte mindestens eine Chain auswählen.";return;}
+  const w=wallets.find(x=>String(x.id)===String(walletId));if(!w){status.textContent="Wallet nicht gefunden.";return;}
+  await loadFeeCacheForWallet(walletId);
+  btn.disabled=true;resultsEl.innerHTML="";const results=[];
+  try{
+    for(const chain of FEES_CHAINS.filter(c=>activeFeesChains.has(c))){
+      status.textContent=`Berechne Gebühren für ${w.label} auf ${CHAIN_META[chain].label}...`;
+      const onProgress=page=>{status.textContent=`Berechne Gebühren für ${w.label} auf ${CHAIN_META[chain].label}... (Seite ${page})`;};
+      try{
+        let r;
+        if(chain==="xrp"){
+          if(!w.xrp){results.push({chain,error:"Keine XRP-Adresse bei dieser Wallet erfasst"});continue;}r=await fetchXrpFees(w.xrp,onProgress);
+        }else if(chain==="sol"){
+          if(!w.sol){results.push({chain,error:"Keine Solana-Adresse bei dieser Wallet erfasst"});continue;}r=await fetchSolanaFees(w.sol,onProgress);
+        }else if(chain==="apertum"){
+          if(!w.evm){results.push({chain,error:"Keine EVM-Adresse bei dieser Wallet erfasst"});continue;}r=await fetchApertumFees(w.evm,onProgress);
+        }else if(chain==="eth"||chain==="bsc"){
+          if(!w.evm){results.push({chain,error:"Keine EVM-Adresse bei dieser Wallet erfasst"});continue;}r=await scanCachedEvmFees(chain,w,onProgress);
+        }else{
+          if(!w.evm){results.push({chain,error:"Keine EVM-Adresse bei dieser Wallet erfasst"});continue;}r=await fetchWalletFeesForChain(chain,w.evm,onProgress);
+        }
+        results.push({chain,...r});
+      }catch(e){results.push({chain,error:e.message});}
     }
-  }
-
-  renderFeesResults(w, results);
-  status.textContent = "Fertig.";
-  btn.disabled = false;
+    renderFeesResults(w,results);status.textContent="Fertig.";
+    const info=document.getElementById("feesCacheInfo");if(info)info.textContent="ETH/BSC wurden in Supabase gespeichert; spätere Aktualisierungen laufen inkrementell mit Sicherheits-Overlap.";
+  }finally{btn.disabled=false;}
 }
 
-function renderFeesResults(wallet, results) {
-  const el = document.getElementById("feesResults");
-  const rowsWithFees = results.filter(r => !r.error && r.txCount > 0);
-
-  if (results.every(r => r.error)) {
-    el.innerHTML = `<div class="error">Alle Abfragen sind fehlgeschlagen. Bitte später nochmal versuchen.</div>`;
-    return;
-  }
-
-  const grandTotalUsd = rowsWithFees.reduce((sum, r) => {
-    const p = nativePrices[r.chain];
-    return sum + (p ? r.totalFee * p.price : 0);
-  }, 0);
-
-  el.innerHTML = `
-    <div class="custom-token-card">
-      <h3 style="margin:0 0 10px">${escapeAttr(wallet.label)} — Gebühren-Total</h3>
-      <table>
-        <thead><tr><th>Chain</th><th style="text-align:right">Anzahl Tx</th><th style="text-align:right">Gebühren (nativ)</th><th style="text-align:right">Wert (USD)</th></tr></thead>
-        <tbody>
-          ${results.map(r => {
-            if (r.error) {
-              return `<tr><td><span class="dot ${CHAIN_META[r.chain].dot}"></span> ${CHAIN_META[r.chain].label}</td><td colspan="3" class="error" style="text-align:left">Fehler: ${r.error}</td></tr>`;
-            }
-            const p = nativePrices[r.chain];
-            const usd = p ? r.totalFee * p.price : null;
-            const nativeSym = NATIVE_SYMBOL[r.chain] || r.chain.toUpperCase();
-            return `<tr>
-              <td><span class="dot ${CHAIN_META[r.chain].dot}"></span> ${CHAIN_META[r.chain].label}${r.truncated ? ' <span class="badge unsafe" title="Sehr aktive Wallet - Historie evtl. unvollständig">gekürzt</span>' : ''}</td>
-              <td class="num">${r.txCount}</td>
-              <td class="num">${fmt(r.totalFee)} ${nativeSym}</td>
-              <td class="num">${usd !== null ? fmtUsd(usd) : '<span style="color:var(--muted)">–</span>'}</td>
-            </tr>`;
-          }).join("")}
-        </tbody>
-        <tfoot>
-          <tr style="font-weight:700;border-top:2px solid var(--border)">
-            <td colspan="3" style="padding-top:10px">Total (alle ausgewählten Chains)</td>
-            <td class="num" style="padding-top:10px">${fmtUsd(grandTotalUsd)}</td>
-          </tr>
-        </tfoot>
-      </table>
-      <div class="note" style="margin-top:10px">"gekürzt" heisst: die Historie war so lang, dass das Sicherheitslimit (${FEES_MAX_PAGES} Seiten) erreicht wurde - die Summe ist dann eine Untergrenze, nicht die komplette Historie.</div>
-    </div>
-  `;
+function renderFeesResults(wallet,results){
+  const el=document.getElementById("feesResults");
+  if(!results||results.length===0){el.innerHTML="";return;}
+  const rowsWithFees=results.filter(r=>!r.error&&r.txCount>0);
+  if(results.every(r=>r.error)){el.innerHTML=`<div class="error">Alle Abfragen sind fehlgeschlagen. Bitte später nochmal versuchen.</div>`;return;}
+  const grandTotalUsd=rowsWithFees.reduce((sum,r)=>{const p=nativePrices[r.chain];return sum+(p?r.totalFee*p.price:0);},0);
+  el.innerHTML=`<div class="custom-token-card"><h3 style="margin:0 0 10px">${escapeAttr(wallet.label)} — Gebühren-Total</h3>
+    <table><thead><tr><th>Chain</th><th style="text-align:right">Anzahl Tx</th><th style="text-align:right">Gebühren (nativ)</th><th style="text-align:right">Wert (USD)</th><th>Quelle / Stand</th></tr></thead><tbody>
+    ${results.map(r=>{
+      if(r.error)return `<tr><td><span class="dot ${CHAIN_META[r.chain].dot}"></span> ${CHAIN_META[r.chain].label}</td><td colspan="4" class="error" style="text-align:left">Fehler: ${escapeAttr(r.error)}</td></tr>`;
+      const p=nativePrices[r.chain],usd=p?r.totalFee*p.price:null,nativeSym=NATIVE_SYMBOL[r.chain]||r.chain.toUpperCase();
+      const source=r.source||"bisherige API";const when=r.cachedAt?new Date(r.cachedAt).toLocaleString("de-CH"):"live";
+      return `<tr><td><span class="dot ${CHAIN_META[r.chain].dot}"></span> ${CHAIN_META[r.chain].label}${r.truncated?' <span class="badge unsafe">gekürzt</span>':''}${r.cached?' <span class="badge safe">Cache</span>':''}</td>
+        <td class="num">${r.txCount}</td><td class="num">${fmt(r.totalFee)} ${nativeSym}</td><td class="num">${usd!==null?fmtUsd(usd):'<span style="color:var(--muted)">–</span>'}</td>
+        <td><span class="note">${escapeAttr(source)} · ${escapeAttr(when)}${r.note?'<br>'+escapeAttr(r.note):''}</span></td></tr>`;
+    }).join("")}</tbody><tfoot><tr style="font-weight:700;border-top:2px solid var(--border)"><td colspan="3" style="padding-top:10px">Total (alle ausgewählten Chains)</td><td class="num" style="padding-top:10px">${fmtUsd(grandTotalUsd)}</td><td></td></tr></tfoot></table>
+    <div class="note" style="margin-top:10px">ETH/BSC: erster Lauf = Vollscan, danach inkrementell. Der letzte Bereich wird bewusst nochmals überlappt und anhand TX-Hash dedupliziert. Andere Chains werden schrittweise auf kostenlose Provider migriert.</div></div>`;
 }
 
 function renderDiscoveryWalletSelect() {
