@@ -892,7 +892,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 15:28 Uhr<br>
+    Version vom 26.08.2026, 15:52 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen bzw. noch nicht migrierte Chains (Entdecken, Teile der Gebühren, Freigaben, NFTs) verwendet. ETH-Gebühren laufen über Routescan, BSC-Gebühren über NodeReal/BSCTrace. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -5324,8 +5324,15 @@ async function fetchEthereumFeeTransactions(address, startBlock, endBlock, onPro
     page++; if (onProgress) onProgress(page);
     const u = new URL(`https://api.routescan.io/v2/network/mainnet/evm/1/address/${address}/transactions`);
     u.searchParams.set("categories", "evm_tx"); u.searchParams.set("direction", "sent"); u.searchParams.set("sort", "asc"); u.searchParams.set("limit", "100");
-    if (startBlock !== null && startBlock !== undefined) u.searchParams.set("blockNumberFrom", String(startBlock));
-    if (endBlock !== null && endBlock !== undefined) u.searchParams.set("blockNumberTo", String(endBlock + 1)); // API: obere Grenze exklusiv
+    // Beim Initialscan keine Blockfilter mitsenden: genau dieser Modus wurde mit alten Wallets
+    // erfolgreich gegen Routescan validiert. Den sicheren Head filtern wir danach lokal.
+    // Erst bei inkrementellen Scans verwenden wir einen begrenzten Blockbereich.
+    if (startBlock !== null && startBlock !== undefined) {
+      u.searchParams.set("blockNumberFrom", String(startBlock));
+      if (endBlock !== null && endBlock !== undefined) {
+        u.searchParams.set("blockNumberTo", String(endBlock + 1)); // API: obere Grenze exklusiv
+      }
+    }
     if (next) u.searchParams.set("next", next);
     const res = await fetch(u);
     if (!res.ok) throw new Error("Routescan HTTP " + res.status);
