@@ -85,14 +85,88 @@
     background: var(--card2); border: 1px solid var(--border); border-radius: 8px;
     padding: 8px 10px; font-size: 0.82rem;
   }
-  .chain-admin-card { background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px; }
-  .chain-admin-head { display:flex;justify-content:space-between;align-items:center;gap:10px; }
-  .chain-admin-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:12px; }
-  .chain-admin-field { padding:8px;border-radius:9px;background:var(--card2);border:1px solid var(--border); }
-  .chain-admin-field.critical { border-color:#d97706;background:rgba(217,119,6,.08); }
-  .chain-admin-field input,.chain-admin-field select { width:100%;box-sizing:border-box; }
-  .chain-admin-actions { display:flex;gap:8px;flex-wrap:wrap;margin-top:12px; }
-  .critical-note { color:#d97706;font-size:.72rem;margin-top:4px; }
+
+  
+  .chain-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card);
+    max-width: 100%;
+  }
+  .chain-admin-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    min-width: 2400px;
+    width: max-content;
+    font-size: 0.78rem;
+  }
+  .chain-admin-table th,
+  .chain-admin-table td {
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    padding: 7px 8px;
+    vertical-align: top;
+    background: var(--card);
+    white-space: nowrap;
+  }
+  .chain-admin-table th {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    background: var(--card2);
+    text-align: left;
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+  .chain-admin-table tr:last-child td { border-bottom: 0; }
+  .chain-admin-table th:last-child,
+  .chain-admin-table td:last-child { border-right: 0; }
+
+  .chain-admin-table input,
+  .chain-admin-table select {
+    min-width: 120px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 7px;
+    font-size: 0.76rem;
+  }
+  .chain-admin-table .wide-input { min-width: 240px; }
+  .chain-admin-table .xwide-input { min-width: 320px; }
+
+  .chain-admin-table .critical-cell {
+    background: rgba(217,119,6,.08);
+  }
+  .chain-admin-table th.critical-cell {
+    color: #d97706;
+    background: rgba(217,119,6,.14);
+  }
+
+  /* Erste drei Spalten bleiben beim horizontalen Scrollen stehen. */
+  .chain-admin-table .sticky-col-1 { position: sticky; left: 0; z-index: 7; min-width: 110px; max-width: 110px; }
+  .chain-admin-table .sticky-col-2 { position: sticky; left: 110px; z-index: 7; min-width: 200px; max-width: 200px; }
+  .chain-admin-table .sticky-col-3 { position: sticky; left: 310px; z-index: 7; min-width: 105px; max-width: 105px; }
+  .chain-admin-table th.sticky-col-1,
+  .chain-admin-table th.sticky-col-2,
+  .chain-admin-table th.sticky-col-3 {
+    z-index: 10;
+    background: var(--card2);
+  }
+  .chain-admin-table td.sticky-col-1,
+  .chain-admin-table td.sticky-col-2,
+  .chain-admin-table td.sticky-col-3 {
+    background: var(--card);
+  }
+  .chain-admin-table tr:hover td { background: var(--card2); }
+  .chain-admin-table tr:hover td.sticky-col-1,
+  .chain-admin-table tr:hover td.sticky-col-2,
+  .chain-admin-table tr:hover td.sticky-col-3 { background: var(--card2); }
+
+  .chain-admin-save {
+    display:flex;
+    gap:6px;
+    align-items:center;
+  }
 
   .custom-token-row .meta { color: var(--muted); font-size: 0.72rem; word-break: break-all; }
   .note {
@@ -742,7 +816,8 @@
       <div id="admintab-chains" class="admin-tab-panel">
         <div class="note" style="margin-bottom:14px">
           Zentrale Chain-Konfiguration aus <code>public.chains</code>. Alle Felder sind editierbar.
-          <span style="color:#d97706;font-weight:700">Orange markierte Felder sind technisch kritisch</span>:
+          Die Tabelle kann horizontal gescrollt werden; <strong>Chain-Key, Anzeigename und natives Symbol bleiben links fixiert</strong>.
+          <span style="color:#d97706;font-weight:700">Orange markierte Spalten sind technisch kritisch</span>:
           falsche Werte können Balance-, Gebühren- oder Explorer-Abfragen für eine Chain deaktivieren.
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
@@ -983,7 +1058,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 19:24 Uhr<br>
+    Version vom 26.08.2026, 19:31 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -2986,54 +3061,58 @@ function showAdminTab(name) {
 }
 
 
+
 const ADMIN_CHAIN_FIELDS = [
-  {k:"chain_key", l:"Chain-Key", critical:true, type:"text"},
-  {k:"label", l:"Anzeigename", type:"text"},
-  {k:"native_symbol", l:"Natives Symbol", type:"text"},
+  {k:"chain_key", l:"Chain-Key", critical:true, type:"text", sticky:1},
+  {k:"label", l:"Anzeigename", type:"text", sticky:2},
+  {k:"native_symbol", l:"Natives Symbol", type:"text", sticky:3},
   {k:"coingecko_id", l:"CoinGecko-ID", type:"text"},
   {k:"wallet_type", l:"Wallet-Typ", critical:true, type:"select", options:["evm","btc","xrp","sol","tron","akash"]},
   {k:"evm_chain_id", l:"EVM Chain-ID", critical:true, type:"number"},
-  {k:"explorer_url_template", l:"Explorer-URL ({address})", critical:true, type:"text"},
+  {k:"explorer_url_template", l:"Explorer-URL ({address})", critical:true, type:"text", cls:"xwide-input"},
   {k:"geckoterminal_network", l:"GeckoTerminal Network", type:"text"},
-  {k:"rpc_url", l:"RPC-/REST-Endpunkt", critical:true, type:"text"},
+  {k:"rpc_url", l:"RPC-/REST-Endpunkt", critical:true, type:"text", cls:"xwide-input"},
   {k:"balance_provider", l:"Balance-Provider", critical:true, type:"text"},
   {k:"fee_provider", l:"Gebühren-Provider", critical:true, type:"text"},
-  {k:"fee_api_base", l:"Gebühren API-Basis", critical:true, type:"text"},
-  {k:"fee_finality_blocks", l:"Fee Finality Blocks", critical:true, type:"number"},
-  {k:"fee_overlap_blocks", l:"Fee Overlap Blocks", critical:true, type:"number"},
+  {k:"fee_api_base", l:"Gebühren API-Basis", critical:true, type:"text", cls:"xwide-input"},
+  {k:"fee_finality_blocks", l:"Fee Finality", critical:true, type:"number"},
+  {k:"fee_overlap_blocks", l:"Fee Overlap", critical:true, type:"number"},
   {k:"sort_order", l:"Sortierung", type:"number"},
   {k:"enabled", l:"Aktiv", critical:true, type:"checkbox"}
 ];
 
-function chainFieldHtml(field, row, isNew=false) {
-  const val = row?.[field.k];
-  const disabled = (!isNew && field.k === "chain_key") ? "disabled" : "";
-  let control = "";
-  if (field.type === "checkbox") {
-    control = `<input data-chain-field="${field.k}" type="checkbox" ${val !== false ? "checked" : ""}>`;
-  } else if (field.type === "select") {
-    control = `<select data-chain-field="${field.k}" ${disabled}>${field.options.map(o =>
-      `<option value="${escapeAttr(o)}" ${String(val||"")===o?"selected":""}>${escapeAttr(o)}</option>`).join("")}</select>`;
-  } else {
-    control = `<input data-chain-field="${field.k}" type="${field.type}" value="${escapeAttr(val ?? "")}" ${disabled}>`;
-  }
-  return `<div class="chain-admin-field ${field.critical?"critical":""}">
-    <span class="field-label">${escapeAttr(field.l)}</span>${control}
-    ${field.critical?'<div class="critical-note">⚠ Technisches/kritisches Feld</div>':""}
-  </div>`;
+function chainStickyClass(field) {
+  return field.sticky ? ` sticky-col-${field.sticky}` : "";
 }
 
-function chainEditorHtml(row={}, isNew=false) {
+function chainCellControl(field, row, isNew=false) {
+  const val = row?.[field.k];
+  const disabled = (!isNew && field.k === "chain_key") ? "disabled" : "";
+  if (field.type === "checkbox") {
+    return `<input data-chain-field="${field.k}" type="checkbox" ${val !== false ? "checked" : ""}>`;
+  }
+  if (field.type === "select") {
+    return `<select data-chain-field="${field.k}" ${disabled}>${field.options.map(o =>
+      `<option value="${escapeAttr(o)}" ${String(val||"")===o?"selected":""}>${escapeAttr(o)}</option>`).join("")}</select>`;
+  }
+  return `<input data-chain-field="${field.k}" class="${field.cls||""}" type="${field.type}" value="${escapeAttr(val ?? "")}" ${disabled}>`;
+}
+
+function chainTableHeader() {
+  return `<thead><tr>${ADMIN_CHAIN_FIELDS.map(f =>
+    `<th class="${f.critical?"critical-cell ":""}${chainStickyClass(f)}">${escapeAttr(f.l)}${f.critical?' ⚠':''}</th>`
+  ).join("")}<th>Aktion</th></tr></thead>`;
+}
+
+function chainTableRow(row={}, isNew=false) {
   const id = isNew ? "new" : String(row.chain_key);
-  return `<div class="chain-admin-card" data-chain-editor="${escapeAttr(id)}">
-    <div class="chain-admin-head"><strong>${isNew?"Neue Chain":escapeAttr(row.label || row.chain_key)}</strong>
-      <span class="note">${isNew?"Neuen Datensatz anlegen":escapeAttr(row.chain_key || "")}</span></div>
-    <div class="chain-admin-grid">${ADMIN_CHAIN_FIELDS.map(f=>chainFieldHtml(f,row,isNew)).join("")}</div>
-    <div class="chain-admin-actions">
+  return `<tr data-chain-editor="${escapeAttr(id)}">
+    ${ADMIN_CHAIN_FIELDS.map(f => `<td class="${f.critical?"critical-cell ":""}${chainStickyClass(f)}">${chainCellControl(f,row,isNew)}</td>`).join("")}
+    <td><div class="chain-admin-save">
       <button onclick="saveAdminChain('${escapeAttr(id)}', ${isNew})">💾 Speichern</button>
-      ${isNew?'<button class="secondary" onclick="closeNewChainEditor()">Abbrechen</button>':""}
-    </div>
-  </div>`;
+      ${isNew?'<button class="secondary" onclick="closeNewChainEditor()">✕</button>':""}
+    </div></td>
+  </tr>`;
 }
 
 async function loadAdminChains() {
@@ -3042,14 +3121,25 @@ async function loadAdminChains() {
   el.innerHTML = '<div class="note">Chains werden geladen…</div>';
   const {data,error} = await sb.from("chains").select("*").order("sort_order",{ascending:true});
   if (error) { el.innerHTML = `<div class="error">${escapeAttr(error.message)}</div>`; return; }
-  el.innerHTML = (data||[]).map(r=>chainEditorHtml(r,false)).join("") || '<div class="note">Keine Chains vorhanden.</div>';
+
+  el.innerHTML = `<div class="chain-table-wrap">
+    <table class="chain-admin-table">
+      ${chainTableHeader()}
+      <tbody>${(data||[]).map(r=>chainTableRow(r,false)).join("")}</tbody>
+    </table>
+  </div>`;
 }
 
 function openNewChainEditor() {
   const el=document.getElementById("adminChainEditor");
   if (!el) return;
   el.style.display="block";
-  el.innerHTML=chainEditorHtml({enabled:true,sort_order:100},"true"===String(true));
+  el.innerHTML=`<div class="chain-table-wrap">
+    <table class="chain-admin-table">
+      ${chainTableHeader()}
+      <tbody>${chainTableRow({enabled:true,sort_order:100},true)}</tbody>
+    </table>
+  </div>`;
 }
 function closeNewChainEditor() {
   const el=document.getElementById("adminChainEditor");
