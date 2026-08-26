@@ -892,7 +892,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 14:12 Uhr<br>
+    Version vom 26.08.2026, 15:28 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen bzw. noch nicht migrierte Chains (Entdecken, Teile der Gebühren, Freigaben, NFTs) verwendet. ETH-Gebühren laufen über Routescan, BSC-Gebühren über NodeReal/BSCTrace. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -5209,6 +5209,7 @@ const FEES_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax", "apertum", "x
 let activeFeesChains = new Set(FEES_CHAINS);
 const FEES_MAX_PAGES = 50; // nur für die bisherigen Legacy-Provider / XRP / Apertum
 const FEE_COOLDOWN_DAYS = 30;
+const NODEREAL_BSC_URL = "https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const FEE_OVERLAP_BLOCKS = { eth: 64, bsc: 200 };
 const FEE_FINALITY_LAG = { eth: 64, bsc: 200 };
 let feeCaches = new Map(); // key walletId|chain -> DB row
@@ -5346,20 +5347,18 @@ async function fetchEthereumFeeTransactions(address, startBlock, endBlock, onPro
 }
 
 async function nodeRealRpc(method, params) {
-  const { data: sessionData } = await sb.auth.getSession();
-  const accessToken = sessionData?.session?.access_token;
-  if (!accessToken) throw new Error("Nicht angemeldet.");
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/nodereal-bsc`, {
+  const res = await fetch(NODEREAL_BSC_URL, {
     method: "POST",
-    headers: {"Content-Type":"application/json","Authorization":`Bearer ${accessToken}`,"apikey":SUPABASE_ANON_KEY},
-    body: JSON.stringify({ method, params })
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({jsonrpc:"2.0", method, params:[params], id:1})
   });
   const text = await res.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch (e) {}
-  if (!res.ok) throw new Error((data && data.error) || `BSC Proxy HTTP ${res.status}`);
-  if (data && data.error) throw new Error(data.error);
-  return data?.result || {};
+  let data;
+  try { data = JSON.parse(text); }
+  catch { throw new Error(`NodeReal lieferte keine JSON-Antwort (HTTP ${res.status})`); }
+  if (!res.ok) throw new Error(`NodeReal HTTP ${res.status}`);
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  return data.result || {};
 }
 async function fetchNodeRealRange(address, fromBlock, toBlock, onProgress, progressState) {
   let pageKey = null;
