@@ -258,6 +258,25 @@
     .project-summary { grid-template-columns:1fr; }
   }
 
+  /* Welcome + donation dialogs */
+  .wt-modal-backdrop {
+    position:fixed; inset:0; z-index:9999; display:none; align-items:center; justify-content:center;
+    padding:18px; background:rgba(0,0,0,.68); backdrop-filter:blur(4px);
+  }
+  .wt-modal-backdrop.open { display:flex; }
+  .wt-modal {
+    width:min(560px,100%); max-height:90vh; overflow:auto; background:var(--card); color:var(--text);
+    border:1px solid var(--border); border-radius:16px; padding:22px; box-shadow:0 24px 70px rgba(0,0,0,.45);
+  }
+  .wt-modal h2 { margin:0 0 10px; }
+  .wt-modal p { line-height:1.55; }
+  .wt-modal-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; }
+  .donation-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:14px 0; }
+  .donation-address { word-break:break-all; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.8rem; }
+  #donationQr { width:196px; min-height:196px; margin:16px auto; padding:8px; background:#fff; border-radius:10px; display:grid; place-items:center; }
+  #donationQr img, #donationQr canvas { max-width:180px; height:auto; }
+  @media (max-width:559px) { .donation-grid { grid-template-columns:1fr; } }
+
 </style>
 </head>
 <body>
@@ -284,7 +303,10 @@
 
     <div class="action-row" style="justify-content:space-between;align-items:center">
       <span id="userEmailLabel" class="note" style="margin:0"></span>
-      <button class="secondary" onclick="logout()">Logout</button>
+      <div class="action-row" style="margin:0">
+        <button class="secondary" onclick="openDonationModal()">💛 Unterstützen</button>
+        <button class="secondary" onclick="logout()">Logout</button>
+      </div>
     </div>
 
     <div class="tab-nav-groups">
@@ -744,7 +766,7 @@
             <tr>
               <td>🔍 Entdecken, 💸 Gebühren, 🔓 Freigaben, 🖼️ NFTs</td>
               <td><span class="badge unsafe">nur manuell</span></td>
-              <td>Laufen ausschliesslich auf Knopfdruck. Ethereum nutzt Routescan und BSC NodeReal/BSCTrace; andere Chains nutzen vorläufig ihre bisherigen Datenquellen. Aufwendige Historien-Abfragen bleiben bewusst manuell.</td>
+              <td>Laufen ausschliesslich auf Knopfdruck. Gebühren: Ethereum/Avalanche über Routescan, BSC über NodeReal/BSCTrace und Polygon/Arbitrum/Base über Blockscout. Aufwendige Historien-Abfragen bleiben bewusst manuell.</td>
             </tr>
             <tr>
               <td>🖼️ NFTs</td>
@@ -772,7 +794,7 @@
         <p class="note">Zeigt deine Bestände über alle Wallets und Chains hinweg – als Gesamtsumme ("Summary") und aufgeschlüsselt je Wallet ("Details je Wallet"). Nur Token auf der sicheren Liste (vordefiniert oder selbst hinzugefügt) werden angezeigt, alles andere wird bewusst ausgeblendet (Schutz vor Scam-Token). Zusätzlich verfügbar: Snapshots (Momentaufnahmen deines Bestands, samt Kurs zum jeweiligen Zeitpunkt), eine Verlauf-Grafik über die Zeit, und die Portfolio-Allokation als Kreisdiagramm.</p>
 
         <h3>💸 Gebühren</h3>
-        <p class="note">Nur für Admins sichtbar. Summiert die Netzwerk-Gebühren, die eine Wallet über ihre komplette Historie bezahlt hat. Ethereum nutzt Routescan, BSC nutzt NodeReal/BSCTrace; die Ergebnisse werden in Supabase gecacht und inkrementell aktualisiert. Andere EVM-Chains verwenden vorläufig noch die bisherige Logik.</p>
+        <p class="note">Summiert die historisch bezahlten Netzwerk-Gebühren je Wallet in der nativen Coin-Einheit. Ethereum/Avalanche nutzen Routescan, BSC nutzt NodeReal/BSCTrace und Polygon/Arbitrum/Base nutzen Blockscout; die Ergebnisse werden in Supabase gecacht und inkrementell aktualisiert. Admins können jederzeit aktualisieren, normale User frühestens alle 30 Tage. Der zusätzlich angezeigte aktuelle Coin-Kurs dient nur als Anhaltspunkt und ist keine historische USD-Bewertung der Gebühren.</p>
 
         <h3>🖼️ NFTs</h3>
         <p class="note">Zeigt die NFTs (Sammelbilder/Collectibles) einer oder aller Wallets, inklusive Warnung bei Spam-Verdacht (unaufgeforderte, wertlose NFT-"Geschenke" sind eine verbreitete Betrugsmasche). Mit "Spam-Verdacht ausblenden" lassen sich verdächtige Funde ausblenden.</p>
@@ -895,8 +917,44 @@
 
   </div>
 
+  <!-- Wird allen bestehenden und neuen Usern angezeigt, bis sie aktiv „Nicht mehr anzeigen“ wählen. -->
+  <div id="welcomeModal" class="wt-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
+    <div class="wt-modal">
+      <h2 id="welcomeTitle">👋 Willkommen beim Wallet-Tracking</h2>
+      <p>Diese Seite bündelt deine Wallet-Bestände über mehrere Blockchains und ergänzt sie um Kurse, Gebühren, NFTs, Token-Freigaben und weitere Analysen.</p>
+      <p>Aus Sicherheitsgründen werden im Wallet-Tracking nur vordefinierte oder von dir selbst als sicher erfasste Token angezeigt. Viele Bestands- und Kursdaten werden automatisch aktualisiert; aufwendige historische Abfragen startest du bewusst manuell.</p>
+      <p>Unter <strong>❓ Hilfe</strong> findest du eine Übersicht darüber, was die einzelnen Bereiche machen und welche Daten automatisch oder manuell aktualisiert werden.</p>
+      <div class="wt-modal-actions">
+        <button onclick="welcomeGoToHelp()">Zur Hilfe</button>
+        <button class="secondary" onclick="closeWelcomeModal()">Später</button>
+        <button class="secondary" onclick="dismissWelcomeForever(this)">Nicht mehr anzeigen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="donationModal" class="wt-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="donationTitle" onclick="if(event.target===this) closeDonationModal()">
+    <div class="wt-modal">
+      <h2 id="donationTitle">💛 Projekt unterstützen</h2>
+      <p class="note" style="font-size:.82rem">Wenn dir das Wallet-Tracking hilft, kannst du das Projekt freiwillig mit USDT oder USDC unterstützen.</p>
+      <div class="donation-grid">
+        <div><span class="field-label">Netzwerk</span><select id="donationChain" onchange="renderDonationQr()"><option value="bsc">BNB Smart Chain (BSC)</option><option value="eth">Ethereum</option><option value="matic">Polygon</option></select></div>
+        <div><span class="field-label">Token</span><select id="donationToken" onchange="renderDonationQr()"><option value="USDT">USDT</option><option value="USDC">USDC</option></select></div>
+      </div>
+      <div class="custom-token-card" style="margin:12px 0">
+        <span class="field-label">Empfangsadresse</span>
+        <div id="donationAddress" class="donation-address">0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382</div>
+        <button class="secondary" style="margin-top:10px" onclick="copyDonationAddress()">Adresse kopieren</button>
+        <span id="donationCopyStatus" class="note" style="margin-left:8px"></span>
+      </div>
+      <div id="donationQr"></div>
+      <div id="donationSelectionNote" class="note" style="text-align:center"></div>
+      <p class="note" style="font-size:.78rem"><strong>Wichtig:</strong> Bitte ausschließlich den oben gewählten Token über das gewählte Netzwerk senden. Der QR-Code enthält bewusst nur die EVM-Empfangsadresse, damit er mit möglichst vielen Wallets kompatibel bleibt.</p>
+      <div class="wt-modal-actions"><button class="secondary" onclick="closeDonationModal()">Schließen</button></div>
+    </div>
+  </div>
+
   <footer>
-    Version vom 26.08.2026, 16:45 Uhr<br>
+    Version vom 26.08.2026, 17:09 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -904,6 +962,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
 window.TLNVOWProject = (() => {
 
@@ -2692,6 +2751,57 @@ async function sendMagicLink() {
     : "Link verschickt - check dein E-Mail-Postfach und klick auf den Link.";
 }
 
+const WELCOME_META_KEY = "wallet_tracking_welcome_dismissed_v1";
+const DONATION_EVM_ADDRESS = "0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382";
+
+function maybeShowWelcomeModal() {
+  if (!currentUser?.user_metadata?.[WELCOME_META_KEY]) {
+    document.getElementById("welcomeModal")?.classList.add("open");
+  }
+}
+function closeWelcomeModal() { document.getElementById("welcomeModal")?.classList.remove("open"); }
+function welcomeGoToHelp() { closeWelcomeModal(); showTab("help"); }
+async function dismissWelcomeForever(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "Wird gespeichert…"; }
+  const merged = { ...(currentUser?.user_metadata || {}), [WELCOME_META_KEY]: true };
+  const { data, error } = await sb.auth.updateUser({ data: merged });
+  if (error) {
+    console.error("Willkommens-Hinweis speichern:", error);
+    if (btn) { btn.disabled = false; btn.textContent = "Nicht mehr anzeigen"; }
+    alert("Die Einstellung konnte nicht gespeichert werden. Bitte später nochmals versuchen.");
+    return;
+  }
+  if (data?.user) currentUser = data.user;
+  closeWelcomeModal();
+}
+
+function openDonationModal() {
+  document.getElementById("donationModal")?.classList.add("open");
+  renderDonationQr();
+}
+function closeDonationModal() { document.getElementById("donationModal")?.classList.remove("open"); }
+function renderDonationQr() {
+  const chain = document.getElementById("donationChain")?.value || "bsc";
+  const token = document.getElementById("donationToken")?.value || "USDT";
+  const chainLabel = { bsc:"BNB Smart Chain (BSC)", eth:"Ethereum", matic:"Polygon" }[chain] || chain;
+  const qr = document.getElementById("donationQr");
+  const note = document.getElementById("donationSelectionNote");
+  if (note) note.innerHTML = `<strong>${token}</strong> über <strong>${chainLabel}</strong>`;
+  if (!qr) return;
+  qr.innerHTML = "";
+  if (typeof QRCode === "undefined") { qr.innerHTML = '<span style="color:#111;font-size:.75rem;text-align:center">QR-Code konnte nicht geladen werden.</span>'; return; }
+  new QRCode(qr, { text:DONATION_EVM_ADDRESS, width:180, height:180, correctLevel:QRCode.CorrectLevel.M });
+}
+async function copyDonationAddress() {
+  const status = document.getElementById("donationCopyStatus");
+  try {
+    await navigator.clipboard.writeText(DONATION_EVM_ADDRESS);
+    if (status) status.textContent = "Kopiert ✓";
+  } catch (_) {
+    if (status) status.textContent = "Bitte Adresse manuell kopieren.";
+  }
+}
+
 async function logout() {
   await sb.auth.signOut();
   location.reload();
@@ -2771,6 +2881,7 @@ async function onLoggedIn(session) {
   }
 
   showTab(wallets.length === 0 ? "wallets" : "tracking");
+  maybeShowWelcomeModal();
 
   // Projektpreise im Hintergrund laden. Sobald sie da sind, werden alle Preisansichten
   // nochmals gerendert; dadurch ersetzen Projektpreise automatisch CoinGecko/GeckoTerminal
