@@ -447,7 +447,7 @@
       </div>
       <div class="note" style="margin-bottom:14px">
         Beim Login wird zuerst der letzte gespeicherte Stand angezeigt und anschließend automatisch live aktualisiert.
-        Für EVM-Chains werden nur native Coins sowie vordefinierte und eigene sichere Token über kostenlose öffentliche RPCs abgefragt.
+        Die Balance-Abfrage wird pro Chain über die zentrale Supabase-Konfiguration gesteuert; angezeigt werden native Coins sowie vordefinierte und eigene sichere Token.
         "Alle laden" kann weiterhin für eine manuelle Aktualisierung verwendet werden.
       </div>
 
@@ -3082,6 +3082,7 @@ const ADMIN_CHAIN_FIELDS = [
   {k:"geckoterminal_network", l:"GeckoTerminal Network", type:"text"},
   {k:"rpc_url", l:"RPC-/REST-Endpunkt", critical:true, type:"text", cls:"xwide-input"},
   {k:"balance_provider", l:"Balance-Provider", critical:true, type:"text"},
+  {k:"balance_api_base", l:"Balance API-Basis", critical:true, type:"text", cls:"xwide-input"},
   {k:"fees_enabled", l:"Gebühren aktiv", critical:true, type:"checkbox"},
   {k:"discovery_enabled", l:"Discovery aktiv", critical:false, type:"checkbox"},
   {k:"approvals_enabled", l:"Freigaben aktiv", critical:false, type:"checkbox"},
@@ -3209,7 +3210,7 @@ const ADMIN_IDEAS = [
   {
     status: "in_progress",
     title: "Konfiguration aus HTML nach Supabase verlagern",
-    desc: "Umbau gestartet 26.08.2026. ZIEL: neue Chains/Token und Preis-Zuordnungen möglichst ohne HTML-Änderung verwalten. PHASE 1b umgesetzt: public.chains ist jetzt Single Source of Truth für Chain-Label, Native-Symbol, CoinGecko-ID, Wallet-Typ, Explorer-URL und GeckoTerminal-Netzwerk. Der HTML-Fallback für diese Chain-Metadaten wurde vollständig entfernt; bei DB-/Konfigurationsfehler startet das Dashboard bewusst nicht. predefined_tokens um symbol, name, coingecko_id, decimals, price_source und enabled erweitert; CoinGecko-Zuordnung der vordefinierten Token läuft nun über chain+Contract statt Kürzel. PHASE 2 in Umsetzung: Admin-Tab „Chains“ vorhanden. Gebühren-Chain-Auswahl ist jetzt DB-gesteuert über fees_enabled + fee_provider; EVM-Gebühren verwenden evm_chain_id, fee_api_base, Finality und Overlap aus public.chains. EVM-Balance-/RPC-Zugriffe verwenden rpc_url aus public.chains. Feste FEES_CHAINS-, Routescan-, Blockscout-, Finality-/Overlap- und EVM-RPC-Maps wurden entfernt. Discovery/Approvals/NFT sind jetzt nicht nur über Aktiv-Flags, sondern auch über Provider + API-Basis in public.chains konfiguriert. Harte Alchemy-RPC-/NFT-URL-Maps und die GoPlus-Chain-ID-Map wurden entfernt; GoPlus nutzt die EVM Chain-ID aus der DB. NOCH OFFEN: nicht-EVM Balance-/REST-Endpunkte datengetrieben machen, verbliebene Alchemy-Abhängigkeit fachlich ersetzen wo sinnvoll, danach DEX-/TLN-VOW-Infrastruktur auslagern. API-Secrets bleiben ausdrücklich ausserhalb normaler DB-Tabellen."
+    desc: "Umbau gestartet 26.08.2026. ZIEL: neue Chains/Token und Preis-Zuordnungen möglichst ohne HTML-Änderung verwalten. PHASE 1b umgesetzt: public.chains ist jetzt Single Source of Truth für Chain-Label, Native-Symbol, CoinGecko-ID, Wallet-Typ, Explorer-URL und GeckoTerminal-Netzwerk. Der HTML-Fallback für diese Chain-Metadaten wurde vollständig entfernt; bei DB-/Konfigurationsfehler startet das Dashboard bewusst nicht. predefined_tokens um symbol, name, coingecko_id, decimals, price_source und enabled erweitert; CoinGecko-Zuordnung der vordefinierten Token läuft nun über chain+Contract statt Kürzel. PHASE 2 in Umsetzung: Admin-Tab „Chains“ vorhanden. Gebühren-Chain-Auswahl ist jetzt DB-gesteuert über fees_enabled + fee_provider; EVM-Gebühren verwenden evm_chain_id, fee_api_base, Finality und Overlap aus public.chains. EVM-Balance-/RPC-Zugriffe verwenden rpc_url aus public.chains. Feste FEES_CHAINS-, Routescan-, Blockscout-, Finality-/Overlap- und EVM-RPC-Maps wurden entfernt. Discovery/Approvals/NFT sind jetzt nicht nur über Aktiv-Flags, sondern auch über Provider + API-Basis in public.chains konfiguriert. Harte Alchemy-RPC-/NFT-URL-Maps und die GoPlus-Chain-ID-Map wurden entfernt; GoPlus nutzt die EVM Chain-ID aus der DB. NOCH OFFEN: Balance-Provider und Balance-API-Basis sind jetzt ebenfalls DB-gesteuert; auch Bitcoin, XRP, Solana, Tron, Akash und Apertum verwenden keine fest eingetragenen API-Endpunkte mehr. loadAll() iteriert dynamisch über konfigurierte Chains statt über eine feste Chain-Liste. NOCH OFFEN: verbliebene Alchemy-Abhängigkeit fachlich ersetzen wo sinnvoll, Token-spezifische Sonderwerte prüfen, danach DEX-/TLN-VOW-Infrastruktur auslagern. API-Secrets bleiben ausdrücklich ausserhalb normaler DB-Tabellen."
   },
   { status: "open", title: "Steuer-Report (Schweiz)", desc: "Stichtag-Snapshot 31.12. + druckbarer PDF/CSV-Export (Wallet, Chain, Token, Bestand, Kurs, Wert CHF) für die Steuererklärung. Läuft über manuell/automatisch erstellte Snapshots statt eigener On-Chain-Nachrechnung, damit alle Chains gleich behandelt werden." },
   { status: "open", title: "Gewinn/Verlust statt nur Bestand", desc: "Einstandspreis-Feld bzw. Transaktions-/Kostenbasis-Konzept definieren, um Performance (Plus/Minus, %) statt nur heutigen Bestand zu zeigen." },
@@ -3527,7 +3528,7 @@ let chainConfigStatus = { source: "nicht geladen", count: 0, loadedAt: null };
 
 async function loadChainConfigFromDb() {
   const { data, error } = await sb.from("chains")
-    .select("chain_key,label,native_symbol,coingecko_id,wallet_type,explorer_url_template,geckoterminal_network,sort_order,enabled,evm_chain_id,rpc_url,balance_provider,fee_provider,fee_api_base,fee_finality_blocks,fee_overlap_blocks,fees_enabled,discovery_enabled,approvals_enabled,nft_enabled,discovery_provider,discovery_api_base,approvals_provider,approvals_api_base,nft_provider,nft_api_base")
+    .select("chain_key,label,native_symbol,coingecko_id,wallet_type,explorer_url_template,geckoterminal_network,sort_order,enabled,evm_chain_id,rpc_url,balance_provider,fee_provider,fee_api_base,fee_finality_blocks,fee_overlap_blocks,fees_enabled,discovery_enabled,approvals_enabled,nft_enabled,discovery_provider,discovery_api_base,approvals_provider,approvals_api_base,nft_provider,nft_api_base,balance_api_base")
     .eq("enabled", true)
     .order("sort_order", { ascending: true });
 
@@ -3560,6 +3561,7 @@ async function loadChainConfigFromDb() {
       evmChainId: row.evm_chain_id == null ? null : Number(row.evm_chain_id),
       rpcUrl: row.rpc_url || null,
       balanceProvider: row.balance_provider || null,
+      balanceApiBase: row.balance_api_base || null,
       feeProvider: row.fee_provider || null,
       feeApiBase: row.fee_api_base || null,
       feeFinalityBlocks: row.fee_finality_blocks == null ? null : Number(row.fee_finality_blocks),
@@ -3810,7 +3812,6 @@ async function loadPredefinedTokensFromDb() {
 }
 
 // Apertum: Balance-Abfrage über die öffentliche Blockscout-Explorer-API (CORS-freundlich für Browser-Zugriffe)
-const APERTUM_EXPLORER_API = "https://explorer.apertum.io/api/v2";
 function isSafeTokenAddress(address, chain) {
   if (!address) return false;
   const a = normalizeAddress(address, chain);
@@ -4568,8 +4569,18 @@ async function fetchEvmAddressInfo(chain, rpcUrl, address) {
   return { native, tokens };
 }
 
-async function fetchBitcoinBalance(address) {
-  const res = await fetch(`https://blockstream.info/api/address/${address}`);
+function configuredBalanceBase(chain) {
+  const cfg = CHAIN_CONFIG[chain] || {};
+  const base = cfg.balanceApiBase || cfg.rpcUrl;
+  if (!cfg.balanceProvider || !base) {
+    throw new Error(`${CHAIN_META[chain]?.label || chain}: Balance-Provider/API-Basis fehlt in public.chains`);
+  }
+  return base.replace(/\/+$/, "");
+}
+
+async function fetchBitcoinBalance(chain, address) {
+  const base = configuredBalanceBase(chain);
+  const res = await fetch(`${base}/address/${address}`);
   if (!res.ok) throw new Error("HTTP " + res.status);
   const data = await res.json();
   const funded = data.chain_stats.funded_txo_sum + data.mempool_stats.funded_txo_sum;
@@ -4577,16 +4588,21 @@ async function fetchBitcoinBalance(address) {
   return (funded - spent) / 1e8;
 }
 
-async function fetchXrpBalance(address) {
-  const res = await fetch(`https://api.xrpscan.com/api/v1/account/${address}`);
+async function fetchXrpBalance(chain, address) {
+  const base = configuredBalanceBase(chain);
+  const res = await fetch(`${base}/account/${address}`);
   if (!res.ok) throw new Error("HTTP " + res.status);
   const data = await res.json();
   if (data.xrpBalance === undefined) throw new Error("Keine Balance gefunden");
   return parseFloat(data.xrpBalance);
 }
 
-async function fetchSolanaBalance(address) {
-  const res = await fetch("https://solana-rpc.publicnode.com/" + publicnodeToken("sol"), {
+async function fetchSolanaBalance(chain, address) {
+  let base = configuredBalanceBase(chain);
+  if (base.includes("publicnode.com") && PUBLICNODE_TOKEN && !base.endsWith(PUBLICNODE_TOKEN)) {
+    base = base.replace(/\/+$/, "") + "/" + publicnodeToken(chain);
+  }
+  const res = await fetch(base, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getBalance", params: [address] })
@@ -4603,18 +4619,20 @@ async function fetchSolanaBalance(address) {
 const TRON_TOKEN_DECIMALS_DEFAULT = 6;
 
 
-async function fetchAkashBalance(address) {
+async function fetchAkashBalance(chain, address) {
   // Akash Mainnet REST/LCD (Cosmos SDK Bank-Modul). AKT ist on-chain als uakt
   // mit 6 Dezimalstellen denominiert.
-  const res = await fetch(`https://api.akashnet.net/cosmos/bank/v1beta1/balances/${encodeURIComponent(address)}`);
+  const base = configuredBalanceBase(chain);
+  const res = await fetch(`${base}/cosmos/bank/v1beta1/balances/${encodeURIComponent(address)}`);
   if (!res.ok) throw new Error("HTTP " + res.status);
   const data = await res.json();
   const balance = (data.balances || []).find(b => b.denom === "uakt");
   return balance ? Number(balance.amount || 0) / 1e6 : 0;
 }
 
-async function fetchTronAddressInfo(address) {
-  const res = await fetch(`https://api.trongrid.io/v1/accounts/${address}`);
+async function fetchTronAddressInfo(chain, address) {
+  const base = configuredBalanceBase(chain);
+  const res = await fetch(`${base}/v1/accounts/${address}`);
   if (!res.ok) throw new Error("HTTP " + res.status);
   const data = await res.json();
   if (!data.success) throw new Error(data.error || "Unbekannter Fehler");
@@ -4650,10 +4668,11 @@ async function fetchTronAddressInfo(address) {
 // ---- Apertum (EVM, chain-id 2786) ----
 // Der kostenlose Blockscout-Explorer liefert die Wallet-Tokenliste; fürs normale
 // Tracking übernehmen wir daraus ausschließlich vordefinierte/eigene sichere Token.
-async function fetchApertumAddressInfo(address) {
+async function fetchApertumAddressInfo(chain, address) {
+  const base = configuredBalanceBase(chain);
   const [balRes, tokRes] = await Promise.all([
-    fetch(`${APERTUM_EXPLORER_API}/addresses/${address}`),
-    fetch(`${APERTUM_EXPLORER_API}/addresses/${address}/tokens?type=ERC-20`)
+    fetch(`${base}/addresses/${address}`),
+    fetch(`${base}/addresses/${address}/tokens?type=ERC-20`)
   ]);
   if (!balRes.ok) throw new Error("HTTP " + balRes.status + " (Balance)");
   const balData = await balRes.json();
@@ -4673,55 +4692,78 @@ async function fetchApertumAddressInfo(address) {
           amount: Number(raw) / Math.pow(10, decimals)
         };
       })
-      .filter(t => t.amount >= DUST_THRESHOLD && isSafeTokenAddress(t.address, "apertum"));
+      .filter(t => t.amount >= DUST_THRESHOLD && isSafeTokenAddress(t.address, chain));
   }
   return { native, tokens };
+}
+
+function walletAddressForChain(wallet, chain) {
+  const type = CHAIN_CONFIG[chain]?.walletType;
+  const fields = { evm:"evm", btc:"btc", xrp:"xrp", sol:"sol", tron:"tron", akash:"akash" };
+  const field = fields[type];
+  return field ? wallet?.[field] : null;
 }
 
 async function loadWalletChain(wallet, chain, preserveCachedOnError = false) {
   walletData[wallet.id] = walletData[wallet.id] || {};
   const previous = walletData[wallet.id][chain];
+  const cfg = CHAIN_CONFIG[chain] || {};
+  const address = walletAddressForChain(wallet, chain);
+
+  if (!address) {
+    delete walletData[wallet.id][chain];
+    return { ok:true, skipped:true };
+  }
 
   try {
-    if (chain === "eth" || chain === "bsc" || chain === "matic" || chain === "arb" || chain === "base" || chain === "avax") {
-      if (!wallet.evm) { delete walletData[wallet.id][chain]; return { ok: true, skipped: true }; }
-      const r = await fetchEvmAddressInfo(chain, configuredRpcUrl(chain), wallet.evm);
-      walletData[wallet.id][chain] = { native: r.native, nativeSymbol: NATIVE_SYMBOL[chain], tokens: r.tokens };
-    } else if (chain === "apertum") {
-      if (!wallet.evm) { delete walletData[wallet.id].apertum; return { ok: true, skipped: true }; }
-      const r = await fetchApertumAddressInfo(wallet.evm);
-      walletData[wallet.id].apertum = { native: r.native, nativeSymbol: "APTM", tokens: r.tokens };
-    } else if (chain === "btc") {
-      if (!wallet.btc) { delete walletData[wallet.id].btc; return { ok: true, skipped: true }; }
-      const amount = await fetchBitcoinBalance(wallet.btc);
-      walletData[wallet.id].btc = { native: amount, nativeSymbol: "BTC", tokens: [] };
-    } else if (chain === "xrp") {
-      if (!wallet.xrp) { delete walletData[wallet.id].xrp; return { ok: true, skipped: true }; }
-      const amount = await fetchXrpBalance(wallet.xrp);
-      walletData[wallet.id].xrp = { native: amount, nativeSymbol: "XRP", tokens: [] };
-    } else if (chain === "sol") {
-      if (!wallet.sol) { delete walletData[wallet.id].sol; return { ok: true, skipped: true }; }
-      const amount = await fetchSolanaBalance(wallet.sol);
-      walletData[wallet.id].sol = { native: amount, nativeSymbol: "SOL", tokens: [] };
-    } else if (chain === "tron") {
-      if (!wallet.tron) { delete walletData[wallet.id].tron; return { ok: true, skipped: true }; }
-      const r = await fetchTronAddressInfo(wallet.tron);
-      walletData[wallet.id].tron = { native: r.native, nativeSymbol: "TRX", tokens: r.tokens };
-    } else if (chain === "akash") {
-      if (!wallet.akash) { delete walletData[wallet.id].akash; return { ok: true, skipped: true }; }
-      const amount = await fetchAkashBalance(wallet.akash);
-      walletData[wallet.id].akash = { native: amount, nativeSymbol: "AKT", tokens: [] };
+    let native = 0;
+    let tokens = [];
+
+    switch (cfg.balanceProvider) {
+      case "evm_rpc": {
+        const r = await fetchEvmAddressInfo(chain, configuredRpcUrl(chain), address);
+        native = r.native; tokens = r.tokens || [];
+        break;
+      }
+      case "blockscout": {
+        const r = await fetchApertumAddressInfo(chain, address);
+        native = r.native; tokens = r.tokens || [];
+        break;
+      }
+      case "blockstream":
+        native = await fetchBitcoinBalance(chain, address);
+        break;
+      case "xrpscan":
+        native = await fetchXrpBalance(chain, address);
+        break;
+      case "solana_rpc":
+        native = await fetchSolanaBalance(chain, address);
+        break;
+      case "trongrid": {
+        const r = await fetchTronAddressInfo(chain, address);
+        native = r.native; tokens = r.tokens || [];
+        break;
+      }
+      case "akash_rest":
+        native = await fetchAkashBalance(chain, address);
+        break;
+      default:
+        throw new Error(`Balance-Provider "${cfg.balanceProvider || "–"}" ist nicht implementiert`);
     }
-    return { ok: true };
+
+    walletData[wallet.id][chain] = {
+      native,
+      nativeSymbol: NATIVE_SYMBOL[chain] || chain.toUpperCase(),
+      tokens
+    };
+    return { ok:true };
   } catch (err) {
-    // Beim automatischen Login-Refresh soll ein temporärer API/RPC-Ausfall den
-    // bereits sichtbaren Snapshot nicht durch einen Fehler ersetzen.
     if (preserveCachedOnError && previous && !previous.error) {
       walletData[wallet.id][chain] = previous;
     } else {
-      walletData[wallet.id][chain] = { error: err.message };
+      walletData[wallet.id][chain] = { error:err.message };
     }
-    return { ok: false, error: err.message };
+    return { ok:false, error:err.message };
   }
 }
 
@@ -4739,8 +4781,9 @@ async function loadAll(options = {}) {
   ]);
 
   const chainJobs = [];
+  const configuredChains = Object.keys(CHAIN_CONFIG).filter(chain => !!CHAIN_CONFIG[chain]?.balanceProvider);
   wallets.forEach(w => {
-    ["eth", "bsc", "matic", "arb", "base", "avax", "apertum", "tron", "btc", "xrp", "sol", "akash"].forEach(chain => {
+    configuredChains.forEach(chain => {
       chainJobs.push(loadWalletChain(w, chain, automatic));
     });
   });
@@ -5718,6 +5761,12 @@ function feeChains() {
     return c?.feesEnabled === true && !!c?.feeProvider;
   });
 }
+
+function configuredFeeBase(chain) {
+  const base = CHAIN_CONFIG[chain]?.feeApiBase;
+  if (!base) throw new Error(`${CHAIN_META[chain]?.label || chain}: Gebühren API-Basis fehlt in public.chains`);
+  return base.replace(/\/+$/, "");
+}
 let feeCaches = new Map(); // key walletId|chain -> DB row
 
 function feeCacheKey(walletId, chain) { return String(walletId) + "|" + chain; }
@@ -6117,11 +6166,12 @@ async function scanCachedEvmFees(chain, wallet, onProgress) {
 // Alle unterstützten EVM-Gebühren laufen jetzt ohne Alchemy über inkrementelle Provider.
 
 // XRP: xrpscan.com liefert die Gebühr direkt in Drops.
-async function fetchXrpFees(address, onProgress) {
+async function fetchXrpFees(chain, address, onProgress) {
   let marker=null,totalFeeDrops=0,txCount=0,page=0;
   do {
     page++; if (onProgress) onProgress(page);
-    const url=`https://api.xrpscan.com/api/v1/account/${address}/transactions`+(marker?`?marker=${encodeURIComponent(marker)}`:"");
+    const base=configuredFeeBase(chain);
+    const url=`${base}/account/${address}/transactions`+(marker?`?marker=${encodeURIComponent(marker)}`:"");
     const res=await fetch(url); if(!res.ok) throw new Error("HTTP "+res.status);
     const data=await res.json();
     (data.transactions||[]).forEach(tx=>{ if(tx.Account===address){ const fee=parseFloat(tx.Fee||"0"); if(isFinite(fee)){totalFeeDrops+=fee;txCount++;} } });
@@ -6131,8 +6181,11 @@ async function fetchXrpFees(address, onProgress) {
 }
 
 const SOLANA_FEES_MAX_PAGES = 20;
-async function fetchSolanaFees(address,onProgress){
-  const rpcUrl="https://solana-rpc.publicnode.com/"+publicnodeToken("sol");
+async function fetchSolanaFees(chain,address,onProgress){
+  let rpcUrl=configuredFeeBase(chain);
+  if(rpcUrl.includes("publicnode.com")&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN)){
+    rpcUrl=rpcUrl.replace(/\/+$/,"")+"/"+publicnodeToken(chain);
+  }
   let before,totalFeeLamports=0,txCount=0,page=0;
   while(page<SOLANA_FEES_MAX_PAGES){
     page++; if(onProgress)onProgress(page);
@@ -6151,10 +6204,10 @@ async function fetchSolanaFees(address,onProgress){
   return {totalFee:totalFeeLamports/1e9,txCount,truncated:page>=SOLANA_FEES_MAX_PAGES,source:"publicnode-solana"};
 }
 
-async function fetchApertumFees(address,onProgress){
+async function fetchApertumFees(chain,address,onProgress){
   let nextParams=null,totalFeeWei=0n,txCount=0,page=0;const addrLower=address.toLowerCase();
   do{
-    page++;if(onProgress)onProgress(page);let url=`${APERTUM_EXPLORER_API}/addresses/${address}/transactions`;if(nextParams)url+="?"+new URLSearchParams(nextParams).toString();
+    page++;if(onProgress)onProgress(page);let url=`${configuredFeeBase(chain)}/addresses/${address}/transactions`;if(nextParams)url+="?"+new URLSearchParams(nextParams).toString();
     const res=await fetch(url);if(!res.ok)throw new Error("HTTP "+res.status);const data=await res.json();
     (data.items||[]).forEach(tx=>{const fromAddr=((tx.from&&tx.from.hash)||tx.from_address||"").toLowerCase();if(fromAddr!==addrLower)return;let feeWei=null;try{if(tx.fee&&tx.fee.value)feeWei=BigInt(tx.fee.value);else if(tx.gas_used&&tx.gas_price)feeWei=BigInt(tx.gas_used)*BigInt(tx.gas_price);}catch(e){}if(feeWei!==null){totalFeeWei+=feeWei;txCount++;}});
     nextParams=data.next_page_params||null;
@@ -6802,13 +6855,13 @@ async function calculateFeesForWallet(w, status, results) {
           r={totalFee:Number(cache.total_fee_native||0),txCount:Number(cache.tx_count||0),cached:true,cachedAt:cache.last_scanned_at,source:cache.data_source,note:`Nächste Aktualisierung ab ${next.toLocaleString("de-CH")}`};
         } else if(provider==="xrpscan"){
           if(!w.xrp){results.push({chain,error:"Keine XRP-Adresse bei dieser Wallet erfasst"});continue;}
-          r=await fetchXrpFees(w.xrp,onProgress);
+          r=await fetchXrpFees(chain,w.xrp,onProgress);
         } else if(provider==="solana_publicnode"){
           if(!w.sol){results.push({chain,error:"Keine Solana-Adresse bei dieser Wallet erfasst"});continue;}
-          r=await fetchSolanaFees(w.sol,onProgress);
+          r=await fetchSolanaFees(chain,w.sol,onProgress);
         } else if(provider==="apertum_explorer"){
           if(!w.evm){results.push({chain,error:"Keine EVM-Adresse bei dieser Wallet erfasst"});continue;}
-          r=await fetchApertumFees(w.evm,onProgress);
+          r=await fetchApertumFees(chain,w.evm,onProgress);
         } else {
           results.push({chain,error:`Gebührenprovider "${provider||"–"}" ist nicht implementiert`});
           continue;
