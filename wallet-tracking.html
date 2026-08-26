@@ -173,6 +173,21 @@
     display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 12px; font-size: 0.92rem;
   }
   .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block; vertical-align: middle; }
+  .chat-unread-badge {
+    display:none;
+    min-width:20px;
+    height:20px;
+    padding:0 6px;
+    margin-left:6px;
+    border-radius:999px;
+    align-items:center;
+    justify-content:center;
+    font-size:0.72rem;
+    font-weight:700;
+    line-height:20px;
+    background:var(--danger);
+    color:#fff;
+  }
 
   table { width: 100%; border-collapse: collapse; font-size: 0.87rem; table-layout: fixed; }
   th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--border); }
@@ -396,8 +411,8 @@
       <div class="tab-nav-group">
         <span class="tab-nav-group-label">💬 Support &amp; Info</span>
         <div class="tab-nav">
-          <button class="tab-btn" id="userChatTabBtn" data-tab="chat" onclick="showTab('chat')">💬 Chat</button>
-          <button class="tab-btn" id="adminChatTabBtn" data-tab="chat" onclick="showTab('chat')" style="display:none">💬 Admin-Chat</button>
+          <button class="tab-btn" id="userChatTabBtn" data-tab="chat" onclick="showTab('chat')">💬 Chat <span id="userChatUnreadBadge" class="chat-unread-badge"></span></button>
+          <button class="tab-btn" id="adminChatTabBtn" data-tab="chat" onclick="showTab('chat')" style="display:none">💬 Admin-Chat <span id="adminChatUnreadBadge" class="chat-unread-badge"></span></button>
           <button class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
         </div>
       </div>
@@ -1084,7 +1099,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 21:38 Uhr<br>
+    Version vom 26.08.2026, 21:50 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -2968,6 +2983,7 @@ async function onLoggedIn(session) {
     document.getElementById("newPredefChain").innerHTML = Object.keys(CHAIN_META).map(c => `<option value="${c}">${CHAIN_META[c].label}</option>`).join("");
   }
   setupChatRealtime();
+  await updateChatUnreadBadge();
 
   loadTokenMetaCache();
   await loadDefiProjectsCache();
@@ -3427,6 +3443,11 @@ const ADMIN_IDEAS = [
     status: "in_progress",
     title: "Hardcoding-Audit / Restbereinigung",
     desc: "Audit gestartet 26.08.2026. PRIORITÄT A – umgesetzt: generische Tabellen defi_projects, defi_project_tokens und dex_configs; TLN/VOW/VOW-Referenzen und PancakeSwap-/Uniswap-Factorys werden per Migration übernommen, RPCs kommen aus CHAIN_CONFIG. Admin-Masken DeFi-Projekte und DEX sind vorhanden. Routescan-Funktion hat noch einen hartcodierten API-URL-Fallback; entfernen, sodass fehlendes fee_api_base als Konfigurationsfehler sichtbar wird. PRIORITÄT B – fachlich prüfen: TRON_TOKEN_DECIMALS_DEFAULT=6 wird aktuell pauschal auf TRC20 angewendet; besser decimals aus predefined_tokens/Token-Metadaten verwenden. NodeReal-BSC-URL enthält den Key direkt; PublicNode- und Alchemy-Keys stehen ebenfalls im Frontend. Das ist derzeit bewusst so, sollte bei späterer Secret-/Proxy-Lösung separat behandelt werden und NICHT in public.chains landen. PRIORITÄT C – bewusst im HTML belassen: Supabase-App-URL/Publishable-Key, CDN-Bibliotheken, globale CoinGecko-/GeckoTerminal-/GoPlus-Endpunkte, revoke.cash-Link, IPFS-Gateway, Redirect-URL sowie UI-spezifische Spenden-Auswahl. NÄCHSTE SCHRITTE: (1) DEX/TLN-VOW-Infrastruktur-Tabelle definieren; (2) TLN/VOW-Modul auf CHAIN_CONFIG + neue Tabelle umstellen; (3) Routescan-Fallback entfernen; (4) Tron-Decimallogik korrigieren; (5) danach erneut automatisierten URL/Contract-/Chain-Literal-Scan durchführen und diesen Punkt auf DONE setzen."
+  },
+  {
+    status: "in_progress",
+    title: "Chat-Benachrichtigungen",
+    desc: "Umgesetzt im Frontend/DB-Modell: read_at für Nachrichten, Ungelesen-Badge für User und Admin, ungelesene Anzahl je User in der Admin-Konversationsauswahl und serverseitige E-Mail-Sperrlogik. Regel: erste neue Nachricht löst eine E-Mail aus; weitere Nachrichten derselben Seite lösen keine weitere Mail aus, bis der Empfänger geantwortet hat. Danach ist die nächste neue Nachricht wieder mailberechtigt. E-Mail enthält keinen Nachrichtentext, aber den direkten Link https://www.letsgofree.me/wallet-tracking. Für den tatsächlichen Versand wird die Supabase Edge Function chat-notify mit einem serverseitigen Resend-Key verwendet; RESEND_API_KEY und CHAT_FROM_EMAIL müssen als Supabase Secrets gesetzt werden."
   },
   {
     status: "open",
@@ -7261,6 +7282,63 @@ function renderNftResults(nfts, errors = []) {
 
 // ---- Chat (User <-> Admin) ----
 
+const CHAT_NOTIFICATION_FUNCTION = "chat-notify";
+
+function setChatUnreadBadge(id,count){
+  const el=document.getElementById(id);
+  if(!el)return;
+  const n=Number(count||0);
+  el.textContent=n>99?"99+":String(n);
+  el.style.display=n>0?"inline-flex":"none";
+}
+
+async function updateChatUnreadBadge(){
+  if(!currentUser)return;
+  try{
+    if(isAdmin){
+      const {count,error}=await sb.from("chat_messages")
+        .select("id",{count:"exact",head:true})
+        .eq("sender_type","user")
+        .is("read_at",null);
+      if(error)throw error;
+      setChatUnreadBadge("adminChatUnreadBadge",count||0);
+    }else{
+      const {count,error}=await sb.from("chat_messages")
+        .select("id",{count:"exact",head:true})
+        .eq("user_id",currentUser.id)
+        .eq("sender_type","admin")
+        .is("read_at",null);
+      if(error)throw error;
+      setChatUnreadBadge("userChatUnreadBadge",count||0);
+    }
+  }catch(e){
+    console.warn("Chat-Ungelesen-Zähler:",e);
+  }
+}
+
+async function markCurrentChatRead(userId=null){
+  try{
+    const {error}=await sb.rpc("mark_chat_read",{p_user_id:isAdmin?userId:currentUser.id});
+    if(error)throw error;
+    await updateChatUnreadBadge();
+  }catch(e){
+    console.warn("Chat als gelesen markieren:",e);
+  }
+}
+
+async function triggerChatEmailNotification(messageId){
+  if(!messageId)return;
+  try{
+    const {error}=await sb.functions.invoke(CHAT_NOTIFICATION_FUNCTION,{
+      body:{message_id:messageId}
+    });
+    if(error)throw error;
+  }catch(e){
+    // Nachricht ist bereits gespeichert. Ein Mailfehler darf den Chat nicht blockieren.
+    console.warn("Chat-E-Mail-Benachrichtigung konnte nicht ausgelöst werden:",e);
+  }
+}
+
 // Realtime-Abo: läuft einmal pro Login, unabhängig davon, welcher Tab gerade offen ist -
 // so kommt eine neue Nachricht auch an, wenn man den Chat-Tab gerade nicht anschaut.
 let chatRealtimeChannel = null;
@@ -7272,8 +7350,9 @@ function setupChatRealtime() {
     // Admins: auf ALLE neuen Nachrichten reagieren (kein Filter), da unklar ist, welcher
     // User als nächstes schreibt.
     chatRealtimeChannel = sb.channel("chat-admin-" + currentUser.id)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, (payload) => {
-        renderAdminChatUserSelect(); // falls ein User zum ersten Mal schreibt, taucht er neu in der Liste auf
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, async (payload) => {
+        await updateChatUnreadBadge();
+        renderAdminChatUserSelect();
         const selectedUserId = document.getElementById("adminChatUserSelect") ? document.getElementById("adminChatUserSelect").value : "";
         if (selectedUserId && payload.new.user_id === selectedUserId) loadAdminChat();
       })
@@ -7282,8 +7361,10 @@ function setupChatRealtime() {
     // Normale User: nur auf die eigene Konversation gefiltert (RLS würde ohnehin nichts
     // anderes durchlassen, aber der Filter spart unnötige Events).
     chatRealtimeChannel = sb.channel("chat-user-" + currentUser.id)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages", filter: `user_id=eq.${currentUser.id}` }, () => {
-        loadOwnChat();
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages", filter: `user_id=eq.${currentUser.id}` }, async () => {
+        await updateChatUnreadBadge();
+        const chatPanel=document.getElementById("tab-chat");
+        if(chatPanel?.classList.contains("active")) loadOwnChat();
       })
       .subscribe();
   }
@@ -7312,34 +7393,40 @@ async function loadOwnChat() {
     el.innerHTML = data.map(m => renderChatBubble(m, m.sender_type === "user")).join("");
     el.scrollTop = el.scrollHeight;
   }
+  await markCurrentChatRead();
 }
 
 async function sendChatMessage() {
   const input = document.getElementById("chatMessageInput");
   const text = input.value.trim();
   if (!text) return;
-  const { error } = await sb.from("chat_messages").insert({
+  const { data, error } = await sb.from("chat_messages").insert({
     user_id: currentUser.id,
     sender_type: "user",
     sender_email: currentUser.email,
     message: text
-  });
+  }).select("id").single();
   if (error) { alert("Fehler beim Senden: " + error.message); return; }
   input.value = "";
   loadOwnChat();
+  triggerChatEmailNotification(data?.id);
 }
 
 // ---- Chat: Admin-Seite ----
 async function renderAdminChatUserSelect() {
   const el = document.getElementById("adminChatUserSelect");
   const current = el.value;
-  const { data, error } = await sb.from("chat_messages").select("user_id, sender_email, sender_type").eq("sender_type", "user");
+  const { data, error } = await sb.from("chat_messages").select("user_id, sender_email, sender_type, read_at").eq("sender_type", "user");
   if (error) { console.error(error); return; }
   const users = {};
-  (data || []).forEach(r => { users[r.user_id] = r.sender_email || r.user_id; });
+  (data || []).forEach(r => {
+    if(!users[r.user_id]) users[r.user_id]={email:r.sender_email||r.user_id,unread:0};
+    if(!r.read_at) users[r.user_id].unread++;
+  });
   el.innerHTML = `<option value="">– auswählen –</option>` +
-    Object.entries(users).map(([uid, email]) => `<option value="${uid}">${escapeAttr(email)}</option>`).join("");
+    Object.entries(users).map(([uid, info]) => `<option value="${uid}">${escapeAttr(info.email)}${info.unread?` (${info.unread})`:""}</option>`).join("");
   if (Object.keys(users).some(uid => uid === current)) el.value = current;
+  await updateChatUnreadBadge();
 }
 
 async function loadAdminChat() {
@@ -7353,6 +7440,8 @@ async function loadAdminChat() {
   el.innerHTML = (data || []).map(m => renderChatBubble(m, m.sender_type === "admin")).join("") || `<div class="empty">Noch keine Nachrichten.</div>`;
   el.scrollTop = el.scrollHeight;
   inputRow.style.display = "flex";
+  await markCurrentChatRead(userId);
+  await renderAdminChatUserSelect();
 }
 
 async function sendAdminChatMessage() {
@@ -7361,15 +7450,16 @@ async function sendAdminChatMessage() {
   const input = document.getElementById("adminChatMessageInput");
   const text = input.value.trim();
   if (!text) return;
-  const { error } = await sb.from("chat_messages").insert({
+  const { data, error } = await sb.from("chat_messages").insert({
     user_id: userId,
     sender_type: "admin",
     sender_email: currentUser.email,
     message: text
-  });
+  }).select("id").single();
   if (error) { alert("Fehler beim Senden: " + error.message); return; }
   input.value = "";
   loadAdminChat();
+  triggerChatEmailNotification(data?.id);
 }
 
 async function calculateFeesForWallet(w, status, results) {
