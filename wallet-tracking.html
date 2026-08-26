@@ -1084,7 +1084,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 21:34 Uhr<br>
+    Version vom 26.08.2026, 21:38 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -3421,7 +3421,7 @@ const ADMIN_IDEAS = [
   {
     status: "in_progress",
     title: "Konfiguration aus HTML nach Supabase verlagern",
-    desc: "Umbau gestartet 26.08.2026. HAUPTTEIL ERLEDIGT, ABER NACH AUDIT NOCH NICHT GANZ ABSCHLIESSEN: public.chains ist Single Source of Truth für Chain-Stammdaten sowie Balance-, Gebühren-, Discovery-, Approval- und NFT-Provider/API-Konfiguration. predefined_tokens enthält Token-Metadaten und Preis-Zuordnung. loadAll() ist dynamisch; die früheren Chain-Maps für Fees/RPC/Alchemy/GoPlus sind entfernt. AUDIT 26.08.2026: DeFi-/DEX-Struktur umgesetzt: TLN/VOW ist nun als erstes generisches DeFi-Projekt modelliert; VOW-Referenz-Contracts liegen in defi_project_tokens, PancakeSwap-/Uniswap-Factorys in dex_configs und RPCs werden aus public.chains wiederverwendet. Die bestehenden Werte werden durch das Migrations-SQL automatisch übernommen. Strenger Audit läuft weiter: Chain-Farben wurden aus CSS nach public.chains.display_color verschoben; Wallet-EVM-Hinweis und Custom-Token-Chain-Auswahl sind jetzt DB-dynamisch. Noch offen: Routescan-URL-Fallback entfernen, Tron-Decimallogik bereinigen und die TLN/VOW-Spezial-UI langfristig zur generischen DeFi-Projektansicht machen. Globale App-/Service-Konfigurationen wie Supabase-Projekt, CoinGecko/GeckoTerminal/GoPlus, CDN-URLs, revoke.cash und IPFS-Gateway sind keine Chain-Stammdaten und müssen nicht zwingend in public.chains. Credentials/Keys (Alchemy, PublicNode, NodeReal) gehören ausdrücklich NICHT in eine normale öffentliche DB-Tabelle."
+    desc: "Umbau gestartet 26.08.2026. HAUPTTEIL ERLEDIGT, ABER NACH AUDIT NOCH NICHT GANZ ABSCHLIESSEN: public.chains ist Single Source of Truth für Chain-Stammdaten sowie Balance-, Gebühren-, Discovery-, Approval- und NFT-Provider/API-Konfiguration. predefined_tokens enthält Token-Metadaten und Preis-Zuordnung. loadAll() ist dynamisch; die früheren Chain-Maps für Fees/RPC/Alchemy/GoPlus sind entfernt. AUDIT 26.08.2026: DeFi-/DEX-Struktur umgesetzt: TLN/VOW ist nun als erstes generisches DeFi-Projekt modelliert; VOW-Referenz-Contracts liegen in defi_project_tokens, PancakeSwap-/Uniswap-Factorys in dex_configs und RPCs werden aus public.chains wiederverwendet. Die bestehenden Werte werden durch das Migrations-SQL automatisch übernommen. Strenger Audit läuft weiter: Chain-Farben wurden aus CSS nach public.chains.display_color verschoben; Wallet-EVM-Hinweis und Custom-Token-Chain-Auswahl sind jetzt DB-dynamisch. Noch offen: Routescan-URL-Fallback entfernen, Tron-Decimallogik bereinigen und die TLN/VOW-Spezial-UI langfristig zur generischen DeFi-Projektansicht machen. SOLANA-ABDECKUNG: Entdecken ist jetzt ohne Alchemy über getTokenAccountsByOwner umgesetzt; klassisches SPL Token Program und Token-2022 werden berücksichtigt. Der normale Solana-Wallet-Load liefert dabei auch die Tokenbestände, sodass als sicher hinzugefügte Solana-Mints im Wallet-Tracking nutzbar sind. Globale App-/Service-Konfigurationen wie Supabase-Projekt, CoinGecko/GeckoTerminal/GoPlus, CDN-URLs, revoke.cash und IPFS-Gateway sind keine Chain-Stammdaten und müssen nicht zwingend in public.chains. Credentials/Keys (Alchemy, PublicNode, NodeReal) gehören ausdrücklich NICHT in eine normale öffentliche DB-Tabelle."
   },
   {
     status: "in_progress",
@@ -3943,7 +3943,8 @@ let predefinedTokenCategory = {}; // Key "chain|adresse" -> "v_currency" | "lp_t
 // Adressen case-sensitiv normalisieren - EVM/Apertum-Adressen sind Hex (Gross-/Klein-
 // schreibung egal), Tron-Adressen sind Base58 und GROSS-/KLEINSCHREIBUNG IST RELEVANT.
 function normalizeAddress(address, chain) {
-  return chain === "tron" ? address.trim() : address.trim().toLowerCase();
+  const value = address.trim();
+  return CHAIN_CONFIG[chain]?.walletType === "evm" ? value.toLowerCase() : value;
 }
 
 async function refreshPredefinedTokens() {
@@ -4074,12 +4075,16 @@ async function addCustomSafeToken() {
   const address = normalizeAddress(rawAddress, chain);
   const label = document.getElementById("customLabel").value.trim();
 
-  const isValidEvm = address.startsWith("0x") && address.length === 42;
-  const isValidTron = chain === "tron" && address.startsWith("T") && address.length === 34;
-  if (!address || (!isValidEvm && !isValidTron)) {
-    alert(chain === "tron"
-      ? "Bitte eine gültige Tron-Adresse eingeben (beginnt mit T, 34 Zeichen)."
-      : "Bitte eine gültige Contract-Adresse eingeben (0x... mit 42 Zeichen).");
+  const walletType = CHAIN_CONFIG[chain]?.walletType;
+  const isValidEvm = walletType === "evm" && /^0x[0-9a-fA-F]{40}$/.test(address);
+  const isValidTron = walletType === "tron" && /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address);
+  const isValidSolana = walletType === "sol" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
+  if (!address || (!isValidEvm && !isValidTron && !isValidSolana)) {
+    alert(walletType === "tron"
+      ? "Bitte eine gültige Tron-Token-Adresse eingeben."
+      : walletType === "sol"
+        ? "Bitte eine gültige Solana Mint-Adresse eingeben."
+        : "Bitte eine gültige EVM-Contract-Adresse eingeben (0x... mit 40 Hex-Zeichen).");
     return;
   }
   if (customSafeTokens.some(t => t.chain === chain && t.address === address)) {
@@ -4125,7 +4130,7 @@ function renderCustomChainSelect(){
   const current=el.value;
   const chains=Object.keys(CHAIN_CONFIG).filter(c=>{
     const type=CHAIN_CONFIG[c]?.walletType;
-    return type==="evm" || type==="tron";
+    return type==="evm" || type==="tron" || type==="sol";
   });
   el.innerHTML=chains.map(c=>`<option value="${escapeAttr(c)}">${escapeAttr(CHAIN_META[c]?.label||c)}</option>`).join("");
   if(chains.includes(current))el.value=current;
@@ -4894,7 +4899,12 @@ async function fetchXrpBalance(chain, address) {
   return parseFloat(data.xrpBalance);
 }
 
-async function fetchSolanaBalance(chain, address) {
+const SOLANA_TOKEN_PROGRAMS = [
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+];
+
+async function solanaRpc(chain, method, params) {
   let base = configuredBalanceBase(chain);
   if (base.includes("publicnode.com") && PUBLICNODE_TOKEN && !base.endsWith(PUBLICNODE_TOKEN)) {
     base = base.replace(/\/+$/, "") + "/" + publicnodeToken(chain);
@@ -4902,11 +4912,65 @@ async function fetchSolanaBalance(chain, address) {
   const res = await fetch(base, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getBalance", params: [address] })
+    body: JSON.stringify({ jsonrpc:"2.0", id:1, method, params })
   });
+  if (!res.ok) throw new Error("Solana RPC HTTP " + res.status);
   const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  return data.result.value / 1e9;
+  if (data.error) throw new Error(data.error.message || "Solana RPC Fehler");
+  return data.result;
+}
+
+async function fetchSolanaAddressInfo(chain, address) {
+  const [balanceResult, ...tokenResults] = await Promise.all([
+    solanaRpc(chain, "getBalance", [address]),
+    ...SOLANA_TOKEN_PROGRAMS.map(programId =>
+      solanaRpc(chain, "getTokenAccountsByOwner", [
+        address,
+        { programId },
+        { encoding:"jsonParsed", commitment:"confirmed" }
+      ]).catch(e => {
+        console.warn("Solana Token-Programm konnte nicht gelesen werden:", programId, e);
+        return { value:[] };
+      })
+    )
+  ]);
+
+  const native = Number(balanceResult?.value || 0) / 1e9;
+  const byMint = new Map();
+
+  tokenResults.forEach(result => {
+    (result?.value || []).forEach(row => {
+      const info = row?.account?.data?.parsed?.info;
+      const mint = info?.mint;
+      const ta = info?.tokenAmount;
+      if (!mint || !ta) return;
+
+      const amount = ta.uiAmount !== null && ta.uiAmount !== undefined
+        ? Number(ta.uiAmount)
+        : Number(ta.uiAmountString || 0);
+      if (!Number.isFinite(amount) || amount <= 0) return;
+
+      const previous = byMint.get(mint);
+      if (previous) {
+        previous.amount += amount;
+      } else {
+        byMint.set(mint, {
+          address: mint,
+          symbol: mint.slice(0, 6) + "…" + mint.slice(-4),
+          name: null,
+          decimals: Number(ta.decimals || 0),
+          amount
+        });
+      }
+    });
+  });
+
+  return { native, tokens:[...byMint.values()] };
+}
+
+async function fetchSolanaBalance(chain, address) {
+  const result = await solanaRpc(chain, "getBalance", [address]);
+  return Number(result?.value || 0) / 1e9;
 }
 
 // ---- Tron (native TRX, vorerst ohne TRC20-Token) ----
@@ -5033,9 +5097,11 @@ async function loadWalletChain(wallet, chain, preserveCachedOnError = false) {
       case "xrpscan":
         native = await fetchXrpBalance(chain, address);
         break;
-      case "solana_rpc":
-        native = await fetchSolanaBalance(chain, address);
+      case "solana_rpc": {
+        const r = await fetchSolanaAddressInfo(chain, address);
+        native = r.native; tokens = r.tokens || [];
         break;
+      }
       case "trongrid": {
         const r = await fetchTronAddressInfo(chain, address);
         native = r.native; tokens = r.tokens || [];
@@ -7761,7 +7827,7 @@ function renderDiscoveryResults(findings) {
     }
     return `<div class="custom-token-row" style="align-items:flex-start;${scam ? 'border-color:var(--danger)' : ''}">
       <div>
-        <div><span class="dot ${meta.dot}" style="margin-right:6px"></span>${escapeAttr(f.symbol)}${f.name && f.name !== f.symbol ? ' <span class="note" style="display:inline">(' + escapeAttr(f.name) + ')</span>' : ''} · ${fmt(f.amount)} · <span class="note" style="display:inline">${escapeAttr(f.walletLabel)}</span></div>
+        <div><span class="dot" style="margin-right:6px;background:${escapeAttr(CHAIN_CONFIG[f.chain]?.displayColor || "#6b7280")}"></span>${escapeAttr(f.symbol)}${f.name && f.name !== f.symbol ? ' <span class="note" style="display:inline">(' + escapeAttr(f.name) + ')</span>' : ''} · ${fmt(f.amount)} · <span class="note" style="display:inline">${escapeAttr(f.walletLabel)}</span></div>
         <div class="meta">${meta.label} · ${f.address}</div>
         <div style="margin-top:6px">${riskHtml}</div>
       </div>
