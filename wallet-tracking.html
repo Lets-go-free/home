@@ -419,9 +419,17 @@
       <div class="tab-nav-group">
         <span class="tab-nav-group-label">💬 Support &amp; Info</span>
         <div class="tab-nav">
-          <button class="tab-btn" data-tab="chat" onclick="showTab('chat')">💬 Chat</button>
-          <button class="tab-btn" id="adminTabBtn" data-tab="admin" onclick="showTab('admin')" style="display:none">⚙️ Admin</button>
+          <button class="tab-btn" id="userChatTabBtn" data-tab="chat" onclick="showTab('chat')">💬 Chat</button>
+          <button class="tab-btn" id="adminChatTabBtn" data-tab="chat" onclick="showTab('chat')" style="display:none">💬 Admin-Chat</button>
           <button class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
+        </div>
+      </div>
+      <div class="tab-nav-group" id="adminNavGroup" style="display:none">
+        <span class="tab-nav-group-label">⚙️ Admin-Bereich</span>
+        <div class="tab-nav">
+          <button class="tab-btn" data-tab="admin" data-open-admin="customtokens" onclick="showTab('admin');showAdminTab('customtokens')">Eigene sichere Token</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="chains" onclick="showTab('admin');showAdminTab('chains')">⛓️ Chains</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="ideas" onclick="showTab('admin');showAdminTab('ideas')">💡 Ideen / Umbau</button>
         </div>
       </div>
       <div class="tab-nav-group" id="defiProjectsNavGroup" style="display:none">
@@ -775,7 +783,7 @@
     </div>
 
     <div id="tab-chat" class="tab-panel">
-      <div class="custom-token-card">
+      <div id="userChatView" class="custom-token-card">
         <div class="note" style="margin-bottom:12px">Direkter Draht zum Support – Nachrichten hier sind nur für dich und die Admins sichtbar.</div>
         <div id="chatMessagesContainer" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding:4px"></div>
         <div style="display:flex;gap:8px">
@@ -784,16 +792,23 @@
         </div>
         <button class="secondary" style="margin-top:10px" onclick="loadOwnChat()">🔄 Aktualisieren</button>
       </div>
+      <div id="adminChatView" class="custom-token-card" style="display:none">
+        <div class="note" style="margin-bottom:14px">Support-Konversationen aller User. Es werden User angezeigt, die bereits mindestens eine Nachricht geschrieben haben.</div>
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Konversation</span>
+            <select id="adminChatUserSelect" onchange="loadAdminChat()"><option value="">– auswählen –</option></select>
+          </div>
+        </div>
+        <div id="adminChatMessagesContainer" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding:4px"></div>
+        <div id="adminChatInputRow" style="display:none;gap:8px">
+          <input type="text" id="adminChatMessageInput" placeholder="Antwort schreiben..." style="flex:1" onkeydown="if(event.key==='Enter') sendAdminChatMessage()" />
+          <button onclick="sendAdminChatMessage()">Senden</button>
+        </div>
+      </div>
     </div>
 
     <div id="tab-admin" class="tab-panel">
-      <div class="tab-nav" style="margin-top:0">
-        <button class="tab-btn active" data-admin-tab="customtokens" onclick="showAdminTab('customtokens')">Eigene sichere Token (alle User)</button>
-        <button class="tab-btn" data-admin-tab="chains" onclick="showAdminTab('chains')">⛓️ Chains</button>
-        <button class="tab-btn" data-admin-tab="ideas" onclick="showAdminTab('ideas')">💡 Ideen</button>
-        <button class="tab-btn" data-admin-tab="chats" onclick="showAdminTab('chats')">💬 Chats</button>
-      </div>
-
       <div id="admintab-customtokens" class="admin-tab-panel active">
         <div class="note" style="margin-bottom:12px">
           Zeigt die von Usern selbst erfassten "eigenen sicheren Token" – so siehst du, was Kunden zusätzlich eintragen,
@@ -833,22 +848,6 @@
         <div id="adminIdeasList"></div>
       </div>
 
-      <div id="admintab-chats" class="admin-tab-panel">
-        <div class="note" style="margin-bottom:14px">Zeigt alle Konversationen, in denen bereits mindestens eine Nachricht geschrieben wurde.</div>
-        <div class="field-grid" style="margin-bottom:14px">
-          <div>
-            <span class="field-label">Konversation</span>
-            <select id="adminChatUserSelect" onchange="loadAdminChat()">
-              <option value="">– auswählen –</option>
-            </select>
-          </div>
-        </div>
-        <div id="adminChatMessagesContainer" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding:4px"></div>
-        <div id="adminChatInputRow" style="display:none;gap:8px">
-          <input type="text" id="adminChatMessageInput" placeholder="Antwort schreiben..." style="flex:1" onkeydown="if(event.key==='Enter') sendAdminChatMessage()" />
-          <button onclick="sendAdminChatMessage()">Senden</button>
-        </div>
-      </div>
     </div>
 
     <div id="tab-help" class="tab-panel">
@@ -1025,9 +1024,11 @@
   <div id="welcomeModal" class="wt-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
     <div class="wt-modal">
       <h2 id="welcomeTitle">👋 Willkommen beim Wallet-Tracking</h2>
-      <p>Diese Seite bündelt deine Wallet-Bestände über mehrere Blockchains und ergänzt sie um Kurse, Gebühren, NFTs, Token-Freigaben und weitere Analysen.</p>
-      <p>Aus Sicherheitsgründen werden im Wallet-Tracking nur vordefinierte oder von dir selbst als sicher erfasste Token angezeigt. Viele Bestands- und Kursdaten werden automatisch aktualisiert; aufwendige historische Abfragen startest du bewusst manuell.</p>
-      <p>Unter <strong>❓ Hilfe</strong> findest du eine Übersicht darüber, was die einzelnen Bereiche machen und welche Daten automatisch oder manuell aktualisiert werden.</p>
+      <p>Schön, dass du da bist. Dieses Tool hilft dir dabei, deine Wallets und Krypto-Bestände übersichtlich an einem Ort im Blick zu behalten.</p>
+      <p>Unter <strong>❓ Hilfe</strong> findest du weitere Informationen zu den einzelnen Funktionen und zur Bedienung.</p>
+      <p><strong>Viel Spass mit dem Tool! 😊</strong></p>
+      <p>Hast du eine Idee, wie wir das Wallet-Tracking noch besser oder hilfreicher machen können? Schreib mir deine Wünsche und Ideen gerne direkt über die <strong>💬 Chat-Funktion</strong>.</p>
+      <p>Und wenn dir das Tool gefällt und du seine Weiterentwicklung unterstützen möchtest, freue ich mich natürlich über eine freiwillige <strong>Krypto-Spende</strong>. Unter <strong>💛 Unterstützen</strong> findest du alle Informationen dazu.</p>
       <div class="wt-modal-actions">
         <button onclick="welcomeGoToHelp()">Zur Hilfe</button>
         <button class="secondary" onclick="closeWelcomeModal()">Später</button>
@@ -1058,7 +1059,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 19:42 Uhr<br>
+    Version vom 26.08.2026, 20:18 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -2949,7 +2950,9 @@ async function onLoggedIn(session) {
   document.getElementById("appContent").style.display = "block";
 
   isAdmin = await checkIsAdmin();
-  document.getElementById("adminTabBtn").style.display = isAdmin ? "inline-block" : "none";
+  document.getElementById("adminNavGroup").style.display = isAdmin ? "block" : "none";
+  document.getElementById("userChatTabBtn").style.display = isAdmin ? "none" : "inline-block";
+  document.getElementById("adminChatTabBtn").style.display = isAdmin ? "inline-block" : "none";
   document.getElementById("feesTabBtn").style.display = "inline-block";
   document.getElementById("adminAddPredefinedTokenCard").style.display = isAdmin ? "block" : "none";
   if (isAdmin) {
@@ -2972,7 +2975,7 @@ async function onLoggedIn(session) {
   renderChartChainSelect();
   renderAllocWalletSelect();
   renderResults();
-  activeDiscoveryChains = new Set(DISCOVERY_CHAINS);
+  activeDiscoveryChains = new Set(discoveryChains());
   renderDiscoveryChainFilter();
   renderDiscoveryWalletSelect();
   await loadDiscoveryCacheFromDb();
@@ -2980,10 +2983,10 @@ async function onLoggedIn(session) {
   renderFeesChainFilter();
   renderFeesWalletSelect();
   await renderFeesSummary();
-  activeApprovalsChains = new Set(APPROVALS_CHAINS);
+  activeApprovalsChains = new Set(approvalsChains());
   renderApprovalsChainFilter();
   renderApprovalsWalletSelect();
-  activeNftChains = new Set(NFT_CHAINS);
+  activeNftChains = new Set(nftChains());
   renderNftChainFilter();
   renderNftWalletSelect();
   await loadNftCacheFromDb();
@@ -3036,8 +3039,14 @@ function showTab(name) {
   const panel = document.getElementById("tab-" + name);
   if (panel) panel.classList.add("active");
   if (name === "predefined") ensurePredefinedNames();
-  if (name === "admin") showAdminTab("customtokens");
-  if (name === "chat") loadOwnChat();
+  if (name === "admin" && !document.querySelector(".admin-tab-panel.active")) showAdminTab("customtokens");
+  if (name === "chat") {
+    const userView = document.getElementById("userChatView");
+    const adminView = document.getElementById("adminChatView");
+    if (userView) userView.style.display = isAdmin ? "none" : "block";
+    if (adminView) adminView.style.display = isAdmin ? "block" : "none";
+    if (isAdmin) renderAdminChatUserSelect(); else loadOwnChat();
+  }
   if (name === "nfts") onNftWalletChange();
   if (name === "fees") { renderFeesSummary(); onFeesWalletChange(); }
   if (name === "discovery") {
@@ -3052,12 +3061,12 @@ function showTab(name) {
 function showAdminTab(name) {
   document.querySelectorAll(".admin-tab-panel").forEach(p => p.classList.remove("active"));
   document.querySelectorAll("[data-admin-tab]").forEach(b => b.classList.toggle("active", b.dataset.adminTab === name));
+  document.querySelectorAll("[data-open-admin]").forEach(b => b.classList.toggle("active", b.dataset.openAdmin === name));
   const panel = document.getElementById("admintab-" + name);
   if (panel) panel.classList.add("active");
   if (name === "customtokens") renderAdminCustomTokens();
   if (name === "chains") loadAdminChains();
   if (name === "ideas") renderAdminIdeas();
-  if (name === "chats") renderAdminChatUserSelect();
 }
 
 
@@ -3074,6 +3083,9 @@ const ADMIN_CHAIN_FIELDS = [
   {k:"rpc_url", l:"RPC-/REST-Endpunkt", critical:true, type:"text", cls:"xwide-input"},
   {k:"balance_provider", l:"Balance-Provider", critical:true, type:"text"},
   {k:"fees_enabled", l:"Gebühren aktiv", critical:true, type:"checkbox"},
+  {k:"discovery_enabled", l:"Discovery aktiv", critical:false, type:"checkbox"},
+  {k:"approvals_enabled", l:"Freigaben aktiv", critical:false, type:"checkbox"},
+  {k:"nft_enabled", l:"NFT aktiv", critical:false, type:"checkbox"},
   {k:"fee_provider", l:"Gebühren-Provider", critical:true, type:"text"},
   {k:"fee_api_base", l:"Gebühren API-Basis", critical:true, type:"text", cls:"xwide-input"},
   {k:"fee_finality_blocks", l:"Fee Finality", critical:true, type:"number"},
@@ -3191,7 +3203,7 @@ const ADMIN_IDEAS = [
   {
     status: "in_progress",
     title: "Konfiguration aus HTML nach Supabase verlagern",
-    desc: "Umbau gestartet 26.08.2026. ZIEL: neue Chains/Token und Preis-Zuordnungen möglichst ohne HTML-Änderung verwalten. PHASE 1b umgesetzt: public.chains ist jetzt Single Source of Truth für Chain-Label, Native-Symbol, CoinGecko-ID, Wallet-Typ, Explorer-URL und GeckoTerminal-Netzwerk. Der HTML-Fallback für diese Chain-Metadaten wurde vollständig entfernt; bei DB-/Konfigurationsfehler startet das Dashboard bewusst nicht. predefined_tokens um symbol, name, coingecko_id, decimals, price_source und enabled erweitert; CoinGecko-Zuordnung der vordefinierten Token läuft nun über chain+Contract statt Kürzel. PHASE 2 in Umsetzung: Admin-Tab „Chains“ vorhanden. Gebühren-Chain-Auswahl ist jetzt DB-gesteuert über fees_enabled + fee_provider; EVM-Gebühren verwenden evm_chain_id, fee_api_base, Finality und Overlap aus public.chains. EVM-Balance-/RPC-Zugriffe verwenden rpc_url aus public.chains. Feste FEES_CHAINS-, Routescan-, Blockscout-, Finality-/Overlap- und EVM-RPC-Maps wurden entfernt. NOCH OFFEN: Discovery/Approvals/NFT-Fähigkeiten und nicht-EVM Balance-Endpunkte datengetrieben machen; danach DEX-/TLN-VOW-Infrastruktur auslagern. API-Secrets bleiben ausdrücklich ausserhalb normaler DB-Tabellen."
+    desc: "Umbau gestartet 26.08.2026. ZIEL: neue Chains/Token und Preis-Zuordnungen möglichst ohne HTML-Änderung verwalten. PHASE 1b umgesetzt: public.chains ist jetzt Single Source of Truth für Chain-Label, Native-Symbol, CoinGecko-ID, Wallet-Typ, Explorer-URL und GeckoTerminal-Netzwerk. Der HTML-Fallback für diese Chain-Metadaten wurde vollständig entfernt; bei DB-/Konfigurationsfehler startet das Dashboard bewusst nicht. predefined_tokens um symbol, name, coingecko_id, decimals, price_source und enabled erweitert; CoinGecko-Zuordnung der vordefinierten Token läuft nun über chain+Contract statt Kürzel. PHASE 2 in Umsetzung: Admin-Tab „Chains“ vorhanden. Gebühren-Chain-Auswahl ist jetzt DB-gesteuert über fees_enabled + fee_provider; EVM-Gebühren verwenden evm_chain_id, fee_api_base, Finality und Overlap aus public.chains. EVM-Balance-/RPC-Zugriffe verwenden rpc_url aus public.chains. Feste FEES_CHAINS-, Routescan-, Blockscout-, Finality-/Overlap- und EVM-RPC-Maps wurden entfernt. Discovery/Approvals/NFT-Chain-Fähigkeiten werden jetzt ebenfalls über public.chains gesteuert. NOCH OFFEN: die zugehörigen Provider-/API-Endpunkte vollständig aus den jeweiligen Funktionsblöcken auslagern, nicht-EVM Balance-Endpunkte datengetrieben machen; danach DEX-/TLN-VOW-Infrastruktur auslagern. API-Secrets bleiben ausdrücklich ausserhalb normaler DB-Tabellen."
   },
   { status: "open", title: "Steuer-Report (Schweiz)", desc: "Stichtag-Snapshot 31.12. + druckbarer PDF/CSV-Export (Wallet, Chain, Token, Bestand, Kurs, Wert CHF) für die Steuererklärung. Läuft über manuell/automatisch erstellte Snapshots statt eigener On-Chain-Nachrechnung, damit alle Chains gleich behandelt werden." },
   { status: "open", title: "Gewinn/Verlust statt nur Bestand", desc: "Einstandspreis-Feld bzw. Transaktions-/Kostenbasis-Konzept definieren, um Performance (Plus/Minus, %) statt nur heutigen Bestand zu zeigen." },
@@ -3511,7 +3523,7 @@ let chainConfigStatus = { source: "nicht geladen", count: 0, loadedAt: null };
 
 async function loadChainConfigFromDb() {
   const { data, error } = await sb.from("chains")
-    .select("chain_key,label,native_symbol,coingecko_id,wallet_type,explorer_url_template,geckoterminal_network,sort_order,enabled,evm_chain_id,rpc_url,balance_provider,fee_provider,fee_api_base,fee_finality_blocks,fee_overlap_blocks,fees_enabled")
+    .select("chain_key,label,native_symbol,coingecko_id,wallet_type,explorer_url_template,geckoterminal_network,sort_order,enabled,evm_chain_id,rpc_url,balance_provider,fee_provider,fee_api_base,fee_finality_blocks,fee_overlap_blocks,fees_enabled,discovery_enabled,approvals_enabled,nft_enabled")
     .eq("enabled", true)
     .order("sort_order", { ascending: true });
 
@@ -3548,7 +3560,10 @@ async function loadChainConfigFromDb() {
       feeApiBase: row.fee_api_base || null,
       feeFinalityBlocks: row.fee_finality_blocks == null ? null : Number(row.fee_finality_blocks),
       feeOverlapBlocks: row.fee_overlap_blocks == null ? null : Number(row.fee_overlap_blocks),
-      feesEnabled: row.fees_enabled === true
+      feesEnabled: row.fees_enabled === true,
+      discoveryEnabled: row.discovery_enabled === true,
+      approvalsEnabled: row.approvals_enabled === true,
+      nftEnabled: row.nft_enabled === true
     };
     NATIVE_SYMBOL[key] = row.native_symbol || key.toUpperCase();
     if (row.geckoterminal_network) {
@@ -5649,13 +5664,13 @@ function renderResults() {
 // ============================================================
 
 // ---- Discovery: Wallet-Pflichtauswahl + Chain-Filter ----
-const DISCOVERY_CHAINS = ["apertum", "tron", "eth", "bsc", "matic", "arb", "base", "avax"];
-let activeDiscoveryChains = new Set(DISCOVERY_CHAINS);
+function discoveryChains() { return Object.keys(CHAIN_CONFIG).filter(c => CHAIN_CONFIG[c]?.discoveryEnabled === true); }
+let activeDiscoveryChains = new Set();
 
 function renderDiscoveryChainFilter() {
   const el = document.getElementById("discoveryChainContainer");
   if (!el) return;
-  el.innerHTML = DISCOVERY_CHAINS.map(chain => {
+  el.innerHTML = discoveryChains().map(chain => {
     const meta = CHAIN_META[chain];
     const checked = activeDiscoveryChains.has(chain) ? "checked" : "";
     return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
@@ -5671,7 +5686,7 @@ function toggleDiscoveryChain(chain, isChecked) {
 }
 
 function setAllDiscoveryChains(selectAll) {
-  activeDiscoveryChains = selectAll ? new Set(DISCOVERY_CHAINS) : new Set();
+  activeDiscoveryChains = selectAll ? new Set(discoveryChains()) : new Set();
   renderDiscoveryChainFilter();
 }
 
@@ -6138,13 +6153,13 @@ async function fetchApertumFees(address,onProgress){
 }
 
 // ---- Token-Approval-Checker (nur lesend, Revoke passiert extern über revoke.cash) ----
-const APPROVALS_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax"];
-let activeApprovalsChains = new Set(APPROVALS_CHAINS);
+function approvalsChains() { return Object.keys(CHAIN_CONFIG).filter(c => CHAIN_CONFIG[c]?.approvalsEnabled === true); }
+let activeApprovalsChains = new Set();
 
 function renderApprovalsChainFilter() {
   const el = document.getElementById("approvalsChainContainer");
   if (!el) return;
-  el.innerHTML = APPROVALS_CHAINS.map(chain => {
+  el.innerHTML = approvalsChains().map(chain => {
     const meta = CHAIN_META[chain];
     const checked = activeApprovalsChains.has(chain) ? "checked" : "";
     return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
@@ -6158,7 +6173,7 @@ function toggleApprovalsChain(chain, isChecked) {
   else activeApprovalsChains.delete(chain);
 }
 function setAllApprovalsChains(selectAll) {
-  activeApprovalsChains = selectAll ? new Set(APPROVALS_CHAINS) : new Set();
+  activeApprovalsChains = selectAll ? new Set(approvalsChains()) : new Set();
   renderApprovalsChainFilter();
 }
 
@@ -6268,7 +6283,7 @@ async function runApprovalsCheck() {
   // Altes Cache-Ergebnis während des Scans sichtbar lassen.
   let allApprovals = [];
 
-  for (const chain of APPROVALS_CHAINS.filter(c => activeApprovalsChains.has(c))) {
+  for (const chain of approvalsChains().filter(c => activeApprovalsChains.has(c))) {
     status.textContent = `Prüfe Freigaben für ${w.label} auf ${CHAIN_META[chain].label}...`;
     try {
       const found = await fetchApprovalsForChain(chain, w.evm, (page) => {
@@ -6333,13 +6348,13 @@ function renderApprovalsResults(wallet, approvals) {
 }
 
 // ---- NFTs (nur auf Knopfdruck, via Alchemy) ----
-const NFT_CHAINS = ["eth", "bsc", "matic", "arb", "base", "avax", "apertum"];
-let activeNftChains = new Set(NFT_CHAINS);
+function nftChains() { return Object.keys(CHAIN_CONFIG).filter(c => CHAIN_CONFIG[c]?.nftEnabled === true); }
+let activeNftChains = new Set();
 
 function renderNftChainFilter() {
   const el = document.getElementById("nftChainContainer");
   if (!el) return;
-  el.innerHTML = NFT_CHAINS.map(chain => {
+  el.innerHTML = nftChains().map(chain => {
     const meta = CHAIN_META[chain];
     const checked = activeNftChains.has(chain) ? "checked" : "";
     return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
@@ -6353,7 +6368,7 @@ function toggleNftChain(chain, isChecked) {
   else activeNftChains.delete(chain);
 }
 function setAllNftChains(selectAll) {
-  activeNftChains = selectAll ? new Set(NFT_CHAINS) : new Set();
+  activeNftChains = selectAll ? new Set(nftChains()) : new Set();
   renderNftChainFilter();
 }
 
@@ -6528,7 +6543,7 @@ async function runNftLoad() {
 
   for (const w of targetWallets) {
     let walletNfts = [];
-    for (const chain of NFT_CHAINS.filter(c => activeNftChains.has(c))) {
+    for (const chain of nftChains().filter(c => activeNftChains.has(c))) {
       status.textContent = `Lade NFTs für ${w.label} auf ${CHAIN_META[chain].label}...`;
       try {
         const found = chain === "apertum"
@@ -6989,7 +7004,7 @@ function onDiscoveryWalletChange() {
   if (discoveryCache) {
     lastDiscoveryFindings = Array.isArray(discoveryCache.findings) ? discoveryCache.findings : [];
     if (Array.isArray(discoveryCache.selected_chains) && discoveryCache.selected_chains.length > 0) {
-      activeDiscoveryChains = new Set(discoveryCache.selected_chains.filter(c => DISCOVERY_CHAINS.includes(c)));
+      activeDiscoveryChains = new Set(discoveryCache.selected_chains.filter(c => discoveryChains().includes(c)));
       renderDiscoveryChainFilter();
     }
   } else {
