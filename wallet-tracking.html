@@ -429,6 +429,7 @@
         <div class="tab-nav">
           <button class="tab-btn" data-tab="admin" data-open-admin="customtokens" onclick="showTab('admin');showAdminTab('customtokens')">Eigene sichere Token</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="chains" onclick="showTab('admin');showAdminTab('chains')">⛓️ Chains</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="coverage" onclick="showTab('admin');showAdminTab('coverage')">📋 Chain-Abdeckung</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="defiprojects" onclick="showTab('admin');showAdminTab('defiprojects')">🏦 DeFi-Projekte</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="dex" onclick="showTab('admin');showAdminTab('dex')">🔄 DEX</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="ideas" onclick="showTab('admin');showAdminTab('ideas')">💡 Ideen / Umbau</button>
@@ -849,6 +850,17 @@
         <div id="adminChainsList"></div>
       </div>
 
+      <div id="admintab-coverage" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">
+          Live-Übersicht der Funktionsabdeckung aus <code>public.chains</code>. Die Anzeige wird aus den aktivierten Flags und konfigurierten Providern erzeugt – keine separate Chain-Liste im HTML.
+          <strong>✅</strong> = aktiviert und im Frontend unterstützt, <strong>⚠️</strong> = aktiviert, aber Provider/Implementierung unvollständig, <strong>❌</strong> = deaktiviert bzw. für diese Chain nicht vorgesehen.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button class="secondary" onclick="renderAdminChainCoverage()">🔄 Aktualisieren</button>
+        </div>
+        <div id="adminChainCoverageList"></div>
+      </div>
+
       <div id="admintab-defiprojects" class="admin-tab-panel">
         <div class="note" style="margin-bottom:14px">
           Allgemeine DeFi-Projektverwaltung. TLN/VOW ist nur das erste Projekt. Projekt-Referenz-Token werden separat nach Chain und Rolle gepflegt.
@@ -1091,7 +1103,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 21:02 Uhr<br>
+    Version vom 26.08.2026, 21:21 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -3083,6 +3095,7 @@ function showAdminTab(name) {
   if (panel) panel.classList.add("active");
   if (name === "customtokens") renderAdminCustomTokens();
   if (name === "chains") loadAdminChains();
+  if (name === "coverage") renderAdminChainCoverage();
   if (name === "defiprojects") loadAdminDefiProjects();
   if (name === "dex") loadAdminDexConfigs();
   if (name === "ideas") renderAdminIdeas();
@@ -3090,6 +3103,42 @@ function showAdminTab(name) {
 
 
 
+
+function coverageCell(enabled, provider, implementedProviders, notApplicable=false) {
+  if (notApplicable) return `<span class="badge">— nicht vorgesehen</span>`;
+  if (!enabled) return `<span class="badge danger">❌ deaktiviert</span>${provider ? `<div class="note">${escapeAttr(provider)}</div>` : ""}`;
+  const ok = !!provider && implementedProviders.includes(provider);
+  return `${ok ? '<span class="badge safe">✅ aktiv</span>' : '<span class="badge warn">⚠️ prüfen</span>'}<div class="note">${escapeAttr(provider || "kein Provider")}</div>`;
+}
+
+function renderAdminChainCoverage(){
+  if(!isAdmin)return;
+  const el=document.getElementById("adminChainCoverageList");
+  if(!el)return;
+  const balanceProviders=["rpc","evm_rpc","blockstream","mempool","xrpscan","solana_rpc","solana_publicnode","trongrid","akash_rest","apertum_explorer","blockscout"];
+  const feeProviders=["routescan","nodereal","blockscout","xrpscan","solana_publicnode","apertum_explorer","mempool","tronscan"];
+  const discoveryProviders=["alchemy","wallet_data"];
+  const approvalProviders=["goplus","blockscout"];
+  const nftProviders=["alchemy","blockscout"];
+  const rows=Object.keys(CHAIN_CONFIG).sort((a,b)=>(CHAIN_CONFIG[a]?.sortOrder||100)-(CHAIN_CONFIG[b]?.sortOrder||100)).map(chain=>{
+    const c=CHAIN_CONFIG[chain]||{}, meta=CHAIN_META[chain]||{};
+    const wt=c.walletType||"";
+    const approvalsNA=["btc","bitcoin","xrp","solana","tron","akash"].includes(wt);
+    const nftNA=["btc","bitcoin","akash"].includes(wt);
+    return `<tr>
+      <td class="sticky-col-1"><strong>${escapeAttr(chain)}</strong></td>
+      <td class="sticky-col-2">${escapeAttr(meta.label||chain)}</td>
+      <td>${coverageCell(true,c.balanceProvider,balanceProviders)}</td>
+      <td>${coverageCell(c.feesEnabled,c.feeProvider,feeProviders)}</td>
+      <td>${coverageCell(c.discoveryEnabled,c.discoveryProvider,discoveryProviders,wt==="btc"||wt==="bitcoin")}</td>
+      <td>${coverageCell(c.approvalsEnabled,c.approvalsProvider,approvalProviders,approvalsNA)}</td>
+      <td>${coverageCell(c.nftEnabled,c.nftProvider,nftProviders,nftNA)}</td>
+    </tr>`;
+  }).join("");
+  el.innerHTML=`<div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1150px"><thead><tr>
+    <th class="sticky-col-1">Chain-Key</th><th class="sticky-col-2">Anzeigename</th><th>Bestände</th><th>Gebühren</th><th>Entdecken</th><th>Freigaben</th><th>NFTs</th>
+  </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
 
 function adminSimpleInput(value,key,type="text",extra=""){
   if(type==="checkbox") return `<input data-field="${key}" type="checkbox" ${value!==false?"checked":""}>`;
@@ -6357,6 +6406,49 @@ async function scanCachedEvmFees(chain, wallet, onProgress) {
 // Alle unterstützten EVM-Gebühren laufen jetzt ohne Alchemy über inkrementelle Provider.
 
 // XRP: xrpscan.com liefert die Gebühr direkt in Drops.
+async function fetchBitcoinFees(chain,address,onProgress){
+  const base=(configuredFeeBase(chain)||"https://mempool.space/api").replace(/\/$/,"");
+  let after="", page=0, totalSat=0n, txCount=0;
+  const seen=new Set();
+  while(true){
+    page++; if(onProgress)onProgress(page);
+    const url=`${base}/address/${encodeURIComponent(address)}/txs/chain${after?`/${encodeURIComponent(after)}`:""}`;
+    const res=await fetch(url); if(!res.ok)throw new Error(`Bitcoin Gebühren-API HTTP ${res.status}`);
+    const txs=await res.json(); if(!Array.isArray(txs)||!txs.length)break;
+    for(const tx of txs){
+      if(!tx?.txid||seen.has(tx.txid))continue; seen.add(tx.txid);
+      const outgoing=(tx.vin||[]).some(v=>String(v?.prevout?.scriptpubkey_address||"")===String(address));
+      if(!outgoing)continue;
+      totalSat+=bigIntSafe(tx.fee); txCount++;
+    }
+    if(txs.length<25)break;
+    after=txs[txs.length-1]?.txid||""; if(!after)break;
+    if(page>20000)throw new Error("Bitcoin Pagination Sicherheitslimit erreicht");
+  }
+  return {totalFee:Number(totalSat)/1e8,txCount,source:"mempool.space"};
+}
+
+async function fetchTronFees(chain,address,onProgress){
+  const base=(configuredFeeBase(chain)||"https://apilist.tronscanapi.com/api").replace(/\/$/,"");
+  let start=0,page=0,totalSun=0n,txCount=0;
+  const limit=50;
+  while(true){
+    page++; if(onProgress)onProgress(page);
+    const qs=new URLSearchParams({sort:"-timestamp",count:"true",limit:String(limit),start:String(start),fromAddress:address,confirm:"0"});
+    const res=await fetch(`${base}/transaction?${qs}`); if(!res.ok)throw new Error(`TRON Gebühren-API HTTP ${res.status}`);
+    const json=await res.json(); const txs=Array.isArray(json?.data)?json.data:[];
+    for(const tx of txs){
+      const fee=tx?.cost?.fee ?? tx?.fee ?? 0;
+      totalSun+=bigIntSafe(fee); txCount++;
+    }
+    if(txs.length<limit)break;
+    start+=limit;
+    // Tronscan begrenzt start+limit auf 10'000. Nicht stillschweigend unvollständig rechnen.
+    if(start+limit>10000)throw new Error("TRON-Historie überschreitet das 10'000-Transaktionslimit von Tronscan; vollständige Gebührenberechnung benötigt eine zeitbasierte Pagination-Erweiterung.");
+  }
+  return {totalFee:Number(totalSun)/1e6,txCount,source:"Tronscan"};
+}
+
 async function fetchXrpFees(chain, address, onProgress) {
   let marker=null,totalFeeDrops=0,txCount=0,page=0;
   do {
@@ -7177,6 +7269,12 @@ async function calculateFeesForWallet(w, status, results) {
         if(!feeScanAllowed(cache)){
           const next=feeNextAllowedDate(cache);
           r={totalFee:Number(cache.total_fee_native||0),txCount:Number(cache.tx_count||0),cached:true,cachedAt:cache.last_scanned_at,source:cache.data_source,note:`Nächste Aktualisierung ab ${next.toLocaleString("de-CH")}`};
+        } else if(provider==="mempool"){
+          if(!w.btc){results.push({chain,error:"Keine Bitcoin-Adresse bei dieser Wallet erfasst"});continue;}
+          r=await fetchBitcoinFees(chain,w.btc,onProgress);
+        } else if(provider==="tronscan"){
+          if(!w.tron){results.push({chain,error:"Keine TRON-Adresse bei dieser Wallet erfasst"});continue;}
+          r=await fetchTronFees(chain,w.tron,onProgress);
         } else if(provider==="xrpscan"){
           if(!w.xrp){results.push({chain,error:"Keine XRP-Adresse bei dieser Wallet erfasst"});continue;}
           r=await fetchXrpFees(chain,w.xrp,onProgress);
