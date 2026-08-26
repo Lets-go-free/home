@@ -281,7 +281,18 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="app-hero"><div><h1>Wallet-Tracking inkl. Token-Übersicht und Kurse</h1><div class="sub">Wallet-Bestände, Token, Kurse, DeFi-Projekte und Analysen an einem Ort.</div></div><div class="app-hero-mark">WT</div></div>
+  <div class="app-hero">
+    <div><h1>Wallet-Tracking inkl. Token-Übersicht und Kurse</h1><div class="sub">Wallet-Bestände, Token, Kurse, DeFi-Projekte und Analysen an einem Ort.</div></div>
+    <div id="heroUserActions" style="display:none;min-width:280px">
+      <div class="action-row" style="justify-content:flex-end;align-items:center;margin:0 0 10px;gap:12px">
+        <span id="userEmailLabel" class="note" style="margin:0;font-size:1rem"></span>
+        <button class="secondary" style="font-size:1rem;padding:10px 16px" onclick="logout()">Logout</button>
+      </div>
+      <div class="action-row" style="justify-content:flex-end;margin:0">
+        <button class="secondary" style="font-size:1.05rem;padding:11px 18px" onclick="openDonationModal()">💛 Unterstützen</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Login-Bereich: sichtbar solange niemand eingeloggt ist -->
   <div id="authGate" class="custom-token-card">
@@ -300,14 +311,6 @@
 
   <!-- App-Inhalt: nur sichtbar, wenn eingeloggt -->
   <div id="appContent" style="display:none">
-
-    <div class="action-row" style="justify-content:space-between;align-items:center">
-      <span id="userEmailLabel" class="note" style="margin:0"></span>
-      <div class="action-row" style="margin:0">
-        <button class="secondary" onclick="openDonationModal()">💛 Unterstützen</button>
-        <button class="secondary" onclick="logout()">Logout</button>
-      </div>
-    </div>
 
     <div class="tab-nav-groups">
       <div class="tab-nav-group">
@@ -954,7 +957,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 17:09 Uhr<br>
+    Version vom 26.08.2026, 18:10 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -2824,6 +2827,7 @@ async function onLoggedIn(session) {
   document.getElementById("authGate").style.display = "none";
   document.getElementById("appContent").style.display = "block";
   document.getElementById("userEmailLabel").textContent = "Eingeloggt als " + currentUser.email;
+  document.getElementById("heroUserActions").style.display = "block";
 
   isAdmin = await checkIsAdmin();
   document.getElementById("adminTabBtn").style.display = isAdmin ? "inline-block" : "none";
