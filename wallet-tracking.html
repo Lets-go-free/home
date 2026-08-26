@@ -19,6 +19,7 @@
     --matic: #8247e5;
     --btc: #f7931a;
     --sol: #14f195;
+    --akash: #ff414c;
     --apertum: #00c2a8;
     --tron: #ff060a;
     --arb: #28a0f0;
@@ -106,6 +107,7 @@
   .dot.btc { background: var(--btc); }
   .dot.xrp { background: #6b7280; }
   .dot.sol { background: var(--sol); }
+  .dot.akash { background: var(--akash); }
   .dot.tron { background: var(--tron); }
   .dot.arb { background: var(--arb); }
   .dot.base { background: var(--base); }
@@ -810,7 +812,7 @@
 
       <div class="custom-token-card">
         <h3 style="margin-top:0">Meine Wallets</h3>
-        <p class="note">Hier erfasst du deine Wallet-Adressen (eine pro Chain-Typ: EVM, Bitcoin, XRP, Solana, Tron). Die EVM-Adresse gilt gleichzeitig für Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche und Apertum. Jedes Feld zeigt live an, ob das Adressformat gültig ist und ob die Adresse schon bei einer anderen Wallet erfasst ist. <strong>Wichtig: nach dem Eintragen auf "Speichern" klicken</strong> – ungespeicherte Wallets werden bei Snapshots und in anderen Bereichen nicht mitberücksichtigt.</p>
+        <p class="note">Hier erfasst du deine Wallet-Adressen (eine pro Chain-Typ: EVM, Bitcoin, XRP, Solana, Tron, Akash). Die EVM-Adresse gilt gleichzeitig für Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche und Apertum. Jedes Feld zeigt live an, ob das Adressformat gültig ist und ob die Adresse schon bei einer anderen Wallet erfasst ist. <strong>Wichtig: nach dem Eintragen auf "Speichern" klicken</strong> – ungespeicherte Wallets werden bei Snapshots und in anderen Bereichen nicht mitberücksichtigt.</p>
 
         <h3>Vordefinierte Token</h3>
         <p class="note">Die globale Liste sicherer Token, die für alle User gilt (inkl. native Coins). Kann nach Chain/Token gefiltert und per Suchfeld durchsucht werden. Neue Einträge kommen nur über die Admins rein (z.B. nachdem du einen sinnvollen eigenen Token vorgeschlagen hast).</p>
@@ -957,7 +959,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 18:10 Uhr<br>
+    Version vom 26.08.2026, 18:32 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -3251,7 +3253,8 @@ const CHAIN_META = {
   tron:    { label: "Tron (TRX)",           dot: "tron",    coingeckoId: "tron" },
   btc:     { label: "Bitcoin (BTC)",        dot: "btc",     coingeckoId: "bitcoin" },
   xrp:     { label: "XRP",                  dot: "xrp",     coingeckoId: "ripple" },
-  sol:     { label: "Solana (SOL)",         dot: "sol",     coingeckoId: "solana" }
+  sol:     { label: "Solana (SOL)",         dot: "sol",     coingeckoId: "solana" },
+  akash:   { label: "Akash Network (AKT)",  dot: "akash",   coingeckoId: "akash-network" }
 };
 
 // ---- Chain-Filter (Wallet-Tracking-Tab) - standardmässig sind alle Chains aktiv ----
@@ -3310,7 +3313,7 @@ const EVM_NATIVE_SYMBOL = { eth: "ETH", bsc: "BNB", matic: "POL", arb: "ETH", ba
 
 // Native Symbole für ALLE Chains (auch nicht-EVM) - für die Anzeige nativer Coins
 // in der Liste der sicheren Token.
-const NATIVE_SYMBOL = { ...EVM_NATIVE_SYMBOL, apertum: "APTM", tron: "TRX", btc: "BTC", xrp: "XRP", sol: "SOL" };
+const NATIVE_SYMBOL = { ...EVM_NATIVE_SYMBOL, apertum: "APTM", tron: "TRX", btc: "BTC", xrp: "XRP", sol: "SOL", akash: "AKT" };
 
 // RPC-Endpunkt (PublicNode, kein Key nötig) pro EVM-Chain - für native Balance und Token-Checks
 // Kostenloser PublicNode/Allnodes-Token - hebt die Archiv-Sperre auf (nötig für den
@@ -3682,7 +3685,14 @@ let nativePrices = {}; // chainKey -> {price, change24h}
 let tokenPrices = {}; // "chain|adresse" -> {price, change24h, source}
 
 // Grosse, kuratierte Coins (USDT/USDC) über die reguläre CoinGecko-Kursliste - zuverlässigste Quelle.
-const TOKEN_COINGECKO_IDS = { USDT: "tether", USDC: "usd-coin" };
+const TOKEN_COINGECKO_IDS = {
+  USDT: "tether",
+  USDC: "usd-coin",
+  QNT: "quant-network",
+  LCX: "lcx",
+  IMX: "immutable-x",
+  RSR: "reserve-rights"
+};
 
 // GeckoTerminal (dieselbe Firma wie CoinGecko, DEX-basierte Kurse) als Ergänzung für alle
 // anderen sicheren Token - deckt auch kleinere/eigene Token ab, sofern sie irgendwo auf
@@ -3796,9 +3806,13 @@ let walletCounter = 0;
 let wallets = [];
 let walletData = {}; // id -> { eth:{native, tokens}|{error}, bsc:{...}, matic:{...}, btc:{...}, xrp:{...}, sol:{...} }
 
-function newWallet(label, evm, btc, xrp, sol, tron, dbId) {
+function newWallet(label, evm, btc, xrp, sol, tron, akash, dbId) {
   walletCounter++;
-  return { id: dbId || ("local" + walletCounter), dbId: dbId || null, label: label || ("Wallet " + walletCounter), evm: evm || "", btc: btc || "", xrp: xrp || "", sol: sol || "", tron: tron || "" };
+  return {
+    id: dbId || ("local" + walletCounter), dbId: dbId || null,
+    label: label || ("Wallet " + walletCounter),
+    evm: evm || "", btc: btc || "", xrp: xrp || "", sol: sol || "", tron: tron || "", akash: akash || ""
+  };
 }
 
 // Zentrale Sortierung nach Wallet-Bezeichnung (alphabetisch) - nach jeder Änderung
@@ -3811,7 +3825,7 @@ function sortWalletsByLabel() {
 async function loadWalletsFromDb() {
   const { data, error } = await sb.from("wallets").select("*").order("created_at");
   if (error) { console.error(error); wallets = []; return; }
-  wallets = data.map(row => newWallet(row.label, row.evm_address, row.btc_address, row.xrp_address, row.sol_address, row.tron_address, row.id));
+  wallets = data.map(row => newWallet(row.label, row.evm_address, row.btc_address, row.xrp_address, row.sol_address, row.tron_address, row.akash_address, row.id));
   sortWalletsByLabel();
 }
 
@@ -3843,13 +3857,13 @@ async function saveWallet(id) {
   if (!w) return;
   const statusEl = document.getElementById("saveStatus-" + id);
 
-  const invalidFields = ["evm", "btc", "xrp", "sol", "tron"].filter(f => w[f] && !isValidAddressFormat(f, w[f]));
+  const invalidFields = ["evm", "btc", "xrp", "sol", "tron", "akash"].filter(f => w[f] && !isValidAddressFormat(f, w[f]));
   if (invalidFields.length > 0) {
     alert("Ungültiges Adressformat bei: " + invalidFields.join(", ") + ". Bitte korrigieren, bevor du speicherst.");
     return;
   }
 
-  const dupeFields = ["evm", "btc", "xrp", "sol", "tron"].filter(f => findDuplicateWalletLabels(f, w[f], id).length > 0);
+  const dupeFields = ["evm", "btc", "xrp", "sol", "tron", "akash"].filter(f => findDuplicateWalletLabels(f, w[f], id).length > 0);
   if (dupeFields.length > 0) {
     if (!confirm("Diese Wallet hat dieselbe Adresse wie eine andere erfasste Wallet (" + dupeFields.join(", ") + "). Trotzdem speichern?")) {
       return;
@@ -3865,7 +3879,8 @@ async function saveWallet(id) {
     btc_address: w.btc,
     xrp_address: w.xrp,
     sol_address: w.sol,
-    tron_address: w.tron
+    tron_address: w.tron,
+    akash_address: w.akash
   };
 
   if (w.dbId) {
@@ -3902,6 +3917,8 @@ function isValidAddressFormat(field, value) {
       return /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(v);
     case "btc":
       return /^(bc1[0-9a-z]{25,62}|[13][1-9A-HJ-NP-Za-km-z]{25,34})$/i.test(v);
+    case "akash":
+      return /^akash1[02-9ac-hj-np-z]{38}$/.test(v);
     default:
       return true;
   }
@@ -3936,7 +3953,7 @@ function renderValidationIconInner(field, value, walletId) {
 // Leichte Update-Funktion (nur die Icon-Spans, nicht die ganzen Eingabefelder neu rendern) -
 // sonst würde bei jedem Tastenanschlag der Fokus aus dem Eingabefeld springen.
 function updateAllValidationIcons() {
-  ["evm", "btc", "xrp", "sol", "tron"].forEach(field => {
+  ["evm", "btc", "xrp", "sol", "tron", "akash"].forEach(field => {
     wallets.forEach(w => {
       const el = document.getElementById(`dup-${w.id}-${field}`);
       if (el) el.innerHTML = renderValidationIconInner(field, w[field], w.id);
@@ -3977,6 +3994,11 @@ function renderWalletInputs() {
           <span class="field-label">Tron-Adresse</span>
           <input type="text" value="${escapeAttr(w.tron)}" oninput="updateWalletField('${w.id}','tron',this.value)" placeholder="T..." />
           <div id="dup-${w.id}-tron">${renderValidationIconInner("tron", w.tron, w.id)}</div>
+        </div>
+        <div>
+          <span class="field-label">Akash-Adresse</span>
+          <input type="text" value="${escapeAttr(w.akash)}" oninput="updateWalletField('${w.id}','akash',this.value)" placeholder="akash1..." />
+          <div id="dup-${w.id}-akash">${renderValidationIconInner("akash", w.akash, w.id)}</div>
         </div>
       </div>
       <div class="action-row" style="margin:10px 0 0;align-items:center">
@@ -4239,6 +4261,17 @@ async function fetchSolanaBalance(address) {
 // Deckt aktuell die grossen Stablecoins ab (alle 6 Dezimalstellen, Branchenstandard).
 const TRON_TOKEN_DECIMALS_DEFAULT = 6;
 
+
+async function fetchAkashBalance(address) {
+  // Akash Mainnet REST/LCD (Cosmos SDK Bank-Modul). AKT ist on-chain als uakt
+  // mit 6 Dezimalstellen denominiert.
+  const res = await fetch(`https://api.akashnet.net/cosmos/bank/v1beta1/balances/${encodeURIComponent(address)}`);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  const balance = (data.balances || []).find(b => b.denom === "uakt");
+  return balance ? Number(balance.amount || 0) / 1e6 : 0;
+}
+
 async function fetchTronAddressInfo(address) {
   const res = await fetch(`https://api.trongrid.io/v1/accounts/${address}`);
   if (!res.ok) throw new Error("HTTP " + res.status);
@@ -4333,6 +4366,10 @@ async function loadWalletChain(wallet, chain, preserveCachedOnError = false) {
       if (!wallet.tron) { delete walletData[wallet.id].tron; return { ok: true, skipped: true }; }
       const r = await fetchTronAddressInfo(wallet.tron);
       walletData[wallet.id].tron = { native: r.native, nativeSymbol: "TRX", tokens: r.tokens };
+    } else if (chain === "akash") {
+      if (!wallet.akash) { delete walletData[wallet.id].akash; return { ok: true, skipped: true }; }
+      const amount = await fetchAkashBalance(wallet.akash);
+      walletData[wallet.id].akash = { native: amount, nativeSymbol: "AKT", tokens: [] };
     }
     return { ok: true };
   } catch (err) {
@@ -4362,7 +4399,7 @@ async function loadAll(options = {}) {
 
   const chainJobs = [];
   wallets.forEach(w => {
-    ["eth", "bsc", "matic", "arb", "base", "avax", "apertum", "tron", "btc", "xrp", "sol"].forEach(chain => {
+    ["eth", "bsc", "matic", "arb", "base", "avax", "apertum", "tron", "btc", "xrp", "sol", "akash"].forEach(chain => {
       chainJobs.push(loadWalletChain(w, chain, automatic));
     });
   });
@@ -5115,7 +5152,8 @@ const EXPLORER_URLS = {
   tron: (w) => w.tron ? `https://tronscan.org/#/address/${w.tron}` : null,
   btc: (w) => w.btc ? `https://blockstream.info/address/${w.btc}` : null,
   xrp: (w) => w.xrp ? `https://xrpscan.com/account/${w.xrp}` : null,
-  sol: (w) => w.sol ? `https://solscan.io/account/${w.sol}` : null
+  sol: (w) => w.sol ? `https://solscan.io/account/${w.sol}` : null,
+  akash: (w) => w.akash ? `https://www.mintscan.io/akash/address/${w.akash}` : null
 };
 
 
