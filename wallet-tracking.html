@@ -14,17 +14,6 @@
     --muted: #9aa0ac;
     --accent: #6c8cff;
     --danger: #ff6b6b;
-    --eth: #627eea;
-    --bsc: #f0b90b;
-    --matic: #8247e5;
-    --btc: #f7931a;
-    --sol: #14f195;
-    --akash: #ff414c;
-    --apertum: #00c2a8;
-    --tron: #ff060a;
-    --arb: #28a0f0;
-    --base: #0052ff;
-    --avax: #e84142;
   }
   * { box-sizing: border-box; }
   body {
@@ -184,18 +173,6 @@
     display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 12px; font-size: 0.92rem;
   }
   .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block; vertical-align: middle; }
-  .dot.eth { background: var(--eth); }
-  .dot.bsc { background: var(--bsc); }
-  .dot.matic { background: var(--matic); }
-  .dot.btc { background: var(--btc); }
-  .dot.xrp { background: #6b7280; }
-  .dot.sol { background: var(--sol); }
-  .dot.akash { background: var(--akash); }
-  .dot.tron { background: var(--tron); }
-  .dot.arb { background: var(--arb); }
-  .dot.base { background: var(--base); }
-  .dot.avax { background: var(--avax); }
-  .dot.apertum { background: var(--apertum); }
 
   table { width: 100%; border-collapse: collapse; font-size: 0.87rem; table-layout: fixed; }
   th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--border); }
@@ -432,6 +409,8 @@
           <button class="tab-btn" data-tab="admin" data-open-admin="coverage" onclick="showTab('admin');showAdminTab('coverage')">📋 Chain-Abdeckung</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="defiprojects" onclick="showTab('admin');showAdminTab('defiprojects')">🏦 DeFi-Projekte</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="dex" onclick="showTab('admin');showAdminTab('dex')">🔄 DEX</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="coverage" onclick="showTab('admin');showAdminTab('coverage')">📋 Chain-Abdeckung</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="hardcoding" onclick="showTab('admin');showAdminTab('hardcoding')">🧪 Hardcoding-Audit</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="ideas" onclick="showTab('admin');showAdminTab('ideas')">💡 Ideen / Umbau</button>
         </div>
       </div>
@@ -542,7 +521,7 @@
     </div>
 
     <div id="tab-wallets" class="tab-panel">
-      <div class="note" style="margin-bottom:14px">EVM-Adresse gilt für: Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche, Apertum – ist bei allen diesen Chains dieselbe Adresse.</div>
+      <div class="note" id="evmWalletChainsNote" style="margin-bottom:14px"></div>
       <div id="walletInputsContainer"></div>
       <div class="action-row">
         <button class="secondary" onclick="addWallet()">+ Wallet hinzufügen</button>
@@ -617,16 +596,7 @@
         <div class="custom-token-grid">
           <div>
             <span class="field-label">Chain</span>
-            <select id="customChain">
-              <option value="eth">Ethereum</option>
-              <option value="bsc">BSC</option>
-              <option value="matic">Polygon</option>
-              <option value="arb">Arbitrum</option>
-              <option value="base">Base</option>
-              <option value="avax">Avalanche</option>
-              <option value="apertum">Apertum</option>
-              <option value="tron">Tron</option>
-            </select>
+            <select id="customChain"></select>
           </div>
           <div>
             <span class="field-label">Contract-Adresse</span>
@@ -887,6 +857,17 @@
         <div id="adminDexConfigsList"></div>
       </div>
 
+      <div id="admintab-hardcoding" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">
+          Strenger Rest-Audit für chain-spezifische HTML-Konfiguration. Ziel: neue Chains sollen möglichst ohne HTML-Anpassung funktionieren.
+          Bewusst globale App-/Service-Konfigurationen werden separat ausgewiesen und gelten nicht automatisch als Fehler.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button onclick="renderHardcodingAudit()">🔎 Audit anzeigen</button>
+        </div>
+        <div id="adminHardcodingAudit"></div>
+      </div>
+
       <div id="admintab-ideas" class="admin-tab-panel">
         <div class="note" style="margin-bottom:14px">Offene Erweiterungsideen, nur für Admins sichtbar. Nichts davon ist umgesetzt, ausser explizit markiert.</div>
         <div id="adminIdeasList"></div>
@@ -1103,7 +1084,7 @@
   </div>
 
   <footer>
-    Version vom 26.08.2026, 21:21 Uhr<br>
+    Version vom 26.08.2026, 21:34 Uhr<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -2997,6 +2978,8 @@ async function onLoggedIn(session) {
   activeChainFilter = new Set(Object.keys(CHAIN_META)); // Chain-Filter IMMER mit allen Chains starten
   renderChainFilter();
   renderWalletInputs();
+  renderEvmWalletChainsNote();
+  renderCustomChainSelect();
   renderCustomTokenList();
   renderSafeTokenTable();
   renderSnapshotManager();
@@ -3098,6 +3081,7 @@ function showAdminTab(name) {
   if (name === "coverage") renderAdminChainCoverage();
   if (name === "defiprojects") loadAdminDefiProjects();
   if (name === "dex") loadAdminDexConfigs();
+  if (name === "hardcoding") renderHardcodingAudit();
   if (name === "ideas") renderAdminIdeas();
 }
 
@@ -3272,6 +3256,30 @@ async function deleteDexConfig(id){
   if(error)alert(error.message);else loadAdminDexConfigs();
 }
 
+
+const HARDCODING_AUDIT_ITEMS = [
+  {severity:"open", area:"Routescan", item:"fee_api_base Fallback", detail:"Routescan darf keine Chain-URL mehr selbst konstruieren. Fehlende fee_api_base soll als Konfigurationsfehler sichtbar werden."},
+  {severity:"open", area:"Tron", item:"TRC20 Decimals", detail:"TRON_TOKEN_DECIMALS_DEFAULT=6 ist chain-/token-spezifischer Fallback. Decimals sollen aus predefined_tokens bzw. Token-Metadaten kommen."},
+  {severity:"review", area:"Wallet-Maske", item:"EVM-Chain-Hinweis", detail:"Der sichtbare Hilfetext nennt Ethereum/BSC/Polygon/Arbitrum/Base/Avalanche/Apertum statisch. Darstellung sollte aus wallet_type=evm generiert werden."},
+  {severity:"review", area:"Eigene sichere Token", item:"Chain-Auswahl", detail:"Die Auswahl enthält noch feste Chain-Optionen. Sie sollte aus public.chains erzeugt werden."},
+  {severity:"review", area:"DeFi-Projekt UI", item:"TLN/VOW-Tab", detail:"Projekt-Daten sind generisch in Supabase, der sichtbare Spezial-Tab und Funktionsname TLNVOWProject bleiben noch projektspezifische UI/Logik. Für ein zweites DeFi-Projekt braucht es später eine generische Projektansicht."},
+  {severity:"keep", area:"Services", item:"Globale API-/App-URLs", detail:"CoinGecko, GeckoTerminal, GoPlus, Supabase-App-URL, CDN, revoke.cash und IPFS sind globale Services und keine Chain-Stammdaten."},
+  {severity:"keep", area:"Credentials", item:"Frontend-Keys", detail:"Alchemy/PublicNode/NodeReal nicht in public.chains verschieben. Später separat über Proxy/Secret-Strategie lösen."}
+];
+
+function renderHardcodingAudit(){
+  const el=document.getElementById("adminHardcodingAudit");
+  if(!el || !isAdmin)return;
+  const badge=i=>i.severity==="open"
+    ? '<span class="badge unsafe">offen</span>'
+    : i.severity==="review"
+      ? '<span class="badge" style="background:rgba(240,185,11,.15);color:#f0b90b">prüfen</span>'
+      : '<span class="badge safe">bewusst belassen</span>';
+  el.innerHTML=`<table><thead><tr><th>Status</th><th>Bereich</th><th>Fund</th><th>Bewertung / nächster Schritt</th></tr></thead><tbody>
+    ${HARDCODING_AUDIT_ITEMS.map(i=>`<tr><td>${badge(i)}</td><td>${escapeAttr(i.area)}</td><td>${escapeAttr(i.item)}</td><td>${escapeAttr(i.detail)}</td></tr>`).join("")}
+  </tbody></table>`;
+}
+
 const ADMIN_CHAIN_FIELDS = [
   {k:"chain_key", l:"Chain-Key", critical:true, type:"text", sticky:1},
   {k:"label", l:"Anzeigename", type:"text", sticky:2},
@@ -3281,6 +3289,7 @@ const ADMIN_CHAIN_FIELDS = [
   {k:"evm_chain_id", l:"EVM Chain-ID", critical:true, type:"number"},
   {k:"explorer_url_template", l:"Explorer-URL ({address})", critical:true, type:"text", cls:"xwide-input"},
   {k:"geckoterminal_network", l:"GeckoTerminal Network", type:"text"},
+  {k:"display_color", l:"Anzeigefarbe", critical:false, type:"color"},
   {k:"rpc_url", l:"RPC-/REST-Endpunkt", critical:true, type:"text", cls:"xwide-input"},
   {k:"balance_provider", l:"Balance-Provider", critical:true, type:"text"},
   {k:"balance_api_base", l:"Balance API-Basis", critical:true, type:"text", cls:"xwide-input"},
@@ -3316,7 +3325,8 @@ function chainCellControl(field, row, isNew=false) {
     return `<select data-chain-field="${field.k}" ${disabled}>${field.options.map(o =>
       `<option value="${escapeAttr(o)}" ${String(val||"")===o?"selected":""}>${escapeAttr(o)}</option>`).join("")}</select>`;
   }
-  return `<input data-chain-field="${field.k}" class="${field.cls||""}" type="${field.type}" value="${escapeAttr(val ?? "")}" ${disabled}>`;
+  const colorStyle = field.type === "color" ? 'style="min-width:54px;width:54px;height:34px;padding:2px"' : "";
+  return `<input data-chain-field="${field.k}" class="${field.cls||""}" type="${field.type}" value="${escapeAttr(val ?? (field.type==="color" ? "#6b7280" : ""))}" ${colorStyle} ${disabled}>`;
 }
 
 function chainTableHeader() {
@@ -3411,7 +3421,7 @@ const ADMIN_IDEAS = [
   {
     status: "in_progress",
     title: "Konfiguration aus HTML nach Supabase verlagern",
-    desc: "Umbau gestartet 26.08.2026. HAUPTTEIL ERLEDIGT, ABER NACH AUDIT NOCH NICHT GANZ ABSCHLIESSEN: public.chains ist Single Source of Truth für Chain-Stammdaten sowie Balance-, Gebühren-, Discovery-, Approval- und NFT-Provider/API-Konfiguration. predefined_tokens enthält Token-Metadaten und Preis-Zuordnung. loadAll() ist dynamisch; die früheren Chain-Maps für Fees/RPC/Alchemy/GoPlus sind entfernt. AUDIT 26.08.2026: DeFi-/DEX-Struktur umgesetzt: TLN/VOW ist nun als erstes generisches DeFi-Projekt modelliert; VOW-Referenz-Contracts liegen in defi_project_tokens, PancakeSwap-/Uniswap-Factorys in dex_configs und RPCs werden aus public.chains wiederverwendet. Die bestehenden Werte werden durch das Migrations-SQL automatisch übernommen. Noch offen: Routescan-URL-Fallback entfernen und Tron-Decimallogik bereinigen; danach erneuter Hardcoding-Audit. Globale App-/Service-Konfigurationen wie Supabase-Projekt, CoinGecko/GeckoTerminal/GoPlus, CDN-URLs, revoke.cash und IPFS-Gateway sind keine Chain-Stammdaten und müssen nicht zwingend in public.chains. Credentials/Keys (Alchemy, PublicNode, NodeReal) gehören ausdrücklich NICHT in eine normale öffentliche DB-Tabelle."
+    desc: "Umbau gestartet 26.08.2026. HAUPTTEIL ERLEDIGT, ABER NACH AUDIT NOCH NICHT GANZ ABSCHLIESSEN: public.chains ist Single Source of Truth für Chain-Stammdaten sowie Balance-, Gebühren-, Discovery-, Approval- und NFT-Provider/API-Konfiguration. predefined_tokens enthält Token-Metadaten und Preis-Zuordnung. loadAll() ist dynamisch; die früheren Chain-Maps für Fees/RPC/Alchemy/GoPlus sind entfernt. AUDIT 26.08.2026: DeFi-/DEX-Struktur umgesetzt: TLN/VOW ist nun als erstes generisches DeFi-Projekt modelliert; VOW-Referenz-Contracts liegen in defi_project_tokens, PancakeSwap-/Uniswap-Factorys in dex_configs und RPCs werden aus public.chains wiederverwendet. Die bestehenden Werte werden durch das Migrations-SQL automatisch übernommen. Strenger Audit läuft weiter: Chain-Farben wurden aus CSS nach public.chains.display_color verschoben; Wallet-EVM-Hinweis und Custom-Token-Chain-Auswahl sind jetzt DB-dynamisch. Noch offen: Routescan-URL-Fallback entfernen, Tron-Decimallogik bereinigen und die TLN/VOW-Spezial-UI langfristig zur generischen DeFi-Projektansicht machen. Globale App-/Service-Konfigurationen wie Supabase-Projekt, CoinGecko/GeckoTerminal/GoPlus, CDN-URLs, revoke.cash und IPFS-Gateway sind keine Chain-Stammdaten und müssen nicht zwingend in public.chains. Credentials/Keys (Alchemy, PublicNode, NodeReal) gehören ausdrücklich NICHT in eine normale öffentliche DB-Tabelle."
   },
   {
     status: "in_progress",
@@ -3739,7 +3749,7 @@ let chainConfigStatus = { source: "nicht geladen", count: 0, loadedAt: null };
 
 async function loadChainConfigFromDb() {
   const { data, error } = await sb.from("chains")
-    .select("chain_key,label,native_symbol,coingecko_id,wallet_type,explorer_url_template,geckoterminal_network,sort_order,enabled,evm_chain_id,rpc_url,balance_provider,fee_provider,fee_api_base,fee_finality_blocks,fee_overlap_blocks,fees_enabled,discovery_enabled,approvals_enabled,nft_enabled,discovery_provider,discovery_api_base,approvals_provider,approvals_api_base,nft_provider,nft_api_base,balance_api_base")
+    .select("chain_key,label,native_symbol,coingecko_id,wallet_type,explorer_url_template,geckoterminal_network,sort_order,enabled,evm_chain_id,rpc_url,balance_provider,fee_provider,fee_api_base,fee_finality_blocks,fee_overlap_blocks,fees_enabled,discovery_enabled,approvals_enabled,nft_enabled,discovery_provider,discovery_api_base,approvals_provider,approvals_api_base,nft_provider,nft_api_base,balance_api_base,display_color")
     .eq("enabled", true)
     .order("sort_order", { ascending: true });
 
@@ -3773,6 +3783,7 @@ async function loadChainConfigFromDb() {
       rpcUrl: row.rpc_url || null,
       balanceProvider: row.balance_provider || null,
       balanceApiBase: row.balance_api_base || null,
+      displayColor: row.display_color || "#6b7280",
       feeProvider: row.fee_provider || null,
       feeApiBase: row.fee_api_base || null,
       feeFinalityBlocks: row.fee_finality_blocks == null ? null : Number(row.fee_finality_blocks),
@@ -3814,7 +3825,7 @@ function renderChainFilter() {
     const checked = activeChainFilter.has(chain) ? "checked" : "";
     return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
       <input type="checkbox" ${checked} onchange="toggleChainFilter('${chain}', this.checked)" style="width:auto" />
-      <span class="dot ${meta.dot}"></span> ${meta.label}
+      <span class="dot" style="background:${escapeAttr(CHAIN_CONFIG[meta.dot]?.displayColor || "#6b7280")}"></span> ${meta.label}
     </label>`;
   }).join("");
 }
@@ -4108,6 +4119,18 @@ async function removeCustomSafeToken(chain, address) {
   loadAll(); // Entfernter Token soll sofort aus dem Wallet-Tracking verschwinden, falls dort ein Bestand angezeigt war
 }
 
+function renderCustomChainSelect(){
+  const el=document.getElementById("customChain");
+  if(!el)return;
+  const current=el.value;
+  const chains=Object.keys(CHAIN_CONFIG).filter(c=>{
+    const type=CHAIN_CONFIG[c]?.walletType;
+    return type==="evm" || type==="tron";
+  });
+  el.innerHTML=chains.map(c=>`<option value="${escapeAttr(c)}">${escapeAttr(CHAIN_META[c]?.label||c)}</option>`).join("");
+  if(chains.includes(current))el.value=current;
+}
+
 function renderCustomTokenList() {
   const el = document.getElementById("customTokenList");
   if (customSafeTokens.length === 0) {
@@ -4232,7 +4255,7 @@ function renderSafeTokenTable() {
         : "";
 
       return `<tr>
-      <td><span class="dot ${CHAIN_META[r.chain] ? CHAIN_META[r.chain].dot : ''}" style="margin-right:6px"></span>${r.chain.toUpperCase()}</td>
+      <td><span class="dot" style="margin-right:6px;background:${escapeAttr(CHAIN_CONFIG[r.chain]?.displayColor || "#6b7280")}"></span>${r.chain.toUpperCase()}</td>
       <td>${labelCell}</td>
       <td style="font-size:0.78rem;word-break:break-all">${r.isNative ? '<span style="color:var(--muted)">– (nativ)</span>' : r.address}</td>
       <td style="text-align:right">${priceCell}</td>
@@ -4331,6 +4354,28 @@ async function loadNativePrices() {
   }
 
   await loadTokenPricesViaGeckoTerminal(alreadyPriced);
+
+  // Gebühren-Ansichten können bereits sichtbar sein, während die Kursabfrage noch
+  // im Hintergrund läuft. Nach Abschluss nur die betroffenen Ansichten neu rendern
+  // (kein Browser-Reload, damit keine neue Lade-Schleife/API-Abfragen entstehen).
+  refreshFeePriceViews().catch(e => console.warn("Gebühren-Kursansicht aktualisieren:", e));
+}
+
+async function refreshFeePriceViews() {
+  if (!currentUser) return;
+  await renderFeesSummary();
+  const select = document.getElementById("feesWalletSelect");
+  const walletId = select ? select.value : "";
+  if (!walletId) return;
+  const w = wallets.find(x => String(x.id) === String(walletId));
+  if (!w) return;
+  const rows = await loadFeeCacheForWallet(walletId);
+  if (!rows.length) return;
+  const results = rows.map(r => ({
+    chain:r.chain, totalFee:Number(r.total_fee_native || 0), txCount:Number(r.tx_count || 0),
+    cached:true, cachedAt:r.last_scanned_at, source:r.data_source
+  }));
+  renderFeesResults(w, results);
 }
 
 async function loadTokenPricesViaGeckoTerminal(alreadyPriced) {
@@ -4542,6 +4587,17 @@ function updateAllValidationIcons() {
       if (el) el.innerHTML = renderValidationIconInner(field, w[field], w.id);
     });
   });
+}
+
+function renderEvmWalletChainsNote(){
+  const el=document.getElementById("evmWalletChainsNote");
+  if(!el)return;
+  const labels=Object.keys(CHAIN_CONFIG)
+    .filter(c=>CHAIN_CONFIG[c]?.walletType==="evm")
+    .map(c=>CHAIN_META[c]?.label||c);
+  el.textContent=labels.length
+    ? `EVM-Adresse gilt für: ${labels.join(", ")} – sie ist bei allen diesen EVM-Chains dieselbe Adresse.`
+    : "Aktuell sind keine EVM-Chains konfiguriert.";
 }
 
 function renderWalletInputs() {
@@ -5872,7 +5928,7 @@ function renderResults() {
         const explorerUrl = explorerUrlForWallet(chain, w);
         const explorerLink = explorerUrl ? ` <a href="${explorerUrl}" target="_blank" rel="noopener" style="font-size:0.72rem;color:var(--accent);font-weight:400;margin-left:6px">Auf Explorer ansehen ↗</a>` : "";
         return `<div class="chain-card">
-          <div class="chain-title"><span class="dot ${meta.dot}"></span> ${meta.label}${explorerLink}</div>
+          <div class="chain-title"><span class="dot" style="background:${escapeAttr(CHAIN_CONFIG[meta.dot]?.displayColor || "#6b7280")}"></span> ${meta.label}${explorerLink}</div>
           ${body}
         </div>`;
       }).join("");
@@ -5942,7 +5998,7 @@ function renderResults() {
     }
 
     return `<div class="chain-card">
-      <div class="chain-title"><span class="dot ${meta.dot}"></span> ${meta.label} — Total</div>
+      <div class="chain-title"><span class="dot" style="background:${escapeAttr(CHAIN_CONFIG[meta.dot]?.displayColor || "#6b7280")}"></span> ${meta.label} — Total</div>
       ${body}
     </div>`;
   }).join("");
@@ -5968,7 +6024,7 @@ function renderDiscoveryChainFilter() {
     const checked = activeDiscoveryChains.has(chain) ? "checked" : "";
     return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
       <input type="checkbox" ${checked} onchange="toggleDiscoveryChain('${chain}', this.checked)" style="width:auto" />
-      <span class="dot ${meta.dot}"></span> ${meta.label}
+      <span class="dot" style="background:${escapeAttr(CHAIN_CONFIG[meta.dot]?.displayColor || "#6b7280")}"></span> ${meta.label}
     </label>`;
   }).join("");
 }
@@ -6046,7 +6102,7 @@ function renderFeesChainFilter() {
     const checked = activeFeesChains.has(chain) ? "checked" : "";
     return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
       <input type="checkbox" ${checked} onchange="toggleFeesChain('${chain}', this.checked)" style="width:auto" />
-      <span class="dot ${meta.dot}"></span> ${meta.label}
+      <span class="dot" style="background:${escapeAttr(CHAIN_CONFIG[meta.dot]?.displayColor || "#6b7280")}"></span> ${meta.label}
     </label>`;
   }).join("");
 }
@@ -6094,7 +6150,7 @@ async function renderFeesSummary() {
   }
   const body=feeChains().filter(c=>sums.has(c)).map(c=>{
     const x=sums.get(c), sym=NATIVE_SYMBOL[c]||c.toUpperCase(), price=currentGasCoinPrice(c);
-    return `<tr><td><span class="dot ${CHAIN_META[c].dot}"></span> ${CHAIN_META[c].label}</td><td class="num">${x.tx}</td><td class="num">${fmt(x.fee)} ${sym}</td><td class="num">${formatUsdPrice(price)}</td><td><span class="note">${x.latest?new Date(x.latest).toLocaleString("de-CH"):"–"}</span></td></tr>`;
+    return `<tr><td><span class="dot" style="background:${escapeAttr(CHAIN_CONFIG[CHAIN_META[c].dot]?.displayColor || "#6b7280")}"></span> ${CHAIN_META[c].label}</td><td class="num">${x.tx}</td><td class="num">${fmt(x.fee)} ${sym}</td><td class="num">${formatUsdPrice(price)}</td><td><span class="note">${x.latest?new Date(x.latest).toLocaleString("de-CH"):"–"}</span></td></tr>`;
   }).join("");
   el.innerHTML=`<div class="custom-token-card"><h3 style="margin:0 0 10px">Gesamtübersicht aller Wallets</h3><table><thead><tr><th>Chain</th><th style="text-align:right">Anzahl Tx</th><th style="text-align:right">Gebühren (nativ)</th><th style="text-align:right">Aktueller Coin-Kurs</th><th>Letzter Stand</th></tr></thead><tbody>${body}</tbody></table><div class="note" style="margin-top:8px">Der aktuelle Coin-Kurs dient nur als Anhaltspunkt und wird nicht zur historischen Bewertung der Gebühren verwendet.</div></div>`;
 }
@@ -6510,7 +6566,7 @@ function renderApprovalsChainFilter() {
     const checked = activeApprovalsChains.has(chain) ? "checked" : "";
     return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
       <input type="checkbox" ${checked} onchange="toggleApprovalsChain('${chain}', this.checked)" style="width:auto" />
-      <span class="dot ${meta.dot}"></span> ${meta.label}
+      <span class="dot" style="background:${escapeAttr(CHAIN_CONFIG[meta.dot]?.displayColor || "#6b7280")}"></span> ${meta.label}
     </label>`;
   }).join("");
 }
@@ -6814,7 +6870,7 @@ function renderApprovalsResults(wallet, approvals) {
             const spenderText = a.spenderLabel ? escapeAttr(a.spenderLabel) : (a.spenderAddress || "").slice(0, 10) + "…";
             const dt = a.timestamp ? new Date(a.timestamp).toLocaleDateString("de-CH") : "–";
             return `<tr style="${a.isUnlimited ? 'background:rgba(255,107,107,0.08)' : ''}">
-              <td><span class="dot ${meta.dot}"></span> ${meta.label}</td>
+              <td><span class="dot" style="background:${escapeAttr(CHAIN_CONFIG[meta.dot]?.displayColor || "#6b7280")}"></span> ${meta.label}</td>
               <td>${escapeAttr(a.tokenSymbol)}</td>
               <td style="font-size:0.78rem" title="${a.spenderAddress || ''}">${spenderText}</td>
               <td class="num">${a.isUnlimited ? '<span style="color:var(--danger);font-weight:700">⚠ Unlimitiert</span>' : fmt(parseFloat(a.valueFormatted || "0"))}</td>
@@ -6841,7 +6897,7 @@ function renderNftChainFilter() {
     const checked = activeNftChains.has(chain) ? "checked" : "";
     return `<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer">
       <input type="checkbox" ${checked} onchange="toggleNftChain('${chain}', this.checked)" style="width:auto" />
-      <span class="dot ${meta.dot}"></span> ${meta.label}
+      <span class="dot" style="background:${escapeAttr(CHAIN_CONFIG[meta.dot]?.displayColor || "#6b7280")}"></span> ${meta.label}
     </label>`;
   }).join("");
 }
@@ -7339,9 +7395,9 @@ function renderFeesResults(wallet,results){
   el.innerHTML=`<div class="custom-token-card"><h3 style="margin:0 0 10px">${escapeAttr(wallet.label)} — Gebühren-Total</h3>
     <table><thead><tr><th>Chain</th><th style="text-align:right">Anzahl Tx</th><th style="text-align:right">Gebühren (nativ)</th><th style="text-align:right">Aktueller Coin-Kurs</th><th>Quelle / Stand</th></tr></thead><tbody>
     ${results.map(r=>{
-      if(r.error)return `<tr><td><span class="dot ${CHAIN_META[r.chain].dot}"></span> ${CHAIN_META[r.chain].label}</td><td colspan="4" class="error" style="text-align:left">Fehler: ${escapeAttr(r.error)}</td></tr>`;
+      if(r.error)return `<tr><td><span class="dot" style="background:${escapeAttr(CHAIN_CONFIG[CHAIN_META[r.chain].dot]?.displayColor || "#6b7280")}"></span> ${CHAIN_META[r.chain].label}</td><td colspan="4" class="error" style="text-align:left">Fehler: ${escapeAttr(r.error)}</td></tr>`;
       const nativeSym=NATIVE_SYMBOL[r.chain]||r.chain.toUpperCase(), source=r.source||"bisherige API", when=r.cachedAt?new Date(r.cachedAt).toLocaleString("de-CH"):"live", price=currentGasCoinPrice(r.chain);
-      return `<tr><td><span class="dot ${CHAIN_META[r.chain].dot}"></span> ${CHAIN_META[r.chain].label}${r.truncated?' <span class="badge unsafe">gekürzt</span>':''}${r.cached?' <span class="badge safe">Cache</span>':''}</td><td class="num">${r.txCount}</td><td class="num">${fmt(r.totalFee)} ${nativeSym}</td><td class="num">${formatUsdPrice(price)}</td><td><span class="note">${escapeAttr(source)} · ${escapeAttr(when)}${r.note?'<br>'+escapeAttr(r.note):''}</span></td></tr>`;
+      return `<tr><td><span class="dot" style="background:${escapeAttr(CHAIN_CONFIG[CHAIN_META[r.chain].dot]?.displayColor || "#6b7280")}"></span> ${CHAIN_META[r.chain].label}${r.truncated?' <span class="badge unsafe">gekürzt</span>':''}${r.cached?' <span class="badge safe">Cache</span>':''}</td><td class="num">${r.txCount}</td><td class="num">${fmt(r.totalFee)} ${nativeSym}</td><td class="num">${formatUsdPrice(price)}</td><td><span class="note">${escapeAttr(source)} · ${escapeAttr(when)}${r.note?'<br>'+escapeAttr(r.note):''}</span></td></tr>`;
     }).join("")}</tbody></table>
     <div class="note" style="margin-top:10px">Phase 1: Es werden nur die tatsächlich bezahlten Netzwerkgebühren im nativen Coin angezeigt. Der aktuelle Coin-Kurs ist lediglich ein Anhaltspunkt; für die spätere historische USD-Bewertung wird der jeweilige Kurs zum Transaktionszeitpunkt benötigt. ${isAdmin?"Admins können jederzeit aktualisieren.":`Eine erneute Gebührenabfrage ist nach ${FEE_COOLDOWN_DAYS} Tagen möglich.`}</div></div>`;
 }
