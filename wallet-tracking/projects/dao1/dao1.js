@@ -34,6 +34,8 @@ window.DAO1Project = (() => {
   let txFilterFrom = "";
   let txFilterTo = "";
   let txFilterKind = "__all";
+  let transactionJobToken = 0;
+  const DB_PAGE_SIZE = 1000;
   let miningFilterFrom = "";
   let miningFilterTo = "";
   let miningFilterClass = "__all";
@@ -77,7 +79,7 @@ window.DAO1Project = (() => {
         <div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div>
         <div class="custom-token-card">
           <div class="chain-title">📒 Apertum Transaktionshistorie</div>
-          <div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Der erste Scan lädt die vollständige Wallet-Historie, Folge-Scans nur neue Blöcke mit Sicherheitspuffer. Claim-Transaktionen werden automatisch mit NFT, Klassifizierung, Reward APTM und historischem USD-Wert angereichert.</div>
+          <div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Ein Wallet-Wechsel liest ausschließlich bereits gespeicherte Daten aus Supabase. Erst „Apertum-Historie aktualisieren“ lädt neue Blockchain-Daten; dabei werden nur noch nicht verarbeitete Claims angereichert. Der Status zeigt jederzeit, ob geladen, gespeichert, angereichert oder vollständig bereit ist.</div>
           <div id="dao1TransactionControls"></div>
           <div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
           <div id="dao1TransactionSummary" style="margin-top:10px"></div>
@@ -123,9 +125,10 @@ window.DAO1Project = (() => {
     if(!txFilterWallet && projectWallets()[0]) txFilterWallet=String(projectWallets()[0].id);
     try{
       const tw=projectWallets().find(w=>String(w.id)===String(txFilterWallet));
-      transactionRows=tw?await loadTransactionRows(walletAddress(tw)):[];
-    }catch(e){console.warn("Transaction cache init:",e);}
-    renderTransactionHistory();
+      transactionRows=tw?await loadTransactionRows(walletAddress(tw),null):[];
+      renderTransactionHistory();
+      if(tw)await showTransactionReadyStatus(walletAddress(tw),transactionRows,"db");
+    }catch(e){console.warn("Transaction cache init:",e);setTransactionStatus("error",e.message||String(e));}
     updateVisibility();
   }
 
@@ -267,8 +270,22 @@ window.DAO1Project = (() => {
       if(error)return alert(error.message);
     }
     await loadProjectNfts();
+
+    // Sofortige UI-Aktualisierung: project_nfts ist die maßgebliche Quelle.
+    // Keine Blockchain-/Explorer-Abfrage und keine erneute Claim-Anreicherung nötig.
     renderMinerSelector();
     renderNftClassification();
+    renderMiningFilters();
+    renderMining();
+
+    // Transaktionshistorie / Summary / Exporte verwenden ebenfalls live project_nfts.
+    // Deshalb reicht ein Re-Render der bereits geladenen DB-Daten.
+    renderTransactionHistory();
+
+    const status=document.getElementById("dao1TransactionStatus");
+    if(status){
+      status.innerHTML=`<span class="safe">✓ NFT-Klassifizierung gespeichert.</span> Historische Claims und Auswertungsfilter wurden sofort aktualisiert.`;
+    }
   }
   function renderNftClassification(){
     const el=document.getElementById("dao1NftClassification");
@@ -289,7 +306,7 @@ window.DAO1Project = (() => {
       return;
     }
     el.innerHTML=`
-      <div class="note" style="margin-bottom:10px">Die Klassifizierung gehört zur NFT selbst und bleibt deshalb auch nach einem Wallet-Transfer erhalten.</div>
+      <div class="note" style="margin-bottom:10px">Die Klassifizierung gehört zur NFT selbst und bleibt deshalb auch nach einem Wallet-Transfer erhalten. Änderungen wirken sofort auf historische Claims, Filter, Summary und Exporte; ein neuer Blockchain-Scan ist nicht erforderlich.</div>
       <div class="chain-table-wrap"><table class="chain-admin-table dao1-nft-class-table" style="table-layout:fixed;width:100%">
         <colgroup><col style="width:34%"><col style="width:28%"><col style="width:38%"></colgroup>
         <thead><tr><th>NFT</th><th>Klassifizierung</th><th>Contract</th></tr></thead><tbody>
@@ -957,16 +974,54 @@ window.DAO1Project = (() => {
     if(error)throw error;
   }
 
-  async function loadTransactionRows(address=null){
-    let q=sb.from("project_transactions")
-      .select("*")
-      .eq("user_id",getContext?.().currentUser.id)
-      .eq("project_key",PROJECT_KEY)
-      .eq("chain_key",CHAIN_KEY);
-    if(address)q=q.eq("wallet_address",lower(address));
-    const {data,error}=await q.order("block_number",{ascending:false});
-    if(error)throw error;
-    return data||[];
+  async function loadTransactionRows(address=null,status=null){
+    const rows=[];
+    let offset=0;
+    while(true){
+      let q=sb.from("project_transactions")
+        .select("*")
+        .eq("user_id",getContext?.().currentUser.id)
+        .eq("project_key",PROJECT_KEY)
+        .eq("chain_key",CHAIN_KEY);
+      if(address)q=q.eq("wallet_address",lower(address));
+      const {data,error}=await q
+        .order("block_number",{ascending:false})
+        .order("tx_hash",{ascending:true})
+        .range(offset,offset+DB_PAGE_SIZE-1);
+      if(error)throw error;
+      const page=data||[];
+      rows.push(...page);
+      if(status && page.length) setTransactionStatus("loading",`Gespeicherte Transaktionen werden geladen… ${rows.length}`);
+      if(page.length<DB_PAGE_SIZE)break;
+      offset+=DB_PAGE_SIZE;
+    }
+    return rows;
+  }
+
+  function setTransactionStatus(kind,message,details=""){
+    const el=document.getElementById("dao1TransactionStatus");
+    if(!el)return;
+    const icon=kind==="ready"?"✅":kind==="error"?"❌":kind==="db"?"💾":"⏳";
+    el.innerHTML=`<div style="font-weight:700">${icon} ${message}</div>${details?`<div class="note" style="margin-top:4px">${details}</div>`:""}`;
+  }
+
+  function transactionStatusSnapshot(rows,state){
+    const claimCalls=rows.filter(r=>r.selector===CLAIM_SELECTOR);
+    const enriched=claimCalls.filter(r=>r.claim_nft_id!=null);
+    const pending=claimCalls.length-enriched.length;
+    const missingPrice=enriched.filter(r=>r.aptm_usd==null).length;
+    const lastAt=state?.last_scanned_at ? new Date(state.last_scanned_at).toLocaleString("de-DE") : "noch kein Scan";
+    const lastBlock=state?.last_scanned_block ? Number(state.last_scanned_block).toLocaleString("de-DE") : "–";
+    return {claimCalls:claimCalls.length,enriched:enriched.length,pending,missingPrice,lastAt,lastBlock};
+  }
+
+  async function showTransactionReadyStatus(address,rows,source="db"){
+    let state=null;
+    try{state=await getTransactionScanState(address);}catch(e){console.warn("Tx scan state:",e);}
+    const x=transactionStatusSnapshot(rows,state);
+    const sourceText=source==="db" ? "Nur gespeicherte Daten geladen – keine Blockchain-Abfrage." : "Blockchain-Aktualisierung abgeschlossen.";
+    setTransactionStatus("ready",`Bereit – ${rows.length.toLocaleString("de-DE")} Transaktionen, ${x.enriched.toLocaleString("de-DE")} angereicherte Claims.`,
+      `${sourceText} Letzter Scan: ${x.lastAt} · letzter Block: ${x.lastBlock} · offene Claim-Anreicherungen: ${x.pending} · Claims ohne historischen USD-Kurs: ${x.missingPrice}`);
   }
 
   async function syncApertumTransactionCache(address,status){
@@ -976,15 +1031,17 @@ window.DAO1Project = (() => {
       ? Math.max(0,Number(state.last_scanned_block)-CLAIM_SCAN_BUFFER_BLOCKS)
       : null;
     let url=`${EXPLORER_API}/addresses/${address}/transactions`;
-    let page=0,maxSeen=Number(state?.last_scanned_block||0);
+    let page=0,maxSeen=Number(state?.last_scanned_block||0),fetched=0;
     const batch=[];
     while(url){
       page++;
-      if(status)status.textContent=fromBlock==null
-        ? `Apertum-Historie: vollständiger Initialscan · Seite ${page}…`
-        : `Apertum-Historie: neue Blöcke ab ${fromBlock} · Seite ${page}…`;
+      setTransactionStatus("loading",fromBlock==null
+        ? `Blockchain-Historie wird vollständig geladen · Explorer-Seite ${page}…`
+        : `Neue Blockchain-Daten werden geladen · Explorer-Seite ${page}…`,
+        fromBlock==null ? `${fetched.toLocaleString("de-DE")} Transaktionen bisher empfangen.` : `Ab Block ${fromBlock.toLocaleString("de-DE")} inklusive ${CLAIM_SCAN_BUFFER_BLOCKS} Block Sicherheitspuffer.`);
       const j=await fetchJson(url,"Apertum Explorer · Transaktionshistorie");
       const items=j.items||[];
+      fetched+=items.length;
       let oldest=Infinity;
       for(const t of items){
         const block=Number(t.block_number??t.block??0);
@@ -1015,12 +1072,17 @@ window.DAO1Project = (() => {
         });
       }
       if(batch.length>=500){
-        await saveTransactionRows(batch.splice(0,batch.length));
+        const saveBatch=batch.splice(0,batch.length);
+        setTransactionStatus("db",`${saveBatch.length} Transaktionen werden gespeichert…`,`${fetched.toLocaleString("de-DE")} Explorer-Datensätze bisher verarbeitet.`);
+        await saveTransactionRows(saveBatch);
       }
       if(fromBlock!=null && Number.isFinite(oldest) && oldest<fromBlock)break;
       url=nextUrl(`${EXPLORER_API}/addresses/${address}/transactions`,j.next_page_params);
     }
-    if(batch.length)await saveTransactionRows(batch);
+    if(batch.length){
+      setTransactionStatus("db",`${batch.length} Transaktionen werden gespeichert…`);
+      await saveTransactionRows(batch);
+    }
     if(maxSeen)await saveTransactionScanState(address,maxSeen);
     return {state,fromBlock,maxSeen,rows:await loadTransactionRows(address)};
   }
@@ -1030,7 +1092,7 @@ window.DAO1Project = (() => {
   }
 
   async function refreshTransactionHistory(scan=false){
-    const status=document.getElementById("dao1TransactionStatus");
+    const job=++transactionJobToken;
     const wallets=allProjectWalletOptions();
     if(!wallets.length)return;
     if(!txFilterWallet || !wallets.some(w=>String(w.id)===String(txFilterWallet)))txFilterWallet=String(wallets[0].id);
@@ -1040,34 +1102,53 @@ window.DAO1Project = (() => {
     if(scan && btn){btn.disabled=true;btn.textContent="Historie wird aktualisiert…";}
     try{
       if(scan){
-        const res=await syncApertumTransactionCache(address,status);
-        status.textContent=res.state
-          ? `Historie aktualisiert · inkrementell ab Block ${res.fromBlock} (Puffer ${CLAIM_SCAN_BUFFER_BLOCKS}).`
-          : "Historie vollständig initial geladen.";
+        setTransactionStatus("loading","Blockchain-Aktualisierung wird gestartet…");
+        await syncApertumTransactionCache(address,null);
+        if(job!==transactionJobToken)return;
+        transactionRows=await loadTransactionRows(address,null);
+        if(job!==transactionJobToken)return;
+        await enrichTransactionsWithClaims(address,null,job);
+        if(job!==transactionJobToken)return;
+        transactionRows=await loadTransactionRows(address,null);
+        if(job!==transactionJobToken)return;
+        renderTransactionControls();
+        renderTransactionHistory();
+        await showTransactionReadyStatus(address,transactionRows,"scan");
+      }else{
+        // Wallet/filter switch: database read ONLY. No Explorer, RPC or claim enrichment.
+        setTransactionStatus("db","Gespeicherte Wallet-Daten werden geladen…","Keine Blockchain-Abfrage und keine Claim-Anreicherung.");
+        transactionRows=await loadTransactionRows(address,null);
+        if(job!==transactionJobToken)return;
+        renderTransactionControls();
+        renderTransactionHistory();
+        await showTransactionReadyStatus(address,transactionRows,"db");
       }
-      transactionRows=await loadTransactionRows(address);
-      await enrichTransactionsWithClaims(address,status);
-      transactionRows=await loadTransactionRows(address);
-      renderTransactionControls();
-      renderTransactionHistory();
     }catch(e){
       console.error("Apertum Transaktionshistorie:",e);
-      if(status)status.innerHTML=`<span class="error">${e.message}</span>`;
+      if(job===transactionJobToken)setTransactionStatus("error",e.message||String(e));
     }finally{
-      if(btn){btn.disabled=false;btn.textContent="Apertum-Historie aktualisieren";}
+      if(scan && btn && job===transactionJobToken){btn.disabled=false;btn.textContent="Apertum-Historie aktualisieren";}
     }
   }
 
-  async function enrichTransactionsWithClaims(address,status){
-    const txs=await loadTransactionRows(address);
-    const claimTxs=txs.filter(t=>t.selector===CLAIM_SELECTOR);
-    if(!claimTxs.length)return;
+  async function enrichTransactionsWithClaims(address,status=null,jobToken=transactionJobToken){
+    const txs=await loadTransactionRows(address,null);
+    const allClaimTxs=txs.filter(t=>t.selector===CLAIM_SELECTOR);
+    const claimTxs=allClaimTxs.filter(t=>t.claim_nft_id==null);
+    if(!claimTxs.length){
+      setTransactionStatus("ready",`Keine neuen Claims anzureichern.`,`${allClaimTxs.length.toLocaleString("de-DE")} Claim-Transaktionen sind bereits verarbeitet.`);
+      return;
+    }
+    setTransactionStatus("loading",`${claimTxs.length.toLocaleString("de-DE")} neue Claim(s) werden angereichert…`,`Bereits verarbeitet: ${(allClaimTxs.length-claimTxs.length).toLocaleString("de-DE")}.`);
     const nftMap=allKnownNftsForWallet(address);
     const claimRows=[];
     const blocks=[];
     for(let i=0;i<claimTxs.length;i++){
+      if(jobToken!==transactionJobToken)return;
       const t=claimTxs[i];
-      if(status)status.textContent=`Claims werden angereichert ${i+1}/${claimTxs.length}…`;
+      if(i===0 || (i+1)%10===0 || i+1===claimTxs.length){
+        setTransactionStatus("loading",`Claims werden angereichert ${i+1}/${claimTxs.length}…`,`NFT-Zuordnung und Reward werden aus Transaktion/Logs ermittelt.`);
+      }
       const ps=words(t.raw_input||"");
       const knownId=[ps[0],ps[1]].filter(v=>v!=null).map(v=>v.toString()).find(id=>nftMap.has(id));
       const decodedId=knownId || ps[0]?.toString() || ps[1]?.toString();
@@ -1093,7 +1174,9 @@ window.DAO1Project = (() => {
       });
     }
     if(claimRows.length){
-      const history=await ensurePricesForClaimBlocks(blocks,status);
+      if(jobToken!==transactionJobToken)return;
+      setTransactionStatus("loading",`Historische APTM-Kurse werden ergänzt…`,`${claimRows.length.toLocaleString("de-DE")} neue Claim(s) werden bewertet.`);
+      const history=await ensurePricesForClaimBlocks(blocks,document.getElementById("dao1TransactionStatus"));
       for(const r of claimRows){
         const ph=priceAtBlock(history,Number(r.block_number));
         if(ph){
@@ -1104,7 +1187,10 @@ window.DAO1Project = (() => {
         }
       }
       await saveClaimRows(claimRows);
-      for(const r of claimRows){
+      for(let ri=0;ri<claimRows.length;ri++){
+        if(jobToken!==transactionJobToken)return;
+        const r=claimRows[ri];
+        if(ri===0 || (ri+1)%25===0 || ri+1===claimRows.length)setTransactionStatus("db",`Claim-Anreicherungen werden gespeichert ${ri+1}/${claimRows.length}…`);
         const tx=txs.find(t=>t.tx_hash===r.tx_hash);
         const {error}=await sb.from("project_transactions")
           .update({
@@ -1123,6 +1209,7 @@ window.DAO1Project = (() => {
           .eq("tx_hash",r.tx_hash);
         if(error)console.warn("Tx Claim enrichment:",error);
       }
+      setTransactionStatus("ready",`${claimRows.length.toLocaleString("de-DE")} neue Claim(s) angereichert und gespeichert.`);
     }
   }
 
@@ -1165,7 +1252,8 @@ window.DAO1Project = (() => {
           <option value="ausgang" ${txFilterKind==="ausgang"?"selected":""}>Ausgang</option>
           <option value="intern" ${txFilterKind==="intern"?"selected":""}>Intern</option>
         </select></label>
-      </div>`;
+      </div>
+      <div class="note" style="margin-top:7px">Wallet-/Datums-/Typ-Filter verändern nur die Anzeige. Blockchain-Daten werden ausschließlich über „Apertum-Historie aktualisieren“ nachgeladen.</div>`;
   }
 
   async function setTransactionFilter(kind,value){
@@ -1306,16 +1394,24 @@ window.DAO1Project = (() => {
   }
 
   async function loadCachedClaims(walletAddress,nftIds){
-    let q=sb.from("project_nft_claims")
-      .select("*")
-      .eq("user_id",getContext?.().currentUser.id)
-      .eq("project_key",PROJECT_KEY)
-      .eq("chain_key",CHAIN_KEY)
-      .eq("wallet_address",lower(walletAddress));
-    if(nftIds?.length)q=q.in("nft_id",nftIds.map(Number));
-    const {data,error}=await q.order("block_number",{ascending:true});
-    if(error && !/does not exist|schema cache/i.test(error.message||""))throw error;
-    return data||[];
+    const rows=[];
+    let offset=0;
+    while(true){
+      let q=sb.from("project_nft_claims")
+        .select("*")
+        .eq("user_id",getContext?.().currentUser.id)
+        .eq("project_key",PROJECT_KEY)
+        .eq("chain_key",CHAIN_KEY)
+        .eq("wallet_address",lower(walletAddress));
+      if(nftIds?.length)q=q.in("nft_id",nftIds.map(Number));
+      const {data,error}=await q.order("block_number",{ascending:true}).order("tx_hash",{ascending:true}).range(offset,offset+DB_PAGE_SIZE-1);
+      if(error && !/does not exist|schema cache/i.test(error.message||""))throw error;
+      const page=data||[];
+      rows.push(...page);
+      if(page.length<DB_PAGE_SIZE)break;
+      offset+=DB_PAGE_SIZE;
+    }
+    return rows;
   }
 
   async function saveClaimRows(rows){
@@ -1341,6 +1437,7 @@ window.DAO1Project = (() => {
         : `Neue Wallet-Daten ab Block ${fromBlock} werden geladen… Seite ${page}`;
       const j=await fetchJson(url,"Apertum Explorer · Wallet-Transaktionen");
       const items=j.items||[];
+      fetched+=items.length;
       let oldest=Infinity;
       for(const t of items){
         const block=Number(t.block_number??t.block??0);
