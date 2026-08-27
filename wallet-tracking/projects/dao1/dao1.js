@@ -77,7 +77,7 @@ window.DAO1Project = (() => {
         <div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div>
         <div class="custom-token-card">
           <div class="chain-title">📒 Apertum Transaktionshistorie</div>
-          <div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Ein Wallet-Wechsel lädt nur bereits gespeicherte Daten. Erst „Apertum-Historie aktualisieren“ lädt neue Blockchain-Daten und reichert dabei nur neue, noch nicht verarbeitete Claim-Transaktionen mit NFT, Klassifizierung, Reward APTM und historischem USD-Wert an.</div>
+          <div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Der erste Scan lädt die vollständige Wallet-Historie, Folge-Scans nur neue Blöcke mit Sicherheitspuffer. Claim-Transaktionen werden automatisch mit NFT, Klassifizierung, Reward APTM und historischem USD-Wert angereichert.</div>
           <div id="dao1TransactionControls"></div>
           <div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
           <div id="dao1TransactionSummary" style="margin-top:10px"></div>
@@ -1046,12 +1046,8 @@ window.DAO1Project = (() => {
           : "Historie vollständig initial geladen.";
       }
       transactionRows=await loadTransactionRows(address);
-      if(scan){
-        await enrichTransactionsWithClaims(address,status);
-        transactionRows=await loadTransactionRows(address);
-      }else if(status){
-        status.textContent=`${transactionRows.length} gespeicherte Transaktion(en) geladen.`;
-      }
+      await enrichTransactionsWithClaims(address,status);
+      transactionRows=await loadTransactionRows(address);
       renderTransactionControls();
       renderTransactionHistory();
     }catch(e){
@@ -1064,17 +1060,14 @@ window.DAO1Project = (() => {
 
   async function enrichTransactionsWithClaims(address,status){
     const txs=await loadTransactionRows(address);
-    const claimTxs=txs.filter(t=>t.selector===CLAIM_SELECTOR && t.claim_nft_id==null);
-    if(!claimTxs.length){
-      if(status)status.textContent="Keine neuen Claims zum Anreichern.";
-      return;
-    }
+    const claimTxs=txs.filter(t=>t.selector===CLAIM_SELECTOR);
+    if(!claimTxs.length)return;
     const nftMap=allKnownNftsForWallet(address);
     const claimRows=[];
     const blocks=[];
     for(let i=0;i<claimTxs.length;i++){
       const t=claimTxs[i];
-      if(status)status.textContent=`Neue Claims werden angereichert ${i+1}/${claimTxs.length}…`;
+      if(status)status.textContent=`Claims werden angereichert ${i+1}/${claimTxs.length}…`;
       const ps=words(t.raw_input||"");
       const knownId=[ps[0],ps[1]].filter(v=>v!=null).map(v=>v.toString()).find(id=>nftMap.has(id));
       const decodedId=knownId || ps[0]?.toString() || ps[1]?.toString();
@@ -1130,7 +1123,6 @@ window.DAO1Project = (() => {
           .eq("tx_hash",r.tx_hash);
         if(error)console.warn("Tx Claim enrichment:",error);
       }
-      if(status)status.textContent=`${claimRows.length} neue Claim(s) angereichert.`;
     }
   }
 
@@ -1193,32 +1185,38 @@ window.DAO1Project = (() => {
     const table=document.getElementById("dao1TransactionTable");
     const rows=txVisibleRows();
     const claims=rows.filter(r=>r.claim_nft_id!=null);
-    const inAptm=rows.filter(r=>r.direction==="eingang").reduce((a,r)=>a+Number(r.value_aptm||0)+Number(r.claim_reward_aptm||0),0);
+    const claimedAptm=claims.reduce((a,r)=>a+Number(r.claim_reward_aptm||0),0);
+    const claimedUsd=claims.reduce((a,r)=>a+Number(r.claim_reward_usd||0),0);
+    const inAptm=rows.filter(r=>r.direction==="eingang").reduce((a,r)=>a+Number(r.value_aptm||0),0);
     const outAptm=rows.filter(r=>r.direction==="ausgang").reduce((a,r)=>a+Number(r.value_aptm||0),0);
     const gas=rows.reduce((a,r)=>a+Number(r.gas_aptm||0),0);
     if(summary)summary.innerHTML=`<div class="project-summary">
       <div class="custom-token-card project-summary-box"><span class="field-label">Transaktionen</span><strong>${rows.length}</strong></div>
       <div class="custom-token-card project-summary-box"><span class="field-label">Claims</span><strong>${claims.length}</strong></div>
-      <div class="custom-token-card project-summary-box"><span class="field-label">Eingang inkl. Claims</span><strong>${fmt(inAptm)} APTM</strong></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Geclaimt</span><strong>${fmt(claimedAptm)} APTM</strong><div class="meta">${claimedUsd?usd(claimedUsd):"historischer USD-Wert noch nicht vollständig"}</div></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Normale Eingänge</span><strong>${fmt(inAptm)} APTM</strong></div>
       <div class="custom-token-card project-summary-box"><span class="field-label">Ausgang</span><strong>${fmt(outAptm)} APTM</strong></div>
       <div class="custom-token-card project-summary-box"><span class="field-label">Gas</span><strong>${fmt(gas)} APTM</strong></div>
     </div>`;
     if(!table)return;
     if(!rows.length){table.innerHTML='<div class="empty">Keine Transaktionen für den gewählten Filter.</div>';return;}
-    table.innerHTML=`<div class="chain-table-wrap"><table class="chain-admin-table"><thead><tr>
+    table.innerHTML=`<details><summary style="cursor:pointer;font-weight:700;padding:10px 0">Detailliste anzeigen (${rows.length} Transaktionen)</summary>
+      <div class="chain-table-wrap" style="margin-top:8px"><table class="chain-admin-table"><thead><tr>
       <th>Zeit</th><th>Richtung</th><th>Methode</th><th>APTM</th><th>Claim / NFT</th><th>APTM/USD</th><th>USD</th><th>Gas APTM</th><th>Tx</th>
     </tr></thead><tbody>${rows.map(r=>{
       const claim=r.claim_nft_id!=null;
+      const currentSubtype=claim?currentSubtypeForClaim(r.claim_nft_id,r.claim_nft_subtype):"";
+      const currentName=claim?currentNameForClaim(r.claim_nft_id,r.claim_nft_name):"";
       const amount=Number(r.value_aptm||0)+(claim?Number(r.claim_reward_aptm||0):0);
       const usdVal=claim?Number(r.claim_reward_usd||0):Number(r.value_usd||0);
       return `<tr>
         <td>${r.tx_timestamp||"–"}</td><td>${r.direction||"–"}</td><td>${r.method||"–"}</td>
         <td>${fmt(amount)}</td>
-        <td>${claim?`<strong>${r.claim_nft_name||"NFT"}</strong><div class="meta">#${r.claim_nft_id}${r.claim_nft_subtype?" · "+r.claim_nft_subtype:""} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td>
+        <td>${claim?`<strong>${currentName||"NFT"}</strong><div class="meta">#${r.claim_nft_id}${currentSubtype?" · "+currentSubtype:""} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td>
         <td>${r.aptm_usd==null?"–":fmt(r.aptm_usd)}</td><td>${usdVal?usd(usdVal):"–"}</td>
         <td>${fmt(r.gas_aptm)}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${r.tx_hash.slice(0,12)}…</a></td>
       </tr>`;
-    }).join("")}</tbody></table></div>`;
+    }).join("")}</tbody></table></div></details>`;
   }
 
   function xmlEsc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");}
@@ -1237,10 +1235,12 @@ window.DAO1Project = (() => {
       const claim=r.claim_nft_id!=null;
       const amt=Number(r.value_aptm||0)+(claim?Number(r.claim_reward_aptm||0):0);
       const valUsd=claim?Number(r.claim_reward_usd||0):Number(r.value_usd||0);
+      const currentSubtype=claim?currentSubtypeForClaim(r.claim_nft_id,r.claim_nft_subtype):"";
+      const currentName=claim?currentNameForClaim(r.claim_nft_id,r.claim_nft_name):"";
       const values=[
         r.tx_timestamp,walletAddress(wallet),r.direction,r.method,r.tx_hash,Number(r.block_number||0),
-        r.from_address,r.to_address,amt,claim?`${r.claim_nft_name||"NFT"} #${r.claim_nft_id}`:"",
-        r.claim_nft_subtype||"",claim?Number(r.claim_reward_aptm||0):0,
+        r.from_address,r.to_address,amt,claim?`${currentName||"NFT"} #${r.claim_nft_id}`:"",
+        currentSubtype,claim?Number(r.claim_reward_aptm||0):0,
         r.aptm_usd==null?"":Number(r.aptm_usd),valUsd||0,Number(r.gas_aptm||0),
         r.gas_usd==null?"":Number(r.gas_usd),r.status
       ];
@@ -1267,9 +1267,11 @@ window.DAO1Project = (() => {
     <table><thead><tr><th>Zeit</th><th>Richtung</th><th>Methode</th><th>APTM</th><th>Claim / NFT</th><th>APTM/USD</th><th>USD</th><th>Gas</th><th>Tx Hash</th></tr></thead><tbody>
     ${rows.map(r=>{
       const claim=r.claim_nft_id!=null;
+      const currentSubtype=claim?currentSubtypeForClaim(r.claim_nft_id,r.claim_nft_subtype):"";
+      const currentName=claim?currentNameForClaim(r.claim_nft_id,r.claim_nft_name):"";
       const amt=Number(r.value_aptm||0)+(claim?Number(r.claim_reward_aptm||0):0);
       const valUsd=claim?Number(r.claim_reward_usd||0):Number(r.value_usd||0);
-      return `<tr><td>${xmlEsc(r.tx_timestamp)}</td><td>${xmlEsc(r.direction)}</td><td>${xmlEsc(r.method)}</td><td>${fmt(amt)}</td><td>${claim?`${xmlEsc(r.claim_nft_name||"NFT")} #${r.claim_nft_id}<div class="meta">${xmlEsc(r.claim_nft_subtype||"")} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td><td>${r.aptm_usd==null?"–":fmt(r.aptm_usd)}</td><td>${valUsd?usd(valUsd):"–"}</td><td>${fmt(r.gas_aptm)}</td><td><code>${xmlEsc(r.tx_hash)}</code></td></tr>`;
+      return `<tr><td>${xmlEsc(r.tx_timestamp)}</td><td>${xmlEsc(r.direction)}</td><td>${xmlEsc(r.method)}</td><td>${fmt(amt)}</td><td>${claim?`${xmlEsc(currentName||"NFT")} #${r.claim_nft_id}<div class="meta">${xmlEsc(currentSubtype)} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td><td>${r.aptm_usd==null?"–":fmt(r.aptm_usd)}</td><td>${valUsd?usd(valUsd):"–"}</td><td>${fmt(r.gas_aptm)}</td><td><code>${xmlEsc(r.tx_hash)}</code></td></tr>`;
     }).join("")}
     </tbody></table><script>window.onload=()=>window.print();<\/script></body></html>`);
     w.document.close();
@@ -1522,16 +1524,19 @@ window.DAO1Project = (() => {
       }
       const cached=filterClaimsForSelectedNfts(cachedAll,selectedNfts);
       rewardRows=cached.map(r=>{
+        const liveClass=currentProjectNftById(r.nft_id,r.nft_contract);
         const nft=selectedNftMap.get(String(r.nft_id)) || allNftMap.get(String(r.nft_id)) || {
           id:String(r.nft_id),
           name:r.nft_name || `NFT #${r.nft_id}`,
-          classification:r.nft_subtype?{subtype:r.nft_subtype}:null
+          classification:null
         };
+        const liveName=liveClass?.nft_name || r.nft_name || nft.name || `NFT #${r.nft_id}`;
+        const liveSubtype=liveClass?.subtype || r.nft_subtype || "";
         return {
           miner:{
             wallet_address:address,
             nft_id:Number(r.nft_id),
-            label:`${wallet?.label||"Wallet"} · ${r.nft_name || nft.name || "NFT"}${r.nft_subtype?" · "+r.nft_subtype:""} · #${r.nft_id}`
+            label:`${wallet?.label||"Wallet"} · ${liveName}${liveSubtype?" · "+liveSubtype:""} · #${r.nft_id}`
           },
           timestamp:r.tx_timestamp,
           block:Number(r.block_number),
@@ -1546,8 +1551,8 @@ window.DAO1Project = (() => {
           gasUsd:r.gas_usd==null?null:Number(r.gas_usd),
           syncBlock:r.price_block||null,
           nftId:String(r.nft_id),
-          nftName:r.nft_name || nft.name || `NFT #${r.nft_id}`,
-          nftSubtype:r.nft_subtype || nft.classification?.subtype || null
+          nftName:liveName,
+          nftSubtype:liveSubtype || null
         };
       }).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
 
@@ -1576,6 +1581,26 @@ window.DAO1Project = (() => {
     }
   }
 
+
+  function currentProjectNftById(id,contract=null){
+    const sid=String(id??"");
+    const c=contract?lower(contract):null;
+    return projectNfts.find(n =>
+      n.project_key===PROJECT_KEY &&
+      n.chain_key===CHAIN_KEY &&
+      String(n.nft_id)===sid &&
+      n.enabled!==false &&
+      (!c || lower(n.nft_contract)===c)
+    ) || null;
+  }
+
+  function currentSubtypeForClaim(id,fallback="",contract=null){
+    return currentProjectNftById(id,contract)?.subtype || fallback || "";
+  }
+
+  function currentNameForClaim(id,fallback="",contract=null){
+    return currentProjectNftById(id,contract)?.nft_name || fallback || `NFT #${id}`;
+  }
 
   function miningNftOptions(){
     const map=new Map();
