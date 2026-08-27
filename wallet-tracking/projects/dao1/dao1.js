@@ -497,6 +497,12 @@ window.DAO1Project = (() => {
     return "";
   }
 
+  async function refreshWalletNftsAndOwnership(wallet,statusPrefix=""){
+    const ctx=getContext?.(),address=walletAddress(wallet);if(!ctx?.currentUser||!address)return {nfts:0,ownership:0,failed:0};
+    if(typeof ctx.refreshApertumNftsForWallet==="function")await ctx.refreshApertumNftsForWallet(wallet,p=>setTransactionStatus("loading",`${statusPrefix}${wallet.label}: Apertum-NFTs werden aktualisiert…`,`Explorer-Seite ${p}`));
+    const prev=selectedWalletId;selectedWalletId=String(wallet.id);await loadCurrentApertumNfts();let saved=0,failed=0;for(const n of currentApertumNfts){try{saved+=await discoverOwnershipForNft(n.id,n.contract,n.name);}catch(e){failed++;console.warn("NFT Ownership",n,e);}}selectedWalletId=prev;await loadOwnershipCache();return {nfts:currentApertumNfts.length,ownership:saved,failed};
+  }
+
   async function discoverMinerNfts() {
     const ctx=getContext?.();
     const wallet=projectWallets().find(w=>String(w.id)===String(selectedWalletId));
@@ -1288,6 +1294,9 @@ window.DAO1Project = (() => {
           await enrichTransactionsWithClaims(address,null,job);
           if(job!==transactionJobToken)return;
           await enrichTransactionHistoricalPrices(address,job);
+          if(job!==transactionJobToken)return;
+          setTransactionStatus("loading",`Wallet ${i+1}/${targets.length}: ${w.label} · NFTs werden aktualisiert…`,"Apertum NFT-Bestand und Besitzerhistorie werden mit demselben Voll-Scan aktualisiert.");
+          await refreshWalletNftsAndOwnership(w,`Wallet ${i+1}/${targets.length} · `);
         }
         if(job!==transactionJobToken)return;
         transactionRows=await loadTransactionRows(selectedAll?null:walletAddress(targets[0]),null);
@@ -1296,7 +1305,7 @@ window.DAO1Project = (() => {
         if(selectedAll){
           const claims=transactionRows.filter(r=>r.claim_nft_id!=null).length;
           setTransactionStatus("ready",`Bereit – ${transactionRows.length.toLocaleString("de-DE")} Transaktionen aus ${targets.length} Wallets, ${claims.toLocaleString("de-DE")} Claims.`,
-            "Blockchain-Aktualisierung für alle ausgewählten Apertum-Wallets abgeschlossen.");
+            "Blockchain-, NFT-Bestands- und Besitzerhistorien-Aktualisierung für alle ausgewählten Apertum-Wallets abgeschlossen.");
         }else{
           await showTransactionReadyStatus(walletAddress(targets[0]),transactionRows,"scan");
         }

@@ -160,7 +160,8 @@ async function onLoggedIn(session) {
         predefinedTokenProject,
         predefinedTokenCategory,
         normalizeAddress,
-        dustThreshold: DUST_THRESHOLD
+        dustThreshold: DUST_THRESHOLD,
+        refreshApertumNftsForWallet
       })
     });
     await window.DAO1Project.ensureMounted();
@@ -484,22 +485,60 @@ function taxNativeCoinGeckoId(chain){
   return null;
 }
 
-async function taxHistoricalPrice(chain,asset,dateStr,block=null){
-  if(chain==="apertum" && asset==="native" && block!=null){
-    try{
-      const {data,error}=await sb.from("aptm_price_history").select("block_number,aptm_usd")
-        .eq("chain_key","apertum").lte("block_number",Number(block))
-        .order("block_number",{ascending:false}).limit(1).maybeSingle();
-      if(!error && data && Number(data.aptm_usd)>0){
-        return {price:Number(data.aptm_usd),source:`APTM/USDT Pool · Block ${data.block_number}`};
-      }
-    }catch{}
-  }
-  let cgId=null;
-  if(asset==="native")cgId=taxNativeCoinGeckoId(chain);
-  else cgId=asset?.coingeckoId||null;
-  return taxCoinGeckoPrice(cgId,dateStr);
+const taxDexFactoryCache=new Map(),taxProjectReferenceCache=new Map();
+const taxV2Iface=new ethers.Interface(["function getPair(address,address) view returns (address)","function token0() view returns (address)","function getReserves() view returns (uint112 reserve0,uint112 reserve1,uint32 blockTimestampLast)"]);
+function taxPredefinedBySymbol(chain,symbol){
+  const wanted=String(symbol||"").toUpperCase();
+  for(const x of (SAFE_ADDRESSES[chain]||[])){const a=normalizeAddress(x,chain),k=chain+"|"+a;if(String(predefinedTokenSymbols[k]||"").toUpperCase()===wanted)return {address:a,symbol:predefinedTokenSymbols[k],decimals:predefinedTokenDecimals[k],coingeckoId:predefinedTokenCoinGeckoIds[k]||null};}
+  return null;
 }
+async function taxDexFactory(chain){
+  if(taxDexFactoryCache.has(chain))return taxDexFactoryCache.get(chain);
+  const {data,error}=await sb.from("dex_configs").select("factory_address,version").eq("chain_key",chain).eq("enabled",true);
+  const r=!error?(data||[]).find(x=>String(x.version||"").toLowerCase()==="v2"):null,out=r?.factory_address?normalizeAddress(r.factory_address,chain):null;taxDexFactoryCache.set(chain,out);return out;
+}
+async function taxProjectReference(project,chain){
+  const k=project+"|"+chain;if(taxProjectReferenceCache.has(k))return taxProjectReferenceCache.get(k);
+  const {data,error}=await sb.from("defi_project_tokens").select("contract_address,role").eq("project_key",project).eq("chain_key",chain).eq("enabled",true);
+  const r=!error?(data||[]).find(x=>String(x.role||"").toLowerCase()==="reference"):null,out=r?.contract_address?normalizeAddress(r.contract_address,chain):null;taxProjectReferenceCache.set(k,out);return out;
+}
+async function taxV2Pair(chain,a,b,block){
+  const f=await taxDexFactory(chain);if(!f)return null;
+  const raw=await archiveRpc(chain,"eth_call",[{to:f,data:taxV2Iface.encodeFunctionData("getPair",[a,b])},taxBlockHex(block)]),[pair]=taxV2Iface.decodeFunctionResult("getPair",raw);
+  return !pair||/^0x0{40}$/i.test(pair)?null:normalizeAddress(pair,chain);
+}
+async function taxDirectV2Price(chain,base,quote,block,bd,qd){
+  const pair=await taxV2Pair(chain,base,quote,block);if(!pair)return null;
+  const t0raw=await archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("token0",[])},taxBlockHex(block)]);
+  const rr=await archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("getReserves",[])},taxBlockHex(block)]);
+  const [t0]=taxV2Iface.decodeFunctionResult("token0",t0raw),[r0,r1]=taxV2Iface.decodeFunctionResult("getReserves",rr),is0=normalizeAddress(t0,chain)===normalizeAddress(base,chain);
+  const rb=Number(is0?r0:r1)/10**Number(bd),rq=Number(is0?r1:r0)/10**Number(qd);return rb>0&&rq>0?{price:rq/rb,pair}:null;
+}
+async function taxTlnVowHistoricalPrice(chain,asset,block){
+  if(!asset?.address)return null;const a=normalizeAddress(asset.address,chain),k=chain+"|"+a;if(predefinedTokenProject[k]!=="tln_vow")return null;
+  const cat=String(predefinedTokenCategory[k]||""),vow=await taxProjectReference("tln_vow",chain),usdt=taxPredefinedBySymbol(chain,"USDT");if(!vow||!usdt)return null;
+  const bd=await taxTokenDecimalsCurrent(chain,asset),vd=await taxTokenDecimalsCurrent(chain,{address:vow,decimals:predefinedTokenDecimals[chain+"|"+vow]??18}),ud=await taxTokenDecimalsCurrent(chain,usdt);
+  const vu=await taxDirectV2Price(chain,vow,usdt.address,block,vd,ud);if(!vu)return null;
+  if(a===vow)return {price:vu.price,source:`Uniswap V2 VOW/USDT · ${vu.pair} · Block ${block}`};
+  if(["voucher_currency","v_currency"].includes(cat)){const leg=await taxDirectV2Price(chain,a,vow,block,bd,vd);return leg?{price:leg.price*vu.price,source:`TLN/VOW ${asset.symbol||"v-Währung"}/VOW → VOW/USDT · Pools ${leg.pair}, ${vu.pair} · Block ${block}`}:null;}
+  if(["defi_token","tln_vow_token"].includes(cat)){const leg=await taxDirectV2Price(chain,a,vow,block,bd,vd);if(leg)return {price:leg.price*vu.price,source:`TLN/VOW ${asset.symbol||"Token"}/VOW → VOW/USDT · Pools ${leg.pair}, ${vu.pair} · Block ${block}`};const d=await taxDirectV2Price(chain,a,usdt.address,block,bd,ud);return d?{price:d.price,source:`TLN/VOW ${asset.symbol||"Token"}/USDT · ${d.pair} · Block ${block}`}:null;}
+  return null;
+}
+async function taxApertumWrappedPrice(chain,asset,block){
+  if(chain!=="apertum"||!asset?.address)return null;const a=normalizeAddress(asset.address,chain),sym=String(asset.symbol||predefinedTokenSymbols[chain+"|"+a]||"").toUpperCase(),u=taxPredefinedBySymbol(chain,"WUSDT")||taxPredefinedBySymbol(chain,"USDT"),wa=taxPredefinedBySymbol(chain,"WAPTM");if(!u)return null;
+  if(sym==="WUSDT"||a===u.address)return {price:1,source:"wUSDT Stablecoin-Parität · 1 USD"};
+  const aptm=await taxHistoricalPrice(chain,"native","",block,true);if(wa&&(sym==="WAPTM"||a===wa.address)&&aptm)return {price:aptm.price,source:`wAPTM/APTM 1:1 · ${aptm.source}`};
+  const bd=await taxTokenDecimalsCurrent(chain,asset),ud=await taxTokenDecimalsCurrent(chain,u),direct=await taxDirectV2Price(chain,a,u.address,block,bd,ud);if(direct)return {price:direct.price,source:`Apertum DEX ${sym||"Token"}/wUSDT · ${direct.pair} · Block ${block}`};
+  if(wa&&aptm){const wd=await taxTokenDecimalsCurrent(chain,wa),via=await taxDirectV2Price(chain,a,wa.address,block,bd,wd);if(via)return {price:via.price*aptm.price,source:`Apertum DEX ${sym||"Token"}/wAPTM → APTM/USD · ${via.pair} · Block ${block}`};}
+  return null;
+}
+
+async function taxHistoricalPrice(chain,asset,dateStr,block=null,skipWrapped=false){
+  if(chain==="apertum"&&asset==="native"&&block!=null){try{const {data,error}=await sb.from("aptm_price_history").select("block_number,aptm_usd").eq("chain_key","apertum").lte("block_number",Number(block)).order("block_number",{ascending:false}).limit(1).maybeSingle();if(!error&&data&&Number(data.aptm_usd)>0)return {price:Number(data.aptm_usd),source:`Apertum DEX APTM/wUSDT · Block ${data.block_number}`};}catch{}}
+  if(block!=null&&asset!=="native"){try{const t=await taxTlnVowHistoricalPrice(chain,asset,block);if(t)return t;if(!skipWrapped){const a=await taxApertumWrappedPrice(chain,asset,block);if(a)return a;}}catch(e){console.warn("Historischer DEX-Poolpreis:",chain,asset?.symbol,e);}}
+  const id=asset==="native"?taxNativeCoinGeckoId(chain):(asset?.coingeckoId||null);return dateStr?taxCoinGeckoPrice(id,dateStr):null;
+}
+
 
 async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
   const ws=taxChainWallets(selectedWallets,chain);
@@ -648,62 +687,25 @@ async function taxXrpChain(chain,selectedWallets,targetEpoch,dateStr){
 async function solRpcTax(chain,method,params){
   return solanaRpc(chain,method,params);
 }
+async function taxSolTargetSlot(chain,address,targetEpoch){
+  let before=null,pages=0;while(pages<1000){pages++;const o={limit:1000,commitment:"finalized"};if(before)o.before=before;const s=await solRpcTax(chain,"getSignaturesForAddress",[address,o]);if(!Array.isArray(s)||!s.length)return {slot:null,accountDidNotExist:true};for(const x of s)if(x.blockTime!=null&&Number(x.blockTime)<=targetEpoch)return {slot:Number(x.slot),accountDidNotExist:false};before=s[s.length-1]?.signature;if(s.length<1000)return {slot:null,accountDidNotExist:true};}throw new Error("Solana Ziel-Slot konnte nicht bestimmt werden.");
+}
 async function taxSolNativeWallet(chain,w,targetEpoch,dateStr){
-  const address=walletAddressForChain(w,chain);
-  if(!address)return null;
-  const current=await solRpcTax(chain,"getBalance",[address,{commitment:"finalized"}]);
-  let lamports=Number(current?.value||0);
-  let before=null,pages=0,afterTarget=[];
-  while(pages<1000){
-    pages++;
-    const opts={limit:1000,commitment:"finalized"};
-    if(before)opts.before=before;
-    const sigs=await solRpcTax(chain,"getSignaturesForAddress",[address,opts]);
-    if(!Array.isArray(sigs)||!sigs.length)break;
-    let reached=false;
-    for(const s of sigs){
-      if(s.blockTime!=null && Number(s.blockTime)<=targetEpoch){reached=true;continue;}
-      afterTarget.push(s.signature);
-    }
-    before=sigs[sigs.length-1]?.signature;
-    if(reached||sigs.length<1000)break;
-  }
-  // Reverse every SOL balance delta after the Stichtag from today's finalized balance.
-  for(let i=0;i<afterTarget.length;i++){
-    if(i===0 || (i+1)%25===0)taxSetStatus("loading",`Solana: ${w.label} historische Balance…`,`Transaktion ${i+1}/${afterTarget.length}`);
-    const tx=await solRpcTax(chain,"getTransaction",[afterTarget[i],{encoding:"json",maxSupportedTransactionVersion:0,commitment:"finalized"}]);
-    if(!tx?.transaction?.message||!tx?.meta)continue;
-    const keys=(tx.transaction.message.accountKeys||[]).map(k=>typeof k==="string"?k:k.pubkey);
-    const ix=keys.indexOf(address);
-    if(ix<0)continue;
-    const pre=Number(tx.meta.preBalances?.[ix]||0),post=Number(tx.meta.postBalances?.[ix]||0);
-    lamports-=post-pre;
-  }
-  const amount=lamports/1e9;
-  const hp=amount>0?await taxHistoricalPrice(chain,"native",dateStr):null;
-  return {chain,address,amount,hp,source:`Solana finalisierte Balance rückgerechnet über ${afterTarget.length} Tx seit Stichtag`};
+  const address=walletAddressForChain(w,chain);if(!address)return null;const t=await taxSolTargetSlot(chain,address,targetEpoch);if(t.accountDidNotExist)return {chain,address,amount:0,slot:null,source:"Alchemy Solana History · vor Stichtag keine Wallet-Aktivität"};
+  const r=await solRpcTax(chain,"getBalance",[address,{commitment:"finalized",slot:t.slot}]),amount=Number(r?.value||0)/1e9,hp=amount>0?await taxHistoricalPrice(chain,"native",dateStr):null;return {chain,address,amount,hp,slot:t.slot,source:`Alchemy Solana Account Archive · getBalance @ Slot ${t.slot}`};
 }
 async function taxSolanaChains(selectedWallets,targetEpoch,dateStr){
   const chains=Object.keys(CHAIN_CONFIG).filter(c=>CHAIN_CONFIG[c]?.walletType==="sol");
-  for(const chain of chains){
-    const ws=taxChainWallets(selectedWallets,chain);
-    if(!ws.length)continue;
-    let verified=0,errors=0,priceMissing=0;
-
-    for(const w of ws){
-      try{
-        const r=await taxSolNativeWallet(chain,w,targetEpoch,dateStr);
-        if(r?.amount>0){
-          if(!r.hp)priceMissing++;
-          taxRows.push({wallet:w.label,wallet_address:r.address,chain,asset:"native",symbol:NATIVE_SYMBOL[chain]||"SOL",amount:r.amount,
-            price_usd:r.hp?.price??null,value_usd:r.hp?r.amount*r.hp.price:null,price_source:r.hp?.source||null,status:"verifiziert",balance_source:r.source});
-          verified++;
-        }
-      }catch(e){errors++;taxRows.push({wallet:w.label,wallet_address:walletAddressForChain(w,chain),chain,asset:"native",symbol:NATIVE_SYMBOL[chain]||"SOL",status:"nicht verifizierbar",error:e.message,balance_source:"Solana Tx-Rückrechnung"});}
-    }
-    taxCoverageSet(chain,"teilweise",`${ws.length} Wallet(s) geprüft · ${verified} positive native SOL-Bestände${priceMissing?` · ${priceMissing} ohne Kurs`:""}${errors?` · ${errors} Fehler`:""} · SPL-Token historisch noch nicht exakt unterstützt`,"SOL nativ exakt · SPL-Token noch offen");
+  for(const chain of chains){const ws=taxChainWallets(selectedWallets,chain);if(!ws.length)continue;let verified=0,errors=0,priceMissing=0;
+    for(const w of ws){const address=walletAddressForChain(w,chain);try{taxSetStatus("loading",`Solana: ${w.label} · historischer Slot und Bestände…`);const r=await taxSolNativeWallet(chain,w,targetEpoch,dateStr);
+      if(r?.amount>0){if(!r.hp)priceMissing++;taxRows.push({wallet:w.label,wallet_address:r.address,chain,asset:"native",symbol:NATIVE_SYMBOL[chain]||"SOL",amount:r.amount,block:r.slot,price_usd:r.hp?.price??null,value_usd:r.hp?r.amount*r.hp.price:null,price_source:r.hp?.source||null,status:"verifiziert",balance_source:r.source});verified++;}
+      if(r?.slot!=null){let pageKey=null;do{const cfg={slot:r.slot,pageLimit:1000};if(pageKey)cfg.pageKey=pageKey;const tr=await solRpcTax(chain,"getTokenAccountsByOwnerAtSlot",[address,{},cfg]),vals=tr?.value||tr?.accounts||[];
+        for(const x of vals){const info=x?.account?.data?.parsed?.info||x?.data?.parsed?.info||{},mint=info.mint||x?.mint,ta=info.tokenAmount||x?.tokenAmount||{},amount=Number(ta.uiAmountString??ta.uiAmount??0);if(!mint||!(amount>0))continue;const k=chain+"|"+normalizeAddress(mint,chain),tok={address:mint,symbol:predefinedTokenSymbols[k]||x?.symbol||String(mint).slice(0,6)+"…",decimals:Number(ta.decimals??predefinedTokenDecimals[k]??0),coingeckoId:predefinedTokenCoinGeckoIds[k]||null},hp=await taxHistoricalPrice(chain,tok,dateStr,r.slot);if(!hp)priceMissing++;taxRows.push({wallet:w.label,wallet_address:address,chain,asset:mint,symbol:tok.symbol,amount,decimals:tok.decimals,block:r.slot,price_usd:hp?.price??null,value_usd:hp?amount*hp.price:null,price_source:hp?.source||null,status:"verifiziert",balance_source:`Alchemy getTokenAccountsByOwnerAtSlot @ Slot ${r.slot}`});verified++;}pageKey=tr?.pageKey||null;}while(pageKey);}
+    }catch(e){errors++;taxRows.push({wallet:w.label,wallet_address:address,chain,asset:"native",symbol:NATIVE_SYMBOL[chain]||"SOL",status:"nicht verifizierbar",error:e.message,balance_source:"Alchemy Solana Account Archive"});}}
+    taxCoverageSet(chain,errors?"teilweise":"berücksichtigt",`${ws.length} Wallet(s) geprüft · ${verified} positive SOL/SPL-Position(en)${priceMissing?` · ${priceMissing} ohne Kurs`:""}${errors?` · ${errors} Fehler`:""}`,"SOL + SPL/Token-2022 · Alchemy historischer Slot");
   }
 }
+
 
 function renderTaxCoverage(){
   const rows=[...taxCoverage].sort((a,b)=>(CHAIN_CONFIG[a.chain]?.sortOrder||999)-(CHAIN_CONFIG[b.chain]?.sortOrder||999));
@@ -779,7 +781,7 @@ function renderTaxResults(date="",tz=""){
     <div class="custom-token-card project-summary-box"><span class="field-label">Chains nicht berücksichtigt</span><strong>${failed.length}</strong><div class="meta">${escapeAttr(failed.join(", ")||"–")}</div></div>
     <div class="custom-token-card project-summary-box"><span class="field-label">Positionen nicht verifizierbar</span><strong>${bad.length}</strong></div>
   </div>${renderTaxCoverage()}`;
-  if(!taxRows.length){out.innerHTML='<div class="empty">Keine steuerrelevanten Positionen gefunden oder keine Chain konnte verifiziert werden.</div>';return;}
+  if(!taxRows.length){out.innerHTML='<div class="empty">Keine Positionen gefunden oder keine Chain konnte verifiziert werden.</div>';return;}
   out.innerHTML=`<details><summary style="cursor:pointer;font-weight:700;padding:10px 0">Stichtagspositionen anzeigen (${taxRows.length})</summary>
     <div class="chain-table-wrap"><table class="chain-admin-table"><thead><tr><th>Wallet</th><th>Chain</th><th>Asset</th><th>Bestand</th><th>Preis USD</th><th>Wert USD</th><th>Block/Ledger</th><th>Status / Quelle</th></tr></thead><tbody>
     ${taxRows.map(r=>`<tr><td>${escapeAttr(r.wallet)}<div class="meta">${escapeAttr(r.wallet_address||"")}</div></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${escapeAttr(r.symbol||"–")}</strong><div class="meta">${r.asset&&r.asset!=="native"?escapeAttr(r.asset):"nativ"}</div></td><td>${r.amount==null?"–":fmt(r.amount)}</td><td>${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td>${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td><td>${r.block||"–"}</td><td>${r.status==="verifiziert"?'<span class="badge safe">verifiziert</span>':'<span class="badge unsafe">nicht verifizierbar</span>'}<div class="meta">${escapeAttr(r.error||r.balance_source||"")}${r.price_source?` · Preis: ${escapeAttr(r.price_source)}`:""}</div></td></tr>`).join("")}
@@ -807,12 +809,11 @@ function exportTaxExcel(){
 }
 
 function exportTaxPdf(){
-  const date=document.getElementById("taxDate")?.value||"",tz=document.getElementById("taxTimezone")?.value||"";
-  const w=window.open("","_blank");if(!w)return alert("Popup wurde blockiert.");
-  const cov=taxCoverage.map(c=>`<tr><td>${escapeAttr(CHAIN_META[c.chain]?.label||c.chain)}</td><td>${escapeAttr(c.status)}</td><td>${escapeAttr(c.scope||"")}</td><td>${escapeAttr(c.detail||"")}</td></tr>`).join("");
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Bestandesaufnahme per 31.12 ${date}</title><style>body{font-family:Arial;font-size:10px}table{border-collapse:collapse;width:100%;margin-bottom:14px}th,td{border:1px solid #bbb;padding:4px;vertical-align:top}th{background:#eee}@page{size:A4 landscape;margin:9mm}</style></head><body><h1>Wallet Tracking – Bestandesaufnahme per 31.12</h1><p><strong>Stichtag:</strong> ${date} · ${tz}<br><strong>Regel:</strong> Keine Bestände werden geschätzt. Historische Preise und Chain-Coverage sind separat ausgewiesen.</p><h2>Chain-Abdeckung</h2><table><thead><tr><th>Chain</th><th>Status</th><th>Abdeckung</th><th>Details</th></tr></thead><tbody>${cov}</tbody></table><h2>Positionen</h2><table><thead><tr><th>Wallet</th><th>Chain</th><th>Asset</th><th>Bestand</th><th>Preis USD</th><th>Wert USD</th><th>Block/Ledger</th><th>Status / Quelle</th></tr></thead><tbody>${taxRows.map(r=>`<tr><td>${escapeAttr(r.wallet)}<br><small>${escapeAttr(r.wallet_address||"")}</small></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td>${escapeAttr(r.symbol||"")}<br><small>${escapeAttr(r.asset||"")}</small></td><td>${r.amount==null?"–":fmt(r.amount)}</td><td>${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td>${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td><td>${r.block||"–"}</td><td>${escapeAttr(r.status)}<br><small>${escapeAttr(r.error||r.balance_source||"")}${r.price_source?` · ${escapeAttr(r.price_source)}`:""}</small></td></tr>`).join("")}</tbody></table><script>window.onload=()=>window.print();<\/script></body></html>`);w.document.close();
+  const date=document.getElementById("taxDate")?.value||"",tz=document.getElementById("taxTimezone")?.value||"",w=window.open("","_blank");if(!w)return alert("Popup wurde blockiert.");
+  const ok=taxRows.filter(r=>r.status==="verifiziert"),priced=ok.filter(r=>r.price_usd!=null&&r.value_usd!=null),unpriced=ok.filter(r=>r.price_usd==null||r.value_usd==null),total=priced.reduce((s,r)=>s+Number(r.value_usd||0),0),quality=unpriced.length?`Bewertet: ${priced.length}/${ok.length} · ${unpriced.length} ohne Kurs`:`Vollständig bewertet: ${priced.length}/${ok.length}`;
+  const cov=taxCoverage.map(c=>`<tr><td><b>${escapeAttr(CHAIN_META[c.chain]?.label||c.chain)}</b></td><td>${escapeAttr(c.status)}</td><td>${escapeAttr(c.scope||"")}</td><td>${escapeAttr(c.detail||"")}</td></tr>`).join(""),rows=taxRows.map(r=>`<tr><td>${escapeAttr(r.wallet)}<small>${escapeAttr(r.wallet_address||"")}</small></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><b>${escapeAttr(r.symbol||"")}</b><small>${escapeAttr(r.asset||"")}</small></td><td class="n">${r.amount==null?"–":fmt(r.amount)}</td><td class="n">${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td class="n">${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td><td>${r.block||"–"}</td><td>${escapeAttr(r.status)}<small>${escapeAttr(r.error||r.balance_source||"")}${r.price_source?`<br>Preis: ${escapeAttr(r.price_source)}`:""}</small></td></tr>`).join("");
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Bestandesaufnahme ${date}</title><style>@page{size:A4 landscape;margin:10mm}body{font:9px Arial;color:#18202a}h1{font-size:22px;margin:0}.head{border-bottom:3px solid;padding-bottom:9px}.cards{display:flex;gap:8px;margin:12px 0}.card{border:1px solid #ccd2d9;border-radius:6px;padding:8px;min-width:170px}.card b{display:block;font-size:14px}table{border-collapse:collapse;width:100%;margin:10px 0}thead{display:table-header-group}tr{page-break-inside:avoid}th,td{border:1px solid #c8ced5;padding:4px;vertical-align:top}th,tfoot td{background:#eef1f4;font-weight:bold}.n{text-align:right;white-space:nowrap}small{display:block;color:#666;font-size:7px;word-break:break-all}tfoot td{border-top:2px solid #18202a;font-size:10px}</style></head><body><div class="head"><h1>Bestandesaufnahme per 31.12</h1><p><b>Stichtag:</b> ${escapeAttr(date)} · ${escapeAttr(tz)} &nbsp; <b>Erstellt:</b> ${new Date().toLocaleString("de-CH")}</p></div><div class="cards"><div class="card">Verifizierte Positionen<b>${ok.length}</b></div><div class="card">Historisch bewertet<b>${priced.length}/${ok.length}</b></div><div class="card">Gesamtwert bewerteter Positionen<b>${fmtUsd(total)}</b></div><div class="card">Datenqualität<b>${escapeAttr(quality)}</b></div></div><h2>Chain-Abdeckung</h2><table><thead><tr><th>Chain</th><th>Status</th><th>Abdeckung</th><th>Details</th></tr></thead><tbody>${cov}</tbody></table><h2>Bestände</h2><table><thead><tr><th>Wallet</th><th>Chain</th><th>Asset</th><th>Bestand</th><th>Preis USD</th><th>Wert USD</th><th>Block / Slot / Ledger</th><th>Status / Quellen</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">SUMME – bewertete Positionen</td><td class="n">${fmtUsd(total)}</td><td colspan="2">${escapeAttr(quality)}</td></tr></tfoot></table><p>Bestände werden nicht geschätzt. Positionen ohne historischen Kurs bleiben sichtbar und sind nicht in der USD-Summe enthalten.</p><script>window.onload=()=>window.print();<\/script></body></html>`);w.document.close();
 }
-
 
 
 function showTab(name) {
@@ -2750,44 +2751,12 @@ const SOLANA_TOKEN_PROGRAMS = [
   "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
 ];
 
-async function solanaRpc(chain, method, params) {
+async function solanaRpc(chain,method,params){
   const cfg=CHAIN_CONFIG[chain]||{};
-  const candidates=[];
-  const configured=configuredBalanceBase(chain);
-
-  if(configured && !/solana-rpc\.publicnode\.com/i.test(configured)){
-    candidates.push(configured);
-  }
-  if(!candidates.includes("https://api.mainnet-beta.solana.com")){
-    candidates.push("https://api.mainnet-beta.solana.com");
-  }
-
-  let lastError=null;
-  for(const url of candidates){
-    try{
-      const res=await fetch(url,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})
-      });
-      if(!res.ok){
-        lastError=new Error(`Solana ${new URL(url).hostname}: HTTP ${res.status}`);
-        continue;
-      }
-      const data=await res.json();
-      if(data.error){
-        lastError=new Error(data.error.message||"Solana RPC Fehler");
-        continue;
-      }
-      return data.result;
-    }catch(e){lastError=e;}
-  }
-
-  if(String(cfg.archiveRpcProvider||"").toLowerCase()==="alchemy" && cfg.archiveRpcUrl){
-    return archiveRpc(chain,method,params);
-  }
-  throw lastError||new Error("Kein Solana-RPC verfügbar.");
+  if(String(cfg.archiveRpcProvider||"").toLowerCase()!=="alchemy"||!cfg.archiveRpcUrl)throw new Error(`${CHAIN_META[chain]?.label||chain}: Alchemy-Solana-RPC ist in public.chains nicht konfiguriert.`);
+  return archiveRpc(chain,method,params);
 }
+
 
 async function fetchSolanaAddressInfo(chain, address) {
   const [balanceResult, ...tokenResults] = await Promise.all([
@@ -5137,6 +5106,12 @@ async function saveNftCacheForWallet(w, nfts, chains) {
     .upsert(payload, { onConflict: "user_id,wallet_id" }).select().single();
   if (error) throw new Error("NFT-Cache konnte nicht gespeichert werden: " + error.message);
   nftCaches.set(String(w.dbId || w.id), data);
+}
+
+async function refreshApertumNftsForWallet(wallet,onProgress=null){
+  if(!currentUser||!wallet?.evm)throw new Error("Apertum-Wallet fehlt.");const chain="apertum",found=await fetchApertumNfts(chain,wallet.evm,p=>onProgress?.(p));found.forEach(n=>{n.walletLabel=wallet.label;n.walletId=String(wallet.dbId||wallet.id);});
+  const old=nftCaches.get(String(wallet.dbId||wallet.id)),flags=new Map(((old&&old.nfts)||[]).map(n=>[nftKey(n),{spam:!!n.userMarkedSpam,safe:!!n.userMarkedSafe}]));found.forEach(n=>{const f=flags.get(nftKey(n));if(f?.spam)n.userMarkedSpam=true;if(f?.safe)n.userMarkedSafe=true;});
+  const others=((old&&old.nfts)||[]).filter(n=>String(n.chain||"")!==chain);await saveNftCacheForWallet(wallet,others.concat(found),[...new Set([...(old?.selected_chains||[]),chain])]);return found;
 }
 
 async function runNftLoad() {
