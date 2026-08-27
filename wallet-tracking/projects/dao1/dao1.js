@@ -74,25 +74,18 @@ window.DAO1Project = (() => {
       panel.id = "tab-dao1";
       panel.className = "tab-panel";
       panel.innerHTML = `
-        <div class="custom-token-card">
-          <div class="chain-title">DAO1 · Apertum</div>
-          <div class="note">Projektansicht für DAO1-spezifische Assets und Apertum-Mining. Der Tab erscheint nur, wenn ein DAO1-Asset aktuell oder in einem Snapshot vorhanden ist.</div>
-        </div>
-        <div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div>
-        <div class="custom-token-card">
-          <div class="chain-title">📒 Apertum Transaktionshistorie</div>
-          <div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Ein Wallet-Wechsel liest ausschließlich bereits gespeicherte Daten aus Supabase. Erst „Apertum-Historie aktualisieren“ lädt neue Blockchain-Daten; dabei werden nur noch nicht verarbeitete Claims angereichert. Der Status zeigt jederzeit, ob geladen, gespeichert, angereichert oder vollständig bereit ist.</div>
-          <div id="dao1TransactionControls"></div>
-          <div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
-          <div id="dao1TransactionSummary" style="margin-top:10px"></div>
-          <div id="dao1TransactionTable" style="margin-top:10px"></div>
-        </div>
-        </div>
-`;
+        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen &amp; Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
+        <div id="dao1-subtab-overview" class="project-subtab-panel"><div class="custom-token-card"><div class="chain-title">DAO1 · Apertum</div><div class="note">Projektübersicht für DAO1-spezifische Assets auf Apertum. Detailfunktionen sind in die Unter-Tabs gegliedert.</div></div></div>
+        <div id="dao1-subtab-config" class="project-subtab-panel" style="display:none"><div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div></div>
+        <div id="dao1-subtab-transactions" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><div class="chain-title">📒 Apertum Transaktionshistorie</div><div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Wallet-Wechsel lesen den Cache; erst „Apertum-Historie aktualisieren“ lädt neue Blockchain-Daten, aktualisiert NFTs/Besitzerhistorie und reichert neue Claims an.</div><div id="dao1TransactionControls"></div><div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div><div id="dao1TransactionSummary" style="margin-top:10px"></div><div id="dao1TransactionTable" style="margin-top:10px"></div></div></div>
+        <div id="dao1-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">DAO1 / Apertum · Hilfe</h3><p class="note"><strong>Transaktionen &amp; Claims:</strong> „Apertum-Historie aktualisieren“ synchronisiert neue Transaktionen, Claims, historische APTM-Kurse sowie NFT-Bestand und Besitzerhistorie. Filter und Exporte arbeiten danach aus dem gespeicherten Bestand.</p><p class="note"><strong>Konfiguration:</strong> Hier werden DAO1-Projektassets und NFTs klassifiziert. Die Klassifizierung steuert Filter und Bezeichnungen, nicht die Erkennung der Blockchain-Transaktionen. Fehlende historische APTM-Kurse können manuell ergänzt werden und bleiben als manuell gekennzeichnet.</p></div></div>
+      `;
       app.appendChild(panel);
     }
     mounted = true;
   }
+
+  function switchSubtab(name,button){document.querySelectorAll("#tab-dao1 .project-subtab-panel").forEach(x=>x.style.display="none");const el=document.getElementById("dao1-subtab-"+name);if(el)el.style.display="block";document.querySelectorAll("#tab-dao1 .project-subtabs .tab-btn").forEach(x=>x.classList.remove("active"));button?.classList.add("active");}
 
   async function refreshConfig() {
     if (!sb) return;
@@ -2179,6 +2172,6 @@ window.DAO1Project = (() => {
     updateVisibility();
   }
 
-  return { configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
+  return { switchSubtab, configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
     refreshTransactionHistory, setTransactionFilter, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice };
 })();

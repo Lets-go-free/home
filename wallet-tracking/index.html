@@ -42,6 +42,14 @@
 
     <div class="tab-nav-groups">
       <div class="tab-nav-group">
+        <span class="tab-nav-group-label">💬 Support &amp; Info</span>
+        <div class="tab-nav">
+          <button class="tab-btn" id="userChatTabBtn" data-tab="chat" onclick="showTab('chat')">💬 Chat <span id="userChatUnreadBadge" class="chat-unread-badge"></span></button>
+          <button class="tab-btn" id="adminChatTabBtn" data-tab="chat" onclick="showTab('chat')" style="display:none">💬 Admin-Chat <span id="adminChatUnreadBadge" class="chat-unread-badge"></span></button>
+          <button class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
+        </div>
+      </div>
+      <div class="tab-nav-group">
         <span class="tab-nav-group-label">📊 Übersicht &amp; Analyse</span>
         <div class="tab-nav">
           <button class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking - Token-Übersicht</button>
@@ -60,23 +68,13 @@
           <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
         </div>
       </div>
-      <div class="tab-nav-group">
-        <span class="tab-nav-group-label">💬 Support &amp; Info</span>
-        <div class="tab-nav">
-          <button class="tab-btn" id="userChatTabBtn" data-tab="chat" onclick="showTab('chat')">💬 Chat <span id="userChatUnreadBadge" class="chat-unread-badge"></span></button>
-          <button class="tab-btn" id="adminChatTabBtn" data-tab="chat" onclick="showTab('chat')" style="display:none">💬 Admin-Chat <span id="adminChatUnreadBadge" class="chat-unread-badge"></span></button>
-          <button class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
-        </div>
-      </div>
       <div class="tab-nav-group" id="adminNavGroup" style="display:none">
         <span class="tab-nav-group-label">⚙️ Admin-Bereich</span>
         <div class="tab-nav">
           <button class="tab-btn" data-tab="admin" data-open-admin="customtokens" onclick="showTab('admin');showAdminTab('customtokens')">Eigene sichere Token</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="chains" onclick="showTab('admin');showAdminTab('chains')">⛓️ Chains</button>
-          <button class="tab-btn" data-tab="admin" data-open-admin="coverage" onclick="showTab('admin');showAdminTab('coverage')">📋 Chain-Abdeckung</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="defiprojects" onclick="showTab('admin');showAdminTab('defiprojects')">🏦 DeFi-Projekte</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="dex" onclick="showTab('admin');showAdminTab('dex')">🔄 DEX</button>
-          <button class="tab-btn" data-tab="admin" data-open-admin="coverage" onclick="showTab('admin');showAdminTab('coverage')">📋 Chain-Abdeckung</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="hardcoding" onclick="showTab('admin');showAdminTab('hardcoding')">🧪 Hardcoding-Audit</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="ideas" onclick="showTab('admin');showAdminTab('ideas')">💡 Ideen / Umbau</button>
         </div>
@@ -568,93 +566,24 @@
     </div>
 
     <div id="tab-help" class="tab-panel">
-      <div class="custom-token-card" style="border-color:var(--accent)">
-        <h3 style="margin-top:0">⏱️ Was läuft automatisch, was manuell?</h3>
-        <table>
-          <thead><tr><th>Bereich</th><th>Automatisch?</th><th>Details</th></tr></thead>
-          <tbody>
-            <tr>
-              <td>Bestände (Wallet-Tracking)</td>
-              <td><span class="badge safe">automatisch live</span></td>
-              <td>Der letzte gespeicherte Stand erscheint sofort; danach werden die Bestände automatisch live über kostenlose APIs/RPCs aktualisiert. Bei einem Ausfall bleibt der letzte Stand als Fallback sichtbar.</td>
-            </tr>
-            <tr>
-              <td>Kurse</td>
-              <td><span class="badge safe">immer frisch</span></td>
-              <td>Werden bei jedem Laden/Login neu abgefragt (CoinGecko/GeckoTerminal) – unabhängig vom Bestands-Cache, da schnell und kostenlos.</td>
-            </tr>
-            <tr>
-              <td>🔍 Entdecken, 💸 Gebühren, 🔓 Freigaben, 🖼️ NFTs</td>
-              <td><span class="badge unsafe">nur manuell</span></td>
-              <td>Laufen ausschliesslich auf Knopfdruck. Gebühren: Ethereum/Avalanche über Routescan, BSC über NodeReal/BSCTrace und Polygon/Arbitrum/Base über Blockscout. Aufwendige Historien-Abfragen bleiben bewusst manuell.</td>
-            </tr>
-            <tr>
-              <td>🖼️ NFTs</td>
-              <td><span class="badge safe">Supabase-Cache</span></td>
-              <td>Gespeicherte NFTs werden aus Supabase angezeigt. Eine neue Alchemy-/Apertum-Abfrage erfolgt nur über „NFTs jetzt aktualisieren“. Manuelle Spam-Markierungen werden ebenfalls gespeichert.</td>
-            </tr>
-            <tr>
-              <td>Snapshots</td>
-              <td><span class="badge unsafe">nur manuell</span></td>
-              <td>Werden nur erstellt, wenn du aktiv auf "Snapshot erstellen" klickst. Für einen Stichtag (z.B. Jahresende) rechtzeitig selbst daran denken.</td>
-            </tr>
-            <tr>
-              <td>💬 Chat</td>
-              <td><span class="badge safe">live (Realtime)</span></td>
-              <td>Neue Nachrichten erscheinen automatisch, ohne dass du etwas klicken musst.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <h2>📊 Übersicht &amp; Analyse</h2>
-
+      <div class="section-title">❓ Hilfe / Handbuch</div>
       <div class="custom-token-card">
-        <h3 style="margin-top:0">Wallet-Tracking - Token-Übersicht</h3>
-        <p class="note">Zeigt deine Bestände über alle Wallets und Chains hinweg – als Gesamtsumme ("Summary") und aufgeschlüsselt je Wallet ("Details je Wallet"). Nur Token auf der sicheren Liste (vordefiniert oder selbst hinzugefügt) werden angezeigt, alles andere wird bewusst ausgeblendet (Schutz vor Scam-Token). Zusätzlich verfügbar: Snapshots (Momentaufnahmen deines Bestands, samt Kurs zum jeweiligen Zeitpunkt), eine Verlauf-Grafik über die Zeit, und die Portfolio-Allokation als Kreisdiagramm.</p>
-
-        <h3>💸 Gebühren</h3>
-        <p class="note">Summiert die historisch bezahlten Netzwerk-Gebühren je Wallet in der nativen Coin-Einheit. Ethereum/Avalanche nutzen Routescan, BSC nutzt NodeReal/BSCTrace und Polygon/Arbitrum/Base nutzen Blockscout; die Ergebnisse werden in Supabase gecacht und inkrementell aktualisiert. Admins können jederzeit aktualisieren, normale User frühestens alle 30 Tage. Der zusätzlich angezeigte aktuelle Coin-Kurs dient nur als Anhaltspunkt und ist keine historische USD-Bewertung der Gebühren.</p>
-
-        <h3>🖼️ NFTs</h3>
-        <p class="note">Zeigt die NFTs (Sammelbilder/Collectibles) einer oder aller Wallets, inklusive Warnung bei Spam-Verdacht (unaufgeforderte, wertlose NFT-"Geschenke" sind eine verbreitete Betrugsmasche). Mit "Spam-Verdacht ausblenden" lassen sich verdächtige Funde ausblenden.</p>
-
-        <h3>🔓 Freigaben</h3>
-        <p class="note">Zeigt aktive Token-Freigaben ("Approvals") an Dapps/Contracts – ein häufig unterschätztes Sicherheitsrisiko, v.a. bei unlimitierten Freigaben (rot markiert). Diese Seite kann selbst nichts widerrufen (rein lesend, kein Zugriff auf deinen Private Key). Zum Widerrufen verlinkt sie auf revoke.cash – <strong>wichtig: dort im Browser deiner Wallet-App öffnen</strong> (z.B. in MetaMask/Trust Wallet unter "Browser"), nicht in einem gewöhnlichen Browser, sonst kann nichts signiert werden.</p>
+        <h3 style="margin-top:0">Schnellstart</h3>
+        <p class="note"><strong>1.</strong> Unter „Meine Wallets“ die eigenen Adressen erfassen und speichern. <strong>2.</strong> In der Token-Übersicht „Jetzt live aktualisieren“ verwenden. <strong>3.</strong> Unbekannte Token bei Bedarf über „Entdecken“ prüfen und als eigene sichere Token übernehmen. <strong>4.</strong> Für einen Jahresabschluss „Bestandesaufnahme per 31.12“ öffnen, Stichtag und Wallet(s) wählen und „Neu berechnen“ starten. Bereits gespeicherte Jahresstände werden später ohne Blockchain-Abfragen geladen.</p>
       </div>
-
-      <h2>⚙️ Verwaltung</h2>
-
-      <div class="custom-token-card">
-        <h3 style="margin-top:0">Meine Wallets</h3>
-        <p class="note">Hier erfasst du deine Wallet-Adressen (eine pro Chain-Typ: EVM, Bitcoin, XRP, Solana, Tron, Akash). Die EVM-Adresse gilt gleichzeitig für Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche und Apertum. Jedes Feld zeigt live an, ob das Adressformat gültig ist und ob die Adresse schon bei einer anderen Wallet erfasst ist. <strong>Wichtig: nach dem Eintragen auf "Speichern" klicken</strong> – ungespeicherte Wallets werden bei Snapshots und in anderen Bereichen nicht mitberücksichtigt.</p>
-
-        <h3>Vordefinierte Token</h3>
-        <p class="note">Die globale Liste sicherer Token, die für alle User gilt (inkl. native Coins). Kann nach Chain/Token gefiltert und per Suchfeld durchsucht werden. Neue Einträge kommen nur über die Admins rein (z.B. nachdem du einen sinnvollen eigenen Token vorgeschlagen hast).</p>
-
-        <h3>Eigene sichere Token</h3>
-        <p class="note">Zusätzliche Token, die nur du siehst – falls ein Token noch nicht auf der vordefinierten Liste steht, du ihm aber vertraust, kannst du ihn hier selbst mit Adresse und Label hinzufügen. Taucht danach in deiner Wallet-Übersicht mit auf.</p>
-
-        <h3>🔍 Entdecken</h3>
-        <p class="note">Durchsucht eine Wallet aktiv nach Token, die du zwar besitzt, die aber noch nicht auf der sicheren Liste stehen. Wegen des aktuell noch verwendeten Alchemy-Indexers ist für normale Benutzer pro Wallet nur ein Scan alle 30 Tage möglich; Admins können jederzeit neu scannen. Das komplette Ergebnis wird in Supabase gespeichert und bis zur nächsten Aktualisierung wieder angezeigt. Gefundene, unverdächtige Token lassen sich direkt als "eigene sichere Token" übernehmen.</p>
-      </div>
-
-      <h2>💬 Support &amp; Info</h2>
-
-      <div class="custom-token-card">
-        <h3 style="margin-top:0">💬 Chat</h3>
-        <p class="note">Direkter Draht zum Support – Nachrichten hier sind nur für dich und die Admins sichtbar, sonst niemanden. Neue Antworten erscheinen automatisch (Realtime), ohne dass du die Seite neu laden musst.</p>
-
-        <h3>⚙️ Admin</h3>
-        <p class="note">Nur für die hinterlegten Admin-Konten sichtbar. Verwaltung der von Usern selbst erfassten Token (übernehmen/ignorieren), offene Erweiterungsideen mit Status, und Einsicht in alle Chat-Konversationen aller User.</p>
-
-        <h3>❓ Hilfe</h3>
-        <p class="note">Diese Seite hier. Im Bereich TLN/VOW werden Projektpreise direkt on-chain aus den hinterlegten Pools ermittelt.
-        Diese Projektpreise werden auch im Wallet-Tracking und bei den vordefinierten Token verwendet, sobald dieselbe Contract-Adresse vorkommt.</p>
-      </div>
+      <div class="custom-token-card"><h3 style="margin-top:0">📊 Wallet-Tracking</h3><p class="note">Zeigt native Coins und freigegebene sichere Token über deine gespeicherten Wallets. Beim Login erscheint zuerst der Cache, danach kann live aktualisiert werden. Snapshots dienen der laufenden Portfolio-Historie; die „Bestandesaufnahme per 31.12“ ist dagegen eine exakte historische Stichtagsabfrage.</p></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">🧾 Bestandesaufnahme per 31.12</h3><p class="note">Wähle Datum, Zeitzone und eine Wallet oder „Alle Wallets“. „Neu berechnen“ liest historische Blockchain-Zustände und speichert das Ergebnis dauerhaft. „Nur Kurse aktualisieren“ lässt bereits verifizierte Bestände unverändert. Positionen ohne historischen Kurs bleiben sichtbar und werden nicht in USD-Summen eingerechnet. PDF und Excel dokumentieren Quellen und Abdeckung.</p></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">💸 Gebühren · 🖼️ NFTs · 🔓 Freigaben</h3><p class="note">Gebühren werden je Wallet gecacht und nur gezielt aktualisiert. NFTs werden auf Knopfdruck geladen; Spam-Markierungen können manuell korrigiert werden. Freigaben zeigen aktive Token-Approvals rein lesend an; ein Widerruf erfolgt extern mit der eigenen Wallet.</p></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">⚙️ Verwaltung</h3><p class="note"><strong>Meine Wallets:</strong> Adressen speichern. <strong>Vordefinierte Token:</strong> globale sichere Tokenliste. <strong>Eigene sichere Token:</strong> persönliche Ergänzungen. <strong>Entdecken:</strong> sucht aktiv nach noch nicht freigegebenen Token. Änderungen an Wallets oder sicheren Token wirken sich auf nachfolgende Live-Abfragen aus.</p></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">📋 Chain-Abdeckung</h3><p class="note">Die Tabelle zeigt, welche Funktionen pro Chain technisch vorgesehen sind. „Bestand per 31.12.“ beschreibt die historische Stichtags-Unterstützung; der konkrete Lauf weist zusätzlich aus, ob eine einzelne Abfrage erfolgreich war.</p><div id="helpChainCoverage"></div></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">🏦 Projekte</h3><p class="note">Projektspezifische Bedienung und Fachlogik stehen bewusst nicht in diesem allgemeinen Handbuch. Öffne das jeweilige DeFi-Projekt und dort den Unter-Tab „Hilfe“. Projekte dürfen eigene Unter-Tabs für Übersicht, Transaktionen, Konfiguration und Hilfe besitzen.</p></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">💬 Support</h3><p class="note">Wenn Daten fehlen oder eine Abfrage fehlschlägt, sende über den Chat möglichst Chain, Wallet-Bezeichnung, Funktion und die sichtbare Fehlermeldung. Private Keys oder Seed-Phrases gehören niemals in den Chat.</p></div>
     </div>
 
     <div id="tab-tlnvow" class="tab-panel">
+      <div class="project-subtabs"><button class="tab-btn active" onclick="switchProjectSubtab('tlnvow','overview',this)">Übersicht</button><button class="tab-btn" onclick="switchProjectSubtab('tlnvow','help',this)">Hilfe</button></div>
+      <div id="tlnvow-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">TLN/VOW · Hilfe</h3><p class="note">Diese Projektansicht bewertet TLN/VOW-Assets direkt über die hinterlegten DEX-Pools. v-Währungen werden über TOKEN → VOW → USDT bewertet. TLN/VOW-Projekttoken verwenden TOKEN/VOW und als Fallback TOKEN/USDT. V2-LP-Token werden aus den Reserven beider Pool-Assets und der LP-TotalSupply bewertet. Für die Bestandesaufnahme per 31.12 werden dieselben Regeln mit dem historischen Blockzustand verwendet.</p><p class="note">Wenn ein Projektpreis fehlt, zuerst prüfen, ob Token/LP in der Projekt-Konfiguration korrekt klassifiziert und der benötigte DEX/Pool aktiv ist. Die allgemeine Bedienung des Wallet-Trackings steht unter „Hilfe / Handbuch“.</p></div></div>
+      <div id="tlnvow-subtab-overview" class="project-subtab-panel">
       <div class="custom-token-card" style="border-color:var(--accent)">
         <h3 style="margin-top:0">TLN/VOW · On-Chain Preise &amp; Liquidity Pools</h3>
         <div class="note">
@@ -733,6 +662,7 @@
           </div>
         </div>
       </section>
+      </div>
     </div>
 
   </div>
@@ -776,8 +706,8 @@
   </div>
 
   <footer>
-    Version vom 27.08.2026, 23:14 Uhr · modularer Umbau Phase 2ac<br>
-    Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
+    Version vom 28.08.2026, 01:35 Uhr · modularer Umbau Phase 2ad<br>
+    Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
 
@@ -806,6 +736,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 27.08.2026 23:14:24 CEST · Phase 2ac · Build 20260827-231424</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.08.2026 01:35:16 CEST · Phase 2ad · Build 20260828-013516</div>
 </body>
 </html>
