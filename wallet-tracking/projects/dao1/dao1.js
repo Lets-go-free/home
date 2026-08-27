@@ -773,42 +773,144 @@ window.DAO1Project = (() => {
     return best;
   }
 
-  async function syncPriceHistory(minBlock, maxBlock) {
-    const ctx = getContext?.();
-    if (!ctx?.isAdmin) return [];
-    const meta = await poolMeta();
-    const from = Math.max(0, minBlock - 50000);
-    const logs = await rpc("eth_getLogs", [{ fromBlock: hexBlock(from), toBlock: hexBlock(maxBlock), address: PAIR_ADDRESS, topics: [SYNC_TOPIC] }]);
-    const rows = [];
-    for (const l of logs || []) {
-      const raw = String(l.data || "").replace(/^0x/, "");
-      if (raw.length < 128) continue;
-      const a = BigInt("0x" + raw.slice(0,64));
-      const b = BigInt("0x" + raw.slice(64,128));
-      const aptmRaw = meta.aptmIs0 ? a : b;
-      const usdtRaw = meta.aptmIs0 ? b : a;
-      const aptmDecimals = meta.aptmIs0 ? meta.d0 : meta.d1;
-      const usdtDecimals = meta.aptmIs0 ? meta.d1 : meta.d0;
-      const reserveAptm = Number(aptmRaw)/10**aptmDecimals;
-      const reserveUsdt = Number(usdtRaw)/10**usdtDecimals;
-      if (!(reserveAptm > 0 && reserveUsdt > 0)) continue;
-      rows.push({
-        project_key: PROJECT_KEY,
-        chain_key: CHAIN_KEY,
-        pool_address: lower(PAIR_ADDRESS),
-        block_number: parseInt(l.blockNumber,16),
-        log_index: parseInt(l.logIndex,16),
-        tx_hash: l.transactionHash,
-        reserve_aptm: reserveAptm,
-        reserve_usdt: reserveUsdt,
-        aptm_usd: reserveUsdt/reserveAptm
-      });
+  function priceRowFromSyncLog(l,meta){
+    const raw=String(l.data||"").replace(/^0x/,"");
+    if(raw.length<128)return null;
+    const a=BigInt("0x"+raw.slice(0,64));
+    const b=BigInt("0x"+raw.slice(64,128));
+    const aptmRaw=meta.aptmIs0?a:b;
+    const usdtRaw=meta.aptmIs0?b:a;
+    const aptmDecimals=meta.aptmIs0?meta.d0:meta.d1;
+    const usdtDecimals=meta.aptmIs0?meta.d1:meta.d0;
+    const reserveAptm=Number(aptmRaw)/10**aptmDecimals;
+    const reserveUsdt=Number(usdtRaw)/10**usdtDecimals;
+    if(!(reserveAptm>0 && reserveUsdt>0))return null;
+    return {
+      project_key:PROJECT_KEY,
+      chain_key:CHAIN_KEY,
+      pool_address:lower(PAIR_ADDRESS),
+      block_number:parseInt(l.blockNumber,16),
+      log_index:parseInt(l.logIndex,16),
+      tx_hash:l.transactionHash,
+      reserve_aptm:reserveAptm,
+      reserve_usdt:reserveUsdt,
+      aptm_usd:reserveUsdt/reserveAptm
+    };
+  }
+
+  async function savePriceRows(rows){
+    if(!rows.length)return;
+    const {error}=await sb.from("aptm_price_history")
+      .upsert(rows,{onConflict:"pool_address,block_number,log_index",ignoreDuplicates:true});
+    if(error)console.warn("APTM Preis-Cache speichern:",error);
+  }
+
+  async function fetchSyncLogsAdaptive(fromBlock,toBlock,status,depth=0){
+    if(fromBlock>toBlock)return [];
+    try{
+      if(status)status.textContent=`Historische APTM-Kurse: Pool-Syncs ${fromBlock}–${toBlock}…`;
+      return await rpc("eth_getLogs",[{
+        fromBlock:hexBlock(fromBlock),
+        toBlock:hexBlock(toBlock),
+        address:PAIR_ADDRESS,
+        topics:[SYNC_TOPIC]
+      }]);
+    }catch(e){
+      const span=toBlock-fromBlock+1;
+      // A timeout/range limit must not abort the whole mining scan.
+      // Recursively split until small chunks; below that leave this price gap unresolved.
+      if(span<=500 || depth>=12){
+        console.warn(`APTM Preis-Chunk ${fromBlock}-${toBlock} übersprungen:`,e);
+        return [];
+      }
+      const mid=Math.floor((fromBlock+toBlock)/2);
+      const left=await fetchSyncLogsAdaptive(fromBlock,mid,status,depth+1);
+      const right=await fetchSyncLogsAdaptive(mid+1,toBlock,status,depth+1);
+      return [...left,...right];
     }
-    if (rows.length) {
-      const { error } = await sb.from("aptm_price_history").upsert(rows, { onConflict: "pool_address,block_number,log_index", ignoreDuplicates: true });
-      if (error) console.warn("APTM Preis-Cache speichern:", error);
+  }
+
+  async function syncPriceRangeChunked(minBlock,maxBlock,status){
+    const ctx=getContext?.();
+    if(!ctx?.isAdmin)return [];
+    const meta=await poolMeta();
+    const rows=[];
+    // Fixed moderate top-level chunks; adaptive splitter handles slow RPC ranges.
+    const CHUNK=10000;
+    for(let from=Math.max(0,minBlock);from<=maxBlock;from+=CHUNK){
+      const to=Math.min(maxBlock,from+CHUNK-1);
+      const logs=await fetchSyncLogsAdaptive(from,to,status);
+      const part=(logs||[]).map(l=>priceRowFromSyncLog(l,meta)).filter(Boolean);
+      rows.push(...part);
+      await savePriceRows(part);
     }
     return rows;
+  }
+
+  function missingPriceWindows(history,claimBlocks){
+    const sorted=[...new Set(claimBlocks.map(Number).filter(Number.isFinite))].sort((a,b)=>a-b);
+    if(!sorted.length)return [];
+    const missing=sorted.filter(b=>!priceAtBlock(history,b));
+    if(!missing.length)return [];
+
+    // For the earliest uncovered claim we need a Sync before it. Start with a bounded
+    // backward window instead of querying the complete claim history.
+    const windows=[];
+    let start=Math.max(0,missing[0]-10000);
+    let end=missing[0];
+    for(const b of missing.slice(1)){
+      if(b-end<=10000)end=b;
+      else{
+        windows.push([start,end]);
+        start=Math.max(0,b-10000);
+        end=b;
+      }
+    }
+    windows.push([start,end]);
+    return windows;
+  }
+
+  async function ensurePricesForClaimBlocks(claimBlocks,status){
+    if(!claimBlocks.length)return [];
+    const minBlock=Math.min(...claimBlocks),maxBlock=Math.max(...claimBlocks);
+    let history=[];
+    try{history=await loadCachedPrices(minBlock,maxBlock);}catch(e){console.warn("APTM Preis-Cache:",e);}
+
+    const windows=missingPriceWindows(history,claimBlocks);
+    for(const [from,to] of windows){
+      try{
+        await syncPriceRangeChunked(from,to,status);
+      }catch(e){
+        // Price enrichment is best-effort. Claims must still be saved.
+        console.warn(`Historischer APTM-Preis ${from}-${to} konnte nicht ergänzt werden:`,e);
+      }
+    }
+    try{history=await loadCachedPrices(minBlock,maxBlock);}catch(e){console.warn("APTM Preis-Cache neu laden:",e);}
+    return history;
+  }
+
+  async function backfillCachedClaimPrices(walletAddress,nftIds,status){
+    const claims=await loadCachedClaims(walletAddress,nftIds);
+    const missing=claims.filter(r=>r.aptm_usd==null);
+    if(!missing.length)return claims;
+    const blocks=missing.map(r=>Number(r.block_number)).filter(Number.isFinite);
+    const history=await ensurePricesForClaimBlocks(blocks,status);
+    const updates=[];
+    for(const r of missing){
+      const ph=priceAtBlock(history,Number(r.block_number));
+      if(!ph)continue;
+      const price=Number(ph.aptm_usd);
+      updates.push({
+        ...r,
+        aptm_usd:price,
+        reward_usd:Number(r.reward_aptm||0)*price,
+        gas_usd:Number(r.gas_aptm||0)*price,
+        price_block:ph.block_number,
+        updated_at:new Date().toISOString()
+      });
+    }
+    if(updates.length)await saveClaimRows(updates);
+    return loadCachedClaims(walletAddress,nftIds);
   }
 
 
@@ -972,21 +1074,22 @@ window.DAO1Project = (() => {
       // Historical prices required only for the newly fetched candidate range.
       if(claimCandidates.length){
         const blocks=claimCandidates.map(x=>Number(x.t.block_number??x.t.block)).filter(Number.isFinite);
-        const minBlock=Math.min(...blocks),maxBlock=Math.max(...blocks);
-        let history=[];
-        try{history=await loadCachedPrices(minBlock,maxBlock);}catch(e){console.warn(e);}
-        if(!history.length || !priceAtBlock(history,minBlock)){
-          status.textContent="Historischer APTM-Preisbereich fehlt – Pool-Syncs werden ergänzt…";
-          await syncPriceHistory(minBlock,maxBlock);
-          try{history=await loadCachedPrices(minBlock,maxBlock);}catch{}
-        }
+        // Price enrichment is targeted and best-effort. A missing/slow RPC price lookup
+        // must never prevent the actual claim from being persisted.
+        let history=await ensurePricesForClaimBlocks(blocks,status);
 
         const claimRows=[];
         let done=0;
         for(const c of claimCandidates){
           done++;
           status.textContent=`Neue/überlappende Claims werden verarbeitet ${done}/${claimCandidates.length}…`;
-          const logs=await fetchAll(`/transactions/${c.t.hash}/logs`);
+          let logs;
+          try{
+            logs=await fetchAll(`/transactions/${c.t.hash}/logs`);
+          }catch(e){
+            console.warn("Claim-Logs übersprungen:",c.t.hash,e);
+            continue;
+          }
           const reward=rewardFromLogs(logs,address);
           const gas=feeAptm(c.t);
           const block=Number(c.t.block_number??c.t.block);
@@ -1021,7 +1124,13 @@ window.DAO1Project = (() => {
 
       if(scan.maxSeen)await saveScanState(address,scan.maxSeen);
 
-      const cached=await loadCachedClaims(address,nftIds);
+      let cached;
+      try{
+        cached=await backfillCachedClaimPrices(address,nftIds,status);
+      }catch(e){
+        console.warn("APTM Preis-Backfill:",e);
+        cached=await loadCachedClaims(address,nftIds);
+      }
       rewardRows=cached.map(r=>{
         const nft=nftMap.get(String(r.nft_id)) || {
           id:String(r.nft_id),
@@ -1057,12 +1166,13 @@ window.DAO1Project = (() => {
       const mode=scan.state
         ? `inkrementell ab Block ${scan.fromBlock} (Puffer ${CLAIM_SCAN_BUFFER_BLOCKS})`
         : "vollständiger Initialscan";
-      status.textContent=`${rewardRows.length} gespeicherte Claims für ${selectedNfts.length} NFT(s) · ${mode}.`;
+      const missingUsd=rewardRows.filter(x=>x.price==null).length;
+      status.textContent=`${rewardRows.length} gespeicherte Claims für ${selectedNfts.length} NFT(s) · ${mode}.${missingUsd?` ${missingUsd} Claim(s) noch ohne historischen USD-Kurs; diese werden bei späteren Scans erneut ergänzt.`:""}`;
     } catch (e) {
       console.error("DAO1 Mining-Auswertung:",e);
       const msg=String(e?.message||e||"Unbekannter Fehler");
       const help=/RPC/.test(msg)
-        ? " Historische Kursdaten konnten über den Apertum-RPC nicht geladen werden. Erneut versuchen; bereits gespeicherte Claims/Kurse bleiben erhalten."
+        ? " Eine Apertum-RPC-Abfrage ist fehlgeschlagen. Preisabfragen werden normalerweise in kleinere Bereiche geteilt und übersprungen; bereits gespeicherte Claims/Kurse bleiben erhalten."
         : /Explorer/.test(msg)
           ? " Der Apertum Explorer war bei einer Abfrage nicht erreichbar. Erneut starten; durch den Claim-Cache wird nicht von vorne doppelt gespeichert."
           : " Bitte erneut versuchen.";
