@@ -170,6 +170,7 @@ async function onLoggedIn(session) {
   activeChainFilter = new Set(Object.keys(CHAIN_META)); // Chain-Filter IMMER mit allen Chains starten
   renderChainFilter();
   renderWalletInputs();
+  renderTaxWalletSelect();
   renderEvmWalletChainsNote();
   renderCustomChainSelect();
   renderCustomTokenList();
@@ -234,6 +235,241 @@ async function onLoggedIn(session) {
   }
 }
 
+
+// ---- Steuer-Stichtag: exakte historische Bestände (Apertum + EVM) ----
+let taxRows = [];
+const taxBlockCache = new Map();
+
+function taxEligibleChains(){
+  return Object.keys(CHAIN_CONFIG).filter(c => CHAIN_CONFIG[c]?.walletType === "evm" && CHAIN_CONFIG[c]?.rpcUrl);
+}
+
+function renderTaxWalletSelect(){
+  const el=document.getElementById("taxWalletSelect");
+  if(!el)return;
+  const current=el.value;
+  el.innerHTML='<option value="__all">Alle Wallets</option>'+wallets.map(w=>`<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if(current==="__all" || wallets.some(w=>String(w.id)===String(current)))el.value=current;
+  else el.value="__all";
+  const date=document.getElementById("taxDate");
+  if(date && !date.value){
+    const y=new Date().getFullYear()-1;
+    date.value=`${y}-12-31`;
+  }
+}
+
+function taxSetStatus(kind,text,detail=""){
+  const el=document.getElementById("taxStatus");
+  if(!el)return;
+  const icon=kind==="ready"?"✅":kind==="error"?"❌":"⏳";
+  el.innerHTML=`<strong>${icon} ${escapeAttr(text)}</strong>${detail?`<div class="meta" style="margin-top:4px">${escapeAttr(detail)}</div>`:""}`;
+}
+
+function zonedEndOfDayEpoch(dateStr,tz){
+  // Iteratively resolve 23:59:59 in the requested IANA timezone to UTC epoch seconds.
+  const [y,m,d]=dateStr.split("-").map(Number);
+  let guess=Date.UTC(y,m-1,d,23,59,59);
+  if(tz==="UTC")return Math.floor(guess/1000);
+  const fmt=new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"});
+  for(let i=0;i<3;i++){
+    const parts=Object.fromEntries(fmt.formatToParts(new Date(guess)).filter(p=>p.type!=="literal").map(p=>[p.type,p.value]));
+    const represented=Date.UTC(Number(parts.year),Number(parts.month)-1,Number(parts.day),Number(parts.hour),Number(parts.minute),Number(parts.second));
+    const target=Date.UTC(y,m-1,d,23,59,59);
+    guess+=target-represented;
+  }
+  return Math.floor(guess/1000);
+}
+
+async function taxRpc(chain,method,params){
+  const url=CHAIN_CONFIG[chain]?.rpcUrl;
+  if(!url)throw new Error("RPC fehlt");
+  const ctl=new AbortController();
+  const timer=setTimeout(()=>ctl.abort(),25000);
+  try{
+    const res=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params}),signal:ctl.signal});
+    if(!res.ok)throw new Error(`HTTP ${res.status}`);
+    const j=await res.json();
+    if(j.error)throw new Error(j.error.message||"RPC-Fehler");
+    return j.result;
+  }finally{clearTimeout(timer);}
+}
+
+function hexToNumberSafe(v){ try{return Number(BigInt(v||"0x0"));}catch{return 0;} }
+function taxHexBlock(n){return "0x"+Math.max(0,Number(n)).toString(16);}
+
+async function taxBlockAtOrBefore(chain,targetEpoch){
+  const key=`${chain}|${targetEpoch}`;
+  if(taxBlockCache.has(key))return taxBlockCache.get(key);
+  const latestHex=await taxRpc(chain,"eth_blockNumber",[]);
+  let lo=0,hi=hexToNumberSafe(latestHex),best=0,bestTs=0;
+  const latest=await taxRpc(chain,"eth_getBlockByNumber",[taxHexBlock(hi),false]);
+  if(!latest)throw new Error("Letzter Block nicht lesbar");
+  const latestTs=hexToNumberSafe(latest.timestamp);
+  if(targetEpoch>=latestTs){
+    const r={block:hi,timestamp:latestTs};taxBlockCache.set(key,r);return r;
+  }
+  while(lo<=hi){
+    const mid=Math.floor((lo+hi)/2);
+    const b=await taxRpc(chain,"eth_getBlockByNumber",[taxHexBlock(mid),false]);
+    if(!b){hi=mid-1;continue;}
+    const ts=hexToNumberSafe(b.timestamp);
+    if(ts<=targetEpoch){best=mid;bestTs=ts;lo=mid+1;}
+    else hi=mid-1;
+  }
+  const r={block:best,timestamp:bestTs};taxBlockCache.set(key,r);return r;
+}
+
+function taxTokenUniverse(chain){
+  const m=new Map();
+  const add=(address,symbol,decimals,label)=>{
+    if(!address)return;
+    const a=normalizeAddress(address,chain);
+    if(!/^0x[0-9a-f]{40}$/i.test(a))return;
+    const old=m.get(a)||{};
+    m.set(a,{address:a,symbol:symbol||old.symbol||label||a.slice(0,8)+"…",decimals:Number.isFinite(Number(decimals))?Number(decimals):old.decimals,label:label||old.label||symbol||""});
+  };
+  (SAFE_ADDRESSES[chain]||[]).forEach(a=>{
+    const k=chain+"|"+a;
+    add(a,predefinedTokenSymbols[k],predefinedTokenDecimals[k],predefinedTokenLabels[k]);
+  });
+  customSafeTokens.filter(t=>t.chain===chain).forEach(t=>add(t.address,null,null,t.label));
+  snapshots.forEach(s=>s.items.filter(it=>it.chain===chain && !it.is_native && it.address).forEach(it=>add(it.address,it.symbol,it.decimals,it.symbol)));
+  return [...m.values()];
+}
+
+function encodeBalanceOf(address){
+  return "0x70a08231"+"0".repeat(24)+address.toLowerCase().replace(/^0x/,"");
+}
+
+async function taxHistoricalDecimals(chain,token,blockTag){
+  if(Number.isFinite(Number(token.decimals)))return Number(token.decimals);
+  try{
+    const r=await taxRpc(chain,"eth_call",[{to:token.address,data:"0x313ce567"},blockTag]);
+    return hexToNumberSafe(r);
+  }catch{return 18;}
+}
+
+async function taxAptmPriceAtBlock(chain,block){
+  if(chain!=="apertum")return null;
+  try{
+    const {data,error}=await sb.from("aptm_price_history").select("block_number,aptm_usd")
+      .eq("chain_key","apertum").lte("block_number",Number(block))
+      .order("block_number",{ascending:false}).limit(1).maybeSingle();
+    if(error||!data)return null;
+    return {price:Number(data.aptm_usd),source:`APTM/USDT Pool · Block ${data.block_number}`};
+  }catch{return null;}
+}
+
+async function runTaxSnapshot(){
+  const btn=document.getElementById("taxRunBtn");
+  const date=document.getElementById("taxDate")?.value;
+  const tz=document.getElementById("taxTimezone")?.value||"Europe/Zurich";
+  const walletSel=document.getElementById("taxWalletSelect")?.value||"__all";
+  if(!date)return alert("Bitte Stichtag wählen.");
+  const targetEpoch=zonedEndOfDayEpoch(date,tz);
+  const selectedWallets=walletSel==="__all"?wallets:wallets.filter(w=>String(w.id)===String(walletSel));
+  const chains=taxEligibleChains();
+  taxRows=[];
+  btn.disabled=true;btn.textContent="Stichtagsbestand wird ermittelt…";
+  document.getElementById("taxExcelBtn").disabled=true;
+  document.getElementById("taxPdfBtn").disabled=true;
+  try{
+    let chainNo=0;
+    for(const chain of chains){
+      chainNo++;
+      const cfg=CHAIN_CONFIG[chain];
+      const walletsForChain=selectedWallets.filter(w=>walletAddressForChain(w,chain));
+      if(!walletsForChain.length)continue;
+      taxSetStatus("loading",`${CHAIN_META[chain]?.label||chain}: Stichtagsblock wird bestimmt…`,`Chain ${chainNo}/${chains.length}`);
+      let blockInfo;
+      try{ blockInfo=await taxBlockAtOrBefore(chain,targetEpoch); }
+      catch(e){
+        walletsForChain.forEach(w=>taxRows.push({wallet:w.label,wallet_address:walletAddressForChain(w,chain),chain,asset:"–",symbol:"–",status:"nicht verifizierbar",error:`Stichtagsblock: ${e.message}`}));
+        continue;
+      }
+      const blockTag=taxHexBlock(blockInfo.block);
+      const tokens=taxTokenUniverse(chain);
+      const aptmPrice=await taxAptmPriceAtBlock(chain,blockInfo.block);
+      let wi=0;
+      for(const w of walletsForChain){
+        wi++;
+        const address=walletAddressForChain(w,chain);
+        taxSetStatus("loading",`${CHAIN_META[chain]?.label||chain}: ${w.label}…`,`Block ${blockInfo.block} · Wallet ${wi}/${walletsForChain.length} · ${tokens.length} bekannte Token`);
+        try{
+          const raw=await taxRpc(chain,"eth_getBalance",[address,blockTag]);
+          const amount=Number(BigInt(raw||"0x0"))/1e18;
+          if(amount>0){
+            const p=aptmPrice?.price??null;
+            taxRows.push({wallet:w.label,wallet_address:address,chain,block:blockInfo.block,block_timestamp:blockInfo.timestamp,asset:"native",symbol:NATIVE_SYMBOL[chain]||chain.toUpperCase(),amount,price_usd:p,value_usd:p==null?null:amount*p,price_source:aptmPrice?.source||null,status:"verifiziert",balance_source:`eth_getBalance @ block ${blockInfo.block}`});
+          }
+        }catch(e){
+          taxRows.push({wallet:w.label,wallet_address:address,chain,block:blockInfo.block,asset:"native",symbol:NATIVE_SYMBOL[chain]||chain.toUpperCase(),status:"nicht verifizierbar",error:`Historischer Native-State: ${e.message}`,balance_source:`eth_getBalance @ block ${blockInfo.block}`});
+        }
+        for(const token of tokens){
+          try{
+            const decimals=await taxHistoricalDecimals(chain,token,blockTag);
+            const raw=await taxRpc(chain,"eth_call",[{to:token.address,data:encodeBalanceOf(address)},blockTag]);
+            const amount=Number(BigInt(raw||"0x0"))/Math.pow(10,decimals);
+            if(amount>0)taxRows.push({wallet:w.label,wallet_address:address,chain,block:blockInfo.block,block_timestamp:blockInfo.timestamp,asset:token.address,symbol:token.symbol,amount,decimals,price_usd:null,value_usd:null,price_source:null,status:"verifiziert",balance_source:`ERC-20 balanceOf @ block ${blockInfo.block}`});
+          }catch(e){
+            // A contract not yet deployed at the target date is a valid zero, while archive-state errors must remain visible.
+            if(/missing trie|historical state|archive|state unavailable|header not found|pruned/i.test(e.message||"")){
+              taxRows.push({wallet:w.label,wallet_address:address,chain,block:blockInfo.block,asset:token.address,symbol:token.symbol,status:"nicht verifizierbar",error:`Historischer Token-State: ${e.message}`,balance_source:`ERC-20 balanceOf @ block ${blockInfo.block}`});
+            }
+          }
+        }
+      }
+    }
+    renderTaxResults(date,tz);
+    document.getElementById("taxExcelBtn").disabled=taxRows.length===0;
+    document.getElementById("taxPdfBtn").disabled=taxRows.length===0;
+    const ok=taxRows.filter(r=>r.status==="verifiziert").length, bad=taxRows.filter(r=>r.status!=="verifiziert").length;
+    taxSetStatus(bad?"ready":"ready",`Bereit – ${ok} verifizierte Position(en)${bad?`, ${bad} nicht verifizierbar`:""}.`,`Stichtag ${date} · ${tz}. Keine Bestände wurden geschätzt.`);
+  }catch(e){
+    console.error("Steuer-Stichtag:",e);taxSetStatus("error",e.message||String(e));
+  }finally{btn.disabled=false;btn.textContent="Exakten Stichtagsbestand ermitteln";}
+}
+
+function renderTaxResults(date="",tz=""){
+  const summary=document.getElementById("taxSummary"),out=document.getElementById("taxResults");
+  if(!summary||!out)return;
+  const ok=taxRows.filter(r=>r.status==="verifiziert"),bad=taxRows.filter(r=>r.status!=="verifiziert");
+  const usdTotal=ok.reduce((a,r)=>a+Number(r.value_usd||0),0);
+  summary.innerHTML=`<div class="project-summary">
+    <div class="custom-token-card project-summary-box"><span class="field-label">Verifizierte Positionen</span><strong>${ok.length}</strong></div>
+    <div class="custom-token-card project-summary-box"><span class="field-label">Nicht verifizierbar</span><strong>${bad.length}</strong></div>
+    <div class="custom-token-card project-summary-box"><span class="field-label">USD-Wert soweit Preis vorhanden</span><strong>${usdTotal?fmtUsd(usdTotal):"–"}</strong></div>
+  </div>`;
+  if(!taxRows.length){out.innerHTML='<div class="empty">Noch keine Stichtagsabfrage ausgeführt.</div>';return;}
+  out.innerHTML=`<details><summary style="cursor:pointer;font-weight:700;padding:10px 0">Stichtagspositionen anzeigen (${taxRows.length})</summary>
+    <div class="chain-table-wrap"><table class="chain-admin-table"><thead><tr><th>Wallet</th><th>Chain</th><th>Asset</th><th>Bestand</th><th>Preis USD</th><th>Wert USD</th><th>Block</th><th>Status / Quelle</th></tr></thead><tbody>
+    ${taxRows.map(r=>`<tr><td>${escapeAttr(r.wallet)}<div class="meta">${escapeAttr(r.wallet_address||"")}</div></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${escapeAttr(r.symbol||"–")}</strong><div class="meta">${r.asset&&r.asset!=="native"?escapeAttr(r.asset):"nativ"}</div></td><td>${r.amount==null?"–":fmt(r.amount)}</td><td>${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td>${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td><td>${r.block||"–"}</td><td>${r.status==="verifiziert"?'<span class="badge safe">verifiziert</span>':'<span class="badge unsafe">nicht verifizierbar</span>'}<div class="meta">${escapeAttr(r.error||r.balance_source||"")}${r.price_source?` · Preis: ${escapeAttr(r.price_source)}`:""}</div></td></tr>`).join("")}
+    </tbody></table></div></details>`;
+}
+
+function taxXmlCell(v){
+  const num=typeof v==="number"&&Number.isFinite(v);
+  const esc=String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+  return `<Cell><Data ss:Type="${num?"Number":"String"}">${esc}</Data></Cell>`;
+}
+
+function exportTaxExcel(){
+  const date=document.getElementById("taxDate")?.value||"";
+  const tz=document.getElementById("taxTimezone")?.value||"";
+  let body=`<Row>${taxXmlCell("Wallet Tracking – Steuer-Stichtag")}</Row><Row>${taxXmlCell("Stichtag")}${taxXmlCell(date)}</Row><Row>${taxXmlCell("Zeitzone")}${taxXmlCell(tz)}</Row><Row></Row>`;
+  const heads=["Wallet","Wallet-Adresse","Chain","Symbol","Asset/Contract","Bestand","Preis USD","Wert USD","Block","Block-Zeit","Bestandsquelle","Preisquelle","Status","Fehler"];
+  body+=`<Row>${heads.map(taxXmlCell).join("")}</Row>`;
+  for(const r of taxRows)body+=`<Row>${[r.wallet,r.wallet_address,r.chain,r.symbol,r.asset,r.amount??"",r.price_usd??"",r.value_usd??"",r.block??"",r.block_timestamp?new Date(r.block_timestamp*1000).toISOString():"",r.balance_source||"",r.price_source||"",r.status,r.error||""].map(taxXmlCell).join("")}</Row>`;
+  const xml=`<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Stichtag"><Table>${body}</Table></Worksheet></Workbook>`;
+  const blob=new Blob([xml],{type:"application/vnd.ms-excel"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`steuer-stichtag-${date}.xls`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+function exportTaxPdf(){
+  const date=document.getElementById("taxDate")?.value||"",tz=document.getElementById("taxTimezone")?.value||"";
+  const w=window.open("","_blank");if(!w)return alert("Popup wurde blockiert.");
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Steuer-Stichtag ${date}</title><style>body{font-family:Arial;font-size:10px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #bbb;padding:4px;vertical-align:top}th{background:#eee}@page{size:A4 landscape;margin:9mm}</style></head><body><h1>Wallet Tracking – Steuer-Stichtag</h1><p><strong>Stichtag:</strong> ${date} · ${tz}<br><strong>Regel:</strong> Keine Schätzwerte; nicht verifizierbare historische States werden ausgewiesen.</p><table><thead><tr><th>Wallet</th><th>Chain</th><th>Asset</th><th>Bestand</th><th>Preis USD</th><th>Wert USD</th><th>Block</th><th>Status / Quelle</th></tr></thead><tbody>${taxRows.map(r=>`<tr><td>${escapeAttr(r.wallet)}<br><small>${escapeAttr(r.wallet_address||"")}</small></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td>${escapeAttr(r.symbol||"")}<br><small>${escapeAttr(r.asset||"")}</small></td><td>${r.amount==null?"–":fmt(r.amount)}</td><td>${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td>${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td><td>${r.block||"–"}</td><td>${escapeAttr(r.status)}<br><small>${escapeAttr(r.error||r.balance_source||"")}${r.price_source?` · ${escapeAttr(r.price_source)}`:""}</small></td></tr>`).join("")}</tbody></table><script>window.onload=()=>window.print();<\/script></body></html>`);w.document.close();
+}
+
 function showTab(name) {
   // TLN/VOW ist nur erreichbar, wenn ein passender Projekt-Token im Summary-Bestand liegt.
   if (name === "tlnvow" && !hasTlnVowTokenInSummary()) name = "tracking";
@@ -251,6 +487,7 @@ function showTab(name) {
     if (adminView) adminView.style.display = isAdmin ? "block" : "none";
     if (isAdmin) renderAdminChatUserSelect(); else loadOwnChat();
   }
+  if (name === "tax") renderTaxWalletSelect();
   if (name === "nfts") onNftWalletChange();
   if (name === "fees") { renderFeesSummary(); onFeesWalletChange(); }
   if (name === "discovery") {
