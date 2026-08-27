@@ -4290,47 +4290,123 @@ async function enrichApertumNft(chain, nft) {
 }
 
 // Apertum: eigene Blockscout-API (Alchemy wird dafür hier nicht verwendet).
-async function fetchApertumNfts(chain, address, onProgress) {
-  let nextParams = null;
-  let page = 0;
-  const nfts = [];
+function apertureNftFromOwnedItem(chain, item) {
+  const token=item?.token || {};
+  const meta=item?.metadata || {};
+  const tokenAddress=token.address || token.address_hash || item.token_address || item.token_address_hash || "";
+  const tokenId=item.id ?? item.token_id ?? item.tokenId ?? "";
+  const collectionName=token.name || token.symbol || item.collection_name || null;
+  return {
+    chain,
+    tokenAddress,
+    tokenId:String(tokenId),
+    name:meta.name || item.name || (collectionName ? `${collectionName} #${tokenId}` : `NFT #${tokenId}`),
+    image:normalizeNftImageUrl(item.image_url || item.media_url) || nftMetadataImage(meta),
+    collectionName,
+    possibleSpam:blockscoutNftSpam(item) || blockscoutNftSpam(token),
+    contractType:token.type || item.token_type || item.type
+  };
+}
 
-  do {
+async function fetchApertumOwnedNfts(chain,address,onProgress){
+  const base=configuredNftBase(chain);
+  let nextParams=null,page=0;
+  const out=[];
+  do{
     page++;
-    if (onProgress) onProgress(page);
-    const base = configuredNftBase(chain);
-    let url = `${base}/addresses/${address}/nft/collections`;
-    if (nextParams) url += "?" + new URLSearchParams(nextParams).toString();
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
+    if(onProgress)onProgress(page,"Besitz");
+    let url=`${base}/addresses/${address}/nft`;
+    if(nextParams)url+="?"+new URLSearchParams(nextParams).toString();
+    const res=await fetch(url);
+    if(!res.ok)throw new Error("HTTP "+res.status+" (/nft)");
+    const data=await res.json();
+    for(const item of (data.items||[])){
+      let nft=apertureNftFromOwnedItem(chain,item);
+      if(!nft.image || !nft.name || nft.name==="Unbenannt") nft=await enrichApertumNft(chain,nft);
+      out.push(nft);
+    }
+    nextParams=data.next_page_params||null;
+  }while(nextParams && page<FEES_MAX_PAGES);
+  return out;
+}
 
-    for (const coll of (data.items || [])) {
-      const collectionName = coll.token && (coll.token.name || coll.token.symbol);
-      const collectionSpam = blockscoutNftSpam(coll) || blockscoutNftSpam(coll.token || {});
-      for (const inst of (coll.token_instances || [])) {
-        const meta = inst.metadata || {};
-        let nft = {
+async function fetchApertumCollectionNfts(chain,address,onProgress){
+  let nextParams=null,page=0;
+  const out=[];
+  do{
+    page++;
+    if(onProgress)onProgress(page,"Collections");
+    const base=configuredNftBase(chain);
+    let url=`${base}/addresses/${address}/nft/collections`;
+    if(nextParams)url+="?"+new URLSearchParams(nextParams).toString();
+    const res=await fetch(url);
+    if(!res.ok)throw new Error("HTTP "+res.status+" (/nft/collections)");
+    const data=await res.json();
+    for(const coll of (data.items||[])){
+      const collectionName=coll.token && (coll.token.name || coll.token.symbol);
+      const collectionSpam=blockscoutNftSpam(coll) || blockscoutNftSpam(coll.token||{});
+      for(const inst of (coll.token_instances||[])){
+        const meta=inst.metadata||{};
+        let nft={
           chain,
-          tokenAddress: coll.token && (coll.token.address || coll.token.address_hash),
-          tokenId: inst.id,
-          name: meta.name || inst.name || (collectionName ? collectionName + " #" + inst.id : "Unbenannt"),
-          image: normalizeNftImageUrl(inst.image_url) || nftMetadataImage(meta),
+          tokenAddress:coll.token && (coll.token.address || coll.token.address_hash),
+          tokenId:String(inst.id),
+          name:meta.name || inst.name || (collectionName ? `${collectionName} #${inst.id}` : `NFT #${inst.id}`),
+          image:normalizeNftImageUrl(inst.image_url) || nftMetadataImage(meta),
           collectionName,
-          possibleSpam: !!(collectionSpam || blockscoutNftSpam(inst)),
-          contractType: coll.token && coll.token.type
+          possibleSpam:!!(collectionSpam || blockscoutNftSpam(inst)),
+          contractType:coll.token && coll.token.type
         };
-        if (!nft.image || !nft.name || nft.name === "Unbenannt") {
-          nft = await enrichApertumNft(chain, nft);
-        }
-        nfts.push(nft);
+        if(!nft.image || !nft.name || nft.name==="Unbenannt")nft=await enrichApertumNft(chain,nft);
+        out.push(nft);
       }
     }
-    nextParams = data.next_page_params || null;
-  } while (nextParams && page < FEES_MAX_PAGES);
-
-  return nfts;
+    nextParams=data.next_page_params||null;
+  }while(nextParams && page<FEES_MAX_PAGES);
+  return out;
 }
+
+async function fetchApertumNfts(chain,address,onProgress){
+  let owned=[],collections=[],errors=[];
+  try{
+    owned=await fetchApertumOwnedNfts(chain,address,onProgress);
+  }catch(e){
+    errors.push(e);
+    console.warn("Apertum NFT Owner-Endpoint:",e);
+  }
+
+  // Collections is kept as a supplement because some Apertum/Blockscout
+  // installations index metadata differently between both endpoints.
+  try{
+    collections=await fetchApertumCollectionNfts(chain,address,onProgress);
+  }catch(e){
+    errors.push(e);
+    console.warn("Apertum NFT Collections-Endpoint:",e);
+  }
+
+  if(!owned.length && !collections.length && errors.length) throw errors[0];
+
+  const merged=new Map();
+  for(const nft of [...owned,...collections]){
+    const key=`${lowerAddressForNft(nft.tokenAddress)}|${String(nft.tokenId)}`;
+    const old=merged.get(key);
+    if(!old){
+      merged.set(key,nft);
+    }else{
+      merged.set(key,{
+        ...old,
+        name:(old.name && !/^NFT #/.test(old.name)) ? old.name : nft.name,
+        image:old.image || nft.image,
+        collectionName:old.collectionName || nft.collectionName,
+        possibleSpam:!!(old.possibleSpam || nft.possibleSpam),
+        contractType:old.contractType || nft.contractType
+      });
+    }
+  }
+  return [...merged.values()];
+}
+
+function lowerAddressForNft(v){ return String(v||"").toLowerCase(); }
 
 // ---- NFT-Cache in Supabase: Live-Abfrage nur auf Knopfdruck ----
 let nftCaches = new Map(); // wallet_id -> DB-Zeile
@@ -4340,7 +4416,9 @@ function nftKey(n) {
   return `${n.chain}|${normalizeAddress(n.tokenAddress || "", n.chain)}|${String(n.tokenId)}`;
 }
 function isNftSpam(n) {
-  return !!(n.possibleSpam || n.userMarkedSpam);
+  if (n.userMarkedSpam) return true;
+  if (n.userMarkedSafe) return false;
+  return !!n.possibleSpam;
 }
 
 async function loadNftCacheFromDb() {
@@ -4429,8 +4507,15 @@ async function runNftLoad() {
 
         // vorhandene manuelle Spam-Markierungen über Contract + Token-ID übernehmen
         const old = nftCaches.get(String(w.dbId || w.id));
-        const oldMap = new Map(((old && old.nfts) || []).map(n => [nftKey(n), !!n.userMarkedSpam]));
-        found.forEach(n => { if (oldMap.get(nftKey(n))) n.userMarkedSpam = true; });
+        const oldMap = new Map(((old && old.nfts) || []).map(n => [nftKey(n), {
+          spam:!!n.userMarkedSpam,
+          safe:!!n.userMarkedSafe
+        }]));
+        found.forEach(n => {
+          const flags=oldMap.get(nftKey(n));
+          if(flags?.spam)n.userMarkedSpam=true;
+          if(flags?.safe)n.userMarkedSafe=true;
+        });
         walletNfts = walletNfts.concat(found);
       } catch (e) {
         errors.push(`${w.label} / ${CHAIN_META[chain].label}: ${e.message}`);
@@ -4470,6 +4555,28 @@ async function setNftUserSpam(walletId, chain, tokenAddress, tokenId, marked) {
   nftCaches.set(String(walletId), data);
   lastNftFindings = cachedNftsForSelection();
   renderNftResults(lastNftFindings, []);
+}
+
+
+async function setNftUserSafe(walletId, chain, tokenAddress, tokenId, marked) {
+  const cache=nftCaches.get(String(walletId));
+  if(!cache)return;
+  const key=`${chain}|${normalizeAddress(tokenAddress||"",chain)}|${String(tokenId)}`;
+  const updated=(cache.nfts||[]).map(n =>
+    nftKey(n)===key ? {...n,userMarkedSafe:!!marked,userMarkedSpam:marked?false:!!n.userMarkedSpam} : n
+  );
+  const {data,error}=await sb.from("nft_cache")
+    .update({nfts:updated})
+    .eq("user_id",currentUser.id)
+    .eq("wallet_id",String(walletId))
+    .select().single();
+  if(error){
+    alert("Spam-Ausnahme konnte nicht gespeichert werden: "+error.message);
+    return;
+  }
+  nftCaches.set(String(walletId),data);
+  lastNftFindings=cachedNftsForSelection();
+  renderNftResults(lastNftFindings,[]);
 }
 
 function renderNftResults(nfts, errors = []) {
@@ -4512,11 +4619,16 @@ function renderNftResults(nfts, errors = []) {
               <span class="dot ${meta.dot}" style="width:7px;height:7px"></span> ${meta.label} · ${escapeAttr(n.walletLabel || "")}
             </div>
             ${spam ? `<div style="margin-top:5px"><span class="badge unsafe">⚠ ${n.userMarkedSpam ? "Manuell als Spam markiert" : "Spam-Verdacht"}</span></div>` : ""}
-            <div style="margin-top:8px">
+            ${n.userMarkedSafe && n.possibleSpam ? `<div style="margin-top:5px"><span class="badge safe">✓ Spam-Verdacht manuell ignoriert</span></div>` : ""}
+            <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
               <button class="${n.userMarkedSpam ? "secondary" : "remove"}" style="padding:6px 8px;font-size:.72rem"
                 onclick="setNftUserSpam('${escapeAttr(String(n.walletId || ""))}','${n.chain}','${escapeAttr(n.tokenAddress || "")}','${escapeAttr(String(n.tokenId))}',${n.userMarkedSpam ? "false" : "true"})">
                 ${n.userMarkedSpam ? "Spam-Markierung entfernen" : "Als Spam markieren"}
               </button>
+              ${n.possibleSpam && !n.userMarkedSpam ? `<button class="secondary" style="padding:6px 8px;font-size:.72rem"
+                onclick="setNftUserSafe('${escapeAttr(String(n.walletId || ""))}','${n.chain}','${escapeAttr(n.tokenAddress || "")}','${escapeAttr(String(n.tokenId))}',${n.userMarkedSafe ? "false" : "true"})">
+                ${n.userMarkedSafe ? "Spam-Verdacht wieder beachten" : "Spam-Verdacht ignorieren"}
+              </button>` : ""}
             </div>
           </div>
         </div>`;
