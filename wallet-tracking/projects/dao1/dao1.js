@@ -27,6 +27,7 @@ window.DAO1Project = (() => {
   let projectNfts = [];
   let selectedNftClass = "Mining-Bot";
   const CLAIM_SCAN_BUFFER_BLOCKS = 250;
+  const CLAIM_SCAN_TYPE = "claims_wallet_v2";
   let miningFilterFrom = "";
   let miningFilterTo = "";
   let miningFilterNft = "__all";
@@ -925,7 +926,7 @@ window.DAO1Project = (() => {
       .eq("project_key",PROJECT_KEY)
       .eq("chain_key",CHAIN_KEY)
       .eq("wallet_address",lower(walletAddress))
-      .eq("scan_type","claims")
+      .eq("scan_type",CLAIM_SCAN_TYPE)
       .maybeSingle();
     if(error && !/does not exist|schema cache/i.test(error.message||""))throw error;
     return data||null;
@@ -939,7 +940,7 @@ window.DAO1Project = (() => {
       project_key:PROJECT_KEY,
       chain_key:CHAIN_KEY,
       wallet_address:lower(walletAddress),
-      scan_type:"claims",
+      scan_type:CLAIM_SCAN_TYPE,
       last_scanned_block:Number(lastBlock||0),
       last_scanned_at:new Date().toISOString()
     };
@@ -1025,6 +1026,17 @@ window.DAO1Project = (() => {
     return [];
   }
 
+
+  function allKnownNftsForWallet(address){
+    const all=nftIdsForWallet(address);
+    return new Map(all.map(n=>[String(n.id),n]));
+  }
+
+  function filterClaimsForSelectedNfts(rows,selectedNfts){
+    const ids=new Set(selectedNfts.map(n=>String(n.id)));
+    return (rows||[]).filter(r=>ids.has(String(r.nft_id)));
+  }
+
   async function loadMiningRewards() {
     const status = document.getElementById("dao1MiningStatus");
     const btn = document.getElementById("dao1MiningBtn");
@@ -1051,10 +1063,11 @@ window.DAO1Project = (() => {
       return;
     }
     const nftIds=selectedNfts.map(n=>String(n.id));
-    const nftMap=new Map(selectedNfts.map(n=>[String(n.id),n]));
+    const selectedNftMap=new Map(selectedNfts.map(n=>[String(n.id),n]));
+    const allNftMap=allKnownNftsForWallet(address);
 
     try {
-      status.textContent = "Claim-Cache wird geprüft…";
+      status.textContent = "Wallet-Claim-Cache wird geprüft…";
       rewardRows = [];
 
       const scan=await fetchWalletTransactionsIncremental(address,status);
@@ -1063,13 +1076,25 @@ window.DAO1Project = (() => {
         const input=String(t.raw_input||t.input||"");
         if(input.slice(0,10).toLowerCase()!==CLAIM_SELECTOR)continue;
         const ps=words(input);
-        const matched=nftIds.find(id=>{
-          const n=BigInt(id);
-          return ps[0]===n || ps[1]===n;
-        });
-        if(!matched)continue;
+
+        // Wallet scan is deliberately independent of the current NFT/classification filter.
+        // For DAO1 claimReward the NFT id is encoded in one of the first two words.
+        // Prefer a known wallet NFT id; otherwise retain the first plausible integer so the
+        // claim is not lost merely because metadata/classification is still incomplete.
+        const knownId=[ps[0],ps[1]]
+          .filter(v=>v!=null)
+          .map(v=>v.toString())
+          .find(id=>allNftMap.has(id));
+        const decodedId=knownId || ps[0]?.toString() || ps[1]?.toString();
+        if(!decodedId || !/^\d+$/.test(decodedId))continue;
+        const nft=allNftMap.get(String(decodedId)) || {
+          id:String(decodedId),
+          contract:lower(DEFAULT_MINER_NFT_CONTRACT),
+          name:`NFT #${decodedId}`,
+          classification:null
+        };
         claimCandidates.push({
-          nft:nftMap.get(String(matched)),
+          nft,
           t,
           p1:ps[0]?.toString(),
           p2:ps[1]?.toString()
@@ -1129,15 +1154,16 @@ window.DAO1Project = (() => {
 
       if(scan.maxSeen)await saveScanState(address,scan.maxSeen);
 
-      let cached;
+      let cachedAll;
       try{
-        cached=await backfillCachedClaimPrices(address,nftIds,status);
+        cachedAll=await backfillCachedClaimPrices(address,null,status);
       }catch(e){
         console.warn("APTM Preis-Backfill:",e);
-        cached=await loadCachedClaims(address,nftIds);
+        cachedAll=await loadCachedClaims(address,null);
       }
+      const cached=filterClaimsForSelectedNfts(cachedAll,selectedNfts);
       rewardRows=cached.map(r=>{
-        const nft=nftMap.get(String(r.nft_id)) || {
+        const nft=selectedNftMap.get(String(r.nft_id)) || allNftMap.get(String(r.nft_id)) || {
           id:String(r.nft_id),
           name:r.nft_name || `NFT #${r.nft_id}`,
           classification:r.nft_subtype?{subtype:r.nft_subtype}:null
@@ -1172,7 +1198,7 @@ window.DAO1Project = (() => {
         ? `inkrementell ab Block ${scan.fromBlock} (Puffer ${CLAIM_SCAN_BUFFER_BLOCKS})`
         : "vollständiger Initialscan";
       const missingUsd=rewardRows.filter(x=>x.price==null).length;
-      status.textContent=`${rewardRows.length} gespeicherte Claims für ${selectedNfts.length} NFT(s) · ${mode}.${missingUsd?` ${missingUsd} Claim(s) noch ohne historischen USD-Kurs; diese werden bei späteren Scans erneut ergänzt.`:""}`;
+      status.textContent=`Wallet-Claim-Cache: ${cachedAll.length} Claim(s) · aktuelle Auswahl: ${rewardRows.length} Claim(s) für ${selectedNfts.length} NFT(s) · ${mode}.${missingUsd?` ${missingUsd} ausgewählte Claim(s) noch ohne historischen USD-Kurs.`:""}`;
     } catch (e) {
       console.error("DAO1 Mining-Auswertung:",e);
       const msg=String(e?.message||e||"Unbekannter Fehler");
