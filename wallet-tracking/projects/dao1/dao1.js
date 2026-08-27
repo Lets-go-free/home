@@ -28,8 +28,15 @@ window.DAO1Project = (() => {
   let selectedNftClass = "Mining-Bot";
   const CLAIM_SCAN_BUFFER_BLOCKS = 250;
   const CLAIM_SCAN_TYPE = "claims_wallet_v2";
+  const TX_SCAN_TYPE = "transactions_wallet_v1";
+  let transactionRows = [];
+  let txFilterWallet = "";
+  let txFilterFrom = "";
+  let txFilterTo = "";
+  let txFilterKind = "__all";
   let miningFilterFrom = "";
   let miningFilterTo = "";
+  let miningFilterClass = "__all";
   let miningFilterNft = "__all";
 
   const H = x => typeof x === "string" ? x : (x?.hash || "");
@@ -69,8 +76,16 @@ window.DAO1Project = (() => {
         </div>
         <div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div>
         <div class="custom-token-card">
+          <div class="chain-title">📒 Apertum Transaktionshistorie</div>
+          <div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Der erste Scan lädt die vollständige Wallet-Historie, Folge-Scans nur neue Blöcke mit Sicherheitspuffer. Claim-Transaktionen werden automatisch mit NFT, Klassifizierung, Reward APTM und historischem USD-Wert angereichert.</div>
+          <div id="dao1TransactionControls"></div>
+          <div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
+          <div id="dao1TransactionSummary" style="margin-top:10px"></div>
+          <div id="dao1TransactionTable" style="margin-top:10px"></div>
+        </div>
+        <div class="custom-token-card">
           <div class="chain-title">⛏️ Apertum Mining Rewards</div>
-          <div class="note" style="margin-bottom:10px">Apertum-NFTs können projektweit klassifiziert werden (z. B. Mining-Bot, Trading-Bot, DID). Für die Claim-Auswertung wird zuerst nach Klassifizierung gefiltert und danach die NFT gewählt. Historische APTM-Kurse kommen bevorzugt aus <code>aptm_price_history</code>; fehlende Pool-Syncs können von Admins on-chain ergänzt und zentral gespeichert werden.</div>
+          <div class="note" style="margin-bottom:10px">Die Claim-Erfassung basiert auf der zentralen Apertum-Transaktionshistorie der Wallet. Beim ersten Scan wird die Wallet vollständig geladen; Folgescans ergänzen nur neue Blöcke mit Sicherheitspuffer. Klassifizierung, NFT und Datum sind danach reine Auswertungsfilter und beeinflussen den Wallet-Scan nicht.</div>
           <div id="dao1MinerSelector"></div>
           <div id="dao1AdminMinerEditor" style="display:none"></div>
           <div class="action-row" style="margin-top:10px">
@@ -104,6 +119,13 @@ window.DAO1Project = (() => {
     renderNftClassification();
     renderAssetSummary();
     renderMiningFilters();
+    renderTransactionControls();
+    if(!txFilterWallet && projectWallets()[0]) txFilterWallet=String(projectWallets()[0].id);
+    try{
+      const tw=projectWallets().find(w=>String(w.id)===String(txFilterWallet));
+      transactionRows=tw?await loadTransactionRows(walletAddress(tw)):[];
+    }catch(e){console.warn("Transaction cache init:",e);}
+    renderTransactionHistory();
     updateVisibility();
   }
 
@@ -385,66 +407,27 @@ window.DAO1Project = (() => {
   }
 
   function renderMinerSelector(message="") {
-    const el = document.getElementById("dao1MinerSelector");
-    const wallets = projectWallets();
-    if (!el) return;
-    if (!wallets.length) {
-      el.innerHTML = '<div class="empty">Keine DAO1/Apertum-Wallet mit aktuellem oder historischem Projektbestand gefunden.</div>';
+    const el=document.getElementById("dao1MinerSelector");
+    const wallets=projectWallets();
+    if(!el)return;
+    if(!wallets.length){
+      el.innerHTML='<div class="empty">Keine DAO1/Apertum-Wallet mit aktuellem oder historischem Projektbestand gefunden.</div>';
       return;
     }
-    if (!wallets.some(w => String(w.id) === String(selectedWalletId))) selectedWalletId = String(wallets[0].id);
-    const wallet = wallets.find(w => String(w.id) === String(selectedWalletId));
-    const address = walletAddress(wallet);
-    const allNfts = nftIdsForWallet(address);
-
-    const classOptions=[
-      ["Mining-Bot","Mining-Bot"],
-      ["Trading-Bot","Trading-Bot"],
-      ["DID","DID"],
-      ["DAO / Membership","DAO / Membership"],
-      ["Sonstige","Sonstige"],
-      ["__all_classified","Alle klassifizierten"],
-      ["__all","Alle NFTs"]
-    ];
-    const nfts=selectedNftClass==="__all"
-      ? allNfts
-      : selectedNftClass==="__all_classified"
-        ? allNfts.filter(n=>n.classification)
-        : allNfts.filter(n=>n.classification?.subtype===selectedNftClass);
-
-    const validKeys=new Set(nfts.map(n=>String(n.key)));
-    if(selectedNftId!=="__all" && !validKeys.has(String(selectedNftId))) selectedNftId = nfts.length ? "__all" : "";
-
-    el.innerHTML = `
+    if(!wallets.some(w=>String(w.id)===String(selectedWalletId)))selectedWalletId=String(wallets[0].id);
+    el.innerHTML=`
       <div class="action-row" style="margin-top:4px;margin-bottom:12px">
         <button class="secondary" onclick="DAO1Project.discoverMinerNfts()">NFT-Bestand / Besitzerhistorie aktualisieren</button>
       </div>
-
-      <div class="custom-token-grid" style="grid-template-columns:minmax(260px,1.4fr) minmax(190px,.8fr) minmax(260px,1.2fr);margin-top:4px">
-        <label><span class="field-label">Apertum Wallet</span>
+      <div class="custom-token-grid" style="grid-template-columns:minmax(320px,1fr);max-width:720px">
+        <label><span class="field-label">Apertum Wallet für Claim-Erfassung</span>
           <select id="dao1WalletSelect" onchange="DAO1Project.selectWallet(this.value)">
             ${wallets.map(w=>`<option value="${w.id}" ${String(w.id)===String(selectedWalletId)?"selected":""}>${w.label} · ${walletAddress(w)}</option>`).join("")}
           </select>
         </label>
-        <label><span class="field-label">Klassifizierung</span>
-          <select id="dao1NftClassSelect" onchange="DAO1Project.selectNftClass(this.value)">
-            ${classOptions.map(([v,l])=>`<option value="${v}" ${v===selectedNftClass?"selected":""}>${l}</option>`).join("")}
-          </select>
-        </label>
-        <label><span class="field-label">Apertum NFT</span>
-          <select id="dao1NftSelect" onchange="DAO1Project.selectNft(this.value)">
-            ${nfts.length ? `<option value="__all" ${selectedNftId==="__all"?"selected":""}>Alle (${nfts.length})</option>` + nfts.map(n=>`<option value="${n.key}" ${String(n.key)===String(selectedNftId)?"selected":""}>${n.name || ("NFT #"+n.id)}${String(n.name||"").includes("#"+n.id)?"":" · #"+n.id}${n.current?" · aktuell":" · historisch"}</option>`).join("") : '<option value="">– keine NFT für diesen Filter –</option>'}
-          </select>
-        </label>
       </div>
-
-      <div class="action-row" style="margin-top:10px;align-items:end">
-        <label style="min-width:220px"><span class="field-label">NFT-ID manuell</span><input id="dao1ManualNft" type="number" min="0" placeholder="z. B. 38483" value="${manualNftId}"></label>
-        <button class="secondary" onclick="DAO1Project.useManualNft()">Manuelle NFT verwenden</button>
-      </div>
-
-      <div class="note" style="margin-top:8px">Für APTM-Claims ist standardmäßig <strong>Mining-Bot</strong> gewählt. Mit <strong>Alle</strong> werden alle NFTs der gewählten Klassifizierung in einem Durchgang ausgewertet. Wallet-Transaktionen werden dabei nur einmal geladen und anschließend nach NFT gruppiert.</div>
-      ${message ? `<div class="status" style="margin-top:8px">${message}</div>` : ""}`;
+      <div class="note" style="margin-top:8px"><strong>Claim-Erfassung:</strong> Die Wallet wird vollständig bzw. inkrementell gescannt. Dabei werden alle erkannten <code>claimReward()</code>-Transaktionen gespeichert und den NFTs zugeordnet. Klassifizierung, NFT und Datum werden ausschließlich unten für die Auswertung verwendet.</div>
+      ${message?`<div class="status" style="margin-top:8px">${message}</div>`:""}`;
   }
 
   async function fetchPagedUrl(initialUrl, maxPages=500) {
@@ -920,6 +903,370 @@ window.DAO1Project = (() => {
   }
 
 
+
+  function directionForTx(t,address){
+    const a=lower(address),from=lower(H(t.from)),to=lower(H(t.to));
+    if(from===a && to===a)return "intern";
+    if(to===a)return "eingang";
+    if(from===a)return "ausgang";
+    return "sonstige";
+  }
+
+  function txValueAptm(t){
+    try{
+      const v=t.value ?? t.value_wei ?? 0;
+      if(typeof v==="number") return v>1e12 ? v/1e18 : v;
+      return Number(BigInt(String(v||"0")))/1e18;
+    }catch{return Number(t.value||0)||0;}
+  }
+
+  function methodLabel(t){
+    return String(t.method || t.method_name || t.decoded_input?.method_call || "").trim()
+      || (String(t.raw_input||t.input||"").slice(0,10).toLowerCase()===CLAIM_SELECTOR ? "claimReward" : "Transfer/Call");
+  }
+
+  async function getTransactionScanState(address){
+    const {data,error}=await sb.from("project_scan_state")
+      .select("*")
+      .eq("user_id",getContext?.().currentUser.id)
+      .eq("project_key",PROJECT_KEY)
+      .eq("chain_key",CHAIN_KEY)
+      .eq("wallet_address",lower(address))
+      .eq("scan_type",TX_SCAN_TYPE)
+      .maybeSingle();
+    if(error)throw error;
+    return data||null;
+  }
+
+  async function saveTransactionScanState(address,lastBlock){
+    const ctx=getContext?.();
+    const row={
+      user_id:ctx.currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+      wallet_address:lower(address),scan_type:TX_SCAN_TYPE,
+      last_scanned_block:Number(lastBlock||0),last_scanned_at:new Date().toISOString()
+    };
+    const {error}=await sb.from("project_scan_state")
+      .upsert(row,{onConflict:"user_id,project_key,chain_key,wallet_address,scan_type"});
+    if(error)throw error;
+  }
+
+  async function saveTransactionRows(rows){
+    if(!rows.length)return;
+    const {error}=await sb.from("project_transactions")
+      .upsert(rows,{onConflict:"user_id,project_key,chain_key,wallet_address,tx_hash"});
+    if(error)throw error;
+  }
+
+  async function loadTransactionRows(address=null){
+    let q=sb.from("project_transactions")
+      .select("*")
+      .eq("user_id",getContext?.().currentUser.id)
+      .eq("project_key",PROJECT_KEY)
+      .eq("chain_key",CHAIN_KEY);
+    if(address)q=q.eq("wallet_address",lower(address));
+    const {data,error}=await q.order("block_number",{ascending:false});
+    if(error)throw error;
+    return data||[];
+  }
+
+  async function syncApertumTransactionCache(address,status){
+    const ctx=getContext?.();
+    const state=await getTransactionScanState(address);
+    const fromBlock=state?.last_scanned_block
+      ? Math.max(0,Number(state.last_scanned_block)-CLAIM_SCAN_BUFFER_BLOCKS)
+      : null;
+    let url=`${EXPLORER_API}/addresses/${address}/transactions`;
+    let page=0,maxSeen=Number(state?.last_scanned_block||0);
+    const batch=[];
+    while(url){
+      page++;
+      if(status)status.textContent=fromBlock==null
+        ? `Apertum-Historie: vollständiger Initialscan · Seite ${page}…`
+        : `Apertum-Historie: neue Blöcke ab ${fromBlock} · Seite ${page}…`;
+      const j=await fetchJson(url,"Apertum Explorer · Transaktionshistorie");
+      const items=j.items||[];
+      let oldest=Infinity;
+      for(const t of items){
+        const block=Number(t.block_number??t.block??0);
+        if(Number.isFinite(block)){
+          oldest=Math.min(oldest,block);
+          maxSeen=Math.max(maxSeen,block);
+        }
+        if(fromBlock!=null && block<fromBlock)continue;
+        const input=String(t.raw_input||t.input||"");
+        batch.push({
+          user_id:ctx.currentUser.id,
+          project_key:PROJECT_KEY,
+          chain_key:CHAIN_KEY,
+          wallet_address:lower(address),
+          tx_hash:t.hash,
+          block_number:block,
+          tx_timestamp:t.timestamp,
+          from_address:lower(H(t.from)),
+          to_address:lower(H(t.to)),
+          direction:directionForTx(t,address),
+          method:methodLabel(t),
+          selector:input.slice(0,10).toLowerCase(),
+          status:String(t.status ?? t.result ?? ""),
+          value_aptm:txValueAptm(t),
+          gas_aptm:feeAptm(t),
+          raw_input:input,
+          updated_at:new Date().toISOString()
+        });
+      }
+      if(batch.length>=500){
+        await saveTransactionRows(batch.splice(0,batch.length));
+      }
+      if(fromBlock!=null && Number.isFinite(oldest) && oldest<fromBlock)break;
+      url=nextUrl(`${EXPLORER_API}/addresses/${address}/transactions`,j.next_page_params);
+    }
+    if(batch.length)await saveTransactionRows(batch);
+    if(maxSeen)await saveTransactionScanState(address,maxSeen);
+    return {state,fromBlock,maxSeen,rows:await loadTransactionRows(address)};
+  }
+
+  function allProjectWalletOptions(){
+    return projectWallets().filter(w=>walletAddress(w));
+  }
+
+  async function refreshTransactionHistory(scan=false){
+    const status=document.getElementById("dao1TransactionStatus");
+    const wallets=allProjectWalletOptions();
+    if(!wallets.length)return;
+    if(!txFilterWallet || !wallets.some(w=>String(w.id)===String(txFilterWallet)))txFilterWallet=String(wallets[0].id);
+    const wallet=wallets.find(w=>String(w.id)===String(txFilterWallet));
+    const address=walletAddress(wallet);
+    const btn=document.getElementById("dao1TxScanBtn");
+    if(scan && btn){btn.disabled=true;btn.textContent="Historie wird aktualisiert…";}
+    try{
+      if(scan){
+        const res=await syncApertumTransactionCache(address,status);
+        status.textContent=res.state
+          ? `Historie aktualisiert · inkrementell ab Block ${res.fromBlock} (Puffer ${CLAIM_SCAN_BUFFER_BLOCKS}).`
+          : "Historie vollständig initial geladen.";
+      }
+      transactionRows=await loadTransactionRows(address);
+      await enrichTransactionsWithClaims(address,status);
+      transactionRows=await loadTransactionRows(address);
+      renderTransactionControls();
+      renderTransactionHistory();
+    }catch(e){
+      console.error("Apertum Transaktionshistorie:",e);
+      if(status)status.innerHTML=`<span class="error">${e.message}</span>`;
+    }finally{
+      if(btn){btn.disabled=false;btn.textContent="Apertum-Historie aktualisieren";}
+    }
+  }
+
+  async function enrichTransactionsWithClaims(address,status){
+    const txs=await loadTransactionRows(address);
+    const claimTxs=txs.filter(t=>t.selector===CLAIM_SELECTOR);
+    if(!claimTxs.length)return;
+    const nftMap=allKnownNftsForWallet(address);
+    const claimRows=[];
+    const blocks=[];
+    for(let i=0;i<claimTxs.length;i++){
+      const t=claimTxs[i];
+      if(status)status.textContent=`Claims werden angereichert ${i+1}/${claimTxs.length}…`;
+      const ps=words(t.raw_input||"");
+      const knownId=[ps[0],ps[1]].filter(v=>v!=null).map(v=>v.toString()).find(id=>nftMap.has(id));
+      const decodedId=knownId || ps[0]?.toString() || ps[1]?.toString();
+      if(!decodedId || !/^\d+$/.test(decodedId))continue;
+      const nft=nftMap.get(String(decodedId))||{
+        id:String(decodedId),contract:lower(DEFAULT_MINER_NFT_CONTRACT),
+        name:`NFT #${decodedId}`,classification:null
+      };
+      let logs=[];
+      try{logs=await fetchAll(`/transactions/${t.tx_hash}/logs`);}catch(e){console.warn("Claim logs:",e);continue;}
+      const reward=rewardFromLogs(logs,address);
+      blocks.push(Number(t.block_number));
+      claimRows.push({
+        user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+        wallet_address:lower(address),nft_contract:nft.contract||null,nft_id:Number(decodedId),
+        nft_name:nft.classification?.nft_name || nft.name || `NFT #${decodedId}`,
+        nft_subtype:nft.classification?.subtype||null,tx_hash:t.tx_hash,
+        block_number:Number(t.block_number),tx_timestamp:t.tx_timestamp,
+        param1:ps[0]?.toString(),param2:ps[1]?.toString(),
+        reward_aptm:reward,gas_aptm:Number(t.gas_aptm||0),
+        net_aptm:reward-Number(t.gas_aptm||0),aptm_usd:null,reward_usd:null,gas_usd:null,
+        price_block:null,updated_at:new Date().toISOString()
+      });
+    }
+    if(claimRows.length){
+      const history=await ensurePricesForClaimBlocks(blocks,status);
+      for(const r of claimRows){
+        const ph=priceAtBlock(history,Number(r.block_number));
+        if(ph){
+          r.aptm_usd=Number(ph.aptm_usd);
+          r.reward_usd=Number(r.reward_aptm||0)*r.aptm_usd;
+          r.gas_usd=Number(r.gas_aptm||0)*r.aptm_usd;
+          r.price_block=ph.block_number;
+        }
+      }
+      await saveClaimRows(claimRows);
+      for(const r of claimRows){
+        const tx=txs.find(t=>t.tx_hash===r.tx_hash);
+        const {error}=await sb.from("project_transactions")
+          .update({
+            claim_nft_id:r.nft_id,
+            claim_nft_name:r.nft_name,
+            claim_nft_subtype:r.nft_subtype,
+            claim_reward_aptm:r.reward_aptm,
+            aptm_usd:r.aptm_usd,
+            value_usd:r.aptm_usd==null?null:Number(tx?.value_aptm||0)*r.aptm_usd,
+            gas_usd:r.gas_usd,
+            claim_reward_usd:r.reward_usd,
+            updated_at:new Date().toISOString()
+          })
+          .eq("user_id",getContext?.().currentUser.id)
+          .eq("wallet_address",lower(address))
+          .eq("tx_hash",r.tx_hash);
+        if(error)console.warn("Tx Claim enrichment:",error);
+      }
+    }
+  }
+
+  function txVisibleRows(){
+    let rows=[...transactionRows];
+    if(txFilterFrom){
+      const f=new Date(txFilterFrom+"T00:00:00").getTime();
+      rows=rows.filter(r=>new Date(r.tx_timestamp).getTime()>=f);
+    }
+    if(txFilterTo){
+      const t=new Date(txFilterTo+"T23:59:59.999").getTime();
+      rows=rows.filter(r=>new Date(r.tx_timestamp).getTime()<=t);
+    }
+    if(txFilterKind==="claims")rows=rows.filter(r=>r.claim_nft_id!=null);
+    else if(txFilterKind!=="__all")rows=rows.filter(r=>r.direction===txFilterKind);
+    return rows;
+  }
+
+  function renderTransactionControls(){
+    const el=document.getElementById("dao1TransactionControls");
+    if(!el)return;
+    const wallets=allProjectWalletOptions();
+    if(!txFilterWallet && wallets[0])txFilterWallet=String(wallets[0].id);
+    el.innerHTML=`
+      <div class="action-row" style="margin-bottom:10px">
+        <button id="dao1TxScanBtn" onclick="DAO1Project.refreshTransactionHistory(true)">Apertum-Historie aktualisieren</button>
+        <button class="secondary" onclick="DAO1Project.exportTransactionsExcel()">Excel exportieren</button>
+        <button class="secondary" onclick="DAO1Project.exportTransactionsPdf()">PDF / Drucken</button>
+      </div>
+      <div class="custom-token-grid" style="grid-template-columns:minmax(280px,1.3fr) minmax(145px,.6fr) minmax(145px,.6fr) minmax(180px,.7fr)">
+        <label><span class="field-label">Wallet</span><select onchange="DAO1Project.setTransactionFilter('wallet',this.value)">
+          ${wallets.map(w=>`<option value="${w.id}" ${String(w.id)===String(txFilterWallet)?"selected":""}>${w.label} · ${walletAddress(w)}</option>`).join("")}
+        </select></label>
+        <label><span class="field-label">Von</span><input type="date" value="${txFilterFrom}" onchange="DAO1Project.setTransactionFilter('from',this.value)"></label>
+        <label><span class="field-label">Bis</span><input type="date" value="${txFilterTo}" onchange="DAO1Project.setTransactionFilter('to',this.value)"></label>
+        <label><span class="field-label">Typ</span><select onchange="DAO1Project.setTransactionFilter('kind',this.value)">
+          <option value="__all" ${txFilterKind==="__all"?"selected":""}>Alle</option>
+          <option value="claims" ${txFilterKind==="claims"?"selected":""}>Claims</option>
+          <option value="eingang" ${txFilterKind==="eingang"?"selected":""}>Eingang</option>
+          <option value="ausgang" ${txFilterKind==="ausgang"?"selected":""}>Ausgang</option>
+          <option value="intern" ${txFilterKind==="intern"?"selected":""}>Intern</option>
+        </select></label>
+      </div>`;
+  }
+
+  async function setTransactionFilter(kind,value){
+    if(kind==="wallet"){
+      txFilterWallet=String(value||"");
+      await refreshTransactionHistory(false);
+      return;
+    }
+    if(kind==="from")txFilterFrom=String(value||"");
+    if(kind==="to")txFilterTo=String(value||"");
+    if(kind==="kind")txFilterKind=String(value||"__all");
+    renderTransactionHistory();
+  }
+
+  function renderTransactionHistory(){
+    const summary=document.getElementById("dao1TransactionSummary");
+    const table=document.getElementById("dao1TransactionTable");
+    const rows=txVisibleRows();
+    const claims=rows.filter(r=>r.claim_nft_id!=null);
+    const inAptm=rows.filter(r=>r.direction==="eingang").reduce((a,r)=>a+Number(r.value_aptm||0)+Number(r.claim_reward_aptm||0),0);
+    const outAptm=rows.filter(r=>r.direction==="ausgang").reduce((a,r)=>a+Number(r.value_aptm||0),0);
+    const gas=rows.reduce((a,r)=>a+Number(r.gas_aptm||0),0);
+    if(summary)summary.innerHTML=`<div class="project-summary">
+      <div class="custom-token-card project-summary-box"><span class="field-label">Transaktionen</span><strong>${rows.length}</strong></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Claims</span><strong>${claims.length}</strong></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Eingang inkl. Claims</span><strong>${fmt(inAptm)} APTM</strong></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Ausgang</span><strong>${fmt(outAptm)} APTM</strong></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Gas</span><strong>${fmt(gas)} APTM</strong></div>
+    </div>`;
+    if(!table)return;
+    if(!rows.length){table.innerHTML='<div class="empty">Keine Transaktionen für den gewählten Filter.</div>';return;}
+    table.innerHTML=`<div class="chain-table-wrap"><table class="chain-admin-table"><thead><tr>
+      <th>Zeit</th><th>Richtung</th><th>Methode</th><th>APTM</th><th>Claim / NFT</th><th>APTM/USD</th><th>USD</th><th>Gas APTM</th><th>Tx</th>
+    </tr></thead><tbody>${rows.map(r=>{
+      const claim=r.claim_nft_id!=null;
+      const amount=Number(r.value_aptm||0)+(claim?Number(r.claim_reward_aptm||0):0);
+      const usdVal=claim?Number(r.claim_reward_usd||0):Number(r.value_usd||0);
+      return `<tr>
+        <td>${r.tx_timestamp||"–"}</td><td>${r.direction||"–"}</td><td>${r.method||"–"}</td>
+        <td>${fmt(amount)}</td>
+        <td>${claim?`<strong>${r.claim_nft_name||"NFT"}</strong><div class="meta">#${r.claim_nft_id}${r.claim_nft_subtype?" · "+r.claim_nft_subtype:""} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td>
+        <td>${r.aptm_usd==null?"–":fmt(r.aptm_usd)}</td><td>${usdVal?usd(usdVal):"–"}</td>
+        <td>${fmt(r.gas_aptm)}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${r.tx_hash.slice(0,12)}…</a></td>
+      </tr>`;
+    }).join("")}</tbody></table></div>`;
+  }
+
+  function xmlEsc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");}
+  function xCell(v){
+    const isNum=typeof v==="number" && Number.isFinite(v);
+    return `<Cell><Data ss:Type="${isNum?"Number":"String"}">${xmlEsc(v)}</Data></Cell>`;
+  }
+
+  function exportTransactionsExcel(){
+    const rows=txVisibleRows();
+    const wallet=allProjectWalletOptions().find(w=>String(w.id)===String(txFilterWallet));
+    const headers=["Timestamp","Wallet","Richtung","Methode","Tx Hash","Block","From","To","APTM","Claim NFT","NFT Typ","Claim Reward APTM","APTM/USD historisch","Wert USD","Gas APTM","Gas USD","Status"];
+    let body=`<Row>${xCell("DAO1 / Apertum Transaktionshistorie")}</Row><Row>${xCell("Wallet")}${xCell(walletAddress(wallet))}</Row><Row>${xCell("Datumsbereich")}${xCell(`${txFilterFrom||"offen"} bis ${txFilterTo||"offen"}`)}</Row><Row></Row>`;
+    body+=`<Row>${headers.map(h=>xCell(h)).join("")}</Row>`;
+    for(const r of rows){
+      const claim=r.claim_nft_id!=null;
+      const amt=Number(r.value_aptm||0)+(claim?Number(r.claim_reward_aptm||0):0);
+      const valUsd=claim?Number(r.claim_reward_usd||0):Number(r.value_usd||0);
+      const values=[
+        r.tx_timestamp,walletAddress(wallet),r.direction,r.method,r.tx_hash,Number(r.block_number||0),
+        r.from_address,r.to_address,amt,claim?`${r.claim_nft_name||"NFT"} #${r.claim_nft_id}`:"",
+        r.claim_nft_subtype||"",claim?Number(r.claim_reward_aptm||0):0,
+        r.aptm_usd==null?"":Number(r.aptm_usd),valUsd||0,Number(r.gas_aptm||0),
+        r.gas_usd==null?"":Number(r.gas_usd),r.status
+      ];
+      body+=`<Row>${values.map(v=>xCell(v)).join("")}</Row>`;
+    }
+    const xml=`<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Apertum History"><Table>${body}</Table></Worksheet></Workbook>`;
+    const blob=new Blob([xml],{type:"application/vnd.ms-excel"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=`apertum-history-${txFilterFrom||"all"}-${txFilterTo||"all"}.xls`;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  }
+
+  function exportTransactionsPdf(){
+    const rows=txVisibleRows();
+    const wallet=allProjectWalletOptions().find(w=>String(w.id)===String(txFilterWallet));
+    const w=window.open("","_blank");
+    if(!w)return alert("Popup wurde blockiert.");
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Apertum Transaktionshistorie</title><style>
+      body{font-family:Arial,sans-serif;font-size:11px;color:#111}h1{font-size:18px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #bbb;padding:4px;vertical-align:top}th{background:#eee}code{font-size:9px}.meta{font-size:9px;color:#555}@page{size:A4 landscape;margin:10mm}
+    </style></head><body><h1>DAO1 / Apertum Transaktionshistorie</h1>
+    <p><strong>Wallet:</strong> ${xmlEsc(walletAddress(wallet))}<br><strong>Datumsbereich:</strong> ${xmlEsc(txFilterFrom||"offen")} bis ${xmlEsc(txFilterTo||"offen")}<br><strong>Transaktionen:</strong> ${rows.length}</p>
+    <table><thead><tr><th>Zeit</th><th>Richtung</th><th>Methode</th><th>APTM</th><th>Claim / NFT</th><th>APTM/USD</th><th>USD</th><th>Gas</th><th>Tx Hash</th></tr></thead><tbody>
+    ${rows.map(r=>{
+      const claim=r.claim_nft_id!=null;
+      const amt=Number(r.value_aptm||0)+(claim?Number(r.claim_reward_aptm||0):0);
+      const valUsd=claim?Number(r.claim_reward_usd||0):Number(r.value_usd||0);
+      return `<tr><td>${xmlEsc(r.tx_timestamp)}</td><td>${xmlEsc(r.direction)}</td><td>${xmlEsc(r.method)}</td><td>${fmt(amt)}</td><td>${claim?`${xmlEsc(r.claim_nft_name||"NFT")} #${r.claim_nft_id}<div class="meta">${xmlEsc(r.claim_nft_subtype||"")} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td><td>${r.aptm_usd==null?"–":fmt(r.aptm_usd)}</td><td>${valUsd?usd(valUsd):"–"}</td><td>${fmt(r.gas_aptm)}</td><td><code>${xmlEsc(r.tx_hash)}</code></td></tr>`;
+    }).join("")}
+    </tbody></table><script>window.onload=()=>window.print();<\/script></body></html>`);
+    w.document.close();
+  }
+
   async function getScanState(walletAddress){
     const {data,error}=await sb.from("project_scan_state")
       .select("*")
@@ -1056,12 +1403,7 @@ window.DAO1Project = (() => {
       return;
     }
 
-    const selectedNfts=selectedNftsForMining(address);
-    if(!selectedNfts.length){
-      status.textContent="Für diesen Filter ist keine NFT ausgewählt.";
-      if(btn){btn.disabled=false;btn.textContent=oldBtnText;btn.removeAttribute("aria-busy");}
-      return;
-    }
+    const selectedNfts=[...allKnownNftsForWallet(address).values()];
     const nftIds=selectedNfts.map(n=>String(n.id));
     const selectedNftMap=new Map(selectedNfts.map(n=>[String(n.id),n]));
     const allNftMap=allKnownNftsForWallet(address);
@@ -1070,7 +1412,16 @@ window.DAO1Project = (() => {
       status.textContent = "Wallet-Claim-Cache wird geprüft…";
       rewardRows = [];
 
-      const scan=await fetchWalletTransactionsIncremental(address,status);
+      const txSync=await syncApertumTransactionCache(address,status);
+      const scan={
+        state:txSync.state,
+        fromBlock:txSync.fromBlock,
+        maxSeen:txSync.maxSeen,
+        transactions:txSync.rows.map(r=>({
+          hash:r.tx_hash,block_number:r.block_number,timestamp:r.tx_timestamp,
+          raw_input:r.raw_input,input:r.raw_input,fee:{value:String(Math.round(Number(r.gas_aptm||0)*1e18))}
+        }))
+      };
       const claimCandidates=[];
       for(const t of scan.transactions){
         const input=String(t.raw_input||t.input||"");
@@ -1152,7 +1503,7 @@ window.DAO1Project = (() => {
         await saveClaimRows(claimRows);
       }
 
-      if(scan.maxSeen)await saveScanState(address,scan.maxSeen);
+      // Scanstand wird zentral über project_transactions / transactions_wallet_v1 geführt.
 
       let cachedAll;
       try{
@@ -1195,8 +1546,8 @@ window.DAO1Project = (() => {
       renderMining();
 
       const mode=scan.state
-        ? `inkrementell ab Block ${scan.fromBlock} (Puffer ${CLAIM_SCAN_BUFFER_BLOCKS})`
-        : "vollständiger Initialscan";
+        ? `zentrale Wallet-Historie inkrementell ab Block ${scan.fromBlock} (Puffer ${CLAIM_SCAN_BUFFER_BLOCKS})`
+        : "zentrale Wallet-Historie vollständig initialisiert";
       const missingUsd=rewardRows.filter(x=>x.price==null).length;
       status.textContent=`Wallet-Claim-Cache: ${cachedAll.length} Claim(s) · aktuelle Auswahl: ${rewardRows.length} Claim(s) für ${selectedNfts.length} NFT(s) · ${mode}.${missingUsd?` ${missingUsd} ausgewählte Claim(s) noch ohne historischen USD-Kurs.`:""}`;
     } catch (e) {
@@ -1237,31 +1588,27 @@ window.DAO1Project = (() => {
   function renderMiningFilters(){
     const el=document.getElementById("dao1MiningFilters");
     if(!el)return;
-    const nfts=miningNftOptions();
-    if(miningFilterNft!=="__all" && !nfts.some(n=>n.id===String(miningFilterNft))){
-      miningFilterNft="__all";
-    }
+    const allNfts=miningNftOptions();
+    const classes=[...new Set(allNfts.map(n=>n.subtype).filter(Boolean))].sort();
+    const nfts=miningFilterClass==="__all" ? allNfts : allNfts.filter(n=>n.subtype===miningFilterClass);
+    if(miningFilterNft!=="__all" && !nfts.some(n=>n.id===String(miningFilterNft)))miningFilterNft="__all";
     el.innerHTML=`
       <div class="custom-token-card">
         <span class="field-label">Auswertung filtern</span>
-        <div class="custom-token-grid" style="grid-template-columns:minmax(150px,.7fr) minmax(150px,.7fr) minmax(260px,1.2fr);margin-top:8px">
-          <label><span class="field-label">Von</span>
-            <input type="date" id="dao1MiningFrom" value="${miningFilterFrom}" onchange="DAO1Project.setMiningDateFilter('from',this.value)">
-          </label>
-          <label><span class="field-label">Bis</span>
-            <input type="date" id="dao1MiningTo" value="${miningFilterTo}" onchange="DAO1Project.setMiningDateFilter('to',this.value)">
-          </label>
-          <label><span class="field-label">NFT</span>
-            <select id="dao1MiningResultNft" onchange="DAO1Project.setMiningResultNft(this.value)">
-              <option value="__all" ${miningFilterNft==="__all"?"selected":""}>Alle NFTs (${nfts.length})</option>
-              ${nfts.map(n=>`<option value="${n.id}" ${String(miningFilterNft)===n.id?"selected":""}>${n.name}${String(n.name||"").includes("#"+n.id)?"":" · #"+n.id}${n.subtype?" · "+n.subtype:""}</option>`).join("")}
-            </select>
-          </label>
+        <div class="custom-token-grid" style="grid-template-columns:minmax(145px,.55fr) minmax(145px,.55fr) minmax(190px,.7fr) minmax(260px,1.1fr);margin-top:8px">
+          <label><span class="field-label">Von</span><input type="date" value="${miningFilterFrom}" onchange="DAO1Project.setMiningDateFilter('from',this.value)"></label>
+          <label><span class="field-label">Bis</span><input type="date" value="${miningFilterTo}" onchange="DAO1Project.setMiningDateFilter('to',this.value)"></label>
+          <label><span class="field-label">NFT-Klassifizierung</span><select onchange="DAO1Project.setMiningClassFilter(this.value)">
+            <option value="__all" ${miningFilterClass==="__all"?"selected":""}>Alle Klassifizierungen</option>
+            ${classes.map(c=>`<option value="${c}" ${miningFilterClass===c?"selected":""}>${c}</option>`).join("")}
+          </select></label>
+          <label><span class="field-label">NFT</span><select onchange="DAO1Project.setMiningResultNft(this.value)">
+            <option value="__all" ${miningFilterNft==="__all"?"selected":""}>Alle NFTs (${nfts.length})</option>
+            ${nfts.map(n=>`<option value="${n.id}" ${String(miningFilterNft)===n.id?"selected":""}>${n.name}${String(n.name||"").includes("#"+n.id)?"":" · #"+n.id}${n.subtype?" · "+n.subtype:""}</option>`).join("")}
+          </select></label>
         </div>
-        <div class="action-row" style="margin-top:8px">
-          <button class="secondary" onclick="DAO1Project.clearMiningFilters()">Filter zurücksetzen</button>
-        </div>
-        <div class="note" style="margin-top:6px">Diese Filter wirken nur auf die Anzeige und Summen. Der gespeicherte Claim-Cache bleibt vollständig und muss dafür nicht neu geladen werden.</div>
+        <div class="action-row" style="margin-top:8px"><button class="secondary" onclick="DAO1Project.clearMiningFilters()">Filter zurücksetzen</button></div>
+        <div class="note" style="margin-top:6px">Diese Filter wirken nur auf Anzeige und Summen. Der Wallet-Scan bleibt vollständig.</div>
       </div>`;
   }
 
@@ -1275,15 +1622,20 @@ window.DAO1Project = (() => {
       const toMs=new Date(miningFilterTo+"T23:59:59.999").getTime();
       rows=rows.filter(x=>new Date(x.timestamp).getTime()<=toMs);
     }
-    if(miningFilterNft!=="__all"){
-      rows=rows.filter(x=>String(x.nftId || x.miner?.nft_id || "")===String(miningFilterNft));
-    }
+    if(miningFilterClass!=="__all")rows=rows.filter(x=>String(x.nftSubtype||"")===miningFilterClass);
+    if(miningFilterNft!=="__all")rows=rows.filter(x=>String(x.nftId || x.miner?.nft_id || "")===String(miningFilterNft));
     return rows;
   }
 
   function setMiningDateFilter(which,value){
     if(which==="from")miningFilterFrom=String(value||"");
     if(which==="to")miningFilterTo=String(value||"");
+    renderMining();
+  }
+
+  function setMiningClassFilter(value){
+    miningFilterClass=String(value||"__all");
+    miningFilterNft="__all";
     renderMining();
   }
 
@@ -1295,6 +1647,7 @@ window.DAO1Project = (() => {
   function clearMiningFilters(){
     miningFilterFrom="";
     miningFilterTo="";
+    miningFilterClass="__all";
     miningFilterNft="__all";
     renderMining();
   }
@@ -1353,5 +1706,6 @@ window.DAO1Project = (() => {
     renderMining();
   }
 
-  return { configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningResultNft, clearMiningFilters };
+  return { configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
+    refreshTransactionHistory, setTransactionFilter, exportTransactionsExcel, exportTransactionsPdf };
 })();
