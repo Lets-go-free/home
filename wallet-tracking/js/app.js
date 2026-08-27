@@ -318,26 +318,80 @@ async function routescanCall(chain,params){
   return j.result;
 }
 
+const taxRoutescanUnavailable = new Set();
+
 async function taxEvmBlockByTime(chain,targetEpoch){
-  const result=await routescanCall(chain,{module:"block",action:"getblocknobytime",timestamp:String(targetEpoch),closest:"before"});
-  const n=Number(typeof result==="object" ? (result.blockNumber??result.block_number??result.result) : result);
-  if(!Number.isFinite(n)||n<=0)throw new Error("Stichtagsblock konnte über Routescan nicht bestimmt werden.");
-  return {block:n,timestamp:targetEpoch};
+  // Free source first. Unsupported Routescan networks are remembered for this page session.
+  if (!taxRoutescanUnavailable.has(chain)) {
+    try {
+      const r = await routescanCall(chain,{
+        module:"block",action:"getblocknobytime",
+        timestamp:String(targetEpoch),closest:"before"
+      });
+      const n=Number(typeof r==="object"?(r.blockNumber??r.block_number??r.result):r);
+      if(Number.isFinite(n)&&n>0)return {block:n,source:"Routescan getblocknobytime"};
+      throw new Error("ungültige Blockantwort");
+    } catch(e) {
+      console.warn(`${CHAIN_META[chain]?.label||chain}: kostenlose Stichtagsblock-Abfrage fehlgeschlagen; Archive-Fallback.`,e);
+      taxRoutescanUnavailable.add(chain);
+    }
+  }
+
+  const latestHex=await archiveRpc(chain,"eth_blockNumber",[]);
+  let low=0, high=Number(BigInt(latestHex)), best=0;
+  while(low<=high){
+    const mid=Math.floor((low+high)/2);
+    const b=await archiveRpc(chain,"eth_getBlockByNumber",[taxBlockHex(mid),false]);
+    if(!b){high=mid-1;continue;}
+    const ts=Number(BigInt(b.timestamp));
+    if(ts<=targetEpoch){best=mid;low=mid+1;} else high=mid-1;
+  }
+  if(!best)throw new Error("Historischer Stichtagsblock konnte nicht bestimmt werden.");
+  return {block:best,source:"Alchemy Archive"};
 }
 
 async function taxEvmNativeBalance(chain,address,block){
-  const result=await routescanCall(chain,{module:"account",action:"balancehistory",address,blockno:String(block)});
-  const raw=typeof result==="object" ? (result.balance??result.Balance??result.result) : result;
-  if(raw==null || !/^\d+$/.test(String(raw)))throw new Error("Historischer Native-Bestand nicht lesbar.");
-  return Number(BigInt(String(raw)))/1e18;
+  if(!taxRoutescanUnavailable.has(chain)){
+    try{
+      const r=await routescanCall(chain,{
+        module:"account",action:"balancehistory",
+        address,blockno:String(block)
+      });
+      const raw=typeof r==="object"?(r.balance??r.Balance??r.result):r;
+      if(raw!=null && /^\d+$/.test(String(raw))){
+        return {amount:Number(BigInt(String(raw)))/1e18,source:`Routescan balancehistory @ Block ${block}`};
+      }
+      throw new Error("Historischer Native-Bestand nicht lesbar.");
+    }catch(e){
+      console.warn(`${CHAIN_META[chain]?.label||chain}: kostenlose Native-Balance fehlgeschlagen; Archive-Fallback.`,e);
+      taxRoutescanUnavailable.add(chain);
+    }
+  }
+  const raw=await archiveRpc(chain,"eth_getBalance",[address,taxBlockHex(block)]);
+  return {amount:Number(BigInt(raw||"0x0"))/1e18,source:`Alchemy eth_getBalance @ Block ${block}`};
 }
 
 async function taxEvmTokenBalance(chain,address,token,block){
-  const result=await routescanCall(chain,{module:"account",action:"tokenbalancehistory",contractaddress:token.address,address,blockno:String(block)});
-  const raw=typeof result==="object" ? (result.balance??result.Balance??result.result) : result;
-  if(raw==null || !/^\d+$/.test(String(raw)))throw new Error("Historischer Token-Bestand nicht lesbar.");
   const decimals=await taxTokenDecimalsCurrent(chain,token);
-  return {amount:Number(BigInt(String(raw)))/Math.pow(10,decimals),decimals};
+  if(!taxRoutescanUnavailable.has(chain)){
+    try{
+      const r=await routescanCall(chain,{
+        module:"account",action:"tokenbalancehistory",
+        contractaddress:token.address,address,blockno:String(block)
+      });
+      const raw=typeof r==="object"?(r.balance??r.Balance??r.result):r;
+      if(raw!=null && /^\d+$/.test(String(raw))){
+        return {amount:Number(BigInt(String(raw)))/Math.pow(10,decimals),decimals,source:`Routescan tokenbalancehistory @ Block ${block}`};
+      }
+      throw new Error("Historischer Token-Bestand nicht lesbar.");
+    }catch(e){
+      console.warn(`${CHAIN_META[chain]?.label||chain}: kostenlose Token-Balance fehlgeschlagen; Archive-Fallback.`,e);
+      taxRoutescanUnavailable.add(chain);
+    }
+  }
+  const ownerArg=String(address).toLowerCase().replace(/^0x/,"").padStart(64,"0");
+  const raw=await archiveRpc(chain,"eth_call",[{to:token.address,data:"0x70a08231"+ownerArg},taxBlockHex(block)]);
+  return {amount:Number(BigInt(raw||"0x0"))/Math.pow(10,decimals),decimals,source:`Alchemy ERC-20 balanceOf @ Block ${block}`};
 }
 
 function taxTokenUniverse(chain){
@@ -461,13 +515,14 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
     const w=ws[wi],address=walletAddressForChain(w,chain);
     taxSetStatus("loading",`${CHAIN_META[chain]?.label||chain}: ${w.label}…`,`Block ${bi.block} · Wallet ${wi+1}/${ws.length}`);
     try{
-      const amount=await taxEvmNativeBalance(chain,address,bi.block);
+      const nativeBalance=await taxEvmNativeBalance(chain,address,bi.block);
+        const amount=nativeBalance.amount;
       if(amount>0){
         const hp=await taxHistoricalPrice(chain,"native",dateStr,bi.block);
         if(!hp)priceMissing++;
         taxRows.push({wallet:w.label,wallet_address:address,chain,block:bi.block,block_timestamp:targetEpoch,asset:"native",
           symbol:NATIVE_SYMBOL[chain]||chain.toUpperCase(),amount,price_usd:hp?.price??null,value_usd:hp?amount*hp.price:null,
-          price_source:hp?.source||null,status:"verifiziert",balance_source:`Routescan balancehistory @ block ${bi.block}`});
+          price_source:hp?.source||null,status:"verifiziert",balance_source:nativeBalance.source});
         verified++;
       }
     }catch(e){errors++;taxRows.push({wallet:w.label,wallet_address:address,chain,block:bi.block,asset:"native",symbol:NATIVE_SYMBOL[chain]||chain.toUpperCase(),status:"nicht verifizierbar",error:e.message,balance_source:"Routescan balancehistory"});}
@@ -479,7 +534,7 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
           if(!hp)priceMissing++;
           taxRows.push({wallet:w.label,wallet_address:address,chain,block:bi.block,block_timestamp:targetEpoch,asset:token.address,
             symbol:token.symbol,amount:b.amount,decimals:b.decimals,price_usd:hp?.price??null,value_usd:hp?b.amount*hp.price:null,
-            price_source:hp?.source||null,status:"verifiziert",balance_source:`Routescan tokenbalancehistory @ block ${bi.block}`});
+            price_source:hp?.source||null,status:"verifiziert",balance_source:b.source});
           verified++;
         }
       }catch(e){
@@ -489,7 +544,7 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
     }
   }
   const detail=`${ws.length} Wallet(s) geprüft · ${verified} positive Position(en) am Stichtag${priceMissing?` · ${priceMissing} ohne historischen Kurs`:""}${errors?` · ${errors} Abfragefehler`:""} · Preise: APTM-Pool bzw. CoinGecko-Tageshistorie, soweit ID vorhanden`;
-  taxCoverageSet(chain,errors?"teilweise":"berücksichtigt",detail,"EVM exakt · Routescan historische Balance");
+  taxCoverageSet(chain,errors?"teilweise":"berücksichtigt",detail,"EVM exakt · kostenlose Quelle → Alchemy Archive-Fallback");
 }
 
 async function taxBitcoinWallet(chain,w,targetEpoch,dateStr){
@@ -591,15 +646,7 @@ async function taxXrpChain(chain,selectedWallets,targetEpoch,dateStr){
 }
 
 async function solRpcTax(chain,method,params){
-  const url=configuredBalanceBase(chain);
-  if(/solana-rpc\.publicnode\.com/i.test(url)){
-    throw new Error("Solana PublicNode blockiert Browser-RPC (HTTP 403). Für die Bestandesaufnahme ist ein browserfähiger Solana-RPC in public.chains erforderlich.");
-  }
-  const res=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})});
-  if(!res.ok)throw new Error(`Solana RPC HTTP ${res.status}`);
-  const j=await res.json();
-  if(j.error)throw new Error(j.error.message||"Solana RPC Fehler");
-  return j.result;
+  return solanaRpc(chain,method,params);
 }
 async function taxSolNativeWallet(chain,w,targetEpoch,dateStr){
   const address=walletAddressForChain(w,chain);
@@ -642,12 +689,7 @@ async function taxSolanaChains(selectedWallets,targetEpoch,dateStr){
     const ws=taxChainWallets(selectedWallets,chain);
     if(!ws.length)continue;
     let verified=0,errors=0,priceMissing=0;
-    try{
-      await solRpcTax(chain,"getHealth",[]);
-    }catch(e){
-      taxCoverageSet(chain,"fehlgeschlagen",e.message,"SOL nativ/SPL");
-      continue;
-    }
+
     for(const w of ws){
       try{
         const r=await taxSolNativeWallet(chain,w,targetEpoch,dateStr);
@@ -1026,6 +1068,8 @@ const ADMIN_CHAIN_FIELDS = [
   {k:"geckoterminal_network", l:"GeckoTerminal Network", type:"text"},
   {k:"display_color", l:"Anzeigefarbe", critical:false, type:"color"},
   {k:"rpc_url", l:"RPC-/REST-Endpunkt", critical:true, type:"text", cls:"xwide-input"},
+  {k:"archive_rpc_provider", l:"Historie-Provider", critical:false, type:"text"},
+  {k:"archive_rpc_url", l:"Historie-/Archive-RPC", critical:false, type:"text", cls:"xwide-input"},
   {k:"balance_provider", l:"Balance-Provider", critical:true, type:"text"},
   {k:"balance_api_base", l:"Balance API-Basis", critical:true, type:"text", cls:"xwide-input"},
   {k:"fees_enabled", l:"Gebühren aktiv", critical:true, type:"checkbox"},
@@ -1330,6 +1374,65 @@ function assertAlchemyConfigured() {
   }
 }
 
+let archiveRpcQueue = Promise.resolve();
+let archiveRpcLastCall = 0;
+
+function configuredArchiveRpcUrl(chain) {
+  const cfg = CHAIN_CONFIG[chain] || {};
+  if (!cfg.archiveRpcUrl) {
+    throw new Error(`${CHAIN_META[chain]?.label || chain}: kein Historie-/Archive-RPC konfiguriert`);
+  }
+  const base = cfg.archiveRpcUrl.replace(/\/+$/, "");
+  if (String(cfg.archiveRpcProvider || "").toLowerCase() === "alchemy") {
+    assertAlchemyConfigured();
+    return `${base}/${encodeURIComponent(ALCHEMY_API_KEY)}`;
+  }
+  return base;
+}
+
+function archiveRpc(chain, method, params) {
+  const run = async () => {
+    // Free-Alchemy has a low throughput ceiling. Historical requests are intentionally serialized.
+    const wait = Math.max(0, 220 - (Date.now() - archiveRpcLastCall));
+    if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+    archiveRpcLastCall = Date.now();
+
+    const url = configuredArchiveRpcUrl(chain);
+    const delays = [0, 800, 1800, 3500];
+    let lastError = null;
+
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (delays[attempt]) await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc:"2.0", id:1, method, params })
+        });
+        if (!res.ok) {
+          let detail = "";
+          try { detail = await res.text(); } catch (_) {}
+          if ((res.status === 429 || res.status >= 500) && attempt < delays.length - 1) continue;
+          throw new Error(`${CHAIN_META[chain]?.label || chain}: Archive-RPC HTTP ${res.status}${detail ? " – " + detail.slice(0,180) : ""}`);
+        }
+        const data = await res.json();
+        if (data.error) throw new Error(`${CHAIN_META[chain]?.label || chain}: ${data.error.message || "Archive-RPC Fehler"}`);
+        return data.result;
+      } catch (e) {
+        lastError = e;
+        if (attempt === delays.length - 1) throw e;
+      }
+    }
+    throw lastError || new Error("Archive-RPC fehlgeschlagen");
+  };
+  archiveRpcQueue = archiveRpcQueue.then(run, run);
+  return archiveRpcQueue;
+}
+
+function taxBlockHex(block) {
+  return "0x" + Number(block).toString(16);
+}
+
 async function alchemyRpc(chain, method, params, purpose="discovery") {
   assertAlchemyConfigured();
   const base = configuredAlchemyBase(chain, purpose);
@@ -1489,7 +1592,7 @@ let chainConfigStatus = { source: "nicht geladen", count: 0, loadedAt: null };
 
 async function loadChainConfigFromDb() {
   const { data, error } = await sb.from("chains")
-    .select("chain_key,label,native_symbol,coingecko_id,wallet_type,explorer_url_template,geckoterminal_network,sort_order,enabled,evm_chain_id,rpc_url,balance_provider,fee_provider,fee_api_base,fee_finality_blocks,fee_overlap_blocks,fees_enabled,discovery_enabled,approvals_enabled,nft_enabled,discovery_provider,discovery_api_base,approvals_provider,approvals_api_base,nft_provider,nft_api_base,balance_api_base,display_color")
+    .select("chain_key,label,native_symbol,coingecko_id,wallet_type,explorer_url_template,geckoterminal_network,sort_order,enabled,evm_chain_id,rpc_url,archive_rpc_url,archive_rpc_provider,balance_provider,fee_provider,fee_api_base,fee_finality_blocks,fee_overlap_blocks,fees_enabled,discovery_enabled,approvals_enabled,nft_enabled,discovery_provider,discovery_api_base,approvals_provider,approvals_api_base,nft_provider,nft_api_base,balance_api_base,display_color")
     .eq("enabled", true)
     .order("sort_order", { ascending: true });
 
@@ -2648,18 +2751,42 @@ const SOLANA_TOKEN_PROGRAMS = [
 ];
 
 async function solanaRpc(chain, method, params) {
-  // Solana PublicNode uses the public endpoint directly. The EVM PublicNode personal
-  // token must not be appended here; doing so returns HTTP 403 on Solana.
-  const base = configuredBalanceBase(chain);
-  const res = await fetch(base, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc:"2.0", id:1, method, params })
-  });
-  if (!res.ok) throw new Error("Solana RPC HTTP " + res.status);
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message || "Solana RPC Fehler");
-  return data.result;
+  const cfg=CHAIN_CONFIG[chain]||{};
+  const candidates=[];
+  const configured=configuredBalanceBase(chain);
+
+  if(configured && !/solana-rpc\.publicnode\.com/i.test(configured)){
+    candidates.push(configured);
+  }
+  if(!candidates.includes("https://api.mainnet-beta.solana.com")){
+    candidates.push("https://api.mainnet-beta.solana.com");
+  }
+
+  let lastError=null;
+  for(const url of candidates){
+    try{
+      const res=await fetch(url,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})
+      });
+      if(!res.ok){
+        lastError=new Error(`Solana ${new URL(url).hostname}: HTTP ${res.status}`);
+        continue;
+      }
+      const data=await res.json();
+      if(data.error){
+        lastError=new Error(data.error.message||"Solana RPC Fehler");
+        continue;
+      }
+      return data.result;
+    }catch(e){lastError=e;}
+  }
+
+  if(String(cfg.archiveRpcProvider||"").toLowerCase()==="alchemy" && cfg.archiveRpcUrl){
+    return archiveRpc(chain,method,params);
+  }
+  throw lastError||new Error("Kein Solana-RPC verfügbar.");
 }
 
 async function fetchSolanaAddressInfo(chain, address) {
