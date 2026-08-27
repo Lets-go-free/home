@@ -397,7 +397,7 @@
       <div class="section-title">🧾 Steuer-Stichtag</div>
       <div class="custom-token-card">
         <div class="note" style="margin-bottom:12px">
-          Exakte historische Bestände für Apertum und EVM-Chains. Es werden historische RPC-State-Abfragen am letzten Block des Stichtags verwendet – keine Schätzung aus Snapshots. Wenn ein RPC keinen Archive-State bereitstellt, wird die Position als nicht verifizierbar ausgewiesen.
+          Exakte historische Stichtagsbestände. EVM-Bestände werden blockgenau über Routescan ermittelt (ohne PublicNode-Archive-State), BTC aus der bestätigten Transaktionshistorie, XRP ledgergenau und SOL nativ durch deterministische Rückrechnung. Das Summary weist die tatsächlich berücksichtigten Chains ausdrücklich aus. Keine Bestände werden aus Snapshots geschätzt.
         </div>
         <div class="custom-token-grid" style="grid-template-columns:minmax(160px,.6fr) minmax(220px,.8fr) minmax(240px,1fr)">
           <label><span class="field-label">Stichtag</span><input id="taxDate" type="date"></label>
@@ -774,7 +774,7 @@
   </div>
 
   <footer>
-    Version vom 27.08.2026, 18:08 Uhr · modularer Umbau Phase 2u<br>
+    Version vom 27.08.2026, 18:31 Uhr · modularer Umbau Phase 2v<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -804,6 +804,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 27.08.2026 18:08:54 CEST · Phase 2u · Build 20260827-180854</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 27.08.2026 18:31:18 CEST · Phase 2v · Build 20260827-183118</div>
 </body>
 </html>
