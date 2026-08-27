@@ -77,7 +77,7 @@ window.DAO1Project = (() => {
         <div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div>
         <div class="custom-token-card">
           <div class="chain-title">📒 Apertum Transaktionshistorie</div>
-          <div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Der erste Scan lädt die vollständige Wallet-Historie, Folge-Scans nur neue Blöcke mit Sicherheitspuffer. Claim-Transaktionen werden automatisch mit NFT, Klassifizierung, Reward APTM und historischem USD-Wert angereichert.</div>
+          <div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Ein Wallet-Wechsel lädt nur bereits gespeicherte Daten. Erst „Apertum-Historie aktualisieren“ lädt neue Blockchain-Daten und reichert dabei nur neue, noch nicht verarbeitete Claim-Transaktionen mit NFT, Klassifizierung, Reward APTM und historischem USD-Wert an.</div>
           <div id="dao1TransactionControls"></div>
           <div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
           <div id="dao1TransactionSummary" style="margin-top:10px"></div>
@@ -1046,8 +1046,12 @@ window.DAO1Project = (() => {
           : "Historie vollständig initial geladen.";
       }
       transactionRows=await loadTransactionRows(address);
-      await enrichTransactionsWithClaims(address,status);
-      transactionRows=await loadTransactionRows(address);
+      if(scan){
+        await enrichTransactionsWithClaims(address,status);
+        transactionRows=await loadTransactionRows(address);
+      }else if(status){
+        status.textContent=`${transactionRows.length} gespeicherte Transaktion(en) geladen.`;
+      }
       renderTransactionControls();
       renderTransactionHistory();
     }catch(e){
@@ -1060,14 +1064,17 @@ window.DAO1Project = (() => {
 
   async function enrichTransactionsWithClaims(address,status){
     const txs=await loadTransactionRows(address);
-    const claimTxs=txs.filter(t=>t.selector===CLAIM_SELECTOR);
-    if(!claimTxs.length)return;
+    const claimTxs=txs.filter(t=>t.selector===CLAIM_SELECTOR && t.claim_nft_id==null);
+    if(!claimTxs.length){
+      if(status)status.textContent="Keine neuen Claims zum Anreichern.";
+      return;
+    }
     const nftMap=allKnownNftsForWallet(address);
     const claimRows=[];
     const blocks=[];
     for(let i=0;i<claimTxs.length;i++){
       const t=claimTxs[i];
-      if(status)status.textContent=`Claims werden angereichert ${i+1}/${claimTxs.length}…`;
+      if(status)status.textContent=`Neue Claims werden angereichert ${i+1}/${claimTxs.length}…`;
       const ps=words(t.raw_input||"");
       const knownId=[ps[0],ps[1]].filter(v=>v!=null).map(v=>v.toString()).find(id=>nftMap.has(id));
       const decodedId=knownId || ps[0]?.toString() || ps[1]?.toString();
@@ -1123,6 +1130,7 @@ window.DAO1Project = (() => {
           .eq("tx_hash",r.tx_hash);
         if(error)console.warn("Tx Claim enrichment:",error);
       }
+      if(status)status.textContent=`${claimRows.length} neue Claim(s) angereichert.`;
     }
   }
 
