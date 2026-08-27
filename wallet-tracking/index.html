@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Token-Übersicht Wallets</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><text y=%2250%22 x=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2252%22>💼</text></svg>">
 <link rel="stylesheet" href="./css/wallet-tracking.css">
 </head>
 <body>
@@ -44,7 +45,7 @@
         <span class="tab-nav-group-label">📊 Übersicht &amp; Analyse</span>
         <div class="tab-nav">
           <button class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking - Token-Übersicht</button>
-          <button class="tab-btn" data-tab="tax" onclick="showTab('tax')">🧾 Steuer-Stichtag</button>
+          <button class="tab-btn" data-tab="tax" onclick="showTab('tax')">🧾 Bestandesaufnahme per 31.12</button>
           <button class="tab-btn" id="feesTabBtn" data-tab="fees" onclick="showTab('fees')" style="display:none">💸 Gebühren</button>
           <button class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
           <button class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
@@ -394,10 +395,10 @@
     </div>
 
     <div id="tab-tax" class="tab-panel">
-      <div class="section-title">🧾 Steuer-Stichtag</div>
+      <div class="section-title">🧾 Bestandesaufnahme per 31.12</div>
       <div class="custom-token-card">
         <div class="note" style="margin-bottom:12px">
-          Exakte historische Stichtagsbestände. EVM-Bestände werden blockgenau über Routescan ermittelt (ohne PublicNode-Archive-State), BTC aus der bestätigten Transaktionshistorie, XRP ledgergenau und SOL nativ durch deterministische Rückrechnung. Das Summary weist die tatsächlich berücksichtigten Chains ausdrücklich aus. Keine Bestände werden aus Snapshots geschätzt.
+          Bestandesaufnahme historischer Wallet-Bestände per Stichtag. EVM-Bestände werden blockgenau über Routescan ermittelt (ohne PublicNode-Archive-State), BTC aus der bestätigten Transaktionshistorie, XRP ledgergenau und SOL nativ durch deterministische Rückrechnung. Das Summary weist die tatsächlich berücksichtigten Chains ausdrücklich aus. Keine Bestände werden aus Snapshots geschätzt.
         </div>
         <div class="custom-token-grid" style="grid-template-columns:minmax(160px,.6fr) minmax(220px,.8fr) minmax(240px,1fr)">
           <label><span class="field-label">Stichtag</span><input id="taxDate" type="date"></label>
@@ -774,7 +775,7 @@
   </div>
 
   <footer>
-    Version vom 27.08.2026, 18:45 Uhr · modularer Umbau Phase 2w<br>
+    Version vom 27.08.2026, 18:48 Uhr · modularer Umbau Phase 2x<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -804,6 +805,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 27.08.2026 18:45:13 CEST · Phase 2w · Build 20260827-184513</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 27.08.2026 18:48:06 CEST · Phase 2x · Build 20260827-184806</div>
 </body>
 </html>

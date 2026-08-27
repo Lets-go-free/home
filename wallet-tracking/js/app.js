@@ -236,7 +236,7 @@ async function onLoggedIn(session) {
 }
 
 
-// ---- Steuer-Stichtag: exakte historische Bestände ----
+// ---- Bestandesaufnahme per 31.12: historische Bestände ----
 let taxRows = [];
 let taxCoverage = [];
 const taxPriceCache = new Map();
@@ -366,14 +366,14 @@ function taxTokenUniverse(chain){
 }
 
 async function taxTokenDecimalsCurrent(chain,token){
-  if(Number.isFinite(Number(token.decimals)))return Number(token.decimals);
-  try{
-    const raw=await routescanCall(chain,{
-      module:"proxy",action:"eth_call",to:token.address,data:"0x313ce567",tag:"latest"
-    });
-    const result=typeof raw==="object" ? (raw.result??raw.data) : raw;
-    if(typeof result==="string" && /^0x[0-9a-f]+$/i.test(result))return Number(BigInt(result));
-  }catch(e){console.warn("Token decimals via Routescan:",chain,token.address,e);}
+  const known=Number(token?.decimals);
+  if(Number.isFinite(known) && known>=0 && known<=255)return known;
+  const key=chain+"|"+normalizeAddress(token?.address||"",chain);
+  const predefined=Number(predefinedTokenDecimals[key]);
+  if(Number.isFinite(predefined) && predefined>=0 && predefined<=255)return predefined;
+  // Avoid Routescan proxy eth_call here: some Routescan chains return HTTP 500 for proxy calls.
+  // Unknown decimals are explicitly a metadata limitation; ERC-20 default 18 is used only for
+  // the raw-unit conversion and surfaced through the balance source.
   return 18;
 }
 
@@ -541,7 +541,7 @@ async function taxBitcoinChain(chain,selectedWallets,targetEpoch,dateStr){
 
 const XRP_EPOCH_OFFSET=946684800;
 async function xrplCall(method,params){
-  const res=await fetch("https://s2.ripple.com:51234/",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({method,params:[params]})});
+  const res=await fetch("https://s2.ripple.com/",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({method,params:[params]})});
   if(!res.ok)throw new Error(`XRPL HTTP ${res.status}`);
   const j=await res.json();
   const r=j?.result;
@@ -592,14 +592,16 @@ async function taxXrpChain(chain,selectedWallets,targetEpoch,dateStr){
 
 async function solRpcTax(chain,method,params){
   const url=configuredBalanceBase(chain);
+  if(/solana-rpc\.publicnode\.com/i.test(url)){
+    throw new Error("Solana PublicNode blockiert Browser-RPC (HTTP 403). Für die Bestandesaufnahme ist ein browserfähiger Solana-RPC in public.chains erforderlich.");
+  }
   const res=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})});
   if(!res.ok)throw new Error(`Solana RPC HTTP ${res.status}`);
   const j=await res.json();
-  if(j.error)throw new Error(j.error.message||"Solana RPC-Fehler");
+  if(j.error)throw new Error(j.error.message||"Solana RPC Fehler");
   return j.result;
 }
-async function taxSolNativeWallet(w,targetEpoch,dateStr){
-  const chain=Object.keys(CHAIN_CONFIG).find(c=>CHAIN_CONFIG[c]?.walletType==="sol")||"solana";
+async function taxSolNativeWallet(chain,w,targetEpoch,dateStr){
   const address=walletAddressForChain(w,chain);
   if(!address)return null;
   const current=await solRpcTax(chain,"getBalance",[address,{commitment:"finalized"}]);
@@ -640,9 +642,15 @@ async function taxSolanaChains(selectedWallets,targetEpoch,dateStr){
     const ws=taxChainWallets(selectedWallets,chain);
     if(!ws.length)continue;
     let verified=0,errors=0,priceMissing=0;
+    try{
+      await solRpcTax(chain,"getHealth",[]);
+    }catch(e){
+      taxCoverageSet(chain,"fehlgeschlagen",e.message,"SOL nativ/SPL");
+      continue;
+    }
     for(const w of ws){
       try{
-        const r=await taxSolNativeWallet(w,targetEpoch,dateStr);
+        const r=await taxSolNativeWallet(chain,w,targetEpoch,dateStr);
         if(r?.amount>0){
           if(!r.hp)priceMissing++;
           taxRows.push({wallet:w.label,wallet_address:r.address,chain,asset:"native",symbol:NATIVE_SYMBOL[chain]||"SOL",amount:r.amount,
@@ -707,7 +715,7 @@ async function runTaxSnapshot(){
     taxSetStatus("ready",`Bereit – ${ok} verifizierte Position(en)${bad?`, ${bad} nicht verifizierbar`:""}.`,
       `${covered}/${taxCoverage.length} relevante Chain(s) vollständig berücksichtigt · ${partial} teilweise · ${omitted} nicht berücksichtigt. Keine Bestände wurden geschätzt.`);
   }catch(e){
-    console.error("Steuer-Stichtag:",e);taxSetStatus("error",e.message||String(e));
+    console.error("Bestandesaufnahme per 31.12:",e);taxSetStatus("error",e.message||String(e));
   }finally{btn.disabled=false;btn.textContent="Exakten Stichtagsbestand ermitteln";}
 }
 
@@ -745,7 +753,7 @@ function taxXmlCell(v){
 function exportTaxExcel(){
   const date=document.getElementById("taxDate")?.value||"";
   const tz=document.getElementById("taxTimezone")?.value||"";
-  let body=`<Row>${taxXmlCell("Wallet Tracking – Steuer-Stichtag")}</Row><Row>${taxXmlCell("Stichtag")}${taxXmlCell(date)}</Row><Row>${taxXmlCell("Zeitzone")}${taxXmlCell(tz)}</Row><Row>${taxXmlCell("Qualitätsregel")}${taxXmlCell("Keine Bestände geschätzt; Coverage je Chain separat ausgewiesen.")}</Row><Row></Row>`;
+  let body=`<Row>${taxXmlCell("Wallet Tracking – Bestandesaufnahme per 31.12")}</Row><Row>${taxXmlCell("Stichtag")}${taxXmlCell(date)}</Row><Row>${taxXmlCell("Zeitzone")}${taxXmlCell(tz)}</Row><Row>${taxXmlCell("Qualitätsregel")}${taxXmlCell("Keine Bestände geschätzt; Coverage je Chain separat ausgewiesen.")}</Row><Row></Row>`;
   body+=`<Row>${["CHAIN COVERAGE","STATUS","ABDECKUNG","DETAIL"].map(taxXmlCell).join("")}</Row>`;
   for(const c of taxCoverage)body+=`<Row>${[CHAIN_META[c.chain]?.label||c.chain,c.status,c.scope,c.detail].map(taxXmlCell).join("")}</Row>`;
   body+=`<Row></Row>`;
@@ -753,14 +761,14 @@ function exportTaxExcel(){
   body+=`<Row>${heads.map(taxXmlCell).join("")}</Row>`;
   for(const r of taxRows)body+=`<Row>${[r.wallet,r.wallet_address,r.chain,r.symbol,r.asset,r.amount??"",r.price_usd??"",r.value_usd??"",r.block??"",r.balance_source||"",r.price_source||"",r.status,r.error||""].map(taxXmlCell).join("")}</Row>`;
   const xml=`<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Stichtag"><Table>${body}</Table></Worksheet></Workbook>`;
-  const blob=new Blob([xml],{type:"application/vnd.ms-excel"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`steuer-stichtag-${date}.xls`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  const blob=new Blob([xml],{type:"application/vnd.ms-excel"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`bestandesaufnahme-31-12-${date}.xls`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 
 function exportTaxPdf(){
   const date=document.getElementById("taxDate")?.value||"",tz=document.getElementById("taxTimezone")?.value||"";
   const w=window.open("","_blank");if(!w)return alert("Popup wurde blockiert.");
   const cov=taxCoverage.map(c=>`<tr><td>${escapeAttr(CHAIN_META[c.chain]?.label||c.chain)}</td><td>${escapeAttr(c.status)}</td><td>${escapeAttr(c.scope||"")}</td><td>${escapeAttr(c.detail||"")}</td></tr>`).join("");
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Steuer-Stichtag ${date}</title><style>body{font-family:Arial;font-size:10px}table{border-collapse:collapse;width:100%;margin-bottom:14px}th,td{border:1px solid #bbb;padding:4px;vertical-align:top}th{background:#eee}@page{size:A4 landscape;margin:9mm}</style></head><body><h1>Wallet Tracking – Steuer-Stichtag</h1><p><strong>Stichtag:</strong> ${date} · ${tz}<br><strong>Regel:</strong> Keine Bestände werden geschätzt. Historische Preise und Chain-Coverage sind separat ausgewiesen.</p><h2>Chain-Abdeckung</h2><table><thead><tr><th>Chain</th><th>Status</th><th>Abdeckung</th><th>Details</th></tr></thead><tbody>${cov}</tbody></table><h2>Positionen</h2><table><thead><tr><th>Wallet</th><th>Chain</th><th>Asset</th><th>Bestand</th><th>Preis USD</th><th>Wert USD</th><th>Block/Ledger</th><th>Status / Quelle</th></tr></thead><tbody>${taxRows.map(r=>`<tr><td>${escapeAttr(r.wallet)}<br><small>${escapeAttr(r.wallet_address||"")}</small></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td>${escapeAttr(r.symbol||"")}<br><small>${escapeAttr(r.asset||"")}</small></td><td>${r.amount==null?"–":fmt(r.amount)}</td><td>${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td>${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td><td>${r.block||"–"}</td><td>${escapeAttr(r.status)}<br><small>${escapeAttr(r.error||r.balance_source||"")}${r.price_source?` · ${escapeAttr(r.price_source)}`:""}</small></td></tr>`).join("")}</tbody></table><script>window.onload=()=>window.print();<\/script></body></html>`);w.document.close();
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Bestandesaufnahme per 31.12 ${date}</title><style>body{font-family:Arial;font-size:10px}table{border-collapse:collapse;width:100%;margin-bottom:14px}th,td{border:1px solid #bbb;padding:4px;vertical-align:top}th{background:#eee}@page{size:A4 landscape;margin:9mm}</style></head><body><h1>Wallet Tracking – Bestandesaufnahme per 31.12</h1><p><strong>Stichtag:</strong> ${date} · ${tz}<br><strong>Regel:</strong> Keine Bestände werden geschätzt. Historische Preise und Chain-Coverage sind separat ausgewiesen.</p><h2>Chain-Abdeckung</h2><table><thead><tr><th>Chain</th><th>Status</th><th>Abdeckung</th><th>Details</th></tr></thead><tbody>${cov}</tbody></table><h2>Positionen</h2><table><thead><tr><th>Wallet</th><th>Chain</th><th>Asset</th><th>Bestand</th><th>Preis USD</th><th>Wert USD</th><th>Block/Ledger</th><th>Status / Quelle</th></tr></thead><tbody>${taxRows.map(r=>`<tr><td>${escapeAttr(r.wallet)}<br><small>${escapeAttr(r.wallet_address||"")}</small></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td>${escapeAttr(r.symbol||"")}<br><small>${escapeAttr(r.asset||"")}</small></td><td>${r.amount==null?"–":fmt(r.amount)}</td><td>${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td>${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td><td>${r.block||"–"}</td><td>${escapeAttr(r.status)}<br><small>${escapeAttr(r.error||r.balance_source||"")}${r.price_source?` · ${escapeAttr(r.price_source)}`:""}</small></td></tr>`).join("")}</tbody></table><script>window.onload=()=>window.print();<\/script></body></html>`);w.document.close();
 }
 
 
