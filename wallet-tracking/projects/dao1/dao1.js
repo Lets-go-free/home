@@ -1224,7 +1224,7 @@ window.DAO1Project = (() => {
 
   async function enrichTransactionHistoricalPrices(address,jobToken=transactionJobToken){
     const txs=await loadTransactionRows(address,null);
-    const pending=txs.filter(r=>Number(r.block_number)>0 && (r.aptm_usd==null || (Number(r.gas_aptm||0)>0 && r.gas_usd==null)));
+    const pending=txs.filter(r=>!r.price_is_manual && Number(r.block_number)>0 && (r.aptm_usd==null || (Number(r.gas_aptm||0)>0 && r.gas_usd==null)));
     if(!pending.length)return {updated:0,missing:0};
     if(jobToken!==transactionJobToken)return {updated:0,missing:pending.length};
 
@@ -1523,8 +1523,79 @@ window.DAO1Project = (() => {
       return Number(r.gas_aptm||0)>0 && r.gas_usd==null;
     });
     if(!rows.length)return alert("Keine offenen historischen Kurswerte.");
-    const lines=rows.slice(0,80).map(r=>`${r.tx_timestamp||"–"} · Block ${r.block_number||"–"} · ${r.tx_hash}`).join("\n");
-    alert(`${rows.length} Transaktion(en) ohne historischen ${kind==="claim"?"Claim-":"Gas-"}USD-Wert:\n\n${lines}${rows.length>80?`\n\n… plus ${rows.length-80} weitere`:""}`);
+    let box=document.getElementById("dao1MissingPricePanel");
+    if(!box){
+      box=document.createElement("div");
+      box.id="dao1MissingPricePanel";
+      box.className="custom-token-card";
+      const host=document.getElementById("dao1TransactionHistory");
+      (host||document.body).appendChild(box);
+    }
+    box.style.display="block";
+    box.innerHTML=`
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
+        <h3 style="margin:0">Historische Kurse ergänzen</h3>
+        <button class="secondary" onclick="document.getElementById('dao1MissingPricePanel').style.display='none'">Schliessen</button>
+      </div>
+      <div class="note" style="margin:8px 0 12px">
+        ${rows.length} Transaktion(en) ohne historischen ${kind==="claim"?"Claim-":"Gas-"}USD-Wert.
+        Ein manuell eingetragener Kurs wird ausdrücklich als <strong>manuell</strong> gespeichert und im Export entsprechend gekennzeichnet.
+      </div>
+      <div style="overflow:auto">
+        <table><thead><tr><th>Datum</th><th>Wallet</th><th>Block</th><th>Tx</th><th>NFT</th><th>${kind==="claim"?"Geclaimt APTM":"Gas APTM"}</th><th>APTM/USD manuell</th><th>USD-Wert</th><th></th></tr></thead>
+        <tbody>${rows.map((r,i)=>{
+          const qty=kind==="claim"?Number(r.claim_reward_aptm||0):Number(r.gas_aptm||0);
+          return `<tr>
+            <td>${esc(r.tx_timestamp||"–")}</td><td>${esc(r.wallet_label||r.wallet_address||"–")}</td><td>${r.block_number||"–"}</td>
+            <td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${esc(String(r.tx_hash||"").slice(0,12))}…</a></td>
+            <td>${esc(r.claim_nft_name||r.claim_nft_id||"–")}</td><td>${fmt(qty)}</td>
+            <td><input id="dao1ManualPrice${i}" type="number" min="0" step="0.00000001" placeholder="z.B. 1.85" style="min-width:120px"></td>
+            <td id="dao1ManualUsd${i}">–</td>
+            <td><button onclick="DAO1Project.saveManualHistoricalPrice('${kind}',${i},'${r.tx_hash}',${qty})">Speichern</button></td>
+          </tr>`;
+        }).join("")}</tbody></table>
+      </div>`;
+    rows.forEach((r,i)=>{
+      const inp=document.getElementById(`dao1ManualPrice${i}`),out=document.getElementById(`dao1ManualUsd${i}`);
+      const qty=kind==="claim"?Number(r.claim_reward_aptm||0):Number(r.gas_aptm||0);
+      inp?.addEventListener("input",()=>{const p=Number(inp.value);out.textContent=p>0?usd(qty*p):"–";});
+    });
+    box.scrollIntoView({behavior:"smooth",block:"start"});
+  }
+
+  async function saveManualHistoricalPrice(kind,index,txHash,qty){
+    const input=document.getElementById(`dao1ManualPrice${index}`);
+    const price=Number(input?.value);
+    if(!Number.isFinite(price)||price<=0)return alert("Bitte einen gültigen APTM/USD-Kurs grösser 0 eingeben.");
+    const row=txVisibleRows().find(r=>r.tx_hash===txHash);
+    if(!row)return alert("Transaktion wurde nicht gefunden.");
+    const userId=getContext?.().currentUser?.id;
+    if(!userId)return alert("Nicht angemeldet.");
+    const source=`Manuell · APTM/USD · ${new Date().toISOString()}`;
+    const txPatch={
+      aptm_usd:price,
+      value_usd:Number(row.value_aptm||0)*price,
+      gas_usd:Number(row.gas_aptm||0)*price,
+      price_source:source,
+      price_is_manual:true,
+      updated_at:new Date().toISOString()
+    };
+    if(kind==="claim")txPatch.claim_reward_usd=Number(qty||0)*price;
+    const {error}=await sb.from("project_transactions").update(txPatch)
+      .eq("user_id",userId).eq("wallet_address",lower(row.wallet_address)).eq("tx_hash",txHash);
+    if(error)return alert(`Speichern fehlgeschlagen: ${error.message}`);
+    if(kind==="claim"){
+      const claimPatch={
+        aptm_usd:price,reward_usd:Number(qty||0)*price,
+        gas_usd:Number(row.gas_aptm||0)*price,
+        price_source:source,price_is_manual:true,updated_at:new Date().toISOString()
+      };
+      const q=sb.from("project_nft_claims").update(claimPatch).eq("user_id",userId).eq("wallet_address",lower(row.wallet_address)).eq("tx_hash",txHash);
+      const {error:ce}=await q;
+      if(ce)console.warn("Manueller Claim-Kurs konnte nicht zusätzlich in project_nft_claims gespeichert werden:",ce);
+    }
+    await refreshTransactionHistory(false);
+    showMissingHistoricalPrices(kind);
   }
 
   function renderTransactionHistory(){
@@ -1579,7 +1650,7 @@ window.DAO1Project = (() => {
     const rows=txVisibleRows();
     const wallet=allProjectWalletOptions().find(w=>String(w.id)===String(txFilterWallet));
     const walletLabel=txFilterWallet==="__all" ? "Alle Apertum-Wallets" : walletAddress(wallet);
-    const headers=["Timestamp","Wallet","Richtung","Methode","Tx Hash","Block","From","To","APTM","Claim NFT","NFT Typ","Claim Reward APTM","APTM/USD historisch","Preisquelle","Wert USD","Gas APTM","Gas USD","Status"];
+    const headers=["Timestamp","Wallet","Richtung","Methode","Tx Hash","Block","From","To","APTM","Claim NFT","NFT Typ","Claim Reward APTM","APTM/USD historisch","Preisquelle","Kurs manuell","Wert USD","Gas APTM","Gas USD","Status"];
     let body=`<Row>${xCell("DAO1 / Apertum Transaktionshistorie")}</Row><Row>${xCell("Wallet")}${xCell(walletLabel)}</Row><Row>${xCell("Datumsbereich")}${xCell(`${txFilterFrom||"offen"} bis ${txFilterTo||"offen"}`)}</Row><Row>${xCell("Filter")}${xCell(`Typ: ${txFilterKind}; Klassifizierung: ${txFilterClass}; NFT: ${txFilterNft}`)}</Row><Row></Row>`;
     body+=`<Row>${headers.map(h=>xCell(h)).join("")}</Row>`;
     for(const r of rows){
@@ -1592,7 +1663,7 @@ window.DAO1Project = (() => {
         r.tx_timestamp,r.wallet_address,r.direction,r.method,r.tx_hash,Number(r.block_number||0),
         r.from_address,r.to_address,amt,claim?`${currentName||"NFT"} #${r.claim_nft_id}`:"",
         currentSubtype,claim?Number(r.claim_reward_aptm||0):0,
-        r.aptm_usd==null?"":Number(r.aptm_usd),r.price_source||"",valUsd||0,Number(r.gas_aptm||0),
+        r.aptm_usd==null?"":Number(r.aptm_usd),r.price_source||"",r.price_is_manual?"JA":"NEIN",valUsd||0,Number(r.gas_aptm||0),
         r.gas_usd==null?"":Number(r.gas_usd),r.status
       ];
       body+=`<Row>${values.map(v=>xCell(v)).join("")}</Row>`;
@@ -2100,5 +2171,5 @@ window.DAO1Project = (() => {
   }
 
   return { configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
-    refreshTransactionHistory, setTransactionFilter, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices };
+    refreshTransactionHistory, setTransactionFilter, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice };
 })();
