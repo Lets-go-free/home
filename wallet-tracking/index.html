@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Token-Übersicht Wallets</title>
+<link rel="stylesheet" href="./css/wallet-tracking.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="app-hero">
+    <div><h1>Wallet-Tracking inkl. Token-Übersicht und Kurse</h1><div class="sub">Wallet-Bestände, Token, Kurse, DeFi-Projekte und Analysen an einem Ort.</div></div>
+    <div id="heroUserActions" style="display:none;min-width:280px">
+      <div class="action-row" style="justify-content:flex-end;align-items:center;margin:0 0 10px;gap:12px">
+        <span id="userEmailLabel" class="note" style="margin:0;font-size:1rem"></span>
+        <button class="secondary" style="font-size:1rem;padding:10px 16px" onclick="logout()">Logout</button>
+      </div>
+      <div class="action-row" style="justify-content:flex-end;margin:0">
+        <button class="secondary" style="font-size:1.05rem;padding:11px 18px" onclick="openDonationModal()">💛 Unterstützen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login-Bereich: sichtbar solange niemand eingeloggt ist -->
+  <div id="authGate" class="custom-token-card">
+    <h3 style="margin-top:0">Login</h3>
+    <div class="field-grid" style="grid-template-columns:1fr auto;align-items:end">
+      <div>
+        <span class="field-label">E-Mail-Adresse</span>
+        <input type="email" id="authEmail" placeholder="deine@email.ch" />
+      </div>
+      <div>
+        <button onclick="sendMagicLink()">Login-Link senden</button>
+      </div>
+    </div>
+    <div id="authStatus" class="note" style="margin-top:10px"></div>
+  </div>
+
+  <!-- App-Inhalt: nur sichtbar, wenn eingeloggt -->
+  <div id="appContent" style="display:none">
+
+    <div class="tab-nav-groups">
+      <div class="tab-nav-group">
+        <span class="tab-nav-group-label">📊 Übersicht &amp; Analyse</span>
+        <div class="tab-nav">
+          <button class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking - Token-Übersicht</button>
+          <button class="tab-btn" id="feesTabBtn" data-tab="fees" onclick="showTab('fees')" style="display:none">💸 Gebühren</button>
+          <button class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
+          <button class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
+        </div>
+      </div>
+      <div class="tab-nav-group">
+        <span class="tab-nav-group-label">⚙️ Verwaltung</span>
+        <div class="tab-nav">
+          <button class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
+          <button class="tab-btn" data-tab="predefined" onclick="showTab('predefined')">Vordefinierte Token</button>
+          <button class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
+          <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
+        </div>
+      </div>
+      <div class="tab-nav-group">
+        <span class="tab-nav-group-label">💬 Support &amp; Info</span>
+        <div class="tab-nav">
+          <button class="tab-btn" id="userChatTabBtn" data-tab="chat" onclick="showTab('chat')">💬 Chat <span id="userChatUnreadBadge" class="chat-unread-badge"></span></button>
+          <button class="tab-btn" id="adminChatTabBtn" data-tab="chat" onclick="showTab('chat')" style="display:none">💬 Admin-Chat <span id="adminChatUnreadBadge" class="chat-unread-badge"></span></button>
+          <button class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
+        </div>
+      </div>
+      <div class="tab-nav-group" id="adminNavGroup" style="display:none">
+        <span class="tab-nav-group-label">⚙️ Admin-Bereich</span>
+        <div class="tab-nav">
+          <button class="tab-btn" data-tab="admin" data-open-admin="customtokens" onclick="showTab('admin');showAdminTab('customtokens')">Eigene sichere Token</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="chains" onclick="showTab('admin');showAdminTab('chains')">⛓️ Chains</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="coverage" onclick="showTab('admin');showAdminTab('coverage')">📋 Chain-Abdeckung</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="defiprojects" onclick="showTab('admin');showAdminTab('defiprojects')">🏦 DeFi-Projekte</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="dex" onclick="showTab('admin');showAdminTab('dex')">🔄 DEX</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="coverage" onclick="showTab('admin');showAdminTab('coverage')">📋 Chain-Abdeckung</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="hardcoding" onclick="showTab('admin');showAdminTab('hardcoding')">🧪 Hardcoding-Audit</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="ideas" onclick="showTab('admin');showAdminTab('ideas')">💡 Ideen / Umbau</button>
+        </div>
+      </div>
+      <div class="tab-nav-group" id="defiProjectsNavGroup" style="display:none">
+        <span class="tab-nav-group-label">🏦 Defi-Projekte</span>
+        <div class="tab-nav">
+          <button class="tab-btn" id="tlnVowTabBtn" data-tab="tlnvow" onclick="showTab('tlnvow')">TLN/VOW</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-tracking" class="tab-panel">
+      <div class="action-row" style="align-items:center">
+        <button id="loadBtn" onclick="loadAll()">Jetzt live aktualisieren</button>
+        <span id="cacheStatusNote" class="note" style="margin:0"></span>
+      </div>
+      <div class="note" style="margin-bottom:14px">
+        Beim Login wird zuerst der letzte gespeicherte Stand angezeigt und anschließend automatisch live aktualisiert.
+        Die Balance-Abfrage wird pro Chain über die zentrale Supabase-Konfiguration gesteuert; angezeigt werden native Coins sowie vordefinierte und eigene sichere Token.
+        "Alle laden" kann weiterhin für eine manuelle Aktualisierung verwendet werden.
+      </div>
+
+      <div class="custom-token-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains anzeigen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllChainFilter(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllChainFilter(false)">Alle abwählen</button>
+          </div>
+        </div>
+        <div id="chainFilterContainer" style="display:flex;flex-wrap:wrap;gap:14px"></div>
+      </div>
+
+      <div class="field-grid" style="grid-template-columns:220px auto;align-items:end;margin-bottom:20px">
+        <div>
+          <span class="field-label">Gehe zu Wallet</span>
+          <select id="walletNav" onchange="goToWallet(this.value)">
+            <option value="">– auswählen –</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="custom-token-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="field-label" style="margin:0">Snapshots (Token-Bestand zu einem Zeitpunkt, als zusätzliche Spalten je Wallet)</span>
+          <button onclick="createSnapshot()">📸 Snapshot erstellen</button>
+        </div>
+        <details>
+          <summary style="cursor:pointer;font-size:0.85rem;color:var(--muted)">Erstellte Snapshots anzeigen/verwalten</summary>
+          <div id="snapshotManagerList" style="margin-top:10px"></div>
+        </details>
+      </div>
+
+      <h2>Summary (alle Wallets)</h2>
+
+      <div class="custom-token-card">
+        <span class="field-label" style="display:block;margin-bottom:8px">Verlauf-Grafik (ein Token über Zeit, aus Snapshots + aktuellem Bestand)</span>
+        <div class="custom-token-grid" style="grid-template-columns:1fr 1fr 1fr auto">
+          <div>
+            <span class="field-label">Wallet</span>
+            <select id="chartWalletSelect">
+              <option value="">Total (alle Wallets)</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Chain</span>
+            <select id="chartChainSelect" onchange="populateChartTokenSelect()">
+              <option value="">– Chain wählen –</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Token</span>
+            <select id="chartTokenSelect" disabled>
+              <option value="">– zuerst Chain wählen –</option>
+            </select>
+          </div>
+          <div>
+            <button onclick="generateSnapshotChart()">📈 Grafik erstellen</button>
+          </div>
+        </div>
+        <div id="snapshotChartContainer" style="margin-top:16px"></div>
+      </div>
+
+      <div class="custom-token-card">
+        <span class="field-label" style="display:block;margin-bottom:8px">Portfolio-Allokation (nach USD-Wert, nur Token mit bekanntem Kurs)</span>
+        <div class="custom-token-grid" style="grid-template-columns:1fr 1fr">
+          <div>
+            <span class="field-label">Wallet</span>
+            <select id="allocWalletSelect" onchange="renderAllocationChart()">
+              <option value="">Total (alle Wallets)</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Gruppierung</span>
+            <select id="allocGroupSelect" onchange="renderAllocationChart()">
+              <option value="chain">Nach Chain</option>
+              <option value="token" selected>Nach Token</option>
+            </select>
+          </div>
+        </div>
+        <div id="allocationChartContainer" style="margin-top:16px;max-width:420px;margin-left:auto;margin-right:auto"></div>
+      </div>
+
+      <div id="summaryContainer"></div>
+
+      <h2>Details je Wallet</h2>
+      <div id="resultsContainer"></div>
+    </div>
+
+    <div id="tab-wallets" class="tab-panel">
+      <div class="note" id="evmWalletChainsNote" style="margin-bottom:14px"></div>
+      <div id="walletInputsContainer"></div>
+      <div class="action-row">
+        <button class="secondary" onclick="addWallet()">+ Wallet hinzufügen</button>
+      </div>
+    </div>
+
+    <div id="tab-predefined" class="tab-panel">
+      <div class="action-row">
+        <button class="secondary" onclick="refreshPredefinedTokens()">🔄 Liste neu laden (nach SQL-Änderungen)</button>
+      </div>
+
+      <div id="adminAddPredefinedTokenCard" class="custom-token-card" style="display:none">
+        <span class="field-label" style="display:block;margin-bottom:8px">Neuen vordefinierten Token hinzufügen (nur Admins)</span>
+        <div class="custom-token-grid" style="grid-template-columns:1fr 2fr 1fr 1fr 1fr auto">
+          <div>
+            <span class="field-label">Chain</span>
+            <select id="newPredefChain"></select>
+          </div>
+          <div>
+            <span class="field-label">Adresse</span>
+            <input type="text" id="newPredefAddress" placeholder="0x..." />
+          </div>
+          <div>
+            <span class="field-label">Label</span>
+            <input type="text" id="newPredefLabel" placeholder="z.B. USDT" />
+          </div>
+          <div>
+            <span class="field-label">DeFi-Projekt</span>
+            <select id="newPredefDefiProject"><option value="">– keines –</option></select>
+          </div>
+          <div>
+            <span class="field-label">Projekt-Kategorie</span>
+            <select id="newPredefDefiCategory">
+              <option value="">– keine –</option>
+              <option value="voucher_currency">Voucher-Währung</option>
+              <option value="lp_token">LP Token</option>
+              <option value="defi_token">DeFi-Token</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">&nbsp;</span>
+            <button onclick="addPredefinedToken()">Hinzufügen</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="custom-token-card">
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Chain</span>
+            <select id="predefChainFilter" onchange="renderSafeTokenTable()">
+              <option value="">Alle Chains</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Token</span>
+            <select id="predefTokenFilter" onchange="renderSafeTokenTable()">
+              <option value="">Alle Token</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Suche (Name oder Adresse)</span>
+            <input type="text" id="predefTextFilter" placeholder="z.B. USDT oder 0x..." oninput="renderSafeTokenTable()" />
+          </div>
+        </div>
+        <div id="safeTokenTable"></div>
+      </div>
+    </div>
+
+    <div id="tab-custom" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="custom-token-grid">
+          <div>
+            <span class="field-label">Chain</span>
+            <select id="customChain"></select>
+          </div>
+          <div>
+            <span class="field-label">Contract-Adresse</span>
+            <input type="text" id="customAddress" placeholder="0x... oder T... (Tron)" />
+          </div>
+          <div>
+            <span class="field-label">Label (optional)</span>
+            <input type="text" id="customLabel" placeholder="z.B. MEIN Token" />
+          </div>
+          <div>
+            <button onclick="addCustomSafeToken()">Hinzufügen</button>
+          </div>
+        </div>
+        <div id="customTokenList" class="custom-token-list"></div>
+        <div class="note">Diese Token sind an deinen Account gebunden (Supabase) - sichtbar und bearbeitbar auf jedem Gerät, auf dem du dich einloggst.</div>
+      </div>
+    </div>
+
+    <div id="tab-discovery" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">
+          Sucht in der ausgewählten Wallet nach Token, die du tatsächlich hältst, aber die noch nicht auf der sicheren Liste stehen.
+          EVM-Chains nutzen dafür aktuell noch Alchemy. Um das API-Kontingent zu schützen, ist pro Benutzer nur
+          <strong>ein Discovery-Scan alle 30 Tage</strong> möglich; Admins sind von dieser Sperre ausgenommen. Das Ergebnis wird in Supabase gespeichert und bis zum nächsten
+          möglichen Scan hier wieder angezeigt. Apertum/Tron werden soweit verfügbar aus kostenlosen Datenquellen ergänzt.
+        </div>
+
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Wallet (Pflicht)</span>
+            <select id="discoveryWalletSelect" onchange="onDiscoveryWalletChange()">
+              <option value="">– Wallet wählen –</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains einbeziehen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllDiscoveryChains(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllDiscoveryChains(false)">Alle abwählen</button>
+          </div>
+        </div>
+        <div id="discoveryChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
+
+        <button id="discoveryBtn" onclick="runDiscoveryScan()">Scan starten</button>
+        <div id="discoveryStatus" class="note" style="margin-top:10px"></div>
+        <div id="discoveryCacheInfo" class="note" style="margin-top:6px"></div>
+      </div>
+      <div id="discoveryResults"></div>
+    </div>
+
+    <div id="tab-fees" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">
+          Summiert die tatsächlich bezahlten Netzwerk-Gebühren einer Wallet. In Phase 1 werden ausschließlich die tatsächlich bezahlten Gebühren im jeweiligen nativen Coin angezeigt. Gespeicherte ETH/BSC-Werte werden sofort aus Supabase angezeigt;
+          beim Aktualisieren wird nach dem ersten Vollscan nur noch inkrementell mit Sicherheits-Overlap weitergescannt. Nur Transaktionen,
+          bei denen diese Wallet die Absenderin war, zählen (nur die zahlt die Gebühr).
+        </div>
+        <div class="note" style="margin-bottom:12px">
+          Welche Chains für Gebühren verfügbar sind, wird zentral über <code>public.chains</code> (<code>fees_enabled</code> + <code>fee_provider</code>) gesteuert.
+          Bitcoin, Tron und Akash bleiben derzeit deaktiviert, bis dafür eine zuverlässige kostenlose Gebührenquelle validiert ist.
+        </div>
+
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Wallet (Pflicht)</span>
+            <select id="feesWalletSelect" onchange="onFeesWalletChange()">
+              <option value="">– Wallet wählen –</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains einbeziehen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllFeesChains(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllFeesChains(false)">Alle abwählen</button>
+          </div>
+        </div>
+        <div id="feesChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="feesBtn" onclick="runFeesCalculation()">Gewählte Wallet aktualisieren</button>
+          <button id="feesAllBtn" class="secondary" onclick="runAllFeesCalculation()">Alle Wallets aktualisieren</button>
+        </div>
+        <div id="feesCacheInfo" class="note" style="margin-top:8px"></div>
+        <div id="feesStatus" class="note" style="margin-top:10px"></div>
+      </div>
+      <div id="feesSummary"></div>
+      <div id="feesResults"></div>
+    </div>
+
+    <div id="tab-approvals" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">
+          Zeigt aktive Token-Freigaben ("Approvals") an Dapps/Contracts – ein häufig unterschätztes Sicherheitsrisiko,
+          v.a. bei unlimitierten Freigaben. Diese Seite liest nur, sie kann nie etwas widerrufen (dafür bräuchte es
+          Zugriff auf deinen Private Key, den diese Seite bewusst nie hat und nie haben wird).
+        </div>
+        <div class="custom-token-card" style="border-color:#f0b90b;background:rgba(240,185,11,0.08);margin-bottom:12px">
+          <strong>⚠️ Wichtig beim Widerrufen (Revoke):</strong> Öffne den "Revoke"-Link unten <strong>nicht in einem normalen
+          Browser</strong>, sondern im <strong>eingebauten Browser deiner Wallet-App</strong> (z.B. in MetaMask, Trust Wallet
+          oder Rabby unter "Browser"/"Dapp-Browser"). Nur so kann sich revoke.cash mit deiner Wallet verbinden und du kannst die
+          Transaktion tatsächlich signieren. Ein normaler Browser ohne Wallet-Erweiterung kann nichts widerrufen, nur anzeigen.
+        </div>
+
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Wallet (Pflicht)</span>
+            <select id="approvalsWalletSelect">
+              <option value="">– Wallet wählen –</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains einbeziehen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllApprovalsChains(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllApprovalsChains(false)">Alle abwählen</button>
+          </div>
+        </div>
+        <div id="approvalsChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
+
+        <button id="approvalsBtn" onclick="runApprovalsCheck()">Freigaben prüfen</button>
+        <div id="approvalsStatus" class="note" style="margin-top:10px"></div>
+      </div>
+      <div id="approvalsResults"></div>
+    </div>
+
+    <div id="tab-nfts" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">
+          Zeigt die NFTs (ERC-721/ERC-1155) einer Wallet. Nutzt Alchemy - läuft bewusst
+          nur auf Knopfdruck, nicht automatisch.
+        </div>
+
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Wallet (Pflicht)</span>
+            <select id="nftWalletSelect" onchange="onNftWalletChange()">
+              <option value="">– Wallet wählen –</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains einbeziehen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllNftChains(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllNftChains(false)">Alle abwählen</button>
+          </div>
+        </div>
+        <div id="nftChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
+
+        <button id="nftBtn" onclick="runNftLoad()">NFTs jetzt aktualisieren</button>
+        <div id="nftCacheInfo" class="note" style="margin-top:7px">Gespeicherte NFTs werden aus Supabase geladen. Eine Live-Abfrage erfolgt nur auf Knopfdruck.</div>
+        <div id="nftStatus" class="note" style="margin-top:10px"></div>
+      </div>
+      <div id="nftResults"></div>
+    </div>
+
+    <div id="tab-chat" class="tab-panel">
+      <div id="userChatView" class="custom-token-card">
+        <div class="note" style="margin-bottom:12px">Direkter Draht zum Support – Nachrichten hier sind nur für dich und die Admins sichtbar.</div>
+        <div id="chatMessagesContainer" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding:4px"></div>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="chatMessageInput" placeholder="Nachricht schreiben..." style="flex:1" onkeydown="if(event.key==='Enter') sendChatMessage()" />
+          <button onclick="sendChatMessage()">Senden</button>
+        </div>
+        <button class="secondary" style="margin-top:10px" onclick="loadOwnChat()">🔄 Aktualisieren</button>
+      </div>
+      <div id="adminChatView" class="custom-token-card" style="display:none">
+        <div class="note" style="margin-bottom:14px">Support-Konversationen aller User. Es werden User angezeigt, die bereits mindestens eine Nachricht geschrieben haben.</div>
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Konversation</span>
+            <select id="adminChatUserSelect" onchange="loadAdminChat()"><option value="">– auswählen –</option></select>
+          </div>
+        </div>
+        <div id="adminChatMessagesContainer" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding:4px"></div>
+        <div id="adminChatInputRow" style="display:none;gap:8px">
+          <input type="text" id="adminChatMessageInput" placeholder="Antwort schreiben..." style="flex:1" onkeydown="if(event.key==='Enter') sendAdminChatMessage()" />
+          <button onclick="sendAdminChatMessage()">Senden</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-admin" class="tab-panel">
+      <div id="admintab-customtokens" class="admin-tab-panel active">
+        <div class="note" style="margin-bottom:12px">
+          Zeigt die von Usern selbst erfassten "eigenen sicheren Token" – so siehst du, was Kunden zusätzlich eintragen,
+          und kannst Sinnvolles in die vordefinierte Liste übernehmen (für alle sichtbar) oder ignorieren.
+        </div>
+        <div class="field-grid" style="margin-bottom:14px">
+          <div>
+            <span class="field-label">Status</span>
+            <select id="adminTokenStatusFilter" onchange="renderAdminCustomTokens()">
+              <option value="pending">Ausstehend</option>
+              <option value="ignored">Ignoriert</option>
+              <option value="promoted">Übernommen</option>
+              <option value="all">Alle</option>
+            </select>
+          </div>
+        </div>
+        <div id="adminCustomTokensList"></div>
+      </div>
+
+      <div id="admintab-chains" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">
+          Zentrale Chain-Konfiguration aus <code>public.chains</code>. Alle Felder sind editierbar.
+          Die Tabelle kann horizontal gescrollt werden; <strong>Chain-Key, Anzeigename und natives Symbol bleiben links fixiert</strong>.
+          <span style="color:#d97706;font-weight:700">Orange markierte Spalten sind technisch kritisch</span>:
+          falsche Werte können Balance-, Gebühren- oder Explorer-Abfragen für eine Chain deaktivieren.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button onclick="openNewChainEditor()">＋ Neue Chain</button>
+          <button class="secondary" onclick="loadAdminChains()">🔄 Neu laden</button>
+        </div>
+        <div id="adminChainEditor" style="display:none;margin-bottom:16px"></div>
+        <div id="adminChainsList"></div>
+      </div>
+
+      <div id="admintab-coverage" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">
+          Live-Übersicht der Funktionsabdeckung aus <code>public.chains</code>. Die Anzeige wird aus den aktivierten Flags und konfigurierten Providern erzeugt – keine separate Chain-Liste im HTML.
+          <strong>✅</strong> = aktiviert und im Frontend unterstützt, <strong>⚠️</strong> = aktiviert, aber Provider/Implementierung unvollständig, <strong>❌</strong> = deaktiviert bzw. für diese Chain nicht vorgesehen.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button class="secondary" onclick="renderAdminChainCoverage()">🔄 Aktualisieren</button>
+        </div>
+        <div id="adminChainCoverageList"></div>
+      </div>
+
+      <div id="admintab-defiprojects" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">
+          Allgemeine DeFi-Projektverwaltung. TLN/VOW ist nur das erste Projekt. Projekt-Referenz-Token werden separat nach Chain und Rolle gepflegt.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button onclick="addDefiProjectRow()">＋ Projekt</button>
+          <button onclick="addDefiProjectTokenRow()">＋ Projekt-Token / Referenz</button>
+          <button class="secondary" onclick="loadAdminDefiProjects()">🔄 Neu laden</button>
+        </div>
+        <h3>Projekte</h3>
+        <div id="adminDefiProjectsList"></div>
+        <h3 style="margin-top:22px">Projekt-Token / Referenzen</h3>
+        <div id="adminDefiProjectTokensList"></div>
+      </div>
+
+      <div id="admintab-dex" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">
+          Allgemeine DEX-Infrastruktur. Diese Einträge gehören nicht zu einem einzelnen DeFi-Projekt und können von mehreren Projekten wiederverwendet werden.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button onclick="addDexConfigRow()">＋ DEX-Konfiguration</button>
+          <button class="secondary" onclick="loadAdminDexConfigs()">🔄 Neu laden</button>
+        </div>
+        <div id="adminDexConfigsList"></div>
+      </div>
+
+      <div id="admintab-hardcoding" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">
+          Strenger Rest-Audit für chain-spezifische HTML-Konfiguration. Ziel: neue Chains sollen möglichst ohne HTML-Anpassung funktionieren.
+          Bewusst globale App-/Service-Konfigurationen werden separat ausgewiesen und gelten nicht automatisch als Fehler.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button onclick="renderHardcodingAudit()">🔎 Audit anzeigen</button>
+        </div>
+        <div id="adminHardcodingAudit"></div>
+      </div>
+
+      <div id="admintab-ideas" class="admin-tab-panel">
+        <div class="note" style="margin-bottom:14px">Offene Erweiterungsideen, nur für Admins sichtbar. Nichts davon ist umgesetzt, ausser explizit markiert.</div>
+        <div id="adminIdeasList"></div>
+      </div>
+
+    </div>
+
+    <div id="tab-help" class="tab-panel">
+      <div class="custom-token-card" style="border-color:var(--accent)">
+        <h3 style="margin-top:0">⏱️ Was läuft automatisch, was manuell?</h3>
+        <table>
+          <thead><tr><th>Bereich</th><th>Automatisch?</th><th>Details</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Bestände (Wallet-Tracking)</td>
+              <td><span class="badge safe">automatisch live</span></td>
+              <td>Der letzte gespeicherte Stand erscheint sofort; danach werden die Bestände automatisch live über kostenlose APIs/RPCs aktualisiert. Bei einem Ausfall bleibt der letzte Stand als Fallback sichtbar.</td>
+            </tr>
+            <tr>
+              <td>Kurse</td>
+              <td><span class="badge safe">immer frisch</span></td>
+              <td>Werden bei jedem Laden/Login neu abgefragt (CoinGecko/GeckoTerminal) – unabhängig vom Bestands-Cache, da schnell und kostenlos.</td>
+            </tr>
+            <tr>
+              <td>🔍 Entdecken, 💸 Gebühren, 🔓 Freigaben, 🖼️ NFTs</td>
+              <td><span class="badge unsafe">nur manuell</span></td>
+              <td>Laufen ausschliesslich auf Knopfdruck. Gebühren: Ethereum/Avalanche über Routescan, BSC über NodeReal/BSCTrace und Polygon/Arbitrum/Base über Blockscout. Aufwendige Historien-Abfragen bleiben bewusst manuell.</td>
+            </tr>
+            <tr>
+              <td>🖼️ NFTs</td>
+              <td><span class="badge safe">Supabase-Cache</span></td>
+              <td>Gespeicherte NFTs werden aus Supabase angezeigt. Eine neue Alchemy-/Apertum-Abfrage erfolgt nur über „NFTs jetzt aktualisieren“. Manuelle Spam-Markierungen werden ebenfalls gespeichert.</td>
+            </tr>
+            <tr>
+              <td>Snapshots</td>
+              <td><span class="badge unsafe">nur manuell</span></td>
+              <td>Werden nur erstellt, wenn du aktiv auf "Snapshot erstellen" klickst. Für einen Stichtag (z.B. Jahresende) rechtzeitig selbst daran denken.</td>
+            </tr>
+            <tr>
+              <td>💬 Chat</td>
+              <td><span class="badge safe">live (Realtime)</span></td>
+              <td>Neue Nachrichten erscheinen automatisch, ohne dass du etwas klicken musst.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>📊 Übersicht &amp; Analyse</h2>
+
+      <div class="custom-token-card">
+        <h3 style="margin-top:0">Wallet-Tracking - Token-Übersicht</h3>
+        <p class="note">Zeigt deine Bestände über alle Wallets und Chains hinweg – als Gesamtsumme ("Summary") und aufgeschlüsselt je Wallet ("Details je Wallet"). Nur Token auf der sicheren Liste (vordefiniert oder selbst hinzugefügt) werden angezeigt, alles andere wird bewusst ausgeblendet (Schutz vor Scam-Token). Zusätzlich verfügbar: Snapshots (Momentaufnahmen deines Bestands, samt Kurs zum jeweiligen Zeitpunkt), eine Verlauf-Grafik über die Zeit, und die Portfolio-Allokation als Kreisdiagramm.</p>
+
+        <h3>💸 Gebühren</h3>
+        <p class="note">Summiert die historisch bezahlten Netzwerk-Gebühren je Wallet in der nativen Coin-Einheit. Ethereum/Avalanche nutzen Routescan, BSC nutzt NodeReal/BSCTrace und Polygon/Arbitrum/Base nutzen Blockscout; die Ergebnisse werden in Supabase gecacht und inkrementell aktualisiert. Admins können jederzeit aktualisieren, normale User frühestens alle 30 Tage. Der zusätzlich angezeigte aktuelle Coin-Kurs dient nur als Anhaltspunkt und ist keine historische USD-Bewertung der Gebühren.</p>
+
+        <h3>🖼️ NFTs</h3>
+        <p class="note">Zeigt die NFTs (Sammelbilder/Collectibles) einer oder aller Wallets, inklusive Warnung bei Spam-Verdacht (unaufgeforderte, wertlose NFT-"Geschenke" sind eine verbreitete Betrugsmasche). Mit "Spam-Verdacht ausblenden" lassen sich verdächtige Funde ausblenden.</p>
+
+        <h3>🔓 Freigaben</h3>
+        <p class="note">Zeigt aktive Token-Freigaben ("Approvals") an Dapps/Contracts – ein häufig unterschätztes Sicherheitsrisiko, v.a. bei unlimitierten Freigaben (rot markiert). Diese Seite kann selbst nichts widerrufen (rein lesend, kein Zugriff auf deinen Private Key). Zum Widerrufen verlinkt sie auf revoke.cash – <strong>wichtig: dort im Browser deiner Wallet-App öffnen</strong> (z.B. in MetaMask/Trust Wallet unter "Browser"), nicht in einem gewöhnlichen Browser, sonst kann nichts signiert werden.</p>
+      </div>
+
+      <h2>⚙️ Verwaltung</h2>
+
+      <div class="custom-token-card">
+        <h3 style="margin-top:0">Meine Wallets</h3>
+        <p class="note">Hier erfasst du deine Wallet-Adressen (eine pro Chain-Typ: EVM, Bitcoin, XRP, Solana, Tron, Akash). Die EVM-Adresse gilt gleichzeitig für Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche und Apertum. Jedes Feld zeigt live an, ob das Adressformat gültig ist und ob die Adresse schon bei einer anderen Wallet erfasst ist. <strong>Wichtig: nach dem Eintragen auf "Speichern" klicken</strong> – ungespeicherte Wallets werden bei Snapshots und in anderen Bereichen nicht mitberücksichtigt.</p>
+
+        <h3>Vordefinierte Token</h3>
+        <p class="note">Die globale Liste sicherer Token, die für alle User gilt (inkl. native Coins). Kann nach Chain/Token gefiltert und per Suchfeld durchsucht werden. Neue Einträge kommen nur über die Admins rein (z.B. nachdem du einen sinnvollen eigenen Token vorgeschlagen hast).</p>
+
+        <h3>Eigene sichere Token</h3>
+        <p class="note">Zusätzliche Token, die nur du siehst – falls ein Token noch nicht auf der vordefinierten Liste steht, du ihm aber vertraust, kannst du ihn hier selbst mit Adresse und Label hinzufügen. Taucht danach in deiner Wallet-Übersicht mit auf.</p>
+
+        <h3>🔍 Entdecken</h3>
+        <p class="note">Durchsucht eine Wallet aktiv nach Token, die du zwar besitzt, die aber noch nicht auf der sicheren Liste stehen. Wegen des aktuell noch verwendeten Alchemy-Indexers ist für normale Benutzer pro Wallet nur ein Scan alle 30 Tage möglich; Admins können jederzeit neu scannen. Das komplette Ergebnis wird in Supabase gespeichert und bis zur nächsten Aktualisierung wieder angezeigt. Gefundene, unverdächtige Token lassen sich direkt als "eigene sichere Token" übernehmen.</p>
+      </div>
+
+      <h2>💬 Support &amp; Info</h2>
+
+      <div class="custom-token-card">
+        <h3 style="margin-top:0">💬 Chat</h3>
+        <p class="note">Direkter Draht zum Support – Nachrichten hier sind nur für dich und die Admins sichtbar, sonst niemanden. Neue Antworten erscheinen automatisch (Realtime), ohne dass du die Seite neu laden musst.</p>
+
+        <h3>⚙️ Admin</h3>
+        <p class="note">Nur für die hinterlegten Admin-Konten sichtbar. Verwaltung der von Usern selbst erfassten Token (übernehmen/ignorieren), offene Erweiterungsideen mit Status, und Einsicht in alle Chat-Konversationen aller User.</p>
+
+        <h3>❓ Hilfe</h3>
+        <p class="note">Diese Seite hier. Im Bereich TLN/VOW werden Projektpreise direkt on-chain aus den hinterlegten Pools ermittelt.
+        Diese Projektpreise werden auch im Wallet-Tracking und bei den vordefinierten Token verwendet, sobald dieselbe Contract-Adresse vorkommt.</p>
+      </div>
+    </div>
+
+    <div id="tab-tlnvow" class="tab-panel">
+      <div class="custom-token-card" style="border-color:var(--accent)">
+        <h3 style="margin-top:0">TLN/VOW · On-Chain Preise &amp; Liquidity Pools</h3>
+        <div class="note">
+          Daten direkt aus den in Supabase klassifizierten TLN/VOW-Token und LPs.
+          <code>v_currency</code>: v-Währung → VOW → USDT.
+          <code>tln_vow_token</code>: TOKEN → VOW → USDT; falls kein TOKEN/VOW-Pool existiert, TOKEN → USDT.
+          VOW selbst wird direkt über VOW/USDT bewertet. Die Zuordnung zu Preisen erfolgt ausschließlich über Contract-Adressen.
+        </div>
+      </div>
+
+      <div class="tab-nav project-chain-nav" style="margin-top:14px">
+        <button id="bscTab" class="tab-btn active" onclick="TLNVOWProject.switchChain('bsc')">BSC · PancakeSwap</button>
+        <button id="ethTab" class="tab-btn" onclick="TLNVOWProject.switchChain('eth')">Ethereum · Uniswap</button>
+      </div>
+
+      <section id="bscPanel" class="project-panel active">
+        <div class="custom-token-card">
+          <div id="bscStatus" class="status"><span class="loading">Wird automatisch geladen…</span></div>
+        </div>
+
+        <div id="bscSummary" class="project-summary" style="display:none">
+          <div class="custom-token-card project-summary-box"><span class="field-label">LPs</span><strong id="bscPoolCount">0</strong></div>
+          <div class="custom-token-card project-summary-box"><span class="field-label">Tokens</span><strong id="bscTokenCount">0</strong></div>
+          <div class="custom-token-card project-summary-box"><span class="field-label">Pool-TVL</span><strong id="bscTVL">–</strong></div>
+        </div>
+
+        <div class="custom-token-card">
+          <h3 style="margin-top:0">Token-Übersicht</h3>
+          <div class="project-table-wrap">
+            <table>
+              <thead><tr><th>Token</th><th>Contract</th><th>USD-Preis</th><th>Preisroute</th></tr></thead>
+              <tbody id="bscTokenBody"><tr><td colspan="4">Noch keine Daten.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="custom-token-card">
+          <h3 style="margin-top:0">Liquidity Pools</h3>
+          <div class="project-table-wrap">
+            <table>
+              <thead><tr><th>Pool</th><th>Token 0</th><th>Token 1</th><th>Reserven</th><th>Poolpreis</th><th>USD</th><th>TVL</th><th>LP-Preis</th></tr></thead>
+              <tbody id="bscPoolBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="ethPanel" class="project-panel">
+        <div class="custom-token-card">
+          <div id="ethStatus" class="status"><span class="loading">Wird automatisch geladen…</span></div>
+        </div>
+
+        <div id="ethSummary" class="project-summary" style="display:none">
+          <div class="custom-token-card project-summary-box"><span class="field-label">LPs</span><strong id="ethPoolCount">0</strong></div>
+          <div class="custom-token-card project-summary-box"><span class="field-label">Tokens</span><strong id="ethTokenCount">0</strong></div>
+          <div class="custom-token-card project-summary-box"><span class="field-label">Pool-TVL</span><strong id="ethTVL">–</strong></div>
+        </div>
+
+        <div class="custom-token-card">
+          <h3 style="margin-top:0">Token-Übersicht</h3>
+          <div class="project-table-wrap">
+            <table>
+              <thead><tr><th>Token</th><th>Contract</th><th>USD-Preis</th><th>Preisroute</th></tr></thead>
+              <tbody id="ethTokenBody"><tr><td colspan="4">Noch keine Daten.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="custom-token-card">
+          <h3 style="margin-top:0">Liquidity Pools</h3>
+          <div class="project-table-wrap">
+            <table>
+              <thead><tr><th>Pool</th><th>Token 0</th><th>Token 1</th><th>Reserven/Liquidität</th><th>Poolpreis</th><th>USD</th><th>TVL</th><th>LP-Preis</th></tr></thead>
+              <tbody id="ethPoolBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+
+  </div>
+
+  <!-- Wird allen bestehenden und neuen Usern angezeigt, bis sie aktiv „Nicht mehr anzeigen“ wählen. -->
+  <div id="welcomeModal" class="wt-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
+    <div class="wt-modal">
+      <h2 id="welcomeTitle">👋 Willkommen beim Wallet-Tracking</h2>
+      <p>Schön, dass du da bist. Dieses Tool hilft dir dabei, deine Wallets und Krypto-Bestände übersichtlich an einem Ort im Blick zu behalten.</p>
+      <p>Unter <strong>❓ Hilfe</strong> findest du weitere Informationen zu den einzelnen Funktionen und zur Bedienung.</p>
+      <p><strong>Viel Spass mit dem Tool! 😊</strong></p>
+      <p>Hast du eine Idee, wie wir das Wallet-Tracking noch besser oder hilfreicher machen können? Schreib mir deine Wünsche und Ideen gerne direkt über die <strong>💬 Chat-Funktion</strong>.</p>
+      <p>Und wenn dir das Tool gefällt und du seine Weiterentwicklung unterstützen möchtest, freue ich mich natürlich über eine freiwillige <strong>Krypto-Spende</strong>. Unter <strong>💛 Unterstützen</strong> findest du alle Informationen dazu.</p>
+      <div class="wt-modal-actions">
+        <button onclick="welcomeGoToHelp()">Zur Hilfe</button>
+        <button class="secondary" onclick="closeWelcomeModal()">Später</button>
+        <button class="secondary" onclick="dismissWelcomeForever(this)">Nicht mehr anzeigen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="donationModal" class="wt-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="donationTitle" onclick="if(event.target===this) closeDonationModal()">
+    <div class="wt-modal">
+      <h2 id="donationTitle">💛 Projekt unterstützen</h2>
+      <p class="note" style="font-size:.82rem">Wenn dir das Wallet-Tracking hilft, kannst du das Projekt freiwillig mit USDT oder USDC unterstützen.</p>
+      <div class="donation-grid">
+        <div><span class="field-label">Netzwerk</span><select id="donationChain" onchange="renderDonationQr()"><option value="bsc">BNB Smart Chain (BSC)</option><option value="eth">Ethereum</option><option value="matic">Polygon</option></select></div>
+        <div><span class="field-label">Token</span><select id="donationToken" onchange="renderDonationQr()"><option value="USDT">USDT</option><option value="USDC">USDC</option></select></div>
+      </div>
+      <div class="custom-token-card" style="margin:12px 0">
+        <span class="field-label">Empfangsadresse</span>
+        <div id="donationAddress" class="donation-address">0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382</div>
+        <button class="secondary" style="margin-top:10px" onclick="copyDonationAddress()">Adresse kopieren</button>
+        <span id="donationCopyStatus" class="note" style="margin-left:8px"></span>
+      </div>
+      <div id="donationQr"></div>
+      <div id="donationSelectionNote" class="note" style="text-align:center"></div>
+      <p class="note" style="font-size:.78rem"><strong>Wichtig:</strong> Bitte ausschließlich den oben gewählten Token über das gewählte Netzwerk senden. Der QR-Code enthält bewusst nur die EVM-Empfangsadresse, damit er mit möglichst vielen Wallets kompatibel bleibt.</p>
+      <div class="wt-modal-actions"><button class="secondary" onclick="closeDonationModal()">Schließen</button></div>
+    </div>
+  </div>
+
+  <footer>
+    Version vom 27.08.2026, 13:32 Uhr · modularer Umbau Phase 1<br>
+    Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, solana-rpc.publicnode.com, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="./projects/tln-vow/tln-vow.js"></script>
+<script src="./projects/dao1/dao1.js"></script>
+
+<script src="./js/app.js"></script>
+</body>
+</html>
