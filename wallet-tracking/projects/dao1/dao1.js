@@ -70,7 +70,7 @@ window.DAO1Project = (() => {
           <div id="dao1MinerSelector"></div>
           <div id="dao1AdminMinerEditor" style="display:none"></div>
           <div class="action-row" style="margin-top:10px">
-            <button onclick="DAO1Project.loadMiningRewards()">Mining-Auswertung laden</button>
+            <button id="dao1MiningBtn" onclick="DAO1Project.loadMiningRewards()">Mining-Auswertung starten</button>
           </div>
           <div id="dao1MiningStatus" class="status" style="margin-top:10px"></div>
           <div id="dao1MiningSummary" style="margin-top:10px"></div>
@@ -307,7 +307,7 @@ window.DAO1Project = (() => {
     }
     for(const m of missing.slice(0,50)){
       try{
-        const inst=await fetchJson(`${EXPLORER_API}/tokens/${m.contract}/instances/${m.id}`);
+        const inst=await fetchJson(`${EXPLORER_API}/tokens/${m.contract}/instances/${m.id}`,"Apertum Explorer · NFT-Metadaten");
         const meta=inst?.metadata||{};
         const token=inst?.token||{};
         const name=meta.name || inst?.name || token.name || token.symbol || null;
@@ -445,7 +445,7 @@ window.DAO1Project = (() => {
     let url=initialUrl, out=[], pages=0;
     while(url && pages<maxPages){
       pages++;
-      const j=await fetchJson(url);
+      const j=await fetchJson(url,"Apertum Explorer · Wallet-Transaktionen");
       out.push(...(j.items || []));
       url=nextUrl(initialUrl, j.next_page_params);
     }
@@ -503,7 +503,7 @@ window.DAO1Project = (() => {
 
     let nftName=knownName || nftMetaById.get(`${nftContract}|${String(nftId)}`)?.name || `NFT #${nftId}`;
     try{
-      const instance=await fetchJson(`${EXPLORER_API}/tokens/${nftContract}/instances/${nftId}`);
+      const instance=await fetchJson(`${EXPLORER_API}/tokens/${nftContract}/instances/${nftId}`,"Apertum Explorer · NFT-Metadaten");
       const token=instance?.token || {};
       const spam=[token.is_spam,token.isSpam,instance?.is_spam,instance?.isSpam]
         .some(v=>v===true || v===1 || String(v).toLowerCase()==="true");
@@ -635,10 +635,40 @@ window.DAO1Project = (() => {
     await loadMiners();
   }
 
-  async function fetchJson(url) {
-    const r = await fetch(url, { headers: { accept: "application/json" } });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
+  function sleep(ms){ return new Promise(resolve=>setTimeout(resolve,ms)); }
+
+  async function fetchWithRetry(url, options={}, label="Netzwerk", attempts=3) {
+    let lastError=null;
+    for(let i=1;i<=attempts;i++){
+      const controller=new AbortController();
+      const timeout=setTimeout(()=>controller.abort(),30000);
+      try{
+        const r=await fetch(url,{...options,signal:controller.signal});
+        clearTimeout(timeout);
+        if(!r.ok){
+          const e=new Error(`${label}: HTTP ${r.status}`);
+          e.httpStatus=r.status;
+          throw e;
+        }
+        return r;
+      }catch(e){
+        clearTimeout(timeout);
+        lastError=e;
+        if(i<attempts)await sleep(600*i);
+      }
+    }
+    const detail=lastError?.name==="AbortError"
+      ? "Zeitüberschreitung"
+      : (lastError?.message==="Failed to fetch" || /fetch/i.test(lastError?.message||""))
+        ? "Netzwerkzugriff fehlgeschlagen (Failed to fetch)"
+        : (lastError?.message||"unbekannter Fehler");
+    throw new Error(`${label}: ${detail}`);
+  }
+
+  async function fetchJson(url, label="Apertum Explorer") {
+    const r = await fetchWithRetry(url,{headers:{accept:"application/json"}},label,3);
+    try{return await r.json();}
+    catch{throw new Error(`${label}: ungültige JSON-Antwort`);}
   }
   function nextUrl(base, next) {
     if (!next) return null;
@@ -649,7 +679,7 @@ window.DAO1Project = (() => {
   async function fetchAll(path) {
     let url = EXPLORER_API + path, out = [];
     while (url) {
-      const j = await fetchJson(url);
+      const j = await fetchJson(url, `Apertum Explorer ${path}`);
       out.push(...(j.items || []));
       url = nextUrl(EXPLORER_API + path, j.next_page_params);
     }
@@ -681,11 +711,34 @@ window.DAO1Project = (() => {
     return total;
   }
 
+  function rpcCandidates(){
+    const ctx=getContext?.();
+    const cfg=ctx?.chainConfig?.[CHAIN_KEY] || {};
+    const candidates=[
+      cfg.rpcUrl,cfg.rpc_url,cfg.rpc,cfg.balanceRpcUrl,cfg.balance_rpc_url,
+      RPC_URL
+    ].filter(Boolean);
+    return [...new Set(candidates)];
+  }
+
   async function rpc(method, params) {
-    const r = await fetch(RPC_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
-    const j = await r.json();
-    if (j.error) throw new Error(j.error.message);
-    return j.result;
+    let lastError=null;
+    for(const url of rpcCandidates()){
+      try{
+        const r=await fetchWithRetry(url,{
+          method:"POST",
+          headers:{"content-type":"application/json"},
+          body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})
+        },`Apertum RPC (${method})`,2);
+        const j=await r.json();
+        if(j.error)throw new Error(`Apertum RPC (${method}): ${j.error.message}`);
+        return j.result;
+      }catch(e){
+        lastError=e;
+        console.warn("Apertum RPC Fallback:",url,e);
+      }
+    }
+    throw lastError || new Error(`Apertum RPC (${method}): kein RPC-Endpunkt verfügbar`);
   }
   const hexBlock = n => "0x" + Math.max(0, Number(n)).toString(16);
   function decodeSync(data, aptmDecimals, usdtDecimals) {
@@ -821,7 +874,7 @@ window.DAO1Project = (() => {
       if(status)status.textContent=fromBlock==null
         ? `Wallet-Historie wird initial geladen… Seite ${page}`
         : `Neue Wallet-Daten ab Block ${fromBlock} werden geladen… Seite ${page}`;
-      const j=await fetchJson(url);
+      const j=await fetchJson(url,"Apertum Explorer · Wallet-Transaktionen");
       const items=j.items||[];
       let oldest=Infinity;
       for(const t of items){
@@ -867,14 +920,27 @@ window.DAO1Project = (() => {
 
   async function loadMiningRewards() {
     const status = document.getElementById("dao1MiningStatus");
+    const btn = document.getElementById("dao1MiningBtn");
+    if(btn?.disabled)return;
+    const oldBtnText=btn?.textContent || "Mining-Auswertung starten";
+    if(btn){
+      btn.disabled=true;
+      btn.textContent="Mining-Auswertung läuft…";
+      btn.setAttribute("aria-busy","true");
+    }
     const ctx=getContext?.();
     const wallet=projectWallets().find(w=>String(w.id)===String(selectedWalletId));
     const address=walletAddress(wallet);
-    if (!address) { status.textContent = "Bitte eine Apertum-Wallet auswählen."; return; }
+    if (!address) {
+      status.textContent = "Bitte eine Apertum-Wallet auswählen.";
+      if(btn){btn.disabled=false;btn.textContent=oldBtnText;btn.removeAttribute("aria-busy");}
+      return;
+    }
 
     const selectedNfts=selectedNftsForMining(address);
     if(!selectedNfts.length){
       status.textContent="Für diesen Filter ist keine NFT ausgewählt.";
+      if(btn){btn.disabled=false;btn.textContent=oldBtnText;btn.removeAttribute("aria-busy");}
       return;
     }
     const nftIds=selectedNfts.map(n=>String(n.id));
@@ -993,8 +1059,20 @@ window.DAO1Project = (() => {
         : "vollständiger Initialscan";
       status.textContent=`${rewardRows.length} gespeicherte Claims für ${selectedNfts.length} NFT(s) · ${mode}.`;
     } catch (e) {
-      console.error(e);
-      status.innerHTML = `<span class="error">${e.message}</span>`;
+      console.error("DAO1 Mining-Auswertung:",e);
+      const msg=String(e?.message||e||"Unbekannter Fehler");
+      const help=/RPC/.test(msg)
+        ? " Historische Kursdaten konnten über den Apertum-RPC nicht geladen werden. Erneut versuchen; bereits gespeicherte Claims/Kurse bleiben erhalten."
+        : /Explorer/.test(msg)
+          ? " Der Apertum Explorer war bei einer Abfrage nicht erreichbar. Erneut starten; durch den Claim-Cache wird nicht von vorne doppelt gespeichert."
+          : " Bitte erneut versuchen.";
+      status.innerHTML = `<span class="error">${msg}</span><div class="note" style="margin-top:6px">${help}</div>`;
+    } finally {
+      if(btn){
+        btn.disabled=false;
+        btn.textContent=oldBtnText;
+        btn.removeAttribute("aria-busy");
+      }
     }
   }
 
