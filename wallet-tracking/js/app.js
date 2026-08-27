@@ -4235,8 +4235,58 @@ async function fetchNftsForChain(chain, address, onProgress) {
 // IPFS-Links (ipfs://...) funktionieren nicht direkt im <img>-Tag - über ein öffentliches Gateway umleiten.
 function normalizeNftImageUrl(url) {
   if (!url) return null;
-  if (url.startsWith("ipfs://")) return "https://ipfs.io/ipfs/" + url.replace("ipfs://", "");
-  return url;
+  let u = String(url).trim();
+  if (!u) return null;
+  if (u.startsWith("ipfs://ipfs/")) u = "ipfs://" + u.slice("ipfs://ipfs/".length);
+  if (u.startsWith("ipfs://")) return "https://ipfs.io/ipfs/" + u.slice("ipfs://".length);
+  if (u.startsWith("ar://")) return "https://arweave.net/" + u.slice(5);
+  if (u.startsWith("//")) return "https:" + u;
+  return u;
+}
+
+function nftMetadataImage(meta) {
+  if (!meta || typeof meta !== "object") return null;
+  return normalizeNftImageUrl(
+    meta.image ||
+    meta.image_url ||
+    meta.imageUrl ||
+    meta.image_uri ||
+    meta.imageUri ||
+    meta.animation_url ||
+    null
+  );
+}
+
+function blockscoutNftSpam(obj) {
+  const token=obj?.token || {};
+  const flags=[obj?.is_spam,obj?.isSpam,obj?.spam,token?.is_spam,token?.isSpam,token?.spam];
+  if(flags.some(v=>v===true || v===1 || String(v).toLowerCase()==="true")) return true;
+  const rep=String(obj?.reputation || token?.reputation || "").toLowerCase();
+  return ["spam","scam","malicious","suspicious"].includes(rep);
+}
+
+async function enrichApertumNft(chain, nft) {
+  if (!nft?.tokenAddress || nft?.tokenId == null) return nft;
+  if (nft.image && nft.name && nft.name !== "Unbenannt") return nft;
+  try {
+    const base=configuredNftBase(chain);
+    const url=`${base}/tokens/${nft.tokenAddress}/instances/${encodeURIComponent(String(nft.tokenId))}`;
+    const res=await fetch(url);
+    if(!res.ok) return nft;
+    const inst=await res.json();
+    const meta=inst?.metadata || {};
+    const token=inst?.token || {};
+    return {
+      ...nft,
+      name: meta.name || inst?.name || nft.name || token.name || token.symbol || `NFT #${nft.tokenId}`,
+      collectionName: nft.collectionName || token.name || token.symbol || null,
+      image: nft.image || normalizeNftImageUrl(inst?.image_url) || nftMetadataImage(meta),
+      possibleSpam: !!(nft.possibleSpam || blockscoutNftSpam(inst))
+    };
+  } catch(e) {
+    console.warn("Apertum NFT-Metadaten konnten nicht ergänzt werden:", nft.tokenAddress, nft.tokenId, e);
+    return nft;
+  }
 }
 
 // Apertum: eigene Blockscout-API (Alchemy wird dafür hier nicht verwendet).
@@ -4254,22 +4304,28 @@ async function fetchApertumNfts(chain, address, onProgress) {
     const res = await fetch(url);
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
-    (data.items || []).forEach(coll => {
+
+    for (const coll of (data.items || [])) {
       const collectionName = coll.token && (coll.token.name || coll.token.symbol);
-      (coll.token_instances || []).forEach(inst => {
+      const collectionSpam = blockscoutNftSpam(coll) || blockscoutNftSpam(coll.token || {});
+      for (const inst of (coll.token_instances || [])) {
         const meta = inst.metadata || {};
-        nfts.push({
+        let nft = {
           chain,
-          tokenAddress: coll.token && coll.token.address,
+          tokenAddress: coll.token && (coll.token.address || coll.token.address_hash),
           tokenId: inst.id,
-          name: meta.name || (collectionName ? collectionName + " #" + inst.id : "Unbenannt"),
-          image: normalizeNftImageUrl(inst.image_url || meta.image),
+          name: meta.name || inst.name || (collectionName ? collectionName + " #" + inst.id : "Unbenannt"),
+          image: normalizeNftImageUrl(inst.image_url) || nftMetadataImage(meta),
           collectionName,
-          possibleSpam: false, // Blockscout liefert hier keine eigene Spam-Einschätzung
+          possibleSpam: !!(collectionSpam || blockscoutNftSpam(inst)),
           contractType: coll.token && coll.token.type
-        });
-      });
-    });
+        };
+        if (!nft.image || !nft.name || nft.name === "Unbenannt") {
+          nft = await enrichApertumNft(chain, nft);
+        }
+        nfts.push(nft);
+      }
+    }
     nextParams = data.next_page_params || null;
   } while (nextParams && page < FEES_MAX_PAGES);
 

@@ -23,6 +23,9 @@ window.DAO1Project = (() => {
   let selectedNftId = "";
   let manualNftId = "";
   let nftMetaById = new Map();
+  let currentApertumNfts = [];
+  let projectNfts = [];
+  let selectedNftClass = "Mining-Bot";
 
   const H = x => typeof x === "string" ? x : (x?.hash || "");
   const lower = x => String(x || "").toLowerCase();
@@ -62,9 +65,10 @@ window.DAO1Project = (() => {
         <div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div>
         <div class="custom-token-card">
           <div class="chain-title">⛏️ Apertum Mining Rewards</div>
-          <div class="note" style="margin-bottom:10px">Miner-Zuordnungen werden aus <code>project_miners</code> gelesen. Historische APTM-Kurse kommen bevorzugt aus <code>aptm_price_history</code>; fehlende Pool-Syncs können von Admins on-chain ergänzt und zentral gespeichert werden.</div>
+          <div class="note" style="margin-bottom:10px">Apertum-NFTs können projektweit klassifiziert werden (z. B. Mining-Bot, Trading-Bot, DID). Für die Claim-Auswertung wird zuerst nach Klassifizierung gefiltert und danach die NFT gewählt. Historische APTM-Kurse kommen bevorzugt aus <code>aptm_price_history</code>; fehlende Pool-Syncs können von Admins on-chain ergänzt und zentral gespeichert werden.</div>
           <div id="dao1MinerSelector"></div>
-          <div id="dao1AdminMinerEditor"></div>
+          <div id="dao1NftClassification"></div>
+          <div id="dao1AdminMinerEditor" style="display:none"></div>
           <div class="action-row" style="margin-top:10px">
             <button onclick="DAO1Project.loadMiningRewards()">Mining-Auswertung laden</button>
           </div>
@@ -85,8 +89,13 @@ window.DAO1Project = (() => {
       projectRefs = [];
     } else projectRefs = data || [];
     await loadMiners();
+    await loadProjectNfts();
     await loadOwnershipCache();
+    const walletsNow=projectWallets();
+    if(!walletsNow.some(w=>String(w.id)===String(selectedWalletId))) selectedWalletId=String(walletsNow[0]?.id||"");
+    await loadCurrentApertumNfts();
     renderMinerSelector();
+    renderNftClassification();
     renderAssetSummary();
     updateVisibility();
   }
@@ -170,44 +179,163 @@ window.DAO1Project = (() => {
     return String(wallet?.evm || "").trim();
   }
 
+
+  const NFT_SUBTYPES = ["Mining-Bot","Trading-Bot","DID","DAO / Membership","Sonstige"];
+  function categoryForSubtype(subtype){
+    if(subtype==="Mining-Bot" || subtype==="Trading-Bot") return "Bot";
+    if(subtype==="DID") return "Identity";
+    if(subtype==="DAO / Membership") return "Membership";
+    return "Other";
+  }
+  function classificationFor(contract,id){
+    return projectNfts.find(n =>
+      n.project_key===PROJECT_KEY &&
+      n.chain_key===CHAIN_KEY &&
+      lower(n.nft_contract)===lower(contract) &&
+      String(n.nft_id)===String(id) &&
+      n.enabled!==false
+    ) || null;
+  }
+  async function loadProjectNfts(){
+    if(!sb)return;
+    const {data,error}=await sb.from("project_nfts")
+      .select("*")
+      .eq("project_key",PROJECT_KEY)
+      .eq("chain_key",CHAIN_KEY)
+      .eq("enabled",true)
+      .order("nft_name",{ascending:true});
+    if(error){
+      projectNfts=[];
+      if(!/does not exist|schema cache/i.test(error.message||"")) console.warn("DAO1 project_nfts:",error);
+      return;
+    }
+    projectNfts=data||[];
+  }
+  async function saveNftClassification(contract,id,name,subtype){
+    const ctx=getContext?.();
+    if(!ctx?.isAdmin)return;
+    contract=lower(contract);
+    if(!contract || !/^\d+$/.test(String(id)))return;
+    if(!subtype){
+      const existing=classificationFor(contract,id);
+      if(existing){
+        const {error}=await sb.from("project_nfts").delete().eq("id",existing.id);
+        if(error)return alert(error.message);
+      }
+    }else{
+      const row={
+        project_key:PROJECT_KEY,chain_key:CHAIN_KEY,nft_contract:contract,nft_id:Number(id),
+        nft_name:name||`NFT #${id}`,category:categoryForSubtype(subtype),subtype,enabled:true
+      };
+      const {error}=await sb.from("project_nfts").upsert(row,{onConflict:"project_key,chain_key,nft_contract,nft_id"});
+      if(error)return alert(error.message);
+    }
+    await loadProjectNfts();
+    renderMinerSelector();
+    renderNftClassification();
+  }
+  function renderNftClassification(){
+    const el=document.getElementById("dao1NftClassification");
+    const ctx=getContext?.();
+    if(!el)return;
+    const wallet=projectWallets().find(w=>String(w.id)===String(selectedWalletId));
+    const address=walletAddress(wallet);
+    const nfts=nftIdsForWallet(address);
+    if(!ctx?.isAdmin){
+      const classified=nfts.filter(n=>classificationFor(n.contract,n.id));
+      el.innerHTML=classified.length
+        ? `<div class="note" style="margin-top:12px">${classified.length} NFT(s) für DAO1 klassifiziert.</div>`
+        : "";
+      return;
+    }
+    if(!nfts.length){
+      el.innerHTML='<div class="note" style="margin-top:12px">Für diese Wallet sind noch keine Apertum-NFTs zum Klassifizieren vorhanden.</div>';
+      return;
+    }
+    el.innerHTML=`<div class="custom-token-card" style="margin-top:14px">
+      <div class="chain-title" style="font-size:1rem">🏷️ DAO1 NFT-Klassifizierung</div>
+      <div class="note" style="margin-bottom:10px">Die Klassifizierung gehört zur NFT selbst und bleibt deshalb auch nach einem Wallet-Transfer erhalten.</div>
+      <div class="chain-table-wrap"><table class="chain-admin-table"><thead><tr><th>NFT</th><th>Contract</th><th>Klassifizierung</th></tr></thead><tbody>
+      ${nfts.map(n=>{
+        const c=classificationFor(n.contract,n.id);
+        const opts=['',...NFT_SUBTYPES].map(v=>`<option value="${v}" ${String(c?.subtype||"")===v?"selected":""}>${v||"– nicht klassifiziert –"}</option>`).join("");
+        return `<tr><td><strong>${n.name||("NFT #"+n.id)}</strong><div class="meta">#${n.id}${n.current?" · aktuell":" · historisch"}</div></td>
+          <td><code>${n.contract||"–"}</code></td>
+          <td><select onchange="DAO1Project.saveNftClassification('${n.contract}','${n.id}','${String(n.name||"").replaceAll("'","&#39;")}',this.value)">${opts}</select></td></tr>`;
+      }).join("")}
+      </tbody></table></div></div>`;
+  }
+
   async function loadOwnershipCache() {
     const ctx = getContext?.();
     if (!sb || !ctx?.currentUser) return;
-    const { data, error } = await sb.from("project_miner_ownership")
+    const { data, error } = await sb.from("project_nft_ownership")
       .select("*")
       .eq("user_id", ctx.currentUser.id)
       .eq("project_key", PROJECT_KEY)
       .order("owned_from_block", { ascending: true });
     if (error) {
       ownershipRows = [];
-      if (!/does not exist|schema cache/i.test(error.message || "")) console.warn("Miner Ownership Cache:", error);
+      if (!/does not exist|schema cache/i.test(error.message || "")) console.warn("NFT Ownership Cache:", error);
       return;
     }
     ownershipRows = data || [];
   }
 
+  async function loadCurrentApertumNfts() {
+    const ctx=getContext?.();
+    const wallet=projectWallets().find(w=>String(w.id)===String(selectedWalletId));
+    if(!ctx?.currentUser || !wallet){ currentApertumNfts=[]; return; }
+    const walletId=String(wallet.dbId || wallet.id);
+    const {data,error}=await sb.from("nft_cache")
+      .select("nfts")
+      .eq("user_id",ctx.currentUser.id)
+      .eq("wallet_id",walletId)
+      .maybeSingle();
+    if(error){ console.warn("DAO1 NFT-Cache:",error); currentApertumNfts=[]; return; }
+    currentApertumNfts=(Array.isArray(data?.nfts)?data.nfts:[])
+      .filter(n=>String(n.chain||"")===CHAIN_KEY)
+      .filter(n=>!(n.possibleSpam || n.userMarkedSpam))
+      .map(n=>({
+        id:String(n.tokenId),
+        contract:lower(n.tokenAddress),
+        name:n.name || n.collectionName || `NFT #${n.tokenId}`,
+        collectionName:n.collectionName || "",
+        image:n.image || null,
+        current:true
+      }));
+  }
+
   function nftIdsForWallet(address) {
-    const a = lower(address);
-    const ids = new Map();
-    for (const o of ownershipRows) {
-      if (String(o.chain_key || CHAIN_KEY) !== CHAIN_KEY) continue;
-      if (lower(o.nft_contract) !== lower(DEFAULT_MINER_NFT_CONTRACT)) continue;
-      if (lower(o.wallet_address) !== a) continue;
-      const id = String(o.nft_id);
-      const current = !!o.is_current;
-      const prev = ids.get(id);
-      const name = o.nft_name || nftMetaById.get(id)?.name || prev?.name || "Apertum Miner NFT";
-      ids.set(id, { id, name, current: current || !!prev?.current, from: o.owned_from_at || prev?.from || null, to: o.owned_to_at || prev?.to || null });
+    const a=lower(address);
+    const items=new Map();
+
+    // Current NFTs: EXACTLY the same Apertum/non-spam cache used by the normal NFT tab.
+    for(const n of currentApertumNfts){
+      const key=`${n.contract}|${n.id}`;
+      items.set(key,{...n,key,current:true,classification:classificationFor(n.contract,n.id)});
     }
-    for (const m of miners) {
-      if (String(m.chain_key || CHAIN_KEY) !== CHAIN_KEY) continue;
-      if (m.nft_contract && lower(m.nft_contract) !== lower(DEFAULT_MINER_NFT_CONTRACT)) continue;
-      if (lower(m.wallet_address) !== a) continue;
-      const id = String(m.nft_id);
-      const name = m.nft_name || nftMetaById.get(id)?.name || m.label || "Apertum Miner NFT";
-      if (!ids.has(id)) ids.set(id, { id, name, current:false, saved:true });
+
+    // Historical ownership records remain visible after an NFT has moved away.
+    for(const o of ownershipRows){
+      if(String(o.chain_key||CHAIN_KEY)!==CHAIN_KEY) continue;
+      if(lower(o.wallet_address)!==a) continue;
+      const contract=lower(o.nft_contract||"");
+      const id=String(o.nft_id);
+      const key=`${contract}|${id}`;
+      if(items.has(key)) continue;
+      items.set(key,{
+        key,contract,id,
+        name:o.nft_name || nftMetaById.get(`${contract}|${id}`)?.name || `NFT #${id}`,
+        current:!!o.is_current,
+        historical:true,
+        classification:classificationFor(contract,id)
+      });
     }
-    return [...ids.values()].sort((x,y)=>Number(x.id)-Number(y.id));
+    return [...items.values()].sort((x,y)=>
+      String(x.name||"").localeCompare(String(y.name||""),"de",{numeric:true}) ||
+      Number(x.id)-Number(y.id)
+    );
   }
 
   function renderMinerSelector(message="") {
@@ -221,28 +349,49 @@ window.DAO1Project = (() => {
     if (!wallets.some(w => String(w.id) === String(selectedWalletId))) selectedWalletId = String(wallets[0].id);
     const wallet = wallets.find(w => String(w.id) === String(selectedWalletId));
     const address = walletAddress(wallet);
-    const nfts = nftIdsForWallet(address);
-    if (!nfts.some(n => String(n.id) === String(selectedNftId))) selectedNftId = nfts[0]?.id || "";
+    const allNfts = nftIdsForWallet(address);
+
+    const classOptions=[
+      ["Mining-Bot","Mining-Bot"],
+      ["Trading-Bot","Trading-Bot"],
+      ["DID","DID"],
+      ["DAO / Membership","DAO / Membership"],
+      ["Sonstige","Sonstige"],
+      ["__all_classified","Alle klassifizierten"],
+      ["__all","Alle NFTs"]
+    ];
+    const nfts=selectedNftClass==="__all"
+      ? allNfts
+      : selectedNftClass==="__all_classified"
+        ? allNfts.filter(n=>n.classification)
+        : allNfts.filter(n=>n.classification?.subtype===selectedNftClass);
+
+    if (!nfts.some(n => String(n.key) === String(selectedNftId))) selectedNftId = nfts[0]?.key || "";
 
     el.innerHTML = `
-      <div class="custom-token-grid" style="grid-template-columns:minmax(260px,1.4fr) minmax(220px,1fr);margin-top:10px">
+      <div class="custom-token-grid" style="grid-template-columns:minmax(260px,1.4fr) minmax(190px,.8fr) minmax(260px,1.2fr);margin-top:10px">
         <label><span class="field-label">Apertum Wallet</span>
           <select id="dao1WalletSelect" onchange="DAO1Project.selectWallet(this.value)">
             ${wallets.map(w=>`<option value="${w.id}" ${String(w.id)===String(selectedWalletId)?"selected":""}>${w.label} · ${walletAddress(w)}</option>`).join("")}
           </select>
         </label>
-        <label><span class="field-label">Miner NFT</span>
+        <label><span class="field-label">Klassifizierung</span>
+          <select id="dao1NftClassSelect" onchange="DAO1Project.selectNftClass(this.value)">
+            ${classOptions.map(([v,l])=>`<option value="${v}" ${v===selectedNftClass?"selected":""}>${l}</option>`).join("")}
+          </select>
+        </label>
+        <label><span class="field-label">Apertum NFT</span>
           <select id="dao1NftSelect" onchange="DAO1Project.selectNft(this.value)">
-            ${nfts.length ? nfts.map(n=>`<option value="${n.id}" ${String(n.id)===String(selectedNftId)?"selected":""}>${n.name || "Apertum Miner NFT"} #${n.id}${n.current?" · aktuell":" · historisch"}</option>`).join("") : '<option value="">– noch keine NFT gefunden –</option>'}
+            ${nfts.length ? nfts.map(n=>`<option value="${n.key}" ${String(n.key)===String(selectedNftId)?"selected":""}>${n.name || ("NFT #"+n.id)}${String(n.name||"").includes("#"+n.id)?"":" · #"+n.id}${n.current?" · aktuell":" · historisch"}</option>`).join("") : '<option value="">– keine NFT für diesen Filter –</option>'}
           </select>
         </label>
       </div>
       <div class="action-row" style="margin-top:10px;align-items:end">
-        <button class="secondary" onclick="DAO1Project.discoverMinerNfts()">NFTs / Besitzerhistorie ermitteln</button>
+        <button class="secondary" onclick="DAO1Project.discoverMinerNfts()">NFT-Bestand / Besitzerhistorie aktualisieren</button>
         <label style="min-width:220px"><span class="field-label">NFT-ID manuell</span><input id="dao1ManualNft" type="number" min="0" placeholder="z. B. 38483" value="${manualNftId}"></label>
         <button class="secondary" onclick="DAO1Project.useManualNft()">Manuelle NFT verwenden</button>
       </div>
-      <div class="note" style="margin-top:8px">Die Auswahl enthält nur Apertum-Miner-NFTs ohne Spam-/Scam-Verdacht. Angezeigt werden NFT-Name, Token-ID sowie aktuell/historisch. Bei verschobenen NFTs wird die Transferhistorie des Miner-NFT-Contracts ausgewertet. Falls eine NFT nicht gefunden wird, kann die Token-ID jederzeit manuell eingegeben werden.</div>
+      <div class="note" style="margin-top:8px">Für APTM-Claims ist standardmäßig <strong>Mining-Bot</strong> gewählt. Die NFT-Klassifizierung ist projektweit und bleibt bei Wallet-Transfers erhalten. „Alle NFTs“ zeigt auch noch nicht klassifizierte Apertum-NFTs.</div>
       ${message ? `<div class="status" style="margin-top:8px">${message}</div>` : ""}`;
   }
 
@@ -287,45 +436,28 @@ window.DAO1Project = (() => {
     const wallet=projectWallets().find(w=>String(w.id)===String(selectedWalletId));
     const address=walletAddress(wallet);
     if(!ctx?.currentUser || !address) return;
-    renderMinerSelector("NFT-Transfers der ausgewählten Wallet werden geladen…");
-    try{
-      const url=`${EXPLORER_API}/addresses/${address}/token-transfers?type=ERC-721`;
-      const transfers=await fetchPagedUrl(url);
-      const candidates=new Set();
-      for(const t of transfers){
-        const tokenAddr=lower(t?.token?.address_hash || t?.token?.address || H(t?.token));
-        if(tokenAddr!==lower(DEFAULT_MINER_NFT_CONTRACT)) continue;
-        if(!isNonSpamNftTransfer(t)) continue;
-        const id=transferTokenId(t);
-        if(id){
-          candidates.add(id);
-          nftMetaById.set(String(id), {name:nftNameFromTransfer(t)});
-        }
-      }
-      // Include already saved/manual assignments too.
-      for(const m of miners) if(lower(m.wallet_address)===lower(address)) candidates.add(String(m.nft_id));
-      if(!candidates.size){
-        renderMinerSelector("Keine Miner-NFTs automatisch gefunden. Du kannst die NFT-ID rechts manuell eingeben.");
-        return;
-      }
-      let saved=0;
-      for(const nftId of candidates){
-        saved += await discoverOwnershipForNft(nftId);
-      }
-      await loadOwnershipCache();
-      renderMinerSelector(`${candidates.size} NFT(s) geprüft, ${saved} Besitzabschnitt(e) gespeichert/aktualisiert.`);
-    }catch(e){
-      console.error(e);
-      renderMinerSelector(`NFT-Ermittlung fehlgeschlagen: ${e.message}`);
+
+    await loadCurrentApertumNfts();
+    renderMinerSelector("Aktueller Apertum-NFT-Bestand wurde aus dem NFT-Tab übernommen. Besitzerhistorien werden für die sichtbaren NFTs ergänzt…");
+
+    let saved=0, failed=0;
+    // Keep this bounded: process all non-spam current Apertum NFTs, but histories individually.
+    for(const n of currentApertumNfts){
+      try{ saved += await discoverOwnershipForNft(n.id,n.contract,n.name); }
+      catch(e){ failed++; console.warn("NFT Ownership",n,e); }
     }
+    await loadOwnershipCache();
+    renderMinerSelector(`${currentApertumNfts.length} aktuelle nicht-spamverdächtige Apertum-NFT(s) übernommen; ${saved} Besitzabschnitt(e) gespeichert${failed?`, ${failed} Historie(n) nicht abrufbar`:""}.`);
+    renderNftClassification();
   }
 
-  async function discoverOwnershipForNft(nftId) {
+  async function discoverOwnershipForNft(nftId, nftContract=DEFAULT_MINER_NFT_CONTRACT, knownName="") {
     const ctx=getContext?.();
+    nftContract=lower(nftContract || DEFAULT_MINER_NFT_CONTRACT);
 
-    let nftName=nftMetaById.get(String(nftId))?.name || "Apertum Miner NFT";
+    let nftName=knownName || nftMetaById.get(`${nftContract}|${String(nftId)}`)?.name || `NFT #${nftId}`;
     try{
-      const instance=await fetchJson(`${EXPLORER_API}/tokens/${DEFAULT_MINER_NFT_CONTRACT}/instances/${nftId}`);
+      const instance=await fetchJson(`${EXPLORER_API}/tokens/${nftContract}/instances/${nftId}`);
       const token=instance?.token || {};
       const spam=[token.is_spam,token.isSpam,instance?.is_spam,instance?.isSpam]
         .some(v=>v===true || v===1 || String(v).toLowerCase()==="true");
@@ -334,13 +466,13 @@ window.DAO1Project = (() => {
         throw new Error(`NFT #${nftId} ist im Explorer als Spam/verdächtig markiert.`);
       }
       nftName=token.name || token.symbol || instance?.name || nftName;
-      nftMetaById.set(String(nftId),{name:nftName});
+      nftMetaById.set(`${nftContract}|${String(nftId)}`,{name:nftName});
     }catch(e){
       if(/Spam|verdächtig/.test(e.message||"")) throw e;
       console.warn("NFT-Metadaten:",e);
     }
 
-    const url=`${EXPLORER_API}/tokens/${DEFAULT_MINER_NFT_CONTRACT}/instances/${nftId}/transfers`;
+    const url=`${EXPLORER_API}/tokens/${nftContract}/instances/${nftId}/transfers`;
     const transfers=(await fetchPagedUrl(url)).filter(isNonSpamNftTransfer);
     const chronological=[...transfers].sort((a,b)=>{
       const ba=Number(a.block_number||0), bb=Number(b.block_number||0);
@@ -363,7 +495,7 @@ window.DAO1Project = (() => {
       if(to && to!=="0x0000000000000000000000000000000000000000"){
         current={
           user_id:ctx.currentUser.id, project_key:PROJECT_KEY, chain_key:CHAIN_KEY,
-          nft_contract:lower(DEFAULT_MINER_NFT_CONTRACT), nft_id:Number(nftId), nft_name:nftName,
+          nft_contract:nftContract, nft_id:Number(nftId), nft_name:nftName,
           wallet_address:to, owned_from_block:block, owned_from_at:ts,
           owned_to_block:null, owned_to_at:null, is_current:true
         };
@@ -377,32 +509,38 @@ window.DAO1Project = (() => {
     const ownPeriods=periods.filter(p=>tracked.has(lower(p.wallet_address)));
     if(!ownPeriods.length)return 0;
 
-    await sb.from("project_miner_ownership")
+    await sb.from("project_nft_ownership")
       .delete()
       .eq("user_id",ctx.currentUser.id)
       .eq("project_key",PROJECT_KEY)
-      .eq("nft_contract",lower(DEFAULT_MINER_NFT_CONTRACT))
+      .eq("nft_contract",nftContract)
       .eq("nft_id",Number(nftId));
 
-    const {error}=await sb.from("project_miner_ownership").insert(ownPeriods);
+    const {error}=await sb.from("project_nft_ownership").insert(ownPeriods);
     if(error) throw error;
     return ownPeriods.length;
   }
 
-  function selectWallet(id){ selectedWalletId=String(id||""); selectedNftId=""; renderMinerSelector(); }
+  async function selectWallet(id){
+    selectedWalletId=String(id||""); selectedNftId="";
+    await loadCurrentApertumNfts();
+    renderMinerSelector();
+    renderNftClassification();
+  }
   function selectNft(id){ selectedNftId=String(id||""); }
+  function selectNftClass(value){ selectedNftClass=String(value||"Mining-Bot"); selectedNftId=""; renderMinerSelector(); }
   async function useManualNft(){
     const v=String(document.getElementById("dao1ManualNft")?.value||"").trim();
     if(!/^\d+$/.test(v)) return alert("Bitte eine gültige NFT-ID eingeben.");
-    manualNftId=v; selectedNftId=v;
+    manualNftId=v; selectedNftId=`manual|${v}`;
     // Try ownership discovery immediately, but keep manual selection even if explorer data is missing.
-    try{ await discoverOwnershipForNft(v); await loadOwnershipCache(); }catch(e){ console.warn("Manuelle NFT Ownership:",e); }
+    try{ await discoverOwnershipForNft(v,DEFAULT_MINER_NFT_CONTRACT,`NFT #${v}`); await loadOwnershipCache(); }catch(e){ console.warn("Manuelle NFT Ownership:",e); }
     renderMinerSelector(`NFT #${v} wurde manuell für die Auswertung gewählt.`);
     selectedNftId=v;
     const sel=document.getElementById("dao1NftSelect");
     if(sel && ![...sel.options].some(o=>o.value===v)){
-      const o=document.createElement("option"); o.value=v; o.textContent=`${nftMetaById.get(v)?.name || "Apertum Miner NFT"} #${v} · manuell`; o.selected=true; sel.appendChild(o);
-    }else if(sel) sel.value=v;
+      const o=document.createElement("option"); o.value=`manual|${v}`; o.textContent=`${nftMetaById.get(`${lower(DEFAULT_MINER_NFT_CONTRACT)}|${v}`)?.name || "NFT"} #${v} · manuell`; o.selected=true; sel.appendChild(o);
+    }else if(sel) sel.value=`manual|${v}`;
   }
 
   async function loadMiners() {
@@ -579,16 +717,18 @@ window.DAO1Project = (() => {
     const ctx=getContext?.();
     const wallet=projectWallets().find(w=>String(w.id)===String(selectedWalletId));
     const address=walletAddress(wallet);
-    const nftValue=String(selectedNftId || manualNftId || "").trim();
+    const selected=String(selectedNftId || "").trim();
+    const selectedObj=nftIdsForWallet(address).find(n=>n.key===selected);
+    const nftValue=selected.includes("|") ? selected.split("|").pop() : String(manualNftId||"").trim();
     if (!address) { status.textContent = "Bitte eine Apertum-Wallet auswählen."; return; }
-    if (!/^\d+$/.test(nftValue)) { status.textContent = "Bitte eine Miner-NFT auswählen oder manuell eingeben."; return; }
+    if (!/^\d+$/.test(nftValue)) { status.textContent = "Bitte eine Apertum-NFT auswählen oder manuell eingeben."; return; }
     try {
       status.textContent = "Claim-Transaktionen werden ermittelt…";
       rewardRows = [];
       const miner = {
         wallet_address: address,
         nft_id: Number(nftValue),
-        label: `${wallet?.label || "Wallet"} · NFT #${nftValue}`
+        label: `${wallet?.label || "Wallet"} · ${selectedObj?.name || "NFT"}${selectedObj?.classification?.subtype ? " · "+selectedObj.classification.subtype : ""} · #${nftValue}`
       };
       const claimCandidates = [];
       const txs = await fetchAll(`/addresses/${address}/transactions`);
@@ -647,5 +787,5 @@ window.DAO1Project = (() => {
     renderMining();
   }
 
-  return { configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, discoverMinerNfts, useManualNft };
+  return { configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification };
 })();
