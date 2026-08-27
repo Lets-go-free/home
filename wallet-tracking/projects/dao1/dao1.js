@@ -84,20 +84,23 @@ window.DAO1Project = (() => {
           <div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
           <div id="dao1TransactionSummary" style="margin-top:10px"></div>
           <div id="dao1TransactionTable" style="margin-top:10px"></div>
-        </div>
-        <div class="custom-token-card">
-          <div class="chain-title">⛏️ Apertum Mining Rewards</div>
+          <details id="dao1MiningDetails" style="margin-top:16px">
+            <summary style="cursor:pointer;font-weight:700">⛏️ Mining-/Claim-Auswertung</summary>
+            <div style="margin-top:10px">
           <div class="note" style="margin-bottom:10px">Die Claim-Erfassung basiert auf der zentralen Apertum-Transaktionshistorie der Wallet. Beim ersten Scan wird die Wallet vollständig geladen; Folgescans ergänzen nur neue Blöcke mit Sicherheitspuffer. Klassifizierung, NFT und Datum sind danach reine Auswertungsfilter und beeinflussen den Wallet-Scan nicht.</div>
           <div id="dao1MinerSelector"></div>
           <div id="dao1AdminMinerEditor" style="display:none"></div>
           <div class="action-row" style="margin-top:10px">
             <button id="dao1MiningBtn" onclick="DAO1Project.loadMiningRewards()">Mining-Auswertung starten</button>
-          </div>
+              </div>
+          </details>
           <div id="dao1MiningStatus" class="status" style="margin-top:10px"></div>
           <div id="dao1MiningFilters" style="margin-top:12px"></div>
           <div id="dao1MiningSummary" style="margin-top:10px"></div>
           <div id="dao1MiningTable" style="margin-top:10px"></div>
-        </div>`;
+        </div>
+        </div>
+`;
       app.appendChild(panel);
     }
     mounted = true;
@@ -1738,7 +1741,7 @@ window.DAO1Project = (() => {
           </select></label>
         </div>
         <div class="action-row" style="margin-top:8px"><button class="secondary" onclick="DAO1Project.clearMiningFilters()">Filter zurücksetzen</button></div>
-        <div class="note" style="margin-top:6px">Diese Filter wirken nur auf Anzeige und Summen. Der Wallet-Scan bleibt vollständig.</div>
+        <div class="note" style="margin-top:6px">Diese Filter wirken nur auf Anzeige und Summen. Der Wallet-Scan bleibt vollständig. Historische NFTs werden berücksichtigt, sofern sie in der Besitzhistorie der Wallet geführt werden bzw. Claims dazu gespeichert sind.</div>
       </div>`;
   }
 
