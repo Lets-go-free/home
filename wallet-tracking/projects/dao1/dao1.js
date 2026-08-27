@@ -867,6 +867,61 @@ window.DAO1Project = (() => {
     return rows;
   }
 
+
+  async function repairPriceAnchorBeforeBlock(block,status){
+    block=Number(block);
+    if(!Number.isFinite(block)||block<0)return null;
+    let history=[];
+    try{history=await loadCachedPrices(0,block);}catch{}
+    let found=priceAtBlock(history,block);
+    if(found)return found;
+
+    // Search backwards from the affected transaction until the last real Sync before it is found.
+    // Windows grow progressively; this handles long periods without pool activity.
+    let to=block;
+    let span=10000;
+    let round=0;
+    while(to>=0 && round<18){
+      round++;
+      const from=Math.max(0,to-span+1);
+      if(status)status.textContent=`Historischen APTM-Preis reparieren: Block ${block} · Suche ${from}–${to}…`;
+      try{
+        const logs=await fetchSyncLogsAdaptive(from,to,status);
+        const meta=await poolMeta();
+        const rows=(logs||[]).map(l=>priceRowFromSyncLog(l,meta)).filter(Boolean);
+        await savePriceRows(rows);
+        if(rows.length){
+          history=await loadCachedPrices(0,block);
+          found=priceAtBlock(history,block);
+          if(found)return found;
+        }
+      }catch(e){
+        console.warn(`APTM Preis-Anker ${from}-${to}:`,e);
+      }
+      if(from===0)break;
+      to=from-1;
+      span=Math.min(span*2,500000);
+    }
+    return null;
+  }
+
+  async function repairMissingPriceBlocks(blocks,status){
+    const unique=[...new Set((blocks||[]).map(Number).filter(Number.isFinite))].sort((a,b)=>a-b);
+    const repaired=new Map();
+    for(let i=0;i<unique.length;i++){
+      const block=unique[i];
+      let history=[];
+      try{history=await loadCachedPrices(0,block);}catch{}
+      let ph=priceAtBlock(history,block);
+      if(!ph){
+        if(status)status.textContent=`Fehlende historische Kurse werden gezielt repariert ${i+1}/${unique.length}…`;
+        ph=await repairPriceAnchorBeforeBlock(block,status);
+      }
+      repaired.set(block,ph||null);
+    }
+    return repaired;
+  }
+
   function missingPriceWindows(history,claimBlocks){
     const sorted=[...new Set(claimBlocks.map(Number).filter(Number.isFinite))].sort((a,b)=>a-b);
     if(!sorted.length)return [];
@@ -906,6 +961,16 @@ window.DAO1Project = (() => {
       }
     }
     try{history=await loadCachedPrices(minBlock,maxBlock);}catch(e){console.warn("APTM Preis-Cache neu laden:",e);}
+
+    const unresolved=[...new Set(claimBlocks.map(Number).filter(Number.isFinite))].filter(b=>!priceAtBlock(history,b));
+    if(unresolved.length){
+      try{
+        await repairMissingPriceBlocks(unresolved,status);
+        history=await loadCachedPrices(Math.min(...unresolved),maxBlock);
+      }catch(e){
+        console.warn("Gezielte APTM-Kursreparatur:",e);
+      }
+    }
     return history;
   }
 
@@ -1398,6 +1463,16 @@ window.DAO1Project = (() => {
     renderTransactionHistory();
   }
 
+  function showMissingHistoricalPrices(kind){
+    const rows=txVisibleRows().filter(r=>{
+      if(kind==="claim")return r.claim_nft_id!=null && r.claim_reward_usd==null;
+      return Number(r.gas_aptm||0)>0 && r.gas_usd==null;
+    });
+    if(!rows.length)return alert("Keine offenen historischen Kurswerte.");
+    const lines=rows.slice(0,80).map(r=>`${r.tx_timestamp||"–"} · Block ${r.block_number||"–"} · ${r.tx_hash}`).join("\n");
+    alert(`${rows.length} Transaktion(en) ohne historischen ${kind==="claim"?"Claim-":"Gas-"}USD-Wert:\n\n${lines}${rows.length>80?`\n\n… plus ${rows.length-80} weitere`:""}`);
+  }
+
   function renderTransactionHistory(){
     const summary=document.getElementById("dao1TransactionSummary");
     const table=document.getElementById("dao1TransactionTable");
@@ -1414,10 +1489,10 @@ window.DAO1Project = (() => {
     if(summary)summary.innerHTML=`<div class="project-summary">
       <div class="custom-token-card project-summary-box"><span class="field-label">Transaktionen</span><strong>${rows.length}</strong></div>
       <div class="custom-token-card project-summary-box"><span class="field-label">Claims</span><strong>${claims.length}</strong></div>
-      <div class="custom-token-card project-summary-box"><span class="field-label">Geclaimt</span><strong>${fmt(claimedAptm)} APTM</strong><div class="meta">${claimedUsd?usd(claimedUsd):"–"} · historischer USD-Wert zum Claim-Zeitpunkt${claimUsdMissing?` · ${claimUsdMissing} ohne Kurs`:""}</div></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Geclaimt</span><strong>${fmt(claimedAptm)} APTM</strong><div class="meta">${claimedUsd?usd(claimedUsd):"–"} · historischer USD-Wert zum Claim-Zeitpunkt${claimUsdMissing?` · <button class="secondary" style="padding:2px 6px;font-size:.75rem" onclick="DAO1Project.showMissingHistoricalPrices('claim')">${claimUsdMissing} ohne Kurs anzeigen</button>`:""}</div></div>
       <div class="custom-token-card project-summary-box"><span class="field-label">Normale Eingänge</span><strong>${fmt(inAptm)} APTM</strong></div>
       <div class="custom-token-card project-summary-box"><span class="field-label">Ausgang</span><strong>${fmt(outAptm)} APTM</strong></div>
-      <div class="custom-token-card project-summary-box"><span class="field-label">Gas</span><strong>${fmt(gas)} APTM</strong><div class="meta">${gasUsd?usd(gasUsd):"–"} · historischer USD-Wert zum Transaktionszeitpunkt${gasUsdMissing?` · ${gasUsdMissing} ohne Kurs`:""}</div></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Gas</span><strong>${fmt(gas)} APTM</strong><div class="meta">${gasUsd?usd(gasUsd):"–"} · historischer USD-Wert zum Transaktionszeitpunkt${gasUsdMissing?` · <button class="secondary" style="padding:2px 6px;font-size:.75rem" onclick="DAO1Project.showMissingHistoricalPrices('gas')">${gasUsdMissing} ohne Kurs anzeigen</button>`:""}</div></div>
     </div>`;
     if(!table)return;
     if(!rows.length){table.innerHTML='<div class="empty">Keine Transaktionen für den gewählten Filter.</div>';return;}
@@ -1971,5 +2046,5 @@ window.DAO1Project = (() => {
   }
 
   return { configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
-    refreshTransactionHistory, setTransactionFilter, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet };
+    refreshTransactionHistory, setTransactionFilter, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices };
 })();

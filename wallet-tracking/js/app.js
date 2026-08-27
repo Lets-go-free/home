@@ -280,18 +280,58 @@ function zonedEndOfDayEpoch(dateStr,tz){
   return Math.floor(guess/1000);
 }
 
+const taxArchiveUnavailable = new Map();
+
+function taxRpcCandidates(chain){
+  const cfg=CHAIN_CONFIG[chain]||{};
+  const urls=[];
+  const add=u=>{ if(u && !urls.includes(u))urls.push(u); };
+  add(cfg.archiveRpcUrl);
+  // Reuse the same configured RPC path as the rest of Wallet Tracking.
+  // This is important for PublicNode because configuredRpcUrl() appends the personal token.
+  try{ add(configuredRpcUrl(chain)); }catch{}
+  add(cfg.rpcUrl);
+  return urls;
+}
+
+function isArchiveAccessError(message){
+  return /archive requests require|archive state|historical state|missing trie node|state unavailable|pruned|old state|personal token/i.test(String(message||""));
+}
+
 async function taxRpc(chain,method,params){
-  const url=CHAIN_CONFIG[chain]?.rpcUrl;
-  if(!url)throw new Error("RPC fehlt");
-  const ctl=new AbortController();
-  const timer=setTimeout(()=>ctl.abort(),25000);
-  try{
-    const res=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params}),signal:ctl.signal});
-    if(!res.ok)throw new Error(`HTTP ${res.status}`);
-    const j=await res.json();
-    if(j.error)throw new Error(j.error.message||"RPC-Fehler");
-    return j.result;
-  }finally{clearTimeout(timer);}
+  const blocked=taxArchiveUnavailable.get(chain);
+  // Current/latest calls are still allowed even if a historical endpoint failed before.
+  const historical=params?.some?.(p=>typeof p==="string" && /^0x[0-9a-f]+$/i.test(p) && p!=="0x0");
+  if(historical && blocked)throw new Error(blocked);
+
+  const urls=taxRpcCandidates(chain);
+  if(!urls.length)throw new Error("Kein RPC für diese Chain konfiguriert.");
+  let lastError=null;
+  for(const url of urls){
+    const ctl=new AbortController();
+    const timer=setTimeout(()=>ctl.abort(),25000);
+    try{
+      const res=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params}),signal:ctl.signal});
+      if(!res.ok)throw new Error(`HTTP ${res.status}`);
+      const j=await res.json();
+      if(j.error)throw new Error(j.error.message||"RPC-Fehler");
+      return j.result;
+    }catch(e){
+      lastError=e;
+      if(isArchiveAccessError(e.message)){
+        // Try the next configured archive candidate. Only remember failure after all candidates fail.
+        continue;
+      }
+    }finally{clearTimeout(timer);}
+  }
+  const msg=lastError?.message||"RPC-Abfrage fehlgeschlagen";
+  if(historical && isArchiveAccessError(msg)){
+    const label=CHAIN_META[chain]?.label||chain;
+    const clean=`${label}: historischer Archive-State ist mit den konfigurierten RPC-Endpunkten nicht verfügbar (${msg}).`;
+    taxArchiveUnavailable.set(chain,clean);
+    throw new Error(clean);
+  }
+  throw lastError||new Error("RPC-Abfrage fehlgeschlagen");
 }
 
 function hexToNumberSafe(v){ try{return Number(BigInt(v||"0x0"));}catch{return 0;} }
@@ -370,6 +410,7 @@ async function runTaxSnapshot(){
   const selectedWallets=walletSel==="__all"?wallets:wallets.filter(w=>String(w.id)===String(walletSel));
   const chains=taxEligibleChains();
   taxRows=[];
+  taxArchiveUnavailable.clear();
   btn.disabled=true;btn.textContent="Stichtagsbestand wird ermittelt…";
   document.getElementById("taxExcelBtn").disabled=true;
   document.getElementById("taxPdfBtn").disabled=true;
@@ -384,7 +425,7 @@ async function runTaxSnapshot(){
       let blockInfo;
       try{ blockInfo=await taxBlockAtOrBefore(chain,targetEpoch); }
       catch(e){
-        walletsForChain.forEach(w=>taxRows.push({wallet:w.label,wallet_address:walletAddressForChain(w,chain),chain,asset:"–",symbol:"–",status:"nicht verifizierbar",error:`Stichtagsblock: ${e.message}`}));
+        taxRows.push({wallet:"Alle betroffenen Wallets",wallet_address:"",chain,asset:"–",symbol:"–",status:"nicht verifizierbar",error:`Stichtagsblock/Archive-RPC: ${e.message}`});
         continue;
       }
       const blockTag=taxHexBlock(blockInfo.block);
@@ -1218,6 +1259,8 @@ async function loadChainConfigFromDb() {
       sortOrder: Number(row.sort_order || 100),
       evmChainId: row.evm_chain_id == null ? null : Number(row.evm_chain_id),
       rpcUrl: row.rpc_url || null,
+      archiveRpcUrl: row.archive_rpc_url || null,
+      archiveRpcProvider: row.archive_rpc_provider || null,
       balanceProvider: row.balance_provider || null,
       balanceApiBase: row.balance_api_base || null,
       displayColor: row.display_color || "#6b7280",
