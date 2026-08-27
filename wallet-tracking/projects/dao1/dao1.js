@@ -255,13 +255,13 @@ window.DAO1Project = (() => {
     el.innerHTML=`<div class="custom-token-card" style="margin-top:14px">
       <div class="chain-title" style="font-size:1rem">🏷️ DAO1 NFT-Klassifizierung</div>
       <div class="note" style="margin-bottom:10px">Die Klassifizierung gehört zur NFT selbst und bleibt deshalb auch nach einem Wallet-Transfer erhalten.</div>
-      <div class="chain-table-wrap"><table class="chain-admin-table"><thead><tr><th>NFT</th><th>Contract</th><th>Klassifizierung</th></tr></thead><tbody>
+      <div class="chain-table-wrap"><table class="chain-admin-table dao1-nft-class-table" style="table-layout:fixed;width:100%"><colgroup><col style="width:34%"><col style="width:28%"><col style="width:38%"></colgroup><thead><tr><th>NFT</th><th>Klassifizierung</th><th>Contract</th></tr></thead><tbody>
       ${nfts.map(n=>{
         const c=classificationFor(n.contract,n.id);
         const opts=['',...NFT_SUBTYPES].map(v=>`<option value="${v}" ${String(c?.subtype||"")===v?"selected":""}>${v||"– nicht klassifiziert –"}</option>`).join("");
         return `<tr><td><strong>${n.name||("NFT #"+n.id)}</strong><div class="meta">#${n.id}${n.current?" · aktuell":" · historisch"}</div></td>
-          <td><code>${n.contract||"–"}</code></td>
-          <td><select onchange="DAO1Project.saveNftClassification('${n.contract}','${n.id}','${String(n.name||"").replaceAll("'","&#39;")}',this.value)">${opts}</select></td></tr>`;
+          <td><select style="width:100%;max-width:240px" onchange="DAO1Project.saveNftClassification('${n.contract}','${n.id}','${String(n.name||"").replaceAll("'","&#39;")}',this.value)">${opts}</select></td>
+          <td><code style="font-size:.82em;overflow-wrap:anywhere;word-break:break-all">${n.contract||"–"}</code></td></tr>`;
       }).join("")}
       </tbody></table></div></div>`;
   }
