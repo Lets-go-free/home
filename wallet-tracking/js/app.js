@@ -242,6 +242,54 @@ let taxRows = [];
 let taxCoverage = [];
 const taxPriceCache = new Map();
 
+let taxSnapshotLoaded = false;
+
+function taxSnapshotWalletId(row){
+  const w=wallets.find(x=>String(x.dbId||x.id)===String(row.wallet_id));
+  return w?.dbId||w?.id||row.wallet_id||null;
+}
+async function loadTaxSnapshot(date,walletSel="__all"){
+  if(!currentUser||!date)return false;
+  let q=sb.from("year_end_positions").select("*").eq("snapshot_date",date).order("wallet_label").order("chain_key").order("symbol");
+  if(walletSel!=="__all")q=q.eq("wallet_id",walletSel);
+  const {data,error}=await q;
+  if(error){if(error.code!=="PGRST205")console.warn("Gespeicherte Bestandesaufnahme:",error);return false;}
+  if(!data?.length)return false;
+  taxRows=data.map(r=>({wallet:r.wallet_label,wallet_address:r.wallet_address,chain:r.chain_key,asset:r.asset_key,symbol:r.symbol,amount:r.amount==null?null:Number(r.amount),decimals:r.decimals,block:r.block_ref,price_usd:r.price_usd==null?null:Number(r.price_usd),value_usd:r.value_usd==null?null:Number(r.value_usd),price_source:r.price_source,status:r.status,balance_source:r.balance_source,error:r.error_message||null,wallet_id:r.wallet_id}));
+  let cq=sb.from("year_end_coverage").select("*").eq("snapshot_date",date);
+  if(walletSel!=="__all")cq=cq.eq("wallet_scope",walletSel);
+  else cq=cq.eq("wallet_scope","__all");
+  const cr=await cq; taxCoverage=(cr.data||[]).map(c=>({chain:c.chain_key,status:c.status,scope:c.scope,detail:c.detail}));
+  taxSnapshotLoaded=true;renderTaxResults(date,document.getElementById("taxTimezone")?.value||"Europe/Zurich");
+  document.getElementById("taxExcelBtn").disabled=false;document.getElementById("taxPdfBtn").disabled=false;
+  taxSetStatus("ready",`Gespeicherte Bestandesaufnahme vom ${date} geladen.`,`Keine Blockchain-Abfragen erforderlich. Mit „Neu berechnen“ kann der Stichtag vollständig aktualisiert werden.`);
+  return true;
+}
+async function saveTaxSnapshot(date,tz,walletSel){
+  if(!currentUser||!date)return;
+  const selected=walletSel==="__all"?wallets:wallets.filter(w=>String(w.id)===String(walletSel));
+  const ids=new Set(selected.map(w=>String(w.dbId||w.id)));
+  await sb.from("year_end_positions").delete().eq("snapshot_date",date).in("wallet_id",[...ids]);
+  const payload=taxRows.filter(r=>{const w=selected.find(x=>x.label===r.wallet&&walletAddressForChain(x,r.chain)===r.wallet_address);return !!w?.dbId;}).map(r=>{
+    const w=selected.find(x=>x.label===r.wallet&&walletAddressForChain(x,r.chain)===r.wallet_address);
+    return {user_id:currentUser.id,snapshot_date:date,timezone:tz,wallet_id:w.dbId,wallet_label:r.wallet,wallet_address:r.wallet_address,chain_key:r.chain,asset_key:r.asset||"native",symbol:r.symbol||null,decimals:r.decimals??null,amount:r.amount??null,block_ref:r.block??null,price_usd:r.price_usd??null,value_usd:r.value_usd??null,balance_source:r.balance_source||null,price_source:r.price_source||null,status:r.status||"verifiziert",error_message:r.error||null,calculated_at:new Date().toISOString()};
+  });
+  if(payload.length){const {error}=await sb.from("year_end_positions").upsert(payload,{onConflict:"user_id,snapshot_date,wallet_id,chain_key,asset_key"});if(error)throw error;}
+  const scope=walletSel==="__all"?"__all":String(walletSel);
+  await sb.from("year_end_coverage").delete().eq("snapshot_date",date).eq("wallet_scope",scope);
+  const cp=taxCoverage.map(c=>({user_id:currentUser.id,snapshot_date:date,wallet_scope:scope,chain_key:c.chain,status:c.status,scope:c.scope||null,detail:c.detail||null,calculated_at:new Date().toISOString()}));
+  if(cp.length){const {error}=await sb.from("year_end_coverage").upsert(cp,{onConflict:"user_id,snapshot_date,wallet_scope,chain_key"});if(error)throw error;}
+  taxSnapshotLoaded=true;
+}
+async function refreshTaxPricesOnly(){
+  const date=document.getElementById("taxDate")?.value,walletSel=document.getElementById("taxWalletSelect")?.value||"__all";if(!date)return;
+  if(!taxRows.length && !(await loadTaxSnapshot(date,walletSel)))return alert("Für diesen Stichtag ist noch keine gespeicherte Bestandesaufnahme vorhanden.");
+  const btn=document.getElementById("taxPriceRefreshBtn");btn.disabled=true;btn.textContent="Kurse werden aktualisiert…";taxPriceCache.clear();
+  try{for(let i=0;i<taxRows.length;i++){const r=taxRows[i];if(r.status!=="verifiziert"||!(Number(r.amount)>0))continue;const asset=r.asset==="native"?"native":{address:r.asset,symbol:r.symbol,decimals:r.decimals,coingeckoId:predefinedTokenCoinGeckoIds[r.chain+"|"+normalizeAddress(r.asset,r.chain)]||null};const hp=await taxHistoricalPrice(r.chain,asset,date,r.block);if(hp){r.price_usd=hp.price;r.value_usd=Number(r.amount)*hp.price;r.price_source=hp.source;}}
+    await saveTaxSnapshot(date,document.getElementById("taxTimezone")?.value||"Europe/Zurich",walletSel);renderTaxResults(date,document.getElementById("taxTimezone")?.value||"");taxSetStatus("ready","Historische Kurse aktualisiert.","Gespeicherte Bestände wurden nicht erneut von der Blockchain geladen.");
+  }catch(e){taxSetStatus("error",e.message||String(e));}finally{btn.disabled=false;btn.textContent="Nur Kurse aktualisieren";}
+}
+
 function taxEligibleChains(){
   return Object.keys(CHAIN_CONFIG).filter(c=>{
     const t=CHAIN_CONFIG[c]?.walletType;
@@ -257,10 +305,8 @@ function renderTaxWalletSelect(){
   if(current==="__all" || wallets.some(w=>String(w.id)===String(current)))el.value=current;
   else el.value="__all";
   const date=document.getElementById("taxDate");
-  if(date && !date.value){
-    const y=new Date().getFullYear()-1;
-    date.value=`${y}-12-31`;
-  }
+  if(date && !date.value){const y=new Date().getFullYear()-1;date.value=`${y}-12-31`;}
+  if(date&&!date.dataset.snapshotBound){date.dataset.snapshotBound="1";date.addEventListener("change",()=>loadTaxSnapshot(date.value,el.value));el.addEventListener("change",()=>loadTaxSnapshot(date.value,el.value));setTimeout(()=>loadTaxSnapshot(date.value,el.value),0);}
 }
 
 function taxSetStatus(kind,text,detail=""){
@@ -489,7 +535,7 @@ const taxDexFactoryCache=new Map(),taxProjectReferenceCache=new Map();
 const taxV2Iface=new ethers.Interface(["function getPair(address,address) view returns (address)","function token0() view returns (address)","function getReserves() view returns (uint112 reserve0,uint112 reserve1,uint32 blockTimestampLast)"]);
 function taxPredefinedBySymbol(chain,symbol){
   const wanted=String(symbol||"").toUpperCase();
-  for(const x of (SAFE_ADDRESSES[chain]||[])){const a=normalizeAddress(x,chain),k=chain+"|"+a;if(String(predefinedTokenSymbols[k]||"").toUpperCase()===wanted)return {address:a,symbol:predefinedTokenSymbols[k],decimals:predefinedTokenDecimals[k],coingeckoId:predefinedTokenCoinGeckoIds[k]||null};}
+  for(const [k,sym] of Object.entries(predefinedTokenSymbols)){if(!k.startsWith(chain+"|"))continue;if(String(sym||"").toUpperCase()!==wanted)continue;const a=k.slice(chain.length+1);return {address:a,symbol:sym,decimals:predefinedTokenDecimals[k],coingeckoId:predefinedTokenCoinGeckoIds[k]||null};}
   return null;
 }
 async function taxDexFactory(chain){
@@ -526,8 +572,9 @@ async function taxTlnVowHistoricalPrice(chain,asset,block){
 }
 async function taxApertumWrappedPrice(chain,asset,block){
   if(chain!=="apertum"||!asset?.address)return null;const a=normalizeAddress(asset.address,chain),sym=String(asset.symbol||predefinedTokenSymbols[chain+"|"+a]||"").toUpperCase(),u=taxPredefinedBySymbol(chain,"WUSDT")||taxPredefinedBySymbol(chain,"USDT"),wa=taxPredefinedBySymbol(chain,"WAPTM");if(!u)return null;
-  if(sym==="WUSDT"||a===u.address)return {price:1,source:"wUSDT Stablecoin-Parität · 1 USD"};
-  const aptm=await taxHistoricalPrice(chain,"native","",block,true);if(wa&&(sym==="WAPTM"||a===wa.address)&&aptm)return {price:aptm.price,source:`wAPTM/APTM 1:1 · ${aptm.source}`};
+  const metaName=String(predefinedTokenNames[chain+"|"+a]||predefinedTokenLabels[chain+"|"+a]||"").toUpperCase();
+  if(sym==="WUSDT"||metaName.includes("WUSDT")||metaName.includes("WRAPPED USDT")||a===u.address)return {price:1,source:"wUSDT Stablecoin-Parität · 1 USD"};
+  const aptm=await taxHistoricalPrice(chain,"native","",block,true);if(wa&&(sym==="WAPTM"||metaName.includes("WAPTM")||metaName.includes("WRAPPED APTM")||a===wa.address)&&aptm)return {price:aptm.price,source:`wAPTM/APTM 1:1 · ${aptm.source}`};
   const bd=await taxTokenDecimalsCurrent(chain,asset),ud=await taxTokenDecimalsCurrent(chain,u),direct=await taxDirectV2Price(chain,a,u.address,block,bd,ud);if(direct)return {price:direct.price,source:`Apertum DEX ${sym||"Token"}/wUSDT · ${direct.pair} · Block ${block}`};
   if(wa&&aptm){const wd=await taxTokenDecimalsCurrent(chain,wa),via=await taxDirectV2Price(chain,a,wa.address,block,bd,wd);if(via)return {price:via.price*aptm.price,source:`Apertum DEX ${sym||"Token"}/wAPTM → APTM/USD · ${via.pair} · Block ${block}`};}
   return null;
@@ -751,6 +798,7 @@ async function runTaxSnapshot(){
     await taxSolanaChains(selectedWallets,targetEpoch,date);
 
     renderTaxResults(date,tz);
+    await saveTaxSnapshot(date,tz,walletSel);
     document.getElementById("taxExcelBtn").disabled=taxRows.length===0;
     document.getElementById("taxPdfBtn").disabled=taxRows.length===0;
     const ok=taxRows.filter(r=>r.status==="verifiziert").length,bad=taxRows.filter(r=>r.status!=="verifiziert").length;
@@ -811,8 +859,10 @@ function exportTaxExcel(){
 function exportTaxPdf(){
   const date=document.getElementById("taxDate")?.value||"",tz=document.getElementById("taxTimezone")?.value||"",w=window.open("","_blank");if(!w)return alert("Popup wurde blockiert.");
   const ok=taxRows.filter(r=>r.status==="verifiziert"),priced=ok.filter(r=>r.price_usd!=null&&r.value_usd!=null),unpriced=ok.filter(r=>r.price_usd==null||r.value_usd==null),total=priced.reduce((s,r)=>s+Number(r.value_usd||0),0),quality=unpriced.length?`Bewertet: ${priced.length}/${ok.length} · ${unpriced.length} ohne Kurs`:`Vollständig bewertet: ${priced.length}/${ok.length}`;
-  const cov=taxCoverage.map(c=>`<tr><td><b>${escapeAttr(CHAIN_META[c.chain]?.label||c.chain)}</b></td><td>${escapeAttr(c.status)}</td><td>${escapeAttr(c.scope||"")}</td><td>${escapeAttr(c.detail||"")}</td></tr>`).join(""),rows=taxRows.map(r=>`<tr><td>${escapeAttr(r.wallet)}<small>${escapeAttr(r.wallet_address||"")}</small></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><b>${escapeAttr(r.symbol||"")}</b><small>${escapeAttr(r.asset||"")}</small></td><td class="n">${r.amount==null?"–":fmt(r.amount)}</td><td class="n">${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td class="n">${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td><td>${r.block||"–"}</td><td>${escapeAttr(r.status)}<small>${escapeAttr(r.error||r.balance_source||"")}${r.price_source?`<br>Preis: ${escapeAttr(r.price_source)}`:""}</small></td></tr>`).join("");
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Bestandesaufnahme ${date}</title><style>@page{size:A4 landscape;margin:10mm}body{font:9px Arial;color:#18202a}h1{font-size:22px;margin:0}.head{border-bottom:3px solid;padding-bottom:9px}.cards{display:flex;gap:8px;margin:12px 0}.card{border:1px solid #ccd2d9;border-radius:6px;padding:8px;min-width:170px}.card b{display:block;font-size:14px}table{border-collapse:collapse;width:100%;margin:10px 0}thead{display:table-header-group}tr{page-break-inside:avoid}th,td{border:1px solid #c8ced5;padding:4px;vertical-align:top}th,tfoot td{background:#eef1f4;font-weight:bold}.n{text-align:right;white-space:nowrap}small{display:block;color:#666;font-size:7px;word-break:break-all}tfoot td{border-top:2px solid #18202a;font-size:10px}</style></head><body><div class="head"><h1>Bestandesaufnahme per 31.12</h1><p><b>Stichtag:</b> ${escapeAttr(date)} · ${escapeAttr(tz)} &nbsp; <b>Erstellt:</b> ${new Date().toLocaleString("de-CH")}</p></div><div class="cards"><div class="card">Verifizierte Positionen<b>${ok.length}</b></div><div class="card">Historisch bewertet<b>${priced.length}/${ok.length}</b></div><div class="card">Gesamtwert bewerteter Positionen<b>${fmtUsd(total)}</b></div><div class="card">Datenqualität<b>${escapeAttr(quality)}</b></div></div><h2>Chain-Abdeckung</h2><table><thead><tr><th>Chain</th><th>Status</th><th>Abdeckung</th><th>Details</th></tr></thead><tbody>${cov}</tbody></table><h2>Bestände</h2><table><thead><tr><th>Wallet</th><th>Chain</th><th>Asset</th><th>Bestand</th><th>Preis USD</th><th>Wert USD</th><th>Block / Slot / Ledger</th><th>Status / Quellen</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">SUMME – bewertete Positionen</td><td class="n">${fmtUsd(total)}</td><td colspan="2">${escapeAttr(quality)}</td></tr></tfoot></table><p>Bestände werden nicht geschätzt. Positionen ohne historischen Kurs bleiben sichtbar und sind nicht in der USD-Summe enthalten.</p><script>window.onload=()=>window.print();<\/script></body></html>`);w.document.close();
+  const cov=taxCoverage.map(c=>`<tr><td><b>${escapeAttr(CHAIN_META[c.chain]?.label||c.chain)}</b></td><td>${escapeAttr(c.status)}</td><td>${escapeAttr(c.scope||"")}</td><td>${escapeAttr(c.detail||"")}</td></tr>`).join("");
+  const walletNames=[...new Set(taxRows.map(r=>r.wallet))].sort((a,b)=>a.localeCompare(b,"de"));
+  const walletSections=walletNames.map(name=>{const wr=taxRows.filter(r=>r.wallet===name),wp=wr.filter(r=>r.value_usd!=null),sum=wp.reduce((s,r)=>s+Number(r.value_usd||0),0),addr=[...new Set(wr.map(r=>r.wallet_address).filter(Boolean))].join(" · ");const rows=wr.map(r=>`<tr><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><b>${escapeAttr(r.symbol||"")}</b><small>${escapeAttr(r.asset||"")}</small></td><td class="n">${r.amount==null?"–":fmt(r.amount)}</td><td class="n">${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td class="n">${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td><td>${r.block||"–"}</td><td>${escapeAttr(r.status)}<small>${escapeAttr(r.error||r.balance_source||"")}${r.price_source?`<br>Preis: ${escapeAttr(r.price_source)}`:""}</small></td></tr>`).join("");return `<section class="wallet-page"><h1>${escapeAttr(name)}</h1><div class="address">${escapeAttr(addr)}</div><div class="wallet-summary">Wallet-Wert bewerteter Positionen: <b>${fmtUsd(sum)}</b> · ${wp.length}/${wr.filter(r=>r.status==="verifiziert").length} Positionen bewertet</div><table><thead><tr><th>Chain</th><th>Asset</th><th>Bestand</th><th>Preis USD</th><th>Wert USD</th><th>Block / Slot / Ledger</th><th>Status / Quellen</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="4">SUMME WALLET</td><td class="n">${fmtUsd(sum)}</td><td colspan="2"></td></tr></tfoot></table></section>`;}).join("");
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Bestandesaufnahme ${date}</title><style>@page{size:A4 landscape;margin:10mm}body{font:9px Arial;color:#18202a;margin:0}h1{font-size:22px;margin:0 0 5px}.summary-page{page-break-after:always}.wallet-page{break-before:page;page-break-before:always}.wallet-page:first-of-type{page-break-before:auto}.head{border-bottom:3px solid;padding-bottom:9px}.cards{display:flex;gap:8px;margin:12px 0}.card{border:1px solid #ccd2d9;border-radius:6px;padding:8px;min-width:170px}.card b{display:block;font-size:14px}table{border-collapse:collapse;width:100%;margin:10px 0}thead{display:table-header-group}tr{page-break-inside:avoid}th,td{border:1px solid #c8ced5;padding:4px;vertical-align:top}th,tfoot td{background:#eef1f4;font-weight:bold}.n{text-align:right;white-space:nowrap}small,.address{display:block;color:#666;font-size:7px;word-break:break-all}.wallet-summary{margin:10px 0;padding:8px;border:1px solid #ccd2d9;border-radius:6px}tfoot td{border-top:2px solid #18202a;font-size:10px}</style></head><body><section class="summary-page"><div class="head"><h1>Bestandesaufnahme per 31.12</h1><p><b>Stichtag:</b> ${escapeAttr(date)} · ${escapeAttr(tz)} &nbsp; <b>Erstellt:</b> ${new Date().toLocaleString("de-CH")}</p></div><div class="cards"><div class="card">Wallets<b>${walletNames.length}</b></div><div class="card">Verifizierte Positionen<b>${ok.length}</b></div><div class="card">Historisch bewertet<b>${priced.length}/${ok.length}</b></div><div class="card">Gesamtwert<b>${fmtUsd(total)}</b></div></div><h2>Gesamtübersicht / Chain-Abdeckung</h2><table><thead><tr><th>Chain</th><th>Status</th><th>Abdeckung</th><th>Details</th></tr></thead><tbody>${cov}</tbody><tfoot><tr><td colspan="3">GESAMTSUMME – bewertete Positionen</td><td class="n">${fmtUsd(total)} · ${escapeAttr(quality)}</td></tr></tfoot></table><p>Bestände werden nicht geschätzt. Positionen ohne historischen Kurs bleiben sichtbar und sind nicht in der USD-Summe enthalten.</p></section>${walletSections}<script>window.onload=()=>window.print();<\/script></body></html>`);w.document.close();
 }
 
 
