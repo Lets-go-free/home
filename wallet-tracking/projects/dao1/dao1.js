@@ -27,6 +27,9 @@ window.DAO1Project = (() => {
   let projectNfts = [];
   let selectedNftClass = "Mining-Bot";
   const CLAIM_SCAN_BUFFER_BLOCKS = 250;
+  let miningFilterFrom = "";
+  let miningFilterTo = "";
+  let miningFilterNft = "__all";
 
   const H = x => typeof x === "string" ? x : (x?.hash || "");
   const lower = x => String(x || "").toLowerCase();
@@ -73,6 +76,7 @@ window.DAO1Project = (() => {
             <button id="dao1MiningBtn" onclick="DAO1Project.loadMiningRewards()">Mining-Auswertung starten</button>
           </div>
           <div id="dao1MiningStatus" class="status" style="margin-top:10px"></div>
+          <div id="dao1MiningFilters" style="margin-top:12px"></div>
           <div id="dao1MiningSummary" style="margin-top:10px"></div>
           <div id="dao1MiningTable" style="margin-top:10px"></div>
         </div>`;
@@ -98,6 +102,7 @@ window.DAO1Project = (() => {
     renderMinerSelector();
     renderNftClassification();
     renderAssetSummary();
+    renderMiningFilters();
     updateVisibility();
   }
 
@@ -1186,15 +1191,99 @@ window.DAO1Project = (() => {
     }
   }
 
+
+  function miningNftOptions(){
+    const map=new Map();
+    for(const x of rewardRows){
+      const id=String(x.nftId || x.miner?.nft_id || "");
+      if(!id)continue;
+      if(!map.has(id))map.set(id,{
+        id,
+        name:x.nftName || x.miner?.label || `NFT #${id}`,
+        subtype:x.nftSubtype || ""
+      });
+    }
+    return [...map.values()].sort((a,b)=>
+      String(a.name).localeCompare(String(b.name),"de",{numeric:true}) || Number(a.id)-Number(b.id)
+    );
+  }
+
+  function renderMiningFilters(){
+    const el=document.getElementById("dao1MiningFilters");
+    if(!el)return;
+    const nfts=miningNftOptions();
+    if(miningFilterNft!=="__all" && !nfts.some(n=>n.id===String(miningFilterNft))){
+      miningFilterNft="__all";
+    }
+    el.innerHTML=`
+      <div class="custom-token-card">
+        <span class="field-label">Auswertung filtern</span>
+        <div class="custom-token-grid" style="grid-template-columns:minmax(150px,.7fr) minmax(150px,.7fr) minmax(260px,1.2fr);margin-top:8px">
+          <label><span class="field-label">Von</span>
+            <input type="date" id="dao1MiningFrom" value="${miningFilterFrom}" onchange="DAO1Project.setMiningDateFilter('from',this.value)">
+          </label>
+          <label><span class="field-label">Bis</span>
+            <input type="date" id="dao1MiningTo" value="${miningFilterTo}" onchange="DAO1Project.setMiningDateFilter('to',this.value)">
+          </label>
+          <label><span class="field-label">NFT</span>
+            <select id="dao1MiningResultNft" onchange="DAO1Project.setMiningResultNft(this.value)">
+              <option value="__all" ${miningFilterNft==="__all"?"selected":""}>Alle NFTs (${nfts.length})</option>
+              ${nfts.map(n=>`<option value="${n.id}" ${String(miningFilterNft)===n.id?"selected":""}>${n.name}${String(n.name||"").includes("#"+n.id)?"":" · #"+n.id}${n.subtype?" · "+n.subtype:""}</option>`).join("")}
+            </select>
+          </label>
+        </div>
+        <div class="action-row" style="margin-top:8px">
+          <button class="secondary" onclick="DAO1Project.clearMiningFilters()">Filter zurücksetzen</button>
+        </div>
+        <div class="note" style="margin-top:6px">Diese Filter wirken nur auf die Anzeige und Summen. Der gespeicherte Claim-Cache bleibt vollständig und muss dafür nicht neu geladen werden.</div>
+      </div>`;
+  }
+
+  function filteredRewardRows(){
+    let rows=[...rewardRows];
+    if(miningFilterFrom){
+      const fromMs=new Date(miningFilterFrom+"T00:00:00").getTime();
+      rows=rows.filter(x=>new Date(x.timestamp).getTime()>=fromMs);
+    }
+    if(miningFilterTo){
+      const toMs=new Date(miningFilterTo+"T23:59:59.999").getTime();
+      rows=rows.filter(x=>new Date(x.timestamp).getTime()<=toMs);
+    }
+    if(miningFilterNft!=="__all"){
+      rows=rows.filter(x=>String(x.nftId || x.miner?.nft_id || "")===String(miningFilterNft));
+    }
+    return rows;
+  }
+
+  function setMiningDateFilter(which,value){
+    if(which==="from")miningFilterFrom=String(value||"");
+    if(which==="to")miningFilterTo=String(value||"");
+    renderMining();
+  }
+
+  function setMiningResultNft(value){
+    miningFilterNft=String(value||"__all");
+    renderMining();
+  }
+
+  function clearMiningFilters(){
+    miningFilterFrom="";
+    miningFilterTo="";
+    miningFilterNft="__all";
+    renderMining();
+  }
+
   function renderMining() {
     const summary = document.getElementById("dao1MiningSummary");
     const table = document.getElementById("dao1MiningTable");
-    const r = rewardRows.reduce((s,x)=>s+x.reward,0);
-    const g = rewardRows.reduce((s,x)=>s+x.gas,0);
-    const u = rewardRows.reduce((s,x)=>s+(x.rewardUsd||0),0);
+    renderMiningFilters();
+    const visibleRows=filteredRewardRows();
+    const r = visibleRows.reduce((s,x)=>s+x.reward,0);
+    const g = visibleRows.reduce((s,x)=>s+x.gas,0);
+    const u = visibleRows.reduce((s,x)=>s+(x.rewardUsd||0),0);
 
     const byNft=new Map();
-    for(const x of rewardRows){
+    for(const x of visibleRows){
       const key=String(x.nftId || x.miner?.nft_id || "");
       if(!byNft.has(key))byNft.set(key,{
         id:key,
@@ -1208,7 +1297,7 @@ window.DAO1Project = (() => {
 
     if (summary) summary.innerHTML = `
       <div class="project-summary">
-        <div class="custom-token-card project-summary-box"><span class="field-label">Claims</span><strong>${rewardRows.length}</strong></div>
+        <div class="custom-token-card project-summary-box"><span class="field-label">Claims</span><strong>${visibleRows.length}</strong><div class="meta">${visibleRows.length!==rewardRows.length?`von ${rewardRows.length}`:""}</div></div>
         <div class="custom-token-card project-summary-box"><span class="field-label">NFTs</span><strong>${byNft.size}</strong></div>
         <div class="custom-token-card project-summary-box"><span class="field-label">Rewards</span><strong>${fmt(r)} APTM</strong></div>
         <div class="custom-token-card project-summary-box"><span class="field-label">historischer USD-Wert</span><strong>${usd(u)}</strong></div>
@@ -1224,7 +1313,11 @@ window.DAO1Project = (() => {
       table.innerHTML = '<div class="empty">Noch keine Mining-Auswertung geladen.</div>';
       return;
     }
-    table.innerHTML = `<div class="chain-table-wrap"><table class="chain-admin-table"><thead><tr><th>NFT</th><th>Zeit</th><th>Block</th><th>Reward APTM</th><th>APTM/USD</th><th>Reward USD</th><th>Gas APTM</th><th>Netto APTM</th><th>Tx</th></tr></thead><tbody>${rewardRows.map(x=>`<tr><td>${x.nftName || x.miner.label}<div class="meta">#${x.nftId || x.miner.nft_id}${x.nftSubtype?" · "+x.nftSubtype:""}</div></td><td>${x.timestamp}</td><td>${x.block}</td><td>${fmt(x.reward)}</td><td>${x.price == null ? "–" : fmt(x.price)}</td><td>${usd(x.rewardUsd)}</td><td>${fmt(x.gas)}</td><td>${fmt(x.net)}</td><td><a href="${EXPLORER}/tx/${x.tx}" target="_blank" rel="noopener">${x.tx.slice(0,12)}…</a></td></tr>`).join("")}</tbody></table></div>`;
+    if (!visibleRows.length) {
+      table.innerHTML = '<div class="empty">Für den gewählten Datums-/NFT-Filter wurden keine Claims gefunden.</div>';
+      return;
+    }
+    table.innerHTML = `<div class="chain-table-wrap"><table class="chain-admin-table"><thead><tr><th>NFT</th><th>Zeit</th><th>Block</th><th>Reward APTM</th><th>APTM/USD</th><th>Reward USD</th><th>Gas APTM</th><th>Netto APTM</th><th>Tx</th></tr></thead><tbody>${visibleRows.map(x=>`<tr><td>${x.nftName || x.miner.label}<div class="meta">#${x.nftId || x.miner.nft_id}${x.nftSubtype?" · "+x.nftSubtype:""}</div></td><td>${x.timestamp}</td><td>${x.block}</td><td>${fmt(x.reward)}</td><td>${x.price == null ? "–" : fmt(x.price)}</td><td>${usd(x.rewardUsd)}</td><td>${fmt(x.gas)}</td><td>${fmt(x.net)}</td><td><a href="${EXPLORER}/tx/${x.tx}" target="_blank" rel="noopener">${x.tx.slice(0,12)}…</a></td></tr>`).join("")}</tbody></table></div>`;
   }
 
   async function ensureLoaded() {
@@ -1234,5 +1327,5 @@ window.DAO1Project = (() => {
     renderMining();
   }
 
-  return { configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification };
+  return { configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningResultNft, clearMiningFilters };
 })();
