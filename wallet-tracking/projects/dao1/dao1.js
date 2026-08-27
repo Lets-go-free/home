@@ -945,6 +945,56 @@ window.DAO1Project = (() => {
     return windows;
   }
 
+
+  const aptmMarketPriceCache=new Map();
+
+  function dateKeyFromTimestamp(ts){
+    const d=new Date(ts);
+    if(Number.isNaN(d.getTime()))return null;
+    return d.toISOString().slice(0,10);
+  }
+
+  async function aptmUsdtMarketPriceForDate(dateStr){
+    if(!dateStr)return null;
+    if(aptmMarketPriceCache.has(dateStr))return aptmMarketPriceCache.get(dateStr);
+    const [y,m,d]=dateStr.split("-");
+    const cgDate=`${d}-${m}-${y}`;
+    try{
+      const url=`https://api.coingecko.com/api/v3/coins/apertum/history?date=${cgDate}&localization=false`;
+      const res=await fetch(url);
+      if(!res.ok)throw new Error(`CoinGecko HTTP ${res.status}`);
+      const j=await res.json();
+      const p=Number(j?.market_data?.current_price?.usd);
+      const out=Number.isFinite(p)&&p>0?{
+        price:p,
+        source:`APTM/USDT Marktpreis · CoinGecko Tageshistorie ${dateStr}`
+      }:null;
+      aptmMarketPriceCache.set(dateStr,out);
+      return out;
+    }catch(e){
+      console.warn("APTM/USDT Fallbackpreis:",dateStr,e);
+      aptmMarketPriceCache.set(dateStr,null);
+      return null;
+    }
+  }
+
+  async function priceForTransaction(block,timestamp,history){
+    const ph=priceAtBlock(history,Number(block));
+    if(ph){
+      return {
+        price:Number(ph.aptm_usd),
+        priceBlock:Number(ph.block_number),
+        source:`APTM/wUSDT Pool · Sync Block ${ph.block_number}`
+      };
+    }
+    const dateStr=dateKeyFromTimestamp(timestamp);
+    const market=await aptmUsdtMarketPriceForDate(dateStr);
+    if(market){
+      return {price:market.price,priceBlock:null,source:market.source};
+    }
+    return {price:null,priceBlock:null,source:null};
+  }
+
   async function ensurePricesForClaimBlocks(claimBlocks,status){
     if(!claimBlocks.length)return [];
     const minBlock=Math.min(...claimBlocks),maxBlock=Math.max(...claimBlocks);
@@ -982,15 +1032,15 @@ window.DAO1Project = (() => {
     const history=await ensurePricesForClaimBlocks(blocks,status);
     const updates=[];
     for(const r of missing){
-      const ph=priceAtBlock(history,Number(r.block_number));
-      if(!ph)continue;
-      const price=Number(ph.aptm_usd);
+      const px=await priceForTransaction(Number(r.block_number),r.tx_timestamp,history);
+      if(px.price==null)continue;
       updates.push({
         ...r,
-        aptm_usd:price,
-        reward_usd:Number(r.reward_aptm||0)*price,
-        gas_usd:Number(r.gas_aptm||0)*price,
-        price_block:ph.block_number,
+        aptm_usd:px.price,
+        reward_usd:Number(r.reward_aptm||0)*px.price,
+        gas_usd:Number(r.gas_aptm||0)*px.price,
+        price_block:px.priceBlock,
+        price_source:px.source,
         updated_at:new Date().toISOString()
       });
     }
@@ -1185,13 +1235,15 @@ window.DAO1Project = (() => {
     let updated=0,missing=0;
     for(let i=0;i<pending.length;i++){
       if(jobToken!==transactionJobToken)return {updated,missing:pending.length-i};
-      const r=pending[i],ph=priceAtBlock(history,Number(r.block_number));
-      if(!ph){missing++;continue;}
-      const price=Number(ph.aptm_usd);
+      const r=pending[i];
+      const px=await priceForTransaction(Number(r.block_number),r.tx_timestamp,history);
+      if(px.price==null){missing++;continue;}
+      const price=px.price;
       const patch={
         aptm_usd:price,
         value_usd:Number(r.value_aptm||0)*price,
         gas_usd:Number(r.gas_aptm||0)*price,
+        price_source:px.source,
         updated_at:new Date().toISOString()
       };
       // Claims keep their separately calculated reward USD; only transaction value/gas are backfilled here.
@@ -1318,12 +1370,13 @@ window.DAO1Project = (() => {
       setTransactionStatus("loading",`Historische APTM-Kurse werden ergänzt…`,`${claimRows.length.toLocaleString("de-DE")} neue Claim(s) werden bewertet.`);
       const history=await ensurePricesForClaimBlocks(blocks,document.getElementById("dao1TransactionStatus"));
       for(const r of claimRows){
-        const ph=priceAtBlock(history,Number(r.block_number));
-        if(ph){
-          r.aptm_usd=Number(ph.aptm_usd);
+        const px=await priceForTransaction(Number(r.block_number),r.tx_timestamp,history);
+        if(px.price!=null){
+          r.aptm_usd=px.price;
           r.reward_usd=Number(r.reward_aptm||0)*r.aptm_usd;
           r.gas_usd=Number(r.gas_aptm||0)*r.aptm_usd;
-          r.price_block=ph.block_number;
+          r.price_block=px.priceBlock;
+          r.price_source=px.source;
         }
       }
       await saveClaimRows(claimRows);
@@ -1342,6 +1395,7 @@ window.DAO1Project = (() => {
             value_usd:r.aptm_usd==null?null:Number(tx?.value_aptm||0)*r.aptm_usd,
             gas_usd:r.gas_usd,
             claim_reward_usd:r.reward_usd,
+            price_source:r.price_source||null,
             updated_at:new Date().toISOString()
           })
           .eq("user_id",getContext?.().currentUser.id)
@@ -1509,7 +1563,7 @@ window.DAO1Project = (() => {
         <td>${r.tx_timestamp||"–"}</td>${txFilterWallet==="__all"?`<td><code>${r.wallet_address}</code></td>`:""}<td>${r.direction||"–"}</td><td>${r.method||"–"}</td>
         <td>${fmt(amount)}</td>
         <td>${claim?`<strong>${currentName||"NFT"}</strong><div class="meta">#${r.claim_nft_id}${currentSubtype?" · "+currentSubtype:""} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td>
-        <td>${r.aptm_usd==null?"–":fmt(r.aptm_usd)}</td><td>${usdVal?usd(usdVal):"–"}</td>
+        <td>${r.aptm_usd==null?"–":`${fmt(r.aptm_usd)}<div class="meta">${r.price_source||"historischer Poolpreis"}</div>`}</td><td>${usdVal?usd(usdVal):"–"}</td>
         <td>${fmt(r.gas_aptm)}</td><td>${r.gas_usd==null?"–":usd(Number(r.gas_usd))}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${r.tx_hash.slice(0,12)}…</a></td>
       </tr>`;
     }).join("")}</tbody></table></div></details>`;
@@ -1525,7 +1579,7 @@ window.DAO1Project = (() => {
     const rows=txVisibleRows();
     const wallet=allProjectWalletOptions().find(w=>String(w.id)===String(txFilterWallet));
     const walletLabel=txFilterWallet==="__all" ? "Alle Apertum-Wallets" : walletAddress(wallet);
-    const headers=["Timestamp","Wallet","Richtung","Methode","Tx Hash","Block","From","To","APTM","Claim NFT","NFT Typ","Claim Reward APTM","APTM/USD historisch","Wert USD","Gas APTM","Gas USD","Status"];
+    const headers=["Timestamp","Wallet","Richtung","Methode","Tx Hash","Block","From","To","APTM","Claim NFT","NFT Typ","Claim Reward APTM","APTM/USD historisch","Preisquelle","Wert USD","Gas APTM","Gas USD","Status"];
     let body=`<Row>${xCell("DAO1 / Apertum Transaktionshistorie")}</Row><Row>${xCell("Wallet")}${xCell(walletLabel)}</Row><Row>${xCell("Datumsbereich")}${xCell(`${txFilterFrom||"offen"} bis ${txFilterTo||"offen"}`)}</Row><Row>${xCell("Filter")}${xCell(`Typ: ${txFilterKind}; Klassifizierung: ${txFilterClass}; NFT: ${txFilterNft}`)}</Row><Row></Row>`;
     body+=`<Row>${headers.map(h=>xCell(h)).join("")}</Row>`;
     for(const r of rows){
@@ -1538,7 +1592,7 @@ window.DAO1Project = (() => {
         r.tx_timestamp,r.wallet_address,r.direction,r.method,r.tx_hash,Number(r.block_number||0),
         r.from_address,r.to_address,amt,claim?`${currentName||"NFT"} #${r.claim_nft_id}`:"",
         currentSubtype,claim?Number(r.claim_reward_aptm||0):0,
-        r.aptm_usd==null?"":Number(r.aptm_usd),valUsd||0,Number(r.gas_aptm||0),
+        r.aptm_usd==null?"":Number(r.aptm_usd),r.price_source||"",valUsd||0,Number(r.gas_aptm||0),
         r.gas_usd==null?"":Number(r.gas_usd),r.status
       ];
       body+=`<Row>${values.map(v=>xCell(v)).join("")}</Row>`;
@@ -1569,7 +1623,7 @@ window.DAO1Project = (() => {
       const currentName=claim?currentNameForClaim(r.claim_nft_id,r.claim_nft_name):"";
       const amt=Number(r.value_aptm||0)+(claim?Number(r.claim_reward_aptm||0):0);
       const valUsd=claim?Number(r.claim_reward_usd||0):Number(r.value_usd||0);
-      return `<tr><td>${xmlEsc(r.tx_timestamp)}</td><td><code>${xmlEsc(r.wallet_address)}</code></td><td>${xmlEsc(r.direction)}</td><td>${xmlEsc(r.method)}</td><td>${fmt(amt)}</td><td>${claim?`${xmlEsc(currentName||"NFT")} #${r.claim_nft_id}<div class="meta">${xmlEsc(currentSubtype)} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td><td>${r.aptm_usd==null?"–":fmt(r.aptm_usd)}</td><td>${valUsd?usd(valUsd):"–"}</td><td>${fmt(r.gas_aptm)}</td><td>${r.gas_usd==null?"–":usd(Number(r.gas_usd))}</td><td><code>${xmlEsc(r.tx_hash)}</code></td></tr>`;
+      return `<tr><td>${xmlEsc(r.tx_timestamp)}</td><td><code>${xmlEsc(r.wallet_address)}</code></td><td>${xmlEsc(r.direction)}</td><td>${xmlEsc(r.method)}</td><td>${fmt(amt)}</td><td>${claim?`${xmlEsc(currentName||"NFT")} #${r.claim_nft_id}<div class="meta">${xmlEsc(currentSubtype)} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td><td>${r.aptm_usd==null?"–":`${fmt(r.aptm_usd)}<div class="meta">${xmlEsc(r.price_source||"historischer Poolpreis")}</div>`}</td><td>${valUsd?usd(valUsd):"–"}</td><td>${fmt(r.gas_aptm)}</td><td>${r.gas_usd==null?"–":usd(Number(r.gas_usd))}</td><td><code>${xmlEsc(r.tx_hash)}</code></td></tr>`;
     }).join("")}
     </tbody></table><script>window.onload=()=>window.print();<\/script></body></html>`);
     w.document.close();
