@@ -103,6 +103,33 @@ window.WalletLPEngine = (() => {
     const row={user_id:c.currentUser.id,project_key:projectKey,chain_key:chain,wallet_address:norm(wallet),pair_address:norm(pair.address),lp_label:label(chain),token0_address:norm(pair.t0.address),token0_symbol:String(pair.t0.symbol||""),token0_decimals:pair.t0.decimals,token1_address:norm(pair.t1.address),token1_symbol:String(pair.t1.symbol||""),token1_decimals:pair.t1.decimals,...event,updated_at:new Date().toISOString()};
     const {error}=await c.sb.from("lp_history_events").upsert(row,{onConflict:"user_id,project_key,chain_key,wallet_address,pair_address,tx_hash,event_type"});if(error)throw error;
   }
+  async function loadPositionCache(projectKey,chain,wallet){
+    const c=ctx();if(!c.sb||!c.currentUser?.id)return [];
+    const {data,error}=await c.sb.from("lp_position_cache").select("*").eq("project_key",projectKey).eq("chain_key",chain).ilike("wallet_address",norm(wallet)).order("pair_address",{ascending:true});
+    if(error)throw error;return data||[];
+  }
+  async function replacePositionCache(projectKey,chain,wallet,rows){
+    const c=ctx();if(!c.sb||!c.currentUser?.id)return;
+    const wa=norm(wallet),now=new Date().toISOString(),scope=()=>c.sb.from("lp_position_cache");
+    if(!rows?.length){
+      const {error}=await scope().delete().eq("user_id",c.currentUser.id).eq("project_key",projectKey).eq("chain_key",chain).ilike("wallet_address",wa);if(error)throw error;return;
+    }
+    const payload=rows.map(r=>({
+      user_id:c.currentUser.id,project_key:projectKey,chain_key:chain,wallet_address:wa,
+      pair_address:norm(r.pair_address),lp_label:r.lp_label||label(chain),
+      token0_address:norm(r.token0_address),token0_symbol:r.token0_symbol||null,token0_decimals:Number(r.token0_decimals??18),
+      token1_address:norm(r.token1_address),token1_symbol:r.token1_symbol||null,token1_decimals:Number(r.token1_decimals??18),
+      current_lp:Number(r.current_lp||0),current_amount0:Number(r.current_amount0||0),current_amount1:Number(r.current_amount1||0),current_share:Number(r.current_share||0),current_usd:r.current_usd==null?null:Number(r.current_usd),
+      snapshot_date:r.snapshot_date||null,snapshot_lp:Number(r.snapshot_lp||0),snapshot_usd:r.snapshot_usd==null?null:Number(r.snapshot_usd),
+      refreshed_at:now,updated_at:now
+    }));
+    // Erst neue Werte sicher speichern. Alte Einträge werden erst danach entfernt, damit ein
+    // transienter Supabase-Fehler keinen bisher brauchbaren Positions-Cache löscht.
+    const {error}=await scope().upsert(payload,{onConflict:"user_id,project_key,chain_key,wallet_address,pair_address"});if(error)throw error;
+    const keep=new Set(payload.map(r=>norm(r.pair_address)));
+    const {data:existing,error:readError}=await scope().select("id,pair_address").eq("user_id",c.currentUser.id).eq("project_key",projectKey).eq("chain_key",chain).ilike("wallet_address",wa);if(readError)throw readError;
+    for(const oldRow of (existing||[])){if(!keep.has(norm(oldRow.pair_address))){const {error:delError}=await scope().delete().eq("id",oldRow.id).eq("user_id",c.currentUser.id);if(delError)throw delError;}}
+  }
   async function getScanState(projectKey,chain,wallet,scanType="lp_history_v2"){
     const c=ctx();if(!c.sb||!c.currentUser?.id)return 0;
     const {data,error}=await c.sb.from("project_scan_state").select("last_scanned_block").eq("project_key",projectKey).eq("chain_key",chain).ilike("wallet_address",norm(wallet)).eq("scan_type",scanType).maybeSingle();
@@ -115,5 +142,5 @@ window.WalletLPEngine = (() => {
   }
   async function latestBlock(chain){return Number(BigInt(await rpc(chain,"eth_blockNumber",[])));}
   function configure(fn){ctx=fn||ctx;}
-  return {configure,pairInfo,positions,label,meta,rpc,latestBlock,historyEventFromReceipt,loadHistory,saveHistory,getScanState,setScanState};
+  return {configure,pairInfo,positions,label,meta,rpc,latestBlock,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,replacePositionCache,getScanState,setScanState};
 })();

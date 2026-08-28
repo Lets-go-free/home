@@ -1237,7 +1237,7 @@ const HARDCODING_AUDIT_ITEMS = [
   {severity:"review", area:"Wallet-Maske", item:"EVM-Chain-Hinweis", detail:"Der sichtbare Hilfetext nennt Ethereum/BSC/Polygon/Arbitrum/Base/Avalanche/Apertum statisch. Darstellung sollte aus wallet_type=evm generiert werden."},
   {severity:"review", area:"Eigene sichere Token", item:"Chain-Auswahl", detail:"Die Auswahl enthält noch feste Chain-Optionen. Sie sollte aus public.chains erzeugt werden."},
   {severity:"review", area:"DeFi-Projekt UI", item:"Projektmodule", detail:"DAO1 und TLN/VOW besitzen jetzt eigene Unter-Tabs inklusive projektspezifischer Hilfe. Daten bleiben generisch in Supabase; die Modulnamen DAO1Project/TLNVOWProject sind bewusst projektspezifische Implementierung und können bei weiteren Projekten in ein gemeinsames Framework überführt werden."},
-  {severity:"keep", area:"Liquidity Pools", item:"Generischer DB-Cache", detail:"lp_history_events speichert unveränderliche Add-/Remove-Historie projekt- und chainübergreifend; project_scan_state hält den inkrementellen Wallet-Scanstand. Aktuelle LP-Balance, Reserven und Pool-Anteil bleiben bewusst live."},
+  {severity:"keep", area:"Liquidity Pools", item:"Generischer DB-Cache", detail:"lp_history_events speichert unveränderliche Add-/Remove-Historie projekt- und chainübergreifend; project_scan_state hält den inkrementellen Wallet-Scanstand. Seit Phase 2am speichert lp_position_cache zusätzlich den bewusst aktualisierten Positions-, Underlying-, Pool-Anteil-, USD- und 31.12.-Stand. Beim Öffnen der Projekt-Tabs sind damit keine RPC-/Explorer-Aufrufe nötig."},
   {severity:"keep", area:"Services", item:"Globale API-/App-URLs", detail:"CoinGecko, GeckoTerminal, GoPlus, Supabase-App-URL, CDN, revoke.cash und IPFS sind globale Services und keine Chain-Stammdaten."},
   {severity:"keep", area:"Credentials", item:"Frontend-Keys", detail:"Alchemy/PublicNode/NodeReal nicht in public.chains verschieben. Später separat über Proxy/Secret-Strategie lösen."}
 ];
@@ -1395,12 +1395,14 @@ async function saveAdminChain(id,isNew=false) {
 
 // Rein statische Übersicht, keine DB-Anbindung nötig - hier einfach die Liste pflegen.
 const ADMIN_IDEAS = [
-  { status: "done", title: "Projekt-Caches nur noch bewusst aktualisieren", desc: `Phase 2al: Die Liquidity-Pool-Tabs von DAO1 und TLN/VOW synchronisieren die Blockchain-Historie nicht mehr automatisch beim Öffnen.
+  { status: "done", title: "Projekt-Caches nur noch bewusst aktualisieren", desc: `Phase 2am: Die Liquidity-Pool-Tabs von DAO1 und TLN/VOW sind beim Öffnen vollständig cache-only.
 
-• Vorhandene Cache-Daten werden direkt angezeigt.
-• Erst der Button „Daten aktualisieren“ startet den inkrementellen LP/PCLP-Sync.
-• DAO1 → Transaktionen & Claims verwendet denselben klaren Button „Daten aktualisieren“; ohne Klick werden nur gespeicherte Daten gelesen.
-• Dadurch entstehen beim Navigieren zwischen Projekt-Tabs keine unnötigen Voll-/Folgescans.` },
+• Button „Daten aktualisieren“ erscheint sofort.
+• Beim Öffnen werden nur lp_position_cache und lp_history_events aus Supabase gelesen.
+• Keine versteckte Blocksuche, pairInfo/getReserves/balanceOf- oder Preisabfrage.
+• Erst „Daten aktualisieren“ liest Blockchain/Explorer und ersetzt danach den Positions-Cache.
+• DAO1 → Transaktionen & Claims bleibt ebenfalls manuell über „Daten aktualisieren“.
+• Dadurch entstehen beim Navigieren zwischen Projekt-Tabs keine unnötigen Blockchain-Scans.` },
   { status: "done", title: "Discovery-Metadaten + Solana-Default", desc: "Phase 2ag: Alle discovery_enabled Chains sind beim Öffnen standardmäßig aktiviert, inklusive Solana. Historisch gefundene EVM-/Apertum-Token laden Symbol, Name und Decimals direkt vom Contract und cachen die Metadaten lokal." },
   { status: "done", title: "Apertum Kurse vollständig on-chain", desc: `Phase 2al: Im Tab Vordefinierte Token gilt für die komplette Apertum-Chain ausschließlich On-Chain-Bewertung; die Preisermittlung verwendet dieselbe wAPTM/wUSDT-Referenz wie DAO1 und erkennt Wrapped-Tokens auch dann korrekt, wenn in predefined_tokens nur das Label statt eines separaten symbol-Felds gepflegt ist.
 
@@ -1414,7 +1416,7 @@ const ADMIN_IDEAS = [
 Der LP-Scanner nutzt den zentralen RPC-Resolver und prüft auf BSC/ETH ausschließlich die in Vordefinierte Token als lp_token klassifizierten TLN/VOW-Contracts. Auch die Alchemy-Transferabfrage wird auf genau diese Contract-Adressen eingeschränkt. Normale ERC-20-Token werden nicht mehr als mögliche LPs getestet.
 
 Für den klassifizierten Scan wird lp_history_v3_classified als eigener Scanstand verwendet, damit der erste saubere Lauf die definierte LP-Liste vollständig historisch erfasst.` },
-  { status: "done", title: "LP/PCLP-Historie persistent cachen", desc: "Phase 2af: generischer Supabase-Cache lp_history_events für DAO1/Apertum und TLN/VOW auf BSC/Ethereum. Erster Lauf liest die historische ERC-20-Transferhistorie; Folge-Läufe beginnen am gespeicherten project_scan_state mit Reorg-Überlappung. Add/Remove, LP-Delta, laufender LP-Saldo, Underlyings sowie historische USD-Werte werden dauerhaft gespeichert. Aktuelle LP-Balance, Reserven und Pool-Anteil bleiben live." },
+  { status: "done", title: "LP/PCLP-Historie und Positionen persistent cachen", desc: "Phase 2af speichert Add/Remove, LP-Delta, laufenden LP-Saldo, Underlyings und historische USD-Werte in lp_history_events. Seit Phase 2am speichert lp_position_cache zusätzlich den zuletzt bewusst aktualisierten aktuellen LP/PCLP-Bestand inklusive Underlyings, Pool-Anteil, USD-Wert und 31.12.-Vergleichsstand. Beim Öffnen der Projekt-Tabs werden ausschließlich diese Supabase-Caches gelesen." },
   {
     status: "in_progress",
     title: "Konfiguration aus HTML nach Supabase verlagern",
@@ -4345,37 +4347,73 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
 
 async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31",refresh=false){
   const el=document.getElementById(targetId);if(!el||!window.WalletLPEngine)return;
-  el.innerHTML=`<div class="status"><span class="loading">${refresh?'LP/PCLP-Daten werden aktualisiert…':'LP/PCLP-Daten werden aus dem Cache geladen…'}</span></div>`;
-  const rows=[],history=[];const targetEpoch=Math.floor(new Date(dateStr+'T23:59:59Z').getTime()/1000);let cacheNew=0,cacheErrors=[],cacheWarnings=[];
-  for(const chain of chains){let block=null;try{block=(await taxEvmBlockByTime(chain,targetEpoch)).block;}catch{}
+  const chainArg=chains.length===1?chains[0]:"";
+  const refreshButton=`<button class="secondary" style="margin-top:10px" onclick="refreshProjectLpData('${projectKey}','${chainArg}','${targetId}')">Daten aktualisieren</button>`;
+  // Der Button wird absichtlich VOR allen asynchronen Arbeiten gerendert. Beim normalen
+  // Öffnen folgen ausschließlich Supabase-Lesezugriffe; RPC/Explorer laufen nur bei refresh=true.
+  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden <strong>ausschließlich die zuletzt gespeicherten Supabase-Daten</strong> angezeigt. Blockchain, Explorer, Reserven, Kurse und Historie werden nur über „Daten aktualisieren“ neu abgefragt.</div>${refreshButton}<div class="status" style="margin-top:10px"><span class="loading">${refresh?'LP/PCLP-Daten werden aktualisiert…':'Gespeicherte LP/PCLP-Daten werden geladen…'}</span></div></div>`;
+
+  const rows=[],history=[];let cacheNew=0,cacheErrors=[],cacheWarnings=[],latestCacheRefresh=null;
+  const targetEpoch=Math.floor(new Date(dateStr+'T23:59:59Z').getTime()/1000);
+
+  for(const chain of chains){
+    // Wichtig: Stichtagsblock nur bei explizitem Refresh bestimmen. Das war der versteckte
+    // Blockchain-Aufruf, durch den der Tab zuvor trotz "Cache" lange hängen blieb.
+    let block=null;
+    if(refresh){try{block=(await taxEvmBlockByTime(chain,targetEpoch)).block;}catch(e){cacheWarnings.push(`${CHAIN_META[chain]?.label||chain}: Stichtagsblock ${dateStr} nicht ermittelbar (${e?.message||e})`);}}
+
     for(const w of wallets){
       const wa=walletAddressForChain(w,chain);if(!wa)continue;
       let sync={events:[],pairs:[]};
-      if(refresh){
-        try{sync=await syncProjectLpHistory(projectKey,chain,wa);cacheNew+=sync.newEvents||0;if(sync.warning)cacheWarnings.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${sync.warning}`);}catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${e.message}`);console.warn("LP-Cache Sync",chain,wa,e);try{sync.events=await window.WalletLPEngine.loadHistory(projectKey,chain,wa);}catch{}}
+
+      if(!refresh){
+        // Reiner DB-Modus: weder pairInfo(), balanceOf(), getReserves(), Blocksuche noch Preise.
+        try{
+          const [events,posRows]=await Promise.all([
+            window.WalletLPEngine.loadHistory(projectKey,chain,wa),
+            window.WalletLPEngine.loadPositionCache(projectKey,chain,wa)
+          ]);
+          sync.events=events||[];
+          for(const c of (posRows||[])){
+            const refreshed=c.refreshed_at?new Date(c.refreshed_at):null;if(refreshed&&(!latestCacheRefresh||refreshed>latestCacheRefresh))latestCacheRefresh=refreshed;
+            rows.push({
+              chain,w,
+              pair:{address:c.pair_address,t0:{address:c.token0_address,symbol:c.token0_symbol||'Token0',decimals:c.token0_decimals},t1:{address:c.token1_address,symbol:c.token1_symbol||'Token1',decimals:c.token1_decimals}},
+              cur:{balance:Number(c.current_lp||0),amount0:Number(c.current_amount0||0),amount1:Number(c.current_amount1||0),share:Number(c.current_share||0),usd:c.current_usd==null?null:Number(c.current_usd)},
+              histBal:Number(c.snapshot_lp||0),histUsd:c.snapshot_usd==null?null:Number(c.snapshot_usd),cached:true
+            });
+          }
+        }catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: Cache konnte nicht gelesen werden: ${e.message}`);}
       }else{
-        try{sync.events=await window.WalletLPEngine.loadHistory(projectKey,chain,wa);}catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: Cache konnte nicht gelesen werden: ${e.message}`);}
+        try{sync=await syncProjectLpHistory(projectKey,chain,wa);cacheNew+=sync.newEvents||0;if(sync.warning)cacheWarnings.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${sync.warning}`);}catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${e.message}`);console.warn("LP-Cache Sync",chain,wa,e);try{sync.events=await window.WalletLPEngine.loadHistory(projectKey,chain,wa);}catch{}}
+
+        const classifiedOnly=projectKey==="tln_vow"&&["bsc","eth"].includes(chain);
+        const currentCandidates=classifiedOnly?projectClassifiedLpAddresses(projectKey,chain):(walletData[w.id]?.[chain]?.tokens||[]).map(t=>t.address).filter(Boolean);
+        const candidates=new Set([...currentCandidates,...sync.events.map(e=>e.pair_address),...(sync.pairs||[]).map(p=>p.address)].filter(Boolean).map(a=>normalizeAddress(a,chain)));
+        const walletPositionCache=[];
+        for(const a of candidates){
+          let pair=null;try{pair=await window.WalletLPEngine.pairInfo(chain,a);}catch{}if(!pair||!lpPairBelongsToProject(pair,chain,projectKey))continue;
+          let cur=null;try{cur=(await window.WalletLPEngine.positions(chain,wa,[a]))[0]||null;}catch{}
+          let histBal=0,histPrice=null,histUsd=null;if(block){try{histBal=(await taxEvmTokenBalance(chain,wa,{address:a,decimals:pair.decimals},block)).amount;if(histBal>DUST_THRESHOLD){histPrice=await taxV2LpHistoricalPrice(chain,{address:a,decimals:pair.decimals,symbol:window.WalletLPEngine.label(chain)},block,dateStr);histUsd=histPrice?.price!=null?histBal*histPrice.price:null;}}catch(e){console.warn('LP historisch',chain,a,e);}}
+          if(cur||histBal>DUST_THRESHOLD||sync.events.some(e=>normalizeAddress(e.pair_address,chain)===a)){
+            rows.push({chain,w,pair,cur,histBal,histPrice,histUsd});
+            walletPositionCache.push({pair_address:pair.address,lp_label:window.WalletLPEngine.label(chain),token0_address:pair.t0.address,token0_symbol:pair.t0.symbol,token0_decimals:pair.t0.decimals,token1_address:pair.t1.address,token1_symbol:pair.t1.symbol,token1_decimals:pair.t1.decimals,current_lp:cur?.balance||0,current_amount0:cur?.amount0||0,current_amount1:cur?.amount1||0,current_share:cur?.share||0,current_usd:cur?.usd??null,snapshot_date:dateStr,snapshot_lp:histBal||0,snapshot_usd:histUsd});
+          }
+        }
+        try{await window.WalletLPEngine.replacePositionCache(projectKey,chain,wa,walletPositionCache);latestCacheRefresh=new Date();}catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: Positions-Cache konnte nicht gespeichert werden: ${e.message}`);}
       }
-      const classifiedOnly=projectKey==="tln_vow"&&["bsc","eth"].includes(chain);
-      const currentCandidates=classifiedOnly?projectClassifiedLpAddresses(projectKey,chain):(walletData[w.id]?.[chain]?.tokens||[]).map(t=>t.address).filter(Boolean);
-      const candidates=new Set([...currentCandidates,...sync.events.map(e=>e.pair_address),...(sync.pairs||[]).map(p=>p.address)].filter(Boolean).map(a=>normalizeAddress(a,chain)));
-      for(const a of candidates){
-        let pair=null;try{pair=await window.WalletLPEngine.pairInfo(chain,a);}catch{}if(!pair||!lpPairBelongsToProject(pair,chain,projectKey))continue;
-        let cur=null;try{cur=(await window.WalletLPEngine.positions(chain,wa,[a]))[0]||null;}catch{}
-        let histBal=0,histPrice=null;if(block){try{histBal=(await taxEvmTokenBalance(chain,wa,{address:a,decimals:pair.decimals},block)).amount;if(histBal>DUST_THRESHOLD)histPrice=await taxV2LpHistoricalPrice(chain,{address:a,decimals:pair.decimals,symbol:window.WalletLPEngine.label(chain)},block,dateStr);}catch(e){console.warn('LP historisch',chain,a,e);}}
-        if(cur||histBal>DUST_THRESHOLD||sync.events.some(e=>normalizeAddress(e.pair_address,chain)===a))rows.push({chain,w,pair,cur,histBal,histPrice});
-      }
+
       const running=new Map();
       for(const e of [...sync.events].sort((a,b)=>Number(a.block_number)-Number(b.block_number)||Number(a.log_index||0)-Number(b.log_index||0))){const k=normalizeAddress(e.pair_address,chain),saldo=(running.get(k)||0)+Number(e.lp_delta||0);running.set(k,saldo);history.push({...e,chain,w,running_balance:saldo});}
     }
   }
+
   const f=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:8}),u=n=>n==null?'–':'$'+Number(n).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}),dt=x=>x?new Date(x).toLocaleString('de-CH'):'–';
-  const currentTable=`<div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Pool</th><th>aktuell LP</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} LP</th><th>${dateStr} USD</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeAttr(r.w.label)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta">${r.pair.address}</div></td><td>${r.cur?f(r.cur.balance):'0'}</td><td>${r.cur?`<div>${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}</div><div>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}</div><div class="meta">Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–'}</td><td>${u(r.cur?.usd)}</td><td>${f(r.histBal)}</td><td>${r.histPrice?u(r.histBal*r.histPrice.price):'–'}</td></tr>`).join(''):'<tr><td colspan="8">Keine aktuellen oder historischen LP-Positionen gefunden.</td></tr>'}</tbody></table></div>`;
+  const currentTable=`<div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Pool</th><th>aktuell LP</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} LP</th><th>${dateStr} USD</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeAttr(r.w.label)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta">${r.pair.address}</div></td><td>${r.cur?f(r.cur.balance):'0'}</td><td>${r.cur?`<div>${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}</div><div>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}</div><div class="meta">Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–'}</td><td>${u(r.cur?.usd)}</td><td>${f(r.histBal)}</td><td>${u(r.histUsd??(r.histPrice?.price!=null?r.histBal*r.histPrice.price:null))}</td></tr>`).join(''):'<tr><td colspan="8">Noch keine gespeicherten LP-Positionen. Bitte „Daten aktualisieren“ ausführen.</td></tr>'}</tbody></table></div>`;
   const hrows=[...history].sort((a,b)=>Number(b.block_number)-Number(a.block_number)||Number(b.log_index||0)-Number(a.log_index||0));
   const historyTable=`<h3 style="margin-top:22px">Add-/Remove-Liquidity-Historie</h3><div class="chain-table-wrap lp-history-scroll"><table class="lp-history-table"><colgroup><col class="lp-col-time"><col class="lp-col-wallet"><col class="lp-col-chain"><col class="lp-col-action"><col class="lp-col-pool"><col class="lp-col-delta"><col class="lp-col-balance"><col class="lp-col-underlying"><col class="lp-col-usd"></colgroup><thead><tr><th>Zeit</th><th>Wallet</th><th>Chain</th><th>Aktion</th><th>Pool</th><th>LP Δ</th><th>LP-Saldo</th><th>Underlying</th><th>historischer USD-Wert</th></tr></thead><tbody>${hrows.length?hrows.map(e=>`<tr><td>${dt(e.tx_timestamp)}<div class="meta">Block ${e.block_number}</div></td><td>${escapeAttr(e.w.label)}</td><td>${escapeAttr(CHAIN_META[e.chain]?.label||e.chain)}</td><td>${e.event_type==='add'?'<span class="badge safe">Add</span>':'<span class="badge danger">Remove</span>'}</td><td><strong>${escapeAttr(e.lp_label||window.WalletLPEngine.label(e.chain))} ${escapeAttr(e.token0_symbol||'Token0')}/${escapeAttr(e.token1_symbol||'Token1')}</strong><div class="meta lp-address">${e.pair_address}</div></td><td>${Number(e.lp_delta)>0?'+':''}${f(e.lp_delta)}</td><td>${f(e.running_balance)}</td><td><div>${f(e.amount0)} ${escapeAttr(e.token0_symbol||'')}</div><div>${f(e.amount1)} ${escapeAttr(e.token1_symbol||'')}</div></td><td><strong>${u(e.value_usd)}</strong>${e.price_source?`<div class="meta lp-price-source">${escapeAttr(e.price_source)}</div>`:''}</td></tr>`).join(''):'<tr><td colspan="9">Noch keine Add-/Remove-Liquidity-Ereignisse im Cache.</td></tr>'}</tbody></table></div>`;
-  const chainArg=chains.length===1?chains[0]:"";
-  const refreshButton=`<button class="secondary" style="margin-top:10px" onclick="refreshProjectLpData('${projectKey}','${chainArg}','${targetId}')">Daten aktualisieren</button>`;
-  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden vorhandener DB-Cache und aktuelle LP-Positionen angezeigt. <strong>Die Blockchain-Historie wird nur noch über „Daten aktualisieren“ synchronisiert.</strong> Add-/Remove-Historie und historische USD-Werte bleiben dauerhaft in Supabase gespeichert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${refreshButton}${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheWarnings.length?`<div class="note" style="margin-top:8px"><strong>LP-Historie momentan nicht nachladbar:</strong> vorhandener Cache und Live-Bestände bleiben sichtbar. ${escapeAttr(cacheWarnings.join(' · '))}</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">${refresh?'Cache teilweise nicht aktualisiert':'Cache teilweise nicht lesbar'}: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${currentTable}${historyTable}`;
+  const cacheStand=latestCacheRefresh?`<div class="meta" style="margin-top:7px">Cache-Stand: ${latestCacheRefresh.toLocaleString('de-CH')}</div>`:'';
+  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden <strong>ausschließlich Supabase-Caches</strong> gelesen. Blockchain, Explorer, Reserven, Kurse und Historie werden nur über „Daten aktualisieren“ erneuert. Add-/Remove-Historie und Positionsdaten bleiben danach gespeichert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${refreshButton}${cacheStand}${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheWarnings.length?`<div class="note" style="margin-top:8px"><strong>LP-Historie momentan nicht vollständig nachladbar:</strong> ${escapeAttr(cacheWarnings.join(' · '))}</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">${refresh?'Cache teilweise nicht aktualisiert':'Cache teilweise nicht lesbar'}: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${currentTable}${historyTable}`;
 }
 window.renderProjectLpTab=renderProjectLpTab;
 window.refreshProjectLpData=function(projectKey,chain,targetId){
