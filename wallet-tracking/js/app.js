@@ -151,7 +151,8 @@ async function onLoggedIn(session) {
       chainConfig: CHAIN_CONFIG,
       predefinedTokenSymbols, predefinedTokenNames, predefinedTokenDecimals,
       currentPrice: priceForToken,
-      historicalPrice: taxHistoricalPrice
+      historicalPrice: taxHistoricalPrice,
+      sb, currentUser
     }));
   }
 
@@ -587,15 +588,29 @@ async function taxProjectReference(project,chain){
 }
 async function taxV2Pair(chain,a,b,block){
   const f=await taxDexFactory(chain);if(!f)return null;
-  const raw=await archiveRpc(chain,"eth_call",[{to:f,data:taxV2Iface.encodeFunctionData("getPair",[a,b])},taxBlockHex(block)]),[pair]=taxV2Iface.decodeFunctionResult("getPair",raw);
+  // Apertum: Factory/Pair-Metadaten werden aktuell gelesen; ob der Pool am Stichtag schon
+  // existierte, entscheidet anschließend der letzte Sync <= Stichtagsblock. Das vermeidet
+  // unzuverlässige historische eth_call-Zustände des öffentlichen Apertum-RPC.
+  const callBlock=chain==="apertum"?"latest":taxBlockHex(block);
+  const raw=await archiveRpc(chain,"eth_call",[{to:f,data:taxV2Iface.encodeFunctionData("getPair",[a,b])},callBlock]),[pair]=taxV2Iface.decodeFunctionResult("getPair",raw);
   return !pair||/^0x0{40}$/i.test(pair)?null:normalizeAddress(pair,chain);
+}
+const taxApertumSyncCache=new Map();
+async function taxApertumLastSync(pair,block){
+  const key=`${normalizeAddress(pair,"apertum")}|${Number(block)}`;if(taxApertumSyncCache.has(key))return taxApertumSyncCache.get(key);
+  const syncTopic="0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1",step=50000;
+  for(let to=Number(block);to>=0;to-=step){const from=Math.max(0,to-step+1);let logs=[];try{logs=await archiveRpc("apertum","eth_getLogs",[{address:pair,fromBlock:taxBlockHex(from),toBlock:taxBlockHex(to),topics:[syncTopic]}]);}catch(e){console.warn("Apertum Sync-Logs",pair,from,to,e);continue;}if(logs?.length){const l=logs[logs.length-1],x=String(l.data||"").replace(/^0x/,"");if(x.length>=128){const out={r0:BigInt("0x"+x.slice(0,64)),r1:BigInt("0x"+x.slice(64,128)),block:Number(BigInt(l.blockNumber))};taxApertumSyncCache.set(key,out);return out;}}}
+  taxApertumSyncCache.set(key,null);return null;
 }
 async function taxDirectV2Price(chain,base,quote,block,bd,qd){
   const pair=await taxV2Pair(chain,base,quote,block);if(!pair)return null;
-  const t0raw=await archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("token0",[])},taxBlockHex(block)]);
-  const rr=await archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("getReserves",[])},taxBlockHex(block)]);
-  const [t0]=taxV2Iface.decodeFunctionResult("token0",t0raw),[r0,r1]=taxV2Iface.decodeFunctionResult("getReserves",rr),is0=normalizeAddress(t0,chain)===normalizeAddress(base,chain);
-  const rb=Number(is0?r0:r1)/10**Number(bd),rq=Number(is0?r1:r0)/10**Number(qd);return rb>0&&rq>0?{price:rq/rb,pair}:null;
+  const token0Block=chain==="apertum"?"latest":taxBlockHex(block);
+  const t0raw=await archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("token0",[])},token0Block]);
+  let r0,r1,sourceBlock=block;
+  if(chain==="apertum"&&Number.isFinite(Number(block))){const st=await taxApertumLastSync(pair,Number(block));if(!st)return null;r0=st.r0;r1=st.r1;sourceBlock=st.block;}
+  else{const rr=await archiveRpc(chain,"eth_call",[{to:pair,data:taxV2Iface.encodeFunctionData("getReserves",[])},taxBlockHex(block)]);[r0,r1]=taxV2Iface.decodeFunctionResult("getReserves",rr);}
+  const [t0]=taxV2Iface.decodeFunctionResult("token0",t0raw),is0=normalizeAddress(t0,chain)===normalizeAddress(base,chain);
+  const rb=Number(is0?r0:r1)/10**Number(bd),rq=Number(is0?r1:r0)/10**Number(qd);return rb>0&&rq>0?{price:rq/rb,pair,sourceBlock}:null;
 }
 async function taxApertumLpStateFromEvents(pair,block){
   const syncTopic="0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
@@ -637,10 +652,9 @@ async function taxTlnVowHistoricalPrice(chain,asset,block,dateStr=""){
 async function taxApertumWrappedPrice(chain,asset,block,dateStr=""){
   if(chain!=="apertum"||!asset?.address)return null;
   const a=normalizeAddress(asset.address,chain),sym=String(asset.symbol||predefinedTokenSymbols[chain+"|"+a]||"").toUpperCase(),metaName=String(predefinedTokenNames[chain+"|"+a]||predefinedTokenLabels[chain+"|"+a]||"").toUpperCase();
-  if(sym==="WUSDT"||sym==="USDT"||metaName.includes("WUSDT")||metaName.includes("WRAPPED USDT"))return {price:1,source:"wUSDT Stablecoin-Parität · 1 USD"};
+  if(sym==="WUSDT"||sym==="USDT"||sym==="WUSDC"||sym==="USDC"||metaName.includes("WUSDT")||metaName.includes("WRAPPED USDT")||metaName.includes("WUSDC")||metaName.includes("WRAPPED USDC"))return {price:1,source:"Apertum Stablecoin-Parität · 1 USD"};
   const aptm=await taxHistoricalPrice(chain,"native",dateStr,block,true);
   if((sym==="WAPTM"||metaName.includes("WAPTM")||metaName.includes("WRAPPED APTM"))&&aptm)return {price:aptm.price,source:`wAPTM/APTM 1:1 · ${aptm.source}`};
-  const underlyingId=wrappedUnderlyingCoinGeckoId(chain,a);if(underlyingId&&underlyingId!=="apertum"&&underlyingId!=="tether"){const hp=await taxCoinGeckoPrice(underlyingId,dateStr);if(hp)return {price:hp.price,source:`Apertum Wrapped-Parität · ${hp.source}`};}
   const u=taxPredefinedBySymbol(chain,"WUSDT")||taxPredefinedBySymbol(chain,"USDT"),wa=taxPredefinedBySymbol(chain,"WAPTM");if(!u)return null;
   const bd=await taxTokenDecimalsCurrent(chain,asset),ud=await taxTokenDecimalsCurrent(chain,u),direct=await taxDirectV2Price(chain,a,u.address,block,bd,ud);if(direct)return {price:direct.price,source:`Apertum DEX ${sym||"Token"}/wUSDT · ${direct.pair} · Block ${block}`};
   if(wa&&aptm){const wd=await taxTokenDecimalsCurrent(chain,wa),via=await taxDirectV2Price(chain,a,wa.address,block,bd,wd);if(via)return {price:via.price*aptm.price,source:`Apertum DEX ${sym||"Token"}/wAPTM → APTM/USD · ${via.pair} · Block ${block}`};}
@@ -649,8 +663,12 @@ async function taxApertumWrappedPrice(chain,asset,block,dateStr=""){
 
 
 async function taxHistoricalPrice(chain,asset,dateStr,block=null,skipWrapped=false){
-  if(chain==="apertum"&&asset==="native"&&block!=null){try{const {data,error}=await sb.from("aptm_price_history").select("block_number,aptm_usd").eq("chain_key","apertum").lte("block_number",Number(block)).order("block_number",{ascending:false}).limit(1).maybeSingle();if(!error&&data&&Number(data.aptm_usd)>0)return {price:Number(data.aptm_usd),source:`Apertum DEX APTM/wUSDT · Block ${data.block_number}`};}catch{}}
+  if(chain==="apertum"&&asset==="native"&&block!=null){
+    try{const {data,error}=await sb.from("aptm_price_history").select("block_number,aptm_usd").eq("chain_key","apertum").lte("block_number",Number(block)).order("block_number",{ascending:false}).limit(1).maybeSingle();if(!error&&data&&Number(data.aptm_usd)>0)return {price:Number(data.aptm_usd),source:`Apertum DEX APTM/wUSDT · Block ${data.block_number}`};}catch{}
+    try{const wa=taxPredefinedBySymbol("apertum","WAPTM"),u=taxPredefinedBySymbol("apertum","WUSDT")||taxPredefinedBySymbol("apertum","USDT");if(wa&&u){const wd=await taxTokenDecimalsCurrent("apertum",wa),ud=await taxTokenDecimalsCurrent("apertum",u),d=await taxDirectV2Price("apertum",wa.address,u.address,Number(block),wd,ud);if(d)return {price:d.price,source:`Apertum DEX wAPTM/wUSDT · letzter Sync Block ${d.sourceBlock} (≤ ${block})`};}}catch(e){console.warn("APTM On-Chain-Historie",e);}
+  }
   if(block!=null&&asset!=="native"){try{const t=await taxTlnVowHistoricalPrice(chain,asset,block,dateStr);if(t)return t;if(!skipWrapped){const a=await taxApertumWrappedPrice(chain,asset,block,dateStr);if(a)return a;}if(asset?.address&&window.WalletLPEngine){const pi=await window.WalletLPEngine.pairInfo(chain,asset.address);if(pi){const lp=await taxV2LpHistoricalPrice(chain,{...asset,decimals:pi.decimals},block,dateStr);if(lp)return lp;}}}catch(e){console.warn("Historischer DEX-/LP-Preis:",chain,asset?.symbol,e);}}
+  if(chain==="apertum")return null; // Apertum wird bewusst vollständig on-chain bewertet; kein CoinGecko-Fallback.
   const id=asset==="native"?taxNativeCoinGeckoId(chain):(asset?.coingeckoId||null);return dateStr?taxCoinGeckoPrice(id,dateStr):null;
 }
 
@@ -1181,6 +1199,7 @@ const HARDCODING_AUDIT_ITEMS = [
   {severity:"review", area:"Wallet-Maske", item:"EVM-Chain-Hinweis", detail:"Der sichtbare Hilfetext nennt Ethereum/BSC/Polygon/Arbitrum/Base/Avalanche/Apertum statisch. Darstellung sollte aus wallet_type=evm generiert werden."},
   {severity:"review", area:"Eigene sichere Token", item:"Chain-Auswahl", detail:"Die Auswahl enthält noch feste Chain-Optionen. Sie sollte aus public.chains erzeugt werden."},
   {severity:"review", area:"DeFi-Projekt UI", item:"Projektmodule", detail:"DAO1 und TLN/VOW besitzen jetzt eigene Unter-Tabs inklusive projektspezifischer Hilfe. Daten bleiben generisch in Supabase; die Modulnamen DAO1Project/TLNVOWProject sind bewusst projektspezifische Implementierung und können bei weiteren Projekten in ein gemeinsames Framework überführt werden."},
+  {severity:"keep", area:"Liquidity Pools", item:"Generischer DB-Cache", detail:"lp_history_events speichert unveränderliche Add-/Remove-Historie projekt- und chainübergreifend; project_scan_state hält den inkrementellen Wallet-Scanstand. Aktuelle LP-Balance, Reserven und Pool-Anteil bleiben bewusst live."},
   {severity:"keep", area:"Services", item:"Globale API-/App-URLs", detail:"CoinGecko, GeckoTerminal, GoPlus, Supabase-App-URL, CDN, revoke.cash und IPFS sind globale Services und keine Chain-Stammdaten."},
   {severity:"keep", area:"Credentials", item:"Frontend-Keys", detail:"Alchemy/PublicNode/NodeReal nicht in public.chains verschieben. Später separat über Proxy/Secret-Strategie lösen."}
 ];
@@ -1338,6 +1357,7 @@ async function saveAdminChain(id,isNew=false) {
 
 // Rein statische Übersicht, keine DB-Anbindung nötig - hier einfach die Liste pflegen.
 const ADMIN_IDEAS = [
+  { status: "done", title: "LP/PCLP-Historie persistent cachen", desc: "Phase 2af: generischer Supabase-Cache lp_history_events für DAO1/Apertum und TLN/VOW auf BSC/Ethereum. Erster Lauf liest die historische ERC-20-Transferhistorie; Folge-Läufe beginnen am gespeicherten project_scan_state mit Reorg-Überlappung. Add/Remove, LP-Delta, laufender LP-Saldo, Underlyings sowie historische USD-Werte werden dauerhaft gespeichert. Aktuelle LP-Balance, Reserven und Pool-Anteil bleiben live." },
   {
     status: "in_progress",
     title: "Konfiguration aus HTML nach Supabase verlagern",
@@ -4085,22 +4105,96 @@ function renderResults() {
 
 // ============================================================
 
-async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31"){
-  const el=document.getElementById(targetId);if(!el||!window.WalletLPEngine)return;
-  el.innerHTML='<div class="status"><span class="loading">LP/PCLP-Positionen werden ermittelt…</span></div>';
-  const rows=[];const targetEpoch=Math.floor(new Date(dateStr+'T23:59:59Z').getTime()/1000);
-  for(const chain of chains){let block=null;try{block=(await taxEvmBlockByTime(chain,targetEpoch)).block;}catch{}
-    for(const w of wallets){const wa=walletAddressForChain(w,chain);if(!wa)continue;const currentCandidates=(walletData[w.id]?.[chain]?.tokens||[]).map(t=>t.address).filter(Boolean);let historical=[];try{historical=await historicalErc20Candidates(chain,wa,block);}catch{}
-      for(const a of [...new Set([...currentCandidates,...historical].map(x=>normalizeAddress(x,chain)))]){let pair=null;try{pair=await window.WalletLPEngine.pairInfo(chain,a);}catch{}if(!pair)continue;
-        const k0=chain+'|'+normalizeAddress(pair.t0.address,chain),k1=chain+'|'+normalizeAddress(pair.t1.address,chain);if(predefinedTokenProject[k0]!==projectKey&&predefinedTokenProject[k1]!==projectKey)continue;
-        let cur=null;try{cur=(await window.WalletLPEngine.positions(chain,wa,[a]))[0]||null;}catch{}
-        let histBal=0,histPrice=null;if(block){try{histBal=(await taxEvmTokenBalance(chain,wa,{address:a,decimals:pair.decimals},block)).amount;if(histBal>DUST_THRESHOLD)histPrice=await taxV2LpHistoricalPrice(chain,{address:a,decimals:pair.decimals,symbol:window.WalletLPEngine.label(chain)},block,dateStr);}catch(e){console.warn('LP historisch',chain,a,e);}}
-        if(cur||histBal>DUST_THRESHOLD)rows.push({chain,w,pair,cur,histBal,histPrice});
-      }
+async function lpWalletTransfersSince(chain,address,fromBlock=0){
+  const out=[],seen=new Set(),add=(x)=>{const k=`${x.contract}|${x.tx_hash}|${x.block_number}`;if(!seen.has(k)){seen.add(k);out.push(x);}};
+  const minBlock=Math.max(0,Number(fromBlock||0));
+  if(CHAIN_CONFIG[chain]?.discoveryProvider==="alchemy"){
+    for(const direction of ["fromAddress","toAddress"]){
+      let pageKey=null,pages=0;
+      do{
+        const q={fromBlock:taxBlockHex(minBlock),toBlock:"latest",category:["erc20"],withMetadata:false,excludeZeroValue:false,maxCount:"0x3e8"};
+        q[direction]=address;if(pageKey)q.pageKey=pageKey;
+        const r=await alchemyRpc(chain,"alchemy_getAssetTransfers",[q],"discovery");
+        for(const t of (r?.transfers||[])){const a=t.rawContract?.address,b=t.blockNum?Number(BigInt(t.blockNum)):0,h=t.hash;if(a&&h&&b>=minBlock)add({contract:normalizeAddress(a,chain),tx_hash:h,block_number:b});}
+        pageKey=r?.pageKey||null;pages++;
+      }while(pageKey&&pages<100);
+    }
+    return out;
+  }
+  const base=String(CHAIN_CONFIG[chain]?.discoveryApiBase||CHAIN_CONFIG[chain]?.balanceApiBase||"").replace(/\/$/,"");
+  if(base){
+    let url=`${base}/addresses/${address}/token-transfers?type=ERC-20`,pages=0,done=false;
+    while(url&&!done&&pages++<200){
+      const res=await fetch(url);if(!res.ok)throw new Error(`${chain}: Explorer HTTP ${res.status}`);const j=await res.json();
+      for(const t of (j.items||[])){const b=Number(t.block_number||0);if(b<minBlock){done=true;continue;}const a=t.token?.address,h=t.transaction_hash||t.tx_hash;if(a&&h)add({contract:normalizeAddress(a,chain),tx_hash:h,block_number:b});}
+      const np=j.next_page_params;url=(!done&&np)?`${base}/addresses/${address}/token-transfers?type=ERC-20&${new URLSearchParams(np)}`:null;
     }
   }
-  const f=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:8}),u=n=>n==null?'–':'$'+Number(n).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2});
-  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Automatisch erkannte V2-LP-Token. Auf BSC werden sie als <strong>PCLP</strong> bezeichnet. Historische Positionen werden auch angezeigt, wenn der heutige LP-Bestand 0 ist.</div></div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Pool</th><th>aktuell LP</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} LP</th><th>${dateStr} USD</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeAttr(r.w.label)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta">${r.pair.address}</div></td><td>${r.cur?f(r.cur.balance):'0'}</td><td>${r.cur?`${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}<br>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}<div class="meta">Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–'}</td><td>${u(r.cur?.usd)}</td><td>${f(r.histBal)}</td><td>${r.histPrice?u(r.histBal*r.histPrice.price):'–'}</td></tr>`).join(''):'<tr><td colspan="8">Keine aktuellen oder historischen LP-Positionen gefunden.</td></tr>'}</tbody></table></div>`;
+  return out;
+}
+
+function lpPairBelongsToProject(pair,chain,projectKey){
+  const k0=chain+'|'+normalizeAddress(pair.t0.address,chain),k1=chain+'|'+normalizeAddress(pair.t1.address,chain);
+  return predefinedTokenProject[k0]===projectKey||predefinedTokenProject[k1]===projectKey;
+}
+
+async function syncProjectLpHistory(projectKey,chain,walletAddress){
+  if(!window.WalletLPEngine)return {events:[],scanned:0,newEvents:0,pairs:[]};
+  const engine=window.WalletLPEngine,cached=await engine.loadHistory(projectKey,chain,walletAddress).catch(()=>[]);
+  const cachedPairs=new Set(cached.map(r=>normalizeAddress(r.pair_address,chain)).filter(Boolean));
+  let last=0;try{last=await engine.getScanState(projectKey,chain,walletAddress,"lp_history_v2");}catch{}
+  const latest=await engine.latestBlock(chain),from=last>0?Math.max(0,last-50):0;
+  const transfers=await lpWalletTransfersSince(chain,walletAddress,from);
+  const pairMap=new Map();
+  for(const a of cachedPairs){const p=await engine.pairInfo(chain,a);if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(a,p);}
+  for(const t of transfers){
+    const a=normalizeAddress(t.contract,chain);if(pairMap.has(a))continue;
+    const p=await engine.pairInfo(chain,a);if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(a,p);
+  }
+  let newEvents=0,earliestFailedBlock=null;const done=new Set(cached.map(r=>`${normalizeAddress(r.pair_address,chain)}|${String(r.tx_hash).toLowerCase()}|${r.event_type}`));
+  for(const t of transfers){
+    const pair=pairMap.get(normalizeAddress(t.contract,chain));if(!pair)continue;
+    const txKey=`${pair.address}|${String(t.tx_hash).toLowerCase()}`;
+    if([...done].some(k=>k.startsWith(txKey+'|')))continue;
+    try{
+      const ev=await engine.historyEventFromReceipt(chain,pair,walletAddress,t.tx_hash,t.block_number);if(!ev)continue;
+      const k=`${pair.address}|${String(t.tx_hash).toLowerCase()}|${ev.event_type}`;if(done.has(k))continue;
+      await engine.saveHistory(projectKey,chain,walletAddress,pair,ev);done.add(k);newEvents++;
+    }catch(e){earliestFailedBlock=earliestFailedBlock==null?Number(t.block_number):Math.min(earliestFailedBlock,Number(t.block_number));console.warn("LP-History Event",chain,t.tx_hash,e);}
+  }
+  // Bei einem transienten Receipt/RPC-Fehler den Scanstand bewusst VOR dem fehlgeschlagenen
+  // Block stehen lassen. Beim nächsten Öffnen wird dieser Bereich erneut versucht und kein
+  // historisches LP-Ereignis geht durch einen vorzeitig fortgeschriebenen Cache-Stand verloren.
+  const safeScannedBlock=earliestFailedBlock==null?latest:Math.max(0,earliestFailedBlock-1);
+  await engine.setScanState(projectKey,chain,walletAddress,safeScannedBlock,"lp_history_v2");
+  return {events:await engine.loadHistory(projectKey,chain,walletAddress),scanned:latest,newEvents,pairs:[...pairMap.values()]};
+}
+
+async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31"){
+  const el=document.getElementById(targetId);if(!el||!window.WalletLPEngine)return;
+  el.innerHTML='<div class="status"><span class="loading">LP/PCLP-Cache wird synchronisiert…</span></div>';
+  const rows=[],history=[];const targetEpoch=Math.floor(new Date(dateStr+'T23:59:59Z').getTime()/1000);let cacheNew=0,cacheErrors=[];
+  for(const chain of chains){let block=null;try{block=(await taxEvmBlockByTime(chain,targetEpoch)).block;}catch{}
+    for(const w of wallets){
+      const wa=walletAddressForChain(w,chain);if(!wa)continue;
+      let sync={events:[],pairs:[]};try{sync=await syncProjectLpHistory(projectKey,chain,wa);cacheNew+=sync.newEvents||0;}catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${e.message}`);console.warn("LP-Cache Sync",chain,wa,e);try{sync.events=await window.WalletLPEngine.loadHistory(projectKey,chain,wa);}catch{}}
+      const currentCandidates=(walletData[w.id]?.[chain]?.tokens||[]).map(t=>t.address).filter(Boolean);
+      const candidates=new Set([...currentCandidates,...sync.events.map(e=>e.pair_address),...(sync.pairs||[]).map(p=>p.address)].map(a=>normalizeAddress(a,chain)));
+      for(const a of candidates){
+        let pair=null;try{pair=await window.WalletLPEngine.pairInfo(chain,a);}catch{}if(!pair||!lpPairBelongsToProject(pair,chain,projectKey))continue;
+        let cur=null;try{cur=(await window.WalletLPEngine.positions(chain,wa,[a]))[0]||null;}catch{}
+        let histBal=0,histPrice=null;if(block){try{histBal=(await taxEvmTokenBalance(chain,wa,{address:a,decimals:pair.decimals},block)).amount;if(histBal>DUST_THRESHOLD)histPrice=await taxV2LpHistoricalPrice(chain,{address:a,decimals:pair.decimals,symbol:window.WalletLPEngine.label(chain)},block,dateStr);}catch(e){console.warn('LP historisch',chain,a,e);}}
+        if(cur||histBal>DUST_THRESHOLD||sync.events.some(e=>normalizeAddress(e.pair_address,chain)===a))rows.push({chain,w,pair,cur,histBal,histPrice});
+      }
+      const running=new Map();
+      for(const e of [...sync.events].sort((a,b)=>Number(a.block_number)-Number(b.block_number)||Number(a.log_index||0)-Number(b.log_index||0))){const k=normalizeAddress(e.pair_address,chain),saldo=(running.get(k)||0)+Number(e.lp_delta||0);running.set(k,saldo);history.push({...e,chain,w,running_balance:saldo});}
+    }
+  }
+  const f=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:8}),u=n=>n==null?'–':'$'+Number(n).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}),dt=x=>x?new Date(x).toLocaleString('de-CH'):'–';
+  const currentTable=`<div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Pool</th><th>aktuell LP</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} LP</th><th>${dateStr} USD</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeAttr(r.w.label)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta">${r.pair.address}</div></td><td>${r.cur?f(r.cur.balance):'0'}</td><td>${r.cur?`${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}<br>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}<div class="meta">Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–'}</td><td>${u(r.cur?.usd)}</td><td>${f(r.histBal)}</td><td>${r.histPrice?u(r.histBal*r.histPrice.price):'–'}</td></tr>`).join(''):'<tr><td colspan="8">Keine aktuellen oder historischen LP-Positionen gefunden.</td></tr>'}</tbody></table></div>`;
+  const hrows=[...history].sort((a,b)=>Number(b.block_number)-Number(a.block_number)||Number(b.log_index||0)-Number(a.log_index||0));
+  const historyTable=`<h3 style="margin-top:22px">Add-/Remove-Liquidity-Historie</h3><div class="chain-table-wrap"><table><thead><tr><th>Zeit</th><th>Wallet</th><th>Chain</th><th>Aktion</th><th>Pool</th><th>LP Δ</th><th>LP-Saldo</th><th>Underlying</th><th>historischer USD-Wert</th></tr></thead><tbody>${hrows.length?hrows.map(e=>`<tr><td>${dt(e.tx_timestamp)}<div class="meta">Block ${e.block_number}</div></td><td>${escapeAttr(e.w.label)}</td><td>${escapeAttr(CHAIN_META[e.chain]?.label||e.chain)}</td><td>${e.event_type==='add'?'<span class="badge safe">Add</span>':'<span class="badge">Remove</span>'}</td><td><strong>${escapeAttr(e.lp_label||window.WalletLPEngine.label(e.chain))} ${escapeAttr(e.token0_symbol||'Token0')}/${escapeAttr(e.token1_symbol||'Token1')}</strong><div class="meta">${e.pair_address}</div></td><td>${Number(e.lp_delta)>0?'+':''}${f(e.lp_delta)}</td><td>${f(e.running_balance)}</td><td>${f(e.amount0)} ${escapeAttr(e.token0_symbol||'')}<br>${f(e.amount1)} ${escapeAttr(e.token1_symbol||'')}</td><td>${u(e.value_usd)}${e.price_source?`<div class="meta">${escapeAttr(e.price_source)}</div>`:''}</td></tr>`).join(''):'<tr><td colspan="9">Noch keine Add-/Remove-Liquidity-Ereignisse im Cache.</td></tr>'}</tbody></table></div>`;
+  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Aktuelle LP-Bestände, Reserven und Pool-Anteile werden live gelesen. <strong>Add-/Remove-Historie und historische USD-Werte werden dauerhaft in Supabase gecached</strong>; nach dem ersten Vollscan werden nur neue Blockchain-Bereiche synchronisiert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">Cache teilweise nicht aktualisiert: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${currentTable}${historyTable}`;
 }
 window.renderProjectLpTab=renderProjectLpTab;
 
