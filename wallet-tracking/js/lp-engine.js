@@ -13,19 +13,33 @@ window.WalletLPEngine = (() => {
   const topicAddr=t=>"0x"+String(t||"").replace(/^0x/,"").slice(-40).toLowerCase();
   const rawValue=d=>BigInt(d&&d!=="0x"?d:"0x0");
 
-  async function rpc(chain,method,params=[]){
+  async function rpc(chain,method,params=[],mode="current"){
     const c=ctx();
-    // Bevorzugt den zentralen RPC-Resolver der Hauptanwendung. Der ergänzt z. B. bei
-    // Alchemy den Frontend-Key, nutzt Retry/Throttling und den rpc_url-Fallback korrekt.
+    // Aktuelle Reads laufen über den normalen Chain-RPC. Historische eth_call-Zustände
+    // laufen ausschließlich über den Archive-RPC. Diese Trennung entspricht der
+    // funktionierenden isolierten TLN/VOW-Testseite und verhindert Reverts aktueller
+    // balanceOf/token0/getReserves-Aufrufe auf einem ungeeigneten Archive-Endpunkt.
+    if(mode==="archive"&&typeof c.archiveRpc==="function")return c.archiveRpc(chain,method,params);
+    if(typeof c.currentRpc==="function")return c.currentRpc(chain,method,params);
     if(typeof c.rpc==="function")return c.rpc(chain,method,params);
-    const url=c.chainConfig?.[chain]?.archiveRpcUrl||c.chainConfig?.[chain]?.rpcUrl;
+    const url=(mode==="archive"?c.chainConfig?.[chain]?.archiveRpcUrl:null)||c.chainConfig?.[chain]?.rpcUrl;
     if(!url)throw new Error(`${chain}: RPC fehlt`);
     let r;try{r=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method,params})});}
     catch(e){throw new Error(`${chain}: RPC Netzwerkfehler bei ${method} (${e?.message||e||"Failed to fetch"})`);}
     if(!r.ok)throw new Error(`${chain}: RPC HTTP ${r.status} bei ${method}`);
     const j=await r.json();if(j.error)throw new Error(`${chain}: ${method}: ${j.error.message||"RPC Fehler"}`);return j.result;
   }
-  async function call(chain,to,data,block="latest"){return rpc(chain,"eth_call",[{to,data},block==="latest"?"latest":hex(block)]);}
+  async function call(chain,to,data,block="latest"){
+    const historical=block!=="latest";
+    try{return await rpc(chain,"eth_call",[{to,data},historical?hex(block):"latest"],historical?"archive":"current");}
+    catch(e){
+      // Ein Pool/Token kann am angefragten historischen Block noch nicht deployed gewesen
+      // sein. Solche Reverts sind kein fataler Wallet-Tracking-Fehler; der Aufrufer kann
+      // die historische Position dann als nicht verfügbar behandeln.
+      if(historical&&/execution reverted|missing revert data|returned no data|could not decode|BAD_DATA/i.test(String(e?.message||e)))return null;
+      throw e;
+    }
+  }
   async function meta(chain,address){
     const k=chain+"|"+norm(address);if(metaCache.has(k))return metaCache.get(k);
     const c=ctx(),pk=k;let m={address:norm(address),symbol:c.predefinedTokenSymbols?.[pk]||null,name:c.predefinedTokenNames?.[pk]||null,decimals:c.predefinedTokenDecimals?.[pk]};
@@ -41,6 +55,7 @@ window.WalletLPEngine = (() => {
         call(chain,address,V2.encodeFunctionData("getReserves",[]),block),call(chain,address,V2.encodeFunctionData("totalSupply",[]),block),
         call(chain,address,V2.encodeFunctionData("decimals",[]),block),call(chain,address,V2.encodeFunctionData("factory",[]),block)
       ]);
+      if([t0r,t1r,rr,tsr,dr,fr].some(x=>x==null))return null;
       const [t0]=V2.decodeFunctionResult("token0",t0r),[t1]=V2.decodeFunctionResult("token1",t1r),[r0,r1]=V2.decodeFunctionResult("getReserves",rr),[supply]=V2.decodeFunctionResult("totalSupply",tsr),[dec]=V2.decodeFunctionResult("decimals",dr),[factory]=V2.decodeFunctionResult("factory",fr);
       if(!t0||!t1||norm(t0)===norm(t1))return null;
       const [m0,m1]=await Promise.all([meta(chain,t0),meta(chain,t1)]);
@@ -49,7 +64,7 @@ window.WalletLPEngine = (() => {
     }catch{return null;}
   }
   function label(chain){return chain==="bsc"?"PCLP":chain==="apertum"?"DAO1-LP":"LP";}
-  async function balance(chain,pair,wallet,block="latest"){const raw=await call(chain,pair.address,V2.encodeFunctionData("balanceOf",[wallet]),block);const [b]=V2.decodeFunctionResult("balanceOf",raw);return Number(ethers.formatUnits(b,pair.decimals));}
+  async function balance(chain,pair,wallet,block="latest"){const raw=await call(chain,pair.address,V2.encodeFunctionData("balanceOf",[wallet]),block);if(raw==null)return 0;const [b]=V2.decodeFunctionResult("balanceOf",raw);return Number(ethers.formatUnits(b,pair.decimals));}
   async function valuePosition(chain,pair,bal,block="latest",dateStr=null){
     const share=pair.total>0?bal/pair.total:0,a0=pair.r0*share,a1=pair.r1*share,c=ctx();let p0=null,p1=null;
     if(block!=="latest"&&dateStr&&c.historicalPrice){p0=await c.historicalPrice(chain,{address:pair.t0.address,symbol:pair.t0.symbol,decimals:pair.t0.decimals},dateStr,block).catch(()=>null);p1=await c.historicalPrice(chain,{address:pair.t1.address,symbol:pair.t1.symbol,decimals:pair.t1.decimals},dateStr,block).catch(()=>null);}

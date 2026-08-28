@@ -152,7 +152,8 @@ async function onLoggedIn(session) {
       predefinedTokenSymbols, predefinedTokenNames, predefinedTokenDecimals,
       currentPrice: priceForToken,
       historicalPrice: taxHistoricalPrice,
-      rpc: archiveRpc,
+      currentRpc: (chain, method, params) => evmRpcCall(configuredRpcUrl(chain), method, params),
+      archiveRpc,
       sb, currentUser
     }));
   }
@@ -214,19 +215,27 @@ async function onLoggedIn(session) {
   renderNftWalletSelect();
   await loadNftCacheFromDb();
 
-  // Zuerst letzten automatischen Snapshot sofort anzeigen, damit die Seite ohne
-  // Wartezeit gefüllt ist. Danach werden die Bestände automatisch kostenlos live
-  // aktualisiert (native Coins + vordefinierte/eigene sichere Token).
+  // Zuerst den letzten automatisierten Snapshot sofort anzeigen. Eine automatische
+  // Live-Aktualisierung erfolgt höchstens einmal pro Kalendertag. Ist der Cache bereits
+  // von heute, bleibt es beim gespeicherten Stand; weitere Aktualisierungen an diesem
+  // Tag erfolgen ausschließlich manuell über „Jetzt live aktualisieren“.
   const cachedAt = await loadFromAutomatedCache();
+  const autoRefreshNeeded = wallets.length > 0 && !isSameLocalCalendarDay(cachedAt, new Date());
   if (cachedAt) {
     await loadNativePrices();
     renderResults();
     renderSafeTokenTable();
     renderCustomTokenList();
     renderAllocationChart();
-    renderCacheStatusNote("Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – Live-Aktualisierung startet…");
+    renderCacheStatusNote(
+      autoRefreshNeeded
+        ? "Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – tägliche Live-Aktualisierung startet…"
+        : "Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – heute bereits live aktualisiert. Weitere Aktualisierungen nur manuell."
+    );
   } else {
-    renderCacheStatusNote("Noch kein gespeicherter Stand – Live-Aktualisierung startet…");
+    renderCacheStatusNote(wallets.length > 0
+      ? "Noch kein gespeicherter Stand – erste tägliche Live-Aktualisierung startet…"
+      : "Noch kein gespeicherter Stand.");
   }
 
   showTab(wallets.length === 0 ? "wallets" : "tracking");
@@ -244,11 +253,12 @@ async function onLoggedIn(session) {
     }).catch(e => console.warn("TLN/VOW-Projektpreise:", e));
   }
 
-  // Nicht blockierend: Snapshot ist bereits sichtbar, Live-Daten kommen danach.
-  if (wallets.length > 0) {
+  // Nicht blockierend: Nur wenn der automatisierte Cache noch nicht von heute ist,
+  // wird genau einmal täglich automatisch live aktualisiert. Danach nur noch manuell.
+  if (autoRefreshNeeded) {
     loadAll({ automatic: true }).catch(e => {
       console.error("Automatische Live-Aktualisierung:", e);
-      renderCacheStatusNote("Automatische Live-Aktualisierung fehlgeschlagen – letzter gespeicherter Stand bleibt sichtbar.");
+      renderCacheStatusNote("Tägliche automatische Live-Aktualisierung fehlgeschlagen – letzter gespeicherter Stand bleibt sichtbar. Erneut aktualisieren bitte manuell.");
     });
   }
 }
@@ -3617,6 +3627,15 @@ function setAllSnapshotsVisible(visible) {
 function fmtSnapshotDateTime(iso) {
   const d = new Date(iso);
   return d.toLocaleDateString('de-CH') + ", " + d.toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
+}
+
+function isSameLocalCalendarDay(value, reference = new Date()) {
+  if (!value) return false;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getFullYear() === reference.getFullYear() &&
+    d.getMonth() === reference.getMonth() &&
+    d.getDate() === reference.getDate();
 }
 
 function renderSnapshotManager() {

@@ -1,3 +1,31 @@
+
+## Phase 2ap – automatische Live-Aktualisierung 1× täglich
+
+- Beim Login wird weiterhin zuerst der letzte automatisierte Supabase-Snapshot angezeigt.
+- Eine automatische Live-Aktualisierung startet nur, wenn dieser Cache noch nicht vom aktuellen lokalen Kalendertag stammt.
+- Ist heute bereits erfolgreich live aktualisiert worden, erfolgt beim erneuten Login keine weitere automatische Blockchain-Abfrage.
+- Weitere Aktualisierungen am selben Tag erfolgen ausschließlich über „Jetzt live aktualisieren“.
+- Der erfolgreiche manuelle Live-Lauf ersetzt ebenfalls den automatisierten Cache-Snapshot und gilt damit als heutiger Stand.
+- Keine neue SQL-Migration erforderlich. Migrationen `001` bis `017` nicht erneut ausführen, sofern bereits erfolgt.
+
+# Wallet Tracking
+
+Stand: **28.08.2026, 19:09 Uhr (Europe/Paris)** · **Phase 2ap**
+
+## Phase 2ao – RPC-Fix TLN/VOW BSC LP/Staking
+
+Korrektur zu Phase 2an: Der LP-Engine war versehentlich für **alle** JSON-RPC-Aufrufe an `archiveRpc()` gekoppelt. Dadurch liefen auch aktuelle `balanceOf`, `token0`, `token1`, `getReserves`, `totalSupply` und `factory`-Reads über den Archive-Endpunkt. Bei einzelnen BSC-Contracts führte das zu `execution reverted`, obwohl die isolierte Testseite mit dem normalen BSC-RPC funktionierte.
+
+Neu gilt:
+
+- aktuelle LP-/Staking-Reads → normaler `public.chains.rpc_url` über `configuredRpcUrl()`;
+- historische `eth_call`-Reads → Archive-/History-RPC;
+- historisches `execution reverted` bei einem Block, an dem Pool/Contract noch nicht verfügbar war, wird als **historisch nicht verfügbar** behandelt und bricht den gesamten Lauf nicht ab.
+
+**Keine neue SQL-Migration für Phase 2ao.** Falls `017-bsc-tln-vow-staking.sql` bereits ausgeführt wurde, **nicht erneut ausführen**.
+
+---
+
 # Wallet Tracking
 
 Aktueller Stand: **28.08.2026, 18:39 Uhr CEST · Phase 2an**
