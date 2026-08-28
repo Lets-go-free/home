@@ -573,9 +573,27 @@ function taxNativeCoinGeckoId(chain){
 const taxDexFactoryCache=new Map(),taxProjectReferenceCache=new Map();
 const taxV2Iface=new ethers.Interface(["function getPair(address,address) view returns (address)","function token0() view returns (address)","function getReserves() view returns (uint112 reserve0,uint112 reserve1,uint32 blockTimestampLast)"]);
 function taxPredefinedBySymbol(chain,symbol){
-  const wanted=String(symbol||"").toUpperCase();
-  for(const [k,sym] of Object.entries(predefinedTokenSymbols)){if(!k.startsWith(chain+"|"))continue;if(String(sym||"").toUpperCase()!==wanted)continue;const a=k.slice(chain.length+1);return {address:a,symbol:sym,decimals:predefinedTokenDecimals[k],coingeckoId:predefinedTokenCoinGeckoIds[k]||null};}
+  const wanted=String(symbol||"").trim().toUpperCase();
+  const prefix=chain+"|";
+  const keys=new Set([
+    ...Object.keys(predefinedTokenSymbols),
+    ...Object.keys(predefinedTokenLabels),
+    ...Object.keys(predefinedTokenNames),
+    ...Object.keys(predefinedTokenDecimals)
+  ].filter(k=>k.startsWith(prefix)));
+  for(const k of keys){
+    const sym=String(predefinedTokenSymbols[k]||"").trim();
+    const label=String(predefinedTokenLabels[k]||"").trim();
+    const name=String(predefinedTokenNames[k]||"").trim();
+    if(![sym,label,name].some(v=>v.toUpperCase()===wanted))continue;
+    const a=k.slice(prefix.length);
+    return {address:a,symbol:sym||label||name||wanted,decimals:predefinedTokenDecimals[k],coingeckoId:predefinedTokenCoinGeckoIds[k]||null};
+  }
   return null;
+}
+function predefinedTokenTicker(chain,address){
+  const key=chain+"|"+normalizeAddress(address,chain);
+  return String(predefinedTokenSymbols[key]||predefinedTokenLabels[key]||predefinedTokenNames[key]||"").trim();
 }
 async function taxDexFactory(chain){
   if(taxDexFactoryCache.has(chain))return taxDexFactoryCache.get(chain);
@@ -1377,17 +1395,25 @@ async function saveAdminChain(id,isNew=false) {
 
 // Rein statische Übersicht, keine DB-Anbindung nötig - hier einfach die Liste pflegen.
 const ADMIN_IDEAS = [
+  { status: "done", title: "Projekt-Caches nur noch bewusst aktualisieren", desc: `Phase 2al: Die Liquidity-Pool-Tabs von DAO1 und TLN/VOW synchronisieren die Blockchain-Historie nicht mehr automatisch beim Öffnen.
+
+• Vorhandene Cache-Daten werden direkt angezeigt.
+• Erst der Button „Daten aktualisieren“ startet den inkrementellen LP/PCLP-Sync.
+• DAO1 → Transaktionen & Claims verwendet denselben klaren Button „Daten aktualisieren“; ohne Klick werden nur gespeicherte Daten gelesen.
+• Dadurch entstehen beim Navigieren zwischen Projekt-Tabs keine unnötigen Voll-/Folgescans.` },
   { status: "done", title: "Discovery-Metadaten + Solana-Default", desc: "Phase 2ag: Alle discovery_enabled Chains sind beim Öffnen standardmäßig aktiviert, inklusive Solana. Historisch gefundene EVM-/Apertum-Token laden Symbol, Name und Decimals direkt vom Contract und cachen die Metadaten lokal." },
-  { status: "done", title: "Apertum Kurse vollständig on-chain", desc: `Phase 2aj: Im Tab Vordefinierte Token gilt für die komplette Apertum-Chain ausschließlich On-Chain-Bewertung.
+  { status: "done", title: "Apertum Kurse vollständig on-chain", desc: `Phase 2al: Im Tab Vordefinierte Token gilt für die komplette Apertum-Chain ausschließlich On-Chain-Bewertung; die Preisermittlung verwendet dieselbe wAPTM/wUSDT-Referenz wie DAO1 und erkennt Wrapped-Tokens auch dann korrekt, wenn in predefined_tokens nur das Label statt eines separaten symbol-Felds gepflegt ist.
 
 • Nativer APTM wird 1:1 über wAPTM/wUSDT bewertet.
 • wUSDT/wUSDC werden als 1 USD behandelt.
 • Weitere Token nutzen direkt TOKEN/wUSDT oder TOKEN/wAPTM → wUSDT.
 • archive_rpc_url ist optional; falls leer, wird wie im DB-Schema vorgesehen rpc_url verwendet.
 • CoinGecko/GeckoTerminal werden für Apertum nicht als Fallback verwendet.` },
-  { status: "done", title: "TLN/VOW Liquidity Pools nach Chain getrennt", desc: `Phase 2aj: Eigene Unter-Tabs für BNB Smart Chain (BSC/PCLP) und Ethereum (ETH/LP).
+  { status: "done", title: "TLN/VOW Liquidity Pools nach Chain getrennt", desc: `Phase 2ak: Eigene Unter-Tabs für BNB Smart Chain (BSC/PCLP) und Ethereum (ETH/LP).
 
-Der LP-Scanner nutzt nun denselben zentralen RPC-Resolver wie die Hauptanwendung. Damit werden insbesondere Alchemy-Archive-RPCs inklusive Key-Auflösung korrekt verwendet. Providerfehler lassen vorhandene Cache-Daten sichtbar und schreiben den Scanstand nicht fälschlich weiter.` },
+Der LP-Scanner nutzt den zentralen RPC-Resolver und prüft auf BSC/ETH ausschließlich die in Vordefinierte Token als lp_token klassifizierten TLN/VOW-Contracts. Auch die Alchemy-Transferabfrage wird auf genau diese Contract-Adressen eingeschränkt. Normale ERC-20-Token werden nicht mehr als mögliche LPs getestet.
+
+Für den klassifizierten Scan wird lp_history_v3_classified als eigener Scanstand verwendet, damit der erste saubere Lauf die definierte LP-Liste vollständig historisch erfasst.` },
   { status: "done", title: "LP/PCLP-Historie persistent cachen", desc: "Phase 2af: generischer Supabase-Cache lp_history_events für DAO1/Apertum und TLN/VOW auf BSC/Ethereum. Erster Lauf liest die historische ERC-20-Transferhistorie; Folge-Läufe beginnen am gespeicherten project_scan_state mit Reorg-Überlappung. Add/Remove, LP-Delta, laufender LP-Saldo, Underlyings sowie historische USD-Werte werden dauerhaft gespeichert. Aktuelle LP-Balance, Reserven und Pool-Anteil bleiben live." },
   {
     status: "in_progress",
@@ -2361,8 +2387,8 @@ let predefinedTokenDecimals = {};     // "chain|adresse" -> decimals
 // einer DEX gehandelt werden. Kein API-Key nötig, kostenlos. LP-Token und Token ohne
 // eigenen Handelsplatz liefern hier bewusst keinen Kurs (kein Rätselraten).
 
-async function apertumCurrentDirectPrice(base,quote,bd,qd){
-  const chain="apertum",pair=await taxV2Pair(chain,base,quote,null);if(!pair)return null;
+async function apertumCurrentDirectPrice(base,quote,bd,qd,explicitPair=null){
+  const chain="apertum",pair=explicitPair?normalizeAddress(explicitPair,chain):await taxV2Pair(chain,base,quote,null);if(!pair)return null;
   const iface=new ethers.Interface(["function token0() view returns (address)","function getReserves() view returns (uint112,uint112,uint32)"]);
   const [t0raw,rr]=await Promise.all([
     archiveRpc(chain,"eth_call",[{to:pair,data:iface.encodeFunctionData("token0",[])},"latest"]),
@@ -2374,20 +2400,27 @@ async function apertumCurrentDirectPrice(base,quote,bd,qd){
 }
 async function loadApertumCurrentPrices(){
   const chain="apertum",u=taxPredefinedBySymbol(chain,"WUSDT")||taxPredefinedBySymbol(chain,"USDT"),wa=taxPredefinedBySymbol(chain,"WAPTM");
-  if(!u||!wa)return;
+  if(!u||!wa){console.warn("Apertum Live-Kurse: wAPTM oder wUSDT nicht in predefined_tokens gefunden");return;}
   const ud=await taxTokenDecimalsCurrent(chain,u),wd=await taxTokenDecimalsCurrent(chain,wa);
-  const aptmLeg=await apertumCurrentDirectPrice(wa.address,u.address,wd,ud);
-  const aptm=aptmLeg?.price;if(!(aptm>0))return;
-  // Apertum ist vollständig on-chain: auch der native APTM-Kurs kommt 1:1 über wAPTM/wUSDT.
+  // Gleiche Referenz wie im DAO1-Projekt: der validierte wAPTM/wUSDT-Pool wird direkt
+  // verwendet. Damit hängt der Basispreis nicht von Symbolfeldern oder der Factory-Suche ab.
+  const referencePair=window.DAO1Project?.getAptmUsdtPairAddress?.()||null;
+  let aptmLeg=null;
+  try{aptmLeg=await apertumCurrentDirectPrice(wa.address,u.address,wd,ud,referencePair);}catch(e){console.warn("Apertum Referenzpool direkt",e);}
+  if(!aptmLeg){
+    try{aptmLeg=await apertumCurrentDirectPrice(wa.address,u.address,wd,ud);}catch(e){console.warn("Apertum Referenzpool via Factory",e);}
+  }
+  const aptm=aptmLeg?.price;if(!(aptm>0)){console.warn("Apertum Live-Kurse: kein wAPTM/wUSDT-Preis ermittelbar");return;}
   nativePrices[chain]={price:aptm,change24h:undefined,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`};
   tokenPrices[chain+"|"+normalizeAddress(u.address,chain)]={price:1,source:"Apertum DEX · Stablecoin 1 USD"};
   tokenPrices[chain+"|"+normalizeAddress(wa.address,chain)]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`};
-  const addresses=[...new Set([...(SAFE_ADDRESSES[chain]||[]),...Object.keys(predefinedTokenSymbols).filter(k=>k.startsWith(chain+"|")).map(k=>k.slice(chain.length+1))])];
-  for(const addr of addresses){
-    const key=chain+"|"+addr,sym=String(predefinedTokenSymbols[key]||"").toUpperCase();
+  const prefix=chain+"|";
+  const addresses=[...new Set([...(SAFE_ADDRESSES[chain]||[]),...Object.keys(predefinedTokenLabels).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length)),...Object.keys(predefinedTokenSymbols).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length))])];
+  for(const rawAddr of addresses){
+    const addr=normalizeAddress(rawAddr,chain),key=chain+"|"+addr,sym=predefinedTokenTicker(chain,addr).toUpperCase();
     if(["WUSDT","USDT","WUSDC","USDC"].includes(sym)){tokenPrices[key]={price:1,source:"Apertum DEX · Stablecoin 1 USD"};continue;}
     if(sym==="WAPTM"){tokenPrices[key]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`};continue;}
-    const asset={address:addr,decimals:predefinedTokenDecimals[key]};const bd=await taxTokenDecimalsCurrent(chain,asset);
+    const asset={address:addr,symbol:sym,decimals:predefinedTokenDecimals[key]};const bd=await taxTokenDecimalsCurrent(chain,asset);
     try{
       const direct=await apertumCurrentDirectPrice(addr,u.address,bd,ud);
       const via=await apertumCurrentDirectPrice(addr,wa.address,bd,wd);
@@ -4205,17 +4238,22 @@ function renderResults() {
 
 // ============================================================
 
-async function lpWalletTransfersSince(chain,address,fromBlock=0){
+async function lpWalletTransfersSince(chain,address,fromBlock=0,contractAddresses=null){
   const out=[],seen=new Set(),add=(x)=>{const k=`${x.contract}|${x.tx_hash}|${x.block_number}`;if(!seen.has(k)){seen.add(k);out.push(x);}};
   const minBlock=Math.max(0,Number(fromBlock||0));
+  const filterSet=contractAddresses?.length?new Set(contractAddresses.map(a=>normalizeAddress(a,chain))):null;
   if(CHAIN_CONFIG[chain]?.discoveryProvider==="alchemy"){
     for(const direction of ["fromAddress","toAddress"]){
       let pageKey=null,pages=0;
       do{
         const q={fromBlock:taxBlockHex(minBlock),toBlock:"latest",category:["erc20"],withMetadata:false,excludeZeroValue:false,maxCount:"0x3e8"};
-        q[direction]=address;if(pageKey)q.pageKey=pageKey;
+        q[direction]=address;
+        // Für klassifizierte Projekt-LPs direkt bei Alchemy auf genau diese Contracts begrenzen.
+        // Dadurch werden normale ERC-20-Token gar nicht mehr als mögliche V2-Paare geprüft.
+        if(filterSet?.size)q.contractAddresses=[...filterSet];
+        if(pageKey)q.pageKey=pageKey;
         const r=await alchemyRpc(chain,"alchemy_getAssetTransfers",[q],"discovery");
-        for(const t of (r?.transfers||[])){const a=t.rawContract?.address,b=t.blockNum?Number(BigInt(t.blockNum)):0,h=t.hash;if(a&&h&&b>=minBlock)add({contract:normalizeAddress(a,chain),tx_hash:h,block_number:b});}
+        for(const t of (r?.transfers||[])){const a=t.rawContract?.address,b=t.blockNum?Number(BigInt(t.blockNum)):0,h=t.hash,na=a?normalizeAddress(a,chain):null;if(na&&h&&b>=minBlock&&(!filterSet||filterSet.has(na)))add({contract:na,tx_hash:h,block_number:b});}
         pageKey=r?.pageKey||null;pages++;
       }while(pageKey&&pages<100);
     }
@@ -4226,11 +4264,22 @@ async function lpWalletTransfersSince(chain,address,fromBlock=0){
     let url=`${base}/addresses/${address}/token-transfers?type=ERC-20`,pages=0,done=false;
     while(url&&!done&&pages++<200){
       const res=await fetch(url);if(!res.ok)throw new Error(`${chain}: Explorer HTTP ${res.status}`);const j=await res.json();
-      for(const t of (j.items||[])){const b=Number(t.block_number||0);if(b<minBlock){done=true;continue;}const a=t.token?.address,h=t.transaction_hash||t.tx_hash;if(a&&h)add({contract:normalizeAddress(a,chain),tx_hash:h,block_number:b});}
+      for(const t of (j.items||[])){const b=Number(t.block_number||0);if(b<minBlock){done=true;continue;}const a=t.token?.address,h=t.transaction_hash||t.tx_hash,na=a?normalizeAddress(a,chain):null;if(na&&h&&(!filterSet||filterSet.has(na)))add({contract:na,tx_hash:h,block_number:b});}
       const np=j.next_page_params;url=(!done&&np)?`${base}/addresses/${address}/token-transfers?type=ERC-20&${new URLSearchParams(np)}`:null;
     }
   }
   return out;
+}
+
+
+function projectClassifiedLpAddresses(projectKey,chain){
+  const out=[];
+  for(const [key,project] of Object.entries(predefinedTokenProject||{})){
+    if(project!==projectKey||predefinedTokenCategory?.[key]!=="lp_token")continue;
+    const sep=key.indexOf("|");if(sep<0)continue;
+    const c=key.slice(0,sep),a=key.slice(sep+1);if(c===chain&&a)out.push(normalizeAddress(a,chain));
+  }
+  return [...new Set(out)];
 }
 
 function lpPairBelongsToProject(pair,chain,projectKey){
@@ -4241,8 +4290,14 @@ function lpPairBelongsToProject(pair,chain,projectKey){
 async function syncProjectLpHistory(projectKey,chain,walletAddress){
   if(!window.WalletLPEngine)return {events:[],scanned:0,newEvents:0,pairs:[]};
   const engine=window.WalletLPEngine,cached=await engine.loadHistory(projectKey,chain,walletAddress).catch(()=>[]);
-  const cachedPairs=new Set(cached.map(r=>normalizeAddress(r.pair_address,chain)).filter(Boolean));
-  let last=0;try{last=await engine.getScanState(projectKey,chain,walletAddress,"lp_history_v2");}catch{}
+  // TLN/VOW besitzt eine gepflegte LP-Liste in predefined_tokens. Für BSC/ETH dürfen
+  // deshalb ausschließlich als lp_token klassifizierte Contracts gescannt werden.
+  const classifiedOnly=projectKey==="tln_vow"&&["bsc","eth"].includes(chain);
+  const configuredPairs=classifiedOnly?projectClassifiedLpAddresses(projectKey,chain):[];
+  const allowed=classifiedOnly?new Set(configuredPairs):null;
+  const cachedPairs=new Set(cached.map(r=>normalizeAddress(r.pair_address,chain)).filter(a=>a&&(!allowed||allowed.has(a))));
+  const scanType=classifiedOnly?"lp_history_v3_classified":"lp_history_v2";
+  let last=0;try{last=await engine.getScanState(projectKey,chain,walletAddress,scanType);}catch{}
   let latest=0;
   try{latest=await engine.latestBlock(chain);}
   catch(e){
@@ -4250,17 +4305,22 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
   }
   const from=last>0?Math.max(0,last-50):0;
   let transfers=[],syncWarning=null;
-  try{transfers=await lpWalletTransfersSince(chain,walletAddress,from);}
+  try{transfers=await lpWalletTransfersSince(chain,walletAddress,from,classifiedOnly?configuredPairs:null);}
   catch(e){
     // Ein Discovery-/Explorer-Ausfall darf den vorhandenen LP-Cache nicht unbrauchbar machen.
     // Aktuelle Positionen und bereits gecachte Historie bleiben sichtbar; Scanstand wird nicht fortgeschrieben.
     syncWarning=`Transfer-Discovery: ${e?.message||String(e)}`;
   }
   const pairMap=new Map();
-  for(const a of cachedPairs){const p=await engine.pairInfo(chain,a);if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(a,p);}
-  for(const t of transfers){
-    const a=normalizeAddress(t.contract,chain);if(pairMap.has(a))continue;
-    const p=await engine.pairInfo(chain,a);if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(a,p);
+  // Bei TLN/VOW werden nur die in "Vordefinierte Token" als LP Token klassifizierten
+  // Contracts validiert. Damit gibt es keine token0/getReserves-Aufrufe mehr auf normale Token.
+  const initialPairs=classifiedOnly?configuredPairs:[...cachedPairs];
+  for(const a of initialPairs){const p=await engine.pairInfo(chain,a);if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(a,p);}
+  if(!classifiedOnly){
+    for(const t of transfers){
+      const a=normalizeAddress(t.contract,chain);if(pairMap.has(a))continue;
+      const p=await engine.pairInfo(chain,a);if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(a,p);
+    }
   }
   let newEvents=0,earliestFailedBlock=null;const done=new Set(cached.map(r=>`${normalizeAddress(r.pair_address,chain)}|${String(r.tx_hash).toLowerCase()}|${r.event_type}`));
   for(const t of transfers){
@@ -4278,21 +4338,27 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
   // historisches LP-Ereignis geht durch einen vorzeitig fortgeschriebenen Cache-Stand verloren.
   if(!syncWarning){
     const safeScannedBlock=earliestFailedBlock==null?latest:Math.max(0,earliestFailedBlock-1);
-    await engine.setScanState(projectKey,chain,walletAddress,safeScannedBlock,"lp_history_v2");
+    await engine.setScanState(projectKey,chain,walletAddress,safeScannedBlock,scanType);
   }
   return {events:await engine.loadHistory(projectKey,chain,walletAddress),scanned:latest,newEvents,pairs:[...pairMap.values()],warning:syncWarning};
 }
 
-async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31"){
+async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31",refresh=false){
   const el=document.getElementById(targetId);if(!el||!window.WalletLPEngine)return;
-  el.innerHTML='<div class="status"><span class="loading">LP/PCLP-Cache wird synchronisiert…</span></div>';
+  el.innerHTML=`<div class="status"><span class="loading">${refresh?'LP/PCLP-Daten werden aktualisiert…':'LP/PCLP-Daten werden aus dem Cache geladen…'}</span></div>`;
   const rows=[],history=[];const targetEpoch=Math.floor(new Date(dateStr+'T23:59:59Z').getTime()/1000);let cacheNew=0,cacheErrors=[],cacheWarnings=[];
   for(const chain of chains){let block=null;try{block=(await taxEvmBlockByTime(chain,targetEpoch)).block;}catch{}
     for(const w of wallets){
       const wa=walletAddressForChain(w,chain);if(!wa)continue;
-      let sync={events:[],pairs:[]};try{sync=await syncProjectLpHistory(projectKey,chain,wa);cacheNew+=sync.newEvents||0;if(sync.warning)cacheWarnings.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${sync.warning}`);}catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${e.message}`);console.warn("LP-Cache Sync",chain,wa,e);try{sync.events=await window.WalletLPEngine.loadHistory(projectKey,chain,wa);}catch{}}
-      const currentCandidates=(walletData[w.id]?.[chain]?.tokens||[]).map(t=>t.address).filter(Boolean);
-      const candidates=new Set([...currentCandidates,...sync.events.map(e=>e.pair_address),...(sync.pairs||[]).map(p=>p.address)].map(a=>normalizeAddress(a,chain)));
+      let sync={events:[],pairs:[]};
+      if(refresh){
+        try{sync=await syncProjectLpHistory(projectKey,chain,wa);cacheNew+=sync.newEvents||0;if(sync.warning)cacheWarnings.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${sync.warning}`);}catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${e.message}`);console.warn("LP-Cache Sync",chain,wa,e);try{sync.events=await window.WalletLPEngine.loadHistory(projectKey,chain,wa);}catch{}}
+      }else{
+        try{sync.events=await window.WalletLPEngine.loadHistory(projectKey,chain,wa);}catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: Cache konnte nicht gelesen werden: ${e.message}`);}
+      }
+      const classifiedOnly=projectKey==="tln_vow"&&["bsc","eth"].includes(chain);
+      const currentCandidates=classifiedOnly?projectClassifiedLpAddresses(projectKey,chain):(walletData[w.id]?.[chain]?.tokens||[]).map(t=>t.address).filter(Boolean);
+      const candidates=new Set([...currentCandidates,...sync.events.map(e=>e.pair_address),...(sync.pairs||[]).map(p=>p.address)].filter(Boolean).map(a=>normalizeAddress(a,chain)));
       for(const a of candidates){
         let pair=null;try{pair=await window.WalletLPEngine.pairInfo(chain,a);}catch{}if(!pair||!lpPairBelongsToProject(pair,chain,projectKey))continue;
         let cur=null;try{cur=(await window.WalletLPEngine.positions(chain,wa,[a]))[0]||null;}catch{}
@@ -4307,14 +4373,20 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
   const currentTable=`<div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Pool</th><th>aktuell LP</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} LP</th><th>${dateStr} USD</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeAttr(r.w.label)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta">${r.pair.address}</div></td><td>${r.cur?f(r.cur.balance):'0'}</td><td>${r.cur?`<div>${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}</div><div>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}</div><div class="meta">Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–'}</td><td>${u(r.cur?.usd)}</td><td>${f(r.histBal)}</td><td>${r.histPrice?u(r.histBal*r.histPrice.price):'–'}</td></tr>`).join(''):'<tr><td colspan="8">Keine aktuellen oder historischen LP-Positionen gefunden.</td></tr>'}</tbody></table></div>`;
   const hrows=[...history].sort((a,b)=>Number(b.block_number)-Number(a.block_number)||Number(b.log_index||0)-Number(a.log_index||0));
   const historyTable=`<h3 style="margin-top:22px">Add-/Remove-Liquidity-Historie</h3><div class="chain-table-wrap lp-history-scroll"><table class="lp-history-table"><colgroup><col class="lp-col-time"><col class="lp-col-wallet"><col class="lp-col-chain"><col class="lp-col-action"><col class="lp-col-pool"><col class="lp-col-delta"><col class="lp-col-balance"><col class="lp-col-underlying"><col class="lp-col-usd"></colgroup><thead><tr><th>Zeit</th><th>Wallet</th><th>Chain</th><th>Aktion</th><th>Pool</th><th>LP Δ</th><th>LP-Saldo</th><th>Underlying</th><th>historischer USD-Wert</th></tr></thead><tbody>${hrows.length?hrows.map(e=>`<tr><td>${dt(e.tx_timestamp)}<div class="meta">Block ${e.block_number}</div></td><td>${escapeAttr(e.w.label)}</td><td>${escapeAttr(CHAIN_META[e.chain]?.label||e.chain)}</td><td>${e.event_type==='add'?'<span class="badge safe">Add</span>':'<span class="badge danger">Remove</span>'}</td><td><strong>${escapeAttr(e.lp_label||window.WalletLPEngine.label(e.chain))} ${escapeAttr(e.token0_symbol||'Token0')}/${escapeAttr(e.token1_symbol||'Token1')}</strong><div class="meta lp-address">${e.pair_address}</div></td><td>${Number(e.lp_delta)>0?'+':''}${f(e.lp_delta)}</td><td>${f(e.running_balance)}</td><td><div>${f(e.amount0)} ${escapeAttr(e.token0_symbol||'')}</div><div>${f(e.amount1)} ${escapeAttr(e.token1_symbol||'')}</div></td><td><strong>${u(e.value_usd)}</strong>${e.price_source?`<div class="meta lp-price-source">${escapeAttr(e.price_source)}</div>`:''}</td></tr>`).join(''):'<tr><td colspan="9">Noch keine Add-/Remove-Liquidity-Ereignisse im Cache.</td></tr>'}</tbody></table></div>`;
-  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Aktuelle LP-Bestände, Reserven und Pool-Anteile werden live gelesen. <strong>Add-/Remove-Historie und historische USD-Werte werden dauerhaft in Supabase gecached</strong>; nach dem ersten Vollscan werden nur neue Blockchain-Bereiche synchronisiert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheWarnings.length?`<div class="note" style="margin-top:8px"><strong>LP-Historie momentan nicht nachladbar:</strong> vorhandener Cache und Live-Bestände bleiben sichtbar. ${escapeAttr(cacheWarnings.join(' · '))}</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">Cache teilweise nicht aktualisiert: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${currentTable}${historyTable}`;
+  const chainArg=chains.length===1?chains[0]:"";
+  const refreshButton=`<button class="secondary" style="margin-top:10px" onclick="refreshProjectLpData('${projectKey}','${chainArg}','${targetId}')">Daten aktualisieren</button>`;
+  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden vorhandener DB-Cache und aktuelle LP-Positionen angezeigt. <strong>Die Blockchain-Historie wird nur noch über „Daten aktualisieren“ synchronisiert.</strong> Add-/Remove-Historie und historische USD-Werte bleiben dauerhaft in Supabase gespeichert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${refreshButton}${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheWarnings.length?`<div class="note" style="margin-top:8px"><strong>LP-Historie momentan nicht nachladbar:</strong> vorhandener Cache und Live-Bestände bleiben sichtbar. ${escapeAttr(cacheWarnings.join(' · '))}</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">${refresh?'Cache teilweise nicht aktualisiert':'Cache teilweise nicht lesbar'}: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${currentTable}${historyTable}`;
 }
 window.renderProjectLpTab=renderProjectLpTab;
+window.refreshProjectLpData=function(projectKey,chain,targetId){
+  const chains=chain?[chain]:(projectKey==="dao1"?["apertum"]:[]);
+  return renderProjectLpTab(projectKey,chains,targetId,"2025-12-31",true);
+};
 window.showTlnLpChain=function(chain,btn){
   const b=document.getElementById("tlnvowLpBscContent"),e=document.getElementById("tlnvowLpEthContent");
   if(b)b.style.display=chain==="bsc"?"block":"none";if(e)e.style.display=chain==="eth"?"block":"none";
   document.querySelectorAll("#tlnvow-subtab-liquidity .project-subtabs .tab-btn").forEach(x=>x.classList.toggle("active",x===btn));
-  return renderProjectLpTab("tln_vow",[chain],chain==="bsc"?"tlnvowLpBscContent":"tlnvowLpEthContent");
+  return renderProjectLpTab("tln_vow",[chain],chain==="bsc"?"tlnvowLpBscContent":"tlnvowLpEthContent","2025-12-31",false);
 };
 
 // "Entdecken" - findet Token, die eine Wallet hält, aber die

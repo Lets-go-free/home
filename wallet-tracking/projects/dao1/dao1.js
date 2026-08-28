@@ -74,12 +74,12 @@ window.DAO1Project = (() => {
       panel.id = "tab-dao1";
       panel.className = "tab-panel";
       panel.innerHTML = `
-        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen &amp; Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); renderProjectLpTab('dao1',['apertum'],'dao1LpContent')">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
+        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen &amp; Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); renderProjectLpTab('dao1',['apertum'],'dao1LpContent','2025-12-31',false)">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
         <div id="dao1-subtab-overview" class="project-subtab-panel"><div class="custom-token-card"><div class="chain-title">DAO1 · Apertum</div><div class="note">Projektübersicht für DAO1-spezifische Assets auf Apertum. Detailfunktionen sind in die Unter-Tabs gegliedert.</div></div></div>
         <div id="dao1-subtab-liquidity" class="project-subtab-panel" style="display:none"><div id="dao1LpContent"></div></div>
         <div id="dao1-subtab-config" class="project-subtab-panel" style="display:none"><div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div></div>
-        <div id="dao1-subtab-transactions" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><div class="chain-title">📒 Apertum Transaktionshistorie</div><div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Wallet-Wechsel lesen den Cache; erst „Apertum-Historie aktualisieren“ lädt neue Blockchain-Daten, aktualisiert NFTs/Besitzerhistorie und reichert neue Claims an.</div><div id="dao1TransactionControls"></div><div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div><div id="dao1TransactionSummary" style="margin-top:10px"></div><div id="dao1TransactionTable" style="margin-top:10px"></div></div></div>
-        <div id="dao1-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">DAO1 / Apertum · Hilfe</h3><p class="note"><strong>Liquidity Pools:</strong> Erkennt DAO1-V2-LPs automatisch, zeigt aktuelle Underlyings/Pool-Anteil und historische 31.12.-Positionen auch nach vollständigem Entfernen der Liquidität. Aktuelle Positionen bleiben live; Add-/Remove-Historie und deren historische USD-Werte werden in Supabase gecached und danach nur inkrementell ergänzt.</p><p class="note"><strong>Transaktionen &amp; Claims:</strong> „Apertum-Historie aktualisieren“ synchronisiert neue Transaktionen, Claims, historische APTM-Kurse sowie NFT-Bestand und Besitzerhistorie. Filter und Exporte arbeiten danach aus dem gespeicherten Bestand.</p><p class="note"><strong>Konfiguration:</strong> Hier werden DAO1-Projektassets und NFTs klassifiziert. Die Klassifizierung steuert Filter und Bezeichnungen, nicht die Erkennung der Blockchain-Transaktionen. Fehlende historische APTM-Kurse können manuell ergänzt werden und bleiben als manuell gekennzeichnet.</p></div></div>
+        <div id="dao1-subtab-transactions" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><div class="chain-title">📒 Apertum Transaktionshistorie</div><div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Wallet-Wechsel lesen den Cache; erst „Daten aktualisieren“ lädt neue Blockchain-Daten, aktualisiert NFTs/Besitzerhistorie und reichert neue Claims an.</div><div id="dao1TransactionControls"></div><div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div><div id="dao1TransactionSummary" style="margin-top:10px"></div><div id="dao1TransactionTable" style="margin-top:10px"></div></div></div>
+        <div id="dao1-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">DAO1 / Apertum · Hilfe</h3><p class="note"><strong>Liquidity Pools:</strong> Beim Öffnen werden Cache und aktuelle Positionen angezeigt. Die Blockchain-Historie wird nur über „Daten aktualisieren“ synchronisiert. Add-/Remove-Historie und historische USD-Werte bleiben in Supabase gecached.</p><p class="note"><strong>Transaktionen &amp; Claims:</strong> „Daten aktualisieren“ synchronisiert neue Transaktionen, Claims, historische APTM-Kurse sowie NFT-Bestand und Besitzerhistorie. Filter und Exporte arbeiten danach aus dem gespeicherten Bestand.</p><p class="note"><strong>Konfiguration:</strong> Hier werden DAO1-Projektassets und NFTs klassifiziert. Die Klassifizierung steuert Filter und Bezeichnungen, nicht die Erkennung der Blockchain-Transaktionen. Fehlende historische APTM-Kurse können manuell ergänzt werden und bleiben als manuell gekennzeichnet.</p></div></div>
       `;
       app.appendChild(panel);
     }
@@ -946,38 +946,6 @@ window.DAO1Project = (() => {
   }
 
 
-  const aptmMarketPriceCache=new Map();
-
-  function dateKeyFromTimestamp(ts){
-    const d=new Date(ts);
-    if(Number.isNaN(d.getTime()))return null;
-    return d.toISOString().slice(0,10);
-  }
-
-  async function aptmUsdtMarketPriceForDate(dateStr){
-    if(!dateStr)return null;
-    if(aptmMarketPriceCache.has(dateStr))return aptmMarketPriceCache.get(dateStr);
-    const [y,m,d]=dateStr.split("-");
-    const cgDate=`${d}-${m}-${y}`;
-    try{
-      const url=`https://api.coingecko.com/api/v3/coins/apertum/history?date=${cgDate}&localization=false`;
-      const res=await fetch(url);
-      if(!res.ok)throw new Error(`CoinGecko HTTP ${res.status}`);
-      const j=await res.json();
-      const p=Number(j?.market_data?.current_price?.usd);
-      const out=Number.isFinite(p)&&p>0?{
-        price:p,
-        source:`APTM/USDT Marktpreis · CoinGecko Tageshistorie ${dateStr}`
-      }:null;
-      aptmMarketPriceCache.set(dateStr,out);
-      return out;
-    }catch(e){
-      console.warn("APTM/USDT Fallbackpreis:",dateStr,e);
-      aptmMarketPriceCache.set(dateStr,null);
-      return null;
-    }
-  }
-
   async function priceForTransaction(block,timestamp,history){
     const ph=priceAtBlock(history,Number(block));
     if(ph){
@@ -987,11 +955,8 @@ window.DAO1Project = (() => {
         source:`APTM/wUSDT Pool · Sync Block ${ph.block_number}`
       };
     }
-    const dateStr=dateKeyFromTimestamp(timestamp);
-    const market=await aptmUsdtMarketPriceForDate(dateStr);
-    if(market){
-      return {price:market.price,priceBlock:null,source:market.source};
-    }
+    // Apertum bleibt vollständig on-chain. Fehlt zum historischen Zeitpunkt ein
+    // belastbarer Pool-Sync, wird bewusst kein externer Marktpreis eingesetzt.
     return {price:null,priceBlock:null,source:null};
   }
 
@@ -1322,7 +1287,7 @@ window.DAO1Project = (() => {
       console.error("Apertum Transaktionshistorie:",e);
       if(job===transactionJobToken)setTransactionStatus("error",e.message||String(e));
     }finally{
-      if(scan && btn && job===transactionJobToken){btn.disabled=false;btn.textContent="Apertum-Historie aktualisieren";}
+      if(scan && btn && job===transactionJobToken){btn.disabled=false;btn.textContent="Daten aktualisieren";}
     }
   }
 
@@ -1470,7 +1435,7 @@ window.DAO1Project = (() => {
 
     el.innerHTML=`
       <div class="action-row" style="margin-bottom:10px">
-        <button id="dao1TxScanBtn" onclick="DAO1Project.refreshTransactionHistory(true)">Apertum-Historie aktualisieren</button>
+        <button id="dao1TxScanBtn" onclick="DAO1Project.refreshTransactionHistory(true)">Daten aktualisieren</button>
         <button class="secondary" onclick="DAO1Project.exportTransactionsExcel()">Excel exportieren</button>
         <button class="secondary" onclick="DAO1Project.exportTransactionsPdf()">PDF / Drucken</button>
       </div>
@@ -1497,7 +1462,7 @@ window.DAO1Project = (() => {
           ${nfts.map(n=>`<option value="${n.id}" ${String(txFilterNft)===n.id?"selected":""}>${n.name}${String(n.name||"").includes("#"+n.id)?"":" · #"+n.id}${n.subtype?" · "+n.subtype:""}</option>`).join("")}
         </select></label>
       </div>
-      <div class="note" style="margin-top:7px">Alle Filter wirken direkt auf Summary, Detailliste und Export. Historische NFTs bleiben berücksichtigt, sofern Claims zu ihnen gespeichert sind. Blockchain-Daten werden ausschließlich über „Apertum-Historie aktualisieren“ nachgeladen.</div>`;
+      <div class="note" style="margin-top:7px">Alle Filter wirken direkt auf Summary, Detailliste und Export. Historische NFTs bleiben berücksichtigt, sofern Claims zu ihnen gespeichert sind. Blockchain-Daten werden ausschließlich über „Daten aktualisieren“ nachgeladen.</div>`;
   }
 
   async function setTransactionFilter(kind,value){
