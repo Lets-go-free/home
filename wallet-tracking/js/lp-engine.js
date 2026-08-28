@@ -63,21 +63,45 @@ window.WalletLPEngine = (() => {
     const b=await rpc(chain,"eth_getBlockByNumber",[hex(blockNumber),false]);
     const ts=b?.timestamp?Number(BigInt(b.timestamp)):null;blockCache.set(k,ts);return ts;
   }
-  async function historyEventFromReceipt(chain,pair,wallet,txHash,blockNumber){
+  async function historyEventFromReceipt(chain,pair,wallet,txHash,blockNumber,options={}){
     const receipt=await rpc(chain,"eth_getTransactionReceipt",[txHash]);if(!receipt)return null;
-    const wa=norm(wallet),pa=norm(pair.address),t0=norm(pair.t0.address),t1=norm(pair.t1.address);
-    let lpIn=0n,lpOut=0n,in0=0n,in1=0n,out0=0n,out1=0n,firstLog=Number.MAX_SAFE_INTEGER;
+    const wa=norm(wallet),pa=norm(pair.address),t0=norm(pair.t0.address),t1=norm(pair.t1.address),zero=norm(ethers.ZeroAddress);
+    let lpIn=0n,lpOut=0n,in0=0n,in1=0n,out0=0n,out1=0n,firstLog=Number.MAX_SAFE_INTEGER,counterparty=null,direction=null;
     for(const l of receipt.logs||[]){
       if(norm(l.topics?.[0])!==TRANSFER_TOPIC||!l.topics?.[1]||!l.topics?.[2])continue;
       const ca=norm(l.address),from=topicAddr(l.topics[1]),to=topicAddr(l.topics[2]),v=rawValue(l.data),li=Number(l.logIndex?BigInt(l.logIndex):0n);firstLog=Math.min(firstLog,li);
-      if(ca===pa){if(to===wa)lpIn+=v;if(from===wa)lpOut+=v;continue;}
+      if(ca===pa){
+        if(to===wa){lpIn+=v;direction="in";counterparty=from;}
+        if(from===wa){lpOut+=v;direction="out";counterparty=to;}
+        continue;
+      }
       if(ca===t0){if(to===pa)in0+=v;if(from===pa)out0+=v;}
       if(ca===t1){if(to===pa)in1+=v;if(from===pa)out1+=v;}
     }
-    const lpDeltaRaw=lpIn-lpOut;let eventType=null,a0=0n,a1=0n;
+    const lpDeltaRaw=lpIn-lpOut;if(lpDeltaRaw===0n)return null;
+    let eventType=null,a0=0n,a1=0n,staking=null;
     if(lpDeltaRaw>0n&&(in0>0n||in1>0n)){eventType="add";a0=in0;a1=in1;}
     else if(lpDeltaRaw<0n&&(out0>0n||out1>0n)){eventType="remove";a0=out0;a1=out1;}
-    else return null; // normaler LP-Transfer, kein Add/Remove Liquidity
+    else{
+      const classifier=options?.classifyTransfer;
+      if(typeof classifier==="function"){
+        const classified=await classifier({direction:direction||(lpDeltaRaw<0n?"out":"in"),counterparty,pairAddress:pa});
+        eventType=classified?.eventType||((lpDeltaRaw<0n)?"send":"receive");
+        staking=classified?.staking||null;
+      }else eventType=(lpDeltaRaw<0n)?"send":"receive";
+      // Bei LP-Transfers bleiben die Underlyings im Pool. Den übertragenen LP-Anteil
+      // deshalb am historischen Block aus Reserven und TotalSupply ableiten.
+      try{
+        const histPair=await pairInfo(chain,pa,blockNumber);
+        if(histPair?.total>0){
+          const lpAbs=lpDeltaRaw<0n?-lpDeltaRaw:lpDeltaRaw;
+          const lpAmount=Number(ethers.formatUnits(lpAbs,pair.decimals));
+          const share=lpAmount/histPair.total;
+          a0=ethers.parseUnits(String(Math.max(0,histPair.r0*share)),pair.t0.decimals);
+          a1=ethers.parseUnits(String(Math.max(0,histPair.r1*share)),pair.t1.decimals);
+        }
+      }catch{}
+    }
     const ts=await blockTimestamp(chain,blockNumber).catch(()=>null),dateStr=ts?new Date(ts*1000).toISOString().slice(0,10):null,c=ctx();
     let p0=null,p1=null;
     if(c.historicalPrice&&dateStr){
@@ -86,8 +110,10 @@ window.WalletLPEngine = (() => {
     }
     const amount0=Number(ethers.formatUnits(a0,pair.t0.decimals)),amount1=Number(ethers.formatUnits(a1,pair.t1.decimals));
     const valueUsd=(p0?.price!=null&&p1?.price!=null)?amount0*p0.price+amount1*p1.price:null;
-    return {tx_hash:txHash,block_number:blockNumber,tx_timestamp:ts?new Date(ts*1000).toISOString():null,event_type:eventType,log_index:Number.isFinite(firstLog)?firstLog:0,lp_delta:Number(ethers.formatUnits(lpDeltaRaw<0n?-lpDeltaRaw:lpDeltaRaw,pair.decimals))*(eventType==="remove"?-1:1),amount0,amount1,price0_usd:p0?.price??null,price1_usd:p1?.price??null,value_usd:valueUsd,price_source:[p0?.source,p1?.source].filter(Boolean).join(" + ")||null};
+    const signedLp=Number(ethers.formatUnits(lpDeltaRaw<0n?-lpDeltaRaw:lpDeltaRaw,pair.decimals))*(lpDeltaRaw<0n?-1:1);
+    return {tx_hash:txHash,block_number:blockNumber,tx_timestamp:ts?new Date(ts*1000).toISOString():null,event_type:eventType,log_index:Number.isFinite(firstLog)?firstLog:0,lp_delta:signedLp,amount0,amount1,price0_usd:p0?.price??null,price1_usd:p1?.price??null,value_usd:valueUsd,price_source:[p0?.source,p1?.source].filter(Boolean).join(" + ")||null,counterparty:counterparty&&counterparty!==zero?counterparty:null,staking_contract:staking?.contract_address||null,staking_label:staking?.label||null};
   }
+
 
   async function loadHistory(projectKey,chain,wallet){
     const c=ctx();if(!c.sb||!c.currentUser?.id)return [];
@@ -119,8 +145,8 @@ window.WalletLPEngine = (() => {
       pair_address:norm(r.pair_address),lp_label:r.lp_label||label(chain),
       token0_address:norm(r.token0_address),token0_symbol:r.token0_symbol||null,token0_decimals:Number(r.token0_decimals??18),
       token1_address:norm(r.token1_address),token1_symbol:r.token1_symbol||null,token1_decimals:Number(r.token1_decimals??18),
-      current_lp:Number(r.current_lp||0),current_amount0:Number(r.current_amount0||0),current_amount1:Number(r.current_amount1||0),current_share:Number(r.current_share||0),current_usd:r.current_usd==null?null:Number(r.current_usd),
-      snapshot_date:r.snapshot_date||null,snapshot_lp:Number(r.snapshot_lp||0),snapshot_usd:r.snapshot_usd==null?null:Number(r.snapshot_usd),
+      current_wallet_lp:Number(r.current_wallet_lp??r.current_lp??0),current_staked_lp:Number(r.current_staked_lp||0),current_lp:Number(r.current_lp||0),current_amount0:Number(r.current_amount0||0),current_amount1:Number(r.current_amount1||0),current_share:Number(r.current_share||0),current_usd:r.current_usd==null?null:Number(r.current_usd),
+      snapshot_date:r.snapshot_date||null,snapshot_wallet_lp:Number(r.snapshot_wallet_lp??r.snapshot_lp??0),snapshot_staked_lp:Number(r.snapshot_staked_lp||0),snapshot_lp:Number(r.snapshot_lp||0),snapshot_usd:r.snapshot_usd==null?null:Number(r.snapshot_usd),
       refreshed_at:now,updated_at:now
     }));
     // Erst neue Werte sicher speichern. Alte Einträge werden erst danach entfernt, damit ein
@@ -142,5 +168,5 @@ window.WalletLPEngine = (() => {
   }
   async function latestBlock(chain){return Number(BigInt(await rpc(chain,"eth_blockNumber",[])));}
   function configure(fn){ctx=fn||ctx;}
-  return {configure,pairInfo,positions,label,meta,rpc,latestBlock,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,replacePositionCache,getScanState,setScanState};
+  return {configure,pairInfo,positions,valuePosition,label,meta,rpc,latestBlock,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,replacePositionCache,getScanState,setScanState};
 })();
