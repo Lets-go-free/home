@@ -218,6 +218,25 @@
   .badge.safe { background: rgba(70, 200, 120, 0.15); color: #46c878; }
   .badge.unsafe { background: rgba(154, 160, 172, 0.15); color: var(--muted); }
 
+  /* LP-Historie: bewusst breite, sauber getrennte Spalten. Der horizontale
+     Scrollbereich verhindert, dass Preisquelle/Pool-Adresse zusammengedrückt werden. */
+  .lp-history-scroll { overflow-x: scroll; scrollbar-gutter: stable; }
+  .lp-history-table { width: 1660px; min-width: 1660px; table-layout: fixed; }
+  .lp-history-table .lp-col-time { width: 180px; }
+  .lp-history-table .lp-col-wallet { width: 180px; }
+  .lp-history-table .lp-col-chain { width: 180px; }
+  .lp-history-table .lp-col-action { width: 110px; }
+  .lp-history-table .lp-col-pool { width: 360px; }
+  .lp-history-table .lp-col-delta { width: 150px; }
+  .lp-history-table .lp-col-balance { width: 160px; }
+  .lp-history-table .lp-col-underlying { width: 210px; }
+  .lp-history-table .lp-col-usd { width: 300px; }
+  .lp-history-table th, .lp-history-table td { padding: 10px 12px; vertical-align: top; }
+  .lp-history-table td { overflow-wrap: normal; word-break: normal; }
+  .lp-history-table .lp-address { white-space: nowrap; font-size: .72rem; }
+  .lp-history-table .lp-price-source { margin-top: 4px; line-height: 1.35; white-space: normal; }
+  .badge.danger { background: rgba(255, 107, 107, 0.15); color: var(--danger); }
+
   footer { color: var(--muted); font-size: 0.72rem; margin-top: 24px; text-align: center; }
 
   .app-hero {
