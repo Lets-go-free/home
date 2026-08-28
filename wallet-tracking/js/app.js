@@ -756,6 +756,13 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
   let verified=0,errors=0,priceMissing=0;
   for(let wi=0;wi<ws.length;wi++){
     const w=ws[wi],address=walletAddressForChain(w,chain);
+    // Für BSC/TLN/VOW gelten auch per Legacy-Discovery bestätigte historische LPs
+    // als Projekt-LPs. Sie müssen am Steuerstichtag um gestakte LP-Mengen ergänzt werden,
+    // selbst wenn die LP-Adresse heute nicht mehr als lp_token in predefined_tokens steht.
+    let tlnBscHistoryPairs=new Set();
+    if(chain==="bsc"&&window.WalletLPEngine){
+      try{const ev=await window.WalletLPEngine.loadHistory("tln_vow",chain,address);tlnBscHistoryPairs=new Set((ev||[]).map(e=>normalizeAddress(e.pair_address,chain)).filter(Boolean));}catch{}
+    }
     taxSetStatus("loading",`${CHAIN_META[chain]?.label||chain}: ${w.label}…`,`Block ${bi.block} · Wallet ${wi+1}/${ws.length}`);
     try{
       const nativeBalance=await taxEvmNativeBalance(chain,address,bi.block);
@@ -773,7 +780,7 @@ async function taxEvmChain(chain,selectedWallets,targetEpoch,dateStr){
       try{
         const b=await taxEvmTokenBalance(chain,address,token,bi.block);
         const tk=chain+"|"+normalizeAddress(token.address,chain);
-        const isTlnBscLp=chain==="bsc"&&predefinedTokenProject[tk]==="tln_vow"&&predefinedTokenCategory[tk]==="lp_token";
+        const isTlnBscLp=chain==="bsc"&&((predefinedTokenProject[tk]==="tln_vow"&&predefinedTokenCategory[tk]==="lp_token")||tlnBscHistoryPairs.has(normalizeAddress(token.address,chain)));
         const stakedLp=isTlnBscLp?await taxCachedStakedLp("tln_vow",chain,address,token.address,new Date(targetEpoch*1000).toISOString()):0;
         const economicAmount=Number(b.amount||0)+Number(stakedLp||0);
         if(economicAmount>0){
@@ -4342,6 +4349,16 @@ function projectClassifiedLpAddresses(projectKey,chain){
   return [...new Set(out)];
 }
 
+function projectUnderlyingTokenAddresses(projectKey,chain){
+  const out=[];
+  for(const [key,project] of Object.entries(predefinedTokenProject||{})){
+    if(project!==projectKey||predefinedTokenCategory?.[key]==="lp_token")continue;
+    const sep=key.indexOf("|");if(sep<0)continue;
+    const c=key.slice(0,sep),a=key.slice(sep+1);if(c===chain&&a)out.push(normalizeAddress(a,chain));
+  }
+  return [...new Set(out)];
+}
+
 function lpPairBelongsToProject(pair,chain,projectKey){
   const k0=chain+'|'+normalizeAddress(pair.t0.address,chain),k1=chain+'|'+normalizeAddress(pair.t1.address,chain);
   return predefinedTokenProject[k0]===projectKey||predefinedTokenProject[k1]===projectKey;
@@ -4349,50 +4366,66 @@ function lpPairBelongsToProject(pair,chain,projectKey){
 
 function projectLpScanType(projectKey,chain){
   const classifiedOnly=projectKey==="tln_vow"&&["bsc","eth"].includes(chain);
-  return (projectKey==="tln_vow"&&chain==="bsc")?"lp_history_v4_staking":(classifiedOnly?"lp_history_v3_classified":"lp_history_v2");
+  return (projectKey==="tln_vow"&&chain==="bsc")?"lp_history_v5_legacy_discovery":(classifiedOnly?"lp_history_v3_classified":"lp_history_v2");
 }
 
 async function syncProjectLpHistory(projectKey,chain,walletAddress){
   if(!window.WalletLPEngine)return {events:[],scanned:0,newEvents:0,pairs:[]};
   const engine=window.WalletLPEngine,cached=await engine.loadHistory(projectKey,chain,walletAddress).catch(()=>[]);
-  // TLN/VOW besitzt eine gepflegte LP-Liste in predefined_tokens. Für BSC/ETH dürfen
-  // deshalb ausschließlich als lp_token klassifizierte Contracts gescannt werden.
   const classifiedOnly=projectKey==="tln_vow"&&["bsc","eth"].includes(chain);
+  const legacyDiscovery=projectKey==="tln_vow"&&chain==="bsc";
   const configuredPairs=classifiedOnly?projectClassifiedLpAddresses(projectKey,chain):[];
-  // Sicherheitsbremse: Wenn für TLN/VOW keine LPs klassifiziert sind, niemals den
-  // Filter weglassen und dadurch versehentlich die komplette ERC-20-Historie der Wallet
-  // ab Block 0 scannen. In diesem Fall bleibt der vorhandene Cache sichtbar.
-  if(classifiedOnly && configuredPairs.length===0){
+  const projectUnderlying=new Set(projectUnderlyingTokenAddresses(projectKey,chain));
+  // BSC/TLN/VOW: historische LPs werden aus der Wallet-Transferhistorie entdeckt.
+  // Ein Kandidat gilt als Projekt-LP, wenn token0 ODER token1 ein aktueller/Legacy-
+  // Projekt-Underlying aus predefined_tokens ist. Dadurch bleiben alte VOW/v$-Pools
+  // auffindbar, auch wenn ihre LP-Adresse heute nicht mehr als lp_token geführt wird.
+  if(classifiedOnly&&!legacyDiscovery&&configuredPairs.length===0){
     return {events:cached,scanned:0,newEvents:0,pairs:[],warning:`${chain}: Keine als lp_token klassifizierten ${projectKey}-Pools konfiguriert; Live-LP-Scan übersprungen.`};
   }
-  const allowed=classifiedOnly?new Set(configuredPairs):null;
-  const cachedPairs=new Set(cached.map(r=>normalizeAddress(r.pair_address,chain)).filter(a=>a&&(!allowed||allowed.has(a))));
+  if(legacyDiscovery&&projectUnderlying.size===0){
+    return {events:cached,scanned:0,newEvents:0,pairs:[],warning:`${chain}: Keine TLN/VOW-Projekt-Underlyings konfiguriert; Legacy-LP-Discovery übersprungen.`};
+  }
+  const cachedPairs=new Set(cached.map(r=>normalizeAddress(r.pair_address,chain)).filter(Boolean));
   const scanType=projectLpScanType(projectKey,chain);
   let last=0;try{last=await engine.getScanState(projectKey,chain,walletAddress,scanType);}catch{}
   let latest=0;
   try{latest=await engine.latestBlock(chain);}
-  catch(e){
-    return {events:cached,scanned:last,newEvents:0,pairs:[],warning:`RPC eth_blockNumber: ${e?.message||String(e)}`};
-  }
+  catch(e){return {events:cached,scanned:last,newEvents:0,pairs:[],warning:`RPC eth_blockNumber: ${e?.message||String(e)}`};}
   const from=last>0?Math.max(0,last-50):0;
   let transfers=[],syncWarning=null;
-  try{transfers=await lpWalletTransfersSince(chain,walletAddress,from,classifiedOnly?configuredPairs:null);}
-  catch(e){
-    // Ein Discovery-/Explorer-Ausfall darf den vorhandenen LP-Cache nicht unbrauchbar machen.
-    // Aktuelle Positionen und bereits gecachte Historie bleiben sichtbar; Scanstand wird nicht fortgeschrieben.
-    syncWarning=`Transfer-Discovery: ${e?.message||String(e)}`;
-  }
+  try{
+    // Legacy-Discovery braucht beim ersten v5-Lauf bewusst die gesamte ERC-20-Historie.
+    // Danach läuft derselbe Scan inkrementell ab dem letzten erfolgreichen Block weiter.
+    transfers=await lpWalletTransfersSince(chain,walletAddress,from,legacyDiscovery?null:(classifiedOnly?configuredPairs:null));
+  }catch(e){syncWarning=`Transfer-Discovery: ${e?.message||String(e)}`;}
+
   const pairMap=new Map();
-  // Bei TLN/VOW werden nur die in "Vordefinierte Token" als LP Token klassifizierten
-  // Contracts validiert. Damit gibt es keine token0/getReserves-Aufrufe mehr auf normale Token.
-  const initialPairs=classifiedOnly?configuredPairs:[...cachedPairs];
-  for(const a of initialPairs){const p=await engine.pairInfo(chain,a);if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(a,p);}
-  if(!classifiedOnly){
+  const initialPairs=[...new Set([...configuredPairs,...cachedPairs])];
+  for(const a of initialPairs){
+    const p=await engine.pairInfo(chain,a);
+    if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(normalizeAddress(a,chain),p);
+  }
+
+  // Neue/Legacy LP-Kandidaten zunächst nur mit token0/token1 prüfen. Erst wenn mindestens
+  // ein Underlying zum TLN/VOW-Projekt gehört, werden Reserven, Supply und Metadaten geladen.
+  if(legacyDiscovery){
+    const candidateContracts=[...new Set(transfers.map(t=>normalizeAddress(t.contract,chain)).filter(Boolean))];
+    for(const a of candidateContracts){
+      if(pairMap.has(a))continue;
+      const basic=engine.pairTokens?await engine.pairTokens(chain,a):null;
+      if(!basic)continue;
+      if(!projectUnderlying.has(normalizeAddress(basic.token0,chain))&&!projectUnderlying.has(normalizeAddress(basic.token1,chain)))continue;
+      const p=await engine.pairInfo(chain,a);
+      if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(a,p);
+    }
+  }else if(!classifiedOnly){
     for(const t of transfers){
       const a=normalizeAddress(t.contract,chain);if(pairMap.has(a))continue;
       const p=await engine.pairInfo(chain,a);if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(a,p);
     }
   }
+
   let newEvents=0,earliestFailedBlock=null;const done=new Set(cached.map(r=>`${normalizeAddress(r.pair_address,chain)}|${String(r.tx_hash).toLowerCase()}|${r.event_type}`));
   for(const t of transfers){
     const pair=pairMap.get(normalizeAddress(t.contract,chain));if(!pair)continue;
@@ -4409,9 +4442,6 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
       await engine.saveHistory(projectKey,chain,walletAddress,pair,ev);done.add(k);newEvents++;
     }catch(e){earliestFailedBlock=earliestFailedBlock==null?Number(t.block_number):Math.min(earliestFailedBlock,Number(t.block_number));console.warn("LP-History Event",chain,t.tx_hash,e);}
   }
-  // Bei einem transienten Receipt/RPC-Fehler den Scanstand bewusst VOR dem fehlgeschlagenen
-  // Block stehen lassen. Beim nächsten Öffnen wird dieser Bereich erneut versucht und kein
-  // historisches LP-Ereignis geht durch einen vorzeitig fortgeschriebenen Cache-Stand verloren.
   if(!syncWarning){
     const safeScannedBlock=earliestFailedBlock==null?latest:Math.max(0,earliestFailedBlock-1);
     await engine.setScanState(projectKey,chain,walletAddress,safeScannedBlock,scanType);

@@ -1,3 +1,16 @@
+## Phase 2at – historische TLN/VOW-LP-/Staking-Discovery integriert (28.08.2026, 20:06:38 CEST)
+
+- Die erfolgreich isoliert getestete Legacy-Discovery ist jetzt in die produktive BSC-TLN/VOW-LP-Logik integriert.
+- BSC-LP-Historie wird nicht mehr nur gegen heute als `lp_token` klassifizierte LP-Adressen gesucht. Beim ersten neuen Discovery-Lauf werden die ERC-20-Transfers jeder BSC-Wallet betrachtet und über `token0()` / `token1()` als mögliche V2-LPs geprüft.
+- Ein entdeckter V2-LP wird dem TLN/VOW-Projekt zugeordnet, wenn mindestens eines seiner Underlyings als aktivierter TLN/VOW-Projekt-Token in `predefined_tokens` geführt wird. Normale USDT/WBNB- oder andere Fremd-LPs werden dadurch nicht übernommen.
+- Kandidaten werden zuerst nur leichtgewichtig über `token0()` / `token1()` geprüft. Erst bei Projekt-Treffer werden vollständige Pair-Daten (`getReserves`, `totalSupply`, `factory`, Metadaten) geladen.
+- Bereits konfigurierte aktuelle LPs und bereits gecachte historische LPs bleiben ebenfalls Teil des Pair-Universums.
+- Neuer Scan-Typ `lp_history_v5_legacy_discovery`: Bestehende BSC-Wallets werden dadurch einmal vollständig historisch neu geprüft; anschließend arbeitet der Scan wieder inkrementell mit Block-Overlap.
+- Gefundene Legacy-LPs laufen durch dieselbe bekannte Staking-Contract-Klassifizierung und erscheinen damit als `Stake` / `Unstake` in Historie und Staking-Positionen.
+- Legacy-Staking wird auch bei der 31.12.-Ermittlung berücksichtigt: Ein durch die TLN/VOW-Historie bestätigter LP gilt dafür als Projekt-LP, auch wenn seine LP-Adresse heute nicht mehr als `lp_token` geführt wird.
+- Aktuell gestakte Legacy-LPs werden über den vorhandenen Positions-Cache weiterhin in den wirtschaftlichen Gesamtbestand bzw. die Token-Übersicht eingerechnet.
+- **Keine neue SQL-Migration.** Falls `017-bsc-tln-vow-staking.sql` bereits ausgeführt wurde, **nicht erneut ausführen**.
+
 ## Phase 2as – LP-Wallet-Historie sichtbar und Scan-Status pro Wallet (28.08.2026, 19:20:37 CEST)
 
 - Im Liquidity-Pools-Tab wird für jede Wallet mit Chain-Adresse ein eigener **LP-Scan-Status** angezeigt: Wallet, Chain, Adresse, Status, letzter Scan, letzter Block, Anzahl Historien-Ereignisse, historische Pools und Positionszeilen.

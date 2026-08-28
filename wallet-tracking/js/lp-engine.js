@@ -47,6 +47,18 @@ window.WalletLPEngine = (() => {
     try{if(!Number.isFinite(Number(m.decimals)))m.decimals=Number(ERC20.decodeFunctionResult("decimals",await call(chain,address,ERC20.encodeFunctionData("decimals",[])))[0]);}catch{}
     m.decimals=Number.isFinite(Number(m.decimals))?Number(m.decimals):18;m.symbol=m.symbol||address.slice(0,8)+"…";metaCache.set(k,m);return m;
   }
+  async function pairTokens(chain,address,block="latest"){
+    try{
+      const [t0r,t1r]=await Promise.all([
+        call(chain,address,V2.encodeFunctionData("token0",[]),block),
+        call(chain,address,V2.encodeFunctionData("token1",[]),block)
+      ]);
+      if(t0r==null||t1r==null)return null;
+      const [t0]=V2.decodeFunctionResult("token0",t0r),[t1]=V2.decodeFunctionResult("token1",t1r);
+      if(!t0||!t1||norm(t0)===norm(t1))return null;
+      return {address:norm(address),token0:norm(t0),token1:norm(t1)};
+    }catch{return null;}
+  }
   async function pairInfo(chain,address,block="latest"){
     const key=chain+"|"+norm(address)+"@"+block;if(pairCache.has(key))return pairCache.get(key);
     try{
@@ -187,5 +199,5 @@ window.WalletLPEngine = (() => {
   }
   async function latestBlock(chain){return Number(BigInt(await rpc(chain,"eth_blockNumber",[])));}
   function configure(fn){ctx=fn||ctx;}
-  return {configure,pairInfo,positions,valuePosition,label,meta,rpc,latestBlock,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,replacePositionCache,getScanState,getScanStateInfo,setScanState};
+  return {configure,pairTokens,pairInfo,positions,valuePosition,label,meta,rpc,latestBlock,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,replacePositionCache,getScanState,getScanStateInfo,setScanState};
 })();
