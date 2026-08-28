@@ -14,11 +14,16 @@ window.WalletLPEngine = (() => {
   const rawValue=d=>BigInt(d&&d!=="0x"?d:"0x0");
 
   async function rpc(chain,method,params=[]){
-    const c=ctx(),url=c.chainConfig?.[chain]?.archiveRpcUrl||c.chainConfig?.[chain]?.rpcUrl;
+    const c=ctx();
+    // Bevorzugt den zentralen RPC-Resolver der Hauptanwendung. Der ergänzt z. B. bei
+    // Alchemy den Frontend-Key, nutzt Retry/Throttling und den rpc_url-Fallback korrekt.
+    if(typeof c.rpc==="function")return c.rpc(chain,method,params);
+    const url=c.chainConfig?.[chain]?.archiveRpcUrl||c.chainConfig?.[chain]?.rpcUrl;
     if(!url)throw new Error(`${chain}: RPC fehlt`);
-    const r=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method,params})});
-    if(!r.ok)throw new Error(`${chain}: RPC HTTP ${r.status}`);
-    const j=await r.json();if(j.error)throw new Error(j.error.message||"RPC Fehler");return j.result;
+    let r;try{r=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method,params})});}
+    catch(e){throw new Error(`${chain}: RPC Netzwerkfehler bei ${method} (${e?.message||e||"Failed to fetch"})`);}
+    if(!r.ok)throw new Error(`${chain}: RPC HTTP ${r.status} bei ${method}`);
+    const j=await r.json();if(j.error)throw new Error(`${chain}: ${method}: ${j.error.message||"RPC Fehler"}`);return j.result;
   }
   async function call(chain,to,data,block="latest"){return rpc(chain,"eth_call",[{to,data},block==="latest"?"latest":hex(block)]);}
   async function meta(chain,address){

@@ -151,6 +151,19 @@
   }
 
   .custom-token-row .meta { color: var(--muted); font-size: 0.72rem; word-break: break-all; }
+
+  /* Hilfe / Chain-Abdeckung: kompakt statt auf volle Seitenbreite gestreckt.
+     Lange Provider-/Statusangaben dürfen umbrechen. */
+  .help-chain-coverage-wrap { overflow-x: auto; }
+  .help-chain-coverage-table { width: auto; min-width: 720px; max-width: 980px; table-layout: fixed; }
+  .help-chain-coverage-table th:nth-child(1), .help-chain-coverage-table td:nth-child(1) { width: 210px; }
+  .help-chain-coverage-table th:nth-child(2), .help-chain-coverage-table td:nth-child(2) { width: 190px; }
+  .help-chain-coverage-table th:nth-child(3), .help-chain-coverage-table td:nth-child(3) { width: 180px; }
+  .help-chain-coverage-table th:nth-child(4), .help-chain-coverage-table td:nth-child(4) { width: 260px; }
+  .help-chain-coverage-table th, .help-chain-coverage-table td { white-space: normal; overflow-wrap: anywhere; word-break: normal; }
+
+  /* Ideen/Umbau: bewusst formatierte Beschreibungen mit Leerzeilen/Zeilenumbrüchen. */
+  .idea-desc { white-space: pre-line; line-height: 1.45; word-break: normal !important; overflow-wrap: anywhere; }
   .note {
     font-size: 0.75rem; color: var(--muted); margin-top: 8px;
   }

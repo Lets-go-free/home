@@ -152,6 +152,7 @@ async function onLoggedIn(session) {
       predefinedTokenSymbols, predefinedTokenNames, predefinedTokenDecimals,
       currentPrice: priceForToken,
       historicalPrice: taxHistoricalPrice,
+      rpc: archiveRpc,
       sb, currentUser
     }));
   }
@@ -579,7 +580,26 @@ function taxPredefinedBySymbol(chain,symbol){
 async function taxDexFactory(chain){
   if(taxDexFactoryCache.has(chain))return taxDexFactoryCache.get(chain);
   const {data,error}=await sb.from("dex_configs").select("factory_address,version").eq("chain_key",chain).eq("enabled",true);
-  const r=!error?(data||[]).find(x=>String(x.version||"").toLowerCase()==="v2"):null,out=r?.factory_address?normalizeAddress(r.factory_address,chain):null;taxDexFactoryCache.set(chain,out);return out;
+  const r=!error?(data||[]).find(x=>String(x.version||"").toLowerCase()==="v2"):null;
+  let out=r?.factory_address?normalizeAddress(r.factory_address,chain):null;
+  // Apertum hatte historisch noch keinen zwingenden dex_configs-Eintrag. Damit die bereits
+  // validierte On-Chain-Preislogik trotzdem zuverlässig läuft, wird die V2-Factory bei
+  // fehlender DB-Konfiguration direkt aus dem bekannten DAO1 wAPTM/wUSDT-Referenzpool
+  // gelesen. Es wird nur die Factory on-chain ermittelt; Preise/Reserven bleiben live.
+  if(!out&&chain==="apertum"){
+    try{
+      let pair=null;
+      const {data:ph}=await sb.from("aptm_price_history").select("pool_address").eq("chain_key","apertum").order("block_number",{ascending:false}).limit(1).maybeSingle();
+      pair=ph?.pool_address||window.DAO1Project?.getAptmUsdtPairAddress?.()||null;
+      if(pair){
+        const fi=new ethers.Interface(["function factory() view returns (address)"]);
+        const raw=await archiveRpc(chain,"eth_call",[{to:pair,data:fi.encodeFunctionData("factory",[])},"latest"]);
+        const [factory]=fi.decodeFunctionResult("factory",raw);
+        if(factory&&!/^0x0{40}$/i.test(factory))out=normalizeAddress(factory,chain);
+      }
+    }catch(e){console.warn("Apertum V2-Factory konnte nicht on-chain ermittelt werden",e);}
+  }
+  taxDexFactoryCache.set(chain,out);return out;
 }
 async function taxProjectReference(project,chain){
   const k=project+"|"+chain;if(taxProjectReferenceCache.has(k))return taxProjectReferenceCache.get(k);
@@ -1057,7 +1077,7 @@ function renderAdminChainCoverage(){
 }
 
 function yearEndCoverageLabel(chain,c){const wt=c.walletType||"";if(wt==="evm")return "✓ exakt · historischer Block";if(wt==="btc")return "✓ exakt · UTXO-Stichtag";if(wt==="xrp")return "✓ XRP nativ · Full-History Ledger";if(wt==="sol")return "✓ SOL + SPL/Token-2022 · historischer Slot";if(wt==="tron")return "Noch nicht unterstützt";return "Noch nicht unterstützt";}
-function renderHelpChainCoverage(){const el=document.getElementById("helpChainCoverage");if(!el)return;const balanceProviders=["rpc","evm_rpc","blockstream","mempool","xrpscan","solana_rpc","solana_publicnode","trongrid","akash_rest","apertum_explorer","blockscout"],feeProviders=["routescan","nodereal","blockscout","xrpscan","solana_publicnode","apertum_explorer","mempool","tronscan"];const rows=Object.keys(CHAIN_CONFIG).sort((a,b)=>(CHAIN_CONFIG[a]?.sortOrder||100)-(CHAIN_CONFIG[b]?.sortOrder||100)).map(chain=>{const c=CHAIN_CONFIG[chain]||{},m=CHAIN_META[chain]||{};return `<tr><td><strong>${escapeAttr(m.label||chain)}</strong></td><td>${coverageCell(true,c.balanceProvider,balanceProviders)}</td><td>${coverageCell(c.feesEnabled,c.feeProvider,feeProviders)}</td><td>${escapeAttr(yearEndCoverageLabel(chain,c))}</td></tr>`}).join("");el.innerHTML=`<div class="chain-table-wrap"><table class="chain-admin-table"><thead><tr><th>Chain</th><th>Aktueller Bestand</th><th>Gebühren</th><th>Bestand per 31.12.</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
+function renderHelpChainCoverage(){const el=document.getElementById("helpChainCoverage");if(!el)return;const balanceProviders=["rpc","evm_rpc","blockstream","mempool","xrpscan","solana_rpc","solana_publicnode","trongrid","akash_rest","apertum_explorer","blockscout"],feeProviders=["routescan","nodereal","blockscout","xrpscan","solana_publicnode","apertum_explorer","mempool","tronscan"];const rows=Object.keys(CHAIN_CONFIG).sort((a,b)=>(CHAIN_CONFIG[a]?.sortOrder||100)-(CHAIN_CONFIG[b]?.sortOrder||100)).map(chain=>{const c=CHAIN_CONFIG[chain]||{},m=CHAIN_META[chain]||{};return `<tr><td><strong>${escapeAttr(m.label||chain)}</strong></td><td>${coverageCell(true,c.balanceProvider,balanceProviders)}</td><td>${coverageCell(c.feesEnabled,c.feeProvider,feeProviders)}</td><td>${escapeAttr(yearEndCoverageLabel(chain,c))}</td></tr>`}).join("");el.innerHTML=`<div class="chain-table-wrap help-chain-coverage-wrap"><table class="chain-admin-table help-chain-coverage-table"><thead><tr><th>Chain</th><th>Aktueller Bestand</th><th>Gebühren</th><th>Bestand per 31.12.</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 function switchProjectSubtab(project,name,button){document.querySelectorAll(`#tab-${project} .project-subtab-panel`).forEach(x=>x.style.display="none");const p=document.getElementById(`${project}-subtab-${name}`);if(p)p.style.display="block";document.querySelectorAll(`#tab-${project} .project-subtabs .tab-btn`).forEach(x=>x.classList.remove("active"));button?.classList.add("active");}
 
 function adminSimpleInput(value,key,type="text",extra=""){
@@ -1358,8 +1378,16 @@ async function saveAdminChain(id,isNew=false) {
 // Rein statische Übersicht, keine DB-Anbindung nötig - hier einfach die Liste pflegen.
 const ADMIN_IDEAS = [
   { status: "done", title: "Discovery-Metadaten + Solana-Default", desc: "Phase 2ag: Alle discovery_enabled Chains sind beim Öffnen standardmäßig aktiviert, inklusive Solana. Historisch gefundene EVM-/Apertum-Token laden Symbol, Name und Decimals direkt vom Contract und cachen die Metadaten lokal." },
-  { status: "done", title: "Apertum Kurse vollständig on-chain", desc: "Phase 2ai: Im Tab Vordefinierte Token gilt für die komplette Apertum-Chain ausschließlich On-Chain-Bewertung. Nativer APTM wird 1:1 über wAPTM/wUSDT bewertet; Token nutzen direkt TOKEN/wUSDT oder TOKEN/wAPTM → wUSDT. CoinGecko/GeckoTerminal werden für Apertum nicht als Fallback verwendet." },
-  { status: "done", title: "TLN/VOW Liquidity Pools nach Chain getrennt", desc: "Phase 2ai: Eigene Unter-Tabs für BNB Smart Chain (BSC/PCLP) und Ethereum (ETH/LP). LP-Cache-Fehler eines Providers lassen vorhandene Cache-Daten und Live-Bestände sichtbar und schreiben den Scanstand nicht fälschlich weiter." },
+  { status: "done", title: "Apertum Kurse vollständig on-chain", desc: `Phase 2aj: Im Tab Vordefinierte Token gilt für die komplette Apertum-Chain ausschließlich On-Chain-Bewertung.
+
+• Nativer APTM wird 1:1 über wAPTM/wUSDT bewertet.
+• wUSDT/wUSDC werden als 1 USD behandelt.
+• Weitere Token nutzen direkt TOKEN/wUSDT oder TOKEN/wAPTM → wUSDT.
+• archive_rpc_url ist optional; falls leer, wird wie im DB-Schema vorgesehen rpc_url verwendet.
+• CoinGecko/GeckoTerminal werden für Apertum nicht als Fallback verwendet.` },
+  { status: "done", title: "TLN/VOW Liquidity Pools nach Chain getrennt", desc: `Phase 2aj: Eigene Unter-Tabs für BNB Smart Chain (BSC/PCLP) und Ethereum (ETH/LP).
+
+Der LP-Scanner nutzt nun denselben zentralen RPC-Resolver wie die Hauptanwendung. Damit werden insbesondere Alchemy-Archive-RPCs inklusive Key-Auflösung korrekt verwendet. Providerfehler lassen vorhandene Cache-Daten sichtbar und schreiben den Scanstand nicht fälschlich weiter.` },
   { status: "done", title: "LP/PCLP-Historie persistent cachen", desc: "Phase 2af: generischer Supabase-Cache lp_history_events für DAO1/Apertum und TLN/VOW auf BSC/Ethereum. Erster Lauf liest die historische ERC-20-Transferhistorie; Folge-Läufe beginnen am gespeicherten project_scan_state mit Reorg-Überlappung. Add/Remove, LP-Delta, laufender LP-Saldo, Underlyings sowie historische USD-Werte werden dauerhaft gespeichert. Aktuelle LP-Balance, Reserven und Pool-Anteil bleiben live." },
   {
     status: "in_progress",
@@ -1387,9 +1415,19 @@ const ADMIN_IDEAS = [
   { status: "done", title: "TLN/VOW- und v-Währungs-Preislogik", desc: "On-chain umgesetzt: v_currency über direkten v/VOW-Pool und VOW/USDT; tln_vow_token bevorzugt TOKEN/VOW→VOW/USDT, sonst TOKEN/USDT; VOW selbst direkt VOW/USDT. Zuordnung erfolgt über Contract-Adressen und Supabase-Kategorien." },
   { status: "open", title: "Wallet-Bezeichnungen verschlüsseln (Stufe 1)", desc: "Nur Labels verschlüsseln, nicht öffentliche Blockchain-Adressen. Vor Umsetzung Schlüsselverwaltung und Auswirkungen auf Suche/Sortierung klären." },
   {
-    status: "paused",
-    title: "Automatisierte monatliche Snapshots (1. jedes Monats)",
-    desc: "Geplant als Supabase Edge Function + pg_cron, unabhängig vom Browser. Code/Migrationen wurden vorbereitet, Deployment aber pausiert. Vor Wiederaufnahme prüfen, ob die inzwischen hinzugekommenen Chains (u.a. Akash) und aktuelle Preislogik vollständig im Snapshot-Job berücksichtigt werden."
+    status: "open",
+    title: "Automatische Snapshots: ereignisbasiert + monatlicher Hintergrund-Job",
+    desc: `Keine 7-Tage-Regel.
+
+Beim normalen Seitenaufruf soll ein automatischer Snapshot nur bei einer wirklich relevanten Bestands-/Wertänderung entstehen, z. B. neuer/entfernter Token oder deutliche Veränderung des Gesamtwerts. Die konkrete Schwelle wird vor Umsetzung festgelegt.
+
+Zusätzlich soll ein monatlicher Hintergrund-Job serverseitig einen Monats-Snapshot erstellen, auch wenn der User die Seite in diesem Monat nicht öffnet. Ziel: einmal pro Monat ein verlässlicher Stand ohne Benutzeraktion.
+
+Hinweis an den User:
+• Bei ereignisbasiertem Snapshot direkt ein Popup mit Grund anzeigen.
+• Bei einem durch den Hintergrund-Job erstellten Monats-Snapshot beim nächsten Login informieren, z. B. „Am 31.07.2026 wurde automatisch ein Monats-Snapshot erstellt.“
+
+Der bestehende spezielle Bestand per 31.12. bleibt davon unabhängig.`
   },
   { status: "done", title: "Wachhalte-Mechanismus gegen Supabase-Inaktivitäts-Pause", desc: "GitHub Actions Workflow pingt Supabase regelmäßig extern an." },
   { status: "done", title: "Netzwerkgebühren ohne Alchemy", desc: "Gebührenprovider migriert: Ethereum Routescan, BSC NodeReal, Polygon/Arbitrum/Base Blockscout, Avalanche Routescan; Apertum/XRP/Solana über eigene kostenlose Quellen. Supabase-Cache + inkrementelle Aktualisierung; alle 30-Tage-Sperren gelten nur für Nicht-Admins. Historische USD-Bewertung bewusst als spätere Phase offen." },
@@ -1430,7 +1468,7 @@ function renderAdminIdeas() {
     return `<div class="custom-token-row" style="align-items:flex-start">
       <div>
         <div><strong>${escapeAttr(idea.title)}</strong> <span class="badge" style="background:${s.color}22;color:${s.color}">${s.label}</span></div>
-        <div class="meta" style="margin-top:4px">${escapeAttr(idea.desc)}</div>
+        <div class="meta idea-desc" style="margin-top:4px">${escapeAttr(idea.desc)}</div>
       </div>
     </div>`;
   }).join("");
@@ -1543,11 +1581,15 @@ let archiveRpcLastCall = 0;
 
 function configuredArchiveRpcUrl(chain) {
   const cfg = CHAIN_CONFIG[chain] || {};
-  if (!cfg.archiveRpcUrl) {
-    throw new Error(`${CHAIN_META[chain]?.label || chain}: kein Historie-/Archive-RPC konfiguriert`);
+  // archive_rpc_url ist optional. Gemäß DB-Schema fällt die Historien-/On-Chain-Abfrage
+  // auf rpc_url zurück, wenn kein eigener Archive-RPC hinterlegt ist. Das ist u.a. für
+  // Apertum wichtig, dessen öffentlicher RPC auch für aktuelle DEX-Abfragen genutzt wird.
+  const rawBase = cfg.archiveRpcUrl || cfg.rpcUrl;
+  if (!rawBase) {
+    throw new Error(`${CHAIN_META[chain]?.label || chain}: weder Historie-/Archive-RPC noch RPC konfiguriert`);
   }
-  const base = cfg.archiveRpcUrl.replace(/\/+$/, "");
-  if (String(cfg.archiveRpcProvider || "").toLowerCase() === "alchemy") {
+  const base = rawBase.replace(/\/+$/, "");
+  if (cfg.archiveRpcUrl && String(cfg.archiveRpcProvider || "").toLowerCase() === "alchemy") {
     assertAlchemyConfigured();
     return `${base}/${encodeURIComponent(ALCHEMY_API_KEY)}`;
   }
@@ -4201,13 +4243,18 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
   const engine=window.WalletLPEngine,cached=await engine.loadHistory(projectKey,chain,walletAddress).catch(()=>[]);
   const cachedPairs=new Set(cached.map(r=>normalizeAddress(r.pair_address,chain)).filter(Boolean));
   let last=0;try{last=await engine.getScanState(projectKey,chain,walletAddress,"lp_history_v2");}catch{}
-  const latest=await engine.latestBlock(chain),from=last>0?Math.max(0,last-50):0;
+  let latest=0;
+  try{latest=await engine.latestBlock(chain);}
+  catch(e){
+    return {events:cached,scanned:last,newEvents:0,pairs:[],warning:`RPC eth_blockNumber: ${e?.message||String(e)}`};
+  }
+  const from=last>0?Math.max(0,last-50):0;
   let transfers=[],syncWarning=null;
   try{transfers=await lpWalletTransfersSince(chain,walletAddress,from);}
   catch(e){
     // Ein Discovery-/Explorer-Ausfall darf den vorhandenen LP-Cache nicht unbrauchbar machen.
     // Aktuelle Positionen und bereits gecachte Historie bleiben sichtbar; Scanstand wird nicht fortgeschrieben.
-    syncWarning=e?.message||String(e);
+    syncWarning=`Transfer-Discovery: ${e?.message||String(e)}`;
   }
   const pairMap=new Map();
   for(const a of cachedPairs){const p=await engine.pairInfo(chain,a);if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(a,p);}
