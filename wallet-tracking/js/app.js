@@ -977,7 +977,7 @@ function showTab(name) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
   const panel = document.getElementById("tab-" + name);
   if (panel) panel.classList.add("active");
-  if (name === "predefined") ensurePredefinedNames();
+  if (name === "predefined") { ensurePredefinedNames(); loadApertumCurrentPrices().then(()=>renderSafeTokenTable()).catch(e=>console.warn("Apertum On-Chain-Kurse",e)); }
   if (name === "admin" && !document.querySelector(".admin-tab-panel.active")) showAdminTab("customtokens");
   if (name === "chat") {
     const userView = document.getElementById("userChatView");
@@ -1358,7 +1358,8 @@ async function saveAdminChain(id,isNew=false) {
 // Rein statische Übersicht, keine DB-Anbindung nötig - hier einfach die Liste pflegen.
 const ADMIN_IDEAS = [
   { status: "done", title: "Discovery-Metadaten + Solana-Default", desc: "Phase 2ag: Alle discovery_enabled Chains sind beim Öffnen standardmäßig aktiviert, inklusive Solana. Historisch gefundene EVM-/Apertum-Token laden Symbol, Name und Decimals direkt vom Contract und cachen die Metadaten lokal." },
-  { status: "done", title: "Apertum Wrapped Live-Kurse on-chain", desc: "Phase 2ag: Vordefinierte Apertum-Wrapped-Token zeigen Live-Kurse ausschließlich aus Apertum-V2-Pools. Direkter wUSDT-Weg und Weg über wAPTM werden geprüft; bei beiden verfügbaren Wegen wird die Route mit der größeren USD-bewerteten Referenzreserve verwendet." },
+  { status: "done", title: "Apertum Kurse vollständig on-chain", desc: "Phase 2ai: Im Tab Vordefinierte Token gilt für die komplette Apertum-Chain ausschließlich On-Chain-Bewertung. Nativer APTM wird 1:1 über wAPTM/wUSDT bewertet; Token nutzen direkt TOKEN/wUSDT oder TOKEN/wAPTM → wUSDT. CoinGecko/GeckoTerminal werden für Apertum nicht als Fallback verwendet." },
+  { status: "done", title: "TLN/VOW Liquidity Pools nach Chain getrennt", desc: "Phase 2ai: Eigene Unter-Tabs für BNB Smart Chain (BSC/PCLP) und Ethereum (ETH/LP). LP-Cache-Fehler eines Providers lassen vorhandene Cache-Daten und Live-Bestände sichtbar und schreiben den Scanstand nicht fälschlich weiter." },
   { status: "done", title: "LP/PCLP-Historie persistent cachen", desc: "Phase 2af: generischer Supabase-Cache lp_history_events für DAO1/Apertum und TLN/VOW auf BSC/Ethereum. Erster Lauf liest die historische ERC-20-Transferhistorie; Folge-Läufe beginnen am gespeicherten project_scan_state mit Reorg-Überlappung. Add/Remove, LP-Delta, laufender LP-Saldo, Underlyings sowie historische USD-Werte werden dauerhaft gespeichert. Aktuelle LP-Balance, Reserven und Pool-Anteil bleiben live." },
   {
     status: "in_progress",
@@ -2230,7 +2231,7 @@ function renderSafeTokenTable() {
       let p;
       if (r.isNative) {
         const np = nativePrices[r.chain];
-        p = np ? { price: np.price, source: "CoinGecko" } : null;
+        p = np ? { price: np.price, source: np.source || "CoinGecko" } : null;
       } else {
         p = priceForToken(r.chain, r.address);
       }
@@ -2329,12 +2330,14 @@ async function apertumCurrentDirectPrice(base,quote,bd,qd){
   const rb=Number(is0?r0:r1)/10**Number(bd),rq=Number(is0?r1:r0)/10**Number(qd);
   return rb>0&&rq>0?{price:rq/rb,pair,baseReserve:rb,quoteReserve:rq}:null;
 }
-async function loadApertumWrappedCurrentPrices(){
+async function loadApertumCurrentPrices(){
   const chain="apertum",u=taxPredefinedBySymbol(chain,"WUSDT")||taxPredefinedBySymbol(chain,"USDT"),wa=taxPredefinedBySymbol(chain,"WAPTM");
   if(!u||!wa)return;
   const ud=await taxTokenDecimalsCurrent(chain,u),wd=await taxTokenDecimalsCurrent(chain,wa);
   const aptmLeg=await apertumCurrentDirectPrice(wa.address,u.address,wd,ud);
   const aptm=aptmLeg?.price;if(!(aptm>0))return;
+  // Apertum ist vollständig on-chain: auch der native APTM-Kurs kommt 1:1 über wAPTM/wUSDT.
+  nativePrices[chain]={price:aptm,change24h:undefined,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`};
   tokenPrices[chain+"|"+normalizeAddress(u.address,chain)]={price:1,source:"Apertum DEX · Stablecoin 1 USD"};
   tokenPrices[chain+"|"+normalizeAddress(wa.address,chain)]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`};
   const addresses=[...new Set([...(SAFE_ADDRESSES[chain]||[]),...Object.keys(predefinedTokenSymbols).filter(k=>k.startsWith(chain+"|")).map(k=>k.slice(chain.length+1))])];
@@ -2355,8 +2358,8 @@ async function loadApertumWrappedCurrentPrices(){
 
 async function loadNativePrices() {
   const ids = [...new Set(
-    Object.values(CHAIN_META).map(m => m.coingeckoId)
-      .concat(Object.values(predefinedTokenCoinGeckoIds))
+    Object.entries(CHAIN_META).filter(([chain])=>chain!=="apertum").map(([,m]) => m.coingeckoId)
+      .concat(Object.entries(predefinedTokenCoinGeckoIds).filter(([key])=>!key.startsWith("apertum|")).map(([,id])=>id))
       .filter(Boolean)
   )].join(",");
 
@@ -2369,6 +2372,7 @@ async function loadNativePrices() {
 
     const prices = {};
     Object.keys(CHAIN_META).forEach(chain => {
+      if(chain === "apertum") return; // Apertum: ausschließlich On-Chain-Kurse
       const id = CHAIN_META[chain].coingeckoId;
       if (data[id] && typeof data[id].usd === "number") {
         prices[chain] = {
@@ -2381,6 +2385,7 @@ async function loadNativePrices() {
 
     const tPrices = {};
     Object.keys(SAFE_ADDRESSES).forEach(chain => {
+      if(chain === "apertum") return; // Apertum: kein CoinGecko-Fallback
       (SAFE_ADDRESSES[chain] || []).forEach(address => {
         const tokenKey = chain + "|" + address;
         const cgId = predefinedTokenCoinGeckoIds[tokenKey];
@@ -2403,7 +2408,7 @@ async function loadNativePrices() {
   }
 
   await loadTokenPricesViaGeckoTerminal(alreadyPriced);
-  await loadApertumWrappedCurrentPrices();
+  await loadApertumCurrentPrices();
   if(document.getElementById("tab-predefined")?.classList.contains("active")) renderSafeTokenTable();
 
   // Gebühren-Ansichten können bereits sichtbar sein, während die Kursabfrage noch
@@ -2431,7 +2436,7 @@ async function refreshFeePriceViews() {
 
 async function loadTokenPricesViaGeckoTerminal(alreadyPriced) {
   // Alle Chains parallel abfragen statt nacheinander - das war der Haupt-Geschwindigkeitsverlust.
-  const chainJobs = Object.keys(GECKOTERMINAL_NETWORK).map(async chain => {
+  const chainJobs = Object.keys(GECKOTERMINAL_NETWORK).filter(chain=>chain!=="apertum").map(async chain => {
     const network = GECKOTERMINAL_NETWORK[chain];
     const list = (SAFE_ADDRESSES[chain] || [])
       .concat(customSafeTokens.filter(t => t.chain === chain).map(t => t.address))
@@ -4197,7 +4202,13 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
   const cachedPairs=new Set(cached.map(r=>normalizeAddress(r.pair_address,chain)).filter(Boolean));
   let last=0;try{last=await engine.getScanState(projectKey,chain,walletAddress,"lp_history_v2");}catch{}
   const latest=await engine.latestBlock(chain),from=last>0?Math.max(0,last-50):0;
-  const transfers=await lpWalletTransfersSince(chain,walletAddress,from);
+  let transfers=[],syncWarning=null;
+  try{transfers=await lpWalletTransfersSince(chain,walletAddress,from);}
+  catch(e){
+    // Ein Discovery-/Explorer-Ausfall darf den vorhandenen LP-Cache nicht unbrauchbar machen.
+    // Aktuelle Positionen und bereits gecachte Historie bleiben sichtbar; Scanstand wird nicht fortgeschrieben.
+    syncWarning=e?.message||String(e);
+  }
   const pairMap=new Map();
   for(const a of cachedPairs){const p=await engine.pairInfo(chain,a);if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(a,p);}
   for(const t of transfers){
@@ -4218,19 +4229,21 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
   // Bei einem transienten Receipt/RPC-Fehler den Scanstand bewusst VOR dem fehlgeschlagenen
   // Block stehen lassen. Beim nächsten Öffnen wird dieser Bereich erneut versucht und kein
   // historisches LP-Ereignis geht durch einen vorzeitig fortgeschriebenen Cache-Stand verloren.
-  const safeScannedBlock=earliestFailedBlock==null?latest:Math.max(0,earliestFailedBlock-1);
-  await engine.setScanState(projectKey,chain,walletAddress,safeScannedBlock,"lp_history_v2");
-  return {events:await engine.loadHistory(projectKey,chain,walletAddress),scanned:latest,newEvents,pairs:[...pairMap.values()]};
+  if(!syncWarning){
+    const safeScannedBlock=earliestFailedBlock==null?latest:Math.max(0,earliestFailedBlock-1);
+    await engine.setScanState(projectKey,chain,walletAddress,safeScannedBlock,"lp_history_v2");
+  }
+  return {events:await engine.loadHistory(projectKey,chain,walletAddress),scanned:latest,newEvents,pairs:[...pairMap.values()],warning:syncWarning};
 }
 
 async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31"){
   const el=document.getElementById(targetId);if(!el||!window.WalletLPEngine)return;
   el.innerHTML='<div class="status"><span class="loading">LP/PCLP-Cache wird synchronisiert…</span></div>';
-  const rows=[],history=[];const targetEpoch=Math.floor(new Date(dateStr+'T23:59:59Z').getTime()/1000);let cacheNew=0,cacheErrors=[];
+  const rows=[],history=[];const targetEpoch=Math.floor(new Date(dateStr+'T23:59:59Z').getTime()/1000);let cacheNew=0,cacheErrors=[],cacheWarnings=[];
   for(const chain of chains){let block=null;try{block=(await taxEvmBlockByTime(chain,targetEpoch)).block;}catch{}
     for(const w of wallets){
       const wa=walletAddressForChain(w,chain);if(!wa)continue;
-      let sync={events:[],pairs:[]};try{sync=await syncProjectLpHistory(projectKey,chain,wa);cacheNew+=sync.newEvents||0;}catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${e.message}`);console.warn("LP-Cache Sync",chain,wa,e);try{sync.events=await window.WalletLPEngine.loadHistory(projectKey,chain,wa);}catch{}}
+      let sync={events:[],pairs:[]};try{sync=await syncProjectLpHistory(projectKey,chain,wa);cacheNew+=sync.newEvents||0;if(sync.warning)cacheWarnings.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${sync.warning}`);}catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: ${e.message}`);console.warn("LP-Cache Sync",chain,wa,e);try{sync.events=await window.WalletLPEngine.loadHistory(projectKey,chain,wa);}catch{}}
       const currentCandidates=(walletData[w.id]?.[chain]?.tokens||[]).map(t=>t.address).filter(Boolean);
       const candidates=new Set([...currentCandidates,...sync.events.map(e=>e.pair_address),...(sync.pairs||[]).map(p=>p.address)].map(a=>normalizeAddress(a,chain)));
       for(const a of candidates){
@@ -4247,9 +4260,15 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
   const currentTable=`<div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Pool</th><th>aktuell LP</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} LP</th><th>${dateStr} USD</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeAttr(r.w.label)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta">${r.pair.address}</div></td><td>${r.cur?f(r.cur.balance):'0'}</td><td>${r.cur?`<div>${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}</div><div>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}</div><div class="meta">Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–'}</td><td>${u(r.cur?.usd)}</td><td>${f(r.histBal)}</td><td>${r.histPrice?u(r.histBal*r.histPrice.price):'–'}</td></tr>`).join(''):'<tr><td colspan="8">Keine aktuellen oder historischen LP-Positionen gefunden.</td></tr>'}</tbody></table></div>`;
   const hrows=[...history].sort((a,b)=>Number(b.block_number)-Number(a.block_number)||Number(b.log_index||0)-Number(a.log_index||0));
   const historyTable=`<h3 style="margin-top:22px">Add-/Remove-Liquidity-Historie</h3><div class="chain-table-wrap lp-history-scroll"><table class="lp-history-table"><colgroup><col class="lp-col-time"><col class="lp-col-wallet"><col class="lp-col-chain"><col class="lp-col-action"><col class="lp-col-pool"><col class="lp-col-delta"><col class="lp-col-balance"><col class="lp-col-underlying"><col class="lp-col-usd"></colgroup><thead><tr><th>Zeit</th><th>Wallet</th><th>Chain</th><th>Aktion</th><th>Pool</th><th>LP Δ</th><th>LP-Saldo</th><th>Underlying</th><th>historischer USD-Wert</th></tr></thead><tbody>${hrows.length?hrows.map(e=>`<tr><td>${dt(e.tx_timestamp)}<div class="meta">Block ${e.block_number}</div></td><td>${escapeAttr(e.w.label)}</td><td>${escapeAttr(CHAIN_META[e.chain]?.label||e.chain)}</td><td>${e.event_type==='add'?'<span class="badge safe">Add</span>':'<span class="badge danger">Remove</span>'}</td><td><strong>${escapeAttr(e.lp_label||window.WalletLPEngine.label(e.chain))} ${escapeAttr(e.token0_symbol||'Token0')}/${escapeAttr(e.token1_symbol||'Token1')}</strong><div class="meta lp-address">${e.pair_address}</div></td><td>${Number(e.lp_delta)>0?'+':''}${f(e.lp_delta)}</td><td>${f(e.running_balance)}</td><td><div>${f(e.amount0)} ${escapeAttr(e.token0_symbol||'')}</div><div>${f(e.amount1)} ${escapeAttr(e.token1_symbol||'')}</div></td><td><strong>${u(e.value_usd)}</strong>${e.price_source?`<div class="meta lp-price-source">${escapeAttr(e.price_source)}</div>`:''}</td></tr>`).join(''):'<tr><td colspan="9">Noch keine Add-/Remove-Liquidity-Ereignisse im Cache.</td></tr>'}</tbody></table></div>`;
-  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Aktuelle LP-Bestände, Reserven und Pool-Anteile werden live gelesen. <strong>Add-/Remove-Historie und historische USD-Werte werden dauerhaft in Supabase gecached</strong>; nach dem ersten Vollscan werden nur neue Blockchain-Bereiche synchronisiert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">Cache teilweise nicht aktualisiert: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${currentTable}${historyTable}`;
+  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Aktuelle LP-Bestände, Reserven und Pool-Anteile werden live gelesen. <strong>Add-/Remove-Historie und historische USD-Werte werden dauerhaft in Supabase gecached</strong>; nach dem ersten Vollscan werden nur neue Blockchain-Bereiche synchronisiert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheWarnings.length?`<div class="note" style="margin-top:8px"><strong>LP-Historie momentan nicht nachladbar:</strong> vorhandener Cache und Live-Bestände bleiben sichtbar. ${escapeAttr(cacheWarnings.join(' · '))}</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">Cache teilweise nicht aktualisiert: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${currentTable}${historyTable}`;
 }
 window.renderProjectLpTab=renderProjectLpTab;
+window.showTlnLpChain=function(chain,btn){
+  const b=document.getElementById("tlnvowLpBscContent"),e=document.getElementById("tlnvowLpEthContent");
+  if(b)b.style.display=chain==="bsc"?"block":"none";if(e)e.style.display=chain==="eth"?"block":"none";
+  document.querySelectorAll("#tlnvow-subtab-liquidity .project-subtabs .tab-btn").forEach(x=>x.classList.toggle("active",x===btn));
+  return renderProjectLpTab("tln_vow",[chain],chain==="bsc"?"tlnvowLpBscContent":"tlnvowLpEthContent");
+};
 
 // "Entdecken" - findet Token, die eine Wallet hält, aber die
 // noch nicht auf der sicheren Liste stehen. Läuft nur auf Klick.
@@ -6212,15 +6231,17 @@ async function runDiscoveryScan() {
 }
 
 // Fasst GoPlus-Risiko-Flags + Namens-Heuristik zu einer einzigen Scam-Einschätzung zusammen
-function isFindingScam(f) {
-  if (f.userMarkedScam) return true;
+function isFindingScamSuspect(f) {
   if (f.nameScamFlag) return true;
   if (f.risk && f.risk.length > 0) return true;
   return false;
 }
+function isFindingScam(f) { return !!f.userMarkedScam || isFindingScamSuspect(f); }
 
 window.historicalErc20Candidates = historicalErc20Candidates;
 let lastDiscoveryFindings = [];
+let discoveryHideSuspect = true;
+let discoveryHideMarkedScam = true;
 
 function renderDiscoveryResults(findings) {
   const el = document.getElementById("discoveryResults");
@@ -6229,18 +6250,24 @@ function renderDiscoveryResults(findings) {
     return;
   }
 
-  const hideScam = document.getElementById("hideScamToggle") && document.getElementById("hideScamToggle").checked;
-  const visible = hideScam ? findings.filter(f => !isFindingScam(f)) : findings;
-
-  const filterBar = `<div class="custom-token-card" style="margin-bottom:14px">
+  const suspectEl=document.getElementById("hideScamSuspectToggle"), markedEl=document.getElementById("hideMarkedScamToggle");
+  if(suspectEl) discoveryHideSuspect=suspectEl.checked;
+  if(markedEl) discoveryHideMarkedScam=markedEl.checked;
+  const visible = findings.filter(f => !(discoveryHideMarkedScam && f.userMarkedScam) && !(discoveryHideSuspect && isFindingScamSuspect(f)));
+  const suspectCount=findings.filter(f=>isFindingScamSuspect(f)).length, markedCount=findings.filter(f=>f.userMarkedScam).length;
+  const filterBar = `<div class="custom-token-card" style="margin-bottom:14px;display:flex;gap:22px;flex-wrap:wrap">
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
-      <input type="checkbox" id="hideScamToggle" style="width:auto" onchange="renderDiscoveryResults(lastDiscoveryFindings)" ${hideScam ? "checked" : ""} />
-      Scam-verdächtige Token ausblenden (${findings.filter(f => isFindingScam(f)).length} von ${findings.length})
+      <input type="checkbox" id="hideScamSuspectToggle" style="width:auto" onchange="discoveryHideSuspect=this.checked;renderDiscoveryResults(lastDiscoveryFindings)" ${discoveryHideSuspect ? "checked" : ""} />
+      Scam-Verdacht ausblenden (${suspectCount} von ${findings.length})
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
+      <input type="checkbox" id="hideMarkedScamToggle" style="width:auto" onchange="discoveryHideMarkedScam=this.checked;renderDiscoveryResults(lastDiscoveryFindings)" ${discoveryHideMarkedScam ? "checked" : ""} />
+      Als Scam markierte ausblenden (${markedCount} von ${findings.length})
     </label>
   </div>`;
 
   if (visible.length === 0) {
-    el.innerHTML = filterBar + `<div class="empty">Alle gefundenen Token sind als Scam-verdächtig markiert und aktuell ausgeblendet.</div>`;
+    el.innerHTML = filterBar + `<div class="empty">Alle gefundenen Token werden durch die aktiven Scam-Filter ausgeblendet.</div>`;
     return;
   }
 

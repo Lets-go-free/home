@@ -1461,7 +1461,7 @@ window.DAO1Project = (() => {
     const el=document.getElementById("dao1TransactionControls");
     if(!el)return;
     const wallets=allProjectWalletOptions();
-    if(!txFilterWallet && wallets[0])txFilterWallet=String(wallets[0].id);
+    if(!txFilterWallet)txFilterWallet="__all";
 
     const classes=transactionFilterClasses();
     const nfts=transactionFilterNfts();
