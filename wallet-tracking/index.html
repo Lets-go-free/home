@@ -581,7 +581,8 @@
     </div>
 
     <div id="tab-tlnvow" class="tab-panel">
-      <div class="project-subtabs"><button class="tab-btn active" onclick="switchProjectSubtab('tlnvow','overview',this)">Übersicht</button><button class="tab-btn" onclick="switchProjectSubtab('tlnvow','help',this)">Hilfe</button></div>
+      <div class="project-subtabs"><button class="tab-btn active" onclick="switchProjectSubtab('tlnvow','overview',this)">Übersicht</button><button class="tab-btn" onclick="switchProjectSubtab('tlnvow','liquidity',this); renderProjectLpTab('tln_vow',['bsc','eth'],'tlnvowLpContent')">Liquidity Pools</button><button class="tab-btn" onclick="switchProjectSubtab('tlnvow','help',this)">Hilfe</button></div>
+      <div id="tlnvow-subtab-liquidity" class="project-subtab-panel" style="display:none"><div id="tlnvowLpContent"></div></div>
       <div id="tlnvow-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">TLN/VOW · Hilfe</h3><p class="note">Diese Projektansicht bewertet TLN/VOW-Assets direkt über die hinterlegten DEX-Pools. v-Währungen werden über TOKEN → VOW → USDT bewertet. TLN/VOW-Projekttoken verwenden TOKEN/VOW und als Fallback TOKEN/USDT. V2-LP-Token werden aus den Reserven beider Pool-Assets und der LP-TotalSupply bewertet. Für die Bestandesaufnahme per 31.12 werden dieselben Regeln mit dem historischen Blockzustand verwendet.</p><p class="note">Wenn ein Projektpreis fehlt, zuerst prüfen, ob Token/LP in der Projekt-Konfiguration korrekt klassifiziert und der benötigte DEX/Pool aktiv ist. Die allgemeine Bedienung des Wallet-Trackings steht unter „Hilfe / Handbuch“.</p></div></div>
       <div id="tlnvow-subtab-overview" class="project-subtab-panel">
       <div class="custom-token-card" style="border-color:var(--accent)">
@@ -706,7 +707,7 @@
   </div>
 
   <footer>
-    Version vom 28.08.2026, 01:35 Uhr · modularer Umbau Phase 2ad<br>
+    Version vom 28.08.2026, 03:46 Uhr · modularer Umbau Phase 2ae<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -715,6 +716,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="./js/lp-engine.js"></script>
 <script src="./projects/tln-vow/tln-vow.js"></script>
 <script src="./projects/dao1/dao1.js"></script>
 
@@ -736,6 +738,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.08.2026 01:35:16 CEST · Phase 2ad · Build 20260828-013516</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.08.2026 03:46:49 CEST · Phase 2ae · Build 20260828-034649</div>
 </body>
 </html>

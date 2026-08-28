@@ -74,11 +74,12 @@ window.DAO1Project = (() => {
       panel.id = "tab-dao1";
       panel.className = "tab-panel";
       panel.innerHTML = `
-        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen &amp; Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
+        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen &amp; Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); renderProjectLpTab('dao1',['apertum'],'dao1LpContent')">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
         <div id="dao1-subtab-overview" class="project-subtab-panel"><div class="custom-token-card"><div class="chain-title">DAO1 · Apertum</div><div class="note">Projektübersicht für DAO1-spezifische Assets auf Apertum. Detailfunktionen sind in die Unter-Tabs gegliedert.</div></div></div>
+        <div id="dao1-subtab-liquidity" class="project-subtab-panel" style="display:none"><div id="dao1LpContent"></div></div>
         <div id="dao1-subtab-config" class="project-subtab-panel" style="display:none"><div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div></div>
         <div id="dao1-subtab-transactions" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><div class="chain-title">📒 Apertum Transaktionshistorie</div><div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Wallet-Wechsel lesen den Cache; erst „Apertum-Historie aktualisieren“ lädt neue Blockchain-Daten, aktualisiert NFTs/Besitzerhistorie und reichert neue Claims an.</div><div id="dao1TransactionControls"></div><div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div><div id="dao1TransactionSummary" style="margin-top:10px"></div><div id="dao1TransactionTable" style="margin-top:10px"></div></div></div>
-        <div id="dao1-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">DAO1 / Apertum · Hilfe</h3><p class="note"><strong>Transaktionen &amp; Claims:</strong> „Apertum-Historie aktualisieren“ synchronisiert neue Transaktionen, Claims, historische APTM-Kurse sowie NFT-Bestand und Besitzerhistorie. Filter und Exporte arbeiten danach aus dem gespeicherten Bestand.</p><p class="note"><strong>Konfiguration:</strong> Hier werden DAO1-Projektassets und NFTs klassifiziert. Die Klassifizierung steuert Filter und Bezeichnungen, nicht die Erkennung der Blockchain-Transaktionen. Fehlende historische APTM-Kurse können manuell ergänzt werden und bleiben als manuell gekennzeichnet.</p></div></div>
+        <div id="dao1-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">DAO1 / Apertum · Hilfe</h3><p class="note"><strong>Liquidity Pools:</strong> Erkennt DAO1-V2-LPs automatisch, zeigt aktuelle Underlyings/Pool-Anteil und historische 31.12.-Positionen auch nach vollständigem Entfernen der Liquidität.</p><p class="note"><strong>Transaktionen &amp; Claims:</strong> „Apertum-Historie aktualisieren“ synchronisiert neue Transaktionen, Claims, historische APTM-Kurse sowie NFT-Bestand und Besitzerhistorie. Filter und Exporte arbeiten danach aus dem gespeicherten Bestand.</p><p class="note"><strong>Konfiguration:</strong> Hier werden DAO1-Projektassets und NFTs klassifiziert. Die Klassifizierung steuert Filter und Bezeichnungen, nicht die Erkennung der Blockchain-Transaktionen. Fehlende historische APTM-Kurse können manuell ergänzt werden und bleiben als manuell gekennzeichnet.</p></div></div>
       `;
       app.appendChild(panel);
     }
@@ -1683,12 +1684,19 @@ window.DAO1Project = (() => {
     const rows=txVisibleRows();
     const wallet=allProjectWalletOptions().find(w=>String(w.id)===String(txFilterWallet));
     const walletLabel=txFilterWallet==="__all" ? "Alle Apertum-Wallets" : walletAddress(wallet);
+    const claims=rows.filter(r=>r.claim_nft_id!=null);
+    const totalClaim=claims.reduce((a,r)=>a+Number(r.claim_reward_aptm||0),0);
+    const totalClaimUsd=claims.reduce((a,r)=>a+Number(r.claim_reward_usd||0),0);
+    const totalGas=rows.reduce((a,r)=>a+Number(r.gas_aptm||0),0);
+    const totalGasUsd=rows.reduce((a,r)=>a+Number(r.gas_usd||0),0);
+    const missingPrice=rows.filter(r=>(r.claim_nft_id!=null||Number(r.gas_aptm||0)>0)&&r.aptm_usd==null).length;
     const w=window.open("","_blank");
     if(!w)return alert("Popup wurde blockiert.");
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Apertum Transaktionshistorie</title><style>
       body{font-family:Arial,sans-serif;font-size:11px;color:#111}h1{font-size:18px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #bbb;padding:4px;vertical-align:top}th{background:#eee}code{font-size:9px}.meta{font-size:9px;color:#555}@page{size:A4 landscape;margin:10mm}
     </style></head><body><h1>DAO1 / Apertum Transaktionshistorie</h1>
-    <p><strong>Wallet:</strong> ${xmlEsc(walletLabel)}<br><strong>Datumsbereich:</strong> ${xmlEsc(txFilterFrom||"offen")} bis ${xmlEsc(txFilterTo||"offen")}<br><strong>Filter:</strong> Typ ${xmlEsc(txFilterKind)}, Klassifizierung ${xmlEsc(txFilterClass)}, NFT ${xmlEsc(txFilterNft)}<br><strong>Transaktionen:</strong> ${rows.length}</p>
+    <p><strong>Wallet:</strong> ${xmlEsc(walletLabel)}<br><strong>Datumsbereich:</strong> ${xmlEsc(txFilterFrom||"offen")} bis ${xmlEsc(txFilterTo||"offen")}<br><strong>Filter:</strong> Typ ${xmlEsc(txFilterKind)}, Klassifizierung ${xmlEsc(txFilterClass)}, NFT ${xmlEsc(txFilterNft)}</p>
+    <table style="margin-bottom:10px"><thead><tr><th>Transaktionen</th><th>Claims</th><th>Claim APTM</th><th>Claim USD historisch</th><th>Gas APTM</th><th>Gas USD historisch</th><th>ohne historischen Preis</th></tr></thead><tbody><tr><td>${rows.length}</td><td>${claims.length}</td><td>${fmt(totalClaim)}</td><td>${usd(totalClaimUsd)}</td><td>${fmt(totalGas)}</td><td>${usd(totalGasUsd)}</td><td>${missingPrice}</td></tr></tbody></table>
     <table><thead><tr><th>Zeit</th><th>Wallet</th><th>Richtung</th><th>Methode</th><th>APTM</th><th>Claim / NFT</th><th>APTM/USD</th><th>USD</th><th>Gas APTM</th><th>Gas USD historisch</th><th>Tx Hash</th></tr></thead><tbody>
     ${rows.map(r=>{
       const claim=r.claim_nft_id!=null;
@@ -1698,6 +1706,7 @@ window.DAO1Project = (() => {
       const valUsd=claim?Number(r.claim_reward_usd||0):Number(r.value_usd||0);
       return `<tr><td>${xmlEsc(r.tx_timestamp)}</td><td><code>${xmlEsc(r.wallet_address)}</code></td><td>${xmlEsc(r.direction)}</td><td>${xmlEsc(r.method)}</td><td>${fmt(amt)}</td><td>${claim?`${xmlEsc(currentName||"NFT")} #${r.claim_nft_id}<div class="meta">${xmlEsc(currentSubtype)} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td><td>${r.aptm_usd==null?"–":`${fmt(r.aptm_usd)}<div class="meta">${xmlEsc(r.price_source||"historischer Poolpreis")}</div>`}</td><td>${valUsd?usd(valUsd):"–"}</td><td>${fmt(r.gas_aptm)}</td><td>${r.gas_usd==null?"–":usd(Number(r.gas_usd))}</td><td><code>${xmlEsc(r.tx_hash)}</code></td></tr>`;
     }).join("")}
+    <tr style="font-weight:bold;background:#eee"><td colspan="4">TOTAL</td><td>${fmt(totalClaim)}</td><td>${claims.length} Claims</td><td>–</td><td>${usd(totalClaimUsd)}</td><td>${fmt(totalGas)}</td><td>${usd(totalGasUsd)}</td><td>–</td></tr>
     </tbody></table><script>window.onload=()=>window.print();<\/script></body></html>`);
     w.document.close();
   }
