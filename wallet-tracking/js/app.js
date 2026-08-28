@@ -203,6 +203,8 @@ async function onLoggedIn(session) {
   renderDiscoveryChainFilter();
   renderDiscoveryWalletSelect();
   await loadDiscoveryCacheFromDb();
+  await loadWalletRefreshStates();
+  renderWalletDataFreshness();
   activeFeesChains = new Set(feeChains());
   renderFeesChainFilter();
   renderFeesWalletSelect();
@@ -220,7 +222,7 @@ async function onLoggedIn(session) {
   // von heute, bleibt es beim gespeicherten Stand; weitere Aktualisierungen an diesem
   // Tag erfolgen ausschließlich manuell über „Jetzt live aktualisieren“.
   const cachedAt = await loadFromAutomatedCache();
-  const autoRefreshNeeded = wallets.length > 0 && !isSameLocalCalendarDay(cachedAt, new Date());
+  const autoRefreshNeeded = wallets.some(w => Object.keys(CHAIN_CONFIG).some(c => walletAddressForChain(w,c) && CHAIN_CONFIG[c]?.balanceProvider && !refreshedToday(w,c,'balances')) || (w.evm && !refreshedToday(w,'bsc','project:tln_vow')) || !refreshedToday(w,'','nft'));
   if (cachedAt) {
     await loadNativePrices();
     renderResults();
@@ -1070,6 +1072,7 @@ function showTab(name) {
   }
   if (name === "tlnvow" && window.TLNVOWProject) {
     window.TLNVOWProject.ensureLoaded();
+    maybeAutoRefreshProject('tln_vow','bsc','tlnvowLpBscContent').catch(e=>console.warn('TLN/VOW Projekt-Autoload:',e));
   }
   if (name === "dao1" && window.DAO1Project) {
     window.DAO1Project.ensureLoaded();
@@ -1273,7 +1276,7 @@ const HARDCODING_AUDIT_ITEMS = [
   {severity:"review", area:"Wallet-Maske", item:"EVM-Chain-Hinweis", detail:"Der sichtbare Hilfetext nennt Ethereum/BSC/Polygon/Arbitrum/Base/Avalanche/Apertum statisch. Darstellung sollte aus wallet_type=evm generiert werden."},
   {severity:"review", area:"Eigene sichere Token", item:"Chain-Auswahl", detail:"Die Auswahl enthält noch feste Chain-Optionen. Sie sollte aus public.chains erzeugt werden."},
   {severity:"review", area:"DeFi-Projekt UI", item:"Projektmodule", detail:"DAO1 und TLN/VOW besitzen jetzt eigene Unter-Tabs inklusive projektspezifischer Hilfe. Daten bleiben generisch in Supabase; die Modulnamen DAO1Project/TLNVOWProject sind bewusst projektspezifische Implementierung und können bei weiteren Projekten in ein gemeinsames Framework überführt werden."},
-  {severity:"keep", area:"Liquidity Pools", item:"Generischer DB-Cache", detail:"lp_history_events speichert unveränderliche Add-/Remove-Historie projekt- und chainübergreifend; project_scan_state hält den inkrementellen Wallet-Scanstand. Seit Phase 2am speichert lp_position_cache zusätzlich den bewusst aktualisierten Positions-, Underlying-, Pool-Anteil-, USD- und 31.12.-Stand. Beim Öffnen der Projekt-Tabs sind damit keine RPC-/Explorer-Aufrufe nötig."},
+  {severity:"keep", area:"Liquidity Pools", item:"Generischer DB-Cache", detail:"lp_history_events speichert unveränderliche Add-/Remove-Historie projekt- und chainübergreifend; project_scan_state hält den inkrementellen Wallet-Scanstand. Seit Phase 2am speichert lp_position_cache zusätzlich den bewusst aktualisierten Positions-, Underlying-, Pool-Anteil-, USD- und 31.12.-Stand. Projekt-Tabs lesen grundsätzlich den Cache; höchstens 1x täglich pro Wallet kann beim Öffnen ein automatischer Projekt-Refresh erfolgen."},
   {severity:"keep", area:"Services", item:"Globale API-/App-URLs", detail:"CoinGecko, GeckoTerminal, GoPlus, Supabase-App-URL, CDN, revoke.cash und IPFS sind globale Services und keine Chain-Stammdaten."},
   {severity:"keep", area:"Credentials", item:"Frontend-Keys", detail:"Alchemy/PublicNode/NodeReal nicht in public.chains verschieben. Später separat über Proxy/Secret-Strategie lösen."}
 ];
@@ -3333,60 +3336,158 @@ async function mergeTlnBscStakingCacheIntoWalletData(){
   }
 }
 
+
+// ---- Zentraler Refresh-/Activity-Status (Phase 2au) ----
+// Supabase ist bewusst die Quelle: 1x täglich gilt damit pro Wallet auch geräteübergreifend.
+let walletRefreshStates = new Map();
+const refreshStateKey=(walletId,chain,dataType)=>`${String(walletId)}|${chain||''}|${dataType}`;
+function walletDbId(w){return String(w?.dbId||w?.id||'');}
+function localDayKey(v){const d=v instanceof Date?v:new Date(v);if(isNaN(d.getTime()))return '';return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function refreshedToday(w,chain,dataType){const r=walletRefreshStates.get(refreshStateKey(walletDbId(w),chain,dataType));return !!r?.last_checked_at&&localDayKey(r.last_checked_at)===localDayKey(new Date());}
+async function loadWalletRefreshStates(){
+  walletRefreshStates=new Map();if(!currentUser)return;
+  const {data,error}=await sb.from('wallet_refresh_state').select('*').eq('user_id',currentUser.id);
+  if(error){console.warn('wallet_refresh_state:',error);return;}
+  for(const r of data||[])walletRefreshStates.set(refreshStateKey(r.wallet_id,r.chain_key,r.data_type),r);
+}
+async function saveWalletRefreshState(w,chain,dataType,patch={}){
+  const payload={user_id:currentUser.id,wallet_id:walletDbId(w),chain_key:chain||'',data_type:dataType,updated_at:new Date().toISOString(),...patch};
+  const {data,error}=await sb.from('wallet_refresh_state').upsert(payload,{onConflict:'user_id,wallet_id,chain_key,data_type'}).select().single();
+  if(error){console.warn('Refresh-Status speichern:',error);return null;}
+  walletRefreshStates.set(refreshStateKey(payload.wallet_id,payload.chain_key,payload.data_type),data);return data;
+}
+function confirmedSpamAddressesForWallet(w,chain){
+  const cache=discoveryCaches.get(walletDbId(w));const out=new Set();
+  for(const f of (cache?.findings||[]))if(f?.userMarkedScam&&f.chain===chain&&f.address)out.add(normalizeAddress(f.address,chain));
+  return out;
+}
+async function evmRelevantActivitySince(w,chain,state){
+  // Nur ein vom User bestätigtes Spam-Token wird ignoriert. System-Verdacht allein reicht nicht.
+  const address=walletAddressForChain(w,chain);if(!address)return {changed:false,latestBlock:null,reason:'keine Adresse'};
+  const latestBlock=await window.WalletLPEngine?.latestBlock?.(chain).catch(()=>null);
+  const fromBlock=Math.max(0,Number(state?.last_checked_block||0)+1);
+  if(!state?.last_checked_at||!Number(state?.last_checked_block||0))return {changed:true,latestBlock,reason:'Erstprüfung'};
+  // Der zuverlässigste vorhandene EVM-Activity-Pfad ist Alchemy Asset Transfers: native + ERC20, ein/ausgehend.
+  if(CHAIN_CONFIG[chain]?.discoveryProvider==='alchemy'){
+    const spam=confirmedSpamAddressesForWallet(w,chain);
+    for(const direction of ['fromAddress','toAddress']){
+      let pageKey=null,pages=0;
+      do{
+        const q={fromBlock:taxBlockHex(fromBlock),toBlock:'latest',category:['external','erc20','erc721','erc1155'],withMetadata:false,excludeZeroValue:false,maxCount:'0x3e8'};q[direction]=address;if(pageKey)q.pageKey=pageKey;
+        const r=await alchemyRpc(chain,'alchemy_getAssetTransfers',[q],'discovery');
+        for(const t of (r?.transfers||[])){
+          const contract=t.rawContract?.address?normalizeAddress(t.rawContract.address,chain):null;
+          if(contract&&spam.has(contract))continue;
+          return {changed:true,latestBlock,reason:contract?'relevanter Token-Transfer':'native Aktivität'};
+        }
+        pageKey=r?.pageKey||null;pages++;
+      }while(pageKey&&pages<20);
+    }
+    return {changed:false,latestBlock,reason:'keine relevante Aktivität'};
+  }
+  // Ohne geeigneten Activity-Indexer wird aus Sicherheitsgründen aktualisiert statt Aktivität zu übersehen.
+  return {changed:true,latestBlock,reason:'kein sicherer Activity-Indexer'};
+}
+function renderCentralRefreshProgress(lines=[]){
+  const el=document.getElementById('centralRefreshProgress');if(!el)return;
+  el.innerHTML=lines.length?`<div class="custom-token-card"><strong>Aktualisierung</strong><div class="note" style="margin-top:7px">${lines.map(x=>escapeAttr(x)).join('<br>')}</div></div>`:'';
+}
+async function refreshNftsForWallet(w,onProgress=null){
+  const chains=nftChains();let walletNfts=[],errors=[];
+  for(const chain of chains){
+    if(!walletAddressForChain(w,chain))continue;
+    try{
+      onProgress?.(chain);
+      const provider=CHAIN_CONFIG[chain]?.nftProvider;let found=[];
+      if(provider==='blockscout')found=await fetchApertumNfts(chain,walletAddressForChain(w,chain));
+      else if(provider==='alchemy')found=await fetchNftsForChain(chain,walletAddressForChain(w,chain));
+      else continue;
+      found.forEach(n=>{n.walletLabel=w.label;n.walletId=walletDbId(w);});
+      const old=nftCaches.get(walletDbId(w));const oldMap=new Map(((old?.nfts)||[]).map(n=>[nftKey(n),{spam:!!n.userMarkedSpam,safe:!!n.userMarkedSafe}]));
+      found.forEach(n=>{const f=oldMap.get(nftKey(n));if(f?.spam)n.userMarkedSpam=true;if(f?.safe)n.userMarkedSafe=true;});walletNfts.push(...found);
+    }catch(e){errors.push(`${CHAIN_META[chain]?.label||chain}: ${e.message}`);}
+  }
+  await saveNftCacheForWallet(w,walletNfts,chains);return {errors};
+}
+async function refreshProjectWallet(w,projectKey='tln_vow',chain='bsc'){
+  if(!walletAddressForChain(w,chain))return {skipped:true};
+  const scratch=document.getElementById('centralProjectRefreshScratch');
+  if(!scratch)return {skipped:true};
+  const rr=await renderProjectLpTab(projectKey,[chain],'centralProjectRefreshScratch','2025-12-31',true,{walletId:walletDbId(w),silent:true});
+  if(rr?.errors?.length)throw new Error(rr.errors.join(' · '));
+  await saveWalletRefreshState(w,chain,`project:${projectKey}`,{last_checked_at:new Date().toISOString(),last_refreshed_at:new Date().toISOString(),last_result:'refreshed'});
+  return {ok:true};
+}
+const projectAutoRefreshInFlight=new Map();
+async function maybeAutoRefreshProject(projectKey,chain,targetId){
+  const flightKey=`${projectKey}|${chain}`;
+  if(projectAutoRefreshInFlight.has(flightKey))return projectAutoRefreshInFlight.get(flightKey);
+  const job=(async()=>{
+    const eligible=wallets.filter(w=>walletAddressForChain(w,chain)&&!refreshedToday(w,chain,`project:${projectKey}`));
+    if(!eligible.length)return renderProjectLpTab(projectKey,[chain],targetId,'2025-12-31',false);
+    const scratch=document.getElementById('centralProjectRefreshScratch');
+    for(const w of eligible){try{if(scratch)scratch.innerHTML=`<div class="note">${escapeAttr(w.label)} · ${escapeAttr(CHAIN_META[chain]?.label||chain)} Projekt-Daten werden automatisch aktualisiert…</div>`;await refreshProjectWallet(w,projectKey,chain);}catch(e){console.warn('Projekt-Autoload',w.label,e);}}
+    return renderProjectLpTab(projectKey,[chain],targetId,'2025-12-31',false);
+  })();
+  projectAutoRefreshInFlight.set(flightKey,job);
+  try{return await job;}finally{projectAutoRefreshInFlight.delete(flightKey);}
+}
+
+function renderWalletDataFreshness(){
+  const el=document.getElementById('walletDataFreshness');if(!el)return;
+  const fmtState=(r)=>{if(!r?.last_checked_at)return 'noch nie geprüft';const checked=new Date(r.last_checked_at).toLocaleString('de-CH');if(r.last_result==='no_relevant_activity')return `geprüft ${checked} · keine relevante Aktivität`;const refreshed=r.last_refreshed_at?new Date(r.last_refreshed_at).toLocaleString('de-CH'):checked;return `aktualisiert ${refreshed}`;};
+  const body=wallets.map(w=>{
+    const balanceStates=Object.keys(CHAIN_CONFIG).filter(c=>walletAddressForChain(w,c)&&CHAIN_CONFIG[c]?.balanceProvider).map(c=>walletRefreshStates.get(refreshStateKey(walletDbId(w),c,'balances'))).filter(Boolean);
+    const newest=balanceStates.sort((a,b)=>new Date(b.last_checked_at||0)-new Date(a.last_checked_at||0))[0];
+    const proj=walletRefreshStates.get(refreshStateKey(walletDbId(w),'bsc','project:tln_vow')),nft=walletRefreshStates.get(refreshStateKey(walletDbId(w),'','nft'));
+    return `<tr><td><strong>${escapeAttr(w.label)}</strong></td><td>${escapeAttr(fmtState(newest))}</td><td>${w.evm?escapeAttr(fmtState(proj)):'–'}</td><td>${escapeAttr(fmtState(nft))}</td></tr>`;
+  }).join('');
+  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Datenstand pro Wallet</div><div class="note" style="margin-bottom:8px">„Geprüft“ bedeutet: Die Blockchain wurde heute kontrolliert; ohne relevante Aktivität wurde der bestehende Datenstand bewusst weiterverwendet.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Bestände</th><th>TLN/VOW · LP & Staking</th><th>NFTs</th></tr></thead><tbody>${body||'<tr><td colspan="4">Keine Wallets vorhanden.</td></tr>'}</tbody></table></div></div>`;
+}
+
 async function loadAll(options = {}) {
-  const automatic = !!options.automatic;
-  const btn = document.getElementById("loadBtn");
-  if (btn) btn.disabled = true;
-  renderCacheStatusNote(automatic ? "Prüfe Bestände live…" : "Lade Bestände live…");
-
-  // Externe Preise + Projektpreise parallel laden. Bei identischer Contract-Adresse
-  // gewinnt priceForToken() anschließend immer der Projektpreis.
-  const priceJob = Promise.all([
-    loadNativePrices().catch(e => console.warn("Preisabruf:", e)),
-    window.TLNVOWProject ? window.TLNVOWProject.ensureLoaded().catch(e => console.warn("TLN/VOW:", e)) : Promise.resolve()
-  ]);
-
-  const chainJobs = [];
-  const configuredChains = Object.keys(CHAIN_CONFIG).filter(chain => !!CHAIN_CONFIG[chain]?.balanceProvider);
-  wallets.forEach(w => {
-    configuredChains.forEach(chain => {
-      chainJobs.push(loadWalletChain(w, chain, automatic));
-    });
-  });
-
-  const results = await Promise.all(chainJobs);
-  await priceJob;
-
-  // V2-LP/PCLP in normalen Token-Beständen erkennen und mit Underlyings/Pool-Anteil bewerten.
-  if(window.WalletLPEngine){
-    for(const w of wallets){for(const chain of Object.keys(walletData[w.id]||{})){const cd=walletData[w.id]?.[chain];if(!cd?.tokens||!w.evm)continue;for(const t of cd.tokens){try{const p=await window.WalletLPEngine.pairInfo(chain,t.address);if(!p)continue;const pos=(await window.WalletLPEngine.positions(chain,w.evm,[t.address]))[0];if(pos)t.lpInfo=pos;}catch{}}}}
+  const automatic=!!options.automatic,btn=document.getElementById('loadBtn');if(btn)btn.disabled=true;
+  const progress=[];renderCentralRefreshProgress(progress);renderCacheStatusNote(automatic?'Tägliche Wallet-Prüfung läuft…':'Vollständige Aktualisierung läuft…');
+  await Promise.all([loadNativePrices().catch(e=>console.warn('Preisabruf:',e)),window.TLNVOWProject?window.TLNVOWProject.ensureLoaded().catch(e=>console.warn('TLN/VOW:',e)):Promise.resolve()]);
+  const configuredChains=Object.keys(CHAIN_CONFIG).filter(c=>!!CHAIN_CONFIG[c]?.balanceProvider),failures=[];
+  for(const w of wallets){
+    progress.push(`● ${w.label}`);renderCentralRefreshProgress(progress);
+    let walletChanged=!automatic;const changedChains=new Set();
+    for(const chain of configuredChains){
+      const addr=walletAddressForChain(w,chain);if(!addr)continue;
+      const state=walletRefreshStates.get(refreshStateKey(walletDbId(w),chain,'balances'));
+      if(automatic&&refreshedToday(w,chain,'balances'))continue;
+      let shouldRefresh=true,activity={changed:true,latestBlock:null,reason:'manuell'};
+      if(automatic&&CHAIN_CONFIG[chain]?.walletType==='evm'){
+        try{activity=await evmRelevantActivitySince(w,chain,state);shouldRefresh=activity.changed;}catch(e){activity={changed:true,reason:'Activity-Check fehlgeschlagen'};}
+      }
+      if(shouldRefresh){
+        progress.push(`  ${CHAIN_META[chain]?.label||chain}: Bestände laden`);renderCentralRefreshProgress(progress);
+        const r=await loadWalletChain(w,chain,automatic);if(r?.ok===false)failures.push(r);else {walletChanged=true;changedChains.add(chain);}
+      }
+      await saveWalletRefreshState(w,chain,'balances',{last_checked_at:new Date().toISOString(),last_refreshed_at:shouldRefresh?new Date().toISOString():(state?.last_refreshed_at||null),last_checked_block:activity.latestBlock??state?.last_checked_block??null,last_result:shouldRefresh?'refreshed':'no_relevant_activity'});
+    }
+    // Projektpositionen gehören wirtschaftlich zur Token-Übersicht und werden deshalb im Full-Refresh mitgeführt.
+    if(w.evm&&(!automatic||!refreshedToday(w,'bsc','project:tln_vow'))){
+      const ps=walletRefreshStates.get(refreshStateKey(walletDbId(w),'bsc','project:tln_vow'));
+      if(!automatic||changedChains.has('bsc')||!ps?.last_checked_at){
+        try{progress.push('  TLN/VOW: LP & Staking');renderCentralRefreshProgress(progress);await refreshProjectWallet(w,'tln_vow','bsc');walletChanged=true;}catch(e){failures.push({ok:false,error:`${w.label} TLN/VOW: ${e.message}`});}
+      }else await saveWalletRefreshState(w,'bsc','project:tln_vow',{last_checked_at:new Date().toISOString(),last_refreshed_at:ps?.last_refreshed_at||null,last_result:'no_relevant_activity'});
+    }
+    // NFTs als letzter automatischer Prozess pro Wallet. Discovery und Gebühren bleiben bewusst manuell.
+    if(!automatic||!refreshedToday(w,'','nft')){
+      const ns=walletRefreshStates.get(refreshStateKey(walletDbId(w),'','nft'));
+      if(!automatic||changedChains.size>0||!ns?.last_checked_at){
+        try{progress.push('  NFTs laden');renderCentralRefreshProgress(progress);await refreshNftsForWallet(w);await saveWalletRefreshState(w,'','nft',{last_checked_at:new Date().toISOString(),last_refreshed_at:new Date().toISOString(),last_result:'refreshed'});}catch(e){failures.push({ok:false,error:`${w.label} NFTs: ${e.message}`});}
+      }else await saveWalletRefreshState(w,'','nft',{last_checked_at:new Date().toISOString(),last_refreshed_at:ns?.last_refreshed_at||null,last_result:'no_relevant_activity'});
+    }
   }
-  // Gestakte TLN/VOW-PCLP bleiben wirtschaftlicher Wallet-Bestand. Der gespeicherte
-  // Staking-Anteil wird nach dem Live-Wallet-Balance-Lesen wieder zur Token-Übersicht addiert.
-  await mergeTlnBscStakingCacheIntoWalletData();
-
-  renderResults();
-  renderSafeTokenTable();
-  renderCustomTokenList();
-  renderAllocationChart();
-  if (btn) btn.disabled = false;
-
-  const failures = results.filter(r => r && r.ok === false);
-
-  // Den automatischen Snapshot nur ersetzen, wenn ALLE tatsächlich abgefragten
-  // Chains erfolgreich waren. So bleibt der letzte vollständige Stand als Fallback erhalten.
-  if (failures.length === 0) {
-    await createSnapshot(true);
-    renderCacheStatusNote(automatic ? "Bestände gerade eben automatisch live aktualisiert." : "Gerade eben live aktualisiert.");
-  } else {
-    const failedCount = failures.length;
-    renderCacheStatusNote(
-      `Live-Aktualisierung teilweise fehlgeschlagen (${failedCount} Abfrage${failedCount === 1 ? "" : "n"}). ` +
-      `Für betroffene Chains bleibt der letzte gespeicherte Stand sichtbar.`
-    );
-  }
-
-  return { failures };
+  // LP-/Staking-Cache in die Tokenübersicht einmischen und aktuelle LP-Werte für Wallet-LPs bewerten.
+  if(window.WalletLPEngine){for(const w of wallets){for(const chain of Object.keys(walletData[w.id]||{})){const cd=walletData[w.id]?.[chain];if(!cd?.tokens||!w.evm)continue;for(const t of cd.tokens){try{const p=await window.WalletLPEngine.pairInfo(chain,t.address);if(!p)continue;const pos=(await window.WalletLPEngine.positions(chain,w.evm,[t.address]))[0];if(pos)t.lpInfo=pos;}catch{}}}}}
+  await mergeTlnBscStakingCacheIntoWalletData();renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();
+  if(failures.length===0){await createSnapshot(true);renderCacheStatusNote(automatic?'Tägliche Prüfung abgeschlossen · relevante Änderungen aktualisiert.':'Vollständige Aktualisierung abgeschlossen.');}
+  else renderCacheStatusNote(`Aktualisierung mit ${failures.length} Hinweis${failures.length===1?'':'en'} abgeschlossen. Letzter vollständiger Cache bleibt als Fallback erhalten.`);
+  progress.push(failures.length?'⚠ Fertig mit Hinweisen':'✓ Fertig');renderCentralRefreshProgress(progress);renderWalletDataFreshness();if(btn)btn.disabled=false;return {failures};
 }
 
 // ---- Rendering ----
@@ -4449,7 +4550,10 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
   return {events:await engine.loadHistory(projectKey,chain,walletAddress),scanned:latest,newEvents,pairs:[...pairMap.values()],warning:syncWarning};
 }
 
-async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31",refresh=false){
+const projectLpWalletFilters={};
+window.setProjectLpWalletFilter=function(targetId,value){projectLpWalletFilters[targetId]=value||'all';const chain=targetId.includes('Eth')?'eth':'bsc';return renderProjectLpTab('tln_vow',[chain],targetId,'2025-12-31',false);};
+
+async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31",refresh=false,options={}){
   const el=document.getElementById(targetId);if(!el||!window.WalletLPEngine)return;
   const chainArg=chains.length===1?chains[0]:"";
   const refreshButton=`<button class="secondary" style="margin-top:10px" onclick="refreshProjectLpData('${projectKey}','${chainArg}','${targetId}')">Daten aktualisieren</button>`;
@@ -4457,6 +4561,7 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
   // Öffnen folgen ausschließlich Supabase-Lesezugriffe; RPC/Explorer laufen nur bei refresh=true.
   el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden <strong>ausschließlich die zuletzt gespeicherten Supabase-Daten</strong> angezeigt. Blockchain, Explorer, Reserven, Kurse und Historie werden nur über „Daten aktualisieren“ neu abgefragt.</div>${refreshButton}<div class="status" style="margin-top:10px"><span class="loading">${refresh?'LP/PCLP-Daten werden aktualisiert…':'Gespeicherte LP/PCLP-Daten werden geladen…'}</span></div></div>`;
 
+  const scopeWallets=options.walletId?wallets.filter(w=>walletDbId(w)===String(options.walletId)):wallets;
   const rows=[],history=[],scanStatuses=[];let cacheNew=0,cacheErrors=[],cacheWarnings=[],latestCacheRefresh=null;
   const targetEpoch=Math.floor(new Date(dateStr+'T23:59:59Z').getTime()/1000);
 
@@ -4466,7 +4571,7 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
     let block=null;
     if(refresh){try{block=(await taxEvmBlockByTime(chain,targetEpoch)).block;}catch(e){cacheWarnings.push(`${CHAIN_META[chain]?.label||chain}: Stichtagsblock ${dateStr} nicht ermittelbar (${e?.message||e})`);}}
 
-    for(const w of wallets){
+    for(const w of scopeWallets){
       const wa=walletAddressForChain(w,chain);if(!wa)continue;
       let sync={events:[],pairs:[]};
 
@@ -4542,31 +4647,40 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
     }
   }
 
+  const availableWalletIds=[...new Set([...rows.map(r=>walletDbId(r.w)),...history.map(r=>walletDbId(r.w))].filter(Boolean))];
+  let selectedWallet=projectLpWalletFilters[targetId]||'all';if(selectedWallet!=='all'&&!availableWalletIds.includes(selectedWallet))selectedWallet='all';projectLpWalletFilters[targetId]=selectedWallet;
+  const walletFilterHtml=`<div class="field-grid" style="grid-template-columns:minmax(220px,360px);margin-top:12px"><div><span class="field-label">Wallet</span><select onchange="setProjectLpWalletFilter('${targetId}',this.value)"><option value="all">Alle Wallets</option>${scopeWallets.filter(w=>availableWalletIds.includes(walletDbId(w))).map(w=>`<option value="${escapeAttr(walletDbId(w))}" ${selectedWallet===walletDbId(w)?'selected':''}>${escapeAttr(w.label)}</option>`).join('')}</select></div></div>`;
+  const displayRows=selectedWallet==='all'?rows:rows.filter(r=>walletDbId(r.w)===selectedWallet);
+  const displayHistory=selectedWallet==='all'?history:history.filter(r=>walletDbId(r.w)===selectedWallet);
+  const displayScanStatuses=selectedWallet==='all'?scanStatuses:scanStatuses.filter(r=>walletDbId(r.w)===selectedWallet);
+
   const f=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:8}),u=n=>n==null?'–':'$'+Number(n).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}),dt=x=>x?new Date(x).toLocaleString('de-CH'):'–';
   const histCell=n=>n==null?'–':f(n);
-  const currentTable=`<div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Pool</th><th>LP in Wallet</th><th>LP gestakt</th><th>LP gesamt</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} Wallet</th><th>${dateStr} gestakt</th><th>${dateStr} gesamt</th><th>${dateStr} USD</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeAttr(r.w.label)}${r.historicalOnly?'<div class="meta"><span class="badge">nur Historie</span></div>':''}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta">${r.pair.address}</div></td><td>${f(r.cur?.walletBalance??r.cur?.balance??0)}</td><td>${f(r.cur?.stakedBalance||0)}</td><td><strong>${f(r.cur?.balance||0)}</strong></td><td>${r.historicalOnly?'–':(r.cur?`<div>${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}</div><div>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}</div><div class="meta">wirtschaftlicher Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–')}</td><td>${r.historicalOnly?'–':u(r.cur?.usd)}</td><td>${histCell(r.histWalletBal??r.histBal)}</td><td>${histCell(r.histStakedBal)}</td><td><strong>${histCell(r.histBal)}</strong></td><td>${r.histBal==null?'–':u(r.histUsd??(r.histPrice?.price!=null?r.histBal*r.histPrice.price:null))}</td></tr>`).join(''):'<tr><td colspan="12">Noch keine gespeicherten LP-Positionen. Bitte „Daten aktualisieren“ ausführen.</td></tr>'}</tbody></table></div>`;
-  const scanStatusTable=`<h3 style="margin-top:22px">LP-Scan-Status pro Wallet</h3><div class="note" style="margin-bottom:8px">Hier siehst du unabhängig vom aktuellen Token-/LP-Bestand, welche Wallets in die LP-Historiensuche einbezogen sind. <strong>„Noch nicht gescannt“</strong> bedeutet, dass für diesen Scan-Typ noch kein erfolgreicher kompletter Lauf gespeichert wurde.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Adresse</th><th>Status</th><th>Letzter Scan</th><th>bis Block</th><th>Historien-Ereignisse</th><th>historische Pools</th><th>Positionszeilen</th></tr></thead><tbody>${scanStatuses.length?scanStatuses.map(s=>`<tr><td><strong>${escapeAttr(s.w?.label||'')}</strong></td><td>${escapeAttr(CHAIN_META[s.chain]?.label||s.chain)}</td><td class="meta lp-address">${escapeAttr(s.address||'')}</td><td>${s.warning?`<span class="badge danger">unvollständig</span><div class="meta">${escapeAttr(s.warning)}</div>`:s.lastBlock>0?'<span class="badge safe">gescannt</span>':'<span class="badge">noch nicht gescannt</span>'}</td><td>${s.lastAt?dt(s.lastAt):'–'}</td><td>${s.lastBlock>0?Number(s.lastBlock).toLocaleString('de-CH'):'–'}</td><td>${Number(s.eventCount||0).toLocaleString('de-CH')}</td><td>${Number(s.pairCount||0).toLocaleString('de-CH')}</td><td>${Number(s.positionCount||0).toLocaleString('de-CH')}</td></tr>`).join(''):'<tr><td colspan="9">Keine Wallet-Adressen für diese Chain vorhanden.</td></tr>'}</tbody></table></div>`;
-  const hrows=[...history].sort((a,b)=>Number(b.block_number)-Number(a.block_number)||Number(b.log_index||0)-Number(a.log_index||0));
+  const currentTable=`<div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Pool</th><th>LP in Wallet</th><th>LP gestakt</th><th>LP gesamt</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} Wallet</th><th>${dateStr} gestakt</th><th>${dateStr} gesamt</th><th>${dateStr} USD</th></tr></thead><tbody>${displayRows.length?displayRows.map(r=>`<tr><td>${escapeAttr(r.w.label)}${r.historicalOnly?'<div class="meta"><span class="badge">nur Historie</span></div>':''}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta">${r.pair.address}</div></td><td>${f(r.cur?.walletBalance??r.cur?.balance??0)}</td><td>${f(r.cur?.stakedBalance||0)}</td><td><strong>${f(r.cur?.balance||0)}</strong></td><td>${r.historicalOnly?'–':(r.cur?`<div>${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}</div><div>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}</div><div class="meta">wirtschaftlicher Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–')}</td><td>${r.historicalOnly?'–':u(r.cur?.usd)}</td><td>${histCell(r.histWalletBal??r.histBal)}</td><td>${histCell(r.histStakedBal)}</td><td><strong>${histCell(r.histBal)}</strong></td><td>${r.histBal==null?'–':u(r.histUsd??(r.histPrice?.price!=null?r.histBal*r.histPrice.price:null))}</td></tr>`).join(''):'<tr><td colspan="12">Noch keine gespeicherten LP-Positionen. Bitte „Daten aktualisieren“ ausführen.</td></tr>'}</tbody></table></div>`;
+  const scanStatusTable=`<h3 style="margin-top:22px">LP-Scan-Status pro Wallet</h3><div class="note" style="margin-bottom:8px">Hier siehst du unabhängig vom aktuellen Token-/LP-Bestand, welche Wallets in die LP-Historiensuche einbezogen sind. <strong>„Noch nicht gescannt“</strong> bedeutet, dass für diesen Scan-Typ noch kein erfolgreicher kompletter Lauf gespeichert wurde.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Adresse</th><th>Status</th><th>Letzter Scan</th><th>bis Block</th><th>Historien-Ereignisse</th><th>historische Pools</th><th>Positionszeilen</th></tr></thead><tbody>${displayScanStatuses.length?displayScanStatuses.map(s=>`<tr><td><strong>${escapeAttr(s.w?.label||'')}</strong></td><td>${escapeAttr(CHAIN_META[s.chain]?.label||s.chain)}</td><td class="meta lp-address">${escapeAttr(s.address||'')}</td><td>${s.warning?`<span class="badge danger">unvollständig</span><div class="meta">${escapeAttr(s.warning)}</div>`:s.lastBlock>0?'<span class="badge safe">gescannt</span>':'<span class="badge">noch nicht gescannt</span>'}</td><td>${s.lastAt?dt(s.lastAt):'–'}</td><td>${s.lastBlock>0?Number(s.lastBlock).toLocaleString('de-CH'):'–'}</td><td>${Number(s.eventCount||0).toLocaleString('de-CH')}</td><td>${Number(s.pairCount||0).toLocaleString('de-CH')}</td><td>${Number(s.positionCount||0).toLocaleString('de-CH')}</td></tr>`).join(''):'<tr><td colspan="9">Keine Wallet-Adressen für diese Chain vorhanden.</td></tr>'}</tbody></table></div>`;
+  const hrows=[...displayHistory].sort((a,b)=>Number(b.block_number)-Number(a.block_number)||Number(b.log_index||0)-Number(a.log_index||0));
   const actionLabel=e=>({add:'Add Liquidity',remove:'Remove Liquidity',stake:'Stake',unstake:'Unstake',send:'Versenden',receive:'Empfangen'}[e.event_type]||e.event_type);
   const actionBadge=e=>['add','stake','receive'].includes(e.event_type)?'safe':['remove','unstake'].includes(e.event_type)?'danger':'';
   const historyTable=`<h3 style="margin-top:22px">LP-/Staking-Historie</h3><div class="chain-table-wrap lp-history-scroll"><table class="lp-history-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Chain</th><th>Aktion</th><th>Pool</th><th>Gegenstelle / Staking</th><th>LP Δ</th><th>Wallet-LP-Saldo</th><th>Underlying</th><th>historischer USD-Wert</th></tr></thead><tbody>${hrows.length?hrows.map(e=>`<tr><td>${dt(e.tx_timestamp)}<div class="meta">Block ${e.block_number}</div></td><td>${escapeAttr(e.w.label)}</td><td>${escapeAttr(CHAIN_META[e.chain]?.label||e.chain)}</td><td><span class="badge ${actionBadge(e)}">${escapeAttr(actionLabel(e))}</span></td><td><strong>${escapeAttr(e.lp_label||window.WalletLPEngine.label(e.chain))} ${escapeAttr(e.token0_symbol||'Token0')}/${escapeAttr(e.token1_symbol||'Token1')}</strong><div class="meta lp-address">${e.pair_address}</div></td><td>${e.staking_label?`<strong>${escapeAttr(e.staking_label)}</strong><div class="meta lp-address">${escapeAttr(e.staking_contract||e.counterparty||'')}</div>`:`<div class="meta lp-address">${escapeAttr(e.counterparty||'–')}</div>`}</td><td>${Number(e.lp_delta)>0?'+':''}${f(e.lp_delta)}</td><td>${f(e.running_balance)}</td><td><div>${f(e.amount0)} ${escapeAttr(e.token0_symbol||'')}</div><div>${f(e.amount1)} ${escapeAttr(e.token1_symbol||'')}</div></td><td><strong>${u(e.value_usd)}</strong>${e.price_source?`<div class="meta lp-price-source">${escapeAttr(e.price_source)}</div>`:''}</td></tr>`).join(''):'<tr><td colspan="10">Noch keine LP-Ereignisse im Cache.</td></tr>'}</tbody></table></div>`;
-  const stakingLots=(projectKey==="tln_vow"&&chains.includes("bsc")&&window.WalletStakingEngine)?wallets.flatMap(w=>window.WalletStakingEngine.buildLots(history.filter(e=>e.chain==="bsc"&&e.w?.id===w.id)).map(l=>({...l,w}))):[];
+  const stakingLots=(projectKey==="tln_vow"&&chains.includes("bsc")&&window.WalletStakingEngine)?scopeWallets.flatMap(w=>window.WalletStakingEngine.buildLots(displayHistory.filter(e=>e.chain==="bsc"&&e.w?.id===w.id)).map(l=>({...l,w}))):[];
   const stakingTable=projectKey==="tln_vow"&&chains.includes("bsc")?`<h3 style="margin-top:22px">Staking-Positionen BSC</h3><div class="note" style="margin-bottom:8px">Jeder Stake bleibt als eigenes Lot sichtbar. Unstakes reduzieren die offenen Lots chronologisch (FIFO). Eine Lock-Dauer wird nur angezeigt, wenn sie im Staking-Contract-Katalog verifiziert hinterlegt ist.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Pool</th><th>Staking-Bezeichnung</th><th>Staking-Contract</th><th>Stake-Datum</th><th>LP ursprünglich</th><th>LP offen</th><th>Status</th></tr></thead><tbody>${stakingLots.length?stakingLots.slice().reverse().map(l=>`<tr><td>${escapeAttr(l.w?.label||'')}</td><td class="meta lp-address">${escapeAttr(l.pair_address)}</td><td><strong>${escapeAttr(l.staking_label||window.WalletStakingEngine.displayName(l,'LP'))}</strong></td><td class="meta lp-address">${escapeAttr(l.staking_contract||'–')}</td><td>${dt(l.stake_timestamp)}</td><td>${f(l.original_lp)}</td><td><strong>${f(l.remaining_lp)}</strong></td><td>${l.status==='closed'?'<span class="badge">beendet</span>':l.status==='partial'?'<span class="badge">teilweise unstaked</span>':'<span class="badge safe">offen</span>'}</td></tr>`).join(''):'<tr><td colspan="8">Keine Staking-Positionen im Cache erkannt.</td></tr>'}</tbody></table></div>`:'';
   const cacheStand=latestCacheRefresh?`<div class="meta" style="margin-top:7px">Cache-Stand: ${latestCacheRefresh.toLocaleString('de-CH')}</div>`:'';
-  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden <strong>ausschließlich Supabase-Caches</strong> gelesen. Blockchain, Explorer, Reserven, Kurse und Historie werden nur über „Daten aktualisieren“ erneuert. Add-/Remove-Historie und Positionsdaten bleiben danach gespeichert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${refreshButton}${cacheStand}${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheWarnings.length?`<div class="note" style="margin-top:8px"><strong>LP-Historie momentan nicht vollständig nachladbar:</strong> ${escapeAttr(cacheWarnings.join(' · '))}</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">${refresh?'Cache teilweise nicht aktualisiert':'Cache teilweise nicht lesbar'}: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${scanStatusTable}${currentTable}${historyTable}${stakingTable}`;
+  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden <strong>ausschließlich Supabase-Caches</strong> gelesen. Blockchain, Explorer, Reserven, Kurse und Historie werden nur über „Daten aktualisieren“ erneuert. Add-/Remove-Historie und Positionsdaten bleiben danach gespeichert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${refreshButton}${walletFilterHtml}${cacheStand}${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheWarnings.length?`<div class="note" style="margin-top:8px"><strong>LP-Historie momentan nicht vollständig nachladbar:</strong> ${escapeAttr(cacheWarnings.join(' · '))}</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">${refresh?'Cache teilweise nicht aktualisiert':'Cache teilweise nicht lesbar'}: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${scanStatusTable}${currentTable}${historyTable}${stakingTable}`;
   if(refresh&&projectKey==="tln_vow"&&chains.includes("bsc")){await mergeTlnBscStakingCacheIntoWalletData();renderResults();renderAllocationChart();}
+  return {errors:cacheErrors,warnings:cacheWarnings,newEvents:cacheNew};
 
 }
 window.renderProjectLpTab=renderProjectLpTab;
-window.refreshProjectLpData=function(projectKey,chain,targetId){
+window.refreshProjectLpData=async function(projectKey,chain,targetId){
   const chains=chain?[chain]:(projectKey==="dao1"?["apertum"]:[]);
-  return renderProjectLpTab(projectKey,chains,targetId,"2025-12-31",true);
+  await renderProjectLpTab(projectKey,chains,targetId,"2025-12-31",true);
+  for(const w of wallets)for(const c of chains)if(walletAddressForChain(w,c))await saveWalletRefreshState(w,c,`project:${projectKey}`,{last_checked_at:new Date().toISOString(),last_refreshed_at:new Date().toISOString(),last_result:'manual'});
 };
 window.showTlnLpChain=function(chain,btn){
   const b=document.getElementById("tlnvowLpBscContent"),e=document.getElementById("tlnvowLpEthContent");
   if(b)b.style.display=chain==="bsc"?"block":"none";if(e)e.style.display=chain==="eth"?"block":"none";
   document.querySelectorAll("#tlnvow-subtab-liquidity .project-subtabs .tab-btn").forEach(x=>x.classList.toggle("active",x===btn));
-  return renderProjectLpTab("tln_vow",[chain],chain==="bsc"?"tlnvowLpBscContent":"tlnvowLpEthContent","2025-12-31",false);
+  return maybeAutoRefreshProject("tln_vow",chain,chain==="bsc"?"tlnvowLpBscContent":"tlnvowLpEthContent");
 };
 
 // "Entdecken" - findet Token, die eine Wallet hält, aber die
@@ -5815,6 +5929,7 @@ async function runNftLoad() {
     }
     try {
       await saveNftCacheForWallet(w, walletNfts, [...activeNftChains]);
+      await saveWalletRefreshState(w,'','nft',{last_checked_at:new Date().toISOString(),last_refreshed_at:new Date().toISOString(),last_result:'manual'});
     } catch(e) {
       errors.push(`${w.label}: ${e.message}`);
     }
@@ -6539,7 +6654,7 @@ function isFindingScam(f) { return !!f.userMarkedScam || isFindingScamSuspect(f)
 
 window.historicalErc20Candidates = historicalErc20Candidates;
 let lastDiscoveryFindings = [];
-let discoveryHideSuspect = true;
+let discoveryHideSuspect = false;
 let discoveryHideMarkedScam = true;
 
 function renderDiscoveryResults(findings) {
@@ -6554,19 +6669,20 @@ function renderDiscoveryResults(findings) {
   if(markedEl) discoveryHideMarkedScam=markedEl.checked;
   const visible = findings.filter(f => !(discoveryHideMarkedScam && f.userMarkedScam) && !(discoveryHideSuspect && isFindingScamSuspect(f)));
   const suspectCount=findings.filter(f=>isFindingScamSuspect(f)).length, markedCount=findings.filter(f=>f.userMarkedScam).length;
-  const filterBar = `<div class="custom-token-card" style="margin-bottom:14px;display:flex;gap:22px;flex-wrap:wrap">
+  const filterBar = `<div class="custom-token-card" style="margin-bottom:14px;display:flex;gap:22px;flex-wrap:wrap;align-items:center">
+    ${suspectCount?`<button class="remove" onclick="markAllDiscoverySuspectsAsSpam()">Alle Spam-Verdachte als Spam markieren</button>`:""}
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
       <input type="checkbox" id="hideScamSuspectToggle" style="width:auto" onchange="discoveryHideSuspect=this.checked;renderDiscoveryResults(lastDiscoveryFindings)" ${discoveryHideSuspect ? "checked" : ""} />
-      Scam-Verdacht ausblenden (${suspectCount} von ${findings.length})
+      Spam-Verdacht ausblenden (${suspectCount} von ${findings.length})
     </label>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
       <input type="checkbox" id="hideMarkedScamToggle" style="width:auto" onchange="discoveryHideMarkedScam=this.checked;renderDiscoveryResults(lastDiscoveryFindings)" ${discoveryHideMarkedScam ? "checked" : ""} />
-      Als Scam markierte ausblenden (${markedCount} von ${findings.length})
+      Als Spam markierte ausblenden (${markedCount} von ${findings.length})
     </label>
   </div>`;
 
   if (visible.length === 0) {
-    el.innerHTML = filterBar + `<div class="empty">Alle gefundenen Token werden durch die aktiven Scam-Filter ausgeblendet.</div>`;
+    el.innerHTML = filterBar + `<div class="empty">Alle gefundenen Token werden durch die aktiven Spam-Filter ausgeblendet.</div>`;
     return;
   }
 
@@ -6576,10 +6692,10 @@ function renderDiscoveryResults(findings) {
     let riskHtml = "";
     if (scam) {
       const reasons = [];
-      if (f.userMarkedScam) reasons.push("vom Benutzer als Scam markiert");
+      if (f.userMarkedScam) reasons.push("vom Benutzer als Spam markiert");
       if (f.nameScamFlag) reasons.push("verdächtiger Name/Symbol (Phishing-Muster)");
       if (f.risk && f.risk.length > 0) reasons.push(...f.risk);
-      riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger);font-weight:700">⚠ VERDACHT AUF SCAM: ${reasons.join(", ")}</span>`;
+      riskHtml = `<span class="badge unsafe" style="background:rgba(255,107,107,0.18);color:var(--danger);font-weight:700">⚠ SPAM-VERDACHT: ${reasons.join(", ")}</span>`;
     } else if (f.risk === null) {
       riskHtml = `<span class="badge unsafe">kein Risiko-Check verfügbar</span>`;
     } else {
@@ -6593,14 +6709,26 @@ function renderDiscoveryResults(findings) {
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         ${scam && f.userMarkedScam
-          ? `<button class="secondary" onclick="setDiscoveryUserScam('${f.chain}','${f.address}',false)">Scam-Markierung entfernen</button>`
-          : `<button class="remove" onclick="setDiscoveryUserScam('${f.chain}','${f.address}',true)">Als Scam markieren</button>`}
-        ${scam ? '' : `<button onclick="addDiscoveredToken('${f.chain}','${f.address}','${escapeAttr(f.symbol)}')">Als sicher hinzufügen</button>`}
+          ? `<button class="secondary" onclick="setDiscoveryUserScam('${f.chain}','${f.address}',false)">Spam-Markierung entfernen</button>`
+          : `<button class="remove" onclick="setDiscoveryUserScam('${f.chain}','${f.address}',true)">Als Spam markieren</button>`}
+        ${!f.userMarkedScam ? `<button onclick="addDiscoveredToken('${f.chain}','${f.address}','${escapeAttr(f.symbol)}')">Als sicher hinzufügen</button>` : ''}
       </div>
     </div>`;
   }).join("");
 }
 
+
+async function markAllDiscoverySuspectsAsSpam(){
+  const suspects=lastDiscoveryFindings.filter(f=>isFindingScamSuspect(f)&&!f.userMarkedScam);
+  if(!suspects.length)return;
+  if(!confirm(`${suspects.length} Spam-Verdacht(e) dieser Wallet wirklich als Spam markieren?`))return;
+  lastDiscoveryFindings=lastDiscoveryFindings.map(f=>isFindingScamSuspect(f)?{...f,userMarkedScam:true}:f);
+  renderDiscoveryResults(lastDiscoveryFindings);
+  const walletId=currentDiscoveryWalletId(),cache=getDiscoveryCacheForWallet(walletId);if(!cache)return;
+  const {data,error}=await sb.from('discovery_cache').update({findings:lastDiscoveryFindings}).eq('user_id',currentUser.id).eq('wallet_id',String(walletId)).select().single();
+  if(error){alert('Spam-Markierungen konnten nicht gespeichert werden: '+error.message);return;}
+  discoveryCaches.set(String(walletId),data);discoveryCache=data;renderDiscoveryCacheState();
+}
 
 async function setDiscoveryUserScam(chain, address, marked) {
   const normAddr = normalizeAddress(address, chain);
@@ -6638,8 +6766,8 @@ async function setDiscoveryUserScam(chain, address, marked) {
     .single();
 
   if (error) {
-    console.error("Scam-Markierung speichern:", error);
-    alert("Die Scam-Markierung konnte nicht gespeichert werden: " + error.message);
+    console.error("Spam-Markierung speichern:", error);
+    alert("Die Spam-Markierung konnte nicht gespeichert werden: " + error.message);
     return;
   }
 

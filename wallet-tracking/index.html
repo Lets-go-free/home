@@ -89,11 +89,14 @@
 
     <div id="tab-tracking" class="tab-panel">
       <div class="action-row" style="align-items:center">
-        <button id="loadBtn" onclick="loadAll()">Jetzt live aktualisieren</button>
+        <button id="loadBtn" onclick="loadAll()">Daten aktualisieren</button>
         <span id="cacheStatusNote" class="note" style="margin:0"></span>
       </div>
+      <div id="centralRefreshProgress"></div>
+      <div id="walletDataFreshness"></div>
+      <div id="centralProjectRefreshScratch" style="display:none"></div>
       <div class="note" style="margin-bottom:14px">
-        Beim Login wird zuerst der letzte gespeicherte Stand angezeigt. Eine automatische Live-Aktualisierung erfolgt höchstens einmal pro Kalendertag; danach werden weitere Aktualisierungen nur noch über „Jetzt live aktualisieren“ gestartet.
+        Beim Login wird zuerst der letzte gespeicherte Stand angezeigt. Pro Wallet und Datentyp wird höchstens einmal pro Kalendertag automatisch geprüft. Nur bei relevanter Blockchain-Aktivität werden Bestände, Projektpositionen/LP/Staking und NFTs neu geladen. Weitere Aktualisierungen können jederzeit manuell über „Daten aktualisieren“ gestartet werden. Entdecken und Gebühren bleiben bewusst manuell.
         Die Balance-Abfrage wird pro Chain über die zentrale Supabase-Konfiguration gesteuert; angezeigt werden native Coins sowie vordefinierte und eigene sichere Token.
       </div>
 
@@ -284,7 +287,7 @@
         <div class="note" style="margin-bottom:12px">
           Sucht in der ausgewählten Wallet nach Token, die du tatsächlich hältst, aber die noch nicht auf der sicheren Liste stehen.
           EVM-Chains nutzen dafür aktuell noch Alchemy. Um das API-Kontingent zu schützen, ist pro Benutzer nur
-          <strong>ein Discovery-Scan alle 30 Tage</strong> möglich; Admins sind von dieser Sperre ausgenommen. Das Ergebnis wird in Supabase gespeichert und bis zum nächsten
+          <strong>ein manueller Discovery-Scan alle 30 Tage</strong> möglich; Admins sind von dieser Sperre ausgenommen. Das Ergebnis wird in Supabase gespeichert und bis zum nächsten
           möglichen Scan hier wieder angezeigt. Apertum/Tron werden soweit verfügbar aus kostenlosen Datenquellen ergänzt.
         </div>
 
@@ -441,8 +444,7 @@
         </div>
         <div id="nftChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
 
-        <button id="nftBtn" onclick="runNftLoad()">NFTs jetzt aktualisieren</button>
-        <div id="nftCacheInfo" class="note" style="margin-top:7px">Gespeicherte NFTs werden aus Supabase geladen. Eine Live-Abfrage erfolgt nur auf Knopfdruck.</div>
+        <div id="nftCacheInfo" class="note" style="margin-top:7px">Gespeicherte NFTs werden aus Supabase geladen. Aktualisiert werden sie zentral über „Daten aktualisieren“ auf der Startseite.</div>
         <div id="nftStatus" class="note" style="margin-top:10px"></div>
       </div>
       <div id="nftResults"></div>
@@ -568,11 +570,11 @@
       <div class="section-title">❓ Hilfe / Handbuch</div>
       <div class="custom-token-card">
         <h3 style="margin-top:0">Schnellstart</h3>
-        <p class="note"><strong>1.</strong> Unter „Meine Wallets“ die eigenen Adressen erfassen und speichern. <strong>2.</strong> In der Token-Übersicht „Jetzt live aktualisieren“ verwenden. <strong>3.</strong> Unbekannte Token bei Bedarf über „Entdecken“ prüfen und als eigene sichere Token übernehmen. <strong>4.</strong> Für einen Jahresabschluss „Bestandesaufnahme per 31.12“ öffnen, Stichtag und Wallet(s) wählen und „Neu berechnen“ starten. Bereits gespeicherte Jahresstände werden später ohne Blockchain-Abfragen geladen.</p>
+        <p class="note"><strong>1.</strong> Unter „Meine Wallets“ die eigenen Adressen erfassen und speichern. <strong>2.</strong> In der Token-Übersicht „Daten aktualisieren“ verwenden. <strong>3.</strong> Unbekannte Token bei Bedarf über „Entdecken“ prüfen und als eigene sichere Token übernehmen. <strong>4.</strong> Für einen Jahresabschluss „Bestandesaufnahme per 31.12“ öffnen, Stichtag und Wallet(s) wählen und „Neu berechnen“ starten. Bereits gespeicherte Jahresstände werden später ohne Blockchain-Abfragen geladen.</p>
       </div>
-      <div class="custom-token-card"><h3 style="margin-top:0">📊 Wallet-Tracking</h3><p class="note">Zeigt native Coins und freigegebene sichere Token über deine gespeicherten Wallets. Beim Login erscheint zuerst der Cache. Automatisch wird höchstens einmal pro Kalendertag live aktualisiert; danach erfolgt jede weitere Aktualisierung manuell über „Jetzt live aktualisieren“. LP/PCLP werden als V2-Paare erkannt und mit Underlyings, Pool-Anteil und USD-Wert dargestellt. Bei TLN/VOW auf BSC zählen auch offene Staking-Positionen zum wirtschaftlichen LP-Bestand; in der Token-Übersicht wird der gestakte Anteil separat ausgewiesen. Snapshots dienen der laufenden Portfolio-Historie; die „Bestandesaufnahme per 31.12“ ist dagegen eine exakte historische Stichtagsabfrage.</p></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">📊 Wallet-Tracking</h3><p class="note">Zeigt native Coins und freigegebene sichere Token über deine gespeicherten Wallets. Beim Login erscheint zuerst der Cache. Automatisch wird höchstens einmal pro Kalendertag live aktualisiert; danach erfolgt jede weitere Aktualisierung manuell über „Daten aktualisieren“. LP/PCLP werden als V2-Paare erkannt und mit Underlyings, Pool-Anteil und USD-Wert dargestellt. Bei TLN/VOW auf BSC zählen auch offene Staking-Positionen zum wirtschaftlichen LP-Bestand; in der Token-Übersicht wird der gestakte Anteil separat ausgewiesen. Snapshots dienen der laufenden Portfolio-Historie; die „Bestandesaufnahme per 31.12“ ist dagegen eine exakte historische Stichtagsabfrage.</p></div>
       <div class="custom-token-card"><h3 style="margin-top:0">🧾 Bestandesaufnahme per 31.12</h3><p class="note">Wähle Datum, Zeitzone und eine Wallet oder „Alle Wallets“. „Neu berechnen“ liest historische Blockchain-Zustände und speichert das Ergebnis dauerhaft. „Nur Kurse aktualisieren“ lässt bereits verifizierte Bestände unverändert. Positionen ohne historischen Kurs bleiben sichtbar und werden nicht in USD-Summen eingerechnet. Gestakte TLN/VOW-PCLP auf BSC werden anhand der gecachten Stake-/Unstake-Historie zum Stichtagsbestand hinzugerechnet. PDF und Excel dokumentieren Quellen und Abdeckung.</p></div>
-      <div class="custom-token-card"><h3 style="margin-top:0">💸 Gebühren · 🖼️ NFTs · 🔓 Freigaben</h3><p class="note">Gebühren werden je Wallet gecacht und nur gezielt aktualisiert. NFTs werden auf Knopfdruck geladen; Spam-Markierungen können manuell korrigiert werden. Freigaben zeigen aktive Token-Approvals rein lesend an; ein Widerruf erfolgt extern mit der eigenen Wallet.</p></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">💸 Gebühren · 🖼️ NFTs · 🔓 Freigaben</h3><p class="note">Gebühren werden je Wallet gecacht und nur gezielt aktualisiert. NFTs werden über den zentralen Startseiten-Refresh geladen; Spam-Markierungen können manuell korrigiert werden. Freigaben zeigen aktive Token-Approvals rein lesend an; ein Widerruf erfolgt extern mit der eigenen Wallet.</p></div>
       <div class="custom-token-card"><h3 style="margin-top:0">⚙️ Verwaltung</h3><p class="note"><strong>Meine Wallets:</strong> Adressen speichern. <strong>Vordefinierte Token:</strong> globale sichere Tokenliste. <strong>Eigene sichere Token:</strong> persönliche Ergänzungen. <strong>Entdecken:</strong> sucht auch in der Transferhistorie nach früher gehaltenen Token und LP/PCLP, selbst wenn der heutige Bestand 0 ist. Änderungen an Wallets oder sicheren Token wirken sich auf nachfolgende Live-Abfragen aus.</p></div>
       <div class="custom-token-card"><h3 style="margin-top:0">📋 Chain-Abdeckung</h3><p class="note">Die Tabelle zeigt, welche Funktionen pro Chain technisch vorgesehen sind. „Bestand per 31.12.“ beschreibt die historische Stichtags-Unterstützung; der konkrete Lauf weist zusätzlich aus, ob eine einzelne Abfrage erfolgreich war.</p><div id="helpChainCoverage"></div></div>
       <div class="custom-token-card"><h3 style="margin-top:0">🏦 Projekte</h3><p class="note">Projektspezifische Bedienung und Fachlogik stehen bewusst nicht in diesem allgemeinen Handbuch. Öffne das jeweilige DeFi-Projekt und dort den Unter-Tab „Hilfe“. Projekte dürfen eigene Unter-Tabs für Übersicht, Transaktionen, Konfiguration und Hilfe besitzen.</p></div>
@@ -588,7 +590,7 @@
         </div>
         <div id="tlnvowLpBscContent"></div><div id="tlnvowLpEthContent" style="display:none"></div>
       </div>
-      <div id="tlnvow-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">TLN/VOW · Hilfe</h3><p class="note">Diese Projektansicht bewertet TLN/VOW-Assets direkt über die hinterlegten DEX-Pools. v-Währungen werden über TOKEN → VOW → USDT bewertet. TLN/VOW-Projekttoken verwenden TOKEN/VOW und als Fallback TOKEN/USDT. V2-LP-Token werden aus den Reserven beider Pool-Assets und der LP-TotalSupply bewertet. Der Liquidity-Pools-Tab trennt BNB Smart Chain (BSC/PCLP) und Ethereum (ETH/LP) in zwei Unter-Tabs. Beim Öffnen werden ausschließlich die zuletzt gespeicherten Supabase-Positionen und die Add-/Remove-Historie angezeigt. Erst „Daten aktualisieren“ liest aktuelle Positionen, Reserven, Kurse und neue Historienblöcke von Blockchain/Explorer und speichert den neuen Stand wieder im Cache. Für die Bestandesaufnahme per 31.12 werden dieselben Regeln mit dem historischen Blockzustand verwendet.</p><p class="note">Wenn ein Projektpreis fehlt, zuerst prüfen, ob Token/LP in der Projekt-Konfiguration korrekt klassifiziert und der benötigte DEX/Pool aktiv ist. Die allgemeine Bedienung des Wallet-Trackings steht unter „Hilfe / Handbuch“.</p></div></div>
+      <div id="tlnvow-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">TLN/VOW · Hilfe</h3><p class="note">Diese Projektansicht bewertet TLN/VOW-Assets direkt über die hinterlegten DEX-Pools. v-Währungen werden über TOKEN → VOW → USDT bewertet. TLN/VOW-Projekttoken verwenden TOKEN/VOW und als Fallback TOKEN/USDT. V2-LP-Token werden aus den Reserven beider Pool-Assets und der LP-TotalSupply bewertet. Der Liquidity-Pools-Tab trennt BNB Smart Chain (BSC/PCLP) und Ethereum (ETH/LP) in zwei Unter-Tabs. Beim ersten Öffnen eines Projekt-Tabs pro Tag werden noch nicht heute geprüfte Wallets automatisch aktualisiert; danach arbeitet der Tab aus dem Supabase-Cache. Eine manuelle Aktualisierung ist jederzeit möglich. LP-/Staking-Werte werden nach erfolgreichem Projekt-Refresh auch in die Token-Übersicht übernommen. Für die Bestandesaufnahme per 31.12 werden dieselben Regeln mit dem historischen Blockzustand verwendet.</p><p class="note">Wenn ein Projektpreis fehlt, zuerst prüfen, ob Token/LP in der Projekt-Konfiguration korrekt klassifiziert und der benötigte DEX/Pool aktiv ist. Die allgemeine Bedienung des Wallet-Trackings steht unter „Hilfe / Handbuch“.</p></div></div>
       <div id="tlnvow-subtab-overview" class="project-subtab-panel">
       <div class="custom-token-card" style="border-color:var(--accent)">
         <h3 style="margin-top:0">TLN/VOW · On-Chain Preise &amp; Liquidity Pools</h3>
@@ -712,7 +714,7 @@
   </div>
 
   <footer>
-    Version vom 28.08.2026, 20:06 Uhr · modularer Umbau Phase 2at<br>
+    Version vom 28.08.2026, 21:25 Uhr · modularer Umbau Phase 2au<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -744,6 +746,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.08.2026 20:06:38 CEST · Phase 2at · Build 20260828-200638</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.08.2026 21:25:20 CEST · Phase 2au · Build 20260828-212520</div>
 </body>
 </html>

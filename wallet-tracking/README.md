@@ -1,3 +1,23 @@
+## Phase 2au – zentraler Refresh, Activity-Check, LP-Walletfilter und Spam-Entscheid (28.08.2026, 21:25:20 CEST)
+
+- Zentraler Button **„Daten aktualisieren“**: pro Wallet sequentiell Bestände → TLN/VOW LP/Staking → NFTs. **Entdecken und Gebühren bleiben ausschließlich manuell.**
+- Automatisch wird pro Wallet/Chain/Datentyp höchstens **1× pro lokalem Kalendertag geprüft**. Der Status liegt geräteübergreifend in `public.wallet_refresh_state`.
+- EVM-Activity-Check: wenn der konfigurierte Discovery-Provider Alchemy ist, werden seit dem letzten Cursor native/ERC-20/ERC-721/ERC-1155-Aktivitäten geprüft. Nur vom User ausdrücklich als Spam bestätigte Token werden ignoriert. Ein bloßer System-**Spamverdacht** wird nicht automatisch als Spam behandelt.
+- Wenn keine relevante Aktivität vorliegt, bleibt der vorhandene Datenstand bestehen; die UI zeigt dennoch **„geprüft … keine relevante Aktivität“**. Ohne sicheren Activity-Indexer wird vorsichtshalber normal aktualisiert.
+- Neue Wallets haben noch keinen Refresh-State und werden deshalb beim nächsten automatischen Lauf vollständig berücksichtigt – unabhängig davon, ob andere Wallets heute schon geprüft wurden.
+- Projekt-TLN/VOW: beim Öffnen wird BSC für noch nicht heute geprüfte Wallets automatisch nachgezogen; danach nur Cache. Manuelle Projekt-Aktualisierung bleibt jederzeit möglich. Nach BSC-LP/Staking-Refresh wird die Token-Übersicht ebenfalls neu berechnet.
+- Liquidity Pools: neuer Walletfilter **Alle Wallets / einzelnes Wallet**. In der Auswahl erscheinen nur Wallets mit aktuellen oder historischen LP-/Staking-Positionen.
+- Entdecken: Spam-Verdachte sind standardmäßig sichtbar. Pro Token entscheidet der User **Als sicher hinzufügen** oder **Als Spam markieren**. Zusätzlich gibt es **„Alle Spam-Verdachte als Spam markieren“**; bestätigter Spam ist standardmäßig ausgeblendet.
+- Neuer sichtbarer Bereich **Datenstand pro Wallet** für Bestände, TLN/VOW LP/Staking und NFTs.
+
+### Migrationen – aktueller Stand
+
+- `001`–`016`: bestehende Migrationen; **nicht erneut ausführen**, wenn bereits produktiv ausgeführt.
+- `017-bsc-tln-vow-staking.sql`: bestehende Staking-Migration; **nicht erneut ausführen**, falls bereits ausgeführt.
+- **NEU: `018-wallet-refresh-state.sql` einmalig nach 017 ausführen.** Sie legt nur den geräteübergreifenden Refresh-/Activity-Status an.
+
+> Phase 2au setzt den bestehenden Phase-2at-Code fort; insbesondere Legacy-LP-/Staking-Discovery und die bisherigen RPC-Revert-Fixes bleiben erhalten.
+
 ## Phase 2at – historische TLN/VOW-LP-/Staking-Discovery integriert (28.08.2026, 20:06:38 CEST)
 
 - Die erfolgreich isoliert getestete Legacy-Discovery ist jetzt in die produktive BSC-TLN/VOW-LP-Logik integriert.
