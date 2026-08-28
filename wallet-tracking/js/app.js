@@ -1357,6 +1357,8 @@ async function saveAdminChain(id,isNew=false) {
 
 // Rein statische Übersicht, keine DB-Anbindung nötig - hier einfach die Liste pflegen.
 const ADMIN_IDEAS = [
+  { status: "done", title: "Discovery-Metadaten + Solana-Default", desc: "Phase 2ag: Alle discovery_enabled Chains sind beim Öffnen standardmäßig aktiviert, inklusive Solana. Historisch gefundene EVM-/Apertum-Token laden Symbol, Name und Decimals direkt vom Contract und cachen die Metadaten lokal." },
+  { status: "done", title: "Apertum Wrapped Live-Kurse on-chain", desc: "Phase 2ag: Vordefinierte Apertum-Wrapped-Token zeigen Live-Kurse ausschließlich aus Apertum-V2-Pools. Direkter wUSDT-Weg und Weg über wAPTM werden geprüft; bei beiden verfügbaren Wegen wird die Route mit der größeren USD-bewerteten Referenzreserve verwendet." },
   { status: "done", title: "LP/PCLP-Historie persistent cachen", desc: "Phase 2af: generischer Supabase-Cache lp_history_events für DAO1/Apertum und TLN/VOW auf BSC/Ethereum. Erster Lauf liest die historische ERC-20-Transferhistorie; Folge-Läufe beginnen am gespeicherten project_scan_state mit Reorg-Überlappung. Add/Remove, LP-Delta, laufender LP-Saldo, Underlyings sowie historische USD-Werte werden dauerhaft gespeichert. Aktuelle LP-Balance, Reserven und Pool-Anteil bleiben live." },
   {
     status: "in_progress",
@@ -2316,19 +2318,38 @@ let predefinedTokenDecimals = {};     // "chain|adresse" -> decimals
 // einer DEX gehandelt werden. Kein API-Key nötig, kostenlos. LP-Token und Token ohne
 // eigenen Handelsplatz liefern hier bewusst keinen Kurs (kein Rätselraten).
 
-function wrappedUnderlyingCoinGeckoId(chain,address){
-  const a=normalizeAddress(address,chain),sym=String(predefinedTokenSymbols[chain+"|"+a]||"").toUpperCase();
-  const map={WAPTM:"apertum",WUSDT:"tether",USDT:"tether",WETH:"ethereum",WBTC:"bitcoin",WBNB:"binancecoin",WAVAX:"avalanche-2",WSOL:"solana"};
-  return chain==="apertum"?(map[sym]||null):null;
+async function apertumCurrentDirectPrice(base,quote,bd,qd){
+  const chain="apertum",pair=await taxV2Pair(chain,base,quote,null);if(!pair)return null;
+  const iface=new ethers.Interface(["function token0() view returns (address)","function getReserves() view returns (uint112,uint112,uint32)"]);
+  const [t0raw,rr]=await Promise.all([
+    archiveRpc(chain,"eth_call",[{to:pair,data:iface.encodeFunctionData("token0",[])},"latest"]),
+    archiveRpc(chain,"eth_call",[{to:pair,data:iface.encodeFunctionData("getReserves",[])},"latest"])
+  ]);
+  const [t0]=iface.decodeFunctionResult("token0",t0raw),[r0,r1]=iface.decodeFunctionResult("getReserves",rr),is0=normalizeAddress(t0,chain)===normalizeAddress(base,chain);
+  const rb=Number(is0?r0:r1)/10**Number(bd),rq=Number(is0?r1:r0)/10**Number(qd);
+  return rb>0&&rq>0?{price:rq/rb,pair,baseReserve:rb,quoteReserve:rq}:null;
 }
 async function loadApertumWrappedCurrentPrices(){
-  const chain="apertum", aptm=nativePrices[chain]?.price;
-  const addresses=[...new Set([...(SAFE_ADDRESSES[chain]||[]),...Object.keys(predefinedTokenSymbols).filter(k=>k.startsWith(chain+"|")).map(k=>k.slice(chain.length+1)),...customSafeTokens.filter(t=>t.chain===chain).map(t=>t.address)])];
+  const chain="apertum",u=taxPredefinedBySymbol(chain,"WUSDT")||taxPredefinedBySymbol(chain,"USDT"),wa=taxPredefinedBySymbol(chain,"WAPTM");
+  if(!u||!wa)return;
+  const ud=await taxTokenDecimalsCurrent(chain,u),wd=await taxTokenDecimalsCurrent(chain,wa);
+  const aptmLeg=await apertumCurrentDirectPrice(wa.address,u.address,wd,ud);
+  const aptm=aptmLeg?.price;if(!(aptm>0))return;
+  tokenPrices[chain+"|"+normalizeAddress(u.address,chain)]={price:1,source:"Apertum DEX · Stablecoin 1 USD"};
+  tokenPrices[chain+"|"+normalizeAddress(wa.address,chain)]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`};
+  const addresses=[...new Set([...(SAFE_ADDRESSES[chain]||[]),...Object.keys(predefinedTokenSymbols).filter(k=>k.startsWith(chain+"|")).map(k=>k.slice(chain.length+1))])];
   for(const addr of addresses){
     const key=chain+"|"+addr,sym=String(predefinedTokenSymbols[key]||"").toUpperCase();
-    if(sym==="WUSDT"||sym==="USDT") tokenPrices[key]={price:1,source:"Apertum Wrapped-Parität · USDT"};
-    else if(sym==="WAPTM"&&Number.isFinite(aptm)) tokenPrices[key]={price:aptm,source:"Apertum wAPTM/APTM 1:1 · CoinGecko APTM"};
-    else { const id=wrappedUnderlyingCoinGeckoId(chain,addr); if(id&&id!=="apertum"&&id!=="tether"){ try{const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd&include_24hr_change=true`);if(r.ok){const d=await r.json(),x=d[id];if(x&&Number(x.usd)>0)tokenPrices[key]={price:Number(x.usd),change24h:Number(x.usd_24h_change)||undefined,source:`Apertum Wrapped-Parität · ${id}`};}}catch{}} }
+    if(["WUSDT","USDT","WUSDC","USDC"].includes(sym)){tokenPrices[key]={price:1,source:"Apertum DEX · Stablecoin 1 USD"};continue;}
+    if(sym==="WAPTM"){tokenPrices[key]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`};continue;}
+    const asset={address:addr,decimals:predefinedTokenDecimals[key]};const bd=await taxTokenDecimalsCurrent(chain,asset);
+    try{
+      const direct=await apertumCurrentDirectPrice(addr,u.address,bd,ud);
+      const via=await apertumCurrentDirectPrice(addr,wa.address,bd,wd);
+      const directLiquidity=direct?direct.quoteReserve:0,viaLiquidity=via?via.quoteReserve*aptm:0;
+      if(direct&&directLiquidity>=viaLiquidity)tokenPrices[key]={price:direct.price,source:`Apertum DEX ${sym||"Token"}/wUSDT · ${direct.pair}`};
+      else if(via)tokenPrices[key]={price:via.price*aptm,source:`Apertum DEX ${sym||"Token"}/wAPTM → wUSDT · ${via.pair} · ${aptmLeg.pair}`};
+    }catch(e){console.warn("Apertum Live-Kurs",sym||addr,e);}
   }
 }
 
@@ -2383,6 +2404,7 @@ async function loadNativePrices() {
 
   await loadTokenPricesViaGeckoTerminal(alreadyPriced);
   await loadApertumWrappedCurrentPrices();
+  if(document.getElementById("tab-predefined")?.classList.contains("active")) renderSafeTokenTable();
 
   // Gebühren-Ansichten können bereits sichtbar sein, während die Kursabfrage noch
   // im Hintergrund läuft. Nach Abschluss nur die betroffenen Ansichten neu rendern
@@ -2788,7 +2810,7 @@ async function evmRpcBatch(rpcUrl, calls) {
 // bei jedem weiteren Seitenaufruf komplett, auch nach einem Browser-Neustart.
 const TOKEN_META_CACHE_KEY = "tokenMetaCache";
 const TOKEN_META_CACHE_VERSION_KEY = "tokenMetaCacheVersion";
-const TOKEN_META_CACHE_VERSION = 2; // hochzählen, wenn sich das Cache-Format/die Dekodierung ändert
+const TOKEN_META_CACHE_VERSION = 3; // hochzählen, wenn sich das Cache-Format/die Dekodierung ändert
 let tokenMetaCache = {};
 
 function loadTokenMetaCache() {
@@ -2814,6 +2836,37 @@ function saveTokenMetaCache() {
   } catch (e) {
     // localStorage evtl. nicht verfügbar - dann gilt der Cache nur für diese Sitzung
   }
+}
+
+// Lädt ERC-20-Metadaten auch für historisch gefundene Token ohne aktuellen Bestand.
+// Dadurch zeigt Discovery nicht nur die Contract-Adresse, sondern Symbol/Name/Decimals.
+async function fetchEvmTokenMetadata(chain, addresses) {
+  const unique=[...new Set((addresses||[]).map(a=>normalizeAddress(a,chain)).filter(a=>/^0x[0-9a-f]{40}$/i.test(a)))];
+  const out={};
+  for(let start=0;start<unique.length;start+=30){
+    const chunk=unique.slice(start,start+30),calls=[],plan=[];
+    chunk.forEach((a,idx)=>{
+      const k=chain+"|"+a,cached=tokenMetaCache[k]||{};
+      if(cached.symbol&&cached.name&&Number.isFinite(Number(cached.decimals))){out[a]=cached;return;}
+      calls.push({to:a,data:"0x313ce567"});plan.push({idx,type:"decimals"});
+      calls.push({to:a,data:"0x95d89b41"});plan.push({idx,type:"symbol"});
+      calls.push({to:a,data:"0x06fdde03"});plan.push({idx,type:"name"});
+    });
+    if(!calls.length)continue;
+    try{
+      const results=await evmRpcBatch(configuredRpcUrl(chain),calls),per=chunk.map(()=>({}));
+      results.forEach((hex,i)=>{const x=plan[i];per[x.idx][x.type]=hex;});
+      chunk.forEach((a,idx)=>{
+        const k=chain+"|"+a,old=tokenMetaCache[k]||{},x=per[idx];
+        const dec=x.decimals&&x.decimals!=="0x"?parseInt(x.decimals,16):Number(old.decimals);
+        const meta={decimals:Number.isFinite(dec)?dec:(predefinedTokenDecimals[k]??18),symbol:decodeAbiString(x.symbol)||old.symbol||predefinedTokenSymbols[k]||a.slice(0,8)+"…",name:decodeAbiString(x.name)||old.name||predefinedTokenNames[k]||null};
+        tokenMetaCache[k]=meta;out[a]=meta;
+      });
+      saveTokenMetaCache();
+    }catch(e){console.warn("Token-Metadaten",chain,e);}
+  }
+  unique.forEach(a=>{if(!out[a]&&tokenMetaCache[chain+"|"+a])out[a]=tokenMetaCache[chain+"|"+a];});
+  return out;
 }
 
 // Prüft gezielt die Balance der sicheren + selbst erfassten Token für eine Chain,
@@ -4191,9 +4244,9 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
     }
   }
   const f=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:8}),u=n=>n==null?'–':'$'+Number(n).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}),dt=x=>x?new Date(x).toLocaleString('de-CH'):'–';
-  const currentTable=`<div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Pool</th><th>aktuell LP</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} LP</th><th>${dateStr} USD</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeAttr(r.w.label)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta">${r.pair.address}</div></td><td>${r.cur?f(r.cur.balance):'0'}</td><td>${r.cur?`${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}<br>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}<div class="meta">Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–'}</td><td>${u(r.cur?.usd)}</td><td>${f(r.histBal)}</td><td>${r.histPrice?u(r.histBal*r.histPrice.price):'–'}</td></tr>`).join(''):'<tr><td colspan="8">Keine aktuellen oder historischen LP-Positionen gefunden.</td></tr>'}</tbody></table></div>`;
+  const currentTable=`<div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Pool</th><th>aktuell LP</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} LP</th><th>${dateStr} USD</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeAttr(r.w.label)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta">${r.pair.address}</div></td><td>${r.cur?f(r.cur.balance):'0'}</td><td>${r.cur?`<div>${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}</div><div>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}</div><div class="meta">Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–'}</td><td>${u(r.cur?.usd)}</td><td>${f(r.histBal)}</td><td>${r.histPrice?u(r.histBal*r.histPrice.price):'–'}</td></tr>`).join(''):'<tr><td colspan="8">Keine aktuellen oder historischen LP-Positionen gefunden.</td></tr>'}</tbody></table></div>`;
   const hrows=[...history].sort((a,b)=>Number(b.block_number)-Number(a.block_number)||Number(b.log_index||0)-Number(a.log_index||0));
-  const historyTable=`<h3 style="margin-top:22px">Add-/Remove-Liquidity-Historie</h3><div class="chain-table-wrap"><table><thead><tr><th>Zeit</th><th>Wallet</th><th>Chain</th><th>Aktion</th><th>Pool</th><th>LP Δ</th><th>LP-Saldo</th><th>Underlying</th><th>historischer USD-Wert</th></tr></thead><tbody>${hrows.length?hrows.map(e=>`<tr><td>${dt(e.tx_timestamp)}<div class="meta">Block ${e.block_number}</div></td><td>${escapeAttr(e.w.label)}</td><td>${escapeAttr(CHAIN_META[e.chain]?.label||e.chain)}</td><td>${e.event_type==='add'?'<span class="badge safe">Add</span>':'<span class="badge">Remove</span>'}</td><td><strong>${escapeAttr(e.lp_label||window.WalletLPEngine.label(e.chain))} ${escapeAttr(e.token0_symbol||'Token0')}/${escapeAttr(e.token1_symbol||'Token1')}</strong><div class="meta">${e.pair_address}</div></td><td>${Number(e.lp_delta)>0?'+':''}${f(e.lp_delta)}</td><td>${f(e.running_balance)}</td><td>${f(e.amount0)} ${escapeAttr(e.token0_symbol||'')}<br>${f(e.amount1)} ${escapeAttr(e.token1_symbol||'')}</td><td>${u(e.value_usd)}${e.price_source?`<div class="meta">${escapeAttr(e.price_source)}</div>`:''}</td></tr>`).join(''):'<tr><td colspan="9">Noch keine Add-/Remove-Liquidity-Ereignisse im Cache.</td></tr>'}</tbody></table></div>`;
+  const historyTable=`<h3 style="margin-top:22px">Add-/Remove-Liquidity-Historie</h3><div class="chain-table-wrap"><table><thead><tr><th>Zeit</th><th>Wallet</th><th>Chain</th><th>Aktion</th><th>Pool</th><th>LP Δ</th><th>LP-Saldo</th><th>Underlying</th><th>historischer USD-Wert</th></tr></thead><tbody>${hrows.length?hrows.map(e=>`<tr><td>${dt(e.tx_timestamp)}<div class="meta">Block ${e.block_number}</div></td><td>${escapeAttr(e.w.label)}</td><td>${escapeAttr(CHAIN_META[e.chain]?.label||e.chain)}</td><td>${e.event_type==='add'?'<span class="badge safe">Add</span>':'<span class="badge">Remove</span>'}</td><td><strong>${escapeAttr(e.lp_label||window.WalletLPEngine.label(e.chain))} ${escapeAttr(e.token0_symbol||'Token0')}/${escapeAttr(e.token1_symbol||'Token1')}</strong><div class="meta">${e.pair_address}</div></td><td>${Number(e.lp_delta)>0?'+':''}${f(e.lp_delta)}</td><td>${f(e.running_balance)}</td><td><div>${f(e.amount0)} ${escapeAttr(e.token0_symbol||'')}</div><div>${f(e.amount1)} ${escapeAttr(e.token1_symbol||'')}</div></td><td>${u(e.value_usd)}${e.price_source?`<div class="meta">${escapeAttr(e.price_source)}</div>`:''}</td></tr>`).join(''):'<tr><td colspan="9">Noch keine Add-/Remove-Liquidity-Ereignisse im Cache.</td></tr>'}</tbody></table></div>`;
   el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Aktuelle LP-Bestände, Reserven und Pool-Anteile werden live gelesen. <strong>Add-/Remove-Historie und historische USD-Werte werden dauerhaft in Supabase gecached</strong>; nach dem ersten Vollscan werden nur neue Blockchain-Bereiche synchronisiert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">Cache teilweise nicht aktualisiert: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${currentTable}${historyTable}`;
 }
 window.renderProjectLpTab=renderProjectLpTab;
@@ -5984,10 +6037,10 @@ function onDiscoveryWalletChange() {
 
   if (discoveryCache) {
     lastDiscoveryFindings = Array.isArray(discoveryCache.findings) ? discoveryCache.findings : [];
-    if (Array.isArray(discoveryCache.selected_chains) && discoveryCache.selected_chains.length > 0) {
-      activeDiscoveryChains = new Set(discoveryCache.selected_chains.filter(c => discoveryChains().includes(c)));
-      renderDiscoveryChainFilter();
-    }
+    // Chain-Auswahl ist eine Scan-Einstellung, kein Bestandteil des gespeicherten Ergebnisses.
+    // Jeder neue Seiten-/Wallet-Aufruf startet mit allen aktuell aktivierten Discovery-Chains.
+    activeDiscoveryChains = new Set(discoveryChains());
+    renderDiscoveryChainFilter();
   } else {
     lastDiscoveryFindings = [];
   }
@@ -6113,8 +6166,10 @@ async function runDiscoveryScan() {
     for(const chain of discoveryChains().filter(c=>activeDiscoveryChains.has(c))){
       try{
         const hist=await historicalErc20Candidates(chain,w.evm,null);
+        const unknown=hist.filter(a=>!isSafeTokenAddress(a,chain));
+        const metas=await fetchEvmTokenMetadata(chain,unknown);
         const knownFinding=new Set(allFindings.filter(f=>f.chain===chain).map(f=>f.address.toLowerCase()));
-        for(const a of hist){if(knownFinding.has(a))continue;const k=chain+"|"+a;if(isSafeTokenAddress(a,chain))continue;allFindings.push({walletLabel:w.label,chain,address:a,symbol:predefinedTokenSymbols[k]||a.slice(0,8)+"…",name:predefinedTokenNames[k]||null,amount:0,risk:null,nameScamFlag:false,historical:true});}
+        for(const a of unknown){if(knownFinding.has(a))continue;const k=chain+"|"+a,m=metas[a]||tokenMetaCache[k]||{};allFindings.push({walletLabel:w.label,chain,address:a,symbol:predefinedTokenSymbols[k]||m.symbol||a.slice(0,8)+"…",name:predefinedTokenNames[k]||m.name||null,decimals:predefinedTokenDecimals[k]??m.decimals,amount:0,risk:null,nameScamFlag:false,historical:true});}
       }catch(e){scanNotes.push(`${CHAIN_META[chain]?.label||chain}: historische Kandidaten unvollständig (${e.message}).`);}
     }
     if(window.WalletLPEngine){for(const f of allFindings){if(!CHAIN_CONFIG[f.chain]?.evmChainId)continue;try{const p=await window.WalletLPEngine.pairInfo(f.chain,f.address);if(p){f.isLp=true;f.lpLabel=window.WalletLPEngine.label(f.chain);f.symbol=`${f.lpLabel} ${p.t0.symbol}/${p.t1.symbol}`;f.name=`${p.t0.symbol}/${p.t1.symbol} Liquidity Pool`;}}catch{}}}
