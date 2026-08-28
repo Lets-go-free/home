@@ -1440,11 +1440,9 @@ const ADMIN_IDEAS = [
 • Weitere Token nutzen direkt TOKEN/wUSDT oder TOKEN/wAPTM → wUSDT.
 • archive_rpc_url ist optional; falls leer, wird wie im DB-Schema vorgesehen rpc_url verwendet.
 • CoinGecko/GeckoTerminal werden für Apertum nicht als Fallback verwendet.` },
-  { status: "done", title: "TLN/VOW Liquidity Pools nach Chain getrennt", desc: `Phase 2ak: Eigene Unter-Tabs für BNB Smart Chain (BSC/PCLP) und Ethereum (ETH/LP).
+  { status: "in_progress", title: "TLN/VOW Liquidity Pools nach Chain getrennt", desc: `BSC/PCLP ist funktional integriert und wird aktuell inklusive Historie und Staking weiter gehärtet. Ethereum (ETH/LP) ist funktional noch nicht vollständig umgesetzt und bleibt ausdrücklich OFFEN.
 
-Der LP-Scanner nutzt den zentralen RPC-Resolver und prüft auf BSC/ETH ausschließlich die in Vordefinierte Token als lp_token klassifizierten TLN/VOW-Contracts. Auch die Alchemy-Transferabfrage wird auf genau diese Contract-Adressen eingeschränkt. Normale ERC-20-Token werden nicht mehr als mögliche LPs getestet.
-
-Für den klassifizierten Scan wird lp_history_v3_classified als eigener Scanstand verwendet, damit der erste saubere Lauf die definierte LP-Liste vollständig historisch erfasst.` },
+Ziel: ETH-Liquidity-Pools analog zu BSC vollständig integrieren – LP-Erkennung, aktuelle Positionen, historische Werte und Cache. Die sichtbare ETH-Unterseite allein gilt nicht als erledigte ETH-Integration.` },
   { status: "done", title: "LP/PCLP-Historie und Positionen persistent cachen", desc: "Phase 2af speichert Add/Remove, LP-Delta, laufenden LP-Saldo, Underlyings und historische USD-Werte in lp_history_events. Seit Phase 2am speichert lp_position_cache zusätzlich den zuletzt bewusst aktualisierten aktuellen LP/PCLP-Bestand inklusive Underlyings, Pool-Anteil, USD-Wert und 31.12.-Vergleichsstand. Beim Öffnen der Projekt-Tabs werden ausschließlich diese Supabase-Caches gelesen." },
   {
     status: "in_progress",
@@ -4349,6 +4347,11 @@ function lpPairBelongsToProject(pair,chain,projectKey){
   return predefinedTokenProject[k0]===projectKey||predefinedTokenProject[k1]===projectKey;
 }
 
+function projectLpScanType(projectKey,chain){
+  const classifiedOnly=projectKey==="tln_vow"&&["bsc","eth"].includes(chain);
+  return (projectKey==="tln_vow"&&chain==="bsc")?"lp_history_v4_staking":(classifiedOnly?"lp_history_v3_classified":"lp_history_v2");
+}
+
 async function syncProjectLpHistory(projectKey,chain,walletAddress){
   if(!window.WalletLPEngine)return {events:[],scanned:0,newEvents:0,pairs:[]};
   const engine=window.WalletLPEngine,cached=await engine.loadHistory(projectKey,chain,walletAddress).catch(()=>[]);
@@ -4356,9 +4359,15 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
   // deshalb ausschließlich als lp_token klassifizierte Contracts gescannt werden.
   const classifiedOnly=projectKey==="tln_vow"&&["bsc","eth"].includes(chain);
   const configuredPairs=classifiedOnly?projectClassifiedLpAddresses(projectKey,chain):[];
+  // Sicherheitsbremse: Wenn für TLN/VOW keine LPs klassifiziert sind, niemals den
+  // Filter weglassen und dadurch versehentlich die komplette ERC-20-Historie der Wallet
+  // ab Block 0 scannen. In diesem Fall bleibt der vorhandene Cache sichtbar.
+  if(classifiedOnly && configuredPairs.length===0){
+    return {events:cached,scanned:0,newEvents:0,pairs:[],warning:`${chain}: Keine als lp_token klassifizierten ${projectKey}-Pools konfiguriert; Live-LP-Scan übersprungen.`};
+  }
   const allowed=classifiedOnly?new Set(configuredPairs):null;
   const cachedPairs=new Set(cached.map(r=>normalizeAddress(r.pair_address,chain)).filter(a=>a&&(!allowed||allowed.has(a))));
-  const scanType=(projectKey==="tln_vow"&&chain==="bsc")?"lp_history_v4_staking":(classifiedOnly?"lp_history_v3_classified":"lp_history_v2");
+  const scanType=projectLpScanType(projectKey,chain);
   let last=0;try{last=await engine.getScanState(projectKey,chain,walletAddress,scanType);}catch{}
   let latest=0;
   try{latest=await engine.latestBlock(chain);}
@@ -4418,7 +4427,7 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
   // Öffnen folgen ausschließlich Supabase-Lesezugriffe; RPC/Explorer laufen nur bei refresh=true.
   el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden <strong>ausschließlich die zuletzt gespeicherten Supabase-Daten</strong> angezeigt. Blockchain, Explorer, Reserven, Kurse und Historie werden nur über „Daten aktualisieren“ neu abgefragt.</div>${refreshButton}<div class="status" style="margin-top:10px"><span class="loading">${refresh?'LP/PCLP-Daten werden aktualisiert…':'Gespeicherte LP/PCLP-Daten werden geladen…'}</span></div></div>`;
 
-  const rows=[],history=[];let cacheNew=0,cacheErrors=[],cacheWarnings=[],latestCacheRefresh=null;
+  const rows=[],history=[],scanStatuses=[];let cacheNew=0,cacheErrors=[],cacheWarnings=[],latestCacheRefresh=null;
   const targetEpoch=Math.floor(new Date(dateStr+'T23:59:59Z').getTime()/1000);
 
   for(const chain of chains){
@@ -4439,13 +4448,31 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
             window.WalletLPEngine.loadPositionCache(projectKey,chain,wa)
           ]);
           sync.events=events||[];
+          const cachedPairSet=new Set();
           for(const c of (posRows||[])){
+            const pairAddress=normalizeAddress(c.pair_address,chain);cachedPairSet.add(pairAddress);
             const refreshed=c.refreshed_at?new Date(c.refreshed_at):null;if(refreshed&&(!latestCacheRefresh||refreshed>latestCacheRefresh))latestCacheRefresh=refreshed;
             rows.push({
               chain,w,
               pair:{address:c.pair_address,t0:{address:c.token0_address,symbol:c.token0_symbol||'Token0',decimals:c.token0_decimals},t1:{address:c.token1_address,symbol:c.token1_symbol||'Token1',decimals:c.token1_decimals}},
               cur:{balance:Number(c.current_lp||0),walletBalance:Number(c.current_wallet_lp??c.current_lp??0),stakedBalance:Number(c.current_staked_lp||0),amount0:Number(c.current_amount0||0),amount1:Number(c.current_amount1||0),share:Number(c.current_share||0),usd:c.current_usd==null?null:Number(c.current_usd)},
               histBal:Number(c.snapshot_lp||0),histWalletBal:Number(c.snapshot_wallet_lp??c.snapshot_lp??0),histStakedBal:Number(c.snapshot_staked_lp||0),histUsd:c.snapshot_usd==null?null:Number(c.snapshot_usd),cached:true
+            });
+          }
+          // Historische LP-Wallets dürfen nicht verschwinden, nur weil ein älterer Lauf
+          // keinen lp_position_cache-Eintrag erzeugt hat oder der heutige Bestand 0 ist.
+          // In diesem Fall wird aus lp_history_events eine reine Historienzeile aufgebaut.
+          const historicalPairs=new Map();
+          for(const e of sync.events){
+            const pa=normalizeAddress(e.pair_address,chain);if(!pa||cachedPairSet.has(pa)||historicalPairs.has(pa))continue;
+            historicalPairs.set(pa,e);
+          }
+          for(const [pa,e] of historicalPairs){
+            rows.push({
+              chain,w,historicalOnly:true,
+              pair:{address:pa,t0:{address:e.token0_address,symbol:e.token0_symbol||'Token0',decimals:e.token0_decimals},t1:{address:e.token1_address,symbol:e.token1_symbol||'Token1',decimals:e.token1_decimals}},
+              cur:{balance:0,walletBalance:0,stakedBalance:0,amount0:0,amount1:0,share:0,usd:null},
+              histBal:null,histWalletBal:null,histStakedBal:null,histUsd:null,cached:true
             });
           }
         }catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: Cache konnte nicht gelesen werden: ${e.message}`);}
@@ -4471,13 +4498,24 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
         try{await window.WalletLPEngine.replacePositionCache(projectKey,chain,wa,walletPositionCache);latestCacheRefresh=new Date();}catch(e){cacheErrors.push(`${CHAIN_META[chain]?.label||chain}/${w.label}: Positions-Cache konnte nicht gespeichert werden: ${e.message}`);}
       }
 
+      try{
+        const scanType=projectLpScanType(projectKey,chain);
+        const info=window.WalletLPEngine.getScanStateInfo?await window.WalletLPEngine.getScanStateInfo(projectKey,chain,wa,scanType):{last_scanned_block:await window.WalletLPEngine.getScanState(projectKey,chain,wa,scanType),last_scanned_at:null,scan_type:scanType};
+        const walletRows=rows.filter(r=>r.chain===chain&&r.w?.id===w.id);
+        scanStatuses.push({chain,w,address:wa,scanType,lastBlock:Number(info?.last_scanned_block||0),lastAt:info?.last_scanned_at||null,eventCount:(sync.events||[]).length,pairCount:new Set((sync.events||[]).map(e=>normalizeAddress(e.pair_address,chain)).filter(Boolean)).size,positionCount:walletRows.length,warning:sync.warning||null});
+      }catch(e){
+        scanStatuses.push({chain,w,address:wa,scanType:projectLpScanType(projectKey,chain),lastBlock:0,lastAt:null,eventCount:(sync.events||[]).length,pairCount:new Set((sync.events||[]).map(e=>normalizeAddress(e.pair_address,chain)).filter(Boolean)).size,positionCount:rows.filter(r=>r.chain===chain&&r.w?.id===w.id).length,warning:`Scan-Status nicht lesbar: ${e?.message||e}`});
+      }
+
       const running=new Map();
       for(const e of [...sync.events].sort((a,b)=>Number(a.block_number)-Number(b.block_number)||Number(a.log_index||0)-Number(b.log_index||0))){const k=normalizeAddress(e.pair_address,chain),saldo=(running.get(k)||0)+Number(e.lp_delta||0);running.set(k,saldo);history.push({...e,chain,w,running_balance:saldo});}
     }
   }
 
   const f=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:8}),u=n=>n==null?'–':'$'+Number(n).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}),dt=x=>x?new Date(x).toLocaleString('de-CH'):'–';
-  const currentTable=`<div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Pool</th><th>LP in Wallet</th><th>LP gestakt</th><th>LP gesamt</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} Wallet</th><th>${dateStr} gestakt</th><th>${dateStr} gesamt</th><th>${dateStr} USD</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeAttr(r.w.label)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta">${r.pair.address}</div></td><td>${f(r.cur?.walletBalance??r.cur?.balance??0)}</td><td>${f(r.cur?.stakedBalance||0)}</td><td><strong>${f(r.cur?.balance||0)}</strong></td><td>${r.cur?`<div>${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}</div><div>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}</div><div class="meta">wirtschaftlicher Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–'}</td><td>${u(r.cur?.usd)}</td><td>${f(r.histWalletBal??r.histBal??0)}</td><td>${f(r.histStakedBal||0)}</td><td><strong>${f(r.histBal)}</strong></td><td>${u(r.histUsd??(r.histPrice?.price!=null?r.histBal*r.histPrice.price:null))}</td></tr>`).join(''):'<tr><td colspan="12">Noch keine gespeicherten LP-Positionen. Bitte „Daten aktualisieren“ ausführen.</td></tr>'}</tbody></table></div>`;
+  const histCell=n=>n==null?'–':f(n);
+  const currentTable=`<div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Pool</th><th>LP in Wallet</th><th>LP gestakt</th><th>LP gesamt</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} Wallet</th><th>${dateStr} gestakt</th><th>${dateStr} gesamt</th><th>${dateStr} USD</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeAttr(r.w.label)}${r.historicalOnly?'<div class="meta"><span class="badge">nur Historie</span></div>':''}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta">${r.pair.address}</div></td><td>${f(r.cur?.walletBalance??r.cur?.balance??0)}</td><td>${f(r.cur?.stakedBalance||0)}</td><td><strong>${f(r.cur?.balance||0)}</strong></td><td>${r.historicalOnly?'–':(r.cur?`<div>${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}</div><div>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}</div><div class="meta">wirtschaftlicher Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–')}</td><td>${r.historicalOnly?'–':u(r.cur?.usd)}</td><td>${histCell(r.histWalletBal??r.histBal)}</td><td>${histCell(r.histStakedBal)}</td><td><strong>${histCell(r.histBal)}</strong></td><td>${r.histBal==null?'–':u(r.histUsd??(r.histPrice?.price!=null?r.histBal*r.histPrice.price:null))}</td></tr>`).join(''):'<tr><td colspan="12">Noch keine gespeicherten LP-Positionen. Bitte „Daten aktualisieren“ ausführen.</td></tr>'}</tbody></table></div>`;
+  const scanStatusTable=`<h3 style="margin-top:22px">LP-Scan-Status pro Wallet</h3><div class="note" style="margin-bottom:8px">Hier siehst du unabhängig vom aktuellen Token-/LP-Bestand, welche Wallets in die LP-Historiensuche einbezogen sind. <strong>„Noch nicht gescannt“</strong> bedeutet, dass für diesen Scan-Typ noch kein erfolgreicher kompletter Lauf gespeichert wurde.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Adresse</th><th>Status</th><th>Letzter Scan</th><th>bis Block</th><th>Historien-Ereignisse</th><th>historische Pools</th><th>Positionszeilen</th></tr></thead><tbody>${scanStatuses.length?scanStatuses.map(s=>`<tr><td><strong>${escapeAttr(s.w?.label||'')}</strong></td><td>${escapeAttr(CHAIN_META[s.chain]?.label||s.chain)}</td><td class="meta lp-address">${escapeAttr(s.address||'')}</td><td>${s.warning?`<span class="badge danger">unvollständig</span><div class="meta">${escapeAttr(s.warning)}</div>`:s.lastBlock>0?'<span class="badge safe">gescannt</span>':'<span class="badge">noch nicht gescannt</span>'}</td><td>${s.lastAt?dt(s.lastAt):'–'}</td><td>${s.lastBlock>0?Number(s.lastBlock).toLocaleString('de-CH'):'–'}</td><td>${Number(s.eventCount||0).toLocaleString('de-CH')}</td><td>${Number(s.pairCount||0).toLocaleString('de-CH')}</td><td>${Number(s.positionCount||0).toLocaleString('de-CH')}</td></tr>`).join(''):'<tr><td colspan="9">Keine Wallet-Adressen für diese Chain vorhanden.</td></tr>'}</tbody></table></div>`;
   const hrows=[...history].sort((a,b)=>Number(b.block_number)-Number(a.block_number)||Number(b.log_index||0)-Number(a.log_index||0));
   const actionLabel=e=>({add:'Add Liquidity',remove:'Remove Liquidity',stake:'Stake',unstake:'Unstake',send:'Versenden',receive:'Empfangen'}[e.event_type]||e.event_type);
   const actionBadge=e=>['add','stake','receive'].includes(e.event_type)?'safe':['remove','unstake'].includes(e.event_type)?'danger':'';
@@ -4485,7 +4523,7 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
   const stakingLots=(projectKey==="tln_vow"&&chains.includes("bsc")&&window.WalletStakingEngine)?wallets.flatMap(w=>window.WalletStakingEngine.buildLots(history.filter(e=>e.chain==="bsc"&&e.w?.id===w.id)).map(l=>({...l,w}))):[];
   const stakingTable=projectKey==="tln_vow"&&chains.includes("bsc")?`<h3 style="margin-top:22px">Staking-Positionen BSC</h3><div class="note" style="margin-bottom:8px">Jeder Stake bleibt als eigenes Lot sichtbar. Unstakes reduzieren die offenen Lots chronologisch (FIFO). Eine Lock-Dauer wird nur angezeigt, wenn sie im Staking-Contract-Katalog verifiziert hinterlegt ist.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Pool</th><th>Staking-Bezeichnung</th><th>Staking-Contract</th><th>Stake-Datum</th><th>LP ursprünglich</th><th>LP offen</th><th>Status</th></tr></thead><tbody>${stakingLots.length?stakingLots.slice().reverse().map(l=>`<tr><td>${escapeAttr(l.w?.label||'')}</td><td class="meta lp-address">${escapeAttr(l.pair_address)}</td><td><strong>${escapeAttr(l.staking_label||window.WalletStakingEngine.displayName(l,'LP'))}</strong></td><td class="meta lp-address">${escapeAttr(l.staking_contract||'–')}</td><td>${dt(l.stake_timestamp)}</td><td>${f(l.original_lp)}</td><td><strong>${f(l.remaining_lp)}</strong></td><td>${l.status==='closed'?'<span class="badge">beendet</span>':l.status==='partial'?'<span class="badge">teilweise unstaked</span>':'<span class="badge safe">offen</span>'}</td></tr>`).join(''):'<tr><td colspan="8">Keine Staking-Positionen im Cache erkannt.</td></tr>'}</tbody></table></div>`:'';
   const cacheStand=latestCacheRefresh?`<div class="meta" style="margin-top:7px">Cache-Stand: ${latestCacheRefresh.toLocaleString('de-CH')}</div>`:'';
-  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden <strong>ausschließlich Supabase-Caches</strong> gelesen. Blockchain, Explorer, Reserven, Kurse und Historie werden nur über „Daten aktualisieren“ erneuert. Add-/Remove-Historie und Positionsdaten bleiben danach gespeichert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${refreshButton}${cacheStand}${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheWarnings.length?`<div class="note" style="margin-top:8px"><strong>LP-Historie momentan nicht vollständig nachladbar:</strong> ${escapeAttr(cacheWarnings.join(' · '))}</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">${refresh?'Cache teilweise nicht aktualisiert':'Cache teilweise nicht lesbar'}: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${currentTable}${historyTable}${stakingTable}`;
+  el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden <strong>ausschließlich Supabase-Caches</strong> gelesen. Blockchain, Explorer, Reserven, Kurse und Historie werden nur über „Daten aktualisieren“ erneuert. Add-/Remove-Historie und Positionsdaten bleiben danach gespeichert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${refreshButton}${cacheStand}${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheWarnings.length?`<div class="note" style="margin-top:8px"><strong>LP-Historie momentan nicht vollständig nachladbar:</strong> ${escapeAttr(cacheWarnings.join(' · '))}</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">${refresh?'Cache teilweise nicht aktualisiert':'Cache teilweise nicht lesbar'}: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${scanStatusTable}${currentTable}${historyTable}${stakingTable}`;
   if(refresh&&projectKey==="tln_vow"&&chains.includes("bsc")){await mergeTlnBscStakingCacheIntoWalletData();renderResults();renderAllocationChart();}
 
 }

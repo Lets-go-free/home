@@ -308,13 +308,30 @@ async function getToken(chain,address){
   if(tokenCache.has(key)) return tokenCache.get(key);
 
   const contract = new ethers.Contract(address,ERC20_ABI,providers[chain]);
-  const [name,symbol,decimals] = await Promise.all([
-    contract.name(),
-    contract.symbol(),
-    contract.decimals()
-  ]);
 
-  const result = {address,name,symbol,decimals:Number(decimals)};
+  // Metadaten sind bewusst fehlertolerant. Einige ältere/projektspezifische
+  // ERC-20-Contracts implementieren einzelne optionale Metadata-Reads nicht
+  // sauber und können z.B. bei name() mit "execution reverted" antworten.
+  // Das darf eine ansonsten gültige LP-/Preisabfrage nicht abbrechen.
+  let name = null, symbol = null, decimals = 18;
+  try { name = await contract.name(); } catch(e) {
+    console.warn(`TLN/VOW ${chain} ${address}: name() nicht verfügbar`, e);
+  }
+  try { symbol = await contract.symbol(); } catch(e) {
+    console.warn(`TLN/VOW ${chain} ${address}: symbol() nicht verfügbar`, e);
+  }
+  try { decimals = Number(await contract.decimals()); } catch(e) {
+    console.warn(`TLN/VOW ${chain} ${address}: decimals() nicht verfügbar; Fallback 18`, e);
+    decimals = 18;
+  }
+
+  const fallback = String(address).slice(0,8) + "…";
+  const result = {
+    address,
+    name: String(name || symbol || fallback),
+    symbol: String(symbol || name || fallback),
+    decimals: Number.isFinite(Number(decimals)) ? Number(decimals) : 18
+  };
   tokenCache.set(key,result);
   return result;
 }
@@ -1277,6 +1294,8 @@ async function getUSD(chain,token){
 async function detectPoolType(chain,address){
   const key = chain + ":" + norm(address);
   if(poolTypeCache.has(key)) return poolTypeCache.get(key);
+  if(!providers[chain]) throw new Error(`${chain}: RPC-Provider für Pool ${address} fehlt.`);
+  if(!ethers.isAddress(address)) throw new Error(`${chain}: Ungültige Pool-Adresse ${address}.`);
 
   const minimal = new ethers.Contract(
     address,
@@ -1284,13 +1303,17 @@ async function detectPoolType(chain,address){
     providers[chain]
   );
 
-  const factory = await minimal.factory();
+  let factory;
+  try{ factory = await minimal.factory(); }
+  catch(e){
+    throw new Error(`${chain}: ${address} · factory() fehlgeschlagen: ${e?.shortMessage || e?.reason || e?.message || e}`);
+  }
 
   let type = null;
   if(same(factory,CONFIG[chain].v2Factory)) type = "v2";
   if(CONFIG[chain]?.v3Factory && same(factory,CONFIG[chain].v3Factory)) type = "v3";
 
-  if(!type) throw new Error("Pool gehört weder zur erwarteten V2- noch V3-Factory.");
+  if(!type) throw new Error(`${chain}: ${address} gehört nicht zu einer konfigurierten V2/V3-Factory (factory=${factory}).`);
   poolTypeCache.set(key,type);
   return type;
 }
@@ -1299,18 +1322,32 @@ async function detectPoolType(chain,address){
    READ V2 POOL
 ========================================================= */
 async function readV2Pool(chain,address){
+  if(!providers[chain]) throw new Error(`${chain}: RPC-Provider für Pool ${address} fehlt.`);
   const pair = new ethers.Contract(address,V2_ABI,providers[chain]);
 
-  const [token0,token1,reserves,totalSupply,lpDecimals,lpSymbol,factory] =
-    await Promise.all([
-      pair.token0(),
-      pair.token1(),
-      pair.getReserves(),
-      pair.totalSupply(),
-      pair.decimals(),
-      pair.symbol(),
-      pair.factory()
-    ]);
+  // Kernfunktionen müssen funktionieren; wir lesen sie bewusst einzeln fehlertolerant
+  // und melden exakt, welcher Contract-Read fehlschlägt. So kann ein RPC-Revert nicht
+  // mehr als anonyme JSON-Meldung erscheinen. LP-Metadaten wie symbol() bleiben optional.
+  const coreCalls = [
+    ["token0()", () => pair.token0()],
+    ["token1()", () => pair.token1()],
+    ["getReserves()", () => pair.getReserves()],
+    ["totalSupply()", () => pair.totalSupply()],
+    ["decimals()", () => pair.decimals()],
+    ["factory()", () => pair.factory()]
+  ];
+  const settled = await Promise.allSettled(coreCalls.map(([,fn]) => fn()));
+  const failedIndex = settled.findIndex(x => x.status === "rejected");
+  if(failedIndex >= 0){
+    const err = settled[failedIndex].reason;
+    throw new Error(`${chain}: ${address} · ${coreCalls[failedIndex][0]} fehlgeschlagen: ${err?.shortMessage || err?.reason || err?.message || err}`);
+  }
+  const [token0,token1,reserves,totalSupply,lpDecimals,factory] = settled.map(x => x.value);
+  if(!token0 || !token1 || same(token0,token1)) throw new Error(`${chain}: ${address} liefert ungültige token0/token1-Adressen.`);
+  let lpSymbol = "LP";
+  try { lpSymbol = String(await pair.symbol()); } catch(e) {
+    console.warn(`TLN/VOW ${chain} ${address}: LP symbol() nicht verfügbar`, e);
+  }
 
   if(!same(factory,CONFIG[chain].v2Factory)){
     throw new Error("Pool gehört nicht zur erwarteten V2-Factory.");
@@ -1612,6 +1649,13 @@ async function renderPools(chain){
   let totalTVL = 0;
   let processed = 0;
   body.innerHTML = "";
+
+  if(!pools.length){
+    body.innerHTML = '<tr><td colspan="8" class="note">Für diese Chain sind in Supabase noch keine TLN/VOW-Liquidity-Pools als <code>lp_token</code> konfiguriert.</td></tr>';
+    document.getElementById(chain+"PoolCount").textContent = "0";
+    document.getElementById(chain+"TVL").textContent = "-";
+    return;
+  }
 
   for(const dbPool of pools){
     const loading = document.createElement("tr");

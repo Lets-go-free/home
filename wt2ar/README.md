@@ -1,3 +1,37 @@
+## Phase 2as – LP-Wallet-Historie sichtbar und Scan-Status pro Wallet (28.08.2026, 19:20:37 CEST)
+
+- Im Liquidity-Pools-Tab wird für jede Wallet mit Chain-Adresse ein eigener **LP-Scan-Status** angezeigt: Wallet, Chain, Adresse, Status, letzter Scan, letzter Block, Anzahl Historien-Ereignisse, historische Pools und Positionszeilen.
+- Die Wallet-Liste für den LP-Scan hängt **nicht** vom aktuellen TLN/VOW-Tokenbestand ab. Auch Wallets mit heutigem Bestand 0 werden einbezogen.
+- Existieren in `lp_history_events` historische LP-Ereignisse, aber kein `lp_position_cache` mehr, wird der Pool trotzdem als **„nur Historie“** mit aktuellem Bestand 0 angezeigt. Damit können alte LP-Wallets nicht allein wegen eines fehlenden Positions-Caches verschwinden.
+- Der Scan-Status wird aus `project_scan_state` gelesen; dafür wurde lediglich die bestehende Engine-Lesefunktion erweitert. **Keine neue SQL-Migration**.
+- Admin-Ideenstatus korrigiert: **TLN/VOW Liquidity Pools nach Chain getrennt** bleibt `in_progress`, weil ETH funktional noch nicht vollständig umgesetzt ist.
+- Falls `017-bsc-tln-vow-staking.sql` bereits ausgeführt wurde, **nicht erneut ausführen**.
+
+
+## Phase 2ar – LP-Ladepfad gehärtet (28.08.2026, 19:15:38 CEST)
+
+- V2-Pool-Kernreads melden jetzt Pool-Adresse und konkrete Funktion (`token0`, `token1`, `getReserves`, `totalSupply`, `decimals`, `factory`) statt eines anonymen RPC-Reverts.
+- `factory()`/Pooltyp-Erkennung enthält ebenfalls Contract-/Chain-Kontext.
+- Ein einzelner defekter Pool bleibt auf seine Tabellenzeile begrenzt und stoppt die übrigen Pools nicht.
+- Sind für TLN/VOW auf einer Chain keine `lp_token`-Pools konfiguriert, wird kein ungefilterter Wallet-ERC20-Vollscan ab Block 0 gestartet.
+- Leere Pool-Konfiguration wird im UI ausdrücklich angezeigt.
+- Keine neue SQL-Migration; `017` bleibt der aktuelle Migrationsstand.
+
+# Phase 2aq – zusätzlicher execution-reverted-Fix
+
+Stand: **28.08.2026, 19:12:53 Uhr CEST**
+
+Zusätzliche Korrektur zu 2ao/2ap: In `projects/tln-vow/tln-vow.js` wurden ERC-20-Metadaten bisher gemeinsam über `Promise.all(name(), symbol(), decimals())` gelesen. Bei älteren oder projektspezifischen Token kann bereits ein optionales `name()` mit `execution reverted` antworten und dadurch die komplette TLN/VOW-Aktualisierung abbrechen.
+
+Neu:
+- `name()`, `symbol()` und `decimals()` werden einzeln und fehlertolerant gelesen;
+- `name()`/`symbol()` sind optional und bekommen einen Anzeige-Fallback;
+- `decimals()` verwendet im Fehlerfall 18 als Fallback;
+- auch `pair.symbol()` ist nur noch optional;
+- die eigentlichen LP-Kernreads (`token0`, `token1`, `getReserves`, `totalSupply`, `decimals`, `factory`) bleiben verbindlich.
+
+**Keine neue SQL-Migration.** Falls `017-bsc-tln-vow-staking.sql` bereits ausgeführt wurde, nichts erneut ausführen.
+
 
 ## Phase 2ap – automatische Live-Aktualisierung 1× täglich
 

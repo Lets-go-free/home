@@ -171,10 +171,14 @@ window.WalletLPEngine = (() => {
     const {data:existing,error:readError}=await scope().select("id,pair_address").eq("user_id",c.currentUser.id).eq("project_key",projectKey).eq("chain_key",chain).ilike("wallet_address",wa);if(readError)throw readError;
     for(const oldRow of (existing||[])){if(!keep.has(norm(oldRow.pair_address))){const {error:delError}=await scope().delete().eq("id",oldRow.id).eq("user_id",c.currentUser.id);if(delError)throw delError;}}
   }
+  async function getScanStateInfo(projectKey,chain,wallet,scanType="lp_history_v2"){
+    const c=ctx();if(!c.sb||!c.currentUser?.id)return {last_scanned_block:0,last_scanned_at:null,scan_type:scanType};
+    const {data,error}=await c.sb.from("project_scan_state").select("last_scanned_block,last_scanned_at,scan_type").eq("project_key",projectKey).eq("chain_key",chain).ilike("wallet_address",norm(wallet)).eq("scan_type",scanType).maybeSingle();
+    if(error)throw error;
+    return {last_scanned_block:Number(data?.last_scanned_block||0),last_scanned_at:data?.last_scanned_at||null,scan_type:data?.scan_type||scanType};
+  }
   async function getScanState(projectKey,chain,wallet,scanType="lp_history_v2"){
-    const c=ctx();if(!c.sb||!c.currentUser?.id)return 0;
-    const {data,error}=await c.sb.from("project_scan_state").select("last_scanned_block").eq("project_key",projectKey).eq("chain_key",chain).ilike("wallet_address",norm(wallet)).eq("scan_type",scanType).maybeSingle();
-    if(error)throw error;return Number(data?.last_scanned_block||0);
+    return (await getScanStateInfo(projectKey,chain,wallet,scanType)).last_scanned_block;
   }
   async function setScanState(projectKey,chain,wallet,lastBlock,scanType="lp_history_v2"){
     const c=ctx();if(!c.sb||!c.currentUser?.id)return;
@@ -183,5 +187,5 @@ window.WalletLPEngine = (() => {
   }
   async function latestBlock(chain){return Number(BigInt(await rpc(chain,"eth_blockNumber",[])));}
   function configure(fn){ctx=fn||ctx;}
-  return {configure,pairInfo,positions,valuePosition,label,meta,rpc,latestBlock,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,replacePositionCache,getScanState,setScanState};
+  return {configure,pairInfo,positions,valuePosition,label,meta,rpc,latestBlock,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,replacePositionCache,getScanState,getScanStateInfo,setScanState};
 })();
