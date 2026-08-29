@@ -12,7 +12,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 14:08 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 14:27 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -30,16 +30,20 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
  <div class="metric">davon beendet<b id="mClosed">–</b></div>
 </div></div>
 <div class="card"><h2>TLN/VOW-Projekt-Token</h2><div id="projectCount" class="muted">Noch keine Daten.</div><div class="wrap"><table><thead><tr><th>Symbol</th><th>Kategorie</th><th>Contract</th></tr></thead><tbody id="projectTokens"><tr><td colspan="3">Noch keine Daten.</td></tr></tbody></table></div></div>
-<div class="card"><h2>Bekannte Staking-Contracts</h2><div class="wrap"><table><thead><tr><th>Bezeichnung</th><th>Rolle</th><th>Contract</th><th>Pair-Hinweis</th></tr></thead><tbody id="stakingContracts"><tr><td colspan="4">Noch keine Daten.</td></tr></tbody></table></div></div>
+<div class="card"><h2>Bekannte Staking-Contracts</h2><div class="wrap"><table style="min-width:1050px"><thead><tr><th>Contract-Bezeichnung</th><th>Rolle</th><th>Contract</th><th>Pair-Hinweis</th><th>Laufzeit</th></tr></thead><tbody id="stakingContracts"><tr><td colspan="5">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Entdeckte TLN/VOW-LPs aus der Wallet-Historie</h2><p class="muted">Ein Contract wird nur aufgenommen, wenn <code>token0()</code> und <code>token1()</code> funktionieren und mindestens einer der beiden Underlyings zum TLN/VOW-Projekt gehört.</p><div class="wrap"><table><thead><tr><th>LP</th><th>Contract</th><th>token0</th><th>token1</th><th>Projekt-Treffer</th><th>Factory</th><th>Transfers</th></tr></thead><tbody id="pairs"><tr><td colspan="7">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Historische LP-/Staking-Ereignisse</h2><div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Aktion</th><th>LP</th><th>LP-Menge</th><th>Gegenstelle</th><th>Staking-Bezeichnung</th><th>Block</th><th>Transaktion</th></tr></thead><tbody id="events"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
+<div class="card"><h2>Direkte Wallet-Aufrufe an Staking-Contracts</h2>
+<p class="muted">Ergänzende Diagnose: zeigt ausgehende Wallet-Transaktionen an bekannte Staking-Contracts. Damit finden wir einen Unstake-Aufruf auch dann, wenn kein passender LP-Rücktransfer in der ERC-20-Historie erkannt wurde.</p>
+<div class="wrap"><table style="min-width:1350px"><thead><tr><th>Zeit</th><th>Erkannte Methode</th><th>Contract-Bezeichnung</th><th>Staking-Contract</th><th>Selector</th><th>Block</th><th>Tx</th></tr></thead><tbody id="contractCalls"><tr><td colspan="7">Noch keine Daten.</td></tr></tbody></table></div></div>
+
 <div class="card"><h2>Rohe Staking-Ereignisse</h2>
 <p class="muted">Diese Tabelle zeigt <b>jede</b> LP-Übertragung zwischen Wallet und einem bestätigten Staking-Contract. Wenn hier ein historischer Stake steht, aber unten kein Lot entsteht, liegt der Fehler in der Lot-/FIFO-Rekonstruktion.</p>
 <div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Aktion</th><th>Pool</th><th>Staking-Contract</th><th>Bezeichnung</th><th>LP-Menge</th><th>Block</th><th>Tx</th></tr></thead><tbody id="stakingEvents"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
 
 <div class="card"><h2>Rekonstruierte Staking-Positionen / Lots</h2>
 <p class="muted"><b>Jeder historische Stake bleibt als eigenes Lot erhalten</b> – auch wenn er vollständig unstaked und heute 0 offen ist. Unstakes reduzieren Lots FIFO innerhalb desselben Wallets, Pools und Staking-Contracts.</p>
-<div class="wrap"><table style="min-width:1550px"><thead><tr><th>Stake-Datum</th><th>Pool</th><th>Staking-Bezeichnung</th><th>Staking-Contract</th><th>LP ursprünglich</th><th>LP offen</th><th>Status</th><th>Stake-Tx</th></tr></thead><tbody id="stakingLots"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
+<div class="wrap"><table style="min-width:2050px"><thead><tr><th>Stake-Datum</th><th>Laufzeit</th><th>Ausgelaufen am</th><th>Pool</th><th>Contract-Bezeichnung</th><th>Staking-Contract</th><th>LP ursprünglich</th><th>LP offen</th><th>Status</th><th>Stake-Tx</th><th>Mehr</th></tr></thead><tbody id="stakingLots"><tr><td colspan="11">Noch keine Daten.</td></tr></tbody></table></div></div>
 
 <div class="card"><h2>Plausibilitätsprüfung</h2>
 <p class="muted">Vergleicht rohe Stake-/Unstake-Ereignisse mit der Lot-Rekonstruktion. Nicht zuordenbare Unstakes oder Differenzen werden ausdrücklich gemeldet.</p>
@@ -52,6 +56,37 @@ const V2=new ethers.Interface(["function token0() view returns(address)","functi
 const ERC20=new ethers.Interface(["function symbol() view returns(string)","function decimals() view returns(uint8)"]);
 const ZERO='0x0000000000000000000000000000000000000000';
 let rpcUrl=null,alchemyBase=null,projectTokens=[],stakingContracts=[],tlnWallets=[];
+let CURRENT_STAKING_LOTS=[],CURRENT_WALLET='';
+// Verifizierter Legacy-Fallback: der ursprüngliche TLN VOW/vUSD(v$)-Stake
+// war 367 Tage gesperrt. DB lock_days hat immer Vorrang.
+const STAKING_DURATION_FALLBACKS = new Map([
+  ['0x85f82230883693f1bbff65be1f7663ee5f0aa5f8',367]
+]);
+function stakingDurationDays(staking){
+  const db=Number(staking?.lock_days);
+  if(Number.isFinite(db)&&db>0)return db;
+  return STAKING_DURATION_FALLBACKS.get(norm(staking?.contract_address||''))||null;
+}
+function addDaysIso(iso,days){
+  if(!iso||!days)return null;
+  const d=new Date(iso); if(Number.isNaN(d.getTime()))return null;
+  d.setUTCDate(d.getUTCDate()+Number(days));
+  return d.toISOString();
+}
+function stakingContractLabel(staking){
+  return staking?.label||staking?.contract_name||staking?.role||'Unbekannter Staking-Contract';
+}
+
+// Häufige TLN-/Staking-Methoden. Unbekannte Selector bleiben sichtbar.
+const METHOD_SELECTORS = new Map([
+  [ethers.id('unstake()').slice(0,10).toLowerCase(),'Unstake'],
+  [ethers.id('unstake(uint256)').slice(0,10).toLowerCase(),'Unstake'],
+  [ethers.id('withdraw()').slice(0,10).toLowerCase(),'Withdraw'],
+  [ethers.id('withdraw(uint256)').slice(0,10).toLowerCase(),'Withdraw'],
+  [ethers.id('stake(uint256)').slice(0,10).toLowerCase(),'Stake'],
+  [ethers.id('stake()').slice(0,10).toLowerCase(),'Stake']
+]);
+
 const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const norm=a=>String(a||'').toLowerCase();
 function log(s,cls=''){const t=new Date().toLocaleTimeString('de-CH');$('log').innerHTML+=`
@@ -61,6 +96,111 @@ async function v2call(to,fn,args=[]){const data=V2.encodeFunctionData(fn,args);c
 async function tokenMeta(a){let symbol=a.slice(0,8)+'…',decimals=18;try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('symbol',[])},'latest']);symbol=ERC20.decodeFunctionResult('symbol',raw)[0]}catch{}try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('decimals',[])},'latest']);decimals=Number(ERC20.decodeFunctionResult('decimals',raw)[0])}catch{}return{address:norm(a),symbol,decimals}}
 async function alchemy(method,params=[]){if(!alchemyBase)throw new Error('Alchemy Discovery-API für BSC fehlt in public.chains.');const url=alchemyBase.replace(/\/+$/,'')+'/'+encodeURIComponent(ALCHEMY_API_KEY);const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok)throw new Error(`Alchemy HTTP ${r.status}`);const j=await r.json();if(j.error)throw new Error(`Alchemy ${method}: ${j.error.message}`);return j.result}
 async function allErc20Transfers(wallet){const out=[];for(const direction of ['fromAddress','toAddress']){let pageKey=null,page=0;do{const q={fromBlock:'0x0',toBlock:'latest',category:['erc20'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'};q[direction]=wallet;if(pageKey)q.pageKey=pageKey;log(`ERC-20 ${direction==='fromAddress'?'ausgehend':'eingehend'} · Seite ${page+1}`);const r=await alchemy('alchemy_getAssetTransfers',[q]);for(const t of (r?.transfers||[]))out.push({...t,_direction:direction==='fromAddress'?'out':'in'});pageKey=r?.pageKey||null;page++}while(pageKey&&page<100)}const m=new Map();for(const t of out){const c=norm(t.rawContract?.address);if(!c)continue;const k=t.uniqueId||`${t.hash}|${c}|${t.from}|${t.to}|${t.rawContract?.value||t.value}`;m.set(k,t)}return [...m.values()]}
+
+
+const SC_READ_PROBES=[
+ {label:'lockDuration()',sig:'lockDuration()',args:[],kind:'duration'},{label:'stakingDuration()',sig:'stakingDuration()',args:[],kind:'duration'},
+ {label:'duration()',sig:'duration()',args:[],kind:'duration'},{label:'lockPeriod()',sig:'lockPeriod()',args:[],kind:'duration'},
+ {label:'lockTime()',sig:'lockTime()',args:[],kind:'duration'},{label:'stakingPeriod()',sig:'stakingPeriod()',args:[],kind:'duration'},
+ {label:'period()',sig:'period()',args:[],kind:'duration'},
+ {label:'unlockTime(address)',sig:'unlockTime(address)',args:['wallet'],kind:'timestamp'},{label:'unlockTimestamp(address)',sig:'unlockTimestamp(address)',args:['wallet'],kind:'timestamp'},
+ {label:'unstakeDate(address)',sig:'unstakeDate(address)',args:['wallet'],kind:'timestamp'},{label:'unstakeTime(address)',sig:'unstakeTime(address)',args:['wallet'],kind:'timestamp'},
+ {label:'lockedUntil(address)',sig:'lockedUntil(address)',args:['wallet'],kind:'timestamp'},{label:'lockEnd(address)',sig:'lockEnd(address)',args:['wallet'],kind:'timestamp'},
+ {label:'endTime(address)',sig:'endTime(address)',args:['wallet'],kind:'timestamp'},{label:'startTime(address)',sig:'startTime(address)',args:['wallet'],kind:'timestamp'},
+ {label:'stakeTimestamp(address)',sig:'stakeTimestamp(address)',args:['wallet'],kind:'timestamp'},{label:'stakedAt(address)',sig:'stakedAt(address)',args:['wallet'],kind:'timestamp'},
+ {label:'stakedAmount(address)',sig:'stakedAmount(address)',args:['wallet'],kind:'amount'},{label:'stakeAmount(address)',sig:'stakeAmount(address)',args:['wallet'],kind:'amount'},
+ {label:'amountStaked(address)',sig:'amountStaked(address)',args:['wallet'],kind:'amount'},{label:'deposited(address)',sig:'deposited(address)',args:['wallet'],kind:'amount'},
+ {label:'balanceOf(address)',sig:'balanceOf(address)',args:['wallet'],kind:'amount'},{label:'earned(address)',sig:'earned(address)',args:['wallet'],kind:'amount'},
+ {label:'pendingReward(address)',sig:'pendingReward(address)',args:['wallet'],kind:'amount'},{label:'pendingRewards(address)',sig:'pendingRewards(address)',args:['wallet'],kind:'amount'},
+ {label:'claimable(address)',sig:'claimable(address)',args:['wallet'],kind:'amount'},{label:'rewards(address)',sig:'rewards(address)',args:['wallet'],kind:'amount'},
+ {label:'userInfo(address)',sig:'userInfo(address)',args:['wallet'],kind:'raw'},{label:'users(address)',sig:'users(address)',args:['wallet'],kind:'raw'},
+ {label:'stakes(address)',sig:'stakes(address)',args:['wallet'],kind:'raw'},{label:'stakeInfo(address)',sig:'stakeInfo(address)',args:['wallet'],kind:'raw'},
+ {label:'stakingInfo(address)',sig:'stakingInfo(address)',args:['wallet'],kind:'raw'},{label:'depositInfo(address)',sig:'depositInfo(address)',args:['wallet'],kind:'raw'}
+];
+function selectorFor(sig){return ethers.id(sig).slice(0,10).toLowerCase()}
+function encodeProbeCall(probe,wallet){
+ const types=(probe.sig.match(/\((.*)\)/)?.[1]||'').trim(),selector=selectorFor(probe.sig);
+ if(!types)return selector;
+ const vals=(probe.args||[]).map(x=>x==='wallet'?wallet:x);
+ return selector+ethers.AbiCoder.defaultAbiCoder().encode(types.split(',').map(x=>x.trim()),vals).slice(2);
+}
+function rawWords(raw){const h=String(raw||'0x').replace(/^0x/,'');if(!h||h.length%64!==0)return [];const out=[];for(let i=0;i<h.length;i+=64){const word='0x'+h.slice(i,i+64);let uint=null;try{uint=BigInt(word)}catch{}out.push({word,uint})}return out}
+function humanTimestamp(v){const n=Number(v);if(!Number.isFinite(n)||n<946684800||n>7258118400)return null;try{return new Date(n*1000).toLocaleString('de-CH')}catch{return null}}
+function humanDuration(v){const n=Number(v);if(!Number.isFinite(n)||n<=0)return null;if(n>=86400)return `${(n/86400).toLocaleString('de-CH',{maximumFractionDigits:3})} Tage (${n.toLocaleString('de-CH')} s)`;return `${n.toLocaleString('de-CH')} (contract-spezifische Einheit)`}
+function decodeProbeValue(raw,probe){
+ const words=rawWords(raw);if(!words.length)return {display:raw||'0x',raw};
+ if(words.length===1&&words[0].uint!=null){const u=words[0].uint;
+  if(probe.kind==='timestamp'){const ts=humanTimestamp(u);return {display:ts?`${ts} · Unix ${u}`:u.toString(),raw}}
+  if(probe.kind==='duration')return {display:humanDuration(u)||u.toString(),raw};
+  if(probe.kind==='amount'){let f=null;try{f=ethers.formatUnits(u,18)}catch{}return {display:f!=null?`${f} (18 Dec.) · raw ${u}`:u.toString(),raw}}
+  return {display:u.toString(),raw}
+ }
+ return {display:words.map((w,i)=>{const ts=w.uint==null?null:humanTimestamp(w.uint);return `Wort ${i+1}: ${w.uint==null?w.word:w.uint.toString()}${ts?` → ${ts}`:''}`}).join('\n'),raw};
+}
+async function probeStakingContract(lot,wallet){
+ const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');if(!ethers.isAddress(contract))throw new Error('Keine gültige Staking-Contract-Adresse.');
+ let code='0x';try{code=await rpc('eth_getCode',[contract,'latest'])}catch{}
+ const bytecode=String(code||'').toLowerCase(),results=[];
+ for(const probe of SC_READ_PROBES){const selector=selectorFor(probe.sig),selectorSeen=bytecode.includes(selector.slice(2));try{const raw=await rpc('eth_call',[{to:contract,data:encodeProbeCall(probe,wallet)},'latest']);if(raw&&raw!=='0x')results.push({...probe,selector,selectorSeen,raw,...decodeProbeValue(raw,probe)})}catch{}}
+ return {contract,results,bytecodeSize:Math.max(0,(bytecode.length-2)/2)};
+}
+async function loadLotScDetails(index){
+ const lot=CURRENT_STAKING_LOTS[index],box=$(`scBox${index}`);if(!lot||!box||box.dataset.loaded==='1')return;
+ box.dataset.loaded='1';box.innerHTML='<span class="muted">Smart-Contract-Read-Funktionen werden geprüft…</span>';
+ try{
+  const res=await probeStakingContract(lot,CURRENT_WALLET);let unlock=null,duration=null;
+  for(const r of res.results){const w=rawWords(r.raw)[0];if(!unlock&&r.kind==='timestamp'&&w?.uint&&humanTimestamp(w.uint))unlock={label:r.label,value:humanTimestamp(w.uint)};if(!duration&&r.kind==='duration'&&w?.uint)duration={label:r.label,value:humanDuration(w.uint)||w.uint.toString()}}
+  const head=`<div class="sc-grid"><div class="sc-k">Contract-Bezeichnung</div><div class="sc-v"><b>${esc(stakingContractLabel(lot.staking))}</b></div><div class="sc-k">Contract</div><div class="sc-v mono">${esc(res.contract)}</div><div class="sc-k">Runtime-Bytecode</div><div class="sc-v">${res.bytecodeSize.toLocaleString('de-CH')} Bytes</div><div class="sc-k">Erkannte Read-Funktionen</div><div class="sc-v">${res.results.length}</div>${duration?`<div class="sc-k">On-chain Laufzeit</div><div class="sc-v"><b>${esc(duration.value)}</b> <span class="muted">via ${esc(duration.label)}</span></div>`:''}${unlock?`<div class="sc-k">On-chain Freigabe/Ablauf</div><div class="sc-v"><b>${esc(unlock.value)}</b> <span class="muted">via ${esc(unlock.label)}</span></div>`:''}</div>`;
+  if(!res.results.length){box.innerHTML=head+'<p class="muted">Keine der bekannten Standard-Read-Funktionen lieferte einen Wert. Der Contract kann projektspezifische Funktionsnamen oder eine Proxy-Struktur verwenden.</p>';return}
+  box.innerHTML=head+`<div class="wrap" style="margin-top:10px"><table style="min-width:1050px"><thead><tr><th>Read-Funktion</th><th>Erkennung</th><th>Interpretation</th><th>Raw Return</th></tr></thead><tbody>${res.results.map(r=>`<tr><td><b>${esc(r.label)}</b><div class="mono muted">${esc(r.selector)}</div></td><td>${r.selectorSeen?'<span class="ok">Selector im Bytecode</span>':'<span class="muted">Proxy/indirekt</span>'}</td><td class="${r.kind==='raw'?'sc-raw':''}">${esc(r.display)}</td><td class="sc-raw">${esc(r.raw)}</td></tr>`).join('')}</tbody></table></div>`;
+ }catch(e){box.innerHTML=`<span class="err">${esc(e.message)}</span>`}
+}
+function bindLotDetailEvents(){document.querySelectorAll('details.sc-details').forEach(d=>d.addEventListener('toggle',()=>{if(d.open)loadLotScDetails(Number(d.dataset.lotIndex))},{once:true}))}
+async function allExternalCallsToStaking(wallet){
+  const stakeMap=new Map(stakingContracts.filter(x=>x.classify_transfers).map(x=>[norm(x.contract_address),x]));
+  const out=[];let pageKey=null,page=0;
+  do{
+    const q={fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'};
+    if(pageKey)q.pageKey=pageKey;
+    log(`Direkte Contract-Aufrufe · Seite ${page+1}`);
+    const r=await alchemy('alchemy_getAssetTransfers',[q]);
+    for(const t of (r?.transfers||[])){
+      const to=norm(t.to);
+      if(stakeMap.has(to))out.push({...t,_staking:stakeMap.get(to)});
+    }
+    pageKey=r?.pageKey||null; page++;
+  }while(pageKey&&page<100);
+
+  // Für den Method-Selector benötigen wir die echte Transaction-Input-Data.
+  for(const t of out){
+    try{
+      const tx=await rpc('eth_getTransactionByHash',[t.hash]);
+      t._input=tx?.input||'0x';
+      t._selector=String(t._input||'0x').slice(0,10).toLowerCase();
+      t._method=METHOD_SELECTORS.get(t._selector)||'Contract-Aufruf';
+      t._blockNumber=tx?.blockNumber?parseInt(tx.blockNumber,16):null;
+    }catch(e){
+      t._input='0x';t._selector='–';t._method='Contract-Aufruf';
+    }
+  }
+  return out;
+}
+function renderContractCalls(calls){
+  $('contractCalls').innerHTML=calls.length?calls.map(t=>{
+    const ts=t.metadata?.blockTimestamp?new Date(t.metadata.blockTimestamp).toLocaleString('de-CH'):'–';
+    const staking=t._staking;
+    const method=t._method||'Contract-Aufruf';
+    const cls=method==='Unstake'?'warn':method==='Stake'?'ok':'';
+    const block=t._blockNumber??(t.blockNum?parseInt(t.blockNum,16):'–');
+    return `<tr>
+      <td>${esc(ts)}</td><td class="${cls}"><b>${esc(method)}</b></td>
+      <td>${esc(stakingContractLabel(staking))}</td>
+      <td class="mono">${esc(norm(staking?.contract_address||t.to))}</td>
+      <td class="mono">${esc(t._selector||'–')}</td><td>${esc(block)}</td>
+      <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(t.hash)}">${esc(t.hash)}</a></td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="7">Keine direkten Wallet-Aufrufe an bekannte Staking-Contracts gefunden.</td></tr>';
+}
 async function inspectCandidate(address,projectSet){try{const [t0,t1,factory,lpDec]=await Promise.all([v2call(address,'token0'),v2call(address,'token1'),v2call(address,'factory'),v2call(address,'decimals')]);const a0=norm(t0[0]),a1=norm(t1[0]);const hits=[a0,a1].filter(a=>projectSet.has(a));if(!hits.length)return null;const [m0,m1,lpMeta]=await Promise.all([tokenMeta(a0),tokenMeta(a1),tokenMeta(address)]);return{address:norm(address),token0:m0,token1:m1,factory:norm(factory[0]),lpDecimals:Number(lpDec[0]),lpSymbol:lpMeta.symbol,hits}}catch{return null}}
 function transferAmount(t,p){const raw=t.rawContract?.value;const dec=Number(t.rawContract?.decimal||p.lpDecimals||18);if(raw!=null){try{return Number(ethers.formatUnits(BigInt(raw),dec))}catch{}}return Number(t.value||0)}
 function classify(t,p,stakeMap,wallet){const from=norm(t.from),to=norm(t.to),w=norm(wallet);const cp=from===w?to:from;let action=from===w?'Versenden':'Empfangen',staking=null;if(from===ZERO&&to===w)action='Add Liquidity';else if(to===ZERO&&from===w)action='Remove Liquidity';else if(from===w&&stakeMap.has(to)){action='Stake';staking=stakeMap.get(to)}else if(to===w&&stakeMap.has(from)){action='Unstake';staking=stakeMap.get(from)}return{action,counterparty:cp,staking}}
@@ -109,7 +249,9 @@ function buildDiagnosticLots(stakingRows){
     const key=stakingKey(r); if(!groups.has(key))groups.set(key,[]);
     const q=groups.get(key);
     if(r.action==='Stake'){
-      const lot={key,pair:r.p||null,pair_address:safePairAddress(r),token0_symbol:r?.p?.token0?.symbol||'Token0',token1_symbol:r?.p?.token1?.symbol||'Token1',staking:r.staking,counterparty:r.counterparty,stakeTime:r.t.metadata?.blockTimestamp||null,stakeTx:r.t.hash,original:Number(r.amount||0),remaining:Number(r.amount||0),status:'open'};
+      const durationDays=stakingDurationDays(r.staking);
+      const stakeTime=r.t.metadata?.blockTimestamp||null;
+      const lot={key,pair:r.p||null,pair_address:safePairAddress(r),token0_symbol:r?.p?.token0?.symbol||'Token0',token1_symbol:r?.p?.token1?.symbol||'Token1',staking:r.staking,counterparty:r.counterparty,stakeTime,expiryTime:addDaysIso(stakeTime,durationDays),durationDays,stakeTx:r.t.hash,original:Number(r.amount||0),remaining:Number(r.amount||0),status:'open'};
       lots.push(lot); q.push(lot);
     }else{
       let left=Number(r.amount||0);
@@ -127,14 +269,25 @@ function buildDiagnosticLots(stakingRows){
 function renderLots(stakingRows){
   const {lots,unmatched}=buildDiagnosticLots(stakingRows);
   $('mLots').textContent=lots.length;$('mClosed').textContent=lots.filter(l=>l.status==='closed').length;
-  $('stakingLots').innerHTML=lots.length?[...lots].reverse().map(l=>`<tr>
+  CURRENT_STAKING_LOTS=[...lots].reverse();
+  $('stakingLots').innerHTML=CURRENT_STAKING_LOTS.length?CURRENT_STAKING_LOTS.map((l,index)=>{
+    const expired=!!l.expiryTime&&new Date(l.expiryTime).getTime()<=Date.now();
+    let statusLabel=l.status==='closed'?'beendet / unstaked':l.status==='partial'?'teilweise offen':'aktiv';
+    let statusClass=l.status==='closed'?'status-closed':l.status==='partial'?'status-partial':'status-open';
+    if(l.status!=='closed'&&expired){statusLabel='Laufzeit abgelaufen · LP laut Transferanalyse noch offen';statusClass='warn';}
+    return `<tr>
     <td>${l.stakeTime?new Date(l.stakeTime).toLocaleString('de-CH'):'–'}</td>
+    <td>${l.durationDays?`${l.durationDays} Tage`:'–'}</td>
+    <td>${l.expiryTime?new Date(l.expiryTime).toLocaleString('de-CH'):'–'}</td>
     <td><b>${esc(safePairLabel(l))}</b><div class="mono">${esc(safePairAddress(l))}</div></td>
-    <td>${esc(l.staking?.label||'–')}</td><td class="mono">${esc(l.staking?.contract_address||l.counterparty)}</td>
+    <td>${esc(stakingContractLabel(l.staking))}</td><td class="mono">${esc(l.staking?.contract_address||l.counterparty)}</td>
     <td class="num">${l.original.toLocaleString('de-CH',{maximumFractionDigits:12})}</td>
     <td class="num"><b>${l.remaining.toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td>
-    <td class="${l.status==='closed'?'status-closed':l.status==='partial'?'status-partial':'status-open'}">${l.status==='closed'?'beendet':l.status==='partial'?'teilweise offen':'offen'}</td>
-    <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(l.stakeTx)}">${esc(l.stakeTx)}</a></td></tr>`).join(''):'<tr><td colspan="8">Keine Staking-Lots rekonstruierbar.</td></tr>';
+    <td class="${statusClass}">${esc(statusLabel)}</td>
+    <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(l.stakeTx)}">${esc(l.stakeTx)}</a></td>
+    <td><details class="sc-details" data-lot-index="${index}"><summary>SC-Details</summary><div id="scBox${index}" class="sc-box"><span class="muted">Zum Laden öffnen.</span></div></details></td></tr>`;
+  }).join(''):'<tr><td colspan="11">Keine Staking-Lots rekonstruierbar.</td></tr>';
+  bindLotDetailEvents();
   const checks=[];
   for(const key of new Set(stakingRows.map(stakingKey))){
     const rs=stakingRows.filter(r=>stakingKey(r)===key),ls=lots.filter(l=>l.key===key);
@@ -192,7 +345,7 @@ tlnWallets=(wq.data||[])
   .sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'de'));
 populateTlnWalletDropdown();
 bindWalletDropdown();
-$('projectCount').textContent=`${projectTokens.length} Underlying-Projekt-Token geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td>${esc(x.label)}</td><td>${esc(x.role)}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td></tr>`).join('')||'<tr><td colspan="4">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;log(`Initialisiert: ${projectTokens.length} Projekt-Token, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok')}
-$('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('stakingLots').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const transfers=await allErc20Transfers(wallet);$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const projectSet=new Set(projectTokens.map(x=>norm(x.address)));const candidates=[...counts.keys()];log(`${candidates.length} unterschiedliche ERC-20-Contracts werden als mögliche V2-LPs geprüft.`);const pairs=[];for(let i=0;i<candidates.length;i++){if(i%25===0)log(`LP-Prüfung ${i+1}/${candidates.length}…`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}$('mPairs').textContent=pairs.length;const pairMap=new Map(pairs.map(p=>[p.address,p]));$('pairs').innerHTML=pairs.length?pairs.map(p=>{const hits=p.hits.map(h=>h===p.token0.address?p.token0.symbol:p.token1.symbol).join(', ');return `<tr><td><b>${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}</b><br><span class="muted">LP-Symbol: ${esc(p.lpSymbol)}</span></td><td class="mono">${esc(p.address)}</td><td>${esc(p.token0.symbol)}<div class="mono">${esc(p.token0.address)}</div></td><td>${esc(p.token1.symbol)}<div class="mono">${esc(p.token1.address)}</div></td><td><span class="ok">${esc(hits)}</span></td><td class="mono">${esc(p.factory)}</td><td>${counts.get(p.address)||0}</td></tr>`}).join(''):'<tr><td colspan="7">Keine historischen TLN/VOW-V2-LPs in diesem Wallet gefunden.</td></tr>';const rows=renderEvents(transfers,pairMap,wallet);const stakingRows=renderRawStakingEvents(rows);const lotResult=renderLots(stakingRows);log(`Ergebnis: ${pairs.length} TLN/VOW-LPs entdeckt; ${rows.length} LP-Ereignisse; ${stakingRows.length} Stake/Unstake-Ereignisse; ${lotResult.lots.length} historische Stake-Lots.`,'ok');for(const r of stakingRows)log(`${r.action} · ${safePairLabel(r)} · ${safePairAddress(r)} · ${r.staking?.label||r.counterparty}`,'ok');$('status').innerHTML='<span class="ok">Discovery und Lot-Diagnose abgeschlossen.</span>'}catch(e){$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{b.disabled=false}};
+$('projectCount').textContent=`${projectTokens.length} Underlying-Projekt-Token geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>{const d=stakingDurationDays(x);return `<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td>${d?`${d} Tage`:'–'}</td></tr>`}).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;log(`Initialisiert: ${projectTokens.length} Projekt-Token, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok')}
+$('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('contractCalls').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('stakingLots').innerHTML='<tr><td colspan="11">Suche…</td></tr>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();CURRENT_WALLET=wallet;if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const [transfers,contractCalls]=await Promise.all([allErc20Transfers(wallet),allExternalCallsToStaking(wallet)]);renderContractCalls(contractCalls);$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers; ${contractCalls.length} direkte Aufrufe an bekannte Staking-Contracts.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const projectSet=new Set(projectTokens.map(x=>norm(x.address)));const candidates=[...counts.keys()];log(`${candidates.length} unterschiedliche ERC-20-Contracts werden als mögliche V2-LPs geprüft.`);const pairs=[];for(let i=0;i<candidates.length;i++){if(i%25===0)log(`LP-Prüfung ${i+1}/${candidates.length}…`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}$('mPairs').textContent=pairs.length;const pairMap=new Map(pairs.map(p=>[p.address,p]));$('pairs').innerHTML=pairs.length?pairs.map(p=>{const hits=p.hits.map(h=>h===p.token0.address?p.token0.symbol:p.token1.symbol).join(', ');return `<tr><td><b>${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}</b><br><span class="muted">LP-Symbol: ${esc(p.lpSymbol)}</span></td><td class="mono">${esc(p.address)}</td><td>${esc(p.token0.symbol)}<div class="mono">${esc(p.token0.address)}</div></td><td>${esc(p.token1.symbol)}<div class="mono">${esc(p.token1.address)}</div></td><td><span class="ok">${esc(hits)}</span></td><td class="mono">${esc(p.factory)}</td><td>${counts.get(p.address)||0}</td></tr>`}).join(''):'<tr><td colspan="7">Keine historischen TLN/VOW-V2-LPs in diesem Wallet gefunden.</td></tr>';const rows=renderEvents(transfers,pairMap,wallet);const stakingRows=renderRawStakingEvents(rows);const lotResult=renderLots(stakingRows);log(`Ergebnis: ${pairs.length} TLN/VOW-LPs entdeckt; ${rows.length} LP-Ereignisse; ${stakingRows.length} Stake/Unstake-Ereignisse; ${lotResult.lots.length} historische Stake-Lots.`,'ok');for(const r of stakingRows)log(`${r.action} · ${safePairLabel(r)} · ${safePairAddress(r)} · ${r.staking?.label||r.counterparty}`,'ok');$('status').innerHTML='<span class="ok">Discovery und Lot-Diagnose abgeschlossen.</span>'}catch(e){$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{b.disabled=false}};
 init();
 </script></body></html>
