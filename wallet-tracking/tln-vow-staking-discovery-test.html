@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 23:54:54 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 00:01:00 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -83,6 +83,7 @@ const V2=new ethers.Interface(["function token0() view returns(address)","functi
 const ERC20=new ethers.Interface(["function symbol() view returns(string)","function decimals() view returns(uint8)"]);
 const ZERO='0x0000000000000000000000000000000000000000';
 let rpcUrl=null,alchemyBase=null,projectTokens=[],allProjectRows=[],stakingContracts=[],tlnWallets=[],CURRENT_ALL_TRANSFERS=[];
+let projectTokenMap=new Map();
 const PROXY_IMPL_CACHE=new Map();
 let CURRENT_STAKING_LOTS=[],CURRENT_WALLET='';
 // Keine fest codierten Staking-Laufzeiten.
@@ -2288,7 +2289,7 @@ const [cr,pt,sc,wq]=await Promise.all([
   sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
   sb.from('wallets').select('id,label,evm_address').order('label')
 ]);
-if(cr.error||pt.error||sc.error||wq.error){$('status').innerHTML=`<span class="err">DB-Fehler: ${esc((cr.error||pt.error||sc.error||wq.error).message)}</span>`;return}rpcUrl=cr.data.rpc_url;alchemyBase=String(cr.data.discovery_provider||'').toLowerCase()==='alchemy'?cr.data.discovery_api_base:null;if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;allProjectRows=pt.data||[];loadHistoricalStakingAssets(allProjectRows);projectTokens=allProjectRows.filter(x=>x.address&&x.enabled!==false&&x.historical_only!==true&&String(x.defi_category||x.tln_vow_category||'')!=='lp_token');stakingContracts=sc.data||[];
+if(cr.error||pt.error||sc.error||wq.error){$('status').innerHTML=`<span class="err">DB-Fehler: ${esc((cr.error||pt.error||sc.error||wq.error).message)}</span>`;return}rpcUrl=cr.data.rpc_url;alchemyBase=String(cr.data.discovery_provider||'').toLowerCase()==='alchemy'?cr.data.discovery_api_base:null;if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;allProjectRows=pt.data||[];loadHistoricalStakingAssets(allProjectRows);projectTokens=allProjectRows.filter(x=>x.address&&x.enabled!==false&&x.historical_only!==true&&String(x.defi_category||x.tln_vow_category||'')!=='lp_token');projectTokenMap=new Map(projectTokens.filter(x=>x.address).map(x=>[norm(x.address),x]));stakingContracts=sc.data||[];
 tlnWallets=(wq.data||[])
   .filter(w=>w.evm_address&&/^tln(?:\s|$)/i.test(String(w.label||'').trim()))
   .sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'de'));
