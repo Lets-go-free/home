@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 19:38:24 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 20:07:48 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -46,7 +46,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 </div></div>
 <div class="card"><h2>TLN/VOW-Projekt-Token</h2><div id="projectCount" class="muted">Noch keine Daten.</div><div class="wrap"><table><thead><tr><th>Symbol</th><th>Kategorie</th><th>Contract</th></tr></thead><tbody id="projectTokens"><tr><td colspan="3">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Bekannte Staking-Contracts</h2><div class="wrap"><table style="min-width:1050px"><thead><tr><th>Contract-Bezeichnung</th><th>Rolle</th><th>Contract</th><th>Pair-Hinweis</th><th>Laufzeit</th></tr></thead><tbody id="stakingContracts"><tr><td colspan="5">Noch keine Daten.</td></tr></tbody></table></div></div>
-<div class="card"><h2>Erkannte historische LP-Token</h2><p class="muted">Diese Tabelle zeigt die LP-Token-Contracts, die als Grundlage für die historische LP-/Staking-Auswertung erkannt wurden. Normalfall: <code>token0()</code> und <code>token1()</code> funktionieren und mindestens ein Underlying gehört zum TLN/VOW-Projekt. Historischer Fallback: Bei einem anhand des rohen Method-Selectors als <code>stake(...)</code> erkannten Aufruf an einen bekannten Staking-Contract werden zusätzlich die ERC-20-Transfers genau dieser Transaktion ausgewertet. Ein aus dem Wallet heraus übertragener V2-LP kann dadurch auch dann erkannt werden, wenn sein Empfänger ein Controller/Zwischencontract war oder seine Underlyings heute nicht mehr in der aktuellen Projektliste stehen.</p><div class="wrap"><table><thead><tr><th>LP</th><th>Contract</th><th>token0</th><th>token1</th><th>Projekt-Treffer</th><th>Erkannt durch</th><th>Factory</th><th>Transfers</th></tr></thead><tbody id="pairs"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
+<div class="card"><h2>Erkannte historische LP-Token</h2><p class="muted">Diese Tabelle zeigt die LP-Token-Contracts, die als Grundlage für die historische LP-/Staking-Auswertung erkannt wurden. Normalfall: <code>token0()</code> und <code>token1()</code> funktionieren und mindestens ein Underlying gehört zum TLN/VOW-Projekt. Historischer Fallback: Bei einem anhand des rohen Method-Selectors als <code>stake(...)</code> erkannten Aufruf an einen bekannten Staking-Contract werden zusätzlich die ERC-20-Transfers genau dieser Transaktion ausgewertet. Ist ein übertragener LP heute nicht mehr lesbar, werden <code>token0()</code>, <code>token1()</code>, <code>factory()</code> und <code>decimals()</code> am historischen Stake-Block gelesen. Ein aus dem Wallet heraus übertragener V2-LP kann dadurch auch dann erkannt werden, wenn sein Empfänger ein Controller/Zwischencontract war oder seine Underlyings heute nicht mehr in der aktuellen Projektliste stehen.</p><div class="wrap"><table><thead><tr><th>LP</th><th>Contract</th><th>token0</th><th>token1</th><th>Projekt-Treffer</th><th>Erkannt durch</th><th>Factory</th><th>Transfers</th></tr></thead><tbody id="pairs"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Historische LP-/Staking-Ereignisse</h2><div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Aktion</th><th>LP</th><th>LP-Menge</th><th>Gegenstelle</th><th>Staking-Bezeichnung</th><th>Block</th><th>Transaktion</th></tr></thead><tbody id="events"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Direkte Wallet-Aufrufe an Staking-/Entry-Contracts</h2>
 <p class="muted">Ergänzende Diagnose: zeigt ausgehende Wallet-Transaktionen an bekannte Staking-Contracts sowie automatisch aus den Stake-Transaktionen erkannte Entry-/Controller-Contracts. Damit finden wir einen Unstake-Aufruf auch dann, wenn kein passender LP-Rücktransfer in der ERC-20-Historie erkannt wurde.</p>
@@ -121,6 +121,13 @@ function log(s,cls=''){const t=new Date().toLocaleTimeString('de-CH');$('log').i
 <span class="${cls}">[${t}] ${esc(s)}</span>`}
 async function rpc(method,params=[]){const r=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok)throw new Error(`HTTP ${r.status} bei ${method}`);const j=await r.json();if(j.error)throw new Error(`${method}: ${j.error.message} (Code ${j.error.code})`);return j.result}
 async function v2call(to,fn,args=[]){const data=V2.encodeFunctionData(fn,args);const raw=await rpc('eth_call',[{to,data},'latest']);return V2.decodeFunctionResult(fn,raw)}
+async function v2callAt(to,fn,args=[],blockTag='latest'){const data=V2.encodeFunctionData(fn,args);const raw=await rpc('eth_call',[{to,data},blockTag]);return V2.decodeFunctionResult(fn,raw)}
+async function tokenMetaAt(a,blockTag='latest'){
+  let symbol=a.slice(0,8)+'…',decimals=18;
+  try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('symbol',[])},blockTag]);symbol=ERC20.decodeFunctionResult('symbol',raw)[0]}catch{try{const m=await tokenMeta(a);symbol=m.symbol}catch{}}
+  try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('decimals',[])},blockTag]);decimals=Number(ERC20.decodeFunctionResult('decimals',raw)[0])}catch{try{const m=await tokenMeta(a);decimals=m.decimals}catch{}}
+  return{address:norm(a),symbol,decimals};
+}
 async function tokenMeta(a){let symbol=a.slice(0,8)+'…',decimals=18;try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('symbol',[])},'latest']);symbol=ERC20.decodeFunctionResult('symbol',raw)[0]}catch{}try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('decimals',[])},'latest']);decimals=Number(ERC20.decodeFunctionResult('decimals',raw)[0])}catch{}return{address:norm(a),symbol,decimals}}
 async function alchemy(method,params=[]){if(!alchemyBase)throw new Error('Alchemy Discovery-API für BSC fehlt in public.chains.');const url=alchemyBase.replace(/\/+$/,'')+'/'+encodeURIComponent(ALCHEMY_API_KEY);const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok)throw new Error(`Alchemy HTTP ${r.status}`);const j=await r.json();if(j.error)throw new Error(`Alchemy ${method}: ${j.error.message}`);return j.result}
 async function allErc20Transfers(wallet){const out=[];for(const direction of ['fromAddress','toAddress']){let pageKey=null,page=0;do{const q={fromBlock:'0x0',toBlock:'latest',category:['erc20'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'};q[direction]=wallet;if(pageKey)q.pageKey=pageKey;log(`ERC-20 ${direction==='fromAddress'?'ausgehend':'eingehend'} · Seite ${page+1}`);const r=await alchemy('alchemy_getAssetTransfers',[q]);for(const t of (r?.transfers||[]))out.push({...t,_direction:direction==='fromAddress'?'out':'in'});pageKey=r?.pageKey||null;page++}while(pageKey&&page<100)}const m=new Map();for(const t of out){const c=norm(t.rawContract?.address);if(!c)continue;const k=t.uniqueId||`${t.hash}|${c}|${t.from}|${t.to}|${t.rawContract?.value||t.value}`;m.set(k,t)}return [...m.values()]}
@@ -680,15 +687,17 @@ function renderPairTable(pairs,counts){
   $('mPairs').textContent=pairs.length;
   $('pairs').innerHTML=pairs.length?pairs.map(p=>{
     const hits=(p.hits||[]).map(h=>h===p.token0.address?p.token0.symbol:p.token1.symbol).join(', ');
-    const discovery=p.discoverySource==='stake_tx_receipt'
-      ?`Stake-Tx · ERC-20-Transfer-Log${p.discoveryTx?`<div class="mono">${esc(p.discoveryTx)}</div>`:''}`
-      :'Wallet-Historie · Projekt-Underlying';
+    const discovery=p.discoverySource==='stake_tx_historical_pair'
+      ?`Stake-Tx · historische LP-Struktur${p.historicalDescriptorBlock?` @ Block ${esc(p.historicalDescriptorBlock)}`:''}${p.discoveryTx?`<div class="mono">${esc(p.discoveryTx)}</div>`:''}`
+      :p.discoverySource==='stake_tx_receipt'
+        ?`Stake-Tx · ERC-20-Transfer-Log${p.discoveryTx?`<div class="mono">${esc(p.discoveryTx)}</div>`:''}`
+        :'Wallet-Historie · Projekt-Underlying';
     return `<tr>
       <td><b>${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}</b><br><span class="muted">LP-Symbol: ${esc(p.lpSymbol)}</span></td>
       <td class="mono">${esc(p.address)}</td>
       <td>${esc(p.token0.symbol)}<div class="mono">${esc(p.token0.address)}</div></td>
       <td>${esc(p.token1.symbol)}<div class="mono">${esc(p.token1.address)}</div></td>
-      <td>${hits?`<span class="ok">${esc(hits)}</span>`:(p.discoverySource==='stake_tx_receipt'?'<span class="muted">historischer Stake-Tx-Nachweis</span>':'–')}</td>
+      <td>${hits?`<span class="ok">${esc(hits)}</span>`:(['stake_tx_receipt','stake_tx_historical_pair'].includes(p.discoverySource)?'<span class="muted">historischer Stake-Tx-Nachweis</span>':'–')}</td>
       <td>${discovery}</td>
       <td class="mono">${esc(p.factory)}</td>
       <td>${counts.get(p.address)||0}</td>
@@ -770,14 +779,23 @@ async function discoverPairsFromStakeTransactions(calls,transfers,pairMap,projec
         continue;
       }
 
-      const p=await inspectAnyPair(asset);
+      let p=await inspectAnyPair(asset);
+      let historicalPairFallback=false;
       if(!p){
-        log(`Stake-Tx-Fallback ${hash}: ${asset} ist kein lesbarer V2-LP.`);
+        const stakeBlock=c._blockNumber??(c.blockNum?Number(BigInt(c.blockNum)):null);
+        if(stakeBlock!=null){
+          log(`Stake-Tx-Fallback ${hash}: ${asset} heute nicht als V2-LP lesbar; historische LP-Struktur @ Stake-Block ${stakeBlock} wird geprüft.`);
+          p=await inspectAnyPairAt(asset,stakeBlock);
+          historicalPairFallback=!!p;
+        }
+      }
+      if(!p){
+        log(`Stake-Tx-Fallback ${hash}: ${asset} weder heute noch am Stake-Block als lesbarer V2-LP erkannt.`,'warn');
         continue;
       }
 
       p.hits=[p.token0.address,p.token1.address].filter(a=>projectSet.has(norm(a)));
-      p.discoverySource='stake_tx_receipt';
+      p.discoverySource=historicalPairFallback?'stake_tx_historical_pair':'stake_tx_receipt';
       p.discoveryTx=hash;
       p.discoveryTransferTo=norm(tr.to||'');
       p.discoveryStakingContract=norm(c?._staking?.contract_address||c.to||'');
@@ -790,7 +808,7 @@ async function discoverPairsFromStakeTransactions(calls,transfers,pairMap,projec
       const amountMatch=Number.isFinite(amount)&&Number.isFinite(inputAmount)&&inputAmount>0
         ?Math.abs(amount-inputAmount)/inputAmount<0.00001:null;
 
-      log(`Historischer LP über Stake-Tx entdeckt: ${safePairLabel(p)} · ${asset} · Empfänger ${norm(tr.to||'–')} · ${amount==null?'Menge ?':amount+' LP'}${amountMatch===true?' · Menge passt zu stake()-Argument':amountMatch===false?' · Menge weicht vom stake()-Argument ab':''} · Tx ${hash}`,'ok');
+      log(`Historischer LP über Stake-Tx entdeckt: ${safePairLabel(p)} · ${asset} · ${historicalPairFallback?`historische LP-Struktur @ Block ${p.historicalDescriptorBlock}`:'heutige LP-Struktur'} · Empfänger ${norm(tr.to||'–')} · ${amount==null?'Menge ?':amount+' LP'}${amountMatch===true?' · Menge passt zu stake()-Argument':amountMatch===false?' · Menge weicht vom stake()-Argument ab':''} · Tx ${hash}`,'ok');
     }
   }
   return added;
@@ -900,6 +918,33 @@ async function inspectAnyPair(address){
     const [m0,m1,lpMeta]=await Promise.all([tokenMeta(a0),tokenMeta(a1),tokenMeta(address)]);
     return {address:norm(address),token0:m0,token1:m1,factory:norm(factory[0]),lpDecimals:Number(lpDec[0]),lpSymbol:lpMeta.symbol,hits:[]};
   }catch{return null}
+}
+async function inspectAnyPairAt(address,blockNumber){
+  if(blockNumber==null)return null;
+  const blockTag=typeof blockNumber==='string'&&blockNumber.startsWith('0x')
+    ?blockNumber
+    :'0x'+Number(blockNumber).toString(16);
+  try{
+    const [t0,t1,factory,lpDec]=await Promise.all([
+      v2callAt(address,'token0',[],blockTag),
+      v2callAt(address,'token1',[],blockTag),
+      v2callAt(address,'factory',[],blockTag),
+      v2callAt(address,'decimals',[],blockTag)
+    ]);
+    const a0=norm(t0[0]),a1=norm(t1[0]);
+    if(!ethers.isAddress(a0)||!ethers.isAddress(a1))return null;
+    const [m0,m1,lpMeta]=await Promise.all([
+      tokenMetaAt(a0,blockTag),tokenMetaAt(a1,blockTag),tokenMetaAt(address,blockTag)
+    ]);
+    return {
+      address:norm(address),token0:m0,token1:m1,factory:norm(factory[0]),
+      lpDecimals:Number(lpDec[0]),lpSymbol:lpMeta.symbol,hits:[],
+      historicalDescriptorBlock:Number(BigInt(blockTag))
+    };
+  }catch(e){
+    log(`Historische LP-Struktur ${norm(address)} @ Block ${Number(BigInt(blockTag))} nicht lesbar: ${e.message}`,'warn');
+    return null;
+  }
 }
 async function pairStateAt(pair,blockHex){
   const key=`${norm(pair.address)}|${blockHex}`;
@@ -1171,6 +1216,13 @@ async function learnRewardPathsFromWalletCalls(calls){
   const wallet=norm(CURRENT_WALLET);
   for(const c of (calls||[])){
     if(c._success===false)continue;
+    const selector=String(c._selector||'').toLowerCase();
+    const method=METHOD_SELECTORS.get(selector)||c._method||'';
+    if(method==='Stake'||method==='Unstake'){
+      // LP movements during stake/unstake are principal movements, not proof
+      // that this selector is a reward/claim path.
+      continue;
+    }
     const incoming=[];
     for(const tr of (c._erc20Transfers||[])){
       if(tr.to!==wallet||!tr.token||tr.amountRaw==null)continue;
@@ -1181,7 +1233,7 @@ async function learnRewardPathsFromWalletCalls(calls){
       }catch{}
     }
     if(!incoming.length)continue;
-    const contract=norm(c.to||c?._staking?.contract_address||''),selector=String(c._selector||'').toLowerCase();
+    const contract=norm(c.to||c?._staking?.contract_address||'');
     if(!ethers.isAddress(contract)||!selector)continue;
     registerLearnedRewardPath(contract,selector,incoming);
     log(`Reward-/Claim-Pfad gelernt: ${contract} · ${selector} · ${incoming.map(x=>`${x.amount} ${x.symbol}`).join(', ')} · Tx ${c.hash}`,'ok');
