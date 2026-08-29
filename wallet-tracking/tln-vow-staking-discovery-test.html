@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 15:59:42 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 16:07:00 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -363,6 +363,16 @@ async function stakeTxTokenEvidence(lot){
       const toWallet=x.to===wallet;
       return (zero||toWallet)&&!lp&&Number(x.amount||0)>0;
     });
+    for(const x of lot.stakeRewardEvidence){
+      addLotTx(lot,{
+        kind:`Reward / Ausschüttung · ${x.symbol}`,
+        hash:lot.stakeTx,time:lot.stakeTime,
+        block:lot.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null,
+        amount:x.amount,tokenSymbol:x.symbol,tokenAddress:x.token,
+        method:x.from==='0x0000000000000000000000000000000000000000'?'Mint beim Stake':'Reward-Transfer beim Stake',
+        source:x.source||'Stake-Transaktion'
+      });
+    }
     return result;
   }catch(e){
     log(`Stake-Tx Reward-Evidenz ${lot.stakeTx}: ${e.message}`,'warn');
@@ -742,6 +752,7 @@ async function enrichLotsBusiness(lots,pricePairs){
   for(const lot of (lots||[])){
     await enrichHistoricalStakeEvidence(lot);
     await stakeTxTokenEvidence(lot);
+    await attachRewardTokenHistory(lot);
     lot.rewardProfile=rewardProfileForLot(lot);
     const probe=await businessProbeForLot(lot);
     lot.businessProbe=probe;
@@ -939,7 +950,7 @@ function stakeRewardEvidenceHtml(lot){
     const rows=(lot.historicalScAfter.words||[]).map(w=>{
       const d=(lot.historicalScDelta||[]).find(x=>x.index===w.index);
       return `<tr>
-        <td>Wort ${w.index+1}</td>
+        <td>${norm(lot?.staking?.contract_address||lot.counterparty||'')==='0x4857d369e18aba003ff6ec934cf046148df5d590'?(w.index===0?'amount (W1)':w.index===1?'amount_usd (W2)':w.index===2?'staked_timestamp (W3)':`Wort ${w.index+1}`):`Wort ${w.index+1}`}</td>
         <td class="mono">${w.uint.toString()}</td>
         <td>${Number.isFinite(w.as18)?w.as18.toLocaleString('de-CH',{maximumFractionDigits:12}):'–'}</td>
         <td class="mono">${d&&d.delta!==0n?d.delta.toString():'–'}</td>
@@ -947,7 +958,7 @@ function stakeRewardEvidenceHtml(lot){
     }).join('');
     html+=`<div style="grid-column:1/-1;margin-top:8px">
       <details><summary>Historische SC-Daten beim Stake (${esc(lot.historicalScAfter.sig)})</summary>
-        <div class="reward-note">${norm(lot?.staking?.contract_address||lot.counterparty||'')==='0x4857d369e18aba003ff6ec934cf046148df5d590'?'Für diesen Legacy-SC gilt: W1 = LP-Menge, W2 = gespeicherter USD-Wert beim Stake, W3 = Stake-Timestamp. Reward-Token und Reward-Modell werden davon getrennt aus SC-/Transaktionsdaten ermittelt.':'Zustand am tatsächlichen Stake-Block. Unbekannte Wörter werden bewusst nicht als Reward/Bonus bezeichnet, solange ihre Bedeutung nicht verifiziert ist.'}</div>
+        <div class="reward-note">${norm(lot?.staking?.contract_address||lot.counterparty||'')==='0x4857d369e18aba003ff6ec934cf046148df5d590'?'Für diesen Legacy-SC können die drei gespeicherten Werte fachlich bezeichnet werden: W1 = amount (LP-Menge), W2 = amount_usd (gespeicherter USD-Wert), W3 = staked_timestamp (Stake-Zeitpunkt). Reward-Token und Reward-Modell werden davon getrennt aus SC-/Transaktionsdaten ermittelt.':'Zustand am tatsächlichen Stake-Block. Unbekannte Wörter werden bewusst nicht als Reward/Bonus bezeichnet, solange ihre Bedeutung nicht verifiziert ist.'}</div>
         <div class="wrap" style="margin-top:8px"><table style="min-width:760px">
           <thead><tr><th>Feld</th><th>Raw uint</th><th>als 18 Decimals</th><th>Änderung beim Stake</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -959,6 +970,67 @@ function stakeRewardEvidenceHtml(lot){
 }
 
 
+
+async function attachRewardTokenHistory(lot){
+  const wallet=norm(CURRENT_WALLET);
+  const rewardTokens=new Map();
+  for(const x of (lot.stakeRewardEvidence||[])){
+    if(x.token&&x.symbol)rewardTokens.set(norm(x.token),x.symbol);
+  }
+  for(const x of (lot.rewardClaims||[])){
+    if(x.token&&x.symbol)rewardTokens.set(norm(x.token),x.symbol);
+  }
+  if(!rewardTokens.size)return;
+
+  const start=lot.stakeTime?new Date(lot.stakeTime).getTime():null;
+  const end=lot.unstakeTime?new Date(lot.unstakeTime).getTime():Date.now();
+  const ownHashes=new Set((lot.transactions||[]).map(x=>String(x.hash||'').toLowerCase()));
+
+  for(const t of (CURRENT_ALL_TRANSFERS||[])){
+    const token=norm(t.rawContract?.address||'');
+    if(!rewardTokens.has(token))continue;
+    const hash=String(t.hash||'').toLowerCase();
+    if(!hash||ownHashes.has(hash))continue;
+    const to=norm(t.to||''),from=norm(t.from||'');
+    if(to!==wallet&&from!==wallet)continue;
+
+    let time=null,block=null,tx=null;
+    try{
+      tx=await rpc('eth_getTransactionByHash',[hash]);
+      if(tx?.blockNumber){
+        block=Number(BigInt(tx.blockNumber));
+        const b=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);
+        if(b?.timestamp)time=new Date(Number(BigInt(b.timestamp))*1000).toISOString();
+      }
+    }catch{}
+    const ms=time?new Date(time).getTime():null;
+    if(start&&ms&&ms<start-300000)continue;
+    if(end&&ms&&ms>end+300000)continue;
+
+    const meta=await tokenMeta(token);
+    let amount=null;
+    try{
+      if(t.rawContract?.value!=null)amount=Number(ethers.formatUnits(BigInt(t.rawContract.value),meta.decimals));
+      else if(t.value!=null)amount=Number(t.value);
+    }catch{}
+    if(!(Number(amount)>0))continue;
+
+    let method='Reward-Token-Transfer';
+    let source='Wallet-Transfer während der Staking-Laufzeit';
+    if(to===wallet){
+      method=from==='0x0000000000000000000000000000000000000000'?'Reward-Mint':'Reward-Ausschüttung';
+    }else{
+      method='Reward-/Claim-bezogener Transfer';
+    }
+    addLotTx(lot,{
+      kind:`Reward / ${to===wallet?'Ausschüttung':'Claim'} · ${rewardTokens.get(token)}`,
+      hash,time,block,amount,tokenSymbol:rewardTokens.get(token),tokenAddress:token,
+      selector:tx?.input?String(tx.input).slice(0,10):null,
+      method,source
+    });
+    ownHashes.add(hash);
+  }
+}
 function deriveRewardModel(lot){
   const probe=lot.businessProbe;
   const names=new Set((probe?.results||[]).map(r=>probeBaseName(r.label)));
