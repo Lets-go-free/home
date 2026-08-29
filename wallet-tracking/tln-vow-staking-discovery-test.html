@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 00:57:26 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 01:08:23 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -68,7 +68,9 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <p class="muted">Historische Stakings, die vollständig beendet / unstaked wurden. Ein echter Vertragsendwert wird nur gezeigt, wenn der Zeitpunkt aus dem SC belastbar ableitbar ist. Historische Unstake-Simulationen werden ausdrücklich als Simulation bezeichnet; der tatsächliche Unstake-Wert wird zusätzlich ausgewiesen.</p>
 <div id="completedStakings"><div class="muted">Noch keine Daten.</div></div></div>
 
-<div class="card"><h2>Dynamisch gelernte Reward-/Claim-Pfade</h2>
+<div class="card"><h2>Reward-Kandidaten ohne eindeutige Staking-Zuordnung</h2>
+<div id="unassignedRewards" class="muted">Noch nicht ausgewertet.</div>
+<h2>Dynamisch gelernte Reward-/Claim-Pfade</h2>
 <p class="muted">Ein Pfad wird nur gelernt, wenn ein Wallet-Aufruf an Contract + Selector in derselben Transaktion einen tatsächlichen ERC-20-Eingang ins ausgewählte Wallet erzeugt. Nichts davon ist als Selector oder Reward-Token fest codiert.</p>
 <div id="learnedRewardPaths"><div class="muted">Noch keine Daten.</div></div></div>
 
@@ -85,7 +87,7 @@ const ZERO='0x0000000000000000000000000000000000000000';
 let rpcUrl=null,alchemyBase=null,projectTokens=[],allProjectRows=[],stakingContracts=[],tlnWallets=[],CURRENT_ALL_TRANSFERS=[];
 let projectTokenMap=new Map();
 const PROXY_IMPL_CACHE=new Map();
-let CURRENT_STAKING_LOTS=[],CURRENT_WALLET='';
+let CURRENT_STAKING_LOTS=[],CURRENT_WALLET='',CURRENT_UNASSIGNED_REWARDS=[];
 // Keine fest codierten Staking-Laufzeiten.
 function stakingDurationDays(){ return null; }
 function stakingDurationSource(){ return null; }
@@ -1517,6 +1519,7 @@ function stakeRewardEvidenceHtml(lot){
 async function attachRewardTokenHistoryToLots(lots){
   const wallet=norm(CURRENT_WALLET);
   const rows=Array.isArray(lots)?lots:[];
+  CURRENT_UNASSIGNED_REWARDS=[];
   const knownByLot=new Map();
   const existingGlobal=new Set();
 
@@ -1599,8 +1602,9 @@ async function attachRewardTokenHistoryToLots(lots){
       }
 
       const learned=callTo&&selector?learnedRewardPath(callTo,selector):null;
-      if(learned){
-        score+=85;reasons.push(`dynamisch gelernter Reward-/Claim-Pfad (${callTo} · ${selector})`);
+      const learnedBelongsToLot=!!(learned && callTo && targets.has(callTo));
+      if(learnedBelongsToLot){
+        score+=85;reasons.push(`dynamisch gelernter Reward-/Claim-Pfad dieses Stakings (${callTo} · ${selector})`);
       }
 
       // Alte TLN-Rewards werden teilweise gemintet (from = 0x0).
@@ -1647,7 +1651,14 @@ async function attachRewardTokenHistoryToLots(lots){
     if(!chosen||chosen.score<60){
       const knownSome=candidates.find(x=>x.known?.has(token));
       if(knownSome){
-        log(`Reward-Historie Kandidat NICHT zugeordnet: ${hash} · ${knownSome.known.get(token)} · bester Score ${chosen?.score||0} · ${chosen?.reasons?.join(', ')||'keine Contract-/Receipt-Evidenz'}`,'warn');
+        const receiptContracts=[...receiptLogContracts].slice(0,8);
+        CURRENT_UNASSIGNED_REWARDS.push({
+          hash,time,block,token,symbol:knownSome.known.get(token),from,to,
+          calledContract:callTo||null,selector:selector||null,
+          receiptContracts,score:chosen?.score||0,
+          reasons:chosen?.reasons||[]
+        });
+        log(`Reward-Historie Kandidat NICHT zugeordnet: ${hash} · ${knownSome.known.get(token)} · bester Score ${chosen?.score||0} · ${chosen?.reasons?.join(', ')||'keine Contract-/Receipt-Evidenz'} · Tx-Ziel ${callTo||'–'} · Selector ${selector||'–'} · Receipt-Contracts ${receiptContracts.join(', ')||'–'}`,'warn');
       }
       continue;
     }
@@ -1706,6 +1717,25 @@ async function attachRewardTokenHistoryToLots(lots){
   for(const lot of rows){
     lot.rewardClaims=(lot.rewardClaims||[]).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
   }
+}
+
+function renderUnassignedRewards(){
+  const el=document.getElementById('unassignedRewards');
+  if(!el)return;
+  const rows=CURRENT_UNASSIGNED_REWARDS||[];
+  if(!rows.length){
+    el.innerHTML='<div class="muted">Keine bekannten Reward-Transfers ohne belastbare Staking-Zuordnung.</div>';
+    return;
+  }
+  el.innerHTML=`<div class="warnbox"><b>${rows.length} Reward-Kandidat(en) bewusst nicht automatisch zugeordnet.</b><br>Diese Transfers sind als Reward-Token plausibel, aber die Transaktion enthält noch keine ausreichend starke on-chain Beziehung zu genau einer Staking-Position.</div>
+  <div class="wrap"><table><thead><tr><th>Zeit</th><th>Token</th><th>Tx-Ziel / Selector</th><th>Receipt-Contracts</th><th>Score</th><th>Tx</th></tr></thead><tbody>${rows.map(r=>`<tr>
+    <td>${r.time?new Date(r.time).toLocaleString('de-CH'):'–'}</td>
+    <td>${esc(r.symbol||'–')}</td>
+    <td class="mono">${esc(r.calledContract||'–')}<br>${esc(r.selector||'–')}</td>
+    <td class="mono">${esc((r.receiptContracts||[]).join(', ')||'–')}</td>
+    <td class="num">${Number(r.score||0)}</td>
+    <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a></td>
+  </tr>`).join('')}</tbody></table></div>`;
 }
 
 function deriveRewardModel(lot){
@@ -2419,6 +2449,7 @@ for(const a of configuredLpAddresses){
 }
 const pricePairs=[...new Map([...pairs,...referencePairs].filter(p=>p.assetType!=='legacy_staking_token').map(p=>[norm(p.address),p])).values()];
 log(`Historische Preisbewertung: ${pricePairs.length} LP-Pools im Preisgraph (${referencePairs.length} konfigurierte Referenz-Pools).`,'ok');
-const lotResult=await renderLots(stakingRows,contractCalls,contractEvents,pricePairs);log(`Ergebnis: ${pairs.length} TLN/VOW-LPs entdeckt; ${rows.length} LP-Ereignisse; ${stakingRows.length} Stake/Unstake-Ereignisse; ${lotResult.lots.length} historische Stake-Lots.`,'ok');for(const r of stakingRows)log(`${r.action} · ${safePairLabel(r)} · ${safePairAddress(r)} · ${r.staking?.label||r.counterparty}`,'ok');for(const ev of contractEvents)log(`SC-EVENT ${ev.kind} · ${ev.contractLabel} · ${ev.time||'ohne Zeit'} · ${ev.topic0} · ${ev.hash}`,ev.kind==='Unstake'?'ok':'');$('status').innerHTML='<span class="ok">Discovery und Staking-Auswertung abgeschlossen.</span>'}catch(e){$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{b.disabled=false}};
+const lotResult=await renderLots(stakingRows,contractCalls,contractEvents,pricePairs);renderUnassignedRewards();
+  log(`Ergebnis: ${pairs.length} TLN/VOW-LPs entdeckt; ${rows.length} LP-Ereignisse; ${stakingRows.length} Stake/Unstake-Ereignisse; ${lotResult.lots.length} historische Stake-Lots.`,'ok');for(const r of stakingRows)log(`${r.action} · ${safePairLabel(r)} · ${safePairAddress(r)} · ${r.staking?.label||r.counterparty}`,'ok');for(const ev of contractEvents)log(`SC-EVENT ${ev.kind} · ${ev.contractLabel} · ${ev.time||'ohne Zeit'} · ${ev.topic0} · ${ev.hash}`,ev.kind==='Unstake'?'ok':'');$('status').innerHTML='<span class="ok">Discovery und Staking-Auswertung abgeschlossen.</span>'}catch(e){$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{b.disabled=false}};
 init();
 </script></body></html>
