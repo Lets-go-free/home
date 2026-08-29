@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 01:21:56 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 01:54:31 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -1304,6 +1304,130 @@ function changedHistoricalProbeRows(before,after){
   }
   return rows;
 }
+
+function ensureContractGraph(lot){
+  if(!lot.contractGraph)lot.contractGraph={nodes:new Map(),edges:[],evidence:[]};
+  return lot.contractGraph;
+}
+function graphNode(g,address,role,label){
+  address=norm(address||'');
+  if(!ethers.isAddress(address))return;
+  const cur=g.nodes.get(address)||{address,roles:new Set(),labels:new Set()};
+  if(role)cur.roles.add(role);
+  if(label)cur.labels.add(label);
+  g.nodes.set(address,cur);
+}
+function graphEdge(g,from,to,type,evidence){
+  from=norm(from||'');to=norm(to||'');
+  if(!ethers.isAddress(from)||!ethers.isAddress(to)||from===to)return;
+  const key=`${from}|${to}|${type}|${evidence?.tx||''}`;
+  if(g.edges.some(x=>x.key===key))return;
+  g.edges.push({key,from,to,type,evidence:evidence||{}});
+}
+function graphHasConnection(g,address){
+  address=norm(address||'');
+  if(!g||!ethers.isAddress(address))return false;
+  return g.nodes.has(address) && g.edges.some(e=>e.from===address||e.to===address);
+}
+function graphRoleAddresses(lot,role){
+  const g=lot?.contractGraph;
+  if(!g)return [];
+  return [...g.nodes.values()].filter(n=>n.roles?.has(role)).map(n=>n.address);
+}
+async function buildContractGraphs(lots,contractCalls){
+  const wallet=norm(CURRENT_WALLET);
+  const callByHash=new Map((contractCalls||[]).map(c=>[String(c.hash||'').toLowerCase(),c]));
+  const transferByHash=new Map();
+  for(const t of (CURRENT_ALL_TRANSFERS||[])){
+    const h=String(t.hash||'').toLowerCase();
+    if(!h)continue;
+    if(!transferByHash.has(h))transferByHash.set(h,[]);
+    transferByHash.get(h).push(t);
+  }
+
+  for(const lot of (lots||[])){
+    const g=ensureContractGraph(lot);
+    graphNode(g,wallet,'wallet','Wallet');
+    const staking=norm(lot?.staking?.contract_address||lot.counterparty||'');
+    const entry=norm(lot.entry_contract||'');
+    const eventContract=norm(lot.stake_event_contract||'');
+    const asset=norm(safePairAddress(lot));
+    graphNode(g,staking,'staking','Staking-SC');
+    graphNode(g,entry,'entry','Entry/Controller');
+    graphNode(g,eventContract,'event','Stake-Event-SC');
+    graphNode(g,asset,'asset',safePairLabel(lot));
+
+    const lifecycle=[
+      {kind:'Stake',hash:lot.stakeTx},
+      ...(lot.topUps||[]).map(x=>({kind:'Aufstockung',hash:x.tx})),
+      ...(lot.unstakeTx?[{kind:'Unstake',hash:lot.unstakeTx}]:[])
+    ].filter(x=>x.hash);
+
+    for(const ev of lifecycle){
+      const hash=String(ev.hash).toLowerCase();
+      let tx=null,receipt=null;
+      try{
+        [tx,receipt]=await Promise.all([
+          cachedTx(hash).catch(()=>null),
+          rpc('eth_getTransactionReceipt',[hash]).catch(()=>null)
+        ]);
+      }catch{}
+      const callTo=norm(tx?.to||callByHash.get(hash)?.to||'');
+      if(callTo){
+        graphNode(g,callTo,callTo===staking?'staking':'entry',ev.kind);
+        graphEdge(g,wallet,callTo,'wallet_call',{tx:hash,kind:ev.kind,selector:tx?.input?.slice(0,10)||null});
+      }
+      if(staking&&callTo&&staking!==callTo){
+        const receiptContracts=new Set((receipt?.logs||[]).map(x=>norm(x.address||'')).filter(ethers.isAddress));
+        if(receiptContracts.has(staking)){
+          graphEdge(g,callTo,staking,'lifecycle_receipt_link',{tx:hash,kind:ev.kind});
+        }
+      }
+      for(const tr of (transferByHash.get(hash)||[])){
+        const token=norm(tr.rawContract?.address||'');
+        const from=norm(tr.from||''),to=norm(tr.to||'');
+        if(token===asset){
+          graphNode(g,token,'asset',safePairLabel(lot));
+          if(from===wallet&&ethers.isAddress(to)){
+            graphNode(g,to,to===staking?'staking':'asset_receiver','Asset-Empfänger');
+            graphEdge(g,wallet,to,'principal_transfer',{tx:hash,kind:ev.kind,token});
+          }else if(to===wallet&&ethers.isAddress(from)){
+            graphNode(g,from,from===staking?'staking':'asset_sender','Asset-Absender');
+            graphEdge(g,from,wallet,'principal_return',{tx:hash,kind:ev.kind,token});
+          }
+        }
+      }
+      for(const addr of (receipt?.logs||[]).map(x=>norm(x.address||'')).filter(ethers.isAddress)){
+        if(addr===asset)continue;
+        graphNode(g,addr,addr===staking?'staking':'receipt_contract','Receipt-Contract');
+        if(callTo&&addr!==callTo)graphEdge(g,callTo,addr,'same_lifecycle_receipt',{tx:hash,kind:ev.kind});
+      }
+    }
+
+    // Claims already proven directly for this lot extend its graph.
+    for(const claim of (lot.rewardClaims||[])){
+      const rc=norm(claim.calledContract||claim.from||'');
+      const token=norm(claim.token||'');
+      if(rc){
+        graphNode(g,rc,'reward','Reward/Yield-SC');
+        graphEdge(g,staking||entry||wallet,rc,'proven_reward_path',{tx:claim.hash,selector:claim.selector||null});
+      }
+      if(token){
+        graphNode(g,token,'reward_token',claim.symbol||'Reward-Token');
+        if(rc)graphEdge(g,rc,token,'reward_token',{tx:claim.hash});
+      }
+    }
+  }
+}
+function graphConnectedRewardContract(lot,address){
+  address=norm(address||'');
+  const g=lot?.contractGraph;
+  if(!g||!ethers.isAddress(address))return false;
+  const node=g.nodes.get(address);
+  if(!node)return false;
+  if(node.roles?.has('reward') && graphHasConnection(g,address))return true;
+  return false;
+}
 async function learnRewardContractRelations(lots){
   const wallet=norm(CURRENT_WALLET);
   const rewardContracts=[...new Set([...LEARNED_REWARD_PATHS.values()]
@@ -1469,6 +1593,9 @@ async function attachRewardClaimsToLots(lots,calls){
       }
       if(callTo&&relatedRewards.has(callTo)){
         score+=95;reasons.push('historisch belegte Reward-SC-Beziehung zur Position');
+      }
+      if(callTo&&graphConnectedRewardContract(lot,callTo)){
+        score+=100;reasons.push('Contract-Graph: Reward-/Yield-SC gehört zu dieser Position');
       }
 
       // Explicitly supplied diagnostic claim: still require temporal plausibility,
@@ -1662,6 +1789,10 @@ async function attachRewardTokenHistoryToLots(lots){
     const ms=time?new Date(time).getTime():null;
     const callTo=norm(tx?.to||'');
     const selector=tx?.input?String(tx.input).slice(0,10).toLowerCase():null;
+    const methodName=METHOD_SELECTORS.get(selector)||'';
+    // Stake/Unstake transactions can contain TLN transfers, but those transfers
+    // are not reward evidence for another position.
+    if(methodName==='Stake'||methodName==='Unstake')continue;
     const receiptLogContracts=new Set((receipt?.logs||[]).map(x=>norm(x.address||'')).filter(Boolean));
     const candidates=[];
 
@@ -1706,6 +1837,9 @@ async function attachRewardTokenHistoryToLots(lots){
       }
       if(callTo&&relatedRewards.has(callTo)){
         score+=95;reasons.push('historisch belegte Reward-SC-Beziehung zur Position');
+      }
+      if(callTo&&graphConnectedRewardContract(lot,callTo)){
+        score+=100;reasons.push('Contract-Graph: Reward-/Yield-SC gehört zu dieser Position');
       }
 
       // Alte TLN-Rewards werden teilweise gemintet (from = 0x0).
@@ -2408,7 +2542,9 @@ function positionCardHtml(l,index,isClosed){
       ${isClosed?`<div class="stake-fact"><span class="k">Tatsächliches Unstake-Datum</span><span class="v">${l.unstakeTime?new Date(l.unstakeTime).toLocaleString('de-CH'):'–'}</span></div><div class="stake-fact"><span class="k">USD-Wert beim tatsächlichen Unstake</span>${unstakeValue}</div><div class="stake-fact"><span class="k">Gesamtdauer erster Stake → Unstake</span><span class="v">${actualDays!=null?`${actualDays} Tage`:'–'}</span></div>${(l.topUps||[]).length?`<div class="stake-fact"><span class="k">Dauer letzte Aufstockung → Unstake</span><span class="v">${actualLockDays!=null?`${actualLockDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span></div>`:''}`:''}
       <div class="stake-fact"><span class="k">Staking-Contract</span><span class="v mono">${esc(l.staking?.contract_address||l.counterparty||'–')}</span></div>
       <div class="stake-fact"><span class="k">On-chain verknüpfte Reward-Contracts</span><span class="v">${(l.rewardContractRelations||[]).length?(l.rewardContractRelations||[]).map(r=>`<span class="mono">${esc(r.contract)}</span><br><span class="value-source">${esc(r.lifecycleKind)} · Block ${esc(r.block)} · ${esc((r.changedProbes||[]).join(', '))}</span>`).join('<br>'):'–'}</span></div>
+      <div class="stake-fact"><span class="k">Contract-Graph</span><span class="v">${l.contractGraph?`${l.contractGraph.nodes.size} Contracts/Adressen · ${l.contractGraph.edges.length} belegte Beziehungen`: '–'}</span></div>
     </div>
+    ${l.contractGraph&&l.contractGraph.edges.length?`<details class="diag-details"><summary>Contract-Graph anzeigen</summary><div class="wrap"><table><thead><tr><th>Von</th><th>Beziehung</th><th>Zu</th><th>Evidenz</th></tr></thead><tbody>${l.contractGraph.edges.map(e=>`<tr><td class="mono">${esc(e.from)}</td><td>${esc(e.type)}</td><td class="mono">${esc(e.to)}</td><td>${esc(e.evidence?.kind||'')} ${e.evidence?.tx?`<span class="mono">${esc(e.evidence.tx)}</span>`:''}</td></tr>`).join('')}</tbody></table></div></details>`:''}
     ${(l.topUps||[]).length?`<div class="reward-box"><div class="reward-title">Aufstockungen dieser Staking-Position</div><div class="wrap"><table><thead><tr><th>Zeit</th><th>Zusätzlich</th><th>Gesamt danach</th><th>Tx</th></tr></thead><tbody>${l.topUps.map(x=>`<tr><td>${x.time?new Date(x.time).toLocaleString('de-CH'):'–'}</td><td class="num">+${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="num">${Number(x.resultingPrincipal||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(x.tx)}">${esc(x.tx||'–')}</a></td></tr>`).join('')}</tbody></table></div></div>`:''}
     ${rewardHtml(l)}
     <div class="stake-actions">
@@ -2443,8 +2579,22 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   reconcileLotsWithContractCalls(lots,contractCalls);
   attachContractEventsToLots(lots,contractEvents);
   await learnRewardPathsFromWalletCalls(contractCalls);
+  await buildContractGraphs(lots,contractCalls);
   await learnRewardContractRelations(lots);
+  // Historical state-proven reward contracts are also graph nodes/edges.
+  for(const lot of lots){
+    const g=ensureContractGraph(lot);
+    const base=norm(lot?.staking?.contract_address||lot.counterparty||lot.entry_contract||'');
+    for(const rel of (lot.rewardContractRelations||[])){
+      graphNode(g,rel.contract,'reward','Reward/Yield-SC');
+      if(base)graphEdge(g,base,rel.contract,'historical_state_relation',{kind:rel.lifecycleKind,block:rel.block});
+    }
+  }
   await attachRewardClaimsToLots(lots,contractCalls);
+  for(const lot of lots){
+    const g=lot.contractGraph;
+    if(g)log(`Contract-Graph: ${safePairLabel(lot)} · ${g.nodes.size} Nodes · ${g.edges.length} belegte Beziehungen · Reward-SCs: ${graphRoleAddresses(lot,'reward').join(', ')||'–'}`,'info');
+  }
   await enrichLotsBusiness(lots,pricePairs);
   renderDeepEvents(contractEvents,lots);
   const hintedAttached=lots.flatMap(l=>l.rewardClaims||[]).filter(c=>REWARD_TX_HINTS.includes(String(c.hash||'').toLowerCase())).length;
