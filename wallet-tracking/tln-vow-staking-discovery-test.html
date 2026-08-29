@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 19:16:44 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 19:38:24 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -46,7 +46,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 </div></div>
 <div class="card"><h2>TLN/VOW-Projekt-Token</h2><div id="projectCount" class="muted">Noch keine Daten.</div><div class="wrap"><table><thead><tr><th>Symbol</th><th>Kategorie</th><th>Contract</th></tr></thead><tbody id="projectTokens"><tr><td colspan="3">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Bekannte Staking-Contracts</h2><div class="wrap"><table style="min-width:1050px"><thead><tr><th>Contract-Bezeichnung</th><th>Rolle</th><th>Contract</th><th>Pair-Hinweis</th><th>Laufzeit</th></tr></thead><tbody id="stakingContracts"><tr><td colspan="5">Noch keine Daten.</td></tr></tbody></table></div></div>
-<div class="card"><h2>Erkannte historische LP-Token</h2><p class="muted">Diese Tabelle zeigt die LP-Token-Contracts, die als Grundlage für die historische LP-/Staking-Auswertung erkannt wurden. Normalfall: <code>token0()</code> und <code>token1()</code> funktionieren und mindestens ein Underlying gehört zum TLN/VOW-Projekt. Historischer Fallback: Bei einer bestätigten <code>stake(...)</code>-Tx werden zusätzlich die ERC-20-Transfer-Logs der Transaktion ausgewertet. Ein aus dem Wallet heraus übertragener V2-LP kann dadurch auch dann erkannt werden, wenn sein Empfänger ein Controller/Zwischencontract war oder seine Underlyings heute nicht mehr in der aktuellen Projektliste stehen.</p><div class="wrap"><table><thead><tr><th>LP</th><th>Contract</th><th>token0</th><th>token1</th><th>Projekt-Treffer</th><th>Erkannt durch</th><th>Factory</th><th>Transfers</th></tr></thead><tbody id="pairs"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
+<div class="card"><h2>Erkannte historische LP-Token</h2><p class="muted">Diese Tabelle zeigt die LP-Token-Contracts, die als Grundlage für die historische LP-/Staking-Auswertung erkannt wurden. Normalfall: <code>token0()</code> und <code>token1()</code> funktionieren und mindestens ein Underlying gehört zum TLN/VOW-Projekt. Historischer Fallback: Bei einem anhand des rohen Method-Selectors als <code>stake(...)</code> erkannten Aufruf an einen bekannten Staking-Contract werden zusätzlich die ERC-20-Transfers genau dieser Transaktion ausgewertet. Ein aus dem Wallet heraus übertragener V2-LP kann dadurch auch dann erkannt werden, wenn sein Empfänger ein Controller/Zwischencontract war oder seine Underlyings heute nicht mehr in der aktuellen Projektliste stehen.</p><div class="wrap"><table><thead><tr><th>LP</th><th>Contract</th><th>token0</th><th>token1</th><th>Projekt-Treffer</th><th>Erkannt durch</th><th>Factory</th><th>Transfers</th></tr></thead><tbody id="pairs"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Historische LP-/Staking-Ereignisse</h2><div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Aktion</th><th>LP</th><th>LP-Menge</th><th>Gegenstelle</th><th>Staking-Bezeichnung</th><th>Block</th><th>Transaktion</th></tr></thead><tbody id="events"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Direkte Wallet-Aufrufe an Staking-/Entry-Contracts</h2>
 <p class="muted">Ergänzende Diagnose: zeigt ausgehende Wallet-Transaktionen an bekannte Staking-Contracts sowie automatisch aus den Stake-Transaktionen erkannte Entry-/Controller-Contracts. Damit finden wir einen Unstake-Aufruf auch dann, wenn kein passender LP-Rücktransfer in der ERC-20-Historie erkannt wurde.</p>
@@ -696,35 +696,85 @@ function renderPairTable(pairs,counts){
   }).join(''):'<tr><td colspan="8">Keine historischen LP-Token in diesem Wallet gefunden.</td></tr>';
 }
 
+function isStakeCallCandidate(c){
+  const selector=String(c?._selector||c?._input||'').slice(0,10).toLowerCase();
+  const decoded=METHOD_SELECTORS.get(selector);
+  if(decoded==='Stake')return true;
+  // Fallback for already classified call records where the raw selector may be absent.
+  if(String(c?._method||'').toLowerCase()==='stake')return true;
+  return false;
+}
+
 async function discoverPairsFromStakeTransactions(calls,transfers,pairMap,projectSet,counts,wallet){
   const w=norm(wallet),added=[];
   for(const c of (calls||[])){
-    if(c._method!=='Stake'||c._success===false)continue;
+    const selector=String(c?._selector||c?._input||'').slice(0,10).toLowerCase();
+    if(!isStakeCallCandidate(c))continue;
+
     const hash=String(c.hash||'').toLowerCase();
     if(!hash)continue;
+    log(`Stake-Call-Kandidat: ${hash} · Contract ${norm(c?._staking?.contract_address||c.to||'–')} · Selector ${selector||'–'} · Status ${c._success===true?'erfolgreich':c._success===false?'fehlgeschlagen':'unbekannt'}`);
 
-    let receipt=null;
-    try{receipt=await rpc('eth_getTransactionReceipt',[hash])}catch(e){
-      log(`Stake-Tx-Fallback ${hash}: Receipt nicht lesbar: ${e.message}`,'warn');
+    // Only an explicitly failed transaction is excluded. Unknown status is allowed,
+    // because old Alchemy records may not carry a usable receipt status.
+    if(c._success===false){
+      log(`Stake-Tx-Fallback ${hash}: Tx ist fehlgeschlagen – übersprungen.`,'warn');
       continue;
     }
-    if(!receipt)continue;
 
-    const txTransfers=receiptErc20Transfers(receipt)
-      .filter(tr=>norm(tr.from)===w && tr.token && tr.amountRaw!=null);
-
+    let receipt=null,txTransfers=Array.isArray(c._erc20Transfers)?c._erc20Transfers:[];
     if(!txTransfers.length){
-      log(`Stake-Tx-Fallback ${hash}: keine ausgehenden ERC-20-Transfer-Logs des Wallets gefunden.`,'warn');
+      try{
+        receipt=await rpc('eth_getTransactionReceipt',[hash]);
+        txTransfers=receiptErc20Transfers(receipt);
+      }catch(e){
+        log(`Stake-Tx-Fallback ${hash}: Receipt nicht lesbar: ${e.message}`,'warn');
+      }
+    }
+
+    // If the RPC receipt is old/pruned/incomplete, use the already loaded Alchemy
+    // ERC20 history for this exact transaction as a second evidence source.
+    if(!txTransfers.length){
+      txTransfers=(transfers||[])
+        .filter(t=>String(t.hash||'').toLowerCase()===hash)
+        .map(t=>{
+          let amountRaw=null;
+          try{
+            if(t.rawContract?.value!=null)amountRaw=BigInt(t.rawContract.value);
+          }catch{}
+          return {
+            token:norm(t.rawContract?.address||''),
+            from:norm(t.from),
+            to:norm(t.to),
+            amountRaw,
+            _source:'alchemy-wallet-history'
+          };
+        })
+        .filter(t=>t.token&&t.amountRaw!=null);
+      if(txTransfers.length)log(`Stake-Tx-Fallback ${hash}: ${txTransfers.length} ERC-20-Transfer(s) aus Alchemy-Wallet-Historie als Receipt-Ersatz verwendet.`);
+    }
+
+    const outgoing=txTransfers.filter(tr=>norm(tr.from)===w&&tr.token&&tr.amountRaw!=null);
+    if(!outgoing.length){
+      log(`Stake-Tx-Fallback ${hash}: keine aus dem Wallet herausgehenden ERC-20-Transfers in Tx-Daten gefunden.`,'warn');
       continue;
     }
 
-    log(`Stake-Tx-Fallback ${hash}: ${txTransfers.length} ausgehende ERC-20-Transfer-Logs werden als historische Staking-Assets geprüft.`);
+    log(`Stake-Tx-Fallback ${hash}: ${outgoing.length} ausgehende ERC-20-Transfers werden unabhängig vom Empfänger als historische Staking-Assets geprüft.`);
 
-    for(const tr of txTransfers){
+    for(const tr of outgoing){
       const asset=norm(tr.token);
-      if(!asset||pairMap.has(asset))continue;
+      if(!asset)continue;
+      if(pairMap.has(asset)){
+        log(`Stake-Tx-Fallback ${hash}: ${asset} ist bereits als LP bekannt.`);
+        continue;
+      }
+
       const p=await inspectAnyPair(asset);
-      if(!p)continue;
+      if(!p){
+        log(`Stake-Tx-Fallback ${hash}: ${asset} ist kein lesbarer V2-LP.`);
+        continue;
+      }
 
       p.hits=[p.token0.address,p.token1.address].filter(a=>projectSet.has(norm(a)));
       p.discoverySource='stake_tx_receipt';
@@ -740,7 +790,7 @@ async function discoverPairsFromStakeTransactions(calls,transfers,pairMap,projec
       const amountMatch=Number.isFinite(amount)&&Number.isFinite(inputAmount)&&inputAmount>0
         ?Math.abs(amount-inputAmount)/inputAmount<0.00001:null;
 
-      log(`Historischer LP über Stake-Tx-Receipt entdeckt: ${safePairLabel(p)} · ${asset} · Wallet → ${norm(tr.to||'–')} · ${amount==null?'Menge ?':amount+' LP'}${amountMatch===true?' · Menge passt zu stake()-Argument':amountMatch===false?' · Menge weicht vom stake()-Argument ab':''} · Tx ${hash}`,'ok');
+      log(`Historischer LP über Stake-Tx entdeckt: ${safePairLabel(p)} · ${asset} · Empfänger ${norm(tr.to||'–')} · ${amount==null?'Menge ?':amount+' LP'}${amountMatch===true?' · Menge passt zu stake()-Argument':amountMatch===false?' · Menge weicht vom stake()-Argument ab':''} · Tx ${hash}`,'ok');
     }
   }
   return added;
@@ -774,7 +824,7 @@ async function synthesizeStakeRowsFromReceipts(calls,pairMap,wallet,rows){
   const added=[];
 
   for(const c of (calls||[])){
-    if(c._method!=='Stake'||c._success===false)continue;
+    if(!isStakeCallCandidate(c)||c._success===false)continue;
     const hash=String(c.hash||'').toLowerCase();
     let receipt=null;
     try{receipt=await rpc('eth_getTransactionReceipt',[hash])}catch{}
