@@ -378,3 +378,65 @@
   #donationQr { width:196px; min-height:196px; margin:16px auto; padding:8px; background:#fff; border-radius:10px; display:grid; place-items:center; }
   #donationQr img, #donationQr canvas { max-width:180px; height:auto; }
   @media (max-width:559px) { .donation-grid { grid-template-columns:1fr; } }
+
+
+/* Phase 2ax – TLN/VOW Liquidity-Pool Tabellen: keine Textüberlappungen. */
+.lp-section-title { margin-top: 24px; margin-bottom: 8px; }
+.lp-table-scroll, .lp-history-scroll { overflow-x: auto; scrollbar-gutter: stable; }
+.lp-table-scroll table, .lp-history-scroll table { table-layout: fixed; }
+.lp-table-scroll th, .lp-table-scroll td, .lp-history-scroll th, .lp-history-scroll td {
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.35;
+  padding: 10px 12px;
+}
+.lp-table-scroll .lp-address, .lp-history-scroll .lp-address {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+.lp-staking-table { min-width: 1420px; width: 1420px; }
+.lp-staking-table th:nth-child(1), .lp-staking-table td:nth-child(1) { width: 180px; }
+.lp-staking-table th:nth-child(2), .lp-staking-table td:nth-child(2) { width: 300px; }
+.lp-staking-table th:nth-child(3), .lp-staking-table td:nth-child(3) { width: 240px; }
+.lp-staking-table th:nth-child(4), .lp-staking-table td:nth-child(4) { width: 300px; }
+.lp-staking-table th:nth-child(5), .lp-staking-table td:nth-child(5) { width: 190px; }
+.lp-staking-table th:nth-child(6), .lp-staking-table td:nth-child(6),
+.lp-staking-table th:nth-child(7), .lp-staking-table td:nth-child(7) { width: 150px; }
+.lp-staking-table th:nth-child(8), .lp-staking-table td:nth-child(8) { width: 150px; }
+.lp-position-table { min-width: 1680px; width: 1680px; }
+.lp-position-table th:nth-child(1), .lp-position-table td:nth-child(1) { width: 190px; }
+.lp-position-table th:nth-child(2), .lp-position-table td:nth-child(2) { width: 330px; }
+.lp-position-table th:nth-child(3), .lp-position-table td:nth-child(3),
+.lp-position-table th:nth-child(4), .lp-position-table td:nth-child(4),
+.lp-position-table th:nth-child(5), .lp-position-table td:nth-child(5) { width: 140px; }
+.lp-position-table th:nth-child(6), .lp-position-table td:nth-child(6) { width: 250px; }
+.lp-position-table th:nth-child(7), .lp-position-table td:nth-child(7),
+.lp-position-table th:nth-child(8), .lp-position-table td:nth-child(8),
+.lp-position-table th:nth-child(9), .lp-position-table td:nth-child(9),
+.lp-position-table th:nth-child(10), .lp-position-table td:nth-child(10),
+.lp-position-table th:nth-child(11), .lp-position-table td:nth-child(11) { width: 145px; }
+.lp-scan-details { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+.lp-scan-details summary { cursor: pointer; color: var(--muted); font-weight: 600; user-select: none; }
+.lp-scan-details[open] summary { margin-bottom: 8px; }
+.lp-scan-table { min-width: 1740px; width: 1740px; }
+.lp-scan-table th:nth-child(1), .lp-scan-table td:nth-child(1) { width: 190px; }
+.lp-scan-table th:nth-child(2), .lp-scan-table td:nth-child(2) { width: 340px; }
+.lp-scan-table th:nth-child(3), .lp-scan-table td:nth-child(3) { width: 180px; }
+.lp-scan-table th:nth-child(4), .lp-scan-table td:nth-child(4) { width: 190px; }
+.lp-scan-table th:nth-child(n+5), .lp-scan-table td:nth-child(n+5) { width: 125px; }
+.lp-cache-stand { margin-top: 10px; font-size: .78rem; color: var(--text); }
+
+/* Historie ohne Chain-Spalte: 9 Spalten. */
+.lp-history-table { width: 1650px; min-width: 1650px; }
+.lp-history-table th:nth-child(1), .lp-history-table td:nth-child(1) { width: 180px; }
+.lp-history-table th:nth-child(2), .lp-history-table td:nth-child(2) { width: 190px; }
+.lp-history-table th:nth-child(3), .lp-history-table td:nth-child(3) { width: 120px; }
+.lp-history-table th:nth-child(4), .lp-history-table td:nth-child(4) { width: 340px; }
+.lp-history-table th:nth-child(5), .lp-history-table td:nth-child(5) { width: 330px; }
+.lp-history-table th:nth-child(6), .lp-history-table td:nth-child(6) { width: 130px; }
+.lp-history-table th:nth-child(7), .lp-history-table td:nth-child(7) { width: 150px; }
+.lp-history-table th:nth-child(8), .lp-history-table td:nth-child(8) { width: 190px; }
+.lp-history-table th:nth-child(9), .lp-history-table td:nth-child(9) { width: 220px; }

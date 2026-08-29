@@ -1,3 +1,20 @@
+# Phase 2ax – LP-UI, historischer Walletfilter, NFT-Leerergebnis
+
+Stand: 29.08.2026 13:23:43 CEST
+
+## Migration
+- **Keine neue Migration.**
+- **001–020 nicht erneut ausführen**, wenn bereits erfolgreich ausgeführt.
+
+## Änderungen
+- Liquidity Pools: Staking-Positionen stehen an erster Stelle.
+- Chain-Spalten aus allen LP-Tabellen entfernt, da jede Chain einen eigenen LP-Subtab besitzt.
+- Technischer LP-Scan-Status liegt direkt unter dem Cache-Zeitpunkt, ist auf-/zuklappbar und standardmäßig geschlossen.
+- Feste Mindestbreiten + horizontales Scrollen verhindern Textüberlappungen.
+- Walletfilter berücksichtigt aktuelle Positionen **oder historische Events**; beendete Legacy-Stakings bleiben auswählbar.
+- NFT-Refresh: ein erfolgreicher Lauf mit 0 NFTs wird als **„geprüft · keine NFTs gefunden“** gespeichert/angezeigt.
+- Dokumentationsregel ergänzt: leeres Ergebnis ist ein erfolgreiches Ergebnis.
+
 # Phase 2aw – Legacy-LP Discovery produktiv an isolierten Test angeglichen
 
 Stand: 29.08.2026 12:48:36 CEST
