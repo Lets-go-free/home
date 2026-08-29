@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 15:43:51 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 15:53:36 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -447,6 +447,14 @@ const PRICE_STABLE_SYMBOLS=/^(USDT|USDC|BUSD)$/i;
 const REWARD_TX_HINTS=[
   '0x0f0320b0da7d7df1678fe6de455879cffee8a5f10e0d77200c625333a7dfcd57'
 ];
+const LEGACY_REWARD_EVIDENCE={
+  '0x4857d369e18aba003ff6ec934cf046148df5d590': {
+    rewardToken:'TLN+',
+    confirmedClaims:{
+      '0x0f0320b0da7d7df1678fe6de455879cffee8a5f10e0d77200c625333a7dfcd57': {amount:250,source:'Vom Nutzer bestätigte historische Reward-Auszahlung'}
+    }
+  }
+};
 const BUSINESS_PROBE_CACHE=new Map();
 const PAIR_STATE_CACHE=new Map();
 
@@ -584,7 +592,7 @@ function rewardProfileForLot(lot){
   const addr=norm(lot?.staking?.contract_address||lot?.counterparty||'');
   const label=String(stakingContractLabel(lot.staking)||'').toLowerCase();
   if(addr==='0x4857d369e18aba003ff6ec934cf046148df5d590'||label.includes('tln+')){
-    return {title:'TLN+ Rewards',token:'TLN+',model:'Reward-Modell dieses Stakings: TLN+; TLN führt dafür „Total TLN+ Withdrawn“ und „TLN+ Available“.',fields:['payouts','withdrawableYield','availableYield','claimable','earned']};
+    return {title:'TLN+ Rewards',token:'TLN+',model:'Legacy PC-LP TLN+: historischer Stake-Wert wird separat als USD-Wert geführt; Rewards werden als TLN+ ausgewiesen. Für bekannte historische Auszahlungen können bestätigte Transaktionsdaten ergänzt werden.',fields:['payouts','withdrawableYield','availableYield','claimable','earned']};
   }
   if(addr==='0x67518d0525788a34a23cf611838635a29c03b78a'||(label.includes('vow')&&label.includes('v$'))){
     return {title:'VOW/v$ · TLN+ Rewards',token:'TLN+',model:'TLN führt für VOW/v$ „Total TLN+ Withdrawn“ und „TLN+ Available“.',fields:['payouts','totalPayouts','withdrawableYield','availableYield','claimable','earned']};
@@ -620,6 +628,18 @@ function extractStoredStakeUsd(lot,probeResult){
   let tsIndex=-1;
   if(stakeSec)tsIndex=nums.findIndex(v=>v!=null&&Math.abs(Number(v)-stakeSec)<=86400);
   if(!amountMatches||tsIndex<0)return null;
+
+  const legacySc=norm(lot?.staking?.contract_address||lot.counterparty||'');
+  if(legacySc==='0x4857d369e18aba003ff6ec934cf046148df5d590'&&nums.length>=3){
+    const v=formatToken18(nums[1]);
+    if(v!=null&&v>0){
+      return {
+        usd:v,
+        source:`TLN Staking-SC historisch @ Stake-Block · ${sourceSig} · W2 = gespeicherter USD-Wert`,
+        rawWord:nums[1].toString()
+      };
+    }
+  }
 
   const candidates=[];
   for(let i=1;i<tsIndex;i++){
@@ -867,7 +887,7 @@ function stakeRewardEvidenceHtml(lot){
     }).join('');
     html+=`<div style="grid-column:1/-1;margin-top:8px">
       <details><summary>Historische SC-Daten beim Stake (${esc(lot.historicalScAfter.sig)})</summary>
-        <div class="reward-note">Zustand am tatsächlichen Stake-Block. Unbekannte Wörter werden bewusst nicht als Reward/Bonus bezeichnet, solange ihre Bedeutung nicht verifiziert ist.</div>
+        <div class="reward-note">${norm(lot?.staking?.contract_address||lot.counterparty||'')==='0x4857d369e18aba003ff6ec934cf046148df5d590'?'Für diesen Legacy-SC gilt: W1 = LP-Menge, W2 = gespeicherter USD-Wert beim Stake, W3 = Stake-Timestamp. Rewards werden separat als TLN+ geführt.':'Zustand am tatsächlichen Stake-Block. Unbekannte Wörter werden bewusst nicht als Reward/Bonus bezeichnet, solange ihre Bedeutung nicht verifiziert ist.'}</div>
         <div class="wrap" style="margin-top:8px"><table style="min-width:760px">
           <thead><tr><th>Feld</th><th>Raw uint</th><th>als 18 Decimals</th><th>Änderung beim Stake</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -876,6 +896,53 @@ function stakeRewardEvidenceHtml(lot){
     </div>`;
   }
   return html;
+}
+
+function applyKnownLegacyRewardEvidence(lot){
+  const sc=norm(lot?.staking?.contract_address||lot.counterparty||'');
+  const cfg=LEGACY_REWARD_EVIDENCE[sc];
+  if(!cfg)return;
+  lot.rewardClaims=lot.rewardClaims||[];
+
+  for(const [hash,claimCfg] of Object.entries(cfg.confirmedClaims||{})){
+    if(lot.rewardClaims.some(x=>String(x.hash||'').toLowerCase()===hash.toLowerCase()))continue;
+
+    // Only attach to the lot when the supplied tx is already one of this lot's own
+    // known transactions (stake/unstake) or when it falls into the lot's time window.
+    const ownTx=[lot.stakeTx,lot.unstakeTx].filter(Boolean).map(x=>String(x).toLowerCase());
+    const isOwnTx=ownTx.includes(hash.toLowerCase());
+    if(!isOwnTx)continue;
+
+    const time = String(lot.stakeTx||'').toLowerCase()===hash.toLowerCase() ? lot.stakeTime :
+                 String(lot.unstakeTx||'').toLowerCase()===hash.toLowerCase() ? lot.unstakeTime : null;
+    const block = String(lot.stakeTx||'').toLowerCase()===hash.toLowerCase() && lot.stakeBlockHex
+      ? Number(BigInt(lot.stakeBlockHex))
+      : (String(lot.unstakeTx||'').toLowerCase()===hash.toLowerCase() && lot.unstakeBlockHex ? Number(BigInt(lot.unstakeBlockHex)) : null);
+
+    const claim={
+      hash,
+      time,
+      block,
+      token:null,
+      symbol:cfg.rewardToken,
+      amount:Number(claimCfg.amount||0),
+      method:'Reward-Auszahlung',
+      selector:null,
+      source:claimCfg.source,
+      assignmentScore:999,
+      confirmedExternal:true
+    };
+    lot.rewardClaims.push(claim);
+    addLotTx(lot,{
+      kind:`Reward / Claim · ${cfg.rewardToken}`,
+      hash:claim.hash,time:claim.time,block:claim.block,amount:claim.amount,
+      tokenSymbol:cfg.rewardToken,tokenAddress:null,
+      selector:null,method:'Reward-Auszahlung',source:claim.source
+    });
+    log(`Bestätigter Legacy-Reward zugeordnet: ${claim.amount} ${cfg.rewardToken} → ${safePairLabel(lot)} · ${hash}`,'ok');
+  }
+
+  lot.rewardClaims.sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
 }
 function rewardClaimSummaryHtml(lot){
   const claims=lot.rewardClaims||[];
@@ -1318,6 +1385,7 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   reconcileLotsWithContractCalls(lots,contractCalls);
   attachContractEventsToLots(lots,contractEvents);
   await attachRewardClaimsToLots(lots,contractCalls);
+  for(const lot of lots)applyKnownLegacyRewardEvidence(lot);
   await enrichLotsBusiness(lots,pricePairs);
   renderDeepEvents(contractEvents,lots);
   const hintedAttached=lots.flatMap(l=>l.rewardClaims||[]).filter(c=>REWARD_TX_HINTS.includes(String(c.hash||'').toLowerCase())).length;
