@@ -77,6 +77,7 @@
           <button class="tab-btn" data-tab="admin" data-open-admin="dex" onclick="showTab('admin');showAdminTab('dex')">🔄 DEX</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="hardcoding" onclick="showTab('admin');showAdminTab('hardcoding')">🧪 Hardcoding-Audit</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="ideas" onclick="showTab('admin');showAdminTab('ideas')">💡 Ideen / Umbau</button>
+          <button class="tab-btn" data-tab="admin" data-open-admin="documentation" onclick="showTab('admin');showAdminTab('documentation')">📚 Dokumentation</button>
         </div>
       </div>
       <div class="tab-nav-group" id="defiProjectsNavGroup" style="display:none">
@@ -563,6 +564,11 @@
         <div class="note" style="margin-bottom:14px">Offene Erweiterungsideen, nur für Admins sichtbar. Nichts davon ist umgesetzt, ausser explizit markiert.</div>
         <div id="adminIdeasList"></div>
       </div>
+      <div id="admintab-documentation" class="admin-tab-panel">
+        <div class="section-title">📚 Dokumentation</div>
+        <div class="note" style="margin-bottom:14px">Verbindliche technische und fachliche Regeln für Betrieb, Ladeprozesse, Cache-Versionierung und zukünftige Umbauten. Bei relevanten Änderungen mitpflegen.</div>
+        <div id="adminDocumentation"></div>
+      </div>
 
     </div>
 
@@ -714,7 +720,7 @@
   </div>
 
   <footer>
-    Version vom 28.08.2026, 21:25 Uhr · modularer Umbau Phase 2au<br>
+    Version vom 28.08.2026, 20:00 Uhr · modularer Umbau Phase 2av<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -746,6 +752,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.08.2026 21:25:20 CEST · Phase 2au · Build 20260828-212520</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 28.08.2026 20:00:17 CEST · Phase 2av · Build 20260828-200017</div>
 </body>
 </html>

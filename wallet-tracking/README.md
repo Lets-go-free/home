@@ -1,3 +1,19 @@
+# Phase 2av – Cache-Versionierung + Admin-Dokumentation
+
+Stand: 28.08.2026 20:00:17 CEST
+
+## Migration
+- **NEU: 019-cache-data-versioning.sql** – einmal nach 018 ausführen.
+- **001–018 NICHT erneut ausführen**, wenn bereits erfolgreich ausgeführt.
+
+## Änderungen
+- Neuer Admin-Tab **📚 Dokumentation** mit verbindlichen Abläufen und Regeln.
+- `wallet_refresh_state.data_version` verhindert, dass fachlich veraltete Caches wegen Tageslimit/Activity-Check übersprungen werden.
+- Versionsprüfung steht vor Tageslimit und Activity-Check.
+- Alte Cache-Daten werden nicht vorsorglich gelöscht; sie bleiben bis zum erfolgreichen Neuaufbau als Fallback.
+- TLN/VOW BSC LP/Staking: Soll-Version **v6**, neuer Scan-Typ **`lp_history_v6_legacy_discovery`**. Dadurch wird bei bestehenden Wallets einmalig die vollständige Legacy-LP-Discovery neu initialisiert.
+- Danach wieder inkrementelle Aktualisierung.
+
 ## Phase 2au – zentraler Refresh, Activity-Check, LP-Walletfilter und Spam-Entscheid (28.08.2026, 21:25:20 CEST)
 
 - Zentraler Button **„Daten aktualisieren“**: pro Wallet sequentiell Bestände → TLN/VOW LP/Staking → NFTs. **Entdecken und Gebühren bleiben ausschließlich manuell.**

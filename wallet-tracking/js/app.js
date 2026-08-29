@@ -1092,9 +1092,54 @@ function showAdminTab(name) {
   if (name === "dex") loadAdminDexConfigs();
   if (name === "hardcoding") renderHardcodingAudit();
   if (name === "ideas") renderAdminIdeas();
+  if (name === "documentation") renderAdminDocumentation();
 }
 
 
+
+function renderAdminDocumentation(){
+  const el=document.getElementById("adminDocumentation"); if(!el)return;
+  el.innerHTML=`
+  <div class="custom-token-card"><h3 style="margin-top:0">1. Architekturregeln</h3><div class="note">
+  <p><strong>Neuester Stand:</strong> Änderungen immer auf dem zuletzt ausgelieferten Stand aufbauen.</p>
+  <p><strong>Supabase als Konfigurationsquelle:</strong> Chain-, Provider-, Projekt- und Token-Konfiguration möglichst datenbankgesteuert; keine neue fachliche Chain-Hardcodierung.</p>
+  <p><strong>Cache ist versioniert:</strong> „Cache vorhanden“ bedeutet nicht „Cache fachlich aktuell“. Vor Tageslimit und Activity-Check wird die Datenversion geprüft.</p>
+  <p><strong>Invalidieren statt blind löschen:</strong> Alte Daten bleiben als Fallback erhalten, bis ein notwendiger Neuaufbau erfolgreich abgeschlossen ist.</p></div></div>
+
+  <div class="custom-token-card"><h3 style="margin-top:0">2. Ladeprozess</h3><div class="note">
+  <p><strong>Zentraler Startseiten-Refresh:</strong> pro Wallet sequentiell: Wallet-/Tokenbestände → Projektpositionen inkl. LP/Staking → NFTs. Danach nächstes Wallet.</p>
+  <p><strong>Automatisch:</strong> höchstens 1× täglich pro Wallet, Chain und Datentyp. Neue Wallets haben keinen Tagesstatus und werden sofort berücksichtigt.</p>
+  <p><strong>Manuell:</strong> jederzeit möglich; die Tagesbegrenzung gilt nur für automatische Läufe.</p>
+  <p><strong>Entscheidungsreihenfolge:</strong> Datenversion prüfen → nötigen Neuaufbau erzwingen → Tagesstatus prüfen → Activity-Check → inkrementell aktualisieren.</p>
+  <p><strong>Activity-Check:</strong> bei aktuellem Cache zuerst relevante Blockchain-Aktivität prüfen. Nur vom User bestätigter Spam darf ignoriert werden.</p>
+  <p><strong>Entdecken / Gebühren:</strong> ausschließlich manuell. Projekt-Tabs: beim ersten Öffnen des Tages automatisch je Wallet, danach manuell.</p></div></div>
+
+  <div class="custom-token-card"><h3 style="margin-top:0">3. Cache-/Scan-Versionierung</h3><div class="note">
+  <p>Version nur erhöhen, wenn eine fachliche Änderung vorhandene Daten unvollständig/falsch macht. UI-/Layout-/Textänderungen benötigen keine neue Datenversion.</p>
+  <p><strong>Discovery-Version:</strong> erhöhen, wenn bisher relevante Blockchain-Ereignisse gar nicht gefunden wurden → Nach-/Fullscan erforderlich.</p>
+  <p><strong>Klassifikation:</strong> wenn Rohereignisse vorhanden sind, aber anders interpretiert werden müssen, soll langfristig nur neu klassifiziert werden.</p>
+  <p><strong>Aktuell:</strong> Balances v${DATA_VERSIONS.balances}; NFTs v${DATA_VERSIONS.nft}; TLN/VOW BSC LP/Staking v${DATA_VERSIONS["project:tln_vow:bsc"]}; Scan-Typ <code>lp_history_v6_legacy_discovery</code>.</p></div></div>
+
+  <div class="custom-token-card"><h3 style="margin-top:0">4. TLN/VOW LP & Staking</h3><div class="note">
+  <p>Ein LP gehört zum Projekt, wenn mindestens eines seiner Underlyings ein TLN/VOW-Projekt-Token ist. Historische LPs dürfen nicht nur von heute aktiven <code>lp_token</code>-Adressen abhängen.</p>
+  <p>BSC Legacy-Discovery: Wallet-ERC20-Historie → Contract-Kandidat → token0/token1 → Projektzugehörigkeit → LP-Daten → Staking-Klassifikation.</p>
+  <p>Stake/Unstake nur gegen bestätigte Staking-Contracts; „Gegenadresse ist Smart Contract“ reicht nicht.</p>
+  <p>LP/Staking zählt wirtschaftlich zur Token-Übersicht und zum 31.12.-Bestand. Nach Projekt-Refresh wird die Token-Übersicht neu berechnet.</p>
+  <p>Historische LP-/Staking-Wallets bleiben auch bei aktuellem Bestand 0 sichtbar und im Walletfilter auswählbar.</p></div></div>
+
+  <div class="custom-token-card"><h3 style="margin-top:0">5. Spam / Entdecken</h3><div class="note">
+  <p>Das System erkennt nur <strong>Spamverdacht</strong>. Die endgültige Entscheidung <strong>Sicher</strong> oder <strong>Spam</strong> trifft der User.</p>
+  <p>Nur bestätigter Spam wird standardmäßig ausgeblendet und darf beim Activity-Check ignoriert werden. Die Sammelaktion „Alle Spam-Verdachte als Spam markieren“ ist eine ausdrückliche Useraktion.</p></div></div>
+
+  <div class="custom-token-card"><h3 style="margin-top:0">6. Release-/Fehlerbehebungsregel</h3><div class="note">
+  <p>Bei jeder fachlichen Korrektur prüfen: betroffener Datenbereich, Re-Klassifikation vs. inkrementeller Nachscan vs. Fullscan, nötige <code>data_version</code>, nötiger neuer <code>scan_type</code>.</p>
+  <p>README und Migrationsstatus aktualisieren; sichtbaren Versions-Timestamp auf tatsächliche Erstellzeit setzen; JS-Syntax, doppelte DOM-IDs und Regressionen prüfen.</p></div></div>
+
+  <div class="custom-token-card"><h3 style="margin-top:0">7. Vorgesehene Architekturverbesserungen</h3><div class="note">
+  <p><strong>Raw Events / Interpretation trennen:</strong> Blockchain-Rohdaten langfristig separat von Add/Remove/Send/Receive/Stake/Unstake halten, damit Klassifikationsfehler ohne Fullscan korrigiert werden können.</p>
+  <p><strong>Admin-Neuaufbau:</strong> gezielte Wartungsaktion für einzelnes Wallet / alle Wallets eines Users und auswählbare Datenbereiche vorsehen.</p>
+  <p><strong>ETH TLN/VOW Liquidity Pools:</strong> weiterhin offen; BSC ist aktuell funktional weiter ausgebaut.</p></div></div>`;
+}
 
 
 function coverageCell(enabled, provider, implementedProviders, notApplicable=false) {
@@ -3340,10 +3385,27 @@ async function mergeTlnBscStakingCacheIntoWalletData(){
 // ---- Zentraler Refresh-/Activity-Status (Phase 2au) ----
 // Supabase ist bewusst die Quelle: 1x täglich gilt damit pro Wallet auch geräteübergreifend.
 let walletRefreshStates = new Map();
+
+// Fachliche Cache-/Algorithmus-Versionen.
+// Nur erhöhen, wenn vorhandene Cache-Daten fachlich neu aufgebaut werden müssen.
+// Die Versionsprüfung steht IMMER vor Tageslimit und Activity-Check.
+const DATA_VERSIONS = Object.freeze({
+  balances: 1,
+  nft: 1,
+  "project:tln_vow:bsc": 6
+});
+function requiredDataVersion(chain,dataType){
+  return Number(DATA_VERSIONS[`${dataType}:${chain}`] ?? DATA_VERSIONS[dataType] ?? 1);
+}
 const refreshStateKey=(walletId,chain,dataType)=>`${String(walletId)}|${chain||''}|${dataType}`;
+function refreshStateCurrent(w,chain,dataType){
+  const r=walletRefreshStates.get(refreshStateKey(walletDbId(w),chain,dataType));
+  return !!r && Number(r.data_version||0) >= requiredDataVersion(chain,dataType);
+}
+function needsDataRebuild(w,chain,dataType){ return !refreshStateCurrent(w,chain,dataType); }
 function walletDbId(w){return String(w?.dbId||w?.id||'');}
 function localDayKey(v){const d=v instanceof Date?v:new Date(v);if(isNaN(d.getTime()))return '';return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-function refreshedToday(w,chain,dataType){const r=walletRefreshStates.get(refreshStateKey(walletDbId(w),chain,dataType));return !!r?.last_checked_at&&localDayKey(r.last_checked_at)===localDayKey(new Date());}
+function refreshedToday(w,chain,dataType){const r=walletRefreshStates.get(refreshStateKey(walletDbId(w),chain,dataType));return refreshStateCurrent(w,chain,dataType)&&!!r?.last_checked_at&&localDayKey(r.last_checked_at)===localDayKey(new Date());}
 async function loadWalletRefreshStates(){
   walletRefreshStates=new Map();if(!currentUser)return;
   const {data,error}=await sb.from('wallet_refresh_state').select('*').eq('user_id',currentUser.id);
@@ -3351,7 +3413,7 @@ async function loadWalletRefreshStates(){
   for(const r of data||[])walletRefreshStates.set(refreshStateKey(r.wallet_id,r.chain_key,r.data_type),r);
 }
 async function saveWalletRefreshState(w,chain,dataType,patch={}){
-  const payload={user_id:currentUser.id,wallet_id:walletDbId(w),chain_key:chain||'',data_type:dataType,updated_at:new Date().toISOString(),...patch};
+  const payload={user_id:currentUser.id,wallet_id:walletDbId(w),chain_key:chain||'',data_type:dataType,data_version:requiredDataVersion(chain,dataType),updated_at:new Date().toISOString(),...patch};
   const {data,error}=await sb.from('wallet_refresh_state').upsert(payload,{onConflict:'user_id,wallet_id,chain_key,data_type'}).select().single();
   if(error){console.warn('Refresh-Status speichern:',error);return null;}
   walletRefreshStates.set(refreshStateKey(payload.wallet_id,payload.chain_key,payload.data_type),data);return data;
@@ -3426,7 +3488,7 @@ async function maybeAutoRefreshProject(projectKey,chain,targetId){
     const eligible=wallets.filter(w=>walletAddressForChain(w,chain)&&!refreshedToday(w,chain,`project:${projectKey}`));
     if(!eligible.length)return renderProjectLpTab(projectKey,[chain],targetId,'2025-12-31',false);
     const scratch=document.getElementById('centralProjectRefreshScratch');
-    for(const w of eligible){try{if(scratch)scratch.innerHTML=`<div class="note">${escapeAttr(w.label)} · ${escapeAttr(CHAIN_META[chain]?.label||chain)} Projekt-Daten werden automatisch aktualisiert…</div>`;await refreshProjectWallet(w,projectKey,chain);}catch(e){console.warn('Projekt-Autoload',w.label,e);}}
+    for(const w of eligible){try{const rebuild=needsDataRebuild(w,chain,`project:${projectKey}`);if(scratch)scratch.innerHTML=`<div class="note">${escapeAttr(w.label)} · ${escapeAttr(CHAIN_META[chain]?.label||chain)} ${rebuild?'Projekt-Cache wird wegen neuer Datenlogik neu aufgebaut…':'Projekt-Daten werden automatisch aktualisiert…'}</div>`;await refreshProjectWallet(w,projectKey,chain);}catch(e){console.warn('Projekt-Autoload',w.label,e);}}
     return renderProjectLpTab(projectKey,[chain],targetId,'2025-12-31',false);
   })();
   projectAutoRefreshInFlight.set(flightKey,job);
@@ -3435,12 +3497,12 @@ async function maybeAutoRefreshProject(projectKey,chain,targetId){
 
 function renderWalletDataFreshness(){
   const el=document.getElementById('walletDataFreshness');if(!el)return;
-  const fmtState=(r)=>{if(!r?.last_checked_at)return 'noch nie geprüft';const checked=new Date(r.last_checked_at).toLocaleString('de-CH');if(r.last_result==='no_relevant_activity')return `geprüft ${checked} · keine relevante Aktivität`;const refreshed=r.last_refreshed_at?new Date(r.last_refreshed_at).toLocaleString('de-CH'):checked;return `aktualisiert ${refreshed}`;};
+  const fmtState=(r,required=1)=>{if(!r?.last_checked_at)return 'noch nie geprüft';if(Number(r.data_version||0)<Number(required||1))return `Neuaufbau erforderlich · Cache v${Number(r.data_version||0)}, Soll v${required}`;const checked=new Date(r.last_checked_at).toLocaleString('de-CH');if(r.last_result==='no_relevant_activity')return `geprüft ${checked} · keine relevante Aktivität`;const refreshed=r.last_refreshed_at?new Date(r.last_refreshed_at).toLocaleString('de-CH'):checked;return `aktualisiert ${refreshed}`;};
   const body=wallets.map(w=>{
     const balanceStates=Object.keys(CHAIN_CONFIG).filter(c=>walletAddressForChain(w,c)&&CHAIN_CONFIG[c]?.balanceProvider).map(c=>walletRefreshStates.get(refreshStateKey(walletDbId(w),c,'balances'))).filter(Boolean);
     const newest=balanceStates.sort((a,b)=>new Date(b.last_checked_at||0)-new Date(a.last_checked_at||0))[0];
     const proj=walletRefreshStates.get(refreshStateKey(walletDbId(w),'bsc','project:tln_vow')),nft=walletRefreshStates.get(refreshStateKey(walletDbId(w),'','nft'));
-    return `<tr><td><strong>${escapeAttr(w.label)}</strong></td><td>${escapeAttr(fmtState(newest))}</td><td>${w.evm?escapeAttr(fmtState(proj)):'–'}</td><td>${escapeAttr(fmtState(nft))}</td></tr>`;
+    return `<tr><td><strong>${escapeAttr(w.label)}</strong></td><td>${escapeAttr(fmtState(newest))}</td><td>${w.evm?escapeAttr(fmtState(proj,requiredDataVersion('bsc','project:tln_vow'))):'–'}</td><td>${escapeAttr(fmtState(nft,requiredDataVersion('','nft')))}</td></tr>`;
   }).join('');
   el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Datenstand pro Wallet</div><div class="note" style="margin-bottom:8px">„Geprüft“ bedeutet: Die Blockchain wurde heute kontrolliert; ohne relevante Aktivität wurde der bestehende Datenstand bewusst weiterverwendet.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Bestände</th><th>TLN/VOW · LP & Staking</th><th>NFTs</th></tr></thead><tbody>${body||'<tr><td colspan="4">Keine Wallets vorhanden.</td></tr>'}</tbody></table></div></div>`;
 }
@@ -3468,9 +3530,10 @@ async function loadAll(options = {}) {
       await saveWalletRefreshState(w,chain,'balances',{last_checked_at:new Date().toISOString(),last_refreshed_at:shouldRefresh?new Date().toISOString():(state?.last_refreshed_at||null),last_checked_block:activity.latestBlock??state?.last_checked_block??null,last_result:shouldRefresh?'refreshed':'no_relevant_activity'});
     }
     // Projektpositionen gehören wirtschaftlich zur Token-Übersicht und werden deshalb im Full-Refresh mitgeführt.
-    if(w.evm&&(!automatic||!refreshedToday(w,'bsc','project:tln_vow'))){
+    if(w.evm&&(!automatic||needsDataRebuild(w,'bsc','project:tln_vow')||!refreshedToday(w,'bsc','project:tln_vow'))){
       const ps=walletRefreshStates.get(refreshStateKey(walletDbId(w),'bsc','project:tln_vow'));
-      if(!automatic||changedChains.has('bsc')||!ps?.last_checked_at){
+      const forceProjectRebuild=needsDataRebuild(w,'bsc','project:tln_vow');
+      if(!automatic||forceProjectRebuild||changedChains.has('bsc')||!ps?.last_checked_at){
         try{progress.push('  TLN/VOW: LP & Staking');renderCentralRefreshProgress(progress);await refreshProjectWallet(w,'tln_vow','bsc');walletChanged=true;}catch(e){failures.push({ok:false,error:`${w.label} TLN/VOW: ${e.message}`});}
       }else await saveWalletRefreshState(w,'bsc','project:tln_vow',{last_checked_at:new Date().toISOString(),last_refreshed_at:ps?.last_refreshed_at||null,last_result:'no_relevant_activity'});
     }
@@ -4467,7 +4530,7 @@ function lpPairBelongsToProject(pair,chain,projectKey){
 
 function projectLpScanType(projectKey,chain){
   const classifiedOnly=projectKey==="tln_vow"&&["bsc","eth"].includes(chain);
-  return (projectKey==="tln_vow"&&chain==="bsc")?"lp_history_v5_legacy_discovery":(classifiedOnly?"lp_history_v3_classified":"lp_history_v2");
+  return (projectKey==="tln_vow"&&chain==="bsc")?"lp_history_v6_legacy_discovery":(classifiedOnly?"lp_history_v3_classified":"lp_history_v2");
 }
 
 async function syncProjectLpHistory(projectKey,chain,walletAddress){
@@ -4496,7 +4559,7 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
   const from=last>0?Math.max(0,last-50):0;
   let transfers=[],syncWarning=null;
   try{
-    // Legacy-Discovery braucht beim ersten v5-Lauf bewusst die gesamte ERC-20-Historie.
+    // Legacy-Discovery braucht beim ersten v6-Lauf bewusst die gesamte ERC-20-Historie.
     // Danach läuft derselbe Scan inkrementell ab dem letzten erfolgreichen Block weiter.
     transfers=await lpWalletTransfersSince(chain,walletAddress,from,legacyDiscovery?null:(classifiedOnly?configuredPairs:null));
   }catch(e){syncWarning=`Transfer-Discovery: ${e?.message||String(e)}`;}
