@@ -20,7 +20,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 14:56 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 15:04 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -48,6 +48,10 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card"><h2>Rohe Staking-Ereignisse</h2>
 <p class="muted">Diese Tabelle zeigt <b>jede</b> LP-Übertragung zwischen Wallet und einem bestätigten Staking-Contract. Wenn hier ein historischer Stake steht, aber unten kein Lot entsteht, liegt der Fehler in der Lot-/FIFO-Rekonstruktion.</p>
 <div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Aktion</th><th>Pool</th><th>Staking-Contract</th><th>Bezeichnung</th><th>LP-Menge</th><th>Block</th><th>Tx</th></tr></thead><tbody id="stakingEvents"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
+
+<div class="card"><h2>Wallet-bezogene Smart-Contract-Events</h2>
+<p class="muted">Deep-Scan: alle Events der erkannten Staking-/Entry-Contracts, in denen die Wallet irgendwo in Topics oder Daten vorkommt. Damit sehen wir auch Legacy-Events mit unbekanntem Layout.</p>
+<div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Erkennung</th><th>Contract</th><th>Topic0</th><th>Tx von</th><th>Tx an</th><th>LP-Rückgabe?</th><th>Tx</th></tr></thead><tbody id="deepEvents"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
 
 <div class="card"><h2>🟢 Laufende Stakings</h2>
 <p class="muted">Aktuell noch offene Staking-Positionen. Transaktionen und Smart-Contract-Details sind direkt an der jeweiligen Position aufklappbar.</p>
@@ -341,30 +345,41 @@ async function getBlockTimestampHex(blockHex,cache){
     cache.set(key,iso);return iso;
   }catch{cache.set(key,null);return null}
 }
+function hexContainsWallet(value,wallet){
+  const needle=norm(wallet).replace(/^0x/,'');
+  return needle && String(value||'').toLowerCase().replace(/^0x/,'').includes(needle);
+}
+function logMentionsWallet(lg,wallet){
+  if((lg?.topics||[]).some(t=>hexContainsWallet(t,wallet)))return true;
+  if(hexContainsWallet(lg?.data,wallet))return true;
+  return false;
+}
 async function logsForWalletOnContract(contract,wallet,fromBlock){
   const address=norm(contract);
   if(!ethers.isAddress(address))return [];
-  const topicWallet=walletTopicAddress(wallet);
-  const filter={address,fromBlock:fromBlock||'0x0',toBlock:'latest',topics:[null,topicWallet]};
-  try{
-    return await rpc('eth_getLogs',[filter])||[];
-  }catch(firstErr){
-    // Wide historical ranges can be rejected. Fall back to 500k-block chunks.
-    let latestHex=await rpc('eth_blockNumber',[]);
-    let start=Number(BigInt(fromBlock||'0x0')),latest=Number(BigInt(latestHex));
-    const out=[],step=500000;
-    for(let a=start;a<=latest;a+=step){
-      const b=Math.min(latest,a+step-1);
-      try{
-        const rows=await rpc('eth_getLogs',[{address,fromBlock:'0x'+a.toString(16),toBlock:'0x'+b.toString(16),topics:[null,topicWallet]}]);
-        out.push(...(rows||[]));
-      }catch(e){
-        log(`SC-Event-Scan ${address} · Block ${a}-${b}: ${e.message}`,'warn');
+  const latestHex=await rpc('eth_blockNumber',[]);
+  const start=Number(BigInt(fromBlock||'0x0')),latest=Number(BigInt(latestHex));
+  const out=[],step=250000;
+  for(let a=start;a<=latest;a+=step){
+    const b=Math.min(latest,a+step-1);
+    try{
+      // Important: do NOT assume the wallet is indexed as topic1.
+      // Legacy TLN contracts use different event layouts.
+      const rows=await rpc('eth_getLogs',[{
+        address,
+        fromBlock:'0x'+a.toString(16),
+        toBlock:'0x'+b.toString(16)
+      }]);
+      for(const lg of (rows||[])){
+        if(logMentionsWallet(lg,wallet))out.push(lg);
       }
+    }catch(e){
+      log(`SC-Deep-Scan ${address} · Block ${a}-${b}: ${e.message}`,'warn');
     }
-    return out;
   }
+  return out;
 }
+
 async function discoverStakingContractEvents(stakingRows,entryTargets,wallet){
   const contracts=new Map();
   let minBlock=null;
@@ -393,6 +408,20 @@ async function discoverStakingContractEvents(stakingRows,entryTargets,wallet){
       if(lg?.topics?.[2]){try{tokenId=BigInt(lg.topics[2]).toString()}catch{}}
       const words=rawWords(lg.data||'0x');
       if(words.length){amountRaw=words[words.length-1]?.uint==null?null:words[words.length-1].uint.toString()}
+      let receipt=null,tx=null,lpTransfers=[];
+      try{
+        [receipt,tx]=await Promise.all([
+          rpc('eth_getTransactionReceipt',[lg.transactionHash]),
+          rpc('eth_getTransactionByHash',[lg.transactionHash])
+        ]);
+        const transferTopic='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+        for(const x of (receipt?.logs||[])){
+          if(String(x?.topics?.[0]||'').toLowerCase()!==transferTopic||!x.topics?.[1]||!x.topics?.[2])continue;
+          const from=norm('0x'+String(x.topics[1]).slice(-40)),to=norm('0x'+String(x.topics[2]).slice(-40));
+          let raw=null;try{raw=BigInt(x.data||'0x0').toString()}catch{}
+          lpTransfers.push({token:norm(x.address),from,to,raw});
+        }
+      }catch{}
       events.push({
         kind:known||'SC-Event',
         method:known||`SC-Event ${topic0.slice(0,10)}`,
@@ -406,6 +435,11 @@ async function discoverStakingContractEvents(stakingRows,entryTargets,wallet){
         tokenId,
         amountRaw,
         rawData:lg.data||'0x',
+        txFrom:norm(tx?.from||''),
+        txTo:norm(tx?.to||''),
+        txInput:tx?.input||'0x',
+        success:receipt?.status==null?null:Number(BigInt(receipt.status))===1,
+        lpTransfers,
         source:'contract_event'
       });
     }
@@ -415,6 +449,7 @@ async function discoverStakingContractEvents(stakingRows,entryTargets,wallet){
   return events;
 }
 function attachContractEventsToLots(lots,events){
+  const wallet=norm(CURRENT_WALLET);
   for(const ev of (events||[])){
     const when=ev.time?new Date(ev.time).getTime():null;
     const candidates=(lots||[]).filter(l=>{
@@ -428,24 +463,29 @@ function attachContractEventsToLots(lots,events){
     });
     if(!candidates.length)continue;
 
-    // For one position this is exact. With several positions use tokenId if available.
     let selected=null;
-    if(ev.tokenId){
-      selected=candidates.find(l=>String(l.stake_token_id||'')===String(ev.tokenId))||null;
-    }
+    if(ev.tokenId)selected=candidates.find(l=>String(l.stake_token_id||'')===String(ev.tokenId))||null;
     if(!selected&&candidates.length===1)selected=candidates[0];
 
     if(selected){
+      const pair=norm(selected.pair_address||safePairAddress(selected));
+      const lpBack=(ev.lpTransfers||[]).find(x=>x.token===pair&&x.to===wallet);
+      const afterStake=selected.stakeTime&&ev.time&&new Date(ev.time).getTime()>new Date(selected.stakeTime).getTime()+1000;
+      let effectiveKind=ev.kind;
+      if(lpBack&&afterStake)effectiveKind='Unstake';
+
       addLotTx(selected,{
-        kind:ev.kind,hash:ev.hash,time:ev.time,block:ev.block,
-        method:ev.method,source:'SC-Event',topic0:ev.topic0
+        kind:effectiveKind,hash:ev.hash,time:ev.time,block:ev.block,
+        method:effectiveKind==='Unstake'&&ev.kind!=='Unstake'?`${ev.method} · LP-Rückgabe erkannt`:ev.method,
+        source:'SC-Event',topic0:ev.topic0
       });
-      if(ev.kind==='Unstake'){
+
+      if(effectiveKind==='Unstake'){
         selected.status='closed';
         selected.remaining=0;
         selected.unstakeTime=ev.time||null;
         selected.unstakeTx=ev.hash||null;
-        selected.unstakeEvidence='contract_event';
+        selected.unstakeEvidence=ev.kind==='Unstake'?'contract_event':'contract_event_lp_return';
         selected.unstakeEventTopic=ev.topic0;
       }
     }else{
@@ -456,6 +496,7 @@ function attachContractEventsToLots(lots,events){
     }
   }
 }
+
 async function discoverStakeEntryTargets(stakingRows){
   const targets=new Map();
   for(const r of (stakingRows||[]).filter(x=>x.action==='STAKE')){
@@ -590,10 +631,31 @@ function positionCardHtml(l,index,isClosed){
   const actualDays=l.stakeTime?Math.max(0,Math.floor(((l.unstakeTime?new Date(l.unstakeTime).getTime():Date.now())-new Date(l.stakeTime).getTime())/86400000)):null;
   return `<div class="stake-pos"><div class="stake-pos-head"><div><div class="stake-title">${esc(safePairLabel(l))}</div><div class="muted">${esc(stakingContractLabel(l.staking))}</div></div><div class="stake-status ${statusClass}">${esc(status)}</div></div><div class="stake-facts"><div class="stake-fact"><span class="k">Stake-Datum</span><span class="v">${l.stakeTime?new Date(l.stakeTime).toLocaleString('de-CH'):'–'}</span></div><div class="stake-fact"><span class="k">LP ursprünglich gestakt</span><span class="v">${Number(l.original||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div><div class="stake-fact"><span class="k">LP aktuell offen</span><span class="v">${Number(l.remaining||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div><div class="stake-fact"><span class="k">Vorgesehene Laufzeit</span><span class="v">${l.durationDays?`${l.durationDays} Tage`:'–'}</span></div><div class="stake-fact"><span class="k">Freigegeben / ausgelaufen am</span><span class="v">${l.expiryTime?new Date(l.expiryTime).toLocaleString('de-CH'):'–'}</span></div>${isClosed?`<div class="stake-fact"><span class="k">Unstake-Datum</span><span class="v">${l.unstakeTime?new Date(l.unstakeTime).toLocaleString('de-CH'):'–'}</span></div><div class="stake-fact"><span class="k">Tatsächliche Dauer</span><span class="v">${actualDays!=null?`${actualDays} Tage`:'–'}</span></div>`:''}<div class="stake-fact"><span class="k">Staking-Contract</span><span class="v mono">${esc(l.staking?.contract_address||l.counterparty||'–')}</span></div></div><div class="stake-actions"><details><summary>Transaktionen (${(l.transactions||[]).length})</summary>${txRowsHtml(l)}</details><details class="sc-details" data-lot-index="${index}"><summary>Technische SC-Details</summary><div id="scBox${index}" class="sc-box"><span class="muted">Zum Laden öffnen.</span></div></details></div></div>`;
 }
+function renderDeepEvents(events,lots){
+  const wallet=norm(CURRENT_WALLET);
+  $('deepEvents').innerHTML=(events||[]).length?(events||[]).map(ev=>{
+    let lpBack=false;
+    for(const l of (lots||[])){
+      const pair=norm(l.pair_address||safePairAddress(l));
+      if((ev.lpTransfers||[]).some(x=>x.token===pair&&x.to===wallet)){lpBack=true;break}
+    }
+    return `<tr>
+      <td>${ev.time?new Date(ev.time).toLocaleString('de-CH'):'–'}</td>
+      <td><b>${esc(ev.kind)}</b></td>
+      <td>${esc(ev.contractLabel)}<div class="mono">${esc(ev.contract)}</div></td>
+      <td class="mono">${esc(ev.topic0)}</td>
+      <td class="mono">${esc(ev.txFrom||'–')}</td>
+      <td class="mono">${esc(ev.txTo||'–')}</td>
+      <td>${lpBack?'<span class="ok"><b>JA</b></span>':'–'}</td>
+      <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(ev.hash)}">${esc(ev.hash)}</a></td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="8">Keine wallet-bezogenen SC-Events gefunden.</td></tr>';
+}
 function renderLots(stakingRows,contractCalls=[],contractEvents=[]){
   const {lots,unmatched}=buildDiagnosticLots(stakingRows);
   reconcileLotsWithContractCalls(lots,contractCalls);
   attachContractEventsToLots(lots,contractEvents);
+  renderDeepEvents(contractEvents,lots);
   $('mLots').textContent=lots.length;$('mClosed').textContent=lots.filter(l=>l.status==='closed').length;
   associateContractCallsToLots(lots,contractCalls);
   const running=[...lots].filter(l=>l.status!=='closed').sort((a,b)=>String(b.stakeTime||'').localeCompare(String(a.stakeTime||'')));
@@ -661,6 +723,6 @@ tlnWallets=(wq.data||[])
 populateTlnWalletDropdown();
 bindWalletDropdown();
 $('projectCount').textContent=`${projectTokens.length} Underlying-Projekt-Token geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>{const d=stakingDurationDays(x);return `<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td>${d?`${d} Tage`:'–'}</td></tr>`}).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;log(`Initialisiert: ${projectTokens.length} Projekt-Token, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok')}
-$('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('contractCalls').innerHTML='<tr><td colspan="9">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('runningStakings').innerHTML='<div class="muted">Suche…</div>';$('completedStakings').innerHTML='<div class="muted">Suche…</div>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();CURRENT_WALLET=wallet;if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const transfers=await allErc20Transfers(wallet);$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const projectSet=new Set(projectTokens.map(x=>norm(x.address)));const candidates=[...counts.keys()];log(`${candidates.length} unterschiedliche ERC-20-Contracts werden als mögliche V2-LPs geprüft.`);const pairs=[];for(let i=0;i<candidates.length;i++){if(i%25===0)log(`LP-Prüfung ${i+1}/${candidates.length}…`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}$('mPairs').textContent=pairs.length;const pairMap=new Map(pairs.map(p=>[p.address,p]));$('pairs').innerHTML=pairs.length?pairs.map(p=>{const hits=p.hits.map(h=>h===p.token0.address?p.token0.symbol:p.token1.symbol).join(', ');return `<tr><td><b>${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}</b><br><span class="muted">LP-Symbol: ${esc(p.lpSymbol)}</span></td><td class="mono">${esc(p.address)}</td><td>${esc(p.token0.symbol)}<div class="mono">${esc(p.token0.address)}</div></td><td>${esc(p.token1.symbol)}<div class="mono">${esc(p.token1.address)}</div></td><td><span class="ok">${esc(hits)}</span></td><td class="mono">${esc(p.factory)}</td><td>${counts.get(p.address)||0}</td></tr>`}).join(''):'<tr><td colspan="7">Keine historischen TLN/VOW-V2-LPs in diesem Wallet gefunden.</td></tr>';const rows=renderEvents(transfers,pairMap,wallet);const stakingRows=renderRawStakingEvents(rows);const entryTargets=await discoverStakeEntryTargets(stakingRows);if(entryTargets.length)log(`Zusätzliche Entry-/Controller-Contracts aus Stake-Txs erkannt: ${entryTargets.map(x=>x.contract_address).join(', ')}`,'ok');const contractCalls=await allExternalCallsToStaking(wallet,entryTargets);renderContractCalls(contractCalls);log(`${contractCalls.length} direkte Wallet-Aufrufe an Staking-/Entry-Contracts geprüft.`,'ok');const contractEvents=await discoverStakingContractEvents(stakingRows,entryTargets,wallet);const lotResult=renderLots(stakingRows,contractCalls,contractEvents);log(`Ergebnis: ${pairs.length} TLN/VOW-LPs entdeckt; ${rows.length} LP-Ereignisse; ${stakingRows.length} Stake/Unstake-Ereignisse; ${lotResult.lots.length} historische Stake-Lots.`,'ok');for(const r of stakingRows)log(`${r.action} · ${safePairLabel(r)} · ${safePairAddress(r)} · ${r.staking?.label||r.counterparty}`,'ok');for(const ev of contractEvents)log(`SC-EVENT ${ev.kind} · ${ev.contractLabel} · ${ev.time||'ohne Zeit'} · ${ev.topic0} · ${ev.hash}`,ev.kind==='Unstake'?'ok':'');$('status').innerHTML='<span class="ok">Discovery und Staking-Auswertung abgeschlossen.</span>'}catch(e){$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{b.disabled=false}};
+$('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('contractCalls').innerHTML='<tr><td colspan="9">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('runningStakings').innerHTML='<div class="muted">Suche…</div>';$('completedStakings').innerHTML='<div class="muted">Suche…</div>';$('deepEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();CURRENT_WALLET=wallet;if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const transfers=await allErc20Transfers(wallet);$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const projectSet=new Set(projectTokens.map(x=>norm(x.address)));const candidates=[...counts.keys()];log(`${candidates.length} unterschiedliche ERC-20-Contracts werden als mögliche V2-LPs geprüft.`);const pairs=[];for(let i=0;i<candidates.length;i++){if(i%25===0)log(`LP-Prüfung ${i+1}/${candidates.length}…`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}$('mPairs').textContent=pairs.length;const pairMap=new Map(pairs.map(p=>[p.address,p]));$('pairs').innerHTML=pairs.length?pairs.map(p=>{const hits=p.hits.map(h=>h===p.token0.address?p.token0.symbol:p.token1.symbol).join(', ');return `<tr><td><b>${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}</b><br><span class="muted">LP-Symbol: ${esc(p.lpSymbol)}</span></td><td class="mono">${esc(p.address)}</td><td>${esc(p.token0.symbol)}<div class="mono">${esc(p.token0.address)}</div></td><td>${esc(p.token1.symbol)}<div class="mono">${esc(p.token1.address)}</div></td><td><span class="ok">${esc(hits)}</span></td><td class="mono">${esc(p.factory)}</td><td>${counts.get(p.address)||0}</td></tr>`}).join(''):'<tr><td colspan="7">Keine historischen TLN/VOW-V2-LPs in diesem Wallet gefunden.</td></tr>';const rows=renderEvents(transfers,pairMap,wallet);const stakingRows=renderRawStakingEvents(rows);const entryTargets=await discoverStakeEntryTargets(stakingRows);if(entryTargets.length)log(`Zusätzliche Entry-/Controller-Contracts aus Stake-Txs erkannt: ${entryTargets.map(x=>x.contract_address).join(', ')}`,'ok');const contractCalls=await allExternalCallsToStaking(wallet,entryTargets);renderContractCalls(contractCalls);log(`${contractCalls.length} direkte Wallet-Aufrufe an Staking-/Entry-Contracts geprüft.`,'ok');const contractEvents=await discoverStakingContractEvents(stakingRows,entryTargets,wallet);const lotResult=renderLots(stakingRows,contractCalls,contractEvents);log(`Ergebnis: ${pairs.length} TLN/VOW-LPs entdeckt; ${rows.length} LP-Ereignisse; ${stakingRows.length} Stake/Unstake-Ereignisse; ${lotResult.lots.length} historische Stake-Lots.`,'ok');for(const r of stakingRows)log(`${r.action} · ${safePairLabel(r)} · ${safePairAddress(r)} · ${r.staking?.label||r.counterparty}`,'ok');for(const ev of contractEvents)log(`SC-EVENT ${ev.kind} · ${ev.contractLabel} · ${ev.time||'ohne Zeit'} · ${ev.topic0} · ${ev.hash}`,ev.kind==='Unstake'?'ok':'');$('status').innerHTML='<span class="ok">Discovery und Staking-Auswertung abgeschlossen.</span>'}catch(e){$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{b.disabled=false}};
 init();
 </script></body></html>
