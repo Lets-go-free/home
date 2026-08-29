@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 01:08:23 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 01:21:56 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -1283,6 +1283,91 @@ async function enrichLotsBusiness(lots,pricePairs){
 
 function callTimeMs(c){return c?.metadata?.blockTimestamp?new Date(c.metadata.blockTimestamp).getTime():0}
 
+async function historicalWalletProbeMap(contract,wallet,blockHex){
+  const out=new Map();
+  if(!ethers.isAddress(norm(contract||''))||!ethers.isAddress(norm(wallet||''))||!blockHex)return out;
+  // Only wallet-specific probes are useful for proving a relationship to THIS wallet/position.
+  const probes=SC_READ_PROBES.filter(p=>(p.args||[]).includes('wallet'));
+  for(const probe of probes){
+    try{
+      const raw=await rpc('eth_call',[{to:norm(contract),data:encodeProbeCall(probe,wallet)},blockHex]);
+      if(raw&&raw!=='0x')out.set(probe.sig,String(raw).toLowerCase());
+    }catch{}
+  }
+  return out;
+}
+function changedHistoricalProbeRows(before,after){
+  const rows=[];
+  for(const [sig,a] of (after||new Map())){
+    const b=(before||new Map()).get(sig);
+    if(b!=null&&b!==a)rows.push({sig,before:b,after:a});
+  }
+  return rows;
+}
+async function learnRewardContractRelations(lots){
+  const wallet=norm(CURRENT_WALLET);
+  const rewardContracts=[...new Set([...LEARNED_REWARD_PATHS.values()]
+    .filter(r=>r&&r.contract&&r.selector)
+    .filter(r=>{
+      const m=METHOD_SELECTORS.get(String(r.selector).toLowerCase())||'';
+      return m!=='Stake'&&m!=='Unstake';
+    })
+    .map(r=>norm(r.contract))
+    .filter(ethers.isAddress))];
+
+  for(const lot of (lots||[])){
+    lot.rewardContractRelations=lot.rewardContractRelations||[];
+    const direct=norm(lot?.staking?.contract_address||lot.counterparty||'');
+    const entry=norm(lot.entry_contract||'');
+    const eventContract=norm(lot.stake_event_contract||'');
+    const already=new Set([direct,entry,eventContract].filter(Boolean));
+
+    const lifecycle=[
+      {kind:'Stake',tx:lot.stakeTx,blockHex:lot.stakeBlockHex},
+      ...(lot.topUps||[]).map(x=>({kind:'Aufstockung',tx:x.tx,blockHex:x.blockHex})),
+      ...(lot.unstakeBlockHex?[{kind:'Unstake',tx:lot.unstakeTx,blockHex:lot.unstakeBlockHex}]:[])
+    ].filter(x=>x.blockHex);
+
+    for(const rewardContract of rewardContracts){
+      if(already.has(rewardContract))continue;
+      let relation=null;
+
+      for(const ev of lifecycle){
+        let n=null;
+        try{n=Number(BigInt(ev.blockHex))}catch{}
+        if(!(n>0))continue;
+        const beforeHex='0x'+(n-1).toString(16);
+        const afterHex='0x'+n.toString(16);
+
+        const [before,after]=await Promise.all([
+          historicalWalletProbeMap(rewardContract,wallet,beforeHex),
+          historicalWalletProbeMap(rewardContract,wallet,afterHex)
+        ]);
+        const changed=changedHistoricalProbeRows(before,after);
+        if(changed.length){
+          relation={
+            contract:rewardContract,
+            evidenceKind:'historical_wallet_state_change',
+            lifecycleKind:ev.kind,
+            lifecycleTx:ev.tx||null,
+            block:n,
+            changedProbes:changed.map(x=>x.sig)
+          };
+          break;
+        }
+      }
+
+      if(relation){
+        lot.rewardContractRelations.push(relation);
+        log(`Reward-Contract-Beziehung on-chain erkannt: ${rewardContract} ↔ ${safePairLabel(lot)} · Wallet-State änderte sich bei ${relation.lifecycleKind} · Block ${relation.block} · ${relation.changedProbes.join(', ')}`,'ok');
+      }
+    }
+  }
+}
+function lotRewardContracts(lot){
+  return new Set((lot?.rewardContractRelations||[]).map(x=>norm(x.contract)).filter(Boolean));
+}
+
 async function learnRewardPathsFromWalletCalls(calls){
   LEARNED_REWARD_PATHS.clear();
   const wallet=norm(CURRENT_WALLET);
@@ -1373,8 +1458,18 @@ async function attachRewardClaimsToLots(lots,calls){
       const classified=norm(c?._staking?.contract_address||'');
       if(classified&&classified===direct){score+=70;reasons.push('SC-Katalog')}
       if(classified&&entry&&classified===entry){score+=60;reasons.push('Controller-Katalog')}
+      const relatedRewards=lotRewardContracts(lot);
       const learned=learnedRewardPath(callTo,c._selector||'');
-      if(learned){score+=85;reasons.push(`dynamisch gelernter Reward-/Claim-Pfad (${callTo} · ${c._selector||'–'})`)}
+      const learnedBelongsToLot=!!(learned && callTo && (callTo===direct || callTo===entry || callTo===eventContract || relatedRewards.has(callTo)));
+      if(learnedBelongsToLot){
+        score+=85;
+        reasons.push(relatedRewards.has(callTo)
+          ? `dynamisch gelernter Reward-/Claim-Pfad · on-chain mit diesem Staking verknüpft (${callTo} · ${c._selector||'–'})`
+          : `dynamisch gelernter Reward-/Claim-Pfad dieses Stakings (${callTo} · ${c._selector||'–'})`);
+      }
+      if(callTo&&relatedRewards.has(callTo)){
+        score+=95;reasons.push('historisch belegte Reward-SC-Beziehung zur Position');
+      }
 
       // Explicitly supplied diagnostic claim: still require temporal plausibility,
       // but allow association when only one staking lot is active.
@@ -1583,7 +1678,8 @@ async function attachRewardTokenHistoryToLots(lots){
       const direct=norm(lot?.staking?.contract_address||lot.counterparty||'');
       const entry=norm(lot.entry_contract||'');
       const eventContract=norm(lot.stake_event_contract||'');
-      const targets=new Set([direct,entry,eventContract].filter(Boolean));
+      const relatedRewards=lotRewardContracts(lot);
+      const targets=new Set([direct,entry,eventContract,...relatedRewards].filter(Boolean));
       const known=knownByLot.get(lot)||new Map();
       const reasons=[];
       let score=0;
@@ -1604,7 +1700,12 @@ async function attachRewardTokenHistoryToLots(lots){
       const learned=callTo&&selector?learnedRewardPath(callTo,selector):null;
       const learnedBelongsToLot=!!(learned && callTo && targets.has(callTo));
       if(learnedBelongsToLot){
-        score+=85;reasons.push(`dynamisch gelernter Reward-/Claim-Pfad dieses Stakings (${callTo} · ${selector})`);
+        score+=85;reasons.push(relatedRewards.has(callTo)
+          ? `dynamisch gelernter Reward-/Claim-Pfad · on-chain mit diesem Staking verknüpft (${callTo} · ${selector})`
+          : `dynamisch gelernter Reward-/Claim-Pfad dieses Stakings (${callTo} · ${selector})`);
+      }
+      if(callTo&&relatedRewards.has(callTo)){
+        score+=95;reasons.push('historisch belegte Reward-SC-Beziehung zur Position');
       }
 
       // Alte TLN-Rewards werden teilweise gemintet (from = 0x0).
@@ -1656,7 +1757,11 @@ async function attachRewardTokenHistoryToLots(lots){
           hash,time,block,token,symbol:knownSome.known.get(token),from,to,
           calledContract:callTo||null,selector:selector||null,
           receiptContracts,score:chosen?.score||0,
-          reasons:chosen?.reasons||[]
+          reasons:chosen?.reasons||[],
+          lotRelations:candidates.slice(0,4).map(x=>({
+            staking:safePairLabel(x.lot),
+            rewardContracts:[...lotRewardContracts(x.lot)]
+          }))
         });
         log(`Reward-Historie Kandidat NICHT zugeordnet: ${hash} · ${knownSome.known.get(token)} · bester Score ${chosen?.score||0} · ${chosen?.reasons?.join(', ')||'keine Contract-/Receipt-Evidenz'} · Tx-Ziel ${callTo||'–'} · Selector ${selector||'–'} · Receipt-Contracts ${receiptContracts.join(', ')||'–'}`,'warn');
       }
@@ -1728,11 +1833,12 @@ function renderUnassignedRewards(){
     return;
   }
   el.innerHTML=`<div class="warnbox"><b>${rows.length} Reward-Kandidat(en) bewusst nicht automatisch zugeordnet.</b><br>Diese Transfers sind als Reward-Token plausibel, aber die Transaktion enthält noch keine ausreichend starke on-chain Beziehung zu genau einer Staking-Position.</div>
-  <div class="wrap"><table><thead><tr><th>Zeit</th><th>Token</th><th>Tx-Ziel / Selector</th><th>Receipt-Contracts</th><th>Score</th><th>Tx</th></tr></thead><tbody>${rows.map(r=>`<tr>
+  <div class="wrap"><table><thead><tr><th>Zeit</th><th>Token</th><th>Tx-Ziel / Selector</th><th>Receipt-Contracts</th><th>On-chain Reward-SC-Beziehungen</th><th>Score</th><th>Tx</th></tr></thead><tbody>${rows.map(r=>`<tr>
     <td>${r.time?new Date(r.time).toLocaleString('de-CH'):'–'}</td>
     <td>${esc(r.symbol||'–')}</td>
     <td class="mono">${esc(r.calledContract||'–')}<br>${esc(r.selector||'–')}</td>
     <td class="mono">${esc((r.receiptContracts||[]).join(', ')||'–')}</td>
+    <td>${(r.lotRelations||[]).map(x=>`${esc(x.staking)}: ${(x.rewardContracts||[]).length?(x.rewardContracts||[]).map(c=>`<span class="mono">${esc(c)}</span>`).join(', '):'–'}`).join('<br>')||'–'}</td>
     <td class="num">${Number(r.score||0)}</td>
     <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a></td>
   </tr>`).join('')}</tbody></table></div>`;
@@ -2301,6 +2407,7 @@ function positionCardHtml(l,index,isClosed){
       <div class="stake-fact"><span class="k">${l.durationSource?.startsWith('Historische SC-Simulation')?'USD-Wert beim frühesten historisch simulierbaren Unstake':'USD-Wert beim Vertragsende'}</span>${contractEndValue}</div>
       ${isClosed?`<div class="stake-fact"><span class="k">Tatsächliches Unstake-Datum</span><span class="v">${l.unstakeTime?new Date(l.unstakeTime).toLocaleString('de-CH'):'–'}</span></div><div class="stake-fact"><span class="k">USD-Wert beim tatsächlichen Unstake</span>${unstakeValue}</div><div class="stake-fact"><span class="k">Gesamtdauer erster Stake → Unstake</span><span class="v">${actualDays!=null?`${actualDays} Tage`:'–'}</span></div>${(l.topUps||[]).length?`<div class="stake-fact"><span class="k">Dauer letzte Aufstockung → Unstake</span><span class="v">${actualLockDays!=null?`${actualLockDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span></div>`:''}`:''}
       <div class="stake-fact"><span class="k">Staking-Contract</span><span class="v mono">${esc(l.staking?.contract_address||l.counterparty||'–')}</span></div>
+      <div class="stake-fact"><span class="k">On-chain verknüpfte Reward-Contracts</span><span class="v">${(l.rewardContractRelations||[]).length?(l.rewardContractRelations||[]).map(r=>`<span class="mono">${esc(r.contract)}</span><br><span class="value-source">${esc(r.lifecycleKind)} · Block ${esc(r.block)} · ${esc((r.changedProbes||[]).join(', '))}</span>`).join('<br>'):'–'}</span></div>
     </div>
     ${(l.topUps||[]).length?`<div class="reward-box"><div class="reward-title">Aufstockungen dieser Staking-Position</div><div class="wrap"><table><thead><tr><th>Zeit</th><th>Zusätzlich</th><th>Gesamt danach</th><th>Tx</th></tr></thead><tbody>${l.topUps.map(x=>`<tr><td>${x.time?new Date(x.time).toLocaleString('de-CH'):'–'}</td><td class="num">+${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="num">${Number(x.resultingPrincipal||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(x.tx)}">${esc(x.tx||'–')}</a></td></tr>`).join('')}</tbody></table></div></div>`:''}
     ${rewardHtml(l)}
@@ -2336,6 +2443,7 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   reconcileLotsWithContractCalls(lots,contractCalls);
   attachContractEventsToLots(lots,contractEvents);
   await learnRewardPathsFromWalletCalls(contractCalls);
+  await learnRewardContractRelations(lots);
   await attachRewardClaimsToLots(lots,contractCalls);
   await enrichLotsBusiness(lots,pricePairs);
   renderDeepEvents(contractEvents,lots);
