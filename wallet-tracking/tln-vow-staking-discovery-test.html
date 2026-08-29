@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 16:52:28 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 17:03:09 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -241,6 +241,93 @@ async function probeTimingAtBlock(lot,wallet,blockHex){
   }
   return rows;
 }
+
+const HIST_TX_CACHE=new Map();
+const HIST_BLOCK_CACHE=new Map();
+async function cachedTx(hash){
+  const h=String(hash||'').toLowerCase();
+  if(!h)return null;
+  if(HIST_TX_CACHE.has(h))return HIST_TX_CACHE.get(h);
+  const p=rpc('eth_getTransactionByHash',[h]).catch(()=>null);
+  HIST_TX_CACHE.set(h,p);
+  return p;
+}
+async function cachedBlockByNumber(blockHex){
+  const h=String(blockHex||'').toLowerCase();
+  if(!h)return null;
+  if(HIST_BLOCK_CACHE.has(h))return HIST_BLOCK_CACHE.get(h);
+  const p=rpc('eth_getBlockByNumber',[h,false]).catch(()=>null);
+  HIST_BLOCK_CACHE.set(h,p);
+  return p;
+}
+async function historicalCallSucceeds(call,blockNumber){
+  const tag='0x'+Number(blockNumber).toString(16);
+  try{
+    const r=await rpc('eth_call',[call,tag]);
+    return r!=null;
+  }catch{
+    return false;
+  }
+}
+async function deriveUnlockFromActualUnstake(lot){
+  if(lot.status!=='closed'||!lot.unstakeTx||!lot.stakeBlockHex)return null;
+
+  const tx=await cachedTx(lot.unstakeTx);
+  if(!tx?.to||!tx?.input||!tx?.blockNumber)return null;
+  const stakeBlock=Number(BigInt(lot.stakeBlockHex));
+  const unstakeBlock=Number(BigInt(tx.blockNumber));
+  if(!(unstakeBlock>stakeBlock+1))return null;
+
+  // Reuse exactly the successful user's unstake call (selector/calldata/value).
+  const call={
+    from:tx.from,
+    to:tx.to,
+    data:tx.input,
+    value:tx.value||'0x0'
+  };
+
+  // The state at the actual unstake block is already post-transaction, so use
+  // the latest prior block where the position was still staked.
+  let hi=unstakeBlock-1;
+  let hiOk=await historicalCallSucceeds(call,hi);
+
+  // If the user unstaked immediately after release, the preceding block can
+  // still be locked. Search backwards for a successful pre-unstake state is
+  // impossible in that case; use the actual successful tx timestamp only as
+  // an upper bound, not as a claimed contractual release time.
+  if(!hiOk){
+    return {
+      exact:false,
+      upperBoundBlock:unstakeBlock,
+      upperBoundTime:lot.unstakeTime||null,
+      source:'SC-Verhalten: tatsächlicher erfolgreicher Unstake; vorheriger Block noch nicht erfolgreich simulierbar'
+    };
+  }
+
+  // Predicate: same unstake call fails while locked, succeeds after release.
+  // Binary search first block where it succeeds.
+  let lo=stakeBlock;
+  // Avoid assuming that the stake block itself is a valid lower failure bound.
+  // We only need lo < hi; binary search converges to earliest successful block.
+  while(hi-lo>1){
+    const mid=Math.floor((lo+hi)/2);
+    if(await historicalCallSucceeds(call,mid))hi=mid;
+    else lo=mid;
+  }
+
+  const blockHex='0x'+hi.toString(16);
+  const b=await cachedBlockByNumber(blockHex);
+  if(!b?.timestamp)return null;
+  const ts=Number(BigInt(b.timestamp))*1000;
+
+  return {
+    exact:true,
+    block:hi,
+    blockHex,
+    expiryTime:new Date(ts).toISOString(),
+    source:'SC-Verhalten: frühester Block, an dem die tatsächliche Unstake-Transaktion historisch erfolgreich simulierbar ist'
+  };
+}
 async function resolveLotContractTiming(lot,latestProbe){
   // Contract-/positionsbezogene Freigabe hat Priorität.
   let rows=[...(latestProbe?.results||[])];
@@ -264,6 +351,21 @@ async function resolveLotContractTiming(lot,latestProbe){
     lot.expiryTime=new Date(new Date(lot.stakeTime).getTime()+duration.sec*1000).toISOString();
     lot.durationSource=`On-chain ${duration.r.label}${lot.stakeBlockHex?' @ Stake-Block':''}`;
     return;
+  }
+
+  // No getter? For completed positions derive the release dynamically from
+  // the contract's actual historical unstake behaviour.
+  const replay=await deriveUnlockFromActualUnstake(lot);
+  if(replay?.exact&&replay.expiryTime){
+    lot.expiryTime=replay.expiryTime;
+    lot.durationDays=lot.stakeTime?
+      (new Date(replay.expiryTime).getTime()-new Date(lot.stakeTime).getTime())/86400000:null;
+    lot.durationSource=replay.source;
+    lot.contractUnlockBlockHex=replay.blockHex;
+    return;
+  }
+  if(replay&&!replay.exact){
+    lot.contractEndUpperBound=replay;
   }
 
   lot.durationDays=null;
@@ -824,8 +926,10 @@ async function enrichLotsBusiness(lots,pricePairs){
     await resolveLotContractTiming(lot,probe);
     if(lot.expiryTime){
       log(`SC-Laufzeit ermittelt: ${safePairLabel(lot)} · ${lot.durationDays!=null?lot.durationDays.toLocaleString('de-CH',{maximumFractionDigits:3})+' Tage · ':''}${new Date(lot.expiryTime).toLocaleString('de-CH')} · ${lot.durationSource}`,'ok');
+    }else if(lot.contractEndUpperBound){
+      log(`SC-Vertragsende nicht exakt eingrenzbar: ${safePairLabel(lot)} · tatsächlicher Unstake war erfolgreich, aber der vorherige Block lässt sich nicht als bereits freigegeben bestätigen.`,'warn');
     }else{
-      log(`SC-Laufzeit nicht ermittelbar: ${safePairLabel(lot)} · keine belastbare On-chain Duration-/Unlock-Read-Funktion gefunden.`,'warn');
+      log(`SC-Laufzeit nicht ermittelbar: ${safePairLabel(lot)} · keine belastbare On-chain Duration-/Unlock-Read-Funktion und kein historisch simulierbarer Freigabezeitpunkt gefunden.`,'warn');
     }
     lot.rewardReads=extractRewardReads(lot.rewardProfile,probe);
     lot.rewardModel=deriveRewardModel(lot);
@@ -1074,62 +1178,64 @@ function stakeRewardEvidenceHtml(lot){
 
 async function attachRewardTokenHistory(lot){
   const wallet=norm(CURRENT_WALLET);
-  const rewardTokens=new Map();
+  const knownRewardTokens=new Map();
 
-  // Reward tokens may be learned from the stake transaction or from already
-  // confirmed staking/controller reward receipts.
   for(const x of (lot.stakeRewardEvidence||[])){
-    if(x.token&&x.symbol)rewardTokens.set(norm(x.token),x.symbol);
+    if(x.token&&x.symbol)knownRewardTokens.set(norm(x.token),x.symbol);
   }
   for(const x of (lot.rewardClaims||[])){
-    if(x.token&&x.symbol)rewardTokens.set(norm(x.token),x.symbol);
+    if(x.token&&x.symbol)knownRewardTokens.set(norm(x.token),x.symbol);
   }
-  if(!rewardTokens.size)return;
 
   const start=lot.stakeTime?new Date(lot.stakeTime).getTime():null;
   const end=lot.unstakeTime?new Date(lot.unstakeTime).getTime():Date.now();
+  const pair=norm(safePairAddress(lot));
   const direct=norm(lot?.staking?.contract_address||lot.counterparty||'');
   const entry=norm(lot.entry_contract||'');
   const eventContract=norm(lot.stake_event_contract||'');
   const targets=new Set([direct,entry,eventContract].filter(Boolean));
 
-  // Keep individual reward transfers, even if several occur in one transaction.
   const existingKeys=new Set((lot.rewardClaims||[]).map(x=>
     `${String(x.hash||'').toLowerCase()}|${norm(x.token)}|${norm(x.from)}|${norm(x.to)}|${Number(x.amount||0)}`
   ));
+  const processedHashes=new Map();
 
   for(const t of (CURRENT_ALL_TRANSFERS||[])){
     const token=norm(t.rawContract?.address||'');
-    if(!rewardTokens.has(token))continue;
-
     const hash=String(t.hash||'').toLowerCase();
     const to=norm(t.to||''),from=norm(t.from||'');
-    if(!hash||to!==wallet)continue; // only actual rewards received by this wallet
+    if(!hash||!token||token===pair||to!==wallet)continue;
 
-    let time=null,block=null,tx=null,receipt=null;
-    try{
-      [tx,receipt]=await Promise.all([
-        rpc('eth_getTransactionByHash',[hash]),
-        rpc('eth_getTransactionReceipt',[hash]).catch(()=>null)
-      ]);
-      if(tx?.blockNumber){
-        block=Number(BigInt(tx.blockNumber));
-        const b=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);
-        if(b?.timestamp)time=new Date(Number(BigInt(b.timestamp))*1000).toISOString();
-      }
-    }catch{}
+    // Use Alchemy's own timestamp first so unrelated wallet history can be
+    // rejected before additional RPC calls.
+    const hintedTime=t.metadata?.blockTimestamp||null;
+    const hintedMs=hintedTime?new Date(hintedTime).getTime():null;
+    if(start&&hintedMs&&hintedMs<start-300000)continue;
+    if(end&&hintedMs&&hintedMs>end+300000)continue;
 
-    const ms=time?new Date(time).getTime():null;
+    let txInfo=processedHashes.get(hash);
+    if(!txInfo){
+      let tx=null,receipt=null,time=hintedTime,block=null;
+      try{
+        [tx,receipt]=await Promise.all([
+          cachedTx(hash),
+          rpc('eth_getTransactionReceipt',[hash]).catch(()=>null)
+        ]);
+        if(tx?.blockNumber){
+          block=Number(BigInt(tx.blockNumber));
+          if(!time){
+            const b=await cachedBlockByNumber(tx.blockNumber);
+            if(b?.timestamp)time=new Date(Number(BigInt(b.timestamp))*1000).toISOString();
+          }
+        }
+      }catch{}
+      txInfo={tx,receipt,time,block};
+      processedHashes.set(hash,txInfo);
+    }
+    const {tx,receipt,time,block}=txInfo;
+    const ms=time?new Date(time).getTime():hintedMs;
     if(start&&ms&&ms<start-300000)continue;
     if(end&&ms&&ms>end+300000)continue;
-
-    const meta=await tokenMeta(token);
-    let amount=null;
-    try{
-      if(t.rawContract?.value!=null)amount=Number(ethers.formatUnits(BigInt(t.rawContract.value),meta.decimals));
-      else if(t.value!=null)amount=Number(t.value);
-    }catch{}
-    if(!(Number(amount)>0))continue;
 
     const callTo=norm(tx?.to||'');
     const reasons=[];
@@ -1145,39 +1251,52 @@ async function attachRewardTokenHistory(lot){
       score+=90;reasons.push(callTo===direct?'direkter Staking-SC':callTo===entry?'Entry-/Controller-SC':'Stake-Event-SC');
     }
     if(from&&targets.has(from)){
-      score+=90;reasons.push('Reward direkt vom Staking-/Controller-SC');
+      score+=90;reasons.push('Token direkt vom Staking-/Controller-SC');
     }
 
-    // If receipt history is available, a transfer from a known staking/controller
-    // within the same transaction is strong additional evidence.
     for(const tr of receiptErc20Transfers(receipt)){
       if(norm(tr.token)!==token||tr.to!==wallet)continue;
       if(targets.has(norm(tr.from))){
-        score+=70;reasons.push('Receipt: Reward-Transfer vom Staking-/Controller-SC');
+        score+=70;reasons.push('Receipt: Token-Transfer vom Staking-/Controller-SC');
         break;
       }
     }
 
-    // A token that was already proven as reward token is useful evidence,
-    // but NOT enough on its own to assign arbitrary wallet receipts.
-    score+=10;reasons.push('bereits erkannter Reward-Token');
+    if(knownRewardTokens.has(token)){
+      score+=10;reasons.push('bereits erkannter Reward-Token');
+    }
 
+    // Unknown tokens are explicitly allowed, but only with strong contract
+    // evidence. Thus an arbitrary wallet receipt can never become a reward
+    // just because it happened during the staking period.
     if(score<60){
-      log(`Reward-Historie Kandidat NICHT zugeordnet: ${hash} · ${amount} ${rewardTokens.get(token)} · Score ${score} · ${reasons.join(', ')}`,'warn');
+      if(knownRewardTokens.has(token)){
+        log(`Reward-Historie Kandidat NICHT zugeordnet: ${hash} · ${knownRewardTokens.get(token)} · Score ${score} · ${reasons.join(', ')||'keine Contract-Evidenz'}`,'warn');
+      }
       continue;
     }
+
+    const meta=await tokenMeta(token);
+    let amount=null;
+    try{
+      if(t.rawContract?.value!=null)amount=Number(ethers.formatUnits(BigInt(t.rawContract.value),meta.decimals));
+      else if(t.value!=null)amount=Number(t.value);
+    }catch{}
+    if(!(Number(amount)>0))continue;
 
     const selector=tx?.input?String(tx.input).slice(0,10).toLowerCase():null;
     const method=METHOD_SELECTORS.get(selector)||(
       from==='0x0000000000000000000000000000000000000000'?'Reward-Mint':'Reward-Ausschüttung'
     );
+    const symbol=meta.symbol||knownRewardTokens.get(token)||'Token';
+    knownRewardTokens.set(token,symbol);
 
     const claim={
-      hash,time,block,token,symbol:rewardTokens.get(token),decimals:meta.decimals,amount,
+      hash,time,block,token,symbol,decimals:meta.decimals,amount,
       from,to,method,selector,
       calledContract:callTo||null,
       assignmentReason:reasons.join(', '),
-      source:'Vollständige Reward-Historie während der Staking-Laufzeit',
+      source:'Dynamisch erkannte Reward-Historie während der Staking-Laufzeit',
       assignmentScore:score,
       eventType:hash===String(lot.stakeTx||'').toLowerCase()?'stake_reward':
                 /claim|reward|harvest|withdraw/i.test(method)?'claim':'distribution'
@@ -1723,7 +1842,7 @@ function positionCardHtml(l,index,isClosed){
       <div class="stake-fact"><span class="k">USD-Wert beim Stake</span>${stakeValue}</div>
       <div class="stake-fact"><span class="k">LP aktuell offen</span><span class="v">${Number(l.remaining||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
       <div class="stake-fact"><span class="k">Vorgesehene Laufzeit</span><span class="v">${l.durationDays!=null?`${l.durationDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span><div class="value-source">${l.durationSource?esc(l.durationSource):'Keine belastbare Laufzeit aus dem SC ermittelbar.'}</div></div>
-      <div class="stake-fact"><span class="k">Freigegeben / ausgelaufen am</span><span class="v">${l.expiryTime?new Date(l.expiryTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">${l.expiryTime?esc(l.durationSource||'On-chain ermittelt'):'Keine belastbare Freigabe aus dem SC ermittelbar.'}</div></div>
+      <div class="stake-fact"><span class="k">Freigegeben / ausgelaufen am</span><span class="v">${l.expiryTime?new Date(l.expiryTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">${l.expiryTime?esc(l.durationSource||'On-chain ermittelt'):(l.contractEndUpperBound?'Tatsächlicher Unstake belegt; exakter frühester Freigabezeitpunkt konnte historisch nicht eingegrenzt werden.':'Keine belastbare Freigabe aus dem SC ermittelbar.')}</div></div>
       <div class="stake-fact"><span class="k">USD-Wert beim Vertragsende</span>${contractEndValue}</div>
       ${isClosed?`<div class="stake-fact"><span class="k">Tatsächliches Unstake-Datum</span><span class="v">${l.unstakeTime?new Date(l.unstakeTime).toLocaleString('de-CH'):'–'}</span></div><div class="stake-fact"><span class="k">USD-Wert beim tatsächlichen Unstake</span>${unstakeValue}</div><div class="stake-fact"><span class="k">Tatsächliche Dauer bis Unstake</span><span class="v">${actualDays!=null?`${actualDays} Tage`:'–'}</span></div>`:''}
       <div class="stake-fact"><span class="k">Staking-Contract</span><span class="v mono">${esc(l.staking?.contract_address||l.counterparty||'–')}</span></div>
