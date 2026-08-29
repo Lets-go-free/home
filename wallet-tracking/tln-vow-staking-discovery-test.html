@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 16:07:00 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 16:17:01 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -370,7 +370,9 @@ async function stakeTxTokenEvidence(lot){
         block:lot.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null,
         amount:x.amount,tokenSymbol:x.symbol,tokenAddress:x.token,
         method:x.from==='0x0000000000000000000000000000000000000000'?'Mint beim Stake':'Reward-Transfer beim Stake',
-        source:x.source||'Stake-Transaktion'
+        source:x.source||'Stake-Transaktion',
+        calledContract:lot.entry_contract||norm(lot?.staking?.contract_address||lot.counterparty||'')||null,
+        assignmentReason:'gleiche Transaktion wie Stake'
       });
     }
     return result;
@@ -876,26 +878,17 @@ async function attachRewardClaimsToLots(lots,calls){
     }
 
     candidates.sort((a,b)=>b.score-a.score);
+    const chosen=candidates[0]||null;
 
-    let chosen=candidates[0]||null;
-
-    // If no contract-level match exists but exactly one lot is active at claim time,
-    // use that unique temporal relation. This is especially important for legacy TLN
-    // reward/controller contracts that differ from the LP staking destination.
-    if(chosen&&chosen.score<50){
-      const active=candidates.filter(x=>{
-        const s=x.lot.stakeTime?new Date(x.lot.stakeTime).getTime():0;
-        const u=x.lot.unstakeTime?new Date(x.lot.unstakeTime).getTime():Infinity;
-        return when>=s-5*60*1000&&when<=u+5*60*1000;
-      });
-      if(active.length===1){
-        chosen=active[0];
-        chosen.score+=45;
-        chosen.reasons.push('einzige aktive Staking-Position');
+    // "Nur eine Position war aktiv" reicht NICHT als Reward-Nachweis.
+    // Ohne Contract-/Tx-Beziehung bleibt der Transfer ein unbestätigter Kandidat.
+    const minScore=c?._rewardHint?45:60;
+    if(!chosen||chosen.score<minScore){
+      if(chosen){
+        log(`Reward-Kandidat NICHT zugeordnet: ${c.hash||'–'} · Score ${chosen.score} · keine ausreichende Contract-/Tx-Evidenz (${chosen.reasons.join(', ')||'nur zeitliche Nähe'}).`,'warn');
       }
+      continue;
     }
-
-    if(!chosen||chosen.score<45)continue;
 
     const lot=chosen.lot;
     try{
@@ -908,7 +901,9 @@ async function attachRewardClaimsToLots(lots,calls){
         token:tr.token,symbol:meta.symbol||'Token',decimals:meta.decimals,amount,
         from:tr.from,to:tr.to,method:c._method||'Reward-relevante Tx',
         selector:c._selector||null,
-        source:`${c._rewardHint?'Bestätigte reward-relevante Tx':'Staking-/Controller-Receipt'} · Zuordnung: ${chosen.reasons.join(', ')}`,
+        calledContract:norm(c.to||c?._staking?.contract_address||'')||null,
+        assignmentReason:chosen.reasons.join(', '),
+        source:`${c._rewardHint?'Bestätigte reward-relevante Tx':'Staking-/Controller-Receipt'}`,
         assignmentScore:chosen.score
       };
 
@@ -919,9 +914,10 @@ async function attachRewardClaimsToLots(lots,calls){
           kind:`Reward / Claim · ${claim.symbol}`,
           hash:claim.hash,time:claim.time,block:claim.block,amount:claim.amount,
           tokenSymbol:claim.symbol,tokenAddress:claim.token,
-          selector:claim.selector,method:claim.method,source:claim.source
+          selector:claim.selector,method:claim.method,source:claim.source,
+          calledContract:claim.calledContract,assignmentReason:claim.assignmentReason
         });
-        log(`Reward zugeordnet: ${claim.amount} ${claim.symbol} → ${safePairLabel(lot)} · ${claim.source}`,'ok');
+        log(`Reward zugeordnet: ${claim.amount} ${claim.symbol} → ${safePairLabel(lot)} · ${claim.source} · Zuordnung: ${claim.assignmentReason}`,'ok');
       }
     }catch(e){
       log(`Reward-Transfer ${c.hash}: Token-Metadaten konnten nicht gelesen werden (${e.message}).`,'warn');
@@ -933,6 +929,31 @@ async function attachRewardClaimsToLots(lots,calls){
   }
 }
 
+
+function structFieldEvidence(lot,w){
+  const sc=norm(lot?.staking?.contract_address||lot.counterparty||'');
+  if(sc==='0x4857d369e18aba003ff6ec934cf046148df5d590'){
+    if(w.index===0)return {label:'amount (W1)',evidence:'SC-/Transaktionsdaten: entspricht exakt der LP-Menge'};
+    if(w.index===1)return {label:'amount_usd (W2)',evidence:'TLN-Stakingdaten: gespeicherter USD-Wert beim Stake'};
+    if(w.index===2)return {label:'staked_timestamp (W3)',evidence:'entspricht exakt dem Stake-Zeitpunkt'};
+  }
+
+  // For other contracts: report semantic matches without inventing Solidity names.
+  const original=Number(lot.original||0);
+  const stakeSec=lot.stakeTime?Math.floor(new Date(lot.stakeTime).getTime()/1000):null;
+  const hints=[];
+  if(original>0 && Number.isFinite(w.as18) && Math.abs(w.as18-original)/original<0.00001){
+    hints.push('entspricht LP-Menge');
+  }
+  if(stakeSec!=null && Math.abs(Number(w.uint)-stakeSec)<=86400){
+    hints.push('entspricht Stake-Timestamp');
+  }
+  const usd=Number(lot.stakeUsd||0);
+  if(usd>0 && Number.isFinite(w.as18) && Math.abs(w.as18-usd)/usd<0.0001){
+    hints.push('entspricht gespeichertem Stake-USD-Wert');
+  }
+  return {label:`Wort ${w.index+1}`,evidence:hints.join(' · ')||'Bezeichnung aus vorliegenden SC-Daten noch nicht verifiziert'};
+}
 function stakeRewardEvidenceHtml(lot){
   const ev=lot.stakeRewardEvidence||[];
   const delta=(lot.historicalScDelta||[]).filter(x=>x.delta!==0n);
@@ -949,8 +970,9 @@ function stakeRewardEvidenceHtml(lot){
   if(lot.historicalScAfter){
     const rows=(lot.historicalScAfter.words||[]).map(w=>{
       const d=(lot.historicalScDelta||[]).find(x=>x.index===w.index);
+      const f=structFieldEvidence(lot,w);
       return `<tr>
-        <td>${norm(lot?.staking?.contract_address||lot.counterparty||'')==='0x4857d369e18aba003ff6ec934cf046148df5d590'?(w.index===0?'amount (W1)':w.index===1?'amount_usd (W2)':w.index===2?'staked_timestamp (W3)':`Wort ${w.index+1}`):`Wort ${w.index+1}`}</td>
+        <td><b>${esc(f.label)}</b><div class="muted">${esc(f.evidence)}</div></td>
         <td class="mono">${w.uint.toString()}</td>
         <td>${Number.isFinite(w.as18)?w.as18.toLocaleString('de-CH',{maximumFractionDigits:12}):'–'}</td>
         <td class="mono">${d&&d.delta!==0n?d.delta.toString():'–'}</td>
@@ -958,7 +980,8 @@ function stakeRewardEvidenceHtml(lot){
     }).join('');
     html+=`<div style="grid-column:1/-1;margin-top:8px">
       <details><summary>Historische SC-Daten beim Stake (${esc(lot.historicalScAfter.sig)})</summary>
-        <div class="reward-note">${norm(lot?.staking?.contract_address||lot.counterparty||'')==='0x4857d369e18aba003ff6ec934cf046148df5d590'?'Für diesen Legacy-SC können die drei gespeicherten Werte fachlich bezeichnet werden: W1 = amount (LP-Menge), W2 = amount_usd (gespeicherter USD-Wert), W3 = staked_timestamp (Stake-Zeitpunkt). Reward-Token und Reward-Modell werden davon getrennt aus SC-/Transaktionsdaten ermittelt.':'Zustand am tatsächlichen Stake-Block. Unbekannte Wörter werden bewusst nicht als Reward/Bonus bezeichnet, solange ihre Bedeutung nicht verifiziert ist.'}</div>
+        <div class="sc-grid" style="margin:8px 0"><div class="sc-k">Staking-Contract</div><div class="sc-v mono">${esc(norm(lot?.staking?.contract_address||lot.counterparty||''))}</div></div>
+        <div class="reward-note">${norm(lot?.staking?.contract_address||lot.counterparty||'')==='0x4857d369e18aba003ff6ec934cf046148df5d590'?'Für diesen Legacy-SC können die drei gespeicherten Werte fachlich bezeichnet werden: W1 = amount (LP-Menge), W2 = amount_usd (gespeicherter USD-Wert), W3 = staked_timestamp (Stake-Zeitpunkt). Reward-Token und Reward-Modell werden davon getrennt aus SC-/Transaktionsdaten ermittelt.':'Zustand am tatsächlichen Stake-Block. Bei diesem Contract werden ohne belegte SC-Feldnamen nur nachweisbare Wert-/Timestamp-Übereinstimmungen angezeigt; Solidity-Feldnamen werden nicht geraten.'}</div>
         <div class="wrap" style="margin-top:8px"><table style="min-width:760px">
           <thead><tr><th>Feld</th><th>Raw uint</th><th>als 18 Decimals</th><th>Änderung beim Stake</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -1026,7 +1049,9 @@ async function attachRewardTokenHistory(lot){
       kind:`Reward / ${to===wallet?'Ausschüttung':'Claim'} · ${rewardTokens.get(token)}`,
       hash,time,block,amount,tokenSymbol:rewardTokens.get(token),tokenAddress:token,
       selector:tx?.input?String(tx.input).slice(0,10):null,
-      method,source
+      method,source,
+      calledContract:norm(tx?.to||'')||null,
+      assignmentReason:'gleicher bereits aus Stake/SC erkannter Reward-Token während der Staking-Laufzeit'
     });
     ownHashes.add(hash);
   }
@@ -1097,13 +1122,15 @@ function rewardClaimSummaryHtml(lot){
       <td>${c.time?new Date(c.time).toLocaleString('de-CH'):'–'}</td>
       <td><b>${c.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(c.symbol)}</b><div class="mono muted">${esc(c.token)}</div></td>
       <td>${esc(c.method||'Reward-relevante Tx')}<div class="muted">${esc(c.source||'')}</div></td>
+      <td class="mono">${c.calledContract?esc(c.calledContract):'–'}</td>
+      <td>${c.assignmentReason?esc(c.assignmentReason):'–'}${c.assignmentScore!=null?`<div class="muted">Score ${c.assignmentScore}</div>`:''}</td>
       <td>${c.block??'–'}</td>
       <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(c.hash)}">${esc(c.hash)}</a></td>
     </tr>`).join('');
   return `${totals}<div style="grid-column:1/-1;margin-top:8px">
     <details><summary>Erhaltene Reward-Transaktionen (${claims.length})</summary>
       <div class="wrap" style="margin-top:8px"><table style="min-width:900px">
-        <thead><tr><th>Zeit</th><th>Reward</th><th>Claim / Quelle</th><th>Block</th><th>Tx</th></tr></thead>
+        <thead><tr><th>Zeit</th><th>Reward</th><th>Claim / Quelle</th><th>Aufgerufener Contract</th><th>Zuordnung</th><th>Block</th><th>Tx</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
     </details>
@@ -1501,7 +1528,7 @@ function associateContractCallsToLots(lots,calls){
 function txRowsHtml(lot){
   const txs=lot.transactions||[];
   if(!txs.length)return '<div class="empty-note">Keine zugeordneten Transaktionen.</div>';
-  return `<div class="wrap tx-table"><table style="min-width:980px"><thead><tr><th>Zeit</th><th>Aktion</th><th>Menge</th><th>Methode / Quelle</th><th>Block</th><th>Transaktion</th></tr></thead><tbody>${txs.map(t=>`<tr><td>${t.time?new Date(t.time).toLocaleString('de-CH'):'–'}</td><td class="tx-kind">${esc(t.kind||'Transaktion')}</td><td class="num">${Number.isFinite(Number(t.amount))&&Number(t.amount)!==0?`${Number(t.amount).toLocaleString('de-CH',{maximumFractionDigits:12})}${t.tokenSymbol?' '+esc(t.tokenSymbol):''}`:'–'}</td><td>${esc(t.method||t.source||'–')}${t.selector?`<div class="mono muted">${esc(t.selector)}</div>`:''}${t.topic0?`<div class="mono muted">${esc(t.topic0)}</div>`:''}</td><td>${t.block??'–'}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(t.hash)}">${esc(t.hash)}</a></td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="wrap tx-table"><table style="min-width:1320px"><thead><tr><th>Zeit</th><th>Aktion</th><th>Menge</th><th>Methode / Quelle</th><th>Aufgerufener Contract</th><th>Zuordnung</th><th>Block</th><th>Transaktion</th></tr></thead><tbody>${txs.map(t=>`<tr><td>${t.time?new Date(t.time).toLocaleString('de-CH'):'–'}</td><td class="tx-kind">${esc(t.kind||'Transaktion')}</td><td class="num">${Number.isFinite(Number(t.amount))&&Number(t.amount)!==0?`${Number(t.amount).toLocaleString('de-CH',{maximumFractionDigits:12})}${t.tokenSymbol?' '+esc(t.tokenSymbol):''}`:'–'}</td><td>${esc(t.method||t.source||'–')}${t.selector?`<div class="mono muted">${esc(t.selector)}</div>`:''}${t.topic0?`<div class="mono muted">${esc(t.topic0)}</div>`:''}</td><td class="mono">${t.calledContract?esc(t.calledContract):'–'}</td><td>${t.assignmentReason?esc(t.assignmentReason):'–'}</td><td>${t.block??'–'}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(t.hash)}">${esc(t.hash)}</a></td></tr>`).join('')}</tbody></table></div>`;
 }
 function positionCardHtml(l,index,isClosed){
   const expired=!!l.expiryTime&&new Date(l.expiryTime).getTime()<=Date.now();
