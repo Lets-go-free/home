@@ -84,7 +84,7 @@ function renderRawStakingEvents(rows){
   const stakeRows=rows.filter(r=>r.action==='Stake'||r.action==='Unstake');
   $('mStakes').textContent=stakeRows.filter(r=>r.action==='Stake').length;
   $('mUnstakes').textContent=stakeRows.filter(r=>r.action==='Unstake').length;
-  $('stakingEvents').innerHTML=stakeRows.length?stakeRows.map(r=>{try{
+  $('stakingEvents').innerHTML=stakeRows.length?stakeRows.map(r=>{
     const ts=r.t.metadata?.blockTimestamp?new Date(r.t.metadata.blockTimestamp).toLocaleString('de-CH'):'–';
     const block=r.t.blockNum?parseInt(r.t.blockNum,16):'–';
     return `<tr><td>${esc(ts)}</td><td class="${r.action==='Stake'?'ok':'warn'}"><b>${esc(r.action)}</b></td>
