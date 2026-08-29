@@ -1,3 +1,18 @@
+# Phase 2aw – Legacy-LP Discovery produktiv an isolierten Test angeglichen
+
+Stand: 29.08.2026 12:48:36 CEST
+
+## Neue Migration
+- **020-project-scan-diagnostics.sql** einmal nach 019 ausführen.
+- **001–019 nicht erneut ausführen**, wenn bereits erfolgreich ausgeführt.
+
+## Fehlerkorrektur
+- Historische LP-Discovery verlangt nicht mehr aktuelle `getReserves()`/`totalSupply()`-Reads.
+- Discovery/History verwendet nun wie die erfolgreiche isolierte Testseite nur LP-Identität (`token0`, `token1`, `factory`, `decimals`) als Voraussetzung.
+- Aktuelle Reserven/Supply werden nur für heutige Bewertung benötigt. Ein Legacy-Pool kann daher historische Stake-/Unstake-Events liefern, auch wenn aktuelle Bewertungsreads nicht funktionieren.
+- TLN/VOW BSC Datenversion **v7**, Scan-Typ **`lp_history_v7_legacy_discovery`**; bestehende Wallets werden einmalig neu initialisiert.
+- `project_scan_state` erhält Diagnosezähler für Transfers, Kandidaten, erkannte Projekt-LPs, gespeicherte Events und Staking-Events. Diese Werte erscheinen direkt im LP-Scan-Status pro Wallet.
+
 # Phase 2av – Cache-Versionierung + Admin-Dokumentation
 
 Stand: 28.08.2026 20:00:17 CEST

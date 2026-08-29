@@ -1118,11 +1118,11 @@ function renderAdminDocumentation(){
   <p>Version nur erhöhen, wenn eine fachliche Änderung vorhandene Daten unvollständig/falsch macht. UI-/Layout-/Textänderungen benötigen keine neue Datenversion.</p>
   <p><strong>Discovery-Version:</strong> erhöhen, wenn bisher relevante Blockchain-Ereignisse gar nicht gefunden wurden → Nach-/Fullscan erforderlich.</p>
   <p><strong>Klassifikation:</strong> wenn Rohereignisse vorhanden sind, aber anders interpretiert werden müssen, soll langfristig nur neu klassifiziert werden.</p>
-  <p><strong>Aktuell:</strong> Balances v${DATA_VERSIONS.balances}; NFTs v${DATA_VERSIONS.nft}; TLN/VOW BSC LP/Staking v${DATA_VERSIONS["project:tln_vow:bsc"]}; Scan-Typ <code>lp_history_v6_legacy_discovery</code>.</p></div></div>
+  <p><strong>Aktuell:</strong> Balances v${DATA_VERSIONS.balances}; NFTs v${DATA_VERSIONS.nft}; TLN/VOW BSC LP/Staking v${DATA_VERSIONS["project:tln_vow:bsc"]}; Scan-Typ <code>lp_history_v7_legacy_discovery</code>.</p></div></div>
 
   <div class="custom-token-card"><h3 style="margin-top:0">4. TLN/VOW LP & Staking</h3><div class="note">
   <p>Ein LP gehört zum Projekt, wenn mindestens eines seiner Underlyings ein TLN/VOW-Projekt-Token ist. Historische LPs dürfen nicht nur von heute aktiven <code>lp_token</code>-Adressen abhängen.</p>
-  <p>BSC Legacy-Discovery: Wallet-ERC20-Historie → Contract-Kandidat → token0/token1 → Projektzugehörigkeit → LP-Daten → Staking-Klassifikation.</p>
+  <p>BSC Legacy-Discovery: Wallet-ERC20-Historie → Contract-Kandidat → token0/token1 → Projektzugehörigkeit → LP-Identität → Staking-Klassifikation. <strong>Aktuelle getReserves()/totalSupply()-Reads sind keine Voraussetzung für historische Discovery</strong>; sie werden nur für die aktuelle Bewertung benötigt.</p>
   <p>Stake/Unstake nur gegen bestätigte Staking-Contracts; „Gegenadresse ist Smart Contract“ reicht nicht.</p>
   <p>LP/Staking zählt wirtschaftlich zur Token-Übersicht und zum 31.12.-Bestand. Nach Projekt-Refresh wird die Token-Übersicht neu berechnet.</p>
   <p>Historische LP-/Staking-Wallets bleiben auch bei aktuellem Bestand 0 sichtbar und im Walletfilter auswählbar.</p></div></div>
@@ -3392,7 +3392,7 @@ let walletRefreshStates = new Map();
 const DATA_VERSIONS = Object.freeze({
   balances: 1,
   nft: 1,
-  "project:tln_vow:bsc": 6
+  "project:tln_vow:bsc": 7
 });
 function requiredDataVersion(chain,dataType){
   return Number(DATA_VERSIONS[`${dataType}:${chain}`] ?? DATA_VERSIONS[dataType] ?? 1);
@@ -4530,7 +4530,7 @@ function lpPairBelongsToProject(pair,chain,projectKey){
 
 function projectLpScanType(projectKey,chain){
   const classifiedOnly=projectKey==="tln_vow"&&["bsc","eth"].includes(chain);
-  return (projectKey==="tln_vow"&&chain==="bsc")?"lp_history_v6_legacy_discovery":(classifiedOnly?"lp_history_v3_classified":"lp_history_v2");
+  return (projectKey==="tln_vow"&&chain==="bsc")?"lp_history_v7_legacy_discovery":(classifiedOnly?"lp_history_v3_classified":"lp_history_v2");
 }
 
 async function syncProjectLpHistory(projectKey,chain,walletAddress){
@@ -4559,7 +4559,7 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
   const from=last>0?Math.max(0,last-50):0;
   let transfers=[],syncWarning=null;
   try{
-    // Legacy-Discovery braucht beim ersten v6-Lauf bewusst die gesamte ERC-20-Historie.
+    // Legacy-Discovery braucht beim ersten v7-Lauf bewusst die gesamte ERC-20-Historie.
     // Danach läuft derselbe Scan inkrementell ab dem letzten erfolgreichen Block weiter.
     transfers=await lpWalletTransfersSince(chain,walletAddress,from,legacyDiscovery?null:(classifiedOnly?configuredPairs:null));
   }catch(e){syncWarning=`Transfer-Discovery: ${e?.message||String(e)}`;}
@@ -4567,20 +4567,24 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
   const pairMap=new Map();
   const initialPairs=[...new Set([...configuredPairs,...cachedPairs])];
   for(const a of initialPairs){
-    const p=await engine.pairInfo(chain,a);
+    // Für History reicht die LP-Identität. Aktuelle Reserven/Supply dürfen Discovery
+    // nicht blockieren; genau das war die Regression gegenüber der isolierten Testseite.
+    const p=engine.pairDescriptor?await engine.pairDescriptor(chain,a):await engine.pairInfo(chain,a);
     if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(normalizeAddress(a,chain),p);
   }
 
-  // Neue/Legacy LP-Kandidaten zunächst nur mit token0/token1 prüfen. Erst wenn mindestens
-  // ein Underlying zum TLN/VOW-Projekt gehört, werden Reserven, Supply und Metadaten geladen.
+  let candidateContracts=[];
+  // Legacy-Discovery entspricht jetzt bewusst dem erfolgreichen isolierten Test:
+  // ERC20-Contract -> token0/token1 -> Projekt-Treffer -> factory/decimals/meta.
+  // getReserves()/totalSupply() sind KEINE Voraussetzung für historische Events.
   if(legacyDiscovery){
-    const candidateContracts=[...new Set(transfers.map(t=>normalizeAddress(t.contract,chain)).filter(Boolean))];
+    candidateContracts=[...new Set(transfers.map(t=>normalizeAddress(t.contract,chain)).filter(Boolean))];
     for(const a of candidateContracts){
       if(pairMap.has(a))continue;
       const basic=engine.pairTokens?await engine.pairTokens(chain,a):null;
       if(!basic)continue;
       if(!projectUnderlying.has(normalizeAddress(basic.token0,chain))&&!projectUnderlying.has(normalizeAddress(basic.token1,chain)))continue;
-      const p=await engine.pairInfo(chain,a);
+      const p=engine.pairDescriptor?await engine.pairDescriptor(chain,a):await engine.pairInfo(chain,a);
       if(p&&lpPairBelongsToProject(p,chain,projectKey))pairMap.set(a,p);
     }
   }else if(!classifiedOnly){
@@ -4590,7 +4594,7 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
     }
   }
 
-  let newEvents=0,earliestFailedBlock=null;const done=new Set(cached.map(r=>`${normalizeAddress(r.pair_address,chain)}|${String(r.tx_hash).toLowerCase()}|${r.event_type}`));
+  let newEvents=0,newStakingEvents=0,earliestFailedBlock=null;const done=new Set(cached.map(r=>`${normalizeAddress(r.pair_address,chain)}|${String(r.tx_hash).toLowerCase()}|${r.event_type}`));
   for(const t of transfers){
     const pair=pairMap.get(normalizeAddress(t.contract,chain));if(!pair)continue;
     const txKey=`${pair.address}|${String(t.tx_hash).toLowerCase()}`;
@@ -4603,14 +4607,14 @@ async function syncProjectLpHistory(projectKey,chain,walletAddress){
         }
       });if(!ev)continue;
       const k=`${pair.address}|${String(t.tx_hash).toLowerCase()}|${ev.event_type}`;if(done.has(k))continue;
-      await engine.saveHistory(projectKey,chain,walletAddress,pair,ev);done.add(k);newEvents++;
+      await engine.saveHistory(projectKey,chain,walletAddress,pair,ev);done.add(k);newEvents++;if(ev.event_type==="stake"||ev.event_type==="unstake")newStakingEvents++;
     }catch(e){earliestFailedBlock=earliestFailedBlock==null?Number(t.block_number):Math.min(earliestFailedBlock,Number(t.block_number));console.warn("LP-History Event",chain,t.tx_hash,e);}
   }
   if(!syncWarning){
     const safeScannedBlock=earliestFailedBlock==null?latest:Math.max(0,earliestFailedBlock-1);
-    await engine.setScanState(projectKey,chain,walletAddress,safeScannedBlock,scanType);
+    await engine.setScanState(projectKey,chain,walletAddress,safeScannedBlock,scanType,{transfersSeen:transfers.length,candidateContracts:candidateContracts.length,projectPairs:pairMap.size,eventsSaved:newEvents,stakingEvents:newStakingEvents,result:earliestFailedBlock==null?'ok':'partial',message:earliestFailedBlock==null?null:`Mindestens ein LP-History-Event ab Block ${earliestFailedBlock} konnte nicht gespeichert/verarbeitet werden.`});
   }
-  return {events:await engine.loadHistory(projectKey,chain,walletAddress),scanned:latest,newEvents,pairs:[...pairMap.values()],warning:syncWarning};
+  return {events:await engine.loadHistory(projectKey,chain,walletAddress),scanned:latest,newEvents,pairs:[...pairMap.values()],warning:syncWarning,diagnostics:{transfersSeen:transfers.length,candidateContracts:candidateContracts.length,projectPairs:pairMap.size,eventsSaved:newEvents,stakingEvents:newStakingEvents}};
 }
 
 const projectLpWalletFilters={};
@@ -4682,11 +4686,17 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
         const candidates=new Set([...currentCandidates,...sync.events.map(e=>e.pair_address),...(sync.pairs||[]).map(p=>p.address)].filter(Boolean).map(a=>normalizeAddress(a,chain)));
         const walletPositionCache=[];
         for(const a of candidates){
-          let pair=null;try{pair=await window.WalletLPEngine.pairInfo(chain,a);}catch{}if(!pair||!lpPairBelongsToProject(pair,chain,projectKey))continue;
-          let walletCur=null;try{walletCur=(await window.WalletLPEngine.positions(chain,wa,[a]))[0]||null;}catch{}
+          let fullPair=null;try{fullPair=await window.WalletLPEngine.pairInfo(chain,a);}catch{}
+          let pair=fullPair||(sync.pairs||[]).find(p=>normalizeAddress(p.address,chain)===a)||null;
+          if(!pair&&window.WalletLPEngine.pairDescriptor){try{pair=await window.WalletLPEngine.pairDescriptor(chain,a);}catch{}}
+          if(!pair||!lpPairBelongsToProject(pair,chain,projectKey))continue;
+          let walletCur=null,walletCurBal=0;
+          if(fullPair){try{walletCur=(await window.WalletLPEngine.positions(chain,wa,[a]))[0]||null;walletCurBal=Number(walletCur?.balance||0);}catch{}}
+          else if(window.WalletLPEngine.balance){try{walletCurBal=Number(await window.WalletLPEngine.balance(chain,pair,wa)||0);}catch{}}
           const stakedCur=(projectKey==="tln_vow"&&chain==="bsc"&&window.WalletStakingEngine)?window.WalletStakingEngine.stakeBalanceAt(sync.events,a):0;
-          const walletCurBal=Number(walletCur?.balance||0),economicCurBal=walletCurBal+Number(stakedCur||0);
-          let cur=null;if(economicCurBal>DUST_THRESHOLD){try{cur={...pair,...await window.WalletLPEngine.valuePosition(chain,pair,economicCurBal),walletBalance:walletCurBal,stakedBalance:Number(stakedCur||0)};}catch{cur=walletCur?{...walletCur,walletBalance:walletCurBal,stakedBalance:Number(stakedCur||0),balance:economicCurBal}:null;}}
+          const economicCurBal=walletCurBal+Number(stakedCur||0);
+          let cur=null;if(economicCurBal>DUST_THRESHOLD&&fullPair){try{cur={...fullPair,...await window.WalletLPEngine.valuePosition(chain,fullPair,economicCurBal),walletBalance:walletCurBal,stakedBalance:Number(stakedCur||0)};}catch{cur=walletCur?{...walletCur,walletBalance:walletCurBal,stakedBalance:Number(stakedCur||0),balance:economicCurBal}:null;}}
+          if(!cur&&economicCurBal>DUST_THRESHOLD)cur={balance:economicCurBal,walletBalance:walletCurBal,stakedBalance:Number(stakedCur||0),amount0:0,amount1:0,share:0,usd:null,valuationUnavailable:true};
           let histWalletBal=0,histStakedBal=0,histBal=0,histPrice=null,histUsd=null;if(block){try{histWalletBal=(await taxEvmTokenBalance(chain,wa,{address:a,decimals:pair.decimals},block)).amount;histStakedBal=(projectKey==="tln_vow"&&chain==="bsc"&&window.WalletStakingEngine)?window.WalletStakingEngine.stakeBalanceAt(sync.events,a,new Date(dateStr+'T23:59:59Z')):0;histBal=Number(histWalletBal||0)+Number(histStakedBal||0);if(histBal>DUST_THRESHOLD){histPrice=await taxV2LpHistoricalPrice(chain,{address:a,decimals:pair.decimals,symbol:window.WalletLPEngine.label(chain)},block,dateStr);histUsd=histPrice?.price!=null?histBal*histPrice.price:null;}}catch(e){console.warn('LP historisch',chain,a,e);}}
           if(cur||histBal>DUST_THRESHOLD||sync.events.some(e=>normalizeAddress(e.pair_address,chain)===a)){
             rows.push({chain,w,pair,cur,histBal,histWalletBal,histStakedBal,histPrice,histUsd});
@@ -4700,7 +4710,7 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
         const scanType=projectLpScanType(projectKey,chain);
         const info=window.WalletLPEngine.getScanStateInfo?await window.WalletLPEngine.getScanStateInfo(projectKey,chain,wa,scanType):{last_scanned_block:await window.WalletLPEngine.getScanState(projectKey,chain,wa,scanType),last_scanned_at:null,scan_type:scanType};
         const walletRows=rows.filter(r=>r.chain===chain&&r.w?.id===w.id);
-        scanStatuses.push({chain,w,address:wa,scanType,lastBlock:Number(info?.last_scanned_block||0),lastAt:info?.last_scanned_at||null,eventCount:(sync.events||[]).length,pairCount:new Set((sync.events||[]).map(e=>normalizeAddress(e.pair_address,chain)).filter(Boolean)).size,positionCount:walletRows.length,warning:sync.warning||null});
+        scanStatuses.push({chain,w,address:wa,scanType,lastBlock:Number(info?.last_scanned_block||0),lastAt:info?.last_scanned_at||null,eventCount:(sync.events||[]).length,pairCount:new Set((sync.events||[]).map(e=>normalizeAddress(e.pair_address,chain)).filter(Boolean)).size,positionCount:walletRows.length,warning:sync.warning||info?.last_scan_message||null,transfersSeen:Number(info?.last_transfers_seen||0),candidateContracts:Number(info?.last_candidate_contracts||0),projectPairs:Number(info?.last_project_pairs||0),eventsSaved:Number(info?.last_events_saved||0),stakingEvents:Number(info?.last_staking_events||0),scanResult:info?.last_scan_result||null});
       }catch(e){
         scanStatuses.push({chain,w,address:wa,scanType:projectLpScanType(projectKey,chain),lastBlock:0,lastAt:null,eventCount:(sync.events||[]).length,pairCount:new Set((sync.events||[]).map(e=>normalizeAddress(e.pair_address,chain)).filter(Boolean)).size,positionCount:rows.filter(r=>r.chain===chain&&r.w?.id===w.id).length,warning:`Scan-Status nicht lesbar: ${e?.message||e}`});
       }
@@ -4720,7 +4730,7 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
   const f=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:8}),u=n=>n==null?'–':'$'+Number(n).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}),dt=x=>x?new Date(x).toLocaleString('de-CH'):'–';
   const histCell=n=>n==null?'–':f(n);
   const currentTable=`<div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Pool</th><th>LP in Wallet</th><th>LP gestakt</th><th>LP gesamt</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} Wallet</th><th>${dateStr} gestakt</th><th>${dateStr} gesamt</th><th>${dateStr} USD</th></tr></thead><tbody>${displayRows.length?displayRows.map(r=>`<tr><td>${escapeAttr(r.w.label)}${r.historicalOnly?'<div class="meta"><span class="badge">nur Historie</span></div>':''}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta">${r.pair.address}</div></td><td>${f(r.cur?.walletBalance??r.cur?.balance??0)}</td><td>${f(r.cur?.stakedBalance||0)}</td><td><strong>${f(r.cur?.balance||0)}</strong></td><td>${r.historicalOnly?'–':(r.cur?`<div>${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}</div><div>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}</div><div class="meta">wirtschaftlicher Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–')}</td><td>${r.historicalOnly?'–':u(r.cur?.usd)}</td><td>${histCell(r.histWalletBal??r.histBal)}</td><td>${histCell(r.histStakedBal)}</td><td><strong>${histCell(r.histBal)}</strong></td><td>${r.histBal==null?'–':u(r.histUsd??(r.histPrice?.price!=null?r.histBal*r.histPrice.price:null))}</td></tr>`).join(''):'<tr><td colspan="12">Noch keine gespeicherten LP-Positionen. Bitte „Daten aktualisieren“ ausführen.</td></tr>'}</tbody></table></div>`;
-  const scanStatusTable=`<h3 style="margin-top:22px">LP-Scan-Status pro Wallet</h3><div class="note" style="margin-bottom:8px">Hier siehst du unabhängig vom aktuellen Token-/LP-Bestand, welche Wallets in die LP-Historiensuche einbezogen sind. <strong>„Noch nicht gescannt“</strong> bedeutet, dass für diesen Scan-Typ noch kein erfolgreicher kompletter Lauf gespeichert wurde.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Adresse</th><th>Status</th><th>Letzter Scan</th><th>bis Block</th><th>Historien-Ereignisse</th><th>historische Pools</th><th>Positionszeilen</th></tr></thead><tbody>${displayScanStatuses.length?displayScanStatuses.map(s=>`<tr><td><strong>${escapeAttr(s.w?.label||'')}</strong></td><td>${escapeAttr(CHAIN_META[s.chain]?.label||s.chain)}</td><td class="meta lp-address">${escapeAttr(s.address||'')}</td><td>${s.warning?`<span class="badge danger">unvollständig</span><div class="meta">${escapeAttr(s.warning)}</div>`:s.lastBlock>0?'<span class="badge safe">gescannt</span>':'<span class="badge">noch nicht gescannt</span>'}</td><td>${s.lastAt?dt(s.lastAt):'–'}</td><td>${s.lastBlock>0?Number(s.lastBlock).toLocaleString('de-CH'):'–'}</td><td>${Number(s.eventCount||0).toLocaleString('de-CH')}</td><td>${Number(s.pairCount||0).toLocaleString('de-CH')}</td><td>${Number(s.positionCount||0).toLocaleString('de-CH')}</td></tr>`).join(''):'<tr><td colspan="9">Keine Wallet-Adressen für diese Chain vorhanden.</td></tr>'}</tbody></table></div>`;
+  const scanStatusTable=`<h3 style="margin-top:22px">LP-Scan-Status pro Wallet</h3><div class="note" style="margin-bottom:8px">Hier siehst du unabhängig vom aktuellen Token-/LP-Bestand, welche Wallets in die LP-Historiensuche einbezogen sind. Die Diagnosewerte zeigen zusätzlich, wie viel der letzte Discovery-Lauf tatsächlich gefunden hat.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Chain</th><th>Adresse</th><th>Status</th><th>Letzter Scan</th><th>bis Block</th><th>Transfers</th><th>Kandidaten</th><th>Projekt-LPs</th><th>neu Events</th><th>davon Staking</th><th>Historien-Ereignisse</th><th>Positionszeilen</th></tr></thead><tbody>${displayScanStatuses.length?displayScanStatuses.map(s=>`<tr><td><strong>${escapeAttr(s.w?.label||'')}</strong></td><td>${escapeAttr(CHAIN_META[s.chain]?.label||s.chain)}</td><td class="meta lp-address">${escapeAttr(s.address||'')}</td><td>${s.warning?`<span class="badge danger">unvollständig</span><div class="meta">${escapeAttr(s.warning)}</div>`:s.lastBlock>0?`<span class="badge ${s.scanResult==='partial'?'danger':'safe'}">${s.scanResult==='partial'?'teilweise':'gescannt'}</span>`:'<span class="badge">noch nicht gescannt</span>'}</td><td>${s.lastAt?dt(s.lastAt):'–'}</td><td>${s.lastBlock>0?Number(s.lastBlock).toLocaleString('de-CH'):'–'}</td><td>${Number(s.transfersSeen||0).toLocaleString('de-CH')}</td><td>${Number(s.candidateContracts||0).toLocaleString('de-CH')}</td><td>${Number(s.projectPairs||0).toLocaleString('de-CH')}</td><td>${Number(s.eventsSaved||0).toLocaleString('de-CH')}</td><td>${Number(s.stakingEvents||0).toLocaleString('de-CH')}</td><td>${Number(s.eventCount||0).toLocaleString('de-CH')}</td><td>${Number(s.positionCount||0).toLocaleString('de-CH')}</td></tr>`).join(''):'<tr><td colspan="13">Keine Wallet-Adressen für diese Chain vorhanden.</td></tr>'}</tbody></table></div>`;
   const hrows=[...displayHistory].sort((a,b)=>Number(b.block_number)-Number(a.block_number)||Number(b.log_index||0)-Number(a.log_index||0));
   const actionLabel=e=>({add:'Add Liquidity',remove:'Remove Liquidity',stake:'Stake',unstake:'Unstake',send:'Versenden',receive:'Empfangen'}[e.event_type]||e.event_type);
   const actionBadge=e=>['add','stake','receive'].includes(e.event_type)?'safe':['remove','unstake'].includes(e.event_type)?'danger':'';

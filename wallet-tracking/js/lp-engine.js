@@ -59,6 +59,23 @@ window.WalletLPEngine = (() => {
       return {address:norm(address),token0:norm(t0),token1:norm(t1)};
     }catch{return null;}
   }
+  async function pairDescriptor(chain,address,block="latest"){
+    // Lightweight LP identity for Discovery/History. Crucially this does NOT depend on
+    // current getReserves()/totalSupply(); legacy pools can therefore remain discoverable
+    // even when current valuation reads fail.
+    const basic=await pairTokens(chain,address,block);if(!basic)return null;
+    try{
+      const [dr,fr]=await Promise.all([
+        call(chain,address,V2.encodeFunctionData("decimals",[]),block),
+        call(chain,address,V2.encodeFunctionData("factory",[]),block)
+      ]);
+      if(dr==null||fr==null)return null;
+      const [dec]=V2.decodeFunctionResult("decimals",dr),[factory]=V2.decodeFunctionResult("factory",fr);
+      const [m0,m1]=await Promise.all([meta(chain,basic.token0),meta(chain,basic.token1)]);
+      return {chain,address:norm(address),factory:norm(factory),decimals:Number(dec),t0:m0,t1:m1,descriptorOnly:true};
+    }catch{return null;}
+  }
+
   async function pairInfo(chain,address,block="latest"){
     const key=chain+"|"+norm(address)+"@"+block;if(pairCache.has(key))return pairCache.get(key);
     try{
@@ -185,19 +202,20 @@ window.WalletLPEngine = (() => {
   }
   async function getScanStateInfo(projectKey,chain,wallet,scanType="lp_history_v2"){
     const c=ctx();if(!c.sb||!c.currentUser?.id)return {last_scanned_block:0,last_scanned_at:null,scan_type:scanType};
-    const {data,error}=await c.sb.from("project_scan_state").select("last_scanned_block,last_scanned_at,scan_type").eq("project_key",projectKey).eq("chain_key",chain).ilike("wallet_address",norm(wallet)).eq("scan_type",scanType).maybeSingle();
+    const {data,error}=await c.sb.from("project_scan_state").select("last_scanned_block,last_scanned_at,scan_type,last_transfers_seen,last_candidate_contracts,last_project_pairs,last_events_saved,last_staking_events,last_scan_result,last_scan_message").eq("project_key",projectKey).eq("chain_key",chain).ilike("wallet_address",norm(wallet)).eq("scan_type",scanType).maybeSingle();
     if(error)throw error;
-    return {last_scanned_block:Number(data?.last_scanned_block||0),last_scanned_at:data?.last_scanned_at||null,scan_type:data?.scan_type||scanType};
+    return {last_scanned_block:Number(data?.last_scanned_block||0),last_scanned_at:data?.last_scanned_at||null,scan_type:data?.scan_type||scanType,last_transfers_seen:Number(data?.last_transfers_seen||0),last_candidate_contracts:Number(data?.last_candidate_contracts||0),last_project_pairs:Number(data?.last_project_pairs||0),last_events_saved:Number(data?.last_events_saved||0),last_staking_events:Number(data?.last_staking_events||0),last_scan_result:data?.last_scan_result||null,last_scan_message:data?.last_scan_message||null};
   }
   async function getScanState(projectKey,chain,wallet,scanType="lp_history_v2"){
     return (await getScanStateInfo(projectKey,chain,wallet,scanType)).last_scanned_block;
   }
-  async function setScanState(projectKey,chain,wallet,lastBlock,scanType="lp_history_v2"){
+  async function setScanState(projectKey,chain,wallet,lastBlock,scanType="lp_history_v2",diagnostics={}){
     const c=ctx();if(!c.sb||!c.currentUser?.id)return;
-    const now=new Date().toISOString(),row={user_id:c.currentUser.id,project_key:projectKey,chain_key:chain,wallet_address:norm(wallet),scan_type:scanType,last_scanned_block:Number(lastBlock||0),last_scanned_at:now,updated_at:now};
+    const now=new Date().toISOString(),row={user_id:c.currentUser.id,project_key:projectKey,chain_key:chain,wallet_address:norm(wallet),scan_type:scanType,last_scanned_block:Number(lastBlock||0),last_scanned_at:now,updated_at:now,
+      last_transfers_seen:Number(diagnostics.transfersSeen||0),last_candidate_contracts:Number(diagnostics.candidateContracts||0),last_project_pairs:Number(diagnostics.projectPairs||0),last_events_saved:Number(diagnostics.eventsSaved||0),last_staking_events:Number(diagnostics.stakingEvents||0),last_scan_result:diagnostics.result||'ok',last_scan_message:diagnostics.message||null};
     const {error}=await c.sb.from("project_scan_state").upsert(row,{onConflict:"user_id,project_key,chain_key,wallet_address,scan_type"});if(error)throw error;
   }
   async function latestBlock(chain){return Number(BigInt(await rpc(chain,"eth_blockNumber",[])));}
   function configure(fn){ctx=fn||ctx;}
-  return {configure,pairTokens,pairInfo,positions,valuePosition,label,meta,rpc,latestBlock,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,replacePositionCache,getScanState,getScanStateInfo,setScanState};
+  return {configure,pairTokens,pairDescriptor,pairInfo,balance,positions,valuePosition,label,meta,rpc,latestBlock,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,replacePositionCache,getScanState,getScanStateInfo,setScanState};
 })();
