@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 00:01:00 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 00:31:44 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -374,9 +374,10 @@ async function resolveLotContractTiming(lot,latestProbe){
   }
 
   const duration=rows.map(r=>({r,sec:secondsDurationFromProbeResult(r)})).find(x=>x.sec);
-  if(duration&&lot.stakeTime){
+  if(duration&&(lot.lockBaseTime||lot.stakeTime)){
+    const baseTime=lot.lockBaseTime||lot.stakeTime;
     lot.durationDays=duration.sec/86400;
-    lot.expiryTime=new Date(new Date(lot.stakeTime).getTime()+duration.sec*1000).toISOString();
+    lot.expiryTime=new Date(new Date(baseTime).getTime()+duration.sec*1000).toISOString();
     lot.durationSource=`On-chain ${duration.r.label}${lot.stakeBlockHex?' @ Stake-Block':''}`;
     return;
   }
@@ -386,8 +387,9 @@ async function resolveLotContractTiming(lot,latestProbe){
   const replay=await deriveUnlockFromActualUnstake(lot);
   if(replay?.exact&&replay.expiryTime){
     lot.expiryTime=replay.expiryTime;
-    lot.durationDays=lot.stakeTime?
-      (new Date(replay.expiryTime).getTime()-new Date(lot.stakeTime).getTime())/86400000:null;
+    const baseTime=lot.lockBaseTime||lot.stakeTime;
+    lot.durationDays=baseTime?
+      (new Date(replay.expiryTime).getTime()-new Date(baseTime).getTime())/86400000:null;
     lot.durationSource=replay.source;
     lot.contractUnlockBlockHex=replay.blockHex;
     return;
@@ -1059,6 +1061,7 @@ async function historicalPriceGraph(pairs,blockHex){
 }
 async function lpHistoricalValue(pair,lpAmount,blockHex,pricePairs){
   if(!pair||!blockHex||!(lpAmount>0))return null;
+  if(pair.assetType==='legacy_staking_token'||pair.assetType==='staking_token')return null;
   const st=await pairStateAt(pair,blockHex);if(!st||!(st.total>0))return null;
   const share=Number(lpAmount)/st.total;
   const a0=st.r0*share,a1=st.r1*share;
@@ -1771,7 +1774,7 @@ function rewardHtml(lot){
   for(const r of reads){
     items+=`<div class="reward-item"><span class="rk">${esc(r.label)}</span><span class="rv">${Number(r.value).toLocaleString('de-CH',{maximumFractionDigits:12})}${p.token?' '+esc(p.token):''}</span></div>`;
   }
-  if(!reads.length)items+=`<div class="reward-item"><span class="rk">Aktuelle SC-Reward-Werte</span><span class="rv muted">Keine der bekannten Reward-Read-Funktionen lieferte einen eindeutig interpretierbaren aktuellen Wert.</span></div>`;
+  if(!reads.length)items+=`<div class="reward-item"><span class="rk">Aktuell noch offener Reward-Anspruch laut Smart Contract</span><span class="rv muted">Kein aktuell offener Reward-Anspruch konnte über bekannte SC-Read-Funktionen eindeutig ermittelt werden. Historisch gefundene Claim-/Reward-Transaktionen bleiben davon unberührt.</span></div>`;
   items+=stakeRewardEvidenceHtml(lot);
   items+=stakeInputEvidenceHtml(lot);
   items+=rewardClaimSummaryHtml(lot);
@@ -1798,9 +1801,40 @@ function buildDiagnosticLots(stakingRows){
     const q=groups.get(key);
     if(r.action==='Stake'){
       const stakeTime=r.t.metadata?.blockTimestamp||null;
-      const lot={key,pair:r.p||null,pair_address:safePairAddress(r),token0_symbol:r?.p?.token0?.symbol||'Token0',token1_symbol:r?.p?.token1?.symbol||'Token1',staking:r.staking,counterparty:r.counterparty,entry_contract:r.entry_contract||null,stake_event_contract:r.stake_event_contract||null,stake_token_id:r.stake_token_id||null,stakeTime,stakeBlockHex:r?.t?.blockNum||null,expiryTime:null,durationDays:null,durationSource:null,stakeTx:r.t.hash,original:Number(r.amount||0),remaining:Number(r.amount||0),status:'open',transactions:[]};
-      addLotTx(lot,eventTx(r,'Stake'));
-      lots.push(lot); q.push(lot);
+      const amount=Number(r.amount||0);
+
+      // A repeated Stake for the same wallet + staking asset + staking contract
+      // while the position is still open is treated as a top-up of that position,
+      // not as an independent second staking. This matches legacy TLN contracts
+      // that store one mutable user position and reset the lock on top-up.
+      const openLot=q.length===1 && q[0]?.remaining>1e-12 ? q[0] : null;
+      if(openLot){
+        openLot.topUps=openLot.topUps||[];
+        openLot.topUps.push({
+          time:stakeTime,
+          block:r?.t?.blockNum?parseInt(r.t.blockNum,16):null,
+          blockHex:r?.t?.blockNum||null,
+          tx:r?.t?.hash||null,
+          amount,
+          resultingPrincipal:Number(openLot.remaining||0)+amount
+        });
+        openLot.original=Number(openLot.original||0)+amount;
+        openLot.remaining=Number(openLot.remaining||0)+amount;
+        openLot.lastTopUpTime=stakeTime;
+        openLot.lastTopUpBlockHex=r?.t?.blockNum||null;
+        openLot.lockBaseTime=stakeTime;
+        openLot.lockBaseReason='Aufstockung des bestehenden Stakings';
+        // Contract timing must be re-derived from the latest stake/top-up.
+        openLot.expiryTime=null;
+        openLot.durationDays=null;
+        openLot.durationSource=null;
+        addLotTx(openLot,{...eventTx(r,'Aufstockung'),amount,source:'Wiederholter Stake bei bereits offener Position'});
+        log(`Aufstockung erkannt: ${safePairLabel(openLot)} · +${amount.toLocaleString('de-CH',{maximumFractionDigits:12})} · bestehende Position wird fortgeführt; Laufzeitbasis = Aufstockungszeitpunkt ${stakeTime?new Date(stakeTime).toLocaleString('de-CH'):'–'} · Tx ${r?.t?.hash||'–'}`,'ok');
+      }else{
+        const lot={key,pair:r.p||null,pair_address:safePairAddress(r),token0_symbol:r?.p?.token0?.symbol||'Token0',token1_symbol:r?.p?.token1?.symbol||'Token1',staking:r.staking,counterparty:r.counterparty,entry_contract:r.entry_contract||null,stake_event_contract:r.stake_event_contract||null,stake_token_id:r.stake_token_id||null,stakeTime,stakeBlockHex:r?.t?.blockNum||null,lockBaseTime:stakeTime,lockBaseReason:'Erst-Stake',expiryTime:null,durationDays:null,durationSource:null,stakeTx:r.t.hash,original:amount,remaining:amount,status:'open',transactions:[],topUps:[]};
+        addLotTx(lot,eventTx(r,'Stake'));
+        lots.push(lot); q.push(lot);
+      }
     }else{
       let left=Number(r.amount||0);
       while(left>1e-12&&q.length){
@@ -2170,22 +2204,25 @@ function positionCardHtml(l,index,isClosed){
   const status=isClosed?(l.unstakeEvidence==='contract_event'?'Abgeschlossen / unstaked · SC-Event bestätigt':'Abgeschlossen / unstaked'):l.status==='partial'?'Teilweise offen':expired?'Freigegeben – noch gestakt':'Aktiv / gesperrt';
   const statusClass=isClosed?'status-closed':expired?'warn':'status-open';
   const actualDays=l.stakeTime?Math.max(0,Math.floor(((l.unstakeTime?new Date(l.unstakeTime).getTime():Date.now())-new Date(l.stakeTime).getTime())/86400000)):null;
+  const actualLockDays=(l.lockBaseTime||l.stakeTime)?Math.max(0,(((l.unstakeTime?new Date(l.unstakeTime).getTime():Date.now())-new Date(l.lockBaseTime||l.stakeTime).getTime())/86400000)):null;
   const stakeValue=l.stakeUsd!=null?`<span class="v">${formatUsd(l.stakeUsd)}</span><div class="value-source">${esc(l.stakeUsdSource||'')}</div>`:`<span class="v">–</span>`;
   const contractEndValue=l.contractEndUsd!=null?`<span class="v">${formatUsd(l.contractEndUsd)}</span><div class="value-source">${esc(l.contractEndUsdSource||'')}</div>`:`<span class="v">–</span><div class="value-source">${l.expiryTime?'Historischer On-chain-Wert zum Vertragsende konnte nicht ermittelt werden.':'Kein Vertragsende bekannt.'}</div>`;
   const unstakeValue=isClosed?(l.unstakeUsd!=null?`<span class="v">${formatUsd(l.unstakeUsd)}</span><div class="value-source">${esc(l.unstakeUsdSource||'')}</div>`:`<span class="v">–</span><div class="value-source">On-chain-Wert zum tatsächlichen Unstake konnte nicht ermittelt werden.</div>`):'';
   return `<div class="stake-pos">
     <div class="stake-pos-head"><div><div class="stake-title">${esc(safePairLabel(l))}</div><div class="muted">${esc(stakingContractLabel(l.staking))}</div></div><div class="stake-status ${statusClass}">${esc(status)}</div></div>
     <div class="stake-facts">
-      <div class="stake-fact"><span class="k">Stake-Datum</span><span class="v">${l.stakeTime?new Date(l.stakeTime).toLocaleString('de-CH'):'–'}</span></div>
-      <div class="stake-fact"><span class="k">LP ursprünglich gestakt</span><span class="v">${Number(l.original||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
+      <div class="stake-fact"><span class="k">Erster Stake</span><span class="v">${l.stakeTime?new Date(l.stakeTime).toLocaleString('de-CH'):'–'}</span></div>
+      ${(l.topUps||[]).length?`<div class="stake-fact"><span class="k">Letzte Aufstockung</span><span class="v">${l.lastTopUpTime?new Date(l.lastTopUpTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">${(l.topUps||[]).length} Aufstockung(en) erkannt · Laufzeitbasis wurde auf die letzte Aufstockung gesetzt.</div></div>`:''}
+      <div class="stake-fact"><span class="k">Gesamt eingezahltes Staking-Asset</span><span class="v">${Number(l.original||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
       <div class="stake-fact"><span class="k">USD-Wert beim Stake</span>${stakeValue}</div>
       <div class="stake-fact"><span class="k">LP aktuell offen</span><span class="v">${Number(l.remaining||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
-      <div class="stake-fact"><span class="k">Vorgesehene Laufzeit</span><span class="v">${l.durationDays!=null?`${l.durationDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span><div class="value-source">${l.durationSource?esc(l.durationSource):'Keine belastbare Laufzeit aus dem SC ermittelbar.'}</div></div>
+      <div class="stake-fact"><span class="k">Ermittelte Laufzeit ab letzter Laufzeitbasis</span><span class="v">${l.durationDays!=null?`${l.durationDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span><div class="value-source">${l.lockBaseReason?`${esc(l.lockBaseReason)} · `:''}${l.durationSource?esc(l.durationSource):'Keine belastbare Laufzeit aus dem SC ermittelbar.'}</div></div>
       <div class="stake-fact"><span class="k">${l.durationSource?.startsWith('Historische SC-Simulation')?'Frühester historisch simulierbarer Unstake':'Freigegeben / ausgelaufen am'}</span><span class="v">${l.expiryTime?new Date(l.expiryTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">${l.expiryTime?esc(l.durationSource||'On-chain ermittelt'):(l.contractEndUpperBound?'Tatsächlicher Unstake belegt; exakter frühester Freigabezeitpunkt konnte historisch nicht eingegrenzt werden.':'Keine belastbare Freigabe aus dem SC ermittelbar.')}</div></div>
       <div class="stake-fact"><span class="k">${l.durationSource?.startsWith('Historische SC-Simulation')?'USD-Wert beim frühesten historisch simulierbaren Unstake':'USD-Wert beim Vertragsende'}</span>${contractEndValue}</div>
-      ${isClosed?`<div class="stake-fact"><span class="k">Tatsächliches Unstake-Datum</span><span class="v">${l.unstakeTime?new Date(l.unstakeTime).toLocaleString('de-CH'):'–'}</span></div><div class="stake-fact"><span class="k">USD-Wert beim tatsächlichen Unstake</span>${unstakeValue}</div><div class="stake-fact"><span class="k">Tatsächliche Dauer bis Unstake</span><span class="v">${actualDays!=null?`${actualDays} Tage`:'–'}</span></div>`:''}
+      ${isClosed?`<div class="stake-fact"><span class="k">Tatsächliches Unstake-Datum</span><span class="v">${l.unstakeTime?new Date(l.unstakeTime).toLocaleString('de-CH'):'–'}</span></div><div class="stake-fact"><span class="k">USD-Wert beim tatsächlichen Unstake</span>${unstakeValue}</div><div class="stake-fact"><span class="k">Gesamtdauer erster Stake → Unstake</span><span class="v">${actualDays!=null?`${actualDays} Tage`:'–'}</span></div>${(l.topUps||[]).length?`<div class="stake-fact"><span class="k">Dauer letzte Aufstockung → Unstake</span><span class="v">${actualLockDays!=null?`${actualLockDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span></div>`:''}`:''}
       <div class="stake-fact"><span class="k">Staking-Contract</span><span class="v mono">${esc(l.staking?.contract_address||l.counterparty||'–')}</span></div>
     </div>
+    ${(l.topUps||[]).length?`<div class="reward-box"><div class="reward-title">Aufstockungen dieser Staking-Position</div><div class="wrap"><table><thead><tr><th>Zeit</th><th>Zusätzlich</th><th>Gesamt danach</th><th>Tx</th></tr></thead><tbody>${l.topUps.map(x=>`<tr><td>${x.time?new Date(x.time).toLocaleString('de-CH'):'–'}</td><td class="num">+${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="num">${Number(x.resultingPrincipal||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(x.tx)}">${esc(x.tx||'–')}</a></td></tr>`).join('')}</tbody></table></div></div>`:''}
     ${rewardHtml(l)}
     <div class="stake-actions">
       <details><summary>Transaktionen (${(l.transactions||[]).length})</summary>${txRowsHtml(l)}</details>
