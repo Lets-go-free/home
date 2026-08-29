@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 15:04 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 15:31 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -186,6 +186,54 @@ async function loadLotScDetails(index){
  }catch(e){box.innerHTML=`<span class="err">${esc(e.message)}</span>`}
 }
 function bindLotDetailEvents(){document.querySelectorAll('details.sc-details').forEach(d=>d.addEventListener('toggle',()=>{if(d.open)loadLotScDetails(Number(d.dataset.lotIndex))},{once:true}))}
+
+function receiptErc20Transfers(receipt){
+  const out=[];
+  const transferTopic='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+  for(const lg of (receipt?.logs||[])){
+    if(String(lg?.topics?.[0]||'').toLowerCase()!==transferTopic||!lg.topics?.[1]||!lg.topics?.[2])continue;
+    const from=norm('0x'+String(lg.topics[1]).slice(-40));
+    const to=norm('0x'+String(lg.topics[2]).slice(-40));
+    let amountRaw=null;try{amountRaw=BigInt(lg.data||'0x0')}catch{}
+    out.push({token:norm(lg.address),from,to,amountRaw});
+  }
+  return out;
+}
+async function hintedRewardClaimCalls(wallet){
+  const out=[],w=norm(wallet);
+  for(const hash of REWARD_CLAIM_TX_HINTS){
+    try{
+      const [tx,receipt]=await Promise.all([
+        rpc('eth_getTransactionByHash',[hash]),
+        rpc('eth_getTransactionReceipt',[hash])
+      ]);
+      if(!tx||norm(tx.from)!==w)continue;
+      const block=tx.blockNumber?await rpc('eth_getBlockByNumber',[tx.blockNumber,false]):null;
+      const ts=block?.timestamp?new Date(Number(BigInt(block.timestamp))*1000).toISOString():null;
+      const input=tx.input||'0x',selector=String(input).slice(0,10).toLowerCase();
+      const transfers=receiptErc20Transfers(receipt);
+      out.push({
+        hash,
+        from:tx.from,
+        to:tx.to,
+        blockNum:tx.blockNumber,
+        metadata:{blockTimestamp:ts},
+        _input:input,
+        _selector:selector,
+        _method:METHOD_SELECTORS.get(selector)||'Reward Claim',
+        _blockNumber:tx.blockNumber?parseInt(tx.blockNumber,16):null,
+        _success:receipt?.status==null?null:Number(BigInt(receipt.status))===1,
+        _erc20Transfers:transfers,
+        _rewardHint:true,
+        _staking:{contract_address:norm(tx.to||''),label:'Reward-Claim · bestätigte Beispiel-Tx'}
+      });
+      log(`Reward-Claim-Hinweis geladen: ${hash} · ${transfers.length} ERC-20-Transfer(s) im Receipt.`,'ok');
+    }catch(e){
+      log(`Reward-Claim-Hinweis ${hash} konnte nicht geladen werden: ${e.message}`,'warn');
+    }
+  }
+  return out;
+}
 async function allExternalCallsToStaking(wallet,extraTargets=[]){
   const stakeMap=new Map(stakingContracts.map(x=>[norm(x.contract_address),x]));
   for(const x of (extraTargets||[])){
@@ -221,15 +269,7 @@ async function allExternalCallsToStaking(wallet,extraTargets=[]){
       if(String(t._input||'').length>=74){
         try{t._uintArg=BigInt('0x'+String(t._input).slice(10,74))}catch{}
       }
-      t._erc20Transfers=[];
-      const transferTopic='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
-      for(const lg of (receipt?.logs||[])){
-        if(String(lg?.topics?.[0]||'').toLowerCase()!==transferTopic||!lg.topics?.[1]||!lg.topics?.[2])continue;
-        const from='0x'+String(lg.topics[1]).slice(-40);
-        const to='0x'+String(lg.topics[2]).slice(-40);
-        let amountRaw=null;try{amountRaw=BigInt(lg.data||'0x0')}catch{}
-        t._erc20Transfers.push({token:norm(lg.address),from:norm(from),to:norm(to),amountRaw});
-      }
+      t._erc20Transfers=receiptErc20Transfers(receipt);
     }catch(e){
       t._input='0x';t._selector='–';t._method='Contract-Aufruf';
     }
@@ -294,6 +334,9 @@ function renderRawStakingEvents(rows){
 }
 
 const PRICE_STABLE_SYMBOLS=/^(USDT|USDC|BUSD)$/i;
+const REWARD_CLAIM_TX_HINTS=[
+  '0x0f0320b0da7d7df1678fe6de455879cffee8a5f10e0d77200c625333a7dfcd57'
+];
 const BUSINESS_PROBE_CACHE=new Map();
 const PAIR_STATE_CACHE=new Map();
 
@@ -543,6 +586,89 @@ async function enrichLotsBusiness(lots,pricePairs){
     }
   }
 }
+
+function callTimeMs(c){return c?.metadata?.blockTimestamp?new Date(c.metadata.blockTimestamp).getTime():0}
+async function attachRewardClaimsToLots(lots,calls){
+  const wallet=norm(CURRENT_WALLET);
+  for(const lot of (lots||[])){
+    lot.rewardClaims=[];
+    const pair=norm(safePairAddress(lot));
+    const stakeMs=lot.stakeTime?new Date(lot.stakeTime).getTime():0;
+    const endMs=lot.unstakeTime?new Date(lot.unstakeTime).getTime():Date.now()+86400000;
+    const targets=new Set([
+      norm(lot?.staking?.contract_address||lot.counterparty||''),
+      norm(lot.entry_contract||''),
+      norm(lot.stake_event_contract||'')
+    ].filter(Boolean));
+
+    for(const c of (calls||[])){
+      const when=callTimeMs(c);
+      if(!when||when<stakeMs||when>endMs)continue;
+
+      const to=norm(c.to||c?._staking?.contract_address||'');
+      // Normal discovery requires a known staking/controller target.
+      // Explicit user-supplied claim hints are accepted for this isolated diagnostic
+      // only when the transaction belongs to the selected wallet.
+      if(!targets.has(to)&&!c._rewardHint)continue;
+
+      for(const tr of (c._erc20Transfers||[])){
+        if(tr.to!==wallet||!tr.token||tr.token===pair||tr.amountRaw==null)continue;
+        try{
+          const meta=await tokenMeta(tr.token);
+          const amount=Number(ethers.formatUnits(tr.amountRaw,meta.decimals));
+          if(!(amount>0))continue;
+          const claim={
+            hash:c.hash,time:c.metadata?.blockTimestamp||null,block:c._blockNumber||null,
+            token:tr.token,symbol:meta.symbol||'Token',decimals:meta.decimals,amount,
+            from:tr.from,to:tr.to,method:c._method||'Reward Claim',
+            selector:c._selector||null,source:c._rewardHint?'Bestätigte Claim-Tx · Receipt':'Staking-/Controller-Receipt'
+          };
+          const key=`${claim.hash}|${claim.token}|${claim.amount}`;
+          if(!lot.rewardClaims.some(x=>`${x.hash}|${x.token}|${x.amount}`===key)){
+            lot.rewardClaims.push(claim);
+            addLotTx(lot,{
+              kind:`Reward / Claim · ${claim.symbol}`,
+              hash:claim.hash,time:claim.time,block:claim.block,amount:claim.amount,
+              tokenSymbol:claim.symbol,tokenAddress:claim.token,
+              selector:claim.selector,method:claim.method,source:claim.source
+            });
+          }
+        }catch{}
+      }
+    }
+    lot.rewardClaims.sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  }
+}
+function rewardClaimSummaryHtml(lot){
+  const claims=lot.rewardClaims||[];
+  if(!claims.length)return '';
+  const sums=new Map();
+  for(const c of claims){
+    const k=`${c.symbol}|${c.token}`;
+    if(!sums.has(k))sums.set(k,{symbol:c.symbol,token:c.token,amount:0});
+    sums.get(k).amount+=Number(c.amount||0);
+  }
+  const totals=[...sums.values()].map(x=>`
+    <div class="reward-item"><span class="rk">Erhalten / geclaimt · ${esc(x.symbol)}</span>
+    <span class="rv">${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</span>
+    <div class="value-source mono">${esc(x.token)}</div></div>`).join('');
+  const rows=claims.map(c=>`
+    <tr>
+      <td>${c.time?new Date(c.time).toLocaleString('de-CH'):'–'}</td>
+      <td><b>${c.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(c.symbol)}</b><div class="mono muted">${esc(c.token)}</div></td>
+      <td>${esc(c.method||'Reward Claim')}<div class="muted">${esc(c.source||'')}</div></td>
+      <td>${c.block??'–'}</td>
+      <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(c.hash)}">${esc(c.hash)}</a></td>
+    </tr>`).join('');
+  return `${totals}<div style="grid-column:1/-1;margin-top:8px">
+    <details><summary>Erhaltene Reward-Transaktionen (${claims.length})</summary>
+      <div class="wrap" style="margin-top:8px"><table style="min-width:900px">
+        <thead><tr><th>Zeit</th><th>Reward</th><th>Claim / Quelle</th><th>Block</th><th>Tx</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </details>
+  </div>`;
+}
 function rewardHtml(lot){
   const p=lot.rewardProfile||rewardProfileForLot(lot),reads=lot.rewardReads||[];
   let items='';
@@ -550,8 +676,9 @@ function rewardHtml(lot){
   for(const r of reads){
     items+=`<div class="reward-item"><span class="rk">${esc(r.label)}</span><span class="rv">${Number(r.value).toLocaleString('de-CH',{maximumFractionDigits:12})}${p.token?' '+esc(p.token):''}</span></div>`;
   }
-  if(!reads.length)items+=`<div class="reward-item"><span class="rk">On-chain Reward-Werte</span><span class="rv muted">Keine der bekannten Reward-Read-Funktionen lieferte einen eindeutig interpretierbaren Wert.</span></div>`;
-  return `<div class="reward-box"><div class="reward-title">🎁 ${esc(p.title)}</div><div class="reward-grid">${items}</div><div class="reward-note">${esc(p.model)}</div></div>`;
+  if(!reads.length)items+=`<div class="reward-item"><span class="rk">Aktuelle SC-Reward-Werte</span><span class="rv muted">Keine der bekannten Reward-Read-Funktionen lieferte einen eindeutig interpretierbaren aktuellen Wert.</span></div>`;
+  items+=rewardClaimSummaryHtml(lot);
+  return `<div class="reward-box"><div class="reward-title">🎁 ${esc(p.title)}</div><div class="reward-grid">${items}</div><div class="reward-note">${esc(p.model)} Tatsächlich erhaltene Rewards werden unabhängig davon aus erfolgreichen ERC-20-Transfers im Claim-/Staking-Receipt ermittelt.</div></div>`;
 }
 function addLotTx(lot,tx){
   if(!lot||!tx?.hash)return;
@@ -897,7 +1024,7 @@ function associateContractCallsToLots(lots,calls){
 function txRowsHtml(lot){
   const txs=lot.transactions||[];
   if(!txs.length)return '<div class="empty-note">Keine zugeordneten Transaktionen.</div>';
-  return `<div class="wrap tx-table"><table style="min-width:980px"><thead><tr><th>Zeit</th><th>Aktion</th><th>LP-Menge</th><th>Methode / Quelle</th><th>Block</th><th>Transaktion</th></tr></thead><tbody>${txs.map(t=>`<tr><td>${t.time?new Date(t.time).toLocaleString('de-CH'):'–'}</td><td class="tx-kind">${esc(t.kind||'Transaktion')}</td><td class="num">${Number.isFinite(Number(t.amount))&&Number(t.amount)!==0?Number(t.amount).toLocaleString('de-CH',{maximumFractionDigits:12}):'–'}</td><td>${esc(t.method||t.source||'–')}${t.selector?`<div class="mono muted">${esc(t.selector)}</div>`:''}${t.topic0?`<div class="mono muted">${esc(t.topic0)}</div>`:''}</td><td>${t.block??'–'}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(t.hash)}">${esc(t.hash)}</a></td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="wrap tx-table"><table style="min-width:980px"><thead><tr><th>Zeit</th><th>Aktion</th><th>Menge</th><th>Methode / Quelle</th><th>Block</th><th>Transaktion</th></tr></thead><tbody>${txs.map(t=>`<tr><td>${t.time?new Date(t.time).toLocaleString('de-CH'):'–'}</td><td class="tx-kind">${esc(t.kind||'Transaktion')}</td><td class="num">${Number.isFinite(Number(t.amount))&&Number(t.amount)!==0?`${Number(t.amount).toLocaleString('de-CH',{maximumFractionDigits:12})}${t.tokenSymbol?' '+esc(t.tokenSymbol):''}`:'–'}</td><td>${esc(t.method||t.source||'–')}${t.selector?`<div class="mono muted">${esc(t.selector)}</div>`:''}${t.topic0?`<div class="mono muted">${esc(t.topic0)}</div>`:''}</td><td>${t.block??'–'}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(t.hash)}">${esc(t.hash)}</a></td></tr>`).join('')}</tbody></table></div>`;
 }
 function positionCardHtml(l,index,isClosed){
   const expired=!!l.expiryTime&&new Date(l.expiryTime).getTime()<=Date.now();
@@ -951,6 +1078,7 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   const {lots,unmatched}=buildDiagnosticLots(stakingRows);
   reconcileLotsWithContractCalls(lots,contractCalls);
   attachContractEventsToLots(lots,contractEvents);
+  await attachRewardClaimsToLots(lots,contractCalls);
   await enrichLotsBusiness(lots,pricePairs);
   renderDeepEvents(contractEvents,lots);
   $('mLots').textContent=lots.length;$('mClosed').textContent=lots.filter(l=>l.status==='closed').length;
@@ -1020,7 +1148,21 @@ tlnWallets=(wq.data||[])
 populateTlnWalletDropdown();
 bindWalletDropdown();
 $('projectCount').textContent=`${projectTokens.length} Underlying-Projekt-Token geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>{const d=stakingDurationDays(x);return `<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td>${d?`${d} Tage`:'–'}</td></tr>`}).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;log(`Initialisiert: ${projectTokens.length} Projekt-Token, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok')}
-$('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('contractCalls').innerHTML='<tr><td colspan="9">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('runningStakings').innerHTML='<div class="muted">Suche…</div>';$('completedStakings').innerHTML='<div class="muted">Suche…</div>';$('deepEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();CURRENT_WALLET=wallet;if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const transfers=await allErc20Transfers(wallet);$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const projectSet=new Set(projectTokens.map(x=>norm(x.address)));const candidates=[...counts.keys()];log(`${candidates.length} unterschiedliche ERC-20-Contracts werden als mögliche V2-LPs geprüft.`);const pairs=[];for(let i=0;i<candidates.length;i++){if(i%25===0)log(`LP-Prüfung ${i+1}/${candidates.length}…`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}$('mPairs').textContent=pairs.length;const pairMap=new Map(pairs.map(p=>[p.address,p]));$('pairs').innerHTML=pairs.length?pairs.map(p=>{const hits=p.hits.map(h=>h===p.token0.address?p.token0.symbol:p.token1.symbol).join(', ');return `<tr><td><b>${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}</b><br><span class="muted">LP-Symbol: ${esc(p.lpSymbol)}</span></td><td class="mono">${esc(p.address)}</td><td>${esc(p.token0.symbol)}<div class="mono">${esc(p.token0.address)}</div></td><td>${esc(p.token1.symbol)}<div class="mono">${esc(p.token1.address)}</div></td><td><span class="ok">${esc(hits)}</span></td><td class="mono">${esc(p.factory)}</td><td>${counts.get(p.address)||0}</td></tr>`}).join(''):'<tr><td colspan="7">Keine historischen TLN/VOW-V2-LPs in diesem Wallet gefunden.</td></tr>';const rows=renderEvents(transfers,pairMap,wallet);const stakingRows=renderRawStakingEvents(rows);const entryTargets=await discoverStakeEntryTargets(stakingRows);if(entryTargets.length)log(`Zusätzliche Entry-/Controller-Contracts aus Stake-Txs erkannt: ${entryTargets.map(x=>x.contract_address).join(', ')}`,'ok');const contractCalls=await allExternalCallsToStaking(wallet,entryTargets);renderContractCalls(contractCalls);log(`${contractCalls.length} direkte Wallet-Aufrufe an Staking-/Entry-Contracts geprüft.`,'ok');const contractEvents=await discoverStakingContractEvents(stakingRows,entryTargets,wallet);
+$('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('contractCalls').innerHTML='<tr><td colspan="9">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('runningStakings').innerHTML='<div class="muted">Suche…</div>';$('completedStakings').innerHTML='<div class="muted">Suche…</div>';$('deepEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();CURRENT_WALLET=wallet;if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const transfers=await allErc20Transfers(wallet);$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const projectSet=new Set(projectTokens.map(x=>norm(x.address)));const candidates=[...counts.keys()];log(`${candidates.length} unterschiedliche ERC-20-Contracts werden als mögliche V2-LPs geprüft.`);const pairs=[];for(let i=0;i<candidates.length;i++){if(i%25===0)log(`LP-Prüfung ${i+1}/${candidates.length}…`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}$('mPairs').textContent=pairs.length;const pairMap=new Map(pairs.map(p=>[p.address,p]));$('pairs').innerHTML=pairs.length?pairs.map(p=>{const hits=p.hits.map(h=>h===p.token0.address?p.token0.symbol:p.token1.symbol).join(', ');return `<tr><td><b>${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}</b><br><span class="muted">LP-Symbol: ${esc(p.lpSymbol)}</span></td><td class="mono">${esc(p.address)}</td><td>${esc(p.token0.symbol)}<div class="mono">${esc(p.token0.address)}</div></td><td>${esc(p.token1.symbol)}<div class="mono">${esc(p.token1.address)}</div></td><td><span class="ok">${esc(hits)}</span></td><td class="mono">${esc(p.factory)}</td><td>${counts.get(p.address)||0}</td></tr>`}).join(''):'<tr><td colspan="7">Keine historischen TLN/VOW-V2-LPs in diesem Wallet gefunden.</td></tr>';const rows=renderEvents(transfers,pairMap,wallet);const stakingRows=renderRawStakingEvents(rows);const entryTargets=await discoverStakeEntryTargets(stakingRows);if(entryTargets.length)log(`Zusätzliche Entry-/Controller-Contracts aus Stake-Txs erkannt: ${entryTargets.map(x=>x.contract_address).join(', ')}`,'ok');let contractCalls=await allExternalCallsToStaking(wallet,entryTargets);
+const hintedRewardCalls=await hintedRewardClaimCalls(wallet);
+const callMap=new Map(contractCalls.map(c=>[c.hash,c]));
+for(const c of hintedRewardCalls){
+  if(callMap.has(c.hash)){
+    const existing=callMap.get(c.hash);
+    existing._rewardHint=true;
+    if((c._erc20Transfers||[]).length)existing._erc20Transfers=c._erc20Transfers;
+  }else{
+    contractCalls.push(c);callMap.set(c.hash,c);
+  }
+}
+contractCalls.sort((a,b)=>String(a.metadata?.blockTimestamp||'').localeCompare(String(b.metadata?.blockTimestamp||'')));
+renderContractCalls(contractCalls);
+log(`${contractCalls.length} Wallet-Aufrufe inkl. Reward-Claim-Hinweisen geprüft.`,'ok');const contractEvents=await discoverStakingContractEvents(stakingRows,entryTargets,wallet);
 const configuredLpAddresses=[...new Set(allProjectRows.filter(x=>x.address&&String(x.defi_category||x.tln_vow_category||'')==='lp_token').map(x=>norm(x.address)))];
 const referencePairs=[];
 for(const a of configuredLpAddresses){
