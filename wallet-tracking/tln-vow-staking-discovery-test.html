@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 15:31 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 15:37 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -590,52 +590,134 @@ async function enrichLotsBusiness(lots,pricePairs){
 function callTimeMs(c){return c?.metadata?.blockTimestamp?new Date(c.metadata.blockTimestamp).getTime():0}
 async function attachRewardClaimsToLots(lots,calls){
   const wallet=norm(CURRENT_WALLET);
-  for(const lot of (lots||[])){
-    lot.rewardClaims=[];
-    const pair=norm(safePairAddress(lot));
-    const stakeMs=lot.stakeTime?new Date(lot.stakeTime).getTime():0;
-    const endMs=lot.unstakeTime?new Date(lot.unstakeTime).getTime():Date.now()+86400000;
-    const targets=new Set([
-      norm(lot?.staking?.contract_address||lot.counterparty||''),
-      norm(lot.entry_contract||''),
-      norm(lot.stake_event_contract||'')
-    ].filter(Boolean));
+  const rewardCandidates=[];
 
-    for(const c of (calls||[])){
-      const when=callTimeMs(c);
-      if(!when||when<stakeMs||when>endMs)continue;
+  // First collect every successful incoming ERC-20 transfer from a relevant direct call.
+  // This avoids losing claims just because the claim call went through a controller/reward contract.
+  for(const c of (calls||[])){
+    if(c._success===false)continue;
+    const when=callTimeMs(c);
+    if(!when)continue;
+    for(const tr of (c._erc20Transfers||[])){
+      if(tr.to!==wallet||!tr.token||tr.amountRaw==null)continue;
+      rewardCandidates.push({call:c,transfer:tr,when});
+    }
+  }
 
-      const to=norm(c.to||c?._staking?.contract_address||'');
-      // Normal discovery requires a known staking/controller target.
-      // Explicit user-supplied claim hints are accepted for this isolated diagnostic
-      // only when the transaction belongs to the selected wallet.
-      if(!targets.has(to)&&!c._rewardHint)continue;
+  for(const lot of (lots||[]))lot.rewardClaims=[];
 
-      for(const tr of (c._erc20Transfers||[])){
-        if(tr.to!==wallet||!tr.token||tr.token===pair||tr.amountRaw==null)continue;
-        try{
-          const meta=await tokenMeta(tr.token);
-          const amount=Number(ethers.formatUnits(tr.amountRaw,meta.decimals));
-          if(!(amount>0))continue;
-          const claim={
-            hash:c.hash,time:c.metadata?.blockTimestamp||null,block:c._blockNumber||null,
-            token:tr.token,symbol:meta.symbol||'Token',decimals:meta.decimals,amount,
-            from:tr.from,to:tr.to,method:c._method||'Reward Claim',
-            selector:c._selector||null,source:c._rewardHint?'Bestätigte Claim-Tx · Receipt':'Staking-/Controller-Receipt'
-          };
-          const key=`${claim.hash}|${claim.token}|${claim.amount}`;
-          if(!lot.rewardClaims.some(x=>`${x.hash}|${x.token}|${x.amount}`===key)){
-            lot.rewardClaims.push(claim);
-            addLotTx(lot,{
-              kind:`Reward / Claim · ${claim.symbol}`,
-              hash:claim.hash,time:claim.time,block:claim.block,amount:claim.amount,
-              tokenSymbol:claim.symbol,tokenAddress:claim.token,
-              selector:claim.selector,method:claim.method,source:claim.source
-            });
-          }
-        }catch{}
+  for(const rc of rewardCandidates){
+    const c=rc.call,tr=rc.transfer,when=rc.when;
+    const candidates=[];
+
+    for(const lot of (lots||[])){
+      const pair=norm(safePairAddress(lot));
+      if(tr.token===pair)continue; // LP itself is never a reward.
+
+      const stakeMs=lot.stakeTime?new Date(lot.stakeTime).getTime():0;
+      const unstakeMs=lot.unstakeTime?new Date(lot.unstakeTime).getTime():null;
+      const expiryMs=lot.expiryTime?new Date(lot.expiryTime).getTime():null;
+
+      // Rewards normally belong to a lot between stake and actual unstake.
+      // A small 5-minute tolerance handles timestamp-source differences on the same block/tx.
+      const tol=5*60*1000;
+      if(stakeMs&&when<stakeMs-tol)continue;
+      if(unstakeMs&&when>unstakeMs+tol)continue;
+
+      const direct=norm(lot?.staking?.contract_address||lot.counterparty||'');
+      const entry=norm(lot.entry_contract||'');
+      const eventContract=norm(lot.stake_event_contract||'');
+      const callTo=norm(c.to||c?._staking?.contract_address||'');
+
+      let score=0;
+      const reasons=[];
+
+      // Strongest evidence: same transaction as stake or unstake.
+      if(c.hash&&lot.stakeTx&&c.hash.toLowerCase()===String(lot.stakeTx).toLowerCase()){
+        score+=120;reasons.push('gleiche Tx wie Stake');
+      }
+      if(c.hash&&lot.unstakeTx&&c.hash.toLowerCase()===String(lot.unstakeTx).toLowerCase()){
+        score+=120;reasons.push('gleiche Tx wie Unstake');
+      }
+
+      // Contract relationship.
+      if(callTo&&callTo===direct){score+=90;reasons.push('direkter Staking-SC')}
+      if(callTo&&entry&&callTo===entry){score+=80;reasons.push('Entry-/Controller-SC')}
+      if(callTo&&eventContract&&callTo===eventContract){score+=75;reasons.push('Stake-Event-SC')}
+
+      // Supabase classification may identify the direct call's SC even if the lot learned
+      // the relationship through another historical transaction.
+      const classified=norm(c?._staking?.contract_address||'');
+      if(classified&&classified===direct){score+=70;reasons.push('SC-Katalog')}
+      if(classified&&entry&&classified===entry){score+=60;reasons.push('Controller-Katalog')}
+
+      // Explicitly supplied diagnostic claim: still require temporal plausibility,
+      // but allow association when only one staking lot is active.
+      if(c._rewardHint){score+=35;reasons.push('bestätigte Claim-Tx')}
+
+      // Temporal evidence.
+      if(stakeMs&&when>=stakeMs){
+        score+=10;reasons.push('nach Stake');
+        if(expiryMs&&when<=expiryMs)score+=5;
+      }
+
+      candidates.push({lot,score,reasons});
+    }
+
+    candidates.sort((a,b)=>b.score-a.score);
+
+    let chosen=candidates[0]||null;
+
+    // If no contract-level match exists but exactly one lot is active at claim time,
+    // use that unique temporal relation. This is especially important for legacy TLN
+    // reward/controller contracts that differ from the LP staking destination.
+    if(chosen&&chosen.score<50){
+      const active=candidates.filter(x=>{
+        const s=x.lot.stakeTime?new Date(x.lot.stakeTime).getTime():0;
+        const u=x.lot.unstakeTime?new Date(x.lot.unstakeTime).getTime():Infinity;
+        return when>=s-5*60*1000&&when<=u+5*60*1000;
+      });
+      if(active.length===1){
+        chosen=active[0];
+        chosen.score+=45;
+        chosen.reasons.push('einzige aktive Staking-Position');
       }
     }
+
+    if(!chosen||chosen.score<45)continue;
+
+    const lot=chosen.lot;
+    try{
+      const meta=await tokenMeta(tr.token);
+      const amount=Number(ethers.formatUnits(tr.amountRaw,meta.decimals));
+      if(!(amount>0))continue;
+
+      const claim={
+        hash:c.hash,time:c.metadata?.blockTimestamp||null,block:c._blockNumber||null,
+        token:tr.token,symbol:meta.symbol||'Token',decimals:meta.decimals,amount,
+        from:tr.from,to:tr.to,method:c._method||'Reward Claim',
+        selector:c._selector||null,
+        source:`${c._rewardHint?'Bestätigte Claim-Tx':'Staking-/Controller-Receipt'} · Zuordnung: ${chosen.reasons.join(', ')}`,
+        assignmentScore:chosen.score
+      };
+
+      const key=`${claim.hash}|${claim.token}|${claim.amount}`;
+      if(!lot.rewardClaims.some(x=>`${x.hash}|${x.token}|${x.amount}`===key)){
+        lot.rewardClaims.push(claim);
+        addLotTx(lot,{
+          kind:`Reward / Claim · ${claim.symbol}`,
+          hash:claim.hash,time:claim.time,block:claim.block,amount:claim.amount,
+          tokenSymbol:claim.symbol,tokenAddress:claim.token,
+          selector:claim.selector,method:claim.method,source:claim.source
+        });
+        log(`Reward zugeordnet: ${claim.amount} ${claim.symbol} → ${safePairLabel(lot)} · ${claim.source}`,'ok');
+      }
+    }catch(e){
+      log(`Reward-Transfer ${c.hash}: Token-Metadaten konnten nicht gelesen werden (${e.message}).`,'warn');
+    }
+  }
+
+  for(const lot of (lots||[])){
     lot.rewardClaims.sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
   }
 }
@@ -1081,6 +1163,11 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   await attachRewardClaimsToLots(lots,contractCalls);
   await enrichLotsBusiness(lots,pricePairs);
   renderDeepEvents(contractEvents,lots);
+  const hintedAttached=lots.flatMap(l=>l.rewardClaims||[]).filter(c=>REWARD_CLAIM_TX_HINTS.includes(String(c.hash||'').toLowerCase())).length;
+  if(REWARD_CLAIM_TX_HINTS.length){
+    if(hintedAttached)log(`Bestätigte Reward-Claim-Tx wurde ${hintedAttached} Reward-Transfer(s) einer Staking-Position zugeordnet.`,'ok');
+    else log(`Bestätigte Reward-Claim-Tx wurde geladen, aber es wurde noch kein eingehender ERC-20-Reward eindeutig einer Position zugeordnet.`,'warn');
+  }
   $('mLots').textContent=lots.length;$('mClosed').textContent=lots.filter(l=>l.status==='closed').length;
   associateContractCallsToLots(lots,contractCalls);
   const running=[...lots].filter(l=>l.status!=='closed').sort((a,b)=>String(b.stakeTime||'').localeCompare(String(a.stakeTime||'')));
