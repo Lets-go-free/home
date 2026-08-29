@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 00:31:44 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 00:57:26 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -1224,7 +1224,6 @@ async function enrichLotsBusiness(lots,pricePairs){
   for(const lot of (lots||[])){
     await enrichHistoricalStakeEvidence(lot);
     await stakeTxTokenEvidence(lot);
-    await attachRewardTokenHistory(lot);
     lot.rewardProfile=rewardProfileForLot(lot);
     const probe=await businessProbeForLot(lot);
     lot.businessProbe=probe;
@@ -1276,6 +1275,8 @@ async function enrichLotsBusiness(lots,pricePairs){
       }
     }
   }
+  // Rewards werden nach der SC-/Positions-Anreicherung einmal global über alle Lots zugeordnet.
+  await attachRewardTokenHistoryToLots(lots);
 }
 
 function callTimeMs(c){return c?.metadata?.blockTimestamp?new Date(c.metadata.blockTimestamp).getTime():0}
@@ -1513,46 +1514,35 @@ function stakeRewardEvidenceHtml(lot){
 
 
 
-async function attachRewardTokenHistory(lot){
+async function attachRewardTokenHistoryToLots(lots){
   const wallet=norm(CURRENT_WALLET);
-  const knownRewardTokens=new Map();
+  const rows=Array.isArray(lots)?lots:[];
+  const knownByLot=new Map();
+  const existingGlobal=new Set();
 
-  for(const x of (lot.stakeRewardEvidence||[])){
-    if(x.token&&x.symbol)knownRewardTokens.set(norm(x.token),x.symbol);
+  for(const lot of rows){
+    const known=new Map();
+    for(const x of (lot.stakeRewardEvidence||[])){
+      if(x.token&&x.symbol)known.set(norm(x.token),x.symbol);
+    }
+    for(const x of (lot.rewardClaims||[])){
+      if(x.token&&x.symbol)known.set(norm(x.token),x.symbol);
+      existingGlobal.add(`${String(x.hash||'').toLowerCase()}|${norm(x.token)}|${norm(x.from)}|${norm(x.to)}|${Number(x.amount||0)}`);
+    }
+    knownByLot.set(lot,known);
   }
-  for(const x of (lot.rewardClaims||[])){
-    if(x.token&&x.symbol)knownRewardTokens.set(norm(x.token),x.symbol);
-  }
 
-  const start=lot.stakeTime?new Date(lot.stakeTime).getTime():null;
-  const end=lot.unstakeTime?new Date(lot.unstakeTime).getTime():Date.now();
-  const pair=norm(safePairAddress(lot));
-  const direct=norm(lot?.staking?.contract_address||lot.counterparty||'');
-  const entry=norm(lot.entry_contract||'');
-  const eventContract=norm(lot.stake_event_contract||'');
-  const targets=new Set([direct,entry,eventContract].filter(Boolean));
-
-  const existingKeys=new Set((lot.rewardClaims||[]).map(x=>
-    `${String(x.hash||'').toLowerCase()}|${norm(x.token)}|${norm(x.from)}|${norm(x.to)}|${Number(x.amount||0)}`
-  ));
   const processedHashes=new Map();
 
   for(const t of (CURRENT_ALL_TRANSFERS||[])){
     const token=norm(t.rawContract?.address||'');
     const hash=String(t.hash||'').toLowerCase();
     const to=norm(t.to||''),from=norm(t.from||'');
-    if(!hash||!token||token===pair||to!==wallet)continue;
-
-    // Use Alchemy's own timestamp first so unrelated wallet history can be
-    // rejected before additional RPC calls.
-    const hintedTime=t.metadata?.blockTimestamp||null;
-    const hintedMs=hintedTime?new Date(hintedTime).getTime():null;
-    if(start&&hintedMs&&hintedMs<start-300000)continue;
-    if(end&&hintedMs&&hintedMs>end+300000)continue;
+    if(!hash||!token||to!==wallet)continue;
 
     let txInfo=processedHashes.get(hash);
     if(!txInfo){
-      let tx=null,receipt=null,time=hintedTime,block=null;
+      let tx=null,receipt=null,time=t.metadata?.blockTimestamp||null,block=null;
       try{
         [tx,receipt]=await Promise.all([
           cachedTx(hash),
@@ -1569,50 +1559,104 @@ async function attachRewardTokenHistory(lot){
       txInfo={tx,receipt,time,block};
       processedHashes.set(hash,txInfo);
     }
+
     const {tx,receipt,time,block}=txInfo;
-    const ms=time?new Date(time).getTime():hintedMs;
-    if(start&&ms&&ms<start-300000)continue;
-    if(end&&ms&&ms>end+300000)continue;
-
+    const ms=time?new Date(time).getTime():null;
     const callTo=norm(tx?.to||'');
-    const reasons=[];
-    let score=0;
-
-    if(hash===String(lot.stakeTx||'').toLowerCase()){
-      score+=120;reasons.push('gleiche Tx wie Stake');
-    }
-    if(hash===String(lot.unstakeTx||'').toLowerCase()){
-      score+=120;reasons.push('gleiche Tx wie Unstake');
-    }
-    if(callTo&&targets.has(callTo)){
-      score+=90;reasons.push(callTo===direct?'direkter Staking-SC':callTo===entry?'Entry-/Controller-SC':'Stake-Event-SC');
-    }
-    if(from&&targets.has(from)){
-      score+=90;reasons.push('Token direkt vom Staking-/Controller-SC');
-    }
     const selector=tx?.input?String(tx.input).slice(0,10).toLowerCase():null;
-    const learned=callTo&&selector?learnedRewardPath(callTo,selector):null;
-    if(learned){score+=85;reasons.push(`dynamisch gelernter Reward-/Claim-Pfad (${callTo} · ${selector})`)}
+    const receiptLogContracts=new Set((receipt?.logs||[]).map(x=>norm(x.address||'')).filter(Boolean));
+    const candidates=[];
 
-    for(const tr of receiptErc20Transfers(receipt)){
-      if(norm(tr.token)!==token||tr.to!==wallet)continue;
-      if(targets.has(norm(tr.from))){
-        score+=70;reasons.push('Receipt: Token-Transfer vom Staking-/Controller-SC');
-        break;
+    for(const lot of rows){
+      const pair=norm(safePairAddress(lot));
+      if(token===pair)continue;
+
+      const startMs=lot.stakeTime?new Date(lot.stakeTime).getTime():null;
+      const endMs=lot.unstakeTime?new Date(lot.unstakeTime).getTime():Date.now();
+      const tol=5*60*1000;
+      if(startMs&&ms&&ms<startMs-tol)continue;
+      if(endMs&&ms&&ms>endMs+tol)continue;
+
+      const direct=norm(lot?.staking?.contract_address||lot.counterparty||'');
+      const entry=norm(lot.entry_contract||'');
+      const eventContract=norm(lot.stake_event_contract||'');
+      const targets=new Set([direct,entry,eventContract].filter(Boolean));
+      const known=knownByLot.get(lot)||new Map();
+      const reasons=[];
+      let score=0;
+
+      if(hash===String(lot.stakeTx||'').toLowerCase()){
+        score+=120;reasons.push('gleiche Tx wie Stake');
       }
+      if(hash===String(lot.unstakeTx||'').toLowerCase()){
+        score+=120;reasons.push('gleiche Tx wie Unstake');
+      }
+      if(callTo&&targets.has(callTo)){
+        score+=90;reasons.push(callTo===direct?'direkter Staking-SC':callTo===entry?'Entry-/Controller-SC':'Stake-Event-SC');
+      }
+      if(from&&targets.has(from)){
+        score+=90;reasons.push('Token direkt vom Staking-/Controller-SC');
+      }
+
+      const learned=callTo&&selector?learnedRewardPath(callTo,selector):null;
+      if(learned){
+        score+=85;reasons.push(`dynamisch gelernter Reward-/Claim-Pfad (${callTo} · ${selector})`);
+      }
+
+      // Alte TLN-Rewards werden teilweise gemintet (from = 0x0).
+      // Deshalb zählt auch ein Receipt-Event des Staking-Systems als starke Evidenz.
+      const receiptTarget=[...targets].find(x=>receiptLogContracts.has(x));
+      if(receiptTarget){
+        score+=75;reasons.push(`Receipt enthält Event des Staking-Systems (${receiptTarget})`);
+      }
+
+      for(const tr of receiptErc20Transfers(receipt)){
+        if(norm(tr.token)!==token||tr.to!==wallet)continue;
+        if(targets.has(norm(tr.from))){
+          score+=70;reasons.push('Receipt: Token-Transfer vom Staking-/Controller-SC');
+          break;
+        }
+      }
+
+      if(known.has(token)){
+        score+=10;reasons.push('bereits erkannter Reward-Token');
+      }
+
+      // Nur Tie-Breaker, niemals alleiniger Reward-Nachweis.
+      const basis=lot.lockBaseTime||lot.stakeTime;
+      const basisMs=basis?new Date(basis).getTime():0;
+      if(ms&&basisMs&&ms>=basisMs){
+        const days=(ms-basisMs)/86400000;
+        const recency=Math.max(0,Math.min(9,9-Math.floor(days/60)));
+        if(recency>0){
+          score+=recency;
+          reasons.push('zeitlich nächste aktive Position (Tie-Breaker)');
+        }
+      }
+      candidates.push({lot,score,reasons,known});
     }
 
-    if(knownRewardTokens.has(token)){
-      score+=10;reasons.push('bereits erkannter Reward-Token');
+    candidates.sort((a,b)=>{
+      if(b.score!==a.score)return b.score-a.score;
+      const at=new Date(a.lot.lockBaseTime||a.lot.stakeTime||0).getTime();
+      const bt=new Date(b.lot.lockBaseTime||b.lot.stakeTime||0).getTime();
+      return bt-at;
+    });
+
+    const chosen=candidates[0]||null;
+    if(!chosen||chosen.score<60){
+      const knownSome=candidates.find(x=>x.known?.has(token));
+      if(knownSome){
+        log(`Reward-Historie Kandidat NICHT zugeordnet: ${hash} · ${knownSome.known.get(token)} · bester Score ${chosen?.score||0} · ${chosen?.reasons?.join(', ')||'keine Contract-/Receipt-Evidenz'}`,'warn');
+      }
+      continue;
     }
 
-    // Unknown tokens are explicitly allowed, but only with strong contract
-    // evidence. Thus an arbitrary wallet receipt can never become a reward
-    // just because it happened during the staking period.
-    if(score<60){
-      if(knownRewardTokens.has(token)){
-        log(`Reward-Historie Kandidat NICHT zugeordnet: ${hash} · ${knownRewardTokens.get(token)} · Score ${score} · ${reasons.join(', ')||'keine Contract-Evidenz'}`,'warn');
-      }
+    const second=candidates[1]||null;
+    if(second && second.score===chosen.score &&
+       norm(chosen.lot?.staking?.contract_address||chosen.lot.counterparty||'')===
+       norm(second.lot?.staking?.contract_address||second.lot.counterparty||'')){
+      log(`Reward-Historie mehrdeutig: ${hash} · Score ${chosen.score} bei mehreren Positionen desselben Staking-SC. Keine automatische Zuordnung.`,'warn');
       continue;
     }
 
@@ -1624,40 +1668,46 @@ async function attachRewardTokenHistory(lot){
     }catch{}
     if(!(Number(amount)>0))continue;
 
+    const key=`${hash}|${token}|${from}|${to}|${amount}`;
+    if(existingGlobal.has(key))continue;
+    existingGlobal.add(key);
+
+    const lot=chosen.lot;
+    const learned=callTo&&selector?learnedRewardPath(callTo,selector):null;
     const method=METHOD_SELECTORS.get(selector)||(
       learned?'Reward-/Claim-Aufruf (dynamisch erkannt)':
       from==='0x0000000000000000000000000000000000000000'?'Reward-Mint':'Reward-Ausschüttung'
     );
-    const symbol=meta.symbol||knownRewardTokens.get(token)||'Token';
-    knownRewardTokens.set(token,symbol);
+    const symbol=meta.symbol||chosen.known.get(token)||'Token';
+    chosen.known.set(token,symbol);
 
     const claim={
       hash,time,block,token,symbol,decimals:meta.decimals,amount,
       from,to,method,selector,
       calledContract:callTo||null,
-      assignmentReason:reasons.join(', '),
-      source:'Dynamisch erkannte Reward-Historie während der Staking-Laufzeit',
-      assignmentScore:score,
+      assignmentReason:chosen.reasons.join(', '),
+      source:'Dynamisch erkannte Reward-Historie · globale Lot-Zuordnung',
+      assignmentScore:chosen.score,
       eventType:hash===String(lot.stakeTx||'').toLowerCase()?'stake_reward':
                 /claim|reward|harvest|withdraw/i.test(method)?'claim':'distribution'
     };
-    const key=`${hash}|${token}|${from}|${to}|${amount}`;
-    if(existingKeys.has(key))continue;
-    existingKeys.add(key);
+
     lot.rewardClaims=lot.rewardClaims||[];
     lot.rewardClaims.push(claim);
-
     addLotTx(lot,{
       kind:`${claim.eventType==='claim'?'Reward / Claim':claim.eventType==='stake_reward'?'Reward beim Stake':'Reward / Ausschüttung'} · ${claim.symbol}`,
       hash,time,block,amount,tokenSymbol:claim.symbol,tokenAddress:token,
       selector,method,source:claim.source,
       calledContract:claim.calledContract,assignmentReason:claim.assignmentReason
     });
-    log(`Reward-Historie zugeordnet: ${amount} ${claim.symbol} · ${method} · ${hash} · ${claim.assignmentReason}`,'ok');
+    log(`Reward-Historie eindeutig zugeordnet: ${amount} ${claim.symbol} · ${method} · ${hash} → ${safePairLabel(lot)} · ${claim.assignmentReason}`,'ok');
   }
 
-  lot.rewardClaims=(lot.rewardClaims||[]).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  for(const lot of rows){
+    lot.rewardClaims=(lot.rewardClaims||[]).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  }
 }
+
 function deriveRewardModel(lot){
   const probe=lot.businessProbe;
   const names=new Set((probe?.results||[]).map(r=>probeBaseName(r.label)));
