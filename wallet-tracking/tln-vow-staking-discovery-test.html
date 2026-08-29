@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 17:03:09 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 18:14:34 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -65,8 +65,12 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div id="runningStakings"><div class="muted">Noch keine Daten.</div></div></div>
 
 <div class="card"><h2>✅ Abgeschlossene Stakings</h2>
-<p class="muted">Historische Stakings, die vollständig beendet / unstaked wurden. Primärer Endwert ist der USD-Wert beim Vertragsende; der Wert beim tatsächlichen Unstake wird zusätzlich ausgewiesen.</p>
+<p class="muted">Historische Stakings, die vollständig beendet / unstaked wurden. Ein echter Vertragsendwert wird nur gezeigt, wenn der Zeitpunkt aus dem SC belastbar ableitbar ist. Historische Unstake-Simulationen werden ausdrücklich als Simulation bezeichnet; der tatsächliche Unstake-Wert wird zusätzlich ausgewiesen.</p>
 <div id="completedStakings"><div class="muted">Noch keine Daten.</div></div></div>
+
+<div class="card"><h2>Dynamisch gelernte Reward-/Claim-Pfade</h2>
+<p class="muted">Ein Pfad wird nur gelernt, wenn ein Wallet-Aufruf an Contract + Selector in derselben Transaktion einen tatsächlichen ERC-20-Eingang ins ausgewählte Wallet erzeugt. Nichts davon ist als Selector oder Reward-Token fest codiert.</p>
+<div id="learnedRewardPaths"><div class="muted">Noch keine Daten.</div></div></div>
 
 <div class="card"><h2>Plausibilitätsprüfung</h2>
 <p class="muted">Vergleicht rohe Stake-/Unstake-Ereignisse mit der Lot-Rekonstruktion. Nicht zuordenbare Unstakes oder Differenzen werden ausdrücklich gemeldet.</p>
@@ -242,6 +246,24 @@ async function probeTimingAtBlock(lot,wallet,blockHex){
   return rows;
 }
 
+
+const LEARNED_REWARD_PATHS=new Map();
+function rewardPathKey(contract,selector){return `${norm(contract||'')}|${String(selector||'').toLowerCase()}`}
+function learnedRewardPath(contract,selector){return LEARNED_REWARD_PATHS.get(rewardPathKey(contract,selector))||null}
+function registerLearnedRewardPath(contract,selector,evidence){
+  const c=norm(contract||''),s=String(selector||'').toLowerCase();
+  if(!ethers.isAddress(c)||!s||s==='0x')return;
+  const key=rewardPathKey(c,s),row=LEARNED_REWARD_PATHS.get(key)||{contract:c,selector:s,count:0,tokens:new Map(),examples:[]};
+  row.count++;
+  for(const e of (evidence||[])){
+    const token=norm(e.token||''); if(!token)continue;
+    const t=row.tokens.get(token)||{symbol:e.symbol||'Token',amount:0,count:0};
+    t.symbol=e.symbol||t.symbol;t.amount+=Number(e.amount||0);t.count++;row.tokens.set(token,t);
+  }
+  const h=evidence?.[0]?.hash;
+  if(h&&!row.examples.includes(h)){row.examples.push(h);if(row.examples.length>5)row.examples.shift()}
+  LEARNED_REWARD_PATHS.set(key,row);
+}
 const HIST_TX_CACHE=new Map();
 const HIST_BLOCK_CACHE=new Map();
 async function cachedTx(hash){
@@ -325,7 +347,7 @@ async function deriveUnlockFromActualUnstake(lot){
     block:hi,
     blockHex,
     expiryTime:new Date(ts).toISOString(),
-    source:'SC-Verhalten: frühester Block, an dem die tatsächliche Unstake-Transaktion historisch erfolgreich simulierbar ist'
+    source:'Historische SC-Simulation: frühester Block, an dem die tatsächliche Unstake-Tx erfolgreich simulierbar ist'
   };
 }
 async function resolveLotContractTiming(lot,latestProbe){
@@ -974,6 +996,28 @@ async function enrichLotsBusiness(lots,pricePairs){
 }
 
 function callTimeMs(c){return c?.metadata?.blockTimestamp?new Date(c.metadata.blockTimestamp).getTime():0}
+
+async function learnRewardPathsFromWalletCalls(calls){
+  LEARNED_REWARD_PATHS.clear();
+  const wallet=norm(CURRENT_WALLET);
+  for(const c of (calls||[])){
+    if(c._success===false)continue;
+    const incoming=[];
+    for(const tr of (c._erc20Transfers||[])){
+      if(tr.to!==wallet||!tr.token||tr.amountRaw==null)continue;
+      try{
+        const meta=await tokenMeta(tr.token);
+        const amount=Number(ethers.formatUnits(tr.amountRaw,meta.decimals));
+        if(amount>0)incoming.push({hash:String(c.hash||'').toLowerCase(),token:tr.token,symbol:meta.symbol||'Token',amount});
+      }catch{}
+    }
+    if(!incoming.length)continue;
+    const contract=norm(c.to||c?._staking?.contract_address||''),selector=String(c._selector||'').toLowerCase();
+    if(!ethers.isAddress(contract)||!selector)continue;
+    registerLearnedRewardPath(contract,selector,incoming);
+    log(`Reward-/Claim-Pfad gelernt: ${contract} · ${selector} · ${incoming.map(x=>`${x.amount} ${x.symbol}`).join(', ')} · Tx ${c.hash}`,'ok');
+  }
+}
 async function attachRewardClaimsToLots(lots,calls){
   const wallet=norm(CURRENT_WALLET);
   const rewardCandidates=[];
@@ -1036,6 +1080,8 @@ async function attachRewardClaimsToLots(lots,calls){
       const classified=norm(c?._staking?.contract_address||'');
       if(classified&&classified===direct){score+=70;reasons.push('SC-Katalog')}
       if(classified&&entry&&classified===entry){score+=60;reasons.push('Controller-Katalog')}
+      const learned=learnedRewardPath(callTo,c._selector||'');
+      if(learned){score+=85;reasons.push(`dynamisch gelernter Reward-/Claim-Pfad (${callTo} · ${c._selector||'–'})`)}
 
       // Explicitly supplied diagnostic claim: still require temporal plausibility,
       // but allow association when only one staking lot is active.
@@ -1072,7 +1118,8 @@ async function attachRewardClaimsToLots(lots,calls){
       const claim={
         hash:c.hash,time:c.metadata?.blockTimestamp||null,block:c._blockNumber||null,
         token:tr.token,symbol:meta.symbol||'Token',decimals:meta.decimals,amount,
-        from:tr.from,to:tr.to,method:c._method||'Reward-relevante Tx',
+        from:tr.from,to:tr.to,
+        method:(learnedRewardPath(norm(c.to||c?._staking?.contract_address||''),c._selector||'')&&(!c._method||c._method==='Contract-Aufruf'))?'Reward-/Claim-Aufruf (dynamisch erkannt)':(c._method||'Reward-relevante Tx'),
         selector:c._selector||null,
         calledContract:norm(c.to||c?._staking?.contract_address||'')||null,
         assignmentReason:chosen.reasons.join(', '),
@@ -1253,6 +1300,9 @@ async function attachRewardTokenHistory(lot){
     if(from&&targets.has(from)){
       score+=90;reasons.push('Token direkt vom Staking-/Controller-SC');
     }
+    const selector=tx?.input?String(tx.input).slice(0,10).toLowerCase():null;
+    const learned=callTo&&selector?learnedRewardPath(callTo,selector):null;
+    if(learned){score+=85;reasons.push(`dynamisch gelernter Reward-/Claim-Pfad (${callTo} · ${selector})`)}
 
     for(const tr of receiptErc20Transfers(receipt)){
       if(norm(tr.token)!==token||tr.to!==wallet)continue;
@@ -1284,8 +1334,8 @@ async function attachRewardTokenHistory(lot){
     }catch{}
     if(!(Number(amount)>0))continue;
 
-    const selector=tx?.input?String(tx.input).slice(0,10).toLowerCase():null;
     const method=METHOD_SELECTORS.get(selector)||(
+      learned?'Reward-/Claim-Aufruf (dynamisch erkannt)':
       from==='0x0000000000000000000000000000000000000000'?'Reward-Mint':'Reward-Ausschüttung'
     );
     const symbol=meta.symbol||knownRewardTokens.get(token)||'Token';
@@ -1806,7 +1856,9 @@ function associateContractCallsToLots(lots,calls){
     for(const c of (calls||[])){
       const when=callTs(c); if(!when||when<stakeMs||when>endMs)continue;
       const to=norm(c.to||c?._staking?.contract_address||''); if(!targets.has(to))continue;
-      const method=c._method||'Contract-Aufruf', lower=String(method).toLowerCase();
+      let method=c._method||'Contract-Aufruf';
+      if(learnedRewardPath(to,c._selector||'')&&method==='Contract-Aufruf')method='Reward-/Claim-Aufruf (dynamisch erkannt)';
+      const lower=String(method).toLowerCase();
       const kind=lower.includes('unstake')?'Unstake':
         lower.includes('stake')?'Stake':
         (lower.includes('claim')||lower.includes('reward')||lower.includes('harvest'))?'Claim / Reward-Aufruf':
@@ -1842,8 +1894,8 @@ function positionCardHtml(l,index,isClosed){
       <div class="stake-fact"><span class="k">USD-Wert beim Stake</span>${stakeValue}</div>
       <div class="stake-fact"><span class="k">LP aktuell offen</span><span class="v">${Number(l.remaining||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
       <div class="stake-fact"><span class="k">Vorgesehene Laufzeit</span><span class="v">${l.durationDays!=null?`${l.durationDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span><div class="value-source">${l.durationSource?esc(l.durationSource):'Keine belastbare Laufzeit aus dem SC ermittelbar.'}</div></div>
-      <div class="stake-fact"><span class="k">Freigegeben / ausgelaufen am</span><span class="v">${l.expiryTime?new Date(l.expiryTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">${l.expiryTime?esc(l.durationSource||'On-chain ermittelt'):(l.contractEndUpperBound?'Tatsächlicher Unstake belegt; exakter frühester Freigabezeitpunkt konnte historisch nicht eingegrenzt werden.':'Keine belastbare Freigabe aus dem SC ermittelbar.')}</div></div>
-      <div class="stake-fact"><span class="k">USD-Wert beim Vertragsende</span>${contractEndValue}</div>
+      <div class="stake-fact"><span class="k">${l.durationSource?.startsWith('Historische SC-Simulation')?'Frühester historisch simulierbarer Unstake':'Freigegeben / ausgelaufen am'}</span><span class="v">${l.expiryTime?new Date(l.expiryTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">${l.expiryTime?esc(l.durationSource||'On-chain ermittelt'):(l.contractEndUpperBound?'Tatsächlicher Unstake belegt; exakter frühester Freigabezeitpunkt konnte historisch nicht eingegrenzt werden.':'Keine belastbare Freigabe aus dem SC ermittelbar.')}</div></div>
+      <div class="stake-fact"><span class="k">${l.durationSource?.startsWith('Historische SC-Simulation')?'USD-Wert beim frühesten historisch simulierbaren Unstake':'USD-Wert beim Vertragsende'}</span>${contractEndValue}</div>
       ${isClosed?`<div class="stake-fact"><span class="k">Tatsächliches Unstake-Datum</span><span class="v">${l.unstakeTime?new Date(l.unstakeTime).toLocaleString('de-CH'):'–'}</span></div><div class="stake-fact"><span class="k">USD-Wert beim tatsächlichen Unstake</span>${unstakeValue}</div><div class="stake-fact"><span class="k">Tatsächliche Dauer bis Unstake</span><span class="v">${actualDays!=null?`${actualDays} Tage`:'–'}</span></div>`:''}
       <div class="stake-fact"><span class="k">Staking-Contract</span><span class="v mono">${esc(l.staking?.contract_address||l.counterparty||'–')}</span></div>
     </div>
@@ -1879,6 +1931,7 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   const {lots,unmatched}=buildDiagnosticLots(stakingRows);
   reconcileLotsWithContractCalls(lots,contractCalls);
   attachContractEventsToLots(lots,contractEvents);
+  await learnRewardPathsFromWalletCalls(contractCalls);
   await attachRewardClaimsToLots(lots,contractCalls);
   await enrichLotsBusiness(lots,pricePairs);
   renderDeepEvents(contractEvents,lots);
@@ -1896,6 +1949,8 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   $('runningStakings').innerHTML=running.length?running.map(l=>positionCardHtml(l,indexOfLot(l),false)).join(''):'<div class="empty-note">Keine laufenden Stakings gefunden.</div>';
   $('completedStakings').innerHTML=completed.length?completed.map(l=>positionCardHtml(l,indexOfLot(l),true)).join(''):'<div class="empty-note">Keine abgeschlossenen Stakings gefunden.</div>';
   bindLotDetailEvents();
+  const learnedRows=[...LEARNED_REWARD_PATHS.values()];
+  $('learnedRewardPaths').innerHTML=learnedRows.length?`<div class="wrap"><table style="min-width:980px"><thead><tr><th>Contract</th><th>Selector</th><th>Belege</th><th>Empfangene Token</th><th>Beispiel-Tx</th></tr></thead><tbody>${learnedRows.map(r=>`<tr><td class="mono">${esc(r.contract)}</td><td class="mono">${esc(r.selector)}</td><td>${r.count}</td><td>${[...r.tokens.values()].map(x=>`${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)} (${x.count})`).join('<br>')}</td><td class="mono">${r.examples.map(h=>`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(h)}">${esc(h)}</a>`).join('<br>')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="muted">Keine Reward-/Claim-Pfade dynamisch gelernt.</div>';
   const checks=[];
   for(const key of new Set(stakingRows.map(stakingKey))){
     const rs=stakingRows.filter(r=>stakingKey(r)===key),ls=lots.filter(l=>l.key===key);
