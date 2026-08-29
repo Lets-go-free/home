@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 18:26:55 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 29.08.2026 19:16:44 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -46,7 +46,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 </div></div>
 <div class="card"><h2>TLN/VOW-Projekt-Token</h2><div id="projectCount" class="muted">Noch keine Daten.</div><div class="wrap"><table><thead><tr><th>Symbol</th><th>Kategorie</th><th>Contract</th></tr></thead><tbody id="projectTokens"><tr><td colspan="3">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Bekannte Staking-Contracts</h2><div class="wrap"><table style="min-width:1050px"><thead><tr><th>Contract-Bezeichnung</th><th>Rolle</th><th>Contract</th><th>Pair-Hinweis</th><th>Laufzeit</th></tr></thead><tbody id="stakingContracts"><tr><td colspan="5">Noch keine Daten.</td></tr></tbody></table></div></div>
-<div class="card"><h2>Entdeckte TLN/VOW-LPs aus der Wallet-Historie</h2><p class="muted">Normalfall: <code>token0()</code> und <code>token1()</code> funktionieren und mindestens ein Underlying gehört zum TLN/VOW-Projekt. Historischer Fallback: Wenn das Wallet in einer eindeutig erkannten <code>stake(...)</code>-Tx einen ERC-20-Token direkt an den bestätigten Staking-SC sendet, wird dieser Token zusätzlich als historischer V2-LP geprüft – auch wenn seine Underlyings heute nicht mehr in der Projektliste stehen.</p><div class="wrap"><table><thead><tr><th>LP</th><th>Contract</th><th>token0</th><th>token1</th><th>Projekt-Treffer</th><th>Factory</th><th>Transfers</th></tr></thead><tbody id="pairs"><tr><td colspan="7">Noch keine Daten.</td></tr></tbody></table></div></div>
+<div class="card"><h2>Erkannte historische LP-Token</h2><p class="muted">Diese Tabelle zeigt die LP-Token-Contracts, die als Grundlage für die historische LP-/Staking-Auswertung erkannt wurden. Normalfall: <code>token0()</code> und <code>token1()</code> funktionieren und mindestens ein Underlying gehört zum TLN/VOW-Projekt. Historischer Fallback: Bei einer bestätigten <code>stake(...)</code>-Tx werden zusätzlich die ERC-20-Transfer-Logs der Transaktion ausgewertet. Ein aus dem Wallet heraus übertragener V2-LP kann dadurch auch dann erkannt werden, wenn sein Empfänger ein Controller/Zwischencontract war oder seine Underlyings heute nicht mehr in der aktuellen Projektliste stehen.</p><div class="wrap"><table><thead><tr><th>LP</th><th>Contract</th><th>token0</th><th>token1</th><th>Projekt-Treffer</th><th>Erkannt durch</th><th>Factory</th><th>Transfers</th></tr></thead><tbody id="pairs"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Historische LP-/Staking-Ereignisse</h2><div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Aktion</th><th>LP</th><th>LP-Menge</th><th>Gegenstelle</th><th>Staking-Bezeichnung</th><th>Block</th><th>Transaktion</th></tr></thead><tbody id="events"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Direkte Wallet-Aufrufe an Staking-/Entry-Contracts</h2>
 <p class="muted">Ergänzende Diagnose: zeigt ausgehende Wallet-Transaktionen an bekannte Staking-Contracts sowie automatisch aus den Stake-Transaktionen erkannte Entry-/Controller-Contracts. Damit finden wir einen Unstake-Aufruf auch dann, wenn kein passender LP-Rücktransfer in der ERC-20-Historie erkannt wurde.</p>
@@ -680,60 +680,67 @@ function renderPairTable(pairs,counts){
   $('mPairs').textContent=pairs.length;
   $('pairs').innerHTML=pairs.length?pairs.map(p=>{
     const hits=(p.hits||[]).map(h=>h===p.token0.address?p.token0.symbol:p.token1.symbol).join(', ');
-    const source=p.discoverySource==='stake_tx'?'<div class="ok">Stake-Tx-Fallback</div>':'';
+    const discovery=p.discoverySource==='stake_tx_receipt'
+      ?`Stake-Tx · ERC-20-Transfer-Log${p.discoveryTx?`<div class="mono">${esc(p.discoveryTx)}</div>`:''}`
+      :'Wallet-Historie · Projekt-Underlying';
     return `<tr>
-      <td><b>${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}</b><br><span class="muted">LP-Symbol: ${esc(p.lpSymbol)}</span>${source}</td>
+      <td><b>${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}</b><br><span class="muted">LP-Symbol: ${esc(p.lpSymbol)}</span></td>
       <td class="mono">${esc(p.address)}</td>
       <td>${esc(p.token0.symbol)}<div class="mono">${esc(p.token0.address)}</div></td>
       <td>${esc(p.token1.symbol)}<div class="mono">${esc(p.token1.address)}</div></td>
-      <td>${hits?`<span class="ok">${esc(hits)}</span>`:(p.discoverySource==='stake_tx'?'<span class="ok">direkter Stake-Tx-Nachweis</span>':'–')}</td>
+      <td>${hits?`<span class="ok">${esc(hits)}</span>`:(p.discoverySource==='stake_tx_receipt'?'<span class="muted">historischer Stake-Tx-Nachweis</span>':'–')}</td>
+      <td>${discovery}</td>
       <td class="mono">${esc(p.factory)}</td>
       <td>${counts.get(p.address)||0}</td>
     </tr>`;
-  }).join(''):'<tr><td colspan="7">Keine historischen TLN/VOW-V2-LPs in diesem Wallet gefunden.</td></tr>';
+  }).join(''):'<tr><td colspan="8">Keine historischen LP-Token in diesem Wallet gefunden.</td></tr>';
 }
 
 async function discoverPairsFromStakeTransactions(calls,transfers,pairMap,projectSet,counts,wallet){
-  const w=norm(wallet),added=[],byHash=new Map();
-  for(const t of (transfers||[])){
-    const h=String(t.hash||'').toLowerCase();
-    if(!h)continue;
-    if(!byHash.has(h))byHash.set(h,[]);
-    byHash.get(h).push(t);
-  }
-
+  const w=norm(wallet),added=[];
   for(const c of (calls||[])){
     if(c._method!=='Stake'||c._success===false)continue;
     const hash=String(c.hash||'').toLowerCase();
-    const stakingAddress=norm(c?._staking?.contract_address||c.to||'');
-    if(!hash||!stakingAddress)continue;
+    if(!hash)continue;
 
-    for(const t of (byHash.get(hash)||[])){
-      const asset=norm(t.rawContract?.address||'');
-      if(norm(t.from)!==w||norm(t.to)!==stakingAddress||!asset||pairMap.has(asset))continue;
+    let receipt=null;
+    try{receipt=await rpc('eth_getTransactionReceipt',[hash])}catch(e){
+      log(`Stake-Tx-Fallback ${hash}: Receipt nicht lesbar: ${e.message}`,'warn');
+      continue;
+    }
+    if(!receipt)continue;
 
+    const txTransfers=receiptErc20Transfers(receipt)
+      .filter(tr=>norm(tr.from)===w && tr.token && tr.amountRaw!=null);
+
+    if(!txTransfers.length){
+      log(`Stake-Tx-Fallback ${hash}: keine ausgehenden ERC-20-Transfer-Logs des Wallets gefunden.`,'warn');
+      continue;
+    }
+
+    log(`Stake-Tx-Fallback ${hash}: ${txTransfers.length} ausgehende ERC-20-Transfer-Logs werden als historische Staking-Assets geprüft.`);
+
+    for(const tr of txTransfers){
+      const asset=norm(tr.token);
+      if(!asset||pairMap.has(asset))continue;
       const p=await inspectAnyPair(asset);
       if(!p)continue;
 
       p.hits=[p.token0.address,p.token1.address].filter(a=>projectSet.has(norm(a)));
-      p.discoverySource='stake_tx';
+      p.discoverySource='stake_tx_receipt';
       p.discoveryTx=hash;
-      p.discoveryStakingContract=stakingAddress;
+      p.discoveryTransferTo=norm(tr.to||'');
+      p.discoveryStakingContract=norm(c?._staking?.contract_address||c.to||'');
       pairMap.set(asset,p);
       added.push(p);
 
       let amount=null,inputAmount=null;
-      try{
-        const raw=t.rawContract?.value;
-        amount=raw!=null?Number(ethers.formatUnits(BigInt(raw),p.lpDecimals||18)):Number(t.value||0);
-      }catch{}
-      try{
-        inputAmount=c._uintArg==null?null:Number(ethers.formatUnits(c._uintArg,p.lpDecimals||18));
-      }catch{}
+      try{amount=Number(ethers.formatUnits(tr.amountRaw,p.lpDecimals||18))}catch{}
+      try{inputAmount=c._uintArg==null?null:Number(ethers.formatUnits(c._uintArg,p.lpDecimals||18))}catch{}
       const amountMatch=Number.isFinite(amount)&&Number.isFinite(inputAmount)&&inputAmount>0
         ?Math.abs(amount-inputAmount)/inputAmount<0.00001:null;
 
-      log(`Historischer LP über Stake-Tx entdeckt: ${safePairLabel(p)} · ${asset} · Stake-SC ${stakingAddress} · ${amount==null?'Menge ?':amount+' LP'}${amountMatch===true?' · Menge passt zu stake()-Argument':amountMatch===false?' · Menge weicht vom stake()-Argument ab':''} · Tx ${hash}`,'ok');
+      log(`Historischer LP über Stake-Tx-Receipt entdeckt: ${safePairLabel(p)} · ${asset} · Wallet → ${norm(tr.to||'–')} · ${amount==null?'Menge ?':amount+' LP'}${amountMatch===true?' · Menge passt zu stake()-Argument':amountMatch===false?' · Menge weicht vom stake()-Argument ab':''} · Tx ${hash}`,'ok');
     }
   }
   return added;
@@ -759,6 +766,57 @@ function safePairLabel(obj){
 }
 function stakingKey(r){
   return `${safePairAddress(r)}|${norm(r?.staking?.contract_address||r?.counterparty||'')}`;
+}
+async function synthesizeStakeRowsFromReceipts(calls,pairMap,wallet,rows){
+  const w=norm(wallet);
+  const existing=new Set((rows||[]).map(r=>`${String(r?.t?.hash||'').toLowerCase()}|${safePairAddress(r)}|${r.action}`));
+  const stakeMap=new Map(stakingContracts.filter(x=>x.classify_transfers).map(x=>[norm(x.contract_address),x]));
+  const added=[];
+
+  for(const c of (calls||[])){
+    if(c._method!=='Stake'||c._success===false)continue;
+    const hash=String(c.hash||'').toLowerCase();
+    let receipt=null;
+    try{receipt=await rpc('eth_getTransactionReceipt',[hash])}catch{}
+    if(!receipt)continue;
+
+    for(const tr of receiptErc20Transfers(receipt)){
+      if(norm(tr.from)!==w)continue;
+      const asset=norm(tr.token||'');
+      const p=pairMap.get(asset);
+      if(!p)continue;
+      const key=`${hash}|${asset}|Stake`;
+      if(existing.has(key))continue;
+
+      let amount=0;
+      try{amount=Number(ethers.formatUnits(tr.amountRaw,p.lpDecimals||18))}catch{}
+      if(!(amount>0))continue;
+
+      const staking=stakeMap.get(norm(c?._staking?.contract_address||c.to||''))||c._staking||null;
+      const syntheticTransfer={
+        hash,
+        from:w,
+        to:norm(tr.to||''),
+        blockNum:c.blockNum||receipt.blockNumber||null,
+        metadata:{blockTimestamp:c.metadata?.blockTimestamp||null},
+        rawContract:{address:asset,value:'0x'+BigInt(tr.amountRaw).toString(16),decimal:p.lpDecimals||18},
+        value:amount
+      };
+      added.push({
+        t:syntheticTransfer,p,action:'Stake',
+        counterparty:norm(c?._staking?.contract_address||c.to||tr.to||''),
+        staking,amount,receiptDerived:true
+      });
+      existing.add(key);
+      log(`Stake-Ereignis aus Receipt ergänzt: ${safePairLabel(p)} · ${amount} LP · ${hash}`,'ok');
+    }
+  }
+
+  if(added.length){
+    rows.push(...added);
+    rows.sort((a,b)=>String(a.t.metadata?.blockTimestamp||'').localeCompare(String(b.t.metadata?.blockTimestamp||'')));
+  }
+  return added;
 }
 function renderRawStakingEvents(rows){
   const stakeRows=rows.filter(r=>r.action==='Stake'||r.action==='Unstake');
@@ -2091,9 +2149,10 @@ if(stakeTxPairs.length){
   pairs.push(...stakeTxPairs.filter(p=>!pairs.some(x=>norm(x.address)===norm(p.address))));
   renderPairTable(pairs,counts);
   rows=renderEvents(transfers,pairMap,wallet);
+  const synthesized=await synthesizeStakeRowsFromReceipts(contractCalls,pairMap,wallet,rows);
   stakingRows=renderRawStakingEvents(rows);
   entryTargets=await discoverStakeEntryTargets(stakingRows);
-  log(`Stake-Tx-Fallback: ${stakeTxPairs.length} zusätzlicher historischer LP entdeckt; LP-/Staking-Ereignisse neu aufgebaut.`,'ok');
+  log(`Stake-Tx-Fallback: ${stakeTxPairs.length} zusätzlicher historischer LP entdeckt; ${synthesized.length} Stake-Ereignis(se) zusätzlich aus Receipt-Logs ergänzt; LP-/Staking-Ereignisse neu aufgebaut.`,'ok');
 }
 
 const contractEvents=await discoverStakingContractEvents(stakingRows,entryTargets,wallet);
