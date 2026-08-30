@@ -23,15 +23,19 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <body>
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
-  <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 01:11:49 CEST</div>
+  <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Claim-Transaktion. Unbekannte Claims werden vollständig untersucht; bereits validierte Einzelfälle dürfen nur ihren eigenen Checkpoint verwenden.</div>
+  <div class="muted">Aktueller Testfall: ältere Staking-Variante · gleicher Wallet-Kontext · Mechanik noch unbekannt.</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 01:23:07 CEST</div>
 
   <div class="card">
     <div class="row">
-      <input id="txHash" value="0xce5aa91fd02c74b47d1314a72e18b77c17d74eeb7dd24f7ea29933a6d5cda9bd" spellcheck="false">
+      <input id="txHash" value="0x8b006efb61b17c2de81615010e18a5b23345f30eb7ec90e76fe8afc6b300d98c" spellcheck="false">
       <button id="analyze">Transaktion analysieren</button>
     </div>
     <div id="status" class="muted" style="margin-top:10px">Bereit.</div>
+    <div class="row" style="margin-top:10px">
+      <button id="exportFullAnalysis" type="button">Gesamte Einzelfall-Analyse exportieren</button>
+    </div>
   </div>
 
   <div class="card"><h2>1. Transaktion</h2><div id="txInfo" class="muted">Noch keine Daten.</div></div>
@@ -715,6 +719,8 @@ async function archiveStorageAt(address,slot,block,label){
   const r=await historicalRpc('eth_getStorageAt',[address,slot,hexBlock(block)],label);
   return {value:BigInt(r.result||'0x0'),source:r.source};
 }
+// Sicherheitsregel: Checkpoints sind TX-spezifisch. Ein neuer/unbekannter Claim
+// durchläuft immer die vollständige Discovery und historische Ursprungssuche.
 function verifiedOffset8OriginForClaim(hash,currentValue){
   const v=VERIFIED_OFFSET8_ORIGINS[norm(hash)];
   if(!v || v.value!==currentValue) return null;
@@ -876,6 +882,39 @@ function downloadText(filename,text){
 }
 
 
+function exportFullAnalysis(){
+  const hash=$('txHash')?.value?.trim()||'';
+  const sections=[
+    ['1. TRANSAKTION','txInfo'],
+    ['2. ERC-20 TRANSFERS IM RECEIPT','transfers'],
+    ['3. CLAIM-CONTRACT → BEKANNTE STAKINGS','relations'],
+    ['4. INTERNE CALLS / TRACE','trace'],
+    ['5. REWARD-STORAGE / STATE-DIFF','storageDiff'],
+    ['6. HISTORISCHER URSPRUNG DES REWARD-STATE','stateHistory'],
+    ['7. REWARD-FORMEL / OPCODE-TRACE','formulaTrace'],
+    ['8. URSPRUNG OFFSET 8 / STAKING-BASIS','principalOrigin'],
+    ['9. KANDIDATEN-TRANSAKTION / TOKEN- UND LP-BEWEGUNGEN','stateCandidates'],
+    ['10. DIAGNOSE-FAZIT','conclusion'],
+    ['TECHNISCHES LOG','log']
+  ];
+  const body=[];
+  for(const [title,id] of sections){
+    body.push('=== '+title+' ===');
+    body.push(textFromNode($(id)) || '–');
+    body.push('');
+  }
+  const out=[
+    'TLN/VOW – vollständige Einzelfall-Claim-Analyse',
+    'Export aus tln-vow-single-claim-trace-test.html',
+    'Version: 31.08.2026 01:23:07 CEST',
+    'Claim-TX: '+hash,
+    'Hinweis: Ein validierter Checkpoint wird nur verwendet, wenn TX-Hash UND erwarteter Basiswert exakt zu diesem Einzelfall passen.',
+    '',
+    ...body
+  ].join('\n');
+  downloadText('tln-vow-single-claim-analysis.txt',out);
+}
+
 function exportStep9(){
   const hash=$('txHash')?.value?.trim()||'';
   const txt=textFromNode($('stateCandidates'));
@@ -886,7 +925,7 @@ function exportStep9(){
   const out=[
     'TLN/VOW – Schritt 9: Kandidaten-Transaktion / Token- und LP-Bewegungen',
     'Export aus tln-vow-single-claim-trace-test.html',
-    'Version: 31.08.2026 01:11:49 CEST',
+    'Version: 31.08.2026 01:23:07 CEST',
     hash ? 'Claim-TX: '+hash : '',
     '',
     txt
@@ -904,7 +943,7 @@ function exportPrincipalOrigin(){
   const header=[
     'TLN/VOW – Ursprung Offset 8 / Staking-Basis',
     'Export aus tln-vow-single-claim-trace-test.html',
-    'Version: 31.08.2026 01:11:49 CEST',
+    'Version: 31.08.2026 01:23:07 CEST',
     'Claim-Transaction: '+hash,
     '',
     '=== 8. URSPRUNG OFFSET 8 ===',''
@@ -927,7 +966,7 @@ function exportFormulaCompact(){
   const header=[
     'TLN/VOW – automatisch rekonstruierter Reward-Formel-Kern',
     'Export aus tln-vow-single-claim-trace-test.html',
-    'Version: 31.08.2026 01:11:49 CEST',
+    'Version: 31.08.2026 01:23:07 CEST',
     'Transaction: '+hash,
     '',
   ].join('\n');
@@ -944,7 +983,7 @@ function exportFormulaSection(){
   const header=[
     'TLN/VOW – Reward-Formel / Opcode-Trace',
     'Export aus tln-vow-single-claim-trace-test.html',
-    'Version: 31.08.2026 01:11:49 CEST',
+    'Version: 31.08.2026 01:23:07 CEST',
     'Transaction: '+hash,
     '',
     '=== ABSCHNITT 7 ===',
@@ -1385,6 +1424,7 @@ async function analyze(){
   }finally{$('analyze').disabled=false}
 }
 $('analyze').addEventListener('click',analyze);
+$('exportFullAnalysis').addEventListener('click',exportFullAnalysis);
 $('exportStep9').addEventListener('click',exportStep9);
 $('exportPrincipalOrigin').addEventListener('click',exportPrincipalOrigin);
 $('exportFormulaCompact').addEventListener('click',exportFormulaCompact);
