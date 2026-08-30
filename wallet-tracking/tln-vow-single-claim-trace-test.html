@@ -24,7 +24,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
   <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 30.08.2026 22:34 CEST</div>
+  <div class="muted">Entwicklungsstand 30.08.2026 22:52 CEST</div>
 
   <div class="card">
     <div class="row">
@@ -186,6 +186,8 @@ const KNOWN_TRACE_ROLES={
 const KNOWN_SELECTORS={
   '0xe507a8a4':'withdrawYield()',
   '0x40c10f19':'mint(address,uint256)',
+  '0xddca3f43':'fee() / Claim-Gebühr',
+  '0xe0138476':'feeReceiver()/exchange() (Adresse)',
 };
 function selectorName(input){
   const s=String(input||'').slice(0,10).toLowerCase();
@@ -203,7 +205,9 @@ function decodeCalldataWords(input){
     let address=null;
     if(/^0{24}[0-9a-fA-F]{40}$/.test(word)){
       const a='0x'+word.slice(24).toLowerCase();
-      if(a!==ZERO)address=a;
+      // ABI uint256-Werte sehen formal oft wie Adressen aus. Nur als Adresse
+      // markieren, wenn der 160-bit-Wert groß genug für eine reale BSC-Adresse ist.
+      try{ if(a!==ZERO && BigInt(a)>0xffffffffffffffffn) address=a; }catch{}
     }
     out.push({index:i/64,word:'0x'+word,uint,address});
   }
@@ -221,7 +225,9 @@ function decodeOutputWords(output){
     let address=null;
     if(/^0{24}[0-9a-fA-F]{40}$/.test(word)){
       const a='0x'+word.slice(24).toLowerCase();
-      if(a!==ZERO)address=a;
+      // ABI uint256-Werte sehen formal oft wie Adressen aus. Nur als Adresse
+      // markieren, wenn der 160-bit-Wert groß genug für eine reale BSC-Adresse ist.
+      try{ if(a!==ZERO && BigInt(a)>0xffffffffffffffffn) address=a; }catch{}
     }
     out.push({index:i/64,word:'0x'+word,uint,address});
   }
@@ -230,9 +236,18 @@ function decodeOutputWords(output){
 function traceWordHtml(words){
   if(!words.length)return '<span class="muted">keine</span>';
   return words.map(w=>{
-    let extra=w.address
-      ? `<br><span class="ok">Adresse: <span class="mono">${esc(w.address)}</span>${KNOWN_TRACE_ROLES[w.address]?` · ${esc(KNOWN_TRACE_ROLES[w.address])}`:''}</span>`
-      : `<br><span class="muted">uint256: ${esc(w.uint)}</span>`;
+    let extra;
+    if(w.address){
+      extra=`<br><span class="ok">Adresse: <span class="mono">${esc(w.address)}</span>${KNOWN_TRACE_ROLES[w.address]?` · ${esc(KNOWN_TRACE_ROLES[w.address])}`:''}</span>`;
+    }else{
+      let hint='';
+      try{
+        const n=BigInt(w.uint||'0');
+        if(n===1000000000000000n) hint=' · <b>0.001 BNB (Claim-Gebühr)</b>';
+        else if(n>1000000000000000000n) hint=` · bei 18 Decimals: ${esc(ethers.formatUnits(n,18))}`;
+      }catch{}
+      extra=`<br><span class="muted">uint256: ${esc(w.uint)}${hint}</span>`;
+    }
     return `<div><b>Word ${w.index}</b>: <span class="mono">${esc(w.word)}</span>${extra}</div>`;
   }).join('');
 }
@@ -373,7 +388,9 @@ async function analyze(){
 
     let conclusion='';
     conclusion+=`<p><b>Trace-Fund:</b> <span class="mono">0x40c10f19</span> ist <b>mint(address,uint256)</b>. Der Claim-Pfad führt über <span class="mono">0xb12e18…5930b</span> → Delegatecall <span class="mono">0x6592b7…c776</span> → TLN <span class="mono">0xf7d142…e4c2</span>. Damit ist dieser Ast die Reward-Minting-Kette und nicht die Staking-Position selbst.</p>`;
-    conclusion+=`<p><b>Nächster Zuordnungspunkt:</b> Die beiden STATICCALLs <span class="mono">0xddca3f43</span> und <span class="mono">0xe0138476</span> werden jetzt inklusive Input und Output dekodiert. Dort suchen wir nach Wallet-, Pool-, Registry- oder Positionsadressen.</p>`;
+    conclusion+=`<p><b>STATICCALL 0xddca3f43 auf 0x7f6c…fc662:</b> Der Rückgabewert <span class="mono">0x38d7ea4c68000</span> ist <b>1,000,000,000,000,000 Wei = 0.001 BNB</b>. Das ist die Claim-Gebühr – <b>keine Adresse</b>. Die frühere grüne „Adresse“-Darstellung war ein Decoder-Fehler und ist in dieser Version korrigiert.</p>`;
+    conclusion+=`<p><b>STATICCALL 0xe0138476:</b> liefert <span class="mono">0x160ac9cf35903960ed493264b16ca6dc3e308f8c</span>; direkt danach gehen 0.001 BNB an genau diesen DBridgeExchange. Dieser Zweig ist damit die <b>Gebühren-/BNB-Abwicklung</b>, nicht die Staking-Zuordnung.</p>`;
+    conclusion+=`<p><b>Wichtige Konsequenz:</b> <code>withdrawYield()</code> fragt in dieser Transaktion offenbar <b>keinen Staking-Contract und keinen LP-Pool</b> ab. Die Reward-Höhe muss daher bereits im Claim-Contract/Storage vorhanden sein. Für die Zuordnung müssen wir als Nächstes untersuchen, <b>welche frühere Transaktion diesen Yield-State für das Wallet geschrieben hat</b>, statt den Withdraw-Trace weiter nach einem LP zu durchsuchen.</p>`;
     if(mintRewards.length){
       conclusion+=`<p class="ok"><b>Reward-Beweis:</b> ${mintRewards.length} Mint-Transfer(s) von Zero Address direkt zum aufrufenden Wallet erkannt.</p>`;
     }else{
