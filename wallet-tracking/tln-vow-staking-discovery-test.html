@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 02:09:02 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 02:25:49 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -79,7 +79,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV",TEST_WALLETS=["0xEA796A228B7c231298e217417fD5978556a9c27f","0x813D4948e797DA57085cf1b81b96804576E85510"];
+const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const V2=new ethers.Interface(["function token0() view returns(address)","function token1() view returns(address)","function factory() view returns(address)","function decimals() view returns(uint8)","function getReserves() view returns(uint112,uint112,uint32)","function totalSupply() view returns(uint256)"]);
 const ERC20=new ethers.Interface(["function symbol() view returns(string)","function decimals() view returns(uint8)"]);
@@ -973,9 +973,7 @@ function historicalAssetDescriptor(row){
   };
 }
 
-const REWARD_TX_HINTS=[
-  '0x0f0320b0da7d7df1678fe6de455879cffee8a5f10e0d77200c625333a7dfcd57'
-];
+const REWARD_TX_HINTS=[]; // keine manuellen Reward-/Claim-Tx-Hinweise
 const BUSINESS_PROBE_CACHE=new Map();
 const PAIR_STATE_CACHE=new Map();
 
@@ -1171,18 +1169,6 @@ function extractStoredStakeUsd(lot,probeResult){
   let tsIndex=-1;
   if(stakeSec)tsIndex=nums.findIndex(v=>v!=null&&Math.abs(Number(v)-stakeSec)<=86400);
   if(!amountMatches||tsIndex<0)return null;
-
-  const legacySc=norm(lot?.staking?.contract_address||lot.counterparty||'');
-  if(legacySc==='0x4857d369e18aba003ff6ec934cf046148df5d590'&&nums.length>=3){
-    const v=formatToken18(nums[1]);
-    if(v!=null&&v>0){
-      return {
-        usd:v,
-        source:`TLN Staking-SC historisch @ Stake-Block · ${sourceSig} · W2 = gespeicherter USD-Wert`,
-        rawWord:nums[1].toString()
-      };
-    }
-  }
 
   const candidates=[];
   for(let i=1;i<tsIndex;i++){
@@ -1693,6 +1679,24 @@ async function learnDynamicClaimContractRelations(lots){
     }
   }
 }
+
+function lotLifecycleHashes(lot){
+  const out=new Set();
+  if(lot?.stakeTx)out.add(String(lot.stakeTx).toLowerCase());
+  if(lot?.unstakeTx)out.add(String(lot.unstakeTx).toLowerCase());
+  for(const x of (lot?.topUps||[]))if(x.tx)out.add(String(x.tx).toLowerCase());
+  return out;
+}
+function strongRewardEvidenceForLot(lot,callTo,selector,txHash){
+  callTo=norm(callTo||'');selector=String(selector||'').toLowerCase();txHash=String(txHash||'').toLowerCase();
+  if(txHash&&lotLifecycleHashes(lot).has(txHash))return {strong:true,kind:'lifecycle'};
+  const related=lotRewardContracts(lot);
+  if(callTo&&related.has(callTo))return {strong:true,kind:'reward_relation'};
+  if(callTo&&graphConnectedRewardContract(lot,callTo))return {strong:true,kind:'reward_graph'};
+  const learned=callTo&&selector?learnedRewardPath(callTo,selector):null;
+  if(learned&&callTo&&(related.has(callTo)||graphConnectedRewardContract(lot,callTo)))return {strong:true,kind:'learned_related_path'};
+  return {strong:false,kind:null};
+}
 async function attachRewardClaimsToLots(lots,calls){
   const wallet=norm(CURRENT_WALLET);
   const rewardCandidates=[];
@@ -1717,6 +1721,8 @@ async function attachRewardClaimsToLots(lots,calls){
 
   for(const rc of rewardCandidates){
     const c=rc.call,tr=rc.transfer,when=rc.when;
+    const txHash=String(c.hash||'').toLowerCase();
+    if((lots||[]).some(l=>lotLifecycleHashes(l).has(txHash)))continue;
     const candidates=[];
 
     for(const lot of (lots||[])){
@@ -1778,18 +1784,19 @@ async function attachRewardClaimsToLots(lots,calls){
       // Explicitly supplied diagnostic claim: still require temporal plausibility,
       // but allow association when only one staking lot is active.
       if(c._rewardHint){score+=35;reasons.push('bestätigte reward-relevante Tx')}
-
-      // Temporal evidence.
-      if(stakeMs&&when>=stakeMs){
-        score+=10;reasons.push('nach Stake');
-        if(expiryMs&&when<=expiryMs)score+=5;
-      }
-
-      candidates.push({lot,score,reasons});
+      // Zeitinformationen werden bewusst NICHT für die Zuordnung verwendet.
+      const strong=strongRewardEvidenceForLot(lot,callTo,c._selector||'',c.hash||'');
+      if(!strong.strong)continue;
+      candidates.push({lot,score,reasons,strongKind:strong.kind});
     }
 
     candidates.sort((a,b)=>b.score-a.score);
     const chosen=candidates[0]||null;
+    const second=candidates[1]||null;
+    if(chosen&&second&&chosen.score===second.score&&chosen.strongKind===second.strongKind){
+      log(`Reward-Kandidat NICHT zugeordnet: ${c.hash||'–'} · gleiche belastbare Evidenz für mehrere parallele Positionen; keine automatische Zuordnung.`,'warn');
+      continue;
+    }
 
     // "Nur eine Position war aktiv" reicht NICHT als Reward-Nachweis.
     // Ohne Contract-/Tx-Beziehung bleibt der Transfer ein unbestätigter Kandidat.
@@ -1843,12 +1850,6 @@ async function attachRewardClaimsToLots(lots,calls){
 
 
 function structFieldEvidence(lot,w){
-  const sc=norm(lot?.staking?.contract_address||lot.counterparty||'');
-  if(sc==='0x4857d369e18aba003ff6ec934cf046148df5d590'){
-    if(w.index===0)return {label:'amount (W1)',evidence:'SC-/Transaktionsdaten: entspricht exakt der LP-Menge'};
-    if(w.index===1)return {label:'amount_usd (W2)',evidence:'TLN-Stakingdaten: gespeicherter USD-Wert beim Stake'};
-    if(w.index===2)return {label:'staked_timestamp (W3)',evidence:'entspricht exakt dem Stake-Zeitpunkt'};
-  }
 
   // For other contracts: report semantic matches without inventing Solidity names.
   const original=Number(lot.original||0);
@@ -1893,7 +1894,7 @@ function stakeRewardEvidenceHtml(lot){
     html+=`<div style="grid-column:1/-1;margin-top:8px">
       <details><summary>Historische SC-Daten beim Stake (${esc(lot.historicalScAfter.sig)})</summary>
         <div class="sc-grid" style="margin:8px 0"><div class="sc-k">Staking-Contract</div><div class="sc-v mono">${esc(norm(lot?.staking?.contract_address||lot.counterparty||''))}</div></div>
-        <div class="reward-note">${norm(lot?.staking?.contract_address||lot.counterparty||'')==='0x4857d369e18aba003ff6ec934cf046148df5d590'?'Für diesen Legacy-SC können die drei gespeicherten Werte fachlich bezeichnet werden: W1 = amount (LP-Menge), W2 = amount_usd (gespeicherter USD-Wert), W3 = staked_timestamp (Stake-Zeitpunkt). Reward-Token und Reward-Modell werden davon getrennt aus SC-/Transaktionsdaten ermittelt.':'Zustand am tatsächlichen Stake-Block. Bei diesem Contract werden ohne belegte SC-Feldnamen nur nachweisbare Wert-/Timestamp-Übereinstimmungen angezeigt; Solidity-Feldnamen werden nicht geraten.'}</div>
+        <div class="reward-note">Zustand am tatsächlichen Stake-Block. Bei diesem Contract werden ohne belegte SC-Feldnamen nur nachweisbare Wert-/Timestamp-Übereinstimmungen angezeigt; Solidity-Feldnamen werden nicht geraten.</div>
         <div class="wrap" style="margin-top:8px"><table style="min-width:760px">
           <thead><tr><th>Feld</th><th>Raw uint</th><th>als 18 Decimals</th><th>Änderung beim Stake</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -2047,19 +2048,10 @@ async function attachRewardTokenHistoryToLots(lots){
       if(known.has(token)){
         score+=10;reasons.push('bereits erkannter Reward-Token');
       }
-
-      // Nur Tie-Breaker, niemals alleiniger Reward-Nachweis.
-      const basis=lot.lockBaseTime||lot.stakeTime;
-      const basisMs=basis?new Date(basis).getTime():0;
-      if(ms&&basisMs&&ms>=basisMs){
-        const days=(ms-basisMs)/86400000;
-        const recency=Math.max(0,Math.min(9,9-Math.floor(days/60)));
-        if(recency>0){
-          score+=recency;
-          reasons.push('zeitlich nächste aktive Position (Tie-Breaker)');
-        }
-      }
-      candidates.push({lot,score,reasons,known});
+      // Keine zeitbasierte Bewertung: parallele Stakings sind zulässig.
+      const strong=strongRewardEvidenceForLot(lot,callTo,selector,hash);
+      if(!strong.strong)continue;
+      candidates.push({lot,score,reasons,known,strongKind:strong.kind});
     }
 
     candidates.sort((a,b)=>{
@@ -2090,10 +2082,10 @@ async function attachRewardTokenHistoryToLots(lots){
     }
 
     const second=candidates[1]||null;
-    if(second && second.score===chosen.score &&
-       norm(chosen.lot?.staking?.contract_address||chosen.lot.counterparty||'')===
-       norm(second.lot?.staking?.contract_address||second.lot.counterparty||'')){
-      log(`Reward-Historie mehrdeutig: ${hash} · Score ${chosen.score} bei mehreren Positionen desselben Staking-SC. Keine automatische Zuordnung.`,'warn');
+    if(second && chosen.strongKind===second.strongKind &&
+       (chosen.score===second.score ||
+        norm(chosen.lot?.staking?.contract_address||chosen.lot.counterparty||'')===norm(second.lot?.staking?.contract_address||second.lot.counterparty||''))){
+      log(`Reward-Historie mehrdeutig: ${hash} · gleiche positionsbezogene Evidenz für mehrere parallele Lots; keine automatische Zuordnung.`,'warn');
       continue;
     }
 
@@ -2235,7 +2227,7 @@ function rewardClaimSummaryHtml(lot){
 
   const summarySections=[
     ['stake_reward','Eigener Reward beim Stake'],
-    ['distribution','Spätere Reward-Ausschüttungen'],
+    ['distribution','Spätere Reward-Ausschüttungen · positionsspezifisch belegt'],
     ['claim','Claims / Reward-Abholungen']
   ];
 
@@ -2785,11 +2777,6 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   }
   await enrichLotsBusiness(lots,pricePairs);
   renderDeepEvents(contractEvents,lots);
-  const hintedAttached=lots.flatMap(l=>l.rewardClaims||[]).filter(c=>REWARD_TX_HINTS.includes(String(c.hash||'').toLowerCase())).length;
-  if(REWARD_TX_HINTS.length){
-    if(hintedAttached)log(`Bestätigte reward-relevante Tx wurde ${hintedAttached} Reward-Transfer(s) einer Staking-Position zugeordnet.`,'ok');
-    else log(`Bestätigte reward-relevante Tx wurde geladen. Falls kein direkter Wallet-Reward-Transfer existiert, werden historische SC-Daten und Token-Mints der Stake-Tx separat ausgewertet.`,'warn');
-  }
   $('mLots').textContent=lots.length;$('mClosed').textContent=lots.filter(l=>l.status==='closed').length;
   associateContractCallsToLots(lots,contractCalls);
   const running=[...lots].filter(l=>l.status!=='closed').sort((a,b)=>String(b.stakeTime||'').localeCompare(String(a.stakeTime||'')));
@@ -2860,20 +2847,9 @@ populateTlnWalletDropdown();
 bindWalletDropdown();
 $('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok')}
 $('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('contractCalls').innerHTML='<tr><td colspan="9">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('runningStakings').innerHTML='<div class="muted">Suche…</div>';$('completedStakings').innerHTML='<div class="muted">Suche…</div>';$('deepEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();CURRENT_WALLET=wallet;if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const transfers=await allErc20Transfers(wallet);CURRENT_ALL_TRANSFERS=transfers;$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const projectSet=new Set(projectTokens.map(x=>norm(x.address)));const candidates=[...counts.keys()];log(`${candidates.length} unterschiedliche ERC-20-Contracts werden als mögliche V2-LPs geprüft.`);const pairs=[];for(let i=0;i<candidates.length;i++){if(i%25===0)log(`LP-Prüfung ${i+1}/${candidates.length}…`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}const pairMap=new Map(pairs.map(p=>[p.address,p]));renderPairTable(pairs,counts);let rows=renderEvents(transfers,pairMap,wallet);let stakingRows=renderRawStakingEvents(rows);let entryTargets=await discoverStakeEntryTargets(stakingRows);if(entryTargets.length)log(`Zusätzliche Entry-/Controller-Contracts aus Stake-Txs erkannt: ${entryTargets.map(x=>x.contract_address).join(', ')}`,'ok');let contractCalls=await allExternalCallsToStaking(wallet,entryTargets);
-const hintedRewardCalls=await hintedRewardRelevantCalls(wallet);
-const callMap=new Map(contractCalls.map(c=>[c.hash,c]));
-for(const c of hintedRewardCalls){
-  if(callMap.has(c.hash)){
-    const existing=callMap.get(c.hash);
-    existing._rewardHint=true;
-    if((c._erc20Transfers||[]).length)existing._erc20Transfers=c._erc20Transfers;
-  }else{
-    contractCalls.push(c);callMap.set(c.hash,c);
-  }
-}
 contractCalls.sort((a,b)=>String(a.metadata?.blockTimestamp||'').localeCompare(String(b.metadata?.blockTimestamp||'')));
 renderContractCalls(contractCalls);
-log(`${contractCalls.length} Wallet-Aufrufe inkl. Reward-Tx-Hinweisen geprüft.`,'ok');
+log(`${contractCalls.length} Wallet-Aufrufe dynamisch geprüft.`,'ok');
 
 const stakeTxPairs=await discoverPairsFromStakeTransactions(contractCalls,transfers,pairMap,projectSet,counts,wallet);
 if(stakeTxPairs.length){
