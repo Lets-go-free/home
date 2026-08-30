@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TLN/VOW · Einzel-Claim Trace</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
 <style>
 :root{color-scheme:dark;--bg:#08131f;--card:#111f2d;--line:#2a4155;--muted:#9fb1c2;--ok:#6fe0a7;--warn:#ffd166;--bad:#ff7b7b}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#e7eef6;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
@@ -24,7 +24,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
   <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 30.08.2026 21:12:02 CEST</div>
+  <div class="muted">Entwicklungsstand 30.08.2026 22:12:00 CEST</div>
 
   <div class="card">
     <div class="row">
@@ -147,6 +147,14 @@ async function getTrace(hash){
   }
 }
 async function analyze(){
+  if(typeof ethers==='undefined'){
+    $('status').innerHTML='<span class="bad">ethers.js konnte nicht geladen werden. Bitte Seite neu laden und CDN-Zugriff prüfen.</span>';
+    return;
+  }
+  if(typeof supabase==='undefined'){
+    $('status').innerHTML='<span class="bad">Supabase JS konnte nicht geladen werden. Bitte Seite neu laden und CDN-Zugriff prüfen.</span>';
+    return;
+  }
   $('analyze').disabled=true;$('status').textContent='Analysiere nur diese eine Transaktion…';$('log').textContent='';
   for(const id of ['txInfo','transfers','relations','trace','conclusion'])$(id).innerHTML='<span class="muted">Lädt…</span>';
   try{
