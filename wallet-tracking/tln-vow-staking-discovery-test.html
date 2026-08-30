@@ -38,7 +38,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 15:14:50 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 15:39:00 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -1787,6 +1787,7 @@ async function classifyRewardCallFlows(calls,wallet,lots=[]){
         CURRENT_PROVEN_REWARD_ROWS.push({
           hash:flow.hash,
           time:flow.time||null,
+          timeStamp:flow.time||null,
           block:flow.block||null,
           token:norm(tr.token),
           symbol:meta.symbol||'Token',
@@ -3335,6 +3336,26 @@ function stakingAssetAmountText(lot){
     : 'LP';
   return `${n.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(asset)}`;
 }
+
+function rewardClaimTimestamp(claim){
+  const v=claim?.time??claim?.timeStamp??claim?.timestamp??null;
+  if(v!=null&&v!==''){
+    if(typeof v==='number')return v>1e12?v:v*1000;
+    const s=String(v).trim();
+    if(/^0x[0-9a-f]+$/i.test(s)){
+      const n=parseInt(s,16); if(Number.isFinite(n))return n>1e12?n:n*1000;
+    }
+    if(/^\d+$/.test(s)){
+      const n=Number(s); if(Number.isFinite(n))return n>1e12?n:n*1000;
+    }
+    const d=Date.parse(s); if(Number.isFinite(d))return d;
+  }
+  return 0;
+}
+function rewardClaimDateText(claim){
+  const ts=rewardClaimTimestamp(claim);
+  return ts?new Date(ts).toLocaleString('de-CH'):'–';
+}
 function renderRewardClaiming(lots){
   const el=document.getElementById('rewardClaiming');
   if(!el)return;
@@ -3343,7 +3364,7 @@ function renderRewardClaiming(lots){
     const p=r.lot?stakingPeriodText(r.lot):{from:'–',to:'–'};
     return {...r,from:p.from,to:p.to};
   });
-  rows.sort((a,b)=>String(a.claim.time||'').localeCompare(String(b.claim.time||'')));
+  rows.sort((a,b)=>rewardClaimTimestamp(a.claim)-rewardClaimTimestamp(b.claim));
 
   if(!rows.length){
     el.innerHTML='<div class="muted">Keine on-chain belegten Reward-/Claim-Transaktionen für dieses Wallet gefunden.</div>';
@@ -3383,7 +3404,7 @@ function renderRewardClaiming(lots){
   </div>
   <div class="wrap"><table style="min-width:1580px">
     <thead><tr>
-      <th>Datum</th>
+      <th>Claim-Datum / Zeit</th>
       <th>Typ</th>
       <th>Reward</th>
       <th>Reward-Token</th>
@@ -3397,7 +3418,7 @@ function renderRewardClaiming(lots){
       <th>Reward-Tx</th>
     </tr></thead>
     <tbody>${rows.map(({lot,claim,from,to,assigned})=>`<tr>
-      <td>${claim.time?new Date(claim.time).toLocaleString('de-CH'):'–'}</td>
+      <td>${rewardClaimDateText(claim)}</td>
       <td><b>${claim.eventType==='stake_reward'?'Reward beim Stake':claim.eventType==='distribution'?'Reward-Ausschüttung':'Claim / Reward-Abholung'}</b>${!assigned?'<div class="muted">nicht zugeordnet</div>':''}</td>
       <td class="num"><b>${Number(claim.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td>
       <td><b>${esc(claim.symbol||'–')}</b>${claim.token?`<div class="mono muted">${esc(claim.token)}</div>`:''}</td>
