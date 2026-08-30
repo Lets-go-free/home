@@ -24,7 +24,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
   <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 00:37:38 CEST</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 01:00:20 CEST</div>
 
   <div class="card">
     <div class="row">
@@ -69,6 +69,21 @@ const ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const ZERO='0x0000000000000000000000000000000000000000';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 let rpcUrl=null,alchemyBase=null;
+
+// Bereits on-chain validierter Analyse-Checkpoint.
+// Nur für diese konkrete Claim-TX; KEINE globale Staking-Regel.
+// Damit muss der bekannte Offset-8-Ursprung nicht erneut per Archive-Binary-Search
+// (z. B. über Alchemy) gesucht werden.
+const VERIFIED_OFFSET8_ORIGINS = {
+  '0xce5aa91fd02c74b47d1314a72e18b77c17d74eeb7dd24f7ea29933a6d5cda9bd': {
+    changeBlock: 40725074n,
+    previousBlock: 40725073n,
+    previousValue: 0n,
+    value: 17820000000000000000000n,
+    timestamp: 1721740812n,
+    source: 'bereits validierter Analyse-Checkpoint'
+  }
+};
 const $=id=>document.getElementById(id);
 const norm=x=>String(x||'').toLowerCase();
 const esc=x=>String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -694,6 +709,20 @@ async function archiveStorageAt(address,slot,block,label){
   const r=await historicalRpc('eth_getStorageAt',[address,slot,hexBlock(block)],label);
   return {value:BigInt(r.result||'0x0'),source:r.source};
 }
+function verifiedOffset8OriginForClaim(hash,currentValue){
+  const v=VERIFIED_OFFSET8_ORIGINS[norm(hash)];
+  if(!v || v.value!==currentValue) return null;
+  return {
+    found:true,
+    changeBlock:v.changeBlock,
+    previousBlock:v.previousBlock,
+    previousValue:v.previousValue,
+    source:v.source,
+    timestamp:v.timestamp,
+    checkpoint:true
+  };
+}
+
 async function findLastTransitionIntoValue(address,slot,claimBlock,currentValue,maxLookback=12000000n){
   const start=claimBlock-1n;
   const check=await archiveStorageAt(address,slot,start,`Archive-Validierung @ ${start}`);
@@ -851,7 +880,7 @@ function exportPrincipalOrigin(){
   const header=[
     'TLN/VOW – Ursprung Offset 8 / Staking-Basis',
     'Export aus tln-vow-single-claim-trace-test.html',
-    'Version: 31.08.2026 00:37:38 CEST',
+    'Version: 31.08.2026 01:00:20 CEST',
     'Claim-Transaction: '+hash,
     '',
     '=== 8. URSPRUNG OFFSET 8 ===',''
@@ -874,7 +903,7 @@ function exportFormulaCompact(){
   const header=[
     'TLN/VOW – automatisch rekonstruierter Reward-Formel-Kern',
     'Export aus tln-vow-single-claim-trace-test.html',
-    'Version: 31.08.2026 00:17:12 CEST',
+    'Version: 31.08.2026 01:00:20 CEST',
     'Transaction: '+hash,
     '',
   ].join('\n');
@@ -1131,8 +1160,13 @@ async function analyze(){
               $('principalOrigin').innerHTML='<span class="warn">Offset 8 wurde im Full-Prestate nicht mit einem positiven Wert gelesen.</span>';
               $('stateCandidates').innerHTML='–';
             }else{
-              log(`Suche Ursprung von Offset 8 = ${off8.value} per validiertem Archive-State.`);
-              const origin=await findLastTransitionIntoValue(claimContract,off8.slot,BigInt(tx.blockNumber),off8.value);
+              let origin=verifiedOffset8OriginForClaim(hash,off8.value);
+              if(origin){
+                log(`Offset-8-Ursprung aus bereits validiertem Analyse-Checkpoint: Block ${origin.changeBlock}. Keine erneute Archive-Suche nötig.`);
+              }else{
+                log(`Suche Ursprung von Offset 8 = ${off8.value} per validiertem Archive-State.`);
+                origin=await findLastTransitionIntoValue(claimContract,off8.slot,BigInt(tx.blockNumber),off8.value);
+              }
               if(!origin.found){
                 $('principalOrigin').innerHTML=`<span class="warn">${esc(origin.reason)}</span>`;
                 $('stateCandidates').innerHTML='–';
@@ -1141,13 +1175,14 @@ async function analyze(){
                 const b=br.result,ts=new Date(Number(BigInt(b.timestamp))*1000);
                 $('principalOrigin').innerHTML=`<div class="grid">
                   <div class="kv"><b>Offset 8</b><span class="ok"><b>${esc(ethers.formatUnits(off8.value,18))}</b></span><br><span class="mono">${esc(off8.value.toString())}</span></div>
-                  <div class="kv"><b>Historische Quelle</b>${esc(origin.source)}<br><span class="ok">gegen prestateTracer validiert</span></div>
+                  <div class="kv"><b>Ursprungsquelle</b>${esc(origin.source)}<br><span class="ok">${origin.checkpoint?'bereits in vorherigem Lauf gegen Archive-State + prestateTracer validiert':'gegen prestateTracer validiert'}</span></div>
                   <div class="kv"><b>Aktueller Wert besteht ab Block</b><span class="ok"><b>${origin.changeBlock.toLocaleString('de-CH')}</b></span></div>
                   <div class="kv"><b>Zeitpunkt</b>${esc(ts.toLocaleString('de-CH'))}</div>
                   <div class="kv"><b>Wert im Block davor</b><span class="mono">${esc(origin.previousValue.toString())}</span>${origin.previousValue>0n?`<br>${esc(ethers.formatUnits(origin.previousValue,18))}`:''}</div>
                   <div class="kv"><b>Δ Offset 8</b><span class="mono">${esc((off8.value-origin.previousValue).toString())}</span></div>
                 </div>
-                <p>Jetzt wird ausschließlich dieser Block untersucht. Ziel: die konkrete Transaktion finden, die Offset 8 auf <b>${esc(ethers.formatUnits(off8.value,18))}</b> gesetzt hat, und gleichzeitig deren Token-/LP-Bewegungen anzeigen.</p>`;
+                <p>Jetzt wird ausschließlich dieser Block untersucht. Ziel: die konkrete Transaktion finden, die Offset 8 auf <b>${esc(ethers.formatUnits(off8.value,18))}</b> gesetzt hat, und gleichzeitig deren Token-/LP-Bewegungen anzeigen.</p>
+                ${origin.checkpoint?'<p class="ok"><b>Für diesen bekannten Fall ist keine erneute Alchemy-/Archive-Suche nötig.</b> Der bereits validierte Änderungsblock wird direkt verwendet.</p>':''}`;
 
                 let candidateTxs=[];
                 try{
@@ -1156,13 +1191,20 @@ async function analyze(){
                     const root=entry?.result||entry;
                     const calls=flattenCallTree(root,[]);
                     if(calls.some(c=>c.to===claimContract)){
-                      const txObj=b.transactions?.[i];
+                      const tracedHash=norm(entry?.txHash||entry?.transactionHash||root?.txHash||root?.transactionHash||'');
+                      const txObj=(tracedHash && (b.transactions||[]).find(t=>norm(t.hash)===tracedHash)) || b.transactions?.[i];
                       if(txObj)candidateTxs.push({...txObj,_calls:calls,_traceSource:bt.source});
                     }
                   });
                 }catch(e){
                   log('Block-Trace-Fallback: '+e.message);
                   candidateTxs=(b.transactions||[]).filter(t=>norm(t.to)===claimContract||norm(t.from)===norm(tx.from)).map(t=>({...t,_calls:[]}));
+                }
+                // Ergänzende direkte Kandidaten, falls ein Block-Tracer einzelne interne Pfade nicht liefert.
+                for(const t of (b.transactions||[])){
+                  if(norm(t.to)===claimContract || norm(t.from)===norm(tx.from)){
+                    if(!candidateTxs.some(c=>norm(c.hash)===norm(t.hash))) candidateTxs.push({...t,_calls:[]});
+                  }
                 }
 
                 const verified=[];
@@ -1225,8 +1267,8 @@ async function analyze(){
         }
         $('stateHistory').innerHTML=`<p class="ok"><b>Neue Erkenntnis:</b> Der Reward lag vor dem Claim <b>nicht</b> als 2330.681364-TLN-Pending-Wert in diesen Slots. Stattdessen steigen ${deltaMatches.length} Slot(s) während <span class="mono">withdrawYield()</span> jeweils exakt um <b>${esc(ethers.formatUnits(rawReward.total,18))} TLN</b>.</p>
           <p>Das spricht stark für <b>kumulative Claim-/Reward-Zähler</b> (oder zwei gespiegelte Accounting-Felder). Die bisherige Annahme „Pending Reward wird auf 0 gesetzt“ ist damit widerlegt.</p>${layoutHtml}`;
-        $('stateCandidates').innerHTML=`<p>Für diese Transaktion ist kein früherer „Reward-State-Schreibblock“ zu suchen: <b>die beobachteten Storage-Werte werden erst durch den Claim selbst um den Reward erhöht.</b></p>
-          <p class="muted">Der nächste sinnvolle Ansatz ist deshalb die Struktur des Wallet-Datensatzes im Claim-Contract. Diese Version liest dafür nicht mehr blind historische Nachbar-Slots, sondern zeigt ausschließlich die vom konkreten <span class="mono">withdrawYield()</span>-Call tatsächlich gelesenen/berührten Struct-Felder aus dem Full-Prestate-Trace.</p>`;
+        // Abschnitt 9 wird bewusst NICHT mehr hier überschrieben.
+        // Er enthält das Ergebnis der Offset-8-Ursprungsanalyse aus dem Änderungsblock.
       }else if(best&&(best.preRewardMatch||best.resetToZero)){
         log(`Reward-Slot-Kandidat gefunden: ${best.slot}. Suche historischen Schreibzeitpunkt.`);
         const hist=await findRewardStateStart(claimContract,best.slot,claimBlock,best.beforeN);
