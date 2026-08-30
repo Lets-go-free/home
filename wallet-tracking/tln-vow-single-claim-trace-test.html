@@ -24,7 +24,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
   <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 30.08.2026 22:52 CEST</div>
+  <div class="muted">Entwicklungsstand 30.08.2026 23:06:07 CEST</div>
 
   <div class="card">
     <div class="row">
@@ -38,7 +38,10 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
   <div class="card"><h2>2. ERC-20 Transfers im Receipt</h2><div id="transfers" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>3. Claim-Contract → bekannte Stakings</h2><div id="relations" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>4. Interne Calls / Trace</h2><div id="trace" class="muted">Noch keine Daten.</div></div>
-  <div class="card"><h2>5. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>5. Reward-Storage / State-Diff</h2><div id="storageDiff" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>6. Historischer Ursprung des Reward-State</h2><div id="stateHistory" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>7. Kandidaten am Änderungsblock</h2><div id="stateCandidates" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>8. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>Technisches Log</h2><pre id="log"></pre></div>
 </main>
 <script>
@@ -272,6 +275,99 @@ async function getTrace(hash){
     }
   }
 }
+
+function hexBlock(n){return '0x'+BigInt(n).toString(16)}
+function rewardMintRaw(transfers,receipt,wallet){
+  const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
+  let total=0n,count=0;
+  for(const l of receipt.logs||[]){
+    if(norm(l.topics?.[0])!==TRANSFER_TOPIC||l.topics.length<3)continue;
+    const from=topicAddr(l.topics[1]),to=topicAddr(l.topics[2]);
+    if(from===ZERO&&to===norm(wallet)){
+      try{total+=BigInt(l.data||'0x0');count++}catch{}
+    }
+  }
+  return {total,count};
+}
+function normalizePrestateStorage(trace,address){
+  const a=norm(address);
+  const preObj=trace?.pre||{},postObj=trace?.post||{};
+  const pre=preObj[a]||preObj[Object.keys(preObj).find(k=>norm(k)===a)]||{};
+  const post=postObj[a]||postObj[Object.keys(postObj).find(k=>norm(k)===a)]||{};
+  const ps=pre.storage||{},qs=post.storage||{};
+  const keys=new Set([...Object.keys(ps),...Object.keys(qs)]);
+  const rows=[];
+  for(const slot of keys){
+    const before=ps[slot]??'0x0',after=qs[slot]??'0x0';
+    try{
+      if(BigInt(before)!==BigInt(after))rows.push({slot,before,after,beforeN:BigInt(before),afterN:BigInt(after)});
+    }catch{}
+  }
+  return rows;
+}
+async function prestateDiff(hash){
+  const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
+  if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
+  const errors=[];
+  for(const [provider,url] of providers){
+    for(let attempt=1;attempt<=2;attempt++){
+      try{
+        const result=await rawRpc(url,'debug_traceTransaction',[hash,{tracer:'prestateTracer',tracerConfig:{diffMode:true}}]);
+        if(result){
+          log(`prestateTracer: erfolgreich über ${provider}, Versuch ${attempt}.`);
+          return {result,provider};
+        }
+        errors.push(`${provider}: null`);
+      }catch(e){
+        errors.push(`${provider}: ${e.message}`);
+        log(`prestateTracer: ${provider}, Versuch ${attempt}: ${e.message}`);
+      }
+    }
+  }
+  throw new Error(`prestateTracer/diffMode nicht verfügbar. ${errors.join(' | ')}`);
+}
+async function storageAt(address,slot,block,label){
+  const r=await resilientRpc('eth_getStorageAt',[address,slot,hexBlock(block)],label);
+  return BigInt(r.result||'0x0');
+}
+async function findRewardStateStart(address,slot,claimBlock,currentValue,maxLookback=8000000n){
+  const start=claimBlock-1n;
+  let step=1n, sameBlock=start;
+  log(`Suche historischen Beginn des Reward-State für Slot ${slot.slice(0,14)}…`);
+  while(step<=maxLookback && start-step>=1n){
+    const b=start-step;
+    const v=await storageAt(address,slot,b,`Storage @ ${b}`);
+    if(v!==currentValue){
+      let L=b,R=sameBlock;
+      while(R-L>1n){
+        const m=(L+R)/2n;
+        const mv=await storageAt(address,slot,m,`Storage binary @ ${m}`);
+        if(mv===currentValue)R=m;else L=m;
+      }
+      const prev=await storageAt(address,slot,L,`Storage previous @ ${L}`);
+      return {found:true,changeBlock:R,previousBlock:L,previousValue:prev};
+    }
+    sameBlock=b;
+    step*=2n;
+  }
+  return {found:false,reason:`Keine frühere Abweichung innerhalb ${maxLookback.toLocaleString('de-CH')} Blöcken gefunden.`};
+}
+async function relevantTxsAtBlock(block,claimContract,wallet){
+  const bhex=hexBlock(block);
+  const blockR=await resilientRpc('eth_getBlockByNumber',[bhex,true],`Änderungsblock ${block}`);
+  const txs=blockR.result?.transactions||[];
+  const direct=txs.filter(t=>norm(t.to)===norm(claimContract)||norm(t.from)===norm(wallet));
+  return {block:blockR.result,txs,direct};
+}
+async function traceForKnownStaking(hash,known){
+  try{
+    const tr=await getTrace(hash);
+    return {kind:tr.kind,calls:tr.calls,matches:tr.calls.filter(c=>known.has(norm(c.to)))};
+  }catch(e){
+    return {kind:'error',calls:[],matches:[],error:e.message};
+  }
+}
+
 async function analyze(){
   if(typeof ethers==='undefined'){
     $('status').innerHTML='<span class="bad">ethers.js konnte nicht geladen werden. Bitte Seite neu laden und CDN-Zugriff prüfen.</span>';
@@ -282,7 +378,7 @@ async function analyze(){
     return;
   }
   $('analyze').disabled=true;$('status').textContent='Analysiere nur diese eine Transaktion…';$('log').textContent='';
-  for(const id of ['txInfo','transfers','relations','trace','conclusion'])$(id).innerHTML='<span class="muted">Lädt…</span>';
+  for(const id of ['txInfo','transfers','relations','trace','storageDiff','stateHistory','stateCandidates','conclusion'])$(id).innerHTML='<span class="muted">Lädt…</span>';
   try{
     if(!rpcUrl)await initRpc();
     const hash=$('txHash').value.trim();
@@ -381,6 +477,88 @@ async function analyze(){
          </details>
        </td></tr>`).join('')}</tbody></table>`:''}`;
 
+
+    // --- Reward-State / Storage provenance ---
+    let stateEvidence=null;
+    const rawReward=rewardMintRaw(transfers,receipt,tx.from);
+    try{
+      log('Starte Reward-Storage-Analyse mit prestateTracer/diffMode.');
+      const preR=await prestateDiff(hash);
+      const diffs=normalizePrestateStorage(preR.result,claimContract);
+      for(const d of diffs){
+        d.rewardMatch=rawReward.total>0n && d.beforeN===rawReward.total;
+        d.resetToZero=d.beforeN>0n && d.afterN===0n;
+        d.score=(d.rewardMatch?100:0)+(d.resetToZero?20:0);
+      }
+      diffs.sort((a,b)=>b.score-a.score);
+      const best=diffs[0]||null;
+      $('storageDiff').innerHTML=diffs.length?`
+        <div class="muted">Quelle: ${esc(preR.provider)} · ${diffs.length} veränderte Storage-Slot(s) im Claim-Contract.</div>
+        <table><thead><tr><th>Slot</th><th>Vor Claim</th><th>Nach Claim</th><th>Bewertung</th></tr></thead><tbody>
+        ${diffs.map(d=>`<tr>
+          <td class="mono">${esc(d.slot)}</td>
+          <td class="mono">${esc(d.beforeN.toString())}${d.beforeN>0n?`<br><span class="muted">18 Decimals: ${esc(ethers.formatUnits(d.beforeN,18))}</span>`:''}</td>
+          <td class="mono">${esc(d.afterN.toString())}</td>
+          <td>${d.rewardMatch?'<span class="ok"><b>EXAKT = geminteter Reward</b></span><br>':''}${d.resetToZero?'<span class="ok">beim Claim auf 0 gesetzt</span>':''}</td>
+        </tr>`).join('')}
+        </tbody></table>`:
+        '<span class="warn">prestateTracer lief, aber für den Claim-Contract wurde kein veränderter Storage-Slot geliefert.</span>';
+
+      if(best&&(best.rewardMatch||best.resetToZero)){
+        const claimBlock=BigInt(tx.blockNumber);
+        log(`Reward-Slot-Kandidat gefunden: ${best.slot}. Suche historischen Schreibzeitpunkt.`);
+        const hist=await findRewardStateStart(claimContract,best.slot,claimBlock,best.beforeN);
+        if(hist.found){
+          const br=await resilientRpc('eth_getBlockByNumber',[hexBlock(hist.changeBlock),false],'Zeitstempel Reward-State-Block');
+          const ts=new Date(Number(BigInt(br.result.timestamp))*1000);
+          $('stateHistory').innerHTML=`<div class="grid">
+            <div class="kv"><b>Reward-Slot</b><span class="mono">${esc(best.slot)}</span></div>
+            <div class="kv"><b>Reward-State vor Claim</b><span class="ok"><b>${esc(ethers.formatUnits(best.beforeN,18))} TLN</b></span><br><span class="mono">${esc(best.beforeN.toString())}</span></div>
+            <div class="kv"><b>Dieser State besteht ab Block</b><span class="ok"><b>${hist.changeBlock.toLocaleString('de-CH')}</b></span></div>
+            <div class="kv"><b>Zeitpunkt</b>${esc(ts.toLocaleString('de-CH'))}</div>
+            <div class="kv"><b>Block unmittelbar davor</b>${hist.previousBlock.toLocaleString('de-CH')}</div>
+            <div class="kv"><b>Wert davor</b><span class="mono">${esc(hist.previousValue.toString())}</span>${hist.previousValue>0n?`<br><span class="muted">${esc(ethers.formatUnits(hist.previousValue,18))} bei 18 Decimals</span>`:''}</div>
+          </div>`;
+
+          log(`Reward-State-Grenze bei Block ${hist.changeBlock}. Untersuche diesen Block isoliert.`);
+          const blockEv=await relevantTxsAtBlock(hist.changeBlock,claimContract,tx.from);
+          // Prefer direct interactions; if none, surface the full block count rather than pretending we found provenance.
+          const candidates=blockEv.direct.slice(0,12);
+          if(candidates.length){
+            for(const c of candidates){
+              c._trace=await traceForKnownStaking(c.hash,known);
+            }
+            $('stateCandidates').innerHTML=`<div class="muted">${candidates.length} direkte Kandidat(en) im Änderungsblock (Call an Claim-Contract oder Tx vom Wallet).</div>
+              <table><thead><tr><th>Tx</th><th>From</th><th>To</th><th>Selector</th><th>Bekannter Staking-Match</th></tr></thead><tbody>
+              ${candidates.map(c=>`<tr>
+                <td class="mono">${esc(c.hash)}</td>
+                <td class="mono">${esc(c.from)}</td>
+                <td class="mono">${esc(c.to)}</td>
+                <td class="mono">${esc((c.input||'').slice(0,10))}</td>
+                <td>${c._trace.matches.length?c._trace.matches.map(m=>`<span class="ok"><b>${esc(short(m.to))}</b></span>`).join('<br>'):'–'}</td>
+              </tr>
+              <tr><td></td><td colspan="4"><details><summary>Interne Calls</summary>${c._trace.calls.length?c._trace.calls.map(x=>`<div><span class="badge">${esc(x.type)}</span> <span class="mono">${esc(x.from)} → ${esc(x.to)} · ${esc((x.input||'').slice(0,10))}</span>${known.has(norm(x.to))?' <span class="ok"><b>STAKING</b></span>':''}</div>`).join(''):'keine / Trace nicht verfügbar'}</details></td></tr>`).join('')}
+              </tbody></table>`;
+          }else{
+            $('stateCandidates').innerHTML=`<span class="warn">Der Reward-State ändert sich in Block <b>${hist.changeBlock.toLocaleString('de-CH')}</b>, aber es gibt dort keinen Top-Level-Call an den Claim-Contract und keine Top-Level-Tx vom Wallet. Das spricht für einen <b>internen Call aus einer fremden Transaktion</b>. Der Block enthält ${blockEv.txs.length} Transaktionen; als nächster Schritt wäre ein gezielter Block-/Tx-Trace dieses Änderungsblocks nötig.</span>`;
+          }
+          stateEvidence={best,hist,candidates};
+        }else{
+          $('stateHistory').innerHTML=`<span class="warn">${esc(hist.reason)}</span>`;
+          $('stateCandidates').innerHTML='–';
+          stateEvidence={best,hist,candidates:[]};
+        }
+      }else{
+        $('stateHistory').innerHTML='<span class="warn">Noch kein belastbarer Reward-Slot: kein Slot entspricht dem Reward und/oder wird beim Claim auf 0 gesetzt.</span>';
+        $('stateCandidates').innerHTML='–';
+      }
+    }catch(e){
+      $('storageDiff').innerHTML=`<span class="warn"><b>Storage-Diff nicht verfügbar:</b> ${esc(e.message)}</span>`;
+      $('stateHistory').innerHTML='<span class="muted">Ohne belastbaren Storage-Diff nicht ausgeführt.</span>';
+      $('stateCandidates').innerHTML='<span class="muted">Ohne Reward-State-Grenze nicht ausgeführt.</span>';
+      log('Reward-Storage-Analyse nicht verfügbar: '+e.message);
+    }
+
     const mintRewards=transfers.filter(t=>t.mint&&t.toWallet);
     const allEvidence=[...relRows];
     for(const c of traceKnown)allEvidence.push({type:'Interner Call im Tx-Trace',value:c.to,staking:known.get(norm(c.to))});
@@ -397,6 +575,13 @@ async function analyze(){
       conclusion+=`<p class="warn"><b>Reward-Beweis:</b> Kein Zero-Address-Mint im Receipt erkannt.</p>`;
     }
     if(method.startsWith('withdrawYield'))conclusion+=`<p class="ok"><b>Claim-Semantik:</b> Transaktion ruft ${esc(method)} auf.</p>`;
+
+    if(stateEvidence?.best?.rewardMatch){
+      conclusion+=`<p class="ok"><b>Reward-Storage bestätigt:</b> Ein Storage-Slot des Claim-Contracts enthält vor dem Withdraw exakt den geminteten Reward von ${esc(ethers.formatUnits(stateEvidence.best.beforeN,18))} TLN${stateEvidence.best.resetToZero?' und wird beim Claim auf 0 gesetzt':''}.</p>`;
+      if(stateEvidence.hist?.found){
+        conclusion+=`<p><b>Historische State-Grenze:</b> Derselbe Reward-State besteht ab Block <b>${stateEvidence.hist.changeBlock.toLocaleString('de-CH')}</b>. Damit haben wir jetzt einen konkreten Block, an dem die Reward-Provenienz weiter zurückverfolgt werden kann.</p>`;
+      }
+    }
     if(uniqueMatches.length===1){
       const e=uniqueMatches[0],s=e.staking;
       conclusion+=`<p class="ok"><b>Staking-Zuordnung gefunden:</b> ${esc(s.label||s.name||s.contract_address)} · <span class="mono">${esc(s.contract_address)}</span></p>
@@ -405,14 +590,14 @@ async function analyze(){
       conclusion+=`<p class="warn"><b>Mehrere mögliche Stakings:</b> ${uniqueMatches.length}. Die Tx allein liefert noch keinen eindeutigen Positionsnachweis.</p>`;
     }else{
       conclusion+=`<p class="warn"><b>Noch keine Staking-Zuordnung:</b> Die isolierte Tx zeigt Reward und Claim-Methode, aber über Adresse/Proxy/Getter/Bytecode/Trace wurde kein bekannter Staking-Contract eindeutig verbunden.</p>
-      <p>Dann wäre der nächste isolierte Schritt eine gezielte Storage-/historische-State-Analyse genau dieses Claim-Contracts – weiterhin ohne Wallet-Gesamthistorie.</p>`;
+      <p>Die Storage-/historische-State-Analyse läuft in dieser Version bereits direkt darunter. Falls sie einen Änderungsblock findet, untersuchen wir nur diesen Block weiter – weiterhin ohne Wallet-Gesamthistorie.</p>`;
     }
     $('conclusion').innerHTML=conclusion;
     $('status').innerHTML='<span class="ok">Analyse abgeschlossen.</span>';
     log('Fertig.');
   }catch(e){
     $('status').innerHTML=`<span class="bad">${esc(e.message)}</span>`;
-    for(const id of ['txInfo','transfers','relations','trace','conclusion']){
+    for(const id of ['txInfo','transfers','relations','trace','storageDiff','stateHistory','stateCandidates','conclusion']){
       if($(id).textContent==='Lädt…')$(id).innerHTML='<span class="bad">Analyse an dieser Stelle abgebrochen.</span>';
     }
     log('FEHLER: '+e.message);
