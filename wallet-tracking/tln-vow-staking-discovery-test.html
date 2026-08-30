@@ -26,14 +26,13 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-item{padding:5px 0}.reward-item .rk{display:block;color:#9ba7b7;font-size:12px;margin-bottom:2px}.reward-item .rv{font-weight:700}
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 
-.collapsible-section{margin:12px 0;border:1px solid #334155;border-radius:10px;background:rgba(15,23,42,.28)}
-.collapsible-section>summary{cursor:pointer;padding:12px 14px;font-weight:700;color:#e5e7eb;list-style:disclosure-closed}
-.collapsible-section[open]>summary{list-style:disclosure-open;border-bottom:1px solid #334155}
-.collapsible-section .section-inner{padding:10px 12px 12px}
-
+.collapsible-card{padding:0;overflow:hidden}
+.collapsible-card>summary{cursor:pointer;padding:16px 18px;font-size:18px;font-weight:700;list-style:disclosure-closed}
+.collapsible-card[open]>summary{list-style:disclosure-open;border-bottom:1px solid #2b3546}
+.collapsible-card>.collapsible-body{padding:14px 18px 18px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 02:47:03 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 03:01:30 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -50,13 +49,13 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
  <div class="metric">Staking-Lots gesamt<b id="mLots">–</b></div>
  <div class="metric">davon beendet<b id="mClosed">–</b></div>
 </div></div>
-<div class="card"><details class="diag-details collapsible-section"><summary>TLN/VOW-Projekt-Token</summary><div class="section-inner"><h2>TLN/VOW-Projekt-Token</h2><div id="projectCount" class="muted">Noch keine Daten.</div><div class="wrap"><table><thead><tr><th>Symbol</th><th>Kategorie</th><th>Contract</th></tr></thead><tbody id="projectTokens"><tr><td colspan="3">Noch keine Daten.</td></tr></tbody></table></div></div>
-<div class="card"></div></details><details class="diag-details collapsible-section"><summary>Bekannte Staking-Contracts</summary><div class="section-inner"><h2>Bekannte Staking-Contracts</h2><div class="wrap"><table style="min-width:1050px"><thead><tr><th>Contract-Bezeichnung</th><th>Rolle</th><th>Contract</th><th>Pair-Hinweis</th><th>Laufzeit</th></tr></thead><tbody id="stakingContracts"><tr><td colspan="5">Noch keine Daten.</td></tr></tbody></table></div></div>
-<div class="card"></div></details><details class="diag-details collapsible-section"><summary>Erkannte historische LP-Token</summary><div class="section-inner"><h2>Erkannte historische LP-Token</h2><p class="muted">Diese Tabelle zeigt die LP-Token-Contracts, die als Grundlage für die historische LP-/Staking-Auswertung erkannt wurden. Normalfall: <code>token0()</code> und <code>token1()</code> funktionieren und mindestens ein Underlying gehört zum TLN/VOW-Projekt. Historischer Fallback: Bei einem anhand des rohen Method-Selectors als <code>stake(...)</code> erkannten Aufruf an einen bekannten Staking-Contract werden zusätzlich die ERC-20-Transfers genau dieser Transaktion ausgewertet. Ist ein übertragener LP heute nicht mehr lesbar, werden <code>token0()</code>, <code>token1()</code>, <code>factory()</code> und <code>decimals()</code> am historischen Stake-Block gelesen. Zusätzlich kann ein explizit bestätigtes historisches Nicht-V2-Staking-Asset (z. B. ein gebridgter Legacy-LPT) dynamisch aus <code>predefined_tokens</code> erkannt werden; solche Einträge werden nicht als heutige DEX-LPs behandelt. Ein aus dem Wallet heraus übertragener V2-LP kann dadurch auch dann erkannt werden, wenn sein Empfänger ein Controller/Zwischencontract war oder seine Underlyings heute nicht mehr in der aktuellen Projektliste stehen.</p><div class="wrap"><table><thead><tr><th>LP</th><th>Contract</th><th>token0</th><th>token1</th><th>Projekt-Treffer</th><th>Erkannt durch</th><th>Factory</th><th>Transfers</th></tr></thead><tbody id="pairs"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
-<div class="card"></div></details><details class="diag-details collapsible-section"><summary>Historische LP-/Staking-Ereignisse</summary><div class="section-inner"><h2>Historische LP-/Staking-Ereignisse</h2><div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Aktion</th><th>LP</th><th>LP-Menge</th><th>Gegenstelle</th><th>Staking-Bezeichnung</th><th>Block</th><th>Transaktion</th></tr></thead><tbody id="events"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
-<div class="card"></div></details><details class="diag-details collapsible-section"><summary>Direkte Wallet-Aufrufe an Staking-/Entry-Contracts</summary><div class="section-inner"><h2>Direkte Wallet-Aufrufe an Staking-/Entry-Contracts</h2>
+<details class="card collapsible-card"><summary>TLN/VOW-Projekt-Token</summary><div class="collapsible-body"><div id="projectCount" class="muted">Noch keine Daten.</div><div class="wrap"><table><thead><tr><th>Symbol</th><th>Kategorie</th><th>Contract</th></tr></thead><tbody id="projectTokens"><tr><td colspan="3">Noch keine Daten.</td></tr></tbody></table></div></div></details>
+<details class="card collapsible-card"><summary>Bekannte Staking-Contracts</summary><div class="collapsible-body"><div class="wrap"><table style="min-width:1050px"><thead><tr><th>Contract-Bezeichnung</th><th>Rolle</th><th>Contract</th><th>Pair-Hinweis</th><th>Laufzeit</th></tr></thead><tbody id="stakingContracts"><tr><td colspan="5">Noch keine Daten.</td></tr></tbody></table></div></div></details>
+<details class="card collapsible-card"><summary>Erkannte historische LP-Token</summary><div class="collapsible-body"><p class="muted">Diese Tabelle zeigt die LP-Token-Contracts, die als Grundlage für die historische LP-/Staking-Auswertung erkannt wurden. Normalfall: <code>token0()</code> und <code>token1()</code> funktionieren und mindestens ein Underlying gehört zum TLN/VOW-Projekt. Historischer Fallback: Bei einem anhand des rohen Method-Selectors als <code>stake(...)</code> erkannten Aufruf an einen bekannten Staking-Contract werden zusätzlich die ERC-20-Transfers genau dieser Transaktion ausgewertet. Ist ein übertragener LP heute nicht mehr lesbar, werden <code>token0()</code>, <code>token1()</code>, <code>factory()</code> und <code>decimals()</code> am historischen Stake-Block gelesen. Zusätzlich kann ein explizit bestätigtes historisches Nicht-V2-Staking-Asset (z. B. ein gebridgter Legacy-LPT) dynamisch aus <code>predefined_tokens</code> erkannt werden; solche Einträge werden nicht als heutige DEX-LPs behandelt. Ein aus dem Wallet heraus übertragener V2-LP kann dadurch auch dann erkannt werden, wenn sein Empfänger ein Controller/Zwischencontract war oder seine Underlyings heute nicht mehr in der aktuellen Projektliste stehen.</p><div class="wrap"><table><thead><tr><th>LP</th><th>Contract</th><th>token0</th><th>token1</th><th>Projekt-Treffer</th><th>Erkannt durch</th><th>Factory</th><th>Transfers</th></tr></thead><tbody id="pairs"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div></details>
+<details class="card collapsible-card"><summary>Historische LP-/Staking-Ereignisse</summary><div class="collapsible-body"><div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Aktion</th><th>LP</th><th>LP-Menge</th><th>Gegenstelle</th><th>Staking-Bezeichnung</th><th>Block</th><th>Transaktion</th></tr></thead><tbody id="events"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div></details>
+<details class="card collapsible-card"><summary>Direkte Wallet-Aufrufe an Staking-/Entry-Contracts</summary><div class="collapsible-body">
 <p class="muted">Ergänzende Diagnose: zeigt ausgehende Wallet-Transaktionen an bekannte Staking-Contracts sowie automatisch aus den Stake-Transaktionen erkannte Entry-/Controller-Contracts. Damit finden wir einen Unstake-Aufruf auch dann, wenn kein passender LP-Rücktransfer in der ERC-20-Historie erkannt wurde.</p>
-<div class="wrap"><table style="min-width:1350px"><thead><tr><th>Zeit</th><th>Erkannte Methode</th><th>Ausführung</th><th>Contract-Bezeichnung</th><th>Staking-Contract</th><th>Selector</th><th>1. uint256</th><th>Block</th><th>Tx</th></tr></thead><tbody id="contractCalls"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
+<div class="wrap"><table style="min-width:1350px"><thead><tr><th>Zeit</th><th>Erkannte Methode</th><th>Ausführung</th><th>Contract-Bezeichnung</th><th>Staking-Contract</th><th>Selector</th><th>1. uint256</th><th>Block</th><th>Tx</th></tr></thead><tbody id="contractCalls"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div></details>
 
 <div class="card"><h2>Rohe Staking-Ereignisse</h2>
 <p class="muted">Diese Tabelle zeigt <b>jede</b> LP-Übertragung zwischen Wallet und einem bestätigten Staking-Contract. Wenn hier ein historischer Stake steht, aber unten kein Lot entsteht, liegt der Fehler in der Lot-/FIFO-Rekonstruktion.</p>
@@ -83,8 +82,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card"><h2>Plausibilitätsprüfung</h2>
 <p class="muted">Vergleicht rohe Stake-/Unstake-Ereignisse mit der Lot-Rekonstruktion. Nicht zuordenbare Unstakes oder Differenzen werden ausdrücklich gemeldet.</p>
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
-<div class="card"></div></details>
-<h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
+<div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -672,7 +670,7 @@ async function rewardRelevantCallsFromTransfers(wallet,transfers=[]){
         metadata:{blockTimestamp},_input:input,_selector:selector,
         _method:METHOD_SELECTORS.get(selector)||'Wallet-Aufruf mit ERC-20-Rückfluss',
         _blockNumber:tx.blockNumber?parseInt(tx.blockNumber,16):null,
-        _success:success,_uintArg:uintArg,
+        _success:success,_uintArg:uintArg,_receipt:receipt,
         _erc20Transfers:receiptErc20Transfers(receipt),
         _dynamicRewardEvidence:true,
         _staking:{contract_address:norm(tx.to),label:'Dynamisch aus Wallet-Aufruf + ERC-20-Rückfluss'}
@@ -1755,8 +1753,39 @@ function lotLifecycleHashes(lot){
   for(const x of (lot?.topUps||[]))if(x.tx)out.add(String(x.tx).toLowerCase());
   return out;
 }
-function strongRewardEvidenceForLot(lot,callTo,selector,txHash){
+function normalizedUintString(v){
+  try{return BigInt(v).toString()}catch{return null}
+}
+function lotPositionIdentifiers(lot){
+  const ids=new Set();
+  const add=v=>{const n=normalizedUintString(v);if(n!=null&&n!=='0')ids.add(n)};
+  add(lot?.stake_token_id);
+  for(const x of (lot?.position_identifiers||[]))add(x?.value??x);
+  return ids;
+}
+function callPositionValues(call,receipt=null){
+  const vals=new Set();
+  const add=v=>{const n=normalizedUintString(v);if(n!=null&&n!=='0')vals.add(n)};
+  try{
+    const decoded=decodeStaticWords(call?._input||call?.input||'0x');
+    for(const w of (decoded.words||[]))if(w.uint!=null)add(w.uint);
+  }catch{}
+  for(const lg of (receipt?.logs||[])){
+    for(const t of (lg.topics||[]).slice(1)){try{add(BigInt(t))}catch{}}
+    for(const w of rawWords(lg.data||'0x'))if(w.uint!=null)add(w.uint);
+  }
+  return vals;
+}
+function positionEvidenceForLot(lot,call,receipt=null){
+  const ids=lotPositionIdentifiers(lot);
+  if(!ids.size)return {matched:false,ids:[]};
+  const vals=callPositionValues(call,receipt);
+  const matches=[...ids].filter(x=>vals.has(x));
+  return {matched:matches.length>0,ids:matches};
+}
+function strongRewardEvidenceForLot(lot,callTo,selector,txHash,positionEvidence=null){
   callTo=norm(callTo||'');selector=String(selector||'').toLowerCase();txHash=String(txHash||'').toLowerCase();
+  if(positionEvidence?.matched)return {strong:true,kind:'position_id',positionIds:positionEvidence.ids||[]};
   if(txHash&&lotLifecycleHashes(lot).has(txHash))return {strong:true,kind:'lifecycle'};
   const related=lotRewardContracts(lot);
   if(callTo&&related.has(callTo))return {strong:true,kind:'reward_relation'};
@@ -1797,16 +1826,6 @@ async function attachRewardClaimsToLots(lots,calls){
       const pair=norm(safePairAddress(lot));
       if(tr.token===pair)continue; // LP itself is never a reward.
 
-      const stakeMs=lot.stakeTime?new Date(lot.stakeTime).getTime():0;
-      const unstakeMs=lot.unstakeTime?new Date(lot.unstakeTime).getTime():null;
-      const expiryMs=lot.expiryTime?new Date(lot.expiryTime).getTime():null;
-
-      // Rewards normally belong to a lot between stake and actual unstake.
-      // A small 5-minute tolerance handles timestamp-source differences on the same block/tx.
-      const tol=5*60*1000;
-      if(stakeMs&&when<stakeMs-tol)continue;
-      if(unstakeMs&&when>unstakeMs+tol)continue;
-
       const direct=norm(lot?.staking?.contract_address||lot.counterparty||'');
       const entry=norm(lot.entry_contract||'');
       const eventContract=norm(lot.stake_event_contract||'');
@@ -1843,26 +1862,33 @@ async function attachRewardClaimsToLots(lots,calls){
           : `dynamisch gelernter Reward-/Claim-Pfad dieses Stakings (${callTo} · ${c._selector||'–'})`);
       }
       if(callTo&&relatedRewards.has(callTo)){
-        score+=95;reasons.push('historisch belegte Reward-SC-Beziehung zur Position');
+        score+=95;reasons.push('historisch belegte Reward-SC-Beziehung zum Staking-System');
       }
       if(callTo&&graphConnectedRewardContract(lot,callTo)){
-        score+=100;reasons.push('Contract-Graph: Reward-/Yield-SC gehört zu dieser Position');
+        score+=100;reasons.push('Contract-Graph: Reward-/Yield-SC gehört zu diesem Staking-System');
       }
 
-      // Explicitly supplied diagnostic claim: still require temporal plausibility,
-      // but allow association when only one staking lot is active.
+      const posEv=positionEvidenceForLot(lot,c,c._receipt||null);
+      if(posEv.matched){
+        score+=500;reasons.push(`Position-ID stimmt überein (${posEv.ids.join(', ')})`);
+      }
+
       if(c._rewardHint){score+=35;reasons.push('bestätigte reward-relevante Tx')}
-      // Zeitinformationen werden bewusst NICHT für die Zuordnung verwendet.
-      const strong=strongRewardEvidenceForLot(lot,callTo,c._selector||'',c.hash||'');
+      // Keine Zeitinformation darf die Positionszuordnung beeinflussen.
+      const strong=strongRewardEvidenceForLot(lot,callTo,c._selector||'',c.hash||'',posEv);
       if(!strong.strong)continue;
       candidates.push({lot,score,reasons,strongKind:strong.kind});
     }
 
     candidates.sort((a,b)=>b.score-a.score);
-    const chosen=candidates[0]||null;
-    const second=candidates[1]||null;
-    if(chosen&&second&&chosen.score===second.score&&chosen.strongKind===second.strongKind){
-      log(`Reward-Kandidat NICHT zugeordnet: ${c.hash||'–'} · gleiche belastbare Evidenz für mehrere parallele Positionen; keine automatische Zuordnung.`,'warn');
+    const positionMatches=candidates.filter(x=>x.strongKind==='position_id');
+    if(positionMatches.length>1){
+      log(`Reward-Kandidat NICHT zugeordnet: ${c.hash||'–'} · dieselbe Position-ID passt zu mehreren Lots; keine automatische Zuordnung.`,'warn');
+      continue;
+    }
+    const chosen=positionMatches.length===1?positionMatches[0]:(candidates.length===1?candidates[0]:null);
+    if(!chosen&&candidates.length>1){
+      log(`Reward-Kandidat NICHT zugeordnet: ${c.hash||'–'} · mehrere parallele Positionen im selben Staking-System, aber keine eindeutige Position-ID im Claim/Receipt.`,'warn');
       continue;
     }
 
@@ -2056,12 +2082,6 @@ async function attachRewardTokenHistoryToLots(lots){
       const pair=norm(safePairAddress(lot));
       if(token===pair)continue;
 
-      const startMs=lot.stakeTime?new Date(lot.stakeTime).getTime():null;
-      const endMs=lot.unstakeTime?new Date(lot.unstakeTime).getTime():Date.now();
-      const tol=5*60*1000;
-      if(startMs&&ms&&ms<startMs-tol)continue;
-      if(endMs&&ms&&ms>endMs+tol)continue;
-
       const direct=norm(lot?.staking?.contract_address||lot.counterparty||'');
       const entry=norm(lot.entry_contract||'');
       const eventContract=norm(lot.stake_event_contract||'');
@@ -2092,10 +2112,16 @@ async function attachRewardTokenHistoryToLots(lots){
           : `dynamisch gelernter Reward-/Claim-Pfad dieses Stakings (${callTo} · ${selector})`);
       }
       if(callTo&&relatedRewards.has(callTo)){
-        score+=95;reasons.push('historisch belegte Reward-SC-Beziehung zur Position');
+        score+=95;reasons.push('historisch belegte Reward-SC-Beziehung zum Staking-System');
       }
       if(callTo&&graphConnectedRewardContract(lot,callTo)){
-        score+=100;reasons.push('Contract-Graph: Reward-/Yield-SC gehört zu dieser Position');
+        score+=100;reasons.push('Contract-Graph: Reward-/Yield-SC gehört zu diesem Staking-System');
+      }
+
+      const pseudoCall={_input:tx?.input||'0x',input:tx?.input||'0x'};
+      const posEv=positionEvidenceForLot(lot,pseudoCall,receipt);
+      if(posEv.matched){
+        score+=500;reasons.push(`Position-ID stimmt überein (${posEv.ids.join(', ')})`);
       }
 
       // Alte TLN-Rewards werden teilweise gemintet (from = 0x0).
@@ -2117,19 +2143,33 @@ async function attachRewardTokenHistoryToLots(lots){
         score+=10;reasons.push('bereits erkannter Reward-Token');
       }
       // Keine zeitbasierte Bewertung: parallele Stakings sind zulässig.
-      const strong=strongRewardEvidenceForLot(lot,callTo,selector,hash);
+      const strong=strongRewardEvidenceForLot(lot,callTo,selector,hash,posEv);
       if(!strong.strong)continue;
       candidates.push({lot,score,reasons,known,strongKind:strong.kind});
     }
 
-    candidates.sort((a,b)=>{
-      if(b.score!==a.score)return b.score-a.score;
-      const at=new Date(a.lot.lockBaseTime||a.lot.stakeTime||0).getTime();
-      const bt=new Date(b.lot.lockBaseTime||b.lot.stakeTime||0).getTime();
-      return bt-at;
-    });
+    candidates.sort((a,b)=>b.score-a.score);
 
-    const chosen=candidates[0]||null;
+    const positionMatches=candidates.filter(x=>x.strongKind==='position_id');
+    const chosen=positionMatches.length===1?positionMatches[0]:(candidates.length===1?candidates[0]:null);
+    if(positionMatches.length>1 || (!chosen&&candidates.length>1)){
+      const knownSome=candidates.find(x=>x.known?.has(token));
+      if(knownSome){
+        CURRENT_UNASSIGNED_REWARDS.push({
+          hash,time,block,token,symbol:knownSome.known.get(token),from,to,
+          calledContract:callTo||null,selector:selector||null,
+          receiptContracts:[...receiptLogContracts].slice(0,8),score:candidates[0]?.score||0,
+          reasons:candidates[0]?.reasons||[],
+          lotRelations:candidates.slice(0,6).map(x=>({
+            staking:safePairLabel(x.lot),
+            positionIds:[...lotPositionIdentifiers(x.lot)],
+            rewardContracts:[...lotRewardContracts(x.lot)]
+          }))
+        });
+      }
+      log(`Reward-Historie mehrdeutig: ${hash} · mehrere parallele Positionen im selben Staking-System, aber keine eindeutige Position-ID; keine automatische Zuordnung.`,'warn');
+      continue;
+    }
     if(!chosen||chosen.score<60){
       const knownSome=candidates.find(x=>x.known?.has(token));
       if(knownSome){
@@ -2149,13 +2189,6 @@ async function attachRewardTokenHistoryToLots(lots){
       continue;
     }
 
-    const second=candidates[1]||null;
-    if(second && chosen.strongKind===second.strongKind &&
-       (chosen.score===second.score ||
-        norm(chosen.lot?.staking?.contract_address||chosen.lot.counterparty||'')===norm(second.lot?.staking?.contract_address||second.lot.counterparty||''))){
-      log(`Reward-Historie mehrdeutig: ${hash} · gleiche positionsbezogene Evidenz für mehrere parallele Lots; keine automatische Zuordnung.`,'warn');
-      continue;
-    }
 
     const meta=await tokenMeta(token);
     let amount=null;
@@ -2370,11 +2403,13 @@ function buildDiagnosticLots(stakingRows){
       const stakeTime=r.t.metadata?.blockTimestamp||null;
       const amount=Number(r.amount||0);
 
-      // A repeated Stake for the same wallet + staking asset + staking contract
-      // while the position is still open is treated as a top-up of that position,
-      // not as an independent second staking. This matches legacy TLN contracts
-      // that store one mutable user position and reset the lock on top-up.
-      const openLot=q.length===1 && q[0]?.remaining>1e-12 ? q[0] : null;
+      // Parallel stakings are valid. A repeated Stake is a top-up ONLY when
+      // both transactions expose the same explicit on-chain position/token id.
+      // Same asset, same staking contract or timing is never sufficient.
+      const incomingPositionId=normalizedUintString(r.stake_token_id);
+      const openLot=incomingPositionId
+        ? q.find(x=>x?.remaining>1e-12 && lotPositionIdentifiers(x).has(incomingPositionId))||null
+        : null;
       if(openLot){
         openLot.topUps=openLot.topUps||[];
         openLot.topUps.push({
@@ -2398,7 +2433,7 @@ function buildDiagnosticLots(stakingRows){
         addLotTx(openLot,{...eventTx(r,'Aufstockung'),amount,source:'Wiederholter Stake bei bereits offener Position'});
         log(`Aufstockung erkannt: ${safePairLabel(openLot)} · +${amount.toLocaleString('de-CH',{maximumFractionDigits:12})} · bestehende Position wird fortgeführt; Laufzeitbasis = Aufstockungszeitpunkt ${stakeTime?new Date(stakeTime).toLocaleString('de-CH'):'–'} · Tx ${r?.t?.hash||'–'}`,'ok');
       }else{
-        const lot={key,pair:r.p||null,pair_address:safePairAddress(r),token0_symbol:r?.p?.token0?.symbol||'Token0',token1_symbol:r?.p?.token1?.symbol||'Token1',staking:r.staking,counterparty:r.counterparty,entry_contract:r.entry_contract||null,stake_event_contract:r.stake_event_contract||null,stake_token_id:r.stake_token_id||null,stakeTime,stakeBlockHex:r?.t?.blockNum||null,lockBaseTime:stakeTime,lockBaseReason:'Erst-Stake',expiryTime:null,durationDays:null,durationSource:null,stakeTx:r.t.hash,original:amount,remaining:amount,status:'open',transactions:[],topUps:[]};
+        const lot={key,pair:r.p||null,pair_address:safePairAddress(r),token0_symbol:r?.p?.token0?.symbol||'Token0',token1_symbol:r?.p?.token1?.symbol||'Token1',staking:r.staking,counterparty:r.counterparty,entry_contract:r.entry_contract||null,stake_event_contract:r.stake_event_contract||null,stake_token_id:r.stake_token_id||null,position_identifiers:r.stake_token_id?[{kind:'stake_event_token_id',value:String(r.stake_token_id),sourceTx:r?.t?.hash||null}]:[],stakeTime,stakeBlockHex:r?.t?.blockNum||null,lockBaseTime:stakeTime,lockBaseReason:'Erst-Stake',expiryTime:null,durationDays:null,durationSource:null,stakeTx:r.t.hash,original:amount,remaining:amount,status:'open',transactions:[],topUps:[]};
         addLotTx(lot,eventTx(r,'Stake'));
         lots.push(lot); q.push(lot);
       }
@@ -2547,15 +2582,13 @@ async function discoverStakingContractEvents(stakingRows,entryTargets,wallet){
 function attachContractEventsToLots(lots,events){
   const wallet=norm(CURRENT_WALLET);
   for(const ev of (events||[])){
-    const when=ev.time?new Date(ev.time).getTime():null;
     const candidates=(lots||[]).filter(l=>{
-      const stakeWhen=l.stakeTime?new Date(l.stakeTime).getTime():null;
       const targets=new Set([
         norm(l?.staking?.contract_address||l.counterparty||''),
         norm(l.entry_contract||''),
         norm(l.stake_event_contract||'')
       ].filter(Boolean));
-      return targets.has(norm(ev.contract)) && (!when||!stakeWhen||when>=stakeWhen);
+      return targets.has(norm(ev.contract));
     });
     if(!candidates.length)continue;
 
@@ -2660,7 +2693,10 @@ async function discoverStakeEntryTargets(stakingRows){
       if(ev){
         r.stake_event_contract=norm(ev.address);
         if(ev.topics?.[2]){
-          try{r.stake_token_id=BigInt(ev.topics[2]).toString()}catch{}
+          try{
+            r.stake_token_id=BigInt(ev.topics[2]).toString();
+            log(`On-chain Position-ID aus Stake-Event erkannt: ${r.stake_token_id} · Tx ${r?.t?.hash||'–'}`,'ok');
+          }catch{}
         }
       }
     }catch(e){
@@ -2789,6 +2825,7 @@ function positionCardHtml(l,index,isClosed){
       ${isClosed?`<div class="stake-fact"><span class="k">Tatsächliches Unstake-Datum</span><span class="v">${l.unstakeTime?new Date(l.unstakeTime).toLocaleString('de-CH'):'–'}</span></div><div class="stake-fact"><span class="k">USD-Wert beim tatsächlichen Unstake</span>${unstakeValue}</div><div class="stake-fact"><span class="k">Gesamtdauer erster Stake → Unstake</span><span class="v">${actualDays!=null?`${actualDays} Tage`:'–'}</span></div>${(l.topUps||[]).length?`<div class="stake-fact"><span class="k">Dauer letzte Aufstockung → Unstake</span><span class="v">${actualLockDays!=null?`${actualLockDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span></div>`:''}`:''}
       <div class="stake-fact"><span class="k">Staking-Contract</span><span class="v mono">${esc(l.staking?.contract_address||l.counterparty||'–')}</span></div>
       <div class="stake-fact"><span class="k">On-chain verknüpfte Reward-Contracts</span><span class="v">${(l.rewardContractRelations||[]).length?(l.rewardContractRelations||[]).map(r=>`<span class="mono">${esc(r.contract)}</span><br><span class="value-source">${esc(r.lifecycleKind)} · Block ${esc(r.block)} · ${esc((r.changedProbes||[]).join(', '))}</span>`).join('<br>'):'–'}</span></div>
+      <div class="stake-fact"><span class="k">On-chain Position-ID(s)</span><span class="v">${[...lotPositionIdentifiers(l)].length?[...lotPositionIdentifiers(l)].map(x=>`<span class="mono">${esc(x)}</span>`).join('<br>'):'–'}</span></div>
       <div class="stake-fact"><span class="k">Contract-Graph</span><span class="v">${l.contractGraph?`${l.contractGraph.nodes.size} Contracts/Adressen · ${l.contractGraph.edges.length} belegte Beziehungen`: '–'}</span></div>
     </div>
     ${l.contractGraph&&l.contractGraph.edges.length?`<details class="diag-details"><summary>Contract-Graph anzeigen</summary><div class="wrap"><table><thead><tr><th>Von</th><th>Beziehung</th><th>Zu</th><th>Evidenz</th></tr></thead><tbody>${l.contractGraph.edges.map(e=>`<tr><td class="mono">${esc(e.from)}</td><td>${esc(e.type)}</td><td class="mono">${esc(e.to)}</td><td>${esc(e.evidence?.kind||'')} ${e.evidence?.tx?`<span class="mono">${esc(e.evidence.tx)}</span>`:''}</td></tr>`).join('')}</tbody></table></div></details>`:''}
