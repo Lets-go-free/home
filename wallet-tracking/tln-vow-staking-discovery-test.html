@@ -38,7 +38,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 15:39:00 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 16:32:32 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -124,7 +124,9 @@ const METHOD_SELECTORS = new Map([
   [ethers.id('claimReward()').slice(0,10).toLowerCase(),'Claim Reward'],
   [ethers.id('getReward()').slice(0,10).toLowerCase(),'Get Reward'],
   [ethers.id('harvest()').slice(0,10).toLowerCase(),'Harvest'],
-  [ethers.id('withdrawReward()').slice(0,10).toLowerCase(),'Withdraw Reward']
+  [ethers.id('withdrawReward()').slice(0,10).toLowerCase(),'Withdraw Reward'],
+  [ethers.id('withdrawYield()').slice(0,10).toLowerCase(),'Withdraw Yield'],
+  [ethers.id('withdrawYield(uint256)').slice(0,10).toLowerCase(),'Withdraw Yield']
 ]);
 
 const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -699,7 +701,17 @@ function mergeContractCalls(...groups){
     if(!h)continue;
     const prev=m.get(h);
     if(!prev)m.set(h,c);
-    else m.set(h,{...prev,...c,_staking:prev._staking||c._staking,_erc20Transfers:(prev._erc20Transfers?.length?prev._erc20Transfers:c._erc20Transfers)||[]});
+    else{
+      const prevTs=prev?.metadata?.blockTimestamp||prev?.time||null;
+      const cTs=c?.metadata?.blockTimestamp||c?.time||null;
+      m.set(h,{
+        ...prev,...c,
+        metadata:{...(prev.metadata||{}),...(c.metadata||{}),blockTimestamp:cTs||prevTs},
+        time:cTs||prevTs,
+        _staking:prev._staking||c._staking,
+        _erc20Transfers:(prev._erc20Transfers?.length?prev._erc20Transfers:c._erc20Transfers)||[]
+      });
+    }
   }
   return [...m.values()];
 }
@@ -1721,11 +1733,75 @@ async function classifyRewardCallFlow(call,wallet,lots=[]){
     explicitRewardIntent:explicitIntent,stateDeltaEvidence,
     incoming,outgoing,payoutTransfers,rejectedTransfers,
     receiptTransferCount:receiptTransfers.length,traceSources:[...traceSources],
-    time:call?.time||call?.timeStamp||call?._time||null,
+    time:call?.time||call?.timeStamp||call?._time||call?.metadata?.blockTimestamp||null,
     block:call?._blockNumber||call?.blockNum||call?.blockNumber||null
   };
 }
 
+
+async function allWalletContractCallsWithIncomingReceipts(wallet){
+  const w=norm(wallet), candidates=[];
+  let pageKey=null,page=0;
+  do{
+    const q={
+      fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,
+      category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'
+    };
+    if(pageKey)q.pageKey=pageKey;
+    log(`Wallet-Contract-Calls vollständig · Seite ${page+1}`);
+    const r=await alchemy('alchemy_getAssetTransfers',[q]);
+    for(const t of (r?.transfers||[])){
+      const to=norm(t.to);
+      if(!t.hash||!to||!ethers.isAddress(to))continue;
+      candidates.push(t);
+    }
+    pageKey=r?.pageKey||null;page++;
+  }while(pageKey&&page<100);
+
+  const out=[];
+  for(let i=0;i<candidates.length;i++){
+    if(i&&i%50===0)log(`Wallet-Call-Receipts ${i}/${candidates.length}…`);
+    const t=candidates[i];
+    try{
+      const [tx,receipt]=await Promise.all([
+        rpcCurrent('eth_getTransactionByHash',[t.hash]),
+        rpcCurrent('eth_getTransactionReceipt',[t.hash])
+      ]);
+      if(!tx||norm(tx.from)!==w||!tx.to||String(tx.input||'0x')==='0x')continue;
+      const success=receipt?.status==null?null:Number(BigInt(receipt.status))===1;
+      if(success===false)continue;
+      const rcTransfers=receiptErc20Transfers(receipt);
+      if(!rcTransfers.some(x=>norm(x.to)===w&&norm(x.from)!==w))continue;
+      let blockTimestamp=t?.metadata?.blockTimestamp||null;
+      if(!blockTimestamp&&tx.blockNumber){
+        try{
+          const b=await rpcCurrent('eth_getBlockByNumber',[tx.blockNumber,false]);
+          if(b?.timestamp)blockTimestamp=new Date(Number(BigInt(b.timestamp))*1000).toISOString();
+        }catch{}
+      }
+      const selector=String(tx.input||'').slice(0,10).toLowerCase();
+      out.push({
+        hash:String(t.hash).toLowerCase(),
+        from:norm(tx.from),to:norm(tx.to),
+        blockNum:tx.blockNumber,
+        metadata:{blockTimestamp},
+        time:blockTimestamp,
+        _input:tx.input||'0x',
+        input:tx.input||'0x',
+        _selector:selector,
+        _method:METHOD_SELECTORS.get(selector)||'Wallet-Contract-Aufruf mit ERC-20-Rückfluss',
+        _blockNumber:tx.blockNumber?parseInt(tx.blockNumber,16):null,
+        _success:success,
+        _receipt:receipt,
+        _erc20Transfers:rcTransfers,
+        _rewardCandidateFromFullWalletCallScan:true,
+        _staking:{contract_address:norm(tx.to),label:'Dynamisch aus vollständigem Wallet-Call-Scan'}
+      });
+    }catch{}
+  }
+  log(`Wallet-Call-Scan: ${out.length} erfolgreiche wallet-initiierte Contract-Tx mit ERC-20-Rückfluss vollständig geprüft.`,'ok');
+  return out;
+}
 async function expandRewardCandidateCallsFromTransferHistory(calls,wallet){
   const w=norm(wallet);
   const byHash=new Map((calls||[]).filter(x=>x?.hash).map(x=>[String(x.hash).toLowerCase(),x]));
@@ -1745,6 +1821,13 @@ async function expandRewardCandidateCallsFromTransferHistory(calls,wallet){
       ]);
       if(!tx||norm(tx.from)!==w)continue; // Claim must be wallet-initiated in this pass.
       if(!rcTransfers.some(x=>norm(x.to)===w&&norm(x.from)!==w))continue;
+      let blockTimestamp=null;
+      if(tx.blockNumber){
+        try{
+          const b=await rpcCurrent('eth_getBlockByNumber',[tx.blockNumber,false]);
+          if(b?.timestamp)blockTimestamp=new Date(Number(BigInt(b.timestamp))*1000).toISOString();
+        }catch{}
+      }
       const call={
         hash,
         from:norm(tx.from),
@@ -1753,6 +1836,8 @@ async function expandRewardCandidateCallsFromTransferHistory(calls,wallet){
         _selector:String(tx.input||'').slice(0,10).toLowerCase(),
         _blockNumber:tx.blockNumber,
         blockNum:tx.blockNumber,
+        metadata:{blockTimestamp},
+        time:blockTimestamp,
         _success:true,
         _erc20Transfers:rcTransfers,
         _rewardCandidateFromReceipt:true
@@ -3463,7 +3548,10 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   // 1. TX flow classification
   // 2. true payout-token detection
   // 3. only then staking assignment
+  const fullWalletRewardCalls=await allWalletContractCallsWithIncomingReceipts(CURRENT_WALLET);
+  contractCalls=mergeContractCalls(contractCalls,fullWalletRewardCalls);
   contractCalls=await expandRewardCandidateCallsFromTransferHistory(contractCalls,CURRENT_WALLET);
+  contractCalls.sort((a,b)=>rewardClaimTimestamp({time:a?.metadata?.blockTimestamp||a?.time})-rewardClaimTimestamp({time:b?.metadata?.blockTimestamp||b?.time}));
   await classifyRewardCallFlows(contractCalls,CURRENT_WALLET,lots);
   await learnRewardPathsFromWalletCalls(contractCalls,lots);
   await buildContractGraphs(lots,contractCalls);
