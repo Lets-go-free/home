@@ -38,7 +38,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 11:48:58 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 11:59:12 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -80,14 +80,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div id="completedStakings"><div class="muted">Noch keine Daten.</div></div></div>
 
 <div class="card"><h2>🎁 Rewards-Claiming</h2>
-<p class="muted">Zeigt alle Reward-Transaktionen, die einer konkreten Staking-Position belastbar zugeordnet werden konnten: Reward beim Stake, spätere Reward-Ausschüttungen und explizite Claims. Nicht eindeutig zuordenbare Reward-Kandidaten bleiben separat im Diagnosebereich und werden hier nicht geraten.</p>
+<p class="muted">Zentrale Übersicht über alle Reward-Transaktionen, die bereits einer konkreten Staking-Position zugeordnet sind: Reward beim Stake, spätere Reward-Ausschüttungen und explizite Claims. Die Tabelle verwendet dieselben Zuordnungen wie die Transaktionshistorie im jeweiligen Staking-Block.</p>
 <div id="rewardClaiming"><div class="muted">Noch keine Daten.</div></div></div>
-
-<div class="card"><h2>Reward-Diagnose / nicht eindeutig zugeordnet</h2>
-<div id="unassignedRewards" class="muted">Noch nicht ausgewertet.</div>
-<h2>Dynamisch gelernte Reward-/Claim-Pfade</h2>
-<p class="muted">Ein Pfad wird nur gelernt, wenn ein Wallet-Aufruf an Contract + Selector in derselben Transaktion einen tatsächlichen ERC-20-Eingang ins ausgewählte Wallet erzeugt. Nichts davon ist als Selector oder Reward-Token fest codiert.</p>
-<div id="learnedRewardPaths"><div class="muted">Noch keine Daten.</div></div></div>
 
 <div class="card"><h2>Plausibilitätsprüfung</h2>
 <p class="muted">Vergleicht rohe Stake-/Unstake-Ereignisse mit der Lot-Rekonstruktion. Nicht zuordenbare Unstakes oder Differenzen werden ausdrücklich gemeldet.</p>
@@ -2963,14 +2957,73 @@ function stakingAssetAmountText(lot){
     : 'LP';
   return `${n.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(asset)}`;
 }
+function normalizedRewardRowFromLotTransaction(lot,txr){
+  const action=String(txr?.kind||txr?.action||'');
+  if(!/reward|ausschüttung|claim/i.test(action))return null;
+  const amount=Number(txr?.amount||0);
+  const symbol=txr?.symbol||txr?.rewardSymbol||'';
+  if(!(amount>0)||!symbol||!txr?.tx)return null;
+
+  let eventType='distribution';
+  if(/stake/i.test(String(txr?.source||''))||/gleiche Transaktion wie Stake/i.test(String(txr?.assignment||'')))
+    eventType='stake_reward';
+  if(/claim|abholung/i.test(action)||/claim/i.test(String(txr?.method||'')))
+    eventType='claim';
+
+  return {
+    hash:txr.tx,
+    time:txr.time||null,
+    block:txr.block||null,
+    amount,
+    symbol,
+    token:txr.token||'',
+    eventType,
+    from:txr.from||'',
+    assignmentReason:txr.assignment||txr.assignmentReason||'bereits in der Staking-Transaktionshistorie dieser Position zugeordnet',
+    calledContract:txr.calledContract||txr.contract||'',
+    source:txr.source||txr.method||''
+  };
+}
+function collectAssignedRewardRows(lot){
+  const byKey=new Map();
+
+  // Primärquelle: exakt dieselben Reward-Zeilen, die im jeweiligen Staking
+  // unter "Transaktionen" bereits sichtbar und zugeordnet sind.
+  for(const txr of (lot.transactions||[])){
+    const r=normalizedRewardRowFromLotTransaction(lot,txr);
+    if(!r)continue;
+    const key=`${String(r.hash).toLowerCase()}|${norm(r.token)}|${r.symbol}|${r.amount}`;
+    byKey.set(key,r);
+  }
+
+  // Ergänzend bereits strukturell zugeordnete rewardClaims.
+  for(const c of (lot.rewardClaims||[])){
+    if(!['stake_reward','distribution','claim'].includes(c?.eventType))continue;
+    if(!c?.hash||!(Number(c.amount||0)>0)||!c?.symbol)continue;
+    const key=`${String(c.hash).toLowerCase()}|${norm(c.token)}|${c.symbol}|${Number(c.amount||0)}`;
+    if(!byKey.has(key))byKey.set(key,c);
+  }
+  return [...byKey.values()];
+}
+function stakingPeriodText(lot){
+  const from=lot.stakeTime?new Date(lot.stakeTime).toLocaleString('de-CH'):'–';
+  const to=lot.unstakeTime?new Date(lot.unstakeTime).toLocaleString('de-CH'):'offen';
+  return {from,to};
+}
+function stakingAssetAmountText(lot){
+  const n=Number(lot.original||0);
+  const asset=(lot?.pair?.asset_type==='legacy_staking_token'||lot?.pair?.asset_type==='staking_token')
+    ? (lot?.pair?.symbol||'LPT')
+    : 'LP';
+  return `${n.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(asset)}`;
+}
 function renderRewardClaiming(lots){
   const el=document.getElementById('rewardClaiming');
   if(!el)return;
 
   const rows=[];
   for(const lot of (lots||[])){
-    for(const claim of (lot.rewardClaims||[])){
-      if(!claimIsAssignedToLot(claim,lot))continue;
+    for(const claim of collectAssignedRewardRows(lot)){
       const p=stakingPeriodText(lot);
       rows.push({lot,claim,from:p.from,to:p.to});
     }
@@ -2997,7 +3050,7 @@ function renderRewardClaiming(lots){
       <div class="claim-summary-token">${esc(x.symbol)}</div>
       <div><b>${x.count.toLocaleString('de-CH')}</b> Reward-Tx</div>
       <div class="num">${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</div>
-      <div class="mono muted">${esc(x.token||'')}</div>
+      ${x.token?`<div class="mono muted">${esc(x.token)}</div>`:''}
     </div>`).join('');
 
   el.innerHTML=`<div class="claim-summary">
@@ -3017,20 +3070,20 @@ function renderRewardClaiming(lots){
       <th>Ausgelaufen / freigegeben am</th>
       <th>Staking-Contract</th>
       <th>Zuordnungsnachweis</th>
-      <th>Claim-Tx</th>
+      <th>Reward-Tx</th>
     </tr></thead>
     <tbody>${rows.map(({lot,claim,from,to})=>`<tr>
       <td>${claim.time?new Date(claim.time).toLocaleString('de-CH'):'–'}</td>
       <td><b>${claim.eventType==='stake_reward'?'Reward beim Stake':claim.eventType==='claim'?'Claim / Reward-Abholung':'Reward-Ausschüttung'}</b></td>
       <td class="num"><b>${Number(claim.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td>
-      <td><b>${esc(claim.symbol||'–')}</b><div class="mono muted">${esc(claim.token||'')}</div></td>
+      <td><b>${esc(claim.symbol||'–')}</b>${claim.token?`<div class="mono muted">${esc(claim.token)}</div>`:''}</td>
       <td><b>${esc(safePairLabel(lot))}</b><div class="muted">${esc(stakingContractLabel(lot.staking))}</div></td>
       <td>${from}</td>
       <td>${to}</td>
       <td class="num">${stakingAssetAmountText(lot)}</td>
       <td>${lot.expiryTime?new Date(lot.expiryTime).toLocaleString('de-CH'):'–'}${lot.durationSource?`<div class="muted">${esc(lot.durationSource)}</div>`:''}</td>
       <td class="mono">${esc(lot?.staking?.contract_address||lot.counterparty||'–')}</td>
-      <td>${esc(claim.assignmentReason||'belastbar zugeordnet')}<div class="muted">Transfer-Quelle: ${esc(claim.from||'–')}</div></td>
+      <td>${esc(claim.assignmentReason||'bereits der Staking-Position zugeordnet')}</td>
       <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(claim.hash)}">${esc(claim.hash)}</a></td>
     </tr>`).join('')}</tbody>
   </table></div>`;
