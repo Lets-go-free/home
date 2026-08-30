@@ -24,7 +24,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
   <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 00:02:53 CEST</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 00:07:41 CEST</div>
 
   <div class="card">
     <div class="row">
@@ -40,7 +40,13 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
   <div class="card"><h2>4. Interne Calls / Trace</h2><div id="trace" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>5. Reward-Storage / State-Diff</h2><div id="storageDiff" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>6. Historischer Ursprung des Reward-State</h2><div id="stateHistory" class="muted">Noch keine Daten.</div></div>
-  <div class="card"><h2>7. Reward-Formel / Opcode-Trace</h2><div id="formulaTrace" class="muted">Noch keine Daten.</div></div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h2 style="margin:0">7. Reward-Formel / Opcode-Trace</h2>
+      <button class="btn" id="exportFormula" type="button">Abschnitt 7 exportieren</button>
+    </div>
+    <div id="formulaTrace" class="muted" style="margin-top:12px">Noch keine Daten.</div>
+  </div>
   <div class="card"><h2>8. Kandidaten / nächster Ursprung</h2><div id="stateCandidates" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>9. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>Technisches Log</h2><pre id="log"></pre></div>
@@ -573,6 +579,42 @@ async function traceForKnownStaking(hash,known){
   }
 }
 
+
+function textFromNode(node){
+  if(!node)return '';
+  return node.innerText
+    .replace(/\u00a0/g,' ')
+    .replace(/[ \t]+\n/g,'\n')
+    .replace(/\n{3,}/g,'\n\n')
+    .trim();
+}
+function downloadText(filename,text){
+  const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=filename;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function exportFormulaSection(){
+  const hash=$('hash').value.trim();
+  const body=textFromNode($('formulaTrace'));
+  if(!body||body==='Noch keine Daten.'||body==='Lädt…'){
+    alert('Abschnitt 7 enthält noch keine Analyse-Daten.');
+    return;
+  }
+  const header=[
+    'TLN/VOW – Reward-Formel / Opcode-Trace',
+    'Export aus tln-vow-single-claim-trace-test.html',
+    'Version: 31.08.2026 00:07:41 CEST',
+    'Transaction: '+hash,
+    '',
+    '=== ABSCHNITT 7 ===',
+    ''
+  ].join('\n');
+  downloadText('tln-vow-claim-opcode-trace.txt',header+body+'\n');
+}
+
 async function analyze(){
   if(typeof ethers==='undefined'){
     $('status').innerHTML='<span class="bad">ethers.js konnte nicht geladen werden. Bitte Seite neu laden und CDN-Zugriff prüfen.</span>';
@@ -858,6 +900,7 @@ async function analyze(){
   }finally{$('analyze').disabled=false}
 }
 $('analyze').addEventListener('click',analyze);
+$('exportFormula').addEventListener('click',exportFormulaSection);
 window.addEventListener('load',()=>setTimeout(analyze,100));
 </script>
 </body>
