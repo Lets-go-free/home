@@ -38,7 +38,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 14:37:09 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 14:57:34 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -1569,6 +1569,51 @@ function lotLifecycleHashSet(lots=[]){
   return out;
 }
 
+
+const TX_RECEIPT_FLOW_CACHE=new Map();
+const ERC20_TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
+function topicAddress(topic){
+  try{return norm(ethers.getAddress('0x'+String(topic||'').slice(-40)))}catch{return ''}
+}
+async function completeReceiptErc20Transfers(hash){
+  const h=String(hash||'').toLowerCase();
+  if(!h)return [];
+  if(TX_RECEIPT_FLOW_CACHE.has(h))return TX_RECEIPT_FLOW_CACHE.get(h);
+  const rows=[];
+  try{
+    const rc=await rpcCurrent('eth_getTransactionReceipt',[h]);
+    for(const lg of (rc?.logs||[])){
+      const topics=lg?.topics||[];
+      if(String(topics[0]||'').toLowerCase()!==ERC20_TRANSFER_TOPIC||topics.length<3)continue;
+      let amountRaw;
+      try{amountRaw=BigInt(lg.data||'0x0')}catch{continue}
+      rows.push({
+        token:norm(lg.address),
+        from:topicAddress(topics[1]),
+        to:topicAddress(topics[2]),
+        amountRaw,
+        logIndex:parseInt(lg.logIndex||'0x0',16),
+        source:'tx_receipt'
+      });
+    }
+  }catch(e){log(`Receipt-Transferanalyse ${h}: ${e.message}`,'warn')}
+  TX_RECEIPT_FLOW_CACHE.set(h,rows);
+  return rows;
+}
+function mergeErc20Transfers(...lists){
+  const map=new Map();
+  for(const list of lists){
+    for(const tr of (list||[])){
+      if(!tr?.token||tr?.amountRaw==null)continue;
+      const key=[
+        norm(tr.token),norm(tr.from),norm(tr.to),String(tr.amountRaw),
+        tr.logIndex==null?'':String(tr.logIndex)
+      ].join('|');
+      if(!map.has(key))map.set(key,tr);
+    }
+  }
+  return [...map.values()];
+}
 const REWARD_STATE_PROBE_NAMES=new Set([
   'earned(address)','pendingReward(address)','pendingRewards(address)',
   'withdrawableYield(address)','getWithdrawableYield(address)','availableYield(address)',
@@ -1616,7 +1661,13 @@ async function classifyRewardCallFlow(call,wallet,lots=[]){
   const w=norm(wallet),hash=String(call?.hash||'').toLowerCase();
   const callTo=norm(call?.to||call?._staking?.contract_address||'');
   const selector=String(call?._selector||'').toLowerCase();
-  const transfers=(call?._erc20Transfers||[]).filter(x=>x?.token&&x?.amountRaw!=null);
+
+  // Always reconstruct the COMPLETE ERC-20 flow from this exact transaction
+  // receipt. Explorer transfer lists are only supplemental.
+  const receiptTransfers=await completeReceiptErc20Transfers(hash);
+  const transfers=mergeErc20Transfers(receiptTransfers,call?._erc20Transfers||[]);
+  call._erc20Transfers=transfers;
+
   const incoming=transfers.filter(x=>norm(x.to)===w&&norm(x.from)!==w);
   const outgoing=transfers.filter(x=>norm(x.from)===w&&norm(x.to)!==w);
   const lifecycle=lotLifecycleHashSet(lots).has(hash);
@@ -1625,14 +1676,10 @@ async function classifyRewardCallFlow(call,wallet,lots=[]){
   if(incoming.length&&hash){try{traceSources=await traceCalledAddresses(hash)}catch{}}
   if(callTo)traceSources.add(callTo);
 
-  // Stage 1: prove that the TX itself has reward/claim semantics.
-  // A token transfer from the called contract is NOT sufficient.
   const explicitIntent=selectorHasExplicitRewardIntent(selector);
   let stateDeltaEvidence=[];
   if(incoming.length&&!lifecycle){
-    stateDeltaEvidence=await rewardStateDeltaEvidenceForCall(
-      call,w,[callTo,...traceSources]
-    );
+    stateDeltaEvidence=await rewardStateDeltaEvidenceForCall(call,w,[callTo,...traceSources]);
   }
   const stateProvesReward=stateDeltaEvidence.length>0;
 
@@ -1649,27 +1696,18 @@ async function classifyRewardCallFlow(call,wallet,lots=[]){
     else if(callTo&&from===callTo)causalPath='direct_from_called_contract';
     else if(traceSources.has(from))causalPath='from_internal_call_chain';
 
-    // Stage 2: only a PROVEN reward TX may promote a causal payout transfer.
-    // Mint is independently strong evidence. For ordinary transfers we require
-    // explicit claim/reward method semantics OR an on-chain reward-state delta.
     let proof=null;
     if(from===ZERO_ADDRESS)proof='mint';
     else if(causalPath&&explicitIntent)proof='explicit_claim_method';
     else if(causalPath&&stateProvesReward)proof='reward_state_delta';
 
     if(causalPath&&proof){
-      payoutTransfers.push({
-        ...tr,
-        rewardFlowEvidence:causalPath,
-        rewardProof:proof,
-        rewardStateDelta:stateDeltaEvidence
-      });
+      payoutTransfers.push({...tr,rewardFlowEvidence:causalPath,rewardProof:proof,
+        rewardStateDelta:stateDeltaEvidence});
     }else{
-      rejectedTransfers.push({
-        ...tr,
+      rejectedTransfers.push({...tr,
         rejectReason:causalPath?'causal_transfer_without_reward_proof':'no_causal_payout_path',
-        causalPath
-      });
+        causalPath});
     }
   }
 
@@ -1679,12 +1717,48 @@ async function classifyRewardCallFlow(call,wallet,lots=[]){
   else if(tokenExchange)kind='exchange_or_liquidity';
   else if(incoming.length)kind='incoming_unproven';
 
-  return {
-    hash,kind,lifecycle,exchangeLike:tokenExchange,callTo,selector,
+  return {hash,kind,lifecycle,exchangeLike:tokenExchange,callTo,selector,
     explicitRewardIntent:explicitIntent,stateDeltaEvidence,
     incoming,outgoing,payoutTransfers,rejectedTransfers,
-    traceSources:[...traceSources]
-  };
+    receiptTransferCount:receiptTransfers.length,traceSources:[...traceSources]};
+}
+
+async function expandRewardCandidateCallsFromTransferHistory(calls,wallet){
+  const w=norm(wallet);
+  const byHash=new Map((calls||[]).filter(x=>x?.hash).map(x=>[String(x.hash).toLowerCase(),x]));
+  const hashes=new Set();
+  for(const t of (CURRENT_ALL_TRANSFERS||[])){
+    const h=String(t.hash||'').toLowerCase();
+    if(h&&norm(t.to)===w)hashes.add(h);
+  }
+  let added=0,checked=0;
+  for(const hash of hashes){
+    if(byHash.has(hash))continue;
+    checked++;
+    try{
+      const [tx,rcTransfers]=await Promise.all([
+        rpcCurrent('eth_getTransactionByHash',[hash]),
+        completeReceiptErc20Transfers(hash)
+      ]);
+      if(!tx||norm(tx.from)!==w)continue; // Claim must be wallet-initiated in this pass.
+      if(!rcTransfers.some(x=>norm(x.to)===w&&norm(x.from)!==w))continue;
+      const call={
+        hash,
+        from:norm(tx.from),
+        to:norm(tx.to),
+        input:tx.input||'0x',
+        _selector:String(tx.input||'').slice(0,10).toLowerCase(),
+        _blockNumber:tx.blockNumber,
+        blockNum:tx.blockNumber,
+        _success:true,
+        _erc20Transfers:rcTransfers,
+        _rewardCandidateFromReceipt:true
+      };
+      byHash.set(hash,call); added++;
+    }catch{}
+  }
+  if(added)log(`Receipt-Discovery: ${added} zusätzliche wallet-initiierte Tx mit ERC-20-Rückfluss für Reward-Prüfung ergänzt.`,'ok');
+  return [...byHash.values()];
 }
 async function classifyRewardCallFlows(calls,wallet,lots=[]){
   CURRENT_REWARD_FLOW_BY_HASH=new Map();
@@ -1693,7 +1767,10 @@ async function classifyRewardCallFlows(calls,wallet,lots=[]){
     const flow=await classifyRewardCallFlow(c,wallet,lots);
     c._rewardFlow=flow;
     if(flow.hash)CURRENT_REWARD_FLOW_BY_HASH.set(flow.hash,flow);
-    if(flow.kind==='reward_candidate')rewardCandidates++;
+    if(flow.kind==='reward_candidate'){
+      rewardCandidates++;
+      log(`Reward-Beweis ${flow.hash}: ${flow.payoutTransfers.map(x=>`${x.rewardProof}/${x.rewardFlowEvidence}`).join(', ')} · Receipt-Transfers ${flow.receiptTransferCount||0}`,'ok');
+    }
     if(flow.kind==='exchange_or_liquidity')exchangeFlows++;
     if(flow.kind==='incoming_unproven')unproven++;
     if(flow.stateDeltaEvidence?.length)stateProven++;
@@ -3290,6 +3367,7 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   // 1. TX flow classification
   // 2. true payout-token detection
   // 3. only then staking assignment
+  contractCalls=await expandRewardCandidateCallsFromTransferHistory(contractCalls,CURRENT_WALLET);
   await classifyRewardCallFlows(contractCalls,CURRENT_WALLET,lots);
   await learnRewardPathsFromWalletCalls(contractCalls,lots);
   await buildContractGraphs(lots,contractCalls);
@@ -3400,7 +3478,7 @@ tlnWallets=(wq.data||[])
 populateTlnWalletDropdown();
 bindWalletDropdown();
 $('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok')}
-$('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;CURRENT_REWARD_FLOW_BY_HASH=new Map();$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('contractCalls').innerHTML='<tr><td colspan="9">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('runningStakings').innerHTML='<div class="muted">Suche…</div>';$('completedStakings').innerHTML='<div class="muted">Suche…</div>';$('deepEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();CURRENT_WALLET=wallet;if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const transfers=await allErc20Transfers(wallet);CURRENT_ALL_TRANSFERS=transfers;$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const discoveryRows=Array.isArray(window.__TLNVOW_DISCOVERY_UNDERLYINGS)?window.__TLNVOW_DISCOVERY_UNDERLYINGS:projectTokens;
+$('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;CURRENT_REWARD_FLOW_BY_HASH=new Map();TX_RECEIPT_FLOW_CACHE.clear();$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('contractCalls').innerHTML='<tr><td colspan="9">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('runningStakings').innerHTML='<div class="muted">Suche…</div>';$('completedStakings').innerHTML='<div class="muted">Suche…</div>';$('deepEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();CURRENT_WALLET=wallet;if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const transfers=await allErc20Transfers(wallet);CURRENT_ALL_TRANSFERS=transfers;$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const discoveryRows=Array.isArray(window.__TLNVOW_DISCOVERY_UNDERLYINGS)?window.__TLNVOW_DISCOVERY_UNDERLYINGS:projectTokens;
 const projectSet=new Set(discoveryRows.map(x=>norm(x.address)).filter(Boolean));
 log(`LP-Discovery: ${projectSet.size} aktive Projekt-/Referenz-Assets als mögliche Pool-Gegenparteien verfügbar.`);
 const candidates=[...counts.keys()];log(`${candidates.length} unterschiedliche ERC-20-Contracts werden als mögliche V2-LPs geprüft.`);const pairs=[];for(let i=0;i<candidates.length;i++){if(i%25===0)log(`LP-Prüfung ${i+1}/${candidates.length}…`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}const pairMap=new Map(pairs.map(p=>[p.address,p]));renderPairTable(pairs,counts);let rows=renderEvents(transfers,pairMap,wallet);let stakingRows=renderRawStakingEvents(rows);let entryTargets=await discoverStakeEntryTargets(stakingRows);if(entryTargets.length)log(`Zusätzliche Entry-/Controller-Contracts aus Stake-Txs erkannt: ${entryTargets.map(x=>x.contract_address).join(', ')}`,'ok');let stakingContractCalls=await allExternalCallsToStaking(wallet,entryTargets);
