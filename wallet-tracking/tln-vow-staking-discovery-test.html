@@ -38,7 +38,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 14:57:34 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 15:14:50 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -80,7 +80,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div id="completedStakings"><div class="muted">Noch keine Daten.</div></div></div>
 
 <div class="card"><h2>🎁 Rewards-Claiming</h2>
-<p class="muted">Zentrale Übersicht über alle Reward-Transaktionen, die bereits einer konkreten Staking-Position zugeordnet sind: Reward beim Stake, spätere Reward-Ausschüttungen und explizite Claims. Die Tabelle verwendet dieselben Zuordnungen wie die Transaktionshistorie im jeweiligen Staking-Block.</p>
+<p class="muted">Zentrale Wallet-Übersicht über alle on-chain belegten Reward-Transaktionen: Reward beim Stake, spätere Reward-Ausschüttungen und explizite Claims. Auch Claims ohne eindeutige Zuordnung zu einer einzelnen Staking-Position werden hier angezeigt.</p>
 <div id="rewardClaiming"><div class="muted">Noch keine Daten.</div></div></div>
 
 <div class="card"><h2>Plausibilitätsprüfung</h2>
@@ -96,7 +96,7 @@ const ZERO='0x0000000000000000000000000000000000000000';
 let rpcUrl=null,alchemyBase=null,projectTokens=[],allProjectRows=[],stakingContracts=[],tlnWallets=[],CURRENT_ALL_TRANSFERS=[];
 let projectTokenMap=new Map();
 const PROXY_IMPL_CACHE=new Map();
-let CURRENT_STAKING_LOTS=[],CURRENT_WALLET='',CURRENT_UNASSIGNED_REWARDS=[],CURRENT_REWARD_FLOW_BY_HASH=new Map();
+let CURRENT_STAKING_LOTS=[],CURRENT_WALLET='',CURRENT_UNASSIGNED_REWARDS=[],CURRENT_PROVEN_REWARD_ROWS=[],CURRENT_REWARD_FLOW_BY_HASH=new Map();
 // Keine fest codierten Staking-Laufzeiten.
 function stakingDurationDays(){ return null; }
 function stakingDurationSource(){ return null; }
@@ -1720,7 +1720,10 @@ async function classifyRewardCallFlow(call,wallet,lots=[]){
   return {hash,kind,lifecycle,exchangeLike:tokenExchange,callTo,selector,
     explicitRewardIntent:explicitIntent,stateDeltaEvidence,
     incoming,outgoing,payoutTransfers,rejectedTransfers,
-    receiptTransferCount:receiptTransfers.length,traceSources:[...traceSources]};
+    receiptTransferCount:receiptTransfers.length,traceSources:[...traceSources],
+    time:call?.time||call?.timeStamp||call?._time||null,
+    block:call?._blockNumber||call?.blockNum||call?.blockNumber||null
+  };
 }
 
 async function expandRewardCandidateCallsFromTransferHistory(calls,wallet){
@@ -1762,11 +1765,46 @@ async function expandRewardCandidateCallsFromTransferHistory(calls,wallet){
 }
 async function classifyRewardCallFlows(calls,wallet,lots=[]){
   CURRENT_REWARD_FLOW_BY_HASH=new Map();
+  CURRENT_PROVEN_REWARD_ROWS=[];
   let rewardCandidates=0,exchangeFlows=0,rejectedIncoming=0,unproven=0,stateProven=0;
+  const seen=new Set();
+
   for(const c of (calls||[])){
     const flow=await classifyRewardCallFlow(c,wallet,lots);
     c._rewardFlow=flow;
     if(flow.hash)CURRENT_REWARD_FLOW_BY_HASH.set(flow.hash,flow);
+
+    if(flow.payoutTransfers?.length){
+      for(const tr of flow.payoutTransfers){
+        let meta={symbol:'Token',decimals:18};
+        try{meta=await tokenMeta(tr.token)}catch{}
+        let amount=0;
+        try{amount=Number(ethers.formatUnits(tr.amountRaw,meta.decimals))}catch{}
+        if(!(amount>0))continue;
+        const key=`${flow.hash}|${norm(tr.token)}|${norm(tr.from)}|${norm(tr.to)}|${String(tr.amountRaw)}`;
+        if(seen.has(key))continue;
+        seen.add(key);
+        CURRENT_PROVEN_REWARD_ROWS.push({
+          hash:flow.hash,
+          time:flow.time||null,
+          block:flow.block||null,
+          token:norm(tr.token),
+          symbol:meta.symbol||'Token',
+          decimals:meta.decimals,
+          amount,
+          from:norm(tr.from),
+          to:norm(tr.to),
+          calledContract:flow.callTo||null,
+          selector:flow.selector||null,
+          rewardProof:tr.rewardProof||null,
+          rewardFlowEvidence:tr.rewardFlowEvidence||null,
+          stateDeltaEvidence:tr.rewardStateDelta||[],
+          eventType:flow.lifecycle?'stake_reward':'claim',
+          source:'Wallet-weiter Reward-Beweis aus vollständigem Transaction Receipt'
+        });
+      }
+    }
+
     if(flow.kind==='reward_candidate'){
       rewardCandidates++;
       log(`Reward-Beweis ${flow.hash}: ${flow.payoutTransfers.map(x=>`${x.rewardProof}/${x.rewardFlowEvidence}`).join(', ')} · Receipt-Transfers ${flow.receiptTransferCount||0}`,'ok');
@@ -1776,7 +1814,8 @@ async function classifyRewardCallFlows(calls,wallet,lots=[]){
     if(flow.stateDeltaEvidence?.length)stateProven++;
     rejectedIncoming+=flow.rejectedTransfers.length;
   }
-  log(`Reward-Tx-Klassifikation: ${rewardCandidates} BELEGTE Reward-Kandidaten · ${stateProven} mit Reward-State-Delta · ${unproven} eingehende Tx ohne Reward-Beweis verworfen · ${exchangeFlows} Swap/Liquidity-Flows · ${rejectedIncoming} Transfers nicht als Reward klassifiziert.`,'ok');
+  CURRENT_PROVEN_REWARD_ROWS.sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  log(`Reward-Tx-Klassifikation: ${rewardCandidates} BELEGTE Reward-Kandidaten · ${CURRENT_PROVEN_REWARD_ROWS.length} belegte Reward-Transfers wallet-weit · ${stateProven} mit Reward-State-Delta · ${unproven} eingehende Tx ohne Reward-Beweis verworfen · ${exchangeFlows} Swap/Liquidity-Flows · ${rejectedIncoming} Transfers nicht als Reward klassifiziert.`,'ok');
 }
 function rewardPayoutTransfersForCall(call){
   return call?._rewardFlow?.kind==='reward_candidate'
@@ -3181,6 +3220,36 @@ function claimIsAssignedToLot(claim,lot){
   return ['stake_reward','distribution','claim'].includes(claim.eventType)
     && !!claim.hash && !!claim.token && Number(claim.amount||0)>0;
 }
+
+function assignedRewardIdentity(claim){
+  return `${String(claim?.hash||'').toLowerCase()}|${norm(claim?.token)}|${Number(claim?.amount||0).toFixed(12)}`;
+}
+function collectAllWalletRewardRows(lots){
+  const out=[];
+  const assignedKeys=new Set();
+
+  for(const lot of (lots||[])){
+    for(const claim of collectAssignedRewardRows(lot)){
+      const key=assignedRewardIdentity(claim);
+      assignedKeys.add(key);
+      out.push({lot,claim,assigned:true});
+    }
+  }
+
+  for(const claim of (CURRENT_PROVEN_REWARD_ROWS||[])){
+    const key=assignedRewardIdentity(claim);
+    if(assignedKeys.has(key))continue;
+    out.push({
+      lot:null,
+      claim:{
+        ...claim,
+        assignmentReason:'Reward on-chain belegt; keiner einzelnen Staking-Position eindeutig zugeordnet'
+      },
+      assigned:false
+    });
+  }
+  return out;
+}
 function stakingPeriodText(lot){
   const from=lot.stakeTime?new Date(lot.stakeTime).toLocaleString('de-CH'):'–';
   const to=lot.unstakeTime?new Date(lot.unstakeTime).toLocaleString('de-CH'):'offen';
@@ -3270,27 +3339,28 @@ function renderRewardClaiming(lots){
   const el=document.getElementById('rewardClaiming');
   if(!el)return;
 
-  const rows=[];
-  for(const lot of (lots||[])){
-    for(const claim of collectAssignedRewardRows(lot)){
-      const p=stakingPeriodText(lot);
-      rows.push({lot,claim,from:p.from,to:p.to});
-    }
-  }
+  const rows=collectAllWalletRewardRows(lots).map(r=>{
+    const p=r.lot?stakingPeriodText(r.lot):{from:'–',to:'–'};
+    return {...r,from:p.from,to:p.to};
+  });
   rows.sort((a,b)=>String(a.claim.time||'').localeCompare(String(b.claim.time||'')));
 
   if(!rows.length){
-    el.innerHTML='<div class="muted">Keine eindeutig einer Staking-Position zugeordneten Reward-Transaktionen gefunden.</div>';
+    el.innerHTML='<div class="muted">Keine on-chain belegten Reward-/Claim-Transaktionen für dieses Wallet gefunden.</div>';
     return;
   }
+
+  const assignedCount=rows.filter(r=>r.assigned).length;
+  const unassignedCount=rows.length-assignedCount;
 
   const summary=new Map();
   for(const r of rows){
     const c=r.claim;
     const key=`${norm(c.token)}|${c.symbol||'Token'}`;
-    const x=summary.get(key)||{symbol:c.symbol||'Token',token:norm(c.token),count:0,amount:0};
+    const x=summary.get(key)||{symbol:c.symbol||'Token',token:norm(c.token),count:0,amount:0,assigned:0,unassigned:0};
     x.count++;
     x.amount+=Number(c.amount||0);
+    if(r.assigned)x.assigned++; else x.unassigned++;
     summary.set(key,x);
   }
   const summaryHtml=[...summary.values()]
@@ -3299,10 +3369,15 @@ function renderRewardClaiming(lots){
       <div class="claim-summary-token">${esc(x.symbol)}</div>
       <div><b>${x.count.toLocaleString('de-CH')}</b> Reward-Tx</div>
       <div class="num">${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</div>
+      <div class="muted">${x.assigned} zugeordnet · ${x.unassigned} nicht zugeordnet</div>
       ${x.token?`<div class="mono muted">${esc(x.token)}</div>`:''}
     </div>`).join('');
 
-  el.innerHTML=`<div class="claim-summary">
+  el.innerHTML=`<div class="muted" style="margin-bottom:12px">
+    Wallet-weite Übersicht aller on-chain belegten Reward-/Claim-Transaktionen. Eine fehlende Staking-Zuordnung blendet einen Claim nicht aus.
+    <br><b>${rows.length}</b> Reward-Transfer(s) · <b>${assignedCount}</b> Staking zugeordnet · <b>${unassignedCount}</b> nicht eindeutig zugeordnet.
+  </div>
+  <div class="claim-summary">
     <div class="claim-summary-title">Summary nach Reward-Token</div>
     <div class="claim-summary-grid">${summaryHtml}</div>
   </div>
@@ -3321,18 +3396,18 @@ function renderRewardClaiming(lots){
       <th>Zuordnungsnachweis</th>
       <th>Reward-Tx</th>
     </tr></thead>
-    <tbody>${rows.map(({lot,claim,from,to})=>`<tr>
+    <tbody>${rows.map(({lot,claim,from,to,assigned})=>`<tr>
       <td>${claim.time?new Date(claim.time).toLocaleString('de-CH'):'–'}</td>
-      <td><b>${claim.eventType==='stake_reward'?'Reward beim Stake':claim.eventType==='claim'?'Claim / Reward-Abholung':'Reward-Ausschüttung'}</b></td>
+      <td><b>${claim.eventType==='stake_reward'?'Reward beim Stake':claim.eventType==='distribution'?'Reward-Ausschüttung':'Claim / Reward-Abholung'}</b>${!assigned?'<div class="muted">nicht zugeordnet</div>':''}</td>
       <td class="num"><b>${Number(claim.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td>
       <td><b>${esc(claim.symbol||'–')}</b>${claim.token?`<div class="mono muted">${esc(claim.token)}</div>`:''}</td>
-      <td><b>${esc(safePairLabel(lot))}</b><div class="muted">${esc(stakingContractLabel(lot.staking))}</div></td>
+      <td>${lot?`<b>${esc(safePairLabel(lot))}</b><div class="muted">${esc(stakingContractLabel(lot.staking))}</div>`:'<b>Nicht eindeutig zugeordnet</b>'}</td>
       <td>${from}</td>
       <td>${to}</td>
-      <td class="num">${stakingAssetAmountText(lot)}</td>
-      <td>${lot.expiryTime?new Date(lot.expiryTime).toLocaleString('de-CH'):'–'}${lot.durationSource?`<div class="muted">${esc(lot.durationSource)}</div>`:''}</td>
-      <td class="mono">${esc(lot?.staking?.contract_address||lot.counterparty||'–')}</td>
-      <td>${esc(claim.assignmentReason||'bereits der Staking-Position zugeordnet')}</td>
+      <td class="num">${lot?stakingAssetAmountText(lot):'–'}</td>
+      <td>${lot?(lot.expiryTime?new Date(lot.expiryTime).toLocaleString('de-CH'):'–'):'–'}${lot&&lot.durationSource?`<div class="muted">${esc(lot.durationSource)}</div>`:''}</td>
+      <td class="mono">${lot?esc(lot?.staking?.contract_address||lot.counterparty||'–'):esc(claim.calledContract||'–')}</td>
+      <td>${esc(claim.assignmentReason||'–')}${!assigned&&claim.rewardProof?`<div class="muted">Reward-Beweis: ${esc(claim.rewardProof)} · ${esc(claim.rewardFlowEvidence||'–')}</div>`:''}</td>
       <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(claim.hash)}">${esc(claim.hash)}</a></td>
     </tr>`).join('')}</tbody>
   </table></div>`;
@@ -3478,7 +3553,7 @@ tlnWallets=(wq.data||[])
 populateTlnWalletDropdown();
 bindWalletDropdown();
 $('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok')}
-$('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;CURRENT_REWARD_FLOW_BY_HASH=new Map();TX_RECEIPT_FLOW_CACHE.clear();$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('contractCalls').innerHTML='<tr><td colspan="9">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('runningStakings').innerHTML='<div class="muted">Suche…</div>';$('completedStakings').innerHTML='<div class="muted">Suche…</div>';$('deepEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();CURRENT_WALLET=wallet;if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const transfers=await allErc20Transfers(wallet);CURRENT_ALL_TRANSFERS=transfers;$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const discoveryRows=Array.isArray(window.__TLNVOW_DISCOVERY_UNDERLYINGS)?window.__TLNVOW_DISCOVERY_UNDERLYINGS:projectTokens;
+$('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;CURRENT_REWARD_FLOW_BY_HASH=new Map();CURRENT_PROVEN_REWARD_ROWS=[];TX_RECEIPT_FLOW_CACHE.clear();$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('contractCalls').innerHTML='<tr><td colspan="9">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('runningStakings').innerHTML='<div class="muted">Suche…</div>';$('completedStakings').innerHTML='<div class="muted">Suche…</div>';$('deepEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();CURRENT_WALLET=wallet;if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const transfers=await allErc20Transfers(wallet);CURRENT_ALL_TRANSFERS=transfers;$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const discoveryRows=Array.isArray(window.__TLNVOW_DISCOVERY_UNDERLYINGS)?window.__TLNVOW_DISCOVERY_UNDERLYINGS:projectTokens;
 const projectSet=new Set(discoveryRows.map(x=>norm(x.address)).filter(Boolean));
 log(`LP-Discovery: ${projectSet.size} aktive Projekt-/Referenz-Assets als mögliche Pool-Gegenparteien verfügbar.`);
 const candidates=[...counts.keys()];log(`${candidates.length} unterschiedliche ERC-20-Contracts werden als mögliche V2-LPs geprüft.`);const pairs=[];for(let i=0;i<candidates.length;i++){if(i%25===0)log(`LP-Prüfung ${i+1}/${candidates.length}…`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}const pairMap=new Map(pairs.map(p=>[p.address,p]));renderPairTable(pairs,counts);let rows=renderEvents(transfers,pairMap,wallet);let stakingRows=renderRawStakingEvents(rows);let entryTargets=await discoverStakeEntryTargets(stakingRows);if(entryTargets.length)log(`Zusätzliche Entry-/Controller-Contracts aus Stake-Txs erkannt: ${entryTargets.map(x=>x.contract_address).join(', ')}`,'ok');let stakingContractCalls=await allExternalCallsToStaking(wallet,entryTargets);
