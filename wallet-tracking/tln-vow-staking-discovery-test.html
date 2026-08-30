@@ -38,7 +38,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 18:11:42 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 18:39:08 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -231,25 +231,134 @@ async function eip1967Implementation(address){
     PROXY_IMPL_CACHE.set(address,null);return null;
   }
 }
+
+const CONTRACT_CODE_PROFILE_CACHE=new Map();
+const CONTRACT_CAPABILITY_CACHE=new Map(); // contract|signature -> supported / unsupported / unknown
+const CONTRACT_LATEST_PROBE_CACHE=new Map(); // contract|signature|wallet -> {ok,raw}
+const CONTRACT_CAPABILITY_LOGGED=new Set();
+
+function contractCapabilityKey(contract,sig){return `${norm(contract||'')}|${String(sig||'')}`}
+function latestProbeKey(contract,sig,wallet){return `${contractCapabilityKey(contract,sig)}|${norm(wallet||'')}`}
+
+async function contractCodeProfile(contract){
+  contract=norm(contract||'');
+  if(!ethers.isAddress(contract))return {contract,bytecode:'0x',implementation:null,implBytecode:'0x',dynamicProxy:true};
+  if(CONTRACT_CODE_PROFILE_CACHE.has(contract))return CONTRACT_CODE_PROFILE_CACHE.get(contract);
+
+  const p=(async()=>{
+    let code='0x';
+    try{code=await rpc('eth_getCode',[contract,'latest'])}catch{}
+    const implementation=await eip1967Implementation(contract);
+    let implCode='0x';
+    if(implementation){try{implCode=await rpc('eth_getCode',[implementation,'latest'])}catch{}}
+
+    const bytecode=String(code||'0x').toLowerCase();
+    const implBytecode=String(implCode||'0x').toLowerCase();
+
+    // A non-EIP1967 contract containing DELEGATECALL may be another proxy
+    // pattern. In that case selector absence is NOT safe negative evidence.
+    const dynamicProxy=!implementation && bytecode.includes('f4');
+
+    return {
+      contract,implementation,bytecode,implBytecode,dynamicProxy,
+      bytecodeSize:Math.max(0,(bytecode.length-2)/2),
+      implementationBytecodeSize:Math.max(0,(implBytecode.length-2)/2)
+    };
+  })();
+
+  CONTRACT_CODE_PROFILE_CACHE.set(contract,p);
+  return p;
+}
+
+async function probeCapability(contract,probe){
+  contract=norm(contract||'');
+  const key=contractCapabilityKey(contract,probe.sig);
+  if(CONTRACT_CAPABILITY_CACHE.has(key))return CONTRACT_CAPABILITY_CACHE.get(key);
+
+  const profile=await contractCodeProfile(contract);
+  const selector=selectorFor(probe.sig).slice(2);
+  const selectorSeen=profile.bytecode.includes(selector)||profile.implBytecode.includes(selector);
+
+  let state='unknown';
+  if(selectorSeen)state='supported';
+  else if((profile.bytecodeSize>0||profile.implementationBytecodeSize>0) && !profile.dynamicProxy)state='unsupported';
+
+  CONTRACT_CAPABILITY_CACHE.set(key,state);
+  return state;
+}
+
+async function cachedLatestProbeCall(contract,probe,wallet){
+  contract=norm(contract||'');
+  const cap=await probeCapability(contract,probe);
+  if(cap==='unsupported')return {ok:false,skipped:true,reason:'selector_absent'};
+
+  const key=latestProbeKey(contract,probe.sig,wallet);
+  if(CONTRACT_LATEST_PROBE_CACHE.has(key))return CONTRACT_LATEST_PROBE_CACHE.get(key);
+
+  let result;
+  try{
+    const raw=await rpc('eth_call',[{to:contract,data:encodeProbeCall(probe,wallet)},'latest']);
+    result={ok:true,raw};
+    if(raw&&raw!=='0x')CONTRACT_CAPABILITY_CACHE.set(contractCapabilityKey(contract,probe.sig),'supported');
+  }catch(e){
+    // Do not mark the method unsupported from generic "execution reverted":
+    // the revert may depend on wallet/position/current state.
+    result={ok:false,raw:null,error:String(e?.message||e||'execution reverted')};
+  }
+  CONTRACT_LATEST_PROBE_CACHE.set(key,result);
+  return result;
+}
+
+async function historicalProbeCall(contract,probe,wallet,blockHex){
+  contract=norm(contract||'');
+  const cap=await probeCapability(contract,probe);
+  if(cap==='unsupported')return null;
+  try{
+    return await rpc('eth_call',[{to:contract,data:encodeProbeCall(probe,wallet)},blockHex]);
+  }catch{
+    return null;
+  }
+}
 async function probeStakingContract(lot,wallet){
- const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');if(!ethers.isAddress(contract))throw new Error('Keine gültige Staking-Contract-Adresse.');
- let code='0x';try{code=await rpc('eth_getCode',[contract,'latest'])}catch{}
- const implementation=await eip1967Implementation(contract);
- let implCode='0x';
- if(implementation){try{implCode=await rpc('eth_getCode',[implementation,'latest'])}catch{}}
- const bytecode=String(code||'').toLowerCase(),implBytecode=String(implCode||'').toLowerCase(),results=[];
+ const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');
+ if(!ethers.isAddress(contract))throw new Error('Keine gültige Staking-Contract-Adresse.');
+
+ const profile=await contractCodeProfile(contract);
+ const results=[];
+ let skipped=0,attempted=0,cached=0;
+
  for(const probe of SC_READ_PROBES){
    const selector=selectorFor(probe.sig);
-   const selectorSeen=bytecode.includes(selector.slice(2))||implBytecode.includes(selector.slice(2));
-   try{
-     const raw=await rpc('eth_call',[{to:contract,data:encodeProbeCall(probe,wallet)},'latest']);
-     if(raw&&raw!=='0x')results.push({...probe,selector,selectorSeen,raw,...decodeProbeValue(raw,probe)})
-   }catch{}
+   const cap=await probeCapability(contract,probe);
+   const selectorSeen=cap==='supported';
+
+   if(cap==='unsupported'){
+     skipped++;
+     continue;
+   }
+
+   const key=latestProbeKey(contract,probe.sig,wallet);
+   if(CONTRACT_LATEST_PROBE_CACHE.has(key))cached++;
+   else attempted++;
+
+   const call=await cachedLatestProbeCall(contract,probe,wallet);
+   if(call.ok&&call.raw&&call.raw!=='0x'){
+     results.push({...probe,selector,selectorSeen,raw:call.raw,...decodeProbeValue(call.raw,probe)});
+   }
  }
+
+ if(!CONTRACT_CAPABILITY_LOGGED.has(contract)){
+   CONTRACT_CAPABILITY_LOGGED.add(contract);
+   log(`Contract-Capability-Cache ${short(contract)}: ${skipped}/${SC_READ_PROBES.length} Probe-Methoden ohne RPC ausgeschlossen; ${attempted} erstmals geprüft${cached?`; ${cached} aus Session-Cache`:''}.`,'ok');
+ }
+
  return {
-   contract,implementation,results,
-   bytecodeSize:Math.max(0,(bytecode.length-2)/2),
-   implementationBytecodeSize:Math.max(0,(implBytecode.length-2)/2)
+   contract,
+   implementation:profile.implementation,
+   results,
+   bytecodeSize:profile.bytecodeSize,
+   implementationBytecodeSize:profile.implementationBytecodeSize,
+   capabilitySkipped:skipped
  };
 }
 
@@ -275,10 +384,8 @@ async function probeTimingAtBlock(lot,wallet,blockHex){
   if(!ethers.isAddress(contract)||!blockHex)return null;
   const rows=[];
   for(const probe of SC_READ_PROBES.filter(x=>x.kind==='duration'||x.kind==='timestamp')){
-    try{
-      const raw=await rpc('eth_call',[{to:contract,data:encodeProbeCall(probe,wallet)},blockHex]);
-      if(raw&&raw!=='0x')rows.push({...probe,raw,...decodeProbeValue(raw,probe)});
-    }catch{}
+    const raw=await historicalProbeCall(contract,probe,wallet,blockHex);
+    if(raw&&raw!=='0x')rows.push({...probe,raw,...decodeProbeValue(raw,probe)});
   }
   return rows;
 }
@@ -1382,10 +1489,8 @@ async function historicalWalletProbeMap(contract,wallet,blockHex){
   // Only wallet-specific probes are useful for proving a relationship to THIS wallet/position.
   const probes=SC_READ_PROBES.filter(p=>(p.args||[]).includes('wallet'));
   for(const probe of probes){
-    try{
-      const raw=await rpc('eth_call',[{to:norm(contract),data:encodeProbeCall(probe,wallet)},blockHex]);
-      if(raw&&raw!=='0x')out.set(probe.sig,String(raw).toLowerCase());
-    }catch{}
+    const raw=await historicalProbeCall(contract,probe,wallet,blockHex);
+    if(raw&&raw!=='0x')out.set(probe.sig,String(raw).toLowerCase());
   }
   return out;
 }
