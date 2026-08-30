@@ -38,7 +38,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 17:29:13 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 18:11:42 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -86,6 +86,10 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card"><h2>🤝 Rewards aus Referrals</h2>
 <p class="muted">On-chain belegte Reward-Claims ohne Zuordnung zu einer eigenen Staking-Position. Die Seite sucht nach Referral-/Partner-Evidenz im Claim-Call und kennzeichnet die Stärke der Zuordnung. Ein fehlender eigener Staking-Bezug allein gilt nicht als harter Referral-Beweis.</p>
 <div id="referralRewards"><div class="muted">Noch keine Daten.</div></div></div>
+
+<div class="card"><h2>🧪 Claims ohne klare Zuordnung</h2>
+<p class="muted">Test-/Diagnosebereich für on-chain belegte Claim-/Reward-Transaktionen, deren Herkunft aktuell weder einem eigenen Staking noch einem belegten Referral eindeutig zugeordnet werden kann.</p>
+<div id="unassignedClaims"><div class="muted">Noch keine Daten.</div></div></div>
 
 <div class="card"><h2>Plausibilitätsprüfung</h2>
 <p class="muted">Vergleicht rohe Stake-/Unstake-Ereignisse mit der Lot-Rekonstruktion. Nicht zuordenbare Unstakes oder Differenzen werden ausdrücklich gemeldet.</p>
@@ -1607,7 +1611,7 @@ async function completeReceiptErc20Transfers(hash){
   if(TX_RECEIPT_FLOW_CACHE.has(h))return TX_RECEIPT_FLOW_CACHE.get(h);
   const rows=[];
   try{
-    const rc=await rpcCurrent('eth_getTransactionReceipt',[h]);
+    const rc=await rpc('eth_getTransactionReceipt',[h]);
     for(const lg of (rc?.logs||[])){
       const topics=lg?.topics||[];
       if(String(topics[0]||'').toLowerCase()!==ERC20_TRANSFER_TOPIC||topics.length<3)continue;
@@ -1781,8 +1785,8 @@ async function allWalletContractCallsWithIncomingReceipts(wallet){
     const t=candidates[i];
     try{
       const [tx,receipt]=await Promise.all([
-        rpcCurrent('eth_getTransactionByHash',[t.hash]),
-        rpcCurrent('eth_getTransactionReceipt',[t.hash])
+        rpc('eth_getTransactionByHash',[t.hash]),
+        rpc('eth_getTransactionReceipt',[t.hash])
       ]);
       if(!tx||norm(tx.from)!==w||!tx.to||String(tx.input||'0x')==='0x')continue;
       const success=receipt?.status==null?null:Number(BigInt(receipt.status))===1;
@@ -1792,7 +1796,7 @@ async function allWalletContractCallsWithIncomingReceipts(wallet){
       let blockTimestamp=t?.metadata?.blockTimestamp||null;
       if(!blockTimestamp&&tx.blockNumber){
         try{
-          const b=await rpcCurrent('eth_getBlockByNumber',[tx.blockNumber,false]);
+          const b=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);
           if(b?.timestamp)blockTimestamp=new Date(Number(BigInt(b.timestamp))*1000).toISOString();
         }catch{}
       }
@@ -1833,7 +1837,7 @@ async function expandRewardCandidateCallsFromTransferHistory(calls,wallet){
     checked++;
     try{
       const [tx,rcTransfers]=await Promise.all([
-        rpcCurrent('eth_getTransactionByHash',[hash]),
+        rpc('eth_getTransactionByHash',[hash]),
         completeReceiptErc20Transfers(hash)
       ]);
       if(!tx||norm(tx.from)!==w)continue; // Claim must be wallet-initiated in this pass.
@@ -1841,7 +1845,7 @@ async function expandRewardCandidateCallsFromTransferHistory(calls,wallet){
       let blockTimestamp=null;
       if(tx.blockNumber){
         try{
-          const b=await rpcCurrent('eth_getBlockByNumber',[tx.blockNumber,false]);
+          const b=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);
           if(b?.timestamp)blockTimestamp=new Date(Number(BigInt(b.timestamp))*1000).toISOString();
         }catch{}
       }
@@ -3349,6 +3353,21 @@ function collectReferralRewardRows(lots){
   }
   return out;
 }
+
+function collectUnassignedClaimRows(lots){
+  const assignedKeys=new Set();
+  for(const lot of (lots||[])){
+    for(const claim of collectAssignedRewardRows(lot))assignedKeys.add(assignedRewardIdentity(claim));
+  }
+  const out=[];
+  for(const claim of (CURRENT_PROVEN_REWARD_ROWS||[])){
+    if(assignedKeys.has(assignedRewardIdentity(claim)))continue;
+    const referral=referralEvidenceForClaim(claim,lots);
+    if(referral.kind==='referral')continue;
+    out.push({claim,referral});
+  }
+  return out;
+}
 function stakingPeriodText(lot){
   const from=lot.stakeTime?new Date(lot.stakeTime).toLocaleString('de-CH'):'–';
   const to=lot.unstakeTime?new Date(lot.unstakeTime).toLocaleString('de-CH'):'offen';
@@ -3550,7 +3569,7 @@ function renderRewardClaiming(lots){
 function renderReferralRewards(lots){
   const el=document.getElementById('referralRewards');
   if(!el)return;
-  const rows=collectReferralRewardRows(lots);
+  const rows=collectReferralRewardRows(lots).filter(r=>r.referral.kind!=='unresolved');
   rows.sort((a,b)=>rewardClaimTimestamp(a.claim)-rewardClaimTimestamp(b.claim));
   if(!rows.length){
     el.innerHTML='<div class="muted">Keine on-chain belegten Reward-Claims ohne eigene Staking-Zuordnung gefunden.</div>';
@@ -3579,6 +3598,50 @@ function renderReferralRewards(lots){
       <td><b>${esc(claim.symbol||'–')}</b>${claim.token?`<div class="mono muted">${esc(claim.token)}</div>`:''}</td>
       <td><b>${referral.kind==='referral'?'Referral belegt':referral.kind==='referral_candidate'?'Referral-Kandidat':'Noch ungeklärt'}</b><div class="muted">Evidenz ${esc(referral.confidence)}</div></td>
       <td>${esc(referral.reason)}</td>
+      <td class="mono">${esc(claim.calledContract||'–')}</td>
+      <td>${esc(METHOD_SELECTORS.get(String(claim.selector||'').toLowerCase())||'unbekannt')}<div class="mono muted">${esc(claim.selector||'–')}</div></td>
+      <td>${esc(claim.rewardProof||'–')}<div class="muted">${esc(claim.rewardFlowEvidence||'–')}</div></td>
+      <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(claim.hash)}">${esc(claim.hash)}</a></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+function renderUnassignedClaims(lots){
+  const el=document.getElementById('unassignedClaims');
+  if(!el)return;
+  const rows=collectUnassignedClaimRows(lots);
+  rows.sort((a,b)=>rewardClaimTimestamp(a.claim)-rewardClaimTimestamp(b.claim));
+
+  if(!rows.length){
+    el.innerHTML='<div class="muted">Keine on-chain belegten Claims ohne klare Zuordnung gefunden.</div>';
+    return;
+  }
+
+  el.innerHTML=`<div class="muted" style="margin-bottom:12px">
+    <b>${rows.length}</b> Claim(s) derzeit ohne klare Herkunfts-Zuordnung. Ältester Claim zuerst.
+  </div>
+  <div class="claim-summary">
+    <div class="claim-summary-title">Summary nach Reward-Token</div>
+    <div class="claim-summary-grid">${rewardTokenSummaryHtml(rows)}</div>
+  </div>
+  <div class="wrap"><table style="min-width:1250px">
+    <thead><tr>
+      <th>Claim-Datum / Zeit</th>
+      <th>Reward</th>
+      <th>Reward-Token</th>
+      <th>Aktuelle Einstufung</th>
+      <th>Grund / Evidenz</th>
+      <th>Claim-Contract</th>
+      <th>Methode / Selector</th>
+      <th>Reward-Beweis</th>
+      <th>Tx Hash</th>
+    </tr></thead>
+    <tbody>${rows.map(({claim,referral})=>`<tr>
+      <td>${rewardClaimDateText(claim)}</td>
+      <td class="num"><b>${Number(claim.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td>
+      <td><b>${esc(claim.symbol||'–')}</b>${claim.token?`<div class="mono muted">${esc(claim.token)}</div>`:''}</td>
+      <td><b>${referral.kind==='referral_candidate'?'Referral-Kandidat, nicht bewiesen':'Noch ungeklärt'}</b><div class="muted">Evidenz ${esc(referral.confidence||'–')}</div></td>
+      <td>${esc(referral.reason||'–')}</td>
       <td class="mono">${esc(claim.calledContract||'–')}</td>
       <td>${esc(METHOD_SELECTORS.get(String(claim.selector||'').toLowerCase())||'unbekannt')}<div class="mono muted">${esc(claim.selector||'–')}</div></td>
       <td>${esc(claim.rewardProof||'–')}<div class="muted">${esc(claim.rewardFlowEvidence||'–')}</div></td>
@@ -3646,6 +3709,7 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   // Central table now uses the final, canonical lot.transactions state.
   renderRewardClaiming(lots);
   renderReferralRewards(lots);
+  renderUnassignedClaims(lots);
   const running=[...lots].filter(l=>l.status!=='closed').sort((a,b)=>String(b.stakeTime||'').localeCompare(String(a.stakeTime||'')));
   const completed=[...lots].filter(l=>l.status==='closed').sort((a,b)=>String(b.unstakeTime||b.stakeTime||'').localeCompare(String(a.unstakeTime||a.stakeTime||'')));
   CURRENT_STAKING_LOTS=[...running,...completed];
