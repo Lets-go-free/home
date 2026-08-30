@@ -30,9 +30,13 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .collapsible-card>summary{cursor:pointer;padding:16px 18px;font-size:18px;font-weight:700;list-style:disclosure-closed}
 .collapsible-card[open]>summary{list-style:disclosure-open;border-bottom:1px solid #2b3546}
 .collapsible-card>.collapsible-body{padding:14px 18px 18px}
+
+.contract-analysis-box{margin-top:14px}
+.contract-analysis-box .diag-details{margin-top:10px}
+.contract-analysis-box .diag-details>summary{cursor:pointer;font-weight:700;padding:8px 0}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 03:01:30 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 03:29:51 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -1274,6 +1278,185 @@ async function businessProbeForLot(lot){
     BUSINESS_PROBE_CACHE.set(key,null);return null;
   }
 }
+
+const REWARD_OPEN_NAMES=new Set(['earned','pendingreward','pendingrewards','withdrawableyield','getwithdrawableyield','availableyield','claimable','rewards']);
+const REWARD_PAID_NAMES=new Set(['totalpayouts','payouts','totalwithdrawn']);
+const REWARD_RATE_NAMES=new Set(['dailyreward','rewardperday','dailyrate','rewardrate','interestrate','stakeddays','staked_days','daysstaked']);
+function probeScope(r){
+  const args=r?.args||[];
+  if(args.includes('wallet'))return 'walletbezogen';
+  return 'contractweit';
+}
+function rewardReadCategory(r){
+  const n=probeBaseName(r?.label||'');
+  if(REWARD_OPEN_NAMES.has(n))return 'offener / claimbarer Reward-Kandidat';
+  if(REWARD_PAID_NAMES.has(n))return 'Payout-/Withdraw-Kandidat';
+  if(REWARD_RATE_NAMES.has(n))return 'Rate / Laufzeit / Reward-Parameter';
+  return null;
+}
+function probeValueCompact(r){
+  if(!r)return '–';
+  if(r.kind==='raw'){
+    const ws=rawWords(r.raw);
+    return ws.length===1&&ws[0].uint!=null?ws[0].uint.toString():`${ws.length} Wort/Wörter`;
+  }
+  return r.display||r.raw||'–';
+}
+function positionProbeCandidates(lot){
+  const ids=[...lotPositionIdentifiers(lot)];
+  if(!ids.length)return [];
+  const bases=new Set([
+    'userInfo','users','stakes','stakeInfo','stakingInfo','depositInfo',
+    'earned','pendingReward','pendingRewards','withdrawableYield','getWithdrawableYield',
+    'availableYield','claimable','rewards','totalPayouts','payouts','totalWithdrawn',
+    'stakedAmount','stakeAmount','amountStaked','deposited'
+  ]);
+  const out=[];
+  for(const id of ids){
+    for(const base of bases){
+      out.push({label:`${base}(uint256)`,sig:`${base}(uint256)`,types:['uint256'],values:[BigInt(id)],positionId:id});
+      out.push({label:`${base}(address,uint256)`,sig:`${base}(address,uint256)`,types:['address','uint256'],values:[CURRENT_WALLET,BigInt(id)],positionId:id});
+      out.push({label:`${base}(uint256,address)`,sig:`${base}(uint256,address)`,types:['uint256','address'],values:[BigInt(id),CURRENT_WALLET],positionId:id});
+    }
+  }
+  return out;
+}
+async function probePositionSpecificReads(lot){
+  const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');
+  if(!ethers.isAddress(contract))return [];
+  const out=[],seen=new Set();
+  for(const p of positionProbeCandidates(lot)){
+    const key=p.sig+'|'+p.positionId;
+    if(seen.has(key))continue; seen.add(key);
+    const selector=selectorFor(p.sig);
+    try{
+      const data=selector+ethers.AbiCoder.defaultAbiCoder().encode(p.types,p.values).slice(2);
+      const raw=await rpc('eth_call',[{to:contract,data},'latest']);
+      if(!raw||raw==='0x')continue;
+      const ws=rawWords(raw);
+      // Empty zero-only responses are not accepted as evidence of an implemented position getter.
+      if(!ws.length||ws.every(w=>w.uint===0n))continue;
+      out.push({
+        label:p.label,sig:p.sig,selector,positionId:p.positionId,raw,
+        words:ws,display:ws.length===1&&ws[0].uint!=null?ws[0].uint.toString():`${ws.length} Wort/Wörter`
+      });
+    }catch{}
+  }
+  return out;
+}
+async function enrichLotContractAnalysis(lot){
+  const probe=lot.businessProbe||null;
+  const successful=probe?.results||[];
+  const positionReads=await probePositionSpecificReads(lot);
+  const rewardReads=successful.filter(r=>rewardReadCategory(r));
+  const walletReads=successful.filter(r=>probeScope(r)==='walletbezogen');
+  const contractReads=successful.filter(r=>probeScope(r)==='contractweit');
+  const struct=lot.historicalScAfter||null;
+  const changed=(lot.historicalScDelta||[]).filter(x=>x.delta!==0n);
+
+  const open=rewardReads.filter(r=>REWARD_OPEN_NAMES.has(probeBaseName(r.label)));
+  const paid=rewardReads.filter(r=>REWARD_PAID_NAMES.has(probeBaseName(r.label)));
+  const rates=rewardReads.filter(r=>REWARD_RATE_NAMES.has(probeBaseName(r.label)));
+
+  const conclusions=[];
+  if(positionReads.length){
+    conclusions.push(`Positionsbezogene SC-Reads gefunden (${positionReads.length}); diese sind für parallele Stakings besonders wertvoll.`);
+  }else if(lotPositionIdentifiers(lot).size){
+    conclusions.push('Eine On-chain Position-ID ist bekannt, aber mit den dynamisch geprüften Getter-Signaturen konnte aktuell kein positionsbezogener Read bestätigt werden.');
+  }else{
+    conclusions.push('Keine belastbare On-chain Position-ID für dieses Staking gefunden; positionsgenaue Reward-Werte sind damit aus dem Contract allein derzeit nicht belegt.');
+  }
+  if(open.length)conclusions.push(`Der Contract liefert ${open.length} aktuell lesbare(n) Reward-/Yield-Wert(e), die als offener/claimbarer Anspruch in Frage kommen.`);
+  if(paid.length)conclusions.push(`Der Contract liefert ${paid.length} Payout-/Withdraw-Wert(e). Die genaue Semantik wird nicht geraten; sie werden als Roh-Evidenz angezeigt.`);
+  if(!open.length&&!paid.length)conclusions.push('Kein erfolgreicher Standard-Read für offenen Reward oder bereits ausgezahlte Rewards gefunden.');
+  if(struct)conclusions.push(`${struct.sig} war historisch am Stake-Block lesbar (${struct.words.length} Words; ${changed.length} davon änderten sich beim Stake).`);
+  if(probe?.implementation)conclusions.push('Proxy/Implementation erkannt; Getter wurden gegen die Proxy-Adresse gelesen und Selector-Präsenz zusätzlich im Proxy-/Implementation-Bytecode geprüft.');
+
+  lot.contractAnalysis={
+    contract:probe?.contract||norm(lot?.staking?.contract_address||lot?.counterparty||''),
+    implementation:probe?.implementation||null,
+    bytecodeSize:probe?.bytecodeSize||0,
+    implementationBytecodeSize:probe?.implementationBytecodeSize||0,
+    successful,walletReads,contractReads,rewardReads,open,paid,rates,positionReads,
+    historicalStruct:struct,historicalDelta:lot.historicalScDelta||[],conclusions
+  };
+}
+function historicalStructAnalysisHtml(a,lot){
+  const s=a?.historicalStruct;
+  if(!s)return '<div class="muted">Am Stake-Block konnte keine der geprüften historischen User-/Stake-Strukturen gelesen werden.</div>';
+  const before=new Map((lot.historicalScBefore?.words||[]).map(w=>[w.index,w.uint]));
+  const rows=(s.words||[]).map(w=>{
+    const b=before.get(w.index)??0n;
+    const d=w.uint-b;
+    const ts=humanTimestamp(w.uint);
+    const field=structFieldEvidence(lot,{index:w.index,uint:w.uint});
+    return `<tr>
+      <td>W${w.index+1}</td>
+      <td class="mono">${b.toString()}</td>
+      <td class="mono">${w.uint.toString()}</td>
+      <td class="mono">${d.toString()}</td>
+      <td>${ts?esc(ts):'–'}</td>
+      <td>${field?.label?`<b>${esc(field.label)}</b><div class="muted">${esc(field.evidence||'')}</div>`:'–'}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="wrap"><table style="min-width:980px">
+    <thead><tr><th>Word</th><th>Vor Stake</th><th>Nach Stake</th><th>Δ durch Stake</th><th>Timestamp-Hinweis</th><th>Nachweisbare Interpretation</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+function contractAnalysisHtml(lot){
+  const a=lot.contractAnalysis;
+  if(!a)return '';
+  const readRows=(a.successful||[]).map(r=>`<tr>
+    <td><b>${esc(r.label)}</b><div class="mono muted">${esc(r.selector||'')}</div></td>
+    <td>${esc(probeScope(r))}</td>
+    <td>${r.selectorSeen?'<span class="ok">Selector im Bytecode gefunden</span>':'<span class="muted">Selector nicht als PUSH4 bestätigt</span>'}</td>
+    <td>${esc(probeValueCompact(r))}</td>
+    <td>${rewardReadCategory(r)?`<b>${esc(rewardReadCategory(r))}</b>`:'–'}</td>
+  </tr>`).join('');
+  const posRows=(a.positionReads||[]).map(r=>`<tr>
+    <td><b>${esc(r.label)}</b><div class="mono muted">${esc(r.selector)}</div></td>
+    <td class="mono">${esc(r.positionId)}</td>
+    <td>${esc(r.display)}</td>
+    <td class="mono">${esc(r.raw)}</td>
+  </tr>`).join('');
+  const rewardRows=(a.rewardReads||[]).map(r=>`<tr>
+    <td><b>${esc(r.label)}</b></td>
+    <td>${esc(rewardReadCategory(r)||'')}</td>
+    <td>${esc(probeScope(r))}</td>
+    <td>${esc(probeValueCompact(r))}</td>
+    <td class="mono">${esc(r.selector||'')}</td>
+  </tr>`).join('');
+  return `<div class="reward-box contract-analysis-box">
+    <div class="reward-title">🔬 Smart-Contract-Analyse dieses Stakings</div>
+    <div class="stake-facts">
+      <div class="stake-fact"><span class="k">Staking-Contract</span><span class="v mono">${esc(a.contract||'–')}</span></div>
+      <div class="stake-fact"><span class="k">Proxy-Implementation</span><span class="v mono">${esc(a.implementation||'–')}</span></div>
+      <div class="stake-fact"><span class="k">Erfolgreiche SC-Reads</span><span class="v">${a.successful.length}</span></div>
+      <div class="stake-fact"><span class="k">Walletbezogene Reads</span><span class="v">${a.walletReads.length}</span></div>
+      <div class="stake-fact"><span class="k">Contractweite Reads</span><span class="v">${a.contractReads.length}</span></div>
+      <div class="stake-fact"><span class="k">Positionsbezogene Reads</span><span class="v">${a.positionReads.length}</span></div>
+    </div>
+
+    <details open class="diag-details"><summary>Was dieser Staking-Vertrag aktuell preisgibt</summary>
+      ${readRows?`<div class="wrap"><table style="min-width:980px"><thead><tr><th>Funktion</th><th>Ebene</th><th>Bytecode-Evidenz</th><th>Aktueller Wert</th><th>Reward-Relevanz</th></tr></thead><tbody>${readRows}</tbody></table></div>`:'<div class="muted">Keine der dynamisch geprüften Standard-Read-Funktionen lieferte einen auswertbaren Wert.</div>'}
+    </details>
+
+    <details open class="diag-details"><summary>Historische Struktur beim Stake</summary>
+      ${historicalStructAnalysisHtml(a,lot)}
+    </details>
+
+    <details open class="diag-details"><summary>Reward-/Payout-Informationen dieses Vertrags</summary>
+      ${rewardRows?`<div class="wrap"><table style="min-width:900px"><thead><tr><th>Funktion</th><th>Mögliche Bedeutung</th><th>Ebene</th><th>Aktueller Wert</th><th>Selector</th></tr></thead><tbody>${rewardRows}</tbody></table></div>`:'<div class="muted">Keine erfolgreichen Standard-Reads für Reward/Yield/Payout/Withdraw gefunden.</div>'}
+    </details>
+
+    <details open class="diag-details"><summary>Positionsbezogene Reads für parallele Stakings</summary>
+      ${posRows?`<div class="wrap"><table style="min-width:900px"><thead><tr><th>Getter</th><th>Position-ID</th><th>Wert</th><th>Raw</th></tr></thead><tbody>${posRows}</tbody></table></div>`:'<div class="muted">Keine positionsbezogene Getter-Signatur konnte aktuell on-chain bestätigt werden.</div>'}
+    </details>
+
+    <div class="reward-note"><b>Zwischenfazit für genau dieses Staking:</b><br>${(a.conclusions||[]).map(x=>`• ${esc(x)}`).join('<br>')}</div>
+  </div>`;
+}
 async function enrichLotsBusiness(lots,pricePairs){
   for(const lot of (lots||[])){
     await enrichHistoricalStakeEvidence(lot);
@@ -1291,6 +1474,7 @@ async function enrichLotsBusiness(lots,pricePairs){
     }
     lot.rewardReads=extractRewardReads(lot.rewardProfile,probe);
     lot.rewardModel=deriveRewardModel(lot);
+    await enrichLotContractAnalysis(lot);
 
     // 1) STAKE: prefer the value TLN itself stored at staking time.
     const stored=extractStoredStakeUsd(lot,probe);
@@ -1967,11 +2151,15 @@ function stakeRewardEvidenceHtml(lot){
   let html='';
 
   if(ev.length){
-    html+=ev.map(x=>`<div class="reward-item">
-      <span class="rk">${x.from==='0x0000000000000000000000000000000000000000'?'Beim Stake gemintet':'Beim Stake erhalten'} · ${esc(x.symbol)}</span>
-      <span class="rv">${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</span>
-      <div class="value-source">Empfänger: <span class="mono">${esc(x.to)}</span> · Token <span class="mono">${esc(x.token)}</span></div>
-    </div>`).join('');
+    html+=`<div style="grid-column:1/-1"><div class="wrap"><table style="min-width:820px">
+      <thead><tr><th>Reward beim Stake</th><th>Menge</th><th>Token</th><th>Empfänger</th></tr></thead><tbody>
+      ${ev.map(x=>`<tr>
+        <td><b>${x.from==='0x0000000000000000000000000000000000000000'?'Beim Stake gemintet':'Beim Stake erhalten'}</b></td>
+        <td class="num"><b>${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</b></td>
+        <td class="mono">${esc(x.token)}</td>
+        <td class="mono">${esc(x.to)}</td>
+      </tr>`).join('')}
+      </tbody></table></div></div>`;
   }
 
   if(lot.historicalScAfter){
@@ -2320,8 +2508,10 @@ function rewardClaimSummaryHtml(lot){
     const sums=new Map();
     for(const c of rows){
       const k=`${c.symbol}|${c.token}`;
-      if(!sums.has(k))sums.set(k,{symbol:c.symbol,token:c.token,amount:0});
-      sums.get(k).amount+=Number(c.amount||0);
+      if(!sums.has(k))sums.set(k,{symbol:c.symbol,token:c.token,amount:0,count:0});
+      const x=sums.get(k);
+      x.amount+=Number(c.amount||0);
+      x.count++;
     }
     return [...sums.values()];
   }
@@ -2332,12 +2522,15 @@ function rewardClaimSummaryHtml(lot){
     ['claim','Claims / Reward-Abholungen']
   ];
 
-  let totals='';
+  let summaryRows='';
   for(const [type,label] of summarySections){
     for(const x of sumsFor(grouped[type])){
-      totals+=`<div class="reward-item"><span class="rk">${esc(label)} · ${esc(x.symbol)}</span>
-        <span class="rv">${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</span>
-        <div class="value-source mono">${esc(x.token)}</div></div>`;
+      summaryRows+=`<tr>
+        <td><b>${esc(label)}</b></td>
+        <td><b>${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</b></td>
+        <td>${x.count}</td>
+        <td class="mono">${esc(x.token)}</td>
+      </tr>`;
     }
   }
 
@@ -2347,7 +2540,7 @@ function rewardClaimSummaryHtml(lot){
     return `<tr>
       <td>${c.time?new Date(c.time).toLocaleString('de-CH'):'–'}</td>
       <td><b>${esc(label)}</b></td>
-      <td><b>${c.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(c.symbol)}</b><div class="mono muted">${esc(c.token)}</div></td>
+      <td class="num"><b>${c.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(c.symbol)}</b><div class="mono muted">${esc(c.token)}</div></td>
       <td>${esc(c.method||'Reward-relevante Tx')}<div class="muted">${esc(c.source||'')}</div></td>
       <td class="mono">${c.calledContract?esc(c.calledContract):'–'}</td>
       <td>${c.assignmentReason?esc(c.assignmentReason):'–'}${c.assignmentScore!=null?`<div class="muted">Score ${c.assignmentScore}</div>`:''}</td>
@@ -2356,8 +2549,14 @@ function rewardClaimSummaryHtml(lot){
     </tr>`;
   }).join('');
 
-  return `${totals}<div style="grid-column:1/-1;margin-top:8px">
-    <details><summary>Reward-/Claim-Transaktionen (${claims.length})</summary>
+  return `<div style="grid-column:1/-1;margin-top:10px">
+    <div class="wrap">
+      <table class="reward-summary-table" style="min-width:820px">
+        <thead><tr><th>Reward-Bereich</th><th>Summe</th><th>Transaktionen</th><th>Token-Contract</th></tr></thead>
+        <tbody>${summaryRows||'<tr><td colspan="4" class="muted">Keine historischen Rewards eindeutig dieser Position zugeordnet.</td></tr>'}</tbody>
+      </table>
+    </div>
+    <details style="margin-top:10px"><summary>Reward-/Claim-Transaktionen (${claims.length})</summary>
       <div class="wrap" style="margin-top:8px"><table style="min-width:1180px">
         <thead><tr><th>Zeit</th><th>Typ</th><th>Reward</th><th>Methode / Quelle</th><th>Aufgerufener Contract</th><th>Zuordnung</th><th>Block</th><th>Tx</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -2367,18 +2566,50 @@ function rewardClaimSummaryHtml(lot){
 }
 function rewardHtml(lot){
   const p=lot.rewardProfile||rewardProfileForLot(lot),reads=lot.rewardReads||[];
-  let items='';
   const model=lot.rewardModel||deriveRewardModel(lot);
-  items+=`<div class="reward-item"><span class="rk">Aus SC abgeleitetes Reward-Modell</span><span class="rv">${esc(model.label)}</span>${model.evidence?.length?`<div class="value-source">${esc(model.evidence.join(' · '))}</div>`:''}</div>`;
-  if(p.token)items+=`<div class="reward-item"><span class="rk">Reward-Typ</span><span class="rv">${esc(p.token)}</span></div>`;
-  for(const r of reads){
-    items+=`<div class="reward-item"><span class="rk">${esc(r.label)}</span><span class="rv">${Number(r.value).toLocaleString('de-CH',{maximumFractionDigits:12})}${p.token?' '+esc(p.token):''}</span></div>`;
+  let rows='';
+
+  rows+=`<tr>
+    <td><b>Aus SC abgeleitetes Reward-Modell</b></td>
+    <td>${esc(model.label)}</td>
+    <td>${model.evidence?.length?esc(model.evidence.join(' · ')):'–'}</td>
+  </tr>`;
+
+  if(p.token){
+    rows+=`<tr><td><b>Reward-Typ</b></td><td>${esc(p.token)}</td><td>Aus dem Smart Contract / Reward-Profil abgeleitet</td></tr>`;
   }
-  if(!reads.length)items+=`<div class="reward-item"><span class="rk">Aktuell noch offener Reward-Anspruch laut Smart Contract</span><span class="rv muted">Kein aktuell offener Reward-Anspruch konnte über bekannte SC-Read-Funktionen eindeutig ermittelt werden. Historisch gefundene Claim-/Reward-Transaktionen bleiben davon unberührt.</span></div>`;
-  items+=stakeRewardEvidenceHtml(lot);
-  items+=stakeInputEvidenceHtml(lot);
-  items+=rewardClaimSummaryHtml(lot);
-  return `<div class="reward-box"><div class="reward-title">🎁 ${esc(p.title)}</div><div class="reward-grid">${items}</div><div class="reward-note">${esc(p.model)} Eigene Rewards werden nur gezählt, wenn der Token tatsächlich an das ausgewählte Wallet ging und eine belastbare Beziehung zur Staking-Position besteht. Initiale Stake-Rewards, spätere Ausschüttungen und Claims werden getrennt geführt; weitere Empfänger derselben Stake-Tx bleiben rein diagnostisch.</div></div>`;
+
+  for(const r of reads){
+    rows+=`<tr>
+      <td><b>${esc(r.label)}</b></td>
+      <td class="num">${Number(r.value).toLocaleString('de-CH',{maximumFractionDigits:12})}${p.token?' '+esc(p.token):''}</td>
+      <td>Aktueller Smart-Contract-Read</td>
+    </tr>`;
+  }
+
+  if(!reads.length){
+    rows+=`<tr>
+      <td><b>Aktuell noch offener Reward-Anspruch laut Smart Contract</b></td>
+      <td>–</td>
+      <td class="muted">Kein aktuell offener Reward-Anspruch konnte über bekannte SC-Read-Funktionen eindeutig ermittelt werden. Historisch gefundene Claim-/Reward-Transaktionen bleiben davon unberührt.</td>
+    </tr>`;
+  }
+
+  return `<div class="reward-box">
+    <div class="reward-title">🎁 ${esc(p.title)}</div>
+    <div class="wrap">
+      <table class="reward-main-table" style="min-width:900px">
+        <thead><tr><th>Reward-Information</th><th>Wert</th><th>Quelle / Evidenz</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="reward-grid" style="margin-top:10px">
+      ${stakeRewardEvidenceHtml(lot)}
+      ${stakeInputEvidenceHtml(lot)}
+      ${rewardClaimSummaryHtml(lot)}
+    </div>
+    <div class="reward-note">${esc(p.model)} Eigene Rewards werden nur gezählt, wenn der Token tatsächlich an das ausgewählte Wallet ging und eine belastbare Beziehung zur Staking-Position besteht. Initiale Stake-Rewards, spätere Ausschüttungen und Claims werden getrennt geführt; weitere Empfänger derselben Stake-Tx bleiben rein diagnostisch.</div>
+  </div>`;
 }
 function addLotTx(lot,tx){
   if(!lot||!tx?.hash)return;
@@ -2830,6 +3061,7 @@ function positionCardHtml(l,index,isClosed){
     </div>
     ${l.contractGraph&&l.contractGraph.edges.length?`<details class="diag-details"><summary>Contract-Graph anzeigen</summary><div class="wrap"><table><thead><tr><th>Von</th><th>Beziehung</th><th>Zu</th><th>Evidenz</th></tr></thead><tbody>${l.contractGraph.edges.map(e=>`<tr><td class="mono">${esc(e.from)}</td><td>${esc(e.type)}</td><td class="mono">${esc(e.to)}</td><td>${esc(e.evidence?.kind||'')} ${e.evidence?.tx?`<span class="mono">${esc(e.evidence.tx)}</span>`:''}</td></tr>`).join('')}</tbody></table></div></details>`:''}
     ${(l.topUps||[]).length?`<div class="reward-box"><div class="reward-title">Aufstockungen dieser Staking-Position</div><div class="wrap"><table><thead><tr><th>Zeit</th><th>Zusätzlich</th><th>Gesamt danach</th><th>Tx</th></tr></thead><tbody>${l.topUps.map(x=>`<tr><td>${x.time?new Date(x.time).toLocaleString('de-CH'):'–'}</td><td class="num">+${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="num">${Number(x.resultingPrincipal||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(x.tx)}">${esc(x.tx||'–')}</a></td></tr>`).join('')}</tbody></table></div></div>`:''}
+    ${contractAnalysisHtml(l)}
     ${rewardHtml(l)}
     <div class="stake-actions">
       <details><summary>Transaktionen (${(l.transactions||[]).length})</summary>${txRowsHtml(l)}</details>
