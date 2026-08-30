@@ -24,7 +24,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
   <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 30.08.2026 23:15:19 CEST</div>
+  <div class="muted">Entwicklungsstand 30.08.2026 23:53:42 CEST</div>
 
   <div class="card">
     <div class="row">
@@ -355,6 +355,61 @@ function valueHints(n){
   return hints;
 }
 
+
+async function prestateAccessed(hash){
+  const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
+  if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
+  const errors=[];
+  for(const [provider,url] of providers){
+    for(let attempt=1;attempt<=2;attempt++){
+      try{
+        const result=await rawRpc(url,'debug_traceTransaction',[hash,{tracer:'prestateTracer'}]);
+        if(result){
+          log(`prestateTracer/full: erfolgreich über ${provider}, Versuch ${attempt}.`);
+          return {result,provider};
+        }
+      }catch(e){
+        errors.push(`${provider}: ${e.message}`);
+        log(`prestateTracer/full: ${provider}, Versuch ${attempt}: ${e.message}`);
+      }
+    }
+  }
+  throw new Error(`prestateTracer/full nicht verfügbar. ${errors.join(' | ')}`);
+}
+function accountFromPrestate(result,address){
+  const a=norm(address), obj=result||{};
+  const key=Object.keys(obj).find(k=>norm(k)===a);
+  return key?obj[key]:null;
+}
+function structRowsFromPrestate(preResult,address,root,maxOffset=32){
+  const acct=accountFromPrestate(preResult,address);
+  const storage=acct?.storage||{};
+  const rootN=BigInt(root), rows=[];
+  for(const [slot,val] of Object.entries(storage)){
+    let sn;
+    try{sn=BigInt(slot)}catch{continue}
+    const off=sn-rootN;
+    if(off<0n||off>BigInt(maxOffset))continue;
+    let n=0n; try{n=BigInt(val||'0x0')}catch{}
+    rows.push({off:Number(off),slot,value:n});
+  }
+  rows.sort((a,b)=>a.off-b.off);
+  return rows;
+}
+function safeValueHints(n,txTimeSec){
+  const hints=[];
+  if(n<=0n)return hints;
+  try{
+    if(n>=10n**15n)hints.push(`18 Decimals: ${ethers.formatUnits(n,18)}`);
+    if(n>1_500_000_000n&&n<4_000_000_000n){
+      const d=new Date(Number(n)*1000);
+      const relation=BigInt(n)<=BigInt(txTimeSec)?'zeitlich plausibel':'NACH der analysierten Tx → kein historischer Tx-State';
+      hints.push(`Unix-Zeitstempel: ${d.toLocaleString('de-CH')} · ${relation}`);
+    }
+  }catch{}
+  return hints;
+}
+
 async function prestateDiff(hash){
   const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
   if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
@@ -565,17 +620,21 @@ async function analyze(){
         let layoutHtml='';
         if(layout.found){
           log(`Wallet-Mapping-Kandidat gefunden: mapping base slot ${layout.baseSlot}, erster Treffer offset ${layout.offset}.`);
-          const structRows=await readStructWindow(claimContract,layout.root,claimBlock,0,10);
+          log('Historische Struct-Nachbarwerte werden NICHT mehr über eth_getStorageAt gelesen; Full-Prestate-Trace ist für diese Tx die verlässliche Quelle.');
+          const fullPre=await prestateAccessed(hash);
+          const accessedRows=structRowsFromPrestate(fullPre.result,claimContract,layout.root,32);
+          const txTimeSec=BigInt(block.timestamp);
           layoutHtml=`<p class="ok"><b>Wallet-Mapping-Struktur gefunden:</b> <span class="mono">keccak256(abi.encode(wallet, ${layout.baseSlot}))</span> ergibt den Struct-Root <span class="mono">${esc(layout.root)}</span>. Der erste geänderte Slot liegt bei Offset ${layout.offset}.</p>
-          <table><thead><tr><th>Struct Offset</th><th>Slot</th><th>Vor Claim</th><th>Nach Claim</th><th>Hinweise</th></tr></thead><tbody>
-          ${structRows.map(r=>`<tr>
+          <p class="warn"><b>Wichtige Korrektur:</b> Die frühere Anzeige der Offsets 0–10 über historisches <span class="mono">eth_getStorageAt</span> war bei diesem Primär-RPC nicht belastbar. Werte mit Datum 25.07.2025 können unmöglich aus einer Tx vom 05.11.2024 stammen. Diese Version verwendet deshalb für den historischen Zustand ausschließlich den <b>prestateTracer der konkreten Transaktion</b>.</p>
+          <div class="muted">prestateTracer/full: ${esc(fullPre.provider)} · zeigt nur Storage-Felder, die diese Transaktion tatsächlich gelesen/berührt hat.</div>
+          ${accessedRows.length?`<table><thead><tr><th>Struct Offset</th><th>Slot</th><th>Wert unmittelbar vor Tx</th><th>Interpretationshinweise</th></tr></thead><tbody>
+          ${accessedRows.map(r=>`<tr>
             <td>${r.off}</td><td class="mono">${esc(r.slot)}</td>
-            <td class="mono">${esc(r.before.toString())}${valueHints(r.before).map(h=>`<br><span class="muted">${esc(h)}</span>`).join('')}</td>
-            <td class="mono">${esc(r.after.toString())}${valueHints(r.after).map(h=>`<br><span class="muted">${esc(h)}</span>`).join('')}</td>
-            <td>${r.delta===rawReward.total?'<span class="ok"><b>Δ = Reward</b></span>':r.delta!==0n?`Δ ${esc(r.delta.toString())}`:'–'}</td>
+            <td class="mono">${esc(r.value.toString())}</td>
+            <td>${safeValueHints(r.value,txTimeSec).map(h=>`<div class="muted">${esc(h)}</div>`).join('')||'–'}</td>
           </tr>`).join('')}
-          </tbody></table>`;
-          stateEvidence={best,deltaMatches,layout,structRows};
+          </tbody></table>`:'<span class="warn">Der Full-Prestate enthält in diesem Struct-Fenster keine zusätzlich gelesenen Slots. Das bedeutet: withdrawYield() braucht für die Auszahlung offenbar keine weiteren Felder dieses Wallet-Structs.</span>'}`;
+          stateEvidence={best,deltaMatches,layout,accessedRows,fullPreProvider:fullPre.provider};
         }else{
           layoutHtml='<p class="warn">Die geänderten Slots konnten noch nicht als einfache <span class="mono">mapping(address =&gt; struct)</span>-Struktur mit Basisslot 0–512 erkannt werden. Möglich wären ein größerer Basisslot, ein nested mapping oder eine andere Key-Struktur.</p>';
           stateEvidence={best,deltaMatches,layout};
@@ -583,7 +642,7 @@ async function analyze(){
         $('stateHistory').innerHTML=`<p class="ok"><b>Neue Erkenntnis:</b> Der Reward lag vor dem Claim <b>nicht</b> als 2330.681364-TLN-Pending-Wert in diesen Slots. Stattdessen steigen ${deltaMatches.length} Slot(s) während <span class="mono">withdrawYield()</span> jeweils exakt um <b>${esc(ethers.formatUnits(rawReward.total,18))} TLN</b>.</p>
           <p>Das spricht stark für <b>kumulative Claim-/Reward-Zähler</b> (oder zwei gespiegelte Accounting-Felder). Die bisherige Annahme „Pending Reward wird auf 0 gesetzt“ ist damit widerlegt.</p>${layoutHtml}`;
         $('stateCandidates').innerHTML=`<p>Für diese Transaktion ist kein früherer „Reward-State-Schreibblock“ zu suchen: <b>die beobachteten Storage-Werte werden erst durch den Claim selbst um den Reward erhöht.</b></p>
-          <p class="muted">Der nächste sinnvolle Ansatz ist deshalb die Struktur des Wallet-Datensatzes im Claim-Contract: unveränderte Nachbarfelder können Principal, Startzeit, Rate, letzter Claim oder eine Positionsreferenz enthalten. Diese Version liest dafür bei erkannter Mapping-Struktur die Offsets 0–10 vor und nach dem Claim aus.</p>`;
+          <p class="muted">Der nächste sinnvolle Ansatz ist deshalb die Struktur des Wallet-Datensatzes im Claim-Contract. Diese Version liest dafür nicht mehr blind historische Nachbar-Slots, sondern zeigt ausschließlich die vom konkreten <span class="mono">withdrawYield()</span>-Call tatsächlich gelesenen/berührten Struct-Felder aus dem Full-Prestate-Trace.</p>`;
       }else if(best&&(best.preRewardMatch||best.resetToZero)){
         log(`Reward-Slot-Kandidat gefunden: ${best.slot}. Suche historischen Schreibzeitpunkt.`);
         const hist=await findRewardStateStart(claimContract,best.slot,claimBlock,best.beforeN);
@@ -634,7 +693,7 @@ async function analyze(){
     if(stateEvidence?.deltaMatches?.length){
       conclusion+=`<p class="ok"><b>Storage-Semantik korrigiert:</b> ${stateEvidence.deltaMatches.length} Storage-Slot(s) steigen beim Claim jeweils exakt um den geminteten Reward. Der Betrag war dort vorher nicht als Pending Reward gespeichert; die Felder sind sehr wahrscheinlich kumulative Claim-/Reward-Zähler.</p>`;
       if(stateEvidence.layout?.found){
-        conclusion+=`<p><b>Wallet-Struct:</b> Die Slots lassen sich einer einfachen Wallet-Mapping-Struktur mit Basisslot <b>${stateEvidence.layout.baseSlot}</b> zuordnen. Die Nachbarfelder 0–10 werden oben angezeigt; daraus können wir nun Principal/Startzeit/Rate/Positionsreferenz suchen.</p>`;
+        conclusion+=`<p><b>Wallet-Struct:</b> Die Slots lassen sich einer einfachen Wallet-Mapping-Struktur mit Basisslot <b>${stateEvidence.layout.baseSlot}</b> zuordnen. Für historische Werte werden jetzt ausschließlich Felder aus dem Full-Prestate-Trace der konkreten Tx verwendet; dadurch vermeiden wir falsche „historische“ Werte eines nicht voll archive-fähigen RPCs.</p>`;
       }
     }else if(stateEvidence?.best?.preRewardMatch){
       conclusion+=`<p class="ok"><b>Reward-Storage bestätigt:</b> Ein Storage-Slot enthält vor dem Withdraw exakt den geminteten Reward.</p>`;
