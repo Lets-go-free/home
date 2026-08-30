@@ -24,7 +24,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
   <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 00:07:41 CEST</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 00:10:00 CEST</div>
 
   <div class="card">
     <div class="row">
@@ -597,7 +597,7 @@ function downloadText(filename,text){
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function exportFormulaSection(){
-  const hash=$('hash').value.trim();
+  const hash=$('txHash')?.value?.trim()||'';
   const body=textFromNode($('formulaTrace'));
   if(!body||body==='Noch keine Daten.'||body==='Lädt…'){
     alert('Abschnitt 7 enthält noch keine Analyse-Daten.');
