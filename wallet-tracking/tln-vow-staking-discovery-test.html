@@ -38,7 +38,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 11:59:12 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 12:03:00 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -3144,7 +3144,7 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   $('completedStakings').innerHTML=completed.length?completed.map(l=>positionCardHtml(l,indexOfLot(l),true)).join(''):'<div class="empty-note">Keine abgeschlossenen Stakings gefunden.</div>';
   bindLotDetailEvents();
   const learnedRows=[...LEARNED_REWARD_PATHS.values()];
-  $('learnedRewardPaths').innerHTML=learnedRows.length?`<div class="wrap"><table style="min-width:980px"><thead><tr><th>Contract</th><th>Selector</th><th>Belege</th><th>Empfangene Token</th><th>Beispiel-Tx</th></tr></thead><tbody>${learnedRows.map(r=>`<tr><td class="mono">${esc(r.contract)}</td><td class="mono">${esc(r.selector)}</td><td>${r.count}</td><td>${[...r.tokens.values()].map(x=>`${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)} (${x.count})`).join('<br>')}</td><td class="mono">${r.examples.map(h=>`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(h)}">${esc(h)}</a>`).join('<br>')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="muted">Keine Reward-/Claim-Pfade dynamisch gelernt.</div>';
+  if($('learnedRewardPaths')) $('learnedRewardPaths').innerHTML=learnedRows.length?`<div class="wrap"><table style="min-width:980px"><thead><tr><th>Contract</th><th>Selector</th><th>Belege</th><th>Empfangene Token</th><th>Beispiel-Tx</th></tr></thead><tbody>${learnedRows.map(r=>`<tr><td class="mono">${esc(r.contract)}</td><td class="mono">${esc(r.selector)}</td><td>${r.count}</td><td>${[...r.tokens.values()].map(x=>`${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)} (${x.count})`).join('<br>')}</td><td class="mono">${r.examples.map(h=>`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(h)}">${esc(h)}</a>`).join('<br>')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="muted">Keine Reward-/Claim-Pfade dynamisch gelernt.</div>';
   const checks=[];
   for(const key of new Set(stakingRows.map(stakingKey))){
     const rs=stakingRows.filter(r=>stakingKey(r)===key),ls=lots.filter(l=>l.key===key);
