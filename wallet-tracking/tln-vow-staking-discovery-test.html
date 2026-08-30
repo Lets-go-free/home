@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 02:25:49 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 02:42:27 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -626,6 +626,67 @@ async function hintedRewardRelevantCalls(wallet){
   }
   return out;
 }
+
+async function rewardRelevantCallsFromTransfers(wallet,transfers=[]){
+  const w=norm(wallet),byHash=new Map();
+  for(const t of (transfers||[])){
+    const h=String(t.hash||'').toLowerCase();
+    if(!h||norm(t.to)!==w)continue;
+    if(!byHash.has(h))byHash.set(h,[]);
+    byHash.get(h).push(t);
+  }
+  const out=[];let i=0;
+  for(const [hash,incoming] of byHash){
+    i++;
+    if(i%50===0)log(`Reward-relevante Wallet-Aufrufe aus Token-Rückflüssen ${i}/${byHash.size}…`);
+    try{
+      const [tx,receipt]=await Promise.all([
+        rpc('eth_getTransactionByHash',[hash]),
+        rpc('eth_getTransactionReceipt',[hash]).catch(()=>null)
+      ]);
+      // Voll dynamisch: nur reale Wallet-initiierte Contract-Tx, die in derselben Tx
+      // mindestens einen ERC-20-Transfer zurück an die Wallet erzeugten.
+      if(!tx||norm(tx.from)!==w||!tx.to||!ethers.isAddress(tx.to))continue;
+      const success=receipt?.status==null?null:Number(BigInt(receipt.status))===1;
+      if(success===false)continue;
+      const input=tx.input||'0x';
+      if(input==='0x')continue;
+      let blockTimestamp=null;
+      const metaTs=incoming.find(x=>x.metadata?.blockTimestamp)?.metadata?.blockTimestamp;
+      if(metaTs)blockTimestamp=metaTs;
+      else if(tx.blockNumber){
+        try{const b=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);if(b?.timestamp)blockTimestamp=new Date(Number(BigInt(b.timestamp))*1000).toISOString()}catch{}
+      }
+      const selector=String(input).slice(0,10).toLowerCase();
+      let uintArg=null;
+      if(String(input).length>=74){try{uintArg=BigInt('0x'+String(input).slice(10,74))}catch{}}
+      out.push({
+        hash,from:tx.from,to:tx.to,blockNum:tx.blockNumber,
+        metadata:{blockTimestamp},_input:input,_selector:selector,
+        _method:METHOD_SELECTORS.get(selector)||'Wallet-Aufruf mit ERC-20-Rückfluss',
+        _blockNumber:tx.blockNumber?parseInt(tx.blockNumber,16):null,
+        _success:success,_uintArg:uintArg,
+        _erc20Transfers:receiptErc20Transfers(receipt),
+        _dynamicRewardEvidence:true,
+        _staking:{contract_address:norm(tx.to),label:'Dynamisch aus Wallet-Aufruf + ERC-20-Rückfluss'}
+      });
+    }catch(e){
+      log(`Wallet-Aufruf aus ERC-20-Rückfluss ${hash}: ${e.message}`,'warn');
+    }
+  }
+  return out;
+}
+function mergeContractCalls(...groups){
+  const m=new Map();
+  for(const g of groups)for(const c of (g||[])){
+    const h=String(c.hash||'').toLowerCase();
+    if(!h)continue;
+    const prev=m.get(h);
+    if(!prev)m.set(h,c);
+    else m.set(h,{...prev,...c,_staking:prev._staking||c._staking,_erc20Transfers:(prev._erc20Transfers?.length?prev._erc20Transfers:c._erc20Transfers)||[]});
+  }
+  return [...m.values()];
+}
 async function allExternalCallsToStaking(wallet,extraTargets=[]){
   const stakeMap=new Map(stakingContracts.map(x=>[norm(x.contract_address),x]));
   for(const x of (extraTargets||[])){
@@ -973,7 +1034,7 @@ function historicalAssetDescriptor(row){
   };
 }
 
-const REWARD_TX_HINTS=[]; // keine manuellen Reward-/Claim-Tx-Hinweise
+const REWARD_TX_HINTS=[]; // keine manuellen Claim-/Reward-Tx-Hinweise // keine manuellen Reward-/Claim-Tx-Hinweise
 const BUSINESS_PROBE_CACHE=new Map();
 const PAIR_STATE_CACHE=new Map();
 
@@ -2846,10 +2907,12 @@ tlnWallets=(wq.data||[])
 populateTlnWalletDropdown();
 bindWalletDropdown();
 $('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok')}
-$('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('contractCalls').innerHTML='<tr><td colspan="9">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('runningStakings').innerHTML='<div class="muted">Suche…</div>';$('completedStakings').innerHTML='<div class="muted">Suche…</div>';$('deepEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();CURRENT_WALLET=wallet;if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const transfers=await allErc20Transfers(wallet);CURRENT_ALL_TRANSFERS=transfers;$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const projectSet=new Set(projectTokens.map(x=>norm(x.address)));const candidates=[...counts.keys()];log(`${candidates.length} unterschiedliche ERC-20-Contracts werden als mögliche V2-LPs geprüft.`);const pairs=[];for(let i=0;i<candidates.length;i++){if(i%25===0)log(`LP-Prüfung ${i+1}/${candidates.length}…`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}const pairMap=new Map(pairs.map(p=>[p.address,p]));renderPairTable(pairs,counts);let rows=renderEvents(transfers,pairMap,wallet);let stakingRows=renderRawStakingEvents(rows);let entryTargets=await discoverStakeEntryTargets(stakingRows);if(entryTargets.length)log(`Zusätzliche Entry-/Controller-Contracts aus Stake-Txs erkannt: ${entryTargets.map(x=>x.contract_address).join(', ')}`,'ok');let contractCalls=await allExternalCallsToStaking(wallet,entryTargets);
+$('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('contractCalls').innerHTML='<tr><td colspan="9">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('runningStakings').innerHTML='<div class="muted">Suche…</div>';$('completedStakings').innerHTML='<div class="muted">Suche…</div>';$('deepEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();CURRENT_WALLET=wallet;if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const transfers=await allErc20Transfers(wallet);CURRENT_ALL_TRANSFERS=transfers;$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const projectSet=new Set(projectTokens.map(x=>norm(x.address)));const candidates=[...counts.keys()];log(`${candidates.length} unterschiedliche ERC-20-Contracts werden als mögliche V2-LPs geprüft.`);const pairs=[];for(let i=0;i<candidates.length;i++){if(i%25===0)log(`LP-Prüfung ${i+1}/${candidates.length}…`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}const pairMap=new Map(pairs.map(p=>[p.address,p]));renderPairTable(pairs,counts);let rows=renderEvents(transfers,pairMap,wallet);let stakingRows=renderRawStakingEvents(rows);let entryTargets=await discoverStakeEntryTargets(stakingRows);if(entryTargets.length)log(`Zusätzliche Entry-/Controller-Contracts aus Stake-Txs erkannt: ${entryTargets.map(x=>x.contract_address).join(', ')}`,'ok');let stakingContractCalls=await allExternalCallsToStaking(wallet,entryTargets);
+const rewardRelevantCalls=await rewardRelevantCallsFromTransfers(wallet,transfers);
+let contractCalls=mergeContractCalls(stakingContractCalls,rewardRelevantCalls);
 contractCalls.sort((a,b)=>String(a.metadata?.blockTimestamp||'').localeCompare(String(b.metadata?.blockTimestamp||'')));
 renderContractCalls(contractCalls);
-log(`${contractCalls.length} Wallet-Aufrufe dynamisch geprüft.`,'ok');
+log(`${contractCalls.length} Wallet-Aufrufe dynamisch geprüft · ${stakingContractCalls.length} bekannte Staking-/Entry-Aufrufe + ${rewardRelevantCalls.length} Wallet-Aufrufe mit ERC-20-Rückfluss.`,'ok');
 
 const stakeTxPairs=await discoverPairsFromStakeTransactions(contractCalls,transfers,pairMap,projectSet,counts,wallet);
 if(stakeTxPairs.length){
