@@ -30,9 +30,15 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .collapsible-card>summary{cursor:pointer;padding:16px 18px;font-size:18px;font-weight:700;list-style:disclosure-closed}
 .collapsible-card[open]>summary{list-style:disclosure-open;border-bottom:1px solid #2b3546}
 .collapsible-card>.collapsible-body{padding:14px 18px 18px}
+
+.claim-summary{margin:10px 0 14px;padding:12px 14px;border:1px solid #334155;border-radius:10px;background:rgba(15,23,42,.35)}
+.claim-summary-title{font-weight:800;margin-bottom:10px}
+.claim-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.claim-summary-item{padding:10px 12px;border:1px solid #2b3546;border-radius:8px;background:rgba(255,255,255,.02)}
+.claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 11:15:51 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 11:41:55 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -1798,6 +1804,35 @@ function strongRewardEvidenceForLot(lot,callTo,selector,txHash,positionEvidence=
   if(learned&&callTo&&(related.has(callTo)||graphConnectedRewardContract(lot,callTo)))return {strong:true,kind:'learned_related_path'};
   return {strong:false,kind:null};
 }
+
+const ZERO_ADDRESS='0x0000000000000000000000000000000000000000';
+function rewardTransferOriginEvidence(lot,call,transfer){
+  const from=norm(transfer?.from||'');
+  const callTo=norm(call?.to||call?._staking?.contract_address||'');
+  const direct=norm(lot?.staking?.contract_address||lot?.counterparty||'');
+  const entry=norm(lot?.entry_contract||'');
+  const eventContract=norm(lot?.stake_event_contract||'');
+  const related=lotRewardContracts(lot);
+  if(from===ZERO_ADDRESS)return {ok:true,reason:'Reward-Token wurde in der Claim-Tx an die Wallet gemintet'};
+  if(from&&from===callTo)return {ok:true,reason:'Reward-Token kam direkt vom aufgerufenen Claim-/Reward-Contract'};
+  if(from&&[direct,entry,eventContract].filter(Boolean).includes(from))
+    return {ok:true,reason:'Reward-Token kam direkt vom zugehörigen Staking-/Controller-Contract'};
+  if(from&&related.has(from))
+    return {ok:true,reason:'Reward-Token kam direkt von einem on-chain verknüpften Reward-Contract'};
+  return {ok:false,reason:'Token kam nicht direkt aus dem Reward-/Staking-System'};
+}
+function isPrincipalOrUnderlyingToken(lot,token){
+  token=norm(token||'');
+  if(!token)return false;
+  const pair=lot?.pair||null;
+  const principal=norm(safePairAddress(lot));
+  if(principal&&token===principal)return true;
+  const t0=norm(pair?.token0?.address||'');
+  const t1=norm(pair?.token1?.address||'');
+  // Underlying pool tokens are not automatically rewards. They may be returned
+  // by liquidity removal/migration. They require independent reward provenance.
+  return !!(token&&(token===t0||token===t1));
+}
 async function attachRewardClaimsToLots(lots,calls){
   const wallet=norm(CURRENT_WALLET);
   const rewardCandidates=[];
@@ -1876,6 +1911,16 @@ async function attachRewardClaimsToLots(lots,calls){
       if(posEv.matched){
         score+=500;reasons.push(`Position-ID stimmt überein (${posEv.ids.join(', ')})`);
       }
+
+      const originEv=rewardTransferOriginEvidence(lot,c,tr);
+      if(!originEv.ok){
+        continue;
+      }
+      if(isPrincipalOrUnderlyingToken(lot,tr.token) && norm(tr.from)!==ZERO_ADDRESS){
+        // LP/principal/underlying returns are not rewards unless they are explicitly minted.
+        continue;
+      }
+      score+=80;reasons.push(originEv.reason);
 
       if(c._rewardHint){score+=35;reasons.push('bestätigte reward-relevante Tx')}
       // Keine Zeitinformation darf die Positionszuordnung beeinflussen.
@@ -2126,11 +2171,17 @@ async function attachRewardTokenHistoryToLots(lots){
         score+=100;reasons.push('Contract-Graph: Reward-/Yield-SC gehört zu diesem Staking-System');
       }
 
-      const pseudoCall={_input:tx?.input||'0x',input:tx?.input||'0x'};
+      const pseudoCall={_input:tx?.input||'0x',input:tx?.input||'0x',to:callTo};
       const posEv=positionEvidenceForLot(lot,pseudoCall,receipt);
       if(posEv.matched){
         score+=500;reasons.push(`Position-ID stimmt überein (${posEv.ids.join(', ')})`);
       }
+
+      const globalTransfer={from,to,token};
+      const originEv=rewardTransferOriginEvidence(lot,pseudoCall,globalTransfer);
+      if(!originEv.ok)continue;
+      if(isPrincipalOrUnderlyingToken(lot,token) && from!==ZERO_ADDRESS)continue;
+      score+=80;reasons.push(originEv.reason);
 
       // Alte TLN-Rewards werden teilweise gemintet (from = 0x0).
       // Deshalb zählt auch ein Receipt-Event des Staking-Systems als starke Evidenz.
@@ -2926,7 +2977,29 @@ function renderRewardClaiming(lots){
     return;
   }
 
-  el.innerHTML=`<div class="wrap"><table style="min-width:1580px">
+  const summary=new Map();
+  for(const r of rows){
+    const c=r.claim;
+    const key=`${norm(c.token)}|${c.symbol||'Token'}`;
+    const x=summary.get(key)||{symbol:c.symbol||'Token',token:norm(c.token),count:0,amount:0};
+    x.count++;
+    x.amount+=Number(c.amount||0);
+    summary.set(key,x);
+  }
+  const summaryHtml=[...summary.values()]
+    .sort((a,b)=>String(a.symbol).localeCompare(String(b.symbol)))
+    .map(x=>`<div class="claim-summary-item">
+      <div class="claim-summary-token">${esc(x.symbol)}</div>
+      <div><b>${x.count.toLocaleString('de-CH')}</b> Claim${x.count===1?'':'s'}</div>
+      <div class="num">${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</div>
+      <div class="mono muted">${esc(x.token||'')}</div>
+    </div>`).join('');
+
+  el.innerHTML=`<div class="claim-summary">
+    <div class="claim-summary-title">Summary nach Reward-Token</div>
+    <div class="claim-summary-grid">${summaryHtml}</div>
+  </div>
+  <div class="wrap"><table style="min-width:1580px">
     <thead><tr>
       <th>Claim-Datum</th>
       <th>Reward</th>
@@ -2950,7 +3023,7 @@ function renderRewardClaiming(lots){
       <td class="num">${stakingAssetAmountText(lot)}</td>
       <td>${lot.expiryTime?new Date(lot.expiryTime).toLocaleString('de-CH'):'–'}${lot.durationSource?`<div class="muted">${esc(lot.durationSource)}</div>`:''}</td>
       <td class="mono">${esc(lot?.staking?.contract_address||lot.counterparty||'–')}</td>
-      <td>${esc(claim.assignmentReason||'belastbar zugeordnet')}</td>
+      <td>${esc(claim.assignmentReason||'belastbar zugeordnet')}<div class="muted">Transfer-Quelle: ${esc(claim.from||'–')}</div></td>
       <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(claim.hash)}">${esc(claim.hash)}</a></td>
     </tr>`).join('')}</tbody>
   </table></div>`;
