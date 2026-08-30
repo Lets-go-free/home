@@ -38,7 +38,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 14:24:48 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 14:37:09 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -1568,9 +1568,54 @@ function lotLifecycleHashSet(lots=[]){
   }
   return out;
 }
+
+const REWARD_STATE_PROBE_NAMES=new Set([
+  'earned(address)','pendingReward(address)','pendingRewards(address)',
+  'withdrawableYield(address)','getWithdrawableYield(address)','availableYield(address)',
+  'claimable(address)','rewards(address)','totalPayouts(address)','payouts(address)',
+  'totalWithdrawn(address)','bonus(address)','qlpBonus(address)'
+]);
+function selectorHasExplicitRewardIntent(selector){
+  const m=String(METHOD_SELECTORS.get(String(selector||'').toLowerCase())||'').toLowerCase();
+  return /claim|reward|harvest|yield/.test(m);
+}
+function blockHexMinusOne(block){
+  try{
+    const n=typeof block==='string'&&block.startsWith('0x')?BigInt(block):BigInt(block||0);
+    return n>0n?'0x'+(n-1n).toString(16):null;
+  }catch{return null}
+}
+function blockHexOf(block){
+  try{
+    const n=typeof block==='string'&&block.startsWith('0x')?BigInt(block):BigInt(block||0);
+    return n>=0n?'0x'+n.toString(16):null;
+  }catch{return null}
+}
+async function rewardStateDeltaEvidenceForCall(call,wallet,contracts=[]){
+  const block=call?._blockNumber||call?.blockNum||call?.blockNumber||null;
+  const beforeBlock=blockHexMinusOne(block),afterBlock=blockHexOf(block);
+  if(!beforeBlock||!afterBlock)return [];
+  const rows=[];
+  for(const contract of [...new Set((contracts||[]).map(norm).filter(ethers.isAddress))].slice(0,12)){
+    let before,after;
+    try{
+      [before,after]=await Promise.all([
+        historicalWalletProbeMap(contract,wallet,beforeBlock),
+        historicalWalletProbeMap(contract,wallet,afterBlock)
+      ]);
+    }catch{continue}
+    for(const ch of changedHistoricalProbeRows(before,after)){
+      if(REWARD_STATE_PROBE_NAMES.has(ch.sig)){
+        rows.push({contract,sig:ch.sig,before:ch.before,after:ch.after});
+      }
+    }
+  }
+  return rows;
+}
 async function classifyRewardCallFlow(call,wallet,lots=[]){
   const w=norm(wallet),hash=String(call?.hash||'').toLowerCase();
   const callTo=norm(call?.to||call?._staking?.contract_address||'');
+  const selector=String(call?._selector||'').toLowerCase();
   const transfers=(call?._erc20Transfers||[]).filter(x=>x?.token&&x?.amountRaw!=null);
   const incoming=transfers.filter(x=>norm(x.to)===w&&norm(x.from)!==w);
   const outgoing=transfers.filter(x=>norm(x.from)===w&&norm(x.to)!==w);
@@ -1579,8 +1624,18 @@ async function classifyRewardCallFlow(call,wallet,lots=[]){
   let traceSources=new Set();
   if(incoming.length&&hash){try{traceSources=await traceCalledAddresses(hash)}catch{}}
   if(callTo)traceSources.add(callTo);
-  // Receipt-emitting contracts are deliberately NOT promoted to payout sources:
-  // swaps/routers touch many token/pair contracts and would otherwise look like claims.
+
+  // Stage 1: prove that the TX itself has reward/claim semantics.
+  // A token transfer from the called contract is NOT sufficient.
+  const explicitIntent=selectorHasExplicitRewardIntent(selector);
+  let stateDeltaEvidence=[];
+  if(incoming.length&&!lifecycle){
+    stateDeltaEvidence=await rewardStateDeltaEvidenceForCall(
+      call,w,[callTo,...traceSources]
+    );
+  }
+  const stateProvesReward=stateDeltaEvidence.length>0;
+
   const outgoingTokens=new Set(outgoing.map(x=>norm(x.token)));
   const incomingTokens=new Set(incoming.map(x=>norm(x.token)));
   const tokenExchange=!lifecycle&&outgoing.length>0&&incoming.length>0&&
@@ -1589,32 +1644,62 @@ async function classifyRewardCallFlow(call,wallet,lots=[]){
   const payoutTransfers=[],rejectedTransfers=[];
   for(const tr of incoming){
     const from=norm(tr.from);
-    let evidence=null;
-    if(from===ZERO_ADDRESS)evidence='mint_to_wallet';
-    else if(callTo&&from===callTo)evidence='direct_from_called_contract';
-    else if(traceSources.has(from))evidence='from_internal_call_chain';
-    if(evidence)payoutTransfers.push({...tr,rewardFlowEvidence:evidence});
-    else rejectedTransfers.push({...tr,rejectReason:'no_causal_payout_path'});
+    let causalPath=null;
+    if(from===ZERO_ADDRESS)causalPath='mint_to_wallet';
+    else if(callTo&&from===callTo)causalPath='direct_from_called_contract';
+    else if(traceSources.has(from))causalPath='from_internal_call_chain';
+
+    // Stage 2: only a PROVEN reward TX may promote a causal payout transfer.
+    // Mint is independently strong evidence. For ordinary transfers we require
+    // explicit claim/reward method semantics OR an on-chain reward-state delta.
+    let proof=null;
+    if(from===ZERO_ADDRESS)proof='mint';
+    else if(causalPath&&explicitIntent)proof='explicit_claim_method';
+    else if(causalPath&&stateProvesReward)proof='reward_state_delta';
+
+    if(causalPath&&proof){
+      payoutTransfers.push({
+        ...tr,
+        rewardFlowEvidence:causalPath,
+        rewardProof:proof,
+        rewardStateDelta:stateDeltaEvidence
+      });
+    }else{
+      rejectedTransfers.push({
+        ...tr,
+        rejectReason:causalPath?'causal_transfer_without_reward_proof':'no_causal_payout_path',
+        causalPath
+      });
+    }
   }
+
   let kind='other';
   if(lifecycle)kind='lifecycle';
   else if(payoutTransfers.length)kind='reward_candidate';
   else if(tokenExchange)kind='exchange_or_liquidity';
-  return {hash,kind,lifecycle,exchangeLike:tokenExchange,callTo,incoming,outgoing,
-    payoutTransfers,rejectedTransfers,traceSources:[...traceSources]};
+  else if(incoming.length)kind='incoming_unproven';
+
+  return {
+    hash,kind,lifecycle,exchangeLike:tokenExchange,callTo,selector,
+    explicitRewardIntent:explicitIntent,stateDeltaEvidence,
+    incoming,outgoing,payoutTransfers,rejectedTransfers,
+    traceSources:[...traceSources]
+  };
 }
 async function classifyRewardCallFlows(calls,wallet,lots=[]){
   CURRENT_REWARD_FLOW_BY_HASH=new Map();
-  let rewardCandidates=0,exchangeFlows=0,rejectedIncoming=0;
+  let rewardCandidates=0,exchangeFlows=0,rejectedIncoming=0,unproven=0,stateProven=0;
   for(const c of (calls||[])){
     const flow=await classifyRewardCallFlow(c,wallet,lots);
     c._rewardFlow=flow;
     if(flow.hash)CURRENT_REWARD_FLOW_BY_HASH.set(flow.hash,flow);
     if(flow.kind==='reward_candidate')rewardCandidates++;
     if(flow.kind==='exchange_or_liquidity')exchangeFlows++;
+    if(flow.kind==='incoming_unproven')unproven++;
+    if(flow.stateDeltaEvidence?.length)stateProven++;
     rejectedIncoming+=flow.rejectedTransfers.length;
   }
-  log(`Reward-Tx-Klassifikation: ${rewardCandidates} kausale Reward-Kandidaten · ${exchangeFlows} reine Swap/Liquidity-Flows ohne Reward-Pfad · ${rejectedIncoming} eingehende Token ohne kausalen Auszahlungs-Pfad.`,'ok');
+  log(`Reward-Tx-Klassifikation: ${rewardCandidates} BELEGTE Reward-Kandidaten · ${stateProven} mit Reward-State-Delta · ${unproven} eingehende Tx ohne Reward-Beweis verworfen · ${exchangeFlows} Swap/Liquidity-Flows · ${rejectedIncoming} Transfers nicht als Reward klassifiziert.`,'ok');
 }
 function rewardPayoutTransfersForCall(call){
   return call?._rewardFlow?.kind==='reward_candidate'
@@ -1644,14 +1729,16 @@ async function learnRewardPathsFromWalletCalls(calls,lots=[]){
         if(amount>0)incoming.push({
           hash:String(c.hash||'').toLowerCase(),
           token:tr.token,symbol:meta.symbol||'Token',amount,
-          evidence:tr.rewardFlowEvidence
+          evidence:tr.rewardFlowEvidence,
+          proof:tr.rewardProof,
+          stateDelta:tr.rewardStateDelta||[]
         });
       }catch{}
     }
     if(!incoming.length)continue;
 
     registerLearnedRewardPath(contract,selector,incoming);
-    log(`Kausaler Reward-/Claim-Pfad gelernt: ${contract} · ${selector} · ${incoming.map(x=>`${x.amount} ${x.symbol} [${x.evidence}]`).join(', ')} · Tx ${c.hash}`,'ok');
+    log(`Kausaler Reward-/Claim-Pfad gelernt: ${contract} · ${selector} · ${incoming.map(x=>`${x.amount} ${x.symbol} [${x.evidence}; ${x.proof||'proof'}]`).join(', ')} · Tx ${c.hash}`,'ok');
   }
 }
 
@@ -1860,6 +1947,9 @@ function positionEvidenceForLot(lot,call,receipt=null){
   const matches=[...ids].filter(x=>vals.has(x));
   return {matched:matches.length>0,ids:matches};
 }
+// Called only AFTER classifyRewardCallFlow has independently proven a reward.
+ // Contract graph/relation below may assign a proven reward to a lot, but can
+ // never turn an ordinary incoming token into a reward.
 function strongRewardEvidenceForLot(lot,callTo,selector,txHash,positionEvidence=null){
   callTo=norm(callTo||'');selector=String(selector||'').toLowerCase();txHash=String(txHash||'').toLowerCase();
   if(positionEvidence?.matched)return {strong:true,kind:'position_id',positionIds:positionEvidence.ids||[]};
@@ -1981,7 +2071,7 @@ async function attachRewardClaimsToLots(lots,calls){
 
       if(isPrincipalOrUnderlyingToken(lot,tr.token))continue;
       score+=110;
-      reasons.push(`kausaler Reward-Transfer: ${tr.rewardFlowEvidence||'on-chain payout path'}`);
+      reasons.push(`belegter Reward-Transfer: ${tr.rewardFlowEvidence||'on-chain payout path'} · Beweis ${tr.rewardProof||'–'}`);
 
       if(c._rewardHint){score+=35;reasons.push('bestätigte reward-relevante Tx')}
       // Keine Zeitinformation darf die Positionszuordnung beeinflussen.
@@ -2245,7 +2335,7 @@ async function attachRewardTokenHistoryToLots(lots){
 
       if(isPrincipalOrUnderlyingToken(lot,token))continue;
       score+=110;
-      reasons.push(`kausaler Reward-Transfer: ${causalTransfer.rewardFlowEvidence||'on-chain payout path'}`);
+      reasons.push(`belegter Reward-Transfer: ${causalTransfer.rewardFlowEvidence||'on-chain payout path'} · Beweis ${causalTransfer.rewardProof||'–'}`);
 
       // Alte TLN-Rewards werden teilweise gemintet (from = 0x0).
       // Deshalb zählt auch ein Receipt-Event des Staking-Systems als starke Evidenz.
