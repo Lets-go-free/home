@@ -24,7 +24,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
   <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 00:10:00 CEST</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 00:17:12 CEST</div>
 
   <div class="card">
     <div class="row">
@@ -43,7 +43,10 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
   <div class="card">
     <div class="row" style="justify-content:space-between;align-items:center">
       <h2 style="margin:0">7. Reward-Formel / Opcode-Trace</h2>
-      <button class="btn" id="exportFormula" type="button">Abschnitt 7 exportieren</button>
+      <div class="row" style="gap:8px">
+        <button class="btn" id="exportFormulaCompact" type="button">Formel-Kern exportieren</button>
+        <button class="btn" id="exportFormula" type="button">Abschnitt 7 komplett exportieren</button>
+      </div>
     </div>
     <div id="formulaTrace" class="muted" style="margin-top:12px">Noch keine Daten.</div>
   </div>
@@ -455,6 +458,125 @@ function renderOpcodeWindow(structLogs,w,importantValues){
     <table><thead><tr><th>Step</th><th>Depth</th><th>PC</th><th>Opcode</th><th>Stack-Eingaben (dezimal)</th><th>Hinweis</th></tr></thead>
     <tbody>${rows.join('')}</tbody></table></details>`;
 }
+
+function evmResultForStep(l){
+  const a=opInputs(l).filter(v=>v!=null);
+  try{
+    switch(l.op){
+      case 'ADD': return (a[0]+a[1]) & ((1n<<256n)-1n);
+      case 'SUB': return (a[0]-a[1]) & ((1n<<256n)-1n);
+      case 'MUL': return (a[0]*a[1]) & ((1n<<256n)-1n);
+      case 'DIV': return a[1]===0n?0n:a[0]/a[1];
+      case 'MOD': return a[1]===0n?0n:a[0]%a[1];
+      case 'EQ': return a[0]===a[1]?1n:0n;
+      case 'GT': return a[0]>a[1]?1n:0n;
+      case 'LT': return a[0]<a[1]?1n:0n;
+      case 'ISZERO': return a[0]===0n?1n:0n;
+      case 'AND': return a[0]&a[1];
+      case 'OR': return a[0]|a[1];
+      case 'XOR': return a[0]^a[1];
+      case 'SHL': return (a[1]<<a[0]) & ((1n<<256n)-1n);
+      case 'SHR': return a[1]>>a[0];
+      default:return null;
+    }
+  }catch{return null}
+}
+function arithmeticSteps(structLogs){
+  const ops=new Set(['ADD','SUB','MUL','DIV','MOD','EQ','GT','LT','ISZERO','AND','OR','XOR','SHL','SHR']);
+  return structLogs.map((l,i)=>({i,l,inputs:opInputs(l).filter(v=>v!=null),result:ops.has(l.op)?evmResultForStep(l):null}))
+    .filter(x=>ops.has(x.l.op));
+}
+function findProducerBefore(steps,value,beforeIndex,maxBack=700){
+  if(value==null)return null;
+  for(let j=steps.length-1;j>=0;j--){
+    const s=steps[j];
+    if(s.i>=beforeIndex)continue;
+    if(beforeIndex-s.i>maxBack)break;
+    if(s.result===value)return s;
+  }
+  return null;
+}
+function backwardValueTree(structLogs,targetValue,targetStep=null,maxDepth=7){
+  const steps=arithmeticSteps(structLogs);
+  let root=null;
+  if(targetStep!=null){
+    root=steps.find(s=>s.i===targetStep)||null;
+  }
+  if(!root){
+    // Prefer a step that actually produces the target.
+    for(let i=steps.length-1;i>=0;i--){
+      if(steps[i].result===targetValue){root=steps[i];break}
+    }
+  }
+  if(!root)return {root:null,nodes:[]};
+
+  const nodes=[];
+  const seen=new Set();
+  function walk(step,depth){
+    if(!step||depth>maxDepth)return;
+    const key=step.i+':'+String(step.result);
+    if(seen.has(key))return;
+    seen.add(key);
+    const node={step:step.i,pc:step.l.pc,depth:step.l.depth,op:step.l.op,result:step.result,inputs:step.inputs,level:depth,children:[]};
+    nodes.push(node);
+    for(const v of step.inputs){
+      const prod=findProducerBefore(steps,v,step.i,900);
+      if(prod && prod.i!==step.i){
+        node.children.push(prod.i);
+        walk(prod,depth+1);
+      }
+    }
+  }
+  walk(root,0);
+  return {root,nodes};
+}
+function labelKnownValue(v,ctx){
+  if(v==null)return '';
+  const pairs=[
+    [ctx.reward,'Reward'],
+    [ctx.total,'kumulativer Anspruch'],
+    [ctx.previous,'bereits verbucht'],
+    [ctx.principal,'Offset 8'],
+    [ctx.startTs,'Offset 11 / Startzeit'],
+    [ctx.elapsed,'verstrichene Sekunden'],
+    [ctx.days,'ganze Tage'],
+    [86400n,'Sekunden/Tag'],
+    [367n,'367'],
+  ];
+  for(const [x,label] of pairs)if(x!=null&&v===x)return label;
+  return '';
+}
+function renderDataflow(tree,ctx){
+  if(!tree.root)return '<span class="warn">Kein arithmetischer Producer für den kumulativen Anspruch gefunden.</span>';
+  const byStep=new Map(tree.nodes.map(n=>[n.step,n]));
+  function renderNode(step,level=0){
+    const n=byStep.get(step); if(!n)return '';
+    const inHtml=n.inputs.map(v=>{
+      const lab=labelKnownValue(v,ctx);
+      return `<div class="mono">${esc(v.toString())}${lab?` <span class="ok">← ${esc(lab)}</span>`:''}</div>`;
+    }).join('');
+    const children=n.children.map(c=>renderNode(c,level+1)).join('');
+    const lab=labelKnownValue(n.result,ctx);
+    return `<div style="margin-left:${level*18}px;border-left:${level?1:0}px solid var(--line);padding-left:${level?10:0}px;margin-top:7px">
+      <b>Step ${n.step} · ${esc(n.op)}</b> → <span class="mono">${esc(n.result?.toString()??'')}</span>${lab?` <span class="ok">(${esc(lab)})</span>`:''}
+      <div class="muted">Inputs:</div>${inHtml||'<div class="muted">–</div>'}
+      ${children}
+    </div>`;
+  }
+  return renderNode(tree.root.i,0);
+}
+function findTargetSubStep(structLogs,total,previous,reward){
+  // We already observed total - previous = reward. Pick this exact SUB as the anchor.
+  for(let i=0;i<structLogs.length;i++){
+    const l=structLogs[i];
+    if(l.op!=='SUB')continue;
+    const ins=opInputs(l).filter(v=>v!=null);
+    const res=evmResultForStep(l);
+    if(ins.length>=2 && res===reward && ins.includes(total) && ins.includes(previous))return i;
+  }
+  return null;
+}
+
 function calcElapsedSeconds(txTimestamp,startTimestamp){
   try{
     const a=BigInt(txTimestamp),b=BigInt(startTimestamp);
@@ -596,6 +718,29 @@ function downloadText(filename,text){
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+
+function exportFormulaCompact(){
+  const hash=$('txHash')?.value?.trim()||'';
+  const panel=$('formulaTrace');
+  if(!panel||!panel.innerText||panel.innerText.includes('Noch keine Daten')){
+    alert('Formel-Kern ist noch nicht berechnet.');
+    return;
+  }
+  const compactCard=[...panel.querySelectorAll('.card')].find(x=>x.innerText.includes('Automatisch rekonstruierter Formel-Kern'));
+  if(!compactCard){
+    alert('Automatisch rekonstruierter Formel-Kern wurde nicht gefunden.');
+    return;
+  }
+  const header=[
+    'TLN/VOW – automatisch rekonstruierter Reward-Formel-Kern',
+    'Export aus tln-vow-single-claim-trace-test.html',
+    'Version: 31.08.2026 00:17:12 CEST',
+    'Transaction: '+hash,
+    '',
+  ].join('\n');
+  downloadText('tln-vow-reward-formula-core.txt',header+textFromNode(compactCard)+'\n');
+}
+
 function exportFormulaSection(){
   const hash=$('txHash')?.value?.trim()||'';
   const body=textFromNode($('formulaTrace'));
@@ -791,16 +936,46 @@ async function analyze(){
             const important=[rawReward.total,principal,startTs,elapsed,
               ...deltaMatches.flatMap(d=>[d.beforeN,d.afterN,d.delta])];
             const windows=interestingOpcodeWindows(opR.result.structLogs,targets,important);
+            const previous=deltaMatches[0]?.beforeN??null;
+            const total=deltaMatches[0]?.afterN??null;
+            const days=elapsed>0n?elapsed/86400n:0n;
+            const subAnchor=findTargetSubStep(opR.result.structLogs,total,previous,rawReward.total);
+            let totalProducer=null;
+            const aSteps=arithmeticSteps(opR.result.structLogs);
+            if(subAnchor!=null){
+              totalProducer=findProducerBefore(aSteps,total,subAnchor,1400);
+            }
+            const flow=backwardValueTree(opR.result.structLogs,total,totalProducer?.i??null,8);
             let formulaFacts='';
             if(principal!=null)formulaFacts+=`<div class="kv"><b>Offset 8</b><span class="mono">${esc(principal.toString())}</span>${principal>=10n**15n?`<br><span class="ok">${esc(ethers.formatUnits(principal,18))}</span>`:''}</div>`;
             if(startTs!=null)formulaFacts+=`<div class="kv"><b>Offset 11</b><span class="mono">${esc(startTs.toString())}</span><br><span class="ok">${esc(new Date(Number(startTs)*1000).toLocaleString('de-CH'))}</span></div>`;
             if(elapsed>0n)formulaFacts+=`<div class="kv"><b>Zeit bis Claim</b>${elapsed.toLocaleString('de-CH')} Sekunden<br><span class="muted">${(Number(elapsed)/86400).toFixed(6)} Tage</span></div>`;
             formulaFacts+=`<div class="kv"><b>Reward</b><span class="ok"><b>${esc(ethers.formatUnits(rawReward.total,18))} TLN</b></span></div>`;
+            const compact=`<div class="card" style="background:var(--panel2);margin-top:12px">
+              <h3 style="margin-top:0">Automatisch rekonstruierter Formel-Kern</h3>
+              <div class="grid">
+                <div class="kv"><b>Kumulativer Anspruch</b>${total!=null?`<span class="mono">${esc(total.toString())}</span><br><span class="ok">${esc(ethers.formatUnits(total,18))} TLN</span>`:'–'}</div>
+                <div class="kv"><b>Bereits verbucht</b>${previous!=null?`<span class="mono">${esc(previous.toString())}</span><br>${esc(ethers.formatUnits(previous,18))} TLN`:'–'}</div>
+                <div class="kv"><b>Differenz / Mint</b><span class="ok"><b>${esc(ethers.formatUnits(rawReward.total,18))} TLN</b></span></div>
+                <div class="kv"><b>Ganztage</b>${days.toString()} Tage</div>
+              </div>
+              <p>${subAnchor!=null?`<span class="ok"><b>Exakte SUB-Verknüpfung gefunden:</b></span> Step ${subAnchor}: kumulativer Anspruch − bereits verbucht = Reward.`:'<span class="warn">Die exakte SUB-Verknüpfung konnte nicht automatisch verankert werden.</span>'}</p>
+              <h4>Rückwärts-Datenfluss zum kumulativen Anspruch</h4>
+              ${renderDataflow(flow,{reward:rawReward.total,total,previous,principal,startTs,elapsed,days})}
+            </div>`;
             $('formulaTrace').innerHTML=`<div class="grid">${formulaFacts}</div>
-              <p class="muted">Der Opcode-Trace sucht jetzt nicht nach einer vermuteten Formel, sondern nach den <b>tatsächlichen SLOAD/SSTORE- und Rechenoperationen</b>, in denen die bekannten Struct-Werte vorkommen. Dadurch können wir erkennen, ob Offset 8, Offset 11 oder andere Felder wirklich in die Reward-Berechnung eingehen.</p>
+              <p class="muted">Der Opcode-Trace sucht jetzt nicht nach einer vermuteten Formel, sondern nach den <b>tatsächlichen SLOAD/SSTORE- und Rechenoperationen</b>, in denen die bekannten Struct-Werte vorkommen.</p>
+              ${compact}
               <div class="muted">Quelle: ${esc(opR.provider)} · ${opR.result.structLogs.length.toLocaleString('de-CH')} VM-Schritte · ${windows.length} relevante Fenster.</div>
-              ${windows.length?windows.map(w=>renderOpcodeWindow(opR.result.structLogs,w,important)).join(''):'<span class="warn">Keine direkte Verwendung der bekannten Werte in den sichtbaren SLOAD/Arithmetik-Fenstern gefunden. Dann kann die Berechnung über Zwischenwerte, Memory oder einen internen Delegatecall laufen.</span>'}`;
+              <details><summary>Komplette relevante Opcode-Fenster anzeigen</summary>
+              ${windows.length?windows.map(w=>renderOpcodeWindow(opR.result.structLogs,w,important)).join(''):'<span class="warn">Keine direkten Fenster gefunden.</span>'}
+              </details>`;
             stateEvidence.opcodeWindows=windows;
+            stateEvidence.formulaFlow=flow;
+            stateEvidence.formulaSubAnchor=subAnchor;
+            stateEvidence.formulaTotal=total;
+            stateEvidence.formulaPrevious=previous;
+            stateEvidence.formulaDays=days;
             stateEvidence.principal=principal;
             stateEvidence.startTs=startTs;
             stateEvidence.elapsed=elapsed;
@@ -872,8 +1047,10 @@ async function analyze(){
       if(stateEvidence.layout?.found){
         conclusion+=`<p><b>Wallet-Struct:</b> Die Slots lassen sich einer einfachen Wallet-Mapping-Struktur mit Basisslot <b>${stateEvidence.layout.baseSlot}</b> zuordnen. Für historische Werte werden ausschließlich Felder aus dem Full-Prestate-Trace der konkreten Tx verwendet.</p>`;
       }
-      if(stateEvidence.opcodeWindows?.length){
-        conclusion+=`<p><b>Reward-Formel wird jetzt VM-seitig geprüft:</b> ${stateEvidence.opcodeWindows.length} relevante Opcode-Fenster wurden gefunden. Damit können wir unterscheiden, welche Struct-Felder tatsächlich in der Reward-Berechnung verwendet werden, statt Bedeutungen aus Zahlenwerten zu erraten.</p>`;
+      if(stateEvidence.formulaSubAnchor!=null){
+        conclusion+=`<p class="ok"><b>Reward-Differenzformel bestätigt:</b> Im Opcode-Trace gibt es eine exakte SUB-Operation: <b>kumulativer Anspruch − bereits verbucht = Mint-Reward</b>. Der neue Datenfluss-Block verfolgt jetzt zusätzlich rückwärts, wie der kumulative Anspruch selbst entsteht.</p>`;
+      }else if(stateEvidence.opcodeWindows?.length){
+        conclusion+=`<p><b>Reward-Formel wird VM-seitig geprüft:</b> ${stateEvidence.opcodeWindows.length} relevante Opcode-Fenster wurden gefunden.</p>`;
       }
     }else if(stateEvidence?.best?.preRewardMatch){
       conclusion+=`<p class="ok"><b>Reward-Storage bestätigt:</b> Ein Storage-Slot enthält vor dem Withdraw exakt den geminteten Reward.</p>`;
@@ -900,6 +1077,7 @@ async function analyze(){
   }finally{$('analyze').disabled=false}
 }
 $('analyze').addEventListener('click',analyze);
+$('exportFormulaCompact').addEventListener('click',exportFormulaCompact);
 $('exportFormula').addEventListener('click',exportFormulaSection);
 window.addEventListener('load',()=>setTimeout(analyze,100));
 </script>
