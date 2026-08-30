@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TLN/VOW · Einzel-Claim Trace</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.min.js"></script>
+<style>
+:root{color-scheme:dark;--bg:#08131f;--card:#111f2d;--line:#2a4155;--muted:#9fb1c2;--ok:#6fe0a7;--warn:#ffd166;--bad:#ff7b7b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#e7eef6;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:1450px;margin:auto;padding:22px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}
+h1,h2{margin:0 0 10px}h1{font-size:24px}h2{font-size:18px}.muted{color:var(--muted)}.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}input{flex:1;min-width:320px;background:#07111b;border:1px solid var(--line);color:#fff;border-radius:8px;padding:10px}
+button{border:0;border-radius:8px;padding:10px 15px;background:#3979d6;color:#fff;font-weight:700;cursor:pointer}button:disabled{opacity:.5}
+table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid #24394b;vertical-align:top;text-align:left}th{color:#bcd0e1}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+pre{white-space:pre-wrap;word-break:break-word;background:#07111b;border:1px solid #22384a;border-radius:8px;padding:10px;max-height:420px;overflow:auto}
+.badge{display:inline-block;padding:2px 7px;border:1px solid #3e5870;border-radius:999px;margin:1px 3px 1px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}.kv{background:#0a1723;border-radius:8px;padding:10px}.kv b{display:block;color:#a9bfd1;margin-bottom:4px}
+details{margin-top:10px}summary{cursor:pointer;font-weight:700}
+</style>
+</head>
+<body>
+<main>
+  <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
+  <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
+  <div class="muted">Entwicklungsstand 30.08.2026 21:12:02 CEST</div>
+
+  <div class="card">
+    <div class="row">
+      <input id="txHash" value="0xce5aa91fd02c74b47d1314a72e18b77c17d74eeb7dd24f7ea29933a6d5cda9bd" spellcheck="false">
+      <button id="analyze">Transaktion analysieren</button>
+    </div>
+    <div id="status" class="muted" style="margin-top:10px">Bereit.</div>
+  </div>
+
+  <div class="card"><h2>1. Transaktion</h2><div id="txInfo" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>2. ERC-20 Transfers im Receipt</h2><div id="transfers" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>3. Claim-Contract → bekannte Stakings</h2><div id="relations" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>4. Interne Calls / Trace</h2><div id="trace" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>5. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>Technisches Log</h2><pre id="log"></pre></div>
+</main>
+<script>
+const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co";
+const SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N";
+const PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36";
+const ZERO='0x0000000000000000000000000000000000000000';
+const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+let rpcUrl=null;
+const $=id=>document.getElementById(id);
+const norm=x=>String(x||'').toLowerCase();
+const esc=x=>String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const short=x=>x?`${x.slice(0,8)}…${x.slice(-6)}`:'–';
+function log(s){$('log').textContent+=`[${new Date().toLocaleTimeString('de-CH')}] ${s}\n`}
+async function rpc(method,params=[]){
+  const r=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok||j.error)throw new Error(j?.error?.message||`HTTP ${r.status}`);
+  return j.result;
+}
+function topicAddr(t){return '0x'+String(t||'').slice(-40).toLowerCase()}
+function asAddressWord(raw){
+  if(!raw||raw==='0x'||raw.length<66)return null;
+  const w=raw.slice(2,66);
+  if(!/^0{24}[0-9a-fA-F]{40}$/.test(w))return null;
+  const a='0x'+w.slice(24);
+  return a===ZERO?null:norm(a);
+}
+async function tokenMeta(a){
+  let symbol='Token',decimals=18;
+  try{
+    const raw=await rpc('eth_call',[{to:a,data:'0x95d89b41'},'latest']);
+    if(raw&&raw!=='0x'){
+      try{symbol=ethers.AbiCoder.defaultAbiCoder().decode(['string'],raw)[0]}catch{
+        try{symbol=ethers.decodeBytes32String(raw)}catch{}
+      }
+    }
+  }catch{}
+  try{
+    const raw=await rpc('eth_call',[{to:a,data:'0x313ce567'},'latest']);
+    if(raw&&raw!=='0x')decimals=Number(BigInt(raw));
+  }catch{}
+  return {symbol,decimals};
+}
+async function initRpc(){
+  const {data,error}=await sb.from('chains').select('*').eq('chain_key','bsc').single();
+  if(error)throw error;
+  rpcUrl=data.rpc_url;
+  if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))
+    rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;
+  log('BSC RPC aus public.chains geladen.');
+}
+async function stakingRows(){
+  const {data,error}=await sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true);
+  if(error)throw error;
+  return data||[];
+}
+const ADDRESS_GETTERS=[
+ 'stakingContract()','staking()','stakeContract()','pool()','stakingPool()','masterChef()',
+ 'rewardContract()','rewardsContract()','rewardPool()','controller()','manager()','vault()',
+ 'token()','stakingToken()','lpToken()','rewardToken()','owner()'
+];
+async function probeAddressGetters(contract){
+  const out=[];
+  for(const sig of ADDRESS_GETTERS){
+    const selector=ethers.id(sig).slice(0,10);
+    try{
+      const raw=await rpc('eth_call',[{to:contract,data:selector},'latest']);
+      const addr=asAddressWord(raw);
+      if(addr)out.push({sig,selector,addr});
+    }catch{}
+  }
+  return out;
+}
+async function eip1967Implementation(contract){
+  const slot='0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
+  try{
+    const raw=await rpc('eth_getStorageAt',[contract,slot,'latest']);
+    const a=asAddressWord(raw);
+    return a;
+  }catch{return null}
+}
+function embeddedKnownAddresses(bytecode,stakings){
+  const code=String(bytecode||'').toLowerCase().replace(/^0x/,'');
+  return stakings.filter(s=>code.includes(norm(s.contract_address).slice(2)));
+}
+function collectTraceCalls(node,out=[]){
+  if(!node||typeof node!=='object')return out;
+  if(node.to)out.push({type:node.type||node.callType||'CALL',from:norm(node.from),to:norm(node.to),input:node.input||'',output:node.output||'',error:node.error||''});
+  for(const c of (node.calls||[]))collectTraceCalls(c,out);
+  return out;
+}
+async function getTrace(hash){
+  try{
+    const t=await rpc('debug_traceTransaction',[hash,{tracer:'callTracer',timeout:'10s'}]);
+    return {kind:'callTracer',raw:t,calls:collectTraceCalls(t)};
+  }catch(e1){
+    try{
+      const t=await rpc('trace_transaction',[hash]);
+      const calls=(t||[]).map(x=>({type:x.type,from:norm(x.action?.from),to:norm(x.action?.to),input:x.action?.input||'',output:x.result?.output||'',error:x.error||''}));
+      return {kind:'trace_transaction',raw:t,calls};
+    }catch(e2){
+      return {kind:'unsupported',raw:null,calls:[],error:`callTracer: ${e1.message}; trace_transaction: ${e2.message}`};
+    }
+  }
+}
+async function analyze(){
+  $('analyze').disabled=true;$('status').textContent='Analysiere nur diese eine Transaktion…';$('log').textContent='';
+  for(const id of ['txInfo','transfers','relations','trace','conclusion'])$(id).innerHTML='<span class="muted">Lädt…</span>';
+  try{
+    if(!rpcUrl)await initRpc();
+    const hash=$('txHash').value.trim();
+    if(!/^0x[0-9a-fA-F]{64}$/.test(hash))throw new Error('Ungültiger Tx Hash.');
+
+    log('Lade Transaction + Receipt + Block.');
+    const [tx,receipt]=await Promise.all([
+      rpc('eth_getTransactionByHash',[hash]),
+      rpc('eth_getTransactionReceipt',[hash])
+    ]);
+    if(!tx||!receipt)throw new Error('Transaktion/Receipt nicht gefunden.');
+    const block=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);
+    const when=new Date(Number(BigInt(block.timestamp))*1000);
+    const selector=(tx.input||'').slice(0,10).toLowerCase();
+    const method=selector===ethers.id('withdrawYield()').slice(0,10).toLowerCase()?'withdrawYield()':
+                 selector===ethers.id('withdrawYield(uint256)').slice(0,10).toLowerCase()?'withdrawYield(uint256)':'unbekannt';
+
+    $('txInfo').innerHTML=`<div class="grid">
+      <div class="kv"><b>Zeitpunkt</b>${esc(when.toLocaleString('de-CH'))}</div>
+      <div class="kv"><b>Wallet / From</b><span class="mono">${esc(tx.from)}</span></div>
+      <div class="kv"><b>Claim-Contract / To</b><span class="mono">${esc(tx.to)}</span></div>
+      <div class="kv"><b>Selector / Methode</b><span class="mono">${esc(selector)}</span><br>${esc(method)}</div>
+      <div class="kv"><b>Block</b>${parseInt(tx.blockNumber,16).toLocaleString('de-CH')}</div>
+      <div class="kv"><b>Status</b>${receipt.status==='0x1'?'<span class="ok">erfolgreich</span>':'<span class="bad">fehlgeschlagen</span>'}</div>
+    </div><details><summary>Raw Input</summary><pre>${esc(tx.input)}</pre></details>`;
+
+    log('Dekodiere ERC-20 Transfer-Logs im Receipt.');
+    const transfers=[];
+    for(const l of receipt.logs||[]){
+      if(norm(l.topics?.[0])!==TRANSFER_TOPIC||l.topics.length<3)continue;
+      const token=norm(l.address),from=topicAddr(l.topics[1]),to=topicAddr(l.topics[2]);
+      const meta=await tokenMeta(token);
+      let amount='0';
+      try{amount=ethers.formatUnits(BigInt(l.data||'0x0'),meta.decimals)}catch{}
+      transfers.push({token,from,to,amount,...meta,mint:from===ZERO,toWallet:to===norm(tx.from)});
+    }
+    $('transfers').innerHTML=transfers.length?`<table><thead><tr><th>Token</th><th>Von</th><th>An</th><th>Betrag</th><th>Bewertung</th></tr></thead><tbody>${
+      transfers.map(t=>`<tr><td><b>${esc(t.symbol)}</b><div class="mono">${esc(t.token)}</div></td><td class="mono">${esc(t.from)}</td><td class="mono">${esc(t.to)}</td><td>${esc(t.amount)}</td><td>${t.mint&&t.toWallet?'<span class="ok"><b>Mint → Wallet</b></span>':t.toWallet?'<span class="warn">Zufluss → Wallet</span>':'–'}</td></tr>`).join('')
+    }</tbody></table>`:'<span class="warn">Keine ERC-20 Transfer-Logs erkannt.</span>';
+
+    log('Lade nur bekannte TLN/VOW-Staking-Contracts aus Supabase.');
+    const stakings=await stakingRows();
+    const known=new Map(stakings.map(s=>[norm(s.contract_address),s]));
+    const claimContract=norm(tx.to);
+
+    log('Prüfe Claim-Contract Bytecode, Proxy-Implementation und kleine Getter-Liste.');
+    const [code,impl,getters]=await Promise.all([
+      rpc('eth_getCode',[claimContract,'latest']),
+      eip1967Implementation(claimContract),
+      probeAddressGetters(claimContract)
+    ]);
+    const implCode=impl?await rpc('eth_getCode',[impl,'latest']).catch(()=> '0x'):'0x';
+    const embedded=[...embeddedKnownAddresses(code,stakings),...embeddedKnownAddresses(implCode,stakings)]
+      .filter((x,i,a)=>a.findIndex(y=>norm(y.contract_address)===norm(x.contract_address))===i);
+    const getterMatches=getters.filter(g=>known.has(norm(g.addr)));
+    const direct=known.get(claimContract)||null;
+
+    let relRows=[];
+    if(direct)relRows.push({type:'Direkt',value:claimContract,staking:direct});
+    if(impl&&known.has(impl))relRows.push({type:'Proxy-Implementation',value:impl,staking:known.get(impl)});
+    for(const g of getterMatches)relRows.push({type:`Getter ${g.sig}`,value:g.addr,staking:known.get(g.addr)});
+    for(const s of embedded)relRows.push({type:'Adresse im Bytecode eingebettet',value:norm(s.contract_address),staking:s});
+
+    $('relations').innerHTML=`<div class="grid">
+      <div class="kv"><b>Claim-Contract</b><span class="mono">${esc(claimContract)}</span></div>
+      <div class="kv"><b>EIP-1967 Implementation</b><span class="mono">${esc(impl||'keine erkannt')}</span></div>
+      <div class="kv"><b>Bekannte Staking-Contracts geladen</b>${stakings.length}</div>
+      <div class="kv"><b>Direkte statische Matches</b>${relRows.length}</div>
+    </div>
+    ${relRows.length?`<table><thead><tr><th>Nachweis</th><th>Adresse</th><th>Staking</th></tr></thead><tbody>${relRows.map(r=>`<tr><td>${esc(r.type)}</td><td class="mono">${esc(r.value)}</td><td>${esc(r.staking.label||r.staking.name||r.staking.contract_address)}</td></tr>`).join('')}</tbody></table>`:'<div class="warn" style="margin-top:10px">Kein direkter Match über Adresse, Proxy, Getter oder eingebettete bekannte Staking-Adresse.</div>'}
+    <details><summary>Alle gefundenen Address-Getter</summary><pre>${esc(JSON.stringify(getters,null,2))}</pre></details>`;
+
+    log('Versuche genau einen Transaction-Trace.');
+    const tr=await getTrace(hash);
+    const traceKnown=tr.calls.filter(c=>known.has(norm(c.to)));
+    $('trace').innerHTML=tr.kind==='unsupported'
+      ?`<span class="warn">Provider unterstützt den benötigten Trace nicht.</span><pre>${esc(tr.error)}</pre>`
+      :`<div class="muted">Trace-Typ: ${esc(tr.kind)} · ${tr.calls.length} Calls · ${traceKnown.length} Call(s) an bekannte Staking-Contracts.</div>
+       ${tr.calls.length?`<table><thead><tr><th>Typ</th><th>Von</th><th>An</th><th>Selector</th><th>Staking-Match</th></tr></thead><tbody>${tr.calls.map(c=>`<tr><td>${esc(c.type)}</td><td class="mono">${esc(c.from)}</td><td class="mono">${esc(c.to)}</td><td class="mono">${esc((c.input||'').slice(0,10))}</td><td>${known.has(norm(c.to))?'<span class="ok"><b>JA</b></span>':'–'}</td></tr>`).join('')}</tbody></table>`:''}`;
+
+    const mintRewards=transfers.filter(t=>t.mint&&t.toWallet);
+    const allEvidence=[...relRows];
+    for(const c of traceKnown)allEvidence.push({type:'Interner Call im Tx-Trace',value:c.to,staking:known.get(norm(c.to))});
+    const uniqueMatches=[...new Map(allEvidence.map(e=>[norm(e.staking?.contract_address||e.value),e])).values()];
+
+    let conclusion='';
+    if(mintRewards.length){
+      conclusion+=`<p class="ok"><b>Reward-Beweis:</b> ${mintRewards.length} Mint-Transfer(s) von Zero Address direkt zum aufrufenden Wallet erkannt.</p>`;
+    }else{
+      conclusion+=`<p class="warn"><b>Reward-Beweis:</b> Kein Zero-Address-Mint im Receipt erkannt.</p>`;
+    }
+    if(method.startsWith('withdrawYield'))conclusion+=`<p class="ok"><b>Claim-Semantik:</b> Transaktion ruft ${esc(method)} auf.</p>`;
+    if(uniqueMatches.length===1){
+      const e=uniqueMatches[0],s=e.staking;
+      conclusion+=`<p class="ok"><b>Staking-Zuordnung gefunden:</b> ${esc(s.label||s.name||s.contract_address)} · <span class="mono">${esc(s.contract_address)}</span></p>
+      <p>Nachweis: ${esc(e.type)}. Diese Beziehung kann anschließend als generische Zuordnungsregel in die Haupt-Engine übernommen werden.</p>`;
+    }else if(uniqueMatches.length>1){
+      conclusion+=`<p class="warn"><b>Mehrere mögliche Stakings:</b> ${uniqueMatches.length}. Die Tx allein liefert noch keinen eindeutigen Positionsnachweis.</p>`;
+    }else{
+      conclusion+=`<p class="warn"><b>Noch keine Staking-Zuordnung:</b> Die isolierte Tx zeigt Reward und Claim-Methode, aber über Adresse/Proxy/Getter/Bytecode/Trace wurde kein bekannter Staking-Contract eindeutig verbunden.</p>
+      <p>Dann wäre der nächste isolierte Schritt eine gezielte Storage-/historische-State-Analyse genau dieses Claim-Contracts – weiterhin ohne Wallet-Gesamthistorie.</p>`;
+    }
+    $('conclusion').innerHTML=conclusion;
+    $('status').innerHTML='<span class="ok">Analyse abgeschlossen.</span>';
+    log('Fertig.');
+  }catch(e){
+    $('status').innerHTML=`<span class="bad">${esc(e.message)}</span>`;log('FEHLER: '+e.message);
+  }finally{$('analyze').disabled=false}
+}
+$('analyze').addEventListener('click',analyze);
+window.addEventListener('load',()=>setTimeout(analyze,100));
+</script>
+</body>
+</html>
