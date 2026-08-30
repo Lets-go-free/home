@@ -1,0 +1,2940 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TLN/VOW Staking Discovery Test – BSC</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<style>
+body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24px}h1{margin:0 0 6px}h2{margin-top:0}.muted{color:#9aa3b3}.card{background:#151a22;border:1px solid #29313d;border-radius:14px;padding:16px;margin:16px 0}button{background:#6488f7;color:#07101f;border:0;border-radius:10px;padding:11px 16px;font-weight:700;cursor:pointer}button:disabled{opacity:.45}input,select{background:#222936;color:#e8ebf2;border:1px solid #394354;border-radius:9px;padding:10px 12px;min-width:460px}table{border-collapse:collapse;width:100%;min-width:1050px}th,td{padding:10px;border-bottom:1px solid #29313d;text-align:left;vertical-align:top}th{color:#aeb6c5}.wrap{overflow-x:auto}.ok{color:#54d68b}.err{color:#ff6b6b}.warn{color:#f5c451}.mono{font-family:ui-monospace,monospace;font-size:.88em;word-break:break-all}.pill{padding:3px 8px;border-radius:8px;background:#222936;display:inline-block}pre{white-space:pre-wrap}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:12px}
+.metric{background:#11161e;border:1px solid #29313d;border-radius:10px;padding:10px}
+.metric b{display:block;font-size:1.35rem;margin-top:3px}
+.num{white-space:nowrap}.status-open{color:#54d68b;font-weight:700}.status-closed{color:#9aa3b3}.status-partial{color:#f5c451;font-weight:700}
+
+.stake-pos{border:1px solid #343d4d;border-radius:12px;padding:16px;margin:12px 0;background:#171c25}
+.stake-pos-head{display:flex;gap:18px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}
+.stake-title{font-size:20px;font-weight:800}.stake-status{font-weight:800}
+.stake-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px 18px;margin-top:14px}
+.stake-fact{padding:8px 0}.stake-fact .k{display:block;color:#9ba7b7;font-size:12px;margin-bottom:3px}.stake-fact .v{font-weight:650;word-break:break-word}
+.stake-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}.stake-actions details{flex:1 1 420px}.stake-actions summary{cursor:pointer;color:#8fb1ff;font-weight:700}
+.tx-table{margin-top:8px}.tx-kind{font-weight:800}.empty-note{padding:14px;border:1px dashed #394354;border-radius:10px;color:#9ba7b7}
+
+
+.value-source{font-size:11px;color:#9ba7b7;margin-top:3px}
+.reward-box{margin-top:14px;border:1px solid #384357;border-radius:10px;padding:13px;background:#141923}
+.reward-title{font-weight:800;font-size:15px;margin-bottom:8px}
+.reward-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:9px 16px}
+.reward-item{padding:5px 0}.reward-item .rk{display:block;color:#9ba7b7;font-size:12px;margin-bottom:2px}.reward-item .rv{font-weight:700}
+.reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
+</style></head><body>
+<h1>TLN/VOW – Staking/LP Discovery Test</h1>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 02:42:27 CEST</div>
+<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
+<label>TLN-Wallet<br>
+<select id="walletSelect" disabled>
+  <option value="">TLN-Wallets werden geladen…</option>
+</select></label>
+<div style="margin-top:8px"><span class="muted">BSC/EVM-Adresse:</span> <span id="walletAddress" class="mono">–</span></div>
+<input id="wallet" type="hidden" value="">
+<div style="margin-top:12px"><button id="refresh" disabled>Discovery starten</button> <span id="status"></span></div>
+<div class="summary">
+ <div class="metric">ERC-20 Transfers<b id="mTransfers">–</b></div>
+ <div class="metric">Projekt-LPs<b id="mPairs">–</b></div>
+ <div class="metric">Stake-Events<b id="mStakes">–</b></div>
+ <div class="metric">Unstake-Events<b id="mUnstakes">–</b></div>
+ <div class="metric">Staking-Lots gesamt<b id="mLots">–</b></div>
+ <div class="metric">davon beendet<b id="mClosed">–</b></div>
+</div></div>
+<div class="card"><h2>TLN/VOW-Projekt-Token</h2><div id="projectCount" class="muted">Noch keine Daten.</div><div class="wrap"><table><thead><tr><th>Symbol</th><th>Kategorie</th><th>Contract</th></tr></thead><tbody id="projectTokens"><tr><td colspan="3">Noch keine Daten.</td></tr></tbody></table></div></div>
+<div class="card"><h2>Bekannte Staking-Contracts</h2><div class="wrap"><table style="min-width:1050px"><thead><tr><th>Contract-Bezeichnung</th><th>Rolle</th><th>Contract</th><th>Pair-Hinweis</th><th>Laufzeit</th></tr></thead><tbody id="stakingContracts"><tr><td colspan="5">Noch keine Daten.</td></tr></tbody></table></div></div>
+<div class="card"><h2>Erkannte historische LP-Token</h2><p class="muted">Diese Tabelle zeigt die LP-Token-Contracts, die als Grundlage für die historische LP-/Staking-Auswertung erkannt wurden. Normalfall: <code>token0()</code> und <code>token1()</code> funktionieren und mindestens ein Underlying gehört zum TLN/VOW-Projekt. Historischer Fallback: Bei einem anhand des rohen Method-Selectors als <code>stake(...)</code> erkannten Aufruf an einen bekannten Staking-Contract werden zusätzlich die ERC-20-Transfers genau dieser Transaktion ausgewertet. Ist ein übertragener LP heute nicht mehr lesbar, werden <code>token0()</code>, <code>token1()</code>, <code>factory()</code> und <code>decimals()</code> am historischen Stake-Block gelesen. Zusätzlich kann ein explizit bestätigtes historisches Nicht-V2-Staking-Asset (z. B. ein gebridgter Legacy-LPT) dynamisch aus <code>predefined_tokens</code> erkannt werden; solche Einträge werden nicht als heutige DEX-LPs behandelt. Ein aus dem Wallet heraus übertragener V2-LP kann dadurch auch dann erkannt werden, wenn sein Empfänger ein Controller/Zwischencontract war oder seine Underlyings heute nicht mehr in der aktuellen Projektliste stehen.</p><div class="wrap"><table><thead><tr><th>LP</th><th>Contract</th><th>token0</th><th>token1</th><th>Projekt-Treffer</th><th>Erkannt durch</th><th>Factory</th><th>Transfers</th></tr></thead><tbody id="pairs"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
+<div class="card"><h2>Historische LP-/Staking-Ereignisse</h2><div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Aktion</th><th>LP</th><th>LP-Menge</th><th>Gegenstelle</th><th>Staking-Bezeichnung</th><th>Block</th><th>Transaktion</th></tr></thead><tbody id="events"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
+<div class="card"><h2>Direkte Wallet-Aufrufe an Staking-/Entry-Contracts</h2>
+<p class="muted">Ergänzende Diagnose: zeigt ausgehende Wallet-Transaktionen an bekannte Staking-Contracts sowie automatisch aus den Stake-Transaktionen erkannte Entry-/Controller-Contracts. Damit finden wir einen Unstake-Aufruf auch dann, wenn kein passender LP-Rücktransfer in der ERC-20-Historie erkannt wurde.</p>
+<div class="wrap"><table style="min-width:1350px"><thead><tr><th>Zeit</th><th>Erkannte Methode</th><th>Ausführung</th><th>Contract-Bezeichnung</th><th>Staking-Contract</th><th>Selector</th><th>1. uint256</th><th>Block</th><th>Tx</th></tr></thead><tbody id="contractCalls"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
+
+<div class="card"><h2>Rohe Staking-Ereignisse</h2>
+<p class="muted">Diese Tabelle zeigt <b>jede</b> LP-Übertragung zwischen Wallet und einem bestätigten Staking-Contract. Wenn hier ein historischer Stake steht, aber unten kein Lot entsteht, liegt der Fehler in der Lot-/FIFO-Rekonstruktion.</p>
+<div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Aktion</th><th>Pool</th><th>Staking-Contract</th><th>Bezeichnung</th><th>LP-Menge</th><th>Block</th><th>Tx</th></tr></thead><tbody id="stakingEvents"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
+
+<div class="card"><h2>Wallet-bezogene Smart-Contract-Events</h2>
+<p class="muted">Deep-Scan: alle Events der erkannten Staking-/Entry-Contracts, in denen die Wallet irgendwo in Topics oder Daten vorkommt. Damit sehen wir auch Legacy-Events mit unbekanntem Layout.</p>
+<div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Erkennung</th><th>Contract</th><th>Topic0</th><th>Tx von</th><th>Tx an</th><th>LP-Rückgabe?</th><th>Tx</th></tr></thead><tbody id="deepEvents"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
+
+<div class="card"><h2>🟢 Laufende Stakings</h2>
+<p class="muted">Aktuell noch offene Staking-Positionen. Der historische Endwert wird zum vertraglichen Freigabe-/Ablaufzeitpunkt bewertet – nicht erst bei einem späteren Unstake.</p>
+<div id="runningStakings"><div class="muted">Noch keine Daten.</div></div></div>
+
+<div class="card"><h2>✅ Abgeschlossene Stakings</h2>
+<p class="muted">Historische Stakings, die vollständig beendet / unstaked wurden. Ein echter Vertragsendwert wird nur gezeigt, wenn der Zeitpunkt aus dem SC belastbar ableitbar ist. Historische Unstake-Simulationen werden ausdrücklich als Simulation bezeichnet; der tatsächliche Unstake-Wert wird zusätzlich ausgewiesen.</p>
+<div id="completedStakings"><div class="muted">Noch keine Daten.</div></div></div>
+
+<div class="card"><h2>Reward-Kandidaten ohne eindeutige Staking-Zuordnung</h2>
+<div id="unassignedRewards" class="muted">Noch nicht ausgewertet.</div>
+<h2>Dynamisch gelernte Reward-/Claim-Pfade</h2>
+<p class="muted">Ein Pfad wird nur gelernt, wenn ein Wallet-Aufruf an Contract + Selector in derselben Transaktion einen tatsächlichen ERC-20-Eingang ins ausgewählte Wallet erzeugt. Nichts davon ist als Selector oder Reward-Token fest codiert.</p>
+<div id="learnedRewardPaths"><div class="muted">Noch keine Daten.</div></div></div>
+
+<div class="card"><h2>Plausibilitätsprüfung</h2>
+<p class="muted">Vergleicht rohe Stake-/Unstake-Ereignisse mit der Lot-Rekonstruktion. Nicht zuordenbare Unstakes oder Differenzen werden ausdrücklich gemeldet.</p>
+<div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
+<div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
+<script>
+const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+const V2=new ethers.Interface(["function token0() view returns(address)","function token1() view returns(address)","function factory() view returns(address)","function decimals() view returns(uint8)","function getReserves() view returns(uint112,uint112,uint32)","function totalSupply() view returns(uint256)"]);
+const ERC20=new ethers.Interface(["function symbol() view returns(string)","function decimals() view returns(uint8)"]);
+const ZERO='0x0000000000000000000000000000000000000000';
+let rpcUrl=null,alchemyBase=null,projectTokens=[],allProjectRows=[],stakingContracts=[],tlnWallets=[],CURRENT_ALL_TRANSFERS=[];
+let projectTokenMap=new Map();
+const PROXY_IMPL_CACHE=new Map();
+let CURRENT_STAKING_LOTS=[],CURRENT_WALLET='',CURRENT_UNASSIGNED_REWARDS=[];
+// Keine fest codierten Staking-Laufzeiten.
+function stakingDurationDays(){ return null; }
+function stakingDurationSource(){ return null; }
+function addDaysIso(iso,days){
+  if(!iso||!days)return null;
+  const d=new Date(iso); if(Number.isNaN(d.getTime()))return null;
+  d.setUTCDate(d.getUTCDate()+Number(days));
+  return d.toISOString();
+}
+function stakingContractLabel(staking){
+  return staking?.label||staking?.contract_name||staking?.role||'Unbekannter Staking-Contract';
+}
+
+// Häufige TLN-/Staking-Methoden. Unbekannte Selector bleiben sichtbar.
+const METHOD_SELECTORS = new Map([
+  [ethers.id('unstake()').slice(0,10).toLowerCase(),'Unstake'],
+  [ethers.id('unstake(uint256)').slice(0,10).toLowerCase(),'Unstake'],
+  [ethers.id('withdraw()').slice(0,10).toLowerCase(),'Withdraw'],
+  [ethers.id('withdraw(uint256)').slice(0,10).toLowerCase(),'Withdraw'],
+  [ethers.id('stake(uint256)').slice(0,10).toLowerCase(),'Stake'],
+  [ethers.id('stake()').slice(0,10).toLowerCase(),'Stake'],
+  [ethers.id('claim()').slice(0,10).toLowerCase(),'Claim'],
+  [ethers.id('claim(uint256)').slice(0,10).toLowerCase(),'Claim'],
+  [ethers.id('claimRewards()').slice(0,10).toLowerCase(),'Claim Rewards'],
+  [ethers.id('claimReward()').slice(0,10).toLowerCase(),'Claim Reward'],
+  [ethers.id('getReward()').slice(0,10).toLowerCase(),'Get Reward'],
+  [ethers.id('harvest()').slice(0,10).toLowerCase(),'Harvest'],
+  [ethers.id('withdrawReward()').slice(0,10).toLowerCase(),'Withdraw Reward']
+]);
+
+const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm=a=>String(a||'').toLowerCase();
+function log(s,cls=''){const t=new Date().toLocaleTimeString('de-CH');$('log').innerHTML+=`
+<span class="${cls}">[${t}] ${esc(s)}</span>`}
+async function rpc(method,params=[]){const r=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok)throw new Error(`HTTP ${r.status} bei ${method}`);const j=await r.json();if(j.error)throw new Error(`${method}: ${j.error.message} (Code ${j.error.code})`);return j.result}
+async function v2call(to,fn,args=[]){const data=V2.encodeFunctionData(fn,args);const raw=await rpc('eth_call',[{to,data},'latest']);return V2.decodeFunctionResult(fn,raw)}
+async function v2callAt(to,fn,args=[],blockTag='latest'){const data=V2.encodeFunctionData(fn,args);const raw=await rpc('eth_call',[{to,data},blockTag]);return V2.decodeFunctionResult(fn,raw)}
+async function tokenMetaAt(a,blockTag='latest'){
+  let symbol=a.slice(0,8)+'…',decimals=18;
+  try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('symbol',[])},blockTag]);symbol=ERC20.decodeFunctionResult('symbol',raw)[0]}catch{try{const m=await tokenMeta(a);symbol=m.symbol}catch{}}
+  try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('decimals',[])},blockTag]);decimals=Number(ERC20.decodeFunctionResult('decimals',raw)[0])}catch{try{const m=await tokenMeta(a);decimals=m.decimals}catch{}}
+  return{address:norm(a),symbol,decimals};
+}
+async function tokenMeta(a){let symbol=a.slice(0,8)+'…',decimals=18;try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('symbol',[])},'latest']);symbol=ERC20.decodeFunctionResult('symbol',raw)[0]}catch{}try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('decimals',[])},'latest']);decimals=Number(ERC20.decodeFunctionResult('decimals',raw)[0])}catch{}return{address:norm(a),symbol,decimals}}
+async function alchemy(method,params=[]){if(!alchemyBase)throw new Error('Alchemy Discovery-API für BSC fehlt in public.chains.');const url=alchemyBase.replace(/\/+$/,'')+'/'+encodeURIComponent(ALCHEMY_API_KEY);const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok)throw new Error(`Alchemy HTTP ${r.status}`);const j=await r.json();if(j.error)throw new Error(`Alchemy ${method}: ${j.error.message}`);return j.result}
+async function allErc20Transfers(wallet){const out=[];for(const direction of ['fromAddress','toAddress']){let pageKey=null,page=0;do{const q={fromBlock:'0x0',toBlock:'latest',category:['erc20'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'};q[direction]=wallet;if(pageKey)q.pageKey=pageKey;log(`ERC-20 ${direction==='fromAddress'?'ausgehend':'eingehend'} · Seite ${page+1}`);const r=await alchemy('alchemy_getAssetTransfers',[q]);for(const t of (r?.transfers||[]))out.push({...t,_direction:direction==='fromAddress'?'out':'in'});pageKey=r?.pageKey||null;page++}while(pageKey&&page<100)}const m=new Map();for(const t of out){const c=norm(t.rawContract?.address);if(!c)continue;const k=t.uniqueId||`${t.hash}|${c}|${t.from}|${t.to}|${t.rawContract?.value||t.value}`;m.set(k,t)}return [...m.values()]}
+
+
+const SC_READ_PROBES=[
+ {label:'lockDuration()',sig:'lockDuration()',args:[],kind:'duration'},{label:'stakingDuration()',sig:'stakingDuration()',args:[],kind:'duration'},
+ {label:'duration()',sig:'duration()',args:[],kind:'duration'},{label:'lockPeriod()',sig:'lockPeriod()',args:[],kind:'duration'},
+ {label:'lockTime()',sig:'lockTime()',args:[],kind:'duration'},{label:'stakingPeriod()',sig:'stakingPeriod()',args:[],kind:'duration'},
+ {label:'period()',sig:'period()',args:[],kind:'duration'},
+ {label:'unlockTime(address)',sig:'unlockTime(address)',args:['wallet'],kind:'timestamp'},{label:'unlockTimestamp(address)',sig:'unlockTimestamp(address)',args:['wallet'],kind:'timestamp'},
+ {label:'unstakeDate(address)',sig:'unstakeDate(address)',args:['wallet'],kind:'timestamp'},{label:'unstakeTime(address)',sig:'unstakeTime(address)',args:['wallet'],kind:'timestamp'},
+ {label:'lockedUntil(address)',sig:'lockedUntil(address)',args:['wallet'],kind:'timestamp'},{label:'lockEnd(address)',sig:'lockEnd(address)',args:['wallet'],kind:'timestamp'},
+ {label:'endTime(address)',sig:'endTime(address)',args:['wallet'],kind:'timestamp'},{label:'startTime(address)',sig:'startTime(address)',args:['wallet'],kind:'timestamp'},
+ {label:'stakeTimestamp(address)',sig:'stakeTimestamp(address)',args:['wallet'],kind:'timestamp'},{label:'stakedAt(address)',sig:'stakedAt(address)',args:['wallet'],kind:'timestamp'},
+ {label:'stakedAmount(address)',sig:'stakedAmount(address)',args:['wallet'],kind:'amount'},{label:'stakeAmount(address)',sig:'stakeAmount(address)',args:['wallet'],kind:'amount'},
+ {label:'amountStaked(address)',sig:'amountStaked(address)',args:['wallet'],kind:'amount'},{label:'deposited(address)',sig:'deposited(address)',args:['wallet'],kind:'amount'},
+ {label:'balanceOf(address)',sig:'balanceOf(address)',args:['wallet'],kind:'amount'},{label:'earned(address)',sig:'earned(address)',args:['wallet'],kind:'amount'},
+ {label:'pendingReward(address)',sig:'pendingReward(address)',args:['wallet'],kind:'amount'},{label:'pendingRewards(address)',sig:'pendingRewards(address)',args:['wallet'],kind:'amount'},
+ {label:'withdrawableYield(address)',sig:'withdrawableYield(address)',args:['wallet'],kind:'amount'},{label:'getWithdrawableYield(address)',sig:'getWithdrawableYield(address)',args:['wallet'],kind:'amount'},
+ {label:'availableYield(address)',sig:'availableYield(address)',args:['wallet'],kind:'amount'},{label:'totalPayouts(address)',sig:'totalPayouts(address)',args:['wallet'],kind:'amount'},
+ {label:'payouts(address)',sig:'payouts(address)',args:['wallet'],kind:'amount'},{label:'bonus(address)',sig:'bonus(address)',args:['wallet'],kind:'amount'},
+ {label:'qlpBonus(address)',sig:'qlpBonus(address)',args:['wallet'],kind:'amount'},{label:'totalWithdrawn(address)',sig:'totalWithdrawn(address)',args:['wallet'],kind:'amount'},
+ {label:'claimable(address)',sig:'claimable(address)',args:['wallet'],kind:'amount'},{label:'rewards(address)',sig:'rewards(address)',args:['wallet'],kind:'amount'},
+ {label:'dailyReward(address)',sig:'dailyReward(address)',args:['wallet'],kind:'amount'},{label:'rewardPerDay(address)',sig:'rewardPerDay(address)',args:['wallet'],kind:'amount'},
+ {label:'dailyRate(address)',sig:'dailyRate(address)',args:['wallet'],kind:'amount'},{label:'rewardRate(address)',sig:'rewardRate(address)',args:['wallet'],kind:'amount'},
+ {label:'interestRate(address)',sig:'interestRate(address)',args:['wallet'],kind:'amount'},{label:'stakedDays(address)',sig:'stakedDays(address)',args:['wallet'],kind:'days'},
+ {label:'staked_days(address)',sig:'staked_days(address)',args:['wallet'],kind:'days'},{label:'daysStaked(address)',sig:'daysStaked(address)',args:['wallet'],kind:'days'},
+ {label:'dailyReward()',sig:'dailyReward()',args:[],kind:'amount'},{label:'rewardPerDay()',sig:'rewardPerDay()',args:[],kind:'amount'},
+ {label:'dailyRate()',sig:'dailyRate()',args:[],kind:'amount'},{label:'rewardRate()',sig:'rewardRate()',args:[],kind:'amount'},
+ {label:'interestRate()',sig:'interestRate()',args:[],kind:'amount'},
+ {label:'userInfo(address)',sig:'userInfo(address)',args:['wallet'],kind:'raw'},{label:'users(address)',sig:'users(address)',args:['wallet'],kind:'raw'},
+ {label:'stakes(address)',sig:'stakes(address)',args:['wallet'],kind:'raw'},{label:'stakeInfo(address)',sig:'stakeInfo(address)',args:['wallet'],kind:'raw'},
+ {label:'stakingInfo(address)',sig:'stakingInfo(address)',args:['wallet'],kind:'raw'},{label:'depositInfo(address)',sig:'depositInfo(address)',args:['wallet'],kind:'raw'}
+];
+function selectorFor(sig){return ethers.id(sig).slice(0,10).toLowerCase()}
+function encodeProbeCall(probe,wallet){
+ const types=(probe.sig.match(/\((.*)\)/)?.[1]||'').trim(),selector=selectorFor(probe.sig);
+ if(!types)return selector;
+ const vals=(probe.args||[]).map(x=>x==='wallet'?wallet:x);
+ return selector+ethers.AbiCoder.defaultAbiCoder().encode(types.split(',').map(x=>x.trim()),vals).slice(2);
+}
+function rawWords(raw){const h=String(raw||'0x').replace(/^0x/,'');if(!h||h.length%64!==0)return [];const out=[];for(let i=0;i<h.length;i+=64){const word='0x'+h.slice(i,i+64);let uint=null;try{uint=BigInt(word)}catch{}out.push({word,uint})}return out}
+function humanTimestamp(v){const n=Number(v);if(!Number.isFinite(n)||n<946684800||n>7258118400)return null;try{return new Date(n*1000).toLocaleString('de-CH')}catch{return null}}
+function humanDuration(v){const n=Number(v);if(!Number.isFinite(n)||n<=0)return null;if(n>=86400)return `${(n/86400).toLocaleString('de-CH',{maximumFractionDigits:3})} Tage (${n.toLocaleString('de-CH')} s)`;return `${n.toLocaleString('de-CH')} (contract-spezifische Einheit)`}
+function decodeProbeValue(raw,probe){
+ const words=rawWords(raw);if(!words.length)return {display:raw||'0x',raw};
+ if(words.length===1&&words[0].uint!=null){const u=words[0].uint;
+  if(probe.kind==='timestamp'){const ts=humanTimestamp(u);return {display:ts?`${ts} · Unix ${u}`:u.toString(),raw}}
+  if(probe.kind==='duration')return {display:humanDuration(u)||u.toString(),raw};
+  if(probe.kind==='days')return {display:`${u.toString()} Tage`,raw};
+  if(probe.kind==='amount'){let f=null;try{f=ethers.formatUnits(u,18)}catch{}return {display:f!=null?`${f} (18 Dec.) · raw ${u}`:u.toString(),raw}}
+  return {display:u.toString(),raw}
+ }
+ return {display:words.map((w,i)=>{const ts=w.uint==null?null:humanTimestamp(w.uint);return `Wort ${i+1}: ${w.uint==null?w.word:w.uint.toString()}${ts?` → ${ts}`:''}`}).join('\n'),raw};
+}
+
+async function eip1967Implementation(address){
+  address=norm(address||'');
+  if(!ethers.isAddress(address))return null;
+  if(PROXY_IMPL_CACHE.has(address))return PROXY_IMPL_CACHE.get(address);
+  try{
+    const slot='0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
+    const raw=await rpc('eth_getStorageAt',[address,slot,'latest']);
+    const impl=raw&&raw!=='0x'&&raw!=='0x'+'0'.repeat(64)?norm('0x'+raw.slice(-40)):null;
+    PROXY_IMPL_CACHE.set(address,impl);
+    return impl;
+  }catch{
+    PROXY_IMPL_CACHE.set(address,null);return null;
+  }
+}
+async function probeStakingContract(lot,wallet){
+ const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');if(!ethers.isAddress(contract))throw new Error('Keine gültige Staking-Contract-Adresse.');
+ let code='0x';try{code=await rpc('eth_getCode',[contract,'latest'])}catch{}
+ const implementation=await eip1967Implementation(contract);
+ let implCode='0x';
+ if(implementation){try{implCode=await rpc('eth_getCode',[implementation,'latest'])}catch{}}
+ const bytecode=String(code||'').toLowerCase(),implBytecode=String(implCode||'').toLowerCase(),results=[];
+ for(const probe of SC_READ_PROBES){
+   const selector=selectorFor(probe.sig);
+   const selectorSeen=bytecode.includes(selector.slice(2))||implBytecode.includes(selector.slice(2));
+   try{
+     const raw=await rpc('eth_call',[{to:contract,data:encodeProbeCall(probe,wallet)},'latest']);
+     if(raw&&raw!=='0x')results.push({...probe,selector,selectorSeen,raw,...decodeProbeValue(raw,probe)})
+   }catch{}
+ }
+ return {
+   contract,implementation,results,
+   bytecodeSize:Math.max(0,(bytecode.length-2)/2),
+   implementationBytecodeSize:Math.max(0,(implBytecode.length-2)/2)
+ };
+}
+
+function secondsDurationFromProbeResult(r){
+  if(!r||r.kind!=='duration')return null;
+  const w=rawWords(r.raw)[0];
+  if(!w?.uint)return null;
+  const n=Number(w.uint);
+  // Nur als Sekunden verwenden, wenn der Wert bereits selbst eindeutig eine
+  // plausible Zeitdauer in Sekunden darstellt. Kleine Werte wie "367" werden
+  // NICHT als Tage geraten.
+  if(!Number.isFinite(n)||n<3600||n>10*366*86400)return null;
+  return n;
+}
+function timestampFromProbeResult(r){
+  if(!r||r.kind!=='timestamp')return null;
+  const w=rawWords(r.raw)[0];
+  if(!w?.uint||!humanTimestamp(w.uint))return null;
+  return Number(w.uint);
+}
+async function probeTimingAtBlock(lot,wallet,blockHex){
+  const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');
+  if(!ethers.isAddress(contract)||!blockHex)return null;
+  const rows=[];
+  for(const probe of SC_READ_PROBES.filter(x=>x.kind==='duration'||x.kind==='timestamp')){
+    try{
+      const raw=await rpc('eth_call',[{to:contract,data:encodeProbeCall(probe,wallet)},blockHex]);
+      if(raw&&raw!=='0x')rows.push({...probe,raw,...decodeProbeValue(raw,probe)});
+    }catch{}
+  }
+  return rows;
+}
+
+
+const LEARNED_REWARD_PATHS=new Map();
+function rewardPathKey(contract,selector){return `${norm(contract||'')}|${String(selector||'').toLowerCase()}`}
+function learnedRewardPath(contract,selector){return LEARNED_REWARD_PATHS.get(rewardPathKey(contract,selector))||null}
+function registerLearnedRewardPath(contract,selector,evidence){
+  const c=norm(contract||''),s=String(selector||'').toLowerCase();
+  if(!ethers.isAddress(c)||!s||s==='0x')return;
+  const key=rewardPathKey(c,s),row=LEARNED_REWARD_PATHS.get(key)||{contract:c,selector:s,count:0,tokens:new Map(),examples:[]};
+  row.count++;
+  for(const e of (evidence||[])){
+    const token=norm(e.token||''); if(!token)continue;
+    const t=row.tokens.get(token)||{symbol:e.symbol||'Token',amount:0,count:0};
+    t.symbol=e.symbol||t.symbol;t.amount+=Number(e.amount||0);t.count++;row.tokens.set(token,t);
+  }
+  const h=evidence?.[0]?.hash;
+  if(h&&!row.examples.includes(h)){row.examples.push(h);if(row.examples.length>5)row.examples.shift()}
+  LEARNED_REWARD_PATHS.set(key,row);
+}
+const HIST_TX_CACHE=new Map();
+const HIST_BLOCK_CACHE=new Map();
+async function cachedTx(hash){
+  const h=String(hash||'').toLowerCase();
+  if(!h)return null;
+  if(HIST_TX_CACHE.has(h))return HIST_TX_CACHE.get(h);
+  const p=rpc('eth_getTransactionByHash',[h]).catch(()=>null);
+  HIST_TX_CACHE.set(h,p);
+  return p;
+}
+async function cachedBlockByNumber(blockHex){
+  const h=String(blockHex||'').toLowerCase();
+  if(!h)return null;
+  if(HIST_BLOCK_CACHE.has(h))return HIST_BLOCK_CACHE.get(h);
+  const p=rpc('eth_getBlockByNumber',[h,false]).catch(()=>null);
+  HIST_BLOCK_CACHE.set(h,p);
+  return p;
+}
+async function historicalCallSucceeds(call,blockNumber){
+  const tag='0x'+Number(blockNumber).toString(16);
+  try{
+    const r=await rpc('eth_call',[call,tag]);
+    return r!=null;
+  }catch{
+    return false;
+  }
+}
+async function deriveUnlockFromActualUnstake(lot){
+  if(lot.status!=='closed'||!lot.unstakeTx||!lot.stakeBlockHex)return null;
+
+  const tx=await cachedTx(lot.unstakeTx);
+  if(!tx?.to||!tx?.input||!tx?.blockNumber)return null;
+  const stakeBlock=Number(BigInt(lot.stakeBlockHex));
+  const unstakeBlock=Number(BigInt(tx.blockNumber));
+  if(!(unstakeBlock>stakeBlock+1))return null;
+
+  // Reuse exactly the successful user's unstake call (selector/calldata/value).
+  const call={
+    from:tx.from,
+    to:tx.to,
+    data:tx.input,
+    value:tx.value||'0x0'
+  };
+
+  // The state at the actual unstake block is already post-transaction, so use
+  // the latest prior block where the position was still staked.
+  let hi=unstakeBlock-1;
+  let hiOk=await historicalCallSucceeds(call,hi);
+
+  // If the user unstaked immediately after release, the preceding block can
+  // still be locked. Search backwards for a successful pre-unstake state is
+  // impossible in that case; use the actual successful tx timestamp only as
+  // an upper bound, not as a claimed contractual release time.
+  if(!hiOk){
+    return {
+      exact:false,
+      upperBoundBlock:unstakeBlock,
+      upperBoundTime:lot.unstakeTime||null,
+      source:'SC-Verhalten: tatsächlicher erfolgreicher Unstake; vorheriger Block noch nicht erfolgreich simulierbar'
+    };
+  }
+
+  // Predicate: same unstake call fails while locked, succeeds after release.
+  // Binary search first block where it succeeds.
+  let lo=stakeBlock;
+  // Avoid assuming that the stake block itself is a valid lower failure bound.
+  // We only need lo < hi; binary search converges to earliest successful block.
+  while(hi-lo>1){
+    const mid=Math.floor((lo+hi)/2);
+    if(await historicalCallSucceeds(call,mid))hi=mid;
+    else lo=mid;
+  }
+
+  const blockHex='0x'+hi.toString(16);
+  const b=await cachedBlockByNumber(blockHex);
+  if(!b?.timestamp)return null;
+  const ts=Number(BigInt(b.timestamp))*1000;
+
+  return {
+    exact:true,
+    block:hi,
+    blockHex,
+    expiryTime:new Date(ts).toISOString(),
+    source:'Historische SC-Simulation: frühester Block, an dem die tatsächliche Unstake-Tx erfolgreich simulierbar ist'
+  };
+}
+async function resolveLotContractTiming(lot,latestProbe){
+  // Contract-/positionsbezogene Freigabe hat Priorität.
+  let rows=[...(latestProbe?.results||[])];
+  if(lot.stakeBlockHex){
+    const historical=await probeTimingAtBlock(lot,CURRENT_WALLET,lot.stakeBlockHex);
+    if(historical?.length)rows=[...historical,...rows];
+  }
+
+  const unlock=rows.map(r=>({r,ts:timestampFromProbeResult(r)})).find(x=>x.ts);
+  if(unlock){
+    lot.expiryTime=new Date(unlock.ts*1000).toISOString();
+    lot.durationDays=lot.stakeTime?
+      (unlock.ts*1000-new Date(lot.stakeTime).getTime())/86400000:null;
+    lot.durationSource=`On-chain ${unlock.r.label}${lot.stakeBlockHex?' @ Stake-Block':''}`;
+    return;
+  }
+
+  const duration=rows.map(r=>({r,sec:secondsDurationFromProbeResult(r)})).find(x=>x.sec);
+  if(duration&&(lot.lockBaseTime||lot.stakeTime)){
+    const baseTime=lot.lockBaseTime||lot.stakeTime;
+    lot.durationDays=duration.sec/86400;
+    lot.expiryTime=new Date(new Date(baseTime).getTime()+duration.sec*1000).toISOString();
+    lot.durationSource=`On-chain ${duration.r.label}${lot.stakeBlockHex?' @ Stake-Block':''}`;
+    return;
+  }
+
+  // No getter? For completed positions derive the release dynamically from
+  // the contract's actual historical unstake behaviour.
+  const replay=await deriveUnlockFromActualUnstake(lot);
+  if(replay?.exact&&replay.expiryTime){
+    lot.expiryTime=replay.expiryTime;
+    const baseTime=lot.lockBaseTime||lot.stakeTime;
+    lot.durationDays=baseTime?
+      (new Date(replay.expiryTime).getTime()-new Date(baseTime).getTime())/86400000:null;
+    lot.durationSource=replay.source;
+    lot.contractUnlockBlockHex=replay.blockHex;
+    return;
+  }
+  if(replay&&!replay.exact){
+    lot.contractEndUpperBound=replay;
+  }
+
+  lot.durationDays=null;
+  lot.expiryTime=null;
+  lot.durationSource=null;
+}
+async function loadLotScDetails(index){
+ const lot=CURRENT_STAKING_LOTS[index],box=$(`scBox${index}`);if(!lot||!box||box.dataset.loaded==='1')return;
+ box.dataset.loaded='1';box.innerHTML='<span class="muted">Smart-Contract-Read-Funktionen werden geprüft…</span>';
+ try{
+  const res=await probeStakingContract(lot,CURRENT_WALLET);let unlock=null,duration=null;
+  for(const r of res.results){const w=rawWords(r.raw)[0];if(!unlock&&r.kind==='timestamp'&&w?.uint&&humanTimestamp(w.uint))unlock={label:r.label,value:humanTimestamp(w.uint)};if(!duration&&r.kind==='duration'&&w?.uint)duration={label:r.label,value:humanDuration(w.uint)||w.uint.toString()}}
+  const head=`<div class="sc-grid"><div class="sc-k">Contract-Bezeichnung</div><div class="sc-v"><b>${esc(stakingContractLabel(lot.staking))}</b></div><div class="sc-k">Staking-Contract</div><div class="sc-v mono">${esc(res.contract)}</div>
+   ${res.implementation?`<div class="sc-k">Proxy-Implementation</div><div class="sc-v mono">${esc(res.implementation)}</div>`:''}
+   ${lot.entry_contract?`<div class="sc-k">Entry-/Controller-Contract</div><div class="sc-v mono">${esc(lot.entry_contract)}</div>`:''}
+   ${lot.stake_token_id?`<div class="sc-k">Stake Token/Position ID</div><div class="sc-v mono">${esc(lot.stake_token_id)}</div>`:''}<div class="sc-k">Runtime-Bytecode</div><div class="sc-v">${res.bytecodeSize.toLocaleString('de-CH')} Bytes</div><div class="sc-k">Erkannte Read-Funktionen</div><div class="sc-v">${res.results.length}</div>${lot.unstakeEvidence?`<div class="sc-k">Unstake-Nachweis</div><div class="sc-v"><b>${esc(lot.unstakeEvidence==='contract_event'?'Unstake-Event des Smart Contracts':lot.unstakeEvidence==='successful_contract_call'?'Erfolgreicher Unstake-Contract-Call':'LP-Transfer')}</b>${lot.unstakeTime?` · ${esc(new Date(lot.unstakeTime).toLocaleString('de-CH'))}`:''}${lot.unstakeSelector?` · ${esc(lot.unstakeSelector)}`:''}${lot.unstakeArg?` · Argument ${esc(lot.unstakeArg)}`:''}</div>`:''}${duration?`<div class="sc-k">On-chain Laufzeit</div><div class="sc-v"><b>${esc(duration.value)}</b> <span class="muted">via ${esc(duration.label)}</span></div>`:''}${unlock?`<div class="sc-k">On-chain Freigabe/Ablauf</div><div class="sc-v"><b>${esc(unlock.value)}</b> <span class="muted">via ${esc(unlock.label)}</span></div>`:''}</div>`;
+  if(!res.results.length){box.innerHTML=head+'<p class="muted">Keine der bekannten Standard-Read-Funktionen lieferte einen Wert. Der Contract kann projektspezifische Funktionsnamen oder eine Proxy-Struktur verwenden.</p>';return}
+  box.innerHTML=head+`<div class="wrap" style="margin-top:10px"><table style="min-width:1050px"><thead><tr><th>Read-Funktion</th><th>Erkennung</th><th>Interpretation</th><th>Raw Return</th></tr></thead><tbody>${res.results.map(r=>`<tr><td><b>${esc(r.label)}</b><div class="mono muted">${esc(r.selector)}</div></td><td>${r.selectorSeen?'<span class="ok">Selector im Bytecode</span>':'<span class="muted">Proxy/indirekt</span>'}</td><td class="${r.kind==='raw'?'sc-raw':''}">${esc(r.display)}</td><td class="sc-raw">${esc(r.raw)}</td></tr>`).join('')}</tbody></table></div>`;
+ }catch(e){box.innerHTML=`<span class="err">${esc(e.message)}</span>`}
+}
+function bindLotDetailEvents(){document.querySelectorAll('details.sc-details').forEach(d=>d.addEventListener('toggle',()=>{if(d.open)loadLotScDetails(Number(d.dataset.lotIndex))},{once:true}))}
+
+
+async function exactBlockTransfersForTx(txHash,blockHex){
+  if(!txHash||!blockHex)return [];
+  const transferTopic='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+  try{
+    const logs=await rpc('eth_getLogs',[{fromBlock:blockHex,toBlock:blockHex,topics:[transferTopic]}]);
+    return (logs||[]).filter(l=>String(l.transactionHash||'').toLowerCase()===String(txHash).toLowerCase()).map(l=>{
+      if(!l.topics?.[1]||!l.topics?.[2])return null;
+      let amountRaw=null;try{amountRaw=BigInt(l.data||'0x0')}catch{}
+      return {
+        token:norm(l.address),
+        from:norm('0x'+String(l.topics[1]).slice(-40)),
+        to:norm('0x'+String(l.topics[2]).slice(-40)),
+        amountRaw,
+        logIndex:l.logIndex?parseInt(l.logIndex,16):null
+      };
+    }).filter(Boolean);
+  }catch(e){
+    log(`Transfer-Fallback ${txHash}: ${e.message}`,'warn');
+    return [];
+  }
+}
+async function rawCallAtBlock(to,data,blockHex){
+  try{return await rpc('eth_call',[{to,data},blockHex])}catch{return null}
+}
+function decodeUintWords(raw){
+  if(!raw||raw==='0x')return [];
+  const h=String(raw).slice(2);
+  const out=[];
+  for(let i=0;i+64<=h.length;i+=64){
+    const hex='0x'+h.slice(i,i+64);
+    try{
+      const uint=BigInt(hex);
+      out.push({index:i/64,hex,uint,as18:Number(ethers.formatUnits(uint,18))});
+    }catch{}
+  }
+  return out;
+}
+async function historicalUserInfoSnapshot(contract,wallet,blockHex){
+  if(!contract||!wallet||!blockHex)return null;
+  const sigs=['userInfo(address)','users(address)','stakes(address)','stakeInfo(address)','stakingInfo(address)','depositInfo(address)'];
+  for(const sig of sigs){
+    const selector=ethers.id(sig).slice(0,10);
+    const data=selector+ethers.AbiCoder.defaultAbiCoder().encode(['address'],[wallet]).slice(2);
+    const raw=await rawCallAtBlock(contract,data,blockHex);
+    if(raw&&raw!=='0x'){
+      const words=decodeUintWords(raw);
+      if(words.length)return {sig,selector,raw,words,blockHex};
+    }
+  }
+  return null;
+}
+function historicalStructDelta(before,after){
+  if(!after)return [];
+  const b=new Map((before?.words||[]).map(w=>[w.index,w.uint]));
+  return (after.words||[]).map(w=>{
+    const prev=b.get(w.index)??0n;
+    return {...w,before:prev,delta:w.uint-prev,delta18:Number(ethers.formatUnits(w.uint-prev,18))};
+  });
+}
+async function enrichHistoricalStakeEvidence(lot){
+  const contract=norm(lot?.staking?.contract_address||lot.counterparty||'');
+  const blockHex=lot.stakeBlockHex;
+  if(!contract||!blockHex)return;
+  const bn=Number(BigInt(blockHex));
+  const prevHex='0x'+Math.max(1,bn-1).toString(16);
+  const [before,after]=await Promise.all([
+    historicalUserInfoSnapshot(contract,CURRENT_WALLET,prevHex),
+    historicalUserInfoSnapshot(contract,CURRENT_WALLET,blockHex)
+  ]);
+  lot.historicalScBefore=before;
+  lot.historicalScAfter=after;
+  lot.historicalScDelta=historicalStructDelta(before,after);
+
+  if(after){
+    log(`Historische SC-Struktur ${after.sig} @ Stake-Block ${bn}: ${after.words.length} Wort/Wörter gelesen.`,'ok');
+    const changed=(lot.historicalScDelta||[]).filter(x=>x.delta!==0n);
+    if(changed.length)log(`SC-Änderungen beim Stake: ${changed.map(x=>`W${x.index+1} Δ=${x.delta.toString()}`).join(' · ')}`,'ok');
+  }
+}
+
+async function alchemyTransfersForTx(hash){
+  const h=String(hash||'').toLowerCase();
+  if(!h)return [];
+  const rows=(CURRENT_ALL_TRANSFERS||[]).filter(t=>String(t.hash||'').toLowerCase()===h);
+  const out=[];
+  for(const t of rows){
+    const token=norm(t.rawContract?.address||'');
+    if(!token)continue;
+    try{
+      const meta=await tokenMeta(token);
+      let amount=null;
+      if(t.rawContract?.value!=null){
+        try{amount=Number(ethers.formatUnits(BigInt(t.rawContract.value),meta.decimals))}catch{}
+      }
+      if(amount==null&&t.value!=null)amount=Number(t.value);
+      out.push({
+        token,from:norm(t.from||''),to:norm(t.to||''),amount,
+        amountRaw:t.rawContract?.value!=null?BigInt(t.rawContract.value):null,
+        symbol:meta.symbol||t.asset||'Token',decimals:meta.decimals,
+        source:'Alchemy Asset Transfers'
+      });
+    }catch{}
+  }
+  return out;
+}
+async function stakeTxTokenEvidence(lot){
+  if(!lot?.stakeTx)return [];
+  try{
+    const receipt=await rpc('eth_getTransactionReceipt',[lot.stakeTx]);
+    let transfers=receiptErc20Transfers(receipt);
+    if(!transfers.length){
+      transfers=await exactBlockTransfersForTx(lot.stakeTx,lot.stakeBlockHex||receipt?.blockNumber);
+      if(transfers.length)log(`Stake-Tx ${lot.stakeTx}: ${transfers.length} ERC-20-Transfers via Block-Log-Fallback gefunden.`,'ok');
+    }
+    const alchemyRows=await alchemyTransfersForTx(lot.stakeTx);
+    const result=[];
+    for(const tr of transfers){
+      try{
+        const meta=await tokenMeta(tr.token);
+        const amount=tr.amountRaw==null?null:Number(ethers.formatUnits(tr.amountRaw,meta.decimals));
+        result.push({...tr,symbol:meta.symbol||'Token',decimals:meta.decimals,amount});
+      }catch{}
+    }
+    const seen=new Set(result.map(x=>`${x.token}|${x.from}|${x.to}|${x.amountRaw==null?'':x.amountRaw.toString()}`));
+    for(const x of alchemyRows){
+      const k=`${x.token}|${x.from}|${x.to}|${x.amountRaw==null?'':x.amountRaw.toString()}`;
+      if(!seen.has(k)){result.push(x);seen.add(k)}
+    }
+    lot.stakeTxTransfers=result;
+    const wallet=norm(CURRENT_WALLET);
+    lot.stakeRewardEvidence=result.filter(x=>{
+      const lp=x.token===norm(safePairAddress(lot));
+      const toWallet=x.to===wallet;
+      return toWallet&&!lp&&Number(x.amount||0)>0;
+    });
+    lot.stakeTxOtherPayouts=result.filter(x=>{
+      const lp=x.token===norm(safePairAddress(lot));
+      return x.to!==wallet&&!lp&&Number(x.amount||0)>0;
+    });
+    for(const x of lot.stakeRewardEvidence){
+      addLotTx(lot,{
+        kind:`Reward / Ausschüttung · ${x.symbol}`,
+        hash:lot.stakeTx,time:lot.stakeTime,
+        block:lot.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null,
+        amount:x.amount,tokenSymbol:x.symbol,tokenAddress:x.token,
+        method:x.from==='0x0000000000000000000000000000000000000000'?'Mint beim Stake':'Reward-Transfer beim Stake',
+        source:x.source||'Stake-Transaktion',
+        calledContract:lot.entry_contract||norm(lot?.staking?.contract_address||lot.counterparty||'')||null,
+        assignmentReason:'gleiche Transaktion wie Stake'
+      });
+    }
+    return result;
+  }catch(e){
+    log(`Stake-Tx Reward-Evidenz ${lot.stakeTx}: ${e.message}`,'warn');
+    return [];
+  }
+}
+function receiptErc20Transfers(receipt){
+  const out=[];
+  const transferTopic='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+  for(const lg of (receipt?.logs||[])){
+    if(String(lg?.topics?.[0]||'').toLowerCase()!==transferTopic||!lg.topics?.[1]||!lg.topics?.[2])continue;
+    const from=norm('0x'+String(lg.topics[1]).slice(-40));
+    const to=norm('0x'+String(lg.topics[2]).slice(-40));
+    let amountRaw=null;try{amountRaw=BigInt(lg.data||'0x0')}catch{}
+    out.push({token:norm(lg.address),from,to,amountRaw});
+  }
+  return out;
+}
+async function hintedRewardRelevantCalls(wallet){
+  const out=[],w=norm(wallet);
+  for(const hash of REWARD_TX_HINTS){
+    try{
+      const [tx,receipt]=await Promise.all([
+        rpc('eth_getTransactionByHash',[hash]),
+        rpc('eth_getTransactionReceipt',[hash])
+      ]);
+      if(!tx||norm(tx.from)!==w)continue;
+      const block=tx.blockNumber?await rpc('eth_getBlockByNumber',[tx.blockNumber,false]):null;
+      const ts=block?.timestamp?new Date(Number(BigInt(block.timestamp))*1000).toISOString():null;
+      const input=tx.input||'0x',selector=String(input).slice(0,10).toLowerCase();
+      let transfers=receiptErc20Transfers(receipt);
+      if(!transfers.length&&tx.blockNumber)transfers=await exactBlockTransfersForTx(hash,tx.blockNumber);
+      out.push({
+        hash,
+        from:tx.from,
+        to:tx.to,
+        blockNum:tx.blockNumber,
+        metadata:{blockTimestamp:ts},
+        _input:input,
+        _selector:selector,
+        _method:METHOD_SELECTORS.get(selector)||'Reward-relevante Tx',
+        _blockNumber:tx.blockNumber?parseInt(tx.blockNumber,16):null,
+        _success:receipt?.status==null?null:Number(BigInt(receipt.status))===1,
+        _erc20Transfers:transfers,
+        _rewardHint:true,
+        _staking:{contract_address:norm(tx.to||''),label:'Reward-Claim · bestätigte Beispiel-Tx'}
+      });
+      log(`Reward-Tx-Hinweis geladen: ${hash} · ${transfers.length} ERC-20-Transfer(s) im Receipt.`,'ok');
+    }catch(e){
+      log(`Reward-Tx-Hinweis ${hash} konnte nicht geladen werden: ${e.message}`,'warn');
+    }
+  }
+  return out;
+}
+
+async function rewardRelevantCallsFromTransfers(wallet,transfers=[]){
+  const w=norm(wallet),byHash=new Map();
+  for(const t of (transfers||[])){
+    const h=String(t.hash||'').toLowerCase();
+    if(!h||norm(t.to)!==w)continue;
+    if(!byHash.has(h))byHash.set(h,[]);
+    byHash.get(h).push(t);
+  }
+  const out=[];let i=0;
+  for(const [hash,incoming] of byHash){
+    i++;
+    if(i%50===0)log(`Reward-relevante Wallet-Aufrufe aus Token-Rückflüssen ${i}/${byHash.size}…`);
+    try{
+      const [tx,receipt]=await Promise.all([
+        rpc('eth_getTransactionByHash',[hash]),
+        rpc('eth_getTransactionReceipt',[hash]).catch(()=>null)
+      ]);
+      // Voll dynamisch: nur reale Wallet-initiierte Contract-Tx, die in derselben Tx
+      // mindestens einen ERC-20-Transfer zurück an die Wallet erzeugten.
+      if(!tx||norm(tx.from)!==w||!tx.to||!ethers.isAddress(tx.to))continue;
+      const success=receipt?.status==null?null:Number(BigInt(receipt.status))===1;
+      if(success===false)continue;
+      const input=tx.input||'0x';
+      if(input==='0x')continue;
+      let blockTimestamp=null;
+      const metaTs=incoming.find(x=>x.metadata?.blockTimestamp)?.metadata?.blockTimestamp;
+      if(metaTs)blockTimestamp=metaTs;
+      else if(tx.blockNumber){
+        try{const b=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);if(b?.timestamp)blockTimestamp=new Date(Number(BigInt(b.timestamp))*1000).toISOString()}catch{}
+      }
+      const selector=String(input).slice(0,10).toLowerCase();
+      let uintArg=null;
+      if(String(input).length>=74){try{uintArg=BigInt('0x'+String(input).slice(10,74))}catch{}}
+      out.push({
+        hash,from:tx.from,to:tx.to,blockNum:tx.blockNumber,
+        metadata:{blockTimestamp},_input:input,_selector:selector,
+        _method:METHOD_SELECTORS.get(selector)||'Wallet-Aufruf mit ERC-20-Rückfluss',
+        _blockNumber:tx.blockNumber?parseInt(tx.blockNumber,16):null,
+        _success:success,_uintArg:uintArg,
+        _erc20Transfers:receiptErc20Transfers(receipt),
+        _dynamicRewardEvidence:true,
+        _staking:{contract_address:norm(tx.to),label:'Dynamisch aus Wallet-Aufruf + ERC-20-Rückfluss'}
+      });
+    }catch(e){
+      log(`Wallet-Aufruf aus ERC-20-Rückfluss ${hash}: ${e.message}`,'warn');
+    }
+  }
+  return out;
+}
+function mergeContractCalls(...groups){
+  const m=new Map();
+  for(const g of groups)for(const c of (g||[])){
+    const h=String(c.hash||'').toLowerCase();
+    if(!h)continue;
+    const prev=m.get(h);
+    if(!prev)m.set(h,c);
+    else m.set(h,{...prev,...c,_staking:prev._staking||c._staking,_erc20Transfers:(prev._erc20Transfers?.length?prev._erc20Transfers:c._erc20Transfers)||[]});
+  }
+  return [...m.values()];
+}
+async function allExternalCallsToStaking(wallet,extraTargets=[]){
+  const stakeMap=new Map(stakingContracts.map(x=>[norm(x.contract_address),x]));
+  for(const x of (extraTargets||[])){
+    const a=norm(x?.contract_address);
+    if(a&&!stakeMap.has(a))stakeMap.set(a,x);
+  }
+  const out=[];let pageKey=null,page=0;
+  do{
+    const q={fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'};
+    if(pageKey)q.pageKey=pageKey;
+    log(`Direkte Contract-Aufrufe · Seite ${page+1}`);
+    const r=await alchemy('alchemy_getAssetTransfers',[q]);
+    for(const t of (r?.transfers||[])){
+      const to=norm(t.to);
+      if(stakeMap.has(to))out.push({...t,_staking:stakeMap.get(to)});
+    }
+    pageKey=r?.pageKey||null; page++;
+  }while(pageKey&&page<100);
+
+  // Für den Method-Selector benötigen wir die echte Transaction-Input-Data.
+  for(const t of out){
+    try{
+      const [tx,receipt]=await Promise.all([
+        rpc('eth_getTransactionByHash',[t.hash]),
+        rpc('eth_getTransactionReceipt',[t.hash]).catch(()=>null)
+      ]);
+      t._input=tx?.input||'0x';
+      t._selector=String(t._input||'0x').slice(0,10).toLowerCase();
+      t._method=METHOD_SELECTORS.get(t._selector)||'Contract-Aufruf';
+      t._blockNumber=tx?.blockNumber?parseInt(tx.blockNumber,16):null;
+      t._success=receipt?.status==null?null:Number(BigInt(receipt.status))===1;
+      t._uintArg=null;
+      if(String(t._input||'').length>=74){
+        try{t._uintArg=BigInt('0x'+String(t._input).slice(10,74))}catch{}
+      }
+      t._erc20Transfers=receiptErc20Transfers(receipt);
+    }catch(e){
+      t._input='0x';t._selector='–';t._method='Contract-Aufruf';
+    }
+  }
+  return out;
+}
+function renderContractCalls(calls){
+  $('contractCalls').innerHTML=calls.length?calls.map(t=>{
+    const ts=t.metadata?.blockTimestamp?new Date(t.metadata.blockTimestamp).toLocaleString('de-CH'):'–';
+    const staking=t._staking;
+    const method=t._method||'Contract-Aufruf';
+    const cls=method==='Unstake'?'warn':method==='Stake'?'ok':'';
+    const block=t._blockNumber??(t.blockNum?parseInt(t.blockNum,16):'–');
+    return `<tr>
+      <td>${esc(ts)}</td><td class="${cls}"><b>${esc(method)}</b></td>
+      <td>${t._success===true?'<span class="ok">erfolgreich</span>':t._success===false?'<span class="err">fehlgeschlagen</span>':'–'}</td>
+      <td>${esc(stakingContractLabel(staking))}</td>
+      <td class="mono">${esc(norm(staking?.contract_address||t.to))}</td>
+      <td class="mono">${esc(t._selector||'–')}</td>
+      <td class="mono">${t._uintArg==null?'–':esc(t._uintArg.toString())}</td>
+      <td>${esc(block)}</td>
+      <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(t.hash)}">${esc(t.hash)}</a></td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="9">Keine direkten Wallet-Aufrufe an bekannte Staking-Contracts gefunden.</td></tr>';
+}
+
+function renderPairTable(pairs,counts){
+  $('pairs').innerHTML=pairs.length?pairs.map(p=>{
+    const isLegacy=p.assetType==='legacy_staking_token';
+    const hits=(p.hits||[]).length?p.hits.map(a=>projectTokenMap.get(norm(a))?.symbol||a).join(', '):'';
+    const discovery=p.discoverySource==='stake_tx_legacy_asset'
+      ?`Stake-Tx · historisches Staking-Asset aus Supabase${p.discoveryTx?`<div class="mono">${esc(p.discoveryTx)}</div>`:''}`
+      :p.discoverySource==='stake_tx_historical_pair'
+        ?`Stake-Tx · historische LP-Struktur${p.historicalDescriptorBlock?` @ Block ${esc(p.historicalDescriptorBlock)}`:''}${p.discoveryTx?`<div class="mono">${esc(p.discoveryTx)}</div>`:''}`
+        :p.discoverySource==='stake_tx_receipt'
+          ?`Stake-Tx · ERC-20-Transfer-Log${p.discoveryTx?`<div class="mono">${esc(p.discoveryTx)}</div>`:''}`
+          :'Wallet-Historie · Projekt-Underlying';
+    return `<tr>
+      <td><b>${esc(safePairLabel(p))}</b><br><span class="muted">${isLegacy?'Historisches Staking-Asset':'LP-Symbol: '+esc(p.lpSymbol)}</span></td>
+      <td class="mono">${esc(p.address)}</td>
+      <td>${isLegacy?`${esc(p.lpSymbol)}<div class="mono">${esc(p.address)}</div>`:`${esc(p.token0.symbol)}<div class="mono">${esc(p.token0.address)}</div>`}</td>
+      <td>${isLegacy?'<span class="muted">kein V2-Underlying</span>':`${esc(p.token1.symbol)}<div class="mono">${esc(p.token1.address)}</div>`}</td>
+      <td>${hits?`<span class="ok">${esc(hits)}</span>`:(isLegacy?'<span class="muted">Supabase · predefined_tokens</span>':(['stake_tx_receipt','stake_tx_historical_pair'].includes(p.discoverySource)?'<span class="muted">historischer Stake-Tx-Nachweis</span>':'–'))}</td>
+      <td>${discovery}</td>
+      <td class="mono">${isLegacy?'<span class="muted">kein V2-Factory</span>':esc(p.factory)}</td>
+      <td>${counts.get(p.address)||0}</td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="8">Keine historischen LP-/Staking-Token in diesem Wallet gefunden.</td></tr>';
+}
+
+function isStakeCallCandidate(c){
+  const selector=String(c?._selector||c?._input||'').slice(0,10).toLowerCase();
+  const decoded=METHOD_SELECTORS.get(selector);
+  if(decoded==='Stake')return true;
+  // Fallback for already classified call records where the raw selector may be absent.
+  if(String(c?._method||'').toLowerCase()==='stake')return true;
+  return false;
+}
+
+async function discoverPairsFromStakeTransactions(calls,transfers,pairMap,projectSet,counts,wallet){
+  const w=norm(wallet),added=[];
+  for(const c of (calls||[])){
+    const selector=String(c?._selector||c?._input||'').slice(0,10).toLowerCase();
+    if(!isStakeCallCandidate(c))continue;
+
+    const hash=String(c.hash||'').toLowerCase();
+    if(!hash)continue;
+    log(`Stake-Call-Kandidat: ${hash} · Contract ${norm(c?._staking?.contract_address||c.to||'–')} · Selector ${selector||'–'} · Status ${c._success===true?'erfolgreich':c._success===false?'fehlgeschlagen':'unbekannt'}`);
+
+    // Only an explicitly failed transaction is excluded. Unknown status is allowed,
+    // because old Alchemy records may not carry a usable receipt status.
+    if(c._success===false){
+      log(`Stake-Tx-Fallback ${hash}: Tx ist fehlgeschlagen – übersprungen.`,'warn');
+      continue;
+    }
+
+    let receipt=null,txTransfers=Array.isArray(c._erc20Transfers)?c._erc20Transfers:[];
+    if(!txTransfers.length){
+      try{
+        receipt=await rpc('eth_getTransactionReceipt',[hash]);
+        txTransfers=receiptErc20Transfers(receipt);
+      }catch(e){
+        log(`Stake-Tx-Fallback ${hash}: Receipt nicht lesbar: ${e.message}`,'warn');
+      }
+    }
+
+    // If the RPC receipt is old/pruned/incomplete, use the already loaded Alchemy
+    // ERC20 history for this exact transaction as a second evidence source.
+    if(!txTransfers.length){
+      txTransfers=(transfers||[])
+        .filter(t=>String(t.hash||'').toLowerCase()===hash)
+        .map(t=>{
+          let amountRaw=null;
+          try{
+            if(t.rawContract?.value!=null)amountRaw=BigInt(t.rawContract.value);
+          }catch{}
+          return {
+            token:norm(t.rawContract?.address||''),
+            from:norm(t.from),
+            to:norm(t.to),
+            amountRaw,
+            _source:'alchemy-wallet-history'
+          };
+        })
+        .filter(t=>t.token&&t.amountRaw!=null);
+      if(txTransfers.length)log(`Stake-Tx-Fallback ${hash}: ${txTransfers.length} ERC-20-Transfer(s) aus Alchemy-Wallet-Historie als Receipt-Ersatz verwendet.`);
+    }
+
+    const outgoing=txTransfers.filter(tr=>norm(tr.from)===w&&tr.token&&tr.amountRaw!=null);
+    if(!outgoing.length){
+      log(`Stake-Tx-Fallback ${hash}: keine aus dem Wallet herausgehenden ERC-20-Transfers in Tx-Daten gefunden.`,'warn');
+      continue;
+    }
+
+    log(`Stake-Tx-Fallback ${hash}: ${outgoing.length} ausgehende ERC-20-Transfers werden unabhängig vom Empfänger als historische Staking-Assets geprüft.`);
+
+    for(const tr of outgoing){
+      const asset=norm(tr.token);
+      if(!asset)continue;
+      if(pairMap.has(asset)){
+        log(`Stake-Tx-Fallback ${hash}: ${asset} ist bereits als LP bekannt.`);
+        continue;
+      }
+
+      let p=await inspectAnyPair(asset);
+      let historicalPairFallback=false;
+      if(!p){
+        const stakeBlock=c._blockNumber??(c.blockNum?Number(BigInt(c.blockNum)):null);
+        if(stakeBlock!=null){
+          log(`Stake-Tx-Fallback ${hash}: ${asset} heute nicht als V2-LP lesbar; historische LP-Struktur @ Stake-Block ${stakeBlock} wird geprüft.`);
+          p=await inspectAnyPairAt(asset,stakeBlock);
+          historicalPairFallback=!!p;
+        }
+      }
+      let legacyAssetFallback=false;
+      if(!p){
+        const historical=historicalStakingAsset(asset,c?._staking?.contract_address||c.to||'',c?._blockNumber??(c?.blockNum?Number(BigInt(c.blockNum)):null));
+        if(historical){
+          p=historicalAssetDescriptor(historical);
+          legacyAssetFallback=true;
+          log(`Historisches Staking-Asset erkannt: ${p.displayLabel} · ${asset} · bestätigt für ${norm(c?._staking?.contract_address||c.to||'')} · keine V2-Pair-Prüfung erforderlich.`,'ok');
+        }
+      }
+      if(!p){
+        log(`Stake-Tx-Fallback ${hash}: ${asset} weder als V2-LP noch als bestätigtes historisches Staking-Asset erkannt.`,'warn');
+        continue;
+      }
+
+      p.hits=p.assetType==='legacy_staking_token'?[]:[p.token0.address,p.token1.address].filter(a=>projectSet.has(norm(a)));
+      p.discoverySource=legacyAssetFallback?'stake_tx_legacy_asset':historicalPairFallback?'stake_tx_historical_pair':'stake_tx_receipt';
+      p.discoveryTx=hash;
+      p.discoveryTransferTo=norm(tr.to||'');
+      p.discoveryStakingContract=norm(c?._staking?.contract_address||c.to||'');
+      pairMap.set(asset,p);
+      added.push(p);
+
+      let amount=null,inputAmount=null;
+      try{amount=Number(ethers.formatUnits(tr.amountRaw,p.lpDecimals||18))}catch{}
+      try{inputAmount=c._uintArg==null?null:Number(ethers.formatUnits(c._uintArg,p.lpDecimals||18))}catch{}
+      const amountMatch=Number.isFinite(amount)&&Number.isFinite(inputAmount)&&inputAmount>0
+        ?Math.abs(amount-inputAmount)/inputAmount<0.00001:null;
+
+      log(`${legacyAssetFallback?'Historisches Staking-Asset':'Historischer LP'} über Stake-Tx entdeckt: ${safePairLabel(p)} · ${asset} · ${legacyAssetFallback?'Supabase · predefined_tokens':historicalPairFallback?`historische LP-Struktur @ Block ${p.historicalDescriptorBlock}`:'heutige LP-Struktur'} · Empfänger ${norm(tr.to||'–')} · ${amount==null?'Menge ?':amount+' '+(p.lpSymbol||'Token')}${amountMatch===true?' · Menge passt zu stake()-Argument':amountMatch===false?' · Menge weicht vom stake()-Argument ab':''} · Tx ${hash}`,'ok');
+    }
+  }
+  return added;
+}
+async function inspectCandidate(address,projectSet){try{const [t0,t1,factory,lpDec]=await Promise.all([v2call(address,'token0'),v2call(address,'token1'),v2call(address,'factory'),v2call(address,'decimals')]);const a0=norm(t0[0]),a1=norm(t1[0]);const hits=[a0,a1].filter(a=>projectSet.has(a));if(!hits.length)return null;const [m0,m1,lpMeta]=await Promise.all([tokenMeta(a0),tokenMeta(a1),tokenMeta(address)]);return{address:norm(address),token0:m0,token1:m1,factory:norm(factory[0]),lpDecimals:Number(lpDec[0]),lpSymbol:lpMeta.symbol,hits}}catch{return null}}
+function transferAmount(t,p){const raw=t.rawContract?.value;const dec=Number(t.rawContract?.decimal||p.lpDecimals||18);if(raw!=null){try{return Number(ethers.formatUnits(BigInt(raw),dec))}catch{}}return Number(t.value||0)}
+function classify(t,p,stakeMap,wallet){const from=norm(t.from),to=norm(t.to),w=norm(wallet);const cp=from===w?to:from;let action=from===w?'Versenden':'Empfangen',staking=null;if(from===ZERO&&to===w)action='Add Liquidity';else if(to===ZERO&&from===w)action='Remove Liquidity';else if(from===w&&stakeMap.has(to)){action='Stake';staking=stakeMap.get(to)}else if(to===w&&stakeMap.has(from)){action='Unstake';staking=stakeMap.get(from)}return{action,counterparty:cp,staking}}
+function renderEvents(transfers,pairMap,wallet){const stakeMap=new Map(stakingContracts.filter(x=>x.classify_transfers).map(x=>[norm(x.contract_address),x]));const rows=[];for(const t of transfers){const p=pairMap.get(norm(t.rawContract?.address));if(!p)continue;const c=classify(t,p,stakeMap,wallet);rows.push({t,p,...c,amount:transferAmount(t,p)})}rows.sort((a,b)=>String(a.t.metadata?.blockTimestamp||'').localeCompare(String(b.t.metadata?.blockTimestamp||'')));$('events').innerHTML=rows.length?rows.map(r=>{const ts=r.t.metadata?.blockTimestamp?new Date(r.t.metadata.blockTimestamp).toLocaleString('de-CH'):'–';const block=r.t.blockNum?parseInt(r.t.blockNum,16):'–';const cls=r.action==='Stake'?'ok':r.action==='Unstake'?'warn':'';return `<tr><td>${esc(ts)}</td><td class="${cls}"><b>${esc(r.action)}</b></td><td>${esc(safePairLabel(r))}<div class="mono">${esc(safePairAddress(r))}</div></td><td>${r.amount.toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="mono">${esc(r.counterparty)}</td><td>${r.staking?esc(r.staking.label):'–'}</td><td>${esc(block)}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.t.hash)}">${esc(r.t.hash)}</a></td></tr>`}).join(''):'<tr><td colspan="8">Keine TLN/VOW-LP-Ereignisse gefunden.</td></tr>';return rows}
+
+
+function safePairAddress(obj){
+  return norm(obj?.p?.address||obj?.pair?.address||obj?.pair_address||obj?.address||'');
+}
+function safePairSymbols(obj){
+  const p=obj?.p||obj?.pair||obj;
+  const s0=p?.token0?.symbol||obj?.token0_symbol||p?.token0_symbol||'Token0';
+  const s1=p?.token1?.symbol||obj?.token1_symbol||p?.token1_symbol||'Token1';
+  return [s0,s1];
+}
+function safePairLabel(obj){
+  const p=obj?.p||obj?.pair||obj;
+  if(p?.displayLabel)return p.displayLabel;
+  const [s0,s1]=safePairSymbols(obj);
+  return `${s0} / ${s1}`;
+}
+function stakingKey(r){
+  return `${safePairAddress(r)}|${norm(r?.staking?.contract_address||r?.counterparty||'')}`;
+}
+async function synthesizeStakeRowsFromReceipts(calls,pairMap,wallet,rows){
+  const w=norm(wallet);
+  const existing=new Set((rows||[]).map(r=>`${String(r?.t?.hash||'').toLowerCase()}|${safePairAddress(r)}|${r.action}`));
+  const stakeMap=new Map(stakingContracts.filter(x=>x.classify_transfers).map(x=>[norm(x.contract_address),x]));
+  const added=[];
+
+  for(const c of (calls||[])){
+    if(!isStakeCallCandidate(c)||c._success===false)continue;
+    const hash=String(c.hash||'').toLowerCase();
+    let receipt=null;
+    try{receipt=await rpc('eth_getTransactionReceipt',[hash])}catch{}
+    if(!receipt)continue;
+
+    for(const tr of receiptErc20Transfers(receipt)){
+      if(norm(tr.from)!==w)continue;
+      const asset=norm(tr.token||'');
+      const p=pairMap.get(asset);
+      if(!p)continue;
+      const key=`${hash}|${asset}|Stake`;
+      if(existing.has(key))continue;
+
+      let amount=0;
+      try{amount=Number(ethers.formatUnits(tr.amountRaw,p.lpDecimals||18))}catch{}
+      if(!(amount>0))continue;
+
+      const staking=stakeMap.get(norm(c?._staking?.contract_address||c.to||''))||c._staking||null;
+      const syntheticTransfer={
+        hash,
+        from:w,
+        to:norm(tr.to||''),
+        blockNum:c.blockNum||receipt.blockNumber||null,
+        metadata:{blockTimestamp:c.metadata?.blockTimestamp||null},
+        rawContract:{address:asset,value:'0x'+BigInt(tr.amountRaw).toString(16),decimal:p.lpDecimals||18},
+        value:amount
+      };
+      added.push({
+        t:syntheticTransfer,p,action:'Stake',
+        counterparty:norm(c?._staking?.contract_address||c.to||tr.to||''),
+        staking,amount,receiptDerived:true
+      });
+      existing.add(key);
+      log(`Stake-Ereignis aus Receipt ergänzt: ${safePairLabel(p)} · ${amount} LP · ${hash}`,'ok');
+    }
+  }
+
+  if(added.length){
+    rows.push(...added);
+    rows.sort((a,b)=>String(a.t.metadata?.blockTimestamp||'').localeCompare(String(b.t.metadata?.blockTimestamp||'')));
+  }
+  return added;
+}
+function renderRawStakingEvents(rows){
+  const stakeRows=rows.filter(r=>r.action==='Stake'||r.action==='Unstake');
+  $('mStakes').textContent=stakeRows.filter(r=>r.action==='Stake').length;
+  $('mUnstakes').textContent=stakeRows.filter(r=>r.action==='Unstake').length;
+  $('stakingEvents').innerHTML=stakeRows.length?stakeRows.map(r=>{
+    const ts=r.t.metadata?.blockTimestamp?new Date(r.t.metadata.blockTimestamp).toLocaleString('de-CH'):'–';
+    const block=r.t.blockNum?parseInt(r.t.blockNum,16):'–';
+    return `<tr><td>${esc(ts)}</td><td class="${r.action==='Stake'?'ok':'warn'}"><b>${esc(r.action)}</b></td>
+      <td><b>${esc(safePairLabel(r))}</b><div class="mono">${esc(safePairAddress(r))}</div></td>
+      <td class="mono">${esc(r.staking?.contract_address||r.counterparty)}</td><td>${esc(r.staking?.label||'–')}</td>
+      <td class="num">${r.amount.toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td>${esc(block)}</td>
+      <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.t.hash)}">${esc(r.t.hash)}</a></td></tr>`;
+  }).join(''):'<tr><td colspan="8">Keine bestätigten Stake-/Unstake-Transfers gefunden.</td></tr>';
+  return stakeRows;
+}
+
+const PRICE_STABLE_SYMBOLS=/^(USDT|USDC|BUSD)$/i;
+const HISTORICAL_STAKING_ASSETS=new Map();
+
+function loadHistoricalStakingAssets(rows){
+  HISTORICAL_STAKING_ASSETS.clear();
+  for(const row of (rows||[])){
+    if(!row?.address || row.historical_only!==true) continue;
+    const kind=String(row.staking_asset_kind||'').toLowerCase();
+    if(!['staking_token','legacy_staking_token'].includes(kind)) continue;
+    HISTORICAL_STAKING_ASSETS.set(norm(row.address),{
+      address:norm(row.address),
+      symbol:row.symbol||'TOKEN',
+      label:row.label||row.symbol||'Historisches Staking-Asset',
+      decimals:Number(row.decimals||18),
+      assetType:kind,
+      historicalOnly:true,
+      stakingContracts:(row.staking_contract_addresses||[]).map(norm).filter(Boolean),
+      validFromBlock:row.valid_from_block==null?null:Number(row.valid_from_block),
+      validToBlock:row.valid_to_block==null?null:Number(row.valid_to_block),
+      originChain:row.origin_chain||null,
+      note:row.historical_note||null
+    });
+  }
+}
+function historicalStakingAsset(address,stakingContract=null,blockNumber=null){
+  const row=HISTORICAL_STAKING_ASSETS.get(norm(address));
+  if(!row) return null;
+  const sc=norm(stakingContract||'');
+  if(row.stakingContracts?.length && sc && !row.stakingContracts.includes(sc)) return null;
+  const bn=blockNumber==null?null:Number(blockNumber);
+  if(bn!=null && row.validFromBlock!=null && bn<row.validFromBlock) return null;
+  if(bn!=null && row.validToBlock!=null && bn>row.validToBlock) return null;
+  return row;
+}
+function historicalAssetDescriptor(row){
+  return {
+    address:norm(row.address),
+    assetType:row.assetType||'legacy_staking_token',
+    historicalOnly:true,
+    displayLabel:row.label||row.symbol||'Historisches Staking-Asset',
+    lpDecimals:Number(row.decimals||18),
+    lpSymbol:row.symbol||'TOKEN',
+    token0:{address:norm(row.address),symbol:row.symbol||'TOKEN',decimals:Number(row.decimals||18)},
+    token1:{address:'',symbol:'historisch',decimals:18},
+    factory:'',
+    hits:[],
+    historicalNote:row.note||null,
+    originChain:row.originChain||null,
+    validFromBlock:row.validFromBlock,
+    validToBlock:row.validToBlock
+  };
+}
+
+const REWARD_TX_HINTS=[]; // keine manuellen Claim-/Reward-Tx-Hinweise // keine manuellen Reward-/Claim-Tx-Hinweise
+const BUSINESS_PROBE_CACHE=new Map();
+const PAIR_STATE_CACHE=new Map();
+
+async function inspectAnyPair(address){
+  try{
+    const [t0,t1,factory,lpDec]=await Promise.all([
+      v2call(address,'token0'),v2call(address,'token1'),v2call(address,'factory'),v2call(address,'decimals')
+    ]);
+    const a0=norm(t0[0]),a1=norm(t1[0]);
+    const [m0,m1,lpMeta]=await Promise.all([tokenMeta(a0),tokenMeta(a1),tokenMeta(address)]);
+    return {address:norm(address),token0:m0,token1:m1,factory:norm(factory[0]),lpDecimals:Number(lpDec[0]),lpSymbol:lpMeta.symbol,hits:[]};
+  }catch{return null}
+}
+async function inspectAnyPairAt(address,blockNumber){
+  if(blockNumber==null)return null;
+  const blockTag=typeof blockNumber==='string'&&blockNumber.startsWith('0x')
+    ?blockNumber
+    :'0x'+Number(blockNumber).toString(16);
+  try{
+    const [t0,t1,factory,lpDec]=await Promise.all([
+      v2callAt(address,'token0',[],blockTag),
+      v2callAt(address,'token1',[],blockTag),
+      v2callAt(address,'factory',[],blockTag),
+      v2callAt(address,'decimals',[],blockTag)
+    ]);
+    const a0=norm(t0[0]),a1=norm(t1[0]);
+    if(!ethers.isAddress(a0)||!ethers.isAddress(a1))return null;
+    const [m0,m1,lpMeta]=await Promise.all([
+      tokenMetaAt(a0,blockTag),tokenMetaAt(a1,blockTag),tokenMetaAt(address,blockTag)
+    ]);
+    return {
+      address:norm(address),token0:m0,token1:m1,factory:norm(factory[0]),
+      lpDecimals:Number(lpDec[0]),lpSymbol:lpMeta.symbol,hits:[],
+      historicalDescriptorBlock:Number(BigInt(blockTag))
+    };
+  }catch(e){
+    log(`Historische LP-Struktur ${norm(address)} @ Block ${Number(BigInt(blockTag))} nicht lesbar: ${e.message}`,'warn');
+    return null;
+  }
+}
+async function pairStateAt(pair,blockHex){
+  const key=`${norm(pair.address)}|${blockHex}`;
+  if(PAIR_STATE_CACHE.has(key))return PAIR_STATE_CACHE.get(key);
+  try{
+    const [rrRaw,tsRaw]=await Promise.all([
+      rpc('eth_call',[{to:pair.address,data:V2.encodeFunctionData('getReserves',[])},blockHex]),
+      rpc('eth_call',[{to:pair.address,data:V2.encodeFunctionData('totalSupply',[])},blockHex])
+    ]);
+    const rr=V2.decodeFunctionResult('getReserves',rrRaw);
+    const ts=V2.decodeFunctionResult('totalSupply',tsRaw);
+    const state={
+      r0:Number(ethers.formatUnits(rr[0],pair.token0.decimals)),
+      r1:Number(ethers.formatUnits(rr[1],pair.token1.decimals)),
+      total:Number(ethers.formatUnits(ts[0],pair.lpDecimals||18))
+    };
+    PAIR_STATE_CACHE.set(key,state);return state;
+  }catch(e){
+    PAIR_STATE_CACHE.set(key,null);
+    log(`Historischer Pair-State ${safePairLabel(pair)} @ ${Number(BigInt(blockHex))}: ${e.message}`,'warn');
+    return null;
+  }
+}
+async function historicalPriceGraph(pairs,blockHex){
+  const graph=new Map(),anchors=new Set();
+  const add=(a,b,r)=>{a=norm(a);b=norm(b);if(!graph.has(a))graph.set(a,[]);graph.get(a).push([b,r])};
+  for(const p of (pairs||[])){
+    const st=await pairStateAt(p,blockHex);if(!st||st.r0<=0||st.r1<=0)continue;
+    add(p.token0.address,p.token1.address,st.r1/st.r0);
+    add(p.token1.address,p.token0.address,st.r0/st.r1);
+    if(PRICE_STABLE_SYMBOLS.test(p.token0.symbol))anchors.add(norm(p.token0.address));
+    if(PRICE_STABLE_SYMBOLS.test(p.token1.symbol))anchors.add(norm(p.token1.address));
+  }
+  return addr=>{
+    addr=norm(addr);if(anchors.has(addr))return 1;
+    const q=[[addr,1,0]],seen=new Set([addr]);
+    while(q.length){
+      const [a,m,d]=q.shift();if(d>5)continue;
+      for(const [b,r] of graph.get(a)||[]){
+        const nm=m*r;if(anchors.has(b))return nm;
+        if(!seen.has(b)){seen.add(b);q.push([b,nm,d+1])}
+      }
+    }
+    return null;
+  };
+}
+async function lpHistoricalValue(pair,lpAmount,blockHex,pricePairs){
+  if(!pair||!blockHex||!(lpAmount>0))return null;
+  if(pair.assetType==='legacy_staking_token'||pair.assetType==='staking_token')return null;
+  const st=await pairStateAt(pair,blockHex);if(!st||!(st.total>0))return null;
+  const share=Number(lpAmount)/st.total;
+  const a0=st.r0*share,a1=st.r1*share;
+  const price=await historicalPriceGraph(pricePairs,blockHex);
+  const p0=price(pair.token0.address),p1=price(pair.token1.address);
+  if(p0==null&&p1==null)return {usd:null,a0,a1,p0,p1,source:'On-chain LP-Reserven; kein USD-Preisweg gefunden'};
+  return {
+    usd:(p0!=null?a0*p0:0)+(p1!=null?a1*p1:0),
+    a0,a1,p0,p1,
+    source:`On-chain @ Block ${Number(BigInt(blockHex))} · ${p0!=null?`${pair.token0.symbol} $${Number(p0).toLocaleString('de-CH',{maximumFractionDigits:8})}`:''}${p0!=null&&p1!=null?' · ':''}${p1!=null?`${pair.token1.symbol} $${Number(p1).toLocaleString('de-CH',{maximumFractionDigits:8})}`:''}`
+  };
+}
+
+const TIMESTAMP_BLOCK_CACHE=new Map();
+
+async function blockTimestampSeconds(blockNumber){
+  const hex='0x'+Number(blockNumber).toString(16);
+  const b=await rpc('eth_getBlockByNumber',[hex,false]);
+  return b?.timestamp?Number(BigInt(b.timestamp)):null;
+}
+
+async function nearestBlockHexForTimestamp(isoTimestamp){
+  if(!isoTimestamp)return null;
+  const target=Math.floor(new Date(isoTimestamp).getTime()/1000);
+  if(!Number.isFinite(target))return null;
+  if(TIMESTAMP_BLOCK_CACHE.has(target))return TIMESTAMP_BLOCK_CACHE.get(target);
+
+  try{
+    const latestHex=await rpc('eth_blockNumber',[]);
+    let lo=1,hi=Number(BigInt(latestHex)),best=hi;
+
+    while(lo<=hi){
+      const mid=Math.floor((lo+hi)/2);
+      const ts=await blockTimestampSeconds(mid);
+      if(ts==null)break;
+      if(ts<target){
+        lo=mid+1;
+      }else{
+        best=mid;
+        hi=mid-1;
+      }
+    }
+
+    // Compare first block >= target with preceding block and choose nearest timestamp.
+    let candidates=[best];
+    if(best>1)candidates.push(best-1);
+    let chosen=best,chosenDiff=Infinity;
+    for(const bn of candidates){
+      try{
+        const ts=await blockTimestampSeconds(bn);
+        const diff=Math.abs(ts-target);
+        if(diff<chosenDiff){chosen=bn;chosenDiff=diff}
+      }catch{}
+    }
+    const out='0x'+chosen.toString(16);
+    TIMESTAMP_BLOCK_CACHE.set(target,out);
+    return out;
+  }catch(e){
+    log(`Block zum Vertragsende konnte nicht bestimmt werden: ${e.message}`,'warn');
+    TIMESTAMP_BLOCK_CACHE.set(target,null);
+    return null;
+  }
+}
+async function blockHexForTx(hash){
+  if(!hash)return null;
+  try{const r=await rpc('eth_getTransactionReceipt',[hash]);return r?.blockNumber||null}catch{return null}
+}
+function formatUsd(n){
+  return Number.isFinite(Number(n))?'$'+Number(n).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}):'–';
+}
+function formatToken18(raw){
+  try{return Number(ethers.formatUnits(BigInt(raw),18))}catch{return null}
+}
+function rewardProfileForLot(lot){
+  return {
+    title:'Rewards',
+    token:null,
+    model:'Reward-Daten werden für jede Staking-Position aus Smart-Contract-Reads, Stake-Transaktion und tatsächlichen Token-Transfers abgeleitet. Keine globale TLN-Reward-Annahme.',
+    fields:['payouts','totalPayouts','totalWithdrawn','bonus','qlpBonus','withdrawableYield','getWithdrawableYield','availableYield','pendingReward','pendingRewards','claimable','earned','rewards','dailyReward','rewardPerDay','dailyRate','rewardRate','interestRate','stakedDays','staked_days','daysStaked']
+  };
+}
+function probeBaseName(label){
+  return String(label||'').replace(/\(address\)$/,'').replace(/\(\)$/,'').toLowerCase();
+}
+function extractStoredStakeUsd(lot,probeResult){
+  // Prefer the historical struct at the actual stake block because current userInfo
+  // may be cleared/changed after an unstake.
+  let nums=null,sourceSig=null;
+  if(lot?.historicalScAfter?.words?.length){
+    nums=lot.historicalScAfter.words.map(w=>w.uint);
+    sourceSig=lot.historicalScAfter.sig;
+  }else{
+    const userInfo=probeResult?.results?.find(r=>r.label==='userInfo(address)'&&r.kind==='raw');
+    if(userInfo){
+      const words=rawWords(userInfo.raw);
+      nums=words.map(w=>w.uint);
+      sourceSig='userInfo(address) · aktueller Zustand';
+    }
+  }
+  if(!nums||nums.length<3)return null;
+
+  const original=Number(lot.original||0),stakeSec=lot.stakeTime?Math.floor(new Date(lot.stakeTime).getTime()/1000):null;
+  const lp0=nums[0]==null?null:formatToken18(nums[0]);
+  const amountMatches=lp0!=null&&original>0&&Math.abs(lp0-original)/original<0.00001;
+  let tsIndex=-1;
+  if(stakeSec)tsIndex=nums.findIndex(v=>v!=null&&Math.abs(Number(v)-stakeSec)<=86400);
+  if(!amountMatches||tsIndex<0)return null;
+
+  const candidates=[];
+  for(let i=1;i<tsIndex;i++){
+    if(nums[i]==null)continue;
+    const v=formatToken18(nums[i]);
+    if(v!=null&&v>0&&v<1e9)candidates.push({index:i,value:v});
+  }
+  if(!candidates.length)return null;
+  const c=candidates[0];
+  return {
+    usd:c.value,
+    source:`TLN Staking-SC historisch @ Stake-Block · ${sourceSig} · gespeicherter Wert (Wort ${c.index+1})`,
+    rawWord:nums[c.index].toString()
+  };
+}
+function extractRewardReads(profile,probeResult){
+  const allowed=new Set((profile.fields||[]).map(x=>x.toLowerCase()));
+  const rows=[];
+  for(const r of (probeResult?.results||[])){
+    if(r.kind!=='amount')continue;
+    const base=probeBaseName(r.label);
+    if(!allowed.has(base))continue;
+    const w=rawWords(r.raw)[0];if(!w?.uint)continue;
+    const value=formatToken18(w.uint);if(value==null)continue;
+    rows.push({label:r.label.replace('(address)',''),value,selector:r.selector});
+  }
+  return rows;
+}
+async function businessProbeForLot(lot){
+  const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');
+  const key=`${contract}|${norm(CURRENT_WALLET)}`;
+  if(BUSINESS_PROBE_CACHE.has(key))return BUSINESS_PROBE_CACHE.get(key);
+  try{
+    const result=await probeStakingContract(lot,CURRENT_WALLET);
+    BUSINESS_PROBE_CACHE.set(key,result);return result;
+  }catch{
+    BUSINESS_PROBE_CACHE.set(key,null);return null;
+  }
+}
+async function enrichLotsBusiness(lots,pricePairs){
+  for(const lot of (lots||[])){
+    await enrichHistoricalStakeEvidence(lot);
+    await stakeTxTokenEvidence(lot);
+    lot.rewardProfile=rewardProfileForLot(lot);
+    const probe=await businessProbeForLot(lot);
+    lot.businessProbe=probe;
+    await resolveLotContractTiming(lot,probe);
+    if(lot.expiryTime){
+      log(`SC-Laufzeit ermittelt: ${safePairLabel(lot)} · ${lot.durationDays!=null?lot.durationDays.toLocaleString('de-CH',{maximumFractionDigits:3})+' Tage · ':''}${new Date(lot.expiryTime).toLocaleString('de-CH')} · ${lot.durationSource}`,'ok');
+    }else if(lot.contractEndUpperBound){
+      log(`SC-Vertragsende nicht exakt eingrenzbar: ${safePairLabel(lot)} · tatsächlicher Unstake war erfolgreich, aber der vorherige Block lässt sich nicht als bereits freigegeben bestätigen.`,'warn');
+    }else{
+      log(`SC-Laufzeit nicht ermittelbar: ${safePairLabel(lot)} · keine belastbare On-chain Duration-/Unlock-Read-Funktion und kein historisch simulierbarer Freigabezeitpunkt gefunden.`,'warn');
+    }
+    lot.rewardReads=extractRewardReads(lot.rewardProfile,probe);
+    lot.rewardModel=deriveRewardModel(lot);
+
+    // 1) STAKE: prefer the value TLN itself stored at staking time.
+    const stored=extractStoredStakeUsd(lot,probe);
+    if(stored){
+      lot.stakeUsd=stored.usd;lot.stakeUsdSource=stored.source;lot.stakeUsdOrigin='tln_stored';
+    }else{
+      const pair=lot.pair||lot.p;
+      const blockHex=lot.stakeBlockHex||null;
+      const v=await lpHistoricalValue(pair,lot.original,blockHex,pricePairs);
+      if(v?.usd!=null){lot.stakeUsd=v.usd;lot.stakeUsdSource=v.source;lot.stakeUsdOrigin='onchain_fallback';lot.stakeValuation=v}
+    }
+
+    // 2) CONTRACT END / UNLOCK: primary end value at the contractual release timestamp.
+    if(lot.expiryTime){
+      const endBlockHex=await nearestBlockHexForTimestamp(lot.expiryTime);
+      lot.contractEndBlockHex=endBlockHex;
+      const pair=lot.pair||lot.p;
+      const v=await lpHistoricalValue(pair,lot.original,endBlockHex,pricePairs);
+      if(v){
+        lot.contractEndValuation=v;
+        lot.contractEndUsd=v.usd;
+        lot.contractEndUsdSource=`Vertragsende ${new Date(lot.expiryTime).toLocaleString('de-CH')} · ${v.source}`;
+      }
+    }
+
+    // 3) ACTUAL UNSTAKE: secondary informational value, only if the position was really unstaked.
+    if(lot.status==='closed'&&lot.unstakeTx){
+      const blockHex=lot.unstakeBlockHex||await blockHexForTx(lot.unstakeTx);
+      lot.unstakeBlockHex=blockHex;
+      const pair=lot.pair||lot.p;
+      const v=await lpHistoricalValue(pair,lot.original,blockHex,pricePairs);
+      if(v){
+        lot.unstakeValuation=v;
+        lot.unstakeUsd=v.usd;
+        lot.unstakeUsdSource=`Tatsächlicher Unstake ${lot.unstakeTime?new Date(lot.unstakeTime).toLocaleString('de-CH'):'–'} · ${v.source}`;
+      }
+    }
+  }
+  // Rewards werden nach der SC-/Positions-Anreicherung einmal global über alle Lots zugeordnet.
+  await attachRewardTokenHistoryToLots(lots);
+}
+
+function callTimeMs(c){return c?.metadata?.blockTimestamp?new Date(c.metadata.blockTimestamp).getTime():0}
+
+async function historicalWalletProbeMap(contract,wallet,blockHex){
+  const out=new Map();
+  if(!ethers.isAddress(norm(contract||''))||!ethers.isAddress(norm(wallet||''))||!blockHex)return out;
+  // Only wallet-specific probes are useful for proving a relationship to THIS wallet/position.
+  const probes=SC_READ_PROBES.filter(p=>(p.args||[]).includes('wallet'));
+  for(const probe of probes){
+    try{
+      const raw=await rpc('eth_call',[{to:norm(contract),data:encodeProbeCall(probe,wallet)},blockHex]);
+      if(raw&&raw!=='0x')out.set(probe.sig,String(raw).toLowerCase());
+    }catch{}
+  }
+  return out;
+}
+function changedHistoricalProbeRows(before,after){
+  const rows=[];
+  for(const [sig,a] of (after||new Map())){
+    const b=(before||new Map()).get(sig);
+    if(b!=null&&b!==a)rows.push({sig,before:b,after:a});
+  }
+  return rows;
+}
+
+function ensureContractGraph(lot){
+  if(!lot.contractGraph)lot.contractGraph={nodes:new Map(),edges:[],evidence:[]};
+  return lot.contractGraph;
+}
+function graphNode(g,address,role,label){
+  address=norm(address||'');
+  if(!ethers.isAddress(address))return;
+  const cur=g.nodes.get(address)||{address,roles:new Set(),labels:new Set()};
+  if(role)cur.roles.add(role);
+  if(label)cur.labels.add(label);
+  g.nodes.set(address,cur);
+}
+function graphEdge(g,from,to,type,evidence){
+  from=norm(from||'');to=norm(to||'');
+  if(!ethers.isAddress(from)||!ethers.isAddress(to)||from===to)return;
+  const key=`${from}|${to}|${type}|${evidence?.tx||''}`;
+  if(g.edges.some(x=>x.key===key))return;
+  g.edges.push({key,from,to,type,evidence:evidence||{}});
+}
+function graphHasConnection(g,address){
+  address=norm(address||'');
+  if(!g||!ethers.isAddress(address))return false;
+  return g.nodes.has(address) && g.edges.some(e=>e.from===address||e.to===address);
+}
+function graphRoleAddresses(lot,role){
+  const g=lot?.contractGraph;
+  if(!g)return [];
+  return [...g.nodes.values()].filter(n=>n.roles?.has(role)).map(n=>n.address);
+}
+async function buildContractGraphs(lots,contractCalls){
+  const wallet=norm(CURRENT_WALLET);
+  const callByHash=new Map((contractCalls||[]).map(c=>[String(c.hash||'').toLowerCase(),c]));
+  const transferByHash=new Map();
+  for(const t of (CURRENT_ALL_TRANSFERS||[])){
+    const h=String(t.hash||'').toLowerCase();
+    if(!h)continue;
+    if(!transferByHash.has(h))transferByHash.set(h,[]);
+    transferByHash.get(h).push(t);
+  }
+
+  for(const lot of (lots||[])){
+    const g=ensureContractGraph(lot);
+    graphNode(g,wallet,'wallet','Wallet');
+    const staking=norm(lot?.staking?.contract_address||lot.counterparty||'');
+    const entry=norm(lot.entry_contract||'');
+    const eventContract=norm(lot.stake_event_contract||'');
+    const asset=norm(safePairAddress(lot));
+    graphNode(g,staking,'staking','Staking-SC');
+    graphNode(g,entry,'entry','Entry/Controller');
+    graphNode(g,eventContract,'event','Stake-Event-SC');
+    graphNode(g,asset,'asset',safePairLabel(lot));
+
+    const lifecycle=[
+      {kind:'Stake',hash:lot.stakeTx},
+      ...(lot.topUps||[]).map(x=>({kind:'Aufstockung',hash:x.tx})),
+      ...(lot.unstakeTx?[{kind:'Unstake',hash:lot.unstakeTx}]:[])
+    ].filter(x=>x.hash);
+
+    for(const ev of lifecycle){
+      const hash=String(ev.hash).toLowerCase();
+      let tx=null,receipt=null;
+      try{
+        [tx,receipt]=await Promise.all([
+          cachedTx(hash).catch(()=>null),
+          rpc('eth_getTransactionReceipt',[hash]).catch(()=>null)
+        ]);
+      }catch{}
+      const callTo=norm(tx?.to||callByHash.get(hash)?.to||'');
+      if(callTo){
+        graphNode(g,callTo,callTo===staking?'staking':'entry',ev.kind);
+        graphEdge(g,wallet,callTo,'wallet_call',{tx:hash,kind:ev.kind,selector:tx?.input?.slice(0,10)||null});
+      }
+      if(staking&&callTo&&staking!==callTo){
+        const receiptContracts=new Set((receipt?.logs||[]).map(x=>norm(x.address||'')).filter(ethers.isAddress));
+        if(receiptContracts.has(staking)){
+          graphEdge(g,callTo,staking,'lifecycle_receipt_link',{tx:hash,kind:ev.kind});
+        }
+      }
+      for(const tr of (transferByHash.get(hash)||[])){
+        const token=norm(tr.rawContract?.address||'');
+        const from=norm(tr.from||''),to=norm(tr.to||'');
+        if(token===asset){
+          graphNode(g,token,'asset',safePairLabel(lot));
+          if(from===wallet&&ethers.isAddress(to)){
+            graphNode(g,to,to===staking?'staking':'asset_receiver','Asset-Empfänger');
+            graphEdge(g,wallet,to,'principal_transfer',{tx:hash,kind:ev.kind,token});
+          }else if(to===wallet&&ethers.isAddress(from)){
+            graphNode(g,from,from===staking?'staking':'asset_sender','Asset-Absender');
+            graphEdge(g,from,wallet,'principal_return',{tx:hash,kind:ev.kind,token});
+          }
+        }
+      }
+      for(const addr of (receipt?.logs||[]).map(x=>norm(x.address||'')).filter(ethers.isAddress)){
+        if(addr===asset)continue;
+        graphNode(g,addr,addr===staking?'staking':'receipt_contract','Receipt-Contract');
+        if(callTo&&addr!==callTo)graphEdge(g,callTo,addr,'same_lifecycle_receipt',{tx:hash,kind:ev.kind});
+      }
+    }
+
+    // Claims already proven directly for this lot extend its graph.
+    for(const claim of (lot.rewardClaims||[])){
+      const rc=norm(claim.calledContract||claim.from||'');
+      const token=norm(claim.token||'');
+      if(rc){
+        graphNode(g,rc,'reward','Reward/Yield-SC');
+        graphEdge(g,staking||entry||wallet,rc,'proven_reward_path',{tx:claim.hash,selector:claim.selector||null});
+      }
+      if(token){
+        graphNode(g,token,'reward_token',claim.symbol||'Reward-Token');
+        if(rc)graphEdge(g,rc,token,'reward_token',{tx:claim.hash});
+      }
+    }
+  }
+}
+function graphConnectedRewardContract(lot,address){
+  address=norm(address||'');
+  const g=lot?.contractGraph;
+  if(!g||!ethers.isAddress(address))return false;
+  const node=g.nodes.get(address);
+  if(!node)return false;
+  if(node.roles?.has('reward') && graphHasConnection(g,address))return true;
+  return false;
+}
+async function learnRewardContractRelations(lots){
+  const wallet=norm(CURRENT_WALLET);
+  const rewardContracts=[...new Set([...LEARNED_REWARD_PATHS.values()]
+    .filter(r=>r&&r.contract&&r.selector)
+    .filter(r=>{
+      const m=METHOD_SELECTORS.get(String(r.selector).toLowerCase())||'';
+      return m!=='Stake'&&m!=='Unstake';
+    })
+    .map(r=>norm(r.contract))
+    .filter(ethers.isAddress))];
+
+  for(const lot of (lots||[])){
+    lot.rewardContractRelations=lot.rewardContractRelations||[];
+    const direct=norm(lot?.staking?.contract_address||lot.counterparty||'');
+    const entry=norm(lot.entry_contract||'');
+    const eventContract=norm(lot.stake_event_contract||'');
+    const already=new Set([direct,entry,eventContract].filter(Boolean));
+
+    const lifecycle=[
+      {kind:'Stake',tx:lot.stakeTx,blockHex:lot.stakeBlockHex},
+      ...(lot.topUps||[]).map(x=>({kind:'Aufstockung',tx:x.tx,blockHex:x.blockHex})),
+      ...(lot.unstakeBlockHex?[{kind:'Unstake',tx:lot.unstakeTx,blockHex:lot.unstakeBlockHex}]:[])
+    ].filter(x=>x.blockHex);
+
+    for(const rewardContract of rewardContracts){
+      if(already.has(rewardContract))continue;
+      let relation=null;
+
+      for(const ev of lifecycle){
+        let n=null;
+        try{n=Number(BigInt(ev.blockHex))}catch{}
+        if(!(n>0))continue;
+        const beforeHex='0x'+(n-1).toString(16);
+        const afterHex='0x'+n.toString(16);
+
+        const [before,after]=await Promise.all([
+          historicalWalletProbeMap(rewardContract,wallet,beforeHex),
+          historicalWalletProbeMap(rewardContract,wallet,afterHex)
+        ]);
+        const changed=changedHistoricalProbeRows(before,after);
+        if(changed.length){
+          relation={
+            contract:rewardContract,
+            evidenceKind:'historical_wallet_state_change',
+            lifecycleKind:ev.kind,
+            lifecycleTx:ev.tx||null,
+            block:n,
+            changedProbes:changed.map(x=>x.sig)
+          };
+          break;
+        }
+      }
+
+      if(relation){
+        lot.rewardContractRelations.push(relation);
+        log(`Reward-Contract-Beziehung on-chain erkannt: ${rewardContract} ↔ ${safePairLabel(lot)} · Wallet-State änderte sich bei ${relation.lifecycleKind} · Block ${relation.block} · ${relation.changedProbes.join(', ')}`,'ok');
+      }
+    }
+  }
+}
+function lotRewardContracts(lot){
+  return new Set((lot?.rewardContractRelations||[]).map(x=>norm(x.contract)).filter(Boolean));
+}
+
+async function learnRewardPathsFromWalletCalls(calls,lots=[]){
+  LEARNED_REWARD_PATHS.clear();
+  const lifecycleHashes=new Set();
+  for(const lot of (lots||[])){
+    if(lot.stakeTx)lifecycleHashes.add(String(lot.stakeTx).toLowerCase());
+    if(lot.unstakeTx)lifecycleHashes.add(String(lot.unstakeTx).toLowerCase());
+    for(const x of (lot.topUps||[]))if(x.tx)lifecycleHashes.add(String(x.tx).toLowerCase());
+  }
+  const wallet=norm(CURRENT_WALLET);
+  for(const c of (calls||[])){
+    if(c._success===false)continue;
+    const selector=String(c._selector||'').toLowerCase();
+    const txHash=String(c.hash||'').toLowerCase();
+    // Voll dynamisch: bekannte Lifecycle-Tx (Stake/Aufstockung/Unstake) werden
+    // nicht als Reward-Pfad trainiert. Keine Contract-Adresse und kein Claim-
+    // Selector wird hierfür vorausgesetzt.
+    if(lifecycleHashes.has(txHash))continue;
+    const incoming=[];
+    for(const tr of (c._erc20Transfers||[])){
+      if(tr.to!==wallet||!tr.token||tr.amountRaw==null)continue;
+      try{
+        const meta=await tokenMeta(tr.token);
+        const amount=Number(ethers.formatUnits(tr.amountRaw,meta.decimals));
+        if(amount>0)incoming.push({hash:String(c.hash||'').toLowerCase(),token:tr.token,symbol:meta.symbol||'Token',amount});
+      }catch{}
+    }
+    if(!incoming.length)continue;
+    const contract=norm(c.to||c?._staking?.contract_address||'');
+    if(!ethers.isAddress(contract)||!selector)continue;
+    registerLearnedRewardPath(contract,selector,incoming);
+    log(`Reward-/Claim-Pfad gelernt: ${contract} · ${selector} · ${incoming.map(x=>`${x.amount} ${x.symbol}`).join(', ')} · Tx ${c.hash}`,'ok');
+  }
+}
+
+const DYNAMIC_CONTRACT_REL_CACHE=new Map();
+const TRACE_CALL_CACHE=new Map();
+
+function codePush20Addresses(code){
+  const out=new Set();
+  const s=String(code||'').toLowerCase().replace(/^0x/,'');
+  for(const m of s.matchAll(/73([0-9a-f]{40})/g)){
+    const a='0x'+m[1];
+    if(ethers.isAddress(a))out.add(norm(a));
+  }
+  return out;
+}
+function codePush4Selectors(code){
+  const out=[];
+  const s=String(code||'').toLowerCase().replace(/^0x/,'');
+  for(const m of s.matchAll(/63([0-9a-f]{8})/g)){
+    const sel='0x'+m[1];
+    if(!out.includes(sel))out.push(sel);
+    if(out.length>=96)break;
+  }
+  return out;
+}
+function decodedAddressWords(raw){
+  const out=new Set();
+  const s=String(raw||'').toLowerCase().replace(/^0x/,'');
+  if(!s||s.length%64!==0)return out;
+  for(let i=0;i<s.length;i+=64){
+    const w=s.slice(i,i+64);
+    const a='0x'+w.slice(-40);
+    if(ethers.isAddress(a)&&!/^0x0{40}$/.test(a))out.add(norm(a));
+  }
+  return out;
+}
+async function traceCalledAddresses(hash){
+  const h=String(hash||'').toLowerCase();
+  if(!h)return new Set();
+  if(TRACE_CALL_CACHE.has(h))return TRACE_CALL_CACHE.get(h);
+  const p=(async()=>{
+    const out=new Set();
+    const walk=x=>{
+      if(!x||typeof x!=='object')return;
+      if(x.to&&ethers.isAddress(x.to))out.add(norm(x.to));
+      if(Array.isArray(x.calls))for(const c of x.calls)walk(c);
+    };
+    try{
+      const tr=await rpc('debug_traceTransaction',[h,{tracer:'callTracer',timeout:'8s'}]);
+      walk(tr);
+      if(out.size)return out;
+    }catch{}
+    try{
+      const rows=await rpc('trace_transaction',[h]);
+      for(const r of (rows||[])){
+        const a=r?.action?.to;
+        if(a&&ethers.isAddress(a))out.add(norm(a));
+      }
+    }catch{}
+    return out;
+  })();
+  TRACE_CALL_CACHE.set(h,p);
+  return p;
+}
+async function inspectDynamicContractRelations(contract,exampleHashes=[]){
+  const c=norm(contract||'');
+  if(!ethers.isAddress(c))return {contract:c,implementation:null,references:new Map()};
+  if(DYNAMIC_CONTRACT_REL_CACHE.has(c))return DYNAMIC_CONTRACT_REL_CACHE.get(c);
+  const p=(async()=>{
+    const refs=new Map();
+    const add=(addr,kind,detail)=>{
+      addr=norm(addr||'');
+      if(!ethers.isAddress(addr)||addr===c)return;
+      if(!refs.has(addr))refs.set(addr,[]);
+      const arr=refs.get(addr);
+      const k=`${kind}|${detail||''}`;
+      if(!arr.some(x=>`${x.kind}|${x.detail||''}`===k))arr.push({kind,detail});
+    };
+
+    const implementation=await eip1967Implementation(c).catch(()=>null);
+    const codeTargets=[c,...(implementation?[implementation]:[])];
+    for(const target of codeTargets){
+      let code='0x';
+      try{code=await rpc('eth_getCode',[target,'latest'])}catch{}
+      for(const a of codePush20Addresses(code))add(a,target===c?'bytecode_reference':'implementation_bytecode_reference',target);
+
+      // ABI-unabhängig: im Dispatcher sichtbare PUSH4-Selector als no-arg Getter
+      // ausprobieren. Erfolgreich zurückgegebene Address-Wörter sind echte
+      // on-chain Referenzen des Contracts.
+      for(const sel of codePush4Selectors(code)){
+        try{
+          const raw=await rpc('eth_call',[{to:c,data:sel},'latest']);
+          for(const a of decodedAddressWords(raw))add(a,'dynamic_getter_reference',sel);
+        }catch{}
+      }
+    }
+
+    // Proxy-/Contract-Storage: nur echte gespeicherte Adressen, keine Annahmen
+    // über Feldnamen oder Layout.
+    for(let i=0;i<48;i++){
+      try{
+        const slot='0x'+BigInt(i).toString(16);
+        const raw=await rpc('eth_getStorageAt',[c,slot,'latest']);
+        for(const a of decodedAddressWords(raw))add(a,'storage_reference',`slot ${i}`);
+      }catch{}
+    }
+
+    // Falls der RPC Traces zulässt, interne Calls realer Claim-Tx verwenden.
+    for(const h of (exampleHashes||[]).slice(0,4)){
+      const called=await traceCalledAddresses(h);
+      for(const a of called)add(a,'claim_internal_call',h);
+    }
+
+    // Receipt-Co-Contracts der realen Claim-Tx.
+    for(const h of (exampleHashes||[]).slice(0,6)){
+      try{
+        const receipt=await rpc('eth_getTransactionReceipt',[h]);
+        for(const lg of (receipt?.logs||[])){
+          if(lg?.address)add(lg.address,'claim_receipt_contract',h);
+        }
+      }catch{}
+    }
+    return {contract:c,implementation,references:refs};
+  })();
+  DYNAMIC_CONTRACT_REL_CACHE.set(c,p);
+  return p;
+}
+
+async function learnDynamicClaimContractRelations(lots){
+  const rewardRows=[...LEARNED_REWARD_PATHS.values()];
+  if(!rewardRows.length)return;
+  for(const row of rewardRows){
+    const inspected=await inspectDynamicContractRelations(row.contract,row.examples||[]);
+    for(const lot of (lots||[])){
+      const g=ensureContractGraph(lot);
+      const targets=new Set(
+        [...g.nodes.values()]
+          .filter(n=>!n.roles?.has('wallet')&&!n.roles?.has('reward_token'))
+          .map(n=>norm(n.address))
+          .filter(ethers.isAddress)
+      );
+      const matches=[];
+      for(const [addr,evidence] of inspected.references.entries()){
+        if(targets.has(addr))matches.push({addr,evidence});
+      }
+      if(!matches.length)continue;
+
+      const already=(lot.rewardContractRelations||[]).some(r=>norm(r.contract)===norm(row.contract)&&r.evidenceKind==='dynamic_contract_graph');
+      if(!already){
+        lot.rewardContractRelations=lot.rewardContractRelations||[];
+        lot.rewardContractRelations.push({
+          contract:norm(row.contract),
+          evidenceKind:'dynamic_contract_graph',
+          lifecycleKind:'Contract-Graph',
+          lifecycleTx:(row.examples||[])[0]||null,
+          block:null,
+          changedProbes:matches.flatMap(m=>m.evidence.map(e=>`${e.kind}: ${m.addr}${e.detail?` (${e.detail})`:''}`)).slice(0,12)
+        });
+      }
+      graphNode(g,row.contract,'reward','Reward/Yield-SC');
+      for(const m of matches){
+        graphNode(g,m.addr,'linked_contract','On-chain Referenz');
+        for(const e of m.evidence){
+          graphEdge(g,row.contract,m.addr,e.kind,{tx:e.kind.includes('claim_')?e.detail:null,detail:e.detail||null});
+        }
+      }
+      log(`Reward-Contract-Beziehung dynamisch erkannt: ${row.contract} ↔ ${safePairLabel(lot)} · ${matches.map(m=>m.addr).join(', ')}`,'ok');
+    }
+  }
+}
+
+function lotLifecycleHashes(lot){
+  const out=new Set();
+  if(lot?.stakeTx)out.add(String(lot.stakeTx).toLowerCase());
+  if(lot?.unstakeTx)out.add(String(lot.unstakeTx).toLowerCase());
+  for(const x of (lot?.topUps||[]))if(x.tx)out.add(String(x.tx).toLowerCase());
+  return out;
+}
+function strongRewardEvidenceForLot(lot,callTo,selector,txHash){
+  callTo=norm(callTo||'');selector=String(selector||'').toLowerCase();txHash=String(txHash||'').toLowerCase();
+  if(txHash&&lotLifecycleHashes(lot).has(txHash))return {strong:true,kind:'lifecycle'};
+  const related=lotRewardContracts(lot);
+  if(callTo&&related.has(callTo))return {strong:true,kind:'reward_relation'};
+  if(callTo&&graphConnectedRewardContract(lot,callTo))return {strong:true,kind:'reward_graph'};
+  const learned=callTo&&selector?learnedRewardPath(callTo,selector):null;
+  if(learned&&callTo&&(related.has(callTo)||graphConnectedRewardContract(lot,callTo)))return {strong:true,kind:'learned_related_path'};
+  return {strong:false,kind:null};
+}
+async function attachRewardClaimsToLots(lots,calls){
+  const wallet=norm(CURRENT_WALLET);
+  const rewardCandidates=[];
+  const rewardCandidateKeys=new Set();
+
+  // First collect every successful incoming ERC-20 transfer from a relevant direct call.
+  // This avoids losing claims just because the claim call went through a controller/reward contract.
+  for(const c of (calls||[])){
+    if(c._success===false)continue;
+    const when=callTimeMs(c);
+    if(!when)continue;
+    for(const tr of (c._erc20Transfers||[])){
+      if(tr.to!==wallet||!tr.token||tr.amountRaw==null)continue;
+      const rk=`${String(c.hash||'').toLowerCase()}|${norm(tr.token)}|${norm(tr.from)}|${norm(tr.to)}|${String(tr.amountRaw)}`;
+      if(rewardCandidateKeys.has(rk))continue;
+      rewardCandidateKeys.add(rk);
+      rewardCandidates.push({call:c,transfer:tr,when});
+    }
+  }
+
+  for(const lot of (lots||[]))lot.rewardClaims=[];
+
+  for(const rc of rewardCandidates){
+    const c=rc.call,tr=rc.transfer,when=rc.when;
+    const txHash=String(c.hash||'').toLowerCase();
+    if((lots||[]).some(l=>lotLifecycleHashes(l).has(txHash)))continue;
+    const candidates=[];
+
+    for(const lot of (lots||[])){
+      const pair=norm(safePairAddress(lot));
+      if(tr.token===pair)continue; // LP itself is never a reward.
+
+      const stakeMs=lot.stakeTime?new Date(lot.stakeTime).getTime():0;
+      const unstakeMs=lot.unstakeTime?new Date(lot.unstakeTime).getTime():null;
+      const expiryMs=lot.expiryTime?new Date(lot.expiryTime).getTime():null;
+
+      // Rewards normally belong to a lot between stake and actual unstake.
+      // A small 5-minute tolerance handles timestamp-source differences on the same block/tx.
+      const tol=5*60*1000;
+      if(stakeMs&&when<stakeMs-tol)continue;
+      if(unstakeMs&&when>unstakeMs+tol)continue;
+
+      const direct=norm(lot?.staking?.contract_address||lot.counterparty||'');
+      const entry=norm(lot.entry_contract||'');
+      const eventContract=norm(lot.stake_event_contract||'');
+      const callTo=norm(c.to||c?._staking?.contract_address||'');
+
+      let score=0;
+      const reasons=[];
+
+      // Strongest evidence: same transaction as stake or unstake.
+      if(c.hash&&lot.stakeTx&&c.hash.toLowerCase()===String(lot.stakeTx).toLowerCase()){
+        score+=120;reasons.push('gleiche Tx wie Stake');
+      }
+      if(c.hash&&lot.unstakeTx&&c.hash.toLowerCase()===String(lot.unstakeTx).toLowerCase()){
+        score+=120;reasons.push('gleiche Tx wie Unstake');
+      }
+
+      // Contract relationship.
+      if(callTo&&callTo===direct){score+=90;reasons.push('direkter Staking-SC')}
+      if(callTo&&entry&&callTo===entry){score+=80;reasons.push('Entry-/Controller-SC')}
+      if(callTo&&eventContract&&callTo===eventContract){score+=75;reasons.push('Stake-Event-SC')}
+
+      // Supabase classification may identify the direct call's SC even if the lot learned
+      // the relationship through another historical transaction.
+      const classified=norm(c?._staking?.contract_address||'');
+      if(classified&&classified===direct){score+=70;reasons.push('SC-Katalog')}
+      if(classified&&entry&&classified===entry){score+=60;reasons.push('Controller-Katalog')}
+      const relatedRewards=lotRewardContracts(lot);
+      const learned=learnedRewardPath(callTo,c._selector||'');
+      const learnedBelongsToLot=!!(learned && callTo && (callTo===direct || callTo===entry || callTo===eventContract || relatedRewards.has(callTo)));
+      if(learnedBelongsToLot){
+        score+=85;
+        reasons.push(relatedRewards.has(callTo)
+          ? `dynamisch gelernter Reward-/Claim-Pfad · on-chain mit diesem Staking verknüpft (${callTo} · ${c._selector||'–'})`
+          : `dynamisch gelernter Reward-/Claim-Pfad dieses Stakings (${callTo} · ${c._selector||'–'})`);
+      }
+      if(callTo&&relatedRewards.has(callTo)){
+        score+=95;reasons.push('historisch belegte Reward-SC-Beziehung zur Position');
+      }
+      if(callTo&&graphConnectedRewardContract(lot,callTo)){
+        score+=100;reasons.push('Contract-Graph: Reward-/Yield-SC gehört zu dieser Position');
+      }
+
+      // Explicitly supplied diagnostic claim: still require temporal plausibility,
+      // but allow association when only one staking lot is active.
+      if(c._rewardHint){score+=35;reasons.push('bestätigte reward-relevante Tx')}
+      // Zeitinformationen werden bewusst NICHT für die Zuordnung verwendet.
+      const strong=strongRewardEvidenceForLot(lot,callTo,c._selector||'',c.hash||'');
+      if(!strong.strong)continue;
+      candidates.push({lot,score,reasons,strongKind:strong.kind});
+    }
+
+    candidates.sort((a,b)=>b.score-a.score);
+    const chosen=candidates[0]||null;
+    const second=candidates[1]||null;
+    if(chosen&&second&&chosen.score===second.score&&chosen.strongKind===second.strongKind){
+      log(`Reward-Kandidat NICHT zugeordnet: ${c.hash||'–'} · gleiche belastbare Evidenz für mehrere parallele Positionen; keine automatische Zuordnung.`,'warn');
+      continue;
+    }
+
+    // "Nur eine Position war aktiv" reicht NICHT als Reward-Nachweis.
+    // Ohne Contract-/Tx-Beziehung bleibt der Transfer ein unbestätigter Kandidat.
+    const minScore=c?._rewardHint?45:60;
+    if(!chosen||chosen.score<minScore){
+      if(chosen){
+        log(`Reward-Kandidat NICHT zugeordnet: ${c.hash||'–'} · Score ${chosen.score} · keine ausreichende Contract-/Tx-Evidenz (${chosen.reasons.join(', ')||'nur zeitliche Nähe'}).`,'warn');
+      }
+      continue;
+    }
+
+    const lot=chosen.lot;
+    try{
+      const meta=await tokenMeta(tr.token);
+      const amount=Number(ethers.formatUnits(tr.amountRaw,meta.decimals));
+      if(!(amount>0))continue;
+
+      const claim={
+        hash:c.hash,time:c.metadata?.blockTimestamp||null,block:c._blockNumber||null,
+        token:tr.token,symbol:meta.symbol||'Token',decimals:meta.decimals,amount,
+        from:tr.from,to:tr.to,
+        method:(learnedRewardPath(norm(c.to||c?._staking?.contract_address||''),c._selector||'')&&(!c._method||c._method==='Contract-Aufruf'))?'Reward-/Claim-Aufruf (dynamisch erkannt)':(c._method||'Reward-relevante Tx'),
+        selector:c._selector||null,
+        calledContract:norm(c.to||c?._staking?.contract_address||'')||null,
+        assignmentReason:chosen.reasons.join(', '),
+        source:`${c._rewardHint?'Bestätigte reward-relevante Tx':'Staking-/Controller-Receipt'}`,
+        assignmentScore:chosen.score
+      };
+
+      const key=`${claim.hash}|${claim.token}|${claim.amount}`;
+      if(!lot.rewardClaims.some(x=>`${x.hash}|${x.token}|${x.amount}`===key)){
+        lot.rewardClaims.push(claim);
+        addLotTx(lot,{
+          kind:`Reward / Claim · ${claim.symbol}`,
+          hash:claim.hash,time:claim.time,block:claim.block,amount:claim.amount,
+          tokenSymbol:claim.symbol,tokenAddress:claim.token,
+          selector:claim.selector,method:claim.method,source:claim.source,
+          calledContract:claim.calledContract,assignmentReason:claim.assignmentReason
+        });
+        log(`Reward zugeordnet: ${claim.amount} ${claim.symbol} → ${safePairLabel(lot)} · ${claim.source} · Zuordnung: ${claim.assignmentReason}`,'ok');
+      }
+    }catch(e){
+      log(`Reward-Transfer ${c.hash}: Token-Metadaten konnten nicht gelesen werden (${e.message}).`,'warn');
+    }
+  }
+
+  for(const lot of (lots||[])){
+    lot.rewardClaims.sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  }
+}
+
+
+function structFieldEvidence(lot,w){
+
+  // For other contracts: report semantic matches without inventing Solidity names.
+  const original=Number(lot.original||0);
+  const stakeSec=lot.stakeTime?Math.floor(new Date(lot.stakeTime).getTime()/1000):null;
+  const hints=[];
+  if(original>0 && Number.isFinite(w.as18) && Math.abs(w.as18-original)/original<0.00001){
+    hints.push('entspricht LP-Menge');
+  }
+  if(stakeSec!=null && Math.abs(Number(w.uint)-stakeSec)<=86400){
+    hints.push('entspricht Stake-Timestamp');
+  }
+  const usd=Number(lot.stakeUsd||0);
+  if(usd>0 && Number.isFinite(w.as18) && Math.abs(w.as18-usd)/usd<0.0001){
+    hints.push('entspricht gespeichertem Stake-USD-Wert');
+  }
+  return {label:`Wort ${w.index+1}`,evidence:hints.join(' · ')||'Bezeichnung aus vorliegenden SC-Daten noch nicht verifiziert'};
+}
+function stakeRewardEvidenceHtml(lot){
+  const ev=lot.stakeRewardEvidence||[];
+  const delta=(lot.historicalScDelta||[]).filter(x=>x.delta!==0n);
+  let html='';
+
+  if(ev.length){
+    html+=ev.map(x=>`<div class="reward-item">
+      <span class="rk">${x.from==='0x0000000000000000000000000000000000000000'?'Beim Stake gemintet':'Beim Stake erhalten'} · ${esc(x.symbol)}</span>
+      <span class="rv">${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</span>
+      <div class="value-source">Empfänger: <span class="mono">${esc(x.to)}</span> · Token <span class="mono">${esc(x.token)}</span></div>
+    </div>`).join('');
+  }
+
+  if(lot.historicalScAfter){
+    const rows=(lot.historicalScAfter.words||[]).map(w=>{
+      const d=(lot.historicalScDelta||[]).find(x=>x.index===w.index);
+      const f=structFieldEvidence(lot,w);
+      return `<tr>
+        <td><b>${esc(f.label)}</b><div class="muted">${esc(f.evidence)}</div></td>
+        <td class="mono">${w.uint.toString()}</td>
+        <td>${Number.isFinite(w.as18)?w.as18.toLocaleString('de-CH',{maximumFractionDigits:12}):'–'}</td>
+        <td class="mono">${d&&d.delta!==0n?d.delta.toString():'–'}</td>
+      </tr>`;
+    }).join('');
+    html+=`<div style="grid-column:1/-1;margin-top:8px">
+      <details><summary>Historische SC-Daten beim Stake (${esc(lot.historicalScAfter.sig)})</summary>
+        <div class="sc-grid" style="margin:8px 0"><div class="sc-k">Staking-Contract</div><div class="sc-v mono">${esc(norm(lot?.staking?.contract_address||lot.counterparty||''))}</div></div>
+        <div class="reward-note">Zustand am tatsächlichen Stake-Block. Bei diesem Contract werden ohne belegte SC-Feldnamen nur nachweisbare Wert-/Timestamp-Übereinstimmungen angezeigt; Solidity-Feldnamen werden nicht geraten.</div>
+        <div class="wrap" style="margin-top:8px"><table style="min-width:760px">
+          <thead><tr><th>Feld</th><th>Raw uint</th><th>als 18 Decimals</th><th>Änderung beim Stake</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+      </details>
+    </div>`;
+  }
+  const other=lot.stakeTxOtherPayouts||[];
+  if(other.length){
+    html+=`<div style="grid-column:1/-1;margin-top:8px"><details><summary>Weitere Ausschüttungen der Stake-Tx an andere Empfänger (${other.length})</summary>
+      <div class="reward-note">Diese Transfers/Mints gehören zur selben Stake-Transaktion, gingen aber NICHT an das ausgewählte Wallet und werden deshalb nicht als eigener Reward gezählt.</div>
+      <div class="wrap" style="margin-top:8px"><table><thead><tr><th>Token</th><th>Menge</th><th>Empfänger</th><th>Quelle</th></tr></thead><tbody>
+      ${other.map(x=>`<tr><td>${esc(x.symbol||'Token')}</td><td class="num">${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="mono">${esc(x.to||'–')}</td><td>${esc(x.source||'Stake-Transaktion')}</td></tr>`).join('')}
+      </tbody></table></div>
+    </details></div>`;
+  }
+  return html;
+}
+
+
+
+async function attachRewardTokenHistoryToLots(lots){
+  const wallet=norm(CURRENT_WALLET);
+  const rows=Array.isArray(lots)?lots:[];
+  CURRENT_UNASSIGNED_REWARDS=[];
+  const knownByLot=new Map();
+  const existingGlobal=new Set();
+
+  for(const lot of rows){
+    const known=new Map();
+    for(const x of (lot.stakeRewardEvidence||[])){
+      if(x.token&&x.symbol)known.set(norm(x.token),x.symbol);
+    }
+    for(const x of (lot.rewardClaims||[])){
+      if(x.token&&x.symbol)known.set(norm(x.token),x.symbol);
+      existingGlobal.add(`${String(x.hash||'').toLowerCase()}|${norm(x.token)}|${norm(x.from)}|${norm(x.to)}|${Number(x.amount||0)}`);
+    }
+    knownByLot.set(lot,known);
+  }
+
+  const processedHashes=new Map();
+  const processedRewardTransfers=new Set();
+
+  for(const t of (CURRENT_ALL_TRANSFERS||[])){
+    const token=norm(t.rawContract?.address||'');
+    const hash=String(t.hash||'').toLowerCase();
+    const to=norm(t.to||''),from=norm(t.from||'');
+    if(!hash||!token||to!==wallet)continue;
+    const rawValue=t.rawContract?.value!=null?String(t.rawContract.value):String(t.value??'');
+    const transferKey=`${hash}|${token}|${from}|${to}|${rawValue}`;
+    if(processedRewardTransfers.has(transferKey))continue;
+    processedRewardTransfers.add(transferKey);
+
+    let txInfo=processedHashes.get(hash);
+    if(!txInfo){
+      let tx=null,receipt=null,time=t.metadata?.blockTimestamp||null,block=null;
+      try{
+        [tx,receipt]=await Promise.all([
+          cachedTx(hash),
+          rpc('eth_getTransactionReceipt',[hash]).catch(()=>null)
+        ]);
+        if(tx?.blockNumber){
+          block=Number(BigInt(tx.blockNumber));
+          if(!time){
+            const b=await cachedBlockByNumber(tx.blockNumber);
+            if(b?.timestamp)time=new Date(Number(BigInt(b.timestamp))*1000).toISOString();
+          }
+        }
+      }catch{}
+      txInfo={tx,receipt,time,block};
+      processedHashes.set(hash,txInfo);
+    }
+
+    const {tx,receipt,time,block}=txInfo;
+    const ms=time?new Date(time).getTime():null;
+    const callTo=norm(tx?.to||'');
+    const selector=tx?.input?String(tx.input).slice(0,10).toLowerCase():null;
+    const lifecycleHash=rows.some(l=>
+      hash===String(l.stakeTx||'').toLowerCase()||
+      hash===String(l.unstakeTx||'').toLowerCase()||
+      (l.topUps||[]).some(x=>hash===String(x.tx||'').toLowerCase())
+    );
+    // Nicht anhand eines fest bekannten Selectors, sondern anhand der bereits
+    // rekonstruierten Position: Lifecycle-Tx werden nicht als fremde Reward-
+    // Auszahlung gewertet.
+    if(lifecycleHash)continue;
+    const receiptLogContracts=new Set((receipt?.logs||[]).map(x=>norm(x.address||'')).filter(Boolean));
+    const candidates=[];
+
+    for(const lot of rows){
+      const pair=norm(safePairAddress(lot));
+      if(token===pair)continue;
+
+      const startMs=lot.stakeTime?new Date(lot.stakeTime).getTime():null;
+      const endMs=lot.unstakeTime?new Date(lot.unstakeTime).getTime():Date.now();
+      const tol=5*60*1000;
+      if(startMs&&ms&&ms<startMs-tol)continue;
+      if(endMs&&ms&&ms>endMs+tol)continue;
+
+      const direct=norm(lot?.staking?.contract_address||lot.counterparty||'');
+      const entry=norm(lot.entry_contract||'');
+      const eventContract=norm(lot.stake_event_contract||'');
+      const relatedRewards=lotRewardContracts(lot);
+      const targets=new Set([direct,entry,eventContract,...relatedRewards].filter(Boolean));
+      const known=knownByLot.get(lot)||new Map();
+      const reasons=[];
+      let score=0;
+
+      if(hash===String(lot.stakeTx||'').toLowerCase()){
+        score+=120;reasons.push('gleiche Tx wie Stake');
+      }
+      if(hash===String(lot.unstakeTx||'').toLowerCase()){
+        score+=120;reasons.push('gleiche Tx wie Unstake');
+      }
+      if(callTo&&targets.has(callTo)){
+        score+=90;reasons.push(callTo===direct?'direkter Staking-SC':callTo===entry?'Entry-/Controller-SC':'Stake-Event-SC');
+      }
+      if(from&&targets.has(from)){
+        score+=90;reasons.push('Token direkt vom Staking-/Controller-SC');
+      }
+
+      const learned=callTo&&selector?learnedRewardPath(callTo,selector):null;
+      const learnedBelongsToLot=!!(learned && callTo && targets.has(callTo));
+      if(learnedBelongsToLot){
+        score+=85;reasons.push(relatedRewards.has(callTo)
+          ? `dynamisch gelernter Reward-/Claim-Pfad · on-chain mit diesem Staking verknüpft (${callTo} · ${selector})`
+          : `dynamisch gelernter Reward-/Claim-Pfad dieses Stakings (${callTo} · ${selector})`);
+      }
+      if(callTo&&relatedRewards.has(callTo)){
+        score+=95;reasons.push('historisch belegte Reward-SC-Beziehung zur Position');
+      }
+      if(callTo&&graphConnectedRewardContract(lot,callTo)){
+        score+=100;reasons.push('Contract-Graph: Reward-/Yield-SC gehört zu dieser Position');
+      }
+
+      // Alte TLN-Rewards werden teilweise gemintet (from = 0x0).
+      // Deshalb zählt auch ein Receipt-Event des Staking-Systems als starke Evidenz.
+      const receiptTarget=[...targets].find(x=>receiptLogContracts.has(x));
+      if(receiptTarget){
+        score+=75;reasons.push(`Receipt enthält Event des Staking-Systems (${receiptTarget})`);
+      }
+
+      for(const tr of receiptErc20Transfers(receipt)){
+        if(norm(tr.token)!==token||tr.to!==wallet)continue;
+        if(targets.has(norm(tr.from))){
+          score+=70;reasons.push('Receipt: Token-Transfer vom Staking-/Controller-SC');
+          break;
+        }
+      }
+
+      if(known.has(token)){
+        score+=10;reasons.push('bereits erkannter Reward-Token');
+      }
+      // Keine zeitbasierte Bewertung: parallele Stakings sind zulässig.
+      const strong=strongRewardEvidenceForLot(lot,callTo,selector,hash);
+      if(!strong.strong)continue;
+      candidates.push({lot,score,reasons,known,strongKind:strong.kind});
+    }
+
+    candidates.sort((a,b)=>{
+      if(b.score!==a.score)return b.score-a.score;
+      const at=new Date(a.lot.lockBaseTime||a.lot.stakeTime||0).getTime();
+      const bt=new Date(b.lot.lockBaseTime||b.lot.stakeTime||0).getTime();
+      return bt-at;
+    });
+
+    const chosen=candidates[0]||null;
+    if(!chosen||chosen.score<60){
+      const knownSome=candidates.find(x=>x.known?.has(token));
+      if(knownSome){
+        const receiptContracts=[...receiptLogContracts].slice(0,8);
+        CURRENT_UNASSIGNED_REWARDS.push({
+          hash,time,block,token,symbol:knownSome.known.get(token),from,to,
+          calledContract:callTo||null,selector:selector||null,
+          receiptContracts,score:chosen?.score||0,
+          reasons:chosen?.reasons||[],
+          lotRelations:candidates.slice(0,4).map(x=>({
+            staking:safePairLabel(x.lot),
+            rewardContracts:[...lotRewardContracts(x.lot)]
+          }))
+        });
+        log(`Reward-Historie Kandidat NICHT zugeordnet: ${hash} · ${knownSome.known.get(token)} · bester Score ${chosen?.score||0} · ${chosen?.reasons?.join(', ')||'keine Contract-/Receipt-Evidenz'} · Tx-Ziel ${callTo||'–'} · Selector ${selector||'–'} · Receipt-Contracts ${receiptContracts.join(', ')||'–'}`,'warn');
+      }
+      continue;
+    }
+
+    const second=candidates[1]||null;
+    if(second && chosen.strongKind===second.strongKind &&
+       (chosen.score===second.score ||
+        norm(chosen.lot?.staking?.contract_address||chosen.lot.counterparty||'')===norm(second.lot?.staking?.contract_address||second.lot.counterparty||''))){
+      log(`Reward-Historie mehrdeutig: ${hash} · gleiche positionsbezogene Evidenz für mehrere parallele Lots; keine automatische Zuordnung.`,'warn');
+      continue;
+    }
+
+    const meta=await tokenMeta(token);
+    let amount=null;
+    try{
+      if(t.rawContract?.value!=null)amount=Number(ethers.formatUnits(BigInt(t.rawContract.value),meta.decimals));
+      else if(t.value!=null)amount=Number(t.value);
+    }catch{}
+    if(!(Number(amount)>0))continue;
+
+    const key=`${hash}|${token}|${from}|${to}|${amount}`;
+    if(existingGlobal.has(key))continue;
+    existingGlobal.add(key);
+
+    const lot=chosen.lot;
+    const learned=callTo&&selector?learnedRewardPath(callTo,selector):null;
+    const method=METHOD_SELECTORS.get(selector)||(
+      learned?'Reward-/Claim-Aufruf (dynamisch erkannt)':
+      from==='0x0000000000000000000000000000000000000000'?'Reward-Mint':'Reward-Ausschüttung'
+    );
+    const symbol=meta.symbol||chosen.known.get(token)||'Token';
+    chosen.known.set(token,symbol);
+
+    const claim={
+      hash,time,block,token,symbol,decimals:meta.decimals,amount,
+      from,to,method,selector,
+      calledContract:callTo||null,
+      assignmentReason:chosen.reasons.join(', '),
+      source:'Dynamisch erkannte Reward-Historie · globale Lot-Zuordnung',
+      assignmentScore:chosen.score,
+      eventType:hash===String(lot.stakeTx||'').toLowerCase()?'stake_reward':
+                /claim|reward|harvest|withdraw/i.test(method)?'claim':'distribution'
+    };
+
+    lot.rewardClaims=lot.rewardClaims||[];
+    lot.rewardClaims.push(claim);
+    addLotTx(lot,{
+      kind:`${claim.eventType==='claim'?'Reward / Claim':claim.eventType==='stake_reward'?'Reward beim Stake':'Reward / Ausschüttung'} · ${claim.symbol}`,
+      hash,time,block,amount,tokenSymbol:claim.symbol,tokenAddress:token,
+      selector,method,source:claim.source,
+      calledContract:claim.calledContract,assignmentReason:claim.assignmentReason
+    });
+    log(`Reward-Historie eindeutig zugeordnet: ${amount} ${claim.symbol} · ${method} · ${hash} → ${safePairLabel(lot)} · ${claim.assignmentReason}`,'ok');
+  }
+
+  for(const lot of rows){
+    lot.rewardClaims=(lot.rewardClaims||[]).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  }
+}
+
+function renderUnassignedRewards(){
+  const el=document.getElementById('unassignedRewards');
+  if(!el)return;
+  const rows=CURRENT_UNASSIGNED_REWARDS||[];
+  if(!rows.length){
+    el.innerHTML='<div class="muted">Keine bekannten Reward-Transfers ohne belastbare Staking-Zuordnung.</div>';
+    return;
+  }
+  el.innerHTML=`<div class="warnbox"><b>${rows.length} Reward-Kandidat(en) bewusst nicht automatisch zugeordnet.</b><br>Diese Transfers sind als Reward-Token plausibel, aber die Transaktion enthält noch keine ausreichend starke on-chain Beziehung zu genau einer Staking-Position.</div>
+  <div class="wrap"><table><thead><tr><th>Zeit</th><th>Token</th><th>Tx-Ziel / Selector</th><th>Receipt-Contracts</th><th>On-chain Reward-SC-Beziehungen</th><th>Score</th><th>Tx</th></tr></thead><tbody>${rows.map(r=>`<tr>
+    <td>${r.time?new Date(r.time).toLocaleString('de-CH'):'–'}</td>
+    <td>${esc(r.symbol||'–')}</td>
+    <td class="mono">${esc(r.calledContract||'–')}<br>${esc(r.selector||'–')}</td>
+    <td class="mono">${esc((r.receiptContracts||[]).join(', ')||'–')}</td>
+    <td>${(r.lotRelations||[]).map(x=>`${esc(x.staking)}: ${(x.rewardContracts||[]).length?(x.rewardContracts||[]).map(c=>`<span class="mono">${esc(c)}</span>`).join(', '):'–'}`).join('<br>')||'–'}</td>
+    <td class="num">${Number(r.score||0)}</td>
+    <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a></td>
+  </tr>`).join('')}</tbody></table></div>`;
+}
+
+function deriveRewardModel(lot){
+  const probe=lot.businessProbe;
+  const names=new Set((probe?.results||[]).map(r=>probeBaseName(r.label)));
+  const evidence=[];
+
+  const dailyNames=['dailyreward','rewardperday','dailyrate','stakeddays','staked_days','daysstaked'];
+  const runningNames=['withdrawableyield','getwithdrawableyield','availableyield','earned','pendingreward','pendingrewards','claimable','rewards','rewardrate','interestrate'];
+  const payoutNames=['payouts','totalpayouts','totalwithdrawn'];
+
+  const daily=dailyNames.filter(n=>names.has(n));
+  const running=runningNames.filter(n=>names.has(n));
+  const payouts=payoutNames.filter(n=>names.has(n));
+  if(daily.length)evidence.push(`Tages-/Rate-Funktionen: ${daily.join(', ')}`);
+  if(running.length)evidence.push(`laufende Reward-Funktionen: ${running.join(', ')}`);
+  if(payouts.length)evidence.push(`Payout-Funktionen: ${payouts.join(', ')}`);
+  if((lot.stakeRewardEvidence||[]).length)evidence.push(`${lot.stakeRewardEvidence.length} Reward-Transfer/Mint(s) in der Stake-Tx`);
+
+  let type='unbekannt';
+  let label='Reward-Modell nicht eindeutig aus SC ableitbar';
+  if(daily.length){
+    type='daily';
+    label='täglich / tagesbasiert';
+  }else if(running.length){
+    type='accruing';
+    label='laufend berechnet / claimbar';
+  }else if((lot.stakeRewardEvidence||[]).length){
+    type='stake_time';
+    label='Reward bei/mit Stake-Transaktion';
+  }else if(payouts.length){
+    type='payout_tracked';
+    label='Payout-basiert';
+  }
+  return {type,label,evidence};
+}
+function stakeInputEvidenceHtml(lot){
+  const s=lot.stake_input;
+  if(!s?.selector)return '';
+  const args=(s.args||[]).map(a=>{
+    let desc=`Arg ${a.index+1}`;
+    if(a.token)desc+=` · Contract/Token ${a.token.symbol}`;
+    return `<tr><td>${desc}</td><td class="mono">${a.raw}</td><td>${a.address?`<span class="mono">${esc(a.address)}</span>${a.token?` · ${esc(a.token.symbol)}`:''}`:(a.uint!=null?a.uint.toString():'–')}</td></tr>`;
+  }).join('');
+  return `<div style="grid-column:1/-1;margin-top:8px"><details><summary>Stake-Aufruf aus Blockchain</summary>
+    <div class="reward-note">Selector und Argumente werden direkt aus der Stake-Transaktion gelesen. Ohne verifizierte ABI werden Argumentnamen bewusst nicht geraten.</div>
+    <div class="sc-grid" style="margin-top:8px"><div class="sc-k">Entry-/Controller</div><div class="sc-v mono">${esc(lot.entry_contract||'–')}</div><div class="sc-k">Method Selector</div><div class="sc-v mono">${esc(s.selector)}</div></div>
+    ${args?`<div class="wrap" style="margin-top:8px"><table><thead><tr><th>Argument</th><th>Raw</th><th>On-chain Interpretation</th></tr></thead><tbody>${args}</tbody></table></div>`:''}
+  </details></div>`;
+}
+function rewardClaimSummaryHtml(lot){
+  const claims=lot.rewardClaims||[];
+  if(!claims.length)return '';
+
+  const grouped={stake_reward:[],distribution:[],claim:[]};
+  for(const c of claims){
+    const type=c.eventType||(/claim|harvest|get reward|withdraw reward/i.test(c.method||'')?'claim':'distribution');
+    (grouped[type]||grouped.distribution).push(c);
+  }
+
+  function sumsFor(rows){
+    const sums=new Map();
+    for(const c of rows){
+      const k=`${c.symbol}|${c.token}`;
+      if(!sums.has(k))sums.set(k,{symbol:c.symbol,token:c.token,amount:0});
+      sums.get(k).amount+=Number(c.amount||0);
+    }
+    return [...sums.values()];
+  }
+
+  const summarySections=[
+    ['stake_reward','Eigener Reward beim Stake'],
+    ['distribution','Spätere Reward-Ausschüttungen · positionsspezifisch belegt'],
+    ['claim','Claims / Reward-Abholungen']
+  ];
+
+  let totals='';
+  for(const [type,label] of summarySections){
+    for(const x of sumsFor(grouped[type])){
+      totals+=`<div class="reward-item"><span class="rk">${esc(label)} · ${esc(x.symbol)}</span>
+        <span class="rv">${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</span>
+        <div class="value-source mono">${esc(x.token)}</div></div>`;
+    }
+  }
+
+  const rows=claims.map(c=>{
+    const type=c.eventType||(/claim|harvest|get reward|withdraw reward/i.test(c.method||'')?'claim':'distribution');
+    const label=type==='stake_reward'?'Reward beim Stake':type==='claim'?'Claim / Reward-Abholung':'Reward-Ausschüttung';
+    return `<tr>
+      <td>${c.time?new Date(c.time).toLocaleString('de-CH'):'–'}</td>
+      <td><b>${esc(label)}</b></td>
+      <td><b>${c.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(c.symbol)}</b><div class="mono muted">${esc(c.token)}</div></td>
+      <td>${esc(c.method||'Reward-relevante Tx')}<div class="muted">${esc(c.source||'')}</div></td>
+      <td class="mono">${c.calledContract?esc(c.calledContract):'–'}</td>
+      <td>${c.assignmentReason?esc(c.assignmentReason):'–'}${c.assignmentScore!=null?`<div class="muted">Score ${c.assignmentScore}</div>`:''}</td>
+      <td>${c.block??'–'}</td>
+      <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(c.hash)}">${esc(c.hash)}</a></td>
+    </tr>`;
+  }).join('');
+
+  return `${totals}<div style="grid-column:1/-1;margin-top:8px">
+    <details><summary>Reward-/Claim-Transaktionen (${claims.length})</summary>
+      <div class="wrap" style="margin-top:8px"><table style="min-width:1180px">
+        <thead><tr><th>Zeit</th><th>Typ</th><th>Reward</th><th>Methode / Quelle</th><th>Aufgerufener Contract</th><th>Zuordnung</th><th>Block</th><th>Tx</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </details>
+  </div>`;
+}
+function rewardHtml(lot){
+  const p=lot.rewardProfile||rewardProfileForLot(lot),reads=lot.rewardReads||[];
+  let items='';
+  const model=lot.rewardModel||deriveRewardModel(lot);
+  items+=`<div class="reward-item"><span class="rk">Aus SC abgeleitetes Reward-Modell</span><span class="rv">${esc(model.label)}</span>${model.evidence?.length?`<div class="value-source">${esc(model.evidence.join(' · '))}</div>`:''}</div>`;
+  if(p.token)items+=`<div class="reward-item"><span class="rk">Reward-Typ</span><span class="rv">${esc(p.token)}</span></div>`;
+  for(const r of reads){
+    items+=`<div class="reward-item"><span class="rk">${esc(r.label)}</span><span class="rv">${Number(r.value).toLocaleString('de-CH',{maximumFractionDigits:12})}${p.token?' '+esc(p.token):''}</span></div>`;
+  }
+  if(!reads.length)items+=`<div class="reward-item"><span class="rk">Aktuell noch offener Reward-Anspruch laut Smart Contract</span><span class="rv muted">Kein aktuell offener Reward-Anspruch konnte über bekannte SC-Read-Funktionen eindeutig ermittelt werden. Historisch gefundene Claim-/Reward-Transaktionen bleiben davon unberührt.</span></div>`;
+  items+=stakeRewardEvidenceHtml(lot);
+  items+=stakeInputEvidenceHtml(lot);
+  items+=rewardClaimSummaryHtml(lot);
+  return `<div class="reward-box"><div class="reward-title">🎁 ${esc(p.title)}</div><div class="reward-grid">${items}</div><div class="reward-note">${esc(p.model)} Eigene Rewards werden nur gezählt, wenn der Token tatsächlich an das ausgewählte Wallet ging und eine belastbare Beziehung zur Staking-Position besteht. Initiale Stake-Rewards, spätere Ausschüttungen und Claims werden getrennt geführt; weitere Empfänger derselben Stake-Tx bleiben rein diagnostisch.</div></div>`;
+}
+function addLotTx(lot,tx){
+  if(!lot||!tx?.hash)return;
+  lot.transactions=lot.transactions||[];
+  if(lot.transactions.some(x=>x.hash===tx.hash&&x.kind===tx.kind))return;
+  lot.transactions.push(tx);
+}
+function eventTx(r,kind){
+  return {kind,hash:r?.t?.hash||null,time:r?.t?.metadata?.blockTimestamp||null,block:r?.t?.blockNum?parseInt(r.t.blockNum,16):null,amount:Number(r?.amount||0),source:'LP-Transfer'};
+}
+function buildDiagnosticLots(stakingRows){
+  const groups=new Map(),lots=[],unmatched=[];
+  const ordered=[...stakingRows].sort((a,b)=>{
+    const ta=String(a.t.metadata?.blockTimestamp||''),tb=String(b.t.metadata?.blockTimestamp||'');
+    if(ta!==tb)return ta.localeCompare(tb);
+    return parseInt(a.t.blockNum||'0x0',16)-parseInt(b.t.blockNum||'0x0',16);
+  });
+  for(const r of ordered){
+    const key=stakingKey(r); if(!groups.has(key))groups.set(key,[]);
+    const q=groups.get(key);
+    if(r.action==='Stake'){
+      const stakeTime=r.t.metadata?.blockTimestamp||null;
+      const amount=Number(r.amount||0);
+
+      // A repeated Stake for the same wallet + staking asset + staking contract
+      // while the position is still open is treated as a top-up of that position,
+      // not as an independent second staking. This matches legacy TLN contracts
+      // that store one mutable user position and reset the lock on top-up.
+      const openLot=q.length===1 && q[0]?.remaining>1e-12 ? q[0] : null;
+      if(openLot){
+        openLot.topUps=openLot.topUps||[];
+        openLot.topUps.push({
+          time:stakeTime,
+          block:r?.t?.blockNum?parseInt(r.t.blockNum,16):null,
+          blockHex:r?.t?.blockNum||null,
+          tx:r?.t?.hash||null,
+          amount,
+          resultingPrincipal:Number(openLot.remaining||0)+amount
+        });
+        openLot.original=Number(openLot.original||0)+amount;
+        openLot.remaining=Number(openLot.remaining||0)+amount;
+        openLot.lastTopUpTime=stakeTime;
+        openLot.lastTopUpBlockHex=r?.t?.blockNum||null;
+        openLot.lockBaseTime=stakeTime;
+        openLot.lockBaseReason='Aufstockung des bestehenden Stakings';
+        // Contract timing must be re-derived from the latest stake/top-up.
+        openLot.expiryTime=null;
+        openLot.durationDays=null;
+        openLot.durationSource=null;
+        addLotTx(openLot,{...eventTx(r,'Aufstockung'),amount,source:'Wiederholter Stake bei bereits offener Position'});
+        log(`Aufstockung erkannt: ${safePairLabel(openLot)} · +${amount.toLocaleString('de-CH',{maximumFractionDigits:12})} · bestehende Position wird fortgeführt; Laufzeitbasis = Aufstockungszeitpunkt ${stakeTime?new Date(stakeTime).toLocaleString('de-CH'):'–'} · Tx ${r?.t?.hash||'–'}`,'ok');
+      }else{
+        const lot={key,pair:r.p||null,pair_address:safePairAddress(r),token0_symbol:r?.p?.token0?.symbol||'Token0',token1_symbol:r?.p?.token1?.symbol||'Token1',staking:r.staking,counterparty:r.counterparty,entry_contract:r.entry_contract||null,stake_event_contract:r.stake_event_contract||null,stake_token_id:r.stake_token_id||null,stakeTime,stakeBlockHex:r?.t?.blockNum||null,lockBaseTime:stakeTime,lockBaseReason:'Erst-Stake',expiryTime:null,durationDays:null,durationSource:null,stakeTx:r.t.hash,original:amount,remaining:amount,status:'open',transactions:[],topUps:[]};
+        addLotTx(lot,eventTx(r,'Stake'));
+        lots.push(lot); q.push(lot);
+      }
+    }else{
+      let left=Number(r.amount||0);
+      while(left>1e-12&&q.length){
+        const lot=q[0],used=Math.min(left,lot.remaining);
+        addLotTx(lot,{...eventTx(r,'Unstake'),amount:used});
+        lot.remaining-=used;left-=used;
+        if(lot.remaining<=1e-12){lot.remaining=0;lot.status='closed';lot.unstakeTime=r?.t?.metadata?.blockTimestamp||null;lot.unstakeTx=r?.t?.hash||null;lot.unstakeBlockHex=r?.t?.blockNum||null;lot.unstakeEvidence='lp_transfer_event';q.shift();}
+        else lot.status='partial';
+      }
+      if(left>1e-9)unmatched.push({row:r,unmatched:left,key});
+    }
+  }
+  return {lots,unmatched};
+}
+
+
+
+const STAKING_EVENT_TOPICS=new Map([
+  [ethers.id('Stake(address,uint256,uint256)').toLowerCase(),'Stake'],
+  [ethers.id('Unstake(address,uint256,uint256)').toLowerCase(),'Unstake'],
+  [ethers.id('UnStake(address,uint256,uint256)').toLowerCase(),'Unstake'],
+  [ethers.id('Unstaked(address,uint256,uint256)').toLowerCase(),'Unstake'],
+  [ethers.id('Withdraw(address,uint256,uint256)').toLowerCase(),'Withdraw'],
+  [ethers.id('Withdrawn(address,uint256,uint256)').toLowerCase(),'Withdraw'],
+  [ethers.id('WithdrawYield(address,uint256)').toLowerCase(),'Withdraw Yield'],
+  [ethers.id('WithdrawYield(address,uint256,uint256)').toLowerCase(),'Withdraw Yield']
+]);
+function walletTopicAddress(wallet){
+  return '0x'+String(wallet||'').toLowerCase().replace(/^0x/,'').padStart(64,'0');
+}
+async function getBlockTimestampHex(blockHex,cache){
+  const key=String(blockHex||'').toLowerCase();
+  if(cache.has(key))return cache.get(key);
+  try{
+    const b=await rpc('eth_getBlockByNumber',[blockHex,false]);
+    const iso=b?.timestamp?new Date(Number(BigInt(b.timestamp))*1000).toISOString():null;
+    cache.set(key,iso);return iso;
+  }catch{cache.set(key,null);return null}
+}
+function hexContainsWallet(value,wallet){
+  const needle=norm(wallet).replace(/^0x/,'');
+  return needle && String(value||'').toLowerCase().replace(/^0x/,'').includes(needle);
+}
+function logMentionsWallet(lg,wallet){
+  if((lg?.topics||[]).some(t=>hexContainsWallet(t,wallet)))return true;
+  if(hexContainsWallet(lg?.data,wallet))return true;
+  return false;
+}
+async function logsForWalletOnContract(contract,wallet,fromBlock){
+  const address=norm(contract);
+  if(!ethers.isAddress(address))return [];
+  const latestHex=await rpc('eth_blockNumber',[]);
+  const start=Number(BigInt(fromBlock||'0x0')),latest=Number(BigInt(latestHex));
+  const out=[],step=250000;
+  for(let a=start;a<=latest;a+=step){
+    const b=Math.min(latest,a+step-1);
+    try{
+      // Important: do NOT assume the wallet is indexed as topic1.
+      // Legacy TLN contracts use different event layouts.
+      const rows=await rpc('eth_getLogs',[{
+        address,
+        fromBlock:'0x'+a.toString(16),
+        toBlock:'0x'+b.toString(16)
+      }]);
+      for(const lg of (rows||[])){
+        if(logMentionsWallet(lg,wallet))out.push(lg);
+      }
+    }catch(e){
+      log(`SC-Deep-Scan ${address} · Block ${a}-${b}: ${e.message}`,'warn');
+    }
+  }
+  return out;
+}
+
+async function discoverStakingContractEvents(stakingRows,entryTargets,wallet){
+  const contracts=new Map();
+  let minBlock=null;
+  for(const r of (stakingRows||[]).filter(x=>x.action==='STAKE')){
+    const bn=r?.t?.blockNum?Number(BigInt(r.t.blockNum)):null;
+    if(bn!=null)minBlock=minBlock==null?bn:Math.min(minBlock,bn);
+    const s=norm(r?.staking?.contract_address||r.counterparty||'');
+    if(s)contracts.set(s,stakingContractLabel(r.staking));
+    const e=norm(r.entry_contract||'');
+    if(e)contracts.set(e,`${stakingContractLabel(r.staking)} · Entry/Controller`);
+  }
+  for(const x of (entryTargets||[])){
+    const a=norm(x?.contract_address||'');if(a)contracts.set(a,x.label||'Entry/Controller');
+  }
+  if(minBlock==null)return [];
+  const fromHex='0x'+Math.max(0,minBlock-100).toString(16);
+  const blockCache=new Map(),events=[];
+  for(const [contract,label] of contracts){
+    log(`SC-Events für ${label} ab Block ${minBlock}…`);
+    const logs=await logsForWalletOnContract(contract,wallet,fromHex);
+    for(const lg of logs){
+      const topic0=String(lg?.topics?.[0]||'').toLowerCase();
+      const known=STAKING_EVENT_TOPICS.get(topic0)||null;
+      const time=await getBlockTimestampHex(lg.blockNumber,blockCache);
+      let tokenId=null,amountRaw=null;
+      if(lg?.topics?.[2]){try{tokenId=BigInt(lg.topics[2]).toString()}catch{}}
+      const words=rawWords(lg.data||'0x');
+      if(words.length){amountRaw=words[words.length-1]?.uint==null?null:words[words.length-1].uint.toString()}
+      let receipt=null,tx=null,lpTransfers=[];
+      try{
+        [receipt,tx]=await Promise.all([
+          rpc('eth_getTransactionReceipt',[lg.transactionHash]),
+          rpc('eth_getTransactionByHash',[lg.transactionHash])
+        ]);
+        const transferTopic='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+        for(const x of (receipt?.logs||[])){
+          if(String(x?.topics?.[0]||'').toLowerCase()!==transferTopic||!x.topics?.[1]||!x.topics?.[2])continue;
+          const from=norm('0x'+String(x.topics[1]).slice(-40)),to=norm('0x'+String(x.topics[2]).slice(-40));
+          let raw=null;try{raw=BigInt(x.data||'0x0').toString()}catch{}
+          lpTransfers.push({token:norm(x.address),from,to,raw});
+        }
+      }catch{}
+      events.push({
+        kind:known||'SC-Event',
+        method:known||`SC-Event ${topic0.slice(0,10)}`,
+        hash:lg.transactionHash,
+        time,
+        block:lg.blockNumber?Number(BigInt(lg.blockNumber)):null,
+        logIndex:lg.logIndex?Number(BigInt(lg.logIndex)):null,
+        contract,
+        contractLabel:label,
+        topic0,
+        tokenId,
+        amountRaw,
+        rawData:lg.data||'0x',
+        txFrom:norm(tx?.from||''),
+        txTo:norm(tx?.to||''),
+        txInput:tx?.input||'0x',
+        success:receipt?.status==null?null:Number(BigInt(receipt.status))===1,
+        lpTransfers,
+        source:'contract_event'
+      });
+    }
+  }
+  events.sort((a,b)=>(a.block||0)-(b.block||0)||(a.logIndex||0)-(b.logIndex||0));
+  log(`${events.length} wallet-spezifische Staking-/Controller-Events gefunden.`,'ok');
+  return events;
+}
+function attachContractEventsToLots(lots,events){
+  const wallet=norm(CURRENT_WALLET);
+  for(const ev of (events||[])){
+    const when=ev.time?new Date(ev.time).getTime():null;
+    const candidates=(lots||[]).filter(l=>{
+      const stakeWhen=l.stakeTime?new Date(l.stakeTime).getTime():null;
+      const targets=new Set([
+        norm(l?.staking?.contract_address||l.counterparty||''),
+        norm(l.entry_contract||''),
+        norm(l.stake_event_contract||'')
+      ].filter(Boolean));
+      return targets.has(norm(ev.contract)) && (!when||!stakeWhen||when>=stakeWhen);
+    });
+    if(!candidates.length)continue;
+
+    let selected=null;
+    if(ev.tokenId)selected=candidates.find(l=>String(l.stake_token_id||'')===String(ev.tokenId))||null;
+    if(!selected&&candidates.length===1)selected=candidates[0];
+
+    if(selected){
+      const pair=norm(selected.pair_address||safePairAddress(selected));
+      const lpBack=(ev.lpTransfers||[]).find(x=>x.token===pair&&x.to===wallet);
+      const afterStake=selected.stakeTime&&ev.time&&new Date(ev.time).getTime()>new Date(selected.stakeTime).getTime()+1000;
+      let effectiveKind=ev.kind;
+      if(lpBack&&afterStake)effectiveKind='Unstake';
+
+      addLotTx(selected,{
+        kind:effectiveKind,hash:ev.hash,time:ev.time,block:ev.block,
+        method:effectiveKind==='Unstake'&&ev.kind!=='Unstake'?`${ev.method} · LP-Rückgabe erkannt`:ev.method,
+        source:'SC-Event',topic0:ev.topic0
+      });
+
+      if(effectiveKind==='Unstake'){
+        selected.status='closed';
+        selected.remaining=0;
+        selected.unstakeTime=ev.time||null;
+        selected.unstakeTx=ev.hash||null;
+        selected.unstakeBlockHex=ev.block!=null?'0x'+Number(ev.block).toString(16):null;
+        selected.unstakeEvidence=ev.kind==='Unstake'?'contract_event':'contract_event_lp_return';
+        selected.unstakeEventTopic=ev.topic0;
+      }
+    }else{
+      for(const l of candidates){
+        l.ambiguousContractEvents=l.ambiguousContractEvents||[];
+        l.ambiguousContractEvents.push(ev);
+      }
+    }
+  }
+}
+
+
+function decodeStaticWords(input){
+  const hex=String(input||'0x').replace(/^0x/,'');
+  if(hex.length<8)return {selector:'0x'+hex.slice(0,8),words:[]};
+  const selector='0x'+hex.slice(0,8).toLowerCase(),data=hex.slice(8),words=[];
+  for(let i=0;i+64<=data.length;i+=64){
+    const h=data.slice(i,i+64);
+    const raw='0x'+h;
+    let uint=null;try{uint=BigInt(raw)}catch{}
+    const addr='0x'+h.slice(-40);
+    words.push({index:i/64,raw,uint,address:ethers.isAddress(addr)?norm(addr):null});
+  }
+  return {selector,words};
+}
+async function describeTxInput(tx){
+  const decoded=decodeStaticWords(tx?.input||'0x');
+  const args=[];
+  for(const w of decoded.words){
+    let token=null;
+    if(w.address&&w.address!=='0x0000000000000000000000000000000000000000'){
+      try{
+        const code=await rpc('eth_getCode',[w.address,'latest']);
+        if(code&&code!=='0x'){
+          const meta=await tokenMeta(w.address);
+          if(meta?.symbol&&!String(meta.symbol).startsWith(w.address.slice(0,8)))token=meta;
+        }
+      }catch{}
+    }
+    args.push({...w,token});
+  }
+  return {selector:decoded.selector,args};
+}
+async function discoverStakeEntryTargets(stakingRows){
+  const targets=new Map();
+  for(const r of (stakingRows||[]).filter(x=>x.action==='STAKE')){
+    try{
+      const [tx,receipt]=await Promise.all([
+        rpc('eth_getTransactionByHash',[r.t.hash]),
+        rpc('eth_getTransactionReceipt',[r.t.hash]).catch(()=>null)
+      ]);
+      const entry=norm(tx?.to||'');
+      r.stake_input=await describeTxInput(tx);
+      if(entry){
+        r.entry_contract=entry;
+        const stakingAddr=norm(r?.staking?.contract_address||r.counterparty||'');
+        if(entry!==stakingAddr){
+          targets.set(entry,{
+            contract_address:entry,
+            label:`${stakingContractLabel(r.staking)} · Entry/Controller`,
+            role:'entry_controller',
+            classify_transfers:false,
+            pair_label:safePairLabel(r)
+          });
+        }
+      }
+
+      // Extract tokenId from the canonical Stake(address,uint256,uint256) event if present.
+      const stakeTopic='0x5af417134f72a9d41143ace85b0a26dce6f550f894f2cbc1eeee8810603d91b6';
+      const walletTopic='0x000000000000000000000000'+norm(CURRENT_WALLET).slice(2);
+      const ev=(receipt?.logs||[]).find(l=>
+        String(l?.topics?.[0]||'').toLowerCase()===stakeTopic &&
+        String(l?.topics?.[1]||'').toLowerCase()===walletTopic.toLowerCase()
+      );
+      if(ev){
+        r.stake_event_contract=norm(ev.address);
+        if(ev.topics?.[2]){
+          try{r.stake_token_id=BigInt(ev.topics[2]).toString()}catch{}
+        }
+      }
+    }catch(e){
+      log(`Entry-Contract für Stake ${r?.t?.hash||''} konnte nicht gelesen werden: ${e.message}`,'warn');
+    }
+  }
+  return [...targets.values()];
+}
+function lpReturnForLot(call,lot){
+  const pair=norm(lot?.pair_address||safePairAddress(lot));
+  const wallet=norm(CURRENT_WALLET);
+  if(!pair||!wallet)return null;
+  return (call?._erc20Transfers||[]).find(x=>x.token===pair&&x.to===wallet)||null;
+}
+function callTs(call){
+  const s=call?.metadata?.blockTimestamp;
+  const n=s?new Date(s).getTime():NaN;
+  return Number.isFinite(n)?n:null;
+}
+function reconcileLotsWithContractCalls(lots,calls){
+  const sorted=[...(calls||[])].filter(c=>c._success!==false).sort((a,b)=>(callTs(a)||0)-(callTs(b)||0));
+
+  // Strongest evidence first: a successful controller/staking tx whose receipt
+  // actually transfers the LP token back to this wallet.
+  for(const call of sorted){
+    const ct=callTs(call);
+    for(const lot of lots){
+      if(lot.status==='closed')continue;
+      const st=lot?.stakeTime?new Date(lot.stakeTime).getTime():null;
+      if(ct&&st&&ct<st)continue;
+      const ret=lpReturnForLot(call,lot);
+      if(!ret)continue;
+
+      lot.status='closed';
+      lot.remaining=0;
+      lot.unstakeTime=call.metadata?.blockTimestamp||null;
+      lot.unstakeTx=call.hash||null;
+      lot.unstakeBlockHex=call._blockNumber!=null?'0x'+Number(call._blockNumber).toString(16):null;
+      lot.unstakeEvidence='lp_return_in_receipt';
+      lot.unstakeSelector=call._selector||null;
+      lot.unstakeArg=call._uintArg==null?null:call._uintArg.toString();
+      lot.unstakeAmountRaw=ret.amountRaw==null?null:ret.amountRaw.toString();
+      lot.unstakeEntryContract=norm(call.to||call?._staking?.contract_address||'');
+      addLotTx(lot,{kind:'Unstake',hash:call.hash,time:call.metadata?.blockTimestamp||null,block:call._blockNumber||null,selector:call._selector||null,method:call._method||'Unstake',source:'Contract-Receipt'});
+      call._method='Unstake (LP-Rückgabe erkannt)';
+    }
+  }
+
+  // Secondary evidence: known successful unstake selector on the exact staking/entry contract.
+  const relevant=sorted.filter(c=>String(c._method||'').toLowerCase()==='unstake');
+  for(const call of relevant){
+    const caddr=norm(call?._staking?.contract_address||call?.to||'');
+    const ct=callTs(call);
+    const candidates=lots.filter(l=>{
+      const laddr=norm(l?.staking?.contract_address||l?.counterparty||'');
+      const entry=norm(l?.entry_contract||'');
+      const st=l?.stakeTime?new Date(l.stakeTime).getTime():null;
+      return l.status!=='closed' && (laddr===caddr||entry===caddr) && (!ct||!st||ct>=st);
+    });
+    if(candidates.length===1){
+      const lot=candidates[0];
+      lot.status='closed';lot.remaining=0;
+      lot.unstakeTime=call.metadata?.blockTimestamp||null;
+      lot.unstakeTx=call.hash||null;
+      lot.unstakeBlockHex=call._blockNumber!=null?'0x'+Number(call._blockNumber).toString(16):null;
+      lot.unstakeEvidence='successful_contract_call';
+      lot.unstakeSelector=call._selector||null;
+      lot.unstakeArg=call._uintArg==null?null:call._uintArg.toString();
+      lot.unstakeEntryContract=norm(call.to||'');
+      addLotTx(lot,{kind:'Unstake',hash:call.hash,time:call.metadata?.blockTimestamp||null,block:call._blockNumber||null,selector:call._selector||null,method:call._method||'Unstake',source:'Contract-Call'});
+    }
+  }
+  return lots;
+}
+
+function associateContractCallsToLots(lots,calls){
+  for(const lot of (lots||[])){
+    const stakeMs=lot.stakeTime?new Date(lot.stakeTime).getTime():0;
+    const endMs=lot.unstakeTime?new Date(lot.unstakeTime).getTime():Infinity;
+    const targets=new Set([norm(lot?.staking?.contract_address||lot.counterparty||''),norm(lot.entry_contract||'')].filter(Boolean));
+    for(const c of (calls||[])){
+      const when=callTs(c); if(!when||when<stakeMs||when>endMs)continue;
+      const to=norm(c.to||c?._staking?.contract_address||''); if(!targets.has(to))continue;
+      let method=c._method||'Contract-Aufruf';
+      if(learnedRewardPath(to,c._selector||'')&&method==='Contract-Aufruf')method='Reward-/Claim-Aufruf (dynamisch erkannt)';
+      const lower=String(method).toLowerCase();
+      const kind=lower.includes('unstake')?'Unstake':
+        lower.includes('stake')?'Stake':
+        (lower.includes('claim')||lower.includes('reward')||lower.includes('harvest'))?'Claim / Reward-Aufruf':
+        lower.includes('withdraw')?'Withdraw / Reward':'Contract-Aufruf';
+      addLotTx(lot,{
+        kind,hash:c.hash,time:c.metadata?.blockTimestamp||null,block:c._blockNumber||null,
+        selector:c._selector||null,method,success:c._success,source:'Contract-Call',
+        calledContract:to||null,
+        assignmentReason:'direkter Aufruf des zu dieser Position gehörenden Staking-/Controller-Contracts'
+      });
+    }
+    lot.transactions=(lot.transactions||[]).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  }
+}
+function txRowsHtml(lot){
+  const txs=lot.transactions||[];
+  if(!txs.length)return '<div class="empty-note">Keine zugeordneten Transaktionen.</div>';
+  return `<div class="wrap tx-table"><table style="min-width:1320px"><thead><tr><th>Zeit</th><th>Aktion</th><th>Menge</th><th>Methode / Quelle</th><th>Aufgerufener Contract</th><th>Zuordnung</th><th>Block</th><th>Transaktion</th></tr></thead><tbody>${txs.map(t=>`<tr><td>${t.time?new Date(t.time).toLocaleString('de-CH'):'–'}</td><td class="tx-kind">${esc(t.kind||'Transaktion')}</td><td class="num">${Number.isFinite(Number(t.amount))&&Number(t.amount)!==0?`${Number(t.amount).toLocaleString('de-CH',{maximumFractionDigits:12})}${t.tokenSymbol?' '+esc(t.tokenSymbol):''}`:'–'}</td><td>${esc(t.method||t.source||'–')}${t.selector?`<div class="mono muted">${esc(t.selector)}</div>`:''}${t.topic0?`<div class="mono muted">${esc(t.topic0)}</div>`:''}</td><td class="mono">${t.calledContract?esc(t.calledContract):'–'}</td><td>${t.assignmentReason?esc(t.assignmentReason):'–'}</td><td>${t.block??'–'}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(t.hash)}">${esc(t.hash)}</a></td></tr>`).join('')}</tbody></table></div>`;
+}
+function positionCardHtml(l,index,isClosed){
+  const expired=!!l.expiryTime&&new Date(l.expiryTime).getTime()<=Date.now();
+  const status=isClosed?(l.unstakeEvidence==='contract_event'?'Abgeschlossen / unstaked · SC-Event bestätigt':'Abgeschlossen / unstaked'):l.status==='partial'?'Teilweise offen':expired?'Freigegeben – noch gestakt':'Aktiv / gesperrt';
+  const statusClass=isClosed?'status-closed':expired?'warn':'status-open';
+  const actualDays=l.stakeTime?Math.max(0,Math.floor(((l.unstakeTime?new Date(l.unstakeTime).getTime():Date.now())-new Date(l.stakeTime).getTime())/86400000)):null;
+  const actualLockDays=(l.lockBaseTime||l.stakeTime)?Math.max(0,(((l.unstakeTime?new Date(l.unstakeTime).getTime():Date.now())-new Date(l.lockBaseTime||l.stakeTime).getTime())/86400000)):null;
+  const stakeValue=l.stakeUsd!=null?`<span class="v">${formatUsd(l.stakeUsd)}</span><div class="value-source">${esc(l.stakeUsdSource||'')}</div>`:`<span class="v">–</span>`;
+  const contractEndValue=l.contractEndUsd!=null?`<span class="v">${formatUsd(l.contractEndUsd)}</span><div class="value-source">${esc(l.contractEndUsdSource||'')}</div>`:`<span class="v">–</span><div class="value-source">${l.expiryTime?'Historischer On-chain-Wert zum Vertragsende konnte nicht ermittelt werden.':'Kein Vertragsende bekannt.'}</div>`;
+  const unstakeValue=isClosed?(l.unstakeUsd!=null?`<span class="v">${formatUsd(l.unstakeUsd)}</span><div class="value-source">${esc(l.unstakeUsdSource||'')}</div>`:`<span class="v">–</span><div class="value-source">On-chain-Wert zum tatsächlichen Unstake konnte nicht ermittelt werden.</div>`):'';
+  return `<div class="stake-pos">
+    <div class="stake-pos-head"><div><div class="stake-title">${esc(safePairLabel(l))}</div><div class="muted">${esc(stakingContractLabel(l.staking))}</div></div><div class="stake-status ${statusClass}">${esc(status)}</div></div>
+    <div class="stake-facts">
+      <div class="stake-fact"><span class="k">Erster Stake</span><span class="v">${l.stakeTime?new Date(l.stakeTime).toLocaleString('de-CH'):'–'}</span></div>
+      ${(l.topUps||[]).length?`<div class="stake-fact"><span class="k">Letzte Aufstockung</span><span class="v">${l.lastTopUpTime?new Date(l.lastTopUpTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">${(l.topUps||[]).length} Aufstockung(en) erkannt · Laufzeitbasis wurde auf die letzte Aufstockung gesetzt.</div></div>`:''}
+      <div class="stake-fact"><span class="k">Gesamt eingezahltes Staking-Asset</span><span class="v">${Number(l.original||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
+      <div class="stake-fact"><span class="k">USD-Wert beim Stake</span>${stakeValue}</div>
+      <div class="stake-fact"><span class="k">LP aktuell offen</span><span class="v">${Number(l.remaining||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
+      <div class="stake-fact"><span class="k">Ermittelte Laufzeit ab letzter Laufzeitbasis</span><span class="v">${l.durationDays!=null?`${l.durationDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span><div class="value-source">${l.lockBaseReason?`${esc(l.lockBaseReason)} · `:''}${l.durationSource?esc(l.durationSource):'Keine belastbare Laufzeit aus dem SC ermittelbar.'}</div></div>
+      <div class="stake-fact"><span class="k">${l.durationSource?.startsWith('Historische SC-Simulation')?'Frühester historisch simulierbarer Unstake':'Freigegeben / ausgelaufen am'}</span><span class="v">${l.expiryTime?new Date(l.expiryTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">${l.expiryTime?esc(l.durationSource||'On-chain ermittelt'):(l.contractEndUpperBound?'Tatsächlicher Unstake belegt; exakter frühester Freigabezeitpunkt konnte historisch nicht eingegrenzt werden.':'Keine belastbare Freigabe aus dem SC ermittelbar.')}</div></div>
+      <div class="stake-fact"><span class="k">${l.durationSource?.startsWith('Historische SC-Simulation')?'USD-Wert beim frühesten historisch simulierbaren Unstake':'USD-Wert beim Vertragsende'}</span>${contractEndValue}</div>
+      ${isClosed?`<div class="stake-fact"><span class="k">Tatsächliches Unstake-Datum</span><span class="v">${l.unstakeTime?new Date(l.unstakeTime).toLocaleString('de-CH'):'–'}</span></div><div class="stake-fact"><span class="k">USD-Wert beim tatsächlichen Unstake</span>${unstakeValue}</div><div class="stake-fact"><span class="k">Gesamtdauer erster Stake → Unstake</span><span class="v">${actualDays!=null?`${actualDays} Tage`:'–'}</span></div>${(l.topUps||[]).length?`<div class="stake-fact"><span class="k">Dauer letzte Aufstockung → Unstake</span><span class="v">${actualLockDays!=null?`${actualLockDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span></div>`:''}`:''}
+      <div class="stake-fact"><span class="k">Staking-Contract</span><span class="v mono">${esc(l.staking?.contract_address||l.counterparty||'–')}</span></div>
+      <div class="stake-fact"><span class="k">On-chain verknüpfte Reward-Contracts</span><span class="v">${(l.rewardContractRelations||[]).length?(l.rewardContractRelations||[]).map(r=>`<span class="mono">${esc(r.contract)}</span><br><span class="value-source">${esc(r.lifecycleKind)} · Block ${esc(r.block)} · ${esc((r.changedProbes||[]).join(', '))}</span>`).join('<br>'):'–'}</span></div>
+      <div class="stake-fact"><span class="k">Contract-Graph</span><span class="v">${l.contractGraph?`${l.contractGraph.nodes.size} Contracts/Adressen · ${l.contractGraph.edges.length} belegte Beziehungen`: '–'}</span></div>
+    </div>
+    ${l.contractGraph&&l.contractGraph.edges.length?`<details class="diag-details"><summary>Contract-Graph anzeigen</summary><div class="wrap"><table><thead><tr><th>Von</th><th>Beziehung</th><th>Zu</th><th>Evidenz</th></tr></thead><tbody>${l.contractGraph.edges.map(e=>`<tr><td class="mono">${esc(e.from)}</td><td>${esc(e.type)}</td><td class="mono">${esc(e.to)}</td><td>${esc(e.evidence?.kind||'')} ${e.evidence?.tx?`<span class="mono">${esc(e.evidence.tx)}</span>`:''}</td></tr>`).join('')}</tbody></table></div></details>`:''}
+    ${(l.topUps||[]).length?`<div class="reward-box"><div class="reward-title">Aufstockungen dieser Staking-Position</div><div class="wrap"><table><thead><tr><th>Zeit</th><th>Zusätzlich</th><th>Gesamt danach</th><th>Tx</th></tr></thead><tbody>${l.topUps.map(x=>`<tr><td>${x.time?new Date(x.time).toLocaleString('de-CH'):'–'}</td><td class="num">+${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="num">${Number(x.resultingPrincipal||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(x.tx)}">${esc(x.tx||'–')}</a></td></tr>`).join('')}</tbody></table></div></div>`:''}
+    ${rewardHtml(l)}
+    <div class="stake-actions">
+      <details><summary>Transaktionen (${(l.transactions||[]).length})</summary>${txRowsHtml(l)}</details>
+      <details class="sc-details" data-lot-index="${index}"><summary>Technische SC-Details</summary><div id="scBox${index}" class="sc-box"><span class="muted">Zum Laden öffnen.</span></div></details>
+    </div>
+  </div>`;
+}
+function renderDeepEvents(events,lots){
+  const wallet=norm(CURRENT_WALLET);
+  $('deepEvents').innerHTML=(events||[]).length?(events||[]).map(ev=>{
+    let lpBack=false;
+    for(const l of (lots||[])){
+      const pair=norm(l.pair_address||safePairAddress(l));
+      if((ev.lpTransfers||[]).some(x=>x.token===pair&&x.to===wallet)){lpBack=true;break}
+    }
+    return `<tr>
+      <td>${ev.time?new Date(ev.time).toLocaleString('de-CH'):'–'}</td>
+      <td><b>${esc(ev.kind)}</b></td>
+      <td>${esc(ev.contractLabel)}<div class="mono">${esc(ev.contract)}</div></td>
+      <td class="mono">${esc(ev.topic0)}</td>
+      <td class="mono">${esc(ev.txFrom||'–')}</td>
+      <td class="mono">${esc(ev.txTo||'–')}</td>
+      <td>${lpBack?'<span class="ok"><b>JA</b></span>':'–'}</td>
+      <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(ev.hash)}">${esc(ev.hash)}</a></td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="8">Keine wallet-bezogenen SC-Events gefunden.</td></tr>';
+}
+async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePairs=[]){
+  const stakeRowByTx=new Map((stakingRows||[]).filter(r=>r.action==='STAKE'&&r?.t?.hash).map(r=>[String(r.t.hash).toLowerCase(),r]));
+  const {lots,unmatched}=buildDiagnosticLots(stakingRows);
+  reconcileLotsWithContractCalls(lots,contractCalls);
+  attachContractEventsToLots(lots,contractEvents);
+  await learnRewardPathsFromWalletCalls(contractCalls,lots);
+  await buildContractGraphs(lots,contractCalls);
+  await learnRewardContractRelations(lots);
+  await learnDynamicClaimContractRelations(lots);
+  // Historical state-proven reward contracts are also graph nodes/edges.
+  for(const lot of lots){
+    const g=ensureContractGraph(lot);
+    const base=norm(lot?.staking?.contract_address||lot.counterparty||lot.entry_contract||'');
+    for(const rel of (lot.rewardContractRelations||[])){
+      graphNode(g,rel.contract,'reward','Reward/Yield-SC');
+      if(base)graphEdge(g,base,rel.contract,'historical_state_relation',{kind:rel.lifecycleKind,block:rel.block});
+    }
+  }
+  await attachRewardClaimsToLots(lots,contractCalls);
+  for(const lot of lots){
+    const g=lot.contractGraph;
+    if(g)log(`Contract-Graph: ${safePairLabel(lot)} · ${g.nodes.size} Nodes · ${g.edges.length} belegte Beziehungen · Reward-SCs: ${graphRoleAddresses(lot,'reward').join(', ')||'–'}`,'info');
+  }
+  await enrichLotsBusiness(lots,pricePairs);
+  renderDeepEvents(contractEvents,lots);
+  $('mLots').textContent=lots.length;$('mClosed').textContent=lots.filter(l=>l.status==='closed').length;
+  associateContractCallsToLots(lots,contractCalls);
+  const running=[...lots].filter(l=>l.status!=='closed').sort((a,b)=>String(b.stakeTime||'').localeCompare(String(a.stakeTime||'')));
+  const completed=[...lots].filter(l=>l.status==='closed').sort((a,b)=>String(b.unstakeTime||b.stakeTime||'').localeCompare(String(a.unstakeTime||a.stakeTime||'')));
+  CURRENT_STAKING_LOTS=[...running,...completed];
+  const indexOfLot=l=>CURRENT_STAKING_LOTS.indexOf(l);
+  $('runningStakings').innerHTML=running.length?running.map(l=>positionCardHtml(l,indexOfLot(l),false)).join(''):'<div class="empty-note">Keine laufenden Stakings gefunden.</div>';
+  $('completedStakings').innerHTML=completed.length?completed.map(l=>positionCardHtml(l,indexOfLot(l),true)).join(''):'<div class="empty-note">Keine abgeschlossenen Stakings gefunden.</div>';
+  bindLotDetailEvents();
+  const learnedRows=[...LEARNED_REWARD_PATHS.values()];
+  $('learnedRewardPaths').innerHTML=learnedRows.length?`<div class="wrap"><table style="min-width:980px"><thead><tr><th>Contract</th><th>Selector</th><th>Belege</th><th>Empfangene Token</th><th>Beispiel-Tx</th></tr></thead><tbody>${learnedRows.map(r=>`<tr><td class="mono">${esc(r.contract)}</td><td class="mono">${esc(r.selector)}</td><td>${r.count}</td><td>${[...r.tokens.values()].map(x=>`${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)} (${x.count})`).join('<br>')}</td><td class="mono">${r.examples.map(h=>`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(h)}">${esc(h)}</a>`).join('<br>')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="muted">Keine Reward-/Claim-Pfade dynamisch gelernt.</div>';
+  const checks=[];
+  for(const key of new Set(stakingRows.map(stakingKey))){
+    const rs=stakingRows.filter(r=>stakingKey(r)===key),ls=lots.filter(l=>l.key===key);
+    const stakeRs=rs.filter(r=>r.action==='Stake'),unstakeRs=rs.filter(r=>r.action==='Unstake');
+    const stakeTotal=stakeRs.reduce((a,r)=>a+Number(r.amount||0),0),unstakeTotal=unstakeRs.reduce((a,r)=>a+Number(r.amount||0),0);
+    const openTotal=ls.reduce((a,l)=>a+Number(l.remaining||0),0),unmatchedAmt=unmatched.filter(u=>u.key===key).reduce((a,u)=>a+u.unmatched,0);
+    let diag='OK';
+    if(unmatchedAmt>1e-9)diag=`WARNUNG: ${unmatchedAmt.toLocaleString('de-CH',{maximumFractionDigits:12})} LP Unstake ohne vorheriges Lot`;
+    else if(Math.abs(Math.max(0,stakeTotal-unstakeTotal)-openTotal)>1e-8)diag='WARNUNG: FIFO-Summe stimmt nicht';
+    checks.push({sample:rs[0],stakeRs,unstakeRs,stakeTotal,unstakeTotal,openTotal,openLots:ls.filter(l=>l.remaining>1e-12).length,diag});
+  }
+  $('checks').innerHTML=checks.length?checks.map(c=>`<tr><td><b>${esc(safePairLabel(c.sample))}</b><div class="mono">${esc(safePairAddress(c.sample))}</div></td>
+    <td class="mono">${esc(c.sample.staking?.contract_address||c.sample.counterparty)}</td><td>${c.stakeRs.length}</td><td class="num">${c.stakeTotal.toLocaleString('de-CH',{maximumFractionDigits:12})}</td>
+    <td>${c.unstakeRs.length}</td><td class="num">${c.unstakeTotal.toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td>${c.openLots}</td>
+    <td class="num">${c.openTotal.toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="${c.diag==='OK'?'ok':'err'}"><b>${esc(c.diag)}</b></td></tr>`).join(''):'<tr><td colspan="9">Keine Staking-Gruppen vorhanden.</td></tr>';
+  for(const u of unmatched)log(`WARNUNG: Unstake ohne ausreichendes vorheriges Stake-Lot · ${u.unmatched} LP · ${safePairAddress(u.row)} · ${u.row.t.hash}`,'err');
+  return {lots,unmatched};
+}
+
+function populateTlnWalletDropdown(){
+  const sel=$('walletSelect');
+  sel.innerHTML=tlnWallets.length
+    ? tlnWallets.map(w=>`<option value="${esc(w.evm_address)}">${esc(w.label)}</option>`).join('')
+    : '<option value="">Keine TLN-Wallets mit EVM-Adresse gefunden</option>';
+  sel.disabled=!tlnWallets.length;
+  if(tlnWallets.length){
+    // TLN Chris bevorzugen, sonst erstes alphabetisches TLN-Wallet.
+    const preferred=tlnWallets.find(w=>String(w.label||'').trim().toLowerCase()==='tln chris')||tlnWallets[0];
+    sel.value=preferred.evm_address;
+    $('wallet').value=preferred.evm_address;
+    $('walletAddress').textContent=preferred.evm_address;
+  }else{
+    $('wallet').value='';
+    $('walletAddress').textContent='–';
+  }
+}
+function bindWalletDropdown(){
+  $('walletSelect').addEventListener('change',()=>{
+    const addr=$('walletSelect').value||'';
+    $('wallet').value=addr;
+    $('walletAddress').textContent=addr||'–';
+    $('status').textContent='';
+  });
+}
+async function init(){const {data:{user}}=await sb.auth.getUser();if(!user){$('auth').innerHTML='<span class="err">Nicht eingeloggt. Testseite auf derselben Domain wie Wallet-Tracking öffnen und zuerst einloggen.</span>';return}$('auth').innerHTML=`<span class="ok">Eingeloggt:</span> ${esc(user.email)}`;
+const [cr,pt,sc,wq]=await Promise.all([
+  sb.from('chains').select('rpc_url,discovery_provider,discovery_api_base').eq('chain_key','bsc').single(),
+  sb.from('predefined_tokens').select('*').eq('chain','bsc').eq('defi_project_key','tln_vow'),
+  sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
+  sb.from('wallets').select('id,label,evm_address').order('label')
+]);
+if(cr.error||pt.error||sc.error||wq.error){$('status').innerHTML=`<span class="err">DB-Fehler: ${esc((cr.error||pt.error||sc.error||wq.error).message)}</span>`;return}rpcUrl=cr.data.rpc_url;alchemyBase=String(cr.data.discovery_provider||'').toLowerCase()==='alchemy'?cr.data.discovery_api_base:null;if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;allProjectRows=pt.data||[];loadHistoricalStakingAssets(allProjectRows);projectTokens=allProjectRows.filter(x=>x.address&&x.enabled!==false&&x.historical_only!==true&&String(x.defi_category||x.tln_vow_category||'')!=='lp_token');projectTokenMap=new Map(projectTokens.filter(x=>x.address).map(x=>[norm(x.address),x]));stakingContracts=sc.data||[];
+tlnWallets=(wq.data||[])
+  .filter(w=>w.evm_address&&/^tln(?:\s|$)/i.test(String(w.label||'').trim()))
+  .sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'de'));
+populateTlnWalletDropdown();
+bindWalletDropdown();
+$('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok')}
+$('refresh').onclick=async()=>{const b=$('refresh');b.disabled=true;$('log').innerHTML='';$('status').textContent='Discovery läuft…';$('pairs').innerHTML='<tr><td colspan="7">Suche…</td></tr>';$('events').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('contractCalls').innerHTML='<tr><td colspan="9">Suche…</td></tr>';$('stakingEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('runningStakings').innerHTML='<div class="muted">Suche…</div>';$('completedStakings').innerHTML='<div class="muted">Suche…</div>';$('deepEvents').innerHTML='<tr><td colspan="8">Suche…</td></tr>';$('checks').innerHTML='<tr><td colspan="9">Suche…</td></tr>';['mTransfers','mPairs','mStakes','mUnstakes','mLots','mClosed'].forEach(id=>$(id).textContent='…');try{const wallet=$('wallet').value.trim();CURRENT_WALLET=wallet;if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');const transfers=await allErc20Transfers(wallet);CURRENT_ALL_TRANSFERS=transfers;$('mTransfers').textContent=transfers.length;log(`Gesamt: ${transfers.length} ERC-20-Transfers.`,'ok');const counts=new Map();for(const t of transfers){const a=norm(t.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}const projectSet=new Set(projectTokens.map(x=>norm(x.address)));const candidates=[...counts.keys()];log(`${candidates.length} unterschiedliche ERC-20-Contracts werden als mögliche V2-LPs geprüft.`);const pairs=[];for(let i=0;i<candidates.length;i++){if(i%25===0)log(`LP-Prüfung ${i+1}/${candidates.length}…`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}const pairMap=new Map(pairs.map(p=>[p.address,p]));renderPairTable(pairs,counts);let rows=renderEvents(transfers,pairMap,wallet);let stakingRows=renderRawStakingEvents(rows);let entryTargets=await discoverStakeEntryTargets(stakingRows);if(entryTargets.length)log(`Zusätzliche Entry-/Controller-Contracts aus Stake-Txs erkannt: ${entryTargets.map(x=>x.contract_address).join(', ')}`,'ok');let stakingContractCalls=await allExternalCallsToStaking(wallet,entryTargets);
+const rewardRelevantCalls=await rewardRelevantCallsFromTransfers(wallet,transfers);
+let contractCalls=mergeContractCalls(stakingContractCalls,rewardRelevantCalls);
+contractCalls.sort((a,b)=>String(a.metadata?.blockTimestamp||'').localeCompare(String(b.metadata?.blockTimestamp||'')));
+renderContractCalls(contractCalls);
+log(`${contractCalls.length} Wallet-Aufrufe dynamisch geprüft · ${stakingContractCalls.length} bekannte Staking-/Entry-Aufrufe + ${rewardRelevantCalls.length} Wallet-Aufrufe mit ERC-20-Rückfluss.`,'ok');
+
+const stakeTxPairs=await discoverPairsFromStakeTransactions(contractCalls,transfers,pairMap,projectSet,counts,wallet);
+if(stakeTxPairs.length){
+  pairs.push(...stakeTxPairs.filter(p=>!pairs.some(x=>norm(x.address)===norm(p.address))));
+  renderPairTable(pairs,counts);
+  rows=renderEvents(transfers,pairMap,wallet);
+  const synthesized=await synthesizeStakeRowsFromReceipts(contractCalls,pairMap,wallet,rows);
+  stakingRows=renderRawStakingEvents(rows);
+  entryTargets=await discoverStakeEntryTargets(stakingRows);
+  log(`Stake-Tx-Fallback: ${stakeTxPairs.length} zusätzlicher historischer LP entdeckt; ${synthesized.length} Stake-Ereignis(se) zusätzlich aus Receipt-Logs ergänzt; LP-/Staking-Ereignisse neu aufgebaut.`,'ok');
+}
+
+const contractEvents=await discoverStakingContractEvents(stakingRows,entryTargets,wallet);
+const configuredLpAddresses=[...new Set(allProjectRows.filter(x=>x.address&&String(x.defi_category||x.tln_vow_category||'')==='lp_token').map(x=>norm(x.address)))];
+const referencePairs=[];
+for(const a of configuredLpAddresses){
+  if(pairMap.has(a)){referencePairs.push(pairMap.get(a));continue}
+  const rp=await inspectAnyPair(a);if(rp)referencePairs.push(rp);
+}
+const pricePairs=[...new Map([...pairs,...referencePairs].filter(p=>p.assetType!=='legacy_staking_token').map(p=>[norm(p.address),p])).values()];
+log(`Historische Preisbewertung: ${pricePairs.length} LP-Pools im Preisgraph (${referencePairs.length} konfigurierte Referenz-Pools).`,'ok');
+const lotResult=await renderLots(stakingRows,contractCalls,contractEvents,pricePairs);renderUnassignedRewards();
+  log(`Ergebnis: ${pairs.length} TLN/VOW-LPs entdeckt; ${rows.length} LP-Ereignisse; ${stakingRows.length} Stake/Unstake-Ereignisse; ${lotResult.lots.length} historische Stake-Lots.`,'ok');for(const r of stakingRows)log(`${r.action} · ${safePairLabel(r)} · ${safePairAddress(r)} · ${r.staking?.label||r.counterparty}`,'ok');for(const ev of contractEvents)log(`SC-EVENT ${ev.kind} · ${ev.contractLabel} · ${ev.time||'ohne Zeit'} · ${ev.topic0} · ${ev.hash}`,ev.kind==='Unstake'?'ok':'');$('status').innerHTML='<span class="ok">Discovery und Staking-Auswertung abgeschlossen.</span>'}catch(e){$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{b.disabled=false}};
+init();
+</script></body></html>
