@@ -24,7 +24,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
   <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 00:17:12 CEST</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 00:37:38 CEST</div>
 
   <div class="card">
     <div class="row">
@@ -50,8 +50,15 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
     </div>
     <div id="formulaTrace" class="muted" style="margin-top:12px">Noch keine Daten.</div>
   </div>
-  <div class="card"><h2>8. Kandidaten / nächster Ursprung</h2><div id="stateCandidates" class="muted">Noch keine Daten.</div></div>
-  <div class="card"><h2>9. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h2 style="margin:0">8. Ursprung von Offset 8 / Staking-Basis</h2>
+      <button class="btn" id="exportPrincipalOrigin" type="button">Offset-8-Ursprung exportieren</button>
+    </div>
+    <div id="principalOrigin" class="muted" style="margin-top:12px">Noch keine Daten.</div>
+  </div>
+  <div class="card"><h2>9. Kandidaten-Transaktion / Token- und LP-Bewegungen</h2><div id="stateCandidates" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>10. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>Technisches Log</h2><pre id="log"></pre></div>
 </main>
 <script>
@@ -659,6 +666,120 @@ async function prestateDiff(hash){
   }
   throw new Error(`prestateTracer/diffMode nicht verfügbar. ${errors.join(' | ')}`);
 }
+
+async function historicalRpc(method,params=[],label=method,{allowNull=false}={}){
+  // Für historische State-Abfragen Alchemy zuerst: der Primär-RPC hat bei alten
+  // eth_getStorageAt-Abfragen bereits nachweislich spätere/aktuelle Werte geliefert.
+  const fb=alchemyRpcUrl();
+  const providers=[];
+  if(fb)providers.push(['Alchemy-Archive',fb]);
+  if(rpcUrl && rpcUrl!==fb)providers.push(['Primär-RPC',rpcUrl]);
+  let last='';
+  for(const [name,url] of providers){
+    for(let i=1;i<=2;i++){
+      try{
+        const result=await rawRpc(url,method,params);
+        if(result==null&&!allowNull){last=`${name}: null`;continue}
+        if(i>1||name!=='Alchemy-Archive')log(`${label}: erfolgreich über ${name}, Versuch ${i}.`);
+        return {result,source:name};
+      }catch(e){
+        last=`${name}: ${e.message}`;
+        log(`${label}: ${name}, Versuch ${i}: ${e.message}`);
+      }
+    }
+  }
+  throw new Error(`${label} historische Abfrage fehlgeschlagen. ${last}`);
+}
+async function archiveStorageAt(address,slot,block,label){
+  const r=await historicalRpc('eth_getStorageAt',[address,slot,hexBlock(block)],label);
+  return {value:BigInt(r.result||'0x0'),source:r.source};
+}
+async function findLastTransitionIntoValue(address,slot,claimBlock,currentValue,maxLookback=12000000n){
+  const start=claimBlock-1n;
+  const check=await archiveStorageAt(address,slot,start,`Archive-Validierung @ ${start}`);
+  if(check.value!==currentValue){
+    throw new Error(`Archive-State stimmt unmittelbar vor Claim nicht mit prestateTracer überein (${check.value} statt ${currentValue}). Historische Suche wird abgebrochen.`);
+  }
+  log(`Archive-State validiert (${check.source}): Offset-8-Wert vor Claim stimmt mit prestateTracer überein.`);
+  let step=1n,same=start;
+  while(step<=maxLookback && start-step>=1n){
+    const b=start-step;
+    const r=await archiveStorageAt(address,slot,b,`Offset 8 @ ${b}`);
+    if(r.value!==currentValue){
+      let L=b,R=same;
+      while(R-L>1n){
+        const m=(L+R)/2n;
+        const mr=await archiveStorageAt(address,slot,m,`Offset 8 binary @ ${m}`);
+        if(mr.value===currentValue)R=m;else L=m;
+      }
+      const prev=await archiveStorageAt(address,slot,L,`Offset 8 previous @ ${L}`);
+      return {found:true,changeBlock:R,previousBlock:L,previousValue:prev.value,source:check.source};
+    }
+    same=b; step*=2n;
+  }
+  return {found:false,source:check.source,reason:`Kein Übergang in den aktuellen Offset-8-Wert innerhalb ${maxLookback.toLocaleString('de-CH')} Blöcken gefunden.`};
+}
+function flattenCallTree(node,out=[]){
+  if(!node||typeof node!=='object')return out;
+  if(node.to||node.from)out.push({from:norm(node.from),to:norm(node.to),type:node.type||node.callType||'CALL',input:node.input||'0x'});
+  for(const c of node.calls||[])flattenCallTree(c,out);
+  return out;
+}
+async function traceBlockCalls(blockNumber){
+  const bhex=hexBlock(blockNumber);
+  const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
+  if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
+  const errs=[];
+  for(const [name,url] of providers){
+    try{
+      const result=await rawRpc(url,'debug_traceBlockByNumber',[bhex,{tracer:'callTracer',timeout:'20s'}]);
+      if(Array.isArray(result)){
+        log(`Block-callTracer: ${result.length} Tx-Traces über ${name}.`);
+        return {result,source:name};
+      }
+    }catch(e){errs.push(`${name}: ${e.message}`);log(`Block-callTracer ${name}: ${e.message}`)}
+  }
+  throw new Error(`debug_traceBlockByNumber/callTracer nicht verfügbar. ${errs.join(' | ')}`);
+}
+function diffSlotForAddress(trace,address,slot){
+  const rows=normalizePrestateStorage(trace,address);
+  return rows.find(r=>norm(r.slot)===norm(slot))||null;
+}
+async function prestateDiffOne(hash,label='Kandidat'){
+  const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
+  if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
+  for(const [provider,url] of providers){
+    try{
+      const result=await rawRpc(url,'debug_traceTransaction',[hash,{tracer:'prestateTracer',tracerConfig:{diffMode:true}}]);
+      if(result)return {result,provider};
+    }catch(e){log(`${label} prestateTracer ${provider}: ${e.message}`)}
+  }
+  throw new Error(`${label}: prestateTracer nicht verfügbar.`);
+}
+async function tokenTransfersForTx(hash,wallet){
+  const rr=await resilientRpc('eth_getTransactionReceipt',[hash],`Kandidat Receipt ${short(hash)}`);
+  const receipt=rr.result;
+  const rows=[];
+  for(const l of receipt.logs||[]){
+    if(norm(l.topics?.[0])!==ethers.id('Transfer(address,address,uint256)').toLowerCase()||l.topics.length<3)continue;
+    const from=topicAddr(l.topics[1]),to=topicAddr(l.topics[2]);
+    let amount=0n; try{amount=BigInt(l.data||'0x0')}catch{}
+    if(from===norm(wallet)||to===norm(wallet)){
+      rows.push({token:norm(l.address),from,to,amount});
+    }
+  }
+  return rows;
+}
+async function tokenMetaQuick(address){
+  try{
+    const [s,d]=await Promise.all([
+      rpcCall(address,'0x95d89b41'),
+      rpcCall(address,'0x313ce567')
+    ]);
+    return {symbol:decodeString(s)||short(address),decimals:Number(BigInt(d||'0x12'))};
+  }catch{return {symbol:short(address),decimals:18}}
+}
+
 async function storageAt(address,slot,block,label){
   const r=await resilientRpc('eth_getStorageAt',[address,slot,hexBlock(block)],label);
   return BigInt(r.result||'0x0');
@@ -719,6 +840,25 @@ function downloadText(filename,text){
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
+
+function exportPrincipalOrigin(){
+  const hash=$('txHash')?.value?.trim()||'';
+  const a=textFromNode($('principalOrigin')),b=textFromNode($('stateCandidates'));
+  if(!a||a==='Noch keine Daten.'||a==='Lädt…'){
+    alert('Offset-8-Ursprungsanalyse enthält noch keine Daten.');
+    return;
+  }
+  const header=[
+    'TLN/VOW – Ursprung Offset 8 / Staking-Basis',
+    'Export aus tln-vow-single-claim-trace-test.html',
+    'Version: 31.08.2026 00:37:38 CEST',
+    'Claim-Transaction: '+hash,
+    '',
+    '=== 8. URSPRUNG OFFSET 8 ===',''
+  ].join('\n');
+  downloadText('tln-vow-offset8-origin.txt',header+a+'\n\n=== 9. KANDIDATEN / TOKEN-LP-BEWEGUNGEN ===\n\n'+b+'\n');
+}
+
 function exportFormulaCompact(){
   const hash=$('txHash')?.value?.trim()||'';
   const panel=$('formulaTrace');
@@ -770,7 +910,7 @@ async function analyze(){
     return;
   }
   $('analyze').disabled=true;$('status').textContent='Analysiere nur diese eine Transaktion…';$('log').textContent='';
-  for(const id of ['txInfo','transfers','relations','trace','storageDiff','stateHistory','formulaTrace','stateCandidates','conclusion'])$(id).innerHTML='<span class="muted">Lädt…</span>';
+  for(const id of ['txInfo','transfers','relations','trace','storageDiff','stateHistory','formulaTrace','principalOrigin','stateCandidates','conclusion'])$(id).innerHTML='<span class="muted">Lädt…</span>';
   try{
     if(!rpcUrl)await initRpc();
     const hash=$('txHash').value.trim();
@@ -983,10 +1123,105 @@ async function analyze(){
             $('formulaTrace').innerHTML=`<span class="warn"><b>Opcode-Trace nicht verfügbar:</b> ${esc(e.message)}</span>`;
             log('Reward-Formel Opcode-Trace nicht verfügbar: '+e.message);
           }
+
+          // --- Ursprung Offset 8 / Staking-Basis ---
+          try{
+            const off8=accessedRows.find(r=>r.off===8);
+            if(!off8||off8.value===0n){
+              $('principalOrigin').innerHTML='<span class="warn">Offset 8 wurde im Full-Prestate nicht mit einem positiven Wert gelesen.</span>';
+              $('stateCandidates').innerHTML='–';
+            }else{
+              log(`Suche Ursprung von Offset 8 = ${off8.value} per validiertem Archive-State.`);
+              const origin=await findLastTransitionIntoValue(claimContract,off8.slot,BigInt(tx.blockNumber),off8.value);
+              if(!origin.found){
+                $('principalOrigin').innerHTML=`<span class="warn">${esc(origin.reason)}</span>`;
+                $('stateCandidates').innerHTML='–';
+              }else{
+                const br=await resilientRpc('eth_getBlockByNumber',[hexBlock(origin.changeBlock),true],'Offset-8-Änderungsblock');
+                const b=br.result,ts=new Date(Number(BigInt(b.timestamp))*1000);
+                $('principalOrigin').innerHTML=`<div class="grid">
+                  <div class="kv"><b>Offset 8</b><span class="ok"><b>${esc(ethers.formatUnits(off8.value,18))}</b></span><br><span class="mono">${esc(off8.value.toString())}</span></div>
+                  <div class="kv"><b>Historische Quelle</b>${esc(origin.source)}<br><span class="ok">gegen prestateTracer validiert</span></div>
+                  <div class="kv"><b>Aktueller Wert besteht ab Block</b><span class="ok"><b>${origin.changeBlock.toLocaleString('de-CH')}</b></span></div>
+                  <div class="kv"><b>Zeitpunkt</b>${esc(ts.toLocaleString('de-CH'))}</div>
+                  <div class="kv"><b>Wert im Block davor</b><span class="mono">${esc(origin.previousValue.toString())}</span>${origin.previousValue>0n?`<br>${esc(ethers.formatUnits(origin.previousValue,18))}`:''}</div>
+                  <div class="kv"><b>Δ Offset 8</b><span class="mono">${esc((off8.value-origin.previousValue).toString())}</span></div>
+                </div>
+                <p>Jetzt wird ausschließlich dieser Block untersucht. Ziel: die konkrete Transaktion finden, die Offset 8 auf <b>${esc(ethers.formatUnits(off8.value,18))}</b> gesetzt hat, und gleichzeitig deren Token-/LP-Bewegungen anzeigen.</p>`;
+
+                let candidateTxs=[];
+                try{
+                  const bt=await traceBlockCalls(origin.changeBlock);
+                  bt.result.forEach((entry,i)=>{
+                    const root=entry?.result||entry;
+                    const calls=flattenCallTree(root,[]);
+                    if(calls.some(c=>c.to===claimContract)){
+                      const txObj=b.transactions?.[i];
+                      if(txObj)candidateTxs.push({...txObj,_calls:calls,_traceSource:bt.source});
+                    }
+                  });
+                }catch(e){
+                  log('Block-Trace-Fallback: '+e.message);
+                  candidateTxs=(b.transactions||[]).filter(t=>norm(t.to)===claimContract||norm(t.from)===norm(tx.from)).map(t=>({...t,_calls:[]}));
+                }
+
+                const verified=[];
+                for(const c of candidateTxs.slice(0,30)){
+                  try{
+                    const pr=await prestateDiffOne(c.hash,`Offset-8 Kandidat ${short(c.hash)}`);
+                    const dr=diffSlotForAddress(pr.result,claimContract,off8.slot);
+                    if(dr){
+                      c._slotBefore=BigInt(dr.before); c._slotAfter=BigInt(dr.after);
+                      if(c._slotAfter===off8.value && c._slotBefore!==off8.value){
+                        c._transfers=await tokenTransfersForTx(c.hash,tx.from);
+                        c._stakingMatches=(c._calls||[]).filter(x=>known.has(x.to));
+                        verified.push(c);
+                      }
+                    }
+                  }catch(e){log(`Kandidat ${short(c.hash)}: ${e.message}`)}
+                }
+
+                if(verified.length){
+                  for(const c of verified){
+                    const uniq=[...new Set((c._transfers||[]).map(x=>x.token))];
+                    const metas={};
+                    for(const a of uniq)metas[a]=await tokenMetaQuick(a);
+                    c._metas=metas;
+                  }
+                  $('stateCandidates').innerHTML=`<div class="ok"><b>${verified.length} Transaktion(en) verändern Offset 8 exakt auf den späteren Claim-Basiswert.</b></div>
+                    <table><thead><tr><th>Tx</th><th>From → To</th><th>Selector</th><th>Offset 8</th><th>Wallet Token-/LP-Transfers</th><th>Staking-Match</th></tr></thead><tbody>
+                    ${verified.map(c=>`<tr>
+                      <td class="mono">${esc(c.hash)}</td>
+                      <td><span class="mono">${esc(c.from)}</span><br>→ <span class="mono">${esc(c.to)}</span></td>
+                      <td class="mono">${esc((c.input||'').slice(0,10))}</td>
+                      <td>${esc(ethers.formatUnits(c._slotBefore,18))}<br>→ <span class="ok"><b>${esc(ethers.formatUnits(c._slotAfter,18))}</b></span></td>
+                      <td>${(c._transfers||[]).length?(c._transfers||[]).map(t=>{
+                        const m=c._metas[t.token]||{symbol:short(t.token),decimals:18};
+                        const direction=t.from===norm(tx.from)?'Wallet →':'→ Wallet';
+                        let amt='';try{amt=ethers.formatUnits(t.amount,m.decimals)}catch{amt=t.amount.toString()}
+                        return `<div><b>${esc(direction)} ${esc(amt)} ${esc(m.symbol)}</b><br><span class="mono">${esc(t.token)}</span></div>`;
+                      }).join('<hr>'):'<span class="muted">keine ERC-20 Transfers direkt mit Wallet im Receipt</span>'}</td>
+                      <td>${c._stakingMatches?.length?c._stakingMatches.map(x=>`<span class="ok"><b>${esc(short(x.to))}</b></span>`).join('<br>'):'–'}</td>
+                    </tr>
+                    <tr><td></td><td colspan="5"><details><summary>Interne Calls dieser Transaktion</summary>${(c._calls||[]).map(x=>`<div><span class="badge">${esc(x.type)}</span> <span class="mono">${esc(x.from)} → ${esc(x.to)} · ${esc((x.input||'').slice(0,10))}</span>${known.has(x.to)?' <span class="ok"><b>BEKANNTER STAKING-CONTRACT</b></span>':''}</div>`).join('')||'–'}</details></td></tr>`).join('')}
+                    </tbody></table>`;
+                  stateEvidence.principalOrigin={origin,verified,off8};
+                }else{
+                  $('stateCandidates').innerHTML=`<span class="warn">Der Änderungsblock wurde gefunden, aber unter den direkt/indirekt zum Claim-Contract führenden Transaktionen konnte der exakte Offset-8-Schreibvorgang noch nicht isoliert werden. Der Block-Trace bzw. Kandidatenfilter muss dann im nächsten Schritt erweitert werden.</span>`;
+                  stateEvidence.principalOrigin={origin,verified:[],off8};
+                }
+              }
+            }
+          }catch(e){
+            $('principalOrigin').innerHTML=`<span class="warn"><b>Offset-8-Ursprung konnte noch nicht bestimmt werden:</b> ${esc(e.message)}</span>`;
+            $('stateCandidates').innerHTML='<span class="muted">Ohne validierten historischen Offset-8-Änderungsblock nicht ausgeführt.</span>';
+            log('Offset-8-Ursprungsanalyse: '+e.message);
+          }
         }else{
           layoutHtml='<p class="warn">Die geänderten Slots konnten noch nicht als einfache <span class="mono">mapping(address =&gt; struct)</span>-Struktur mit Basisslot 0–512 erkannt werden. Möglich wären ein größerer Basisslot, ein nested mapping oder eine andere Key-Struktur.</p>';
           stateEvidence={best,deltaMatches,layout};
           $('formulaTrace').innerHTML='<span class="warn">Keine einfache Wallet-Mapping-Struktur erkannt; deshalb noch kein gezielter Struct-Opcode-Trace.</span>';
+          $('principalOrigin').innerHTML='<span class="muted">Ohne Wallet-Mapping-Struktur nicht ausgeführt.</span>';
         }
         $('stateHistory').innerHTML=`<p class="ok"><b>Neue Erkenntnis:</b> Der Reward lag vor dem Claim <b>nicht</b> als 2330.681364-TLN-Pending-Wert in diesen Slots. Stattdessen steigen ${deltaMatches.length} Slot(s) während <span class="mono">withdrawYield()</span> jeweils exakt um <b>${esc(ethers.formatUnits(rawReward.total,18))} TLN</b>.</p>
           <p>Das spricht stark für <b>kumulative Claim-/Reward-Zähler</b> (oder zwei gespiegelte Accounting-Felder). Die bisherige Annahme „Pending Reward wird auf 0 gesetzt“ ist damit widerlegt.</p>${layoutHtml}`;
@@ -1006,6 +1241,7 @@ async function analyze(){
           </div>`;
           stateEvidence={best,hist,candidates:[]};
           $('formulaTrace').innerHTML='<span class="muted">Für diesen alternativen Reward-State-Pfad wurde kein Struct-Formel-Trace ausgeführt.</span>';
+          $('principalOrigin').innerHTML='<span class="muted">Für diesen alternativen Pfad nicht ausgeführt.</span>';
           $('stateCandidates').innerHTML='–';
         }else{
           $('stateHistory').innerHTML=`<span class="warn">${esc(hist.reason)}</span>`;
@@ -1015,12 +1251,14 @@ async function analyze(){
       }else{
         $('stateHistory').innerHTML='<span class="warn">Noch kein belastbarer Reward-bezogener Storage-Slot erkannt.</span>';
         $('formulaTrace').innerHTML='<span class="muted">Ohne Reward-bezogenen Storage-Slot nicht ausgeführt.</span>';
+        $('principalOrigin').innerHTML='<span class="muted">Ohne Reward-bezogenen Storage-Slot nicht ausgeführt.</span>';
         $('stateCandidates').innerHTML='–';
       }
     }catch(e){
       $('storageDiff').innerHTML=`<span class="warn"><b>Storage-Diff nicht verfügbar:</b> ${esc(e.message)}</span>`;
       $('stateHistory').innerHTML='<span class="muted">Ohne belastbaren Storage-Diff nicht ausgeführt.</span>';
       $('formulaTrace').innerHTML='<span class="muted">Ohne belastbaren Storage-Diff nicht ausgeführt.</span>';
+      $('principalOrigin').innerHTML='<span class="muted">Ohne belastbaren Storage-Diff nicht ausgeführt.</span>';
       $('stateCandidates').innerHTML='<span class="muted">Ohne Reward-State-Grenze nicht ausgeführt.</span>';
       log('Reward-Storage-Analyse nicht verfügbar: '+e.message);
     }
@@ -1048,8 +1286,12 @@ async function analyze(){
         conclusion+=`<p><b>Wallet-Struct:</b> Die Slots lassen sich einer einfachen Wallet-Mapping-Struktur mit Basisslot <b>${stateEvidence.layout.baseSlot}</b> zuordnen. Für historische Werte werden ausschließlich Felder aus dem Full-Prestate-Trace der konkreten Tx verwendet.</p>`;
       }
       if(stateEvidence.formulaSubAnchor!=null){
-        conclusion+=`<p class="ok"><b>Reward-Differenzformel bestätigt:</b> Im Opcode-Trace gibt es eine exakte SUB-Operation: <b>kumulativer Anspruch − bereits verbucht = Mint-Reward</b>. Der neue Datenfluss-Block verfolgt jetzt zusätzlich rückwärts, wie der kumulative Anspruch selbst entsteht.</p>`;
-      }else if(stateEvidence.opcodeWindows?.length){
+        conclusion+=`<p class="ok"><b>Reward-Differenzformel bestätigt:</b> Im Opcode-Trace gibt es eine exakte SUB-Operation: <b>kumulativer Anspruch − bereits verbucht = Mint-Reward</b>.</p>`;
+      }
+      if(stateEvidence.principalOrigin?.origin?.found){
+        conclusion+=`<p><b>Offset-8-Provenienz:</b> Der Berechnungsbasiswert ${esc(ethers.formatUnits(stateEvidence.principalOrigin.off8.value,18))} wurde historisch auf einen konkreten Änderungsblock eingegrenzt. ${stateEvidence.principalOrigin.verified.length?`Mindestens eine Transaktion in diesem Block wurde als exakter Schreiber dieses Werts bestätigt; deren Token-/LP-Bewegungen stehen in Abschnitt 9.`:'Der exakte Schreiber ist im ersten Block-Trace noch nicht isoliert.'}</p>`;
+      }
+      if(stateEvidence.formulaSubAnchor==null && stateEvidence.opcodeWindows?.length){
         conclusion+=`<p><b>Reward-Formel wird VM-seitig geprüft:</b> ${stateEvidence.opcodeWindows.length} relevante Opcode-Fenster wurden gefunden.</p>`;
       }
     }else if(stateEvidence?.best?.preRewardMatch){
@@ -1070,13 +1312,14 @@ async function analyze(){
     log('Fertig.');
   }catch(e){
     $('status').innerHTML=`<span class="bad">${esc(e.message)}</span>`;
-    for(const id of ['txInfo','transfers','relations','trace','storageDiff','stateHistory','formulaTrace','stateCandidates','conclusion']){
+    for(const id of ['txInfo','transfers','relations','trace','storageDiff','stateHistory','formulaTrace','principalOrigin','stateCandidates','conclusion']){
       if($(id).textContent==='Lädt…')$(id).innerHTML='<span class="bad">Analyse an dieser Stelle abgebrochen.</span>';
     }
     log('FEHLER: '+e.message);
   }finally{$('analyze').disabled=false}
 }
 $('analyze').addEventListener('click',analyze);
+$('exportPrincipalOrigin').addEventListener('click',exportPrincipalOrigin);
 $('exportFormulaCompact').addEventListener('click',exportFormulaCompact);
 $('exportFormula').addEventListener('click',exportFormulaSection);
 window.addEventListener('load',()=>setTimeout(analyze,100));
