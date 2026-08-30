@@ -24,7 +24,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
   <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 30.08.2026 23:53:42 CEST</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 00:02:53 CEST</div>
 
   <div class="card">
     <div class="row">
@@ -40,8 +40,9 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
   <div class="card"><h2>4. Interne Calls / Trace</h2><div id="trace" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>5. Reward-Storage / State-Diff</h2><div id="storageDiff" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>6. Historischer Ursprung des Reward-State</h2><div id="stateHistory" class="muted">Noch keine Daten.</div></div>
-  <div class="card"><h2>7. Kandidaten am Änderungsblock</h2><div id="stateCandidates" class="muted">Noch keine Daten.</div></div>
-  <div class="card"><h2>8. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>7. Reward-Formel / Opcode-Trace</h2><div id="formulaTrace" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>8. Kandidaten / nächster Ursprung</h2><div id="stateCandidates" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>9. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>Technisches Log</h2><pre id="log"></pre></div>
 </main>
 <script>
@@ -356,6 +357,105 @@ function valueHints(n){
 }
 
 
+
+async function opcodeTrace(hash){
+  const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
+  if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
+  const errors=[];
+  for(const [provider,url] of providers){
+    for(let attempt=1;attempt<=2;attempt++){
+      try{
+        const result=await rawRpc(url,'debug_traceTransaction',[hash,{
+          disableMemory:true,
+          disableStack:false,
+          disableStorage:true,
+          enableReturnData:false
+        }]);
+        if(result?.structLogs){
+          log(`Opcode-Trace: erfolgreich über ${provider}, Versuch ${attempt} · ${result.structLogs.length} Steps.`);
+          return {result,provider};
+        }
+      }catch(e){
+        errors.push(`${provider}: ${e.message}`);
+        log(`Opcode-Trace: ${provider}, Versuch ${attempt}: ${e.message}`);
+      }
+    }
+  }
+  throw new Error(`Opcode-Trace nicht verfügbar. ${errors.join(' | ')}`);
+}
+function stackBig(stack,indexFromTop=0){
+  const a=stack||[];
+  if(a.length<=indexFromTop)return null;
+  try{return BigInt('0x'+String(a[a.length-1-indexFromTop]).replace(/^0x/,''))}catch{return null}
+}
+function toHex32(n){
+  try{return '0x'+BigInt(n).toString(16).padStart(64,'0')}catch{return ''}
+}
+function opInputs(logEntry){
+  const op=logEntry.op, s=logEntry.stack||[];
+  const top=i=>stackBig(s,i);
+  if(op==='SLOAD') return [top(0)];
+  if(op==='SSTORE') return [top(0),top(1)];
+  if(['ADD','SUB','MUL','DIV','SDIV','MOD','SMOD','EXP','LT','GT','SLT','SGT','EQ','AND','OR','XOR','SHL','SHR','SAR'].includes(op)) return [top(0),top(1)];
+  if(['ISZERO','NOT'].includes(op)) return [top(0)];
+  return [];
+}
+function interestingOpcodeWindows(structLogs,targetSlots,importantValues){
+  const slots=new Set(targetSlots.map(x=>toHex32(x).toLowerCase()));
+  const vals=(importantValues||[]).filter(v=>v!=null).map(BigInt);
+  const hits=[];
+  for(let i=0;i<structLogs.length;i++){
+    const l=structLogs[i],op=l.op;
+    let reason='';
+    if(op==='SLOAD'||op==='SSTORE'){
+      const key=toHex32(stackBig(l.stack,0)).toLowerCase();
+      if(slots.has(key)) reason=`${op} Wallet-Struct ${key.slice(-6)}`;
+    }
+    if(!reason && ['ADD','SUB','MUL','DIV','SDIV','MOD','SMOD'].includes(op)){
+      const ins=opInputs(l).filter(v=>v!=null);
+      const matched=ins.find(x=>vals.some(v=>x===v));
+      if(matched!=null) reason=`${op} verwendet bekannten Wert ${matched}`;
+    }
+    if(reason){
+      const from=Math.max(0,i-10),to=Math.min(structLogs.length-1,i+14);
+      hits.push({index:i,reason,from,to});
+    }
+  }
+  // Merge strongly overlapping windows.
+  const merged=[];
+  for(const h of hits){
+    const last=merged[merged.length-1];
+    if(last && h.from<=last.to+3){
+      last.to=Math.max(last.to,h.to);
+      last.reasons.push(h.reason);
+      last.hitIndexes.push(h.index);
+    }else merged.push({from:h.from,to:h.to,reasons:[h.reason],hitIndexes:[h.index]});
+  }
+  return merged.slice(0,16);
+}
+function renderOpcodeWindow(structLogs,w,importantValues){
+  const vals=(importantValues||[]).filter(v=>v!=null).map(BigInt);
+  const rows=[];
+  for(let i=w.from;i<=w.to;i++){
+    const l=structLogs[i],ins=opInputs(l).filter(v=>v!=null);
+    const notable=ins.some(x=>vals.some(v=>x===v));
+    rows.push(`<tr${w.hitIndexes.includes(i)?' class="ok"':''}>
+      <td>${i}</td><td>${l.depth}</td><td>${l.pc}</td><td><b>${esc(l.op)}</b></td>
+      <td class="mono">${ins.map(x=>esc(x.toString())).join('<br>')||'–'}</td>
+      <td>${notable?'<span class="ok"><b>bekannter Wert im Stack</b></span>':'–'}</td>
+    </tr>`);
+  }
+  return `<details open><summary>${esc([...new Set(w.reasons)].join(' · '))}</summary>
+    <table><thead><tr><th>Step</th><th>Depth</th><th>PC</th><th>Opcode</th><th>Stack-Eingaben (dezimal)</th><th>Hinweis</th></tr></thead>
+    <tbody>${rows.join('')}</tbody></table></details>`;
+}
+function calcElapsedSeconds(txTimestamp,startTimestamp){
+  try{
+    const a=BigInt(txTimestamp),b=BigInt(startTimestamp);
+    return a>b?a-b:0n;
+  }catch{return 0n}
+}
+
 async function prestateAccessed(hash){
   const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
   if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
@@ -483,7 +583,7 @@ async function analyze(){
     return;
   }
   $('analyze').disabled=true;$('status').textContent='Analysiere nur diese eine Transaktion…';$('log').textContent='';
-  for(const id of ['txInfo','transfers','relations','trace','storageDiff','stateHistory','stateCandidates','conclusion'])$(id).innerHTML='<span class="muted">Lädt…</span>';
+  for(const id of ['txInfo','transfers','relations','trace','storageDiff','stateHistory','formulaTrace','stateCandidates','conclusion'])$(id).innerHTML='<span class="muted">Lädt…</span>';
   try{
     if(!rpcUrl)await initRpc();
     const hash=$('txHash').value.trim();
@@ -635,9 +735,41 @@ async function analyze(){
           </tr>`).join('')}
           </tbody></table>`:'<span class="warn">Der Full-Prestate enthält in diesem Struct-Fenster keine zusätzlich gelesenen Slots. Das bedeutet: withdrawYield() braucht für die Auszahlung offenbar keine weiteren Felder dieses Wallet-Structs.</span>'}`;
           stateEvidence={best,deltaMatches,layout,accessedRows,fullPreProvider:fullPre.provider};
+
+          // Reward formula: trace actual SLOAD/arithmetic around the wallet struct.
+          try{
+            log('Starte Opcode-Trace für Reward-Formel und tatsächliche SLOAD/Arithmetik.');
+            const opR=await opcodeTrace(hash);
+            const byOff=new Map(accessedRows.map(r=>[r.off,r.value]));
+            const principal=byOff.get(8)??null;
+            const startTs=byOff.get(11)??null;
+            const txTs=BigInt(block.timestamp);
+            const elapsed=startTs?calcElapsedSeconds(txTs,startTs):0n;
+            const targets=accessedRows.map(r=>BigInt(r.slot));
+            const important=[rawReward.total,principal,startTs,elapsed,
+              ...deltaMatches.flatMap(d=>[d.beforeN,d.afterN,d.delta])];
+            const windows=interestingOpcodeWindows(opR.result.structLogs,targets,important);
+            let formulaFacts='';
+            if(principal!=null)formulaFacts+=`<div class="kv"><b>Offset 8</b><span class="mono">${esc(principal.toString())}</span>${principal>=10n**15n?`<br><span class="ok">${esc(ethers.formatUnits(principal,18))}</span>`:''}</div>`;
+            if(startTs!=null)formulaFacts+=`<div class="kv"><b>Offset 11</b><span class="mono">${esc(startTs.toString())}</span><br><span class="ok">${esc(new Date(Number(startTs)*1000).toLocaleString('de-CH'))}</span></div>`;
+            if(elapsed>0n)formulaFacts+=`<div class="kv"><b>Zeit bis Claim</b>${elapsed.toLocaleString('de-CH')} Sekunden<br><span class="muted">${(Number(elapsed)/86400).toFixed(6)} Tage</span></div>`;
+            formulaFacts+=`<div class="kv"><b>Reward</b><span class="ok"><b>${esc(ethers.formatUnits(rawReward.total,18))} TLN</b></span></div>`;
+            $('formulaTrace').innerHTML=`<div class="grid">${formulaFacts}</div>
+              <p class="muted">Der Opcode-Trace sucht jetzt nicht nach einer vermuteten Formel, sondern nach den <b>tatsächlichen SLOAD/SSTORE- und Rechenoperationen</b>, in denen die bekannten Struct-Werte vorkommen. Dadurch können wir erkennen, ob Offset 8, Offset 11 oder andere Felder wirklich in die Reward-Berechnung eingehen.</p>
+              <div class="muted">Quelle: ${esc(opR.provider)} · ${opR.result.structLogs.length.toLocaleString('de-CH')} VM-Schritte · ${windows.length} relevante Fenster.</div>
+              ${windows.length?windows.map(w=>renderOpcodeWindow(opR.result.structLogs,w,important)).join(''):'<span class="warn">Keine direkte Verwendung der bekannten Werte in den sichtbaren SLOAD/Arithmetik-Fenstern gefunden. Dann kann die Berechnung über Zwischenwerte, Memory oder einen internen Delegatecall laufen.</span>'}`;
+            stateEvidence.opcodeWindows=windows;
+            stateEvidence.principal=principal;
+            stateEvidence.startTs=startTs;
+            stateEvidence.elapsed=elapsed;
+          }catch(e){
+            $('formulaTrace').innerHTML=`<span class="warn"><b>Opcode-Trace nicht verfügbar:</b> ${esc(e.message)}</span>`;
+            log('Reward-Formel Opcode-Trace nicht verfügbar: '+e.message);
+          }
         }else{
           layoutHtml='<p class="warn">Die geänderten Slots konnten noch nicht als einfache <span class="mono">mapping(address =&gt; struct)</span>-Struktur mit Basisslot 0–512 erkannt werden. Möglich wären ein größerer Basisslot, ein nested mapping oder eine andere Key-Struktur.</p>';
           stateEvidence={best,deltaMatches,layout};
+          $('formulaTrace').innerHTML='<span class="warn">Keine einfache Wallet-Mapping-Struktur erkannt; deshalb noch kein gezielter Struct-Opcode-Trace.</span>';
         }
         $('stateHistory').innerHTML=`<p class="ok"><b>Neue Erkenntnis:</b> Der Reward lag vor dem Claim <b>nicht</b> als 2330.681364-TLN-Pending-Wert in diesen Slots. Stattdessen steigen ${deltaMatches.length} Slot(s) während <span class="mono">withdrawYield()</span> jeweils exakt um <b>${esc(ethers.formatUnits(rawReward.total,18))} TLN</b>.</p>
           <p>Das spricht stark für <b>kumulative Claim-/Reward-Zähler</b> (oder zwei gespiegelte Accounting-Felder). Die bisherige Annahme „Pending Reward wird auf 0 gesetzt“ ist damit widerlegt.</p>${layoutHtml}`;
@@ -656,6 +788,7 @@ async function analyze(){
             <div class="kv"><b>Zeitpunkt</b>${esc(ts.toLocaleString('de-CH'))}</div>
           </div>`;
           stateEvidence={best,hist,candidates:[]};
+          $('formulaTrace').innerHTML='<span class="muted">Für diesen alternativen Reward-State-Pfad wurde kein Struct-Formel-Trace ausgeführt.</span>';
           $('stateCandidates').innerHTML='–';
         }else{
           $('stateHistory').innerHTML=`<span class="warn">${esc(hist.reason)}</span>`;
@@ -664,11 +797,13 @@ async function analyze(){
         }
       }else{
         $('stateHistory').innerHTML='<span class="warn">Noch kein belastbarer Reward-bezogener Storage-Slot erkannt.</span>';
+        $('formulaTrace').innerHTML='<span class="muted">Ohne Reward-bezogenen Storage-Slot nicht ausgeführt.</span>';
         $('stateCandidates').innerHTML='–';
       }
     }catch(e){
       $('storageDiff').innerHTML=`<span class="warn"><b>Storage-Diff nicht verfügbar:</b> ${esc(e.message)}</span>`;
       $('stateHistory').innerHTML='<span class="muted">Ohne belastbaren Storage-Diff nicht ausgeführt.</span>';
+      $('formulaTrace').innerHTML='<span class="muted">Ohne belastbaren Storage-Diff nicht ausgeführt.</span>';
       $('stateCandidates').innerHTML='<span class="muted">Ohne Reward-State-Grenze nicht ausgeführt.</span>';
       log('Reward-Storage-Analyse nicht verfügbar: '+e.message);
     }
@@ -693,7 +828,10 @@ async function analyze(){
     if(stateEvidence?.deltaMatches?.length){
       conclusion+=`<p class="ok"><b>Storage-Semantik korrigiert:</b> ${stateEvidence.deltaMatches.length} Storage-Slot(s) steigen beim Claim jeweils exakt um den geminteten Reward. Der Betrag war dort vorher nicht als Pending Reward gespeichert; die Felder sind sehr wahrscheinlich kumulative Claim-/Reward-Zähler.</p>`;
       if(stateEvidence.layout?.found){
-        conclusion+=`<p><b>Wallet-Struct:</b> Die Slots lassen sich einer einfachen Wallet-Mapping-Struktur mit Basisslot <b>${stateEvidence.layout.baseSlot}</b> zuordnen. Für historische Werte werden jetzt ausschließlich Felder aus dem Full-Prestate-Trace der konkreten Tx verwendet; dadurch vermeiden wir falsche „historische“ Werte eines nicht voll archive-fähigen RPCs.</p>`;
+        conclusion+=`<p><b>Wallet-Struct:</b> Die Slots lassen sich einer einfachen Wallet-Mapping-Struktur mit Basisslot <b>${stateEvidence.layout.baseSlot}</b> zuordnen. Für historische Werte werden ausschließlich Felder aus dem Full-Prestate-Trace der konkreten Tx verwendet.</p>`;
+      }
+      if(stateEvidence.opcodeWindows?.length){
+        conclusion+=`<p><b>Reward-Formel wird jetzt VM-seitig geprüft:</b> ${stateEvidence.opcodeWindows.length} relevante Opcode-Fenster wurden gefunden. Damit können wir unterscheiden, welche Struct-Felder tatsächlich in der Reward-Berechnung verwendet werden, statt Bedeutungen aus Zahlenwerten zu erraten.</p>`;
       }
     }else if(stateEvidence?.best?.preRewardMatch){
       conclusion+=`<p class="ok"><b>Reward-Storage bestätigt:</b> Ein Storage-Slot enthält vor dem Withdraw exakt den geminteten Reward.</p>`;
@@ -713,7 +851,7 @@ async function analyze(){
     log('Fertig.');
   }catch(e){
     $('status').innerHTML=`<span class="bad">${esc(e.message)}</span>`;
-    for(const id of ['txInfo','transfers','relations','trace','storageDiff','stateHistory','stateCandidates','conclusion']){
+    for(const id of ['txInfo','transfers','relations','trace','storageDiff','stateHistory','formulaTrace','stateCandidates','conclusion']){
       if($(id).textContent==='Lädt…')$(id).innerHTML='<span class="bad">Analyse an dieser Stelle abgebrochen.</span>';
     }
     log('FEHLER: '+e.message);
