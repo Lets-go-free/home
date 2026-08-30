@@ -38,7 +38,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 12:03:00 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 12:10:55 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -2960,32 +2960,41 @@ function stakingAssetAmountText(lot){
 function normalizedRewardRowFromLotTransaction(lot,txr){
   const action=String(txr?.kind||txr?.action||'');
   if(!/reward|ausschüttung|claim/i.test(action))return null;
+
   const amount=Number(txr?.amount||0);
-  const symbol=txr?.symbol||txr?.rewardSymbol||'';
-  if(!(amount>0)||!symbol||!txr?.tx)return null;
+  // lot.transactions uses tokenSymbol/tokenAddress/hash/assignmentReason.
+  const symbol=txr?.tokenSymbol||txr?.symbol||txr?.rewardSymbol||'';
+  const token=txr?.tokenAddress||txr?.token||'';
+  const hash=txr?.hash||txr?.tx||'';
+
+  if(!(amount>0)||!symbol||!hash)return null;
 
   let eventType='distribution';
-  if(/stake/i.test(String(txr?.source||''))||/gleiche Transaktion wie Stake/i.test(String(txr?.assignment||'')))
+  if(/stake/i.test(String(txr?.source||''))||
+     /gleiche Transaktion wie Stake/i.test(String(txr?.assignmentReason||txr?.assignment||''))||
+     /Mint beim Stake|Reward-Transfer beim Stake/i.test(String(txr?.method||''))){
     eventType='stake_reward';
-  if(/claim|abholung/i.test(action)||/claim/i.test(String(txr?.method||'')))
+  }else if(/claim|abholung/i.test(action)||/claim|harvest|withdraw.*reward|withdraw.*yield/i.test(String(txr?.method||''))){
     eventType='claim';
+  }
 
   return {
-    hash:txr.tx,
+    hash,
     time:txr.time||null,
     block:txr.block||null,
     amount,
     symbol,
-    token:txr.token||'',
+    token,
     eventType,
     from:txr.from||'',
-    assignmentReason:txr.assignment||txr.assignmentReason||'bereits in der Staking-Transaktionshistorie dieser Position zugeordnet',
+    assignmentReason:txr.assignmentReason||txr.assignment||'bereits in der Staking-Transaktionshistorie dieser Position zugeordnet',
     calledContract:txr.calledContract||txr.contract||'',
     source:txr.source||txr.method||''
   };
 }
 function collectAssignedRewardRows(lot){
   const byKey=new Map();
+  const visibleRewardTxCount=(lot.transactions||[]).filter(t=>/reward|ausschüttung|claim/i.test(String(t?.kind||t?.action||''))).length;
 
   // Primärquelle: exakt dieselben Reward-Zeilen, die im jeweiligen Staking
   // unter "Transaktionen" bereits sichtbar und zugeordnet sind.
@@ -3003,7 +3012,11 @@ function collectAssignedRewardRows(lot){
     const key=`${String(c.hash).toLowerCase()}|${norm(c.token)}|${c.symbol}|${Number(c.amount||0)}`;
     if(!byKey.has(key))byKey.set(key,c);
   }
-  return [...byKey.values()];
+  const rows=[...byKey.values()];
+  if(visibleRewardTxCount>0&&rows.length===0){
+    log(`Rewards-Claiming Konsistenzfehler: ${safePairLabel(lot)} zeigt ${visibleRewardTxCount} Reward-Zeile(n) im Staking, aber keine konnte zentral normalisiert werden.`,'err');
+  }
+  return rows;
 }
 function stakingPeriodText(lot){
   const from=lot.stakeTime?new Date(lot.stakeTime).toLocaleString('de-CH'):'–';
