@@ -27,7 +27,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-note{margin-top:9px;color:#9ba7b7;font-size:12px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 01:54:31 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 02:09:02 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -1492,18 +1492,23 @@ function lotRewardContracts(lot){
   return new Set((lot?.rewardContractRelations||[]).map(x=>norm(x.contract)).filter(Boolean));
 }
 
-async function learnRewardPathsFromWalletCalls(calls){
+async function learnRewardPathsFromWalletCalls(calls,lots=[]){
   LEARNED_REWARD_PATHS.clear();
+  const lifecycleHashes=new Set();
+  for(const lot of (lots||[])){
+    if(lot.stakeTx)lifecycleHashes.add(String(lot.stakeTx).toLowerCase());
+    if(lot.unstakeTx)lifecycleHashes.add(String(lot.unstakeTx).toLowerCase());
+    for(const x of (lot.topUps||[]))if(x.tx)lifecycleHashes.add(String(x.tx).toLowerCase());
+  }
   const wallet=norm(CURRENT_WALLET);
   for(const c of (calls||[])){
     if(c._success===false)continue;
     const selector=String(c._selector||'').toLowerCase();
-    const method=METHOD_SELECTORS.get(selector)||c._method||'';
-    if(method==='Stake'||method==='Unstake'){
-      // LP movements during stake/unstake are principal movements, not proof
-      // that this selector is a reward/claim path.
-      continue;
-    }
+    const txHash=String(c.hash||'').toLowerCase();
+    // Voll dynamisch: bekannte Lifecycle-Tx (Stake/Aufstockung/Unstake) werden
+    // nicht als Reward-Pfad trainiert. Keine Contract-Adresse und kein Claim-
+    // Selector wird hierfür vorausgesetzt.
+    if(lifecycleHashes.has(txHash))continue;
     const incoming=[];
     for(const tr of (c._erc20Transfers||[])){
       if(tr.to!==wallet||!tr.token||tr.amountRaw==null)continue;
@@ -1520,9 +1525,178 @@ async function learnRewardPathsFromWalletCalls(calls){
     log(`Reward-/Claim-Pfad gelernt: ${contract} · ${selector} · ${incoming.map(x=>`${x.amount} ${x.symbol}`).join(', ')} · Tx ${c.hash}`,'ok');
   }
 }
+
+const DYNAMIC_CONTRACT_REL_CACHE=new Map();
+const TRACE_CALL_CACHE=new Map();
+
+function codePush20Addresses(code){
+  const out=new Set();
+  const s=String(code||'').toLowerCase().replace(/^0x/,'');
+  for(const m of s.matchAll(/73([0-9a-f]{40})/g)){
+    const a='0x'+m[1];
+    if(ethers.isAddress(a))out.add(norm(a));
+  }
+  return out;
+}
+function codePush4Selectors(code){
+  const out=[];
+  const s=String(code||'').toLowerCase().replace(/^0x/,'');
+  for(const m of s.matchAll(/63([0-9a-f]{8})/g)){
+    const sel='0x'+m[1];
+    if(!out.includes(sel))out.push(sel);
+    if(out.length>=96)break;
+  }
+  return out;
+}
+function decodedAddressWords(raw){
+  const out=new Set();
+  const s=String(raw||'').toLowerCase().replace(/^0x/,'');
+  if(!s||s.length%64!==0)return out;
+  for(let i=0;i<s.length;i+=64){
+    const w=s.slice(i,i+64);
+    const a='0x'+w.slice(-40);
+    if(ethers.isAddress(a)&&!/^0x0{40}$/.test(a))out.add(norm(a));
+  }
+  return out;
+}
+async function traceCalledAddresses(hash){
+  const h=String(hash||'').toLowerCase();
+  if(!h)return new Set();
+  if(TRACE_CALL_CACHE.has(h))return TRACE_CALL_CACHE.get(h);
+  const p=(async()=>{
+    const out=new Set();
+    const walk=x=>{
+      if(!x||typeof x!=='object')return;
+      if(x.to&&ethers.isAddress(x.to))out.add(norm(x.to));
+      if(Array.isArray(x.calls))for(const c of x.calls)walk(c);
+    };
+    try{
+      const tr=await rpc('debug_traceTransaction',[h,{tracer:'callTracer',timeout:'8s'}]);
+      walk(tr);
+      if(out.size)return out;
+    }catch{}
+    try{
+      const rows=await rpc('trace_transaction',[h]);
+      for(const r of (rows||[])){
+        const a=r?.action?.to;
+        if(a&&ethers.isAddress(a))out.add(norm(a));
+      }
+    }catch{}
+    return out;
+  })();
+  TRACE_CALL_CACHE.set(h,p);
+  return p;
+}
+async function inspectDynamicContractRelations(contract,exampleHashes=[]){
+  const c=norm(contract||'');
+  if(!ethers.isAddress(c))return {contract:c,implementation:null,references:new Map()};
+  if(DYNAMIC_CONTRACT_REL_CACHE.has(c))return DYNAMIC_CONTRACT_REL_CACHE.get(c);
+  const p=(async()=>{
+    const refs=new Map();
+    const add=(addr,kind,detail)=>{
+      addr=norm(addr||'');
+      if(!ethers.isAddress(addr)||addr===c)return;
+      if(!refs.has(addr))refs.set(addr,[]);
+      const arr=refs.get(addr);
+      const k=`${kind}|${detail||''}`;
+      if(!arr.some(x=>`${x.kind}|${x.detail||''}`===k))arr.push({kind,detail});
+    };
+
+    const implementation=await eip1967Implementation(c).catch(()=>null);
+    const codeTargets=[c,...(implementation?[implementation]:[])];
+    for(const target of codeTargets){
+      let code='0x';
+      try{code=await rpc('eth_getCode',[target,'latest'])}catch{}
+      for(const a of codePush20Addresses(code))add(a,target===c?'bytecode_reference':'implementation_bytecode_reference',target);
+
+      // ABI-unabhängig: im Dispatcher sichtbare PUSH4-Selector als no-arg Getter
+      // ausprobieren. Erfolgreich zurückgegebene Address-Wörter sind echte
+      // on-chain Referenzen des Contracts.
+      for(const sel of codePush4Selectors(code)){
+        try{
+          const raw=await rpc('eth_call',[{to:c,data:sel},'latest']);
+          for(const a of decodedAddressWords(raw))add(a,'dynamic_getter_reference',sel);
+        }catch{}
+      }
+    }
+
+    // Proxy-/Contract-Storage: nur echte gespeicherte Adressen, keine Annahmen
+    // über Feldnamen oder Layout.
+    for(let i=0;i<48;i++){
+      try{
+        const slot='0x'+BigInt(i).toString(16);
+        const raw=await rpc('eth_getStorageAt',[c,slot,'latest']);
+        for(const a of decodedAddressWords(raw))add(a,'storage_reference',`slot ${i}`);
+      }catch{}
+    }
+
+    // Falls der RPC Traces zulässt, interne Calls realer Claim-Tx verwenden.
+    for(const h of (exampleHashes||[]).slice(0,4)){
+      const called=await traceCalledAddresses(h);
+      for(const a of called)add(a,'claim_internal_call',h);
+    }
+
+    // Receipt-Co-Contracts der realen Claim-Tx.
+    for(const h of (exampleHashes||[]).slice(0,6)){
+      try{
+        const receipt=await rpc('eth_getTransactionReceipt',[h]);
+        for(const lg of (receipt?.logs||[])){
+          if(lg?.address)add(lg.address,'claim_receipt_contract',h);
+        }
+      }catch{}
+    }
+    return {contract:c,implementation,references:refs};
+  })();
+  DYNAMIC_CONTRACT_REL_CACHE.set(c,p);
+  return p;
+}
+
+async function learnDynamicClaimContractRelations(lots){
+  const rewardRows=[...LEARNED_REWARD_PATHS.values()];
+  if(!rewardRows.length)return;
+  for(const row of rewardRows){
+    const inspected=await inspectDynamicContractRelations(row.contract,row.examples||[]);
+    for(const lot of (lots||[])){
+      const g=ensureContractGraph(lot);
+      const targets=new Set(
+        [...g.nodes.values()]
+          .filter(n=>!n.roles?.has('wallet')&&!n.roles?.has('reward_token'))
+          .map(n=>norm(n.address))
+          .filter(ethers.isAddress)
+      );
+      const matches=[];
+      for(const [addr,evidence] of inspected.references.entries()){
+        if(targets.has(addr))matches.push({addr,evidence});
+      }
+      if(!matches.length)continue;
+
+      const already=(lot.rewardContractRelations||[]).some(r=>norm(r.contract)===norm(row.contract)&&r.evidenceKind==='dynamic_contract_graph');
+      if(!already){
+        lot.rewardContractRelations=lot.rewardContractRelations||[];
+        lot.rewardContractRelations.push({
+          contract:norm(row.contract),
+          evidenceKind:'dynamic_contract_graph',
+          lifecycleKind:'Contract-Graph',
+          lifecycleTx:(row.examples||[])[0]||null,
+          block:null,
+          changedProbes:matches.flatMap(m=>m.evidence.map(e=>`${e.kind}: ${m.addr}${e.detail?` (${e.detail})`:''}`)).slice(0,12)
+        });
+      }
+      graphNode(g,row.contract,'reward','Reward/Yield-SC');
+      for(const m of matches){
+        graphNode(g,m.addr,'linked_contract','On-chain Referenz');
+        for(const e of m.evidence){
+          graphEdge(g,row.contract,m.addr,e.kind,{tx:e.kind.includes('claim_')?e.detail:null,detail:e.detail||null});
+        }
+      }
+      log(`Reward-Contract-Beziehung dynamisch erkannt: ${row.contract} ↔ ${safePairLabel(lot)} · ${matches.map(m=>m.addr).join(', ')}`,'ok');
+    }
+  }
+}
 async function attachRewardClaimsToLots(lots,calls){
   const wallet=norm(CURRENT_WALLET);
   const rewardCandidates=[];
+  const rewardCandidateKeys=new Set();
 
   // First collect every successful incoming ERC-20 transfer from a relevant direct call.
   // This avoids losing claims just because the claim call went through a controller/reward contract.
@@ -1532,6 +1706,9 @@ async function attachRewardClaimsToLots(lots,calls){
     if(!when)continue;
     for(const tr of (c._erc20Transfers||[])){
       if(tr.to!==wallet||!tr.token||tr.amountRaw==null)continue;
+      const rk=`${String(c.hash||'').toLowerCase()}|${norm(tr.token)}|${norm(tr.from)}|${norm(tr.to)}|${String(tr.amountRaw)}`;
+      if(rewardCandidateKeys.has(rk))continue;
+      rewardCandidateKeys.add(rk);
       rewardCandidates.push({call:c,transfer:tr,when});
     }
   }
@@ -1758,12 +1935,17 @@ async function attachRewardTokenHistoryToLots(lots){
   }
 
   const processedHashes=new Map();
+  const processedRewardTransfers=new Set();
 
   for(const t of (CURRENT_ALL_TRANSFERS||[])){
     const token=norm(t.rawContract?.address||'');
     const hash=String(t.hash||'').toLowerCase();
     const to=norm(t.to||''),from=norm(t.from||'');
     if(!hash||!token||to!==wallet)continue;
+    const rawValue=t.rawContract?.value!=null?String(t.rawContract.value):String(t.value??'');
+    const transferKey=`${hash}|${token}|${from}|${to}|${rawValue}`;
+    if(processedRewardTransfers.has(transferKey))continue;
+    processedRewardTransfers.add(transferKey);
 
     let txInfo=processedHashes.get(hash);
     if(!txInfo){
@@ -1789,10 +1971,15 @@ async function attachRewardTokenHistoryToLots(lots){
     const ms=time?new Date(time).getTime():null;
     const callTo=norm(tx?.to||'');
     const selector=tx?.input?String(tx.input).slice(0,10).toLowerCase():null;
-    const methodName=METHOD_SELECTORS.get(selector)||'';
-    // Stake/Unstake transactions can contain TLN transfers, but those transfers
-    // are not reward evidence for another position.
-    if(methodName==='Stake'||methodName==='Unstake')continue;
+    const lifecycleHash=rows.some(l=>
+      hash===String(l.stakeTx||'').toLowerCase()||
+      hash===String(l.unstakeTx||'').toLowerCase()||
+      (l.topUps||[]).some(x=>hash===String(x.tx||'').toLowerCase())
+    );
+    // Nicht anhand eines fest bekannten Selectors, sondern anhand der bereits
+    // rekonstruierten Position: Lifecycle-Tx werden nicht als fremde Reward-
+    // Auszahlung gewertet.
+    if(lifecycleHash)continue;
     const receiptLogContracts=new Set((receipt?.logs||[]).map(x=>norm(x.address||'')).filter(Boolean));
     const candidates=[];
 
@@ -2578,9 +2765,10 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   const {lots,unmatched}=buildDiagnosticLots(stakingRows);
   reconcileLotsWithContractCalls(lots,contractCalls);
   attachContractEventsToLots(lots,contractEvents);
-  await learnRewardPathsFromWalletCalls(contractCalls);
+  await learnRewardPathsFromWalletCalls(contractCalls,lots);
   await buildContractGraphs(lots,contractCalls);
   await learnRewardContractRelations(lots);
+  await learnDynamicClaimContractRelations(lots);
   // Historical state-proven reward contracts are also graph nodes/edges.
   for(const lot of lots){
     const g=ensureContractGraph(lot);
