@@ -24,7 +24,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
   <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 30.08.2026 23:06:07 CEST</div>
+  <div class="muted">Entwicklungsstand 30.08.2026 23:15:19 CEST</div>
 
   <div class="card">
     <div class="row">
@@ -305,6 +305,56 @@ function normalizePrestateStorage(trace,address){
   }
   return rows;
 }
+
+function storageDelta(row){
+  try{return row.afterN-row.beforeN}catch{return 0n}
+}
+async function findWalletMappingLayout(wallet,rows,maxBaseSlot=512){
+  const coder=ethers.AbiCoder.defaultAbiCoder();
+  const targets=rows.map(r=>({slot:r.slot,n:BigInt(r.slot)}));
+  for(let base=0;base<=maxBaseSlot;base++){
+    const enc=coder.encode(['address','uint256'],[wallet,base]);
+    const root=BigInt(ethers.keccak256(enc));
+    for(const t of targets){
+      const off=t.n-root;
+      if(off>=0n&&off<=16n){
+        return {found:true,baseSlot:base,root:'0x'+root.toString(16).padStart(64,'0'),offset:Number(off),matchedSlot:t.slot};
+      }
+    }
+  }
+  return {found:false};
+}
+async function readStructWindow(address,root,claimBlock,fromOffset=0,toOffset=10){
+  const rootN=BigInt(root), beforeBlock=claimBlock-1n, rows=[];
+  for(let off=fromOffset;off<=toOffset;off++){
+    const slot='0x'+(rootN+BigInt(off)).toString(16).padStart(64,'0');
+    const [beforeR,afterR]=await Promise.all([
+      resilientRpc('eth_getStorageAt',[address,slot,hexBlock(beforeBlock)],`Struct[${off}] vor Claim`),
+      resilientRpc('eth_getStorageAt',[address,slot,hexBlock(claimBlock)],`Struct[${off}] nach Claim`)
+    ]);
+    const before=BigInt(beforeR.result||'0x0'),after=BigInt(afterR.result||'0x0');
+    rows.push({off,slot,before,after,delta:after-before});
+  }
+  return rows;
+}
+function valueHints(n){
+  const hints=[];
+  try{
+    if(n>0n){
+      if(n>=10n**15n) hints.push(`18 Decimals: ${ethers.formatUnits(n,18)}`);
+      if(n>1_500_000_000n&&n<4_000_000_000n){
+        const d=new Date(Number(n)*1000);
+        hints.push(`möglicher Unix-Zeitstempel: ${d.toLocaleString('de-CH')}`);
+      }
+      const asHex=n.toString(16).padStart(40,'0');
+      if(asHex.length<=64 && n>0xffffffffffffffffn && n<(1n<<160n)){
+        hints.push(`mögliche Adresse: 0x${asHex.slice(-40)}`);
+      }
+    }
+  }catch{}
+  return hints;
+}
+
 async function prestateDiff(hash){
   const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
   if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
@@ -486,26 +536,55 @@ async function analyze(){
       const preR=await prestateDiff(hash);
       const diffs=normalizePrestateStorage(preR.result,claimContract);
       for(const d of diffs){
-        d.rewardMatch=rawReward.total>0n && d.beforeN===rawReward.total;
+        d.delta=d.afterN-d.beforeN;
+        d.deltaRewardMatch=rawReward.total>0n && d.delta===rawReward.total;
+        d.preRewardMatch=rawReward.total>0n && d.beforeN===rawReward.total;
         d.resetToZero=d.beforeN>0n && d.afterN===0n;
-        d.score=(d.rewardMatch?100:0)+(d.resetToZero?20:0);
+        d.score=(d.deltaRewardMatch?200:0)+(d.preRewardMatch?100:0)+(d.resetToZero?20:0);
       }
       diffs.sort((a,b)=>b.score-a.score);
       const best=diffs[0]||null;
       $('storageDiff').innerHTML=diffs.length?`
         <div class="muted">Quelle: ${esc(preR.provider)} · ${diffs.length} veränderte Storage-Slot(s) im Claim-Contract.</div>
-        <table><thead><tr><th>Slot</th><th>Vor Claim</th><th>Nach Claim</th><th>Bewertung</th></tr></thead><tbody>
+        <table><thead><tr><th>Slot</th><th>Vor Claim</th><th>Nach Claim</th><th>Δ Änderung</th><th>Bewertung</th></tr></thead><tbody>
         ${diffs.map(d=>`<tr>
           <td class="mono">${esc(d.slot)}</td>
           <td class="mono">${esc(d.beforeN.toString())}${d.beforeN>0n?`<br><span class="muted">18 Decimals: ${esc(ethers.formatUnits(d.beforeN,18))}</span>`:''}</td>
-          <td class="mono">${esc(d.afterN.toString())}</td>
-          <td>${d.rewardMatch?'<span class="ok"><b>EXAKT = geminteter Reward</b></span><br>':''}${d.resetToZero?'<span class="ok">beim Claim auf 0 gesetzt</span>':''}</td>
+          <td class="mono">${esc(d.afterN.toString())}${d.afterN>0n?`<br><span class="muted">18 Decimals: ${esc(ethers.formatUnits(d.afterN,18))}</span>`:''}</td>
+          <td class="mono">${esc(d.delta.toString())}${d.delta!==0n?`<br><span class="${d.deltaRewardMatch?'ok':'muted'}">18 Decimals: ${esc(ethers.formatUnits(d.delta,18))}</span>`:''}</td>
+          <td>${d.deltaRewardMatch?'<span class="ok"><b>Δ EXAKT = geminteter Reward</b></span><br>':''}${d.preRewardMatch?'<span class="warn">Vorwert = Reward</span><br>':''}${d.resetToZero?'<span class="ok">Reset → 0</span>':''}</td>
         </tr>`).join('')}
         </tbody></table>`:
         '<span class="warn">prestateTracer lief, aber für den Claim-Contract wurde kein veränderter Storage-Slot geliefert.</span>';
 
-      if(best&&(best.rewardMatch||best.resetToZero)){
-        const claimBlock=BigInt(tx.blockNumber);
+      const claimBlock=BigInt(tx.blockNumber);
+      const deltaMatches=diffs.filter(d=>d.deltaRewardMatch);
+      if(deltaMatches.length){
+        log(`${deltaMatches.length} Storage-Slot(s) steigen exakt um den geminteten Reward.`);
+        const layout=await findWalletMappingLayout(tx.from,diffs,512);
+        let layoutHtml='';
+        if(layout.found){
+          log(`Wallet-Mapping-Kandidat gefunden: mapping base slot ${layout.baseSlot}, erster Treffer offset ${layout.offset}.`);
+          const structRows=await readStructWindow(claimContract,layout.root,claimBlock,0,10);
+          layoutHtml=`<p class="ok"><b>Wallet-Mapping-Struktur gefunden:</b> <span class="mono">keccak256(abi.encode(wallet, ${layout.baseSlot}))</span> ergibt den Struct-Root <span class="mono">${esc(layout.root)}</span>. Der erste geänderte Slot liegt bei Offset ${layout.offset}.</p>
+          <table><thead><tr><th>Struct Offset</th><th>Slot</th><th>Vor Claim</th><th>Nach Claim</th><th>Hinweise</th></tr></thead><tbody>
+          ${structRows.map(r=>`<tr>
+            <td>${r.off}</td><td class="mono">${esc(r.slot)}</td>
+            <td class="mono">${esc(r.before.toString())}${valueHints(r.before).map(h=>`<br><span class="muted">${esc(h)}</span>`).join('')}</td>
+            <td class="mono">${esc(r.after.toString())}${valueHints(r.after).map(h=>`<br><span class="muted">${esc(h)}</span>`).join('')}</td>
+            <td>${r.delta===rawReward.total?'<span class="ok"><b>Δ = Reward</b></span>':r.delta!==0n?`Δ ${esc(r.delta.toString())}`:'–'}</td>
+          </tr>`).join('')}
+          </tbody></table>`;
+          stateEvidence={best,deltaMatches,layout,structRows};
+        }else{
+          layoutHtml='<p class="warn">Die geänderten Slots konnten noch nicht als einfache <span class="mono">mapping(address =&gt; struct)</span>-Struktur mit Basisslot 0–512 erkannt werden. Möglich wären ein größerer Basisslot, ein nested mapping oder eine andere Key-Struktur.</p>';
+          stateEvidence={best,deltaMatches,layout};
+        }
+        $('stateHistory').innerHTML=`<p class="ok"><b>Neue Erkenntnis:</b> Der Reward lag vor dem Claim <b>nicht</b> als 2330.681364-TLN-Pending-Wert in diesen Slots. Stattdessen steigen ${deltaMatches.length} Slot(s) während <span class="mono">withdrawYield()</span> jeweils exakt um <b>${esc(ethers.formatUnits(rawReward.total,18))} TLN</b>.</p>
+          <p>Das spricht stark für <b>kumulative Claim-/Reward-Zähler</b> (oder zwei gespiegelte Accounting-Felder). Die bisherige Annahme „Pending Reward wird auf 0 gesetzt“ ist damit widerlegt.</p>${layoutHtml}`;
+        $('stateCandidates').innerHTML=`<p>Für diese Transaktion ist kein früherer „Reward-State-Schreibblock“ zu suchen: <b>die beobachteten Storage-Werte werden erst durch den Claim selbst um den Reward erhöht.</b></p>
+          <p class="muted">Der nächste sinnvolle Ansatz ist deshalb die Struktur des Wallet-Datensatzes im Claim-Contract: unveränderte Nachbarfelder können Principal, Startzeit, Rate, letzter Claim oder eine Positionsreferenz enthalten. Diese Version liest dafür bei erkannter Mapping-Struktur die Offsets 0–10 vor und nach dem Claim aus.</p>`;
+      }else if(best&&(best.preRewardMatch||best.resetToZero)){
         log(`Reward-Slot-Kandidat gefunden: ${best.slot}. Suche historischen Schreibzeitpunkt.`);
         const hist=await findRewardStateStart(claimContract,best.slot,claimBlock,best.beforeN);
         if(hist.found){
@@ -513,43 +592,19 @@ async function analyze(){
           const ts=new Date(Number(BigInt(br.result.timestamp))*1000);
           $('stateHistory').innerHTML=`<div class="grid">
             <div class="kv"><b>Reward-Slot</b><span class="mono">${esc(best.slot)}</span></div>
-            <div class="kv"><b>Reward-State vor Claim</b><span class="ok"><b>${esc(ethers.formatUnits(best.beforeN,18))} TLN</b></span><br><span class="mono">${esc(best.beforeN.toString())}</span></div>
+            <div class="kv"><b>Reward-State vor Claim</b><span class="ok"><b>${esc(ethers.formatUnits(best.beforeN,18))} TLN</b></span></div>
             <div class="kv"><b>Dieser State besteht ab Block</b><span class="ok"><b>${hist.changeBlock.toLocaleString('de-CH')}</b></span></div>
             <div class="kv"><b>Zeitpunkt</b>${esc(ts.toLocaleString('de-CH'))}</div>
-            <div class="kv"><b>Block unmittelbar davor</b>${hist.previousBlock.toLocaleString('de-CH')}</div>
-            <div class="kv"><b>Wert davor</b><span class="mono">${esc(hist.previousValue.toString())}</span>${hist.previousValue>0n?`<br><span class="muted">${esc(ethers.formatUnits(hist.previousValue,18))} bei 18 Decimals</span>`:''}</div>
           </div>`;
-
-          log(`Reward-State-Grenze bei Block ${hist.changeBlock}. Untersuche diesen Block isoliert.`);
-          const blockEv=await relevantTxsAtBlock(hist.changeBlock,claimContract,tx.from);
-          // Prefer direct interactions; if none, surface the full block count rather than pretending we found provenance.
-          const candidates=blockEv.direct.slice(0,12);
-          if(candidates.length){
-            for(const c of candidates){
-              c._trace=await traceForKnownStaking(c.hash,known);
-            }
-            $('stateCandidates').innerHTML=`<div class="muted">${candidates.length} direkte Kandidat(en) im Änderungsblock (Call an Claim-Contract oder Tx vom Wallet).</div>
-              <table><thead><tr><th>Tx</th><th>From</th><th>To</th><th>Selector</th><th>Bekannter Staking-Match</th></tr></thead><tbody>
-              ${candidates.map(c=>`<tr>
-                <td class="mono">${esc(c.hash)}</td>
-                <td class="mono">${esc(c.from)}</td>
-                <td class="mono">${esc(c.to)}</td>
-                <td class="mono">${esc((c.input||'').slice(0,10))}</td>
-                <td>${c._trace.matches.length?c._trace.matches.map(m=>`<span class="ok"><b>${esc(short(m.to))}</b></span>`).join('<br>'):'–'}</td>
-              </tr>
-              <tr><td></td><td colspan="4"><details><summary>Interne Calls</summary>${c._trace.calls.length?c._trace.calls.map(x=>`<div><span class="badge">${esc(x.type)}</span> <span class="mono">${esc(x.from)} → ${esc(x.to)} · ${esc((x.input||'').slice(0,10))}</span>${known.has(norm(x.to))?' <span class="ok"><b>STAKING</b></span>':''}</div>`).join(''):'keine / Trace nicht verfügbar'}</details></td></tr>`).join('')}
-              </tbody></table>`;
-          }else{
-            $('stateCandidates').innerHTML=`<span class="warn">Der Reward-State ändert sich in Block <b>${hist.changeBlock.toLocaleString('de-CH')}</b>, aber es gibt dort keinen Top-Level-Call an den Claim-Contract und keine Top-Level-Tx vom Wallet. Das spricht für einen <b>internen Call aus einer fremden Transaktion</b>. Der Block enthält ${blockEv.txs.length} Transaktionen; als nächster Schritt wäre ein gezielter Block-/Tx-Trace dieses Änderungsblocks nötig.</span>`;
-          }
-          stateEvidence={best,hist,candidates};
+          stateEvidence={best,hist,candidates:[]};
+          $('stateCandidates').innerHTML='–';
         }else{
           $('stateHistory').innerHTML=`<span class="warn">${esc(hist.reason)}</span>`;
           $('stateCandidates').innerHTML='–';
           stateEvidence={best,hist,candidates:[]};
         }
       }else{
-        $('stateHistory').innerHTML='<span class="warn">Noch kein belastbarer Reward-Slot: kein Slot entspricht dem Reward und/oder wird beim Claim auf 0 gesetzt.</span>';
+        $('stateHistory').innerHTML='<span class="warn">Noch kein belastbarer Reward-bezogener Storage-Slot erkannt.</span>';
         $('stateCandidates').innerHTML='–';
       }
     }catch(e){
@@ -568,7 +623,7 @@ async function analyze(){
     conclusion+=`<p><b>Trace-Fund:</b> <span class="mono">0x40c10f19</span> ist <b>mint(address,uint256)</b>. Der Claim-Pfad führt über <span class="mono">0xb12e18…5930b</span> → Delegatecall <span class="mono">0x6592b7…c776</span> → TLN <span class="mono">0xf7d142…e4c2</span>. Damit ist dieser Ast die Reward-Minting-Kette und nicht die Staking-Position selbst.</p>`;
     conclusion+=`<p><b>STATICCALL 0xddca3f43 auf 0x7f6c…fc662:</b> Der Rückgabewert <span class="mono">0x38d7ea4c68000</span> ist <b>1,000,000,000,000,000 Wei = 0.001 BNB</b>. Das ist die Claim-Gebühr – <b>keine Adresse</b>. Die frühere grüne „Adresse“-Darstellung war ein Decoder-Fehler und ist in dieser Version korrigiert.</p>`;
     conclusion+=`<p><b>STATICCALL 0xe0138476:</b> liefert <span class="mono">0x160ac9cf35903960ed493264b16ca6dc3e308f8c</span>; direkt danach gehen 0.001 BNB an genau diesen DBridgeExchange. Dieser Zweig ist damit die <b>Gebühren-/BNB-Abwicklung</b>, nicht die Staking-Zuordnung.</p>`;
-    conclusion+=`<p><b>Wichtige Konsequenz:</b> <code>withdrawYield()</code> fragt in dieser Transaktion offenbar <b>keinen Staking-Contract und keinen LP-Pool</b> ab. Die Reward-Höhe muss daher bereits im Claim-Contract/Storage vorhanden sein. Für die Zuordnung müssen wir als Nächstes untersuchen, <b>welche frühere Transaktion diesen Yield-State für das Wallet geschrieben hat</b>, statt den Withdraw-Trace weiter nach einem LP zu durchsuchen.</p>`;
+    conclusion+=`<p><b>Wichtige Konsequenz:</b> <code>withdrawYield()</code> fragt in dieser Transaktion offenbar <b>keinen Staking-Contract und keinen LP-Pool</b> ab. Die Storage-Diff-Analyse darunter entscheidet deshalb, ob der Reward vorher gespeichert war oder ob der Claim lediglich kumulative Accounting-Felder aktualisiert.</p>`;
     if(mintRewards.length){
       conclusion+=`<p class="ok"><b>Reward-Beweis:</b> ${mintRewards.length} Mint-Transfer(s) von Zero Address direkt zum aufrufenden Wallet erkannt.</p>`;
     }else{
@@ -576,11 +631,13 @@ async function analyze(){
     }
     if(method.startsWith('withdrawYield'))conclusion+=`<p class="ok"><b>Claim-Semantik:</b> Transaktion ruft ${esc(method)} auf.</p>`;
 
-    if(stateEvidence?.best?.rewardMatch){
-      conclusion+=`<p class="ok"><b>Reward-Storage bestätigt:</b> Ein Storage-Slot des Claim-Contracts enthält vor dem Withdraw exakt den geminteten Reward von ${esc(ethers.formatUnits(stateEvidence.best.beforeN,18))} TLN${stateEvidence.best.resetToZero?' und wird beim Claim auf 0 gesetzt':''}.</p>`;
-      if(stateEvidence.hist?.found){
-        conclusion+=`<p><b>Historische State-Grenze:</b> Derselbe Reward-State besteht ab Block <b>${stateEvidence.hist.changeBlock.toLocaleString('de-CH')}</b>. Damit haben wir jetzt einen konkreten Block, an dem die Reward-Provenienz weiter zurückverfolgt werden kann.</p>`;
+    if(stateEvidence?.deltaMatches?.length){
+      conclusion+=`<p class="ok"><b>Storage-Semantik korrigiert:</b> ${stateEvidence.deltaMatches.length} Storage-Slot(s) steigen beim Claim jeweils exakt um den geminteten Reward. Der Betrag war dort vorher nicht als Pending Reward gespeichert; die Felder sind sehr wahrscheinlich kumulative Claim-/Reward-Zähler.</p>`;
+      if(stateEvidence.layout?.found){
+        conclusion+=`<p><b>Wallet-Struct:</b> Die Slots lassen sich einer einfachen Wallet-Mapping-Struktur mit Basisslot <b>${stateEvidence.layout.baseSlot}</b> zuordnen. Die Nachbarfelder 0–10 werden oben angezeigt; daraus können wir nun Principal/Startzeit/Rate/Positionsreferenz suchen.</p>`;
       }
+    }else if(stateEvidence?.best?.preRewardMatch){
+      conclusion+=`<p class="ok"><b>Reward-Storage bestätigt:</b> Ein Storage-Slot enthält vor dem Withdraw exakt den geminteten Reward.</p>`;
     }
     if(uniqueMatches.length===1){
       const e=uniqueMatches[0],s=e.staking;
