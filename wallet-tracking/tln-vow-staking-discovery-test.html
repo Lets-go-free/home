@@ -38,7 +38,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 18:39:08 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 19:31:01 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -147,7 +147,19 @@ const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"]/g,
 const norm=a=>String(a||'').toLowerCase();
 function log(s,cls=''){const t=new Date().toLocaleTimeString('de-CH');$('log').innerHTML+=`
 <span class="${cls}">[${t}] ${esc(s)}</span>`}
-async function rpc(method,params=[]){const r=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok)throw new Error(`HTTP ${r.status} bei ${method}`);const j=await r.json();if(j.error)throw new Error(`${method}: ${j.error.message} (Code ${j.error.code})`);return j.result}
+const ETH_CALL_SESSION_CACHE=new Map();
+const ETH_CALL_INFLIGHT=new Map();
+const ETH_CALL_STATS={total:0,network:0,hits:0,reverts:0};
+function stableRpcKeyPart(v){if(v==null)return '';if(typeof v==='string')return v.toLowerCase();if(Array.isArray(v))return '['+v.map(stableRpcKeyPart).join(',')+']';if(typeof v==='object')return '{'+Object.keys(v).sort().map(k=>`${k}:${stableRpcKeyPart(v[k])}`).join(',')+'}';return String(v)}
+function ethCallSessionKey(params){return stableRpcKeyPart(params||[])}
+async function rpcNetwork(method,params=[]){const r=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok)throw new Error(`HTTP ${r.status} bei ${method}`);const j=await r.json();if(j.error)throw new Error(`${method}: ${j.error.message} (Code ${j.error.code})`);return j.result}
+async function rpc(method,params=[]){
+ if(method!=='eth_call')return rpcNetwork(method,params);
+ ETH_CALL_STATS.total++;const key=ethCallSessionKey(params);
+ if(ETH_CALL_SESSION_CACHE.has(key)){ETH_CALL_STATS.hits++;const x=ETH_CALL_SESSION_CACHE.get(key);if(x.ok)return x.value;const e=new Error(x.message||'execution reverted');e.cached=true;throw e}
+ if(ETH_CALL_INFLIGHT.has(key)){ETH_CALL_STATS.hits++;return ETH_CALL_INFLIGHT.get(key)}
+ const p=(async()=>{ETH_CALL_STATS.network++;try{const value=await rpcNetwork(method,params);ETH_CALL_SESSION_CACHE.set(key,{ok:true,value});return value}catch(e){ETH_CALL_STATS.reverts++;ETH_CALL_SESSION_CACHE.set(key,{ok:false,message:String(e?.message||e||'execution reverted')});throw e}finally{ETH_CALL_INFLIGHT.delete(key);if(ETH_CALL_STATS.total%250===0)log(`RPC-Performance: eth_call ${ETH_CALL_STATS.total} · Netzwerk ${ETH_CALL_STATS.network} · Cache-Hits ${ETH_CALL_STATS.hits} · Reverts ${ETH_CALL_STATS.reverts}`,'ok')}})();ETH_CALL_INFLIGHT.set(key,p);return p
+}
 async function v2call(to,fn,args=[]){const data=V2.encodeFunctionData(fn,args);const raw=await rpc('eth_call',[{to,data},'latest']);return V2.decodeFunctionResult(fn,raw)}
 async function v2callAt(to,fn,args=[],blockTag='latest'){const data=V2.encodeFunctionData(fn,args);const raw=await rpc('eth_call',[{to,data},blockTag]);return V2.decodeFunctionResult(fn,raw)}
 async function tokenMetaAt(a,blockTag='latest'){
@@ -259,11 +271,9 @@ async function contractCodeProfile(contract){
     // pattern. In that case selector absence is NOT safe negative evidence.
     const dynamicProxy=!implementation && bytecode.includes('f4');
 
-    return {
-      contract,implementation,bytecode,implBytecode,dynamicProxy,
-      bytecodeSize:Math.max(0,(bytecode.length-2)/2),
-      implementationBytecodeSize:Math.max(0,(implBytecode.length-2)/2)
-    };
+    const selectorSupport=new Map();
+    for(const probe of SC_READ_PROBES){const s=selectorFor(probe.sig).slice(2);selectorSupport.set(probe.sig,bytecode.includes(s)||implBytecode.includes(s));}
+    return {contract,implementation,bytecode,implBytecode,dynamicProxy,selectorSupport,bytecodeSize:Math.max(0,(bytecode.length-2)/2),implementationBytecodeSize:Math.max(0,(implBytecode.length-2)/2)};
   })();
 
   CONTRACT_CODE_PROFILE_CACHE.set(contract,p);
@@ -276,8 +286,7 @@ async function probeCapability(contract,probe){
   if(CONTRACT_CAPABILITY_CACHE.has(key))return CONTRACT_CAPABILITY_CACHE.get(key);
 
   const profile=await contractCodeProfile(contract);
-  const selector=selectorFor(probe.sig).slice(2);
-  const selectorSeen=profile.bytecode.includes(selector)||profile.implBytecode.includes(selector);
+  const selectorSeen=profile.selectorSupport?.get(probe.sig)===true;
 
   let state='unknown';
   if(selectorSeen)state='supported';
