@@ -24,7 +24,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
   <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 30.08.2026 22:12:00 CEST</div>
+  <div class="muted">Entwicklungsstand 30.08.2026 22:29:51 CEST</div>
 
   <div class="card">
     <div class="row">
@@ -45,20 +45,72 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N";
 const PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36";
+const ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const ZERO='0x0000000000000000000000000000000000000000';
-const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
-let rpcUrl=null;
+let rpcUrl=null,alchemyBase=null;
 const $=id=>document.getElementById(id);
 const norm=x=>String(x||'').toLowerCase();
 const esc=x=>String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const short=x=>x?`${x.slice(0,8)}…${x.slice(-6)}`:'–';
 function log(s){$('log').textContent+=`[${new Date().toLocaleTimeString('de-CH')}] ${s}\n`}
-async function rpc(method,params=[]){
-  const r=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
-  const j=await r.json().catch(()=>({}));
-  if(!r.ok||j.error)throw new Error(j?.error?.message||`HTTP ${r.status}`);
-  return j.result;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function alchemyRpcUrl(){
+  if(!alchemyBase)return null;
+  const b=String(alchemyBase).replace(/\/+$/,'');
+  return /\/v2\/[^/]+$/i.test(b)?b:b+'/'+encodeURIComponent(ALCHEMY_API_KEY);
+}
+async function rawRpc(url,method,params=[]){
+  if(!url)throw new Error(`${method}: RPC-URL fehlt`);
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),15000);
+  try{
+    const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:`${Date.now()}-${Math.random()}`,method,params}),signal:ctrl.signal});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    if(j.error)throw new Error(`${j.error.message||'RPC-Fehler'} (Code ${j.error.code??'?'})`);
+    return j.result??null;
+  }catch(e){
+    if(e?.name==='AbortError')throw new Error('Zeitüberschreitung');
+    throw e;
+  }finally{clearTimeout(timer)}
+}
+async function rpc(method,params=[]){return await rawRpc(rpcUrl,method,params)}
+async function resilientRpc(method,params=[],label=method){
+  const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
+  if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
+  const errors=[];
+  for(const [provider,url] of providers){
+    for(let attempt=1;attempt<=3;attempt++){
+      try{
+        const result=await rawRpc(url,method,params);
+        if(result!==null&&result!==undefined){
+          if(provider!=='Primär-RPC'||attempt>1)log(`${label}: erfolgreich über ${provider}, Versuch ${attempt}.`);
+          return {result,provider,attempt};
+        }
+        errors.push(`${provider} Versuch ${attempt}: null`);
+        log(`${label}: ${provider} lieferte null – ${attempt<3?'erneuter Versuch':'Fallback wird geprüft'}.`);
+      }catch(e){
+        errors.push(`${provider} Versuch ${attempt}: ${e.message}`);
+        log(`${label}: ${provider} · ${e.message} – ${attempt<3?'erneuter Versuch':'Fallback wird geprüft'}.`);
+      }
+      if(attempt<3)await sleep(300*attempt);
+    }
+  }
+  throw new Error(`${label} konnte über die konfigurierten BSC-RPCs nicht geladen werden. ${errors.join(' | ')}`);
+}
+async function transactionAndReceipt(hash){
+  const [txR,rcR]=await Promise.allSettled([
+    resilientRpc('eth_getTransactionByHash',[hash],'Transaktion'),
+    resilientRpc('eth_getTransactionReceipt',[hash],'Transaction Receipt')
+  ]);
+  const tx=txR.status==='fulfilled'?txR.value.result:null;
+  const receipt=rcR.status==='fulfilled'?rcR.value.result:null;
+  if(!tx||!receipt){
+    const missing=[!tx?'Transaktion':null,!receipt?'Receipt':null].filter(Boolean).join(' und ');
+    const details=[txR.status==='rejected'?txR.reason.message:null,rcR.status==='rejected'?rcR.reason.message:null].filter(Boolean).join(' | ');
+    throw new Error(`${missing} konnten über die konfigurierten BSC-RPCs nicht geladen werden.${details?' '+details:''}`);
+  }
+  return {tx,receipt,txProvider:txR.value.provider,receiptProvider:rcR.value.provider};
 }
 function topicAddr(t){return '0x'+String(t||'').slice(-40).toLowerCase()}
 function asAddressWord(raw){
@@ -85,12 +137,13 @@ async function tokenMeta(a){
   return {symbol,decimals};
 }
 async function initRpc(){
-  const {data,error}=await sb.from('chains').select('*').eq('chain_key','bsc').single();
+  const {data,error}=await sb.from('chains').select('rpc_url,discovery_provider,discovery_api_base').eq('chain_key','bsc').single();
   if(error)throw error;
   rpcUrl=data.rpc_url;
+  alchemyBase=norm(data.discovery_provider)==='alchemy'?data.discovery_api_base:null;
   if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))
     rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;
-  log('BSC RPC aus public.chains geladen.');
+  log(`BSC Primär-RPC geladen${alchemyBase?' · Alchemy-Fallback aktiv':' · kein Alchemy-Fallback konfiguriert'}.`);
 }
 async function stakingRows(){
   const {data,error}=await sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true);
@@ -118,8 +171,7 @@ async function eip1967Implementation(contract){
   const slot='0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
   try{
     const raw=await rpc('eth_getStorageAt',[contract,slot,'latest']);
-    const a=asAddressWord(raw);
-    return a;
+    return asAddressWord(raw);
   }catch{return null}
 }
 function embeddedKnownAddresses(bytecode,stakings){
@@ -162,13 +214,11 @@ async function analyze(){
     const hash=$('txHash').value.trim();
     if(!/^0x[0-9a-fA-F]{64}$/.test(hash))throw new Error('Ungültiger Tx Hash.');
 
-    log('Lade Transaction + Receipt + Block.');
-    const [tx,receipt]=await Promise.all([
-      rpc('eth_getTransactionByHash',[hash]),
-      rpc('eth_getTransactionReceipt',[hash])
-    ]);
-    if(!tx||!receipt)throw new Error('Transaktion/Receipt nicht gefunden.');
-    const block=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);
+    log('Lade Transaction + Receipt robust über Primär-RPC/Fallback.');
+    const {tx,receipt,txProvider,receiptProvider}=await transactionAndReceipt(hash);
+    log(`Transaktion: ${txProvider} · Receipt: ${receiptProvider}.`);
+    const blockR=await resilientRpc('eth_getBlockByNumber',[tx.blockNumber,false],'Block');
+    const block=blockR.result;
     const when=new Date(Number(BigInt(block.timestamp))*1000);
     const selector=(tx.input||'').slice(0,10).toLowerCase();
     const method=selector===ethers.id('withdrawYield()').slice(0,10).toLowerCase()?'withdrawYield()':
@@ -181,9 +231,11 @@ async function analyze(){
       <div class="kv"><b>Selector / Methode</b><span class="mono">${esc(selector)}</span><br>${esc(method)}</div>
       <div class="kv"><b>Block</b>${parseInt(tx.blockNumber,16).toLocaleString('de-CH')}</div>
       <div class="kv"><b>Status</b>${receipt.status==='0x1'?'<span class="ok">erfolgreich</span>':'<span class="bad">fehlgeschlagen</span>'}</div>
+      <div class="kv"><b>RPC-Quelle</b>Tx: ${esc(txProvider)}<br>Receipt: ${esc(receiptProvider)}<br>Block: ${esc(blockR.provider)}</div>
     </div><details><summary>Raw Input</summary><pre>${esc(tx.input)}</pre></details>`;
 
     log('Dekodiere ERC-20 Transfer-Logs im Receipt.');
+    const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
     const transfers=[];
     for(const l of receipt.logs||[]){
       if(norm(l.topics?.[0])!==TRANSFER_TOPIC||l.topics.length<3)continue;
@@ -263,7 +315,11 @@ async function analyze(){
     $('status').innerHTML='<span class="ok">Analyse abgeschlossen.</span>';
     log('Fertig.');
   }catch(e){
-    $('status').innerHTML=`<span class="bad">${esc(e.message)}</span>`;log('FEHLER: '+e.message);
+    $('status').innerHTML=`<span class="bad">${esc(e.message)}</span>`;
+    for(const id of ['txInfo','transfers','relations','trace','conclusion']){
+      if($(id).textContent==='Lädt…')$(id).innerHTML='<span class="bad">Analyse an dieser Stelle abgebrochen.</span>';
+    }
+    log('FEHLER: '+e.message);
   }finally{$('analyze').disabled=false}
 }
 $('analyze').addEventListener('click',analyze);
