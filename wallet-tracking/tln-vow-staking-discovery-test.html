@@ -38,7 +38,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 19:31:01 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 19:49:38 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -1503,6 +1503,18 @@ async function historicalWalletProbeMap(contract,wallet,blockHex){
   }
   return out;
 }
+async function historicalRewardProbeMap(contract,wallet,blockHex){
+  const out=new Map();
+  if(!contract||!wallet||!blockHex)return out;
+  const probes=SC_READ_PROBES.filter(p=>(p.args||[]).includes('wallet')&&REWARD_STATE_PROBE_NAMES.has(p.sig));
+  for(const probe of probes){
+    const cap=await probeCapability(contract,probe);
+    if(cap==='unsupported')continue;
+    const raw=await historicalProbeCall(contract,probe,wallet,blockHex);
+    if(raw&&raw!=='0x')out.set(probe.sig,String(raw).toLowerCase());
+  }
+  return out;
+}
 function changedHistoricalProbeRows(before,after){
   const rows=[];
   for(const [sig,a] of (after||new Map())){
@@ -1636,6 +1648,10 @@ function graphConnectedRewardContract(lot,address){
   return false;
 }
 async function learnRewardContractRelations(lots){
+  if(FAST_REWARD_DISCOVERY){
+    log('Performance-Modus: breite historische Reward-Contract-Graph-Probes übersprungen; unklare Claims bleiben bewusst unzugeordnet.','ok');
+    return;
+  }
   const wallet=norm(CURRENT_WALLET);
   const rewardContracts=[...new Set([...LEARNED_REWARD_PATHS.values()]
     .filter(r=>r&&r.contract&&r.selector)
@@ -1758,6 +1774,7 @@ function mergeErc20Transfers(...lists){
   }
   return [...map.values()];
 }
+const FAST_REWARD_DISCOVERY=true;
 const REWARD_STATE_PROBE_NAMES=new Set([
   'earned(address)','pendingReward(address)','pendingRewards(address)',
   'withdrawableYield(address)','getWithdrawableYield(address)','availableYield(address)',
@@ -1787,20 +1804,22 @@ async function rewardStateDeltaEvidenceForCall(call,wallet,contracts=[]){
   const block=call?._blockNumber||call?.blockNum||call?.blockNumber||null;
   const beforeBlock=blockHexMinusOne(block),afterBlock=blockHexOf(block);
   if(!beforeBlock||!afterBlock)return [];
+  const callTo=norm(call?.to||call?._staking?.contract_address||'');
+  if(!ethers.isAddress(callTo))return [];
+
+  // Performance + conservative attribution: state-delta proof is checked only
+  // on the contract the wallet actually called. A broad graph scan cannot by
+  // itself prove that an incoming token was a reward.
+  let before,after;
+  try{
+    [before,after]=await Promise.all([
+      historicalRewardProbeMap(callTo,wallet,beforeBlock),
+      historicalRewardProbeMap(callTo,wallet,afterBlock)
+    ]);
+  }catch{return []}
   const rows=[];
-  for(const contract of [...new Set((contracts||[]).map(norm).filter(ethers.isAddress))].slice(0,12)){
-    let before,after;
-    try{
-      [before,after]=await Promise.all([
-        historicalWalletProbeMap(contract,wallet,beforeBlock),
-        historicalWalletProbeMap(contract,wallet,afterBlock)
-      ]);
-    }catch{continue}
-    for(const ch of changedHistoricalProbeRows(before,after)){
-      if(REWARD_STATE_PROBE_NAMES.has(ch.sig)){
-        rows.push({contract,sig:ch.sig,before:ch.before,after:ch.after});
-      }
-    }
+  for(const ch of changedHistoricalProbeRows(before,after)){
+    if(REWARD_STATE_PROBE_NAMES.has(ch.sig))rows.push({contract:callTo,sig:ch.sig,before:ch.before,after:ch.after});
   }
   return rows;
 }
@@ -1819,16 +1838,25 @@ async function classifyRewardCallFlow(call,wallet,lots=[]){
   const outgoing=transfers.filter(x=>norm(x.from)===w&&norm(x.to)!==w);
   const lifecycle=lotLifecycleHashSet(lots).has(hash);
 
-  let traceSources=new Set();
-  if(incoming.length&&hash){try{traceSources=await traceCalledAddresses(hash)}catch{}}
-  if(callTo)traceSources.add(callTo);
-
   const explicitIntent=selectorHasExplicitRewardIntent(selector);
+  const hasMintIncoming=incoming.some(x=>norm(x.from)===ZERO_ADDRESS);
   let stateDeltaEvidence=[];
-  if(incoming.length&&!lifecycle){
-    stateDeltaEvidence=await rewardStateDeltaEvidenceForCall(call,w,[callTo,...traceSources]);
+
+  // Mint-to-wallet and an explicit claim/reward/yield method are already
+  // independent reward evidence. Running historical before/after probes for
+  // those transactions only wastes hundreds/thousands of RPC calls.
+  if(incoming.length&&!lifecycle&&!hasMintIncoming&&!explicitIntent){
+    stateDeltaEvidence=await rewardStateDeltaEvidenceForCall(call,w,[callTo]);
   }
   const stateProvesReward=stateDeltaEvidence.length>0;
+
+  // Trace only when it can affect causal attribution. Mint needs no trace.
+  // For explicit claims/state-proven claims it may identify an internal payout source.
+  let traceSources=new Set();
+  if(incoming.length&&!hasMintIncoming&&(explicitIntent||stateProvesReward)&&hash){
+    try{traceSources=await traceCalledAddresses(hash)}catch{}
+  }
+  if(callTo)traceSources.add(callTo);
 
   const outgoingTokens=new Set(outgoing.map(x=>norm(x.token)));
   const incomingTokens=new Set(incoming.map(x=>norm(x.token)));
