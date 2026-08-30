@@ -30,13 +30,9 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .collapsible-card>summary{cursor:pointer;padding:16px 18px;font-size:18px;font-weight:700;list-style:disclosure-closed}
 .collapsible-card[open]>summary{list-style:disclosure-open;border-bottom:1px solid #2b3546}
 .collapsible-card>.collapsible-body{padding:14px 18px 18px}
-
-.contract-analysis-box{margin-top:14px}
-.contract-analysis-box .diag-details{margin-top:10px}
-.contract-analysis-box .diag-details>summary{cursor:pointer;font-weight:700;padding:8px 0}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 04:10:00 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 11:15:51 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -77,7 +73,11 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <p class="muted">Historische Stakings, die vollständig beendet / unstaked wurden. Ein echter Vertragsendwert wird nur gezeigt, wenn der Zeitpunkt aus dem SC belastbar ableitbar ist. Historische Unstake-Simulationen werden ausdrücklich als Simulation bezeichnet; der tatsächliche Unstake-Wert wird zusätzlich ausgewiesen.</p>
 <div id="completedStakings"><div class="muted">Noch keine Daten.</div></div></div>
 
-<div class="card"><h2>Reward-Kandidaten ohne eindeutige Staking-Zuordnung</h2>
+<div class="card"><h2>🎁 Rewards-Claiming</h2>
+<p class="muted">Zeigt nur Reward-/Claim-Transaktionen, die einer konkreten Staking-Position belastbar zugeordnet werden konnten. Nicht eindeutig zuordenbare Reward-Kandidaten bleiben separat im Diagnosebereich und werden hier nicht geraten.</p>
+<div id="rewardClaiming"><div class="muted">Noch keine Daten.</div></div></div>
+
+<div class="card"><h2>Reward-Diagnose / nicht eindeutig zugeordnet</h2>
 <div id="unassignedRewards" class="muted">Noch nicht ausgewertet.</div>
 <h2>Dynamisch gelernte Reward-/Claim-Pfade</h2>
 <p class="muted">Ein Pfad wird nur gelernt, wenn ein Wallet-Aufruf an Contract + Selector in derselben Transaktion einen tatsächlichen ERC-20-Eingang ins ausgewählte Wallet erzeugt. Nichts davon ist als Selector oder Reward-Token fest codiert.</p>
@@ -1278,390 +1278,6 @@ async function businessProbeForLot(lot){
     BUSINESS_PROBE_CACHE.set(key,null);return null;
   }
 }
-
-const REWARD_OPEN_NAMES=new Set(['earned','pendingreward','pendingrewards','withdrawableyield','getwithdrawableyield','availableyield','claimable','rewards']);
-const REWARD_PAID_NAMES=new Set(['totalpayouts','payouts','totalwithdrawn']);
-const REWARD_RATE_NAMES=new Set(['dailyreward','rewardperday','dailyrate','rewardrate','interestrate','stakeddays','staked_days','daysstaked']);
-function probeScope(r){
-  const args=r?.args||[];
-  if(args.includes('wallet'))return 'walletbezogen';
-  return 'contractweit';
-}
-function rewardReadCategory(r){
-  const n=probeBaseName(r?.label||'');
-  if(REWARD_OPEN_NAMES.has(n))return 'offener / claimbarer Reward-Kandidat';
-  if(REWARD_PAID_NAMES.has(n))return 'Payout-/Withdraw-Kandidat';
-  if(REWARD_RATE_NAMES.has(n))return 'Rate / Laufzeit / Reward-Parameter';
-  return null;
-}
-function probeValueCompact(r){
-  if(!r)return '–';
-  if(r.kind==='raw'){
-    const ws=rawWords(r.raw);
-    return ws.length===1&&ws[0].uint!=null?ws[0].uint.toString():`${ws.length} Wort/Wörter`;
-  }
-  return r.display||r.raw||'–';
-}
-function positionProbeCandidates(lot){
-  const ids=[...lotPositionIdentifiers(lot)];
-  if(!ids.length)return [];
-  const bases=new Set([
-    'userInfo','users','stakes','stakeInfo','stakingInfo','depositInfo',
-    'earned','pendingReward','pendingRewards','withdrawableYield','getWithdrawableYield',
-    'availableYield','claimable','rewards','totalPayouts','payouts','totalWithdrawn',
-    'stakedAmount','stakeAmount','amountStaked','deposited'
-  ]);
-  const out=[];
-  for(const id of ids){
-    for(const base of bases){
-      out.push({label:`${base}(uint256)`,sig:`${base}(uint256)`,types:['uint256'],values:[BigInt(id)],positionId:id});
-      out.push({label:`${base}(address,uint256)`,sig:`${base}(address,uint256)`,types:['address','uint256'],values:[CURRENT_WALLET,BigInt(id)],positionId:id});
-      out.push({label:`${base}(uint256,address)`,sig:`${base}(uint256,address)`,types:['uint256','address'],values:[BigInt(id),CURRENT_WALLET],positionId:id});
-    }
-  }
-  return out;
-}
-async function probePositionSpecificReads(lot){
-  const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');
-  if(!ethers.isAddress(contract))return [];
-  const out=[],seen=new Set();
-  for(const p of positionProbeCandidates(lot)){
-    const key=p.sig+'|'+p.positionId;
-    if(seen.has(key))continue; seen.add(key);
-    const selector=selectorFor(p.sig);
-    try{
-      const data=selector+ethers.AbiCoder.defaultAbiCoder().encode(p.types,p.values).slice(2);
-      const raw=await rpc('eth_call',[{to:contract,data},'latest']);
-      if(!raw||raw==='0x')continue;
-      const ws=rawWords(raw);
-      // Empty zero-only responses are not accepted as evidence of an implemented position getter.
-      if(!ws.length||ws.every(w=>w.uint===0n))continue;
-      out.push({
-        label:p.label,sig:p.sig,selector,positionId:p.positionId,raw,
-        words:ws,display:ws.length===1&&ws[0].uint!=null?ws[0].uint.toString():`${ws.length} Wort/Wörter`
-      });
-    }catch{}
-  }
-  return out;
-}
-async function enrichLotContractAnalysis(lot){
-  const probe=lot.businessProbe||null;
-  const successful=probe?.results||[];
-  const positionReads=await probePositionSpecificReads(lot);
-  const rewardReads=successful.filter(r=>rewardReadCategory(r));
-  const walletReads=successful.filter(r=>probeScope(r)==='walletbezogen');
-  const contractReads=successful.filter(r=>probeScope(r)==='contractweit');
-  const struct=lot.historicalScAfter||null;
-  const changed=(lot.historicalScDelta||[]).filter(x=>x.delta!==0n);
-
-  const open=rewardReads.filter(r=>REWARD_OPEN_NAMES.has(probeBaseName(r.label)));
-  const paid=rewardReads.filter(r=>REWARD_PAID_NAMES.has(probeBaseName(r.label)));
-  const rates=rewardReads.filter(r=>REWARD_RATE_NAMES.has(probeBaseName(r.label)));
-
-  const conclusions=[];
-  if(positionReads.length){
-    conclusions.push(`Positionsbezogene SC-Reads gefunden (${positionReads.length}); diese sind für parallele Stakings besonders wertvoll.`);
-  }else if(lotPositionIdentifiers(lot).size){
-    conclusions.push('Eine On-chain Position-ID ist bekannt, aber mit den dynamisch geprüften Getter-Signaturen konnte aktuell kein positionsbezogener Read bestätigt werden.');
-  }else{
-    conclusions.push('Keine belastbare On-chain Position-ID für dieses Staking gefunden; positionsgenaue Reward-Werte sind damit aus dem Contract allein derzeit nicht belegt.');
-  }
-  if(open.length)conclusions.push(`Der Contract liefert ${open.length} aktuell lesbare(n) Reward-/Yield-Wert(e), die als offener/claimbarer Anspruch in Frage kommen.`);
-  if(paid.length)conclusions.push(`Der Contract liefert ${paid.length} Payout-/Withdraw-Wert(e). Die genaue Semantik wird nicht geraten; sie werden als Roh-Evidenz angezeigt.`);
-  if(!open.length&&!paid.length)conclusions.push('Kein erfolgreicher Standard-Read für offenen Reward oder bereits ausgezahlte Rewards gefunden.');
-  if(struct)conclusions.push(`${struct.sig} war historisch am Stake-Block lesbar (${struct.words.length} Words; ${changed.length} davon änderten sich beim Stake).`);
-  if(probe?.implementation)conclusions.push('Proxy/Implementation erkannt; Getter wurden gegen die Proxy-Adresse gelesen und Selector-Präsenz zusätzlich im Proxy-/Implementation-Bytecode geprüft.');
-
-  lot.contractAnalysis={
-    contract:probe?.contract||norm(lot?.staking?.contract_address||lot?.counterparty||''),
-    implementation:probe?.implementation||null,
-    bytecodeSize:probe?.bytecodeSize||0,
-    implementationBytecodeSize:probe?.implementationBytecodeSize||0,
-    successful,walletReads,contractReads,rewardReads,open,paid,rates,positionReads,
-    historicalStruct:struct,historicalDelta:lot.historicalScDelta||[],conclusions
-  };
-}
-function historicalStructAnalysisHtml(a,lot){
-  const s=a?.historicalStruct;
-  if(!s)return '<div class="muted">Am Stake-Block konnte keine der geprüften historischen User-/Stake-Strukturen gelesen werden.</div>';
-  const before=new Map((lot.historicalScBefore?.words||[]).map(w=>[w.index,w.uint]));
-  const rows=(s.words||[]).map(w=>{
-    const b=before.get(w.index)??0n;
-    const d=w.uint-b;
-    const ts=humanTimestamp(w.uint);
-    const field=structFieldEvidence(lot,{index:w.index,uint:w.uint});
-    return `<tr>
-      <td>W${w.index+1}</td>
-      <td class="mono">${b.toString()}</td>
-      <td class="mono">${w.uint.toString()}</td>
-      <td class="mono">${d.toString()}</td>
-      <td>${ts?esc(ts):'–'}</td>
-      <td>${field?.label?`<b>${esc(field.label)}</b><div class="muted">${esc(field.evidence||'')}</div>`:'–'}</td>
-    </tr>`;
-  }).join('');
-  return `<div class="wrap"><table style="min-width:980px">
-    <thead><tr><th>Word</th><th>Vor Stake</th><th>Nach Stake</th><th>Δ durch Stake</th><th>Timestamp-Hinweis</th><th>Nachweisbare Interpretation</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table></div>`;
-}
-function contractAnalysisHtml(lot){
-  const a=lot.contractAnalysis;
-  if(!a)return '';
-  const readRows=(a.successful||[]).map(r=>`<tr>
-    <td><b>${esc(r.label)}</b><div class="mono muted">${esc(r.selector||'')}</div></td>
-    <td>${esc(probeScope(r))}</td>
-    <td>${r.selectorSeen?'<span class="ok">Selector im Bytecode gefunden</span>':'<span class="muted">Selector nicht als PUSH4 bestätigt</span>'}</td>
-    <td>${esc(probeValueCompact(r))}</td>
-    <td>${rewardReadCategory(r)?`<b>${esc(rewardReadCategory(r))}</b>`:'–'}</td>
-  </tr>`).join('');
-  const posRows=(a.positionReads||[]).map(r=>`<tr>
-    <td><b>${esc(r.label)}</b><div class="mono muted">${esc(r.selector)}</div></td>
-    <td class="mono">${esc(r.positionId)}</td>
-    <td>${esc(r.display)}</td>
-    <td class="mono">${esc(r.raw)}</td>
-  </tr>`).join('');
-  const rewardRows=(a.rewardReads||[]).map(r=>`<tr>
-    <td><b>${esc(r.label)}</b></td>
-    <td>${esc(rewardReadCategory(r)||'')}</td>
-    <td>${esc(probeScope(r))}</td>
-    <td>${esc(probeValueCompact(r))}</td>
-    <td class="mono">${esc(r.selector||'')}</td>
-  </tr>`).join('');
-  return `<div class="reward-box contract-analysis-box">
-    <div class="reward-title">🔬 Smart-Contract-Analyse dieses Stakings</div>
-    <div class="stake-facts">
-      <div class="stake-fact"><span class="k">Staking-Contract</span><span class="v mono">${esc(a.contract||'–')}</span></div>
-      <div class="stake-fact"><span class="k">Proxy-Implementation</span><span class="v mono">${esc(a.implementation||'–')}</span></div>
-      <div class="stake-fact"><span class="k">Erfolgreiche SC-Reads</span><span class="v">${a.successful.length}</span></div>
-      <div class="stake-fact"><span class="k">Walletbezogene Reads</span><span class="v">${a.walletReads.length}</span></div>
-      <div class="stake-fact"><span class="k">Contractweite Reads</span><span class="v">${a.contractReads.length}</span></div>
-      <div class="stake-fact"><span class="k">Positionsbezogene Reads</span><span class="v">${a.positionReads.length}</span></div>
-    </div>
-
-    <details class="diag-details"><summary>Was dieser Staking-Vertrag aktuell preisgibt</summary>
-      ${readRows?`<div class="wrap"><table style="min-width:980px"><thead><tr><th>Funktion</th><th>Ebene</th><th>Bytecode-Evidenz</th><th>Aktueller Wert</th><th>Reward-Relevanz</th></tr></thead><tbody>${readRows}</tbody></table></div>`:'<div class="muted">Keine der dynamisch geprüften Standard-Read-Funktionen lieferte einen auswertbaren Wert.</div>'}
-    </details>
-
-    <details class="diag-details"><summary>Historische Struktur beim Stake</summary>
-      ${historicalStructAnalysisHtml(a,lot)}
-    </details>
-
-    <details class="diag-details"><summary>Reward-/Payout-Informationen dieses Vertrags</summary>
-      ${rewardRows?`<div class="wrap"><table style="min-width:900px"><thead><tr><th>Funktion</th><th>Mögliche Bedeutung</th><th>Ebene</th><th>Aktueller Wert</th><th>Selector</th></tr></thead><tbody>${rewardRows}</tbody></table></div>`:'<div class="muted">Keine erfolgreichen Standard-Reads für Reward/Yield/Payout/Withdraw gefunden.</div>'}
-    </details>
-
-    <details class="diag-details"><summary>Positionsbezogene Reads für parallele Stakings</summary>
-      ${posRows?`<div class="wrap"><table style="min-width:900px"><thead><tr><th>Getter</th><th>Position-ID</th><th>Wert</th><th>Raw</th></tr></thead><tbody>${posRows}</tbody></table></div>`:'<div class="muted">Keine positionsbezogene Getter-Signatur konnte aktuell on-chain bestätigt werden.</div>'}
-    </details>
-
-    <div class="reward-note"><b>Zwischenfazit für genau dieses Staking:</b><br>${(a.conclusions||[]).map(x=>`• ${esc(x)}`).join('<br>')}</div>
-  </div>`;
-}
-
-function rewardAccountingProbeSpecs(lot){
-  const current=lot?.businessProbe?.results||[];
-  const out=[],seen=new Set();
-  for(const r of current){
-    const scope=probeScope(r);
-    const cat=rewardReadCategory(r);
-    const rawStruct=r.kind==='raw'&&scope==='walletbezogen';
-    if(scope!=='walletbezogen'||(!cat&&!rawStruct))continue;
-    const k=r.sig;
-    if(seen.has(k))continue;seen.add(k);
-    out.push({...r});
-  }
-  return out;
-}
-async function probeSpecAtBlock(contract,spec,wallet,blockHex){
-  try{
-    const data=encodeProbeCall(spec,wallet);
-    const raw=await rpc('eth_call',[{to:contract,data},blockHex]);
-    if(!raw||raw==='0x')return null;
-    return {...spec,raw,...decodeProbeValue(raw,spec)};
-  }catch{return null}
-}
-function rawWordDeltas(beforeRaw,afterRaw){
-  const b=rawWords(beforeRaw),a=rawWords(afterRaw),n=Math.max(b.length,a.length),out=[];
-  for(let i=0;i<n;i++){
-    const bv=b[i]?.uint??0n,av=a[i]?.uint??0n,d=av-bv;
-    if(d!==0n)out.push({index:i,before:bv,after:av,delta:d});
-  }
-  return out;
-}
-function amount18FromRaw(raw){
-  const w=rawWords(raw)[0];
-  if(!w?.uint)return null;
-  try{return Number(ethers.formatUnits(w.uint,18))}catch{return null}
-}
-function claimSampleRows(claims,max=18){
-  if(claims.length<=max)return [...claims];
-  const byTime=[...claims].sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
-  const byAmt=[...claims].sort((a,b)=>Number(b.amount||0)-Number(a.amount||0));
-  const chosen=new Map();
-  for(const x of byTime.slice(0,5))chosen.set(x.hash,x);
-  for(const x of byTime.slice(-5))chosen.set(x.hash,x);
-  for(const x of byAmt.slice(0,8))chosen.set(x.hash,x);
-  return [...chosen.values()].slice(0,max);
-}
-async function analyzeRewardAccounting(lot){
-  const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');
-  const specs=rewardAccountingProbeSpecs(lot);
-  const allClaims=(lot.rewardClaims||[]).filter(x=>x?.hash);
-  const sampled=claimSampleRows(allClaims,18);
-  const analyses=[];
-  if(ethers.isAddress(contract)&&specs.length){
-    for(const claim of sampled){
-      const tx=await cachedTx(claim.hash);
-      const bn=tx?.blockNumber?Number(BigInt(tx.blockNumber)):Number(claim.block||0);
-      if(!bn||bn<2)continue;
-      const beforeHex='0x'+(bn-1).toString(16),afterHex='0x'+bn.toString(16);
-      const changed=[];
-      for(const spec of specs){
-        const [before,after]=await Promise.all([
-          probeSpecAtBlock(contract,spec,CURRENT_WALLET,beforeHex),
-          probeSpecAtBlock(contract,spec,CURRENT_WALLET,afterHex)
-        ]);
-        if(!before||!after||before.raw===after.raw)continue;
-        const cat=rewardReadCategory(spec);
-        if(spec.kind==='raw'){
-          changed.push({
-            label:spec.label,category:'User-/Stake-Struktur',
-            before:before.raw,after:after.raw,wordDeltas:rawWordDeltas(before.raw,after.raw)
-          });
-        }else{
-          const bv=amount18FromRaw(before.raw),av=amount18FromRaw(after.raw);
-          changed.push({
-            label:spec.label,category:cat||'Reward-bezogener Read',
-            before:before.raw,after:after.raw,beforeValue:bv,afterValue:av,
-            delta:(bv!=null&&av!=null)?av-bv:null
-          });
-        }
-      }
-      if(changed.length)analyses.push({claim,block:bn,changed});
-    }
-  }
-
-  const openCurrent=(lot.contractAnalysis?.open||[]).map(r=>({
-    label:r.label,value:amount18FromRaw(r.raw),raw:r.raw,scope:probeScope(r)
-  }));
-  const paidCurrent=(lot.contractAnalysis?.paid||[]).map(r=>({
-    label:r.label,value:amount18FromRaw(r.raw),raw:r.raw,scope:probeScope(r)
-  }));
-  const rateCurrent=(lot.contractAnalysis?.rates||[]).map(r=>({
-    label:r.label,value:probeValueCompact(r),raw:r.raw,scope:probeScope(r)
-  }));
-
-  const openEvidence=new Map(),paidEvidence=new Map(),rawEvidence=new Map();
-  for(const a of analyses){
-    for(const c of a.changed){
-      if(c.category==='offener / claimbarer Reward-Kandidat'&&c.delta!=null&&c.delta<0){
-        const x=openEvidence.get(c.label)||{label:c.label,count:0,examples:[]};
-        x.count++;if(x.examples.length<4)x.examples.push({claim:a.claim,delta:c.delta,before:c.beforeValue,after:c.afterValue});
-        openEvidence.set(c.label,x);
-      }
-      if(c.category==='Payout-/Withdraw-Kandidat'&&c.delta!=null&&c.delta>0){
-        const x=paidEvidence.get(c.label)||{label:c.label,count:0,examples:[]};
-        x.count++;if(x.examples.length<4)x.examples.push({claim:a.claim,delta:c.delta,before:c.beforeValue,after:c.afterValue});
-        paidEvidence.set(c.label,x);
-      }
-      if(c.category==='User-/Stake-Struktur'){
-        const x=rawEvidence.get(c.label)||{label:c.label,count:0,words:new Map(),examples:[]};
-        x.count++;
-        for(const w of c.wordDeltas||[]){
-          const ww=x.words.get(w.index)||{index:w.index,count:0,positive:0,negative:0};
-          ww.count++;if(w.delta>0n)ww.positive++;if(w.delta<0n)ww.negative++;
-          x.words.set(w.index,ww);
-        }
-        if(x.examples.length<4)x.examples.push({claim:a.claim,wordDeltas:c.wordDeltas});
-        rawEvidence.set(c.label,x);
-      }
-    }
-  }
-
-  const conclusions=[];
-  if(openEvidence.size){
-    conclusions.push(`Bei ${analyses.length} untersuchten Reward-/Claim-Tx verändern sich offene/claimbare Reward-Getter reproduzierbar. Das ist belastbare Evidenz dafür, dass der Contract einen offenen Reward-Zustand führt.`);
-  }
-  if(paidEvidence.size){
-    conclusions.push('Mindestens ein Payout-/Withdraw-Getter steigt bei Reward-/Claim-Transaktionen. Dieser Wert ist ein guter Kandidat für bereits ausgezahlte/geclaimte Rewards.');
-  }
-  if(rawEvidence.size){
-    conclusions.push('Die walletbezogene User-/Stake-Struktur verändert sich bei Reward-/Claim-Transaktionen. Die betroffenen Words werden unten gezeigt, ohne ihre Solidity-Feldnamen zu raten.');
-  }
-  if(!openEvidence.size&&!paidEvidence.size&&!rawEvidence.size){
-    conclusions.push('Bei den geprüften Reward-/Claim-Transaktionen konnte im Staking-Contract mit den aktuell bekannten Getter-/Struct-Reads keine reproduzierbare Reward-State-Änderung nachgewiesen werden.');
-  }
-  if(allClaims.length>sampled.length){
-    conclusions.push(`Für die State-Analyse wurden ${sampled.length} repräsentative Reward-/Claim-Transaktionen von ${allClaims.length} verwendet (erste, letzte und betragsmäßig größte), um historische RPC-Abfragen zu begrenzen.`);
-  }
-
-  lot.rewardAccounting={
-    contract,specs,allClaimsCount:allClaims.length,sampledCount:sampled.length,
-    analyses,openCurrent,paidCurrent,rateCurrent,
-    openEvidence:[...openEvidence.values()],
-    paidEvidence:[...paidEvidence.values()],
-    rawEvidence:[...rawEvidence.values()].map(x=>({...x,words:[...x.words.values()]})),
-    conclusions
-  };
-}
-function evidenceExamplesHtml(row,kind){
-  return (row.examples||[]).map(e=>{
-    const amt=Number(e.claim?.amount||0);
-    const sym=e.claim?.symbol||'';
-    if(kind==='value'){
-      return `<div class="muted"><span class="mono">${esc(e.claim?.hash||'')}</span> · Auszahlung ${amt.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(sym)} · SC Δ ${Number(e.delta||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</div>`;
-    }
-    return `<div class="muted"><span class="mono">${esc(e.claim?.hash||'')}</span> · ${(e.wordDeltas||[]).map(w=>`W${w.index+1} Δ ${esc(w.delta.toString())}`).join(' · ')}</div>`;
-  }).join('');
-}
-function rewardContractInfoHtml(lot){
-  const a=lot.rewardAccounting;
-  if(!a)return '';
-  const openRows=a.openCurrent.map(r=>`<tr><td><b>${esc(r.label)}</b></td><td>${r.value!=null?r.value.toLocaleString('de-CH',{maximumFractionDigits:12}):'–'}</td><td>${esc(r.scope)}</td><td>${a.openEvidence.some(x=>x.label===r.label)?'<span class="ok"><b>Verändert sich bei Claims</b></span>':'<span class="muted">noch nicht durch Claim-State-Änderung bestätigt</span>'}</td></tr>`).join('');
-  const paidRows=a.paidCurrent.map(r=>`<tr><td><b>${esc(r.label)}</b></td><td>${r.value!=null?r.value.toLocaleString('de-CH',{maximumFractionDigits:12}):'–'}</td><td>${esc(r.scope)}</td><td>${a.paidEvidence.some(x=>x.label===r.label)?'<span class="ok"><b>Steigt bei Claims</b></span>':'<span class="muted">noch nicht durch Claim-State-Änderung bestätigt</span>'}</td></tr>`).join('');
-  const rateRows=a.rateCurrent.map(r=>`<tr><td><b>${esc(r.label)}</b></td><td>${esc(String(r.value??'–'))}</td><td>${esc(r.scope)}</td></tr>`).join('');
-
-  const changeRows=[];
-  for(const x of a.openEvidence){
-    changeRows.push(`<tr><td><b>${esc(x.label)}</b></td><td>Offener / claimbarer Reward</td><td>${x.count}</td><td>${evidenceExamplesHtml(x,'value')}</td></tr>`);
-  }
-  for(const x of a.paidEvidence){
-    changeRows.push(`<tr><td><b>${esc(x.label)}</b></td><td>Bereits ausgezahlt / geclaimt – Kandidat</td><td>${x.count}</td><td>${evidenceExamplesHtml(x,'value')}</td></tr>`);
-  }
-  for(const x of a.rawEvidence){
-    changeRows.push(`<tr><td><b>${esc(x.label)}</b></td><td>User-/Stake-Struktur</td><td>${x.count}</td><td>${(x.words||[]).map(w=>`W${w.index+1}: ${w.count} Änderung(en), ${w.positive}↑ / ${w.negative}↓`).join('<br>')}${evidenceExamplesHtml(x,'raw')}</td></tr>`);
-  }
-
-  const claimsByToken=new Map();
-  for(const c of (lot.rewardClaims||[])){
-    const k=`${c.symbol}|${c.token}`;
-    const x=claimsByToken.get(k)||{symbol:c.symbol,token:c.token,amount:0,count:0};
-    x.amount+=Number(c.amount||0);x.count++;claimsByToken.set(k,x);
-  }
-  const observedRows=[...claimsByToken.values()].map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td>${x.count}</td><td class="mono">${esc(x.token)}</td></tr>`).join('');
-
-  return `<div class="reward-box contract-reward-info">
-    <div class="reward-title">💰 Reward-Informationen laut diesem Staking-Vertrag</div>
-
-    <div class="reward-note"><b>Wichtig:</b> Dieser Block zeigt zuerst den Zustand des konkreten Staking-Contracts. Beobachtete Token-Auszahlungen werden separat ausgewiesen. Ein Contract-Wert wird erst als „offen“ oder „bereits geclaimt“ bewertet, wenn historische Claim-Transaktionen eine passende State-Änderung belegen.</div>
-
-    <h4>Aktuell lesbare Reward-/Yield-Werte</h4>
-    ${openRows?`<div class="wrap"><table style="min-width:820px"><thead><tr><th>SC-Funktion</th><th>Aktueller Wert (18 Dec.)</th><th>Ebene</th><th>Historischer Claim-Nachweis</th></tr></thead><tbody>${openRows}</tbody></table></div>`:'<div class="muted">Kein aktuell lesbarer Standard-Getter für offenen/claimbaren Reward gefunden.</div>'}
-
-    <h4>Aktuell lesbare Payout-/Withdraw-Werte</h4>
-    ${paidRows?`<div class="wrap"><table style="min-width:820px"><thead><tr><th>SC-Funktion</th><th>Aktueller Wert (18 Dec.)</th><th>Ebene</th><th>Historischer Claim-Nachweis</th></tr></thead><tbody>${paidRows}</tbody></table></div>`:'<div class="muted">Kein aktuell lesbarer Standard-Getter für bereits ausgezahlte/geclaimte Rewards gefunden.</div>'}
-
-    ${rateRows?`<h4>Reward-Rate / Laufzeitparameter</h4><div class="wrap"><table style="min-width:720px"><thead><tr><th>SC-Funktion</th><th>Wert</th><th>Ebene</th></tr></thead><tbody>${rateRows}</tbody></table></div>`:''}
-
-    <h4>Was sich bei historischen Reward-/Claim-Transaktionen im Staking-Contract verändert</h4>
-    ${changeRows.length?`<div class="wrap"><table style="min-width:1050px"><thead><tr><th>SC-Funktion / Struktur</th><th>Interpretation</th><th>Bestätigte Änderungen</th><th>Beispiele</th></tr></thead><tbody>${changeRows.join('')}</tbody></table></div>`:'<div class="muted">Keine reproduzierbare Reward-State-Änderung in den aktuell prüfbaren Getter-/Struct-Werten gefunden.</div>'}
-
-    <h4>Beobachtete, diesem Staking derzeit zugeordnete Reward-Auszahlungen</h4>
-    ${observedRows?`<div class="wrap"><table style="min-width:760px"><thead><tr><th>Token</th><th>Summe</th><th>Tx</th><th>Token-Contract</th></tr></thead><tbody>${observedRows}</tbody></table></div>`:'<div class="muted">Keine Reward-Auszahlungen derzeit eindeutig diesem Staking zugeordnet.</div>'}
-
-    <div class="reward-note"><b>Zwischenfazit:</b><br>${(a.conclusions||[]).map(x=>`• ${esc(x)}`).join('<br>')}</div>
-  </div>`;
-}
 async function enrichLotsBusiness(lots,pricePairs){
   for(const lot of (lots||[])){
     await enrichHistoricalStakeEvidence(lot);
@@ -1679,7 +1295,6 @@ async function enrichLotsBusiness(lots,pricePairs){
     }
     lot.rewardReads=extractRewardReads(lot.rewardProfile,probe);
     lot.rewardModel=deriveRewardModel(lot);
-    await enrichLotContractAnalysis(lot);
 
     // 1) STAKE: prefer the value TLN itself stored at staking time.
     const stored=extractStoredStakeUsd(lot,probe);
@@ -1720,11 +1335,6 @@ async function enrichLotsBusiness(lots,pricePairs){
   }
   // Rewards werden nach der SC-/Positions-Anreicherung einmal global über alle Lots zugeordnet.
   await attachRewardTokenHistoryToLots(lots);
-
-  // Danach pro Staking-Vertrag den historischen Reward-State vor/nach realen Claim-Tx analysieren.
-  for(const lot of (lots||[])){
-    await analyzeRewardAccounting(lot);
-  }
 }
 
 function callTimeMs(c){return c?.metadata?.blockTimestamp?new Date(c.metadata.blockTimestamp).getTime():0}
@@ -3265,19 +2875,85 @@ function positionCardHtml(l,index,isClosed){
       <div class="stake-fact"><span class="k">${l.durationSource?.startsWith('Historische SC-Simulation')?'USD-Wert beim frühesten historisch simulierbaren Unstake':'USD-Wert beim Vertragsende'}</span>${contractEndValue}</div>
       ${isClosed?`<div class="stake-fact"><span class="k">Tatsächliches Unstake-Datum</span><span class="v">${l.unstakeTime?new Date(l.unstakeTime).toLocaleString('de-CH'):'–'}</span></div><div class="stake-fact"><span class="k">USD-Wert beim tatsächlichen Unstake</span>${unstakeValue}</div><div class="stake-fact"><span class="k">Gesamtdauer erster Stake → Unstake</span><span class="v">${actualDays!=null?`${actualDays} Tage`:'–'}</span></div>${(l.topUps||[]).length?`<div class="stake-fact"><span class="k">Dauer letzte Aufstockung → Unstake</span><span class="v">${actualLockDays!=null?`${actualLockDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span></div>`:''}`:''}
       <div class="stake-fact"><span class="k">Staking-Contract</span><span class="v mono">${esc(l.staking?.contract_address||l.counterparty||'–')}</span></div>
+      <div class="stake-fact"><span class="k">On-chain verknüpfte Reward-Contracts</span><span class="v">${(l.rewardContractRelations||[]).length?(l.rewardContractRelations||[]).map(r=>`<span class="mono">${esc(r.contract)}</span><br><span class="value-source">${esc(r.lifecycleKind)} · Block ${esc(r.block)} · ${esc((r.changedProbes||[]).join(', '))}</span>`).join('<br>'):'–'}</span></div>
       <div class="stake-fact"><span class="k">On-chain Position-ID(s)</span><span class="v">${[...lotPositionIdentifiers(l)].length?[...lotPositionIdentifiers(l)].map(x=>`<span class="mono">${esc(x)}</span>`).join('<br>'):'–'}</span></div>
       <div class="stake-fact"><span class="k">Contract-Graph</span><span class="v">${l.contractGraph?`${l.contractGraph.nodes.size} Contracts/Adressen · ${l.contractGraph.edges.length} belegte Beziehungen`: '–'}</span></div>
     </div>
     ${l.contractGraph&&l.contractGraph.edges.length?`<details class="diag-details"><summary>Contract-Graph anzeigen</summary><div class="wrap"><table><thead><tr><th>Von</th><th>Beziehung</th><th>Zu</th><th>Evidenz</th></tr></thead><tbody>${l.contractGraph.edges.map(e=>`<tr><td class="mono">${esc(e.from)}</td><td>${esc(e.type)}</td><td class="mono">${esc(e.to)}</td><td>${esc(e.evidence?.kind||'')} ${e.evidence?.tx?`<span class="mono">${esc(e.evidence.tx)}</span>`:''}</td></tr>`).join('')}</tbody></table></div></details>`:''}
     ${(l.topUps||[]).length?`<div class="reward-box"><div class="reward-title">Aufstockungen dieser Staking-Position</div><div class="wrap"><table><thead><tr><th>Zeit</th><th>Zusätzlich</th><th>Gesamt danach</th><th>Tx</th></tr></thead><tbody>${l.topUps.map(x=>`<tr><td>${x.time?new Date(x.time).toLocaleString('de-CH'):'–'}</td><td class="num">+${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="num">${Number(x.resultingPrincipal||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(x.tx)}">${esc(x.tx||'–')}</a></td></tr>`).join('')}</tbody></table></div></div>`:''}
-    ${rewardContractInfoHtml(l)}
-    <details class="diag-details"><summary>Technische Smart-Contract-Analyse</summary>${contractAnalysisHtml(l)}</details>
-    ${rewardHtml(l)}
     <div class="stake-actions">
       <details><summary>Transaktionen (${(l.transactions||[]).length})</summary>${txRowsHtml(l)}</details>
       <details class="sc-details" data-lot-index="${index}"><summary>Technische SC-Details</summary><div id="scBox${index}" class="sc-box"><span class="muted">Zum Laden öffnen.</span></div></details>
     </div>
   </div>`;
+}
+
+function claimIsAssignedToLot(claim,lot){
+  if(!claim||!lot)return false;
+  if(claim.eventType!=='claim')return false;
+  // Claims in rewardClaims already passed the global structural assignment.
+  // We deliberately do not use any time proximity here.
+  return !!claim.hash && !!claim.token && Number(claim.amount||0)>0;
+}
+function stakingPeriodText(lot){
+  const from=lot.stakeTime?new Date(lot.stakeTime).toLocaleString('de-CH'):'–';
+  const to=lot.unstakeTime?new Date(lot.unstakeTime).toLocaleString('de-CH'):'offen';
+  return {from,to};
+}
+function stakingAssetAmountText(lot){
+  const n=Number(lot.original||0);
+  const asset=(lot?.pair?.asset_type==='legacy_staking_token'||lot?.pair?.asset_type==='staking_token')
+    ? (lot?.pair?.symbol||'LPT')
+    : 'LP';
+  return `${n.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(asset)}`;
+}
+function renderRewardClaiming(lots){
+  const el=document.getElementById('rewardClaiming');
+  if(!el)return;
+
+  const rows=[];
+  for(const lot of (lots||[])){
+    for(const claim of (lot.rewardClaims||[])){
+      if(!claimIsAssignedToLot(claim,lot))continue;
+      const p=stakingPeriodText(lot);
+      rows.push({lot,claim,from:p.from,to:p.to});
+    }
+  }
+  rows.sort((a,b)=>String(a.claim.time||'').localeCompare(String(b.claim.time||'')));
+
+  if(!rows.length){
+    el.innerHTML='<div class="muted">Keine eindeutig einer Staking-Position zugeordneten Reward-Claims gefunden.</div>';
+    return;
+  }
+
+  el.innerHTML=`<div class="wrap"><table style="min-width:1580px">
+    <thead><tr>
+      <th>Claim-Datum</th>
+      <th>Reward</th>
+      <th>Reward-Token</th>
+      <th>Zugeordnetes Staking</th>
+      <th>Staking von</th>
+      <th>Staking bis</th>
+      <th>LPT / PCLP-Menge</th>
+      <th>Ausgelaufen / freigegeben am</th>
+      <th>Staking-Contract</th>
+      <th>Zuordnungsnachweis</th>
+      <th>Claim-Tx</th>
+    </tr></thead>
+    <tbody>${rows.map(({lot,claim,from,to})=>`<tr>
+      <td>${claim.time?new Date(claim.time).toLocaleString('de-CH'):'–'}</td>
+      <td class="num"><b>${Number(claim.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td>
+      <td><b>${esc(claim.symbol||'–')}</b><div class="mono muted">${esc(claim.token||'')}</div></td>
+      <td><b>${esc(safePairLabel(lot))}</b><div class="muted">${esc(stakingContractLabel(lot.staking))}</div></td>
+      <td>${from}</td>
+      <td>${to}</td>
+      <td class="num">${stakingAssetAmountText(lot)}</td>
+      <td>${lot.expiryTime?new Date(lot.expiryTime).toLocaleString('de-CH'):'–'}${lot.durationSource?`<div class="muted">${esc(lot.durationSource)}</div>`:''}</td>
+      <td class="mono">${esc(lot?.staking?.contract_address||lot.counterparty||'–')}</td>
+      <td>${esc(claim.assignmentReason||'belastbar zugeordnet')}</td>
+      <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(claim.hash)}">${esc(claim.hash)}</a></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
 }
 function renderDeepEvents(events,lots){
   const wallet=norm(CURRENT_WALLET);
@@ -3323,6 +2999,7 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
     if(g)log(`Contract-Graph: ${safePairLabel(lot)} · ${g.nodes.size} Nodes · ${g.edges.length} belegte Beziehungen · Reward-SCs: ${graphRoleAddresses(lot,'reward').join(', ')||'–'}`,'info');
   }
   await enrichLotsBusiness(lots,pricePairs);
+  renderRewardClaiming(lots);
   renderDeepEvents(contractEvents,lots);
   $('mLots').textContent=lots.length;$('mClosed').textContent=lots.filter(l=>l.status==='closed').length;
   associateContractCallsToLots(lots,contractCalls);
