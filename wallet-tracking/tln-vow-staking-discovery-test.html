@@ -38,7 +38,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 16:32:32 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 17:29:13 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -80,8 +80,12 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div id="completedStakings"><div class="muted">Noch keine Daten.</div></div></div>
 
 <div class="card"><h2>🎁 Rewards-Claiming</h2>
-<p class="muted">Zentrale Wallet-Übersicht über alle on-chain belegten Reward-Transaktionen: Reward beim Stake, spätere Reward-Ausschüttungen und explizite Claims. Auch Claims ohne eindeutige Zuordnung zu einer einzelnen Staking-Position werden hier angezeigt.</p>
+<p class="muted">On-chain belegte Rewards, die einer eigenen Staking-Position zugeordnet werden konnten. Nicht zuordenbare Reward-Claims werden separat auf mögliche Referral-Herkunft geprüft.</p>
 <div id="rewardClaiming"><div class="muted">Noch keine Daten.</div></div></div>
+
+<div class="card"><h2>🤝 Rewards aus Referrals</h2>
+<p class="muted">On-chain belegte Reward-Claims ohne Zuordnung zu einer eigenen Staking-Position. Die Seite sucht nach Referral-/Partner-Evidenz im Claim-Call und kennzeichnet die Stärke der Zuordnung. Ein fehlender eigener Staking-Bezug allein gilt nicht als harter Referral-Beweis.</p>
+<div id="referralRewards"><div class="muted">Noch keine Daten.</div></div></div>
 
 <div class="card"><h2>Plausibilitätsprüfung</h2>
 <p class="muted">Vergleicht rohe Stake-/Unstake-Ereignisse mit der Lot-Rekonstruktion. Nicht zuordenbare Unstakes oder Differenzen werden ausdrücklich gemeldet.</p>
@@ -126,7 +130,13 @@ const METHOD_SELECTORS = new Map([
   [ethers.id('harvest()').slice(0,10).toLowerCase(),'Harvest'],
   [ethers.id('withdrawReward()').slice(0,10).toLowerCase(),'Withdraw Reward'],
   [ethers.id('withdrawYield()').slice(0,10).toLowerCase(),'Withdraw Yield'],
-  [ethers.id('withdrawYield(uint256)').slice(0,10).toLowerCase(),'Withdraw Yield']
+  [ethers.id('withdrawYield(uint256)').slice(0,10).toLowerCase(),'Withdraw Yield'],
+  [ethers.id('claimReferralReward()').slice(0,10).toLowerCase(),'Claim Referral Reward'],
+  [ethers.id('claimReferralRewards()').slice(0,10).toLowerCase(),'Claim Referral Rewards'],
+  [ethers.id('withdrawReferralReward()').slice(0,10).toLowerCase(),'Withdraw Referral Reward'],
+  [ethers.id('withdrawReferralRewards()').slice(0,10).toLowerCase(),'Withdraw Referral Rewards'],
+  [ethers.id('claimAffiliateReward()').slice(0,10).toLowerCase(),'Claim Affiliate Reward'],
+  [ethers.id('claimPartnerReward()').slice(0,10).toLowerCase(),'Claim Partner Reward']
 ]);
 
 const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -166,6 +176,10 @@ const SC_READ_PROBES=[
  {label:'payouts(address)',sig:'payouts(address)',args:['wallet'],kind:'amount'},{label:'bonus(address)',sig:'bonus(address)',args:['wallet'],kind:'amount'},
  {label:'qlpBonus(address)',sig:'qlpBonus(address)',args:['wallet'],kind:'amount'},{label:'totalWithdrawn(address)',sig:'totalWithdrawn(address)',args:['wallet'],kind:'amount'},
  {label:'claimable(address)',sig:'claimable(address)',args:['wallet'],kind:'amount'},{label:'rewards(address)',sig:'rewards(address)',args:['wallet'],kind:'amount'},
+ {label:'referralRewards(address)',sig:'referralRewards(address)',args:['wallet'],kind:'amount'},{label:'referrerRewards(address)',sig:'referrerRewards(address)',args:['wallet'],kind:'amount'},
+ {label:'affiliateRewards(address)',sig:'affiliateRewards(address)',args:['wallet'],kind:'amount'},{label:'partnerRewards(address)',sig:'partnerRewards(address)',args:['wallet'],kind:'amount'},
+ {label:'pendingReferralReward(address)',sig:'pendingReferralReward(address)',args:['wallet'],kind:'amount'},{label:'pendingReferralRewards(address)',sig:'pendingReferralRewards(address)',args:['wallet'],kind:'amount'},
+ {label:'referralBalance(address)',sig:'referralBalance(address)',args:['wallet'],kind:'amount'},{label:'referrerBalance(address)',sig:'referrerBalance(address)',args:['wallet'],kind:'amount'},
  {label:'dailyReward(address)',sig:'dailyReward(address)',args:['wallet'],kind:'amount'},{label:'rewardPerDay(address)',sig:'rewardPerDay(address)',args:['wallet'],kind:'amount'},
  {label:'dailyRate(address)',sig:'dailyRate(address)',args:['wallet'],kind:'amount'},{label:'rewardRate(address)',sig:'rewardRate(address)',args:['wallet'],kind:'amount'},
  {label:'interestRate(address)',sig:'interestRate(address)',args:['wallet'],kind:'amount'},{label:'stakedDays(address)',sig:'stakedDays(address)',args:['wallet'],kind:'days'},
@@ -1630,7 +1644,10 @@ const REWARD_STATE_PROBE_NAMES=new Set([
   'earned(address)','pendingReward(address)','pendingRewards(address)',
   'withdrawableYield(address)','getWithdrawableYield(address)','availableYield(address)',
   'claimable(address)','rewards(address)','totalPayouts(address)','payouts(address)',
-  'totalWithdrawn(address)','bonus(address)','qlpBonus(address)'
+  'totalWithdrawn(address)','bonus(address)','qlpBonus(address)',
+  'referralRewards(address)','referrerRewards(address)','affiliateRewards(address)',
+  'partnerRewards(address)','pendingReferralReward(address)','pendingReferralRewards(address)',
+  'referralBalance(address)','referrerBalance(address)'
 ]);
 function selectorHasExplicitRewardIntent(selector){
   const m=String(METHOD_SELECTORS.get(String(selector||'').toLowerCase())||'').toLowerCase();
@@ -3312,27 +3329,23 @@ function assignedRewardIdentity(claim){
 }
 function collectAllWalletRewardRows(lots){
   const out=[];
-  const assignedKeys=new Set();
-
   for(const lot of (lots||[])){
     for(const claim of collectAssignedRewardRows(lot)){
-      const key=assignedRewardIdentity(claim);
-      assignedKeys.add(key);
       out.push({lot,claim,assigned:true});
     }
   }
-
+  return out;
+}
+function collectReferralRewardRows(lots){
+  const assignedKeys=new Set();
+  for(const lot of (lots||[])){
+    for(const claim of collectAssignedRewardRows(lot))assignedKeys.add(assignedRewardIdentity(claim));
+  }
+  const out=[];
   for(const claim of (CURRENT_PROVEN_REWARD_ROWS||[])){
-    const key=assignedRewardIdentity(claim);
-    if(assignedKeys.has(key))continue;
-    out.push({
-      lot:null,
-      claim:{
-        ...claim,
-        assignmentReason:'Reward on-chain belegt; keiner einzelnen Staking-Position eindeutig zugeordnet'
-      },
-      assigned:false
-    });
+    if(assignedKeys.has(assignedRewardIdentity(claim)))continue;
+    const referral=referralEvidenceForClaim(claim,lots);
+    out.push({claim,referral});
   }
   return out;
 }
@@ -3422,6 +3435,46 @@ function stakingAssetAmountText(lot){
   return `${n.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(asset)}`;
 }
 
+
+const REFERRAL_STATE_PROBE_NAMES=new Set([
+  'referralRewards(address)','referrerRewards(address)','affiliateRewards(address)',
+  'partnerRewards(address)','pendingReferralReward(address)','pendingReferralRewards(address)',
+  'referralBalance(address)','referrerBalance(address)'
+]);
+function selectorReferralIntent(selector){
+  const m=String(METHOD_SELECTORS.get(String(selector||'').toLowerCase())||'').toLowerCase();
+  return /referral|referrer|affiliate|partner|sponsor|invite/.test(m);
+}
+function referralEvidenceForClaim(claim,lots=[]){
+  const selector=String(claim?.selector||'').toLowerCase();
+  const state=(claim?.stateDeltaEvidence||claim?.rewardStateDelta||[]);
+  const referralState=state.filter(x=>REFERRAL_STATE_PROBE_NAMES.has(String(x?.sig||'')));
+  if(selectorReferralIntent(selector)){
+    return {kind:'referral',confidence:'hoch',reason:'Claim-Methode weist explizit auf Referral/Partner/Affiliate hin'};
+  }
+  if(referralState.length){
+    return {kind:'referral',confidence:'hoch',reason:`Referral-State änderte sich beim Claim: ${referralState.map(x=>x.sig).join(', ')}`};
+  }
+
+  const callTo=norm(claim?.calledContract||'');
+  const txHash=String(claim?.hash||'').toLowerCase();
+  const ownEvidence=(lots||[]).some(lot=>{
+    const ev=strongRewardEvidenceForLot(lot,callTo,selector,txHash,null);
+    return !!ev?.strong;
+  });
+  if(!ownEvidence){
+    return {
+      kind:'referral_candidate',
+      confidence:'mittel',
+      reason:'Reward on-chain belegt, aber kein belastbarer Bezug zu einer eigenen Staking-Position gefunden'
+    };
+  }
+  return {
+    kind:'unresolved',
+    confidence:'niedrig',
+    reason:'Reward ist on-chain belegt; die Herkunft ist noch nicht eindeutig zwischen eigenem Staking und Referral trennbar'
+  };
+}
 function rewardClaimTimestamp(claim){
   const v=claim?.time??claim?.timeStamp??claim?.timestamp??null;
   if(v!=null&&v!==''){
@@ -3441,79 +3494,94 @@ function rewardClaimDateText(claim){
   const ts=rewardClaimTimestamp(claim);
   return ts?new Date(ts).toLocaleString('de-CH'):'–';
 }
-function renderRewardClaiming(lots){
-  const el=document.getElementById('rewardClaiming');
-  if(!el)return;
-
-  const rows=collectAllWalletRewardRows(lots).map(r=>{
-    const p=r.lot?stakingPeriodText(r.lot):{from:'–',to:'–'};
-    return {...r,from:p.from,to:p.to};
-  });
-  rows.sort((a,b)=>rewardClaimTimestamp(a.claim)-rewardClaimTimestamp(b.claim));
-
-  if(!rows.length){
-    el.innerHTML='<div class="muted">Keine on-chain belegten Reward-/Claim-Transaktionen für dieses Wallet gefunden.</div>';
-    return;
-  }
-
-  const assignedCount=rows.filter(r=>r.assigned).length;
-  const unassignedCount=rows.length-assignedCount;
-
+function rewardTokenSummaryHtml(rows){
   const summary=new Map();
   for(const r of rows){
     const c=r.claim;
     const key=`${norm(c.token)}|${c.symbol||'Token'}`;
-    const x=summary.get(key)||{symbol:c.symbol||'Token',token:norm(c.token),count:0,amount:0,assigned:0,unassigned:0};
-    x.count++;
-    x.amount+=Number(c.amount||0);
-    if(r.assigned)x.assigned++; else x.unassigned++;
-    summary.set(key,x);
+    const x=summary.get(key)||{symbol:c.symbol||'Token',token:norm(c.token),count:0,amount:0};
+    x.count++;x.amount+=Number(c.amount||0);summary.set(key,x);
   }
-  const summaryHtml=[...summary.values()]
-    .sort((a,b)=>String(a.symbol).localeCompare(String(b.symbol)))
-    .map(x=>`<div class="claim-summary-item">
+  return [...summary.values()].sort((a,b)=>String(a.symbol).localeCompare(String(b.symbol))).map(x=>`
+    <div class="claim-summary-item">
       <div class="claim-summary-token">${esc(x.symbol)}</div>
       <div><b>${x.count.toLocaleString('de-CH')}</b> Reward-Tx</div>
       <div class="num">${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</div>
-      <div class="muted">${x.assigned} zugeordnet · ${x.unassigned} nicht zugeordnet</div>
       ${x.token?`<div class="mono muted">${esc(x.token)}</div>`:''}
     </div>`).join('');
-
-  el.innerHTML=`<div class="muted" style="margin-bottom:12px">
-    Wallet-weite Übersicht aller on-chain belegten Reward-/Claim-Transaktionen. Eine fehlende Staking-Zuordnung blendet einen Claim nicht aus.
-    <br><b>${rows.length}</b> Reward-Transfer(s) · <b>${assignedCount}</b> Staking zugeordnet · <b>${unassignedCount}</b> nicht eindeutig zugeordnet.
-  </div>
-  <div class="claim-summary">
+}
+function renderRewardClaiming(lots){
+  const el=document.getElementById('rewardClaiming');
+  if(!el)return;
+  const rows=collectAllWalletRewardRows(lots).map(r=>{
+    const p=stakingPeriodText(r.lot);return {...r,from:p.from,to:p.to};
+  });
+  rows.sort((a,b)=>rewardClaimTimestamp(a.claim)-rewardClaimTimestamp(b.claim));
+  if(!rows.length){
+    el.innerHTML='<div class="muted">Keine on-chain belegten Rewards gefunden, die eindeutig einer eigenen Staking-Position zugeordnet sind.</div>';
+    return;
+  }
+  el.innerHTML=`<div class="claim-summary">
     <div class="claim-summary-title">Summary nach Reward-Token</div>
-    <div class="claim-summary-grid">${summaryHtml}</div>
+    <div class="claim-summary-grid">${rewardTokenSummaryHtml(rows)}</div>
   </div>
   <div class="wrap"><table style="min-width:1580px">
     <thead><tr>
-      <th>Claim-Datum / Zeit</th>
-      <th>Typ</th>
-      <th>Reward</th>
-      <th>Reward-Token</th>
-      <th>Zugeordnetes Staking</th>
-      <th>Staking von</th>
-      <th>Staking bis</th>
-      <th>LPT / PCLP-Menge</th>
-      <th>Ausgelaufen / freigegeben am</th>
-      <th>Staking-Contract</th>
-      <th>Zuordnungsnachweis</th>
-      <th>Reward-Tx</th>
+      <th>Claim-Datum / Zeit</th><th>Typ</th><th>Reward</th><th>Reward-Token</th>
+      <th>Zugeordnetes Staking</th><th>Staking von</th><th>Staking bis</th>
+      <th>LPT / PCLP-Menge</th><th>Ausgelaufen / freigegeben am</th>
+      <th>Staking-Contract</th><th>Zuordnungsnachweis</th><th>Reward-Tx</th>
     </tr></thead>
-    <tbody>${rows.map(({lot,claim,from,to,assigned})=>`<tr>
+    <tbody>${rows.map(({lot,claim,from,to})=>`<tr>
       <td>${rewardClaimDateText(claim)}</td>
-      <td><b>${claim.eventType==='stake_reward'?'Reward beim Stake':claim.eventType==='distribution'?'Reward-Ausschüttung':'Claim / Reward-Abholung'}</b>${!assigned?'<div class="muted">nicht zugeordnet</div>':''}</td>
+      <td><b>${claim.eventType==='stake_reward'?'Reward beim Stake':claim.eventType==='distribution'?'Reward-Ausschüttung':'Claim / Reward-Abholung'}</b></td>
       <td class="num"><b>${Number(claim.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td>
       <td><b>${esc(claim.symbol||'–')}</b>${claim.token?`<div class="mono muted">${esc(claim.token)}</div>`:''}</td>
-      <td>${lot?`<b>${esc(safePairLabel(lot))}</b><div class="muted">${esc(stakingContractLabel(lot.staking))}</div>`:'<b>Nicht eindeutig zugeordnet</b>'}</td>
-      <td>${from}</td>
-      <td>${to}</td>
-      <td class="num">${lot?stakingAssetAmountText(lot):'–'}</td>
-      <td>${lot?(lot.expiryTime?new Date(lot.expiryTime).toLocaleString('de-CH'):'–'):'–'}${lot&&lot.durationSource?`<div class="muted">${esc(lot.durationSource)}</div>`:''}</td>
-      <td class="mono">${lot?esc(lot?.staking?.contract_address||lot.counterparty||'–'):esc(claim.calledContract||'–')}</td>
-      <td>${esc(claim.assignmentReason||'–')}${!assigned&&claim.rewardProof?`<div class="muted">Reward-Beweis: ${esc(claim.rewardProof)} · ${esc(claim.rewardFlowEvidence||'–')}</div>`:''}</td>
+      <td><b>${esc(safePairLabel(lot))}</b><div class="muted">${esc(stakingContractLabel(lot.staking))}</div></td>
+      <td>${from}</td><td>${to}</td>
+      <td class="num">${stakingAssetAmountText(lot)}</td>
+      <td>${lot.expiryTime?new Date(lot.expiryTime).toLocaleString('de-CH'):'–'}${lot.durationSource?`<div class="muted">${esc(lot.durationSource)}</div>`:''}</td>
+      <td class="mono">${esc(lot?.staking?.contract_address||lot.counterparty||'–')}</td>
+      <td>${esc(claim.assignmentReason||'–')}</td>
+      <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(claim.hash)}">${esc(claim.hash)}</a></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+function renderReferralRewards(lots){
+  const el=document.getElementById('referralRewards');
+  if(!el)return;
+  const rows=collectReferralRewardRows(lots);
+  rows.sort((a,b)=>rewardClaimTimestamp(a.claim)-rewardClaimTimestamp(b.claim));
+  if(!rows.length){
+    el.innerHTML='<div class="muted">Keine on-chain belegten Reward-Claims ohne eigene Staking-Zuordnung gefunden.</div>';
+    return;
+  }
+  const strong=rows.filter(r=>r.referral.kind==='referral').length;
+  const candidates=rows.filter(r=>r.referral.kind==='referral_candidate').length;
+  const unresolved=rows.filter(r=>r.referral.kind==='unresolved').length;
+  el.innerHTML=`<div class="muted" style="margin-bottom:12px">
+    <b>${rows.length}</b> nicht einer eigenen Staking-Position zugeordnete Reward-Transfer(s):
+    <b>${strong}</b> mit starker Referral-Evidenz · <b>${candidates}</b> Referral-Kandidat(en) · <b>${unresolved}</b> noch ungeklärt.
+  </div>
+  <div class="claim-summary">
+    <div class="claim-summary-title">Summary nach Reward-Token</div>
+    <div class="claim-summary-grid">${rewardTokenSummaryHtml(rows)}</div>
+  </div>
+  <div class="wrap"><table style="min-width:1300px">
+    <thead><tr>
+      <th>Claim-Datum / Zeit</th><th>Reward</th><th>Reward-Token</th>
+      <th>Referral-Einstufung</th><th>Evidenz</th><th>Claim-Contract</th>
+      <th>Methode / Selector</th><th>Reward-Beweis</th><th>Reward-Tx</th>
+    </tr></thead>
+    <tbody>${rows.map(({claim,referral})=>`<tr>
+      <td>${rewardClaimDateText(claim)}</td>
+      <td class="num"><b>${Number(claim.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td>
+      <td><b>${esc(claim.symbol||'–')}</b>${claim.token?`<div class="mono muted">${esc(claim.token)}</div>`:''}</td>
+      <td><b>${referral.kind==='referral'?'Referral belegt':referral.kind==='referral_candidate'?'Referral-Kandidat':'Noch ungeklärt'}</b><div class="muted">Evidenz ${esc(referral.confidence)}</div></td>
+      <td>${esc(referral.reason)}</td>
+      <td class="mono">${esc(claim.calledContract||'–')}</td>
+      <td>${esc(METHOD_SELECTORS.get(String(claim.selector||'').toLowerCase())||'unbekannt')}<div class="mono muted">${esc(claim.selector||'–')}</div></td>
+      <td>${esc(claim.rewardProof||'–')}<div class="muted">${esc(claim.rewardFlowEvidence||'–')}</div></td>
       <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(claim.hash)}">${esc(claim.hash)}</a></td>
     </tr>`).join('')}</tbody>
   </table></div>`;
@@ -3577,6 +3645,7 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   associateContractCallsToLots(lots,contractCalls);
   // Central table now uses the final, canonical lot.transactions state.
   renderRewardClaiming(lots);
+  renderReferralRewards(lots);
   const running=[...lots].filter(l=>l.status!=='closed').sort((a,b)=>String(b.stakeTime||'').localeCompare(String(a.stakeTime||'')));
   const completed=[...lots].filter(l=>l.status==='closed').sort((a,b)=>String(b.unstakeTime||b.stakeTime||'').localeCompare(String(a.unstakeTime||a.stakeTime||'')));
   CURRENT_STAKING_LOTS=[...running,...completed];
