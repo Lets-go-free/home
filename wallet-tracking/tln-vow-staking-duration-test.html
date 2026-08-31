@@ -11,7 +11,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 .header-version{margin-top:6px;font-size:12px;font-weight:700;opacity:.82}</style>
 </head><body><div class="wrap">
 <h1>🧪 TLN/VOW · isolierter Staking-Duration-Test</h1>
-<div class="header-version">Version: 31.08.2026 18:31:00 CEST</div>
+<div class="header-version">Version: 31.08.2026 18:47:45 CEST</div>
 <p class="muted">Ziel: Vertrags-/Lock-Dauer ausschließlich aus On-chain-Evidenz ermitteln. Es wird keine Lock-Dauer vorgegeben. Reward-Dauer wird separat behandelt.</p>
 <p class="muted">Request-optimiert: adaptiver Wallet-Mapping-Scan + direkte Block-Binärsuche; kein 1-Jahres-Zusatzscan und keine Tages-/Timestamp-Rastersuche.</p>
 <div class="card">
@@ -51,7 +51,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>9 · Bytecode-Zeitkonstanten (nur Diagnose)</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>10 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 18:31:00 CEST</div>
+<div class="muted">Version: 31.08.2026 18:47:45 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -123,7 +123,7 @@ function buildDiagnosticText(data){
    '',
    'FINALES LOCK-ERGEBNIS',
    unstakeGate?.found
-     ? `Mindest-Lockdauer: ${unstakeGate.elapsedDays} Tage (${unstakeGate.elapsedSeconds} Sekunden)\nFrühester erfolgreicher Unstake: ${unstakeGate.after?.date||'–'} · Block ${unstakeGate.after?.blockNum||'–'}\nLetzter Contract-Revert: ${unstakeGate.before?.date||'–'} · ${unstakeGate.before?.revert?.message||unstakeGate.before?.error?.message||'–'}\nImplementation stabil: ${unstakeGate.implementationStable?'ja':'nein'}\nErmittlung: automatisch, ohne vorgegebene Lockdauer.`
+     ? `Mindest-Lockdauer: ${unstakeGate.elapsedDays} Tage (${unstakeGate.elapsedSeconds} Sekunden)\nFrühester erfolgreicher Unstake: ${unstakeGate.after?.date||'–'} · Block ${unstakeGate.after?.blockNum||'–'}\nLetzter Contract-Revert: ${unstakeGate.before?.date||'–'} · ${unstakeGate.before?.revert?.message||unstakeGate.before?.error?.message||'–'}\nImplementation/Code stabil: ${unstakeGate.implementationStable?'ja':'nein'}\nModus: ${unstakeGate.implementationMode||'–'}\nStatus: ${unstakeGate.implementationStatus||'–'}\nErmittlung: automatisch, ohne vorgegebene Lockdauer.`
      : 'Keine belastbare Mindest-Lockdauer ermittelt.',
    '',
    'LOCK-SUCHMODUS',
@@ -582,7 +582,7 @@ function buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis,unstakeGate,
        score:gate.implementationStable?100:98,
        label:'Historische Unstake-Call-Grenze mit Lock-Revert',
        days:gate.elapsedDays,
-       detail:`Historischer eth_call: Block ${gate.before.blockNum} CONTRACT-REVERT (${gate.before.date}) → Block ${gate.after.blockNum} OK (${gate.after.date}); ${fmtDays(gate.elapsedDays)} nach Stake. Implementation über Grenze ${gate.implementationStable?'unverändert':'geändert'}. Revert: ${priorMsg}`
+       detail:`Historischer eth_call: Block ${gate.before.blockNum} CONTRACT-REVERT (${gate.before.date}) → Block ${gate.after.blockNum} OK (${gate.after.date}); ${fmtDays(gate.elapsedDays)} nach Stake. ${gate.implementationMode==='direct-contract'?(gate.implementationStable?'Direkter Contract-Code über Grenze unverändert.':'Direkter Contract-Code über Grenze geändert.'):`Proxy-Implementation über Grenze ${gate.implementationStable?'unverändert':'geändert / nicht sicher'}.`} Revert: ${priorMsg}`
      });
    }
  }
@@ -929,17 +929,38 @@ async function historicalUnstakeGateTest(tx,contract,ctx,coreChange){
    else{lo=replacement.blockNum;before=replacement;}
  }
 
- // Final metadata and implementation stability.
+ // Final metadata and code/implementation stability.
+ // Kein EIP-1967-Slot ist bei einem direkten Contract KEIN Implementationswechsel.
  before.impl=await eip1967ImplAt(contract,before.block);
  after.impl=await eip1967ImplAt(contract,after.block);
- const implementationStable=!!before.impl&&!!after.impl&&before.impl.toLowerCase()===after.impl.toLowerCase();
+ let implementationMode='proxy';
+ let implementationStable=false;
+ let implementationStatus='changed';
+ if(!before.impl&&!after.impl){
+   implementationMode='direct-contract';
+   const [codeBefore,codeAfter]=await Promise.all([
+     nodeRealRpcDirect('eth_getCode',[contract,before.block]),
+     nodeRealRpcDirect('eth_getCode',[contract,after.block])
+   ]);
+   before.codeTarget=contract; after.codeTarget=contract;
+   before.codeHash=ethers.keccak256(codeBefore||'0x');
+   after.codeHash=ethers.keccak256(codeAfter||'0x');
+   implementationStable=before.codeHash===after.codeHash;
+   implementationStatus=implementationStable?'direct-contract-code-unchanged':'direct-contract-code-changed';
+ }else if(before.impl&&after.impl){
+   implementationStable=before.impl.toLowerCase()===after.impl.toLowerCase();
+   implementationStatus=implementationStable?'proxy-implementation-unchanged':'proxy-implementation-changed';
+ }else{
+   implementationMode='mixed-or-unknown';
+   implementationStatus='proxy-state-changed-or-unknown';
+ }
  const elapsedSeconds=Number(after.timestamp)-Number(ctx.ts);
  const elapsedDays=elapsedSeconds/86400;
  const rows=[...cache.values()].sort((a,b)=>a.blockNum-b.blockNum);
 
  return {
    available:true,found:true,tx:txMeta,
-   before,after,elapsedSeconds,elapsedDays,implementationStable,
+   before,after,elapsedSeconds,elapsedDays,implementationStable,implementationMode,implementationStatus,
    checkpoints:rows,
    successful:rows.filter(p=>p.ok),
    contractReverts:rows.filter(p=>!p.ok&&p.failureClass==='contract_revert'),
