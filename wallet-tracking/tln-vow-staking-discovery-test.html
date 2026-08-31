@@ -42,7 +42,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-token-card{padding:9px 11px;border:1px solid #2d384a;border-radius:8px;background:rgba(255,255,255,.02)}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 31.08.2026 01:56:38 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 31.08.2026 02:05:00 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -4013,14 +4013,56 @@ function bindWalletDropdown(){
     $('status').textContent='';
   });
 }
-async function init(){const {data:{user}}=await sb.auth.getUser();if(!user){$('auth').innerHTML='<span class="err">Nicht eingeloggt. Testseite auf derselben Domain wie Wallet-Tracking öffnen und zuerst einloggen.</span>';return}$('auth').innerHTML=`<span class="ok">Eingeloggt:</span> ${esc(user.email)}`;
-const [cr,pt,sc,wq]=await Promise.all([
-  sb.from('chains').select('rpc_url,discovery_provider,discovery_api_base').eq('chain_key','bsc').single(),
-  sb.from('predefined_tokens').select('*').eq('chain','bsc').eq('defi_project_key','tln_vow'),
-  sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
-  sb.from('wallets').select('id,label,evm_address').order('label')
-]);
-if(cr.error||pt.error||sc.error||wq.error){$('status').innerHTML=`<span class="err">DB-Fehler: ${esc((cr.error||pt.error||sc.error||wq.error).message)}</span>`;return}rpcUrl=cr.data.rpc_url;alchemyBase=String(cr.data.discovery_provider||'').toLowerCase()==='alchemy'?cr.data.discovery_api_base:null;if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;allProjectRows=pt.data||[];loadHistoricalStakingAssets(allProjectRows);
+function isJwtFutureError(err){
+  return !!err && (String(err.code||'').toUpperCase()==='PGRST303' || /JWT issued at future/i.test(String(err.message||'')));
+}
+function waitMs(ms){return new Promise(r=>setTimeout(r,ms))}
+async function loadInitialDbRows(){
+  return Promise.all([
+    sb.from('chains').select('rpc_url,discovery_provider,discovery_api_base').eq('chain_key','bsc').single(),
+    sb.from('predefined_tokens').select('*').eq('chain','bsc').eq('defi_project_key','tln_vow'),
+    sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
+    sb.from('wallets').select('id,label,evm_address').order('label')
+  ]);
+}
+async function loadInitialDbRowsResilient(){
+  let last=null;
+  for(let attempt=1;attempt<=3;attempt++){
+    const rows=await loadInitialDbRows();
+    const err=rows.find(x=>x?.error)?.error||null;
+    if(!err)return rows;
+    last=err;
+    if(!isJwtFutureError(err))return rows;
+    log(`Supabase-Session: JWT-Zeitabweichung erkannt (Versuch ${attempt}/3). Session wird erneuert und DB-Zugriff wiederholt.`,'warn');
+    if(attempt===1){
+      try{await sb.auth.refreshSession()}catch(_e){}
+    }
+    if(attempt<3)await waitMs(attempt===1?2000:5000);
+  }
+  return [null,null,null,{error:last}];
+}
+async function init(){
+  let user=null;
+  try{
+    const u=await sb.auth.getUser();
+    user=u?.data?.user||null;
+    if(u?.error && isJwtFutureError(u.error)){
+      try{await sb.auth.refreshSession()}catch(_e){}
+      await waitMs(1500);
+      const u2=await sb.auth.getUser();
+      user=u2?.data?.user||null;
+    }
+  }catch(_e){}
+  if(!user){$('auth').innerHTML='<span class="err">Nicht eingeloggt. Testseite auf derselben Domain wie Wallet-Tracking öffnen und zuerst einloggen.</span>';return}
+  $('auth').innerHTML=`<span class="ok">Eingeloggt:</span> ${esc(user.email)}`;
+  const [cr,pt,sc,wq]=await loadInitialDbRowsResilient();
+  const dbErr=cr?.error||pt?.error||sc?.error||wq?.error;
+  if(dbErr){
+    const extra=isJwtFutureError(dbErr)?' Supabase hat den Login-Token wegen einer Zeitabweichung zwischen Auth und Datenbank noch nicht akzeptiert. Bitte die Seite nach einigen Sekunden nochmals laden; die Testseite versucht die Session bereits automatisch zu erneuern.':'';
+    $('status').innerHTML=`<span class="err">DB-Fehler: ${esc(dbErr.message||String(dbErr))}${esc(extra)}</span>`;
+    return;
+  }
+  rpcUrl=cr.data.rpc_url;alchemyBase=String(cr.data.discovery_provider||'').toLowerCase()==='alchemy'?cr.data.discovery_api_base:null;if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;allProjectRows=pt.data||[];loadHistoricalStakingAssets(allProjectRows);
     // Visible TLN/VOW project assets and technical discovery assets are different universes.
     // `tln_vow_category` is the project-specific classification; fall back to
     // `defi_category` for older rows.
