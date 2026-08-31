@@ -25,7 +25,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 23:09:00 CEST</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 23:12:00 CEST</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -242,24 +242,31 @@ async function knownStakingMap(){
 async function referralRewardTokenContracts(){
   const wanted=new Set(['TLN','TLN+','TLNX']), out=[];
   let rows=[];
-  try{ rows=await projectTokenRows(); }catch(e){}
-  if(!rows.length){
-    try{
-      const u=`${SUPABASE_URL}/rest/v1/predefined_tokens?select=*&defi_project_key=eq.tln_vow`;
-      const r=await fetch(u,{headers:{apikey:SUPABASE_ANON,Authorization:`Bearer ${SUPABASE_ANON}`}});
-      if(r.ok)rows=await r.json();
-    }catch(e){}
+  try{
+    const u=`${SUPABASE_URL}/rest/v1/predefined_tokens?select=*`;
+    const r=await fetch(u,{headers:{apikey:SUPABASE_ANON,Authorization:`Bearer ${SUPABASE_ANON}`}});
+    if(!r.ok)throw new Error(`Supabase ${r.status}`);
+    rows=await r.json();
+  }catch(e){
+    throw new Error('Referral-Token-Konfiguration konnte nicht geladen werden: '+e.message);
   }
   for(const x of rows||[]){
     const sym=String(x.symbol||'').trim().toUpperCase();
-    const addr=norm(x.address||x.contract_address||x.token_address||'');
-    if(wanted.has(sym)&&/^0x[0-9a-f]{40}$/.test(addr)&&!out.some(y=>y.address===addr))
+    const chain=String(x.chain||x.network||'').trim().toLowerCase();
+    const project=String(x.defi_project_key||x.project_key||x.project||'').trim().toLowerCase();
+    const addr=norm(x.address||x.contract_address||x.token_address||x.contract||'');
+    if(!wanted.has(sym))continue;
+    if(chain && !['bsc','bnb','bnb chain','binance smart chain'].includes(chain))continue;
+    if(project && project!=='tln_vow' && project!=='tln-vow')continue;
+    if(/^0x[0-9a-f]{40}$/.test(addr) && !out.some(y=>y.address===addr))
       out.push({symbol:String(x.symbol||sym),address:addr});
   }
   return out;
 }
 function renderReferralTokenConfig(tokens){
-  $('refTokenConfig').innerHTML=tokens.length?`<table><thead><tr><th>Token</th><th>Contract-Adresse</th><th>Status</th></tr></thead><tbody>${tokens.map(t=>`<tr><td><b>${esc(t.symbol)}</b></td><td class="mono">${esc(t.address)}</td><td><span class="ok">aktiv</span></td></tr>`).join('')}</tbody></table>`:'<span class="bad">Keine Contract-Adressen für TLN / TLN+ / TLNX gefunden.</span>';
+  const wanted=['TLN','TLN+','TLNX'], found=new Set(tokens.map(t=>String(t.symbol).toUpperCase()));
+  const missing=wanted.filter(x=>!found.has(x));
+  $('refTokenConfig').innerHTML=(tokens.length?`<table><thead><tr><th>Token</th><th>Contract-Adresse</th><th>Status</th></tr></thead><tbody>${tokens.map(t=>`<tr><td><b>${esc(t.symbol)}</b></td><td class="mono">${esc(t.address)}</td><td><span class="ok">aktiv</span></td></tr>`).join('')}</tbody></table>`:'')+(missing.length?`<div class="warn" style="margin-top:8px">Noch nicht in der BSC-Konfiguration gefunden: ${missing.map(esc).join(', ')}</div>`:'');
 }
 async function tokenScopedMintHashes(wallet,startBlock,tokens){
   const latest=await latestBlockNumber(), hashes=new Set();
@@ -338,7 +345,7 @@ async function scanReferralWallet(){
 
     const referralTokens=await referralRewardTokenContracts();
     renderReferralTokenConfig(referralTokens);
-    if(!referralTokens.length)throw new Error('Referral-Reward-Token-Contracts fehlen in der TLN/VOW-Konfiguration.');
+    if(!referralTokens.length)throw new Error('Keiner der Referral-Reward-Token TLN / TLN+ / TLNX hat eine BSC-Contract-Adresse in predefined_tokens.');
     walletLog(`Referral-Token: ${referralTokens.map(x=>x.symbol+'='+x.address).join(', ')}`);
     const mode='Token-Contract-spezifische Mint-Logs';
     const hashes=await tokenScopedMintHashes(wallet,start,referralTokens);
