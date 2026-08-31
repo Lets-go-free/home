@@ -23,139 +23,43 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <body>
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
-  <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Claim-Transaktion. Unbekannte Claims werden vollständig untersucht; bereits validierte Einzelfälle dürfen nur ihren eigenen Checkpoint verwenden.</div>
-  <div class="muted">Aktueller Testfall: ältere Staking-Variante · gleicher Wallet-Kontext · Mechanik noch unbekannt.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 01:23:07 CEST</div>
+  <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 19:38:24 CEST</div>
 
   <div class="card">
     <div class="row">
-      <input id="txHash" value="0x8b006efb61b17c2de81615010e18a5b23345f30eb7ec90e76fe8afc6b300d98c" spellcheck="false">
+      <input id="txHash" value="0x9a2d62ccb9229a817159986e151465f6b62f9da67f2ce822cccd541ca13220d3" spellcheck="false">
       <button id="analyze">Transaktion analysieren</button>
     </div>
     <div id="status" class="muted" style="margin-top:10px">Bereit.</div>
-    <div class="row" style="margin-top:10px">
-      <button id="exportFullAnalysis" type="button">Gesamte Einzelfall-Analyse exportieren</button>
-    </div>
   </div>
 
   <div class="card"><h2>1. Transaktion</h2><div id="txInfo" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>2. ERC-20 Transfers im Receipt</h2><div id="transfers" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>3. Claim-Contract → bekannte Stakings</h2><div id="relations" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>4. Interne Calls / Trace</h2><div id="trace" class="muted">Noch keine Daten.</div></div>
-  <div class="card"><h2>5. Reward-Storage / State-Diff</h2><div id="storageDiff" class="muted">Noch keine Daten.</div></div>
-  <div class="card"><h2>6. Historischer Ursprung des Reward-State</h2><div id="stateHistory" class="muted">Noch keine Daten.</div></div>
-  <div class="card">
-    <div class="row" style="justify-content:space-between;align-items:center">
-      <h2 style="margin:0">7. Reward-Formel / Opcode-Trace</h2>
-      <div class="row" style="gap:8px">
-        <button class="btn" id="exportFormulaCompact" type="button">Formel-Kern exportieren</button>
-        <button class="btn" id="exportFormula" type="button">Abschnitt 7 komplett exportieren</button>
-      </div>
-    </div>
-    <div id="formulaTrace" class="muted" style="margin-top:12px">Noch keine Daten.</div>
-  </div>
-  <div class="card">
-    <div class="row" style="justify-content:space-between;align-items:center">
-      <h2 style="margin:0">8. Ursprung von Offset 8 / Staking-Basis</h2>
-      <button class="btn" id="exportPrincipalOrigin" type="button">Offset-8-Ursprung exportieren</button>
-    </div>
-    <div id="principalOrigin" class="muted" style="margin-top:12px">Noch keine Daten.</div>
-  </div>
-  <div class="card">
-    <h2>9. Kandidaten-Transaktion / Token- und LP-Bewegungen</h2>
-    <div class="actions" style="margin:0 0 12px">
-      <button class="btn" id="exportStep9" type="button">Schritt 9 exportieren</button>
-    </div>
-    <div id="stateCandidates" class="muted">Noch keine Daten.</div>
-  </div>
-  <div class="card"><h2>10. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>5. Referral-Evidenz</h2><div id="referral" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>6. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>Technisches Log</h2><pre id="log"></pre></div>
 </main>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N";
 const PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36";
-const ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const ZERO='0x0000000000000000000000000000000000000000';
+const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
-let rpcUrl=null,alchemyBase=null;
-
-// Bereits on-chain validierter Analyse-Checkpoint.
-// Nur für diese konkrete Claim-TX; KEINE globale Staking-Regel.
-// Damit muss der bekannte Offset-8-Ursprung nicht erneut per Archive-Binary-Search
-// (z. B. über Alchemy) gesucht werden.
-const VERIFIED_OFFSET8_ORIGINS = {
-  '0xce5aa91fd02c74b47d1314a72e18b77c17d74eeb7dd24f7ea29933a6d5cda9bd': {
-    changeBlock: 40725074n,
-    previousBlock: 40725073n,
-    previousValue: 0n,
-    value: 17820000000000000000000n,
-    timestamp: 1721740812n,
-    source: 'bereits validierter Analyse-Checkpoint'
-  }
-};
+let rpcUrl=null;
 const $=id=>document.getElementById(id);
 const norm=x=>String(x||'').toLowerCase();
 const esc=x=>String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const short=x=>x?`${x.slice(0,8)}…${x.slice(-6)}`:'–';
 function log(s){$('log').textContent+=`[${new Date().toLocaleTimeString('de-CH')}] ${s}\n`}
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-function alchemyRpcUrl(){
-  if(!alchemyBase)return null;
-  const b=String(alchemyBase).replace(/\/+$/,'');
-  return /\/v2\/[^/]+$/i.test(b)?b:b+'/'+encodeURIComponent(ALCHEMY_API_KEY);
-}
-async function rawRpc(url,method,params=[]){
-  if(!url)throw new Error(`${method}: RPC-URL fehlt`);
-  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),15000);
-  try{
-    const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:`${Date.now()}-${Math.random()}`,method,params}),signal:ctrl.signal});
-    const j=await r.json().catch(()=>({}));
-    if(!r.ok)throw new Error(`HTTP ${r.status}`);
-    if(j.error)throw new Error(`${j.error.message||'RPC-Fehler'} (Code ${j.error.code??'?'})`);
-    return j.result??null;
-  }catch(e){
-    if(e?.name==='AbortError')throw new Error('Zeitüberschreitung');
-    throw e;
-  }finally{clearTimeout(timer)}
-}
-async function rpc(method,params=[]){return await rawRpc(rpcUrl,method,params)}
-async function resilientRpc(method,params=[],label=method){
-  const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
-  if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
-  const errors=[];
-  for(const [provider,url] of providers){
-    for(let attempt=1;attempt<=3;attempt++){
-      try{
-        const result=await rawRpc(url,method,params);
-        if(result!==null&&result!==undefined){
-          if(provider!=='Primär-RPC'||attempt>1)log(`${label}: erfolgreich über ${provider}, Versuch ${attempt}.`);
-          return {result,provider,attempt};
-        }
-        errors.push(`${provider} Versuch ${attempt}: null`);
-        log(`${label}: ${provider} lieferte null – ${attempt<3?'erneuter Versuch':'Fallback wird geprüft'}.`);
-      }catch(e){
-        errors.push(`${provider} Versuch ${attempt}: ${e.message}`);
-        log(`${label}: ${provider} · ${e.message} – ${attempt<3?'erneuter Versuch':'Fallback wird geprüft'}.`);
-      }
-      if(attempt<3)await sleep(300*attempt);
-    }
-  }
-  throw new Error(`${label} konnte über die konfigurierten BSC-RPCs nicht geladen werden. ${errors.join(' | ')}`);
-}
-async function transactionAndReceipt(hash){
-  const [txR,rcR]=await Promise.allSettled([
-    resilientRpc('eth_getTransactionByHash',[hash],'Transaktion'),
-    resilientRpc('eth_getTransactionReceipt',[hash],'Transaction Receipt')
-  ]);
-  const tx=txR.status==='fulfilled'?txR.value.result:null;
-  const receipt=rcR.status==='fulfilled'?rcR.value.result:null;
-  if(!tx||!receipt){
-    const missing=[!tx?'Transaktion':null,!receipt?'Receipt':null].filter(Boolean).join(' und ');
-    const details=[txR.status==='rejected'?txR.reason.message:null,rcR.status==='rejected'?rcR.reason.message:null].filter(Boolean).join(' | ');
-    throw new Error(`${missing} konnten über die konfigurierten BSC-RPCs nicht geladen werden.${details?' '+details:''}`);
-  }
-  return {tx,receipt,txProvider:txR.value.provider,receiptProvider:rcR.value.provider};
+async function rpc(method,params=[]){
+  const r=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok||j.error)throw new Error(j?.error?.message||`HTTP ${r.status}`);
+  return j.result;
 }
 function topicAddr(t){return '0x'+String(t||'').slice(-40).toLowerCase()}
 function asAddressWord(raw){
@@ -182,13 +86,12 @@ async function tokenMeta(a){
   return {symbol,decimals};
 }
 async function initRpc(){
-  const {data,error}=await sb.from('chains').select('rpc_url,discovery_provider,discovery_api_base').eq('chain_key','bsc').single();
+  const {data,error}=await sb.from('chains').select('*').eq('chain_key','bsc').single();
   if(error)throw error;
   rpcUrl=data.rpc_url;
-  alchemyBase=norm(data.discovery_provider)==='alchemy'?data.discovery_api_base:null;
   if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))
     rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;
-  log(`BSC Primär-RPC geladen${alchemyBase?' · Alchemy-Fallback aktiv':' · kein Alchemy-Fallback konfiguriert'}.`);
+  log('BSC RPC aus public.chains geladen.');
 }
 async function stakingRows(){
   const {data,error}=await sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true);
@@ -216,7 +119,8 @@ async function eip1967Implementation(contract){
   const slot='0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
   try{
     const raw=await rpc('eth_getStorageAt',[contract,slot,'latest']);
-    return asAddressWord(raw);
+    const a=asAddressWord(raw);
+    return a;
   }catch{return null}
 }
 function embeddedKnownAddresses(bytecode,stakings){
@@ -224,78 +128,21 @@ function embeddedKnownAddresses(bytecode,stakings){
   return stakings.filter(s=>code.includes(norm(s.contract_address).slice(2)));
 }
 
-const KNOWN_TRACE_ROLES={
-  '0x160ac9cf35903960ed493264b16ca6dc3e308f8c':'DBridgeExchange / BNB-Abwicklung',
-  '0xf7d142a354322c7560250caa0e2a06c89649e4c2':'TLN Token',
-};
-const KNOWN_SELECTORS={
-  '0xe507a8a4':'withdrawYield()',
-  '0x40c10f19':'mint(address,uint256)',
-  '0xddca3f43':'fee() / Claim-Gebühr',
-  '0xe0138476':'feeReceiver()/exchange() (Adresse)',
-};
-function selectorName(input){
-  const s=String(input||'').slice(0,10).toLowerCase();
-  return KNOWN_SELECTORS[s]||s||'0x';
+const REFERRAL_GETTERS=['referrer(address)','referrers(address)','referrerOf(address)','getReferrer(address)','sponsor(address)','sponsorOf(address)','upline(address)','parent(address)','inviter(address)','referralRewards(address)','referrerRewards(address)','affiliateRewards(address)','partnerRewards(address)','pendingReferralReward(address)','pendingReferralRewards(address)','referralBalance(address)','referrerBalance(address)'];
+const REFERRAL_CLAIMS=['claimReferralReward()','claimReferralRewards()','withdrawReferralReward()','withdrawReferralRewards()','claimAffiliateReward()','claimPartnerReward()'];
+function addrCall(sig,a){return ethers.id(sig).slice(0,10)+norm(a).slice(2).padStart(64,'0')}
+function retAddr(raw){if(!raw||raw==='0x'||raw.length<66)return null;const a='0x'+raw.slice(2,66).slice(-40);return norm(a)===ZERO?null:norm(a)}
+async function referralState(c,w,b){
+ const o=[];
+ for(const sig of REFERRAL_GETTERS){try{
+  const raw=await rpc('eth_call',[{to:c,data:addrCall(sig,w)},b]); if(!raw||raw==='0x')continue;
+  const amount=/reward|balance/i.test(sig);
+  const v=amount?BigInt(raw).toString():retAddr(raw);
+  if(v && v!=='0')o.push({sig,kind:amount?'amount':'address',value:v});
+ }catch{}}
+ return o;
 }
-function decodeCalldataWords(input){
-  const raw=String(input||'').replace(/^0x/,'');
-  if(raw.length<=8)return [];
-  const body=raw.slice(8), out=[];
-  for(let i=0;i<body.length;i+=64){
-    const word=body.slice(i,i+64).padEnd(64,'0');
-    if(word.length!==64)continue;
-    let uint=null;
-    try{uint=BigInt('0x'+word).toString()}catch{}
-    let address=null;
-    if(/^0{24}[0-9a-fA-F]{40}$/.test(word)){
-      const a='0x'+word.slice(24).toLowerCase();
-      // ABI uint256-Werte sehen formal oft wie Adressen aus. Nur als Adresse
-      // markieren, wenn der 160-bit-Wert groß genug für eine reale BSC-Adresse ist.
-      try{ if(a!==ZERO && BigInt(a)>0xffffffffffffffffn) address=a; }catch{}
-    }
-    out.push({index:i/64,word:'0x'+word,uint,address});
-  }
-  return out;
-}
-function decodeOutputWords(output){
-  const raw=String(output||'').replace(/^0x/,'');
-  if(!raw)return [];
-  const out=[];
-  for(let i=0;i<raw.length;i+=64){
-    const word=raw.slice(i,i+64);
-    if(word.length!==64)continue;
-    let uint=null;
-    try{uint=BigInt('0x'+word).toString()}catch{}
-    let address=null;
-    if(/^0{24}[0-9a-fA-F]{40}$/.test(word)){
-      const a='0x'+word.slice(24).toLowerCase();
-      // ABI uint256-Werte sehen formal oft wie Adressen aus. Nur als Adresse
-      // markieren, wenn der 160-bit-Wert groß genug für eine reale BSC-Adresse ist.
-      try{ if(a!==ZERO && BigInt(a)>0xffffffffffffffffn) address=a; }catch{}
-    }
-    out.push({index:i/64,word:'0x'+word,uint,address});
-  }
-  return out;
-}
-function traceWordHtml(words){
-  if(!words.length)return '<span class="muted">keine</span>';
-  return words.map(w=>{
-    let extra;
-    if(w.address){
-      extra=`<br><span class="ok">Adresse: <span class="mono">${esc(w.address)}</span>${KNOWN_TRACE_ROLES[w.address]?` · ${esc(KNOWN_TRACE_ROLES[w.address])}`:''}</span>`;
-    }else{
-      let hint='';
-      try{
-        const n=BigInt(w.uint||'0');
-        if(n===1000000000000000n) hint=' · <b>0.001 BNB (Claim-Gebühr)</b>';
-        else if(n>1000000000000000000n) hint=` · bei 18 Decimals: ${esc(ethers.formatUnits(n,18))}`;
-      }catch{}
-      extra=`<br><span class="muted">uint256: ${esc(w.uint)}${hint}</span>`;
-    }
-    return `<div><b>Word ${w.index}</b>: <span class="mono">${esc(w.word)}</span>${extra}</div>`;
-  }).join('');
-}
+function referralMethod(input){const s=String(input||'').slice(0,10).toLowerCase();return REFERRAL_CLAIMS.find(x=>ethers.id(x).slice(0,10).toLowerCase()===s)||null}
 
 function collectTraceCalls(node,out=[]){
   if(!node||typeof node!=='object')return out;
@@ -317,681 +164,6 @@ async function getTrace(hash){
     }
   }
 }
-
-function hexBlock(n){return '0x'+BigInt(n).toString(16)}
-function rewardMintRaw(transfers,receipt,wallet){
-  const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
-  let total=0n,count=0;
-  for(const l of receipt.logs||[]){
-    if(norm(l.topics?.[0])!==TRANSFER_TOPIC||l.topics.length<3)continue;
-    const from=topicAddr(l.topics[1]),to=topicAddr(l.topics[2]);
-    if(from===ZERO&&to===norm(wallet)){
-      try{total+=BigInt(l.data||'0x0');count++}catch{}
-    }
-  }
-  return {total,count};
-}
-function normalizePrestateStorage(trace,address){
-  const a=norm(address);
-  const preObj=trace?.pre||{},postObj=trace?.post||{};
-  const pre=preObj[a]||preObj[Object.keys(preObj).find(k=>norm(k)===a)]||{};
-  const post=postObj[a]||postObj[Object.keys(postObj).find(k=>norm(k)===a)]||{};
-  const ps=pre.storage||{},qs=post.storage||{};
-  const keys=new Set([...Object.keys(ps),...Object.keys(qs)]);
-  const rows=[];
-  for(const slot of keys){
-    const before=ps[slot]??'0x0',after=qs[slot]??'0x0';
-    try{
-      if(BigInt(before)!==BigInt(after))rows.push({slot,before,after,beforeN:BigInt(before),afterN:BigInt(after)});
-    }catch{}
-  }
-  return rows;
-}
-
-function storageDelta(row){
-  try{return row.afterN-row.beforeN}catch{return 0n}
-}
-async function findWalletMappingLayout(wallet,rows,maxBaseSlot=512){
-  const coder=ethers.AbiCoder.defaultAbiCoder();
-  const targets=rows.map(r=>({slot:r.slot,n:BigInt(r.slot)}));
-  for(let base=0;base<=maxBaseSlot;base++){
-    const enc=coder.encode(['address','uint256'],[wallet,base]);
-    const root=BigInt(ethers.keccak256(enc));
-    for(const t of targets){
-      const off=t.n-root;
-      if(off>=0n&&off<=16n){
-        return {found:true,baseSlot:base,root:'0x'+root.toString(16).padStart(64,'0'),offset:Number(off),matchedSlot:t.slot};
-      }
-    }
-  }
-  return {found:false};
-}
-async function readStructWindow(address,root,claimBlock,fromOffset=0,toOffset=10){
-  const rootN=BigInt(root), beforeBlock=claimBlock-1n, rows=[];
-  for(let off=fromOffset;off<=toOffset;off++){
-    const slot='0x'+(rootN+BigInt(off)).toString(16).padStart(64,'0');
-    const [beforeR,afterR]=await Promise.all([
-      resilientRpc('eth_getStorageAt',[address,slot,hexBlock(beforeBlock)],`Struct[${off}] vor Claim`),
-      resilientRpc('eth_getStorageAt',[address,slot,hexBlock(claimBlock)],`Struct[${off}] nach Claim`)
-    ]);
-    const before=BigInt(beforeR.result||'0x0'),after=BigInt(afterR.result||'0x0');
-    rows.push({off,slot,before,after,delta:after-before});
-  }
-  return rows;
-}
-function valueHints(n){
-  const hints=[];
-  try{
-    if(n>0n){
-      if(n>=10n**15n) hints.push(`18 Decimals: ${ethers.formatUnits(n,18)}`);
-      if(n>1_500_000_000n&&n<4_000_000_000n){
-        const d=new Date(Number(n)*1000);
-        hints.push(`möglicher Unix-Zeitstempel: ${d.toLocaleString('de-CH')}`);
-      }
-      const asHex=n.toString(16).padStart(40,'0');
-      if(asHex.length<=64 && n>0xffffffffffffffffn && n<(1n<<160n)){
-        hints.push(`mögliche Adresse: 0x${asHex.slice(-40)}`);
-      }
-    }
-  }catch{}
-  return hints;
-}
-
-
-
-async function opcodeTrace(hash){
-  const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
-  if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
-  const errors=[];
-  for(const [provider,url] of providers){
-    for(let attempt=1;attempt<=2;attempt++){
-      try{
-        const result=await rawRpc(url,'debug_traceTransaction',[hash,{
-          disableMemory:true,
-          disableStack:false,
-          disableStorage:true,
-          enableReturnData:false
-        }]);
-        if(result?.structLogs){
-          log(`Opcode-Trace: erfolgreich über ${provider}, Versuch ${attempt} · ${result.structLogs.length} Steps.`);
-          return {result,provider};
-        }
-      }catch(e){
-        errors.push(`${provider}: ${e.message}`);
-        log(`Opcode-Trace: ${provider}, Versuch ${attempt}: ${e.message}`);
-      }
-    }
-  }
-  throw new Error(`Opcode-Trace nicht verfügbar. ${errors.join(' | ')}`);
-}
-function stackBig(stack,indexFromTop=0){
-  const a=stack||[];
-  if(a.length<=indexFromTop)return null;
-  try{return BigInt('0x'+String(a[a.length-1-indexFromTop]).replace(/^0x/,''))}catch{return null}
-}
-function toHex32(n){
-  try{return '0x'+BigInt(n).toString(16).padStart(64,'0')}catch{return ''}
-}
-function opInputs(logEntry){
-  const op=logEntry.op, s=logEntry.stack||[];
-  const top=i=>stackBig(s,i);
-  if(op==='SLOAD') return [top(0)];
-  if(op==='SSTORE') return [top(0),top(1)];
-  if(['ADD','SUB','MUL','DIV','SDIV','MOD','SMOD','EXP','LT','GT','SLT','SGT','EQ','AND','OR','XOR','SHL','SHR','SAR'].includes(op)) return [top(0),top(1)];
-  if(['ISZERO','NOT'].includes(op)) return [top(0)];
-  return [];
-}
-function interestingOpcodeWindows(structLogs,targetSlots,importantValues){
-  const slots=new Set(targetSlots.map(x=>toHex32(x).toLowerCase()));
-  const vals=(importantValues||[]).filter(v=>v!=null).map(BigInt);
-  const hits=[];
-  for(let i=0;i<structLogs.length;i++){
-    const l=structLogs[i],op=l.op;
-    let reason='';
-    if(op==='SLOAD'||op==='SSTORE'){
-      const key=toHex32(stackBig(l.stack,0)).toLowerCase();
-      if(slots.has(key)) reason=`${op} Wallet-Struct ${key.slice(-6)}`;
-    }
-    if(!reason && ['ADD','SUB','MUL','DIV','SDIV','MOD','SMOD'].includes(op)){
-      const ins=opInputs(l).filter(v=>v!=null);
-      const matched=ins.find(x=>vals.some(v=>x===v));
-      if(matched!=null) reason=`${op} verwendet bekannten Wert ${matched}`;
-    }
-    if(reason){
-      const from=Math.max(0,i-10),to=Math.min(structLogs.length-1,i+14);
-      hits.push({index:i,reason,from,to});
-    }
-  }
-  // Merge strongly overlapping windows.
-  const merged=[];
-  for(const h of hits){
-    const last=merged[merged.length-1];
-    if(last && h.from<=last.to+3){
-      last.to=Math.max(last.to,h.to);
-      last.reasons.push(h.reason);
-      last.hitIndexes.push(h.index);
-    }else merged.push({from:h.from,to:h.to,reasons:[h.reason],hitIndexes:[h.index]});
-  }
-  return merged.slice(0,16);
-}
-function renderOpcodeWindow(structLogs,w,importantValues){
-  const vals=(importantValues||[]).filter(v=>v!=null).map(BigInt);
-  const rows=[];
-  for(let i=w.from;i<=w.to;i++){
-    const l=structLogs[i],ins=opInputs(l).filter(v=>v!=null);
-    const notable=ins.some(x=>vals.some(v=>x===v));
-    rows.push(`<tr${w.hitIndexes.includes(i)?' class="ok"':''}>
-      <td>${i}</td><td>${l.depth}</td><td>${l.pc}</td><td><b>${esc(l.op)}</b></td>
-      <td class="mono">${ins.map(x=>esc(x.toString())).join('<br>')||'–'}</td>
-      <td>${notable?'<span class="ok"><b>bekannter Wert im Stack</b></span>':'–'}</td>
-    </tr>`);
-  }
-  return `<details open><summary>${esc([...new Set(w.reasons)].join(' · '))}</summary>
-    <table><thead><tr><th>Step</th><th>Depth</th><th>PC</th><th>Opcode</th><th>Stack-Eingaben (dezimal)</th><th>Hinweis</th></tr></thead>
-    <tbody>${rows.join('')}</tbody></table></details>`;
-}
-
-function evmResultForStep(l){
-  const a=opInputs(l).filter(v=>v!=null);
-  try{
-    switch(l.op){
-      case 'ADD': return (a[0]+a[1]) & ((1n<<256n)-1n);
-      case 'SUB': return (a[0]-a[1]) & ((1n<<256n)-1n);
-      case 'MUL': return (a[0]*a[1]) & ((1n<<256n)-1n);
-      case 'DIV': return a[1]===0n?0n:a[0]/a[1];
-      case 'MOD': return a[1]===0n?0n:a[0]%a[1];
-      case 'EQ': return a[0]===a[1]?1n:0n;
-      case 'GT': return a[0]>a[1]?1n:0n;
-      case 'LT': return a[0]<a[1]?1n:0n;
-      case 'ISZERO': return a[0]===0n?1n:0n;
-      case 'AND': return a[0]&a[1];
-      case 'OR': return a[0]|a[1];
-      case 'XOR': return a[0]^a[1];
-      case 'SHL': return (a[1]<<a[0]) & ((1n<<256n)-1n);
-      case 'SHR': return a[1]>>a[0];
-      default:return null;
-    }
-  }catch{return null}
-}
-function arithmeticSteps(structLogs){
-  const ops=new Set(['ADD','SUB','MUL','DIV','MOD','EQ','GT','LT','ISZERO','AND','OR','XOR','SHL','SHR']);
-  return structLogs.map((l,i)=>({i,l,inputs:opInputs(l).filter(v=>v!=null),result:ops.has(l.op)?evmResultForStep(l):null}))
-    .filter(x=>ops.has(x.l.op));
-}
-function findProducerBefore(steps,value,beforeIndex,maxBack=700){
-  if(value==null)return null;
-  for(let j=steps.length-1;j>=0;j--){
-    const s=steps[j];
-    if(s.i>=beforeIndex)continue;
-    if(beforeIndex-s.i>maxBack)break;
-    if(s.result===value)return s;
-  }
-  return null;
-}
-function backwardValueTree(structLogs,targetValue,targetStep=null,maxDepth=7){
-  const steps=arithmeticSteps(structLogs);
-  let root=null;
-  if(targetStep!=null){
-    root=steps.find(s=>s.i===targetStep)||null;
-  }
-  if(!root){
-    // Prefer a step that actually produces the target.
-    for(let i=steps.length-1;i>=0;i--){
-      if(steps[i].result===targetValue){root=steps[i];break}
-    }
-  }
-  if(!root)return {root:null,nodes:[]};
-
-  const nodes=[];
-  const seen=new Set();
-  function walk(step,depth){
-    if(!step||depth>maxDepth)return;
-    const key=step.i+':'+String(step.result);
-    if(seen.has(key))return;
-    seen.add(key);
-    const node={step:step.i,pc:step.l.pc,depth:step.l.depth,op:step.l.op,result:step.result,inputs:step.inputs,level:depth,children:[]};
-    nodes.push(node);
-    for(const v of step.inputs){
-      const prod=findProducerBefore(steps,v,step.i,900);
-      if(prod && prod.i!==step.i){
-        node.children.push(prod.i);
-        walk(prod,depth+1);
-      }
-    }
-  }
-  walk(root,0);
-  return {root,nodes};
-}
-function labelKnownValue(v,ctx){
-  if(v==null)return '';
-  const pairs=[
-    [ctx.reward,'Reward'],
-    [ctx.total,'kumulativer Anspruch'],
-    [ctx.previous,'bereits verbucht'],
-    [ctx.principal,'Offset 8'],
-    [ctx.startTs,'Offset 11 / Startzeit'],
-    [ctx.elapsed,'verstrichene Sekunden'],
-    [ctx.days,'ganze Tage'],
-    [86400n,'Sekunden/Tag'],
-    [367n,'367'],
-  ];
-  for(const [x,label] of pairs)if(x!=null&&v===x)return label;
-  return '';
-}
-function renderDataflow(tree,ctx){
-  if(!tree.root)return '<span class="warn">Kein arithmetischer Producer für den kumulativen Anspruch gefunden.</span>';
-  const byStep=new Map(tree.nodes.map(n=>[n.step,n]));
-  function renderNode(step,level=0){
-    const n=byStep.get(step); if(!n)return '';
-    const inHtml=n.inputs.map(v=>{
-      const lab=labelKnownValue(v,ctx);
-      return `<div class="mono">${esc(v.toString())}${lab?` <span class="ok">← ${esc(lab)}</span>`:''}</div>`;
-    }).join('');
-    const children=n.children.map(c=>renderNode(c,level+1)).join('');
-    const lab=labelKnownValue(n.result,ctx);
-    return `<div style="margin-left:${level*18}px;border-left:${level?1:0}px solid var(--line);padding-left:${level?10:0}px;margin-top:7px">
-      <b>Step ${n.step} · ${esc(n.op)}</b> → <span class="mono">${esc(n.result?.toString()??'')}</span>${lab?` <span class="ok">(${esc(lab)})</span>`:''}
-      <div class="muted">Inputs:</div>${inHtml||'<div class="muted">–</div>'}
-      ${children}
-    </div>`;
-  }
-  return renderNode(tree.root.i,0);
-}
-function findTargetSubStep(structLogs,total,previous,reward){
-  // We already observed total - previous = reward. Pick this exact SUB as the anchor.
-  for(let i=0;i<structLogs.length;i++){
-    const l=structLogs[i];
-    if(l.op!=='SUB')continue;
-    const ins=opInputs(l).filter(v=>v!=null);
-    const res=evmResultForStep(l);
-    if(ins.length>=2 && res===reward && ins.includes(total) && ins.includes(previous))return i;
-  }
-  return null;
-}
-
-function calcElapsedSeconds(txTimestamp,startTimestamp){
-  try{
-    const a=BigInt(txTimestamp),b=BigInt(startTimestamp);
-    return a>b?a-b:0n;
-  }catch{return 0n}
-}
-
-async function prestateAccessed(hash){
-  const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
-  if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
-  const errors=[];
-  for(const [provider,url] of providers){
-    for(let attempt=1;attempt<=2;attempt++){
-      try{
-        const result=await rawRpc(url,'debug_traceTransaction',[hash,{tracer:'prestateTracer'}]);
-        if(result){
-          log(`prestateTracer/full: erfolgreich über ${provider}, Versuch ${attempt}.`);
-          return {result,provider};
-        }
-      }catch(e){
-        errors.push(`${provider}: ${e.message}`);
-        log(`prestateTracer/full: ${provider}, Versuch ${attempt}: ${e.message}`);
-      }
-    }
-  }
-  throw new Error(`prestateTracer/full nicht verfügbar. ${errors.join(' | ')}`);
-}
-function accountFromPrestate(result,address){
-  const a=norm(address), obj=result||{};
-  const key=Object.keys(obj).find(k=>norm(k)===a);
-  return key?obj[key]:null;
-}
-function structRowsFromPrestate(preResult,address,root,maxOffset=32){
-  const acct=accountFromPrestate(preResult,address);
-  const storage=acct?.storage||{};
-  const rootN=BigInt(root), rows=[];
-  for(const [slot,val] of Object.entries(storage)){
-    let sn;
-    try{sn=BigInt(slot)}catch{continue}
-    const off=sn-rootN;
-    if(off<0n||off>BigInt(maxOffset))continue;
-    let n=0n; try{n=BigInt(val||'0x0')}catch{}
-    rows.push({off:Number(off),slot,value:n});
-  }
-  rows.sort((a,b)=>a.off-b.off);
-  return rows;
-}
-function safeValueHints(n,txTimeSec){
-  const hints=[];
-  if(n<=0n)return hints;
-  try{
-    if(n>=10n**15n)hints.push(`18 Decimals: ${ethers.formatUnits(n,18)}`);
-    if(n>1_500_000_000n&&n<4_000_000_000n){
-      const d=new Date(Number(n)*1000);
-      const relation=BigInt(n)<=BigInt(txTimeSec)?'zeitlich plausibel':'NACH der analysierten Tx → kein historischer Tx-State';
-      hints.push(`Unix-Zeitstempel: ${d.toLocaleString('de-CH')} · ${relation}`);
-    }
-  }catch{}
-  return hints;
-}
-
-async function prestateDiff(hash){
-  const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
-  if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
-  const errors=[];
-  for(const [provider,url] of providers){
-    for(let attempt=1;attempt<=2;attempt++){
-      try{
-        const result=await rawRpc(url,'debug_traceTransaction',[hash,{tracer:'prestateTracer',tracerConfig:{diffMode:true}}]);
-        if(result){
-          log(`prestateTracer: erfolgreich über ${provider}, Versuch ${attempt}.`);
-          return {result,provider};
-        }
-        errors.push(`${provider}: null`);
-      }catch(e){
-        errors.push(`${provider}: ${e.message}`);
-        log(`prestateTracer: ${provider}, Versuch ${attempt}: ${e.message}`);
-      }
-    }
-  }
-  throw new Error(`prestateTracer/diffMode nicht verfügbar. ${errors.join(' | ')}`);
-}
-
-async function historicalRpc(method,params=[],label=method,{allowNull=false}={}){
-  // Für historische State-Abfragen Alchemy zuerst: der Primär-RPC hat bei alten
-  // eth_getStorageAt-Abfragen bereits nachweislich spätere/aktuelle Werte geliefert.
-  const fb=alchemyRpcUrl();
-  const providers=[];
-  if(fb)providers.push(['Alchemy-Archive',fb]);
-  if(rpcUrl && rpcUrl!==fb)providers.push(['Primär-RPC',rpcUrl]);
-  let last='';
-  for(const [name,url] of providers){
-    for(let i=1;i<=2;i++){
-      try{
-        const result=await rawRpc(url,method,params);
-        if(result==null&&!allowNull){last=`${name}: null`;continue}
-        if(i>1||name!=='Alchemy-Archive')log(`${label}: erfolgreich über ${name}, Versuch ${i}.`);
-        return {result,source:name};
-      }catch(e){
-        last=`${name}: ${e.message}`;
-        log(`${label}: ${name}, Versuch ${i}: ${e.message}`);
-      }
-    }
-  }
-  throw new Error(`${label} historische Abfrage fehlgeschlagen. ${last}`);
-}
-async function archiveStorageAt(address,slot,block,label){
-  const r=await historicalRpc('eth_getStorageAt',[address,slot,hexBlock(block)],label);
-  return {value:BigInt(r.result||'0x0'),source:r.source};
-}
-// Sicherheitsregel: Checkpoints sind TX-spezifisch. Ein neuer/unbekannter Claim
-// durchläuft immer die vollständige Discovery und historische Ursprungssuche.
-function verifiedOffset8OriginForClaim(hash,currentValue){
-  const v=VERIFIED_OFFSET8_ORIGINS[norm(hash)];
-  if(!v || v.value!==currentValue) return null;
-  return {
-    found:true,
-    changeBlock:v.changeBlock,
-    previousBlock:v.previousBlock,
-    previousValue:v.previousValue,
-    source:v.source,
-    timestamp:v.timestamp,
-    checkpoint:true
-  };
-}
-
-async function findLastTransitionIntoValue(address,slot,claimBlock,currentValue,maxLookback=12000000n){
-  const start=claimBlock-1n;
-  const check=await archiveStorageAt(address,slot,start,`Archive-Validierung @ ${start}`);
-  if(check.value!==currentValue){
-    throw new Error(`Archive-State stimmt unmittelbar vor Claim nicht mit prestateTracer überein (${check.value} statt ${currentValue}). Historische Suche wird abgebrochen.`);
-  }
-  log(`Archive-State validiert (${check.source}): Offset-8-Wert vor Claim stimmt mit prestateTracer überein.`);
-  let step=1n,same=start;
-  while(step<=maxLookback && start-step>=1n){
-    const b=start-step;
-    const r=await archiveStorageAt(address,slot,b,`Offset 8 @ ${b}`);
-    if(r.value!==currentValue){
-      let L=b,R=same;
-      while(R-L>1n){
-        const m=(L+R)/2n;
-        const mr=await archiveStorageAt(address,slot,m,`Offset 8 binary @ ${m}`);
-        if(mr.value===currentValue)R=m;else L=m;
-      }
-      const prev=await archiveStorageAt(address,slot,L,`Offset 8 previous @ ${L}`);
-      return {found:true,changeBlock:R,previousBlock:L,previousValue:prev.value,source:check.source};
-    }
-    same=b; step*=2n;
-  }
-  return {found:false,source:check.source,reason:`Kein Übergang in den aktuellen Offset-8-Wert innerhalb ${maxLookback.toLocaleString('de-CH')} Blöcken gefunden.`};
-}
-function flattenCallTree(node,out=[]){
-  if(!node||typeof node!=='object')return out;
-  if(node.to||node.from)out.push({from:norm(node.from),to:norm(node.to),type:node.type||node.callType||'CALL',input:node.input||'0x'});
-  for(const c of node.calls||[])flattenCallTree(c,out);
-  return out;
-}
-async function traceBlockCalls(blockNumber){
-  const bhex=hexBlock(blockNumber);
-  const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
-  if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
-  const errs=[];
-  for(const [name,url] of providers){
-    try{
-      const result=await rawRpc(url,'debug_traceBlockByNumber',[bhex,{tracer:'callTracer',timeout:'20s'}]);
-      if(Array.isArray(result)){
-        log(`Block-callTracer: ${result.length} Tx-Traces über ${name}.`);
-        return {result,source:name};
-      }
-    }catch(e){errs.push(`${name}: ${e.message}`);log(`Block-callTracer ${name}: ${e.message}`)}
-  }
-  throw new Error(`debug_traceBlockByNumber/callTracer nicht verfügbar. ${errs.join(' | ')}`);
-}
-function diffSlotForAddress(trace,address,slot){
-  const rows=normalizePrestateStorage(trace,address);
-  return rows.find(r=>norm(r.slot)===norm(slot))||null;
-}
-async function prestateDiffOne(hash,label='Kandidat'){
-  const providers=[['Primär-RPC',rpcUrl]],fb=alchemyRpcUrl();
-  if(fb&&fb!==rpcUrl)providers.push(['Alchemy-Fallback',fb]);
-  for(const [provider,url] of providers){
-    try{
-      const result=await rawRpc(url,'debug_traceTransaction',[hash,{tracer:'prestateTracer',tracerConfig:{diffMode:true}}]);
-      if(result)return {result,provider};
-    }catch(e){log(`${label} prestateTracer ${provider}: ${e.message}`)}
-  }
-  throw new Error(`${label}: prestateTracer nicht verfügbar.`);
-}
-async function tokenTransfersForTx(hash,wallet){
-  const rr=await resilientRpc('eth_getTransactionReceipt',[hash],`Kandidat Receipt ${short(hash)}`);
-  const receipt=rr.result;
-  const rows=[];
-  for(const l of receipt.logs||[]){
-    if(norm(l.topics?.[0])!==ethers.id('Transfer(address,address,uint256)').toLowerCase()||l.topics.length<3)continue;
-    const from=topicAddr(l.topics[1]),to=topicAddr(l.topics[2]);
-    let amount=0n; try{amount=BigInt(l.data||'0x0')}catch{}
-    if(from===norm(wallet)||to===norm(wallet)){
-      rows.push({token:norm(l.address),from,to,amount});
-    }
-  }
-  return rows;
-}
-async function tokenMetaQuick(address){
-  try{
-    const [s,d]=await Promise.all([
-      rpcCall(address,'0x95d89b41'),
-      rpcCall(address,'0x313ce567')
-    ]);
-    return {symbol:decodeString(s)||short(address),decimals:Number(BigInt(d||'0x12'))};
-  }catch{return {symbol:short(address),decimals:18}}
-}
-
-async function storageAt(address,slot,block,label){
-  const r=await resilientRpc('eth_getStorageAt',[address,slot,hexBlock(block)],label);
-  return BigInt(r.result||'0x0');
-}
-async function findRewardStateStart(address,slot,claimBlock,currentValue,maxLookback=8000000n){
-  const start=claimBlock-1n;
-  let step=1n, sameBlock=start;
-  log(`Suche historischen Beginn des Reward-State für Slot ${slot.slice(0,14)}…`);
-  while(step<=maxLookback && start-step>=1n){
-    const b=start-step;
-    const v=await storageAt(address,slot,b,`Storage @ ${b}`);
-    if(v!==currentValue){
-      let L=b,R=sameBlock;
-      while(R-L>1n){
-        const m=(L+R)/2n;
-        const mv=await storageAt(address,slot,m,`Storage binary @ ${m}`);
-        if(mv===currentValue)R=m;else L=m;
-      }
-      const prev=await storageAt(address,slot,L,`Storage previous @ ${L}`);
-      return {found:true,changeBlock:R,previousBlock:L,previousValue:prev};
-    }
-    sameBlock=b;
-    step*=2n;
-  }
-  return {found:false,reason:`Keine frühere Abweichung innerhalb ${maxLookback.toLocaleString('de-CH')} Blöcken gefunden.`};
-}
-async function relevantTxsAtBlock(block,claimContract,wallet){
-  const bhex=hexBlock(block);
-  const blockR=await resilientRpc('eth_getBlockByNumber',[bhex,true],`Änderungsblock ${block}`);
-  const txs=blockR.result?.transactions||[];
-  const direct=txs.filter(t=>norm(t.to)===norm(claimContract)||norm(t.from)===norm(wallet));
-  return {block:blockR.result,txs,direct};
-}
-async function traceForKnownStaking(hash,known){
-  try{
-    const tr=await getTrace(hash);
-    return {kind:tr.kind,calls:tr.calls,matches:tr.calls.filter(c=>known.has(norm(c.to)))};
-  }catch(e){
-    return {kind:'error',calls:[],matches:[],error:e.message};
-  }
-}
-
-
-function textFromNode(node){
-  if(!node)return '';
-  return node.innerText
-    .replace(/\u00a0/g,' ')
-    .replace(/[ \t]+\n/g,'\n')
-    .replace(/\n{3,}/g,'\n\n')
-    .trim();
-}
-function downloadText(filename,text){
-  const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;a.download=filename;
-  document.body.appendChild(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
-}
-
-
-function exportFullAnalysis(){
-  const hash=$('txHash')?.value?.trim()||'';
-  const sections=[
-    ['1. TRANSAKTION','txInfo'],
-    ['2. ERC-20 TRANSFERS IM RECEIPT','transfers'],
-    ['3. CLAIM-CONTRACT → BEKANNTE STAKINGS','relations'],
-    ['4. INTERNE CALLS / TRACE','trace'],
-    ['5. REWARD-STORAGE / STATE-DIFF','storageDiff'],
-    ['6. HISTORISCHER URSPRUNG DES REWARD-STATE','stateHistory'],
-    ['7. REWARD-FORMEL / OPCODE-TRACE','formulaTrace'],
-    ['8. URSPRUNG OFFSET 8 / STAKING-BASIS','principalOrigin'],
-    ['9. KANDIDATEN-TRANSAKTION / TOKEN- UND LP-BEWEGUNGEN','stateCandidates'],
-    ['10. DIAGNOSE-FAZIT','conclusion'],
-    ['TECHNISCHES LOG','log']
-  ];
-  const body=[];
-  for(const [title,id] of sections){
-    body.push('=== '+title+' ===');
-    body.push(textFromNode($(id)) || '–');
-    body.push('');
-  }
-  const out=[
-    'TLN/VOW – vollständige Einzelfall-Claim-Analyse',
-    'Export aus tln-vow-single-claim-trace-test.html',
-    'Version: 31.08.2026 01:23:07 CEST',
-    'Claim-TX: '+hash,
-    'Hinweis: Ein validierter Checkpoint wird nur verwendet, wenn TX-Hash UND erwarteter Basiswert exakt zu diesem Einzelfall passen.',
-    '',
-    ...body
-  ].join('\n');
-  downloadText('tln-vow-single-claim-analysis.txt',out);
-}
-
-function exportStep9(){
-  const hash=$('txHash')?.value?.trim()||'';
-  const txt=textFromNode($('stateCandidates'));
-  if(!txt||txt==='Noch keine Daten.'||txt==='Lädt…'){
-    alert('Schritt 9 enthält noch keine Daten. Bitte zuerst die Analyse vollständig durchlaufen lassen.');
-    return;
-  }
-  const out=[
-    'TLN/VOW – Schritt 9: Kandidaten-Transaktion / Token- und LP-Bewegungen',
-    'Export aus tln-vow-single-claim-trace-test.html',
-    'Version: 31.08.2026 01:23:07 CEST',
-    hash ? 'Claim-TX: '+hash : '',
-    '',
-    txt
-  ].join('\n');
-  downloadText('tln-vow-step9-candidate.txt',out);
-}
-
-function exportPrincipalOrigin(){
-  const hash=$('txHash')?.value?.trim()||'';
-  const a=textFromNode($('principalOrigin')),b=textFromNode($('stateCandidates'));
-  if(!a||a==='Noch keine Daten.'||a==='Lädt…'){
-    alert('Offset-8-Ursprungsanalyse enthält noch keine Daten.');
-    return;
-  }
-  const header=[
-    'TLN/VOW – Ursprung Offset 8 / Staking-Basis',
-    'Export aus tln-vow-single-claim-trace-test.html',
-    'Version: 31.08.2026 01:23:07 CEST',
-    'Claim-Transaction: '+hash,
-    '',
-    '=== 8. URSPRUNG OFFSET 8 ===',''
-  ].join('\n');
-  downloadText('tln-vow-offset8-origin.txt',header+a+'\n\n=== 9. KANDIDATEN / TOKEN-LP-BEWEGUNGEN ===\n\n'+b+'\n');
-}
-
-function exportFormulaCompact(){
-  const hash=$('txHash')?.value?.trim()||'';
-  const panel=$('formulaTrace');
-  if(!panel||!panel.innerText||panel.innerText.includes('Noch keine Daten')){
-    alert('Formel-Kern ist noch nicht berechnet.');
-    return;
-  }
-  const compactCard=[...panel.querySelectorAll('.card')].find(x=>x.innerText.includes('Automatisch rekonstruierter Formel-Kern'));
-  if(!compactCard){
-    alert('Automatisch rekonstruierter Formel-Kern wurde nicht gefunden.');
-    return;
-  }
-  const header=[
-    'TLN/VOW – automatisch rekonstruierter Reward-Formel-Kern',
-    'Export aus tln-vow-single-claim-trace-test.html',
-    'Version: 31.08.2026 01:23:07 CEST',
-    'Transaction: '+hash,
-    '',
-  ].join('\n');
-  downloadText('tln-vow-reward-formula-core.txt',header+textFromNode(compactCard)+'\n');
-}
-
-function exportFormulaSection(){
-  const hash=$('txHash')?.value?.trim()||'';
-  const body=textFromNode($('formulaTrace'));
-  if(!body||body==='Noch keine Daten.'||body==='Lädt…'){
-    alert('Abschnitt 7 enthält noch keine Analyse-Daten.');
-    return;
-  }
-  const header=[
-    'TLN/VOW – Reward-Formel / Opcode-Trace',
-    'Export aus tln-vow-single-claim-trace-test.html',
-    'Version: 31.08.2026 01:23:07 CEST',
-    'Transaction: '+hash,
-    '',
-    '=== ABSCHNITT 7 ===',
-    ''
-  ].join('\n');
-  downloadText('tln-vow-claim-opcode-trace.txt',header+body+'\n');
-}
-
 async function analyze(){
   if(typeof ethers==='undefined'){
     $('status').innerHTML='<span class="bad">ethers.js konnte nicht geladen werden. Bitte Seite neu laden und CDN-Zugriff prüfen.</span>';
@@ -1002,17 +174,19 @@ async function analyze(){
     return;
   }
   $('analyze').disabled=true;$('status').textContent='Analysiere nur diese eine Transaktion…';$('log').textContent='';
-  for(const id of ['txInfo','transfers','relations','trace','storageDiff','stateHistory','formulaTrace','principalOrigin','stateCandidates','conclusion'])$(id).innerHTML='<span class="muted">Lädt…</span>';
+  for(const id of ['txInfo','transfers','relations','trace','referral','conclusion'])$(id).innerHTML='<span class="muted">Lädt…</span>';
   try{
     if(!rpcUrl)await initRpc();
     const hash=$('txHash').value.trim();
     if(!/^0x[0-9a-fA-F]{64}$/.test(hash))throw new Error('Ungültiger Tx Hash.');
 
-    log('Lade Transaction + Receipt robust über Primär-RPC/Fallback.');
-    const {tx,receipt,txProvider,receiptProvider}=await transactionAndReceipt(hash);
-    log(`Transaktion: ${txProvider} · Receipt: ${receiptProvider}.`);
-    const blockR=await resilientRpc('eth_getBlockByNumber',[tx.blockNumber,false],'Block');
-    const block=blockR.result;
+    log('Lade Transaction + Receipt + Block.');
+    const [tx,receipt]=await Promise.all([
+      rpc('eth_getTransactionByHash',[hash]),
+      rpc('eth_getTransactionReceipt',[hash])
+    ]);
+    if(!tx||!receipt)throw new Error('Transaktion/Receipt nicht gefunden.');
+    const block=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);
     const when=new Date(Number(BigInt(block.timestamp))*1000);
     const selector=(tx.input||'').slice(0,10).toLowerCase();
     const method=selector===ethers.id('withdrawYield()').slice(0,10).toLowerCase()?'withdrawYield()':
@@ -1025,11 +199,9 @@ async function analyze(){
       <div class="kv"><b>Selector / Methode</b><span class="mono">${esc(selector)}</span><br>${esc(method)}</div>
       <div class="kv"><b>Block</b>${parseInt(tx.blockNumber,16).toLocaleString('de-CH')}</div>
       <div class="kv"><b>Status</b>${receipt.status==='0x1'?'<span class="ok">erfolgreich</span>':'<span class="bad">fehlgeschlagen</span>'}</div>
-      <div class="kv"><b>RPC-Quelle</b>Tx: ${esc(txProvider)}<br>Receipt: ${esc(receiptProvider)}<br>Block: ${esc(blockR.provider)}</div>
     </div><details><summary>Raw Input</summary><pre>${esc(tx.input)}</pre></details>`;
 
     log('Dekodiere ERC-20 Transfer-Logs im Receipt.');
-    const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
     const transfers=[];
     for(const l of receipt.logs||[]){
       if(norm(l.topics?.[0])!==TRANSFER_TOPIC||l.topics.length<3)continue;
@@ -1081,327 +253,40 @@ async function analyze(){
     $('trace').innerHTML=tr.kind==='unsupported'
       ?`<span class="warn">Provider unterstützt den benötigten Trace nicht.</span><pre>${esc(tr.error)}</pre>`
       :`<div class="muted">Trace-Typ: ${esc(tr.kind)} · ${tr.calls.length} Calls · ${traceKnown.length} Call(s) an bekannte Staking-Contracts.</div>
-       <p class="muted">Neu: Jeder Call zeigt jetzt vollständige Calldata-/Output-Wörter. Besonders wichtig sind die STATICCALLs <span class="mono">0xddca3f43</span> und <span class="mono">0xe0138476</span>: deren Rückgabewerte können die fehlende Position-/Registry-Zuordnung enthalten.</p>
-       ${tr.calls.length?`<table><thead><tr><th>#</th><th>Typ</th><th>Von</th><th>An / Rolle</th><th>Selector</th><th>Staking-Match</th></tr></thead><tbody>${tr.calls.map((c,i)=>`<tr>
-         <td>${i+1}</td>
-         <td>${esc(c.type)}</td>
-         <td class="mono">${esc(c.from)}</td>
-         <td><span class="mono">${esc(c.to)}</span>${KNOWN_TRACE_ROLES[norm(c.to)]?`<br><span class="ok">${esc(KNOWN_TRACE_ROLES[norm(c.to)])}</span>`:''}</td>
-         <td><span class="mono">${esc((c.input||'').slice(0,10))}</span><br>${esc(selectorName(c.input))}</td>
-         <td>${known.has(norm(c.to))?'<span class="ok"><b>JA</b></span>':'–'}</td>
-       </tr>
-       <tr><td></td><td colspan="5">
-         <details ${['0xddca3f43','0xe0138476','0x40c10f19'].includes(String(c.input||'').slice(0,10).toLowerCase())?'open':''}>
-           <summary>Call ${i+1}: Input / Output dekodieren</summary>
-           <div class="grid">
-             <div class="kv"><b>Input-Wörter</b>${traceWordHtml(decodeCalldataWords(c.input))}</div>
-             <div class="kv"><b>Output-Wörter</b>${traceWordHtml(decodeOutputWords(c.output))}</div>
-           </div>
-           ${c.error?`<div class="bad">Trace-Fehler: ${esc(c.error)}</div>`:''}
-         </details>
-       </td></tr>`).join('')}</tbody></table>`:''}`;
+       ${tr.calls.length?`<table><thead><tr><th>Typ</th><th>Von</th><th>An</th><th>Selector</th><th>Staking-Match</th></tr></thead><tbody>${tr.calls.map(c=>`<tr><td>${esc(c.type)}</td><td class="mono">${esc(c.from)}</td><td class="mono">${esc(c.to)}</td><td class="mono">${esc((c.input||'').slice(0,10))}</td><td>${known.has(norm(c.to))?'<span class="ok"><b>JA</b></span>':'–'}</td></tr>`).join('')}</tbody></table>`:''}`;
 
 
-    // --- Reward-State / Storage provenance ---
-    let stateEvidence=null;
-    const rawReward=rewardMintRaw(transfers,receipt,tx.from);
-    try{
-      log('Starte Reward-Storage-Analyse mit prestateTracer/diffMode.');
-      const preR=await prestateDiff(hash);
-      const diffs=normalizePrestateStorage(preR.result,claimContract);
-      for(const d of diffs){
-        d.delta=d.afterN-d.beforeN;
-        d.deltaRewardMatch=rawReward.total>0n && d.delta===rawReward.total;
-        d.preRewardMatch=rawReward.total>0n && d.beforeN===rawReward.total;
-        d.resetToZero=d.beforeN>0n && d.afterN===0n;
-        d.score=(d.deltaRewardMatch?200:0)+(d.preRewardMatch?100:0)+(d.resetToZero?20:0);
-      }
-      diffs.sort((a,b)=>b.score-a.score);
-      const best=diffs[0]||null;
-      $('storageDiff').innerHTML=diffs.length?`
-        <div class="muted">Quelle: ${esc(preR.provider)} · ${diffs.length} veränderte Storage-Slot(s) im Claim-Contract.</div>
-        <table><thead><tr><th>Slot</th><th>Vor Claim</th><th>Nach Claim</th><th>Δ Änderung</th><th>Bewertung</th></tr></thead><tbody>
-        ${diffs.map(d=>`<tr>
-          <td class="mono">${esc(d.slot)}</td>
-          <td class="mono">${esc(d.beforeN.toString())}${d.beforeN>0n?`<br><span class="muted">18 Decimals: ${esc(ethers.formatUnits(d.beforeN,18))}</span>`:''}</td>
-          <td class="mono">${esc(d.afterN.toString())}${d.afterN>0n?`<br><span class="muted">18 Decimals: ${esc(ethers.formatUnits(d.afterN,18))}</span>`:''}</td>
-          <td class="mono">${esc(d.delta.toString())}${d.delta!==0n?`<br><span class="${d.deltaRewardMatch?'ok':'muted'}">18 Decimals: ${esc(ethers.formatUnits(d.delta,18))}</span>`:''}</td>
-          <td>${d.deltaRewardMatch?'<span class="ok"><b>Δ EXAKT = geminteter Reward</b></span><br>':''}${d.preRewardMatch?'<span class="warn">Vorwert = Reward</span><br>':''}${d.resetToZero?'<span class="ok">Reset → 0</span>':''}</td>
-        </tr>`).join('')}
-        </tbody></table>`:
-        '<span class="warn">prestateTracer lief, aber für den Claim-Contract wurde kein veränderter Storage-Slot geliefert.</span>';
-
-      const claimBlock=BigInt(tx.blockNumber);
-      const deltaMatches=diffs.filter(d=>d.deltaRewardMatch);
-      if(deltaMatches.length){
-        log(`${deltaMatches.length} Storage-Slot(s) steigen exakt um den geminteten Reward.`);
-        const layout=await findWalletMappingLayout(tx.from,diffs,512);
-        let layoutHtml='';
-        if(layout.found){
-          log(`Wallet-Mapping-Kandidat gefunden: mapping base slot ${layout.baseSlot}, erster Treffer offset ${layout.offset}.`);
-          log('Historische Struct-Nachbarwerte werden NICHT mehr über eth_getStorageAt gelesen; Full-Prestate-Trace ist für diese Tx die verlässliche Quelle.');
-          const fullPre=await prestateAccessed(hash);
-          const accessedRows=structRowsFromPrestate(fullPre.result,claimContract,layout.root,32);
-          const txTimeSec=BigInt(block.timestamp);
-          layoutHtml=`<p class="ok"><b>Wallet-Mapping-Struktur gefunden:</b> <span class="mono">keccak256(abi.encode(wallet, ${layout.baseSlot}))</span> ergibt den Struct-Root <span class="mono">${esc(layout.root)}</span>. Der erste geänderte Slot liegt bei Offset ${layout.offset}.</p>
-          <p class="warn"><b>Wichtige Korrektur:</b> Die frühere Anzeige der Offsets 0–10 über historisches <span class="mono">eth_getStorageAt</span> war bei diesem Primär-RPC nicht belastbar. Werte mit Datum 25.07.2025 können unmöglich aus einer Tx vom 05.11.2024 stammen. Diese Version verwendet deshalb für den historischen Zustand ausschließlich den <b>prestateTracer der konkreten Transaktion</b>.</p>
-          <div class="muted">prestateTracer/full: ${esc(fullPre.provider)} · zeigt nur Storage-Felder, die diese Transaktion tatsächlich gelesen/berührt hat.</div>
-          ${accessedRows.length?`<table><thead><tr><th>Struct Offset</th><th>Slot</th><th>Wert unmittelbar vor Tx</th><th>Interpretationshinweise</th></tr></thead><tbody>
-          ${accessedRows.map(r=>`<tr>
-            <td>${r.off}</td><td class="mono">${esc(r.slot)}</td>
-            <td class="mono">${esc(r.value.toString())}</td>
-            <td>${safeValueHints(r.value,txTimeSec).map(h=>`<div class="muted">${esc(h)}</div>`).join('')||'–'}</td>
-          </tr>`).join('')}
-          </tbody></table>`:'<span class="warn">Der Full-Prestate enthält in diesem Struct-Fenster keine zusätzlich gelesenen Slots. Das bedeutet: withdrawYield() braucht für die Auszahlung offenbar keine weiteren Felder dieses Wallet-Structs.</span>'}`;
-          stateEvidence={best,deltaMatches,layout,accessedRows,fullPreProvider:fullPre.provider};
-
-          // Reward formula: trace actual SLOAD/arithmetic around the wallet struct.
-          try{
-            log('Starte Opcode-Trace für Reward-Formel und tatsächliche SLOAD/Arithmetik.');
-            const opR=await opcodeTrace(hash);
-            const byOff=new Map(accessedRows.map(r=>[r.off,r.value]));
-            const principal=byOff.get(8)??null;
-            const startTs=byOff.get(11)??null;
-            const txTs=BigInt(block.timestamp);
-            const elapsed=startTs?calcElapsedSeconds(txTs,startTs):0n;
-            const targets=accessedRows.map(r=>BigInt(r.slot));
-            const important=[rawReward.total,principal,startTs,elapsed,
-              ...deltaMatches.flatMap(d=>[d.beforeN,d.afterN,d.delta])];
-            const windows=interestingOpcodeWindows(opR.result.structLogs,targets,important);
-            const previous=deltaMatches[0]?.beforeN??null;
-            const total=deltaMatches[0]?.afterN??null;
-            const days=elapsed>0n?elapsed/86400n:0n;
-            const subAnchor=findTargetSubStep(opR.result.structLogs,total,previous,rawReward.total);
-            let totalProducer=null;
-            const aSteps=arithmeticSteps(opR.result.structLogs);
-            if(subAnchor!=null){
-              totalProducer=findProducerBefore(aSteps,total,subAnchor,1400);
-            }
-            const flow=backwardValueTree(opR.result.structLogs,total,totalProducer?.i??null,8);
-            let formulaFacts='';
-            if(principal!=null)formulaFacts+=`<div class="kv"><b>Offset 8</b><span class="mono">${esc(principal.toString())}</span>${principal>=10n**15n?`<br><span class="ok">${esc(ethers.formatUnits(principal,18))}</span>`:''}</div>`;
-            if(startTs!=null)formulaFacts+=`<div class="kv"><b>Offset 11</b><span class="mono">${esc(startTs.toString())}</span><br><span class="ok">${esc(new Date(Number(startTs)*1000).toLocaleString('de-CH'))}</span></div>`;
-            if(elapsed>0n)formulaFacts+=`<div class="kv"><b>Zeit bis Claim</b>${elapsed.toLocaleString('de-CH')} Sekunden<br><span class="muted">${(Number(elapsed)/86400).toFixed(6)} Tage</span></div>`;
-            formulaFacts+=`<div class="kv"><b>Reward</b><span class="ok"><b>${esc(ethers.formatUnits(rawReward.total,18))} TLN</b></span></div>`;
-            const compact=`<div class="card" style="background:var(--panel2);margin-top:12px">
-              <h3 style="margin-top:0">Automatisch rekonstruierter Formel-Kern</h3>
-              <div class="grid">
-                <div class="kv"><b>Kumulativer Anspruch</b>${total!=null?`<span class="mono">${esc(total.toString())}</span><br><span class="ok">${esc(ethers.formatUnits(total,18))} TLN</span>`:'–'}</div>
-                <div class="kv"><b>Bereits verbucht</b>${previous!=null?`<span class="mono">${esc(previous.toString())}</span><br>${esc(ethers.formatUnits(previous,18))} TLN`:'–'}</div>
-                <div class="kv"><b>Differenz / Mint</b><span class="ok"><b>${esc(ethers.formatUnits(rawReward.total,18))} TLN</b></span></div>
-                <div class="kv"><b>Ganztage</b>${days.toString()} Tage</div>
-              </div>
-              <p>${subAnchor!=null?`<span class="ok"><b>Exakte SUB-Verknüpfung gefunden:</b></span> Step ${subAnchor}: kumulativer Anspruch − bereits verbucht = Reward.`:'<span class="warn">Die exakte SUB-Verknüpfung konnte nicht automatisch verankert werden.</span>'}</p>
-              <h4>Rückwärts-Datenfluss zum kumulativen Anspruch</h4>
-              ${renderDataflow(flow,{reward:rawReward.total,total,previous,principal,startTs,elapsed,days})}
-            </div>`;
-            $('formulaTrace').innerHTML=`<div class="grid">${formulaFacts}</div>
-              <p class="muted">Der Opcode-Trace sucht jetzt nicht nach einer vermuteten Formel, sondern nach den <b>tatsächlichen SLOAD/SSTORE- und Rechenoperationen</b>, in denen die bekannten Struct-Werte vorkommen.</p>
-              ${compact}
-              <div class="muted">Quelle: ${esc(opR.provider)} · ${opR.result.structLogs.length.toLocaleString('de-CH')} VM-Schritte · ${windows.length} relevante Fenster.</div>
-              <details><summary>Komplette relevante Opcode-Fenster anzeigen</summary>
-              ${windows.length?windows.map(w=>renderOpcodeWindow(opR.result.structLogs,w,important)).join(''):'<span class="warn">Keine direkten Fenster gefunden.</span>'}
-              </details>`;
-            stateEvidence.opcodeWindows=windows;
-            stateEvidence.formulaFlow=flow;
-            stateEvidence.formulaSubAnchor=subAnchor;
-            stateEvidence.formulaTotal=total;
-            stateEvidence.formulaPrevious=previous;
-            stateEvidence.formulaDays=days;
-            stateEvidence.principal=principal;
-            stateEvidence.startTs=startTs;
-            stateEvidence.elapsed=elapsed;
-          }catch(e){
-            $('formulaTrace').innerHTML=`<span class="warn"><b>Opcode-Trace nicht verfügbar:</b> ${esc(e.message)}</span>`;
-            log('Reward-Formel Opcode-Trace nicht verfügbar: '+e.message);
-          }
-
-          // --- Ursprung Offset 8 / Staking-Basis ---
-          try{
-            const off8=accessedRows.find(r=>r.off===8);
-            if(!off8||off8.value===0n){
-              $('principalOrigin').innerHTML='<span class="warn">Offset 8 wurde im Full-Prestate nicht mit einem positiven Wert gelesen.</span>';
-              $('stateCandidates').innerHTML='–';
-            }else{
-              let origin=verifiedOffset8OriginForClaim(hash,off8.value);
-              if(origin){
-                log(`Offset-8-Ursprung aus bereits validiertem Analyse-Checkpoint: Block ${origin.changeBlock}. Keine erneute Archive-Suche nötig.`);
-              }else{
-                log(`Suche Ursprung von Offset 8 = ${off8.value} per validiertem Archive-State.`);
-                origin=await findLastTransitionIntoValue(claimContract,off8.slot,BigInt(tx.blockNumber),off8.value);
-              }
-              if(!origin.found){
-                $('principalOrigin').innerHTML=`<span class="warn">${esc(origin.reason)}</span>`;
-                $('stateCandidates').innerHTML='–';
-              }else{
-                const br=await resilientRpc('eth_getBlockByNumber',[hexBlock(origin.changeBlock),true],'Offset-8-Änderungsblock');
-                const b=br.result,ts=new Date(Number(BigInt(b.timestamp))*1000);
-                $('principalOrigin').innerHTML=`<div class="grid">
-                  <div class="kv"><b>Offset 8</b><span class="ok"><b>${esc(ethers.formatUnits(off8.value,18))}</b></span><br><span class="mono">${esc(off8.value.toString())}</span></div>
-                  <div class="kv"><b>Ursprungsquelle</b>${esc(origin.source)}<br><span class="ok">${origin.checkpoint?'bereits in vorherigem Lauf gegen Archive-State + prestateTracer validiert':'gegen prestateTracer validiert'}</span></div>
-                  <div class="kv"><b>Aktueller Wert besteht ab Block</b><span class="ok"><b>${origin.changeBlock.toLocaleString('de-CH')}</b></span></div>
-                  <div class="kv"><b>Zeitpunkt</b>${esc(ts.toLocaleString('de-CH'))}</div>
-                  <div class="kv"><b>Wert im Block davor</b><span class="mono">${esc(origin.previousValue.toString())}</span>${origin.previousValue>0n?`<br>${esc(ethers.formatUnits(origin.previousValue,18))}`:''}</div>
-                  <div class="kv"><b>Δ Offset 8</b><span class="mono">${esc((off8.value-origin.previousValue).toString())}</span></div>
-                </div>
-                <p>Jetzt wird ausschließlich dieser Block untersucht. Ziel: die konkrete Transaktion finden, die Offset 8 auf <b>${esc(ethers.formatUnits(off8.value,18))}</b> gesetzt hat, und gleichzeitig deren Token-/LP-Bewegungen anzeigen.</p>
-                ${origin.checkpoint?'<p class="ok"><b>Für diesen bekannten Fall ist keine erneute Alchemy-/Archive-Suche nötig.</b> Der bereits validierte Änderungsblock wird direkt verwendet.</p>':''}`;
-
-                let candidateTxs=[];
-                try{
-                  const bt=await traceBlockCalls(origin.changeBlock);
-                  bt.result.forEach((entry,i)=>{
-                    const root=entry?.result||entry;
-                    const calls=flattenCallTree(root,[]);
-                    if(calls.some(c=>c.to===claimContract)){
-                      const tracedHash=norm(entry?.txHash||entry?.transactionHash||root?.txHash||root?.transactionHash||'');
-                      const txObj=(tracedHash && (b.transactions||[]).find(t=>norm(t.hash)===tracedHash)) || b.transactions?.[i];
-                      if(txObj)candidateTxs.push({...txObj,_calls:calls,_traceSource:bt.source});
-                    }
-                  });
-                }catch(e){
-                  log('Block-Trace-Fallback: '+e.message);
-                  candidateTxs=(b.transactions||[]).filter(t=>norm(t.to)===claimContract||norm(t.from)===norm(tx.from)).map(t=>({...t,_calls:[]}));
-                }
-                // Ergänzende direkte Kandidaten, falls ein Block-Tracer einzelne interne Pfade nicht liefert.
-                for(const t of (b.transactions||[])){
-                  if(norm(t.to)===claimContract || norm(t.from)===norm(tx.from)){
-                    if(!candidateTxs.some(c=>norm(c.hash)===norm(t.hash))) candidateTxs.push({...t,_calls:[]});
-                  }
-                }
-
-                const verified=[];
-                for(const c of candidateTxs.slice(0,30)){
-                  try{
-                    const pr=await prestateDiffOne(c.hash,`Offset-8 Kandidat ${short(c.hash)}`);
-                    const dr=diffSlotForAddress(pr.result,claimContract,off8.slot);
-                    if(dr){
-                      c._slotBefore=BigInt(dr.before); c._slotAfter=BigInt(dr.after);
-                      if(c._slotAfter===off8.value && c._slotBefore!==off8.value){
-                        c._transfers=await tokenTransfersForTx(c.hash,tx.from);
-                        c._stakingMatches=(c._calls||[]).filter(x=>known.has(x.to));
-                        verified.push(c);
-                      }
-                    }
-                  }catch(e){log(`Kandidat ${short(c.hash)}: ${e.message}`)}
-                }
-
-                if(verified.length){
-                  for(const c of verified){
-                    const uniq=[...new Set((c._transfers||[]).map(x=>x.token))];
-                    const metas={};
-                    for(const a of uniq)metas[a]=await tokenMetaQuick(a);
-                    c._metas=metas;
-                  }
-                  $('stateCandidates').innerHTML=`<div class="ok"><b>${verified.length} Transaktion(en) verändern Offset 8 exakt auf den späteren Claim-Basiswert.</b></div>
-                    <table><thead><tr><th>Tx</th><th>From → To</th><th>Selector</th><th>Offset 8</th><th>Wallet Token-/LP-Transfers</th><th>Staking-Match</th></tr></thead><tbody>
-                    ${verified.map(c=>`<tr>
-                      <td class="mono">${esc(c.hash)}</td>
-                      <td><span class="mono">${esc(c.from)}</span><br>→ <span class="mono">${esc(c.to)}</span></td>
-                      <td class="mono">${esc((c.input||'').slice(0,10))}</td>
-                      <td>${esc(ethers.formatUnits(c._slotBefore,18))}<br>→ <span class="ok"><b>${esc(ethers.formatUnits(c._slotAfter,18))}</b></span></td>
-                      <td>${(c._transfers||[]).length?(c._transfers||[]).map(t=>{
-                        const m=c._metas[t.token]||{symbol:short(t.token),decimals:18};
-                        const direction=t.from===norm(tx.from)?'Wallet →':'→ Wallet';
-                        let amt='';try{amt=ethers.formatUnits(t.amount,m.decimals)}catch{amt=t.amount.toString()}
-                        return `<div><b>${esc(direction)} ${esc(amt)} ${esc(m.symbol)}</b><br><span class="mono">${esc(t.token)}</span></div>`;
-                      }).join('<hr>'):'<span class="muted">keine ERC-20 Transfers direkt mit Wallet im Receipt</span>'}</td>
-                      <td>${c._stakingMatches?.length?c._stakingMatches.map(x=>`<span class="ok"><b>${esc(short(x.to))}</b></span>`).join('<br>'):'–'}</td>
-                    </tr>
-                    <tr><td></td><td colspan="5"><details><summary>Interne Calls dieser Transaktion</summary>${(c._calls||[]).map(x=>`<div><span class="badge">${esc(x.type)}</span> <span class="mono">${esc(x.from)} → ${esc(x.to)} · ${esc((x.input||'').slice(0,10))}</span>${known.has(x.to)?' <span class="ok"><b>BEKANNTER STAKING-CONTRACT</b></span>':''}</div>`).join('')||'–'}</details></td></tr>`).join('')}
-                    </tbody></table>`;
-                  stateEvidence.principalOrigin={origin,verified,off8};
-                }else{
-                  $('stateCandidates').innerHTML=`<span class="warn">Der Änderungsblock wurde gefunden, aber unter den direkt/indirekt zum Claim-Contract führenden Transaktionen konnte der exakte Offset-8-Schreibvorgang noch nicht isoliert werden. Der Block-Trace bzw. Kandidatenfilter muss dann im nächsten Schritt erweitert werden.</span>`;
-                  stateEvidence.principalOrigin={origin,verified:[],off8};
-                }
-              }
-            }
-          }catch(e){
-            $('principalOrigin').innerHTML=`<span class="warn"><b>Offset-8-Ursprung konnte noch nicht bestimmt werden:</b> ${esc(e.message)}</span>`;
-            $('stateCandidates').innerHTML='<span class="muted">Ohne validierten historischen Offset-8-Änderungsblock nicht ausgeführt.</span>';
-            log('Offset-8-Ursprungsanalyse: '+e.message);
-          }
-        }else{
-          layoutHtml='<p class="warn">Die geänderten Slots konnten noch nicht als einfache <span class="mono">mapping(address =&gt; struct)</span>-Struktur mit Basisslot 0–512 erkannt werden. Möglich wären ein größerer Basisslot, ein nested mapping oder eine andere Key-Struktur.</p>';
-          stateEvidence={best,deltaMatches,layout};
-          $('formulaTrace').innerHTML='<span class="warn">Keine einfache Wallet-Mapping-Struktur erkannt; deshalb noch kein gezielter Struct-Opcode-Trace.</span>';
-          $('principalOrigin').innerHTML='<span class="muted">Ohne Wallet-Mapping-Struktur nicht ausgeführt.</span>';
-        }
-        $('stateHistory').innerHTML=`<p class="ok"><b>Neue Erkenntnis:</b> Der Reward lag vor dem Claim <b>nicht</b> als 2330.681364-TLN-Pending-Wert in diesen Slots. Stattdessen steigen ${deltaMatches.length} Slot(s) während <span class="mono">withdrawYield()</span> jeweils exakt um <b>${esc(ethers.formatUnits(rawReward.total,18))} TLN</b>.</p>
-          <p>Das spricht stark für <b>kumulative Claim-/Reward-Zähler</b> (oder zwei gespiegelte Accounting-Felder). Die bisherige Annahme „Pending Reward wird auf 0 gesetzt“ ist damit widerlegt.</p>${layoutHtml}`;
-        // Abschnitt 9 wird bewusst NICHT mehr hier überschrieben.
-        // Er enthält das Ergebnis der Offset-8-Ursprungsanalyse aus dem Änderungsblock.
-      }else if(best&&(best.preRewardMatch||best.resetToZero)){
-        log(`Reward-Slot-Kandidat gefunden: ${best.slot}. Suche historischen Schreibzeitpunkt.`);
-        const hist=await findRewardStateStart(claimContract,best.slot,claimBlock,best.beforeN);
-        if(hist.found){
-          const br=await resilientRpc('eth_getBlockByNumber',[hexBlock(hist.changeBlock),false],'Zeitstempel Reward-State-Block');
-          const ts=new Date(Number(BigInt(br.result.timestamp))*1000);
-          $('stateHistory').innerHTML=`<div class="grid">
-            <div class="kv"><b>Reward-Slot</b><span class="mono">${esc(best.slot)}</span></div>
-            <div class="kv"><b>Reward-State vor Claim</b><span class="ok"><b>${esc(ethers.formatUnits(best.beforeN,18))} TLN</b></span></div>
-            <div class="kv"><b>Dieser State besteht ab Block</b><span class="ok"><b>${hist.changeBlock.toLocaleString('de-CH')}</b></span></div>
-            <div class="kv"><b>Zeitpunkt</b>${esc(ts.toLocaleString('de-CH'))}</div>
-          </div>`;
-          stateEvidence={best,hist,candidates:[]};
-          $('formulaTrace').innerHTML='<span class="muted">Für diesen alternativen Reward-State-Pfad wurde kein Struct-Formel-Trace ausgeführt.</span>';
-          $('principalOrigin').innerHTML='<span class="muted">Für diesen alternativen Pfad nicht ausgeführt.</span>';
-          $('stateCandidates').innerHTML='–';
-        }else{
-          $('stateHistory').innerHTML=`<span class="warn">${esc(hist.reason)}</span>`;
-          $('stateCandidates').innerHTML='–';
-          stateEvidence={best,hist,candidates:[]};
-        }
-      }else{
-        $('stateHistory').innerHTML='<span class="warn">Noch kein belastbarer Reward-bezogener Storage-Slot erkannt.</span>';
-        $('formulaTrace').innerHTML='<span class="muted">Ohne Reward-bezogenen Storage-Slot nicht ausgeführt.</span>';
-        $('principalOrigin').innerHTML='<span class="muted">Ohne Reward-bezogenen Storage-Slot nicht ausgeführt.</span>';
-        $('stateCandidates').innerHTML='–';
-      }
-    }catch(e){
-      $('storageDiff').innerHTML=`<span class="warn"><b>Storage-Diff nicht verfügbar:</b> ${esc(e.message)}</span>`;
-      $('stateHistory').innerHTML='<span class="muted">Ohne belastbaren Storage-Diff nicht ausgeführt.</span>';
-      $('formulaTrace').innerHTML='<span class="muted">Ohne belastbaren Storage-Diff nicht ausgeführt.</span>';
-      $('principalOrigin').innerHTML='<span class="muted">Ohne belastbaren Storage-Diff nicht ausgeführt.</span>';
-      $('stateCandidates').innerHTML='<span class="muted">Ohne Reward-State-Grenze nicht ausgeführt.</span>';
-      log('Reward-Storage-Analyse nicht verfügbar: '+e.message);
-    }
+    log('Prüfe Referral-Evidenz isoliert vor/nach dieser Tx.');
+    const prevBlock='0x'+(BigInt(tx.blockNumber)-1n).toString(16);
+    const [refBefore,refAfter]=await Promise.all([referralState(claimContract,tx.from,prevBlock),referralState(claimContract,tx.from,tx.blockNumber)]);
+    const explicitReferralMethod=referralMethod(tx.input);
+    const bm=new Map(refBefore.map(x=>[x.sig,x.value]));
+    const referralDeltas=refAfter.filter(x=>bm.has(x.sig)&&bm.get(x.sig)!==x.value).map(x=>({sig:x.sig,before:bm.get(x.sig),after:x.value}));
+    const positiveReferral=!!explicitReferralMethod||referralDeltas.length>0;
+    $('referral').innerHTML=`<div class="grid">
+      <div class="kv"><b>Explizite Referral-Claim-Methode</b>${explicitReferralMethod?'<span class="ok">'+esc(explicitReferralMethod)+'</span>':'keine erkannt'}</div>
+      <div class="kv"><b>Referral-State vor Tx</b>${refBefore.length}</div>
+      <div class="kv"><b>Referral-State nach Tx</b>${refAfter.length}</div>
+      <div class="kv"><b>State-Änderungen</b>${referralDeltas.length}</div>
+    </div>${referralDeltas.length?`<table><thead><tr><th>Getter</th><th>Vorher</th><th>Nachher</th></tr></thead><tbody>${referralDeltas.map(d=>`<tr><td class="mono">${esc(d.sig)}</td><td class="mono">${esc(d.before)}</td><td class="mono">${esc(d.after)}</td></tr>`).join('')}</tbody></table>`:''}
+    <details><summary>Referral-State Details</summary><pre>${esc(JSON.stringify({before:refBefore,after:refAfter},null,2))}</pre></details>
+    <p>${positiveReferral?'<span class="ok"><b>Positive Referral-Evidenz erkannt.</b></span>':'<span class="warn"><b>Kein positiver Referral-Nachweis.</b></span> Fehlende Staking-Zuordnung zählt ausdrücklich nicht als Referral.'}</p>`;
 
     const mintRewards=transfers.filter(t=>t.mint&&t.toWallet);
     const allEvidence=[...relRows];
     for(const c of traceKnown)allEvidence.push({type:'Interner Call im Tx-Trace',value:c.to,staking:known.get(norm(c.to))});
     const uniqueMatches=[...new Map(allEvidence.map(e=>[norm(e.staking?.contract_address||e.value),e])).values()];
 
-    let conclusion='';
-    conclusion+=`<p><b>Trace-Fund:</b> <span class="mono">0x40c10f19</span> ist <b>mint(address,uint256)</b>. Der Claim-Pfad führt über <span class="mono">0xb12e18…5930b</span> → Delegatecall <span class="mono">0x6592b7…c776</span> → TLN <span class="mono">0xf7d142…e4c2</span>. Damit ist dieser Ast die Reward-Minting-Kette und nicht die Staking-Position selbst.</p>`;
-    conclusion+=`<p><b>STATICCALL 0xddca3f43 auf 0x7f6c…fc662:</b> Der Rückgabewert <span class="mono">0x38d7ea4c68000</span> ist <b>1,000,000,000,000,000 Wei = 0.001 BNB</b>. Das ist die Claim-Gebühr – <b>keine Adresse</b>. Die frühere grüne „Adresse“-Darstellung war ein Decoder-Fehler und ist in dieser Version korrigiert.</p>`;
-    conclusion+=`<p><b>STATICCALL 0xe0138476:</b> liefert <span class="mono">0x160ac9cf35903960ed493264b16ca6dc3e308f8c</span>; direkt danach gehen 0.001 BNB an genau diesen DBridgeExchange. Dieser Zweig ist damit die <b>Gebühren-/BNB-Abwicklung</b>, nicht die Staking-Zuordnung.</p>`;
-    conclusion+=`<p><b>Wichtige Konsequenz:</b> <code>withdrawYield()</code> fragt in dieser Transaktion offenbar <b>keinen Staking-Contract und keinen LP-Pool</b> ab. Die Storage-Diff-Analyse darunter entscheidet deshalb, ob der Reward vorher gespeichert war oder ob der Claim lediglich kumulative Accounting-Felder aktualisiert.</p>`;
+    let conclusion='<p><b>Reward-Beweis und Referral-Herkunft werden getrennt bewertet.</b></p>';
     if(mintRewards.length){
       conclusion+=`<p class="ok"><b>Reward-Beweis:</b> ${mintRewards.length} Mint-Transfer(s) von Zero Address direkt zum aufrufenden Wallet erkannt.</p>`;
     }else{
       conclusion+=`<p class="warn"><b>Reward-Beweis:</b> Kein Zero-Address-Mint im Receipt erkannt.</p>`;
     }
     if(method.startsWith('withdrawYield'))conclusion+=`<p class="ok"><b>Claim-Semantik:</b> Transaktion ruft ${esc(method)} auf.</p>`;
-
-    if(stateEvidence?.deltaMatches?.length){
-      conclusion+=`<p class="ok"><b>Storage-Semantik korrigiert:</b> ${stateEvidence.deltaMatches.length} Storage-Slot(s) steigen beim Claim jeweils exakt um den geminteten Reward. Der Betrag war dort vorher nicht als Pending Reward gespeichert; die Felder sind sehr wahrscheinlich kumulative Claim-/Reward-Zähler.</p>`;
-      if(stateEvidence.layout?.found){
-        conclusion+=`<p><b>Wallet-Struct:</b> Die Slots lassen sich einer einfachen Wallet-Mapping-Struktur mit Basisslot <b>${stateEvidence.layout.baseSlot}</b> zuordnen. Für historische Werte werden ausschließlich Felder aus dem Full-Prestate-Trace der konkreten Tx verwendet.</p>`;
-      }
-      if(stateEvidence.formulaSubAnchor!=null){
-        conclusion+=`<p class="ok"><b>Reward-Differenzformel bestätigt:</b> Im Opcode-Trace gibt es eine exakte SUB-Operation: <b>kumulativer Anspruch − bereits verbucht = Mint-Reward</b>.</p>`;
-      }
-      if(stateEvidence.principalOrigin?.origin?.found){
-        conclusion+=`<p><b>Offset-8-Provenienz:</b> Der Berechnungsbasiswert ${esc(ethers.formatUnits(stateEvidence.principalOrigin.off8.value,18))} wurde historisch auf einen konkreten Änderungsblock eingegrenzt. ${stateEvidence.principalOrigin.verified.length?`Mindestens eine Transaktion in diesem Block wurde als exakter Schreiber dieses Werts bestätigt; deren Token-/LP-Bewegungen stehen in Abschnitt 9.`:'Der exakte Schreiber ist im ersten Block-Trace noch nicht isoliert.'}</p>`;
-      }
-      if(stateEvidence.formulaSubAnchor==null && stateEvidence.opcodeWindows?.length){
-        conclusion+=`<p><b>Reward-Formel wird VM-seitig geprüft:</b> ${stateEvidence.opcodeWindows.length} relevante Opcode-Fenster wurden gefunden.</p>`;
-      }
-    }else if(stateEvidence?.best?.preRewardMatch){
-      conclusion+=`<p class="ok"><b>Reward-Storage bestätigt:</b> Ein Storage-Slot enthält vor dem Withdraw exakt den geminteten Reward.</p>`;
-    }
+    conclusion+=positiveReferral
+      ? `<p class="ok"><b>Referral-Herkunft:</b> positiv belegt (${explicitReferralMethod?'explizite Referral-Methode':'Referral-State-Änderung'}).</p>`
+      : `<p class="warn"><b>Referral-Herkunft:</b> nicht belegt. Ein bestehender Reward-Beweis bleibt davon unberührt.</p>`;
     if(uniqueMatches.length===1){
       const e=uniqueMatches[0],s=e.staking;
       conclusion+=`<p class="ok"><b>Staking-Zuordnung gefunden:</b> ${esc(s.label||s.name||s.contract_address)} · <span class="mono">${esc(s.contract_address)}</span></p>
@@ -1410,25 +295,16 @@ async function analyze(){
       conclusion+=`<p class="warn"><b>Mehrere mögliche Stakings:</b> ${uniqueMatches.length}. Die Tx allein liefert noch keinen eindeutigen Positionsnachweis.</p>`;
     }else{
       conclusion+=`<p class="warn"><b>Noch keine Staking-Zuordnung:</b> Die isolierte Tx zeigt Reward und Claim-Methode, aber über Adresse/Proxy/Getter/Bytecode/Trace wurde kein bekannter Staking-Contract eindeutig verbunden.</p>
-      <p>Die Storage-/historische-State-Analyse läuft in dieser Version bereits direkt darunter. Falls sie einen Änderungsblock findet, untersuchen wir nur diesen Block weiter – weiterhin ohne Wallet-Gesamthistorie.</p>`;
+      <p>Dann wäre der nächste isolierte Schritt eine gezielte Storage-/historische-State-Analyse genau dieses Claim-Contracts – weiterhin ohne Wallet-Gesamthistorie.</p>`;
     }
     $('conclusion').innerHTML=conclusion;
     $('status').innerHTML='<span class="ok">Analyse abgeschlossen.</span>';
     log('Fertig.');
   }catch(e){
-    $('status').innerHTML=`<span class="bad">${esc(e.message)}</span>`;
-    for(const id of ['txInfo','transfers','relations','trace','storageDiff','stateHistory','formulaTrace','principalOrigin','stateCandidates','conclusion']){
-      if($(id).textContent==='Lädt…')$(id).innerHTML='<span class="bad">Analyse an dieser Stelle abgebrochen.</span>';
-    }
-    log('FEHLER: '+e.message);
+    $('status').innerHTML=`<span class="bad">${esc(e.message)}</span>`;log('FEHLER: '+e.message);
   }finally{$('analyze').disabled=false}
 }
 $('analyze').addEventListener('click',analyze);
-$('exportFullAnalysis').addEventListener('click',exportFullAnalysis);
-$('exportStep9').addEventListener('click',exportStep9);
-$('exportPrincipalOrigin').addEventListener('click',exportPrincipalOrigin);
-$('exportFormulaCompact').addEventListener('click',exportFormulaCompact);
-$('exportFormula').addEventListener('click',exportFormulaSection);
 window.addEventListener('load',()=>setTimeout(analyze,100));
 </script>
 </body>
