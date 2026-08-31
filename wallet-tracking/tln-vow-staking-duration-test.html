@@ -17,6 +17,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <label>Staking-Contract<input id="contract" class="mono" value="0x43e457164eff66d1f975dcb9d2504ab29e36264e"></label>
 <label>Stake-TX (optional)<input id="stakeTx" class="mono" value="0x51bfb4129ddd17cb0b9abe6299f70c94304a9baff7bbd74783aec341cbbb7f25"></label>
 <div style="align-self:end"><button id="run">On-chain prüfen</button></div>
+<div style="align-self:end"><button id="exportDiag" disabled>Diagnose exportieren (.txt)</button></div>
 </div>
 <div class="card"><div class="hero">Ergebnis</div><div id="verdict" class="muted">Noch nicht geprüft.</div><div id="summary" class="kv" style="margin-top:12px"></div></div>
 <div class="card"><h2>0 · NodeReal Direct Archive-State-Selbsttest</h2><div id="providerTest">–</div></div>
@@ -26,7 +27,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>4 · Bytecode-Zeitkonstanten</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>5 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 04:09:34 CEST</div>
+<div class="muted">Version: 31.08.2026 04:28:44 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -35,29 +36,144 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id), norm=a=>String(a||'').toLowerCase(), esc=s=>String(s??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));
 let rpcUrl='',alchemyBase='';
 function log(s,cls=''){const t=new Date().toLocaleTimeString('de-CH');$('log').innerHTML+=`\n<span class="${cls}">[${t}] ${esc(s)}</span>`}
-async function rpcAt(url,method,params=[],timeout=22000){const c=new AbortController(),tm=setTimeout(()=>c.abort(),timeout);try{const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method,params}),signal:c.signal});if(!r.ok)throw new Error(`HTTP ${r.status}`);const j=await r.json();if(j.error)throw new Error(`${j.error.message} (${j.error.code})`);return j.result??null}finally{clearTimeout(tm)}}
-async function rpcBatchAt(url,calls,timeout=30000){const c=new AbortController(),tm=setTimeout(()=>c.abort(),timeout);try{const body=calls.map((x,i)=>({jsonrpc:'2.0',id:i+1,method:x.method,params:x.params||[]}));const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:c.signal});if(!r.ok)throw new Error(`HTTP ${r.status}`);const j=await r.json();if(!Array.isArray(j))throw new Error('Batch-RPC lieferte keine Liste');const by=new Map(j.map(x=>[x.id,x]));return body.map(x=>{const y=by.get(x.id);return y?.error?{error:y.error}: {result:y?.result??null}})}finally{clearTimeout(tm)}}
-async function rpcBatch(calls){const urls=[rpcUrl,alchemyUrl()].filter((x,i,a)=>x&&a.indexOf(x)===i);let last=null;for(const u of urls){try{const out=[];for(let i=0;i<calls.length;i+=100){out.push(...await rpcBatchAt(u,calls.slice(i,i+100)));}return out}catch(e){last=e;log(`Batch-RPC über Provider fehlgeschlagen: ${e.message}`,'warn')}}throw last||new Error('Batch-RPC fehlgeschlagen')}
-function alchemyUrl(){return alchemyBase?alchemyBase.replace(/\/+$/,'')+'/'+encodeURIComponent(ALCHEMY_API_KEY):''}
-async function rpc(method,params=[]){const urls=[rpcUrl,alchemyUrl()].filter((x,i,a)=>x&&a.indexOf(x)===i);let errs=[];for(const u of urls){for(let i=1;i<=3;i++){try{const v=await rpcAt(u,method,params);if(v!=null)return v;errs.push('null')}catch(e){errs.push(e.message)}if(i<3)await new Promise(r=>setTimeout(r,250*i))}}throw new Error(`${method} fehlgeschlagen: ${errs.slice(-4).join(' | ')}`)}
+let lastDiagnosticExport=null;
+const disabledRpcProviders=new Set();
 
+function jsonSafe(value){
+ return JSON.parse(JSON.stringify(value,(k,v)=>typeof v==='bigint'?v.toString():v));
+}
+function textFromHtml(id){
+ const el=$(id);
+ return el?el.innerText.trim():'';
+}
+function buildDiagnosticText(data){
+ const sep='='.repeat(78);
+ return [
+   'TLN/VOW STAKING-DURATION DIAGNOSEEXPORT',
+   `Export erstellt: ${new Date().toLocaleString('de-CH')}`,
+   `HTML-Version: ${data.version}`,
+   sep,
+   'EINGABEN',
+   `Wallet: ${data.wallet||''}`,
+   `Staking-Contract: ${data.contract||''}`,
+   `Stake-TX: ${data.hash||''}`,
+   '',
+   'STAKE-KONTEXT',
+   `Block: ${data.ctx?.blockNum??''}`,
+   `Timestamp: ${data.ctx?.ts??''}`,
+   `Datum: ${data.ctx?.ts?fmtDate(data.ctx.ts):''}`,
+   `Proxy-Implementation: ${data.impl||'keine'}`,
+   '',
+   'NODEREAL ARCHIVE-SELbstTEST',
+   JSON.stringify(data.nrTest,null,2),
+   '',
+   'DIREKTE CONTRACT-READS',
+   JSON.stringify(data.reads,null,2),
+   '',
+   'RECEIPT-ZEITWERTE',
+   JSON.stringify(data.receiptEvidence,null,2),
+   '',
+   'TRACE-STORAGE',
+   JSON.stringify(data.storage,null,2),
+   '',
+   'ARCHIVE-STORAGE-ÄNDERUNGEN',
+   JSON.stringify(data.archiveStorage,null,2),
+   '',
+   'EVIDENZ-RANGLISTE',
+   JSON.stringify(data.evidence,null,2),
+   '',
+   'VERDICT',
+   data.verdict||'',
+   '',
+   'SICHTBARE STORAGE-TABELLE',
+   textFromHtml('storage'),
+   '',
+   'SICHTBARE EVIDENZ-TABELLE',
+   textFromHtml('evidence'),
+   '',
+   'PROTOKOLL',
+   textFromHtml('log'),
+   sep
+ ].join('\n');
+}
+function exportDiagnostic(){
+ if(!lastDiagnosticExport){
+   alert('Bitte zuerst die On-chain-Prüfung vollständig ausführen.');
+   return;
+ }
+ const blob=new Blob([buildDiagnosticText(lastDiagnosticExport)],{type:'text/plain;charset=utf-8'});
+ const a=document.createElement('a');
+ const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+ a.href=URL.createObjectURL(blob);
+ a.download=`tln-vow-staking-duration-diagnose-${stamp}.txt`;
+ document.body.appendChild(a);
+ a.click();
+ setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
+ log('Diagnose-Datei exportiert.','ok');
+}
+
+async function rpcAt(url,method,params=[],timeout=22000){
+ if(!url)throw new Error('Kein RPC-Endpunkt');
+ if(disabledRpcProviders.has(url))throw new Error(`RPC übersprungen: ${url}`);
+ const c=new AbortController(),tm=setTimeout(()=>c.abort(),timeout);
+ try{
+   const r=await fetch(url,{
+     method:'POST',
+     headers:{'content-type':'application/json'},
+     body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method,params}),
+     signal:c.signal
+   });
+   const raw=await r.text();
+   let j=null;
+   try{j=raw?JSON.parse(raw):null}catch{}
+   if(!r.ok){
+     if(r.status===401||r.status===403){
+       disabledRpcProviders.add(url);
+       log(`RPC für diesen Lauf deaktiviert (HTTP ${r.status}): ${url}`,'warn');
+     }
+     throw new Error(`HTTP ${r.status}${j?.error?.message?`: ${j.error.message}`:''}`);
+   }
+   if(j?.error)throw new Error(`${j.error.message||JSON.stringify(j.error)}${j.error.code!==undefined?` (${j.error.code})`:''}`);
+   return j?.result??null;
+ }finally{clearTimeout(tm)}
+}
+function alchemyUrl(){return alchemyBase?alchemyBase.replace(/\/+$/,'')+'/'+encodeURIComponent(ALCHEMY_API_KEY):''}
+async function rpc(method,params=[]){
+ const urls=[rpcUrl,alchemyUrl()].filter((x,i,a)=>x&&a.indexOf(x)===i);
+ let errs=[];
+ for(const u of urls){
+   if(disabledRpcProviders.has(u))continue;
+   for(let i=1;i<=3;i++){
+     try{
+       const v=await rpcAt(u,method,params);
+       if(v!=null)return v;
+       errs.push('null');
+     }catch(e){
+       errs.push(e.message);
+       if(disabledRpcProviders.has(u))break;
+     }
+     if(i<3)await new Promise(r=>setTimeout(r,250*i));
+   }
+ }
+ throw new Error(`${method} fehlgeschlagen: ${errs.slice(-4).join(' | ')}`);
+}
 async function nodeRealRpcDirect(method,params=[]){
-  const c=new AbortController(),tm=setTimeout(()=>c.abort(),30000);
-  try{
-    const r=await fetch(NODEREAL_BSC_URL,{
-      method:'POST',
-      headers:{'content-type':'application/json'},
-      body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method,params}),
-      signal:c.signal
-    });
-    const raw=await r.text();
-    let j;
-    try{j=raw?JSON.parse(raw):null}catch{throw new Error(`NodeReal lieferte keine JSON-Antwort (HTTP ${r.status})`)}
-    if(!r.ok)throw new Error(`NodeReal HTTP ${r.status}${j?.error?.message?`: ${j.error.message}`:''}`);
-    if(j?.error)throw new Error(`${j.error.message||JSON.stringify(j.error)}${j.error.code!==undefined?` (${j.error.code})`:''}`);
-    if(j?.result===undefined||j?.result===null)throw new Error('NodeReal lieferte kein RPC-Ergebnis');
-    return j.result;
-  }finally{clearTimeout(tm)}
+ const c=new AbortController(),tm=setTimeout(()=>c.abort(),30000);
+ try{
+   const r=await fetch(NODEREAL_BSC_URL,{
+     method:'POST',
+     headers:{'content-type':'application/json'},
+     body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method,params}),
+     signal:c.signal
+   });
+   const raw=await r.text();
+   let j;
+   try{j=raw?JSON.parse(raw):null}catch{throw new Error(`NodeReal lieferte keine JSON-Antwort (HTTP ${r.status})`)}
+   if(!r.ok)throw new Error(`NodeReal HTTP ${r.status}${j?.error?.message?`: ${j.error.message}`:''}`);
+   if(j?.error)throw new Error(`${j.error.message||JSON.stringify(j.error)}${j.error.code!==undefined?` (${j.error.code})`:''}`);
+   if(j?.result===undefined||j?.result===null)throw new Error('NodeReal lieferte kein RPC-Ergebnis');
+   return j.result;
+ }finally{clearTimeout(tm)}
 }
 async function nodeRealMany(calls,parallel=4){
   const out=new Array(calls.length);let next=0;
@@ -266,7 +382,7 @@ function rankEvidence({reads,storage,archiveStorage,bytecode,receipt,stakeTs}){c
  const ded=new Map();for(const x of ev.sort((a,b)=>b.score-a.score)){const k=`${x.label}|${x.days}|${x.detail}`;if(!ded.has(k))ded.set(k,x)}return [...ded.values()];
 }
 function fmtDays(d){return Number.isInteger(d)?`${d} Tage`:`${d.toFixed(4)} Tage`}
-async function run(){try{$('log').textContent='';$('verdict').textContent='Prüfung läuft …';['providerTest','reads','stake','storage','bytecode','evidence'].forEach(id=>$(id).innerHTML='Wird geladen …');const wallet=norm($('wallet').value.trim()),contract=norm($('contract').value.trim());if(!ethers.isAddress(wallet)||!ethers.isAddress(contract))throw new Error('Wallet oder Contract ungültig.');await initProviders();let hash=$('stakeTx').value.trim();if(!hash)hash=await discoverStakeTx(wallet,contract);$('stakeTx').value=hash;const ctx=await getStakeContext(hash);log(`Stake-TX ${hash} · Block ${ctx.blockNum} · ${fmtDate(ctx.ts)}`,'ok');
+async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true;$('log').textContent='';$('verdict').textContent='Prüfung läuft …';['providerTest','reads','stake','storage','bytecode','evidence'].forEach(id=>$(id).innerHTML='Wird geladen …');const wallet=norm($('wallet').value.trim()),contract=norm($('contract').value.trim());if(!ethers.isAddress(wallet)||!ethers.isAddress(contract))throw new Error('Wallet oder Contract ungültig.');await initProviders();let hash=$('stakeTx').value.trim();if(!hash)hash=await discoverStakeTx(wallet,contract);$('stakeTx').value=hash;const ctx=await getStakeContext(hash);log(`Stake-TX ${hash} · Block ${ctx.blockNum} · ${fmtDate(ctx.ts)}`,'ok');
  const nrTest=await nodeRealArchiveSelfTest(contract,ctx.blockNum);
  $('providerTest').innerHTML=`<p class="${nrTest.ok?'ok':'bad'}"><b>${nrTest.ok?'NodeReal Direct beantwortet historische eth_getStorageAt-Reads.':'NodeReal Direct Archive-State nicht bestätigt.'}</b></p><table><thead><tr><th>Probe</th><th>Block</th><th>Status</th><th>Wert / Fehler</th></tr></thead><tbody>${nrTest.rows.map(r=>`<tr><td>${esc(r.label)}</td><td class="mono">${esc(r.block)}</td><td>${r.ok?'<span class="ok">OK</span>':'<span class="bad">FEHLER</span>'}</td><td class="mono">${esc(r.ok?r.value:r.error)}</td></tr>`).join('')}</tbody></table>`;
  if(nrTest.ok)log('NodeReal Direct Archive-State-Selbsttest erfolgreich.','ok');
@@ -286,7 +402,32 @@ async function run(){try{$('log').textContent='';$('verdict').textContent='Prüf
  }const traceHtml=storage.changes.length?`<p class="muted">Trace-Quelle: ${esc(storage.source)}</p><table><thead><tr><th>Adresse</th><th>Slot</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${storage.changes.slice(0,100).map(x=>`<tr><td class="mono">${esc(x.address)}</td><td class="mono">${esc(x.slot)}</td><td class="mono">${esc(x.before?.toString()??'–')}</td><td class="mono">${esc(x.after?.toString()??'–')}</td><td>${x.diffDuration?`Δ ${esc(fmtDays(x.diffDuration.days))}`:(x.timestampValues||[]).map(fmtDate).join(' · ')||'–'}</td></tr>`).join('')}</tbody></table>`:'';const archHtml=archiveStorage.changes?.length?`<p class="muted">Archive-State: Block ${archiveStorage.before} → ${archiveStorage.after}. Zweistufiger Scan: zuerst direkte Slots 0–64 plus Mapping-Roots 0–64 nur an Offset 0; danach vollständige Offsets 0–16 nur für relevante Roots.</p><table><thead><tr><th>Typ</th><th>Root/Offset</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${archiveStorage.changes.slice(0,120).map(x=>`<tr><td>${esc(x.kind)}</td><td class="mono">${x.root} / ${x.offset}</td><td class="mono">${esc(x.before.toString())}</td><td class="mono">${esc(x.after.toString())}</td><td>${(x.timestamps||[]).map(t=>fmtDate(t)).join(' · ')||((x.stakeDeltas||[]).map(q=>`Δ Stake ${fmtDays(q.delta.days)}`).join(' · '))||'–'}</td></tr>`).join('')}</tbody></table>`:'';$('storage').innerHTML=traceHtml||archHtml||'<span class="warn">Weder Trace-Storage-Diffs noch Archive-State-Änderungen verfügbar.</span>';
  const code=await rpc('eth_getCode',[contract,'latest']);const implCode=impl?await rpc('eth_getCode',[impl,'latest']):'0x';const byte=[...plausibleDurationConstants(code).map(x=>({...x,target:contract})),...plausibleDurationConstants(implCode).map(x=>({...x,target:impl}))];const byteRows=byte.length?`<p class="muted">Wichtig: PUSH-Werte werden nur noch als schwache statische Hinweise gezeigt. Zufällige Zahlen im Bytecode sind keine Vertragsdauer.</p><table><thead><tr><th>Contract</th><th>Typ</th><th>Wert</th><th>Interpretation</th><th>Hex</th></tr></thead><tbody>${byte.map(x=>`<tr><td class="mono">${esc(x.target)}</td><td>${esc(x.kind)}</td><td>${esc(x.value.toString())}</td><td>${x.kind==='possible-day-count'?`${esc(fmtDays(x.days))} möglich`:`${x.seconds.toLocaleString('de-CH')} s = ${esc(fmtDays(x.days))}`}</td><td class="mono">${esc(x.hex)}</td></tr>`).join('')}</tbody></table>`:'<p class="warn">Keine exakten Ganztage-/Tageszahl-PUSH-Hinweise gefunden.</p>';$('bytecode').innerHTML=`<div class="kv"><div class="k">Proxy-Implementation</div><div class="v mono">${esc(impl||'keine EIP-1967 Implementation erkannt')}</div></div>`+byteRows;
  const evidence=rankEvidence({reads,storage,archiveStorage,bytecode:byte,receipt:recEv,stakeTs:ctx.ts});$('evidence').innerHTML=evidence.length?`<table><thead><tr><th>Rang</th><th>Evidenz</th><th>Dauer</th><th>Detail</th></tr></thead><tbody>${evidence.slice(0,50).map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.label)} <span class="muted">(${x.score})</span></td><td><b>${esc(fmtDays(x.days))}</b></td><td class="mono">${esc(x.detail)}</td></tr>`).join('')}</tbody></table>`:'<span class="warn">Keine belastbare Dauer-Evidenz gefunden.</span>';
- const top=evidence[0]||null;const sameTop=top?evidence.filter(x=>x.score>=90&&Math.abs(x.days-top.days)<1e-9):[];let verdict='Vertragsdauer nicht belastbar ermittelt.',cls='warn';if(top&&top.score>=90){verdict=`On-chain stark belegt: ${fmtDays(top.days)}.`;cls='ok'}else if(top){verdict=`Hinweis, aber noch nicht stark genug: ${fmtDays(top.days)}.`;cls='warn'}$('verdict').className=`verdict ${cls}`;$('verdict').textContent=verdict;$('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke übereinstimmende Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Noch separat zu prüfen; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;log('Prüfung abgeschlossen.','ok');
- }catch(e){$('verdict').className='verdict bad';$('verdict').textContent='Fehler: '+(e?.message||e);log(e?.stack||e?.message||String(e),'bad')}}
+ const top=evidence[0]||null;const sameTop=top?evidence.filter(x=>x.score>=90&&Math.abs(x.days-top.days)<1e-9):[];let verdict='Vertragsdauer nicht belastbar ermittelt.',cls='warn';if(top&&top.score>=90){verdict=`On-chain stark belegt: ${fmtDays(top.days)}.`;cls='ok'}else if(top){verdict=`Hinweis, aber noch nicht stark genug: ${fmtDays(top.days)}.`;cls='warn'}$('verdict').className=`verdict ${cls}`;$('verdict').textContent=verdict;$('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke übereinstimmende Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Noch separat zu prüfen; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;lastDiagnosticExport=jsonSafe({
+   version:document.querySelector('.muted:last-of-type')?.textContent?.replace(/^Version:\s*/,'')||'unbekannt',
+   wallet,contract,hash,
+   ctx:{
+     blockNum:ctx.blockNum,
+     ts:ctx.ts,
+     tx:{from:ctx.tx?.from,to:ctx.tx?.to,input:ctx.tx?.input},
+     receiptStatus:ctx.receipt?.status
+   },
+   impl,
+   nrTest,
+   reads,
+   receiptEvidence:recEv,
+   storage,
+   archiveStorage,
+   evidence,
+   verdict:$('verdict').textContent
+ });
+ $('exportDiag').disabled=false;
+ log('Diagnose-Export ist bereit.','ok');
+ log('Prüfung abgeschlossen.','ok');
+ }catch(e){
+   $('verdict').className='verdict bad';
+   $('verdict').textContent='Fehler: '+(e?.message||e);
+   log(e?.stack||e?.message||String(e),'bad');
+ }}
 $('run').addEventListener('click',run);
+$('exportDiag').addEventListener('click',exportDiagnostic);
 </script></body></html>
