@@ -11,8 +11,8 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 .header-version{margin-top:6px;font-size:12px;font-weight:700;opacity:.82}</style>
 </head><body><div class="wrap">
 <h1>🧪 TLN/VOW · isolierter Staking-Duration-Test</h1>
-<div class="header-version">Version: 31.08.2026 14:38:52 CEST</div>
-<p class="muted">Ziel: Vertrags-/Lock-Dauer aus On-chain-Evidenz ermitteln. Keine fest hinterlegte 367-Tage-Regel. Reward-Dauer wird separat behandelt.</p>
+<div class="header-version">Version: 31.08.2026 14:47:27 CEST</div>
+<p class="muted">Ziel: Vertrags-/Lock-Dauer ausschließlich aus On-chain-Evidenz ermitteln. Es wird keine Lock-Dauer vorgegeben. Reward-Dauer wird separat behandelt.</p>
 <div class="card grid">
 <label>Wallet<input id="wallet" class="mono" value="0x813D4948e797DA57085cf1b81b96804576E85510"></label>
 <label>Staking-Contract<input id="contract" class="mono" value="0x43e457164eff66d1f975dcb9d2504ab29e36264e"></label>
@@ -20,7 +20,13 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div style="align-self:end"><button id="run">On-chain prüfen</button></div>
 <div style="align-self:end"><button id="exportDiag" disabled>Diagnose exportieren (.txt)</button></div>
 </div>
-<div class="card"><div class="hero">Ergebnis</div><div id="verdict" class="muted">Noch nicht geprüft.</div><div id="summary" class="kv" style="margin-top:12px"></div></div>
+<div class="card"><div class="hero">Ergebnis</div>
+<div id="lockSummary" class="card" style="margin-top:16px">
+  <h2>🔒 Ergebnis · Mindest-Lockdauer</h2>
+  <div id="lockSummaryBody" class="muted">Noch nicht ermittelt.</div>
+</div>
+
+<div id="verdict" class="muted">Noch nicht geprüft.</div><div id="summary" class="kv" style="margin-top:12px"></div></div>
 <div class="card"><h2>0 · NodeReal Direct Archive-State-Selbsttest</h2><div id="providerTest">–</div></div>
 <div class="card"><h2>1 · Direkte Contract-Reads</h2><div id="reads">–</div></div>
 <div class="card"><h2>2 · Stake-Transaktion / Receipt</h2><div id="stake">–</div></div>
@@ -33,7 +39,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>9 · Bytecode-Zeitkonstanten (nur Diagnose)</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>10 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 14:38:52 CEST</div>
+<div class="muted">Version: 31.08.2026 14:47:27 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -85,7 +91,7 @@ function buildDiagnosticText(data){
    'ARCHIVE-STORAGE-ÄNDERUNGEN',
    JSON.stringify(data.archiveStorage,null,2),
    '',
-   'ROOT-3-STRUKTURSCAN',
+   'TECHNISCHER ROOT-3-STORAGE-STRUKTURSCAN',
    JSON.stringify(data.targeted,null,2),
    '',
    'ERSTE ROOT-3-POSITIONSAUFLÖSUNG',
@@ -102,6 +108,11 @@ function buildDiagnosticText(data){
    '',
    'HISTORISCHE IMPLEMENTATION / LOCK-DATAFLOW',
    JSON.stringify(data.historicalDataflow,null,2),
+   '',
+   'FINALES LOCK-ERGEBNIS',
+   unstakeGate?.found
+     ? `Mindest-Lockdauer: ${unstakeGate.elapsedDays} Tage (${unstakeGate.elapsedSeconds} Sekunden)\nFrühester erfolgreicher Unstake: ${unstakeGate.after?.date||'–'} · Block ${unstakeGate.after?.blockNum||'–'}\nLetzter Contract-Revert: ${unstakeGate.before?.date||'–'} · ${unstakeGate.before?.revert?.message||unstakeGate.before?.error?.message||'–'}\nImplementation stabil: ${unstakeGate.implementationStable?'ja':'nein'}\nErmittlung: automatisch, ohne vorgegebene Lockdauer.`
+     : 'Keine belastbare Mindest-Lockdauer ermittelt.',
    '',
    'LOCK-SUCHMODUS',
    'Automatisch: Stake → tatsächliche Positionsauflösung; Grobsuche + blockgenaue Binärsuche; keine vorgegebene Tageszahl.',
@@ -466,11 +477,11 @@ async function targetedRoot3Scan(contract,wallet,ctx,coreChange=null){
  const stakeBlock='0x'+ctx.blockNum.toString(16);
  const referenceTs=ctx.ts+365*86400;
 
- log('Root 3: bestimme neutralen 1-Jahres-Vergleichspunkt ausschließlich für den Storage-Strukturscan …','ok');
+ log('Root 3: bestimme technischen 1-Jahres-Vergleichspunkt ausschließlich für den Storage-Strukturscan …','ok');
  const referenceBlock=await findBlockNearTimestamp(referenceTs);
- log(`Root 3: neutraler 1-Jahres-Storage-Vergleichspunkt liegt nahe Block ${referenceBlock?.blockNum??'?'}, ${referenceBlock?fmtDate(referenceBlock.timestamp):'unbekannt'} (Δ ${referenceBlock?.delta??'?'} s).`,'ok');
+ log(`Root 3: technischer 1-Jahres-Storage-Vergleichspunkt liegt nahe Block ${referenceBlock?.blockNum??'?'}, ${referenceBlock?fmtDate(referenceBlock.timestamp):'unbekannt'} (Δ ${referenceBlock?.delta??'?'} s).`,'ok');
 
- log('Root 3: lese Offsets 0–32 vor Stake, am Stake, am neutralen 1-Jahres-Punkt und latest (nicht für Lock-Ermittlung) …','ok');
+ log('Root 3: lese Offsets 0–32 vor Stake, am Stake, am technischen 1-Jahres-Punkt und latest (von Lock-Ermittlung ausgeschlossen) …','ok');
  const [before,stake,atReference,latest]=await Promise.all([
    readRootOffsetsAt(contract,wallet,root,offsets,beforeBlock,ctx.ts),
    readRootOffsetsAt(contract,wallet,root,offsets,stakeBlock,ctx.ts),
@@ -505,7 +516,7 @@ async function targetedRoot3Scan(contract,wallet,ctx,coreChange=null){
    referenceTs,
    referenceDate:fmtDate(referenceTs),
    referenceBlock,
-  referencePurpose:'neutraler Storage-Vergleichspunkt; nicht für Lock-Ermittlung verwendet',
+  referencePurpose:'technischer Storage-Vergleichspunkt; vollständig von der Lock-Ermittlung ausgeschlossen',
    beforeBlock,
    stakeBlock,
    startRow,
@@ -578,15 +589,15 @@ function strictVerdict(evidence){
  return {cls:'warn',text:'Vertrags-/Lock-Dauer nicht belastbar ermittelt.'};
 }
 function root3Html(targeted){
- if(!targeted)return '<span class="warn">Kein Root-3-Strukturscan.</span>';
+ if(!targeted)return '<span class="warn">Kein Technischer Root-3-Storage-Strukturscan.</span>';
  const rows=targeted.byOffset.filter(r=>{
    const vals=[r.before?.value,r.stake?.value,r.atReference?.value,r.latest?.value];
    return vals.some(v=>v&&v!=='0') || new Set(vals).size>1;
  });
- return `<p class="muted">Root 3, Offsets 0–32. 367-Tage-Prüfpunkt: ${esc(targeted.referenceDate)} · Block ${esc(targeted.referenceBlock?.blockNum??'–')} · Blockzeit ${esc(targeted.referenceBlock?fmtDate(targeted.referenceBlock.timestamp):'–')}.</p>
+ return `<p class="muted">Root 3, Offsets 0–32. Technischer Storage-Vergleichspunkt: ${esc(targeted.referenceDate)} · Block ${esc(targeted.referenceBlock?.blockNum??'–')} · Blockzeit ${esc(targeted.referenceBlock?fmtDate(targeted.referenceBlock.timestamp):'–')}. Dieser Punkt ist von der Lock-Ermittlung ausgeschlossen.</p>
  <table><thead><tr><th>Offset</th><th>Vor Stake</th><th>Stake-Block</th><th>neutraler Referenzpunkt</th><th>Latest</th><th>Zeit-Hinweis</th></tr></thead><tbody>
  ${rows.map(r=>{
-   const hint=[r.stake?.timestamp?`Stake: ${fmtDate(r.stake.timestamp)}`:'',r.atReference?.timestamp?`+367: ${fmtDate(r.atReference.timestamp)}`:'',r.latest?.timestamp?`Latest: ${fmtDate(r.latest.timestamp)}`:''].filter(Boolean).join(' · ')||'–';
+   const hint=[r.stake?.timestamp?`Stake: ${fmtDate(r.stake.timestamp)}`:'',r.atReference?.timestamp?`Storage-Vergleich: ${fmtDate(r.atReference.timestamp)}`:'',r.latest?.timestamp?`Latest: ${fmtDate(r.latest.timestamp)}`:''].filter(Boolean).join(' · ')||'–';
    return `<tr><td>${r.offset}</td><td class="mono">${esc(r.before?.value??'–')}</td><td class="mono">${esc(r.stake?.value??'–')}</td><td class="mono">${esc(r.atReference?.value??'–')}</td><td class="mono">${esc(r.latest?.value??'–')}</td><td>${esc(hint)}</td></tr>`;
  }).join('')}</tbody></table>`;
 }
@@ -1037,6 +1048,39 @@ function selectorBlockHtml(a){
  ${c.timeWindows.map(w=>`<pre class="mono">${esc(w.ops.map(o=>`${String(o.pc).padStart(6)}  ${o.name}${o.imm?' '+o.imm:''}`).join('\n'))}</pre>`).join('')||'<p class="muted">Kein TIMESTAMP-Fenster im ersten analysierten Funktionsbereich.</p>'}`).join('')}`;
 }
 
+
+function lockSummaryHtml(gate,ctx,coreChange){
+ if(!gate?.found){
+   return `<div class="warn">Noch keine belastbare vertragliche Mindest-Lockdauer ermittelt.</div>`;
+ }
+ const days=Number(gate.elapsedDays||0);
+ const unlockTs=Number(gate.after?.timestamp||0);
+ const unlockDate=gate.after?.date||fmtTs(unlockTs);
+ const actualDays=Number(coreChange?.elapsedDays||0);
+ const actualDate=coreChange?.date||'–';
+ const reason=gate.before?.revert?.message||gate.before?.error?.message||'echter Contract-Revert';
+ return `
+   <div class="kv">
+     <div class="k">Vertragliche Mindest-Lockdauer</div>
+     <div class="v"><b>${days.toFixed(6)} Tage</b> · ${Math.round(Number(gate.elapsedSeconds||0)).toLocaleString('de-CH')} Sekunden</div>
+
+     <div class="k">Frühester erfolgreicher Unstake</div>
+     <div class="v"><b>${esc(unlockDate)}</b> · Block ${esc(gate.after?.blockNum||'–')}</div>
+
+     <div class="k">Letzter gesperrter Zustand</div>
+     <div class="v">${esc(gate.before?.date||'–')} · Block ${esc(gate.before?.blockNum||'–')} · ${esc(reason)}</div>
+
+     <div class="k">Ermittlung</div>
+     <div class="v">Automatisch aus historischer Contract-Revert → Success-Grenze; keine Lockdauer vorgegeben.</div>
+
+     <div class="k">Implementation über Grenze</div>
+     <div class="v">${gate.implementationStable?'unverändert':'geändert / nicht sicher'}</div>
+
+     <div class="k">Tatsächliche Positionsauflösung</div>
+     <div class="v">${esc(actualDate)}${actualDays?` · ${actualDays.toFixed(4)} Tage nach Stake`:''}</div>
+   </div>`;
+}
+
 function unstakeGateHtml(gate){
  if(!gate?.available){
    return `<span class="warn">${esc(gate?.error||'Nicht verfügbar.')}</span>`;
@@ -1392,7 +1436,7 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  const code=await rpc('eth_getCode',[contract,'latest']);const implCode=impl?await rpc('eth_getCode',[impl,'latest']):'0x';const byte=[...plausibleDurationConstants(code).map(x=>({...x,target:contract})),...plausibleDurationConstants(implCode).map(x=>({...x,target:impl}))];const byteRows=byte.length?`<p class="muted">Wichtig: PUSH-Werte sind nur Diagnose. Sie sind vollständig vom Verdict ausgeschlossen und können niemals eine Vertragsdauer beweisen.</p><table><thead><tr><th>Contract</th><th>Typ</th><th>Wert</th><th>Interpretation</th><th>Hex</th></tr></thead><tbody>${byte.map(x=>`<tr><td class="mono">${esc(x.target)}</td><td>${esc(x.kind)}</td><td>${esc(x.value.toString())}</td><td>${x.kind==='possible-day-count'?`${esc(fmtDays(x.days))} möglich`:`${x.seconds.toLocaleString('de-CH')} s = ${esc(fmtDays(x.days))}`}</td><td class="mono">${esc(x.hex)}</td></tr>`).join('')}</tbody></table>`:'<p class="warn">Keine exakten Ganztage-/Tageszahl-PUSH-Hinweise gefunden.</p>';$('bytecode').innerHTML=`<div class="kv"><div class="k">Proxy-Implementation</div><div class="v mono">${esc(impl||'keine EIP-1967 Implementation erkannt')}</div></div>`+byteRows;
  const targeted=await targetedRoot3Scan(contract,wallet,ctx);
  $('root3').innerHTML=root3Html(targeted);
- log(`Root-3-Strukturscan abgeschlossen: ${targeted.changedAtStake.length} Änderungen am Stake-Block, ${targeted.transitions.length} spätere Übergänge.`,'ok');
+ log(`Technischer Root-3-Storage-Strukturscan abgeschlossen: ${targeted.changedAtStake.length} Änderungen am Stake-Block, ${targeted.transitions.length} spätere Übergänge.`,'ok');
 
  const coreChange=await findFirstRoot3CoreChange(contract,wallet,ctx,targeted);
  let coreTxAnalysis={candidates:[],all:[]};
@@ -1407,6 +1451,7 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
 
  const unstakeGate=await historicalUnstakeGateTest(contract,wallet,ctx,coreChange,coreTxAnalysis);
  $('unstakeGate').innerHTML=unstakeGateHtml(unstakeGate);
+ $('lockSummaryBody').innerHTML=lockSummaryHtml(unstakeGate,ctx,coreChange);
  if(unstakeGate?.boundary?.found){
    log(`Historische Unstake-Call-Grenze: ${fmtDays(unstakeGate.boundary.elapsedDays)} nach Stake · Block ${unstakeGate.boundary.first.blockNum}.`,'ok');
  }else{
@@ -1421,7 +1466,7 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
    selectorLogic={available:false,error:String(e?.message||e),nonFatal:true};
    log(`Selector-Analyse übersprungen: ${String(e?.message||e)}`,'warn');
  }
- $('selectorLogic').innerHTML=selectorLogicHtml(selectorLogic||{available:false,error:'Keine Selector-Analyse verfügbar.'});
+ try{$('selectorLogic').innerHTML=selectorLogicHtml(selectorLogic||{available:false,error:'Keine Selector-Analyse verfügbar.'});}catch(e){$('selectorLogic').innerHTML=`<span class="warn">Selector-Darstellung übersprungen: ${esc(String(e?.message||e))}</span>`;}
  if(selectorLogic?.available)log(`Unstake-Selector ${selectorLogic.selector}: historische Implementation am Stake ${selectorLogic.stake?.implementation||'–'}; am Unstake ${selectorLogic.unstake?.implementation||'–'}.`,'ok');
 
  let historicalDataflowResult;
@@ -1431,7 +1476,7 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
    historicalDataflowResult={available:false,error:String(e?.message||e),nonFatal:true};
    log(`Historische Dataflow-Analyse übersprungen: ${String(e?.message||e)}`,'warn');
  }
- $('historicalDataflow').innerHTML=historicalDataflowHtml(historicalDataflowResult);
+ try{$('historicalDataflow').innerHTML=historicalDataflowHtml(historicalDataflowResult);}catch(e){$('historicalDataflow').innerHTML=`<span class="warn">Dataflow-Darstellung übersprungen: ${esc(String(e?.message||e))}</span>`;}
  if(historicalDataflowResult?.available){
    log(`Historische Stake-Implementation ${historicalDataflowResult.stakeImplementation}: Dispatcher ${historicalDataflowResult.dispatch?`PC ${historicalDataflowResult.dispatch.destPc}`:'nicht gefunden'}, ${historicalDataflowResult.timestampChecks?.length||0} TIMESTAMP-Prüfungen, ${historicalDataflowResult.semanticCandidates?.length||0} lokale Dauer-Kandidaten.`,'ok');
  }else{
@@ -1446,7 +1491,7 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  $('verdict').textContent=vr.text;
  const top=evidence[0]||null;
  const sameTop=evidence.filter(x=>x.score>=90);
- $('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Root-3 Startfeld</div><div class="v">${targeted.startRow?`Offset ${targeted.startRow.offset} · exakt Stake-Timestamp`:'nicht gefunden'}</div><div class="k">367-Tage-Prüfpunkt</div><div class="v">${esc(targeted.referenceDate)} · Block ${esc(targeted.referenceBlock?.blockNum??'–')}</div><div class="k">Erste Positionsauflösung</div><div class="v">${coreChange.found?`${esc(coreChange.date)} · ${esc(fmtDays(coreChange.elapsedDays))}`:'nicht gefunden'}</div><div class="k">Auslösende TX</div><div class="v mono">${coreTxAnalysis.candidates?.[0]?esc(coreTxAnalysis.candidates[0].hash):'–'}</div><div class="k">Automatisch ermittelte Lock-Grenze</div><div class="v">${unstakeGate?.boundary?.found&&unstakeGate.boundary.before?.failureClass==='contract_revert'?`${esc(unstakeGate.boundary.first.date)} · ${esc(fmtDays(unstakeGate.boundary.elapsedDays))}`:'nicht belastbar bestimmt'}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Separat; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;lastDiagnosticExport=jsonSafe({
+ $('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Root-3 Startfeld</div><div class="v">${targeted.startRow?`Offset ${targeted.startRow.offset} · exakt Stake-Timestamp`:'nicht gefunden'}</div><div class="k">Technischer Storage-Vergleich</div><div class="v">${esc(targeted.referenceDate)} · Block ${esc(targeted.referenceBlock?.blockNum??'–')} · nicht für Lock-Ermittlung</div><div class="k">Erste Positionsauflösung</div><div class="v">${coreChange.found?`${esc(coreChange.date)} · ${esc(fmtDays(coreChange.elapsedDays))}`:'nicht gefunden'}</div><div class="k">Auslösende TX</div><div class="v mono">${coreTxAnalysis.candidates?.[0]?esc(coreTxAnalysis.candidates[0].hash):'–'}</div><div class="k">Automatisch ermittelte Mindest-Lockgrenze</div><div class="v">${unstakeGate?.found&&unstakeGate.before?.failureClass==='contract_revert'?`${esc(unstakeGate.after?.date||'–')} · ${esc(fmtDays(unstakeGate.elapsedDays))}`:'nicht belastbar bestimmt'}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Separat; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;lastDiagnosticExport=jsonSafe({
    version:document.querySelector('.header-version')?.textContent?.replace(/^Version:\s*/,'')||'unbekannt',
    wallet,contract,hash,
    ctx:{
