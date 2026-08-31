@@ -11,7 +11,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 .header-version{margin-top:6px;font-size:12px;font-weight:700;opacity:.82}</style>
 </head><body><div class="wrap">
 <h1>🧪 TLN/VOW · isolierter Staking-Duration-Test</h1>
-<div class="header-version">Version: 31.08.2026 04:43:51 CEST</div>
+<div class="header-version">Version: 31.08.2026 12:13:37 CEST</div>
 <p class="muted">Ziel: Vertrags-/Lock-Dauer aus On-chain-Evidenz ermitteln. Keine fest hinterlegte 367-Tage-Regel. Reward-Dauer wird separat behandelt.</p>
 <div class="card grid">
 <label>Wallet<input id="wallet" class="mono" value="0x813D4948e797DA57085cf1b81b96804576E85510"></label>
@@ -26,10 +26,11 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>2 · Stake-Transaktion / Receipt</h2><div id="stake">–</div></div>
 <div class="card"><h2>3 · Storage-Änderungen</h2><div id="storage">–</div></div>
 <div class="card"><h2>4 · Bytecode-Zeitkonstanten</h2><section><h2>4 · Root-3 Tiefenscan</h2><div id="root3">Noch nicht geprüft.</div></section>
+<section><h2>5 · Erste Root-3-Positionsauflösung</h2><div id="coreChange">Noch nicht geprüft.</div></section>
 <div id="bytecode">–</div></div>
 <div class="card"><h2>5 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 04:43:51 CEST</div>
+<div class="muted">Version: 31.08.2026 12:13:37 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -83,6 +84,12 @@ function buildDiagnosticText(data){
    '',
    'ROOT-3-TIEFENSCAN',
    JSON.stringify(data.targeted,null,2),
+   '',
+   'ERSTE ROOT-3-POSITIONSAUFLÖSUNG',
+   JSON.stringify(data.coreChange,null,2),
+   '',
+   'TRANSAKTIONSKANDIDATEN IM ÄNDERUNGSBLOCK',
+   JSON.stringify(data.coreTxAnalysis,null,2),
    '',
    'EVIDENZ-RANGLISTE',
    JSON.stringify(data.evidence,null,2),
@@ -492,7 +499,7 @@ async function targetedRoot3Scan(contract,wallet,ctx){
    byOffset
  };
 }
-function buildStrictEvidence(ctx,targeted){
+function buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis){
  const ev=[];
  if(targeted?.startRow){
    ev.push({
@@ -510,6 +517,15 @@ function buildStrictEvidence(ctx,targeted){
      detail:`root 3: Stake-Timestamp ${fmtDate(ctx.ts)}, future timestamp an offset ${x.offset}: ${fmtDate(x.timestamp)}`
    });
  }
+ if(coreChange?.found){
+   const best=coreTxAnalysis?.candidates?.[0]||null;
+   ev.push({
+     score:96,
+     label:'Erste Auflösung der Wallet-Staking-Position on-chain gefunden',
+     days:coreChange.elapsedDays,
+     detail:`Root-3-Kernfelder ändern sich erstmals in Block ${coreChange.firstChangedBlock} (${coreChange.date}); ${best?`bester TX ${best.hash}, Selector ${best.selector}`:'kein direkter TX-Kandidat'}. Dies belegt die tatsächliche Positionsdauer, aber noch nicht automatisch die vertragliche Mindest-Lockdauer.`
+   });
+ }
  ev.push({
    score:0,
    label:'367-Tage-Referenz (nur Prüfpunkt)',
@@ -521,6 +537,8 @@ function buildStrictEvidence(ctx,targeted){
 function strictVerdict(evidence){
  const proof=evidence.find(x=>x.score>=100&&Number.isFinite(x.days));
  if(proof)return {cls:'ok',text:`Vertragsdauer belastbar ermittelt: ${fmtDays(proof.days)}.`};
+ const exit=evidence.find(x=>x.score>=96&&Number.isFinite(x.days));
+ if(exit)return {cls:'warn',text:`Tatsächliche Positionsauflösung nach ${fmtDays(exit.days)} gefunden; Vertrags-/Lock-Dauer selbst noch nicht belastbar ermittelt.`};
  const start=evidence.find(x=>x.score>=90);
  if(start)return {cls:'warn',text:'Stake-Struktur und Startzeitpunkt belastbar gefunden; Vertrags-/Lock-Dauer noch nicht belastbar ermittelt.'};
  return {cls:'warn',text:'Vertrags-/Lock-Dauer nicht belastbar ermittelt.'};
@@ -539,6 +557,109 @@ function root3Html(targeted){
  }).join('')}</tbody></table>`;
 }
 
+
+function rootCoreSignature(rows){
+ const wanted=[0,1,3], out={};
+ for(const off of wanted){
+   const r=rows.find(x=>x.offset===off);
+   out[off]=r?.value??null;
+ }
+ return out;
+}
+function sameCoreSignature(a,b){
+ return [0,1,3].every(k=>String(a?.[k]??'')===String(b?.[k]??''));
+}
+async function readRoot3CoreAt(contract,wallet,blockNum,stakeTs){
+ const tag=typeof blockNum==='string'?blockNum:'0x'+Number(blockNum).toString(16);
+ const rows=await readRootOffsetsAt(contract,wallet,3,[0,1,3],tag,stakeTs);
+ return {blockNum:typeof blockNum==='number'?blockNum:null,block:tag,rows,signature:rootCoreSignature(rows)};
+}
+async function findFirstRoot3CoreChange(contract,wallet,ctx,targeted){
+ const base={
+   0:targeted.byOffset?.find(r=>r.offset===0)?.stake?.value??null,
+   1:targeted.byOffset?.find(r=>r.offset===1)?.stake?.value??null,
+   3:targeted.byOffset?.find(r=>r.offset===3)?.stake?.value??null
+ };
+ const latestHex=await nodeRealRpcDirect('eth_blockNumber',[]);
+ let lo=ctx.blockNum, hi=Number(BigInt(latestHex));
+ const latest=await readRoot3CoreAt(contract,wallet,'latest',ctx.ts);
+ if(sameCoreSignature(base,latest.signature)){
+   return {found:false,reason:'Kernfelder 0/1/3 sind latest noch unverändert.',base,latest};
+ }
+ log(`Suche erste Änderung der Root-3-Kernfelder zwischen Block ${lo} und ${hi} …`,'ok');
+ while(lo+1<hi){
+   const mid=Math.floor((lo+hi)/2);
+   const state=await readRoot3CoreAt(contract,wallet,mid,ctx.ts);
+   if(sameCoreSignature(base,state.signature)) lo=mid;
+   else hi=mid;
+ }
+ const window=[];
+ for(let b=Math.max(ctx.blockNum,hi-3);b<=hi+3;b++){
+   try{
+     const s=await readRoot3CoreAt(contract,wallet,b,ctx.ts);
+     window.push({blockNum:b,signature:s.signature,sameAsStake:sameCoreSignature(base,s.signature)});
+   }catch(e){window.push({blockNum:b,error:e.message});}
+ }
+ let first=hi;
+ for(const r of window) if(r.sameAsStake===false) first=Math.min(first,r.blockNum);
+ const before=await readRoot3CoreAt(contract,wallet,first-1,ctx.ts);
+ const changed=await readRoot3CoreAt(contract,wallet,first,ctx.ts);
+ const blockObj=await nodeRealRpcDirect('eth_getBlockByNumber',['0x'+first.toString(16),true]);
+ const blockTs=blockObj?.timestamp?Number(BigInt(blockObj.timestamp)):null;
+ return {
+   found:true,base,
+   firstChangedBlock:first,firstChangedBlockHex:'0x'+first.toString(16),
+   timestamp:blockTs,date:blockTs?fmtDate(blockTs):null,
+   elapsedSeconds:blockTs?blockTs-ctx.ts:null,
+   elapsedDays:blockTs?(blockTs-ctx.ts)/86400:null,
+   before,changed,boundaryWindow:window,block:blockObj
+ };
+}
+async function analyzeChangeBlockTransactions(change,contract,wallet){
+ if(!change?.found||!change.block)return {candidates:[],all:[]};
+ const txs=Array.isArray(change.block.transactions)?change.block.transactions:[];
+ const walletLc=wallet.toLowerCase(), contractLc=contract.toLowerCase(), rows=[];
+ for(const tx of txs){
+   if(typeof tx==='string'){rows.push({hash:tx});continue;}
+   const from=String(tx.from||'').toLowerCase(), to=String(tx.to||'').toLowerCase();
+   const input=String(tx.input||'0x'), selector=input.length>=10?input.slice(0,10):input;
+   const directToContract=to===contractLc, fromWallet=from===walletLc;
+   rows.push({
+     hash:tx.hash,from:tx.from||null,to:tx.to||null,selector,
+     directToContract,fromWallet,score:(directToContract?50:0)+(fromWallet?40:0)
+   });
+ }
+ let candidates=rows.filter(r=>r.directToContract||r.fromWallet).sort((a,b)=>b.score-a.score);
+ for(const c of candidates.slice(0,12)){
+   try{
+     const rc=await nodeRealRpcDirect('eth_getTransactionReceipt',[c.hash]);
+     const logs=rc?.logs||[];
+     c.status=rc?.status!=null?Number(BigInt(rc.status)):null;
+     c.logCount=logs.length;
+     c.logsFromStakingContract=logs.filter(l=>String(l.address||'').toLowerCase()===contractLc).length;
+     c.receiptTo=rc?.to||null;c.receiptFrom=rc?.from||null;
+     c.score+=(c.logsFromStakingContract>0?20:0)+(c.status===1?5:0);
+   }catch(e){c.receiptError=e.message;}
+ }
+ candidates.sort((a,b)=>b.score-a.score);
+ return {candidates,all:rows};
+}
+function coreChangeHtml(change,txAnalysis){
+ if(!change?.found)return `<span class="warn">${esc(change?.reason||'Keine Kernfeld-Änderung gefunden.')}</span>`;
+ const before=change.before?.signature||{}, after=change.changed?.signature||{}, top=txAnalysis?.candidates?.[0]||null;
+ return `<div class="grid">
+ <div class="k">Erster geänderter Block</div><div class="v">${esc(change.firstChangedBlock)} · ${esc(change.date||'–')}</div>
+ <div class="k">Dauer seit Stake</div><div class="v"><b>${esc(fmtDays(change.elapsedDays))}</b> (${esc(change.elapsedSeconds)} s)</div>
+ <div class="k">Offset 0</div><div class="v mono">${esc(before[0])} → ${esc(after[0])}</div>
+ <div class="k">Offset 1</div><div class="v mono">${esc(before[1])} → ${esc(after[1])}</div>
+ <div class="k">Offset 3</div><div class="v mono">${esc(before[3])} → ${esc(after[3])}</div>
+ <div class="k">Bester TX-Kandidat</div><div class="v mono">${top?esc(top.hash):'keiner'}</div>
+ <div class="k">Selector</div><div class="v mono">${top?esc(top.selector):'–'}</div>
+ <div class="k">Von Wallet</div><div class="v">${top?.fromWallet?'ja':'nein'}</div>
+ <div class="k">Direkt an Staking-Contract</div><div class="v">${top?.directToContract?'ja':'nein'}</div></div>
+ ${txAnalysis?.candidates?.length?`<table><thead><tr><th>Score</th><th>TX</th><th>From</th><th>To</th><th>Selector</th><th>Logs vom Staking-Contract</th></tr></thead><tbody>${txAnalysis.candidates.map(c=>`<tr><td>${c.score}</td><td class="mono">${esc(c.hash)}</td><td class="mono">${esc(c.from||'–')}</td><td class="mono">${esc(c.to||'–')}</td><td class="mono">${esc(c.selector||'–')}</td><td>${esc(c.logsFromStakingContract??'–')}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">Keine direkten Kandidaten im Änderungsblock.</p>'}`;
+}
+
 function rankEvidence({reads,storage,archiveStorage,bytecode,receipt,stakeTs}){const ev=[];for(const r of reads){if(r.duration)ev.push({score:100,label:`Direkter Read ${r.sig}`,days:r.duration.days,detail:`${r.value} Sekunden`})}
  const tsReads=reads.filter(r=>r.kind.includes('timestamp')&&r.value&&plausibleTs(Number(r.value),stakeTs));for(const a of tsReads){for(const b of tsReads){if(a===b)continue;const diff=Math.abs(Number(a.value)-Number(b.value));const d=durationFromSeconds(diff);if(d&&d.days>=1)ev.push({score:95,label:`Read-Timestamp-Differenz ${a.sig} ↔ ${b.sig}`,days:d.days,detail:`${diff} Sekunden`})}}
  for(const x of storage.changes||[]){if(x.diffDuration&&x.diffDuration.days>=1)ev.push({score:90,label:'Storage-Differenz im Stake-Trace',days:x.diffDuration.days,detail:`Slot ${x.slot}`})}
@@ -548,7 +669,7 @@ function rankEvidence({reads,storage,archiveStorage,bytecode,receipt,stakeTs}){c
  const ded=new Map();for(const x of ev.sort((a,b)=>b.score-a.score)){const k=`${x.label}|${x.days}|${x.detail}`;if(!ded.has(k))ded.set(k,x)}return [...ded.values()];
 }
 function fmtDays(d){return Number.isInteger(d)?`${d} Tage`:`${d.toFixed(4)} Tage`}
-async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true;$('log').textContent='';$('verdict').textContent='Prüfung läuft …';['providerTest','reads','stake','storage','root3','bytecode','evidence'].forEach(id=>$(id).innerHTML='Wird geladen …');const wallet=norm($('wallet').value.trim()),contract=norm($('contract').value.trim());if(!ethers.isAddress(wallet)||!ethers.isAddress(contract))throw new Error('Wallet oder Contract ungültig.');await initProviders();let hash=$('stakeTx').value.trim();if(!hash)hash=await discoverStakeTx(wallet,contract);$('stakeTx').value=hash;const ctx=await getStakeContext(hash);log(`Stake-TX ${hash} · Block ${ctx.blockNum} · ${fmtDate(ctx.ts)}`,'ok');
+async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true;$('log').textContent='';$('verdict').textContent='Prüfung läuft …';['providerTest','reads','stake','storage','root3','coreChange','bytecode','evidence'].forEach(id=>$(id).innerHTML='Wird geladen …');const wallet=norm($('wallet').value.trim()),contract=norm($('contract').value.trim());if(!ethers.isAddress(wallet)||!ethers.isAddress(contract))throw new Error('Wallet oder Contract ungültig.');await initProviders();let hash=$('stakeTx').value.trim();if(!hash)hash=await discoverStakeTx(wallet,contract);$('stakeTx').value=hash;const ctx=await getStakeContext(hash);log(`Stake-TX ${hash} · Block ${ctx.blockNum} · ${fmtDate(ctx.ts)}`,'ok');
  const nrTest=await nodeRealArchiveSelfTest(contract,ctx.blockNum);
  $('providerTest').innerHTML=`<p class="${nrTest.ok?'ok':'bad'}"><b>${nrTest.ok?'NodeReal Direct beantwortet historische eth_getStorageAt-Reads.':'NodeReal Direct Archive-State nicht bestätigt.'}</b></p><table><thead><tr><th>Probe</th><th>Block</th><th>Status</th><th>Wert / Fehler</th></tr></thead><tbody>${nrTest.rows.map(r=>`<tr><td>${esc(r.label)}</td><td class="mono">${esc(r.block)}</td><td>${r.ok?'<span class="ok">OK</span>':'<span class="bad">FEHLER</span>'}</td><td class="mono">${esc(r.ok?r.value:r.error)}</td></tr>`).join('')}</tbody></table>`;
  if(nrTest.ok)log('NodeReal Direct Archive-State-Selbsttest erfolgreich.','ok');
@@ -571,7 +692,19 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  $('root3').innerHTML=root3Html(targeted);
  log(`Root-3-Tiefenscan abgeschlossen: ${targeted.changedAtStake.length} Änderungen am Stake-Block, ${targeted.transitions.length} spätere Übergänge.`,'ok');
 
- const evidence=buildStrictEvidence(ctx,targeted);
+ const coreChange=await findFirstRoot3CoreChange(contract,wallet,ctx,targeted);
+ let coreTxAnalysis={candidates:[],all:[]};
+ if(coreChange.found){
+   log(`Erste Änderung der Root-3-Kernfelder: Block ${coreChange.firstChangedBlock} · ${coreChange.date} · ${fmtDays(coreChange.elapsedDays)} nach Stake.`,'ok');
+   coreTxAnalysis=await analyzeChangeBlockTransactions(coreChange,contract,wallet);
+   const best=coreTxAnalysis.candidates?.[0];
+   if(best)log(`Bester TX-Kandidat für Positionsauflösung: ${best.hash} · Selector ${best.selector} · Score ${best.score}.`,'ok');
+   else log('Im Änderungsblock wurde kein direkter Wallet-/Staking-Contract-TX-Kandidat gefunden.','warn');
+ }else log(coreChange.reason||'Keine Root-3-Kernfeld-Änderung gefunden.','warn');
+ $('coreChange').innerHTML=coreChangeHtml(coreChange,coreTxAnalysis);
+
+
+ const evidence=buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis);
  $('evidence').innerHTML=evidence.length?`<table><thead><tr><th>Rang</th><th>Evidenz</th><th>Dauer</th><th>Detail</th></tr></thead><tbody>${evidence.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.label)} <span class="muted">(${x.score})</span></td><td><b>${Number.isFinite(x.days)?esc(fmtDays(x.days)):'–'}</b></td><td class="mono">${esc(x.detail)}</td></tr>`).join('')}</tbody></table>`:'<span class="warn">Keine belastbare Dauer-Evidenz gefunden.</span>';
 
  const vr=strictVerdict(evidence);
@@ -579,7 +712,7 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  $('verdict').textContent=vr.text;
  const top=evidence[0]||null;
  const sameTop=evidence.filter(x=>x.score>=90);
- $('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Root-3 Startfeld</div><div class="v">${targeted.startRow?`Offset ${targeted.startRow.offset} · exakt Stake-Timestamp`:'nicht gefunden'}</div><div class="k">367-Tage-Prüfpunkt</div><div class="v">${esc(targeted.targetDate)} · Block ${esc(targeted.targetBlock?.blockNum??'–')}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Separat; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;lastDiagnosticExport=jsonSafe({
+ $('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Root-3 Startfeld</div><div class="v">${targeted.startRow?`Offset ${targeted.startRow.offset} · exakt Stake-Timestamp`:'nicht gefunden'}</div><div class="k">367-Tage-Prüfpunkt</div><div class="v">${esc(targeted.targetDate)} · Block ${esc(targeted.targetBlock?.blockNum??'–')}</div><div class="k">Erste Positionsauflösung</div><div class="v">${coreChange.found?`${esc(coreChange.date)} · ${esc(fmtDays(coreChange.elapsedDays))}`:'nicht gefunden'}</div><div class="k">Auslösende TX</div><div class="v mono">${coreTxAnalysis.candidates?.[0]?esc(coreTxAnalysis.candidates[0].hash):'–'}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Separat; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;lastDiagnosticExport=jsonSafe({
    version:document.querySelector('.header-version')?.textContent?.replace(/^Version:\s*/,'')||'unbekannt',
    wallet,contract,hash,
    ctx:{
@@ -595,6 +728,8 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
    storage,
    archiveStorage,
    targeted,
+   coreChange,
+   coreTxAnalysis,
    evidence,
    verdict:$('verdict').textContent
  });
