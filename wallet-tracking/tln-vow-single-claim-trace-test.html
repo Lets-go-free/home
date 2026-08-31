@@ -25,7 +25,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 23:43:50 CEST</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 23:48:42 CEST</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -66,7 +66,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
       </details>
       <div class="row" style="margin-top:10px">
         <label class="small muted">Startblock <input id="refStartBlock" value="0" style="min-width:160px;max-width:220px" inputmode="numeric"></label>
-        <span class="small muted">Primär wird die indexierte ERC-20-Transferhistorie des Wallets geladen und lokal auf Zero-Address-Mints der drei Referral-Token-Contracts gefiltert. Der bisherige RPC-Scan ab Block 0 ist deaktiviert.</span>
+        <span class="small muted">Primär wird Alchemy AssetTransfers sparsam verwendet: Zero Address → Wallet und TLN/TLN+/TLNX werden serverseitig in einer gemeinsamen indexierten Abfrage gefiltert. Weitere Seiten werden nur bei mehr als 1000 Treffern geladen. Der RPC-Scan ab Block 0 bleibt deaktiviert.</span>
       </div>
       <div id="walletStatus" class="muted" style="margin-top:10px">Bereit.</div>
       <div class="progress"><div id="walletProgress"></div></div>
@@ -82,6 +82,8 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N";
 const PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36";
+const ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
+const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent(ALCHEMY_API_KEY);
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -99,6 +101,24 @@ async function rpcOn(url,method,params=[]){
   const j=await r.json().catch(()=>({}));
   if(!r.ok||j.error)throw new Error(j?.error?.message||`HTTP ${r.status}`);
   return j.result;
+}
+
+async function alchemyRpc(method,params=[]){
+  const c=new AbortController(),tm=setTimeout(()=>c.abort(),30000);
+  try{
+    const r=await fetch(ALCHEMY_BSC_URL,{
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method,params}),
+      signal:c.signal
+    });
+    const raw=await r.text();
+    let j=null;
+    try{j=raw?JSON.parse(raw):null}catch{}
+    if(!r.ok)throw new Error(`Alchemy HTTP ${r.status}${j?.error?.message?`: ${j.error.message}`:''}`);
+    if(j?.error)throw new Error(`${j.error.message||'Alchemy RPC-Fehler'}${j.error.code!==undefined?` (${j.error.code})`:''}`);
+    return j?.result??null;
+  }finally{clearTimeout(tm)}
 }
 async function rpc(method,params=[]){
   const ordered=uniq([rpcUrl,...rpcCandidates]);
@@ -260,83 +280,55 @@ const referralSessionCache={
 function referralCacheKey(wallet,startBlock,tokens){
   return `${norm(wallet)}|${startBlock.toString()}|${tokens.map(t=>t.address).sort().join(',')}`;
 }
-async function routescanReferralMintHashes(wallet,startBlock,tokens){
+async function alchemyReferralMintHashes(wallet,startBlock,tokens){
   const key=referralCacheKey(wallet,startBlock,tokens);
   if(referralSessionCache.routescan.has(key)){
-    walletLog('Routescan: Session-Cache verwendet.');
+    walletLog('Referral-Indexer: Session-Cache verwendet; keine neue Alchemy-Abfrage.');
     return referralSessionCache.routescan.get(key);
   }
 
-  // Address-indexierter Routescan/Etherscan-kompatibler ERC-20-Transferweg.
-  // Zusätzlich direkt auf den jeweiligen Reward-Token-Contract eingeschränkt.
-  // Kein eth_getLogs-Blockscan über die BSC-Historie.
+  // Request-sparsam: ALLE drei Reward-Token in EINER indexierten Query.
+  // Server-seitig bereits auf Zero Address -> Zielwallet + Tokencontracts eingeschränkt.
   const hashes=new Set();
-  let seen=0;
+  let pageKey=null,pages=0,seen=0;
 
-  for(const token of tokens){
-    let page=1;
-    let tokenSeen=0;
-    let tokenMints=0;
+  do{
+    const p={
+      fromBlock:hexBlock(BigInt(startBlock)),
+      toBlock:'latest',
+      fromAddress:ZERO,
+      toAddress:wallet,
+      contractAddresses:tokens.map(t=>t.address),
+      category:['erc20'],
+      excludeZeroValue:false,
+      withMetadata:false,
+      maxCount:'0x3e8',
+      order:'asc'
+    };
+    if(pageKey)p.pageKey=pageKey;
 
-    walletLog(`Routescan Indexer ${token.symbol}: Wallet + Token-Contract.`);
-    while(true){
-      const base='https://api.routescan.io/v2/network/mainnet/evm/56/etherscan/api';
-      const params=new URLSearchParams({
-        module:'account',
-        action:'tokentx',
-        address:wallet,
-        contractaddress:token.address,
-        startblock:startBlock.toString(),
-        endblock:'999999999',
-        page:String(page),
-        offset:'100',
-        sort:'asc'
-      });
-      const r=await fetch(`${base}?${params.toString()}`,{headers:{accept:'application/json'}});
-      const body=await r.text();
+    const r=await alchemyRpc('alchemy_getAssetTransfers',[p]);
+    const items=Array.isArray(r?.transfers)?r.transfers:[];
+    pages++;
+    seen+=items.length;
 
-      if(!r.ok)throw new Error(`Routescan ${token.symbol} HTTP ${r.status}: ${body.slice(0,240)}`);
-
-      let j;
-      try{j=JSON.parse(body)}catch{
-        throw new Error(`Routescan ${token.symbol}: ungültige JSON-Antwort`);
-      }
-
-      const items=Array.isArray(j?.result)?j.result:[];
-      const msg=String(j?.message||'')+' '+String(Array.isArray(j?.result)?'':(j?.result||''));
-      const noTx=String(j?.status)==='0' && /no transactions found|no records found/i.test(msg);
-
-      if(String(j?.status)==='0' && !noTx && !Array.isArray(j?.result)){
-        throw new Error(`Routescan ${token.symbol}: ${j?.message||'Indexer-Fehler'} · ${String(j?.result||'').slice(0,240)}`);
-      }
-
-      for(const x of items){
-        tokenSeen++;
-        seen++;
-        if(norm(x.to)!==norm(wallet))continue;
-        if(norm(x.from)!==ZERO)continue;
-        if(norm(x.contractAddress)!==norm(token.address))continue;
-        const block=BigInt(x.blockNumber||0);
-        if(block<BigInt(startBlock))continue;
-        if(x.hash){
-          hashes.add(norm(x.hash));
-          tokenMints++;
-        }
-      }
-
-      walletLog(`Routescan ${token.symbol} Seite ${page}: ${items.length} Transfer(s), bisher ${tokenMints} passende Zero-Mints.`);
-      if(noTx || items.length<100)break;
-
-      page++;
-      if(page>500)throw new Error(`Routescan ${token.symbol}: Sicherheitslimit von 500 Seiten erreicht.`);
+    for(const x of items){
+      if(norm(x.from)!==ZERO)continue;
+      if(norm(x.to)!==norm(wallet))continue;
+      const rawContract=norm(x.rawContract?.address||x.assetAddress||x.contractAddress||'');
+      if(rawContract && !tokens.some(t=>t.address===rawContract))continue;
+      if(x.hash)hashes.add(norm(x.hash));
     }
 
-    walletLog(`Routescan ${token.symbol} fertig: ${tokenSeen} indexierte Transfer(s), ${tokenMints} passende Mint(s).`);
-  }
+    walletLog(`Alchemy Referral-Indexer Seite ${pages}: ${items.length} bereits serverseitig gefilterte Mint-Transfer(s), ${hashes.size} relevante Tx(s).`);
+    pageKey=r?.pageKey||null;
+
+    if(pages>100)throw new Error('Alchemy Sicherheitslimit von 100 Seiten erreicht.');
+  }while(pageKey);
 
   const result=[...hashes];
   referralSessionCache.routescan.set(key,result);
-  walletLog(`Routescan fertig: ${seen} token-gefilterte Wallet-Transfers geprüft, ${result.length} relevante Mint-Tx(s).`);
+  walletLog(`Alchemy Referral-Indexer fertig: ${pages} Request-Seite(n), ${seen} Mint-Transfer(s), ${result.length} relevante Tx(s).`);
   return result;
 }
 async function tokenScopedMintHashesRpcFallback(wallet,startBlock,tokens){
@@ -361,10 +353,10 @@ async function tokenScopedMintHashesRpcFallback(wallet,startBlock,tokens){
 }
 async function tokenScopedMintHashes(wallet,startBlock,tokens){
   try{
-    $('walletStatus').textContent='Lese token-gefilterte ERC-20-Transferhistorie aus Routescan…';
-    return await routescanReferralMintHashes(wallet,startBlock,tokens);
+    $('walletStatus').textContent='Lese Referral-Mints über sparsamen Alchemy-Transferindex…';
+    return await alchemyReferralMintHashes(wallet,startBlock,tokens);
   }catch(e){
-    walletLog(`Routescan nicht verfügbar: ${e.message}`);
+    walletLog(`Alchemy Referral-Indexer nicht verfügbar: ${e.message}`);
     $('walletStatus').textContent='Indexer nicht verfügbar; begrenzter RPC-Fallback…';
     return await tokenScopedMintHashesRpcFallback(wallet,startBlock,tokens);
   }
@@ -436,7 +428,7 @@ async function scanReferralWallet(){
     renderReferralTokenConfig(referralTokens);
     if(!referralTokens.length)throw new Error('Keiner der Referral-Reward-Token TLN / TLN+ / TLNX hat eine BSC-Contract-Adresse in predefined_tokens.');
     walletLog(`Referral-Token: ${referralTokens.map(x=>x.symbol+'='+x.address).join(', ')}`);
-    const mode='Routescan tokentx Indexer · Wallet + Token-Contract → Zero-Address-Mints';
+    const mode='Alchemy AssetTransfers · Zero Address → Wallet · TLN/TLN+/TLNX in einer Query';
     const hashes=await tokenScopedMintHashes(wallet,start,referralTokens);
     walletLog(`Gezielter Mint-Scan: ${hashes.length} relevante Tx(s).`);
 
@@ -661,7 +653,6 @@ document.querySelectorAll('.tabbtn').forEach(b=>b.addEventListener('click',()=>{
 $('scanWallet').addEventListener('click',scanReferralWallet);
 referralRewardTokenContracts().then(renderReferralTokenConfig).catch(()=>{});
 
-window.addEventListener('load',()=>setTimeout(analyze,100));
 </script>
 </body>
 </html>
