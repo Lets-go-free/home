@@ -11,7 +11,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 .header-version{margin-top:6px;font-size:12px;font-weight:700;opacity:.82}</style>
 </head><body><div class="wrap">
 <h1>🧪 TLN/VOW · isolierter Staking-Duration-Test</h1>
-<div class="header-version">Version: 31.08.2026 12:13:37 CEST</div>
+<div class="header-version">Version: 31.08.2026 12:22:40 CEST</div>
 <p class="muted">Ziel: Vertrags-/Lock-Dauer aus On-chain-Evidenz ermitteln. Keine fest hinterlegte 367-Tage-Regel. Reward-Dauer wird separat behandelt.</p>
 <div class="card grid">
 <label>Wallet<input id="wallet" class="mono" value="0x813D4948e797DA57085cf1b81b96804576E85510"></label>
@@ -25,12 +25,14 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>1 · Direkte Contract-Reads</h2><div id="reads">–</div></div>
 <div class="card"><h2>2 · Stake-Transaktion / Receipt</h2><div id="stake">–</div></div>
 <div class="card"><h2>3 · Storage-Änderungen</h2><div id="storage">–</div></div>
-<div class="card"><h2>4 · Bytecode-Zeitkonstanten</h2><section><h2>4 · Root-3 Tiefenscan</h2><div id="root3">Noch nicht geprüft.</div></section>
-<section><h2>5 · Erste Root-3-Positionsauflösung</h2><div id="coreChange">Noch nicht geprüft.</div></section>
-<div id="bytecode">–</div></div>
-<div class="card"><h2>5 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
+<div class="card"><h2>4 · Root-3 Tiefenscan</h2><div id="root3">Noch nicht geprüft.</div></div>
+<div class="card"><h2>5 · Erste Root-3-Positionsauflösung</h2><div id="coreChange">Noch nicht geprüft.</div></div>
+<div class="card"><h2>6 · Historischer Unstake-Call-Grenztest</h2><div id="unstakeGate">Noch nicht geprüft.</div></div>
+<div class="card"><h2>7 · Unstake-Selector / Bytecode-Kontext</h2><div id="selectorLogic">Noch nicht geprüft.</div></div>
+<div class="card"><h2>8 · Bytecode-Zeitkonstanten (nur Diagnose)</h2><div id="bytecode">–</div></div>
+<div class="card"><h2>9 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 12:13:37 CEST</div>
+<div class="muted">Version: 31.08.2026 12:22:40 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -90,6 +92,12 @@ function buildDiagnosticText(data){
    '',
    'TRANSAKTIONSKANDIDATEN IM ÄNDERUNGSBLOCK',
    JSON.stringify(data.coreTxAnalysis,null,2),
+   '',
+   'HISTORISCHER UNSTAKE-CALL-GRENZTEST',
+   JSON.stringify(data.unstakeGate,null,2),
+   '',
+   'UNSTAKE-SELECTOR-BYTECODE-KONTEXT',
+   JSON.stringify(data.selectorLogic,null,2),
    '',
    'EVIDENZ-RANGLISTE',
    JSON.stringify(data.evidence,null,2),
@@ -499,7 +507,7 @@ async function targetedRoot3Scan(contract,wallet,ctx){
    byOffset
  };
 }
-function buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis){
+function buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis,unstakeGate,selectorLogic){
  const ev=[];
  if(targeted?.startRow){
    ev.push({
@@ -526,6 +534,18 @@ function buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis){
      detail:`Root-3-Kernfelder ändern sich erstmals in Block ${coreChange.firstChangedBlock} (${coreChange.date}); ${best?`bester TX ${best.hash}, Selector ${best.selector}`:'kein direkter TX-Kandidat'}. Dies belegt die tatsächliche Positionsdauer, aber noch nicht automatisch die vertragliche Mindest-Lockdauer.`
    });
  }
+ const gate=unstakeGate?.boundary;
+ if(gate?.found){
+   const priorMsg=String(gate.before?.revert?.message||gate.before?.error?.message||'');
+   const lockReason=/lock|locked|time|period|duration|stake|early|matur|wait/i.test(priorMsg);
+   const score=gate.implementationStable&&lockReason?100:(gate.implementationStable?99:97);
+   ev.push({
+     score,
+     label:lockReason?'Historische Unstake-Call-Grenze mit Lock-Revert':'Historische Unstake-Call-Grenze',
+     days:gate.elapsedDays,
+     detail:`Exakter historischer eth_call derselben Unstake-TX: Block ${gate.before.blockNum} FAIL (${gate.before.date}) → Block ${gate.first.blockNum} OK (${gate.first.date}); ${fmtDays(gate.elapsedDays)} nach Stake. Implementation über Grenze ${gate.implementationStable?'unverändert':'geändert'}.${priorMsg?` Revert zuvor: ${priorMsg}`:''}`
+   });
+ }
  ev.push({
    score:0,
    label:'367-Tage-Referenz (nur Prüfpunkt)',
@@ -536,7 +556,9 @@ function buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis){
 }
 function strictVerdict(evidence){
  const proof=evidence.find(x=>x.score>=100&&Number.isFinite(x.days));
- if(proof)return {cls:'ok',text:`Vertragsdauer belastbar ermittelt: ${fmtDays(proof.days)}.`};
+ if(proof)return {cls:'ok',text:`Vertrags-/Lock-Grenze belastbar ermittelt: ${fmtDays(proof.days)}.`};
+ const gate=evidence.find(x=>x.score===99&&Number.isFinite(x.days));
+ if(gate)return {cls:'warn',text:`Historische Unstake-Freigabegrenze nach ${fmtDays(gate.days)} stark belegt; Revert-Grund bestätigt die Lock-Regel noch nicht ausdrücklich.`};
  const exit=evidence.find(x=>x.score>=96&&Number.isFinite(x.days));
  if(exit)return {cls:'warn',text:`Tatsächliche Positionsauflösung nach ${fmtDays(exit.days)} gefunden; Vertrags-/Lock-Dauer selbst noch nicht belastbar ermittelt.`};
  const start=evidence.find(x=>x.score>=90);
@@ -660,6 +682,261 @@ function coreChangeHtml(change,txAnalysis){
  ${txAnalysis?.candidates?.length?`<table><thead><tr><th>Score</th><th>TX</th><th>From</th><th>To</th><th>Selector</th><th>Logs vom Staking-Contract</th></tr></thead><tbody>${txAnalysis.candidates.map(c=>`<tr><td>${c.score}</td><td class="mono">${esc(c.hash)}</td><td class="mono">${esc(c.from||'–')}</td><td class="mono">${esc(c.to||'–')}</td><td class="mono">${esc(c.selector||'–')}</td><td>${esc(c.logsFromStakingContract??'–')}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">Keine direkten Kandidaten im Änderungsblock.</p>'}`;
 }
 
+
+const EIP1967_IMPL_SLOT='0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
+
+function addressFromStorageWord(raw){
+ const h=String(raw||'0x').replace(/^0x/,'').padStart(64,'0');
+ const a='0x'+h.slice(-40);
+ return /^0x0{40}$/.test(a)?null:a.toLowerCase();
+}
+async function eip1967ImplAt(contract,blockTag){
+ try{
+   const raw=await nodeRealRpcDirect('eth_getStorageAt',[contract,EIP1967_IMPL_SLOT,blockTag]);
+   return addressFromStorageWord(raw);
+ }catch{return null}
+}
+function decodeRevertData(data){
+ const raw=typeof data==='string'?data:(data?.data||data?.result||'');
+ if(!raw||typeof raw!=='string')return null;
+ try{
+   if(raw.startsWith('0x08c379a0')){
+     const payload='0x'+raw.slice(10);
+     const [msg]=ethers.AbiCoder.defaultAbiCoder().decode(['string'],payload);
+     return {type:'Error(string)',message:String(msg)};
+   }
+   if(raw.startsWith('0x4e487b71')){
+     const payload='0x'+raw.slice(10);
+     const [code]=ethers.AbiCoder.defaultAbiCoder().decode(['uint256'],payload);
+     return {type:'Panic(uint256)',code:code.toString()};
+   }
+ }catch{}
+ return {type:'raw',data:raw.slice(0,514)};
+}
+async function nodeRealEthCallDetailed(callObj,blockTag){
+ const c=new AbortController(),tm=setTimeout(()=>c.abort(),30000);
+ try{
+   const r=await fetch(NODEREAL_BSC_URL,{
+     method:'POST',
+     headers:{'content-type':'application/json'},
+     body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method:'eth_call',params:[callObj,blockTag]}),
+     signal:c.signal
+   });
+   const raw=await r.text();
+   let j=null;
+   try{j=raw?JSON.parse(raw):null}catch{}
+   if(!r.ok)return {ok:false,http:r.status,error:{message:j?.error?.message||`HTTP ${r.status}`,data:j?.error?.data||null}};
+   if(j?.error)return {ok:false,error:{code:j.error.code,message:j.error.message||'',data:j.error.data||null}};
+   return {ok:true,result:j?.result??'0x'};
+ }catch(e){
+   return {ok:false,error:{message:e.message||String(e)}};
+ }finally{clearTimeout(tm)}
+}
+async function unstakeCallProbe(tx,contract,ctx,blockNum){
+ const blockTag='0x'+Number(blockNum).toString(16);
+ const block=await nodeRealRpcDirect('eth_getBlockByNumber',[blockTag,false]);
+ const blockTs=Number(BigInt(block.timestamp));
+ const impl=await eip1967ImplAt(contract,blockTag);
+ const callObj={
+   from:tx.from,
+   to:tx.to,
+   data:tx.input||'0x',
+   value:tx.value||'0x0',
+   gas:'0x7a1200'
+ };
+ const call=await nodeRealEthCallDetailed(callObj,blockTag);
+ const revert=call.ok?null:decodeRevertData(call.error?.data);
+ return {
+   blockNum:Number(blockNum),
+   block:blockTag,
+   timestamp:blockTs,
+   date:fmtDate(blockTs),
+   elapsedSeconds:blockTs-ctx.ts,
+   elapsedDays:(blockTs-ctx.ts)/86400,
+   impl,
+   ok:call.ok,
+   result:call.ok?call.result:null,
+   error:call.ok?null:call.error,
+   revert
+ };
+}
+async function blockNearElapsedDays(ctx,days){
+ return await findBlockNearTimestamp(ctx.ts+Number(days)*86400);
+}
+async function historicalUnstakeGateTest(contract,wallet,ctx,coreChange,coreTxAnalysis){
+ const candidate=coreTxAnalysis?.candidates?.[0]||null;
+ if(!candidate?.hash)return {available:false,error:'Kein Unstake-TX-Kandidat vorhanden.'};
+
+ const tx=await nodeRealRpcDirect('eth_getTransactionByHash',[candidate.hash]);
+ if(!tx)return {available:false,error:'Unstake-TX nicht ladbar.',hash:candidate.hash};
+
+ const actualBlock=coreChange.firstChangedBlock;
+ const checkpointDays=[360,365,366,367,368,369,375,400,430,440];
+ const checkpoints=[];
+ log('Historischer Unstake-Grenztest: prüfe ausgewählte Tage per eth_call …','ok');
+
+ for(const days of checkpointDays){
+   const near=await blockNearElapsedDays(ctx,days);
+   if(!near||near.blockNum>=actualBlock)continue;
+   const p=await unstakeCallProbe(tx,contract,ctx,near.blockNum);
+   p.requestedDays=days;
+   checkpoints.push(p);
+ }
+
+ // The block immediately before the real unstake must still contain the position.
+ const preActual=await unstakeCallProbe(tx,contract,ctx,actualBlock-1);
+ checkpoints.push({...preActual,requestedDays:'actual-1 block'});
+
+ const successful=checkpoints.filter(x=>x.ok).sort((a,b)=>a.blockNum-b.blockNum);
+ const failed=checkpoints.filter(x=>!x.ok).sort((a,b)=>a.blockNum-b.blockNum);
+
+ let boundary=null;
+ const firstSuccess=successful[0]||null;
+ const lastFailBeforeSuccess=firstSuccess
+   ? failed.filter(x=>x.blockNum<firstSuccess.blockNum).sort((a,b)=>b.blockNum-a.blockNum)[0]
+   : null;
+
+ if(firstSuccess&&lastFailBeforeSuccess){
+   let lo=lastFailBeforeSuccess.blockNum, hi=firstSuccess.blockNum;
+   log(`Unstake-Grenztest: binäre Suche zwischen Block ${lo} (FAIL) und ${hi} (OK) …`,'ok');
+   let guard=0;
+   while(lo+1<hi&&guard++<36){
+     const mid=Math.floor((lo+hi)/2);
+     const p=await unstakeCallProbe(tx,contract,ctx,mid);
+     if(p.ok)hi=mid; else lo=mid;
+   }
+   const before=await unstakeCallProbe(tx,contract,ctx,hi-1);
+   const first=await unstakeCallProbe(tx,contract,ctx,hi);
+   boundary={
+     found:!before.ok&&first.ok,
+     before,
+     first,
+     elapsedDays:first.elapsedDays,
+     elapsedSeconds:first.elapsedSeconds,
+     implementationStable:before.impl&&first.impl&&before.impl===first.impl,
+     sameImplementationAsPreActual:first.impl&&preActual.impl&&first.impl===preActual.impl
+   };
+ }
+
+ return {
+   available:true,
+   tx:{
+     hash:tx.hash,
+     from:tx.from,
+     to:tx.to,
+     input:tx.input,
+     selector:String(tx.input||'').slice(0,10),
+     value:tx.value,
+     blockNumber:Number(BigInt(tx.blockNumber))
+   },
+   checkpoints,
+   preActual,
+   boundary
+ };
+}
+function unstakeGateHtml(gate){
+ if(!gate?.available)return `<span class="warn">${esc(gate?.error||'Nicht verfügbar.')}</span>`;
+ const b=gate.boundary;
+ const rows=gate.checkpoints||[];
+ return `
+ <div class="kv">
+   <div class="k">Unstake-TX</div><div class="v mono">${esc(gate.tx?.hash||'–')}</div>
+   <div class="k">Selector</div><div class="v mono">${esc(gate.tx?.selector||'–')}</div>
+   <div class="k">Historischer eth_call</div><div class="v">${b?.found?'<span class="ok"><b>FAIL→OK-Grenze gefunden</b></span>':'<span class="warn">keine belastbare FAIL→OK-Grenze</span>'}</div>
+   <div class="k">Erster erfolgreicher Block</div><div class="v">${b?.found?`${esc(b.first.blockNum)} · ${esc(b.first.date)}`:'–'}</div>
+   <div class="k">Callability ab Stake</div><div class="v">${b?.found?`<b>${esc(fmtDays(b.elapsedDays))}</b> · ${esc(b.elapsedSeconds)} s`:'–'}</div>
+   <div class="k">Implementation über Grenze</div><div class="v">${b?.found?(b.implementationStable?'<span class="ok">gleich</span>':'<span class="warn">geändert</span>'):'–'}</div>
+ </div>
+ <table><thead><tr><th>Prüfpunkt</th><th>Block / Zeit</th><th>Dauer</th><th>eth_call</th><th>Implementation</th><th>Revert</th></tr></thead><tbody>
+ ${rows.sort((a,b)=>a.blockNum-b.blockNum).map(r=>`<tr>
+   <td>${esc(r.requestedDays)}</td>
+   <td>${esc(r.blockNum)}<br><span class="muted">${esc(r.date)}</span></td>
+   <td>${esc(fmtDays(r.elapsedDays))}</td>
+   <td>${r.ok?'<span class="ok"><b>OK</b></span>':'<span class="bad"><b>FAIL</b></span>'}</td>
+   <td class="mono">${esc(r.impl||'–')}</td>
+   <td class="mono">${esc(r.revert?.message||r.error?.message||'–')}</td>
+ </tr>`).join('')}</tbody></table>`;
+}
+function disassembleEvm(code){
+ const h=String(code||'').replace(/^0x/,'');
+ const out=[];
+ let pc=0,i=0;
+ const names={
+   0x00:'STOP',0x01:'ADD',0x02:'MUL',0x03:'SUB',0x04:'DIV',0x10:'LT',0x11:'GT',0x12:'SLT',0x13:'SGT',
+   0x14:'EQ',0x15:'ISZERO',0x16:'AND',0x17:'OR',0x18:'XOR',0x19:'NOT',0x20:'SHA3',
+   0x30:'ADDRESS',0x31:'BALANCE',0x33:'CALLER',0x34:'CALLVALUE',0x35:'CALLDATALOAD',0x36:'CALLDATASIZE',
+   0x37:'CALLDATACOPY',0x3b:'EXTCODESIZE',0x3d:'RETURNDATASIZE',0x3e:'RETURNDATACOPY',
+   0x40:'BLOCKHASH',0x41:'COINBASE',0x42:'TIMESTAMP',0x43:'NUMBER',0x44:'PREVRANDAO',0x45:'GASLIMIT',
+   0x50:'POP',0x51:'MLOAD',0x52:'MSTORE',0x53:'MSTORE8',0x54:'SLOAD',0x55:'SSTORE',
+   0x56:'JUMP',0x57:'JUMPI',0x58:'PC',0x59:'MSIZE',0x5b:'JUMPDEST',
+   0xf1:'CALL',0xf3:'RETURN',0xf4:'DELEGATECALL',0xfd:'REVERT',0xfe:'INVALID',0xff:'SELFDESTRUCT'
+ };
+ while(i<h.length){
+   const op=parseInt(h.slice(i,i+2),16), at=pc;
+   i+=2;pc+=1;
+   if(op>=0x60&&op<=0x7f){
+     const n=op-0x5f, imm=h.slice(i,i+n*2);
+     i+=n*2;pc+=n;
+     out.push({pc:at,op,name:`PUSH${n}`,imm:'0x'+imm,value:BigInt('0x'+(imm||'0')).toString()});
+   }else if(op>=0x80&&op<=0x8f){
+     out.push({pc:at,op,name:`DUP${op-0x7f}`});
+   }else if(op>=0x90&&op<=0x9f){
+     out.push({pc:at,op,name:`SWAP${op-0x8f}`});
+   }else if(op>=0xa0&&op<=0xa4){
+     out.push({pc:at,op,name:`LOG${op-0xa0}`});
+   }else out.push({pc:at,op,name:names[op]||'OP_'+op.toString(16).padStart(2,'0')});
+ }
+ return out;
+}
+function analyzeSelectorContext(code,selector){
+ const ops=disassembleEvm(code);
+ const sel=String(selector||'').toLowerCase().replace(/^0x/,'');
+ const hits=[];
+ for(let i=0;i<ops.length;i++){
+   const o=ops[i];
+   if(o.name==='PUSH4'&&String(o.imm||'').toLowerCase()==='0x'+sel){
+     hits.push(i);
+   }
+ }
+ const contexts=[];
+ for(const hit of hits){
+   const start=Math.max(0,hit-8), end=Math.min(ops.length,hit+80);
+   const slice=ops.slice(start,end);
+   const timeOps=slice.filter(x=>['TIMESTAMP','LT','GT','SLT','SGT','EQ','ISZERO','ADD','SUB','SLOAD','JUMPI','REVERT'].includes(x.name));
+   const durationPushes=slice.filter(x=>{
+     if(!x.value)return false;
+     try{
+       const v=BigInt(x.value);
+       return (v>=7n*86400n&&v<=1000n*86400n&&v%86400n===0n)||(v>=7n&&v<=1000n);
+     }catch{return false}
+   }).map(x=>{
+     const v=BigInt(x.value);
+     const days=(v>=86400n&&v%86400n===0n)?Number(v/86400n):Number(v);
+     return {...x,days};
+   });
+   contexts.push({hitPc:ops[hit].pc,startPc:slice[0]?.pc,endPc:slice.at(-1)?.pc,timeOps,durationPushes,ops:slice});
+ }
+ return {selector:'0x'+sel,hits:hits.length,contexts};
+}
+async function selectorLogicTest(contract,gate,coreChange){
+ if(!gate?.available||!gate.tx?.selector)return {available:false,error:'Kein Unstake-Selector verfügbar.'};
+ const blockTag=coreChange?.firstChangedBlockHex||'latest';
+ const impl=await eip1967ImplAt(contract,blockTag);
+ const target=impl||contract;
+ const code=await nodeRealRpcDirect('eth_getCode',[target,blockTag]);
+ const analysis=analyzeSelectorContext(code,gate.tx.selector);
+ return {available:true,block:blockTag,implementation:impl,target,codeBytes:(String(code).length-2)/2,...analysis};
+}
+function selectorLogicHtml(x){
+ if(!x?.available)return `<span class="warn">${esc(x?.error||'Nicht verfügbar.')}</span>`;
+ if(!x.hits)return `<p class="warn">Selector ${esc(x.selector)} wurde im Runtime-Bytecode von ${esc(x.target)} nicht direkt als PUSH4 gefunden. Das kann bei Proxy-/Dispatcher-Strukturen vorkommen.</p>`;
+ return `<p class="muted">Selector ${esc(x.selector)} · Implementation ${esc(x.implementation||'–')} · ${esc(x.codeBytes)} Byte Runtime-Code. Nur Kontextanalyse; zufällige PUSH-Werte sind kein Beweis.</p>
+ ${x.contexts.map((c,idx)=>`<h3>Selector-Treffer ${idx+1} · PC ${c.hitPc}</h3>
+ <p>Zeit-/Vergleichs-Opcode im Kontext: ${c.timeOps.length?c.timeOps.map(o=>`<span class="pill">${esc(o.name)} @${o.pc}</span>`).join(''):'keine'}</p>
+ <p>Dauer-PUSH-Kandidaten im Kontext: ${c.durationPushes.length?c.durationPushes.map(o=>`<span class="pill">${esc(o.days)} Tage @${o.pc}</span>`).join(''):'keine'}</p>
+ <pre class="mono">${esc(c.ops.map(o=>`${String(o.pc).padStart(6)}  ${o.name}${o.imm?' '+o.imm:''}`).join('\n'))}</pre>`).join('')}`;
+}
+
 function rankEvidence({reads,storage,archiveStorage,bytecode,receipt,stakeTs}){const ev=[];for(const r of reads){if(r.duration)ev.push({score:100,label:`Direkter Read ${r.sig}`,days:r.duration.days,detail:`${r.value} Sekunden`})}
  const tsReads=reads.filter(r=>r.kind.includes('timestamp')&&r.value&&plausibleTs(Number(r.value),stakeTs));for(const a of tsReads){for(const b of tsReads){if(a===b)continue;const diff=Math.abs(Number(a.value)-Number(b.value));const d=durationFromSeconds(diff);if(d&&d.days>=1)ev.push({score:95,label:`Read-Timestamp-Differenz ${a.sig} ↔ ${b.sig}`,days:d.days,detail:`${diff} Sekunden`})}}
  for(const x of storage.changes||[]){if(x.diffDuration&&x.diffDuration.days>=1)ev.push({score:90,label:'Storage-Differenz im Stake-Trace',days:x.diffDuration.days,detail:`Slot ${x.slot}`})}
@@ -669,7 +946,7 @@ function rankEvidence({reads,storage,archiveStorage,bytecode,receipt,stakeTs}){c
  const ded=new Map();for(const x of ev.sort((a,b)=>b.score-a.score)){const k=`${x.label}|${x.days}|${x.detail}`;if(!ded.has(k))ded.set(k,x)}return [...ded.values()];
 }
 function fmtDays(d){return Number.isInteger(d)?`${d} Tage`:`${d.toFixed(4)} Tage`}
-async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true;$('log').textContent='';$('verdict').textContent='Prüfung läuft …';['providerTest','reads','stake','storage','root3','coreChange','bytecode','evidence'].forEach(id=>$(id).innerHTML='Wird geladen …');const wallet=norm($('wallet').value.trim()),contract=norm($('contract').value.trim());if(!ethers.isAddress(wallet)||!ethers.isAddress(contract))throw new Error('Wallet oder Contract ungültig.');await initProviders();let hash=$('stakeTx').value.trim();if(!hash)hash=await discoverStakeTx(wallet,contract);$('stakeTx').value=hash;const ctx=await getStakeContext(hash);log(`Stake-TX ${hash} · Block ${ctx.blockNum} · ${fmtDate(ctx.ts)}`,'ok');
+async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true;$('log').textContent='';$('verdict').textContent='Prüfung läuft …';['providerTest','reads','stake','storage','root3','coreChange','unstakeGate','selectorLogic','bytecode','evidence'].forEach(id=>$(id).innerHTML='Wird geladen …');const wallet=norm($('wallet').value.trim()),contract=norm($('contract').value.trim());if(!ethers.isAddress(wallet)||!ethers.isAddress(contract))throw new Error('Wallet oder Contract ungültig.');await initProviders();let hash=$('stakeTx').value.trim();if(!hash)hash=await discoverStakeTx(wallet,contract);$('stakeTx').value=hash;const ctx=await getStakeContext(hash);log(`Stake-TX ${hash} · Block ${ctx.blockNum} · ${fmtDate(ctx.ts)}`,'ok');
  const nrTest=await nodeRealArchiveSelfTest(contract,ctx.blockNum);
  $('providerTest').innerHTML=`<p class="${nrTest.ok?'ok':'bad'}"><b>${nrTest.ok?'NodeReal Direct beantwortet historische eth_getStorageAt-Reads.':'NodeReal Direct Archive-State nicht bestätigt.'}</b></p><table><thead><tr><th>Probe</th><th>Block</th><th>Status</th><th>Wert / Fehler</th></tr></thead><tbody>${nrTest.rows.map(r=>`<tr><td>${esc(r.label)}</td><td class="mono">${esc(r.block)}</td><td>${r.ok?'<span class="ok">OK</span>':'<span class="bad">FEHLER</span>'}</td><td class="mono">${esc(r.ok?r.value:r.error)}</td></tr>`).join('')}</tbody></table>`;
  if(nrTest.ok)log('NodeReal Direct Archive-State-Selbsttest erfolgreich.','ok');
@@ -703,8 +980,19 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  }else log(coreChange.reason||'Keine Root-3-Kernfeld-Änderung gefunden.','warn');
  $('coreChange').innerHTML=coreChangeHtml(coreChange,coreTxAnalysis);
 
+ const unstakeGate=await historicalUnstakeGateTest(contract,wallet,ctx,coreChange,coreTxAnalysis);
+ $('unstakeGate').innerHTML=unstakeGateHtml(unstakeGate);
+ if(unstakeGate?.boundary?.found){
+   log(`Historische Unstake-Call-Grenze: ${fmtDays(unstakeGate.boundary.elapsedDays)} nach Stake · Block ${unstakeGate.boundary.first.blockNum}.`,'ok');
+ }else{
+   log('Keine belastbare historische Unstake-FAIL→OK-Grenze gefunden.','warn');
+ }
 
- const evidence=buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis);
+ const selectorLogic=await selectorLogicTest(contract,unstakeGate,coreChange);
+ $('selectorLogic').innerHTML=selectorLogicHtml(selectorLogic);
+ if(selectorLogic?.available)log(`Unstake-Selector ${selectorLogic.selector}: ${selectorLogic.hits} direkter Bytecode-Treffer.`,'ok');
+
+ const evidence=buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis,unstakeGate,selectorLogic);
  $('evidence').innerHTML=evidence.length?`<table><thead><tr><th>Rang</th><th>Evidenz</th><th>Dauer</th><th>Detail</th></tr></thead><tbody>${evidence.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.label)} <span class="muted">(${x.score})</span></td><td><b>${Number.isFinite(x.days)?esc(fmtDays(x.days)):'–'}</b></td><td class="mono">${esc(x.detail)}</td></tr>`).join('')}</tbody></table>`:'<span class="warn">Keine belastbare Dauer-Evidenz gefunden.</span>';
 
  const vr=strictVerdict(evidence);
@@ -712,7 +1000,7 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  $('verdict').textContent=vr.text;
  const top=evidence[0]||null;
  const sameTop=evidence.filter(x=>x.score>=90);
- $('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Root-3 Startfeld</div><div class="v">${targeted.startRow?`Offset ${targeted.startRow.offset} · exakt Stake-Timestamp`:'nicht gefunden'}</div><div class="k">367-Tage-Prüfpunkt</div><div class="v">${esc(targeted.targetDate)} · Block ${esc(targeted.targetBlock?.blockNum??'–')}</div><div class="k">Erste Positionsauflösung</div><div class="v">${coreChange.found?`${esc(coreChange.date)} · ${esc(fmtDays(coreChange.elapsedDays))}`:'nicht gefunden'}</div><div class="k">Auslösende TX</div><div class="v mono">${coreTxAnalysis.candidates?.[0]?esc(coreTxAnalysis.candidates[0].hash):'–'}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Separat; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;lastDiagnosticExport=jsonSafe({
+ $('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Root-3 Startfeld</div><div class="v">${targeted.startRow?`Offset ${targeted.startRow.offset} · exakt Stake-Timestamp`:'nicht gefunden'}</div><div class="k">367-Tage-Prüfpunkt</div><div class="v">${esc(targeted.targetDate)} · Block ${esc(targeted.targetBlock?.blockNum??'–')}</div><div class="k">Erste Positionsauflösung</div><div class="v">${coreChange.found?`${esc(coreChange.date)} · ${esc(fmtDays(coreChange.elapsedDays))}`:'nicht gefunden'}</div><div class="k">Auslösende TX</div><div class="v mono">${coreTxAnalysis.candidates?.[0]?esc(coreTxAnalysis.candidates[0].hash):'–'}</div><div class="k">Historische Unstake-Freigabe</div><div class="v">${unstakeGate?.boundary?.found?`${esc(unstakeGate.boundary.first.date)} · ${esc(fmtDays(unstakeGate.boundary.elapsedDays))}`:'nicht belastbar bestimmt'}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Separat; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;lastDiagnosticExport=jsonSafe({
    version:document.querySelector('.header-version')?.textContent?.replace(/^Version:\s*/,'')||'unbekannt',
    wallet,contract,hash,
    ctx:{
@@ -730,6 +1018,8 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
    targeted,
    coreChange,
    coreTxAnalysis,
+   unstakeGate,
+   selectorLogic,
    evidence,
    verdict:$('verdict').textContent
  });
