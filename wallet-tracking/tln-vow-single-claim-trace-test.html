@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TLN/VOW · Einzel-Claim Trace</title>
+<title>TLN/VOW · Referral Reward Test</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
 <style>
@@ -18,14 +18,21 @@ pre{white-space:pre-wrap;word-break:break-word;background:#07111b;border:1px sol
 .badge{display:inline-block;padding:2px 7px;border:1px solid #3e5870;border-radius:999px;margin:1px 3px 1px 0}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}.kv{background:#0a1723;border-radius:8px;padding:10px}.kv b{display:block;color:#a9bfd1;margin-bottom:4px}
 details{margin-top:10px}summary{cursor:pointer;font-weight:700}
+.tabs{display:flex;gap:8px;margin:18px 0 12px;flex-wrap:wrap}.tabbtn{background:#0a1723;border:1px solid var(--line);color:#cbd9e5}.tabbtn.active{background:#3979d6;color:#fff}.tabpanel{display:none}.tabpanel.active{display:block}.progress{height:8px;background:#07111b;border-radius:999px;overflow:hidden;margin-top:8px}.progress>div{height:100%;width:0;background:#3979d6}.small{font-size:12px}
 </style>
 </head>
 <body>
 <main>
-  <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
-  <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 19:44:45 CEST</div>
+  <h1>🧪 TLN/VOW · Referral Reward Test</h1>
+  <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 20:08:36 CEST</div>
 
+  <div class="tabs">
+    <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
+    <button class="tabbtn" data-tab="wallet">Referral-Rewards eines Wallets</button>
+  </div>
+
+  <section id="tab-single" class="tabpanel active">
   <div class="card">
     <div class="row">
       <input id="txHash" value="0x9a2d62ccb9229a817159986e151465f6b62f9da67f2ce822cccd541ca13220d3" spellcheck="false">
@@ -42,6 +49,29 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
   <div class="card"><h2>6. Stake → Referral-/Upline-Verteilung</h2><div id="distribution" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>7. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>Technisches Log</h2><pre id="log"></pre></div>
+  </section>
+
+  <section id="tab-wallet" class="tabpanel">
+    <div class="card">
+      <h2>Referral-Rewards eines Wallets</h2>
+      <p class="muted">Startpunkt ist ausschließlich das Empfänger-Wallet. Gesucht werden eingehende Zero-Address-Mints. Für jede Fund-Tx wird geprüft, ob ein fremdes Wallet einen Stake bei einem bekannten TLN/VOW-Staking-Contract ausgelöst hat.</p>
+      <div class="row">
+        <input id="refWallet" value="0x98fb491d31c4f122004f7bed50237e5ca1d56f7d" spellcheck="false" placeholder="Wallet-Adresse">
+        <button id="scanWallet">Referral-Rewards suchen</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label class="small muted">Startblock <input id="refStartBlock" value="0" style="min-width:160px;max-width:220px" inputmode="numeric"></label>
+        <span class="small muted">Primär wird ein indexierter Asset-Transfer-Scan versucht. Nur wenn der RPC das nicht unterstützt, folgt ein blockweiser Mint-Log-Fallback.</span>
+      </div>
+      <div id="walletStatus" class="muted" style="margin-top:10px">Bereit.</div>
+      <div class="progress"><div id="walletProgress"></div></div>
+    </div>
+
+    <div class="card"><h2>Übersicht</h2><div id="walletSummary" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>Erkannte Referral-Rewards</h2><div id="walletRewards" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>Nicht eindeutig klassifizierte Mint-Zuflüsse</h2><div id="walletCandidates" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>Technisches Referral-Scan-Log</h2><pre id="walletLog"></pre></div>
+  </section>
 </main>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -192,6 +222,172 @@ async function getTrace(hash){
     }
   }
 }
+
+function walletLog(s){$('walletLog').textContent+=`[${new Date().toLocaleTimeString('de-CH')}] ${s}\n`}
+function walletTopic(a){return '0x'+norm(a).slice(2).padStart(64,'0')}
+function zeroTopic(){return '0x'+'0'.repeat(64)}
+function setWalletProgress(v){$('walletProgress').style.width=Math.max(0,Math.min(100,v))+'%'}
+function hexBlock(n){return '0x'+BigInt(n).toString(16)}
+function bigintBlock(x){return typeof x==='string'?BigInt(x):BigInt(x||0)}
+async function latestBlockNumber(){return BigInt(await rpc('eth_blockNumber',[]))}
+async function knownStakingMap(){
+  const rows=await stakingRows();
+  return new Map(rows.map(x=>[norm(x.contract_address),x]));
+}
+async function assetTransferMintHashes(wallet,startBlock){
+  // Preferred path: indexed transfer API when the configured provider supports it.
+  const hashes=new Set(); let pageKey=null; let pages=0;
+  do{
+    const p={
+      fromBlock:hexBlock(startBlock),toBlock:'latest',toAddress:wallet,
+      category:['erc20'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'
+    };
+    if(pageKey)p.pageKey=pageKey;
+    let res;
+    try{res=await rpc('alchemy_getAssetTransfers',[p])}
+    catch(e){throw new Error('INDEXED_UNSUPPORTED: '+e.message)}
+    for(const t of (res?.transfers||[])){
+      if(norm(t.from)===ZERO && t.hash)hashes.add(norm(t.hash));
+    }
+    pageKey=res?.pageKey||null; pages++;
+    walletLog(`Index-Scan Seite ${pages}: ${hashes.size} Mint-Tx(s)`);
+    if(pages>100)throw new Error('Index-Scan Sicherheitslimit erreicht.');
+  }while(pageKey);
+  return [...hashes];
+}
+async function logMintHashes(wallet,startBlock){
+  const latest=await latestBlockNumber();
+  let from=BigInt(startBlock), chunk=250000n, hashes=new Set(), done=0n;
+  const total=latest-from+1n;
+  while(from<=latest){
+    let to=from+chunk-1n; if(to>latest)to=latest;
+    try{
+      const logs=await rpc('eth_getLogs',[{fromBlock:hexBlock(from),toBlock:hexBlock(to),topics:[TRANSFER_TOPIC,zeroTopic(),walletTopic(wallet)]}]);
+      for(const l of (logs||[]))if(l.transactionHash)hashes.add(norm(l.transactionHash));
+      done=to-BigInt(startBlock)+1n;
+      setWalletProgress(Number((done*10000n/total))/100);
+      walletLog(`Mint-Logs ${from.toString()}–${to.toString()}: ${logs.length}; gesamt ${hashes.size} Tx(s)`);
+      from=to+1n;
+      if(chunk<1000000n)chunk*=2n;
+    }catch(e){
+      if(chunk<=2000n)throw e;
+      chunk/=2n;
+      walletLog(`Provider-Limit; Chunk reduziert auf ${chunk.toString()} Blöcke.`);
+    }
+  }
+  return [...hashes];
+}
+async function mintTransfersToWalletFromReceipt(receipt,wallet){
+  const out=[];
+  for(const l of receipt.logs||[]){
+    if(norm(l.topics?.[0])!==TRANSFER_TOPIC||l.topics.length<3)continue;
+    const from=topicAddr(l.topics[1]),to=topicAddr(l.topics[2]);
+    if(from!==ZERO||to!==norm(wallet))continue;
+    const token=norm(l.address),meta=await tokenMeta(token);
+    let amount='0';try{amount=ethers.formatUnits(BigInt(l.data||'0x0'),meta.decimals)}catch{}
+    out.push({token,...meta,amount,from,to});
+  }
+  return out;
+}
+async function classifyReferralMintTx(hash,wallet,stakingMap){
+  const [tx,receipt]=await Promise.all([rpc('eth_getTransactionByHash',[hash]),rpc('eth_getTransactionReceipt',[hash])]);
+  if(!tx||!receipt||receipt.status!=='0x1')return null;
+  const mints=await mintTransfersToWalletFromReceipt(receipt,wallet);
+  if(!mints.length)return null;
+  const sender=norm(tx.from),to=norm(tx.to);
+  const foreignSender=sender!==norm(wallet);
+  const staking=stakingMap.get(to)||null;
+
+  // Strong generic stake evidence: foreign sender calls a known staking contract
+  // and the same receipt contains a token transfer from sender into that contract.
+  let principalIn=false,principalTransfers=[];
+  for(const l of receipt.logs||[]){
+    if(norm(l.topics?.[0])!==TRANSFER_TOPIC||l.topics.length<3)continue;
+    const lf=topicAddr(l.topics[1]),lt=topicAddr(l.topics[2]);
+    if(lf===sender && lt===to){
+      const token=norm(l.address),meta=await tokenMeta(token);
+      let amount='0';try{amount=ethers.formatUnits(BigInt(l.data||'0x0'),meta.decimals)}catch{}
+      principalIn=true;principalTransfers.push({token,...meta,amount});
+    }
+  }
+  const block=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);
+  const timestamp=Number(BigInt(block.timestamp));
+  const strong=foreignSender && !!staking && principalIn;
+  const candidate=foreignSender && !!staking;
+  return {hash,tx,receipt,mints,sender,to,staking,principalIn,principalTransfers,strong,candidate,timestamp};
+}
+function fmtTime(ts){return new Date(ts*1000).toLocaleString('de-CH')}
+async function scanReferralWallet(){
+  const btn=$('scanWallet');btn.disabled=true;$('walletLog').textContent='';setWalletProgress(0);
+  $('walletSummary').innerHTML='<span class="muted">Lädt…</span>';
+  $('walletRewards').innerHTML='<span class="muted">Lädt…</span>';
+  $('walletCandidates').innerHTML='<span class="muted">Lädt…</span>';
+  try{
+    if(!rpcUrl)await initRpc();
+    const wallet=norm($('refWallet').value.trim());
+    if(!/^0x[0-9a-f]{40}$/.test(wallet))throw new Error('Ungültige Wallet-Adresse.');
+    const start=BigInt(String($('refStartBlock').value||'0').replace(/\D/g,'')||'0');
+    $('walletStatus').textContent='Suche eingehende Mints zum Wallet…';
+    walletLog(`Wallet ${wallet}; Startblock ${start.toString()}`);
+
+    let hashes=[],mode='';
+    try{
+      hashes=await assetTransferMintHashes(wallet,start);mode='indexierter Asset-Transfer-Scan';
+      walletLog(`Indexierter Scan erfolgreich: ${hashes.length} Mint-Tx(s).`);
+      setWalletProgress(20);
+    }catch(e){
+      walletLog('Indexierter Scan nicht verfügbar; verwende Mint-Log-Fallback.');
+      hashes=await logMintHashes(wallet,start);mode='eth_getLogs Mint-Fallback';
+    }
+
+    const stakingMap=await knownStakingMap();
+    walletLog(`${stakingMap.size} bekannte TLN/VOW-Staking-Contracts geladen.`);
+    const rows=[];
+    for(let i=0;i<hashes.length;i++){
+      $('walletStatus').textContent=`Prüfe Mint-Tx ${i+1}/${hashes.length}…`;
+      try{
+        const r=await classifyReferralMintTx(hashes[i],wallet,stakingMap);
+        if(r)rows.push(r);
+      }catch(e){walletLog(`Tx ${short(hashes[i])}: ${e.message}`)}
+      setWalletProgress(Math.max(20,20+80*(i+1)/Math.max(1,hashes.length)));
+    }
+    rows.sort((a,b)=>a.timestamp-b.timestamp);
+    const strong=rows.filter(r=>r.strong),candidates=rows.filter(r=>!r.strong);
+    const rewardCount=strong.reduce((n,r)=>n+r.mints.length,0);
+    const tokens=new Map();
+    for(const r of strong)for(const m of r.mints){
+      const k=m.token;const x=tokens.get(k)||{symbol:m.symbol,count:0,total:0};
+      x.count++;x.total+=Number(m.amount);tokens.set(k,x);
+    }
+
+    $('walletSummary').innerHTML=`<div class="grid">
+      <div class="kv"><b>Wallet</b><span class="mono">${esc(wallet)}</span></div>
+      <div class="kv"><b>Scan-Modus</b>${esc(mode)}</div>
+      <div class="kv"><b>Eingehende Mint-Tx gefunden</b>${hashes.length}</div>
+      <div class="kv"><b>Starke Referral-Tx</b>${strong.length}</div>
+      <div class="kv"><b>Referral-Reward-Mints</b>${rewardCount}</div>
+      <div class="kv"><b>Nicht eindeutig</b>${candidates.length}</div>
+    </div>${tokens.size?`<table><thead><tr><th>Reward-Token</th><th>Anzahl</th><th>Summe</th></tr></thead><tbody>${[...tokens].map(([a,x])=>`<tr><td><b>${esc(x.symbol)}</b><div class="mono">${esc(a)}</div></td><td>${x.count}</td><td>${x.total.toLocaleString('de-CH',{maximumFractionDigits:12})}</td></tr>`).join('')}</tbody></table>`:''}`;
+
+    const renderRows=arr=>arr.length?`<table><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Auslösender Staker</th><th>Staking</th><th>Stake-Zufluss</th><th>Tx</th><th>Nachweis</th></tr></thead><tbody>${arr.flatMap(r=>r.mints.map(m=>`<tr>
+      <td>${esc(fmtTime(r.timestamp))}</td>
+      <td><b>${esc(m.amount)} ${esc(m.symbol)}</b><div class="mono">${esc(m.token)}</div></td>
+      <td class="mono">${esc(r.sender)}</td>
+      <td>${r.staking?esc(r.staking.label||r.staking.name||r.to):'<span class="warn">unbekannt</span>'}<div class="mono">${esc(r.to)}</div></td>
+      <td>${r.principalTransfers.length?r.principalTransfers.map(p=>`${esc(p.amount)} ${esc(p.symbol)}`).join('<br>'):'–'}</td>
+      <td class="mono">${esc(r.hash)}</td>
+      <td>${r.strong?'<span class="ok"><b>fremder Stake → Mint zum Wallet</b></span>':'<span class="warn">Mint in fremder Staking-Tx, Stake-Zufluss nicht belegt</span>'}</td>
+    </tr>`)).join('')}</tbody></table>`:'<span class="muted">Keine.</span>';
+    $('walletRewards').innerHTML=renderRows(strong);
+    $('walletCandidates').innerHTML=renderRows(candidates);
+    $('walletStatus').innerHTML='<span class="ok">Referral-Walletscan abgeschlossen.</span>';
+    setWalletProgress(100);
+  }catch(e){
+    $('walletStatus').innerHTML=`<span class="bad">${esc(e.message)}</span>`;
+    walletLog('FEHLER: '+e.message);
+  }finally{btn.disabled=false}
+}
+
 async function analyze(){
   if(typeof ethers==='undefined'){
     $('status').innerHTML='<span class="bad">ethers.js konnte nicht geladen werden. Bitte Seite neu laden und CDN-Zugriff prüfen.</span>';
@@ -357,6 +553,13 @@ async function analyze(){
   }finally{$('analyze').disabled=false}
 }
 $('analyze').addEventListener('click',analyze);
+document.querySelectorAll('.tabbtn').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.tabbtn').forEach(x=>x.classList.toggle('active',x===b));
+  document.querySelectorAll('.tabpanel').forEach(x=>x.classList.remove('active'));
+  $('tab-'+b.dataset.tab).classList.add('active');
+}));
+$('scanWallet').addEventListener('click',scanReferralWallet);
+
 window.addEventListener('load',()=>setTimeout(analyze,100));
 </script>
 </body>
