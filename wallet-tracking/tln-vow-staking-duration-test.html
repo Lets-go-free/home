@@ -11,8 +11,9 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 .header-version{margin-top:6px;font-size:12px;font-weight:700;opacity:.82}</style>
 </head><body><div class="wrap">
 <h1>🧪 TLN/VOW · isolierter Staking-Duration-Test</h1>
-<div class="header-version">Version: 31.08.2026 14:47:27 CEST</div>
+<div class="header-version">Version: 31.08.2026 14:57:34 CEST</div>
 <p class="muted">Ziel: Vertrags-/Lock-Dauer ausschließlich aus On-chain-Evidenz ermitteln. Es wird keine Lock-Dauer vorgegeben. Reward-Dauer wird separat behandelt.</p>
+<p class="muted">Request-optimiert: Lock-Grenze wird direkt im Blockraum per Binärsuche ermittelt; keine Tages-/Timestamp-Rastersuche.</p>
 <div class="card grid">
 <label>Wallet<input id="wallet" class="mono" value="0x813D4948e797DA57085cf1b81b96804576E85510"></label>
 <label>Staking-Contract<input id="contract" class="mono" value="0x43e457164eff66d1f975dcb9d2504ab29e36264e"></label>
@@ -39,7 +40,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>9 · Bytecode-Zeitkonstanten (nur Diagnose)</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>10 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 14:47:27 CEST</div>
+<div class="muted">Version: 31.08.2026 14:57:34 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -115,7 +116,7 @@ function buildDiagnosticText(data){
      : 'Keine belastbare Mindest-Lockdauer ermittelt.',
    '',
    'LOCK-SUCHMODUS',
-   'Automatisch: Stake → tatsächliche Positionsauflösung; Grobsuche + blockgenaue Binärsuche; keine vorgegebene Tageszahl.',
+   'Automatisch: früher lock-semantischer Contract-Revert → letzter Block vor Positionsauflösung; direkte Block-Binärsuche; keine Tages-/Timestamp-Rastersuche.',
    '',
    'EVIDENZ-RANGLISTE',
    JSON.stringify(data.evidence,null,2),
@@ -553,7 +554,7 @@ function buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis,unstakeGate,
      detail:`Root-3-Kernfelder ändern sich erstmals in Block ${coreChange.firstChangedBlock} (${coreChange.date}); ${best?`bester TX ${best.hash}, Selector ${best.selector}`:'kein direkter TX-Kandidat'}. Dies belegt die tatsächliche Positionsdauer, aber noch nicht automatisch die vertragliche Mindest-Lockdauer.`
    });
  }
- const gate=unstakeGate?.boundary;
+ const gate=unstakeGate;
  if(gate?.found&&gate.before?.failureClass==='contract_revert'){
    const priorMsg=String(gate.before?.revert?.message||gate.before?.error?.message||'');
    const lockReason=/lock|locked|minimum staking period|time|period|duration|early|matur|wait/i.test(priorMsg);
@@ -671,6 +672,7 @@ async function analyzeChangeBlockTransactions(change,contract,wallet){
    const directToContract=to===contractLc, fromWallet=from===walletLc;
    rows.push({
      hash:tx.hash,from:tx.from||null,to:tx.to||null,selector,
+     input:tx.input||'0x',value:tx.value||'0x0',gas:tx.gas||null,gasPrice:tx.gasPrice||null,
      directToContract,fromWallet,score:(directToContract?50:0)+(fromWallet?40:0)
    });
  }
@@ -769,7 +771,7 @@ async function unstakeCallProbe(tx,contract,ctx,blockNum){
  const blockTag='0x'+Number(blockNum).toString(16);
  const block=await nodeRealRpcDirect('eth_getBlockByNumber',[blockTag,false]);
  const blockTs=Number(BigInt(block.timestamp));
- const impl=await eip1967ImplAt(contract,blockTag);
+ const impl=null; // Request-Optimierung: Implementation erst an finaler Grenze lesen.
 
  const callObj={
    from:tx.from,
@@ -828,156 +830,111 @@ async function blockNearElapsedDays(ctx,days){
  return await findBlockNearTimestamp(ctx.ts+Number(days)*86400);
 }
 async function historicalUnstakeGateTest(tx,contract,ctx,coreChange){
- const exitBlock=Number(coreChange?.firstChangedBlock||0);
+ if(!tx?.from||!tx?.to||!tx?.input){
+   return {available:false,found:false,error:'Keine vollständige Unstake-TX für historischen Call-Test verfügbar.',tx:null};
+ }
  const stakeBlock=Number(ctx.blockNum);
+ const exitBlock=Number(coreChange?.firstChangedBlock||0);
  if(!exitBlock||exitBlock<=stakeBlock){
-   return {available:false,error:'Keine gültige Positionsauflösung als obere Suchgrenze vorhanden.',tx:{hash:tx.hash,selector:(tx.input||'0x').slice(0,10)}};
+   return {available:false,found:false,error:'Keine gültige Positionsauflösung als obere Suchgrenze vorhanden.'};
  }
 
- const txMeta={hash:tx.hash,selector:(tx.input||'0x').slice(0,10),value:tx.value||'0x0'};
+ const txMeta={hash:tx.hash||null,selector:String(tx.input||'0x').slice(0,10),value:tx.value||'0x0'};
  const cache=new Map();
-
- async function probeBlock(blockNum){
+ async function probe(blockNum){
    blockNum=Math.max(stakeBlock,Math.min(exitBlock-1,Number(blockNum)));
    if(cache.has(blockNum))return cache.get(blockNum);
    const p=await unstakeCallProbe(tx,contract,ctx,blockNum);
    cache.set(blockNum,p);
    return p;
  }
- async function probeDay(day){
-   const b=await blockNearElapsedDays(ctx,day);
-   return b?.blockNum?await probeBlock(b.blockNum):null;
+
+ // Untere Grenze: direkt nach Anlage der Position. Dadurch entfällt jede Tages-/Timestamp-Rastersuche.
+ let lower=await probe(stakeBlock);
+ if(!(lower?.failureClass==='contract_revert')){
+   lower=await probe(stakeBlock+1);
  }
+ const lowerMsg=String(lower?.revert?.message||lower?.error?.message||'');
+ const lowerIsLock=lower?.failureClass==='contract_revert' &&
+   /lock|locked|minimum staking period|minimum stake|staking period|period|duration|early|matur|wait/i.test(lowerMsg);
 
- const exitDays=Math.max(0,(Number(coreChange.timestamp)-Number(ctx.ts))/86400);
+ // Obere Grenze: letzter Block, in dem die Position noch existiert.
+ let upper=await probe(exitBlock-1);
 
- // 1) Generische Grobsuche, nur um einen echten Contract-Revert zu finden.
- // Kein Wert in dieser Liste ist ein vermuteter Lock-Zeitraum.
- const coarseDays=[1,2,3,7,14,30,60,90,120,150,180,210,240,270,300,330,360,390,420];
- for(let d=450;d<exitDays;d+=30)coarseDays.push(d);
-
- let lastContractRevert=null;
- let firstSuccessAfterRevert=null;
-
- for(const d of coarseDays.sort((a,b)=>a-b)){
-   if(d<=0||d>=exitDays)continue;
-   const p=await probeDay(d);
-   if(!p)continue;
-   if(!p.ok&&p.failureClass==='contract_revert')lastContractRevert=p;
-   if(p.ok&&lastContractRevert){
-     firstSuccessAfterRevert=p;
-     break;
-   }
- }
-
- // 2) Wenn ein Revert gefunden wurde, überbrücken wir ab dort adaptiv tageweise.
- // Das ist generisch: wir suchen einfach den ERSTEN späteren Success.
- if(lastContractRevert&&!firstSuccessAfterRevert){
-   let startDay=Math.max(0,Math.floor(lastContractRevert.elapsedDays)+1);
-   const maxDay=Math.min(Math.ceil(exitDays),startDay+120);
-   for(let d=startDay;d<=maxDay&&d<exitDays;d++){
-     const p=await probeDay(d);
-     if(!p)continue;
-     if(!p.ok&&p.failureClass==='contract_revert'){
-       lastContractRevert=p;
-       continue;
-     }
-     if(p.ok){
-       firstSuccessAfterRevert=p;
-       break;
-     }
-     // simulation_invalid/provider_error wird übersprungen und darf keine Grenze setzen.
-   }
- }
-
- // 3) Falls die Grobsuche noch keinen Revert fand, dichteres neutrales 14-Tage-Raster.
- if(!lastContractRevert){
-   for(let d=14;d<exitDays;d+=14){
-     const p=await probeDay(d);
-     if(!p)continue;
-     if(!p.ok&&p.failureClass==='contract_revert'){
-       lastContractRevert=p;
-       break;
-     }
-   }
-   if(lastContractRevert){
-     let startDay=Math.max(0,Math.floor(lastContractRevert.elapsedDays)+1);
-     for(let d=startDay;d<exitDays;d++){
-       const p=await probeDay(d);
-       if(!p)continue;
-       if(!p.ok&&p.failureClass==='contract_revert'){
-         lastContractRevert=p;
-       }else if(p.ok){
-         firstSuccessAfterRevert=p;
-         break;
-       }
-     }
-   }
- }
-
- // 4) Endpunkt direkt vor tatsächlicher Positionsauflösung als zusätzlicher Success-Kandidat.
- if(lastContractRevert&&!firstSuccessAfterRevert){
-   const p=await probeBlock(exitBlock-1);
-   if(p.ok)firstSuccessAfterRevert=p;
- }
-
- const allNow=()=>[...cache.values()].sort((a,b)=>a.blockNum-b.blockNum);
-
- if(!lastContractRevert||!firstSuccessAfterRevert){
-   const rows=allNow();
+ if(!lowerIsLock || !upper?.ok){
+   const rows=[...cache.values()].sort((a,b)=>a.blockNum-b.blockNum);
    return {
      available:true,found:false,tx:txMeta,
-     reason:!lastContractRevert
-       ?'Kein echter Contract-Revert im automatisch untersuchten Zeitraum gefunden.'
-       :'Nach echtem Contract-Revert wurde vor Positionsauflösung kein belastbarer Success gefunden.',
+     reason:!lowerIsLock
+       ?`Früher historischer Call lieferte keinen lock-semantischen Contract-Revert (${lowerMsg||lower?.failureClass||'unbekannt'}).`
+       :`Call unmittelbar vor Positionsauflösung war nicht erfolgreich (${upper?.failureClass||'unbekannt'}).`,
      checkpoints:rows,
      successful:rows.filter(p=>p.ok),
      contractReverts:rows.filter(p=>!p.ok&&p.failureClass==='contract_revert'),
      invalidFailures:rows.filter(p=>!p.ok&&p.failureClass!=='contract_revert'),
-     searchMode:'automatic-coarse-adaptive-search',
-     automatic:true,exitDays,hypothesisDays:null
+     automatic:true,
+     searchMode:'direct-block-bisection',
+     requestOptimized:true
    };
  }
 
- // 5) Blockgenaue Verfeinerung. Ungültige Simulationspunkte werden lokal umgangen,
- // statt die gesamte Suche abzubrechen.
- let lo=lastContractRevert.blockNum,hi=firstSuccessAfterRevert.blockNum;
- let before=lastContractRevert,after=firstSuccessAfterRevert;
+ // Monotone Grenzsuche in Blockraum: echter Lock-Revert unten, Erfolg oben.
+ let lo=lower.blockNum, hi=upper.blockNum, before=lower, after=upper;
  let guard=0;
-
- while(hi-lo>1&&guard++<80){
+ while(hi-lo>1 && guard++<64){
    const mid=Math.floor((lo+hi)/2);
-   let p=await probeBlock(mid);
-
-   if(!p.ok&&p.failureClass!=='contract_revert'){
-     // Suche in kleinem Radius nach einem validen Prüfpunkt.
-     let replacement=null;
-     for(let delta=1;delta<=16&&!replacement;delta++){
-       for(const b of [mid-delta,mid+delta]){
-         if(b<=lo||b>=hi)continue;
-         const q=await probeBlock(b);
-         if(q.ok||q.failureClass==='contract_revert'){replacement=q;break}
-       }
-     }
-     if(!replacement)break;
-     p=replacement;
-   }
+   let p=await probe(mid);
 
    if(p.ok){
      hi=p.blockNum; after=p;
-   }else if(p.failureClass==='contract_revert'){
-     lo=p.blockNum; before=p;
-   }else{
-     break;
+     continue;
    }
+   if(p.failureClass==='contract_revert'){
+     const msg=String(p.revert?.message||p.error?.message||'');
+     if(/lock|locked|minimum staking period|minimum stake|staking period|period|duration|early|matur|wait/i.test(msg)){
+       lo=p.blockNum; before=p;
+       continue;
+     }
+     // Ein anderer echter Contract-Revert ist keine gültige Lock-Grenze.
+     const rows=[...cache.values()].sort((a,b)=>a.blockNum-b.blockNum);
+     return {
+       available:true,found:false,tx:txMeta,
+       reason:`Binärsuche traf auf einen nicht-lock-semantischen Contract-Revert: ${msg||'unbekannt'}`,
+       checkpoints:rows,
+       successful:rows.filter(x=>x.ok),
+       contractReverts:rows.filter(x=>!x.ok&&x.failureClass==='contract_revert'),
+       invalidFailures:rows.filter(x=>!x.ok&&x.failureClass!=='contract_revert'),
+       automatic:true,searchMode:'direct-block-bisection',requestOptimized:true
+     };
+   }
+
+   // Provider-/Envelopefehler: wenige Nachbarblöcke probieren, nicht hunderte Tagespunkte.
+   let replacement=null;
+   for(let d=1;d<=8&&!replacement;d++){
+     for(const b of [mid-d,mid+d]){
+       if(b<=lo||b>=hi)continue;
+       const q=await probe(b);
+       if(q.ok){replacement=q;break;}
+       if(q.failureClass==='contract_revert'){
+         const qm=String(q.revert?.message||q.error?.message||'');
+         if(/lock|locked|minimum staking period|minimum stake|staking period|period|duration|early|matur|wait/i.test(qm)){
+           replacement=q;break;
+         }
+       }
+     }
+   }
+   if(!replacement)break;
+   if(replacement.ok){hi=replacement.blockNum;after=replacement;}
+   else{lo=replacement.blockNum;before=replacement;}
  }
 
- const implementationStable=!!before?.impl&&!!after?.impl&&
-   String(before.impl).toLowerCase()===String(after.impl).toLowerCase();
-
+ // Final metadata and implementation stability.
+ before.impl=await eip1967ImplAt(contract,before.block);
+ after.impl=await eip1967ImplAt(contract,after.block);
+ const implementationStable=!!before.impl&&!!after.impl&&before.impl.toLowerCase()===after.impl.toLowerCase();
  const elapsedSeconds=Number(after.timestamp)-Number(ctx.ts);
  const elapsedDays=elapsedSeconds/86400;
- const rows=allNow();
+ const rows=[...cache.values()].sort((a,b)=>a.blockNum-b.blockNum);
 
  return {
    available:true,found:true,tx:txMeta,
@@ -986,8 +943,9 @@ async function historicalUnstakeGateTest(tx,contract,ctx,coreChange){
    successful:rows.filter(p=>p.ok),
    contractReverts:rows.filter(p=>!p.ok&&p.failureClass==='contract_revert'),
    invalidFailures:rows.filter(p=>!p.ok&&p.failureClass!=='contract_revert'),
-   searchMode:'automatic-coarse-adaptive-plus-binary',
-   automatic:true,exitDays,hypothesisDays:null
+   automatic:true,
+   searchMode:'direct-block-bisection',
+   requestOptimized:true
  };
 }
 
@@ -1449,11 +1407,13 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  }else log(coreChange.reason||'Keine Root-3-Kernfeld-Änderung gefunden.','warn');
  $('coreChange').innerHTML=coreChangeHtml(coreChange,coreTxAnalysis);
 
- const unstakeGate=await historicalUnstakeGateTest(contract,wallet,ctx,coreChange,coreTxAnalysis);
+ const bestUnstakeTx=coreTxAnalysis?.candidates?.[0]||null;
+ if(bestUnstakeTx)log(`Historischer Unstake-Test verwendet TX ${bestUnstakeTx.hash} · Selector ${bestUnstakeTx.selector} · Value ${bestUnstakeTx.value||'0x0'}.`,'ok');
+ const unstakeGate=await historicalUnstakeGateTest(bestUnstakeTx,contract,ctx,coreChange);
  $('unstakeGate').innerHTML=unstakeGateHtml(unstakeGate);
  $('lockSummaryBody').innerHTML=lockSummaryHtml(unstakeGate,ctx,coreChange);
- if(unstakeGate?.boundary?.found){
-   log(`Historische Unstake-Call-Grenze: ${fmtDays(unstakeGate.boundary.elapsedDays)} nach Stake · Block ${unstakeGate.boundary.first.blockNum}.`,'ok');
+ if(unstakeGate?.found){
+   log(`Historische Unstake-Call-Grenze automatisch gefunden: ${fmtDays(unstakeGate.elapsedDays)} nach Stake · ${unstakeGate.before?.date||'–'} Revert → ${unstakeGate.after?.date||'–'} Erfolg.`,'ok');
  }else{
    log('Automatische Lock-Suche: keine belastbare Contract-Revert→Success-Grenze gefunden.','warn');
  }
