@@ -26,7 +26,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>4 · Bytecode-Zeitkonstanten</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>5 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 04:04:24 CEST</div>
+<div class="muted">Version: 31.08.2026 04:09:34 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -141,32 +141,108 @@ function plausibleDurationConstants(code){const out=[];for(const p of parsePushC
 function storageWordInfo(raw,stakeTs){const v=BigInt(raw||'0x0');let n=null;if(v<=BigInt(Number.MAX_SAFE_INTEGER))n=Number(v);return {raw,v,n,timestamp:n!=null&&plausibleTs(n,stakeTs)?n:null,duration:n!=null?durationFromSeconds(n):null}}
 async function archiveStorageScan(contract,wallet,blockNum,stakeTs){
  const before='0x'+(blockNum-1).toString(16), after='0x'+blockNum.toString(16);
- const candidates=[];
- // direkte Slots: wichtige globale Config-/Duration-Werte
- for(let slot=0;slot<=64;slot++)candidates.push({kind:'direct',root:slot,offset:0,key:'0x'+slot.toString(16)});
- // Mapping(address => struct)-Kandidaten. Storage lebt beim Proxy, nicht bei der Implementation.
  const coder=ethers.AbiCoder.defaultAbiCoder();
+
+ // STUFE A:
+ // 1) globale direkte Slots 0–64
+ // 2) je mapping(address=>...) Root 0–64 zunächst NUR Offset 0
+ // So vermeiden wir den bisherigen Vollscan von 1.170 Slots.
+ const stageA=[];
+ for(let slot=0;slot<=64;slot++){
+   stageA.push({kind:'direct',root:slot,offset:0,key:'0x'+slot.toString(16)});
+ }
  for(let root=0;root<=64;root++){
    const base=BigInt(ethers.keccak256(coder.encode(['address','uint256'],[wallet,root])));
-   for(let off=0;off<=16;off++)candidates.push({kind:'mapping(address)',root,offset:off,key:'0x'+(base+BigInt(off)).toString(16)});
+   stageA.push({kind:'mapping(address)',root,offset:0,key:'0x'+base.toString(16)});
  }
- const calls=[];for(const x of candidates){calls.push({method:'eth_getStorageAt',params:[contract,x.key,before]});calls.push({method:'eth_getStorageAt',params:[contract,x.key,after]})}
- let res;try{
-   log(`NodeReal Direct Archive-Scan: ${candidates.length} Slots / ${calls.length} historische eth_getStorageAt-Reads …`,'warn');
-   res=await nodeRealMany(calls,4);
- }catch(e){return {available:false,error:`NodeReal Direct: ${e.message}`,changes:[]}}
- const changes=[];let archiveErrors=0;
- for(let i=0;i<candidates.length;i++){
-   const a=res[i*2],b=res[i*2+1];if(a?.error||b?.error){archiveErrors++;continue}
-   const pre=String(a?.result||'0x0'),post=String(b?.result||'0x0');if(norm(pre)===norm(post))continue;
-   const pi=storageWordInfo(pre,stakeTs),qi=storageWordInfo(post,stakeTs);const row={...candidates[i],before:pi.v,after:qi.v,beforeInfo:pi,afterInfo:qi};
-   const vals=[pi.timestamp,qi.timestamp].filter(x=>x!=null);row.timestamps=vals;
-   if(pi.n!=null&&qi.n!=null){const diff=Math.abs(qi.n-pi.n);row.diffDuration=durationFromSeconds(diff)}
-   // Falls ein Timestamp beim Stake geschrieben wird, prüfe auch Abstand zum Stake-Zeitpunkt.
-   row.stakeDeltas=vals.map(v=>({ts:v,delta:durationFromSeconds(Math.abs(v-stakeTs))})).filter(x=>x.delta&&x.delta.days>=1);
-   changes.push(row)
+
+ async function readChanged(candidates,label){
+   const calls=[];
+   for(const x of candidates){
+     calls.push({method:'eth_getStorageAt',params:[contract,x.key,before]});
+     calls.push({method:'eth_getStorageAt',params:[contract,x.key,after]});
+   }
+   log(`${label}: ${candidates.length} Slots / ${calls.length} historische NodeReal-Reads …`,'warn');
+   const res=await nodeRealMany(calls,4);
+   const changes=[]; let errors=0;
+   for(let i=0;i<candidates.length;i++){
+     const a=res[i*2],b=res[i*2+1];
+     if(a?.error||b?.error){errors++;continue}
+     const pre=String(a?.result||'0x0'),post=String(b?.result||'0x0');
+     if(norm(pre)===norm(post))continue;
+     const pi=storageWordInfo(pre,stakeTs),qi=storageWordInfo(post,stakeTs);
+     const row={...candidates[i],before:pi.v,after:qi.v,beforeInfo:pi,afterInfo:qi};
+     const vals=[pi.timestamp,qi.timestamp].filter(x=>x!=null);
+     row.timestamps=vals;
+     if(pi.n!=null&&qi.n!=null){
+       const diff=Math.abs(qi.n-pi.n);
+       row.diffDuration=durationFromSeconds(diff);
+     }
+     row.stakeDeltas=vals
+       .map(v=>({ts:v,delta:durationFromSeconds(Math.abs(v-stakeTs))}))
+       .filter(x=>x.delta&&x.delta.days>=1);
+     changes.push(row);
+   }
+   return {changes,errors};
  }
- return {available:archiveErrors<candidates.length,error:archiveErrors?`${archiveErrors} Storage-Aufrufe ohne Ergebnis`:null,changes,before,after,tested:candidates.length}
+
+ const a=await readChanged(stageA,'NodeReal Archive Stufe A');
+
+ // Relevante Mapping-Roots bestimmen.
+ // Ein Struct kann sich an Offset >0 ändern, obwohl Offset 0 unverändert bleibt.
+ // Deshalb erweitern wir gezielt um Nachbar-Roots von Treffern und um Roots,
+ // deren Offset-0-Wert nicht leer ist. Damit bleibt der Scan klein, ohne nur
+ // auf einen einzelnen Offset zu vertrauen.
+ const hitRoots=new Set(a.changes.filter(x=>x.kind==='mapping(address)').map(x=>x.root));
+
+ // Falls Offset 0 selbst keinen Treffer liefert, nehmen wir zusätzlich einen
+ // kleinen Kernbereich typischer Mapping-Roots 0–16 als Sicherheitsnetz.
+ const rootsToExpand=new Set();
+ for(const r of hitRoots){
+   for(let d=-1;d<=1;d++){
+     const q=r+d;
+     if(q>=0&&q<=64) rootsToExpand.add(q);
+   }
+ }
+ if(!rootsToExpand.size){
+   for(let r=0;r<=16;r++) rootsToExpand.add(r);
+ }
+
+ // STUFE B: nur ausgewählte Mapping-Roots vollständig auf Offsets 0–16 prüfen.
+ const stageB=[];
+ for(const root of [...rootsToExpand].sort((x,y)=>x-y)){
+   const base=BigInt(ethers.keccak256(coder.encode(['address','uint256'],[wallet,root])));
+   for(let off=0;off<=16;off++){
+     stageB.push({
+       kind:'mapping(address)',
+       root,
+       offset:off,
+       key:'0x'+(base+BigInt(off)).toString(16)
+     });
+   }
+ }
+
+ const b=await readChanged(stageB,'NodeReal Archive Stufe B');
+
+ // Deduplizieren
+ const all=[...a.changes,...b.changes];
+ const ded=new Map();
+ for(const x of all){
+   const k=`${x.kind}|${x.root}|${x.offset}|${x.key}`;
+   if(!ded.has(k)) ded.set(k,x);
+ }
+ const changes=[...ded.values()];
+
+ return {
+   available:(a.errors<stageA.length)||(b.errors<stageB.length),
+   error:(a.errors+b.errors)?`${a.errors+b.errors} Storage-Aufrufe ohne Ergebnis`:null,
+   changes,
+   before,
+   after,
+   tested:stageA.length+stageB.length,
+   stageA:{tested:stageA.length,changes:a.changes.length,errors:a.errors},
+   stageB:{tested:stageB.length,changes:b.changes.length,errors:b.errors,roots:[...rootsToExpand].sort((x,y)=>x-y)}
+ };
 }
 async function traceStorage(hash,contract,impl,stakeTs){let tr=null,source='';const attempts=[
  ['prestateTracer/diffMode',{tracer:'prestateTracer',tracerConfig:{diffMode:true}}],
@@ -202,12 +278,12 @@ async function run(){try{$('log').textContent='';$('verdict').textContent='Prüf
    if(nrTest.ok){
      log('Trace nicht verfügbar – starte direkten NodeReal Archive-Storage-Vergleich vor/nach dem Stake …','warn');
      archiveStorage=await archiveStorageScan(contract,wallet,ctx.blockNum,ctx.ts);
-     if(archiveStorage.available)log(`NodeReal Direct Archive-Storage-Scan: ${archiveStorage.tested} Kandidaten geprüft, ${archiveStorage.changes.length} Änderungen gefunden.`,'ok');
+     if(archiveStorage.available)log(`NodeReal Direct Archive-Storage-Scan: ${archiveStorage.tested} Kandidaten geprüft, ${archiveStorage.changes.length} Änderungen gefunden. Stufe A ${archiveStorage.stageA?.tested||0}, Stufe B ${archiveStorage.stageB?.tested||0}.`,'ok');
      else log(`NodeReal Direct Archive-Storage-Scan nicht verfügbar: ${archiveStorage.error||'unbekannt'}`,'warn');
    }else{
      archiveStorage={available:false,error:'NodeReal Direct Archive-State-Selbsttest fehlgeschlagen',changes:[]};
    }
- }const traceHtml=storage.changes.length?`<p class="muted">Trace-Quelle: ${esc(storage.source)}</p><table><thead><tr><th>Adresse</th><th>Slot</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${storage.changes.slice(0,100).map(x=>`<tr><td class="mono">${esc(x.address)}</td><td class="mono">${esc(x.slot)}</td><td class="mono">${esc(x.before?.toString()??'–')}</td><td class="mono">${esc(x.after?.toString()??'–')}</td><td>${x.diffDuration?`Δ ${esc(fmtDays(x.diffDuration.days))}`:(x.timestampValues||[]).map(fmtDate).join(' · ')||'–'}</td></tr>`).join('')}</tbody></table>`:'';const archHtml=archiveStorage.changes?.length?`<p class="muted">Archive-State: Block ${archiveStorage.before} → ${archiveStorage.after}. Gescannt wurden direkte Slots 0–64 sowie mapping(address ⇒ struct)-Roots 0–64 mit Offsets 0–16.</p><table><thead><tr><th>Typ</th><th>Root/Offset</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${archiveStorage.changes.slice(0,120).map(x=>`<tr><td>${esc(x.kind)}</td><td class="mono">${x.root} / ${x.offset}</td><td class="mono">${esc(x.before.toString())}</td><td class="mono">${esc(x.after.toString())}</td><td>${(x.timestamps||[]).map(t=>fmtDate(t)).join(' · ')||((x.stakeDeltas||[]).map(q=>`Δ Stake ${fmtDays(q.delta.days)}`).join(' · '))||'–'}</td></tr>`).join('')}</tbody></table>`:'';$('storage').innerHTML=traceHtml||archHtml||'<span class="warn">Weder Trace-Storage-Diffs noch Archive-State-Änderungen verfügbar.</span>';
+ }const traceHtml=storage.changes.length?`<p class="muted">Trace-Quelle: ${esc(storage.source)}</p><table><thead><tr><th>Adresse</th><th>Slot</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${storage.changes.slice(0,100).map(x=>`<tr><td class="mono">${esc(x.address)}</td><td class="mono">${esc(x.slot)}</td><td class="mono">${esc(x.before?.toString()??'–')}</td><td class="mono">${esc(x.after?.toString()??'–')}</td><td>${x.diffDuration?`Δ ${esc(fmtDays(x.diffDuration.days))}`:(x.timestampValues||[]).map(fmtDate).join(' · ')||'–'}</td></tr>`).join('')}</tbody></table>`:'';const archHtml=archiveStorage.changes?.length?`<p class="muted">Archive-State: Block ${archiveStorage.before} → ${archiveStorage.after}. Zweistufiger Scan: zuerst direkte Slots 0–64 plus Mapping-Roots 0–64 nur an Offset 0; danach vollständige Offsets 0–16 nur für relevante Roots.</p><table><thead><tr><th>Typ</th><th>Root/Offset</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${archiveStorage.changes.slice(0,120).map(x=>`<tr><td>${esc(x.kind)}</td><td class="mono">${x.root} / ${x.offset}</td><td class="mono">${esc(x.before.toString())}</td><td class="mono">${esc(x.after.toString())}</td><td>${(x.timestamps||[]).map(t=>fmtDate(t)).join(' · ')||((x.stakeDeltas||[]).map(q=>`Δ Stake ${fmtDays(q.delta.days)}`).join(' · '))||'–'}</td></tr>`).join('')}</tbody></table>`:'';$('storage').innerHTML=traceHtml||archHtml||'<span class="warn">Weder Trace-Storage-Diffs noch Archive-State-Änderungen verfügbar.</span>';
  const code=await rpc('eth_getCode',[contract,'latest']);const implCode=impl?await rpc('eth_getCode',[impl,'latest']):'0x';const byte=[...plausibleDurationConstants(code).map(x=>({...x,target:contract})),...plausibleDurationConstants(implCode).map(x=>({...x,target:impl}))];const byteRows=byte.length?`<p class="muted">Wichtig: PUSH-Werte werden nur noch als schwache statische Hinweise gezeigt. Zufällige Zahlen im Bytecode sind keine Vertragsdauer.</p><table><thead><tr><th>Contract</th><th>Typ</th><th>Wert</th><th>Interpretation</th><th>Hex</th></tr></thead><tbody>${byte.map(x=>`<tr><td class="mono">${esc(x.target)}</td><td>${esc(x.kind)}</td><td>${esc(x.value.toString())}</td><td>${x.kind==='possible-day-count'?`${esc(fmtDays(x.days))} möglich`:`${x.seconds.toLocaleString('de-CH')} s = ${esc(fmtDays(x.days))}`}</td><td class="mono">${esc(x.hex)}</td></tr>`).join('')}</tbody></table>`:'<p class="warn">Keine exakten Ganztage-/Tageszahl-PUSH-Hinweise gefunden.</p>';$('bytecode').innerHTML=`<div class="kv"><div class="k">Proxy-Implementation</div><div class="v mono">${esc(impl||'keine EIP-1967 Implementation erkannt')}</div></div>`+byteRows;
  const evidence=rankEvidence({reads,storage,archiveStorage,bytecode:byte,receipt:recEv,stakeTs:ctx.ts});$('evidence').innerHTML=evidence.length?`<table><thead><tr><th>Rang</th><th>Evidenz</th><th>Dauer</th><th>Detail</th></tr></thead><tbody>${evidence.slice(0,50).map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.label)} <span class="muted">(${x.score})</span></td><td><b>${esc(fmtDays(x.days))}</b></td><td class="mono">${esc(x.detail)}</td></tr>`).join('')}</tbody></table>`:'<span class="warn">Keine belastbare Dauer-Evidenz gefunden.</span>';
  const top=evidence[0]||null;const sameTop=top?evidence.filter(x=>x.score>=90&&Math.abs(x.days-top.days)<1e-9):[];let verdict='Vertragsdauer nicht belastbar ermittelt.',cls='warn';if(top&&top.score>=90){verdict=`On-chain stark belegt: ${fmtDays(top.days)}.`;cls='ok'}else if(top){verdict=`Hinweis, aber noch nicht stark genug: ${fmtDays(top.days)}.`;cls='warn'}$('verdict').className=`verdict ${cls}`;$('verdict').textContent=verdict;$('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke übereinstimmende Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Noch separat zu prüfen; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;log('Prüfung abgeschlossen.','ok');
