@@ -25,7 +25,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 23:12:00 CEST</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 23:22:00 CEST</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -60,9 +60,9 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
         <button id="scanWallet">Referral-Rewards suchen</button>
       </div>
       <details open style="margin-top:12px">
-        <summary>Referral-Reward-Token · Contract-Adressen</summary>
+        <summary>Referral-Reward-Token · Contract-Adressen · Testkonfiguration</summary>
         <div id="refTokenConfig" class="muted" style="margin-top:10px">Wird aus der TLN/VOW-Tokenkonfiguration geladen…</div>
-        <p class="small muted">Referral-Filter: TLN, TLN+ und TLNX. Für den Scan zählt ausschließlich die Contract-Adresse; Symbol/Namen sind nur Anzeige.</p>
+        <p class="small muted">Referral-Filter im isolierten Test: TLN, TLN+ und TLNX. Für den Scan zählt ausschließlich die Contract-Adresse; Symbol/Namen sind nur Anzeige. Keine Supabase-Abhängigkeit.</p>
       </details>
       <div class="row" style="margin-top:10px">
         <label class="small muted">Startblock <input id="refStartBlock" value="0" style="min-width:160px;max-width:220px" inputmode="numeric"></label>
@@ -240,28 +240,14 @@ async function knownStakingMap(){
   return new Map(rows.map(x=>[norm(x.contract_address),x]));
 }
 async function referralRewardTokenContracts(){
-  const wanted=new Set(['TLN','TLN+','TLNX']), out=[];
-  let rows=[];
-  try{
-    const u=`${SUPABASE_URL}/rest/v1/predefined_tokens?select=*`;
-    const r=await fetch(u,{headers:{apikey:SUPABASE_ANON,Authorization:`Bearer ${SUPABASE_ANON}`}});
-    if(!r.ok)throw new Error(`Supabase ${r.status}`);
-    rows=await r.json();
-  }catch(e){
-    throw new Error('Referral-Token-Konfiguration konnte nicht geladen werden: '+e.message);
-  }
-  for(const x of rows||[]){
-    const sym=String(x.symbol||'').trim().toUpperCase();
-    const chain=String(x.chain||x.network||'').trim().toLowerCase();
-    const project=String(x.defi_project_key||x.project_key||x.project||'').trim().toLowerCase();
-    const addr=norm(x.address||x.contract_address||x.token_address||x.contract||'');
-    if(!wanted.has(sym))continue;
-    if(chain && !['bsc','bnb','bnb chain','binance smart chain'].includes(chain))continue;
-    if(project && project!=='tln_vow' && project!=='tln-vow')continue;
-    if(/^0x[0-9a-f]{40}$/.test(addr) && !out.some(y=>y.address===addr))
-      out.push({symbol:String(x.symbol||sym),address:addr});
-  }
-  return out;
+  // Isolierter Referral-Test: bewusst ohne Supabase-Abhängigkeit.
+  // Diese drei Contract-Adressen sind die explizite Testkonfiguration.
+  // Die spätere Hauptseite soll sie konfigurierbar aus predefined_tokens/Referral-Flag beziehen.
+  return [
+    {symbol:'TLN',  address:'0xf7d142a354322c7560250caa0e2a06c89649e4c2'},
+    {symbol:'TLN+', address:'0x29280091fa7f3abe4739ad5f1f7c5287feaf7736'},
+    {symbol:'TLNX', address:'0x3dda9ea88136ecede768cd374a2af37219da55e7'}
+  ];
 }
 function renderReferralTokenConfig(tokens){
   const wanted=['TLN','TLN+','TLNX'], found=new Set(tokens.map(t=>String(t.symbol).toUpperCase()));
