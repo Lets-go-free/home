@@ -11,7 +11,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 .header-version{margin-top:6px;font-size:12px;font-weight:700;opacity:.82}</style>
 </head><body><div class="wrap">
 <h1>🧪 TLN/VOW · isolierter Staking-Duration-Test</h1>
-<div class="header-version">Version: 31.08.2026 14:30:23 CEST</div>
+<div class="header-version">Version: 31.08.2026 14:38:52 CEST</div>
 <p class="muted">Ziel: Vertrags-/Lock-Dauer aus On-chain-Evidenz ermitteln. Keine fest hinterlegte 367-Tage-Regel. Reward-Dauer wird separat behandelt.</p>
 <div class="card grid">
 <label>Wallet<input id="wallet" class="mono" value="0x813D4948e797DA57085cf1b81b96804576E85510"></label>
@@ -33,7 +33,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>9 · Bytecode-Zeitkonstanten (nur Diagnose)</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>10 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 14:30:23 CEST</div>
+<div class="muted">Version: 31.08.2026 14:38:52 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -980,6 +980,38 @@ async function historicalUnstakeGateTest(tx,contract,ctx,coreChange){
  };
 }
 
+function analyzeSelectorContext(code,selector){
+ const ops=disassembleEvm(code), byPc=new Map(ops.map((o,i)=>[o.pc,i]));
+ const sel=String(selector||'').toLowerCase().replace(/^0x/,'');
+ const hits=[];
+ for(let i=0;i<ops.length;i++)if(ops[i].name==='PUSH4'&&String(ops[i].imm||'').toLowerCase()==='0x'+sel)hits.push(i);
+ const contexts=[];
+ for(const hit of hits){
+   const dispatch=ops.slice(Math.max(0,hit-8),Math.min(ops.length,hit+14));
+   let destination=null;
+   for(let j=hit+1;j<Math.min(ops.length,hit+12);j++){
+     if(/^PUSH[1-4]$/.test(ops[j].name)&&ops.slice(j+1,Math.min(ops.length,j+5)).some(x=>x.name==='JUMPI')){
+       const d=Number(BigInt(ops[j].value));
+       if(byPc.has(d)){destination=d;break;}
+     }
+   }
+   const di=destination!=null?byPc.get(destination):null;
+   const body=di!=null?ops.slice(di,Math.min(ops.length,di+420)):[];
+   const interesting=body.filter(x=>['TIMESTAMP','SLOAD','SSTORE','SHA3','ADD','SUB','MUL','DIV','LT','GT','SLT','SGT','EQ','ISZERO','JUMPI','REVERT'].includes(x.name));
+   const durationPushes=body.filter(x=>{
+     if(!x.value)return false;
+     try{const v=BigInt(x.value);return v===86400n||v===31536000n||v===31622400n||v===31708800n||(v>=7n*86400n&&v<=1000n*86400n&&v%86400n===0n)}catch{return false}
+   }).map(x=>({...x,days:Number(BigInt(x.value))/86400}));
+   const timeWindows=[];
+   for(let j=0;j<body.length;j++)if(body[j].name==='TIMESTAMP'){
+     const w=body.slice(Math.max(0,j-18),Math.min(body.length,j+24));
+     timeWindows.push({pc:body[j].pc,ops:w,durationPushes:w.filter(x=>durationPushes.some(d=>d.pc===x.pc))});
+   }
+   contexts.push({hitPc:ops[hit].pc,destination,dispatch,bodyStartPc:body[0]?.pc,bodyEndPc:body.at(-1)?.pc,interesting,durationPushes,timeWindows,body});
+ }
+ return {selector:'0x'+sel,hits:hits.length,contexts};
+}
+
 async function analyzeSelectorAtBlock(contract,selector,blockTag,label){
  const impl=await eip1967ImplAt(contract,blockTag),target=impl||contract;
  const code=await nodeRealRpcDirect('eth_getCode',[target,blockTag]);
@@ -1381,8 +1413,15 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
    log('Automatische Lock-Suche: keine belastbare Contract-Revert→Success-Grenze gefunden.','warn');
  }
 
- const selectorLogic=await selectorLogicTest(contract,unstakeGate,coreChange,ctx);
- $('selectorLogic').innerHTML=selectorLogicHtml(selectorLogic);
+ log('Starte historische Selector-Analyse …');
+ let selectorLogic;
+ try{
+   selectorLogic=await selectorLogicTest(contract,unstakeGate,coreChange,ctx);
+ }catch(e){
+   selectorLogic={available:false,error:String(e?.message||e),nonFatal:true};
+   log(`Selector-Analyse übersprungen: ${String(e?.message||e)}`,'warn');
+ }
+ $('selectorLogic').innerHTML=selectorLogicHtml(selectorLogic||{available:false,error:'Keine Selector-Analyse verfügbar.'});
  if(selectorLogic?.available)log(`Unstake-Selector ${selectorLogic.selector}: historische Implementation am Stake ${selectorLogic.stake?.implementation||'–'}; am Unstake ${selectorLogic.unstake?.implementation||'–'}.`,'ok');
 
  let historicalDataflowResult;
