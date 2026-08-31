@@ -11,9 +11,9 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 .header-version{margin-top:6px;font-size:12px;font-weight:700;opacity:.82}</style>
 </head><body><div class="wrap">
 <h1>🧪 TLN/VOW · isolierter Staking-Duration-Test</h1>
-<div class="header-version">Version: 31.08.2026 14:57:34 CEST</div>
+<div class="header-version">Version: 31.08.2026 15:08:05 CEST</div>
 <p class="muted">Ziel: Vertrags-/Lock-Dauer ausschließlich aus On-chain-Evidenz ermitteln. Es wird keine Lock-Dauer vorgegeben. Reward-Dauer wird separat behandelt.</p>
-<p class="muted">Request-optimiert: Lock-Grenze wird direkt im Blockraum per Binärsuche ermittelt; keine Tages-/Timestamp-Rastersuche.</p>
+<p class="muted">Request-optimiert: adaptiver Wallet-Mapping-Scan + direkte Block-Binärsuche; kein 1-Jahres-Zusatzscan und keine Tages-/Timestamp-Rastersuche.</p>
 <div class="card grid">
 <label>Wallet<input id="wallet" class="mono" value="0x813D4948e797DA57085cf1b81b96804576E85510"></label>
 <label>Staking-Contract<input id="contract" class="mono" value="0x43e457164eff66d1f975dcb9d2504ab29e36264e"></label>
@@ -40,7 +40,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>9 · Bytecode-Zeitkonstanten (nur Diagnose)</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>10 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 14:57:34 CEST</div>
+<div class="muted">Version: 31.08.2026 15:08:05 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -282,8 +282,8 @@ function plausibleTs(n,stakeTs){return n>946684800&&n<4102444800&&(!stakeTs||Mat
 function durationFromSeconds(sec){if(sec<=0||sec>1000*86400)return null;const days=sec/86400;return {seconds:sec,days,exactDays:Number.isInteger(days)}}
 function decodeWords(hex){const h=String(hex||'').replace(/^0x/,'');const out=[];for(let i=0;i+64<=h.length;i+=64){try{out.push(BigInt('0x'+h.slice(i,i+64)))}catch{}}return out}
 const READ_PROBES=[
- ['stakingDuration()','uint'],['stakingPeriod()','uint'],['lockPeriod()','uint'],['lockDuration()','uint'],['duration()','uint'],['period()','uint'],['stakingTime()','uint'],['rewardDuration()','uint'],['rewardsDuration()','uint'],
- ['unlockTime(address)','timestamp_wallet'],['unlockDate(address)','timestamp_wallet'],['endTime(address)','timestamp_wallet'],['endDate(address)','timestamp_wallet'],['stakeTime(address)','timestamp_wallet'],['stakeDate(address)','timestamp_wallet'],['startTime(address)','timestamp_wallet'],['stakingStart(address)','timestamp_wallet'],
+ ['stakingDuration()','uint'],['stakingPeriod()','uint'],['lockPeriod()','uint'],['lockDuration()','uint'],
+ ['unlockTime(address)','timestamp_wallet'],['endTime(address)','timestamp_wallet'],['stakeTime(address)','timestamp_wallet'],['startTime(address)','timestamp_wallet'],
  ['getUnlockTime(address)','timestamp_wallet'],['getEndTime(address)','timestamp_wallet']
 ];
 function encodeProbe(sig,wallet){const inside=sig.match(/\((.*)\)/)?.[1]||'';const sel=ethers.id(sig).slice(0,10);if(!inside)return sel;return sel+ethers.AbiCoder.defaultAbiCoder().encode([inside],[wallet]).slice(2)}
@@ -298,19 +298,6 @@ async function archiveStorageScan(contract,wallet,blockNum,stakeTs){
  const before='0x'+(blockNum-1).toString(16), after='0x'+blockNum.toString(16);
  const coder=ethers.AbiCoder.defaultAbiCoder();
 
- // STUFE A:
- // 1) globale direkte Slots 0–64
- // 2) je mapping(address=>...) Root 0–64 zunächst NUR Offset 0
- // So vermeiden wir den bisherigen Vollscan von 1.170 Slots.
- const stageA=[];
- for(let slot=0;slot<=64;slot++){
-   stageA.push({kind:'direct',root:slot,offset:0,key:'0x'+slot.toString(16)});
- }
- for(let root=0;root<=64;root++){
-   const base=BigInt(ethers.keccak256(coder.encode(['address','uint256'],[wallet,root])));
-   stageA.push({kind:'mapping(address)',root,offset:0,key:'0x'+base.toString(16)});
- }
-
  async function readChanged(candidates,label){
    const calls=[];
    for(const x of candidates){
@@ -318,7 +305,7 @@ async function archiveStorageScan(contract,wallet,blockNum,stakeTs){
      calls.push({method:'eth_getStorageAt',params:[contract,x.key,after]});
    }
    log(`${label}: ${candidates.length} Slots / ${calls.length} historische NodeReal-Reads …`,'warn');
-   const res=await nodeRealMany(calls,4);
+   const res=await nodeRealMany(calls,6);
    const changes=[]; let errors=0;
    for(let i=0;i<candidates.length;i++){
      const a=res[i*2],b=res[i*2+1];
@@ -333,70 +320,82 @@ async function archiveStorageScan(contract,wallet,blockNum,stakeTs){
        const diff=Math.abs(qi.n-pi.n);
        row.diffDuration=durationFromSeconds(diff);
      }
-     row.stakeDeltas=vals
-       .map(v=>({ts:v,delta:durationFromSeconds(Math.abs(v-stakeTs))}))
+     row.stakeDeltas=vals.map(v=>({ts:v,delta:durationFromSeconds(Math.abs(v-stakeTs))}))
        .filter(x=>x.delta&&x.delta.days>=1);
      changes.push(row);
    }
    return {changes,errors};
  }
 
- const a=await readChanged(stageA,'NodeReal Archive Stufe A');
-
- // Relevante Mapping-Roots bestimmen.
- // Ein Struct kann sich an Offset >0 ändern, obwohl Offset 0 unverändert bleibt.
- // Deshalb erweitern wir gezielt um Nachbar-Roots von Treffern und um Roots,
- // deren Offset-0-Wert nicht leer ist. Damit bleibt der Scan klein, ohne nur
- // auf einen einzelnen Offset zu vertrauen.
- const hitRoots=new Set(a.changes.filter(x=>x.kind==='mapping(address)').map(x=>x.root));
-
- // Falls Offset 0 selbst keinen Treffer liefert, nehmen wir zusätzlich einen
- // kleinen Kernbereich typischer Mapping-Roots 0–16 als Sicherheitsnetz.
- const rootsToExpand=new Set();
- for(const r of hitRoots){
-   for(let d=-1;d<=1;d++){
-     const q=r+d;
-     if(q>=0&&q<=64) rootsToExpand.add(q);
-   }
- }
- if(!rootsToExpand.size){
-   for(let r=0;r<=16;r++) rootsToExpand.add(r);
- }
-
- // STUFE B: nur ausgewählte Mapping-Roots vollständig auf Offsets 0–16 prüfen.
- const stageB=[];
- for(const root of [...rootsToExpand].sort((x,y)=>x-y)){
+ function mappingCandidate(root,offset=0){
    const base=BigInt(ethers.keccak256(coder.encode(['address','uint256'],[wallet,root])));
-   for(let off=0;off<=16;off++){
-     stageB.push({
-       kind:'mapping(address)',
-       root,
-       offset:off,
-       key:'0x'+(base+BigInt(off)).toString(16)
-     });
-   }
+   return {kind:'mapping(address)',root,offset,key:'0x'+(base+BigInt(offset)).toString(16)};
  }
 
- const b=await readChanged(stageB,'NodeReal Archive Stufe B');
+ // A1: typischer Kernbereich. Nur Offset 0 – billig und bei Struct-Mappings meist ausreichend,
+ // um den tatsächlich beschriebenen Wallet-Root zu erkennen.
+ const a1Candidates=[];
+ for(let root=0;root<=16;root++)a1Candidates.push(mappingCandidate(root,0));
+ const a1=await readChanged(a1Candidates,'NodeReal Archive A1 · Mapping-Roots 0–16 / Offset 0');
 
- // Deduplizieren
- const all=[...a.changes,...b.changes];
+ let hitRoots=new Set(a1.changes.map(x=>x.root));
+ let a2={changes:[],errors:0}, fallbackUsed=false;
+
+ // A2 nur wenn A1 gar keinen Mapping-Treffer liefert.
+ if(!hitRoots.size){
+   fallbackUsed=true;
+   const a2Candidates=[];
+   for(let root=17;root<=64;root++)a2Candidates.push(mappingCandidate(root,0));
+   a2=await readChanged(a2Candidates,'NodeReal Archive A2 · Mapping-Roots 17–64 / Offset 0');
+   hitRoots=new Set(a2.changes.map(x=>x.root));
+ }
+
+ // B: Nur tatsächlich getroffene Roots auf Offsets 0–8 erweitern.
+ // Falls Offset 0 nirgends geändert war, Sicherheitsnetz Roots 0–8.
+ const rootsToExpand=[...hitRoots];
+ if(!rootsToExpand.length){
+   fallbackUsed=true;
+   for(let r=0;r<=8;r++)rootsToExpand.push(r);
+ }
+ const bCandidates=[];
+ for(const root of rootsToExpand.sort((a,b)=>a-b)){
+   for(let off=0;off<=8;off++)bCandidates.push(mappingCandidate(root,off));
+ }
+ const b=await readChanged(bCandidates,'NodeReal Archive B · nur Treffer-Roots / Offsets 0–8');
+
+ // Falls wir noch keinen exakten Stake-Timestamp sehen, einmal gezielt Offsets 9–16
+ // nur auf den bereits gefundenen Roots prüfen.
+ let c={changes:[],errors:0};
+ const combined0=[...a1.changes,...a2.changes,...b.changes];
+ const hasStakeTs=combined0.some(x=>x.kind==='mapping(address)'&&
+   (x.afterInfo?.timestamp===stakeTs || x.timestamps?.some(t=>Math.abs(t-stakeTs)<=10)));
+ if(!hasStakeTs && rootsToExpand.length){
+   fallbackUsed=true;
+   const cCandidates=[];
+   for(const root of rootsToExpand){
+     for(let off=9;off<=16;off++)cCandidates.push(mappingCandidate(root,off));
+   }
+   c=await readChanged(cCandidates,'NodeReal Archive C · Treffer-Roots / Offsets 9–16');
+ }
+
+ const all=[...a1.changes,...a2.changes,...b.changes,...c.changes];
  const ded=new Map();
  for(const x of all){
    const k=`${x.kind}|${x.root}|${x.offset}|${x.key}`;
-   if(!ded.has(k)) ded.set(k,x);
+   if(!ded.has(k))ded.set(k,x);
  }
  const changes=[...ded.values()];
+ const exactTs=changes.find(x=>x.kind==='mapping(address)'&&
+   (x.afterInfo?.timestamp===stakeTs || x.timestamps?.some(t=>Math.abs(t-stakeTs)<=10)));
 
  return {
-   available:(a.errors<stageA.length)||(b.errors<stageB.length),
-   error:(a.errors+b.errors)?`${a.errors+b.errors} Storage-Aufrufe ohne Ergebnis`:null,
-   changes,
-   before,
-   after,
-   tested:stageA.length+stageB.length,
-   stageA:{tested:stageA.length,changes:a.changes.length,errors:a.errors},
-   stageB:{tested:stageB.length,changes:b.changes.length,errors:b.errors,roots:[...rootsToExpand].sort((x,y)=>x-y)}
+   available:true,error:null,changes,before,after,
+   tested:a1Candidates.length+(fallbackUsed&&a2?.changes!==undefined?(hitRoots.size?0:48):0)+bCandidates.length,
+   stageA:{tested:a1Candidates.length+(a2?.changes?.length||a2?.errors?48:0),changes:a1.changes.length+a2.changes.length,errors:a1.errors+a2.errors},
+   stageB:{tested:bCandidates.length+(c.changes.length||c.errors?rootsToExpand.length*8:0),changes:b.changes.length+c.changes.length,errors:b.errors+c.errors,roots:rootsToExpand},
+   detectedRoot:exactTs?.root??(hitRoots.size?[...hitRoots][0]:null),
+   detectedTimestampOffset:exactTs?.offset??null,
+   fallbackUsed
  };
 }
 async function traceStorage(hash,contract,impl,stakeTs){let tr=null,source='';const attempts=[
@@ -471,60 +470,54 @@ async function readRootOffsetsAt(contract,wallet,root,offsets,blockTag,stakeTs){
    return {root,offset,key:walletMappingKey(wallet,root,offset),block:blockTag,...classifyRootValue(r?.result||'0x0',stakeTs)};
  });
 }
-async function targetedRoot3Scan(contract,wallet,ctx,coreChange=null){
- const root=3;
- const offsets=Array.from({length:33},(_,i)=>i);
+async function targetedRoot3Scan(contract,wallet,ctx,archiveStorage){
+ const root=Number.isInteger(archiveStorage?.detectedRoot)?archiveStorage.detectedRoot:null;
+ if(root==null){
+   return {available:false,root:null,offsets:[],startRow:null,changedAtStake:[],transitions:[],byOffset:[],storedFutureTimestampAtStake:[],reason:'Kein Wallet-Staking-Mapping-Root automatisch erkannt.'};
+ }
+ const timestampOffset=Number.isInteger(archiveStorage?.detectedTimestampOffset)?archiveStorage.detectedTimestampOffset:null;
+ const offsets=[...new Set([0,1,2,3,4,5,6,7,8,timestampOffset].filter(x=>Number.isInteger(x)&&x>=0&&x<=16))].sort((a,b)=>a-b);
  const beforeBlock='0x'+(ctx.blockNum-1).toString(16);
  const stakeBlock='0x'+ctx.blockNum.toString(16);
- const referenceTs=ctx.ts+365*86400;
 
- log('Root 3: bestimme technischen 1-Jahres-Vergleichspunkt ausschließlich für den Storage-Strukturscan …','ok');
- const referenceBlock=await findBlockNearTimestamp(referenceTs);
- log(`Root 3: technischer 1-Jahres-Storage-Vergleichspunkt liegt nahe Block ${referenceBlock?.blockNum??'?'}, ${referenceBlock?fmtDate(referenceBlock.timestamp):'unbekannt'} (Δ ${referenceBlock?.delta??'?'} s).`,'ok');
+ log(`Staking-Struct automatisch erkannt: Mapping-Root ${root}${timestampOffset!=null?` · Stake-Timestamp Offset ${timestampOffset}`:''}.`,'ok');
+ log(`Lese nur ${offsets.length} relevante Struct-Offsets vor Stake, am Stake und latest …`,'ok');
 
- log('Root 3: lese Offsets 0–32 vor Stake, am Stake, am technischen 1-Jahres-Punkt und latest (von Lock-Ermittlung ausgeschlossen) …','ok');
- const [before,stake,atReference,latest]=await Promise.all([
+ const [before,stake,latest]=await Promise.all([
    readRootOffsetsAt(contract,wallet,root,offsets,beforeBlock,ctx.ts),
    readRootOffsetsAt(contract,wallet,root,offsets,stakeBlock,ctx.ts),
-   referenceBlock?readRootOffsetsAt(contract,wallet,root,offsets,referenceBlock.block,ctx.ts):Promise.resolve([]),
    readRootOffsetsAt(contract,wallet,root,offsets,'latest',ctx.ts)
  ]);
 
  const byOffset=offsets.map(offset=>{
    const pre=before.find(x=>x.offset===offset);
    const st=stake.find(x=>x.offset===offset);
-   const t367=atReference.find(x=>x.offset===offset);
    const lat=latest.find(x=>x.offset===offset);
-   return {offset,key:walletMappingKey(wallet,root,offset),before:pre,stake:st,atReference:t367,latest:lat};
+   return {offset,key:walletMappingKey(wallet,root,offset),before:pre,stake:st,latest:lat};
  });
-
  const changedAtStake=byOffset.filter(r=>r.before?.value!==r.stake?.value);
  const startRow=changedAtStake.find(r=>r.stake?.timestamp===ctx.ts)||
-                  changedAtStake.find(r=>r.stake?.timestamp&&Math.abs(r.stake.timestamp-ctx.ts)<=10);
+   changedAtStake.find(r=>r.stake?.timestamp&&Math.abs(r.stake.timestamp-ctx.ts)<=10)||
+   (timestampOffset!=null?byOffset.find(r=>r.offset===timestampOffset):null);
 
  const storedFutureTimestampAtStake=byOffset
    .filter(r=>r.stake?.timestamp&&r.stake.timestamp>ctx.ts)
    .map(r=>({offset:r.offset,timestamp:r.stake.timestamp,days:(r.stake.timestamp-ctx.ts)/86400}));
 
- const transitions=byOffset.filter(r=>{
-   const s=r.stake?.value, a=r.atReference?.value, l=r.latest?.value;
-   return (s!==undefined&&a!==undefined&&s!==a)||(a!==undefined&&l!==undefined&&a!==l);
- });
+ const transitions=byOffset.filter(r=>r.stake?.value!==r.latest?.value);
+
+ // Kernfelder dynamisch: exakter Stake-Timestamp plus bis zu zwei weitere beim Stake
+ // geänderte Felder. Beim aktuellen Contract ergibt das [0,1,3].
+ const changedOffsets=changedAtStake.map(r=>r.offset);
+ const amountOffsets=changedOffsets.filter(x=>x!==startRow?.offset).slice(0,2);
+ const coreOffsets=[...new Set([...amountOffsets,...(startRow?[startRow.offset]:[])])].sort((a,b)=>a-b);
 
  return {
-   root,
-   offsets,
-   referenceTs,
-   referenceDate:fmtDate(referenceTs),
-   referenceBlock,
-  referencePurpose:'technischer Storage-Vergleichspunkt; vollständig von der Lock-Ermittlung ausgeschlossen',
-   beforeBlock,
-   stakeBlock,
-   startRow,
-   storedFutureTimestampAtStake,
-   changedAtStake,
-   transitions,
-   byOffset
+   available:true,root,offsets,timestampOffset,
+   beforeBlock,stakeBlock,startRow,storedFutureTimestampAtStake,
+   changedAtStake,transitions,byOffset,coreOffsets,
+   referenceTs:null,referenceDate:null,referenceBlock:null,
+   referencePurpose:'entfernt – kein technischer 1-Jahres-Scan im normalen Lauf'
  };
 }
 function buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis,unstakeGate,selectorLogic,historicalDataflow){
@@ -534,7 +527,7 @@ function buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis,unstakeGate,
      score:92,
      label:'Wallet-Staking-Struktur mit exaktem Stake-Timestamp',
      days:null,
-     detail:`mapping root 3 / offset ${targeted.startRow.offset}: ${targeted.startRow.before?.value} → ${targeted.startRow.stake?.value}; exakt ${fmtDate(ctx.ts)}`
+     detail:`mapping root ${targeted.root} / offset ${targeted.startRow.offset}: ${targeted.startRow.before?.value} → ${targeted.startRow.stake?.value}; exakt ${fmtDate(ctx.ts)}`
    });
  }
  for(const x of targeted?.storedFutureTimestampAtStake||[]){
@@ -542,7 +535,7 @@ function buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis,unstakeGate,
      score:100,
      label:'Start-/End-Timestamp im selben Wallet-Mapping',
      days:x.days,
-     detail:`root 3: Stake-Timestamp ${fmtDate(ctx.ts)}, future timestamp an offset ${x.offset}: ${fmtDate(x.timestamp)}`
+     detail:`root ${targeted.root}: Stake-Timestamp ${fmtDate(ctx.ts)}, future timestamp an offset ${x.offset}: ${fmtDate(x.timestamp)}`
    });
  }
  if(coreChange?.found){
@@ -563,7 +556,7 @@ function buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis,unstakeGate,
        score:gate.implementationStable?100:98,
        label:'Historische Unstake-Call-Grenze mit Lock-Revert',
        days:gate.elapsedDays,
-       detail:`Historischer eth_call: Block ${gate.before.blockNum} CONTRACT-REVERT (${gate.before.date}) → Block ${gate.first.blockNum} OK (${gate.first.date}); ${fmtDays(gate.elapsedDays)} nach Stake. Implementation über Grenze ${gate.implementationStable?'unverändert':'geändert'}. Revert: ${priorMsg}`
+       detail:`Historischer eth_call: Block ${gate.before.blockNum} CONTRACT-REVERT (${gate.before.date}) → Block ${gate.after.blockNum} OK (${gate.after.date}); ${fmtDays(gate.elapsedDays)} nach Stake. Implementation über Grenze ${gate.implementationStable?'unverändert':'geändert'}. Revert: ${priorMsg}`
      });
    }
  }
@@ -590,75 +583,57 @@ function strictVerdict(evidence){
  return {cls:'warn',text:'Vertrags-/Lock-Dauer nicht belastbar ermittelt.'};
 }
 function root3Html(targeted){
- if(!targeted)return '<span class="warn">Kein Technischer Root-3-Storage-Strukturscan.</span>';
- const rows=targeted.byOffset.filter(r=>{
-   const vals=[r.before?.value,r.stake?.value,r.atReference?.value,r.latest?.value];
-   return vals.some(v=>v&&v!=='0') || new Set(vals).size>1;
- });
- return `<p class="muted">Root 3, Offsets 0–32. Technischer Storage-Vergleichspunkt: ${esc(targeted.referenceDate)} · Block ${esc(targeted.referenceBlock?.blockNum??'–')} · Blockzeit ${esc(targeted.referenceBlock?fmtDate(targeted.referenceBlock.timestamp):'–')}. Dieser Punkt ist von der Lock-Ermittlung ausgeschlossen.</p>
- <table><thead><tr><th>Offset</th><th>Vor Stake</th><th>Stake-Block</th><th>neutraler Referenzpunkt</th><th>Latest</th><th>Zeit-Hinweis</th></tr></thead><tbody>
- ${rows.map(r=>{
-   const hint=[r.stake?.timestamp?`Stake: ${fmtDate(r.stake.timestamp)}`:'',r.atReference?.timestamp?`Storage-Vergleich: ${fmtDate(r.atReference.timestamp)}`:'',r.latest?.timestamp?`Latest: ${fmtDate(r.latest.timestamp)}`:''].filter(Boolean).join(' · ')||'–';
-   return `<tr><td>${r.offset}</td><td class="mono">${esc(r.before?.value??'–')}</td><td class="mono">${esc(r.stake?.value??'–')}</td><td class="mono">${esc(r.atReference?.value??'–')}</td><td class="mono">${esc(r.latest?.value??'–')}</td><td>${esc(hint)}</td></tr>`;
- }).join('')}</tbody></table>`;
+ if(!targeted?.available)return `<span class="warn">${esc(targeted?.reason||'Staking-Struct nicht erkannt.')}</span>`;
+ return `<div class="kv">
+   <div class="k">Erkannter Mapping-Root</div><div class="v"><b>${esc(targeted.root)}</b></div>
+   <div class="k">Stake-Timestamp-Offset</div><div class="v">${esc(targeted.startRow?.offset??'–')}</div>
+   <div class="k">Kernfelder</div><div class="v">[${esc((targeted.coreOffsets||[]).join(', '))}]</div>
+   <div class="k">Beim Stake geänderte Offsets</div><div class="v">${esc((targeted.changedAtStake||[]).map(x=>x.offset).join(', ')||'–')}</div>
+   <div class="k">1-Jahres-Zusatzscan</div><div class="v">entfernt (nicht für Lock-Ermittlung nötig)</div>
+ </div>`;
 }
-
-
-function rootCoreSignature(rows){
- const wanted=[0,1,3], out={};
- for(const off of wanted){
-   const r=rows.find(x=>x.offset===off);
-   out[off]=r?.value??null;
- }
- return out;
-}
-function sameCoreSignature(a,b){
- return [0,1,3].every(k=>String(a?.[k]??'')===String(b?.[k]??''));
-}
-async function readRoot3CoreAt(contract,wallet,blockNum,stakeTs){
+async function readRoot3CoreAt(contract,wallet,targeted,blockNum,stakeTs){
  const tag=typeof blockNum==='string'?blockNum:'0x'+Number(blockNum).toString(16);
- const rows=await readRootOffsetsAt(contract,wallet,3,[0,1,3],tag,stakeTs);
- return {blockNum:typeof blockNum==='number'?blockNum:null,block:tag,rows,signature:rootCoreSignature(rows)};
+ const offsets=targeted?.coreOffsets?.length?targeted.coreOffsets:[0,1,3];
+ const rows=await readRootOffsetsAt(contract,wallet,targeted.root,offsets,tag,stakeTs);
+ const signature={};
+ for(const off of offsets)signature[off]=rows.find(x=>x.offset===off)?.value??null;
+ return {blockNum:typeof blockNum==='number'?blockNum:null,block:tag,rows,signature};
+}
+function sameCoreSignatureDynamic(a,b,offsets){
+ return offsets.every(k=>String(a?.[k]??'')===String(b?.[k]??''));
 }
 async function findFirstRoot3CoreChange(contract,wallet,ctx,targeted){
- const base={
-   0:targeted.byOffset?.find(r=>r.offset===0)?.stake?.value??null,
-   1:targeted.byOffset?.find(r=>r.offset===1)?.stake?.value??null,
-   3:targeted.byOffset?.find(r=>r.offset===3)?.stake?.value??null
- };
+ if(!targeted?.available||!targeted?.coreOffsets?.length)return {found:false,reason:'Keine automatisch erkannten Staking-Kernfelder.',base:{}};
+ const offsets=targeted.coreOffsets;
+ const base={};
+ for(const off of offsets)base[off]=targeted.byOffset?.find(r=>r.offset===off)?.stake?.value??null;
+
  const latestHex=await nodeRealRpcDirect('eth_blockNumber',[]);
- let lo=ctx.blockNum, hi=Number(BigInt(latestHex));
- const latest=await readRoot3CoreAt(contract,wallet,'latest',ctx.ts);
- if(sameCoreSignature(base,latest.signature)){
-   return {found:false,reason:'Kernfelder 0/1/3 sind latest noch unverändert.',base,latest};
+ let lo=ctx.blockNum,hi=Number(BigInt(latestHex));
+ const latest=await readRoot3CoreAt(contract,wallet,targeted,'latest',ctx.ts);
+ if(sameCoreSignatureDynamic(base,latest.signature,offsets)){
+   return {found:false,reason:'Erkannte Kernfelder sind latest noch unverändert.',base,latest};
  }
- log(`Suche erste Änderung der Root-3-Kernfelder zwischen Block ${lo} und ${hi} …`,'ok');
+ log(`Suche erste Änderung der Staking-Kernfelder zwischen Block ${lo} und ${hi} …`,'ok');
  while(lo+1<hi){
    const mid=Math.floor((lo+hi)/2);
-   const state=await readRoot3CoreAt(contract,wallet,mid,ctx.ts);
-   if(sameCoreSignature(base,state.signature)) lo=mid;
+   const state=await readRoot3CoreAt(contract,wallet,targeted,mid,ctx.ts);
+   if(sameCoreSignatureDynamic(base,state.signature,offsets))lo=mid;
    else hi=mid;
  }
- const window=[];
- for(let b=Math.max(ctx.blockNum,hi-3);b<=hi+3;b++){
-   try{
-     const s=await readRoot3CoreAt(contract,wallet,b,ctx.ts);
-     window.push({blockNum:b,signature:s.signature,sameAsStake:sameCoreSignature(base,s.signature)});
-   }catch(e){window.push({blockNum:b,error:e.message});}
- }
- let first=hi;
- for(const r of window) if(r.sameAsStake===false) first=Math.min(first,r.blockNum);
- const before=await readRoot3CoreAt(contract,wallet,first-1,ctx.ts);
- const changed=await readRoot3CoreAt(contract,wallet,first,ctx.ts);
+ const first=hi;
+ const before=await readRoot3CoreAt(contract,wallet,targeted,first-1,ctx.ts);
+ const changed=await readRoot3CoreAt(contract,wallet,targeted,first,ctx.ts);
  const blockObj=await nodeRealRpcDirect('eth_getBlockByNumber',['0x'+first.toString(16),true]);
  const blockTs=blockObj?.timestamp?Number(BigInt(blockObj.timestamp)):null;
  return {
-   found:true,base,
+   found:true,base,coreOffsets:offsets,
    firstChangedBlock:first,firstChangedBlockHex:'0x'+first.toString(16),
    timestamp:blockTs,date:blockTs?fmtDate(blockTs):null,
    elapsedSeconds:blockTs?blockTs-ctx.ts:null,
    elapsedDays:blockTs?(blockTs-ctx.ts)/86400:null,
-   before,changed,boundaryWindow:window,block:blockObj
+   before,changed,boundaryWindow:[],block:blockObj
  };
 }
 async function analyzeChangeBlockTransactions(change,contract,wallet){
@@ -1378,7 +1353,7 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  $('providerTest').innerHTML=`<p class="${nrTest.ok?'ok':'bad'}"><b>${nrTest.ok?'NodeReal Direct beantwortet historische eth_getStorageAt-Reads.':'NodeReal Direct Archive-State nicht bestätigt.'}</b></p><table><thead><tr><th>Probe</th><th>Block</th><th>Status</th><th>Wert / Fehler</th></tr></thead><tbody>${nrTest.rows.map(r=>`<tr><td>${esc(r.label)}</td><td class="mono">${esc(r.block)}</td><td>${r.ok?'<span class="ok">OK</span>':'<span class="bad">FEHLER</span>'}</td><td class="mono">${esc(r.ok?r.value:r.error)}</td></tr>`).join('')}</tbody></table>`;
  if(nrTest.ok)log('NodeReal Direct Archive-State-Selbsttest erfolgreich.','ok');
  else log('NodeReal Direct Archive-State-Selbsttest fehlgeschlagen.','bad');
- const impl=await eip1967Impl(contract);const readTargets=[contract,...(impl?[impl]:[])];const reads=[];for(const target of readTargets){for(const [sig,kind] of READ_PROBES){const v=await callProbe(target,sig,wallet,'latest');if(v==null)continue;const n=v<=BigInt(Number.MAX_SAFE_INTEGER)?Number(v):null;let duration=null;if(n!=null&&!kind.includes('timestamp'))duration=durationFromSeconds(n);reads.push({target,sig,kind,value:v.toString(),duration})}}
+ const impl=await eip1967Impl(contract);const readTargets=[contract,...(impl?[impl]:[])];const reads=[];for(const target of readTargets){const probeResults=await Promise.all(READ_PROBES.map(async ([sig,kind])=>({sig,kind,v:await callProbe(target,sig,wallet,'latest')})));for(const {sig,kind,v} of probeResults){if(v==null)continue;const n=v<=BigInt(Number.MAX_SAFE_INTEGER)?Number(v):null;let duration=null;if(n!=null&&!kind.includes('timestamp'))duration=durationFromSeconds(n);reads.push({target,sig,kind,value:v.toString(),duration})}}
  $('reads').innerHTML=reads.length?`<table><thead><tr><th>Contract</th><th>Read</th><th>Wert</th><th>Interpretation</th></tr></thead><tbody>${reads.map(r=>`<tr><td class="mono">${esc(r.target)}</td><td class="mono">${esc(r.sig)}</td><td class="mono">${esc(r.value)}</td><td>${r.duration?`<b>${esc(fmtDays(r.duration.days))}</b>`:(r.kind.includes('timestamp')&&plausibleTs(Number(r.value),ctx.ts)?esc(fmtDate(Number(r.value))):'–')}</td></tr>`).join('')}</tbody></table>`:'<span class="warn">Keine bekannten Read-Funktionen erfolgreich.</span>';
  const recEv=receiptEvidence(ctx.receipt,ctx.ts);$('stake').innerHTML=`<div class="kv"><div class="k">TX</div><div class="v mono">${esc(hash)}</div><div class="k">Block</div><div class="v">${ctx.blockNum}</div><div class="k">Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">TX →</div><div class="v mono">${esc(ctx.tx.to||'')}</div><div class="k">Selector</div><div class="v mono">${esc(String(ctx.tx.input||'').slice(0,10))}</div><div class="k">Receipt-Zeitwerte</div><div class="v">${recEv.length?recEv.map(x=>`<span class="pill">${x.type==='duration'?fmtDays(x.days):fmtDate(x.value)}</span>`).join(''):'keine plausiblen Zeitwerte'}</div></div>`;
  const storage={source:null,changes:[],raw:null,skipped:true,reason:'debug_traceTransaction im automatischen Lauf deaktiviert'};log('debug_traceTransaction übersprungen; direkter Archive-State-Pfad wird verwendet.','ok');let archiveStorage={available:false,changes:[]};if(!storage.changes.length){
@@ -1390,16 +1365,16 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
    }else{
      archiveStorage={available:false,error:'NodeReal Direct Archive-State-Selbsttest fehlgeschlagen',changes:[]};
    }
- }const traceHtml=storage.changes.length?`<p class="muted">Trace-Quelle: ${esc(storage.source)}</p><table><thead><tr><th>Adresse</th><th>Slot</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${storage.changes.slice(0,100).map(x=>`<tr><td class="mono">${esc(x.address)}</td><td class="mono">${esc(x.slot)}</td><td class="mono">${esc(x.before?.toString()??'–')}</td><td class="mono">${esc(x.after?.toString()??'–')}</td><td>${x.diffDuration?`Δ ${esc(fmtDays(x.diffDuration.days))}`:(x.timestampValues||[]).map(fmtDate).join(' · ')||'–'}</td></tr>`).join('')}</tbody></table>`:'';const archHtml=archiveStorage.changes?.length?`<p class="muted">Archive-State: Block ${archiveStorage.before} → ${archiveStorage.after}. Zweistufiger Scan: zuerst direkte Slots 0–64 plus Mapping-Roots 0–64 nur an Offset 0; danach vollständige Offsets 0–16 nur für relevante Roots.</p><table><thead><tr><th>Typ</th><th>Root/Offset</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${archiveStorage.changes.slice(0,120).map(x=>`<tr><td>${esc(x.kind)}</td><td class="mono">${x.root} / ${x.offset}</td><td class="mono">${esc(x.before.toString())}</td><td class="mono">${esc(x.after.toString())}</td><td>${(x.timestamps||[]).map(t=>fmtDate(t)).join(' · ')||((x.stakeDeltas||[]).map(q=>`Δ Stake ${fmtDays(q.delta.days)}`).join(' · '))||'–'}</td></tr>`).join('')}</tbody></table>`:'';$('storage').innerHTML=traceHtml||archHtml||'<span class="warn">Weder Trace-Storage-Diffs noch Archive-State-Änderungen verfügbar.</span>';
+ }const traceHtml=storage.changes.length?`<p class="muted">Trace-Quelle: ${esc(storage.source)}</p><table><thead><tr><th>Adresse</th><th>Slot</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${storage.changes.slice(0,100).map(x=>`<tr><td class="mono">${esc(x.address)}</td><td class="mono">${esc(x.slot)}</td><td class="mono">${esc(x.before?.toString()??'–')}</td><td class="mono">${esc(x.after?.toString()??'–')}</td><td>${x.diffDuration?`Δ ${esc(fmtDays(x.diffDuration.days))}`:(x.timestampValues||[]).map(fmtDate).join(' · ')||'–'}</td></tr>`).join('')}</tbody></table>`:'';const archHtml=archiveStorage.changes?.length?`<p class="muted">Archive-State: Block ${archiveStorage.before} → ${archiveStorage.after}. Adaptiver Mapping-Scan: zuerst Roots 0–16 an Offset 0; nur bei Bedarf Erweiterung. Danach ausschließlich tatsächlich getroffene Roots auf wenigen Struct-Offsets.</p><table><thead><tr><th>Typ</th><th>Root/Offset</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${archiveStorage.changes.slice(0,120).map(x=>`<tr><td>${esc(x.kind)}</td><td class="mono">${x.root} / ${x.offset}</td><td class="mono">${esc(x.before.toString())}</td><td class="mono">${esc(x.after.toString())}</td><td>${(x.timestamps||[]).map(t=>fmtDate(t)).join(' · ')||((x.stakeDeltas||[]).map(q=>`Δ Stake ${fmtDays(q.delta.days)}`).join(' · '))||'–'}</td></tr>`).join('')}</tbody></table>`:'';$('storage').innerHTML=traceHtml||archHtml||'<span class="warn">Weder Trace-Storage-Diffs noch Archive-State-Änderungen verfügbar.</span>';
  const code=await rpc('eth_getCode',[contract,'latest']);const implCode=impl?await rpc('eth_getCode',[impl,'latest']):'0x';const byte=[...plausibleDurationConstants(code).map(x=>({...x,target:contract})),...plausibleDurationConstants(implCode).map(x=>({...x,target:impl}))];const byteRows=byte.length?`<p class="muted">Wichtig: PUSH-Werte sind nur Diagnose. Sie sind vollständig vom Verdict ausgeschlossen und können niemals eine Vertragsdauer beweisen.</p><table><thead><tr><th>Contract</th><th>Typ</th><th>Wert</th><th>Interpretation</th><th>Hex</th></tr></thead><tbody>${byte.map(x=>`<tr><td class="mono">${esc(x.target)}</td><td>${esc(x.kind)}</td><td>${esc(x.value.toString())}</td><td>${x.kind==='possible-day-count'?`${esc(fmtDays(x.days))} möglich`:`${x.seconds.toLocaleString('de-CH')} s = ${esc(fmtDays(x.days))}`}</td><td class="mono">${esc(x.hex)}</td></tr>`).join('')}</tbody></table>`:'<p class="warn">Keine exakten Ganztage-/Tageszahl-PUSH-Hinweise gefunden.</p>';$('bytecode').innerHTML=`<div class="kv"><div class="k">Proxy-Implementation</div><div class="v mono">${esc(impl||'keine EIP-1967 Implementation erkannt')}</div></div>`+byteRows;
- const targeted=await targetedRoot3Scan(contract,wallet,ctx);
+ const targeted=await targetedRoot3Scan(contract,wallet,ctx,archiveStorage);
  $('root3').innerHTML=root3Html(targeted);
- log(`Technischer Root-3-Storage-Strukturscan abgeschlossen: ${targeted.changedAtStake.length} Änderungen am Stake-Block, ${targeted.transitions.length} spätere Übergänge.`,'ok');
+ log(`Kompakter Staking-Struct-Scan abgeschlossen: Root ${targeted.root??'–'}, ${targeted.changedAtStake.length} Änderungen am Stake-Block, Kernfelder [${(targeted.coreOffsets||[]).join(', ')}].`,'ok');
 
  const coreChange=await findFirstRoot3CoreChange(contract,wallet,ctx,targeted);
  let coreTxAnalysis={candidates:[],all:[]};
  if(coreChange.found){
-   log(`Erste Änderung der Root-3-Kernfelder: Block ${coreChange.firstChangedBlock} · ${coreChange.date} · ${fmtDays(coreChange.elapsedDays)} nach Stake.`,'ok');
+   log(`Erste Änderung der Staking-Kernfelder: Block ${coreChange.firstChangedBlock} · ${coreChange.date} · ${fmtDays(coreChange.elapsedDays)} nach Stake.`,'ok');
    coreTxAnalysis=await analyzeChangeBlockTransactions(coreChange,contract,wallet);
    const best=coreTxAnalysis.candidates?.[0];
    if(best)log(`Bester TX-Kandidat für Positionsauflösung: ${best.hash} · Selector ${best.selector} · Score ${best.score}.`,'ok');
@@ -1451,7 +1426,7 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  $('verdict').textContent=vr.text;
  const top=evidence[0]||null;
  const sameTop=evidence.filter(x=>x.score>=90);
- $('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Root-3 Startfeld</div><div class="v">${targeted.startRow?`Offset ${targeted.startRow.offset} · exakt Stake-Timestamp`:'nicht gefunden'}</div><div class="k">Technischer Storage-Vergleich</div><div class="v">${esc(targeted.referenceDate)} · Block ${esc(targeted.referenceBlock?.blockNum??'–')} · nicht für Lock-Ermittlung</div><div class="k">Erste Positionsauflösung</div><div class="v">${coreChange.found?`${esc(coreChange.date)} · ${esc(fmtDays(coreChange.elapsedDays))}`:'nicht gefunden'}</div><div class="k">Auslösende TX</div><div class="v mono">${coreTxAnalysis.candidates?.[0]?esc(coreTxAnalysis.candidates[0].hash):'–'}</div><div class="k">Automatisch ermittelte Mindest-Lockgrenze</div><div class="v">${unstakeGate?.found&&unstakeGate.before?.failureClass==='contract_revert'?`${esc(unstakeGate.after?.date||'–')} · ${esc(fmtDays(unstakeGate.elapsedDays))}`:'nicht belastbar bestimmt'}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Separat; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;lastDiagnosticExport=jsonSafe({
+ $('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Staking-Struct</div><div class="v">${targeted.startRow?`Mapping-Root ${targeted.root} · Timestamp-Offset ${targeted.startRow.offset}`:'nicht erkannt'}</div><div class="k">Erste Positionsauflösung</div><div class="v">${coreChange.found?`${esc(coreChange.date)} · ${esc(fmtDays(coreChange.elapsedDays))}`:'nicht gefunden'}</div><div class="k">Auslösende TX</div><div class="v mono">${coreTxAnalysis.candidates?.[0]?esc(coreTxAnalysis.candidates[0].hash):'–'}</div><div class="k">Automatisch ermittelte Mindest-Lockgrenze</div><div class="v">${unstakeGate?.found&&unstakeGate.before?.failureClass==='contract_revert'?`${esc(unstakeGate.after?.date||'–')} · ${esc(fmtDays(unstakeGate.elapsedDays))}`:'nicht belastbar bestimmt'}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Separat; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;lastDiagnosticExport=jsonSafe({
    version:document.querySelector('.header-version')?.textContent?.replace(/^Version:\s*/,'')||'unbekannt',
    wallet,contract,hash,
    ctx:{
