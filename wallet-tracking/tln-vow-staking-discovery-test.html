@@ -42,7 +42,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-token-card{padding:9px 11px;border:1px solid #2d384a;border-radius:8px;background:rgba(255,255,255,.02)}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 31.08.2026 02:05:00 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 31.08.2026 02:41:51 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -109,9 +109,30 @@ let rpcUrl=null,alchemyBase=null,projectTokens=[],allProjectRows=[],stakingContr
 let projectTokenMap=new Map();
 const PROXY_IMPL_CACHE=new Map();
 let CURRENT_STAKING_LOTS=[],CURRENT_WALLET='',CURRENT_UNASSIGNED_REWARDS=[],CURRENT_PROVEN_REWARD_ROWS=[],CURRENT_REWARD_FLOW_BY_HASH=new Map();
-// Keine fest codierten Staking-Laufzeiten.
+// Keine generische fest codierte Staking-Laufzeit. Contract-/Generations-spezifische
+// Laufzeiten werden nur mit dokumentierter Evidenz hinterlegt.
 function stakingDurationDays(){ return null; }
 function stakingDurationSource(){ return null; }
+const VERIFIED_STAKING_DURATION_RULES=new Map([
+  ['0x4857d369e18aba003ff6ec934cf046148df5d590',{
+    days:367,
+    source:'TLN Protocol UI: Staking Duration 367 Days',
+    sourceUrl:'https://www.tlnprotocol.com/app/rewards',
+    expectedRuntimeConstantHex:(367*86400).toString(16).padStart(8,'0'),
+    note:'Contract-spezifische Regel für diese TLN+/PC-LP-Staking-Generation; keine globale 367-Tage-Annahme.'
+  }]
+]);
+async function verifiedDurationRuleForLot(lot){
+  const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');
+  const rule=VERIFIED_STAKING_DURATION_RULES.get(contract);
+  if(!rule)return null;
+  let bytecodeEvidence=false;
+  try{
+    const code=String(await rpc('eth_getCode',[contract,'latest'])||'').toLowerCase().replace(/^0x/,'');
+    bytecodeEvidence=!!(rule.expectedRuntimeConstantHex&&code.includes(rule.expectedRuntimeConstantHex.toLowerCase()));
+  }catch{}
+  return {...rule,contract,bytecodeEvidence};
+}
 function addDaysIso(iso,days){
   if(!iso||!days)return null;
   const d=new Date(iso); if(Number.isNaN(d.getTime()))return null;
@@ -583,21 +604,28 @@ async function resolveLotContractTiming(lot,latestProbe){
     return;
   }
 
-  // No getter? For completed positions derive the release dynamically from
-  // the contract's actual historical unstake behaviour.
-  const replay=await deriveUnlockFromActualUnstake(lot);
-  if(replay?.exact&&replay.expiryTime){
-    lot.expiryTime=replay.expiryTime;
+  // Contract-/Generations-spezifisch dokumentierte Laufzeit. Diese Ebene kommt
+  // erst nach echten On-chain Gettern, aber VOR der historischen Unstake-Simulation.
+  // Eine Simulation des späteren tatsächlichen Unstakes ist KEIN Beweis für die
+  // vertragliche Laufzeit und darf durationDays/expiryTime daher nicht setzen.
+  const verifiedRule=await verifiedDurationRuleForLot(lot);
+  if(verifiedRule&&(lot.lockBaseTime||lot.stakeTime)){
     const baseTime=lot.lockBaseTime||lot.stakeTime;
-    lot.durationDays=baseTime?
-      (new Date(replay.expiryTime).getTime()-new Date(baseTime).getTime())/86400000:null;
-    lot.durationSource=replay.source;
-    lot.contractUnlockBlockHex=replay.blockHex;
-    return;
+    lot.durationDays=verifiedRule.days;
+    lot.expiryTime=new Date(new Date(baseTime).getTime()+verifiedRule.days*86400000).toISOString();
+    lot.durationRule=verifiedRule;
+    lot.durationSource=`${verifiedRule.source}${verifiedRule.bytecodeEvidence?' · 367-Tage-Sekundenkonstante zusätzlich im Runtime-Bytecode gefunden':''}`;
   }
-  if(replay&&!replay.exact){
-    lot.contractEndUpperBound=replay;
+
+  // Historische Unstake-Simulation nur noch als Diagnose/Gegenprobe speichern.
+  // Sie beantwortet: "ab welchem archivierten Zustand lässt sich genau diese spätere
+  // Unstake-Tx simulieren?" – nicht: "wann endete der Vertrag?".
+  const replay=await deriveUnlockFromActualUnstake(lot);
+  if(replay){
+    lot.unstakeReplay=replay;
+    if(!replay.exact)lot.contractEndUpperBound=replay;
   }
+  if(lot.durationDays!=null&&lot.expiryTime)return;
 
   lot.durationDays=null;
   lot.expiryTime=null;
@@ -2369,10 +2397,33 @@ function positionEvidenceForLot(lot,call,receipt=null){
 // Called only AFTER classifyRewardCallFlow has independently proven a reward.
  // Contract graph/relation below may assign a proven reward to a lot, but can
  // never turn an ordinary incoming token into a reward.
+function rewardAdapterEvidenceForLot(lot,callTo,txHash){
+  const adapter=rewardMechanismForLot(lot);
+  if(!adapter)return {strong:false,kind:null,adapter:null};
+  const to=norm(callTo||''),hash=String(txHash||'').toLowerCase();
+  const stakeTx=String(lot?.stakeTx||'').toLowerCase();
+  for(const a of (adapter.claimAnchors||[])){
+    if(hash&&hash===String(a.claimTx||'').toLowerCase()){
+      const anchoredStake=String(a.stakeTx||'').toLowerCase();
+      if(!anchoredStake||anchoredStake===stakeTx){
+        return {strong:true,kind:'verified_claim_anchor',adapter,reason:`verifizierter Einzeltest ${adapter.id}${anchoredStake?' · exakt diesem Stake zugeordnet':''}`};
+      }
+    }
+  }
+  if(hash&&(adapter.verifiedClaimTxs||[]).map(x=>String(x).toLowerCase()).includes(hash)){
+    return {strong:true,kind:'verified_claim_tx',adapter,reason:`verifizierte Claim-Tx des Reward-Adapters ${adapter.id}`};
+  }
+  if(to&&(adapter.claimContracts||[]).map(norm).includes(to)){
+    return {strong:true,kind:'verified_claim_contract',adapter,reason:`verifizierter Claim-Contract des Reward-Adapters ${adapter.id}`};
+  }
+  return {strong:false,kind:null,adapter};
+}
 function strongRewardEvidenceForLot(lot,callTo,selector,txHash,positionEvidence=null){
   callTo=norm(callTo||'');selector=String(selector||'').toLowerCase();txHash=String(txHash||'').toLowerCase();
   if(positionEvidence?.matched)return {strong:true,kind:'position_id',positionIds:positionEvidence.ids||[]};
   if(txHash&&lotLifecycleHashes(lot).has(txHash))return {strong:true,kind:'lifecycle'};
+  const adapterEvidence=rewardAdapterEvidenceForLot(lot,callTo,txHash);
+  if(adapterEvidence.strong)return adapterEvidence;
   const related=lotRewardContracts(lot);
   if(callTo&&related.has(callTo))return {strong:true,kind:'reward_relation'};
   if(callTo&&graphConnectedRewardContract(lot,callTo))return {strong:true,kind:'reward_graph'};
@@ -2481,6 +2532,11 @@ async function attachRewardClaimsToLots(lots,calls){
       }
       if(callTo&&graphConnectedRewardContract(lot,callTo)){
         score+=100;reasons.push('Contract-Graph: Reward-/Yield-SC gehört zu diesem Staking-System');
+      }
+      const adapterEv=rewardAdapterEvidenceForLot(lot,callTo,txHash);
+      if(adapterEv.strong){
+        const add=adapterEv.kind==='verified_claim_anchor'?1000:adapterEv.kind==='verified_claim_tx'?350:220;
+        score+=add;reasons.push(adapterEv.reason||'verifizierter Reward-Adapter');
       }
 
       const posEv=positionEvidenceForLot(lot,c,c._receipt||null);
@@ -2747,6 +2803,11 @@ async function attachRewardTokenHistoryToLots(lots){
       if(callTo&&graphConnectedRewardContract(lot,callTo)){
         score+=100;reasons.push('Contract-Graph: Reward-/Yield-SC gehört zu diesem Staking-System');
       }
+      const adapterEv=rewardAdapterEvidenceForLot(lot,callTo,hash);
+      if(adapterEv.strong){
+        const add=adapterEv.kind==='verified_claim_anchor'?1000:adapterEv.kind==='verified_claim_tx'?350:220;
+        score+=add;reasons.push(adapterEv.reason||'verifizierter Reward-Adapter');
+      }
 
       const pseudoCall={_input:tx?.input||'0x',input:tx?.input||'0x',to:callTo};
       const posEv=positionEvidenceForLot(lot,pseudoCall,receipt);
@@ -2944,6 +3005,8 @@ const REWARD_MECHANISM_ADAPTERS=[
   {
     id:'original_lpt_legacy_daily_13bp',label:'Original LPT (Legacy) · verifizierte On-chain-Formel',
     stakingContracts:['0x9a9e97a015ca65f48973835b45d4e28a99f89191'],
+    claimContracts:['0x9a9e97a015ca65f48973835b45d4e28a99f89191'],
+    verifiedClaimTxs:['0x8b006efb61b17c2de81615010e18a5b23345f30eb7ec90e76fe8afc6b300d98c'],
     basisType:'staking_asset',formula:'Reward = Staking-Basis × ganze Tage × 13 / 10000; Claim = kumulativer Anspruch − bereits verbucht',
     evidence:'Opcode-/Storage-Analyse eines echten withdrawYield()-Claims; exakte Tagesrate 0,13 %. Keine pauschale 48%-Jahresformel.',
     evaluate(lot){
@@ -2958,6 +3021,8 @@ const REWARD_MECHANISM_ADAPTERS=[
     id:'pc_lp_vow_vusd_legacy2_usd_48_367',label:'PC LP VOW/v$ (Legacy 2) · verifizierter USD-Basis-Mechanismus',
     stakingContracts:['0x4a050fa27861ae2f0d63fb5da986e56ac510b201'],
     claimContracts:['0xeae7ed373a00fae1dd8b88f1b97033938e0d0cdf'],
+    verifiedClaimTxs:['0xce5aa91fd02c74b47d1314a72e18b77c17d74eeb7dd24f7ea29933a6d5cda9bd'],
+    claimAnchors:[{claimTx:'0xce5aa91fd02c74b47d1314a72e18b77c17d74eeb7dd24f7ea29933a6d5cda9bd',stakeTx:'0x71304e89f1fec4bd84d3c0730520dd79944fdb2004d861b64b86f931d131be08'}],
     basisType:'stored_stake_usd',formula:'Kumulativer Anspruch = gespeicherter USD-Wert beim Stake × 48 % × ganze Tage / 367; Claim = kumulativer Anspruch − bereits verbucht',
     evidence:'Opcode-/Storage-Analyse eines echten withdrawYield()-Claims; Reward-Basis ist der im Staking-State gespeicherte USD-Wert, nicht die LP-Menge.',
     evaluate(lot){
@@ -3547,9 +3612,10 @@ function positionCardHtml(l,index,isClosed){
       <div class="stake-fact"><span class="k">Gesamt eingezahltes Staking-Asset</span><span class="v">${Number(l.original||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
       <div class="stake-fact"><span class="k">USD-Wert beim Stake</span>${stakeValue}</div>
       <div class="stake-fact"><span class="k">LP aktuell offen</span><span class="v">${Number(l.remaining||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
-      <div class="stake-fact"><span class="k">Ermittelte Laufzeit ab letzter Laufzeitbasis</span><span class="v">${l.durationDays!=null?`${l.durationDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span><div class="value-source">${l.lockBaseReason?`${esc(l.lockBaseReason)} · `:''}${l.durationSource?esc(l.durationSource):'Keine belastbare Laufzeit aus dem SC ermittelbar.'}</div></div>
-      <div class="stake-fact"><span class="k">${l.durationSource?.startsWith('Historische SC-Simulation')?'Frühester historisch simulierbarer Unstake':'Freigegeben / ausgelaufen am'}</span><span class="v">${l.expiryTime?new Date(l.expiryTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">${l.expiryTime?esc(l.durationSource||'On-chain ermittelt'):(l.contractEndUpperBound?'Tatsächlicher Unstake belegt; exakter frühester Freigabezeitpunkt konnte historisch nicht eingegrenzt werden.':'Keine belastbare Freigabe aus dem SC ermittelbar.')}</div></div>
-      <div class="stake-fact"><span class="k">${l.durationSource?.startsWith('Historische SC-Simulation')?'USD-Wert beim frühesten historisch simulierbaren Unstake':'USD-Wert beim Vertragsende'}</span>${contractEndValue}</div>
+      <div class="stake-fact"><span class="k">Vertragliche Staking-Laufzeit</span><span class="v">${l.durationDays!=null?`${l.durationDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span><div class="value-source">${l.lockBaseReason?`${esc(l.lockBaseReason)} · `:''}${l.durationSource?esc(l.durationSource):'Keine belastbare vertragliche Laufzeit ermittelbar.'}</div></div>
+      <div class="stake-fact"><span class="k">Vertragliches Laufzeitende</span><span class="v">${l.expiryTime?new Date(l.expiryTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">${l.expiryTime?esc(l.durationSource||'Belastbar ermittelt'):'Keine belastbare Freigabe/Laufzeit ermittelbar.'}</div></div>
+      <div class="stake-fact"><span class="k">USD-Wert beim Vertragsende</span>${contractEndValue}</div>
+      ${l.unstakeReplay?.exact?`<div class="stake-fact"><span class="k">Historische Unstake-Simulation (Diagnose)</span><span class="v">${l.unstakeReplay.expiryTime?new Date(l.unstakeReplay.expiryTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">Nur technische Gegenprobe mit der späteren tatsächlichen Unstake-Tx; <b>keine Vertragslaufzeit</b>. ${esc(l.unstakeReplay.source||'')}</div></div>`:''}
       ${isClosed?`<div class="stake-fact"><span class="k">Tatsächliches Unstake-Datum</span><span class="v">${l.unstakeTime?new Date(l.unstakeTime).toLocaleString('de-CH'):'–'}</span></div><div class="stake-fact"><span class="k">USD-Wert beim tatsächlichen Unstake</span>${unstakeValue}</div><div class="stake-fact"><span class="k">Gesamtdauer erster Stake → Unstake</span><span class="v">${actualDays!=null?`${actualDays} Tage`:'–'}</span></div>${(l.topUps||[]).length?`<div class="stake-fact"><span class="k">Dauer letzte Aufstockung → Unstake</span><span class="v">${actualLockDays!=null?`${actualLockDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span></div>`:''}`:''}
       <div class="stake-fact"><span class="k">Staking-Contract</span><span class="v mono">${esc(l.staking?.contract_address||l.counterparty||'–')}</span></div>
       <div class="stake-fact"><span class="k">On-chain Position-ID(s)</span><span class="v">${[...lotPositionIdentifiers(l)].length?[...lotPositionIdentifiers(l)].map(x=>`<span class="mono">${esc(x)}</span>`).join('<br>'):'–'}</span></div>
