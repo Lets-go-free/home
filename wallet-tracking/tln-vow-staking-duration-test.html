@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TLN/VOW · Staking Duration Test</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+if($('testCase')){ $('testCase').value='test2'; applyTestCase('test2'); }
+</script>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
 <style>
 :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:light dark}
@@ -11,11 +13,11 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 .header-version{margin-top:6px;font-size:12px;font-weight:700;opacity:.82}</style>
 </head><body><div class="wrap">
 <h1>🧪 TLN/VOW · isolierter Staking-Duration-Test</h1>
-<div class="header-version">Version: 31.08.2026 15:08:05 CEST</div>
+<div class="header-version">Version: 31.08.2026 18:27:00 CEST</div>
 <p class="muted">Ziel: Vertrags-/Lock-Dauer ausschließlich aus On-chain-Evidenz ermitteln. Es wird keine Lock-Dauer vorgegeben. Reward-Dauer wird separat behandelt.</p>
 <p class="muted">Request-optimiert: adaptiver Wallet-Mapping-Scan + direkte Block-Binärsuche; kein 1-Jahres-Zusatzscan und keine Tages-/Timestamp-Rastersuche.</p>
 <div class="card grid">
-<label>Wallet<input id="wallet" class="mono" value="0x813D4948e797DA57085cf1b81b96804576E85510"></label>
+<label>Wallet<input id="wallet" class="mono" value="0xf43479d0acc0e825d9ce0ef548dbf31772762110"></label>
 <label>Staking-Contract<input id="contract" class="mono" value="0x43e457164eff66d1f975dcb9d2504ab29e36264e"></label>
 <label>Stake-TX (optional)<input id="stakeTx" class="mono" value="0x51bfb4129ddd17cb0b9abe6299f70c94304a9baff7bbd74783aec341cbbb7f25"></label>
 <div style="align-self:end"><button id="run">On-chain prüfen</button></div>
@@ -40,7 +42,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>9 · Bytecode-Zeitkonstanten (nur Diagnose)</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>10 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 15:08:05 CEST</div>
+<div class="muted">Version: 31.08.2026 18:27:00 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -289,6 +291,21 @@ const READ_PROBES=[
 function encodeProbe(sig,wallet){const inside=sig.match(/\((.*)\)/)?.[1]||'';const sel=ethers.id(sig).slice(0,10);if(!inside)return sel;return sel+ethers.AbiCoder.defaultAbiCoder().encode([inside],[wallet]).slice(2)}
 async function callProbe(contract,sig,wallet,block='latest'){try{const raw=await rpc('eth_call',[{to:contract,data:encodeProbe(sig,wallet)},block]);if(!raw||raw==='0x')return null;const words=decodeWords(raw);if(!words.length)return null;return words[0]}catch{return null}}
 async function discoverStakeTx(wallet,contract){log('Stake-TX wird aus ERC-20-Transfers Wallet → Staking-Contract gesucht …');const r=await alchemy('alchemy_getAssetTransfers',[{fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,toAddress:contract,category:['erc20'],excludeZeroValue:true,withMetadata:true,maxCount:'0x3e8',order:'asc'}]);const arr=r?.transfers||[];if(!arr.length)throw new Error('Kein ERC-20-Transfer Wallet → Staking-Contract gefunden. Stake-TX bitte manuell eintragen.');const uniq=[];const seen=new Set();for(const x of arr){if(!seen.has(norm(x.hash))){seen.add(norm(x.hash));uniq.push(x)}}log(`${uniq.length} Kandidat(en) gefunden; erster Kandidat wird geprüft.`,'ok');return uniq[0].hash}
+function topicAddress(topic){
+ const h=String(topic||'').replace(/^0x/,'');
+ if(h.length!==64)return null;
+ try{return ethers.getAddress('0x'+h.slice(24));}catch{return null}
+}
+function stakeUserFromReceipt(receipt,stakingContract){
+ const STAKE_TOPIC='0x5af417134f72a9d41143ace85b0a26dce6f550f894f2cbc1eeee8810603d91b6';
+ const c=norm(stakingContract);
+ for(const l of receipt?.logs||[]){
+   if(norm(l.address)!==c || norm(l.topics?.[0])!==STAKE_TOPIC)continue;
+   const user=topicAddress(l.topics?.[1]);
+   if(user)return norm(user);
+ }
+ return null;
+}
 async function getStakeContext(hash){const tx=await rpc('eth_getTransactionByHash',[hash]);if(!tx)throw new Error('Stake-TX nicht gefunden.');const receipt=await rpc('eth_getTransactionReceipt',[hash]);const block=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);return {tx,receipt,block,ts:Number(BigInt(block.timestamp)),blockNum:Number(BigInt(tx.blockNumber))}}
 async function eip1967Impl(contract){const SLOT='0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';try{const raw=await rpc('eth_getStorageAt',[contract,SLOT,'latest']);const h=String(raw||'').replace(/^0x/,'').padStart(64,'0');const a='0x'+h.slice(24);return /^0x0{40}$/.test(a)?null:a}catch{return null}}
 function parsePushConstants(code){const h=String(code||'').replace(/^0x/,'');const vals=[];for(let i=0;i<h.length;){const op=parseInt(h.slice(i,i+2),16);i+=2;if(op>=0x60&&op<=0x7f){const n=op-0x5f,bytes=h.slice(i,i+n*2);i+=n*2;try{vals.push({bytes:n,value:BigInt('0x'+(bytes||'0')),hex:'0x'+bytes})}catch{}}}return vals}
@@ -1259,8 +1276,9 @@ function inspectHistoricalImplCode(code,selector){
 }
 async function historicalImplementationDataflow(contract,ctx,unstakeGate){
  const stakeBlock='0x'+Number(ctx.blockNum).toString(16);
- const stakeImpl=await eip1967ImplAt(contract,stakeBlock);
- if(!stakeImpl)return {available:false,error:'Historische Implementation am Stake-Block nicht auflösbar.'};
+ const proxyImpl=await eip1967ImplAt(contract,stakeBlock);
+ const stakeImpl=proxyImpl||contract;
+ const implementationSource=proxyImpl?'EIP-1967 Implementation':'direkter Staking-Contract';
 
  const code=await nodeRealRpcDirect('eth_getCode',[stakeImpl,stakeBlock]);
  if(!code||code==='0x')return {available:false,error:'Historischer Runtime-Code leer.',stakeImpl,stakeBlock};
@@ -1348,7 +1366,51 @@ function rankEvidence({reads,storage,archiveStorage,bytecode,receipt,stakeTs}){c
  const ded=new Map();for(const x of ev.sort((a,b)=>b.score-a.score)){const k=`${x.label}|${x.days}|${x.detail}`;if(!ded.has(k))ded.set(k,x)}return [...ded.values()];
 }
 function fmtDays(d){return Number.isInteger(d)?`${d} Tage`:`${d.toFixed(4)} Tage`}
-async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true;$('log').textContent='';$('verdict').textContent='Prüfung läuft …';['providerTest','reads','stake','storage','root3','coreChange','unstakeGate','selectorLogic','historicalDataflow','bytecode','evidence'].forEach(id=>$(id).innerHTML='Wird geladen …');const wallet=norm($('wallet').value.trim()),contract=norm($('contract').value.trim());if(!ethers.isAddress(wallet)||!ethers.isAddress(contract))throw new Error('Wallet oder Contract ungültig.');await initProviders();let hash=$('stakeTx').value.trim();if(!hash)hash=await discoverStakeTx(wallet,contract);$('stakeTx').value=hash;const ctx=await getStakeContext(hash);log(`Stake-TX ${hash} · Block ${ctx.blockNum} · ${fmtDate(ctx.ts)}`,'ok');
+
+const TEST_CASES={
+ test1:{
+   wallet:'0x813D4948e797DA57085cf1b81b96804576E85510',
+   contract:'0x43e457164eff66d1f975dcb9d2504ab29e36264e',
+   stakeTx:'0x51bfb4129ddd17cb0b9abe6299f70c94304a9baff7bbd74783aec341cbbb7f25'
+ },
+ test2:{
+   wallet:'0xEA796A228B7c231298e217417fD5978556a9c27f',
+   contract:'0x4857d369e18aba003ff6ec934cf046148df5d590',
+   stakeTx:'0x0f0320b0da7d7df1678fe6de455879cffee8a5f10e0d77200c625333a7dfcd57'
+ }
+};
+function applyTestCase(key){
+ const tc=TEST_CASES[key];
+ if(!tc)return;
+ $('wallet').value=tc.wallet;
+ $('contract').value=tc.contract;
+ $('stakeTx').value=tc.stakeTx;
+}
+function syncTestCaseFromInputs(){
+ const w=norm($('wallet').value.trim()), c=norm($('contract').value.trim()), h=norm($('stakeTx').value.trim());
+ for(const [key,tc] of Object.entries(TEST_CASES)){
+   if(w===norm(tc.wallet)&&c===norm(tc.contract)&&h===norm(tc.stakeTx)){
+     $('testCase').value=key; return;
+   }
+ }
+ $('testCase').value='custom';
+}
+$('testCase')?.addEventListener('change',e=>{
+ if(e.target.value!=='custom')applyTestCase(e.target.value);
+});
+['wallet','contract','stakeTx'].forEach(id=>$(id)?.addEventListener('input',syncTestCaseFromInputs));
+
+async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true;$('log').textContent='';$('verdict').textContent='Prüfung läuft …';['providerTest','reads','stake','storage','root3','coreChange','unstakeGate','selectorLogic','historicalDataflow','bytecode','evidence'].forEach(id=>$(id).innerHTML='Wird geladen …');let wallet=norm($('wallet').value.trim());const contract=norm($('contract').value.trim());if(!ethers.isAddress(wallet)||!ethers.isAddress(contract))throw new Error('Wallet oder Contract ungültig.');await initProviders();let hash=$('stakeTx').value.trim();if(!hash)hash=await discoverStakeTx(wallet,contract);$('stakeTx').value=hash;const ctx=await getStakeContext(hash);
+ const eventStakeUser=stakeUserFromReceipt(ctx.receipt,contract);
+ ctx.stakeUser=wallet;
+ ctx.stakeUserSource='Wallet-Eingabe / ausgewählter Testfall';
+ ctx.eventStakeUser=eventStakeUser||null;
+ if(eventStakeUser && eventStakeUser!==wallet){
+   log(`Stake-Event enthält Adresskandidat ${eventStakeUser}; die vorgegebene Wallet ${wallet} bleibt maßgeblich.`,'warn');
+ }else if(eventStakeUser){
+   log(`Stake-Event bestätigt die vorgegebene Wallet ${wallet}.`,'ok');
+ }
+ log(`Stake-TX ${hash} · Block ${ctx.blockNum} · ${fmtDate(ctx.ts)} · verwendete Wallet ${wallet}`,'ok');
  const nrTest=await nodeRealArchiveSelfTest(contract,ctx.blockNum);
  $('providerTest').innerHTML=`<p class="${nrTest.ok?'ok':'bad'}"><b>${nrTest.ok?'NodeReal Direct beantwortet historische eth_getStorageAt-Reads.':'NodeReal Direct Archive-State nicht bestätigt.'}</b></p><table><thead><tr><th>Probe</th><th>Block</th><th>Status</th><th>Wert / Fehler</th></tr></thead><tbody>${nrTest.rows.map(r=>`<tr><td>${esc(r.label)}</td><td class="mono">${esc(r.block)}</td><td>${r.ok?'<span class="ok">OK</span>':'<span class="bad">FEHLER</span>'}</td><td class="mono">${esc(r.ok?r.value:r.error)}</td></tr>`).join('')}</tbody></table>`;
  if(nrTest.ok)log('NodeReal Direct Archive-State-Selbsttest erfolgreich.','ok');
@@ -1426,7 +1488,7 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  $('verdict').textContent=vr.text;
  const top=evidence[0]||null;
  const sameTop=evidence.filter(x=>x.score>=90);
- $('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Staking-Struct</div><div class="v">${targeted.startRow?`Mapping-Root ${targeted.root} · Timestamp-Offset ${targeted.startRow.offset}`:'nicht erkannt'}</div><div class="k">Erste Positionsauflösung</div><div class="v">${coreChange.found?`${esc(coreChange.date)} · ${esc(fmtDays(coreChange.elapsedDays))}`:'nicht gefunden'}</div><div class="k">Auslösende TX</div><div class="v mono">${coreTxAnalysis.candidates?.[0]?esc(coreTxAnalysis.candidates[0].hash):'–'}</div><div class="k">Automatisch ermittelte Mindest-Lockgrenze</div><div class="v">${unstakeGate?.found&&unstakeGate.before?.failureClass==='contract_revert'?`${esc(unstakeGate.after?.date||'–')} · ${esc(fmtDays(unstakeGate.elapsedDays))}`:'nicht belastbar bestimmt'}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Separat; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;lastDiagnosticExport=jsonSafe({
+ $('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Verwendete Wallet</div><div class="v mono">${esc(wallet)}</div><div class="k">Stake-Event-Adresskandidat</div><div class="v mono">${esc(ctx.eventStakeUser||'–')} · nur Diagnose</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Staking-Struct</div><div class="v">${targeted.startRow?`Mapping-Root ${targeted.root} · Timestamp-Offset ${targeted.startRow.offset}`:'nicht erkannt'}</div><div class="k">Erste Positionsauflösung</div><div class="v">${coreChange.found?`${esc(coreChange.date)} · ${esc(fmtDays(coreChange.elapsedDays))}`:'nicht gefunden'}</div><div class="k">Auslösende TX</div><div class="v mono">${coreTxAnalysis.candidates?.[0]?esc(coreTxAnalysis.candidates[0].hash):'–'}</div><div class="k">Automatisch ermittelte Mindest-Lockgrenze</div><div class="v">${unstakeGate?.found&&unstakeGate.before?.failureClass==='contract_revert'?`${esc(unstakeGate.after?.date||'–')} · ${esc(fmtDays(unstakeGate.elapsedDays))}`:'nicht belastbar bestimmt'}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Separat; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;lastDiagnosticExport=jsonSafe({
    version:document.querySelector('.header-version')?.textContent?.replace(/^Version:\s*/,'')||'unbekannt',
    wallet,contract,hash,
    ctx:{
