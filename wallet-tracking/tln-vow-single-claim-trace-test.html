@@ -24,7 +24,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Claim Trace</h1>
   <div class="muted">Minimaldiagnose nur für eine einzelne BSC-Transaktion. Keine Wallet-Historie, keine LP-Preise, keine Staking-Historie.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 19:38:24 CEST</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 19:44:45 CEST</div>
 
   <div class="card">
     <div class="row">
@@ -39,7 +39,8 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
   <div class="card"><h2>3. Claim-Contract → bekannte Stakings</h2><div id="relations" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>4. Interne Calls / Trace</h2><div id="trace" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>5. Referral-Evidenz</h2><div id="referral" class="muted">Noch keine Daten.</div></div>
-  <div class="card"><h2>6. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>6. Stake → Referral-/Upline-Verteilung</h2><div id="distribution" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>7. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>Technisches Log</h2><pre id="log"></pre></div>
 </main>
 <script>
@@ -50,16 +51,36 @@ const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 let rpcUrl=null;
+let rpcCandidates=[];
+let activeRpcIndex=0;
+function uniq(a){return [...new Set(a.filter(Boolean))]}
 const $=id=>document.getElementById(id);
 const norm=x=>String(x||'').toLowerCase();
 const esc=x=>String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const short=x=>x?`${x.slice(0,8)}…${x.slice(-6)}`:'–';
 function log(s){$('log').textContent+=`[${new Date().toLocaleTimeString('de-CH')}] ${s}\n`}
-async function rpc(method,params=[]){
-  const r=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
+async function rpcOn(url,method,params=[]){
+  const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
   const j=await r.json().catch(()=>({}));
   if(!r.ok||j.error)throw new Error(j?.error?.message||`HTTP ${r.status}`);
   return j.result;
+}
+async function rpc(method,params=[]){
+  const ordered=uniq([rpcUrl,...rpcCandidates]);
+  let lastErr=null;
+  for(let i=0;i<ordered.length;i++){
+    const url=ordered[i];
+    try{
+      const result=await rpcOn(url,method,params);
+      if((method==='eth_getTransactionByHash'||method==='eth_getTransactionReceipt') && result==null){
+        lastErr=new Error('historische Tx/Receipt auf diesem Provider nicht vorhanden');
+        continue;
+      }
+      if(url!==rpcUrl){rpcUrl=url;log('RPC-Fallback aktiv: '+url.replace(/([?&](?:key|token)=)[^&]+/ig,'$1***'))}
+      return result;
+    }catch(e){lastErr=e}
+  }
+  throw lastErr||new Error('Kein RPC-Provider verfügbar');
 }
 function topicAddr(t){return '0x'+String(t||'').slice(-40).toLowerCase()}
 function asAddressWord(raw){
@@ -91,7 +112,14 @@ async function initRpc(){
   rpcUrl=data.rpc_url;
   if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))
     rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;
-  log('BSC RPC aus public.chains geladen.');
+  // Minimal public BSC fallbacks; only used when the configured provider cannot serve the historical Tx/receipt.
+  rpcCandidates=uniq([
+    rpcUrl,
+    'https://bsc-dataseed.binance.org/',
+    'https://bsc-dataseed1.defibit.io/',
+    'https://bsc-dataseed1.ninicoin.io/'
+  ]);
+  log('BSC RPC aus public.chains geladen; historische Fallbacks bereit.');
 }
 async function stakingRows(){
   const {data,error}=await sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true);
@@ -174,7 +202,7 @@ async function analyze(){
     return;
   }
   $('analyze').disabled=true;$('status').textContent='Analysiere nur diese eine Transaktion…';$('log').textContent='';
-  for(const id of ['txInfo','transfers','relations','trace','referral','conclusion'])$(id).innerHTML='<span class="muted">Lädt…</span>';
+  for(const id of ['txInfo','transfers','relations','trace','referral','distribution','conclusion'])$(id).innerHTML='<span class="muted">Lädt…</span>';
   try{
     if(!rpcUrl)await initRpc();
     const hash=$('txHash').value.trim();
@@ -272,6 +300,27 @@ async function analyze(){
     <details><summary>Referral-State Details</summary><pre>${esc(JSON.stringify({before:refBefore,after:refAfter},null,2))}</pre></details>
     <p>${positiveReferral?'<span class="ok"><b>Positive Referral-Evidenz erkannt.</b></span>':'<span class="warn"><b>Kein positiver Referral-Nachweis.</b></span> Fehlende Staking-Zuordnung zählt ausdrücklich nicht als Referral.'}</p>`;
 
+
+    // Separate referral/upline analysis. This DOES NOT alter normal reward-claim proof.
+    const stakeSender=norm(tx.from);
+    const thirdPartyMints=transfers.filter(t=>t.mint && norm(t.to)!==stakeSender);
+    const mintRecipients=[...new Set(thirdPartyMints.map(t=>norm(t.to)))];
+    const sameTxMultiRecipient=mintRecipients.length>=2;
+    const directStakeCall = selector===ethers.id('stake(uint256)').slice(0,10).toLowerCase()
+                         || selector===ethers.id('Stake(uint256)').slice(0,10).toLowerCase()
+                         || /stake/i.test(method);
+    const distributionEvidence = directStakeCall && thirdPartyMints.length>0;
+    $('distribution').innerHTML=`<div class="grid">
+      <div class="kv"><b>Staker / Tx-Sender</b><span class="mono">${esc(stakeSender)}</span></div>
+      <div class="kv"><b>Mint-Empfänger ≠ Staker</b>${mintRecipients.length}</div>
+      <div class="kv"><b>Mint-Transfers an Dritte</b>${thirdPartyMints.length}</div>
+      <div class="kv"><b>Mehrstufige Verteilung möglich</b>${sameTxMultiRecipient?'<span class="ok">JA</span>':'nicht belegt'}</div>
+    </div>
+    ${thirdPartyMints.length?`<table><thead><tr><th>Empfänger</th><th>Reward-Token</th><th>Betrag</th><th>Tx-kausale Evidenz</th></tr></thead><tbody>${thirdPartyMints.map(t=>`<tr><td class="mono">${esc(t.to)}</td><td>${esc(t.symbol)}<div class="mono">${esc(t.token)}</div></td><td>${esc(t.amount)}</td><td><span class="ok">Mint innerhalb derselben Stake-Tx</span></td></tr>`).join('')}</tbody></table>`:'<div class="warn">Keine Mint-Auszahlungen an andere Wallets in dieser Tx erkannt.</div>'}
+    <p class="${distributionEvidence?'ok':'warn'}"><b>${distributionEvidence?'Referral-/Upline-Verteilung als starke Kandidaten-Evidenz erkannt':'Referral-/Upline-Verteilung noch nicht bewiesen'}.</b>
+    ${distributionEvidence?'Der Stake eines Wallets verursacht in derselben erfolgreichen Tx Mint-Auszahlungen an andere Wallets. Die konkrete Referral-Ebene wird NICHT geraten.':'Es fehlt die Kombination aus Stake-Aufruf und Mint an ein anderes Wallet.'}</p>
+    <p class="muted">Wichtig: Diese Analyse ist vollständig getrennt vom normalen Reward-Claim. Sie verändert dessen Mint-/Claim-/Yield-Nachweise nicht.</p>`;
+
     const mintRewards=transfers.filter(t=>t.mint&&t.toWallet);
     const allEvidence=[...relRows];
     for(const c of traceKnown)allEvidence.push({type:'Interner Call im Tx-Trace',value:c.to,staking:known.get(norm(c.to))});
@@ -287,6 +336,9 @@ async function analyze(){
     conclusion+=positiveReferral
       ? `<p class="ok"><b>Referral-Herkunft:</b> positiv belegt (${explicitReferralMethod?'explizite Referral-Methode':'Referral-State-Änderung'}).</p>`
       : `<p class="warn"><b>Referral-Herkunft:</b> nicht belegt. Ein bestehender Reward-Beweis bleibt davon unberührt.</p>`;
+    if(distributionEvidence){
+      conclusion+=`<p class="ok"><b>Fremder Stake → Upline/Referral-Kandidat:</b> In derselben Stake-Tx werden Rewards an ${mintRecipients.length} andere Wallet(s) gemintet. Das ist starke kausale Referral-/Upline-Evidenz; ein konkretes Level wird ohne weiteren on-chain Nachweis nicht behauptet.</p>`;
+    }
     if(uniqueMatches.length===1){
       const e=uniqueMatches[0],s=e.staking;
       conclusion+=`<p class="ok"><b>Staking-Zuordnung gefunden:</b> ${esc(s.label||s.name||s.contract_address)} · <span class="mono">${esc(s.contract_address)}</span></p>
