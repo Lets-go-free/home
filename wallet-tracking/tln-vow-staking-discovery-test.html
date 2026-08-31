@@ -36,9 +36,13 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .claim-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
 .claim-summary-item{padding:10px 12px;border:1px solid #2b3546;border-radius:8px;background:rgba(255,255,255,.02)}
 .claim-summary-token{font-size:17px;font-weight:800;margin-bottom:4px}
+.reward-mechanism{margin-top:10px;padding:10px 12px;border:1px solid #334158;border-radius:9px;background:#111722}
+.reward-mechanism .rm-title{font-weight:800;margin-bottom:6px}
+.reward-mechanism .rm-formula{font-family:ui-monospace,monospace;font-size:.86em;word-break:break-word}
+.reward-token-card{padding:9px 11px;border:1px solid #2d384a;border-radius:8px;background:rgba(255,255,255,.02)}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 30.08.2026 19:49:38 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 31.08.2026 01:56:38 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -80,7 +84,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div id="completedStakings"><div class="muted">Noch keine Daten.</div></div></div>
 
 <div class="card"><h2>🎁 Rewards-Claiming</h2>
-<p class="muted">On-chain belegte Rewards, die einer eigenen Staking-Position zugeordnet werden konnten. Nicht zuordenbare Reward-Claims werden separat auf mögliche Referral-Herkunft geprüft.</p>
+<p class="muted">On-chain belegte Rewards, die einer eigenen Staking-Position zugeordnet werden konnten. Die primäre Anzeige befindet sich zusätzlich direkt im jeweiligen Staking-Block. Verifizierte Legacy-Mechanismen werden über getrennte Reward-Adapter berechnet; unbekannte/neue Generationen bleiben sichtbar, ohne eine Formel zu erfinden. Nicht zuordenbare Reward-Claims werden separat auf mögliche Referral-Herkunft geprüft.</p>
 <div id="rewardClaiming"><div class="muted">Noch keine Daten.</div></div></div>
 
 <div class="card"><h2>🤝 Rewards aus Referrals</h2>
@@ -152,8 +156,31 @@ const ETH_CALL_INFLIGHT=new Map();
 const ETH_CALL_STATS={total:0,network:0,hits:0,reverts:0};
 function stableRpcKeyPart(v){if(v==null)return '';if(typeof v==='string')return v.toLowerCase();if(Array.isArray(v))return '['+v.map(stableRpcKeyPart).join(',')+']';if(typeof v==='object')return '{'+Object.keys(v).sort().map(k=>`${k}:${stableRpcKeyPart(v[k])}`).join(',')+'}';return String(v)}
 function ethCallSessionKey(params){return stableRpcKeyPart(params||[])}
-async function rpcNetwork(method,params=[]){const r=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok)throw new Error(`HTTP ${r.status} bei ${method}`);const j=await r.json();if(j.error)throw new Error(`${method}: ${j.error.message} (Code ${j.error.code})`);return j.result}
+async function rpcNetworkAt(url,method,params=[],timeoutMs=18000){
+ const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),timeoutMs);
+ try{
+  const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:`${Date.now()}-${Math.random()}`,method,params}),signal:ctrl.signal});
+  if(!r.ok)throw new Error(`HTTP ${r.status} bei ${method}`);
+  const j=await r.json();if(j.error)throw new Error(`${method}: ${j.error.message} (Code ${j.error.code})`);return j.result??null;
+ }catch(e){if(e?.name==='AbortError')throw new Error(`${method}: Zeitüberschreitung`);throw e}finally{clearTimeout(timer)}
+}
+async function rpcNetwork(method,params=[]){return rpcNetworkAt(rpcUrl,method,params)}
+function rpcFallbackUrl(){const b=String(alchemyBase||'').trim();if(!b)return null;const v=b.includes(ALCHEMY_API_KEY)?b:b.replace(/\/+$/,'')+'/'+encodeURIComponent(ALCHEMY_API_KEY);return v&&v!==rpcUrl?v:null}
+async function resilientTxRpc(method,params=[]){
+ const providers=[{name:'Primär-RPC',url:rpcUrl},...(rpcFallbackUrl()?[{name:'Fallback-RPC',url:rpcFallbackUrl()}]:[])].filter(x=>x.url);
+ const errors=[];
+ for(const p of providers){
+  for(let attempt=1;attempt<=3;attempt++){
+   try{const value=await rpcNetworkAt(p.url,method,params);if(value!=null){if(attempt>1||p.name!=='Primär-RPC')log(`${method}: erfolgreich über ${p.name} (Versuch ${attempt}).`,'warn');return value}errors.push(`${p.name} Versuch ${attempt}: null`);log(`${method}: ${p.name} lieferte null (Versuch ${attempt}); weiterer Versuch/Fallback.`,'warn')}
+   catch(e){errors.push(`${p.name} Versuch ${attempt}: ${e.message}`);log(`${method}: ${p.name} Versuch ${attempt} fehlgeschlagen: ${e.message}`,'warn')}
+   if(attempt<3)await new Promise(r=>setTimeout(r,250*attempt));
+  }
+ }
+ const what=method==='eth_getTransactionReceipt'?'Transaction Receipt':'Transaktion';
+ const err=new Error(`${what} konnte über die konfigurierten BSC-RPCs nicht geladen werden. Ein einzelnes RPC-null gilt nicht als "nicht vorhanden".`);err.rpcAttempts=errors;throw err;
+}
 async function rpc(method,params=[]){
+ if(method==='eth_getTransactionReceipt'||method==='eth_getTransactionByHash')return resilientTxRpc(method,params);
  if(method!=='eth_call')return rpcNetwork(method,params);
  ETH_CALL_STATS.total++;const key=ethCallSessionKey(params);
  if(ETH_CALL_SESSION_CACHE.has(key)){ETH_CALL_STATS.hits++;const x=ETH_CALL_SESSION_CACHE.get(key);if(x.ok)return x.value;const e=new Error(x.message||'execution reverted');e.cached=true;throw e}
@@ -170,7 +197,34 @@ async function tokenMetaAt(a,blockTag='latest'){
 }
 async function tokenMeta(a){let symbol=a.slice(0,8)+'…',decimals=18;try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('symbol',[])},'latest']);symbol=ERC20.decodeFunctionResult('symbol',raw)[0]}catch{}try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('decimals',[])},'latest']);decimals=Number(ERC20.decodeFunctionResult('decimals',raw)[0])}catch{}return{address:norm(a),symbol,decimals}}
 async function alchemy(method,params=[]){if(!alchemyBase)throw new Error('Alchemy Discovery-API für BSC fehlt in public.chains.');const url=alchemyBase.replace(/\/+$/,'')+'/'+encodeURIComponent(ALCHEMY_API_KEY);const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok)throw new Error(`Alchemy HTTP ${r.status}`);const j=await r.json();if(j.error)throw new Error(`Alchemy ${method}: ${j.error.message}`);return j.result}
-async function allErc20Transfers(wallet){const out=[];for(const direction of ['fromAddress','toAddress']){let pageKey=null,page=0;do{const q={fromBlock:'0x0',toBlock:'latest',category:['erc20'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'};q[direction]=wallet;if(pageKey)q.pageKey=pageKey;log(`ERC-20 ${direction==='fromAddress'?'ausgehend':'eingehend'} · Seite ${page+1}`);const r=await alchemy('alchemy_getAssetTransfers',[q]);for(const t of (r?.transfers||[]))out.push({...t,_direction:direction==='fromAddress'?'out':'in'});pageKey=r?.pageKey||null;page++}while(pageKey&&page<100)}const m=new Map();for(const t of out){const c=norm(t.rawContract?.address);if(!c)continue;const k=t.uniqueId||`${t.hash}|${c}|${t.from}|${t.to}|${t.rawContract?.value||t.value}`;m.set(k,t)}return [...m.values()]}
+const ERC20_TRANSFER_SESSION_CACHE=new Map();
+function transferIdentity(t){const c=norm(t?.rawContract?.address);return t?.uniqueId||`${String(t?.hash||'').toLowerCase()}|${c}|${norm(t?.from)}|${norm(t?.to)}|${t?.rawContract?.value||t?.value||''}`}
+async function alchemyErc20Range(wallet,fromBlock,toBlock='latest'){
+ const out=[];
+ for(const direction of ['fromAddress','toAddress']){
+  let pageKey=null,page=0;const seenPageKeys=new Set();
+  while(true){
+   const q={fromBlock,toBlock,category:['erc20'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'};q[direction]=wallet;if(pageKey)q.pageKey=pageKey;
+   log(`ERC-20 ${direction==='fromAddress'?'ausgehend':'eingehend'} · ${fromBlock} → ${toBlock} · Seite ${page+1}`);
+   const r=await alchemy('alchemy_getAssetTransfers',[q]);for(const t of (r?.transfers||[]))out.push({...t,_direction:direction==='fromAddress'?'out':'in'});
+   const next=r?.pageKey||null;page++;if(!next)break;
+   if(seenPageKeys.has(next))throw new Error(`Alchemy Pagination wiederholt pageKey bei ${direction}; Range ${fromBlock} → ${toBlock} wird NICHT als vollständig gecacht.`);
+   seenPageKeys.add(next);pageKey=next;
+   if(page>=2000)throw new Error(`Alchemy Pagination überschreitet 2000 Seiten bei ${direction}; Range ${fromBlock} → ${toBlock} wird NICHT als vollständig gecacht.`);
+  }
+ }
+ return out;
+}
+async function allErc20Transfers(wallet){
+ const key=norm(wallet),cached=ERC20_TRANSFER_SESSION_CACHE.get(key);
+ const latestHex=await rpc('eth_blockNumber',[]);const latest=Number(BigInt(latestHex));
+ let rows=[],fromBlock='0x0';
+ if(cached){rows=[...cached.rows];const overlap=24;fromBlock='0x'+Math.max(0,Number(cached.latestBlock||0)-overlap+1).toString(16);log(`ERC-20 Session-Cache: ${rows.length} vorhandene Transfers; inkrementeller Scan ab Block ${parseInt(fromBlock,16).toLocaleString('de-CH')} (24 Block Overlap).`,'ok')}
+ const fresh=await alchemyErc20Range(wallet,fromBlock,'0x'+latest.toString(16));
+ const m=new Map();for(const t of [...rows,...fresh]){const c=norm(t.rawContract?.address);if(!c)continue;m.set(transferIdentity(t),t)}
+ const merged=[...m.values()];ERC20_TRANSFER_SESSION_CACHE.set(key,{rows:merged,latestBlock:latest,completeFromBlock:cached?.completeFromBlock??0,completeToBlock:latest,scannerVersion:'erc20-raw-v1'});
+ log(`ERC-20 Session-Cache Coverage: Block ${(cached?.completeFromBlock??0).toLocaleString('de-CH')} → ${latest.toLocaleString('de-CH')} · ${merged.length} eindeutige Transfers.`,'ok');return merged;
+}
 
 
 const SC_READ_PROBES=[
@@ -2482,7 +2536,9 @@ async function attachRewardClaimsToLots(lots,calls){
         calledContract:norm(c.to||c?._staking?.contract_address||'')||null,
         assignmentReason:chosen.reasons.join(', '),
         source:`${c._rewardHint?'Bestätigte reward-relevante Tx':'Staking-/Controller-Receipt'}`,
-        assignmentScore:chosen.score
+        assignmentScore:chosen.score,
+        rewardProof:tr.rewardProof||null,rewardFlowEvidence:tr.rewardFlowEvidence||null,
+        eventType:/claim|harvest|withdraw.*reward|withdraw.*yield/i.test(String(c._method||''))?'claim':'distribution'
       };
 
       const key=`${claim.hash}|${claim.token}|${claim.amount}`;
@@ -2884,6 +2940,56 @@ function stakeInputEvidenceHtml(lot){
     ${args?`<div class="wrap" style="margin-top:8px"><table><thead><tr><th>Argument</th><th>Raw</th><th>On-chain Interpretation</th></tr></thead><tbody>${args}</tbody></table></div>`:''}
   </details></div>`;
 }
+const REWARD_MECHANISM_ADAPTERS=[
+  {
+    id:'original_lpt_legacy_daily_13bp',label:'Original LPT (Legacy) · verifizierte On-chain-Formel',
+    stakingContracts:['0x9a9e97a015ca65f48973835b45d4e28a99f89191'],
+    basisType:'staking_asset',formula:'Reward = Staking-Basis × ganze Tage × 13 / 10000; Claim = kumulativer Anspruch − bereits verbucht',
+    evidence:'Opcode-/Storage-Analyse eines echten withdrawYield()-Claims; exakte Tagesrate 0,13 %. Keine pauschale 48%-Jahresformel.',
+    evaluate(lot){
+      const principal=Number(lot?.original||0);if(!(principal>0)||!lot?.stakeTime)return null;
+      const start=new Date(lot.stakeTime).getTime();const end=lot.unstakeTime?new Date(lot.unstakeTime).getTime():Date.now();
+      const wholeDays=Math.max(0,Math.floor((end-start)/86400000));const accrued=principal*wholeDays*13/10000;
+      const lifetimeKnown=!!lot.unstakeTime;
+      return {basis:principal,basisLabel:`${principal.toLocaleString('de-CH',{maximumFractionDigits:12})} ${lot?.pair?.symbol||'LPT'}`,wholeDays,accrued,lifetimeTotal:lifetimeKnown?accrued:null,lifetimeReason:lifetimeKnown?'Tatsächliche Staking-Laufzeit bis zum belegten Unstake ist bekannt.':'Gesamtlaufzeit/Enddatum dieses Stakings ist nicht belastbar bekannt.'};
+    }
+  },
+  {
+    id:'pc_lp_vow_vusd_legacy2_usd_48_367',label:'PC LP VOW/v$ (Legacy 2) · verifizierter USD-Basis-Mechanismus',
+    stakingContracts:['0x4a050fa27861ae2f0d63fb5da986e56ac510b201'],
+    claimContracts:['0xeae7ed373a00fae1dd8b88f1b97033938e0d0cdf'],
+    basisType:'stored_stake_usd',formula:'Kumulativer Anspruch = gespeicherter USD-Wert beim Stake × 48 % × ganze Tage / 367; Claim = kumulativer Anspruch − bereits verbucht',
+    evidence:'Opcode-/Storage-Analyse eines echten withdrawYield()-Claims; Reward-Basis ist der im Staking-State gespeicherte USD-Wert, nicht die LP-Menge.',
+    evaluate(lot){
+      const basis=Number(lot?.stakeUsd);if(!(basis>0)||lot?.stakeUsdOrigin!=='tln_stored'||!lot?.stakeTime)return {unavailable:'Der verifizierte Mechanismus verlangt den im Staking-SC gespeicherten USD-Wert beim Stake; dieser wurde für dieses Lot nicht belastbar gelesen.'};
+      const start=new Date(lot.stakeTime).getTime();const end=lot.unstakeTime?new Date(lot.unstakeTime).getTime():Date.now();
+      const wholeDays=Math.min(367,Math.max(0,Math.floor((end-start)/86400000)));const accrued=basis*0.48*wholeDays/367;
+      return {basis,basisLabel:formatUsd(basis),wholeDays,accrued,lifetimeTotal:basis*0.48,lifetimeReason:'Für diesen verifizierten Legacy-2-Mechanismus ist die vollständige Formel über 367 Tage belegt.',fixedDurationDays:367};
+    }
+  }
+];
+function rewardMechanismForLot(lot){const addr=norm(lot?.staking?.contract_address||lot?.counterparty||'');return REWARD_MECHANISM_ADAPTERS.find(a=>(a.stakingContracts||[]).map(norm).includes(addr))||null}
+function claimedRewardGroups(lot){
+ const m=new Map();for(const c of collectAssignedRewardRows(lot)){const token=norm(c.token),k=token||String(c.symbol||'Token');if(!m.has(k))m.set(k,{token,symbol:c.symbol||'Token',amount:0,count:0,claims:[]});const x=m.get(k);x.amount+=Number(c.amount||0);x.count++;x.claims.push(c)}return [...m.values()];
+}
+function rewardMechanismHtml(lot){
+ const adapter=rewardMechanismForLot(lot);if(!adapter)return '<div class="reward-mechanism"><div class="rm-title">Reward-Mechanismus</div><div class="muted">Für diese Staking-Generation ist noch kein mathematisch verifizierter Reward-Adapter hinterlegt. Tatsächlich geclaimte Token werden trotzdem vollständig aus den On-chain-Transfers angezeigt.</div></div>';
+ const ev=adapter.evaluate(lot);const groups=claimedRewardGroups(lot),claimedAll=groups.reduce((a,x)=>a+x.amount,0);
+ let entitlement='';
+ if(ev?.unavailable)entitlement=`<div class="reward-note warn">${esc(ev.unavailable)}</div>`;
+ else if(ev){
+  const unit=groups.length===1?groups[0].symbol:'Reward-Einheiten';
+  const remaining=ev.lifetimeTotal!=null&&groups.length===1?Math.max(0,ev.lifetimeTotal-groups[0].amount):null;
+  entitlement=`<div class="reward-grid">
+   <div class="reward-item"><span class="rk">Verifizierte Reward-Basis</span><span class="rv">${esc(ev.basisLabel||'–')}</span></div>
+   <div class="reward-item"><span class="rk">Ganze Reward-Tage bis Bewertungszeitpunkt</span><span class="rv">${Number(ev.wholeDays||0).toLocaleString('de-CH')}</span></div>
+   <div class="reward-item"><span class="rk">Kumulativer Formel-Anspruch bis Bewertungszeitpunkt</span><span class="rv">${Number(ev.accrued||0).toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(unit)}</span></div>
+   <div class="reward-item"><span class="rk">Gesamtanspruch über gesamte Laufzeit</span><span class="rv">${ev.lifetimeTotal!=null?`${Number(ev.lifetimeTotal).toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(unit)}`:'nicht belastbar bestimmbar'}</span><div class="value-source">${esc(ev.lifetimeReason||'')}</div></div>
+   <div class="reward-item"><span class="rk">Verbleibend aus Gesamtanspruch</span><span class="rv">${remaining!=null?`${remaining.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(unit)}`:(groups.length>1?'nicht token-spezifisch aufteilbar':'nicht belastbar bestimmbar')}</span></div>
+  </div>`;
+ }
+ return `<div class="reward-mechanism"><div class="rm-title">${esc(adapter.label)}</div><div class="rm-formula">${esc(adapter.formula)}</div><div class="reward-note">${esc(adapter.evidence)}</div>${entitlement}</div>`;
+}
 function rewardClaimSummaryHtml(lot){
   const claims=lot.rewardClaims||[];
   if(!claims.length)return '';
@@ -2993,6 +3099,7 @@ function rewardHtml(lot){
         <tbody>${rows}</tbody>
       </table>
     </div>
+    ${rewardMechanismHtml(lot)}
     <div class="reward-grid" style="margin-top:10px">
       ${stakeRewardEvidenceHtml(lot)}
       ${stakeInputEvidenceHtml(lot)}
@@ -3450,6 +3557,7 @@ function positionCardHtml(l,index,isClosed){
     </div>
     ${l.contractGraph&&l.contractGraph.edges.length?`<details class="diag-details"><summary>Contract-Graph anzeigen</summary><div class="wrap"><table><thead><tr><th>Von</th><th>Beziehung</th><th>Zu</th><th>Evidenz</th></tr></thead><tbody>${l.contractGraph.edges.map(e=>`<tr><td class="mono">${esc(e.from)}</td><td>${esc(e.type)}</td><td class="mono">${esc(e.to)}</td><td>${esc(e.evidence?.kind||'')} ${e.evidence?.tx?`<span class="mono">${esc(e.evidence.tx)}</span>`:''}</td></tr>`).join('')}</tbody></table></div></details>`:''}
     ${(l.topUps||[]).length?`<div class="reward-box"><div class="reward-title">Aufstockungen dieser Staking-Position</div><div class="wrap"><table><thead><tr><th>Zeit</th><th>Zusätzlich</th><th>Gesamt danach</th><th>Tx</th></tr></thead><tbody>${l.topUps.map(x=>`<tr><td>${x.time?new Date(x.time).toLocaleString('de-CH'):'–'}</td><td class="num">+${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="num">${Number(x.resultingPrincipal||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(x.tx)}">${esc(x.tx||'–')}</a></td></tr>`).join('')}</tbody></table></div></div>`:''}
+    ${rewardHtml(l)}
     <div class="stake-actions">
       <details><summary>Transaktionen (${(l.transactions||[]).length})</summary>${txRowsHtml(l)}</details>
       <details class="sc-details" data-lot-index="${index}"><summary>Technische SC-Details</summary><div id="scBox${index}" class="sc-box"><span class="muted">Zum Laden öffnen.</span></div></details>
