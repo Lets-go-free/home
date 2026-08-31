@@ -8,9 +8,10 @@
 <style>
 :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:light dark}
 body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:auto;padding:24px}.card{background:#191d27;border:1px solid #303746;border-radius:14px;padding:18px;margin:14px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.kv{display:grid;grid-template-columns:230px 1fr;gap:7px 12px}.k{color:#aab4c4}.v{overflow-wrap:anywhere}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.ok{color:#66d18f}.warn{color:#f2c66d}.bad{color:#ff7b86}.muted{color:#9aa5b5}input,button{box-sizing:border-box;width:100%;padding:10px 12px;border-radius:9px;border:1px solid #3a4354;background:#0f1219;color:#eef1f6}button{cursor:pointer;font-weight:700;background:#27334a}.pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#252d3a;margin:2px 4px 2px 0}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid #303746;vertical-align:top}pre{white-space:pre-wrap;max-height:420px;overflow:auto}.hero{font-size:1.45rem;font-weight:800}.verdict{font-size:1.15rem;font-weight:800}
-</style>
+.header-version{margin-top:6px;font-size:12px;font-weight:700;opacity:.82}</style>
 </head><body><div class="wrap">
 <h1>🧪 TLN/VOW · isolierter Staking-Duration-Test</h1>
+<div class="header-version">Version: 31.08.2026 04:43:51 CEST</div>
 <p class="muted">Ziel: Vertrags-/Lock-Dauer aus On-chain-Evidenz ermitteln. Keine fest hinterlegte 367-Tage-Regel. Reward-Dauer wird separat behandelt.</p>
 <div class="card grid">
 <label>Wallet<input id="wallet" class="mono" value="0x813D4948e797DA57085cf1b81b96804576E85510"></label>
@@ -24,10 +25,11 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>1 · Direkte Contract-Reads</h2><div id="reads">–</div></div>
 <div class="card"><h2>2 · Stake-Transaktion / Receipt</h2><div id="stake">–</div></div>
 <div class="card"><h2>3 · Storage-Änderungen</h2><div id="storage">–</div></div>
-<div class="card"><h2>4 · Bytecode-Zeitkonstanten</h2><div id="bytecode">–</div></div>
+<div class="card"><h2>4 · Bytecode-Zeitkonstanten</h2><section><h2>4 · Root-3 Tiefenscan</h2><div id="root3">Noch nicht geprüft.</div></section>
+<div id="bytecode">–</div></div>
 <div class="card"><h2>5 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 04:28:44 CEST</div>
+<div class="muted">Version: 31.08.2026 04:43:51 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -78,6 +80,9 @@ function buildDiagnosticText(data){
    '',
    'ARCHIVE-STORAGE-ÄNDERUNGEN',
    JSON.stringify(data.archiveStorage,null,2),
+   '',
+   'ROOT-3-TIEFENSCAN',
+   JSON.stringify(data.targeted,null,2),
    '',
    'EVIDENZ-RANGLISTE',
    JSON.stringify(data.evidence,null,2),
@@ -373,6 +378,167 @@ async function traceStorage(hash,contract,impl,stakeTs){let tr=null,source='';co
 function receiptEvidence(receipt,stakeTs){const out=[];for(const [li,l] of (receipt?.logs||[]).entries()){const words=[...decodeWords(l.data),...(l.topics||[]).slice(1).map(x=>{try{return BigInt(x)}catch{return 0n}})];for(const w of words){if(w>BigInt(Number.MAX_SAFE_INTEGER))continue;const n=Number(w);if(plausibleTs(n,stakeTs))out.push({type:'timestamp',logIndex:li,address:l.address,value:n});const d=durationFromSeconds(n);if(d&&d.days>=1)out.push({type:'duration',logIndex:li,address:l.address,value:n,days:d.days,exactDays:d.exactDays})}}
  return out;
 }
+
+function walletMappingKey(wallet,root,offset=0){
+ const coder=ethers.AbiCoder.defaultAbiCoder();
+ const base=BigInt(ethers.keccak256(coder.encode(['address','uint256'],[wallet,root])));
+ return '0x'+(base+BigInt(offset)).toString(16);
+}
+async function nodeRealBlockByNumber(blockNum){
+ return await nodeRealRpcDirect('eth_getBlockByNumber',['0x'+Number(blockNum).toString(16),false]);
+}
+async function findBlockNearTimestamp(targetTs){
+ const latestHex=await nodeRealRpcDirect('eth_blockNumber',[]);
+ let lo=1,hi=Number(BigInt(latestHex)),best=null;
+ for(let i=0;i<32&&lo<=hi;i++){
+   const mid=Math.floor((lo+hi)/2);
+   const b=await nodeRealBlockByNumber(mid);
+   if(!b){lo=mid+1;continue}
+   const ts=Number(BigInt(b.timestamp));
+   const d=Math.abs(ts-targetTs);
+   if(!best||d<best.delta)best={blockNum:mid,block:'0x'+mid.toString(16),timestamp:ts,delta:d};
+   if(ts<targetTs)lo=mid+1;
+   else if(ts>targetTs)hi=mid-1;
+   else break;
+ }
+ for(const n of [best?.blockNum-2,best?.blockNum-1,best?.blockNum,best?.blockNum+1,best?.blockNum+2]){
+   if(!n||n<1)continue;
+   try{
+     const b=await nodeRealBlockByNumber(n);
+     if(!b)continue;
+     const bt=Number(BigInt(b.timestamp)),d=Math.abs(bt-targetTs);
+     if(!best||d<best.delta)best={blockNum:n,block:'0x'+n.toString(16),timestamp:bt,delta:d};
+   }catch{}
+ }
+ return best;
+}
+function classifyRootValue(raw,stakeTs){
+ const v=BigInt(raw||'0x0');
+ const n=v<=BigInt(Number.MAX_SAFE_INTEGER)?Number(v):null;
+ const timestamp=n!=null&&plausibleTs(n,stakeTs)?n:null;
+ return {
+   raw:String(raw||'0x0'),
+   value:v.toString(),
+   n,
+   timestamp,
+   date:timestamp?fmtDate(timestamp):null,
+   deltaFromStakeDays:timestamp?(timestamp-stakeTs)/86400:null
+ };
+}
+async function readRootOffsetsAt(contract,wallet,root,offsets,blockTag,stakeTs){
+ const calls=offsets.map(offset=>({
+   method:'eth_getStorageAt',
+   params:[contract,walletMappingKey(wallet,root,offset),blockTag]
+ }));
+ const res=await nodeRealMany(calls,4);
+ return offsets.map((offset,i)=>{
+   const r=res[i];
+   if(r?.error)return {root,offset,key:walletMappingKey(wallet,root,offset),block:blockTag,error:r.error};
+   return {root,offset,key:walletMappingKey(wallet,root,offset),block:blockTag,...classifyRootValue(r?.result||'0x0',stakeTs)};
+ });
+}
+async function targetedRoot3Scan(contract,wallet,ctx){
+ const root=3;
+ const offsets=Array.from({length:33},(_,i)=>i);
+ const beforeBlock='0x'+(ctx.blockNum-1).toString(16);
+ const stakeBlock='0x'+ctx.blockNum.toString(16);
+ const targetTs=ctx.ts+367*86400;
+
+ log('Root 3: suche Block nahe Stake + 367 Tage …','ok');
+ const targetBlock=await findBlockNearTimestamp(targetTs);
+ log(`Root 3: 367-Tage-Referenz liegt nahe Block ${targetBlock?.blockNum??'?'}, ${targetBlock?fmtDate(targetBlock.timestamp):'unbekannt'} (Δ ${targetBlock?.delta??'?'} s).`,'ok');
+
+ log('Root 3: lese Offsets 0–32 vor Stake, am Stake, bei +367 Tagen und latest …','ok');
+ const [before,stake,at367,latest]=await Promise.all([
+   readRootOffsetsAt(contract,wallet,root,offsets,beforeBlock,ctx.ts),
+   readRootOffsetsAt(contract,wallet,root,offsets,stakeBlock,ctx.ts),
+   targetBlock?readRootOffsetsAt(contract,wallet,root,offsets,targetBlock.block,ctx.ts):Promise.resolve([]),
+   readRootOffsetsAt(contract,wallet,root,offsets,'latest',ctx.ts)
+ ]);
+
+ const byOffset=offsets.map(offset=>{
+   const pre=before.find(x=>x.offset===offset);
+   const st=stake.find(x=>x.offset===offset);
+   const t367=at367.find(x=>x.offset===offset);
+   const lat=latest.find(x=>x.offset===offset);
+   return {offset,key:walletMappingKey(wallet,root,offset),before:pre,stake:st,at367:t367,latest:lat};
+ });
+
+ const changedAtStake=byOffset.filter(r=>r.before?.value!==r.stake?.value);
+ const startRow=changedAtStake.find(r=>r.stake?.timestamp===ctx.ts)||
+                  changedAtStake.find(r=>r.stake?.timestamp&&Math.abs(r.stake.timestamp-ctx.ts)<=10);
+
+ const storedFutureAtStake=byOffset
+   .filter(r=>r.stake?.timestamp&&r.stake.timestamp>ctx.ts)
+   .map(r=>({offset:r.offset,timestamp:r.stake.timestamp,days:(r.stake.timestamp-ctx.ts)/86400}));
+
+ const transitions=byOffset.filter(r=>{
+   const s=r.stake?.value, a=r.at367?.value, l=r.latest?.value;
+   return (s!==undefined&&a!==undefined&&s!==a)||(a!==undefined&&l!==undefined&&a!==l);
+ });
+
+ return {
+   root,
+   offsets,
+   targetTs,
+   targetDate:fmtDate(targetTs),
+   targetBlock,
+   beforeBlock,
+   stakeBlock,
+   startRow,
+   storedFutureAtStake,
+   changedAtStake,
+   transitions,
+   byOffset
+ };
+}
+function buildStrictEvidence(ctx,targeted){
+ const ev=[];
+ if(targeted?.startRow){
+   ev.push({
+     score:92,
+     label:'Wallet-Staking-Struktur mit exaktem Stake-Timestamp',
+     days:null,
+     detail:`mapping root 3 / offset ${targeted.startRow.offset}: ${targeted.startRow.before?.value} → ${targeted.startRow.stake?.value}; exakt ${fmtDate(ctx.ts)}`
+   });
+ }
+ for(const x of targeted?.storedFutureAtStake||[]){
+   ev.push({
+     score:100,
+     label:'Start-/End-Timestamp im selben Wallet-Mapping',
+     days:x.days,
+     detail:`root 3: Stake-Timestamp ${fmtDate(ctx.ts)}, future timestamp an offset ${x.offset}: ${fmtDate(x.timestamp)}`
+   });
+ }
+ ev.push({
+   score:0,
+   label:'367-Tage-Referenz (nur Prüfpunkt)',
+   days:367,
+   detail:`Stake + 367 Tage = ${targeted?.targetDate||fmtDate(ctx.ts+367*86400)}. Dieser Prüfpunkt ist keine Evidenz für die Vertragsdauer.`
+ });
+ return ev.sort((a,b)=>b.score-a.score);
+}
+function strictVerdict(evidence){
+ const proof=evidence.find(x=>x.score>=100&&Number.isFinite(x.days));
+ if(proof)return {cls:'ok',text:`Vertragsdauer belastbar ermittelt: ${fmtDays(proof.days)}.`};
+ const start=evidence.find(x=>x.score>=90);
+ if(start)return {cls:'warn',text:'Stake-Struktur und Startzeitpunkt belastbar gefunden; Vertrags-/Lock-Dauer noch nicht belastbar ermittelt.'};
+ return {cls:'warn',text:'Vertrags-/Lock-Dauer nicht belastbar ermittelt.'};
+}
+function root3Html(targeted){
+ if(!targeted)return '<span class="warn">Kein Root-3-Tiefenscan.</span>';
+ const rows=targeted.byOffset.filter(r=>{
+   const vals=[r.before?.value,r.stake?.value,r.at367?.value,r.latest?.value];
+   return vals.some(v=>v&&v!=='0') || new Set(vals).size>1;
+ });
+ return `<p class="muted">Root 3, Offsets 0–32. 367-Tage-Prüfpunkt: ${esc(targeted.targetDate)} · Block ${esc(targeted.targetBlock?.blockNum??'–')} · Blockzeit ${esc(targeted.targetBlock?fmtDate(targeted.targetBlock.timestamp):'–')}.</p>
+ <table><thead><tr><th>Offset</th><th>Vor Stake</th><th>Stake-Block</th><th>+367 Tage</th><th>Latest</th><th>Zeit-Hinweis</th></tr></thead><tbody>
+ ${rows.map(r=>{
+   const hint=[r.stake?.timestamp?`Stake: ${fmtDate(r.stake.timestamp)}`:'',r.at367?.timestamp?`+367: ${fmtDate(r.at367.timestamp)}`:'',r.latest?.timestamp?`Latest: ${fmtDate(r.latest.timestamp)}`:''].filter(Boolean).join(' · ')||'–';
+   return `<tr><td>${r.offset}</td><td class="mono">${esc(r.before?.value??'–')}</td><td class="mono">${esc(r.stake?.value??'–')}</td><td class="mono">${esc(r.at367?.value??'–')}</td><td class="mono">${esc(r.latest?.value??'–')}</td><td>${esc(hint)}</td></tr>`;
+ }).join('')}</tbody></table>`;
+}
+
 function rankEvidence({reads,storage,archiveStorage,bytecode,receipt,stakeTs}){const ev=[];for(const r of reads){if(r.duration)ev.push({score:100,label:`Direkter Read ${r.sig}`,days:r.duration.days,detail:`${r.value} Sekunden`})}
  const tsReads=reads.filter(r=>r.kind.includes('timestamp')&&r.value&&plausibleTs(Number(r.value),stakeTs));for(const a of tsReads){for(const b of tsReads){if(a===b)continue;const diff=Math.abs(Number(a.value)-Number(b.value));const d=durationFromSeconds(diff);if(d&&d.days>=1)ev.push({score:95,label:`Read-Timestamp-Differenz ${a.sig} ↔ ${b.sig}`,days:d.days,detail:`${diff} Sekunden`})}}
  for(const x of storage.changes||[]){if(x.diffDuration&&x.diffDuration.days>=1)ev.push({score:90,label:'Storage-Differenz im Stake-Trace',days:x.diffDuration.days,detail:`Slot ${x.slot}`})}
@@ -382,7 +548,7 @@ function rankEvidence({reads,storage,archiveStorage,bytecode,receipt,stakeTs}){c
  const ded=new Map();for(const x of ev.sort((a,b)=>b.score-a.score)){const k=`${x.label}|${x.days}|${x.detail}`;if(!ded.has(k))ded.set(k,x)}return [...ded.values()];
 }
 function fmtDays(d){return Number.isInteger(d)?`${d} Tage`:`${d.toFixed(4)} Tage`}
-async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true;$('log').textContent='';$('verdict').textContent='Prüfung läuft …';['providerTest','reads','stake','storage','bytecode','evidence'].forEach(id=>$(id).innerHTML='Wird geladen …');const wallet=norm($('wallet').value.trim()),contract=norm($('contract').value.trim());if(!ethers.isAddress(wallet)||!ethers.isAddress(contract))throw new Error('Wallet oder Contract ungültig.');await initProviders();let hash=$('stakeTx').value.trim();if(!hash)hash=await discoverStakeTx(wallet,contract);$('stakeTx').value=hash;const ctx=await getStakeContext(hash);log(`Stake-TX ${hash} · Block ${ctx.blockNum} · ${fmtDate(ctx.ts)}`,'ok');
+async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true;$('log').textContent='';$('verdict').textContent='Prüfung läuft …';['providerTest','reads','stake','storage','root3','bytecode','evidence'].forEach(id=>$(id).innerHTML='Wird geladen …');const wallet=norm($('wallet').value.trim()),contract=norm($('contract').value.trim());if(!ethers.isAddress(wallet)||!ethers.isAddress(contract))throw new Error('Wallet oder Contract ungültig.');await initProviders();let hash=$('stakeTx').value.trim();if(!hash)hash=await discoverStakeTx(wallet,contract);$('stakeTx').value=hash;const ctx=await getStakeContext(hash);log(`Stake-TX ${hash} · Block ${ctx.blockNum} · ${fmtDate(ctx.ts)}`,'ok');
  const nrTest=await nodeRealArchiveSelfTest(contract,ctx.blockNum);
  $('providerTest').innerHTML=`<p class="${nrTest.ok?'ok':'bad'}"><b>${nrTest.ok?'NodeReal Direct beantwortet historische eth_getStorageAt-Reads.':'NodeReal Direct Archive-State nicht bestätigt.'}</b></p><table><thead><tr><th>Probe</th><th>Block</th><th>Status</th><th>Wert / Fehler</th></tr></thead><tbody>${nrTest.rows.map(r=>`<tr><td>${esc(r.label)}</td><td class="mono">${esc(r.block)}</td><td>${r.ok?'<span class="ok">OK</span>':'<span class="bad">FEHLER</span>'}</td><td class="mono">${esc(r.ok?r.value:r.error)}</td></tr>`).join('')}</tbody></table>`;
  if(nrTest.ok)log('NodeReal Direct Archive-State-Selbsttest erfolgreich.','ok');
@@ -390,9 +556,9 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  const impl=await eip1967Impl(contract);const readTargets=[contract,...(impl?[impl]:[])];const reads=[];for(const target of readTargets){for(const [sig,kind] of READ_PROBES){const v=await callProbe(target,sig,wallet,'latest');if(v==null)continue;const n=v<=BigInt(Number.MAX_SAFE_INTEGER)?Number(v):null;let duration=null;if(n!=null&&!kind.includes('timestamp'))duration=durationFromSeconds(n);reads.push({target,sig,kind,value:v.toString(),duration})}}
  $('reads').innerHTML=reads.length?`<table><thead><tr><th>Contract</th><th>Read</th><th>Wert</th><th>Interpretation</th></tr></thead><tbody>${reads.map(r=>`<tr><td class="mono">${esc(r.target)}</td><td class="mono">${esc(r.sig)}</td><td class="mono">${esc(r.value)}</td><td>${r.duration?`<b>${esc(fmtDays(r.duration.days))}</b>`:(r.kind.includes('timestamp')&&plausibleTs(Number(r.value),ctx.ts)?esc(fmtDate(Number(r.value))):'–')}</td></tr>`).join('')}</tbody></table>`:'<span class="warn">Keine bekannten Read-Funktionen erfolgreich.</span>';
  const recEv=receiptEvidence(ctx.receipt,ctx.ts);$('stake').innerHTML=`<div class="kv"><div class="k">TX</div><div class="v mono">${esc(hash)}</div><div class="k">Block</div><div class="v">${ctx.blockNum}</div><div class="k">Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">TX →</div><div class="v mono">${esc(ctx.tx.to||'')}</div><div class="k">Selector</div><div class="v mono">${esc(String(ctx.tx.input||'').slice(0,10))}</div><div class="k">Receipt-Zeitwerte</div><div class="v">${recEv.length?recEv.map(x=>`<span class="pill">${x.type==='duration'?fmtDays(x.days):fmtDate(x.value)}</span>`).join(''):'keine plausiblen Zeitwerte'}</div></div>`;
- const storage=await traceStorage(hash,contract,impl,ctx.ts);let archiveStorage={available:false,changes:[]};if(!storage.changes.length){
+ const storage={source:null,changes:[],raw:null,skipped:true,reason:'debug_traceTransaction im automatischen Lauf deaktiviert'};log('debug_traceTransaction übersprungen; direkter Archive-State-Pfad wird verwendet.','ok');let archiveStorage={available:false,changes:[]};if(!storage.changes.length){
    if(nrTest.ok){
-     log('Trace nicht verfügbar – starte direkten NodeReal Archive-Storage-Vergleich vor/nach dem Stake …','warn');
+     log('Starte direkten NodeReal Archive-Storage-Vergleich vor/nach dem Stake …','ok');
      archiveStorage=await archiveStorageScan(contract,wallet,ctx.blockNum,ctx.ts);
      if(archiveStorage.available)log(`NodeReal Direct Archive-Storage-Scan: ${archiveStorage.tested} Kandidaten geprüft, ${archiveStorage.changes.length} Änderungen gefunden. Stufe A ${archiveStorage.stageA?.tested||0}, Stufe B ${archiveStorage.stageB?.tested||0}.`,'ok');
      else log(`NodeReal Direct Archive-Storage-Scan nicht verfügbar: ${archiveStorage.error||'unbekannt'}`,'warn');
@@ -400,10 +566,21 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
      archiveStorage={available:false,error:'NodeReal Direct Archive-State-Selbsttest fehlgeschlagen',changes:[]};
    }
  }const traceHtml=storage.changes.length?`<p class="muted">Trace-Quelle: ${esc(storage.source)}</p><table><thead><tr><th>Adresse</th><th>Slot</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${storage.changes.slice(0,100).map(x=>`<tr><td class="mono">${esc(x.address)}</td><td class="mono">${esc(x.slot)}</td><td class="mono">${esc(x.before?.toString()??'–')}</td><td class="mono">${esc(x.after?.toString()??'–')}</td><td>${x.diffDuration?`Δ ${esc(fmtDays(x.diffDuration.days))}`:(x.timestampValues||[]).map(fmtDate).join(' · ')||'–'}</td></tr>`).join('')}</tbody></table>`:'';const archHtml=archiveStorage.changes?.length?`<p class="muted">Archive-State: Block ${archiveStorage.before} → ${archiveStorage.after}. Zweistufiger Scan: zuerst direkte Slots 0–64 plus Mapping-Roots 0–64 nur an Offset 0; danach vollständige Offsets 0–16 nur für relevante Roots.</p><table><thead><tr><th>Typ</th><th>Root/Offset</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${archiveStorage.changes.slice(0,120).map(x=>`<tr><td>${esc(x.kind)}</td><td class="mono">${x.root} / ${x.offset}</td><td class="mono">${esc(x.before.toString())}</td><td class="mono">${esc(x.after.toString())}</td><td>${(x.timestamps||[]).map(t=>fmtDate(t)).join(' · ')||((x.stakeDeltas||[]).map(q=>`Δ Stake ${fmtDays(q.delta.days)}`).join(' · '))||'–'}</td></tr>`).join('')}</tbody></table>`:'';$('storage').innerHTML=traceHtml||archHtml||'<span class="warn">Weder Trace-Storage-Diffs noch Archive-State-Änderungen verfügbar.</span>';
- const code=await rpc('eth_getCode',[contract,'latest']);const implCode=impl?await rpc('eth_getCode',[impl,'latest']):'0x';const byte=[...plausibleDurationConstants(code).map(x=>({...x,target:contract})),...plausibleDurationConstants(implCode).map(x=>({...x,target:impl}))];const byteRows=byte.length?`<p class="muted">Wichtig: PUSH-Werte werden nur noch als schwache statische Hinweise gezeigt. Zufällige Zahlen im Bytecode sind keine Vertragsdauer.</p><table><thead><tr><th>Contract</th><th>Typ</th><th>Wert</th><th>Interpretation</th><th>Hex</th></tr></thead><tbody>${byte.map(x=>`<tr><td class="mono">${esc(x.target)}</td><td>${esc(x.kind)}</td><td>${esc(x.value.toString())}</td><td>${x.kind==='possible-day-count'?`${esc(fmtDays(x.days))} möglich`:`${x.seconds.toLocaleString('de-CH')} s = ${esc(fmtDays(x.days))}`}</td><td class="mono">${esc(x.hex)}</td></tr>`).join('')}</tbody></table>`:'<p class="warn">Keine exakten Ganztage-/Tageszahl-PUSH-Hinweise gefunden.</p>';$('bytecode').innerHTML=`<div class="kv"><div class="k">Proxy-Implementation</div><div class="v mono">${esc(impl||'keine EIP-1967 Implementation erkannt')}</div></div>`+byteRows;
- const evidence=rankEvidence({reads,storage,archiveStorage,bytecode:byte,receipt:recEv,stakeTs:ctx.ts});$('evidence').innerHTML=evidence.length?`<table><thead><tr><th>Rang</th><th>Evidenz</th><th>Dauer</th><th>Detail</th></tr></thead><tbody>${evidence.slice(0,50).map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.label)} <span class="muted">(${x.score})</span></td><td><b>${esc(fmtDays(x.days))}</b></td><td class="mono">${esc(x.detail)}</td></tr>`).join('')}</tbody></table>`:'<span class="warn">Keine belastbare Dauer-Evidenz gefunden.</span>';
- const top=evidence[0]||null;const sameTop=top?evidence.filter(x=>x.score>=90&&Math.abs(x.days-top.days)<1e-9):[];let verdict='Vertragsdauer nicht belastbar ermittelt.',cls='warn';if(top&&top.score>=90){verdict=`On-chain stark belegt: ${fmtDays(top.days)}.`;cls='ok'}else if(top){verdict=`Hinweis, aber noch nicht stark genug: ${fmtDays(top.days)}.`;cls='warn'}$('verdict').className=`verdict ${cls}`;$('verdict').textContent=verdict;$('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke übereinstimmende Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Noch separat zu prüfen; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;lastDiagnosticExport=jsonSafe({
-   version:document.querySelector('.muted:last-of-type')?.textContent?.replace(/^Version:\s*/,'')||'unbekannt',
+ const code=await rpc('eth_getCode',[contract,'latest']);const implCode=impl?await rpc('eth_getCode',[impl,'latest']):'0x';const byte=[...plausibleDurationConstants(code).map(x=>({...x,target:contract})),...plausibleDurationConstants(implCode).map(x=>({...x,target:impl}))];const byteRows=byte.length?`<p class="muted">Wichtig: PUSH-Werte sind nur Diagnose. Sie sind vollständig vom Verdict ausgeschlossen und können niemals eine Vertragsdauer beweisen.</p><table><thead><tr><th>Contract</th><th>Typ</th><th>Wert</th><th>Interpretation</th><th>Hex</th></tr></thead><tbody>${byte.map(x=>`<tr><td class="mono">${esc(x.target)}</td><td>${esc(x.kind)}</td><td>${esc(x.value.toString())}</td><td>${x.kind==='possible-day-count'?`${esc(fmtDays(x.days))} möglich`:`${x.seconds.toLocaleString('de-CH')} s = ${esc(fmtDays(x.days))}`}</td><td class="mono">${esc(x.hex)}</td></tr>`).join('')}</tbody></table>`:'<p class="warn">Keine exakten Ganztage-/Tageszahl-PUSH-Hinweise gefunden.</p>';$('bytecode').innerHTML=`<div class="kv"><div class="k">Proxy-Implementation</div><div class="v mono">${esc(impl||'keine EIP-1967 Implementation erkannt')}</div></div>`+byteRows;
+ const targeted=await targetedRoot3Scan(contract,wallet,ctx);
+ $('root3').innerHTML=root3Html(targeted);
+ log(`Root-3-Tiefenscan abgeschlossen: ${targeted.changedAtStake.length} Änderungen am Stake-Block, ${targeted.transitions.length} spätere Übergänge.`,'ok');
+
+ const evidence=buildStrictEvidence(ctx,targeted);
+ $('evidence').innerHTML=evidence.length?`<table><thead><tr><th>Rang</th><th>Evidenz</th><th>Dauer</th><th>Detail</th></tr></thead><tbody>${evidence.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.label)} <span class="muted">(${x.score})</span></td><td><b>${Number.isFinite(x.days)?esc(fmtDays(x.days)):'–'}</b></td><td class="mono">${esc(x.detail)}</td></tr>`).join('')}</tbody></table>`:'<span class="warn">Keine belastbare Dauer-Evidenz gefunden.</span>';
+
+ const vr=strictVerdict(evidence);
+ $('verdict').className=`verdict ${vr.cls}`;
+ $('verdict').textContent=vr.text;
+ const top=evidence[0]||null;
+ const sameTop=evidence.filter(x=>x.score>=90);
+ $('summary').innerHTML=`<div class="k">Staking-Contract</div><div class="v mono">${esc(contract)}</div><div class="k">Stake-Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">Root-3 Startfeld</div><div class="v">${targeted.startRow?`Offset ${targeted.startRow.offset} · exakt Stake-Timestamp`:'nicht gefunden'}</div><div class="k">367-Tage-Prüfpunkt</div><div class="v">${esc(targeted.targetDate)} · Block ${esc(targeted.targetBlock?.blockNum??'–')}</div><div class="k">Beste Evidenz</div><div class="v">${top?esc(top.label):'keine'}</div><div class="k">Starke Evidenzen</div><div class="v">${sameTop.length}</div><div class="k">Reward-Dauer</div><div class="v">Separat; wird nicht automatisch mit Lock-Dauer gleichgesetzt.</div>`;lastDiagnosticExport=jsonSafe({
+   version:document.querySelector('.header-version')?.textContent?.replace(/^Version:\s*/,'')||'unbekannt',
    wallet,contract,hash,
    ctx:{
      blockNum:ctx.blockNum,
@@ -417,6 +594,7 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
    receiptEvidence:recEv,
    storage,
    archiveStorage,
+   targeted,
    evidence,
    verdict:$('verdict').textContent
  });
