@@ -11,7 +11,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 .header-version{margin-top:6px;font-size:12px;font-weight:700;opacity:.82}</style>
 </head><body><div class="wrap">
 <h1>🧪 TLN/VOW · isolierter Staking-Duration-Test</h1>
-<div class="header-version">Version: 31.08.2026 12:41:48 CEST</div>
+<div class="header-version">Version: 31.08.2026 14:03:15 CEST</div>
 <p class="muted">Ziel: Vertrags-/Lock-Dauer aus On-chain-Evidenz ermitteln. Keine fest hinterlegte 367-Tage-Regel. Reward-Dauer wird separat behandelt.</p>
 <div class="card grid">
 <label>Wallet<input id="wallet" class="mono" value="0x813D4948e797DA57085cf1b81b96804576E85510"></label>
@@ -33,7 +33,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>9 · Bytecode-Zeitkonstanten (nur Diagnose)</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>10 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 12:41:48 CEST</div>
+<div class="muted">Version: 31.08.2026 14:03:15 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -727,13 +727,14 @@ function decodeRevertData(data){
  }catch{}
  return {type:'raw',data:raw.slice(0,514)};
 }
-async function nodeRealEthCallDetailed(callObj,blockTag){
+async function nodeRealEthCallDetailed(callObj,blockTag,stateOverride=null){
  const c=new AbortController(),tm=setTimeout(()=>c.abort(),30000);
  try{
+   const params=stateOverride?[callObj,blockTag,stateOverride]:[callObj,blockTag];
    const r=await fetch(NODEREAL_BSC_URL,{
      method:'POST',
      headers:{'content-type':'application/json'},
-     body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method:'eth_call',params:[callObj,blockTag]}),
+     body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method:'eth_call',params}),
      signal:c.signal
    });
    const raw=await r.text();
@@ -760,15 +761,41 @@ async function unstakeCallProbe(tx,contract,ctx,blockNum){
  const block=await nodeRealRpcDirect('eth_getBlockByNumber',[blockTag,false]);
  const blockTs=Number(BigInt(block.timestamp));
  const impl=await eip1967ImplAt(contract,blockTag);
+
  const callObj={
    from:tx.from,
    to:tx.to,
    data:tx.input||'0x',
    value:tx.value||'0x0',
-   gas:'0x7a1200'
+   gas:'0x7a1200',
+   gasPrice:'0x0'
  };
- const call=await nodeRealEthCallDetailed(callObj,blockTag);
- const revert=call.ok?null:decodeRevertData(call.error?.data);
+
+ let call=await nodeRealEthCallDetailed(callObj,blockTag);
+ let simulationMode='gasPrice=0';
+ let balanceOverrideUsed=false;
+ let revert=call.ok?null:decodeRevertData(call.error?.data);
+ let failureClass=classifyUnstakeCallFailure(call,revert);
+
+ if(!call.ok && failureClass==='simulation_invalid' &&
+    /insufficient funds|gas \* price \+ value/i.test(String(call.error?.message||''))){
+   const override={
+     [String(tx.from).toLowerCase()]:{
+       balance:'0x3635c9adc5dea00000'
+     }
+   };
+   const retry=await nodeRealEthCallDetailed(callObj,blockTag,override);
+   if(retry.ok || !/invalid argument|too many arguments|unsupported|state override/i.test(String(retry.error?.message||''))){
+     call=retry;
+     simulationMode='gasPrice=0 + sender-balance-override';
+     balanceOverrideUsed=true;
+     revert=call.ok?null:decodeRevertData(call.error?.data);
+     failureClass=classifyUnstakeCallFailure(call,revert);
+   }else{
+     simulationMode='gasPrice=0; balance-override vom RPC nicht unterstützt';
+   }
+ }
+
  return {
    blockNum:Number(blockNum),
    block:blockTag,
@@ -781,8 +808,11 @@ async function unstakeCallProbe(tx,contract,ctx,blockNum){
    result:call.ok?call.result:null,
    error:call.ok?null:call.error,
    revert,
-   failureClass:classifyUnstakeCallFailure(call,revert),
-   validForLock:call.ok||classifyUnstakeCallFailure(call,revert)==='contract_revert'
+   failureClass,
+   validForLock:call.ok||failureClass==='contract_revert',
+   simulationMode,
+   balanceOverrideUsed,
+   preservedMsgValue:tx.value||'0x0'
  };
 }
 async function blockNearElapsedDays(ctx,days){
@@ -796,7 +826,7 @@ async function historicalUnstakeGateTest(contract,wallet,ctx,coreChange,coreTxAn
  if(!tx)return {available:false,error:'Unstake-TX nicht ladbar.',hash:candidate.hash};
 
  const actualBlock=coreChange.firstChangedBlock;
- const checkpointDays=[360,365,366,367,368,369,375,400,430,440];
+ const checkpointDays=[360,364,365,366,367,368,369,370,375,400,430,440];
  const checkpoints=[];
  log('Historischer Unstake-Grenztest: prüfe ausgewählte Tage per eth_call …','ok');
 
@@ -1172,6 +1202,7 @@ async function historicalImplementationDataflow(contract,ctx,unstakeGate){
    stakeImplementation:stakeImpl,
    codeBytes:(String(code).length-2)/2,
    selector,
+   selectorPresent:!!analysis.dispatch,
    dispatch:analysis.dispatch,
    reachableOps:analysis.reachableOps,
    reachableEntryPcs:analysis.reachableEntryPcs,
@@ -1198,6 +1229,7 @@ function historicalDataflowHtml(x){
    <div class="k">Stake-Block</div><div class="v mono">${esc(x.stakeBlock)}</div>
    <div class="k">Runtime-Code</div><div class="v">${esc(x.codeBytes)} Byte</div>
    <div class="k">Unstake-Selector</div><div class="v mono">${esc(x.selector)}</div>
+   <div class="k">Selector im Stake-Code</div><div class="v">${x.selectorPresent?'<b>ja</b>':'<b>nicht nachgewiesen</b>'}</div>
    <div class="k">Dispatcher-Ziel</div><div class="v">${x.dispatch?`PC ${esc(x.dispatch.destPc)}`:'nicht statisch gefunden'}</div>
    <div class="k">Statisch erreichbare Ops</div><div class="v">${esc(x.reachableOps)}</div>
    <div class="k">TIMESTAMP-Prüfungen im Pfad</div><div class="v">${esc(ts.length)}</div>
@@ -1263,7 +1295,15 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  $('selectorLogic').innerHTML=selectorLogicHtml(selectorLogic);
  if(selectorLogic?.available)log(`Unstake-Selector ${selectorLogic.selector}: historische Implementation am Stake ${selectorLogic.stake?.implementation||'–'}; am Unstake ${selectorLogic.unstake?.implementation||'–'}.`,'ok');
 
- const evidence=buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis,unstakeGate,selectorLogic,historicalDataflow);
+ const historicalDataflowResult=await historicalImplementationDataflow(contract,ctx,unstakeGate);
+ $('historicalDataflow').innerHTML=historicalDataflowHtml(historicalDataflowResult);
+ if(historicalDataflowResult?.available){
+   log(`Historische Stake-Implementation ${historicalDataflowResult.stakeImplementation}: Dispatcher ${historicalDataflowResult.dispatch?`PC ${historicalDataflowResult.dispatch.destPc}`:'nicht gefunden'}, ${historicalDataflowResult.timestampChecks?.length||0} TIMESTAMP-Prüfungen, ${historicalDataflowResult.semanticCandidates?.length||0} lokale Dauer-Kandidaten.`,'ok');
+ }else{
+   log(`Historische Dataflow-Analyse nicht verfügbar: ${historicalDataflowResult?.error||'unbekannt'}`,'warn');
+ }
+
+ const evidence=buildStrictEvidence(ctx,targeted,coreChange,coreTxAnalysis,unstakeGate,selectorLogic,historicalDataflowResult);
  $('evidence').innerHTML=evidence.length?`<table><thead><tr><th>Rang</th><th>Evidenz</th><th>Dauer</th><th>Detail</th></tr></thead><tbody>${evidence.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.label)} <span class="muted">(${x.score})</span></td><td><b>${Number.isFinite(x.days)?esc(fmtDays(x.days)):'–'}</b></td><td class="mono">${esc(x.detail)}</td></tr>`).join('')}</tbody></table>`:'<span class="warn">Keine belastbare Dauer-Evidenz gefunden.</span>';
 
  const vr=strictVerdict(evidence);
@@ -1291,7 +1331,7 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
    coreTxAnalysis,
    unstakeGate,
    selectorLogic,
-   historicalDataflow,
+   historicalDataflow:historicalDataflowResult,
    evidence,
    verdict:$('verdict').textContent
  });
