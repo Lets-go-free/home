@@ -11,7 +11,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 .header-version{margin-top:6px;font-size:12px;font-weight:700;opacity:.82}</style>
 </head><body><div class="wrap">
 <h1>🧪 TLN/VOW · isolierter Staking-Duration-Test</h1>
-<div class="header-version">Version: 31.08.2026 14:19:49 CEST</div>
+<div class="header-version">Version: 31.08.2026 14:24:29 CEST</div>
 <p class="muted">Ziel: Vertrags-/Lock-Dauer aus On-chain-Evidenz ermitteln. Keine fest hinterlegte 367-Tage-Regel. Reward-Dauer wird separat behandelt.</p>
 <div class="card grid">
 <label>Wallet<input id="wallet" class="mono" value="0x813D4948e797DA57085cf1b81b96804576E85510"></label>
@@ -33,7 +33,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>9 · Bytecode-Zeitkonstanten (nur Diagnose)</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>10 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 14:19:49 CEST</div>
+<div class="muted">Version: 31.08.2026 14:24:29 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -466,11 +466,11 @@ async function targetedRoot3Scan(contract,wallet,ctx,coreChange=null){
  const stakeBlock='0x'+ctx.blockNum.toString(16);
  const referenceTs=ctx.ts+365*86400;
 
- log('Root 3: suche Block nahe Stake + 367 Tage …','ok');
+ log('Root 3: bestimme neutralen historischen Vergleichspunkt für den Strukturscan …','ok');
  const referenceBlock=await findBlockNearTimestamp(referenceTs);
- log(`Root 3: frühere manuelle Referenz liegt nahe Block ${referenceBlock?.blockNum??'?'}, ${referenceBlock?fmtDate(referenceBlock.timestamp):'unbekannt'} (Δ ${referenceBlock?.delta??'?'} s).`,'ok');
+ log(`Root 3: neutraler historischer Vergleichspunkt liegt nahe Block ${referenceBlock?.blockNum??'?'}, ${referenceBlock?fmtDate(referenceBlock.timestamp):'unbekannt'} (Δ ${referenceBlock?.delta??'?'} s).`,'ok');
 
- log('Root 3: lese Offsets 0–32 vor Stake, am Stake, bei neutraler Referenzpunktn und latest …','ok');
+ log('Root 3: lese Offsets 0–32 vor Stake, am Stake, am neutralen Vergleichspunkt und latest …','ok');
  const [before,stake,atReference,latest]=await Promise.all([
    readRootOffsetsAt(contract,wallet,root,offsets,beforeBlock,ctx.ts),
    readRootOffsetsAt(contract,wallet,root,offsets,stakeBlock,ctx.ts),
@@ -974,6 +974,51 @@ function selectorBlockHtml(a){
  <p>Zeitkonstanten im Funktionsfenster: ${c.durationPushes.length?c.durationPushes.map(o=>`<span class="pill">${esc(o.days)} Tage @${o.pc}</span>`).join(''):'keine'}</p>
  ${c.timeWindows.map(w=>`<pre class="mono">${esc(w.ops.map(o=>`${String(o.pc).padStart(6)}  ${o.name}${o.imm?' '+o.imm:''}`).join('\n'))}</pre>`).join('')||'<p class="muted">Kein TIMESTAMP-Fenster im ersten analysierten Funktionsbereich.</p>'}`).join('')}`;
 }
+
+function unstakeGateHtml(gate){
+ if(!gate?.available){
+   return `<span class="warn">${esc(gate?.error||'Nicht verfügbar.')}</span>`;
+ }
+ const cps=gate.checkpoints||[];
+ if(!gate.found){
+   return `
+   <div class="kv">
+     <div class="k">Suchmodus</div><div class="v">${esc(gate.searchMode||'automatisch')}</div>
+     <div class="k">Ergebnis</div><div class="v"><span class="warn">Keine belastbare Lock-Grenze gefunden</span></div>
+     <div class="k">Grund</div><div class="v">${esc(gate.reason||'–')}</div>
+     <div class="k">Geprüfte Punkte</div><div class="v">${esc(cps.length)}</div>
+     <div class="k">Echte Contract-Reverts</div><div class="v">${esc((gate.contractReverts||[]).length)}</div>
+     <div class="k">Erfolgreiche Calls</div><div class="v">${esc((gate.successful||[]).length)}</div>
+   </div>
+   ${cps.length?unstakeGateCheckpointTable(cps):''}`;
+ }
+ const reason=gate.before?.revert?.message||gate.before?.error?.message||'–';
+ return `
+ <div class="kv">
+   <div class="k">Suchmodus</div><div class="v">${esc(gate.searchMode||'automatisch')}</div>
+   <div class="k">Automatisch</div><div class="v">${gate.automatic?'ja':'ja'}</div>
+   <div class="k">Letzter Contract-Revert</div><div class="v">${esc(gate.before?.date||'–')} · Block ${esc(gate.before?.blockNum||'–')}</div>
+   <div class="k">Erster Erfolg</div><div class="v">${esc(gate.after?.date||'–')} · Block ${esc(gate.after?.blockNum||'–')}</div>
+   <div class="k">Revert-Grund</div><div class="v">${esc(reason)}</div>
+   <div class="k">Automatisch ermittelte Mindestdauer</div><div class="v"><b>${Number(gate.elapsedDays||0).toFixed(6)} Tage</b> (${esc(gate.elapsedSeconds||0)} s)</div>
+   <div class="k">Implementation stabil</div><div class="v">${gate.implementationStable?'ja':'nein'}</div>
+ </div>
+ ${unstakeGateCheckpointTable(cps)}`;
+}
+function unstakeGateCheckpointTable(rows){
+ return `<table><thead><tr><th>Block</th><th>Datum</th><th>Tage</th><th>Call</th><th>Fehlerklasse</th><th>Simulation</th><th>Revert / Fehler</th></tr></thead><tbody>${
+   rows.map(p=>`<tr>
+     <td>${esc(p.blockNum)}</td>
+     <td>${esc(p.date||'–')}</td>
+     <td>${Number(p.elapsedDays||0).toFixed(6)}</td>
+     <td>${p.ok?'<span class="ok">OK</span>':`<span class="${p.failureClass==='contract_revert'?'bad':'warn'}">FAIL</span>`}</td>
+     <td>${esc(p.failureClass||'–')}</td>
+     <td>${esc(p.simulationMode||'–')}</td>
+     <td>${esc(p.revert?.message||p.error?.message||'–')}</td>
+   </tr>`).join('')
+ }</tbody></table>`;
+}
+
 function selectorLogicHtml(x){
  if(!x?.available)return `<span class="warn">${esc(x?.error||'Nicht verfügbar.')}</span>`;
  return `<div class="kv"><div class="k">Unstake-Selector</div><div class="v mono">${esc(x.selector)}</div><div class="k">Implementation Stake → Unstake</div><div class="v">${x.sameImplementation?'<span class="ok">unverändert</span>':'<span class="warn">geändert</span>'}</div></div>${selectorBlockHtml(x.stake)}${selectorBlockHtml(x.unstake)}<p class="warn"><b>Beweisregel:</b> Eine Tages-/Sekundenkonstante zählt erst dann als Lock-Evidenz, wenn ihr Datenfluss mit Root-3/Offset-3 bzw. dem Stake-Timestamp und einer TIMESTAMP-Vergleichsbedingung verbunden werden kann.</p>`;
