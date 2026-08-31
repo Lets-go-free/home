@@ -25,7 +25,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 01.09.2026 00:02:27 CEST</div>
+  <div class="muted">Entwicklungsstand 01.09.2026 01:12:49 CEST</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -133,7 +133,15 @@ async function rpc(method,params=[]){
       }
       if(url!==rpcUrl){rpcUrl=url;log('RPC-Fallback aktiv: '+url.replace(/([?&](?:key|token)=)[^&]+/ig,'$1***'))}
       return result;
-    }catch(e){lastErr=e}
+    }catch(e){
+      lastErr=e;
+      const msg=String(e?.message||e||'').toLowerCase();
+      if(method==='eth_call' && (
+        msg.includes('execution reverted') ||
+        msg.includes('revert') ||
+        msg.includes('invalid opcode')
+      )) throw e;
+    }
   }
   throw lastErr||new Error('Kein RPC-Provider verfügbar');
 }
@@ -257,7 +265,8 @@ function bigintBlock(x){return typeof x==='string'?BigInt(x):BigInt(x||0)}
 async function latestBlockNumber(){return BigInt(await rpc('eth_blockNumber',[]))}
 
 const tlnIdentityCache=new Map();
-let tlnIdentitySourceContractsCache=null;
+let tlnIdentityResolver=null;
+let tlnIdentityDiscoveryDone=false;
 
 const TLN_ID_GETTERS=[
   'nodeId(address)','nodeID(address)','getNodeId(address)','getNodeID(address)',
@@ -267,8 +276,7 @@ const TLN_ID_GETTERS=[
 ];
 const TLN_ID_SOURCE_GETTERS=[
   'referralContract()','referralsContract()','referralRegistry()','registry()',
-  'nodeContract()','nodeRegistry()','identityContract()','identityRegistry()',
-  'affiliateContract()','partnerContract()'
+  'nodeContract()','nodeRegistry()','identityContract()','identityRegistry()'
 ];
 
 function uintCall(sig,a){
@@ -278,63 +286,99 @@ function decodeSingleUint(raw){
   try{
     if(!raw||raw==='0x'||raw.length<66)return null;
     const v=BigInt('0x'+raw.slice(2,66));
-    // TLN IDs are small integer identifiers. Reject zero and implausibly huge
-    // values so timestamps, token amounts or packed structs cannot be mistaken for IDs.
     if(v<=0n||v>1000000000000n)return null;
     return v.toString();
   }catch{return null}
 }
-async function discoverTlnIdentitySourceContracts(stakingMap){
-  if(tlnIdentitySourceContractsCache)return tlnIdentitySourceContractsCache;
-  const sources=new Set([...stakingMap.keys()]);
-  for(const c of [...sources]){
+
+async function discoverTlnIdentityResolver(rows,stakingMap,referenceWallet){
+  if(tlnIdentityDiscoveryDone)return tlnIdentityResolver;
+  tlnIdentityDiscoveryDone=true;
+
+  const usedContracts=[...new Set(
+    rows.map(r=>norm(r.to)).filter(a=>stakingMap.has(a))
+  )];
+
+  const sources=new Set(usedContracts);
+  let calls=0;
+  const MAX_DISCOVERY_CALLS=80;
+
+  for(const c of usedContracts){
     for(const sig of TLN_ID_SOURCE_GETTERS){
+      if(calls>=MAX_DISCOVERY_CALLS)break;
+      calls++;
       try{
         const raw=await rpc('eth_call',[{to:c,data:ethers.id(sig).slice(0,10)},'latest']);
         const a=retAddr(raw);
         if(!a)continue;
+        if(calls>=MAX_DISCOVERY_CALLS)break;
+        calls++;
         const code=await rpc('eth_getCode',[a,'latest']);
         if(code&&code!=='0x')sources.add(norm(a));
       }catch{}
     }
+    if(calls>=MAX_DISCOVERY_CALLS)break;
   }
-  tlnIdentitySourceContractsCache=[...sources];
-  walletLog(`TLN-ID: ${tlnIdentitySourceContractsCache.length} mögliche BSC-Quellcontract(s) aus Staking-/Registry-Graph.`);
-  return tlnIdentitySourceContractsCache;
-}
-async function getTlnIdentity(wallet,stakingMap){
-  wallet=norm(wallet);
-  if(tlnIdentityCache.has(wallet))return tlnIdentityCache.get(wallet);
 
-  const result={wallet,nodeId:null,referredById:null,source:'unresolved',chain:'BSC',contract:null,method:null,evidence:[]};
-  const sources=await discoverTlnIdentitySourceContracts(stakingMap);
-  const hits=[];
+  const probeWallets=[...new Set([
+    norm(referenceWallet),
+    ...rows.map(r=>norm(r.sender))
+  ].filter(a=>/^0x[0-9a-f]{40}$/.test(a)))].slice(0,2);
 
+  outer:
   for(const c of sources){
     for(const sig of TLN_ID_GETTERS){
-      try{
-        const raw=await rpc('eth_call',[{to:c,data:uintCall(sig,wallet)},'latest']);
-        const id=decodeSingleUint(raw);
-        if(id)hits.push({id,contract:c,method:sig});
-      }catch{}
+      if(calls>=MAX_DISCOVERY_CALLS)break outer;
+      const ids=[];
+      let ok=true;
+
+      for(const w of probeWallets){
+        if(calls>=MAX_DISCOVERY_CALLS){ok=false;break}
+        calls++;
+        try{
+          const raw=await rpc('eth_call',[{to:c,data:uintCall(sig,w)},'latest']);
+          const id=decodeSingleUint(raw);
+          if(!id){ok=false;break}
+          ids.push(id);
+        }catch{ok=false;break}
+      }
+
+      if(ok && ids.length===probeWallets.length){
+        if(ids.length>1 && ids[0]===ids[1])continue;
+        tlnIdentityResolver={contract:norm(c),method:sig,discoveryCalls:calls};
+        walletLog(`TLN-ID-Quelle einmalig erkannt: ${short(c)} ${sig} (${calls} Discovery-Calls).`);
+        return tlnIdentityResolver;
+      }
     }
   }
 
-  const uniqueIds=[...new Set(hits.map(x=>x.id))];
-  result.evidence=hits;
+  walletLog(`TLN-ID: keine belastbare Quelle innerhalb des Discovery-Budgets (${calls}/${MAX_DISCOVERY_CALLS} Calls). IDs bleiben unresolved; kein weiterer Getter-Bruteforce.`);
+  return null;
+}
 
-  if(uniqueIds.length===1){
-    const hit=hits.find(x=>x.id===uniqueIds[0]);
-    result.nodeId=uniqueIds[0];
-    result.source='on-chain';
-    result.contract=hit.contract;
-    result.method=hit.method;
-    walletLog(`TLN-ID ${short(wallet)} → ${result.nodeId} via ${short(hit.contract)} ${hit.method}`);
-  }else if(uniqueIds.length>1){
-    walletLog(`TLN-ID ${short(wallet)}: mehrdeutig (${uniqueIds.join(', ')}), daher unresolved.`);
-  }else{
-    walletLog(`TLN-ID ${short(wallet)}: kein expliziter BSC-ID-Getter gefunden.`);
+async function getTlnIdentity(wallet){
+  wallet=norm(wallet);
+  if(tlnIdentityCache.has(wallet))return tlnIdentityCache.get(wallet);
+
+  const result={wallet,nodeId:null,referredById:null,source:'unresolved',chain:'BSC',contract:null,method:null};
+  if(!tlnIdentityResolver){
+    tlnIdentityCache.set(wallet,result);
+    return result;
   }
+
+  try{
+    const raw=await rpc('eth_call',[{
+      to:tlnIdentityResolver.contract,
+      data:uintCall(tlnIdentityResolver.method,wallet)
+    },'latest']);
+    const id=decodeSingleUint(raw);
+    if(id){
+      result.nodeId=id;
+      result.source='on-chain';
+      result.contract=tlnIdentityResolver.contract;
+      result.method=tlnIdentityResolver.method;
+    }
+  }catch{}
 
   tlnIdentityCache.set(wallet,result);
   return result;
@@ -507,6 +551,9 @@ async function scanReferralWallet(){
     const start=BigInt(String($('refStartBlock').value||'0').replace(/\D/g,'')||'0');
     $('walletStatus').textContent='Suche eingehende Mints zum Wallet…';
     walletLog(`Wallet ${wallet}; Startblock ${start.toString()}`);
+    tlnIdentityCache.clear();
+    tlnIdentityResolver=null;
+    tlnIdentityDiscoveryDone=false;
 
     const referralTokens=await referralRewardTokenContracts();
     renderReferralTokenConfig(referralTokens);
@@ -523,14 +570,24 @@ async function scanReferralWallet(){
       $('walletStatus').textContent=`Prüfe Mint-Tx ${i+1}/${hashes.length}…`;
       try{
         const r=await classifyReferralMintTx(hashes[i],wallet,stakingMap);
-        if(r){
-          r.tlnIdentity=await getTlnIdentity(r.sender,stakingMap);
-          rows.push(r);
-        }
+        if(r)rows.push(r);
       }catch(e){walletLog(`Tx ${short(hashes[i])}: ${e.message}`)}
       setWalletProgress(Math.max(20,20+80*(i+1)/Math.max(1,hashes.length)));
     }
     rows.sort((a,b)=>a.timestamp-b.timestamp);
+
+    $('walletStatus').textContent='Referral-Tx geprüft; ermittle TLN-ID-Quelle einmalig…';
+    await discoverTlnIdentityResolver(rows,stakingMap,wallet);
+
+    const uniqueStakers=[...new Set(rows.map(r=>norm(r.sender)))];
+    if(tlnIdentityResolver){
+      walletLog(`TLN-ID: ${uniqueStakers.length} eindeutige Staker-Wallet(s); maximal 1 eth_call je Wallet, danach Cache.`);
+      for(const w of uniqueStakers)await getTlnIdentity(w);
+    }
+    for(const r of rows){
+      r.tlnIdentity=tlnIdentityCache.get(norm(r.sender))||{nodeId:null,source:'unresolved'};
+    }
+
     const strong=rows.filter(r=>r.strong),candidates=rows.filter(r=>!r.strong);
     const rewardCount=strong.reduce((n,r)=>n+r.mints.length,0);
     const tokens=new Map(referralTokens.map(t=>[t.address,{symbol:t.symbol,count:0,total:0}]));
