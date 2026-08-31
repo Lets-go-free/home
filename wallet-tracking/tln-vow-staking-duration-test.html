@@ -11,7 +11,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 .header-version{margin-top:6px;font-size:12px;font-weight:700;opacity:.82}</style>
 </head><body><div class="wrap">
 <h1>🧪 TLN/VOW · isolierter Staking-Duration-Test</h1>
-<div class="header-version">Version: 31.08.2026 14:24:29 CEST</div>
+<div class="header-version">Version: 31.08.2026 14:30:23 CEST</div>
 <p class="muted">Ziel: Vertrags-/Lock-Dauer aus On-chain-Evidenz ermitteln. Keine fest hinterlegte 367-Tage-Regel. Reward-Dauer wird separat behandelt.</p>
 <div class="card grid">
 <label>Wallet<input id="wallet" class="mono" value="0x813D4948e797DA57085cf1b81b96804576E85510"></label>
@@ -33,7 +33,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>9 · Bytecode-Zeitkonstanten (nur Diagnose)</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>10 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 14:24:29 CEST</div>
+<div class="muted">Version: 31.08.2026 14:30:23 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -466,11 +466,11 @@ async function targetedRoot3Scan(contract,wallet,ctx,coreChange=null){
  const stakeBlock='0x'+ctx.blockNum.toString(16);
  const referenceTs=ctx.ts+365*86400;
 
- log('Root 3: bestimme neutralen historischen Vergleichspunkt für den Strukturscan …','ok');
+ log('Root 3: bestimme neutralen 1-Jahres-Vergleichspunkt ausschließlich für den Storage-Strukturscan …','ok');
  const referenceBlock=await findBlockNearTimestamp(referenceTs);
- log(`Root 3: neutraler historischer Vergleichspunkt liegt nahe Block ${referenceBlock?.blockNum??'?'}, ${referenceBlock?fmtDate(referenceBlock.timestamp):'unbekannt'} (Δ ${referenceBlock?.delta??'?'} s).`,'ok');
+ log(`Root 3: neutraler 1-Jahres-Storage-Vergleichspunkt liegt nahe Block ${referenceBlock?.blockNum??'?'}, ${referenceBlock?fmtDate(referenceBlock.timestamp):'unbekannt'} (Δ ${referenceBlock?.delta??'?'} s).`,'ok');
 
- log('Root 3: lese Offsets 0–32 vor Stake, am Stake, am neutralen Vergleichspunkt und latest …','ok');
+ log('Root 3: lese Offsets 0–32 vor Stake, am Stake, am neutralen 1-Jahres-Punkt und latest (nicht für Lock-Ermittlung) …','ok');
  const [before,stake,atReference,latest]=await Promise.all([
    readRootOffsetsAt(contract,wallet,root,offsets,beforeBlock,ctx.ts),
    readRootOffsetsAt(contract,wallet,root,offsets,stakeBlock,ctx.ts),
@@ -817,15 +817,15 @@ async function blockNearElapsedDays(ctx,days){
  return await findBlockNearTimestamp(ctx.ts+Number(days)*86400);
 }
 async function historicalUnstakeGateTest(tx,contract,ctx,coreChange){
- // Vollautomatische Suche ohne vorgegebene Tageszahl.
- // Suchraum: ab kurz nach Stake bis unmittelbar vor tatsächlicher Positionsauflösung.
  const exitBlock=Number(coreChange?.firstChangedBlock||0);
- if(!exitBlock)return {available:false,error:'Keine tatsächliche Positionsauflösung als obere Suchgrenze vorhanden.'};
-
  const stakeBlock=Number(ctx.blockNum);
- if(!(exitBlock>stakeBlock))return {available:false,error:'Ungültiger Suchbereich zwischen Stake und Positionsauflösung.'};
+ if(!exitBlock||exitBlock<=stakeBlock){
+   return {available:false,error:'Keine gültige Positionsauflösung als obere Suchgrenze vorhanden.',tx:{hash:tx.hash,selector:(tx.input||'0x').slice(0,10)}};
+ }
 
+ const txMeta={hash:tx.hash,selector:(tx.input||'0x').slice(0,10),value:tx.value||'0x0'};
  const cache=new Map();
+
  async function probeBlock(blockNum){
    blockNum=Math.max(stakeBlock,Math.min(exitBlock-1,Number(blockNum)));
    if(cache.has(blockNum))return cache.get(blockNum);
@@ -833,120 +833,150 @@ async function historicalUnstakeGateTest(tx,contract,ctx,coreChange){
    cache.set(blockNum,p);
    return p;
  }
-
- // Zeitbasierte, generische Grobsuche. Keine spezielle Vertragsdauer ist eingebaut.
- // Wir prüfen logarithmisch wachsende Zeitabstände und anschließend 30-Tage-Raster,
- // bis ein echter Contract-Revert und später ein Success gefunden werden.
- const coarseDays=[1,2,3,7,14,30,60,90,120,150,180,210,240,270,300,330,360,390,420];
- const exitDays=Math.max(0,(Number(coreChange.timestamp)-Number(ctx.ts))/86400);
- for(let d=450;d<Math.ceil(exitDays)+30;d+=30)coarseDays.push(d);
-
- const checkpoints=[];
- const daySeen=new Set();
- for(const d of coarseDays.sort((a,b)=>a-b)){
-   if(d<=0||d>=exitDays||daySeen.has(d))continue;
-   daySeen.add(d);
-   const b=await blockNearElapsedDays(ctx,d);
-   if(!b?.blockNum)continue;
-   checkpoints.push(await probeBlock(b.blockNum));
+ async function probeDay(day){
+   const b=await blockNearElapsedDays(ctx,day);
+   return b?.blockNum?await probeBlock(b.blockNum):null;
  }
 
- // Zusätzlicher sicherer Endpunkt direkt vor dem echten Unstake/Positions-Clear.
- const endProbe=await probeBlock(exitBlock-1);
- checkpoints.push(endProbe);
+ const exitDays=Math.max(0,(Number(coreChange.timestamp)-Number(ctx.ts))/86400);
 
- checkpoints.sort((a,b)=>a.blockNum-b.blockNum);
+ // 1) Generische Grobsuche, nur um einen echten Contract-Revert zu finden.
+ // Kein Wert in dieser Liste ist ein vermuteter Lock-Zeitraum.
+ const coarseDays=[1,2,3,7,14,30,60,90,120,150,180,210,240,270,300,330,360,390,420];
+ for(let d=450;d<exitDays;d+=30)coarseDays.push(d);
 
- const successful=checkpoints.filter(p=>p.ok);
- const contractReverts=checkpoints.filter(p=>!p.ok&&p.failureClass==='contract_revert');
- const invalidFailures=checkpoints.filter(p=>!p.ok&&p.failureClass!=='contract_revert');
+ let lastContractRevert=null;
+ let firstSuccessAfterRevert=null;
 
- // Suche den ersten Success, vor dem mindestens ein echter Contract-Revert liegt.
- let firstSuccess=null,lastContractRevert=null;
- for(const p of checkpoints){
+ for(const d of coarseDays.sort((a,b)=>a-b)){
+   if(d<=0||d>=exitDays)continue;
+   const p=await probeDay(d);
+   if(!p)continue;
    if(!p.ok&&p.failureClass==='contract_revert')lastContractRevert=p;
    if(p.ok&&lastContractRevert){
-     firstSuccess=p;
+     firstSuccessAfterRevert=p;
      break;
    }
  }
 
- if(!firstSuccess||!lastContractRevert){
+ // 2) Wenn ein Revert gefunden wurde, überbrücken wir ab dort adaptiv tageweise.
+ // Das ist generisch: wir suchen einfach den ERSTEN späteren Success.
+ if(lastContractRevert&&!firstSuccessAfterRevert){
+   let startDay=Math.max(0,Math.floor(lastContractRevert.elapsedDays)+1);
+   const maxDay=Math.min(Math.ceil(exitDays),startDay+120);
+   for(let d=startDay;d<=maxDay&&d<exitDays;d++){
+     const p=await probeDay(d);
+     if(!p)continue;
+     if(!p.ok&&p.failureClass==='contract_revert'){
+       lastContractRevert=p;
+       continue;
+     }
+     if(p.ok){
+       firstSuccessAfterRevert=p;
+       break;
+     }
+     // simulation_invalid/provider_error wird übersprungen und darf keine Grenze setzen.
+   }
+ }
+
+ // 3) Falls die Grobsuche noch keinen Revert fand, dichteres neutrales 14-Tage-Raster.
+ if(!lastContractRevert){
+   for(let d=14;d<exitDays;d+=14){
+     const p=await probeDay(d);
+     if(!p)continue;
+     if(!p.ok&&p.failureClass==='contract_revert'){
+       lastContractRevert=p;
+       break;
+     }
+   }
+   if(lastContractRevert){
+     let startDay=Math.max(0,Math.floor(lastContractRevert.elapsedDays)+1);
+     for(let d=startDay;d<exitDays;d++){
+       const p=await probeDay(d);
+       if(!p)continue;
+       if(!p.ok&&p.failureClass==='contract_revert'){
+         lastContractRevert=p;
+       }else if(p.ok){
+         firstSuccessAfterRevert=p;
+         break;
+       }
+     }
+   }
+ }
+
+ // 4) Endpunkt direkt vor tatsächlicher Positionsauflösung als zusätzlicher Success-Kandidat.
+ if(lastContractRevert&&!firstSuccessAfterRevert){
+   const p=await probeBlock(exitBlock-1);
+   if(p.ok)firstSuccessAfterRevert=p;
+ }
+
+ const allNow=()=>[...cache.values()].sort((a,b)=>a.blockNum-b.blockNum);
+
+ if(!lastContractRevert||!firstSuccessAfterRevert){
+   const rows=allNow();
    return {
-     available:true,
-     found:false,
-     reason:!contractReverts.length
-       ?'Kein echter Contract-Revert im automatisch geprüften Suchraum gefunden.'
-       :'Kein Success nach einem echten Contract-Revert gefunden.',
-     checkpoints,
-     successful,
-     contractReverts,
-     invalidFailures,
-     searchMode:'automatic-coarse-search',
-     exitDays
+     available:true,found:false,tx:txMeta,
+     reason:!lastContractRevert
+       ?'Kein echter Contract-Revert im automatisch untersuchten Zeitraum gefunden.'
+       :'Nach echtem Contract-Revert wurde vor Positionsauflösung kein belastbarer Success gefunden.',
+     checkpoints:rows,
+     successful:rows.filter(p=>p.ok),
+     contractReverts:rows.filter(p=>!p.ok&&p.failureClass==='contract_revert'),
+     invalidFailures:rows.filter(p=>!p.ok&&p.failureClass!=='contract_revert'),
+     searchMode:'automatic-coarse-adaptive-search',
+     automatic:true,exitDays,hypothesisDays:null
    };
  }
 
- // Blockgenaue binäre Verfeinerung.
- // Nur contract_revert und success dürfen die Grenzen bewegen.
- let lo=lastContractRevert.blockNum;
- let hi=firstSuccess.blockNum;
- let before=lastContractRevert;
- let after=firstSuccess;
- let invalidDuringBinary=[];
- let aborted=false;
+ // 5) Blockgenaue Verfeinerung. Ungültige Simulationspunkte werden lokal umgangen,
+ // statt die gesamte Suche abzubrechen.
+ let lo=lastContractRevert.blockNum,hi=firstSuccessAfterRevert.blockNum;
+ let before=lastContractRevert,after=firstSuccessAfterRevert;
+ let guard=0;
 
- while(hi-lo>1){
+ while(hi-lo>1&&guard++<80){
    const mid=Math.floor((lo+hi)/2);
-   const p=await probeBlock(mid);
+   let p=await probeBlock(mid);
+
+   if(!p.ok&&p.failureClass!=='contract_revert'){
+     // Suche in kleinem Radius nach einem validen Prüfpunkt.
+     let replacement=null;
+     for(let delta=1;delta<=16&&!replacement;delta++){
+       for(const b of [mid-delta,mid+delta]){
+         if(b<=lo||b>=hi)continue;
+         const q=await probeBlock(b);
+         if(q.ok||q.failureClass==='contract_revert'){replacement=q;break}
+       }
+     }
+     if(!replacement)break;
+     p=replacement;
+   }
+
    if(p.ok){
-     hi=mid; after=p;
+     hi=p.blockNum; after=p;
    }else if(p.failureClass==='contract_revert'){
-     lo=mid; before=p;
+     lo=p.blockNum; before=p;
    }else{
-     invalidDuringBinary.push(p);
-     aborted=true;
      break;
    }
  }
 
- if(aborted){
-   return {
-     available:true,
-     found:false,
-     reason:'Binärsuche wegen nicht-vertraglichem Simulations-/Providerfehler abgebrochen.',
-     checkpoints:[...cache.values()].sort((a,b)=>a.blockNum-b.blockNum),
-     successful,
-     contractReverts,
-     invalidFailures:[...invalidFailures,...invalidDuringBinary],
-     searchMode:'automatic-coarse-plus-binary',
-     exitDays
-   };
- }
-
- // Implementation-Stabilität über die gefundene Grenze.
  const implementationStable=!!before?.impl&&!!after?.impl&&
    String(before.impl).toLowerCase()===String(after.impl).toLowerCase();
 
  const elapsedSeconds=Number(after.timestamp)-Number(ctx.ts);
  const elapsedDays=elapsedSeconds/86400;
+ const rows=allNow();
 
  return {
-   available:true,
-   found:true,
-   before,
-   after,
-   elapsedSeconds,
-   elapsedDays,
-   implementationStable,
-   checkpoints:[...cache.values()].sort((a,b)=>a.blockNum-b.blockNum),
-   successful:[...cache.values()].filter(p=>p.ok),
-   contractReverts:[...cache.values()].filter(p=>!p.ok&&p.failureClass==='contract_revert'),
-   invalidFailures:[...cache.values()].filter(p=>!p.ok&&p.failureClass!=='contract_revert'),
-   searchMode:'automatic-coarse-plus-binary',
-   exitDays,
-   automatic:true,
-   hypothesisDays:null
+   available:true,found:true,tx:txMeta,
+   before,after,elapsedSeconds,elapsedDays,implementationStable,
+   checkpoints:rows,
+   successful:rows.filter(p=>p.ok),
+   contractReverts:rows.filter(p=>!p.ok&&p.failureClass==='contract_revert'),
+   invalidFailures:rows.filter(p=>!p.ok&&p.failureClass!=='contract_revert'),
+   searchMode:'automatic-coarse-adaptive-plus-binary',
+   automatic:true,exitDays,hypothesisDays:null
  };
 }
 
@@ -1024,6 +1054,57 @@ function selectorLogicHtml(x){
  return `<div class="kv"><div class="k">Unstake-Selector</div><div class="v mono">${esc(x.selector)}</div><div class="k">Implementation Stake → Unstake</div><div class="v">${x.sameImplementation?'<span class="ok">unverändert</span>':'<span class="warn">geändert</span>'}</div></div>${selectorBlockHtml(x.stake)}${selectorBlockHtml(x.unstake)}<p class="warn"><b>Beweisregel:</b> Eine Tages-/Sekundenkonstante zählt erst dann als Lock-Evidenz, wenn ihr Datenfluss mit Root-3/Offset-3 bzw. dem Stake-Timestamp und einer TIMESTAMP-Vergleichsbedingung verbunden werden kann.</p>`;
 }
 
+
+
+function evmOpcodeName(op){
+ const fixed={
+   0x00:'STOP',0x01:'ADD',0x02:'MUL',0x03:'SUB',0x04:'DIV',0x05:'SDIV',
+   0x06:'MOD',0x07:'SMOD',0x08:'ADDMOD',0x09:'MULMOD',0x0a:'EXP',0x0b:'SIGNEXTEND',
+   0x10:'LT',0x11:'GT',0x12:'SLT',0x13:'SGT',0x14:'EQ',0x15:'ISZERO',
+   0x16:'AND',0x17:'OR',0x18:'XOR',0x19:'NOT',0x1a:'BYTE',0x1b:'SHL',0x1c:'SHR',0x1d:'SAR',
+   0x20:'SHA3',
+   0x30:'ADDRESS',0x31:'BALANCE',0x32:'ORIGIN',0x33:'CALLER',0x34:'CALLVALUE',
+   0x35:'CALLDATALOAD',0x36:'CALLDATASIZE',0x37:'CALLDATACOPY',0x38:'CODESIZE',
+   0x39:'CODECOPY',0x3a:'GASPRICE',0x3b:'EXTCODESIZE',0x3c:'EXTCODECOPY',
+   0x3d:'RETURNDATASIZE',0x3e:'RETURNDATACOPY',0x3f:'EXTCODEHASH',
+   0x40:'BLOCKHASH',0x41:'COINBASE',0x42:'TIMESTAMP',0x43:'NUMBER',0x44:'PREVRANDAO',
+   0x45:'GASLIMIT',0x46:'CHAINID',0x47:'SELFBALANCE',0x48:'BASEFEE',
+   0x50:'POP',0x51:'MLOAD',0x52:'MSTORE',0x53:'MSTORE8',0x54:'SLOAD',0x55:'SSTORE',
+   0x56:'JUMP',0x57:'JUMPI',0x58:'PC',0x59:'MSIZE',0x5a:'GAS',0x5b:'JUMPDEST',
+   0x5f:'PUSH0',
+   0xf0:'CREATE',0xf1:'CALL',0xf2:'CALLCODE',0xf3:'RETURN',0xf4:'DELEGATECALL',
+   0xf5:'CREATE2',0xfa:'STATICCALL',0xfd:'REVERT',0xfe:'INVALID',0xff:'SELFDESTRUCT'
+ };
+ if(fixed[op])return fixed[op];
+ if(op>=0x60&&op<=0x7f)return 'PUSH'+(op-0x5f);
+ if(op>=0x80&&op<=0x8f)return 'DUP'+(op-0x7f);
+ if(op>=0x90&&op<=0x9f)return 'SWAP'+(op-0x8f);
+ if(op>=0xa0&&op<=0xa4)return 'LOG'+(op-0xa0);
+ return 'OP_'+op.toString(16).padStart(2,'0');
+}
+function disassembleEvm(code){
+ const hex=String(code||'').replace(/^0x/,'');
+ const bytes=[];
+ for(let i=0;i+1<hex.length;i+=2)bytes.push(parseInt(hex.slice(i,i+2),16));
+ const out=[];
+ for(let pc=0;pc<bytes.length;){
+   const op=bytes[pc],name=evmOpcodeName(op);
+   const row={pc,op,name,imm:null,value:null};
+   if(op>=0x60&&op<=0x7f){
+     const n=op-0x5f;
+     const immBytes=bytes.slice(pc+1,pc+1+n);
+     const imm='0x'+immBytes.map(b=>b.toString(16).padStart(2,'0')).join('');
+     row.imm=imm;
+     row.value=imm;
+     out.push(row);
+     pc+=1+n;
+   }else{
+     out.push(row);
+     pc+=1;
+   }
+ }
+ return out;
+}
 
 function pcIndexMap(ops){
  const m=new Map();
@@ -1297,14 +1378,20 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  if(unstakeGate?.boundary?.found){
    log(`Historische Unstake-Call-Grenze: ${fmtDays(unstakeGate.boundary.elapsedDays)} nach Stake · Block ${unstakeGate.boundary.first.blockNum}.`,'ok');
  }else{
-   log('Keine belastbare historische Unstake-FAIL→OK-Grenze gefunden.','warn');
+   log('Automatische Lock-Suche: keine belastbare Contract-Revert→Success-Grenze gefunden.','warn');
  }
 
  const selectorLogic=await selectorLogicTest(contract,unstakeGate,coreChange,ctx);
  $('selectorLogic').innerHTML=selectorLogicHtml(selectorLogic);
  if(selectorLogic?.available)log(`Unstake-Selector ${selectorLogic.selector}: historische Implementation am Stake ${selectorLogic.stake?.implementation||'–'}; am Unstake ${selectorLogic.unstake?.implementation||'–'}.`,'ok');
 
- const historicalDataflowResult=await historicalImplementationDataflow(contract,ctx,unstakeGate);
+ let historicalDataflowResult;
+ try{
+   historicalDataflowResult=await historicalImplementationDataflow(contract,ctx,unstakeGate);
+ }catch(e){
+   historicalDataflowResult={available:false,error:String(e?.message||e),nonFatal:true};
+   log(`Historische Dataflow-Analyse übersprungen: ${String(e?.message||e)}`,'warn');
+ }
  $('historicalDataflow').innerHTML=historicalDataflowHtml(historicalDataflowResult);
  if(historicalDataflowResult?.available){
    log(`Historische Stake-Implementation ${historicalDataflowResult.stakeImplementation}: Dispatcher ${historicalDataflowResult.dispatch?`PC ${historicalDataflowResult.dispatch.destPc}`:'nicht gefunden'}, ${historicalDataflowResult.timestampChecks?.length||0} TIMESTAMP-Prüfungen, ${historicalDataflowResult.semanticCandidates?.length||0} lokale Dauer-Kandidaten.`,'ok');
