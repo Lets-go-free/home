@@ -25,11 +25,11 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>4 · Bytecode-Zeitkonstanten</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>5 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 03:03:26 CEST</div>
+<div class="muted">Version: 31.08.2026 03:06:32 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
-const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id), norm=a=>String(a||'').toLowerCase(), esc=s=>String(s??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));
 let rpcUrl='',alchemyBase='';
 function log(s,cls=''){const t=new Date().toLocaleTimeString('de-CH');$('log').innerHTML+=`\n<span class="${cls}">[${t}] ${esc(s)}</span>`}
@@ -37,7 +37,39 @@ async function rpcAt(url,method,params=[],timeout=22000){const c=new AbortContro
 function alchemyUrl(){return alchemyBase?alchemyBase.replace(/\/+$/,'')+'/'+encodeURIComponent(ALCHEMY_API_KEY):''}
 async function rpc(method,params=[]){const urls=[rpcUrl,alchemyUrl()].filter((x,i,a)=>x&&a.indexOf(x)===i);let errs=[];for(const u of urls){for(let i=1;i<=3;i++){try{const v=await rpcAt(u,method,params);if(v!=null)return v;errs.push('null')}catch(e){errs.push(e.message)}if(i<3)await new Promise(r=>setTimeout(r,250*i))}}throw new Error(`${method} fehlgeschlagen: ${errs.slice(-4).join(' | ')}`)}
 async function alchemy(method,params=[]){const u=alchemyUrl();if(!u)throw new Error('Kein Alchemy-Fallback konfiguriert.');return rpcAt(u,method,params,30000)}
-async function initProviders(){const {data,error}=await sb.from('chains').select('rpc_url,discovery_provider,discovery_api_base').eq('chain_key','bsc').limit(1);if(error)throw error;const row=Array.isArray(data)?data[0]:data;if(!row)throw new Error('BSC-Chain-Konfiguration nicht gefunden');rpcUrl=row.rpc_url;alchemyBase=String(row.discovery_provider||'').toLowerCase()==='alchemy'?row.discovery_api_base:'';log('BSC Provider geladen.','ok')}
+async function initProviders(){
+  // Gleiches Auth-/RLS-Verhalten wie in der eigentlichen Discovery-Seite verwenden.
+  // Die chains-Tabelle ist fuer eingeloggte User sichtbar; ohne persistierte Session
+  // liefert Supabase wegen RLS schlicht 0 Zeilen, was zuvor faelschlich wie eine
+  // fehlende BSC-Konfiguration aussah.
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session) log('Keine persistierte Supabase-Session gefunden; versuche Chain-Konfiguration trotzdem zu laden.','warn');
+  let lastErr=null;
+  for(let attempt=1;attempt<=3;attempt++){
+    const {data,error}=await sb.from('chains').select('rpc_url,discovery_provider,discovery_api_base').eq('chain_key','bsc').limit(1);
+    if(!error){
+      const row=Array.isArray(data)?data[0]:data;
+      if(row){
+        rpcUrl=row.rpc_url;
+        alchemyBase=String(row.discovery_provider||'').toLowerCase()==='alchemy'?row.discovery_api_base:'';
+        log(`BSC Provider geladen${session?' mit eingeloggter Supabase-Session':''}.`,'ok');
+        return;
+      }
+      lastErr=new Error(session?'BSC-Chain-Konfiguration nicht gefunden':'BSC-Chain-Konfiguration wegen fehlender/unsichtbarer Session nicht lesbar');
+    }else{
+      lastErr=error;
+      if(String(error.code||'')==='PGRST303'||/JWT issued at future/i.test(error.message||'')){
+        log(`Supabase JWT noch nicht gueltig (Versuch ${attempt}/3); Session wird erneuert …`,'warn');
+        try{await sb.auth.refreshSession()}catch{}
+        if(attempt<3) await new Promise(r=>setTimeout(r,700*attempt));
+        continue;
+      }
+      throw error;
+    }
+    if(attempt<3) await new Promise(r=>setTimeout(r,350*attempt));
+  }
+  throw lastErr||new Error('BSC-Chain-Konfiguration nicht gefunden');
+}
 function toDate(ts){return new Date(Number(ts)*1000)}
 function fmtDate(ts){return toDate(ts).toLocaleString('de-CH')}
 function plausibleTs(n,stakeTs){return n>946684800&&n<4102444800&&(!stakeTs||Math.abs(n-stakeTs)<10*365*86400)}
