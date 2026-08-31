@@ -25,7 +25,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>4 · Bytecode-Zeitkonstanten</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>5 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 02:57:26 CEST</div>
+<div class="muted">Version: 31.08.2026 03:03:26 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -37,7 +37,7 @@ async function rpcAt(url,method,params=[],timeout=22000){const c=new AbortContro
 function alchemyUrl(){return alchemyBase?alchemyBase.replace(/\/+$/,'')+'/'+encodeURIComponent(ALCHEMY_API_KEY):''}
 async function rpc(method,params=[]){const urls=[rpcUrl,alchemyUrl()].filter((x,i,a)=>x&&a.indexOf(x)===i);let errs=[];for(const u of urls){for(let i=1;i<=3;i++){try{const v=await rpcAt(u,method,params);if(v!=null)return v;errs.push('null')}catch(e){errs.push(e.message)}if(i<3)await new Promise(r=>setTimeout(r,250*i))}}throw new Error(`${method} fehlgeschlagen: ${errs.slice(-4).join(' | ')}`)}
 async function alchemy(method,params=[]){const u=alchemyUrl();if(!u)throw new Error('Kein Alchemy-Fallback konfiguriert.');return rpcAt(u,method,params,30000)}
-async function initProviders(){const {data,error}=await sb.from('chains').select('rpc_url,discovery_provider,discovery_api_base').eq('chain_key','bsc').single();if(error)throw error;rpcUrl=data.rpc_url;alchemyBase=String(data.discovery_provider||'').toLowerCase()==='alchemy'?data.discovery_api_base:'';log('BSC Provider geladen.','ok')}
+async function initProviders(){const {data,error}=await sb.from('chains').select('rpc_url,discovery_provider,discovery_api_base').eq('chain_key','bsc').limit(1);if(error)throw error;const row=Array.isArray(data)?data[0]:data;if(!row)throw new Error('BSC-Chain-Konfiguration nicht gefunden');rpcUrl=row.rpc_url;alchemyBase=String(row.discovery_provider||'').toLowerCase()==='alchemy'?row.discovery_api_base:'';log('BSC Provider geladen.','ok')}
 function toDate(ts){return new Date(Number(ts)*1000)}
 function fmtDate(ts){return toDate(ts).toLocaleString('de-CH')}
 function plausibleTs(n,stakeTs){return n>946684800&&n<4102444800&&(!stakeTs||Math.abs(n-stakeTs)<10*365*86400)}
