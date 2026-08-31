@@ -25,7 +25,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 23:22:00 CEST</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 23:27:06 CEST</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -66,7 +66,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
       </details>
       <div class="row" style="margin-top:10px">
         <label class="small muted">Startblock <input id="refStartBlock" value="0" style="min-width:160px;max-width:220px" inputmode="numeric"></label>
-        <span class="small muted">Gescannt werden ausschließlich Transfer-Mints der definierten Referral-Token-Contracts an dieses Wallet. Keine Suche über alle ERC-20-Contracts.</span>
+        <span class="small muted">Primär wird die indexierte ERC-20-Transferhistorie des Wallets geladen und lokal auf Zero-Address-Mints der drei Referral-Token-Contracts gefiltert. Der bisherige RPC-Scan ab Block 0 ist deaktiviert.</span>
       </div>
       <div id="walletStatus" class="muted" style="margin-top:10px">Bereit.</div>
       <div class="progress"><div id="walletProgress"></div></div>
@@ -254,26 +254,81 @@ function renderReferralTokenConfig(tokens){
   const missing=wanted.filter(x=>!found.has(x));
   $('refTokenConfig').innerHTML=(tokens.length?`<table><thead><tr><th>Token</th><th>Contract-Adresse</th><th>Status</th></tr></thead><tbody>${tokens.map(t=>`<tr><td><b>${esc(t.symbol)}</b></td><td class="mono">${esc(t.address)}</td><td><span class="ok">aktiv</span></td></tr>`).join('')}</tbody></table>`:'')+(missing.length?`<div class="warn" style="margin-top:8px">Noch nicht in der BSC-Konfiguration gefunden: ${missing.map(esc).join(', ')}</div>`:'');
 }
-async function tokenScopedMintHashes(wallet,startBlock,tokens){
+const referralSessionCache={
+  routescan:new Map(), tx:new Map(), receipt:new Map(), block:new Map(), tokenMeta:new Map()
+};
+function referralCacheKey(wallet,startBlock,tokens){
+  return `${norm(wallet)}|${startBlock.toString()}|${tokens.map(t=>t.address).sort().join(',')}`;
+}
+async function routescanReferralMintHashes(wallet,startBlock,tokens){
+  const key=referralCacheKey(wallet,startBlock,tokens);
+  if(referralSessionCache.routescan.has(key)){
+    walletLog('Routescan: Session-Cache verwendet.');
+    return referralSessionCache.routescan.get(key);
+  }
+  const allowed=new Set(tokens.map(t=>t.address));
+  const hashes=new Set();
+  let next=null,pages=0,seen=0;
+  do{
+    const base=`https://api.routescan.io/v2/network/mainnet/evm/56/address/${wallet}/erc20-transfers`;
+    const params=new URLSearchParams({direction:'in',sort:'asc',limit:'100'});
+    if(next)params.set('next',next);
+    const url=`${base}?${params.toString()}`;
+    const r=await fetch(url,{headers:{accept:'application/json'}});
+    if(!r.ok)throw new Error(`Routescan HTTP ${r.status}`);
+    const j=await r.json();
+    const items=Array.isArray(j?.items)?j.items:[];
+    seen+=items.length;
+    for(const x of items){
+      const block=BigInt(x.blockNumber||0);
+      if(block<BigInt(startBlock))continue;
+      if(norm(x.to)!==norm(wallet))continue;
+      if(norm(x.from)!==ZERO)continue;
+      if(!allowed.has(norm(x.tokenAddress)))continue;
+      if(x.txHash)hashes.add(norm(x.txHash));
+    }
+    pages++;
+    walletLog(`Routescan Seite ${pages}: ${items.length} Transfers, ${hashes.size} relevante Mint-Tx(s).`);
+    next=j?.link?.nextToken||j?.link?.next||null;
+    if(next && /^https?:/i.test(next)){
+      try{const u=new URL(next);next=u.searchParams.get('next')||u.searchParams.get('nextToken')}catch{}
+    }
+    if(pages>250)throw new Error('Routescan Sicherheitslimit erreicht.');
+  }while(next);
+  const result=[...hashes];
+  referralSessionCache.routescan.set(key,result);
+  walletLog(`Routescan fertig: ${seen} Wallet-Transfers geprüft, ${result.length} relevante Mint-Tx(s).`);
+  return result;
+}
+async function tokenScopedMintHashesRpcFallback(wallet,startBlock,tokens){
+  // Nur Notfall-Fallback. Nicht mehr automatisch ab Block 0 über Millionen Blöcke.
   const latest=await latestBlockNumber(), hashes=new Set();
+  const requestedStart=BigInt(startBlock);
+  if(requestedStart===0n){
+    throw new Error('Indexer nicht verfügbar. RPC-Bruteforce ab Block 0 wurde bewusst deaktiviert. Bitte zuerst Routescan/Indexer verwenden oder einen sinnvollen Startblock setzen.');
+  }
   for(let ti=0;ti<tokens.length;ti++){
-    const token=tokens[ti]; let from=BigInt(startBlock),chunk=250000n;
-    walletLog(`Scanne nur ${token.symbol}: ${token.address}`);
+    const token=tokens[ti];let from=requestedStart,chunk=1500n;
+    walletLog(`RPC-Fallback ${token.symbol}: ${token.address}`);
     while(from<=latest){
       let to=from+chunk-1n;if(to>latest)to=latest;
-      try{
-        const logs=await rpc('eth_getLogs',[{address:token.address,fromBlock:hexBlock(from),toBlock:hexBlock(to),topics:[TRANSFER_TOPIC,zeroTopic(),walletTopic(wallet)]}]);
-        for(const l of logs||[])if(l.transactionHash)hashes.add(norm(l.transactionHash));
-        if(logs.length)walletLog(`${token.symbol}: ${logs.length} Mint(s) in ${from}–${to}`);
-        from=to+1n;if(chunk<1000000n)chunk*=2n;
-      }catch(e){
-        if(chunk<=2000n)throw new Error(`${token.symbol}: RPC-Limit bei ${chunk} Blöcken: ${e.message}`);
-        chunk/=2n;walletLog(`${token.symbol}: Chunk reduziert → ${chunk}`);
-      }
+      const logs=await rpc('eth_getLogs',[{address:token.address,fromBlock:hexBlock(from),toBlock:hexBlock(to),topics:[TRANSFER_TOPIC,zeroTopic(),walletTopic(wallet)]}]);
+      for(const l of logs||[])if(l.transactionHash)hashes.add(norm(l.transactionHash));
+      from=to+1n;
     }
     setWalletProgress(5+45*(ti+1)/tokens.length);
   }
   return [...hashes];
+}
+async function tokenScopedMintHashes(wallet,startBlock,tokens){
+  try{
+    $('walletStatus').textContent='Lese indexierte ERC-20-Transfers des Wallets…';
+    return await routescanReferralMintHashes(wallet,startBlock,tokens);
+  }catch(e){
+    walletLog(`Routescan nicht verfügbar: ${e.message}`);
+    $('walletStatus').textContent='Indexer nicht verfügbar; begrenzter RPC-Fallback…';
+    return await tokenScopedMintHashesRpcFallback(wallet,startBlock,tokens);
+  }
 }
 async function mintTransfersToWalletFromReceipt(receipt,wallet){
   const out=[];
@@ -288,7 +343,15 @@ async function mintTransfersToWalletFromReceipt(receipt,wallet){
   return out;
 }
 async function classifyReferralMintTx(hash,wallet,stakingMap){
-  const [tx,receipt]=await Promise.all([rpc('eth_getTransactionByHash',[hash]),rpc('eth_getTransactionReceipt',[hash])]);
+  let tx=referralSessionCache.tx.get(hash),receipt=referralSessionCache.receipt.get(hash);
+  if(!tx||!receipt){
+    [tx,receipt]=await Promise.all([
+      tx||rpc('eth_getTransactionByHash',[hash]),
+      receipt||rpc('eth_getTransactionReceipt',[hash])
+    ]);
+    if(tx)referralSessionCache.tx.set(hash,tx);
+    if(receipt)referralSessionCache.receipt.set(hash,receipt);
+  }
   if(!tx||!receipt||receipt.status!=='0x1')return null;
   const allowed=new Set((await referralRewardTokenContracts()).map(x=>x.address));
   const mints=(await mintTransfersToWalletFromReceipt(receipt,wallet)).filter(x=>allowed.has(x.token));
@@ -309,7 +372,8 @@ async function classifyReferralMintTx(hash,wallet,stakingMap){
       principalIn=true;principalTransfers.push({token,...meta,amount});
     }
   }
-  const block=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);
+  let block=referralSessionCache.block.get(tx.blockNumber);
+  if(!block){block=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);referralSessionCache.block.set(tx.blockNumber,block)}
   const timestamp=Number(BigInt(block.timestamp));
   const strong=foreignSender && !!staking && principalIn;
   const candidate=foreignSender && !!staking;
@@ -333,7 +397,7 @@ async function scanReferralWallet(){
     renderReferralTokenConfig(referralTokens);
     if(!referralTokens.length)throw new Error('Keiner der Referral-Reward-Token TLN / TLN+ / TLNX hat eine BSC-Contract-Adresse in predefined_tokens.');
     walletLog(`Referral-Token: ${referralTokens.map(x=>x.symbol+'='+x.address).join(', ')}`);
-    const mode='Token-Contract-spezifische Mint-Logs';
+    const mode='Routescan Wallet-Indexer → Referral-Token-Mints';
     const hashes=await tokenScopedMintHashes(wallet,start,referralTokens);
     walletLog(`Gezielter Mint-Scan: ${hashes.length} relevante Tx(s).`);
 
