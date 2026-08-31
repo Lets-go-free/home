@@ -3,9 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TLN/VOW · Staking Duration Test</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
-if($('testCase')){ $('testCase').value='test2'; applyTestCase('test2'); }
-</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
 <style>
 :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:light dark}
@@ -13,15 +11,26 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 .header-version{margin-top:6px;font-size:12px;font-weight:700;opacity:.82}</style>
 </head><body><div class="wrap">
 <h1>🧪 TLN/VOW · isolierter Staking-Duration-Test</h1>
-<div class="header-version">Version: 31.08.2026 18:27:00 CEST</div>
+<div class="header-version">Version: 31.08.2026 18:31:00 CEST</div>
 <p class="muted">Ziel: Vertrags-/Lock-Dauer ausschließlich aus On-chain-Evidenz ermitteln. Es wird keine Lock-Dauer vorgegeben. Reward-Dauer wird separat behandelt.</p>
 <p class="muted">Request-optimiert: adaptiver Wallet-Mapping-Scan + direkte Block-Binärsuche; kein 1-Jahres-Zusatzscan und keine Tages-/Timestamp-Rastersuche.</p>
-<div class="card grid">
-<label>Wallet<input id="wallet" class="mono" value="0xf43479d0acc0e825d9ce0ef548dbf31772762110"></label>
-<label>Staking-Contract<input id="contract" class="mono" value="0x43e457164eff66d1f975dcb9d2504ab29e36264e"></label>
-<label>Stake-TX (optional)<input id="stakeTx" class="mono" value="0x51bfb4129ddd17cb0b9abe6299f70c94304a9baff7bbd74783aec341cbbb7f25"></label>
+<div class="card">
+<div style="margin-bottom:14px">
+<label><b>Testfall</b>
+<select id="testCase" style="box-sizing:border-box;width:100%;padding:10px 12px;margin-top:6px;border-radius:9px;border:1px solid #3a4354;background:#0f1219;color:#eef1f6">
+<option value="test2" selected>Test 2 · Wallet 0xEA796A… · Contract 0x4857d3…</option>
+<option value="test1">Test 1 · Wallet 0x813D49… · Contract 0x43e457… · Referenz 367 Tage</option>
+<option value="custom">Benutzerdefiniert</option>
+</select></label>
+<div class="muted" style="margin-top:6px">Testfall auswählen oder die Felder darunter direkt ändern.</div>
+</div>
+<div class="grid">
+<label>Wallet<input id="wallet" class="mono" value="0xEA796A228B7c231298e217417fD5978556a9c27f"></label>
+<label>Staking-Contract<input id="contract" class="mono" value="0x4857d369e18aba003ff6ec934cf046148df5d590"></label>
+<label>Stake-TX (optional)<input id="stakeTx" class="mono" value="0x0f0320b0da7d7df1678fe6de455879cffee8a5f10e0d77200c625333a7dfcd57"></label>
 <div style="align-self:end"><button id="run">On-chain prüfen</button></div>
 <div style="align-self:end"><button id="exportDiag" disabled>Diagnose exportieren (.txt)</button></div>
+</div>
 </div>
 <div class="card"><div class="hero">Ergebnis</div>
 <div id="lockSummary" class="card" style="margin-top:16px">
@@ -42,7 +51,7 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div class="card"><h2>9 · Bytecode-Zeitkonstanten (nur Diagnose)</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>10 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 18:27:00 CEST</div>
+<div class="muted">Version: 31.08.2026 18:31:00 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
@@ -1368,37 +1377,22 @@ function rankEvidence({reads,storage,archiveStorage,bytecode,receipt,stakeTs}){c
 function fmtDays(d){return Number.isInteger(d)?`${d} Tage`:`${d.toFixed(4)} Tage`}
 
 const TEST_CASES={
- test1:{
-   wallet:'0x813D4948e797DA57085cf1b81b96804576E85510',
-   contract:'0x43e457164eff66d1f975dcb9d2504ab29e36264e',
-   stakeTx:'0x51bfb4129ddd17cb0b9abe6299f70c94304a9baff7bbd74783aec341cbbb7f25'
- },
- test2:{
-   wallet:'0xEA796A228B7c231298e217417fD5978556a9c27f',
-   contract:'0x4857d369e18aba003ff6ec934cf046148df5d590',
-   stakeTx:'0x0f0320b0da7d7df1678fe6de455879cffee8a5f10e0d77200c625333a7dfcd57'
- }
+ test1:{wallet:'0x813D4948e797DA57085cf1b81b96804576E85510',contract:'0x43e457164eff66d1f975dcb9d2504ab29e36264e',stakeTx:'0x51bfb4129ddd17cb0b9abe6299f70c94304a9baff7bbd74783aec341cbbb7f25'},
+ test2:{wallet:'0xEA796A228B7c231298e217417fD5978556a9c27f',contract:'0x4857d369e18aba003ff6ec934cf046148df5d590',stakeTx:'0x0f0320b0da7d7df1678fe6de455879cffee8a5f10e0d77200c625333a7dfcd57'}
 };
 function applyTestCase(key){
- const tc=TEST_CASES[key];
- if(!tc)return;
- $('wallet').value=tc.wallet;
- $('contract').value=tc.contract;
- $('stakeTx').value=tc.stakeTx;
+ const tc=TEST_CASES[key]; if(!tc)return;
+ $('wallet').value=tc.wallet;$('contract').value=tc.contract;$('stakeTx').value=tc.stakeTx;
 }
 function syncTestCaseFromInputs(){
- const w=norm($('wallet').value.trim()), c=norm($('contract').value.trim()), h=norm($('stakeTx').value.trim());
+ const w=norm($('wallet').value.trim()),c=norm($('contract').value.trim()),h=norm($('stakeTx').value.trim());
  for(const [key,tc] of Object.entries(TEST_CASES)){
-   if(w===norm(tc.wallet)&&c===norm(tc.contract)&&h===norm(tc.stakeTx)){
-     $('testCase').value=key; return;
-   }
+  if(w===norm(tc.wallet)&&c===norm(tc.contract)&&h===norm(tc.stakeTx)){ $('testCase').value=key;return; }
  }
  $('testCase').value='custom';
 }
-$('testCase')?.addEventListener('change',e=>{
- if(e.target.value!=='custom')applyTestCase(e.target.value);
-});
-['wallet','contract','stakeTx'].forEach(id=>$(id)?.addEventListener('input',syncTestCaseFromInputs));
+$('testCase').addEventListener('change',e=>{if(e.target.value!=='custom')applyTestCase(e.target.value)});
+['wallet','contract','stakeTx'].forEach(id=>$(id).addEventListener('input',syncTestCaseFromInputs));
 
 async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true;$('log').textContent='';$('verdict').textContent='Prüfung läuft …';['providerTest','reads','stake','storage','root3','coreChange','unstakeGate','selectorLogic','historicalDataflow','bytecode','evidence'].forEach(id=>$(id).innerHTML='Wird geladen …');let wallet=norm($('wallet').value.trim());const contract=norm($('contract').value.trim());if(!ethers.isAddress(wallet)||!ethers.isAddress(contract))throw new Error('Wallet oder Contract ungültig.');await initProviders();let hash=$('stakeTx').value.trim();if(!hash)hash=await discoverStakeTx(wallet,contract);$('stakeTx').value=hash;const ctx=await getStakeContext(hash);
  const eventStakeUser=stakeUserFromReceipt(ctx.receipt,contract);
