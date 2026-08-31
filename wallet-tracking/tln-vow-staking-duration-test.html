@@ -19,17 +19,18 @@ body{margin:0;background:#11131a;color:#eef1f6}.wrap{max-width:1180px;margin:aut
 <div style="align-self:end"><button id="run">On-chain prüfen</button></div>
 </div>
 <div class="card"><div class="hero">Ergebnis</div><div id="verdict" class="muted">Noch nicht geprüft.</div><div id="summary" class="kv" style="margin-top:12px"></div></div>
-<div class="card"><h2>0 · NodeReal Archive-State-Selbsttest</h2><div id="providerTest">–</div></div>
+<div class="card"><h2>0 · NodeReal Direct Archive-State-Selbsttest</h2><div id="providerTest">–</div></div>
 <div class="card"><h2>1 · Direkte Contract-Reads</h2><div id="reads">–</div></div>
 <div class="card"><h2>2 · Stake-Transaktion / Receipt</h2><div id="stake">–</div></div>
 <div class="card"><h2>3 · Storage-Änderungen</h2><div id="storage">–</div></div>
 <div class="card"><h2>4 · Bytecode-Zeitkonstanten</h2><div id="bytecode">–</div></div>
 <div class="card"><h2>5 · Evidenz-Rangliste</h2><div id="evidence">–</div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
-<div class="muted">Version: 31.08.2026 03:40:16 CEST</div>
+<div class="muted">Version: 31.08.2026 04:04:24 CEST</div>
 </div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co", SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N", ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
+const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id), norm=a=>String(a||'').toLowerCase(), esc=s=>String(s??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));
 let rpcUrl='',alchemyBase='';
@@ -39,41 +40,53 @@ async function rpcBatchAt(url,calls,timeout=30000){const c=new AbortController()
 async function rpcBatch(calls){const urls=[rpcUrl,alchemyUrl()].filter((x,i,a)=>x&&a.indexOf(x)===i);let last=null;for(const u of urls){try{const out=[];for(let i=0;i<calls.length;i+=100){out.push(...await rpcBatchAt(u,calls.slice(i,i+100)));}return out}catch(e){last=e;log(`Batch-RPC über Provider fehlgeschlagen: ${e.message}`,'warn')}}throw last||new Error('Batch-RPC fehlgeschlagen')}
 function alchemyUrl(){return alchemyBase?alchemyBase.replace(/\/+$/,'')+'/'+encodeURIComponent(ALCHEMY_API_KEY):''}
 async function rpc(method,params=[]){const urls=[rpcUrl,alchemyUrl()].filter((x,i,a)=>x&&a.indexOf(x)===i);let errs=[];for(const u of urls){for(let i=1;i<=3;i++){try{const v=await rpcAt(u,method,params);if(v!=null)return v;errs.push('null')}catch(e){errs.push(e.message)}if(i<3)await new Promise(r=>setTimeout(r,250*i))}}throw new Error(`${method} fehlgeschlagen: ${errs.slice(-4).join(' | ')}`)}
-async function nodeRealEdgeRpc(method,params=[]){
-  const {data,error}=await sb.functions.invoke('nodereal-bsc',{body:{method,params}});
-  if(error) throw new Error(`NodeReal Edge: ${error.message||error}`);
-  if(data?.error) throw new Error(`NodeReal RPC: ${data.error.message||JSON.stringify(data.error)}`);
-  const x=data?.result!==undefined?data.result:(data?.data?.result!==undefined?data.data.result:(data?.data!==undefined?data.data:data));
-  if(x===undefined||x===null) throw new Error('NodeReal Edge lieferte kein RPC-Ergebnis');
-  return x;
+
+async function nodeRealRpcDirect(method,params=[]){
+  const c=new AbortController(),tm=setTimeout(()=>c.abort(),30000);
+  try{
+    const r=await fetch(NODEREAL_BSC_URL,{
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method,params}),
+      signal:c.signal
+    });
+    const raw=await r.text();
+    let j;
+    try{j=raw?JSON.parse(raw):null}catch{throw new Error(`NodeReal lieferte keine JSON-Antwort (HTTP ${r.status})`)}
+    if(!r.ok)throw new Error(`NodeReal HTTP ${r.status}${j?.error?.message?`: ${j.error.message}`:''}`);
+    if(j?.error)throw new Error(`${j.error.message||JSON.stringify(j.error)}${j.error.code!==undefined?` (${j.error.code})`:''}`);
+    if(j?.result===undefined||j?.result===null)throw new Error('NodeReal lieferte kein RPC-Ergebnis');
+    return j.result;
+  }finally{clearTimeout(tm)}
 }
 async function nodeRealMany(calls,parallel=4){
-  const out=new Array(calls.length); let next=0;
+  const out=new Array(calls.length);let next=0;
   async function worker(){
     while(true){
       const i=next++;
-      if(i>=calls.length) return;
-      try{ out[i]={result:await nodeRealEdgeRpc(calls[i].method,calls[i].params)}; }
-      catch(e){ out[i]={error:{message:e.message}}; }
+      if(i>=calls.length)return;
+      try{out[i]={result:await nodeRealRpcDirect(calls[i].method,calls[i].params)}}
+      catch(e){out[i]={error:{message:e.message}}}
     }
   }
   await Promise.all(Array.from({length:Math.min(parallel,calls.length)},worker));
   return out;
 }
 async function nodeRealArchiveSelfTest(contract,blockNum){
-  const before='0x'+(blockNum-1).toString(16), at='0x'+blockNum.toString(16);
+  const before='0x'+(blockNum-1).toString(16),at='0x'+blockNum.toString(16);
   const slot='0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
   const rows=[];
-  for(const [label,block] of [['Stake-Block − 1',before],['Stake-Block',at]]){
+  for(const [label,block] of [['Stake-Block − 1',before],['Stake-Block',at],['latest','latest']]){
     try{
-      const value=await nodeRealEdgeRpc('eth_getStorageAt',[contract,slot,block]);
+      const value=await nodeRealRpcDirect('eth_getStorageAt',[contract,slot,block]);
       rows.push({label,block,ok:true,value});
     }catch(e){
       rows.push({label,block,ok:false,error:e.message});
     }
   }
-  return {ok:rows.every(x=>x.ok),rows};
+  return {ok:rows[0].ok&&rows[1].ok,rows};
 }
+
 async function alchemy(method,params=[]){const u=alchemyUrl();if(!u)throw new Error('Kein Alchemy-Fallback konfiguriert.');return rpcAt(u,method,params,30000)}
 async function initProviders(){
   // Gleiches Auth-/RLS-Verhalten wie in der eigentlichen Discovery-Seite verwenden.
@@ -139,9 +152,9 @@ async function archiveStorageScan(contract,wallet,blockNum,stakeTs){
  }
  const calls=[];for(const x of candidates){calls.push({method:'eth_getStorageAt',params:[contract,x.key,before]});calls.push({method:'eth_getStorageAt',params:[contract,x.key,after]})}
  let res;try{
-   log(`NodeReal Archive-Scan: ${candidates.length} Slots / ${calls.length} historische eth_getStorageAt-Reads über Supabase Edge …`,'warn');
+   log(`NodeReal Direct Archive-Scan: ${candidates.length} Slots / ${calls.length} historische eth_getStorageAt-Reads …`,'warn');
    res=await nodeRealMany(calls,4);
- }catch(e){return {available:false,error:`NodeReal Edge: ${e.message}`,changes:[]}}
+ }catch(e){return {available:false,error:`NodeReal Direct: ${e.message}`,changes:[]}}
  const changes=[];let archiveErrors=0;
  for(let i=0;i<candidates.length;i++){
    const a=res[i*2],b=res[i*2+1];if(a?.error||b?.error){archiveErrors++;continue}
@@ -179,20 +192,20 @@ function rankEvidence({reads,storage,archiveStorage,bytecode,receipt,stakeTs}){c
 function fmtDays(d){return Number.isInteger(d)?`${d} Tage`:`${d.toFixed(4)} Tage`}
 async function run(){try{$('log').textContent='';$('verdict').textContent='Prüfung läuft …';['providerTest','reads','stake','storage','bytecode','evidence'].forEach(id=>$(id).innerHTML='Wird geladen …');const wallet=norm($('wallet').value.trim()),contract=norm($('contract').value.trim());if(!ethers.isAddress(wallet)||!ethers.isAddress(contract))throw new Error('Wallet oder Contract ungültig.');await initProviders();let hash=$('stakeTx').value.trim();if(!hash)hash=await discoverStakeTx(wallet,contract);$('stakeTx').value=hash;const ctx=await getStakeContext(hash);log(`Stake-TX ${hash} · Block ${ctx.blockNum} · ${fmtDate(ctx.ts)}`,'ok');
  const nrTest=await nodeRealArchiveSelfTest(contract,ctx.blockNum);
- $('providerTest').innerHTML=`<p class="${nrTest.ok?'ok':'bad'}"><b>${nrTest.ok?'NodeReal beantwortet historische eth_getStorageAt-Reads.':'NodeReal Archive-State nicht bestätigt.'}</b></p><table><thead><tr><th>Probe</th><th>Block</th><th>Status</th><th>Wert / Fehler</th></tr></thead><tbody>${nrTest.rows.map(r=>`<tr><td>${esc(r.label)}</td><td class="mono">${esc(r.block)}</td><td>${r.ok?'<span class="ok">OK</span>':'<span class="bad">FEHLER</span>'}</td><td class="mono">${esc(r.ok?r.value:r.error)}</td></tr>`).join('')}</tbody></table>`;
- if(nrTest.ok) log('NodeReal Archive-State-Selbsttest erfolgreich.','ok');
- else log('NodeReal Archive-State-Selbsttest fehlgeschlagen. Massenscan wird nicht gestartet.','bad');
+ $('providerTest').innerHTML=`<p class="${nrTest.ok?'ok':'bad'}"><b>${nrTest.ok?'NodeReal Direct beantwortet historische eth_getStorageAt-Reads.':'NodeReal Direct Archive-State nicht bestätigt.'}</b></p><table><thead><tr><th>Probe</th><th>Block</th><th>Status</th><th>Wert / Fehler</th></tr></thead><tbody>${nrTest.rows.map(r=>`<tr><td>${esc(r.label)}</td><td class="mono">${esc(r.block)}</td><td>${r.ok?'<span class="ok">OK</span>':'<span class="bad">FEHLER</span>'}</td><td class="mono">${esc(r.ok?r.value:r.error)}</td></tr>`).join('')}</tbody></table>`;
+ if(nrTest.ok)log('NodeReal Direct Archive-State-Selbsttest erfolgreich.','ok');
+ else log('NodeReal Direct Archive-State-Selbsttest fehlgeschlagen.','bad');
  const impl=await eip1967Impl(contract);const readTargets=[contract,...(impl?[impl]:[])];const reads=[];for(const target of readTargets){for(const [sig,kind] of READ_PROBES){const v=await callProbe(target,sig,wallet,'latest');if(v==null)continue;const n=v<=BigInt(Number.MAX_SAFE_INTEGER)?Number(v):null;let duration=null;if(n!=null&&!kind.includes('timestamp'))duration=durationFromSeconds(n);reads.push({target,sig,kind,value:v.toString(),duration})}}
  $('reads').innerHTML=reads.length?`<table><thead><tr><th>Contract</th><th>Read</th><th>Wert</th><th>Interpretation</th></tr></thead><tbody>${reads.map(r=>`<tr><td class="mono">${esc(r.target)}</td><td class="mono">${esc(r.sig)}</td><td class="mono">${esc(r.value)}</td><td>${r.duration?`<b>${esc(fmtDays(r.duration.days))}</b>`:(r.kind.includes('timestamp')&&plausibleTs(Number(r.value),ctx.ts)?esc(fmtDate(Number(r.value))):'–')}</td></tr>`).join('')}</tbody></table>`:'<span class="warn">Keine bekannten Read-Funktionen erfolgreich.</span>';
  const recEv=receiptEvidence(ctx.receipt,ctx.ts);$('stake').innerHTML=`<div class="kv"><div class="k">TX</div><div class="v mono">${esc(hash)}</div><div class="k">Block</div><div class="v">${ctx.blockNum}</div><div class="k">Timestamp</div><div class="v">${esc(fmtDate(ctx.ts))}</div><div class="k">TX →</div><div class="v mono">${esc(ctx.tx.to||'')}</div><div class="k">Selector</div><div class="v mono">${esc(String(ctx.tx.input||'').slice(0,10))}</div><div class="k">Receipt-Zeitwerte</div><div class="v">${recEv.length?recEv.map(x=>`<span class="pill">${x.type==='duration'?fmtDays(x.days):fmtDate(x.value)}</span>`).join(''):'keine plausiblen Zeitwerte'}</div></div>`;
  const storage=await traceStorage(hash,contract,impl,ctx.ts);let archiveStorage={available:false,changes:[]};if(!storage.changes.length){
    if(nrTest.ok){
-     log('Trace nicht verfügbar – starte NodeReal-archive-basierten Storage-Vergleich vor/nach dem Stake …','warn');
+     log('Trace nicht verfügbar – starte direkten NodeReal Archive-Storage-Vergleich vor/nach dem Stake …','warn');
      archiveStorage=await archiveStorageScan(contract,wallet,ctx.blockNum,ctx.ts);
-     if(archiveStorage.available)log(`NodeReal Archive-Storage-Scan: ${archiveStorage.tested} Kandidaten geprüft, ${archiveStorage.changes.length} Änderungen gefunden.`,'ok');
-     else log(`NodeReal Archive-Storage-Scan nicht verfügbar: ${archiveStorage.error||'unbekannt'}`,'warn');
+     if(archiveStorage.available)log(`NodeReal Direct Archive-Storage-Scan: ${archiveStorage.tested} Kandidaten geprüft, ${archiveStorage.changes.length} Änderungen gefunden.`,'ok');
+     else log(`NodeReal Direct Archive-Storage-Scan nicht verfügbar: ${archiveStorage.error||'unbekannt'}`,'warn');
    }else{
-     archiveStorage={available:false,error:'NodeReal Archive-State-Selbsttest fehlgeschlagen',changes:[]};
+     archiveStorage={available:false,error:'NodeReal Direct Archive-State-Selbsttest fehlgeschlagen',changes:[]};
    }
  }const traceHtml=storage.changes.length?`<p class="muted">Trace-Quelle: ${esc(storage.source)}</p><table><thead><tr><th>Adresse</th><th>Slot</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${storage.changes.slice(0,100).map(x=>`<tr><td class="mono">${esc(x.address)}</td><td class="mono">${esc(x.slot)}</td><td class="mono">${esc(x.before?.toString()??'–')}</td><td class="mono">${esc(x.after?.toString()??'–')}</td><td>${x.diffDuration?`Δ ${esc(fmtDays(x.diffDuration.days))}`:(x.timestampValues||[]).map(fmtDate).join(' · ')||'–'}</td></tr>`).join('')}</tbody></table>`:'';const archHtml=archiveStorage.changes?.length?`<p class="muted">Archive-State: Block ${archiveStorage.before} → ${archiveStorage.after}. Gescannt wurden direkte Slots 0–64 sowie mapping(address ⇒ struct)-Roots 0–64 mit Offsets 0–16.</p><table><thead><tr><th>Typ</th><th>Root/Offset</th><th>Vorher</th><th>Nachher</th><th>Zeit-Hinweis</th></tr></thead><tbody>${archiveStorage.changes.slice(0,120).map(x=>`<tr><td>${esc(x.kind)}</td><td class="mono">${x.root} / ${x.offset}</td><td class="mono">${esc(x.before.toString())}</td><td class="mono">${esc(x.after.toString())}</td><td>${(x.timestamps||[]).map(t=>fmtDate(t)).join(' · ')||((x.stakeDeltas||[]).map(q=>`Δ Stake ${fmtDays(q.delta.days)}`).join(' · '))||'–'}</td></tr>`).join('')}</tbody></table>`:'';$('storage').innerHTML=traceHtml||archHtml||'<span class="warn">Weder Trace-Storage-Diffs noch Archive-State-Änderungen verfügbar.</span>';
  const code=await rpc('eth_getCode',[contract,'latest']);const implCode=impl?await rpc('eth_getCode',[impl,'latest']):'0x';const byte=[...plausibleDurationConstants(code).map(x=>({...x,target:contract})),...plausibleDurationConstants(implCode).map(x=>({...x,target:impl}))];const byteRows=byte.length?`<p class="muted">Wichtig: PUSH-Werte werden nur noch als schwache statische Hinweise gezeigt. Zufällige Zahlen im Bytecode sind keine Vertragsdauer.</p><table><thead><tr><th>Contract</th><th>Typ</th><th>Wert</th><th>Interpretation</th><th>Hex</th></tr></thead><tbody>${byte.map(x=>`<tr><td class="mono">${esc(x.target)}</td><td>${esc(x.kind)}</td><td>${esc(x.value.toString())}</td><td>${x.kind==='possible-day-count'?`${esc(fmtDays(x.days))} möglich`:`${x.seconds.toLocaleString('de-CH')} s = ${esc(fmtDays(x.days))}`}</td><td class="mono">${esc(x.hex)}</td></tr>`).join('')}</tbody></table>`:'<p class="warn">Keine exakten Ganztage-/Tageszahl-PUSH-Hinweise gefunden.</p>';$('bytecode').innerHTML=`<div class="kv"><div class="k">Proxy-Implementation</div><div class="v mono">${esc(impl||'keine EIP-1967 Implementation erkannt')}</div></div>`+byteRows;
