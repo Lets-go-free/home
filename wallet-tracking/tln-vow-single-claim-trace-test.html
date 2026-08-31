@@ -25,7 +25,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 31.08.2026 20:08:36 CEST</div>
+  <div class="muted">Entwicklungsstand 31.08.2026 23:09:00 CEST</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -59,9 +59,14 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
         <input id="refWallet" value="0x98fb491d31c4f122004f7bed50237e5ca1d56f7d" spellcheck="false" placeholder="Wallet-Adresse">
         <button id="scanWallet">Referral-Rewards suchen</button>
       </div>
+      <details open style="margin-top:12px">
+        <summary>Referral-Reward-Token · Contract-Adressen</summary>
+        <div id="refTokenConfig" class="muted" style="margin-top:10px">Wird aus der TLN/VOW-Tokenkonfiguration geladen…</div>
+        <p class="small muted">Referral-Filter: TLN, TLN+ und TLNX. Für den Scan zählt ausschließlich die Contract-Adresse; Symbol/Namen sind nur Anzeige.</p>
+      </details>
       <div class="row" style="margin-top:10px">
         <label class="small muted">Startblock <input id="refStartBlock" value="0" style="min-width:160px;max-width:220px" inputmode="numeric"></label>
-        <span class="small muted">Primär wird ein indexierter Asset-Transfer-Scan versucht. Nur wenn der RPC das nicht unterstützt, folgt ein blockweiser Mint-Log-Fallback.</span>
+        <span class="small muted">Gescannt werden ausschließlich Transfer-Mints der definierten Referral-Token-Contracts an dieses Wallet. Keine Suche über alle ERC-20-Contracts.</span>
       </div>
       <div id="walletStatus" class="muted" style="margin-top:10px">Bereit.</div>
       <div class="progress"><div id="walletProgress"></div></div>
@@ -234,46 +239,46 @@ async function knownStakingMap(){
   const rows=await stakingRows();
   return new Map(rows.map(x=>[norm(x.contract_address),x]));
 }
-async function assetTransferMintHashes(wallet,startBlock){
-  // Preferred path: indexed transfer API when the configured provider supports it.
-  const hashes=new Set(); let pageKey=null; let pages=0;
-  do{
-    const p={
-      fromBlock:hexBlock(startBlock),toBlock:'latest',toAddress:wallet,
-      category:['erc20'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'
-    };
-    if(pageKey)p.pageKey=pageKey;
-    let res;
-    try{res=await rpc('alchemy_getAssetTransfers',[p])}
-    catch(e){throw new Error('INDEXED_UNSUPPORTED: '+e.message)}
-    for(const t of (res?.transfers||[])){
-      if(norm(t.from)===ZERO && t.hash)hashes.add(norm(t.hash));
-    }
-    pageKey=res?.pageKey||null; pages++;
-    walletLog(`Index-Scan Seite ${pages}: ${hashes.size} Mint-Tx(s)`);
-    if(pages>100)throw new Error('Index-Scan Sicherheitslimit erreicht.');
-  }while(pageKey);
-  return [...hashes];
-}
-async function logMintHashes(wallet,startBlock){
-  const latest=await latestBlockNumber();
-  let from=BigInt(startBlock), chunk=250000n, hashes=new Set(), done=0n;
-  const total=latest-from+1n;
-  while(from<=latest){
-    let to=from+chunk-1n; if(to>latest)to=latest;
+async function referralRewardTokenContracts(){
+  const wanted=new Set(['TLN','TLN+','TLNX']), out=[];
+  let rows=[];
+  try{ rows=await projectTokenRows(); }catch(e){}
+  if(!rows.length){
     try{
-      const logs=await rpc('eth_getLogs',[{fromBlock:hexBlock(from),toBlock:hexBlock(to),topics:[TRANSFER_TOPIC,zeroTopic(),walletTopic(wallet)]}]);
-      for(const l of (logs||[]))if(l.transactionHash)hashes.add(norm(l.transactionHash));
-      done=to-BigInt(startBlock)+1n;
-      setWalletProgress(Number((done*10000n/total))/100);
-      walletLog(`Mint-Logs ${from.toString()}–${to.toString()}: ${logs.length}; gesamt ${hashes.size} Tx(s)`);
-      from=to+1n;
-      if(chunk<1000000n)chunk*=2n;
-    }catch(e){
-      if(chunk<=2000n)throw e;
-      chunk/=2n;
-      walletLog(`Provider-Limit; Chunk reduziert auf ${chunk.toString()} Blöcke.`);
+      const u=`${SUPABASE_URL}/rest/v1/predefined_tokens?select=*&defi_project_key=eq.tln_vow`;
+      const r=await fetch(u,{headers:{apikey:SUPABASE_ANON,Authorization:`Bearer ${SUPABASE_ANON}`}});
+      if(r.ok)rows=await r.json();
+    }catch(e){}
+  }
+  for(const x of rows||[]){
+    const sym=String(x.symbol||'').trim().toUpperCase();
+    const addr=norm(x.address||x.contract_address||x.token_address||'');
+    if(wanted.has(sym)&&/^0x[0-9a-f]{40}$/.test(addr)&&!out.some(y=>y.address===addr))
+      out.push({symbol:String(x.symbol||sym),address:addr});
+  }
+  return out;
+}
+function renderReferralTokenConfig(tokens){
+  $('refTokenConfig').innerHTML=tokens.length?`<table><thead><tr><th>Token</th><th>Contract-Adresse</th><th>Status</th></tr></thead><tbody>${tokens.map(t=>`<tr><td><b>${esc(t.symbol)}</b></td><td class="mono">${esc(t.address)}</td><td><span class="ok">aktiv</span></td></tr>`).join('')}</tbody></table>`:'<span class="bad">Keine Contract-Adressen für TLN / TLN+ / TLNX gefunden.</span>';
+}
+async function tokenScopedMintHashes(wallet,startBlock,tokens){
+  const latest=await latestBlockNumber(), hashes=new Set();
+  for(let ti=0;ti<tokens.length;ti++){
+    const token=tokens[ti]; let from=BigInt(startBlock),chunk=250000n;
+    walletLog(`Scanne nur ${token.symbol}: ${token.address}`);
+    while(from<=latest){
+      let to=from+chunk-1n;if(to>latest)to=latest;
+      try{
+        const logs=await rpc('eth_getLogs',[{address:token.address,fromBlock:hexBlock(from),toBlock:hexBlock(to),topics:[TRANSFER_TOPIC,zeroTopic(),walletTopic(wallet)]}]);
+        for(const l of logs||[])if(l.transactionHash)hashes.add(norm(l.transactionHash));
+        if(logs.length)walletLog(`${token.symbol}: ${logs.length} Mint(s) in ${from}–${to}`);
+        from=to+1n;if(chunk<1000000n)chunk*=2n;
+      }catch(e){
+        if(chunk<=2000n)throw new Error(`${token.symbol}: RPC-Limit bei ${chunk} Blöcken: ${e.message}`);
+        chunk/=2n;walletLog(`${token.symbol}: Chunk reduziert → ${chunk}`);
+      }
     }
+    setWalletProgress(5+45*(ti+1)/tokens.length);
   }
   return [...hashes];
 }
@@ -292,7 +297,8 @@ async function mintTransfersToWalletFromReceipt(receipt,wallet){
 async function classifyReferralMintTx(hash,wallet,stakingMap){
   const [tx,receipt]=await Promise.all([rpc('eth_getTransactionByHash',[hash]),rpc('eth_getTransactionReceipt',[hash])]);
   if(!tx||!receipt||receipt.status!=='0x1')return null;
-  const mints=await mintTransfersToWalletFromReceipt(receipt,wallet);
+  const allowed=new Set((await referralRewardTokenContracts()).map(x=>x.address));
+  const mints=(await mintTransfersToWalletFromReceipt(receipt,wallet)).filter(x=>allowed.has(x.token));
   if(!mints.length)return null;
   const sender=norm(tx.from),to=norm(tx.to);
   const foreignSender=sender!==norm(wallet);
@@ -330,15 +336,13 @@ async function scanReferralWallet(){
     $('walletStatus').textContent='Suche eingehende Mints zum Wallet…';
     walletLog(`Wallet ${wallet}; Startblock ${start.toString()}`);
 
-    let hashes=[],mode='';
-    try{
-      hashes=await assetTransferMintHashes(wallet,start);mode='indexierter Asset-Transfer-Scan';
-      walletLog(`Indexierter Scan erfolgreich: ${hashes.length} Mint-Tx(s).`);
-      setWalletProgress(20);
-    }catch(e){
-      walletLog('Indexierter Scan nicht verfügbar; verwende Mint-Log-Fallback.');
-      hashes=await logMintHashes(wallet,start);mode='eth_getLogs Mint-Fallback';
-    }
+    const referralTokens=await referralRewardTokenContracts();
+    renderReferralTokenConfig(referralTokens);
+    if(!referralTokens.length)throw new Error('Referral-Reward-Token-Contracts fehlen in der TLN/VOW-Konfiguration.');
+    walletLog(`Referral-Token: ${referralTokens.map(x=>x.symbol+'='+x.address).join(', ')}`);
+    const mode='Token-Contract-spezifische Mint-Logs';
+    const hashes=await tokenScopedMintHashes(wallet,start,referralTokens);
+    walletLog(`Gezielter Mint-Scan: ${hashes.length} relevante Tx(s).`);
 
     const stakingMap=await knownStakingMap();
     walletLog(`${stakingMap.size} bekannte TLN/VOW-Staking-Contracts geladen.`);
@@ -354,10 +358,10 @@ async function scanReferralWallet(){
     rows.sort((a,b)=>a.timestamp-b.timestamp);
     const strong=rows.filter(r=>r.strong),candidates=rows.filter(r=>!r.strong);
     const rewardCount=strong.reduce((n,r)=>n+r.mints.length,0);
-    const tokens=new Map();
+    const tokens=new Map(referralTokens.map(t=>[t.address,{symbol:t.symbol,count:0,total:0}]));
     for(const r of strong)for(const m of r.mints){
-      const k=m.token;const x=tokens.get(k)||{symbol:m.symbol,count:0,total:0};
-      x.count++;x.total+=Number(m.amount);tokens.set(k,x);
+      if(!tokens.has(m.token))continue;
+      const x=tokens.get(m.token);x.count++;x.total+=Number(m.amount);
     }
 
     $('walletSummary').innerHTML=`<div class="grid">
@@ -367,12 +371,12 @@ async function scanReferralWallet(){
       <div class="kv"><b>Starke Referral-Tx</b>${strong.length}</div>
       <div class="kv"><b>Referral-Reward-Mints</b>${rewardCount}</div>
       <div class="kv"><b>Nicht eindeutig</b>${candidates.length}</div>
-    </div>${tokens.size?`<table><thead><tr><th>Reward-Token</th><th>Anzahl</th><th>Summe</th></tr></thead><tbody>${[...tokens].map(([a,x])=>`<tr><td><b>${esc(x.symbol)}</b><div class="mono">${esc(a)}</div></td><td>${x.count}</td><td>${x.total.toLocaleString('de-CH',{maximumFractionDigits:12})}</td></tr>`).join('')}</tbody></table>`:''}`;
+    </div>${tokens.size?`<h3 style="margin-top:16px">Total Referral-Rewards je Token</h3><table><thead><tr><th>Referral-Token</th><th>Anzahl</th><th>Total</th></tr></thead><tbody>${[...tokens].map(([a,x])=>`<tr><td><b>${esc(x.symbol)}</b><div class="mono">${esc(a)}</div></td><td>${x.count}</td><td>${x.total.toLocaleString('de-CH',{maximumFractionDigits:12})}</td></tr>`).join('')}</tbody></table>`:''}`;
 
-    const renderRows=arr=>arr.length?`<table><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Auslösender Staker</th><th>Staking</th><th>Stake-Zufluss</th><th>Tx</th><th>Nachweis</th></tr></thead><tbody>${arr.flatMap(r=>r.mints.map(m=>`<tr>
+    const renderRows=arr=>arr.length?`<table><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Ursprünglich gestaked von</th><th>Staking</th><th>Stake-Zufluss</th><th>Tx</th><th>Nachweis</th></tr></thead><tbody>${arr.flatMap(r=>r.mints.map(m=>`<tr>
       <td>${esc(fmtTime(r.timestamp))}</td>
       <td><b>${esc(m.amount)} ${esc(m.symbol)}</b><div class="mono">${esc(m.token)}</div></td>
-      <td class="mono">${esc(r.sender)}</td>
+      <td><b>Staker-Wallet</b><div class="mono">${esc(r.sender)}</div></td>
       <td>${r.staking?esc(r.staking.label||r.staking.name||r.to):'<span class="warn">unbekannt</span>'}<div class="mono">${esc(r.to)}</div></td>
       <td>${r.principalTransfers.length?r.principalTransfers.map(p=>`${esc(p.amount)} ${esc(p.symbol)}`).join('<br>'):'–'}</td>
       <td class="mono">${esc(r.hash)}</td>
@@ -559,6 +563,7 @@ document.querySelectorAll('.tabbtn').forEach(b=>b.addEventListener('click',()=>{
   $('tab-'+b.dataset.tab).classList.add('active');
 }));
 $('scanWallet').addEventListener('click',scanReferralWallet);
+referralRewardTokenContracts().then(renderReferralTokenConfig).catch(()=>{});
 
 window.addEventListener('load',()=>setTimeout(analyze,100));
 </script>
