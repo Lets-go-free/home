@@ -25,8 +25,8 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 01.09.2026 13:28:20 CEST</div>
-  <div class="muted small">Aktuell: Die TLN-ID-Ermittlung ist über die SmartNode-Registry <span class="mono">0x028c91…a8a35b</span> und <span class="mono">nodeIdOf(address)</span> mit drei unabhängigen Testvektoren (7205, 17652, 9736) bestätigt. Der Referral-Scan arbeitet DB-first über <span class="mono">tln_wallet_identity_cache</span>; nur bei Cache-Miss erfolgt genau ein SmartNode-<span class="mono">eth_call</span>, danach wird die ID persistent in Supabase gespeichert. Neu: Die Referral-Übersicht aggregiert pro Partner/TLN-ID eine Zeile, je Referral-Reward-Token eine Spalte, ein Zeilentotal sowie eine TOTAL-Zeile mit Token-Spaltentotals. Historischer Vollscan, unlimitierte <span class="mono">eth_getLogs</span>-Abfragen und Getter-Bruteforce bleiben aus dem normalen Referral-Pfad entfernt.</div>
+  <div class="muted">Entwicklungsstand 01.09.2026 14:43:00 CEST</div>
+  <div class="muted small">Aktuell: Die TLN-ID-Ermittlung ist über die SmartNode-Registry <span class="mono">0x028c91…a8a35b</span> und <span class="mono">nodeIdOf(address)</span> mit drei unabhängigen Testvektoren (7205, 17652, 9736) bestätigt. Der Referral-Scan arbeitet DB-first über <span class="mono">tln_wallet_identity_cache</span>; nur bei Cache-Miss erfolgt genau ein SmartNode-<span class="mono">eth_call</span>, danach wird die ID persistent in Supabase gespeichert. Fix 14:43: Ein früher im Session-Cache gespeichertes <span class="mono">unresolved</span> blockiert keinen späteren SmartNode-Retry mehr; SmartNode-Fehler werden im Referral-Log sichtbar protokolliert. Die Referral-Übersicht aggregiert pro Partner/TLN-ID eine Zeile, je Referral-Reward-Token eine Spalte, ein Zeilentotal sowie eine TOTAL-Zeile mit Token-Spaltentotals. Historischer Vollscan, unlimitierte <span class="mono">eth_getLogs</span>-Abfragen und Getter-Bruteforce bleiben aus dem normalen Referral-Pfad entfernt.</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -125,7 +125,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='01.09.2026 13:28:20 CEST';
+const APP_VERSION='01.09.2026 14:43:00 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -517,7 +517,11 @@ async function discoverTlnIdentityResolver(rows,stakingMap,referenceWallet){
 
 async function getTlnIdentity(wallet){
   wallet=norm(wallet);
-  if(tlnIdentityCache.has(wallet))return tlnIdentityCache.get(wallet);
+  // Nur positive IDs sind ein echter Cache-Hit. Ein früheres "unresolved" darf einen
+  // später verfügbaren/verifizierten SmartNode-Resolver nicht dauerhaft blockieren.
+  const cached=tlnIdentityCache.get(wallet);
+  if(cached?.nodeId)return cached;
+  if(cached)tlnIdentityCache.delete(wallet);
 
   const result={wallet,nodeId:null,referredById:null,source:'unresolved',chain:'BSC',contract:null,method:null};
   if(!tlnIdentityResolver){
@@ -538,7 +542,9 @@ async function getTlnIdentity(wallet){
       result.method=tlnIdentityResolver.method;
       await saveTlnIdentityToDb(result);
     }
-  }catch{}
+  }catch(e){
+    walletLog(`TLN-ID SmartNode ${short(wallet)} fehlgeschlagen: ${e.message}`);
+  }
 
   tlnIdentityCache.set(wallet,result);
   return result;
