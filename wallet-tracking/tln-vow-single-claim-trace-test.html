@@ -25,8 +25,8 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 01.09.2026 22:58:41 CEST</div>
-  <div class="small muted">Aktuell: Registry-Prüfung erweitert. Neben <span class="mono">defi_staking_contracts</span> werden jetzt auch alle BSC-LP-Einträge aus <span class="mono">predefined_tokens</span> gegen <span class="mono">token0()</span>/<span class="mono">token1()</span> geprüft. Vollständige LP-Adressen, gespeicherte Labels, on-chain Pair-Namen und ein nicht automatisch ausgeführtes Korrektur-SQL werden ausgegeben.</div>
+  <div class="muted">Entwicklungsstand 01.09.2026 23:18:13 CEST</div>
+  <div class="small muted">Aktuell: Referral-Reward-Tabelle zeigt zusätzlich das tatsächlich gestakte LP-Paar. Bei Transfer-Evidenz wird der übertragene LP-Contract direkt via <span class="mono">token0()</span>/<span class="mono">token1()</span> on-chain dekodiert; bei reiner Stake-Event-Evidenz wird eine verifizierte <span class="mono">pair_address</span> aus der Staking-Registry verwendet und ebenfalls on-chain dekodiert. Registry-/LP-Prüfung und TLN-ID-Resolver bleiben erhalten.</div>
   <div class="muted small">Aktuell: Die TLN-ID-Ermittlung ist über die SmartNode-Registry <span class="mono">0x028c91…a8a35b</span> und <span class="mono">nodeIdOf(address)</span> mit drei unabhängigen Testvektoren (7205, 17652, 9736) bestätigt. Der Referral-Scan arbeitet DB-first über <span class="mono">tln_wallet_identity_cache</span>; nur bei Cache-Miss erfolgt genau ein SmartNode-<span class="mono">eth_call</span>, danach wird die ID persistent in Supabase gespeichert. Fix 14:45: Der Referral-Scan setzt den verifizierten SmartNode-Resolver nicht mehr auf <span class="mono">null</span>. Dadurch werden Cache-Misses jetzt tatsächlich mit genau einem <span class="mono">nodeIdOf(address)</span>-Call je Staker aufgelöst und anschließend in Supabase gecacht. Frühere <span class="mono">unresolved</span>-Session-Einträge blockieren weiterhin keinen Retry; SmartNode-Fehler werden sichtbar protokolliert. Die Referral-Übersicht aggregiert pro Partner/TLN-ID eine Zeile, je Referral-Reward-Token eine Spalte, ein Zeilentotal sowie eine TOTAL-Zeile mit Token-Spaltentotals. Historischer Vollscan, unlimitierte <span class="mono">eth_getLogs</span>-Abfragen und Getter-Bruteforce bleiben aus dem normalen Referral-Pfad entfernt. Neu: eigener Registry-Prüftab für alle bekannten TLN/VOW-Staking-Contracts; Pair-Bezeichnungen werden bevorzugt aus <span class="mono">pair_address → token0/token1 → symbol()</span> verifiziert. Fehlende Pair-Adressen werden nur mit einer begrenzten indexierten Transfer-Stichprobe als Kandidat gesucht; keine automatische DB-Änderung.</div>
 
   <div class="tabs">
@@ -143,7 +143,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='01.09.2026 22:58:41 CEST';
+const APP_VERSION='01.09.2026 23:18:13 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -250,6 +250,40 @@ async function tokenMeta(a){
   const meta={symbol,decimals};
   tokenMetaCache.set(a,meta);
   return meta;
+}
+const lpPairMetaCache=new Map();
+async function lpPairMeta(pairAddress){
+  const pair=norm(pairAddress);
+  if(!/^0x[0-9a-f]{40}$/.test(pair))return null;
+  if(lpPairMetaCache.has(pair))return lpPairMetaCache.get(pair);
+  let result=null;
+  try{
+    const [r0,r1]=await Promise.all([
+      rpc('eth_call',[{to:pair,data:'0x0dfe1681'},'latest']), // token0()
+      rpc('eth_call',[{to:pair,data:'0xd21220a7'},'latest'])  // token1()
+    ]);
+    const token0=asAddressWord(r0),token1=asAddressWord(r1);
+    if(token0&&token1){
+      const [m0,m1]=await Promise.all([tokenMeta(token0),tokenMeta(token1)]);
+      result={pair,token0,token1,symbol0:m0.symbol,symbol1:m1.symbol,label:`${m0.symbol} / ${m1.symbol}`};
+    }
+  }catch{}
+  lpPairMetaCache.set(pair,result);
+  return result;
+}
+async function referralLpPairForRow(r){
+  // Transfer-Evidenz ist die stärkste Quelle: der tatsächlich vom Staker übertragene Token.
+  for(const p of r.principalTransfers||[]){
+    const meta=await lpPairMeta(p.token);
+    if(meta)return {...meta,source:'stake-transfer'};
+  }
+  // Bei Stake-Event ohne direkten Transfer nur eine explizit in der Registry hinterlegte Pair-Adresse verwenden.
+  const pairAddress=norm(r.staking?.pair_address||'');
+  if(pairAddress){
+    const meta=await lpPairMeta(pairAddress);
+    if(meta)return {...meta,source:'staking-registry'};
+  }
+  return null;
 }
 async function initRpc(){
   const {data,error}=await sb.from('chains').select('*').eq('chain_key','bsc').single();
@@ -861,6 +895,12 @@ async function scanReferralWallet(){
       r.tlnIdentity=tlnIdentityCache.get(norm(r.sender))||{nodeId:null,source:'unresolved'};
     }
 
+    $('walletStatus').textContent='Ermittle LP-Paare der Referral-Stakes…';
+    for(const r of rows){
+      if(!r.stakeEvidence)continue;
+      r.lpPair=await referralLpPairForRow(r);
+    }
+
     const strong=rows.filter(r=>r.strong),candidates=rows.filter(r=>!r.strong);
     const tlnxControl=rows.find(r=>norm(r.hash)==='0x414835d695adeed3fcbc50bf19558851d8336f17e01d17ad0a9ab06ab9907e07');
     if(tlnxControl)walletLog(`Kontroll-TX 0x414835…: stakingDB=${!!tlnxControl.staking}, stakeEvents=${tlnxControl.stakeEvents?.length||0}, stakeEvidence=${!!tlnxControl.stakeEvidence}, strong=${!!tlnxControl.strong}.`);
@@ -914,11 +954,12 @@ async function scanReferralWallet(){
       <div class="kv"><b>Nicht eindeutig</b>${candidates.length}</div>
     </div>${partnerTable}`;
 
-    const renderRows=arr=>arr.length?`<table><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Ursprünglich gestaked von</th><th>Staking</th><th>TLN ID</th><th>Stake-Zufluss</th><th>Tx</th><th>Nachweis</th></tr></thead><tbody>${arr.flatMap(r=>r.mints.map(m=>`<tr>
+    const renderRows=arr=>arr.length?`<table><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Ursprünglich gestaked von</th><th>Staking</th><th>LP-Paar</th><th>TLN ID</th><th>Stake-Zufluss</th><th>Tx</th><th>Nachweis</th></tr></thead><tbody>${arr.flatMap(r=>r.mints.map(m=>`<tr>
       <td>${esc(fmtTime(r.timestamp))}</td>
       <td><b>${esc(m.amount)} ${esc(m.symbol)}</b><div class="mono">${esc(m.token)}</div></td>
       <td><b>Staker-Wallet</b><div class="mono">${esc(r.sender)}</div></td>
       <td>${r.staking?esc(r.staking.label||r.staking.name||r.to):r.stakeEvents?.length?'<span class="ok"><b>Staking per Stake-Event erkannt</b></span>':'<span class="warn">unbekannt</span>'}<div class="mono">${esc(r.to)}</div></td>
+      <td>${r.lpPair?`<b>${esc(r.lpPair.label)}</b><div class="small mono muted">${esc(r.lpPair.pair)}</div><div class="small muted">${r.lpPair.source==='stake-transfer'?'on-chain aus Stake-Transfer':'Registry-Pair on-chain dekodiert'}</div>`:'<span class="muted">nicht bestimmt</span>'}</td>
       <td>${r.tlnIdentity?.nodeId
         ?`<b>${esc(r.tlnIdentity.nodeId)}</b><div class="small muted">eigene Node-/TLN-ID · ${r.tlnIdentity.source==='supabase'?'Supabase-Cache':esc(r.tlnIdentity.source)}</div>`
         :'<span class="warn">unresolved</span>'}</td>
@@ -931,6 +972,7 @@ async function scanReferralWallet(){
     const stakerFilter=norm($('refStakerFilter')?.value.trim());
     $('walletRewards').innerHTML=renderRows(stakerFilter?strong.filter(r=>norm(r.sender).includes(stakerFilter)):strong);
     $('walletCandidates').innerHTML=renderRows(candidates);
+    walletLog('LP-Paar-Regel: Transfer-Evidenz → tatsächlich übertragenen LP-Contract on-chain via token0/token1 dekodieren; Stake-Event ohne Transfer → nur verifizierte pair_address aus Registry verwenden und on-chain dekodieren. Keine Pair-Bezeichnung wird aus dem Staking-Label geraten.');
     walletLog('TLN-ID-Regel: DB-first. Supabase-Cache hat Vorrang; bei Cache-Miss genau 1 SmartNode.nodeIdOf(address)-eth_call. Erfolgreiche IDs werden in Supabase gecacht. Historischer Log-Scan und Getter-Bruteforce bleiben im Referral-Scan deaktiviert.');
     const rpcStats=referralRpcStatsText();
     walletLog(`RPC-Statistik dieses Scans: ${rpcStats.total} Provider-Requests${rpcStats.detail?` · ${rpcStats.detail}`:''}. Alchemy AssetTransfers separat.`);
