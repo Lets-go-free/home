@@ -25,7 +25,8 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 01.09.2026 14:50:00 CEST</div>
+  <div class="muted">Entwicklungsstand 01.09.2026 22:58:41 CEST</div>
+  <div class="small muted">Aktuell: Registry-Prüfung erweitert. Neben <span class="mono">defi_staking_contracts</span> werden jetzt auch alle BSC-LP-Einträge aus <span class="mono">predefined_tokens</span> gegen <span class="mono">token0()</span>/<span class="mono">token1()</span> geprüft. Vollständige LP-Adressen, gespeicherte Labels, on-chain Pair-Namen und ein nicht automatisch ausgeführtes Korrektur-SQL werden ausgegeben.</div>
   <div class="muted small">Aktuell: Die TLN-ID-Ermittlung ist über die SmartNode-Registry <span class="mono">0x028c91…a8a35b</span> und <span class="mono">nodeIdOf(address)</span> mit drei unabhängigen Testvektoren (7205, 17652, 9736) bestätigt. Der Referral-Scan arbeitet DB-first über <span class="mono">tln_wallet_identity_cache</span>; nur bei Cache-Miss erfolgt genau ein SmartNode-<span class="mono">eth_call</span>, danach wird die ID persistent in Supabase gespeichert. Fix 14:45: Der Referral-Scan setzt den verifizierten SmartNode-Resolver nicht mehr auf <span class="mono">null</span>. Dadurch werden Cache-Misses jetzt tatsächlich mit genau einem <span class="mono">nodeIdOf(address)</span>-Call je Staker aufgelöst und anschließend in Supabase gecacht. Frühere <span class="mono">unresolved</span>-Session-Einträge blockieren weiterhin keinen Retry; SmartNode-Fehler werden sichtbar protokolliert. Die Referral-Übersicht aggregiert pro Partner/TLN-ID eine Zeile, je Referral-Reward-Token eine Spalte, ein Zeilentotal sowie eine TOTAL-Zeile mit Token-Spaltentotals. Historischer Vollscan, unlimitierte <span class="mono">eth_getLogs</span>-Abfragen und Getter-Bruteforce bleiben aus dem normalen Referral-Pfad entfernt. Neu: eigener Registry-Prüftab für alle bekannten TLN/VOW-Staking-Contracts; Pair-Bezeichnungen werden bevorzugt aus <span class="mono">pair_address → token0/token1 → symbol()</span> verifiziert. Fehlende Pair-Adressen werden nur mit einer begrenzten indexierten Transfer-Stichprobe als Kandidat gesucht; keine automatische DB-Änderung.</div>
 
   <div class="tabs">
@@ -92,10 +93,15 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
     <div class="card">
       <h2>TLN/VOW Staking-Registry · Pair-/Bezeichnungsprüfung</h2>
       <p class="muted">Prüft die in <span class="mono">defi_staking_contracts</span> gespeicherten Pair-Daten gegen die Contracts. Bei vorhandener <span class="mono">pair_address</span> werden <span class="mono">token0()</span>/<span class="mono">token1()</span> und die Token-Symbole on-chain gelesen. Fehlt die Pair-Adresse, wird höchstens eine kleine Alchemy-Seite eingehender ERC-20-Transfers zum Staking-Contract geprüft und nur ein echter V2-Pair-Contract als Kandidat akzeptiert. Es werden keine Supabase-Daten automatisch geändert.</p>
-      <button id="auditRegistry">Registry prüfen</button>
+      <div class="row">
+        <button id="auditRegistry">Staking-Registry prüfen</button>
+        <button id="auditLpTokens">LP-Token aus Supabase prüfen</button>
+      </div>
       <div id="registryStatus" class="muted" style="margin-top:10px">Bereit.</div>
     </div>
-    <div class="card"><h2>Prüfergebnis</h2><div id="registryResult" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>Staking-Registry · Prüfergebnis</h2><div id="registryResult" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>LP-Token · Supabase vs. On-chain</h2><div id="lpRegistryResult" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>Vorgeschlagenes LP-Label-Korrektur-SQL</h2><p class="small muted">Nur Vorschlag. Das SQL wird niemals automatisch ausgeführt. Es enthält ausschließlich exakte vollständige LP-Adressen.</p><pre id="lpRegistrySql">Noch keine Daten.</pre></div>
     <div class="card"><h2>Technisches Registry-Log</h2><pre id="registryLog"></pre></div>
   </section>
 
@@ -137,7 +143,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='01.09.2026 14:50:00 CEST';
+const APP_VERSION='01.09.2026 22:58:41 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -264,6 +270,14 @@ async function stakingRows(){
   const {data,error}=await sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true);
   if(error)throw error;
   return data||[];
+}
+async function predefinedLpRows(){
+  const {data,error}=await sb.from('predefined_tokens').select('*').eq('defi_category','lp_token');
+  if(error)throw error;
+  return (data||[]).filter(r=>{
+    const chain=String(r.chain??r.chain_key??'').toLowerCase();
+    return !chain || chain==='bsc' || chain==='bnb' || chain==='binance-smart-chain';
+  });
 }
 const ADDRESS_GETTERS=[
  'stakingContract()','staking()','stakeContract()','pool()','stakingPool()','masterChef()',
@@ -1449,6 +1463,43 @@ async function auditStakingRegistry(){
     $('registryStatus').innerHTML=`<span class="ok">Prüfung fertig: ${out.length} Registry-Einträge.</span>`;
   }catch(e){$('registryStatus').innerHTML=`<span class="bad">${esc(e.message)}</span>`;registryLog('FEHLER: '+e.message)}finally{btn.disabled=false}
 }
+
+function sqlLiteral(v){return "'"+String(v??'').replace(/'/g,"''")+"'"}
+async function auditPredefinedLpRegistry(){
+  const btn=$('auditLpTokens');btn.disabled=true;$('lpRegistryResult').innerHTML='';$('lpRegistrySql').textContent='';
+  try{
+    $('registryStatus').textContent='Prüfe LP-Token aus predefined_tokens…';registryLog(`Version ${APP_VERSION}`);
+    if(!rpcUrl)await initRpc();
+    const rows=await predefinedLpRows();registryLog(`${rows.length} BSC-LP-Einträge aus predefined_tokens geladen.`);
+    const out=[];
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i],addr=norm(r.address||r.contract_address||'');
+      const info=await v2PairInfo(addr);
+      const stored=String(r.label||r.symbol||'').trim();
+      const onchain=info?.pairLabel||null;
+      const same=!!onchain&&stored.replace(/\s+/g,'').toLowerCase()===onchain.replace(/\s+/g,'').toLowerCase();
+      const status=!info?'KEIN V2-PAIR / OFFEN':(same?'OK':'KORRIGIEREN');
+      out.push({r,addr,info,stored,onchain,status});
+      registryLog(`LP ${i+1}/${rows.length} ${addr||'–'}: ${status}${onchain?` → ${onchain}`:''}${stored?`; gespeichert=${stored}`:''}.`);
+    }
+    $('lpRegistryResult').innerHTML=`<table><thead><tr><th>LP-Adresse</th><th>Supabase-Label</th><th>token0</th><th>token1</th><th>On-chain Pair</th><th>Status</th></tr></thead><tbody>${out.map(x=>`<tr><td class="mono">${esc(x.addr||'–')}</td><td>${esc(x.stored||'–')}</td><td>${x.info?`<b>${esc(x.info.symbol0)}</b><br><span class="small mono">${esc(x.info.token0)}</span>`:'–'}</td><td>${x.info?`<b>${esc(x.info.symbol1)}</b><br><span class="small mono">${esc(x.info.token1)}</span>`:'–'}</td><td><b>${esc(x.onchain||'–')}</b></td><td><b class="${x.status==='OK'?'ok':(x.status==='KORRIGIEREN'?'bad':'warn')}">${esc(x.status)}</b></td></tr>`).join('')}</tbody></table><p class="small muted">Quelle der technischen Pair-Bezeichnung sind ausschließlich <span class="mono">token0()</span>, <span class="mono">token1()</span> und die jeweiligen <span class="mono">symbol()</span>-Werte. Das Supabase-Label wird nur dagegen verglichen.</p>`;
+    const changes=out.filter(x=>x.status==='KORRIGIEREN'&&x.onchain&&/^0x[0-9a-f]{40}$/.test(x.addr));
+    const sql=['begin;',''];
+    for(const x of changes){
+      sql.push(`-- ${x.stored||'ohne Label'}  →  ${x.onchain}`);
+      sql.push('update public.predefined_tokens');
+      sql.push(`set label = ${sqlLiteral(x.onchain)}`);
+      sql.push(`where lower(address) = ${sqlLiteral(x.addr)}`);
+      if(Object.prototype.hasOwnProperty.call(x.r,'chain')&&x.r.chain!=null)sql.push(`  and lower(chain) = ${sqlLiteral(String(x.r.chain).toLowerCase())}`);
+      else if(Object.prototype.hasOwnProperty.call(x.r,'chain_key')&&x.r.chain_key!=null)sql.push(`  and lower(chain_key) = ${sqlLiteral(String(x.r.chain_key).toLowerCase())}`);
+      sql.push("  and defi_category = 'lp_token';",'');
+    }
+    sql.push('commit;');
+    $('lpRegistrySql').textContent=changes.length?sql.join('\n'):'-- Keine Label-Korrekturen nötig.';
+    $('registryStatus').innerHTML=`<span class="ok">LP-Prüfung fertig: ${out.length} Einträge, ${changes.length} Label-Korrektur(en).</span>`;
+  }catch(e){$('registryStatus').innerHTML=`<span class="bad">${esc(e.message)}</span>`;registryLog('LP-PRÜFUNG FEHLER: '+e.message)}finally{btn.disabled=false}
+}
+$('auditLpTokens').addEventListener('click',auditPredefinedLpRegistry);
 $('auditRegistry').addEventListener('click',auditStakingRegistry);
 
 $('scanTlnId').addEventListener('click',scanTlnIdOnChain);
