@@ -25,7 +25,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 01.09.2026 04:33:32 CEST</div>
+  <div class="muted">Entwicklungsstand 01.09.2026 11:29:54 CEST</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -116,7 +116,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='01.09.2026 11:18:00 CEST';
+const APP_VERSION='01.09.2026 11:29:54 CEST';
 const tokenMetaCache=new Map();
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 let currentUserId=null;
