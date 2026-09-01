@@ -97,10 +97,10 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
         <label class="small muted" style="min-width:180px">Bekannte TLN ID
           <input id="tlnIdExpected" value="7205" inputmode="numeric" style="width:100%;margin-top:4px">
         </label>
-        <button id="scanTlnIdHistory">Historische ID-Evidenz suchen</button>
+        <button id="scanTlnIdHistory">TLN-ID-Evidenz gezielt suchen</button>
         <button id="scanTlnId">Getter-Fallback testen</button>
       </div>
-      <div id="tlnIdStatus" class="muted" style="margin-top:10px">Bereit. Primärtest: historische Event-/Aktivierungs-Evidenz. Getter-Bruteforce nur noch als separater Fallback.</div>
+      <div id="tlnIdStatus" class="muted" style="margin-top:10px">Bereit. Primärtest: adaptive Event-Evidenz mit Sofort-Stopp und Browser-Cache. Getter-Bruteforce nur noch als separater Fallback.</div>
     </div>
     <div class="card"><h2>Ergebnis</h2><div id="tlnIdResult" class="muted">Noch keine Daten.</div></div>
     <div class="card"><h2>Geprüfte Kandidaten</h2><div id="tlnIdCandidates" class="muted">Noch keine Daten.</div></div>
@@ -116,7 +116,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='01.09.2026 11:29:54 CEST';
+const APP_VERSION='01.09.2026 11:39:52 CEST';
 const tokenMetaCache=new Map();
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 let currentUserId=null;
@@ -1022,58 +1022,87 @@ function tlnIdLog(s){$('tlnIdLog').textContent+=`[${new Date().toLocaleTimeStrin
 function hexWord(v){return BigInt(v).toString(16).padStart(64,'0').toLowerCase()}
 function addressWord(a){return norm(a).slice(2).padStart(64,'0').toLowerCase()}
 function containsWord(hex,word){return String(hex||'').toLowerCase().replace(/^0x/,'').includes(word)}
-async function alchemyWalletHistoryHashes(wallet){
-  const hashes=new Set();let pageKey=null,pages=0,seen=0;
-  do{
-    const p={fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,category:['external','erc20','erc721','erc1155'],excludeZeroValue:false,withMetadata:true,maxCount:'0x3e8',order:'asc'};
-    if(pageKey)p.pageKey=pageKey;
-    const r=await alchemyRpc('alchemy_getAssetTransfers',[p]);
-    const items=Array.isArray(r?.transfers)?r.transfers:[];pages++;seen+=items.length;
-    for(const x of items)if(x.hash)hashes.add(norm(x.hash));
-    tlnIdLog(`Historie Alchemy Seite ${pages}: ${items.length} Transfer(s), ${hashes.size} eindeutige Tx(s).`);
-    pageKey=r?.pageKey||null;
-  }while(pageKey&&pages<20);
-  return {hashes:[...hashes],pages,seen};
+const TLN_ID_EVIDENCE_CACHE_PREFIX='tln-id-evidence-v2:';
+function tlnIdEvidenceCacheKey(wallet,expected){return TLN_ID_EVIDENCE_CACHE_PREFIX+norm(wallet)+':'+String(expected)}
+function loadTlnIdEvidenceCache(wallet,expected){
+  try{return JSON.parse(localStorage.getItem(tlnIdEvidenceCacheKey(wallet,expected))||'null')}catch{return null}
+}
+function saveTlnIdEvidenceCache(wallet,expected,hit){
+  try{localStorage.setItem(tlnIdEvidenceCacheKey(wallet,expected),JSON.stringify({hash:hit.hash,block:hit.block,contracts:[...new Set(hit.logHits.map(x=>x.address))],savedAt:new Date().toISOString()}))}catch{}
+}
+function tlnIdEvidenceFromReceipt(rec,wWord,idWord){
+  const logHits=[];
+  for(const lg of rec?.logs||[]){
+    const topicBlob=(lg.topics||[]).join('').toLowerCase(),data=String(lg.data||'').toLowerCase();
+    const hasId=containsWord(topicBlob,idWord)||containsWord(data,idWord);
+    const hasWallet=containsWord(topicBlob,wWord)||containsWord(data,wWord);
+    if(hasId&&hasWallet)logHits.push({address:norm(lg.address),topics:lg.topics||[],data:lg.data});
+  }
+  return logHits;
 }
 async function scanTlnIdHistory(){
   const btn=$('scanTlnIdHistory');btn.disabled=true;$('scanTlnId').disabled=true;
-  $('tlnIdLog').textContent='';$('tlnIdResult').textContent='Historische Evidenz wird gesucht…';$('tlnIdCandidates').textContent='Noch keine Treffer.';
+  $('tlnIdLog').textContent='';$('tlnIdResult').textContent='Gezielte Evidenz wird gesucht…';$('tlnIdCandidates').textContent='Noch keine Treffer.';
   try{
     const wallet=norm($('tlnIdWallet').value.trim()),expected=String($('tlnIdExpected').value.trim());
     if(!/^0x[0-9a-f]{40}$/.test(wallet))throw new Error('Ungültige Wallet-Adresse.');
     if(!/^\d+$/.test(expected)||BigInt(expected)<=0n)throw new Error('Ungültige bekannte TLN ID.');
-    $('tlnIdStatus').textContent='Historische Event-/Aktivierungs-Evidenz wird gesucht…';await initRpc();
+    $('tlnIdStatus').textContent='Adaptive Event-/Aktivierungs-Evidenz wird gesucht…';await initRpc();
     tlnIdLog(`Version ${APP_VERSION}`);tlnIdLog(`Historischer Testvektor: ${wallet} ↔ TLN ID ${expected}.`);
-    tlnIdLog('Primärweg: Wallet-Historie indexiert ermitteln; nur Kandidaten-Receipts/Inputs auf gemeinsame Wallet+ID-Evidenz prüfen. Kein Getter-Bruteforce.');
-    const hist=await alchemyWalletHistoryHashes(wallet);
-    const idWord=hexWord(expected),wWord=addressWord(wallet);let receipts=0,txReads=0;const hits=[];
-    for(let i=0;i<hist.hashes.length;i++){
-      const h=hist.hashes[i];let rec=null;
-      try{rec=await rpc('eth_getTransactionReceipt',[h]);receipts++}catch{continue}
-      if(!rec)continue;
-      const logHits=[];
-      for(const lg of rec.logs||[]){
-        const topicBlob=(lg.topics||[]).join('').toLowerCase(),data=String(lg.data||'').toLowerCase();
-        const hasId=containsWord(topicBlob,idWord)||containsWord(data,idWord);
-        const hasWallet=containsWord(topicBlob,wWord)||containsWord(data,wWord);
-        if(hasId&&hasWallet)logHits.push({address:norm(lg.address),topics:lg.topics||[],data:lg.data});
-      }
-      let tx=null,inputHit=false;
-      if(logHits.length){
-        try{tx=await rpc('eth_getTransactionByHash',[h]);txReads++;inputHit=containsWord(tx?.input,idWord)&&containsWord(tx?.input,wWord)}catch{}
-        hits.push({hash:h,block:rec.blockNumber,from:norm(rec.from),to:norm(rec.to),logHits,inputHit,input:tx?.input||null});
-        tlnIdLog(`TREFFER ${short(h)}: ${logHits.length} Log(s) enthalten Wallet + ID ${expected}; Contract(s): ${[...new Set(logHits.map(x=>x.address))].map(short).join(', ')}.`);
-      }
-      if((i+1)%100===0)tlnIdLog(`Historie geprüft: ${i+1}/${hist.hashes.length} Tx(s).`);
+    tlnIdLog('Optimierter Primärweg: zuerst gespeicherten Evidenz-Treffer mit genau 1 Receipt verifizieren; sonst Alchemy-Historie in kleinen Seiten laden und beim ersten belastbaren Treffer sofort stoppen. Kein Getter-Bruteforce.');
+    const idWord=hexWord(expected),wWord=addressWord(wallet);let receipts=0,txReads=0,alchemyPages=0,alchemyTransfers=0,uniqueTx=0;let hit=null;
+
+    const cached=loadTlnIdEvidenceCache(wallet,expected);
+    if(cached?.hash){
+      tlnIdLog(`Cache-Kandidat: ${cached.hash} · verifiziere mit 1 Receipt.`);
+      try{
+        const rec=await rpc('eth_getTransactionReceipt',[cached.hash]);receipts++;
+        const logHits=tlnIdEvidenceFromReceipt(rec,wWord,idWord);
+        if(logHits.length){
+          hit={hash:norm(cached.hash),block:rec.blockNumber,from:norm(rec.from),to:norm(rec.to),logHits,inputHit:false,input:null,source:'cache'};
+          tlnIdLog(`CACHE-TREFFER bestätigt: ${hit.hash}; ${logHits.length} Log(s); Contract(s): ${[...new Set(logHits.map(x=>x.address))].join(', ')}.`);
+        }else tlnIdLog('Cache-Kandidat enthält die erwartete Wallet+ID-Evidenz nicht mehr; adaptive Suche wird gestartet.');
+      }catch(e){tlnIdLog(`Cache-Verifikation fehlgeschlagen (${e.message}); adaptive Suche wird gestartet.`)}
     }
-    tlnIdLog(`Historischer Test fertig: ${hist.hashes.length} Tx(s), ${receipts} Receipt(s), ${txReads} Tx-Input-Read(s), ${hits.length} Evidenz-Tx(s).`);
-    if(hits.length){
-      $('tlnIdResult').innerHTML=`<p class="ok"><b>${hits.length} historische Evidenz-Tx(s) gefunden.</b> Mindestens ein Event derselben Tx enthält sowohl das Test-Wallet als auch die bekannte TLN ID ${esc(expected)} als ABI-Wörter. Das ist noch kein automatischer Registry-Beweis; die Treffer zeigen uns aber gezielt die Contracts/Events, die als Nächstes dekodiert werden müssen.</p>`;
-      $('tlnIdCandidates').innerHTML=`<table><thead><tr><th>Tx</th><th>Block</th><th>Event-Contract(s)</th><th>Logs</th><th>Input enthält Wallet+ID</th></tr></thead><tbody>${hits.map(x=>`<tr><td class="mono">${esc(x.hash)}</td><td>${esc(x.block)}</td><td class="mono">${esc([...new Set(x.logHits.map(y=>y.address))].join(' · '))}</td><td>${x.logHits.length}</td><td>${x.inputHit?'<span class="ok"><b>ja</b></span>':'nein'}</td></tr>`).join('')}</tbody></table><details><summary>Rohdaten der Treffer</summary><pre>${esc(JSON.stringify(hits,null,2))}</pre></details>`;
-      $('tlnIdStatus').innerHTML='<span class="ok">Historische ID-Evidenz gefunden – Treffer jetzt dekodieren.</span>';
+
+    let pageKey=null;const seenHashes=new Set();
+    while(!hit){
+      const p={fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,category:['external','erc20','erc721','erc1155'],excludeZeroValue:false,withMetadata:true,maxCount:'0x64',order:'asc'};
+      if(pageKey)p.pageKey=pageKey;
+      const r=await alchemyRpc('alchemy_getAssetTransfers',[p]);alchemyPages++;
+      const items=Array.isArray(r?.transfers)?r.transfers:[];alchemyTransfers+=items.length;
+      const pageHashes=[];
+      for(const x of items){const h=norm(x.hash);if(h&&!seenHashes.has(h)){seenHashes.add(h);pageHashes.push(h)}}
+      uniqueTx=seenHashes.size;
+      tlnIdLog(`Alchemy Evidenz-Seite ${alchemyPages}: ${items.length} Transfer(s), ${pageHashes.length} neue Tx(s); prüfe nur bis zum ersten Treffer.`);
+      for(const h of pageHashes){
+        let rec=null;
+        try{rec=await rpc('eth_getTransactionReceipt',[h]);receipts++}catch{continue}
+        if(!rec)continue;
+        const logHits=tlnIdEvidenceFromReceipt(rec,wWord,idWord);
+        if(!logHits.length)continue;
+        let tx=null,inputHit=false;
+        try{tx=await rpc('eth_getTransactionByHash',[h]);txReads++;inputHit=containsWord(tx?.input,idWord)&&containsWord(tx?.input,wWord)}catch{}
+        hit={hash:h,block:rec.blockNumber,from:norm(rec.from),to:norm(rec.to),logHits,inputHit,input:tx?.input||null,source:'adaptive_history'};
+        saveTlnIdEvidenceCache(wallet,expected,hit);
+        tlnIdLog(`TREFFER ${h}: ${logHits.length} Log(s) enthalten Wallet + ID ${expected}; Contract(s): ${[...new Set(logHits.map(x=>x.address))].join(', ')}.`);
+        tlnIdLog('Treffer persistent im Browser gespeichert. Künftige Tests benötigen normalerweise nur noch 1 Receipt zur Verifikation.');
+        break;
+      }
+      if(hit)break;
+      pageKey=r?.pageKey||null;
+      if(!pageKey||alchemyPages>=20)break;
+    }
+
+    tlnIdLog(`Optimierter Test fertig: ${alchemyPages} Alchemy-Seite(n), ${alchemyTransfers} Transfer(s), ${uniqueTx} eindeutige Tx(s) gesehen, ${receipts} Receipt(s), ${txReads} Tx-Input-Read(s), ${hit?1:0} Evidenz-Tx.`);
+    if(hit){
+      const contracts=[...new Set(hit.logHits.map(x=>x.address))];
+      $('tlnIdResult').innerHTML=`<p class="ok"><b>Historische On-Chain-Evidenz gefunden.</b> Ein Event derselben Tx enthält sowohl das Test-Wallet als auch die bekannte TLN ID ${esc(expected)} als ABI-Wörter.</p><p><b>Tx:</b> <span class="mono">${esc(hit.hash)}</span><br><b>Event-Contract:</b> <span class="mono">${esc(contracts.join(' · '))}</span><br><b>Quelle:</b> ${hit.source==='cache'?'gespeicherter Evidenz-Treffer, on-chain erneut verifiziert':'adaptive Historien-Suche'}</p><p class="muted">Der Treffer wird nun als Ausgangspunkt für die gezielte Event-/Contract-Dekodierung verwendet. Ein vollständiger 1.552-Receipt-Scan ist dafür nicht mehr nötig.</p>`;
+      $('tlnIdCandidates').innerHTML=`<table><thead><tr><th>Tx</th><th>Block</th><th>Event-Contract(s)</th><th>Logs</th><th>Input enthält Wallet+ID</th></tr></thead><tbody><tr><td class="mono">${esc(hit.hash)}</td><td>${esc(hit.block)}</td><td class="mono">${esc(contracts.join(' · '))}</td><td>${hit.logHits.length}</td><td>${hit.inputHit?'<span class="ok"><b>ja</b></span>':'nein'}</td></tr></tbody></table><details><summary>Rohdaten des Treffers</summary><pre>${esc(JSON.stringify(hit,null,2))}</pre></details>`;
+      $('tlnIdStatus').innerHTML='<span class="ok">ID-Evidenz gefunden – optimierter Treffer ist gespeichert.</span>';
     }else{
-      $('tlnIdResult').innerHTML=`<p class="warn"><b>Keine gemeinsame Wallet+ID-Evidenz in den indexierten ausgehenden Wallet-Transaktionen gefunden.</b></p><p class="muted">Das schließt eine On-Chain-ID nicht aus: Registrierung kann durch eine fremde Wallet/Backend-Tx erfolgt sein oder die ID kann in Contract-Storage ohne entsprechendes Event liegen. Getter-Fallback bleibt separat verfügbar.</p>`;
-      $('tlnIdCandidates').textContent='Keine historischen Wallet+ID-Event-Treffer.';$('tlnIdStatus').innerHTML='<span class="warn">Keine historische Event-Evidenz im Wallet-Ausgangspfad gefunden.</span>';
+      $('tlnIdResult').innerHTML=`<p class="warn"><b>Keine gemeinsame Wallet+ID-Evidenz in der adaptiv geprüften Historie gefunden.</b></p><p class="muted">Es wurden nur kleine Historien-Seiten geladen und nach jeder Seite sofort geprüft. Die Suche endet bei fehlender Pagination bzw. nach maximal 20 Seiten.</p>`;
+      $('tlnIdCandidates').textContent='Keine historischen Wallet+ID-Event-Treffer.';$('tlnIdStatus').innerHTML='<span class="warn">Keine historische Event-Evidenz gefunden.</span>';
     }
   }catch(e){$('tlnIdStatus').innerHTML=`<span class="bad">${esc(e.message)}</span>`;tlnIdLog('FEHLER: '+e.message)}finally{btn.disabled=false;$('scanTlnId').disabled=false}
 }
