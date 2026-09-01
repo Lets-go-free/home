@@ -25,7 +25,8 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 01.09.2026 11:29:54 CEST</div>
+  <div class="muted">Entwicklungsstand 01.09.2026 12:00:15 CEST</div>
+  <div class="muted small">Aktuell: TLN-ID-Evidenzsuche auf Sofort-Stopp optimiert; Treffer 0xd6e06e…16825d / Event-Contract 0x028c91…a8a35b ist persistent speicherbar und kann künftig mit 1 Receipt verifiziert werden. Nächster Schritt: Event-/Contract-Dekodierung für einen direkten Wallet → TLN-ID-Resolver.</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -116,7 +117,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='01.09.2026 11:39:52 CEST';
+const APP_VERSION='01.09.2026 12:00:15 CEST';
 const tokenMetaCache=new Map();
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 let currentUserId=null;
