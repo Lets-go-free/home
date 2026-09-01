@@ -25,7 +25,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 01.09.2026 02:31:00 CEST</div>
+  <div class="muted">Entwicklungsstand 01.09.2026 03:29:46 CEST</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -656,9 +656,13 @@ async function classifyReferralMintTx(hash,wallet,stakingMap){
   let block=referralSessionCache.block.get(tx.blockNumber);
   if(!block){block=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);referralSessionCache.block.set(tx.blockNumber,block)}
   const timestamp=Number(BigInt(block.timestamp));
-  const strong=foreignSender && !!staking && principalIn;
+  // Zentrale Stake-Evidenz: niemals nur auf das mutable principalIn-Flag verlassen.
+  // Ein direkter Principal-Transfer ODER ein bestätigtes Stake-Event reicht als starker Stake-Nachweis.
+  const stakeEvidence = principalTransfers.length > 0 || stakeEvents.length > 0;
+  principalIn = stakeEvidence; // Rückwärtskompatibel für bestehende Diagnose-/Renderlogik.
+  const strong=foreignSender && !!staking && stakeEvidence;
   const candidate=foreignSender && !!staking;
-  return {hash,tx,receipt,mints,sender,to,staking,principalIn,principalTransfers,stakeEvents,strong,candidate,timestamp};
+  return {hash,tx,receipt,mints,sender,to,staking,principalIn,stakeEvidence,principalTransfers,stakeEvents,strong,candidate,timestamp};
 }
 function fmtTime(ts){return new Date(ts*1000).toLocaleString('de-CH')}
 async function scanReferralWallet(){
@@ -741,7 +745,7 @@ async function scanReferralWallet(){
         :'<span class="warn">unresolved</span>'}</td>
       <td>${r.principalTransfers.length?r.principalTransfers.map(p=>`${esc(p.amount)} ${esc(p.symbol)}`).join('<br>'):r.stakeEvents?.length?'<span class="ok"><b>Stake-Event belegt</b></span>':'–'}</td>
       <td class="mono">${esc(r.hash)}</td>
-      <td>${r.strong?`<span class="ok"><b>fremder Stake → Mint zum Wallet</b></span><div class="small muted">${r.principalTransfers.length?'Stake-Zufluss per Transfer':'Stake-Event des Staking-Contracts'}</div>`:'<span class="warn">Mint in fremder Staking-Tx, Stake-Evidenz nicht belegt</span>'}</td>
+      <td>${r.strong?`<span class="ok"><b>fremder Stake → Mint zum Wallet</b></span><div class="small muted">${r.principalTransfers.length?'Stake-Zufluss per Transfer':r.stakeEvents?.length?'Stake-Event des Staking-Contracts':'Stake-Evidenz'}</div>`:`<span class="warn">Mint in fremder Staking-Tx, Stake-Evidenz nicht belegt</span>${r.stakeEvents?.length?'<div class="bad small">Diagnose-Widerspruch: Stake-Event vorhanden, strong=false</div>':''}`}</td>
     </tr>`)).join('')}</tbody></table>`:'<span class="muted">Keine.</span>';
     window.__referralStrongRows=strong;
     window.__renderReferralRows=renderRows;
