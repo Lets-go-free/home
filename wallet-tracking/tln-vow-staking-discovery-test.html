@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0">
 <title>TLN/VOW Staking Discovery Test – BSC</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
@@ -42,8 +42,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-token-card{padding:9px 11px;border:1px solid #2d384a;border-radius:8px;background:rgba(255,255,255,.02)}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 01:04:07 CEST</div>
-<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 01:04:07 CEST:</b> Duration-Probe-Abhängigkeiten vollständig nachgezogen: <code>SC_READ_PROBES</code> sowie die dazugehörigen Helper <code>selectorFor()</code>, <code>encodeProbeCall()</code>, <code>rawWords()</code>, <code>humanTimestamp()</code>, <code>humanDuration()</code> und <code>decodeProbeValue()</code> sind wieder gemeinsam vorhanden. Damit wird nicht nur der aktuelle <code>SC_READ_PROBES</code>-ReferenceError behoben, sondern auch die unmittelbar folgenden fehlenden Helper aus demselben übernommenen Block.  Laufzeitfehler nach Request-Optimierung behoben: der aus den Spezialtests übernommene Adress-Helper <code>short()</code> ist jetzt ebenfalls direkt vorhanden; damit brechen gezielte Staking-/Entry-Abfragen nicht mehr vor der Tx-/Receipt-Dekodierung ab.  Request-Explosion bei älteren Wallets behoben. Die Discovery übernimmt jetzt die Scan-Strategie der beiden verifizierten Spezialtests statt vollständige Wallet-Historien nachträglich Tx-für-Tx zu dereferenzieren: Staking-Calls werden bei Alchemy direkt auf bekannte/verifizierte Staking-/Entry-Zielcontracts eingeschränkt; Reward-Kandidaten entstehen nur noch aus eingehenden Transfers relevanter TLN/VOW-Reward-Token und werden anschließend gezielt per Tx/Receipt geprüft. Der frühere vollständige Wallet-Contract-Call-Scan mit Receipt-Lesen für jede Contract-Tx ist aus dem aktiven Pfad entfernt. Historische Transaction-/Receipt-Abfragen behalten schnellen Provider-Failover + Session-Deduplizierung; <code>eth_call</code> behält Revert-/Inflight-Cache; Archive-State und Lockgrenzen bleiben am NodeReal-Pfad des Duration-Tests. Neu ist zusätzlich ein optionaler persistenter Supabase-Chain-Cache (<code>tln_vow_staking_scan_cache</code>): ERC-20-Historie + Coverage werden pro User/Wallet/Chain gespeichert und danach nur mit 24-Block-Overlap inkrementell ergänzt. Fehlt die Migration, läuft der Test ohne DB-Cache weiter. Der allgemeine 30-Tage-<code>discovery_cache</code> wird bewusst nicht für technische Staking-Chain-Daten verwendet.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 01:21:27 CEST</div>
+<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 01:21:27 CEST:</b> <b>Build-ID 20260902-012127.</b> Deployment-/Cache-Diagnose ergänzt: die Seite zeigt und protokolliert jetzt ihre Build-ID; zusätzlich sind No-Cache-Metaangaben gesetzt. Damit lässt sich sofort erkennen, ob GitHub Pages bzw. der Browser noch eine ältere Datei ausliefert.  Duration-Probe-Abhängigkeiten vollständig nachgezogen: <code>SC_READ_PROBES</code> sowie die dazugehörigen Helper <code>selectorFor()</code>, <code>encodeProbeCall()</code>, <code>rawWords()</code>, <code>humanTimestamp()</code>, <code>humanDuration()</code> und <code>decodeProbeValue()</code> sind wieder gemeinsam vorhanden. Damit wird nicht nur der aktuelle <code>SC_READ_PROBES</code>-ReferenceError behoben, sondern auch die unmittelbar folgenden fehlenden Helper aus demselben übernommenen Block.  Laufzeitfehler nach Request-Optimierung behoben: der aus den Spezialtests übernommene Adress-Helper <code>short()</code> ist jetzt ebenfalls direkt vorhanden; damit brechen gezielte Staking-/Entry-Abfragen nicht mehr vor der Tx-/Receipt-Dekodierung ab.  Request-Explosion bei älteren Wallets behoben. Die Discovery übernimmt jetzt die Scan-Strategie der beiden verifizierten Spezialtests statt vollständige Wallet-Historien nachträglich Tx-für-Tx zu dereferenzieren: Staking-Calls werden bei Alchemy direkt auf bekannte/verifizierte Staking-/Entry-Zielcontracts eingeschränkt; Reward-Kandidaten entstehen nur noch aus eingehenden Transfers relevanter TLN/VOW-Reward-Token und werden anschließend gezielt per Tx/Receipt geprüft. Der frühere vollständige Wallet-Contract-Call-Scan mit Receipt-Lesen für jede Contract-Tx ist aus dem aktiven Pfad entfernt. Historische Transaction-/Receipt-Abfragen behalten schnellen Provider-Failover + Session-Deduplizierung; <code>eth_call</code> behält Revert-/Inflight-Cache; Archive-State und Lockgrenzen bleiben am NodeReal-Pfad des Duration-Tests. Neu ist zusätzlich ein optionaler persistenter Supabase-Chain-Cache (<code>tln_vow_staking_scan_cache</code>): ERC-20-Historie + Coverage werden pro User/Wallet/Chain gespeichert und danach nur mit 24-Block-Overlap inkrementell ergänzt. Fehlt die Migration, läuft der Test ohne DB-Cache weiter. Der allgemeine 30-Tage-<code>discovery_cache</code> wird bewusst nicht für technische Staking-Chain-Daten verwendet.</p>
 <p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -101,6 +101,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
+const BUILD_ID="20260902-012127";
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -157,8 +158,7 @@ const METHOD_SELECTORS = new Map([
 const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const norm=a=>String(a||'').toLowerCase();
 function short(a){return a?`${a.slice(0,6)}…${a.slice(-4)}`:'–'}
-function log(s,cls=''){const t=new Date().toLocaleTimeString('de-CH');$('log').innerHTML+=`
-<span class="${cls}">[${t}] ${esc(s)}</span>`}
+function log(s,cls=''){const t=new Date().toLocaleTimeString('de-CH');$('log').innerHTML+=`\n<span class="${cls}">[${t}] ${esc(s)}</span>`}
 const ETH_CALL_SESSION_CACHE=new Map();
 const ETH_CALL_INFLIGHT=new Map();
 const TX_RPC_SESSION_CACHE=new Map();
@@ -4125,7 +4125,7 @@ async function loadInitialDbRowsResilient(){
   }
   return [null,null,null,{error:last}];
 }
-async function init(){
+async function init(){log(`Build geladen: ${BUILD_ID} · SC_READ_PROBES=${typeof SC_READ_PROBES!=='undefined'?SC_READ_PROBES.length:'FEHLT'}`,'ok');
   let user=null;
   try{
     const u=await sb.auth.getUser();
