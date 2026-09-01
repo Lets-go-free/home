@@ -25,7 +25,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 01.09.2026 03:29:46 CEST</div>
+  <div class="muted">Entwicklungsstand 01.09.2026 03:42:34 CEST</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -94,6 +94,8 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
+const APP_VERSION='01.09.2026 03:42:34 CEST';
+const tokenMetaCache=new Map();
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 let currentUserId=null;
 let rpcUrl=null;
@@ -163,6 +165,8 @@ function asAddressWord(raw){
   return a===ZERO?null:norm(a);
 }
 async function tokenMeta(a){
+  a=norm(a);
+  if(tokenMetaCache.has(a))return tokenMetaCache.get(a);
   let symbol='Token',decimals=18;
   try{
     const raw=await rpc('eth_call',[{to:a,data:'0x95d89b41'},'latest']);
@@ -176,7 +180,9 @@ async function tokenMeta(a){
     const raw=await rpc('eth_call',[{to:a,data:'0x313ce567'},'latest']);
     if(raw&&raw!=='0x')decimals=Number(BigInt(raw));
   }catch{}
-  return {symbol,decimals};
+  const meta={symbol,decimals};
+  tokenMetaCache.set(a,meta);
+  return meta;
 }
 async function initRpc(){
   const {data,error}=await sb.from('chains').select('*').eq('chain_key','bsc').single();
@@ -508,7 +514,7 @@ function renderReferralTokenConfig(tokens){
   $('refTokenConfig').innerHTML=(tokens.length?`<table><thead><tr><th>Token</th><th>Contract-Adresse</th><th>Status</th></tr></thead><tbody>${tokens.map(t=>`<tr><td><b>${esc(t.symbol)}</b></td><td class="mono">${esc(t.address)}</td><td><span class="ok">aktiv</span></td></tr>`).join('')}</tbody></table>`:'')+(missing.length?`<div class="warn" style="margin-top:8px">Noch nicht in der BSC-Konfiguration gefunden: ${missing.map(esc).join(', ')}</div>`:'');
 }
 const referralSessionCache={
-  routescan:new Map(), tx:new Map(), receipt:new Map(), block:new Map(), tokenMeta:new Map()
+  routescan:new Map(), tx:new Map(), receipt:new Map(), block:new Map(), mintMeta:new Map()
 };
 function referralCacheKey(wallet,startBlock,tokens){
   return `${norm(wallet)}|${startBlock.toString()}|${tokens.map(t=>t.address).sort().join(',')}`;
@@ -534,7 +540,7 @@ async function alchemyReferralMintHashes(wallet,startBlock,tokens){
       contractAddresses:tokens.map(t=>t.address),
       category:['erc20'],
       excludeZeroValue:false,
-      withMetadata:false,
+      withMetadata:true,
       maxCount:'0x3e8',
       order:'asc'
     };
@@ -550,7 +556,12 @@ async function alchemyReferralMintHashes(wallet,startBlock,tokens){
       if(norm(x.to)!==norm(wallet))continue;
       const rawContract=norm(x.rawContract?.address||x.assetAddress||x.contractAddress||'');
       if(rawContract && !tokens.some(t=>t.address===rawContract))continue;
-      if(x.hash)hashes.add(norm(x.hash));
+      if(x.hash){
+        const h=norm(x.hash);
+        hashes.add(h);
+        const blockTimestamp=x.metadata?.blockTimestamp||x.blockTimestamp||null;
+        if(blockTimestamp)referralSessionCache.mintMeta.set(h,{blockTimestamp});
+      }
     }
 
     walletLog(`Alchemy Referral-Indexer Seite ${pages}: ${items.length} bereits serverseitig gefilterte Mint-Transfer(s), ${hashes.size} relevante Tx(s).`);
@@ -607,28 +618,34 @@ async function mintTransfersToWalletFromReceipt(receipt,wallet){
   return out;
 }
 async function classifyReferralMintTx(hash,wallet,stakingMap){
-  let tx=referralSessionCache.tx.get(hash),receipt=referralSessionCache.receipt.get(hash);
-  if(!tx||!receipt){
-    [tx,receipt]=await Promise.all([
-      tx||rpc('eth_getTransactionByHash',[hash]),
-      receipt||rpc('eth_getTransactionReceipt',[hash])
-    ]);
-    if(tx)referralSessionCache.tx.set(hash,tx);
+  // Request-sparsam: für den Wallet-Scan reicht normalerweise das Receipt.
+  // BSC-Receipts enthalten from/to/blockNumber; eth_getTransactionByHash ist nur Fallback.
+  let receipt=referralSessionCache.receipt.get(hash);
+  if(!receipt){
+    receipt=await rpc('eth_getTransactionReceipt',[hash]);
     if(receipt)referralSessionCache.receipt.set(hash,receipt);
   }
-  if(!tx||!receipt||receipt.status!=='0x1')return null;
+  if(!receipt||receipt.status!=='0x1')return null;
+
+  let sender=norm(receipt.from),to=norm(receipt.to),blockNumber=receipt.blockNumber;
+  let tx=null;
+  if(!sender||!to||!blockNumber){
+    tx=referralSessionCache.tx.get(hash)||await rpc('eth_getTransactionByHash',[hash]);
+    if(tx)referralSessionCache.tx.set(hash,tx);
+    if(!tx)return null;
+    sender=sender||norm(tx.from);to=to||norm(tx.to);blockNumber=blockNumber||tx.blockNumber;
+  }
+
   const allowed=new Set((await referralRewardTokenContracts()).map(x=>x.address));
   const mints=(await mintTransfersToWalletFromReceipt(receipt,wallet)).filter(x=>allowed.has(x.token));
   if(!mints.length)return null;
-  const sender=norm(tx.from),to=norm(tx.to);
   const foreignSender=sender!==norm(wallet);
   const staking=stakingMap.get(to)||null;
 
-  // Strong stake evidence has two independent paths:
-  // A) classic direct ERC-20 principal transfer: sender -> staking contract;
-  // B) the known staking contract itself emits Stake(user, tokenId, amount) for tx.from.
-  // Path B is required for newer/router-based staking flows where the principal is routed
-  // through helper/pool contracts and therefore never appears as sender -> tx.to Transfer.
+  // Zwei unabhängige Stake-Nachweise:
+  // A) klassischer ERC-20 Principal-Transfer sender -> Staking-Contract;
+  // B) tx.to emittiert Stake(address,uint256,uint256) für tx.from.
+  // B darf auch einen noch nicht in Supabase hinterlegten neueren Staking-Contract belegen.
   let principalIn=false,principalTransfers=[],stakeEvents=[];
   for(const l of receipt.logs||[]){
     const topic0=norm(l.topics?.[0]);
@@ -653,16 +670,27 @@ async function classifyReferralMintTx(hash,wallet,stakingMap){
       }
     }
   }
-  let block=referralSessionCache.block.get(tx.blockNumber);
-  if(!block){block=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);referralSessionCache.block.set(tx.blockNumber,block)}
-  const timestamp=Number(BigInt(block.timestamp));
-  // Zentrale Stake-Evidenz: niemals nur auf das mutable principalIn-Flag verlassen.
-  // Ein direkter Principal-Transfer ODER ein bestätigtes Stake-Event reicht als starker Stake-Nachweis.
-  const stakeEvidence = principalTransfers.length > 0 || stakeEvents.length > 0;
-  principalIn = stakeEvidence; // Rückwärtskompatibel für bestehende Diagnose-/Renderlogik.
-  const strong=foreignSender && !!staking && stakeEvidence;
-  const candidate=foreignSender && !!staking;
-  return {hash,tx,receipt,mints,sender,to,staking,principalIn,stakeEvidence,principalTransfers,stakeEvents,strong,candidate,timestamp};
+
+  // Timestamp primär aus EINER Alchemy AssetTransfers-Abfrage; Block-RPC nur Fallback.
+  let timestamp=null;
+  const indexedMeta=referralSessionCache.mintMeta.get(hash);
+  if(indexedMeta?.blockTimestamp){
+    const ms=Date.parse(indexedMeta.blockTimestamp);
+    if(Number.isFinite(ms))timestamp=Math.floor(ms/1000);
+  }
+  if(timestamp==null){
+    let block=referralSessionCache.block.get(blockNumber);
+    if(!block){block=await rpc('eth_getBlockByNumber',[blockNumber,false]);referralSessionCache.block.set(blockNumber,block)}
+    timestamp=Number(BigInt(block.timestamp));
+  }
+
+  const stakeEvidence=principalTransfers.length>0||stakeEvents.length>0;
+  principalIn=stakeEvidence;
+  const stakingRecognized=!!staking||stakeEvents.length>0;
+  const strong=foreignSender&&stakingRecognized&&stakeEvidence;
+  const candidate=foreignSender&&stakingRecognized;
+  const txView=tx||{from:receipt.from,to:receipt.to,blockNumber};
+  return {hash,tx:txView,receipt,mints,sender,to,staking,stakingRecognized,principalIn,stakeEvidence,principalTransfers,stakeEvents,strong,candidate,timestamp};
 }
 function fmtTime(ts){return new Date(ts*1000).toLocaleString('de-CH')}
 async function scanReferralWallet(){
@@ -676,6 +704,7 @@ async function scanReferralWallet(){
     if(!/^0x[0-9a-f]{40}$/.test(wallet))throw new Error('Ungültige Wallet-Adresse.');
     const start=BigInt(String($('refStartBlock').value||'0').replace(/\D/g,'')||'0');
     $('walletStatus').textContent='Suche eingehende Mints zum Wallet…';
+    walletLog(`Version ${APP_VERSION}`);
     walletLog(`Wallet ${wallet}; Startblock ${start.toString()}`);
     tlnIdentityCache.clear();
     tlnIdentityResolver=null;
@@ -702,7 +731,18 @@ async function scanReferralWallet(){
     }
     rows.sort((a,b)=>a.timestamp-b.timestamp);
 
+    // Zentrale Schlussklassifikation. Wichtig für neuere Staking-Varianten:
+    // Ein passendes Stake-Event des aufgerufenen Contracts ist selbst ein Staking-Nachweis,
+    // auch wenn dieser Contract noch nicht in defi_staking_contracts hinterlegt ist.
+    for(const r of rows){
+      r.stakeEvidence=(r.principalTransfers?.length||0)>0||(r.stakeEvents?.length||0)>0;
+      r.stakingRecognized=!!r.staking||(r.stakeEvents?.length||0)>0;
+      r.strong=norm(r.sender)!==wallet&&r.stakingRecognized&&r.stakeEvidence;
+      r.candidate=norm(r.sender)!==wallet&&r.stakingRecognized;
+    }
+
     const uniqueStakers=[...new Set(rows.map(r=>norm(r.sender)))];
+    walletLog(`RPC-Optimierung: Walletscan nutzt primär 1 Receipt je Mint-Tx; Transaction- und Block-Reads nur als Fallback. Token-Metadaten werden je Contract gecacht.`);
 
     $('walletStatus').textContent='Referral-Tx geprüft; lade bekannte TLN-IDs aus Supabase…';
     await loadTlnIdentitiesFromDb([wallet,...uniqueStakers]);
@@ -719,6 +759,8 @@ async function scanReferralWallet(){
     }
 
     const strong=rows.filter(r=>r.strong),candidates=rows.filter(r=>!r.strong);
+    const tlnxControl=rows.find(r=>norm(r.hash)==='0x414835d695adeed3fcbc50bf19558851d8336f17e01d17ad0a9ab06ab9907e07');
+    if(tlnxControl)walletLog(`Kontroll-TX 0x414835…: stakingDB=${!!tlnxControl.staking}, stakeEvents=${tlnxControl.stakeEvents?.length||0}, stakeEvidence=${!!tlnxControl.stakeEvidence}, strong=${!!tlnxControl.strong}.`);
     const rewardCount=strong.reduce((n,r)=>n+r.mints.length,0);
     const tokens=new Map(referralTokens.map(t=>[t.address,{symbol:t.symbol,count:0,total:0}]));
     for(const r of strong)for(const m of r.mints){
@@ -739,7 +781,7 @@ async function scanReferralWallet(){
       <td>${esc(fmtTime(r.timestamp))}</td>
       <td><b>${esc(m.amount)} ${esc(m.symbol)}</b><div class="mono">${esc(m.token)}</div></td>
       <td><b>Staker-Wallet</b><div class="mono">${esc(r.sender)}</div></td>
-      <td>${r.staking?esc(r.staking.label||r.staking.name||r.to):'<span class="warn">unbekannt</span>'}<div class="mono">${esc(r.to)}</div></td>
+      <td>${r.staking?esc(r.staking.label||r.staking.name||r.to):r.stakeEvents?.length?'<span class="ok"><b>Staking per Stake-Event erkannt</b></span>':'<span class="warn">unbekannt</span>'}<div class="mono">${esc(r.to)}</div></td>
       <td>${r.tlnIdentity?.nodeId
         ?`<b>${esc(r.tlnIdentity.nodeId)}</b><div class="small muted">eigene Node-/TLN-ID · ${r.tlnIdentity.source==='supabase'?'Supabase-Cache':esc(r.tlnIdentity.source)}</div>`
         :'<span class="warn">unresolved</span>'}</td>
