@@ -43,7 +43,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
 <div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 00:21:39 CEST</div>
-<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026:</b> Die verifizierte automatische On-Chain-Lockdauer-Ermittlung aus dem Duration-Test bleibt unverändert Basis der Lot-Pipeline. Die Chain-Abfragen wurden jetzt nach den bereits getesteten Spezialfiles konsolidiert: historische Transaction-/Receipt-Abfragen verwenden den schnellen Provider-Failover des Claim-Tests (pro Provider ein Versuch, bei null sofort weiter, erfolgreicher Fallback wird für den laufenden Scan bevorzugt) und werden pro Session gecacht/dedupliziert. <code>eth_call</code> behält den Session-/Inflight-Cache, übernimmt aber die Claim-Test-Regel, semantische Reverts nicht auf anderen Providern erneut zu probieren; nur echte Provider-/Netzwerkfehler lösen Fallback aus und werden nicht als Revert gecacht. Die LP-Discovery prüft Kandidaten jetzt zweistufig (zuerst nur token0/token1; Factory/Decimals/Metadaten erst bei relevantem Treffer) und cached Token-Metadaten wie im Claim-Test. Archive-State, historische Storage-Reads und die Lockgrenzen-Suche bleiben am bewährten NodeReal-Pfad des Duration-Tests. Contract-spezifische 367-Tage-Vorgaben bleiben ausgeschlossen; tatsächliche Positionsdauer und Mindest-Lockdauer bleiben getrennt.</p>
+<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 00:48:44 CEST:</b> Request-Explosion bei älteren Wallets behoben. Die Discovery übernimmt jetzt die Scan-Strategie der beiden verifizierten Spezialtests statt vollständige Wallet-Historien nachträglich Tx-für-Tx zu dereferenzieren: Staking-Calls werden bei Alchemy direkt auf bekannte/verifizierte Staking-/Entry-Zielcontracts eingeschränkt; Reward-Kandidaten entstehen nur noch aus eingehenden Transfers relevanter TLN/VOW-Reward-Token und werden anschließend gezielt per Tx/Receipt geprüft. Der frühere vollständige Wallet-Contract-Call-Scan mit Receipt-Lesen für jede Contract-Tx ist aus dem aktiven Pfad entfernt. Historische Transaction-/Receipt-Abfragen behalten schnellen Provider-Failover + Session-Deduplizierung; <code>eth_call</code> behält Revert-/Inflight-Cache; Archive-State und Lockgrenzen bleiben am NodeReal-Pfad des Duration-Tests. Neu ist zusätzlich ein optionaler persistenter Supabase-Chain-Cache (<code>tln_vow_staking_scan_cache</code>): ERC-20-Historie + Coverage werden pro User/Wallet/Chain gespeichert und danach nur mit 24-Block-Overlap inkrementell ergänzt. Fehlt die Migration, läuft der Test ohne DB-Cache weiter. Der allgemeine 30-Tage-<code>discovery_cache</code> wird bewusst nicht für technische Staking-Chain-Daten verwendet.</p>
 <p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -242,6 +242,47 @@ async function tokenMeta(a){
 }
 async function alchemy(method,params=[]){if(!alchemyBase)throw new Error('Alchemy Discovery-API für BSC fehlt in public.chains.');const url=alchemyBase.replace(/\/+$/,'')+'/'+encodeURIComponent(ALCHEMY_API_KEY);const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok)throw new Error(`Alchemy HTTP ${r.status}`);const j=await r.json();if(j.error)throw new Error(`Alchemy ${method}: ${j.error.message}`);return j.result}
 const ERC20_TRANSFER_SESSION_CACHE=new Map();
+const STAKING_SCAN_CACHE_TABLE='tln_vow_staking_scan_cache';
+const STAKING_SCAN_CACHE_KEY='erc20-history-v1';
+let stakingScanDbCacheAvailable=true,currentUserId=null;
+function compactTransferForCache(t){
+ return {
+  uniqueId:t?.uniqueId||null,hash:t?.hash||null,from:t?.from||null,to:t?.to||null,blockNum:t?.blockNum||null,
+  metadata:t?.metadata?.blockTimestamp?{blockTimestamp:t.metadata.blockTimestamp}:null,
+  rawContract:t?.rawContract?{address:t.rawContract.address||null,value:t.rawContract.value??null,decimal:t.rawContract.decimal??null}:null,
+  value:t?.value??null,asset:t?.asset??null,_direction:t?._direction||null
+ };
+}
+async function loadPersistentErc20Cache(wallet){
+ if(!currentUserId||!stakingScanDbCacheAvailable)return null;
+ const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE)
+   .select('last_scanned_block,complete_from_block,scanner_version,payload,updated_at')
+   .eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_address',norm(wallet)).eq('cache_key',STAKING_SCAN_CACHE_KEY).maybeSingle();
+ if(error){
+  const m=String(error.message||'');
+  if(/tln_vow_staking_scan_cache|relation .* does not exist|schema cache/i.test(m)){
+   stakingScanDbCacheAvailable=false;log('Supabase Staking-Chain-Cache noch nicht verfügbar; normaler Chain-Scan bleibt aktiv. Migration tln_vow_staking_scan_cache ausführen.','warn');return null;
+  }
+  log(`Supabase Staking-Chain-Cache konnte nicht gelesen werden: ${m}`,'warn');return null;
+ }
+ if(!data||data.scanner_version!=='erc20-raw-v1'||!Array.isArray(data.payload))return null;
+ const cached={rows:data.payload,latestBlock:Number(data.last_scanned_block||0),completeFromBlock:Number(data.complete_from_block||0),completeToBlock:Number(data.last_scanned_block||0),scannerVersion:data.scanner_version};
+ log(`Supabase Staking-Chain-Cache: ${cached.rows.length} Transfers bis Block ${cached.latestBlock.toLocaleString('de-CH')} geladen.`,'ok');
+ return cached;
+}
+async function savePersistentErc20Cache(wallet,cache){
+ if(!currentUserId||!stakingScanDbCacheAvailable||!cache?.rows)return false;
+ const row={user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',wallet_address:norm(wallet),cache_key:STAKING_SCAN_CACHE_KEY,
+   scanner_version:'erc20-raw-v1',complete_from_block:Number(cache.completeFromBlock||0),last_scanned_block:Number(cache.latestBlock||0),
+   payload:cache.rows.map(compactTransferForCache),updated_at:new Date().toISOString()};
+ const {error}=await sb.from(STAKING_SCAN_CACHE_TABLE).upsert(row,{onConflict:'user_id,chain_key,wallet_address,cache_key'});
+ if(error){
+  const m=String(error.message||'');
+  if(/tln_vow_staking_scan_cache|relation .* does not exist|schema cache/i.test(m)){stakingScanDbCacheAvailable=false;log('Supabase Staking-Chain-Cache noch nicht verfügbar; Speichern übersprungen.','warn');return false}
+  log(`Supabase Staking-Chain-Cache Speichern fehlgeschlagen: ${m}`,'warn');return false;
+ }
+ log(`Supabase Staking-Chain-Cache aktualisiert: ${cache.rows.length} Transfers · bis Block ${Number(cache.latestBlock||0).toLocaleString('de-CH')}.`,'ok');return true;
+}
 function transferIdentity(t){const c=norm(t?.rawContract?.address);return t?.uniqueId||`${String(t?.hash||'').toLowerCase()}|${c}|${norm(t?.from)}|${norm(t?.to)}|${t?.rawContract?.value||t?.value||''}`}
 async function alchemyErc20Range(wallet,fromBlock,toBlock='latest'){
  const out=[];
@@ -260,73 +301,22 @@ async function alchemyErc20Range(wallet,fromBlock,toBlock='latest'){
  return out;
 }
 async function allErc20Transfers(wallet){
- const key=norm(wallet),cached=ERC20_TRANSFER_SESSION_CACHE.get(key);
+ const key=norm(wallet);let cached=ERC20_TRANSFER_SESSION_CACHE.get(key)||null;
+ if(!cached){cached=await loadPersistentErc20Cache(wallet);if(cached)ERC20_TRANSFER_SESSION_CACHE.set(key,cached)}
  const latestHex=await rpc('eth_blockNumber',[]);const latest=Number(BigInt(latestHex));
  let rows=[],fromBlock='0x0';
- if(cached){rows=[...cached.rows];const overlap=24;fromBlock='0x'+Math.max(0,Number(cached.latestBlock||0)-overlap+1).toString(16);log(`ERC-20 Session-Cache: ${rows.length} vorhandene Transfers; inkrementeller Scan ab Block ${parseInt(fromBlock,16).toLocaleString('de-CH')} (24 Block Overlap).`,'ok')}
+ if(cached){
+   rows=[...cached.rows];const overlap=24;fromBlock='0x'+Math.max(0,Number(cached.latestBlock||0)-overlap+1).toString(16);
+   log(`ERC-20 Cache: ${rows.length} vorhandene Transfers; inkrementeller Scan ab Block ${parseInt(fromBlock,16).toLocaleString('de-CH')} (24 Block Overlap).`,'ok');
+ }
  const fresh=await alchemyErc20Range(wallet,fromBlock,'0x'+latest.toString(16));
  const m=new Map();for(const t of [...rows,...fresh]){const c=norm(t.rawContract?.address);if(!c)continue;m.set(transferIdentity(t),t)}
- const merged=[...m.values()];ERC20_TRANSFER_SESSION_CACHE.set(key,{rows:merged,latestBlock:latest,completeFromBlock:cached?.completeFromBlock??0,completeToBlock:latest,scannerVersion:'erc20-raw-v1'});
- log(`ERC-20 Session-Cache Coverage: Block ${(cached?.completeFromBlock??0).toLocaleString('de-CH')} → ${latest.toLocaleString('de-CH')} · ${merged.length} eindeutige Transfers.`,'ok');return merged;
+ const merged=[...m.values()];const next={rows:merged,latestBlock:latest,completeFromBlock:cached?.completeFromBlock??0,completeToBlock:latest,scannerVersion:'erc20-raw-v1'};
+ ERC20_TRANSFER_SESSION_CACHE.set(key,next);
+ log(`ERC-20 Cache Coverage: Block ${(cached?.completeFromBlock??0).toLocaleString('de-CH')} → ${latest.toLocaleString('de-CH')} · ${merged.length} eindeutige Transfers.`,'ok');
+ await savePersistentErc20Cache(wallet,next);
+ return merged;
 }
-
-
-const SC_READ_PROBES=[
- {label:'lockDuration()',sig:'lockDuration()',args:[],kind:'duration'},{label:'stakingDuration()',sig:'stakingDuration()',args:[],kind:'duration'},
- {label:'duration()',sig:'duration()',args:[],kind:'duration'},{label:'lockPeriod()',sig:'lockPeriod()',args:[],kind:'duration'},
- {label:'lockTime()',sig:'lockTime()',args:[],kind:'duration'},{label:'stakingPeriod()',sig:'stakingPeriod()',args:[],kind:'duration'},
- {label:'period()',sig:'period()',args:[],kind:'duration'},
- {label:'unlockTime(address)',sig:'unlockTime(address)',args:['wallet'],kind:'timestamp'},{label:'unlockTimestamp(address)',sig:'unlockTimestamp(address)',args:['wallet'],kind:'timestamp'},
- {label:'unstakeDate(address)',sig:'unstakeDate(address)',args:['wallet'],kind:'timestamp'},{label:'unstakeTime(address)',sig:'unstakeTime(address)',args:['wallet'],kind:'timestamp'},
- {label:'lockedUntil(address)',sig:'lockedUntil(address)',args:['wallet'],kind:'timestamp'},{label:'lockEnd(address)',sig:'lockEnd(address)',args:['wallet'],kind:'timestamp'},
- {label:'endTime(address)',sig:'endTime(address)',args:['wallet'],kind:'timestamp'},{label:'startTime(address)',sig:'startTime(address)',args:['wallet'],kind:'timestamp'},
- {label:'stakeTimestamp(address)',sig:'stakeTimestamp(address)',args:['wallet'],kind:'timestamp'},{label:'stakedAt(address)',sig:'stakedAt(address)',args:['wallet'],kind:'timestamp'},
- {label:'stakedAmount(address)',sig:'stakedAmount(address)',args:['wallet'],kind:'amount'},{label:'stakeAmount(address)',sig:'stakeAmount(address)',args:['wallet'],kind:'amount'},
- {label:'amountStaked(address)',sig:'amountStaked(address)',args:['wallet'],kind:'amount'},{label:'deposited(address)',sig:'deposited(address)',args:['wallet'],kind:'amount'},
- {label:'balanceOf(address)',sig:'balanceOf(address)',args:['wallet'],kind:'amount'},{label:'earned(address)',sig:'earned(address)',args:['wallet'],kind:'amount'},
- {label:'pendingReward(address)',sig:'pendingReward(address)',args:['wallet'],kind:'amount'},{label:'pendingRewards(address)',sig:'pendingRewards(address)',args:['wallet'],kind:'amount'},
- {label:'withdrawableYield(address)',sig:'withdrawableYield(address)',args:['wallet'],kind:'amount'},{label:'getWithdrawableYield(address)',sig:'getWithdrawableYield(address)',args:['wallet'],kind:'amount'},
- {label:'availableYield(address)',sig:'availableYield(address)',args:['wallet'],kind:'amount'},{label:'totalPayouts(address)',sig:'totalPayouts(address)',args:['wallet'],kind:'amount'},
- {label:'payouts(address)',sig:'payouts(address)',args:['wallet'],kind:'amount'},{label:'bonus(address)',sig:'bonus(address)',args:['wallet'],kind:'amount'},
- {label:'qlpBonus(address)',sig:'qlpBonus(address)',args:['wallet'],kind:'amount'},{label:'totalWithdrawn(address)',sig:'totalWithdrawn(address)',args:['wallet'],kind:'amount'},
- {label:'claimable(address)',sig:'claimable(address)',args:['wallet'],kind:'amount'},{label:'rewards(address)',sig:'rewards(address)',args:['wallet'],kind:'amount'},
- {label:'referralRewards(address)',sig:'referralRewards(address)',args:['wallet'],kind:'amount'},{label:'referrerRewards(address)',sig:'referrerRewards(address)',args:['wallet'],kind:'amount'},
- {label:'affiliateRewards(address)',sig:'affiliateRewards(address)',args:['wallet'],kind:'amount'},{label:'partnerRewards(address)',sig:'partnerRewards(address)',args:['wallet'],kind:'amount'},
- {label:'pendingReferralReward(address)',sig:'pendingReferralReward(address)',args:['wallet'],kind:'amount'},{label:'pendingReferralRewards(address)',sig:'pendingReferralRewards(address)',args:['wallet'],kind:'amount'},
- {label:'referralBalance(address)',sig:'referralBalance(address)',args:['wallet'],kind:'amount'},{label:'referrerBalance(address)',sig:'referrerBalance(address)',args:['wallet'],kind:'amount'},
- {label:'dailyReward(address)',sig:'dailyReward(address)',args:['wallet'],kind:'amount'},{label:'rewardPerDay(address)',sig:'rewardPerDay(address)',args:['wallet'],kind:'amount'},
- {label:'dailyRate(address)',sig:'dailyRate(address)',args:['wallet'],kind:'amount'},{label:'rewardRate(address)',sig:'rewardRate(address)',args:['wallet'],kind:'amount'},
- {label:'interestRate(address)',sig:'interestRate(address)',args:['wallet'],kind:'amount'},{label:'stakedDays(address)',sig:'stakedDays(address)',args:['wallet'],kind:'days'},
- {label:'staked_days(address)',sig:'staked_days(address)',args:['wallet'],kind:'days'},{label:'daysStaked(address)',sig:'daysStaked(address)',args:['wallet'],kind:'days'},
- {label:'dailyReward()',sig:'dailyReward()',args:[],kind:'amount'},{label:'rewardPerDay()',sig:'rewardPerDay()',args:[],kind:'amount'},
- {label:'dailyRate()',sig:'dailyRate()',args:[],kind:'amount'},{label:'rewardRate()',sig:'rewardRate()',args:[],kind:'amount'},
- {label:'interestRate()',sig:'interestRate()',args:[],kind:'amount'},
- {label:'userInfo(address)',sig:'userInfo(address)',args:['wallet'],kind:'raw'},{label:'users(address)',sig:'users(address)',args:['wallet'],kind:'raw'},
- {label:'stakes(address)',sig:'stakes(address)',args:['wallet'],kind:'raw'},{label:'stakeInfo(address)',sig:'stakeInfo(address)',args:['wallet'],kind:'raw'},
- {label:'stakingInfo(address)',sig:'stakingInfo(address)',args:['wallet'],kind:'raw'},{label:'depositInfo(address)',sig:'depositInfo(address)',args:['wallet'],kind:'raw'}
-];
-function selectorFor(sig){return ethers.id(sig).slice(0,10).toLowerCase()}
-function encodeProbeCall(probe,wallet){
- const types=(probe.sig.match(/\((.*)\)/)?.[1]||'').trim(),selector=selectorFor(probe.sig);
- if(!types)return selector;
- const vals=(probe.args||[]).map(x=>x==='wallet'?wallet:x);
- return selector+ethers.AbiCoder.defaultAbiCoder().encode(types.split(',').map(x=>x.trim()),vals).slice(2);
-}
-function rawWords(raw){const h=String(raw||'0x').replace(/^0x/,'');if(!h||h.length%64!==0)return [];const out=[];for(let i=0;i<h.length;i+=64){const word='0x'+h.slice(i,i+64);let uint=null;try{uint=BigInt(word)}catch{}out.push({word,uint})}return out}
-function humanTimestamp(v){const n=Number(v);if(!Number.isFinite(n)||n<946684800||n>7258118400)return null;try{return new Date(n*1000).toLocaleString('de-CH')}catch{return null}}
-function humanDuration(v){const n=Number(v);if(!Number.isFinite(n)||n<=0)return null;if(n>=86400)return `${(n/86400).toLocaleString('de-CH',{maximumFractionDigits:3})} Tage (${n.toLocaleString('de-CH')} s)`;return `${n.toLocaleString('de-CH')} (contract-spezifische Einheit)`}
-function decodeProbeValue(raw,probe){
- const words=rawWords(raw);if(!words.length)return {display:raw||'0x',raw};
- if(words.length===1&&words[0].uint!=null){const u=words[0].uint;
-  if(probe.kind==='timestamp'){const ts=humanTimestamp(u);return {display:ts?`${ts} · Unix ${u}`:u.toString(),raw}}
-  if(probe.kind==='duration')return {display:humanDuration(u)||u.toString(),raw};
-  if(probe.kind==='days')return {display:`${u.toString()} Tage`,raw};
-  if(probe.kind==='amount'){let f=null;try{f=ethers.formatUnits(u,18)}catch{}return {display:f!=null?`${f} (18 Dec.) · raw ${u}`:u.toString(),raw}}
-  return {display:u.toString(),raw}
- }
- return {display:words.map((w,i)=>{const ts=w.uint==null?null:humanTimestamp(w.uint);return `Wort ${i+1}: ${w.uint==null?w.word:w.uint.toString()}${ts?` → ${ts}`:''}`}).join('\n'),raw};
-}
-
 async function eip1967Implementation(address){
   address=norm(address||'');
   if(!ethers.isAddress(address))return null;
@@ -925,14 +915,24 @@ async function hintedRewardRelevantCalls(wallet){
   return out;
 }
 
+function rewardDiscoveryTokenSet(){
+ const set=new Set();
+ for(const x of (allProjectRows||[])){
+  if(x?.enabled===false||x?.historical_only||!x?.address)continue;
+  const role=String(x.tln_vow_category||x.defi_category||'').toLowerCase(),sym=String(x.symbol||x.label||'').toUpperCase();
+  if(role==='tln_vow_token'||/^TLN(?:$|\+|X|GOLD)|^VOW$/.test(sym))set.add(norm(x.address));
+ }
+ return set;
+}
 async function rewardRelevantCallsFromTransfers(wallet,transfers=[]){
-  const w=norm(wallet),byHash=new Map();
+  const w=norm(wallet),byHash=new Map(),rewardTokens=rewardDiscoveryTokenSet();
   for(const t of (transfers||[])){
-    const h=String(t.hash||'').toLowerCase();
-    if(!h||norm(t.to)!==w)continue;
+    const h=String(t.hash||'').toLowerCase(),token=norm(t?.rawContract?.address||'');
+    if(!h||norm(t.to)!==w||!rewardTokens.has(token))continue;
     if(!byHash.has(h))byHash.set(h,[]);
     byHash.get(h).push(t);
   }
+  log(`Reward-Discovery token-scoped: ${byHash.size} eingehende Tx mit relevanten TLN/VOW-Reward-Token; nur diese werden Tx/Receipt-geprüft.`,'ok');
   const out=[];let i=0;
   for(const [hash,incoming] of byHash){
     i++;
@@ -997,43 +997,33 @@ function mergeContractCalls(...groups){
 }
 async function allExternalCallsToStaking(wallet,extraTargets=[]){
   const stakeMap=new Map(stakingContracts.map(x=>[norm(x.contract_address),x]));
-  for(const x of (extraTargets||[])){
-    const a=norm(x?.contract_address);
-    if(a&&!stakeMap.has(a))stakeMap.set(a,x);
+  for(const x of (extraTargets||[])){const a=norm(x?.contract_address);if(a&&!stakeMap.has(a))stakeMap.set(a,x)}
+  const out=[],seenHashes=new Set();
+  // Claim-Test-Prinzip: Indexer VOR dem teuren Tx/Receipt-Lesen maximal eingrenzen.
+  // Keine vollständige External-Historie des Wallets mehr laden.
+  for(const [target,staking] of stakeMap){
+    if(!ethers.isAddress(target))continue;
+    let pageKey=null,page=0;
+    do{
+      const q={fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,toAddress:target,category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'};
+      if(pageKey)q.pageKey=pageKey;
+      if(page===0)log(`Gezielte Contract-Aufrufe → ${short(target)} (${stakingContractLabel(staking)||'Staking/Entry'})`);
+      const r=await alchemy('alchemy_getAssetTransfers',[q]);
+      for(const t of (r?.transfers||[])){
+        const h=String(t.hash||'').toLowerCase();if(!h||seenHashes.has(h))continue;seenHashes.add(h);out.push({...t,_staking:staking});
+      }
+      pageKey=r?.pageKey||null;page++;
+    }while(pageKey&&page<100);
   }
-  const out=[];let pageKey=null,page=0;
-  do{
-    const q={fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'};
-    if(pageKey)q.pageKey=pageKey;
-    log(`Direkte Contract-Aufrufe · Seite ${page+1}`);
-    const r=await alchemy('alchemy_getAssetTransfers',[q]);
-    for(const t of (r?.transfers||[])){
-      const to=norm(t.to);
-      if(stakeMap.has(to))out.push({...t,_staking:stakeMap.get(to)});
-    }
-    pageKey=r?.pageKey||null; page++;
-  }while(pageKey&&page<100);
-
-  // Für den Method-Selector benötigen wir die echte Transaction-Input-Data.
+  log(`Gezielte Staking-/Entry-Historie: ${out.length} relevante Wallet-Tx vor Tx/Receipt-Dekodierung.`,'ok');
   for(const t of out){
     try{
-      const [tx,receipt]=await Promise.all([
-        rpc('eth_getTransactionByHash',[t.hash]),
-        rpc('eth_getTransactionReceipt',[t.hash]).catch(()=>null)
-      ]);
-      t._input=tx?.input||'0x';
-      t._selector=String(t._input||'0x').slice(0,10).toLowerCase();
-      t._method=METHOD_SELECTORS.get(t._selector)||'Contract-Aufruf';
-      t._blockNumber=tx?.blockNumber?parseInt(tx.blockNumber,16):null;
-      t._success=receipt?.status==null?null:Number(BigInt(receipt.status))===1;
-      t._uintArg=null;
-      if(String(t._input||'').length>=74){
-        try{t._uintArg=BigInt('0x'+String(t._input).slice(10,74))}catch{}
-      }
-      t._erc20Transfers=receiptErc20Transfers(receipt);
-    }catch(e){
-      t._input='0x';t._selector='–';t._method='Contract-Aufruf';
-    }
+      const [tx,receipt]=await Promise.all([rpc('eth_getTransactionByHash',[t.hash]),rpc('eth_getTransactionReceipt',[t.hash]).catch(()=>null)]);
+      t._input=tx?.input||'0x';t._selector=String(t._input||'0x').slice(0,10).toLowerCase();t._method=METHOD_SELECTORS.get(t._selector)||'Contract-Aufruf';
+      t._blockNumber=tx?.blockNumber?parseInt(tx.blockNumber,16):null;t._success=receipt?.status==null?null:Number(BigInt(receipt.status))===1;t._uintArg=null;
+      if(String(t._input||'').length>=74){try{t._uintArg=BigInt('0x'+String(t._input).slice(10,74))}catch{}}
+      t._erc20Transfers=receiptErc20Transfers(receipt);t._receipt=receipt;
+    }catch(e){t._input='0x';t._selector='–';t._method='Contract-Aufruf'}
   }
   return out;
 }
@@ -2060,115 +2050,8 @@ async function classifyRewardCallFlow(call,wallet,lots=[]){
 }
 
 
-async function allWalletContractCallsWithIncomingReceipts(wallet){
-  const w=norm(wallet), candidates=[];
-  let pageKey=null,page=0;
-  do{
-    const q={
-      fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,
-      category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'
-    };
-    if(pageKey)q.pageKey=pageKey;
-    log(`Wallet-Contract-Calls vollständig · Seite ${page+1}`);
-    const r=await alchemy('alchemy_getAssetTransfers',[q]);
-    for(const t of (r?.transfers||[])){
-      const to=norm(t.to);
-      if(!t.hash||!to||!ethers.isAddress(to))continue;
-      candidates.push(t);
-    }
-    pageKey=r?.pageKey||null;page++;
-  }while(pageKey&&page<100);
-
-  const out=[];
-  for(let i=0;i<candidates.length;i++){
-    if(i&&i%50===0)log(`Wallet-Call-Receipts ${i}/${candidates.length}…`);
-    const t=candidates[i];
-    try{
-      const [tx,receipt]=await Promise.all([
-        rpc('eth_getTransactionByHash',[t.hash]),
-        rpc('eth_getTransactionReceipt',[t.hash])
-      ]);
-      if(!tx||norm(tx.from)!==w||!tx.to||String(tx.input||'0x')==='0x')continue;
-      const success=receipt?.status==null?null:Number(BigInt(receipt.status))===1;
-      if(success===false)continue;
-      const rcTransfers=receiptErc20Transfers(receipt);
-      if(!rcTransfers.some(x=>norm(x.to)===w&&norm(x.from)!==w))continue;
-      let blockTimestamp=t?.metadata?.blockTimestamp||null;
-      if(!blockTimestamp&&tx.blockNumber){
-        try{
-          const b=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);
-          if(b?.timestamp)blockTimestamp=new Date(Number(BigInt(b.timestamp))*1000).toISOString();
-        }catch{}
-      }
-      const selector=String(tx.input||'').slice(0,10).toLowerCase();
-      out.push({
-        hash:String(t.hash).toLowerCase(),
-        from:norm(tx.from),to:norm(tx.to),
-        blockNum:tx.blockNumber,
-        metadata:{blockTimestamp},
-        time:blockTimestamp,
-        _input:tx.input||'0x',
-        input:tx.input||'0x',
-        _selector:selector,
-        _method:METHOD_SELECTORS.get(selector)||'Wallet-Contract-Aufruf mit ERC-20-Rückfluss',
-        _blockNumber:tx.blockNumber?parseInt(tx.blockNumber,16):null,
-        _success:success,
-        _receipt:receipt,
-        _erc20Transfers:rcTransfers,
-        _rewardCandidateFromFullWalletCallScan:true,
-        _staking:{contract_address:norm(tx.to),label:'Dynamisch aus vollständigem Wallet-Call-Scan'}
-      });
-    }catch{}
-  }
-  log(`Wallet-Call-Scan: ${out.length} erfolgreiche wallet-initiierte Contract-Tx mit ERC-20-Rückfluss vollständig geprüft.`,'ok');
-  return out;
-}
-async function expandRewardCandidateCallsFromTransferHistory(calls,wallet){
-  const w=norm(wallet);
-  const byHash=new Map((calls||[]).filter(x=>x?.hash).map(x=>[String(x.hash).toLowerCase(),x]));
-  const hashes=new Set();
-  for(const t of (CURRENT_ALL_TRANSFERS||[])){
-    const h=String(t.hash||'').toLowerCase();
-    if(h&&norm(t.to)===w)hashes.add(h);
-  }
-  let added=0,checked=0;
-  for(const hash of hashes){
-    if(byHash.has(hash))continue;
-    checked++;
-    try{
-      const [tx,rcTransfers]=await Promise.all([
-        rpc('eth_getTransactionByHash',[hash]),
-        completeReceiptErc20Transfers(hash)
-      ]);
-      if(!tx||norm(tx.from)!==w)continue; // Claim must be wallet-initiated in this pass.
-      if(!rcTransfers.some(x=>norm(x.to)===w&&norm(x.from)!==w))continue;
-      let blockTimestamp=null;
-      if(tx.blockNumber){
-        try{
-          const b=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);
-          if(b?.timestamp)blockTimestamp=new Date(Number(BigInt(b.timestamp))*1000).toISOString();
-        }catch{}
-      }
-      const call={
-        hash,
-        from:norm(tx.from),
-        to:norm(tx.to),
-        input:tx.input||'0x',
-        _selector:String(tx.input||'').slice(0,10).toLowerCase(),
-        _blockNumber:tx.blockNumber,
-        blockNum:tx.blockNumber,
-        metadata:{blockTimestamp},
-        time:blockTimestamp,
-        _success:true,
-        _erc20Transfers:rcTransfers,
-        _rewardCandidateFromReceipt:true
-      };
-      byHash.set(hash,call); added++;
-    }catch{}
-  }
-  if(added)log(`Receipt-Discovery: ${added} zusätzliche wallet-initiierte Tx mit ERC-20-Rückfluss für Reward-Prüfung ergänzt.`,'ok');
-  return [...byHash.values()];
-}
+// Vollständiger Wallet-Contract-Call/Receipt-Scan bewusst entfernt.
+// Reward-Kandidaten werden ausschließlich aus dem bereits indexierten, token-scoped Transferbestand erzeugt.
 async function classifyRewardCallFlows(calls,wallet,lots=[]){
   CURRENT_REWARD_FLOW_BY_HASH=new Map();
   CURRENT_PROVEN_REWARD_ROWS=[];
@@ -4074,9 +3957,8 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   // 1. TX flow classification
   // 2. true payout-token detection
   // 3. only then staking assignment
-  const fullWalletRewardCalls=await allWalletContractCallsWithIncomingReceipts(CURRENT_WALLET);
-  contractCalls=mergeContractCalls(contractCalls,fullWalletRewardCalls);
-  contractCalls=await expandRewardCandidateCallsFromTransferHistory(contractCalls,CURRENT_WALLET);
+  // Kein vollständiger Wallet-Contract-Call-Scan mehr: rewardRelevantCallsFromTransfers()
+  // hat bereits token-scoped Kandidaten aus der einmal geladenen ERC-20-Historie erzeugt.
   contractCalls.sort((a,b)=>rewardClaimTimestamp({time:a?.metadata?.blockTimestamp||a?.time})-rewardClaimTimestamp({time:b?.metadata?.blockTimestamp||b?.time}));
   await classifyRewardCallFlows(contractCalls,CURRENT_WALLET,lots);
   await learnRewardPathsFromWalletCalls(contractCalls,lots);
@@ -4199,6 +4081,7 @@ async function init(){
     }
   }catch(_e){}
   if(!user){$('auth').innerHTML='<span class="err">Nicht eingeloggt. Testseite auf derselben Domain wie Wallet-Tracking öffnen und zuerst einloggen.</span>';return}
+  currentUserId=user.id;
   $('auth').innerHTML=`<span class="ok">Eingeloggt:</span> ${esc(user.email)}`;
   const [cr,pt,sc,wq]=await loadInitialDbRowsResilient();
   const dbErr=cr?.error||pt?.error||sc?.error||wq?.error;
