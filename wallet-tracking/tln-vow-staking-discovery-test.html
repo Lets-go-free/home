@@ -42,8 +42,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-token-card{padding:9px 11px;border:1px solid #2d384a;border-radius:8px;background:rgba(255,255,255,.02)}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 00:56:21 CEST</div>
-<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 00:56:21 CEST:</b> Laufzeitfehler nach Request-Optimierung behoben: der aus den Spezialtests übernommene Adress-Helper <code>short()</code> ist jetzt ebenfalls direkt vorhanden; damit brechen gezielte Staking-/Entry-Abfragen nicht mehr vor der Tx-/Receipt-Dekodierung ab.  Request-Explosion bei älteren Wallets behoben. Die Discovery übernimmt jetzt die Scan-Strategie der beiden verifizierten Spezialtests statt vollständige Wallet-Historien nachträglich Tx-für-Tx zu dereferenzieren: Staking-Calls werden bei Alchemy direkt auf bekannte/verifizierte Staking-/Entry-Zielcontracts eingeschränkt; Reward-Kandidaten entstehen nur noch aus eingehenden Transfers relevanter TLN/VOW-Reward-Token und werden anschließend gezielt per Tx/Receipt geprüft. Der frühere vollständige Wallet-Contract-Call-Scan mit Receipt-Lesen für jede Contract-Tx ist aus dem aktiven Pfad entfernt. Historische Transaction-/Receipt-Abfragen behalten schnellen Provider-Failover + Session-Deduplizierung; <code>eth_call</code> behält Revert-/Inflight-Cache; Archive-State und Lockgrenzen bleiben am NodeReal-Pfad des Duration-Tests. Neu ist zusätzlich ein optionaler persistenter Supabase-Chain-Cache (<code>tln_vow_staking_scan_cache</code>): ERC-20-Historie + Coverage werden pro User/Wallet/Chain gespeichert und danach nur mit 24-Block-Overlap inkrementell ergänzt. Fehlt die Migration, läuft der Test ohne DB-Cache weiter. Der allgemeine 30-Tage-<code>discovery_cache</code> wird bewusst nicht für technische Staking-Chain-Daten verwendet.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 01:04:07 CEST</div>
+<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 01:04:07 CEST:</b> Duration-Probe-Abhängigkeiten vollständig nachgezogen: <code>SC_READ_PROBES</code> sowie die dazugehörigen Helper <code>selectorFor()</code>, <code>encodeProbeCall()</code>, <code>rawWords()</code>, <code>humanTimestamp()</code>, <code>humanDuration()</code> und <code>decodeProbeValue()</code> sind wieder gemeinsam vorhanden. Damit wird nicht nur der aktuelle <code>SC_READ_PROBES</code>-ReferenceError behoben, sondern auch die unmittelbar folgenden fehlenden Helper aus demselben übernommenen Block.  Laufzeitfehler nach Request-Optimierung behoben: der aus den Spezialtests übernommene Adress-Helper <code>short()</code> ist jetzt ebenfalls direkt vorhanden; damit brechen gezielte Staking-/Entry-Abfragen nicht mehr vor der Tx-/Receipt-Dekodierung ab.  Request-Explosion bei älteren Wallets behoben. Die Discovery übernimmt jetzt die Scan-Strategie der beiden verifizierten Spezialtests statt vollständige Wallet-Historien nachträglich Tx-für-Tx zu dereferenzieren: Staking-Calls werden bei Alchemy direkt auf bekannte/verifizierte Staking-/Entry-Zielcontracts eingeschränkt; Reward-Kandidaten entstehen nur noch aus eingehenden Transfers relevanter TLN/VOW-Reward-Token und werden anschließend gezielt per Tx/Receipt geprüft. Der frühere vollständige Wallet-Contract-Call-Scan mit Receipt-Lesen für jede Contract-Tx ist aus dem aktiven Pfad entfernt. Historische Transaction-/Receipt-Abfragen behalten schnellen Provider-Failover + Session-Deduplizierung; <code>eth_call</code> behält Revert-/Inflight-Cache; Archive-State und Lockgrenzen bleiben am NodeReal-Pfad des Duration-Tests. Neu ist zusätzlich ein optionaler persistenter Supabase-Chain-Cache (<code>tln_vow_staking_scan_cache</code>): ERC-20-Historie + Coverage werden pro User/Wallet/Chain gespeichert und danach nur mit 24-Block-Overlap inkrementell ergänzt. Fehlt die Migration, läuft der Test ohne DB-Cache weiter. Der allgemeine 30-Tage-<code>discovery_cache</code> wird bewusst nicht für technische Staking-Chain-Daten verwendet.</p>
 <p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -318,6 +318,62 @@ async function allErc20Transfers(wallet){
  await savePersistentErc20Cache(wallet,next);
  return merged;
 }
+const SC_READ_PROBES=[
+ {label:'lockDuration()',sig:'lockDuration()',args:[],kind:'duration'},{label:'stakingDuration()',sig:'stakingDuration()',args:[],kind:'duration'},
+ {label:'duration()',sig:'duration()',args:[],kind:'duration'},{label:'lockPeriod()',sig:'lockPeriod()',args:[],kind:'duration'},
+ {label:'lockTime()',sig:'lockTime()',args:[],kind:'duration'},{label:'stakingPeriod()',sig:'stakingPeriod()',args:[],kind:'duration'},
+ {label:'period()',sig:'period()',args:[],kind:'duration'},
+ {label:'unlockTime(address)',sig:'unlockTime(address)',args:['wallet'],kind:'timestamp'},{label:'unlockTimestamp(address)',sig:'unlockTimestamp(address)',args:['wallet'],kind:'timestamp'},
+ {label:'unstakeDate(address)',sig:'unstakeDate(address)',args:['wallet'],kind:'timestamp'},{label:'unstakeTime(address)',sig:'unstakeTime(address)',args:['wallet'],kind:'timestamp'},
+ {label:'lockedUntil(address)',sig:'lockedUntil(address)',args:['wallet'],kind:'timestamp'},{label:'lockEnd(address)',sig:'lockEnd(address)',args:['wallet'],kind:'timestamp'},
+ {label:'endTime(address)',sig:'endTime(address)',args:['wallet'],kind:'timestamp'},{label:'startTime(address)',sig:'startTime(address)',args:['wallet'],kind:'timestamp'},
+ {label:'stakeTimestamp(address)',sig:'stakeTimestamp(address)',args:['wallet'],kind:'timestamp'},{label:'stakedAt(address)',sig:'stakedAt(address)',args:['wallet'],kind:'timestamp'},
+ {label:'stakedAmount(address)',sig:'stakedAmount(address)',args:['wallet'],kind:'amount'},{label:'stakeAmount(address)',sig:'stakeAmount(address)',args:['wallet'],kind:'amount'},
+ {label:'amountStaked(address)',sig:'amountStaked(address)',args:['wallet'],kind:'amount'},{label:'deposited(address)',sig:'deposited(address)',args:['wallet'],kind:'amount'},
+ {label:'balanceOf(address)',sig:'balanceOf(address)',args:['wallet'],kind:'amount'},{label:'earned(address)',sig:'earned(address)',args:['wallet'],kind:'amount'},
+ {label:'pendingReward(address)',sig:'pendingReward(address)',args:['wallet'],kind:'amount'},{label:'pendingRewards(address)',sig:'pendingRewards(address)',args:['wallet'],kind:'amount'},
+ {label:'withdrawableYield(address)',sig:'withdrawableYield(address)',args:['wallet'],kind:'amount'},{label:'getWithdrawableYield(address)',sig:'getWithdrawableYield(address)',args:['wallet'],kind:'amount'},
+ {label:'availableYield(address)',sig:'availableYield(address)',args:['wallet'],kind:'amount'},{label:'totalPayouts(address)',sig:'totalPayouts(address)',args:['wallet'],kind:'amount'},
+ {label:'payouts(address)',sig:'payouts(address)',args:['wallet'],kind:'amount'},{label:'bonus(address)',sig:'bonus(address)',args:['wallet'],kind:'amount'},
+ {label:'qlpBonus(address)',sig:'qlpBonus(address)',args:['wallet'],kind:'amount'},{label:'totalWithdrawn(address)',sig:'totalWithdrawn(address)',args:['wallet'],kind:'amount'},
+ {label:'claimable(address)',sig:'claimable(address)',args:['wallet'],kind:'amount'},{label:'rewards(address)',sig:'rewards(address)',args:['wallet'],kind:'amount'},
+ {label:'referralRewards(address)',sig:'referralRewards(address)',args:['wallet'],kind:'amount'},{label:'referrerRewards(address)',sig:'referrerRewards(address)',args:['wallet'],kind:'amount'},
+ {label:'affiliateRewards(address)',sig:'affiliateRewards(address)',args:['wallet'],kind:'amount'},{label:'partnerRewards(address)',sig:'partnerRewards(address)',args:['wallet'],kind:'amount'},
+ {label:'pendingReferralReward(address)',sig:'pendingReferralReward(address)',args:['wallet'],kind:'amount'},{label:'pendingReferralRewards(address)',sig:'pendingReferralRewards(address)',args:['wallet'],kind:'amount'},
+ {label:'referralBalance(address)',sig:'referralBalance(address)',args:['wallet'],kind:'amount'},{label:'referrerBalance(address)',sig:'referrerBalance(address)',args:['wallet'],kind:'amount'},
+ {label:'dailyReward(address)',sig:'dailyReward(address)',args:['wallet'],kind:'amount'},{label:'rewardPerDay(address)',sig:'rewardPerDay(address)',args:['wallet'],kind:'amount'},
+ {label:'dailyRate(address)',sig:'dailyRate(address)',args:['wallet'],kind:'amount'},{label:'rewardRate(address)',sig:'rewardRate(address)',args:['wallet'],kind:'amount'},
+ {label:'interestRate(address)',sig:'interestRate(address)',args:['wallet'],kind:'amount'},{label:'stakedDays(address)',sig:'stakedDays(address)',args:['wallet'],kind:'days'},
+ {label:'staked_days(address)',sig:'staked_days(address)',args:['wallet'],kind:'days'},{label:'daysStaked(address)',sig:'daysStaked(address)',args:['wallet'],kind:'days'},
+ {label:'dailyReward()',sig:'dailyReward()',args:[],kind:'amount'},{label:'rewardPerDay()',sig:'rewardPerDay()',args:[],kind:'amount'},
+ {label:'dailyRate()',sig:'dailyRate()',args:[],kind:'amount'},{label:'rewardRate()',sig:'rewardRate()',args:[],kind:'amount'},
+ {label:'interestRate()',sig:'interestRate()',args:[],kind:'amount'},
+ {label:'userInfo(address)',sig:'userInfo(address)',args:['wallet'],kind:'raw'},{label:'users(address)',sig:'users(address)',args:['wallet'],kind:'raw'},
+ {label:'stakes(address)',sig:'stakes(address)',args:['wallet'],kind:'raw'},{label:'stakeInfo(address)',sig:'stakeInfo(address)',args:['wallet'],kind:'raw'},
+ {label:'stakingInfo(address)',sig:'stakingInfo(address)',args:['wallet'],kind:'raw'},{label:'depositInfo(address)',sig:'depositInfo(address)',args:['wallet'],kind:'raw'}
+];
+function selectorFor(sig){return ethers.id(sig).slice(0,10).toLowerCase()}
+function encodeProbeCall(probe,wallet){
+ const types=(probe.sig.match(/\((.*)\)/)?.[1]||'').trim(),selector=selectorFor(probe.sig);
+ if(!types)return selector;
+ const vals=(probe.args||[]).map(x=>x==='wallet'?wallet:x);
+ return selector+ethers.AbiCoder.defaultAbiCoder().encode(types.split(',').map(x=>x.trim()),vals).slice(2);
+}
+function rawWords(raw){const h=String(raw||'0x').replace(/^0x/,'');if(!h||h.length%64!==0)return [];const out=[];for(let i=0;i<h.length;i+=64){const word='0x'+h.slice(i,i+64);let uint=null;try{uint=BigInt(word)}catch{}out.push({word,uint})}return out}
+function humanTimestamp(v){const n=Number(v);if(!Number.isFinite(n)||n<946684800||n>7258118400)return null;try{return new Date(n*1000).toLocaleString('de-CH')}catch{return null}}
+function humanDuration(v){const n=Number(v);if(!Number.isFinite(n)||n<=0)return null;if(n>=86400)return `${(n/86400).toLocaleString('de-CH',{maximumFractionDigits:3})} Tage (${n.toLocaleString('de-CH')} s)`;return `${n.toLocaleString('de-CH')} (contract-spezifische Einheit)`}
+function decodeProbeValue(raw,probe){
+ const words=rawWords(raw);if(!words.length)return {display:raw||'0x',raw};
+ if(words.length===1&&words[0].uint!=null){const u=words[0].uint;
+  if(probe.kind==='timestamp'){const ts=humanTimestamp(u);return {display:ts?`${ts} · Unix ${u}`:u.toString(),raw}}
+  if(probe.kind==='duration')return {display:humanDuration(u)||u.toString(),raw};
+  if(probe.kind==='days')return {display:`${u.toString()} Tage`,raw};
+  if(probe.kind==='amount'){let f=null;try{f=ethers.formatUnits(u,18)}catch{}return {display:f!=null?`${f} (18 Dec.) · raw ${u}`:u.toString(),raw}}
+  return {display:u.toString(),raw}
+ }
+ return {display:words.map((w,i)=>{const ts=w.uint==null?null:humanTimestamp(w.uint);return `Wort ${i+1}: ${w.uint==null?w.word:w.uint.toString()}${ts?` → ${ts}`:''}`}).join('\n'),raw};
+}
+
 async function eip1967Implementation(address){
   address=norm(address||'');
   if(!ethers.isAddress(address))return null;
