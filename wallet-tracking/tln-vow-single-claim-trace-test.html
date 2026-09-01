@@ -25,8 +25,8 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 01.09.2026 12:24:07 CEST</div>
-  <div class="muted small">Aktuell: Drei bekannte Wallet→TLN-ID-Testvektoren sind hinterlegt (7205, 17652, 9736). Die Event-/Contract-Dekodierung nutzt weiterhin den belegten Evidenz-Treffer 0xd6e06e…16825d / 0x028c91…a8a35b als Layout-Quelle, validiert einen Resolver danach aber gegen alle bekannten Testvektoren. Bei nicht-indexiertem Wallet-Feld reicht dafür ein gemeinsamer eth_getLogs-Call für Contract + topic0 mit lokaler Auswertung. Referral-Scan bleibt DB-first; verifizierte IDs werden in Supabase gecacht. Kein historischer Vollscan und kein Getter-Bruteforce im Referral-Scan.</div>
+  <div class="muted">Entwicklungsstand 01.09.2026 13:14:46 CEST</div>
+  <div class="muted small">Aktuell: Die TLN-ID-Quelle ist identifiziert: SmartNode-Registry 0x028c91…a8a35b. Der verifizierte Contract stellt <span class="mono">nodeIdOf(address)</span> bereit; damit ist Wallet → TLN ID mit genau 1 <span class="mono">eth_call</span> pro Supabase-Cache-Miss möglich. Das historische Event <span class="mono">SmartNodeActivated(address,address,uint256)</span> bestätigt zusätzlich Wallet/Referrer/ID. Drei bekannte Testvektoren (7205, 17652, 9736) dienen zur direkten Getter-Validierung. Referral-Scan bleibt DB-first und speichert neu ermittelte IDs in <span class="mono">tln_wallet_identity_cache</span>. Der teure historische Vollscan und unlimitierte <span class="mono">eth_getLogs</span>-Abfragen sind für die TLN-ID nicht mehr nötig.</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -105,11 +105,11 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
         <label class="small muted" style="min-width:180px">Bekannte TLN ID
           <input id="tlnIdExpected" value="7205" inputmode="numeric" style="width:100%;margin-top:4px">
         </label>
-        <button id="scanTlnIdHistory">TLN-ID-Evidenz gezielt suchen</button>
-        <button id="decodeTlnIdEvent">Event dekodieren & Resolver prüfen</button>
-        <button id="scanTlnId">Getter-Fallback testen</button>
+        <button id="decodeTlnIdEvent">SmartNode-Getter prüfen</button>
+        <button id="scanTlnIdHistory">Historische Evidenz (Diagnose)</button>
+        <button id="scanTlnId">Getter-Bruteforce (Diagnose)</button>
       </div>
-      <div id="tlnIdStatus" class="muted" style="margin-top:10px">Bereit. Primärtest: gespeicherte Event-Evidenz dekodieren und daraus einen direkten Wallet → TLN-ID-Resolver verifizieren. Getter-Bruteforce bleibt separater Fallback.</div>
+      <div id="tlnIdStatus" class="muted" style="margin-top:10px">Bereit. Primärweg: direkter SmartNode-Getter nodeIdOf(address). Historische Evidenz und Getter-Bruteforce bleiben nur als Diagnose und werden im Referral-Scan nicht verwendet.</div>
     </div>
     <div class="card"><h2>Ergebnis</h2><div id="tlnIdResult" class="muted">Noch keine Daten.</div></div>
     <div class="card"><h2>Geprüfte Kandidaten</h2><div id="tlnIdCandidates" class="muted">Noch keine Daten.</div></div>
@@ -125,12 +125,15 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='01.09.2026 12:24:07 CEST';
+const APP_VERSION='01.09.2026 13:14:46 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
   {wallet:'0x94e41ed085d3Ce29de1c507683Fc707Bf3d0Abc0',nodeId:'9736',evidenceTx:null}
 ].map(x=>({...x,wallet:x.wallet.toLowerCase()}));
+const TLN_SMARTNODE_CONTRACT='0x028c911c10c9e346158206991e02d09bd0a8a35b';
+const TLN_SMARTNODE_ID_METHOD='nodeIdOf(address)';
+const TLN_SMARTNODE_EVENT_TOPIC=ethers.id('SmartNodeActivated(address,address,uint256)').toLowerCase();
 const tokenMetaCache=new Map();
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 let currentUserId=null;
@@ -421,7 +424,7 @@ async function saveTlnIdentityToDb(identity){
   return true;
 }
 const tlnIdentityCache=new Map();
-let tlnIdentityResolver=null;
+let tlnIdentityResolver={contract:TLN_SMARTNODE_CONTRACT,method:TLN_SMARTNODE_ID_METHOD,source:'verified-smartnode'};
 let tlnIdentityDiscoveryDone=false;
 
 const TLN_ID_GETTERS=[
@@ -808,17 +811,14 @@ async function scanReferralWallet(){
 
     let missingStakers=uniqueStakers.filter(w=>!tlnIdentityCache.get(w)?.nodeId);
     if(missingStakers.length){
-      const eventResolver=loadTlnIdEventResolver();
-      walletLog(`TLN-ID DB-first: ${uniqueStakers.length-missingStakers.length}/${uniqueStakers.length} Staker-ID(s) aus Supabase; ${missingStakers.length} fehlen.${eventResolver?' Verifizierter Event-Resolver verfügbar.':' Kein verifizierter Event-Resolver gespeichert.'}`);
-      if(eventResolver){
-        let resolved=0;
-        for(const w of missingStakers){
-          const ident=await resolveTlnIdentityByEvent(w,{saveDb:true,logFn:walletLog});
-          if(ident?.nodeId)resolved++;
-        }
-        missingStakers=uniqueStakers.filter(w=>!tlnIdentityCache.get(w)?.nodeId);
-        walletLog(`TLN-ID Event-Resolver: ${resolved} neu ermittelt und in Supabase gecacht; ${missingStakers.length} weiterhin unresolved. Maximal 1 gezielter eth_getLogs-Call je Cache-Miss.`);
+      walletLog(`TLN-ID DB-first: ${uniqueStakers.length-missingStakers.length}/${uniqueStakers.length} Staker-ID(s) aus Supabase; ${missingStakers.length} fehlen. Verwende SmartNode.nodeIdOf(address): maximal 1 eth_call je Cache-Miss.`);
+      let resolved=0;
+      for(const w of missingStakers){
+        const ident=await getTlnIdentity(w);
+        if(ident?.nodeId)resolved++;
       }
+      missingStakers=uniqueStakers.filter(w=>!tlnIdentityCache.get(w)?.nodeId);
+      walletLog(`TLN-ID SmartNode: ${resolved} neu on-chain ermittelt und in Supabase gecacht; ${missingStakers.length} weiterhin unresolved.`);
     }else{
       walletLog(`TLN-ID DB-first: alle ${uniqueStakers.length} Staker-ID(s) aus Supabase; 0 On-chain-ID-Requests.`);
     }
@@ -864,7 +864,7 @@ async function scanReferralWallet(){
     const stakerFilter=norm($('refStakerFilter')?.value.trim());
     $('walletRewards').innerHTML=renderRows(stakerFilter?strong.filter(r=>norm(r.sender).includes(stakerFilter)):strong);
     $('walletCandidates').innerHTML=renderRows(candidates);
-    walletLog('TLN-ID-Regel: DB-first. Supabase-Cache hat Vorrang; nur bei Cache-Miss wird der zuvor mit Testvektor 7205 verifizierte Event-Resolver verwendet. Getter-Bruteforce bleibt im Referral-Scan deaktiviert.');
+    walletLog('TLN-ID-Regel: DB-first. Supabase-Cache hat Vorrang; bei Cache-Miss genau 1 SmartNode.nodeIdOf(address)-eth_call. Erfolgreiche IDs werden in Supabase gecacht. Historischer Log-Scan und Getter-Bruteforce bleiben im Referral-Scan deaktiviert.');
     const rpcStats=referralRpcStatsText();
     walletLog(`RPC-Statistik dieses Scans: ${rpcStats.total} Provider-Requests${rpcStats.detail?` · ${rpcStats.detail}`:''}. Alchemy AssetTransfers separat.`);
     $('walletStatus').innerHTML='<span class="ok">Referral-Walletscan abgeschlossen.</span>';
@@ -1144,27 +1144,21 @@ $('tlnIdTestVector').addEventListener('change',e=>applyTlnIdTestVector(e.target.
 
 async function verifyKnownTlnIdVectorsByEvent(resolver,logFn=tlnIdLog){
   const vectors=TLN_ID_TEST_VECTORS;
-  let requestCount=0, allLogs=null, results=[];
-  if(resolver.walletLocation.kind==='data'){
-    allLogs=await rpc('eth_getLogs',[{address:resolver.contract,fromBlock:'0x0',toBlock:'latest',topics:[resolver.topic0]}]); requestCount++;
-    for(const v of vectors){
-      const matches=(allLogs||[]).map(lg=>({lg,eventWallet:extractWalletFromEventLog(lg,resolver),id:extractIdFromEventLog(lg,resolver)})).filter(x=>x.eventWallet===v.wallet&&x.id);
-      matches.sort((a,b)=>BigInt(a.lg.blockNumber||0)<BigInt(b.lg.blockNumber||0)?-1:1);
-      const got=matches.length?matches[matches.length-1].id:null;
-      results.push({...v,got,ok:got===v.nodeId,matches:matches.length});
+  const results=[];
+  let requestCount=0;
+  for(const v of vectors){
+    requestCount++;
+    let got=null;
+    try{
+      const raw=await rpc('eth_call',[{to:TLN_SMARTNODE_CONTRACT,data:uintCall(TLN_SMARTNODE_ID_METHOD,v.wallet)},'latest']);
+      got=decodeSingleUint(raw);
+    }catch(e){
+      logFn(`SmartNode-Test ${v.wallet}: eth_call fehlgeschlagen: ${e.message}`);
     }
-  }else{
-    for(const v of vectors){
-      const topics=[resolver.topic0]; while(topics.length<=resolver.walletLocation.index)topics.push(null); topics[resolver.walletLocation.index]=walletTopic(v.wallet);
-      const logs=await rpc('eth_getLogs',[{address:resolver.contract,fromBlock:'0x0',toBlock:'latest',topics}]); requestCount++;
-      const matches=(logs||[]).map(lg=>({lg,eventWallet:extractWalletFromEventLog(lg,resolver),id:extractIdFromEventLog(lg,resolver)})).filter(x=>x.eventWallet===v.wallet&&x.id);
-      matches.sort((a,b)=>BigInt(a.lg.blockNumber||0)<BigInt(b.lg.blockNumber||0)?-1:1);
-      const got=matches.length?matches[matches.length-1].id:null;
-      results.push({...v,got,ok:got===v.nodeId,matches:matches.length});
-    }
+    results.push({...v,got,ok:got===v.nodeId,matches:got?1:0});
   }
-  logFn(`Mehrfach-Verifikation: ${requestCount} eth_getLogs-Request(s) für ${vectors.length} bekannte Wallet→TLN-ID-Testvektoren.`);
-  results.forEach(r=>logFn(`Testvektor ${r.wallet} → erwartet ${r.nodeId}; erhalten ${r.got||'keine ID'}; Treffer=${r.matches}; ${r.ok?'MATCH':'KEIN MATCH'}.`));
+  logFn(`Direkte SmartNode-Verifikation: ${requestCount} eth_call(s) für ${vectors.length} bekannte Wallet→TLN-ID-Testvektoren.`);
+  results.forEach(r=>logFn(`Testvektor ${r.wallet} → erwartet ${r.nodeId}; nodeIdOf=${r.got||'keine ID'}; ${r.ok?'MATCH':'KEIN MATCH'}.`));
   return {requestCount,results,ok:results.every(r=>r.ok)};
 }
 
@@ -1174,50 +1168,34 @@ async function decodeAndVerifyTlnIdEvent(){
     const wallet=norm($('tlnIdWallet').value.trim()),expected=String($('tlnIdExpected').value.trim());
     if(!/^0x[0-9a-f]{40}$/.test(wallet))throw new Error('Ungültige Wallet-Adresse.');
     if(!/^\d+$/.test(expected)||BigInt(expected)<=0n)throw new Error('Ungültige bekannte TLN ID.');
-    await initRpc();tlnIdLog(`Version ${APP_VERSION}`);tlnIdLog(`Event-Resolver-Test: ${wallet} → erwartete TLN ID ${expected}.`);
-    const cached=loadTlnIdEvidenceCache(wallet,expected);
-    const evidenceHash=cached?.hash||'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d';
-    tlnIdLog(`Evidenz-Tx: ${evidenceHash}; lade genau 1 Receipt.`);
-    const rec=await rpc('eth_getTransactionReceipt',[evidenceHash]);if(!rec)throw new Error('Evidenz-Receipt nicht gefunden.');
-    const wWord=addressWord(wallet),idWord=hexWord(expected),hits=tlnIdEvidenceFromReceipt(rec,wWord,idWord);
-    if(!hits.length)throw new Error('Wallet+ID-Evidenz im Receipt nicht reproduzierbar.');
-    const layouts=hits.map(lg=>({lg,layout:inspectTlnIdEventLayout(lg,wWord,idWord)}));
-    $('tlnIdCandidates').innerHTML=`<table><thead><tr><th>Contract</th><th>topic0</th><th>Wallet</th><th>ID</th><th>Data-Wörter</th></tr></thead><tbody>${layouts.map(x=>`<tr><td class="mono">${esc(x.layout.contract)}</td><td class="mono">${esc(x.layout.topic0||'–')}</td><td>${esc(x.layout.walletTopics.length?'Topic '+x.layout.walletTopics.join(', '):x.layout.walletData.length?'Data '+x.layout.walletData.join(', '):'–')}</td><td>${esc(x.layout.idTopics.length?'Topic '+x.layout.idTopics.join(', '):x.layout.idData.length?'Data '+x.layout.idData.join(', '):'–')}</td><td>${x.layout.dataWordCount}</td></tr>`).join('')}</tbody></table>`;
-    layouts.forEach((x,i)=>{
-      const L=x.layout;
-      tlnIdLog(`Event-Layout ${i+1}: Contract ${L.contract}; topic0 ${L.topic0||'–'}; Wallet Topic=[${L.walletTopics.join(',')}], Data=[${L.walletData.join(',')}]; ID Topic=[${L.idTopics.join(',')}], Data=[${L.idData.join(',')}]; Data-Wörter=${L.dataWordCount}.`);
-      tlnIdLog(`Event-Rohdaten ${i+1}: topics=${JSON.stringify(x.lg.topics||[])}; data=${x.lg.data||'0x'}`);
-    });
-    const usable=layouts.find(x=>(x.layout.walletTopics.length+x.layout.walletData.length)===1&&(x.layout.idTopics.length+x.layout.idData.length)===1);
-    if(!usable){
-      $('tlnIdStatus').innerHTML='<span class="warn">Event belegt, aber Wallet-/ID-Position noch nicht eindeutig.</span>';
-      $('tlnIdResult').innerHTML='<p class="warn"><b>Die Evidenz ist echt, aber Wallet oder ID kommen im Event an mehreren bzw. keiner eindeutigen ABI-Wortposition vor.</b></p><p>Die exakten Topics/Data-Wörter stehen jetzt im technischen Log. Es wurden keine zusätzlichen Historien-Requests ausgelöst.</p>';
-      tlnIdLog('Event-Layout auch unter Einbezug nicht-indexierter Data-Wörter nicht eindeutig genug. Keine weitere Abfrage ausgeführt.');return;
-    }
-    const L=usable.layout;
-    const walletLocation=L.walletTopics.length?{kind:'topic',index:L.walletTopics[0]}:{kind:'data',index:L.walletData[0]};
-    const idLocation=L.idTopics.length?{kind:'topic',index:L.idTopics[0]}:{kind:'data',index:L.idData[0]};
-    const resolver={contract:L.contract,topic0:L.topic0,walletLocation,idLocation,evidenceTx:evidenceHash,verifiedTestWallet:wallet,verifiedTestId:expected,verifiedAt:new Date().toISOString()};
-    saveTlnIdEventResolver(resolver);
-    tlnIdLog(`Resolver-Kandidat: Contract ${resolver.contract}; topic0 ${resolver.topic0}; Wallet=${walletLocation.kind} ${walletLocation.index}; ID=${idLocation.kind} ${idLocation.index}.`);
-    tlnIdLog(walletLocation.kind==='topic'?'Verifiziere den Resolver gegen alle 3 bekannten Wallet→ID-Testvektoren; indexed Wallet bedeutet maximal 3 gezielte eth_getLogs-Calls.':'Wallet ist nicht indexed. Verifiziere alle 3 bekannten Wallet→ID-Testvektoren mit genau 1 gemeinsamen eth_getLogs-Call für Contract + topic0 und lokaler Auswertung.');
+    await initRpc();
+    tlnIdLog(`Version ${APP_VERSION}`);
+    tlnIdLog(`SmartNode-Direkttest: Contract ${TLN_SMARTNODE_CONTRACT}; Getter ${TLN_SMARTNODE_ID_METHOD}.`);
+    tlnIdLog(`Event-Signatur als unabhängige Evidenz: SmartNodeActivated(address,address,uint256) → ${TLN_SMARTNODE_EVENT_TOPIC}.`);
+    tlnIdLog('Validiere alle 3 bekannten Testvektoren mit genau 3 eth_call(s); kein eth_getLogs und kein historischer Scan.');
+    const resolver={contract:TLN_SMARTNODE_CONTRACT,method:TLN_SMARTNODE_ID_METHOD,source:'verified-smartnode'};
     const multi=await verifyKnownTlnIdVectorsByEvent(resolver,tlnIdLog);
     if(!multi.ok){
-      tlnIdentityEventResolver=null;try{localStorage.removeItem(TLN_ID_EVENT_RESOLVER_CACHE_KEY)}catch{}
-      throw new Error('Resolver-Verifikation gegen die bekannten Testvektoren fehlgeschlagen. Resolver wird nicht übernommen.');
+      $('tlnIdStatus').innerHTML='<span class="warn">SmartNode.nodeIdOf konnte nicht alle Testvektoren bestätigen.</span>';
+      $('tlnIdResult').innerHTML=`<p class="warn"><b>Direkter Getter noch nicht mehrfach bestätigt.</b></p><p>${multi.results.map(r=>`${esc(r.wallet)} → erwartet ${esc(r.nodeId)}, erhalten ${esc(r.got||'–')}`).join('<br>')}</p>`;
+      return;
     }
+    tlnIdentityResolver=resolver;
+    let saved=0;
     for(const r of multi.results){
-      const ident={wallet:r.wallet,nodeId:r.nodeId,referredById:null,source:'on-chain-event',chain:'BSC',contract:resolver.contract,method:`event:${resolver.topic0}`,verifiedAt:new Date().toISOString()};
+      const ident={wallet:r.wallet,nodeId:r.got,referredById:null,source:'on-chain-smartnode',chain:'BSC',contract:TLN_SMARTNODE_CONTRACT,method:TLN_SMARTNODE_ID_METHOD,verifiedAt:new Date().toISOString()};
       tlnIdentityCache.set(r.wallet,ident);
-      await saveTlnIdentityToDb(ident);
+      if(await saveTlnIdentityToDb(ident))saved++;
     }
-    $('tlnIdStatus').innerHTML='<span class="ok">Event-Resolver gegen 3 Testvektoren verifiziert und gespeichert.</span>';
-    $('tlnIdResult').innerHTML=`<p class="ok"><b>Wallet → TLN-ID Event-Resolver mehrfach verifiziert.</b> Alle drei bekannten Testvektoren stimmen.</p><div class="grid"><div class="kv"><b>Registry/Event-Contract</b><span class="mono">${esc(resolver.contract)}</span></div><div class="kv"><b>Event topic0</b><span class="mono">${esc(resolver.topic0)}</span></div><div class="kv"><b>Wallet-Position</b>${esc(walletLocation.kind)} ${walletLocation.index}</div><div class="kv"><b>ID-Position</b>${esc(idLocation.kind)} ${idLocation.index}</div><div class="kv"><b>Validierung</b>${multi.results.map(r=>`${esc(r.wallet.slice(0,8))}… → <b>${esc(r.nodeId)}</b>`).join('<br>')}</div></div><p class="muted">Alle drei bestätigten Wallet/ID-Paare werden in <span class="mono">tln_wallet_identity_cache</span> gespeichert, sofern Supabase verfügbar ist. Der Referral-Scan bleibt DB-first und verwendet den Resolver nur bei Cache-Miss.</p>`;
-    tlnIdLog(`ERFOLG: direkter Event-Resolver gegen ${multi.results.length} bekannte Testvektoren bestätigt. Supabase-Cache wird für alle bestätigten IDs verwendet.`);
-  }catch(e){$('tlnIdStatus').innerHTML=`<span class="bad">${esc(e.message)}</span>`;tlnIdLog('FEHLER: '+e.message)}
-  finally{btn.disabled=false;$('scanTlnIdHistory').disabled=false;$('scanTlnId').disabled=false}
+    $('tlnIdStatus').innerHTML='<span class="ok">TLN-ID-Ermittlung abgeschlossen – direkter SmartNode-Getter bestätigt.</span>';
+    $('tlnIdResult').innerHTML=`<p class="ok"><b>Wallet → TLN ID ist direkt on-chain auflösbar.</b></p><div class="grid"><div class="kv"><b>SmartNode Registry</b><span class="mono">${esc(TLN_SMARTNODE_CONTRACT)}</span></div><div class="kv"><b>Getter</b><span class="mono">${esc(TLN_SMARTNODE_ID_METHOD)}</span></div><div class="kv"><b>Requests</b>1 eth_call pro Cache-Miss</div><div class="kv"><b>Validierung</b>${multi.results.map(r=>`${esc(r.wallet.slice(0,8))}… → <b>${esc(r.got)}</b>`).join('<br>')}</div><div class="kv"><b>Supabase</b>${saved}/${multi.results.length} Testvektor(en) gespeichert</div></div><p class="muted">Referral Rewards verwendet nun DB-first: zuerst <span class="mono">tln_wallet_identity_cache</span>, bei Cache-Miss genau einen <span class="mono">nodeIdOf(address)</span>-Call und danach persistentes Caching.</p>`;
+    tlnIdLog(`ERFOLG: SmartNode.nodeIdOf(address) gegen ${multi.results.length} Testvektoren bestätigt; ${saved}/${multi.results.length} in Supabase gespeichert.`);
+  }catch(e){
+    $('tlnIdStatus').innerHTML=`<span class="bad">Fehler: ${esc(e.message)}</span>`;
+    tlnIdLog(`FEHLER: ${e.message}`);
+  }finally{btn.disabled=false;$('scanTlnIdHistory').disabled=false;$('scanTlnId').disabled=false}
 }
-$('decodeTlnIdEvent').addEventListener('click',decodeAndVerifyTlnIdEvent);
+
 async function scanTlnIdHistory(){
   const btn=$('scanTlnIdHistory');btn.disabled=true;$('scanTlnId').disabled=true;
   $('tlnIdLog').textContent='';$('tlnIdResult').textContent='Gezielte Evidenz wird gesucht…';$('tlnIdCandidates').textContent='Noch keine Treffer.';
