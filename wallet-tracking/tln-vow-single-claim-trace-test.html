@@ -25,11 +25,12 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 01.09.2026 03:53:39 CEST</div>
+  <div class="muted">Entwicklungsstand 01.09.2026 04:33:32 CEST</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
     <button class="tabbtn" data-tab="wallet">Referral-Rewards eines Wallets</button>
+    <button class="tabbtn" data-tab="tlnid">TLN ID · On-Chain-Test</button>
   </div>
 
   <section id="tab-single" class="tabpanel active">
@@ -84,6 +85,26 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
     <div class="card"><h2>Nicht eindeutig klassifizierte Mint-Zuflüsse</h2><div id="walletCandidates" class="muted">Noch keine Daten.</div></div>
     <div class="card"><h2>Technisches Referral-Scan-Log</h2><pre id="walletLog"></pre></div>
   </section>
+
+  <section id="tab-tlnid" class="tabpanel">
+    <div class="card">
+      <h2>TLN ID · gezielter On-Chain-Test</h2>
+      <p class="muted">Dieser Test ist bewusst vom Referral-Walletscan getrennt. Er startet nur per Klick und sucht für das Test-Wallet nach einer belastbaren On-Chain-Zuordnung zur bekannten TLN ID. Es gibt keinen automatischen TLN-ID-Scan beim Laden der Seite.</p>
+      <div class="row">
+        <label class="small muted" style="flex:1;min-width:320px">Wallet
+          <input id="tlnIdWallet" value="0xbE44d90daD6308AE0b762908D70260c62410346E" spellcheck="false" style="width:100%;margin-top:4px">
+        </label>
+        <label class="small muted" style="min-width:180px">Bekannte TLN ID
+          <input id="tlnIdExpected" value="7205" inputmode="numeric" style="width:100%;margin-top:4px">
+        </label>
+        <button id="scanTlnId">On-Chain-Quelle suchen</button>
+      </div>
+      <div id="tlnIdStatus" class="muted" style="margin-top:10px">Bereit. Noch keine On-Chain-Abfrage ausgeführt.</div>
+    </div>
+    <div class="card"><h2>Ergebnis</h2><div id="tlnIdResult" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>Geprüfte Kandidaten</h2><div id="tlnIdCandidates" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>Technisches TLN-ID-Log</h2><pre id="tlnIdLog"></pre></div>
+  </section>
 </main>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -94,7 +115,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='01.09.2026 03:53:39 CEST';
+const APP_VERSION='01.09.2026 04:33:32 CEST';
 const tokenMetaCache=new Map();
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 let currentUserId=null;
@@ -994,6 +1015,84 @@ async function analyze(){
   }finally{$('analyze').disabled=false}
 }
 $('analyze').addEventListener('click',analyze);
+
+function tlnIdLog(s){$('tlnIdLog').textContent+=`[${new Date().toLocaleTimeString('de-CH')}] ${s}\n`}
+const TLN_ID_TARGET_GETTERS=[
+  'id(address)','ids(address)','nodeId(address)','nodeID(address)','getNodeId(address)','getNodeID(address)',
+  'walletId(address)','walletID(address)','getWalletId(address)','getWalletID(address)',
+  'userId(address)','userID(address)','getUserId(address)','getUserID(address)',
+  'memberId(address)','memberID(address)','accountId(address)','idOf(address)','getId(address)',
+  'walletToId(address)','walletToID(address)','addressToId(address)','addressToID(address)'
+];
+async function scanTlnIdOnChain(){
+  const btn=$('scanTlnId');btn.disabled=true;
+  $('tlnIdLog').textContent='';$('tlnIdResult').textContent='Noch keine bestätigte Quelle.';$('tlnIdCandidates').textContent='Lade Kandidaten…';
+  try{
+    const wallet=norm($('tlnIdWallet').value.trim());
+    const expected=String($('tlnIdExpected').value.trim());
+    if(!/^0x[0-9a-f]{40}$/.test(wallet))throw new Error('Ungültige Wallet-Adresse.');
+    if(!/^\d+$/.test(expected)||BigInt(expected)<=0n)throw new Error('Ungültige bekannte TLN ID.');
+    $('tlnIdStatus').textContent='Gezielte On-Chain-Suche läuft…';
+    await initRpc();
+    tlnIdLog(`Version ${APP_VERSION}`);
+    tlnIdLog(`Testvektor: ${wallet} → erwartete TLN ID ${expected}.`);
+    const rows=await stakingRows();
+    const candidates=new Map();
+    const add=(a,reason)=>{a=norm(a);if(/^0x[0-9a-f]{40}$/.test(a)){if(!candidates.has(a))candidates.set(a,new Set());candidates.get(a).add(reason)}};
+    rows.forEach(r=>add(r.contract_address,`defi_staking_contracts: ${r.label||r.role||'staking'}`));
+    tlnIdLog(`${rows.length} bekannte TLN/VOW-Contracts als Ausgangspunkt geladen.`);
+
+    // Stufe 1: Proxy-Implementations und explizite Registry-/Identity-Getter der bekannten Contracts.
+    let sourceCalls=0;
+    for(const r of rows){
+      const c=norm(r.contract_address);
+      try{const impl=await eip1967Implementation(c);if(impl)add(impl,`EIP-1967 Implementation von ${short(c)}`)}catch{}
+      for(const sig of TLN_ID_SOURCE_GETTERS){
+        sourceCalls++;
+        try{
+          const raw=await rpc('eth_call',[{to:c,data:ethers.id(sig).slice(0,10)},'latest']);
+          const a=retAddr(raw);if(a)add(a,`${sig} von ${short(c)}`);
+        }catch{}
+      }
+    }
+    tlnIdLog(`Quellen-Discovery: ${sourceCalls} gezielte Registry-/Identity-Getter geprüft; ${candidates.size} Contract-Kandidat(en).`);
+
+    // Stufe 2: Nur plausible Single-uint-Getter. Ein Treffer zählt erst, wenn exakt die bekannte ID 7205 zurückkommt.
+    const checked=[];let calls=0;let match=null;
+    outer: for(const [contract,reasons] of candidates){
+      let code='0x';
+      try{code=await rpc('eth_getCode',[contract,'latest'])}catch{}
+      if(!code||code==='0x'){checked.push({contract,reasons:[...reasons],status:'kein Contract-Code'});continue}
+      for(const sig of TLN_ID_TARGET_GETTERS){
+        calls++;
+        try{
+          const raw=await rpc('eth_call',[{to:contract,data:uintCall(sig,wallet)},'latest']);
+          const id=decodeSingleUint(raw);
+          if(!id)continue;
+          checked.push({contract,reasons:[...reasons],method:sig,value:id,status:id===expected?'MATCH':'anderer uint-Wert'});
+          tlnIdLog(`${short(contract)} ${sig} → ${id}${id===expected?' ← EXAKTER TESTVEKTOR-MATCH':''}`);
+          if(id===expected){match={wallet,nodeId:id,contract,method:sig,reasons:[...reasons],source:'on-chain-targeted'};break outer}
+        }catch{}
+      }
+      if(!checked.some(x=>x.contract===contract))checked.push({contract,reasons:[...reasons],status:'kein plausibler ID-Getter'});
+    }
+    tlnIdLog(`ID-Getter: ${calls} gezielte eth_call(s) ausgeführt.`);
+
+    $('tlnIdCandidates').innerHTML=checked.length?`<table><thead><tr><th>Contract</th><th>Herkunft</th><th>Getter</th><th>Antwort</th><th>Status</th></tr></thead><tbody>${checked.map(x=>`<tr><td class="mono">${esc(x.contract)}</td><td>${esc(x.reasons.join(' · '))}</td><td class="mono">${esc(x.method||'–')}</td><td>${esc(x.value||'–')}</td><td>${x.status==='MATCH'?'<span class="ok"><b>MATCH 7205</b></span>':esc(x.status)}</td></tr>`).join('')}</tbody></table>`:'<span class="muted">Keine Contract-Kandidaten prüfbar.</span>';
+    if(match){
+      tlnIdentityResolver={contract:match.contract,method:match.method,discoveryCalls:calls};
+      tlnIdentityCache.set(wallet,{wallet,nodeId:match.nodeId,referredById:null,source:'on-chain',chain:'BSC',contract:match.contract,method:match.method});
+      $('tlnIdResult').innerHTML=`<div class="grid"><div class="kv"><b>Wallet</b><span class="mono">${esc(wallet)}</span></div><div class="kv"><b>TLN ID</b><span class="ok"><b>${esc(match.nodeId)}</b></span></div><div class="kv"><b>Source Contract</b><span class="mono">${esc(match.contract)}</span></div><div class="kv"><b>Getter</b><span class="mono">${esc(match.method)}</span></div></div><p class="ok"><b>Belastbarer Testvektor-Match:</b> Der Contract liefert für genau dieses Wallet die bekannte TLN ID ${esc(expected)}.</p><p class="muted">Der Treffer wird in dieser Session als Resolver vorgemerkt. Eine automatische Übernahme in den Referral-Scan oder Supabase erfolgt in diesem Test bewusst noch nicht.</p>`;
+      $('tlnIdStatus').innerHTML='<span class="ok">On-Chain-Quelle gefunden.</span>';
+      tlnIdLog(`ERFOLG: ${wallet} → ${match.nodeId} über ${match.contract} ${match.method}.`);
+    }else{
+      $('tlnIdResult').innerHTML=`<p class="warn"><b>Noch keine direkte Getter-Quelle gefunden.</b> Keiner der gezielt geprüften Contract-/Getter-Kandidaten lieferte für das Wallet exakt ${esc(expected)}.</p><p class="muted">Das widerlegt eine On-Chain-Speicherung nicht. Der nächste Schritt wäre dann Event-/historische Aktivierungs-Evidenz oder die gezielte Analyse weiterer Contracts aus der TLN-DApp.</p>`;
+      $('tlnIdStatus').innerHTML='<span class="warn">Kein exakter On-Chain-Getter-Match gefunden.</span>';
+    }
+  }catch(e){$('tlnIdStatus').innerHTML=`<span class="bad">${esc(e.message)}</span>`;tlnIdLog('FEHLER: '+e.message)}finally{btn.disabled=false}
+}
+$('scanTlnId').addEventListener('click',scanTlnIdOnChain);
+
 document.querySelectorAll('.tabbtn').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.tabbtn').forEach(x=>x.classList.toggle('active',x===b));
   document.querySelectorAll('.tabpanel').forEach(x=>x.classList.remove('active'));
