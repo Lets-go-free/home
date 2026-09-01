@@ -25,8 +25,8 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 01.09.2026 13:23:54 CEST</div>
-  <div class="muted small">Aktuell: Die TLN-ID-Quelle ist identifiziert: SmartNode-Registry 0x028c91…a8a35b. Der Contract stellt <span class="mono">nodeIdOf(address)</span> bereit. Der SmartNode-Getter-Test war in der vorherigen Version technisch nicht mit dem Button verdrahtet; deshalb passierte beim Klick nichts. Die Click-Bindung ist nun ergänzt. Drei bekannte Testvektoren (7205, 17652, 9736) validieren den Getter direkt mit genau 3 <span class="mono">eth_call</span>s. Referral-Scan bleibt DB-first und speichert neu ermittelte IDs in <span class="mono">tln_wallet_identity_cache</span>. Historischer Vollscan und unlimitierte <span class="mono">eth_getLogs</span>-Abfragen bleiben für die normale TLN-ID-Ermittlung deaktiviert.</div>
+  <div class="muted">Entwicklungsstand 01.09.2026 13:28:20 CEST</div>
+  <div class="muted small">Aktuell: Die TLN-ID-Ermittlung ist über die SmartNode-Registry <span class="mono">0x028c91…a8a35b</span> und <span class="mono">nodeIdOf(address)</span> mit drei unabhängigen Testvektoren (7205, 17652, 9736) bestätigt. Der Referral-Scan arbeitet DB-first über <span class="mono">tln_wallet_identity_cache</span>; nur bei Cache-Miss erfolgt genau ein SmartNode-<span class="mono">eth_call</span>, danach wird die ID persistent in Supabase gespeichert. Neu: Die Referral-Übersicht aggregiert pro Partner/TLN-ID eine Zeile, je Referral-Reward-Token eine Spalte, ein Zeilentotal sowie eine TOTAL-Zeile mit Token-Spaltentotals. Historischer Vollscan, unlimitierte <span class="mono">eth_getLogs</span>-Abfragen und Getter-Bruteforce bleiben aus dem normalen Referral-Pfad entfernt.</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -125,7 +125,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='01.09.2026 13:23:54 CEST';
+const APP_VERSION='01.09.2026 13:28:20 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -837,6 +837,39 @@ async function scanReferralWallet(){
       const x=tokens.get(m.token);x.count++;x.total+=Number(m.amount);
     }
 
+    const rewardTokenList=[...tokens.entries()].map(([address,x])=>({address,symbol:x.symbol}));
+    const partnerRewards=new Map();
+    for(const r of strong){
+      const nodeId=r.tlnIdentity?.nodeId?String(r.tlnIdentity.nodeId):null;
+      const partnerKey=nodeId?`id:${nodeId}`:`wallet:${norm(r.sender)}`;
+      if(!partnerRewards.has(partnerKey)){
+        partnerRewards.set(partnerKey,{
+          nodeId,
+          wallets:new Set(),
+          amounts:new Map(rewardTokenList.map(t=>[t.address,0])),
+          total:0
+        });
+      }
+      const partner=partnerRewards.get(partnerKey);
+      partner.wallets.add(norm(r.sender));
+      for(const m of r.mints){
+        if(!partner.amounts.has(m.token))continue;
+        const amount=Number(m.amount)||0;
+        partner.amounts.set(m.token,(partner.amounts.get(m.token)||0)+amount);
+        partner.total+=amount;
+      }
+    }
+    const partnerRows=[...partnerRewards.values()].sort((a,b)=>{
+      if(a.nodeId&&b.nodeId)return Number(a.nodeId)-Number(b.nodeId);
+      if(a.nodeId)return -1;if(b.nodeId)return 1;return [...a.wallets][0].localeCompare([...b.wallets][0]);
+    });
+    const fmtReward=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:12});
+    const partnerTable=partnerRows.length?`<h3 style="margin-top:16px">Referral-Rewards je Partner / TLN ID</h3>
+      <table><thead><tr><th>Partner · TLN ID</th>${rewardTokenList.map(t=>`<th>${esc(t.symbol)}</th>`).join('')}<th>Total</th></tr></thead><tbody>
+      ${partnerRows.map(p=>`<tr><td>${p.nodeId?`<b>${esc(p.nodeId)}</b>`:'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td>${rewardTokenList.map(t=>`<td>${fmtReward(p.amounts.get(t.address))}</td>`).join('')}<td><b>${fmtReward(p.total)}</b></td></tr>`).join('')}
+      <tr><th>TOTAL</th>${rewardTokenList.map(t=>`<th>${fmtReward(tokens.get(t.address)?.total||0)}</th>`).join('')}<th>${fmtReward([...tokens.values()].reduce((sum,x)=>sum+x.total,0))}</th></tr>
+      </tbody></table>`:'<span class="muted">Keine Referral-Rewards erkannt.</span>';
+
     $('walletSummary').innerHTML=`<div class="grid">
       <div class="kv"><b>Wallet</b><span class="mono">${esc(wallet)}</span></div>
       <div class="kv"><b>Scan-Modus</b>${esc(mode)}</div>
@@ -845,7 +878,7 @@ async function scanReferralWallet(){
       <div class="kv"><b>Starke Referral-Tx</b>${strong.length}</div>
       <div class="kv"><b>Referral-Reward-Mints</b>${rewardCount}</div>
       <div class="kv"><b>Nicht eindeutig</b>${candidates.length}</div>
-    </div>${tokens.size?`<h3 style="margin-top:16px">Total Referral-Rewards je Token</h3><table><thead><tr><th>Referral-Token</th><th>Anzahl</th><th>Total</th></tr></thead><tbody>${[...tokens].map(([a,x])=>`<tr><td><b>${esc(x.symbol)}</b><div class="mono">${esc(a)}</div></td><td>${x.count}</td><td>${x.total.toLocaleString('de-CH',{maximumFractionDigits:12})}</td></tr>`).join('')}</tbody></table>`:''}`;
+    </div>${partnerTable}`;
 
     const renderRows=arr=>arr.length?`<table><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Ursprünglich gestaked von</th><th>Staking</th><th>TLN ID</th><th>Stake-Zufluss</th><th>Tx</th><th>Nachweis</th></tr></thead><tbody>${arr.flatMap(r=>r.mints.map(m=>`<tr>
       <td>${esc(fmtTime(r.timestamp))}</td>
