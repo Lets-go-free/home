@@ -25,8 +25,8 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 01.09.2026 13:14:46 CEST</div>
-  <div class="muted small">Aktuell: Die TLN-ID-Quelle ist identifiziert: SmartNode-Registry 0x028c91…a8a35b. Der verifizierte Contract stellt <span class="mono">nodeIdOf(address)</span> bereit; damit ist Wallet → TLN ID mit genau 1 <span class="mono">eth_call</span> pro Supabase-Cache-Miss möglich. Das historische Event <span class="mono">SmartNodeActivated(address,address,uint256)</span> bestätigt zusätzlich Wallet/Referrer/ID. Drei bekannte Testvektoren (7205, 17652, 9736) dienen zur direkten Getter-Validierung. Referral-Scan bleibt DB-first und speichert neu ermittelte IDs in <span class="mono">tln_wallet_identity_cache</span>. Der teure historische Vollscan und unlimitierte <span class="mono">eth_getLogs</span>-Abfragen sind für die TLN-ID nicht mehr nötig.</div>
+  <div class="muted">Entwicklungsstand 01.09.2026 13:23:54 CEST</div>
+  <div class="muted small">Aktuell: Die TLN-ID-Quelle ist identifiziert: SmartNode-Registry 0x028c91…a8a35b. Der Contract stellt <span class="mono">nodeIdOf(address)</span> bereit. Der SmartNode-Getter-Test war in der vorherigen Version technisch nicht mit dem Button verdrahtet; deshalb passierte beim Klick nichts. Die Click-Bindung ist nun ergänzt. Drei bekannte Testvektoren (7205, 17652, 9736) validieren den Getter direkt mit genau 3 <span class="mono">eth_call</span>s. Referral-Scan bleibt DB-first und speichert neu ermittelte IDs in <span class="mono">tln_wallet_identity_cache</span>. Historischer Vollscan und unlimitierte <span class="mono">eth_getLogs</span>-Abfragen bleiben für die normale TLN-ID-Ermittlung deaktiviert.</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -125,7 +125,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='01.09.2026 13:14:46 CEST';
+const APP_VERSION='01.09.2026 13:23:54 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -1262,6 +1262,7 @@ async function scanTlnIdHistory(){
     }
   }catch(e){$('tlnIdStatus').innerHTML=`<span class="bad">${esc(e.message)}</span>`;tlnIdLog('FEHLER: '+e.message)}finally{btn.disabled=false;$('scanTlnId').disabled=false}
 }
+$('decodeTlnIdEvent').addEventListener('click',()=>decodeAndVerifyTlnIdEvent().catch(e=>{tlnIdLog('FEHLER (Button): '+e.message);$('tlnIdStatus').innerHTML=`<span class="bad">Fehler: ${esc(e.message)}</span>`;}));
 $('scanTlnIdHistory').addEventListener('click',scanTlnIdHistory);
 
 const TLN_ID_TARGET_GETTERS=[
