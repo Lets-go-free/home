@@ -42,8 +42,9 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-token-card{padding:9px 11px;border:1px solid #2d384a;border-radius:8px;background:rgba(255,255,255,.02)}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 31.08.2026 02:41:51 CEST</div>
-<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 01.09.2026 23:46:00 CEST</div>
+<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 01.09.2026:</b> Die verifizierte automatische On-Chain-Lockdauer-Ermittlung aus dem isolierten Duration-Test ist in die Lot-Pipeline integriert. Contract-spezifische 367-Tage-Vorgaben sind aus dem Laufzeit-Entscheidungsweg entfernt. Für geschlossene Positionen wird die Wallet-Staking-Struktur historisch erkannt, die erste tatsächliche Positionsauflösung gesucht und die echte spätere Unstake-Transaktion per historischem <code>eth_call</code> zwischen Lock-Revert und erstem Erfolg im Blockraum binär eingegrenzt. Provider-/Envelopefehler zählen nicht als Lock-Evidenz. Tatsächliche Positionsdauer und vertragliche Mindest-Lockdauer bleiben getrennt.</p>
+<p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
   <option value="">TLN-Wallets werden geladen…</option>
@@ -101,6 +102,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
+const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const V2=new ethers.Interface(["function token0() view returns(address)","function token1() view returns(address)","function factory() view returns(address)","function decimals() view returns(uint8)","function getReserves() view returns(uint112,uint112,uint32)","function totalSupply() view returns(uint256)"]);
 const ERC20=new ethers.Interface(["function symbol() view returns(string)","function decimals() view returns(uint8)"]);
@@ -113,26 +115,10 @@ let CURRENT_STAKING_LOTS=[],CURRENT_WALLET='',CURRENT_UNASSIGNED_REWARDS=[],CURR
 // Laufzeiten werden nur mit dokumentierter Evidenz hinterlegt.
 function stakingDurationDays(){ return null; }
 function stakingDurationSource(){ return null; }
-const VERIFIED_STAKING_DURATION_RULES=new Map([
-  ['0x4857d369e18aba003ff6ec934cf046148df5d590',{
-    days:367,
-    source:'TLN Protocol UI: Staking Duration 367 Days',
-    sourceUrl:'https://www.tlnprotocol.com/app/rewards',
-    expectedRuntimeConstantHex:(367*86400).toString(16).padStart(8,'0'),
-    note:'Contract-spezifische Regel für diese TLN+/PC-LP-Staking-Generation; keine globale 367-Tage-Annahme.'
-  }]
-]);
-async function verifiedDurationRuleForLot(lot){
-  const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');
-  const rule=VERIFIED_STAKING_DURATION_RULES.get(contract);
-  if(!rule)return null;
-  let bytecodeEvidence=false;
-  try{
-    const code=String(await rpc('eth_getCode',[contract,'latest'])||'').toLowerCase().replace(/^0x/,'');
-    bytecodeEvidence=!!(rule.expectedRuntimeConstantHex&&code.includes(rule.expectedRuntimeConstantHex.toLowerCase()));
-  }catch{}
-  return {...rule,contract,bytecodeEvidence};
-}
+// Keine contract-spezifisch vorgegebene Lockdauer mehr: bekannte Testwerte dürfen
+// niemals die automatische On-Chain-Ermittlung ersetzen.
+const VERIFIED_STAKING_DURATION_RULES=new Map();
+async function verifiedDurationRuleForLot(){ return null; }
 function addDaysIso(iso,days){
   if(!iso||!days)return null;
   const d=new Date(iso); if(Number.isNaN(d.getTime()))return null;
@@ -475,6 +461,83 @@ async function probeTimingAtBlock(lot,wallet,blockHex){
 }
 
 
+
+// -----------------------------------------------------------------------------
+// AUTOMATISCHE ON-CHAIN LOCKDAUER-ENGINE
+// Übernommen/adaptiert aus tln-vow-staking-duration-test.html.
+// Ziel: keine bekannte Tageszahl voraussetzen. Archive-State nur für die wenigen
+// Reads verwenden, die für Struct-/Grenzbeweis nötig sind.
+// -----------------------------------------------------------------------------
+const LOCK_ENGINE_CACHE=new Map();
+function lockFmtDate(ts){return new Date(Number(ts)*1000).toLocaleString('de-CH')}
+function lockPlausibleTs(n,stakeTs){return n>946684800&&n<4102444800&&(!stakeTs||Math.abs(n-stakeTs)<10*365*86400)}
+function lockDurationFromSeconds(sec){if(sec<=0||sec>1000*86400)return null;const days=sec/86400;return {seconds:sec,days,exactDays:Number.isInteger(days)}}
+function lockStorageWordInfo(raw,stakeTs){const v=BigInt(raw||'0x0');let n=null;if(v<=BigInt(Number.MAX_SAFE_INTEGER))n=Number(v);return {raw,v,n,timestamp:n!=null&&lockPlausibleTs(n,stakeTs)?n:null,duration:n!=null?lockDurationFromSeconds(n):null}}
+async function lockNodeRealRpc(method,params=[]){
+ const c=new AbortController(),tm=setTimeout(()=>c.abort(),30000);
+ try{
+  const r=await fetch(NODEREAL_BSC_URL,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method,params}),signal:c.signal});
+  const raw=await r.text();let j=null;try{j=raw?JSON.parse(raw):null}catch{}
+  if(!r.ok)throw new Error(`NodeReal HTTP ${r.status}${j?.error?.message?`: ${j.error.message}`:''}`);
+  if(j?.error)throw new Error(`${j.error.message||JSON.stringify(j.error)}${j.error.code!==undefined?` (${j.error.code})`:''}`);
+  if(j?.result===undefined||j?.result===null)throw new Error('NodeReal lieferte kein RPC-Ergebnis');
+  return j.result;
+ }finally{clearTimeout(tm)}
+}
+async function lockNodeRealMany(calls,parallel=4){const out=new Array(calls.length);let next=0;async function worker(){while(true){const i=next++;if(i>=calls.length)return;try{out[i]={result:await lockNodeRealRpc(calls[i].method,calls[i].params)}}catch(e){out[i]={error:{message:e.message}}}}}await Promise.all(Array.from({length:Math.min(parallel,calls.length)},worker));return out}
+function lockWalletMappingKey(wallet,root,offset=0){const coder=ethers.AbiCoder.defaultAbiCoder();const base=BigInt(ethers.keccak256(coder.encode(['address','uint256'],[wallet,root])));return '0x'+(base+BigInt(offset)).toString(16)}
+function lockClassifyRootValue(raw,stakeTs){const v=BigInt(raw||'0x0');const n=v<=BigInt(Number.MAX_SAFE_INTEGER)?Number(v):null;const timestamp=n!=null&&lockPlausibleTs(n,stakeTs)?n:null;return {raw:String(raw||'0x0'),value:v.toString(),n,timestamp,date:timestamp?lockFmtDate(timestamp):null,deltaFromStakeDays:timestamp?(timestamp-stakeTs)/86400:null}}
+async function lockReadOffsets(contract,wallet,root,offsets,blockTag,stakeTs){const calls=offsets.map(offset=>({method:'eth_getStorageAt',params:[contract,lockWalletMappingKey(wallet,root,offset),blockTag]}));const res=await lockNodeRealMany(calls,4);return offsets.map((offset,i)=>{const r=res[i];if(r?.error)return {root,offset,key:lockWalletMappingKey(wallet,root,offset),block:blockTag,error:r.error};return {root,offset,key:lockWalletMappingKey(wallet,root,offset),block:blockTag,...lockClassifyRootValue(r?.result||'0x0',stakeTs)}})}
+async function lockDetectWalletStruct(contract,wallet,stakeBlock,stakeTs){
+ const before='0x'+(stakeBlock-1).toString(16),at='0x'+stakeBlock.toString(16);
+ const coder=ethers.AbiCoder.defaultAbiCoder();
+ const mk=(root,offset=0)=>{const base=BigInt(ethers.keccak256(coder.encode(['address','uint256'],[wallet,root])));return {root,offset,key:'0x'+(base+BigInt(offset)).toString(16)}};
+ async function changed(cands){const calls=[];for(const x of cands){calls.push({method:'eth_getStorageAt',params:[contract,x.key,before]},{method:'eth_getStorageAt',params:[contract,x.key,at]})}const res=await lockNodeRealMany(calls,6);const out=[];for(let i=0;i<cands.length;i++){if(res[i*2]?.error||res[i*2+1]?.error)continue;const a=String(res[i*2]?.result||'0x0'),b=String(res[i*2+1]?.result||'0x0');if(norm(a)===norm(b))continue;out.push({...cands[i],beforeInfo:lockStorageWordInfo(a,stakeTs),afterInfo:lockStorageWordInfo(b,stakeTs)})}return out}
+ let roots=await changed(Array.from({length:17},(_,r)=>mk(r,0)));
+ if(!roots.length)roots=await changed(Array.from({length:48},(_,i)=>mk(i+17,0)));
+ let hit=[...new Set(roots.map(x=>x.root))];if(!hit.length)hit=[0,1,2,3,4,5,6,7,8];
+ let expanded=await changed(hit.flatMap(root=>Array.from({length:9},(_,off)=>mk(root,off))));
+ let all=[...roots,...expanded];
+ let exact=all.find(x=>x.afterInfo?.timestamp===stakeTs||Math.abs(Number(x.afterInfo?.timestamp||0)-stakeTs)<=10);
+ if(!exact&&hit.length){const ext=await changed(hit.flatMap(root=>Array.from({length:8},(_,i)=>mk(root,i+9))));all.push(...ext);exact=all.find(x=>x.afterInfo?.timestamp===stakeTs||Math.abs(Number(x.afterInfo?.timestamp||0)-stakeTs)<=10)}
+ const root=exact?.root??(roots[0]?.root??null);if(root==null)return {available:false,reason:'Kein Wallet-Staking-Mapping-Root automatisch erkannt.'};
+ const timestampOffset=exact?.offset??null;const offsets=[...new Set([0,1,2,3,4,5,6,7,8,timestampOffset].filter(x=>Number.isInteger(x)&&x>=0&&x<=16))].sort((a,b)=>a-b);
+ const [pre,stake,latest]=await Promise.all([lockReadOffsets(contract,wallet,root,offsets,before,stakeTs),lockReadOffsets(contract,wallet,root,offsets,at,stakeTs),lockReadOffsets(contract,wallet,root,offsets,'latest',stakeTs)]);
+ const byOffset=offsets.map(offset=>({offset,key:lockWalletMappingKey(wallet,root,offset),before:pre.find(x=>x.offset===offset),stake:stake.find(x=>x.offset===offset),latest:latest.find(x=>x.offset===offset)}));
+ const changedAtStake=byOffset.filter(r=>r.before?.value!==r.stake?.value);const startRow=changedAtStake.find(r=>r.stake?.timestamp===stakeTs)||changedAtStake.find(r=>r.stake?.timestamp&&Math.abs(r.stake.timestamp-stakeTs)<=10)||(timestampOffset!=null?byOffset.find(r=>r.offset===timestampOffset):null);
+ const storedFutureTimestampAtStake=byOffset.filter(r=>r.stake?.timestamp&&r.stake.timestamp>stakeTs).map(r=>({offset:r.offset,timestamp:r.stake.timestamp,days:(r.stake.timestamp-stakeTs)/86400}));
+ const changedOffsets=changedAtStake.map(r=>r.offset);const amountOffsets=changedOffsets.filter(x=>x!==startRow?.offset).slice(0,2);const coreOffsets=[...new Set([...amountOffsets,...(startRow?[startRow.offset]:[])])].sort((a,b)=>a-b);
+ return {available:true,root,timestampOffset,offsets,byOffset,changedAtStake,startRow,storedFutureTimestampAtStake,coreOffsets};
+}
+async function lockReadCore(contract,wallet,targeted,blockNum,stakeTs){const tag=typeof blockNum==='string'?blockNum:'0x'+Number(blockNum).toString(16);const rows=await lockReadOffsets(contract,wallet,targeted.root,targeted.coreOffsets,tag,stakeTs);const signature={};for(const off of targeted.coreOffsets)signature[off]=rows.find(x=>x.offset===off)?.value??null;return {blockNum:typeof blockNum==='number'?blockNum:null,block:tag,rows,signature}}
+function lockSameCore(a,b,offsets){return offsets.every(k=>String(a?.[k]??'')===String(b?.[k]??''))}
+async function lockFindFirstCoreChange(contract,wallet,stakeBlock,stakeTs,targeted){if(!targeted?.available||!targeted.coreOffsets?.length)return {found:false,reason:'Keine Staking-Kernfelder erkannt.'};const base={};for(const off of targeted.coreOffsets)base[off]=targeted.byOffset.find(r=>r.offset===off)?.stake?.value??null;const latestHex=await lockNodeRealRpc('eth_blockNumber',[]);let lo=stakeBlock,hi=Number(BigInt(latestHex));const latest=await lockReadCore(contract,wallet,targeted,'latest',stakeTs);if(lockSameCore(base,latest.signature,targeted.coreOffsets))return {found:false,reason:'Erkannte Kernfelder sind latest noch unverändert.',base,latest};while(lo+1<hi){const mid=Math.floor((lo+hi)/2),state=await lockReadCore(contract,wallet,targeted,mid,stakeTs);if(lockSameCore(base,state.signature,targeted.coreOffsets))lo=mid;else hi=mid}const first=hi;const blockObj=await lockNodeRealRpc('eth_getBlockByNumber',['0x'+first.toString(16),false]);const ts=blockObj?.timestamp?Number(BigInt(blockObj.timestamp)):null;return {found:true,base,firstChangedBlock:first,timestamp:ts,date:ts?lockFmtDate(ts):null,elapsedSeconds:ts?ts-stakeTs:null,elapsedDays:ts?(ts-stakeTs)/86400:null}}
+function lockDecodeRevertData(data){let raw=data;if(raw&&typeof raw==='object')raw=raw.data||raw.result||raw.originalError?.data||null;if(typeof raw!=='string'||!raw.startsWith('0x'))return null;try{if(raw.startsWith('0x08c379a0')){const [msg]=ethers.AbiCoder.defaultAbiCoder().decode(['string'],'0x'+raw.slice(10));return {type:'Error(string)',message:String(msg),data:raw}}if(raw.startsWith('0x4e487b71')){const [code]=ethers.AbiCoder.defaultAbiCoder().decode(['uint256'],'0x'+raw.slice(10));return {type:'Panic(uint256)',message:`Panic ${code}`,data:raw}}}catch{}return {type:'raw',message:'execution reverted',data:raw.slice(0,514)}}
+async function lockEthCallDetailed(callObj,blockTag,stateOverride=null){try{const params=stateOverride?[callObj,blockTag,stateOverride]:[callObj,blockTag];const result=await lockNodeRealRpc('eth_call',params);return {ok:true,result}}catch(e){const msg=String(e.message||e),m=msg.match(/(0x[0-9a-fA-F]{8,})/);return {ok:false,error:{message:msg,data:m?.[1]||null}}}}
+function lockFailureClass(call,revert){if(call?.ok)return 'success';const msg=String(revert?.message||call?.error?.message||'').toLowerCase();if(/insufficient funds|gas \* price \+ value|intrinsic gas|nonce too low|nonce too high|replacement transaction|sender account not recognized/.test(msg))return 'simulation_invalid';if(/timeout|rate limit|too many requests|http 429|network|failed to fetch|gateway|provider/.test(msg))return 'provider_error';if(revert?.message||/execution reverted|revert/.test(msg))return 'contract_revert';return 'unknown_error'}
+async function lockProbeUnstake(tx,stakeTs,blockNum){const blockTag='0x'+Number(blockNum).toString(16),block=await lockNodeRealRpc('eth_getBlockByNumber',[blockTag,false]),blockTs=Number(BigInt(block.timestamp));const callObj={from:tx.from,to:tx.to,data:tx.input||'0x',value:tx.value||'0x0',gas:'0x7a1200',gasPrice:'0x0'};let call=await lockEthCallDetailed(callObj,blockTag),revert=call.ok?null:lockDecodeRevertData(call.error?.data),failureClass=lockFailureClass(call,revert),simulationMode='gasPrice=0';if(!call.ok&&failureClass==='simulation_invalid'&&/insufficient funds|gas \* price \+ value/i.test(String(call.error?.message||''))){const retry=await lockEthCallDetailed(callObj,blockTag,{[String(tx.from).toLowerCase()]:{balance:'0x3635c9adc5dea00000'}});if(retry.ok||!/invalid argument|too many arguments|unsupported|state override/i.test(String(retry.error?.message||''))){call=retry;simulationMode='gasPrice=0 + sender-balance-override';revert=call.ok?null:lockDecodeRevertData(call.error?.data);failureClass=lockFailureClass(call,revert)}}return {blockNum:Number(blockNum),block:blockTag,timestamp:blockTs,date:lockFmtDate(blockTs),elapsedSeconds:blockTs-stakeTs,elapsedDays:(blockTs-stakeTs)/86400,ok:call.ok,result:call.ok?call.result:null,error:call.ok?null:call.error,revert,failureClass,validForLock:call.ok||failureClass==='contract_revert',simulationMode}}
+async function lockImplAt(contract,blockTag){const slot='0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';try{const raw=await lockNodeRealRpc('eth_getStorageAt',[contract,slot,blockTag]);const h=String(raw||'').replace(/^0x/,'').padStart(64,'0'),a='0x'+h.slice(24);return /^0x0{40}$/.test(a)?null:norm(a)}catch{return null}}
+async function lockBoundaryFromUnstake(tx,contract,stakeBlock,stakeTs,coreChange){const exitBlock=Number(coreChange?.firstChangedBlock||0);if(!tx?.from||!tx?.to||!tx?.input||!exitBlock||exitBlock<=stakeBlock)return {available:false,found:false,reason:'Keine vollständige Unstake-Tx oder Positionsauflösung als obere Grenze.'};const cache=new Map(),lockRe=/lock|locked|minimum staking period|minimum stake|staking period|period|duration|early|matur|wait/i;async function probe(n){n=Math.max(stakeBlock,Math.min(exitBlock-1,Number(n)));if(cache.has(n))return cache.get(n);const p=await lockProbeUnstake(tx,stakeTs,n);cache.set(n,p);return p}let lower=await probe(stakeBlock);if(lower?.failureClass!=='contract_revert')lower=await probe(stakeBlock+1);const lowerMsg=String(lower?.revert?.message||lower?.error?.message||'');const lowerIsLock=lower?.failureClass==='contract_revert'&&lockRe.test(lowerMsg);let upper=await probe(exitBlock-1);if(!lowerIsLock||!upper?.ok)return {available:true,found:false,reason:!lowerIsLock?`Früher Call kein lock-semantischer Contract-Revert (${lowerMsg||lower?.failureClass||'unbekannt'}).`:`Call unmittelbar vor Positionsauflösung nicht erfolgreich (${upper?.failureClass||'unbekannt'}).`,checkpoints:[...cache.values()],invalidFailures:[...cache.values()].filter(p=>!p.ok&&p.failureClass!=='contract_revert')};let lo=lower.blockNum,hi=upper.blockNum,before=lower,after=upper,guard=0;while(hi-lo>1&&guard++<64){const mid=Math.floor((lo+hi)/2),p=await probe(mid);if(p.ok){hi=p.blockNum;after=p;continue}if(p.failureClass==='contract_revert'){const msg=String(p.revert?.message||p.error?.message||'');if(lockRe.test(msg)){lo=p.blockNum;before=p;continue}return {available:true,found:false,reason:`Nicht-lock-semantischer Contract-Revert in Binärsuche: ${msg||'unbekannt'}`,checkpoints:[...cache.values()]}}let replacement=null;for(let d=1;d<=8&&!replacement;d++){for(const b of [mid-d,mid+d]){if(b<=lo||b>=hi)continue;const q=await probe(b),qm=String(q.revert?.message||q.error?.message||'');if(q.ok||(q.failureClass==='contract_revert'&&lockRe.test(qm))){replacement=q;break}}}if(!replacement)break;if(replacement.ok){hi=replacement.blockNum;after=replacement}else{lo=replacement.blockNum;before=replacement}}
+ before.impl=await lockImplAt(contract,before.block);after.impl=await lockImplAt(contract,after.block);let implementationMode='proxy',implementationStable=false,implementationStatus='changed';if(!before.impl&&!after.impl){implementationMode='direct-contract';const [cb,ca]=await Promise.all([lockNodeRealRpc('eth_getCode',[contract,before.block]),lockNodeRealRpc('eth_getCode',[contract,after.block])]);before.codeHash=ethers.keccak256(cb||'0x');after.codeHash=ethers.keccak256(ca||'0x');implementationStable=before.codeHash===after.codeHash;implementationStatus=implementationStable?'direct-contract-code-unchanged':'direct-contract-code-changed'}else if(before.impl&&after.impl){implementationStable=before.impl===after.impl;implementationStatus=implementationStable?'proxy-implementation-unchanged':'proxy-implementation-changed'}else{implementationMode='mixed-or-unknown';implementationStatus='proxy-state-changed-or-unknown'}const elapsedSeconds=after.timestamp-stakeTs;return {available:true,found:true,before,after,elapsedSeconds,elapsedDays:elapsedSeconds/86400,implementationStable,implementationMode,implementationStatus,checkpoints:[...cache.values()].sort((a,b)=>a.blockNum-b.blockNum),invalidFailures:[...cache.values()].filter(p=>!p.ok&&p.failureClass!=='contract_revert'),automatic:true,searchMode:'direct-block-bisection',requestOptimized:true}}
+async function resolveAutomaticLotLock(lot){
+ const contract=norm(lot?.staking?.contract_address||lot.counterparty||''),wallet=norm(CURRENT_WALLET),stakeBlock=lot.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null,stakeTs=lot.stakeTime?Math.floor(new Date(lot.stakeTime).getTime()/1000):null;
+ if(!ethers.isAddress(contract)||!ethers.isAddress(wallet)||!stakeBlock||!stakeTs)return null;
+ const key=`${wallet}|${contract}|${stakeBlock}|${String(lot.unstakeTx||'open').toLowerCase()}`;if(LOCK_ENGINE_CACHE.has(key))return LOCK_ENGINE_CACHE.get(key);
+ const p=(async()=>{try{
+  log(`Lock-Engine: ${safePairLabel(lot)} · Wallet-Struct am Stake-Block wird automatisch erkannt …`,'ok');
+  const targeted=await lockDetectWalletStruct(contract,wallet,stakeBlock,stakeTs);
+  if(!targeted.available)return {found:false,targeted,reason:targeted.reason};
+  if(targeted.storedFutureTimestampAtStake?.length){const x=[...targeted.storedFutureTimestampAtStake].sort((a,b)=>a.timestamp-b.timestamp)[0];return {found:true,mode:'stored-end-timestamp',targeted,elapsedSeconds:x.timestamp-stakeTs,elapsedDays:(x.timestamp-stakeTs)/86400,unlockTimestamp:x.timestamp,unlockTime:new Date(x.timestamp*1000).toISOString(),evidence:'Start-/End-Timestamp im selben Wallet-Mapping',confidence:'strong'}}
+  const coreChange=await lockFindFirstCoreChange(contract,wallet,stakeBlock,stakeTs,targeted);
+  if(!coreChange.found)return {found:false,targeted,coreChange,reason:coreChange.reason};
+  if(!lot.unstakeTx)return {found:false,targeted,coreChange,reason:'Position hat keine tatsächliche Unstake-Tx; Mindest-Lockgrenze nicht per Revert→Success beweisbar.'};
+  const tx=await cachedTx(lot.unstakeTx);if(!tx)return {found:false,targeted,coreChange,reason:'Tatsächliche Unstake-Tx konnte nicht geladen werden.'};
+  const gate=await lockBoundaryFromUnstake(tx,contract,stakeBlock,stakeTs,coreChange);
+  if(!gate.found)return {found:false,targeted,coreChange,gate,reason:gate.reason};
+  return {found:true,mode:'historical-unstake-boundary',targeted,coreChange,gate,elapsedSeconds:gate.elapsedSeconds,elapsedDays:gate.elapsedDays,unlockTimestamp:gate.after.timestamp,unlockTime:new Date(gate.after.timestamp*1000).toISOString(),lastLockedBlock:gate.before.blockNum,firstUnlockedBlock:gate.after.blockNum,evidence:'Historische Unstake-Call-Grenze mit Lock-Revert',confidence:gate.implementationStable?'strong':'high',implementationStable:gate.implementationStable,implementationMode:gate.implementationMode,invalidFailures:gate.invalidFailures||[]};
+ }catch(e){return {found:false,error:e.message,reason:e.message}}})();LOCK_ENGINE_CACHE.set(key,p);return p;
+}
+
 const LEARNED_REWARD_PATHS=new Map();
 function rewardPathKey(contract,selector){return `${norm(contract||'')}|${String(selector||'').toLowerCase()}`}
 function learnedRewardPath(contract,selector){return LEARNED_REWARD_PATHS.get(rewardPathKey(contract,selector))||null}
@@ -579,57 +642,21 @@ async function deriveUnlockFromActualUnstake(lot){
   };
 }
 async function resolveLotContractTiming(lot,latestProbe){
-  // Contract-/positionsbezogene Freigabe hat Priorität.
+  // 1) Echte on-chain Getter haben höchste Priorität.
   let rows=[...(latestProbe?.results||[])];
-  if(lot.stakeBlockHex){
-    const historical=await probeTimingAtBlock(lot,CURRENT_WALLET,lot.stakeBlockHex);
-    if(historical?.length)rows=[...historical,...rows];
-  }
-
+  if(lot.stakeBlockHex){const historical=await probeTimingAtBlock(lot,CURRENT_WALLET,lot.stakeBlockHex);if(historical?.length)rows=[...historical,...rows]}
   const unlock=rows.map(r=>({r,ts:timestampFromProbeResult(r)})).find(x=>x.ts);
-  if(unlock){
-    lot.expiryTime=new Date(unlock.ts*1000).toISOString();
-    lot.durationDays=lot.stakeTime?
-      (unlock.ts*1000-new Date(lot.stakeTime).getTime())/86400000:null;
-    lot.durationSource=`On-chain ${unlock.r.label}${lot.stakeBlockHex?' @ Stake-Block':''}`;
-    return;
-  }
-
+  if(unlock){lot.expiryTime=new Date(unlock.ts*1000).toISOString();lot.durationDays=lot.stakeTime?(unlock.ts*1000-new Date(lot.stakeTime).getTime())/86400000:null;lot.lockDurationSeconds=lot.durationDays!=null?Math.round(lot.durationDays*86400):null;lot.durationSource=`On-chain ${unlock.r.label}${lot.stakeBlockHex?' @ Stake-Block':''}`;lot.durationEvidence='direct_getter';lot.durationConfidence='strong';return}
   const duration=rows.map(r=>({r,sec:secondsDurationFromProbeResult(r)})).find(x=>x.sec);
-  if(duration&&(lot.lockBaseTime||lot.stakeTime)){
-    const baseTime=lot.lockBaseTime||lot.stakeTime;
-    lot.durationDays=duration.sec/86400;
-    lot.expiryTime=new Date(new Date(baseTime).getTime()+duration.sec*1000).toISOString();
-    lot.durationSource=`On-chain ${duration.r.label}${lot.stakeBlockHex?' @ Stake-Block':''}`;
-    return;
-  }
+  if(duration&&(lot.lockBaseTime||lot.stakeTime)){const baseTime=lot.lockBaseTime||lot.stakeTime;lot.durationDays=duration.sec/86400;lot.lockDurationSeconds=duration.sec;lot.expiryTime=new Date(new Date(baseTime).getTime()+duration.sec*1000).toISOString();lot.durationSource=`On-chain ${duration.r.label}${lot.stakeBlockHex?' @ Stake-Block':''}`;lot.durationEvidence='direct_getter';lot.durationConfidence='strong';return}
 
-  // Contract-/Generations-spezifisch dokumentierte Laufzeit. Diese Ebene kommt
-  // erst nach echten On-chain Gettern, aber VOR der historischen Unstake-Simulation.
-  // Eine Simulation des späteren tatsächlichen Unstakes ist KEIN Beweis für die
-  // vertragliche Laufzeit und darf durationDays/expiryTime daher nicht setzen.
-  const verifiedRule=await verifiedDurationRuleForLot(lot);
-  if(verifiedRule&&(lot.lockBaseTime||lot.stakeTime)){
-    const baseTime=lot.lockBaseTime||lot.stakeTime;
-    lot.durationDays=verifiedRule.days;
-    lot.expiryTime=new Date(new Date(baseTime).getTime()+verifiedRule.days*86400000).toISOString();
-    lot.durationRule=verifiedRule;
-    lot.durationSource=`${verifiedRule.source}${verifiedRule.bytecodeEvidence?' · 367-Tage-Sekundenkonstante zusätzlich im Runtime-Bytecode gefunden':''}`;
-  }
+  // 2) Keine bekannte Tageszahl einsetzen. Automatische Archive-State-/Revert→Success-Engine.
+  const auto=await resolveAutomaticLotLock(lot);lot.lockEvidence=auto;
+  if(auto?.found){lot.durationDays=auto.elapsedDays;lot.lockDurationSeconds=auto.elapsedSeconds;lot.expiryTime=auto.unlockTime;lot.lastLockedBlock=auto.lastLockedBlock??null;lot.firstUnlockedBlock=auto.firstUnlockedBlock??null;lot.implementationStable=auto.implementationStable??null;lot.durationEvidence=auto.evidence;lot.durationConfidence=auto.confidence;lot.durationSource=auto.mode==='stored-end-timestamp'?'On-chain Wallet-Mapping: gespeicherter End-Timestamp':`On-chain historische Unstake-Grenze · letzter Lock-Revert Block ${auto.lastLockedBlock} → erster Erfolg Block ${auto.firstUnlockedBlock}`;return}
 
-  // Historische Unstake-Simulation nur noch als Diagnose/Gegenprobe speichern.
-  // Sie beantwortet: "ab welchem archivierten Zustand lässt sich genau diese spätere
-  // Unstake-Tx simulieren?" – nicht: "wann endete der Vertrag?".
-  const replay=await deriveUnlockFromActualUnstake(lot);
-  if(replay){
-    lot.unstakeReplay=replay;
-    if(!replay.exact)lot.contractEndUpperBound=replay;
-  }
-  if(lot.durationDays!=null&&lot.expiryTime)return;
-
-  lot.durationDays=null;
-  lot.expiryTime=null;
-  lot.durationSource=null;
+  // 3) Die alte Replay-Funktion bleibt nur Diagnose und darf keine Vertragsdauer setzen.
+  const replay=await deriveUnlockFromActualUnstake(lot);if(replay){lot.unstakeReplay=replay;if(!replay.exact)lot.contractEndUpperBound=replay}
+  lot.durationDays=null;lot.lockDurationSeconds=null;lot.expiryTime=null;lot.durationSource=null;lot.durationEvidence=null;lot.durationConfidence=null;
 }
 async function loadLotScDetails(index){
  const lot=CURRENT_STAKING_LOTS[index],box=$(`scBox${index}`);if(!lot||!box||box.dataset.loaded==='1')return;
@@ -1522,7 +1549,7 @@ async function enrichLotsBusiness(lots,pricePairs){
     lot.businessProbe=probe;
     await resolveLotContractTiming(lot,probe);
     if(lot.expiryTime){
-      log(`SC-Laufzeit ermittelt: ${safePairLabel(lot)} · ${lot.durationDays!=null?lot.durationDays.toLocaleString('de-CH',{maximumFractionDigits:3})+' Tage · ':''}${new Date(lot.expiryTime).toLocaleString('de-CH')} · ${lot.durationSource}`,'ok');
+      log(`SC-Laufzeit ermittelt: ${safePairLabel(lot)} · ${lot.durationDays!=null?lot.durationDays.toLocaleString('de-CH',{maximumFractionDigits:6})+' Tage · ':''}${new Date(lot.expiryTime).toLocaleString('de-CH')} · ${lot.durationSource}${lot.durationConfidence?` · Evidenz ${lot.durationConfidence}`:''}`,'ok');
     }else if(lot.contractEndUpperBound){
       log(`SC-Vertragsende nicht exakt eingrenzbar: ${safePairLabel(lot)} · tatsächlicher Unstake war erfolgreich, aber der vorherige Block lässt sich nicht als bereits freigegeben bestätigen.`,'warn');
     }else{
@@ -3614,6 +3641,9 @@ function positionCardHtml(l,index,isClosed){
       <div class="stake-fact"><span class="k">LP aktuell offen</span><span class="v">${Number(l.remaining||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
       <div class="stake-fact"><span class="k">Vertragliche Staking-Laufzeit</span><span class="v">${l.durationDays!=null?`${l.durationDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span><div class="value-source">${l.lockBaseReason?`${esc(l.lockBaseReason)} · `:''}${l.durationSource?esc(l.durationSource):'Keine belastbare vertragliche Laufzeit ermittelbar.'}</div></div>
       <div class="stake-fact"><span class="k">Vertragliches Laufzeitende</span><span class="v">${l.expiryTime?new Date(l.expiryTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">${l.expiryTime?esc(l.durationSource||'Belastbar ermittelt'):'Keine belastbare Freigabe/Laufzeit ermittelbar.'}</div></div>
+      ${l.durationEvidence?`<div class="stake-fact"><span class="k">Lock-Evidenz</span><span class="v">${esc(l.durationEvidence)}</span><div class="value-source">Konfidenz: ${esc(l.durationConfidence||'–')}${l.implementationStable!=null?` · Contract/Implementation über Grenze ${l.implementationStable?'unverändert':'nicht stabil'}`:''}</div></div>`:''}
+      ${l.lastLockedBlock!=null?`<div class="stake-fact"><span class="k">Letzter gesperrter Block</span><span class="v">${esc(l.lastLockedBlock)}</span></div>`:''}
+      ${l.firstUnlockedBlock!=null?`<div class="stake-fact"><span class="k">Erster erfolgreicher Unstake-Block</span><span class="v">${esc(l.firstUnlockedBlock)}</span></div>`:''}
       <div class="stake-fact"><span class="k">USD-Wert beim Vertragsende</span>${contractEndValue}</div>
       ${l.unstakeReplay?.exact?`<div class="stake-fact"><span class="k">Historische Unstake-Simulation (Diagnose)</span><span class="v">${l.unstakeReplay.expiryTime?new Date(l.unstakeReplay.expiryTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">Nur technische Gegenprobe mit der späteren tatsächlichen Unstake-Tx; <b>keine Vertragslaufzeit</b>. ${esc(l.unstakeReplay.source||'')}</div></div>`:''}
       ${isClosed?`<div class="stake-fact"><span class="k">Tatsächliches Unstake-Datum</span><span class="v">${l.unstakeTime?new Date(l.unstakeTime).toLocaleString('de-CH'):'–'}</span></div><div class="stake-fact"><span class="k">USD-Wert beim tatsächlichen Unstake</span>${unstakeValue}</div><div class="stake-fact"><span class="k">Gesamtdauer erster Stake → Unstake</span><span class="v">${actualDays!=null?`${actualDays} Tage`:'–'}</span></div>${(l.topUps||[]).length?`<div class="stake-fact"><span class="k">Dauer letzte Aufstockung → Unstake</span><span class="v">${actualLockDays!=null?`${actualLockDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span></div>`:''}`:''}
