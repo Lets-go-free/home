@@ -25,7 +25,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Referral Reward Test</h1>
   <div class="muted">Isolierter Referral-Test: einzelne Stake-Tx analysieren oder Referral-Rewards eines Wallets aus eingehenden Mints ermitteln. Der normale Reward-Claim-Code bleibt unverändert.</div>
-  <div class="muted">Entwicklungsstand 01.09.2026 03:42:34 CEST</div>
+  <div class="muted">Entwicklungsstand 01.09.2026 03:53:39 CEST</div>
 
   <div class="tabs">
     <button class="tabbtn active" data-tab="single">Einzelne Referral-/Stake-Tx</button>
@@ -94,13 +94,22 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='01.09.2026 03:42:34 CEST';
+const APP_VERSION='01.09.2026 03:53:39 CEST';
 const tokenMetaCache=new Map();
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 let currentUserId=null;
 let rpcUrl=null;
 let rpcCandidates=[];
 let activeRpcIndex=0;
+let referralRpcStatsActive=false;
+let referralRpcStats=Object.create(null);
+function resetReferralRpcStats(){referralRpcStats=Object.create(null)}
+function countReferralRpc(method){if(referralRpcStatsActive)referralRpcStats[method]=(referralRpcStats[method]||0)+1}
+function referralRpcStatsText(){
+  const entries=Object.entries(referralRpcStats).sort((a,b)=>b[1]-a[1]);
+  const total=entries.reduce((n,[,v])=>n+v,0);
+  return {total,detail:entries.map(([k,v])=>`${k}=${v}`).join(', ')};
+}
 function uniq(a){return [...new Set(a.filter(Boolean))]}
 const $=id=>document.getElementById(id);
 const norm=x=>String(x||'').toLowerCase();
@@ -108,6 +117,7 @@ const esc=x=>String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&
 const short=x=>x?`${x.slice(0,8)}…${x.slice(-6)}`:'–';
 function log(s){$('log').textContent+=`[${new Date().toLocaleTimeString('de-CH')}] ${s}\n`}
 async function rpcOn(url,method,params=[]){
+  countReferralRpc(method);
   const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
   const j=await r.json().catch(()=>({}));
   if(!r.ok||j.error)throw new Error(j?.error?.message||`HTTP ${r.status}`);
@@ -636,6 +646,15 @@ async function classifyReferralMintTx(hash,wallet,stakingMap){
     sender=sender||norm(tx.from);to=to||norm(tx.to);blockNumber=blockNumber||tx.blockNumber;
   }
 
+  // Eigene Tx sind per Definition keine Referral-Rewards für das untersuchte Wallet.
+  // In alchemy_getAssetTransfers kann tx.from nicht direkt ausgeschlossen werden, weil
+  // fromAddress dort den ERC-20-Transfer-Absender bezeichnet (bei Mint = Zero Address).
+  // receipt.from ist deshalb der früheste belastbare Filterpunkt. Danach werden für
+  // eigene Tx keine Token-Metadaten, Stake-Events oder weitere Fallback-Reads mehr gemacht.
+  if(sender===norm(wallet)){
+    return {excluded:true,excludeReason:'own_tx_sender',hash,sender,to};
+  }
+
   const allowed=new Set((await referralRewardTokenContracts()).map(x=>x.address));
   const mints=(await mintTransfersToWalletFromReceipt(receipt,wallet)).filter(x=>allowed.has(x.token));
   if(!mints.length)return null;
@@ -695,6 +714,7 @@ async function classifyReferralMintTx(hash,wallet,stakingMap){
 function fmtTime(ts){return new Date(ts*1000).toLocaleString('de-CH')}
 async function scanReferralWallet(){
   const btn=$('scanWallet');btn.disabled=true;$('walletLog').textContent='';setWalletProgress(0);
+  resetReferralRpcStats();referralRpcStatsActive=true;
   $('walletSummary').innerHTML='<span class="muted">Lädt…</span>';
   $('walletRewards').innerHTML='<span class="muted">Lädt…</span>';
   $('walletCandidates').innerHTML='<span class="muted">Lädt…</span>';
@@ -721,15 +741,18 @@ async function scanReferralWallet(){
     const stakingMap=await knownStakingMap();
     walletLog(`${stakingMap.size} bekannte TLN/VOW-Staking-Contracts geladen.`);
     const rows=[];
+    let ownTxExcluded=0;
     for(let i=0;i<hashes.length;i++){
       $('walletStatus').textContent=`Prüfe Mint-Tx ${i+1}/${hashes.length}…`;
       try{
         const r=await classifyReferralMintTx(hashes[i],wallet,stakingMap);
-        if(r)rows.push(r);
+        if(r?.excluded && r.excludeReason==='own_tx_sender')ownTxExcluded++;
+        else if(r)rows.push(r);
       }catch(e){walletLog(`Tx ${short(hashes[i])}: ${e.message}`)}
       setWalletProgress(Math.max(20,20+80*(i+1)/Math.max(1,hashes.length)));
     }
     rows.sort((a,b)=>a.timestamp-b.timestamp);
+    walletLog(`Eigene Mint-/Staking-Tx früh ausgefiltert: ${ownTxExcluded}. Sie erscheinen in keiner Referral-Tabelle.`);
 
     // Zentrale Schlussklassifikation. Wichtig für neuere Staking-Varianten:
     // Ein passendes Stake-Event des aufgerufenen Contracts ist selbst ein Staking-Nachweis,
@@ -772,6 +795,7 @@ async function scanReferralWallet(){
       <div class="kv"><b>Wallet</b><span class="mono">${esc(wallet)}</span></div>
       <div class="kv"><b>Scan-Modus</b>${esc(mode)}</div>
       <div class="kv"><b>Eingehende Mint-Tx gefunden</b>${hashes.length}</div>
+      <div class="kv"><b>Eigene Tx ausgefiltert</b>${ownTxExcluded}</div>
       <div class="kv"><b>Starke Referral-Tx</b>${strong.length}</div>
       <div class="kv"><b>Referral-Reward-Mints</b>${rewardCount}</div>
       <div class="kv"><b>Nicht eindeutig</b>${candidates.length}</div>
@@ -795,12 +819,14 @@ async function scanReferralWallet(){
     $('walletRewards').innerHTML=renderRows(stakerFilter?strong.filter(r=>norm(r.sender).includes(stakerFilter)):strong);
     $('walletCandidates').innerHTML=renderRows(candidates);
     walletLog('TLN-ID-Regel: ausschließlich Supabase-Cache; On-chain-/RPC-Abfragen für TLN IDs sind deaktiviert.');
+    const rpcStats=referralRpcStatsText();
+    walletLog(`RPC-Statistik dieses Scans: ${rpcStats.total} Provider-Requests${rpcStats.detail?` · ${rpcStats.detail}`:''}. Alchemy AssetTransfers separat.`);
     $('walletStatus').innerHTML='<span class="ok">Referral-Walletscan abgeschlossen.</span>';
     setWalletProgress(100);
   }catch(e){
     $('walletStatus').innerHTML=`<span class="bad">${esc(e.message)}</span>`;
     walletLog('FEHLER: '+e.message);
-  }finally{btn.disabled=false}
+  }finally{referralRpcStatsActive=false;btn.disabled=false}
 }
 
 async function analyze(){
