@@ -42,8 +42,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .reward-token-card{padding:9px 11px;border:1px solid #2d384a;border-radius:8px;background:rgba(255,255,255,.02)}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 01.09.2026 23:46:00 CEST</div>
-<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 01.09.2026:</b> Die verifizierte automatische On-Chain-Lockdauer-Ermittlung aus dem isolierten Duration-Test ist in die Lot-Pipeline integriert. Contract-spezifische 367-Tage-Vorgaben sind aus dem Laufzeit-Entscheidungsweg entfernt. Für geschlossene Positionen wird die Wallet-Staking-Struktur historisch erkannt, die erste tatsächliche Positionsauflösung gesucht und die echte spätere Unstake-Transaktion per historischem <code>eth_call</code> zwischen Lock-Revert und erstem Erfolg im Blockraum binär eingegrenzt. Provider-/Envelopefehler zählen nicht als Lock-Evidenz. Tatsächliche Positionsdauer und vertragliche Mindest-Lockdauer bleiben getrennt.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 00:21:39 CEST</div>
+<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026:</b> Die verifizierte automatische On-Chain-Lockdauer-Ermittlung aus dem Duration-Test bleibt unverändert Basis der Lot-Pipeline. Die Chain-Abfragen wurden jetzt nach den bereits getesteten Spezialfiles konsolidiert: historische Transaction-/Receipt-Abfragen verwenden den schnellen Provider-Failover des Claim-Tests (pro Provider ein Versuch, bei null sofort weiter, erfolgreicher Fallback wird für den laufenden Scan bevorzugt) und werden pro Session gecacht/dedupliziert. <code>eth_call</code> behält den Session-/Inflight-Cache, übernimmt aber die Claim-Test-Regel, semantische Reverts nicht auf anderen Providern erneut zu probieren; nur echte Provider-/Netzwerkfehler lösen Fallback aus und werden nicht als Revert gecacht. Die LP-Discovery prüft Kandidaten jetzt zweistufig (zuerst nur token0/token1; Factory/Decimals/Metadaten erst bei relevantem Treffer) und cached Token-Metadaten wie im Claim-Test. Archive-State, historische Storage-Reads und die Lockgrenzen-Suche bleiben am bewährten NodeReal-Pfad des Duration-Tests. Contract-spezifische 367-Tage-Vorgaben bleiben ausgeschlossen; tatsächliche Positionsdauer und Mindest-Lockdauer bleiben getrennt.</p>
 <p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -160,9 +160,16 @@ function log(s,cls=''){const t=new Date().toLocaleTimeString('de-CH');$('log').i
 <span class="${cls}">[${t}] ${esc(s)}</span>`}
 const ETH_CALL_SESSION_CACHE=new Map();
 const ETH_CALL_INFLIGHT=new Map();
+const TX_RPC_SESSION_CACHE=new Map();
+const TX_RPC_INFLIGHT=new Map();
 const ETH_CALL_STATS={total:0,network:0,hits:0,reverts:0};
+let rpcCandidates=[];
 function stableRpcKeyPart(v){if(v==null)return '';if(typeof v==='string')return v.toLowerCase();if(Array.isArray(v))return '['+v.map(stableRpcKeyPart).join(',')+']';if(typeof v==='object')return '{'+Object.keys(v).sort().map(k=>`${k}:${stableRpcKeyPart(v[k])}`).join(',')+'}';return String(v)}
 function ethCallSessionKey(params){return stableRpcKeyPart(params||[])}
+function txRpcSessionKey(method,params){return `${method}|${stableRpcKeyPart(params||[])}`}
+function uniqueRpcUrls(a){return [...new Set((a||[]).filter(Boolean))]}
+function maskedRpcUrl(url){return String(url||'').replace(/([?&](?:key|token)=)[^&]+/ig,'$1***').replace(/\/v1\/[A-Za-z0-9_-]{20,}$/,'/v1/***')}
+function isSemanticRevert(e){const m=String(e?.message||e||'').toLowerCase();return m.includes('execution reverted')||m.includes('revert')||m.includes('invalid opcode')}
 async function rpcNetworkAt(url,method,params=[],timeoutMs=18000){
  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),timeoutMs);
  try{
@@ -171,28 +178,51 @@ async function rpcNetworkAt(url,method,params=[],timeoutMs=18000){
   const j=await r.json();if(j.error)throw new Error(`${method}: ${j.error.message} (Code ${j.error.code})`);return j.result??null;
  }catch(e){if(e?.name==='AbortError')throw new Error(`${method}: Zeitüberschreitung`);throw e}finally{clearTimeout(timer)}
 }
-async function rpcNetwork(method,params=[]){return rpcNetworkAt(rpcUrl,method,params)}
 function rpcFallbackUrl(){const b=String(alchemyBase||'').trim();if(!b)return null;const v=b.includes(ALCHEMY_API_KEY)?b:b.replace(/\/+$/,'')+'/'+encodeURIComponent(ALCHEMY_API_KEY);return v&&v!==rpcUrl?v:null}
+function orderedRpcUrls(){return uniqueRpcUrls([rpcUrl,...rpcCandidates,rpcFallbackUrl()])}
+function promoteRpc(url,reason){if(!url||url===rpcUrl)return;rpcUrl=url;rpcCandidates=uniqueRpcUrls([url,...rpcCandidates]);log(`RPC-Fallback aktiv${reason?` (${reason})`:''}: ${maskedRpcUrl(url)}`,'warn')}
 async function resilientTxRpc(method,params=[]){
- const providers=[{name:'Primär-RPC',url:rpcUrl},...(rpcFallbackUrl()?[{name:'Fallback-RPC',url:rpcFallbackUrl()}]:[])].filter(x=>x.url);
- const errors=[];
- for(const p of providers){
-  for(let attempt=1;attempt<=3;attempt++){
-   try{const value=await rpcNetworkAt(p.url,method,params);if(value!=null){if(attempt>1||p.name!=='Primär-RPC')log(`${method}: erfolgreich über ${p.name} (Versuch ${attempt}).`,'warn');return value}errors.push(`${p.name} Versuch ${attempt}: null`);log(`${method}: ${p.name} lieferte null (Versuch ${attempt}); weiterer Versuch/Fallback.`,'warn')}
-   catch(e){errors.push(`${p.name} Versuch ${attempt}: ${e.message}`);log(`${method}: ${p.name} Versuch ${attempt} fehlgeschlagen: ${e.message}`,'warn')}
-   if(attempt<3)await new Promise(r=>setTimeout(r,250*attempt));
+ const key=txRpcSessionKey(method,params);
+ if(TX_RPC_SESSION_CACHE.has(key))return TX_RPC_SESSION_CACHE.get(key);
+ if(TX_RPC_INFLIGHT.has(key))return TX_RPC_INFLIGHT.get(key);
+ const work=(async()=>{
+  const errors=[];
+  for(const url of orderedRpcUrls()){
+   try{
+    const value=await rpcNetworkAt(url,method,params);
+    if(value==null){errors.push(`${maskedRpcUrl(url)}: null`);continue}
+    TX_RPC_SESSION_CACHE.set(key,value);
+    if(url!==rpcUrl)promoteRpc(url,'historische Tx/Receipt');
+    return value;
+   }catch(e){errors.push(`${maskedRpcUrl(url)}: ${e.message}`)}
+  }
+  const what=method==='eth_getTransactionReceipt'?'Transaction Receipt':'Transaktion';
+  const err=new Error(`${what} konnte über die konfigurierten BSC-RPCs nicht geladen werden.`);err.rpcAttempts=errors;throw err;
+ })();
+ TX_RPC_INFLIGHT.set(key,work);
+ try{return await work}finally{TX_RPC_INFLIGHT.delete(key)}
+}
+async function resilientEthCall(params=[]){
+ let lastErr=null;
+ for(const url of orderedRpcUrls()){
+  try{
+   const value=await rpcNetworkAt(url,'eth_call',params);
+   if(url!==rpcUrl)promoteRpc(url,'eth_call Provider-Fallback');
+   return value;
+  }catch(e){
+   lastErr=e;
+   if(isSemanticRevert(e))throw e;
   }
  }
- const what=method==='eth_getTransactionReceipt'?'Transaction Receipt':'Transaktion';
- const err=new Error(`${what} konnte über die konfigurierten BSC-RPCs nicht geladen werden. Ein einzelnes RPC-null gilt nicht als "nicht vorhanden".`);err.rpcAttempts=errors;throw err;
+ throw lastErr||new Error('eth_call: Kein RPC-Provider verfügbar');
 }
 async function rpc(method,params=[]){
  if(method==='eth_getTransactionReceipt'||method==='eth_getTransactionByHash')return resilientTxRpc(method,params);
- if(method!=='eth_call')return rpcNetwork(method,params);
+ if(method!=='eth_call')return rpcNetworkAt(rpcUrl,method,params);
  ETH_CALL_STATS.total++;const key=ethCallSessionKey(params);
  if(ETH_CALL_SESSION_CACHE.has(key)){ETH_CALL_STATS.hits++;const x=ETH_CALL_SESSION_CACHE.get(key);if(x.ok)return x.value;const e=new Error(x.message||'execution reverted');e.cached=true;throw e}
  if(ETH_CALL_INFLIGHT.has(key)){ETH_CALL_STATS.hits++;return ETH_CALL_INFLIGHT.get(key)}
- const p=(async()=>{ETH_CALL_STATS.network++;try{const value=await rpcNetwork(method,params);ETH_CALL_SESSION_CACHE.set(key,{ok:true,value});return value}catch(e){ETH_CALL_STATS.reverts++;ETH_CALL_SESSION_CACHE.set(key,{ok:false,message:String(e?.message||e||'execution reverted')});throw e}finally{ETH_CALL_INFLIGHT.delete(key);if(ETH_CALL_STATS.total%250===0)log(`RPC-Performance: eth_call ${ETH_CALL_STATS.total} · Netzwerk ${ETH_CALL_STATS.network} · Cache-Hits ${ETH_CALL_STATS.hits} · Reverts ${ETH_CALL_STATS.reverts}`,'ok')}})();ETH_CALL_INFLIGHT.set(key,p);return p
+ const p=(async()=>{ETH_CALL_STATS.network++;try{const value=await resilientEthCall(params);ETH_CALL_SESSION_CACHE.set(key,{ok:true,value});return value}catch(e){if(isSemanticRevert(e)){ETH_CALL_STATS.reverts++;ETH_CALL_SESSION_CACHE.set(key,{ok:false,message:String(e?.message||e||'execution reverted')})}throw e}finally{ETH_CALL_INFLIGHT.delete(key);if(ETH_CALL_STATS.total%250===0)log(`RPC-Performance: eth_call ${ETH_CALL_STATS.total} · Netzwerk ${ETH_CALL_STATS.network} · Cache-Hits ${ETH_CALL_STATS.hits} · Reverts ${ETH_CALL_STATS.reverts}`,'ok')}})();ETH_CALL_INFLIGHT.set(key,p);return p
 }
 async function v2call(to,fn,args=[]){const data=V2.encodeFunctionData(fn,args);const raw=await rpc('eth_call',[{to,data},'latest']);return V2.decodeFunctionResult(fn,raw)}
 async function v2callAt(to,fn,args=[],blockTag='latest'){const data=V2.encodeFunctionData(fn,args);const raw=await rpc('eth_call',[{to,data},blockTag]);return V2.decodeFunctionResult(fn,raw)}
@@ -202,7 +232,14 @@ async function tokenMetaAt(a,blockTag='latest'){
   try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('decimals',[])},blockTag]);decimals=Number(ERC20.decodeFunctionResult('decimals',raw)[0])}catch{try{const m=await tokenMeta(a);decimals=m.decimals}catch{}}
   return{address:norm(a),symbol,decimals};
 }
-async function tokenMeta(a){let symbol=a.slice(0,8)+'…',decimals=18;try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('symbol',[])},'latest']);symbol=ERC20.decodeFunctionResult('symbol',raw)[0]}catch{}try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('decimals',[])},'latest']);decimals=Number(ERC20.decodeFunctionResult('decimals',raw)[0])}catch{}return{address:norm(a),symbol,decimals}}
+const TOKEN_META_CACHE=new Map();
+async function tokenMeta(a){
+ a=norm(a);if(TOKEN_META_CACHE.has(a))return TOKEN_META_CACHE.get(a);
+ let symbol=a.slice(0,8)+'…',decimals=18;
+ try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('symbol',[])},'latest']);symbol=ERC20.decodeFunctionResult('symbol',raw)[0]}catch{}
+ try{const raw=await rpc('eth_call',[{to:a,data:ERC20.encodeFunctionData('decimals',[])},'latest']);decimals=Number(ERC20.decodeFunctionResult('decimals',raw)[0])}catch{}
+ const meta={address:a,symbol,decimals};TOKEN_META_CACHE.set(a,meta);return meta
+}
 async function alchemy(method,params=[]){if(!alchemyBase)throw new Error('Alchemy Discovery-API für BSC fehlt in public.chains.');const url=alchemyBase.replace(/\/+$/,'')+'/'+encodeURIComponent(ALCHEMY_API_KEY);const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok)throw new Error(`Alchemy HTTP ${r.status}`);const j=await r.json();if(j.error)throw new Error(`Alchemy ${method}: ${j.error.message}`);return j.result}
 const ERC20_TRANSFER_SESSION_CACHE=new Map();
 function transferIdentity(t){const c=norm(t?.rawContract?.address);return t?.uniqueId||`${String(t?.hash||'').toLowerCase()}|${c}|${norm(t?.from)}|${norm(t?.to)}|${t?.rawContract?.value||t?.value||''}`}
@@ -1161,7 +1198,19 @@ async function discoverPairsFromStakeTransactions(calls,transfers,pairMap,projec
   }
   return added;
 }
-async function inspectCandidate(address,projectSet){try{const [t0,t1,factory,lpDec]=await Promise.all([v2call(address,'token0'),v2call(address,'token1'),v2call(address,'factory'),v2call(address,'decimals')]);const a0=norm(t0[0]),a1=norm(t1[0]);const hits=[a0,a1].filter(a=>projectSet.has(a));if(!hits.length)return null;const [m0,m1,lpMeta]=await Promise.all([tokenMeta(a0),tokenMeta(a1),tokenMeta(address)]);return{address:norm(address),token0:m0,token1:m1,factory:norm(factory[0]),lpDecimals:Number(lpDec[0]),lpSymbol:lpMeta.symbol,hits}}catch{return null}}
+async function inspectCandidate(address,projectSet){
+ try{
+  // Aus dem Claim-Test-Prinzip übernommen: zunächst nur die zwei billigsten/entscheidenden
+  // Pair-Getter. Factory/Decimals/Metadaten erst laden, wenn der Pool für TLN/VOW relevant ist.
+  const [t0,t1]=await Promise.all([v2call(address,'token0'),v2call(address,'token1')]);
+  const a0=norm(t0[0]),a1=norm(t1[0]);
+  const hits=[a0,a1].filter(a=>projectSet.has(a));if(!hits.length)return null;
+  const [factory,lpDec,m0,m1,lpMeta]=await Promise.all([
+    v2call(address,'factory'),v2call(address,'decimals'),tokenMeta(a0),tokenMeta(a1),tokenMeta(address)
+  ]);
+  return{address:norm(address),token0:m0,token1:m1,factory:norm(factory[0]),lpDecimals:Number(lpDec[0]),lpSymbol:lpMeta.symbol,hits}
+ }catch{return null}
+}
 function transferAmount(t,p){const raw=t.rawContract?.value;const dec=Number(t.rawContract?.decimal||p.lpDecimals||18);if(raw!=null){try{return Number(ethers.formatUnits(BigInt(raw),dec))}catch{}}return Number(t.value||0)}
 function classify(t,p,stakeMap,wallet){const from=norm(t.from),to=norm(t.to),w=norm(wallet);const cp=from===w?to:from;let action=from===w?'Versenden':'Empfangen',staking=null;if(from===ZERO&&to===w)action='Add Liquidity';else if(to===ZERO&&from===w)action='Remove Liquidity';else if(from===w&&stakeMap.has(to)){action='Stake';staking=stakeMap.get(to)}else if(to===w&&stakeMap.has(from)){action='Unstake';staking=stakeMap.get(from)}return{action,counterparty:cp,staking}}
 function renderEvents(transfers,pairMap,wallet){const stakeMap=new Map(stakingContracts.filter(x=>x.classify_transfers).map(x=>[norm(x.contract_address),x]));const rows=[];for(const t of transfers){const p=pairMap.get(norm(t.rawContract?.address));if(!p)continue;const c=classify(t,p,stakeMap,wallet);rows.push({t,p,...c,amount:transferAmount(t,p)})}rows.sort((a,b)=>String(a.t.metadata?.blockTimestamp||'').localeCompare(String(b.t.metadata?.blockTimestamp||'')));$('events').innerHTML=rows.length?rows.map(r=>{const ts=r.t.metadata?.blockTimestamp?new Date(r.t.metadata.blockTimestamp).toLocaleString('de-CH'):'–';const block=r.t.blockNum?parseInt(r.t.blockNum,16):'–';const cls=r.action==='Stake'?'ok':r.action==='Unstake'?'warn':'';return `<tr><td>${esc(ts)}</td><td class="${cls}"><b>${esc(r.action)}</b></td><td>${esc(safePairLabel(r))}<div class="mono">${esc(safePairAddress(r))}</div></td><td>${r.amount.toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="mono">${esc(r.counterparty)}</td><td>${r.staking?esc(r.staking.label):'–'}</td><td>${esc(block)}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.t.hash)}">${esc(r.t.hash)}</a></td></tr>`}).join(''):'<tr><td colspan="8">Keine TLN/VOW-LP-Ereignisse gefunden.</td></tr>';return rows}
@@ -4158,7 +4207,18 @@ async function init(){
     $('status').innerHTML=`<span class="err">DB-Fehler: ${esc(dbErr.message||String(dbErr))}${esc(extra)}</span>`;
     return;
   }
-  rpcUrl=cr.data.rpc_url;alchemyBase=String(cr.data.discovery_provider||'').toLowerCase()==='alchemy'?cr.data.discovery_api_base:null;if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;allProjectRows=pt.data||[];loadHistoricalStakingAssets(allProjectRows);
+  rpcUrl=cr.data.rpc_url;alchemyBase=String(cr.data.discovery_provider||'').toLowerCase()==='alchemy'?cr.data.discovery_api_base:null;if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;
+  // Direkt aus dem verifizierten Claim-Test übernommen: historische Tx/Receipts
+  // wechseln bei null/Fehler sofort zum nächsten Provider, statt denselben Provider
+  // mehrfach zu blockieren. Ein erfolgreicher Fallback wird für den laufenden Scan bevorzugt.
+  rpcCandidates=uniqueRpcUrls([
+    rpcUrl,
+    'https://bsc-dataseed.binance.org/',
+    'https://bsc-dataseed1.defibit.io/',
+    'https://bsc-dataseed1.ninicoin.io/',
+    rpcFallbackUrl()
+  ]);
+  allProjectRows=pt.data||[];loadHistoricalStakingAssets(allProjectRows);
     // Visible TLN/VOW project assets and technical discovery assets are different universes.
     // `tln_vow_category` is the project-specific classification; fall back to
     // `defi_category` for older rows.
