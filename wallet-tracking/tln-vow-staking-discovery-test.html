@@ -50,8 +50,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 21:28:00 CEST</div>
-<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 21:28:00 CEST:</b> <b>Build-ID 20260902-212800.</b> Schritt 3 für den Erstlauf request-optimiert: potentielle Legacy-Top-ups werden nicht mehr zunächst als mehrere vollständige Duration-Läufe analysiert. Nach einem belastbaren Basis-Strict-Proof werden Folgestakes mit dem bereits erkannten Wallet-Mapping-Root und nur den bekannten Kern-/Timestamp-Offsets unmittelbar vor/nach dem Stake geprüft; zusätzlich wird der historische Contract-/Proxy-Implementation-Fingerprint zwischen den Stakes verglichen. Bei identischem Positions-State, aktivem bisherigen Lock und stabilem Contract wird dieselbe verifizierte Lockregel auf den Top-up-Zeitpunkt rebasiert. Eine zweite vollständige CoreChange-/Unstake-Binärsuche entfällt. Bei unklarer Evidenz bleibt der sichere Vollanalyse-Fallback erhalten. Duration-Cache auf v2-topup versioniert. Legacy-Top-up-Rekonstruktion ergänzt: Schritt 2 lässt mehrdeutige wiederholte Stakes zunächst getrennt. Schritt 3 vergleicht anschließend mit der vollständigen Duration-/Archive-State-Referenzengine die Wallet-Mapping-Struktur vor/nach den Stakes. Nur wenn Mapping-Root und Timestamp-Offset identisch sind, der erste Positions-State bis unmittelbar vor den Folgestake fortbesteht, derselbe State beim Folgestake geändert und der Start-Timestamp auf den Folgestake zurückgesetzt wird UND der Folgestake noch innerhalb der belastbar ermittelten bisherigen Lockperiode liegt, werden die Lots als On-Chain-bestätigter Top-up zusammengeführt. Explizite Position-IDs bleiben vorrangig und werden nie über diese Legacy-Regel vermischt. Cache-/Request-Optimierung Schritt 2 erweitert: Registry wird vor Alchemy anhand Wallet-/Pair-Evidenz vorgefiltert (mit sicherem Voll-Registry-Fallback), verifizierte aktuelle LP-Chain-Fakten werden persistent gebündelt gecacht, historische Tx-/Receipt-Chain-Fakten werden pro Wallet persistent gebündelt gecacht, Positions-Receipts werden zwischen Decoder und Stake-Fallback wiederverwendet. Cache-Invalidierung ist versionsbasiert; nur rohe immutable Chain-Fakten werden gecacht, fachliche Klassifizierungen werden bei jedem Lauf aus aktuellem Code neu berechnet. Prozess-Trennung umgesetzt: Die vollständig übernommenen Referenzengines aus <span class="mono">tln-vow-staking-duration-test.html</span> und <span class="mono">tln-vow-single-claim-trace-test.html</span> werden nicht mehr automatisch in einem einzigen Discovery-Lauf verkettet. Basisdaten, Staking-Erkennung, Lockdauer, eigene Staking-Rewards, Referral-Rewards und historische Bewertung sind sechs manuelle, strikt aufeinander aufbauende Schritte. Ein Schritt startet keinen Folgeschritt. Historische Preis-/getReserves-Abfragen laufen ausschließlich im manuellen Bewertungsschritt. Der persistente Supabase-ERC-20-Chain-Cache wird bereits im Basisschritt genutzt; Tx/Receipt/eth_call-/Metadaten-Caches bleiben sessionweit erhalten. Schritt 2 wurde am 02.09.2026 auf Staking-first-Kandidaten reduziert: der bisherige Wallet-weite V2-LP-Test aller ERC-20-Contracts entfällt; LP-/Legacy-Assets werden nur noch aus direkter Staking-Evidenz, Registry-Evidenz oder konkreten Stake-Txs geprüft. Zusätzlich läuft in Schritt 2 kein historischer eth_getLogs-Deep-Scan mehr: Staking-/Controller-Events werden aus den bereits geladenen Receipts der relevanten Wallet-Txs extrahiert. Seit 02.09.2026 ist auch der Block „Wallet-bezogene Smart-Contract-Events“ in Schritt 2 vollständig aus der aktiven DOM-Struktur genommen; der komplette HTML-Block sowie Aufbau, Lot-Anhängung und Rendering bleiben kommentiert im Quelltext für eine spätere Reward-/Referral-Diagnose erhalten. Zusätzlich werden Yield-/Withdraw-/Claim-Aufrufe in Schritt 2 nicht mehr an Positions-Lots gehängt oder angezeigt. Für nicht positionsrelevante Contract-Aufrufe wird in Schritt 2 auch kein Receipt mehr geladen; die vollständige Contract-Historie bleibt für Schritt 4 erhalten.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 21:35:16 CEST</div>
+<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 21:35:16 CEST:</b> <b>Build-ID 20260902-213516.</b> Schritt-3-Erstlauf grundlegend neu geordnet: mögliche Legacy-Top-ups werden jetzt VOR jeder vollständigen Duration-Analyse per Archive-State-Preflight geprüft. Der Mapping-Root wird am Folgestake ermittelt, der vorherige Stake gezielt am selben Root/Offset verglichen und Contract/Proxy-Fingerprint zwischen den Stakes geprüft. Bei bestätigter Top-up-Kette läuft die vollständige CoreChange-/Unstake-Grenzsuche nur noch einmal auf dem letzten Stake/Top-up; der bereits ermittelte Root wird als Hint wiederverwendet, sodass auch dort keine zweite Root-Suche erfolgt. Erst danach wird mit der streng bewiesenen Lockdauer kontrolliert, ob jeder Top-up noch innerhalb der vorherigen Sperrfrist lag. Cache-Version v3-premerge; alte v1/v2-Duration-Caches werden ignoriert. Schritt 3 für den Erstlauf request-optimiert: potentielle Legacy-Top-ups werden nicht mehr zunächst als mehrere vollständige Duration-Läufe analysiert. Nach einem belastbaren Basis-Strict-Proof werden Folgestakes mit dem bereits erkannten Wallet-Mapping-Root und nur den bekannten Kern-/Timestamp-Offsets unmittelbar vor/nach dem Stake geprüft; zusätzlich wird der historische Contract-/Proxy-Implementation-Fingerprint zwischen den Stakes verglichen. Bei identischem Positions-State, aktivem bisherigen Lock und stabilem Contract wird dieselbe verifizierte Lockregel auf den Top-up-Zeitpunkt rebasiert. Eine zweite vollständige CoreChange-/Unstake-Binärsuche entfällt. Bei unklarer Evidenz bleibt der sichere Vollanalyse-Fallback erhalten. Duration-Cache auf v2-topup versioniert. Legacy-Top-up-Rekonstruktion ergänzt: Schritt 2 lässt mehrdeutige wiederholte Stakes zunächst getrennt. Schritt 3 vergleicht anschließend mit der vollständigen Duration-/Archive-State-Referenzengine die Wallet-Mapping-Struktur vor/nach den Stakes. Nur wenn Mapping-Root und Timestamp-Offset identisch sind, der erste Positions-State bis unmittelbar vor den Folgestake fortbesteht, derselbe State beim Folgestake geändert und der Start-Timestamp auf den Folgestake zurückgesetzt wird UND der Folgestake noch innerhalb der belastbar ermittelten bisherigen Lockperiode liegt, werden die Lots als On-Chain-bestätigter Top-up zusammengeführt. Explizite Position-IDs bleiben vorrangig und werden nie über diese Legacy-Regel vermischt. Cache-/Request-Optimierung Schritt 2 erweitert: Registry wird vor Alchemy anhand Wallet-/Pair-Evidenz vorgefiltert (mit sicherem Voll-Registry-Fallback), verifizierte aktuelle LP-Chain-Fakten werden persistent gebündelt gecacht, historische Tx-/Receipt-Chain-Fakten werden pro Wallet persistent gebündelt gecacht, Positions-Receipts werden zwischen Decoder und Stake-Fallback wiederverwendet. Cache-Invalidierung ist versionsbasiert; nur rohe immutable Chain-Fakten werden gecacht, fachliche Klassifizierungen werden bei jedem Lauf aus aktuellem Code neu berechnet. Prozess-Trennung umgesetzt: Die vollständig übernommenen Referenzengines aus <span class="mono">tln-vow-staking-duration-test.html</span> und <span class="mono">tln-vow-single-claim-trace-test.html</span> werden nicht mehr automatisch in einem einzigen Discovery-Lauf verkettet. Basisdaten, Staking-Erkennung, Lockdauer, eigene Staking-Rewards, Referral-Rewards und historische Bewertung sind sechs manuelle, strikt aufeinander aufbauende Schritte. Ein Schritt startet keinen Folgeschritt. Historische Preis-/getReserves-Abfragen laufen ausschließlich im manuellen Bewertungsschritt. Der persistente Supabase-ERC-20-Chain-Cache wird bereits im Basisschritt genutzt; Tx/Receipt/eth_call-/Metadaten-Caches bleiben sessionweit erhalten. Schritt 2 wurde am 02.09.2026 auf Staking-first-Kandidaten reduziert: der bisherige Wallet-weite V2-LP-Test aller ERC-20-Contracts entfällt; LP-/Legacy-Assets werden nur noch aus direkter Staking-Evidenz, Registry-Evidenz oder konkreten Stake-Txs geprüft. Zusätzlich läuft in Schritt 2 kein historischer eth_getLogs-Deep-Scan mehr: Staking-/Controller-Events werden aus den bereits geladenen Receipts der relevanten Wallet-Txs extrahiert. Seit 02.09.2026 ist auch der Block „Wallet-bezogene Smart-Contract-Events“ in Schritt 2 vollständig aus der aktiven DOM-Struktur genommen; der komplette HTML-Block sowie Aufbau, Lot-Anhängung und Rendering bleiben kommentiert im Quelltext für eine spätere Reward-/Referral-Diagnose erhalten. Zusätzlich werden Yield-/Withdraw-/Claim-Aufrufe in Schritt 2 nicht mehr an Positions-Lots gehängt oder angezeigt. Für nicht positionsrelevante Contract-Aufrufe wird in Schritt 2 auch kein Receipt mehr geladen; die vollständige Contract-Historie bleibt für Schritt 4 erhalten.</p>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -3197,7 +3197,7 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  }}
 
 const __headlessLotCache=new Map();
-async function analyzeLotHeadless({wallet,contract,stakeTx}){
+async function analyzeLotHeadless({wallet,contract,stakeTx,structHint=null}){
   wallet=norm(wallet); contract=norm(contract); stakeTx=String(stakeTx||'').trim();
   if(!ethers.isAddress(wallet)||!ethers.isAddress(contract)||!/^0x[0-9a-fA-F]{64}$/.test(stakeTx))throw new Error('Duration-Referenz: Wallet, Contract oder Stake-TX ungültig.');
   const key=`${wallet}|${contract}|${stakeTx.toLowerCase()}`;
@@ -3217,7 +3217,14 @@ async function analyzeLotHeadless({wallet,contract,stakeTx}){
     const recEv=receiptEvidence(ctx.receipt,ctx.ts);
     const storage={source:null,changes:[],raw:null,skipped:true,reason:'debug_traceTransaction im automatischen Lauf deaktiviert'};
     let archiveStorage={available:false,changes:[]};
-    if(nrTest.ok)archiveStorage=await archiveStorageScan(contract,wallet,ctx.blockNum,ctx.ts);
+    const hintedRoot=Number(structHint?.root),hintedOffset=Number(structHint?.timestampOffset);
+    if(nrTest.ok&&Number.isInteger(hintedRoot)){
+      // 2026-09-02: bereits im Top-up-Preflight on-chain erkannter Wallet-Mapping-Root.
+      // Root-Suche NICHT nochmals ausführen; targetedRoot3Scan liest den bekannten Struct gezielt.
+      archiveStorage={available:true,changes:[],detectedRoot:hintedRoot,detectedTimestampOffset:Number.isInteger(hintedOffset)?hintedOffset:null,
+        hinted:true,source:'topup-preflight-root-hint'};
+      log(`Duration Root-Hint: Mapping-Root ${hintedRoot}${Number.isInteger(hintedOffset)?` · Timestamp-Offset ${hintedOffset}`:''}; erneuter Archive-Root-Scan übersprungen.`,'ok');
+    }else if(nrTest.ok)archiveStorage=await archiveStorageScan(contract,wallet,ctx.blockNum,ctx.ts);
     else archiveStorage={available:false,error:'NodeReal Direct Archive-State-Selbsttest fehlgeschlagen',changes:[]};
     const code=await rpc('eth_getCode',[contract,'latest']);const implCode=impl?await rpc('eth_getCode',[impl,'latest']):'0x';
     const byte=[...plausibleDurationConstants(code).map(x=>({...x,target:contract})),...plausibleDurationConstants(implCode).map(x=>({...x,target:impl}))];
@@ -3236,6 +3243,23 @@ async function analyzeLotHeadless({wallet,contract,stakeTx}){
     return jsonSafe({version:'31.08.2026 18:47:45 CEST',wallet,contract,hash:stakeTx,ctx:{blockNum:ctx.blockNum,ts:ctx.ts,tx:{from:ctx.tx?.from,to:ctx.tx?.to,input:ctx.tx?.input},receiptStatus:ctx.receipt?.status,eventStakeUser:ctx.eventStakeUser},impl,nrTest,reads,receiptEvidence:recEv,storage,archiveStorage,targeted,coreChange,coreTxAnalysis,unstakeGate,selectorLogic,historicalDataflow:historicalDataflowResult,bytecodeDurationHints:byte,evidence,verdict});
   })().catch(e=>{__headlessLotCache.delete(key);throw e});
   __headlessLotCache.set(key,promise);return promise;
+}
+
+
+async function discoverStakeStructHeadless({wallet,contract,stakeTx}){
+  wallet=norm(wallet);contract=norm(contract);stakeTx=String(stakeTx||'').trim();
+  if(!ethers.isAddress(wallet)||!ethers.isAddress(contract)||!/^0x[0-9a-fA-F]{64}$/.test(stakeTx))
+    throw new Error('Duration-Referenz Struct-Discovery: Wallet, Contract oder Stake-TX ungültig.');
+  await initProviders();
+  const ctx=await getStakeContext(stakeTx);
+  const nrTest=await nodeRealArchiveSelfTest(contract,ctx.blockNum);
+  if(!nrTest.ok)return jsonSafe({available:false,wallet,contract,hash:stakeTx,ctx:{blockNum:ctx.blockNum,ts:ctx.ts},nrTest,reason:'NodeReal Archive-State nicht verfügbar.'});
+  const archiveStorage=await archiveStorageScan(contract,wallet,ctx.blockNum,ctx.ts);
+  const targeted=await targetedRoot3Scan(contract,wallet,ctx,archiveStorage);
+  return jsonSafe({available:!!targeted?.available,wallet,contract,hash:stakeTx,ctx:{blockNum:ctx.blockNum,ts:ctx.ts},
+    nrTest,archiveStorage:{available:archiveStorage.available,detectedRoot:archiveStorage.detectedRoot,detectedTimestampOffset:archiveStorage.detectedTimestampOffset,
+      stageA:archiveStorage.stageA,stageB:archiveStorage.stageB,fallbackUsed:archiveStorage.fallbackUsed},
+    targeted,lightweight:true,mode:'struct-discovery-only'});
 }
 
 async function inspectKnownStakeStructHeadless({wallet,contract,root,timestampOffset,offsets=[],blockNum,stakeTs,compareBlockNum=null}){
@@ -3296,7 +3320,7 @@ function clearHeadlessCaches(){__headlessLotCache.clear();disabledRpcProviders.c
 
 return {
   sourceVersion:'31.08.2026 18:47:45 CEST',
-  analyzeLotHeadless,inspectKnownStakeStructHeadless,clearHeadlessCaches,
+  analyzeLotHeadless,discoverStakeStructHeadless,inspectKnownStakeStructHeadless,clearHeadlessCaches,
   nodeRealArchiveSelfTest,archiveStorageScan,targetedRoot3Scan,findFirstRoot3CoreChange,
   analyzeChangeBlockTransactions,historicalUnstakeGateTest,selectorLogicTest,historicalImplementationDataflow,
   buildStrictEvidence,strictVerdict,READ_PROBES
@@ -3395,7 +3419,7 @@ const STAKING_SCAN_CACHE_KEY='erc20-history-v1';
 const TECH_CACHE_VERSIONS=Object.freeze({
   lpFacts:'lp-chainfacts-v1',
   txFacts:'tx-chainfacts-v1',
-  duration:'duration-strict-v2-topup'
+  duration:'duration-strict-v3-premerge'
 });
 const TECH_CACHE_KEYS=Object.freeze({
   lpFacts:'lp-chainfacts',
@@ -3517,14 +3541,14 @@ async function saveTechnicalProcessCache(wallet,cacheKey,scannerVersion,payload,
 }
 function durationCacheKeyForLot(lot){
   const base=String(lot?.stakeTx||'').toLowerCase();
-  const top=String(lot?.topUps?.at?.(-1)?.tx||'').toLowerCase();
-  return `duration-strict-v2:${base}${top?`:topup:${top}`:''}`;
+  const anchor=String(lot?.durationAnchorTx||lot?.topUps?.at?.(-1)?.tx||'').toLowerCase();
+  return `duration-strict-v3:${base}${anchor&&anchor!==base?`:anchor:${anchor}`:''}`;
 }
 function applyDurationCacheToLot(lot,c){
  if(!c||!c.expiryTime||!Number.isFinite(Number(c.lockDurationSeconds)))return false;
  lot.durationDays=Number(c.durationDays);lot.lockDurationSeconds=Number(c.lockDurationSeconds);lot.expiryTime=c.expiryTime;lot.lastLockedBlock=c.lastLockedBlock??null;lot.firstUnlockedBlock=c.firstUnlockedBlock??null;lot.implementationStable=c.implementationStable??null;lot.durationEvidence=c.durationEvidence||'Supabase Strict-Proof Cache';lot.durationConfidence='strong';lot.durationSource=c.durationSource||'Supabase · zuvor verifizierter Duration Strict-Proof';lot.durationStrictVerdict=c.durationStrictVerdict||null;lot.durationCacheHit=true;return true;
 }
-function compactDurationCache(lot){return {stakeTx:lot.stakeTx||null,lastTopUpTx:lot?.topUps?.at?.(-1)?.tx||null,lockBaseTime:lot.lockBaseTime||lot.stakeTime||null,stakingContract:norm(lot?.staking?.contract_address||lot.counterparty||''),durationDays:lot.durationDays,lockDurationSeconds:lot.lockDurationSeconds,expiryTime:lot.expiryTime,lastLockedBlock:lot.lastLockedBlock??null,firstUnlockedBlock:lot.firstUnlockedBlock??null,implementationStable:lot.implementationStable??null,durationEvidence:lot.durationEvidence||null,durationSource:lot.durationSource||null,durationStrictVerdict:lot.durationStrictVerdict||null,savedAt:new Date().toISOString()}}
+function compactDurationCache(lot){return {stakeTx:lot.stakeTx||null,durationAnchorTx:lot.durationAnchorTx||null,lastTopUpTx:lot?.topUps?.at?.(-1)?.tx||null,lockBaseTime:lot.lockBaseTime||lot.stakeTime||null,stakingContract:norm(lot?.staking?.contract_address||lot.counterparty||''),durationDays:lot.durationDays,lockDurationSeconds:lot.lockDurationSeconds,expiryTime:lot.expiryTime,lastLockedBlock:lot.lastLockedBlock??null,firstUnlockedBlock:lot.firstUnlockedBlock??null,implementationStable:lot.implementationStable??null,durationEvidence:lot.durationEvidence||null,durationSource:lot.durationSource||null,durationStrictVerdict:lot.durationStrictVerdict||null,savedAt:new Date().toISOString()}}
 
 function transferIdentity(t){const c=norm(t?.rawContract?.address);return t?.uniqueId||`${String(t?.hash||'').toLowerCase()}|${c}|${norm(t?.from)}|${norm(t?.to)}|${t?.rawContract?.value||t?.value||''}`}
 async function alchemyErc20Range(wallet,fromBlock,toBlock='latest'){
@@ -3847,14 +3871,14 @@ async function lockBoundaryFromUnstake(tx,contract,stakeBlock,stakeTs,coreChange
  before.impl=await lockImplAt(contract,before.block);after.impl=await lockImplAt(contract,after.block);let implementationMode='proxy',implementationStable=false,implementationStatus='changed';if(!before.impl&&!after.impl){implementationMode='direct-contract';const [cb,ca]=await Promise.all([lockNodeRealRpc('eth_getCode',[contract,before.block]),lockNodeRealRpc('eth_getCode',[contract,after.block])]);before.codeHash=ethers.keccak256(cb||'0x');after.codeHash=ethers.keccak256(ca||'0x');implementationStable=before.codeHash===after.codeHash;implementationStatus=implementationStable?'direct-contract-code-unchanged':'direct-contract-code-changed'}else if(before.impl&&after.impl){implementationStable=before.impl===after.impl;implementationStatus=implementationStable?'proxy-implementation-unchanged':'proxy-implementation-changed'}else{implementationMode='mixed-or-unknown';implementationStatus='proxy-state-changed-or-unknown'}const elapsedSeconds=after.timestamp-stakeTs;return {available:true,found:true,before,after,elapsedSeconds,elapsedDays:elapsedSeconds/86400,implementationStable,implementationMode,implementationStatus,checkpoints:[...cache.values()].sort((a,b)=>a.blockNum-b.blockNum),invalidFailures:[...cache.values()].filter(p=>!p.ok&&p.failureClass!=='contract_revert'),automatic:true,searchMode:'direct-block-bisection',requestOptimized:true}}
 async function resolveAutomaticLotLock(lot){
   const contract=norm(lot?.staking?.contract_address||lot.counterparty||''),wallet=norm(CURRENT_WALLET);
-  const stakeTx=String(lot?.stakeTx||lot?.stakeHash||lot?.stake?.hash||lot?.transactions?.find?.(x=>String(x?.kind||x?.action||'').toLowerCase().includes('stake'))?.hash||'');
+  const stakeTx=String(lot?.durationAnchorTx||lot?.stakeTx||lot?.stakeHash||lot?.stake?.hash||lot?.transactions?.find?.(x=>String(x?.kind||x?.action||'').toLowerCase().includes('stake'))?.hash||'');
   if(!ethers.isAddress(contract)||!ethers.isAddress(wallet)||!/^0x[0-9a-fA-F]{64}$/.test(stakeTx))return {found:false,reason:'Duration-Referenzengine benötigt Wallet, Staking-Contract und Stake-TX.'};
   const key=`reference-duration|${wallet}|${contract}|${stakeTx.toLowerCase()}`;
   if(LOCK_ENGINE_CACHE.has(key))return LOCK_ENGINE_CACHE.get(key);
   const p=(async()=>{
     try{
       log(`Duration-Referenzengine: vollständige verifizierte Testfile-Logik für ${safePairLabel(lot)} …`,'ok');
-      const ref=await STAKING_DURATION_REFERENCE_ENGINE.analyzeLotHeadless({wallet,contract,stakeTx});
+      const ref=await STAKING_DURATION_REFERENCE_ENGINE.analyzeLotHeadless({wallet,contract,stakeTx,structHint:lot?.durationStructHint||null});
       lot.durationReference=ref;
       const gate=ref?.unstakeGate;
       const strong=Array.isArray(ref?.evidence)?ref.evidence.find(x=>Number(x?.score)>=100&&Number.isFinite(Number(x?.days))):null;
@@ -7759,70 +7783,156 @@ function inheritStrictDurationForTopUp(previous,next,proof,lockInfo,light){
     evidence:next.durationEvidence,confidence:'strong',implementationStable:true,topUpStorageProof:proof,contractStability:light?.contractStability||null};
   return true;
 }
+
+async function preflightTopUpPair(previous,next){
+  const wallet=norm(CURRENT_WALLET),contract=lotContractAddress(next);
+  if(contract!==lotContractAddress(previous))return {proven:false,reason:'unterschiedlicher Staking-Contract'};
+  try{
+    // Root/Struct bewusst am FOLGESTAKE entdecken: genau dort muss eine mögliche
+    // Aufstockung denselben Wallet-State fortschreiben.
+    const nextDiscovery=await STAKING_DURATION_REFERENCE_ENGINE.discoverStakeStructHeadless({
+      wallet,contract,stakeTx:next.stakeTx
+    });
+    if(!nextDiscovery?.available||!nextDiscovery?.targeted?.available)
+      return {proven:false,reason:nextDiscovery?.reason||'Wallet-Mapping-Struct am Folgestake nicht erkannt.',nextDiscovery};
+
+    next.durationReference={ctx:nextDiscovery.ctx,targeted:nextDiscovery.targeted,lightweight:true,evidence:[],verdict:null};
+    const t=nextDiscovery.targeted;
+    const root=Number(t.root),startOffset=Number(t.startRow?.offset??t.timestampOffset);
+    const offsets=[...new Set([...(t.coreOffsets||[]).map(Number),startOffset].filter(Number.isInteger))];
+    if(!Number.isInteger(root)||!Number.isInteger(startOffset)||!offsets.length)
+      return {proven:false,reason:'Root/Timestamp-Offset des Folgestakes nicht eindeutig.',nextDiscovery};
+
+    const previousLight=await STAKING_DURATION_REFERENCE_ENGINE.inspectKnownStakeStructHeadless({
+      wallet,contract,root,timestampOffset:startOffset,offsets,
+      blockNum:lotStakeBlock(previous),stakeTs:lotStakeTsSeconds(previous),
+      compareBlockNum:lotStakeBlock(next)
+    });
+    previous.durationReference={ctx:previousLight.ctx,targeted:previousLight.targeted,lightweight:true,
+      contractStability:previousLight.contractStability,evidence:[],verdict:null};
+
+    const proof=compareSameWalletPositionState(previous,next);
+    const stable=previousLight?.contractStability?.stable===true;
+    return {
+      proven:proof.proven&&stable,proof,stable,nextDiscovery,previousLight,
+      structHint:{root,timestampOffset:startOffset,offsets},
+      reason:!proof.proven?proof.reason:!stable?'Contract-/Implementation-Fingerprint zwischen den Stakes nicht stabil':'on-chain gleicher Positions-State'
+    };
+  }catch(e){return {proven:false,reason:e.message,error:e}}
+}
+async function preflightTopUpGroup(group){
+  const pairs=[];
+  for(let i=1;i<group.length;i++){
+    const r=await preflightTopUpPair(group[i-1],group[i]);
+    pairs.push(r);
+    if(!r.proven)return {proven:false,pairs,reason:r.reason};
+  }
+  return {proven:pairs.length>0,pairs,reason:pairs.length?'alle Folgestakes schreiben denselben Wallet-Positions-State fort':'keine Folgestakes'};
+}
+function mergeTopUpGroupAfterStrictProof(group,preflight,anchorLot){
+  const lockSec=Number(anchorLot?.lockDurationSeconds);
+  if(!(lockSec>0))return {merged:0,reason:'keine belastbare Lockdauer am letzten Stake'};
+  // Dieselbe unveränderte Contract-Regel gilt über die gesamte nachgewiesene Kette.
+  for(let i=1;i<group.length;i++){
+    const prevTs=lotStakeTsSeconds(group[i-1]),nextTs=lotStakeTsSeconds(group[i]);
+    if(prevTs==null||nextTs==null||nextTs>=prevTs+lockSec)
+      return {merged:0,reason:`Folgestake ${i+1} liegt nicht innerhalb der vorherigen Lockperiode`};
+  }
+
+  const first=group[0];
+  // Duration-Evidenz des letzten Stakes ist die gültige Laufzeitbasis.
+  first.durationAnchorTx=anchorLot.stakeTx;
+  first.durationStructHint=preflight.pairs.at(-1)?.structHint||null;
+  for(const k of ['durationDays','lockDurationSeconds','expiryTime','lastLockedBlock','firstUnlockedBlock','implementationStable',
+                  'durationEvidence','durationConfidence','durationSource','durationStrictVerdict','durationReference','lockEvidence']){
+    if(anchorLot[k]!=null)first[k]=anchorLot[k];
+  }
+  let merged=0;
+  for(let i=1;i<group.length;i++){
+    const next=group[i],pf=preflight.pairs[i-1];
+    mergeProvenTopUpLots(first,next,pf.proof,{known:true,inside:true,lockSec,contractStable:true});
+    merged++;
+  }
+  // mergeProvenTopUpLots übernimmt jeweils die Light-Referenz des next-Lots; finale
+  // Duration-Evidenz deshalb nochmals explizit vom Anchor zurücksetzen.
+  for(const k of ['durationDays','lockDurationSeconds','expiryTime','lastLockedBlock','firstUnlockedBlock','implementationStable',
+                  'durationEvidence','durationConfidence','durationSource','durationStrictVerdict','durationReference','lockEvidence']){
+    if(anchorLot[k]!=null)first[k]=anchorLot[k];
+  }
+  first.durationAnchorTx=anchorLot.stakeTx;
+  first.lockBaseTime=anchorLot.stakeTime;
+  first.lockBaseReason='On-chain bestätigte Aufstockung; Laufzeit ab letztem Top-up';
+  return {merged,first};
+}
+
 async function processDurationOptimizedFirstRun(){
   const originalLots=[...DISCOVERY_PROCESS.lots];
   const groups=candidateTopUpGroups(originalLots);
   const grouped=new Set(groups.flat());
   const remove=new Set();
-  let cacheHits=0,fullRuns=0,lightRuns=0,merged=0,checked=0;
+  let cacheHits=0,fullRuns=0,preflightRuns=0,merged=0,checked=0;
 
-  // Eindeutige Einzel-/Position-ID-Lots: normale vollständige Duration-Ermittlung.
+  // Normale eindeutige Lots.
   for(const lot of originalLots){
     if(grouped.has(lot))continue;
     const r=await resolveDurationStrictOnce(lot,`${fullRuns+1}`);
     fullRuns++;if(r.cacheHit)cacheHits++;
   }
 
-  // Mehrere Stakes ohne explizite Positions-ID: pro Kette nur der erste notwendige
-  // vollständige Strict-Proof; Folgestakes werden zuerst billig auf demselben bekannten
-  // Mapping-State geprüft.
   for(const group of groups){
-    let previous=group[0];
-    let r=await resolveDurationStrictOnce(previous,`${fullRuns+1} · Basis für mögliche Top-ups`);
-    fullRuns++;if(r.cacheHit)cacheHits++;
+    checked+=Math.max(0,group.length-1);
 
-    for(let i=1;i<group.length;i++){
-      const next=group[i];checked++;
-      if(!previous.expiryTime||!(Number(previous.lockDurationSeconds)>0)){
-        r=await resolveDurationStrictOnce(next,`${fullRuns+1} · kein Basis-Strict-Proof`);
-        fullRuns++;if(r.cacheHit)cacheHits++;previous=next;continue;
+    // WICHTIG: erst Top-up-Struktur prüfen, BEVOR irgendein vorläufiges Lot vollständig
+    // analysiert wird. Dadurch wird bei 16.07 -> 18.07 nicht die Aufstockung irrtümlich
+    // als "erste Positionsänderung" der Duration-Engine behandelt.
+    const pf=await preflightTopUpGroup(group);
+    preflightRuns+=pf.pairs.length;
+
+    if(pf.proven){
+      const anchorLot=group.at(-1);
+      anchorLot.durationStructHint=pf.pairs.at(-1)?.structHint||null;
+      anchorLot.durationAnchorTx=anchorLot.stakeTx;
+
+      const r=await resolveDurationStrictOnce(anchorLot,`${fullRuns+1} · letzter Stake/Top-up`);
+      fullRuns++;if(r.cacheHit)cacheHits++;
+
+      if(anchorLot.expiryTime&&Number(anchorLot.lockDurationSeconds)>0){
+        const m=mergeTopUpGroupAfterStrictProof(group,pf,anchorLot);
+        if(m.merged){
+          for(let i=1;i<group.length;i++)remove.add(group[i]);
+          merged+=m.merged;
+          log(`ON-CHAIN TOP-UP-KETTE bestätigt: ${group.length} Stakes → 1 Position · vollständige Duration-Engine nur ${fullRuns}× insgesamt; Lockbasis = letzter Top-up ${new Date(anchorLot.stakeTime).toLocaleString('de-CH')}.`,'ok');
+          continue;
+        }
+        log(`Top-up-Storage bestätigt, aber Zusammenführung nach Lock-Prüfung verworfen: ${m.reason}.`,'warn');
+      }else{
+        log('Top-up-Storage bestätigt, aber letzter Stake lieferte keinen Strict-Lock-Proof; sicherer Fallback auf Einzelanalyse.','warn');
       }
+    }else{
+      log(`Top-up-Preflight nicht belastbar: ${pf.reason}. Sicherer Einzelanalyse-Fallback.`,'info');
+    }
 
-      const lightResult=await lightweightTopUpState(previous,next);lightRuns++;
-      if(!lightResult.available){
-        log(`Top-up-Light-Prüfung nicht möglich (${lightResult.reason}); Folgestake wird sicherheitshalber vollständig analysiert.`,'warn');
-        r=await resolveDurationStrictOnce(next,`${fullRuns+1} · Light-Fallback`);
-        fullRuns++;if(r.cacheHit)cacheHits++;previous=next;continue;
-      }
-
-      const proof=compareSameWalletPositionState(previous,next);
-      const stable=lightResult.light?.contractStability?.stable===true;
-      const lockInfo=topUpStillLocked(previous,next);
-      if(proof.proven&&stable&&lockInfo.known&&lockInfo.inside&&inheritStrictDurationForTopUp(previous,next,proof,lockInfo,lightResult.light)){
-        mergeProvenTopUpLots(previous,next,proof,{...lockInfo,contractStable:true});
-        remove.add(next);merged++;
-        log(`ON-CHAIN TOP-UP bestätigt (optimierter Erstlauf): ${safePairLabel(previous)} · nur bekannte Storage-Offsets geprüft; keine zweite vollständige Duration-/Binärsuche. Lock ab ${new Date(next.stakeTime).toLocaleString('de-CH')} neu gestartet.`,'ok');
-        // Nach mergeProvenTopUpLots ist previous.durationReference bereits die Light-Referenz
-        // des Folgestakes; damit kann ein weiterer Top-up wieder gezielt geprüft werden.
-        continue;
-      }
-
-      const why=!proof.proven?proof.reason:!stable?'Contract-/Implementation-Fingerprint zwischen den Stakes nicht stabil':!lockInfo.known?'Lockdauer nicht bekannt':'Folgestake liegt nicht mehr innerhalb der vorherigen Lockfrist';
-      log(`Top-up-Light-Prüfung bleibt getrennt: ${why}. Für diesen Folgestake läuft die vollständige Duration-Analyse.`,'info');
-      r=await resolveDurationStrictOnce(next,`${fullRuns+1} · separater Stake`);
-      fullRuns++;if(r.cacheHit)cacheHits++;previous=next;
+    // Sicherheitsfallback nur bei unklarer/abweichender Evidenz.
+    for(const lot of group){
+      if(lot.expiryTime)continue;
+      lot.durationStructHint=null;lot.durationAnchorTx=null;
+      const r=await resolveDurationStrictOnce(lot,`${fullRuns+1} · Fallback`);
+      fullRuns++;if(r.cacheHit)cacheHits++;
     }
   }
 
   if(remove.size)DISCOVERY_PROCESS.lots=originalLots.filter(l=>!remove.has(l));
 
-  // Finalen zusammengeführten Zustand unter einem Top-up-sensitiven Cache-Key speichern.
+  // Finale Top-up-Position unter v3-Key cachen.
   for(const lot of DISCOVERY_PROCESS.lots){
     if(lot.expiryTime&&lot.topUps?.length){
       await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,durationCacheKeyForLot(lot),TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),lot.firstUnlockedBlock||0);
     }
   }
-  return {cacheHits,fullRuns,lightRuns,merged,checked,proven:DISCOVERY_PROCESS.lots.filter(l=>!!l.expiryTime).length};
+  return {
+    cacheHits,fullRuns,preflightRuns,merged,checked,
+    proven:DISCOVERY_PROCESS.lots.filter(l=>!!l.expiryTime).length
+  };
 }
 
 async function reconcileOnChainTopUpsAfterDuration(){
@@ -7880,14 +7990,14 @@ async function processDuration(){
 
     if(result.merged){
       renderProcessChecks();
-      log(`Top-up-Rekonstruktion optimiert: ${result.merged} Zusammenführung(en) · ${result.lightRuns} Light-Storage-Prüfung(en) · ${result.fullRuns} vollständige Duration-Läufe.`,'ok');
+      log(`Top-up-Rekonstruktion optimiert: ${result.merged} Zusammenführung(en) · ${result.preflightRuns} Top-up-Preflight(s) · ${result.fullRuns} vollständige Duration-Läufe.`,'ok');
     }
     DISCOVERY_PROCESS.done.duration=true;DISCOVERY_PROCESS.done.valuation=false;
     renderProcessLotCards();
-    setStepState(3,`${result.proven}/${DISCOVERY_PROCESS.lots.length} Strict · ${result.fullRuns} Voll · ${result.lightRuns} Light · ${result.merged} Top-up`,'done');
+    setStepState(3,`${result.proven}/${DISCOVERY_PROCESS.lots.length} Strict · ${result.fullRuns} Voll · ${result.preflightRuns} Preflight · ${result.merged} Top-up`,'done');
     setStepState(6,'bereit');
     $('status').innerHTML='<span class="ok">Lockdauer-Schritt abgeschlossen. Legacy-Top-ups werden im Erstlauf vor zusätzlichen Vollanalysen per gezieltem Archive-State geprüft.</span>';
-    log(`Schritt 3 abgeschlossen: ${result.proven}/${DISCOVERY_PROCESS.lots.length} finale Lots mit Lockdauer · ${result.cacheHits} Cache · ${result.fullRuns} vollständige Duration-Läufe · ${result.lightRuns} Light-Storage-Prüfungen.`,'ok');
+    log(`Schritt 3 abgeschlossen: ${result.proven}/${DISCOVERY_PROCESS.lots.length} finale Lots mit Lockdauer · ${result.cacheHits} Cache · ${result.fullRuns} vollständige Duration-Läufe · ${result.preflightRuns} Top-up-Preflights.`,'ok');
   }catch(e){
     setStepState(3,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err');
   }finally{updateProcessButtons();b.disabled=false}
