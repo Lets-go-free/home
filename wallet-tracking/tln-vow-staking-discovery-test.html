@@ -50,9 +50,9 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 02:08:26 CEST</div>
-<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 02:08:26 CEST:</b> <b>Build-ID 20260902-020826.</b> Prozess-Trennung umgesetzt: Die vollständig übernommenen Referenzengines aus <span class="mono">tln-vow-staking-duration-test.html</span> und <span class="mono">tln-vow-single-claim-trace-test.html</span> werden nicht mehr automatisch in einem einzigen Discovery-Lauf verkettet. Basisdaten, Staking-Erkennung, Lockdauer, eigene Staking-Rewards, Referral-Rewards und historische Bewertung sind sechs manuelle, strikt aufeinander aufbauende Schritte. Ein Schritt startet keinen Folgeschritt. Historische Preis-/getReserves-Abfragen laufen ausschließlich im manuellen Bewertungsschritt. Der persistente Supabase-ERC-20-Chain-Cache wird bereits im Basisschritt genutzt; Tx/Receipt/eth_call-/Metadaten-Caches bleiben sessionweit erhalten.</p>
-<p class="muted"><b>Neue Discovery-Logik:</b> Nicht von heutigen LP-Listen ausgehen. Stattdessen alle ERC-20-Transfers des Wallets laden, jeden übertragenen Contract als möglichen V2-LP prüfen und nur LPs übernehmen, bei denen mindestens token0 oder token1 ein TLN/VOW-Projekt-Token aus Supabase ist. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 02:26:52 CEST</div>
+<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 02:26:52 CEST:</b> <b>Build-ID 20260902-022652.</b> Prozess-Trennung umgesetzt: Die vollständig übernommenen Referenzengines aus <span class="mono">tln-vow-staking-duration-test.html</span> und <span class="mono">tln-vow-single-claim-trace-test.html</span> werden nicht mehr automatisch in einem einzigen Discovery-Lauf verkettet. Basisdaten, Staking-Erkennung, Lockdauer, eigene Staking-Rewards, Referral-Rewards und historische Bewertung sind sechs manuelle, strikt aufeinander aufbauende Schritte. Ein Schritt startet keinen Folgeschritt. Historische Preis-/getReserves-Abfragen laufen ausschließlich im manuellen Bewertungsschritt. Der persistente Supabase-ERC-20-Chain-Cache wird bereits im Basisschritt genutzt; Tx/Receipt/eth_call-/Metadaten-Caches bleiben sessionweit erhalten. Schritt 2 wurde am 02.09.2026 auf Staking-first-Kandidaten reduziert: der bisherige Wallet-weite V2-LP-Test aller ERC-20-Contracts entfällt; LP-/Legacy-Assets werden nur noch aus direkter Staking-Evidenz, Registry-Evidenz oder konkreten Stake-Txs geprüft. Zusätzlich läuft in Schritt 2 kein historischer eth_getLogs-Deep-Scan mehr: Staking-/Controller-Events werden aus den bereits geladenen Receipts der relevanten Wallet-Txs extrahiert.</p>
+<p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
   <option value="">TLN-Wallets werden geladen…</option>
@@ -117,7 +117,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID="20260902-020826";
+const BUILD_ID="20260902-022652";
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -4197,7 +4197,7 @@ async function allExternalCallsToStaking(wallet,extraTargets=[]){
   for(const t of out){
     try{
       const [tx,receipt]=await Promise.all([rpc('eth_getTransactionByHash',[t.hash]),rpc('eth_getTransactionReceipt',[t.hash]).catch(()=>null)]);
-      t._input=tx?.input||'0x';t._selector=String(t._input||'0x').slice(0,10).toLowerCase();t._method=METHOD_SELECTORS.get(t._selector)||'Contract-Aufruf';
+      t._tx=tx||null;t._input=tx?.input||'0x';t._selector=String(t._input||'0x').slice(0,10).toLowerCase();t._method=METHOD_SELECTORS.get(t._selector)||'Contract-Aufruf';
       t._blockNumber=tx?.blockNumber?parseInt(tx.blockNumber,16):null;t._success=receipt?.status==null?null:Number(BigInt(receipt.status))===1;t._uintArg=null;
       if(String(t._input||'').length>=74){try{t._uintArg=BigInt('0x'+String(t._input).slice(10,74))}catch{}}
       t._erc20Transfers=receiptErc20Transfers(receipt);t._receipt=receipt;
@@ -4365,6 +4365,25 @@ async function discoverPairsFromStakeTransactions(calls,transfers,pairMap,projec
     }
   }
   return added;
+}
+function stakingAssetCandidatesFromTransfers(transfers,wallet,counts){
+  const w=norm(wallet);
+  const directTargets=new Set(stakingContracts.filter(x=>x.classify_transfers).map(x=>norm(x.contract_address)).filter(Boolean));
+  const configuredPairs=new Set(stakingContracts.map(x=>norm(x.pair_address||'')).filter(Boolean));
+  const historicalAssets=new Set((allProjectRows||[]).filter(x=>{
+    const cat=String(x.tln_vow_category||x.defi_category||'').toLowerCase();
+    return cat==='lp_token'||cat==='historical_staking_token'||cat==='staking_token';
+  }).map(x=>norm(x.address)).filter(Boolean));
+  const out=new Set();
+  for(const t of (transfers||[])){
+    const token=norm(t?.rawContract?.address||'');if(!token)continue;
+    const from=norm(t?.from||''),to=norm(t?.to||'');
+    if((from===w&&directTargets.has(to))||(to===w&&directTargets.has(from)))out.add(token);
+  }
+  // Verifizierte Registry-Pairs bzw. historische Staking-Assets nur dann aufnehmen,
+  // wenn sie in der Wallet-Historie tatsächlich vorkommen. Kein globaler LP-Scan.
+  for(const a of [...configuredPairs,...historicalAssets])if(counts?.has(a))out.add(a);
+  return [...out];
 }
 async function inspectCandidate(address,projectSet){
  try{
@@ -6441,6 +6460,45 @@ async function logsForWalletOnContract(contract,wallet,fromBlock){
   return out;
 }
 
+function stakingContractEventsFromKnownCalls(calls,entryTargets,wallet){
+  const w=norm(wallet),labels=new Map();
+  for(const x of (stakingContracts||[])){
+    const a=norm(x?.contract_address||'');if(a)labels.set(a,stakingContractLabel(x)||x?.label||'Staking');
+  }
+  for(const x of (entryTargets||[])){
+    const a=norm(x?.contract_address||'');if(a)labels.set(a,x?.label||'Entry/Controller');
+  }
+  for(const c of (calls||[])){
+    const a=norm(c?._staking?.contract_address||c?.to||'');if(a&&!labels.has(a))labels.set(a,stakingContractLabel(c?._staking)||'Staking/Entry');
+  }
+  const events=[],seen=new Set();
+  for(const c of (calls||[])){
+    const receipt=c?._receipt;if(!receipt)continue;
+    const lpTransfers=receiptErc20Transfers(receipt).map(x=>({token:norm(x.token),from:norm(x.from),to:norm(x.to),raw:x.amountRaw==null?null:x.amountRaw.toString()}));
+    for(const lg of (receipt.logs||[])){
+      const contract=norm(lg?.address||'');
+      if(!labels.has(contract)||!logMentionsWallet(lg,w))continue;
+      const key=`${String(c.hash||lg.transactionHash||'').toLowerCase()}|${String(lg.logIndex||'')}`;if(seen.has(key))continue;seen.add(key);
+      const topic0=String(lg?.topics?.[0]||'').toLowerCase();
+      const known=STAKING_EVENT_TOPICS.get(topic0)||null;
+      let tokenId=null,amountRaw=null;
+      if(lg?.topics?.[2]){try{tokenId=BigInt(lg.topics[2]).toString()}catch{}}
+      const words=rawWords(lg.data||'0x');if(words.length)amountRaw=words[words.length-1]?.uint==null?null:words[words.length-1].uint.toString();
+      events.push({
+        kind:known||'SC-Event',method:known||`SC-Event ${topic0.slice(0,10)}`,
+        hash:c.hash||lg.transactionHash,time:c?.metadata?.blockTimestamp||c?.time||null,
+        block:c?._blockNumber??(lg.blockNumber?Number(BigInt(lg.blockNumber)):null),
+        logIndex:lg.logIndex?Number(BigInt(lg.logIndex)):null,contract,contractLabel:labels.get(contract)||'Staking/Entry',
+        topic0,tokenId,amountRaw,rawData:lg.data||'0x',txFrom:norm(c?._tx?.from||w),txTo:norm(c?.to||c?._staking?.contract_address||''),
+        txInput:c?._input||'0x',success:c?._success??null,lpTransfers,source:'known_tx_receipt'
+      });
+    }
+  }
+  events.sort((a,b)=>(a.block||0)-(b.block||0)||(a.logIndex||0)-(b.logIndex||0));
+  log(`SC-Events aus bereits geladenen Stake-/Unstake-Receipts: ${events.length}. Kein historischer eth_getLogs-Deep-Scan in Schritt 2.`,'ok');
+  return events;
+}
+
 async function discoverStakingContractEvents(stakingRows,entryTargets,wallet){
   const contracts=new Map();
   let minBlock=null;
@@ -7261,14 +7319,17 @@ async function processStakingDiscovery(){
     const wallet=DISCOVERY_PROCESS.wallet||norm($('wallet').value);CURRENT_WALLET=wallet;const transfers=DISCOVERY_PROCESS.transfers,counts=DISCOVERY_PROCESS.counts;
     if(!DISCOVERY_PROCESS.done.base)throw new Error('Zuerst Schritt 1 ausführen.');
     const discoveryRows=Array.isArray(window.__TLNVOW_DISCOVERY_UNDERLYINGS)?window.__TLNVOW_DISCOVERY_UNDERLYINGS:projectTokens;const projectSet=new Set(discoveryRows.map(x=>norm(x.address)).filter(Boolean));
-    log(`LP-Discovery: ${projectSet.size} aktive Projekt-/Referenz-Assets als mögliche Pool-Gegenparteien verfügbar.`);const candidates=[...counts.keys()];log(`${candidates.length} unterschiedliche ERC-20-Contracts werden als mögliche V2-LPs geprüft.`);
-    const pairs=[];for(let i=0;i<candidates.length;i++){if(i%25===0)log(`LP-Prüfung ${i+1}/${candidates.length}…`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}
+    log(`LP-Discovery: ${projectSet.size} aktive Projekt-/Referenz-Assets als mögliche Pool-Gegenparteien verfügbar.`);
+    const allCandidateCount=counts.size;
+    const candidates=stakingAssetCandidatesFromTransfers(transfers,wallet,counts);
+    log(`Staking-first LP-Prüfung: ${candidates.length} relevante Asset-Kandidaten aus ${allCandidateCount} ERC-20-Contracts der Wallet-Historie. Breiter Wallet-LP-Scan wird in Schritt 2 bewusst übersprungen.`,'ok');
+    const pairs=[];for(let i=0;i<candidates.length;i++){log(`Staking-LP-Prüfung ${i+1}/${candidates.length}: ${short(candidates[i])}`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}
     let pairMap=new Map(pairs.map(p=>[p.address,p]));renderPairTable(pairs,counts);let rows=renderEvents(transfers,pairMap,wallet);let stakingRows=renderRawStakingEvents(rows);let entryTargets=await discoverStakeEntryTargets(stakingRows);
     if(entryTargets.length)log(`Zusätzliche Entry-/Controller-Contracts aus Stake-Txs erkannt: ${entryTargets.map(x=>x.contract_address).join(', ')}`,'ok');
     let stakingContractCalls=await allExternalCallsToStaking(wallet,entryTargets);let contractCalls=[...stakingContractCalls].sort((a,b)=>String(a.metadata?.blockTimestamp||'').localeCompare(String(b.metadata?.blockTimestamp||'')));renderContractCalls(contractCalls);
     const stakeTxPairs=await discoverPairsFromStakeTransactions(contractCalls,transfers,pairMap,projectSet,counts,wallet);
     if(stakeTxPairs.length){for(const p of stakeTxPairs){if(!pairs.some(x=>norm(x.address)===norm(p.address)))pairs.push(p);pairMap.set(norm(p.address),p)}renderPairTable(pairs,counts);rows=renderEvents(transfers,pairMap,wallet);const synthesized=await synthesizeStakeRowsFromReceipts(contractCalls,pairMap,wallet,rows);stakingRows=renderRawStakingEvents(rows);entryTargets=await discoverStakeEntryTargets(stakingRows);log(`Stake-Tx-Fallback: ${stakeTxPairs.length} zusätzlicher historischer LP entdeckt; ${synthesized.length} Stake-Ereignis(se) ergänzt.`,'ok')}
-    const contractEvents=await discoverStakingContractEvents(stakingRows,entryTargets,wallet);const built=buildDiagnosticLots(stakingRows);const lots=built.lots,unmatched=built.unmatched;reconcileLotsWithContractCalls(lots,contractCalls);attachContractEventsToLots(lots,contractEvents);associateContractCallsToLots(lots,contractCalls);renderDeepEvents(contractEvents,lots);
+    const contractEvents=stakingContractEventsFromKnownCalls(contractCalls,entryTargets,wallet);const built=buildDiagnosticLots(stakingRows);const lots=built.lots,unmatched=built.unmatched;reconcileLotsWithContractCalls(lots,contractCalls);attachContractEventsToLots(lots,contractEvents);associateContractCallsToLots(lots,contractCalls);renderDeepEvents(contractEvents,lots);
     DISCOVERY_PROCESS.pairs=pairs;DISCOVERY_PROCESS.pairMap=pairMap;DISCOVERY_PROCESS.rows=rows;DISCOVERY_PROCESS.stakingRows=stakingRows;DISCOVERY_PROCESS.entryTargets=entryTargets;DISCOVERY_PROCESS.stakingContractCalls=stakingContractCalls;DISCOVERY_PROCESS.contractCalls=contractCalls;DISCOVERY_PROCESS.contractEvents=contractEvents;DISCOVERY_PROCESS.lots=lots;DISCOVERY_PROCESS.unmatched=unmatched;
     $('mPairs').textContent=pairs.length;$('mStakes').textContent=stakingRows.filter(r=>String(r.action).toUpperCase()==='STAKE').length;$('mUnstakes').textContent=stakingRows.filter(r=>String(r.action).toUpperCase()==='UNSTAKE').length;renderProcessLotCards();renderProcessChecks();
     DISCOVERY_PROCESS.done.staking=true;DISCOVERY_PROCESS.done.duration=false;DISCOVERY_PROCESS.done.rewards=false;DISCOVERY_PROCESS.done.referral=false;DISCOVERY_PROCESS.done.valuation=false;setStepState(2,`${lots.length} Lots erkannt`,'done');setStepState(3,'bereit');setStepState(4,'bereit');$('status').innerHTML='<span class="ok">Stakings erkannt. Lockdauer und Rewards werden NICHT automatisch gestartet.</span>';log(`Schritt 2 abgeschlossen: ${pairs.length} LPs · ${stakingRows.length} Stake/Unstake-Ereignisse · ${lots.length} Lots.`,'ok');
