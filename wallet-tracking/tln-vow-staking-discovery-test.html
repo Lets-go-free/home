@@ -50,8 +50,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 22:07:26 CEST</div>
-<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 22:07:26 CEST:</b> <b>Build-ID 20260902-220726.</b> Schritt-3-Routing v6: verbleibenden Allnodes-Pfad identifiziert. `resilientEthCall()` konnte von Discovery-Helfern direkt aufgerufen werden und damit die bereits in `rpc()` vorhandene historische NodeReal-Weiche umgehen. Historische `eth_call` werden nun auch dort direkt an NodeReal geschickt. Zusätzlich enthält `rpcNetworkAt()` als letzte zentrale Schutzschicht einen Archive-Guard: jeder historische State-Request mit explizitem Block wird vor einem Nicht-NodeReal-Endpunkt abgefangen und an NodeReal umgeleitet. Damit existieren drei Schutzebenen (rpc, resilientEthCall, rpcNetworkAt). Cache-Version v6-archive-guard. Schritt-3-Routing v5: Ursache der weiterhin sichtbaren Allnodes-Archive-Meldung gefunden – neben der eingebetteten Duration-Engine existierte im Discovery-Hauptcode ein eigener RPC-Pfad, der historische State-Reads weiterhin an rpcUrl/PublicNode schicken konnte. Dieser Pfad routet historische eth_getStorageAt/eth_getCode/eth_call jetzt ebenfalls direkt an NodeReal. Zusätzlich werden unabhängige NodeReal-Storage-Reads als JSON-RPC-Batches (max. 40 Calls pro HTTP-Request) gesendet; fachliche Reads bleiben erhalten, die Browser-Requestzahl sinkt. Einzelrequest-Fallback bleibt bei Batch-Inkompatibilität. Redundanter latest-Read im Archive-Selbsttest entfernt. Cache-Version v5-rpc-batch. Schritt 3: historische State-Requests werden direkt an NodeReal geroutet; PublicNode/Allnodes/Alchemy werden für Archive-State nicht mehr probeweise verwendet. Duration-RPC-Zähler nach Phase/Methode ergänzt. Bei Root-Hint nur bereits verifizierte Struct-Offsets vor/am Stake, ohne redundanten latest-Read. Selector-/Dataflow-Diagnose wird nach bereits erreichtem Strict-Unstake-Grenzproof übersprungen. Cache-Version v4-archive-routing. Schritt-3-Erstlauf grundlegend neu geordnet: mögliche Legacy-Top-ups werden jetzt VOR jeder vollständigen Duration-Analyse per Archive-State-Preflight geprüft. Der Mapping-Root wird am Folgestake ermittelt, der vorherige Stake gezielt am selben Root/Offset verglichen und Contract/Proxy-Fingerprint zwischen den Stakes geprüft. Bei bestätigter Top-up-Kette läuft die vollständige CoreChange-/Unstake-Grenzsuche nur noch einmal auf dem letzten Stake/Top-up; der bereits ermittelte Root wird als Hint wiederverwendet, sodass auch dort keine zweite Root-Suche erfolgt. Erst danach wird mit der streng bewiesenen Lockdauer kontrolliert, ob jeder Top-up noch innerhalb der vorherigen Sperrfrist lag. Cache-Version v3-premerge; alte v1/v2-Duration-Caches werden ignoriert. Schritt 3 für den Erstlauf request-optimiert: potentielle Legacy-Top-ups werden nicht mehr zunächst als mehrere vollständige Duration-Läufe analysiert. Nach einem belastbaren Basis-Strict-Proof werden Folgestakes mit dem bereits erkannten Wallet-Mapping-Root und nur den bekannten Kern-/Timestamp-Offsets unmittelbar vor/nach dem Stake geprüft; zusätzlich wird der historische Contract-/Proxy-Implementation-Fingerprint zwischen den Stakes verglichen. Bei identischem Positions-State, aktivem bisherigen Lock und stabilem Contract wird dieselbe verifizierte Lockregel auf den Top-up-Zeitpunkt rebasiert. Eine zweite vollständige CoreChange-/Unstake-Binärsuche entfällt. Bei unklarer Evidenz bleibt der sichere Vollanalyse-Fallback erhalten. Duration-Cache auf v2-topup versioniert. Legacy-Top-up-Rekonstruktion ergänzt: Schritt 2 lässt mehrdeutige wiederholte Stakes zunächst getrennt. Schritt 3 vergleicht anschließend mit der vollständigen Duration-/Archive-State-Referenzengine die Wallet-Mapping-Struktur vor/nach den Stakes. Nur wenn Mapping-Root und Timestamp-Offset identisch sind, der erste Positions-State bis unmittelbar vor den Folgestake fortbesteht, derselbe State beim Folgestake geändert und der Start-Timestamp auf den Folgestake zurückgesetzt wird UND der Folgestake noch innerhalb der belastbar ermittelten bisherigen Lockperiode liegt, werden die Lots als On-Chain-bestätigter Top-up zusammengeführt. Explizite Position-IDs bleiben vorrangig und werden nie über diese Legacy-Regel vermischt. Cache-/Request-Optimierung Schritt 2 erweitert: Registry wird vor Alchemy anhand Wallet-/Pair-Evidenz vorgefiltert (mit sicherem Voll-Registry-Fallback), verifizierte aktuelle LP-Chain-Fakten werden persistent gebündelt gecacht, historische Tx-/Receipt-Chain-Fakten werden pro Wallet persistent gebündelt gecacht, Positions-Receipts werden zwischen Decoder und Stake-Fallback wiederverwendet. Cache-Invalidierung ist versionsbasiert; nur rohe immutable Chain-Fakten werden gecacht, fachliche Klassifizierungen werden bei jedem Lauf aus aktuellem Code neu berechnet. Prozess-Trennung umgesetzt: Die vollständig übernommenen Referenzengines aus <span class="mono">tln-vow-staking-duration-test.html</span> und <span class="mono">tln-vow-single-claim-trace-test.html</span> werden nicht mehr automatisch in einem einzigen Discovery-Lauf verkettet. Basisdaten, Staking-Erkennung, Lockdauer, eigene Staking-Rewards, Referral-Rewards und historische Bewertung sind sechs manuelle, strikt aufeinander aufbauende Schritte. Ein Schritt startet keinen Folgeschritt. Historische Preis-/getReserves-Abfragen laufen ausschließlich im manuellen Bewertungsschritt. Der persistente Supabase-ERC-20-Chain-Cache wird bereits im Basisschritt genutzt; Tx/Receipt/eth_call-/Metadaten-Caches bleiben sessionweit erhalten. Schritt 2 wurde am 02.09.2026 auf Staking-first-Kandidaten reduziert: der bisherige Wallet-weite V2-LP-Test aller ERC-20-Contracts entfällt; LP-/Legacy-Assets werden nur noch aus direkter Staking-Evidenz, Registry-Evidenz oder konkreten Stake-Txs geprüft. Zusätzlich läuft in Schritt 2 kein historischer eth_getLogs-Deep-Scan mehr: Staking-/Controller-Events werden aus den bereits geladenen Receipts der relevanten Wallet-Txs extrahiert. Seit 02.09.2026 ist auch der Block „Wallet-bezogene Smart-Contract-Events“ in Schritt 2 vollständig aus der aktiven DOM-Struktur genommen; der komplette HTML-Block sowie Aufbau, Lot-Anhängung und Rendering bleiben kommentiert im Quelltext für eine spätere Reward-/Referral-Diagnose erhalten. Zusätzlich werden Yield-/Withdraw-/Claim-Aufrufe in Schritt 2 nicht mehr an Positions-Lots gehängt oder angezeigt. Für nicht positionsrelevante Contract-Aufrufe wird in Schritt 2 auch kein Receipt mehr geladen; die vollständige Contract-Historie bleibt für Schritt 4 erhalten.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 22:22:20 CEST</div>
+<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 22:22:20 CEST:</b> <b>Build-ID 20260902-222220.</b> Binärsuch-Optimierung v7: Bei geschlossenen Lots wird der bereits in Schritt 2 bekannte reale Unstake-Block als Core-Change-Hint an die verifizierte Duration-Referenzengine übergeben. Der Hint wird on-chain durch Vergleich der erkannten Positions-Core-Felder unmittelbar vor und im Unstake-Block sowie durch die reale TX im Block verifiziert; nur bei erfolgreicher Verifikation entfällt die globale Core-Change-Binärsuche, sonst läuft automatisch der bisherige sichere Suchpfad. Die Unstake-Lockgrenzsuche bleibt exakt, aber jeder Prüfpunkt bündelt Block-Timestamp und historischen eth_call in einem NodeReal JSON-RPC-Batch; fachliche Prüfschritte werden nicht entfernt. Cache-Version v7-binary-search. Developer-Funktion ergänzt: Für das aktuell ausgewählte TLN-Wallet kann der persistente BSC-Supabase-Cache in <code>tln_vow_staking_scan_cache</code> manuell gelöscht werden. Gelöscht werden nur Zeilen des eingeloggten Users mit exakt diesem Wallet und <code>chain_key=bsc</code> (ERC20-Historie, Tx-Fakten und Duration-Strict-Proofs dieses Wallets); der globale walletübergreifende LP-Fakten-Cache bleibt erhalten. Vor dem Löschen erfolgt eine Bestätigung, anschließend werden walletbezogene Session-Caches zurückgesetzt und der Prozess wieder auf Schritt 1 gesetzt. Schritt-3-Routing v6: verbleibenden Allnodes-Pfad identifiziert. `resilientEthCall()` konnte von Discovery-Helfern direkt aufgerufen werden und damit die bereits in `rpc()` vorhandene historische NodeReal-Weiche umgehen. Historische `eth_call` werden nun auch dort direkt an NodeReal geschickt. Zusätzlich enthält `rpcNetworkAt()` als letzte zentrale Schutzschicht einen Archive-Guard: jeder historische State-Request mit explizitem Block wird vor einem Nicht-NodeReal-Endpunkt abgefangen und an NodeReal umgeleitet. Damit existieren drei Schutzebenen (rpc, resilientEthCall, rpcNetworkAt). Cache-Version v6-archive-guard. Schritt-3-Routing v5: Ursache der weiterhin sichtbaren Allnodes-Archive-Meldung gefunden – neben der eingebetteten Duration-Engine existierte im Discovery-Hauptcode ein eigener RPC-Pfad, der historische State-Reads weiterhin an rpcUrl/PublicNode schicken konnte. Dieser Pfad routet historische eth_getStorageAt/eth_getCode/eth_call jetzt ebenfalls direkt an NodeReal. Zusätzlich werden unabhängige NodeReal-Storage-Reads als JSON-RPC-Batches (max. 40 Calls pro HTTP-Request) gesendet; fachliche Reads bleiben erhalten, die Browser-Requestzahl sinkt. Einzelrequest-Fallback bleibt bei Batch-Inkompatibilität. Redundanter latest-Read im Archive-Selbsttest entfernt. Cache-Version v5-rpc-batch. Schritt 3: historische State-Requests werden direkt an NodeReal geroutet; PublicNode/Allnodes/Alchemy werden für Archive-State nicht mehr probeweise verwendet. Duration-RPC-Zähler nach Phase/Methode ergänzt. Bei Root-Hint nur bereits verifizierte Struct-Offsets vor/am Stake, ohne redundanten latest-Read. Selector-/Dataflow-Diagnose wird nach bereits erreichtem Strict-Unstake-Grenzproof übersprungen. Cache-Version v4-archive-routing. Schritt-3-Erstlauf grundlegend neu geordnet: mögliche Legacy-Top-ups werden jetzt VOR jeder vollständigen Duration-Analyse per Archive-State-Preflight geprüft. Der Mapping-Root wird am Folgestake ermittelt, der vorherige Stake gezielt am selben Root/Offset verglichen und Contract/Proxy-Fingerprint zwischen den Stakes geprüft. Bei bestätigter Top-up-Kette läuft die vollständige CoreChange-/Unstake-Grenzsuche nur noch einmal auf dem letzten Stake/Top-up; der bereits ermittelte Root wird als Hint wiederverwendet, sodass auch dort keine zweite Root-Suche erfolgt. Erst danach wird mit der streng bewiesenen Lockdauer kontrolliert, ob jeder Top-up noch innerhalb der vorherigen Sperrfrist lag. Cache-Version v3-premerge; alte v1/v2-Duration-Caches werden ignoriert. Schritt 3 für den Erstlauf request-optimiert: potentielle Legacy-Top-ups werden nicht mehr zunächst als mehrere vollständige Duration-Läufe analysiert. Nach einem belastbaren Basis-Strict-Proof werden Folgestakes mit dem bereits erkannten Wallet-Mapping-Root und nur den bekannten Kern-/Timestamp-Offsets unmittelbar vor/nach dem Stake geprüft; zusätzlich wird der historische Contract-/Proxy-Implementation-Fingerprint zwischen den Stakes verglichen. Bei identischem Positions-State, aktivem bisherigen Lock und stabilem Contract wird dieselbe verifizierte Lockregel auf den Top-up-Zeitpunkt rebasiert. Eine zweite vollständige CoreChange-/Unstake-Binärsuche entfällt. Bei unklarer Evidenz bleibt der sichere Vollanalyse-Fallback erhalten. Duration-Cache auf v2-topup versioniert. Legacy-Top-up-Rekonstruktion ergänzt: Schritt 2 lässt mehrdeutige wiederholte Stakes zunächst getrennt. Schritt 3 vergleicht anschließend mit der vollständigen Duration-/Archive-State-Referenzengine die Wallet-Mapping-Struktur vor/nach den Stakes. Nur wenn Mapping-Root und Timestamp-Offset identisch sind, der erste Positions-State bis unmittelbar vor den Folgestake fortbesteht, derselbe State beim Folgestake geändert und der Start-Timestamp auf den Folgestake zurückgesetzt wird UND der Folgestake noch innerhalb der belastbar ermittelten bisherigen Lockperiode liegt, werden die Lots als On-Chain-bestätigter Top-up zusammengeführt. Explizite Position-IDs bleiben vorrangig und werden nie über diese Legacy-Regel vermischt. Cache-/Request-Optimierung Schritt 2 erweitert: Registry wird vor Alchemy anhand Wallet-/Pair-Evidenz vorgefiltert (mit sicherem Voll-Registry-Fallback), verifizierte aktuelle LP-Chain-Fakten werden persistent gebündelt gecacht, historische Tx-/Receipt-Chain-Fakten werden pro Wallet persistent gebündelt gecacht, Positions-Receipts werden zwischen Decoder und Stake-Fallback wiederverwendet. Cache-Invalidierung ist versionsbasiert; nur rohe immutable Chain-Fakten werden gecacht, fachliche Klassifizierungen werden bei jedem Lauf aus aktuellem Code neu berechnet. Prozess-Trennung umgesetzt: Die vollständig übernommenen Referenzengines aus <span class="mono">tln-vow-staking-duration-test.html</span> und <span class="mono">tln-vow-single-claim-trace-test.html</span> werden nicht mehr automatisch in einem einzigen Discovery-Lauf verkettet. Basisdaten, Staking-Erkennung, Lockdauer, eigene Staking-Rewards, Referral-Rewards und historische Bewertung sind sechs manuelle, strikt aufeinander aufbauende Schritte. Ein Schritt startet keinen Folgeschritt. Historische Preis-/getReserves-Abfragen laufen ausschließlich im manuellen Bewertungsschritt. Der persistente Supabase-ERC-20-Chain-Cache wird bereits im Basisschritt genutzt; Tx/Receipt/eth_call-/Metadaten-Caches bleiben sessionweit erhalten. Schritt 2 wurde am 02.09.2026 auf Staking-first-Kandidaten reduziert: der bisherige Wallet-weite V2-LP-Test aller ERC-20-Contracts entfällt; LP-/Legacy-Assets werden nur noch aus direkter Staking-Evidenz, Registry-Evidenz oder konkreten Stake-Txs geprüft. Zusätzlich läuft in Schritt 2 kein historischer eth_getLogs-Deep-Scan mehr: Staking-/Controller-Events werden aus den bereits geladenen Receipts der relevanten Wallet-Txs extrahiert. Seit 02.09.2026 ist auch der Block „Wallet-bezogene Smart-Contract-Events“ in Schritt 2 vollständig aus der aktiven DOM-Struktur genommen; der komplette HTML-Block sowie Aufbau, Lot-Anhängung und Rendering bleiben kommentiert im Quelltext für eine spätere Reward-/Referral-Diagnose erhalten. Zusätzlich werden Yield-/Withdraw-/Claim-Aufrufe in Schritt 2 nicht mehr an Positions-Lots gehängt oder angezeigt. Für nicht positionsrelevante Contract-Aufrufe wird in Schritt 2 auch kein Receipt mehr geladen; die vollständige Contract-Historie bleibt für Schritt 4 erhalten.</p>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -59,6 +59,12 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 </select></label>
 <div style="margin-top:8px"><span class="muted">BSC/EVM-Adresse:</span> <span id="walletAddress" class="mono">–</span></div>
 <input id="wallet" type="hidden" value="">
+<div style="margin-top:10px;padding:10px 12px;border:1px solid #5a3a3a;border-radius:9px;background:#181112">
+  <b>Developer · Supabase-Cache</b>
+  <div class="muted" style="margin:5px 0 8px">Löscht ausschließlich die Einträge in <code>tln_vow_staking_scan_cache</code> für das aktuell ausgewählte Wallet auf BSC. Globale LP-Fakten anderer Wallets bleiben erhalten.</div>
+  <button id="clearWalletSupabaseCache" type="button" disabled>Supabase-Cache dieses Wallets löschen</button>
+  <span id="clearWalletSupabaseCacheState" class="muted" style="margin-left:8px"></span>
+</div>
 <div class="process-grid" id="processGrid">
   <div class="process-step locked" id="stepBox1"><button id="refresh" disabled>1 · Basisdaten laden</button><span class="step-state" id="stepState1">bereit nach Initialisierung</span></div>
   <div class="process-step locked" id="stepBox2"><button id="stepStaking" disabled>2 · Stakings erkennen</button><span class="step-state" id="stepState2">wartet auf Basisdaten</span></div>
@@ -124,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID="20260902-220726";
+const BUILD_ID="20260902-222220";
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -2460,10 +2466,28 @@ function classifyUnstakeCallFailure(call,revert){
  if(revert?.message||/execution reverted|revert/.test(msg))return 'contract_revert';
  return 'unknown_error';
 }
+async function nodeRealBlockAndCallDetailed(callObj,blockTag){
+ const c=new AbortController(),tm=setTimeout(()=>c.abort(),30000);
+ try{
+   const body=[
+     {jsonrpc:'2.0',id:1,method:'eth_getBlockByNumber',params:[blockTag,false]},
+     {jsonrpc:'2.0',id:2,method:'eth_call',params:[callObj,blockTag]}
+   ];
+   countDurationRpc('NodeReal-batch','unstake-probe(block+call)');
+   const r=await fetch(NODEREAL_BSC_URL,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:c.signal});
+   const raw=await r.text();let arr=null;try{arr=raw?JSON.parse(raw):null}catch{}
+   if(!r.ok||!Array.isArray(arr))throw new Error(`NodeReal Unstake-Probe Batch HTTP ${r.status}`);
+   const byId=new Map(arr.map(x=>[Number(x.id),x]));
+   const b=byId.get(1),q=byId.get(2);
+   if(b?.error||!b?.result)throw new Error(b?.error?.message||'Block-Metadaten fehlen');
+   const call=q?.error
+     ?{ok:false,error:{code:q.error.code,message:q.error.message||'',data:q.error.data||null}}
+     :{ok:true,result:q?.result??'0x'};
+   return {block:b.result,call};
+ }finally{clearTimeout(tm)}
+}
 async function unstakeCallProbe(tx,contract,ctx,blockNum){
  const blockTag='0x'+Number(blockNum).toString(16);
- const block=await nodeRealRpcDirect('eth_getBlockByNumber',[blockTag,false]);
- const blockTs=Number(BigInt(block.timestamp));
  const impl=null; // Request-Optimierung: Implementation erst an finaler Grenze lesen.
 
  const callObj={
@@ -2475,7 +2499,16 @@ async function unstakeCallProbe(tx,contract,ctx,blockNum){
    gasPrice:'0x0'
  };
 
- let call=await nodeRealEthCallDetailed(callObj,blockTag);
+ let block,call;
+ try{
+   const paired=await nodeRealBlockAndCallDetailed(callObj,blockTag);
+   block=paired.block;call=paired.call;
+ }catch{
+   // Sicherer Kompatibilitäts-Fallback: fachlich identisch mit bisherigem Pfad.
+   block=await nodeRealRpcDirect('eth_getBlockByNumber',[blockTag,false]);
+   call=await nodeRealEthCallDetailed(callObj,blockTag);
+ }
+ const blockTs=Number(BigInt(block.timestamp));
  let simulationMode='gasPrice=0';
  let balanceOverrideUsed=false;
  let revert=call.ok?null:decodeRevertData(call.error?.data);
@@ -3229,10 +3262,11 @@ async function run(){try{lastDiagnosticExport=null;$('exportDiag').disabled=true
  }}
 
 const __headlessLotCache=new Map();
-async function analyzeLotHeadless({wallet,contract,stakeTx,structHint=null}){
+async function analyzeLotHeadless({wallet,contract,stakeTx,structHint=null,exitHint=null}){
   wallet=norm(wallet); contract=norm(contract); stakeTx=String(stakeTx||'').trim();
   if(!ethers.isAddress(wallet)||!ethers.isAddress(contract)||!/^0x[0-9a-fA-F]{64}$/.test(stakeTx))throw new Error('Duration-Referenz: Wallet, Contract oder Stake-TX ungültig.');
-  const key=`${wallet}|${contract}|${stakeTx.toLowerCase()}`;
+  const exitKey=Number(exitHint?.blockNum||0)>0?`|exit:${Number(exitHint.blockNum)}:${String(exitHint?.txHash||'').toLowerCase()}`:'';
+  const key=`${wallet}|${contract}|${stakeTx.toLowerCase()}${exitKey}`;
   if(__headlessLotCache.has(key))return __headlessLotCache.get(key);
   const promise=(async()=>{
     await initProviders();
@@ -3265,7 +3299,34 @@ async function analyzeLotHeadless({wallet,contract,stakeTx,structHint=null}){
     durationPhase('targeted-struct');
     const targeted=await targetedRoot3Scan(contract,wallet,ctx,archiveStorage);
     durationPhase('core-change-bisection');
-    const coreChange=await findFirstRoot3CoreChange(contract,wallet,ctx,targeted);
+    let coreChange=null;
+    const hintedExitBlock=Number(exitHint?.blockNum||0);
+    if(targeted?.available&&hintedExitBlock>ctx.blockNum){
+      // Schritt 2 kennt bei geschlossenen Lots bereits die reale Unstake-/Positionsauflösungs-TX.
+      // Verifizieren statt erneut über die gesamte Chain bis latest zu binärsuchen:
+      // unmittelbar vor der TX muss der erkannte Positions-Core dem Stake-Zustand entsprechen,
+      // im TX-Block muss er geändert sein.
+      try{
+        const offsets=targeted.coreOffsets||[],base={};
+        for(const off of offsets)base[off]=targeted.byOffset?.find(r=>r.offset===off)?.stake?.value??null;
+        const [beforeHint,atHint,blockObj]=await Promise.all([
+          readRoot3CoreAt(contract,wallet,targeted,hintedExitBlock-1,ctx.ts),
+          readRoot3CoreAt(contract,wallet,targeted,hintedExitBlock,ctx.ts),
+          nodeRealRpcDirect('eth_getBlockByNumber',['0x'+hintedExitBlock.toString(16),true])
+        ]);
+        const beforeSame=sameCoreSignatureDynamic(base,beforeHint.signature,offsets);
+        const atChanged=!sameCoreSignatureDynamic(base,atHint.signature,offsets);
+        const txMatch=!exitHint?.txHash||Array.isArray(blockObj?.transactions)&&blockObj.transactions.some(x=>String(x?.hash||x).toLowerCase()===String(exitHint.txHash).toLowerCase());
+        if(beforeSame&&atChanged&&txMatch){
+          const blockTs=blockObj?.timestamp?Number(BigInt(blockObj.timestamp)):null;
+          coreChange={found:true,base,coreOffsets:offsets,firstChangedBlock:hintedExitBlock,firstChangedBlockHex:'0x'+hintedExitBlock.toString(16),
+            timestamp:blockTs,date:blockTs?fmtDate(blockTs):null,elapsedSeconds:blockTs?blockTs-ctx.ts:null,elapsedDays:blockTs?(blockTs-ctx.ts)/86400:null,
+            before:beforeHint,changed:atHint,boundaryWindow:[],block:blockObj,hintVerified:true,hintSource:'Discovery Schritt 2 · reale Unstake-TX'};
+          log(`Core-Change: reale Unstake-TX aus Schritt 2 @ Block ${hintedExitBlock} durch Storage vor/am Block bestätigt; globale Core-Binärsuche übersprungen.`,'ok');
+        }
+      }catch(e){log(`Core-Change-Hint nicht verifizierbar; sichere Binärsuche bleibt aktiv: ${e.message}`,'warn')}
+    }
+    if(!coreChange)coreChange=await findFirstRoot3CoreChange(contract,wallet,ctx,targeted);
     let coreTxAnalysis={candidates:[],all:[]};
     durationPhase('change-block-tx');
     if(coreChange.found)coreTxAnalysis=await analyzeChangeBlockTransactions(coreChange,contract,wallet);
@@ -3490,7 +3551,7 @@ const STAKING_SCAN_CACHE_KEY='erc20-history-v1';
 const TECH_CACHE_VERSIONS=Object.freeze({
   lpFacts:'lp-chainfacts-v1',
   txFacts:'tx-chainfacts-v1',
-  duration:'duration-strict-v6-archive-guard'
+  duration:'duration-strict-v7-binary-search'
 });
 const TECH_CACHE_KEYS=Object.freeze({
   lpFacts:'lp-chainfacts',
@@ -3610,10 +3671,49 @@ async function saveTechnicalProcessCache(wallet,cacheKey,scannerVersion,payload,
  if(error){log(`Technischer Cache ${cacheKey} konnte nicht gespeichert werden: ${error.message||error}`,'warn');return false}
  return true;
 }
+async function clearSelectedWalletSupabaseCache(){
+ const btn=$('clearWalletSupabaseCache'),state=$('clearWalletSupabaseCacheState');
+ const wallet=norm($('wallet')?.value||'');
+ if(!currentUserId){state.textContent='Nicht eingeloggt.';return}
+ if(!ethers.isAddress(wallet)){state.textContent='Kein gültiges Wallet ausgewählt.';return}
+ const ok=confirm(`Supabase-Cache für dieses Wallet wirklich löschen?\n\n${wallet}\n\nGelöscht werden alle BSC-Einträge dieses Wallets aus ${STAKING_SCAN_CACHE_TABLE}.`);
+ if(!ok)return;
+ btn.disabled=true;state.textContent='lösche …';
+ try{
+   const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE)
+     .delete()
+     .eq('user_id',currentUserId)
+     .eq('chain_key','bsc')
+     .eq('wallet_address',wallet)
+     .select('cache_key');
+   if(error)throw error;
+   const deleted=Array.isArray(data)?data.length:0;
+
+   // Nur walletbezogene In-Memory-Caches zurücksetzen. Der globale LP-Fakten-Cache
+   // gehört nicht ausschließlich zu diesem Wallet und bleibt bewusst erhalten.
+   ERC20_TRANSFER_SESSION_CACHE.delete(wallet);
+   if(TX_FACTS_CACHE_STATE.wallet===wallet){
+     TX_FACTS_CACHE_STATE.wallet='';TX_FACTS_CACHE_STATE.loaded=false;TX_FACTS_CACHE_STATE.dirty=false;TX_FACTS_CACHE_STATE.entries=new Map();
+   }
+   try{STAKING_DURATION_REFERENCE_ENGINE.clearHeadlessCaches?.()}catch{}
+   resetDiscoveryProcess(wallet);
+   setStepState(1,'Cache gelöscht · bereit');
+   updateProcessButtons();
+
+   state.textContent=`${deleted} Supabase-Eintrag${deleted===1?'':'e'} gelöscht.`;
+   log(`DEV Cache-Löschung: ${deleted} Supabase-Eintrag${deleted===1?'':'e'} für Wallet ${wallet} aus ${STAKING_SCAN_CACHE_TABLE} gelöscht. Globaler LP-Cache blieb erhalten.`,'ok');
+ }catch(e){
+   state.textContent='Fehler beim Löschen.';
+   log(`DEV Cache-Löschung fehlgeschlagen: ${e?.message||e}`,'warn');
+ }finally{
+   btn.disabled=false;
+ }
+}
+
 function durationCacheKeyForLot(lot){
   const base=String(lot?.stakeTx||'').toLowerCase();
   const anchor=String(lot?.durationAnchorTx||lot?.topUps?.at?.(-1)?.tx||'').toLowerCase();
-  return `duration-strict-v6:${base}${anchor&&anchor!==base?`:anchor:${anchor}`:''}`;
+  return `duration-strict-v7:${base}${anchor&&anchor!==base?`:anchor:${anchor}`:''}`;
 }
 function applyDurationCacheToLot(lot,c){
  if(!c||!c.expiryTime||!Number.isFinite(Number(c.lockDurationSeconds)))return false;
@@ -3965,7 +4065,11 @@ async function resolveAutomaticLotLock(lot){
   const p=(async()=>{
     try{
       log(`Duration-Referenzengine: vollständige verifizierte Testfile-Logik für ${safePairLabel(lot)} …`,'ok');
-      const ref=await STAKING_DURATION_REFERENCE_ENGINE.analyzeLotHeadless({wallet,contract,stakeTx,structHint:lot?.durationStructHint||null});
+      const exitBlockNum=lot?.unstakeBlockHex?Number(BigInt(lot.unstakeBlockHex)):null;
+      const ref=await STAKING_DURATION_REFERENCE_ENGINE.analyzeLotHeadless({
+        wallet,contract,stakeTx,structHint:lot?.durationStructHint||null,
+        exitHint:Number.isFinite(exitBlockNum)&&exitBlockNum>0?{blockNum:exitBlockNum,txHash:lot?.unstakeTx||null}:null
+      });
       lot.durationReference=ref;
       const gate=ref?.unstakeGate;
       const strong=Array.isArray(ref?.evidence)?ref.evidence.find(x=>Number(x?.score)>=100&&Number.isFinite(Number(x?.days))):null;
@@ -7611,6 +7715,7 @@ function updateProcessButtons(){
       const btn=box.querySelector('button');if(btn?.disabled)box.classList.add('locked');else box.classList.remove('locked');
     }
   });
+  if($('clearWalletSupabaseCache'))$('clearWalletSupabaseCache').disabled=!(currentUserId&&ethers.isAddress($('wallet')?.value||''));
 }
 function renderProcessLotCards(){
   const lots=DISCOVERY_PROCESS.lots||[];
@@ -8239,6 +8344,7 @@ $('stepDuration').onclick=processDuration;
 $('stepRewards').onclick=processStakingRewards;
 $('stepReferral').onclick=processReferralRewards;
 $('stepValuation').onclick=processValuation;
+$('clearWalletSupabaseCache').onclick=clearSelectedWalletSupabaseCache;
 
 init();
 </script></body></html>
