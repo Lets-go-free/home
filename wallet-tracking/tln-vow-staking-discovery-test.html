@@ -50,8 +50,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 02:26:52 CEST</div>
-<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 02:26:52 CEST:</b> <b>Build-ID 20260902-022652.</b> Prozess-Trennung umgesetzt: Die vollständig übernommenen Referenzengines aus <span class="mono">tln-vow-staking-duration-test.html</span> und <span class="mono">tln-vow-single-claim-trace-test.html</span> werden nicht mehr automatisch in einem einzigen Discovery-Lauf verkettet. Basisdaten, Staking-Erkennung, Lockdauer, eigene Staking-Rewards, Referral-Rewards und historische Bewertung sind sechs manuelle, strikt aufeinander aufbauende Schritte. Ein Schritt startet keinen Folgeschritt. Historische Preis-/getReserves-Abfragen laufen ausschließlich im manuellen Bewertungsschritt. Der persistente Supabase-ERC-20-Chain-Cache wird bereits im Basisschritt genutzt; Tx/Receipt/eth_call-/Metadaten-Caches bleiben sessionweit erhalten. Schritt 2 wurde am 02.09.2026 auf Staking-first-Kandidaten reduziert: der bisherige Wallet-weite V2-LP-Test aller ERC-20-Contracts entfällt; LP-/Legacy-Assets werden nur noch aus direkter Staking-Evidenz, Registry-Evidenz oder konkreten Stake-Txs geprüft. Zusätzlich läuft in Schritt 2 kein historischer eth_getLogs-Deep-Scan mehr: Staking-/Controller-Events werden aus den bereits geladenen Receipts der relevanten Wallet-Txs extrahiert.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 02:49:04 CEST</div>
+<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 02:49:04 CEST:</b> <b>Build-ID 20260902-024904.</b> Prozess-Trennung umgesetzt: Die vollständig übernommenen Referenzengines aus <span class="mono">tln-vow-staking-duration-test.html</span> und <span class="mono">tln-vow-single-claim-trace-test.html</span> werden nicht mehr automatisch in einem einzigen Discovery-Lauf verkettet. Basisdaten, Staking-Erkennung, Lockdauer, eigene Staking-Rewards, Referral-Rewards und historische Bewertung sind sechs manuelle, strikt aufeinander aufbauende Schritte. Ein Schritt startet keinen Folgeschritt. Historische Preis-/getReserves-Abfragen laufen ausschließlich im manuellen Bewertungsschritt. Der persistente Supabase-ERC-20-Chain-Cache wird bereits im Basisschritt genutzt; Tx/Receipt/eth_call-/Metadaten-Caches bleiben sessionweit erhalten. Schritt 2 wurde am 02.09.2026 auf Staking-first-Kandidaten reduziert: der bisherige Wallet-weite V2-LP-Test aller ERC-20-Contracts entfällt; LP-/Legacy-Assets werden nur noch aus direkter Staking-Evidenz, Registry-Evidenz oder konkreten Stake-Txs geprüft. Zusätzlich läuft in Schritt 2 kein historischer eth_getLogs-Deep-Scan mehr: Staking-/Controller-Events werden aus den bereits geladenen Receipts der relevanten Wallet-Txs extrahiert. Seit 02.09.2026 ist auch der Block „Wallet-bezogene Smart-Contract-Events“ in Schritt 2 vollständig aus der aktiven DOM-Struktur genommen; der komplette HTML-Block sowie Aufbau, Lot-Anhängung und Rendering bleiben kommentiert im Quelltext für eine spätere Reward-/Referral-Diagnose erhalten.</p>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -88,9 +88,16 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <p class="muted">Diese Tabelle zeigt <b>jede</b> LP-Übertragung zwischen Wallet und einem bestätigten Staking-Contract. Wenn hier ein historischer Stake steht, aber unten kein Lot entsteht, liegt der Fehler in der Lot-/FIFO-Rekonstruktion.</p>
 <div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Aktion</th><th>Pool</th><th>Staking-Contract</th><th>Bezeichnung</th><th>LP-Menge</th><th>Block</th><th>Tx</th></tr></thead><tbody id="stakingEvents"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
 
-<div class="card"><h2>Wallet-bezogene Smart-Contract-Events</h2>
-<p class="muted">Deep-Scan: alle Events der erkannten Staking-/Entry-Contracts, in denen die Wallet irgendwo in Topics oder Daten vorkommt. Damit sehen wir auch Legacy-Events mit unbekanntem Layout.</p>
-<div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Erkennung</th><th>Contract</th><th>Topic0</th><th>Tx von</th><th>Tx an</th><th>LP-Rückgabe?</th><th>Tx</th></tr></thead><tbody id="deepEvents"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
+<!--
+  DEAKTIVIERT 2026-09-02 – NICHT LÖSCHEN.
+  Dieser komplette UI-Block gehört nicht zu Schritt 2 (reine Staking-Erkennung).
+  Für eine spätere Reward-/Referral-Diagnose kann er bei Bedarf wieder aktiviert werden.
+
+  <div class="card"><h2>Wallet-bezogene Smart-Contract-Events</h2>
+  <p class="muted">Deep-Scan: alle Events der erkannten Staking-/Entry-Contracts, in denen die Wallet irgendwo in Topics oder Daten vorkommt. Damit sehen wir auch Legacy-Events mit unbekanntem Layout.</p>
+  <div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Erkennung</th><th>Contract</th><th>Topic0</th><th>Tx von</th><th>Tx an</th><th>LP-Rückgabe?</th><th>Tx</th></tr></thead><tbody id="deepEvents"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
+-->
+
 
 <div class="card"><h2>🟢 Laufende Stakings</h2>
 <p class="muted">Aktuell noch offene Staking-Positionen. Der historische Endwert wird zum vertraglichen Freigabe-/Ablaufzeitpunkt bewertet – nicht erst bei einem späteren Unstake.</p>
@@ -117,7 +124,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID="20260902-022652";
+const BUILD_ID="20260902-023604";
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -7329,7 +7336,16 @@ async function processStakingDiscovery(){
     let stakingContractCalls=await allExternalCallsToStaking(wallet,entryTargets);let contractCalls=[...stakingContractCalls].sort((a,b)=>String(a.metadata?.blockTimestamp||'').localeCompare(String(b.metadata?.blockTimestamp||'')));renderContractCalls(contractCalls);
     const stakeTxPairs=await discoverPairsFromStakeTransactions(contractCalls,transfers,pairMap,projectSet,counts,wallet);
     if(stakeTxPairs.length){for(const p of stakeTxPairs){if(!pairs.some(x=>norm(x.address)===norm(p.address)))pairs.push(p);pairMap.set(norm(p.address),p)}renderPairTable(pairs,counts);rows=renderEvents(transfers,pairMap,wallet);const synthesized=await synthesizeStakeRowsFromReceipts(contractCalls,pairMap,wallet,rows);stakingRows=renderRawStakingEvents(rows);entryTargets=await discoverStakeEntryTargets(stakingRows);log(`Stake-Tx-Fallback: ${stakeTxPairs.length} zusätzlicher historischer LP entdeckt; ${synthesized.length} Stake-Ereignis(se) ergänzt.`,'ok')}
-    const contractEvents=stakingContractEventsFromKnownCalls(contractCalls,entryTargets,wallet);const built=buildDiagnosticLots(stakingRows);const lots=built.lots,unmatched=built.unmatched;reconcileLotsWithContractCalls(lots,contractCalls);attachContractEventsToLots(lots,contractEvents);associateContractCallsToLots(lots,contractCalls);renderDeepEvents(contractEvents,lots);
+    // 2026-09-02: Smart-Contract-Event-Auswertung in Schritt 2 bewusst deaktiviert.
+    // Für reine Staking-/Lot-Erkennung nicht erforderlich; fachlich Reward-/Referral-Diagnose (Schritt 4/5).
+    // Code bleibt erhalten und wird NICHT gelöscht:
+    // const contractEvents=stakingContractEventsFromKnownCalls(contractCalls,entryTargets,wallet);
+    const contractEvents=[];
+    const built=buildDiagnosticLots(stakingRows);const lots=built.lots,unmatched=built.unmatched;
+    reconcileLotsWithContractCalls(lots,contractCalls);
+    // attachContractEventsToLots(lots,contractEvents); // deaktiviert; bei Bedarf in Schritt 4/5 reaktivieren
+    associateContractCallsToLots(lots,contractCalls);
+    // renderDeepEvents(contractEvents,lots); // deaktiviert; zugehöriger UI-Block ist auskommentiert
     DISCOVERY_PROCESS.pairs=pairs;DISCOVERY_PROCESS.pairMap=pairMap;DISCOVERY_PROCESS.rows=rows;DISCOVERY_PROCESS.stakingRows=stakingRows;DISCOVERY_PROCESS.entryTargets=entryTargets;DISCOVERY_PROCESS.stakingContractCalls=stakingContractCalls;DISCOVERY_PROCESS.contractCalls=contractCalls;DISCOVERY_PROCESS.contractEvents=contractEvents;DISCOVERY_PROCESS.lots=lots;DISCOVERY_PROCESS.unmatched=unmatched;
     $('mPairs').textContent=pairs.length;$('mStakes').textContent=stakingRows.filter(r=>String(r.action).toUpperCase()==='STAKE').length;$('mUnstakes').textContent=stakingRows.filter(r=>String(r.action).toUpperCase()==='UNSTAKE').length;renderProcessLotCards();renderProcessChecks();
     DISCOVERY_PROCESS.done.staking=true;DISCOVERY_PROCESS.done.duration=false;DISCOVERY_PROCESS.done.rewards=false;DISCOVERY_PROCESS.done.referral=false;DISCOVERY_PROCESS.done.valuation=false;setStepState(2,`${lots.length} Lots erkannt`,'done');setStepState(3,'bereit');setStepState(4,'bereit');$('status').innerHTML='<span class="ok">Stakings erkannt. Lockdauer und Rewards werden NICHT automatisch gestartet.</span>';log(`Schritt 2 abgeschlossen: ${pairs.length} LPs · ${stakingRows.length} Stake/Unstake-Ereignisse · ${lots.length} Lots.`,'ok');
