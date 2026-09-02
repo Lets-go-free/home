@@ -50,8 +50,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 02:49:04 CEST</div>
-<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 02:49:04 CEST:</b> <b>Build-ID 20260902-024904.</b> Prozess-Trennung umgesetzt: Die vollständig übernommenen Referenzengines aus <span class="mono">tln-vow-staking-duration-test.html</span> und <span class="mono">tln-vow-single-claim-trace-test.html</span> werden nicht mehr automatisch in einem einzigen Discovery-Lauf verkettet. Basisdaten, Staking-Erkennung, Lockdauer, eigene Staking-Rewards, Referral-Rewards und historische Bewertung sind sechs manuelle, strikt aufeinander aufbauende Schritte. Ein Schritt startet keinen Folgeschritt. Historische Preis-/getReserves-Abfragen laufen ausschließlich im manuellen Bewertungsschritt. Der persistente Supabase-ERC-20-Chain-Cache wird bereits im Basisschritt genutzt; Tx/Receipt/eth_call-/Metadaten-Caches bleiben sessionweit erhalten. Schritt 2 wurde am 02.09.2026 auf Staking-first-Kandidaten reduziert: der bisherige Wallet-weite V2-LP-Test aller ERC-20-Contracts entfällt; LP-/Legacy-Assets werden nur noch aus direkter Staking-Evidenz, Registry-Evidenz oder konkreten Stake-Txs geprüft. Zusätzlich läuft in Schritt 2 kein historischer eth_getLogs-Deep-Scan mehr: Staking-/Controller-Events werden aus den bereits geladenen Receipts der relevanten Wallet-Txs extrahiert. Seit 02.09.2026 ist auch der Block „Wallet-bezogene Smart-Contract-Events“ in Schritt 2 vollständig aus der aktiven DOM-Struktur genommen; der komplette HTML-Block sowie Aufbau, Lot-Anhängung und Rendering bleiben kommentiert im Quelltext für eine spätere Reward-/Referral-Diagnose erhalten.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 02.09.2026 04:04:30 CEST</div>
+<div class="card"><div id="auth">Initialisierung…</div><p class="muted"><b>Entwicklungsstand 02.09.2026 · 04:04:30 CEST:</b> <b>Build-ID 20260902-040430.</b> Prozess-Trennung umgesetzt: Die vollständig übernommenen Referenzengines aus <span class="mono">tln-vow-staking-duration-test.html</span> und <span class="mono">tln-vow-single-claim-trace-test.html</span> werden nicht mehr automatisch in einem einzigen Discovery-Lauf verkettet. Basisdaten, Staking-Erkennung, Lockdauer, eigene Staking-Rewards, Referral-Rewards und historische Bewertung sind sechs manuelle, strikt aufeinander aufbauende Schritte. Ein Schritt startet keinen Folgeschritt. Historische Preis-/getReserves-Abfragen laufen ausschließlich im manuellen Bewertungsschritt. Der persistente Supabase-ERC-20-Chain-Cache wird bereits im Basisschritt genutzt; Tx/Receipt/eth_call-/Metadaten-Caches bleiben sessionweit erhalten. Schritt 2 wurde am 02.09.2026 auf Staking-first-Kandidaten reduziert: der bisherige Wallet-weite V2-LP-Test aller ERC-20-Contracts entfällt; LP-/Legacy-Assets werden nur noch aus direkter Staking-Evidenz, Registry-Evidenz oder konkreten Stake-Txs geprüft. Zusätzlich läuft in Schritt 2 kein historischer eth_getLogs-Deep-Scan mehr: Staking-/Controller-Events werden aus den bereits geladenen Receipts der relevanten Wallet-Txs extrahiert. Seit 02.09.2026 ist auch der Block „Wallet-bezogene Smart-Contract-Events“ in Schritt 2 vollständig aus der aktiven DOM-Struktur genommen; der komplette HTML-Block sowie Aufbau, Lot-Anhängung und Rendering bleiben kommentiert im Quelltext für eine spätere Reward-/Referral-Diagnose erhalten. Zusätzlich werden Yield-/Withdraw-/Claim-Aufrufe in Schritt 2 nicht mehr an Positions-Lots gehängt oder angezeigt. Für nicht positionsrelevante Contract-Aufrufe wird in Schritt 2 auch kein Receipt mehr geladen; die vollständige Contract-Historie bleibt für Schritt 4 erhalten.</p>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
 <select id="walletSelect" disabled>
@@ -4180,7 +4180,7 @@ function mergeContractCalls(...groups){
   }
   return [...m.values()];
 }
-async function allExternalCallsToStaking(wallet,extraTargets=[]){
+async function allExternalCallsToStaking(wallet,extraTargets=[],options={}){
   const stakeMap=new Map(stakingContracts.map(x=>[norm(x.contract_address),x]));
   for(const x of (extraTargets||[])){const a=norm(x?.contract_address);if(a&&!stakeMap.has(a))stakeMap.set(a,x)}
   const out=[],seenHashes=new Set();
@@ -4201,14 +4201,31 @@ async function allExternalCallsToStaking(wallet,extraTargets=[]){
     }while(pageKey&&page<100);
   }
   log(`Gezielte Staking-/Entry-Historie: ${out.length} relevante Wallet-Tx vor Tx/Receipt-Dekodierung.`,'ok');
+  const positionOnly=options?.positionOnly===true;
+  const positionTxHashes=new Set([...(options?.positionTxHashes||[])].map(h=>String(h||'').toLowerCase()).filter(Boolean));
   for(const t of out){
     try{
-      const [tx,receipt]=await Promise.all([rpc('eth_getTransactionByHash',[t.hash]),rpc('eth_getTransactionReceipt',[t.hash]).catch(()=>null)]);
+      // 2026-09-02: Schritt 2 dekodiert zunaechst nur die Transaktion. Reward-/Claim-Aufrufe
+      // benoetigen dort kein Receipt. Ein Receipt wird nur fuer Stake/Unstake oder eine bereits
+      // durch Staking-Asset-Transfer belegte Positions-Tx gelesen.
+      // Fruehere Vollvariante bleibt fuer Diagnosebedarf dokumentiert:
+      // const [tx,receipt]=await Promise.all([rpc('eth_getTransactionByHash',[t.hash]),rpc('eth_getTransactionReceipt',[t.hash]).catch(()=>null)]);
+      const tx=await rpc('eth_getTransactionByHash',[t.hash]);
       t._tx=tx||null;t._input=tx?.input||'0x';t._selector=String(t._input||'0x').slice(0,10).toLowerCase();t._method=METHOD_SELECTORS.get(t._selector)||'Contract-Aufruf';
-      t._blockNumber=tx?.blockNumber?parseInt(tx.blockNumber,16):null;t._success=receipt?.status==null?null:Number(BigInt(receipt.status))===1;t._uintArg=null;
+      t._blockNumber=tx?.blockNumber?parseInt(tx.blockNumber,16):null;t._uintArg=null;
       if(String(t._input||'').length>=74){try{t._uintArg=BigInt('0x'+String(t._input).slice(10,74))}catch{}}
+      const methodLower=String(t._method||'').toLowerCase();
+      const needsPositionReceipt=!positionOnly || methodLower==='stake' || methodLower==='unstake' || positionTxHashes.has(String(t.hash||'').toLowerCase());
+      let receipt=null;
+      if(needsPositionReceipt)receipt=await rpc('eth_getTransactionReceipt',[t.hash]).catch(()=>null);
+      t._success=receipt?.status==null?null:Number(BigInt(receipt.status))===1;
       t._erc20Transfers=receiptErc20Transfers(receipt);t._receipt=receipt;
-    }catch(e){t._input='0x';t._selector='–';t._method='Contract-Aufruf'}
+      t._step2PositionRelevant=methodLower==='stake'||methodLower==='unstake'||positionTxHashes.has(String(t.hash||'').toLowerCase());
+    }catch(e){t._input='0x';t._selector='–';t._method='Contract-Aufruf';t._step2PositionRelevant=false}
+  }
+  if(positionOnly){
+    const kept=out.filter(t=>t._step2PositionRelevant).length;
+    log(`Schritt-2 Positionsfilter: ${kept}/${out.length} Contract-Aufrufe fuer Stake/Unstake/Lot-Bildung relevant; Reward-/Claim-Aufrufe bleiben fuer Schritt 4 erhalten.`,'ok');
   }
   return out;
 }
@@ -7333,7 +7350,13 @@ async function processStakingDiscovery(){
     const pairs=[];for(let i=0;i<candidates.length;i++){log(`Staking-LP-Prüfung ${i+1}/${candidates.length}: ${short(candidates[i])}`);const p=await inspectCandidate(candidates[i],projectSet);if(p)pairs.push(p)}
     let pairMap=new Map(pairs.map(p=>[p.address,p]));renderPairTable(pairs,counts);let rows=renderEvents(transfers,pairMap,wallet);let stakingRows=renderRawStakingEvents(rows);let entryTargets=await discoverStakeEntryTargets(stakingRows);
     if(entryTargets.length)log(`Zusätzliche Entry-/Controller-Contracts aus Stake-Txs erkannt: ${entryTargets.map(x=>x.contract_address).join(', ')}`,'ok');
-    let stakingContractCalls=await allExternalCallsToStaking(wallet,entryTargets);let contractCalls=[...stakingContractCalls].sort((a,b)=>String(a.metadata?.blockTimestamp||'').localeCompare(String(b.metadata?.blockTimestamp||'')));renderContractCalls(contractCalls);
+    const positionTxHashes=new Set(rows.map(r=>String(r?.t?.hash||'').toLowerCase()).filter(Boolean));
+    let stakingContractCalls=await allExternalCallsToStaking(wallet,entryTargets,{positionOnly:true,positionTxHashes});
+    // 2026-09-02: Schritt 2 zeigt/verarbeitet nur Positions-Aufrufe. Die Vollmenge bleibt
+    // in stakingContractCalls fuer Schritt 4 erhalten.
+    // let contractCalls=[...stakingContractCalls].sort((a,b)=>String(a.metadata?.blockTimestamp||'').localeCompare(String(b.metadata?.blockTimestamp||'')));
+    let contractCalls=stakingContractCalls.filter(c=>c._step2PositionRelevant).sort((a,b)=>String(a.metadata?.blockTimestamp||'').localeCompare(String(b.metadata?.blockTimestamp||'')));
+    renderContractCalls(contractCalls);
     const stakeTxPairs=await discoverPairsFromStakeTransactions(contractCalls,transfers,pairMap,projectSet,counts,wallet);
     if(stakeTxPairs.length){for(const p of stakeTxPairs){if(!pairs.some(x=>norm(x.address)===norm(p.address)))pairs.push(p);pairMap.set(norm(p.address),p)}renderPairTable(pairs,counts);rows=renderEvents(transfers,pairMap,wallet);const synthesized=await synthesizeStakeRowsFromReceipts(contractCalls,pairMap,wallet,rows);stakingRows=renderRawStakingEvents(rows);entryTargets=await discoverStakeEntryTargets(stakingRows);log(`Stake-Tx-Fallback: ${stakeTxPairs.length} zusätzlicher historischer LP entdeckt; ${synthesized.length} Stake-Ereignis(se) ergänzt.`,'ok')}
     // 2026-09-02: Smart-Contract-Event-Auswertung in Schritt 2 bewusst deaktiviert.
@@ -7344,6 +7367,8 @@ async function processStakingDiscovery(){
     const built=buildDiagnosticLots(stakingRows);const lots=built.lots,unmatched=built.unmatched;
     reconcileLotsWithContractCalls(lots,contractCalls);
     // attachContractEventsToLots(lots,contractEvents); // deaktiviert; bei Bedarf in Schritt 4/5 reaktivieren
+    // Nur der gefilterte Positionssatz erreicht Schritt 2. Reward-/Claim-Aufrufe werden
+    // erst in Schritt 4 ueber associateContractCallsToLots(...) an Lots gehaengt.
     associateContractCallsToLots(lots,contractCalls);
     // renderDeepEvents(contractEvents,lots); // deaktiviert; zugehöriger UI-Block ist auskommentiert
     DISCOVERY_PROCESS.pairs=pairs;DISCOVERY_PROCESS.pairMap=pairMap;DISCOVERY_PROCESS.rows=rows;DISCOVERY_PROCESS.stakingRows=stakingRows;DISCOVERY_PROCESS.entryTargets=entryTargets;DISCOVERY_PROCESS.stakingContractCalls=stakingContractCalls;DISCOVERY_PROCESS.contractCalls=contractCalls;DISCOVERY_PROCESS.contractEvents=contractEvents;DISCOVERY_PROCESS.lots=lots;DISCOVERY_PROCESS.unmatched=unmatched;
@@ -7359,7 +7384,10 @@ async function processDuration(){
 async function processStakingRewards(){
   const b=$('stepRewards');b.disabled=true;setStepState(4,'läuft …','running');$('status').textContent='Schritt 4/6: eigene Staking-Rewards …';
   try{if(!DISCOVERY_PROCESS.done.staking)throw new Error('Zuerst Schritt 2 ausführen.');CURRENT_REWARD_FLOW_BY_HASH=new Map();CURRENT_PROVEN_REWARD_ROWS=[];TX_RECEIPT_FLOW_CACHE.clear();
-    const rewardRelevantCalls=await rewardRelevantCallsFromTransfers(DISCOVERY_PROCESS.wallet,DISCOVERY_PROCESS.transfers);const contractCalls=mergeContractCalls(DISCOVERY_PROCESS.stakingContractCalls,rewardRelevantCalls);contractCalls.sort((a,b)=>rewardClaimTimestamp({time:a?.metadata?.blockTimestamp||a?.time})-rewardClaimTimestamp({time:b?.metadata?.blockTimestamp||b?.time}));DISCOVERY_PROCESS.contractCalls=contractCalls;renderContractCalls(contractCalls);
+    const rewardRelevantCalls=await rewardRelevantCallsFromTransfers(DISCOVERY_PROCESS.wallet,DISCOVERY_PROCESS.transfers);
+    // Schritt 4 bekommt bewusst wieder die vollstaendige in Schritt 2 geladene Contract-Historie.
+    // Hier duerfen Yield-/Withdraw-/Claim-Aufrufe klassifiziert und den Lots zugeordnet werden.
+    const contractCalls=mergeContractCalls(DISCOVERY_PROCESS.stakingContractCalls,rewardRelevantCalls);contractCalls.sort((a,b)=>rewardClaimTimestamp({time:a?.metadata?.blockTimestamp||a?.time})-rewardClaimTimestamp({time:b?.metadata?.blockTimestamp||b?.time}));DISCOVERY_PROCESS.contractCalls=contractCalls;renderContractCalls(contractCalls);
     const lots=DISCOVERY_PROCESS.lots;await classifyRewardCallFlows(contractCalls,CURRENT_WALLET,lots);await learnRewardPathsFromWalletCalls(contractCalls,lots);await buildContractGraphs(lots,contractCalls);await learnRewardContractRelations(lots);await learnDynamicClaimContractRelations(lots);await attachRewardClaimsToLots(lots,contractCalls);await attachRewardTokenHistoryToLots(lots);associateContractCallsToLots(lots,contractCalls);renderRewardClaiming(lots);renderUnassignedClaims(lots);renderProcessLotCards();
     DISCOVERY_PROCESS.done.rewards=true;DISCOVERY_PROCESS.done.referral=false;setStepState(4,`${collectAllWalletRewardRows(lots).length} zugeordnete Reward-Zeilen`,'done');setStepState(5,'bereit');$('status').innerHTML='<span class="ok">Staking-Rewards abgeschlossen. Referral wurde NICHT automatisch gestartet.</span>';log(`Schritt 4 abgeschlossen: ${collectAllWalletRewardRows(lots).length} zugeordnete Reward-Zeilen.`,'ok')}
   catch(e){setStepState(4,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
