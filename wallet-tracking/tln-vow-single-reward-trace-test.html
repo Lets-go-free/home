@@ -1,0 +1,1686 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TLN/VOW · Einzel-Reward Tiefendiagnose</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<style>
+:root{color-scheme:dark;--bg:#08131f;--card:#111f2d;--line:#2a4155;--muted:#9fb1c2;--ok:#6fe0a7;--warn:#ffd166;--bad:#ff7b7b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#e7eef6;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:1450px;margin:auto;padding:22px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}
+h1,h2{margin:0 0 10px}h1{font-size:24px}h2{font-size:18px}.muted{color:var(--muted)}.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}input{flex:1;min-width:320px;background:#07111b;border:1px solid var(--line);color:#fff;border-radius:8px;padding:10px}
+button{border:0;border-radius:8px;padding:10px 15px;background:#3979d6;color:#fff;font-weight:700;cursor:pointer}button:disabled{opacity:.5}
+table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid #24394b;vertical-align:top;text-align:left}th{color:#bcd0e1}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+pre{white-space:pre-wrap;word-break:break-word;background:#07111b;border:1px solid #22384a;border-radius:8px;padding:10px;max-height:420px;overflow:auto}
+.badge{display:inline-block;padding:2px 7px;border:1px solid #3e5870;border-radius:999px;margin:1px 3px 1px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}.kv{background:#0a1723;border-radius:8px;padding:10px}.kv b{display:block;color:#a9bfd1;margin-bottom:4px}
+details{margin-top:10px}summary{cursor:pointer;font-weight:700}
+.tabs{display:flex;gap:8px;margin:18px 0 12px;flex-wrap:wrap}.tabbtn{background:#0a1723;border:1px solid var(--line);color:#cbd9e5}.tabbtn.active{background:#3979d6;color:#fff}.tabpanel{display:none}.tabpanel.active{display:block}.progress{height:8px;background:#07111b;border-radius:999px;overflow:hidden;margin-top:8px}.progress>div{height:100%;width:0;background:#3979d6}.small{font-size:12px}
+</style>
+</head>
+<body>
+<main>
+  <h1>🧪 TLN/VOW · Einzel-Reward Tiefendiagnose</h1>
+  <div class="muted">Isolierte Tiefendiagnose für einen auffälligen Reward. Ziel: den exakten Ursprung, Funktionspfad und Mint-Auslöser der 10’000-TLN+-Transaktion bestimmen, ohne die Discovery-/Step-4-Engine zu verändern.</div>
+  <div class="muted">Entwicklungsstand 03.09.2026 00:58:48 CEST</div>
+  <div class="muted small">Build 20260903-005848 · Ausgangsbasis: tln-vow-single-claim-trace-test.html</div>
+  <div class="small muted"><b>Entwicklungsstand:</b> Separate Einzelfall-Diagnose auf Basis des verifizierten <span class="mono">tln-vow-single-claim-trace-test.html</span>. Voreingestellt ist Tx <span class="mono">0x3782201e…783dd0</span>. Zusätzlich zur bestehenden Direkt/Proxy/Getter/Bytecode-/Referral-Prüfung werden nun sämtliche Receipt-Logs, Raw-Input-Wörter, der vollständige Trace mit Tiefe sowie speziell <span class="mono">mint(address,uint256)</span>-Calls (<span class="mono">0x40c10f19</span>) ausgewertet. Ziel ist ausdrücklich nicht, eine Staking-Zuordnung zu erzwingen, sondern den tatsächlichen Reward-Typ und den Contract zu identifizieren, der den TLN+-Mint kausal auslöst. Die Wallet-/Referral-/TLN-ID-Referenzfunktionen des Ausgangsfiles bleiben unverändert verfügbar.</div>
+  <div class="muted small">Aktuell: Die TLN-ID-Ermittlung ist über die SmartNode-Registry <span class="mono">0x028c91…a8a35b</span> und <span class="mono">nodeIdOf(address)</span> mit drei unabhängigen Testvektoren (7205, 17652, 9736) bestätigt. Der Referral-Scan arbeitet DB-first über <span class="mono">tln_wallet_identity_cache</span>; nur bei Cache-Miss erfolgt genau ein SmartNode-<span class="mono">eth_call</span>, danach wird die ID persistent in Supabase gespeichert. Fix 14:45: Der Referral-Scan setzt den verifizierten SmartNode-Resolver nicht mehr auf <span class="mono">null</span>. Dadurch werden Cache-Misses jetzt tatsächlich mit genau einem <span class="mono">nodeIdOf(address)</span>-Call je Staker aufgelöst und anschließend in Supabase gecacht. Frühere <span class="mono">unresolved</span>-Session-Einträge blockieren weiterhin keinen Retry; SmartNode-Fehler werden sichtbar protokolliert. Die Referral-Übersicht aggregiert pro Partner/TLN-ID eine Zeile, je Referral-Reward-Token eine Spalte, ein Zeilentotal sowie eine TOTAL-Zeile mit Token-Spaltentotals. Historischer Vollscan, unlimitierte <span class="mono">eth_getLogs</span>-Abfragen und Getter-Bruteforce bleiben aus dem normalen Referral-Pfad entfernt. Neu: eigener Registry-Prüftab für alle bekannten TLN/VOW-Staking-Contracts; Pair-Bezeichnungen werden bevorzugt aus <span class="mono">pair_address → token0/token1 → symbol()</span> verifiziert. Fehlende Pair-Adressen werden nur mit einer begrenzten indexierten Transfer-Stichprobe als Kandidat gesucht; keine automatische DB-Änderung.</div>
+
+  <div class="tabs">
+    <button class="tabbtn active" data-tab="single">10’000 TLN+ · Einzelfall</button>
+    <button class="tabbtn" data-tab="wallet">Referral-Rewards eines Wallets</button>
+    <button class="tabbtn" data-tab="tlnid">TLN ID · On-Chain-Test</button>
+    <button class="tabbtn" data-tab="registry">Staking-Registry · Pair-Prüfung</button>
+  </div>
+
+  <section id="tab-single" class="tabpanel active">
+  <div class="card">
+    <div class="row">
+      <input id="txHash" value="0x3782201ed57b7898715a323ec9e0c8e5151c92d10585bf4862ac545296783dd0" spellcheck="false">
+      <button id="analyze">10’000-TLN+-Tx tief analysieren</button>
+    </div>
+    <div id="status" class="muted" style="margin-top:10px">Bereit. Die bekannte Sonderfall-Tx ist bereits eingetragen.</div>
+    <div class="small warn" style="margin-top:8px">Fragestellung: Warum werden hier rund/glatt 10’000 TLN+ gemintet? Gesucht werden Reward-Typ, auslösender Contract, Call-Kette und eventuelle Sonderlogik (Bonus/Migration/Sonderclaim etc.). Solche Bezeichnungen werden nur angezeigt, wenn der On-Chain-Pfad sie tatsächlich stützt.</div>
+  </div>
+
+  <div class="card"><h2>1. Transaktion</h2><div id="txInfo" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>2. ERC-20 Transfers im Receipt</h2><div id="transfers" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>3. Claim-Contract → bekannte Stakings</h2><div id="relations" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>4. Interne Calls / Trace</h2><div id="trace" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>5. Referral-Evidenz</h2><div id="referral" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>6. Stake → Referral-/Upline-Verteilung</h2><div id="distribution" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>7. Diagnose-Fazit</h2><div id="conclusion" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>8. Alle Receipt-Events · roh + bekannte Signaturen</h2><div id="allEvents" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>9. Mint-Kausalität · wer löst TLN+ mint(address,uint256) aus?</h2><div id="mintCausality" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>10. Raw Input · 32-Byte-Wörter / eingebettete Adressen</h2><div id="inputWords" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>Technisches Log</h2><pre id="log"></pre></div>
+  </section>
+
+  <section id="tab-wallet" class="tabpanel">
+    <div class="card">
+      <h2>Referral-Rewards eines Wallets</h2>
+      <p class="muted">Startpunkt ist ausschließlich das Empfänger-Wallet. Gesucht werden eingehende Zero-Address-Mints. Für jede Fund-Tx wird geprüft, ob ein fremdes Wallet einen Stake bei einem bekannten TLN/VOW-Staking-Contract ausgelöst hat.</p>
+      <div class="row">
+        <input id="refWallet" value="0xbE44d90daD6308AE0b762908D70260c62410346E" spellcheck="false" placeholder="Wallet-Adresse">
+        <button id="scanWallet">Referral-Rewards suchen</button>
+      </div>
+      <details open style="margin-top:12px">
+        <summary>Referral-Reward-Token · Contract-Adressen · Testkonfiguration</summary>
+        <div id="refTokenConfig" class="muted" style="margin-top:10px">Wird aus der TLN/VOW-Tokenkonfiguration geladen…</div>
+        <p class="small muted">Referral-Filter im isolierten Test: TLN, TLN+ und TLNX. Für den Scan zählt ausschließlich die Contract-Adresse; Symbol/Namen sind nur Anzeige. Keine Supabase-Abhängigkeit.</p>
+      </details>
+      <div class="row" style="margin-top:10px">
+        <label class="small muted">Startblock <input id="refStartBlock" value="0" style="min-width:160px;max-width:220px" inputmode="numeric"></label>
+        <span class="small muted">Primär wird Alchemy AssetTransfers sparsam verwendet: Zero Address → Wallet und TLN/TLN+/TLNX werden serverseitig in einer gemeinsamen indexierten Abfrage gefiltert. Weitere Seiten werden nur bei mehr als 1000 Treffern geladen. Der RPC-Scan ab Block 0 bleibt deaktiviert.</span>
+      </div>
+      <div id="walletStatus" class="muted" style="margin-top:10px">Bereit.</div>
+      <div class="progress"><div id="walletProgress"></div></div>
+    </div>
+
+    <div class="card"><h2>Übersicht</h2><div id="walletSummary" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>Erkannte Referral-Rewards</h2>
+      <div class="row" style="margin:0 0 10px">
+        <label class="small muted" style="min-width:100%;max-width:620px">Ursprünglich gestaked von
+          <input id="refStakerFilter" value="" spellcheck="false" placeholder="Wallet-Adresse oder Teil davon" style="min-width:280px;width:100%;margin-top:4px">
+        </label>
+      </div>
+      <div id="walletRewards" class="muted">Noch keine Daten.</div>
+    </div>
+    <div class="card"><h2>Nicht eindeutig klassifizierte Mint-Zuflüsse</h2><div id="walletCandidates" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>Technisches Referral-Scan-Log</h2><pre id="walletLog"></pre></div>
+  </section>
+
+  <section id="tab-registry" class="tabpanel">
+    <div class="card">
+      <h2>TLN/VOW Staking-Registry · Pair-/Bezeichnungsprüfung</h2>
+      <p class="muted">Prüft die in <span class="mono">defi_staking_contracts</span> gespeicherten Pair-Daten gegen die Contracts. Bei vorhandener <span class="mono">pair_address</span> werden <span class="mono">token0()</span>/<span class="mono">token1()</span> und die Token-Symbole on-chain gelesen. Fehlt die Pair-Adresse, wird höchstens eine kleine Alchemy-Seite eingehender ERC-20-Transfers zum Staking-Contract geprüft und nur ein echter V2-Pair-Contract als Kandidat akzeptiert. Es werden keine Supabase-Daten automatisch geändert.</p>
+      <div class="row">
+        <button id="auditRegistry">Staking-Registry prüfen</button>
+        <button id="auditLpTokens">LP-Token aus Supabase prüfen</button>
+      </div>
+      <div id="registryStatus" class="muted" style="margin-top:10px">Bereit.</div>
+    </div>
+    <div class="card"><h2>Staking-Registry · Prüfergebnis</h2><div id="registryResult" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>LP-Token · Supabase vs. On-chain</h2><div id="lpRegistryResult" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>Vorgeschlagenes LP-Label-Korrektur-SQL</h2><p class="small muted">Nur Vorschlag. Das SQL wird niemals automatisch ausgeführt. Es enthält ausschließlich exakte vollständige LP-Adressen.</p><pre id="lpRegistrySql">Noch keine Daten.</pre></div>
+    <div class="card"><h2>Technisches Registry-Log</h2><pre id="registryLog"></pre></div>
+  </section>
+
+  <section id="tab-tlnid" class="tabpanel">
+    <div class="card">
+      <h2>TLN ID · gezielter On-Chain-Test</h2>
+      <p class="muted">Dieser Test ist bewusst vom Referral-Walletscan getrennt. Er startet nur per Klick und sucht für das Test-Wallet nach einer belastbaren On-Chain-Zuordnung zur bekannten TLN ID. Es gibt keinen automatischen TLN-ID-Scan beim Laden der Seite.</p>
+      <div class="row">
+        <label class="small muted" style="min-width:220px">Bekannter Testvektor
+          <select id="tlnIdTestVector" style="width:100%;margin-top:4px;background:#07111b;border:1px solid var(--line);color:#fff;border-radius:8px;padding:10px">
+            <option value="0">0xbE44…346E → 7205</option>
+            <option value="1">0x956b…De71 → 17652</option>
+            <option value="2">0x94e4…Abc0 → 9736</option>
+          </select>
+        </label>
+        <label class="small muted" style="flex:1;min-width:320px">Wallet
+          <input id="tlnIdWallet" value="0xbE44d90daD6308AE0b762908D70260c62410346E" spellcheck="false" style="width:100%;margin-top:4px">
+        </label>
+        <label class="small muted" style="min-width:180px">Bekannte TLN ID
+          <input id="tlnIdExpected" value="7205" inputmode="numeric" style="width:100%;margin-top:4px">
+        </label>
+        <button id="decodeTlnIdEvent">SmartNode-Getter prüfen</button>
+        <button id="scanTlnIdHistory">Historische Evidenz (Diagnose)</button>
+        <button id="scanTlnId">Getter-Bruteforce (Diagnose)</button>
+      </div>
+      <div id="tlnIdStatus" class="muted" style="margin-top:10px">Bereit. Primärweg: direkter SmartNode-Getter nodeIdOf(address). Historische Evidenz und Getter-Bruteforce bleiben nur als Diagnose und werden im Referral-Scan nicht verwendet.</div>
+    </div>
+    <div class="card"><h2>Ergebnis</h2><div id="tlnIdResult" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>Geprüfte Kandidaten</h2><div id="tlnIdCandidates" class="muted">Noch keine Daten.</div></div>
+    <div class="card"><h2>Technisches TLN-ID-Log</h2><pre id="tlnIdLog"></pre></div>
+  </section>
+</main>
+<script>
+const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co";
+const SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N";
+const PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36";
+const ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
+const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent(ALCHEMY_API_KEY);
+const ZERO='0x0000000000000000000000000000000000000000';
+const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
+const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
+const APP_VERSION='03.09.2026 00:58:48 CEST';
+const BUILD_ID='20260903-005848';
+const TLN_ID_TEST_VECTORS=[
+  {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
+  {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
+  {wallet:'0x94e41ed085d3Ce29de1c507683Fc707Bf3d0Abc0',nodeId:'9736',evidenceTx:null}
+].map(x=>({...x,wallet:x.wallet.toLowerCase()}));
+const TLN_SMARTNODE_CONTRACT='0x028c911c10c9e346158206991e02d09bd0a8a35b';
+const TLN_SMARTNODE_ID_METHOD='nodeIdOf(address)';
+const TLN_SMARTNODE_EVENT_TOPIC=ethers.id('SmartNodeActivated(address,address,uint256)').toLowerCase();
+const tokenMetaCache=new Map();
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+let currentUserId=null;
+let rpcUrl=null;
+let rpcCandidates=[];
+let activeRpcIndex=0;
+let referralRpcStatsActive=false;
+let referralRpcStats=Object.create(null);
+function resetReferralRpcStats(){referralRpcStats=Object.create(null)}
+function countReferralRpc(method){if(referralRpcStatsActive)referralRpcStats[method]=(referralRpcStats[method]||0)+1}
+function referralRpcStatsText(){
+  const entries=Object.entries(referralRpcStats).sort((a,b)=>b[1]-a[1]);
+  const total=entries.reduce((n,[,v])=>n+v,0);
+  return {total,detail:entries.map(([k,v])=>`${k}=${v}`).join(', ')};
+}
+function uniq(a){return [...new Set(a.filter(Boolean))]}
+const $=id=>document.getElementById(id);
+const norm=x=>String(x||'').toLowerCase();
+const esc=x=>String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const short=x=>x?`${x.slice(0,8)}…${x.slice(-6)}`:'–';
+function log(s){$('log').textContent+=`[${new Date().toLocaleTimeString('de-CH')}] ${s}\n`}
+async function rpcOn(url,method,params=[]){
+  countReferralRpc(method);
+  const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok||j.error)throw new Error(j?.error?.message||`HTTP ${r.status}`);
+  return j.result;
+}
+
+async function alchemyRpc(method,params=[]){
+  const c=new AbortController(),tm=setTimeout(()=>c.abort(),30000);
+  try{
+    const r=await fetch(ALCHEMY_BSC_URL,{
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method,params}),
+      signal:c.signal
+    });
+    const raw=await r.text();
+    let j=null;
+    try{j=raw?JSON.parse(raw):null}catch{}
+    if(!r.ok)throw new Error(`Alchemy HTTP ${r.status}${j?.error?.message?`: ${j.error.message}`:''}`);
+    if(j?.error)throw new Error(`${j.error.message||'Alchemy RPC-Fehler'}${j.error.code!==undefined?` (${j.error.code})`:''}`);
+    return j?.result??null;
+  }finally{clearTimeout(tm)}
+}
+async function rpc(method,params=[]){
+  const ordered=uniq([rpcUrl,...rpcCandidates]);
+  let lastErr=null;
+  for(let i=0;i<ordered.length;i++){
+    const url=ordered[i];
+    try{
+      const result=await rpcOn(url,method,params);
+      if((method==='eth_getTransactionByHash'||method==='eth_getTransactionReceipt') && result==null){
+        lastErr=new Error('historische Tx/Receipt auf diesem Provider nicht vorhanden');
+        continue;
+      }
+      if(url!==rpcUrl){rpcUrl=url;log('RPC-Fallback aktiv: '+url.replace(/([?&](?:key|token)=)[^&]+/ig,'$1***'))}
+      return result;
+    }catch(e){
+      lastErr=e;
+      const msg=String(e?.message||e||'').toLowerCase();
+      if(method==='eth_call' && (
+        msg.includes('execution reverted') ||
+        msg.includes('revert') ||
+        msg.includes('invalid opcode')
+      )) throw e;
+    }
+  }
+  throw lastErr||new Error('Kein RPC-Provider verfügbar');
+}
+function topicAddr(t){return '0x'+String(t||'').slice(-40).toLowerCase()}
+function asAddressWord(raw){
+  if(!raw||raw==='0x'||raw.length<66)return null;
+  const w=raw.slice(2,66);
+  if(!/^0{24}[0-9a-fA-F]{40}$/.test(w))return null;
+  const a='0x'+w.slice(24);
+  return a===ZERO?null:norm(a);
+}
+async function tokenMeta(a){
+  a=norm(a);
+  if(tokenMetaCache.has(a))return tokenMetaCache.get(a);
+  let symbol='Token',decimals=18;
+  try{
+    const raw=await rpc('eth_call',[{to:a,data:'0x95d89b41'},'latest']);
+    if(raw&&raw!=='0x'){
+      try{symbol=ethers.AbiCoder.defaultAbiCoder().decode(['string'],raw)[0]}catch{
+        try{symbol=ethers.decodeBytes32String(raw)}catch{}
+      }
+    }
+  }catch{}
+  try{
+    const raw=await rpc('eth_call',[{to:a,data:'0x313ce567'},'latest']);
+    if(raw&&raw!=='0x')decimals=Number(BigInt(raw));
+  }catch{}
+  const meta={symbol,decimals};
+  tokenMetaCache.set(a,meta);
+  return meta;
+}
+const lpPairMetaCache=new Map();
+async function lpPairMeta(pairAddress){
+  const pair=norm(pairAddress);
+  if(!/^0x[0-9a-f]{40}$/.test(pair))return null;
+  if(lpPairMetaCache.has(pair))return lpPairMetaCache.get(pair);
+  let result=null;
+  try{
+    const [r0,r1]=await Promise.all([
+      rpc('eth_call',[{to:pair,data:'0x0dfe1681'},'latest']), // token0()
+      rpc('eth_call',[{to:pair,data:'0xd21220a7'},'latest'])  // token1()
+    ]);
+    const token0=asAddressWord(r0),token1=asAddressWord(r1);
+    if(token0&&token1){
+      const [m0,m1]=await Promise.all([tokenMeta(token0),tokenMeta(token1)]);
+      result={pair,token0,token1,symbol0:m0.symbol,symbol1:m1.symbol,label:`${m0.symbol} / ${m1.symbol}`};
+    }
+  }catch{}
+  lpPairMetaCache.set(pair,result);
+  return result;
+}
+async function referralLpPairForRow(r){
+  // Transfer-Evidenz ist die stärkste Quelle: der tatsächlich vom Staker übertragene Token.
+  for(const p of r.principalTransfers||[]){
+    const meta=await lpPairMeta(p.token);
+    if(meta)return {...meta,source:'stake-transfer'};
+  }
+  // Bei Stake-Event ohne direkten Transfer nur eine explizit in der Registry hinterlegte Pair-Adresse verwenden.
+  const pairAddress=norm(r.staking?.pair_address||'');
+  if(pairAddress){
+    const meta=await lpPairMeta(pairAddress);
+    if(meta)return {...meta,source:'staking-registry'};
+  }
+  return null;
+}
+async function initRpc(){
+  const {data,error}=await sb.from('chains').select('*').eq('chain_key','bsc').single();
+  if(error)throw error;
+  rpcUrl=data.rpc_url;
+  if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))
+    rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;
+  // Minimal public BSC fallbacks; only used when the configured provider cannot serve the historical Tx/receipt.
+  rpcCandidates=uniq([
+    rpcUrl,
+    'https://bsc-dataseed.binance.org/',
+    'https://bsc-dataseed1.defibit.io/',
+    'https://bsc-dataseed1.ninicoin.io/'
+  ]);
+  log('BSC RPC aus public.chains geladen; historische Fallbacks bereit.');
+}
+async function stakingRows(){
+  const {data,error}=await sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true);
+  if(error)throw error;
+  return data||[];
+}
+async function predefinedLpRows(){
+  const {data,error}=await sb.from('predefined_tokens').select('*').eq('defi_category','lp_token');
+  if(error)throw error;
+  return (data||[]).filter(r=>{
+    const chain=String(r.chain??r.chain_key??'').toLowerCase();
+    return !chain || chain==='bsc' || chain==='bnb' || chain==='binance-smart-chain';
+  });
+}
+const ADDRESS_GETTERS=[
+ 'stakingContract()','staking()','stakeContract()','pool()','stakingPool()','masterChef()',
+ 'rewardContract()','rewardsContract()','rewardPool()','controller()','manager()','vault()',
+ 'token()','stakingToken()','lpToken()','rewardToken()','owner()'
+];
+async function probeAddressGetters(contract){
+  const out=[];
+  for(const sig of ADDRESS_GETTERS){
+    const selector=ethers.id(sig).slice(0,10);
+    try{
+      const raw=await rpc('eth_call',[{to:contract,data:selector},'latest']);
+      const addr=asAddressWord(raw);
+      if(addr)out.push({sig,selector,addr});
+    }catch{}
+  }
+  return out;
+}
+async function eip1967Implementation(contract){
+  const slot='0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
+  try{
+    const raw=await rpc('eth_getStorageAt',[contract,slot,'latest']);
+    const a=asAddressWord(raw);
+    return a;
+  }catch{return null}
+}
+function embeddedKnownAddresses(bytecode,stakings){
+  const code=String(bytecode||'').toLowerCase().replace(/^0x/,'');
+  return stakings.filter(s=>code.includes(norm(s.contract_address).slice(2)));
+}
+
+const REFERRAL_GETTERS=['referrer(address)','referrers(address)','referrerOf(address)','getReferrer(address)','sponsor(address)','sponsorOf(address)','upline(address)','parent(address)','inviter(address)','referralRewards(address)','referrerRewards(address)','affiliateRewards(address)','partnerRewards(address)','pendingReferralReward(address)','pendingReferralRewards(address)','referralBalance(address)','referrerBalance(address)'];
+const REFERRAL_CLAIMS=['claimReferralReward()','claimReferralRewards()','withdrawReferralReward()','withdrawReferralRewards()','claimAffiliateReward()','claimPartnerReward()'];
+function addrCall(sig,a){return ethers.id(sig).slice(0,10)+norm(a).slice(2).padStart(64,'0')}
+function retAddr(raw){if(!raw||raw==='0x'||raw.length<66)return null;const a='0x'+raw.slice(2,66).slice(-40);return norm(a)===ZERO?null:norm(a)}
+async function referralState(c,w,b){
+ const o=[];
+ for(const sig of REFERRAL_GETTERS){try{
+  const raw=await rpc('eth_call',[{to:c,data:addrCall(sig,w)},b]); if(!raw||raw==='0x')continue;
+  const amount=/reward|balance/i.test(sig);
+  const v=amount?BigInt(raw).toString():retAddr(raw);
+  if(v && v!=='0')o.push({sig,kind:amount?'amount':'address',value:v});
+ }catch{}}
+ return o;
+}
+function referralMethod(input){const s=String(input||'').slice(0,10).toLowerCase();return REFERRAL_CLAIMS.find(x=>ethers.id(x).slice(0,10).toLowerCase()===s)||null}
+
+
+const KNOWN_EVENT_TOPICS=new Map([
+  [TRANSFER_TOPIC,'Transfer(address,address,uint256)'],
+  [STAKE_EVENT_TOPIC,'Stake(address,uint256,uint256)'],
+  [ethers.id('WithdrawYield(address,uint256)').toLowerCase(),'WithdrawYield(address,uint256)'],
+  [ethers.id('WithdrawYield(uint256)').toLowerCase(),'WithdrawYield(uint256)'],
+  [ethers.id('RewardPaid(address,uint256)').toLowerCase(),'RewardPaid(address,uint256)'],
+  [ethers.id('Claim(address,uint256)').toLowerCase(),'Claim(address,uint256)'],
+  [ethers.id('Claimed(address,uint256)').toLowerCase(),'Claimed(address,uint256)'],
+  [ethers.id('Mint(address,uint256)').toLowerCase(),'Mint(address,uint256)']
+]);
+const KNOWN_SELECTORS=new Map([
+  [ethers.id('mint(address,uint256)').slice(0,10).toLowerCase(),'mint(address,uint256)'],
+  [ethers.id('withdrawYield()').slice(0,10).toLowerCase(),'withdrawYield()'],
+  [ethers.id('withdrawYield(uint256)').slice(0,10).toLowerCase(),'withdrawYield(uint256)'],
+  [ethers.id('claim()').slice(0,10).toLowerCase(),'claim()'],
+  [ethers.id('claimReward()').slice(0,10).toLowerCase(),'claimReward()'],
+  [ethers.id('claimRewards()').slice(0,10).toLowerCase(),'claimRewards()'],
+  [ethers.id('stake(uint256)').slice(0,10).toLowerCase(),'stake(uint256)'],
+  [ethers.id('unstake()').slice(0,10).toLowerCase(),'unstake()'],
+  [ethers.id('unstake(uint256)').slice(0,10).toLowerCase(),'unstake(uint256)']
+]);
+function inputWordsOf(input){
+  const hex=String(input||'0x').replace(/^0x/,'');
+  const selector=hex.length>=8?'0x'+hex.slice(0,8):'0x';
+  const args=hex.slice(8);
+  const words=[];
+  for(let i=0;i+64<=args.length;i+=64){
+    const raw=args.slice(i,i+64);
+    let addr=null;
+    if(/^0{24}[0-9a-fA-F]{40}$/.test(raw)){
+      const a='0x'+raw.slice(24);
+      if(norm(a)!==ZERO)addr=norm(a);
+    }
+    let uint=null;
+    try{uint=BigInt('0x'+raw).toString()}catch{}
+    words.push({index:i/64,raw:'0x'+raw,address:addr,uint});
+  }
+  return {selector,selectorLabel:KNOWN_SELECTORS.get(selector.toLowerCase())||null,words};
+}
+function decodeMintCallInput(input){
+  const p=inputWordsOf(input);
+  if(p.selector!=='0x40c10f19'||p.words.length<2)return null;
+  const recipient=p.words[0].address;
+  let amountRaw='0';
+  try{amountRaw=BigInt(p.words[1].raw).toString()}catch{}
+  return {recipient,amountRaw};
+}
+function traceDepthPrefix(depth){return '↳ '.repeat(Math.max(0,Number(depth)||0))}
+
+function collectTraceCalls(node,out=[],depth=0,path='0'){
+  if(!node||typeof node!=='object')return out;
+  if(node.to)out.push({
+    type:node.type||node.callType||'CALL',
+    from:norm(node.from),to:norm(node.to),
+    input:node.input||'',output:node.output||'',error:node.error||'',
+    value:node.value||'0x0',depth,path
+  });
+  let i=0;
+  for(const c of (node.calls||[]))collectTraceCalls(c,out,depth+1,`${path}.${i++}`);
+  return out;
+}
+async function getTrace(hash){
+  try{
+    const t=await rpc('debug_traceTransaction',[hash,{tracer:'callTracer',timeout:'10s'}]);
+    return {kind:'callTracer',raw:t,calls:collectTraceCalls(t)};
+  }catch(e1){
+    try{
+      const t=await rpc('trace_transaction',[hash]);
+      const calls=(t||[]).map(x=>({type:x.type,from:norm(x.action?.from),to:norm(x.action?.to),input:x.action?.input||'',output:x.result?.output||'',error:x.error||'',value:x.action?.value||'0x0',depth:(x.traceAddress||[]).length,path:(x.traceAddress||[]).join('.')||'0'}));
+      return {kind:'trace_transaction',raw:t,calls};
+    }catch(e2){
+      return {kind:'unsupported',raw:null,calls:[],error:`callTracer: ${e1.message}; trace_transaction: ${e2.message}`};
+    }
+  }
+}
+
+function walletLog(s){$('walletLog').textContent+=`[${new Date().toLocaleTimeString('de-CH')}] ${s}\n`}
+function walletTopic(a){return '0x'+norm(a).slice(2).padStart(64,'0')}
+function zeroTopic(){return '0x'+'0'.repeat(64)}
+function setWalletProgress(v){$('walletProgress').style.width=Math.max(0,Math.min(100,v))+'%'}
+function hexBlock(n){return '0x'+BigInt(n).toString(16)}
+function bigintBlock(x){return typeof x==='string'?BigInt(x):BigInt(x||0)}
+async function latestBlockNumber(){return BigInt(await rpc('eth_blockNumber',[]))}
+
+
+
+async function ensureCurrentUserId(){
+  if(currentUserId)return currentUserId;
+  try{
+    const {data}=await sb.auth.getUser();
+    currentUserId=data?.user?.id||null;
+  }catch{}
+  return currentUserId;
+}
+
+let tlnIdentityDbAvailable=true;
+
+async function loadTlnIdentitiesFromDb(wallets){
+  await ensureCurrentUserId();
+  const unique=[...new Set((wallets||[]).map(norm).filter(a=>/^0x[0-9a-f]{40}$/.test(a)))];
+  if(!currentUserId||!unique.length||!tlnIdentityDbAvailable)return new Map();
+
+  const {data,error}=await sb
+    .from('tln_wallet_identity_cache')
+    .select('wallet_address,node_id,referred_by_id,source,source_contract,source_method,verified_at')
+    .eq('user_id',currentUserId)
+    .eq('project_key','tln_vow')
+    .eq('chain_key','bsc')
+    .in('wallet_address',unique);
+
+  if(error){
+    // Graceful fallback so the test still works before migration 022 is installed.
+    if(/tln_wallet_identity_cache|relation .* does not exist|schema cache/i.test(String(error.message||''))){
+      tlnIdentityDbAvailable=false;
+      walletLog('TLN-ID Supabase-Cache noch nicht verfügbar (Migration 022 ausführen). On-chain-Fallback bleibt aktiv.');
+      return new Map();
+    }
+    walletLog(`TLN-ID Supabase-Lesen fehlgeschlagen: ${error.message}`);
+    return new Map();
+  }
+
+  const found=new Map();
+  for(const row of data||[]){
+    const w=norm(row.wallet_address);
+    if(!w)continue;
+    const ident={
+      wallet:w,
+      nodeId:row.node_id==null?null:String(row.node_id),
+      referredById:row.referred_by_id==null?null:String(row.referred_by_id),
+      source:'supabase',
+      cachedSource:row.source||null,
+      chain:'BSC',
+      contract:row.source_contract||null,
+      method:row.source_method||null,
+      verifiedAt:row.verified_at||null
+    };
+    found.set(w,ident);
+    tlnIdentityCache.set(w,ident);
+  }
+
+  walletLog(`TLN-ID Supabase: ${found.size}/${unique.length} Wallet(s) aus persistentem Cache geladen.`);
+  return found;
+}
+
+async function saveTlnIdentityToDb(identity){
+  await ensureCurrentUserId();
+  if(!currentUserId||!tlnIdentityDbAvailable||!identity?.nodeId)return false;
+
+  const row={
+    user_id:currentUserId,
+    project_key:'tln_vow',
+    chain_key:'bsc',
+    wallet_address:norm(identity.wallet),
+    node_id:Number(identity.nodeId),
+    referred_by_id:identity.referredById?Number(identity.referredById):null,
+    source:identity.source==='supabase'?(identity.cachedSource||'on-chain'):(identity.source||'on-chain'),
+    source_contract:identity.contract||null,
+    source_method:identity.method||null,
+    verified_at:new Date().toISOString(),
+    updated_at:new Date().toISOString()
+  };
+
+  const {error}=await sb
+    .from('tln_wallet_identity_cache')
+    .upsert(row,{onConflict:'user_id,project_key,chain_key,wallet_address'});
+
+  if(error){
+    if(/tln_wallet_identity_cache|relation .* does not exist|schema cache/i.test(String(error.message||''))){
+      tlnIdentityDbAvailable=false;
+      walletLog('TLN-ID Supabase-Schreiben nicht verfügbar (Migration 022 ausführen).');
+      return false;
+    }
+    walletLog(`TLN-ID Supabase-Speichern ${short(identity.wallet)} fehlgeschlagen: ${error.message}`);
+    return false;
+  }
+
+  walletLog(`TLN-ID ${short(identity.wallet)} → ${identity.nodeId} in Supabase gespeichert.`);
+  return true;
+}
+const tlnIdentityCache=new Map();
+let tlnIdentityResolver={contract:TLN_SMARTNODE_CONTRACT,method:TLN_SMARTNODE_ID_METHOD,source:'verified-smartnode'};
+let tlnIdentityDiscoveryDone=false;
+
+const TLN_ID_GETTERS=[
+  'nodeId(address)','nodeID(address)','getNodeId(address)','getNodeID(address)',
+  'walletId(address)','walletID(address)','getWalletId(address)',
+  'userId(address)','userID(address)','getUserId(address)','getUserID(address)',
+  'memberId(address)','accountId(address)','idOf(address)','getId(address)'
+];
+const TLN_ID_SOURCE_GETTERS=[
+  'referralContract()','referralsContract()','referralRegistry()','registry()',
+  'nodeContract()','nodeRegistry()','identityContract()','identityRegistry()'
+];
+
+function uintCall(sig,a){
+  return ethers.id(sig).slice(0,10)+norm(a).slice(2).padStart(64,'0');
+}
+function decodeSingleUint(raw){
+  try{
+    if(!raw||raw==='0x'||raw.length<66)return null;
+    const v=BigInt('0x'+raw.slice(2,66));
+    if(v<=0n||v>1000000000000n)return null;
+    return v.toString();
+  }catch{return null}
+}
+
+async function discoverTlnIdentityResolver(rows,stakingMap,referenceWallet){
+  if(tlnIdentityDiscoveryDone)return tlnIdentityResolver;
+  tlnIdentityDiscoveryDone=true;
+
+  const usedContracts=[...new Set(
+    rows.map(r=>norm(r.to)).filter(a=>stakingMap.has(a))
+  )];
+
+  const sources=new Set(usedContracts);
+  let calls=0;
+  const MAX_DISCOVERY_CALLS=80;
+
+  for(const c of usedContracts){
+    for(const sig of TLN_ID_SOURCE_GETTERS){
+      if(calls>=MAX_DISCOVERY_CALLS)break;
+      calls++;
+      try{
+        const raw=await rpc('eth_call',[{to:c,data:ethers.id(sig).slice(0,10)},'latest']);
+        const a=retAddr(raw);
+        if(!a)continue;
+        if(calls>=MAX_DISCOVERY_CALLS)break;
+        calls++;
+        const code=await rpc('eth_getCode',[a,'latest']);
+        if(code&&code!=='0x')sources.add(norm(a));
+      }catch{}
+    }
+    if(calls>=MAX_DISCOVERY_CALLS)break;
+  }
+
+  const probeWallets=[...new Set([
+    norm(referenceWallet),
+    ...rows.map(r=>norm(r.sender))
+  ].filter(a=>/^0x[0-9a-f]{40}$/.test(a)))].slice(0,2);
+
+  outer:
+  for(const c of sources){
+    for(const sig of TLN_ID_GETTERS){
+      if(calls>=MAX_DISCOVERY_CALLS)break outer;
+      const ids=[];
+      let ok=true;
+
+      for(const w of probeWallets){
+        if(calls>=MAX_DISCOVERY_CALLS){ok=false;break}
+        calls++;
+        try{
+          const raw=await rpc('eth_call',[{to:c,data:uintCall(sig,w)},'latest']);
+          const id=decodeSingleUint(raw);
+          if(!id){ok=false;break}
+          ids.push(id);
+        }catch{ok=false;break}
+      }
+
+      if(ok && ids.length===probeWallets.length){
+        if(ids.length>1 && ids[0]===ids[1])continue;
+        tlnIdentityResolver={contract:norm(c),method:sig,discoveryCalls:calls};
+        walletLog(`TLN-ID-Quelle einmalig erkannt: ${short(c)} ${sig} (${calls} Discovery-Calls).`);
+        return tlnIdentityResolver;
+      }
+    }
+  }
+
+  walletLog(`TLN-ID: keine belastbare Quelle innerhalb des Discovery-Budgets (${calls}/${MAX_DISCOVERY_CALLS} Calls). IDs bleiben unresolved; kein weiterer Getter-Bruteforce.`);
+  return null;
+}
+
+async function getTlnIdentity(wallet){
+  wallet=norm(wallet);
+  // Nur positive IDs sind ein echter Cache-Hit. Ein früheres "unresolved" darf einen
+  // später verfügbaren/verifizierten SmartNode-Resolver nicht dauerhaft blockieren.
+  const cached=tlnIdentityCache.get(wallet);
+  if(cached?.nodeId)return cached;
+  if(cached)tlnIdentityCache.delete(wallet);
+
+  const result={wallet,nodeId:null,referredById:null,source:'unresolved',chain:'BSC',contract:null,method:null};
+  if(!tlnIdentityResolver){
+    tlnIdentityCache.set(wallet,result);
+    return result;
+  }
+
+  try{
+    const raw=await rpc('eth_call',[{
+      to:tlnIdentityResolver.contract,
+      data:uintCall(tlnIdentityResolver.method,wallet)
+    },'latest']);
+    const id=decodeSingleUint(raw);
+    if(id){
+      result.nodeId=id;
+      result.source='on-chain';
+      result.contract=tlnIdentityResolver.contract;
+      result.method=tlnIdentityResolver.method;
+      await saveTlnIdentityToDb(result);
+    }
+  }catch(e){
+    walletLog(`TLN-ID SmartNode ${short(wallet)} fehlgeschlagen: ${e.message}`);
+  }
+
+  tlnIdentityCache.set(wallet,result);
+  return result;
+}
+async function knownStakingMap(){
+  const rows=await stakingRows();
+  return new Map(rows.map(x=>[norm(x.contract_address),x]));
+}
+async function referralRewardTokenContracts(){
+  // Isolierter Referral-Test: bewusst ohne Supabase-Abhängigkeit.
+  // Diese drei Contract-Adressen sind die explizite Testkonfiguration.
+  // Die spätere Hauptseite soll sie konfigurierbar aus predefined_tokens/Referral-Flag beziehen.
+  return [
+    {symbol:'TLN',  address:'0xf7d142a354322c7560250caa0e2a06c89649e4c2'},
+    {symbol:'TLN+', address:'0x29280091fa7f3abe4739ad5f1f7c5287feaf7736'},
+    {symbol:'TLNX', address:'0x3dda9ea88136ecede768cd374a2af37219da55e7'}
+  ];
+}
+function renderReferralTokenConfig(tokens){
+  const wanted=['TLN','TLN+','TLNX'], found=new Set(tokens.map(t=>String(t.symbol).toUpperCase()));
+  const missing=wanted.filter(x=>!found.has(x));
+  $('refTokenConfig').innerHTML=(tokens.length?`<table><thead><tr><th>Token</th><th>Contract-Adresse</th><th>Status</th></tr></thead><tbody>${tokens.map(t=>`<tr><td><b>${esc(t.symbol)}</b></td><td class="mono">${esc(t.address)}</td><td><span class="ok">aktiv</span></td></tr>`).join('')}</tbody></table>`:'')+(missing.length?`<div class="warn" style="margin-top:8px">Noch nicht in der BSC-Konfiguration gefunden: ${missing.map(esc).join(', ')}</div>`:'');
+}
+const referralSessionCache={
+  routescan:new Map(), tx:new Map(), receipt:new Map(), block:new Map(), mintMeta:new Map()
+};
+function referralCacheKey(wallet,startBlock,tokens){
+  return `${norm(wallet)}|${startBlock.toString()}|${tokens.map(t=>t.address).sort().join(',')}`;
+}
+async function alchemyReferralMintHashes(wallet,startBlock,tokens){
+  const key=referralCacheKey(wallet,startBlock,tokens);
+  if(referralSessionCache.routescan.has(key)){
+    walletLog('Referral-Indexer: Session-Cache verwendet; keine neue Alchemy-Abfrage.');
+    return referralSessionCache.routescan.get(key);
+  }
+
+  // Request-sparsam: ALLE drei Reward-Token in EINER indexierten Query.
+  // Server-seitig bereits auf Zero Address -> Zielwallet + Tokencontracts eingeschränkt.
+  const hashes=new Set();
+  let pageKey=null,pages=0,seen=0;
+
+  do{
+    const p={
+      fromBlock:hexBlock(BigInt(startBlock)),
+      toBlock:'latest',
+      fromAddress:ZERO,
+      toAddress:wallet,
+      contractAddresses:tokens.map(t=>t.address),
+      category:['erc20'],
+      excludeZeroValue:false,
+      withMetadata:true,
+      maxCount:'0x3e8',
+      order:'asc'
+    };
+    if(pageKey)p.pageKey=pageKey;
+
+    const r=await alchemyRpc('alchemy_getAssetTransfers',[p]);
+    const items=Array.isArray(r?.transfers)?r.transfers:[];
+    pages++;
+    seen+=items.length;
+
+    for(const x of items){
+      if(norm(x.from)!==ZERO)continue;
+      if(norm(x.to)!==norm(wallet))continue;
+      const rawContract=norm(x.rawContract?.address||x.assetAddress||x.contractAddress||'');
+      if(rawContract && !tokens.some(t=>t.address===rawContract))continue;
+      if(x.hash){
+        const h=norm(x.hash);
+        hashes.add(h);
+        const blockTimestamp=x.metadata?.blockTimestamp||x.blockTimestamp||null;
+        if(blockTimestamp)referralSessionCache.mintMeta.set(h,{blockTimestamp});
+      }
+    }
+
+    walletLog(`Alchemy Referral-Indexer Seite ${pages}: ${items.length} bereits serverseitig gefilterte Mint-Transfer(s), ${hashes.size} relevante Tx(s).`);
+    pageKey=r?.pageKey||null;
+
+    if(pages>100)throw new Error('Alchemy Sicherheitslimit von 100 Seiten erreicht.');
+  }while(pageKey);
+
+  const result=[...hashes];
+  referralSessionCache.routescan.set(key,result);
+  walletLog(`Alchemy Referral-Indexer fertig: ${pages} Request-Seite(n), ${seen} Mint-Transfer(s), ${result.length} relevante Tx(s).`);
+  return result;
+}
+async function tokenScopedMintHashesRpcFallback(wallet,startBlock,tokens){
+  // Nur Notfall-Fallback. Nicht mehr automatisch ab Block 0 über Millionen Blöcke.
+  const latest=await latestBlockNumber(), hashes=new Set();
+  const requestedStart=BigInt(startBlock);
+  if(requestedStart===0n){
+    throw new Error('Indexer nicht verfügbar. RPC-Bruteforce ab Block 0 wurde bewusst deaktiviert. Bitte zuerst Routescan/Indexer verwenden oder einen sinnvollen Startblock setzen.');
+  }
+  for(let ti=0;ti<tokens.length;ti++){
+    const token=tokens[ti];let from=requestedStart,chunk=1500n;
+    walletLog(`RPC-Fallback ${token.symbol}: ${token.address}`);
+    while(from<=latest){
+      let to=from+chunk-1n;if(to>latest)to=latest;
+      const logs=await rpc('eth_getLogs',[{address:token.address,fromBlock:hexBlock(from),toBlock:hexBlock(to),topics:[TRANSFER_TOPIC,zeroTopic(),walletTopic(wallet)]}]);
+      for(const l of logs||[])if(l.transactionHash)hashes.add(norm(l.transactionHash));
+      from=to+1n;
+    }
+    setWalletProgress(5+45*(ti+1)/tokens.length);
+  }
+  return [...hashes];
+}
+async function tokenScopedMintHashes(wallet,startBlock,tokens){
+  try{
+    $('walletStatus').textContent='Lese Referral-Mints über sparsamen Alchemy-Transferindex…';
+    return await alchemyReferralMintHashes(wallet,startBlock,tokens);
+  }catch(e){
+    walletLog(`Alchemy Referral-Indexer nicht verfügbar: ${e.message}`);
+    $('walletStatus').textContent='Indexer nicht verfügbar; begrenzter RPC-Fallback…';
+    return await tokenScopedMintHashesRpcFallback(wallet,startBlock,tokens);
+  }
+}
+async function mintTransfersToWalletFromReceipt(receipt,wallet){
+  const out=[];
+  for(const l of receipt.logs||[]){
+    if(norm(l.topics?.[0])!==TRANSFER_TOPIC||l.topics.length<3)continue;
+    const from=topicAddr(l.topics[1]),to=topicAddr(l.topics[2]);
+    if(from!==ZERO||to!==norm(wallet))continue;
+    const token=norm(l.address),meta=await tokenMeta(token);
+    let amount='0';try{amount=ethers.formatUnits(BigInt(l.data||'0x0'),meta.decimals)}catch{}
+    out.push({token,...meta,amount,from,to});
+  }
+  return out;
+}
+async function classifyReferralMintTx(hash,wallet,stakingMap){
+  // Request-sparsam: für den Wallet-Scan reicht normalerweise das Receipt.
+  // BSC-Receipts enthalten from/to/blockNumber; eth_getTransactionByHash ist nur Fallback.
+  let receipt=referralSessionCache.receipt.get(hash);
+  if(!receipt){
+    receipt=await rpc('eth_getTransactionReceipt',[hash]);
+    if(receipt)referralSessionCache.receipt.set(hash,receipt);
+  }
+  if(!receipt||receipt.status!=='0x1')return null;
+
+  let sender=norm(receipt.from),to=norm(receipt.to),blockNumber=receipt.blockNumber;
+  let tx=null;
+  if(!sender||!to||!blockNumber){
+    tx=referralSessionCache.tx.get(hash)||await rpc('eth_getTransactionByHash',[hash]);
+    if(tx)referralSessionCache.tx.set(hash,tx);
+    if(!tx)return null;
+    sender=sender||norm(tx.from);to=to||norm(tx.to);blockNumber=blockNumber||tx.blockNumber;
+  }
+
+  // Eigene Tx sind per Definition keine Referral-Rewards für das untersuchte Wallet.
+  // In alchemy_getAssetTransfers kann tx.from nicht direkt ausgeschlossen werden, weil
+  // fromAddress dort den ERC-20-Transfer-Absender bezeichnet (bei Mint = Zero Address).
+  // receipt.from ist deshalb der früheste belastbare Filterpunkt. Danach werden für
+  // eigene Tx keine Token-Metadaten, Stake-Events oder weitere Fallback-Reads mehr gemacht.
+  if(sender===norm(wallet)){
+    return {excluded:true,excludeReason:'own_tx_sender',hash,sender,to};
+  }
+
+  const allowed=new Set((await referralRewardTokenContracts()).map(x=>x.address));
+  const mints=(await mintTransfersToWalletFromReceipt(receipt,wallet)).filter(x=>allowed.has(x.token));
+  if(!mints.length)return null;
+  const foreignSender=sender!==norm(wallet);
+  const staking=stakingMap.get(to)||null;
+
+  // Zwei unabhängige Stake-Nachweise:
+  // A) klassischer ERC-20 Principal-Transfer sender -> Staking-Contract;
+  // B) tx.to emittiert Stake(address,uint256,uint256) für tx.from.
+  // B darf auch einen noch nicht in Supabase hinterlegten neueren Staking-Contract belegen.
+  let principalIn=false,principalTransfers=[],stakeEvents=[];
+  for(const l of receipt.logs||[]){
+    const topic0=norm(l.topics?.[0]);
+    if(topic0===TRANSFER_TOPIC && l.topics.length>=3){
+      const lf=topicAddr(l.topics[1]),lt=topicAddr(l.topics[2]);
+      if(lf===sender && lt===to){
+        const token=norm(l.address),meta=await tokenMeta(token);
+        let amount='0';try{amount=ethers.formatUnits(BigInt(l.data||'0x0'),meta.decimals)}catch{}
+        principalIn=true;principalTransfers.push({kind:'transfer',token,...meta,amount});
+      }
+    }
+    if(norm(l.address)===to && topic0===STAKE_EVENT_TOPIC && l.topics.length>=2){
+      const eventUser=topicAddr(l.topics[1]);
+      if(eventUser===sender){
+        let rawAmount=null;
+        try{
+          const words=String(l.data||'0x').slice(2).match(/.{64}/g)||[];
+          if(words.length)rawAmount=BigInt('0x'+words[words.length-1]).toString();
+        }catch{}
+        principalIn=true;
+        stakeEvents.push({kind:'stake-event',user:eventUser,rawAmount});
+      }
+    }
+  }
+
+  // Timestamp primär aus EINER Alchemy AssetTransfers-Abfrage; Block-RPC nur Fallback.
+  let timestamp=null;
+  const indexedMeta=referralSessionCache.mintMeta.get(hash);
+  if(indexedMeta?.blockTimestamp){
+    const ms=Date.parse(indexedMeta.blockTimestamp);
+    if(Number.isFinite(ms))timestamp=Math.floor(ms/1000);
+  }
+  if(timestamp==null){
+    let block=referralSessionCache.block.get(blockNumber);
+    if(!block){block=await rpc('eth_getBlockByNumber',[blockNumber,false]);referralSessionCache.block.set(blockNumber,block)}
+    timestamp=Number(BigInt(block.timestamp));
+  }
+
+  const stakeEvidence=principalTransfers.length>0||stakeEvents.length>0;
+  principalIn=stakeEvidence;
+  const stakingRecognized=!!staking||stakeEvents.length>0;
+  const strong=foreignSender&&stakingRecognized&&stakeEvidence;
+  const candidate=foreignSender&&stakingRecognized;
+  const txView=tx||{from:receipt.from,to:receipt.to,blockNumber};
+  return {hash,tx:txView,receipt,mints,sender,to,staking,stakingRecognized,principalIn,stakeEvidence,principalTransfers,stakeEvents,strong,candidate,timestamp};
+}
+function fmtTime(ts){return new Date(ts*1000).toLocaleString('de-CH')}
+async function scanReferralWallet(){
+  const btn=$('scanWallet');btn.disabled=true;$('walletLog').textContent='';setWalletProgress(0);
+  resetReferralRpcStats();referralRpcStatsActive=true;
+  $('walletSummary').innerHTML='<span class="muted">Lädt…</span>';
+  $('walletRewards').innerHTML='<span class="muted">Lädt…</span>';
+  $('walletCandidates').innerHTML='<span class="muted">Lädt…</span>';
+  try{
+    if(!rpcUrl)await initRpc();
+    const wallet=norm($('refWallet').value.trim());
+    if(!/^0x[0-9a-f]{40}$/.test(wallet))throw new Error('Ungültige Wallet-Adresse.');
+    const start=BigInt(String($('refStartBlock').value||'0').replace(/\D/g,'')||'0');
+    $('walletStatus').textContent='Suche eingehende Mints zum Wallet…';
+    walletLog(`Version ${APP_VERSION}`);
+    walletLog(`Wallet ${wallet}; Startblock ${start.toString()}`);
+    tlnIdentityCache.clear();
+    // Der SmartNode-Resolver ist bereits mehrfach verifiziert und muss im Referral-Scan
+    // aktiv bleiben. Discovery/Bruteforce ist nicht erforderlich.
+    tlnIdentityResolver={contract:TLN_SMARTNODE_CONTRACT,method:TLN_SMARTNODE_ID_METHOD,source:'verified-smartnode'};
+    tlnIdentityDiscoveryDone=true;
+
+    const referralTokens=await referralRewardTokenContracts();
+    renderReferralTokenConfig(referralTokens);
+    if(!referralTokens.length)throw new Error('Keiner der Referral-Reward-Token TLN / TLN+ / TLNX hat eine BSC-Contract-Adresse in predefined_tokens.');
+    walletLog(`Referral-Token: ${referralTokens.map(x=>x.symbol+'='+x.address).join(', ')}`);
+    const mode='Alchemy AssetTransfers · Zero Address → Wallet · TLN/TLN+/TLNX in einer Query';
+    const hashes=await tokenScopedMintHashes(wallet,start,referralTokens);
+    walletLog(`Gezielter Mint-Scan: ${hashes.length} relevante Tx(s).`);
+
+    const stakingMap=await knownStakingMap();
+    walletLog(`${stakingMap.size} bekannte TLN/VOW-Staking-Contracts geladen.`);
+    const rows=[];
+    let ownTxExcluded=0;
+    for(let i=0;i<hashes.length;i++){
+      $('walletStatus').textContent=`Prüfe Mint-Tx ${i+1}/${hashes.length}…`;
+      try{
+        const r=await classifyReferralMintTx(hashes[i],wallet,stakingMap);
+        if(r?.excluded && r.excludeReason==='own_tx_sender')ownTxExcluded++;
+        else if(r)rows.push(r);
+      }catch(e){walletLog(`Tx ${short(hashes[i])}: ${e.message}`)}
+      setWalletProgress(Math.max(20,20+80*(i+1)/Math.max(1,hashes.length)));
+    }
+    rows.sort((a,b)=>a.timestamp-b.timestamp);
+    walletLog(`Eigene Mint-/Staking-Tx früh ausgefiltert: ${ownTxExcluded}. Sie erscheinen in keiner Referral-Tabelle.`);
+
+    // Zentrale Schlussklassifikation. Wichtig für neuere Staking-Varianten:
+    // Ein passendes Stake-Event des aufgerufenen Contracts ist selbst ein Staking-Nachweis,
+    // auch wenn dieser Contract noch nicht in defi_staking_contracts hinterlegt ist.
+    for(const r of rows){
+      r.stakeEvidence=(r.principalTransfers?.length||0)>0||(r.stakeEvents?.length||0)>0;
+      r.stakingRecognized=!!r.staking||(r.stakeEvents?.length||0)>0;
+      r.strong=norm(r.sender)!==wallet&&r.stakingRecognized&&r.stakeEvidence;
+      r.candidate=norm(r.sender)!==wallet&&r.stakingRecognized;
+    }
+
+    const uniqueStakers=[...new Set(rows.map(r=>norm(r.sender)))];
+    walletLog(`RPC-Optimierung: Walletscan nutzt primär 1 Receipt je Mint-Tx; Transaction- und Block-Reads nur als Fallback. Token-Metadaten werden je Contract gecacht.`);
+
+    $('walletStatus').textContent='Referral-Tx geprüft; lade bekannte TLN-IDs aus Supabase…';
+    await loadTlnIdentitiesFromDb([wallet,...uniqueStakers]);
+
+    let missingStakers=uniqueStakers.filter(w=>!tlnIdentityCache.get(w)?.nodeId);
+    if(missingStakers.length){
+      walletLog(`TLN-ID DB-first: ${uniqueStakers.length-missingStakers.length}/${uniqueStakers.length} Staker-ID(s) aus Supabase; ${missingStakers.length} fehlen. Verwende SmartNode.nodeIdOf(address): maximal 1 eth_call je Cache-Miss.`);
+      let resolved=0;
+      for(const w of missingStakers){
+        const ident=await getTlnIdentity(w);
+        if(ident?.nodeId)resolved++;
+      }
+      missingStakers=uniqueStakers.filter(w=>!tlnIdentityCache.get(w)?.nodeId);
+      walletLog(`TLN-ID SmartNode: ${resolved} neu on-chain ermittelt und in Supabase gecacht; ${missingStakers.length} weiterhin unresolved.`);
+    }else{
+      walletLog(`TLN-ID DB-first: alle ${uniqueStakers.length} Staker-ID(s) aus Supabase; 0 On-chain-ID-Requests.`);
+    }
+
+    for(const r of rows){
+      r.tlnIdentity=tlnIdentityCache.get(norm(r.sender))||{nodeId:null,source:'unresolved'};
+    }
+
+    $('walletStatus').textContent='Ermittle LP-Paare der Referral-Stakes…';
+    for(const r of rows){
+      if(!r.stakeEvidence)continue;
+      r.lpPair=await referralLpPairForRow(r);
+    }
+
+    const strong=rows.filter(r=>r.strong),candidates=rows.filter(r=>!r.strong);
+    const tlnxControl=rows.find(r=>norm(r.hash)==='0x414835d695adeed3fcbc50bf19558851d8336f17e01d17ad0a9ab06ab9907e07');
+    if(tlnxControl)walletLog(`Kontroll-TX 0x414835…: stakingDB=${!!tlnxControl.staking}, stakeEvents=${tlnxControl.stakeEvents?.length||0}, stakeEvidence=${!!tlnxControl.stakeEvidence}, strong=${!!tlnxControl.strong}.`);
+    const rewardCount=strong.reduce((n,r)=>n+r.mints.length,0);
+    const tokens=new Map(referralTokens.map(t=>[t.address,{symbol:t.symbol,count:0,total:0}]));
+    for(const r of strong)for(const m of r.mints){
+      if(!tokens.has(m.token))continue;
+      const x=tokens.get(m.token);x.count++;x.total+=Number(m.amount);
+    }
+
+    const rewardTokenList=[...tokens.entries()].map(([address,x])=>({address,symbol:x.symbol}));
+    const partnerRewards=new Map();
+    for(const r of strong){
+      const nodeId=r.tlnIdentity?.nodeId?String(r.tlnIdentity.nodeId):null;
+      const partnerKey=nodeId?`id:${nodeId}`:`wallet:${norm(r.sender)}`;
+      if(!partnerRewards.has(partnerKey)){
+        partnerRewards.set(partnerKey,{
+          nodeId,
+          wallets:new Set(),
+          amounts:new Map(rewardTokenList.map(t=>[t.address,0])),
+          total:0
+        });
+      }
+      const partner=partnerRewards.get(partnerKey);
+      partner.wallets.add(norm(r.sender));
+      for(const m of r.mints){
+        if(!partner.amounts.has(m.token))continue;
+        const amount=Number(m.amount)||0;
+        partner.amounts.set(m.token,(partner.amounts.get(m.token)||0)+amount);
+        partner.total+=amount;
+      }
+    }
+    const partnerRows=[...partnerRewards.values()].sort((a,b)=>{
+      if(a.nodeId&&b.nodeId)return Number(a.nodeId)-Number(b.nodeId);
+      if(a.nodeId)return -1;if(b.nodeId)return 1;return [...a.wallets][0].localeCompare([...b.wallets][0]);
+    });
+    const fmtReward=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:12});
+    const partnerTable=partnerRows.length?`<h3 style="margin-top:16px">Referral-Rewards je Partner / TLN ID</h3>
+      <table><thead><tr><th>Partner · TLN ID</th>${rewardTokenList.map(t=>`<th>${esc(t.symbol)}</th>`).join('')}<th>Total</th></tr></thead><tbody>
+      ${partnerRows.map(p=>`<tr><td>${p.nodeId?`<b>${esc(p.nodeId)}</b>`:'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td>${rewardTokenList.map(t=>`<td>${fmtReward(p.amounts.get(t.address))}</td>`).join('')}<td><b>${fmtReward(p.total)}</b></td></tr>`).join('')}
+      <tr><th>TOTAL</th>${rewardTokenList.map(t=>`<th>${fmtReward(tokens.get(t.address)?.total||0)}</th>`).join('')}<th>${fmtReward([...tokens.values()].reduce((sum,x)=>sum+x.total,0))}</th></tr>
+      </tbody></table>`:'<span class="muted">Keine Referral-Rewards erkannt.</span>';
+
+    $('walletSummary').innerHTML=`<div class="grid">
+      <div class="kv"><b>Wallet</b><span class="mono">${esc(wallet)}</span></div>
+      <div class="kv"><b>Scan-Modus</b>${esc(mode)}</div>
+      <div class="kv"><b>Eingehende Mint-Tx gefunden</b>${hashes.length}</div>
+      <div class="kv"><b>Eigene Tx ausgefiltert</b>${ownTxExcluded}</div>
+      <div class="kv"><b>Starke Referral-Tx</b>${strong.length}</div>
+      <div class="kv"><b>Referral-Reward-Mints</b>${rewardCount}</div>
+      <div class="kv"><b>Nicht eindeutig</b>${candidates.length}</div>
+    </div>${partnerTable}`;
+
+    const renderRows=arr=>arr.length?`<table><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Ursprünglich gestaked von</th><th>Staking</th><th>LP-Paar</th><th>TLN ID</th><th>Stake-Zufluss</th><th>Tx</th><th>Nachweis</th></tr></thead><tbody>${arr.flatMap(r=>r.mints.map(m=>`<tr>
+      <td>${esc(fmtTime(r.timestamp))}</td>
+      <td><b>${esc(m.amount)} ${esc(m.symbol)}</b><div class="mono">${esc(m.token)}</div></td>
+      <td><b>Staker-Wallet</b><div class="mono">${esc(r.sender)}</div></td>
+      <td>${r.staking?esc(r.staking.label||r.staking.name||r.to):r.stakeEvents?.length?'<span class="ok"><b>Staking per Stake-Event erkannt</b></span>':'<span class="warn">unbekannt</span>'}<div class="mono">${esc(r.to)}</div></td>
+      <td>${r.lpPair?`<b>${esc(r.lpPair.label)}</b><div class="small mono muted">${esc(r.lpPair.pair)}</div><div class="small muted">${r.lpPair.source==='stake-transfer'?'on-chain aus Stake-Transfer':'Registry-Pair on-chain dekodiert'}</div>`:'<span class="muted">nicht bestimmt</span>'}</td>
+      <td>${r.tlnIdentity?.nodeId
+        ?`<b>${esc(r.tlnIdentity.nodeId)}</b><div class="small muted">eigene Node-/TLN-ID · ${r.tlnIdentity.source==='supabase'?'Supabase-Cache':esc(r.tlnIdentity.source)}</div>`
+        :'<span class="warn">unresolved</span>'}</td>
+      <td>${r.principalTransfers.length?r.principalTransfers.map(p=>`${esc(p.amount)} ${esc(p.symbol)}`).join('<br>'):r.stakeEvents?.length?'<span class="ok"><b>Stake-Event belegt</b></span>':'–'}</td>
+      <td class="mono">${esc(r.hash)}</td>
+      <td>${r.strong?`<span class="ok"><b>fremder Stake → Mint zum Wallet</b></span><div class="small muted">${r.principalTransfers.length?'Stake-Zufluss per Transfer':r.stakeEvents?.length?'Stake-Event des Staking-Contracts':'Stake-Evidenz'}</div>`:`<span class="warn">Mint in fremder Staking-Tx, Stake-Evidenz nicht belegt</span>${r.stakeEvents?.length?'<div class="bad small">Diagnose-Widerspruch: Stake-Event vorhanden, strong=false</div>':''}`}</td>
+    </tr>`)).join('')}</tbody></table>`:'<span class="muted">Keine.</span>';
+    window.__referralStrongRows=strong;
+    window.__renderReferralRows=renderRows;
+    const stakerFilter=norm($('refStakerFilter')?.value.trim());
+    $('walletRewards').innerHTML=renderRows(stakerFilter?strong.filter(r=>norm(r.sender).includes(stakerFilter)):strong);
+    $('walletCandidates').innerHTML=renderRows(candidates);
+    walletLog('LP-Paar-Regel: Transfer-Evidenz → tatsächlich übertragenen LP-Contract on-chain via token0/token1 dekodieren; Stake-Event ohne Transfer → nur verifizierte pair_address aus Registry verwenden und on-chain dekodieren. Keine Pair-Bezeichnung wird aus dem Staking-Label geraten.');
+    walletLog('TLN-ID-Regel: DB-first. Supabase-Cache hat Vorrang; bei Cache-Miss genau 1 SmartNode.nodeIdOf(address)-eth_call. Erfolgreiche IDs werden in Supabase gecacht. Historischer Log-Scan und Getter-Bruteforce bleiben im Referral-Scan deaktiviert.');
+    const rpcStats=referralRpcStatsText();
+    walletLog(`RPC-Statistik dieses Scans: ${rpcStats.total} Provider-Requests${rpcStats.detail?` · ${rpcStats.detail}`:''}. Alchemy AssetTransfers separat.`);
+    $('walletStatus').innerHTML='<span class="ok">Referral-Walletscan abgeschlossen.</span>';
+    setWalletProgress(100);
+  }catch(e){
+    $('walletStatus').innerHTML=`<span class="bad">${esc(e.message)}</span>`;
+    walletLog('FEHLER: '+e.message);
+  }finally{referralRpcStatsActive=false;btn.disabled=false}
+}
+
+async function analyze(){
+  if(typeof ethers==='undefined'){
+    $('status').innerHTML='<span class="bad">ethers.js konnte nicht geladen werden. Bitte Seite neu laden und CDN-Zugriff prüfen.</span>';
+    return;
+  }
+  if(typeof supabase==='undefined'){
+    $('status').innerHTML='<span class="bad">Supabase JS konnte nicht geladen werden. Bitte Seite neu laden und CDN-Zugriff prüfen.</span>';
+    return;
+  }
+  $('analyze').disabled=true;$('status').textContent='Analysiere nur diese eine Transaktion…';$('log').textContent='';
+  for(const id of ['txInfo','transfers','relations','trace','referral','distribution','conclusion','allEvents','mintCausality','inputWords'])$(id).innerHTML='<span class="muted">Lädt…</span>';
+  try{
+    if(!rpcUrl)await initRpc();
+    const hash=$('txHash').value.trim();
+    if(!/^0x[0-9a-fA-F]{64}$/.test(hash))throw new Error('Ungültiger Tx Hash.');
+
+    log('Lade Transaction + Receipt + Block.');
+    const [tx,receipt]=await Promise.all([
+      rpc('eth_getTransactionByHash',[hash]),
+      rpc('eth_getTransactionReceipt',[hash])
+    ]);
+    if(!tx||!receipt)throw new Error('Transaktion/Receipt nicht gefunden.');
+    const block=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);
+    const when=new Date(Number(BigInt(block.timestamp))*1000);
+    const selector=(tx.input||'').slice(0,10).toLowerCase();
+    const method=KNOWN_SELECTORS.get(selector)||'unbekannt';
+    const rawInputWords=inputWordsOf(tx.input);
+
+    $('txInfo').innerHTML=`<div class="grid">
+      <div class="kv"><b>Zeitpunkt</b>${esc(when.toLocaleString('de-CH'))}</div>
+      <div class="kv"><b>Wallet / From</b><span class="mono">${esc(tx.from)}</span></div>
+      <div class="kv"><b>Claim-Contract / To</b><span class="mono">${esc(tx.to)}</span></div>
+      <div class="kv"><b>Selector / Methode</b><span class="mono">${esc(selector)}</span><br>${esc(method)}</div>
+      <div class="kv"><b>Block</b>${parseInt(tx.blockNumber,16).toLocaleString('de-CH')}</div>
+      <div class="kv"><b>Status</b>${receipt.status==='0x1'?'<span class="ok">erfolgreich</span>':'<span class="bad">fehlgeschlagen</span>'}</div>
+    </div><details><summary>Raw Input</summary><pre>${esc(tx.input)}</pre></details>`;
+
+    $('inputWords').innerHTML=`<div class="grid">
+      <div class="kv"><b>Selector</b><span class="mono">${esc(rawInputWords.selector)}</span></div>
+      <div class="kv"><b>Bekannte Signatur</b>${esc(rawInputWords.selectorLabel||'nicht in lokaler Signaturliste')}</div>
+      <div class="kv"><b>32-Byte-Argumentwörter</b>${rawInputWords.words.length}</div>
+    </div>${rawInputWords.words.length?`<table><thead><tr><th>#</th><th>Raw</th><th>als Adresse</th><th>als uint256</th></tr></thead><tbody>${rawInputWords.words.map(w=>`<tr><td>${w.index}</td><td class="mono">${esc(w.raw)}</td><td class="mono">${esc(w.address||'–')}</td><td class="mono">${esc(w.uint||'–')}</td></tr>`).join('')}</tbody></table>`:'<div class="muted">Keine vollständigen 32-Byte-Argumentwörter.</div>'}`;
+
+    log('Dekodiere ERC-20 Transfer-Logs im Receipt.');
+    const transfers=[];
+    for(const l of receipt.logs||[]){
+      if(norm(l.topics?.[0])!==TRANSFER_TOPIC||l.topics.length<3)continue;
+      const token=norm(l.address),from=topicAddr(l.topics[1]),to=topicAddr(l.topics[2]);
+      const meta=await tokenMeta(token);
+      let amount='0';
+      try{amount=ethers.formatUnits(BigInt(l.data||'0x0'),meta.decimals)}catch{}
+      transfers.push({token,from,to,amount,...meta,mint:from===ZERO,toWallet:to===norm(tx.from)});
+    }
+    $('transfers').innerHTML=transfers.length?`<table><thead><tr><th>Token</th><th>Von</th><th>An</th><th>Betrag</th><th>Bewertung</th></tr></thead><tbody>${
+      transfers.map(t=>`<tr><td><b>${esc(t.symbol)}</b><div class="mono">${esc(t.token)}</div></td><td class="mono">${esc(t.from)}</td><td class="mono">${esc(t.to)}</td><td>${esc(t.amount)}</td><td>${t.mint&&t.toWallet?'<span class="ok"><b>Mint → Wallet</b></span>':t.toWallet?'<span class="warn">Zufluss → Wallet</span>':'–'}</td></tr>`).join('')
+    }</tbody></table>`:'<span class="warn">Keine ERC-20 Transfer-Logs erkannt.</span>';
+
+    const eventRows=(receipt.logs||[]).map((l,i)=>{
+      const topic0=norm(l.topics?.[0]||'');
+      return {
+        i,address:norm(l.address),topic0,
+        known:KNOWN_EVENT_TOPICS.get(topic0)||'unbekannte Event-Signatur',
+        topics:(l.topics||[]).length,
+        data:l.data||'0x'
+      };
+    });
+    $('allEvents').innerHTML=eventRows.length?`<table><thead><tr><th>#</th><th>Contract</th><th>topic0</th><th>Signatur</th><th>Topics</th><th>Data</th></tr></thead><tbody>${eventRows.map(e=>`<tr><td>${e.i}</td><td class="mono">${esc(e.address)}</td><td class="mono">${esc(e.topic0)}</td><td>${esc(e.known)}</td><td>${e.topics}</td><td class="mono">${esc(e.data)}</td></tr>`).join('')}</tbody></table>`:'<span class="warn">Receipt enthält keine Logs.</span>';
+
+    log('Lade nur bekannte TLN/VOW-Staking-Contracts aus Supabase.');
+    const stakings=await stakingRows();
+    const known=new Map(stakings.map(s=>[norm(s.contract_address),s]));
+    const claimContract=norm(tx.to);
+
+    log('Prüfe Claim-Contract Bytecode, Proxy-Implementation und kleine Getter-Liste.');
+    const [code,impl,getters]=await Promise.all([
+      rpc('eth_getCode',[claimContract,'latest']),
+      eip1967Implementation(claimContract),
+      probeAddressGetters(claimContract)
+    ]);
+    const implCode=impl?await rpc('eth_getCode',[impl,'latest']).catch(()=> '0x'):'0x';
+    const embedded=[...embeddedKnownAddresses(code,stakings),...embeddedKnownAddresses(implCode,stakings)]
+      .filter((x,i,a)=>a.findIndex(y=>norm(y.contract_address)===norm(x.contract_address))===i);
+    const getterMatches=getters.filter(g=>known.has(norm(g.addr)));
+    const direct=known.get(claimContract)||null;
+
+    let relRows=[];
+    if(direct)relRows.push({type:'Direkt',value:claimContract,staking:direct});
+    if(impl&&known.has(impl))relRows.push({type:'Proxy-Implementation',value:impl,staking:known.get(impl)});
+    for(const g of getterMatches)relRows.push({type:`Getter ${g.sig}`,value:g.addr,staking:known.get(g.addr)});
+    for(const s of embedded)relRows.push({type:'Adresse im Bytecode eingebettet',value:norm(s.contract_address),staking:s});
+
+    $('relations').innerHTML=`<div class="grid">
+      <div class="kv"><b>Claim-Contract</b><span class="mono">${esc(claimContract)}</span></div>
+      <div class="kv"><b>EIP-1967 Implementation</b><span class="mono">${esc(impl||'keine erkannt')}</span></div>
+      <div class="kv"><b>Bekannte Staking-Contracts geladen</b>${stakings.length}</div>
+      <div class="kv"><b>Direkte statische Matches</b>${relRows.length}</div>
+    </div>
+    ${relRows.length?`<table><thead><tr><th>Nachweis</th><th>Adresse</th><th>Staking</th></tr></thead><tbody>${relRows.map(r=>`<tr><td>${esc(r.type)}</td><td class="mono">${esc(r.value)}</td><td>${esc(r.staking.label||r.staking.name||r.staking.contract_address)}</td></tr>`).join('')}</tbody></table>`:'<div class="warn" style="margin-top:10px">Kein direkter Match über Adresse, Proxy, Getter oder eingebettete bekannte Staking-Adresse.</div>'}
+    <details><summary>Alle gefundenen Address-Getter</summary><pre>${esc(JSON.stringify(getters,null,2))}</pre></details>`;
+
+    log('Versuche genau einen Transaction-Trace.');
+    const tr=await getTrace(hash);
+    const traceKnown=tr.calls.filter(c=>known.has(norm(c.to)));
+    $('trace').innerHTML=tr.kind==='unsupported'
+      ?`<span class="warn">Provider unterstützt den benötigten Trace nicht.</span><pre>${esc(tr.error)}</pre>`
+      :`<div class="muted">Trace-Typ: ${esc(tr.kind)} · ${tr.calls.length} Calls · ${traceKnown.length} Call(s) an bekannte Staking-Contracts.</div>
+       ${tr.calls.length?`<table><thead><tr><th>Pfad</th><th>Typ</th><th>Von</th><th>An</th><th>Selector</th><th>lokale Signatur</th><th>Staking-Match</th><th>Fehler</th></tr></thead><tbody>${tr.calls.map(c=>{const sel=(c.input||'').slice(0,10).toLowerCase();return `<tr><td class="mono">${esc(traceDepthPrefix(c.depth)+(c.path||''))}</td><td>${esc(c.type)}</td><td class="mono">${esc(c.from)}</td><td class="mono">${esc(c.to)}</td><td class="mono">${esc(sel)}</td><td>${esc(KNOWN_SELECTORS.get(sel)||'–')}</td><td>${known.has(norm(c.to))?'<span class="ok"><b>JA</b></span>':'–'}</td><td class="bad">${esc(c.error||'')}</td></tr>`}).join('')}</tbody></table>`:''}`;
+
+    const mintCalls=[];
+    for(let i=0;i<tr.calls.length;i++){
+      const c=tr.calls[i];
+      const decoded=decodeMintCallInput(c.input||'');
+      if(!decoded)continue;
+      const meta=await tokenMeta(c.to).catch(()=>({symbol:'Token',decimals:18}));
+      let amount='0';
+      try{amount=ethers.formatUnits(BigInt(decoded.amountRaw),meta.decimals)}catch{}
+      // Nearest outer/parent call is found by the hierarchical path.
+      let parent=null;
+      const p=String(c.path||'');
+      if(p.includes('.')){
+        const parentPath=p.slice(0,p.lastIndexOf('.'));
+        parent=tr.calls.find(x=>String(x.path)===parentPath)||null;
+      }
+      mintCalls.push({call:c,decoded,meta,amount,parent});
+    }
+    const walletMintCalls=mintCalls.filter(m=>norm(m.decoded.recipient)===norm(tx.from));
+    $('mintCausality').innerHTML=tr.kind==='unsupported'
+      ? `<span class="warn">Ohne Trace kann die Mint-Kausalität nicht tief bestimmt werden.</span>`
+      : `<div class="grid">
+          <div class="kv"><b>mint(address,uint256)-Calls im Trace</b>${mintCalls.length}</div>
+          <div class="kv"><b>davon Mint direkt zum Tx-Sender</b>${walletMintCalls.length}</div>
+          <div class="kv"><b>Tx-Ziel</b><span class="mono">${esc(claimContract)}</span></div>
+        </div>
+        ${mintCalls.length?`<table><thead><tr><th>Pfad</th><th>Mint-Token</th><th>direkter Aufrufer des Token-Mints</th><th>Empfänger</th><th>Betrag</th><th>übergeordneter Call</th></tr></thead><tbody>${mintCalls.map(m=>`<tr>
+          <td class="mono">${esc(m.call.path||'–')}</td>
+          <td><b>${esc(m.meta.symbol)}</b><div class="mono">${esc(m.call.to)}</div></td>
+          <td class="mono"><b>${esc(m.call.from)}</b></td>
+          <td class="mono">${esc(m.decoded.recipient||'–')}${norm(m.decoded.recipient)===norm(tx.from)?'<br><span class="ok"><b>Tx-Sender / analysiertes Wallet</b></span>':''}</td>
+          <td>${esc(m.amount)}<div class="small mono">raw ${esc(m.decoded.amountRaw)}</div></td>
+          <td>${m.parent?`<div class="mono">${esc(m.parent.from)} → ${esc(m.parent.to)}</div><div class="mono">${esc((m.parent.input||'').slice(0,10))} ${esc(KNOWN_SELECTORS.get((m.parent.input||'').slice(0,10).toLowerCase())||'')}</div>`:'oberste Ebene / Parent nicht rekonstruierbar'}</td>
+        </tr>`).join('')}</tbody></table>`:'<div class="warn">Im verfügbaren Trace wurde kein <span class="mono">0x40c10f19 = mint(address,uint256)</span> gefunden.</div>'}
+        ${walletMintCalls.length===1?`<p class="ok"><b>Kausaler Kernfund:</b> Der TLN+-Token-Mint zum Wallet wird im Trace direkt von <span class="mono">${esc(walletMintCalls[0].call.from)}</span> ausgelöst. Dieser Contract ist der wichtigste nächste Identifikationspunkt; nicht automatisch der Tx-Zielcontract.</p>`:''}`;
+
+    log('Prüfe Referral-Evidenz isoliert vor/nach dieser Tx.');
+    const prevBlock='0x'+(BigInt(tx.blockNumber)-1n).toString(16);
+    const [refBefore,refAfter]=await Promise.all([referralState(claimContract,tx.from,prevBlock),referralState(claimContract,tx.from,tx.blockNumber)]);
+    const explicitReferralMethod=referralMethod(tx.input);
+    const bm=new Map(refBefore.map(x=>[x.sig,x.value]));
+    const referralDeltas=refAfter.filter(x=>bm.has(x.sig)&&bm.get(x.sig)!==x.value).map(x=>({sig:x.sig,before:bm.get(x.sig),after:x.value}));
+    const positiveReferral=!!explicitReferralMethod||referralDeltas.length>0;
+    $('referral').innerHTML=`<div class="grid">
+      <div class="kv"><b>Explizite Referral-Claim-Methode</b>${explicitReferralMethod?'<span class="ok">'+esc(explicitReferralMethod)+'</span>':'keine erkannt'}</div>
+      <div class="kv"><b>Referral-State vor Tx</b>${refBefore.length}</div>
+      <div class="kv"><b>Referral-State nach Tx</b>${refAfter.length}</div>
+      <div class="kv"><b>State-Änderungen</b>${referralDeltas.length}</div>
+    </div>${referralDeltas.length?`<table><thead><tr><th>Getter</th><th>Vorher</th><th>Nachher</th></tr></thead><tbody>${referralDeltas.map(d=>`<tr><td class="mono">${esc(d.sig)}</td><td class="mono">${esc(d.before)}</td><td class="mono">${esc(d.after)}</td></tr>`).join('')}</tbody></table>`:''}
+    <details><summary>Referral-State Details</summary><pre>${esc(JSON.stringify({before:refBefore,after:refAfter},null,2))}</pre></details>
+    <p>${positiveReferral?'<span class="ok"><b>Positive Referral-Evidenz erkannt.</b></span>':'<span class="warn"><b>Kein positiver Referral-Nachweis.</b></span> Fehlende Staking-Zuordnung zählt ausdrücklich nicht als Referral.'}</p>`;
+
+
+    // Separate referral/upline analysis. This DOES NOT alter normal reward-claim proof.
+    const stakeSender=norm(tx.from);
+    const thirdPartyMints=transfers.filter(t=>t.mint && norm(t.to)!==stakeSender);
+    const mintRecipients=[...new Set(thirdPartyMints.map(t=>norm(t.to)))];
+    const sameTxMultiRecipient=mintRecipients.length>=2;
+    const directStakeCall = selector===ethers.id('stake(uint256)').slice(0,10).toLowerCase()
+                         || selector===ethers.id('Stake(uint256)').slice(0,10).toLowerCase()
+                         || /stake/i.test(method);
+    const distributionEvidence = directStakeCall && thirdPartyMints.length>0;
+    $('distribution').innerHTML=`<div class="grid">
+      <div class="kv"><b>Staker / Tx-Sender</b><span class="mono">${esc(stakeSender)}</span></div>
+      <div class="kv"><b>Mint-Empfänger ≠ Staker</b>${mintRecipients.length}</div>
+      <div class="kv"><b>Mint-Transfers an Dritte</b>${thirdPartyMints.length}</div>
+      <div class="kv"><b>Mehrstufige Verteilung möglich</b>${sameTxMultiRecipient?'<span class="ok">JA</span>':'nicht belegt'}</div>
+    </div>
+    ${thirdPartyMints.length?`<table><thead><tr><th>Empfänger</th><th>Reward-Token</th><th>Betrag</th><th>Tx-kausale Evidenz</th></tr></thead><tbody>${thirdPartyMints.map(t=>`<tr><td class="mono">${esc(t.to)}</td><td>${esc(t.symbol)}<div class="mono">${esc(t.token)}</div></td><td>${esc(t.amount)}</td><td><span class="ok">Mint innerhalb derselben Stake-Tx</span></td></tr>`).join('')}</tbody></table>`:'<div class="warn">Keine Mint-Auszahlungen an andere Wallets in dieser Tx erkannt.</div>'}
+    <p class="${distributionEvidence?'ok':'warn'}"><b>${distributionEvidence?'Referral-/Upline-Verteilung als starke Kandidaten-Evidenz erkannt':'Referral-/Upline-Verteilung noch nicht bewiesen'}.</b>
+    ${distributionEvidence?'Der Stake eines Wallets verursacht in derselben erfolgreichen Tx Mint-Auszahlungen an andere Wallets. Die konkrete Referral-Ebene wird NICHT geraten.':'Es fehlt die Kombination aus Stake-Aufruf und Mint an ein anderes Wallet.'}</p>
+    <p class="muted">Wichtig: Diese Analyse ist vollständig getrennt vom normalen Reward-Claim. Sie verändert dessen Mint-/Claim-/Yield-Nachweise nicht.</p>`;
+
+    const mintRewards=transfers.filter(t=>t.mint&&t.toWallet);
+    const allEvidence=[...relRows];
+    for(const c of traceKnown)allEvidence.push({type:'Interner Call im Tx-Trace',value:c.to,staking:known.get(norm(c.to))});
+    const uniqueMatches=[...new Map(allEvidence.map(e=>[norm(e.staking?.contract_address||e.value),e])).values()];
+
+    let conclusion='<p><b>Reward-Beweis und Referral-Herkunft werden getrennt bewertet.</b></p>';
+    if(mintRewards.length){
+      conclusion+=`<p class="ok"><b>Reward-Beweis:</b> ${mintRewards.length} Mint-Transfer(s) von Zero Address direkt zum aufrufenden Wallet erkannt.</p>`;
+      const suspicious=mintRewards.filter(x=>String(x.symbol||'').toUpperCase().includes('TLN'));
+      if(suspicious.length)conclusion+=`<p><b>Auffälliger Betrag:</b> ${suspicious.map(x=>`${esc(x.amount)} ${esc(x.symbol)}`).join(', ')}. Die Rundheit wird als Diagnosehinweis angezeigt, aber nicht als Reward-Typ interpretiert.</p>`;
+      if(walletMintCalls.length===1){
+        const m=walletMintCalls[0];
+        conclusion+=`<p class="ok"><b>Direkter Mint-Auslöser im Trace:</b> <span class="mono">${esc(m.call.from)}</span> ruft <span class="mono">mint(address,uint256)</span> auf Token <span class="mono">${esc(m.call.to)}</span> auf und mintet ${esc(m.amount)} ${esc(m.meta.symbol)} an das Wallet.</p>`;
+      }else if(walletMintCalls.length>1){
+        conclusion+=`<p class="warn"><b>Mehrere Mint-Calls zum Wallet:</b> ${walletMintCalls.length}; der Reward muss über die Call-Pfade differenziert werden.</p>`;
+      }
+    }else{
+      conclusion+=`<p class="warn"><b>Reward-Beweis:</b> Kein Zero-Address-Mint im Receipt erkannt.</p>`;
+    }
+    if(method.startsWith('withdrawYield'))conclusion+=`<p class="ok"><b>Claim-Semantik:</b> Transaktion ruft ${esc(method)} auf.</p>`;
+    conclusion+=positiveReferral
+      ? `<p class="ok"><b>Referral-Herkunft:</b> positiv belegt (${explicitReferralMethod?'explizite Referral-Methode':'Referral-State-Änderung'}).</p>`
+      : `<p class="warn"><b>Referral-Herkunft:</b> nicht belegt. Ein bestehender Reward-Beweis bleibt davon unberührt.</p>`;
+    if(distributionEvidence){
+      conclusion+=`<p class="ok"><b>Fremder Stake → Upline/Referral-Kandidat:</b> In derselben Stake-Tx werden Rewards an ${mintRecipients.length} andere Wallet(s) gemintet. Das ist starke kausale Referral-/Upline-Evidenz; ein konkretes Level wird ohne weiteren on-chain Nachweis nicht behauptet.</p>`;
+    }
+    if(uniqueMatches.length===1){
+      const e=uniqueMatches[0],s=e.staking;
+      conclusion+=`<p class="ok"><b>Staking-Zuordnung gefunden:</b> ${esc(s.label||s.name||s.contract_address)} · <span class="mono">${esc(s.contract_address)}</span></p>
+      <p>Nachweis: ${esc(e.type)}. Diese Beziehung kann anschließend als generische Zuordnungsregel in die Haupt-Engine übernommen werden.</p>`;
+    }else if(uniqueMatches.length>1){
+      conclusion+=`<p class="warn"><b>Mehrere mögliche Stakings:</b> ${uniqueMatches.length}. Die Tx allein liefert noch keinen eindeutigen Positionsnachweis.</p>`;
+    }else{
+      conclusion+=`<p class="warn"><b>Noch keine Staking-Zuordnung:</b> Die isolierte Tx zeigt Reward und Claim-Methode, aber über Adresse/Proxy/Getter/Bytecode/Trace wurde kein bekannter Staking-Contract eindeutig verbunden.</p>
+      <p>Dann wäre der nächste isolierte Schritt eine gezielte Storage-/historische-State-Analyse genau dieses Claim-Contracts – weiterhin ohne Wallet-Gesamthistorie.</p>`;
+    }
+    $('conclusion').innerHTML=conclusion;
+    $('status').innerHTML='<span class="ok">Analyse abgeschlossen.</span>';
+    log('Fertig.');
+  }catch(e){
+    $('status').innerHTML=`<span class="bad">${esc(e.message)}</span>`;log('FEHLER: '+e.message);
+  }finally{$('analyze').disabled=false}
+}
+$('analyze').addEventListener('click',analyze);
+
+function tlnIdLog(s){$('tlnIdLog').textContent+=`[${new Date().toLocaleTimeString('de-CH')}] ${s}\n`}
+
+function hexWord(v){return BigInt(v).toString(16).padStart(64,'0').toLowerCase()}
+function addressWord(a){return norm(a).slice(2).padStart(64,'0').toLowerCase()}
+function containsWord(hex,word){return String(hex||'').toLowerCase().replace(/^0x/,'').includes(word)}
+const TLN_ID_EVIDENCE_CACHE_PREFIX='tln-id-evidence-v2:';
+function tlnIdEvidenceCacheKey(wallet,expected){return TLN_ID_EVIDENCE_CACHE_PREFIX+norm(wallet)+':'+String(expected)}
+function loadTlnIdEvidenceCache(wallet,expected){
+  try{return JSON.parse(localStorage.getItem(tlnIdEvidenceCacheKey(wallet,expected))||'null')}catch{return null}
+}
+function saveTlnIdEvidenceCache(wallet,expected,hit){
+  try{localStorage.setItem(tlnIdEvidenceCacheKey(wallet,expected),JSON.stringify({hash:hit.hash,block:hit.block,contracts:[...new Set(hit.logHits.map(x=>x.address))],savedAt:new Date().toISOString()}))}catch{}
+}
+function tlnIdEvidenceFromReceipt(rec,wWord,idWord){
+  const logHits=[];
+  for(const lg of rec?.logs||[]){
+    const topicBlob=(lg.topics||[]).join('').toLowerCase(),data=String(lg.data||'').toLowerCase();
+    const hasId=containsWord(topicBlob,idWord)||containsWord(data,idWord);
+    const hasWallet=containsWord(topicBlob,wWord)||containsWord(data,wWord);
+    if(hasId&&hasWallet)logHits.push({address:norm(lg.address),topics:lg.topics||[],data:lg.data});
+  }
+  return logHits;
+}
+
+const TLN_ID_EVENT_RESOLVER_CACHE_KEY='tln-id-event-resolver-v1:bsc';
+let tlnIdentityEventResolver=null;
+function splitDataWords(data){
+  const h=String(data||'').replace(/^0x/,'').toLowerCase();
+  const out=[];for(let i=0;i+64<=h.length;i+=64)out.push(h.slice(i,i+64));return out;
+}
+function loadTlnIdEventResolver(){
+  if(tlnIdentityEventResolver)return tlnIdentityEventResolver;
+  try{
+    const x=JSON.parse(localStorage.getItem(TLN_ID_EVENT_RESOLVER_CACHE_KEY)||'null');
+    if(x?.contract&&x?.topic0&&x?.walletLocation?.kind&&x?.idLocation?.kind){
+      tlnIdentityEventResolver=x;return x;
+    }
+  }catch{}
+  return null;
+}
+function saveTlnIdEventResolver(x){
+  tlnIdentityEventResolver=x;
+  try{localStorage.setItem(TLN_ID_EVENT_RESOLVER_CACHE_KEY,JSON.stringify(x))}catch{}
+}
+function inspectTlnIdEventLayout(lg,wWord,idWord){
+  const topics=(lg.topics||[]).map(x=>String(x).replace(/^0x/,'').toLowerCase());
+  const dataWords=splitDataWords(lg.data);
+  const walletTopics=[],idTopics=[],walletData=[],idData=[];
+  topics.forEach((w,i)=>{if(i>0&&w===wWord)walletTopics.push(i);if(i>0&&w===idWord)idTopics.push(i)});
+  dataWords.forEach((w,i)=>{if(w===wWord)walletData.push(i);if(w===idWord)idData.push(i)});
+  return {contract:norm(lg.address),topic0:lg.topics?.[0]||null,walletTopics,idTopics,walletData,idData,dataWordCount:dataWords.length};
+}
+function extractWalletFromEventLog(lg,resolver){
+  try{
+    let word=null;
+    if(resolver.walletLocation.kind==='topic')word=String(lg.topics?.[resolver.walletLocation.index]||'').replace(/^0x/,'');
+    else word=splitDataWords(lg.data)[resolver.walletLocation.index]||null;
+    if(!word||word.length!==64)return null;
+    return norm('0x'+word.slice(24));
+  }catch{return null}
+}
+function extractIdFromEventLog(lg,resolver){
+  try{
+    let word=null;
+    if(resolver.idLocation.kind==='topic')word=String(lg.topics?.[resolver.idLocation.index]||'').replace(/^0x/,'');
+    else word=splitDataWords(lg.data)[resolver.idLocation.index]||null;
+    if(!word)return null;
+    const v=BigInt('0x'+word);if(v<=0n||v>1000000000000n)return null;return v.toString();
+  }catch{return null}
+}
+async function resolveTlnIdentityByEvent(wallet,{saveDb=true,logFn=walletLog}={}){
+  wallet=norm(wallet);const resolver=loadTlnIdEventResolver();
+  if(!resolver)return null;
+  const topics=[resolver.topic0];
+  if(resolver.walletLocation.kind==='topic'){
+    while(topics.length<=resolver.walletLocation.index)topics.push(null);
+    topics[resolver.walletLocation.index]=walletTopic(wallet);
+  }
+  let logs;
+  try{logs=await rpc('eth_getLogs',[{address:resolver.contract,fromBlock:'0x0',toBlock:'latest',topics}])}
+  catch(e){logFn(`TLN-ID Event-Resolver ${short(wallet)}: eth_getLogs fehlgeschlagen: ${e.message}`);return null}
+  const valid=(logs||[]).map(lg=>({lg,id:extractIdFromEventLog(lg,resolver),eventWallet:extractWalletFromEventLog(lg,resolver)})).filter(x=>x.id&&x.eventWallet===wallet);
+  logFn(`TLN-ID Event-Resolver ${short(wallet)}: 1 eth_getLogs → ${(logs||[]).length} Event(s), ${valid.length} Wallet-Treffer.`);
+  if(!valid.length)return null;
+  valid.sort((a,b)=>{
+    const ab=BigInt(a.lg.blockNumber||0),bb=BigInt(b.lg.blockNumber||0);if(ab!==bb)return ab<bb?-1:1;
+    return Number(BigInt(a.lg.logIndex||0)-BigInt(b.lg.logIndex||0));
+  });
+  const chosen=valid[valid.length-1];
+  const ident={wallet,nodeId:chosen.id,referredById:null,source:'on-chain-event',chain:'BSC',contract:resolver.contract,method:`event:${resolver.topic0}`,verifiedAt:new Date().toISOString()};
+  tlnIdentityCache.set(wallet,ident);
+  if(saveDb)await saveTlnIdentityToDb(ident);
+  return ident;
+}
+function applyTlnIdTestVector(index){
+  const v=TLN_ID_TEST_VECTORS[Number(index)||0]||TLN_ID_TEST_VECTORS[0];
+  $('tlnIdWallet').value=v.wallet;
+  $('tlnIdExpected').value=v.nodeId;
+}
+$('tlnIdTestVector').addEventListener('change',e=>applyTlnIdTestVector(e.target.value));
+
+async function verifyKnownTlnIdVectorsByEvent(resolver,logFn=tlnIdLog){
+  const vectors=TLN_ID_TEST_VECTORS;
+  const results=[];
+  let requestCount=0;
+  for(const v of vectors){
+    requestCount++;
+    let got=null;
+    try{
+      const raw=await rpc('eth_call',[{to:TLN_SMARTNODE_CONTRACT,data:uintCall(TLN_SMARTNODE_ID_METHOD,v.wallet)},'latest']);
+      got=decodeSingleUint(raw);
+    }catch(e){
+      logFn(`SmartNode-Test ${v.wallet}: eth_call fehlgeschlagen: ${e.message}`);
+    }
+    results.push({...v,got,ok:got===v.nodeId,matches:got?1:0});
+  }
+  logFn(`Direkte SmartNode-Verifikation: ${requestCount} eth_call(s) für ${vectors.length} bekannte Wallet→TLN-ID-Testvektoren.`);
+  results.forEach(r=>logFn(`Testvektor ${r.wallet} → erwartet ${r.nodeId}; nodeIdOf=${r.got||'keine ID'}; ${r.ok?'MATCH':'KEIN MATCH'}.`));
+  return {requestCount,results,ok:results.every(r=>r.ok)};
+}
+
+async function decodeAndVerifyTlnIdEvent(){
+  const btn=$('decodeTlnIdEvent');btn.disabled=true;$('scanTlnIdHistory').disabled=true;$('scanTlnId').disabled=true;
+  try{
+    const wallet=norm($('tlnIdWallet').value.trim()),expected=String($('tlnIdExpected').value.trim());
+    if(!/^0x[0-9a-f]{40}$/.test(wallet))throw new Error('Ungültige Wallet-Adresse.');
+    if(!/^\d+$/.test(expected)||BigInt(expected)<=0n)throw new Error('Ungültige bekannte TLN ID.');
+    await initRpc();
+    tlnIdLog(`Version ${APP_VERSION}`);
+    tlnIdLog(`SmartNode-Direkttest: Contract ${TLN_SMARTNODE_CONTRACT}; Getter ${TLN_SMARTNODE_ID_METHOD}.`);
+    tlnIdLog(`Event-Signatur als unabhängige Evidenz: SmartNodeActivated(address,address,uint256) → ${TLN_SMARTNODE_EVENT_TOPIC}.`);
+    tlnIdLog('Validiere alle 3 bekannten Testvektoren mit genau 3 eth_call(s); kein eth_getLogs und kein historischer Scan.');
+    const resolver={contract:TLN_SMARTNODE_CONTRACT,method:TLN_SMARTNODE_ID_METHOD,source:'verified-smartnode'};
+    const multi=await verifyKnownTlnIdVectorsByEvent(resolver,tlnIdLog);
+    if(!multi.ok){
+      $('tlnIdStatus').innerHTML='<span class="warn">SmartNode.nodeIdOf konnte nicht alle Testvektoren bestätigen.</span>';
+      $('tlnIdResult').innerHTML=`<p class="warn"><b>Direkter Getter noch nicht mehrfach bestätigt.</b></p><p>${multi.results.map(r=>`${esc(r.wallet)} → erwartet ${esc(r.nodeId)}, erhalten ${esc(r.got||'–')}`).join('<br>')}</p>`;
+      return;
+    }
+    tlnIdentityResolver=resolver;
+    let saved=0;
+    for(const r of multi.results){
+      const ident={wallet:r.wallet,nodeId:r.got,referredById:null,source:'on-chain-smartnode',chain:'BSC',contract:TLN_SMARTNODE_CONTRACT,method:TLN_SMARTNODE_ID_METHOD,verifiedAt:new Date().toISOString()};
+      tlnIdentityCache.set(r.wallet,ident);
+      if(await saveTlnIdentityToDb(ident))saved++;
+    }
+    $('tlnIdStatus').innerHTML='<span class="ok">TLN-ID-Ermittlung abgeschlossen – direkter SmartNode-Getter bestätigt.</span>';
+    $('tlnIdResult').innerHTML=`<p class="ok"><b>Wallet → TLN ID ist direkt on-chain auflösbar.</b></p><div class="grid"><div class="kv"><b>SmartNode Registry</b><span class="mono">${esc(TLN_SMARTNODE_CONTRACT)}</span></div><div class="kv"><b>Getter</b><span class="mono">${esc(TLN_SMARTNODE_ID_METHOD)}</span></div><div class="kv"><b>Requests</b>1 eth_call pro Cache-Miss</div><div class="kv"><b>Validierung</b>${multi.results.map(r=>`${esc(r.wallet.slice(0,8))}… → <b>${esc(r.got)}</b>`).join('<br>')}</div><div class="kv"><b>Supabase</b>${saved}/${multi.results.length} Testvektor(en) gespeichert</div></div><p class="muted">Referral Rewards verwendet nun DB-first: zuerst <span class="mono">tln_wallet_identity_cache</span>, bei Cache-Miss genau einen <span class="mono">nodeIdOf(address)</span>-Call und danach persistentes Caching.</p>`;
+    tlnIdLog(`ERFOLG: SmartNode.nodeIdOf(address) gegen ${multi.results.length} Testvektoren bestätigt; ${saved}/${multi.results.length} in Supabase gespeichert.`);
+  }catch(e){
+    $('tlnIdStatus').innerHTML=`<span class="bad">Fehler: ${esc(e.message)}</span>`;
+    tlnIdLog(`FEHLER: ${e.message}`);
+  }finally{btn.disabled=false;$('scanTlnIdHistory').disabled=false;$('scanTlnId').disabled=false}
+}
+
+async function scanTlnIdHistory(){
+  const btn=$('scanTlnIdHistory');btn.disabled=true;$('scanTlnId').disabled=true;
+  $('tlnIdLog').textContent='';$('tlnIdResult').textContent='Gezielte Evidenz wird gesucht…';$('tlnIdCandidates').textContent='Noch keine Treffer.';
+  try{
+    const wallet=norm($('tlnIdWallet').value.trim()),expected=String($('tlnIdExpected').value.trim());
+    if(!/^0x[0-9a-f]{40}$/.test(wallet))throw new Error('Ungültige Wallet-Adresse.');
+    if(!/^\d+$/.test(expected)||BigInt(expected)<=0n)throw new Error('Ungültige bekannte TLN ID.');
+    $('tlnIdStatus').textContent='Adaptive Event-/Aktivierungs-Evidenz wird gesucht…';await initRpc();
+    tlnIdLog(`Version ${APP_VERSION}`);tlnIdLog(`Historischer Testvektor: ${wallet} ↔ TLN ID ${expected}.`);
+    tlnIdLog('Optimierter Primärweg: zuerst gespeicherten Evidenz-Treffer mit genau 1 Receipt verifizieren; sonst Alchemy-Historie in kleinen Seiten laden und beim ersten belastbaren Treffer sofort stoppen. Kein Getter-Bruteforce.');
+    const idWord=hexWord(expected),wWord=addressWord(wallet);let receipts=0,txReads=0,alchemyPages=0,alchemyTransfers=0,uniqueTx=0;let hit=null;
+
+    const cached=loadTlnIdEvidenceCache(wallet,expected);
+    if(cached?.hash){
+      tlnIdLog(`Cache-Kandidat: ${cached.hash} · verifiziere mit 1 Receipt.`);
+      try{
+        const rec=await rpc('eth_getTransactionReceipt',[cached.hash]);receipts++;
+        const logHits=tlnIdEvidenceFromReceipt(rec,wWord,idWord);
+        if(logHits.length){
+          hit={hash:norm(cached.hash),block:rec.blockNumber,from:norm(rec.from),to:norm(rec.to),logHits,inputHit:false,input:null,source:'cache'};
+          tlnIdLog(`CACHE-TREFFER bestätigt: ${hit.hash}; ${logHits.length} Log(s); Contract(s): ${[...new Set(logHits.map(x=>x.address))].join(', ')}.`);
+        }else tlnIdLog('Cache-Kandidat enthält die erwartete Wallet+ID-Evidenz nicht mehr; adaptive Suche wird gestartet.');
+      }catch(e){tlnIdLog(`Cache-Verifikation fehlgeschlagen (${e.message}); adaptive Suche wird gestartet.`)}
+    }
+
+    let pageKey=null;const seenHashes=new Set();
+    while(!hit){
+      const p={fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,category:['external','erc20','erc721','erc1155'],excludeZeroValue:false,withMetadata:true,maxCount:'0x64',order:'asc'};
+      if(pageKey)p.pageKey=pageKey;
+      const r=await alchemyRpc('alchemy_getAssetTransfers',[p]);alchemyPages++;
+      const items=Array.isArray(r?.transfers)?r.transfers:[];alchemyTransfers+=items.length;
+      const pageHashes=[];
+      for(const x of items){const h=norm(x.hash);if(h&&!seenHashes.has(h)){seenHashes.add(h);pageHashes.push(h)}}
+      uniqueTx=seenHashes.size;
+      tlnIdLog(`Alchemy Evidenz-Seite ${alchemyPages}: ${items.length} Transfer(s), ${pageHashes.length} neue Tx(s); prüfe nur bis zum ersten Treffer.`);
+      for(const h of pageHashes){
+        let rec=null;
+        try{rec=await rpc('eth_getTransactionReceipt',[h]);receipts++}catch{continue}
+        if(!rec)continue;
+        const logHits=tlnIdEvidenceFromReceipt(rec,wWord,idWord);
+        if(!logHits.length)continue;
+        let tx=null,inputHit=false;
+        try{tx=await rpc('eth_getTransactionByHash',[h]);txReads++;inputHit=containsWord(tx?.input,idWord)&&containsWord(tx?.input,wWord)}catch{}
+        hit={hash:h,block:rec.blockNumber,from:norm(rec.from),to:norm(rec.to),logHits,inputHit,input:tx?.input||null,source:'adaptive_history'};
+        saveTlnIdEvidenceCache(wallet,expected,hit);
+        tlnIdLog(`TREFFER ${h}: ${logHits.length} Log(s) enthalten Wallet + ID ${expected}; Contract(s): ${[...new Set(logHits.map(x=>x.address))].join(', ')}.`);
+        tlnIdLog('Treffer persistent im Browser gespeichert. Künftige Tests benötigen normalerweise nur noch 1 Receipt zur Verifikation.');
+        break;
+      }
+      if(hit)break;
+      pageKey=r?.pageKey||null;
+      if(!pageKey||alchemyPages>=20)break;
+    }
+
+    tlnIdLog(`Optimierter Test fertig: ${alchemyPages} Alchemy-Seite(n), ${alchemyTransfers} Transfer(s), ${uniqueTx} eindeutige Tx(s) gesehen, ${receipts} Receipt(s), ${txReads} Tx-Input-Read(s), ${hit?1:0} Evidenz-Tx.`);
+    if(hit){
+      const contracts=[...new Set(hit.logHits.map(x=>x.address))];
+      $('tlnIdResult').innerHTML=`<p class="ok"><b>Historische On-Chain-Evidenz gefunden.</b> Ein Event derselben Tx enthält sowohl das Test-Wallet als auch die bekannte TLN ID ${esc(expected)} als ABI-Wörter.</p><p><b>Tx:</b> <span class="mono">${esc(hit.hash)}</span><br><b>Event-Contract:</b> <span class="mono">${esc(contracts.join(' · '))}</span><br><b>Quelle:</b> ${hit.source==='cache'?'gespeicherter Evidenz-Treffer, on-chain erneut verifiziert':'adaptive Historien-Suche'}</p><p class="muted">Der Treffer wird nun als Ausgangspunkt für die gezielte Event-/Contract-Dekodierung verwendet. Ein vollständiger 1.552-Receipt-Scan ist dafür nicht mehr nötig.</p>`;
+      $('tlnIdCandidates').innerHTML=`<table><thead><tr><th>Tx</th><th>Block</th><th>Event-Contract(s)</th><th>Logs</th><th>Input enthält Wallet+ID</th></tr></thead><tbody><tr><td class="mono">${esc(hit.hash)}</td><td>${esc(hit.block)}</td><td class="mono">${esc(contracts.join(' · '))}</td><td>${hit.logHits.length}</td><td>${hit.inputHit?'<span class="ok"><b>ja</b></span>':'nein'}</td></tr></tbody></table><details><summary>Rohdaten des Treffers</summary><pre>${esc(JSON.stringify(hit,null,2))}</pre></details>`;
+      $('tlnIdStatus').innerHTML='<span class="ok">ID-Evidenz gefunden – optimierter Treffer ist gespeichert.</span>';
+    }else{
+      $('tlnIdResult').innerHTML=`<p class="warn"><b>Keine gemeinsame Wallet+ID-Evidenz in der adaptiv geprüften Historie gefunden.</b></p><p class="muted">Es wurden nur kleine Historien-Seiten geladen und nach jeder Seite sofort geprüft. Die Suche endet bei fehlender Pagination bzw. nach maximal 20 Seiten.</p>`;
+      $('tlnIdCandidates').textContent='Keine historischen Wallet+ID-Event-Treffer.';$('tlnIdStatus').innerHTML='<span class="warn">Keine historische Event-Evidenz gefunden.</span>';
+    }
+  }catch(e){$('tlnIdStatus').innerHTML=`<span class="bad">${esc(e.message)}</span>`;tlnIdLog('FEHLER: '+e.message)}finally{btn.disabled=false;$('scanTlnId').disabled=false}
+}
+$('decodeTlnIdEvent').addEventListener('click',()=>decodeAndVerifyTlnIdEvent().catch(e=>{tlnIdLog('FEHLER (Button): '+e.message);$('tlnIdStatus').innerHTML=`<span class="bad">Fehler: ${esc(e.message)}</span>`;}));
+$('scanTlnIdHistory').addEventListener('click',scanTlnIdHistory);
+
+const TLN_ID_TARGET_GETTERS=[
+  'id(address)','ids(address)','nodeId(address)','nodeID(address)','getNodeId(address)','getNodeID(address)',
+  'walletId(address)','walletID(address)','getWalletId(address)','getWalletID(address)',
+  'userId(address)','userID(address)','getUserId(address)','getUserID(address)',
+  'memberId(address)','memberID(address)','accountId(address)','idOf(address)','getId(address)',
+  'walletToId(address)','walletToID(address)','addressToId(address)','addressToID(address)'
+];
+async function scanTlnIdOnChain(){
+  const btn=$('scanTlnId');btn.disabled=true;
+  $('tlnIdLog').textContent='';$('tlnIdResult').textContent='Noch keine bestätigte Quelle.';$('tlnIdCandidates').textContent='Lade Kandidaten…';
+  try{
+    const wallet=norm($('tlnIdWallet').value.trim());
+    const expected=String($('tlnIdExpected').value.trim());
+    if(!/^0x[0-9a-f]{40}$/.test(wallet))throw new Error('Ungültige Wallet-Adresse.');
+    if(!/^\d+$/.test(expected)||BigInt(expected)<=0n)throw new Error('Ungültige bekannte TLN ID.');
+    $('tlnIdStatus').textContent='Gezielte On-Chain-Suche läuft…';
+    await initRpc();
+    tlnIdLog(`Version ${APP_VERSION}`);
+    tlnIdLog(`Testvektor: ${wallet} → erwartete TLN ID ${expected}.`);
+    const rows=await stakingRows();
+    const candidates=new Map();
+    const add=(a,reason)=>{a=norm(a);if(/^0x[0-9a-f]{40}$/.test(a)){if(!candidates.has(a))candidates.set(a,new Set());candidates.get(a).add(reason)}};
+    rows.forEach(r=>add(r.contract_address,`defi_staking_contracts: ${r.label||r.role||'staking'}`));
+    tlnIdLog(`${rows.length} bekannte TLN/VOW-Contracts als Ausgangspunkt geladen.`);
+
+    // Stufe 1: Proxy-Implementations und explizite Registry-/Identity-Getter der bekannten Contracts.
+    let sourceCalls=0;
+    for(const r of rows){
+      const c=norm(r.contract_address);
+      try{const impl=await eip1967Implementation(c);if(impl)add(impl,`EIP-1967 Implementation von ${short(c)}`)}catch{}
+      for(const sig of TLN_ID_SOURCE_GETTERS){
+        sourceCalls++;
+        try{
+          const raw=await rpc('eth_call',[{to:c,data:ethers.id(sig).slice(0,10)},'latest']);
+          const a=retAddr(raw);if(a)add(a,`${sig} von ${short(c)}`);
+        }catch{}
+      }
+    }
+    tlnIdLog(`Quellen-Discovery: ${sourceCalls} gezielte Registry-/Identity-Getter geprüft; ${candidates.size} Contract-Kandidat(en).`);
+
+    // Stufe 2: Nur plausible Single-uint-Getter. Ein Treffer zählt erst, wenn exakt die bekannte ID 7205 zurückkommt.
+    const checked=[];let calls=0;let match=null;
+    outer: for(const [contract,reasons] of candidates){
+      let code='0x';
+      try{code=await rpc('eth_getCode',[contract,'latest'])}catch{}
+      if(!code||code==='0x'){checked.push({contract,reasons:[...reasons],status:'kein Contract-Code'});continue}
+      for(const sig of TLN_ID_TARGET_GETTERS){
+        calls++;
+        try{
+          const raw=await rpc('eth_call',[{to:contract,data:uintCall(sig,wallet)},'latest']);
+          const id=decodeSingleUint(raw);
+          if(!id)continue;
+          checked.push({contract,reasons:[...reasons],method:sig,value:id,status:id===expected?'MATCH':'anderer uint-Wert'});
+          tlnIdLog(`${short(contract)} ${sig} → ${id}${id===expected?' ← EXAKTER TESTVEKTOR-MATCH':''}`);
+          if(id===expected){match={wallet,nodeId:id,contract,method:sig,reasons:[...reasons],source:'on-chain-targeted'};break outer}
+        }catch{}
+      }
+      if(!checked.some(x=>x.contract===contract))checked.push({contract,reasons:[...reasons],status:'kein plausibler ID-Getter'});
+    }
+    tlnIdLog(`ID-Getter: ${calls} gezielte eth_call(s) ausgeführt.`);
+
+    $('tlnIdCandidates').innerHTML=checked.length?`<table><thead><tr><th>Contract</th><th>Herkunft</th><th>Getter</th><th>Antwort</th><th>Status</th></tr></thead><tbody>${checked.map(x=>`<tr><td class="mono">${esc(x.contract)}</td><td>${esc(x.reasons.join(' · '))}</td><td class="mono">${esc(x.method||'–')}</td><td>${esc(x.value||'–')}</td><td>${x.status==='MATCH'?'<span class="ok"><b>MATCH 7205</b></span>':esc(x.status)}</td></tr>`).join('')}</tbody></table>`:'<span class="muted">Keine Contract-Kandidaten prüfbar.</span>';
+    if(match){
+      tlnIdentityResolver={contract:match.contract,method:match.method,discoveryCalls:calls};
+      tlnIdentityCache.set(wallet,{wallet,nodeId:match.nodeId,referredById:null,source:'on-chain',chain:'BSC',contract:match.contract,method:match.method});
+      $('tlnIdResult').innerHTML=`<div class="grid"><div class="kv"><b>Wallet</b><span class="mono">${esc(wallet)}</span></div><div class="kv"><b>TLN ID</b><span class="ok"><b>${esc(match.nodeId)}</b></span></div><div class="kv"><b>Source Contract</b><span class="mono">${esc(match.contract)}</span></div><div class="kv"><b>Getter</b><span class="mono">${esc(match.method)}</span></div></div><p class="ok"><b>Belastbarer Testvektor-Match:</b> Der Contract liefert für genau dieses Wallet die bekannte TLN ID ${esc(expected)}.</p><p class="muted">Der Treffer wird in dieser Session als Resolver vorgemerkt. Eine automatische Übernahme in den Referral-Scan oder Supabase erfolgt in diesem Test bewusst noch nicht.</p>`;
+      $('tlnIdStatus').innerHTML='<span class="ok">On-Chain-Quelle gefunden.</span>';
+      tlnIdLog(`ERFOLG: ${wallet} → ${match.nodeId} über ${match.contract} ${match.method}.`);
+    }else{
+      $('tlnIdResult').innerHTML=`<p class="warn"><b>Noch keine direkte Getter-Quelle gefunden.</b> Keiner der gezielt geprüften Contract-/Getter-Kandidaten lieferte für das Wallet exakt ${esc(expected)}.</p><p class="muted">Das widerlegt eine On-Chain-Speicherung nicht. Der nächste Schritt wäre dann Event-/historische Aktivierungs-Evidenz oder die gezielte Analyse weiterer Contracts aus der TLN-DApp.</p>`;
+      $('tlnIdStatus').innerHTML='<span class="warn">Kein exakter On-Chain-Getter-Match gefunden.</span>';
+    }
+  }catch(e){$('tlnIdStatus').innerHTML=`<span class="bad">${esc(e.message)}</span>`;tlnIdLog('FEHLER: '+e.message)}finally{btn.disabled=false}
+}
+
+function registryLog(s){$('registryLog').textContent+=`[${new Date().toLocaleTimeString('de-CH')}] ${s}\n`}
+async function v2PairInfo(addr){
+  addr=norm(addr); if(!/^0x[0-9a-f]{40}$/.test(addr))return null;
+  try{
+    const [r0,r1]=await Promise.all([
+      rpc('eth_call',[{to:addr,data:'0x0dfe1681'},'latest']),
+      rpc('eth_call',[{to:addr,data:'0xd21220a7'},'latest'])
+    ]);
+    const token0=asAddressWord(r0),token1=asAddressWord(r1);
+    if(!token0||!token1||token0===token1)return null;
+    const [m0,m1]=await Promise.all([tokenMeta(token0),tokenMeta(token1)]);
+    return {pair:addr,token0,token1,symbol0:String(m0.symbol||'Token'),symbol1:String(m1.symbol||'Token'),pairLabel:`${m0.symbol||'Token'} / ${m1.symbol||'Token'}`};
+  }catch{return null}
+}
+async function discoverPairForStaking(staking){
+  try{
+    const r=await alchemyRpc('alchemy_getAssetTransfers',[{
+      fromBlock:'0x0',toBlock:'latest',toAddress:norm(staking),category:['erc20'],excludeZeroValue:true,
+      withMetadata:false,maxCount:'0x64',order:'desc'
+    }]);
+    const seen=[];
+    for(const x of (r?.transfers||[])){
+      const a=norm(x.rawContract?.address||x.assetAddress||x.contractAddress||'');
+      if(/^0x[0-9a-f]{40}$/.test(a)&&!seen.includes(a))seen.push(a);
+    }
+    for(const a of seen){const info=await v2PairInfo(a);if(info)return {...info,source:'alchemy_recent_inflow'};}
+  }catch(e){registryLog(`Discovery ${short(staking)}: ${e.message}`)}
+  return null;
+}
+function cleanStakingLabel(pairLabel,current){
+  if(pairLabel)return `${pairLabel} LP Staking`;
+  return String(current||'Staking').replace(/\s*\(Legacy(?:\s*\d+)?\)\s*/ig,'').replace(/\bLegacy\b/ig,'').replace(/\s{2,}/g,' ').trim();
+}
+async function auditStakingRegistry(){
+  const btn=$('auditRegistry');btn.disabled=true;$('registryLog').textContent='';$('registryResult').innerHTML='';
+  try{
+    $('registryStatus').textContent='Prüfe Registry…';registryLog(`Version ${APP_VERSION}`);
+    if(!rpcUrl)await initRpc();
+    const rows=await stakingRows();registryLog(`${rows.length} aktive TLN/VOW-Registry-Einträge geladen.`);
+    const out=[];
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i],staking=norm(r.contract_address),configured=norm(r.pair_address||'');
+      let info=configured?await v2PairInfo(configured):null,source=configured?'supabase_pair_address':null;
+      if(!info&&!configured){info=await discoverPairForStaking(staking);if(info)source=info.source;}
+      const onchain=info?.pairLabel||null;
+      const stored=String(r.pair_label||'').trim();
+      const suggestedLabel=cleanStakingLabel(onchain,r.label);
+      const pairStatus=info?(configured?'VERIFIZIERT':'KANDIDAT GEFUNDEN'):(configured?'PAIR UNGÜLTIG/NICHT V2':'OFFEN');
+      const labelStatus=onchain&&stored?((stored.replace(/\s+/g,'').toLowerCase()===onchain.replace(/\s+/g,'').toLowerCase())?'OK':'KORRIGIEREN'):(onchain?'ERGÄNZEN':'OFFEN');
+      out.push({r,staking,configured,info,onchain,stored,suggestedLabel,pairStatus,labelStatus,source});
+      registryLog(`${i+1}/${rows.length} ${short(staking)}: ${pairStatus}${onchain?` → ${onchain}`:''}${stored?`; gespeichert=${stored}`:''}.`);
+    }
+    $('registryResult').innerHTML=`<table><thead><tr><th>Staking-Contract</th><th>Supabase</th><th>Pair-Adresse</th><th>On-chain Pair</th><th>Vorschlag label</th><th>Status</th></tr></thead><tbody>${out.map(x=>`<tr><td><span class="mono">${esc(short(x.staking))}</span><br><span class="small">${esc(x.r.label||'–')}</span></td><td>${esc(x.stored||'–')}</td><td><span class="mono">${esc(x.info?.pair||x.configured||'–')}</span>${x.info?`<br><span class="small mono">${esc(short(x.info.token0))} · ${esc(short(x.info.token1))}</span>`:''}</td><td><b>${esc(x.onchain||'–')}</b></td><td>${esc(x.suggestedLabel||'–')}</td><td><b class="${x.labelStatus==='OK'?'ok':(x.labelStatus==='KORRIGIEREN'?'bad':'warn')}">${esc(x.labelStatus)}</b><br><span class="small">${esc(x.pairStatus)}</span></td></tr>`).join('')}</tbody></table><p class="small muted">„KANDIDAT GEFUNDEN“ bedeutet: echtes V2-Pair unter den höchstens 100 jüngsten eingehenden ERC-20-Transfers gefunden. Vor einem SQL-Update sollte der konkrete Stake-Transfer zusätzlich als Evidenz festgehalten werden. „VERIFIZIERT“ bedeutet: die bereits gespeicherte pair_address ist on-chain ein lesbares V2-Pair.</p>`;
+    $('registryStatus').innerHTML=`<span class="ok">Prüfung fertig: ${out.length} Registry-Einträge.</span>`;
+  }catch(e){$('registryStatus').innerHTML=`<span class="bad">${esc(e.message)}</span>`;registryLog('FEHLER: '+e.message)}finally{btn.disabled=false}
+}
+
+function sqlLiteral(v){return "'"+String(v??'').replace(/'/g,"''")+"'"}
+async function auditPredefinedLpRegistry(){
+  const btn=$('auditLpTokens');btn.disabled=true;$('lpRegistryResult').innerHTML='';$('lpRegistrySql').textContent='';
+  try{
+    $('registryStatus').textContent='Prüfe LP-Token aus predefined_tokens…';registryLog(`Version ${APP_VERSION}`);
+    if(!rpcUrl)await initRpc();
+    const rows=await predefinedLpRows();registryLog(`${rows.length} BSC-LP-Einträge aus predefined_tokens geladen.`);
+    const out=[];
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i],addr=norm(r.address||r.contract_address||'');
+      const info=await v2PairInfo(addr);
+      const stored=String(r.label||r.symbol||'').trim();
+      const onchain=info?.pairLabel||null;
+      const same=!!onchain&&stored.replace(/\s+/g,'').toLowerCase()===onchain.replace(/\s+/g,'').toLowerCase();
+      const status=!info?'KEIN V2-PAIR / OFFEN':(same?'OK':'KORRIGIEREN');
+      out.push({r,addr,info,stored,onchain,status});
+      registryLog(`LP ${i+1}/${rows.length} ${addr||'–'}: ${status}${onchain?` → ${onchain}`:''}${stored?`; gespeichert=${stored}`:''}.`);
+    }
+    $('lpRegistryResult').innerHTML=`<table><thead><tr><th>LP-Adresse</th><th>Supabase-Label</th><th>token0</th><th>token1</th><th>On-chain Pair</th><th>Status</th></tr></thead><tbody>${out.map(x=>`<tr><td class="mono">${esc(x.addr||'–')}</td><td>${esc(x.stored||'–')}</td><td>${x.info?`<b>${esc(x.info.symbol0)}</b><br><span class="small mono">${esc(x.info.token0)}</span>`:'–'}</td><td>${x.info?`<b>${esc(x.info.symbol1)}</b><br><span class="small mono">${esc(x.info.token1)}</span>`:'–'}</td><td><b>${esc(x.onchain||'–')}</b></td><td><b class="${x.status==='OK'?'ok':(x.status==='KORRIGIEREN'?'bad':'warn')}">${esc(x.status)}</b></td></tr>`).join('')}</tbody></table><p class="small muted">Quelle der technischen Pair-Bezeichnung sind ausschließlich <span class="mono">token0()</span>, <span class="mono">token1()</span> und die jeweiligen <span class="mono">symbol()</span>-Werte. Das Supabase-Label wird nur dagegen verglichen.</p>`;
+    const changes=out.filter(x=>x.status==='KORRIGIEREN'&&x.onchain&&/^0x[0-9a-f]{40}$/.test(x.addr));
+    const sql=['begin;',''];
+    for(const x of changes){
+      sql.push(`-- ${x.stored||'ohne Label'}  →  ${x.onchain}`);
+      sql.push('update public.predefined_tokens');
+      sql.push(`set label = ${sqlLiteral(x.onchain)}`);
+      sql.push(`where lower(address) = ${sqlLiteral(x.addr)}`);
+      if(Object.prototype.hasOwnProperty.call(x.r,'chain')&&x.r.chain!=null)sql.push(`  and lower(chain) = ${sqlLiteral(String(x.r.chain).toLowerCase())}`);
+      else if(Object.prototype.hasOwnProperty.call(x.r,'chain_key')&&x.r.chain_key!=null)sql.push(`  and lower(chain_key) = ${sqlLiteral(String(x.r.chain_key).toLowerCase())}`);
+      sql.push("  and defi_category = 'lp_token';",'');
+    }
+    sql.push('commit;');
+    $('lpRegistrySql').textContent=changes.length?sql.join('\n'):'-- Keine Label-Korrekturen nötig.';
+    $('registryStatus').innerHTML=`<span class="ok">LP-Prüfung fertig: ${out.length} Einträge, ${changes.length} Label-Korrektur(en).</span>`;
+  }catch(e){$('registryStatus').innerHTML=`<span class="bad">${esc(e.message)}</span>`;registryLog('LP-PRÜFUNG FEHLER: '+e.message)}finally{btn.disabled=false}
+}
+$('auditLpTokens').addEventListener('click',auditPredefinedLpRegistry);
+$('auditRegistry').addEventListener('click',auditStakingRegistry);
+
+$('scanTlnId').addEventListener('click',scanTlnIdOnChain);
+
+document.querySelectorAll('.tabbtn').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.tabbtn').forEach(x=>x.classList.toggle('active',x===b));
+  document.querySelectorAll('.tabpanel').forEach(x=>x.classList.remove('active'));
+  $('tab-'+b.dataset.tab).classList.add('active');
+}));
+$('scanWallet').addEventListener('click',scanReferralWallet);
+$('refStakerFilter').addEventListener('input',()=>{
+  if(!window.__renderReferralRows||!Array.isArray(window.__referralStrongRows))return;
+  const q=norm($('refStakerFilter').value.trim());
+  const filtered=q?window.__referralStrongRows.filter(r=>norm(r.sender).includes(q)):window.__referralStrongRows;
+  $('walletRewards').innerHTML=window.__renderReferralRows(filtered);
+});
+referralRewardTokenContracts().then(renderReferralTokenConfig).catch(()=>{});
+
+</script>
+</body>
+</html>
