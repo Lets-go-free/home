@@ -25,9 +25,9 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Reward Tiefendiagnose</h1>
   <div class="muted">Isolierte Tiefendiagnose für einen auffälligen Reward. Ziel: den exakten Ursprung, Funktionspfad und Mint-Auslöser der 10’000-TLN+-Transaktion bestimmen, ohne die Discovery-/Step-4-Engine zu verändern.</div>
-  <div class="muted">Entwicklungsstand 03.09.2026 11:16:43 CEST</div>
-  <div class="muted small">Build 20260903-111643 · Ausgangsbasis: tln-vow-single-claim-trace-test.html</div>
-  <div class="small muted"><b>Entwicklungsstand:</b> Hotfix 20260903-111643: Der erste Lauf der separaten 10’000-TLN+-Diagnose scheiterte bereits bei der RPC-Initialisierung mit <code>Cannot coerce the result to a single JSON object</code>. Ursache war die aus dem älteren Referenzfile übernommene Supabase-Abfrage <code>public.chains … .single()</code>; die produktive Tabelle enthält inzwischen mehrere BSC-Konfigurationszeilen. Die Diagnose verwendet jetzt <code>.limit(1)</code> und nimmt die erste gültige BSC-Zeile mit <code>rpc_url</code>. Die eigentliche Trace-/Reward-/Mint-Diagnoselogik wurde dabei nicht verändert. Ziel bleibt: Tx <span class="mono">0x3782201e…783dd0</span> tief analysieren und den Ursprung der 10’000 TLN+ on-chain bestimmen.</div>
+  <div class="muted">Entwicklungsstand 03.09.2026 11:30:51 CEST</div>
+  <div class="muted small">Build 20260903-113051 · Ausgangsbasis: tln-vow-single-claim-trace-test.html</div>
+  <div class="small muted"><b>Entwicklungsstand:</b> Hotfix 20260903-113051: Die RPC-Initialisierung ist jetzt tolerant gegenüber mehreren und unterschiedlich bezeichneten BSC-/BNB-Zeilen in <code>public.chains</code>. Statt zwingend <code>chain_key='bsc'</code> vorauszusetzen, werden bis zu 100 Chain-Zeilen gelesen und BSC über mehrere bekannte Felder/Aliase erkannt. Fehlt trotzdem ein passender DB-Eintrag oder ist <code>public.chains</code> nicht lesbar, startet die Diagnose mit dem bereits konfigurierten Alchemy-BSC-RPC und nutzt danach öffentliche BSC-Fallbacks. Damit blockiert der Fehler <code>Kein BSC-RPC in public.chains gefunden</code> die Analyse nicht mehr. Die eigentliche Trace-/Reward-/Mint-Diagnoselogik wurde nicht verändert. Ziel bleibt: Tx <span class="mono">0x3782201e…783dd0</span> tief analysieren und den Ursprung der 10’000 TLN+ on-chain bestimmen.</div>
   <div class="muted small">Aktuell: Die TLN-ID-Ermittlung ist über die SmartNode-Registry <span class="mono">0x028c91…a8a35b</span> und <span class="mono">nodeIdOf(address)</span> mit drei unabhängigen Testvektoren (7205, 17652, 9736) bestätigt. Der Referral-Scan arbeitet DB-first über <span class="mono">tln_wallet_identity_cache</span>; nur bei Cache-Miss erfolgt genau ein SmartNode-<span class="mono">eth_call</span>, danach wird die ID persistent in Supabase gespeichert. Fix 14:45: Der Referral-Scan setzt den verifizierten SmartNode-Resolver nicht mehr auf <span class="mono">null</span>. Dadurch werden Cache-Misses jetzt tatsächlich mit genau einem <span class="mono">nodeIdOf(address)</span>-Call je Staker aufgelöst und anschließend in Supabase gecacht. Frühere <span class="mono">unresolved</span>-Session-Einträge blockieren weiterhin keinen Retry; SmartNode-Fehler werden sichtbar protokolliert. Die Referral-Übersicht aggregiert pro Partner/TLN-ID eine Zeile, je Referral-Reward-Token eine Spalte, ein Zeilentotal sowie eine TOTAL-Zeile mit Token-Spaltentotals. Historischer Vollscan, unlimitierte <span class="mono">eth_getLogs</span>-Abfragen und Getter-Bruteforce bleiben aus dem normalen Referral-Pfad entfernt. Neu: eigener Registry-Prüftab für alle bekannten TLN/VOW-Staking-Contracts; Pair-Bezeichnungen werden bevorzugt aus <span class="mono">pair_address → token0/token1 → symbol()</span> verifiziert. Fehlende Pair-Adressen werden nur mit einer begrenzten indexierten Transfer-Stichprobe als Kandidat gesucht; keine automatische DB-Änderung.</div>
 
   <div class="tabs">
@@ -148,8 +148,8 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='03.09.2026 11:16:43 CEST';
-const BUILD_ID='20260903-111643';
+const APP_VERSION='03.09.2026 11:30:51 CEST';
+const BUILD_ID='20260903-113051';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -292,23 +292,43 @@ async function referralLpPairForRow(r){
   return null;
 }
 async function initRpc(){
-  // public.chains may contain multiple BSC configuration rows.
-  // The isolated diagnostic only needs one valid primary BSC RPC.
-  const {data,error}=await sb.from('chains').select('*').eq('chain_key','bsc').limit(1);
-  if(error)throw error;
-  const row=(data||[])[0];
-  if(!row?.rpc_url)throw new Error('Kein BSC-RPC in public.chains gefunden');
-  rpcUrl=row.rpc_url;
+  // Robust gegen mehrere/anders bezeichnete BSC-Zeilen in public.chains.
+  // Supabase bleibt bevorzugte Quelle, darf die isolierte Diagnose aber nicht blockieren.
+  let rows=[];
+  try{
+    const {data,error}=await sb.from('chains').select('*').limit(100);
+    if(error)throw error;
+    rows=data||[];
+  }catch(e){
+    log(`WARNUNG: public.chains konnte nicht gelesen werden (${e.message}). Verwende BSC-Fallbacks.`);
+  }
+
+  const bscAliases=new Set(['bsc','bnb','bnb-chain','bnb chain','binance-smart-chain','binance smart chain','bsc-mainnet','bsc mainnet','bnb-mainnet','bnb mainnet']);
+  const chainText=r=>[
+    r?.chain_key,r?.chain,r?.key,r?.slug,r?.name,r?.network,r?.network_name,r?.display_name
+  ].filter(v=>v!=null).map(v=>String(v).trim().toLowerCase());
+  const rpcOf=r=>r?.rpc_url||r?.rpc||r?.url||r?.rpcUrl||null;
+  const isBscRow=r=>chainText(r).some(v=>bscAliases.has(v)||v.includes('binance smart chain')||v.includes('bnb smart chain'));
+  const row=rows.find(r=>isBscRow(r)&&rpcOf(r)) || null;
+
+  rpcUrl=row?rpcOf(row):ALCHEMY_BSC_URL;
   if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))
     rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;
-  // Minimal public BSC fallbacks; only used when the configured provider cannot serve the historical Tx/receipt.
+
   rpcCandidates=uniq([
     rpcUrl,
+    ALCHEMY_BSC_URL,
     'https://bsc-dataseed.binance.org/',
     'https://bsc-dataseed1.defibit.io/',
     'https://bsc-dataseed1.ninicoin.io/'
   ]);
-  log(`BSC RPC aus public.chains geladen (${rpcUrl}); historische Fallbacks bereit.`);
+
+  if(row){
+    log(`BSC RPC aus public.chains geladen (${rpcUrl}); Alchemy + öffentliche historische Fallbacks bereit.`);
+  }else{
+    const labels=rows.slice(0,20).map(r=>chainText(r).join('|')).filter(Boolean).join(', ');
+    log(`WARNUNG: Kein eindeutig als BSC erkannter RPC in public.chains. Starte mit Alchemy-BSC; weitere Fallbacks bereit.${labels?` Gefundene Chain-Werte: ${labels}`:''}`);
+  }
 }
 async function stakingRows(){
   const {data,error}=await sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true);
