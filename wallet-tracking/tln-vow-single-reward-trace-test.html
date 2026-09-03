@@ -25,9 +25,9 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
 <main>
   <h1>🧪 TLN/VOW · Einzel-Reward Tiefendiagnose</h1>
   <div class="muted">Isolierte Tiefendiagnose für einen auffälligen Reward. Ziel: den exakten Ursprung, Funktionspfad und Mint-Auslöser der 10’000-TLN+-Transaktion bestimmen, ohne die Discovery-/Step-4-Engine zu verändern.</div>
-  <div class="muted">Entwicklungsstand 03.09.2026 11:30:51 CEST</div>
-  <div class="muted small">Build 20260903-113051 · Ausgangsbasis: tln-vow-single-claim-trace-test.html</div>
-  <div class="small muted"><b>Entwicklungsstand:</b> Hotfix 20260903-113051: Die RPC-Initialisierung ist jetzt tolerant gegenüber mehreren und unterschiedlich bezeichneten BSC-/BNB-Zeilen in <code>public.chains</code>. Statt zwingend <code>chain_key='bsc'</code> vorauszusetzen, werden bis zu 100 Chain-Zeilen gelesen und BSC über mehrere bekannte Felder/Aliase erkannt. Fehlt trotzdem ein passender DB-Eintrag oder ist <code>public.chains</code> nicht lesbar, startet die Diagnose mit dem bereits konfigurierten Alchemy-BSC-RPC und nutzt danach öffentliche BSC-Fallbacks. Damit blockiert der Fehler <code>Kein BSC-RPC in public.chains gefunden</code> die Analyse nicht mehr. Die eigentliche Trace-/Reward-/Mint-Diagnoselogik wurde nicht verändert. Ziel bleibt: Tx <span class="mono">0x3782201e…783dd0</span> tief analysieren und den Ursprung der 10’000 TLN+ on-chain bestimmen.</div>
+  <div class="muted">Entwicklungsstand 03.09.2026 11:55:37 CEST</div>
+  <div class="muted small">Build 20260903-113406 · Ausgangsbasis: tln-vow-single-claim-trace-test.html</div>
+  <div class="small muted"><b>Entwicklungsstand:</b> Bonus-/claimBonus-Diagnose 20260903-115537: Alchemy bleibt letzter RPC-Fallback. Für die auffällige Tx <span class="mono">0x3782201e…783dd0</span> wird zusätzlich gezielt geprüft, ob der Claim-Contract, seine Proxy-Implementation oder der direkte TLN+-Mint-Auslöser einen Bonus-/Referral-Bonus-State für Wallet bzw. TLN-ID vor/nach der Tx verändert. Explizite <code>claimBonus</code>-ähnliche Selektoren werden separat erkannt. Koinly-Bezeichnungen gelten dabei nur als externe Hypothese; der Reward-Typ wird nur dann als Bonus/Referral-Bonus bewertet, wenn der On-Chain-State oder die Call-Semantik dies stützt.</div>
   <div class="muted small">Aktuell: Die TLN-ID-Ermittlung ist über die SmartNode-Registry <span class="mono">0x028c91…a8a35b</span> und <span class="mono">nodeIdOf(address)</span> mit drei unabhängigen Testvektoren (7205, 17652, 9736) bestätigt. Der Referral-Scan arbeitet DB-first über <span class="mono">tln_wallet_identity_cache</span>; nur bei Cache-Miss erfolgt genau ein SmartNode-<span class="mono">eth_call</span>, danach wird die ID persistent in Supabase gespeichert. Fix 14:45: Der Referral-Scan setzt den verifizierten SmartNode-Resolver nicht mehr auf <span class="mono">null</span>. Dadurch werden Cache-Misses jetzt tatsächlich mit genau einem <span class="mono">nodeIdOf(address)</span>-Call je Staker aufgelöst und anschließend in Supabase gecacht. Frühere <span class="mono">unresolved</span>-Session-Einträge blockieren weiterhin keinen Retry; SmartNode-Fehler werden sichtbar protokolliert. Die Referral-Übersicht aggregiert pro Partner/TLN-ID eine Zeile, je Referral-Reward-Token eine Spalte, ein Zeilentotal sowie eine TOTAL-Zeile mit Token-Spaltentotals. Historischer Vollscan, unlimitierte <span class="mono">eth_getLogs</span>-Abfragen und Getter-Bruteforce bleiben aus dem normalen Referral-Pfad entfernt. Neu: eigener Registry-Prüftab für alle bekannten TLN/VOW-Staking-Contracts; Pair-Bezeichnungen werden bevorzugt aus <span class="mono">pair_address → token0/token1 → symbol()</span> verifiziert. Fehlende Pair-Adressen werden nur mit einer begrenzten indexierten Transfer-Stichprobe als Kandidat gesucht; keine automatische DB-Änderung.</div>
 
   <div class="tabs">
@@ -57,6 +57,7 @@ details{margin-top:10px}summary{cursor:pointer;font-weight:700}
   <div class="card"><h2>8. Alle Receipt-Events · roh + bekannte Signaturen</h2><div id="allEvents" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>9. Mint-Kausalität · wer löst TLN+ mint(address,uint256) aus?</h2><div id="mintCausality" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>10. Raw Input · 32-Byte-Wörter / eingebettete Adressen</h2><div id="inputWords" class="muted">Noch keine Daten.</div></div>
+  <div class="card"><h2>11. Bonus-/claimBonus-Evidenz</h2><div id="bonusEvidence" class="muted">Noch keine Daten.</div></div>
   <div class="card"><h2>Technisches Log</h2><pre id="log"></pre></div>
   </section>
 
@@ -148,8 +149,8 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='03.09.2026 11:30:51 CEST';
-const BUILD_ID='20260903-113051';
+const APP_VERSION='03.09.2026 11:55:37 CEST';
+const BUILD_ID='20260903-115537';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -311,23 +312,26 @@ async function initRpc(){
   const isBscRow=r=>chainText(r).some(v=>bscAliases.has(v)||v.includes('binance smart chain')||v.includes('bnb smart chain'));
   const row=rows.find(r=>isBscRow(r)&&rpcOf(r)) || null;
 
-  rpcUrl=row?rpcOf(row):ALCHEMY_BSC_URL;
+  const publicFallbacks=[
+    'https://bsc-dataseed.binance.org/',
+    'https://bsc-dataseed1.defibit.io/',
+    'https://bsc-dataseed1.ninicoin.io/'
+  ];
+  rpcUrl=row?rpcOf(row):publicFallbacks[0];
   if(rpcUrl.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!rpcUrl.endsWith(PUBLICNODE_TOKEN))
     rpcUrl=rpcUrl.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;
 
   rpcCandidates=uniq([
     rpcUrl,
-    ALCHEMY_BSC_URL,
-    'https://bsc-dataseed.binance.org/',
-    'https://bsc-dataseed1.defibit.io/',
-    'https://bsc-dataseed1.ninicoin.io/'
+    ...publicFallbacks,
+    ALCHEMY_BSC_URL
   ]);
 
   if(row){
-    log(`BSC RPC aus public.chains geladen (${rpcUrl}); Alchemy + öffentliche historische Fallbacks bereit.`);
+    log(`BSC RPC aus public.chains geladen (${rpcUrl}); öffentliche BSC-Fallbacks folgen, Alchemy nur als letzter Notfall-Fallback.`);
   }else{
     const labels=rows.slice(0,20).map(r=>chainText(r).join('|')).filter(Boolean).join(', ');
-    log(`WARNUNG: Kein eindeutig als BSC erkannter RPC in public.chains. Starte mit Alchemy-BSC; weitere Fallbacks bereit.${labels?` Gefundene Chain-Werte: ${labels}`:''}`);
+    log(`WARNUNG: Kein eindeutig als BSC erkannter RPC in public.chains. Starte mit öffentlichem BSC-RPC; Alchemy bleibt letzter Notfall-Fallback.${labels?` Gefundene Chain-Werte: ${labels}`:''}`);
   }
 }
 async function stakingRows(){
@@ -389,6 +393,34 @@ async function referralState(c,w,b){
 }
 function referralMethod(input){const s=String(input||'').slice(0,10).toLowerCase();return REFERRAL_CLAIMS.find(x=>ethers.id(x).slice(0,10).toLowerCase()===s)||null}
 
+const BONUS_ADDRESS_GETTERS=[
+ 'bonus(address)','bonuses(address)','bonusRewards(address)','bonusReward(address)','bonusBalance(address)',
+ 'pendingBonus(address)','pendingBonuses(address)','claimableBonus(address)','claimableBonuses(address)',
+ 'referralBonus(address)','referralBonuses(address)','referralBonusReward(address)','referralBonusRewards(address)',
+ 'pendingReferralBonus(address)','pendingReferralBonuses(address)','accumulatedBonus(address)','earnedBonus(address)'
+];
+const BONUS_ID_GETTERS=[
+ 'bonus(uint256)','bonuses(uint256)','bonusRewards(uint256)','bonusReward(uint256)','bonusBalance(uint256)',
+ 'pendingBonus(uint256)','pendingBonuses(uint256)','claimableBonus(uint256)','claimableBonuses(uint256)',
+ 'referralBonus(uint256)','referralBonuses(uint256)','referralBonusReward(uint256)','referralBonusRewards(uint256)',
+ 'pendingReferralBonus(uint256)','pendingReferralBonuses(uint256)','accumulatedBonus(uint256)','earnedBonus(uint256)'
+];
+const BONUS_CLAIMS=['claimBonus()','claimBonuses()','claimReferralBonus()','claimReferralBonuses()','withdrawBonus()','withdrawBonuses()'];
+function bonusClaimMethod(input){const s=String(input||'').slice(0,10).toLowerCase();return BONUS_CLAIMS.find(x=>ethers.id(x).slice(0,10).toLowerCase()===s)||null}
+function uintArgCall(sig,v){return ethers.id(sig).slice(0,10)+BigInt(v).toString(16).padStart(64,'0')}
+async function bonusState(c,w,nodeId,b){
+  const o=[];
+  for(const sig of BONUS_ADDRESS_GETTERS){try{
+    const raw=await rpc('eth_call',[{to:c,data:addrCall(sig,w)},b]);
+    if(!raw||raw==='0x')continue; const v=BigInt(raw).toString(); if(v!=='0')o.push({sig,key:'wallet',value:v});
+  }catch{}}
+  if(nodeId){for(const sig of BONUS_ID_GETTERS){try{
+    const raw=await rpc('eth_call',[{to:c,data:uintArgCall(sig,nodeId)},b]);
+    if(!raw||raw==='0x')continue; const v=BigInt(raw).toString(); if(v!=='0')o.push({sig,key:'tln_id',value:v});
+  }catch{}}}
+  return o;
+}
+
 
 const KNOWN_EVENT_TOPICS=new Map([
   [TRANSFER_TOPIC,'Transfer(address,address,uint256)'],
@@ -407,6 +439,8 @@ const KNOWN_SELECTORS=new Map([
   [ethers.id('claim()').slice(0,10).toLowerCase(),'claim()'],
   [ethers.id('claimReward()').slice(0,10).toLowerCase(),'claimReward()'],
   [ethers.id('claimRewards()').slice(0,10).toLowerCase(),'claimRewards()'],
+  [ethers.id('claimBonus()').slice(0,10).toLowerCase(),'claimBonus()'],
+  [ethers.id('claimBonuses()').slice(0,10).toLowerCase(),'claimBonuses()'],
   [ethers.id('stake(uint256)').slice(0,10).toLowerCase(),'stake(uint256)'],
   [ethers.id('unstake()').slice(0,10).toLowerCase(),'unstake()'],
   [ethers.id('unstake(uint256)').slice(0,10).toLowerCase(),'unstake(uint256)']
@@ -1080,7 +1114,7 @@ async function analyze(){
     return;
   }
   $('analyze').disabled=true;$('status').textContent='Analysiere nur diese eine Transaktion…';$('log').textContent='';
-  for(const id of ['txInfo','transfers','relations','trace','referral','distribution','conclusion','allEvents','mintCausality','inputWords'])$(id).innerHTML='<span class="muted">Lädt…</span>';
+  for(const id of ['txInfo','transfers','relations','trace','referral','distribution','conclusion','allEvents','mintCausality','inputWords','bonusEvidence'])$(id).innerHTML='<span class="muted">Lädt…</span>';
   try{
     if(!rpcUrl)await initRpc();
     const hash=$('txHash').value.trim();
@@ -1230,6 +1264,44 @@ async function analyze(){
     <p>${positiveReferral?'<span class="ok"><b>Positive Referral-Evidenz erkannt.</b></span>':'<span class="warn"><b>Kein positiver Referral-Nachweis.</b></span> Fehlende Staking-Zuordnung zählt ausdrücklich nicht als Referral.'}</p>`;
 
 
+    log('Prüfe Bonus-/claimBonus-Evidenz am Claim-Pfad und direkten Mint-Auslöser.');
+    const explicitBonusMethod=bonusClaimMethod(tx.input);
+    let bonusNodeId=null;
+    try{
+      if(!tlnIdentityResolver){
+        const smartNode='0x028c911c10c9e346158206991e02d09bd0a8a35b';
+        const raw=await rpc('eth_call',[{to:smartNode,data:addrCall('nodeIdOf(address)',tx.from)},'latest']);
+        const id=raw&&raw!=='0x'?BigInt(raw):0n; if(id>0n)bonusNodeId=id.toString();
+      }else{
+        const ident=await getTlnIdentity(tx.from); bonusNodeId=ident?.nodeId||null;
+      }
+    }catch{}
+    const bonusContracts=[claimContract,impl,...walletMintCalls.map(m=>norm(m.call.from))].filter(Boolean);
+    const uniqueBonusContracts=[...new Set(bonusContracts.map(norm))];
+    const bonusRows=[];
+    for(const c of uniqueBonusContracts){
+      const [before,after]=await Promise.all([bonusState(c,tx.from,bonusNodeId,prevBlock),bonusState(c,tx.from,bonusNodeId,tx.blockNumber)]);
+      const beforeMap=new Map(before.map(x=>[x.sig+'|'+x.key,x.value]));
+      const afterMap=new Map(after.map(x=>[x.sig+'|'+x.key,x.value]));
+      const keys=[...new Set([...beforeMap.keys(),...afterMap.keys()])];
+      const changes=keys.filter(k=>(beforeMap.get(k)||'0')!==(afterMap.get(k)||'0')).map(k=>{const [sig,key]=k.split('|');return {sig,key,before:beforeMap.get(k)||'0',after:afterMap.get(k)||'0'};});
+      bonusRows.push({contract:c,before,after,changes,isClaim:c===claimContract,isImpl:!!impl&&c===norm(impl),isMintCaller:walletMintCalls.some(m=>norm(m.call.from)===c)});
+    }
+    const bonusChanges=bonusRows.flatMap(r=>r.changes.map(x=>({...x,contract:r.contract,isMintCaller:r.isMintCaller})));
+    const bonusReset=bonusChanges.some(x=>BigInt(x.before||0)>0n&&BigInt(x.after||0)===0n);
+    const bonusDecrease=bonusChanges.some(x=>BigInt(x.before||0)>BigInt(x.after||0));
+    const positiveBonus=!!explicitBonusMethod||bonusReset||bonusDecrease;
+    $('bonusEvidence').innerHTML=`<div class="grid">
+      <div class="kv"><b>Explizite Bonus-Claim-Methode</b>${explicitBonusMethod?'<span class="ok">'+esc(explicitBonusMethod)+'</span>':'keine erkannt'}</div>
+      <div class="kv"><b>TLN ID für State-Test</b>${esc(bonusNodeId||'nicht verfügbar')}</div>
+      <div class="kv"><b>geprüfte Contracts</b>${bonusRows.length}</div>
+      <div class="kv"><b>Bonus-State-Änderungen</b>${bonusChanges.length}</div>
+    </div>
+    ${bonusChanges.length?`<table><thead><tr><th>Contract</th><th>Rolle</th><th>Getter</th><th>Key</th><th>Vorher</th><th>Nachher</th></tr></thead><tbody>${bonusChanges.map(x=>`<tr><td class="mono">${esc(x.contract)}</td><td>${x.isMintCaller?'<span class="ok"><b>direkter Mint-Auslöser</b></span>':'Claim/Implementation'}</td><td class="mono">${esc(x.sig)}</td><td>${esc(x.key)}</td><td class="mono">${esc(x.before)}</td><td class="mono">${esc(x.after)}</td></tr>`).join('')}</tbody></table>`:'<div class="warn">Kein veränderter Bonus-State über die gezielt geprüften Getter gefunden.</div>'}
+    <p>${positiveBonus?'<span class="ok"><b>Positive Bonus-Evidenz erkannt.</b></span> '+(bonusReset?'Ein gespeicherter Bonus-State fällt bei dieser Tx auf 0.':bonusDecrease?'Ein gespeicherter Bonus-State wird durch diese Tx reduziert.':'Die Tx verwendet eine explizite Bonus-Claim-Methode.'):'<span class="warn"><b>Bonus-Herkunft noch nicht on-chain belegt.</b></span> Der Koinly-Typ claimBonus bleibt bis dahin eine externe Klassifizierung/Hypothese.'}</p>
+    <details><summary>Alle Bonus-State-Probes</summary><pre>${esc(JSON.stringify(bonusRows,null,2))}</pre></details>`;
+
+
     // Separate referral/upline analysis. This DOES NOT alter normal reward-claim proof.
     const stakeSender=norm(tx.from);
     const thirdPartyMints=transfers.filter(t=>t.mint && norm(t.to)!==stakeSender);
@@ -1273,6 +1345,9 @@ async function analyze(){
     conclusion+=positiveReferral
       ? `<p class="ok"><b>Referral-Herkunft:</b> positiv belegt (${explicitReferralMethod?'explizite Referral-Methode':'Referral-State-Änderung'}).</p>`
       : `<p class="warn"><b>Referral-Herkunft:</b> nicht belegt. Ein bestehender Reward-Beweis bleibt davon unberührt.</p>`;
+    conclusion+=positiveBonus
+      ? `<p class="ok"><b>Bonus-/claimBonus-Herkunft:</b> on-chain gestützt (${explicitBonusMethod?'explizite Bonus-Claim-Methode':bonusReset?'Bonus-State wird auf 0 gesetzt':'Bonus-State wird reduziert'}). Damit ist ein separater Bonus-Reward deutlich wahrscheinlicher als normaler Staking-Yield.</p>`
+      : `<p class="warn"><b>Bonus-/claimBonus-Herkunft:</b> noch nicht on-chain belegt. Koinlys Typ claimBonus wird nicht ungeprüft übernommen.</p>`;
     if(distributionEvidence){
       conclusion+=`<p class="ok"><b>Fremder Stake → Upline/Referral-Kandidat:</b> In derselben Stake-Tx werden Rewards an ${mintRecipients.length} andere Wallet(s) gemintet. Das ist starke kausale Referral-/Upline-Evidenz; ein konkretes Level wird ohne weiteren on-chain Nachweis nicht behauptet.</p>`;
     }
