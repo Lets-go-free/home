@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 18:22:09 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 18:26:06 CEST</div>
 <p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; historische SC-, Stake-Tx-, Business- und LP-Preis-Fakten werden vor der Positionsbewertung parallel vorbereitet.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -131,7 +131,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-182209';
+const BUILD_ID='20260904-182606';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10118,7 +10118,10 @@ async function processReferralRewards(){
   try{if(!DISCOVERY_PROCESS.done.rewards)throw new Error('Zuerst Schritt 4 ausführen.');CURRENT_CLAIM_REFERENCE_RESULT=null;CLAIM_REFERENCE_RUN_CACHE.clear();try{CLAIM_TRACE_REFERENCE_ENGINE.clearHeadlessCaches()}catch{}primeClaimReferenceFromDiscoveryCaches();const step5Started=performance.now();const ref=await runClaimReferenceForCurrentWallet();if(ref?.walletIdentity){for(const lot of DISCOVERY_PROCESS.lots){lot.tlnIdentity=ref.walletIdentity;lot.tlnId=ref.walletIdentity.nodeId||null}}renderReferralRewards(DISCOVERY_PROCESS.lots);renderBonusRewards(DISCOVERY_PROCESS.lots);renderUnassignedClaims(DISCOVERY_PROCESS.lots);renderProcessLotCards();DISCOVERY_PROCESS.done.referral=true;setStepState(5,`${ref?.strong?.length||0} starke Referral-Tx`,'done');$('status').innerHTML='<span class="ok">Referral-Analyse abgeschlossen.</span>';log(`Schritt 5 abgeschlossen: ${ref?.strong?.length||0} starke Referral-Tx · ${Math.round(performance.now()-step5Started)} ms.`,'ok')}
   catch(e){setStepState(5,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
+let STEP6_RUN_INFLIGHT=false;
 async function processValuation(){
+  if(STEP6_RUN_INFLIGHT){log('Schritt 6: paralleler Zweitstart ignoriert – Bewertung läuft bereits.','warn');return}
+  STEP6_RUN_INFLIGHT=true;
   const b=$('stepValuation');b.disabled=true;setStepState(6,'läuft …','running');$('status').textContent='Schritt 6/6: historische Bewertung / Preisgraph …';
   resetStep6Diag();
   const cacheBefore={pair:PAIR_STATE_CACHE.size,business:BUSINESS_PROBE_CACHE.size,tx:TX_RPC_SESSION_CACHE.size,eth:ETH_CALL_SESSION_CACHE.size,timestamp:TIMESTAMP_BLOCK_CACHE.size,token:TOKEN_META_CACHE.size,lpFacts:LP_FACTS_CACHE_STATE.entries.size};
@@ -10203,7 +10206,7 @@ async function processValuation(){
     log(`Schritt-6 RPC-Typen: ${methodText||'keine'}.`,'ok');
     log(`Schritt-6 Cache-Größen vorher→nachher: Pair ${cacheBefore.pair}→${cacheAfter.pair} · Business ${cacheBefore.business}→${cacheAfter.business} · Tx/Receipt ${cacheBefore.tx}→${cacheAfter.tx} · eth_call ${cacheBefore.eth}→${cacheAfter.eth} · Timestamp→Block ${cacheBefore.timestamp}→${cacheAfter.timestamp} · TokenMeta ${cacheBefore.token}→${cacheAfter.token} · LP-Fakten ${cacheBefore.lpFacts}→${cacheAfter.lpFacts}.`,'ok');
     log('Schritt 6 abgeschlossen · Diagnose v1 aktiv; Bewertungsfachlogik unverändert.','ok');
-  }catch(e){finishStep6Diag();setStepState(6,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
+  }catch(e){finishStep6Diag();setStepState(6,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{STEP6_RUN_INFLIGHT=false;updateProcessButtons();b.disabled=false}
 }
 
 function populateTlnWalletDropdown(){
