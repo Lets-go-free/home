@@ -50,8 +50,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 18:26:06 CEST</div>
-<p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; historische SC-, Stake-Tx-, Business- und LP-Preis-Fakten werden vor der Positionsbewertung parallel vorbereitet.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 18:40:24 CEST</div>
+<p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -65,6 +65,11 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
   <div class="muted" style="margin:5px 0 8px">Löscht ausschließlich walletbezogene Einträge in <code>tln_vow_staking_scan_cache</code> für das aktuell ausgewählte Wallet auf BSC. Globale LP-Fakten und contractweite Strict-Duration-Proofs bleiben erhalten.</div>
   <button id="clearWalletSupabaseCache" type="button" disabled>Supabase-Cache dieses Wallets löschen</button>
   <span id="clearWalletSupabaseCacheState" class="muted" style="margin-left:8px"></span>
+</div>
+<div style="margin-top:12px;padding:10px 12px;border:1px solid #334155;border-radius:9px;background:#111722">
+  <b>Stichtagsbewertung offene Stakings</b>
+  <div class="muted" style="margin:5px 0 8px">Step 6 bewertet zusätzlich den tatsächlich am 31.12. gebundenen Staking-Bestand. Top-ups und bereits erfolgte Unstakes werden bis zum Stichtag zeitgenau berücksichtigt.</div>
+  <label>Stichtagsjahr<br><input id="snapshotYear" type="number" min="2020" max="2100" step="1" value="2025" style="min-width:180px;width:180px"></label>
 </div>
 <div class="process-grid" id="processGrid">
   <div class="process-step locked" id="stepBox1"><button id="refresh" disabled>1 · Basisdaten laden</button><span class="step-state" id="stepState1">bereit nach Initialisierung</span></div>
@@ -110,6 +115,10 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <p class="muted">Aktuell noch offene Staking-Positionen. Der historische Endwert wird zum vertraglichen Freigabe-/Ablaufzeitpunkt bewertet – nicht erst bei einem späteren Unstake.</p>
 <div id="runningStakings"><div class="muted">Noch keine Daten.</div></div></div>
 
+<div class="card"><h2>📅 Stichtagsbewertung per 31.12.</h2>
+<p class="muted">Testbereich für die spätere „Bestandesaufnahme per 31.12.“ in WalletTracking. Angezeigt wird der am gewählten Stichtag tatsächlich noch gebundene Staking-Bestand; spätere Top-ups bzw. frühere Unstakes werden nicht falsch in den Stichtag hineingerechnet.</p>
+<div id="snapshotValuation"><div class="muted">Wird in Schritt 6 berechnet.</div></div></div>
+
 <div class="card"><h2>✅ Abgeschlossene Stakings</h2>
 <p class="muted">Historische Stakings, die vollständig beendet / unstaked wurden. Ein echter Vertragsendwert wird nur gezeigt, wenn der Zeitpunkt aus dem SC belastbar ableitbar ist. Historische Unstake-Simulationen werden ausdrücklich als Simulation bezeichnet; der tatsächliche Unstake-Wert wird zusätzlich ausgewiesen.</p>
 <div id="completedStakings"><div class="muted">Noch keine Daten.</div></div></div>
@@ -131,7 +140,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-182606';
+const BUILD_ID='20260904-184024';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10118,6 +10127,61 @@ async function processReferralRewards(){
   try{if(!DISCOVERY_PROCESS.done.rewards)throw new Error('Zuerst Schritt 4 ausführen.');CURRENT_CLAIM_REFERENCE_RESULT=null;CLAIM_REFERENCE_RUN_CACHE.clear();try{CLAIM_TRACE_REFERENCE_ENGINE.clearHeadlessCaches()}catch{}primeClaimReferenceFromDiscoveryCaches();const step5Started=performance.now();const ref=await runClaimReferenceForCurrentWallet();if(ref?.walletIdentity){for(const lot of DISCOVERY_PROCESS.lots){lot.tlnIdentity=ref.walletIdentity;lot.tlnId=ref.walletIdentity.nodeId||null}}renderReferralRewards(DISCOVERY_PROCESS.lots);renderBonusRewards(DISCOVERY_PROCESS.lots);renderUnassignedClaims(DISCOVERY_PROCESS.lots);renderProcessLotCards();DISCOVERY_PROCESS.done.referral=true;setStepState(5,`${ref?.strong?.length||0} starke Referral-Tx`,'done');$('status').innerHTML='<span class="ok">Referral-Analyse abgeschlossen.</span>';log(`Schritt 5 abgeschlossen: ${ref?.strong?.length||0} starke Referral-Tx · ${Math.round(performance.now()-step5Started)} ms.`,'ok')}
   catch(e){setStepState(5,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
+function snapshotYearFromUi(){
+  const current=new Date().getFullYear()-1;
+  const n=Number($('snapshotYear')?.value||current);
+  return Number.isInteger(n)&&n>=2020&&n<=2100?n:current;
+}
+function snapshotCutoffForYear(year){
+  // 31.12. in Switzerland/central Europe is always CET (UTC+1).
+  // This is the economically relevant end-of-day cutoff for the later CH-style year-end inventory.
+  return new Date(`${year}-12-31T23:59:59+01:00`);
+}
+function snapshotPrincipalAt(lot,cutoffMs){
+  const stakeMs=Date.parse(lot?.stakeTime||'');
+  if(!Number.isFinite(stakeMs)||stakeMs>cutoffMs)return {amount:0,contributed:0,unstaked:0,reason:'Erst-Stake liegt nach dem Stichtag'};
+  const topUps=Array.isArray(lot?.topUps)?lot.topUps:[];
+  const allTopUpAmount=topUps.reduce((sum,x)=>sum+Math.max(0,Number(x?.amount||0)),0);
+  const initial=Math.max(0,Number(lot?.original||0)-allTopUpAmount);
+  let contributed=initial;
+  for(const x of topUps){
+    const tm=Date.parse(x?.time||'');
+    if(Number.isFinite(tm)&&tm<=cutoffMs)contributed+=Math.max(0,Number(x?.amount||0));
+  }
+  let unstaked=0;
+  const seen=new Set();
+  for(const tx of (lot?.transactions||[])){
+    if(!/^Unstake/i.test(String(tx?.kind||'')))continue;
+    const amount=Number(tx?.amount||0);if(!(amount>0))continue;
+    const tm=Date.parse(tx?.time||'');if(!Number.isFinite(tm)||tm>cutoffMs)continue;
+    const key=`${String(tx?.hash||'').toLowerCase()}|${amount}`;
+    if(seen.has(key))continue;seen.add(key);unstaked+=amount;
+  }
+  // Safety fallback for legacy/contract-event exits where no amount-bearing lifecycle row survived.
+  const exitMs=Date.parse(lot?.unstakeTime||'');
+  if(lot?.status==='closed'&&Number.isFinite(exitMs)&&exitMs<=cutoffMs&&unstaked<=1e-12)unstaked=contributed;
+  const amount=Math.max(0,Math.min(contributed,contributed-unstaked));
+  return {amount,contributed,unstaked,reason:amount>1e-12?'am Stichtag wirtschaftlich gebunden':'am Stichtag nicht mehr offen'};
+}
+function snapshotUnderlyingText(lot,val){
+  if(!val)return '–';
+  const pair=lot?.pair||lot?.p;
+  const parts=[];
+  if(Number.isFinite(Number(val.a0))&&pair?.token0?.symbol)parts.push(`${Number(val.a0).toLocaleString('de-CH',{maximumFractionDigits:10})} ${pair.token0.symbol}`);
+  if(Number.isFinite(Number(val.a1))&&pair?.token1?.symbol)parts.push(`${Number(val.a1).toLocaleString('de-CH',{maximumFractionDigits:10})} ${pair.token1.symbol}`);
+  return parts.join(' + ')||'–';
+}
+function renderSnapshotValuation(){
+  const box=$('snapshotValuation');if(!box)return;
+  const snap=DISCOVERY_PROCESS.snapshotValuation;
+  if(!snap){box.innerHTML='<div class="muted">Wird in Schritt 6 berechnet.</div>';return}
+  const rows=snap.rows||[],open=rows.filter(r=>r.amount>1e-12),valued=open.filter(r=>r.usd!=null);
+  const total=valued.reduce((sum,r)=>sum+Number(r.usd||0),0),missing=open.length-valued.length;
+  const summary=`<div class="summary"><div class="metric">Stichtag<b>31.12.${esc(snap.year)}</b></div><div class="metric">Offene Positionen<b>${open.length}</b></div><div class="metric">Bewertet<b>${valued.length}/${open.length}</b></div><div class="metric">USD-Summe bewertet<b>${formatUsd(total)}</b></div></div>${missing?`<div class="warn" style="margin-top:8px">${missing} offene Position(en) konnten historisch nicht als V2-LP in USD bewertet werden und sind nicht in der USD-Summe enthalten.</div>`:''}`;
+  const table=`<div class="wrap" style="margin-top:12px"><table style="min-width:1200px"><thead><tr><th>Position</th><th>Status am Stichtag</th><th>Gebundenes Asset</th><th>Historischer USD-Wert</th><th>Underlying-Bestand</th><th>Block</th><th>Staking-Contract</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b>${esc(r.label)}</b></td><td>${r.amount>1e-12?'<span class="ok"><b>offen / gestakt</b></span>':'<span class="muted">nicht offen</span>'}${r.reason?`<div class="value-source">${esc(r.reason)}</div>`:''}</td><td class="num">${r.amount>1e-12?Number(r.amount).toLocaleString('de-CH',{maximumFractionDigits:12}):'0'}</td><td>${r.amount<=1e-12?'–':r.usd!=null?`<b>${formatUsd(r.usd)}</b><div class="value-source">${esc(r.source||'')}</div>`:`<span class="warn">nicht historisch bewertbar</span><div class="value-source">${esc(r.source||'Kein belastbarer historischer LP-/USD-Pfad.')}</div>`}</td><td>${esc(r.underlyings||'–')}</td><td>${r.blockHex?Number(BigInt(r.blockHex)).toLocaleString('de-CH'):'–'}</td><td class="mono">${esc(r.contract||'–')}</td></tr>`).join('')}</tbody></table></div>`;
+  box.innerHTML=summary+table;
+}
+
 let STEP6_RUN_INFLIGHT=false;
 async function processValuation(){
   if(STEP6_RUN_INFLIGHT){log('Schritt 6: paralleler Zweitstart ignoriert – Bewertung läuft bereits.','warn');return}
@@ -10134,27 +10198,37 @@ async function processValuation(){
     const pricePairs=[...new Map([...DISCOVERY_PROCESS.pairs,...referencePairs].filter(p=>p.assetType!=='legacy_staking_token').map(p=>[norm(p.address),p])).values()];
     DISCOVERY_PROCESS.pricePairs=pricePairs;log(`Bewertung: ${pricePairs.length} LP-Pools im historischen Preisgraph.`,'ok');
 
+    const snapshotYear=snapshotYearFromUi(),snapshotCutoff=snapshotCutoffForYear(snapshotYear),snapshotCutoffMs=snapshotCutoff.getTime();
+    const snapshotPrincipals=DISCOVERY_PROCESS.lots.map(lot=>snapshotPrincipalAt(lot,snapshotCutoffMs));
+    const snapshotHasOpen=snapshotPrincipals.some(x=>x.amount>1e-12);
     const expiryLots=DISCOVERY_PROCESS.lots.filter(lot=>!!lot.expiryTime);
-    if(expiryLots.length){
+    if(expiryLots.length||snapshotHasOpen){
       step6Phase('contract_end_block');
       const latestHex=await rpc('eth_blockNumber',[]),latestBlock=Number(BigInt(latestHex));
-      const searchBounds=expiryLots.map(lot=>step1TransferBoundsForTimestamp(lot.expiryTime,lot,latestBlock));
-      for(let i=0;i<expiryLots.length;i++){
-        const bnd=searchBounds[i];
-        if(bnd)log(`Vertragsendblock Suchfenster ${safePairLabel(expiryLots[i])}: ${bnd.low.toLocaleString('de-CH')}→${bnd.high.toLocaleString('de-CH')} · ${bnd.span.toLocaleString('de-CH')} Blöcke · ${bnd.lowSource}/${bnd.highSource}.`,'ok');
+      const targets=expiryLots.map(lot=>({kind:'expiry',lot,time:lot.expiryTime,bounds:step1TransferBoundsForTimestamp(lot.expiryTime,lot,latestBlock)}));
+      if(snapshotHasOpen)targets.push({kind:'snapshot',lot:null,time:snapshotCutoff.toISOString(),bounds:step1TransferBoundsForTimestamp(snapshotCutoff.toISOString(),null,latestBlock)});
+      for(const target of targets){
+        const bnd=target.bounds;if(!bnd)continue;
+        if(target.kind==='expiry')log(`Vertragsendblock Suchfenster ${safePairLabel(target.lot)}: ${bnd.low.toLocaleString('de-CH')}→${bnd.high.toLocaleString('de-CH')} · ${bnd.span.toLocaleString('de-CH')} Blöcke · ${bnd.lowSource}/${bnd.highSource}.`,'ok');
+        else log(`31.12.${snapshotYear} Suchfenster: ${bnd.low.toLocaleString('de-CH')}→${bnd.high.toLocaleString('de-CH')} · ${bnd.span.toLocaleString('de-CH')} Blöcke · ${bnd.lowSource}/${bnd.highSource}.`,'ok');
       }
-      const endBlocks=await nearestBlockHexesForTimestamps(expiryLots.map(lot=>lot.expiryTime),latestHex,searchBounds);
-      expiryLots.forEach((lot,i)=>{lot.contractEndBlockHex=endBlocks[i]||null});
-    }
+      const blocks=await nearestBlockHexesForTimestamps(targets.map(x=>x.time),latestHex,targets.map(x=>x.bounds));
+      expiryLots.forEach((lot,i)=>{lot.contractEndBlockHex=blocks[i]||null});
+      const snapshotIndex=targets.findIndex(x=>x.kind==='snapshot');
+      DISCOVERY_PROCESS.snapshotBlockHex=snapshotIndex>=0?blocks[snapshotIndex]||null:null;
+    }else DISCOVERY_PROCESS.snapshotBlockHex=null;
 
     // Step 6.8: Historische Preiszustände für voneinander unabhängige Zielblöcke
     // parallel vorladen. Die Bewertung selbst liest danach exakt dieselben Pair-States
     // aus dem unveränderten Cache; es ändert sich nur die Reihenfolge der Netz-I/O.
     step6Phase('valuation_prefetch');
-    const valuationPrefetchBlocks=[...new Set(DISCOVERY_PROCESS.lots.flatMap(lot=>[
-      lot.expiryTime?lot.contractEndBlockHex:null,
-      lot.status==='closed'?lot.unstakeBlockHex:null
-    ]).filter(Boolean))];
+    const valuationPrefetchBlocks=[...new Set([
+      ...DISCOVERY_PROCESS.lots.flatMap(lot=>[
+        lot.expiryTime?lot.contractEndBlockHex:null,
+        lot.status==='closed'?lot.unstakeBlockHex:null
+      ]),
+      snapshotHasOpen?DISCOVERY_PROCESS.snapshotBlockHex:null
+    ].filter(Boolean))];
     if(valuationPrefetchBlocks.length){
       await Promise.all(valuationPrefetchBlocks.map(blockHex=>primePairStatesAtBlock(pricePairs,blockHex)));
       log(`Step-6 Preis-State Prefetch: ${valuationPrefetchBlocks.length} historische Blockstände parallel vorgeladen.`,'ok');
@@ -10196,7 +10270,25 @@ async function processValuation(){
       if(lot.expiryTime){step6Phase('contract_end_valuation');const endBlockHex=lot.contractEndBlockHex||await nearestBlockHexForTimestamp(lot.expiryTime);lot.contractEndBlockHex=endBlockHex;const v=await lpHistoricalValue(lot.pair||lot.p,lot.original,endBlockHex,pricePairs);if(v){lot.contractEndValuation=v;lot.contractEndUsd=v.usd;lot.contractEndUsdSource=`Vertragsende ${new Date(lot.expiryTime).toLocaleString('de-CH')} · ${v.source}`}}
       if(lot.status==='closed'&&lot.unstakeTx){step6Phase('unstake_block');const blockHex=lot.unstakeBlockHex||await blockHexForTx(lot.unstakeTx);lot.unstakeBlockHex=blockHex;step6Phase('unstake_valuation');const v=await lpHistoricalValue(lot.pair||lot.p,lot.original,blockHex,pricePairs);if(v){lot.unstakeValuation=v;lot.unstakeUsd=v.usd;lot.unstakeUsdSource=`Tatsächlicher Unstake ${lot.unstakeTime?new Date(lot.unstakeTime).toLocaleString('de-CH'):'–'} · ${v.source}`}}
     }
-    DISCOVERY_PROCESS.done.valuation=true;renderProcessLotCards();setStepState(6,'Bewertung abgeschlossen','done');$('status').innerHTML='<span class="ok">Historische Bewertung abgeschlossen.</span>';
+
+    step6Phase('snapshot_valuation');
+    const snapshotRows=[];
+    for(let i=0;i<DISCOVERY_PROCESS.lots.length;i++){
+      const lot=DISCOVERY_PROCESS.lots[i],principal=snapshotPrincipals[i]||{amount:0,reason:'–'};
+      let valuation=null,source=null;
+      if(principal.amount>1e-12&&DISCOVERY_PROCESS.snapshotBlockHex){
+        valuation=await lpHistoricalValue(lot.pair||lot.p,principal.amount,DISCOVERY_PROCESS.snapshotBlockHex,pricePairs);
+        source=valuation?.source||((lot.pair||lot.p)?.assetType==='legacy_staking_token'||(lot.pair||lot.p)?.assetType==='staking_token'?'Historisches Legacy-/Staking-Asset ist kein V2-LP; keine Underlying-Bewertung geraten.':'Historischer LP-/USD-Pfad nicht verfügbar.');
+      }
+      const row={year:snapshotYear,label:safePairLabel(lot),amount:principal.amount,contributed:principal.contributed,unstaked:principal.unstaked,reason:principal.reason,usd:valuation?.usd??null,source,underlyings:snapshotUnderlyingText(lot,valuation),blockHex:principal.amount>1e-12?DISCOVERY_PROCESS.snapshotBlockHex:null,contract:lot.staking?.contract_address||lot.counterparty||null,valuation};
+      lot.snapshotValuation=row;snapshotRows.push(row);
+    }
+    DISCOVERY_PROCESS.snapshotValuation={year:snapshotYear,cutoffIso:snapshotCutoff.toISOString(),blockHex:DISCOVERY_PROCESS.snapshotBlockHex,rows:snapshotRows};
+    renderSnapshotValuation();
+    const snapshotOpen=snapshotRows.filter(x=>x.amount>1e-12),snapshotValued=snapshotOpen.filter(x=>x.usd!=null);
+    log(`31.12.${snapshotYear} Stichtagsbewertung: ${snapshotOpen.length} offene Position(en) · ${snapshotValued.length} historisch in USD bewertet · Block ${DISCOVERY_PROCESS.snapshotBlockHex?Number(BigInt(DISCOVERY_PROCESS.snapshotBlockHex)).toLocaleString('de-CH'):'–'}.`,'ok');
+
+    DISCOVERY_PROCESS.done.valuation=true;renderProcessLotCards();setStepState(6,'Bewertung + 31.12. abgeschlossen','done');$('status').innerHTML='<span class="ok">Historische Bewertung inkl. 31.12.-Stichtagsbestand abgeschlossen.</span>';
     const diag=finishStep6Diag();
     const cacheAfter={pair:PAIR_STATE_CACHE.size,business:BUSINESS_PROBE_CACHE.size,tx:TX_RPC_SESSION_CACHE.size,eth:ETH_CALL_SESSION_CACHE.size,timestamp:TIMESTAMP_BLOCK_CACHE.size,token:TOKEN_META_CACHE.size,lpFacts:LP_FACTS_CACHE_STATE.entries.size};
     const phaseText=Object.entries(diag?.phaseMs||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}=${v}ms`).join(' · ');
@@ -10205,7 +10297,7 @@ async function processValuation(){
     log(`Schritt-6 Phasen: ${phaseText||'keine'}.`,'ok');
     log(`Schritt-6 RPC-Typen: ${methodText||'keine'}.`,'ok');
     log(`Schritt-6 Cache-Größen vorher→nachher: Pair ${cacheBefore.pair}→${cacheAfter.pair} · Business ${cacheBefore.business}→${cacheAfter.business} · Tx/Receipt ${cacheBefore.tx}→${cacheAfter.tx} · eth_call ${cacheBefore.eth}→${cacheAfter.eth} · Timestamp→Block ${cacheBefore.timestamp}→${cacheAfter.timestamp} · TokenMeta ${cacheBefore.token}→${cacheAfter.token} · LP-Fakten ${cacheBefore.lpFacts}→${cacheAfter.lpFacts}.`,'ok');
-    log('Schritt 6 abgeschlossen · Diagnose v1 aktiv; Bewertungsfachlogik unverändert.','ok');
+    log('Schritt 6 abgeschlossen · Performance-Diagnose aktiv · 31.12.-Stichtagsbewertung ergänzt; Reward-Kurse unverändert nicht bewertet.','ok');
   }catch(e){finishStep6Diag();setStepState(6,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{STEP6_RUN_INFLIGHT=false;updateProcessButtons();b.disabled=false}
 }
 
