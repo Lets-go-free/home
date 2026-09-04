@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 14:41:45 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 14:47:24 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID="20260904-144145";
+const BUILD_ID="20260904-144724";
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -8953,14 +8953,19 @@ async function saveContractStrictDurationProof(lot){
     SHARED_DURATION_RULE_CACHE.set(key,null);return false;
   }
   const ref=lot?.durationReference||null,gate=ref?.unstakeGate||lot?.lockEvidence||null;
+  const referenceStakeTimestamp=lotStakeTsSeconds(lot)||null;
+  const firstUnlockedTimestamp=gate?.after?.timestamp??null;
+  const nominalUnlockTimestamp=(referenceStakeTimestamp&&sec>0)?referenceStakeTimestamp+sec:null;
+  const unlockOffsetSeconds=(nominalUnlockTimestamp&&Number(firstUnlockedTimestamp))?Number(firstUnlockedTimestamp)-nominalUnlockTimestamp:null;
   const payload={
     kind:'contract_strict_duration_proof',strictProof:true,confidence:'strict',chainKey:'bsc',projectKey:'tln_vow',
     stakingContract:contract,fingerprint:fp,lockDurationSeconds:sec,durationDays:sec/86400,
     proofSource:lot?.durationSource||'vollständige Strict-Duration-Referenzengine',
     referenceWallet:norm(CURRENT_WALLET),referenceStakeTx:lot?.durationAnchorTx||lot?.stakeTx||null,
+    referenceStakeTimestamp,nominalUnlockTimestamp,unlockOffsetSeconds,
     lastLockedBlock:lot?.lastLockedBlock??gate?.before?.blockNum??null,
     firstUnlockedBlock:lot?.firstUnlockedBlock??gate?.after?.blockNum??null,
-    lastLockedTimestamp:gate?.before?.timestamp??null,firstUnlockedTimestamp:gate?.after?.timestamp??null,
+    lastLockedTimestamp:gate?.before?.timestamp??null,firstUnlockedTimestamp,
     implementationStable:true,implementationMode:gate?.implementationMode||ref?.unstakeGate?.implementationMode||null,
     strictVerdict:lot?.durationStrictVerdict||ref?.verdict||null,proofTimestamp:new Date().toISOString()
   };
@@ -8983,6 +8988,36 @@ async function txForDurationValidation(hash){
     if(updated){TX_FACTS_CACHE_STATE.entries.set(h,updated);TX_FACTS_CACHE_STATE.dirty=true}
   }
   return tx;
+}
+
+async function ensureSharedDurationRuleOffset(rule){
+  if(!rule)return null;
+  if(Number.isFinite(Number(rule.unlockOffsetSeconds)))return Number(rule.unlockOffsetSeconds);
+  const sec=Number(rule.lockDurationSeconds),firstUnlockedTs=Number(rule.firstUnlockedTimestamp);
+  if(!(sec>0)||!Number.isFinite(firstUnlockedTs)||firstUnlockedTs<=0)return 0;
+  let referenceStakeTs=Number(rule.referenceStakeTimestamp)||0;
+  if(!referenceStakeTs&&rule.referenceStakeTx){
+    try{
+      const tx=await txForDurationValidation(rule.referenceStakeTx);
+      const blockNum=tx?.blockNumber?Number(BigInt(tx.blockNumber)):null;
+      if(Number.isInteger(blockNum)){
+        const block=await lockNodeRealRpc('eth_getBlockByNumber',['0x'+blockNum.toString(16),false]);
+        if(block?.timestamp)referenceStakeTs=Number(BigInt(block.timestamp));
+      }
+    }catch(e){log(`Contract Duration-Proof ${short(rule.stakingContract||rule.contract)}: Referenz-Stake-Timestamp konnte nicht nachgeladen werden (${e?.message||e}).`,'warn')}
+  }
+  if(!referenceStakeTs)return 0;
+  const nominal=referenceStakeTs+sec,offset=firstUnlockedTs-nominal;
+  rule.referenceStakeTimestamp=referenceStakeTs;
+  rule.nominalUnlockTimestamp=nominal;
+  rule.unlockOffsetSeconds=offset;
+  if(rule.cacheKey){
+    try{
+      await saveTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,rule.cacheKey,CONTRACT_DURATION_PROOF_VERSION,{...rule,currentFingerprint:undefined,cacheKey:undefined,contract:undefined,durationDays:Number(rule.lockDurationSeconds)/86400},rule.firstUnlockedBlock||0);
+      log(`Contract Duration-Proof ${short(rule.stakingContract||rule.contract)} erweitert: bewiesener Unlock-Offset ${offset>=0?'+':''}${offset}s gegenüber Stake + Lockdauer.`,'ok');
+    }catch(e){log(`Contract Duration-Proof ${short(rule.stakingContract||rule.contract)}: Unlock-Offset konnte nicht persistiert werden (${e?.message||e}).`,'warn')}
+  }
+  return offset;
 }
 
 async function blockNearExpectedUnlock(lot,expectedTs){
@@ -9019,7 +9054,9 @@ async function validateSharedDurationRule(lot,rule){
   if(!exitHash)return {ok:false,reason:'Keine reale Unstake-Tx für gezielte Grenzvalidierung vorhanden.'};
   const tx=await txForDurationValidation(exitHash);
   if(!tx?.from||!tx?.to||!tx?.input||tx.input==='0x')return {ok:false,reason:'Unstake-Tx für Grenzvalidierung nicht vollständig verfügbar.'};
-  const expectedTs=stakeTs+Number(rule.lockDurationSeconds),b=await blockNearExpectedUnlock(lot,expectedTs);
+  const unlockOffsetSeconds=await ensureSharedDurationRuleOffset(rule);
+  const nominalExpectedTs=stakeTs+Number(rule.lockDurationSeconds);
+  const expectedTs=nominalExpectedTs+Number(unlockOffsetSeconds||0),b=await blockNearExpectedUnlock(lot,expectedTs);
   if(!b)return {ok:false,reason:'Unlock-Block konnte nicht effizient angenähert werden.'};
   const exitBlock=lot?.unstakeBlockHex?Number(BigInt(lot.unstakeBlockHex)):null;
   const lockRe=/lock|locked|minimum staking period|minimum stake|staking period|period|duration|early|matur|wait/i;
@@ -9043,7 +9080,9 @@ async function validateSharedDurationRule(lot,rule){
   // komplette Stake→Unstake-Strecke binär zu durchsuchen.
   if(!(isLock(before)&&after?.ok===true)){
     if(!validProbe(before)||!validProbe(after)){
-      return {ok:false,before,after,expectedTs,probes:[...cache.values()],reason:`Grenzprobe technisch nicht eindeutig (vorher=${before?.failureClass||'?'}, nachher=${after?.ok?'success':after?.failureClass||'?'}).`};
+      const beforeMsg=String(before?.revert?.message||before?.error?.message||'').replace(/\s+/g,' ').slice(0,180);
+      const afterMsg=String(after?.revert?.message||after?.error?.message||'').replace(/\s+/g,' ').slice(0,180);
+      return {ok:false,before,after,expectedTs,nominalExpectedTs,unlockOffsetSeconds,probes:[...cache.values()],reason:`Grenzprobe technisch nicht eindeutig (vorher=${before?.failureClass||'?'}${beforeMsg?` „${beforeMsg}“`:''}, nachher=${after?.ok?'success':after?.failureClass||'?'}${afterMsg?` „${afterMsg}“`:''}; nominal=${new Date(nominalExpectedTs*1000).toISOString()}, Offset=${Number(unlockOffsetSeconds||0)>=0?'+':''}${Number(unlockOffsetSeconds||0)}s).`};
     }
     const MAX_LOCAL_SPAN=128;
     if(isLock(after)){
@@ -9081,8 +9120,8 @@ async function validateSharedDurationRule(lot,rule){
     else return {ok:false,before,after:p,expectedTs,probes:[...cache.values()],reason:`Lokale Grenzverdichtung traf auf nicht-lock-semantischen Fehler (${p?.failureClass||'?'}).`};
   }
   const driftBefore=Number(before?.timestamp||0)-expectedTs,driftAfter=Number(after?.timestamp||0)-expectedTs;
-  log(`Shared Duration-Grenze ${safePairLabel(lot)}: erwartet ${new Date(expectedTs*1000).toISOString()} · Start ${startBefore?.blockNum}/${startBefore?.timestamp} → ${startAfter?.blockNum}/${startAfter?.timestamp} · bestätigt ${before.blockNum}/${before.timestamp} (${driftBefore>=0?'+':''}${driftBefore}s) → ${after.blockNum}/${after.timestamp} (${driftAfter>=0?'+':''}${driftAfter}s) · ${cache.size} lokale Probe(s).`,'ok');
-  return {ok:true,before,after,expectedTs,probes:[...cache.values()],localProbeCount:cache.size};
+  log(`Shared Duration-Grenze ${safePairLabel(lot)}: nominal ${new Date(nominalExpectedTs*1000).toISOString()} · Contract-Offset ${Number(unlockOffsetSeconds||0)>=0?'+':''}${Number(unlockOffsetSeconds||0)}s · erwartet ${new Date(expectedTs*1000).toISOString()} · Start ${startBefore?.blockNum}/${startBefore?.timestamp} → ${startAfter?.blockNum}/${startAfter?.timestamp} · bestätigt ${before.blockNum}/${before.timestamp} (${driftBefore>=0?'+':''}${driftBefore}s) → ${after.blockNum}/${after.timestamp} (${driftAfter>=0?'+':''}${driftAfter}s) · ${cache.size} lokale Probe(s).`,'ok');
+  return {ok:true,before,after,expectedTs,nominalExpectedTs,unlockOffsetSeconds,probes:[...cache.values()],localProbeCount:cache.size};
 }
 
 function applySharedDurationRuleToLot(lot,rule,validation){
