@@ -79,8 +79,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .team-line-summary{margin:10px 0 4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 04.09.2026 22:42:09 CEST</div>
-<p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; historische SmartNode-Tx werden gebündelt über Alchemy geladen. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 04.09.2026 23:05:05 CEST</div>
+<p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; historische SmartNode-Tx werden gebündelt und mit History-Fallback vollständig geladen. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -182,7 +182,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-224209';
+const BUILD_ID='20260904-230505';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10217,21 +10217,20 @@ async function teamAlchemyRpc(method,params=[]){
   return j.result;
 }
 
-async function teamAlchemyTransactionBatch(hashes,batchSize=100,parallel=6){
+async function teamJsonRpcBatch(url,hashes,{batchSize=100,parallel=4,label='RPC'}={}){
   const unique=[...new Set((hashes||[]).map(norm).filter(Boolean))];
-  if(!unique.length)return [];
-  const url='https://bnb-mainnet.g.alchemy.com/v2/'+encodeURIComponent(ALCHEMY_API_KEY);
+  if(!unique.length)return new Map();
   const chunks=[];
   for(let i=0;i<unique.length;i+=batchSize)chunks.push(unique.slice(i,i+batchSize));
-  const out=new Array(unique.length).fill(null);
-  let next=0,done=0,missing=0;
+  const found=new Map();
+  let next=0,done=0;
   const started=performance.now();
 
   async function loadChunk(ci){
-    const chunk=chunks[ci],base=ci*batchSize;
+    const chunk=chunks[ci];
     const body=chunk.map((hash,j)=>({
       jsonrpc:'2.0',
-      id:base+j+1,
+      id:j+1,
       method:'eth_getTransactionByHash',
       params:[hash]
     }));
@@ -10241,29 +10240,71 @@ async function teamAlchemyTransactionBatch(hashes,batchSize=100,parallel=6){
       body:JSON.stringify(body)
     });
     const j=await r.json().catch(()=>null);
-    if(!r.ok||!Array.isArray(j))throw new Error(`Alchemy Batch HTTP ${r.status}`);
+    if(!r.ok||!Array.isArray(j))throw new Error(`${label} Batch HTTP ${r.status}`);
     const byId=new Map(j.map(x=>[Number(x?.id),x]));
     for(let k=0;k<chunk.length;k++){
-      const item=byId.get(base+k+1);
-      if(item?.result)out[base+k]=item.result;
-      else missing++;
+      const item=byId.get(k+1);
+      const tx=item?.result||null;
+      if(tx?.hash)found.set(norm(chunk[k]),tx);
     }
     done++;
     if(done===1||done===chunks.length||done%25===0){
-      log(`Team-Tx-Batch: ${Math.min(done*batchSize,unique.length)}/${unique.length} Tx geladen · ${done}/${chunks.length} Batch-Requests · ${Math.round(performance.now()-started)} ms.`,'muted');
+      log(`Team-Tx ${label}: ${Math.min(done*batchSize,unique.length)}/${unique.length} geprüft · ${found.size} Tx geliefert · ${done}/${chunks.length} Batch-Requests · ${Math.round(performance.now()-started)} ms.`,'muted');
     }
   }
   async function worker(){
     while(true){
       const ci=next++;
       if(ci>=chunks.length)return;
-      await loadChunk(ci);
+      try{await loadChunk(ci)}
+      catch(e){log(`Team-Tx ${label}: Batch ${ci+1}/${chunks.length} fehlgeschlagen: ${e.message}`,'warn')}
     }
   }
   await Promise.all(Array.from({length:Math.min(parallel,chunks.length)},()=>worker()));
-  log(`Team-Tx-Batch abgeschlossen: ${unique.length-missing}/${unique.length} Tx direkt via Alchemy · ${chunks.length} HTTP-Batches · keine historischen RPC-Fallbacks · ${Math.round(performance.now()-started)} ms.`,'ok');
-  return out;
+  log(`Team-Tx ${label} abgeschlossen: ${found.size}/${unique.length} historische Tx geliefert · ${chunks.length} HTTP-Batches · ${Math.round(performance.now()-started)} ms.`,'muted');
+  return found;
 }
+
+async function teamHistoricalTransactionBatch(hashes){
+  const unique=[...new Set((hashes||[]).map(norm).filter(Boolean))];
+  const all=new Map();
+  if(!unique.length)return [];
+
+  const alchemyUrl='https://bnb-mainnet.g.alchemy.com/v2/'+encodeURIComponent(ALCHEMY_API_KEY);
+  const publicnodeUrl='https://bsc-rpc.publicnode.com/'+encodeURIComponent(PUBLICNODE_TOKEN);
+  const binanceUrl='https://bsc-dataseed.binance.org/';
+
+  // Fast first pass. Alchemy's BNB endpoint can return null for many older transactions,
+  // therefore null is treated as a cache miss, never as a completed historical result.
+  const a=await teamJsonRpcBatch(alchemyUrl,unique,{batchSize:100,parallel:6,label:'Alchemy'});
+  for(const [h,tx] of a)all.set(h,tx);
+
+  let missing=unique.filter(h=>!all.has(h));
+  if(missing.length){
+    log(`Team-Tx Historie: Alchemy lieferte ${all.size}/${unique.length}; ${missing.length} ältere Tx werden gebündelt über PublicNode nachgeladen.`,'warn');
+    const p=await teamJsonRpcBatch(publicnodeUrl,missing,{batchSize:100,parallel:4,label:'PublicNode'});
+    for(const [h,tx] of p)all.set(h,tx);
+  }
+
+  missing=unique.filter(h=>!all.has(h));
+  if(missing.length){
+    log(`Team-Tx Historie: noch ${missing.length} Tx fehlen; gebündelter Binance-Fallback wird verwendet.`,'warn');
+    const b=await teamJsonRpcBatch(binanceUrl,missing,{batchSize:50,parallel:3,label:'Binance'});
+    for(const [h,tx] of b)all.set(h,tx);
+  }
+
+  missing=unique.filter(h=>!all.has(h));
+  const coverage=unique.length?all.size/unique.length:1;
+  log(`Team-Tx Historie gesamt: ${all.size}/${unique.length} Tx verfügbar (${(coverage*100).toFixed(2)}%).` ,
+      missing.length?'warn':'ok');
+
+  // A grossly incomplete graph must never be presented as complete.
+  if(coverage<0.98){
+    throw new Error(`Historische SmartNode-Tx unvollständig: nur ${all.size}/${unique.length} (${(coverage*100).toFixed(2)}%) verfügbar. Baum wird nicht aus Teilmenge aufgebaut.`);
+  }
+  return unique.map(h=>all.get(h)||null);
+}
+
 function teamDecodeAddressArg(input,index=0){
   const raw=String(input||'');
   const start=10+index*64;
@@ -10354,11 +10395,11 @@ async function scanCompleteSmartNodeJoinGraph(){
     }
   }while(pageKey);
 
-  // Critical cold-run optimization: do NOT load ~18k historical transactions one by one
-  // through the general RPC fallback chain. Fetch their inputs in authenticated Alchemy
-  // JSON-RPC batches instead.
+  // Critical cold-run optimization: do NOT load ~18k historical transactions one by one.
+  // Fetch in JSON-RPC batches; Alchemy is first pass, historical nulls are completed by
+  // PublicNode/Binance batches. Incomplete coverage is rejected instead of misrendered.
   const orderedHashes=[...hashes];
-  const txRows=await teamAlchemyTransactionBatch(orderedHashes,100,6);
+  const txRows=await teamHistoricalTransactionBatch(orderedHashes);
   const decoded=[];
   for(let i=0;i<txRows.length;i++){
     const tx=txRows[i],h=orderedHashes[i];
@@ -10372,6 +10413,9 @@ async function scanCompleteSmartNodeJoinGraph(){
   for(const e of decoded){
     // earliest join in ascending history is canonical for this graph
     if(!edges.has(e.child))edges.set(e.child,e);
+  }
+  if(transferCount>1000&&edges.size<100){
+    throw new Error(`SmartNode-Graph unplausibel klein: nur ${edges.size} join(address)-Beziehungen aus ${transferCount} Transaktionen. Abbruch statt falschem Baum.`);
   }
   log(`Team-Discovery Gesamtgraph: ${edges.size} belegte join(address)-Parent-Beziehungen aus ${transferCount} SmartNode-Transaktionen / ${pages} Seite(n) dekodiert.`,'ok');
   return {edges,pages,transferCount};
