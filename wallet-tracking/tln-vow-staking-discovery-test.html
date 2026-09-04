@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 16:45:34 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 16:52:39 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-164534';
+const BUILD_ID='20260904-165239';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -393,6 +393,23 @@ async function lpPairMeta(pairAddress){
   }catch{}
   lpPairMetaCache.set(pair,result);
   return result;
+}
+async function prefetchReferralLpMeta(rows,parallel=8){
+  const tokens=[...new Set((rows||[]).flatMap(r=>[
+    ...(r?.senderTransfers||[]).map(x=>norm(x?.token||'')),
+    norm(r?.staking?.pair_address||'')
+  ]).filter(a=>/^0x[0-9a-f]{40}$/.test(a)&&!lpPairMetaCache.has(a)))];
+  if(!tokens.length)return {requested:0,parallel:0};
+  const concurrency=Math.min(Math.max(1,Number(parallel)||1),tokens.length);
+  let cursor=0;
+  async function worker(){
+    while(true){
+      const i=cursor++;if(i>=tokens.length)return;
+      try{await lpPairMeta(tokens[i])}catch{}
+    }
+  }
+  await Promise.all(Array.from({length:concurrency},worker));
+  return {requested:tokens.length,parallel:concurrency};
 }
 async function referralLpPairForRow(r){
   // Transfer-Evidenz ist die stärkste Quelle: der tatsächlich vom Staker übertragene Token.
@@ -2109,6 +2126,7 @@ async function scanWalletHeadless(wallet,startBlock=0n){
     for(const w of missingStakers)await getTlnIdentity(w);
     for(const r of rows)r.tlnIdentity=tlnIdentityCache.get(norm(r.sender))||{nodeId:null,source:'unresolved'};
     referralPhase('stake_lp_amount');
+    const lpMetaPrefetch=await prefetchReferralLpMeta(rows.filter(r=>r.stakeEvidence),8);
     for(const r of rows){
       if(!r.stakeEvidence)continue;
       r.lpPair=await referralLpPairForRow(r);
@@ -2153,7 +2171,7 @@ async function scanWalletHeadless(wallet,startBlock=0n){
     });
     referralPhase('finalize');
     const stats=referralRpcStatsText(); referralRpcStatsActive=false;
-    return {version:APP_VERSION,wallet,startBlock:startBlock.toString(),referralTokens,hashes,stakingMap,rows,strong,candidates,ownTxExcluded,rewardTokenList,tokenTotals,partnerRows,walletIdentity:tlnIdentityCache.get(wallet)||null,rpcStats:stats,mintReceiptPrefetch};
+    return {version:APP_VERSION,wallet,startBlock:startBlock.toString(),referralTokens,hashes,stakingMap,rows,strong,candidates,ownTxExcluded,rewardTokenList,tokenTotals,partnerRows,walletIdentity:tlnIdentityCache.get(wallet)||null,rpcStats:stats,mintReceiptPrefetch,lpMetaPrefetch};
   })().catch(e=>{__headlessScanCache.delete(cacheKey);referralRpcStatsActive=false;throw e});
   __headlessScanCache.set(cacheKey,promise); return promise;
 }
@@ -8707,8 +8725,11 @@ function primeClaimReferenceFromDiscoveryCaches(){
       if(facts?.referralReceipt&&!receiptMap.has(hash)){const rc=receiptObjectFromFacts(facts);if(rc){try{rc.__referralFull=true}catch{}receiptMap.set(hash,rc);persistedReferralReceipts++}}
     }
     const receipts=[...receiptMap.entries()];
-    const tokens=[];
-    for(const t of projectTokens||[]){const d=Number(t?.decimals);if(t?.address&&Number.isFinite(d))tokens.push({address:t.address,symbol:t.symbol||t.label||'Token',decimals:d})}
+    const tokens=[],tokenSeen=new Set();
+    const addToken=(address,symbol,decimals)=>{const a=norm(address||''),d=Number(decimals);if(!/^0x[0-9a-f]{40}$/.test(a)||!Number.isFinite(d)||tokenSeen.has(a))return;tokenSeen.add(a);tokens.push({address:a,symbol:symbol||'Token',decimals:d})};
+    for(const t of projectTokens||[])addToken(t?.address,t?.symbol||t?.label,t?.decimals);
+    // First-run optimization: reuse token metadata already present in the ERC-20 transfer cache.
+    for(const t of CURRENT_ALL_TRANSFERS||[])addToken(t?.rawContract?.address,t?.asset,t?.rawContract?.decimal);
     const pairs=[];
     for(const [,f] of LP_FACTS_CACHE_STATE.entries||[]){if(f?.address||f?.token0?.address)pairs.push(f)}
     const seeded=CLAIM_TRACE_REFERENCE_ENGINE.primeHeadlessCaches?.({receipts,txs,tokens,pairs})||{receipts:0,txs:0,tokens:0,pairs:0};
@@ -8748,6 +8769,7 @@ async function runClaimReferenceForCurrentWallet(){
       const id=result?.walletIdentity?.nodeId||null;
       log(`Claim/Referral-Referenzengine: ${result?.hashes?.length||0} Mint-Tx · ${result?.strong?.length||0} starke Referral-Tx · TLN-ID Wallet ${id||'unresolved'} · ${result?.rpcStats?.total||0} gezählte RPC-Calls.`,'ok');
       if(result?.mintReceiptPrefetch)log(`Referral Receipt-Prefetch: ${result.mintReceiptPrefetch.loaded||0}/${result.mintReceiptPrefetch.requested||0} fehlende Receipt(s) vorgeladen · Parallelität ${result.mintReceiptPrefetch.parallel||0}.`,'muted');
+      if(result?.lpMetaPrefetch)log(`Referral LP-Metadaten-Prefetch: ${result.lpMetaPrefetch.requested||0} unbekannte Token/Pair-Kandidat(en) gebündelt · Parallelität ${result.lpMetaPrefetch.parallel||0}.`,'muted');
       if(result?.rpcStats?.detail)log(`Referral-RPC-Methoden: ${result.rpcStats.detail}.`,'muted');
       if(result?.rpcStats?.phaseDetail)log(`Referral-RPC-Phasen: ${result.rpcStats.phaseDetail}.`,'muted');
       if(result?.rpcStats?.phaseMethodDetail)log(`Referral-RPC Phase/Methoden: ${result.rpcStats.phaseMethodDetail}.`,'muted');
