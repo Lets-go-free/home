@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 15:15:59 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 15:20:33 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID="20260904-151559";
+const BUILD_ID="20260904-152033";
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -4942,54 +4942,89 @@ async function rewardRelevantCallsFromTransfers(wallet,transfers=[]){
     if(!byHash.has(h))byHash.set(h,[]);
     byHash.get(h).push(t);
   }
-  log(`Reward-Discovery token-scoped: ${byHash.size} eingehende Tx mit relevanten TLN/VOW-Reward-Token; nur diese werden Tx/Receipt-geprüft.`,'ok');
+  log(`Reward-Discovery token-scoped: ${byHash.size} eingehende Tx mit relevanten TLN/VOW-Reward-Token; Tx-Sender wird vor Receipt-Load geprüft.`,'ok');
 
   await ensureTxFactsCache(wallet);
   const hashes=[...byHash.keys()];
-  const missing=[];
+
+  // Phase A: Nur fehlende Transaktionen laden. Das ist absichtlich getrennt von
+  // Receipts, damit fremd initiierte Referral-/Mint-Tx nicht schon vor dem
+  // Wallet-Sender-Filter teure Receipts erzeugen.
+  const missingTx=[];
   for(const hash of hashes){
     const facts=TX_FACTS_CACHE_STATE.entries.get(hash)||null;
-    if(!txObjectFromFacts(facts)||!receiptObjectFromFacts(facts))missing.push(hash);
-    else{
-      const rc=receiptObjectFromFacts(facts);
-      REWARD_FULL_RECEIPT_CACHE.set(hash,rc);
-      TX_RECEIPT_FLOW_CACHE.set(hash,receiptErc20Transfers(rc));
+    if(!txObjectFromFacts(facts))missingTx.push(hash);
+  }
+  if(missingTx.length){
+    const results=await rpcManyDiscovery(
+      missingTx.map(hash=>({method:'eth_getTransactionByHash',params:[hash]})),40
+    );
+    let loaded=0;
+    for(let i=0;i<missingTx.length;i++){
+      const hash=missingTx[i],tx=results[i]?.result||null;
+      if(!tx)continue;
+      const existing=TX_FACTS_CACHE_STATE.entries.get(hash)||null;
+      const receipt=receiptObjectFromFacts(existing);
+      const facts=txFactsFromRpc(tx,receipt);
+      if(facts){TX_FACTS_CACHE_STATE.entries.set(hash,facts);TX_FACTS_CACHE_STATE.dirty=true;loaded++}
     }
+    log(`Schritt-4 Tx-Vorfilter-Batch: ${loaded}/${missingTx.length} Tx geladen · ${Math.ceil(missingTx.length/40)} HTTP-Batch(es) · noch keine Receipts.`,'ok');
   }
 
-  if(missing.length){
-    const calls=[];
-    for(const hash of missing){
-      calls.push({method:'eth_getTransactionByHash',params:[hash]});
-      calls.push({method:'eth_getTransactionReceipt',params:[hash]});
-    }
-    const results=await rpcManyDiscovery(calls,40);
-    let loadedTx=0,loadedReceipt=0;
-    for(let i=0;i<missing.length;i++){
-      const hash=missing[i];
-      const tx=results[i*2]?.result||null;
-      const receipt=results[i*2+1]?.result||null;
-      if(tx)loadedTx++;
-      if(receipt)loadedReceipt++;
+  // Erst jetzt Sender + Contract-Call prüfen. Nur diese Tx können in der
+  // bestehenden Step-4-Logik einen eigenen Staking-Reward bilden.
+  const walletCallHashes=[];
+  let skippedNotWallet=0,skippedNoCall=0,missingFacts=0;
+  for(const hash of hashes){
+    const facts=TX_FACTS_CACHE_STATE.entries.get(hash)||null;
+    const tx=txObjectFromFacts(facts);
+    if(!tx){missingFacts++;continue}
+    if(norm(tx.from)!==w){skippedNotWallet++;continue}
+    if(!tx.to||!ethers.isAddress(tx.to)||String(tx.input||'0x')==='0x'){skippedNoCall++;continue}
+    walletCallHashes.push(hash);
+  }
+
+  // Phase B: Vollständige Receipts ausschließlich für Wallet-initiierte
+  // Contract-Calls. Bereits in Step 2/Supabase vorhandene Receipts werden direkt
+  // übernommen und verursachen keinen RPC.
+  const missingReceipts=[];
+  for(const hash of walletCallHashes){
+    const facts=TX_FACTS_CACHE_STATE.entries.get(hash)||null;
+    const rc=receiptObjectFromFacts(facts);
+    if(rc){
+      REWARD_FULL_RECEIPT_CACHE.set(hash,rc);
+      TX_RECEIPT_FLOW_CACHE.set(hash,receiptErc20Transfers(rc));
+    }else missingReceipts.push(hash);
+  }
+  if(missingReceipts.length){
+    const results=await rpcManyDiscovery(
+      missingReceipts.map(hash=>({method:'eth_getTransactionReceipt',params:[hash]})),40
+    );
+    let loaded=0;
+    for(let i=0;i<missingReceipts.length;i++){
+      const hash=missingReceipts[i],receipt=results[i]?.result||null;
+      if(!receipt)continue;
+      loaded++;
+      REWARD_FULL_RECEIPT_CACHE.set(hash,receipt);
+      TX_RECEIPT_FLOW_CACHE.set(hash,receiptErc20Transfers(receipt));
+      const oldFacts=TX_FACTS_CACHE_STATE.entries.get(hash)||null;
+      const tx=txObjectFromFacts(oldFacts);
       if(tx){
         const facts=txFactsFromRpc(tx,receipt);
         if(facts){TX_FACTS_CACHE_STATE.entries.set(hash,facts);TX_FACTS_CACHE_STATE.dirty=true}
       }
-      if(receipt){
-        REWARD_FULL_RECEIPT_CACHE.set(hash,receipt);
-        TX_RECEIPT_FLOW_CACHE.set(hash,receiptErc20Transfers(receipt));
-      }
     }
-    log(`Schritt-4 Tx/Receipt-Batch: ${loadedTx}/${missing.length} Tx + ${loadedReceipt}/${missing.length} Receipts · ${Math.ceil(calls.length/40)} HTTP-Batch(es).`,'ok');
-    await flushTxFactsCache(wallet);
+    log(`Schritt-4 Receipt-Batch nach Wallet-Filter: ${loaded}/${missingReceipts.length} Receipts · ${Math.ceil(missingReceipts.length/40)} HTTP-Batch(es).`,'ok');
   }
+  if(TX_FACTS_CACHE_STATE.dirty)await flushTxFactsCache(wallet);
 
-  const out=[];let skippedNotWallet=0,missingFacts=0;
-  for(const [hash,incoming] of byHash){
+  const out=[];
+  for(const hash of walletCallHashes){
     try{
       let facts=TX_FACTS_CACHE_STATE.entries.get(hash)||null;
       let tx=txObjectFromFacts(facts),receipt=REWARD_FULL_RECEIPT_CACHE.get(hash)||receiptObjectFromFacts(facts);
-      // Sichere Einzel-Fallbacks nur für echte Batch-Lücken.
+      // Sichere Einzel-Fallbacks nur für echte Batch-Lücken bei bereits
+      // wallet-validierten Contract-Calls.
       if(!tx){
         tx=await rpc('eth_getTransactionByHash',[hash]);
         if(tx){facts=txFactsFromRpc(tx,receipt);if(facts){TX_FACTS_CACHE_STATE.entries.set(hash,facts);TX_FACTS_CACHE_STATE.dirty=true}}
@@ -5002,11 +5037,11 @@ async function rewardRelevantCallsFromTransfers(wallet,transfers=[]){
           if(tx){facts=txFactsFromRpc(tx,receipt);if(facts){TX_FACTS_CACHE_STATE.entries.set(hash,facts);TX_FACTS_CACHE_STATE.dirty=true}}
         }
       }
-      if(!tx){missingFacts++;continue}
-      if(norm(tx.from)!==w||!tx.to||!ethers.isAddress(tx.to)){skippedNotWallet++;continue}
+      if(!tx)continue;
       const success=receipt?.status==null?null:Number(BigInt(receipt.status))===1;
       if(success===false)continue;
       const input=tx.input||'0x';if(input==='0x')continue;
+      const incoming=byHash.get(hash)||[];
       let blockTimestamp=incoming.find(x=>x.metadata?.blockTimestamp)?.metadata?.blockTimestamp||null;
       if(!blockTimestamp&&tx.blockNumber){
         try{const b=await rpc('eth_getBlockByNumber',[tx.blockNumber,false]);if(b?.timestamp)blockTimestamp=new Date(Number(BigInt(b.timestamp))*1000).toISOString()}catch{}
@@ -5025,9 +5060,10 @@ async function rewardRelevantCallsFromTransfers(wallet,transfers=[]){
       });
     }catch(e){log(`Wallet-Aufruf aus ERC-20-Rückfluss ${hash}: ${e.message}`,'warn')}
   }
-  log(`Reward-Discovery Vorfilter: ${out.length}/${byHash.size} Wallet-initiierte Contract-Tx · ${skippedNotWallet} fremde Sender verworfen${missingFacts?` · ${missingFacts} ohne Tx-Fakten`:''}.`,'ok');
+  log(`Reward-Discovery Vorfilter: ${out.length}/${byHash.size} Wallet-initiierte Contract-Tx · ${skippedNotWallet} fremde Sender vor Receipt-Load verworfen · ${skippedNoCall} ohne Contract-Call${missingFacts?` · ${missingFacts} ohne Tx-Fakten`:''}.`,'ok');
   return out;
 }
+
 function mergeContractCalls(...groups){
   const m=new Map();
   for(const g of groups)for(const c of (g||[])){
