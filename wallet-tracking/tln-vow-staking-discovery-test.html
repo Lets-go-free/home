@@ -68,8 +68,13 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 </div>
 <div style="margin-top:12px;padding:10px 12px;border:1px solid #334155;border-radius:9px;background:#111722">
   <b>Stichtagsbewertung offene Stakings</b>
-  <div class="muted" style="margin:5px 0 8px">Step 6 bewertet zusätzlich den tatsächlich am 31.12. gebundenen Staking-Bestand. Top-ups und bereits erfolgte Unstakes werden bis zum Stichtag zeitgenau berücksichtigt.</div>
-  <label>Stichtagsjahr<br><input id="snapshotYear" type="number" min="2020" max="2100" step="1" value="2025" style="min-width:180px;width:180px"></label>
+  <div class="muted" style="margin:5px 0 8px">Step 6 bewertet zusätzlich den tatsächlich am 31.12. gebundenen Staking-Bestand. Aufstockungen gehören zur ursprünglichen Position und übernehmen deren gemeinsames Vertragsende; nach diesem Ende gilt kein Teil der Position mehr als offenes Staking.</div>
+  <label>Stichtagsjahr<br><select id="snapshotYear" style="min-width:180px;width:180px">
+    <option value="2023">2023</option>
+    <option value="2024">2024</option>
+    <option value="2025" selected>2025</option>
+    <option value="2026">2026</option>
+  </select></label>
 </div>
 <div class="process-grid" id="processGrid">
   <div class="process-step locked" id="stepBox1"><button id="refresh" disabled>1 · Basisdaten laden</button><span class="step-state" id="stepState1">bereit nach Initialisierung</span></div>
@@ -140,7 +145,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-184024';
+const BUILD_ID='20260904-195618';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10140,6 +10145,12 @@ function snapshotCutoffForYear(year){
 function snapshotPrincipalAt(lot,cutoffMs){
   const stakeMs=Date.parse(lot?.stakeTime||'');
   if(!Number.isFinite(stakeMs)||stakeMs>cutoffMs)return {amount:0,contributed:0,unstaked:0,reason:'Erst-Stake liegt nach dem Stichtag'};
+  // Stichtag uses the same normalized lifecycle as the staking card:
+  // top-ups belong to the parent position and cannot survive its common contractual end.
+  const contractualEndMs=Date.parse(lot?.expiryTime||lot?.contractEndTime||lot?.releaseTime||'');
+  if(Number.isFinite(contractualEndMs)&&contractualEndMs<=cutoffMs){
+    return {amount:0,contributed:0,unstaked:0,reason:'gemeinsames Vertragsende der Position liegt vor/am Stichtag'};
+  }
   const topUps=Array.isArray(lot?.topUps)?lot.topUps:[];
   const allTopUpAmount=topUps.reduce((sum,x)=>sum+Math.max(0,Number(x?.amount||0)),0);
   const initial=Math.max(0,Number(lot?.original||0)-allTopUpAmount);
