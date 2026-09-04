@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 14:47:24 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 14:55:24 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID="20260904-144724";
+const BUILD_ID="20260904-145524";
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -9061,10 +9061,15 @@ async function validateSharedDurationRule(lot,rule){
   const exitBlock=lot?.unstakeBlockHex?Number(BigInt(lot.unstakeBlockHex)):null;
   const lockRe=/lock|locked|minimum staking period|minimum stake|staking period|period|duration|early|matur|wait/i;
   const cache=new Map();
+  const validationContract=norm(lot?.staking?.contract_address||lot?.counterparty||rule?.stakingContract||rule?.contract||tx?.to||'');
+  const validationCtx={ts:Number(stakeTs),blockNum:Number(stakeBlock||0)};
   const probe=async n=>{
     n=Math.max(Number(stakeBlock||0),Math.min(Number(exitBlock||Number.MAX_SAFE_INTEGER)-1,Number(n)));
     if(cache.has(n))return cache.get(n);
-    const p=await lockProbeUnstake(tx,stakeTs,n);cache.set(n,p);return p;
+    // WICHTIG: exakt dieselbe historische Unstake-Simulation wie die verifizierte
+    // Duration-Referenzengine verwenden. Der frühere Shared-Sonderpfad über
+    // lockProbeUnstake() konnte denselben Block anders klassifizieren.
+    const p=await unstakeCallProbe(tx,validationContract,validationCtx,n);cache.set(n,p);return p;
   };
   const isLock=p=>{
     const msg=String(p?.revert?.message||p?.error?.message||'');
@@ -9130,7 +9135,7 @@ function applySharedDurationRuleToLot(lot,rule,validation){
   lot.lastLockedBlock=validation.before?.blockNum??null;lot.firstUnlockedBlock=validation.after?.blockNum??null;
   lot.implementationStable=true;lot.durationConfidence='strong';
   lot.durationEvidence='Contract-/walletübergreifend bereits streng bewiesene Lockdauer; für diese Position unmittelbar vor/nach der erwarteten Unlock-Grenze erneut per historischer Unstake-Simulation bestätigt.';
-  lot.durationSource=`Contract Strict-Proof · dauerhafter globaler Proof · Code/Implementation-Fingerprint geprüft · positionsbezogene 2-Punkt-Grenzvalidierung`;
+  lot.durationSource=`Contract Strict-Proof · dauerhafter globaler Proof · Code/Implementation-Fingerprint geprüft · positionsbezogene Grenzvalidierung mit Referenzengine-Unstake-Probe`;
   lot.durationStrictVerdict={cls:'ok',text:`Lockdauer ${lot.durationDays.toLocaleString('de-CH',{maximumFractionDigits:8})} Tage aus bestehendem Strict-Proof; für diese Position an der Unlock-Grenze erneut bestätigt.`};
   lot.lockEvidence={found:true,mode:'shared-contract-strict-proof-validated',elapsedSeconds:sec,elapsedDays:sec/86400,unlockTime:lot.expiryTime,evidence:lot.durationEvidence,confidence:'strong',implementationStable:true,before:validation.before,after:validation.after};
   lot.durationCacheHit=true;lot.durationSharedRuleHit=true;return true;
