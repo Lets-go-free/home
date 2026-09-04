@@ -50,8 +50,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 18:13:46 CEST</div>
-<p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; Vertragsendblock-Suche nutzt Step-1-Transferzeiten. Historische LP-Pair-States für Vertragsende/Unstake werden blockweise parallel vorgeladen.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 18:17:27 CEST</div>
+<p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; historische SC-, Stake-Tx-, Business- und LP-Preis-Fakten werden vor der Positionsbewertung parallel vorbereitet.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -131,7 +131,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-181346';
+const BUILD_ID='20260904-181727';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10157,11 +10157,23 @@ async function processValuation(){
       log(`Step-6 Preis-State Prefetch: ${valuationPrefetchBlocks.length} historische Blockstände parallel vorgeladen.`,'ok');
     }
 
+    // Step 6.9: Positionsunabhängige Evidenz nicht mehr seriell innerhalb der
+    // Bewertungsschleife laden. Historical-SC und Stake-Tx können je Lot parallel
+    // vorbereitet werden; Business-Probes folgen erst danach, damit sie die bereits
+    // vorhandene historische SC-Struktur als Fallback-Entscheidung nutzen können.
+    step6Phase('evidence_prefetch');
+    await Promise.all(DISCOVERY_PROCESS.lots.flatMap(lot=>[
+      enrichHistoricalStakeEvidence(lot),
+      stakeTxTokenEvidence(lot)
+    ]));
+    step6Phase('business_prefetch');
+    const valuationProbes=await Promise.all(DISCOVERY_PROCESS.lots.map(lot=>valuationBusinessProbeForLot(lot)));
+    DISCOVERY_PROCESS.lots.forEach((lot,i)=>{lot.businessProbe=valuationProbes[i]||null});
+    log(`Step-6 Evidenz-Prefetch: ${DISCOVERY_PROCESS.lots.length} Position(en) · historische SC- und Stake-Tx-Fakten parallel; Business-Probes anschließend parallel.`, 'ok');
+
     for(let i=0;i<DISCOVERY_PROCESS.lots.length;i++){
       const lot=DISCOVERY_PROCESS.lots[i];log(`Bewertung ${i+1}/${DISCOVERY_PROCESS.lots.length}: ${safePairLabel(lot)} …`);
-      step6Phase('historical_sc');await enrichHistoricalStakeEvidence(lot);
-      step6Phase('stake_tx_evidence');await stakeTxTokenEvidence(lot);
-      step6Phase('business_probe');const probe=await valuationBusinessProbeForLot(lot);lot.businessProbe=probe;
+      const probe=lot.businessProbe;
       lot.rewardProfile=rewardProfileForLot(lot);lot.rewardReads=extractRewardReads(lot.rewardProfile,probe);lot.rewardModel=deriveRewardModel(lot);
       step6Phase('stake_valuation');const stored=extractStoredStakeUsd(lot,probe);
       if(stored){lot.stakeUsd=stored.usd;lot.stakeUsdSource=stored.source;lot.stakeUsdOrigin='tln_stored'}
