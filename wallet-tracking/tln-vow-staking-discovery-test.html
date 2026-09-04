@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 03:10:25 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 03:33:44 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID="20260904-031025";
+const BUILD_ID="20260904-033344";
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -1060,6 +1060,49 @@ async function classifyReferralMintTx(hash,wallet,stakingMap){
         stakeEvents.push({kind:'stake-event',user:eventUser,rawAmount});
       }
     }
+  }
+
+  // Persistierte Tx-Fakten enthalten absichtlich nur ERC-20-Transfer-Logs. Das reicht fuer
+  // klassische Referral-Stakes mit Principal-Transfer, aber nicht fuer neuere Contracts,
+  // deren einziger Staking-Beweis ein Stake(...) Event ist. Nur wenn aus dem kompakten
+  // Receipt noch KEIN Stake-Beweis hervorgeht, laden wir deshalb genau dieses Receipt voll nach.
+  // So bleiben die klassischen Faelle cache-only und Event-only-Stakes verlieren keine Evidenz.
+  const compactReceipt=!receipt?.from||!receipt?.to;
+  if(compactReceipt && principalTransfers.length===0 && stakeEvents.length===0){
+    try{
+      const fullReceipt=await rpc('eth_getTransactionReceipt',[hash]);
+      if(fullReceipt){
+        receipt=fullReceipt;
+        referralSessionCache.receipt.set(hash,fullReceipt);
+        sender=sender||norm(fullReceipt.from);to=to||norm(fullReceipt.to);blockNumber=blockNumber||fullReceipt.blockNumber;
+        senderTransfers=[];principalTransfers=[];stakeEvents=[];principalIn=false;
+        for(const l of fullReceipt.logs||[]){
+          const topic0=norm(l.topics?.[0]);
+          if(topic0===TRANSFER_TOPIC && l.topics.length>=3){
+            const lf=topicAddr(l.topics[1]),lt=topicAddr(l.topics[2]);
+            if(lf===sender){
+              const token=norm(l.address),meta=await tokenMeta(token);
+              let amount='0';try{amount=ethers.formatUnits(BigInt(l.data||'0x0'),meta.decimals)}catch{}
+              const transfer={kind:'transfer',token,...meta,amount,from:lf,to:lt};
+              senderTransfers.push(transfer);
+              if(lt===to){principalIn=true;principalTransfers.push(transfer);}
+            }
+          }
+          if(norm(l.address)===to && topic0===STAKE_EVENT_TOPIC && l.topics.length>=2){
+            const eventUser=topicAddr(l.topics[1]);
+            if(eventUser===sender){
+              let rawAmount=null;
+              try{
+                const words=String(l.data||'0x').slice(2).match(/.{64}/g)||[];
+                if(words.length)rawAmount=BigInt('0x'+words[words.length-1]).toString();
+              }catch{}
+              principalIn=true;
+              stakeEvents.push({kind:'stake-event',user:eventUser,rawAmount});
+            }
+          }
+        }
+      }
+    }catch{}
   }
 
   // Timestamp primär aus EINER Alchemy AssetTransfers-Abfrage; Block-RPC nur Fallback.
@@ -7934,6 +7977,15 @@ function associateContractCallsToLots(lots,calls){
         lower.includes('stake')?'Stake':
         (lower.includes('claim')||lower.includes('reward')||lower.includes('harvest'))?'Claim / Reward-Aufruf (ohne Transferbeweis)':
         lower.includes('withdraw')?'Withdraw / Reward':'Contract-Aufruf';
+
+      // Ein direkter Contract-Aufruf ist keine zweite wirtschaftliche Transaktion.
+      // Wenn dieselbe Tx bereits als belegter Reward mit echtem Token-Zufluss in dieser
+      // Position steckt, unterdruecken wir nur den technischen Claim/Withdraw/Generic-Duplikateintrag.
+      // Echte Stake-/Unstake-Lifecycle-Zeilen bleiben davon unberuehrt.
+      const sameHashRows=(lot.transactions||[]).filter(x=>String(x?.hash||'').toLowerCase()===String(c?.hash||'').toLowerCase());
+      const hasProvenReward=sameHashRows.some(x=>/^Reward(?:\s|\s*\/|\s*beim|\s*·)|^Reward\s*\/\s*Claim/i.test(String(x?.kind||'')) && Number(x?.amount||0)>0);
+      if(hasProvenReward && (kind==='Withdraw / Reward'||kind==='Claim / Reward-Aufruf (ohne Transferbeweis)'||kind==='Contract-Aufruf'))continue;
+
       addLotTx(lot,{
         kind,hash:c.hash,time:c.metadata?.blockTimestamp||null,block:c._blockNumber||null,
         selector:c._selector||null,method,success:c._success,source:'Contract-Call',
