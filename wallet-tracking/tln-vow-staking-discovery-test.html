@@ -50,8 +50,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 17:50:34 CEST</div>
-<p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; Timestamp→Block nutzt jetzt exakte Interpolationssuche mit Nachbarblock-Prüfung und Binary-Fallback.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 17:57:19 CEST</div>
+<p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; Vertragsendblock-Suche nutzt vorhandene Step-1-Transferzeiten als sichere Suchgrenzen und fällt sonst auf die exakte Batch-Binärsuche zurück.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -131,7 +131,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-175034';
+const BUILD_ID='20260904-175719';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -5999,7 +5999,34 @@ async function blockTimestampSecondsMany(blockNumbers){
   return out;
 }
 
-async function nearestBlockHexesForTimestamps(isoTimestamps,latestHexOverride=null){
+function numericBlockNumber(v){
+  try{
+    if(v==null)return null;
+    if(typeof v==='string'&&v.startsWith('0x'))return Number(BigInt(v));
+    const n=Number(v);return Number.isInteger(n)&&n>0?n:null;
+  }catch{return null}
+}
+function step1TransferBoundsForTimestamp(isoTimestamp,lot=null,latestBlock=null){
+  const targetMs=new Date(isoTimestamp).getTime();
+  if(!Number.isFinite(targetMs))return null;
+  let low={block:1,timeMs:-Infinity,source:'genesis'},high={block:Number(latestBlock||0),timeMs:Infinity,source:'head'};
+  for(const t of (CURRENT_ALL_TRANSFERS||[])){
+    const bn=numericBlockNumber(t?.blockNum??t?.blockNumber);
+    const timeRaw=t?.metadata?.blockTimestamp??t?.blockTimestamp??t?.time??null;
+    const tm=timeRaw?new Date(timeRaw).getTime():NaN;
+    if(!bn||!Number.isFinite(tm))continue;
+    if(tm<=targetMs&&tm>low.timeMs)low={block:bn,timeMs:tm,source:'Step-1 Transfer'};
+    if(tm>=targetMs&&tm<high.timeMs)high={block:bn,timeMs:tm,source:'Step-1 Transfer'};
+  }
+  const stakeBn=numericBlockNumber(lot?.stakeBlockHex),stakeMs=lot?.stakeTime?new Date(lot.stakeTime).getTime():NaN;
+  if(stakeBn&&Number.isFinite(stakeMs)&&stakeMs<=targetMs&&stakeMs>low.timeMs)low={block:stakeBn,timeMs:stakeMs,source:'Stake-Fakt'};
+  const unstakeBn=numericBlockNumber(lot?.unstakeBlockHex),unstakeMs=lot?.unstakeTime?new Date(lot.unstakeTime).getTime():NaN;
+  if(unstakeBn&&Number.isFinite(unstakeMs)&&unstakeMs>=targetMs&&unstakeMs<high.timeMs)high={block:unstakeBn,timeMs:unstakeMs,source:'Unstake-Fakt'};
+  if(!(Number.isInteger(low.block)&&Number.isInteger(high.block)&&low.block>0&&high.block>low.block))return null;
+  return {low:low.block,high:high.block,lowSource:low.source,highSource:high.source,span:high.block-low.block};
+}
+
+async function nearestBlockHexesForTimestamps(isoTimestamps,latestHexOverride=null,boundsOverride=null){
   const inputs=(isoTimestamps||[]).map((iso,index)=>({index,iso,target:Math.floor(new Date(iso).getTime()/1000)}));
   const results=new Array(inputs.length).fill(null),pending=[];
   for(const x of inputs){
@@ -6013,7 +6040,12 @@ async function nearestBlockHexesForTimestamps(isoTimestamps,latestHexOverride=nu
     // Step 6.4: bewährte exakte, gemeinsam gebatchte Binärsuche aus Step 6.2.
     // Mehrere Zielzeitpunkte teilen sich pro Runde dieselben HTTP-Batches; am Ende
     // werden die beiden benachbarten Blöcke anhand ihrer echten Timestamps verglichen.
-    const states=pending.map(x=>({...x,low:1,high:latest,done:false}));
+    const states=pending.map(x=>{
+      const b=Array.isArray(boundsOverride)?boundsOverride[x.index]:null;
+      const low=Number.isInteger(Number(b?.low))&&Number(b.low)>0?Number(b.low):1;
+      const high=Number.isInteger(Number(b?.high))&&Number(b.high)>low&&Number(b.high)<=latest?Number(b.high):latest;
+      return {...x,low,high,done:false,initialLow:low,initialHigh:high};
+    });
     let guard=0;
     while(states.some(s=>!s.done)&&guard++<40){
       const mids=[];
@@ -10036,8 +10068,13 @@ async function processValuation(){
     const expiryLots=DISCOVERY_PROCESS.lots.filter(lot=>!!lot.expiryTime);
     if(expiryLots.length){
       step6Phase('contract_end_block');
-      const latestHex=await rpc('eth_blockNumber',[]);
-      const endBlocks=await nearestBlockHexesForTimestamps(expiryLots.map(lot=>lot.expiryTime),latestHex);
+      const latestHex=await rpc('eth_blockNumber',[]),latestBlock=Number(BigInt(latestHex));
+      const searchBounds=expiryLots.map(lot=>step1TransferBoundsForTimestamp(lot.expiryTime,lot,latestBlock));
+      for(let i=0;i<expiryLots.length;i++){
+        const bnd=searchBounds[i];
+        if(bnd)log(`Vertragsendblock Suchfenster ${safePairLabel(expiryLots[i])}: ${bnd.low.toLocaleString('de-CH')}→${bnd.high.toLocaleString('de-CH')} · ${bnd.span.toLocaleString('de-CH')} Blöcke · ${bnd.lowSource}/${bnd.highSource}.`,'ok');
+      }
+      const endBlocks=await nearestBlockHexesForTimestamps(expiryLots.map(lot=>lot.expiryTime),latestHex,searchBounds);
       expiryLots.forEach((lot,i)=>{lot.contractEndBlockHex=endBlocks[i]||null});
     }
 
