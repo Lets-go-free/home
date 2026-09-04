@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 13:57:51 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 14:11:47 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID="20260904-135751";
+const BUILD_ID="20260904-141147";
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -8878,21 +8878,133 @@ function mergeProvenTopUpLots(previous,next,proof,lockInfo){
   }
 }
 
+
+const SHARED_DURATION_RULE_CACHE=new Map();
+
+async function loadSharedStrictDurationRule(contract){
+  const c=norm(contract);
+  if(!ethers.isAddress(c))return null;
+  if(SHARED_DURATION_RULE_CACHE.has(c))return SHARED_DURATION_RULE_CACHE.get(c);
+  let rule=null;
+  try{
+    const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE)
+      .select('wallet_address,payload,updated_at,cache_key,scanner_version')
+      .eq('user_id',currentUserId).eq('chain_key','bsc')
+      .eq('scanner_version',TECH_CACHE_VERSIONS.duration);
+    if(error)throw error;
+    const candidates=(data||[]).map(r=>({row:r,p:r?.payload}))
+      .filter(x=>norm(x.p?.stakingContract)===c&&Number(x.p?.lockDurationSeconds)>0&&x.p?.implementationStable===true&&x.p?.expiryTime);
+    const secs=[...new Set(candidates.map(x=>Number(x.p.lockDurationSeconds)).filter(Number.isFinite))];
+    if(candidates.length&&secs.length===1){
+      candidates.sort((a,b)=>String(b.row?.updated_at||'').localeCompare(String(a.row?.updated_at||'')));
+      const source=candidates[0];
+      rule={contract:c,lockDurationSeconds:secs[0],durationDays:secs[0]/86400,
+        sourceWallet:norm(source.row?.wallet_address||''),sourceStakeTx:source.p?.durationAnchorTx||source.p?.stakeTx||null,
+        sourceUpdatedAt:source.row?.updated_at||null,sourceCount:candidates.length};
+    }else if(secs.length>1){
+      log(`Shared Duration-Regel ${short(c)} verworfen: widersprüchliche Strict-Proofs (${secs.join(', ')} Sekunden).`,'warn');
+    }
+  }catch(e){log(`Shared Duration-Regel ${short(c)} konnte nicht gelesen werden: ${e?.message||e}`,'warn')}
+  SHARED_DURATION_RULE_CACHE.set(c,rule);
+  return rule;
+}
+
+async function txForDurationValidation(hash){
+  const h=String(hash||'').toLowerCase();
+  if(!/^0x[0-9a-f]{64}$/.test(h))return null;
+  let facts=TX_FACTS_CACHE_STATE.entries.get(h)||null,tx=facts?txObjectFromFacts(facts):null;
+  if(tx?.input&&tx.input!=='0x')return tx;
+  tx=await rpc('eth_getTransactionByHash',[h]).catch(()=>null);
+  if(tx){
+    const updated=txFactsFromRpc(tx,receiptObjectFromFacts(facts));
+    if(updated){TX_FACTS_CACHE_STATE.entries.set(h,updated);TX_FACTS_CACHE_STATE.dirty=true}
+  }
+  return tx;
+}
+
+async function blockNearExpectedUnlock(lot,expectedTs){
+  const stakeBlock=lotStakeBlock(lot),stakeTs=lotStakeTsSeconds(lot);
+  const exitBlock=lot?.unstakeBlockHex?Number(BigInt(lot.unstakeBlockHex)):null;
+  const exitTs=lot?.unstakeTime?Math.floor(new Date(lot.unstakeTime).getTime()/1000):null;
+  if(!Number.isInteger(stakeBlock)||!stakeTs||!Number.isInteger(exitBlock)||!exitTs||exitBlock<=stakeBlock||exitTs<=stakeTs)return null;
+  const blocksPerSec=(exitBlock-stakeBlock)/(exitTs-stakeTs);
+  let n=Math.round(stakeBlock+(expectedTs-stakeTs)*blocksPerSec);
+  n=Math.max(stakeBlock+1,Math.min(exitBlock-1,n));
+  let current=null;
+  for(let i=0;i<5;i++){
+    const b=await lockNodeRealRpc('eth_getBlockByNumber',['0x'+n.toString(16),false]);
+    if(!b?.timestamp)break;
+    const ts=Number(BigInt(b.timestamp));current={blockNum:n,timestamp:ts};
+    const delta=expectedTs-ts;if(Math.abs(delta)<=4)break;
+    const jump=Math.round(delta*blocksPerSec);if(!jump)break;
+    n=Math.max(stakeBlock+1,Math.min(exitBlock-1,n+jump));
+  }
+  if(!current)return null;
+  let hi=current.blockNum,hiTs=current.timestamp;
+  if(hiTs<expectedTs){
+    for(let i=0;i<8&&hi<exitBlock-1;i++){hi++;const b=await lockNodeRealRpc('eth_getBlockByNumber',['0x'+hi.toString(16),false]);hiTs=Number(BigInt(b.timestamp));if(hiTs>=expectedTs)break}
+  }else{
+    for(let i=0;i<8&&hi>stakeBlock+1;i++){const b=await lockNodeRealRpc('eth_getBlockByNumber',['0x'+(hi-1).toString(16),false]);const prevTs=Number(BigInt(b.timestamp));if(prevTs<expectedTs)break;hi--;hiTs=prevTs}
+  }
+  return {beforeBlock:Math.max(stakeBlock,hi-1),afterBlock:hi};
+}
+
+async function validateSharedDurationRule(lot,rule){
+  const stakeTs=lotStakeTsSeconds(lot);
+  if(!stakeTs||!Number(rule?.lockDurationSeconds))return {ok:false,reason:'Stake-Zeit oder Shared Lockdauer fehlt.'};
+  const exitHash=lot?.unstakeTx||lot?.transactions?.find?.(x=>/unstake/i.test(String(x?.kind||x?.action||'')))?.hash||null;
+  if(!exitHash)return {ok:false,reason:'Keine reale Unstake-Tx für gezielte Grenzvalidierung vorhanden.'};
+  const tx=await txForDurationValidation(exitHash);
+  if(!tx?.from||!tx?.to||!tx?.input||tx.input==='0x')return {ok:false,reason:'Unstake-Tx für Grenzvalidierung nicht vollständig verfügbar.'};
+  const expectedTs=stakeTs+Number(rule.lockDurationSeconds),b=await blockNearExpectedUnlock(lot,expectedTs);
+  if(!b)return {ok:false,reason:'Unlock-Block konnte nicht effizient angenähert werden.'};
+  durationPhase('shared-rule-validation');
+  const [before,after]=await Promise.all([lockProbeUnstake(tx,stakeTs,b.beforeBlock),lockProbeUnstake(tx,stakeTs,b.afterBlock)]);
+  const lockRe=/lock|locked|minimum staking period|minimum stake|staking period|period|duration|early|matur|wait/i;
+  const beforeMsg=String(before?.revert?.message||before?.error?.message||'');
+  if(before?.failureClass==='contract_revert'&&lockRe.test(beforeMsg)&&after?.ok===true)return {ok:true,before,after,expectedTs};
+  return {ok:false,before,after,expectedTs,reason:`Grenzprobe passt nicht zum Shared Strict-Proof (vorher=${before?.failureClass||'?'}, nachher=${after?.ok?'success':after?.failureClass||'?'}).`};
+}
+
+function applySharedDurationRuleToLot(lot,rule,validation){
+  const sec=Number(rule.lockDurationSeconds),stakeTs=lotStakeTsSeconds(lot);
+  lot.lockDurationSeconds=sec;lot.durationDays=sec/86400;lot.expiryTime=new Date((stakeTs+sec)*1000).toISOString();
+  lot.lastLockedBlock=validation.before?.blockNum??null;lot.firstUnlockedBlock=validation.after?.blockNum??null;
+  lot.implementationStable=true;lot.durationConfidence='strong';
+  lot.durationEvidence='Contract-/walletübergreifend bereits streng bewiesene Lockdauer; für diese Position unmittelbar vor/nach der erwarteten Unlock-Grenze erneut per historischer Unstake-Simulation bestätigt.';
+  lot.durationSource=`Shared Contract Strict-Proof · ${rule.sourceCount} bestehende Cache-Beleg(e) · positionsbezogene 2-Punkt-Grenzvalidierung`;
+  lot.durationStrictVerdict={cls:'ok',text:`Lockdauer ${lot.durationDays.toLocaleString('de-CH',{maximumFractionDigits:8})} Tage aus bestehendem Strict-Proof; für diese Position an der Unlock-Grenze erneut bestätigt.`};
+  lot.lockEvidence={found:true,mode:'shared-contract-strict-proof-validated',elapsedSeconds:sec,elapsedDays:sec/86400,unlockTime:lot.expiryTime,evidence:lot.durationEvidence,confidence:'strong',implementationStable:true,before:validation.before,after:validation.after};
+  lot.durationCacheHit=true;lot.durationSharedRuleHit=true;return true;
+}
+
 async function resolveDurationStrictOnce(lot,label=''){
   const cacheKey=durationCacheKeyForLot(lot);
   const cached=await loadTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration);
-  if(applyDurationCacheToLot(lot,cached)){
-    log(`Duration ${label}: ${safePairLabel(lot)} · Strict-Proof aus Supabase-Cache verwendet.`,'ok');
-    return {proven:true,cacheHit:true};
+  if(applyDurationCacheToLot(lot,cached)){log(`Duration ${label}: ${safePairLabel(lot)} · Strict-Proof aus Supabase-Cache verwendet.`,'ok');return {proven:true,cacheHit:true,sharedRule:false}}
+
+  const contract=lotContractAddress(lot),shared=await loadSharedStrictDurationRule(contract);
+  if(shared){
+    const check=await validateSharedDurationRule(lot,shared);
+    if(check.ok){
+      applySharedDurationRuleToLot(lot,shared,check);
+      await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),lot.firstUnlockedBlock||0);
+      log(`Duration ${label}: ${safePairLabel(lot)} · Shared Strict-Proof ${shared.durationDays.toLocaleString('de-CH',{maximumFractionDigits:8})} Tage · nur 2-Punkt-Grenzvalidierung statt Voll-Binärsuche.`,'ok');
+      return {proven:true,cacheHit:true,sharedRule:true};
+    }
+    log(`Duration ${label}: Shared Strict-Proof für ${safePairLabel(lot)} nicht positionsgenau bestätigt (${check.reason}); sicherer Voll-Lauf.`,'info');
   }
+
   log(`Duration ${label}: ${safePairLabel(lot)} · vollständige Referenzengine …`);
   await resolveLotContractTiming(lot,null);
   if(lot.expiryTime){
     await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),lot.firstUnlockedBlock||0);
-    return {proven:true,cacheHit:false};
+    SHARED_DURATION_RULE_CACHE.delete(contract);
+    return {proven:true,cacheHit:false,sharedRule:false};
   }
-  return {proven:false,cacheHit:false};
+  return {proven:false,cacheHit:false,sharedRule:false};
 }
+
 async function lightweightTopUpState(previous,next){
   const targeted=durationRefTargeted(previous);
   const root=Number(targeted?.root);
@@ -9020,13 +9132,13 @@ async function processDurationOptimizedFirstRun(){
   const groups=candidateTopUpGroups(originalLots);
   const grouped=new Set(groups.flat());
   const remove=new Set();
-  let cacheHits=0,fullRuns=0,preflightRuns=0,merged=0,checked=0;
+  let cacheHits=0,sharedRuleHits=0,fullRuns=0,preflightRuns=0,merged=0,checked=0;
 
   // Normale eindeutige Lots.
   for(const lot of originalLots){
     if(grouped.has(lot))continue;
     const r=await resolveDurationStrictOnce(lot,`${fullRuns+1}`);
-    fullRuns++;if(r.cacheHit)cacheHits++;
+    fullRuns++;if(r.cacheHit)cacheHits++;if(r.sharedRule)sharedRuleHits++;
   }
 
   for(const group of groups){
@@ -9047,7 +9159,7 @@ async function processDurationOptimizedFirstRun(){
       // Wichtig: Bei bewiesener Legacy-Aufstockung wird NUR der letzte Stake vollständig
       // analysiert. Der erste Stake dient ausschließlich dem Preflight/Storage-Nachweis.
       const r=await resolveDurationStrictOnce(anchorLot,`${fullRuns+1} · einziger Voll-Lauf · letzter Stake/Top-up`);
-      fullRuns++;if(r.cacheHit)cacheHits++;
+      fullRuns++;if(r.cacheHit)cacheHits++;if(r.sharedRule)sharedRuleHits++;
 
       if(anchorLot.expiryTime&&Number(anchorLot.lockDurationSeconds)>0){
         const m=mergeTopUpGroupAfterStrictProof(group,pf,anchorLot);
@@ -9070,7 +9182,7 @@ async function processDurationOptimizedFirstRun(){
       if(lot.expiryTime)continue;
       lot.durationStructHint=null;lot.durationPreflightHint=null;lot.durationAnchorTx=null;
       const r=await resolveDurationStrictOnce(lot,`${fullRuns+1} · Fallback`);
-      fullRuns++;if(r.cacheHit)cacheHits++;
+      fullRuns++;if(r.cacheHit)cacheHits++;if(r.sharedRule)sharedRuleHits++;
     }
   }
 
@@ -9083,7 +9195,7 @@ async function processDurationOptimizedFirstRun(){
     }
   }
   return {
-    cacheHits,fullRuns,preflightRuns,merged,checked,
+    cacheHits,sharedRuleHits,fullRuns,preflightRuns,merged,checked,
     proven:DISCOVERY_PROCESS.lots.filter(l=>!!l.expiryTime).length
   };
 }
@@ -9158,7 +9270,7 @@ async function processDuration(){
       log(`Duration-RPC-Aufschlüsselung: ${rpcBreakdown.total} Requests · Phasen: ${phases||'–'}.`,'ok');
       log(`Duration-RPC-Methoden: ${methods||'–'}.`,'info');
     }
-    log(`Schritt 3 abgeschlossen: ${result.proven}/${DISCOVERY_PROCESS.lots.length} finale Lots mit Lockdauer · ${result.cacheHits} Cache · ${result.fullRuns} vollständige Duration-Läufe · ${result.preflightRuns} Top-up-Preflights.`,'ok');
+    log(`Schritt 3 abgeschlossen: ${result.proven}/${DISCOVERY_PROCESS.lots.length} finale Lots mit Lockdauer · ${result.cacheHits} Cache (${result.sharedRuleHits||0} Shared-Contract-Validierung) · ${result.fullRuns} Duration-Läufe · ${result.preflightRuns} Top-up-Preflights.`,'ok');
   }catch(e){
     setStepState(3,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err');
   }finally{updateProcessButtons();b.disabled=false}
