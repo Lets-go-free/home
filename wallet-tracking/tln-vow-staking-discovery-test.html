@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 15:46:02 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 15:56:04 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-154602';
+const BUILD_ID='20260904-155604';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -8833,11 +8833,15 @@ async function processStakingDiscovery(){
     // Nur der gefilterte Positionssatz erreicht Schritt 2. Reward-/Claim-Aufrufe werden
     // erst in Schritt 4 ueber associateContractCallsToLots(...) an Lots gehaengt.
     associateContractCallsToLots(lots,contractCalls);
+    // Positionsnormalisierung gehört fachlich in Schritt 2: Legacy-Stakes ohne explizite
+    // Position-ID werden nur nach strengem On-chain-Storage-Kontinuitätsnachweis als
+    // Aufstockung derselben Position zusammengeführt. Die Lockdauer selbst bleibt Schritt 3.
+    const topUpNormalization=await normalizeProvenTopUpsForPositions(lots);
     // renderDeepEvents(contractEvents,lots); // deaktiviert; zugehöriger UI-Block ist auskommentiert
     DISCOVERY_PROCESS.pairs=pairs;DISCOVERY_PROCESS.pairMap=pairMap;DISCOVERY_PROCESS.rows=rows;DISCOVERY_PROCESS.stakingRows=stakingRows;DISCOVERY_PROCESS.entryTargets=entryTargets;DISCOVERY_PROCESS.stakingContractCalls=stakingContractCalls;DISCOVERY_PROCESS.contractCalls=contractCalls;DISCOVERY_PROCESS.contractEvents=contractEvents;DISCOVERY_PROCESS.lots=lots;DISCOVERY_PROCESS.unmatched=unmatched;
     $('mPairs').textContent=pairs.length;$('mStakes').textContent=stakingRows.filter(r=>String(r.action).toUpperCase()==='STAKE').length;$('mUnstakes').textContent=stakingRows.filter(r=>String(r.action).toUpperCase()==='UNSTAKE').length;renderProcessLotCards();renderProcessChecks();
     await Promise.all([flushLpFactsCache(),flushTxFactsCache(wallet)]);
-    DISCOVERY_PROCESS.done.staking=true;DISCOVERY_PROCESS.done.duration=false;DISCOVERY_PROCESS.done.rewards=false;DISCOVERY_PROCESS.done.referral=false;DISCOVERY_PROCESS.done.valuation=false;setStepState(2,`${lots.length} Lots erkannt`,'done');setStepState(3,'bereit');setStepState(4,'bereit');$('status').innerHTML='<span class="ok">Stakings erkannt. Lockdauer und Rewards werden NICHT automatisch gestartet.</span>';log(`Schritt 2 abgeschlossen: ${pairs.length} LPs · ${stakingRows.length} Stake/Unstake-Ereignisse · ${lots.length} Lots.`,'ok');
+    DISCOVERY_PROCESS.done.staking=true;DISCOVERY_PROCESS.done.duration=false;DISCOVERY_PROCESS.done.rewards=false;DISCOVERY_PROCESS.done.referral=false;DISCOVERY_PROCESS.done.valuation=false;setStepState(2,`${lots.length} Positionen erkannt`,'done');setStepState(3,'bereit');setStepState(4,'bereit');$('status').innerHTML='<span class="ok">Stakings erkannt und positionsnormalisiert. Lockdauer und Rewards werden NICHT automatisch gestartet.</span>';log(`Schritt 2 abgeschlossen: ${pairs.length} LPs · ${stakingRows.length} Stake/Unstake-Ereignisse · ${lots.length} Positionen${topUpNormalization.merged?` · ${topUpNormalization.merged} bestätigte Top-up-Zusammenführung(en)`:''}.`,'ok');
   }catch(e){setStepState(2,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
 
@@ -8853,9 +8857,9 @@ function targetedValueAt(targeted,section,offset){
   const r=targetedOffsetRow(targeted,section,offset);return r?.value==null?null:String(r.value).toLowerCase();
 }
 function lotContractAddress(lot){return norm(lot?.staking?.contract_address||lot?.counterparty||'')}
-function lotStakeBlock(lot){try{return lot?.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null}catch{return null}}
+function lotStakeBlock(lot){try{const h=lot?.positionNormalizedTopUp?(lot?.lastTopUpBlockHex||lot?.stakeBlockHex):lot?.stakeBlockHex;return h?Number(BigInt(h)):null}catch{return null}}
 function lotStakeTsSeconds(lot){
-  const ms=isoMs(lot?.stakeTime);return ms==null?null:Math.floor(ms/1000);
+  const ms=isoMs(lot?.positionNormalizedTopUp?(lot?.lockBaseTime||lot?.stakeTime):lot?.stakeTime);return ms==null?null:Math.floor(ms/1000);
 }
 function lotHasExplicitPositionId(lot){return lotPositionIdentifiers(lot).size>0}
 function candidateTopUpGroups(lots){
@@ -9405,6 +9409,65 @@ async function preflightTopUpGroup(group){
     if(!r.proven)return {proven:false,pairs,reason:r.reason};
   }
   return {proven:pairs.length>0,pairs,reason:pairs.length?'alle Folgestakes schreiben denselben Wallet-Positions-State fort':'keine Folgestakes'};
+}
+
+function mergeProvenTopUpPosition(previous,next,proof){
+  previous.topUps=previous.topUps||[];
+  const added=Number(next.original||0);
+  previous.topUps.push({
+    time:next.stakeTime,block:lotStakeBlock(next),blockHex:next.stakeBlockHex||null,tx:next.stakeTx||null,
+    amount:added,resultingPrincipal:Number(previous.original||0)+added,
+    evidence:'onchain_same_wallet_position_state',storageProof:proof
+  });
+  previous.original=Number(previous.original||0)+added;
+  previous.remaining=Number(previous.remaining||0)+Number(next.remaining||0);
+  previous.lastTopUpTime=next.stakeTime;
+  previous.lastTopUpBlockHex=next.stakeBlockHex||null;
+  previous.durationAnchorTx=next.stakeTx||previous.durationAnchorTx||previous.stakeTx;
+  previous.lastTopUpBlockHex=next.stakeBlockHex||previous.lastTopUpBlockHex||null;
+  previous.lockBaseTime=next.stakeTime||previous.lockBaseTime||previous.stakeTime;
+  previous.positionNormalizedTopUp=true;
+  previous.lockBaseReason='On-chain bestätigte Aufstockung derselben Position; Lockdauer wird in Schritt 3 am letzten Top-up geprüft';
+  previous.topUpEvidence={type:'onchain_same_wallet_position_state',...proof,normalizedInStep2:true};
+
+  if(next.unstakeTime&&(!previous.unstakeTime||isoMs(next.unstakeTime)>=isoMs(previous.unstakeTime))){
+    previous.unstakeTime=next.unstakeTime;previous.unstakeTx=next.unstakeTx;previous.unstakeBlockHex=next.unstakeBlockHex;previous.unstakeEvidence=next.unstakeEvidence;
+  }
+  previous.status=(Number(previous.remaining||0)<=1e-12&&Number(next.remaining||0)<=1e-12)?'closed':(Number(previous.remaining||0)<Number(previous.original||0)?'partial':'open');
+  addLotTx(previous,{kind:'Aufstockung',hash:next.stakeTx,time:next.stakeTime,block:lotStakeBlock(next),amount:added,source:'On-chain Storage-Kontinuität',assignmentReason:'gleicher Wallet-Positions-State'});
+  for(const tx of (next.transactions||[])){
+    if(String(tx?.hash||'').toLowerCase()===String(next.stakeTx||'').toLowerCase()&&/stake/i.test(String(tx?.kind||'')))continue;
+    addLotTx(previous,tx);
+  }
+  // Schritt 2 darf keine Duration-Evidenz erfinden. Falls aus einem vorigen UI-Lauf
+  // temporäre Duration-Felder an einem Roh-Lot hängen, werden sie bewusst verworfen.
+  for(const k of ['durationDays','lockDurationSeconds','expiryTime','lastLockedBlock','firstUnlockedBlock','implementationStable','durationEvidence','durationConfidence','durationSource','durationStrictVerdict','lockEvidence'])delete previous[k];
+  return previous;
+}
+async function normalizeProvenTopUpsForPositions(lots){
+  const groups=candidateTopUpGroups(lots);
+  if(!groups.length)return {checked:0,merged:0,groups:0};
+  const remove=new Set();let checked=0,merged=0,provenGroups=0;
+  for(const group of groups){
+    checked+=Math.max(0,group.length-1);
+    const pf=await preflightTopUpGroup(group);
+    if(!pf.proven){
+      log(`Schritt-2 Top-up-Normalisierung: Kandidat nicht zusammengeführt (${pf.reason}). Getrennte Positionen bleiben erhalten.`,'info');
+      continue;
+    }
+    const first=group[0];
+    for(let i=1;i<group.length;i++){
+      mergeProvenTopUpPosition(first,group[i],pf.pairs[i-1]?.proof||null);
+      remove.add(group[i]);merged++;
+    }
+    provenGroups++;
+    log(`Schritt-2 Positionsnormalisierung: ON-CHAIN TOP-UP-KETTE bestätigt · ${group.length} Stakes → 1 Position · letzter Top-up ${new Date(group.at(-1).stakeTime).toLocaleString('de-CH')} wird Duration-Anker für Schritt 3.`,'ok');
+  }
+  if(remove.size){
+    for(let i=lots.length-1;i>=0;i--)if(remove.has(lots[i]))lots.splice(i,1);
+  }
+  log(`Schritt-2 Top-up-Normalisierung: ${checked} mögliche Folgestake(s) geprüft · ${merged} Lot(s) zusammengeführt · ${lots.length} finale Position(en).`,merged?'ok':'info');
+  return {checked,merged,groups:provenGroups};
 }
 function mergeTopUpGroupAfterStrictProof(group,preflight,anchorLot){
   const lockSec=Number(anchorLot?.lockDurationSeconds);
