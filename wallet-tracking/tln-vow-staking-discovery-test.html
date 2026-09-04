@@ -50,8 +50,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 17:42:52 CEST</div>
-<p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; neu sind RPC-/Cache- und Phasenzeit-Messwerte für Preisgraph, historische SC-Evidenz, Stake-Tx-Fakten und Positionsbewertung.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 17:46:58 CEST</div>
+<p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; Timestamp→Block nutzt jetzt exakte Interpolationssuche mit Nachbarblock-Prüfung und Binary-Fallback.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -131,7 +131,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-174252';
+const BUILD_ID='20260904-174658';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -6010,32 +6010,58 @@ async function nearestBlockHexesForTimestamps(isoTimestamps,latestHexOverride=nu
   if(!pending.length)return results;
   try{
     const latestHex=latestHexOverride||await rpc('eth_blockNumber',[]),latest=Number(BigInt(latestHex));
-    const states=pending.map(x=>({...x,lo:1,hi:latest,best:latest,done:false}));
+    // Step 6.3: exakte Timestamp→Block-Suche über Zeit-Interpolation statt reinem
+    // Halbieren. Die bekannte Zeitklammer wird nach jedem Read enger; falls die
+    // Timestamp-Verteilung lokal ungeeignet ist, fällt die Schätzung automatisch
+    // auf die Mitte zurück. Am Ende werden die beiden benachbarten Blöcke verglichen.
+    const edgeTs=await blockTimestampSecondsMany([1,latest]);
+    const firstTs=edgeTs.get(1),latestTs=edgeTs.get(latest);
+    if(firstTs==null||latestTs==null)throw new Error('Block-Timestamp-Grenzen nicht lesbar.');
+    const states=pending.map(x=>({...x,low:1,lowTs:firstTs,high:latest,highTs:latestTs,done:false}));
+    for(const s of states){
+      if(s.target<=s.lowTs){s.high=s.low;s.highTs=s.lowTs;s.done=true}
+      else if(s.target>=s.highTs){s.low=s.high;s.lowTs=s.highTs;s.done=true}
+    }
     let guard=0;
-    while(states.some(s=>!s.done)&&guard++<64){
+    while(states.some(s=>!s.done)&&guard++<32){
       const mids=[];
       for(const s of states){
         if(s.done)continue;
-        if(s.lo>s.hi){s.done=true;continue}
-        s.mid=Math.floor((s.lo+s.hi)/2);mids.push(s.mid);
+        if(s.high-s.low<=1){s.done=true;continue}
+        const spanBlocks=s.high-s.low,spanTs=s.highTs-s.lowTs;
+        let mid;
+        if(spanTs>0){
+          const frac=(s.target-s.lowTs)/spanTs;
+          mid=Math.round(s.low+spanBlocks*frac);
+        }else mid=Math.floor((s.low+s.high)/2);
+        // Verhindert festlaufende Rand-Schätzungen; bei extremen Verteilungen
+        // bleibt damit ein sicherer Binary-artiger Fortschritt erhalten.
+        if(!Number.isFinite(mid)||mid<=s.low||mid>=s.high)mid=Math.floor((s.low+s.high)/2);
+        mid=Math.max(s.low+1,Math.min(s.high-1,mid));
+        s.mid=mid;mids.push(mid);
       }
       if(!mids.length)break;
       const tsMap=await blockTimestampSecondsMany(mids);
       for(const s of states){
         if(s.done||s.mid==null)continue;
         const ts=tsMap.get(s.mid);
-        if(ts==null){s.done=true;continue}
-        if(ts<s.target)s.lo=s.mid+1;
-        else{s.best=s.mid;s.hi=s.mid-1}
-        if(s.lo>s.hi)s.done=true;
+        if(ts==null){
+          // Seltener Provider-/Archive-Aussetzer: nur für diesen Zustand auf
+          // einen sicheren Mittelpunkt in der nächsten Runde zurückfallen.
+          s.highTs<=s.lowTs?s.done=true:null;
+          continue;
+        }
+        if(ts<s.target){s.low=s.mid;s.lowTs=ts}
+        else{s.high=s.mid;s.highTs=ts}
+        if(s.high-s.low<=1)s.done=true;
       }
     }
     const candidateBlocks=[];
-    for(const s of states){candidateBlocks.push(s.best);if(s.best>1)candidateBlocks.push(s.best-1)}
+    for(const s of states){candidateBlocks.push(s.low,s.high)}
     const candidateTs=await blockTimestampSecondsMany(candidateBlocks);
     for(const s of states){
-      let chosen=s.best,chosenDiff=Infinity;
-      for(const bn of [s.best,s.best>1?s.best-1:null].filter(Boolean)){
+      let chosen=s.low,chosenDiff=Infinity;
+      for(const bn of [...new Set([s.low,s.high])]){
         const ts=candidateTs.get(bn);if(ts==null)continue;
         const diff=Math.abs(ts-s.target);if(diff<chosenDiff){chosen=bn;chosenDiff=diff}
       }
