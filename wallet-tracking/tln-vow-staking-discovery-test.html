@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 15:20:33 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 15:26:18 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID="20260904-152033";
+const BUILD_ID='20260904-152618';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -141,6 +141,7 @@ let rpcUrl=null,alchemyBase=null,projectTokens=[],allProjectRows=[],stakingContr
 let projectTokenMap=new Map();
 const PROXY_IMPL_CACHE=new Map();
 let CURRENT_STAKING_LOTS=[],CURRENT_WALLET='',CURRENT_UNASSIGNED_REWARDS=[],CURRENT_PROVEN_REWARD_ROWS=[],CURRENT_REWARD_FLOW_BY_HASH=new Map();
+let CLAIM_REFERENCE_FASTPATH_STATS={ownTx:0,fullReference:0};
 let CURRENT_CLAIM_REFERENCE_RESULT=null;
 const CLAIM_REFERENCE_RUN_CACHE=new Map();
 // Keine generische fest codierte Staking-Laufzeit. Contract-/Generations-spezifische
@@ -6740,8 +6741,27 @@ async function classifyAmbiguousRewardWithOriginalReference(hash){
   }
 
   const wallet=norm(CURRENT_WALLET);
+
+  // Fast-Path mit exakt derselben harten Ausschlussbedingung wie die isolierte
+  // Claim-Referenzengine: Wenn eth_getTransactionByHash bereits beweist, dass
+  // die Tx vom untersuchten Wallet selbst gesendet wurde, kann sie kein
+  // Referral-Reward fuer einen fremden Staker sein. Die unveraenderlichen
+  // Tx-Fakten wurden in Schritt 2/4 bereits geladen und werden nicht erneut
+  // ueber die Referenzengine/RPC abgefragt.
+  const facts=TX_FACTS_CACHE_STATE.entries.get(hash)||null;
+  if(facts&&norm(facts.from)===wallet){
+    const result={
+      kind:'own_tx_sender',hash,sender:wallet,to:norm(facts.to||''),
+      referral:false,ownWalletTx:true,raw:null,source:'tx_facts_fastpath'
+    };
+    CLAIM_REFERENCE_AMBIGUOUS_REWARD_CACHE.set(hash,result);
+    CLAIM_REFERENCE_FASTPATH_STATS.ownTx++;
+    return result;
+  }
+
   let result={kind:'reference_unclassified',hash,raw:null};
   try{
+    CLAIM_REFERENCE_FASTPATH_STATS.fullReference++;
     // The embedded original engine intentionally has its own private rpcUrl /
     // rpcCandidates scope. v22 called the classifier before that scope had been
     // initialized, causing "Kein RPC-Provider verfügbar".
@@ -7165,8 +7185,10 @@ function primaryRewardCoverage(lots){
   return {normal:normal.length,assigned:normal.length-missing.length,missing};
 }
 
-async function attachRewardTokenHistoryToLots(lots){
+async function attachRewardTokenHistoryToLots(lots,missingRows=null){
   const wallet=norm(CURRENT_WALLET);
+  const allowedHashes=Array.isArray(missingRows)&&missingRows.length?new Set(missingRows.map(x=>String(x?.hash||'').toLowerCase()).filter(Boolean)):null;
+  let ambiguousSkipped=0,cacheFactHits=0,rpcFactFallbacks=0;
   const rows=Array.isArray(lots)?lots:[];
   CURRENT_UNASSIGNED_REWARDS=[];
   const knownByLot=new Map();
@@ -7192,6 +7214,7 @@ async function attachRewardTokenHistoryToLots(lots){
     const hash=String(t.hash||'').toLowerCase();
     const to=norm(t.to||''),from=norm(t.from||'');
     if(!hash||!token||to!==wallet)continue;
+    if(allowedHashes&&!allowedHashes.has(hash))continue;
     const flow=CURRENT_REWARD_FLOW_BY_HASH.get(hash);
     if(!flow||flow.kind!=='reward_candidate')continue;
     const causalTransfer=(flow.payoutTransfers||[]).find(x=>norm(x.token)===token&&norm(x.from)===from&&norm(x.to)===to);
@@ -7205,11 +7228,15 @@ async function attachRewardTokenHistoryToLots(lots){
     let txInfo=processedHashes.get(hash);
     if(!txInfo){
       let tx=null,receipt=null,time=t.metadata?.blockTimestamp||null,block=null;
+      const facts=TX_FACTS_CACHE_STATE.entries.get(hash)||null;
+      if(facts){
+        tx=txObjectFromFacts(facts);
+        receipt=REWARD_FULL_RECEIPT_CACHE.get(hash)||receiptObjectFromFacts(facts);
+        if(tx||receipt)cacheFactHits++;
+      }
       try{
-        [tx,receipt]=await Promise.all([
-          cachedTx(hash),
-          rpc('eth_getTransactionReceipt',[hash]).catch(()=>null)
-        ]);
+        if(!tx){tx=await cachedTx(hash);rpcFactFallbacks++}
+        if(!receipt){receipt=await rpc('eth_getTransactionReceipt',[hash]).catch(()=>null);rpcFactFallbacks++}
         if(tx?.blockNumber){
           block=Number(BigInt(tx.blockNumber));
           if(!time){
@@ -7347,7 +7374,7 @@ async function attachRewardTokenHistoryToLots(lots){
           }))
         });
       }
-      log(`Reward-Historie systemübergreifend mehrdeutig: ${hash} · ${resolved.reason}; keine automatische Zuordnung · Original-Referenz: ${rewardReferenceClassificationLabel(originalReference||CLAIM_REFERENCE_AMBIGUOUS_REWARD_CACHE.get(hash))}.`,'warn');
+      ambiguousSkipped++;
       continue;
     }
     if(!chosen||chosen.score<60){
@@ -7420,6 +7447,7 @@ async function attachRewardTokenHistoryToLots(lots){
   for(const lot of rows){
     lot.rewardClaims=(lot.rewardClaims||[]).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
   }
+  log(`Reward-Historie Ergänzung: ${allowedHashes?allowedHashes.size:'alle'} fehlende Reward-Tx geprüft · ${cacheFactHits} Tx/Receipt-Fakten aus Cache · ${rpcFactFallbacks} RPC-Fallback(s) · ${ambiguousSkipped} weiterhin systemübergreifend mehrdeutig.`,'ok');
 }
 
 function renderUnassignedRewards(){
@@ -9538,7 +9566,7 @@ async function processDuration(){
 }
 async function processStakingRewards(){
   const b=$('stepRewards');b.disabled=true;setStepState(4,'läuft …','running');$('status').textContent='Schritt 4/6: eigene Staking-Rewards …';
-  try{if(!DISCOVERY_PROCESS.done.staking)throw new Error('Zuerst Schritt 2 ausführen.');CURRENT_REWARD_FLOW_BY_HASH=new Map();CURRENT_PROVEN_REWARD_ROWS=[];TX_RECEIPT_FLOW_CACHE.clear();REWARD_FULL_RECEIPT_CACHE.clear();CLAIM_REFERENCE_AMBIGUOUS_REWARD_CACHE.clear();const step4Started=performance.now();
+  try{if(!DISCOVERY_PROCESS.done.staking)throw new Error('Zuerst Schritt 2 ausführen.');CURRENT_REWARD_FLOW_BY_HASH=new Map();CURRENT_PROVEN_REWARD_ROWS=[];TX_RECEIPT_FLOW_CACHE.clear();REWARD_FULL_RECEIPT_CACHE.clear();CLAIM_REFERENCE_AMBIGUOUS_REWARD_CACHE.clear();CLAIM_REFERENCE_FASTPATH_STATS={ownTx:0,fullReference:0};const step4Started=performance.now();
     const rewardRelevantCalls=await rewardRelevantCallsFromTransfers(DISCOVERY_PROCESS.wallet,DISCOVERY_PROCESS.transfers);
     // Schritt 4 bekommt bewusst wieder die vollstaendige in Schritt 2 geladene Contract-Historie.
     // Hier duerfen Yield-/Withdraw-/Claim-Aufrufe klassifiziert und den Lots zugeordnet werden.
@@ -9554,12 +9582,13 @@ async function processStakingRewards(){
     await attachRewardClaimsToLots(lots,contractCalls);
     const primaryCoverage=primaryRewardCoverage(lots);
     const assignmentMs=Math.round(performance.now()-phaseStarted);
+    log(`Claim-Referenz Fast-Path: ${CLAIM_REFERENCE_FASTPATH_STATS.ownTx} eigene Wallet-Tx direkt aus bereits geladenen Tx-Fakten als kein Referral ausgeschlossen · ${CLAIM_REFERENCE_FASTPATH_STATS.fullReference} echte Referenzengine-Aufruf(e).`,'ok');
     phaseStarted=performance.now();
     if(primaryCoverage.missing.length===0){
       log(`Reward-Token-Historie: ergänzenden Zweitlauf übersprungen – ${primaryCoverage.assigned}/${primaryCoverage.normal} normalen belegten Reward-Transfers bereits im Primärlauf vollständig zugeordnet.`,'ok');
     }else{
-      await attachRewardTokenHistoryToLots(lots);
-      log(`Reward-Token-Historie: Zweitlauf nötig – ${primaryCoverage.missing.length}/${primaryCoverage.normal} Primär-Reward(s) vor Ergänzung noch nicht abgedeckt.`,'warn');
+      await attachRewardTokenHistoryToLots(lots,primaryCoverage.missing);
+      log(`Reward-Token-Historie: gezielte Ergänzung – nur ${primaryCoverage.missing.length}/${primaryCoverage.normal} fehlende Primär-Reward(s) geprüft.`,'warn');
     }
     associateContractCallsToLots(lots,contractCalls);
     const supplementalMs=Math.round(performance.now()-phaseStarted);
