@@ -107,7 +107,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 01:48:00 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 01:55:40 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; historische SmartNode-Tx werden gebündelt und mit History-Fallback vollständig geladen. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -210,7 +210,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-014800';
+const BUILD_ID='20260905-015540';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -321,7 +321,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='05.09.2026 01:48:00 CEST';
+const APP_VERSION='05.09.2026 01:55:40 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -10303,16 +10303,18 @@ async function teamHistoricalTransactionBatch(hashes){
   const publicnodeUrl='https://bsc-rpc.publicnode.com/'+encodeURIComponent(PUBLICNODE_TOKEN);
   const binanceUrl='https://bsc-dataseed.binance.org/';
 
-  // Fast first pass. Alchemy's BNB endpoint can return null for many older transactions,
-  // therefore null is treated as a cache miss, never as a completed historical result.
-  const a=await teamJsonRpcBatch(alchemyUrl,unique,{batchSize:100,parallel:6,label:'Alchemy'});
-  for(const [h,tx] of a)all.set(h,tx);
+  // Step-6 Performance: PublicNode ist für die vollständige historische SmartNode-Tx-Historie
+  // der primäre Provider. Der Referenzlauf 05.09.2026 lieferte dort 17'065/17'065 ältere Tx
+  // vollständig; Alchemy lieferte im selben Lauf nur 831/17'896 und verursachte dadurch
+  // einen unnötigen doppelten Vollscan. Alchemy bleibt gezielter Fallback für echte Lücken.
+  const p=await teamJsonRpcBatch(publicnodeUrl,unique,{batchSize:100,parallel:4,label:'PublicNode'});
+  for(const [h,tx] of p)all.set(h,tx);
 
   let missing=unique.filter(h=>!all.has(h));
   if(missing.length){
-    log(`Team-Tx Historie: Alchemy lieferte ${all.size}/${unique.length}; ${missing.length} ältere Tx werden gebündelt über PublicNode nachgeladen.`,'warn');
-    const p=await teamJsonRpcBatch(publicnodeUrl,missing,{batchSize:100,parallel:4,label:'PublicNode'});
-    for(const [h,tx] of p)all.set(h,tx);
+    log(`Team-Tx Historie: PublicNode lieferte ${all.size}/${unique.length}; ${missing.length} fehlende Tx werden gezielt über Alchemy nachgeladen.`,'warn');
+    const a=await teamJsonRpcBatch(alchemyUrl,missing,{batchSize:100,parallel:6,label:'Alchemy-Fallback'});
+    for(const [h,tx] of a)all.set(h,tx);
   }
 
   missing=unique.filter(h=>!all.has(h));
@@ -10324,7 +10326,7 @@ async function teamHistoricalTransactionBatch(hashes){
 
   missing=unique.filter(h=>!all.has(h));
   const coverage=unique.length?all.size/unique.length:1;
-  log(`Team-Tx Historie gesamt: ${all.size}/${unique.length} Tx verfügbar (${(coverage*100).toFixed(2)}%).` ,
+  log(`Team-Tx Historie gesamt: ${all.size}/${unique.length} Tx verfügbar (${(coverage*100).toFixed(2)}%).`,
       missing.length?'warn':'ok');
 
   // A grossly incomplete graph must never be presented as complete.
@@ -10334,43 +10336,6 @@ async function teamHistoricalTransactionBatch(hashes){
   return unique.map(h=>all.get(h)||null);
 }
 
-function teamDecodeAddressArg(input,index=0){
-  const raw=String(input||'');
-  const start=10+index*64;
-  if(raw.length<start+64)return null;
-  const word=raw.slice(start,start+64);
-  if(!/^[0-9a-fA-F]{64}$/.test(word))return null;
-  const a=norm('0x'+word.slice(24));
-  return /^0x[0-9a-f]{40}$/.test(a)&&a!==ZERO?a:null;
-}
-function teamNodeIdCall(wallet){
-  return TEAM_NODE_ID_SELECTOR+norm(wallet).slice(2).padStart(64,'0');
-}
-async function teamLoadIdentityCacheFromDb(){
-  let userId=currentUserId||null;
-  if(!userId){
-    try{userId=(await sb.auth.getUser())?.data?.user?.id||null}catch{}
-  }
-  if(!userId)return 0;
-  const {data,error}=await sb.from('tln_wallet_identity_cache')
-    .select('wallet_address,node_id')
-    .eq('user_id',userId)
-    .eq('project_key','tln_vow')
-    .eq('chain_key','bsc');
-  if(error){
-    log(`Team-IDs: Supabase-Cache nicht lesbar: ${error.message}; nodeIdOf-Fallback bleibt aktiv.`,'warn');
-    return 0;
-  }
-  let n=0;
-  for(const row of data||[]){
-    const w=norm(row.wallet_address);
-    if(!/^0x[0-9a-f]{40}$/.test(w)||row.node_id==null)continue;
-    TEAM_IDENTITY_CACHE.set(w,{wallet:w,nodeId:String(row.node_id),source:'supabase'});
-    n++;
-  }
-  log(`Team-IDs: ${n} Wallet→TLN-ID Zuordnung(en) aus Supabase vorgeladen.`,'muted');
-  return n;
-}
 async function teamGetIdentity(wallet){
   wallet=norm(wallet);
   const cached=TEAM_IDENTITY_CACHE.get(wallet);
@@ -10555,15 +10520,17 @@ async function scanCompleteSmartNodeJoinGraph(){
     }
   }while(pageKey);
 
-  let eventGraph=null;
-  if(minBlock!=null&&maxBlock!=null){
-    log(`Team-Event-Diagnose Phase 1: SmartNodeActivated wird im belegten SmartNode-Historienbereich Block ${minBlock.toLocaleString('de-CH')}–${maxBlock.toLocaleString('de-CH')} gelesen; Rendering bleibt Tx-basiert.`,'muted');
-    eventGraph=await scanSmartNodeActivatedEventGraph(minBlock,maxBlock);
-  }else{
-    log('Team-Event-Diagnose Phase 1: kein belastbarer SmartNode-Blockbereich aus AssetTransfers ermittelbar; Event-Vergleich übersprungen.','warn');
-  }
+  // Phase-1 SmartNodeActivated-Eventvergleich am 05.09.2026 verworfen:
+  // PublicNode benötigte bereits 256 eth_getLogs-Requests / 129 Splits und lieferte dabei
+  // 0 verwertbare Logs. Der Diagnosecode bleibt zu Referenzzwecken im File erhalten,
+  // wird im normalen Schritt 6 aber bewusst NICHT mehr ausgeführt.
+  // let eventGraph=null;
+  // if(minBlock!=null&&maxBlock!=null){
+  //   log(`Team-Event-Diagnose Phase 1: SmartNodeActivated wird im belegten SmartNode-Historienbereich Block ${minBlock.toLocaleString('de-CH')}–${maxBlock.toLocaleString('de-CH')} gelesen; Rendering bleibt Tx-basiert.`,'muted');
+  //   eventGraph=await scanSmartNodeActivatedEventGraph(minBlock,maxBlock);
+  // }
 
-  // Bestehender vollständiger Tx-Pfad bleibt in Phase 1 unverändert die Referenz und Rendering-Basis.
+  // Vollständiger Tx-Pfad bleibt Referenz und Rendering-Basis.
   const orderedHashes=[...hashes];
   const txRows=await teamHistoricalTransactionBatch(orderedHashes);
   const decoded=[];
