@@ -50,10 +50,23 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 
 
-.team-tree{margin-top:12px;overflow:auto;padding:8px 4px 18px}
-.team-tree-level{display:flex;gap:14px;align-items:flex-start;min-width:max-content;margin:8px 0}
-.team-tree-level-label{position:sticky;left:0;z-index:2;min-width:70px;padding:7px 8px;border-radius:8px;background:#111722;border:1px solid #334155;font-weight:700}
-.team-tree-nodes{display:flex;gap:12px;flex-wrap:nowrap}
+.team-tree{margin-top:12px;overflow:auto;padding:8px 4px 24px}
+.team-hierarchy,.team-hierarchy ul{list-style:none;margin:0;padding:0;position:relative;display:flex;justify-content:center;align-items:flex-start;min-width:max-content}
+.team-hierarchy>li{padding-top:0}
+.team-hierarchy li{position:relative;text-align:center;padding:28px 8px 0}
+.team-hierarchy li>.team-node{display:inline-block;text-align:left;vertical-align:top}
+.team-hierarchy li:before,.team-hierarchy li:after{content:"";position:absolute;top:0;right:50%;width:50%;height:28px;border-top:1px solid #475569}
+.team-hierarchy li:after{right:auto;left:50%;border-left:1px solid #475569}
+.team-hierarchy li:only-child:before,.team-hierarchy li:only-child:after{display:none}
+.team-hierarchy li:only-child{padding-top:28px}
+.team-hierarchy>li:before,.team-hierarchy>li:after{display:none}
+.team-hierarchy>li{padding-top:0}
+.team-hierarchy li:first-child:before,.team-hierarchy li:last-child:after{border:0}
+.team-hierarchy li:last-child:before{border-right:1px solid #475569;border-radius:0 6px 0 0}
+.team-hierarchy li:first-child:after{border-radius:6px 0 0 0}
+.team-branch-children{margin-top:0}
+.team-branch-children:before{content:"";position:absolute;top:0;left:50%;height:28px;border-left:1px solid #475569}
+.team-depth-badge{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:999px;border:1px solid #475569;font-size:10px;color:#94a3b8}
 .team-node{width:270px;min-width:270px;border:1px solid #334155;border-radius:10px;background:#111722;padding:10px;box-shadow:0 2px 8px rgba(0,0,0,.16)}
 .team-node.root{border-color:#64748b}
 .team-node.own-wallet{border-color:#eab308;box-shadow:0 0 0 1px rgba(234,179,8,.28),0 2px 8px rgba(0,0,0,.16)}
@@ -66,8 +79,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .team-line-summary{margin:10px 0 4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 04.09.2026 21:09:51 CEST</div>
-<p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 04.09.2026 21:54:57 CEST</div>
+<p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -84,7 +97,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 </div>
 <div style="margin-top:12px;padding:10px 12px;border:1px solid #334155;border-radius:9px;background:#111722">
   <b>Stichtagsbewertung offene Stakings</b>
-  <div class="muted" style="margin:5px 0 8px">Step 6 bewertet zusätzlich den tatsächlich am 31.12. gebundenen Staking-Bestand. Aufstockungen gehören zur ursprünglichen Position und übernehmen deren gemeinsames Vertragsende; nach diesem Ende gilt kein Teil der Position mehr als offenes Staking.</div>
+  <div class="muted" style="margin:5px 0 8px">Step 7 bewertet zusätzlich den tatsächlich am 31.12. gebundenen Staking-Bestand. Aufstockungen gehören zur ursprünglichen Position und übernehmen deren gemeinsames Vertragsende; nach diesem Ende gilt kein Teil der Position mehr als offenes Staking.</div>
   <label>Stichtagsjahr<br><select id="snapshotYear" style="min-width:180px;width:180px">
     <option value="2023">2023</option>
     <option value="2024">2024</option>
@@ -98,7 +111,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
   <div class="process-step locked" id="stepBox3"><button id="stepDuration" disabled>3 · Lockdauer ermitteln</button><span class="step-state" id="stepState3">wartet auf Stakings</span></div>
   <div class="process-step locked" id="stepBox4"><button id="stepRewards" disabled>4 · Staking-Rewards</button><span class="step-state" id="stepState4">wartet auf Stakings</span></div>
   <div class="process-step locked" id="stepBox5"><button id="stepReferral" disabled>5 · Referral-Rewards</button><span class="step-state" id="stepState5">wartet auf Staking-Rewards</span></div>
-  <div class="process-step locked" id="stepBox6"><button id="stepValuation" disabled>6 · Bewertung / Preise</button><span class="step-state" id="stepState6">wartet auf Lockdauer</span></div>
+  <div class="process-step locked" id="stepBox6"><button id="stepTeam" disabled>6 · Team-Baum ermitteln</button><span class="step-state" id="stepState6">bereit nach Initialisierung</span></div>
+  <div class="process-step locked" id="stepBox7"><button id="stepValuation" disabled>7 · Bewertung / Preise</button><span class="step-state" id="stepState7">wartet auf Lockdauer</span></div>
 </div>
 <div style="margin-top:12px"><span id="status"></span></div>
 <div class="summary">
@@ -138,7 +152,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 <div class="card"><h2>📅 Stichtagsbewertung per 31.12.</h2>
 <p class="muted">Testbereich für die spätere „Bestandesaufnahme per 31.12.“ in WalletTracking. Angezeigt wird der am gewählten Stichtag tatsächlich noch gebundene Staking-Bestand. Aufstockungen werden der bestehenden Position zugerechnet und gelten nur innerhalb deren gemeinsamer Laufzeit; nach dem gemeinsamen Vertragsende gilt kein Teil der Position mehr als offenes Staking.</p>
-<div id="snapshotValuation"><div class="muted">Wird in Schritt 6 berechnet.</div></div></div>
+<div id="snapshotValuation"><div class="muted">Wird in Schritt 7 berechnet.</div></div></div>
 
 <div class="card"><h2>✅ Abgeschlossene Stakings</h2>
 <p class="muted">Historische Stakings, die vollständig beendet / unstaked wurden. Ein echter Vertragsendwert wird nur gezeigt, wenn der Zeitpunkt aus dem SC belastbar ableitbar ist. Historische Unstake-Simulationen werden ausdrücklich als Simulation bezeichnet; der tatsächliche Unstake-Wert wird zusätzlich ausgewiesen.</p>
@@ -150,8 +164,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 <div class="card" id="teamTreeCard">
   <h2>🌳 TLN/VOW Team-/Referral-Baum</h2>
-  <p class="muted">Projektweite Sicht: Alle unter „MEINE Wallets“ gespeicherten TLN/VOW-Wallets werden als eigene Leader-TLN-IDs berücksichtigt und zugleich an ihrer normalen Position im Team angezeigt. Der Aufbau startet bei der tiefsten eigenen TLN-ID; anschließend wird die Vereinigungsmenge aller zu den eigenen Leadern gehörenden Team-Partner aus dem vollständigen SmartNode-Join-Graph dargestellt – unabhängig von Referral-Rewards oder aktuellem Staking. Staking-Zusatzinfos werden nur eingeblendet, wenn eine noch wirtschaftlich gebundene Position belastbar belegt ist; vollständig unstakte Positionen sollen nicht mehr erscheinen. Testtiefe: maximal <b>20 Linien</b>. In WalletTracking wird dieser Wert später als TLN/VOW-Projektparameter im Admin-Bereich konfigurierbar.</p>
-  <div id="teamTreeStatus" class="muted">Wird in Schritt 5 aus dem verifizierten Referral-Graph aufgebaut.</div>
+  <p class="muted">Projektweite Sicht auf Klick: Alle unter „MEINE Wallets“ gespeicherten TLN/VOW-Wallets gelten für die Erfassungsmenge als eigene Leader-TLN-IDs. Als eigener sichtbarer Baum wird aber nur ein eigenes Wallet dargestellt, das keinem anderen eigenen Wallet untergeordnet ist. Eigene Wallets innerhalb eines bereits eigenen Team-Baums bleiben normale Team-Mitglieder an ihrer echten Parent-Position und werden farbig markiert. Die Darstellung ist als vertikaler Organigramm-Baum aufgebaut: Leader oben, Linie 1 darunter, Linie 2 darunter usw. Die Verbindungslinien zeigen unmittelbar, welcher Partner zu welchem Parent gehört. Staking-Zusatzinfos werden nur eingeblendet, wenn eine noch wirtschaftlich gebundene Position belastbar belegt ist; vollständig unstakte Positionen sollen nicht mehr erscheinen. Testtiefe: maximal <b>20 Linien</b>. In WalletTracking wird dieser Wert später als TLN/VOW-Projektparameter im Admin-Bereich konfigurierbar.</p>
+  <div id="teamTreeStatus" class="muted">Wird ausschließlich bei Klick auf Schritt 6 ermittelt; nicht automatisch in Schritt 5.</div>
   <div id="teamTree" class="team-tree"><div class="muted">Noch keine Team-Daten.</div></div>
 </div>
 
@@ -168,7 +182,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-210951';
+const BUILD_ID='20260904-215457';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -9206,7 +9220,7 @@ const DISCOVERY_PROCESS={
 };
 function resetDiscoveryProcess(wallet=''){
   DISCOVERY_PROCESS.wallet=norm(wallet||'');DISCOVERY_PROCESS.transfers=[];DISCOVERY_PROCESS.counts=new Map();DISCOVERY_PROCESS.pairs=[];DISCOVERY_PROCESS.pairMap=new Map();DISCOVERY_PROCESS.rows=[];DISCOVERY_PROCESS.stakingRows=[];DISCOVERY_PROCESS.entryTargets=[];DISCOVERY_PROCESS.stakingContractCalls=[];DISCOVERY_PROCESS.contractCalls=[];DISCOVERY_PROCESS.contractEvents=[];DISCOVERY_PROCESS.lots=[];DISCOVERY_PROCESS.unmatched=[];DISCOVERY_PROCESS.pricePairs=[];
-  DISCOVERY_PROCESS.done={base:false,staking:false,duration:false,rewards:false,referral:false,valuation:false};
+  DISCOVERY_PROCESS.done={base:false,staking:false,duration:false,rewards:false,referral:false,team:false,valuation:false};
   CURRENT_ALL_TRANSFERS=[];CURRENT_STAKING_LOTS=[];CURRENT_UNASSIGNED_REWARDS=[];CURRENT_PROVEN_REWARD_ROWS=[];CURRENT_REWARD_FLOW_BY_HASH=new Map();CURRENT_CLAIM_REFERENCE_RESULT=null;CLAIM_REFERENCE_AMBIGUOUS_REWARD_CACHE.clear();
   updateProcessButtons();
 }
@@ -9220,8 +9234,10 @@ function updateProcessButtons(){
   if($('stepDuration'))$('stepDuration').disabled=!d.staking;
   if($('stepRewards'))$('stepRewards').disabled=!d.staking;
   if($('stepReferral'))$('stepReferral').disabled=!d.rewards;
+  // Team discovery is deliberately on-demand and independent from Steps 1–5.
+  if($('stepTeam'))$('stepTeam').disabled=!tlnWallets.length;
   if($('stepValuation'))$('stepValuation').disabled=!d.duration;
-  [[1,d.base],[2,d.staking],[3,d.duration],[4,d.rewards],[5,d.referral],[6,d.valuation]].forEach(([n,done])=>{
+  [[1,d.base],[2,d.staking],[3,d.duration],[4,d.rewards],[5,d.referral],[6,d.team],[7,d.valuation]].forEach(([n,done])=>{
     const box=$(`stepBox${n}`);if(!box)return;if(done){box.classList.remove('locked','running');box.classList.add('done')}else{
       const btn=box.querySelector('button');if(btn?.disabled)box.classList.add('locked');else box.classList.remove('locked');
     }
@@ -10103,7 +10119,7 @@ async function processDuration(){
     DISCOVERY_PROCESS.done.duration=true;DISCOVERY_PROCESS.done.valuation=false;
     renderProcessLotCards();
     setStepState(3,`${result.proven}/${DISCOVERY_PROCESS.lots.length} Strict · ${result.fullRuns} Voll · ${result.preflightRuns} Preflight · ${result.merged} Top-up`,'done');
-    setStepState(6,'bereit');
+    setStepState(7,'bereit');
     $('status').innerHTML='<span class="ok">Lockdauer-Schritt abgeschlossen. Legacy-Top-ups werden im Erstlauf vor zusätzlichen Vollanalysen per gezieltem Archive-State geprüft.</span>';
     const rpcBreakdown=STAKING_DURATION_REFERENCE_ENGINE.rpcStats?.()||null;
     if(rpcBreakdown){
@@ -10329,21 +10345,32 @@ function descendantsFromJoinEdges(root,edges,maxDepth=TLN_TEAM_MAX_LEVELS){
   }
   return {levels,seen,parentByChild};
 }
-function graphOwnAncestorDepth(wallet,ownSet,edges,maxDepth=TLN_TEAM_MAX_LEVELS){
+function graphOwnAncestorDepth(wallet,ownSet,edges){
+  // Root classification must inspect the full verified parent chain, not only 20 reward levels.
   let depth=0,cur=norm(wallet),seen=new Set([cur]);
-  for(let i=0;i<maxDepth;i++){
+  for(let i=0;i<50000;i++){
     const p=norm(edges.get(cur)?.parent||'');
     if(!p||seen.has(p))break;
     seen.add(p);if(ownSet.has(p))depth++;cur=p;
   }
   return depth;
 }
+function hasOwnAncestor(wallet,ownSet,edges){
+  let cur=norm(wallet),seen=new Set([cur]);
+  for(let i=0;i<50000;i++){
+    const p=norm(edges.get(cur)?.parent||'');
+    if(!p||seen.has(p))return false;
+    if(ownSet.has(p))return true;
+    seen.add(p);cur=p;
+  }
+  return false;
+}
 function buildProjectTeamForest(edges){
   const ownMap=projectOwnWalletMap(),own=[...ownMap.keys()],ownSet=new Set(own);
   const ownDepths=new Map(own.map(w=>[w,graphOwnAncestorDepth(w,ownSet,edges)]));
   const orderedOwn=own.slice().sort((a,b)=>(ownDepths.get(b)||0)-(ownDepths.get(a)||0)||a.localeCompare(b));
 
-  // All own TLN IDs act as leaders. Process deepest own TLN ID first, then union descendants.
+  // Every own TLN-ID is a leader for entitlement/coverage. Each contributes max. 20 referral lines.
   const included=new Set(),leaderStats=[];
   for(const leader of orderedOwn){
     const sub=descendantsFromJoinEdges(leader,edges,TLN_TEAM_MAX_LEVELS);
@@ -10352,29 +10379,23 @@ function buildProjectTeamForest(edges){
     leaderStats.push({leader,depth:ownDepths.get(leader)||0,total:sub.seen.size,added});
   }
 
-  // Only topmost own wallets become visible component roots; deeper own wallets remain normal team nodes.
-  const roots=own.filter(w=>{
-    let cur=w,seen=new Set([cur]);
-    for(let i=0;i<TLN_TEAM_MAX_LEVELS;i++){
-      const p=norm(edges.get(cur)?.parent||'');
-      if(!p||seen.has(p))break;
-      if(ownSet.has(p))return false;
-      seen.add(p);cur=p;
-    }
-    return true;
-  }).sort();
+  // Only own wallets with NO other own wallet anywhere above them are visible roots.
+  const roots=own.filter(w=>!hasOwnAncestor(w,ownSet,edges)).sort();
 
-  const components=[];
-  for(const root of roots){
-    const sub=descendantsFromJoinEdges(root,edges,TLN_TEAM_MAX_LEVELS);
-    const levels=new Map();
-    for(const [d,arr] of sub.levels.entries()){
-      const keep=arr.filter(w=>included.has(w));
-      if(keep.length)levels.set(d,keep);
-    }
-    components.push({root,levels,seen:new Set([...sub.seen].filter(w=>included.has(w))),parentByChild:sub.parentByChild});
+  // Build the actual parent->child tree for the full included union. Do not flatten by line.
+  const children=new Map(),parentByChild=new Map();
+  for(const e of edges.values()){
+    if(!included.has(e.child)||!included.has(e.parent))continue;
+    if(!children.has(e.parent))children.set(e.parent,[]);
+    children.get(e.parent).push(e.child);
+    parentByChild.set(e.child,e.parent);
   }
-  return {ownMap,ownSet,ownDepths,orderedOwn,included,leaderStats,roots,components};
+  for(const a of children.values())a.sort();
+
+  // A nested own leader may extend coverage another 20 levels. Therefore rendering depth is
+  // not capped relative to the top root; only inclusion per own leader is capped to 20.
+  const components=roots.map(root=>({root,children,parentByChild}));
+  return {ownMap,ownSet,ownDepths,orderedOwn,included,leaderStats,roots,components,children,parentByChild};
 }
 
 function teamOwnOpenStakingHtml(wallet){
@@ -10414,11 +10435,22 @@ function teamNodeHtml(wallet,depth,parent){
     ${teamObservedStakeHtml(wallet)}
   </div>`;
 }
+function teamTreeBranchHtml(wallet,forest,depth=0,seen=new Set()){
+  wallet=norm(wallet);
+  if(seen.has(wallet))return '';
+  const nextSeen=new Set(seen);nextSeen.add(wallet);
+  const parent=forest.parentByChild.get(wallet)||null;
+  const kids=(forest.children.get(wallet)||[]).filter(w=>forest.included.has(w));
+  return `<li>
+    ${teamNodeHtml(wallet,depth,parent).replace('<div class="team-node-title">',`<div class="team-node-title"><span class="team-depth-badge">${depth===0?'Leader':`Linie ${depth}`}</span> `)}
+    ${kids.length?`<ul class="team-branch-children">${kids.map(k=>teamTreeBranchHtml(k,forest,depth+1,nextSeen)).join('')}</ul>`:''}
+  </li>`;
+}
 function renderTeamTree(){
   const box=$('teamTree'),status=$('teamTreeStatus');if(!box||!status)return;
   const forest=CURRENT_TEAM_PROJECT_FOREST;
   if(!forest||!forest.components?.length){
-    box.innerHTML='<div class="muted">Noch kein projektweiter TLN/VOW-Team-Graph aufgebaut.</div>';return;
+    box.innerHTML='<div class="muted">Noch kein projektweiter TLN/VOW-Team-Baum ermittelt.</div>';return;
   }
   const ownCount=forest.ownSet.size;
   const externalCount=[...forest.included].filter(w=>!forest.ownSet.has(w)).length;
@@ -10426,24 +10458,20 @@ function renderTeamTree(){
   for(const comp of forest.components){
     const rootIdent=TEAM_IDENTITY_CACHE.get(comp.root)||{};
     const rootLabel=teamAliasFor(comp.root,rootIdent)||`TLN-ID ${rootIdent.nodeId||'?'}`;
-    const lines=[];
-    for(const [depth,wallets] of comp.levels.entries()){
-      const nodes=wallets.map(w=>teamNodeHtml(w,depth,depth>0?comp.parentByChild.get(w):null)).join('');
-      lines.push(`<div class="team-tree-level"><div class="team-tree-level-label">${depth===0?'Leader':`Linie ${depth}`}<div class="small muted">${wallets.length}</div></div><div class="team-tree-nodes">${nodes}</div></div>`);
-    }
-    blocks.push(`<div style="margin:14px 0 6px"><b>Projekt-Ast ab ${esc(rootLabel)}</b></div>${lines.join('')}`);
+    blocks.push(`<div style="margin:16px 0 8px"><b>Eigener Team-Baum ab ${esc(rootLabel)}</b></div><ul class="team-hierarchy">${teamTreeBranchHtml(comp.root,forest,0)}</ul>`);
   }
   const orderText=forest.orderedOwn.map(w=>{
     const i=TEAM_IDENTITY_CACHE.get(w)||{},d=forest.ownDepths.get(w)||0;
-    return `${i.nodeId||short(w)}${d?` (eigene Tiefe ${d})`:''}`;
+    return `${i.nodeId||short(w)}${d?` (unter ${d} eigener TLN-ID)`:''}`;
   }).join(' → ');
-  status.innerHTML=`<div class="team-line-summary"><b>${externalCount}</b> externe Team-Partner + <b>${ownCount}</b> eigene TLN/VOW-Wallet(s) im projektweiten Team-Baum · <b>${forest.components.length}</b> Projekt-Ast/Äste · Anzeigegrenze <b>${TLN_TEAM_MAX_LEVELS}</b> Linien.</div>
-    <div class="muted">Eigene Wallets bleiben normale Team-Mitglieder und sind nur farbig markiert. Discovery-Reihenfolge (tiefste eigene TLN-ID zuerst): ${esc(orderText||'–')}.</div>`;
+  status.innerHTML=`<div class="team-line-summary"><b>${externalCount}</b> externe Team-Partner + <b>${ownCount}</b> eigene TLN/VOW-Wallet(s) · <b>${forest.components.length}</b> eigenständige(r) Baum/Bäume.</div>
+    <div class="muted">Nur eigene Wallets ohne anderes eigenes Wallet in ihrer Upline werden als Baum-Root dargestellt. Eigene Wallets innerhalb eines anderen eigenen Teams erscheinen ausschließlich an ihrer echten Position im Baum. Jede Verbindung Linie 2 → Linie 1 usw. folgt der verifizierten SmartNode-Parent-Beziehung. Eigene Leader erweitern die erfasste Downline jeweils um maximal ${TLN_TEAM_MAX_LEVELS} Referral-Linien. Discovery-Reihenfolge: ${esc(orderText||'–')}.</div>`;
   box.innerHTML=blocks.join('');
   box.querySelectorAll('.team-alias-input').forEach(inp=>inp.addEventListener('change',()=>{
     saveTeamAlias(inp.dataset.teamAliasKey,inp.value);renderTeamTree();
   }));
 }
+
 async function prepareTeamTree(){
   try{
     TEAM_IDENTITY_CACHE.clear();
@@ -10462,7 +10490,7 @@ async function prepareTeamTree(){
     const ownIds=forest.orderedOwn.map(w=>TEAM_IDENTITY_CACHE.get(w)?.nodeId||short(w));
     log(`Team-Discovery Projekt: ${forest.ownSet.size} eigene TLN/VOW-Wallet(s) als Leader · ${[...forest.included].filter(w=>!forest.ownSet.has(w)).length} externe Team-Partner in der Vereinigungsmenge.`,'ok');
     log(`Team-Discovery Reihenfolge: tiefste eigene TLN-ID zuerst → ${ownIds.join(' → ')||'–'}.`,'ok');
-    log(`Team-Discovery projektweit vollständig: ${forest.components.length} Projekt-Ast/Äste · max. ${TLN_TEAM_MAX_LEVELS} Linien je eigener Leader-TLN-ID.`,'ok');
+    log(`Team-Discovery projektweit vollständig: ${forest.components.length} eigenständige Baum-Root(s) · max. ${TLN_TEAM_MAX_LEVELS} Linien je eigener Leader-TLN-ID für die Erfassungsmenge.`,'ok');
   }catch(e){
     CURRENT_TEAM_PROJECT_FOREST=null;
     log(`Projektweite Team-Discovery fehlgeschlagen: ${e.message}`,'warn');
@@ -10471,10 +10499,31 @@ async function prepareTeamTree(){
 }
 
 async function processReferralRewards(){
-  const b=$('stepReferral');b.disabled=true;setStepState(5,'läuft …','running');$('status').textContent='Schritt 5/6: Claim-/Referral-Referenzengine …';
-  try{if(!DISCOVERY_PROCESS.done.rewards)throw new Error('Zuerst Schritt 4 ausführen.');CURRENT_CLAIM_REFERENCE_RESULT=null;CLAIM_REFERENCE_RUN_CACHE.clear();try{CLAIM_TRACE_REFERENCE_ENGINE.clearHeadlessCaches()}catch{}primeClaimReferenceFromDiscoveryCaches();const step5Started=performance.now();const ref=await runClaimReferenceForCurrentWallet();if(ref?.walletIdentity){for(const lot of DISCOVERY_PROCESS.lots){lot.tlnIdentity=ref.walletIdentity;lot.tlnId=ref.walletIdentity.nodeId||null}}renderReferralRewards(DISCOVERY_PROCESS.lots);renderBonusRewards(DISCOVERY_PROCESS.lots);renderUnassignedClaims(DISCOVERY_PROCESS.lots);await prepareTeamTree();renderProcessLotCards();DISCOVERY_PROCESS.done.referral=true;setStepState(5,`${ref?.strong?.length||0} starke Referral-Tx`,'done');$('status').innerHTML='<span class="ok">Referral-Analyse abgeschlossen.</span>';log(`Schritt 5 abgeschlossen: ${ref?.strong?.length||0} starke Referral-Tx · ${Math.round(performance.now()-step5Started)} ms.`,'ok')}
+  const b=$('stepReferral');b.disabled=true;setStepState(5,'läuft …','running');$('status').textContent='Schritt 5/7: Claim-/Referral-Referenzengine …';
+  try{if(!DISCOVERY_PROCESS.done.rewards)throw new Error('Zuerst Schritt 4 ausführen.');CURRENT_CLAIM_REFERENCE_RESULT=null;CLAIM_REFERENCE_RUN_CACHE.clear();try{CLAIM_TRACE_REFERENCE_ENGINE.clearHeadlessCaches()}catch{}primeClaimReferenceFromDiscoveryCaches();const step5Started=performance.now();const ref=await runClaimReferenceForCurrentWallet();if(ref?.walletIdentity){for(const lot of DISCOVERY_PROCESS.lots){lot.tlnIdentity=ref.walletIdentity;lot.tlnId=ref.walletIdentity.nodeId||null}}renderReferralRewards(DISCOVERY_PROCESS.lots);renderBonusRewards(DISCOVERY_PROCESS.lots);renderUnassignedClaims(DISCOVERY_PROCESS.lots);renderProcessLotCards();DISCOVERY_PROCESS.done.referral=true;setStepState(5,`${ref?.strong?.length||0} starke Referral-Tx`,'done');$('status').innerHTML='<span class="ok">Referral-Analyse abgeschlossen.</span>';log(`Schritt 5 abgeschlossen: ${ref?.strong?.length||0} starke Referral-Tx · ${Math.round(performance.now()-step5Started)} ms.`,'ok')}
   catch(e){setStepState(5,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
+async function processTeamTree(){
+  const b=$('stepTeam');if(!b)return;
+  b.disabled=true;setStepState(6,'läuft …','running');
+  $('status').textContent='Schritt 6/7: vollständigen TLN/VOW-Team-Baum on-demand ermitteln …';
+  const started=performance.now();
+  try{
+    await prepareTeamTree();
+    if(!CURRENT_TEAM_PROJECT_FOREST)throw new Error('Team-Baum konnte nicht aufgebaut werden.');
+    DISCOVERY_PROCESS.done.team=true;
+    const roots=CURRENT_TEAM_PROJECT_FOREST.roots||[];
+    setStepState(6,`${roots.length} Baum-Root(s)`,'done');
+    $('status').innerHTML='<span class="ok">Team-Baum abgeschlossen.</span>';
+    log(`Schritt 6 abgeschlossen: ${roots.length} eigenständige Team-Baum-Root(s) · ${Math.round(performance.now()-started)} ms.`,'ok');
+  }catch(e){
+    DISCOVERY_PROCESS.done.team=false;
+    setStepState(6,'Fehler','');
+    $('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;
+    log(e.stack||e.message,'err');
+  }finally{updateProcessButtons();b.disabled=false}
+}
+
 function snapshotYearFromUi(){
   const current=new Date().getFullYear()-1;
   const n=Number($('snapshotYear')?.value||current);
@@ -10528,7 +10577,7 @@ function snapshotUnderlyingText(lot,val){
 function renderSnapshotValuation(){
   const box=$('snapshotValuation');if(!box)return;
   const snap=DISCOVERY_PROCESS.snapshotValuation;
-  if(!snap){box.innerHTML='<div class="muted">Wird in Schritt 6 berechnet.</div>';return}
+  if(!snap){box.innerHTML='<div class="muted">Wird in Schritt 7 berechnet.</div>';return}
   const rows=snap.rows||[],open=rows.filter(r=>r.amount>1e-12),valued=open.filter(r=>r.usd!=null);
   const total=valued.reduce((sum,r)=>sum+Number(r.usd||0),0),missing=open.length-valued.length;
   const summary=`<div class="summary"><div class="metric">Stichtag<b>31.12.${esc(snap.year)}</b></div><div class="metric">Offene Positionen<b>${open.length}</b></div><div class="metric">Bewertet<b>${valued.length}/${open.length}</b></div><div class="metric">USD-Summe bewertet<b>${formatUsd(total)}</b></div></div>${missing?`<div class="warn" style="margin-top:8px">${missing} offene Position(en) konnten historisch nicht als V2-LP in USD bewertet werden und sind nicht in der USD-Summe enthalten.</div>`:''}`;
@@ -10538,9 +10587,9 @@ function renderSnapshotValuation(){
 
 let STEP6_RUN_INFLIGHT=false;
 async function processValuation(){
-  if(STEP6_RUN_INFLIGHT){log('Schritt 6: paralleler Zweitstart ignoriert – Bewertung läuft bereits.','warn');return}
+  if(STEP6_RUN_INFLIGHT){log('Schritt 7: paralleler Zweitstart ignoriert – Bewertung läuft bereits.','warn');return}
   STEP6_RUN_INFLIGHT=true;
-  const b=$('stepValuation');b.disabled=true;setStepState(6,'läuft …','running');$('status').textContent='Schritt 6/6: historische Bewertung / Preisgraph …';
+  const b=$('stepValuation');b.disabled=true;setStepState(7,'läuft …','running');$('status').textContent='Schritt 7/7: historische Bewertung / Preisgraph …';
   resetStep6Diag();
   const cacheBefore={pair:PAIR_STATE_CACHE.size,business:BUSINESS_PROBE_CACHE.size,tx:TX_RPC_SESSION_CACHE.size,eth:ETH_CALL_SESSION_CACHE.size,timestamp:TIMESTAMP_BLOCK_CACHE.size,token:TOKEN_META_CACHE.size,lpFacts:LP_FACTS_CACHE_STATE.entries.size};
   try{
@@ -10642,7 +10691,7 @@ async function processValuation(){
     const snapshotOpen=snapshotRows.filter(x=>x.amount>1e-12),snapshotValued=snapshotOpen.filter(x=>x.usd!=null);
     log(`31.12.${snapshotYear} Stichtagsbewertung: ${snapshotOpen.length} offene Position(en) · ${snapshotValued.length} historisch in USD bewertet · Block ${DISCOVERY_PROCESS.snapshotBlockHex?Number(BigInt(DISCOVERY_PROCESS.snapshotBlockHex)).toLocaleString('de-CH'):'–'}.`,'ok');
 
-    DISCOVERY_PROCESS.done.valuation=true;renderProcessLotCards();setStepState(6,'Bewertung + 31.12. abgeschlossen','done');$('status').innerHTML='<span class="ok">Historische Bewertung inkl. 31.12.-Stichtagsbestand abgeschlossen.</span>';
+    DISCOVERY_PROCESS.done.valuation=true;renderProcessLotCards();setStepState(7,'Bewertung + 31.12. abgeschlossen','done');$('status').innerHTML='<span class="ok">Historische Bewertung inkl. 31.12.-Stichtagsbestand abgeschlossen.</span>';
     const diag=finishStep6Diag();
     const cacheAfter={pair:PAIR_STATE_CACHE.size,business:BUSINESS_PROBE_CACHE.size,tx:TX_RPC_SESSION_CACHE.size,eth:ETH_CALL_SESSION_CACHE.size,timestamp:TIMESTAMP_BLOCK_CACHE.size,token:TOKEN_META_CACHE.size,lpFacts:LP_FACTS_CACHE_STATE.entries.size};
     const phaseText=Object.entries(diag?.phaseMs||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}=${v}ms`).join(' · ');
@@ -10651,8 +10700,8 @@ async function processValuation(){
     log(`Schritt-6 Phasen: ${phaseText||'keine'}.`,'ok');
     log(`Schritt-6 RPC-Typen: ${methodText||'keine'}.`,'ok');
     log(`Schritt-6 Cache-Größen vorher→nachher: Pair ${cacheBefore.pair}→${cacheAfter.pair} · Business ${cacheBefore.business}→${cacheAfter.business} · Tx/Receipt ${cacheBefore.tx}→${cacheAfter.tx} · eth_call ${cacheBefore.eth}→${cacheAfter.eth} · Timestamp→Block ${cacheBefore.timestamp}→${cacheAfter.timestamp} · TokenMeta ${cacheBefore.token}→${cacheAfter.token} · LP-Fakten ${cacheBefore.lpFacts}→${cacheAfter.lpFacts}.`,'ok');
-    log('Schritt 6 abgeschlossen · Performance-Diagnose aktiv · 31.12.-Stichtagsbewertung ergänzt; Reward-Kurse unverändert nicht bewertet.','ok');
-  }catch(e){finishStep6Diag();setStepState(6,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{STEP6_RUN_INFLIGHT=false;updateProcessButtons();b.disabled=false}
+    log('Schritt 7 abgeschlossen · Performance-Diagnose aktiv · 31.12.-Stichtagsbewertung ergänzt; Reward-Kurse unverändert nicht bewertet.','ok');
+  }catch(e){finishStep6Diag();setStepState(7,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{STEP6_RUN_INFLIGHT=false;updateProcessButtons();b.disabled=false}
 }
 
 function populateTlnWalletDropdown(){
@@ -10766,12 +10815,13 @@ tlnWallets=(wq.data||[])
   .sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'de'));
 populateTlnWalletDropdown();
 bindWalletDropdown();
-$('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;resetDiscoveryProcess($('wallet').value);setStepState(1,'bereit');updateProcessButtons();log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok')}
+$('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;resetDiscoveryProcess($('wallet').value);setStepState(1,'bereit');setStepState(6,'bereit');updateProcessButtons();log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok')}
 $('refresh').onclick=processBaseData;
 $('stepStaking').onclick=processStakingDiscovery;
 $('stepDuration').onclick=processDuration;
 $('stepRewards').onclick=processStakingRewards;
 $('stepReferral').onclick=processReferralRewards;
+$('stepTeam').onclick=processTeamTree;
 $('stepValuation').onclick=processValuation;
 $('clearWalletSupabaseCache').onclick=clearSelectedWalletSupabaseCache;
 $('exportDiagnosisLog').onclick=exportDiagnosisLogTxt;
