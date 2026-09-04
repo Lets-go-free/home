@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 16:52:39 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 16:58:19 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-165239';
+const BUILD_ID='20260904-165819';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -395,11 +395,15 @@ async function lpPairMeta(pairAddress){
   return result;
 }
 async function prefetchReferralLpMeta(rows,parallel=8){
-  const tokens=[...new Set((rows||[]).flatMap(r=>[
-    ...(r?.senderTransfers||[]).map(x=>norm(x?.token||'')),
-    norm(r?.staking?.pair_address||'')
-  ]).filter(a=>/^0x[0-9a-f]{40}$/.test(a)&&!lpPairMetaCache.has(a)))];
-  if(!tokens.length)return {requested:0,parallel:0};
+  const sourceByToken=new Map();
+  for(const r of rows||[]){
+    for(const x of r?.senderTransfers||[]){
+      const a=norm(x?.token||'');if(/^0x[0-9a-f]{40}$/.test(a)&&!sourceByToken.has(a))sourceByToken.set(a,'senderTransfer');
+    }
+    const a=norm(r?.staking?.pair_address||'');if(/^0x[0-9a-f]{40}$/.test(a)&&!sourceByToken.has(a))sourceByToken.set(a,'stakingRegistry');
+  }
+  const tokens=[...sourceByToken.keys()].filter(a=>!lpPairMetaCache.has(a));
+  if(!tokens.length)return {requested:0,parallel:0,candidates:[],negative:[]};
   const concurrency=Math.min(Math.max(1,Number(parallel)||1),tokens.length);
   let cursor=0;
   async function worker(){
@@ -409,7 +413,8 @@ async function prefetchReferralLpMeta(rows,parallel=8){
     }
   }
   await Promise.all(Array.from({length:concurrency},worker));
-  return {requested:tokens.length,parallel:concurrency};
+  const candidates=tokens.map(address=>({address,source:sourceByToken.get(address)||'unknown',isPair:!!lpPairMetaCache.get(address)}));
+  return {requested:tokens.length,parallel:concurrency,candidates,negative:candidates.filter(x=>!x.isPair)};
 }
 async function referralLpPairForRow(r){
   // Transfer-Evidenz ist die stärkste Quelle: der tatsächlich vom Staker übertragene Token.
@@ -1032,8 +1037,14 @@ function primeHeadlessCaches({receipts=[],txs=[],blocks=[],tokens=[],pairs=[]}={
   }
   for(const x of pairs||[]){
     const pair=norm(x?.pair||x?.address||'');
+    if(!/^0x[0-9a-f]{40}$/.test(pair))continue;
+    if(x?.status==='not_v2_pair'){
+      const age=Date.now()-Date.parse(x?.verifiedAt||0);
+      if(Number.isFinite(age)&&age>=0&&age<30*86400000){lpPairMetaCache.set(pair,null);pc++;}
+      continue;
+    }
     const token0=norm(x?.token0?.address||x?.token0||''),token1=norm(x?.token1?.address||x?.token1||'');
-    if(!/^0x[0-9a-f]{40}$/.test(pair)||!/^0x[0-9a-f]{40}$/.test(token0)||!/^0x[0-9a-f]{40}$/.test(token1))continue;
+    if(!/^0x[0-9a-f]{40}$/.test(token0)||!/^0x[0-9a-f]{40}$/.test(token1))continue;
     const symbol0=x?.token0?.symbol||x?.symbol0||'Token0',symbol1=x?.token1?.symbol||x?.symbol1||'Token1';
     lpPairMetaCache.set(pair,{pair,token0,token1,symbol0,symbol1,label:`${symbol0} / ${symbol1}`});
     const lpDec=Number(x?.lpDecimals);if(Number.isFinite(lpDec))tokenMetaCache.set(pair,{symbol:x?.lpSymbol||'LP',decimals:lpDec});
@@ -4133,6 +4144,12 @@ const TECH_CACHE_KEYS=Object.freeze({
 const TECH_CACHE_GLOBAL_SCOPE='0x0000000000000000000000000000000000000000';
 
 const LP_FACTS_CACHE_STATE={loaded:false,dirty:false,entries:new Map()};
+const NEGATIVE_LP_FACT_TTL_MS=30*86400000;
+function freshNegativeLpFact(row){
+  if(row?.status!=='not_v2_pair')return false;
+  const age=Date.now()-Date.parse(row?.verifiedAt||0);
+  return Number.isFinite(age)&&age>=0&&age<NEGATIVE_LP_FACT_TTL_MS;
+}
 const TX_FACTS_CACHE_STATE={wallet:'',loaded:false,dirty:false,entries:new Map()};
 const REWARD_REL_CACHE_STATE={loaded:false,dirty:false,entries:new Map()};
 
@@ -5610,6 +5627,7 @@ async function inspectCandidate(address,projectSet){
  try{
   await ensureLpFactsCache();
   const cached=LP_FACTS_CACHE_STATE.entries.get(a)||null;
+  if(freshNegativeLpFact(cached))return null;
   if(cached?.token0?.address&&cached?.token1?.address){
     const a0=norm(cached.token0.address),a1=norm(cached.token1.address);
     const hits=[a0,a1].filter(x=>projectSet.has(x));
@@ -5782,6 +5800,7 @@ async function inspectAnyPair(address){
   try{
     await ensureLpFactsCache();
     const cached=LP_FACTS_CACHE_STATE.entries.get(a)||null;
+    if(freshNegativeLpFact(cached))return null;
     if(cached?.token0?.address&&cached?.token1?.address)return {address:a,token0:cached.token0,token1:cached.token1,factory:norm(cached.factory),lpDecimals:Number(cached.lpDecimals??18),lpSymbol:cached.lpSymbol||'LP',hits:[],_lpFactsCacheHit:true};
     const [t0,t1,factory,lpDec]=await Promise.all([
       v2call(a,'token0'),v2call(a,'token1'),v2call(a,'factory'),v2call(a,'decimals')
@@ -8752,6 +8771,13 @@ async function runClaimReferenceForCurrentWallet(){
       const result=await CLAIM_TRACE_REFERENCE_ENGINE.scanWalletHeadless(wallet,0n);
       CURRENT_CLAIM_REFERENCE_RESULT=result;
       let persistedReferralFacts=0;
+      let persistedNegativeLpFacts=0;
+      for(const x of result?.lpMetaPrefetch?.negative||[]){
+        const a=norm(x?.address||'');if(!/^0x[0-9a-f]{40}$/.test(a))continue;
+        LP_FACTS_CACHE_STATE.entries.set(a,{address:a,status:'not_v2_pair',source:'referral_token0_token1_probe',candidateSource:x?.source||'unknown',verifiedAt:new Date().toISOString()});
+        LP_FACTS_CACHE_STATE.dirty=true;persistedNegativeLpFacts++;
+      }
+      if(persistedNegativeLpFacts){await flushLpFactsCache();log(`Referral LP-Negativcache: ${persistedNegativeLpFacts} Contract(s) als aktuell nicht lesbares V2-Pair gespeichert (30 Tage Revalidierung).`,'ok')}
       const fetchedHashes=result?.mintReceiptPrefetch?.hashes||[];
       if(fetchedHashes.length){
         const fetchedReceipts=CLAIM_TRACE_REFERENCE_ENGINE.headlessReferralReceipts?.(fetchedHashes)||[];
@@ -8769,7 +8795,10 @@ async function runClaimReferenceForCurrentWallet(){
       const id=result?.walletIdentity?.nodeId||null;
       log(`Claim/Referral-Referenzengine: ${result?.hashes?.length||0} Mint-Tx · ${result?.strong?.length||0} starke Referral-Tx · TLN-ID Wallet ${id||'unresolved'} · ${result?.rpcStats?.total||0} gezählte RPC-Calls.`,'ok');
       if(result?.mintReceiptPrefetch)log(`Referral Receipt-Prefetch: ${result.mintReceiptPrefetch.loaded||0}/${result.mintReceiptPrefetch.requested||0} fehlende Receipt(s) vorgeladen · Parallelität ${result.mintReceiptPrefetch.parallel||0}.`,'muted');
-      if(result?.lpMetaPrefetch)log(`Referral LP-Metadaten-Prefetch: ${result.lpMetaPrefetch.requested||0} unbekannte Token/Pair-Kandidat(en) gebündelt · Parallelität ${result.lpMetaPrefetch.parallel||0}.`,'muted');
+      if(result?.lpMetaPrefetch){
+        log(`Referral LP-Metadaten-Prefetch: ${result.lpMetaPrefetch.requested||0} unbekannte Token/Pair-Kandidat(en) gebündelt · Parallelität ${result.lpMetaPrefetch.parallel||0}.`,'muted');
+        for(const x of result.lpMetaPrefetch.candidates||[])log(`Referral LP-Kandidat: ${x.address} · Quelle ${x.source||'unknown'} · ${x.isPair?'V2-Pair bestätigt':'kein lesbares V2-Pair'}.`,x.isPair?'ok':'muted');
+      }
       if(result?.rpcStats?.detail)log(`Referral-RPC-Methoden: ${result.rpcStats.detail}.`,'muted');
       if(result?.rpcStats?.phaseDetail)log(`Referral-RPC-Phasen: ${result.rpcStats.phaseDetail}.`,'muted');
       if(result?.rpcStats?.phaseMethodDetail)log(`Referral-RPC Phase/Methoden: ${result.rpcStats.phaseMethodDetail}.`,'muted');
