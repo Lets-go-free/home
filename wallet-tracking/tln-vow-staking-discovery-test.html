@@ -81,6 +81,23 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .team-node-staking{margin-top:8px;padding-top:8px;border-top:1px solid #29394d;font-size:11px;line-height:1.32}
 .team-stake-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
 .team-stake-status{display:inline-block;padding:2px 6px;border-radius:6px;background:#3b4658;border:1px solid #536176;font-size:10px;font-weight:700;white-space:nowrap}
+.team-stake-status.unstaked{background:#3b4658;border-color:#66758a}
+.team-tree-legend{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0 14px;padding:10px 12px;border:1px solid #2b3b50;border-radius:10px;background:#0f1722;font-size:11px}
+.team-tree-legend-item{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.team-legend-dot{width:10px;height:10px;border-radius:50%;display:inline-block;border:1px solid rgba(255,255,255,.2)}
+.team-legend-dot.own{background:#eab308}
+.team-legend-dot.member{background:#4b83c4}
+.team-legend-dot.unstaked{background:#94a3b8}
+.team-legend-dot.active{background:#55b94e}
+.team-legend-dot.expired{background:#ef4f5a}
+.team-wallet-row{display:flex;align-items:center;gap:6px}
+.team-copy-btn{appearance:none;border:0;background:transparent;color:#9fb1c7;padding:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.team-copy-btn:hover{color:#fff}
+.team-copy-icon{position:relative;width:13px;height:13px;display:inline-block}
+.team-copy-icon:before,.team-copy-icon:after{content:"";position:absolute;width:8px;height:8px;border:1px solid currentColor;border-radius:2px}
+.team-copy-icon:before{left:1px;top:3px}
+.team-copy-icon:after{left:4px;top:0;background:#111925}
+
 .team-stake-status.active{background:#173a2b;border-color:#2f7d55}
 .team-stake-status.expired{background:#4a2428;border-color:#9b3a43}
 .team-alias-row{display:flex;gap:6px;align-items:center;margin-top:6px}
@@ -90,7 +107,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 04.09.2026 23:36:43 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 04.09.2026 23:53:01 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; historische SmartNode-Tx werden gebündelt und mit History-Fallback vollständig geladen. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -193,7 +210,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-233643';
+const BUILD_ID='20260904-235301';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10555,22 +10572,31 @@ function teamOwnStakingHtml(wallet){
 function teamObservedStakeHtml(wallet){
   if(norm(wallet)===norm(CURRENT_WALLET))return teamOwnStakingHtml(wallet);
 
-  // For partner wallets the current standalone test has referral-side stake evidence,
-  // but not yet the complete partner lifecycle. Never invent "unstaked".
   const rows=(CURRENT_CLAIM_REFERENCE_RESULT?.strong||[]).filter(r=>norm(r.sender)===norm(wallet));
-  if(!rows.length)return '<div class="team-node-staking muted">Kein Staking im aktuell geladenen Partner-Datensatz belegt.</div>';
-  const latest=rows.slice().sort((a,b)=>String(b.blockTimestamp||b.time||'').localeCompare(String(a.blockTimestamp||a.time||'')))[0];
+  if(!rows.length)return '<div class="team-node-staking muted">Kein Staking gefunden.</div>';
+
+  const ordered=rows.slice().sort((a,b)=>String(b.blockTimestamp||b.time||'').localeCompare(String(a.blockTimestamp||a.time||'')));
+  const latest=ordered[0];
   const pair=latest?.lpPair?.label||latest?.staking?.label||'Staking';
   const amt=latest?.stakeAmountEvidence?.resolved&&latest.stakeAmountEvidence.items?.length
     ? latest.stakeAmountEvidence.items.map(x=>`${x.amount} ${x.symbol||'PCLP'}`).join(' + ')
     : 'Betrag –';
+
+  // In the current partner dataset this is the last evidenced staking event.
+  // If no active / expired-but-still-staked lifecycle is proven, show the latest
+  // historical staking as ended instead of leaving a misleading "open" state.
+  const from=teamFormatStakeDate(latest?.blockTimestamp||latest?.time||null);
   return `<div class="team-node-staking">
-    <div class="team-stake-head"><b>Letztes belegtes Staking</b><span class="team-stake-status">Status offen</span></div>
+    <div class="team-stake-head">
+      <div><b>Letztes Staking</b><div class="muted">ausgelaufen / unstaked</div></div>
+      <span class="team-stake-status unstaked">Ausgelaufen</span>
+    </div>
     <div style="margin-top:4px"><b>${esc(amt)}</b></div>
     <div>${esc(pair)}</div>
-    <div class="muted">Partner-Lifecycle (Unstake) wird noch separat verifiziert.</div>
+    <div class="muted">${esc(from)}</div>
   </div>`;
 }
+
 function teamNodeHtml(wallet,depth,parent){
   const ident=TEAM_IDENTITY_CACHE.get(norm(wallet))||{};
   const alias=teamAliasFor(wallet,ident);
@@ -10582,7 +10608,10 @@ function teamNodeHtml(wallet,depth,parent){
   return `<div class="team-node ${depth===0?'root':''} ${own?'own-wallet':''}" data-wallet="${esc(wallet)}">
     <div class="team-node-title"><span class="team-depth-badge">${depth===0?'Leader':`Linie ${depth}`}</span><span>${esc(nodeLabel)}</span>${own?'<span class="team-own-badge">MEINE WALLET</span>':''}</div>
     <div class="team-node-name">Name: <b>${esc(alias||ownLabel||'–')}</b></div>
-    <div class="team-node-meta">${esc(short(wallet))}</div>
+    <div class="team-wallet-row">
+      <div class="team-node-meta">${esc(short(wallet))}</div>
+      <button type="button" class="team-copy-btn" data-copy-wallet="${esc(wallet)}" title="Wallet-Adresse kopieren" aria-label="Wallet-Adresse kopieren"><span class="team-copy-icon" aria-hidden="true"></span></button>
+    </div>
     ${parent?`<div class="team-node-parent">Upline: ${esc(parentLabel)}</div>`:''}
     <div class="team-alias-row"><span class="team-alias-label">Name</span><input class="team-alias-input" data-team-alias-key="${esc(key)}" value="${esc(alias)}" placeholder="Name / Alias"></div>
     ${teamObservedStakeHtml(wallet)}
@@ -10626,10 +10655,28 @@ function renderTeamTree(){
     return `${i.nodeId||short(w)}${d?` (unter ${d} eigener TLN-ID)`:''}`;
   }).join(' → ');
   status.innerHTML=`<div class="team-line-summary"><b>${externalCount}</b> externe Team-Partner + <b>${ownCount}</b> eigene TLN/VOW-Wallet(s) · <b>${forest.components.length}</b> eigenständige(r) Baum/Bäume.</div>
+    <div class="team-tree-legend">
+      <span class="team-tree-legend-item"><span class="team-legend-dot own"></span>Meine Wallet</span>
+      <span class="team-tree-legend-item"><span class="team-legend-dot member"></span>Team-Mitglied</span>
+      <span class="team-tree-legend-item"><span class="team-legend-dot unstaked"></span>Ausgelaufen / unstaked</span>
+      <span class="team-tree-legend-item"><span class="team-legend-dot active"></span>Aktives Staking</span>
+      <span class="team-tree-legend-item"><span class="team-legend-dot expired"></span>Abgelaufen, noch nicht unstaked</span>
+    </div>
     <div class="muted">Vertikale Darstellung: Leader oben, Team nach unten. Direkte Partner derselben Upline werden nach TLN-ID aufsteigend sortiert (niedrigste TLN-ID zuerst). Nur eigene Wallets ohne anderes eigenes Wallet in ihrer Upline werden als Baum-Root dargestellt. Eigene Wallets innerhalb eines anderen eigenen Teams erscheinen ausschließlich an ihrer echten Position im Baum. Jede Verbindung Linie 2 → Linie 1 usw. folgt der verifizierten SmartNode-Parent-Beziehung. Eigene Leader erweitern die erfasste Downline jeweils um maximal ${TLN_TEAM_MAX_LEVELS} Referral-Linien. Discovery-Reihenfolge: ${esc(orderText||'–')}.</div>`;
   box.innerHTML=blocks.join('');
   box.querySelectorAll('.team-alias-input').forEach(inp=>inp.addEventListener('change',()=>{
     saveTeamAlias(inp.dataset.teamAliasKey,inp.value);renderTeamTree();
+  }));
+  box.querySelectorAll('.team-copy-btn').forEach(btn=>btn.addEventListener('click',async()=>{
+    const wallet=btn.dataset.copyWallet||'';
+    try{
+      await navigator.clipboard.writeText(wallet);
+      const oldTitle=btn.title;btn.title='Kopiert';btn.setAttribute('aria-label','Kopiert');
+      setTimeout(()=>{btn.title=oldTitle;btn.setAttribute('aria-label','Wallet-Adresse kopieren')},1200);
+    }catch{
+      const ta=document.createElement('textarea');ta.value=wallet;ta.style.position='fixed';ta.style.opacity='0';
+      document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    }
   }));
 }
 
