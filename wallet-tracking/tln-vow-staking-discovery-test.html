@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 15:07:16 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 15:11:28 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID="20260904-150716";
+const BUILD_ID="20260904-151128";
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -8895,12 +8895,13 @@ function durationProofCacheKey(fp){
   const identityHash=ethers.keccak256(ethers.toUtf8Bytes(durationProofIdentityText(fp)));
   return `${CONTRACT_DURATION_PROOF_VERSION}:${fp.contract}:${identityHash}`;
 }
-async function currentContractDurationFingerprint(contract){
+async function contractDurationFingerprintAt(contract,blockTag='latest'){
   const c=norm(contract);
   if(!ethers.isAddress(c))return null;
+  const tag=blockTag==='latest'?'latest':(typeof blockTag==='string'&&blockTag.startsWith('0x')?blockTag:'0x'+Number(blockTag).toString(16));
   const [contractCode,implRaw]=await Promise.all([
-    lockNodeRealRpc('eth_getCode',[c,'latest']),
-    lockNodeRealRpc('eth_getStorageAt',[c,EIP1967_DURATION_IMPL_SLOT,'latest']).catch(()=>null)
+    lockNodeRealRpc('eth_getCode',[c,tag]),
+    lockNodeRealRpc('eth_getStorageAt',[c,EIP1967_DURATION_IMPL_SLOT,tag]).catch(()=>null)
   ]);
   if(!contractCode||contractCode==='0x')return null;
   let implementation=null;
@@ -8908,17 +8909,19 @@ async function currentContractDurationFingerprint(contract){
     const h=String(implRaw).replace(/^0x/,'').padStart(64,'0'),a=norm('0x'+h.slice(-40));
     if(ethers.isAddress(a)&&a!==ZERO)implementation=a;
   }
-  const implementationCode=implementation?await lockNodeRealRpc('eth_getCode',[implementation,'latest']):null;
+  const implementationCode=implementation?await lockNodeRealRpc('eth_getCode',[implementation,tag]):null;
   if(implementation&&(!implementationCode||implementationCode==='0x'))return null;
   const fp={
     contract:c,
     contractCodeHash:ethers.keccak256(contractCode),
     implementation,
-    implementationCodeHash:implementation?ethers.keccak256(implementationCode):null
+    implementationCodeHash:implementation?ethers.keccak256(implementationCode):null,
+    blockTag:tag
   };
   fp.identityHash=ethers.keccak256(ethers.toUtf8Bytes(durationProofIdentityText(fp)));
   return fp;
 }
+async function currentContractDurationFingerprint(contract){return contractDurationFingerprintAt(contract,'latest')}
 function sameDurationFingerprint(a,b){
   return !!a&&!!b&&norm(a.contract)===norm(b.contract)&&a.contractCodeHash===b.contractCodeHash&&
     norm(a.implementation||'')===norm(b.implementation||'')&&String(a.implementationCodeHash||'')===String(b.implementationCodeHash||'');
@@ -8982,16 +8985,29 @@ async function loadSharedStrictDurationRule(contract){
 }
 async function saveContractStrictDurationProof(lot){
   const contract=lotContractAddress(lot),sec=Number(lot?.lockDurationSeconds);
-  if(!ethers.isAddress(contract)||!(sec>0)||lot?.implementationStable!==true||!lot?.expiryTime)return false;
+  if(!ethers.isAddress(contract)||!(sec>0)||!lot?.expiryTime)return false;
   const fp=await currentContractDurationFingerprint(contract).catch(()=>null);
   if(!fp)return false;
+  const ref=lot?.durationReference||null,gate=ref?.unstakeGate||lot?.lockEvidence||null;
+  const storedEndStrict=/Start-\/End-Timestamp im selben Wallet-Mapping/i.test(String(lot?.durationEvidence||''))||String(lot?.lockEvidence?.mode||'')==='duration-reference-stored-end-timestamp';
+  let implementationStable=lot?.implementationStable===true;
+  let historicalStakeFingerprint=null;
+  if(!implementationStable&&storedEndStrict){
+    const stakeBlock=lotStakeBlock(lot);
+    if(Number.isInteger(stakeBlock)&&stakeBlock>0){
+      historicalStakeFingerprint=await contractDurationFingerprintAt(contract,stakeBlock).catch(()=>null);
+      implementationStable=!!historicalStakeFingerprint&&sameDurationFingerprint(historicalStakeFingerprint,fp);
+      if(implementationStable)log(`Contract Duration-Proof ${short(contract)}: Stored-End-Timestamp Strict-Proof · Contract/Implementation am Referenz-Stake-Block entspricht aktuellem Fingerprint.`,'ok');
+      else log(`Contract Duration-Proof ${short(contract)} nicht globalisiert: Stored-End-Timestamp ist strict, aber historischer Stake-Code/Implementation entspricht nicht dem aktuellen Fingerprint.`,'warn');
+    }
+  }
+  if(!implementationStable)return false;
   const key=durationProofCacheKey(fp);
   const existing=await loadTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,key,CONTRACT_DURATION_PROOF_VERSION).catch(()=>null);
   if(existing?.strictProof===true&&sameDurationFingerprint(existing?.fingerprint,fp)&&Number(existing?.lockDurationSeconds)>0&&Number(existing.lockDurationSeconds)!==sec){
     log(`Contract Duration-Proof ${short(contract)} NICHT überschrieben: gleicher Code-Fingerprint, aber widersprüchliche Lockdauer ${existing.lockDurationSeconds} / ${sec} Sekunden.`,'warn');
     SHARED_DURATION_RULE_CACHE.set(key,null);return false;
   }
-  const ref=lot?.durationReference||null,gate=ref?.unstakeGate||lot?.lockEvidence||null;
   const referenceStakeTimestamp=lotStakeTsSeconds(lot)||null;
   const positionStructProof=compactDurationStructProof(ref?.targeted||durationRefTargeted(lot),referenceStakeTimestamp);
   const firstUnlockedTimestamp=gate?.after?.timestamp??null;
@@ -9006,7 +9022,8 @@ async function saveContractStrictDurationProof(lot){
     lastLockedBlock:lot?.lastLockedBlock??gate?.before?.blockNum??null,
     firstUnlockedBlock:lot?.firstUnlockedBlock??gate?.after?.blockNum??null,
     lastLockedTimestamp:gate?.before?.timestamp??null,firstUnlockedTimestamp,
-    implementationStable:true,implementationMode:gate?.implementationMode||ref?.unstakeGate?.implementationMode||null,
+    implementationStable:true,implementationMode:gate?.implementationMode||ref?.unstakeGate?.implementationMode||(storedEndStrict?'stored-end-timestamp-historical-fingerprint':'unknown'),
+    historicalStakeFingerprint:historicalStakeFingerprint||null,
     strictVerdict:lot?.durationStrictVerdict||ref?.verdict||null,proofTimestamp:new Date().toISOString()
   };
   const ok=await saveTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,key,CONTRACT_DURATION_PROOF_VERSION,payload,payload.firstUnlockedBlock||0);
@@ -9094,6 +9111,9 @@ async function validateSharedDurationRule(lot,rule){
   if(!ethers.isAddress(contract)||!ethers.isAddress(wallet))return {ok:false,reason:'Wallet oder Staking-Contract für Positions-State-Prüfung ungültig.'};
   const struct=await ensureSharedDurationStructProof(rule);
   if(!struct)return {ok:false,reason:'Globaler Strict-Proof enthält noch keinen belastbaren Positions-Struct-Beweis.'};
+  const stakeFingerprint=await contractDurationFingerprintAt(contract,stakeBlock).catch(()=>null);
+  const expectedFingerprint=rule?.currentFingerprint||rule?.fingerprint||null;
+  if(!stakeFingerprint||!expectedFingerprint||!sameDurationFingerprint(stakeFingerprint,expectedFingerprint))return {ok:false,reason:'Contract-/Implementation-Fingerprint am konkreten Stake-Block entspricht nicht dem globalen Strict-Proof.'};
 
   const root=Number(struct.root),startOffset=Number(struct.startOffset);
   const offsets=[...new Set([...(struct.coreOffsets||[]).map(Number),startOffset].filter(Number.isInteger))].sort((a,b)=>a-b);
@@ -9134,7 +9154,7 @@ async function validateSharedDurationRule(lot,rule){
 
   const unlockOffsetSeconds=await ensureSharedDurationRuleOffset(rule);
   const expiryTs=stakeTs+sec+Number(unlockOffsetSeconds||0);
-  log(`Shared Duration-State ${safePairLabel(lot)}: Contract-Proof bestätigt · Root ${root} · Timestamp-Offset ${startOffset}=${new Date(startTimestamp*1000).toISOString()} · geänderte Kernfelder [${changedNonStart.join(', ')}] · Lock ${sec/86400} Tage${futureTimestampValidated===true?' · gespeicherter End-Timestamp bestätigt':''}.`,'ok');
+  log(`Shared Duration-State ${safePairLabel(lot)}: Contract-Proof bestätigt · Stake-Code/Implementation identisch · Root ${root} · Timestamp-Offset ${startOffset}=${new Date(startTimestamp*1000).toISOString()} · geänderte Kernfelder [${changedNonStart.join(', ')}] · Lock ${sec/86400} Tage${futureTimestampValidated===true?' · gespeicherter End-Timestamp bestätigt':''}.`,'ok');
   return {ok:true,mode:'contract-proof-position-state',root,startOffset,offsets,beforeRows,stakeRows,changedNonStart,unlockOffsetSeconds,expiryTs,futureTimestampValidated,localProbeCount:offsets.length*2};
 }
 
