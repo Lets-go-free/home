@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 16:08:30 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 16:29:05 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-160830';
+const BUILD_ID='20260904-162905';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -582,6 +582,8 @@ async function ensureCurrentUserId(){
 }
 
 let tlnIdentityDbAvailable=true;
+let tlnReferralGraphDbAvailable=true;
+let referralGraphPersistedThisRun=0;
 
 async function loadTlnIdentitiesFromDb(wallets){
   await ensureCurrentUserId();
@@ -665,6 +667,93 @@ async function saveTlnIdentityToDb(identity){
   walletLog(`TLN-ID ${short(identity.wallet)} → ${identity.nodeId} in Supabase gespeichert.`);
   return true;
 }
+
+async function loadTlnReferralGraphFromDb(){
+  await ensureCurrentUserId();
+  if(!currentUserId||!tlnReferralGraphDbAvailable)return 0;
+  const {data,error}=await sb
+    .from('tln_wallet_identity_cache')
+    .select('wallet_address,node_id,referred_by_id,parent_wallet,parent_source,parent_source_hash,parent_verified_at,source,source_contract,source_method,verified_at')
+    .eq('user_id',currentUserId)
+    .eq('project_key','tln_vow')
+    .eq('chain_key','bsc');
+  if(error){
+    const msg=String(error.message||'');
+    if(/parent_wallet|parent_source|parent_verified_at|schema cache|column .* does not exist/i.test(msg)){
+      tlnReferralGraphDbAvailable=false;
+      walletLog('Referral-Graph Supabase noch nicht verfügbar (Migration 023 ausführen). On-chain-Upline-Fallback bleibt aktiv.');
+      return 0;
+    }
+    walletLog(`Referral-Graph Supabase-Lesen fehlgeschlagen: ${error.message}`);
+    return 0;
+  }
+  let parents=0;
+  for(const row of data||[]){
+    const w=norm(row.wallet_address);
+    if(!/^0x[0-9a-f]{40}$/.test(w))continue;
+    const existing=tlnIdentityCache.get(w)||{};
+    const ident={
+      ...existing,wallet:w,
+      nodeId:row.node_id==null?(existing.nodeId||null):String(row.node_id),
+      referredById:row.referred_by_id==null?(existing.referredById||null):String(row.referred_by_id),
+      parentWallet:row.parent_wallet?norm(row.parent_wallet):null,
+      parentSource:row.parent_source||null,
+      parentSourceHash:row.parent_source_hash||null,
+      parentVerifiedAt:row.parent_verified_at||null,
+      source:existing.source||'supabase',cachedSource:existing.cachedSource||row.source||null,
+      chain:'BSC',contract:existing.contract||row.source_contract||null,method:existing.method||row.source_method||null,
+      verifiedAt:existing.verifiedAt||row.verified_at||null
+    };
+    tlnIdentityCache.set(w,ident);
+    if(ident.parentWallet&&/^0x[0-9a-f]{40}$/.test(ident.parentWallet)&&ident.parentWallet!==w){
+      referralParentCache.set(w,{parent:ident.parentWallet,source:ident.parentSource||'Supabase Referral-Graph',hash:ident.parentSourceHash||null,cached:true});
+      parents++;
+    }
+  }
+  walletLog(`Referral-Graph Supabase: ${parents} verifizierte Wallet→Parent-Wallet-Beziehung(en) geladen.`);
+  return parents;
+}
+
+async function saveReferralParentToDb(childWallet,parentWallet,relation,parentIdentity=null){
+  await ensureCurrentUserId();
+  if(!currentUserId||!tlnReferralGraphDbAvailable)return false;
+  const child=norm(childWallet),parent=norm(parentWallet);
+  if(!/^0x[0-9a-f]{40}$/.test(child)||!/^0x[0-9a-f]{40}$/.test(parent)||child===parent)return false;
+  const childIdentity=tlnIdentityCache.get(child);
+  if(!childIdentity?.nodeId)return false;
+  const now=new Date().toISOString();
+  const pIdent=parentIdentity||tlnIdentityCache.get(parent)||null;
+  const patch={
+    parent_wallet:parent,
+    referred_by_id:pIdent?.nodeId?Number(pIdent.nodeId):(childIdentity.referredById?Number(childIdentity.referredById):null),
+    parent_source:relation?.source||'SmartNode',
+    parent_source_hash:relation?.hash||null,
+    parent_verified_at:now,
+    updated_at:now
+  };
+  const {error}=await sb
+    .from('tln_wallet_identity_cache')
+    .update(patch)
+    .eq('user_id',currentUserId)
+    .eq('project_key','tln_vow')
+    .eq('chain_key','bsc')
+    .eq('wallet_address',child);
+  if(error){
+    const msg=String(error.message||'');
+    if(/parent_wallet|parent_source|parent_verified_at|schema cache|column .* does not exist/i.test(msg)){
+      tlnReferralGraphDbAvailable=false;
+      walletLog('Referral-Graph Supabase-Schreiben nicht verfügbar (Migration 023 ausführen).');
+      return false;
+    }
+    walletLog(`Referral-Parent Supabase-Speichern ${short(child)} fehlgeschlagen: ${error.message}`);
+    return false;
+  }
+  const updated={...childIdentity,parentWallet:parent,parentSource:patch.parent_source,parentSourceHash:patch.parent_source_hash,parentVerifiedAt:now,referredById:patch.referred_by_id==null?childIdentity.referredById:String(patch.referred_by_id)};
+  tlnIdentityCache.set(child,updated);
+  referralParentCache.set(child,{parent,source:patch.parent_source,hash:patch.parent_source_hash,cached:true});
+  referralGraphPersistedThisRun++;
+  return true;
+}
 const tlnIdentityCache=new Map();
 let tlnIdentityResolver={contract:TLN_SMARTNODE_CONTRACT,method:TLN_SMARTNODE_ID_METHOD,source:'verified-smartnode'};
 let tlnIdentityDiscoveryDone=false;
@@ -721,6 +810,10 @@ async function smartNodeParentFromJoin(wallet){
 }
 async function getReferralParent(wallet){
   wallet=norm(wallet);
+  const stored=tlnIdentityCache.get(wallet);
+  if(stored?.parentWallet&&/^0x[0-9a-f]{40}$/.test(norm(stored.parentWallet))){
+    return {parent:norm(stored.parentWallet),source:stored.parentSource||'Supabase Referral-Graph',hash:stored.parentSourceHash||null,cached:true};
+  }
   if(referralParentCache.has(wallet))return referralParentCache.get(wallet);
   const promise=(async()=>{
     const direct=await smartNodeParentFromGetter(wallet);
@@ -754,6 +847,7 @@ async function resolveReferralLevel(partnerWallet,targetWallet,maxDepth=12){
           tlnIdentityCache.set(child,childIdentity);
           await saveTlnIdentityToDb(childIdentity);
         }
+        if(childIdentity?.nodeId)await saveReferralParentToDb(child,parent,rel,parentIdentity);
       }catch{}
       if(parent===targetWallet)return {level:depth,path,source:rel?.source||'SmartNode'};
       child=parent;
@@ -1933,6 +2027,7 @@ async function scanWalletHeadless(wallet,startBlock=0n){
     if(!rpcUrl)await initRpc();
     resetReferralRpcStats(); referralRpcStatsActive=true;
     tlnIdentityCache.clear();
+    referralParentCache.clear(); referralLevelCache.clear(); referralGraphPersistedThisRun=0;
     // Verified production resolver from the isolated test.
     tlnIdentityResolver={contract:TLN_SMARTNODE_CONTRACT,method:TLN_SMARTNODE_ID_METHOD,source:'verified-smartnode'};
     tlnIdentityDiscoveryDone=true;
@@ -1977,6 +2072,8 @@ async function scanWalletHeadless(wallet,startBlock=0n){
     const stakeAmountRawOnly=strong.filter(r=>!r.stakeAmountEvidence?.resolved&&r.stakeAmountEvidence?.rawAmount).length;
     walletLog(`Referral-Stake-Mengen: ${stakeAmountResolved}/${strong.length} starke Referral-Tx mit dekodierter LP-Menge; ${stakeAmountRawOnly} weitere mit Stake-Event-Rohmenge.`);
     const levelWallets=[...new Set(strong.map(r=>norm(r.sender)))];
+    referralPhase('upline_graph_db');
+    const graphParentsLoaded=await loadTlnReferralGraphFromDb();
     referralPhase('upline_level_resolution');
     for(const w of levelWallets){
       const lv=await resolveReferralLevel(w,wallet);
@@ -1986,6 +2083,7 @@ async function scanWalletHeadless(wallet,startBlock=0n){
     let checkedLevels=0,matchedLevels=0;
     for(const r of strong){const id=String(r.tlnIdentity?.nodeId||'');if(screenshotChecks.has(id)&&r.referralLevel!=null){checkedLevels++;if(r.referralLevel===screenshotChecks.get(id))matchedLevels++;}}
     if(checkedLevels)walletLog(`Referral-Level DApp-Kontrolle: ${matchedLevels}/${checkedLevels} bekannte Screenshot-Testwerte stimmen mit der on-chain SmartNode-Upline überein.`);
+    walletLog(`Referral-Graph: ${graphParentsLoaded} Parent-Beziehung(en) aus Supabase verfügbar · ${referralGraphPersistedThisRun} on-chain bestätigte Beziehung(en) neu/aktualisiert persistiert.`);
     const rewardTokenList=referralTokens.map(t=>({address:t.address,symbol:t.symbol}));
     const tokenTotals=new Map(rewardTokenList.map(t=>[t.address,{symbol:t.symbol,count:0,total:0}]));
     const partnerRewards=new Map();
@@ -2017,7 +2115,7 @@ function clearHeadlessCaches(){__headlessScanCache.clear();referralParentCache.c
 return {
   sourceVersion:APP_VERSION,
   scanWalletHeadless,clearHeadlessCaches,primeHeadlessCaches,
-  getTlnIdentity,loadTlnIdentitiesFromDb,saveTlnIdentityToDb,
+  getTlnIdentity,loadTlnIdentitiesFromDb,saveTlnIdentityToDb,loadTlnReferralGraphFromDb,saveReferralParentToDb,
   initRpc,
   tokenScopedMintHashes,classifyReferralMintTx,referralLpPairForRow,lpPairMeta,
   knownStakingMap,referralRewardTokenContracts,
