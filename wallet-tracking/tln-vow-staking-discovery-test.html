@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 18:17:27 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 18:22:09 CEST</div>
 <p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; historische SC-, Stake-Tx-, Business- und LP-Preis-Fakten werden vor der Positionsbewertung parallel vorbereitet.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -131,7 +131,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-181727';
+const BUILD_ID='20260904-182209';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10166,9 +10166,21 @@ async function processValuation(){
       enrichHistoricalStakeEvidence(lot),
       stakeTxTokenEvidence(lot)
     ]));
+    // Step 6.10: Nach dem Historical-SC-Prefetch ist bereits bekannt, welche Lots
+    // keinen im historischen Staking-Struct gespeicherten Stake-USD-Wert liefern.
+    // Nur für diese Fallback-Lots wird der Stake-Block-Pair-State vorgeladen – und zwar
+    // parallel zu den ohnehin nötigen Business-Probes. Dadurch entstehen keine
+    // zusätzlichen Reads gegenüber dem späteren Fallback in lpHistoricalValue().
+    const stakeFallbackLots=DISCOVERY_PROCESS.lots.filter(lot=>!extractStoredStakeUsd(lot,null)&&lot.stakeBlockHex);
     step6Phase('business_prefetch');
-    const valuationProbes=await Promise.all(DISCOVERY_PROCESS.lots.map(lot=>valuationBusinessProbeForLot(lot)));
+    const businessPromise=Promise.all(DISCOVERY_PROCESS.lots.map(lot=>valuationBusinessProbeForLot(lot)));
+    const stakeFallbackBlocks=[...new Set(stakeFallbackLots.map(lot=>lot.stakeBlockHex).filter(Boolean))];
+    const stakeFallbackPromise=stakeFallbackBlocks.length
+      ?Promise.all(stakeFallbackBlocks.map(blockHex=>primePairStatesAtBlock(pricePairs,blockHex)))
+      :Promise.resolve([]);
+    const [valuationProbes]=await Promise.all([businessPromise,stakeFallbackPromise]);
     DISCOVERY_PROCESS.lots.forEach((lot,i)=>{lot.businessProbe=valuationProbes[i]||null});
+    if(stakeFallbackBlocks.length)log(`Step-6 Stake-Fallback Prefetch: ${stakeFallbackBlocks.length} Stake-Block/Blöcke parallel zu Business-Probes vorgeladen.`,'ok');
     log(`Step-6 Evidenz-Prefetch: ${DISCOVERY_PROCESS.lots.length} Position(en) · historische SC- und Stake-Tx-Fakten parallel; Business-Probes anschließend parallel.`, 'ok');
 
     for(let i=0;i<DISCOVERY_PROCESS.lots.length;i++){
