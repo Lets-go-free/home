@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 16:37:15 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 16:45:34 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-163715';
+const BUILD_ID='20260904-164534';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -1002,11 +1002,28 @@ const referralSessionCache={
   routescan:new Map(), tx:new Map(), receipt:new Map(), block:new Map(), mintMeta:new Map()
 };
 
-function primeHeadlessCaches({receipts=[],txs=[],blocks=[]}={}){
-  let rc=0,tc=0,bc=0;
+function primeHeadlessCaches({receipts=[],txs=[],blocks=[],tokens=[],pairs=[]}={}){
+  let rc=0,tc=0,bc=0,mc=0,pc=0;
   for(const [hash,receipt] of receipts||[]){
     const h=norm(hash);
     if(h&&receipt){referralSessionCache.receipt.set(h,receipt);rc++}
+  }
+  for(const t of tokens||[]){
+    const a=norm(t?.address||t?.token||'');
+    const d=Number(t?.decimals);
+    if(/^0x[0-9a-f]{40}$/.test(a)&&Number.isFinite(d)){tokenMetaCache.set(a,{symbol:t?.symbol||'Token',decimals:d});mc++}
+  }
+  for(const x of pairs||[]){
+    const pair=norm(x?.pair||x?.address||'');
+    const token0=norm(x?.token0?.address||x?.token0||''),token1=norm(x?.token1?.address||x?.token1||'');
+    if(!/^0x[0-9a-f]{40}$/.test(pair)||!/^0x[0-9a-f]{40}$/.test(token0)||!/^0x[0-9a-f]{40}$/.test(token1))continue;
+    const symbol0=x?.token0?.symbol||x?.symbol0||'Token0',symbol1=x?.token1?.symbol||x?.symbol1||'Token1';
+    lpPairMetaCache.set(pair,{pair,token0,token1,symbol0,symbol1,label:`${symbol0} / ${symbol1}`});
+    const lpDec=Number(x?.lpDecimals);if(Number.isFinite(lpDec))tokenMetaCache.set(pair,{symbol:x?.lpSymbol||'LP',decimals:lpDec});
+    const d0=Number(x?.token0?.decimals),d1=Number(x?.token1?.decimals);
+    if(Number.isFinite(d0))tokenMetaCache.set(token0,{symbol:symbol0,decimals:d0});
+    if(Number.isFinite(d1))tokenMetaCache.set(token1,{symbol:symbol1,decimals:d1});
+    pc++;
   }
   for(const [hash,tx] of txs||[]){
     const h=norm(hash);
@@ -1015,7 +1032,7 @@ function primeHeadlessCaches({receipts=[],txs=[],blocks=[]}={}){
   for(const [key,block] of blocks||[]){
     if(key&&block){referralSessionCache.block.set(key,block);bc++}
   }
-  return {receipts:rc,txs:tc,blocks:bc};
+  return {receipts:rc,txs:tc,blocks:bc,tokens:mc,pairs:pc};
 }
 async function prefetchReferralMintReceipts(hashes,parallel=10){
   const input=[...new Set((hashes||[]).map(norm).filter(Boolean))];
@@ -1029,7 +1046,7 @@ async function prefetchReferralMintReceipts(hashes,parallel=10){
       const h=missing[i];
       try{
         const receipt=await rpc('eth_getTransactionReceipt',[h]);
-        if(receipt){referralSessionCache.receipt.set(h,receipt);loaded++;fetched.push(h)}
+        if(receipt){try{receipt.__referralFull=true}catch{} referralSessionCache.receipt.set(h,receipt);loaded++;fetched.push(h)}
       }catch{}
     }
   }
@@ -1243,12 +1260,13 @@ async function classifyReferralMintTx(hash,wallet,stakingMap){
   // deren einziger Staking-Beweis ein Stake(...) Event ist. Nur wenn aus dem kompakten
   // Receipt noch KEIN Stake-Beweis hervorgeht, laden wir deshalb genau dieses Receipt voll nach.
   // So bleiben die klassischen Faelle cache-only und Event-only-Stakes verlieren keine Evidenz.
-  const compactReceipt=!receipt?.from||!receipt?.to;
+  const compactReceipt=receipt?.__referralFull!==true;
   if(compactReceipt && principalTransfers.length===0 && stakeEvents.length===0){
     try{
       const fullReceipt=await rpc('eth_getTransactionReceipt',[hash]);
       if(fullReceipt){
         receipt=fullReceipt;
+        try{fullReceipt.__referralFull=true}catch{}
         referralSessionCache.receipt.set(hash,fullReceipt);
         sender=sender||norm(fullReceipt.from);to=to||norm(fullReceipt.to);blockNumber=blockNumber||fullReceipt.blockNumber;
         senderTransfers=[];principalTransfers=[];stakeEvents=[];principalIn=false;
@@ -8679,17 +8697,22 @@ function renderRewardClaiming(lots){
 
 function primeClaimReferenceFromDiscoveryCaches(){
   try{
-    const receiptMap=new Map([...REWARD_FULL_RECEIPT_CACHE.entries()].filter(([,v])=>v));
+    const receiptMap=new Map();
+    for(const [hash,receipt] of REWARD_FULL_RECEIPT_CACHE.entries()){if(!receipt)continue;try{receipt.__referralFull=true}catch{}receiptMap.set(hash,receipt)}
     const txs=[];
     let persistedReferralReceipts=0;
     for(const [hash,facts] of TX_FACTS_CACHE_STATE.entries||[]){
       const tx=txObjectFromFacts(facts);
       if(tx)txs.push([hash,tx]);
-      if(facts?.referralReceipt&&!receiptMap.has(hash)){const rc=receiptObjectFromFacts(facts);if(rc){receiptMap.set(hash,rc);persistedReferralReceipts++}}
+      if(facts?.referralReceipt&&!receiptMap.has(hash)){const rc=receiptObjectFromFacts(facts);if(rc){try{rc.__referralFull=true}catch{}receiptMap.set(hash,rc);persistedReferralReceipts++}}
     }
     const receipts=[...receiptMap.entries()];
-    const seeded=CLAIM_TRACE_REFERENCE_ENGINE.primeHeadlessCaches?.({receipts,txs})||{receipts:0,txs:0};
-    log(`Claim/Referral Cache-Übergabe: ${seeded.receipts||0} vollständige Receipts + ${seeded.txs||0} Tx-Fakten aus Schritt 4/Chain-Cache wiederverwendet${persistedReferralReceipts?` · ${persistedReferralReceipts} persistierte Referral-Receipts`:''}.`,'ok');
+    const tokens=[];
+    for(const t of projectTokens||[]){const d=Number(t?.decimals);if(t?.address&&Number.isFinite(d))tokens.push({address:t.address,symbol:t.symbol||t.label||'Token',decimals:d})}
+    const pairs=[];
+    for(const [,f] of LP_FACTS_CACHE_STATE.entries||[]){if(f?.address||f?.token0?.address)pairs.push(f)}
+    const seeded=CLAIM_TRACE_REFERENCE_ENGINE.primeHeadlessCaches?.({receipts,txs,tokens,pairs})||{receipts:0,txs:0,tokens:0,pairs:0};
+    log(`Claim/Referral Cache-Übergabe: ${seeded.receipts||0} vollständige Receipts + ${seeded.txs||0} Tx-Fakten aus Schritt 4/Chain-Cache wiederverwendet${persistedReferralReceipts?` · ${persistedReferralReceipts} persistierte Referral-Receipts`:''} · ${seeded.tokens||0} Token-Metadaten · ${seeded.pairs||0} LP-Metadaten.`,'ok');
     return seeded;
   }catch(e){
     log(`Claim/Referral Cache-Übergabe nicht verfügbar: ${e.message}`,'warn');
