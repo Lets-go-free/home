@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 14:55:24 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 14:58:13 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID="20260904-145524";
+const BUILD_ID="20260904-145813";
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -9066,10 +9066,42 @@ async function validateSharedDurationRule(lot,rule){
   const probe=async n=>{
     n=Math.max(Number(stakeBlock||0),Math.min(Number(exitBlock||Number.MAX_SAFE_INTEGER)-1,Number(n)));
     if(cache.has(n))return cache.get(n);
-    // WICHTIG: exakt dieselbe historische Unstake-Simulation wie die verifizierte
-    // Duration-Referenzengine verwenden. Der frühere Shared-Sonderpfad über
-    // lockProbeUnstake() konnte denselben Block anders klassifizieren.
-    const p=await unstakeCallProbe(tx,validationContract,validationCtx,n);cache.set(n,p);return p;
+    // Scope-sichere Kopie des verifizierten NodeReal Block+Call-Probe-Pfads.
+    // unstakeCallProbe() aus der Referenzengine liegt in einem eigenen Block-Scope
+    // und ist hier nicht direkt aufrufbar; die technische Simulation bleibt identisch.
+    const blockTag='0x'+Number(n).toString(16);
+    const callObj={from:tx.from,to:tx.to,data:tx.input||'0x',value:tx.value||'0x0',gas:'0x7a1200',gasPrice:'0x0'};
+    let block,call;
+    try{
+      const c=new AbortController(),tm=setTimeout(()=>c.abort(),30000);
+      try{
+        const body=[
+          {jsonrpc:'2.0',id:1,method:'eth_getBlockByNumber',params:[blockTag,false]},
+          {jsonrpc:'2.0',id:2,method:'eth_call',params:[callObj,blockTag]}
+        ];
+        countDurationRpc('NodeReal-batch','unstake-probe(block+call)');
+        const r=await fetch(NODEREAL_BSC_URL,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:c.signal});
+        const raw=await r.text();let arr=null;try{arr=raw?JSON.parse(raw):null}catch{}
+        if(!r.ok||!Array.isArray(arr))throw new Error(`NodeReal Unstake-Probe Batch HTTP ${r.status}`);
+        const byId=new Map(arr.map(x=>[Number(x.id),x])),br=byId.get(1),qr=byId.get(2);
+        if(br?.error||!br?.result)throw new Error(br?.error?.message||'Block-Metadaten fehlen');
+        block=br.result;
+        call=qr?.error?{ok:false,error:{code:qr.error.code,message:qr.error.message||'',data:qr.error.data||null}}:{ok:true,result:qr?.result??'0x'};
+      }finally{clearTimeout(tm)}
+    }catch{
+      block=await lockNodeRealRpc('eth_getBlockByNumber',[blockTag,false]);
+      call=await lockEthCallDetailed(callObj,blockTag);
+    }
+    const blockTs=Number(BigInt(block.timestamp));
+    let simulationMode='gasPrice=0',revert=call.ok?null:lockDecodeRevertData(call.error?.data),failureClass=lockFailureClass(call,revert);
+    if(!call.ok&&failureClass==='simulation_invalid'&&/insufficient funds|gas \* price \+ value/i.test(String(call.error?.message||''))){
+      const retry=await lockEthCallDetailed(callObj,blockTag,{[String(tx.from).toLowerCase()]:{balance:'0x3635c9adc5dea00000'}});
+      if(retry.ok||!/invalid argument|too many arguments|unsupported|state override/i.test(String(retry.error?.message||''))){
+        call=retry;simulationMode='gasPrice=0 + sender-balance-override';revert=call.ok?null:lockDecodeRevertData(call.error?.data);failureClass=lockFailureClass(call,revert);
+      }
+    }
+    const p={blockNum:Number(n),block:blockTag,timestamp:blockTs,date:new Date(blockTs*1000).toISOString(),elapsedSeconds:blockTs-validationCtx.ts,elapsedDays:(blockTs-validationCtx.ts)/86400,ok:call.ok,result:call.ok?call.result:null,error:call.ok?null:call.error,revert,failureClass,validForLock:call.ok||failureClass==='contract_revert',simulationMode};
+    cache.set(n,p);return p;
   };
   const isLock=p=>{
     const msg=String(p?.revert?.message||p?.error?.message||'');
