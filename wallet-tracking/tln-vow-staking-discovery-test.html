@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 17:57:19 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 18:02:31 CEST</div>
 <p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; Vertragsendblock-Suche nutzt vorhandene Step-1-Transferzeiten als sichere Suchgrenzen und fällt sonst auf die exakte Batch-Binärsuche zurück.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -131,7 +131,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-175719';
+const BUILD_ID='20260904-180231';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -6023,7 +6023,7 @@ function step1TransferBoundsForTimestamp(isoTimestamp,lot=null,latestBlock=null)
   const unstakeBn=numericBlockNumber(lot?.unstakeBlockHex),unstakeMs=lot?.unstakeTime?new Date(lot.unstakeTime).getTime():NaN;
   if(unstakeBn&&Number.isFinite(unstakeMs)&&unstakeMs>=targetMs&&unstakeMs<high.timeMs)high={block:unstakeBn,timeMs:unstakeMs,source:'Unstake-Fakt'};
   if(!(Number.isInteger(low.block)&&Number.isInteger(high.block)&&low.block>0&&high.block>low.block))return null;
-  return {low:low.block,high:high.block,lowSource:low.source,highSource:high.source,span:high.block-low.block};
+  return {low:low.block,high:high.block,lowSource:low.source,highSource:high.source,span:high.block-low.block,lowTimeSec:Number.isFinite(low.timeMs)?Math.floor(low.timeMs/1000):null,highTimeSec:Number.isFinite(high.timeMs)?Math.floor(high.timeMs/1000):null};
 }
 
 async function nearestBlockHexesForTimestamps(isoTimestamps,latestHexOverride=null,boundsOverride=null){
@@ -6037,22 +6037,35 @@ async function nearestBlockHexesForTimestamps(isoTimestamps,latestHexOverride=nu
   if(!pending.length)return results;
   try{
     const latestHex=latestHexOverride||await rpc('eth_blockNumber',[]),latest=Number(BigInt(latestHex));
-    // Step 6.4: bewährte exakte, gemeinsam gebatchte Binärsuche aus Step 6.2.
-    // Mehrere Zielzeitpunkte teilen sich pro Runde dieselben HTTP-Batches; am Ende
-    // werden die beiden benachbarten Blöcke anhand ihrer echten Timestamps verglichen.
+    // Step 6.6: exakte lokale Interpolationssuche innerhalb sicherer Step-1-Grenzen.
+    // Anders als die verworfene globale Interpolation aus Step 6.3 stammen beide
+    // Randpunkte hier aus bereits geladenen Chain-Fakten nahe am Zielzeitpunkt.
+    // Jeder interpolierte Kandidat wird on-chain gelesen; bei ungeeigneten Zeitdaten
+    // fällt die Suche automatisch auf den bewährten binären Mittelpunkt zurück.
     const states=pending.map(x=>{
       const b=Array.isArray(boundsOverride)?boundsOverride[x.index]:null;
       const low=Number.isInteger(Number(b?.low))&&Number(b.low)>0?Number(b.low):1;
       const high=Number.isInteger(Number(b?.high))&&Number(b.high)>low&&Number(b.high)<=latest?Number(b.high):latest;
-      return {...x,low,high,done:false,initialLow:low,initialHigh:high};
+      const lowTs=Number.isFinite(Number(b?.lowTimeSec))?Number(b.lowTimeSec):null;
+      const highTs=Number.isFinite(Number(b?.highTimeSec))?Number(b.highTimeSec):null;
+      return {...x,low,high,lowTs,highTs,done:false,initialLow:low,initialHigh:high};
     });
     let guard=0;
     while(states.some(s=>!s.done)&&guard++<40){
       const mids=[];
       for(const st of states){
         if(st.done)continue;
-        if(st.high-st.low<=1){st.done=true;continue}
-        st.mid=Math.floor((st.low+st.high)/2);mids.push(st.mid);
+        const span=st.high-st.low;
+        if(span<=1){st.done=true;continue}
+        let mid=null;
+        if(Number.isFinite(st.lowTs)&&Number.isFinite(st.highTs)&&st.highTs>st.lowTs&&st.target>=st.lowTs&&st.target<=st.highTs){
+          const ratio=(st.target-st.lowTs)/(st.highTs-st.lowTs);
+          const estimate=Math.round(st.low+ratio*span);
+          // Nicht direkt auf einen Rand springen; mindestens einen Block Fortschritt erzwingen.
+          mid=Math.max(st.low+1,Math.min(st.high-1,estimate));
+        }
+        if(!Number.isInteger(mid)||mid<=st.low||mid>=st.high)mid=Math.floor((st.low+st.high)/2);
+        st.mid=mid;mids.push(mid);
       }
       if(!mids.length)break;
       const tsMap=await blockTimestampSecondsMany(mids);
@@ -6060,7 +6073,7 @@ async function nearestBlockHexesForTimestamps(isoTimestamps,latestHexOverride=nu
         if(st.done||st.mid==null)continue;
         const ts=tsMap.get(st.mid);
         if(ts==null){throw new Error(`Block ${st.mid} nicht lesbar.`)}
-        if(ts<st.target)st.low=st.mid;else st.high=st.mid;
+        if(ts<st.target){st.low=st.mid;st.lowTs=ts}else{st.high=st.mid;st.highTs=ts}
         if(st.high-st.low<=1)st.done=true;
       }
     }
