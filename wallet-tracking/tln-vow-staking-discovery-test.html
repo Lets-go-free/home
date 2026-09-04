@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 15:35:42 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 15:41:01 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-153542';
+const BUILD_ID='20260904-154101';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -3931,7 +3931,7 @@ const STAKING_SCAN_CACHE_KEY='erc20-history-v1';
 // der rohen On-Chain-Daten erfordert.
 const TECH_CACHE_VERSIONS=Object.freeze({
   lpFacts:'lp-chainfacts-v1',
-  txFacts:'tx-chainfacts-v1',
+  txFacts:'tx-chainfacts-v2-global-wallet-scope',
   rewardRelations:'reward-contract-relations-v2-global-fingerprint',
   duration:'duration-strict-v16-contract-proof-cache'
 });
@@ -3996,23 +3996,29 @@ async function flushLpFactsCache(){
   if(ok){LP_FACTS_CACHE_STATE.dirty=false;log(`LP-Metadaten-Cache gespeichert: ${LP_FACTS_CACHE_STATE.entries.size} Pair(s).`,'ok')}
   return ok;
 }
+function txFactsGlobalCacheKey(wallet){
+  return `${TECH_CACHE_KEYS.txFacts}:${norm(wallet)}`;
+}
 async function ensureTxFactsCache(wallet){
   const w=norm(wallet);
   if(TX_FACTS_CACHE_STATE.loaded&&TX_FACTS_CACHE_STATE.wallet===w)return;
   TX_FACTS_CACHE_STATE.wallet=w;TX_FACTS_CACHE_STATE.loaded=true;TX_FACTS_CACHE_STATE.dirty=false;TX_FACTS_CACHE_STATE.entries=new Map();
-  const payload=await loadTechnicalProcessCache(w,TECH_CACHE_KEYS.txFacts,TECH_CACHE_VERSIONS.txFacts);
+  // Historische Tx/Receipt-Fakten sind unveränderliche Chain-Daten. Sie liegen deshalb
+  // im globalen Zero-Address-Scope, aber mit wallet-spezifischem Cache-Key. So überlebt
+  // ein DEV-Delete des Wallet-Analysecaches, ohne alle Wallets in einen Payload zu mischen.
+  const payload=await loadTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,txFactsGlobalCacheKey(w),TECH_CACHE_VERSIONS.txFacts);
   const entries=payload?.entries&&typeof payload.entries==='object'?payload.entries:{};
   for(const [k,v] of Object.entries(entries))if(v&&/^0x[0-9a-f]{64}$/i.test(k))TX_FACTS_CACHE_STATE.entries.set(String(k).toLowerCase(),v);
-  if(TX_FACTS_CACHE_STATE.entries.size)log(`Tx-Chain-Fakten-Cache: ${TX_FACTS_CACHE_STATE.entries.size} historische Tx geladen.`,'ok');
+  if(TX_FACTS_CACHE_STATE.entries.size)log(`Globaler Tx-Chain-Fakten-Cache: ${TX_FACTS_CACHE_STATE.entries.size} historische Tx/Receipt-Fakten für ${short(w)} geladen.`,'ok');
 }
 async function flushTxFactsCache(wallet){
   const w=norm(wallet);if(!TX_FACTS_CACHE_STATE.loaded||TX_FACTS_CACHE_STATE.wallet!==w||!TX_FACTS_CACHE_STATE.dirty)return false;
   const entries=Object.fromEntries(TX_FACTS_CACHE_STATE.entries);
   const ok=await saveTechnicalProcessCache(
-    w,TECH_CACHE_KEYS.txFacts,TECH_CACHE_VERSIONS.txFacts,
-    {kind:'immutable_chain_facts',entries,savedAt:new Date().toISOString()}
+    TECH_CACHE_GLOBAL_SCOPE,txFactsGlobalCacheKey(w),TECH_CACHE_VERSIONS.txFacts,
+    {kind:'immutable_chain_facts',sourceWallet:w,entries,savedAt:new Date().toISOString()}
   );
-  if(ok){TX_FACTS_CACHE_STATE.dirty=false;log(`Tx-Chain-Fakten-Cache gespeichert: ${TX_FACTS_CACHE_STATE.entries.size} Tx.`,'ok')}
+  if(ok){TX_FACTS_CACHE_STATE.dirty=false;log(`Globaler Tx-Chain-Fakten-Cache gespeichert: ${TX_FACTS_CACHE_STATE.entries.size} Tx.`,'ok')}
   return ok;
 }
 const TRANSFER_TOPIC0=ethers.id('Transfer(address,address,uint256)').toLowerCase();
@@ -4123,7 +4129,7 @@ async function clearSelectedWalletSupabaseCache(){
    updateProcessButtons();
 
    state.textContent=`${deleted} Supabase-Eintrag${deleted===1?'':'e'} gelöscht.`;
-   log(`DEV Cache-Löschung: ${deleted} Supabase-Eintrag${deleted===1?'':'e'} für Wallet ${wallet} aus ${STAKING_SCAN_CACHE_TABLE} gelöscht. Globaler LP-Cache und contractweite Strict-Duration-Proofs blieben erhalten.`,'ok');
+   log(`DEV Cache-Löschung: ${deleted} Supabase-Eintrag${deleted===1?'':'e'} für Wallet ${wallet} aus ${STAKING_SCAN_CACHE_TABLE} gelöscht. Globaler LP-Cache, globale Tx-/Receipt-Chain-Fakten und contractweite Strict-Duration-Proofs blieben erhalten.`,'ok');
  }catch(e){
    state.textContent='Fehler beim Löschen.';
    log(`DEV Cache-Löschung fehlgeschlagen: ${e?.message||e}`,'warn');
