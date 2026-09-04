@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 15:56:04 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 16:08:30 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-155604';
+const BUILD_ID='20260904-160830';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -251,12 +251,32 @@ let rpcCandidates=[];
 let activeRpcIndex=0;
 let referralRpcStatsActive=false;
 let referralRpcStats=Object.create(null);
-function resetReferralRpcStats(){referralRpcStats=Object.create(null)}
-function countReferralRpc(method){if(referralRpcStatsActive)referralRpcStats[method]=(referralRpcStats[method]||0)+1}
+let referralRpcPhase='idle';
+let referralRpcPhaseStats=Object.create(null);
+let referralRpcPhaseMethodStats=Object.create(null);
+function resetReferralRpcStats(){referralRpcStats=Object.create(null);referralRpcPhase='init';referralRpcPhaseStats=Object.create(null);referralRpcPhaseMethodStats=Object.create(null)}
+function referralPhase(name){referralRpcPhase=String(name||'other')}
+function countReferralRpc(method){
+  if(!referralRpcStatsActive)return;
+  referralRpcStats[method]=(referralRpcStats[method]||0)+1;
+  const phase=referralRpcPhase||'other';
+  referralRpcPhaseStats[phase]=(referralRpcPhaseStats[phase]||0)+1;
+  const key=`${phase}::${method}`;
+  referralRpcPhaseMethodStats[key]=(referralRpcPhaseMethodStats[key]||0)+1;
+}
 function referralRpcStatsText(){
   const entries=Object.entries(referralRpcStats).sort((a,b)=>b[1]-a[1]);
+  const phases=Object.entries(referralRpcPhaseStats).sort((a,b)=>b[1]-a[1]);
+  const phaseMethods=Object.entries(referralRpcPhaseMethodStats).sort((a,b)=>b[1]-a[1]);
   const total=entries.reduce((n,[,v])=>n+v,0);
-  return {total,detail:entries.map(([k,v])=>`${k}=${v}`).join(', ')};
+  return {
+    total,
+    detail:entries.map(([k,v])=>`${k}=${v}`).join(', '),
+    phases:Object.fromEntries(phases),
+    phaseDetail:phases.map(([k,v])=>`${k}=${v}`).join(', '),
+    phaseMethods:Object.fromEntries(phaseMethods),
+    phaseMethodDetail:phaseMethods.map(([k,v])=>`${k.replace('::','/') }=${v}`).join(', ')
+  };
 }
 function uniq(a){return [...new Set(a.filter(Boolean))]}
 const __virtualDom=new Map();
@@ -1916,10 +1936,13 @@ async function scanWalletHeadless(wallet,startBlock=0n){
     // Verified production resolver from the isolated test.
     tlnIdentityResolver={contract:TLN_SMARTNODE_CONTRACT,method:TLN_SMARTNODE_ID_METHOD,source:'verified-smartnode'};
     tlnIdentityDiscoveryDone=true;
+    referralPhase('setup_token_index');
     const referralTokens=await referralRewardTokenContracts();
     const hashes=await tokenScopedMintHashes(wallet,startBlock,referralTokens);
+    referralPhase('staking_registry');
     const stakingMap=await knownStakingMap();
     const rows=[]; let ownTxExcluded=0;
+    referralPhase('mint_tx_classification');
     for(const hash of hashes){
       try{
         const r=await classifyReferralMintTx(hash,wallet,stakingMap);
@@ -1936,12 +1959,14 @@ async function scanWalletHeadless(wallet,startBlock=0n){
       r.candidate=norm(r.sender)!==wallet&&r.stakingRecognized;
     }
     const uniqueStakers=[...new Set(rows.map(r=>norm(r.sender)))];
+    referralPhase('tln_identity');
     await loadTlnIdentitiesFromDb([wallet,...uniqueStakers]);
     // Resolve current staking wallet too when DB has no positive ID.
     if(!tlnIdentityCache.get(wallet)?.nodeId)await getTlnIdentity(wallet);
     let missingStakers=uniqueStakers.filter(w=>!tlnIdentityCache.get(w)?.nodeId);
     for(const w of missingStakers)await getTlnIdentity(w);
     for(const r of rows)r.tlnIdentity=tlnIdentityCache.get(norm(r.sender))||{nodeId:null,source:'unresolved'};
+    referralPhase('stake_lp_amount');
     for(const r of rows){
       if(!r.stakeEvidence)continue;
       r.lpPair=await referralLpPairForRow(r);
@@ -1952,6 +1977,7 @@ async function scanWalletHeadless(wallet,startBlock=0n){
     const stakeAmountRawOnly=strong.filter(r=>!r.stakeAmountEvidence?.resolved&&r.stakeAmountEvidence?.rawAmount).length;
     walletLog(`Referral-Stake-Mengen: ${stakeAmountResolved}/${strong.length} starke Referral-Tx mit dekodierter LP-Menge; ${stakeAmountRawOnly} weitere mit Stake-Event-Rohmenge.`);
     const levelWallets=[...new Set(strong.map(r=>norm(r.sender)))];
+    referralPhase('upline_level_resolution');
     for(const w of levelWallets){
       const lv=await resolveReferralLevel(w,wallet);
       for(const r of strong)if(norm(r.sender)===w){r.referralLevel=lv?.level??null;r.referralLevelEvidence=lv;}
@@ -1980,6 +2006,7 @@ async function scanWalletHeadless(wallet,startBlock=0n){
       if(a.nodeId&&b.nodeId)return Number(a.nodeId)-Number(b.nodeId);
       if(a.nodeId)return -1;if(b.nodeId)return 1;return [...a.wallets][0].localeCompare([...b.wallets][0]);
     });
+    referralPhase('finalize');
     const stats=referralRpcStatsText(); referralRpcStatsActive=false;
     return {version:APP_VERSION,wallet,startBlock:startBlock.toString(),referralTokens,hashes,stakingMap,rows,strong,candidates,ownTxExcluded,rewardTokenList,tokenTotals,partnerRows,walletIdentity:tlnIdentityCache.get(wallet)||null,rpcStats:stats};
   })().catch(e=>{__headlessScanCache.delete(cacheKey);referralRpcStatsActive=false;throw e});
@@ -8542,6 +8569,9 @@ async function runClaimReferenceForCurrentWallet(){
       CURRENT_CLAIM_REFERENCE_RESULT=result;
       const id=result?.walletIdentity?.nodeId||null;
       log(`Claim/Referral-Referenzengine: ${result?.hashes?.length||0} Mint-Tx · ${result?.strong?.length||0} starke Referral-Tx · TLN-ID Wallet ${id||'unresolved'} · ${result?.rpcStats?.total||0} gezählte RPC-Calls.`,'ok');
+      if(result?.rpcStats?.detail)log(`Referral-RPC-Methoden: ${result.rpcStats.detail}.`,'muted');
+      if(result?.rpcStats?.phaseDetail)log(`Referral-RPC-Phasen: ${result.rpcStats.phaseDetail}.`,'muted');
+      if(result?.rpcStats?.phaseMethodDetail)log(`Referral-RPC Phase/Methoden: ${result.rpcStats.phaseMethodDetail}.`,'muted');
       return result;
     }catch(e){log(`Claim/Referral-Referenzengine nicht verfügbar: ${e.message}`,'warn');CURRENT_CLAIM_REFERENCE_RESULT={error:e.message,strong:[],candidates:[],rows:[]};return CURRENT_CLAIM_REFERENCE_RESULT;}
   })();
