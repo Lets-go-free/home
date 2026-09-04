@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 03:33:44 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 04:09:39 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID="20260904-033344";
+const BUILD_ID="20260904-040939";
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -3897,16 +3897,42 @@ const STAKING_SCAN_CACHE_KEY='erc20-history-v1';
 const TECH_CACHE_VERSIONS=Object.freeze({
   lpFacts:'lp-chainfacts-v1',
   txFacts:'tx-chainfacts-v1',
+  rewardRelations:'reward-contract-relations-v1',
   duration:'duration-strict-v15-step1-batch-scope-fix'
 });
 const TECH_CACHE_KEYS=Object.freeze({
   lpFacts:'lp-chainfacts',
-  txFacts:'tx-chainfacts'
+  txFacts:'tx-chainfacts',
+  rewardRelations:'reward-contract-relations'
 });
 const TECH_CACHE_GLOBAL_SCOPE='0x0000000000000000000000000000000000000000';
 
 const LP_FACTS_CACHE_STATE={loaded:false,dirty:false,entries:new Map()};
 const TX_FACTS_CACHE_STATE={wallet:'',loaded:false,dirty:false,entries:new Map()};
+const REWARD_REL_CACHE_STATE={wallet:'',loaded:false,dirty:false,entries:new Map()};
+
+async function ensureRewardRelationCache(wallet){
+  const w=norm(wallet);
+  if(REWARD_REL_CACHE_STATE.loaded&&REWARD_REL_CACHE_STATE.wallet===w)return;
+  REWARD_REL_CACHE_STATE.wallet=w;REWARD_REL_CACHE_STATE.loaded=true;REWARD_REL_CACHE_STATE.dirty=false;REWARD_REL_CACHE_STATE.entries=new Map();
+  const payload=await loadTechnicalProcessCache(w,TECH_CACHE_KEYS.rewardRelations,TECH_CACHE_VERSIONS.rewardRelations);
+  const entries=payload?.entries&&typeof payload.entries==='object'?payload.entries:{};
+  for(const [contract,row] of Object.entries(entries)){
+    const c=norm(contract);
+    if(!ethers.isAddress(c)||!row||!Array.isArray(row.matches))continue;
+    const matches=[...new Set(row.matches.map(norm).filter(ethers.isAddress))];
+    if(matches.length)REWARD_REL_CACHE_STATE.entries.set(c,{matches,savedAt:row.savedAt||null});
+  }
+  if(REWARD_REL_CACHE_STATE.entries.size)log(`Reward-Relations-Cache: ${REWARD_REL_CACHE_STATE.entries.size} positive Contract-Beziehung(en) geladen.`,'ok');
+}
+async function flushRewardRelationCache(wallet){
+  const w=norm(wallet);
+  if(!REWARD_REL_CACHE_STATE.loaded||REWARD_REL_CACHE_STATE.wallet!==w||!REWARD_REL_CACHE_STATE.dirty)return false;
+  const entries=Object.fromEntries(REWARD_REL_CACHE_STATE.entries);
+  const ok=await saveTechnicalProcessCache(w,TECH_CACHE_KEYS.rewardRelations,TECH_CACHE_VERSIONS.rewardRelations,{kind:'positive_reward_contract_relations',entries,savedAt:new Date().toISOString()});
+  if(ok){REWARD_REL_CACHE_STATE.dirty=false;log(`Reward-Relations-Cache gespeichert: ${REWARD_REL_CACHE_STATE.entries.size} Reward-Contract(s).`,'ok')}
+  return ok;
+}
 
 async function ensureLpFactsCache(){
   if(LP_FACTS_CACHE_STATE.loaded)return;
@@ -6229,10 +6255,24 @@ async function classifyRewardCallFlows(calls,wallet,lots=[]){
   CURRENT_REWARD_FLOW_BY_HASH=new Map();
   CURRENT_PROVEN_REWARD_ROWS=[];
   let rewardCandidates=0,exchangeFlows=0,rejectedIncoming=0,unproven=0,stateProven=0,bridgeIgnored=0;
-  const seen=new Set();
+  const seen=new Set(),input=Array.isArray(calls)?calls:[];
 
-  for(const c of (calls||[])){
-    const flow=await classifyRewardCallFlow(c,wallet,lots);
+  // Unabhängige Tx können parallel klassifiziert werden. Begrenzte Konkurrenz
+  // reduziert nur die Wandzeit; Anzahl und Art der fachlichen RPC-Probes bleiben gleich.
+  const concurrency=Math.min(10,Math.max(1,input.length));
+  const flows=new Array(input.length);
+  let cursor=0;
+  async function worker(){
+    while(true){
+      const i=cursor++;
+      if(i>=input.length)return;
+      flows[i]=await classifyRewardCallFlow(input[i],wallet,lots);
+    }
+  }
+  await Promise.all(Array.from({length:concurrency},worker));
+
+  for(let i=0;i<input.length;i++){
+    const c=input[i],flow=flows[i];
     c._rewardFlow=flow;
     if(flow.hash)CURRENT_REWARD_FLOW_BY_HASH.set(flow.hash,flow);
 
@@ -6268,11 +6308,7 @@ async function classifyRewardCallFlows(calls,wallet,lots=[]){
       }
     }
 
-    if(flow.kind==='reward_candidate'){
-      rewardCandidates++;
-      // Einzel-Tx-Reward-Beweis bleibt in flow/CURRENT_PROVEN_REWARD_ROWS gespeichert.
-      // Im Diagnose-Log wird er im Performance-Modus nicht 195-mal wiederholt.
-    }
+    if(flow.kind==='reward_candidate')rewardCandidates++;
     if(flow.kind==='exchange_or_liquidity')exchangeFlows++;
     if(flow.kind==='bridge_ignored')bridgeIgnored++;
     if(flow.kind==='incoming_unproven')unproven++;
@@ -6280,8 +6316,9 @@ async function classifyRewardCallFlows(calls,wallet,lots=[]){
     rejectedIncoming+=flow.rejectedTransfers.length;
   }
   CURRENT_PROVEN_REWARD_ROWS.sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
-  log(`Reward-Tx-Klassifikation: ${rewardCandidates} BELEGTE Reward-Kandidaten · ${CURRENT_PROVEN_REWARD_ROWS.length} belegte Reward-Transfers wallet-weit · ${bridgeIgnored} Bridge-Tx komplett ignoriert · ${stateProven} mit Reward-State-Delta · ${unproven} eingehende Tx ohne Reward-Beweis verworfen · ${exchangeFlows} Swap/Liquidity-Flows · ${rejectedIncoming} Transfers nicht als Reward klassifiziert.`,'ok');
+  log(`Reward-Tx-Klassifikation: ${rewardCandidates} BELEGTE Reward-Kandidaten · ${CURRENT_PROVEN_REWARD_ROWS.length} belegte Reward-Transfers wallet-weit · ${bridgeIgnored} Bridge-Tx komplett ignoriert · ${stateProven} mit Reward-State-Delta · ${unproven} eingehende Tx ohne Reward-Beweis verworfen · ${exchangeFlows} Swap/Liquidity-Flows · ${rejectedIncoming} Transfers nicht als Reward klassifiziert · Parallelität ${concurrency}.`,'ok');
 }
+
 function rewardPayoutTransfersForCall(call){
   return call?._rewardFlow?.kind==='reward_candidate'
     ? (call._rewardFlow.payoutTransfers||[])
@@ -6451,47 +6488,68 @@ async function inspectDynamicContractRelations(contract,exampleHashes=[]){
   return p;
 }
 
+function applyDynamicRewardRelation(lot,row,matches,source='on-chain'){
+  if(!matches?.length)return false;
+  const g=ensureContractGraph(lot);
+  const already=(lot.rewardContractRelations||[]).some(r=>norm(r.contract)===norm(row.contract)&&r.evidenceKind==='dynamic_contract_graph');
+  if(!already){
+    lot.rewardContractRelations=lot.rewardContractRelations||[];
+    lot.rewardContractRelations.push({
+      contract:norm(row.contract),evidenceKind:'dynamic_contract_graph',lifecycleKind:'Contract-Graph',
+      lifecycleTx:(row.examples||[])[0]||null,block:null,
+      changedProbes:matches.map(m=>`${source}: ${m.addr}`).slice(0,12)
+    });
+  }
+  graphNode(g,row.contract,'reward','Reward/Yield-SC');
+  for(const m of matches){
+    graphNode(g,m.addr,'linked_contract','On-chain Referenz');
+    graphEdge(g,row.contract,m.addr,source==='cache'?'cached_positive_relation':'dynamic_contract_reference',{detail:source});
+  }
+  return true;
+}
+
 async function learnDynamicClaimContractRelations(lots){
   const rewardRows=[...LEARNED_REWARD_PATHS.values()];
   if(!rewardRows.length)return;
+  await ensureRewardRelationCache(CURRENT_WALLET);
+  let cacheHits=0,onChainInspections=0,newPositive=0;
+
   for(const row of rewardRows){
-    const inspected=await inspectDynamicContractRelations(row.contract,row.examples||[]);
+    const contract=norm(row.contract);
+    const cached=REWARD_REL_CACHE_STATE.entries.get(contract);
+    const cachedRefs=new Set((cached?.matches||[]).map(norm));
+    let anyCachedMatch=false;
+
+    if(cachedRefs.size){
+      for(const lot of (lots||[])){
+        const g=ensureContractGraph(lot);
+        const targets=new Set([...g.nodes.values()].filter(n=>!n.roles?.has('wallet')&&!n.roles?.has('reward_token')).map(n=>norm(n.address)).filter(ethers.isAddress));
+        const matches=[...cachedRefs].filter(a=>targets.has(a)).map(addr=>({addr}));
+        if(matches.length){applyDynamicRewardRelation(lot,row,matches,'cache');anyCachedMatch=true;}
+      }
+      if(anyCachedMatch){cacheHits++;continue;}
+    }
+
+    onChainInspections++;
+    const inspected=await inspectDynamicContractRelations(contract,row.examples||[]);
+    const newlyMatchedRefs=new Set(cachedRefs);
     for(const lot of (lots||[])){
       const g=ensureContractGraph(lot);
-      const targets=new Set(
-        [...g.nodes.values()]
-          .filter(n=>!n.roles?.has('wallet')&&!n.roles?.has('reward_token'))
-          .map(n=>norm(n.address))
-          .filter(ethers.isAddress)
-      );
+      const targets=new Set([...g.nodes.values()].filter(n=>!n.roles?.has('wallet')&&!n.roles?.has('reward_token')).map(n=>norm(n.address)).filter(ethers.isAddress));
       const matches=[];
-      for(const [addr,evidence] of inspected.references.entries()){
-        if(targets.has(addr))matches.push({addr,evidence});
-      }
+      for(const [addr,evidence] of inspected.references.entries())if(targets.has(addr))matches.push({addr,evidence});
       if(!matches.length)continue;
-
-      const already=(lot.rewardContractRelations||[]).some(r=>norm(r.contract)===norm(row.contract)&&r.evidenceKind==='dynamic_contract_graph');
-      if(!already){
-        lot.rewardContractRelations=lot.rewardContractRelations||[];
-        lot.rewardContractRelations.push({
-          contract:norm(row.contract),
-          evidenceKind:'dynamic_contract_graph',
-          lifecycleKind:'Contract-Graph',
-          lifecycleTx:(row.examples||[])[0]||null,
-          block:null,
-          changedProbes:matches.flatMap(m=>m.evidence.map(e=>`${e.kind}: ${m.addr}${e.detail?` (${e.detail})`:''}`)).slice(0,12)
-        });
-      }
-      graphNode(g,row.contract,'reward','Reward/Yield-SC');
-      for(const m of matches){
-        graphNode(g,m.addr,'linked_contract','On-chain Referenz');
-        for(const e of m.evidence){
-          graphEdge(g,row.contract,m.addr,e.kind,{tx:e.kind.includes('claim_')?e.detail:null,detail:e.detail||null});
-        }
-      }
+      applyDynamicRewardRelation(lot,row,matches,'on-chain');
+      for(const m of matches)newlyMatchedRefs.add(norm(m.addr));
       log(`Reward-Contract-Beziehung dynamisch erkannt: ${row.contract} ↔ ${safePairLabel(lot)} · ${matches.map(m=>m.addr).join(', ')}`,'ok');
     }
+    if(newlyMatchedRefs.size>cachedRefs.size){
+      REWARD_REL_CACHE_STATE.entries.set(contract,{matches:[...newlyMatchedRefs],savedAt:new Date().toISOString()});
+      REWARD_REL_CACHE_STATE.dirty=true;newPositive++;
+    }
   }
+  await flushRewardRelationCache(CURRENT_WALLET);
+  log(`Reward-Contract-Beziehungen: ${cacheHits} Contract(s) aus positivem Cache · ${onChainInspections} on-chain neu geprüft · ${newPositive} Cache-Erweiterung(en).`,'ok');
 }
 
 function lotLifecycleHashes(lot){
