@@ -66,7 +66,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .team-line-summary{margin:10px 0 4px}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 04.09.2026 21:00:10 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 04.09.2026 21:07:05 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -168,7 +168,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-210010';
+const BUILD_ID='20260904-210705';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10152,7 +10152,15 @@ async function processStakingRewards(){
   catch(e){setStepState(4,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
 
+
 const TEAM_ALIAS_STORAGE_KEY='tln_vow_team_aliases_v1';
+const TEAM_SMARTNODE_CONTRACT='0x028c911c10c9e346158206991e02d09bd0a8a35b';
+const TEAM_NODE_ID_SELECTOR=ethers.id('nodeIdOf(address)').slice(0,10);
+const TEAM_JOIN_SELECTOR=ethers.id('join(address)').slice(0,10).toLowerCase();
+const TLN_TEAM_MAX_LEVELS=20;
+const TEAM_IDENTITY_CACHE=new Map();
+let CURRENT_TEAM_PROJECT_FOREST=null;
+
 function loadTeamAliases(){
   try{return JSON.parse(localStorage.getItem(TEAM_ALIAS_STORAGE_KEY)||'{}')||{}}catch{return {}}
 }
@@ -10167,59 +10175,6 @@ function teamAliasKey(wallet,ident){
 function teamAliasFor(wallet,ident){
   return loadTeamAliases()[teamAliasKey(wallet,ident)]||'';
 }
-function teamKnownChildrenMap(){
-  const children=new Map();
-  for(const [wallet,ident] of tlnIdentityCache.entries()){
-    const child=norm(wallet),parent=norm(ident?.parentWallet||referralParentCache.get(child)?.parent||'');
-    if(!/^0x[0-9a-f]{40}$/.test(child)||!/^0x[0-9a-f]{40}$/.test(parent)||child===parent)continue;
-    if(!children.has(parent))children.set(parent,[]);
-    if(!children.get(parent).includes(child))children.get(parent).push(child);
-  }
-  for(const arr of children.values())arr.sort((a,b)=>{
-    const ia=Number(tlnIdentityCache.get(a)?.nodeId||Number.MAX_SAFE_INTEGER);
-    const ib=Number(tlnIdentityCache.get(b)?.nodeId||Number.MAX_SAFE_INTEGER);
-    return ia-ib||a.localeCompare(b);
-  });
-  return children;
-}
-function teamDescendantsFromKnownGraph(root,maxDepth=TLN_TEAM_MAX_LEVELS){
-  root=norm(root);const children=teamKnownChildrenMap(),levels=new Map([[0,[root]]]),seen=new Set([root]);
-  let frontier=[root];
-  for(let depth=1;depth<=maxDepth&&frontier.length;depth++){
-    const next=[];
-    for(const p of frontier)for(const child of (children.get(p)||[])){
-      if(seen.has(child))continue;seen.add(child);next.push(child);
-    }
-    if(next.length)levels.set(depth,next);
-    frontier=next;
-  }
-  return {levels,seen,children};
-}
-function teamOwnOpenStakingHtml(wallet){
-  if(norm(wallet)!==norm(CURRENT_WALLET))return '';
-  const lots=(DISCOVERY_PROCESS.lots||[]).filter(l=>l.status!=='closed');
-  if(!lots.length)return '';
-  return `<div class="team-node-staking">${lots.map(l=>{
-    const amount=Number(l.remaining??l.original??0);
-    const expiry=l.expiryTime?new Date(l.expiryTime):null;
-    const expired=expiry&&expiry.getTime()<=Date.now();
-    return `<div><b>${expired?'abgelaufen · noch gestakt':'aktiv gestakt'}</b><br>${esc(safePairLabel(l))} · ${Number.isFinite(amount)?amount.toLocaleString('de-CH',{maximumFractionDigits:10}):'–'} PCLP${expiry?`<br>Ablauf: ${expiry.toLocaleString('de-CH')}`:''}</div>`;
-  }).join('<div style="height:6px"></div>')}</div>`;
-}
-function teamObservedStakeHtml(wallet){
-  if(norm(wallet)===norm(CURRENT_WALLET))return teamOwnOpenStakingHtml(wallet);
-  const rows=(CURRENT_CLAIM_REFERENCE_RESULT?.strong||[]).filter(r=>norm(r.sender)===norm(wallet));
-  if(!rows.length)return '';
-  // Referral reward tx prove that a stake occurred, but do not by themselves prove that it is still open.
-  // Therefore this is deliberately diagnostic only until partner-wide unstake/state enrichment is added.
-  const latest=rows.slice().sort((a,b)=>String(b.blockTimestamp||b.time||'').localeCompare(String(a.blockTimestamp||a.time||'')))[0];
-  const pair=latest?.lpPair?.label||latest?.staking?.label||null;
-  const amt=latest?.stakeAmountEvidence?.resolved&&latest.stakeAmountEvidence.items?.length
-    ? latest.stakeAmountEvidence.items.map(x=>`${x.amount} ${x.symbol||'PCLP'}`).join(' + ')
-    : null;
-  return `<div class="team-node-staking"><span class="muted">Stake-Evidenz vorhanden; Offen-/Unstake-Status wird noch partnerweit verifiziert.</span>${pair?`<br><b>${esc(pair)}</b>`:''}${amt?`<br>${esc(amt)}`:''}</div>`;
-}
-
 function projectOwnWalletMap(){
   const m=new Map();
   for(const w of (tlnWallets||[])){
@@ -10231,25 +10186,149 @@ function projectOwnWalletMap(){
 function isProjectOwnWallet(wallet){return projectOwnWalletMap().has(norm(wallet))}
 function projectOwnWalletLabel(wallet){return projectOwnWalletMap().get(norm(wallet))?.label||''}
 
-function teamNodeHtml(wallet,depth,parent){
-  const ident=tlnIdentityCache.get(norm(wallet))||{};
-  const alias=teamAliasFor(wallet,ident);
-  const own=isProjectOwnWallet(wallet),ownLabel=projectOwnWalletLabel(wallet);
-  const title=alias||(`TLN-ID ${ident.nodeId||'?'}`);
-  const key=teamAliasKey(wallet,ident);
-  return `<div class="team-node ${depth===0?'root':''} ${own?'own-wallet':''}" data-wallet="${esc(wallet)}">
-    <div class="team-node-title">${esc(title)}${own?'<span class="team-own-badge">MEINE WALLET</span>':''}</div>
-    <div class="team-node-meta">${ident.nodeId?`TLN-ID ${esc(ident.nodeId)} · `:''}${esc(short(wallet))}${own&&ownLabel?`<br>${esc(ownLabel)}`:''}</div>
-    ${parent?`<div class="team-node-parent">Upline: ${esc(teamAliasFor(parent,tlnIdentityCache.get(parent))||(`TLN-ID ${tlnIdentityCache.get(parent)?.nodeId||'?'}`))}</div>`:''}
-    <input class="team-alias-input" data-team-alias-key="${esc(key)}" value="${esc(alias)}" placeholder="Name / Alias">
-    ${teamObservedStakeHtml(wallet)}
-  </div>`;
+async function teamAlchemyRpc(method,params=[]){
+  let url=String(alchemyBase||'').trim();
+  if(!url)throw new Error('Alchemy discovery_api_base für BSC fehlt.');
+  // discovery_api_base is expected to be the configured JSON-RPC endpoint already used by the project.
+  const r=await fetch(url,{
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method,params})
+  });
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok||j.error)throw new Error(j?.error?.message||`Alchemy HTTP ${r.status}`);
+  return j.result;
+}
+function teamDecodeAddressArg(input,index=0){
+  const raw=String(input||'');
+  const start=10+index*64;
+  if(raw.length<start+64)return null;
+  const word=raw.slice(start,start+64);
+  if(!/^[0-9a-fA-F]{64}$/.test(word))return null;
+  const a=norm('0x'+word.slice(24));
+  return /^0x[0-9a-f]{40}$/.test(a)&&a!==ZERO?a:null;
+}
+function teamNodeIdCall(wallet){
+  return TEAM_NODE_ID_SELECTOR+norm(wallet).slice(2).padStart(64,'0');
+}
+async function teamLoadIdentityCacheFromDb(){
+  let userId=currentUserId||null;
+  if(!userId){
+    try{userId=(await sb.auth.getUser())?.data?.user?.id||null}catch{}
+  }
+  if(!userId)return 0;
+  const {data,error}=await sb.from('tln_wallet_identity_cache')
+    .select('wallet_address,node_id')
+    .eq('user_id',userId)
+    .eq('project_key','tln_vow')
+    .eq('chain_key','bsc');
+  if(error){
+    log(`Team-IDs: Supabase-Cache nicht lesbar: ${error.message}; nodeIdOf-Fallback bleibt aktiv.`,'warn');
+    return 0;
+  }
+  let n=0;
+  for(const row of data||[]){
+    const w=norm(row.wallet_address);
+    if(!/^0x[0-9a-f]{40}$/.test(w)||row.node_id==null)continue;
+    TEAM_IDENTITY_CACHE.set(w,{wallet:w,nodeId:String(row.node_id),source:'supabase'});
+    n++;
+  }
+  log(`Team-IDs: ${n} Wallet→TLN-ID Zuordnung(en) aus Supabase vorgeladen.`,'muted');
+  return n;
+}
+async function teamGetIdentity(wallet){
+  wallet=norm(wallet);
+  const cached=TEAM_IDENTITY_CACHE.get(wallet);
+  if(cached?.nodeId)return cached;
+  const result={wallet,nodeId:null,source:'unresolved'};
+  try{
+    const raw=await rpc('eth_call',[{to:TEAM_SMARTNODE_CONTRACT,data:teamNodeIdCall(wallet)},'latest']);
+    if(raw&&raw!=='0x'&&raw.length>=66){
+      const v=BigInt('0x'+raw.slice(2,66));
+      if(v>0n){
+        result.nodeId=v.toString();
+        result.source='SmartNode.nodeIdOf';
+      }
+    }
+  }catch(e){
+    log(`Team-ID ${short(wallet)} konnte nicht gelesen werden: ${e.message}`,'warn');
+  }
+  TEAM_IDENTITY_CACHE.set(wallet,result);
+  return result;
+}
+async function teamMapWithConcurrency(items,limit,fn){
+  const out=new Array(items.length);let next=0;
+  async function worker(){
+    while(true){
+      const i=next++;if(i>=items.length)return;
+      try{out[i]=await fn(items[i],i)}catch{out[i]=null}
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(limit,Math.max(1,items.length))},()=>worker()));
+  return out;
 }
 
+async function scanCompleteSmartNodeJoinGraph(){
+  const edges=new Map();
+  let pageKey=null,pages=0,transferCount=0;
+  const hashes=new Set();
+  do{
+    const q={
+      fromBlock:'0x0',toBlock:'latest',toAddress:TEAM_SMARTNODE_CONTRACT,
+      category:['external'],excludeZeroValue:false,withMetadata:false,
+      maxCount:'0x3e8',order:'asc'
+    };
+    if(pageKey)q.pageKey=pageKey;
+    const r=await teamAlchemyRpc('alchemy_getAssetTransfers',[q]);
+    pages++;
+    const txs=r?.transfers||[];transferCount+=txs.length;
+    for(const x of txs){const h=norm(x?.hash);if(h)hashes.add(h)}
+    pageKey=r?.pageKey||null;
+    if(pages>=100&&pageKey){
+      throw new Error('SmartNode-Historienscan überschreitet 100 Alchemy-Seiten; Abbruch statt unvollständigem Baum.');
+    }
+  }while(pageKey);
 
-function graphDepthFromRoots(wallet,ownSet,edges,maxDepth=TLN_TEAM_MAX_LEVELS){
-  // "Tiefe" der eigenen Wallets innerhalb der eigenen Leader-Kette:
-  // count how many other own wallets are ancestors of this wallet.
+  const decoded=await teamMapWithConcurrency([...hashes],18,async h=>{
+    const tx=await rpc('eth_getTransactionByHash',[h]);
+    if(norm(tx?.to)!==TEAM_SMARTNODE_CONTRACT)return null;
+    const input=String(tx?.input||'');
+    if(input.slice(0,10).toLowerCase()!==TEAM_JOIN_SELECTOR)return null;
+    const child=norm(tx?.from),parent=teamDecodeAddressArg(input,0);
+    if(!/^0x[0-9a-f]{40}$/.test(child)||!parent||child===parent)return null;
+    return {child,parent,hash:h,source:'SmartNode.join(address _referrer)'};
+  });
+  for(const e of decoded.filter(Boolean)){
+    // earliest join in ascending history is canonical for this graph
+    if(!edges.has(e.child))edges.set(e.child,e);
+  }
+  log(`Team-Discovery Gesamtgraph: ${edges.size} belegte join(address)-Parent-Beziehungen aus ${transferCount} SmartNode-Transaktionen / ${pages} Seite(n) dekodiert.`,'ok');
+  return {edges,pages,transferCount};
+}
+function descendantsFromJoinEdges(root,edges,maxDepth=TLN_TEAM_MAX_LEVELS){
+  root=norm(root);
+  const children=new Map();
+  for(const e of edges.values()){
+    if(!children.has(e.parent))children.set(e.parent,[]);
+    children.get(e.parent).push(e.child);
+  }
+  for(const a of children.values())a.sort();
+  const levels=new Map([[0,[root]]]),seen=new Set([root]),parentByChild=new Map();
+  let frontier=[root];
+  for(let depth=1;depth<=maxDepth&&frontier.length;depth++){
+    const next=[];
+    for(const parent of frontier){
+      for(const child of (children.get(parent)||[])){
+        if(seen.has(child))continue;
+        seen.add(child);next.push(child);parentByChild.set(child,parent);
+      }
+    }
+    if(next.length)levels.set(depth,next);
+    frontier=next;
+  }
+  return {levels,seen,parentByChild};
+}
+function graphOwnAncestorDepth(wallet,ownSet,edges,maxDepth=TLN_TEAM_MAX_LEVELS){
   let depth=0,cur=norm(wallet),seen=new Set([cur]);
   for(let i=0;i<maxDepth;i++){
     const p=norm(edges.get(cur)?.parent||'');
@@ -10259,13 +10338,11 @@ function graphDepthFromRoots(wallet,ownSet,edges,maxDepth=TLN_TEAM_MAX_LEVELS){
   return depth;
 }
 function buildProjectTeamForest(edges){
-  const ownMap=projectOwnWalletMap(),own=[...ownMap.keys()];
-  const ownSet=new Set(own);
-  const ownDepths=new Map(own.map(w=>[w,graphDepthFromRoots(w,ownSet,edges,TLN_TEAM_MAX_LEVELS)]));
-  // Requested discovery order: deepest own TLN-ID first.
+  const ownMap=projectOwnWalletMap(),own=[...ownMap.keys()],ownSet=new Set(own);
+  const ownDepths=new Map(own.map(w=>[w,graphOwnAncestorDepth(w,ownSet,edges)]));
   const orderedOwn=own.slice().sort((a,b)=>(ownDepths.get(b)||0)-(ownDepths.get(a)||0)||a.localeCompare(b));
 
-  // Every own TLN-ID acts as a leader. Union descendants while processing deepest first.
+  // All own TLN IDs act as leaders. Process deepest own TLN ID first, then union descendants.
   const included=new Set(),leaderStats=[];
   for(const leader of orderedOwn){
     const sub=descendantsFromJoinEdges(leader,edges,TLN_TEAM_MAX_LEVELS);
@@ -10274,8 +10351,7 @@ function buildProjectTeamForest(edges){
     leaderStats.push({leader,depth:ownDepths.get(leader)||0,total:sub.seen.size,added});
   }
 
-  // A project root is an own wallet that has no other own ancestor.
-  // If own wallets are in disconnected SmartNode branches, each becomes a root of the project forest.
+  // Only topmost own wallets become visible component roots; deeper own wallets remain normal team nodes.
   const roots=own.filter(w=>{
     let cur=w,seen=new Set([cur]);
     for(let i=0;i<TLN_TEAM_MAX_LEVELS;i++){
@@ -10299,246 +10375,93 @@ function buildProjectTeamForest(edges){
   }
   return {ownMap,ownSet,ownDepths,orderedOwn,included,leaderStats,roots,components};
 }
-let CURRENT_TEAM_PROJECT_FOREST=null;
 
+function teamOwnOpenStakingHtml(wallet){
+  if(norm(wallet)!==norm(CURRENT_WALLET))return '';
+  const lots=(DISCOVERY_PROCESS.lots||[]).filter(l=>l.status!=='closed');
+  if(!lots.length)return '';
+  return `<div class="team-node-staking">${lots.map(l=>{
+    const amount=Number(l.remaining??l.original??0);
+    const expiry=l.expiryTime?new Date(l.expiryTime):null;
+    const expired=expiry&&expiry.getTime()<=Date.now();
+    return `<div><b>${expired?'abgelaufen · noch gestakt':'aktiv gestakt'}</b><br>${esc(safePairLabel(l))} · ${Number.isFinite(amount)?amount.toLocaleString('de-CH',{maximumFractionDigits:10}):'–'} PCLP${expiry?`<br>Ablauf: ${expiry.toLocaleString('de-CH')}`:''}</div>`;
+  }).join('<div style="height:6px"></div>')}</div>`;
+}
+function teamObservedStakeHtml(wallet){
+  if(norm(wallet)===norm(CURRENT_WALLET))return teamOwnOpenStakingHtml(wallet);
+  const rows=(CURRENT_CLAIM_REFERENCE_RESULT?.strong||[]).filter(r=>norm(r.sender)===norm(wallet));
+  if(!rows.length)return '';
+  const latest=rows.slice().sort((a,b)=>String(b.blockTimestamp||b.time||'').localeCompare(String(a.blockTimestamp||a.time||'')))[0];
+  const pair=latest?.lpPair?.label||latest?.staking?.label||null;
+  const amt=latest?.stakeAmountEvidence?.resolved&&latest.stakeAmountEvidence.items?.length
+    ? latest.stakeAmountEvidence.items.map(x=>`${x.amount} ${x.symbol||'PCLP'}`).join(' + ')
+    : null;
+  return `<div class="team-node-staking"><span class="muted">Stake-Evidenz vorhanden; Offen-/Unstake-Status wird noch partnerweit verifiziert.</span>${pair?`<br><b>${esc(pair)}</b>`:''}${amt?`<br>${esc(amt)}`:''}</div>`;
+}
+function teamNodeHtml(wallet,depth,parent){
+  const ident=TEAM_IDENTITY_CACHE.get(norm(wallet))||{};
+  const alias=teamAliasFor(wallet,ident);
+  const own=isProjectOwnWallet(wallet),ownLabel=projectOwnWalletLabel(wallet);
+  const title=alias||(`TLN-ID ${ident.nodeId||'?'}`);
+  const key=teamAliasKey(wallet,ident);
+  const pIdent=parent?TEAM_IDENTITY_CACHE.get(norm(parent))||{}:{};
+  return `<div class="team-node ${depth===0?'root':''} ${own?'own-wallet':''}" data-wallet="${esc(wallet)}">
+    <div class="team-node-title">${esc(title)}${own?'<span class="team-own-badge">MEINE WALLET</span>':''}</div>
+    <div class="team-node-meta">${ident.nodeId?`TLN-ID ${esc(ident.nodeId)} · `:''}${esc(short(wallet))}${own&&ownLabel?`<br>${esc(ownLabel)}`:''}</div>
+    ${parent?`<div class="team-node-parent">Upline: ${esc(teamAliasFor(parent,pIdent)||(`TLN-ID ${pIdent.nodeId||'?'}`))}</div>`:''}
+    <input class="team-alias-input" data-team-alias-key="${esc(key)}" value="${esc(alias)}" placeholder="Name / Alias">
+    ${teamObservedStakeHtml(wallet)}
+  </div>`;
+}
 function renderTeamTree(){
   const box=$('teamTree'),status=$('teamTreeStatus');if(!box||!status)return;
   const forest=CURRENT_TEAM_PROJECT_FOREST;
   if(!forest||!forest.components?.length){
     box.innerHTML='<div class="muted">Noch kein projektweiter TLN/VOW-Team-Graph aufgebaut.</div>';return;
   }
-  const allPartnerWallets=[...forest.included];
   const ownCount=forest.ownSet.size;
-  const externalCount=allPartnerWallets.filter(w=>!forest.ownSet.has(w)).length;
+  const externalCount=[...forest.included].filter(w=>!forest.ownSet.has(w)).length;
   const blocks=[];
   for(const comp of forest.components){
-    const rootIdent=tlnIdentityCache.get(comp.root)||{};
+    const rootIdent=TEAM_IDENTITY_CACHE.get(comp.root)||{};
     const rootLabel=teamAliasFor(comp.root,rootIdent)||`TLN-ID ${rootIdent.nodeId||'?'}`;
     const lines=[];
     for(const [depth,wallets] of comp.levels.entries()){
-      const nodes=wallets.map(w=>{
-        const parent=depth>0?norm(comp.parentByChild.get(w)||''):null;
-        return teamNodeHtml(w,depth,parent);
-      }).join('');
+      const nodes=wallets.map(w=>teamNodeHtml(w,depth,depth>0?comp.parentByChild.get(w):null)).join('');
       lines.push(`<div class="team-tree-level"><div class="team-tree-level-label">${depth===0?'Leader':`Linie ${depth}`}<div class="small muted">${wallets.length}</div></div><div class="team-tree-nodes">${nodes}</div></div>`);
     }
     blocks.push(`<div style="margin:14px 0 6px"><b>Projekt-Ast ab ${esc(rootLabel)}</b></div>${lines.join('')}`);
   }
   const orderText=forest.orderedOwn.map(w=>{
-    const i=tlnIdentityCache.get(w)||{},d=forest.ownDepths.get(w)||0;
+    const i=TEAM_IDENTITY_CACHE.get(w)||{},d=forest.ownDepths.get(w)||0;
     return `${i.nodeId||short(w)}${d?` (eigene Tiefe ${d})`:''}`;
   }).join(' → ');
   status.innerHTML=`<div class="team-line-summary"><b>${externalCount}</b> externe Team-Partner + <b>${ownCount}</b> eigene TLN/VOW-Wallet(s) im projektweiten Team-Baum · <b>${forest.components.length}</b> Projekt-Ast/Äste · Anzeigegrenze <b>${TLN_TEAM_MAX_LEVELS}</b> Linien.</div>
-    <div class="muted">Alle eigenen TLN-IDs werden als Leader berücksichtigt und bleiben zugleich normale Team-Mitglieder. Eigene Wallets sind nur farbig markiert. Discovery-Reihenfolge (tiefste eigene TLN-ID zuerst): ${esc(orderText||'–')}.</div>`;
+    <div class="muted">Eigene Wallets bleiben normale Team-Mitglieder und sind nur farbig markiert. Discovery-Reihenfolge (tiefste eigene TLN-ID zuerst): ${esc(orderText||'–')}.</div>`;
   box.innerHTML=blocks.join('');
   box.querySelectorAll('.team-alias-input').forEach(inp=>inp.addEventListener('change',()=>{
     saveTeamAlias(inp.dataset.teamAliasKey,inp.value);renderTeamTree();
   }));
 }
-
-async function discoverTeamViaSmartNodeGetter(root){
-  root=norm(root);
-  const candidates=['getAllSubordinatesWithLevels(address)','getAllSubordinates(address)','getSubordinates(address)','getTeam(address)','teamOf(address)'];
-  for(const sig of candidates){
-    try{
-      const raw=await rpc('eth_call',[{to:TLN_SMARTNODE_CONTRACT,data:addrCall(sig,root)},'latest']);
-      if(!raw||raw==='0x'||raw.length<130)continue;
-      if(sig==='getAllSubordinatesWithLevels(address)'){
-        try{
-          const decoded=ethers.AbiCoder.defaultAbiCoder().decode(['address[]','uint256[]'],raw);
-          const wallets=[...decoded[0]].map(norm).filter(a=>/^0x[0-9a-f]{40}$/.test(a)&&a!==root);
-          const levels=[...decoded[1]].map(x=>Number(x));
-          if(wallets.length)return {source:sig,wallets,levels};
-        }catch{}
-      }else{
-        try{
-          const decoded=ethers.AbiCoder.defaultAbiCoder().decode(['address[]'],raw);
-          const wallets=[...decoded[0]].map(norm).filter(a=>/^0x[0-9a-f]{40}$/.test(a)&&a!==root);
-          if(wallets.length)return {source:sig,wallets,levels:null};
-        }catch{}
-      }
-    }catch{}
-  }
-  return null;
-}
-
-async function mapWithConcurrency(items,limit,fn){
-  const out=new Array(items.length);let next=0;
-  async function worker(){
-    while(true){
-      const i=next++;if(i>=items.length)return;
-      try{out[i]=await fn(items[i],i)}catch(e){out[i]=null}
-    }
-  }
-  await Promise.all(Array.from({length:Math.min(limit,items.length||1)},()=>worker()));
-  return out;
-}
-async function scanCompleteSmartNodeJoinGraph(){
-  const edges=new Map(); // child -> {parent,hash,source}
-  let pageKey=null,pages=0,transferCount=0;
-  const hashes=[];
-  do{
-    const q={
-      fromBlock:'0x0',toBlock:'latest',toAddress:TLN_SMARTNODE_CONTRACT,
-      category:['external'],excludeZeroValue:false,withMetadata:false,
-      maxCount:'0x3e8',order:'asc'
-    };
-    if(pageKey)q.pageKey=pageKey;
-    const r=await alchemyRpc('alchemy_getAssetTransfers',[q]);pages++;
-    const txs=r?.transfers||[];transferCount+=txs.length;
-    for(const x of txs){
-      const h=norm(x?.hash);if(h&&!hashes.includes(h))hashes.push(h);
-    }
-    pageKey=r?.pageKey||null;
-    if(pages>=100&&pageKey){
-      log(`Team-Discovery: Sicherheitslimit 100 SmartNode-Historienseiten erreicht; Scan wäre unvollständig.`,'warn');
-      break;
-    }
-  }while(pageKey);
-
-  const decoded=await mapWithConcurrency(hashes,18,async h=>{
-    let tx=referralSessionCache.tx.get(h);
-    if(!tx){
-      tx=TX_RPC_SESSION_CACHE.get(`eth_getTransactionByHash|${JSON.stringify([h])}`)||null;
-      if(!tx)tx=await rpc('eth_getTransactionByHash',[h]);
-      if(tx)referralSessionCache.tx.set(h,tx);
-    }
-    if(norm(tx?.to)!==norm(TLN_SMARTNODE_CONTRACT))return null;
-    const input=String(tx?.input||'');
-    if(input.slice(0,10).toLowerCase()!==SMARTNODE_JOIN_SELECTOR)return null;
-    const child=norm(tx?.from),parent=decodeAddressArg(input,0);
-    if(!/^0x[0-9a-f]{40}$/.test(child)||!parent||child===parent)return null;
-    return {child,parent,hash:h,source:'SmartNode.join(address _referrer)'};
-  });
-  for(const e of decoded.filter(Boolean)){
-    // Earliest successful join is the canonical parent assignment; do not guess from rewards.
-    if(!edges.has(e.child))edges.set(e.child,e);
-  }
-  log(`Team-Discovery Gesamtgraph: ${edges.size} belegte join(address)-Parent-Beziehungen aus ${transferCount} SmartNode-Transaktionen / ${pages} Seite(n) dekodiert.`,'ok');
-  return {edges,pages,transferCount};
-}
-function descendantsFromJoinEdges(root,edges,maxDepth=TLN_TEAM_MAX_LEVELS){
-  root=norm(root);
-  const children=new Map();
-  for(const e of edges.values()){
-    if(!children.has(e.parent))children.set(e.parent,[]);
-    children.get(e.parent).push(e.child);
-  }
-  for(const a of children.values())a.sort();
-  const levels=new Map([[0,[root]]]),seen=new Set([root]),parentByChild=new Map(),edgeByChild=new Map();
-  let frontier=[root];
-  for(let depth=1;depth<=maxDepth&&frontier.length;depth++){
-    const next=[];
-    for(const parent of frontier){
-      for(const child of (children.get(parent)||[])){
-        if(seen.has(child))continue;
-        seen.add(child);next.push(child);parentByChild.set(child,parent);edgeByChild.set(child,edges.get(child));
-      }
-    }
-    if(next.length)levels.set(depth,next);
-    frontier=next;
-  }
-  return {levels,seen,parentByChild,edgeByChild};
-}
-async function mergeCompleteTeamGraph(){
-  const full=await scanCompleteSmartNodeJoinGraph();
-  const ownMap=projectOwnWalletMap(),ownWallets=[...ownMap.keys()];
-  if(!ownWallets.length)throw new Error('Keine TLN/VOW-Wallets unter „MEINE Wallets“ gefunden.');
-
-  // Resolve all own TLN IDs first. They are all leaders for the project view.
-  await mapWithConcurrency(ownWallets,10,async w=>{
-    if(!tlnIdentityCache.get(w)?.nodeId)try{await getTlnIdentity(w)}catch{}
-  });
-
-  const forest=buildProjectTeamForest(full.edges);
-  CURRENT_TEAM_PROJECT_FOREST=forest;
-  const members=[...forest.included];
-
-  log(`Team-Discovery Projekt: ${ownWallets.length} eigene TLN/VOW-Wallet(s) als Leader · ${members.length-ownWallets.filter(w=>forest.included.has(w)).length} weitere Team-Partner in der Vereinigungsmenge.`,'ok');
-  log(`Team-Discovery Reihenfolge: tiefste eigene TLN-ID zuerst → ${forest.orderedOwn.map(w=>tlnIdentityCache.get(w)?.nodeId||short(w)).join(' → ')||'–'}.`,'ok');
-
-  // Resolve identities only for wallets that belong to our project team union.
-  await mapWithConcurrency(members,12,async w=>{
-    let ident=tlnIdentityCache.get(w);
-    if(!ident?.nodeId)ident=await getTlnIdentity(w);
-    return ident;
-  });
-
-  // Merge exact join-parent edges for all included members.
-  await mapWithConcurrency(members.filter(w=>full.edges.has(w)),10,async child=>{
-    const edge=full.edges.get(child),parent=edge?.parent;if(!parent)return;
-    const childIdentity=tlnIdentityCache.get(child)||{wallet:child,nodeId:null,source:'join-graph'};
-    const parentIdentity=tlnIdentityCache.get(parent)||null;
-    const updated={
-      ...childIdentity,parentWallet:parent,parentSource:edge.source,
-      parentSourceHash:edge.hash,
-      referredById:parentIdentity?.nodeId?String(parentIdentity.nodeId):(childIdentity.referredById||null)
-    };
-    tlnIdentityCache.set(child,updated);
-    referralParentCache.set(child,{parent,source:updated.parentSource,hash:updated.parentSourceHash,cached:true});
-    if(updated.nodeId)try{await saveReferralParentToDb(child,parent,edge,parentIdentity)}catch{}
-  });
-
-  // rebuild now that identities/parents have been enriched
-  CURRENT_TEAM_PROJECT_FOREST=buildProjectTeamForest(full.edges);
-  return {full,forest:CURRENT_TEAM_PROJECT_FOREST,members};
-}
-
-
-async function loadProjectTeamReferralGraphFromDb(){
-  await ensureCurrentUserId();
-  if(!currentUserId||!tlnReferralGraphDbAvailable)return 0;
-  const {data,error}=await sb
-    .from('tln_wallet_identity_cache')
-    .select('wallet_address,node_id,referred_by_id,parent_wallet,parent_source,parent_source_hash,parent_verified_at,source,source_contract,source_method,verified_at')
-    .eq('user_id',currentUserId)
-    .eq('project_key','tln_vow')
-    .eq('chain_key','bsc');
-  if(error){
-    const msg=String(error.message||'');
-    if(/parent_wallet|parent_source|parent_verified_at|schema cache|column .* does not exist/i.test(msg)){
-      tlnReferralGraphDbAvailable=false;
-      log('Team-Graph: Supabase-Parent-Spalten nicht verfügbar; vollständiger SmartNode-Join-Scan bleibt aktiv.','warn');
-      return 0;
-    }
-    log(`Team-Graph: Supabase Parent-Graph konnte nicht geladen werden: ${error.message}`,'warn');
-    return 0;
-  }
-  let parents=0;
-  for(const row of data||[]){
-    const w=norm(row.wallet_address);
-    if(!/^0x[0-9a-f]{40}$/.test(w))continue;
-    const existing=tlnIdentityCache.get(w)||{};
-    const ident={
-      ...existing,wallet:w,
-      nodeId:row.node_id==null?(existing.nodeId||null):String(row.node_id),
-      referredById:row.referred_by_id==null?(existing.referredById||null):String(row.referred_by_id),
-      parentWallet:row.parent_wallet?norm(row.parent_wallet):null,
-      parentSource:row.parent_source||null,
-      parentSourceHash:row.parent_source_hash||null,
-      parentVerifiedAt:row.parent_verified_at||null,
-      source:existing.source||'supabase',cachedSource:existing.cachedSource||row.source||null,
-      chain:'BSC',contract:existing.contract||row.source_contract||null,
-      method:existing.method||row.source_method||null,
-      verifiedAt:existing.verifiedAt||row.verified_at||null
-    };
-    tlnIdentityCache.set(w,ident);
-    if(ident.parentWallet&&/^0x[0-9a-f]{40}$/.test(ident.parentWallet)&&ident.parentWallet!==w){
-      referralParentCache.set(w,{parent:ident.parentWallet,source:ident.parentSource||'Supabase Referral-Graph',hash:ident.parentSourceHash||null,cached:true});
-      parents++;
-    }
-  }
-  log(`Team-Graph Supabase: ${parents} gespeicherte Parent-Beziehung(en) vorgeladen.`,'muted');
-  return parents;
-}
-
 async function prepareTeamTree(){
-  await loadProjectTeamReferralGraphFromDb();
   try{
-    const complete=await mergeCompleteTeamGraph();
-    const ownIds=complete.forest.orderedOwn.map(w=>tlnIdentityCache.get(w)?.nodeId||short(w));
-    log(`Team-Discovery projektweit vollständig: ${complete.forest.ownSet.size} eigene Leader-TLN-ID(s) · ${complete.members.length} Wallet(s) in deren Team-Vereinigung · max. ${TLN_TEAM_MAX_LEVELS} Linien je Leader.`,'ok');
-    log(`Eigene Leader-TLN-IDs (tiefste zuerst): ${ownIds.join(', ')||'–'}.`,'ok');
+    TEAM_IDENTITY_CACHE.clear();
+    await teamLoadIdentityCacheFromDb();
+    const full=await scanCompleteSmartNodeJoinGraph();
+    const ownWallets=[...projectOwnWalletMap().keys()];
+    if(!ownWallets.length)throw new Error('Keine TLN/VOW-Wallets unter „MEINE Wallets“ gefunden.');
+
+    await teamMapWithConcurrency(ownWallets,8,w=>teamGetIdentity(w));
+    let forest=buildProjectTeamForest(full.edges);
+    const members=[...forest.included];
+    await teamMapWithConcurrency(members.filter(w=>!TEAM_IDENTITY_CACHE.get(w)?.nodeId),10,w=>teamGetIdentity(w));
+    forest=buildProjectTeamForest(full.edges);
+    CURRENT_TEAM_PROJECT_FOREST=forest;
+
+    const ownIds=forest.orderedOwn.map(w=>TEAM_IDENTITY_CACHE.get(w)?.nodeId||short(w));
+    log(`Team-Discovery Projekt: ${forest.ownSet.size} eigene TLN/VOW-Wallet(s) als Leader · ${[...forest.included].filter(w=>!forest.ownSet.has(w)).length} externe Team-Partner in der Vereinigungsmenge.`,'ok');
+    log(`Team-Discovery Reihenfolge: tiefste eigene TLN-ID zuerst → ${ownIds.join(' → ')||'–'}.`,'ok');
+    log(`Team-Discovery projektweit vollständig: ${forest.components.length} Projekt-Ast/Äste · max. ${TLN_TEAM_MAX_LEVELS} Linien je eigener Leader-TLN-ID.`,'ok');
   }catch(e){
     CURRENT_TEAM_PROJECT_FOREST=null;
     log(`Projektweite Team-Discovery fehlgeschlagen: ${e.message}`,'warn');
