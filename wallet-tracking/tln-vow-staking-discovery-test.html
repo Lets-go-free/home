@@ -107,7 +107,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 00:28:00 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 01:31:42 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; historische SmartNode-Tx werden gebündelt und mit History-Fallback vollständig geladen. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -210,7 +210,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-002800';
+const BUILD_ID='20260905-013142';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10201,6 +10201,7 @@ const TEAM_ALIAS_STORAGE_KEY='tln_vow_team_aliases_v1';
 const TEAM_SMARTNODE_CONTRACT='0x028c911c10c9e346158206991e02d09bd0a8a35b';
 const TEAM_NODE_ID_SELECTOR=ethers.id('nodeIdOf(address)').slice(0,10);
 const TEAM_JOIN_SELECTOR=ethers.id('join(address)').slice(0,10).toLowerCase();
+const TEAM_SMARTNODE_ACTIVATED_TOPIC=TLN_SMARTNODE_EVENT_TOPIC;
 const TLN_TEAM_MAX_LEVELS=20;
 const TEAM_IDENTITY_CACHE=new Map();
 let CURRENT_TEAM_PROJECT_FOREST=null;
@@ -10402,9 +10403,96 @@ async function teamMapWithConcurrency(items,limit,fn){
   return out;
 }
 
+function teamTransferBlockNumber(x){
+  const raw=x?.blockNum??x?.blockNumber??null;
+  if(raw==null)return null;
+  try{return Number(BigInt(raw))}catch{return null}
+}
+function teamDecodeSmartNodeActivatedLog(l){
+  const topics=Array.isArray(l?.topics)?l.topics.map(x=>String(x||'').toLowerCase()):[];
+  if(topics[0]!==TEAM_SMARTNODE_ACTIVATED_TOPIC)return {ok:false,reason:'topic'};
+  // Verifizierte Event-Signatur: SmartNodeActivated(address,address,uint256).
+  // Phase 1 dekodiert bewusst nur das erwartete Layout mit allen drei Werten im data-Feld.
+  // Abweichende indexed-Layouts werden gezählt und NICHT heuristisch interpretiert.
+  if(topics.length!==1)return {ok:false,reason:`layout-topics-${topics.length}`};
+  const words=String(l?.data||'0x').slice(2).match(/.{64}/g)||[];
+  if(words.length<3)return {ok:false,reason:`layout-data-${words.length}`};
+  const child=norm('0x'+words[0].slice(24));
+  const parent=norm('0x'+words[1].slice(24));
+  let nodeId=null;
+  try{nodeId=BigInt('0x'+words[2]).toString()}catch{}
+  if(!/^0x[0-9a-f]{40}$/.test(child)||!/^0x[0-9a-f]{40}$/.test(parent)||parent===ZERO||child===parent)return {ok:false,reason:'values'};
+  return {ok:true,edge:{child,parent,nodeId,hash:norm(l?.transactionHash),blockNumber:teamTransferBlockNumber(l),logIndex:teamTransferBlockNumber({blockNum:l?.logIndex}),source:'SmartNodeActivated(address,address,uint256)'}};
+}
+async function scanSmartNodeActivatedEventGraph(fromBlock,toBlock){
+  const started=performance.now();
+  const logs=[];
+  let requests=0,splits=0;
+  const failed=[];
+  const scanRange=async(from,to,depth=0)=>{
+    requests++;
+    try{
+      const part=await teamAlchemyRpc('eth_getLogs',[{
+        address:TEAM_SMARTNODE_CONTRACT,
+        fromBlock:'0x'+BigInt(from).toString(16),
+        toBlock:'0x'+BigInt(to).toString(16),
+        topics:[TEAM_SMARTNODE_ACTIVATED_TOPIC]
+      }]);
+      if(Array.isArray(part))logs.push(...part);
+      return;
+    }catch(e){
+      if(from<to&&depth<24){
+        splits++;
+        const mid=Math.floor((from+to)/2);
+        await scanRange(from,mid,depth+1);
+        await scanRange(mid+1,to,depth+1);
+        return;
+      }
+      failed.push({from,to,error:e?.message||String(e)});
+    }
+  };
+  await scanRange(fromBlock,toBlock);
+  const rows=[];
+  const unsupported=new Map();
+  for(const l of logs){
+    const d=teamDecodeSmartNodeActivatedLog(l);
+    if(d.ok)rows.push(d.edge);
+    else unsupported.set(d.reason,(unsupported.get(d.reason)||0)+1);
+  }
+  rows.sort((a,b)=>(a.blockNumber??Number.MAX_SAFE_INTEGER)-(b.blockNumber??Number.MAX_SAFE_INTEGER)||(a.logIndex??0)-(b.logIndex??0));
+  const edges=new Map();
+  for(const e of rows)if(!edges.has(e.child))edges.set(e.child,e);
+  const elapsedMs=Math.round(performance.now()-started);
+  log(`Team-Event-Diagnose: ${logs.length} SmartNodeActivated-Log(s) · ${rows.length} dekodiert · ${edges.size} eindeutige Child→Parent-Beziehungen · ${requests} eth_getLogs-Request(s) · ${splits} adaptive Split(s) · ${elapsedMs} ms.`,failed.length?'warn':'muted');
+  if(unsupported.size)log(`Team-Event-Diagnose: ${[...unsupported.entries()].map(([k,v])=>`${k}=${v}`).join(' · ')} nicht dekodiert; keine Heuristik verwendet.`,'warn');
+  if(failed.length)log(`Team-Event-Diagnose: ${failed.length} Blockbereich(e) konnten selbst nach adaptiver Teilung nicht gelesen werden. Event-Pfad gilt damit als unvollständig.`,'warn');
+  return {edges,logs:logs.length,decoded:rows.length,requests,splits,elapsedMs,failed,unsupported};
+}
+function compareSmartNodeEventAndTxGraphs(eventGraph,txGraph){
+  const eventEdges=eventGraph?.edges||new Map(),txEdges=txGraph?.edges||new Map();
+  let exact=0,missing=0,mismatch=0,extra=0;
+  const mismatchExamples=[],missingExamples=[],extraExamples=[];
+  for(const [child,t] of txEdges){
+    const e=eventEdges.get(child);
+    if(!e){missing++;if(missingExamples.length<5)missingExamples.push(child);continue}
+    if(norm(e.parent)===norm(t.parent))exact++;
+    else{mismatch++;if(mismatchExamples.length<5)mismatchExamples.push(`${short(child)}: Event ${short(e.parent)} ≠ Tx ${short(t.parent)}`)}
+  }
+  for(const [child,e] of eventEdges){
+    if(!txEdges.has(child)){extra++;if(extraExamples.length<5)extraExamples.push(`${short(child)}→${short(e.parent)}`)}
+  }
+  const complete=!eventGraph?.failed?.length&&missing===0&&mismatch===0&&extra===0&&eventEdges.size===txEdges.size;
+  log(`Team-Event-vs-Tx: ${exact}/${txEdges.size} Referenz-Beziehungen exakt identisch · fehlend Event=${missing} · Parent-Mismatch=${mismatch} · extra Event=${extra} · Event=${eventEdges.size} / Tx=${txEdges.size}.`,complete?'ok':'warn');
+  if(missingExamples.length)log(`Team-Event-vs-Tx fehlende Beispiele: ${missingExamples.map(short).join(', ')}`,'warn');
+  if(mismatchExamples.length)log(`Team-Event-vs-Tx Parent-Mismatch Beispiele: ${mismatchExamples.join(' · ')}`,'warn');
+  if(extraExamples.length)log(`Team-Event-vs-Tx zusätzliche Event-Beispiele: ${extraExamples.join(' · ')}`,'warn');
+  log(complete?'Team-Event-Diagnose BESTANDEN: Event-Graph ist zum vollständigen Tx-Referenzgraphen exakt äquivalent. Produktionspfad bleibt in Phase 1 trotzdem unverändert.':'Team-Event-Diagnose NICHT BESTANDEN: Tx-Referenzpfad bleibt unverändert maßgeblich.',''+(complete?'ok':'warn'));
+  return {complete,exact,missing,mismatch,extra};
+}
+
 async function scanCompleteSmartNodeJoinGraph(){
   const edges=new Map();
-  let pageKey=null,pages=0,transferCount=0;
+  let pageKey=null,pages=0,transferCount=0,minBlock=null,maxBlock=null;
   const hashes=new Set();
   do{
     const q={
@@ -10416,16 +10504,26 @@ async function scanCompleteSmartNodeJoinGraph(){
     const r=await teamAlchemyRpc('alchemy_getAssetTransfers',[q]);
     pages++;
     const txs=r?.transfers||[];transferCount+=txs.length;
-    for(const x of txs){const h=norm(x?.hash);if(h)hashes.add(h)}
+    for(const x of txs){
+      const h=norm(x?.hash);if(h)hashes.add(h);
+      const bn=teamTransferBlockNumber(x);
+      if(Number.isFinite(bn)){minBlock=minBlock==null?bn:Math.min(minBlock,bn);maxBlock=maxBlock==null?bn:Math.max(maxBlock,bn)}
+    }
     pageKey=r?.pageKey||null;
     if(pages>=100&&pageKey){
       throw new Error('SmartNode-Historienscan überschreitet 100 Alchemy-Seiten; Abbruch statt unvollständigem Baum.');
     }
   }while(pageKey);
 
-  // Critical cold-run optimization: do NOT load ~18k historical transactions one by one.
-  // Fetch in JSON-RPC batches; Alchemy is first pass, historical nulls are completed by
-  // PublicNode/Binance batches. Incomplete coverage is rejected instead of misrendered.
+  let eventGraph=null;
+  if(minBlock!=null&&maxBlock!=null){
+    log(`Team-Event-Diagnose Phase 1: SmartNodeActivated wird im belegten SmartNode-Historienbereich Block ${minBlock.toLocaleString('de-CH')}–${maxBlock.toLocaleString('de-CH')} gelesen; Rendering bleibt Tx-basiert.`,'muted');
+    eventGraph=await scanSmartNodeActivatedEventGraph(minBlock,maxBlock);
+  }else{
+    log('Team-Event-Diagnose Phase 1: kein belastbarer SmartNode-Blockbereich aus AssetTransfers ermittelbar; Event-Vergleich übersprungen.','warn');
+  }
+
+  // Bestehender vollständiger Tx-Pfad bleibt in Phase 1 unverändert die Referenz und Rendering-Basis.
   const orderedHashes=[...hashes];
   const txRows=await teamHistoricalTransactionBatch(orderedHashes);
   const decoded=[];
@@ -10445,8 +10543,10 @@ async function scanCompleteSmartNodeJoinGraph(){
   if(transferCount>1000&&edges.size<100){
     throw new Error(`SmartNode-Graph unplausibel klein: nur ${edges.size} join(address)-Beziehungen aus ${transferCount} Transaktionen. Abbruch statt falschem Baum.`);
   }
+  const txGraph={edges,pages,transferCount,minBlock,maxBlock};
   log(`Team-Discovery Gesamtgraph: ${edges.size} belegte join(address)-Parent-Beziehungen aus ${transferCount} SmartNode-Transaktionen / ${pages} Seite(n) dekodiert.`,'ok');
-  return {edges,pages,transferCount};
+  if(eventGraph)txGraph.eventComparison=compareSmartNodeEventAndTxGraphs(eventGraph,txGraph);
+  return txGraph;
 }
 function descendantsFromJoinEdges(root,edges,maxDepth=TLN_TEAM_MAX_LEVELS){
   root=norm(root);
