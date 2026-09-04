@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 17:36:44 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 17:42:52 CEST</div>
 <p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; neu sind RPC-/Cache- und Phasenzeit-Messwerte für Preisgraph, historische SC-Evidenz, Stake-Tx-Fakten und Positionsbewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -131,7 +131,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-173644';
+const BUILD_ID='20260904-174252';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -5979,47 +5979,78 @@ async function blockTimestampSeconds(blockNumber){
   try{return await pending}finally{BLOCK_TIMESTAMP_INFLIGHT.delete(bn)}
 }
 
-async function nearestBlockHexForTimestamp(isoTimestamp,latestHexOverride=null){
-  if(!isoTimestamp)return null;
-  const target=Math.floor(new Date(isoTimestamp).getTime()/1000);
-  if(!Number.isFinite(target))return null;
-  if(TIMESTAMP_BLOCK_CACHE.has(target)){step6CacheHit();return TIMESTAMP_BLOCK_CACHE.get(target)};
+async function blockTimestampSecondsMany(blockNumbers){
+  const uniq=[...new Set((blockNumbers||[]).map(Number).filter(n=>Number.isInteger(n)&&n>0))];
+  const out=new Map(),missing=[];
+  for(const bn of uniq){
+    if(BLOCK_TIMESTAMP_CACHE.has(bn)){step6CacheHit();out.set(bn,BLOCK_TIMESTAMP_CACHE.get(bn));}
+    else missing.push(bn);
+  }
+  if(missing.length){
+    const calls=missing.map(bn=>({method:'eth_getBlockByNumber',params:['0x'+bn.toString(16),false]}));
+    const rows=await lockNodeRealMany(calls,4);
+    for(let i=0;i<missing.length;i++){
+      const bn=missing[i],r=rows[i];
+      let ts=null;
+      try{if(!r?.error&&r?.result?.timestamp)ts=Number(BigInt(r.result.timestamp));}catch{}
+      BLOCK_TIMESTAMP_CACHE.set(bn,ts);out.set(bn,ts);
+    }
+  }
+  return out;
+}
 
+async function nearestBlockHexesForTimestamps(isoTimestamps,latestHexOverride=null){
+  const inputs=(isoTimestamps||[]).map((iso,index)=>({index,iso,target:Math.floor(new Date(iso).getTime()/1000)}));
+  const results=new Array(inputs.length).fill(null),pending=[];
+  for(const x of inputs){
+    if(!x.iso||!Number.isFinite(x.target))continue;
+    if(TIMESTAMP_BLOCK_CACHE.has(x.target)){step6CacheHit();results[x.index]=TIMESTAMP_BLOCK_CACHE.get(x.target);continue}
+    pending.push(x);
+  }
+  if(!pending.length)return results;
   try{
-    const latestHex=latestHexOverride||await rpc('eth_blockNumber',[]);
-    let lo=1,hi=Number(BigInt(latestHex)),best=hi;
-
-    while(lo<=hi){
-      const mid=Math.floor((lo+hi)/2);
-      const ts=await blockTimestampSeconds(mid);
-      if(ts==null)break;
-      if(ts<target){
-        lo=mid+1;
-      }else{
-        best=mid;
-        hi=mid-1;
+    const latestHex=latestHexOverride||await rpc('eth_blockNumber',[]),latest=Number(BigInt(latestHex));
+    const states=pending.map(x=>({...x,lo:1,hi:latest,best:latest,done:false}));
+    let guard=0;
+    while(states.some(s=>!s.done)&&guard++<64){
+      const mids=[];
+      for(const s of states){
+        if(s.done)continue;
+        if(s.lo>s.hi){s.done=true;continue}
+        s.mid=Math.floor((s.lo+s.hi)/2);mids.push(s.mid);
+      }
+      if(!mids.length)break;
+      const tsMap=await blockTimestampSecondsMany(mids);
+      for(const s of states){
+        if(s.done||s.mid==null)continue;
+        const ts=tsMap.get(s.mid);
+        if(ts==null){s.done=true;continue}
+        if(ts<s.target)s.lo=s.mid+1;
+        else{s.best=s.mid;s.hi=s.mid-1}
+        if(s.lo>s.hi)s.done=true;
       }
     }
-
-    // Compare first block >= target with preceding block and choose nearest timestamp.
-    let candidates=[best];
-    if(best>1)candidates.push(best-1);
-    let chosen=best,chosenDiff=Infinity;
-    for(const bn of candidates){
-      try{
-        const ts=await blockTimestampSeconds(bn);
-        const diff=Math.abs(ts-target);
-        if(diff<chosenDiff){chosen=bn;chosenDiff=diff}
-      }catch{}
+    const candidateBlocks=[];
+    for(const s of states){candidateBlocks.push(s.best);if(s.best>1)candidateBlocks.push(s.best-1)}
+    const candidateTs=await blockTimestampSecondsMany(candidateBlocks);
+    for(const s of states){
+      let chosen=s.best,chosenDiff=Infinity;
+      for(const bn of [s.best,s.best>1?s.best-1:null].filter(Boolean)){
+        const ts=candidateTs.get(bn);if(ts==null)continue;
+        const diff=Math.abs(ts-s.target);if(diff<chosenDiff){chosen=bn;chosenDiff=diff}
+      }
+      const value='0x'+chosen.toString(16);TIMESTAMP_BLOCK_CACHE.set(s.target,value);results[s.index]=value;
     }
-    const out='0x'+chosen.toString(16);
-    TIMESTAMP_BLOCK_CACHE.set(target,out);
-    return out;
+    return results;
   }catch(e){
     log(`Block zum Vertragsende konnte nicht bestimmt werden: ${e.message}`,'warn');
-    TIMESTAMP_BLOCK_CACHE.set(target,null);
-    return null;
+    for(const x of pending)TIMESTAMP_BLOCK_CACHE.set(x.target,null);
+    return results;
   }
+}
+
+async function nearestBlockHexForTimestamp(isoTimestamp,latestHexOverride=null){
+  return (await nearestBlockHexesForTimestamps([isoTimestamp],latestHexOverride))[0]||null;
 }
 async function blockHexForTx(hash){
   if(!hash)return null;
@@ -10004,8 +10035,8 @@ async function processValuation(){
     if(expiryLots.length){
       step6Phase('contract_end_block');
       const latestHex=await rpc('eth_blockNumber',[]);
-      const resolved=await Promise.all(expiryLots.map(async lot=>[lot,await nearestBlockHexForTimestamp(lot.expiryTime,latestHex)]));
-      for(const [lot,endBlockHex] of resolved)lot.contractEndBlockHex=endBlockHex;
+      const endBlocks=await nearestBlockHexesForTimestamps(expiryLots.map(lot=>lot.expiryTime),latestHex);
+      expiryLots.forEach((lot,i)=>{lot.contractEndBlockHex=endBlocks[i]||null});
     }
 
     for(let i=0;i<DISCOVERY_PROCESS.lots.length;i++){
