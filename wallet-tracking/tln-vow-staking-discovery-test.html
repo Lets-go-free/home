@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 17:46:58 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 17:50:34 CEST</div>
 <p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; Timestamp→Block nutzt jetzt exakte Interpolationssuche mit Nachbarblock-Prüfung und Binary-Fallback.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -131,7 +131,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-174658';
+const BUILD_ID='20260904-175034';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -6010,62 +6010,38 @@ async function nearestBlockHexesForTimestamps(isoTimestamps,latestHexOverride=nu
   if(!pending.length)return results;
   try{
     const latestHex=latestHexOverride||await rpc('eth_blockNumber',[]),latest=Number(BigInt(latestHex));
-    // Step 6.3: exakte Timestamp→Block-Suche über Zeit-Interpolation statt reinem
-    // Halbieren. Die bekannte Zeitklammer wird nach jedem Read enger; falls die
-    // Timestamp-Verteilung lokal ungeeignet ist, fällt die Schätzung automatisch
-    // auf die Mitte zurück. Am Ende werden die beiden benachbarten Blöcke verglichen.
-    const edgeTs=await blockTimestampSecondsMany([1,latest]);
-    const firstTs=edgeTs.get(1),latestTs=edgeTs.get(latest);
-    if(firstTs==null||latestTs==null)throw new Error('Block-Timestamp-Grenzen nicht lesbar.');
-    const states=pending.map(x=>({...x,low:1,lowTs:firstTs,high:latest,highTs:latestTs,done:false}));
-    for(const s of states){
-      if(s.target<=s.lowTs){s.high=s.low;s.highTs=s.lowTs;s.done=true}
-      else if(s.target>=s.highTs){s.low=s.high;s.lowTs=s.highTs;s.done=true}
-    }
+    // Step 6.4: bewährte exakte, gemeinsam gebatchte Binärsuche aus Step 6.2.
+    // Mehrere Zielzeitpunkte teilen sich pro Runde dieselben HTTP-Batches; am Ende
+    // werden die beiden benachbarten Blöcke anhand ihrer echten Timestamps verglichen.
+    const states=pending.map(x=>({...x,low:1,high:latest,done:false}));
     let guard=0;
-    while(states.some(s=>!s.done)&&guard++<32){
+    while(states.some(s=>!s.done)&&guard++<40){
       const mids=[];
-      for(const s of states){
-        if(s.done)continue;
-        if(s.high-s.low<=1){s.done=true;continue}
-        const spanBlocks=s.high-s.low,spanTs=s.highTs-s.lowTs;
-        let mid;
-        if(spanTs>0){
-          const frac=(s.target-s.lowTs)/spanTs;
-          mid=Math.round(s.low+spanBlocks*frac);
-        }else mid=Math.floor((s.low+s.high)/2);
-        // Verhindert festlaufende Rand-Schätzungen; bei extremen Verteilungen
-        // bleibt damit ein sicherer Binary-artiger Fortschritt erhalten.
-        if(!Number.isFinite(mid)||mid<=s.low||mid>=s.high)mid=Math.floor((s.low+s.high)/2);
-        mid=Math.max(s.low+1,Math.min(s.high-1,mid));
-        s.mid=mid;mids.push(mid);
+      for(const st of states){
+        if(st.done)continue;
+        if(st.high-st.low<=1){st.done=true;continue}
+        st.mid=Math.floor((st.low+st.high)/2);mids.push(st.mid);
       }
       if(!mids.length)break;
       const tsMap=await blockTimestampSecondsMany(mids);
-      for(const s of states){
-        if(s.done||s.mid==null)continue;
-        const ts=tsMap.get(s.mid);
-        if(ts==null){
-          // Seltener Provider-/Archive-Aussetzer: nur für diesen Zustand auf
-          // einen sicheren Mittelpunkt in der nächsten Runde zurückfallen.
-          s.highTs<=s.lowTs?s.done=true:null;
-          continue;
-        }
-        if(ts<s.target){s.low=s.mid;s.lowTs=ts}
-        else{s.high=s.mid;s.highTs=ts}
-        if(s.high-s.low<=1)s.done=true;
+      for(const st of states){
+        if(st.done||st.mid==null)continue;
+        const ts=tsMap.get(st.mid);
+        if(ts==null){throw new Error(`Block ${st.mid} nicht lesbar.`)}
+        if(ts<st.target)st.low=st.mid;else st.high=st.mid;
+        if(st.high-st.low<=1)st.done=true;
       }
     }
     const candidateBlocks=[];
-    for(const s of states){candidateBlocks.push(s.low,s.high)}
+    for(const st of states)candidateBlocks.push(st.low,st.high);
     const candidateTs=await blockTimestampSecondsMany(candidateBlocks);
-    for(const s of states){
-      let chosen=s.low,chosenDiff=Infinity;
-      for(const bn of [...new Set([s.low,s.high])]){
+    for(const st of states){
+      let chosen=st.low,chosenDiff=Infinity;
+      for(const bn of [...new Set([st.low,st.high])]){
         const ts=candidateTs.get(bn);if(ts==null)continue;
-        const diff=Math.abs(ts-s.target);if(diff<chosenDiff){chosen=bn;chosenDiff=diff}
+        const diff=Math.abs(ts-st.target);if(diff<chosenDiff){chosen=bn;chosenDiff=diff}
       }
-      const value='0x'+chosen.toString(16);TIMESTAMP_BLOCK_CACHE.set(s.target,value);results[s.index]=value;
+      const value='0x'+chosen.toString(16);TIMESTAMP_BLOCK_CACHE.set(st.target,value);results[st.index]=value;
     }
     return results;
   }catch(e){
@@ -10065,11 +10041,17 @@ async function processValuation(){
       expiryLots.forEach((lot,i)=>{lot.contractEndBlockHex=endBlocks[i]||null});
     }
 
+    // Step 6.4: unveränderte Contract-Probes parallel vorladen. Dadurch bleiben
+    // dieselben Read-Funktionen/Ergebnisse erhalten, aber die drei Positionen warten
+    // nicht mehr nacheinander auf ihre jeweils unabhängigen JSON-RPC-Batches.
+    step6Phase('business_probe');
+    await Promise.all(DISCOVERY_PROCESS.lots.map(async lot=>{lot.businessProbe=await businessProbeForLot(lot)}));
+
     for(let i=0;i<DISCOVERY_PROCESS.lots.length;i++){
       const lot=DISCOVERY_PROCESS.lots[i];log(`Bewertung ${i+1}/${DISCOVERY_PROCESS.lots.length}: ${safePairLabel(lot)} …`);
       step6Phase('historical_sc');await enrichHistoricalStakeEvidence(lot);
       step6Phase('stake_tx_evidence');await stakeTxTokenEvidence(lot);
-      step6Phase('business_probe');const probe=await businessProbeForLot(lot);lot.businessProbe=probe;
+      step6Phase('business_probe');const probe=lot.businessProbe||null;
       lot.rewardProfile=rewardProfileForLot(lot);lot.rewardReads=extractRewardReads(lot.rewardProfile,probe);lot.rewardModel=deriveRewardModel(lot);
       step6Phase('stake_valuation');const stored=extractStoredStakeUsd(lot,probe);
       if(stored){lot.stakeUsd=stored.usd;lot.stakeUsdSource=stored.source;lot.stakeUsdOrigin='tln_stored'}
