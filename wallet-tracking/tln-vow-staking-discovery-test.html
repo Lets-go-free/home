@@ -50,8 +50,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 18:02:31 CEST</div>
-<p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; Vertragsendblock-Suche nutzt vorhandene Step-1-Transferzeiten als sichere Suchgrenzen und fällt sonst auf die exakte Batch-Binärsuche zurück.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 18:08:27 CEST</div>
+<p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; Vertragsendblock-Suche nutzt Step-1-Transferzeiten. Contract-Reads in Schritt 6 sind auf tatsächlich benötigte Reward-/Fallback-Felder begrenzt.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -131,7 +131,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-180231';
+const BUILD_ID='20260904-180827';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -6182,6 +6182,59 @@ async function businessProbeForLot(lot){
     BUSINESS_PROBE_CACHE.set(key,null);return null;
   }
 }
+
+// Step 6.7: Für die Bewertung werden nicht alle 62 generischen Contract-Reads benötigt.
+// Historisches userInfo/stakes/... am Stake-Block ist die primäre Stake-USD-Quelle;
+// daher lesen wir hier nur Reward-Felder und userInfo als sicheren aktuellen Fallback.
+async function valuationBusinessProbeForLot(lot){
+  const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');
+  const key=`valuation|${contract}|${norm(CURRENT_WALLET)}`;
+  if(BUSINESS_PROBE_CACHE.has(key)){step6CacheHit();return BUSINESS_PROBE_CACHE.get(key)};
+  if(!ethers.isAddress(contract)){BUSINESS_PROBE_CACHE.set(key,null);return null}
+  try{
+    const rewardFields=new Set((rewardProfileForLot(lot).fields||[]).map(x=>String(x).toLowerCase()));
+    const probes=SC_READ_PROBES.filter(p=>
+      (p.kind==='amount'&&rewardFields.has(probeBaseName(p.label))) ||
+      (!lot?.historicalScAfter?.words?.length&&p.label==='userInfo(address)')
+    );
+    const profile=await contractCodeProfile(contract);
+    const results=[];
+    let skipped=0,attempted=0,cached=0;
+    const pending=[];
+    for(const probe of probes){
+      const selector=selectorFor(probe.sig);
+      const cap=await probeCapability(contract,probe);
+      const selectorSeen=cap==='supported';
+      if(cap==='unsupported'){skipped++;continue}
+      const pkey=latestProbeKey(contract,probe.sig,CURRENT_WALLET);
+      if(CONTRACT_LATEST_PROBE_CACHE.has(pkey)){
+        cached++;
+        const call=CONTRACT_LATEST_PROBE_CACHE.get(pkey);
+        if(call?.ok&&call.raw&&call.raw!=='0x')results.push({...probe,selector,selectorSeen,raw:call.raw,...decodeProbeValue(call.raw,probe)});
+      }else{
+        attempted++;
+        pending.push({probe,selector,selectorSeen,key:pkey,call:{method:'eth_call',params:[{to:contract,data:encodeProbeCall(probe,CURRENT_WALLET)},'latest']}});
+      }
+    }
+    if(pending.length){
+      const batch=await rpcManyDiscovery(pending.map(x=>x.call),40);
+      for(let i=0;i<pending.length;i++){
+        const x=pending[i],r=batch[i],raw=r?.error?null:r?.result;
+        const call=r?.error?{ok:false,raw:null,error:String(r.error?.message||'RPC-Fehler')}:{ok:true,raw:raw??'0x'};
+        CONTRACT_LATEST_PROBE_CACHE.set(x.key,call);
+        if(call.ok&&call.raw&&call.raw!=='0x'){
+          CONTRACT_CAPABILITY_CACHE.set(contractCapabilityKey(contract,x.probe.sig),'supported');
+          results.push({...x.probe,selector:x.selector,selectorSeen:x.selectorSeen,raw:call.raw,...decodeProbeValue(call.raw,x.probe)});
+        }
+      }
+    }
+    log(`Step-6 Contract-Reads ${short(contract)}: ${probes.length} relevante Probe(s) · ${skipped} per Capability ausgeschlossen · ${attempted} RPC-Read(s)${cached?` · ${cached} Session-Hit(s)`:''}.`,'ok');
+    const result={contract,implementation:profile.implementation,results,bytecodeSize:profile.bytecodeSize,implementationBytecodeSize:profile.implementationBytecodeSize,capabilitySkipped:skipped,valuationSubset:true};
+    BUSINESS_PROBE_CACHE.set(key,result);return result;
+  }catch{
+    BUSINESS_PROBE_CACHE.set(key,null);return null;
+  }
+}
 async function enrichLotsBusiness(lots,pricePairs){
   for(const lot of (lots||[])){
     await enrichHistoricalStakeEvidence(lot);
@@ -10091,17 +10144,11 @@ async function processValuation(){
       expiryLots.forEach((lot,i)=>{lot.contractEndBlockHex=endBlocks[i]||null});
     }
 
-    // Step 6.4: unveränderte Contract-Probes parallel vorladen. Dadurch bleiben
-    // dieselben Read-Funktionen/Ergebnisse erhalten, aber die drei Positionen warten
-    // nicht mehr nacheinander auf ihre jeweils unabhängigen JSON-RPC-Batches.
-    step6Phase('business_probe');
-    await Promise.all(DISCOVERY_PROCESS.lots.map(async lot=>{lot.businessProbe=await businessProbeForLot(lot)}));
-
     for(let i=0;i<DISCOVERY_PROCESS.lots.length;i++){
       const lot=DISCOVERY_PROCESS.lots[i];log(`Bewertung ${i+1}/${DISCOVERY_PROCESS.lots.length}: ${safePairLabel(lot)} …`);
       step6Phase('historical_sc');await enrichHistoricalStakeEvidence(lot);
       step6Phase('stake_tx_evidence');await stakeTxTokenEvidence(lot);
-      step6Phase('business_probe');const probe=lot.businessProbe||null;
+      step6Phase('business_probe');const probe=await valuationBusinessProbeForLot(lot);lot.businessProbe=probe;
       lot.rewardProfile=rewardProfileForLot(lot);lot.rewardReads=extractRewardReads(lot.rewardProfile,probe);lot.rewardModel=deriveRewardModel(lot);
       step6Phase('stake_valuation');const stored=extractStoredStakeUsd(lot,probe);
       if(stored){lot.stakeUsd=stored.usd;lot.stakeUsdSource=stored.source;lot.stakeUsdOrigin='tln_stored'}
