@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 15:41:01 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 15:46:02 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-154101';
+const BUILD_ID='20260904-154602';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -5035,6 +5035,7 @@ async function rewardRelevantCallsFromTransfers(wallet,transfers=[]){
   if(TX_FACTS_CACHE_STATE.dirty)await flushTxFactsCache(wallet);
 
   const out=[];
+  let receiptFallbackPersisted=0;
   for(const hash of walletCallHashes){
     try{
       let facts=TX_FACTS_CACHE_STATE.entries.get(hash)||null;
@@ -5050,7 +5051,7 @@ async function rewardRelevantCallsFromTransfers(wallet,transfers=[]){
         if(receipt){
           REWARD_FULL_RECEIPT_CACHE.set(hash,receipt);
           TX_RECEIPT_FLOW_CACHE.set(hash,receiptErc20Transfers(receipt));
-          if(tx){facts=txFactsFromRpc(tx,receipt);if(facts){TX_FACTS_CACHE_STATE.entries.set(hash,facts);TX_FACTS_CACHE_STATE.dirty=true}}
+          if(tx){facts=txFactsFromRpc(tx,receipt);if(facts){TX_FACTS_CACHE_STATE.entries.set(hash,facts);TX_FACTS_CACHE_STATE.dirty=true;receiptFallbackPersisted++}}
         }
       }
       if(!tx)continue;
@@ -5075,6 +5076,13 @@ async function rewardRelevantCallsFromTransfers(wallet,transfers=[]){
         _staking:{contract_address:norm(tx.to),label:'Dynamisch aus Wallet-Aufruf + ERC-20-Rückfluss'}
       });
     }catch(e){log(`Wallet-Aufruf aus ERC-20-Rückfluss ${hash}: ${e.message}`,'warn')}
+  }
+  // Batch-Lücken werden erst im sicheren Einzel-Fallback oben geschlossen. Diese
+  // nachgeladenen Receipts müssen deshalb NACH der Schleife nochmals persistent
+  // geflusht werden; sonst bleiben sie nur in der aktuellen Browser-Session.
+  if(TX_FACTS_CACHE_STATE.dirty){
+    await flushTxFactsCache(wallet);
+    if(receiptFallbackPersisted)log(`Schritt-4 Receipt-Fallback persistiert: ${receiptFallbackPersisted} nachgeladene Receipt(s) zusätzlich im globalen Chain-Fakten-Cache gespeichert.`,'ok');
   }
   log(`Reward-Discovery Vorfilter: ${out.length}/${byHash.size} Wallet-initiierte Contract-Tx · ${skippedNotWallet} fremde Sender vor Receipt-Load verworfen · ${skippedNoCall} ohne Contract-Call${missingFacts?` · ${missingFacts} ohne Tx-Fakten`:''}.`,'ok');
   return out;
