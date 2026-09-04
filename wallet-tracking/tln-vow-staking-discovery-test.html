@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 14:33:39 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 14:41:45 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID="20260904-143339";
+const BUILD_ID="20260904-144145";
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -4103,6 +4103,11 @@ async function clearSelectedWalletSupabaseCache(){
      TX_FACTS_CACHE_STATE.wallet='';TX_FACTS_CACHE_STATE.loaded=false;TX_FACTS_CACHE_STATE.dirty=false;TX_FACTS_CACHE_STATE.entries=new Map();
    }
    try{STAKING_DURATION_REFERENCE_ENGINE.clearHeadlessCaches?.()}catch{}
+   // Auch die Discovery-eigene walletbezogene Duration-Memoization leeren, damit
+   // ein DEV-Wiederholungstest reale RPC-Kosten zeigt. Globale Contract-Proofs in
+   // Supabase werden dadurch nicht berührt und anschließend frisch validiert.
+   for(const k of [...LOCK_ENGINE_CACHE.keys()])if(String(k).includes(`|${wallet}|`))LOCK_ENGINE_CACHE.delete(k);
+   SHARED_DURATION_RULE_CACHE.clear();
    resetDiscoveryProcess(wallet);
    setStepState(1,'Cache gelöscht · bereit');
    updateProcessButtons();
@@ -9004,11 +9009,11 @@ async function blockNearExpectedUnlock(lot,expectedTs){
   }else{
     for(let i=0;i<8&&hi>stakeBlock+1;i++){const b=await lockNodeRealRpc('eth_getBlockByNumber',['0x'+(hi-1).toString(16),false]);const prevTs=Number(BigInt(b.timestamp));if(prevTs<expectedTs)break;hi--;hiTs=prevTs}
   }
-  return {beforeBlock:Math.max(stakeBlock,hi-1),afterBlock:hi};
+  return {beforeBlock:Math.max(stakeBlock,hi-1),afterBlock:hi,anchorBlock:hi,anchorTimestamp:hiTs,expectedTs,blocksPerSec};
 }
 
 async function validateSharedDurationRule(lot,rule){
-  const stakeTs=lotStakeTsSeconds(lot);
+  const stakeTs=lotStakeTsSeconds(lot),stakeBlock=lotStakeBlock(lot);
   if(!stakeTs||!Number(rule?.lockDurationSeconds))return {ok:false,reason:'Stake-Zeit oder Shared Lockdauer fehlt.'};
   const exitHash=lot?.unstakeTx||lot?.transactions?.find?.(x=>/unstake/i.test(String(x?.kind||x?.action||'')))?.hash||null;
   if(!exitHash)return {ok:false,reason:'Keine reale Unstake-Tx für gezielte Grenzvalidierung vorhanden.'};
@@ -9016,11 +9021,68 @@ async function validateSharedDurationRule(lot,rule){
   if(!tx?.from||!tx?.to||!tx?.input||tx.input==='0x')return {ok:false,reason:'Unstake-Tx für Grenzvalidierung nicht vollständig verfügbar.'};
   const expectedTs=stakeTs+Number(rule.lockDurationSeconds),b=await blockNearExpectedUnlock(lot,expectedTs);
   if(!b)return {ok:false,reason:'Unlock-Block konnte nicht effizient angenähert werden.'};
-  const [before,after]=await Promise.all([lockProbeUnstake(tx,stakeTs,b.beforeBlock),lockProbeUnstake(tx,stakeTs,b.afterBlock)]);
+  const exitBlock=lot?.unstakeBlockHex?Number(BigInt(lot.unstakeBlockHex)):null;
   const lockRe=/lock|locked|minimum staking period|minimum stake|staking period|period|duration|early|matur|wait/i;
-  const beforeMsg=String(before?.revert?.message||before?.error?.message||'');
-  if(before?.failureClass==='contract_revert'&&lockRe.test(beforeMsg)&&after?.ok===true)return {ok:true,before,after,expectedTs};
-  return {ok:false,before,after,expectedTs,reason:`Grenzprobe passt nicht zum Shared Strict-Proof (vorher=${before?.failureClass||'?'}, nachher=${after?.ok?'success':after?.failureClass||'?'}).`};
+  const cache=new Map();
+  const probe=async n=>{
+    n=Math.max(Number(stakeBlock||0),Math.min(Number(exitBlock||Number.MAX_SAFE_INTEGER)-1,Number(n)));
+    if(cache.has(n))return cache.get(n);
+    const p=await lockProbeUnstake(tx,stakeTs,n);cache.set(n,p);return p;
+  };
+  const isLock=p=>{
+    const msg=String(p?.revert?.message||p?.error?.message||'');
+    return p?.failureClass==='contract_revert'&&lockRe.test(msg);
+  };
+  const validProbe=p=>p?.ok===true||isLock(p);
+  let before=await probe(b.beforeBlock),after=await probe(b.afterBlock);
+  const startBefore=before,startAfter=after;
+
+  // Die aus einem anderen Lot übernommene Lockdauer ist eine Hypothese. Die genaue
+  // Blockgrenze kann wegen Block-Timestamps einige Sekunden danebenliegen. Deshalb
+  // suchen wir nur lokal und exponentiell um den erwarteten Unlock, statt erneut die
+  // komplette Stake→Unstake-Strecke binär zu durchsuchen.
+  if(!(isLock(before)&&after?.ok===true)){
+    if(!validProbe(before)||!validProbe(after)){
+      return {ok:false,before,after,expectedTs,probes:[...cache.values()],reason:`Grenzprobe technisch nicht eindeutig (vorher=${before?.failureClass||'?'}, nachher=${after?.ok?'success':after?.failureClass||'?'}).`};
+    }
+    const MAX_LOCAL_SPAN=128;
+    if(isLock(after)){
+      let lo=after,hi=null;
+      for(const step of [2,4,8,16,32,64,128]){
+        const n=b.afterBlock+step;if(Number.isInteger(exitBlock)&&n>=exitBlock)break;
+        const p=await probe(n);
+        if(!validProbe(p))return {ok:false,before:lo,after:p,expectedTs,probes:[...cache.values()],reason:`Lokale Vorwärtssuche traf auf nicht-lock-semantischen Fehler (${p?.failureClass||'?'}).`};
+        if(p.ok){hi=p;break}lo=p;
+      }
+      if(!hi)return {ok:false,before:lo,after,expectedTs,probes:[...cache.values()],reason:`Shared Unlock-Grenze liegt mehr als ${MAX_LOCAL_SPAN} Blöcke nach der erwarteten Position.`};
+      before=lo;after=hi;
+    }else if(before?.ok===true){
+      let hi=before,lo=null;
+      for(const step of [2,4,8,16,32,64,128]){
+        const n=b.beforeBlock-step;if(n<=Number(stakeBlock||0))break;
+        const p=await probe(n);
+        if(!validProbe(p))return {ok:false,before:p,after:hi,expectedTs,probes:[...cache.values()],reason:`Lokale Rückwärtssuche traf auf nicht-lock-semantischen Fehler (${p?.failureClass||'?'}).`};
+        if(isLock(p)){lo=p;break}hi=p;
+      }
+      if(!lo)return {ok:false,before,after:hi,expectedTs,probes:[...cache.values()],reason:`Shared Unlock-Grenze liegt mehr als ${MAX_LOCAL_SPAN} Blöcke vor der erwarteten Position.`};
+      before=lo;after=hi;
+    }
+  }
+
+  if(!(isLock(before)&&after?.ok===true))return {ok:false,before,after,expectedTs,probes:[...cache.values()],reason:`Grenzprobe passt nicht zum Shared Strict-Proof (vorher=${before?.failureClass||'?'}, nachher=${after?.ok?'success':after?.failureClass||'?'}).`};
+
+  // Sobald lokal ein Lock→Success-Bracket gefunden ist, nur innerhalb dieses kleinen
+  // Fensters auf die echte benachbarte Blockgrenze verdichten.
+  let lo=before.blockNum,hi=after.blockNum;
+  while(hi-lo>1){
+    const mid=Math.floor((lo+hi)/2),p=await probe(mid);
+    if(p?.ok===true){hi=p.blockNum;after=p}
+    else if(isLock(p)){lo=p.blockNum;before=p}
+    else return {ok:false,before,after:p,expectedTs,probes:[...cache.values()],reason:`Lokale Grenzverdichtung traf auf nicht-lock-semantischen Fehler (${p?.failureClass||'?'}).`};
+  }
+  const driftBefore=Number(before?.timestamp||0)-expectedTs,driftAfter=Number(after?.timestamp||0)-expectedTs;
+  log(`Shared Duration-Grenze ${safePairLabel(lot)}: erwartet ${new Date(expectedTs*1000).toISOString()} · Start ${startBefore?.blockNum}/${startBefore?.timestamp} → ${startAfter?.blockNum}/${startAfter?.timestamp} · bestätigt ${before.blockNum}/${before.timestamp} (${driftBefore>=0?'+':''}${driftBefore}s) → ${after.blockNum}/${after.timestamp} (${driftAfter>=0?'+':''}${driftAfter}s) · ${cache.size} lokale Probe(s).`,'ok');
+  return {ok:true,before,after,expectedTs,probes:[...cache.values()],localProbeCount:cache.size};
 }
 
 function applySharedDurationRuleToLot(lot,rule,validation){
