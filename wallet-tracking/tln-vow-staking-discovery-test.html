@@ -50,7 +50,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 17:24:37 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 17:30:34 CEST</div>
+<p class="muted"><b>Step 6 Diagnose:</b> Bewertungslogik unverändert; neu sind RPC-/Cache- und Phasenzeit-Messwerte für Preisgraph, historische SC-Evidenz, Stake-Tx-Fakten und Positionsbewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +131,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-172437';
+const BUILD_ID='20260904-173034';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -219,6 +220,13 @@ const ETH_CALL_INFLIGHT=new Map();
 const TX_RPC_SESSION_CACHE=new Map();
 const TX_RPC_INFLIGHT=new Map();
 const ETH_CALL_STATS={total:0,network:0,hits:0,reverts:0};
+// Step 6 Diagnose v1: reine Instrumentierung. Keine Bewertungs-/Duration-/Reward-Fachlogik geändert.
+const STEP6_DIAG={active:false,phase:'idle',started:0,network:0,logical:0,cacheHits:0,byMethod:Object.create(null),byPhase:Object.create(null),phaseMs:Object.create(null),phaseStarted:0};
+function resetStep6Diag(){STEP6_DIAG.active=true;STEP6_DIAG.phase='setup';STEP6_DIAG.started=performance.now();STEP6_DIAG.network=0;STEP6_DIAG.logical=0;STEP6_DIAG.cacheHits=0;STEP6_DIAG.byMethod=Object.create(null);STEP6_DIAG.byPhase=Object.create(null);STEP6_DIAG.phaseMs=Object.create(null);STEP6_DIAG.phaseStarted=STEP6_DIAG.started}
+function step6Phase(name){if(!STEP6_DIAG.active)return;const now=performance.now();const prev=STEP6_DIAG.phase||'other';STEP6_DIAG.phaseMs[prev]=(STEP6_DIAG.phaseMs[prev]||0)+(now-STEP6_DIAG.phaseStarted);STEP6_DIAG.phase=String(name||'other');STEP6_DIAG.phaseStarted=now}
+function step6Network(method,logical=1){if(!STEP6_DIAG.active)return;STEP6_DIAG.network++;STEP6_DIAG.logical+=Math.max(1,Number(logical)||1);STEP6_DIAG.byMethod[method]=(STEP6_DIAG.byMethod[method]||0)+1;const p=STEP6_DIAG.phase||'other';STEP6_DIAG.byPhase[p]=(STEP6_DIAG.byPhase[p]||0)+1}
+function step6CacheHit(){if(STEP6_DIAG.active)STEP6_DIAG.cacheHits++}
+function finishStep6Diag(){if(!STEP6_DIAG.active)return null;step6Phase('finalize');const now=performance.now();STEP6_DIAG.phaseMs.finalize=(STEP6_DIAG.phaseMs.finalize||0)+(now-STEP6_DIAG.phaseStarted);STEP6_DIAG.active=false;return {elapsedMs:Math.round(now-STEP6_DIAG.started),network:STEP6_DIAG.network,logical:STEP6_DIAG.logical,cacheHits:STEP6_DIAG.cacheHits,byMethod:{...STEP6_DIAG.byMethod},byPhase:{...STEP6_DIAG.byPhase},phaseMs:Object.fromEntries(Object.entries(STEP6_DIAG.phaseMs).map(([k,v])=>[k,Math.round(v)]))}}
 let rpcCandidates=[];
 
 /* ===== BEGIN FULL REFERENCE ENGINE: tln-vow-single-claim-trace-test.html =====
@@ -4006,6 +4014,7 @@ function uniqueRpcUrls(a){return [...new Set((a||[]).filter(Boolean))]}
 function maskedRpcUrl(url){return String(url||'').replace(/([?&](?:key|token)=)[^&]+/ig,'$1***').replace(/\/v1\/[A-Za-z0-9_-]{20,}$/,'/v1/***')}
 function isSemanticRevert(e){const m=String(e?.message||e||'').toLowerCase();return m.includes('execution reverted')||m.includes('revert')||m.includes('invalid opcode')}
 async function rpcNetworkAt(url,method,params=[],timeoutMs=18000){
+ step6Network(method);
  // Letzte zentrale Sicherung gegen versehentliche Archive-Reads über PublicNode/Allnodes.
  // Tx/Receipt/Block-Reads sind davon nicht betroffen; nur State mit explizitem historischem Block.
  if(discoveryHistoricalStateRequest(method,params)&&url!==NODEREAL_BSC_URL)
@@ -4022,7 +4031,7 @@ function orderedRpcUrls(){return uniqueRpcUrls([rpcUrl,...rpcCandidates,rpcFallb
 function promoteRpc(url,reason){if(!url||url===rpcUrl)return;rpcUrl=url;rpcCandidates=uniqueRpcUrls([url,...rpcCandidates]);log(`RPC-Fallback aktiv${reason?` (${reason})`:''}: ${maskedRpcUrl(url)}`,'warn')}
 async function resilientTxRpc(method,params=[]){
  const key=txRpcSessionKey(method,params);
- if(TX_RPC_SESSION_CACHE.has(key))return TX_RPC_SESSION_CACHE.get(key);
+ if(TX_RPC_SESSION_CACHE.has(key)){step6CacheHit();return TX_RPC_SESSION_CACHE.get(key)};
  if(TX_RPC_INFLIGHT.has(key))return TX_RPC_INFLIGHT.get(key);
  const work=(async()=>{
   const errors=[];
@@ -4067,6 +4076,7 @@ function discoveryHistoricalStateRequest(method,params){
   return typeof tag==='string'&&/^0x[0-9a-f]+$/i.test(tag);
 }
 async function discoveryNodeRealRpc(method,params=[]){
+  step6Network(`NodeReal:${method}`);
   const c=new AbortController(),tm=setTimeout(()=>c.abort(),30000);
   try{
     const r=await fetch(NODEREAL_BSC_URL,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method,params}),signal:c.signal});
@@ -4083,7 +4093,7 @@ async function rpc(method,params=[]){
  if(method==='eth_getTransactionReceipt'||method==='eth_getTransactionByHash')return resilientTxRpc(method,params);
  if(method!=='eth_call')return rpcNetworkAt(rpcUrl,method,params);
  ETH_CALL_STATS.total++;const key=ethCallSessionKey(params);
- if(ETH_CALL_SESSION_CACHE.has(key)){ETH_CALL_STATS.hits++;const x=ETH_CALL_SESSION_CACHE.get(key);if(x.ok)return x.value;const e=new Error(x.message||'execution reverted');e.cached=true;throw e}
+ if(ETH_CALL_SESSION_CACHE.has(key)){ETH_CALL_STATS.hits++;step6CacheHit();const x=ETH_CALL_SESSION_CACHE.get(key);if(x.ok)return x.value;const e=new Error(x.message||'execution reverted');e.cached=true;throw e}
  if(ETH_CALL_INFLIGHT.has(key)){ETH_CALL_STATS.hits++;return ETH_CALL_INFLIGHT.get(key)}
  const p=(async()=>{ETH_CALL_STATS.network++;try{const value=await resilientEthCall(params);ETH_CALL_SESSION_CACHE.set(key,{ok:true,value});return value}catch(e){if(isSemanticRevert(e)){ETH_CALL_STATS.reverts++;ETH_CALL_SESSION_CACHE.set(key,{ok:false,message:String(e?.message||e||'execution reverted')})}throw e}finally{ETH_CALL_INFLIGHT.delete(key);if(ETH_CALL_STATS.total%250===0)log(`RPC-Performance: eth_call ${ETH_CALL_STATS.total} · Netzwerk ${ETH_CALL_STATS.network} · Cache-Hits ${ETH_CALL_STATS.hits} · Reverts ${ETH_CALL_STATS.reverts}`,'ok')}})();ETH_CALL_INFLIGHT.set(key,p);return p
 }
@@ -4707,6 +4717,7 @@ function lockPlausibleTs(n,stakeTs){return n>946684800&&n<4102444800&&(!stakeTs|
 function lockDurationFromSeconds(sec){if(sec<=0||sec>1000*86400)return null;const days=sec/86400;return {seconds:sec,days,exactDays:Number.isInteger(days)}}
 function lockStorageWordInfo(raw,stakeTs){const v=BigInt(raw||'0x0');let n=null;if(v<=BigInt(Number.MAX_SAFE_INTEGER))n=Number(v);return {raw,v,n,timestamp:n!=null&&lockPlausibleTs(n,stakeTs)?n:null,duration:n!=null?lockDurationFromSeconds(n):null}}
 async function lockNodeRealRpc(method,params=[]){
+ step6Network(`NodeReal:${method}`);
  const c=new AbortController(),tm=setTimeout(()=>c.abort(),30000);
  try{
   const r=await fetch(NODEREAL_BSC_URL,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:Date.now(),method,params}),signal:c.signal});
@@ -4724,6 +4735,7 @@ async function lockNodeRealMany(calls,parallel=4){
   const chunk=calls.slice(base,base+chunkSize),ids=chunk.map((_,i)=>base+i+1);
   const ctrl=new AbortController(),tm=setTimeout(()=>ctrl.abort(),30000);
   try{
+   step6Network(`NodeReal:batch(${chunk.length})`,chunk.length);
    const r=await fetch(NODEREAL_BSC_URL,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(chunk.map((c,i)=>({jsonrpc:'2.0',id:ids[i],method:c.method,params:c.params}))),signal:ctrl.signal});
    const arr=await r.json();if(!r.ok||!Array.isArray(arr))throw new Error(`NodeReal Batch HTTP ${r.status}`);
    const byId=new Map(arr.map(x=>[Number(x.id),x]));
@@ -5848,7 +5860,7 @@ async function inspectAnyPairAt(address,blockNumber){
 }
 async function pairStateAt(pair,blockHex){
   const key=`${norm(pair.address)}|${blockHex}`;
-  if(PAIR_STATE_CACHE.has(key))return PAIR_STATE_CACHE.get(key);
+  if(PAIR_STATE_CACHE.has(key)){step6CacheHit();return PAIR_STATE_CACHE.get(key)};
   try{
     const [rrRaw,tsRaw]=await Promise.all([
       rpc('eth_call',[{to:pair.address,data:V2.encodeFunctionData('getReserves',[])},blockHex]),
@@ -5960,7 +5972,7 @@ async function nearestBlockHexForTimestamp(isoTimestamp){
   if(!isoTimestamp)return null;
   const target=Math.floor(new Date(isoTimestamp).getTime()/1000);
   if(!Number.isFinite(target))return null;
-  if(TIMESTAMP_BLOCK_CACHE.has(target))return TIMESTAMP_BLOCK_CACHE.get(target);
+  if(TIMESTAMP_BLOCK_CACHE.has(target)){step6CacheHit();return TIMESTAMP_BLOCK_CACHE.get(target)};
 
   try{
     const latestHex=await rpc('eth_blockNumber',[]);
@@ -6073,7 +6085,7 @@ function extractRewardReads(profile,probeResult){
 async function businessProbeForLot(lot){
   const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');
   const key=`${contract}|${norm(CURRENT_WALLET)}`;
-  if(BUSINESS_PROBE_CACHE.has(key))return BUSINESS_PROBE_CACHE.get(key);
+  if(BUSINESS_PROBE_CACHE.has(key)){step6CacheHit();return BUSINESS_PROBE_CACHE.get(key)};
   try{
     const result=await probeStakingContract(lot,CURRENT_WALLET);
     BUSINESS_PROBE_CACHE.set(key,result);return result;
@@ -9966,10 +9978,40 @@ async function processReferralRewards(){
 }
 async function processValuation(){
   const b=$('stepValuation');b.disabled=true;setStepState(6,'läuft …','running');$('status').textContent='Schritt 6/6: historische Bewertung / Preisgraph …';
-  try{if(!DISCOVERY_PROCESS.done.duration)throw new Error('Zuerst Schritt 3 ausführen.');const configuredLpAddresses=[...new Set(allProjectRows.filter(x=>x.address&&String(x.tln_vow_category||x.defi_category||'').toLowerCase()==='lp_token').map(x=>norm(x.address)))];const referencePairs=[];for(const a of configuredLpAddresses){if(DISCOVERY_PROCESS.pairMap.has(a)){referencePairs.push(DISCOVERY_PROCESS.pairMap.get(a));continue}const rp=await inspectAnyPair(a);if(rp)referencePairs.push(rp)}const pricePairs=[...new Map([...DISCOVERY_PROCESS.pairs,...referencePairs].filter(p=>p.assetType!=='legacy_staking_token').map(p=>[norm(p.address),p])).values()];DISCOVERY_PROCESS.pricePairs=pricePairs;log(`Bewertung: ${pricePairs.length} LP-Pools im historischen Preisgraph.`,'ok');
-    for(let i=0;i<DISCOVERY_PROCESS.lots.length;i++){const lot=DISCOVERY_PROCESS.lots[i];log(`Bewertung ${i+1}/${DISCOVERY_PROCESS.lots.length}: ${safePairLabel(lot)} …`);await enrichHistoricalStakeEvidence(lot);await stakeTxTokenEvidence(lot);const probe=await businessProbeForLot(lot);lot.businessProbe=probe;lot.rewardProfile=rewardProfileForLot(lot);lot.rewardReads=extractRewardReads(lot.rewardProfile,probe);lot.rewardModel=deriveRewardModel(lot);const stored=extractStoredStakeUsd(lot,probe);if(stored){lot.stakeUsd=stored.usd;lot.stakeUsdSource=stored.source;lot.stakeUsdOrigin='tln_stored'}else{const v=await lpHistoricalValue(lot.pair||lot.p,lot.original,lot.stakeBlockHex||null,pricePairs);if(v?.usd!=null){lot.stakeUsd=v.usd;lot.stakeUsdSource=v.source;lot.stakeUsdOrigin='onchain_fallback';lot.stakeValuation=v}}if(lot.expiryTime){const endBlockHex=await nearestBlockHexForTimestamp(lot.expiryTime);lot.contractEndBlockHex=endBlockHex;const v=await lpHistoricalValue(lot.pair||lot.p,lot.original,endBlockHex,pricePairs);if(v){lot.contractEndValuation=v;lot.contractEndUsd=v.usd;lot.contractEndUsdSource=`Vertragsende ${new Date(lot.expiryTime).toLocaleString('de-CH')} · ${v.source}`}}if(lot.status==='closed'&&lot.unstakeTx){const blockHex=lot.unstakeBlockHex||await blockHexForTx(lot.unstakeTx);lot.unstakeBlockHex=blockHex;const v=await lpHistoricalValue(lot.pair||lot.p,lot.original,blockHex,pricePairs);if(v){lot.unstakeValuation=v;lot.unstakeUsd=v.usd;lot.unstakeUsdSource=`Tatsächlicher Unstake ${lot.unstakeTime?new Date(lot.unstakeTime).toLocaleString('de-CH'):'–'} · ${v.source}`}}}
-    DISCOVERY_PROCESS.done.valuation=true;renderProcessLotCards();setStepState(6,'Bewertung abgeschlossen','done');$('status').innerHTML='<span class="ok">Historische Bewertung abgeschlossen.</span>';log('Schritt 6 abgeschlossen.','ok')}
-  catch(e){setStepState(6,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
+  resetStep6Diag();
+  const cacheBefore={pair:PAIR_STATE_CACHE.size,business:BUSINESS_PROBE_CACHE.size,tx:TX_RPC_SESSION_CACHE.size,eth:ETH_CALL_SESSION_CACHE.size,timestamp:TIMESTAMP_BLOCK_CACHE.size,token:TOKEN_META_CACHE.size,lpFacts:LP_FACTS_CACHE_STATE.entries.size};
+  try{
+    if(!DISCOVERY_PROCESS.done.duration)throw new Error('Zuerst Schritt 3 ausführen.');
+    step6Phase('price_pair_setup');
+    const configuredLpAddresses=[...new Set(allProjectRows.filter(x=>x.address&&String(x.tln_vow_category||x.defi_category||'').toLowerCase()==='lp_token').map(x=>norm(x.address)))];
+    const referencePairs=[];
+    for(const a of configuredLpAddresses){if(DISCOVERY_PROCESS.pairMap.has(a)){referencePairs.push(DISCOVERY_PROCESS.pairMap.get(a));continue}const rp=await inspectAnyPair(a);if(rp)referencePairs.push(rp)}
+    const pricePairs=[...new Map([...DISCOVERY_PROCESS.pairs,...referencePairs].filter(p=>p.assetType!=='legacy_staking_token').map(p=>[norm(p.address),p])).values()];
+    DISCOVERY_PROCESS.pricePairs=pricePairs;log(`Bewertung: ${pricePairs.length} LP-Pools im historischen Preisgraph.`,'ok');
+
+    for(let i=0;i<DISCOVERY_PROCESS.lots.length;i++){
+      const lot=DISCOVERY_PROCESS.lots[i];log(`Bewertung ${i+1}/${DISCOVERY_PROCESS.lots.length}: ${safePairLabel(lot)} …`);
+      step6Phase('historical_sc');await enrichHistoricalStakeEvidence(lot);
+      step6Phase('stake_tx_evidence');await stakeTxTokenEvidence(lot);
+      step6Phase('business_probe');const probe=await businessProbeForLot(lot);lot.businessProbe=probe;
+      lot.rewardProfile=rewardProfileForLot(lot);lot.rewardReads=extractRewardReads(lot.rewardProfile,probe);lot.rewardModel=deriveRewardModel(lot);
+      step6Phase('stake_valuation');const stored=extractStoredStakeUsd(lot,probe);
+      if(stored){lot.stakeUsd=stored.usd;lot.stakeUsdSource=stored.source;lot.stakeUsdOrigin='tln_stored'}
+      else{const v=await lpHistoricalValue(lot.pair||lot.p,lot.original,lot.stakeBlockHex||null,pricePairs);if(v?.usd!=null){lot.stakeUsd=v.usd;lot.stakeUsdSource=v.source;lot.stakeUsdOrigin='onchain_fallback';lot.stakeValuation=v}}
+      if(lot.expiryTime){step6Phase('contract_end_block');const endBlockHex=await nearestBlockHexForTimestamp(lot.expiryTime);lot.contractEndBlockHex=endBlockHex;step6Phase('contract_end_valuation');const v=await lpHistoricalValue(lot.pair||lot.p,lot.original,endBlockHex,pricePairs);if(v){lot.contractEndValuation=v;lot.contractEndUsd=v.usd;lot.contractEndUsdSource=`Vertragsende ${new Date(lot.expiryTime).toLocaleString('de-CH')} · ${v.source}`}}
+      if(lot.status==='closed'&&lot.unstakeTx){step6Phase('unstake_block');const blockHex=lot.unstakeBlockHex||await blockHexForTx(lot.unstakeTx);lot.unstakeBlockHex=blockHex;step6Phase('unstake_valuation');const v=await lpHistoricalValue(lot.pair||lot.p,lot.original,blockHex,pricePairs);if(v){lot.unstakeValuation=v;lot.unstakeUsd=v.usd;lot.unstakeUsdSource=`Tatsächlicher Unstake ${lot.unstakeTime?new Date(lot.unstakeTime).toLocaleString('de-CH'):'–'} · ${v.source}`}}
+    }
+    DISCOVERY_PROCESS.done.valuation=true;renderProcessLotCards();setStepState(6,'Bewertung abgeschlossen','done');$('status').innerHTML='<span class="ok">Historische Bewertung abgeschlossen.</span>';
+    const diag=finishStep6Diag();
+    const cacheAfter={pair:PAIR_STATE_CACHE.size,business:BUSINESS_PROBE_CACHE.size,tx:TX_RPC_SESSION_CACHE.size,eth:ETH_CALL_SESSION_CACHE.size,timestamp:TIMESTAMP_BLOCK_CACHE.size,token:TOKEN_META_CACHE.size,lpFacts:LP_FACTS_CACHE_STATE.entries.size};
+    const phaseText=Object.entries(diag?.phaseMs||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}=${v}ms`).join(' · ');
+    const methodText=Object.entries(diag?.byMethod||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}=${v}`).join(' · ');
+    log(`Schritt-6 Diagnose: ${diag?.elapsedMs||0} ms · ${diag?.network||0} HTTP/RPC-Request(s) · ${diag?.logical||0} logische RPC-Read(s) · ${diag?.cacheHits||0} instrumentierte Cache-Hits.`,'ok');
+    log(`Schritt-6 Phasen: ${phaseText||'keine'}.`,'ok');
+    log(`Schritt-6 RPC-Typen: ${methodText||'keine'}.`,'ok');
+    log(`Schritt-6 Cache-Größen vorher→nachher: Pair ${cacheBefore.pair}→${cacheAfter.pair} · Business ${cacheBefore.business}→${cacheAfter.business} · Tx/Receipt ${cacheBefore.tx}→${cacheAfter.tx} · eth_call ${cacheBefore.eth}→${cacheAfter.eth} · Timestamp→Block ${cacheBefore.timestamp}→${cacheAfter.timestamp} · TokenMeta ${cacheBefore.token}→${cacheAfter.token} · LP-Fakten ${cacheBefore.lpFacts}→${cacheAfter.lpFacts}.`,'ok');
+    log('Schritt 6 abgeschlossen · Diagnose v1 aktiv; Bewertungsfachlogik unverändert.','ok');
+  }catch(e){finishStep6Diag();setStepState(6,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
 
 function populateTlnWalletDropdown(){
