@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 16:29:05 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand 04.09.2026 16:37:15 CEST</div>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -130,7 +130,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260904-162905';
+const BUILD_ID='20260904-163715';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -1016,6 +1016,33 @@ function primeHeadlessCaches({receipts=[],txs=[],blocks=[]}={}){
     if(key&&block){referralSessionCache.block.set(key,block);bc++}
   }
   return {receipts:rc,txs:tc,blocks:bc};
+}
+async function prefetchReferralMintReceipts(hashes,parallel=10){
+  const input=[...new Set((hashes||[]).map(norm).filter(Boolean))];
+  const missing=input.filter(h=>!referralSessionCache.receipt.get(h));
+  if(!missing.length)return {requested:0,loaded:0,hashes:[]};
+  const concurrency=Math.min(Math.max(1,Number(parallel)||1),missing.length);
+  let cursor=0,loaded=0;const fetched=[];
+  async function worker(){
+    while(true){
+      const i=cursor++;if(i>=missing.length)return;
+      const h=missing[i];
+      try{
+        const receipt=await rpc('eth_getTransactionReceipt',[h]);
+        if(receipt){referralSessionCache.receipt.set(h,receipt);loaded++;fetched.push(h)}
+      }catch{}
+    }
+  }
+  await Promise.all(Array.from({length:concurrency},worker));
+  return {requested:missing.length,loaded,hashes:fetched,parallel:concurrency};
+}
+function headlessReferralReceipts(hashes=[]){
+  const out=[];
+  for(const hash of hashes||[]){
+    const h=norm(hash),receipt=referralSessionCache.receipt.get(h);
+    if(h&&receipt)out.push([h,receipt]);
+  }
+  return out;
 }
 function referralCacheKey(wallet,startBlock,tokens){
   return `${norm(wallet)}|${startBlock.toString()}|${tokens.map(t=>t.address).sort().join(',')}`;
@@ -2038,6 +2065,8 @@ async function scanWalletHeadless(wallet,startBlock=0n){
     const stakingMap=await knownStakingMap();
     const rows=[]; let ownTxExcluded=0;
     referralPhase('mint_tx_classification');
+    const mintReceiptPrefetch=await prefetchReferralMintReceipts(hashes,10);
+    walletLog(`Referral-Mint-Receipts: ${mintReceiptPrefetch.loaded}/${mintReceiptPrefetch.requested} fehlende Receipt(s) mit Parallelität ${mintReceiptPrefetch.parallel||0} vorgeladen.`);
     for(const hash of hashes){
       try{
         const r=await classifyReferralMintTx(hash,wallet,stakingMap);
@@ -2106,7 +2135,7 @@ async function scanWalletHeadless(wallet,startBlock=0n){
     });
     referralPhase('finalize');
     const stats=referralRpcStatsText(); referralRpcStatsActive=false;
-    return {version:APP_VERSION,wallet,startBlock:startBlock.toString(),referralTokens,hashes,stakingMap,rows,strong,candidates,ownTxExcluded,rewardTokenList,tokenTotals,partnerRows,walletIdentity:tlnIdentityCache.get(wallet)||null,rpcStats:stats};
+    return {version:APP_VERSION,wallet,startBlock:startBlock.toString(),referralTokens,hashes,stakingMap,rows,strong,candidates,ownTxExcluded,rewardTokenList,tokenTotals,partnerRows,walletIdentity:tlnIdentityCache.get(wallet)||null,rpcStats:stats,mintReceiptPrefetch};
   })().catch(e=>{__headlessScanCache.delete(cacheKey);referralRpcStatsActive=false;throw e});
   __headlessScanCache.set(cacheKey,promise); return promise;
 }
@@ -2114,7 +2143,7 @@ function clearHeadlessCaches(){__headlessScanCache.clear();referralParentCache.c
 
 return {
   sourceVersion:APP_VERSION,
-  scanWalletHeadless,clearHeadlessCaches,primeHeadlessCaches,
+  scanWalletHeadless,clearHeadlessCaches,primeHeadlessCaches,headlessReferralReceipts,
   getTlnIdentity,loadTlnIdentitiesFromDb,saveTlnIdentityToDb,loadTlnReferralGraphFromDb,saveReferralParentToDb,
   initRpc,
   tokenScopedMintHashes,classifyReferralMintTx,referralLpPairForRow,lpPairMeta,
@@ -4162,8 +4191,18 @@ function txFactsFromRpc(tx,receipt=null){
     receipt:compactReceiptForTechCache(receipt),savedAt:new Date().toISOString()
   };
 }
+function fullReferralReceiptForTechCache(receipt){
+  if(!receipt)return null;
+  return {
+    status:receipt.status??null,blockNumber:receipt.blockNumber??null,from:receipt.from||null,to:receipt.to||null,
+    logs:(receipt.logs||[]).map(l=>({address:l.address||null,topics:Array.isArray(l.topics)?l.topics:null,data:l.data||'0x',logIndex:l.logIndex??null}))
+  };
+}
 function txObjectFromFacts(f){if(!f)return null;return {hash:f.hash,input:f.input||'0x',blockNumber:f.blockNumber||null,from:f.from||null,to:f.to||null,value:f.value||null}}
-function receiptObjectFromFacts(f){return f?.receipt?{status:f.receipt.status??null,blockNumber:f.receipt.blockNumber??null,logs:Array.isArray(f.receipt.logs)?f.receipt.logs:[]}:null}
+function receiptObjectFromFacts(f){
+  const r=f?.referralReceipt||f?.receipt;if(!r)return null;
+  return {status:r.status??null,blockNumber:r.blockNumber??null,from:r.from||f?.from||null,to:r.to||f?.to||null,logs:Array.isArray(r.logs)?r.logs:[]};
+}
 
 let stakingScanDbCacheAvailable=true,currentUserId=null;
 function compactTransferForCache(t){
@@ -8640,14 +8679,17 @@ function renderRewardClaiming(lots){
 
 function primeClaimReferenceFromDiscoveryCaches(){
   try{
-    const receipts=[...REWARD_FULL_RECEIPT_CACHE.entries()].filter(([,v])=>v);
+    const receiptMap=new Map([...REWARD_FULL_RECEIPT_CACHE.entries()].filter(([,v])=>v));
     const txs=[];
+    let persistedReferralReceipts=0;
     for(const [hash,facts] of TX_FACTS_CACHE_STATE.entries||[]){
       const tx=txObjectFromFacts(facts);
       if(tx)txs.push([hash,tx]);
+      if(facts?.referralReceipt&&!receiptMap.has(hash)){const rc=receiptObjectFromFacts(facts);if(rc){receiptMap.set(hash,rc);persistedReferralReceipts++}}
     }
+    const receipts=[...receiptMap.entries()];
     const seeded=CLAIM_TRACE_REFERENCE_ENGINE.primeHeadlessCaches?.({receipts,txs})||{receipts:0,txs:0};
-    log(`Claim/Referral Cache-Übergabe: ${seeded.receipts||0} vollständige Receipts + ${seeded.txs||0} Tx-Fakten aus Schritt 4/Chain-Cache wiederverwendet.`,'ok');
+    log(`Claim/Referral Cache-Übergabe: ${seeded.receipts||0} vollständige Receipts + ${seeded.txs||0} Tx-Fakten aus Schritt 4/Chain-Cache wiederverwendet${persistedReferralReceipts?` · ${persistedReferralReceipts} persistierte Referral-Receipts`:''}.`,'ok');
     return seeded;
   }catch(e){
     log(`Claim/Referral Cache-Übergabe nicht verfügbar: ${e.message}`,'warn');
@@ -8665,8 +8707,24 @@ async function runClaimReferenceForCurrentWallet(){
       log('Claim/Referral-Referenzengine: vollständige verifizierte Testfile-Logik wird ausgeführt …','ok');
       const result=await CLAIM_TRACE_REFERENCE_ENGINE.scanWalletHeadless(wallet,0n);
       CURRENT_CLAIM_REFERENCE_RESULT=result;
+      let persistedReferralFacts=0;
+      const fetchedHashes=result?.mintReceiptPrefetch?.hashes||[];
+      if(fetchedHashes.length){
+        const fetchedReceipts=CLAIM_TRACE_REFERENCE_ENGINE.headlessReferralReceipts?.(fetchedHashes)||[];
+        for(const [hash,receipt] of fetchedReceipts){
+          const h=String(hash||'').toLowerCase();
+          const existing=TX_FACTS_CACHE_STATE.entries.get(h)||{hash:h,input:'0x',blockNumber:receipt?.blockNumber||null,from:receipt?.from||null,to:receipt?.to||null,value:null};
+          const full=fullReferralReceiptForTechCache(receipt);
+          if(!full)continue;
+          existing.hash=existing.hash||h;existing.blockNumber=existing.blockNumber||receipt?.blockNumber||null;existing.from=existing.from||receipt?.from||null;existing.to=existing.to||receipt?.to||null;
+          existing.referralReceipt=full;existing.savedAt=new Date().toISOString();
+          TX_FACTS_CACHE_STATE.entries.set(h,existing);TX_FACTS_CACHE_STATE.dirty=true;persistedReferralFacts++;
+        }
+        if(persistedReferralFacts){await flushTxFactsCache(wallet);log(`Referral Chain-Fakten: ${persistedReferralFacts} erstmals geladene vollständige Referral-Receipt(s) global persistiert.`,'ok')}
+      }
       const id=result?.walletIdentity?.nodeId||null;
       log(`Claim/Referral-Referenzengine: ${result?.hashes?.length||0} Mint-Tx · ${result?.strong?.length||0} starke Referral-Tx · TLN-ID Wallet ${id||'unresolved'} · ${result?.rpcStats?.total||0} gezählte RPC-Calls.`,'ok');
+      if(result?.mintReceiptPrefetch)log(`Referral Receipt-Prefetch: ${result.mintReceiptPrefetch.loaded||0}/${result.mintReceiptPrefetch.requested||0} fehlende Receipt(s) vorgeladen · Parallelität ${result.mintReceiptPrefetch.parallel||0}.`,'muted');
       if(result?.rpcStats?.detail)log(`Referral-RPC-Methoden: ${result.rpcStats.detail}.`,'muted');
       if(result?.rpcStats?.phaseDetail)log(`Referral-RPC-Phasen: ${result.rpcStats.phaseDetail}.`,'muted');
       if(result?.rpcStats?.phaseMethodDetail)log(`Referral-RPC Phase/Methoden: ${result.rpcStats.phaseMethodDetail}.`,'muted');
