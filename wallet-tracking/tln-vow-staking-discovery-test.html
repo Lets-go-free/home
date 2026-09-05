@@ -107,7 +107,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 04:06:23 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 04:14:42 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -210,7 +210,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-040623';
+const BUILD_ID='20260905-041442';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -4506,7 +4506,21 @@ async function restoreDiscoveryResultSnapshot(wallet){
   CURRENT_UNASSIGNED_REWARDS=Array.isArray(payload.globals?.unassignedRewards)?payload.globals.unassignedRewards:[];
   CURRENT_PROVEN_REWARD_ROWS=Array.isArray(payload.globals?.provenRewardRows)?payload.globals.provenRewardRows:[];
   CURRENT_CLAIM_REFERENCE_RESULT=payload.globals?.claimReferenceResult||null;
-  renderRestoredDiscoveryResults(step);
+  log(`Persistenter Ergebnis-Snapshot gefunden: Steps 1–${step} · ${DISCOVERY_PROCESS.lots.length} Position(en). Stelle UI aus Cache wieder her …`,'ok');
+  try{
+    renderRestoredDiscoveryResults(step);
+  }catch(e){
+    log(`Persistenter Ergebnis-Snapshot geladen, aber UI-Wiederherstellung meldet Fehler: ${e?.message||e}`,'warn');
+    if(e?.stack)log(String(e.stack),'warn');
+    // Der fachliche Cache-Treffer bleibt trotzdem erhalten. Buttons/Step-Status werden
+    // minimal gesetzt, damit ein einzelner Renderer nicht den gesamten Restore verwirft.
+    if(step>=1)setStepState(1,`${(DISCOVERY_PROCESS.transfers||[]).length} Transfers aus Cache`,'done');
+    if(step>=2)setStepState(2,`${DISCOVERY_PROCESS.lots.length} Positionen aus Cache`,'done');
+    if(step>=3)setStepState(3,'Duration aus persistentem Cache','done');
+    if(step>=4)setStepState(4,'Rewards aus persistentem Cache','done');
+    if(step>=5)setStepState(5,'Referral aus persistentem Cache','done');
+    setStepState(6,'bereit');updateProcessButtons();
+  }
   const checked=Date.parse(payload.lastCheckedAt||payload.savedAt||0),age=Date.now()-checked;
   const ageText=Number.isFinite(age)&&age>=0?`${Math.floor(age/3600000)} h`:'unbekannt';
   $('status').innerHTML=`<span class="ok">Persistente Discovery-Ergebnisse geladen: Steps 1–${step}.</span>`;
