@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 23:37:17 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 23:42:06 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-233717';
+const BUILD_ID='20260905-234206';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -9063,6 +9063,12 @@ function reconcileLotsWithContractCalls(lots,calls){
       if(lot.status==='closed')continue;
       const st=lot?.stakeTime?new Date(lot.stakeTime).getTime():null;
       if(ct&&st&&ct<st)continue;
+      // Ein Stake-Receipt darf niemals dieselbe neu erzeugte Position zugleich als
+      // unstaked schliessen. Bei neueren Router-/Downstream-Stakes kann dasselbe Receipt
+      // mehrere LP-/Token-Flows enthalten; deshalb ist ein LP-Transfer zum Wallet im
+      // Stake-Tx selbst KEIN Unstake-Nachweis. Ein echter Unstake braucht mindestens
+      // eine andere Transaktion als den urspruenglichen Stake.
+      if(norm(call?.hash||'')&&norm(call?.hash||'')===norm(lot?.stakeTx||''))continue;
       const ret=lpReturnForLot(call,lot);
       if(!ret)continue;
 
@@ -12543,13 +12549,16 @@ function teamObservedStakeEvidenceHtml(wallet){
 function teamPartialLotCardHtml(l){
   const pair=safePairLabel(l)||l?.pairLabel||l?.symbol||'Staking';
   const expiry=l?.expiryTime||l?.contractEndTime||l?.releaseTime||null;
-  const unstake=l?.unstakeTime||l?.closedAt||null;
+  // Bei einem noch nicht verifizierten Lifecycle zeigen wir die sicher erkannte
+  // Stake-Menge. `remaining` kann durch eine noch nicht verifizierte Exit-Heuristik
+  // temporaer 0 sein und darf dann nicht als wirtschaftlich unstaked dargestellt werden.
+  const original=Number(l?.original??l?.amount??l?.remaining??0);
+  const amount=Number.isFinite(original)?original.toLocaleString('de-CH',{minimumFractionDigits:1,maximumFractionDigits:1}):'–';
   return `<div class="team-stake-item">
-    <div class="team-stake-head"><b>${esc(teamLotAmountText(l))} ${esc(pair)}</b><span class="muted">Lifecycle offen</span></div>
+    <div class="team-stake-head"><b>${esc(amount)} ${esc(pair)}</b><span class="muted">Lifecycle offen</span></div>
     <div class="muted">Staking: ${esc(teamFormatStakeDate(l?.stakeTime||l?.startTime,true))}</div>
     <div class="muted">Ablauf: ${esc(teamFormatStakeDate(expiry,true))}</div>
-    ${unstake?`<div class="muted">Unstaked: ${esc(teamFormatStakeDate(unstake,true))}</div>`:''}
-    <div class="team-node-lifecycle-note">Staking-Position on-chain erkannt; Vertrags-Lifecycle bzw. Ablauf noch nicht vollständig verifiziert.</div>
+    <div class="team-node-lifecycle-note">Staking-Position on-chain erkannt; Vertrags-Lifecycle bzw. Ablauf noch nicht vollständig verifiziert. Ein Unstake wird erst nach eindeutigem separatem On-Chain-Nachweis angezeigt.</div>
   </div>`;
 }
 function teamObservedStakeHtml(wallet){
