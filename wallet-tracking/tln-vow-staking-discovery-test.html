@@ -107,7 +107,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 02:01:32 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 02:07:53 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; historische SmartNode-Tx werden gebündelt und mit History-Fallback vollständig geladen. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -210,7 +210,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-020132';
+const BUILD_ID='20260905-020753';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -321,7 +321,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='05.09.2026 02:01:32 CEST';
+const APP_VERSION='05.09.2026 02:07:53 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -2433,6 +2433,8 @@ function exportDiagnostic(){
 
 async function rpcAt(url,method,params=[],timeout=22000){
  if(!url)throw new Error('Kein RPC-Endpunkt');
+ if(url.includes('publicnode.com')&&PUBLICNODE_TOKEN&&!url.endsWith(PUBLICNODE_TOKEN))
+   url=url.replace(/\/+$/,'')+'/'+PUBLICNODE_TOKEN;
  if(disabledRpcProviders.has(url))throw new Error(`RPC übersprungen: ${url}`);
  const c=new AbortController(),tm=setTimeout(()=>c.abort(),timeout);
  try{
@@ -10341,18 +10343,16 @@ async function teamHistoricalTransactionBatch(hashes){
   const publicnodeUrl='https://bsc-rpc.publicnode.com/'+encodeURIComponent(PUBLICNODE_TOKEN);
   const binanceUrl='https://bsc-dataseed.binance.org/';
 
-  // Step-6 Performance: PublicNode ist für die vollständige historische SmartNode-Tx-Historie
-  // der primäre Provider. Der Referenzlauf 05.09.2026 lieferte dort 17'065/17'065 ältere Tx
-  // vollständig; Alchemy lieferte im selben Lauf nur 831/17'896 und verursachte dadurch
-  // einen unnötigen doppelten Vollscan. Alchemy bleibt gezielter Fallback für echte Lücken.
-  const p=await teamJsonRpcBatch(publicnodeUrl,unique,{batchSize:100,parallel:4,label:'PublicNode'});
-  for(const [h,tx] of p)all.set(h,tx);
+  // Browser-stabile Reihenfolge: Alchemy zuerst. PublicNode bleibt historischer Fallback,
+  // weil direkte PublicNode-Vollscans aus letsgofree.me sporadisch CORS/408/403 liefern.
+  const a=await teamJsonRpcBatch(alchemyUrl,unique,{batchSize:100,parallel:6,label:'Alchemy'});
+  for(const [h,tx] of a)all.set(h,tx);
 
   let missing=unique.filter(h=>!all.has(h));
   if(missing.length){
-    log(`Team-Tx Historie: PublicNode lieferte ${all.size}/${unique.length}; ${missing.length} fehlende Tx werden gezielt über Alchemy nachgeladen.`,'warn');
-    const a=await teamJsonRpcBatch(alchemyUrl,missing,{batchSize:100,parallel:6,label:'Alchemy-Fallback'});
-    for(const [h,tx] of a)all.set(h,tx);
+    log(`Team-Tx Historie: Alchemy lieferte ${all.size}/${unique.length}; ${missing.length} ältere Tx werden gebündelt über PublicNode nachgeladen.`,'warn');
+    const p=await teamJsonRpcBatch(publicnodeUrl,missing,{batchSize:100,parallel:4,label:'PublicNode'});
+    for(const [h,tx] of p)all.set(h,tx);
   }
 
   missing=unique.filter(h=>!all.has(h));
@@ -10364,10 +10364,7 @@ async function teamHistoricalTransactionBatch(hashes){
 
   missing=unique.filter(h=>!all.has(h));
   const coverage=unique.length?all.size/unique.length:1;
-  log(`Team-Tx Historie gesamt: ${all.size}/${unique.length} Tx verfügbar (${(coverage*100).toFixed(2)}%).`,
-      missing.length?'warn':'ok');
-
-  // A grossly incomplete graph must never be presented as complete.
+  log(`Team-Tx Historie gesamt: ${all.size}/${unique.length} Tx verfügbar (${(coverage*100).toFixed(2)}%).`, missing.length?'warn':'ok');
   if(coverage<0.98){
     throw new Error(`Historische SmartNode-Tx unvollständig: nur ${all.size}/${unique.length} (${(coverage*100).toFixed(2)}%) verfügbar. Baum wird nicht aus Teilmenge aufgebaut.`);
   }
@@ -10590,7 +10587,6 @@ async function scanCompleteSmartNodeJoinGraph(){
   }
   const txGraph={edges,pages,transferCount,minBlock,maxBlock};
   log(`Team-Discovery Gesamtgraph: ${edges.size} belegte join(address)-Parent-Beziehungen aus ${transferCount} SmartNode-Transaktionen / ${pages} Seite(n) dekodiert.`,'ok');
-  if(eventGraph)txGraph.eventComparison=compareSmartNodeEventAndTxGraphs(eventGraph,txGraph);
   return txGraph;
 }
 function descendantsFromJoinEdges(root,edges,maxDepth=TLN_TEAM_MAX_LEVELS){
