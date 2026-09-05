@@ -107,7 +107,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 04:14:42 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 04:20:31 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -210,7 +210,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-041442';
+const BUILD_ID='20260905-042031';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -4464,6 +4464,20 @@ async function saveDiscoveryResultSnapshot(completedStep){
 function rebuildCountsFromTransfers(transfers){
   const counts=new Map();for(const t of (transfers||[])){const a=norm(t?.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}return counts;
 }
+function rehydrateClaimReferenceResult(ref){
+  if(!ref||typeof ref!=='object')return ref;
+  if(ref.tokenTotals && !(ref.tokenTotals instanceof Map))ref.tokenTotals=new Map(Object.entries(ref.tokenTotals));
+  if(ref.stakingMap && !(ref.stakingMap instanceof Map))ref.stakingMap=new Map(Object.entries(ref.stakingMap));
+  if(Array.isArray(ref.partnerRows)){
+    for(const row of ref.partnerRows){
+      if(!row||typeof row!=='object')continue;
+      if(!(row.wallets instanceof Set))row.wallets=new Set(Array.isArray(row.wallets)?row.wallets:Object.values(row.wallets||{}));
+      if(!(row.levels instanceof Set))row.levels=new Set(Array.isArray(row.levels)?row.levels:Object.values(row.levels||{}));
+      if(!(row.amounts instanceof Map))row.amounts=new Map(Object.entries(row.amounts||{}));
+    }
+  }
+  return ref;
+}
 function renderRestoredDiscoveryResults(step){
   const wallet=DISCOVERY_PROCESS.wallet;
   const counts=DISCOVERY_PROCESS.counts;
@@ -4505,7 +4519,7 @@ async function restoreDiscoveryResultSnapshot(wallet){
   DISCOVERY_PROCESS.done={base:step>=1,staking:step>=2,duration:step>=3,rewards:step>=4,referral:step>=5,team:false,valuation:false};
   CURRENT_UNASSIGNED_REWARDS=Array.isArray(payload.globals?.unassignedRewards)?payload.globals.unassignedRewards:[];
   CURRENT_PROVEN_REWARD_ROWS=Array.isArray(payload.globals?.provenRewardRows)?payload.globals.provenRewardRows:[];
-  CURRENT_CLAIM_REFERENCE_RESULT=payload.globals?.claimReferenceResult||null;
+  CURRENT_CLAIM_REFERENCE_RESULT=rehydrateClaimReferenceResult(payload.globals?.claimReferenceResult||null);
   log(`Persistenter Ergebnis-Snapshot gefunden: Steps 1–${step} · ${DISCOVERY_PROCESS.lots.length} Position(en). Stelle UI aus Cache wieder her …`,'ok');
   try{
     renderRestoredDiscoveryResults(step);
