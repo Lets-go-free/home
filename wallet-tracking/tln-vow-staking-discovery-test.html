@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 15:46:48 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 15:54:27 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -193,7 +193,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 </div></div>
 <div class="card" id="tlnWalletLookupCard">
   <h2>TLN-ID / Wallet-Suche</h2>
-  <p class="muted">Direkte Suche außerhalb des Team-Baums. Wallet → TLN-ID wird über den verifizierten SmartNode-Getter <code>nodeIdOf(address)</code> aufgelöst. TLN-ID → Wallet verwendet zuerst den persistenten Identitätscache. Bei einem erstmaligen Cache-Miss wird einmalig ein Reverse-Index aus den SmartNodeActivated-Events aufgebaut und anschließend persistent wiederverwendet; ein nodeIdOf()-Massenscan pro Suche findet nicht statt.</p>
+  <p class="muted">Direkte Suche außerhalb des Team-Baums. Wallet → TLN-ID wird über den verifizierten SmartNode-Getter <code>nodeIdOf(address)</code> aufgelöst. TLN-ID → Wallet verwendet zuerst den persistenten Identitätscache und bei einem Cache-Miss direkt den verifizierten SmartNode-Getter nodeUserOf(uint256). Dadurch benötigt die Reverse-Suche nur einen On-Chain-Call; der Treffer wird danach persistent gespeichert.</p>
   <div class="lookup-grid">
     <div class="lookup-box">
       <label for="lookupTlnId">1 · TLN ID → Wallet-Adresse</label>
@@ -280,7 +280,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-154648';
+const BUILD_ID='20260905-155427';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10670,7 +10670,7 @@ async function lookupWalletByAddress(){
       lookupSetStatus('Für diese Wallet wurde keine TLN-ID gefunden. Die Staking-Suche kann trotzdem ausgeführt werden.','warn');
       return;
     }
-    try{await CLAIM_TRACE_REFERENCE_ENGINE.saveTlnIdentityToDb({wallet,nodeId:ident.nodeId,referredById:null,source:'on-chain-smartnode',chain:'BSC',contract:TEAM_SMARTNODE_CONTRACT,method:'nodeIdOf(address)'})}catch{}
+    await lookupPersistIdentity(wallet,ident.nodeId,'SmartNode.nodeIdOf(address)')
     LOOKUP_STATE.wallets=[wallet];
     $('lookupResult').innerHTML=lookupWalletCardHtml(wallet,ident.nodeId,'SmartNode.nodeIdOf(address)');
     lookupBindStakingButtons();
@@ -10703,6 +10703,30 @@ async function lookupDbWalletsByNodeId(nodeId){
     return [];
   }
 }
+async function lookupPersistIdentity(wallet,nodeId,source='SmartNode.nodeUserOf(uint256)'){
+  if(!currentUserId){
+    try{currentUserId=(await sb.auth.getUser())?.data?.user?.id||null}catch{}
+  }
+  if(!currentUserId||!ethers.isAddress(norm(wallet))||!nodeId)return false;
+  const nowIso=new Date().toISOString();
+  const row={
+    user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',
+    wallet_address:norm(wallet),node_id:Number(nodeId),referred_by_id:null,
+    source,source_contract:TEAM_SMARTNODE_CONTRACT,
+    source_method:source.includes('nodeUserOf')?'nodeUserOf(uint256)':'nodeIdOf(address)',
+    verified_at:nowIso,updated_at:nowIso
+  };
+  try{
+    const {error}=await sb.from('tln_wallet_identity_cache')
+      .upsert(row,{onConflict:'user_id,project_key,chain_key,wallet_address'});
+    if(error)throw error;
+    return true;
+  }catch(e){
+    log(`TLN-ID / Wallet-Suche: Identitätszuordnung konnte nicht persistiert werden (${e.message||e}).`,'warn');
+    return false;
+  }
+}
+
 let LOOKUP_IDENTITY_INDEX_BUILD_PROMISE=null;
 
 async function lookupPersistIdentityIndexRows(edges){
@@ -10778,23 +10802,24 @@ async function lookupBuildReverseIdentityIndex(graph){
 }
 
 async function lookupGraphWalletsByNodeId(nodeId){
-  await teamLoadIdentityCacheFromDb();
-  const cached=[...TEAM_IDENTITY_CACHE.values()]
-    .filter(x=>String(x?.nodeId||'')===String(nodeId)&&ethers.isAddress(norm(x.wallet)))
-    .map(x=>({wallet:norm(x.wallet),nodeId:String(nodeId),source:'TLN-ID-Cache'}));
-  if(cached.length)return cached;
-
-  const graph=await teamLoadGlobalGraphCache();
-  if(!graph?.edges?.size)return [];
-
-  // Important: no mass nodeIdOf(address) scan. Build one persistent reverse index instead.
-  await lookupBuildReverseIdentityIndex(graph);
-
-  const found=await lookupDbWalletsByNodeId(nodeId);
-  if(found.length){
-    for(const x of found)TEAM_IDENTITY_CACHE.set(norm(x.wallet),{wallet:norm(x.wallet),nodeId:String(nodeId),source:'reverse-index'});
+  // SmartNode exposes a verified direct reverse mapping:
+  // nodeUserOf(uint256 id) -> current wallet address.
+  // This also follows wallet migrations because migrateSmartnode() updates nodeIds[id].
+  lookupSetStatus(`TLN-ID ${nodeId} wird direkt über SmartNode.nodeUserOf(uint256) aufgelöst …`);
+  const raw=await rpc('eth_call',[{
+    to:TEAM_SMARTNODE_CONTRACT,
+    data:teamNodeUserCall(nodeId)
+  },'latest']);
+  const wallet=teamDecodeSingleAddress(raw);
+  if(!wallet)return [];
+  const verify=await teamGetIdentity(wallet);
+  if(String(verify?.nodeId||'')!==String(nodeId)){
+    throw new Error(`SmartNode-Reverse-Lookup inkonsistent: nodeUserOf(${nodeId}) → ${wallet}, aber nodeIdOf(wallet) → ${verify?.nodeId||'0'}.`);
   }
-  return found;
+  TEAM_IDENTITY_CACHE.set(wallet,{wallet,nodeId:String(nodeId),source:'SmartNode.nodeUserOf'});
+  await lookupPersistIdentity(wallet,nodeId,'SmartNode.nodeUserOf(uint256)');
+  log(`TLN-ID Direkt-Lookup: ${nodeId} → ${wallet} · nodeUserOf(uint256) + Gegenprüfung nodeIdOf(address).`,'ok');
+  return [{wallet,nodeId:String(nodeId),source:'SmartNode.nodeUserOf(uint256)'}];
 }
 async function lookupWalletByTlnId(){
   const raw=String($('lookupTlnId')?.value||'').trim();
@@ -10864,6 +10889,7 @@ async function lookupShowStakings(wallet,btn){
 const TEAM_ALIAS_STORAGE_KEY='tln_vow_team_aliases_v1';
 const TEAM_SMARTNODE_CONTRACT='0x028c911c10c9e346158206991e02d09bd0a8a35b';
 const TEAM_NODE_ID_SELECTOR=ethers.id('nodeIdOf(address)').slice(0,10);
+const TEAM_NODE_USER_SELECTOR=ethers.id('nodeUserOf(uint256)').slice(0,10);
 const TEAM_JOIN_SELECTOR=ethers.id('join(address)').slice(0,10).toLowerCase();
 const TEAM_SMARTNODE_ACTIVATED_TOPIC=ethers.id('SmartNodeActivated(address,address,uint256)').toLowerCase();
 const TLN_TEAM_MAX_LEVELS=20;
@@ -10914,6 +10940,15 @@ function teamDecodeAddressArg(input,index=0){
 }
 function teamNodeIdCall(wallet){
   return TEAM_NODE_ID_SELECTOR+norm(wallet).slice(2).padStart(64,'0');
+}
+function teamNodeUserCall(nodeId){
+  return TEAM_NODE_USER_SELECTOR+BigInt(nodeId).toString(16).padStart(64,'0');
+}
+function teamDecodeSingleAddress(raw){
+  const hex=String(raw||'');
+  if(!/^0x[0-9a-fA-F]{64,}$/.test(hex))return null;
+  const wallet=norm('0x'+hex.slice(-40));
+  return ethers.isAddress(wallet)&&wallet!==ZERO?wallet:null;
 }
 async function teamLoadIdentityCacheFromDb(){
   let userId=currentUserId||null;
