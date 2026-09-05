@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 19:44:19 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 20:02:03 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-194419';
+const BUILD_ID='20260905-200203';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10723,22 +10723,114 @@ function lookupBindStakingButtons(){
     btn.onclick=()=>lookupShowStakings(btn.dataset.wallet,btn);
   });
 }
+function lookupSmartNodeEventWords(lg){
+  const words=[];
+  for(const t of (lg?.topics||[]).slice(1)){
+    const w=String(t||'').replace(/^0x/,'').toLowerCase();
+    if(/^[0-9a-f]{64}$/.test(w))words.push({kind:'topic',word:w});
+  }
+  for(const w of splitDataWords(lg?.data||'0x'))words.push({kind:'data',word:w});
+  return words;
+}
+function lookupWordAddress(word){
+  if(!/^[0-9a-f]{64}$/.test(String(word||'')))return null;
+  const a=norm('0x'+String(word).slice(24));
+  return ethers.isAddress(a)&&a!==ZERO?a:null;
+}
+async function lookupDiscoverIdentityFromWalletHistory(wallet){
+  wallet=norm(wallet);
+  const q={fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8',order:'desc'};
+  const hashes=[],seen=new Set();let pageKey=null,pages=0;
+  do{
+    const req={...q};if(pageKey)req.pageKey=pageKey;
+    const r=await teamAlchemyRpc('alchemy_getAssetTransfers',[req]);pages++;
+    for(const x of (r?.transfers||[])){
+      const h=norm(x?.hash);if(h&&!seen.has(h)){seen.add(h);hashes.push(h)}
+    }
+    pageKey=r?.pageKey||null;
+    if(pages>=20&&pageKey)throw new Error('Wallet-Historie überschreitet 20 Alchemy-Seiten; Abbruch statt Teilprüfung.');
+  }while(pageKey);
+  if(!hashes.length){
+    log(`TLN-ID Fallback ${short(wallet)}: keine ausgehenden historischen Tx gefunden.`,'warn');
+    return null;
+  }
+  log(`TLN-ID Fallback ${short(wallet)}: alter SmartNode-Getter leer; prüfe ${hashes.length} Wallet-Tx / ${pages} Alchemy-Seite(n) auf SmartNodeActivated-Evidenz.`,'muted');
+  const receipts=new Map();
+  for(let i=0;i<hashes.length;i+=40){
+    const chunk=hashes.slice(i,i+40);
+    const rr=await rpcManyDiscovery(chunk.map(h=>({method:'eth_getTransactionReceipt',params:[h]})),40);
+    chunk.forEach((h,j)=>{const rec=rr?.[j];if(rec)receipts.set(h,rec)});
+  }
+  const walletWord=wallet.slice(2).padStart(64,'0');
+  const candidates=[];
+  for(const [hash,rec] of receipts){
+    for(const lg of (rec?.logs||[])){
+      if(String(lg?.topics?.[0]||'').toLowerCase()!==TEAM_SMARTNODE_ACTIVATED_TOPIC)continue;
+      const words=lookupSmartNodeEventWords(lg);
+      if(!words.some(x=>x.word===walletWord))continue;
+      const ids=[];
+      for(const x of words){
+        try{
+          const v=BigInt('0x'+x.word);
+          if(v>0n&&v<=1000000000000n)ids.push(v.toString());
+        }catch{}
+      }
+      for(const nodeId of [...new Set(ids)])candidates.push({hash,log:lg,contract:norm(lg.address),nodeId,words});
+    }
+  }
+  if(!candidates.length){
+    log(`TLN-ID Fallback ${short(wallet)}: kein passendes SmartNodeActivated(address,address,uint256)-Event in ${receipts.size} Receipt(s).`,'warn');
+    return null;
+  }
+  for(const c of candidates){
+    let idByGetter=null,userByGetter=null,idCallOk=false,userCallOk=false;
+    try{
+      const raw=await rpc('eth_call',[{to:c.contract,data:TEAM_NODE_ID_SELECTOR+wallet.slice(2).padStart(64,'0')},'latest']);
+      if(raw&&raw!=='0x'&&raw.length>=66){idCallOk=true;const v=BigInt('0x'+raw.slice(2,66));if(v>0n)idByGetter=v.toString()}
+    }catch{}
+    try{
+      const raw=await rpc('eth_call',[{to:c.contract,data:TEAM_NODE_USER_SELECTOR+BigInt(c.nodeId).toString(16).padStart(64,'0')},'latest']);
+      if(raw&&raw!=='0x'&&raw.length>=66){userCallOk=true;userByGetter=teamDecodeSingleAddress(raw)}
+    }catch{}
+    const idMatch=idByGetter===c.nodeId,userMatch=userByGetter===wallet;
+    if((idCallOk&&!idMatch)||(userCallOk&&userByGetter&&!userMatch))continue;
+    if(!idMatch&&!userMatch)continue;
+    const addresses=c.words.map(x=>lookupWordAddress(x.word)).filter(a=>a&&a!==wallet);
+    const parentWallet=[...new Set(addresses)][0]||null;
+    const ident={wallet,nodeId:c.nodeId,referredById:null,parentWallet,source:'SmartNodeActivated + Getter-Verifikation',chain:'BSC',contract:c.contract,method:idMatch?'nodeIdOf(address)':'nodeUserOf(uint256)',verifiedAt:new Date().toISOString(),evidenceTx:c.hash};
+    TEAM_IDENTITY_CACHE.set(wallet,ident);
+    tlnIdentityCache.set(wallet,ident);
+    await lookupPersistIdentity(wallet,ident.nodeId,ident.method);
+    log(`TLN-ID Fallback ERFOLG: ${short(wallet)} → TLN-ID ${ident.nodeId} · SmartNode ${c.contract} · Evidenz-Tx ${c.hash}${parentWallet?` · Event-Upline ${parentWallet}`:''}.`,'ok');
+    return ident;
+  }
+  log(`TLN-ID Fallback ${short(wallet)}: ${candidates.length} Event-Kandidat(en) gefunden, aber keiner durch nodeIdOf/nodeUserOf des emittierenden Contracts bestätigt.`,'warn');
+  return null;
+}
+
 async function lookupWalletByAddress(){
   const raw=String($('lookupWallet')?.value||'').trim(),wallet=norm(raw);
   if(!ethers.isAddress(wallet)){lookupSetStatus('Ungültige Wallet-Adresse.','err');$('lookupResult').innerHTML='';return}
   const btn=$('lookupByWallet');btn.disabled=true;lookupSetStatus('TLN-ID wird on-chain geprüft …');
   try{
-    const ident=await teamGetIdentity(wallet);
+    let ident=await teamGetIdentity(wallet,{historyFallback:false});
+    if(!ident?.nodeId){
+      lookupSetStatus('Alter SmartNode-Getter kennt diese Wallet nicht. Prüfe die Wallet-Historie auf eine neuere SmartNode-Registry …');
+      ident=await lookupDiscoverIdentityFromWalletHistory(wallet);
+    }
     if(!ident?.nodeId){
       LOOKUP_STATE.wallets=[wallet];
-      $('lookupResult').innerHTML=lookupWalletCardHtml(wallet,null,'SmartNode.nodeIdOf(address): keine TLN-ID gefunden');
+      $('lookupResult').innerHTML=lookupWalletCardHtml(wallet,null,'Keine verifizierte TLN-ID im alten Getter oder in der SmartNodeActivated-Historie gefunden');
       lookupBindStakingButtons();
-      lookupSetStatus('Für diese Wallet wurde keine TLN-ID gefunden. Die Staking-Suche kann trotzdem ausgeführt werden.','warn');
+      lookupSetStatus('Für diese Wallet wurde noch keine verifizierbare TLN-ID gefunden. Die Staking-Suche kann trotzdem ausgeführt werden.','warn');
       return;
     }
-    await lookupPersistIdentity(wallet,ident.nodeId,'SmartNode.nodeIdOf(address)')
+    if(!String(ident.source||'').includes('Getter-Verifikation'))await lookupPersistIdentity(wallet,ident.nodeId,ident.method||'SmartNode.nodeIdOf(address)');
     LOOKUP_STATE.wallets=[wallet];
-    $('lookupResult').innerHTML=lookupWalletCardHtml(wallet,ident.nodeId,'SmartNode.nodeIdOf(address)');
+    const source=ident.contract&&norm(ident.contract)!==norm(TEAM_SMARTNODE_CONTRACT)
+      ?`Neuere SmartNode-Registry ${ident.contract} · ${ident.method||ident.source}`
+      :(ident.source||'SmartNode.nodeIdOf(address)');
+    $('lookupResult').innerHTML=lookupWalletCardHtml(wallet,ident.nodeId,source);
     lookupBindStakingButtons();
     lookupSetStatus(`Wallet aufgelöst: TLN-ID ${ident.nodeId}.`,'ok');
   }catch(e){lookupSetStatus(`Suche fehlgeschlagen: ${e.message}`,'err');$('lookupResult').innerHTML=''}
@@ -10775,13 +10867,20 @@ async function lookupPersistIdentity(wallet,nodeId,source='SmartNode.nodeUserOf(
   }
   if(!currentUserId||!ethers.isAddress(norm(wallet))||!nodeId)return false;
   const nowIso=new Date().toISOString();
+  const ident=TEAM_IDENTITY_CACHE.get(norm(wallet))||tlnIdentityCache.get(norm(wallet))||null;
   const row={
     user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',
-    wallet_address:norm(wallet),node_id:Number(nodeId),referred_by_id:null,
-    source,source_contract:TEAM_SMARTNODE_CONTRACT,
-    source_method:source.includes('nodeUserOf')?'nodeUserOf(uint256)':'nodeIdOf(address)',
+    wallet_address:norm(wallet),node_id:Number(nodeId),referred_by_id:ident?.referredById?Number(ident.referredById):null,
+    source,source_contract:ident?.contract||TEAM_SMARTNODE_CONTRACT,
+    source_method:ident?.method||(source.includes('nodeUserOf')?'nodeUserOf(uint256)':'nodeIdOf(address)'),
     verified_at:nowIso,updated_at:nowIso
   };
+  if(ident?.parentWallet&&ethers.isAddress(norm(ident.parentWallet))&&norm(ident.parentWallet)!==norm(wallet)){
+    row.parent_wallet=norm(ident.parentWallet);
+    row.parent_source=ident.source||'SmartNodeActivated(address,address,uint256)';
+    row.parent_source_hash=ident.evidenceTx||null;
+    row.parent_verified_at=nowIso;
+  }
   try{
     const {error}=await sb.from('tln_wallet_identity_cache')
       .upsert(row,{onConflict:'user_id,project_key,chain_key,wallet_address'});
@@ -11101,7 +11200,7 @@ async function teamLoadIdentityCacheFromDb(){
   }
   if(!userId)return 0;
   const {data,error}=await sb.from('tln_wallet_identity_cache')
-    .select('wallet_address,node_id')
+    .select('wallet_address,node_id,parent_wallet,parent_source,parent_source_hash,source_contract,source_method,source')
     .eq('user_id',userId)
     .eq('project_key','tln_vow')
     .eq('chain_key','bsc');
@@ -11113,11 +11212,31 @@ async function teamLoadIdentityCacheFromDb(){
   for(const row of data||[]){
     const w=norm(row.wallet_address);
     if(!/^0x[0-9a-f]{40}$/.test(w)||row.node_id==null)continue;
-    TEAM_IDENTITY_CACHE.set(w,{wallet:w,nodeId:String(row.node_id),source:'supabase'});
+    TEAM_IDENTITY_CACHE.set(w,{wallet:w,nodeId:String(row.node_id),source:'supabase',cachedSource:row.source||null,
+      contract:row.source_contract||null,method:row.source_method||null,
+      parentWallet:row.parent_wallet&&ethers.isAddress(norm(row.parent_wallet))?norm(row.parent_wallet):null,
+      parentSource:row.parent_source||null,parentSourceHash:row.parent_source_hash||null});
     n++;
   }
   log(`Team-IDs: ${n} Wallet→TLN-ID Zuordnung(en) aus Supabase vorgeladen.`,'muted');
   return n;
+}
+function teamMergeSupplementalIdentityEdges(edges){
+  let added=0,conflicts=0;
+  for(const [wallet,ident] of TEAM_IDENTITY_CACHE){
+    const child=norm(wallet),parent=norm(ident?.parentWallet||'');
+    if(!ethers.isAddress(child)||!ethers.isAddress(parent)||child===parent)continue;
+    const existing=edges.get(child);
+    if(existing){
+      if(norm(existing.parent)!==parent)conflicts++;
+      continue;
+    }
+    edges.set(child,{child,parent,nodeId:ident?.nodeId||null,hash:ident?.parentSourceHash||null,blockNumber:null,
+      source:ident?.parentSource||'persistente verifizierte SmartNode-Identity'});
+    added++;
+  }
+  if(added||conflicts)log(`Team-Discovery Registry-Ergänzung: ${added} verifizierte Parent-Beziehung(en) aus dem Identity-Cache ergänzt${conflicts?` · ${conflicts} Konflikt(e) nicht überschrieben`:''}.`,conflicts?'warn':'ok');
+  return {added,conflicts};
 }
 
 async function teamAlchemyRpc(method,params=[]){
@@ -11236,11 +11355,11 @@ async function teamHistoricalTransactionBatch(hashes){
   return unique.map(h=>all.get(h)||null);
 }
 
-async function teamGetIdentity(wallet){
+async function teamGetIdentity(wallet,{historyFallback=false}={}){
   wallet=norm(wallet);
   const cached=TEAM_IDENTITY_CACHE.get(wallet);
   if(cached?.nodeId)return cached;
-  const result={wallet,nodeId:null,source:'unresolved'};
+  const result={wallet,nodeId:null,source:'unresolved',contract:TEAM_SMARTNODE_CONTRACT,method:'nodeIdOf(address)'};
   try{
     const raw=await rpc('eth_call',[{to:TEAM_SMARTNODE_CONTRACT,data:teamNodeIdCall(wallet)},'latest']);
     if(raw&&raw!=='0x'&&raw.length>=66){
@@ -11251,9 +11370,17 @@ async function teamGetIdentity(wallet){
       }
     }
   }catch(e){
-    log(`Team-ID ${short(wallet)} konnte nicht gelesen werden: ${e.message}`,'warn');
+    log(`Team-ID ${short(wallet)} konnte im bisherigen SmartNode nicht gelesen werden: ${e.message}`,'warn');
   }
-  TEAM_IDENTITY_CACHE.set(wallet,result);
+  if(result.nodeId){TEAM_IDENTITY_CACHE.set(wallet,result);return result}
+  // Negative Ergebnisse werden absichtlich nicht dauerhaft gecacht: neue TLN-IDs können
+  // inzwischen in einer neueren SmartNode-Registry liegen. Der teurere History-Fallback
+  // wird nur explizit verwendet (direkte Wallet-Suche / gezielte Diagnose), nicht für jeden
+  // Partner eines normalen Team-Hot-Runs.
+  if(historyFallback){
+    const discovered=await lookupDiscoverIdentityFromWalletHistory(wallet).catch(e=>{log(`Team-ID History-Fallback ${short(wallet)} fehlgeschlagen: ${e.message||e}`,'warn');return null});
+    if(discovered?.nodeId)return discovered;
+  }
   return result;
 }
 async function teamMapWithConcurrency(items,limit,fn){
@@ -12440,6 +12567,9 @@ async function prepareTeamTree(){
     TEAM_IDENTITY_CACHE.clear();
     await teamLoadIdentityCacheFromDb();
     const full=await scanCompleteSmartNodeJoinGraph();
+    // Neuere SmartNode-Registries können bereits über die direkte Wallet-Suche verifiziert worden sein.
+    // Diese Beziehungen ergänzen den alten globalen SmartNode-Graph, ohne dessen kanonische Kanten zu überschreiben.
+    teamMergeSupplementalIdentityEdges(full.edges);
     const ownWallets=[...projectOwnWalletMap().keys()];
     if(!ownWallets.length)throw new Error('Keine TLN/VOW-Wallets unter „MEINE Wallets“ gefunden.');
 
