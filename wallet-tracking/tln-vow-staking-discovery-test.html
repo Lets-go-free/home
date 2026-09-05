@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 20:02:03 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 20:09:29 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-200203';
+const BUILD_ID='20260905-200929';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10754,13 +10754,55 @@ async function lookupDiscoverIdentityFromWalletHistory(wallet){
     log(`TLN-ID Fallback ${short(wallet)}: keine ausgehenden historischen Tx gefunden.`,'warn');
     return null;
   }
-  log(`TLN-ID Fallback ${short(wallet)}: alter SmartNode-Getter leer; prüfe ${hashes.length} Wallet-Tx / ${pages} Alchemy-Seite(n) auf SmartNodeActivated-Evidenz.`,'muted');
-  const receipts=new Map();
+  log(`TLN-ID Fallback ${short(wallet)}: alter SmartNode-Getter leer; prüfe ${hashes.length} Wallet-Tx / ${pages} Alchemy-Seite(n) auf neue Registry-/SmartNode-Evidenz.`,'muted');
+  const receipts=new Map(),txByHash=new Map();
   for(let i=0;i<hashes.length;i+=40){
     const chunk=hashes.slice(i,i+40);
     const rr=await rpcManyDiscovery(chunk.map(h=>({method:'eth_getTransactionReceipt',params:[h]})),40);
-    chunk.forEach((h,j)=>{const rec=rr?.[j];if(rec)receipts.set(h,rec)});
+    const tt=await rpcManyDiscovery(chunk.map(h=>({method:'eth_getTransactionByHash',params:[h]})),40);
+    chunk.forEach((h,j)=>{const rec=rr?.[j],tx=tt?.[j];if(rec)receipts.set(h,rec);if(tx)txByHash.set(h,tx)});
   }
+
+  // Neue Registry-Versionen müssen nicht zwingend das historische SmartNodeActivated-Event
+  // des alten Contracts emittieren. Deshalb prüfen wir zuerst nur die tatsächlich von dieser
+  // Wallet berührten Contracts auf den verifizierten nodeIdOf(address)-Getter.
+  const touchedContracts=new Set();
+  for(const tx of txByHash.values()){
+    const to=norm(tx?.to);if(ethers.isAddress(to)&&to!==ZERO)touchedContracts.add(to);
+  }
+  for(const rec of receipts.values())for(const lg of (rec?.logs||[])){
+    const a=norm(lg?.address);if(ethers.isAddress(a)&&a!==ZERO)touchedContracts.add(a);
+  }
+  let joinParent=null,joinHash=null;
+  for(const [h,tx] of txByHash){
+    const input=String(tx?.input||'');
+    if(norm(tx?.from)===wallet&&input.slice(0,10).toLowerCase()===TEAM_JOIN_SELECTOR){
+      const p=teamDecodeAddressArg(input,0);
+      if(p&&ethers.isAddress(p)&&p!==ZERO&&p!==wallet){joinParent=p;joinHash=h;break}
+    }
+  }
+  for(const contract of touchedContracts){
+    let nodeId=null;
+    try{
+      const raw=await rpc('eth_call',[{to:contract,data:TEAM_NODE_ID_SELECTOR+wallet.slice(2).padStart(64,'0')},'latest']);
+      if(raw&&raw!=='0x'&&raw.length>=66){const v=BigInt('0x'+raw.slice(2,66));if(v>0n)nodeId=v.toString()}
+    }catch{}
+    if(!nodeId)continue;
+    let reverseWallet=null,reverseSupported=false;
+    try{
+      const raw=await rpc('eth_call',[{to:contract,data:TEAM_NODE_USER_SELECTOR+BigInt(nodeId).toString(16).padStart(64,'0')},'latest']);
+      if(raw&&raw!=='0x'&&raw.length>=66){reverseSupported=true;reverseWallet=teamDecodeSingleAddress(raw)}
+    }catch{}
+    if(reverseSupported&&reverseWallet&&reverseWallet!==wallet)continue;
+    const ident={wallet,nodeId,referredById:null,parentWallet:joinParent,source:reverseWallet===wallet?'berührter SmartNode-Contract · nodeIdOf + nodeUserOf':'berührter SmartNode-Contract · nodeIdOf',chain:'BSC',contract,method:'nodeIdOf(address)',verifiedAt:new Date().toISOString(),evidenceTx:joinHash||null};
+    TEAM_IDENTITY_CACHE.set(wallet,ident);
+    tlnIdentityCache.set(wallet,ident);
+    await lookupPersistIdentity(wallet,ident.nodeId,ident.source);
+    log(`TLN-ID Fallback ERFOLG: ${short(wallet)} → TLN-ID ${ident.nodeId} · berührter Contract ${contract} · nodeIdOf(address)${reverseWallet===wallet?' + nodeUserOf(uint256)':''}${joinParent?` · Upline aus join(address): ${joinParent}`:''}.`,'ok');
+    return ident;
+  }
+  log(`TLN-ID Fallback ${short(wallet)}: ${touchedContracts.size} tatsächlich berührte Contract(s) geprüft; kein positiver nodeIdOf(address)-Getter. Prüfe zusätzlich SmartNodeActivated-Evidenz.`,'muted');
+
   const walletWord=wallet.slice(2).padStart(64,'0');
   const candidates=[];
   for(const [hash,rec] of receipts){
@@ -10796,12 +10838,12 @@ async function lookupDiscoverIdentityFromWalletHistory(wallet){
     if((idCallOk&&!idMatch)||(userCallOk&&userByGetter&&!userMatch))continue;
     if(!idMatch&&!userMatch)continue;
     const addresses=c.words.map(x=>lookupWordAddress(x.word)).filter(a=>a&&a!==wallet);
-    const parentWallet=[...new Set(addresses)][0]||null;
-    const ident={wallet,nodeId:c.nodeId,referredById:null,parentWallet,source:'SmartNodeActivated + Getter-Verifikation',chain:'BSC',contract:c.contract,method:idMatch?'nodeIdOf(address)':'nodeUserOf(uint256)',verifiedAt:new Date().toISOString(),evidenceTx:c.hash};
+    const parentWallet=joinParent||[...new Set(addresses)][0]||null;
+    const ident={wallet,nodeId:c.nodeId,referredById:null,parentWallet,source:'SmartNodeActivated + Getter-Verifikation',chain:'BSC',contract:c.contract,method:idMatch?'nodeIdOf(address)':'nodeUserOf(uint256)',verifiedAt:new Date().toISOString(),evidenceTx:joinHash||c.hash};
     TEAM_IDENTITY_CACHE.set(wallet,ident);
     tlnIdentityCache.set(wallet,ident);
     await lookupPersistIdentity(wallet,ident.nodeId,ident.method);
-    log(`TLN-ID Fallback ERFOLG: ${short(wallet)} → TLN-ID ${ident.nodeId} · SmartNode ${c.contract} · Evidenz-Tx ${c.hash}${parentWallet?` · Event-Upline ${parentWallet}`:''}.`,'ok');
+    log(`TLN-ID Fallback ERFOLG: ${short(wallet)} → TLN-ID ${ident.nodeId} · SmartNode ${c.contract} · Evidenz-Tx ${c.hash}${parentWallet?` · Upline ${parentWallet}`:''}.`,'ok');
     return ident;
   }
   log(`TLN-ID Fallback ${short(wallet)}: ${candidates.length} Event-Kandidat(en) gefunden, aber keiner durch nodeIdOf/nodeUserOf des emittierenden Contracts bestätigt.`,'warn');
