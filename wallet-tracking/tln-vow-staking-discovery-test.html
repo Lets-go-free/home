@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 00:17:42 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 00:24:41 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID = '20260906-001742';
+const BUILD_ID = '20260906-002441';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -12549,11 +12549,67 @@ async function teamProbeTokenPositionStorage(lot,label=''){
       else if(days!=null){note=` (${days.toLocaleString('de-CH',{maximumFractionDigits:8})} Tage als Sekundenwert)`;interesting=true}
       else if(addr&&ethers.isAddress(addr)&&v>0xffffn){note=` (Adresse ${short(norm(addr))})`}
       if(Number.isFinite(stakeTs)&&time&&Math.abs(n-stakeTs)<=86400*3)note+=' [nahe Stake-Zeit]';
+      // Solidity packt kleine Integer/Bool-Felder oft in dasselbe 32-Byte-Wort. Beim neuen
+      // BTCB/VOW-Contract steckt der Startzeitpunkt nicht als voller uint256, sondern sichtbar
+      // in einem Teilwort. Deshalb zusaetzlich alle 32-Bit-Lanes dekodieren, ohne daraus schon
+      // eine Duration-Semantik abzuleiten.
+      const lanes=[];
+      for(let lane=0;lane<8;lane++){
+        const lv=Number((v>>BigInt(lane*32))&0xffffffffn);
+        if(!lv)continue;
+        const lt=humanTimestamp(lv),ld=(lv>=86400&&lv<=2000*86400)?lv/86400:null;
+        if(lt){lanes.push(`u32[${lane}]=${lv} (${lt})`);interesting=true}
+        else if(ld!=null){lanes.push(`u32[${lane}]=${lv} (${ld.toLocaleString('de-CH',{maximumFractionDigits:8})} Tage)`);interesting=true}
+        else if(lv<=1000000)lanes.push(`u32[${lane}]=${lv}`);
+      }
+      if(lanes.length)note+=`${note?' ':''}[packed ${lanes.join(', ')}]`;
+      if(Number.isFinite(stakeTs)&&time&&Math.abs(n-stakeTs)<=86400*3)note+=' [nahe Stake-Zeit]';
       parts.push(`F${off}=${v.toString()}${note}`);
     }
     if(parts.length)log(`Duration ${label}: tokenId ${tokenId} privater Mapping-Kandidat Slot ${slot}: ${parts.join(' · ')}${interesting?' · Zeit-/Dauer-Kandidat vorhanden':''}.`,interesting?'warn':'info');
   }
   return {found:true,probes:heads.length+jobs.length,slots:[...hitSlots]};
+}
+
+async function teamProbeContractLockConfig(lot,label=''){
+  const contract=norm(lot?.stake_event_contract||lot?.staking?.contract_address||'');
+  if(!ethers.isAddress(contract))return {found:false,probes:0};
+  // Wenn die Position selbst nur Startzeit + Aktiv-Flag speichert, liegt die Lockdauer bei
+  // neuen Contracts typischerweise als globaler Konfigurationswert im Contract-Storage.
+  // Wir lesen deshalb gezielt nur die ersten 64 statischen Slots und melden ausschliesslich
+  // plausible Dauer-/Zeitwerte (auch gepackte uint32-Lanes). Das ist weiterhin Diagnose,
+  // kein automatischer Proof.
+  const jobs=[];for(let slot=0;slot<64;slot++)jobs.push({slot,key:'0x'+BigInt(slot).toString(16)});
+  let rr=[];try{rr=await rpcManyDiscovery(jobs.map(x=>({method:'eth_getStorageAt',params:[contract,x.key,'latest']})),40)}catch{return {found:false,probes:jobs.length}}
+  const hits=[];
+  for(let i=0;i<jobs.length;i++){
+    const raw=rr[i]?.error?null:rr[i]?.result;if(!raw||raw==='0x')continue;
+    let v=0n;try{v=BigInt(raw)}catch{continue}if(v===0n)continue;
+    const notes=[];
+    const n=Number(v),fullDays=(n>=86400&&n<=2000*86400)?n/86400:null,fullTime=humanTimestamp(n);
+    if(fullTime)notes.push(`uint256=${n} (${fullTime})`);
+    else if(fullDays!=null)notes.push(`uint256=${n} (${fullDays.toLocaleString('de-CH',{maximumFractionDigits:8})} Tage)`);
+    for(let lane=0;lane<8;lane++){
+      const lv=Number((v>>BigInt(lane*32))&0xffffffffn);if(!lv)continue;
+      const lt=humanTimestamp(lv),ld=(lv>=86400&&lv<=2000*86400)?lv/86400:null;
+      if(lt)notes.push(`u32[${lane}]=${lv} (${lt})`);
+      else if(ld!=null)notes.push(`u32[${lane}]=${lv} (${ld.toLocaleString('de-CH',{maximumFractionDigits:8})} Tage)`);
+    }
+    if(notes.length)hits.push({slot:jobs[i].slot,notes});
+  }
+  if(hits.length){
+    for(const h of hits)log(`Duration ${label}: Contract-Konfigurationskandidat Slot ${h.slot}: ${h.notes.join(' · ')}.`,'warn');
+  }else log(`Duration ${label}: Contract-Storage Slots 0–63 enthalten keinen offensichtlichen globalen Zeit-/Dauerwert.`,'info');
+  const profile=await contractCodeProfile(contract),code=`${profile?.bytecode||''}${profile?.implBytecode||''}`.toLowerCase();
+  const dayCandidates=[30,60,90,120,180,365,366,367,730,731,732];
+  const constants=[];
+  for(const d of dayCandidates){
+    const sec=BigInt(d*86400),hex=sec.toString(16);
+    // Solidity-PUSH-Konstanten koennen ohne fuehrende Nullen im Runtime-Bytecode stehen.
+    if(code.includes(hex))constants.push(`${d} Tage (${sec.toString()} s)`);
+  }
+  if(constants.length)log(`Duration ${label}: Bytecode enthaelt Dauer-Konstante(n) als Rohwert: ${constants.join(', ')}. Noch kein alleiniger Strict-Proof.`,'warn');
+  return {found:!!hits.length,probes:jobs.length,hits,constants};
 }
 
 async function teamProbeTokenPositionTiming(lot,label=''){
@@ -12600,7 +12656,10 @@ async function teamResolveDurationWithContractCandidates(lot,label=''){
   if(first.proven)return first;
   const tokenPosition=await teamProbeTokenPositionTiming(lot,label);
   if(tokenPosition.proven)return tokenPosition;
-  if(lot?.stake_token_id)await teamProbeTokenPositionStorage(lot,label);
+  if(lot?.stake_token_id){
+    await teamProbeTokenPositionStorage(lot,label);
+    await teamProbeContractLockConfig(lot,label);
+  }
   // Neue Router-/Entry-Generationen koennen drei unterschiedliche Contracts beteiligen:
   // aufgerufener Entry, Stake-Event-Emitter und tatsaechlicher LP-Empfaenger. Die normale
   // Registry kennt den neuen Pfad noch nicht. Fuer die Duration wird deshalb NUR nach einem
