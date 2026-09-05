@@ -107,7 +107,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 02:20:33 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 02:26:14 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -210,7 +210,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-022033';
+const BUILD_ID='20260905-022614';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -321,7 +321,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='05.09.2026 02:20:33 CEST';
+const APP_VERSION='05.09.2026 02:26:14 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -10430,9 +10430,16 @@ function teamTransferBlockNumber(x){
   if(raw==null)return null;
   try{return Number(BigInt(raw))}catch{return null}
 }
+async function teamGetAuthenticatedUserId(){
+  try{
+    const {data,error}=await sb.auth.getUser();
+    if(error)return null;
+    return data?.user?.id||null;
+  }catch{return null}
+}
 async function teamLoadGlobalGraphCache(){
-  await ensureCurrentUserId();
-  if(!currentUserId||!TEAM_GRAPH_DB_AVAILABLE)return null;
+  const teamUserId=await teamGetAuthenticatedUserId();
+  if(!teamUserId||!TEAM_GRAPH_DB_AVAILABLE)return null;
   const contract=norm(TEAM_SMARTNODE_CONTRACT);
   const {data:stateRows,error:stateError}=await sb.from(TEAM_GRAPH_STATE_TABLE)
     .select('chain_key,contract_address,last_verified_block,transfer_count,edge_count,verified_at,updated_at')
@@ -10441,7 +10448,7 @@ async function teamLoadGlobalGraphCache(){
     const msg=String(stateError.message||'');
     if(/tln_vow_smartnode_graph_state|relation .* does not exist|schema cache/i.test(msg)){
       TEAM_GRAPH_DB_AVAILABLE=false;
-      log('Team-Global-Cache noch nicht verfügbar (Migration 024 ausführen). Vollständiger SmartNode-Historienscan bleibt aktiv.','warn');
+      log('Team-Global-Cache noch nicht verfügbar (Migration 025 ausführen). Vollständiger SmartNode-Historienscan bleibt aktiv.','warn');
       return null;
     }
     log(`Team-Global-Cache State nicht lesbar: ${stateError.message}. Vollscan bleibt aktiv.`,'warn');
@@ -10484,8 +10491,8 @@ async function teamLoadGlobalGraphCache(){
 }
 
 async function teamSaveGlobalGraphCache(edges,{lastVerifiedBlock,transferCount,onlyChildren=null}={}){
-  await ensureCurrentUserId();
-  if(!currentUserId||!TEAM_GRAPH_DB_AVAILABLE||!edges?.size)return false;
+  const teamUserId=await teamGetAuthenticatedUserId();
+  if(!teamUserId||!TEAM_GRAPH_DB_AVAILABLE||!edges?.size)return false;
   const contract=norm(TEAM_SMARTNODE_CONTRACT),nowIso=new Date().toISOString();
   const filter=onlyChildren?new Set([...onlyChildren].map(norm)):null;
   const rows=[];
@@ -10494,7 +10501,7 @@ async function teamSaveGlobalGraphCache(edges,{lastVerifiedBlock,transferCount,o
     rows.push({
       chain_key:'bsc',contract_address:contract,child_wallet:norm(e.child),parent_wallet:norm(e.parent),
       join_tx_hash:e.hash||null,join_block:Number.isFinite(Number(e.blockNumber))?Number(e.blockNumber):null,
-      source:e.source||'SmartNode.join(address _referrer)',verified_at:nowIso,created_by:currentUserId,updated_at:nowIso
+      source:e.source||'SmartNode.join(address _referrer)',verified_at:nowIso,created_by:teamUserId,updated_at:nowIso
     });
   }
   const chunkSize=500;
@@ -10508,7 +10515,7 @@ async function teamSaveGlobalGraphCache(edges,{lastVerifiedBlock,transferCount,o
       return false;
     }
   }
-  const stateRow={chain_key:'bsc',contract_address:contract,last_verified_block:Number(lastVerifiedBlock||0),transfer_count:Number(transferCount||0),edge_count:edges.size,verified_at:nowIso,updated_by:currentUserId,updated_at:nowIso};
+  const stateRow={chain_key:'bsc',contract_address:contract,last_verified_block:Number(lastVerifiedBlock||0),transfer_count:Number(transferCount||0),edge_count:edges.size,verified_at:nowIso,updated_by:teamUserId,updated_at:nowIso};
   const {error:stateError}=await sb.from(TEAM_GRAPH_STATE_TABLE).upsert(stateRow,{onConflict:'chain_key,contract_address'});
   if(stateError){
     log(`Team-Global-Cache State-Speichern fehlgeschlagen: ${stateError.message}. Nächster Lauf fällt sicher auf Vollscan zurück.`,'warn');
