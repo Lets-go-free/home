@@ -107,7 +107,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 04:20:31 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 04:32:45 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -122,6 +122,20 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
   <div class="muted" style="margin:5px 0 8px">Löscht ausschließlich walletbezogene Einträge in <code>tln_vow_staking_scan_cache</code> für das aktuell ausgewählte Wallet auf BSC – einschließlich der persistenten Discovery-Endergebnisse Steps 1–5. Globale LP-/Tx-Fakten und contractweite Strict-Duration-Proofs bleiben erhalten.</div>
   <button id="clearWalletSupabaseCache" type="button" disabled>Supabase-Cache dieses Wallets löschen</button>
   <span id="clearWalletSupabaseCacheState" class="muted" style="margin-left:8px"></span>
+  <div style="margin-top:8px">
+    <button id="forceDiscoveryFreshnessCheck" type="button" disabled>24h-Check jetzt testen</button>
+    <span id="forceDiscoveryFreshnessCheckState" class="muted" style="margin-left:8px"></span>
+  </div>
+  <div style="margin-top:8px">
+    <select id="longGapBlocks" style="min-width:180px;width:180px">
+      <option value="100000">100'000 Blöcke</option>
+      <option value="500000">500'000 Blöcke</option>
+      <option value="1000000" selected>1'000'000 Blöcke</option>
+      <option value="2500000">2'500'000 Blöcke</option>
+    </select>
+    <button id="testDiscoveryLongGap" type="button" disabled>Große Blocklücke simulieren</button>
+    <span id="testDiscoveryLongGapState" class="muted" style="margin-left:8px"></span>
+  </div>
 </div>
 <div style="margin-top:12px;padding:10px 12px;border:1px solid #334155;border-radius:9px;background:#111722">
   <b>Stichtagsbewertung offene Stakings</b>
@@ -210,7 +224,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-042031';
+const BUILD_ID='20260905-043245';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -4414,6 +4428,14 @@ async function saveTechnicalProcessCache(wallet,cacheKey,scannerVersion,payload,
 }
 
 const DISCOVERY_RESULT_CACHE_MAX_AGE_MS=24*60*60*1000;
+const DISCOVERY_RESULT_SCAN_OVERLAP_BLOCKS=24;
+// Daily catch-up scans are deliberately chunked. A successful chunk is only
+// considered covered after all pagination for both wallet directions completed.
+// If a provider rejects a chunk, it is bisected down to the minimum range.
+const DISCOVERY_RESULT_RANGE_CHUNK_BLOCKS=250000;
+const DISCOVERY_RESULT_RANGE_MIN_BLOCKS=5000;
+let CURRENT_DISCOVERY_RESULT_SNAPSHOT=null;
+let DISCOVERY_RESULT_FRESHNESS_INFLIGHT=false;
 function discoveryResultLastBlock(){
   const blockNumber=t=>{const v=t?.blockNum??t?.blockNumber??0;if(typeof v==='number')return Number(v)||0;const x=String(v||'0');return Number(x.startsWith('0x')?parseInt(x,16):parseInt(x,10))||0};
   return Math.max(0,...(DISCOVERY_PROCESS.transfers||[]).map(blockNumber));
@@ -4439,11 +4461,15 @@ function cacheJsonSafe(value,stack=new WeakSet()){
   stack.delete(value);
   return out;
 }
+function discoveryResultCheckedBlock(wallet=DISCOVERY_PROCESS.wallet){
+  const cached=ERC20_TRANSFER_SESSION_CACHE.get(norm(wallet||''));
+  return Math.max(Number(cached?.latestBlock||0),discoveryResultLastBlock());
+}
 function buildDiscoveryResultPayload(completedStep){
   const d=DISCOVERY_PROCESS.done||{};
   return cacheJsonSafe({
-    kind:'verified_discovery_results',schemaVersion:1,wallet:DISCOVERY_PROCESS.wallet,completedStep:Number(completedStep||0),
-    savedAt:new Date().toISOString(),lastCheckedAt:new Date().toISOString(),sourceLastBlock:discoveryResultLastBlock(),buildId:BUILD_ID,
+    kind:'verified_discovery_results',schemaVersion:2,wallet:DISCOVERY_PROCESS.wallet,completedStep:Number(completedStep||0),
+    savedAt:new Date().toISOString(),lastCheckedAt:new Date().toISOString(),lastCheckedBlock:discoveryResultCheckedBlock(),sourceLastBlock:discoveryResultLastBlock(),buildId:BUILD_ID,
     process:{
       pairs:DISCOVERY_PROCESS.pairs||[],rows:DISCOVERY_PROCESS.rows||[],stakingRows:DISCOVERY_PROCESS.stakingRows||[],
       entryTargets:DISCOVERY_PROCESS.entryTargets||[],stakingContractCalls:DISCOVERY_PROCESS.stakingContractCalls||[],contractCalls:DISCOVERY_PROCESS.contractCalls||[],
@@ -4457,8 +4483,13 @@ async function saveDiscoveryResultSnapshot(completedStep){
   const wallet=norm(DISCOVERY_PROCESS.wallet||CURRENT_WALLET||'');
   if(!ethers.isAddress(wallet)||Number(completedStep||0)<2)return false;
   const payload=buildDiscoveryResultPayload(completedStep);
-  const ok=await saveTechnicalProcessCache(wallet,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults,payload,payload.sourceLastBlock||0);
-  if(ok)log(`Persistente Endergebnisse gespeichert: Steps 1–${completedStep} · ${DISCOVERY_PROCESS.lots.length} Position(en) · Block ${Number(payload.sourceLastBlock||0).toLocaleString('de-CH')}.`,'ok');
+  const ok=await saveTechnicalProcessCache(wallet,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults,payload,payload.lastCheckedBlock||payload.sourceLastBlock||0);
+  if(ok){
+    CURRENT_DISCOVERY_RESULT_SNAPSHOT=payload;
+    if($('forceDiscoveryFreshnessCheck'))$('forceDiscoveryFreshnessCheck').disabled=false;
+    if($('testDiscoveryLongGap'))$('testDiscoveryLongGap').disabled=false;
+    log(`Persistente Endergebnisse gespeichert: Steps 1–${completedStep} · ${DISCOVERY_PROCESS.lots.length} Position(en) · Quellblock ${Number(payload.sourceLastBlock||0).toLocaleString('de-CH')} · Prüfblock ${Number(payload.lastCheckedBlock||0).toLocaleString('de-CH')}.`,'ok');
+  }
   return ok;
 }
 function rebuildCountsFromTransfers(transfers){
@@ -4504,11 +4535,171 @@ function renderRestoredDiscoveryResults(step){
   setStepState(6,'bereit');
   updateProcessButtons();
 }
+function transferBlockNumber(t){
+  const v=t?.blockNum??t?.blockNumber??0;
+  if(typeof v==='number')return Number(v)||0;
+  const x=String(v||'0');return Number(x.startsWith('0x')?parseInt(x,16):parseInt(x,10))||0;
+}
+function discoveryFreshnessRelevantSets(payload){
+  const tokens=new Set();
+  const targets=new Set();
+  for(const row of (projectTokens||[]))if(row?.address)tokens.add(norm(row.address));
+  for(const address of HISTORICAL_STAKING_ASSETS.keys())tokens.add(norm(address));
+  for(const pair of (payload?.process?.pairs||[]))if(pair?.address)tokens.add(norm(pair.address));
+  for(const row of (payload?.process?.stakingRows||[])){
+    const a=norm(row?.t?.rawContract?.address||row?.rawContract?.address||row?.tokenAddress||'');if(a)tokens.add(a);
+    const c=norm(row?.staking?.contract_address||row?.counterparty||'');if(c)targets.add(c);
+  }
+  for(const lot of (payload?.process?.lots||[])){
+    const a=norm(lot?.pair?.address||lot?.p?.address||lot?.pairAddress||'');if(a)tokens.add(a);
+    const c=norm(lot?.staking?.contract_address||lot?.counterparty||'');if(c)targets.add(c);
+  }
+  for(const row of (stakingContracts||[]))if(row?.classify_transfers&&row?.contract_address)targets.add(norm(row.contract_address));
+  for(const row of (payload?.process?.entryTargets||[]))if(row?.contract_address)targets.add(norm(row.contract_address));
+  return {tokens,targets};
+}
+function discoveryFreshnessTransferRelevant(t,wallet,sets){
+  const token=norm(t?.rawContract?.address||'');
+  const from=norm(t?.from||''),to=norm(t?.to||''),w=norm(wallet||'');
+  if(token&&sets.tokens.has(token))return true;
+  if((from&&sets.targets.has(from))||(to&&sets.targets.has(to)))return true;
+  // Konservativ: jeder neue ausgehende ERC-20-Transfer kann ein bisher unbekannter
+  // Stake/Top-up sein. Unbekannte reine Eingänge (z.B. Airdrops) erzwingen dagegen
+  // keine teure Discovery-Neuberechnung.
+  if(from===w||t?._direction==='out')return true;
+  return false;
+}
+function mergeErc20CacheRange(cached,fresh,latest){
+  const m=new Map();
+  for(const t of [...(cached?.rows||[]),...(fresh||[])]){
+    const c=norm(t?.rawContract?.address);if(!c)continue;m.set(transferIdentity(t),t);
+  }
+  return {rows:[...m.values()],latestBlock:Number(latest||0),completeFromBlock:Number(cached?.completeFromBlock||0),completeToBlock:Number(latest||0),scannerVersion:'erc20-raw-v1'};
+}
+async function stampDiscoverySnapshotFresh(payload,lastCheckedBlock){
+  payload.lastCheckedAt=new Date().toISOString();
+  payload.lastCheckedBlock=Number(lastCheckedBlock||0);
+  payload.schemaVersion=Math.max(2,Number(payload.schemaVersion||0));
+  const wallet=norm(payload.wallet||'');
+  const ok=await saveTechnicalProcessCache(wallet,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults,payload,payload.lastCheckedBlock||payload.sourceLastBlock||0);
+  if(ok)CURRENT_DISCOVERY_RESULT_SNAPSHOT=payload;
+  return ok;
+}
+async function rerunDiscoveryAfterRelevantChange(payload,nextCache,relevantRows){
+  const wallet=norm(payload.wallet||'');
+  const targetStep=Math.max(2,Math.min(5,Number(payload.completedStep||2)));
+  ERC20_TRANSFER_SESSION_CACHE.set(wallet,nextCache);
+  CURRENT_ALL_TRANSFERS=nextCache.rows;
+  DISCOVERY_PROCESS.transfers=nextCache.rows;
+  DISCOVERY_PROCESS.counts=rebuildCountsFromTransfers(nextCache.rows);
+  DISCOVERY_PROCESS.done.base=true;
+  $('mTransfers').textContent=nextCache.rows.length;
+  setStepState(1,`${nextCache.rows.length} Transfers · täglich aktualisiert`,'done');
+  log(`24h-Check: ${relevantRows.length} relevante neue ERC-20-Bewegung(en) erkannt. Aktualisiere Discovery automatisch bis Step ${targetStep}.`,'warn');
+  await processStakingDiscovery();
+  if(!DISCOVERY_PROCESS.done.staking)throw new Error('Automatische Aktualisierung ist in Step 2 fehlgeschlagen.');
+  if(targetStep>=3){await processDuration();if(!DISCOVERY_PROCESS.done.duration)throw new Error('Automatische Aktualisierung ist in Step 3 fehlgeschlagen.');}
+  if(targetStep>=4){await processStakingRewards();if(!DISCOVERY_PROCESS.done.rewards)throw new Error('Automatische Aktualisierung ist in Step 4 fehlgeschlagen.');}
+  if(targetStep>=5){await processReferralRewards();if(!DISCOVERY_PROCESS.done.referral)throw new Error('Automatische Aktualisierung ist in Step 5 fehlgeschlagen.');}
+  log(`24h-Check: Discovery-Endergebnisse automatisch bis Step ${targetStep} aktualisiert und persistent gespeichert.`,'ok');
+}
+async function refreshDiscoveryResultFreshness(payload,{force=false,erc20Cache=null}={}){
+  if(DISCOVERY_RESULT_FRESHNESS_INFLIGHT)return {status:'busy'};
+  const wallet=norm(payload?.wallet||'');if(!ethers.isAddress(wallet))return {status:'invalid'};
+  const checkedMs=Date.parse(payload.lastCheckedAt||payload.savedAt||0),age=Date.now()-checkedMs;
+  if(!force&&Number.isFinite(age)&&age>=0&&age<=DISCOVERY_RESULT_CACHE_MAX_AGE_MS){
+    log(`Persistente Endergebnisse sind frisch (${Math.floor(age/3600000)} h seit letzter Prüfung). Kein On-Chain-Check nötig.`,'ok');
+    return {status:'fresh'};
+  }
+  DISCOVERY_RESULT_FRESHNESS_INFLIGHT=true;
+  const btn=$('forceDiscoveryFreshnessCheck'),state=$('forceDiscoveryFreshnessCheckState');
+  if(btn)btn.disabled=true;if(state)state.textContent='prüfe …';
+  try{
+    const cached=erc20Cache||await loadPersistentErc20Cache(wallet)||{rows:[],latestBlock:0,completeFromBlock:0};
+    const checkedBlock=Math.max(Number(payload.lastCheckedBlock||0),Number(cached.latestBlock||0),Number(payload.sourceLastBlock||0));
+    const latestHex=await rpc('eth_blockNumber',[]),latest=Number(BigInt(latestHex||'0x0'));
+    if(latest<=checkedBlock){
+      await stampDiscoverySnapshotFresh(payload,latest);
+      log(`24h-Check: Chain-Head ${latest.toLocaleString('de-CH')} ist nicht neuer als Prüfblock ${checkedBlock.toLocaleString('de-CH')}. Snapshot bleibt unverändert.`,'ok');
+      if(state)state.textContent='keine neuen Blöcke';return {status:'unchanged',latest};
+    }
+    const from=Math.max(0,checkedBlock-DISCOVERY_RESULT_SCAN_OVERLAP_BLOCKS+1);
+    log(`24h-Check: inkrementeller ERC-20-Scan Block ${from.toLocaleString('de-CH')} → ${latest.toLocaleString('de-CH')} (${DISCOVERY_RESULT_SCAN_OVERLAP_BLOCKS} Block Overlap).`);
+    const catchup=await alchemyErc20RangeChunked(wallet,from,latest,{label:'24h-Check'});
+    const fresh=catchup.rows;
+    const nextCache=mergeErc20CacheRange(cached,fresh,latest);
+    ERC20_TRANSFER_SESSION_CACHE.set(wallet,nextCache);
+    await savePersistentErc20Cache(wallet,nextCache);
+    const newRows=fresh.filter(t=>transferBlockNumber(t)>checkedBlock);
+    const sets=discoveryFreshnessRelevantSets(payload);
+    const relevantRows=newRows.filter(t=>discoveryFreshnessTransferRelevant(t,wallet,sets));
+    if(!relevantRows.length){
+      DISCOVERY_PROCESS.transfers=nextCache.rows;CURRENT_ALL_TRANSFERS=nextCache.rows;DISCOVERY_PROCESS.counts=rebuildCountsFromTransfers(nextCache.rows);
+      $('mTransfers').textContent=nextCache.rows.length;
+      await stampDiscoverySnapshotFresh(payload,latest);
+      log(`24h-Check abgeschlossen: ${newRows.length} neue Wallet-ERC-20-Bewegung(en), davon 0 discovery-relevant. Steps 2–5 bleiben unverändert aus Supabase aktiv; neuer Prüfblock ${latest.toLocaleString('de-CH')}.`,'ok');
+      if(state)state.textContent='keine relevante Änderung';return {status:'unchanged',latest,newRows:newRows.length};
+    }
+    if(state)state.textContent=`${relevantRows.length} relevant · aktualisiere …`;
+    await rerunDiscoveryAfterRelevantChange(payload,nextCache,relevantRows);
+    if(state)state.textContent='aktualisiert';return {status:'updated',latest,relevantRows:relevantRows.length};
+  }catch(e){
+    log(`24h-Check fehlgeschlagen: ${e?.message||e}. Der zuletzt verifizierte Snapshot bleibt sichtbar und wird nicht als frisch markiert.`,'warn');
+    if(e?.stack)log(String(e.stack),'warn');
+    if(state)state.textContent='Fehler · Snapshot bleibt aktiv';return {status:'error',error:e};
+  }finally{
+    DISCOVERY_RESULT_FRESHNESS_INFLIGHT=false;
+    if(btn)btn.disabled=!CURRENT_DISCOVERY_RESULT_SNAPSHOT;
+  }
+}
+async function forceCurrentDiscoveryFreshnessCheck(){
+  const payload=CURRENT_DISCOVERY_RESULT_SNAPSHOT,state=$('forceDiscoveryFreshnessCheckState');
+  if(!payload){if(state)state.textContent='kein Ergebnis-Snapshot geladen';return}
+  await refreshDiscoveryResultFreshness(payload,{force:true});
+}
+async function testCurrentDiscoveryLongGap(){
+  const payload=CURRENT_DISCOVERY_RESULT_SNAPSHOT,state=$('testDiscoveryLongGapState'),btn=$('testDiscoveryLongGap');
+  if(!payload){if(state)state.textContent='kein Ergebnis-Snapshot geladen';return}
+  const wallet=norm(payload.wallet||'');if(!ethers.isAddress(wallet)){if(state)state.textContent='Wallet ungültig';return}
+  const gap=Math.max(1,Number($('longGapBlocks')?.value||1000000));
+  btn.disabled=true;if(state)state.textContent='simuliere …';
+  try{
+    const latestHex=await rpc('eth_blockNumber',[]),latest=Number(BigInt(latestHex||'0x0'));
+    const simulatedChecked=Math.max(0,latest-gap);
+    const from=Math.max(0,simulatedChecked-DISCOVERY_RESULT_SCAN_OVERLAP_BLOCKS+1);
+    const cached=await loadPersistentErc20Cache(wallet)||{rows:[],latestBlock:0,completeFromBlock:0};
+    const beforeIds=new Set((cached.rows||[]).map(transferIdentity));
+    log(`Long-gap-Test: simulierter letzter Prüfblock ${simulatedChecked.toLocaleString('de-CH')} · Lücke ${gap.toLocaleString('de-CH')} Blöcke · Scan mit ${DISCOVERY_RESULT_SCAN_OVERLAP_BLOCKS} Block Overlap. Snapshot/Prüfstand werden NICHT zurückgesetzt.`,'warn');
+    const scan=await alchemyErc20RangeChunked(wallet,from,latest,{label:'Long-gap-Test'});
+    const uniqueScan=new Map();
+    for(const row of scan.rows)uniqueScan.set(transferIdentity(row),row);
+    let alreadyKnown=0,additional=0;
+    for(const id of uniqueScan.keys()){if(beforeIds.has(id))alreadyKnown++;else additional++;}
+    const merged=mergeErc20CacheRange(cached,[...uniqueScan.values()],Math.max(Number(cached.latestBlock||0),latest));
+    // Persist only deduplicated ERC-20 facts at the current head. The verified
+    // discovery snapshot and lastCheckedAt/lastCheckedBlock remain untouched.
+    ERC20_TRANSFER_SESSION_CACHE.set(wallet,merged);
+    await savePersistentErc20Cache(wallet,merged);
+    log(`Long-gap-Test bestanden: ${scan.mainChunks} Haupt-Chunk(s) · ${scan.splitCount} adaptive Teilung(en) · ${uniqueScan.size} eindeutige Treffer · ${alreadyKnown} bereits im Cache · ${additional} zusätzliche Cache-Fakten · Prüf-Snapshot unverändert.`,'ok');
+    if(state)state.textContent=`OK · ${scan.mainChunks} Chunks · ${scan.splitCount} Teilungen`;
+  }catch(e){
+    log(`Long-gap-Test fehlgeschlagen: ${e?.message||e}`,'err');
+    if(e?.stack)log(String(e.stack),'err');
+    if(state)state.textContent='Fehler';
+  }finally{
+    btn.disabled=!CURRENT_DISCOVERY_RESULT_SNAPSHOT;
+  }
+}
 async function restoreDiscoveryResultSnapshot(wallet){
   const w=norm(wallet||'');if(!ethers.isAddress(w))return null;
   const payload=await loadTechnicalProcessCache(w,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults);
   if(!payload||payload.kind!=='verified_discovery_results'||norm(payload.wallet)!==w||!payload.process)return null;
   const p=payload.process,step=Number(payload.completedStep||0);
+  CURRENT_DISCOVERY_RESULT_SNAPSHOT=payload;
+  if($('forceDiscoveryFreshnessCheck'))$('forceDiscoveryFreshnessCheck').disabled=false;
+  if($('testDiscoveryLongGap'))$('testDiscoveryLongGap').disabled=false;
+  if($('forceDiscoveryFreshnessCheckState'))$('forceDiscoveryFreshnessCheckState').textContent='Snapshot geladen';
+  if($('testDiscoveryLongGapState'))$('testDiscoveryLongGapState').textContent='bereit';
   DISCOVERY_PROCESS.wallet=w;CURRENT_WALLET=w;
   const erc20Cache=await loadPersistentErc20Cache(w);
   DISCOVERY_PROCESS.transfers=Array.isArray(erc20Cache?.rows)?erc20Cache.rows:(Array.isArray(p.transfers)?p.transfers:[]);CURRENT_ALL_TRANSFERS=DISCOVERY_PROCESS.transfers;
@@ -4538,8 +4729,9 @@ async function restoreDiscoveryResultSnapshot(wallet){
   const checked=Date.parse(payload.lastCheckedAt||payload.savedAt||0),age=Date.now()-checked;
   const ageText=Number.isFinite(age)&&age>=0?`${Math.floor(age/3600000)} h`:'unbekannt';
   $('status').innerHTML=`<span class="ok">Persistente Discovery-Ergebnisse geladen: Steps 1–${step}.</span>`;
-  log(`Persistente Endergebnisse geladen: Steps 1–${step} · gespeichert ${payload.savedAt||'–'} · letzte Prüfung ${ageText} alt · Quellblock ${Number(payload.sourceLastBlock||0).toLocaleString('de-CH')}.`,'ok');
-  if(Number.isFinite(age)&&age>DISCOVERY_RESULT_CACHE_MAX_AGE_MS)log('Persistente Endergebnisse sind älter als 24 h. Die tägliche inkrementelle Änderungsprüfung wird als nächster Cache-Schritt ergänzt; die gespeicherten Ergebnisse bleiben bis dahin sichtbar.','warn');
+  const checkBlock=Math.max(Number(payload.lastCheckedBlock||0),Number(erc20Cache?.latestBlock||0),Number(payload.sourceLastBlock||0));
+  log(`Persistente Endergebnisse geladen: Steps 1–${step} · gespeichert ${payload.savedAt||'–'} · letzte Prüfung ${ageText} alt · Quellblock ${Number(payload.sourceLastBlock||0).toLocaleString('de-CH')} · Prüfblock ${checkBlock.toLocaleString('de-CH')}.`,'ok');
+  await refreshDiscoveryResultFreshness(payload,{erc20Cache});
   return payload;
 }
 async function clearSelectedWalletSupabaseCache(){
@@ -4572,6 +4764,11 @@ async function clearSelectedWalletSupabaseCache(){
    // Supabase werden dadurch nicht berührt und anschließend frisch validiert.
    for(const k of [...LOCK_ENGINE_CACHE.keys()])if(String(k).includes(`|${wallet}|`))LOCK_ENGINE_CACHE.delete(k);
    SHARED_DURATION_RULE_CACHE.clear();
+   CURRENT_DISCOVERY_RESULT_SNAPSHOT=null;
+   if($('forceDiscoveryFreshnessCheck'))$('forceDiscoveryFreshnessCheck').disabled=true;
+   if($('testDiscoveryLongGap'))$('testDiscoveryLongGap').disabled=true;
+   if($('forceDiscoveryFreshnessCheckState'))$('forceDiscoveryFreshnessCheckState').textContent='';
+   if($('testDiscoveryLongGapState'))$('testDiscoveryLongGapState').textContent='';
    resetDiscoveryProcess(wallet);
    setStepState(1,'Cache gelöscht · bereit');
    updateProcessButtons();
@@ -4661,6 +4858,40 @@ async function alchemyErc20Range(wallet,fromBlock,toBlock='latest'){
    for(let i=0;i<active.length;i++)consume(active[i],batch[i]?.result);
  }
  return out;
+}
+async function alchemyErc20RangeChunked(wallet,fromBlockNumber,toBlockNumber,{label='Inkrementeller ERC-20-Scan'}={}){
+ const start=Math.max(0,Number(fromBlockNumber||0)),end=Math.max(start,Number(toBlockNumber||0));
+ const ranges=[];
+ for(let from=start;from<=end;from+=DISCOVERY_RESULT_RANGE_CHUNK_BLOCKS){
+   ranges.push([from,Math.min(end,from+DISCOVERY_RESULT_RANGE_CHUNK_BLOCKS-1)]);
+ }
+ const out=[];let completed=0,splitCount=0;
+ async function loadRange(from,to,depth=0){
+   const fromHex='0x'+from.toString(16),toHex='0x'+to.toString(16);
+   try{
+     const rows=await alchemyErc20Range(wallet,fromHex,toHex);
+     out.push(...rows);
+     return {rows:rows.length,parts:1};
+   }catch(e){
+     const span=to-from+1;
+     if(span<=DISCOVERY_RESULT_RANGE_MIN_BLOCKS)throw new Error(`${label}: Range ${from.toLocaleString('de-CH')} → ${to.toLocaleString('de-CH')} auch bei Minimalgröße fehlgeschlagen: ${e?.message||e}`);
+     const mid=Math.floor((from+to)/2);splitCount++;
+     log(`${label}: Providerfehler für ${from.toLocaleString('de-CH')} → ${to.toLocaleString('de-CH')}; teile Range in zwei Hälften (${span.toLocaleString('de-CH')} Blöcke).`,'warn');
+     const a=await loadRange(from,mid,depth+1);
+     const b=await loadRange(mid+1,to,depth+1);
+     return {rows:a.rows+b.rows,parts:a.parts+b.parts};
+   }
+ }
+ log(`${label}: ${start.toLocaleString('de-CH')} → ${end.toLocaleString('de-CH')} · ${ranges.length} Haupt-Chunk(s) à max. ${DISCOVERY_RESULT_RANGE_CHUNK_BLOCKS.toLocaleString('de-CH')} Blöcke.`);
+ for(let i=0;i<ranges.length;i++){
+   const [from,to]=ranges[i];
+   const before=out.length;
+   await loadRange(from,to);
+   completed++;
+   log(`${label}: Chunk ${completed}/${ranges.length} vollständig · ${from.toLocaleString('de-CH')} → ${to.toLocaleString('de-CH')} · ${out.length-before} Transfer-Zeile(n).`,'ok');
+ }
+ log(`${label} abgeschlossen: ${ranges.length} Haupt-Chunk(s) · ${splitCount} adaptive Teilung(en) · ${out.length} Transfer-Zeile(n).`,'ok');
+ return {rows:out,mainChunks:ranges.length,splitCount,start,end};
 }
 async function allErc20Transfers(wallet){
  const key=norm(wallet);let cached=ERC20_TRANSFER_SESSION_CACHE.get(key)||null;
@@ -11385,6 +11616,11 @@ function bindWalletDropdown(){
     const addr=$('walletSelect').value||'';
     $('wallet').value=addr;
     $('walletAddress').textContent=addr||'–';
+    CURRENT_DISCOVERY_RESULT_SNAPSHOT=null;
+    if($('forceDiscoveryFreshnessCheck'))$('forceDiscoveryFreshnessCheck').disabled=true;
+    if($('testDiscoveryLongGap'))$('testDiscoveryLongGap').disabled=true;
+    if($('forceDiscoveryFreshnessCheckState'))$('forceDiscoveryFreshnessCheckState').textContent='';
+    if($('testDiscoveryLongGapState'))$('testDiscoveryLongGapState').textContent='';
     resetDiscoveryProcess(addr);
     $('status').textContent='Wallet gewechselt: persistente Discovery-Ergebnisse werden geprüft …';
     const restored=await restoreDiscoveryResultSnapshot(addr);
@@ -11506,6 +11742,8 @@ $('stepReferral').onclick=processReferralRewards;
 $('stepTeam').onclick=processTeamTree;
 $('stepValuation').onclick=processValuation;
 $('clearWalletSupabaseCache').onclick=clearSelectedWalletSupabaseCache;
+$('forceDiscoveryFreshnessCheck').onclick=forceCurrentDiscoveryFreshnessCheck;
+$('testDiscoveryLongGap').onclick=testCurrentDiscoveryLongGap;
 $('exportDiagnosisLog').onclick=exportDiagnosisLogTxt;
 
 init();
