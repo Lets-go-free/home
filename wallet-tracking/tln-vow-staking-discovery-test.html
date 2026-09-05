@@ -107,7 +107,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 02:26:14 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 04:06:23 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -119,7 +119,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <input id="wallet" type="hidden" value="">
 <div style="margin-top:10px;padding:10px 12px;border:1px solid #5a3a3a;border-radius:9px;background:#181112">
   <b>Developer · Supabase-Cache</b>
-  <div class="muted" style="margin:5px 0 8px">Löscht ausschließlich walletbezogene Einträge in <code>tln_vow_staking_scan_cache</code> für das aktuell ausgewählte Wallet auf BSC. Globale LP-Fakten und contractweite Strict-Duration-Proofs bleiben erhalten.</div>
+  <div class="muted" style="margin:5px 0 8px">Löscht ausschließlich walletbezogene Einträge in <code>tln_vow_staking_scan_cache</code> für das aktuell ausgewählte Wallet auf BSC – einschließlich der persistenten Discovery-Endergebnisse Steps 1–5. Globale LP-/Tx-Fakten und contractweite Strict-Duration-Proofs bleiben erhalten.</div>
   <button id="clearWalletSupabaseCache" type="button" disabled>Supabase-Cache dieses Wallets löschen</button>
   <span id="clearWalletSupabaseCacheState" class="muted" style="margin-left:8px"></span>
 </div>
@@ -210,7 +210,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-022614';
+const BUILD_ID='20260905-040623';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -4233,12 +4233,14 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   lpFacts:'lp-chainfacts-v1',
   txFacts:'tx-chainfacts-v2-global-wallet-scope',
   rewardRelations:'reward-contract-relations-v2-global-fingerprint',
-  duration:'duration-strict-v16-contract-proof-cache'
+  duration:'duration-strict-v16-contract-proof-cache',
+  discoveryResults:'discovery-results-v1'
 });
 const TECH_CACHE_KEYS=Object.freeze({
   lpFacts:'lp-chainfacts',
   txFacts:'tx-chainfacts',
-  rewardRelations:'reward-contract-relations'
+  rewardRelations:'reward-contract-relations',
+  discoveryResults:'verified-discovery-results'
 });
 const TECH_CACHE_GLOBAL_SCOPE='0x0000000000000000000000000000000000000000';
 
@@ -4409,6 +4411,108 @@ async function saveTechnicalProcessCache(wallet,cacheKey,scannerVersion,payload,
  const {error}=await sb.from(STAKING_SCAN_CACHE_TABLE).upsert(row,{onConflict:'user_id,chain_key,wallet_address,cache_key'});
  if(error){log(`Technischer Cache ${cacheKey} konnte nicht gespeichert werden: ${error.message||error}`,'warn');return false}
  return true;
+}
+
+const DISCOVERY_RESULT_CACHE_MAX_AGE_MS=24*60*60*1000;
+function discoveryResultLastBlock(){
+  const blockNumber=t=>{const v=t?.blockNum??t?.blockNumber??0;if(typeof v==='number')return Number(v)||0;const x=String(v||'0');return Number(x.startsWith('0x')?parseInt(x,16):parseInt(x,10))||0};
+  return Math.max(0,...(DISCOVERY_PROCESS.transfers||[]).map(blockNumber));
+}
+function cacheJsonSafe(value,stack=new WeakSet()){
+  if(value===null||value===undefined||typeof value==='string'||typeof value==='number'||typeof value==='boolean')return value;
+  if(typeof value==='bigint')return value.toString();
+  if(typeof value==='function')return undefined;
+  if(typeof value!=='object')return String(value);
+  if(stack.has(value))return undefined;
+  stack.add(value);
+  let out;
+  if(value instanceof Map)out=Object.fromEntries([...value.entries()].map(([k,v])=>[String(k),cacheJsonSafe(v,stack)]));
+  else if(value instanceof Set)out=[...value].map(v=>cacheJsonSafe(v,stack));
+  else if(Array.isArray(value))out=value.map(v=>cacheJsonSafe(v,stack)).filter(v=>v!==undefined);
+  else{
+    out={};
+    for(const [k,v] of Object.entries(value)){
+      if(k==='contractGraph')continue; // wird bei einem späteren Step-4-Neulauf sauber neu aufgebaut
+      const cv=cacheJsonSafe(v,stack);if(cv!==undefined)out[k]=cv;
+    }
+  }
+  stack.delete(value);
+  return out;
+}
+function buildDiscoveryResultPayload(completedStep){
+  const d=DISCOVERY_PROCESS.done||{};
+  return cacheJsonSafe({
+    kind:'verified_discovery_results',schemaVersion:1,wallet:DISCOVERY_PROCESS.wallet,completedStep:Number(completedStep||0),
+    savedAt:new Date().toISOString(),lastCheckedAt:new Date().toISOString(),sourceLastBlock:discoveryResultLastBlock(),buildId:BUILD_ID,
+    process:{
+      pairs:DISCOVERY_PROCESS.pairs||[],rows:DISCOVERY_PROCESS.rows||[],stakingRows:DISCOVERY_PROCESS.stakingRows||[],
+      entryTargets:DISCOVERY_PROCESS.entryTargets||[],stakingContractCalls:DISCOVERY_PROCESS.stakingContractCalls||[],contractCalls:DISCOVERY_PROCESS.contractCalls||[],
+      contractEvents:DISCOVERY_PROCESS.contractEvents||[],lots:DISCOVERY_PROCESS.lots||[],unmatched:DISCOVERY_PROCESS.unmatched||[],pricePairs:DISCOVERY_PROCESS.pricePairs||[],
+      done:{base:!!d.base,staking:!!d.staking,duration:!!d.duration,rewards:!!d.rewards,referral:!!d.referral}
+    },
+    globals:{unassignedRewards:CURRENT_UNASSIGNED_REWARDS||[],provenRewardRows:CURRENT_PROVEN_REWARD_ROWS||[],claimReferenceResult:CURRENT_CLAIM_REFERENCE_RESULT||null}
+  });
+}
+async function saveDiscoveryResultSnapshot(completedStep){
+  const wallet=norm(DISCOVERY_PROCESS.wallet||CURRENT_WALLET||'');
+  if(!ethers.isAddress(wallet)||Number(completedStep||0)<2)return false;
+  const payload=buildDiscoveryResultPayload(completedStep);
+  const ok=await saveTechnicalProcessCache(wallet,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults,payload,payload.sourceLastBlock||0);
+  if(ok)log(`Persistente Endergebnisse gespeichert: Steps 1–${completedStep} · ${DISCOVERY_PROCESS.lots.length} Position(en) · Block ${Number(payload.sourceLastBlock||0).toLocaleString('de-CH')}.`,'ok');
+  return ok;
+}
+function rebuildCountsFromTransfers(transfers){
+  const counts=new Map();for(const t of (transfers||[])){const a=norm(t?.rawContract?.address);if(a)counts.set(a,(counts.get(a)||0)+1)}return counts;
+}
+function renderRestoredDiscoveryResults(step){
+  const wallet=DISCOVERY_PROCESS.wallet;
+  const counts=DISCOVERY_PROCESS.counts;
+  const pairs=DISCOVERY_PROCESS.pairs||[];
+  DISCOVERY_PROCESS.pairMap=new Map(pairs.map(p=>[norm(p.address),p]));
+  $('mTransfers').textContent=(DISCOVERY_PROCESS.transfers||[]).length;
+  $('mPairs').textContent=pairs.length;
+  $('mStakes').textContent=(DISCOVERY_PROCESS.stakingRows||[]).filter(r=>String(r.action).toUpperCase()==='STAKE').length;
+  $('mUnstakes').textContent=(DISCOVERY_PROCESS.stakingRows||[]).filter(r=>String(r.action).toUpperCase()==='UNSTAKE').length;
+  renderPairTable(pairs,counts);
+  if((DISCOVERY_PROCESS.rows||[]).length)renderRawStakingEvents(DISCOVERY_PROCESS.rows);
+  renderContractCalls(DISCOVERY_PROCESS.contractCalls||DISCOVERY_PROCESS.stakingContractCalls||[]);
+  renderProcessLotCards();renderProcessChecks();
+  if(step>=4){renderRewardClaiming(DISCOVERY_PROCESS.lots);renderBonusRewards(DISCOVERY_PROCESS.lots);renderUnassignedClaims(DISCOVERY_PROCESS.lots);}
+  if(step>=5){renderReferralRewards(DISCOVERY_PROCESS.lots);renderBonusRewards(DISCOVERY_PROCESS.lots);renderUnassignedClaims(DISCOVERY_PROCESS.lots);}
+  if(step>=1)setStepState(1,`${(DISCOVERY_PROCESS.transfers||[]).length} Transfers aus Cache`,'done');
+  if(step>=2)setStepState(2,`${DISCOVERY_PROCESS.lots.length} Positionen aus Cache`,'done');
+  if(step>=3)setStepState(3,`${DISCOVERY_PROCESS.lots.filter(l=>l.lockDurationSeconds||l.contractEndTime||l.endTime).length}/${DISCOVERY_PROCESS.lots.length} Duration aus Cache`,'done');
+  if(step>=4)setStepState(4,`${collectAllWalletRewardRows(DISCOVERY_PROCESS.lots).length} Staking · ${collectBonusRewardRows(DISCOVERY_PROCESS.lots).length} Bonus · Cache`,'done');
+  if(step>=5)setStepState(5,`${CURRENT_CLAIM_REFERENCE_RESULT?.strong?.length||0} starke Referral-Tx · Cache`,'done');
+  if(step<3&&DISCOVERY_PROCESS.done.staking)setStepState(3,'bereit');
+  if(step<4&&DISCOVERY_PROCESS.done.staking)setStepState(4,'bereit');
+  if(step<5&&DISCOVERY_PROCESS.done.rewards)setStepState(5,'bereit');
+  setStepState(6,'bereit');
+  updateProcessButtons();
+}
+async function restoreDiscoveryResultSnapshot(wallet){
+  const w=norm(wallet||'');if(!ethers.isAddress(w))return null;
+  const payload=await loadTechnicalProcessCache(w,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults);
+  if(!payload||payload.kind!=='verified_discovery_results'||norm(payload.wallet)!==w||!payload.process)return null;
+  const p=payload.process,step=Number(payload.completedStep||0);
+  DISCOVERY_PROCESS.wallet=w;CURRENT_WALLET=w;
+  const erc20Cache=await loadPersistentErc20Cache(w);
+  DISCOVERY_PROCESS.transfers=Array.isArray(erc20Cache?.rows)?erc20Cache.rows:(Array.isArray(p.transfers)?p.transfers:[]);CURRENT_ALL_TRANSFERS=DISCOVERY_PROCESS.transfers;
+  DISCOVERY_PROCESS.counts=rebuildCountsFromTransfers(DISCOVERY_PROCESS.transfers);
+  DISCOVERY_PROCESS.pairs=Array.isArray(p.pairs)?p.pairs:[];DISCOVERY_PROCESS.rows=Array.isArray(p.rows)?p.rows:[];DISCOVERY_PROCESS.stakingRows=Array.isArray(p.stakingRows)?p.stakingRows:[];
+  DISCOVERY_PROCESS.entryTargets=Array.isArray(p.entryTargets)?p.entryTargets:[];DISCOVERY_PROCESS.stakingContractCalls=Array.isArray(p.stakingContractCalls)?p.stakingContractCalls:[];DISCOVERY_PROCESS.contractCalls=Array.isArray(p.contractCalls)?p.contractCalls:[];
+  DISCOVERY_PROCESS.contractEvents=Array.isArray(p.contractEvents)?p.contractEvents:[];DISCOVERY_PROCESS.lots=Array.isArray(p.lots)?p.lots:[];DISCOVERY_PROCESS.unmatched=Array.isArray(p.unmatched)?p.unmatched:[];DISCOVERY_PROCESS.pricePairs=Array.isArray(p.pricePairs)?p.pricePairs:[];
+  DISCOVERY_PROCESS.done={base:step>=1,staking:step>=2,duration:step>=3,rewards:step>=4,referral:step>=5,team:false,valuation:false};
+  CURRENT_UNASSIGNED_REWARDS=Array.isArray(payload.globals?.unassignedRewards)?payload.globals.unassignedRewards:[];
+  CURRENT_PROVEN_REWARD_ROWS=Array.isArray(payload.globals?.provenRewardRows)?payload.globals.provenRewardRows:[];
+  CURRENT_CLAIM_REFERENCE_RESULT=payload.globals?.claimReferenceResult||null;
+  renderRestoredDiscoveryResults(step);
+  const checked=Date.parse(payload.lastCheckedAt||payload.savedAt||0),age=Date.now()-checked;
+  const ageText=Number.isFinite(age)&&age>=0?`${Math.floor(age/3600000)} h`:'unbekannt';
+  $('status').innerHTML=`<span class="ok">Persistente Discovery-Ergebnisse geladen: Steps 1–${step}.</span>`;
+  log(`Persistente Endergebnisse geladen: Steps 1–${step} · gespeichert ${payload.savedAt||'–'} · letzte Prüfung ${ageText} alt · Quellblock ${Number(payload.sourceLastBlock||0).toLocaleString('de-CH')}.`,'ok');
+  if(Number.isFinite(age)&&age>DISCOVERY_RESULT_CACHE_MAX_AGE_MS)log('Persistente Endergebnisse sind älter als 24 h. Die tägliche inkrementelle Änderungsprüfung wird als nächster Cache-Schritt ergänzt; die gespeicherten Ergebnisse bleiben bis dahin sichtbar.','warn');
+  return payload;
 }
 async function clearSelectedWalletSupabaseCache(){
  const btn=$('clearWalletSupabaseCache'),state=$('clearWalletSupabaseCacheState');
@@ -9352,6 +9456,7 @@ async function processStakingDiscovery(){
     $('mPairs').textContent=pairs.length;$('mStakes').textContent=stakingRows.filter(r=>String(r.action).toUpperCase()==='STAKE').length;$('mUnstakes').textContent=stakingRows.filter(r=>String(r.action).toUpperCase()==='UNSTAKE').length;renderProcessLotCards();renderProcessChecks();
     await Promise.all([flushLpFactsCache(),flushTxFactsCache(wallet)]);
     DISCOVERY_PROCESS.done.staking=true;DISCOVERY_PROCESS.done.duration=false;DISCOVERY_PROCESS.done.rewards=false;DISCOVERY_PROCESS.done.referral=false;DISCOVERY_PROCESS.done.valuation=false;setStepState(2,`${lots.length} Positionen erkannt`,'done');setStepState(3,'bereit');setStepState(4,'bereit');$('status').innerHTML='<span class="ok">Stakings erkannt und positionsnormalisiert. Lockdauer und Rewards werden NICHT automatisch gestartet.</span>';log(`Schritt 2 abgeschlossen: ${pairs.length} LPs · ${stakingRows.length} Stake/Unstake-Ereignisse · ${lots.length} Positionen${topUpNormalization.merged?` · ${topUpNormalization.merged} bestätigte Top-up-Zusammenführung(en)`:''}.`,'ok');
+    await saveDiscoveryResultSnapshot(2);
   }catch(e){setStepState(2,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
 
@@ -10159,6 +10264,7 @@ async function processDuration(){
       log(`Duration-RPC-Methoden: ${methods||'–'}.`,'info');
     }
     log(`Schritt 3 abgeschlossen: ${result.proven}/${DISCOVERY_PROCESS.lots.length} finale Lots mit Lockdauer · ${result.cacheHits} Cache (${result.sharedRuleHits||0} Shared-Contract-Validierung) · ${result.fullRuns} Duration-Läufe · ${result.preflightRuns} Top-up-Preflights.`,'ok');
+    await saveDiscoveryResultSnapshot(3);
   }catch(e){
     setStepState(3,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err');
   }finally{updateProcessButtons();b.disabled=false}
@@ -10194,7 +10300,7 @@ async function processStakingRewards(){
     log(`Schritt-4 Performance: Primär-Zuordnung ${assignmentMs} ms · Ergänzung/Aggregation ${supplementalMs} ms.`,'ok');
     renderRewardClaiming(lots);renderBonusRewards(lots);renderUnassignedClaims(lots);renderProcessLotCards();
     log(`Schritt-4 Performance gesamt: ${Math.round(performance.now()-step4Started)} ms.`,'ok');
-    const bonusCount=collectBonusRewardRows(lots).length;DISCOVERY_PROCESS.done.rewards=true;DISCOVERY_PROCESS.done.referral=false;setStepState(4,`${collectAllWalletRewardRows(lots).length} Staking · ${bonusCount} Bonus`,'done');setStepState(5,'bereit');$('status').innerHTML='<span class="ok">Staking-Rewards abgeschlossen. Referral wurde NICHT automatisch gestartet.</span>';log(`Schritt 4 abgeschlossen: ${collectAllWalletRewardRows(lots).length} zugeordnete Reward-Zeilen.`,'ok')}
+    const bonusCount=collectBonusRewardRows(lots).length;DISCOVERY_PROCESS.done.rewards=true;DISCOVERY_PROCESS.done.referral=false;setStepState(4,`${collectAllWalletRewardRows(lots).length} Staking · ${bonusCount} Bonus`,'done');setStepState(5,'bereit');$('status').innerHTML='<span class="ok">Staking-Rewards abgeschlossen. Referral wurde NICHT automatisch gestartet.</span>';log(`Schritt 4 abgeschlossen: ${collectAllWalletRewardRows(lots).length} zugeordnete Reward-Zeilen.`,'ok');await saveDiscoveryResultSnapshot(4)}
   catch(e){setStepState(4,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
 
@@ -11022,7 +11128,7 @@ async function prepareTeamTree(){
 
 async function processReferralRewards(){
   const b=$('stepReferral');b.disabled=true;setStepState(5,'läuft …','running');$('status').textContent='Schritt 5/7: Claim-/Referral-Referenzengine …';
-  try{if(!DISCOVERY_PROCESS.done.rewards)throw new Error('Zuerst Schritt 4 ausführen.');CURRENT_CLAIM_REFERENCE_RESULT=null;CLAIM_REFERENCE_RUN_CACHE.clear();try{CLAIM_TRACE_REFERENCE_ENGINE.clearHeadlessCaches()}catch{}primeClaimReferenceFromDiscoveryCaches();const step5Started=performance.now();const ref=await runClaimReferenceForCurrentWallet();if(ref?.walletIdentity){for(const lot of DISCOVERY_PROCESS.lots){lot.tlnIdentity=ref.walletIdentity;lot.tlnId=ref.walletIdentity.nodeId||null}}renderReferralRewards(DISCOVERY_PROCESS.lots);renderBonusRewards(DISCOVERY_PROCESS.lots);renderUnassignedClaims(DISCOVERY_PROCESS.lots);renderProcessLotCards();DISCOVERY_PROCESS.done.referral=true;setStepState(5,`${ref?.strong?.length||0} starke Referral-Tx`,'done');$('status').innerHTML='<span class="ok">Referral-Analyse abgeschlossen.</span>';log(`Schritt 5 abgeschlossen: ${ref?.strong?.length||0} starke Referral-Tx · ${Math.round(performance.now()-step5Started)} ms.`,'ok')}
+  try{if(!DISCOVERY_PROCESS.done.rewards)throw new Error('Zuerst Schritt 4 ausführen.');CURRENT_CLAIM_REFERENCE_RESULT=null;CLAIM_REFERENCE_RUN_CACHE.clear();try{CLAIM_TRACE_REFERENCE_ENGINE.clearHeadlessCaches()}catch{}primeClaimReferenceFromDiscoveryCaches();const step5Started=performance.now();const ref=await runClaimReferenceForCurrentWallet();if(ref?.walletIdentity){for(const lot of DISCOVERY_PROCESS.lots){lot.tlnIdentity=ref.walletIdentity;lot.tlnId=ref.walletIdentity.nodeId||null}}renderReferralRewards(DISCOVERY_PROCESS.lots);renderBonusRewards(DISCOVERY_PROCESS.lots);renderUnassignedClaims(DISCOVERY_PROCESS.lots);renderProcessLotCards();DISCOVERY_PROCESS.done.referral=true;setStepState(5,`${ref?.strong?.length||0} starke Referral-Tx`,'done');$('status').innerHTML='<span class="ok">Referral-Analyse abgeschlossen.</span>';log(`Schritt 5 abgeschlossen: ${ref?.strong?.length||0} starke Referral-Tx · ${Math.round(performance.now()-step5Started)} ms.`,'ok');await saveDiscoveryResultSnapshot(5)}
   catch(e){setStepState(5,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
 let TEAM_TREE_RUN_INFLIGHT=false;
@@ -11247,12 +11353,14 @@ function populateTlnWalletDropdown(){
   }
 }
 function bindWalletDropdown(){
-  $('walletSelect').addEventListener('change',()=>{
+  $('walletSelect').addEventListener('change',async()=>{
     const addr=$('walletSelect').value||'';
     $('wallet').value=addr;
     $('walletAddress').textContent=addr||'–';
     resetDiscoveryProcess(addr);
-    $('status').textContent='Wallet gewechselt: Prozessstatus zurückgesetzt.';
+    $('status').textContent='Wallet gewechselt: persistente Discovery-Ergebnisse werden geprüft …';
+    const restored=await restoreDiscoveryResultSnapshot(addr);
+    if(!restored)$('status').textContent='Wallet gewechselt: kein persistenter Ergebnis-Cache vorhanden; Cold Run ab Schritt 1 möglich.';
   });
 }
 function isJwtFutureError(err){
@@ -11361,7 +11469,7 @@ tlnWallets=(wq.data||[])
   .sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'de'));
 populateTlnWalletDropdown();
 bindWalletDropdown();
-$('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;resetDiscoveryProcess($('wallet').value);setStepState(1,'bereit');setStepState(6,'bereit');updateProcessButtons();log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok')}
+$('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;resetDiscoveryProcess($('wallet').value);setStepState(1,'bereit');setStepState(6,'bereit');updateProcessButtons();log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok');if(ethers.isAddress($('wallet').value))await restoreDiscoveryResultSnapshot($('wallet').value)}
 $('refresh').onclick=processBaseData;
 $('stepStaking').onclick=processStakingDiscovery;
 $('stepDuration').onclick=processDuration;
