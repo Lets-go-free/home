@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 00:32:03 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 00:37:51 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID = '20260906-003203';
+const BUILD_ID = '20260906-003751';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -12630,10 +12630,14 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
     return {supported:false};
   }
   const data=selector+ethers.AbiCoder.defaultAbiCoder().encode(['uint256','uint256'],[BigInt(tokenId),0n]).slice(2);
+  // Verifizierte erfolgreiche Calls dieses Cave-Contracts senden 0.001 BNB mit.
+  // Der vorherige value=0-Test revertete exakt mit "!fee"; fuer den eigentlichen
+  // Lock-/Status-Gate-Test muss daher dieselbe belegte Fee nur im eth_call simuliert werden.
+  const callValue='0x'+(10n**15n).toString(16); // 0.001 BNB, keine On-Chain-Transaktion
   try{
-    const out=await rpc('eth_call',[{from:wallet,to:contract,data,value:'0x0'},'latest']);
-    log(`Duration ${label}: Cave-Unstake-Gate tokenId ${tokenId}: eth_call ${selector}(tokenId,0) ist aktuell AUSFUEHRBAR${out&&out!=='0x'?` · Rueckgabe ${out}`:''}. Das beweist keine bereits erfolgte Aufloesung.`,'warn');
-    return {supported:true,callable:true,result:out};
+    const out=await rpc('eth_call',[{from:wallet,to:contract,data,value:callValue},'latest']);
+    log(`Duration ${label}: Cave-Unstake-Gate tokenId ${tokenId}: eth_call ${selector}(tokenId,0) mit 0.001 BNB Fee ist aktuell AUSFUEHRBAR${out&&out!=='0x'?` · Rueckgabe ${out}`:''}. Das beweist keine bereits erfolgte Aufloesung.`,'warn');
+    return {supported:true,callable:true,result:out,callValue};
   }catch(e){
     const msg=String(e?.message||e||'');
     const dataErr=e?.data||e?.error?.data||e?.info?.error?.data||null;
@@ -12641,8 +12645,8 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
     if(typeof dataErr==='string'&&dataErr.startsWith('0x08c379a0')&&dataErr.length>10){
       try{decoded=ethers.AbiCoder.defaultAbiCoder().decode(['string'],'0x'+dataErr.slice(10))[0]||''}catch{}
     }
-    log(`Duration ${label}: Cave-Unstake-Gate tokenId ${tokenId}: aktuell NICHT ausfuehrbar · ${decoded?`Revert "${decoded}"`:`${msg.slice(0,240)}${dataErr?` · RevertData ${String(dataErr).slice(0,194)}`:''}`}.`,'ok');
-    return {supported:true,callable:false,error:msg,revertData:dataErr,decoded};
+    log(`Duration ${label}: Cave-Unstake-Gate tokenId ${tokenId}: mit 0.001 BNB Fee aktuell NICHT ausfuehrbar · ${decoded?`Revert "${decoded}"`:`${msg.slice(0,240)}${dataErr?` · RevertData ${String(dataErr).slice(0,194)}`:''}`}.`,'ok');
+    return {supported:true,callable:false,error:msg,revertData:dataErr,decoded,callValue};
   }
 }
 
