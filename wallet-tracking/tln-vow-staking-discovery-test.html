@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 23:54:41 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 00:04:05 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-235441';
+const BUILD_ID='20260906-000405';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -6309,6 +6309,8 @@ async function synthesizeStakeRowsFromReceipts(calls,pairMap,wallet,rows){
         entry_contract:norm(c?._staking?.entry_contract||'')||(calledContract!==transferTarget?calledContract:null),
         stake_event_contract:norm(c?._teamStakeEventContract||''),
         staking_asset_recipient:transferTarget||null,
+        stake_token_id:c?._teamStakeTokenId||null,
+        stake_cave_id:c?._teamStakeCaveId||null,
         staking,amount,receiptDerived:true
       });
       existing.add(key);
@@ -8732,7 +8734,7 @@ function buildDiagnosticLots(stakingRows){
         addLotTx(openLot,{...eventTx(r,'Aufstockung'),amount,source:'Wiederholter Stake bei bereits offener Position'});
         log(`Aufstockung erkannt: ${safePairLabel(openLot)} · +${amount.toLocaleString('de-CH',{maximumFractionDigits:12})} · bestehende Position wird fortgeführt; Laufzeitbasis = Aufstockungszeitpunkt ${stakeTime?new Date(stakeTime).toLocaleString('de-CH'):'–'} · Tx ${r?.t?.hash||'–'}`,'ok');
       }else{
-        const lot={key,pair:r.p||null,pair_address:safePairAddress(r),token0_symbol:r?.p?.token0?.symbol||'Token0',token1_symbol:r?.p?.token1?.symbol||'Token1',staking:r.staking,counterparty:r.counterparty,entry_contract:r.entry_contract||null,stake_event_contract:r.stake_event_contract||null,staking_asset_recipient:r.staking_asset_recipient||null,duration_contract:r.duration_contract||null,stake_token_id:r.stake_token_id||null,position_identifiers:r.stake_token_id?[{kind:'stake_event_token_id',value:String(r.stake_token_id),sourceTx:r?.t?.hash||null}]:[],stakeTime,stakeBlockHex:r?.t?.blockNum||null,lockBaseTime:stakeTime,lockBaseReason:'Erst-Stake',expiryTime:null,durationDays:null,durationSource:null,stakeTx:r.t.hash,original:amount,remaining:amount,status:'open',transactions:[],topUps:[]};
+        const lot={key,pair:r.p||null,pair_address:safePairAddress(r),token0_symbol:r?.p?.token0?.symbol||'Token0',token1_symbol:r?.p?.token1?.symbol||'Token1',staking:r.staking,counterparty:r.counterparty,entry_contract:r.entry_contract||null,stake_event_contract:r.stake_event_contract||null,staking_asset_recipient:r.staking_asset_recipient||null,duration_contract:r.duration_contract||null,stake_token_id:r.stake_token_id||null,stake_cave_id:r.stake_cave_id||null,position_identifiers:r.stake_token_id?[{kind:'stake_event_token_id',value:String(r.stake_token_id),sourceTx:r?.t?.hash||null}]:[],stakeTime,stakeBlockHex:r?.t?.blockNum||null,lockBaseTime:stakeTime,lockBaseReason:'Erst-Stake',expiryTime:null,durationDays:null,durationSource:null,stakeTx:r.t.hash,original:amount,remaining:amount,status:'open',transactions:[],topUps:[]};
         addLotTx(lot,eventTx(r,'Stake'));
         lots.push(lot); q.push(lot);
       }
@@ -8755,6 +8757,7 @@ function buildDiagnosticLots(stakingRows){
 
 const STAKING_EVENT_TOPICS=new Map([
   [ethers.id('Stake(address,uint256,uint256)').toLowerCase(),'Stake'],
+  [ethers.id('Stake(address,uint256,uint256,uint256)').toLowerCase(),'Stake'],
   [ethers.id('Unstake(address,uint256,uint256)').toLowerCase(),'Unstake'],
   [ethers.id('UnStake(address,uint256,uint256)').toLowerCase(),'Unstake'],
   [ethers.id('Unstaked(address,uint256,uint256)').toLowerCase(),'Unstake'],
@@ -12405,17 +12408,20 @@ async function teamBatchPositionCalls(wallets){
       let evidence=positionKind?`selector:${methodLower}`:null;
       if(!positionKind&&receipt&&c._success!==false){
         const wallet=norm(c._teamWallet),called=norm(c._staking?.contract_address||c.to||'');
-        const stakeTopic=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
+        const stakeTopic3=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
+        const stakeTopic4=ethers.id('Stake(address,uint256,uint256,uint256)').toLowerCase();
         // Neue Entry-/Router-Generationen koennen den eigentlichen Stake in einem zweiten
-        // Contract ausfuehren. Dann emittiert NICHT tx.to, sondern der nachgelagerte
-        // Staking-Contract das kanonische Stake(address,uint256,uint256)-Event. Die
-        // Haupt-Discovery kann solche Faelle ueber Receipt-/LP-Evidenz bereits erkennen;
-        // Step 6 darf das Event deshalb nicht auf den aufgerufenen Entry-Contract begrenzen.
-        const stakeEvent=(receipt.logs||[]).find(l=>{
-          if(norm(l?.topics?.[0])!==stakeTopic||!l?.topics?.[1])return false;
+        // Contract ausfuehren. Der neue Cave-Staking-Contract emittiert dabei
+        // Stake(address user,uint256 caveId,uint256 tokenId,uint256 amount). Dieses Event
+        // ist staerker als der aeltere 3-Parameter-Wrapper-Event, weil es die echte
+        // Positions-ID (tokenId) und caveId enthaelt. Deshalb 4-Parameter-Event bevorzugen.
+        const stakeEvents=(receipt.logs||[]).filter(l=>{
+          const t0=norm(l?.topics?.[0]);
+          if((t0!==stakeTopic3&&t0!==stakeTopic4)||!l?.topics?.[1])return false;
           const eventWallet=norm('0x'+String(l.topics[1]).slice(-40));
           return eventWallet===wallet;
-        })||null;
+        });
+        const stakeEvent=stakeEvents.find(l=>norm(l?.topics?.[0])===stakeTopic4)||stakeEvents[0]||null;
         const outgoing=(c._erc20Transfers||[]).filter(tr=>norm(tr.from)===wallet&&tr.token&&tr.amountRaw!=null);
         if(stakeEvent){
           const eventContract=norm(stakeEvent.address||'');
@@ -12426,7 +12432,13 @@ async function teamBatchPositionCalls(wallets){
             const prev=c._staking||{};
             c._staking={...prev,entry_contract:called&&called!==eventContract?called:(prev.entry_contract||null),contract_address:eventContract,label:prev.label||`Entdeckter Team-Staking-Contract ${short(eventContract)}`,role:prev.role==='team_discovered_entry_candidate'?'team_discovered_staking_candidate':prev.role};
           }
-          positionKind='stake';evidence=`receipt:Stake(address,uint256,uint256)${eventContract&&eventContract!==called?'@downstream-contract':''}`;
+          const isCaveStake=norm(stakeEvent?.topics?.[0])===stakeTopic4;
+          if(isCaveStake){
+            try{c._teamStakeCaveId=stakeEvent?.topics?.[2]?BigInt(stakeEvent.topics[2]).toString():null}catch{}
+            try{const w=rawWords(stakeEvent?.data||'0x');c._teamStakeTokenId=w?.[0]?.uint!=null?w[0].uint.toString():null}catch{}
+            log(`Team-Lifecycle Cave-Stake erkannt: Contract ${short(eventContract)} · caveId ${c._teamStakeCaveId||'–'} · tokenId ${c._teamStakeTokenId||'–'} · Tx ${short(norm(c.hash||''))}.`,'ok');
+          }
+          positionKind='stake';evidence=`receipt:${isCaveStake?'Stake(address,uint256,uint256,uint256)':'Stake(address,uint256,uint256)'}${eventContract&&eventContract!==called?'@downstream-contract':''}`;
         }
         else if(outgoing.length){positionKind='stake';evidence=`receipt:wallet-erc20-outflow(${outgoing.length})`;}
         else if(String(c?._teamPositionEvidenceSeed||'').startsWith('step5:strong-stake')){positionKind='stake';evidence='step5:strong-stake-evidence';}
