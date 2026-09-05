@@ -107,8 +107,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 02:07:53 CEST</div>
-<p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; historische SmartNode-Tx werden gebündelt und mit History-Fallback vollständig geladen. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 02:20:33 CEST</div>
+<p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
 <label>TLN-Wallet<br>
@@ -210,7 +210,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-020753';
+const BUILD_ID='20260905-022033';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -321,7 +321,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='05.09.2026 02:07:53 CEST';
+const APP_VERSION='05.09.2026 02:20:33 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -10205,6 +10205,12 @@ const TEAM_NODE_ID_SELECTOR=ethers.id('nodeIdOf(address)').slice(0,10);
 const TEAM_JOIN_SELECTOR=ethers.id('join(address)').slice(0,10).toLowerCase();
 const TEAM_SMARTNODE_ACTIVATED_TOPIC=ethers.id('SmartNodeActivated(address,address,uint256)').toLowerCase();
 const TLN_TEAM_MAX_LEVELS=20;
+const TEAM_GRAPH_CACHE_TABLE='tln_vow_smartnode_graph_cache';
+const TEAM_GRAPH_STATE_TABLE='tln_vow_smartnode_graph_state';
+const TEAM_GRAPH_CACHE_PAGE_SIZE=1000;
+const TEAM_GRAPH_OVERLAP_BLOCKS=64;
+const TEAM_GRAPH_CONFIRMATIONS=12;
+let TEAM_GRAPH_DB_AVAILABLE=true;
 const TEAM_IDENTITY_CACHE=new Map();
 let CURRENT_TEAM_PROJECT_FOREST=null;
 
@@ -10286,7 +10292,7 @@ async function teamAlchemyRpc(method,params=[]){
   return j.result;
 }
 
-async function teamJsonRpcBatch(url,hashes,{batchSize=100,parallel=4,label='RPC'}={}){
+async function teamJsonRpcBatch(url,hashes,{batchSize=100,parallel=4,label='RPC',timeoutMs=8000}={}){
   const unique=[...new Set((hashes||[]).map(norm).filter(Boolean))];
   if(!unique.length)return new Map();
   const chunks=[];
@@ -10298,35 +10304,35 @@ async function teamJsonRpcBatch(url,hashes,{batchSize=100,parallel=4,label='RPC'
   async function loadChunk(ci){
     const chunk=chunks[ci];
     const body=chunk.map((hash,j)=>({
-      jsonrpc:'2.0',
-      id:j+1,
-      method:'eth_getTransactionByHash',
-      params:[hash]
+      jsonrpc:'2.0',id:j+1,method:'eth_getTransactionByHash',params:[hash]
     }));
-    const r=await fetch(url,{
-      method:'POST',
-      headers:{'content-type':'application/json'},
-      body:JSON.stringify(body)
-    });
-    const j=await r.json().catch(()=>null);
-    if(!r.ok||!Array.isArray(j))throw new Error(`${label} Batch HTTP ${r.status}`);
-    const byId=new Map(j.map(x=>[Number(x?.id),x]));
-    for(let k=0;k<chunk.length;k++){
-      const item=byId.get(k+1);
-      const tx=item?.result||null;
-      if(tx?.hash)found.set(norm(chunk[k]),tx);
-    }
-    done++;
-    if(done===1||done===chunks.length||done%25===0){
-      log(`Team-Tx ${label}: ${Math.min(done*batchSize,unique.length)}/${unique.length} geprüft · ${found.size} Tx geliefert · ${done}/${chunks.length} Batch-Requests · ${Math.round(performance.now()-started)} ms.`,'muted');
-    }
+    const ctrl=new AbortController();
+    const timer=setTimeout(()=>ctrl.abort(),timeoutMs);
+    try{
+      const r=await fetch(url,{
+        method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:ctrl.signal
+      });
+      const j=await r.json().catch(()=>null);
+      if(!r.ok||!Array.isArray(j))throw new Error(`${label} Batch HTTP ${r.status}`);
+      const byId=new Map(j.map(x=>[Number(x?.id),x]));
+      for(let k=0;k<chunk.length;k++){
+        const item=byId.get(k+1),tx=item?.result||null;
+        if(tx?.hash)found.set(norm(chunk[k]),tx);
+      }
+      done++;
+      if(done===1||done===chunks.length||done%25===0){
+        log(`Team-Tx ${label}: ${Math.min(done*batchSize,unique.length)}/${unique.length} geprüft · ${found.size} Tx geliefert · ${done}/${chunks.length} Batch-Requests · ${Math.round(performance.now()-started)} ms.`,'muted');
+      }
+    }catch(e){
+      if(e?.name==='AbortError')throw new Error(`${label} Batch Timeout nach ${timeoutMs} ms`);
+      throw e;
+    }finally{clearTimeout(timer)}
   }
   async function worker(){
     while(true){
       const ci=next++;
       if(ci>=chunks.length)return;
-      try{await loadChunk(ci)}
-      catch(e){log(`Team-Tx ${label}: Batch ${ci+1}/${chunks.length} fehlgeschlagen: ${e.message}`,'warn')}
+      try{await loadChunk(ci)}catch(e){log(`Team-Tx ${label}: Batch ${ci+1}/${chunks.length} fehlgeschlagen: ${e.message}`,'warn')}
     }
   }
   await Promise.all(Array.from({length:Math.min(parallel,chunks.length)},()=>worker()));
@@ -10339,27 +10345,43 @@ async function teamHistoricalTransactionBatch(hashes){
   const all=new Map();
   if(!unique.length)return [];
 
+  // Bereits im allgemeinen Session-Cache geladene Tx zuerst wiederverwenden.
+  let sessionHits=0;
+  for(const h of unique){
+    const key=txRpcSessionKey('eth_getTransactionByHash',[h]);
+    const tx=TX_RPC_SESSION_CACHE.get(key);
+    if(tx?.hash){all.set(h,tx);sessionHits++}
+  }
+  if(sessionHits)log(`Team-Tx Session-Cache: ${sessionHits}/${unique.length} historische Tx wiederverwendet.`,'ok');
+
   const alchemyUrl='https://bnb-mainnet.g.alchemy.com/v2/'+encodeURIComponent(ALCHEMY_API_KEY);
   const publicnodeUrl='https://bsc-rpc.publicnode.com/'+encodeURIComponent(PUBLICNODE_TOKEN);
   const binanceUrl='https://bsc-dataseed.binance.org/';
 
-  // Browser-stabile Reihenfolge: Alchemy zuerst. PublicNode bleibt historischer Fallback,
-  // weil direkte PublicNode-Vollscans aus letsgofree.me sporadisch CORS/408/403 liefern.
-  const a=await teamJsonRpcBatch(alchemyUrl,unique,{batchSize:100,parallel:6,label:'Alchemy'});
-  for(const [h,tx] of a)all.set(h,tx);
-
   let missing=unique.filter(h=>!all.has(h));
   if(missing.length){
-    log(`Team-Tx Historie: Alchemy lieferte ${all.size}/${unique.length}; ${missing.length} ältere Tx werden gebündelt über PublicNode nachgeladen.`,'warn');
-    const p=await teamJsonRpcBatch(publicnodeUrl,missing,{batchSize:100,parallel:4,label:'PublicNode'});
+    // PublicNode ist für alte BSC-Tx vollständig; kurzer Timeout verhindert das frühere ~40-s-Hängen.
+    const p=await teamJsonRpcBatch(publicnodeUrl,missing,{batchSize:100,parallel:4,label:'PublicNode',timeoutMs:8000});
     for(const [h,tx] of p)all.set(h,tx);
   }
 
   missing=unique.filter(h=>!all.has(h));
   if(missing.length){
+    log(`Team-Tx Historie: PublicNode/Cache lieferten ${all.size}/${unique.length}; ${missing.length} fehlende Tx werden gezielt über Alchemy nachgeladen.`,'warn');
+    const a=await teamJsonRpcBatch(alchemyUrl,missing,{batchSize:100,parallel:6,label:'Alchemy-Fallback',timeoutMs:8000});
+    for(const [h,tx] of a)all.set(h,tx);
+  }
+
+  missing=unique.filter(h=>!all.has(h));
+  if(missing.length){
     log(`Team-Tx Historie: noch ${missing.length} Tx fehlen; gebündelter Binance-Fallback wird verwendet.`,'warn');
-    const b=await teamJsonRpcBatch(binanceUrl,missing,{batchSize:50,parallel:3,label:'Binance'});
+    const b=await teamJsonRpcBatch(binanceUrl,missing,{batchSize:50,parallel:3,label:'Binance',timeoutMs:8000});
     for(const [h,tx] of b)all.set(h,tx);
+  }
+
+  // Neu geladene Tx in den allgemeinen Session-Cache zurückschreiben.
+  for(const [h,tx] of all){
+    if(tx?.hash)TX_RPC_SESSION_CACHE.set(txRpcSessionKey('eth_getTransactionByHash',[h]),tx);
   }
 
   missing=unique.filter(h=>!all.has(h));
@@ -10408,6 +10430,128 @@ function teamTransferBlockNumber(x){
   if(raw==null)return null;
   try{return Number(BigInt(raw))}catch{return null}
 }
+async function teamLoadGlobalGraphCache(){
+  await ensureCurrentUserId();
+  if(!currentUserId||!TEAM_GRAPH_DB_AVAILABLE)return null;
+  const contract=norm(TEAM_SMARTNODE_CONTRACT);
+  const {data:stateRows,error:stateError}=await sb.from(TEAM_GRAPH_STATE_TABLE)
+    .select('chain_key,contract_address,last_verified_block,transfer_count,edge_count,verified_at,updated_at')
+    .eq('chain_key','bsc').eq('contract_address',contract).limit(1);
+  if(stateError){
+    const msg=String(stateError.message||'');
+    if(/tln_vow_smartnode_graph_state|relation .* does not exist|schema cache/i.test(msg)){
+      TEAM_GRAPH_DB_AVAILABLE=false;
+      log('Team-Global-Cache noch nicht verfügbar (Migration 024 ausführen). Vollständiger SmartNode-Historienscan bleibt aktiv.','warn');
+      return null;
+    }
+    log(`Team-Global-Cache State nicht lesbar: ${stateError.message}. Vollscan bleibt aktiv.`,'warn');
+    return null;
+  }
+  const state=stateRows?.[0]||null;
+  if(!state||state.last_verified_block==null||state.edge_count==null)return null;
+
+  const edges=new Map();
+  let offset=0,dbPages=0;
+  while(true){
+    const {data,error}=await sb.from(TEAM_GRAPH_CACHE_TABLE)
+      .select('child_wallet,parent_wallet,join_tx_hash,join_block,source,verified_at')
+      .eq('chain_key','bsc').eq('contract_address',contract)
+      .order('child_wallet',{ascending:true})
+      .range(offset,offset+TEAM_GRAPH_CACHE_PAGE_SIZE-1);
+    if(error){
+      const msg=String(error.message||'');
+      if(/tln_vow_smartnode_graph_cache|relation .* does not exist|schema cache/i.test(msg))TEAM_GRAPH_DB_AVAILABLE=false;
+      log(`Team-Global-Cache Kanten nicht lesbar: ${error.message}. Vollscan bleibt aktiv.`,'warn');
+      return null;
+    }
+    const rows=data||[];dbPages++;
+    for(const row of rows){
+      const child=norm(row.child_wallet),parent=norm(row.parent_wallet);
+      if(!/^0x[0-9a-f]{40}$/.test(child)||!/^0x[0-9a-f]{40}$/.test(parent)||child===parent)continue;
+      if(!edges.has(child))edges.set(child,{child,parent,hash:norm(row.join_tx_hash),blockNumber:row.join_block==null?null:Number(row.join_block),source:row.source||'Supabase SmartNode Global-Cache'});
+    }
+    if(rows.length<TEAM_GRAPH_CACHE_PAGE_SIZE)break;
+    offset+=TEAM_GRAPH_CACHE_PAGE_SIZE;
+    if(dbPages>100)throw new Error('Team-Global-Cache überschreitet 100 Supabase-Seiten; Abbruch statt Teilgraph.');
+  }
+  const expected=Number(state.edge_count||0);
+  if(expected!==edges.size||edges.size<100){
+    log(`Team-Global-Cache unvollständig: State erwartet ${expected} Kanten, geladen wurden ${edges.size}. Vollständiger History-Scan wird verwendet.`,'warn');
+    return null;
+  }
+  log(`Team-Global-Cache: ${edges.size} verifizierte Child→Parent-Beziehungen aus Supabase geladen · letzter verifizierter Block ${Number(state.last_verified_block).toLocaleString('de-CH')} · ${dbPages} DB-Seite(n).`,'ok');
+  return {edges,state:{lastVerifiedBlock:Number(state.last_verified_block),transferCount:Number(state.transfer_count||0),edgeCount:expected,verifiedAt:state.verified_at||null},dbPages};
+}
+
+async function teamSaveGlobalGraphCache(edges,{lastVerifiedBlock,transferCount,onlyChildren=null}={}){
+  await ensureCurrentUserId();
+  if(!currentUserId||!TEAM_GRAPH_DB_AVAILABLE||!edges?.size)return false;
+  const contract=norm(TEAM_SMARTNODE_CONTRACT),nowIso=new Date().toISOString();
+  const filter=onlyChildren?new Set([...onlyChildren].map(norm)):null;
+  const rows=[];
+  for(const e of edges.values()){
+    if(filter&&!filter.has(norm(e.child)))continue;
+    rows.push({
+      chain_key:'bsc',contract_address:contract,child_wallet:norm(e.child),parent_wallet:norm(e.parent),
+      join_tx_hash:e.hash||null,join_block:Number.isFinite(Number(e.blockNumber))?Number(e.blockNumber):null,
+      source:e.source||'SmartNode.join(address _referrer)',verified_at:nowIso,created_by:currentUserId,updated_at:nowIso
+    });
+  }
+  const chunkSize=500;
+  for(let i=0;i<rows.length;i+=chunkSize){
+    const chunk=rows.slice(i,i+chunkSize);
+    const {error}=await sb.from(TEAM_GRAPH_CACHE_TABLE).upsert(chunk,{onConflict:'chain_key,contract_address,child_wallet'});
+    if(error){
+      const msg=String(error.message||'');
+      if(/tln_vow_smartnode_graph_cache|relation .* does not exist|schema cache/i.test(msg))TEAM_GRAPH_DB_AVAILABLE=false;
+      log(`Team-Global-Cache Speichern fehlgeschlagen: ${error.message}. Graph bleibt für diesen Lauf vollständig im Speicher.`,'warn');
+      return false;
+    }
+  }
+  const stateRow={chain_key:'bsc',contract_address:contract,last_verified_block:Number(lastVerifiedBlock||0),transfer_count:Number(transferCount||0),edge_count:edges.size,verified_at:nowIso,updated_by:currentUserId,updated_at:nowIso};
+  const {error:stateError}=await sb.from(TEAM_GRAPH_STATE_TABLE).upsert(stateRow,{onConflict:'chain_key,contract_address'});
+  if(stateError){
+    log(`Team-Global-Cache State-Speichern fehlgeschlagen: ${stateError.message}. Nächster Lauf fällt sicher auf Vollscan zurück.`,'warn');
+    return false;
+  }
+  log(`Team-Global-Cache gespeichert: ${rows.length} ${filter?'neue/geänderte':'vollständige'} Kante(n) · Gesamtgraph ${edges.size} · verifiziert bis Block ${Number(lastVerifiedBlock||0).toLocaleString('de-CH')}.`,'ok');
+  return true;
+}
+
+async function teamScanSmartNodeTransfers(fromBlock,toBlock,label='SmartNode'){
+  let pageKey=null,pages=0,transferCount=0,minBlock=null,maxBlock=null;
+  const hashes=new Set(),blockByHash=new Map();
+  do{
+    const q={fromBlock:'0x'+BigInt(Math.max(0,Number(fromBlock||0))).toString(16),toBlock:'0x'+BigInt(Math.max(0,Number(toBlock||0))).toString(16),toAddress:TEAM_SMARTNODE_CONTRACT,category:['external'],excludeZeroValue:false,withMetadata:false,maxCount:'0x3e8',order:'asc'};
+    if(pageKey)q.pageKey=pageKey;
+    const r=await teamAlchemyRpc('alchemy_getAssetTransfers',[q]);
+    pages++;
+    const txs=r?.transfers||[];transferCount+=txs.length;
+    for(const x of txs){
+      const h=norm(x?.hash),bn=teamTransferBlockNumber(x);
+      if(h){hashes.add(h);if(Number.isFinite(bn))blockByHash.set(h,bn)}
+      if(Number.isFinite(bn)){minBlock=minBlock==null?bn:Math.min(minBlock,bn);maxBlock=maxBlock==null?bn:Math.max(maxBlock,bn)}
+    }
+    pageKey=r?.pageKey||null;
+    if(pages>=100&&pageKey)throw new Error(`${label}-Transferscan überschreitet 100 Alchemy-Seiten; Abbruch statt unvollständigem Graph.`);
+  }while(pageKey);
+  return {hashes:[...hashes],blockByHash,pages,transferCount,minBlock,maxBlock};
+}
+
+function teamDecodeJoinTransactions(hashes,txRows,blockByHash){
+  const decoded=[];
+  for(let i=0;i<txRows.length;i++){
+    const tx=txRows[i],h=hashes[i];
+    if(norm(tx?.to)!==TEAM_SMARTNODE_CONTRACT)continue;
+    const input=String(tx?.input||'');
+    if(input.slice(0,10).toLowerCase()!==TEAM_JOIN_SELECTOR)continue;
+    const child=norm(tx?.from),parent=teamDecodeAddressArg(input,0);
+    if(!/^0x[0-9a-f]{40}$/.test(child)||!parent||child===parent)continue;
+    decoded.push({child,parent,hash:h,blockNumber:blockByHash?.get(h)??null,source:'SmartNode.join(address _referrer)'});
+  }
+  return decoded;
+}
+
 function teamDecodeSmartNodeActivatedLog(l){
   const topics=Array.isArray(l?.topics)?l.topics.map(x=>String(x||'').toLowerCase()):[];
   if(topics[0]!==TEAM_SMARTNODE_ACTIVATED_TOPIC)return {ok:false,reason:'topic'};
@@ -10531,63 +10675,54 @@ function compareSmartNodeEventAndTxGraphs(eventGraph,txGraph){
 }
 
 async function scanCompleteSmartNodeJoinGraph(){
+  const latestHex=await teamAlchemyRpc('eth_blockNumber',[]);
+  const latestBlock=Number(BigInt(latestHex||'0x0'));
+  const targetBlock=Math.max(0,latestBlock-TEAM_GRAPH_CONFIRMATIONS);
+  const cached=await teamLoadGlobalGraphCache();
+
+  if(cached?.edges?.size){
+    const edges=new Map(cached.edges);
+    const lastVerified=Math.max(0,Number(cached.state.lastVerifiedBlock||0));
+    let transferCount=Number(cached.state.transferCount||0),pages=0;
+    if(targetBlock<=lastVerified){
+      log(`Team-Discovery Global-Cache ist aktuell: Chain ${latestBlock.toLocaleString('de-CH')} · verifiziert bis ${lastVerified.toLocaleString('de-CH')} (${TEAM_GRAPH_CONFIRMATIONS} Bestätigungsblöcke). Kein historischer Tx-Scan nötig.`,'ok');
+      return {edges,pages:0,transferCount,minBlock:null,maxBlock:lastVerified,cacheHit:true,lastVerifiedBlock:lastVerified};
+    }
+
+    const fromBlock=Math.max(0,lastVerified-TEAM_GRAPH_OVERLAP_BLOCKS);
+    log(`Team-Discovery inkrementell: vollständiger Global-Graph ${edges.size} Kanten vorhanden; prüfe SmartNode ab Block ${fromBlock.toLocaleString('de-CH')} bis ${targetBlock.toLocaleString('de-CH')} (${TEAM_GRAPH_OVERLAP_BLOCKS} Block Overlap).`,'muted');
+    const scan=await teamScanSmartNodeTransfers(fromBlock,targetBlock,'SmartNode-Inkremental');
+    pages=scan.pages;
+    const txRows=await teamHistoricalTransactionBatch(scan.hashes);
+    const decoded=teamDecodeJoinTransactions(scan.hashes,txRows,scan.blockByHash);
+    const newChildren=new Set();let mismatches=0;
+    for(const e of decoded){
+      const old=edges.get(e.child);
+      if(!old){edges.set(e.child,e);newChildren.add(e.child);continue}
+      if(norm(old.parent)!==norm(e.parent)){
+        mismatches++;
+        log(`Team-Global-Cache Parent-Konflikt ${short(e.child)}: Cache ${short(old.parent)} ≠ neue Tx ${short(e.parent)}. Bestehende frühere Join-Beziehung bleibt kanonisch.`,'warn');
+      }
+    }
+    const trulyNewTransfers=scan.hashes.filter(h=>(scan.blockByHash.get(h)??0)>lastVerified).length;
+    transferCount+=trulyNewTransfers;
+    const saved=await teamSaveGlobalGraphCache(edges,{lastVerifiedBlock:targetBlock,transferCount,onlyChildren:newChildren});
+    log(`Team-Discovery inkrementell abgeschlossen: ${scan.transferCount} SmartNode-Transfer(s) im Overlap-Fenster · ${newChildren.size} neue Parent-Beziehung(en) · ${mismatches} Konflikt(e) · ${pages} Alchemy-Seite(n) · Globalgraph ${edges.size}.`,mismatches?'warn':'ok');
+    if(!saved)log('Team-Discovery: Inkrementeller Graph war für diesen Lauf vollständig, wurde aber nicht persistent bestätigt; nächster Lauf darf daher wieder Vollscan verwenden.','warn');
+    return {edges,pages,transferCount,minBlock:scan.minBlock,maxBlock:targetBlock,cacheHit:true,lastVerifiedBlock:targetBlock};
+  }
+
+  // Cold-/Fallback-Pfad: einmalig weiterhin großflächig und vollständig scannen.
+  log(`Team-Discovery Cold/Fallback: kein verifizierter Global-Cache; vollständiger SmartNode-Historienscan bis Block ${targetBlock.toLocaleString('de-CH')} wird ausgeführt.`,'warn');
+  const scan=await teamScanSmartNodeTransfers(0,targetBlock,'SmartNode-Historie');
+  const txRows=await teamHistoricalTransactionBatch(scan.hashes);
+  const decoded=teamDecodeJoinTransactions(scan.hashes,txRows,scan.blockByHash);
   const edges=new Map();
-  let pageKey=null,pages=0,transferCount=0,minBlock=null,maxBlock=null;
-  const hashes=new Set();
-  do{
-    const q={
-      fromBlock:'0x0',toBlock:'latest',toAddress:TEAM_SMARTNODE_CONTRACT,
-      category:['external'],excludeZeroValue:false,withMetadata:false,
-      maxCount:'0x3e8',order:'asc'
-    };
-    if(pageKey)q.pageKey=pageKey;
-    const r=await teamAlchemyRpc('alchemy_getAssetTransfers',[q]);
-    pages++;
-    const txs=r?.transfers||[];transferCount+=txs.length;
-    for(const x of txs){
-      const h=norm(x?.hash);if(h)hashes.add(h);
-      const bn=teamTransferBlockNumber(x);
-      if(Number.isFinite(bn)){minBlock=minBlock==null?bn:Math.min(minBlock,bn);maxBlock=maxBlock==null?bn:Math.max(maxBlock,bn)}
-    }
-    pageKey=r?.pageKey||null;
-    if(pages>=100&&pageKey){
-      throw new Error('SmartNode-Historienscan überschreitet 100 Alchemy-Seiten; Abbruch statt unvollständigem Baum.');
-    }
-  }while(pageKey);
-
-  // Phase-1 SmartNodeActivated-Eventvergleich am 05.09.2026 verworfen:
-  // PublicNode benötigte bereits 256 eth_getLogs-Requests / 129 Splits und lieferte dabei
-  // 0 verwertbare Logs. Der Diagnosecode bleibt zu Referenzzwecken im File erhalten,
-  // wird im normalen Schritt 6 aber bewusst NICHT mehr ausgeführt.
-  // let eventGraph=null;
-  // if(minBlock!=null&&maxBlock!=null){
-  //   log(`Team-Event-Diagnose Phase 1: SmartNodeActivated wird im belegten SmartNode-Historienbereich Block ${minBlock.toLocaleString('de-CH')}–${maxBlock.toLocaleString('de-CH')} gelesen; Rendering bleibt Tx-basiert.`,'muted');
-  //   eventGraph=await scanSmartNodeActivatedEventGraph(minBlock,maxBlock);
-  // }
-
-  // Vollständiger Tx-Pfad bleibt Referenz und Rendering-Basis.
-  const orderedHashes=[...hashes];
-  const txRows=await teamHistoricalTransactionBatch(orderedHashes);
-  const decoded=[];
-  for(let i=0;i<txRows.length;i++){
-    const tx=txRows[i],h=orderedHashes[i];
-    if(norm(tx?.to)!==TEAM_SMARTNODE_CONTRACT)continue;
-    const input=String(tx?.input||'');
-    if(input.slice(0,10).toLowerCase()!==TEAM_JOIN_SELECTOR)continue;
-    const child=norm(tx?.from),parent=teamDecodeAddressArg(input,0);
-    if(!/^0x[0-9a-f]{40}$/.test(child)||!parent||child===parent)continue;
-    decoded.push({child,parent,hash:h,source:'SmartNode.join(address _referrer)'});
-  }
-  for(const e of decoded){
-    // earliest join in ascending history is canonical for this graph
-    if(!edges.has(e.child))edges.set(e.child,e);
-  }
-  if(transferCount>1000&&edges.size<100){
-    throw new Error(`SmartNode-Graph unplausibel klein: nur ${edges.size} join(address)-Beziehungen aus ${transferCount} Transaktionen. Abbruch statt falschem Baum.`);
-  }
-  const txGraph={edges,pages,transferCount,minBlock,maxBlock};
-  log(`Team-Discovery Gesamtgraph: ${edges.size} belegte join(address)-Parent-Beziehungen aus ${transferCount} SmartNode-Transaktionen / ${pages} Seite(n) dekodiert.`,'ok');
-  return txGraph;
+  for(const e of decoded)if(!edges.has(e.child))edges.set(e.child,e); // earliest join in ascending history is canonical
+  if(scan.transferCount>1000&&edges.size<100)throw new Error(`SmartNode-Graph unplausibel klein: nur ${edges.size} join(address)-Beziehungen aus ${scan.transferCount} Transaktionen. Abbruch statt falschem Baum.`);
+  log(`Team-Discovery Gesamtgraph: ${edges.size} belegte join(address)-Parent-Beziehungen aus ${scan.transferCount} SmartNode-Transaktionen / ${scan.pages} Seite(n) dekodiert.`,'ok');
+  if(TEAM_GRAPH_DB_AVAILABLE)await teamSaveGlobalGraphCache(edges,{lastVerifiedBlock:targetBlock,transferCount:scan.transferCount});
+  return {edges,pages:scan.pages,transferCount:scan.transferCount,minBlock:scan.minBlock,maxBlock:targetBlock,cacheHit:false,lastVerifiedBlock:targetBlock};
 }
 function descendantsFromJoinEdges(root,edges,maxDepth=TLN_TEAM_MAX_LEVELS){
   root=norm(root);
