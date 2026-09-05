@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 18:30:05 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 19:01:48 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -284,7 +284,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-183005';
+const BUILD_ID='20260905-190148';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -4310,7 +4310,7 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   duration:'duration-strict-v16-contract-proof-cache',
   discoveryResults:'discovery-results-v1',
   snapshotValuation:'snapshot-valuation-v1',
-  teamLifecycle:'team-lifecycle-v6',
+  teamLifecycle:'team-lifecycle-v7',
   teamContractHistory:'team-contract-history-v1',
   smartNodeIdentityIndex:'smartnode-identity-index-v1'
 });
@@ -11890,44 +11890,71 @@ async function teamBatchPositionCalls(wallets){
   }
 
   // Zusatz-Recovery fuer Wallets, bei denen aus den bekannten Contract-Historien kein
-  // Stake-Selector rekonstruiert wurde. Ein direkter eth_getLogs-Scan auf das bereits
-  // verifizierte Stake(address,uint256,uint256)-Event ist fuer alte Entry-/Controller-
-  // Architekturen deutlich staerker als alchemy_getAssetTransfers und wird nur fuer
-  // diese Problemfaelle ausgefuehrt.
-  const stakeTopic=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
+  // Stake-Selector rekonstruiert wurde. Alchemy eth_getLogs ist im Free-Tarif auf nur
+  // 10 Bloecke begrenzt und eignet sich deshalb nicht fuer einen historischen Vollscan.
+  // Stattdessen wird genau fuer diese Problem-Wallets die komplette ausgehende ERC-20-
+  // Historie einmal geladen und lokal auf Transfers an bekannte Staking-/Entry-Contracts
+  // gefiltert. Der LP-Transfer Wallet -> Staking-Contract ist auch dann sichtbar, wenn
+  // der eigentliche Controller-Aufruf in der `external`-Historie fehlt.
   const rowsByWallet=new Map(ws.map(w=>[w,[]]));
   for(const c of rows)if(rowsByWallet.has(c._teamWallet))rowsByWallet.get(c._teamWallet).push(c);
-  const eventRecoveryWallets=ws.filter(w=>!(rowsByWallet.get(w)||[]).some(c=>String(c._method||'').toLowerCase()==='stake'));
-  let eventRecoveryChecks=0,eventRecoveryHits=0,eventRecoveryFailed=0;
-  if(eventRecoveryWallets.length){
-    const addressFilter=targets.map(t=>t.address);
-    for(let i=0;i<eventRecoveryWallets.length;i+=10){
-      const chunk=eventRecoveryWallets.slice(i,i+10);
-      const req=chunk.map(wallet=>({method:'eth_getLogs',params:[{fromBlock:'0x0',toBlock:'latest',address:addressFilter,topics:[stakeTopic,ethers.zeroPadValue(wallet,32)]}]}));
+  const transferRecoveryWallets=ws.filter(w=>!(rowsByWallet.get(w)||[]).some(c=>String(c._method||'').toLowerCase()==='stake'));
+  let transferRecoveryChecks=0,transferRecoveryHits=0,transferRecoveryFailed=0,transferRecoveryPages=0;
+  if(transferRecoveryWallets.length){
+    const targetByAddress=new Map(targets.map(t=>[t.address,t]));
+    for(let i=0;i<transferRecoveryWallets.length;i+=10){
+      const chunk=transferRecoveryWallets.slice(i,i+10);
+      const req=chunk.map(wallet=>({method:'alchemy_getAssetTransfers',params:[{fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,category:['erc20'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8',order:'asc'}]}));
       let batch;try{batch=await alchemyMany(req)}catch(e){batch=req.map(()=>({error:e}))}
       for(let k=0;k<chunk.length;k++){
-        const wallet=chunk[k];eventRecoveryChecks++;
-        const item=batch[k];
-        if(item?.error){
-          eventRecoveryFailed++;
+        const wallet=chunk[k];transferRecoveryChecks++;
+        let item=batch[k],lastErr=item?.error||null;
+        if(lastErr){
+          for(let attempt=1;attempt<=2;attempt++){
+            try{
+              await new Promise(r=>setTimeout(r,attempt*350));
+              item={result:await alchemy('alchemy_getAssetTransfers',req[k].params)};lastErr=null;break;
+            }catch(e){lastErr=e}
+          }
+        }
+        if(lastErr){
+          transferRecoveryFailed++;
           const cv=coverage.get(wallet);
-          if(cv){cv.failed++;cv.errors.push(`Stake-Event-Recovery fehlgeschlagen: ${item.error.message||item.error}`);}
-          log(`Team-Lifecycle TLN-ID ${TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'?'}: Stake-Event-Recovery fehlgeschlagen (${item.error.message||item.error}).`,'warn');
+          if(cv){cv.failed++;cv.errors.push(`ERC20-Stake-Recovery fehlgeschlagen: ${lastErr.message||lastErr}`);}
+          log(`Team-Lifecycle TLN-ID ${TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'?'}: ERC20-Stake-Recovery fehlgeschlagen (${lastErr.message||lastErr}).`,'warn');
           continue;
         }
-        const logs=Array.isArray(item?.result)?item.result:[];
-        let added=0;
-        for(const ev of logs){
-          const h=norm(ev?.transactionHash||'');if(!h)continue;
-          if(rows.some(r=>norm(r.hash||'')===h))continue;
-          const eventContract=norm(ev?.address||'');
-          const target=targets.find(t=>t.address===eventContract)||null;
-          raw.push({hash:h,blockNum:ev?.blockNumber||null,to:eventContract,_staking:target?.staking||null,_teamWallet:wallet,_teamPositionEvidenceSeed:'event-log:Stake(address,uint256,uint256)'});
-          added++;
+        let page=item?.result||{},allTransfers=[],complete=true,pageNo=0;
+        while(true){
+          pageNo++;transferRecoveryPages++;
+          allTransfers.push(...(page?.transfers||[]));
+          const pageKey=page?.pageKey||null;if(!pageKey)break;
+          if(pageNo>=1000){complete=false;break}
+          try{
+            page=await alchemy('alchemy_getAssetTransfers',[{fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,category:['erc20'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8',order:'asc',pageKey}]);
+          }catch(e){lastErr=e;complete=false;break}
         }
-        if(added){eventRecoveryHits++;log(`Team-Lifecycle TLN-ID ${TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'?'}: ${added} historische Stake-Tx ueber direktes Stake-Event wiederhergestellt.`,'ok');}
+        if(!complete){
+          transferRecoveryFailed++;
+          const cv=coverage.get(wallet);
+          if(cv){cv.failed++;cv.errors.push(`ERC20-Stake-Recovery Pagination unvollstaendig${lastErr?`: ${lastErr.message||lastErr}`:''}`);}
+          log(`Team-Lifecycle TLN-ID ${TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'?'}: ERC20-Stake-Recovery Pagination unvollstaendig.`,'warn');
+          continue;
+        }
+        let added=0;
+        for(const tr of allTransfers){
+          const to=norm(tr?.to||'');
+          const target=targetByAddress.get(to);if(!target)continue;
+          const h=norm(tr?.hash||'');if(!h)continue;
+          if(raw.some(r=>norm(r.hash||'')===h))continue;
+          raw.push({...tr,_staking:target.staking,_teamWallet:wallet,_teamPositionEvidenceSeed:'erc20-transfer:known-staking-target'});added++;
+        }
+        if(added){
+          transferRecoveryHits++;
+          log(`Team-Lifecycle TLN-ID ${TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'?'}: ${added} historische Staking-Tx ueber ERC-20-Transfer an bekannte Staking-Contracts wiederhergestellt.`,'ok');
+        }
       }
-      if(i+10<eventRecoveryWallets.length)await new Promise(r=>setTimeout(r,200));
+      if(i+10<transferRecoveryWallets.length)await new Promise(r=>setTimeout(r,200));
     }
     if(raw.length!==rows.length){
       const rebuilt=new Map();for(const t of raw){const h=norm(t.hash||'');if(h&&!rebuilt.has(h))rebuilt.set(h,t)}
@@ -11939,7 +11966,7 @@ async function teamBatchPositionCalls(wallets){
         if(String(c._input).length>=74){try{c._uintArg=BigInt('0x'+String(c._input).slice(10,74))}catch{}}
       }
     }
-    log(`Team-Lifecycle Stake-Event-Recovery: ${eventRecoveryChecks} Problem-Wallet(s) geprueft · ${eventRecoveryHits} Wallet(s) mit historischem Stake wiederhergestellt · ${eventRecoveryFailed} Check(s) fehlgeschlagen.`,eventRecoveryFailed?'warn':'ok');
+    log(`Team-Lifecycle ERC20-Stake-Recovery: ${transferRecoveryChecks} Problem-Wallet(s) geprueft · ${transferRecoveryHits} Wallet(s) mit historischem Stake wiederhergestellt · ${transferRecoveryFailed} Check(s) fehlgeschlagen · ${transferRecoveryPages} Alchemy-Seite(n).`,transferRecoveryFailed?'warn':'ok');
   }
 
   // WICHTIG: Nicht erst nach erkannter Stake-/Unstake-Methode Receipts laden. Ein neuerer
