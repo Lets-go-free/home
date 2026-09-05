@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 20:27:40 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 22:53:45 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-202740';
+const BUILD_ID='20260905-225345';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -12319,6 +12319,55 @@ async function teamBatchPositionCalls(wallets){
       }
     }
     log(`Team-Lifecycle ERC20-Stake-Recovery: ${transferRecoveryChecks} Problem-Wallet(s) geprueft · ${transferRecoveryHits} Wallet(s) mit historischem Stake wiederhergestellt · ${transferRecoveryUnknownTargets} Treffer an bisher unbekannten Contract-Kandidat(en) · ${transferRecoveryFailed} Check(s) fehlgeschlagen · ${transferRecoveryPages} Alchemy-Seite(n).`,transferRecoveryFailed?'warn':'ok');
+  }
+
+  // Neue Staking-Generationen koennen ueber einen Entry-/Router-Contract laufen, ohne dass
+  // der LP-Token direkt vom Wallet an den eigentlichen Staking-Contract transferiert wird.
+  // Der reine ERC-20-Recovery sieht dann keinen Treffer. Fuer weiterhin kandidatenlose
+  // Wallets pruefen wir deshalb deren ausgehende EXTERNAL-Calls (typischerweise nur wenige)
+  // und lassen anschliessend dieselbe Receipt-Evidenz wie in der Haupt-Discovery entscheiden.
+  // Ein unbekannter Contract wird dadurch NICHT automatisch registriert.
+  const externalRecoveryWallets=ws.filter(w=>!(rowsByWallet.get(w)||[]).some(c=>String(c._method||'').toLowerCase()==='stake'||String(c?._teamPositionEvidenceSeed||'').startsWith('step5:strong-stake')));
+  let externalRecoveryChecks=0,externalRecoveryAdded=0,externalRecoveryPages=0,externalRecoveryFailed=0;
+  if(externalRecoveryWallets.length){
+    const rawHashSet=new Set(raw.map(r=>norm(r?.hash||'')).filter(Boolean));
+    for(const wallet of externalRecoveryWallets){
+      externalRecoveryChecks++;
+      let page=null,pageKey=null,complete=true;
+      do{
+        try{
+          page=await alchemy('alchemy_getAssetTransfers',[{fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8',order:'asc',...(pageKey?{pageKey}:{})}]);
+          externalRecoveryPages++;
+        }catch(e){
+          complete=false;externalRecoveryFailed++;
+          const cv=coverage.get(wallet);if(cv){cv.failed++;cv.errors.push(`External-Entry-Recovery fehlgeschlagen: ${e.message||e}`)}
+          log(`Team-Lifecycle TLN-ID ${TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'?'}: External-Entry-Recovery fehlgeschlagen (${e.message||e}).`,'warn');
+          break;
+        }
+        for(const tr of (page?.transfers||[])){
+          const h=norm(tr?.hash||''),to=norm(tr?.to||'');if(!h||rawHashSet.has(h)||!ethers.isAddress(to)||to===ZERO)continue;
+          let code='0x';try{code=await rpc('eth_getCode',[to,'latest'])}catch{}
+          if(!code||code==='0x')continue;
+          const known=targets.find(t=>t.address===to)||null;
+          raw.push({...tr,_staking:known?.staking||{contract_address:to,label:`Entdeckter Team-Entry-Kandidat ${short(to)}`,role:'team_discovered_entry_candidate',classify_transfers:true},_teamWallet:wallet,_teamPositionEvidenceSeed:'external-call:unknown-entry-candidate'});
+          rawHashSet.add(h);externalRecoveryAdded++;
+        }
+        pageKey=page?.pageKey||null;
+      }while(pageKey&&complete);
+    }
+    if(externalRecoveryAdded){
+      const rebuilt=new Map();for(const t of raw){const h=norm(t?.hash||'');if(h&&!rebuilt.has(h))rebuilt.set(h,t)}
+      rows.length=0;rows.push(...rebuilt.values());
+      const hashes2=rows.map(x=>x.hash),txResults2=[];
+      for(let i=0;i<hashes2.length;i+=40)txResults2.push(...await rpcManyDiscovery(hashes2.slice(i,i+40).map(h=>({method:'eth_getTransactionByHash',params:[h]})),40));
+      for(let i=0;i<rows.length;i++){
+        const tx=txResults2[i]?.result||null,c=rows[i];c._tx=tx;c._input=tx?.input||'0x';c._selector=String(c._input).slice(0,10).toLowerCase();c._method=METHOD_SELECTORS.get(c._selector)||'Contract-Aufruf';c._blockNumber=tx?.blockNumber?parseInt(tx.blockNumber,16):(c.blockNum?parseInt(c.blockNum,16):null);c._uintArg=null;
+        if(String(c._input).length>=74){try{c._uintArg=BigInt('0x'+String(c._input).slice(10,74))}catch{}}
+      }
+      for(const arr of rowsByWallet.values())arr.length=0;
+      for(const c of rows)if(rowsByWallet.has(c._teamWallet))rowsByWallet.get(c._teamWallet).push(c);
+    }
+    log(`Team-Lifecycle External-Entry-Recovery: ${externalRecoveryChecks} Problem-Wallet(s) geprueft · ${externalRecoveryAdded} bisher nicht beruecksichtigte Contract-Call(s) · ${externalRecoveryFailed} Check(s) fehlgeschlagen · ${externalRecoveryPages} Alchemy-Seite(n).`,externalRecoveryFailed?'warn':'ok');
   }
 
   // WICHTIG: Nicht erst nach erkannter Stake-/Unstake-Methode Receipts laden. Ein neuerer
