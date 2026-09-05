@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 16:50:02 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 17:08:25 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -4310,7 +4310,8 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   duration:'duration-strict-v16-contract-proof-cache',
   discoveryResults:'discovery-results-v1',
   snapshotValuation:'snapshot-valuation-v1',
-  teamLifecycle:'team-lifecycle-v3',
+  teamLifecycle:'team-lifecycle-v4',
+  teamContractHistory:'team-contract-history-v1',
   smartNodeIdentityIndex:'smartnode-identity-index-v1'
 });
 const TECH_CACHE_KEYS=Object.freeze({
@@ -4320,6 +4321,7 @@ const TECH_CACHE_KEYS=Object.freeze({
   discoveryResults:'verified-discovery-results',
   snapshotValuation:'snapshot-valuation',
   teamLifecycle:'team-staking-lifecycle',
+  teamContractHistory:'team-contract-history',
   smartNodeIdentityIndex:'smartnode-identity-index-state'
 });
 const TECH_CACHE_GLOBAL_SCOPE='0x0000000000000000000000000000000000000000';
@@ -6233,19 +6235,31 @@ async function synthesizeStakeRowsFromReceipts(calls,pairMap,wallet,rows){
       try{amount=Number(ethers.formatUnits(tr.amountRaw,p.lpDecimals||18))}catch{}
       if(!(amount>0))continue;
 
-      const staking=stakeMap.get(norm(c?._staking?.contract_address||c.to||''))||c._staking||null;
+      const calledContract=norm(c?._staking?.contract_address||c.to||'');
+      const transferTarget=norm(tr.to||'');
+      // Bei Controller-/Entry-Contracts kann der eigentliche LP-Transfer an den dahinterliegenden
+      // Staking-Contract gehen. Für Duration/Lifecycle muss deshalb der tatsächliche Asset-Empfänger
+      // bevorzugt werden, sofern er selbst als bekannter Staking-Contract registriert ist.
+      const transferStaking=stakingContracts.find(x=>norm(x.contract_address)===transferTarget)||null;
+      const staking=transferStaking||stakeMap.get(calledContract)||c._staking||null;
+      let blockTimestamp=c.metadata?.blockTimestamp||null;
+      const blockHex=c.blockNum||receipt.blockNumber||null;
+      if(!blockTimestamp&&blockHex){
+        try{blockTimestamp=await getBlockTimestampHex(blockHex,new Map())}catch{}
+      }
       const syntheticTransfer={
         hash,
         from:w,
-        to:norm(tr.to||''),
-        blockNum:c.blockNum||receipt.blockNumber||null,
-        metadata:{blockTimestamp:c.metadata?.blockTimestamp||null},
+        to:transferTarget,
+        blockNum:blockHex,
+        metadata:{blockTimestamp:blockTimestamp||null},
         rawContract:{address:asset,value:'0x'+BigInt(tr.amountRaw).toString(16),decimal:p.lpDecimals||18},
         value:amount
       };
       added.push({
         t:syntheticTransfer,p,action:'Stake',
-        counterparty:norm(c?._staking?.contract_address||c.to||tr.to||''),
+        counterparty:norm(staking?.contract_address||calledContract||tr.to||''),
+        entry_contract:transferStaking&&calledContract!==transferTarget?calledContract:null,
         staking,amount,receiptDerived:true
       });
       existing.add(key);
@@ -11675,59 +11689,117 @@ async function teamSaveVerifiedLifecycle(wallet,lots){
   const w=norm(wallet);if(!ethers.isAddress(w)||!currentUserId||!stakingScanDbCacheAvailable)return false;
   return saveTechnicalProcessCache(w,TECH_CACHE_KEYS.teamLifecycle,TECH_CACHE_VERSIONS.teamLifecycle,{wallet:w,verified:true,lots:cacheJsonSafe(lots||[]),savedAt:new Date().toISOString()},0);
 }
+async function teamLoadContractHistoryCache(wallets){
+  const out=new Map();
+  if(!currentUserId||!stakingScanDbCacheAvailable)return out;
+  const need=[...new Set((wallets||[]).map(norm).filter(ethers.isAddress))];
+  for(let i=0;i<need.length;i+=50){
+    const chunk=need.slice(i,i+50);
+    const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE).select('wallet_address,scanner_version,payload,updated_at').eq('user_id',currentUserId).eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.teamContractHistory).in('wallet_address',chunk);
+    if(error){log(`Team-Contract-History-Cache nicht lesbar: ${error.message||error}`,'warn');break}
+    for(const row of (data||[])){
+      if(row?.scanner_version!==TECH_CACHE_VERSIONS.teamContractHistory)continue;
+      const w=norm(row.wallet_address||row?.payload?.wallet||'');if(!ethers.isAddress(w))continue;
+      const byContract=new Map();
+      for(const [contract,val] of Object.entries(row?.payload?.contracts||{})){
+        const c=norm(contract);if(!ethers.isAddress(c)||val?.ok!==true)continue;
+        byContract.set(c,{ok:true,transfers:Array.isArray(val.transfers)?val.transfers:[],checkedAt:val.checkedAt||row.updated_at||null});
+      }
+      if(byContract.size)out.set(w,byContract);
+    }
+  }
+  return out;
+}
+async function teamSaveContractHistoryCache(wallet,contractMap){
+  const w=norm(wallet);if(!ethers.isAddress(w)||!currentUserId||!stakingScanDbCacheAvailable||!contractMap?.size)return false;
+  const contracts={};
+  for(const [contract,val] of contractMap.entries())if(val?.ok===true)contracts[norm(contract)]={ok:true,transfers:cacheJsonSafe(val.transfers||[]),checkedAt:val.checkedAt||new Date().toISOString()};
+  return saveTechnicalProcessCache(w,TECH_CACHE_KEYS.teamContractHistory,TECH_CACHE_VERSIONS.teamContractHistory,{wallet:w,contracts,savedAt:new Date().toISOString()},0);
+}
 async function teamBatchPositionCalls(wallets){
   const ws=[...new Set((wallets||[]).map(norm).filter(ethers.isAddress))];
   // Team-Lifecycle muss dieselben bekannten Staking-/Entry-Contracts sehen wie die normale
   // Step-2-Contract-Historie. classify_transfers steuert nur die Transfer-Klassifizierung
   // und darf einen Entry-/Controller-Contract nicht aus der Call-Discovery ausschliessen.
   const targets=stakingContracts.filter(x=>ethers.isAddress(norm(x.contract_address))).map(x=>({address:norm(x.contract_address),staking:x}));
-  const jobs=[];for(const wallet of ws)for(const t of targets)jobs.push({wallet,...t});
-  const raw=[];let httpBatches=0,retriedJobs=0,recoveredJobs=0;
+  const cachedHistories=await teamLoadContractHistoryCache(ws);
+  const historyByWallet=new Map(ws.map(w=>[w,new Map(cachedHistories.get(w)||[])]));
+  const raw=[];let httpBatches=0,retriedJobs=0,recoveredJobs=0,reusedHistoryJobs=0,reusedHistoryTransfers=0;
   const coverage=new Map(ws.map(w=>[w,{total:targets.length,ok:0,failed:0,errors:[]}])) ;
-  log(`Team-Lifecycle Batch-Discovery: ${ws.length} offene Wallet(s) × ${targets.length} bekannte Staking-/Entry-Contracts = ${jobs.length} gezielte Historienabfrage(n).`,'muted');
+  const walletJobs=[];
+  for(const wallet of ws){
+    const cached=historyByWallet.get(wallet),missingTargets=targets.filter(t=>cached?.get(t.address)?.ok!==true);
+    for(const t of targets){
+      const hit=cached?.get(t.address);
+      if(hit?.ok===true){
+        reusedHistoryJobs++;coverage.get(wallet).ok++;
+        for(const tr of (hit.transfers||[])){raw.push({...tr,_staking:t.staking,_teamWallet:wallet});reusedHistoryTransfers++;}
+      }
+    }
+    if(missingTargets.length)walletJobs.push({wallet,missingTargets});
+  }
+  log(`Team-Lifecycle Batch-Discovery: ${ws.length} offene Wallet(s) · ${reusedHistoryJobs}/${ws.length*targets.length} Contract-Historien aus persistentem Teilcache · ${walletJobs.length} Wallet-Gesamthistorie(n) noch zu laden (statt ${walletJobs.reduce((n,j)=>n+j.missingTargets.length,0)} einzelner Contract-Abfragen).`,'muted');
 
-  // Alchemy kann bei grossen JSON-RPC-Batches partielle Antworten liefern. Solche fehlenden
-  // Antworten dürfen nicht wie "0 Transaktionen" behandelt werden. Deshalb kleinere Batches
-  // und gezielter Einzel-Retry jedes fehlenden Jobs. Nur vollständig abgedeckte Wallets dürfen
-  // später als "verifiziert ohne Staking" persistiert werden.
-  for(let i=0;i<jobs.length;i+=20){
-    const chunk=jobs.slice(i,i+20);
-    const req=chunk.map(j=>({method:'alchemy_getAssetTransfers',params:[{fromBlock:'0x0',toBlock:'latest',fromAddress:j.wallet,toAddress:j.address,category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'}]}));
+  // Ein vollständiger outgoing-external Scan pro Wallet deckt ALLE bekannten Staking-/Entry-
+  // Contracts in einem einzigen Alchemy-Request ab. Das reduziert den kalten Team-Lauf von
+  // Wallets × Contracts auf höchstens Wallets. Erfolgreiche Nulltreffer pro Contract werden
+  // ebenfalls persistiert, damit spätere Läufe nur noch wirklich fehlende Wallet-Historien laden.
+  for(let i=0;i<walletJobs.length;i+=10){
+    const chunk=walletJobs.slice(i,i+10);
+    const req=chunk.map(j=>({method:'alchemy_getAssetTransfers',params:[{fromBlock:'0x0',toBlock:'latest',fromAddress:j.wallet,category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'}]}));
     let batch;try{batch=await alchemyMany(req);httpBatches++}catch(e){batch=req.map(()=>({error:e}))}
     for(let k=0;k<chunk.length;k++){
-      const j=chunk[k];let res=batch[k];
-      if(res?.error){
+      const j=chunk[k];let res=batch[k],lastErr=res?.error||null;
+      if(lastErr){
         retriedJobs++;
-        let lastErr=res.error;
-        for(let attempt=1;attempt<=2;attempt++){
+        for(let attempt=1;attempt<=3;attempt++){
           try{
-            if(attempt>1)await new Promise(r=>setTimeout(r,150));
+            await new Promise(r=>setTimeout(r,attempt*350));
             const result=await alchemy('alchemy_getAssetTransfers',req[k].params);
             res={result};recoveredJobs++;lastErr=null;break;
           }catch(e){lastErr=e}
         }
-        if(lastErr){
-          const cv=coverage.get(j.wallet);cv.failed++;cv.errors.push(`${short(j.address)}: ${lastErr.message||lastErr}`);
-          log(`Team-Lifecycle ${short(j.wallet)} → ${short(j.address)}: Historie NICHT geladen (${lastErr.message||lastErr})`,'warn');
-          continue;
-        }
       }
-      coverage.get(j.wallet).ok++;
-      let page=res?.result||{},pageNo=1;
+      if(lastErr){
+        const cv=coverage.get(j.wallet);cv.failed+=j.missingTargets.length;
+        for(const t of j.missingTargets)cv.errors.push(`${short(t.address)}: ${lastErr.message||lastErr}`);
+        log(`Team-Lifecycle ${short(j.wallet)}: Wallet-Gesamthistorie NICHT geladen (${lastErr.message||lastErr}) · ${j.missingTargets.length} Contract-Historie(n) bleiben offen.`,'warn');
+        continue;
+      }
+      let page=res?.result||{},pageNo=1,walletTransfers=[],jobComplete=true;
       while(true){
-        for(const t of (page?.transfers||[]))raw.push({...t,_staking:j.staking,_teamWallet:j.wallet});
+        walletTransfers.push(...(page?.transfers||[]));
         const pageKey=page?.pageKey||null;if(!pageKey)break;
-        if(++pageNo>1000)throw new Error(`Team-Lifecycle Pagination >1000 Seiten für ${j.wallet} → ${j.address}`);
+        if(++pageNo>1000)throw new Error(`Team-Lifecycle Pagination >1000 Seiten für ${j.wallet}`);
         try{
-          page=await alchemy('alchemy_getAssetTransfers',[{fromBlock:'0x0',toBlock:'latest',fromAddress:j.wallet,toAddress:j.address,category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8',pageKey}]);
+          page=await alchemy('alchemy_getAssetTransfers',[{fromBlock:'0x0',toBlock:'latest',fromAddress:j.wallet,category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8',pageKey}]);
         }catch(e){
-          const cv=coverage.get(j.wallet);cv.failed++;cv.ok=Math.max(0,cv.ok-1);cv.errors.push(`${short(j.address)} Seite ${pageNo}: ${e.message||e}`);
-          log(`Team-Lifecycle ${short(j.wallet)} → ${short(j.address)}: Pagination unvollständig (${e.message||e})`,'warn');
+          jobComplete=false;
+          log(`Team-Lifecycle ${short(j.wallet)}: Wallet-Gesamthistorie Pagination unvollständig (${e.message||e})`,'warn');
           break;
         }
       }
+      if(!jobComplete){
+        const cv=coverage.get(j.wallet);cv.failed+=j.missingTargets.length;
+        for(const t of j.missingTargets)cv.errors.push(`${short(t.address)}: Wallet-Historie Pagination unvollständig`);
+        continue;
+      }
+      const byTarget=new Map(j.missingTargets.map(t=>[t.address,[]]));
+      for(const tr of walletTransfers){
+        const to=norm(tr?.to||'');if(byTarget.has(to))byTarget.get(to).push(tr);
+      }
+      for(const t of j.missingTargets){
+        const trs=byTarget.get(t.address)||[];
+        historyByWallet.get(j.wallet).set(t.address,{ok:true,transfers:trs,checkedAt:new Date().toISOString()});
+        coverage.get(j.wallet).ok++;
+        for(const tr of trs)raw.push({...tr,_staking:t.staking,_teamWallet:j.wallet});
+      }
     }
+    // Schonendes Pacing für den kostenlosen Alchemy-Tarif; der persistente Teilcache sorgt
+    // dafür, dass diese Wartezeit nur beim ersten bzw. unvollständigen Lauf anfällt.
+    if(i+10<walletJobs.length)await new Promise(r=>setTimeout(r,250));
   }
+  for(const wallet of ws)await teamSaveContractHistoryCache(wallet,historyByWallet.get(wallet));
   const byHash=new Map();for(const t of raw){const h=norm(t.hash||'');if(h&&!byHash.has(h))byHash.set(h,t)}
   const rows=[...byHash.values()],hashes=rows.map(x=>x.hash),txResults=[];
   for(let i=0;i<hashes.length;i+=40)txResults.push(...await rpcManyDiscovery(hashes.slice(i,i+40).map(h=>({method:'eth_getTransactionByHash',params:[h]})),40));
@@ -11768,7 +11840,7 @@ async function teamBatchPositionCalls(wallets){
   const out=new Map(ws.map(w=>[w,[]]));for(const c of rows)if(c._step2PositionRelevant&&out.has(c._teamWallet))out.get(c._teamWallet).push(c);
   const evidenceCounts={selector:0,stakeEvent:0,erc20Outflow:0};for(const c of rows){const e=String(c._teamPositionEvidence||'');if(e.startsWith('selector:'))evidenceCounts.selector++;else if(e.startsWith('receipt:Stake'))evidenceCounts.stakeEvent++;else if(e.startsWith('receipt:wallet-erc20-outflow'))evidenceCounts.erc20Outflow++;}
   const incomplete=[...coverage.entries()].filter(([,v])=>v.failed>0);
-  log(`Team-Lifecycle Batch-Discovery abgeschlossen: ${httpBatches} Alchemy-HTTP-Batch(es) · ${retriedJobs} Einzel-Retry(s), davon ${recoveredJobs} erfolgreich · ${rows.length} eindeutige Contract-Tx · ${receiptJobs.length} Receipt(s) gebatcht · Positionskandidaten: ${evidenceCounts.selector} per Selector, ${evidenceCounts.stakeEvent} per Stake-Event, ${evidenceCounts.erc20Outflow} per ERC-20-Abfluss · ${incomplete.length} Wallet(s) unvollständig.`,incomplete.length?'warn':'ok');
+  log(`Team-Lifecycle Batch-Discovery abgeschlossen: ${reusedHistoryJobs} Contract-Historie(n) wiederverwendet (${reusedHistoryTransfers} Transfer-Zeile(n)) · ${httpBatches} Alchemy-HTTP-Batch(es) für Wallet-Gesamthistorien · ${retriedJobs} Wallet-Retry(s), davon ${recoveredJobs} erfolgreich · ${rows.length} eindeutige Contract-Tx · ${receiptJobs.length} Receipt(s) gebatcht · Positionskandidaten: ${evidenceCounts.selector} per Selector, ${evidenceCounts.stakeEvent} per Stake-Event, ${evidenceCounts.erc20Outflow} per ERC-20-Abfluss · ${incomplete.length} Wallet(s) unvollständig.`,incomplete.length?'warn':'ok');
   return {callsByWallet:out,coverage};
 }
 async function teamVerifyMissingLifecycles(wallets){
