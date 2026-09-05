@@ -116,10 +116,20 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .team-expiry-tools input{width:90px}
 .team-expiry-table .expired-row{font-weight:700}
 .team-node-lifecycle-note{margin-top:8px;padding-top:8px;border-top:1px solid #29394d;font-size:11px;color:#93a4b8}
+.lookup-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-top:10px}
+.lookup-box{padding:12px;border:1px solid #334155;border-radius:10px;background:#0f1722}
+.lookup-box label{display:block;font-weight:700;margin-bottom:6px}
+.lookup-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.lookup-row input{flex:1;min-width:190px}
+.lookup-result{margin-top:12px}
+.lookup-wallet-card{padding:10px 12px;margin-top:8px;border:1px solid #334155;border-radius:9px;background:#111925}
+.lookup-wallet-head{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.lookup-stakings{margin-top:10px;padding-top:10px;border-top:1px solid #2b3b50}
+.lookup-stakings .team-stake-item{padding:9px 0}
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 13:16:34 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 13:39:17 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -177,6 +187,22 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
  <div class="metric">Staking-Lots gesamt<b id="mLots">–</b></div>
  <div class="metric">davon beendet<b id="mClosed">–</b></div>
 </div></div>
+<div class="card" id="tlnWalletLookupCard">
+  <h2>TLN-ID / Wallet-Suche</h2>
+  <p class="muted">Direkte Suche außerhalb des Team-Baums. Wallet → TLN-ID wird über den verifizierten SmartNode-Getter <code>nodeIdOf(address)</code> aufgelöst. TLN-ID → Wallet verwendet zuerst den persistenten Identitätscache und bei Bedarf den vorhandenen globalen SmartNode-Graphen.</p>
+  <div class="lookup-grid">
+    <div class="lookup-box">
+      <label for="lookupTlnId">1 · TLN ID → Wallet-Adresse</label>
+      <div class="lookup-row"><input id="lookupTlnId" inputmode="numeric" placeholder="z. B. 7205"><button id="lookupByTlnId" type="button">Wallet suchen</button></div>
+    </div>
+    <div class="lookup-box">
+      <label for="lookupWallet">2 · Wallet-Adresse → TLN ID</label>
+      <div class="lookup-row"><input id="lookupWallet" class="mono" placeholder="0x…"><button id="lookupByWallet" type="button">TLN ID suchen</button></div>
+    </div>
+  </div>
+  <div id="lookupStatus" class="muted" style="margin-top:10px">Bereit.</div>
+  <div id="lookupResult" class="lookup-result"></div>
+</div>
 <details class="card collapsible-card"><summary>TLN/VOW-Projekt-Token</summary><div class="collapsible-body"><div id="projectCount" class="muted">Noch keine Daten.</div><div class="wrap"><table><thead><tr><th>Symbol</th><th>Kategorie</th><th>Contract</th></tr></thead><tbody id="projectTokens"><tr><td colspan="3">Noch keine Daten.</td></tr></tbody></table></div></div></details>
 <details class="card collapsible-card"><summary>Bekannte Staking-Contracts</summary><div class="collapsible-body"><div class="wrap"><table style="min-width:1050px"><thead><tr><th>Contract-Bezeichnung</th><th>Rolle</th><th>Contract</th><th>Pair-Hinweis</th><th>Laufzeit</th></tr></thead><tbody id="stakingContracts"><tr><td colspan="5">Noch keine Daten.</td></tr></tbody></table></div></div></details>
 <details class="card collapsible-card"><summary>Erkannte historische LP-Token</summary><div class="collapsible-body"><p class="muted">Diese Tabelle zeigt die LP-Token-Contracts, die als Grundlage für die historische LP-/Staking-Auswertung erkannt wurden. Normalfall: <code>token0()</code> und <code>token1()</code> funktionieren und mindestens ein Underlying gehört zum TLN/VOW-Projekt. Historischer Fallback: Bei einem anhand des rohen Method-Selectors als <code>stake(...)</code> erkannten Aufruf an einen bekannten Staking-Contract werden zusätzlich die ERC-20-Transfers genau dieser Transaktion ausgewertet. Ist ein übertragener LP heute nicht mehr lesbar, werden <code>token0()</code>, <code>token1()</code>, <code>factory()</code> und <code>decimals()</code> am historischen Stake-Block gelesen. Zusätzlich kann ein explizit bestätigtes historisches Nicht-V2-Staking-Asset (z. B. ein gebridgter Legacy-LPT) dynamisch aus <code>predefined_tokens</code> erkannt werden; solche Einträge werden nicht als heutige DEX-LPs behandelt. Ein aus dem Wallet heraus übertragener V2-LP kann dadurch auch dann erkannt werden, wenn sein Empfänger ein Controller/Zwischencontract war oder seine Underlyings heute nicht mehr in der aktuellen Projektliste stehen.</p><div class="wrap"><table><thead><tr><th>LP</th><th>Contract</th><th>token0</th><th>token1</th><th>Projekt-Treffer</th><th>Erkannt durch</th><th>Factory</th><th>Transfers</th></tr></thead><tbody id="pairs"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div></details>
@@ -250,7 +276,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-131634';
+const BUILD_ID='20260905-133917';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10602,6 +10628,153 @@ async function processStakingRewards(){
 }
 
 
+const LOOKUP_STATE={wallets:[]};
+
+function lookupSetStatus(text,kind=''){
+  const el=$('lookupStatus');if(!el)return;
+  el.className=kind==='ok'?'ok':kind==='warn'?'warn':kind==='err'?'err':'muted';
+  el.textContent=text;
+}
+function lookupWalletCardHtml(wallet,nodeId,source=''){
+  const w=norm(wallet);
+  return `<div class="lookup-wallet-card" data-lookup-wallet="${esc(w)}">
+    <div class="lookup-wallet-head">
+      <div><b>TLN-ID ${esc(nodeId||'–')}</b><div class="mono">${esc(w)}</div>${source?`<div class="muted">${esc(source)}</div>`:''}</div>
+      <button type="button" class="lookup-staking-btn" data-wallet="${esc(w)}">Alle Stakings anzeigen</button>
+    </div>
+    <div class="lookup-stakings" id="lookupStakings_${esc(w.slice(2))}" style="display:none"></div>
+  </div>`;
+}
+function lookupBindStakingButtons(){
+  const root=$('lookupResult');if(!root)return;
+  root.querySelectorAll('.lookup-staking-btn').forEach(btn=>{
+    btn.onclick=()=>lookupShowStakings(btn.dataset.wallet,btn);
+  });
+}
+async function lookupWalletByAddress(){
+  const raw=String($('lookupWallet')?.value||'').trim(),wallet=norm(raw);
+  if(!ethers.isAddress(wallet)){lookupSetStatus('Ungültige Wallet-Adresse.','err');$('lookupResult').innerHTML='';return}
+  const btn=$('lookupByWallet');btn.disabled=true;lookupSetStatus('TLN-ID wird on-chain geprüft …');
+  try{
+    const ident=await teamGetIdentity(wallet);
+    if(!ident?.nodeId){
+      LOOKUP_STATE.wallets=[wallet];
+      $('lookupResult').innerHTML=lookupWalletCardHtml(wallet,null,'SmartNode.nodeIdOf(address): keine TLN-ID gefunden');
+      lookupBindStakingButtons();
+      lookupSetStatus('Für diese Wallet wurde keine TLN-ID gefunden. Die Staking-Suche kann trotzdem ausgeführt werden.','warn');
+      return;
+    }
+    try{await saveTlnIdentityToDb({wallet,nodeId:ident.nodeId,referredById:null,source:'on-chain-smartnode',chain:'BSC',contract:TEAM_SMARTNODE_CONTRACT,method:'nodeIdOf(address)'})}catch{}
+    LOOKUP_STATE.wallets=[wallet];
+    $('lookupResult').innerHTML=lookupWalletCardHtml(wallet,ident.nodeId,'SmartNode.nodeIdOf(address)');
+    lookupBindStakingButtons();
+    lookupSetStatus(`Wallet aufgelöst: TLN-ID ${ident.nodeId}.`,'ok');
+  }catch(e){lookupSetStatus(`Suche fehlgeschlagen: ${e.message}`,'err');$('lookupResult').innerHTML=''}
+  finally{btn.disabled=false}
+}
+
+async function lookupDbWalletsByNodeId(nodeId){
+  await ensureCurrentUserId();
+  if(!currentUserId||!tlnIdentityDbAvailable)return [];
+  const {data,error}=await sb.from('tln_wallet_identity_cache')
+    .select('wallet_address,node_id,source,verified_at')
+    .eq('user_id',currentUserId).eq('project_key','tln_vow').eq('chain_key','bsc')
+    .eq('node_id',Number(nodeId)).order('updated_at',{ascending:false}).limit(50);
+  if(error)return [];
+  return (data||[]).filter(r=>ethers.isAddress(norm(r.wallet_address))).map(r=>({wallet:norm(r.wallet_address),nodeId:String(r.node_id),source:'persistenter TLN-ID-Cache'}));
+}
+async function lookupGraphWalletsByNodeId(nodeId){
+  await teamLoadIdentityCacheFromDb();
+  const cached=[...TEAM_IDENTITY_CACHE.values()].filter(x=>String(x?.nodeId||'')===String(nodeId)&&ethers.isAddress(norm(x.wallet))).map(x=>({wallet:norm(x.wallet),nodeId:String(nodeId),source:'TLN-ID-Cache'}));
+  if(cached.length)return cached;
+
+  const graph=await teamLoadGlobalGraphCache();
+  if(!graph?.edges?.size)return [];
+  const candidates=[...new Set([...graph.edges.values()].flatMap(e=>[norm(e.child),norm(e.parent)]).filter(ethers.isAddress))];
+  const found=[];
+  lookupSetStatus(`TLN-ID ${nodeId} nicht im Identitätscache. Prüfe ${candidates.length.toLocaleString('de-CH')} Wallets aus dem vorhandenen SmartNode-Graphen gebündelt …`);
+  for(let i=0;i<candidates.length;i+=80){
+    const chunk=candidates.slice(i,i+80);
+    const calls=chunk.map(wallet=>({method:'eth_call',params:[{to:TEAM_SMARTNODE_CONTRACT,data:teamNodeIdCall(wallet)},'latest']}));
+    const rr=await rpcManyDiscovery(calls,80);
+    for(let k=0;k<chunk.length;k++){
+      const raw=rr[k]?.result;
+      if(!raw||raw==='0x'||raw.length<66)continue;
+      let got='0';try{got=BigInt(raw).toString()}catch{}
+      if(got===String(nodeId))found.push({wallet:chunk[k],nodeId:got,source:'SmartNode.nodeIdOf(address) über Globalgraph'});
+    }
+  }
+  for(const x of found){
+    TEAM_IDENTITY_CACHE.set(x.wallet,{wallet:x.wallet,nodeId:x.nodeId,source:'SmartNode.nodeIdOf'});
+    try{await saveTlnIdentityToDb({wallet:x.wallet,nodeId:x.nodeId,referredById:null,source:'on-chain-smartnode',chain:'BSC',contract:TEAM_SMARTNODE_CONTRACT,method:'nodeIdOf(address)'})}catch{}
+  }
+  return found;
+}
+async function lookupWalletByTlnId(){
+  const raw=String($('lookupTlnId')?.value||'').trim();
+  if(!/^\d+$/.test(raw)||BigInt(raw)<=0n){lookupSetStatus('Ungültige TLN ID.','err');$('lookupResult').innerHTML='';return}
+  const nodeId=BigInt(raw).toString(),btn=$('lookupByTlnId');btn.disabled=true;lookupSetStatus(`TLN-ID ${nodeId} wird gesucht …`);
+  try{
+    let found=await lookupDbWalletsByNodeId(nodeId);
+    if(!found.length)found=await lookupGraphWalletsByNodeId(nodeId);
+    const unique=[...new Map(found.map(x=>[norm(x.wallet),x])).values()];
+    LOOKUP_STATE.wallets=unique.map(x=>x.wallet);
+    if(!unique.length){
+      $('lookupResult').innerHTML='';
+      lookupSetStatus(`TLN-ID ${nodeId} konnte weder im persistenten Identitätscache noch im vorhandenen SmartNode-Graphen einer Wallet zugeordnet werden.`,'warn');
+      return;
+    }
+    $('lookupResult').innerHTML=unique.map(x=>lookupWalletCardHtml(x.wallet,nodeId,x.source)).join('');
+    lookupBindStakingButtons();
+    lookupSetStatus(unique.length===1?`TLN-ID ${nodeId} → 1 Wallet gefunden.`:`TLN-ID ${nodeId} → ${unique.length} Wallets gefunden. Mehrere Wallets derselben TLN-ID können durch Wallet-Migrationen entstehen.`,'ok');
+  }catch(e){lookupSetStatus(`Suche fehlgeschlagen: ${e.message}`,'err');$('lookupResult').innerHTML=''}
+  finally{btn.disabled=false}
+}
+async function lookupLifecycleForWallet(wallet){
+  wallet=norm(wallet);
+  let life=TEAM_STAKING_LIFECYCLE.get(wallet);
+  if(life?.verified)return life;
+
+  if(norm(DISCOVERY_PROCESS.wallet||'')===wallet&&DISCOVERY_PROCESS.done?.duration){
+    life=teamLifecycleFromLots(wallet,DISCOVERY_PROCESS.lots,{verified:true,source:'aktueller Discovery-Lauf',completedStep:3});
+    TEAM_STAKING_LIFECYCLE.set(wallet,life);return life;
+  }
+  await teamLoadPersistedLifecycleCache([wallet]);
+  life=TEAM_STAKING_LIFECYCLE.get(wallet);
+  if(life?.verified)return life;
+
+  const cached=await loadTechnicalProcessCache(wallet,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults).catch(()=>null);
+  if(Number(cached?.completedStep||0)>=3){
+    life=teamLifecycleFromLots(wallet,cached?.process?.lots||[],{verified:true,source:`persistente Discovery Steps 1–${cached.completedStep}`,completedStep:cached.completedStep});
+    TEAM_STAKING_LIFECYCLE.set(wallet,life);return life;
+  }
+
+  await teamVerifyMissingLifecycles([wallet]);
+  return TEAM_STAKING_LIFECYCLE.get(wallet)||null;
+}
+function lookupAllStakingsHtml(life){
+  if(!life?.verified)return '<div class="warn">Lifecycle konnte noch nicht vollständig verifiziert werden.</div>';
+  const rows=(life.lots||[]).slice().sort((a,b)=>{
+    const at=Date.parse(a?.lot?.stakeTime||a?.lot?.startTime||'')||0,bt=Date.parse(b?.lot?.stakeTime||b?.lot?.startTime||'')||0;
+    return bt-at;
+  });
+  if(!rows.length)return '<div class="muted">Für diese Wallet wurden keine historischen oder aktuellen Staking-Positionen gefunden.</div>';
+  const active=rows.filter(x=>x.status==='active').length,expired=rows.filter(x=>x.status==='expired_still_staked').length,closed=rows.filter(x=>x.status==='completed').length;
+  return `<div><b>${rows.length} Staking-Position(en)</b> <span class="muted">· ${active} aktiv · ${expired} abgelaufen/noch gestakt · ${closed} unstaked</span></div>
+    <div class="team-stake-list">${rows.map(x=>teamLotCardHtml(x.lot,{historical:x.status==='completed'})).join('')}</div>`;
+}
+async function lookupShowStakings(wallet,btn){
+  const box=$(`lookupStakings_${norm(wallet).slice(2)}`);if(!box)return;
+  if(box.dataset.loaded==='1'){box.style.display=box.style.display==='none'?'block':'none';btn.textContent=box.style.display==='none'?'Alle Stakings anzeigen':'Stakings ausblenden';return}
+  btn.disabled=true;box.style.display='block';box.innerHTML='<div class="muted">Historische und aktuelle Stakings werden geprüft …</div>';
+  try{
+    const life=await lookupLifecycleForWallet(wallet);
+    box.innerHTML=lookupAllStakingsHtml(life);box.dataset.loaded='1';btn.textContent='Stakings ausblenden';
+  }catch(e){box.innerHTML=`<div class="err">Staking-Suche fehlgeschlagen: ${esc(e.message)}</div>`}
+  finally{btn.disabled=false}
+}
+
+
 const TEAM_ALIAS_STORAGE_KEY='tln_vow_team_aliases_v1';
 const TEAM_SMARTNODE_CONTRACT='0x028c911c10c9e346158206991e02d09bd0a8a35b';
 const TEAM_NODE_ID_SELECTOR=ethers.id('nodeIdOf(address)').slice(0,10);
@@ -12053,6 +12226,10 @@ $('clearWalletSupabaseCache').onclick=clearSelectedWalletSupabaseCache;
 $('forceDiscoveryFreshnessCheck').onclick=forceCurrentDiscoveryFreshnessCheck;
 $('testDiscoveryLongGap').onclick=testCurrentDiscoveryLongGap;
 $('exportDiagnosisLog').onclick=exportDiagnosisLogTxt;
+$('lookupByTlnId').onclick=lookupWalletByTlnId;
+$('lookupByWallet').onclick=lookupWalletByAddress;
+$('lookupTlnId').addEventListener('keydown',e=>{if(e.key==='Enter')lookupWalletByTlnId()});
+$('lookupWallet').addEventListener('keydown',e=>{if(e.key==='Enter')lookupWalletByAddress()});
 
 init();
 </script></body></html>
