@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 00:04:05 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 00:09:49 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-000405';
+const BUILD_ID='20260906-000949';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -12435,8 +12435,14 @@ async function teamBatchPositionCalls(wallets){
           const isCaveStake=norm(stakeEvent?.topics?.[0])===stakeTopic4;
           if(isCaveStake){
             try{c._teamStakeCaveId=stakeEvent?.topics?.[2]?BigInt(stakeEvent.topics[2]).toString():null}catch{}
-            try{const w=rawWords(stakeEvent?.data||'0x');c._teamStakeTokenId=w?.[0]?.uint!=null?w[0].uint.toString():null}catch{}
-            log(`Team-Lifecycle Cave-Stake erkannt: Contract ${short(eventContract)} · caveId ${c._teamStakeCaveId||'–'} · tokenId ${c._teamStakeTokenId||'–'} · Tx ${short(norm(c.hash||''))}.`,'ok');
+            try{
+              const w=rawWords(stakeEvent?.data||'0x');
+              c._teamStakeTokenId=w?.[0]?.uint!=null?w[0].uint.toString():null;
+              c._teamStakeEventAmountRaw=w?.[1]?.uint!=null?w[1].uint.toString():null;
+              c._teamStakeEventAuxRaw=w?.[2]?.uint!=null?w[2].uint.toString():null;
+              log(`Team-Lifecycle Cave-Stake Rohdaten: Topics ${(stakeEvent?.topics||[]).length} · Data-Worte ${w.length}${w.length?` · ${w.map((x,i)=>`W${i+1}=${x.uint?.toString?.()||x.word}`).join(' · ')}`:''}.`,'info');
+            }catch{}
+            log(`Team-Lifecycle Cave-Stake erkannt: Contract ${short(eventContract)} · caveId ${c._teamStakeCaveId||'nicht als Topic vorhanden'} · tokenId ${c._teamStakeTokenId||'–'} · Tx ${short(norm(c.hash||''))}.`,'ok');
           }
           positionKind='stake';evidence=`receipt:${isCaveStake?'Stake(address,uint256,uint256,uint256)':'Stake(address,uint256,uint256)'}${eventContract&&eventContract!==called?'@downstream-contract':''}`;
         }
@@ -12480,9 +12486,61 @@ async function teamBatchPositionCalls(wallets){
   log(`Team-Lifecycle Batch-Discovery abgeschlossen: ${reusedHistoryJobs} Contract-Historie(n) wiederverwendet (${reusedHistoryTransfers} Transfer-Zeile(n)) · ${httpBatches} Alchemy-HTTP-Batch(es) für Wallet-Gesamthistorien · ${retriedJobs} Wallet-Retry(s), davon ${recoveredJobs} erfolgreich · ${rows.length} eindeutige Contract-Tx · ${receiptJobs.length} Receipt(s) gebatcht · Positionskandidaten: ${evidenceCounts.selector} per Selector, ${evidenceCounts.stakeEvent} per Stake-Event, ${evidenceCounts.erc20Outflow} per ERC-20-Abfluss, ${evidenceCounts.step5Strong} aus verifizierter Step-5-Stake-Evidenz · ${incomplete.length} Wallet(s) unvollständig.`,incomplete.length?'warn':'ok');
   return {callsByWallet:out,coverage};
 }
+const TEAM_TOKEN_POSITION_PROBES=[
+  {sig:'unlockTime(uint256)',kind:'timestamp'},{sig:'unlockTimestamp(uint256)',kind:'timestamp'},
+  {sig:'unstakeDate(uint256)',kind:'timestamp'},{sig:'unstakeTime(uint256)',kind:'timestamp'},
+  {sig:'lockedUntil(uint256)',kind:'timestamp'},{sig:'lockEnd(uint256)',kind:'timestamp'},{sig:'endTime(uint256)',kind:'timestamp'},
+  {sig:'startTime(uint256)',kind:'start'},{sig:'stakeTimestamp(uint256)',kind:'start'},{sig:'stakedAt(uint256)',kind:'start'},
+  {sig:'positions(uint256)',kind:'raw'},{sig:'position(uint256)',kind:'raw'},{sig:'stakes(uint256)',kind:'raw'},
+  {sig:'stakeInfo(uint256)',kind:'raw'},{sig:'stakingInfo(uint256)',kind:'raw'},{sig:'getStake(uint256)',kind:'raw'},{sig:'getStakeInfo(uint256)',kind:'raw'}
+];
+function encodeUintProbe(sig,value){
+  return selectorFor(sig)+ethers.AbiCoder.defaultAbiCoder().encode(['uint256'],[BigInt(value)]).slice(2);
+}
+async function teamProbeTokenPositionTiming(lot,label=''){
+  const contract=norm(lot?.stake_event_contract||lot?.staking?.contract_address||'');
+  const tokenId=normalizedUintString(lot?.stake_token_id);
+  if(!ethers.isAddress(contract)||!tokenId)return {proven:false,attempted:0,supported:0};
+  const profile=await contractCodeProfile(contract),bytecode=`${profile?.bytecode||''}${profile?.implBytecode||''}`.toLowerCase();
+  const supported=TEAM_TOKEN_POSITION_PROBES.filter(p=>bytecode.includes(selectorFor(p.sig).slice(2)));
+  if(!supported.length){
+    log(`Duration ${label}: Positions-ID ${tokenId} erkannt, aber keiner der gezielten uint256-Positions-/Ablauf-Getter ist im Bytecode von ${short(contract)} vorhanden.`,'info');
+    return {proven:false,attempted:0,supported:0};
+  }
+  const calls=supported.map(p=>({method:'eth_call',params:[{to:contract,data:encodeUintProbe(p.sig,tokenId)},'latest']}));
+  const rr=await rpcManyDiscovery(calls,40);
+  const stakeTs=lotStakeTsSeconds(lot);
+  let attempted=0;
+  for(let i=0;i<supported.length;i++){
+    const probe=supported[i],raw=rr[i]?.error?null:rr[i]?.result;
+    attempted++;
+    if(!raw||raw==='0x')continue;
+    const words=rawWords(raw),vals=words.map(w=>w.uint!=null?w.uint.toString():null);
+    const tsVals=words.map(w=>w.uint==null?null:Number(w.uint)).filter(v=>Number.isFinite(v)&&humanTimestamp(v));
+    log(`Duration ${label}: Positions-Getter ${probe.sig}(${tokenId}) → ${vals.join(' | ')}${tsVals.length?` · Zeitwert(e): ${tsVals.map(v=>new Date(v*1000).toLocaleString('de-CH')).join(', ')}`:''}.`,'info');
+    if(probe.kind==='timestamp'&&words.length===1&&words[0].uint!=null){
+      const endTs=Number(words[0].uint);
+      if(Number.isFinite(stakeTs)&&endTs>stakeTs&&endTs<=stakeTs+1000*86400&&humanTimestamp(endTs)){
+        const sec=endTs-stakeTs;
+        lot.expiryTime=new Date(endTs*1000).toISOString();
+        lot.lockDurationSeconds=sec;lot.durationDays=sec/86400;lot.durationConfidence='strong';
+        lot.durationSource=`Direkter positionsbezogener Contract-Getter ${probe.sig} · tokenId ${tokenId}`;
+        lot.durationEvidence=`Der verifizierte Stake-Event-Contract ${contract} liefert für die on-chain Position-ID ${tokenId} über ${probe.sig}() direkt den Ablaufzeitpunkt.`;
+        lot.durationStrictVerdict={cls:'ok',text:`Ablauf direkt aus positionsbezogenem Contract-Getter ${probe.sig}(${tokenId}) gelesen.`};
+        lot.lockEvidence={found:true,mode:'direct-position-getter',unlockTime:lot.expiryTime,elapsedSeconds:sec,elapsedDays:sec/86400,evidence:lot.durationEvidence,confidence:'strong'};
+        lot.duration_contract=contract;
+        log(`Duration ${label}: Direkter Positions-Ablauf für tokenId ${tokenId} verifiziert: ${new Date(endTs*1000).toLocaleString('de-CH')} · ${(sec/86400).toLocaleString('de-CH',{maximumFractionDigits:8})} Tage.`,'ok');
+        return {proven:true,attempted,supported:supported.length,positionGetter:probe.sig};
+      }
+    }
+  }
+  return {proven:false,attempted,supported:supported.length};
+}
 async function teamResolveDurationWithContractCandidates(lot,label=''){
   const first=await resolveDurationStrictOnce(lot,label);
   if(first.proven)return first;
+  const tokenPosition=await teamProbeTokenPositionTiming(lot,label);
+  if(tokenPosition.proven)return tokenPosition;
   // Neue Router-/Entry-Generationen koennen drei unterschiedliche Contracts beteiligen:
   // aufgerufener Entry, Stake-Event-Emitter und tatsaechlicher LP-Empfaenger. Die normale
   // Registry kennt den neuen Pfad noch nicht. Fuer die Duration wird deshalb NUR nach einem
