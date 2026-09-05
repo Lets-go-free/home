@@ -104,10 +104,22 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .team-alias-label{font-size:10px;color:#8fa0b5;white-space:nowrap}
 .team-alias-input{display:block;width:100%;max-width:100%;min-width:0;box-sizing:border-box;padding:4px 6px;background:#0d131d;border:1px solid #334155;border-radius:6px;color:inherit;font-size:11px}
 .team-line-summary{margin:10px 0 4px}
+.team-controls{margin:12px 0 14px;padding:12px;border:1px solid #2b3b50;border-radius:10px;background:#0f1722}
+.team-highlight-options{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:7px}
+.team-highlight-options label{display:inline-flex;gap:6px;align-items:center;font-size:12px;cursor:pointer}
+.team-node.team-highlighted{box-shadow:0 0 0 3px rgba(250,204,21,.65),0 2px 8px rgba(0,0,0,.18);border-color:#facc15}
+.team-node.team-lifecycle-unknown{border-style:dashed}
+.team-stake-list{display:grid;gap:7px;margin-top:8px}
+.team-stake-item{padding-top:7px;border-top:1px dashed #2d3c50}
+.team-stake-item:first-child{padding-top:0;border-top:0}
+.team-expiry-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:16px 0 8px}
+.team-expiry-tools input{width:90px}
+.team-expiry-table .expired-row{font-weight:700}
+.team-node-lifecycle-note{margin-top:8px;padding-top:8px;border-top:1px solid #29394d;font-size:11px;color:#93a4b8}
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 11:47:48 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 12:11:02 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -206,9 +218,23 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 <div class="card" id="teamTreeCard">
   <h2>🌳 TLN/VOW Team-/Referral-Baum</h2>
-  <p class="muted">Projektweite Sicht auf Klick: Alle unter „MEINE Wallets“ gespeicherten TLN/VOW-Wallets gelten für die Erfassungsmenge als eigene Leader-TLN-IDs. Als eigener sichtbarer Baum wird aber nur ein eigenes Wallet dargestellt, das keinem anderen eigenen Wallet untergeordnet ist. Eigene Wallets innerhalb eines bereits eigenen Team-Baums bleiben normale Team-Mitglieder an ihrer echten Parent-Position und werden farbig markiert. Die Darstellung ist als vertikaler Organigramm-Baum aufgebaut: Leader oben, Linie 1 darunter, Linie 2 darunter usw. Direkte Partner werden je Upline nach TLN-ID aufsteigend sortiert. Deutlich abgesetzte Verbindungslinien zeigen, welcher Partner zu welchem Parent gehört. Staking-Zusatzinfos werden nur eingeblendet, wenn eine noch wirtschaftlich gebundene Position belastbar belegt ist; vollständig unstakte Positionen sollen nicht mehr erscheinen. Testtiefe: maximal <b>20 Linien</b>. In WalletTracking wird dieser Wert später als TLN/VOW-Projektparameter im Admin-Bereich konfigurierbar.</p>
+  <p class="muted">Projektweite Sicht auf Klick: Alle unter „MEINE Wallets“ gespeicherten TLN/VOW-Wallets gelten für die Erfassungsmenge als eigene Leader-TLN-IDs. Als eigener sichtbarer Baum wird aber nur ein eigenes Wallet dargestellt, das keinem anderen eigenen Wallet untergeordnet ist. Eigene Wallets innerhalb eines bereits eigenen Team-Baums bleiben normale Team-Mitglieder an ihrer echten Parent-Position und werden farbig markiert. Die Darstellung ist als vertikaler Organigramm-Baum aufgebaut: Leader oben, Linie 1 darunter, Linie 2 darunter usw. Direkte Partner werden je Upline nach TLN-ID aufsteigend sortiert. Deutlich abgesetzte Verbindungslinien zeigen, welcher Partner zu welchem Parent gehört. Staking-Zusatzinfos verwenden ausschließlich verifizierte Discovery-/Lifecycle-Daten. Alle aktuell offenen Positionen eines Wallets werden in derselben Karte gezeigt; falls keine Position mehr offen ist, wird das zuletzt beendete Staking historisch angezeigt. Fehlende Lifecycle-Daten werden neutral gekennzeichnet und niemals aus Referral-Rewards als „unstaked“ abgeleitet. Testtiefe: maximal <b>20 Linien</b>. In WalletTracking wird dieser Wert später als TLN/VOW-Projektparameter im Admin-Bereich konfigurierbar.</p>
   <div id="teamTreeStatus" class="muted">Wird ausschließlich bei Klick auf Schritt 6 ermittelt; nicht automatisch in Schritt 5.</div>
+  <div id="teamHighlightControls" class="team-controls" style="display:none">
+    <b>Hervorheben</b> <span class="muted">(keine Filterung – alle Team-Mitglieder bleiben sichtbar)</span>
+    <div class="team-highlight-options">
+      <label><input type="checkbox" id="teamHlNoActive"> kein aktives Staking</label>
+      <label><input type="checkbox" id="teamHlExpired"> abgelaufen, noch nicht unstaked</label>
+      <label><input type="checkbox" id="teamHlSoon"> Ablauf innerhalb 20 Tagen</label>
+      <button type="button" id="teamHlClear">Hervorhebung löschen</button>
+    </div>
+    <div id="teamHighlightInfo" class="muted" style="margin-top:6px">Nur verifizierte Lifecycle-Daten werden für die Hervorhebung verwendet.</div>
+  </div>
   <div id="teamTree" class="team-tree"><div class="muted">Noch keine Team-Daten.</div></div>
+  <div id="teamExpirySection" style="display:none">
+    <div class="team-expiry-tools"><b>Nächste Staking-Abläufe</b><label>Anzahl Tage bis Staking-Ablaufdatum <input id="teamExpiryDays" type="number" min="1" max="3650" value="60"></label></div>
+    <div id="teamExpiryList" class="wrap"><div class="muted">Noch keine verifizierten Ablaufdaten.</div></div>
+  </div>
 </div>
 
 <details class="card collapsible-card"><summary>🎁 Bonus-Rewards</summary><div class="collapsible-body">
@@ -224,7 +250,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-114748';
+const BUILD_ID='20260905-121102';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10588,6 +10614,8 @@ const TEAM_GRAPH_CONFIRMATIONS=12;
 let TEAM_GRAPH_DB_AVAILABLE=true;
 const TEAM_IDENTITY_CACHE=new Map();
 let CURRENT_TEAM_PROJECT_FOREST=null;
+const TEAM_STAKING_LIFECYCLE=new Map();
+let TEAM_HIGHLIGHT_STATE={noActive:false,expired:false,soon:false};
 
 function loadTeamAliases(){
   try{return JSON.parse(localStorage.getItem(TEAM_ALIAS_STORAGE_KEY)||'{}')||{}}catch{return {}}
@@ -11187,7 +11215,11 @@ function buildProjectTeamForest(edges){
     children.get(e.parent).push(e.child);
     parentByChild.set(e.child,e.parent);
   }
-  for(const a of children.values())a.sort();
+  for(const a of children.values())a.sort((a,b)=>{
+    const ai=Number(TEAM_IDENTITY_CACHE.get(norm(a))?.nodeId),bi=Number(TEAM_IDENTITY_CACHE.get(norm(b))?.nodeId);
+    const av=Number.isFinite(ai)?ai:Number.MAX_SAFE_INTEGER,bv=Number.isFinite(bi)?bi:Number.MAX_SAFE_INTEGER;
+    return av-bv||String(a).localeCompare(String(b));
+  });
 
   // A nested own leader may extend coverage another 20 levels. Therefore rendering depth is
   // not capped relative to the top root; only inclusion per own leader is capped to 20.
@@ -11195,10 +11227,10 @@ function buildProjectTeamForest(edges){
   return {ownMap,ownSet,ownDepths,orderedOwn,included,leaderStats,roots,components,children,parentByChild};
 }
 
-function teamFormatStakeDate(v){
+function teamFormatStakeDate(v,withTime=false){
   if(!v)return '–';
   const d=new Date(v);if(Number.isNaN(d.getTime()))return '–';
-  return d.toLocaleDateString('de-CH');
+  return withTime?d.toLocaleString('de-CH',{dateStyle:'short',timeStyle:'short'}):d.toLocaleDateString('de-CH');
 }
 function teamLotAmountText(l){
   const amount=Number(l.remaining??l.original??l.amount??0);
@@ -11208,75 +11240,78 @@ function teamAmountOneDecimal(v){
   const n=Number(v);
   return Number.isFinite(n)?n.toLocaleString('de-CH',{minimumFractionDigits:1,maximumFractionDigits:1}):String(v??'–');
 }
-function teamLotCardHtml(l,{historical=false,activeCount=0}={}){
-  const pair=safePairLabel(l)||l?.pairLabel||l?.symbol||'Staking';
-  const expiry=l?.expiryTime||l?.contractEndTime||null;
-  const unstake=l?.unstakeTime||l?.closedAt||null;
-  const status=historical?'Unstaked':(expiry&&new Date(expiry).getTime()<=Date.now()?'Abgelaufen':'Aktiv');
-  const cls=historical?'unstaked':(status==='Aktiv'?'active':'expired');
-  const from=teamFormatStakeDate(l?.stakeTime||l?.startTime);
-  const expiryText=teamFormatStakeDate(expiry);
-  const unstakeText=teamFormatStakeDate(unstake);
-  return `<div class="team-node-staking">
-    <div class="team-stake-head">
-      <div>
-        <b>${historical?'Letztes Staking':status==='Aktiv'?'Aktuelles Staking':'Abgelaufen, noch nicht unstaked'}</b>
-        ${activeCount>1?`<div class="muted">${activeCount} aktive Stakings · jüngstes angezeigt</div>`:''}
-      </div>
-      <span class="team-stake-status ${cls}">${esc(historical?'Ausgelaufen':status)}</span>
-    </div>
-    <div style="margin-top:4px"><b>${esc(teamLotAmountText(l))} ${esc(pair)}</b></div>
-    <div class="muted">Staking: ${esc(from)}</div>
-    <div class="muted">Ablauf: ${esc(expiryText)}</div>
-    ${historical&&unstake?`<div class="muted">Unstaked: ${esc(unstakeText)}</div>`:''}
-  </div>`;
+function teamLifecycleStatusForLot(l,nowMs=Date.now()){
+  const closed=l?.status==='closed'||!!l?.unstakeTime||!!l?.closedAt;
+  if(closed)return 'completed';
+  const expiryMs=Date.parse(l?.expiryTime||l?.contractEndTime||l?.releaseTime||'');
+  if(Number.isFinite(expiryMs)&&expiryMs<=nowMs)return 'expired_still_staked';
+  return 'active';
 }
-function teamOwnStakingHtml(wallet){
-  if(norm(wallet)!==norm(CURRENT_WALLET))return '';
-  const lots=DISCOVERY_PROCESS.lots||[];
-  const open=lots.filter(l=>l.status!=='closed').sort((a,b)=>{
-    const at=new Date(a.stakeTime||a.startTime||0).getTime();
-    const bt=new Date(b.stakeTime||b.startTime||0).getTime();
-    return bt-at;
-  });
-  if(open.length)return teamLotCardHtml(open[0],{activeCount:open.length});
-  const closed=lots.filter(l=>l.status==='closed').sort((a,b)=>{
-    const at=new Date(a.unstakeTime||a.expiryTime||a.stakeTime||0).getTime();
-    const bt=new Date(b.unstakeTime||b.expiryTime||b.stakeTime||0).getTime();
-    return bt-at;
-  });
-  return closed.length?teamLotCardHtml(closed[0],{historical:true}):'<div class="team-node-staking muted">Kein Staking gefunden.</div>';
+function teamLifecycleFromLots(wallet,lots,{verified=true,source='Discovery-Endergebnis',completedStep=0}={}){
+  const rows=(Array.isArray(lots)?lots:[]).map((lot,index)=>({lot,index,status:teamLifecycleStatusForLot(lot)}));
+  const open=rows.filter(x=>x.status!=='completed').sort((a,b)=>Date.parse(b.lot?.stakeTime||b.lot?.startTime||0)-Date.parse(a.lot?.stakeTime||a.lot?.startTime||0));
+  const closed=rows.filter(x=>x.status==='completed').sort((a,b)=>Date.parse(b.lot?.unstakeTime||b.lot?.expiryTime||b.lot?.stakeTime||0)-Date.parse(a.lot?.unstakeTime||a.lot?.expiryTime||a.lot?.stakeTime||0));
+  return {wallet:norm(wallet),verified:!!verified,source,completedStep:Number(completedStep||0),lots:rows,open,closed,loadedAt:new Date().toISOString()};
+}
+async function teamLoadCachedDiscoveryLifecycles(wallets){
+  TEAM_STAKING_LIFECYCLE.clear();
+  const ownCurrent=norm(CURRENT_WALLET||'');
+  if(ethers.isAddress(ownCurrent)&&norm(DISCOVERY_PROCESS.wallet||'')===ownCurrent&&DISCOVERY_PROCESS.done?.staking){
+    TEAM_STAKING_LIFECYCLE.set(ownCurrent,teamLifecycleFromLots(ownCurrent,DISCOVERY_PROCESS.lots,{verified:!!DISCOVERY_PROCESS.done?.duration,source:'aktueller verifizierter Discovery-Lauf',completedStep:DISCOVERY_PROCESS.done?.duration?3:2}));
+  }
+  if(!currentUserId||!stakingScanDbCacheAvailable)return;
+  const need=[...new Set((wallets||[]).map(norm).filter(w=>ethers.isAddress(w)&&w!==ownCurrent))];
+  let loaded=0;
+  for(let i=0;i<need.length;i+=50){
+    const chunk=need.slice(i,i+50);
+    const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE).select('wallet_address,scanner_version,payload,updated_at').eq('user_id',currentUserId).eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.discoveryResults).in('wallet_address',chunk);
+    if(error){log(`Team-Staking-Cache konnte nicht gelesen werden: ${error.message||error}`,'warn');break}
+    for(const row of (data||[])){
+      const payload=row?.payload;if(!payload||row.scanner_version!==TECH_CACHE_VERSIONS.discoveryResults)continue;
+      const step=Number(payload.completedStep||0);if(step<2)continue;
+      const w=norm(row.wallet_address||payload.wallet||'');
+      TEAM_STAKING_LIFECYCLE.set(w,teamLifecycleFromLots(w,payload?.process?.lots||[],{verified:step>=3,source:`persistente Discovery Steps 1–${step}`,completedStep:step}));loaded++;
+    }
+  }
+  log(`Team-Staking-Lifecycle: ${TEAM_STAKING_LIFECYCLE.size} Wallet(s) mit Discovery-Daten verfügbar (${loaded} aus persistentem Wallet-Cache). Fehlende Partner werden NICHT aus Referral-Rewards als unstaked abgeleitet.`,'ok');
+}
+function teamLotCardHtml(l,{historical=false}={}){
+  const pair=safePairLabel(l)||l?.pairLabel||l?.symbol||'Staking';
+  const expiry=l?.expiryTime||l?.contractEndTime||l?.releaseTime||null;
+  const unstake=l?.unstakeTime||l?.closedAt||null;
+  const status=historical?'completed':teamLifecycleStatusForLot(l);
+  const label=status==='active'?'Aktiv':status==='expired_still_staked'?'Abgelaufen':'Unstaked';
+  const cls=status==='active'?'active':status==='expired_still_staked'?'expired':'unstaked';
+  return `<div class="team-stake-item">
+    <div class="team-stake-head"><b>${esc(teamLotAmountText(l))} ${esc(pair)}</b><span class="team-stake-status ${cls}">${esc(label)}</span></div>
+    <div class="muted">Staking: ${esc(teamFormatStakeDate(l?.stakeTime||l?.startTime,true))}</div>
+    <div class="muted">Ablauf: ${esc(teamFormatStakeDate(expiry,true))}</div>
+    ${status==='completed'?`<div class="muted">Unstaked: ${esc(teamFormatStakeDate(unstake,true))}</div>`:''}
+  </div>`;
 }
 function teamObservedStakeHtml(wallet){
-  if(norm(wallet)===norm(CURRENT_WALLET))return teamOwnStakingHtml(wallet);
-
-  const rows=(CURRENT_CLAIM_REFERENCE_RESULT?.strong||[]).filter(r=>norm(r.sender)===norm(wallet));
-  if(!rows.length)return '<div class="team-node-staking muted">Kein Staking gefunden.</div>';
-
-  const ordered=rows.slice().sort((a,b)=>String(b.blockTimestamp||b.time||'').localeCompare(String(a.blockTimestamp||a.time||'')));
-  const latest=ordered[0];
-  const pair=latest?.lpPair?.label||latest?.staking?.label||'Staking';
-  const amt=latest?.stakeAmountEvidence?.resolved&&latest.stakeAmountEvidence.items?.length
-    ? latest.stakeAmountEvidence.items.map(x=>`${teamAmountOneDecimal(x.amount)} ${x.symbol||'PCLP'}`).join(' + ')
-    : 'Betrag –';
-
-  // Use only dates that are present in the verified partner/referral evidence.
-  // Do not invent a contractual expiry when the partner lifecycle has not supplied one.
-  const stakeAt=latest?.blockTimestamp||latest?.time||latest?.stakeTime||null;
-  const expiryAt=latest?.expiryTime||latest?.contractEndTime||latest?.unlockTime||
-    latest?.staking?.expiryTime||latest?.staking?.contract_end_time||latest?.staking?.unlock_time||null;
-  const from=teamFormatStakeDate(stakeAt);
-  const expiry=teamFormatStakeDate(expiryAt);
-  return `<div class="team-node-staking">
-    <div class="team-stake-head">
-      <div><b>Letztes Staking</b><div class="muted">ausgelaufen / unstaked</div></div>
-      <span class="team-stake-status unstaked">Ausgelaufen</span>
-    </div>
-    <div style="margin-top:4px"><b>${esc(amt)}</b></div>
-    <div>${esc(pair)}</div>
-    <div class="muted">Staking: ${esc(from)}</div>
-    <div class="muted">Ablauf: ${esc(expiry)}</div>
-  </div>`;
+  const life=TEAM_STAKING_LIFECYCLE.get(norm(wallet));
+  if(life?.verified){
+    if(life.open.length){
+      return `<div class="team-node-staking"><div class="team-stake-head"><b>${life.open.length===1?'Aktuelles Staking':`${life.open.length} aktuelle Stakings`}</b><span class="muted">verifiziert</span></div><div class="team-stake-list">${life.open.map(x=>teamLotCardHtml(x.lot)).join('')}</div></div>`;
+    }
+    if(life.closed.length)return `<div class="team-node-staking"><div class="team-stake-head"><b>Letztes Staking</b><span class="muted">historisch</span></div><div class="team-stake-list">${teamLotCardHtml(life.closed[0].lot,{historical:true})}</div></div>`;
+    return '<div class="team-node-staking muted">Kein Staking gefunden (verifizierter Discovery-Stand).</div>';
+  }
+  if(life&&!life.verified)return '<div class="team-node-lifecycle-note">Staking gefunden, aber Vertrags-Lifecycle noch nicht vollständig verifiziert. Keine Status-/Ablauf-Klassifikation.</div>';
+  const evidence=(CURRENT_CLAIM_REFERENCE_RESULT?.strong||[]).filter(r=>norm(r.sender)===norm(wallet));
+  if(evidence.length)return '<div class="team-node-lifecycle-note">Historische Staking-/Referral-Evidenz vorhanden. Lifecycle nicht verifiziert – daraus wird bewusst kein „unstaked“-Status abgeleitet.</div>';
+  return '<div class="team-node-lifecycle-note">Lifecycle noch nicht verifiziert.</div>';
+}
+function teamLifecycleCriteria(wallet){
+  const life=TEAM_STAKING_LIFECYCLE.get(norm(wallet));
+  if(!life?.verified)return {verified:false,noActive:false,expired:false,soon:false};
+  const now=Date.now(),soonMax=now+20*86400000;
+  const open=life.open||[];
+  const active=open.filter(x=>x.status==='active');
+  const expired=open.filter(x=>x.status==='expired_still_staked');
+  const soon=active.filter(x=>{const t=Date.parse(x.lot?.expiryTime||x.lot?.contractEndTime||x.lot?.releaseTime||'');return Number.isFinite(t)&&t>=now&&t<=soonMax});
+  return {verified:true,noActive:open.length===0,expired:expired.length>0,soon:soon.length>0};
 }
 
 function teamNodeHtml(wallet,depth,parent){
@@ -11287,7 +11322,8 @@ function teamNodeHtml(wallet,depth,parent){
   const pIdent=parent?TEAM_IDENTITY_CACHE.get(norm(parent))||{}:{};
   const nodeLabel=`TLN-ID ${ident.nodeId||'?'}`;
   const parentLabel=parent?(teamAliasFor(parent,pIdent)||`TLN-ID ${pIdent.nodeId||'?'}`):'';
-  return `<div class="team-node ${depth===0?'root':''} ${own?'own-wallet':''}" data-wallet="${esc(wallet)}">
+  const life=TEAM_STAKING_LIFECYCLE.get(norm(wallet));
+  return `<div class="team-node ${depth===0?'root':''} ${own?'own-wallet':''} ${life?.verified?'':'team-lifecycle-unknown'}" data-wallet="${esc(wallet)}" data-depth="${depth}">
     <div class="team-node-title"><span class="team-depth-badge">${depth===0?'Leader':`Linie ${depth}`}</span><span>${esc(nodeLabel)}</span>${own?'<span class="team-own-badge">MEINE WALLET</span>':''}</div>
     <div class="team-node-name">Name: <b>${esc(alias||ownLabel||'–')}</b></div>
     <div class="team-wallet-row">
@@ -11318,6 +11354,58 @@ function teamTreeBranchHtml(wallet,forest,depth=0,seen=new Set()){
   </li>`;
 }
 
+function applyTeamHighlights(){
+  const box=$('teamTree');if(!box)return;
+  let highlighted=0,eligible=0;
+  box.querySelectorAll('.team-node[data-wallet]').forEach(node=>{
+    const c=teamLifecycleCriteria(node.dataset.wallet);node.classList.remove('team-highlighted');
+    if(!c.verified)return;eligible++;
+    const hit=(TEAM_HIGHLIGHT_STATE.noActive&&c.noActive)||(TEAM_HIGHLIGHT_STATE.expired&&c.expired)||(TEAM_HIGHLIGHT_STATE.soon&&c.soon);
+    if(hit){node.classList.add('team-highlighted');highlighted++}
+  });
+  const active=Object.values(TEAM_HIGHLIGHT_STATE).some(Boolean),info=$('teamHighlightInfo');
+  if(info)info.textContent=active?`${highlighted} Wallet(s) hervorgehoben · ${eligible} Wallet(s) mit verifiziertem Lifecycle.`:`Keine Hervorhebung aktiv · ${eligible} Wallet(s) mit verifiziertem Lifecycle.`;
+}
+function syncTeamGenerationHeights(){
+  const box=$('teamTree');if(!box)return;
+  for(const section of box.querySelectorAll('.team-tree-section')){
+    const nodes=[...section.querySelectorAll('.team-node[data-depth]')];
+    nodes.forEach(n=>n.style.height='');
+    const depths=[...new Set(nodes.map(n=>Number(n.dataset.depth||0)))].sort((a,b)=>a-b);
+    for(const depth of depths){
+      const row=nodes.filter(n=>Number(n.dataset.depth||0)===depth);if(!row.length)continue;
+      const max=Math.max(...row.map(n=>Math.ceil(n.getBoundingClientRect().height)));
+      row.forEach(n=>n.style.height=`${max}px`);
+    }
+  }
+}
+function renderTeamExpiryList(){
+  const forest=CURRENT_TEAM_PROJECT_FOREST,box=$('teamExpiryList');if(!box||!forest)return;
+  const days=Math.max(1,Math.min(3650,Number($('teamExpiryDays')?.value||60))),now=Date.now(),max=now+days*86400000,rows=[];
+  for(const wallet of forest.included){
+    const life=TEAM_STAKING_LIFECYCLE.get(norm(wallet));if(!life?.verified)continue;
+    const ident=TEAM_IDENTITY_CACHE.get(norm(wallet))||{},parent=forest.parentByChild.get(norm(wallet))||null,pIdent=parent?TEAM_IDENTITY_CACHE.get(norm(parent))||{}:{};
+    for(const x of (life.open||[])){
+      if(x.status!=='active')continue;
+      const lot=x.lot,expiry=lot?.expiryTime||lot?.contractEndTime||lot?.releaseTime||null,t=Date.parse(expiry||'');
+      if(!Number.isFinite(t)||t<now||t>max)continue;
+      rows.push({wallet,ident,parent,pIdent,lot,expiry,t});
+    }
+  }
+  rows.sort((a,b)=>a.t-b.t||Number(a.ident.nodeId||1e15)-Number(b.ident.nodeId||1e15));
+  if(!rows.length){box.innerHTML=`<div class="muted">Keine verifizierten aktiven Stakings mit Ablauf innerhalb der nächsten ${days} Tage.</div>`;return}
+  box.innerHTML=`<table class="team-expiry-table" style="min-width:1250px"><thead><tr><th>TLN-ID</th><th>Name</th><th>TLN-ID Upline</th><th>Name Upline</th><th>Ablaufdatum</th><th>Staking-Datum</th><th>PCLP</th><th>Token / LP-Paar</th></tr></thead><tbody>${rows.map(r=>{
+    const alias=teamAliasFor(r.wallet,r.ident)||projectOwnWalletLabel(r.wallet)||'–',pAlias=r.parent?(teamAliasFor(r.parent,r.pIdent)||projectOwnWalletLabel(r.parent)||'–'):'–';
+    return `<tr><td>${esc(r.ident.nodeId||'–')}</td><td>${esc(alias)}</td><td>${esc(r.pIdent.nodeId||'–')}</td><td>${esc(pAlias)}</td><td><b>${esc(teamFormatStakeDate(r.expiry,true))}</b></td><td>${esc(teamFormatStakeDate(r.lot?.stakeTime||r.lot?.startTime,true))}</td><td>${esc(teamLotAmountText(r.lot))}</td><td>${esc(safePairLabel(r.lot)||r.lot?.pairLabel||r.lot?.symbol||'Staking')}</td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+function bindTeamControls(){
+  const map=[['teamHlNoActive','noActive'],['teamHlExpired','expired'],['teamHlSoon','soon']];
+  for(const [id,key] of map){const el=$(id);if(!el)continue;el.checked=!!TEAM_HIGHLIGHT_STATE[key];el.onchange=()=>{TEAM_HIGHLIGHT_STATE[key]=!!el.checked;applyTeamHighlights()}}
+  if($('teamHlClear'))$('teamHlClear').onclick=()=>{TEAM_HIGHLIGHT_STATE={noActive:false,expired:false,soon:false};for(const [id] of map)if($(id))$(id).checked=false;applyTeamHighlights()};
+  if($('teamExpiryDays'))$('teamExpiryDays').oninput=()=>renderTeamExpiryList();
+}
+
 function renderTeamTree(){
   const box=$('teamTree'),status=$('teamTreeStatus');if(!box||!status)return;
   const forest=CURRENT_TEAM_PROJECT_FOREST;
@@ -11326,6 +11414,8 @@ function renderTeamTree(){
   }
   const ownCount=forest.ownSet.size;
   const externalCount=[...forest.included].filter(w=>!forest.ownSet.has(w)).length;
+  const verifiedLifecycleCount=[...forest.included].filter(w=>TEAM_STAKING_LIFECYCLE.get(norm(w))?.verified).length;
+  const unknownLifecycleCount=forest.included.size-verifiedLifecycleCount;
   const blocks=[];
   const sortedComponents=(forest.components||[]).slice().sort((a,b)=>{
     const ai=Number(TEAM_IDENTITY_CACHE.get(norm(a.root))?.nodeId);
@@ -11343,16 +11433,20 @@ function renderTeamTree(){
     const i=TEAM_IDENTITY_CACHE.get(w)||{},d=forest.ownDepths.get(w)||0;
     return `${i.nodeId||short(w)}${d?` (unter ${d} eigener TLN-ID)`:''}`;
   }).join(' → ');
-  status.innerHTML=`<div class="team-line-summary"><b>${externalCount}</b> externe Team-Partner + <b>${ownCount}</b> eigene TLN/VOW-Wallet(s) · <b>${forest.components.length}</b> eigenständige(r) Baum/Bäume.</div>
+  status.innerHTML=`<div class="team-line-summary"><b>${externalCount}</b> externe Team-Partner + <b>${ownCount}</b> eigene TLN/VOW-Wallet(s) · <b>${forest.components.length}</b> eigenständige(r) Baum/Bäume · Lifecycle: <b>${verifiedLifecycleCount}</b> verifiziert / <b>${unknownLifecycleCount}</b> offen.</div>
     <div class="team-tree-legend">
       <span class="team-tree-legend-item"><span class="team-legend-dot own"></span>Meine Wallet</span>
       <span class="team-tree-legend-item"><span class="team-legend-dot member"></span>Team-Mitglied</span>
-      <span class="team-tree-legend-item"><span class="team-legend-dot unstaked"></span>Ausgelaufen / unstaked</span>
+      <span class="team-tree-legend-item"><span class="team-legend-dot unstaked"></span>Unstaked (historisch)</span>
       <span class="team-tree-legend-item"><span class="team-legend-dot active"></span>Aktives Staking</span>
       <span class="team-tree-legend-item"><span class="team-legend-dot expired"></span>Abgelaufen, noch nicht unstaked</span>
     </div>
     <div class="muted">Vertikale Darstellung: Leader oben, Team nach unten. Eigenständige Team-Bäume werden nach Leader-TLN-ID aufsteigend angeordnet; direkte Partner derselben Upline ebenfalls nach TLN-ID aufsteigend (niedrigste TLN-ID zuerst). Nur eigene Wallets ohne anderes eigenes Wallet in ihrer Upline werden als Baum-Root dargestellt. Eigene Wallets innerhalb eines anderen eigenen Teams erscheinen ausschließlich an ihrer echten Position im Baum. Jede Verbindung Linie 2 → Linie 1 usw. folgt der verifizierten SmartNode-Parent-Beziehung. Eigene Leader erweitern die erfasste Downline jeweils um maximal ${TLN_TEAM_MAX_LEVELS} Referral-Linien. Discovery-Reihenfolge: ${esc(orderText||'–')}.</div>`;
   box.innerHTML=blocks.join('');
+  if($('teamHighlightControls'))$('teamHighlightControls').style.display='block';
+  if($('teamExpirySection'))$('teamExpirySection').style.display='block';
+  bindTeamControls();applyTeamHighlights();renderTeamExpiryList();
+  requestAnimationFrame(()=>{syncTeamGenerationHeights();applyTeamHighlights()});
   box.querySelectorAll('.team-alias-input').forEach(inp=>inp.addEventListener('change',()=>{
     saveTeamAlias(inp.dataset.teamAliasKey,inp.value);renderTeamTree();
   }));
@@ -11383,6 +11477,7 @@ async function prepareTeamTree(){
     await teamMapWithConcurrency(members.filter(w=>!TEAM_IDENTITY_CACHE.get(w)?.nodeId),10,w=>teamGetIdentity(w));
     forest=buildProjectTeamForest(full.edges);
     CURRENT_TEAM_PROJECT_FOREST=forest;
+    await teamLoadCachedDiscoveryLifecycles([...forest.included]);
 
     const ownIds=forest.orderedOwn.map(w=>TEAM_IDENTITY_CACHE.get(w)?.nodeId||short(w));
     log(`Team-Discovery Projekt: ${forest.ownSet.size} eigene TLN/VOW-Wallet(s) als Leader · ${[...forest.included].filter(w=>!forest.ownSet.has(w)).length} externe Team-Partner in der Vereinigungsmenge.`,'ok');
