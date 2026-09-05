@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 17:08:25 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 17:22:03 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -284,7 +284,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-165002';
+const BUILD_ID='20260905-172203';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -4310,7 +4310,7 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   duration:'duration-strict-v16-contract-proof-cache',
   discoveryResults:'discovery-results-v1',
   snapshotValuation:'snapshot-valuation-v1',
-  teamLifecycle:'team-lifecycle-v4',
+  teamLifecycle:'team-lifecycle-v5',
   teamContractHistory:'team-contract-history-v1',
   smartNodeIdentityIndex:'smartnode-identity-index-v1'
 });
@@ -11703,7 +11703,15 @@ async function teamLoadContractHistoryCache(wallets){
       const byContract=new Map();
       for(const [contract,val] of Object.entries(row?.payload?.contracts||{})){
         const c=norm(contract);if(!ethers.isAddress(c)||val?.ok!==true)continue;
-        byContract.set(c,{ok:true,transfers:Array.isArray(val.transfers)?val.transfers:[],checkedAt:val.checkedAt||row.updated_at||null});
+        const transfers=Array.isArray(val.transfers)?val.transfers:[];
+        const registryRow=(stakingContracts||[]).find(x=>norm(x?.contract_address||'')===c)||null;
+        const isEntryOnly=registryRow?.classify_transfers===false;
+        // Ein leerer Wallet-Gesamthistorien-Treffer ist für Entry-/Controller-Contracts
+        // nicht stark genug: genau dieser Sonderfall hat historische Controller-Stakes
+        // (z.B. v$/VOW) verschluckt. Nur ein gezielter Exact-Check darf dort einen
+        // persistenten Nulltreffer beweisen.
+        if(isEntryOnly && !transfers.length && val?.source!=='targeted_exact')continue;
+        byContract.set(c,{ok:true,transfers,checkedAt:val.checkedAt||row.updated_at||null,source:val?.source||'legacy'});
       }
       if(byContract.size)out.set(w,byContract);
     }
@@ -11713,7 +11721,7 @@ async function teamLoadContractHistoryCache(wallets){
 async function teamSaveContractHistoryCache(wallet,contractMap){
   const w=norm(wallet);if(!ethers.isAddress(w)||!currentUserId||!stakingScanDbCacheAvailable||!contractMap?.size)return false;
   const contracts={};
-  for(const [contract,val] of contractMap.entries())if(val?.ok===true)contracts[norm(contract)]={ok:true,transfers:cacheJsonSafe(val.transfers||[]),checkedAt:val.checkedAt||new Date().toISOString()};
+  for(const [contract,val] of contractMap.entries())if(val?.ok===true)contracts[norm(contract)]={ok:true,transfers:cacheJsonSafe(val.transfers||[]),checkedAt:val.checkedAt||new Date().toISOString(),source:val.source||'wallet_fullscan'};
   return saveTechnicalProcessCache(w,TECH_CACHE_KEYS.teamContractHistory,TECH_CACHE_VERSIONS.teamContractHistory,{wallet:w,contracts,savedAt:new Date().toISOString()},0);
 }
 async function teamBatchPositionCalls(wallets){
@@ -11736,7 +11744,9 @@ async function teamBatchPositionCalls(wallets){
         for(const tr of (hit.transfers||[])){raw.push({...tr,_staking:t.staking,_teamWallet:wallet});reusedHistoryTransfers++;}
       }
     }
-    if(missingTargets.length)walletJobs.push({wallet,missingTargets});
+    // Wenn nur reine Entry-/Controller-Targets fehlen, keinen teuren Wallet-Gesamtscan
+    // erneut ausführen. Diese wenigen Sonderziele werden unten direkt/exakt geprüft.
+    if(missingTargets.some(t=>t.staking?.classify_transfers!==false))walletJobs.push({wallet,missingTargets});
   }
   log(`Team-Lifecycle Batch-Discovery: ${ws.length} offene Wallet(s) · ${reusedHistoryJobs}/${ws.length*targets.length} Contract-Historien aus persistentem Teilcache · ${walletJobs.length} Wallet-Gesamthistorie(n) noch zu laden (statt ${walletJobs.reduce((n,j)=>n+j.missingTargets.length,0)} einzelner Contract-Abfragen).`,'muted');
 
@@ -11790,7 +11800,7 @@ async function teamBatchPositionCalls(wallets){
       }
       for(const t of j.missingTargets){
         const trs=byTarget.get(t.address)||[];
-        historyByWallet.get(j.wallet).set(t.address,{ok:true,transfers:trs,checkedAt:new Date().toISOString()});
+        historyByWallet.get(j.wallet).set(t.address,{ok:true,transfers:trs,checkedAt:new Date().toISOString(),source:'wallet_fullscan'});
         coverage.get(j.wallet).ok++;
         for(const tr of trs)raw.push({...tr,_staking:t.staking,_teamWallet:j.wallet});
       }
@@ -11799,6 +11809,77 @@ async function teamBatchPositionCalls(wallets){
     // dafür, dass diese Wartezeit nur beim ersten bzw. unvollständigen Lauf anfällt.
     if(i+10<walletJobs.length)await new Promise(r=>setTimeout(r,250));
   }
+  // Safety-Net für reine Entry-/Controller-Contracts:
+  // Die wallet-weite `external`-Historie ist sehr effizient, kann aber historische
+  // Controller-Calls ohne direkten Asset-Transfer auslassen. Solche Targets werden
+  // deshalb exakt gegengeprüft. Es sind aktuell nur die `classify_transfers=false`
+  // Registry-Einträge; bei einem Folgelauf kommt das Ergebnis aus dem Teilcache.
+  const entryTargets=targets.filter(t=>t.staking?.classify_transfers===false);
+  const exactEntryJobs=[];
+  for(const wallet of ws){
+    const cmap=historyByWallet.get(wallet);
+    for(const t of entryTargets){
+      const hit=cmap?.get(t.address);
+      if(hit?.source==='targeted_exact')continue;
+      // Nichtleere wallet-weite Treffer sind bereits positive Evidenz und brauchen
+      // keinen zweiten Alchemy-Call. Nur leere/fehlende Entry-Historien werden exakt geprüft.
+      if(hit?.ok===true && Array.isArray(hit.transfers) && hit.transfers.length)continue;
+      exactEntryJobs.push({wallet,target:t});
+    }
+  }
+  let exactEntryChecks=0,exactEntryRecovered=0,exactEntryBatches=0;
+  for(let i=0;i<exactEntryJobs.length;i+=10){
+    const chunk=exactEntryJobs.slice(i,i+10);
+    const req=chunk.map(j=>({method:'alchemy_getAssetTransfers',params:[{fromBlock:'0x0',toBlock:'latest',fromAddress:j.wallet,toAddress:j.target.address,category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8'}]}));
+    let batch;try{batch=await alchemyMany(req);exactEntryBatches++}catch(e){batch=req.map(()=>({error:e}))}
+    for(let k=0;k<chunk.length;k++){
+      const j=chunk[k];let res=batch[k],lastErr=res?.error||null;exactEntryChecks++;
+      if(lastErr){
+        for(let attempt=1;attempt<=2;attempt++){
+          try{
+            await new Promise(r=>setTimeout(r,attempt*350));
+            res={result:await alchemy('alchemy_getAssetTransfers',req[k].params)};
+            lastErr=null;break;
+          }catch(e){lastErr=e}
+        }
+      }
+      if(lastErr){
+        const cv=coverage.get(j.wallet);
+        if(cv){
+          cv.ok=Math.max(0,cv.ok-1);cv.failed++;
+          cv.errors.push(`${short(j.target.address)}: Entry-Exact-Check fehlgeschlagen (${lastErr.message||lastErr})`);
+        }
+        historyByWallet.get(j.wallet)?.delete(j.target.address);
+        log(`Team-Lifecycle ${short(j.wallet)} → Entry ${short(j.target.address)}: Exact-Check NICHT geladen (${lastErr.message||lastErr}).`,'warn');
+        continue;
+      }
+      let page=res?.result||{},trs=[],complete=true,pageNo=1;
+      while(true){
+        trs.push(...(page?.transfers||[]));
+        const pageKey=page?.pageKey||null;if(!pageKey)break;
+        if(++pageNo>1000){complete=false;break}
+        try{
+          page=await alchemy('alchemy_getAssetTransfers',[{fromBlock:'0x0',toBlock:'latest',fromAddress:j.wallet,toAddress:j.target.address,category:['external'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8',pageKey}]);
+        }catch{complete=false;break}
+      }
+      if(!complete){
+        const cv=coverage.get(j.wallet);if(cv){cv.ok=Math.max(0,cv.ok-1);cv.failed++;cv.errors.push(`${short(j.target.address)}: Entry-Exact-Pagination unvollständig`);}
+        historyByWallet.get(j.wallet)?.delete(j.target.address);
+        continue;
+      }
+      const prior=historyByWallet.get(j.wallet)?.get(j.target.address);
+      if(prior?.ok===true && coverage.get(j.wallet)?.ok>0)coverage.get(j.wallet).ok--;
+      historyByWallet.get(j.wallet).set(j.target.address,{ok:true,transfers:trs,checkedAt:new Date().toISOString(),source:'targeted_exact'});
+      coverage.get(j.wallet).ok++;
+      if(trs.length){
+        exactEntryRecovered++;
+        for(const tr of trs)raw.push({...tr,_staking:j.target.staking,_teamWallet:j.wallet});
+      }
+    }
+    if(i+10<exactEntryJobs.length)await new Promise(r=>setTimeout(r,250));
+  }
+  if(exactEntryChecks)log(`Team-Lifecycle Entry-Safety: ${exactEntryChecks} gezielte Controller-Check(s) in ${exactEntryBatches} Batch(es) · ${exactEntryRecovered} Wallet(s) mit zuvor fehlender Entry-Historie wiederhergestellt.`,'ok');
+
   for(const wallet of ws)await teamSaveContractHistoryCache(wallet,historyByWallet.get(wallet));
   const byHash=new Map();for(const t of raw){const h=norm(t.hash||'');if(h&&!byHash.has(h))byHash.set(h,t)}
   const rows=[...byHash.values()],hashes=rows.map(x=>x.hash),txResults=[];
