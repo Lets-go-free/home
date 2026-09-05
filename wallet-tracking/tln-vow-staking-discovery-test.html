@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 19:29:04 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 05.09.2026 19:44:19 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -148,6 +148,11 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
   <div class="muted" style="margin:5px 0 8px">Löscht ausschließlich walletbezogene Einträge in <code>tln_vow_staking_scan_cache</code> für das aktuell ausgewählte Wallet auf BSC – einschließlich der persistenten Discovery-Endergebnisse Steps 1–5. Globale LP-/Tx-Fakten und contractweite Strict-Duration-Proofs bleiben erhalten.</div>
   <button id="clearWalletSupabaseCache" type="button" disabled>Supabase-Cache dieses Wallets löschen</button>
   <span id="clearWalletSupabaseCacheState" class="muted" style="margin-left:8px"></span>
+  <div style="margin-top:8px">
+    <button id="clearTeamColdRunCache" type="button" disabled>DEV: Team-Cache vollständig löschen</button>
+    <span id="clearTeamColdRunCacheState" class="muted" style="margin-left:8px"></span>
+    <div class="muted" style="margin-top:5px">Cold-Run-Test für Step 6: löscht den persistenten SmartNode-Globalgraph samt State sowie alle Team-Lifecycle- und Team-Contract-History-Caches dieses Benutzers. Steps 1–5, normale Wallet-Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und der TLN-ID-/Wallet-Identity-Cache bleiben erhalten.</div>
+  </div>
   <div style="margin-top:8px">
     <button id="forceDiscoveryFreshnessCheck" type="button" disabled>24h-Check jetzt testen</button>
     <span id="forceDiscoveryFreshnessCheckState" class="muted" style="margin-left:8px"></span>
@@ -286,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260905-192904';
+const BUILD_ID='20260905-194419';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -4858,6 +4863,46 @@ async function clearSelectedWalletSupabaseCache(){
  }finally{
    btn.disabled=false;
  }
+}
+
+async function clearTeamColdRunCache(){
+ const btn=$('clearTeamColdRunCache'),state=$('clearTeamColdRunCacheState');
+ if(!currentUserId){state.textContent='Nicht eingeloggt.';return}
+ const ok=confirm(`Team-Cache für einen echten Step-6-Cold-Run vollständig löschen?\n\nGelöscht werden:\n• SmartNode-Globalgraph + Graph-State (BSC)\n• Team-Lifecycle-Caches dieses Benutzers\n• Team-Contract-History-Caches dieses Benutzers\n\nSteps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und TLN-ID-/Wallet-Identity-Cache bleiben erhalten.\n\nDer nächste Step-6-Lauf baut den Team-Graphen und alle fehlenden Team-Lifecycles neu auf.`);
+ if(!ok)return;
+ btn.disabled=true;state.textContent='lösche …';
+ try{
+   let graphEdges=0,graphStates=0,teamRows=0;
+   const contract=norm(TEAM_SMARTNODE_CONTRACT);
+   const {data:edgeRows,error:edgeError}=await sb.from(TEAM_GRAPH_CACHE_TABLE)
+     .delete().eq('chain_key','bsc').eq('contract_address',contract).select('child_wallet');
+   if(edgeError)throw new Error(`SmartNode-Globalgraph: ${edgeError.message||edgeError}`);
+   graphEdges=Array.isArray(edgeRows)?edgeRows.length:0;
+   const {data:stateRows,error:stateError}=await sb.from(TEAM_GRAPH_STATE_TABLE)
+     .delete().eq('chain_key','bsc').eq('contract_address',contract).select('contract_address');
+   if(stateError)throw new Error(`SmartNode-Graph-State: ${stateError.message||stateError}`);
+   graphStates=Array.isArray(stateRows)?stateRows.length:0;
+   const {data:cacheRows,error:cacheError}=await sb.from(STAKING_SCAN_CACHE_TABLE)
+     .delete().eq('user_id',currentUserId).eq('chain_key','bsc')
+     .in('cache_key',[TECH_CACHE_KEYS.teamLifecycle,TECH_CACHE_KEYS.teamContractHistory])
+     .select('wallet_address,cache_key');
+   if(cacheError)throw new Error(`Team-Lifecycle/History: ${cacheError.message||cacheError}`);
+   teamRows=Array.isArray(cacheRows)?cacheRows.length:0;
+
+   TEAM_STAKING_LIFECYCLE.clear();
+   CURRENT_TEAM_PROJECT_FOREST=null;
+   TEAM_IDENTITY_CACHE.clear(); // nur Session-Memoization; persistenter Identity-Cache bleibt bestehen
+   TEAM_GRAPH_DB_AVAILABLE=true;
+   if($('teamTree'))$('teamTree').innerHTML='<span class="muted">Team-Cache gelöscht. Step 6 für Cold Run starten.</span>';
+   if($('teamHighlightControls'))$('teamHighlightControls').style.display='none';
+   if($('teamExpirySection'))$('teamExpirySection').style.display='none';
+   setStepState(6,'Cold Run bereit');updateProcessButtons();
+   state.textContent=`${graphEdges} Graph-Kanten · ${graphStates} State · ${teamRows} Team-Cache-Einträge gelöscht.`;
+   log(`DEV Team-Cold-Run vorbereitet: ${graphEdges} SmartNode-Graph-Kante(n) + ${graphStates} Graph-State-Eintrag(e) global gelöscht · ${teamRows} Team-Lifecycle/Contract-History-Eintrag(e) dieses Benutzers gelöscht. Steps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und persistenter Identity-Cache blieben erhalten.`,'ok');
+ }catch(e){
+   state.textContent='Fehler beim Löschen.';
+   log(`DEV Team-Cold-Run Cache-Löschung fehlgeschlagen: ${e?.message||e}`,'warn');
+ }finally{btn.disabled=false}
 }
 
 function durationCacheKeyForLot(lot){
@@ -9725,6 +9770,7 @@ function updateProcessButtons(){
     }
   });
   if($('clearWalletSupabaseCache'))$('clearWalletSupabaseCache').disabled=!(currentUserId&&ethers.isAddress($('wallet')?.value||''));
+  if($('clearTeamColdRunCache'))$('clearTeamColdRunCache').disabled=!currentUserId;
 }
 function renderProcessLotCards(){
   const lots=DISCOVERY_PROCESS.lots||[];
@@ -12864,6 +12910,7 @@ $('stepTeam').onclick=processTeamTree;
 $('stepValuation').onclick=processValuation;
 $('snapshotYear').addEventListener('change',selectSnapshotYearFromCache);
 $('clearWalletSupabaseCache').onclick=clearSelectedWalletSupabaseCache;
+$('clearTeamColdRunCache').onclick=clearTeamColdRunCache;
 $('forceDiscoveryFreshnessCheck').onclick=forceCurrentDiscoveryFreshnessCheck;
 $('testDiscoveryLongGap').onclick=testCurrentDiscoveryLongGap;
 $('exportDiagnosisLog').onclick=exportDiagnosisLogTxt;
