@@ -131,9 +131,11 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .lookup-stakings{margin-top:10px;padding-top:10px;border-top:1px solid #2b3b50}
 .lookup-stakings .team-stake-item{padding:9px 0}
 
+.project-user-view{margin:22px 0}.project-user-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}.project-user-tab{background:#222936;color:#cbd5e1;border:1px solid #394354}.project-user-tab.active{background:#6488f7;color:#07101f;border-color:#6488f7}.project-user-panel{display:none}.project-user-panel.active{display:block}.project-user-intro{margin-bottom:12px}.project-placeholder{padding:22px;border:1px dashed #465268;border-radius:12px;background:#111722;color:#9aa3b3}.project-overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.project-overview-card{padding:12px;border:1px solid #334155;border-radius:10px;background:#111722}.project-overview-card .k{display:block;color:#9ba7b7;font-size:12px;margin-bottom:4px}.project-overview-card .v{font-size:1.25rem;font-weight:800}.project-mount>.card,.project-mount>details.card{margin-top:0}
+
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 14:55:14 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 17:43:01 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -206,6 +208,30 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
  <div class="metric">Staking-Lots gesamt<b id="mLots">–</b></div>
  <div class="metric">davon beendet<b id="mClosed">–</b></div>
 </div></div>
+
+<div class="project-user-view" id="projectUserView">
+  <div class="card">
+    <h2 style="margin-bottom:6px">TLN/VOW · Projektansicht</h2>
+    <div class="muted project-user-intro">Fachliche Zielstruktur für die spätere Integration in WalletTracking. Die technischen Steps 1–7 bleiben davon getrennte Entwicklungs-/Diagnoselogik.</div>
+    <div class="project-user-tabs" id="projectUserTabs">
+      <button type="button" class="project-user-tab active" data-project-panel="overview">Übersicht</button>
+      <button type="button" class="project-user-tab" data-project-panel="stakings">Stakings</button>
+      <button type="button" class="project-user-tab" data-project-panel="rewards">Rewards</button>
+      <button type="button" class="project-user-tab" data-project-panel="referral">Referral</button>
+      <button type="button" class="project-user-tab" data-project-panel="bonus">Bonus-Rewards</button>
+      <button type="button" class="project-user-tab" data-project-panel="team">Team</button>
+      <button type="button" class="project-user-tab" data-project-panel="prices">Kurse und Pools</button>
+    </div>
+    <div id="projectPanel-overview" class="project-user-panel active"><div id="projectOverviewContent"><div class="muted">Noch keine Discovery-Daten geladen.</div></div></div>
+    <div id="projectPanel-stakings" class="project-user-panel"><div id="projectStakingsMount" class="project-mount"></div></div>
+    <div id="projectPanel-rewards" class="project-user-panel"><div class="card"><h2>🏆 Staking-Rewards</h2><p class="muted">Ausschließlich Rewards, die einer eigenen Staking-Position eindeutig zugeordnet sind. Referral- und Bonus-Rewards werden hier nicht angezeigt. Ein finaler automatischer Rest-Reward in einer exakt verifizierten Unstake-Tx wird als solcher der Position zugeordnet.</p><div id="rewardClaiming"><div class="muted">Wird in Schritt 4 berechnet.</div></div></div></div>
+    <div id="projectPanel-referral" class="project-user-panel"><div id="projectReferralMount" class="project-mount"></div></div>
+    <div id="projectPanel-bonus" class="project-user-panel"><div id="projectBonusMount" class="project-mount"></div></div>
+    <div id="projectPanel-team" class="project-user-panel"><div id="projectTeamMount" class="project-mount"></div></div>
+    <div id="projectPanel-prices" class="project-user-panel"><div class="project-placeholder"><b>Kurse und Pools</b><br>Dieser Tab bleibt in der Discovery-Seite bewusst leer. Bei der Hauptseitenintegration wird die bestehende TLN/VOW-Kurs-/Poolansicht aus <code>index.html</code> 1:1 beibehalten.</div></div>
+  </div>
+</div>
+
 <div class="card" id="tlnWalletLookupCard">
   <h2>TLN-ID / Wallet-Suche</h2>
   <p class="muted">Direkte Suche außerhalb des Team-Baums. Wallet ↔ TLN-ID wird über einen gemeinsamen Registry-Resolver aufgelöst. Zuerst wird der persistente Identitätscache verwendet; danach werden die verifizierten <code>nodeIdOf(address)</code>/<code>nodeUserOf(uint256)</code>-Getter des zugehörigen SmartNode-/Registry-Contracts geprüft. Für neue Registry-Generationen kann Wallet → TLN-ID gezielt aus der Wallet-Historie entdeckt und danach persistent wiederverwendet werden.</p>
@@ -249,14 +275,14 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 -->
 
 
-<div class="card"><h2>🟢 Laufende Stakings</h2>
+<div class="card" id="runningStakingsCard"><h2>🟢 Laufende Stakings</h2>
 <p class="muted">Aktuell noch offene Staking-Positionen. Der historische Endwert wird zum vertraglichen Freigabe-/Ablaufzeitpunkt bewertet – nicht erst bei einem späteren Unstake.</p>
 <div id="runningStakings"><div class="muted">Noch keine Daten.</div></div></div>
 
 <div class="card"><h2>📅 Stichtagsbewertung per 31.12.</h2>
 <p class="muted">Testbereich für die spätere „Bestandesaufnahme per 31.12.“ in WalletTracking. Angezeigt wird der am gewählten Stichtag tatsächlich noch gebundene Staking-Bestand. Aufstockungen werden der bestehenden Position zugerechnet und gelten nur innerhalb deren gemeinsamer Laufzeit; nach dem gemeinsamen Vertragsende gilt kein Teil der Position mehr als offenes Staking.</p>
 <div id="snapshotValuation"><div class="muted">Wird in Schritt 6 berechnet.</div></div></div>
-<div class="card"><h2>⏳ Staking-Laufzeiten / Ausläufe</h2>
+<div class="card" id="valuationLifecycleCard"><h2>⏳ Staking-Laufzeiten / Ausläufe</h2>
 <p class="muted">Abschlusskontrolle für Step 6: zeigt alle rekonstruierten Positionen mit verifiziertem Vertragsende. Die Filter arbeiten rein auf den bereits geladenen Lifecycle-Daten und verursachen keine zusätzlichen RPC-Reads.</p>
 <div class="lookup-row" style="margin-bottom:10px">
   <label>Status<br><select id="valuationExpiryStatus" style="min-width:210px"><option value="all">Alle Positionen</option><option value="active">Aktiv / noch nicht abgelaufen</option><option value="expired_open">Abgelaufen, noch nicht unstaked</option><option value="closed">Beendet / unstaked</option></select></label>
@@ -265,11 +291,11 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div id="valuationLifecycleOverview"><div class="muted">Wird nach der Lockdauer-/Bewertungsanalyse aufgebaut.</div></div>
 </div>
 
-<div class="card"><h2>✅ Abgeschlossene Stakings</h2>
+<div class="card" id="completedStakingsCard"><h2>✅ Abgeschlossene Stakings</h2>
 <p class="muted">Historische Stakings, die vollständig beendet / unstaked wurden. Ein echter Vertragsendwert wird nur gezeigt, wenn der Zeitpunkt aus dem SC belastbar ableitbar ist. Historische Unstake-Simulationen werden ausdrücklich als Simulation bezeichnet; der tatsächliche Unstake-Wert wird zusätzlich ausgewiesen.</p>
 <div id="completedStakings"><div class="muted">Noch keine Daten.</div></div></div>
 
-<details class="card collapsible-card"><summary>🤝 Rewards aus Referrals</summary><div class="collapsible-body">
+<details class="card collapsible-card" id="referralRewardsCard"><summary>🤝 Referral-Rewards</summary><div class="collapsible-body">
 <p class="muted">On-chain belegte Reward-Claims ohne Zuordnung zu einer eigenen Staking-Position. Die Seite sucht nach Referral-/Partner-Evidenz im Claim-Call und kennzeichnet die Stärke der Zuordnung. Ein fehlender eigener Staking-Bezug allein gilt nicht als harter Referral-Beweis.</p>
 <div id="referralRewards"><div class="muted">Noch keine Daten.</div></div></div></details>
 
@@ -296,7 +322,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
   </div>
 </div>
 
-<details class="card collapsible-card"><summary>🎁 Bonus-Rewards</summary><div class="collapsible-body">
+<details class="card collapsible-card" id="bonusRewardsCard"><summary>🎁 Bonus-Rewards</summary><div class="collapsible-body">
 <p class="muted">On-chain belegte Bonus-Auszahlungen mit expliziter Bonus-Claim-Methode. Aktuell ist <code>claimBonus(address)</code> (Selector <code>0x0e99f5e6</code>) verifiziert. Diese Rewards werden bewusst getrennt von normalen Staking-Rewards und Referral-Rewards geführt; der konkrete Bonus-Untertyp bzw. seine Berechnung wird nicht geraten.</p>
 <div id="bonusRewards"><div class="muted">Noch keine Daten.</div></div></div></details>
 
@@ -309,7 +335,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-145514';
+const BUILD_ID='20260906-174301';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -10076,6 +10102,56 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
 }
 
 
+function switchProjectUserTab(name){
+  const key=String(name||'overview');
+  document.querySelectorAll('.project-user-tab').forEach(btn=>btn.classList.toggle('active',btn.dataset.projectPanel===key));
+  document.querySelectorAll('.project-user-panel').forEach(panel=>panel.classList.toggle('active',panel.id===`projectPanel-${key}`));
+  if(key==='overview')renderProjectOverview();
+}
+function setupProjectUserTabs(){
+  document.querySelectorAll('.project-user-tab').forEach(btn=>btn.addEventListener('click',()=>switchProjectUserTab(btn.dataset.projectPanel)));
+  const move=(id,mountId)=>{const el=$(id),mount=$(mountId);if(el&&mount&&!mount.contains(el))mount.appendChild(el)};
+  move('runningStakingsCard','projectStakingsMount');
+  move('valuationLifecycleCard','projectStakingsMount');
+  move('completedStakingsCard','projectStakingsMount');
+  move('referralRewardsCard','projectReferralMount');
+  move('bonusRewardsCard','projectBonusMount');
+  move('teamTreeCard','projectTeamMount');
+  renderProjectOverview();
+}
+function projectRewardTotal(lots){
+  return collectAllWalletRewardRows(lots||[]).reduce((n,x)=>n+Number(x?.claim?.amount||0),0);
+}
+function projectReferralTotal(){
+  const ref=CURRENT_CLAIM_REFERENCE_RESULT;
+  if(!ref||ref.error)return 0;
+  try{return [...((ref.tokenTotals||new Map()).values())].reduce((n,x)=>n+Number(x?.total||0),0)}catch{return 0}
+}
+function projectBonusTotal(lots){
+  return collectBonusRewardRows(lots||[]).reduce((n,x)=>n+Number(x?.claim?.amount||0),0);
+}
+function renderProjectOverview(){
+  const el=$('projectOverviewContent');if(!el)return;
+  const lots=DISCOVERY_PROCESS?.lots||[];
+  const active=lots.filter(l=>l.status!=='closed');
+  const closed=lots.filter(l=>l.status==='closed');
+  const nextExpiry=active.map(l=>l.expiryTime).filter(Boolean).map(x=>new Date(x)).filter(d=>Number.isFinite(d.getTime())&&d.getTime()>Date.now()).sort((a,b)=>a-b)[0]||null;
+  const lpOpen=active.reduce((n,l)=>n+Number(l.remaining||0),0);
+  const stakingRewards=projectRewardTotal(lots), referralRewards=projectReferralTotal(), bonusRewards=projectBonusTotal(lots);
+  const teamNodes=document.querySelectorAll('#teamTree .team-node').length;
+  const checked=DISCOVERY_PROCESS?.done?.base?'geladen':'noch nicht geladen';
+  el.innerHTML=`<div class="project-overview-grid">
+    <div class="project-overview-card"><span class="k">Staking-Positionen</span><span class="v">${lots.length}</span><div class="muted">${active.length} offen · ${closed.length} beendet</div></div>
+    <div class="project-overview-card"><span class="k">Offener Staking-Einsatz</span><span class="v">${lpOpen.toLocaleString('de-CH',{maximumFractionDigits:12})}</span><div class="muted">LP/LPT gemäß erkannten Positionen</div></div>
+    <div class="project-overview-card"><span class="k">Nächstes Vertragsende</span><span class="v" style="font-size:1rem">${nextExpiry?nextExpiry.toLocaleString('de-CH'):'–'}</span></div>
+    <div class="project-overview-card"><span class="k">Staking-Rewards</span><span class="v">${stakingRewards.toLocaleString('de-CH',{maximumFractionDigits:8})}</span><div class="muted">tokenübergreifende Menge · Detail im Reward-Tab</div></div>
+    <div class="project-overview-card"><span class="k">Referral-Rewards</span><span class="v">${referralRewards.toLocaleString('de-CH',{maximumFractionDigits:8})}</span><div class="muted">tokenübergreifende Menge · Detail im Referral-Tab</div></div>
+    <div class="project-overview-card"><span class="k">Bonus-Rewards</span><span class="v">${bonusRewards.toLocaleString('de-CH',{maximumFractionDigits:8})}</span><div class="muted">tokenübergreifende Menge · Detail im Bonus-Tab</div></div>
+    <div class="project-overview-card"><span class="k">Team-Partner sichtbar</span><span class="v">${teamNodes||'–'}</span><div class="muted">Team bleibt on-demand über Step 7</div></div>
+    <div class="project-overview-card"><span class="k">Discovery-Datenstand</span><span class="v" style="font-size:1rem">${checked}</span><div class="muted">Build ${esc(BUILD_ID)}</div></div>
+  </div>`;
+}
+
 const DISCOVERY_PROCESS={
   wallet:'',transfers:[],counts:new Map(),pairs:[],pairMap:new Map(),rows:[],stakingRows:[],entryTargets:[],stakingContractCalls:[],contractCalls:[],contractEvents:[],lots:[],unmatched:[],pricePairs:[],
   done:{base:false,staking:false,duration:false,rewards:false,referral:false,valuation:false}
@@ -10119,6 +10195,7 @@ function renderProcessLotCards(){
   $('runningStakings').innerHTML=running.length?running.map(l=>positionCardHtml(l,indexOfLot(l),false)).join(''):'<div class="empty-note">Keine laufenden Stakings gefunden.</div>';
   $('completedStakings').innerHTML=completed.length?completed.map(l=>positionCardHtml(l,indexOfLot(l),true)).join(''):'<div class="empty-note">Keine abgeschlossenen Stakings gefunden.</div>';
   bindLotDetailEvents();
+  renderProjectOverview();
 }
 function renderProcessChecks(){
   const stakingRows=DISCOVERY_PROCESS.stakingRows||[],lots=DISCOVERY_PROCESS.lots||[],unmatched=DISCOVERY_PROCESS.unmatched||[];
@@ -11063,7 +11140,7 @@ async function processStakingRewards(){
       const bonusTxCount=new Set(bonusRows.map(x=>String(x?.claim?.hash||'').toLowerCase()).filter(Boolean)).size;
       log(`Bonus-Rewards: ${bonusCount} belegte Reward-Zeile(n) aus ${bonusTxCount} expliziter claimBonus-Tx · exklusiv aus normalen Staking-/Referral-Rewards getrennt.`,'ok');
     }
-    DISCOVERY_PROCESS.done.rewards=true;DISCOVERY_PROCESS.done.referral=false;setStepState(4,`${stakingRewardCount} Staking · ${bonusCount} Bonus`,'done');setStepState(5,'bereit');$('status').innerHTML='<span class="ok">Staking-Rewards abgeschlossen. Referral wurde NICHT automatisch gestartet.</span>';log(`Schritt 4 abgeschlossen: ${stakingRewardCount} Staking-Reward-Zeilen · ${bonusCount} Bonus-Reward-Zeilen.`,'ok');await saveDiscoveryResultSnapshot(4)}
+    DISCOVERY_PROCESS.done.rewards=true;DISCOVERY_PROCESS.done.referral=false;setStepState(4,`${stakingRewardCount} Staking · ${bonusCount} Bonus`,'done');setStepState(5,'bereit');$('status').innerHTML='<span class="ok">Staking-Rewards abgeschlossen. Referral wurde NICHT automatisch gestartet.</span>';log(`Schritt 4 abgeschlossen: ${stakingRewardCount} Staking-Reward-Zeilen · ${bonusCount} Bonus-Reward-Zeilen.`,'ok');renderProjectOverview();await saveDiscoveryResultSnapshot(4)}
   catch(e){setStepState(4,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
 
@@ -13941,7 +14018,7 @@ async function prepareTeamTree(){
 
 async function processReferralRewards(){
   const b=$('stepReferral');b.disabled=true;setStepState(5,'läuft …','running');$('status').textContent='Schritt 5/7: Claim-/Referral-Referenzengine …';
-  try{if(!DISCOVERY_PROCESS.done.rewards)throw new Error('Zuerst Schritt 4 ausführen.');CURRENT_CLAIM_REFERENCE_RESULT=null;CLAIM_REFERENCE_RUN_CACHE.clear();try{CLAIM_TRACE_REFERENCE_ENGINE.clearHeadlessCaches()}catch{}primeClaimReferenceFromDiscoveryCaches();const step5Started=performance.now();const ref=await runClaimReferenceForCurrentWallet();if(ref?.walletIdentity){for(const lot of DISCOVERY_PROCESS.lots){lot.tlnIdentity=ref.walletIdentity;lot.tlnId=ref.walletIdentity.nodeId||null}}renderReferralRewards(DISCOVERY_PROCESS.lots);renderBonusRewards(DISCOVERY_PROCESS.lots);renderUnassignedClaims(DISCOVERY_PROCESS.lots);renderProcessLotCards();DISCOVERY_PROCESS.done.referral=true;setStepState(5,`${ref?.strong?.length||0} starke Referral-Tx`,'done');$('status').innerHTML='<span class="ok">Referral-Analyse abgeschlossen.</span>';log(`Schritt 5 abgeschlossen: ${ref?.strong?.length||0} starke Referral-Tx · ${Math.round(performance.now()-step5Started)} ms.`,'ok');await saveDiscoveryResultSnapshot(5)}
+  try{if(!DISCOVERY_PROCESS.done.rewards)throw new Error('Zuerst Schritt 4 ausführen.');CURRENT_CLAIM_REFERENCE_RESULT=null;CLAIM_REFERENCE_RUN_CACHE.clear();try{CLAIM_TRACE_REFERENCE_ENGINE.clearHeadlessCaches()}catch{}primeClaimReferenceFromDiscoveryCaches();const step5Started=performance.now();const ref=await runClaimReferenceForCurrentWallet();if(ref?.walletIdentity){for(const lot of DISCOVERY_PROCESS.lots){lot.tlnIdentity=ref.walletIdentity;lot.tlnId=ref.walletIdentity.nodeId||null}}renderReferralRewards(DISCOVERY_PROCESS.lots);renderBonusRewards(DISCOVERY_PROCESS.lots);renderUnassignedClaims(DISCOVERY_PROCESS.lots);renderProcessLotCards();DISCOVERY_PROCESS.done.referral=true;setStepState(5,`${ref?.strong?.length||0} starke Referral-Tx`,'done');$('status').innerHTML='<span class="ok">Referral-Analyse abgeschlossen.</span>';log(`Schritt 5 abgeschlossen: ${ref?.strong?.length||0} starke Referral-Tx · ${Math.round(performance.now()-step5Started)} ms.`,'ok');renderProjectOverview();await saveDiscoveryResultSnapshot(5)}
   catch(e){setStepState(5,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
 function teamRegressionSummary(forest){
@@ -14007,7 +14084,7 @@ async function processTeamTree(){
     DISCOVERY_PROCESS.done.team=true;
     const roots=CURRENT_TEAM_PROJECT_FOREST.roots||[];
     setStepState(7,`${roots.length} Baum-Root(s)`,'done');
-    $('status').innerHTML='<span class="ok">Team-Baum abgeschlossen.</span>';
+    $('status').innerHTML='<span class="ok">Team-Baum abgeschlossen.</span>';renderProjectOverview();
     log(`Schritt 7 abgeschlossen: ${roots.length} eigenständige Team-Baum-Root(s) · ${Math.round(performance.now()-started)} ms.`,'ok');
   }catch(e){
     DISCOVERY_PROCESS.done.team=false;
@@ -14462,6 +14539,7 @@ tlnWallets=(wq.data||[])
   .sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'de'));
 populateTlnWalletDropdown();
 bindWalletDropdown();
+setupProjectUserTabs();
 $('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;bindStep6LifecycleControls();resetDiscoveryProcess($('wallet').value);setStepState(1,'bereit');setStepState(7,'bereit');updateProcessButtons();log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok');if(ethers.isAddress($('wallet').value))await restoreDiscoveryResultSnapshot($('wallet').value)}
 $('refresh').onclick=processBaseData;
 $('stepStaking').onclick=processStakingDiscovery;

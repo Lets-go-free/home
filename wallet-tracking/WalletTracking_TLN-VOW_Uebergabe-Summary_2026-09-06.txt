@@ -1,0 +1,491 @@
+WalletTracking / TLN-VOW – Übergabe-Summary für neuen Chat Stand:
+06.09.2026
+
+============================================================ 1. AKTUELLE
+DISCOVERY-DATEI / STRIKTE DATEIREGELN
+============================================================
+
+Kanonischer Dateiname: tln-vow-staking-discovery-test.html
+
+Letzter verifizierter Build: 20260906-145514
+
+Strikte Entwicklungsregeln: - Datei niemals umbenennen. Keine Suffixe
+wie -fixed, -v2, -next usw. - Bei jeder Änderung sichtbaren Timestamp
+auf die tatsächliche aktuelle Europe/Zurich-Zeit setzen. - BUILD_ID
+entsprechend aktualisieren. - Nach jeder Änderung alle
+Inline-JavaScript-Blöcke mit node –check prüfen. - Keine langen
+Entwicklungs-/Changelog-Texte im sichtbaren UI. - Bestehende
+verifizierte Logik nicht unnötig neu schreiben. - Performance sowohl
+Cold als auch Hot berücksichtigen. - Persistentes Caching primär über
+Supabase. - Verifizierte globale/shared Chain-Fakten nicht unnötig
+löschen.
+
+============================================================ 2.
+AKTUELLER STATUS DER DISCOVERY-STEPS
+============================================================
+
+Step 1 – ERC-20 / Chain Cache - Persistent und inkrementell. - Supabase
+Staking-Chain-Cache. - Overlap-Scan. - Vorhandene Chain-Fakten werden
+wiederverwendet. - Cold-/Hot-Performance bereits optimiert.
+
+Step 2 – Staking-/LP-Discovery - Staking-Positionen und LPs werden
+erkannt. - Legacy-Top-ups werden korrekt zusammengeführt. - Neue
+parallele Stakings werden getrennt behandelt. - Historische
+Staking-Assets werden berücksichtigt. - Unbekannte
+Staking-Contracts/Assets mit starker Evidenz können als Kandidaten mit
+Status „zu_pruefen“ persistent vorgemerkt werden. - Keine automatische
+Promotion in die verifizierte Registry.
+
+Step 3 – Laufzeit / Vertragsende - Historische
+Contract-State-/Bytecode-Logik integriert. - Vertragsenden werden
+positionsbezogen ermittelt. - Legacy-Top-up-Neuberechnung
+berücksichtigt.
+
+Step 4 – Staking-Rewards + Bonus Status: PASS / fachlich abgeschlossen.
+
+Letzter Abschlusscheck beim Wallet
+0x98fb491d31c4f122004f7bed50237e5ca1d56f7d:
+
+65/65 normale belegte Reward-Transfers zugeordnet 0 Primär-Rewards
+fehlen 0 Claims ohne klare Zuordnung PASS
+
+Zusätzlich: - 65 Staking-Reward-Zeilen - 1 Bonus-Reward-Zeile -
+Bonus-Rewards strikt von normalen Staking-Rewards getrennt. - Referral
+bleibt ebenfalls getrennt.
+
+Wichtiger final gelöster Sonderfall: Tx:
+0x8f88be4735d038628db549a78470e460f8d78b8d931d2285c0fe520b561c9900
+
+Reward: ca. 294.548805292718 TLN
+
+Regel: Wenn eine Tx exakt die bereits verifizierte unstakeTx einer
+Position ist und im selben Receipt ein belegter Reward-Mint von der Zero
+Address direkt ans Wallet erfolgt, darf dieser Mint als automatischer
+finaler Rest-Staking-Reward derselben Position gezählt werden.
+
+Wichtig: - Ein Lifecycle-Flow darf für die Reward-Zuordnung nur in
+diesem streng verifizierten Unstake-Sonderfall zugelassen werden. -
+Normale Stake-/Top-up-/Lifecycle-Tx bleiben ausgeschlossen. - Normale
+Principal-/Underlying-Rückflüsse bleiben ausgeschlossen. - Auch wenn
+Reward-Token und LP-Underlying zusammenfallen, ist der belegte Zero-Mint
+in der exakten verifizierten unstakeTx als finaler Reward zulässig. -
+Diese Regel später zwingend in die Hauptseite übernehmen. - Alte
+Reward-Caches müssen bei Einführung dieser Logik über
+Cache-Versionierung gezielt neu aufgebaut werden können.
+
+Bonus-Rewards: - Eigene Kategorie. - claimBonus(address) / claimBonus()
+werden separat behandelt. - Die zwei getesteten Wallets besitzen jeweils
+genau eine Bonuszahlung.
+
+Step 5 – Referral-Rewards - Separat von Staking- und Bonus-Rewards. -
+Team-Mitgliedschaft darf niemals aus Referral-Rewards abgeleitet
+werden. - Zentrale TLN-ID-Auflösung integriert. - Referenzlauf u. a.:
+223 Mint-Tx 31 starke Referral-Tx TLN-ID Wallet 7205 -
+Referral-/Upline-Rewards bleiben eigener fachlicher Bereich.
+
+Step 6 – historische Bewertung / Vertragsende / Stichtagsdaten Status:
+PASS.
+
+Ein gezielter DEV-Rebuild für Step 6 wurde eingebaut: „DEV: Step-6 Cache
+neu aufbauen“
+
+Dieser: - baut nur den Step-6-Ergebnisstand neu auf, - lässt Steps 1–5
+erhalten, - lässt technische Chain-/Tx-/LP-/Duration-Caches erhalten.
+
+Letzter echter Rebuild beim Wallet
+0x98fb491d31c4f122004f7bed50237e5ca1d56f7d:
+
+3/3 Positionen mit Vertragsende Lifecycle: 0 aktiv 0 abgelaufen-offen 3
+beendet
+
+31.12.2025: 0/0 offene Positionen historisch bewertet 0 offene V2-LP
+ohne USD-Pfad
+
+PASS
+
+Performance: ca. 5.1 Sekunden 45 HTTP/RPC-Requests 226 logische
+RPC-Reads 74 instrumentierte Cache-Hits
+
+Zusätzlich wurde ein Bereich „Staking-Laufzeiten / Ausläufe“ mit
+Status-/Jahrfilter vorbereitet.
+
+WICHTIGE UI-ENTSCHEIDUNG: Step-6-Stichtagsdaten bekommen KEINEN eigenen
+Tab im Projekt TLN/VOW. Die 31.12.-Daten gehören später ausschließlich
+in den bereits bestehenden Hauptseitenbereich: „Datenbestand per 31.12.“
+
+Step 6 bleibt technisch in der Discovery-Engine erhalten und liefert die
+dafür notwendigen Daten.
+
+Step 7 – Team-Baum Status: PASS / fachlich abgeschlossen.
+
+Letzter Abschlusscheck:
+
+34/34 Identity 34/34 Lifecycle 0 Zyklen 1/1 Roots 33 ohne aktives
+Staking 0 abgelaufen/offen PASS
+
+Team-Architektur: - globaler SmartNode-Graph persistent in Supabase -
+ca. 12’924 verifizierte Child→Parent-Beziehungen - inkrementelle
+Aktualisierung mit Overlap - Lifecycle persistent - Hot Run wenige
+Sekunden - Team wird NICHT aus Referral-Rewards abgeleitet - zentrale
+Wallet↔TLN-ID-Auflösung - neue Registry-Strukturen unterstützt -
+History-Fallback nur gezielt für noch unbekannte Wallets
+
+Zuletzt geschlossene Identity-Lücke: Wallet:
+0xaf69f119688c6273f57ea50da9ccb71fa6cfb90c
+
+TLN-ID: 17797
+
+Registry: 0x028c911c10c9e346158206991e02d09bd0a8a35b
+
+Upline: 0xbe44d90dad6308ae0b762908d70260c62410346e TLN-ID 7205
+
+Identity wurde direkt auf dem Contract der verifizierten
+join(address)-Tx geprüft und per Reverse-Match bestätigt.
+
+Weitere bekannte neue Registry: Wallet:
+0x113349b728f1374b9802eb8c0263cd8ce1899e89
+
+TLN-ID: 990000017795
+
+Registry: 0x5c9ed6921a824e44a8db6ca041e03a59a63cb35c
+
+Verifizierter Lookup: nodeIdOf(address) + Gegenprüfung
+nodeUserOf(uint256)
+
+============================================================ 3. NÄCHSTER
+HAUPTFOKUS: ENDGÜLTIGE TLN/VOW-TABSTRUKTUR
+============================================================
+
+Bevor die Discovery-Engine in die Hauptseite integriert wird, soll die
+Discovery-Seite bereits die spätere fachliche Tabstruktur des
+Hauptseitenbereichs „Projekt TLN/VOW“ bekommen.
+
+Ziel: Tabs, Tabellen, Filter und Inhalte jetzt so strukturieren, dass
+sie später möglichst direkt in wallet-tracking/index.html übernommen
+werden können.
+
+WICHTIG: Die technischen Steps 1–7 bleiben Entwicklungs-/Diagnose- und
+Berechnungslogik. Sie sollen NICHT die späteren Nutzer-Tabs darstellen.
+
+Geplante fachliche Tabs für „Projekt TLN/VOW“:
+
+1.  Übersicht
+2.  Stakings
+3.  Rewards
+4.  Referral
+5.  Bonus-Rewards
+6.  Team
+7.  Kurse und Pools
+
+KEIN projektspezifischer Tab „Historie/Stichtag“.
+
+  -------------------
+  Tab 1 – Übersicht
+  -------------------
+
+Soll eine kompakte fachliche Projektzusammenfassung liefern, z. B.: -
+TLN-/VOW-Bestand - aktive Stakings - gesamter LP-Einsatz - nächstes
+Vertragsende - bisherige Staking-Rewards - Referral-Rewards -
+Bonus-Rewards - Anzahl Team-Partner - ggf. aktuelle USD-Werte - letzter
+Datenstand / letzte On-Chain-Prüfung
+
+Die genaue Darstellung soll im neuen Chat anhand der bestehenden
+Hauptseite und der vorhandenen Discovery-Ausgaben festgelegt werden.
+
+  ------------------
+  Tab 2 – Stakings
+  ------------------
+
+Ergebnisse aus Steps 2 und 3 sowie relevante Lifecycle-Daten.
+
+Je Position z. B.: - Status - Pool / LP - Staking-Contract - erster
+Stake - Aufstockungen - Gesamteinsatz - Vertragsdauer - Vertragsende -
+Unstake - Laufzeit - Stake-/Unstake-Tx
+
+Filter z. B.: Alle | Aktiv | Ausgelaufen | Beendet
+
+Die bereits vorbereitete „Staking-Laufzeiten / Ausläufe“-Darstellung
+soll sinnvoll hier integriert werden, nicht als unnötiger separater
+Projektbereich.
+
+  -----------------
+  Tab 3 – Rewards
+  -----------------
+
+Nur Staking-Rewards.
+
+Z. B.: - Datum - Position / Pool - Token - Menge - Claim-Methode - Tx -
+später ggf. historischer USD-Wert
+
+Finale automatische Unstake-Rest-Rewards gehören hier hinein und sollen
+entsprechend gekennzeichnet werden.
+
+Keine Referral- oder Bonus-Rewards.
+
+  ------------------
+  Tab 4 – Referral
+  ------------------
+
+Nur Referral-/Upline-Rewards aus Step 5.
+
+Z. B.: - Datum - Reward - Token - auslösende TLN-ID / Partner, soweit
+belegbar - LP-/Stake-Bezug, soweit verifiziert - Tx
+
+Wichtig: Team-Mitgliedschaft niemals aus Referral-Rewards ableiten.
+
+  -----------------------
+  Tab 5 – Bonus-Rewards
+  -----------------------
+
+Eigene fachliche Reward-Kategorie.
+
+Z. B.: - Datum - Betrag - Token - claimBonus-Methode - Tx - später ggf.
+historischer USD-Wert
+
+  --------------
+  Tab 6 – Team
+  --------------
+
+Step-7-Ergebnisse.
+
+Z. B.: - Team-Baum - TLN-ID - Wallet - Linie / Upline - Stakingstatus -
+aktive / historische Stakings - Filter - Suche TLN-ID → Wallet - Suche
+Wallet → TLN-ID - Funktion „alle historischen/aktuellen Stakings
+anzeigen“
+
+Team soll auf der späteren Hauptseite weiterhin on-demand geladen bzw.
+aktualisiert werden, wenn der Nutzer den Team-Bereich öffnet.
+
+  -------------------------
+  Tab 7 – Kurse und Pools
+  -------------------------
+
+Dieser Tab fehlte im ersten Strukturvorschlag und ist verbindlich
+aufzunehmen.
+
+Er entspricht funktional dem bisherigen Tab „Übersicht“ im bestehenden
+Projekt-TLN/VOW-Bereich der Hauptseite.
+
+Dorthin gehören insbesondere: - TLN/VOW-Kurse - v-Currency-Kurse -
+LP-/Poolinformationen - Pool-Reserven / Preiswege, soweit bisher
+angezeigt - aktuelle Projektpreise - verwendete On-Chain-Preiswege -
+relevante LP-/Pool-Werte
+
+Beim Umbau zuerst den bestehenden TLN/VOW-Bereich der Hauptseite
+ansehen, damit vorhandene funktionierende
+„Übersicht“-/Kurse-und-Pools-Inhalte nicht verloren gehen.
+
+============================================================ 4. WAS
+DANACH AUF DER DISCOVERY-SEITE NOCH OFFEN IST
+============================================================
+
+A)  Contract-Discovery / „zu_pruefen“-Workflow real testen
+
+Die Logik ist bereits eingebaut: Entdeckt → zu_pruefen
+
+Noch erforderlich: - echter Test mit einem bislang unbekannten
+Staking-Contract - prüfen, dass starke On-Chain-Staking-Evidenz korrekt
+erkannt wird - prüfen, dass Contract/Asset persistent in der Prüfliste
+landet - False Positives verhindern - keine automatische Promotion in
+defi_staking_contracts
+
+Später auf der Hauptseite: Entdeckt → zu prüfen → verifiziert → Registry
+
+mit Admin-Prüfung und einmaliger E-Mail-Benachrichtigung an Chris.
+
+B)  Cache-/Versionsverwaltung
+
+Noch vor finaler Hauptseitenintegration sinnvoll.
+
+Nicht nur eine globale App-Version, sondern komponentenbezogene
+Daten-/Logikversionen.
+
+Beispiele: - ERC20-/Chain-Fakten - Staking-Discovery -
+Duration/Lifecycle - Staking-Rewards - Referral - Bonus - historische
+Bewertung - Team - Identity - Registry - LP-/Preis-Fakten
+
+Anforderung: Ein Nutzer kann mehrere Releases überspringen. Beispiel:
+gespeicherter Reward-Cache v2 aktuelle Zielversion v5
+
+Beim nächsten Einstieg muss automatisch erkannt werden, welche
+Migrationen/Rebuilds bis v5 erforderlich sind.
+
+Nur betroffene Caches neu generieren. Verifizierte globale/shared Fakten
+nicht unnötig löschen. Fehlgeschlagene Migration/Rebuild darf den
+letzten verifizierten Datenstand nicht überschreiben.
+
+C)  Finaler Regressionstest
+
+Nach Tabstruktur + Contract-Discovery-Test + Versionierung:
+
+-   kompletter Cold Run Steps 1–7
+-   kompletter Hot Run
+-   mehrere Referenzwallets
+-   identische fachliche Ergebnisse
+-   keine Duplikate
+-   keine bekannten ungeklärten Claims
+-   kein Prüfblock-Rücksprung
+-   persistente Snapshots prüfen
+-   Cache-Wiederverwendung prüfen
+-   RPC-/Performance prüfen
+
+Danach ist die Discovery-Seite bereit für die Hauptseitenintegration.
+
+============================================================ 5. TODO /
+ARCHITEKTUR FÜR DIE HAUPTSEITE
+============================================================
+
+A)  TLN/VOW-Integration
+
+Der bereits bestehende Hauptseitenbereich „Projekt TLN/VOW“ soll neu
+strukturiert werden.
+
+Ziel-Tabs: Übersicht | Stakings | Rewards | Referral | Bonus-Rewards |
+Team | Kurse und Pools
+
+Die Discovery-Seite soll diese Struktur vorher bereits möglichst final
+abbilden.
+
+B)  Stichtagsdaten
+
+Kein TLN/VOW-Projekttab für Historie/Stichtag.
+
+Step-6-Daten zum 31.12. werden später in den bestehenden
+Hauptseitenbereich „Datenbestand per 31.12.“ integriert.
+
+Dieser Bereich ist projektübergreifend.
+
+C)  Automatisierung Steps 1–5
+
+Auf der Hauptseite sollen Nutzer Steps 1–5 nicht manuell ausführen
+müssen.
+
+Ziel: - verifizierte Endergebnisse persistent in Supabase -
+grundsätzlich höchstens ca. 1x täglich inkrementell prüfen - zuerst
+feststellen, ob seit dem letzten Stand relevante On-Chain-Änderungen
+eingetreten sind - nur betroffene Analysen neu berechnen - ohne
+relevante Änderungen gespeicherte Endergebnisse direkt anzeigen
+
+D)  Team on-demand
+
+Team/Step 7 getrennt behandeln. Beim Öffnen/Klick auf Team: -
+vorhandenen persistenten Graph/Lifecycle laden - inkrementell
+aktualisieren - keine unnötige vollständige Neuberechnung
+
+E)  Zentrale Cache-/Job-Versionierung für DIE GESAMTE HAUPTSEITE
+
+Diese Architektur gilt ausdrücklich nicht nur für TLN/VOW.
+
+Die Hauptseite besitzt viele Jobs, die Daten holen, berechnen und
+cachen. Jeder relevante Job/Cache-Bereich soll eine eigene
+Daten-/Logikversion bekommen.
+
+Zu berücksichtigen u. a.: - Wallet-/Token-Discovery - Balances -
+Preise - Fees - NFTs - Bestandesaufnahme / Datenbestand per 31.12. -
+TLN/VOW Steps 1–7 - DAO1 - Apertum / Mining-Claims - Identity /
+Registry - Chain-/Tx-/LP-Caches
+
+Beim Einstieg: gespeicherte Version je Komponente gegen aktuelle
+Zielversion prüfen.
+
+Versionssprünge über beliebig viele Releases unterstützen.
+
+Nur betroffene Jobs/Caches: - migrieren - invalidieren - neu aufbauen
+
+Globale/shared und weiterhin verifizierte Chain-Fakten wiederverwenden.
+
+Fehler bei Migration/Rebuild: - letzten verifizierten Stand nicht
+überschreiben - kein kaputter neuer Cache darf einen guten alten Stand
+ersetzen
+
+Ziel: zentrale Versions-/Migrationssteuerung statt verstreuter ad-hoc
+Cache-Invalidierungen.
+
+F)  Contract-/Registry-Workflow
+
+Später auf Hauptseite:
+
+Entdeckt → zu prüfen → verifiziert → Registry
+
+Neue unbekannte Staking-Contracts/Assets: - persistent erfassen - Status
+„zu prüfen“ - Chris einmalig per E-Mail informieren - manuell/on-chain
+verifizieren - erst danach in verifizierte Registry überführen
+
+G)  Wallet löschen
+
+Beim Löschen eines Wallets aus „Meine Wallets“: - Bestätigungsdialog
+„Sind Sie sicher?“ - klarer Hinweis, dass alle zu diesem Wallet
+gehörenden Daten gelöscht werden - nach Bestätigung sämtliche
+walletbezogenen Daten vollständig entfernen
+
+Aber: Globale/shared Chain-Fakten nicht löschen, wenn sie nicht exklusiv
+diesem Wallet gehören.
+
+Zu berücksichtigen: - Wallet-Eintrag - walletbezogene Snapshots -
+Ergebnisse - Caches - TLN-ID-/Wallet-Mappings soweit walletbezogen -
+weitere walletbezogene Projektdaten
+
+H)  Verifizierte Reward-Regeln übernehmen
+
+Insbesondere: - Staking / Referral / Bonus strikt getrennt - finaler
+automatischer Rest-Reward beim verifizierten Unstake -
+Diagnose-/Persistenzlogik muss dieselbe Zuordnungsregel verwenden - alte
+fehlerhafte Reward-Ergebnisse über Cache-Versionierung gezielt neu
+aufbauen
+
+============================================================ 6. WICHTIGE
+FACHREGELN ============================================================
+
+-   Ohne aktives Staking erhält ein Wallet keine Referral-Rewards.
+-   Trotzdem darf Team-Discovery niemals aus Referral-Rewards abgeleitet
+    oder darauf begrenzt werden.
+-   Neue Partner können existieren, ohne jemals in der
+    Referral-Rewards-Liste aufzutauchen.
+-   TLN-ID repräsentiert den Partner; das zugehörige Wallet kann sich
+    ändern.
+-   Neue Registry-Strukturen müssen unterstützt werden.
+-   Keine TLN-ID erfinden: nur on-chain verifizierte Zuordnungen
+    speichern.
+-   Unbekannte Staking-Contracts dürfen bei starker Evidenz als
+    „zu_pruefen“ vorgemerkt werden, aber niemals automatisch dauerhaft
+    als verifiziert gelten.
+-   Bonus-Rewards sind eine eigene Reward-Kategorie.
+-   Performance muss sowohl beim ersten Cold Run als auch bei
+    Hot-/Folgeläufen gut sein.
+-   Bereits geladene Tx/Receipts, Chain-Fakten und allgemeine Caches
+    maximal wiederverwenden.
+
+============================================================ 7.
+STARTAUFTRAG FÜR DEN NEUEN CHAT
+============================================================
+
+Mit der neuesten tln-vow-staking-discovery-test.html weiterarbeiten.
+
+Steps 4, 6 und 7 sind mit Abschlusscheck PASS.
+
+Nächste Priorität: Die Discovery-Seite soll die endgültige fachliche
+Tabstruktur des späteren Hauptseitenbereichs „Projekt TLN/VOW“ bekommen:
+
+Übersicht Stakings Rewards Referral Bonus-Rewards Team Kurse und Pools
+
+Die technischen Steps 1–7 bleiben als Entwicklungs-/Diagnoselogik
+bestehen, sind aber nicht die Nutzer-Tabs.
+
+Kein projektspezifischer Tab „Historie/Stichtag“. Die
+Step-6-Stichtagsdaten werden später in den bestehenden
+Hauptseitenbereich „Datenbestand per 31.12.“ integriert.
+
+Beim Strukturumbau unbedingt den bereits vorhandenen TLN/VOW-Bereich der
+Hauptseite berücksichtigen. Insbesondere entspricht der neue Tab „Kurse
+und Pools“ funktional dem bisherigen TLN/VOW-Tab „Übersicht“ der
+Hauptseite. Bestehende funktionierende Kurs-/Poollogik darf nicht
+verloren gehen.
+
+Ziel: Tabs, Tabellen, Filter und Inhalte jetzt in der Discovery-Datei
+möglichst final gestalten, sodass sie anschließend mit minimalem Umbau
+in die Hauptseite übernommen werden können.
+
+Danach: 1. echten Contract-Discovery-/zu_pruefen-Test durchführen 2.
+komponentenbezogene Cache-/Versionsverwaltung umsetzen 3. finalen
+Cold-/Hot-Regressionstest durchführen 4. anschließend Integration in die
+Hauptseite
