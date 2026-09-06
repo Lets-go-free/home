@@ -50,7 +50,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .process-step.locked{opacity:.65}
 
 
-.team-tree{margin-top:14px;overflow:auto;padding:10px 10px 28px}
+.team-tree{margin-top:14px;overflow-x:auto;overflow-y:visible;height:auto;max-height:none;padding:10px 10px 28px}.team-tree-section,.team-hierarchy,.team-hierarchy li,.team-branch-children{height:auto;max-height:none}.team-node{height:auto;overflow:visible}
 .team-tree-section{margin:22px 0 34px;padding-top:8px;border-top:1px solid #263244}
 .team-tree-section:first-child{border-top:0;padding-top:0}
 .team-tree-heading{font-weight:800;margin:0 0 14px 2px}
@@ -143,7 +143,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 18:17:55 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 18:29:01 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -349,7 +349,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260906-181755';
+const BUILD_ID='20260906-182901';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -463,7 +463,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='06.09.2026 18:17:55 CEST';
+const APP_VERSION='06.09.2026 18:29:01 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -9114,7 +9114,43 @@ function buildDiagnosticLots(stakingRows){
     if(ta!==tb)return ta.localeCompare(tb);
     return parseInt(a.t.blockNum||'0x0',16)-parseInt(b.t.blockNum||'0x0',16);
   });
-  for(const r of ordered){
+  // Ein Unstake kann im selben Receipt als LP-Routing über mehrere bekannte
+  // Staking-/Controller-Contracts sichtbar werden. Wenn derselbe Tx-Hash, dasselbe
+  // LP-Asset und exakt dieselbe Menge mehrfach als Unstake auftauchen, bevorzugen
+  // wir für die Lot-Rekonstruktion ausschließlich den Contract-Key, zu dem vor
+  // dieser Tx bereits ein Stake existiert. Der zweite Transfer bleibt in den
+  // Rohereignissen sichtbar, darf aber keine falsche "Unstake ohne Lot"-Warnung erzeugen.
+  const priorStakeKeysByIndex=[];
+  const seenStakeKeys=new Set();
+  for(let i=0;i<ordered.length;i++){
+    priorStakeKeysByIndex[i]=new Set(seenStakeKeys);
+    if(String(ordered[i]?.action||'').toUpperCase()==='STAKE')seenStakeKeys.add(stakingKey(ordered[i]));
+  }
+  const routedDuplicateUnstakes=new Set();
+  for(let i=0;i<ordered.length;i++){
+    const r=ordered[i];
+    if(String(r?.action||'').toUpperCase()!=='UNSTAKE')continue;
+    const hash=String(r?.t?.hash||'').toLowerCase(),pair=safePairAddress(r),amount=Number(r?.amount||0);
+    if(!hash||!pair||!(amount>0))continue;
+    const same=[];
+    for(let j=0;j<ordered.length;j++){
+      const x=ordered[j];
+      if(String(x?.action||'').toUpperCase()!=='UNSTAKE')continue;
+      if(String(x?.t?.hash||'').toLowerCase()!==hash||safePairAddress(x)!==pair)continue;
+      if(Math.abs(Number(x?.amount||0)-amount)>1e-9)continue;
+      same.push(j);
+    }
+    if(same.length<2)continue;
+    const canonical=same.filter(j=>priorStakeKeysByIndex[j]?.has(stakingKey(ordered[j])));
+    if(canonical.length!==1)continue;
+    for(const j of same)if(j!==canonical[0])routedDuplicateUnstakes.add(j);
+  }
+  if(routedDuplicateUnstakes.size){
+    log(`Lot-Rekonstruktion: ${routedDuplicateUnstakes.size} gespiegelt(e) Unstake-Routing-Transfer(s) im selben Receipt erkannt und für FIFO/Plausibilität dedupliziert; Rohereignisse bleiben sichtbar.`,'info');
+  }
+  for(let rowIndex=0;rowIndex<ordered.length;rowIndex++){
+    const r=ordered[rowIndex];
+    if(routedDuplicateUnstakes.has(rowIndex))continue;
     const key=stakingKey(r); if(!groups.has(key))groups.set(key,[]);
     const q=groups.get(key);
     if(r.action==='Stake'){
@@ -10336,20 +10372,25 @@ function renderProjectOverview(){
 }
 function renderProjectAggregateDetails(){
   const d=projectAggregateData(),all=PROJECT_WALLET_FILTER==='all';
+  const scopeTitle=all?'alle Wallets':projectWalletLabel(PROJECT_WALLET_FILTER);
   const st=$('projectStakingsAggregate'),rw=$('projectRewardsAggregate'),rf=$('projectReferralAggregate'),bo=$('projectBonusAggregate');
   if(st){
-    st.style.display=all?'block':'none';
-    st.innerHTML=all?`<div class="card"><h2>Stakings · alle Wallets</h2><div class="muted">Aggregiert aus den persistenten Discovery-Endergebnissen. Einzelwallet im Filter wählen für die vollständigen Positionsdetails.</div><div class="wrap"><table><thead><tr><th>Wallet</th><th>Status</th><th>Pool</th><th>Stake</th><th>Vertragsende</th><th>Offen LP/LPT</th></tr></thead><tbody>${d.lots.length?d.lots.map(l=>`<tr><td>${esc(projectWalletLabel(l._projectWallet))}<div class="mono small muted">${esc(l._projectWallet)}</div></td><td>${l.status==='closed'?'beendet':'offen'}</td><td>${esc(safePairLabel(l)||'–')}</td><td>${l.stakeTime?new Date(l.stakeTime).toLocaleString('de-CH'):'–'}</td><td>${(l.expiryTime||l.contractEndTime||l.releaseTime)?new Date(l.expiryTime||l.contractEndTime||l.releaseTime).toLocaleString('de-CH'):'–'}</td><td class="num">${Number(l.remaining||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td></tr>`).join(''):'<tr><td colspan="6">Keine gecachten Stakings vorhanden.</td></tr>'}</tbody></table></div></div>`:'';
+    st.style.display='block';
+    st.innerHTML=`<div class="card"><h2>Stakings · ${esc(scopeTitle)}</h2><div class="muted">Direkt aus den persistenten Discovery-Endergebnissen des TLN/VOW-Projektfilters. Der obere DEV/Test-Wallet-Filter wird nicht verwendet.</div><div class="wrap"><table><thead><tr><th>Wallet</th><th>Status</th><th>Pool</th><th>Stake</th><th>Vertragsende</th><th>Offen LP/LPT</th></tr></thead><tbody>${d.lots.length?d.lots.map(l=>`<tr><td>${esc(projectWalletLabel(l._projectWallet))}<div class="mono small muted">${esc(l._projectWallet)}</div></td><td>${l.status==='closed'?'beendet':'offen'}</td><td>${esc(safePairLabel(l)||'–')}</td><td>${l.stakeTime?new Date(l.stakeTime).toLocaleString('de-CH'):'–'}</td><td>${(l.expiryTime||l.contractEndTime||l.releaseTime)?new Date(l.expiryTime||l.contractEndTime||l.releaseTime).toLocaleString('de-CH'):'–'}</td><td class="num">${Number(l.remaining||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td></tr>`).join(''):'<tr><td colspan="6">Keine gecachten Stakings vorhanden.</td></tr>'}</tbody></table></div></div>`;
   }
-  const rewardTable=(title,map,claims)=>`<div class="card"><h2>${title} · alle Wallets</h2><div class="muted">${claims} belegte Zahlung(en). Mengen werden je Token separat summiert.</div><div class="wrap"><table><thead><tr><th>Token</th><th>Zahlungen</th><th>Menge</th></tr></thead><tbody>${[...map.values()].length?[...map.values()].map(x=>`<tr><td>${esc(x.symbol)}</td><td>${x.count}</td><td class="num"><b>${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td></tr>`).join(''):'<tr><td colspan="3">Keine belegten Rewards.</td></tr>'}</tbody></table></div></div>`;
-  if(rw){rw.style.display=all?'block':'none';rw.innerHTML=all?rewardTable('🏆 Staking-Rewards',d.stakingByToken,d.stakingClaims):'';}
-  if(rf){rf.style.display=all?'block':'none';rf.innerHTML=all?rewardTable('Referral-Rewards',d.referralByToken,d.referralClaims):'';}
-  if(bo){bo.style.display=all?'block':'none';bo.innerHTML=all?rewardTable('🎁 Bonus-Rewards',d.bonusByToken,d.bonusClaims):'';}
-  if($('projectStakingsMount'))$('projectStakingsMount').style.display=all?'none':'block';
-  if($('projectRewardsCurrent'))$('projectRewardsCurrent').style.display=all?'none':'block';
-  if($('projectReferralMount'))$('projectReferralMount').style.display=all?'none':'block';
-  if($('projectBonusMount'))$('projectBonusMount').style.display=all?'none':'block';
+  const rewardTable=(title,map,claims)=>`<div class="card"><h2>${title} · ${esc(scopeTitle)}</h2><div class="muted">${claims} belegte Zahlung(en). Mengen werden je Token separat summiert. Quelle: persistenter Snapshot des Projektfilters.</div><div class="wrap"><table><thead><tr><th>Token</th><th>Zahlungen</th><th>Menge</th></tr></thead><tbody>${[...map.values()].length?[...map.values()].map(x=>`<tr><td>${esc(x.symbol)}</td><td>${x.count}</td><td class="num"><b>${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td></tr>`).join(''):'<tr><td colspan="3">Keine belegten Rewards.</td></tr>'}</tbody></table></div></div>`;
+  if(rw){rw.style.display='block';rw.innerHTML=rewardTable('🏆 Staking-Rewards',d.stakingByToken,d.stakingClaims);}
+  if(rf){rf.style.display='block';rf.innerHTML=rewardTable('Referral-Rewards',d.referralByToken,d.referralClaims);}
+  if(bo){bo.style.display='block';bo.innerHTML=rewardTable('🎁 Bonus-Rewards',d.bonusByToken,d.bonusClaims);}
+  // Die alten Detail-Renderer hängen am technischen CURRENT_WALLET und dürfen deshalb
+  // in der produktiven Projektansicht nicht mehr sichtbar sein. Sie bleiben im DOM für
+  // DEV/Test und werden von den Analyse-Steps weiterhin befüllt.
+  if($('projectStakingsMount'))$('projectStakingsMount').style.display='none';
+  if($('projectRewardsCurrent'))$('projectRewardsCurrent').style.display='none';
+  if($('projectReferralMount'))$('projectReferralMount').style.display='none';
+  if($('projectBonusMount'))$('projectBonusMount').style.display='none';
 }
+
 function populateProjectWalletFilter(){
   const sel=$('projectWalletFilter');if(!sel)return;
   const current=PROJECT_WALLET_FILTER||'all';
@@ -10372,12 +10413,13 @@ async function loadProjectWalletSnapshots(){
 async function applyProjectWalletFilter(){
   const note=$('projectWalletFilterNote');
   if(PROJECT_WALLET_FILTER==='all'){
-    if(note)note.textContent=`Alle verfügbaren Wallets werden aggregiert (${PROJECT_WALLET_SNAPSHOTS.size}/${tlnWallets.length} Ergebnis-Snapshots vorhanden).`;
-    renderProjectUserView();renderTeamTree();renderTeamExpiryList();renderTeamExpiredOpenList();return;
+    if(note)note.textContent=`Alle verfügbaren Wallets werden aggregiert (${PROJECT_WALLET_SNAPSHOTS.size}/${tlnWallets.length} Ergebnis-Snapshots vorhanden). Der obere Wallet-Filter bleibt ausschließlich für DEV/Test/Analyse.`;
+  }else{
+    if(note)note.textContent=`Gefiltert auf ${projectWalletLabel(PROJECT_WALLET_FILTER)}. Dieser Projektfilter ist vollständig vom oberen DEV/Test-Wallet getrennt.`;
   }
-  if(note)note.textContent=`Gefiltert auf ${projectWalletLabel(PROJECT_WALLET_FILTER)}. Die technische Analyse-Wallet wird ebenfalls auf dieses Wallet gesetzt.`;
-  const sel=$('walletSelect');
-  if(sel&&sel.value!==PROJECT_WALLET_FILTER){sel.value=PROJECT_WALLET_FILTER;sel.dispatchEvent(new Event('change'));}
+  // WICHTIG: Der produktive Projektfilter darf den technischen Discovery-Wallet-Selector
+  // niemals verändern. Die grüne Projektansicht liest ausschließlich persistente
+  // Wallet-Snapshots; der obere Selector steuert nur manuelle Analyse-/Step-Läufe.
   renderProjectUserView();renderTeamTree();renderTeamExpiryList();renderTeamExpiredOpenList();
 }
 function renderProjectUserView(){renderProjectOverview();renderProjectAggregateDetails();}
@@ -14093,16 +14135,24 @@ function applyTeamHighlights(){
 }
 function syncTeamGenerationHeights(){
   const box=$('teamTree');if(!box)return;
+  // Nie feste Höhen setzen: Lifecycle-/Alias-Inhalte können nach dem ersten Paint
+  // höher werden. Eine feste height würde den Text aus der Node herauslaufen lassen
+  // und die nächste Generation optisch darüber schieben.
   for(const section of box.querySelectorAll('.team-tree-section')){
     const nodes=[...section.querySelectorAll('.team-node[data-depth]')];
-    nodes.forEach(n=>n.style.height='');
+    nodes.forEach(n=>{n.style.height='auto';n.style.minHeight='';});
     const depths=[...new Set(nodes.map(n=>Number(n.dataset.depth||0)))].sort((a,b)=>a-b);
     for(const depth of depths){
       const row=nodes.filter(n=>Number(n.dataset.depth||0)===depth);if(!row.length)continue;
-      const max=Math.max(...row.map(n=>Math.ceil(n.getBoundingClientRect().height)));
-      row.forEach(n=>n.style.height=`${max}px`);
+      // scrollHeight misst auch Inhalt, der bei einem früheren Layout-Pass überlief.
+      // Gleiche Generationen erhalten nur eine Mindesthöhe; höhere Nodes dürfen
+      // jederzeit weiter wachsen. Damit wächst auch der äußere Tree-Frame vertikal mit.
+      const max=Math.max(...row.map(n=>Math.ceil(Math.max(n.scrollHeight,n.getBoundingClientRect().height))));
+      row.forEach(n=>n.style.minHeight=`${max}px`);
     }
   }
+  box.style.height='auto';
+  box.style.maxHeight='none';
 }
 function projectTeamVisibleWallets(forest=CURRENT_TEAM_PROJECT_FOREST){
   if(!forest)return new Set();
@@ -14201,7 +14251,11 @@ function renderTeamTree(){
   if($('teamHighlightControls'))$('teamHighlightControls').style.display='block';
   if($('teamExpirySection'))$('teamExpirySection').style.display='block';
   bindTeamControls();applyTeamHighlights();renderTeamExpiredOpenList();renderTeamExpiryList();
-  requestAnimationFrame(()=>{syncTeamGenerationHeights();applyTeamHighlights()});
+  requestAnimationFrame(()=>{
+    syncTeamGenerationHeights();applyTeamHighlights();
+    // Zweiter Pass nach Font-/Input-/Lifecycle-Layout. Er setzt weiterhin nur min-height.
+    setTimeout(()=>syncTeamGenerationHeights(),80);
+  });
   box.querySelectorAll('.team-alias-input').forEach(inp=>inp.addEventListener('change',()=>{
     saveTeamAlias(inp.dataset.teamAliasKey,inp.value);renderTeamTree();
   }));
