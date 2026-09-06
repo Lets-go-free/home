@@ -143,7 +143,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 01:26:58 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 01:36:59 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -349,7 +349,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-012658';
+const BUILD_ID='20260907-013659';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -463,7 +463,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 01:26:58 CEST';
+const APP_VERSION='07.09.2026 01:36:59 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -10497,6 +10497,29 @@ function projectWalletLabel(wallet){
   const w=norm(wallet||'');return tlnWallets.find(x=>norm(x.evm_address)===w)?.label||short(w);
 }
 function projectSnapshotForWallet(wallet){return PROJECT_WALLET_SNAPSHOTS.get(norm(wallet||''))||null}
+async function hydrateProjectSnapshotValuation(wallet,payload,year=snapshotYearFromUi()){
+  const w=norm(wallet||'');
+  if(!ethers.isAddress(w)||!payload?.process?.lots?.length)return 0;
+  try{
+    const valuationPayload=await loadTechnicalProcessCache(w,snapshotValuationCacheKey(year),TECH_CACHE_VERSIONS.snapshotValuation);
+    if(!valuationPayload||valuationPayload.kind!=='snapshot_valuation_result'||norm(valuationPayload.wallet)!==w||Number(valuationPayload.year)!==Number(year))return 0;
+    const byKey=new Map((valuationPayload.lots||[]).map(x=>[String(x?.key||''),x]));
+    let merged=0;
+    (payload.process.lots||[]).forEach((lot,index)=>{
+      const row=byKey.get(snapshotValuationLotKey(lot,index));
+      if(!row)return;
+      const before=[lot.stakeUsd,lot.contractEndUsd,lot.unstakeUsd].filter(v=>v!=null).length;
+      applyLotValuationFromCache(lot,row);
+      const after=[lot.stakeUsd,lot.contractEndUsd,lot.unstakeUsd].filter(v=>v!=null).length;
+      if(after>before)merged++;
+    });
+    if(merged)payload._projectValuationYear=Number(year);
+    return merged;
+  }catch(e){
+    log(`Projektansicht Step-6-Werte ${projectWalletLabel(w)} konnten nicht ergänzt werden: ${e?.message||e}`,'warn');
+    return 0;
+  }
+}
 function projectSnapshotsForScope(){
   if(PROJECT_WALLET_FILTER==='all')return [...PROJECT_WALLET_SNAPSHOTS.entries()].map(([wallet,payload])=>({wallet,payload}));
   const payload=projectSnapshotForWallet(PROJECT_WALLET_FILTER);return payload?[{wallet:norm(PROJECT_WALLET_FILTER),payload}]:[];
@@ -10667,9 +10690,9 @@ function projectStakingPositionCardHtml(l,showWallet){
   const status=isClosed?'Abgeschlossen / unstaked':l.status==='partial'?'Teilweise offen':expired?'Freigegeben – noch gestakt':'Aktiv / gesperrt';
   const statusClass=isClosed?'status-closed':expired?'warn':'status-open';
   const wallet=norm(l._projectWallet||'');
-  const stakeValue=l.stakeUsd!=null?`${formatUsd(l.stakeUsd)}${l.stakeUsdSource?`<div class="value-source">${esc(l.stakeUsdSource)}</div>`:''}`:'–';
-  const endValue=l.contractEndUsd!=null?`${formatUsd(l.contractEndUsd)}${l.contractEndUsdSource?`<div class="value-source">${esc(l.contractEndUsdSource)}</div>`:''}`:'–';
-  const unstakeValue=isClosed&&l.unstakeUsd!=null?`${formatUsd(l.unstakeUsd)}${l.unstakeUsdSource?`<div class="value-source">${esc(l.unstakeUsdSource)}</div>`:''}`:'–';
+  const stakeValue=l.stakeUsd!=null?`${formatUsd(l.stakeUsd)}${l.stakeUsdSource?`<div class="value-source">${esc(l.stakeUsdSource)}</div>`:''}`:`–<div class="value-source">Noch keine persistente Step-6-Bewertung für diese Position geladen.</div>`;
+  const endValue=l.contractEndUsd!=null?`${formatUsd(l.contractEndUsd)}${l.contractEndUsdSource?`<div class="value-source">${esc(l.contractEndUsdSource)}</div>`:''}`:`–<div class="value-source">Noch keine persistente Step-6-Bewertung für diese Position geladen.</div>`;
+  const unstakeValue=isClosed&&l.unstakeUsd!=null?`${formatUsd(l.unstakeUsd)}${l.unstakeUsdSource?`<div class="value-source">${esc(l.unstakeUsdSource)}</div>`:''}`:`–<div class="value-source">Noch keine persistente Step-6-Bewertung für diese Position geladen.</div>`;
   const topUps=Array.isArray(l.topUps)?l.topUps:[];
   const claims=(l.rewardClaims||[]).filter(c=>!bonusEvidenceForClaim(c));
   return `<div class="stake-pos project-stake-pos">
@@ -10750,7 +10773,10 @@ async function loadProjectWalletSnapshots(){
     await Promise.all((tlnWallets||[]).map(async w=>{
       const wallet=norm(w.evm_address);if(!ethers.isAddress(wallet))return;
       const payload=await loadTechnicalProcessCache(wallet,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults);
-      if(payload?.kind==='verified_discovery_results'&&norm(payload.wallet)===wallet)PROJECT_WALLET_SNAPSHOTS.set(wallet,payload);
+      if(payload?.kind==='verified_discovery_results'&&norm(payload.wallet)===wallet){
+        await hydrateProjectSnapshotValuation(wallet,payload,snapshotYearFromUi());
+        PROJECT_WALLET_SNAPSHOTS.set(wallet,payload);
+      }
     }));
     log(`Projektansicht: ${PROJECT_WALLET_SNAPSHOTS.size}/${tlnWallets.length} Wallet-Ergebnis-Snapshot(s) für die Aggregation geladen.`,'ok');
   }finally{PROJECT_WALLET_SNAPSHOTS_LOADING=false;renderProjectUserView();}
@@ -14934,7 +14960,23 @@ async function saveSnapshotValuationCache(year){
   const payload=buildSnapshotValuationCachePayload(year);
   const block=payload.snapshotBlockHex?Number(BigInt(payload.snapshotBlockHex)):0;
   const ok=await saveTechnicalProcessCache(wallet,snapshotValuationCacheKey(year),TECH_CACHE_VERSIONS.snapshotValuation,payload,block);
-  if(ok)log(`Persistente Step-6-Endergebnisse gespeichert: Wallet ${wallet} · Stichtag 31.12.${year} · ${payload.snapshotValuation?.rows?.length||0} Position(en).`,'ok');
+  if(ok){
+    log(`Persistente Step-6-Endergebnisse gespeichert: Wallet ${wallet} · Stichtag 31.12.${year} · ${payload.snapshotValuation?.rows?.length||0} Position(en).`,'ok');
+    const projectPayload=PROJECT_WALLET_SNAPSHOTS.get(wallet);
+    if(projectPayload){
+      const byKey=new Map((payload.lots||[]).map(x=>[String(x?.key||''),x]));
+      let merged=0;
+      (projectPayload?.process?.lots||[]).forEach((lot,index)=>{
+        const row=byKey.get(snapshotValuationLotKey(lot,index));if(!row)return;
+        applyLotValuationFromCache(lot,row);merged++;
+      });
+      if(merged){
+        projectPayload._projectValuationYear=Number(year);
+        log(`Projektansicht: Step-6-Bewertung in ${merged} Staking-Position(en) übernommen.`,'ok');
+        renderProjectUserView();
+      }
+    }
+  }
   return ok;
 }
 async function restoreSnapshotValuationCache(wallet,year,{quiet=false}={}){
@@ -14952,6 +14994,13 @@ async function restoreSnapshotValuationCache(wallet,year,{quiet=false}={}){
   DISCOVERY_PROCESS.snapshotBlockHex=payload.snapshotBlockHex||payload.snapshotValuation?.blockHex||null;
   DISCOVERY_PROCESS.snapshotValuation=payload.snapshotValuation;
   DISCOVERY_PROCESS.done.valuation=true;
+  const projectPayload=PROJECT_WALLET_SNAPSHOTS.get(w);
+  if(projectPayload){
+    const projectByKey=new Map((payload.lots||[]).map(x=>[String(x?.key||''),x]));
+    (projectPayload?.process?.lots||[]).forEach((lot,index)=>applyLotValuationFromCache(lot,projectByKey.get(snapshotValuationLotKey(lot,index))));
+    projectPayload._projectValuationYear=Number(year);
+    renderProjectUserView();
+  }
   renderSnapshotValuation();renderProcessLotCards();
   setStepState(6,`31.12.${year} aus Cache`,'done');updateProcessButtons();
   log(`Persistente Step-6-Endergebnisse geladen: Stichtag 31.12.${year} · gespeichert ${payload.savedAt||'–'} · ${(payload.snapshotValuation?.rows||[]).length} Position(en).`,'ok');
