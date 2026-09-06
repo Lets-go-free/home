@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 13:55:33 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 14:14:20 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -251,6 +251,14 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card"><h2>📅 Stichtagsbewertung per 31.12.</h2>
 <p class="muted">Testbereich für die spätere „Bestandesaufnahme per 31.12.“ in WalletTracking. Angezeigt wird der am gewählten Stichtag tatsächlich noch gebundene Staking-Bestand. Aufstockungen werden der bestehenden Position zugerechnet und gelten nur innerhalb deren gemeinsamer Laufzeit; nach dem gemeinsamen Vertragsende gilt kein Teil der Position mehr als offenes Staking.</p>
 <div id="snapshotValuation"><div class="muted">Wird in Schritt 6 berechnet.</div></div></div>
+<div class="card"><h2>⏳ Staking-Laufzeiten / Ausläufe</h2>
+<p class="muted">Abschlusskontrolle für Step 6: zeigt alle rekonstruierten Positionen mit verifiziertem Vertragsende. Die Filter arbeiten rein auf den bereits geladenen Lifecycle-Daten und verursachen keine zusätzlichen RPC-Reads.</p>
+<div class="lookup-row" style="margin-bottom:10px">
+  <label>Status<br><select id="valuationExpiryStatus" style="min-width:210px"><option value="all">Alle Positionen</option><option value="active">Aktiv / noch nicht abgelaufen</option><option value="expired_open">Abgelaufen, noch nicht unstaked</option><option value="closed">Beendet / unstaked</option></select></label>
+  <label>Ablaufjahr<br><select id="valuationExpiryYear" style="min-width:160px"><option value="all">Alle Jahre</option></select></label>
+</div>
+<div id="valuationLifecycleOverview"><div class="muted">Wird nach der Lockdauer-/Bewertungsanalyse aufgebaut.</div></div>
+</div>
 
 <div class="card"><h2>✅ Abgeschlossene Stakings</h2>
 <p class="muted">Historische Stakings, die vollständig beendet / unstaked wurden. Ein echter Vertragsendwert wird nur gezeigt, wenn der Zeitpunkt aus dem SC belastbar ableitbar ist. Historische Unstake-Simulationen werden ausdrücklich als Simulation bezeichnet; der tatsächliche Unstake-Wert wird zusätzlich ausgewiesen.</p>
@@ -296,7 +304,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-135533';
+const BUILD_ID='20260906-141420';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -5018,7 +5026,7 @@ async function clearSingleTeamLifecycleCache(){
    }else throw new Error('Bitte gültige BSC-Wallet-Adresse oder numerische TLN-ID eingeben.');
    if(!ethers.isAddress(wallet))throw new Error(`Kein Wallet zu TLN-ID ${nodeId||raw} gefunden.`);
    if(!nodeId)nodeId=String(TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'');
-   if(!confirm(`Nur den persistenten Team-Lifecycle für ${nodeId?`TLN-ID ${nodeId} · `:''}${wallet} löschen?\n\nContract-Historie, SmartNode-Globalgraph, andere Partner-Lifecycles sowie Steps 1–5 bleiben erhalten.\n\nDer nächste Step-6-Lauf berechnet nur dieses Wallet neu.`)){return}
+   if(!confirm(`Nur den persistenten Team-Lifecycle für ${nodeId?`TLN-ID ${nodeId} · `:''}${wallet} löschen?\n\nContract-Historie, SmartNode-Globalgraph, andere Partner-Lifecycles sowie Steps 1–5 bleiben erhalten.\n\nDer nächste Step-7-Lauf berechnet nur dieses Wallet neu.`)){return}
    state.textContent='lösche …';
    const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE)
      .delete().eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_address',wallet).eq('cache_key',TECH_CACHE_KEYS.teamLifecycle)
@@ -5030,7 +5038,7 @@ async function clearSingleTeamLifecycleCache(){
    CURRENT_TEAM_PROJECT_FOREST=null;
    setStepState(7,'Gezielter Nachtest bereit');updateProcessButtons();
    state.textContent=`${deleted} Lifecycle-Eintrag gelöscht · ${nodeId?`TLN-ID ${nodeId}`:short(wallet)}`;
-   log(`DEV Team-Lifecycle gezielt gelöscht: ${nodeId?`TLN-ID ${nodeId} · `:''}${wallet} · ${deleted} persistente(r) Lifecycle-Eintrag(e). Contract-Historie, SmartNode-Globalgraph und übrige Partner-Caches blieben erhalten. Nächster Step-6-Lauf prüft nur dieses Wallet neu.`,'ok');
+   log(`DEV Team-Lifecycle gezielt gelöscht: ${nodeId?`TLN-ID ${nodeId} · `:''}${wallet} · ${deleted} persistente(r) Lifecycle-Eintrag(e). Contract-Historie, SmartNode-Globalgraph und übrige Partner-Caches blieben erhalten. Nächster Step-7-Lauf prüft nur dieses Wallet neu.`,'ok');
  }catch(e){
    state.textContent='Fehler beim Löschen.';
    log(`DEV gezielte Team-Lifecycle-Löschung fehlgeschlagen: ${e?.message||e}`,'warn');
@@ -5040,14 +5048,14 @@ async function clearSingleTeamLifecycleCache(){
 async function clearTeamColdRunCache(){
  const btn=$('clearTeamColdRunCache'),state=$('clearTeamColdRunCacheState');
  if(!currentUserId){state.textContent='Nicht eingeloggt.';return}
- const ok=confirm(`Echten Step-6-Cold-Run vorbereiten?\n\nDer globale SmartNode-Cache bleibt als Shared Cache sicher in Supabase erhalten, wird beim nächsten Step-6-Lauf aber vollständig ignoriert. Der Team-Graph wird dann on-chain ab Block 0 neu aufgebaut.\n\nGelöscht werden:\n• Team-Lifecycle-Caches dieses Benutzers\n• Team-Contract-History-Caches dieses Benutzers\n\nSteps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und TLN-ID-/Wallet-Identity-Cache bleiben erhalten.`);
+ const ok=confirm(`Echten Step-7-Cold-Run vorbereiten?\n\nDer globale SmartNode-Cache bleibt als Shared Cache sicher in Supabase erhalten, wird beim nächsten Step-7-Lauf aber vollständig ignoriert. Der Team-Graph wird dann on-chain ab Block 0 neu aufgebaut.\n\nGelöscht werden:\n• Team-Lifecycle-Caches dieses Benutzers\n• Team-Contract-History-Caches dieses Benutzers\n\nSteps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und TLN-ID-/Wallet-Identity-Cache bleiben erhalten.`);
  if(!ok)return;
  btn.disabled=true;state.textContent='lösche …';
  try{
    let teamRows=0;
    // Der SmartNode-Graph ist global/shared. Für einen echten DEV-Cold-Run wird er
    // deshalb NICHT physisch aus Supabase gelöscht. Stattdessen ignoriert genau der
-   // nächste Step-6-Lauf den persistenten Graph vollständig und baut ihn on-chain
+   // nächste Step-7-Lauf den persistenten Graph vollständig und baut ihn on-chain
    // von Block 0 neu auf. So testen wir den Cold-Pfad ohne Shared Cache zu zerstören.
    TEAM_FORCE_FULL_GRAPH_RESCAN_ONCE=true;
    const {data:cacheRows,error:cacheError}=await sb.from(STAKING_SCAN_CACHE_TABLE)
@@ -5066,7 +5074,7 @@ async function clearTeamColdRunCache(){
    if($('teamExpirySection'))$('teamExpirySection').style.display='none';
    setStepState(7,'Cold Run bereit');updateProcessButtons();
    state.textContent=`Full-Graph-Rescan vorgemerkt · ${teamRows} Team-Cache-Einträge gelöscht.`;
-   log(`DEV Team-Cold-Run vorbereitet: nächster Step-6-Lauf ignoriert den persistenten SmartNode-Globalgraph vollständig und baut ihn on-chain ab Block 0 neu auf · globaler Shared-Graph/Graph-State bleiben in Supabase erhalten · ${teamRows} Team-Lifecycle/Contract-History-Eintrag(e) dieses Benutzers gelöscht. Steps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und persistenter Identity-Cache blieben erhalten.`,'ok');
+   log(`DEV Team-Cold-Run vorbereitet: nächster Step-7-Lauf ignoriert den persistenten SmartNode-Globalgraph vollständig und baut ihn on-chain ab Block 0 neu auf · globaler Shared-Graph/Graph-State bleiben in Supabase erhalten · ${teamRows} Team-Lifecycle/Contract-History-Eintrag(e) dieses Benutzers gelöscht. Steps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und persistenter Identity-Cache blieben erhalten.`,'ok');
  }catch(e){
    state.textContent='Fehler beim Löschen.';
    log(`DEV Team-Cold-Run Cache-Löschung fehlgeschlagen: ${e?.message||e}`,'warn');
@@ -10080,7 +10088,7 @@ function renderProcessChecks(){
   $('checks').innerHTML=checks.length?checks.map(c=>`<tr><td><b>${esc(safePairLabel(c.sample))}</b><div class="mono">${esc(safePairAddress(c.sample))}</div></td><td class="mono">${esc(c.sample.staking?.contract_address||c.sample.counterparty)}</td><td>${c.stakeRs.length}</td><td class="num">${c.stakeTotal.toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td>${c.unstakeRs.length}</td><td class="num">${c.unstakeTotal.toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td>${c.openLots}</td><td class="num">${c.openTotal.toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="${c.diag==='OK'?'ok':'err'}"><b>${esc(c.diag)}</b></td></tr>`).join(''):'<tr><td colspan="9">Keine Staking-Gruppen vorhanden.</td></tr>';
 }
 async function processBaseData(){
-  const b=$('refresh');b.disabled=true;setStepState(1,'läuft …','running');$('status').textContent='Schritt 1/6: Basisdaten / Chain-Cache …';
+  const b=$('refresh');b.disabled=true;setStepState(1,'läuft …','running');$('status').textContent='Schritt 1/7: Basisdaten / Chain-Cache …';
   try{
     const wallet=$('wallet').value.trim();if(!ethers.isAddress(wallet))throw new Error('Ungültige Wallet-Adresse.');
     if(DISCOVERY_PROCESS.wallet!==norm(wallet))resetDiscoveryProcess(wallet);CURRENT_WALLET=wallet;
@@ -10093,7 +10101,7 @@ async function processBaseData(){
   }catch(e){setStepState(1,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
 async function processStakingDiscovery(){
-  const b=$('stepStaking');b.disabled=true;setStepState(2,'läuft …','running');$('status').textContent='Schritt 2/6: Staking-Positionen erkennen …';
+  const b=$('stepStaking');b.disabled=true;setStepState(2,'läuft …','running');$('status').textContent='Schritt 2/7: Staking-Positionen erkennen …';
   try{
     const wallet=DISCOVERY_PROCESS.wallet||norm($('wallet').value);CURRENT_WALLET=wallet;const transfers=DISCOVERY_PROCESS.transfers,counts=DISCOVERY_PROCESS.counts;
     if(!DISCOVERY_PROCESS.done.base)throw new Error('Zuerst Schritt 1 ausführen.');
@@ -10920,7 +10928,7 @@ async function reconcileOnChainTopUpsAfterDuration(){
 }
 
 async function processDuration(){
-  const b=$('stepDuration');b.disabled=true;setStepState(3,'läuft …','running');$('status').textContent='Schritt 3/6: optimierte Duration-/Top-up-Analyse …';
+  const b=$('stepDuration');b.disabled=true;setStepState(3,'läuft …','running');$('status').textContent='Schritt 3/7: optimierte Duration-/Top-up-Analyse …';
   try{
     if(!DISCOVERY_PROCESS.done.staking)throw new Error('Zuerst Schritt 2 ausführen.');
     STAKING_DURATION_REFERENCE_ENGINE.resetRpcStats?.();
@@ -10961,7 +10969,7 @@ async function processDuration(){
   }finally{updateProcessButtons();b.disabled=false}
 }
 async function processStakingRewards(){
-  const b=$('stepRewards');b.disabled=true;setStepState(4,'läuft …','running');$('status').textContent='Schritt 4/6: eigene Staking-Rewards …';
+  const b=$('stepRewards');b.disabled=true;setStepState(4,'läuft …','running');$('status').textContent='Schritt 4/7: eigene Staking-Rewards …';
   try{if(!DISCOVERY_PROCESS.done.staking)throw new Error('Zuerst Schritt 2 ausführen.');CURRENT_REWARD_FLOW_BY_HASH=new Map();CURRENT_PROVEN_REWARD_ROWS=[];TX_RECEIPT_FLOW_CACHE.clear();REWARD_FULL_RECEIPT_CACHE.clear();CLAIM_REFERENCE_AMBIGUOUS_REWARD_CACHE.clear();CLAIM_REFERENCE_FASTPATH_STATS={ownTx:0,fullReference:0};const step4Started=performance.now();
     const rewardRelevantCalls=await rewardRelevantCallsFromTransfers(DISCOVERY_PROCESS.wallet,DISCOVERY_PROCESS.transfers);
     // Schritt 4 bekommt bewusst wieder die vollstaendige in Schritt 2 geladene Contract-Historie.
@@ -11003,6 +11011,9 @@ async function processStakingRewards(){
     log(`Schritt-4 Performance gesamt: ${Math.round(performance.now()-step4Started)} ms.`,'ok');
     const stakingRewardCount=collectAllWalletRewardRows(lots).length;
     const bonusRows=collectBonusRewardRows(lots),bonusCount=bonusRows.length;
+    const finalCoverage=primaryRewardCoverage(lots),finalUnassigned=collectUnassignedClaimRows(lots);
+    const step4RegressionOk=finalCoverage.missing.length===0&&finalCoverage.assigned===finalCoverage.normal&&finalUnassigned.length===0;
+    log(`Step-4 Abschlusscheck: ${finalCoverage.assigned}/${finalCoverage.normal} normale belegte Reward-Transfers zugeordnet · ${finalCoverage.missing.length} Primär-Reward(s) fehlen · ${finalUnassigned.length} Claim(s) ohne klare Zuordnung · ${step4RegressionOk?'PASS':'PRÜFEN'}.`,step4RegressionOk?'ok':'warn');
     if(bonusCount){
       const bonusTxCount=new Set(bonusRows.map(x=>String(x?.claim?.hash||'').toLowerCase()).filter(Boolean)).size;
       log(`Bonus-Rewards: ${bonusCount} belegte Reward-Zeile(n) aus ${bonusTxCount} expliziter claimBonus-Tx · exklusiv aus normalen Staking-/Referral-Rewards getrennt.`,'ok');
@@ -13819,6 +13830,24 @@ async function processReferralRewards(){
   try{if(!DISCOVERY_PROCESS.done.rewards)throw new Error('Zuerst Schritt 4 ausführen.');CURRENT_CLAIM_REFERENCE_RESULT=null;CLAIM_REFERENCE_RUN_CACHE.clear();try{CLAIM_TRACE_REFERENCE_ENGINE.clearHeadlessCaches()}catch{}primeClaimReferenceFromDiscoveryCaches();const step5Started=performance.now();const ref=await runClaimReferenceForCurrentWallet();if(ref?.walletIdentity){for(const lot of DISCOVERY_PROCESS.lots){lot.tlnIdentity=ref.walletIdentity;lot.tlnId=ref.walletIdentity.nodeId||null}}renderReferralRewards(DISCOVERY_PROCESS.lots);renderBonusRewards(DISCOVERY_PROCESS.lots);renderUnassignedClaims(DISCOVERY_PROCESS.lots);renderProcessLotCards();DISCOVERY_PROCESS.done.referral=true;setStepState(5,`${ref?.strong?.length||0} starke Referral-Tx`,'done');$('status').innerHTML='<span class="ok">Referral-Analyse abgeschlossen.</span>';log(`Schritt 5 abgeschlossen: ${ref?.strong?.length||0} starke Referral-Tx · ${Math.round(performance.now()-step5Started)} ms.`,'ok');await saveDiscoveryResultSnapshot(5)}
   catch(e){setStepState(5,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
+function teamRegressionSummary(forest){
+  if(!forest)return {ok:false,text:'kein Forest'};
+  const included=[...forest.included],roots=forest.roots||[],seen=new Set(),cycles=[];
+  for(const start of included){
+    seen.clear();let cur=norm(start),guard=0;
+    while(cur&&guard++<included.length+2){
+      if(seen.has(cur)){cycles.push(start);break}
+      seen.add(cur);cur=norm(forest.parentByChild?.get(cur)||'');
+      if(!cur||!forest.included.has(cur))break;
+    }
+  }
+  const identities=included.filter(w=>TEAM_IDENTITY_CACHE.get(norm(w))?.nodeId).length;
+  const verified=included.filter(w=>TEAM_STAKING_LIFECYCLE.get(norm(w))?.verified).length;
+  const noActive=included.filter(w=>{const l=TEAM_STAKING_LIFECYCLE.get(norm(w));return l?.verified&&!(l?.open||[]).some(x=>x.status==='active')}).length;
+  const expiredOpen=included.reduce((n,w)=>n+(TEAM_STAKING_LIFECYCLE.get(norm(w))?.open||[]).filter(x=>x.status==='expired').length,0);
+  const ok=cycles.length===0&&identities===included.length&&verified===included.length&&roots.length===forest.components?.length;
+  return {ok,cycles:cycles.length,identities,verified,total:included.length,roots:roots.length,components:forest.components?.length||0,noActive,expiredOpen,text:`${identities}/${included.length} Identity · ${verified}/${included.length} Lifecycle · ${cycles.length} Zyklus/Zyklen · ${roots.length}/${forest.components?.length||0} Roots · ${noActive} ohne aktives Staking · ${expiredOpen} abgelaufen/offen`};
+}
 let TEAM_TREE_RUN_INFLIGHT=false;
 async function processTeamTree(){
   if(TEAM_TREE_RUN_INFLIGHT){log('Schritt 7: paralleler Zweitstart ignoriert – Team-Baum läuft bereits.','warn');return}
@@ -13835,6 +13864,8 @@ async function processTeamTree(){
     // nicht verloren, nur weil heute kein Cold-Lifecycle-Scan mehr nötig ist.
     await captureVerifiedTeamLifecycleCandidates([...CURRENT_TEAM_PROJECT_FOREST.included]);
     await flushStakingDiscoveryCandidateCache();
+    const teamCheck=teamRegressionSummary(CURRENT_TEAM_PROJECT_FOREST);
+    log(`Step-7 Abschlusscheck: ${teamCheck.text} · ${teamCheck.ok?'PASS':'PRÜFEN'}.`,teamCheck.ok?'ok':'warn');
     DISCOVERY_PROCESS.done.team=true;
     const roots=CURRENT_TEAM_PROJECT_FOREST.roots||[];
     setStepState(7,`${roots.length} Baum-Root(s)`,'done');
@@ -13898,7 +13929,39 @@ function snapshotUnderlyingText(lot,val){
   if(Number.isFinite(Number(val.a1))&&pair?.token1?.symbol)parts.push(`${Number(val.a1).toLocaleString('de-CH',{maximumFractionDigits:10})} ${pair.token1.symbol}`);
   return parts.join(' + ')||'–';
 }
+function step6LifecycleStatus(lot,nowMs=Date.now()){
+  const end=Date.parse(lot?.expiryTime||lot?.contractEndTime||lot?.releaseTime||'');
+  if(lot?.status==='closed'||lot?.unstakeTx||Number.isFinite(Date.parse(lot?.unstakeTime||'')))return 'closed';
+  if(Number.isFinite(end)&&end<nowMs)return 'expired_open';
+  return 'active';
+}
+function renderStep6LifecycleOverview(){
+  const box=$('valuationLifecycleOverview');if(!box)return;
+  const lots=Array.isArray(DISCOVERY_PROCESS.lots)?DISCOVERY_PROCESS.lots:[];
+  const yearEl=$('valuationExpiryYear'),statusEl=$('valuationExpiryStatus');
+  const prevYear=yearEl?.value||'all';
+  const years=[...new Set(lots.map(l=>{const t=Date.parse(l?.expiryTime||l?.contractEndTime||l?.releaseTime||'');return Number.isFinite(t)?new Date(t).getFullYear():null}).filter(Number.isInteger))].sort((a,b)=>a-b);
+  if(yearEl){yearEl.innerHTML='<option value="all">Alle Jahre</option>'+years.map(y=>`<option value="${y}">${y}</option>`).join('');yearEl.value=years.includes(Number(prevYear))?prevYear:'all'}
+  const status=statusEl?.value||'all',year=yearEl?.value||'all',now=Date.now();
+  const rows=lots.map((lot,index)=>{
+    const endIso=lot?.expiryTime||lot?.contractEndTime||lot?.releaseTime||null,endMs=Date.parse(endIso||'');
+    const state=step6LifecycleStatus(lot,now);
+    return {lot,index,endIso,endMs,state,year:Number.isFinite(endMs)?new Date(endMs).getFullYear():null};
+  }).filter(r=>(status==='all'||r.state===status)&&(year==='all'||String(r.year)===String(year)))
+    .sort((a,b)=>(Number.isFinite(a.endMs)?a.endMs:Number.MAX_SAFE_INTEGER)-(Number.isFinite(b.endMs)?b.endMs:Number.MAX_SAFE_INTEGER)||a.index-b.index);
+  const counts={active:0,expired_open:0,closed:0,missingEnd:0};
+  for(const lot of lots){const st=step6LifecycleStatus(lot,now);counts[st]=(counts[st]||0)+1;if(!Number.isFinite(Date.parse(lot?.expiryTime||lot?.contractEndTime||lot?.releaseTime||'')))counts.missingEnd++}
+  const summary=`<div class="summary"><div class="metric">Positionen<b>${lots.length}</b></div><div class="metric">Aktiv<b>${counts.active}</b></div><div class="metric">Abgelaufen offen<b>${counts.expired_open}</b></div><div class="metric">Beendet<b>${counts.closed}</b></div></div>${counts.missingEnd?`<div class="warn" style="margin-top:8px">${counts.missingEnd} Position(en) ohne belastbar ermitteltes Vertragsende.</div>`:''}`;
+  if(!rows.length){box.innerHTML=summary+'<div class="muted" style="margin-top:10px">Keine Positionen für diesen Filter.</div>';return}
+  box.innerHTML=summary+`<div class="wrap" style="margin-top:10px"><table style="min-width:1150px"><thead><tr><th>Position</th><th>Status</th><th>Staking-Datum</th><th>Vertragsende</th><th>Unstake</th><th>Menge</th><th>Staking-Contract</th></tr></thead><tbody>${rows.map(({lot,state,endIso})=>`<tr><td><b>${esc(safePairLabel(lot))}</b></td><td>${state==='active'?'<span class="ok"><b>aktiv</b></span>':state==='expired_open'?'<span class="warn"><b>abgelaufen, offen</b></span>':'<span class="muted"><b>beendet</b></span>'}</td><td>${esc(lot?.stakeTime?new Date(lot.stakeTime).toLocaleString('de-CH'):'–')}</td><td>${esc(endIso?new Date(endIso).toLocaleString('de-CH'):'–')}</td><td>${esc(lot?.unstakeTime?new Date(lot.unstakeTime).toLocaleString('de-CH'):'–')}</td><td class="num">${esc(stakingAssetAmountText(lot))}</td><td class="mono">${esc(lot?.staking?.contract_address||lot?.counterparty||'–')}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function bindStep6LifecycleControls(){
+  if($('valuationExpiryStatus'))$('valuationExpiryStatus').onchange=()=>renderStep6LifecycleOverview();
+  if($('valuationExpiryYear'))$('valuationExpiryYear').onchange=()=>renderStep6LifecycleOverview();
+}
+
 function renderSnapshotValuation(){
+  renderStep6LifecycleOverview();
   const box=$('snapshotValuation');if(!box)return;
   const snap=DISCOVERY_PROCESS.snapshotValuation;
   if(!snap){box.innerHTML='<div class="muted">Wird in Schritt 6 berechnet.</div>';return}
@@ -14101,6 +14164,11 @@ async function processValuation(){
     renderSnapshotValuation();
     const snapshotOpen=snapshotRows.filter(x=>x.amount>1e-12),snapshotValued=snapshotOpen.filter(x=>x.usd!=null);
     log(`31.12.${snapshotYear} Stichtagsbewertung: ${snapshotOpen.length} offene Position(en) · ${snapshotValued.length} historisch in USD bewertet · Block ${DISCOVERY_PROCESS.snapshotBlockHex?Number(BigInt(DISCOVERY_PROCESS.snapshotBlockHex)).toLocaleString('de-CH'):'–'}.`,'ok');
+    const missingExpiry=DISCOVERY_PROCESS.lots.filter(l=>!Number.isFinite(Date.parse(l?.expiryTime||l?.contractEndTime||l?.releaseTime||'')));
+    const missingV2Snapshot=snapshotRows.filter((r,i)=>r.amount>1e-12&&r.usd==null&&!['legacy_staking_token','staking_token'].includes((DISCOVERY_PROCESS.lots[i]?.pair||DISCOVERY_PROCESS.lots[i]?.p)?.assetType));
+    const lifeCounts={active:0,expired_open:0,closed:0};for(const lot of DISCOVERY_PROCESS.lots){const st=step6LifecycleStatus(lot);lifeCounts[st]=(lifeCounts[st]||0)+1}
+    const step6RegressionOk=missingExpiry.length===0&&missingV2Snapshot.length===0;
+    log(`Step-6 Abschlusscheck: ${DISCOVERY_PROCESS.lots.length-missingExpiry.length}/${DISCOVERY_PROCESS.lots.length} Position(en) mit Vertragsende · Lifecycle ${lifeCounts.active} aktiv / ${lifeCounts.expired_open} abgelaufen-offen / ${lifeCounts.closed} beendet · 31.12.${snapshotYear} ${snapshotValued.length}/${snapshotOpen.length} offen historisch bewertet · ${missingV2Snapshot.length} offene V2-LP ohne USD-Pfad · ${step6RegressionOk?'PASS':'PRÜFEN'}.`,step6RegressionOk?'ok':'warn');
     DISCOVERY_PROCESS.done.valuation=true;
     await saveSnapshotValuationCache(snapshotYear);
 
@@ -14256,7 +14324,7 @@ tlnWallets=(wq.data||[])
   .sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'de'));
 populateTlnWalletDropdown();
 bindWalletDropdown();
-$('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;resetDiscoveryProcess($('wallet').value);setStepState(1,'bereit');setStepState(7,'bereit');updateProcessButtons();log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok');if(ethers.isAddress($('wallet').value))await restoreDiscoveryResultSnapshot($('wallet').value)}
+$('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;bindStep6LifecycleControls();resetDiscoveryProcess($('wallet').value);setStepState(1,'bereit');setStepState(7,'bereit');updateProcessButtons();log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok');if(ethers.isAddress($('wallet').value))await restoreDiscoveryResultSnapshot($('wallet').value)}
 $('refresh').onclick=processBaseData;
 $('stepStaking').onclick=processStakingDiscovery;
 $('stepDuration').onclick=processDuration;
