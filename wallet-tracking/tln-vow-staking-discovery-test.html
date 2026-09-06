@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 12:18:58 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 12:27:15 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -296,7 +296,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-121858';
+const BUILD_ID='20260906-122715';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -8108,10 +8108,21 @@ async function attachRewardClaimsToLots(lots,calls){
     // Explizite Bonus-Claims sind eine eigene Reward-Kategorie und dürfen nicht
     // durch Contract-Graph-/Adapter-Evidenz einem normalen Staking-Lot zugeschlagen werden.
     if(selectorBonusIntent(c._selector||''))continue;
-    if((lots||[]).some(l=>lotLifecycleHashes(l).has(txHash)))continue;
+    // Lifecycle-Tx werden normalerweise nicht als separate Rewards klassifiziert.
+    // Ausnahme: Beim verifizierten Unstake kann der Staking-Contract noch nicht
+    // geclaimte Rewards automatisch im selben Receipt an die Wallet auszahlen.
+    // Dann darf ausschließlich die Position weitergeprüft werden, deren
+    // verifizierte unstakeTx exakt dieser Reward-Tx entspricht.
+    const unstakeRewardLots=(lots||[]).filter(l=>txHash&&String(l?.unstakeTx||'').toLowerCase()===txHash);
+    const isVerifiedUnstakeRewardTx=unstakeRewardLots.length>0;
+    if(!isVerifiedUnstakeRewardTx&&(lots||[]).some(l=>lotLifecycleHashes(l).has(txHash)))continue;
     const candidates=[];
 
     for(const lot of (lots||[])){
+      // Bei einem finalen Reward innerhalb einer Unstake-Tx ist die Lifecycle-
+      // Verknüpfung selbst der Positionsbeweis. Andere Lots dürfen denselben
+      // Mint nicht über allgemeine Contract-Beziehungen beanspruchen.
+      if(isVerifiedUnstakeRewardTx&&!unstakeRewardLots.includes(lot))continue;
       const pair=norm(safePairAddress(lot));
       if(tr.token===pair)continue; // LP itself is never a reward.
 
@@ -8227,8 +8238,14 @@ async function attachRewardClaimsToLots(lots,calls){
         source:`${c._rewardHint?'Bestätigte reward-relevante Tx':'Staking-/Controller-Receipt'}`,
         assignmentScore:chosen.score,
         rewardProof:tr.rewardProof||null,rewardFlowEvidence:tr.rewardFlowEvidence||null,
-        eventType:/claim|harvest|withdraw.*reward|withdraw.*yield/i.test(String(c._method||''))?'claim':'distribution'
+        eventType:isVerifiedUnstakeRewardTx?'claim':(/claim|harvest|withdraw.*reward|withdraw.*yield/i.test(String(c._method||''))?'claim':'distribution'),
+        finalUnstakeReward:isVerifiedUnstakeRewardTx,
+        finalUnstakeRewardEvidence:isVerifiedUnstakeRewardTx?'verifizierte unstakeTx derselben Position + belegter Reward-Transfer/Mint im selben Receipt':null
       };
+      if(isVerifiedUnstakeRewardTx){
+        claim.method=`${c._method||'Unstake'} · automatischer Rest-Reward`;
+        claim.assignmentReason=`Finaler Staking-Reward beim Unstake · ${claim.assignmentReason}`;
+      }
 
       const key=`${claim.hash}|${claim.token}|${claim.amount}`;
       if(!lot.rewardClaims.some(x=>`${x.hash}|${x.token}|${x.amount}`===key)){
