@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:23:29 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:29:01 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-022329';
+const BUILD_ID='20260906-022901';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -12728,6 +12728,42 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
     if(hits367.length){
       const strong=hits367.filter(h=>h.score.timestamp&&h.score.arith&&h.score.cmp);
       log(`Duration ${label}: Cave-367-Dataflow-Vorpruefung: ${hits367.map(h=>`${h.source}@0x${h.pc.toString(16)} [TIMESTAMP=${h.score.timestamp?'ja':'nein'}, SLOAD=${h.score.storage?'ja':'nein'}, MUL=${h.score.mul?'ja':'nein'}, ADD/SUB=${h.score.arith?'ja':'nein'}, Vergleich=${h.score.cmp?'ja':'nein'}]`).join(' · ')}${strong.length?` · ${strong.length} zeitnaher Zeitpfad-Kandidat(en)`:' · noch kein unmittelbarer TIMESTAMP+Arithmetik+Vergleich-Pfad innerhalb ±96 Byte'}. Weiterhin kein automatischer Duration-Proof.`,'warn');
+    }
+
+    // Control-Flow-Diagnose fuer die 367-Konstante. Wichtig: Der direkt nach PUSH367
+    // gepushte Wert ist bei Solidity-internen Calls haeufig nur die Ruecksprungadresse.
+    // Deshalb wird NICHT blind 0x6ae/0x11b5 als Callee angenommen. Stattdessen verfolgen
+    // wir den Basic-Block bis zum naechsten JUMP/JUMPI und markieren nur PUSH-Ziele, die
+    // tatsaechlich auf ein JUMPDEST im selben Bytecode zeigen. Deren Zielkontext wird dann
+    // separat auf Zeit-/Storage-Arithmetik untersucht.
+    for(const [source,ops] of [['implementation',implOps],['runtime',runtimeOps]]){
+      const jumpdests=new Set(ops.filter(x=>x.op===0x5b).map(x=>x.pc));
+      for(let i=0;i<ops.length;i++){
+        const hit=ops[i];if(hit.value!==367n)continue;
+        let end=Math.min(ops.length,i+90),jumpIndex=-1;
+        for(let j=i+1;j<end;j++){
+          if(ops[j].op===0x56||ops[j].op===0x57){jumpIndex=j;break;}
+        }
+        const block=ops.slice(i,jumpIndex>=0?jumpIndex+1:end);
+        const jump=jumpIndex>=0?ops[jumpIndex]:null;
+        const destPushes=[];
+        for(const x of block){
+          if(x.value==null||x.value<0n||x.value>0xffffffffn)continue;
+          const pc=Number(x.value);
+          if(Number.isSafeInteger(pc)&&jumpdests.has(pc))destPushes.push({fromPc:x.pc,targetPc:pc});
+        }
+        const unique=[];const seen=new Set();
+        for(const d of destPushes){const k=d.targetPc;if(seen.has(k))continue;seen.add(k);unique.push(d);}
+        log(`Duration ${label}: Cave-367-ControlFlow ${source}@0x${hit.pc.toString(16)}: ${jump?`naechster ${jump.name} @0x${jump.pc.toString(16)}`:'kein JUMP in den naechsten 90 Instruktionen'} · JUMPDEST-PUSH-Kandidat(en): ${unique.length?unique.map(d=>`0x${d.targetPc.toString(16)} (gepusht @0x${d.fromPc.toString(16)})`).join(', '):'keine'} · Block: ${block.slice(0,55).map(fmtOp).join(' | ')}${block.length>55?' | …':''}.`,'warn');
+        for(const d of unique.slice(0,6)){
+          const ti=ops.findIndex(x=>x.pc===d.targetPc);if(ti<0)continue;
+          const win=ops.slice(Math.max(0,ti-4),Math.min(ops.length,ti+26));
+          const near=ops.filter(x=>Math.abs(x.pc-d.targetPc)<=160);
+          const ts=near.some(x=>x.op===0x42),sl=near.some(x=>x.op===0x54),mul=near.some(x=>x.op===0x02),arith=near.some(x=>x.op===0x01||x.op===0x03),cmp=near.some(x=>[0x10,0x11,0x12,0x13,0x14,0x15].includes(x.op));
+          const const86400=near.some(x=>x.value===86400n),const367=near.some(x=>x.value===367n);
+          log(`Duration ${label}: Cave-367-Zielkontext ${source} 0x${d.targetPc.toString(16)}: TIMESTAMP=${ts?'ja':'nein'} · SLOAD=${sl?'ja':'nein'} · MUL=${mul?'ja':'nein'} · ADD/SUB=${arith?'ja':'nein'} · Vergleich=${cmp?'ja':'nein'} · 86400=${const86400?'ja':'nein'} · 367=${const367?'ja':'nein'} · ${win.map(fmtOp).join(' | ')}.`,'warn');
+        }
+      }
     }
   }catch(e){
     log(`Duration ${label}: Cave-Bytecode 180/367-Pruefung fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info');
