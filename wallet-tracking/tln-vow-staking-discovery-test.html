@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 00:54:32 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 01:59:58 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-005432';
+const BUILD_ID='20260906-015958';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -12666,6 +12666,7 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
         const low=`${reason} ${emsg}`.toLowerCase();
         let cls='other-revert';
         if(/time|lock|matur|period|duration|early|expired|expiry|unlock|not due|not ready/.test(low))cls='time-gate';
+        else if(/!zeropayout|zero payout|zero_payout/.test(low))cls='zero-payout';
         else if(/transfer amount exceeds balance|insufficient balance|balance/.test(low))cls='balance-path';
         else if(/!fee|fee/.test(low))cls='fee-gate';
         return {ok:false,cls,reason:reason||emsg.slice(0,180)};
@@ -12685,24 +12686,50 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
         const last={ok:false,cls:decoded&&/balance/i.test(decoded)?'balance-path':'other-revert',reason:decoded||msg.slice(0,180),block:latest};
         log(`Duration ${label}: Cave-Unstake historischer Gate-Vergleich · kurz nach Stake Block ${first.block}: ${first.cls}${first.reason?` (${String(first.reason).slice(0,120)})`:''} · heute Block ${latest}: ${last.cls}${last.reason?` (${String(last.reason).slice(0,120)})`:''}.`,'info');
 
-        if(first.cls!==last.cls && (first.cls==='time-gate'||last.cls==='time-gate')){
-          let lo=first.block,hi=latest,loState=first,hiState=last;
-          for(let i=0;i<24 && hi-lo>1;i++){
-            const mid=Math.floor((lo+hi)/2),st=await historicalCall(mid);
-            if(st.cls===first.cls){lo=mid;loState=st}else{hi=mid;hiState=st}
+        if(first.cls!==last.cls){
+          // Fuer die neue Cave-Generation ist !zeroPayout selbst kein expliziter Zeitfehler.
+          // Ein stabiler historischer Wechsel dieses Revert-Pfads ist aber ein belastbarer
+          // On-Chain-Zustandswechsel. Wir grenzen ihn deshalb ebenfalls blockgenau ein,
+          // ohne daraus allein schon eine Vertragslaufzeit abzuleiten.
+          const searchable=(first.cls==='time-gate'||last.cls==='time-gate'||first.cls==='zero-payout');
+          if(searchable){
+            let lo=first.block,hi=latest,loState=first,hiState=last;
+            for(let i=0;i<28 && hi-lo>1;i++){
+              const mid=Math.floor((lo+hi)/2),st=await historicalCall(mid);
+              if(st.cls===first.cls){lo=mid;loState=st}else{hi=mid;hiState=st}
+            }
+            // Boundary absichern: einige Nachbarblocks pruefen, damit ein transienter RPC-/State-
+            // Effekt nicht als Vertragsgrenze interpretiert wird.
+            const neighborBlocks=[Math.max(first.block,lo-2),Math.max(first.block,lo-1),lo,hi,Math.min(latest,hi+1),Math.min(latest,hi+2)];
+            const neighborStates=[];
+            for(const bn of [...new Set(neighborBlocks)]) neighborStates.push(await historicalCall(bn));
+            const beforeOk=neighborStates.filter(x=>x.block<=lo).every(x=>x.cls===first.cls);
+            const afterOk=neighborStates.filter(x=>x.block>=hi).every(x=>x.cls!==first.cls);
+            let tLo=null,tHi=null;
+            try{
+              const [bLo,bHi]=await Promise.all([
+                rpc('eth_getBlockByNumber',['0x'+lo.toString(16),false]),
+                rpc('eth_getBlockByNumber',['0x'+hi.toString(16),false])
+              ]);
+              if(bLo?.timestamp)tLo=Number(BigInt(bLo.timestamp));
+              if(bHi?.timestamp)tHi=Number(BigInt(bHi.timestamp));
+            }catch{}
+            const stakeSec=lot?.stakeTime?Math.floor(new Date(lot.stakeTime).getTime()/1000):null;
+            const deltaSec=(tHi&&stakeSec)?tHi-stakeSec:null;
+            const deltaDays=deltaSec!=null?deltaSec/86400:null;
+            const boundaryStable=beforeOk&&afterOk;
+            log(`Duration ${label}: Cave-Unstake Zustandswechsel eingegrenzt: Block ${lo} (${loState.cls}) → ${hi} (${hiState.cls})${tHi?` · erster Block nach Umschaltung ${new Date(tHi*1000).toLocaleString('de-CH')}`:''}${deltaDays!=null?` · Differenz zum Stake ${deltaDays.toLocaleString('de-CH',{minimumFractionDigits:6,maximumFractionDigits:6})} Tage (${deltaSec.toLocaleString('de-CH')} s)`:''} · Nachbarblock-Pruefung ${boundaryStable?'stabil':'NICHT stabil'}. Noch kein automatischer Strict-Proof.`,'warn');
+            log(`Duration ${label}: Cave-Unstake Boundary-Nachbarn: ${neighborStates.map(x=>`${x.block}:${x.cls}`).join(' · ')}.`,'info');
+            if(deltaDays!=null){
+              const common=[30,60,90,120,180,365,366,367,730,731,732];
+              const nearest=common.map(d=>({d,err:Math.abs(deltaDays-d)})).sort((a,b)=>a.err-b.err)[0];
+              if(nearest&&nearest.err<=2){
+                log(`Duration ${label}: Cave-Unstake Zustandswechsel liegt ${nearest.err.toLocaleString('de-CH',{maximumFractionDigits:6})} Tage von ${nearest.d} Tagen entfernt. Nur Vergleichshinweis; Verifikation an zweiter Position/Contract-Logik erforderlich.`,'info');
+              }
+            }
+          }else{
+            log(`Duration ${label}: Cave-Unstake Revert-Pfad aendert sich historisch (${first.cls} → ${last.cls}), aber der Startzustand ist kein belastbarer Zeit-/zeroPayout-Anker. Deshalb keine Boundary-Suche.`,'info');
           }
-          let tLo=null,tHi=null;
-          try{
-            const [bLo,bHi]=await Promise.all([
-              rpc('eth_getBlockByNumber',['0x'+lo.toString(16),false]),
-              rpc('eth_getBlockByNumber',['0x'+hi.toString(16),false])
-            ]);
-            if(bLo?.timestamp)tLo=Number(BigInt(bLo.timestamp));
-            if(bHi?.timestamp)tHi=Number(BigInt(bHi.timestamp));
-          }catch{}
-          log(`Duration ${label}: Cave-Unstake Gate-Umschaltung eingegrenzt: Block ${lo} (${loState.cls}) → ${hi} (${hiState.cls})${tHi?` · erster Block nach Umschaltung ${new Date(tHi*1000).toLocaleString('de-CH')}`:''}. Noch kein automatischer Strict-Proof.`,'warn');
-        }else if(first.cls!==last.cls){
-          log(`Duration ${label}: Cave-Unstake Revert-Pfad aendert sich historisch (${first.cls} → ${last.cls}), aber ohne expliziten Time-/Lock-Revert. Deshalb keine Laufzeit daraus abgeleitet.`,'info');
         }
       }catch(histErr){
         log(`Duration ${label}: Historische Cave-Unstake-Gate-Pruefung nicht verfuegbar: ${String(histErr?.message||histErr).slice(0,220)}.`,'info');
