@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:17:05 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:23:29 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-021705';
+const BUILD_ID='20260906-022329';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -12667,6 +12667,68 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
       }
     }
     log(`Duration ${label}: Cave-Bytecode 180/367-Pruefung: ${hits.length?hits.slice(0,20).join(' · '):'keine direkten PUSH-Konstanten fuer 180, 367, 24h, 180d oder 367d gefunden'}. Nur Strukturhinweis, kein Duration-Proof.`,'info');
+
+    // EVM-Kontext um die relevanten Konstanten. Ziel ist nicht, aus einer nackten Zahl
+    // eine Laufzeit abzuleiten, sondern festzustellen, ob 367 in einem Zeitpfad mit
+    // TIMESTAMP (0x42), Arithmetik und Vergleich verwendet wird. Erst ein belastbarer
+    // Datenfluss vom gespeicherten Stake-Zeitpunkt bis zu einer 367-Tage-Grenze darf
+    // spaeter als Strict-Proof dienen.
+    const opName=(op)=>({
+      0x00:'STOP',0x01:'ADD',0x02:'MUL',0x03:'SUB',0x04:'DIV',0x05:'SDIV',
+      0x06:'MOD',0x10:'LT',0x11:'GT',0x12:'SLT',0x13:'SGT',0x14:'EQ',0x15:'ISZERO',
+      0x16:'AND',0x17:'OR',0x18:'XOR',0x19:'NOT',0x1b:'SHL',0x1c:'SHR',
+      0x20:'SHA3',0x30:'ADDRESS',0x33:'CALLER',0x34:'CALLVALUE',0x35:'CALLDATALOAD',
+      0x36:'CALLDATASIZE',0x37:'CALLDATACOPY',0x39:'CODECOPY',0x3b:'EXTCODESIZE',
+      0x40:'BLOCKHASH',0x41:'COINBASE',0x42:'TIMESTAMP',0x43:'NUMBER',0x44:'PREVRANDAO',
+      0x50:'POP',0x51:'MLOAD',0x52:'MSTORE',0x53:'MSTORE8',0x54:'SLOAD',0x55:'SSTORE',
+      0x56:'JUMP',0x57:'JUMPI',0x58:'PC',0x59:'MSIZE',0x5b:'JUMPDEST',
+      0xf1:'CALL',0xf3:'RETURN',0xfd:'REVERT',0xfe:'INVALID',0xff:'SELFDESTRUCT'
+    }[op]||((op>=0x80&&op<=0x8f)?`DUP${op-0x7f}`:(op>=0x90&&op<=0x9f)?`SWAP${op-0x8f}`:(op>=0xa0&&op<=0xa4)?`LOG${op-0x9f}`:`OP${op.toString(16).padStart(2,'0')}`));
+    const disassemble=(part)=>{
+      let raw=String(part||'').toLowerCase().replace(/^0x/,'');
+      const invalid=raw.search(/[^0-9a-f]/);if(invalid>=0)raw=raw.slice(0,invalid);
+      const ops=[];
+      for(let pc=0;pc*2+2<=raw.length;){
+        const op=parseInt(raw.slice(pc*2,pc*2+2),16);if(!Number.isFinite(op))break;
+        if(op>=0x60&&op<=0x7f){
+          const n=op-0x5f,hex=raw.slice(pc*2+2,pc*2+2+n*2);
+          const value=(hex.length===n*2&&/^[0-9a-f]+$/.test(hex))?BigInt('0x'+hex):null;
+          ops.push({pc,op,name:`PUSH${n}`,value,hex});pc+=1+n;
+        }else{ops.push({pc,op,name:opName(op),value:null,hex:''});pc+=1;}
+      }
+      return ops;
+    };
+    const implOps=disassemble(profile?.implBytecode||'');
+    const runtimeOps=disassemble(profile?.bytecode||'');
+    const fmtOp=(o)=>`${o.pc.toString(16)}:${o.name}${o.value!=null?`(${o.value.toString()})`:''}`;
+    const inspectTargets=[367n,86400n];
+    for(const [source,ops] of [['implementation',implOps],['runtime',runtimeOps]]){
+      for(let i=0;i<ops.length;i++){
+        const o=ops[i];if(o.value==null||!inspectTargets.includes(o.value))continue;
+        const lo=Math.max(0,i-12),hi=Math.min(ops.length,i+13),window=ops.slice(lo,hi);
+        const near=ops.filter(x=>Math.abs(x.pc-o.pc)<=96);
+        const hasTimestamp=near.some(x=>x.op===0x42);
+        const hasStorage=near.some(x=>x.op===0x54);
+        const hasMul=near.some(x=>x.op===0x02);
+        const hasAddSub=near.some(x=>x.op===0x01||x.op===0x03);
+        const hasCmp=near.some(x=>[0x10,0x11,0x12,0x13,0x14,0x15].includes(x.op));
+        const markers=[hasTimestamp?'TIMESTAMP':null,hasStorage?'SLOAD':null,hasMul?'MUL':null,hasAddSub?'ADD/SUB':null,hasCmp?'COMPARE':null].filter(Boolean);
+        log(`Duration ${label}: Cave-EVM-Kontext ${source} pc 0x${o.pc.toString(16)} ${o.name}=${o.value.toString()} · Marker ±96 Byte: ${markers.length?markers.join(', '):'keine Zeit-/Storage-Marker'} · Instruktionen ±12: ${window.map(fmtOp).join(' | ')}.`,'warn');
+      }
+    }
+
+    const hits367=[];
+    for(const [source,ops] of [['implementation',implOps],['runtime',runtimeOps]]){
+      for(let i=0;i<ops.length;i++)if(ops[i].value===367n){
+        const o=ops[i],near=ops.filter(x=>Math.abs(x.pc-o.pc)<=96);
+        const score={timestamp:near.some(x=>x.op===0x42),storage:near.some(x=>x.op===0x54),mul:near.some(x=>x.op===0x02),arith:near.some(x=>x.op===0x01||x.op===0x03),cmp:near.some(x=>[0x10,0x11,0x12,0x13,0x14,0x15].includes(x.op))};
+        hits367.push({source,pc:o.pc,score});
+      }
+    }
+    if(hits367.length){
+      const strong=hits367.filter(h=>h.score.timestamp&&h.score.arith&&h.score.cmp);
+      log(`Duration ${label}: Cave-367-Dataflow-Vorpruefung: ${hits367.map(h=>`${h.source}@0x${h.pc.toString(16)} [TIMESTAMP=${h.score.timestamp?'ja':'nein'}, SLOAD=${h.score.storage?'ja':'nein'}, MUL=${h.score.mul?'ja':'nein'}, ADD/SUB=${h.score.arith?'ja':'nein'}, Vergleich=${h.score.cmp?'ja':'nein'}]`).join(' · ')}${strong.length?` · ${strong.length} zeitnaher Zeitpfad-Kandidat(en)`:' · noch kein unmittelbarer TIMESTAMP+Arithmetik+Vergleich-Pfad innerhalb ±96 Byte'}. Weiterhin kein automatischer Duration-Proof.`,'warn');
+    }
   }catch(e){
     log(`Duration ${label}: Cave-Bytecode 180/367-Pruefung fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info');
   }
