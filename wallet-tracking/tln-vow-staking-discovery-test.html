@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 13:37:44 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 13:46:29 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -296,7 +296,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-133744';
+const BUILD_ID='20260906-134629';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -9483,6 +9483,29 @@ function collectBonusRewardRows(lots){
   return out;
 }
 
+function sameRewardAmountTolerant(a,b){
+  const x=Number(a),y=Number(b);
+  if(!Number.isFinite(x)||!Number.isFinite(y))return false;
+  const scale=Math.max(1,Math.abs(x),Math.abs(y));
+  return Math.abs(x-y)<=Math.max(1e-12,scale*1e-12);
+}
+function verifiedFinalUnstakeRewardAlreadyAssigned(claim,lots){
+  const hash=String(claim?.hash||'').toLowerCase();
+  const token=norm(claim?.token||'');
+  const from=norm(claim?.from||'');
+  const to=norm(claim?.to||'');
+  if(!hash||!token||from!==ZERO_ADDRESS||to!==norm(CURRENT_WALLET))return false;
+  for(const lot of (lots||[])){
+    if(hash!==String(lot?.unstakeTx||'').toLowerCase())continue;
+    for(const assigned of collectAssignedRewardRows(lot)){
+      if(String(assigned?.hash||'').toLowerCase()!==hash)continue;
+      if(norm(assigned?.token||'')!==token)continue;
+      if(!sameRewardAmountTolerant(assigned?.amount,claim?.amount))continue;
+      return true;
+    }
+  }
+  return false;
+}
 function collectUnassignedClaimRows(lots){
   const assignedKeys=new Set();
   for(const lot of (lots||[])){
@@ -9491,6 +9514,11 @@ function collectUnassignedClaimRows(lots){
   const out=[];
   for(const claim of (CURRENT_PROVEN_REWARD_ROWS||[])){
     if(assignedKeys.has(assignedRewardIdentity(claim)))continue;
+    // Sonderfall finaler Rest-Reward beim verifizierten Unstake: Derselbe Mint
+    // kann zwischen Alchemy-Transfer und dekodiertem Claim minimal anders als
+    // JS-Number repräsentiert sein. Dann nicht fälschlich nochmals als ungeklärt
+    // anzeigen, sofern Tx, Token, Zero-Address-Mint, Wallet und Betrag übereinstimmen.
+    if(verifiedFinalUnstakeRewardAlreadyAssigned(claim,lots))continue;
     if(bonusEvidenceForClaim(claim))continue;
     const referral=referralEvidenceForClaim(claim,lots);
     if(referral.kind==='referral')continue;
