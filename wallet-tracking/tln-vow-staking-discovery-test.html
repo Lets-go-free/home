@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:06:32 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:17:05 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-020632';
+const BUILD_ID='20260906-021705';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -12641,21 +12641,69 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
       [15552000n,'180d=15,552,000s'],[31708800n,'367d=31,708,800s']
     ]);
     const hits=[];
-    const raw=code.startsWith('0x')?code.slice(2):code;
-    for(let pc=0;pc*2<raw.length;){
-      const op=parseInt(raw.slice(pc*2,pc*2+2),16);
-      if(op>=0x60&&op<=0x7f){
-        const n=op-0x5f,hex=raw.slice(pc*2+2,pc*2+2+n*2);
-        if(hex.length===n*2){
-          const v=BigInt('0x'+hex);
-          if(targets.has(v))hits.push(`pc 0x${pc.toString(16)} PUSH${n}=${targets.get(v)}`);
-        }
-        pc+=1+n;
-      }else pc+=1;
+    // Runtime- und Implementation-Bytecode getrennt zerlegen. Das fruehere direkte
+    // Zusammenhaengen zweier 0x-prefixed Strings erzeugte mitten im Hexstrom ein zweites
+    // "0x" und damit den BigInt-Parserfehler. Nur echte Hex-PUSH-Operanden werden gelesen.
+    const bytecodeParts=[
+      ['runtime',profile?.bytecode||''],
+      ['implementation',profile?.implBytecode||'']
+    ];
+    for(const [source,part] of bytecodeParts){
+      let raw=String(part||'').toLowerCase().replace(/^0x/,'');
+      if(!raw)continue;
+      const invalid=raw.search(/[^0-9a-f]/);
+      if(invalid>=0)raw=raw.slice(0,invalid);
+      for(let pc=0;pc*2+2<=raw.length;){
+        const op=parseInt(raw.slice(pc*2,pc*2+2),16);
+        if(!Number.isFinite(op))break;
+        if(op>=0x60&&op<=0x7f){
+          const n=op-0x5f,hex=raw.slice(pc*2+2,pc*2+2+n*2);
+          if(hex.length===n*2&&/^[0-9a-f]+$/.test(hex)){
+            const v=BigInt('0x'+hex);
+            if(targets.has(v))hits.push(`${source} pc 0x${pc.toString(16)} PUSH${n}=${targets.get(v)}`);
+          }
+          pc+=1+n;
+        }else pc+=1;
+      }
     }
-    log(`Duration ${label}: Cave-Bytecode 180/367-Pruefung: ${hits.length?hits.slice(0,16).join(' · '):'keine direkten PUSH-Konstanten fuer 180, 367, 24h, 180d oder 367d gefunden'}. Nur Strukturhinweis, kein Duration-Proof.`,'info');
+    log(`Duration ${label}: Cave-Bytecode 180/367-Pruefung: ${hits.length?hits.slice(0,20).join(' · '):'keine direkten PUSH-Konstanten fuer 180, 367, 24h, 180d oder 367d gefunden'}. Nur Strukturhinweis, kein Duration-Proof.`,'info');
   }catch(e){
     log(`Duration ${label}: Cave-Bytecode 180/367-Pruefung fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info');
+  }
+
+  // Zusaetzliche Referenzsuche innerhalb derselben privaten Slot-7-Positionsstruktur.
+  // Wir sampeln aeltere tokenIds mit wenigen Storage-Reads und suchen Positionen, deren
+  // gespeicherter Startzeitpunkt bereits >=367 Tage zurueckliegt. Das liefert nur
+  // Referenzkandidaten fuer Folgetests; weder Alter noch fortbestehender Storage beweisen
+  // allein die Lock-Dauer oder einen Unstake.
+  try{
+    const currentId=BigInt(tokenId),nowSec=Math.floor(Date.now()/1000),slot=7n;
+    const ids=[];
+    for(let d=25n;d<currentId&&ids.length<72;d+=25n)ids.push(currentId-d);
+    if(currentId>1n&&!ids.includes(1n))ids.push(1n);
+    const jobs=ids.map(id=>{
+      const base=BigInt(ethers.solidityPackedKeccak256(['uint256','uint256'],[id,slot]));
+      return {id,key:'0x'+(base+4n).toString(16).padStart(64,'0')};
+    });
+    const rr=jobs.length?await rpcManyDiscovery(jobs.map(j=>({method:'eth_getStorageAt',params:[contract,j.key,'latest']})),40):[];
+    const refs=[];
+    for(let i=0;i<jobs.length;i++){
+      const raw=rr[i]?.error?null:rr[i]?.result;if(!raw||raw==='0x')continue;
+      let v=0n;try{v=BigInt(raw)}catch{continue}if(!v)continue;
+      const ts=Number(v&0xffffffffn);
+      if(!humanTimestamp(ts)||ts>=nowSec)continue;
+      const ageDays=(nowSec-ts)/86400;
+      if(ageDays>=330)refs.push({id:jobs[i].id,ts,ageDays});
+    }
+    refs.sort((a,b)=>a.ts-b.ts);
+    if(refs.length){
+      const best=refs.slice(0,6);
+      log(`Duration ${label}: Cave-aeltere Positionsreferenzen aus derselben Slot-7-Struktur: ${best.map(r=>`tokenId ${r.id.toString()} · Start ${new Date(r.ts*1000).toLocaleString('de-CH')} · Alter ${r.ageDays.toLocaleString('de-CH',{maximumFractionDigits:2})} Tage`).join(' · ')}. Kandidaten nur fuer Gegenprobe, kein Duration-Proof.`,'warn');
+    }else{
+      log(`Duration ${label}: Cave-aeltere Positionsreferenzen: ${jobs.length} gesampelte tokenId(s), keine noch belegte Slot-7-Position mit >=330 Tagen Alter gefunden. Kein Rueckschluss auf Lock-Dauer.`,'info');
+    }
+  }catch(e){
+    log(`Duration ${label}: Cave-aeltere Positionsreferenzen nicht verfuegbar: ${String(e?.message||e).slice(0,180)}.`,'info');
   }
   const data=selector+ethers.AbiCoder.defaultAbiCoder().encode(['uint256','uint256'],[BigInt(tokenId),0n]).slice(2);
   // Verifizierte erfolgreiche Calls dieses Cave-Contracts senden 0.001 BNB mit.
