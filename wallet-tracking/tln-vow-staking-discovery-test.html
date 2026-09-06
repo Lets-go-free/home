@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 01:59:58 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:06:32 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-015958';
+const BUILD_ID='20260906-020632';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -12617,17 +12617,45 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
   const tokenId=normalizedUintString(lot?.stake_token_id);
   const wallet=norm(lot?.wallet||lot?.staking?.wallet||CURRENT_WALLET||'');
   if(!ethers.isAddress(contract)||!tokenId||!ethers.isAddress(wallet))return {supported:false};
-  // Neuer Cave-Contract: on-chain beobachteter Unstake-Entry ist 0xdb3367ed(tokenId,0).
+  // Neuer Cave-Contract: 0xdb3367ed(tokenId,0) ist nach den inzwischen beobachteten
+  // erfolgreichen Transaktionen als Reward-/Payout-Pfad zu behandeln, NICHT als belegter Unstake.
+  // Die 24h-Grenze (!zeroPayout -> spaeterer Pfad) passt zum Reward-Zyklus und darf daher
+  // niemals als Lock-/Staking-Ende verwendet werden.
   // Wir verwenden ihn NUR, wenn der Selector im Runtime-Bytecode des exakt belegten
-  // Staking-Contracts vorhanden ist. Ein erfolgreicher eth_call bedeutet nur, dass ein
-  // Unstake JETZT moeglich waere; ein Revert ist ein Gate-Beleg, aber noch kein exakter
-  // Duration-Proof. Revert-Daten werden voll protokolliert, weil Custom Errors oft die
+  // Staking-Contracts vorhanden ist. Ein erfolgreicher eth_call bedeutet nur, dass der
+  // Payout-Pfad JETZT ausfuehrbar waere; weder Erfolg noch Revert beweisen ein Unstake-
+  // oder Lock-Ende. Revert-Daten werden voll protokolliert, weil Custom Errors oft die
   // fehlende Zeit-/Statusinformation enthalten.
   const selector='0xdb3367ed';
   const profile=await contractCodeProfile(contract),code=`${profile?.bytecode||''}${profile?.implBytecode||''}`.toLowerCase();
   if(!code.includes(selector.slice(2))){
-    log(`Duration ${label}: Cave-Unstake-Selector ${selector} ist im Bytecode von ${short(contract)} nicht vorhanden.`,'info');
+    log(`Duration ${label}: Cave-Payout-Selector ${selector} ist im Bytecode von ${short(contract)} nicht vorhanden.`,'info');
     return {supported:false};
+  }
+  // Gezielt nach 180- und 367-Tage-Konstanten suchen. Das ist nur ein Bytecode-Hinweis:
+  // Compiler koennen Konstanten zerlegen/optimieren; Treffer koennen zudem andere Zwecke haben.
+  // Deshalb niemals allein daraus Duration-Proof erzeugen.
+  try{
+    const targets=new Map([
+      [180n,'180'],[367n,'367'],[86400n,'24h=86,400s'],
+      [15552000n,'180d=15,552,000s'],[31708800n,'367d=31,708,800s']
+    ]);
+    const hits=[];
+    const raw=code.startsWith('0x')?code.slice(2):code;
+    for(let pc=0;pc*2<raw.length;){
+      const op=parseInt(raw.slice(pc*2,pc*2+2),16);
+      if(op>=0x60&&op<=0x7f){
+        const n=op-0x5f,hex=raw.slice(pc*2+2,pc*2+2+n*2);
+        if(hex.length===n*2){
+          const v=BigInt('0x'+hex);
+          if(targets.has(v))hits.push(`pc 0x${pc.toString(16)} PUSH${n}=${targets.get(v)}`);
+        }
+        pc+=1+n;
+      }else pc+=1;
+    }
+    log(`Duration ${label}: Cave-Bytecode 180/367-Pruefung: ${hits.length?hits.slice(0,16).join(' · '):'keine direkten PUSH-Konstanten fuer 180, 367, 24h, 180d oder 367d gefunden'}. Nur Strukturhinweis, kein Duration-Proof.`,'info');
+  }catch(e){
+    log(`Duration ${label}: Cave-Bytecode 180/367-Pruefung fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info');
   }
   const data=selector+ethers.AbiCoder.defaultAbiCoder().encode(['uint256','uint256'],[BigInt(tokenId),0n]).slice(2);
   // Verifizierte erfolgreiche Calls dieses Cave-Contracts senden 0.001 BNB mit.
@@ -12636,7 +12664,7 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
   const callValue='0x'+(10n**15n).toString(16); // 0.001 BNB, keine On-Chain-Transaktion
   try{
     const out=await rpc('eth_call',[{from:wallet,to:contract,data,value:callValue},'latest']);
-    log(`Duration ${label}: Cave-Unstake-Gate tokenId ${tokenId}: eth_call ${selector}(tokenId,0) mit 0.001 BNB Fee ist aktuell AUSFUEHRBAR${out&&out!=='0x'?` · Rueckgabe ${out}`:''}. Das beweist keine bereits erfolgte Aufloesung.`,'warn');
+    log(`Duration ${label}: Cave-Payout-Gate tokenId ${tokenId}: eth_call ${selector}(tokenId,0) mit 0.001 BNB Fee ist aktuell AUSFUEHRBAR${out&&out!=='0x'?` · Rueckgabe ${out}`:''}. Das beweist keine bereits erfolgte Aufloesung.`,'warn');
     return {supported:true,callable:true,result:out,callValue};
   }catch(e){
     const msg=String(e?.message||e||'');
@@ -12645,17 +12673,17 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
     if(typeof dataErr==='string'&&dataErr.startsWith('0x08c379a0')&&dataErr.length>10){
       try{decoded=ethers.AbiCoder.defaultAbiCoder().decode(['string'],'0x'+dataErr.slice(10))[0]||''}catch{}
     }
-    log(`Duration ${label}: Cave-Unstake-Gate tokenId ${tokenId}: mit 0.001 BNB Fee aktuell NICHT ausfuehrbar · ${decoded?`Revert "${decoded}"`:`${msg.slice(0,240)}${dataErr?` · RevertData ${String(dataErr).slice(0,194)}`:''}`}.`,'ok');
+    log(`Duration ${label}: Cave-Payout-Gate tokenId ${tokenId}: mit 0.001 BNB Fee aktuell NICHT ausfuehrbar · ${decoded?`Revert "${decoded}"`:`${msg.slice(0,240)}${dataErr?` · RevertData ${String(dataErr).slice(0,194)}`:''}`}.`,'ok');
 
-    // Der aktuelle Revert kann hinter einem Zeit-Gate liegen (z.B. erst nach Ablauf wird
-    // versucht, Token auszuzahlen). Um die Reihenfolge on-chain zu belegen, simulieren wir
-    // denselben Call an wenigen historischen Blocks zwischen Stake und heute. Wenn sich der
-    // Revert-Grund von einem expliziten Lock-/Time-Gate in einen spaeteren Transfer-/Balance-
-    // Fehler aendert, kann die Umschaltgrenze per Binary Search blockgenau eingegrenzt werden.
+    // Dieser Selector ist ein Reward-/Payout-Pfad. Wir simulieren ihn historisch, um den
+    // 24h-Payout-Zyklus und weitere Zustandswechsel zu erkennen. Solche Grenzen sind nur
+    // Reward-Evidenz und werden NICHT als Staking-/Lock-Dauer verwendet.
     const stakeBlock=lot?.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null;
     if(Number.isFinite(stakeBlock)&&stakeBlock>0){
       const latestHex=await rpc('eth_blockNumber',[]);
       const latest=Number(BigInt(latestHex));
+      let latestTs=null;
+      try{const lb=await rpc('eth_getBlockByNumber',[latestHex,false]);if(lb?.timestamp)latestTs=Number(BigInt(lb.timestamp))}catch{}
       const decodeGateError=(err)=>{
         const emsg=String(err?.message||err||'');
         const edata=err?.data||err?.error?.data||err?.info?.error?.data||null;
@@ -12684,7 +12712,7 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
         const firstBlock=Math.min(latest,stakeBlock+1);
         const first=await historicalCall(firstBlock);
         const last={ok:false,cls:decoded&&/balance/i.test(decoded)?'balance-path':'other-revert',reason:decoded||msg.slice(0,180),block:latest};
-        log(`Duration ${label}: Cave-Unstake historischer Gate-Vergleich · kurz nach Stake Block ${first.block}: ${first.cls}${first.reason?` (${String(first.reason).slice(0,120)})`:''} · heute Block ${latest}: ${last.cls}${last.reason?` (${String(last.reason).slice(0,120)})`:''}.`,'info');
+        log(`Duration ${label}: Cave-Payout historischer Gate-Vergleich · kurz nach Stake Block ${first.block}: ${first.cls}${first.reason?` (${String(first.reason).slice(0,120)})`:''} · heute Block ${latest}: ${last.cls}${last.reason?` (${String(last.reason).slice(0,120)})`:''}.`,'info');
 
         if(first.cls!==last.cls){
           // Fuer die neue Cave-Generation ist !zeroPayout selbst kein expliziter Zeitfehler.
@@ -12715,24 +12743,38 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
               if(bHi?.timestamp)tHi=Number(BigInt(bHi.timestamp));
             }catch{}
             const stakeSec=lot?.stakeTime?Math.floor(new Date(lot.stakeTime).getTime()/1000):null;
+            if(stakeSec&&latestTs){
+              for(const d of [180,367]){
+                const targetTs=stakeSec+d*86400;
+                if(targetTs>latestTs){
+                  const remaining=(targetTs-latestTs)/86400;
+                  log(`Duration ${label}: Cave-Pruefanker +${d} Tage = ${new Date(targetTs*1000).toLocaleString('de-CH')} liegt noch ${remaining.toLocaleString('de-CH',{minimumFractionDigits:3,maximumFractionDigits:3})} Tage in der Zukunft. Daher heute nicht per historischem eth_call verifizierbar; Wert bleibt nur Hypothese.`,'info');
+                }else{
+                  log(`Duration ${label}: Cave-Pruefanker +${d} Tage liegt bereits historisch und kann in einem gezielten Folgetest gegen den Contract-State geprueft werden. Noch kein automatischer Duration-Proof.`,'info');
+                }
+              }
+            }
             const deltaSec=(tHi&&stakeSec)?tHi-stakeSec:null;
             const deltaDays=deltaSec!=null?deltaSec/86400:null;
             const boundaryStable=beforeOk&&afterOk;
-            log(`Duration ${label}: Cave-Unstake Zustandswechsel eingegrenzt: Block ${lo} (${loState.cls}) → ${hi} (${hiState.cls})${tHi?` · erster Block nach Umschaltung ${new Date(tHi*1000).toLocaleString('de-CH')}`:''}${deltaDays!=null?` · Differenz zum Stake ${deltaDays.toLocaleString('de-CH',{minimumFractionDigits:6,maximumFractionDigits:6})} Tage (${deltaSec.toLocaleString('de-CH')} s)`:''} · Nachbarblock-Pruefung ${boundaryStable?'stabil':'NICHT stabil'}. Noch kein automatischer Strict-Proof.`,'warn');
-            log(`Duration ${label}: Cave-Unstake Boundary-Nachbarn: ${neighborStates.map(x=>`${x.block}:${x.cls}`).join(' · ')}.`,'info');
+            log(`Duration ${label}: Cave-Payout Zustandswechsel eingegrenzt: Block ${lo} (${loState.cls}) → ${hi} (${hiState.cls})${tHi?` · erster Block nach Umschaltung ${new Date(tHi*1000).toLocaleString('de-CH')}`:''}${deltaDays!=null?` · Differenz zum Stake ${deltaDays.toLocaleString('de-CH',{minimumFractionDigits:6,maximumFractionDigits:6})} Tage (${deltaSec.toLocaleString('de-CH')} s)`:''} · Nachbarblock-Pruefung ${boundaryStable?'stabil':'NICHT stabil'}. Noch kein automatischer Strict-Proof.`,'warn');
+            log(`Duration ${label}: Cave-Payout Boundary-Nachbarn: ${neighborStates.map(x=>`${x.block}:${x.cls}`).join(' · ')}.`,'info');
+            if(deltaSec!=null&&Math.abs(deltaSec-86400)<=3){
+              log(`Duration ${label}: Cave-Payout 24h-Anker bestaetigt: Zustandswechsel nach ${deltaSec.toLocaleString('de-CH')} s. Als Reward-/Payout-Zyklus klassifiziert; explizit NICHT als Staking-/Lock-Dauer verwendet.`,'ok');
+            }
             if(deltaDays!=null){
               const common=[30,60,90,120,180,365,366,367,730,731,732];
               const nearest=common.map(d=>({d,err:Math.abs(deltaDays-d)})).sort((a,b)=>a.err-b.err)[0];
               if(nearest&&nearest.err<=2){
-                log(`Duration ${label}: Cave-Unstake Zustandswechsel liegt ${nearest.err.toLocaleString('de-CH',{maximumFractionDigits:6})} Tage von ${nearest.d} Tagen entfernt. Nur Vergleichshinweis; Verifikation an zweiter Position/Contract-Logik erforderlich.`,'info');
+                log(`Duration ${label}: Cave-Payout Zustandswechsel liegt ${nearest.err.toLocaleString('de-CH',{maximumFractionDigits:6})} Tage von ${nearest.d} Tagen entfernt. Nur Vergleichshinweis; Verifikation an zweiter Position/Contract-Logik erforderlich.`,'info');
               }
             }
           }else{
-            log(`Duration ${label}: Cave-Unstake Revert-Pfad aendert sich historisch (${first.cls} → ${last.cls}), aber der Startzustand ist kein belastbarer Zeit-/zeroPayout-Anker. Deshalb keine Boundary-Suche.`,'info');
+            log(`Duration ${label}: Cave-Payout Revert-Pfad aendert sich historisch (${first.cls} → ${last.cls}), aber der Startzustand ist kein belastbarer Zeit-/zeroPayout-Anker. Deshalb keine Boundary-Suche.`,'info');
           }
         }
       }catch(histErr){
-        log(`Duration ${label}: Historische Cave-Unstake-Gate-Pruefung nicht verfuegbar: ${String(histErr?.message||histErr).slice(0,220)}.`,'info');
+        log(`Duration ${label}: Historische Cave-Payout-Gate-Pruefung nicht verfuegbar: ${String(histErr?.message||histErr).slice(0,220)}.`,'info');
       }
     }
 
