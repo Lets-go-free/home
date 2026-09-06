@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 14:30:08 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 14:37:47 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -304,7 +304,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-143008';
+const BUILD_ID='20260906-143747';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -11532,6 +11532,10 @@ const TEAM_GRAPH_CONFIRMATIONS=12;
 let TEAM_GRAPH_DB_AVAILABLE=true;
 let TEAM_FORCE_FULL_GRAPH_RESCAN_ONCE=false;
 const TEAM_IDENTITY_CACHE=new Map();
+// Wallets mit verifizierter Team-Relation, fuer die der konkrete join(address)-Registry-Contract
+// nodeIdOf(address)=0 liefert. Das ist kein erfundener TLN-ID-Wert, sondern ein expliziter
+// On-Chain-Status 'keine ID auf dieser Registry'. Nur Session-Diagnose, nicht als Identity persistieren.
+const TEAM_IDENTITY_NO_ID=new Map();
 let CURRENT_TEAM_PROJECT_FOREST=null;
 const TEAM_STAKING_LIFECYCLE=new Map();
 // Einmalige gezielte Revalidierung fuer historisch als offen/abgelaufen gecachte Positionen.
@@ -11751,6 +11755,55 @@ async function teamGetIdentity(wallet,{historyFallback=false}={}){
   // Step 7 verwendet denselben zentralen Resolver wie Step 5. Der normale Team-Hot-Run
   // aktiviert den teureren History-Fallback weiterhin nicht für jeden Partner einzeln.
   return resolveTlnIdentity(wallet,{historyFallback,persist:true,logFn:(msg)=>log(msg,'warn')});
+}
+async function teamProbeJoinRegistryIdentity(wallet,forest){
+  wallet=norm(wallet);
+  const edge=forest?.edgeByChild?.get(wallet)||null;
+  const hash=norm(edge?.hash||'');
+  if(!/^0x[0-9a-f]{64}$/.test(hash))return {wallet,status:'unresolved',reason:'keine Join-Tx'};
+  let tx=null;
+  try{tx=await rpc('eth_getTransactionByHash',[hash])}catch(e){
+    log(`Team-Identity Join-Registry-Probe ${short(wallet)}: Tx ${hash} nicht lesbar (${e.message}).`,'warn');
+    return {wallet,status:'unresolved',reason:'Join-Tx nicht lesbar'};
+  }
+  const joinContract=norm(tx?.to||'');
+  const input=String(tx?.input||'').toLowerCase();
+  if(norm(tx?.from)!==wallet||input.slice(0,10)!==TEAM_JOIN_SELECTOR||!ethers.isAddress(joinContract)){
+    log(`Team-Identity Join-Registry-Probe ${short(wallet)}: gespeicherte Relation ist on-chain vorhanden, Tx passt aber nicht als direkter join(address)-Call der Wallet.`,'warn');
+    return {wallet,status:'unresolved',reason:'kein direkter join(address)-Call'};
+  }
+  try{
+    const raw=await rpc('eth_call',[{to:joinContract,data:TEAM_NODE_ID_SELECTOR+wallet.slice(2).padStart(64,'0')},'latest']);
+    if(!raw||raw==='0x'||raw.length<66){
+      log(`Team-Identity Join-Registry-Probe ${short(wallet)}: ${joinContract} liefert keinen auswertbaren nodeIdOf(address)-Wert.`,'warn');
+      return {wallet,status:'unresolved',reason:'nodeIdOf nicht auswertbar',contract:joinContract};
+    }
+    const id=BigInt('0x'+raw.slice(2,66));
+    if(id>0n){
+      let reverse=null;
+      try{
+        const revRaw=await rpc('eth_call',[{to:joinContract,data:TEAM_NODE_USER_SELECTOR+id.toString(16).padStart(64,'0')},'latest']);
+        reverse=teamDecodeSingleAddress(revRaw);
+      }catch{}
+      if(reverse&&reverse!==wallet){
+        log(`Team-Identity Join-Registry-Probe ${short(wallet)}: nodeIdOf=${id}, aber nodeUserOf(${id})=${reverse}; nicht übernommen.`,'warn');
+        return {wallet,status:'unresolved',reason:'Reverse-Mismatch',contract:joinContract,nodeId:id.toString()};
+      }
+      const ident={wallet,nodeId:id.toString(),referredById:null,parentWallet:norm(forest?.parentByChild?.get(wallet)||''),source:'join(address)-Registry · nodeIdOf'+(reverse===wallet?' + nodeUserOf':''),chain:'BSC',contract:joinContract,method:'nodeIdOf(address)',verifiedAt:new Date().toISOString(),evidenceTx:hash};
+      cacheResolvedTlnIdentity(ident);
+      await saveTlnIdentityToDb(ident);
+      TEAM_IDENTITY_NO_ID.delete(wallet);
+      log(`Team-Identity Join-Registry-Probe ERFOLG: ${short(wallet)} → TLN-ID ${ident.nodeId} auf ${joinContract}${reverse===wallet?' · Reverse-Match':''}.`,'ok');
+      return {wallet,status:'resolved',identity:ident};
+    }
+    const state={wallet,status:'no_id_on_join_registry',contract:joinContract,hash,verifiedAt:new Date().toISOString()};
+    TEAM_IDENTITY_NO_ID.set(wallet,state);
+    log(`Team-Identity Join-Registry-Probe: ${short(wallet)} hat auf dem verifizierten join(address)-Contract ${joinContract} aktuell nodeIdOf(address)=0. Relation bleibt gültig; keine TLN-ID wird erfunden.`,'muted');
+    return state;
+  }catch(e){
+    log(`Team-Identity Join-Registry-Probe ${short(wallet)}: nodeIdOf(address) auf ${joinContract} fehlgeschlagen (${e.message}).`,'warn');
+    return {wallet,status:'unresolved',reason:'nodeIdOf fehlgeschlagen',contract:joinContract};
+  }
 }
 async function teamMapWithConcurrency(items,limit,fn){
   const out=new Array(items.length);let next=0;
@@ -13814,8 +13867,14 @@ async function prepareTeamTree(){
     if(identityMisses.length){
       log(`Team-IDs gezielter Registry-Fallback: ${identityMisses.length} Wallet(s) nach normalem Getter noch ohne TLN-ID; nur diese Wallet(s) werden historisch geprüft.`,'muted');
       await teamMapWithConcurrency(identityMisses,3,w=>teamGetIdentity(w,{historyFallback:true}));
-      const remainingIdentityMisses=identityMisses.filter(w=>!TEAM_IDENTITY_CACHE.get(w)?.nodeId);
+      let remainingIdentityMisses=identityMisses.filter(w=>!TEAM_IDENTITY_CACHE.get(w)?.nodeId);
       log(`Team-IDs gezielter Registry-Fallback abgeschlossen: ${identityMisses.length-remainingIdentityMisses.length}/${identityMisses.length} zusätzliche Identity(s) verifiziert${remainingIdentityMisses.length?` · ${remainingIdentityMisses.length} weiterhin offen`:''}.`,remainingIdentityMisses.length?'warn':'ok');
+      if(remainingIdentityMisses.length){
+        log(`Team-IDs Join-Registry-Nachweis: ${remainingIdentityMisses.length} weiterhin offene Wallet(s) werden ausschließlich gegen den Contract ihrer verifizierten join(address)-Tx geprüft.`,'muted');
+        await teamMapWithConcurrency(remainingIdentityMisses,3,w=>teamProbeJoinRegistryIdentity(w,forest));
+        remainingIdentityMisses=remainingIdentityMisses.filter(w=>!TEAM_IDENTITY_CACHE.get(w)?.nodeId&&!TEAM_IDENTITY_NO_ID.has(w));
+        if(remainingIdentityMisses.length)log(`Team-IDs Join-Registry-Nachweis: ${remainingIdentityMisses.length} Wallet(s) technisch weiterhin unresolved.`,'warn');
+      }
     }
     forest=buildProjectTeamForest(full.edges);
     CURRENT_TEAM_PROJECT_FOREST=forest;
@@ -13850,12 +13909,18 @@ function teamRegressionSummary(forest){
     }
   }
   const missingIdentity=included.filter(w=>!TEAM_IDENTITY_CACHE.get(norm(w))?.nodeId);
+  const verifiedNoId=missingIdentity.filter(w=>TEAM_IDENTITY_NO_ID.has(norm(w)));
+  const unresolvedIdentity=missingIdentity.filter(w=>!TEAM_IDENTITY_NO_ID.has(norm(w)));
   const identities=included.length-missingIdentity.length;
   const verified=included.filter(w=>TEAM_STAKING_LIFECYCLE.get(norm(w))?.verified).length;
   const noActive=included.filter(w=>{const l=TEAM_STAKING_LIFECYCLE.get(norm(w));return l?.verified&&!(l?.open||[]).some(x=>x.status==='active')}).length;
   const expiredOpen=included.reduce((n,w)=>n+(TEAM_STAKING_LIFECYCLE.get(norm(w))?.open||[]).filter(x=>x.status==='expired').length,0);
-  const ok=cycles.length===0&&identities===included.length&&verified===included.length&&roots.length===forest.components?.length;
-  return {ok,cycles:cycles.length,identities,verified,total:included.length,roots:roots.length,components:forest.components?.length||0,noActive,expiredOpen,missingIdentity,text:`${identities}/${included.length} Identity · ${verified}/${included.length} Lifecycle · ${cycles.length} Zyklus/Zyklen · ${roots.length}/${forest.components?.length||0} Roots · ${noActive} ohne aktives Staking · ${expiredOpen} abgelaufen/offen`};
+  // Eine verifizierte join(address)-Relation kann existieren, obwohl der Join-Registry-Contract
+  // für diese Wallet nodeIdOf(address)=0 liefert. Das ist ein valider On-Chain-Zustand und
+  // darf den Team-Baum nicht fälschlich auf PRÜFEN setzen. Nur technisch unresolved IDs tun das.
+  const ok=cycles.length===0&&unresolvedIdentity.length===0&&verified===included.length&&roots.length===forest.components?.length;
+  const identityText=verifiedNoId.length?`${identities}/${included.length} TLN-ID · ${verifiedNoId.length} verifiziert ohne ID`:`${identities}/${included.length} Identity`;
+  return {ok,cycles:cycles.length,identities,verified,total:included.length,roots:roots.length,components:forest.components?.length||0,noActive,expiredOpen,missingIdentity,verifiedNoId,unresolvedIdentity,text:`${identityText} · ${verified}/${included.length} Lifecycle · ${cycles.length} Zyklus/Zyklen · ${roots.length}/${forest.components?.length||0} Roots · ${noActive} ohne aktives Staking · ${expiredOpen} abgelaufen/offen`};
 }
 function logTeamMissingIdentityDiagnostics(forest,teamCheck){
   const missing=teamCheck?.missingIdentity||[];
@@ -13866,10 +13931,11 @@ function logTeamMissingIdentityDiagnostics(forest,teamCheck){
     const kids=(forest?.children?.get(wallet)||[]).map(norm);
     const kidText=kids.length?kids.map(k=>`${short(k)}${TEAM_IDENTITY_CACHE.get(k)?.nodeId?`/ID ${TEAM_IDENTITY_CACHE.get(k).nodeId}`:''}`).join(', '):'keine';
     const life=TEAM_STAKING_LIFECYCLE.get(wallet);
+    const noId=TEAM_IDENTITY_NO_ID.get(wallet)||null;
     const own=forest?.ownSet?.has(wallet)?'ja':'nein';
     const source=edge?.source||'Graph-Beziehung ohne Quellenlabel';
     const tx=edge?.hash||'–';
-    log(`Step-7 Identity-Diagnose: Wallet ${wallet} · eigene Wallet ${own} · Upline ${parent||'–'}${parentIdent?.nodeId?` / TLN-ID ${parentIdent.nodeId}`:''} · Downlines ${kidText} · Relation ${source} · Tx ${tx} · Lifecycle ${life?.verified?'verifiziert':'nicht verifiziert'} (${(life?.open||[]).length} offen / ${(life?.closed||[]).length} beendet).`,'warn');
+    log(`Step-7 Identity-Diagnose: Wallet ${wallet} · ${noId?`Status verifiziert ohne TLN-ID (nodeIdOf=0 auf Join-Registry ${noId.contract})`:'Status technisch unresolved'} · eigene Wallet ${own} · Upline ${parent||'–'}${parentIdent?.nodeId?` / TLN-ID ${parentIdent.nodeId}`:''} · Downlines ${kidText} · Relation ${source} · Tx ${tx} · Lifecycle ${life?.verified?'verifiziert':'nicht verifiziert'} (${(life?.open||[]).length} offen / ${(life?.closed||[]).length} beendet).`,noId?'muted':'warn');
   }
 }
 let TEAM_TREE_RUN_INFLIGHT=false;
