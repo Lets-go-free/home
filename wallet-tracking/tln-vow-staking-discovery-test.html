@@ -104,13 +104,18 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 .team-alias-label{font-size:10px;color:#8fa0b5;white-space:nowrap}
 .team-alias-input{display:block;width:100%;max-width:100%;min-width:0;box-sizing:border-box;padding:4px 6px;background:#0d131d;border:1px solid #334155;border-radius:6px;color:inherit;font-size:11px}
 .team-line-summary{margin:10px 0 4px}
-.team-controls{margin:12px 0 14px;padding:12px;border:1px solid #2b3b50;border-radius:10px;background:#0f1722}
-.team-highlight-options{display:flex;gap:10px 18px;flex-wrap:wrap;align-items:center;margin-top:9px}
-.team-highlight-options label{display:grid!important;grid-template-columns:15px max-content!important;column-gap:7px;align-items:center;justify-content:start!important;width:max-content!important;max-width:100%;min-width:0;font-size:12px;cursor:pointer;white-space:nowrap}
-.team-highlight-options label input[type="checkbox"]{margin:0!important;flex:none;width:15px!important;height:15px!important;justify-self:start}
-.team-highlight-options button{margin-left:2px}
-.team-controls .team-highlight-options label{padding:0}
-.team-controls .team-highlight-options label input{position:static;transform:none}
+.team-controls{margin:14px 0 18px;padding:16px 18px 14px;border:1px solid #24577d;border-radius:14px;background:linear-gradient(180deg,#0d1825 0%,#0b1520 100%);box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.team-highlight-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:14px}.team-highlight-head b{font-size:16px}.team-highlight-head .muted{font-size:13px}
+.team-highlight-options{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr)) auto;gap:12px 22px;align-items:center;margin-top:0}
+.team-highlight-options label{display:inline-flex!important;align-items:center;gap:9px;justify-content:flex-start!important;width:auto!important;min-width:0;padding:5px 0!important;font-size:13px;line-height:1.25;cursor:pointer;white-space:nowrap}
+.team-highlight-options label input[type="checkbox"]{appearance:none;-webkit-appearance:none;position:relative!important;transform:none!important;margin:0!important;flex:0 0 18px;width:18px!important;height:18px!important;border:1px solid #7692b0;border-radius:4px;background:#f7f8fa;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);cursor:pointer}
+.team-highlight-options label input[type="checkbox"]:checked{background:#4f7ff0;border-color:#77a1ff}.team-highlight-options label input[type="checkbox"]:checked:after{content:'✓';position:absolute;left:3px;top:-2px;color:#06111f;font-size:14px;font-weight:900}
+.team-highlight-options button{margin:0;min-height:42px;padding:9px 18px;border-radius:11px;border:1px solid #6d9cff;background:linear-gradient(180deg,#6387f6,#5278ea);color:#07101f;font-weight:800;white-space:nowrap;box-shadow:0 0 0 2px rgba(255,255,255,.82) inset,0 2px 8px rgba(43,101,220,.2)}
+.team-highlight-options button:hover{filter:brightness(1.08)}
+.team-highlight-info{margin-top:14px!important;padding-top:12px;border-top:1px solid #2c4054;font-size:13px}
+.team-controls .team-highlight-options label input{position:relative;transform:none}
+@media(max-width:1050px){.team-highlight-options{grid-template-columns:repeat(2,minmax(190px,1fr))}.team-highlight-options button{justify-self:start}}
+@media(max-width:650px){.team-highlight-options{grid-template-columns:1fr}.team-highlight-options label{white-space:normal}.team-highlight-options button{width:100%}}
 .team-node.team-highlighted{box-shadow:0 0 0 3px rgba(250,204,21,.65),0 2px 8px rgba(0,0,0,.18);border-color:#facc15}
 .team-node.team-lifecycle-unknown{border-style:dashed}
 .team-stake-list{display:grid;gap:7px;margin-top:8px}
@@ -133,6 +138,9 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 .project-user-view{margin:22px 0}.project-user-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}.project-user-tab{background:#222936;color:#cbd5e1;border:1px solid #394354}.project-user-tab.active{background:#6488f7;color:#07101f;border-color:#6488f7}.project-user-panel{display:none}.project-user-panel.active{display:block}.project-user-intro{margin-bottom:12px}.project-placeholder{padding:22px;border:1px dashed #465268;border-radius:12px;background:#111722;color:#9aa3b3}.project-overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.project-overview-card{padding:12px;border:1px solid #334155;border-radius:10px;background:#111722}.project-overview-card .k{display:block;color:#9ba7b7;font-size:12px;margin-bottom:4px}.project-overview-card .v{font-size:1.25rem;font-weight:800}.project-mount>.card,.project-mount>details.card{margin-top:0}
 .project-scope-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:10px 0 14px;padding:10px 12px;border:1px solid #2f7d4a;border-radius:10px;background:#0e1b16}
+.project-staking-overview{margin-top:10px}.project-staking-overview-head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px}.project-staking-title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.project-staking-count{display:inline-flex;padding:4px 9px;border-radius:8px;background:#102c47;border:1px solid #244c70;color:#d8e9ff;font-size:12px;font-weight:700}
+.project-staking-table{border:1px solid #234968;border-radius:14px;overflow:hidden;background:#0b1723;box-shadow:0 10px 30px rgba(0,0,0,.12)}.project-staking-columns,.project-staking-row-main{display:grid;grid-template-columns:minmax(170px,1.35fr) minmax(145px,1fr) minmax(118px,.85fr) minmax(118px,.85fr) minmax(118px,.85fr) minmax(115px,.75fr) minmax(145px,1fr) minmax(180px,1.25fr) minmax(120px,.8fr);gap:12px;align-items:center}.project-staking-columns{padding:11px 16px;color:#8db7e5;font-size:11px;font-weight:800;border-bottom:1px solid #234968;background:#0d1b2a}.project-staking-row{border-bottom:1px solid #183b58;background:linear-gradient(180deg,#0c1b2a,#0b1825)}.project-staking-row:last-child{border-bottom:0}.project-staking-row-main{padding:14px 16px}.project-staking-row:hover{background:#0e2031}.project-staking-primary{display:flex;gap:10px;align-items:center;min-width:0}.project-staking-icon{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;flex:none;background:radial-gradient(circle at 35% 35%,#7c93ff,#294eaf);border:1px solid #6f8ef5;font-weight:900;color:#eef5ff}.project-staking-name{font-weight:800;color:#e8f2ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.project-staking-sub{font-size:11px;color:#8fa4bd;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.project-staking-wallet{font-size:11px;color:#9fb3cb;margin-top:4px}.project-staking-date{font-size:12px;line-height:1.45}.project-staking-date .time{display:block;color:#91a7c0;font-size:11px}.project-staking-amount{font-weight:800}.project-staking-amount .symbol{display:block;color:#8fa4bd;font-size:11px;font-weight:500;margin-top:3px}.project-usd-stack{display:grid;gap:3px;font-size:11px}.project-usd-line{display:grid;grid-template-columns:7px 48px 1fr;gap:5px;align-items:center}.project-usd-dot{width:7px;height:7px;border-radius:50%}.project-usd-dot.stake{background:#17bd87}.project-usd-dot.end{background:#4387ff}.project-usd-dot.unstake{background:#8663f7}.project-usd-line .label{color:#91aac6}.project-usd-line .value{font-weight:800;color:#e7f0fb;text-align:right}.project-staking-status{display:inline-flex;align-items:center;justify-content:center;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:900;white-space:nowrap}.project-staking-status.closed{background:#123e31;border:1px solid #1b9f71;color:#65f0bd}.project-staking-status.active{background:#14355e;border:1px solid #4387ff;color:#9fc5ff}.project-staking-status.expired{background:#4b3420;border:1px solid #c7843e;color:#ffd28c}.project-staking-status.partial{background:#463866;border:1px solid #8a6bc6;color:#dccdff}.project-staking-details{border-top:1px solid #17364f;padding:0 16px 14px}.project-staking-details>summary{cursor:pointer;color:#8fb8e6;font-size:11px;padding:10px 0 2px;user-select:none}.project-staking-details .stake-pos{margin:10px 0 0;border-color:#234968;background:#0c1520}.project-staking-source{font-size:10px;color:#7890aa;margin-top:5px;line-height:1.25}.project-staking-section-label{margin:18px 0 8px;font-size:14px;font-weight:900;color:#dfeeff;display:flex;gap:8px;align-items:center}.project-staking-section-label .n{color:#7ea7d7;font-size:12px}
+@media(max-width:1350px){.project-staking-table{overflow-x:auto}.project-staking-columns,.project-staking-row-main{min-width:1120px}}
 .project-scope-row label{font-weight:700}.project-scope-row select{min-width:280px}.project-scope-note{color:#9bd6ae;font-size:12px}
 .project-aggregate{margin-bottom:12px}.project-aggregate .wrap{margin-top:8px}.project-aggregate table{min-width:760px}
 .analysis-zone{position:relative;border:2px solid #ef4444 !important;border-radius:12px;padding:14px;margin:18px 0;background:rgba(127,29,29,.055)}
@@ -143,7 +151,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 01:36:59 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 01:47:51 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -317,14 +325,14 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
   <p class="muted">Projektweite Sicht auf Klick: Alle unter „MEINE Wallets“ gespeicherten TLN/VOW-Wallets gelten für die Erfassungsmenge als eigene Leader-TLN-IDs. Als eigener sichtbarer Baum wird aber nur ein eigenes Wallet dargestellt, das keinem anderen eigenen Wallet untergeordnet ist. Eigene Wallets innerhalb eines bereits eigenen Team-Baums bleiben normale Team-Mitglieder an ihrer echten Parent-Position und werden farbig markiert. Die Darstellung ist als vertikaler Organigramm-Baum aufgebaut: Leader oben, Linie 1 darunter, Linie 2 darunter usw. Direkte Partner werden je Upline nach TLN-ID aufsteigend sortiert. Deutlich abgesetzte Verbindungslinien zeigen, welcher Partner zu welchem Parent gehört. Staking-Zusatzinfos verwenden ausschließlich verifizierte Discovery-/Lifecycle-Daten. Alle aktuell offenen Positionen eines Wallets werden in derselben Karte gezeigt; falls keine Position mehr offen ist, wird das zuletzt beendete Staking historisch angezeigt. Fehlende Lifecycle-Daten werden neutral gekennzeichnet und niemals aus Referral-Rewards als „unstaked“ abgeleitet. Testtiefe: maximal <b>20 Linien</b>. In WalletTracking wird dieser Wert später als TLN/VOW-Projektparameter im Admin-Bereich konfigurierbar.</p>
   <div id="teamTreeStatus" class="muted">Wird beim Laden aus dem persistenten Team-Cache wiederhergestellt; Schritt 7 aktualisiert/verifiziert den Baum danach inkrementell.</div>
   <div id="teamHighlightControls" class="team-controls" style="display:none">
-    <b>Hervorheben</b> <span class="muted">(keine Filterung – alle Team-Mitglieder bleiben sichtbar)</span>
+    <div class="team-highlight-head"><b>Hervorheben</b> <span class="muted">(keine Filterung – alle Team-Mitglieder bleiben sichtbar)</span></div>
     <div class="team-highlight-options">
       <label><input type="checkbox" id="teamHlNoActive"> kein aktives Staking</label>
       <label><input type="checkbox" id="teamHlExpired"> abgelaufen, noch nicht unstaked</label>
       <label><input type="checkbox" id="teamHlSoon"> Ablauf innerhalb 20 Tagen</label>
       <button type="button" id="teamHlClear">Hervorhebung löschen</button>
     </div>
-    <div id="teamHighlightInfo" class="muted" style="margin-top:6px">Nur verifizierte Lifecycle-Daten werden für die Hervorhebung verwendet.</div>
+    <div id="teamHighlightInfo" class="muted team-highlight-info">Nur verifizierte Lifecycle-Daten werden für die Hervorhebung verwendet.</div>
   </div>
   <div id="teamTree" class="team-tree"><div class="muted">Noch keine Team-Daten.</div></div>
   <div id="teamExpirySection" style="display:none">
@@ -349,7 +357,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-013659';
+const BUILD_ID='20260907-014751';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -463,7 +471,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 01:36:59 CEST';
+const APP_VERSION='07.09.2026 01:47:51 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -10725,16 +10733,56 @@ function projectStakingPositionCardHtml(l,showWallet){
     </div>
   </div>`;
 }
+function projectStakingSummaryDateHtml(value){
+  if(!value)return '<span class="muted">–</span>';
+  const d=new Date(value);if(Number.isNaN(d.getTime()))return '<span class="muted">–</span>';
+  return `<span class="project-staking-date">${d.toLocaleDateString('de-CH')}<span class="time">${d.toLocaleTimeString('de-CH')}</span></span>`;
+}
+function projectStakingUsdLineHtml(kind,label,value){
+  return `<div class="project-usd-line"><span class="project-usd-dot ${kind}"></span><span class="label">${esc(label)}</span><span class="value">${value!=null?formatUsd(value):'–'}</span></div>`;
+}
+function projectStakingStatusMeta(l){
+  const isClosed=l.status==='closed',expiry=l.expiryTime||l.contractEndTime||l.releaseTime||null;
+  const expired=!!expiry&&new Date(expiry).getTime()<=Date.now();
+  if(isClosed)return {label:'✓ Verifiziert',cls:'closed',life:'Beendet'};
+  if(l.status==='partial')return {label:'Teilweise offen',cls:'partial',life:'Teilweise'};
+  if(expired)return {label:'Freigegeben',cls:'expired',life:'Abgelaufen'};
+  return {label:'✓ Aktiv',cls:'active',life:'Aktiv'};
+}
+function projectStakingSummaryRowHtml(l,showWallet,index){
+  const status=projectStakingStatusMeta(l),wallet=norm(l._projectWallet||'');
+  const expiry=l.expiryTime||l.contractEndTime||l.releaseTime||null;
+  const symbol=l?.pair?.lpSymbol||l?.pair?.symbol||safePairLabel(l)||'LP';
+  const amount=Number(l.original||0);
+  const contract=norm(l.staking?.contract_address||l.counterparty||'');
+  const legacy=!!(l?.pair?.historicalOnly||l?.pair?.historical_only);
+  const source=l.stakeUsdSource||l.contractEndUsdSource||l.unstakeUsdSource||'';
+  const duration=l.durationDays!=null?`${Number(l.durationDays).toLocaleString('de-CH',{maximumFractionDigits:2})} Tage`:'–';
+  return `<div class="project-staking-row">
+    <div class="project-staking-row-main">
+      <div class="project-staking-primary"><div class="project-staking-icon">${legacy?'TL':'LP'}</div><div style="min-width:0"><div class="project-staking-name">${esc(safePairLabel(l)||'Staking-Position')}</div><div class="project-staking-sub">${esc(stakingContractLabel(l.staking))}</div>${showWallet?`<div class="project-staking-wallet">${esc(projectWalletLabel(wallet))}</div>`:''}</div></div>
+      <div><div class="mono" style="font-size:11px">${ethers.isAddress(contract)?esc(short(contract)):'–'}</div><div class="project-staking-sub">BSC${legacy?' · Legacy':''}</div></div>
+      <div>${projectStakingSummaryDateHtml(l.stakeTime)}</div>
+      <div>${projectStakingSummaryDateHtml(expiry)}</div>
+      <div>${projectStakingSummaryDateHtml(l.unstakeTime)}</div>
+      <div><div style="font-weight:800">${esc(duration)}</div><div class="project-staking-sub">${esc(status.life)}</div></div>
+      <div><div class="project-staking-amount">${amount.toLocaleString('de-CH',{maximumFractionDigits:12})}<span class="symbol">${esc(symbol)}</span></div>${l.remaining!=null&&Number(l.remaining)!==amount?`<div class="project-staking-sub">offen ${Number(l.remaining).toLocaleString('de-CH',{maximumFractionDigits:12})}</div>`:''}</div>
+      <div><div class="project-usd-stack">${projectStakingUsdLineHtml('stake','Stake',l.stakeUsd)}${projectStakingUsdLineHtml('end','Ende',l.contractEndUsd)}${projectStakingUsdLineHtml('unstake','Unstake',l.status==='closed'?l.unstakeUsd:null)}</div>${source?`<div class="project-staking-source">${legacy?'Cross-Chain-Historienbewertung':'Historische On-Chain-Bewertung'}</div>`:''}</div>
+      <div><span class="project-staking-status ${status.cls}">${esc(status.label)}</span>${(l.topUps||[]).length?`<div class="project-staking-sub">${l.topUps.length} Aufstockung(en)</div>`:''}</div>
+    </div>
+    <details class="project-staking-details"><summary>Details, Aufstockungen und Rewards/Claims anzeigen</summary>${projectStakingPositionCardHtml(l,showWallet)}</details>
+  </div>`;
+}
 function projectStakingPositionOverviewHtml(lots,scopeTitle,showWallet){
-  const running=[...(lots||[])].filter(l=>l.status!=='closed').sort((a,b)=>String(b.stakeTime||'').localeCompare(String(a.stakeTime||'')));
-  const completed=[...(lots||[])].filter(l=>l.status==='closed').sort((a,b)=>String(b.unstakeTime||b.stakeTime||'').localeCompare(String(a.unstakeTime||a.stakeTime||'')));
-  return `<div class="card">
-    <h2>Staking-Positionen · ${esc(scopeTitle)}</h2>
-    <p class="muted">Jede Position wird als vollständiger Lifecycle dargestellt: Stake, Aufstockungen, Vertragsende, Unstake und die eindeutig zugeordneten Staking-Rewards/Claims. Quelle sind ausschließlich die persistenten Discovery-Endergebnisse des TLN/VOW-Projektfilters.</p>
-    <h3 style="margin-top:18px">🟢 Laufende / offene Stakings (${running.length})</h3>
-    ${running.length?running.map(l=>projectStakingPositionCardHtml(l,showWallet)).join(''):'<div class="empty-note">Keine laufenden Stakings im gewählten Wallet-Scope.</div>'}
-    <h3 style="margin-top:22px">✅ Abgeschlossene Stakings (${completed.length})</h3>
-    ${completed.length?completed.map(l=>projectStakingPositionCardHtml(l,showWallet)).join(''):'<div class="empty-note">Keine abgeschlossenen Stakings im gewählten Wallet-Scope.</div>'}
+  const all=[...(lots||[])].sort((a,b)=>String(b.stakeTime||'').localeCompare(String(a.stakeTime||'')));
+  const running=all.filter(l=>l.status!=='closed'),completed=all.filter(l=>l.status==='closed');
+  const header=`<div class="project-staking-columns"><div>Projekt / Typ</div><div>Staking-Contract</div><div>Stake-Zeit</div><div>Vertragsende</div><div>Unstake</div><div>Laufzeit</div><div>Staking-Asset</div><div>USD-Wert</div><div>Status</div></div>`;
+  const section=(title,rows,icon)=>`<div class="project-staking-section-label">${icon} ${esc(title)} <span class="n">${rows.length}</span></div>${rows.length?`<div class="project-staking-table">${header}${rows.map((l,i)=>projectStakingSummaryRowHtml(l,showWallet,i)).join('')}</div>`:'<div class="empty-note">Keine Positionen in diesem Bereich.</div>'}`;
+  return `<div class="card project-staking-overview">
+    <div class="project-staking-overview-head"><div class="project-staking-title-row"><h2 style="margin:0">Staking – Übersicht</h2><span class="project-staking-count">${all.length} Position(en) gefunden</span></div><div class="muted">${esc(scopeTitle)}</div></div>
+    <p class="muted">Kompakte Lifecycle-Sicht mit Stake, Vertragsende, Unstake, Laufzeit, Asset und historischen USD-Werten. Aufstockungen sowie eindeutig zugeordnete Rewards/Claims bleiben je Position direkt aufklappbar.</p>
+    ${section('Laufende / offene Stakings',running,'🟢')}
+    ${section('Abgeschlossene Stakings',completed,'✅')}
   </div>`;
 }
 
