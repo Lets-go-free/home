@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 11:03:44 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 11:13:16 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -296,7 +296,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-110344';
+const BUILD_ID='20260906-111316';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -4915,20 +4915,16 @@ async function clearSingleTeamLifecycleCache(){
 async function clearTeamColdRunCache(){
  const btn=$('clearTeamColdRunCache'),state=$('clearTeamColdRunCacheState');
  if(!currentUserId){state.textContent='Nicht eingeloggt.';return}
- const ok=confirm(`Team-Cache für einen echten Step-6-Cold-Run vollständig löschen?\n\nGelöscht werden:\n• SmartNode-Globalgraph + Graph-State (BSC)\n• Team-Lifecycle-Caches dieses Benutzers\n• Team-Contract-History-Caches dieses Benutzers\n\nSteps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und TLN-ID-/Wallet-Identity-Cache bleiben erhalten.\n\nDer nächste Step-6-Lauf baut den Team-Graphen und alle fehlenden Team-Lifecycles neu auf.`);
+ const ok=confirm(`Echten Step-6-Cold-Run vorbereiten?\n\nDer globale SmartNode-Cache bleibt als Shared Cache sicher in Supabase erhalten, wird beim nächsten Step-6-Lauf aber vollständig ignoriert. Der Team-Graph wird dann on-chain ab Block 0 neu aufgebaut.\n\nGelöscht werden:\n• Team-Lifecycle-Caches dieses Benutzers\n• Team-Contract-History-Caches dieses Benutzers\n\nSteps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und TLN-ID-/Wallet-Identity-Cache bleiben erhalten.`);
  if(!ok)return;
  btn.disabled=true;state.textContent='lösche …';
  try{
-   let graphEdges=0,graphStates=0,teamRows=0;
-   const contract=norm(TEAM_SMARTNODE_CONTRACT);
-   const {data:edgeRows,error:edgeError}=await sb.from(TEAM_GRAPH_CACHE_TABLE)
-     .delete().eq('chain_key','bsc').eq('contract_address',contract).select('child_wallet');
-   if(edgeError)throw new Error(`SmartNode-Globalgraph: ${edgeError.message||edgeError}`);
-   graphEdges=Array.isArray(edgeRows)?edgeRows.length:0;
-   const {data:stateRows,error:stateError}=await sb.from(TEAM_GRAPH_STATE_TABLE)
-     .delete().eq('chain_key','bsc').eq('contract_address',contract).select('contract_address');
-   if(stateError)throw new Error(`SmartNode-Graph-State: ${stateError.message||stateError}`);
-   graphStates=Array.isArray(stateRows)?stateRows.length:0;
+   let teamRows=0;
+   // Der SmartNode-Graph ist global/shared. Für einen echten DEV-Cold-Run wird er
+   // deshalb NICHT physisch aus Supabase gelöscht. Stattdessen ignoriert genau der
+   // nächste Step-6-Lauf den persistenten Graph vollständig und baut ihn on-chain
+   // von Block 0 neu auf. So testen wir den Cold-Pfad ohne Shared Cache zu zerstören.
+   TEAM_FORCE_FULL_GRAPH_RESCAN_ONCE=true;
    const {data:cacheRows,error:cacheError}=await sb.from(STAKING_SCAN_CACHE_TABLE)
      .delete().eq('user_id',currentUserId).eq('chain_key','bsc')
      .in('cache_key',[TECH_CACHE_KEYS.teamLifecycle,TECH_CACHE_KEYS.teamContractHistory])
@@ -4944,8 +4940,8 @@ async function clearTeamColdRunCache(){
    if($('teamHighlightControls'))$('teamHighlightControls').style.display='none';
    if($('teamExpirySection'))$('teamExpirySection').style.display='none';
    setStepState(6,'Cold Run bereit');updateProcessButtons();
-   state.textContent=`${graphEdges} Graph-Kanten · ${graphStates} State · ${teamRows} Team-Cache-Einträge gelöscht.`;
-   log(`DEV Team-Cold-Run vorbereitet: ${graphEdges} SmartNode-Graph-Kante(n) + ${graphStates} Graph-State-Eintrag(e) global gelöscht · ${teamRows} Team-Lifecycle/Contract-History-Eintrag(e) dieses Benutzers gelöscht. Steps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und persistenter Identity-Cache blieben erhalten.`,'ok');
+   state.textContent=`Full-Graph-Rescan vorgemerkt · ${teamRows} Team-Cache-Einträge gelöscht.`;
+   log(`DEV Team-Cold-Run vorbereitet: nächster Step-6-Lauf ignoriert den persistenten SmartNode-Globalgraph vollständig und baut ihn on-chain ab Block 0 neu auf · globaler Shared-Graph/Graph-State bleiben in Supabase erhalten · ${teamRows} Team-Lifecycle/Contract-History-Eintrag(e) dieses Benutzers gelöscht. Steps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und persistenter Identity-Cache blieben erhalten.`,'ok');
  }catch(e){
    state.textContent='Fehler beim Löschen.';
    log(`DEV Team-Cold-Run Cache-Löschung fehlgeschlagen: ${e?.message||e}`,'warn');
@@ -11272,6 +11268,7 @@ const TEAM_GRAPH_CACHE_PAGE_SIZE=1000;
 const TEAM_GRAPH_OVERLAP_BLOCKS=64;
 const TEAM_GRAPH_CONFIRMATIONS=12;
 let TEAM_GRAPH_DB_AVAILABLE=true;
+let TEAM_FORCE_FULL_GRAPH_RESCAN_ONCE=false;
 const TEAM_IDENTITY_CACHE=new Map();
 let CURRENT_TEAM_PROJECT_FOREST=null;
 const TEAM_STAKING_LIFECYCLE=new Map();
@@ -11788,7 +11785,11 @@ async function scanCompleteSmartNodeJoinGraph(){
   const latestHex=await teamAlchemyRpc('eth_blockNumber',[]);
   const latestBlock=Number(BigInt(latestHex||'0x0'));
   const targetBlock=Math.max(0,latestBlock-TEAM_GRAPH_CONFIRMATIONS);
-  const cached=await teamLoadGlobalGraphCache();
+  const forceFullGraphRescan=TEAM_FORCE_FULL_GRAPH_RESCAN_ONCE===true;
+  const cached=forceFullGraphRescan?null:await teamLoadGlobalGraphCache();
+  if(forceFullGraphRescan){
+    log(`Team-Discovery DEV Full-Cold-Run: persistenter SmartNode-Globalgraph wird für diesen Lauf bewusst ignoriert; vollständiger On-Chain-Historienscan ab Block 0 bis ${targetBlock.toLocaleString('de-CH')} wird erzwungen.`,'warn');
+  }
 
   if(cached?.edges?.size){
     const edges=new Map(cached.edges);
@@ -11832,6 +11833,7 @@ async function scanCompleteSmartNodeJoinGraph(){
   if(scan.transferCount>1000&&edges.size<100)throw new Error(`SmartNode-Graph unplausibel klein: nur ${edges.size} join(address)-Beziehungen aus ${scan.transferCount} Transaktionen. Abbruch statt falschem Baum.`);
   log(`Team-Discovery Gesamtgraph: ${edges.size} belegte join(address)-Parent-Beziehungen aus ${scan.transferCount} SmartNode-Transaktionen / ${scan.pages} Seite(n) dekodiert.`,'ok');
   if(TEAM_GRAPH_DB_AVAILABLE)await teamSaveGlobalGraphCache(edges,{lastVerifiedBlock:targetBlock,transferCount:scan.transferCount});
+  if(forceFullGraphRescan)TEAM_FORCE_FULL_GRAPH_RESCAN_ONCE=false;
   return {edges,pages:scan.pages,transferCount:scan.transferCount,minBlock:scan.minBlock,maxBlock:targetBlock,cacheHit:false,lastVerifiedBlock:targetBlock};
 }
 function descendantsFromJoinEdges(root,edges,maxDepth=TLN_TEAM_MAX_LEVELS){
