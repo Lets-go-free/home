@@ -143,7 +143,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 18:08:02 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 18:13:02 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -349,7 +349,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260906-180802';
+const BUILD_ID='20260906-181302';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -8253,6 +8253,41 @@ async function attachRewardClaimsToLots(lots,calls){
   }
 
   for(const lot of (lots||[]))lot.rewardClaims=[];
+
+  // Bereits in Schritt 2 streng belegte Rewards innerhalb der verifizierten
+  // Stake-Tx sind echte Staking-Rewards. Sie wurden bisher nur als
+  // stakeRewardEvidence am Lot angezeigt, gingen aber in Schritt 4 verloren,
+  // weil normale Lifecycle-Tx dort bewusst ausgeschlossen werden.
+  // Deshalb werden ausschließlich diese bereits bewiesenen Stake-Tx-Payouts
+  // vor der allgemeinen Claim-Zuordnung als stake_reward übernommen.
+  for(const lot of (lots||[])){
+    const stakeHash=String(lot?.stakeTx||'').toLowerCase();
+    if(!stakeHash)continue;
+    for(const ev of (lot?.stakeRewardEvidence||[])){
+      const amount=Number(ev?.amount||0);
+      const token=norm(ev?.token||'');
+      if(!(amount>0)||!token)continue;
+      const claim={
+        hash:stakeHash,time:lot?.stakeTime||null,
+        block:lot?.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null,
+        token,symbol:ev?.symbol||'Token',decimals:ev?.decimals??null,amount,
+        from:norm(ev?.from||''),to:norm(ev?.to||''),
+        assignmentScope:'position',assignmentReasonCode:'verified_stake_tx_reward',positionAmbiguous:false,
+        method:norm(ev?.from||'')===ZERO_ADDRESS?'Mint beim Stake':'Reward-Transfer beim Stake',
+        selector:null,calledContract:lot?.entry_contract||norm(lot?.staking?.contract_address||lot?.counterparty||'')||null,
+        assignmentReason:'verifizierte Stake-Tx derselben Position + bereits belegter Reward-Transfer/Mint im selben Receipt',
+        source:ev?.source||'Stake-Transaktion',assignmentScore:1000,
+        rewardProof:'verifizierte Stake-Tx + kausaler Reward-Transfer/Mint an das Wallet',
+        rewardFlowEvidence:norm(ev?.from||'')===ZERO_ADDRESS?'Zero-Address-Mint direkt an das Wallet':'direkter Payout aus dem Staking-/Entry-System',
+        eventType:'stake_reward',finalUnstakeReward:false,finalUnstakeRewardEvidence:null
+      };
+      const key=`${claim.hash}|${claim.token}|${claim.amount}`;
+      if(!lot.rewardClaims.some(x=>`${String(x?.hash||'').toLowerCase()}|${norm(x?.token)}|${Number(x?.amount||0)}`===key)){
+        lot.rewardClaims.push(claim);
+      }
+    }
+  }
+
   const unresolvedRewardIdentityKeys=new Set();
   const unresolvedRewardHashes=new Set();
   const unresolvedReferenceByHash=new Map();
