@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:42:34 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:49:48 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-024234';
+const BUILD_ID='20260906-024948';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -12445,7 +12445,7 @@ async function teamBatchPositionCalls(wallets){
             log(`Team-Lifecycle Cave-Stake erkannt: Contract ${short(eventContract)} · caveId ${c._teamStakeCaveId||'nicht als Topic vorhanden'} · tokenId ${c._teamStakeTokenId||'–'} · Tx ${short(norm(c.hash||''))}.`,'ok');
             try{
               const inputWords=rawWords('0x'+String(c._input||'0x').replace(/^0x/,'').slice(8));
-              if(inputWords.length)log(`Team-Lifecycle Cave-Stake Entry-Input: Selector ${c._selector||'0x'} · ${inputWords.length} ABI-Wort(e) · ${inputWords.map((x,i)=>`A${i+1}=${x.uint?.toString?.()||x.word}`).join(' · ')}.`,'info');
+              if(inputWords.length)log(`Team-Lifecycle Cave-Stake Entry-Input: Selector ${c._selector||'0x'} · ${inputWords.length} ABI-Wort(e) erkannt${inputWords.length?` · A1=${inputWords[0]?.uint?.toString?.()||inputWords[0]?.word||'?'}${inputWords[1]?` · A2=${inputWords[1]?.uint?.toString?.()||inputWords[1]?.word||'?'}`:''}${inputWords[2]?` · A3=${inputWords[2]?.uint?.toString?.()||inputWords[2]?.word||'?'}`:''}`:''}. Vollständiger ABI-Dump unterdrückt.`,'info');
             }catch{}
           }
           positionKind='stake';evidence=`receipt:${isCaveStake?'Stake(address,uint256,uint256,uint256)':'Stake(address,uint256,uint256)'}${eventContract&&eventContract!==called?'@downstream-contract':''}`;
@@ -12627,6 +12627,11 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
   // oder Lock-Ende. Revert-Daten werden voll protokolliert, weil Custom Errors oft die
   // fehlende Zeit-/Statusinformation enthalten.
   const selector='0xdb3367ed';
+  // Nach erfolgreichem 367-Tage-Strict-Proof bleibt die EVM-Tiefendiagnose im Code,
+  // erzeugt im normalen Team-Lauf aber keinen seitenlangen Log mehr. Relevante
+  // Proof-Erfolg-/Fehlerzeilen bleiben sichtbar.
+  const caveDiagVerbose=false;
+  const caveDiagLog=(...args)=>{if(caveDiagVerbose)log(...args)};
   const profile=await contractCodeProfile(contract),code=`${profile?.bytecode||''}${profile?.implBytecode||''}`.toLowerCase();
   if(!code.includes(selector.slice(2))){
     log(`Duration ${label}: Cave-Payout-Selector ${selector} ist im Bytecode von ${short(contract)} nicht vorhanden.`,'info');
@@ -12666,7 +12671,7 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
         }else pc+=1;
       }
     }
-    log(`Duration ${label}: Cave-Bytecode 180/367-Pruefung: ${hits.length?hits.slice(0,20).join(' · '):'keine direkten PUSH-Konstanten fuer 180, 367, 24h, 180d oder 367d gefunden'}. Nur Strukturhinweis, kein Duration-Proof.`,'info');
+    caveDiagLog(`Duration ${label}: Cave-Bytecode 180/367-Pruefung: ${hits.length?hits.slice(0,20).join(' · '):'keine direkten PUSH-Konstanten fuer 180, 367, 24h, 180d oder 367d gefunden'}. Nur Strukturhinweis, kein Duration-Proof.`,'info');
 
     // EVM-Kontext um die relevanten Konstanten. Ziel ist nicht, aus einer nackten Zahl
     // eine Laufzeit abzuleiten, sondern festzustellen, ob 367 in einem Zeitpfad mit
@@ -12713,7 +12718,7 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
         const hasAddSub=near.some(x=>x.op===0x01||x.op===0x03);
         const hasCmp=near.some(x=>[0x10,0x11,0x12,0x13,0x14,0x15].includes(x.op));
         const markers=[hasTimestamp?'TIMESTAMP':null,hasStorage?'SLOAD':null,hasMul?'MUL':null,hasAddSub?'ADD/SUB':null,hasCmp?'COMPARE':null].filter(Boolean);
-        log(`Duration ${label}: Cave-EVM-Kontext ${source} pc 0x${o.pc.toString(16)} ${o.name}=${o.value.toString()} · Marker ±96 Byte: ${markers.length?markers.join(', '):'keine Zeit-/Storage-Marker'} · Instruktionen ±12: ${window.map(fmtOp).join(' | ')}.`,'warn');
+        caveDiagLog(`Duration ${label}: Cave-EVM-Kontext ${source} pc 0x${o.pc.toString(16)} ${o.name}=${o.value.toString()} · Marker ±96 Byte: ${markers.length?markers.join(', '):'keine Zeit-/Storage-Marker'} · Instruktionen ±12: ${window.map(fmtOp).join(' | ')}.`,'warn');
       }
     }
 
@@ -12727,7 +12732,7 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
     }
     if(hits367.length){
       const strong=hits367.filter(h=>h.score.timestamp&&h.score.arith&&h.score.cmp);
-      log(`Duration ${label}: Cave-367-Dataflow-Vorpruefung: ${hits367.map(h=>`${h.source}@0x${h.pc.toString(16)} [TIMESTAMP=${h.score.timestamp?'ja':'nein'}, SLOAD=${h.score.storage?'ja':'nein'}, MUL=${h.score.mul?'ja':'nein'}, ADD/SUB=${h.score.arith?'ja':'nein'}, Vergleich=${h.score.cmp?'ja':'nein'}]`).join(' · ')}${strong.length?` · ${strong.length} zeitnaher Zeitpfad-Kandidat(en)`:' · noch kein unmittelbarer TIMESTAMP+Arithmetik+Vergleich-Pfad innerhalb ±96 Byte'}. Weiterhin kein automatischer Duration-Proof.`,'warn');
+      caveDiagLog(`Duration ${label}: Cave-367-Dataflow-Vorpruefung: ${hits367.map(h=>`${h.source}@0x${h.pc.toString(16)} [TIMESTAMP=${h.score.timestamp?'ja':'nein'}, SLOAD=${h.score.storage?'ja':'nein'}, MUL=${h.score.mul?'ja':'nein'}, ADD/SUB=${h.score.arith?'ja':'nein'}, Vergleich=${h.score.cmp?'ja':'nein'}]`).join(' · ')}${strong.length?` · ${strong.length} zeitnaher Zeitpfad-Kandidat(en)`:' · noch kein unmittelbarer TIMESTAMP+Arithmetik+Vergleich-Pfad innerhalb ±96 Byte'}. Weiterhin kein automatischer Duration-Proof.`,'warn');
     }
 
     // Control-Flow-Diagnose fuer die 367-Konstante. Wichtig: Der direkt nach PUSH367
@@ -12754,14 +12759,14 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
         }
         const unique=[];const seen=new Set();
         for(const d of destPushes){const k=d.targetPc;if(seen.has(k))continue;seen.add(k);unique.push(d);}
-        log(`Duration ${label}: Cave-367-ControlFlow ${source}@0x${hit.pc.toString(16)}: ${jump?`naechster ${jump.name} @0x${jump.pc.toString(16)}`:'kein JUMP in den naechsten 90 Instruktionen'} · JUMPDEST-PUSH-Kandidat(en): ${unique.length?unique.map(d=>`0x${d.targetPc.toString(16)} (gepusht @0x${d.fromPc.toString(16)})`).join(', '):'keine'} · Block: ${block.slice(0,55).map(fmtOp).join(' | ')}${block.length>55?' | …':''}.`,'warn');
+        caveDiagLog(`Duration ${label}: Cave-367-ControlFlow ${source}@0x${hit.pc.toString(16)}: ${jump?`naechster ${jump.name} @0x${jump.pc.toString(16)}`:'kein JUMP in den naechsten 90 Instruktionen'} · JUMPDEST-PUSH-Kandidat(en): ${unique.length?unique.map(d=>`0x${d.targetPc.toString(16)} (gepusht @0x${d.fromPc.toString(16)})`).join(', '):'keine'} · Block: ${block.slice(0,55).map(fmtOp).join(' | ')}${block.length>55?' | …':''}.`,'warn');
         for(const d of unique.slice(0,6)){
           const ti=ops.findIndex(x=>x.pc===d.targetPc);if(ti<0)continue;
           const win=ops.slice(Math.max(0,ti-4),Math.min(ops.length,ti+26));
           const near=ops.filter(x=>Math.abs(x.pc-d.targetPc)<=160);
           const ts=near.some(x=>x.op===0x42),sl=near.some(x=>x.op===0x54),mul=near.some(x=>x.op===0x02),arith=near.some(x=>x.op===0x01||x.op===0x03),cmp=near.some(x=>[0x10,0x11,0x12,0x13,0x14,0x15].includes(x.op));
           const const86400=near.some(x=>x.value===86400n),const367=near.some(x=>x.value===367n);
-          log(`Duration ${label}: Cave-367-Zielkontext ${source} 0x${d.targetPc.toString(16)}: TIMESTAMP=${ts?'ja':'nein'} · SLOAD=${sl?'ja':'nein'} · MUL=${mul?'ja':'nein'} · ADD/SUB=${arith?'ja':'nein'} · Vergleich=${cmp?'ja':'nein'} · 86400=${const86400?'ja':'nein'} · 367=${const367?'ja':'nein'} · ${win.map(fmtOp).join(' | ')}.`,'warn');
+          caveDiagLog(`Duration ${label}: Cave-367-Zielkontext ${source} 0x${d.targetPc.toString(16)}: TIMESTAMP=${ts?'ja':'nein'} · SLOAD=${sl?'ja':'nein'} · MUL=${mul?'ja':'nein'} · ADD/SUB=${arith?'ja':'nein'} · Vergleich=${cmp?'ja':'nein'} · 86400=${const86400?'ja':'nein'} · 367=${const367?'ja':'nein'} · ${win.map(fmtOp).join(' | ')}.`,'warn');
         }
       }
     }
@@ -12783,7 +12788,7 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
         const win=ops.slice(Math.max(0,i-5),Math.min(ops.length,i+42));
         const near=ops.filter(x=>Math.abs(x.pc-pc)<=220);
         const vals=[...new Set(near.filter(x=>x.value!=null&&x.value<=100000000n).map(x=>x.value.toString()))].slice(0,24);
-        log(`Duration ${label}: Cave-Zeitpfad-DeepDive 0x${pc.toString(16)} · TIMESTAMP=${near.some(x=>x.op===0x42)?'ja':'nein'} · SLOAD=${near.some(x=>x.op===0x54)?'ja':'nein'} · SUB=${near.some(x=>x.op===0x03)?'ja':'nein'} · DIV=${near.some(x=>x.op===0x04)?'ja':'nein'} · MUL=${near.some(x=>x.op===0x02)?'ja':'nein'} · LT/GT=${near.some(x=>x.op===0x10||x.op===0x11)?'ja':'nein'} · kleine PUSH-Werte: ${vals.join(', ')||'keine'} · ${win.map(fmtOp).join(' | ')}.`,'warn');
+        caveDiagLog(`Duration ${label}: Cave-Zeitpfad-DeepDive 0x${pc.toString(16)} · TIMESTAMP=${near.some(x=>x.op===0x42)?'ja':'nein'} · SLOAD=${near.some(x=>x.op===0x54)?'ja':'nein'} · SUB=${near.some(x=>x.op===0x03)?'ja':'nein'} · DIV=${near.some(x=>x.op===0x04)?'ja':'nein'} · MUL=${near.some(x=>x.op===0x02)?'ja':'nein'} · LT/GT=${near.some(x=>x.op===0x10||x.op===0x11)?'ja':'nein'} · kleine PUSH-Werte: ${vals.join(', ')||'keine'} · ${win.map(fmtOp).join(' | ')}.`,'warn');
       }
       const f=idxByPc.get(0x32a3);
       if(f!=null){
@@ -12793,7 +12798,7 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
           body.push(ops[i]);
           if(ops[i].op===0x56&&++jumps>=3)break;
         }
-        log(`Duration ${label}: Cave-Zeitfunktion 0x32a3 Rohpfad: ${body.map(fmtOp).join(' | ')}.`,'warn');
+        caveDiagLog(`Duration ${label}: Cave-Zeitfunktion 0x32a3 Rohpfad: ${body.map(fmtOp).join(' | ')}.`,'warn');
       }
       // Strict-Proof fuer diese Cave-Implementation:
       // 1) Caller 0x118e legt 367 auf den Stack, liest aus dem Positions-Struct Offset +4,
@@ -12837,10 +12842,10 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
         }
         log(`Duration ${label}: Cave-367 Bytecode-Struktur vollstaendig, aber historischer Stake-Code-/Implementation-Fingerprint konnte nicht als unveraendert bestaetigt werden. Kein Strict-Proof fuer diese Position.`,'warn');
       }else{
-        log(`Duration ${label}: Cave-367-Strukturhypothese: Control-Flow noch nicht exakt vollstaendig erkannt; kein Strict-Proof.`,'warn');
+        caveDiagLog(`Duration ${label}: Cave-367-Strukturhypothese: Control-Flow noch nicht exakt vollstaendig erkannt; kein Strict-Proof.`,'warn');
       }
     }catch(e){
-      log(`Duration ${label}: Cave-Zeitpfad-DeepDive fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info');
+      caveDiagLog(`Duration ${label}: Cave-Zeitpfad-DeepDive fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info');
     }
   }catch(e){
     log(`Duration ${label}: Cave-Bytecode 180/367-Pruefung fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info');
@@ -12875,7 +12880,7 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
       const best=refs.slice(0,6);
       log(`Duration ${label}: Cave-aeltere Positionsreferenzen aus derselben Slot-7-Struktur: ${best.map(r=>`tokenId ${r.id.toString()} · Start ${new Date(r.ts*1000).toLocaleString('de-CH')} · Alter ${r.ageDays.toLocaleString('de-CH',{maximumFractionDigits:2})} Tage`).join(' · ')}. Kandidaten nur fuer Gegenprobe, kein Duration-Proof.`,'warn');
     }else{
-      log(`Duration ${label}: Cave-aeltere Positionsreferenzen: ${jobs.length} gesampelte tokenId(s), keine noch belegte Slot-7-Position mit >=330 Tagen Alter gefunden. Kein Rueckschluss auf Lock-Dauer.`,'info');
+      caveDiagLog(`Duration ${label}: Cave-aeltere Positionsreferenzen: ${jobs.length} gesampelte tokenId(s), keine noch belegte Slot-7-Position mit >=330 Tagen Alter gefunden. Kein Rueckschluss auf Lock-Dauer.`,'info');
     }
   }catch(e){
     log(`Duration ${label}: Cave-aeltere Positionsreferenzen nicht verfuegbar: ${String(e?.message||e).slice(0,180)}.`,'info');
