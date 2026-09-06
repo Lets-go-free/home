@@ -143,7 +143,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 01:09:50 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 01:18:16 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -349,7 +349,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-010950';
+const BUILD_ID='20260907-011816';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -463,7 +463,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 01:09:50 CEST';
+const APP_VERSION='07.09.2026 01:18:16 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4403,7 +4403,7 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   rewardRelations:'reward-contract-relations-v2-global-fingerprint',
   duration:'duration-strict-v16-contract-proof-cache',
   discoveryResults:'discovery-results-v1',
-  snapshotValuation:'snapshot-valuation-v2-legacy-token-usd-path',
+  snapshotValuation:'snapshot-valuation-v3-legacy-crosschain-origin-lp',
   teamLifecycle:'team-lifecycle-v7',
   teamContractHistory:'team-contract-history-v1',
   smartNodeIdentityIndex:'smartnode-identity-index-v1',
@@ -6609,6 +6609,158 @@ function renderRawStakingEvents(rows){
 
 const PRICE_STABLE_SYMBOLS=/^(USDT|USDC|BUSD)$/i;
 const HISTORICAL_STAKING_ASSETS=new Map();
+const LEGACY_LPT_CROSSCHAIN_PRICE_MAP=Object.freeze({
+  // TLN 1/2 BSC representation of the historical Ethereum Uniswap VOW/vUSD LP.
+  // The TLN UI uses the same lp_usd_rate for this LPT and the old PC-LP.
+  '0x30812dbe89b40b5b7ac1bc9134e82ebbc0b57995':{
+    label:'TLN Legacy LPT · ETH Uniswap VOW/vUSD mirror',
+    originChain:'eth',
+    mirrorPair:'0x97be09f2523b39b835da9ea3857cfa1d3c660cbb',
+    vowUsdtPair:'0x1e49768714e438e789047f48fd386686a5707db2',
+    vow:'0x1bbf25e71ec48b84d773809b4ba55b6f4be946fb',
+    vusd:'0x0fc6c0465c9739d4a42daca22eb3b2cb0eb9937a',
+    usdt:'0xdac17f958d2ee523a2206206994597c13d831ec7',
+    tokenDecimals:{
+      '0x1bbf25e71ec48b84d773809b4ba55b6f4be946fb':18,
+      '0x0fc6c0465c9739d4a42daca22eb3b2cb0eb9937a':18,
+      '0xdac17f958d2ee523a2206206994597c13d831ec7':6
+    },
+    lpDecimals:18,
+    bridgeRatio:1
+  }
+});
+const ETH_HIST_BLOCK_CACHE=new Map();
+const ETH_HIST_BLOCK_TS_CACHE=new Map();
+const ETH_HIST_PAIR_CACHE=new Map();
+let ETH_HIST_RPC_ACTIVE=null;
+function ethHistoricalRpcCandidates(){
+  return [
+    `https://eth-mainnet.g.alchemy.com/v2/${encodeURIComponent(ALCHEMY_API_KEY)}`,
+    'https://ethereum-rpc.publicnode.com',
+    'https://eth.llamarpc.com'
+  ];
+}
+async function ethHistoricalRpc(method,params=[]){
+  const urls=[ETH_HIST_RPC_ACTIVE,...ethHistoricalRpcCandidates()].filter((x,i,a)=>x&&a.indexOf(x)===i);
+  let last=null;
+  for(const url of urls){
+    try{
+      const ctrl=new AbortController(),tm=setTimeout(()=>ctrl.abort(),12000);
+      let r;
+      try{
+        r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params}),signal:ctrl.signal});
+      }finally{clearTimeout(tm)}
+      if(!r.ok)throw new Error(`HTTP ${r.status}`);
+      const j=await r.json();
+      if(j?.error)throw new Error(j.error.message||JSON.stringify(j.error));
+      if(j?.result==null)throw new Error('leere RPC-Antwort');
+      if(ETH_HIST_RPC_ACTIVE!==url){
+        ETH_HIST_RPC_ACTIVE=url;
+        log(`Legacy-LPT ETH-Historien-RPC aktiv: ${url.replace(ALCHEMY_API_KEY,'…')}`,'ok');
+      }
+      return j.result;
+    }catch(e){last=e}
+  }
+  throw last||new Error('Kein Ethereum-Historien-RPC verfügbar');
+}
+async function ethHistoricalBlockTimestamp(blockNumber){
+  const n=Number(blockNumber);
+  if(ETH_HIST_BLOCK_TS_CACHE.has(n))return ETH_HIST_BLOCK_TS_CACHE.get(n);
+  const b=await ethHistoricalRpc('eth_getBlockByNumber',['0x'+n.toString(16),false]);
+  const ts=b?.timestamp?Number(BigInt(b.timestamp)):null;
+  ETH_HIST_BLOCK_TS_CACHE.set(n,ts);
+  return ts;
+}
+async function ethHistoricalBlockForTimestamp(timestampSeconds){
+  const target=Math.floor(Number(timestampSeconds||0));
+  if(!(target>0))return null;
+  if(ETH_HIST_BLOCK_CACHE.has(target))return ETH_HIST_BLOCK_CACHE.get(target);
+  const latestHex=await ethHistoricalRpc('eth_blockNumber',[]);
+  let lo=1,hi=Number(BigInt(latestHex));
+  // Timestamp monotonic binary search. We return the last block at/before target.
+  while(lo<hi){
+    const mid=Math.ceil((lo+hi)/2),ts=await ethHistoricalBlockTimestamp(mid);
+    if(ts==null)throw new Error(`Ethereum Block ${mid}: Timestamp nicht lesbar`);
+    if(ts<=target)lo=mid;else hi=mid-1;
+  }
+  const hex='0x'+lo.toString(16);
+  ETH_HIST_BLOCK_CACHE.set(target,hex);
+  return hex;
+}
+async function ethHistoricalCall(to,data,blockHex){
+  return ethHistoricalRpc('eth_call',[{to:norm(to),data},blockHex]);
+}
+async function ethHistoricalPairDescriptor(address,blockHex){
+  const key=`desc|${norm(address)}|${blockHex}`;
+  if(ETH_HIST_PAIR_CACHE.has(key))return ETH_HIST_PAIR_CACHE.get(key);
+  const [t0raw,t1raw]=await Promise.all([
+    ethHistoricalCall(address,V2.encodeFunctionData('token0',[]),blockHex),
+    ethHistoricalCall(address,V2.encodeFunctionData('token1',[]),blockHex)
+  ]);
+  const t0=norm(V2.decodeFunctionResult('token0',t0raw)[0]);
+  const t1=norm(V2.decodeFunctionResult('token1',t1raw)[0]);
+  const out={token0:t0,token1:t1};
+  ETH_HIST_PAIR_CACHE.set(key,out);return out;
+}
+async function ethHistoricalPairState(address,blockHex,decimalsByToken,lpDecimals=18,{needSupply=true}={}){
+  const key=`state|${norm(address)}|${blockHex}|${needSupply?'s':'n'}`;
+  if(ETH_HIST_PAIR_CACHE.has(key))return ETH_HIST_PAIR_CACHE.get(key);
+  const desc=await ethHistoricalPairDescriptor(address,blockHex);
+  const calls=[
+    ethHistoricalCall(address,V2.encodeFunctionData('getReserves',[]),blockHex)
+  ];
+  if(needSupply)calls.push(ethHistoricalCall(address,V2.encodeFunctionData('totalSupply',[]),blockHex));
+  const vals=await Promise.all(calls);
+  const rr=V2.decodeFunctionResult('getReserves',vals[0]);
+  const d0=Number(decimalsByToken[desc.token0]??18),d1=Number(decimalsByToken[desc.token1]??18);
+  const out={
+    ...desc,
+    r0:Number(ethers.formatUnits(rr[0],d0)),
+    r1:Number(ethers.formatUnits(rr[1],d1)),
+    total:null
+  };
+  if(needSupply){
+    const ts=V2.decodeFunctionResult('totalSupply',vals[1]);
+    out.total=Number(ethers.formatUnits(ts[0],lpDecimals));
+  }
+  ETH_HIST_PAIR_CACHE.set(key,out);return out;
+}
+function pairReserveForToken(state,token){
+  token=norm(token);
+  if(state?.token0===token)return Number(state.r0);
+  if(state?.token1===token)return Number(state.r1);
+  return null;
+}
+async function legacyCrossChainLptHistoricalValue(pair,tokenAmount,bscBlockHex){
+  const asset=norm(pair?.address||pair?.token0?.address||'');
+  const cfg=LEGACY_LPT_CROSSCHAIN_PRICE_MAP[asset];
+  if(!cfg||!bscBlockHex||!(Number(tokenAmount)>0))return null;
+  const bscTs=await blockTimestampSeconds(Number(BigInt(bscBlockHex)));
+  if(!(bscTs>0))return null;
+  const ethBlockHex=await ethHistoricalBlockForTimestamp(bscTs);
+  if(!ethBlockHex)return null;
+  const [lpState,vowUsdtState]=await Promise.all([
+    ethHistoricalPairState(cfg.mirrorPair,ethBlockHex,cfg.tokenDecimals,cfg.lpDecimals,{needSupply:true}),
+    ethHistoricalPairState(cfg.vowUsdtPair,ethBlockHex,cfg.tokenDecimals,18,{needSupply:false})
+  ]);
+  const lpVow=pairReserveForToken(lpState,cfg.vow),lpVusd=pairReserveForToken(lpState,cfg.vusd);
+  const pxVow=pairReserveForToken(vowUsdtState,cfg.vow),pxUsdt=pairReserveForToken(vowUsdtState,cfg.usdt);
+  if(!(lpState.total>0)||!(lpVow>0)||!(lpVusd>0)||!(pxVow>0)||!(pxUsdt>0))return null;
+  const vowUsd=pxUsdt/pxVow;
+  const vusdPerVow=lpVusd/lpVow;
+  const vusdUsd=vowUsd/vusdPerVow;
+  const totalLpUsd=lpVow*vowUsd+lpVusd*vusdUsd;
+  const usdPerOriginLp=totalLpUsd/lpState.total;
+  const usdPerBscLpt=usdPerOriginLp*Number(cfg.bridgeRatio||1);
+  const usd=Number(tokenAmount)*usdPerBscLpt;
+  log(`Legacy-LPT Cross-Chain-Preis: BSC Block ${Number(BigInt(bscBlockHex)).toLocaleString('de-CH')} → ETH Block ${Number(BigInt(ethBlockHex)).toLocaleString('de-CH')} · 1 LPT = $${usdPerBscLpt.toLocaleString('de-CH',{maximumFractionDigits:12})} · VOW $${vowUsd.toLocaleString('de-CH',{maximumFractionDigits:8})}.`,'ok');
+  return {
+    usd,tokenAmount:Number(tokenAmount),usdPerToken:usdPerBscLpt,
+    source:`Historischer Cross-Chain-LPT-Wert · BSC ${Number(BigInt(bscBlockHex))} → ETH ${Number(BigInt(ethBlockHex))} · Uniswap VOW/vUSD ${short(cfg.mirrorPair)} + VOW/USDT ${short(cfg.vowUsdtPair)} · 1 LPT = $${usdPerBscLpt.toLocaleString('de-CH',{maximumFractionDigits:12})}`,
+    crossChain:{originChain:'eth',ethBlockHex,mirrorPair:cfg.mirrorPair,vowUsdtPair:cfg.vowUsdtPair,vowUsd,vusdUsd,usdPerToken:usdPerBscLpt}
+  };
+}
+
 
 function loadHistoricalStakingAssets(rows){
   HISTORICAL_STAKING_ASSETS.clear();
@@ -6798,11 +6950,18 @@ async function legacyTokenHistoricalValue(pair,tokenAmount,blockHex,pricePairs){
   if(!pair||!blockHex||!(tokenAmount>0))return null;
   const asset=norm(pair.address||pair.token0?.address||'');
   if(!ethers.isAddress(asset))return null;
-  // Legacy-LPT/Token werden NICHT als heutiger V2-LP interpretiert. Stattdessen
-  // wird der Token selbst als Knoten in den historisch belegten V2-Preisgraph
-  // eingesetzt. Existierte am Zielblock ein direkter LPT/USDT-Pool, ergibt sich
-  // genau der vom Nutzer damals handelbare LPT→USDT-Kurs. Mehrstufige Wege bleiben
-  // ebenfalls erlaubt, sofern jeder Hop durch einen historischen Pool-State belegt ist.
+  // Für den verifizierten TLN-1/2 LPT-Repräsentationstoken zuerst den historischen
+  // Ethereum-Origin-LP bewerten. Nur wenn dieser Cross-Chain-Pfad technisch nicht
+  // verfügbar ist, darf der allgemeine BSC-Preisgraph als Fallback probiert werden.
+  if(LEGACY_LPT_CROSSCHAIN_PRICE_MAP[asset]){
+    try{
+      const cross=await legacyCrossChainLptHistoricalValue(pair,tokenAmount,blockHex);
+      if(cross?.usd!=null)return cross;
+      log(`Legacy-LPT Cross-Chain-Preis ${short(asset)}: Origin-LP-Pfad lieferte keinen Wert; BSC-Preisgraph-Fallback wird geprüft.`,'warn');
+    }catch(e){
+      log(`Legacy-LPT Cross-Chain-Preis ${short(asset)} nicht verfügbar: ${e?.message||e} · BSC-Preisgraph-Fallback wird geprüft.`,'warn');
+    }
+  }
   const price=await historicalPriceGraph(pricePairs,blockHex);
   const usdPerToken=price(asset);
   if(usdPerToken==null)return {usd:null,tokenAmount:Number(tokenAmount),usdPerToken:null,source:`Historischer ${pair.lpSymbol||pair.displayLabel||'Legacy-Token'}→USDT/USD-Preisweg @ Block ${Number(BigInt(blockHex))} nicht gefunden`};
@@ -6810,7 +6969,7 @@ async function legacyTokenHistoricalValue(pair,tokenAmount,blockHex,pricePairs){
     usd:Number(tokenAmount)*Number(usdPerToken),
     tokenAmount:Number(tokenAmount),
     usdPerToken:Number(usdPerToken),
-    source:`Historischer ${pair.lpSymbol||pair.displayLabel||'Legacy-Token'}→USDT/USD-Preisweg @ Block ${Number(BigInt(blockHex))} · 1 ${pair.lpSymbol||'Token'} = $${Number(usdPerToken).toLocaleString('de-CH',{maximumFractionDigits:12})}`
+    source:`Historischer BSC-${pair.lpSymbol||pair.displayLabel||'Legacy-Token'}→USDT/USD-Preisweg @ Block ${Number(BigInt(blockHex))} · 1 ${pair.lpSymbol||'Token'} = $${Number(usdPerToken).toLocaleString('de-CH',{maximumFractionDigits:12})}`
   };
 }
 async function lpHistoricalValue(pair,lpAmount,blockHex,pricePairs){
@@ -14817,7 +14976,7 @@ async function processValuation(){
     const referencePairs=[];
     for(const a of configuredLpAddresses){if(DISCOVERY_PROCESS.pairMap.has(a)){referencePairs.push(DISCOVERY_PROCESS.pairMap.get(a));continue}const rp=await inspectAnyPair(a);if(rp)referencePairs.push(rp)}
     const pricePairs=[...new Map([...DISCOVERY_PROCESS.pairs,...referencePairs].filter(p=>p.assetType!=='legacy_staking_token').map(p=>[norm(p.address),p])).values()];
-    DISCOVERY_PROCESS.pricePairs=pricePairs;log(`Bewertung: ${pricePairs.length} LP-Pools im historischen Preisgraph (inkl. historischer Preisbrücken für Legacy-LPT→USDT).`,'ok');
+    DISCOVERY_PROCESS.pricePairs=pricePairs;log(`Bewertung: ${pricePairs.length} BSC-LP-Pools im historischen Preisgraph; verifizierter Legacy-LPT nutzt zusätzlich ETH-Origin-LP VOW/vUSD + VOW/USDT.`,'ok');
 
     const snapshotYear=snapshotYearFromUi(),snapshotCutoff=snapshotCutoffForYear(snapshotYear),snapshotCutoffMs=snapshotCutoff.getTime();
     const snapshotPrincipals=DISCOVERY_PROCESS.lots.map(lot=>snapshotPrincipalAt(lot,snapshotCutoffMs));
