@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 03:05:36 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 04:04:04 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -296,7 +296,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-030536';
+const BUILD_ID='20260906-040404';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -9106,45 +9106,65 @@ function callTs(call){
 }
 function reconcileLotsWithContractCalls(lots,calls){
   const sorted=[...(calls||[])].filter(c=>c._success!==false).sort((a,b)=>(callTs(a)||0)-(callTs(b)||0));
+  const amountForReturn=(ret,lot)=>{
+    if(ret?.amountRaw==null)return null;
+    try{return Number(ethers.formatUnits(BigInt(ret.amountRaw),Number(lot?.pair?.decimals??18)))}catch{return null}
+  };
+  const lotTargets=lot=>new Set([
+    norm(lot?.staking?.contract_address||lot?.counterparty||''),
+    norm(lot?.entry_contract||'')
+  ].filter(Boolean));
+  const callTarget=call=>norm(call?._staking?.contract_address||call?.to||'');
 
-  // Strongest evidence first: a successful controller/staking tx whose receipt
-  // actually transfers the LP token back to this wallet.
+  // Strongest evidence first: successful staking/controller tx + actual return of the
+  // position asset to the wallet. Each concrete return transfer may close exactly ONE
+  // matching position. Contract path, chronology and principal amount are all matched.
   for(const call of sorted){
-    const ct=callTs(call);
-    for(const lot of lots){
+    const ct=callTs(call),caddr=callTarget(call);
+    const matches=[];
+    for(const lot of (lots||[])){
       if(lot.status==='closed')continue;
       const st=lot?.stakeTime?new Date(lot.stakeTime).getTime():null;
       if(ct&&st&&ct<st)continue;
-      // Ein Stake-Receipt darf niemals dieselbe neu erzeugte Position zugleich als
-      // unstaked schliessen. Bei neueren Router-/Downstream-Stakes kann dasselbe Receipt
-      // mehrere LP-/Token-Flows enthalten; deshalb ist ein LP-Transfer zum Wallet im
-      // Stake-Tx selbst KEIN Unstake-Nachweis. Ein echter Unstake braucht mindestens
-      // eine andere Transaktion als den urspruenglichen Stake.
       if(norm(call?.hash||'')&&norm(call?.hash||'')===norm(lot?.stakeTx||''))continue;
-      const ret=lpReturnForLot(call,lot);
-      if(!ret)continue;
-
-      lot.status='closed';
-      lot.remaining=0;
-      lot.unstakeTime=call.metadata?.blockTimestamp||null;
-      lot.unstakeTx=call.hash||null;
-      lot.unstakeBlockHex=call._blockNumber!=null?'0x'+Number(call._blockNumber).toString(16):null;
-      lot.unstakeEvidence='lp_return_in_receipt';
-      lot.unstakeSelector=call._selector||null;
-      lot.unstakeArg=call._uintArg==null?null:call._uintArg.toString();
-      lot.unstakeAmountRaw=ret.amountRaw==null?null:ret.amountRaw.toString();
-      lot.unstakeEntryContract=norm(call.to||call?._staking?.contract_address||'');
-      addLotTx(lot,{kind:'Unstake',hash:call.hash,time:call.metadata?.blockTimestamp||null,block:call._blockNumber||null,selector:call._selector||null,method:call._method||'Unstake',source:'Contract-Receipt'});
-      call._method='Unstake (LP-Rückgabe erkannt)';
+      const targets=lotTargets(lot);
+      if(caddr&&targets.size&&!targets.has(caddr))continue;
+      const ret=lpReturnForLot(call,lot);if(!ret)continue;
+      const returned=amountForReturn(ret,lot),principal=Number(lot?.original||lot?.remaining||0);
+      if(!Number.isFinite(returned)||returned<=0||!Number.isFinite(principal)||principal<=0)continue;
+      const diff=Math.abs(returned-principal),tol=Math.max(1e-9,Math.abs(principal)*1e-8);
+      matches.push({lot,ret,returned,principal,diff,tol,exact:diff<=tol});
     }
+    if(!matches.length)continue;
+    // Exact principal match wins. Otherwise accept only an essentially complete return;
+    // a smaller return must never close a larger position.
+    matches.sort((a,b)=>(Number(b.exact)-Number(a.exact))||(a.diff-b.diff));
+    const chosen=matches[0];
+    if(!chosen.exact){
+      const ratio=chosen.returned/chosen.principal;
+      if(ratio<0.99999999||ratio>1.00000001)continue;
+    }
+    const lot=chosen.lot,ret=chosen.ret;
+    lot.status='closed';lot.remaining=0;
+    lot.unstakeTime=call.metadata?.blockTimestamp||null;
+    lot.unstakeTx=call.hash||null;
+    lot.unstakeBlockHex=call._blockNumber!=null?'0x'+Number(call._blockNumber).toString(16):null;
+    lot.unstakeEvidence='lp_return_in_receipt';
+    lot.unstakeSelector=call._selector||null;
+    lot.unstakeArg=call._uintArg==null?null:call._uintArg.toString();
+    lot.unstakeAmountRaw=ret.amountRaw==null?null:ret.amountRaw.toString();
+    lot.unstakeEntryContract=norm(call.to||call?._staking?.contract_address||'');
+    addLotTx(lot,{kind:'Unstake',hash:call.hash,time:call.metadata?.blockTimestamp||null,block:call._blockNumber||null,selector:call._selector||null,method:call._method||'Unstake',source:'Contract-Receipt'});
+    call._method='Unstake (LP-Rückgabe erkannt)';
   }
 
   // Secondary evidence: known successful unstake selector on the exact staking/entry contract.
+  // Only use it when exactly one still-open position exists on that path.
   const relevant=sorted.filter(c=>String(c._method||'').toLowerCase()==='unstake');
   for(const call of relevant){
     const caddr=norm(call?._staking?.contract_address||call?.to||'');
     const ct=callTs(call);
-    const candidates=lots.filter(l=>{
+    const candidates=(lots||[]).filter(l=>{
       const laddr=norm(l?.staking?.contract_address||l?.counterparty||'');
       const entry=norm(l?.entry_contract||'');
       const st=l?.stakeTime?new Date(l.stakeTime).getTime():null;
@@ -13225,7 +13245,7 @@ async function teamVerifyMissingLifecycles(wallets){
       const wallet=missing[wi],calls=callsByWallet.get(wallet)||[];DISCOVERY_PROCESS.wallet=wallet;CURRENT_WALLET=wallet;
       const pairMap=new Map(),pairs=await discoverPairsFromStakeTransactions(calls,[],pairMap,projectSet,new Map(),wallet);for(const pair of pairs)pairMap.set(norm(pair.address),pair);
       const synthetic=[];await synthesizeStakeRowsFromReceipts(calls,pairMap,wallet,synthetic);
-      const built=buildDiagnosticLots(synthetic),lots=built.lots;reconcileLotsWithContractCalls(lots,calls);associateContractCallsToLots(lots,calls);await normalizeProvenTopUpsForPositions(lots);
+      const built=buildDiagnosticLots(synthetic),lots=built.lots;await normalizeProvenTopUpsForPositions(lots);reconcileLotsWithContractCalls(lots,calls);associateContractCallsToLots(lots,calls);
       teamLogResolvedUnstakes(wallet,lots,calls);
       let durationOk=true;for(let li=0;li<lots.length;li++){const lot=lots[li];if(lot.expiryTime)continue;const r=await teamResolveDurationWithContractCandidates(lot,`Team ${wi+1}/${missing.length} · Position ${li+1}/${lots.length}`);if(!r.proven)durationOk=false}
       const cov=coverage.get(wallet)||{total:0,ok:0,failed:1,errors:['Coverage unbekannt']};
