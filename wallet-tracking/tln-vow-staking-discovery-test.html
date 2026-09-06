@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 12:05:34 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 12:18:58 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -296,7 +296,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-120534';
+const BUILD_ID='20260906-121858';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -8732,7 +8732,9 @@ function rewardMechanismHtml(lot){
  return `<div class="reward-mechanism"><div class="rm-title">${esc(adapter.label)}</div><div class="rm-formula">${esc(adapter.formula)}</div><div class="reward-note">${esc(adapter.evidence)}</div>${entitlement}</div>`;
 }
 function rewardClaimSummaryHtml(lot){
-  const claims=lot.rewardClaims||[];
+  // Bonus-Rewards besitzen ihren eigenen Bereich. Selbst ältere persistierte
+  // Lots dürfen explizite claimBonus-Transfers hier nicht mehr mitzählen.
+  const claims=(lot.rewardClaims||[]).filter(c=>!bonusEvidenceForClaim(c));
   if(!claims.length)return '';
 
   const grouped={stake_reward:[],distribution:[],claim:[]};
@@ -9406,6 +9408,9 @@ function collectAllWalletRewardRows(lots){
   const out=[];
   for(const lot of (lots||[])){
     for(const claim of collectAssignedRewardRows(lot)){
+      // Explizite Bonus-Claims sind fachlich exklusiv: sie dürfen niemals
+      // zusätzlich als normaler Staking-Reward gezählt oder dargestellt werden.
+      if(bonusEvidenceForClaim(claim))continue;
       out.push({lot,claim,assigned:true});
     }
   }
@@ -9473,6 +9478,9 @@ function stakingAssetAmountText(lot){
 function normalizedRewardRowFromLotTransaction(lot,txr){
   const action=String(txr?.kind||txr?.action||'');
   if(!/reward|ausschüttung|claim/i.test(action))return null;
+  // Auch bei wiederhergestellten/älteren Snapshots gilt die Exklusivität:
+  // claimBonus darf nicht über lot.transactions wieder in die Staking-Summe gelangen.
+  if(selectorBonusIntent(txr?.selector||''))return null;
 
   const amount=Number(txr?.amount||0);
   // lot.transactions uses tokenSymbol/tokenAddress/hash/assignmentReason.
@@ -9502,7 +9510,8 @@ function normalizedRewardRowFromLotTransaction(lot,txr){
     from:txr.from||'',
     assignmentReason:txr.assignmentReason||txr.assignment||'bereits in der Staking-Transaktionshistorie dieser Position zugeordnet',
     calledContract:txr.calledContract||txr.contract||'',
-    source:txr.source||txr.method||''
+    source:txr.source||txr.method||'',
+    selector:txr.selector||null
   };
 }
 function collectAssignedRewardRows(lot){
@@ -9524,6 +9533,7 @@ function collectAssignedRewardRows(lot){
   // zugeordnet werden konnte.
   for(const c of (lot.rewardClaims||[])){
     if(!['stake_reward','distribution','claim'].includes(c?.eventType))continue;
+    if(bonusEvidenceForClaim(c))continue;
     if(!c?.hash||!c?.token||!(Number(c.amount||0)>0)||!c?.symbol)continue;
     const key=`${String(c.hash).toLowerCase()}|${norm(c.token)}|${c.symbol}|${Number(c.amount||0)}`;
     if(!byKey.has(key))byKey.set(key,c);
@@ -10907,7 +10917,13 @@ async function processStakingRewards(){
     log(`Schritt-4 Performance: Primär-Zuordnung ${assignmentMs} ms · Ergänzung/Aggregation ${supplementalMs} ms.`,'ok');
     renderRewardClaiming(lots);renderBonusRewards(lots);renderUnassignedClaims(lots);renderProcessLotCards();
     log(`Schritt-4 Performance gesamt: ${Math.round(performance.now()-step4Started)} ms.`,'ok');
-    const bonusCount=collectBonusRewardRows(lots).length;DISCOVERY_PROCESS.done.rewards=true;DISCOVERY_PROCESS.done.referral=false;setStepState(4,`${collectAllWalletRewardRows(lots).length} Staking · ${bonusCount} Bonus`,'done');setStepState(5,'bereit');$('status').innerHTML='<span class="ok">Staking-Rewards abgeschlossen. Referral wurde NICHT automatisch gestartet.</span>';log(`Schritt 4 abgeschlossen: ${collectAllWalletRewardRows(lots).length} zugeordnete Reward-Zeilen.`,'ok');await saveDiscoveryResultSnapshot(4)}
+    const stakingRewardCount=collectAllWalletRewardRows(lots).length;
+    const bonusRows=collectBonusRewardRows(lots),bonusCount=bonusRows.length;
+    if(bonusCount){
+      const bonusTxCount=new Set(bonusRows.map(x=>String(x?.claim?.hash||'').toLowerCase()).filter(Boolean)).size;
+      log(`Bonus-Rewards: ${bonusCount} belegte Reward-Zeile(n) aus ${bonusTxCount} expliziter claimBonus-Tx · exklusiv aus normalen Staking-/Referral-Rewards getrennt.`,'ok');
+    }
+    DISCOVERY_PROCESS.done.rewards=true;DISCOVERY_PROCESS.done.referral=false;setStepState(4,`${stakingRewardCount} Staking · ${bonusCount} Bonus`,'done');setStepState(5,'bereit');$('status').innerHTML='<span class="ok">Staking-Rewards abgeschlossen. Referral wurde NICHT automatisch gestartet.</span>';log(`Schritt 4 abgeschlossen: ${stakingRewardCount} Staking-Reward-Zeilen · ${bonusCount} Bonus-Reward-Zeilen.`,'ok');await saveDiscoveryResultSnapshot(4)}
   catch(e){setStepState(4,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
 
