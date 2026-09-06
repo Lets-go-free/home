@@ -143,7 +143,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 01:18:16 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 01:26:58 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -349,7 +349,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-011816';
+const BUILD_ID='20260907-012658';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -463,7 +463,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 01:18:16 CEST';
+const APP_VERSION='07.09.2026 01:26:58 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4403,7 +4403,7 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   rewardRelations:'reward-contract-relations-v2-global-fingerprint',
   duration:'duration-strict-v16-contract-proof-cache',
   discoveryResults:'discovery-results-v1',
-  snapshotValuation:'snapshot-valuation-v3-legacy-crosschain-origin-lp',
+  snapshotValuation:'snapshot-valuation-v4-legacy-stake-market-price',
   teamLifecycle:'team-lifecycle-v7',
   teamContractHistory:'team-contract-history-v1',
   smartNodeIdentityIndex:'smartnode-identity-index-v1',
@@ -7283,13 +7283,28 @@ async function enrichLotsBusiness(lots,pricePairs){
     lot.rewardReads=extractRewardReads(lot.rewardProfile,probe);
     lot.rewardModel=deriveRewardModel(lot);
 
-    // 1) STAKE: prefer the value TLN itself stored at staking time.
+    // 1) STAKE: Für normale Stakings bleibt der im TLN-SC gespeicherte Wert primär.
+    // Beim verifizierten Legacy-LPT soll dagegen derselbe historische Marktpreis-Pfad
+    // wie bei Vertragsende/Unstake gelten. Ein im SC gespeicherter Wert (z.B. 220'000)
+    // bleibt als Evidenz erhalten, ersetzt aber nicht den rekonstruierbaren Marktwert.
     const stored=extractStoredStakeUsd(lot,probe);
-    if(stored){
+    const pair=lot.pair||lot.p;
+    const blockHex=lot.stakeBlockHex||null;
+    const legacyMarketPriced=!!LEGACY_LPT_CROSSCHAIN_PRICE_MAP[norm(pair?.address||pair?.token0?.address||'')];
+    if(legacyMarketPriced){
+      if(stored)lot.stakeStoredUsdEvidence=stored;
+      const v=await lpHistoricalValue(pair,lot.original,blockHex,pricePairs);
+      if(v?.usd!=null){
+        lot.stakeUsd=v.usd;
+        lot.stakeUsdSource=`${v.source}${stored?` · SC gespeicherter Vergleichswert: ${formatUsd(stored.usd)}`:''}`;
+        lot.stakeUsdOrigin='legacy_crosschain_market';
+        lot.stakeValuation=v;
+      }else if(stored){
+        lot.stakeUsd=stored.usd;lot.stakeUsdSource=`${stored.source} · historischer Marktpreis-Pfad nicht verfügbar`;lot.stakeUsdOrigin='tln_stored_fallback';
+      }
+    }else if(stored){
       lot.stakeUsd=stored.usd;lot.stakeUsdSource=stored.source;lot.stakeUsdOrigin='tln_stored';
     }else{
-      const pair=lot.pair||lot.p;
-      const blockHex=lot.stakeBlockHex||null;
       const v=await lpHistoricalValue(pair,lot.original,blockHex,pricePairs);
       if(v?.usd!=null){lot.stakeUsd=v.usd;lot.stakeUsdSource=v.source;lot.stakeUsdOrigin='onchain_fallback';lot.stakeValuation=v}
     }
@@ -15045,8 +15060,22 @@ async function processValuation(){
       const probe=lot.businessProbe;
       lot.rewardProfile=rewardProfileForLot(lot);lot.rewardReads=extractRewardReads(lot.rewardProfile,probe);lot.rewardModel=deriveRewardModel(lot);
       step6Phase('stake_valuation');const stored=extractStoredStakeUsd(lot,probe);
-      if(stored){lot.stakeUsd=stored.usd;lot.stakeUsdSource=stored.source;lot.stakeUsdOrigin='tln_stored'}
-      else{const v=await lpHistoricalValue(lot.pair||lot.p,lot.original,lot.stakeBlockHex||null,pricePairs);if(v?.usd!=null){lot.stakeUsd=v.usd;lot.stakeUsdSource=v.source;lot.stakeUsdOrigin='onchain_fallback';lot.stakeValuation=v}}
+      {
+        const pair=lot.pair||lot.p,blockHex=lot.stakeBlockHex||null;
+        const legacyMarketPriced=!!LEGACY_LPT_CROSSCHAIN_PRICE_MAP[norm(pair?.address||pair?.token0?.address||'')];
+        if(legacyMarketPriced){
+          if(stored)lot.stakeStoredUsdEvidence=stored;
+          const v=await lpHistoricalValue(pair,lot.original,blockHex,pricePairs);
+          if(v?.usd!=null){
+            lot.stakeUsd=v.usd;lot.stakeUsdSource=`${v.source}${stored?` · SC gespeicherter Vergleichswert: ${formatUsd(stored.usd)}`:''}`;lot.stakeUsdOrigin='legacy_crosschain_market';lot.stakeValuation=v;
+            log(`Legacy-LPT Stake-Marktwert: ${formatUsd(v.usd)}${stored?` · SC-Vergleichswert ${formatUsd(stored.usd)}`:''}.`,'ok');
+          }else if(stored){
+            lot.stakeUsd=stored.usd;lot.stakeUsdSource=`${stored.source} · historischer Marktpreis-Pfad nicht verfügbar`;lot.stakeUsdOrigin='tln_stored_fallback';
+            log(`Legacy-LPT Stake-Marktwert nicht rekonstruierbar; SC-Vergleichswert ${formatUsd(stored.usd)} wird nur als Fallback angezeigt.`,'warn');
+          }
+        }else if(stored){lot.stakeUsd=stored.usd;lot.stakeUsdSource=stored.source;lot.stakeUsdOrigin='tln_stored'}
+        else{const v=await lpHistoricalValue(pair,lot.original,blockHex,pricePairs);if(v?.usd!=null){lot.stakeUsd=v.usd;lot.stakeUsdSource=v.source;lot.stakeUsdOrigin='onchain_fallback';lot.stakeValuation=v}}
+      }
       if(lot.expiryTime){step6Phase('contract_end_valuation');const endBlockHex=lot.contractEndBlockHex||await nearestBlockHexForTimestamp(lot.expiryTime);lot.contractEndBlockHex=endBlockHex;const v=await lpHistoricalValue(lot.pair||lot.p,lot.original,endBlockHex,pricePairs);if(v){lot.contractEndValuation=v;lot.contractEndUsd=v.usd;lot.contractEndUsdSource=`Vertragsende ${new Date(lot.expiryTime).toLocaleString('de-CH')} · ${v.source}`}}
       if(lot.status==='closed'&&lot.unstakeTx){step6Phase('unstake_block');const blockHex=lot.unstakeBlockHex||await blockHexForTx(lot.unstakeTx);lot.unstakeBlockHex=blockHex;step6Phase('unstake_valuation');const v=await lpHistoricalValue(lot.pair||lot.p,lot.original,blockHex,pricePairs);if(v){lot.unstakeValuation=v;lot.unstakeUsd=v.usd;lot.unstakeUsdSource=`Tatsächlicher Unstake ${lot.unstakeTime?new Date(lot.unstakeTime).toLocaleString('de-CH'):'–'} · ${v.source}`}}
     }
