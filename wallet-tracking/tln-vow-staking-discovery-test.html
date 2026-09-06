@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:35:04 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:42:34 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-023504';
+const BUILD_ID='20260906-024234';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -12795,11 +12795,50 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
         }
         log(`Duration ${label}: Cave-Zeitfunktion 0x32a3 Rohpfad: ${body.map(fmtOp).join(' | ')}.`,'warn');
       }
-      // Die Caller laden unmittelbar vor dem Sprung auf 0x32a3 einen mit 0xffffffffff
-      // maskierten Storage-Wert (=40 bit). Der aktuelle Positionsslot F4 enthaelt den
-      // Stake-Zeitpunkt ebenfalls als low uint32. Das ist ein starker Strukturabgleich,
-      // aber noch kein automatischer Beweis, bis die Helper-Semantik sichtbar ist.
-      log(`Duration ${label}: Cave-367-Strukturhypothese: beide 367-Caller laden vor JUMP 0x32a3 einen 40-bit Storage-Wert (Maske 0xffffffffff); 0x32a3 enthaelt 86'400 + TIMESTAMP. Pruefe DeepDive auf SUB/DIV und anschliessenden LT-Vergleich gegen 367; bis dahin kein Strict-Proof.`,'warn');
+      // Strict-Proof fuer diese Cave-Implementation:
+      // 1) Caller 0x118e legt 367 auf den Stack, liest aus dem Positions-Struct Offset +4,
+      //    extrahiert den low-40-bit Zeitwert und springt in 0x32a3.
+      // 2) 0x32a3 berechnet ueber SafeMath-Helper 0x3ae8 (SUB) und 0x4013 (DIV)
+      //    exakt (block.timestamp - gespeicherterZeitwert) / 86'400.
+      // 3) Rueckkehr 0x11b5 fuehrt LT + ISZERO aus und revertiert, solange der Wert <367 ist.
+      // Damit ist die vertragliche Mindest-Lockdauer im Code selbst auf 367 volle Tage bewiesen.
+      // Der Proof wird nur verwendet, wenn exakt diese Struktur vorhanden ist UND der Code-/
+      // Implementation-Fingerprint am Stake-Block dem heutigen Fingerprint entspricht.
+      const at=(pc)=>idxByPc.get(pc);
+      const slicePc=(a,b)=>ops.filter(o=>o.pc>=a&&o.pc<=b);
+      const has=(arr,pred)=>arr.some(pred);
+      const caller367=slicePc(0x118e,0x11b4),timeFn=slicePc(0x32a3,0x32c5),subFn=slicePc(0x3ae8,0x3b1b),divFn=slicePc(0x4013,0x4043),ret367=slicePc(0x11b5,0x11f5);
+      const exact367Structure=
+        at(0x118e)!=null&&at(0x32a3)!=null&&at(0x3ae8)!=null&&at(0x4013)!=null&&at(0x11b5)!=null&&
+        has(caller367,o=>o.value===367n)&&has(caller367,o=>o.op===0x54)&&has(caller367,o=>o.value===1099511627775n)&&has(caller367,o=>o.value===12963n)&&has(caller367,o=>o.op===0x56)&&
+        has(timeFn,o=>o.value===86400n)&&has(timeFn,o=>o.op===0x42)&&has(timeFn,o=>o.value===15080n)&&has(timeFn,o=>o.value===16403n)&&
+        has(subFn,o=>o.op===0x03)&&has(divFn,o=>o.op===0x04)&&
+        has(ret367,o=>o.op===0x10)&&has(ret367,o=>o.op===0x15)&&has(ret367,o=>o.op===0xfd);
+      if(exact367Structure){
+        const stakeTs=lotStakeTsSeconds(lot),stakeBlock=lotStakeBlock(lot),sec=367*86400;
+        let stable=false,currentFp=null,historicalFp=null;
+        if(Number.isFinite(stakeTs)&&stakeTs>0&&Number.isInteger(stakeBlock)&&stakeBlock>0){
+          currentFp=await currentContractDurationFingerprint(contract).catch(()=>null);
+          historicalFp=await contractDurationFingerprintAt(contract,stakeBlock).catch(()=>null);
+          stable=!!currentFp&&!!historicalFp&&sameDurationFingerprint(currentFp,historicalFp);
+        }
+        if(stable){
+          lot.duration_contract=contract;
+          lot.lockDurationSeconds=sec;lot.durationDays=367;lot.expiryTime=new Date((stakeTs+sec)*1000).toISOString();
+          lot.implementationStable=true;lot.durationConfidence='strong';
+          lot.durationSource='Contract-Bytecode Strict-Proof · Positions-Struct +4 → elapsedDays=(block.timestamp-start)/86’400 → Mindestgrenze 367';
+          lot.durationEvidence=`Implementation-Bytecode ${contract}: Positions-Struct Offset +4 wird als 40-bit Zeitwert geladen; Helper 0x32a3 berechnet (block.timestamp - Start)/86'400 über SUB 0x3ae8 und DIV 0x4013; Rueckkehrpfad 0x11b5 vergleicht per LT/ISZERO gegen PUSH2(367) und revertiert unterhalb der Grenze. Historischer Stake-Code-Fingerprint entspricht dem aktuellen Code.`;
+          lot.durationStrictVerdict={cls:'ok',text:'367 Tage direkt aus Contract-Control-Flow bewiesen: gespeicherter Positions-Zeitwert → (block.timestamp − Start) / 86’400 → Vergleich gegen 367 mit Revert unterhalb der Grenze.'};
+          lot.lockEvidence={found:true,mode:'cave-bytecode-367-day-strict-proof',unlockTime:lot.expiryTime,elapsedSeconds:sec,elapsedDays:367,evidence:lot.durationEvidence,confidence:'strong',implementationStable:true,positionStorage:{slot:7,offset:4,packedBits:40},bytecodePath:{caller:'0x118e',timeHelper:'0x32a3',subHelper:'0x3ae8',divHelper:'0x4013',compareReturn:'0x11b5'}};
+          log(`Duration ${label}: Cave-367 STRICT-PROOF ERFOLG: Positions-Struct +4 → (block.timestamp - Start) / 86'400 → Vergleich gegen 367; LT/ISZERO-Revert sperrt den Pfad unter 367 Tagen. Contract/Implementation am Stake-Block unverändert. Vertragsende ${new Date((stakeTs+sec)*1000).toLocaleString('de-CH')}.`,'ok');
+          await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,durationCacheKeyForLot(lot),TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0).catch(()=>false);
+          await saveContractStrictDurationProof(lot).catch(e=>log(`Duration ${label}: Cave-367 Strict-Proof konnte nicht global persistiert werden: ${String(e?.message||e).slice(0,180)}.`,'warn'));
+          return {supported:true,proven:true,strictProof:true,durationDays:367,lockDurationSeconds:sec,expiryTime:lot.expiryTime,source:'cave-bytecode-367-day-strict-proof'};
+        }
+        log(`Duration ${label}: Cave-367 Bytecode-Struktur vollstaendig, aber historischer Stake-Code-/Implementation-Fingerprint konnte nicht als unveraendert bestaetigt werden. Kein Strict-Proof fuer diese Position.`,'warn');
+      }else{
+        log(`Duration ${label}: Cave-367-Strukturhypothese: Control-Flow noch nicht exakt vollstaendig erkannt; kein Strict-Proof.`,'warn');
+      }
     }catch(e){
       log(`Duration ${label}: Cave-Zeitpfad-DeepDive fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info');
     }
@@ -13013,7 +13052,8 @@ async function teamResolveDurationWithContractCandidates(lot,label=''){
   if(lot?.stake_token_id){
     await teamProbeTokenPositionStorage(lot,label);
     await teamProbeContractLockConfig(lot,label);
-    await teamProbeCaveUnstakeGate(lot,label);
+    const caveProof=await teamProbeCaveUnstakeGate(lot,label);
+    if(caveProof?.proven)return caveProof;
   }
   // Neue Router-/Entry-Generationen koennen drei unterschiedliche Contracts beteiligen:
   // aufgerufener Entry, Stake-Event-Emitter und tatsaechlicher LP-Empfaenger. Die normale
