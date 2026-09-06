@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:49:48 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:53:03 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-024948';
+const BUILD_ID='20260906-025303';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -11207,6 +11207,9 @@ let TEAM_GRAPH_DB_AVAILABLE=true;
 const TEAM_IDENTITY_CACHE=new Map();
 let CURRENT_TEAM_PROJECT_FOREST=null;
 const TEAM_STAKING_LIFECYCLE=new Map();
+// Einmalige gezielte Revalidierung fuer historisch als offen/abgelaufen gecachte Positionen.
+// Dient dazu, alte False-Negatives bei Unstake/LP-Rueckfluss ohne Vollscan aller Partner zu heilen.
+const TEAM_LIFECYCLE_RECHECK_HINTS=new Map();
 let TEAM_HIGHLIGHT_STATE={noActive:false,expired:false,soon:false};
 
 function loadTeamAliases(){
@@ -11937,6 +11940,22 @@ async function teamLoadPersistedLifecycleCache(wallets){
         log(`Team-Lifecycle TLN-ID ${ident?.nodeId||'?'}: leerer Alt-Cache wird wegen neuerer SmartNode-Registry ${short(ident.contract)} gezielt neu verifiziert.`,'muted');
         continue;
       }
+      // Alte positive Lifecycles mit weiterhin offenen, bereits abgelaufenen Positionen
+      // werden genau einmal gezielt auf spaetere LP-Rueckfluesse/Unstake-Tx nachgeprueft.
+      // Das verhindert, dass ein frueher False-Negative dauerhaft als "abgelaufen, noch nicht unstaked"
+      // im Hot-Cache festgeschrieben bleibt. Andere verifizierte Partner bleiben unangetastet.
+      const nowMs=Date.now();
+      const expiredOpenLots=lots.filter(l=>{
+        const closed=l?.status==='closed'||!!l?.unstakeTime||!!l?.closedAt;
+        const end=Date.parse(l?.expiryTime||l?.contractEndTime||l?.releaseTime||'');
+        return !closed&&Number.isFinite(end)&&end<=nowMs;
+      });
+      const integrityVersion=String(row?.payload?.lifecycleIntegrityVersion||'');
+      if(expiredOpenLots.length&&integrityVersion!=='unstake-recheck-v1'){
+        TEAM_LIFECYCLE_RECHECK_HINTS.set(w,expiredOpenLots);
+        log(`Team-Lifecycle TLN-ID ${TEAM_IDENTITY_CACHE.get(w)?.nodeId||'?'}: ${expiredOpenLots.length} historisch offene/abgelaufene Position(en) werden einmalig auf tatsaechlichen Unstake/LP-Rueckfluss nachverifiziert.`,'muted');
+        continue;
+      }
       TEAM_STAKING_LIFECYCLE.set(w,teamLifecycleFromLots(w,lots,{verified:true,source:'persistenter Team-Lifecycle',completedStep:3}));loaded++;
     }
   }
@@ -11945,7 +11964,7 @@ async function teamLoadPersistedLifecycleCache(wallets){
 }
 async function teamSaveVerifiedLifecycle(wallet,lots){
   const w=norm(wallet);if(!ethers.isAddress(w)||!currentUserId||!stakingScanDbCacheAvailable)return false;
-  return saveTechnicalProcessCache(w,TECH_CACHE_KEYS.teamLifecycle,TECH_CACHE_VERSIONS.teamLifecycle,{wallet:w,verified:true,lots:cacheJsonSafe(lots||[]),savedAt:new Date().toISOString()},0);
+  return saveTechnicalProcessCache(w,TECH_CACHE_KEYS.teamLifecycle,TECH_CACHE_VERSIONS.teamLifecycle,{wallet:w,verified:true,lifecycleIntegrityVersion:'unstake-recheck-v1',lots:cacheJsonSafe(lots||[]),savedAt:new Date().toISOString()},0);
 }
 async function teamLoadContractHistoryCache(wallets){
   const out=new Map();
@@ -12381,6 +12400,44 @@ async function teamBatchPositionCalls(wallets){
     log(`Team-Lifecycle External-Entry-Recovery: ${externalRecoveryChecks} Problem-Wallet(s) geprueft · ${externalRecoveryAdded} bisher nicht beruecksichtigte Contract-Call(s) · ${externalRecoveryFailed} Check(s) fehlgeschlagen · ${externalRecoveryPages} Alchemy-Seite(n).`,externalRecoveryFailed?'warn':'ok');
   }
 
+  // Gezielte Unstake-Safety fuer alte, bereits verifizierte aber noch offene/abgelaufene Lots:
+  // Ein Unstake kann als reine Contract-Tx in der `external`-Historie fehlen, waehrend der
+  // LP/LPT-Rueckfluss als ERC-20 Transfer sicher sichtbar ist. Fuer NUR diese gezielt zur
+  // Revalidierung markierten Wallets laden wir deshalb eingehende ERC-20 Transfers und
+  // nehmen Transaktionen auf, die exakt eines der zuvor offenen Staking-Assets zurueckgeben.
+  let unstakeReturnChecks=0,unstakeReturnTxAdded=0,unstakeReturnPages=0;
+  for(const wallet of ws){
+    const hints=TEAM_LIFECYCLE_RECHECK_HINTS.get(wallet)||[];if(!hints.length)continue;
+    const pairMap=new Map();
+    let earliest=null;
+    for(const lot of hints){
+      const pair=norm(lot?.pair_address||safePairAddress(lot));if(pair)pairMap.set(pair,lot);
+      const bn=lot?.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null;if(bn!=null)earliest=earliest==null?bn:Math.min(earliest,bn);
+    }
+    if(!pairMap.size)continue;unstakeReturnChecks++;
+    let pageKey=null;do{
+      const page=await alchemy('alchemy_getAssetTransfers',[{fromBlock:earliest!=null?'0x'+Math.max(0,earliest).toString(16):'0x0',toBlock:'latest',toAddress:wallet,category:['erc20'],withMetadata:true,excludeZeroValue:false,maxCount:'0x3e8',order:'asc',...(pageKey?{pageKey}:{})}]);
+      unstakeReturnPages++;
+      for(const tr of (page?.transfers||[])){
+        const token=norm(tr?.rawContract?.address||tr?.assetContractAddress||'');
+        const lot=pairMap.get(token);if(!lot)continue;
+        const h=norm(tr?.hash||'');if(!h||rows.some(x=>norm(x?.hash||'')===h))continue;
+        let tx=null;try{tx=await rpc('eth_getTransactionByHash',[h])}catch{}
+        const called=norm(tx?.to||'');
+        const allowed=new Set([norm(lot?.staking?.contract_address||lot?.counterparty||''),norm(lot?.entry_contract||''),norm(lot?.stake_event_contract||'')].filter(Boolean));
+        if(called&&!allowed.has(called))continue;
+        const c={...tr,_staking:lot?.staking||{contract_address:called,label:'Staking'},_teamWallet:wallet,_teamPositionEvidenceSeed:'erc20:lp-return-recheck',_tx:tx,_input:tx?.input||'0x'};
+        c._selector=String(c._input).slice(0,10).toLowerCase();c._method=METHOD_SELECTORS.get(c._selector)||'Contract-Aufruf';
+        c._blockNumber=tx?.blockNumber?parseInt(tx.blockNumber,16):(tr?.blockNum?parseInt(tr.blockNum,16):null);c._uintArg=null;
+        if(String(c._input).length>=74){try{c._uintArg=BigInt('0x'+String(c._input).slice(10,74))}catch{}}
+        rows.push(c);unstakeReturnTxAdded++;
+        log(`Team-Lifecycle Unstake-Recovery TLN-ID ${TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'?'}: eingehender ${safePairLabel(lot)}-Rueckfluss in Tx ${short(h)} als Unstake-Kandidat aufgenommen.`,'ok');
+      }
+      pageKey=page?.pageKey||null;
+    }while(pageKey);
+  }
+  if(unstakeReturnChecks)log(`Team-Lifecycle Unstake-Recovery: ${unstakeReturnChecks} Wallet(s) gezielt geprueft · ${unstakeReturnTxAdded} LP/LPT-Rueckfluss-Tx aufgenommen · ${unstakeReturnPages} Alchemy-Seite(n).`,unstakeReturnTxAdded?'ok':'muted');
+
   // WICHTIG: Nicht erst nach erkannter Stake-/Unstake-Methode Receipts laden. Ein neuerer
   // oder historischer Stake-Selector kann unbekannt sein; genau das Receipt liefert dann
   // die bereits verifizierte zweite Evidenzstufe (Stake-Event bzw. LP-/Staking-Asset-Abfluss).
@@ -12423,7 +12480,10 @@ async function teamBatchPositionCalls(wallets){
         });
         const stakeEvent=stakeEvents.find(l=>norm(l?.topics?.[0])===stakeTopic4)||stakeEvents[0]||null;
         const outgoing=(c._erc20Transfers||[]).filter(tr=>norm(tr.from)===wallet&&tr.token&&tr.amountRaw!=null);
-        if(stakeEvent){
+        const recheckHints=TEAM_LIFECYCLE_RECHECK_HINTS.get(wallet)||[];
+        const incomingOpenAsset=(c._erc20Transfers||[]).find(tr=>norm(tr.to)===wallet&&recheckHints.some(l=>norm(l?.pair_address||safePairAddress(l))===norm(tr.token)));
+        if(incomingOpenAsset){positionKind='unstake';evidence='receipt:verified-open-asset-return';}
+        else if(stakeEvent){
           const eventContract=norm(stakeEvent.address||'');
           // Entry/Controller getrennt aufbewahren; fuer Positions-/Duration-Logik ist der
           // Contract, der das verifizierte Stake-Event emittiert, die staerkere Evidenz.
@@ -13109,7 +13169,7 @@ async function teamVerifyMissingLifecycles(wallets){
       const unresolvedNewGeneration=lots.length===0&&newerIdentityContract;
       const fullyVerified=durationOk&&scanComplete&&!hasUnstakeOnly&&!hasObservedEvidence&&!unresolvedNewGeneration;
       TEAM_STAKING_LIFECYCLE.set(wallet,teamLifecycleFromLots(wallet,lots,{verified:fullyVerified,source:scanComplete?'gebündelte Team-Staking-Discovery':'gebündelte Team-Staking-Discovery (unvollständig)',completedStep:fullyVerified?3:2}));
-      if(fullyVerified){await teamSaveVerifiedLifecycle(wallet,lots);verified++}if(lots.length)withLots++;
+      if(fullyVerified){await teamSaveVerifiedLifecycle(wallet,lots);TEAM_LIFECYCLE_RECHECK_HINTS.delete(wallet);verified++}if(lots.length)withLots++;
       const evidenceSummary=calls.reduce((m,c)=>{const e=String(c?._teamPositionEvidence||'unbekannt');m[e]=(m[e]||0)+1;return m;},{});
       log(`Team-Lifecycle ${wi+1}/${missing.length} · TLN-ID ${TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'?'}: ${calls.length} Positionskandidat(en) · ${lots.length} Position(en) · Contract-Historie ${cov.ok}/${cov.total}${cov.failed?` (${cov.failed} fehlgeschlagen)`:''} · Evidenz ${Object.entries(evidenceSummary).map(([k,v])=>`${k}=${v}`).join(', ')||'keine'} · ${fullyVerified?'Lifecycle verifiziert':hasObservedEvidence?'NICHT verifiziert – historische Staking-Evidenz noch nicht rekonstruiert':unresolvedNewGeneration?'NICHT verifiziert – neue SmartNode-Generation, Staking-Pfad noch nicht rekonstruiert':scanComplete?'Duration noch offen':'NICHT verifiziert – Scan unvollständig'}.`,fullyVerified?'ok':'warn');
     }
