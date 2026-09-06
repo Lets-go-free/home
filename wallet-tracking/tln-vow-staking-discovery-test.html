@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 14:14:20 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 14:24:46 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -304,7 +304,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-141420';
+const BUILD_ID='20260906-142446';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -12149,12 +12149,13 @@ function buildProjectTeamForest(edges){
   });
 
   // Build the actual parent->child tree for the full included union. Do not flatten by line.
-  const children=new Map(),parentByChild=new Map();
+  const children=new Map(),parentByChild=new Map(),edgeByChild=new Map();
   for(const e of edges.values()){
     if(!included.has(e.child)||!included.has(e.parent))continue;
     if(!children.has(e.parent))children.set(e.parent,[]);
     children.get(e.parent).push(e.child);
     parentByChild.set(e.child,e.parent);
+    edgeByChild.set(e.child,e);
   }
   for(const a of children.values())a.sort((a,b)=>{
     const ai=Number(TEAM_IDENTITY_CACHE.get(norm(a))?.nodeId),bi=Number(TEAM_IDENTITY_CACHE.get(norm(b))?.nodeId);
@@ -12165,7 +12166,7 @@ function buildProjectTeamForest(edges){
   // A nested own leader may extend coverage another 20 levels. Therefore rendering depth is
   // not capped relative to the top root; only inclusion per own leader is capped to 20.
   const components=roots.map(root=>({root,children,parentByChild}));
-  return {ownMap,ownSet,ownDepths,orderedOwn,included,leaderStats,roots,components,children,parentByChild};
+  return {ownMap,ownSet,ownDepths,orderedOwn,included,leaderStats,roots,components,children,parentByChild,edgeByChild};
 }
 
 function teamFormatStakeDate(v,withTime=false){
@@ -13831,7 +13832,7 @@ async function processReferralRewards(){
   catch(e){setStepState(5,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{updateProcessButtons();b.disabled=false}
 }
 function teamRegressionSummary(forest){
-  if(!forest)return {ok:false,text:'kein Forest'};
+  if(!forest)return {ok:false,text:'kein Forest',missingIdentity:[]};
   const included=[...forest.included],roots=forest.roots||[],seen=new Set(),cycles=[];
   for(const start of included){
     seen.clear();let cur=norm(start),guard=0;
@@ -13841,12 +13842,28 @@ function teamRegressionSummary(forest){
       if(!cur||!forest.included.has(cur))break;
     }
   }
-  const identities=included.filter(w=>TEAM_IDENTITY_CACHE.get(norm(w))?.nodeId).length;
+  const missingIdentity=included.filter(w=>!TEAM_IDENTITY_CACHE.get(norm(w))?.nodeId);
+  const identities=included.length-missingIdentity.length;
   const verified=included.filter(w=>TEAM_STAKING_LIFECYCLE.get(norm(w))?.verified).length;
   const noActive=included.filter(w=>{const l=TEAM_STAKING_LIFECYCLE.get(norm(w));return l?.verified&&!(l?.open||[]).some(x=>x.status==='active')}).length;
   const expiredOpen=included.reduce((n,w)=>n+(TEAM_STAKING_LIFECYCLE.get(norm(w))?.open||[]).filter(x=>x.status==='expired').length,0);
   const ok=cycles.length===0&&identities===included.length&&verified===included.length&&roots.length===forest.components?.length;
-  return {ok,cycles:cycles.length,identities,verified,total:included.length,roots:roots.length,components:forest.components?.length||0,noActive,expiredOpen,text:`${identities}/${included.length} Identity · ${verified}/${included.length} Lifecycle · ${cycles.length} Zyklus/Zyklen · ${roots.length}/${forest.components?.length||0} Roots · ${noActive} ohne aktives Staking · ${expiredOpen} abgelaufen/offen`};
+  return {ok,cycles:cycles.length,identities,verified,total:included.length,roots:roots.length,components:forest.components?.length||0,noActive,expiredOpen,missingIdentity,text:`${identities}/${included.length} Identity · ${verified}/${included.length} Lifecycle · ${cycles.length} Zyklus/Zyklen · ${roots.length}/${forest.components?.length||0} Roots · ${noActive} ohne aktives Staking · ${expiredOpen} abgelaufen/offen`};
+}
+function logTeamMissingIdentityDiagnostics(forest,teamCheck){
+  const missing=teamCheck?.missingIdentity||[];
+  for(const walletRaw of missing){
+    const wallet=norm(walletRaw),parent=norm(forest?.parentByChild?.get(wallet)||'');
+    const parentIdent=parent?TEAM_IDENTITY_CACHE.get(parent)||{}:{};
+    const edge=forest?.edgeByChild?.get(wallet)||null;
+    const kids=(forest?.children?.get(wallet)||[]).map(norm);
+    const kidText=kids.length?kids.map(k=>`${short(k)}${TEAM_IDENTITY_CACHE.get(k)?.nodeId?`/ID ${TEAM_IDENTITY_CACHE.get(k).nodeId}`:''}`).join(', '):'keine';
+    const life=TEAM_STAKING_LIFECYCLE.get(wallet);
+    const own=forest?.ownSet?.has(wallet)?'ja':'nein';
+    const source=edge?.source||'Graph-Beziehung ohne Quellenlabel';
+    const tx=edge?.hash||'–';
+    log(`Step-7 Identity-Diagnose: Wallet ${wallet} · eigene Wallet ${own} · Upline ${parent||'–'}${parentIdent?.nodeId?` / TLN-ID ${parentIdent.nodeId}`:''} · Downlines ${kidText} · Relation ${source} · Tx ${tx} · Lifecycle ${life?.verified?'verifiziert':'nicht verifiziert'} (${(life?.open||[]).length} offen / ${(life?.closed||[]).length} beendet).`,'warn');
+  }
 }
 let TEAM_TREE_RUN_INFLIGHT=false;
 async function processTeamTree(){
@@ -13866,6 +13883,7 @@ async function processTeamTree(){
     await flushStakingDiscoveryCandidateCache();
     const teamCheck=teamRegressionSummary(CURRENT_TEAM_PROJECT_FOREST);
     log(`Step-7 Abschlusscheck: ${teamCheck.text} · ${teamCheck.ok?'PASS':'PRÜFEN'}.`,teamCheck.ok?'ok':'warn');
+    if(teamCheck.missingIdentity?.length)logTeamMissingIdentityDiagnostics(CURRENT_TEAM_PROJECT_FOREST,teamCheck);
     DISCOVERY_PROCESS.done.team=true;
     const roots=CURRENT_TEAM_PROJECT_FOREST.roots||[];
     setStepState(7,`${roots.length} Baum-Root(s)`,'done');
