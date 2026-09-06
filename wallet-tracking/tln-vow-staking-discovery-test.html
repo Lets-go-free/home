@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:53:03 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 03:01:43 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-025303';
+const BUILD_ID='20260906-030143';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -13144,6 +13144,28 @@ async function teamResolveDurationWithContractCandidates(lot,label=''){
   return first;
 }
 
+function teamLogResolvedUnstakes(wallet,lots,calls){
+  const nodeId=TEAM_IDENTITY_CACHE.get(norm(wallet))?.nodeId||'?';
+  const byHash=new Map((calls||[]).map(c=>[norm(c?.hash||''),c]));
+  for(const lot of (lots||[])){
+    if(!(lot?.status==='closed'||lot?.unstakeTime||lot?.closedAt)||!lot?.unstakeTx)continue;
+    const call=byHash.get(norm(lot.unstakeTx||''))||null;
+    const ret=call?lpReturnForLot(call,lot):null;
+    let returned=null;
+    if(ret?.amountRaw!=null){
+      try{returned=Number(ethers.formatUnits(BigInt(ret.amountRaw),Number(lot?.pair?.decimals??18)))}catch{}
+    }
+    if(returned==null&&lot?.unstakeAmountRaw!=null){
+      try{returned=Number(ethers.formatUnits(BigInt(lot.unstakeAmountRaw),Number(lot?.pair?.decimals??18)))}catch{}
+    }
+    const principal=Number(lot?.original||0);
+    const amountTxt=Number.isFinite(principal)?principal.toLocaleString('de-CH',{maximumFractionDigits:12}):'–';
+    const returnTxt=Number.isFinite(returned)?returned.toLocaleString('de-CH',{maximumFractionDigits:12}):'nicht aus Receipt quantifiziert';
+    const when=lot?.unstakeTime?new Date(lot.unstakeTime).toLocaleString('de-CH'):'–';
+    log(`Team-Lifecycle Unstake-Zuordnung TLN-ID ${nodeId}: ${safePairLabel(lot)} · Positionssumme ${amountTxt} · Unstake ${when} · Rueckfluss ${returnTxt} · Tx ${lot.unstakeTx} · Status geschlossen · Evidenz ${lot.unstakeEvidence||'Contract-Historie'}.`,'ok');
+  }
+}
+
 async function teamVerifyMissingLifecycles(wallets){
   await teamLoadPersistedLifecycleCache(wallets);
   const missing=[...new Set((wallets||[]).map(norm).filter(w=>ethers.isAddress(w)&&!TEAM_STAKING_LIFECYCLE.get(w)?.verified))];
@@ -13156,6 +13178,7 @@ async function teamVerifyMissingLifecycles(wallets){
       const pairMap=new Map(),pairs=await discoverPairsFromStakeTransactions(calls,[],pairMap,projectSet,new Map(),wallet);for(const pair of pairs)pairMap.set(norm(pair.address),pair);
       const synthetic=[];await synthesizeStakeRowsFromReceipts(calls,pairMap,wallet,synthetic);
       const built=buildDiagnosticLots(synthetic),lots=built.lots;reconcileLotsWithContractCalls(lots,calls);associateContractCallsToLots(lots,calls);await normalizeProvenTopUpsForPositions(lots);
+      teamLogResolvedUnstakes(wallet,lots,calls);
       let durationOk=true;for(let li=0;li<lots.length;li++){const lot=lots[li];if(lot.expiryTime)continue;const r=await teamResolveDurationWithContractCandidates(lot,`Team ${wi+1}/${missing.length} · Position ${li+1}/${lots.length}`);if(!r.proven)durationOk=false}
       const cov=coverage.get(wallet)||{total:0,ok:0,failed:1,errors:['Coverage unbekannt']};
       const scanComplete=cov.failed===0&&cov.ok===cov.total;
