@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:29:01 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 02:35:04 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -291,7 +291,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-022901';
+const BUILD_ID='20260906-023504';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -12764,6 +12764,44 @@ async function teamProbeCaveUnstakeGate(lot,label=''){
           log(`Duration ${label}: Cave-367-Zielkontext ${source} 0x${d.targetPc.toString(16)}: TIMESTAMP=${ts?'ja':'nein'} · SLOAD=${sl?'ja':'nein'} · MUL=${mul?'ja':'nein'} · ADD/SUB=${arith?'ja':'nein'} · Vergleich=${cmp?'ja':'nein'} · 86400=${const86400?'ja':'nein'} · 367=${const367?'ja':'nein'} · ${win.map(fmtOp).join(' | ')}.`,'warn');
         }
       }
+    }
+
+    // Tiefenanalyse des gemeinsamen Zeit-Helfers, den beide 367-Aufrufstellen anspringen.
+    // In den bisherigen Logs fuehren beide Pfade auf JUMPDEST 0x32a3. Dort liegt die
+    // bereits separat bestaetigte 86'400-Konstante direkt neben TIMESTAMP. Um die Semantik
+    // belastbar zu machen, zeigen wir jetzt auch die von 0x32a3 aufgerufenen internen
+    // Helper (aktuell 0x3ae8 und 0x4013) sowie die Rueckkehrpunkte. Gesucht ist konkret:
+    // gespeicherter 40-bit-Zeitwert -> block.timestamp -> Differenz -> Division durch 86400
+    // -> Vergleich gegen 367. Erst wenn diese Kette strukturell geschlossen ist, darf sie
+    // spaeter als Contract-Duration-Proof verwendet werden.
+    try{
+      const ops=implOps.length?implOps:runtimeOps;
+      const idxByPc=new Map(ops.map((o,i)=>[o.pc,i]));
+      const deepTargets=[0x32a3,0x32b5,0x32bf,0x3ae8,0x4013,0x6ae,0x11b5];
+      for(const pc of deepTargets){
+        const i=idxByPc.get(pc);if(i==null)continue;
+        const win=ops.slice(Math.max(0,i-5),Math.min(ops.length,i+42));
+        const near=ops.filter(x=>Math.abs(x.pc-pc)<=220);
+        const vals=[...new Set(near.filter(x=>x.value!=null&&x.value<=100000000n).map(x=>x.value.toString()))].slice(0,24);
+        log(`Duration ${label}: Cave-Zeitpfad-DeepDive 0x${pc.toString(16)} · TIMESTAMP=${near.some(x=>x.op===0x42)?'ja':'nein'} · SLOAD=${near.some(x=>x.op===0x54)?'ja':'nein'} · SUB=${near.some(x=>x.op===0x03)?'ja':'nein'} · DIV=${near.some(x=>x.op===0x04)?'ja':'nein'} · MUL=${near.some(x=>x.op===0x02)?'ja':'nein'} · LT/GT=${near.some(x=>x.op===0x10||x.op===0x11)?'ja':'nein'} · kleine PUSH-Werte: ${vals.join(', ')||'keine'} · ${win.map(fmtOp).join(' | ')}.`,'warn');
+      }
+      const f=idxByPc.get(0x32a3);
+      if(f!=null){
+        // Funktionskoerper bis zum ersten Ruecksprung/JUMP nach dem zweiten internen Helper.
+        const body=[];let jumps=0;
+        for(let i=f;i<ops.length&&body.length<90;i++){
+          body.push(ops[i]);
+          if(ops[i].op===0x56&&++jumps>=3)break;
+        }
+        log(`Duration ${label}: Cave-Zeitfunktion 0x32a3 Rohpfad: ${body.map(fmtOp).join(' | ')}.`,'warn');
+      }
+      // Die Caller laden unmittelbar vor dem Sprung auf 0x32a3 einen mit 0xffffffffff
+      // maskierten Storage-Wert (=40 bit). Der aktuelle Positionsslot F4 enthaelt den
+      // Stake-Zeitpunkt ebenfalls als low uint32. Das ist ein starker Strukturabgleich,
+      // aber noch kein automatischer Beweis, bis die Helper-Semantik sichtbar ist.
+      log(`Duration ${label}: Cave-367-Strukturhypothese: beide 367-Caller laden vor JUMP 0x32a3 einen 40-bit Storage-Wert (Maske 0xffffffffff); 0x32a3 enthaelt 86'400 + TIMESTAMP. Pruefe DeepDive auf SUB/DIV und anschliessenden LT-Vergleich gegen 367; bis dahin kein Strict-Proof.`,'warn');
+    }catch(e){
+      log(`Duration ${label}: Cave-Zeitpfad-DeepDive fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info');
     }
   }catch(e){
     log(`Duration ${label}: Cave-Bytecode 180/367-Pruefung fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info');
