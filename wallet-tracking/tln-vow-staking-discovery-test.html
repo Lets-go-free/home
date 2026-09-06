@@ -143,7 +143,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 17:53:42 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 18:08:02 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -349,7 +349,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260906-175342';
+const BUILD_ID='20260906-180802';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -7439,6 +7439,57 @@ function selectorHasExplicitRewardIntent(selector){
   const m=String(METHOD_SELECTORS.get(String(selector||'').toLowerCase())||'').toLowerCase();
   return /claim|reward|harvest|yield/.test(m);
 }
+
+async function hydrateKnownDirectRewardCallReceipts(wallet,calls=[]){
+  const w=norm(wallet),eligible=[];
+  for(const c of (calls||[])){
+    const h=String(c?.hash||'').toLowerCase();
+    if(!h||c?._success===false)continue;
+    const selector=String(c?._selector||c?._input||'').slice(0,10).toLowerCase();
+    // Dieser Fallback erweitert NICHT die Reward-Klassifikation. Er sorgt nur
+    // dafür, dass bereits in Step 2 entdeckte direkte Claim-/Reward-/Yield-
+    // Aufrufe an verifizierte Staking-/Entry-Contracts in Step 4 ihr Receipt
+    // erhalten, selbst wenn Alchemy den eingehenden Reward-Transfer im
+    // token-scoped Vorfilter nicht geliefert hat.
+    if(!selectorHasExplicitRewardIntent(selector)&&!selectorBonusIntent(selector))continue;
+    eligible.push(c);
+  }
+  if(!eligible.length)return {eligible:0,cacheHits:0,loaded:0,missing:0};
+
+  await ensureTxFactsCache(w);
+  const missing=[];let cacheHits=0,loaded=0;
+  for(const c of eligible){
+    const h=String(c.hash||'').toLowerCase();
+    const facts=TX_FACTS_CACHE_STATE.entries.get(h)||null;
+    const rc=c?._receipt||receiptObjectFromFacts(facts)||REWARD_FULL_RECEIPT_CACHE.get(h)||null;
+    if(rc){
+      c._receipt=rc;c._erc20Transfers=receiptErc20Transfers(rc);
+      c._success=rc?.status==null?c._success:Number(BigInt(rc.status))===1;
+      REWARD_FULL_RECEIPT_CACHE.set(h,rc);TX_RECEIPT_FLOW_CACHE.set(h,c._erc20Transfers);
+      cacheHits++;
+    }else missing.push(c);
+  }
+  if(missing.length){
+    const results=await rpcManyDiscovery(missing.map(c=>({method:'eth_getTransactionReceipt',params:[c.hash]})),40);
+    for(let i=0;i<missing.length;i++){
+      const c=missing[i],h=String(c.hash||'').toLowerCase(),rc=results[i]?.result||null;
+      if(!rc)continue;
+      loaded++;c._receipt=rc;c._erc20Transfers=receiptErc20Transfers(rc);
+      c._success=rc?.status==null?c._success:Number(BigInt(rc.status))===1;
+      REWARD_FULL_RECEIPT_CACHE.set(h,rc);TX_RECEIPT_FLOW_CACHE.set(h,c._erc20Transfers);
+      const oldFacts=TX_FACTS_CACHE_STATE.entries.get(h)||null;
+      let tx=txObjectFromFacts(oldFacts)||c?._tx||null;
+      if(tx){
+        const facts=txFactsFromRpc(tx,rc);
+        if(facts){TX_FACTS_CACHE_STATE.entries.set(h,facts);TX_FACTS_CACHE_STATE.dirty=true}
+      }
+    }
+    if(TX_FACTS_CACHE_STATE.dirty)await flushTxFactsCache(w);
+  }
+  const unresolved=eligible.filter(c=>!c?._receipt).length;
+  log(`Step-4 direkter Claim-Receipt-Fallback: ${eligible.length} bekannte Claim/Reward/Yield-Aufrufe · ${cacheHits} Receipt-Cache-Hit(s) · ${loaded} nachgeladen${unresolved?` · ${unresolved} ohne Receipt`:''}.`,unresolved?'warn':'ok');
+  return {eligible:eligible.length,cacheHits,loaded,missing:unresolved};
+}
 function blockHexMinusOne(block){
   try{
     const n=typeof block==='string'&&block.startsWith('0x')?BigInt(block):BigInt(block||0);
@@ -11220,7 +11271,13 @@ async function processStakingRewards(){
     const rewardRelevantCalls=await rewardRelevantCallsFromTransfers(DISCOVERY_PROCESS.wallet,DISCOVERY_PROCESS.transfers);
     // Schritt 4 bekommt bewusst wieder die vollstaendige in Schritt 2 geladene Contract-Historie.
     // Hier duerfen Yield-/Withdraw-/Claim-Aufrufe klassifiziert und den Lots zugeordnet werden.
-    const contractCalls=mergeContractCalls(DISCOVERY_PROCESS.stakingContractCalls,rewardRelevantCalls);contractCalls.sort((a,b)=>rewardClaimTimestamp({time:a?.metadata?.blockTimestamp||a?.time})-rewardClaimTimestamp({time:b?.metadata?.blockTimestamp||b?.time}));DISCOVERY_PROCESS.contractCalls=contractCalls;renderContractCalls(contractCalls);
+    const contractCalls=mergeContractCalls(DISCOVERY_PROCESS.stakingContractCalls,rewardRelevantCalls);contractCalls.sort((a,b)=>rewardClaimTimestamp({time:a?.metadata?.blockTimestamp||a?.time})-rewardClaimTimestamp({time:b?.metadata?.blockTimestamp||b?.time}));
+    // Direkte, bereits in Step 2 bekannte Claim-/Yield-Aufrufe dürfen nicht davon
+    // abhängen, ob der eingehende Reward-Transfer im token-scoped Transferindex
+    // vorhanden ist. Nur das Receipt wird ergänzt; die anschließende strenge
+    // Reward-Beweis- und Positionslogik bleibt vollständig unverändert.
+    await hydrateKnownDirectRewardCallReceipts(DISCOVERY_PROCESS.wallet,contractCalls);
+    DISCOVERY_PROCESS.contractCalls=contractCalls;renderContractCalls(contractCalls);
     const lots=DISCOVERY_PROCESS.lots;
     let phaseStarted=performance.now();
     await classifyRewardCallFlows(contractCalls,CURRENT_WALLET,lots);log(`Schritt-4 Performance: Reward-Klassifikation ${Math.round(performance.now()-phaseStarted)} ms.`,'ok');
