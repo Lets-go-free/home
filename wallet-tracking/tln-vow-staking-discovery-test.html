@@ -133,7 +133,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 03:01:43 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 03:05:36 CEST</div>
 <p class="muted"><b>Step 6:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv. <b>Step 7:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung.</p>
 <div class="card"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -148,6 +148,11 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
   <div class="muted" style="margin:5px 0 8px">Löscht ausschließlich walletbezogene Einträge in <code>tln_vow_staking_scan_cache</code> für das aktuell ausgewählte Wallet auf BSC – einschließlich der persistenten Discovery-Endergebnisse Steps 1–5. Globale LP-/Tx-Fakten und contractweite Strict-Duration-Proofs bleiben erhalten.</div>
   <button id="clearWalletSupabaseCache" type="button" disabled>Supabase-Cache dieses Wallets löschen</button>
   <span id="clearWalletSupabaseCacheState" class="muted" style="margin-left:8px"></span>
+  <div style="margin-top:8px">
+    <button id="clearSingleTeamLifecycleCache" type="button" disabled>DEV: Team-Lifecycle gezielt löschen</button>
+    <span id="clearSingleTeamLifecycleCacheState" class="muted" style="margin-left:8px"></span>
+    <div class="muted" style="margin-top:5px">Gezielter Step-6-Nachtest: löscht nur den persistenten Team-Lifecycle eines einzelnen Partner-Wallets. Wallet-Adresse oder TLN-ID kann eingegeben werden; Contract-Historie, Globalgraph und alle übrigen Partner-Caches bleiben erhalten.</div>
+  </div>
   <div style="margin-top:8px">
     <button id="clearTeamColdRunCache" type="button" disabled>DEV: Team-Cache vollständig löschen</button>
     <span id="clearTeamColdRunCacheState" class="muted" style="margin-left:8px"></span>
@@ -291,7 +296,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 <script>
-const BUILD_ID='20260906-030143';
+const BUILD_ID='20260906-030536';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -4863,6 +4868,48 @@ async function clearSelectedWalletSupabaseCache(){
  }finally{
    btn.disabled=false;
  }
+}
+
+async function clearSingleTeamLifecycleCache(){
+ const btn=$('clearSingleTeamLifecycleCache'),state=$('clearSingleTeamLifecycleCacheState');
+ if(!currentUserId){state.textContent='Nicht eingeloggt.';return}
+ const preset=String($('lookupInput')?.value||'').trim();
+ const raw=String(prompt('Wallet-Adresse oder TLN-ID des Partner-Wallets eingeben:',preset)||'').trim();
+ if(!raw)return;
+ btn.disabled=true;state.textContent='auflösen …';
+ try{
+   let wallet='';let nodeId='';
+   if(ethers.isAddress(raw)){
+     wallet=norm(raw);
+     nodeId=String(TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'');
+   }else if(/^\d+$/.test(raw)){
+     nodeId=raw.replace(/^0+(?=\d)/,'');
+     for(const [w,ident] of TEAM_IDENTITY_CACHE.entries()){if(String(ident?.nodeId||'')===nodeId){wallet=norm(w);break}}
+     if(!wallet){
+       const {data,error}=await sb.from('tln_wallet_identity_cache').select('wallet_address,node_id').eq('chain_key','bsc').eq('node_id',Number(nodeId)).limit(1);
+       if(error)throw new Error(`TLN-ID-Auflösung: ${error.message||error}`);
+       const row=(data||[])[0];if(row&&ethers.isAddress(norm(row.wallet_address)))wallet=norm(row.wallet_address);
+     }
+   }else throw new Error('Bitte gültige BSC-Wallet-Adresse oder numerische TLN-ID eingeben.');
+   if(!ethers.isAddress(wallet))throw new Error(`Kein Wallet zu TLN-ID ${nodeId||raw} gefunden.`);
+   if(!nodeId)nodeId=String(TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'');
+   if(!confirm(`Nur den persistenten Team-Lifecycle für ${nodeId?`TLN-ID ${nodeId} · `:''}${wallet} löschen?\n\nContract-Historie, SmartNode-Globalgraph, andere Partner-Lifecycles sowie Steps 1–5 bleiben erhalten.\n\nDer nächste Step-6-Lauf berechnet nur dieses Wallet neu.`)){return}
+   state.textContent='lösche …';
+   const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE)
+     .delete().eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_address',wallet).eq('cache_key',TECH_CACHE_KEYS.teamLifecycle)
+     .select('wallet_address,cache_key');
+   if(error)throw new Error(`Team-Lifecycle: ${error.message||error}`);
+   const deleted=Array.isArray(data)?data.length:0;
+   TEAM_STAKING_LIFECYCLE.delete(wallet);
+   TEAM_LIFECYCLE_RECHECK_HINTS.delete(wallet);
+   CURRENT_TEAM_PROJECT_FOREST=null;
+   setStepState(6,'Gezielter Nachtest bereit');updateProcessButtons();
+   state.textContent=`${deleted} Lifecycle-Eintrag gelöscht · ${nodeId?`TLN-ID ${nodeId}`:short(wallet)}`;
+   log(`DEV Team-Lifecycle gezielt gelöscht: ${nodeId?`TLN-ID ${nodeId} · `:''}${wallet} · ${deleted} persistente(r) Lifecycle-Eintrag(e). Contract-Historie, SmartNode-Globalgraph und übrige Partner-Caches blieben erhalten. Nächster Step-6-Lauf prüft nur dieses Wallet neu.`,'ok');
+ }catch(e){
+   state.textContent='Fehler beim Löschen.';
+   log(`DEV gezielte Team-Lifecycle-Löschung fehlgeschlagen: ${e?.message||e}`,'warn');
+ }finally{btn.disabled=false}
 }
 
 async function clearTeamColdRunCache(){
@@ -9781,6 +9828,7 @@ function updateProcessButtons(){
     }
   });
   if($('clearWalletSupabaseCache'))$('clearWalletSupabaseCache').disabled=!(currentUserId&&ethers.isAddress($('wallet')?.value||''));
+  if($('clearSingleTeamLifecycleCache'))$('clearSingleTeamLifecycleCache').disabled=!currentUserId;
   if($('clearTeamColdRunCache'))$('clearTeamColdRunCache').disabled=!currentUserId;
 }
 function renderProcessLotCards(){
@@ -13943,6 +13991,7 @@ $('stepTeam').onclick=processTeamTree;
 $('stepValuation').onclick=processValuation;
 $('snapshotYear').addEventListener('change',selectSnapshotYearFromCache);
 $('clearWalletSupabaseCache').onclick=clearSelectedWalletSupabaseCache;
+$('clearSingleTeamLifecycleCache').onclick=clearSingleTeamLifecycleCache;
 $('clearTeamColdRunCache').onclick=clearTeamColdRunCache;
 $('forceDiscoveryFreshnessCheck').onclick=forceCurrentDiscoveryFreshnessCheck;
 $('testDiscoveryLongGap').onclick=testCurrentDiscoveryLongGap;
