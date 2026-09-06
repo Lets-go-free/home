@@ -143,7 +143,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 18:13:02 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 06.09.2026 18:17:55 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -315,7 +315,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card" id="teamTreeCard">
   <h2>🌳 TLN/VOW Team-/Referral-Baum</h2>
   <p class="muted">Projektweite Sicht auf Klick: Alle unter „MEINE Wallets“ gespeicherten TLN/VOW-Wallets gelten für die Erfassungsmenge als eigene Leader-TLN-IDs. Als eigener sichtbarer Baum wird aber nur ein eigenes Wallet dargestellt, das keinem anderen eigenen Wallet untergeordnet ist. Eigene Wallets innerhalb eines bereits eigenen Team-Baums bleiben normale Team-Mitglieder an ihrer echten Parent-Position und werden farbig markiert. Die Darstellung ist als vertikaler Organigramm-Baum aufgebaut: Leader oben, Linie 1 darunter, Linie 2 darunter usw. Direkte Partner werden je Upline nach TLN-ID aufsteigend sortiert. Deutlich abgesetzte Verbindungslinien zeigen, welcher Partner zu welchem Parent gehört. Staking-Zusatzinfos verwenden ausschließlich verifizierte Discovery-/Lifecycle-Daten. Alle aktuell offenen Positionen eines Wallets werden in derselben Karte gezeigt; falls keine Position mehr offen ist, wird das zuletzt beendete Staking historisch angezeigt. Fehlende Lifecycle-Daten werden neutral gekennzeichnet und niemals aus Referral-Rewards als „unstaked“ abgeleitet. Testtiefe: maximal <b>20 Linien</b>. In WalletTracking wird dieser Wert später als TLN/VOW-Projektparameter im Admin-Bereich konfigurierbar.</p>
-  <div id="teamTreeStatus" class="muted">Wird ausschließlich bei Klick auf Schritt 7 ermittelt; nicht automatisch in Schritt 5.</div>
+  <div id="teamTreeStatus" class="muted">Wird beim Laden aus dem persistenten Team-Cache wiederhergestellt; Schritt 7 aktualisiert/verifiziert den Baum danach inkrementell.</div>
   <div id="teamHighlightControls" class="team-controls" style="display:none">
     <b>Hervorheben</b> <span class="muted">(keine Filterung – alle Team-Mitglieder bleiben sichtbar)</span>
     <div class="team-highlight-options">
@@ -349,7 +349,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:24p
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260906-181302';
+const BUILD_ID='20260906-181755';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -463,7 +463,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='05.09.2026 02:26:14 CEST';
+const APP_VERSION='06.09.2026 18:17:55 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -8254,37 +8254,57 @@ async function attachRewardClaimsToLots(lots,calls){
 
   for(const lot of (lots||[]))lot.rewardClaims=[];
 
-  // Bereits in Schritt 2 streng belegte Rewards innerhalb der verifizierten
-  // Stake-Tx sind echte Staking-Rewards. Sie wurden bisher nur als
-  // stakeRewardEvidence am Lot angezeigt, gingen aber in Schritt 4 verloren,
-  // weil normale Lifecycle-Tx dort bewusst ausgeschlossen werden.
-  // Deshalb werden ausschließlich diese bereits bewiesenen Stake-Tx-Payouts
-  // vor der allgemeinen Claim-Zuordnung als stake_reward übernommen.
+  // Rewards in der exakt verifizierten Stake-Tx sind positionsgenaue Staking-Rewards.
+  // Wichtig für Cache-Restore: stakeRewardEvidence ist ein abgeleiteter Hilfswert und kann
+  // in älteren Ergebnis-Snapshots fehlen. Step 4 beweist dieselben Payouts jedoch erneut
+  // wallet-weit in CURRENT_PROVEN_REWARD_ROWS. Deshalb werden beide Quellen vereinigt.
+  // Es werden ausschließlich bereits BELEGTE Reward-Transfers mit exakt lot.stakeTx genutzt;
+  // normale Lifecycle-/Underlying-Flows werden dadurch nicht geöffnet.
   for(const lot of (lots||[])){
     const stakeHash=String(lot?.stakeTx||'').toLowerCase();
     if(!stakeHash)continue;
+    const stakeRewardRows=[];
     for(const ev of (lot?.stakeRewardEvidence||[])){
-      const amount=Number(ev?.amount||0);
-      const token=norm(ev?.token||'');
-      if(!(amount>0)||!token)continue;
-      const claim={
+      stakeRewardRows.push({
         hash:stakeHash,time:lot?.stakeTime||null,
         block:lot?.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null,
-        token,symbol:ev?.symbol||'Token',decimals:ev?.decimals??null,amount,
-        from:norm(ev?.from||''),to:norm(ev?.to||''),
-        assignmentScope:'position',assignmentReasonCode:'verified_stake_tx_reward',positionAmbiguous:false,
-        method:norm(ev?.from||'')===ZERO_ADDRESS?'Mint beim Stake':'Reward-Transfer beim Stake',
-        selector:null,calledContract:lot?.entry_contract||norm(lot?.staking?.contract_address||lot?.counterparty||'')||null,
-        assignmentReason:'verifizierte Stake-Tx derselben Position + bereits belegter Reward-Transfer/Mint im selben Receipt',
-        source:ev?.source||'Stake-Transaktion',assignmentScore:1000,
+        token:norm(ev?.token||''),symbol:ev?.symbol||'Token',decimals:ev?.decimals??null,amount:Number(ev?.amount||0),
+        from:norm(ev?.from||''),to:norm(ev?.to||''),selector:null,
+        calledContract:lot?.entry_contract||norm(lot?.staking?.contract_address||lot?.counterparty||'')||null,
         rewardProof:'verifizierte Stake-Tx + kausaler Reward-Transfer/Mint an das Wallet',
         rewardFlowEvidence:norm(ev?.from||'')===ZERO_ADDRESS?'Zero-Address-Mint direkt an das Wallet':'direkter Payout aus dem Staking-/Entry-System',
+        source:ev?.source||'Stake-Transaktion'
+      });
+    }
+    for(const row of (CURRENT_PROVEN_REWARD_ROWS||[])){
+      if(String(row?.hash||'').toLowerCase()!==stakeHash)continue;
+      if(norm(row?.to||'')!==wallet)continue;
+      if(!(Number(row?.amount||0)>0)||!norm(row?.token||''))continue;
+      stakeRewardRows.push(row);
+    }
+    const seenStakeRewards=new Set();
+    for(const ev of stakeRewardRows){
+      const amount=Number(ev?.amount||0),token=norm(ev?.token||''),from=norm(ev?.from||''),to=norm(ev?.to||'');
+      if(!(amount>0)||!token||to!==wallet)continue;
+      const evKey=`${stakeHash}|${token}|${from}|${to}|${amount}`;
+      if(seenStakeRewards.has(evKey))continue;
+      seenStakeRewards.add(evKey);
+      const claim={
+        hash:stakeHash,time:ev?.time||lot?.stakeTime||null,
+        block:ev?.block??(lot?.stakeBlockHex?Number(BigInt(lot.stakeBlockHex)):null),
+        token,symbol:ev?.symbol||'Token',decimals:ev?.decimals??null,amount,
+        from,to,
+        assignmentScope:'position',assignmentReasonCode:'verified_stake_tx_reward',positionAmbiguous:false,
+        method:from===ZERO_ADDRESS?'Mint beim Stake':'Reward-Transfer beim Stake',
+        selector:ev?.selector||null,calledContract:ev?.calledContract||lot?.entry_contract||norm(lot?.staking?.contract_address||lot?.counterparty||'')||null,
+        assignmentReason:'verifizierte Stake-Tx derselben Position + belegter Reward-Transfer/Mint im selben Receipt',
+        source:ev?.source||'Wallet-weiter Reward-Beweis aus vollständigem Transaction Receipt',assignmentScore:1000,
+        rewardProof:ev?.rewardProof||'verifizierte Stake-Tx + kausaler Reward-Transfer/Mint an das Wallet',
+        rewardFlowEvidence:ev?.rewardFlowEvidence||(from===ZERO_ADDRESS?'Zero-Address-Mint direkt an das Wallet':'direkter Payout aus dem Staking-/Entry-System'),
         eventType:'stake_reward',finalUnstakeReward:false,finalUnstakeRewardEvidence:null
       };
       const key=`${claim.hash}|${claim.token}|${claim.amount}`;
-      if(!lot.rewardClaims.some(x=>`${String(x?.hash||'').toLowerCase()}|${norm(x?.token)}|${Number(x?.amount||0)}`===key)){
-        lot.rewardClaims.push(claim);
-      }
+      if(!lot.rewardClaims.some(x=>`${String(x?.hash||'').toLowerCase()}|${norm(x?.token)}|${Number(x?.amount||0)}`===key))lot.rewardClaims.push(claim);
     }
   }
 
@@ -14198,6 +14218,53 @@ function renderTeamTree(){
   }));
 }
 
+async function restoreTeamTreeFromPersistentCache(){
+  try{
+    TEAM_IDENTITY_CACHE.clear();
+    await teamLoadIdentityCacheFromDb();
+    const cached=await teamLoadGlobalGraphCache();
+    if(!cached?.edges?.size){
+      log('Team-Restore: kein vollständiger persistenter SmartNode-Globalgraph verfügbar. Step 7 bleibt für den ersten Aufbau erforderlich.','muted');
+      renderTeamTree();
+      return false;
+    }
+
+    const edges=new Map(cached.edges);
+    // Bereits verifizierte Beziehungen neuer Registry-Generationen dürfen auch beim
+    // reinen Cache-Restore den kanonischen Globalgraph ergänzen, ohne ihn zu überschreiben.
+    teamMergeSupplementalIdentityEdges(edges);
+    const ownWallets=[...projectOwnWalletMap().keys()];
+    if(!ownWallets.length){
+      log('Team-Restore: keine TLN/VOW-Wallets unter „MEINE Wallets“ gefunden.','warn');
+      return false;
+    }
+
+    const forest=buildProjectTeamForest(edges);
+    if(!forest?.components?.length){
+      log('Team-Restore: persistenter Globalgraph geladen, aber für die eigenen TLN/VOW-Wallets konnte kein sichtbarer Baum gebildet werden. Step 7 kann die Zuordnungen aktualisieren.','warn');
+      renderTeamTree();
+      return false;
+    }
+
+    CURRENT_TEAM_PROJECT_FOREST=forest;
+    // Restore ist bewusst cache-only: keine fehlenden Lifecycle-Daten on-chain nachladen.
+    // Solche Lücken bleiben sichtbar und werden erst durch Step 7 verifiziert/ergänzt.
+    await teamLoadCachedDiscoveryLifecycles([...forest.included]);
+    DISCOVERY_PROCESS.done.team=true;
+    const roots=forest.roots||[];
+    setStepState(7,`Cache · ${roots.length} Baum-Root(s)`,'done');
+    renderTeamTree();
+    renderProjectOverview();
+    log(`Team-Restore aus Supabase: ${forest.included.size} Wallet(s) · ${roots.length} Baum-Root(s) sofort aus persistentem Globalgraph/Identity-/Lifecycle-Cache dargestellt. Step 7 ist nur für die inkrementelle Aktualisierung nötig.`,'ok');
+    return true;
+  }catch(e){
+    CURRENT_TEAM_PROJECT_FOREST=null;
+    log(`Team-Restore aus persistentem Cache fehlgeschlagen: ${e.message||e}. Step 7 kann den Baum weiterhin normal aufbauen.`,'warn');
+    renderTeamTree();
+    return false;
+  }
+}
+
 async function prepareTeamTree(){
   try{
     TEAM_IDENTITY_CACHE.clear();
@@ -14767,7 +14834,7 @@ populateTlnWalletDropdown();
 bindWalletDropdown();
 setupProjectUserTabs();
 populateProjectWalletFilter();loadProjectWalletSnapshots();
-$('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;bindStep6LifecycleControls();resetDiscoveryProcess($('wallet').value);setStepState(1,'bereit');setStepState(7,'bereit');updateProcessButtons();log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok');if(ethers.isAddress($('wallet').value))await restoreDiscoveryResultSnapshot($('wallet').value)}
+$('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;bindStep6LifecycleControls();resetDiscoveryProcess($('wallet').value);setStepState(1,'bereit');setStepState(7,'bereit');updateProcessButtons();log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok');if(ethers.isAddress($('wallet').value))await restoreDiscoveryResultSnapshot($('wallet').value);await restoreTeamTreeFromPersistentCache()}
 $('refresh').onclick=processBaseData;
 $('stepStaking').onclick=processStakingDiscovery;
 $('stepDuration').onclick=processDuration;
