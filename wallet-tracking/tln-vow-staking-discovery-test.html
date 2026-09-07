@@ -160,7 +160,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 14:13:09 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 14:28:19 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -376,7 +376,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-141309';
+const BUILD_ID='20260907-142819';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -490,7 +490,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 14:13:09 CEST';
+const APP_VERSION='07.09.2026 14:28:19 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4486,26 +4486,31 @@ async function ensureStakingDiscoveryCandidateCache(){
 }
 async function recordStakingDiscoveryCandidate(candidate){
   const type=String(candidate?.type||'').toLowerCase(),address=norm(candidate?.address||'');
-  if(!['contract','asset'].includes(type)||!ethers.isAddress(address))return {saved:false,reason:'invalid'};
+  if(!['contract','asset','coverage'].includes(type)||!ethers.isAddress(address))return {saved:false,reason:'invalid'};
   if(type==='contract'&&knownStakingContractAddress(address))return {saved:false,reason:'already_verified_registry'};
   if(type==='asset'&&knownStakingAssetAddress(address))return {saved:false,reason:'already_verified_registry'};
+  // `coverage` bedeutet: Contract/Asset ist bekannt oder on-chain belegt, aber mindestens
+  // ein Lifecycle-Detail (z. B. Lockdauer/Contract-Ende) ist noch nicht verifiziert.
+  // Solche Faelle duerfen NICHT durch die normale Registry-Known-Pruefung verworfen werden.
   await ensureStakingDiscoveryCandidateCache();
   const key=stakingDiscoveryCandidateKey(type,address),now=new Date().toISOString(),prev=STAKING_DISCOVERY_CANDIDATE_STATE.entries.get(key)||null;
   const hashes=[...(prev?.evidenceTxHashes||[]),candidate?.txHash].map(x=>String(x||'').toLowerCase()).filter(x=>/^0x[0-9a-f]{64}$/.test(x));
   const sources=[...(prev?.sources||[]),candidate?.source].map(x=>String(x||'').trim()).filter(Boolean);
   const wallets=[...(prev?.wallets||[]),norm(candidate?.wallet||'')].filter(ethers.isAddress);
+  const nodeIds=[...(prev?.nodeIds||[]),String(candidate?.nodeId||'').trim()].filter(Boolean);
   const evidences=[...(prev?.evidences||[]),candidate?.evidence].map(x=>String(x||'').trim()).filter(Boolean);
   const next={
     ...(prev||{}),type,address,projectKey:'tln_vow',chainKey:'bsc',
     status:prev?.status||'zu_pruefen',firstSeenAt:prev?.firstSeenAt||now,lastSeenAt:now,
-    evidenceTxHashes:[...new Set(hashes)].slice(-25),sources:[...new Set(sources)].slice(-12),wallets:[...new Set(wallets)].slice(-25),evidences:[...new Set(evidences)].slice(-25),
+    evidenceTxHashes:[...new Set(hashes)].slice(-25),sources:[...new Set(sources)].slice(-12),wallets:[...new Set(wallets)].slice(-25),nodeIds:[...new Set(nodeIds)].slice(-25),evidences:[...new Set(evidences)].slice(-25),
     stakingContract:norm(candidate?.stakingContract||prev?.stakingContract||'')||null,
     entryContract:norm(candidate?.entryContract||prev?.entryContract||'')||null,
     relatedAsset:norm(candidate?.relatedAsset||prev?.relatedAsset||'')||null,
-    label:candidate?.label||prev?.label||null,updatedAt:now
+    label:candidate?.label||prev?.label||null,reviewReason:candidate?.reviewReason||prev?.reviewReason||null,
+    notificationStatus:prev?.notificationStatus||'pending_email',notificationQueuedAt:prev?.notificationQueuedAt||now,updatedAt:now
   };
   STAKING_DISCOVERY_CANDIDATE_STATE.entries.set(key,next);STAKING_DISCOVERY_CANDIDATE_STATE.dirty=true;
-  if(!prev)log(`Neue Staking-Prüfliste: ${type==='contract'?'Contract':'Asset'} ${short(address)} mit starker On-Chain-Evidenz als „zu prüfen“ vorgemerkt.`,'warn');
+  if(!prev)log(`Neue Staking-Prüfliste: ${type==='contract'?'Contract':type==='asset'?'Asset':'Abdeckungsfall'} ${short(address)} mit starker On-Chain-Evidenz als „zu prüfen“ vorgemerkt · E-Mail-Benachrichtigung pending_email.`,'warn');
   return {saved:true,isNew:!prev,row:next};
 }
 async function flushStakingDiscoveryCandidateCache(){
@@ -4541,6 +4546,27 @@ async function captureVerifiedTeamLifecycleCandidates(wallets){
         }
       }
     }
+  }
+  return hits;
+}
+
+async function captureIncompleteTeamLifecycleCandidates(wallet,lots){
+  wallet=norm(wallet);if(!ethers.isAddress(wallet))return 0;
+  const ident=TEAM_IDENTITY_CACHE.get(wallet)||null;let hits=0;
+  for(const lot of (lots||[])){
+    if(lot?.expiryTime||lot?.contractEndTime||lot?.releaseTime)continue;
+    const contract=norm(lot?.duration_contract||lot?.stake_event_contract||lot?.staking?.contract_address||lot?.counterparty||'');
+    const asset=norm(lot?.p?.address||lot?.pair?.address||lot?.pair_address||lot?.staking?.pair_address||'');
+    const txHash=norm(lot?.stakeTx||lot?.stake_tx||'');
+    if(!ethers.isAddress(contract))continue;
+    const pair=safePairLabel(lot)||'Staking';
+    const evidence=`Stake/Position on-chain erkannt (${pair}), aber Contract-Ende/Lockdauer noch nicht strikt verifiziert`;
+    const r=await recordStakingDiscoveryCandidate({
+      type:'coverage',address:contract,wallet,nodeId:ident?.nodeId||null,txHash,
+      source:'step7:incomplete-team-lifecycle',evidence,reviewReason:'duration_unverified',
+      stakingContract:contract,relatedAsset:ethers.isAddress(asset)?asset:null,label:pair
+    });
+    if(r?.saved)hits++;
   }
   return hits;
 }
@@ -5335,10 +5361,18 @@ const SC_READ_PROBES=[
  {label:'duration()',sig:'duration()',args:[],kind:'duration'},{label:'lockPeriod()',sig:'lockPeriod()',args:[],kind:'duration'},
  {label:'lockTime()',sig:'lockTime()',args:[],kind:'duration'},{label:'stakingPeriod()',sig:'stakingPeriod()',args:[],kind:'duration'},
  {label:'period()',sig:'period()',args:[],kind:'duration'},
+ {label:'lockDays()',sig:'lockDays()',args:[],kind:'days'},{label:'durationDays()',sig:'durationDays()',args:[],kind:'days'},
+ {label:'stakingDays()',sig:'stakingDays()',args:[],kind:'days'},{label:'stakeDays()',sig:'stakeDays()',args:[],kind:'days'},
+ {label:'minStakeDuration()',sig:'minStakeDuration()',args:[],kind:'duration'},{label:'minimumStakeDuration()',sig:'minimumStakeDuration()',args:[],kind:'duration'},
+ {label:'releasePeriod()',sig:'releasePeriod()',args:[],kind:'duration'},{label:'vestingPeriod()',sig:'vestingPeriod()',args:[],kind:'duration'},
  {label:'unlockTime(address)',sig:'unlockTime(address)',args:['wallet'],kind:'timestamp'},{label:'unlockTimestamp(address)',sig:'unlockTimestamp(address)',args:['wallet'],kind:'timestamp'},
  {label:'unstakeDate(address)',sig:'unstakeDate(address)',args:['wallet'],kind:'timestamp'},{label:'unstakeTime(address)',sig:'unstakeTime(address)',args:['wallet'],kind:'timestamp'},
  {label:'lockedUntil(address)',sig:'lockedUntil(address)',args:['wallet'],kind:'timestamp'},{label:'lockEnd(address)',sig:'lockEnd(address)',args:['wallet'],kind:'timestamp'},
- {label:'endTime(address)',sig:'endTime(address)',args:['wallet'],kind:'timestamp'},{label:'startTime(address)',sig:'startTime(address)',args:['wallet'],kind:'timestamp'},
+ {label:'endTime(address)',sig:'endTime(address)',args:['wallet'],kind:'timestamp'},{label:'endTimestamp(address)',sig:'endTimestamp(address)',args:['wallet'],kind:'timestamp'},
+ {label:'releaseTime(address)',sig:'releaseTime(address)',args:['wallet'],kind:'timestamp'},{label:'releaseDate(address)',sig:'releaseDate(address)',args:['wallet'],kind:'timestamp'},
+ {label:'maturityTime(address)',sig:'maturityTime(address)',args:['wallet'],kind:'timestamp'},{label:'maturityDate(address)',sig:'maturityDate(address)',args:['wallet'],kind:'timestamp'},
+ {label:'stakeEnd(address)',sig:'stakeEnd(address)',args:['wallet'],kind:'timestamp'},{label:'stakeEndTime(address)',sig:'stakeEndTime(address)',args:['wallet'],kind:'timestamp'},
+ {label:'unlockDate(address)',sig:'unlockDate(address)',args:['wallet'],kind:'timestamp'},{label:'startTime(address)',sig:'startTime(address)',args:['wallet'],kind:'timestamp'},
  {label:'stakeTimestamp(address)',sig:'stakeTimestamp(address)',args:['wallet'],kind:'timestamp'},{label:'stakedAt(address)',sig:'stakedAt(address)',args:['wallet'],kind:'timestamp'},
  {label:'stakedAmount(address)',sig:'stakedAmount(address)',args:['wallet'],kind:'amount'},{label:'stakeAmount(address)',sig:'stakeAmount(address)',args:['wallet'],kind:'amount'},
  {label:'amountStaked(address)',sig:'amountStaked(address)',args:['wallet'],kind:'amount'},{label:'deposited(address)',sig:'deposited(address)',args:['wallet'],kind:'amount'},
@@ -12573,14 +12607,14 @@ async function lookupLifecycleForWallet(wallet){
   return TEAM_STAKING_LIFECYCLE.get(wallet)||null;
 }
 function lookupAllStakingsHtml(life){
-  if(!life?.verified)return '<div class="warn">Lifecycle konnte noch nicht vollständig verifiziert werden.</div>';
-  const rows=(life.lots||[]).slice().sort((a,b)=>{
+  const rows=(life?.lots||[]).slice().sort((a,b)=>{
     const at=Date.parse(a?.lot?.stakeTime||a?.lot?.startTime||'')||0,bt=Date.parse(b?.lot?.stakeTime||b?.lot?.startTime||'')||0;
     return bt-at;
   });
-  if(!rows.length)return '<div class="muted">Für diese Wallet wurden keine historischen oder aktuellen Staking-Positionen gefunden.</div>';
+  if(!rows.length)return life?.verified?'<div class="muted">Für diese Wallet wurden keine historischen oder aktuellen Staking-Positionen gefunden.</div>':'<div class="warn">Lifecycle konnte noch nicht vollständig verifiziert werden; es wurden noch keine belastbaren Staking-Positionen rekonstruiert.</div>';
   const active=rows.filter(x=>x.status==='active').length,expired=rows.filter(x=>x.status==='expired_still_staked').length,closed=rows.filter(x=>x.status==='completed').length;
-  return `<div><b>${rows.length} Staking-Position(en)</b> <span class="muted">· ${active} aktiv · ${expired} abgelaufen/noch gestakt · ${closed} unstaked</span></div>
+  const partial=!life?.verified?'<div class="warn" style="margin:8px 0"><b>Stakings erkannt, Verifikation teilweise offen.</b> Die gefundenen Positionen werden angezeigt; nicht belastbar verifizierte Felder wie Contract-Ende/Lockdauer sind entsprechend markiert.</div>':'';
+  return `${partial}<div><b>${rows.length} Staking-Position(en)</b> <span class="muted">· ${active} aktiv · ${expired} abgelaufen/noch gestakt · ${closed} unstaked</span></div>
     <div class="team-stake-list">${rows.map(x=>teamLotCardHtml(x.lot,{historical:x.status==='completed'})).join('')}</div>`;
 }
 async function lookupShowStakings(wallet,btn){
@@ -14817,6 +14851,13 @@ async function teamVerifyMissingLifecycles(wallets,{forceFresh=false}={}){
       // neue Staking-Entry-/Event-Pfade verwenden, die die bestehende Registry noch nicht kennt.
       const unresolvedNewGeneration=lots.length===0&&newerIdentityContract;
       const fullyVerified=durationOk&&!massLifecycleAbort&&scanComplete&&!hasUnstakeOnly&&!hasObservedEvidence&&!unresolvedNewGeneration;
+      // Auch teilweise verifizierte Positionen sind wertvolle Discovery-Funde. Fehlt nur die
+      // Duration-/Contract-Ende-Abdeckung, wird der Fall persistent dedupliziert in die
+      // Prüfliste aufgenommen, statt die Position aus der UI verschwinden zu lassen.
+      if(lots.length&&!durationOk&&!massLifecycleAbort){
+        const reviewHits=await captureIncompleteTeamLifecycleCandidates(wallet,lots);
+        if(reviewHits){await flushStakingDiscoveryCandidateCache();log(`Team-Lifecycle TLN-ID ${TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'?'}: ${reviewHits} offene Duration-/Contract-Ende-Abdeckungsfall(e) persistent als „zu prüfen“ erfasst.`,'warn')}
+      }
       TEAM_STAKING_LIFECYCLE.set(wallet,teamLifecycleFromLots(wallet,lots,{verified:fullyVerified,source:scanComplete?'gebündelte Team-Staking-Discovery':'gebündelte Team-Staking-Discovery (unvollständig)',completedStep:fullyVerified?3:2}));
       if(fullyVerified){await teamSaveVerifiedLifecycle(wallet,lots);TEAM_LIFECYCLE_RECHECK_HINTS.delete(wallet);verified++}if(lots.length)withLots++;
       const evidenceSummary=calls.reduce((m,c)=>{const e=String(c?._teamPositionEvidence||'unbekannt');m[e]=(m[e]||0)+1;return m;},{});
@@ -14836,7 +14877,7 @@ function teamLotCardHtml(l,{historical=false}={}){
   return `<div class="team-stake-item">
     <div class="team-stake-head"><b>${esc(teamLotAmountText(l))} ${esc(pair)}</b><span class="team-stake-status ${cls}">${esc(label)}</span></div>
     <div class="muted">Staking: ${esc(teamFormatStakeDate(l?.stakeTime||l?.startTime,true))}</div>
-    <div class="muted">Ablauf: ${esc(teamFormatStakeDate(expiry,true))}</div>
+    <div class="muted">Ablauf: ${expiry?esc(teamFormatStakeDate(expiry,true)):'<span class="warn">noch nicht verifiziert</span>'}</div>
     ${status==='completed'?`<div class="muted">Unstaked: ${esc(teamFormatStakeDate(unstake,true))}</div>`:''}
   </div>`;
 }
@@ -14885,7 +14926,7 @@ function teamPartialLotCardHtml(l){
   return `<div class="team-stake-item">
     <div class="team-stake-head"><b>${esc(amount)} ${esc(pair)}</b><span class="muted">Lifecycle offen</span></div>
     <div class="muted">Staking: ${esc(teamFormatStakeDate(l?.stakeTime||l?.startTime,true))}</div>
-    <div class="muted">Ablauf: ${esc(teamFormatStakeDate(expiry,true))}</div>
+    <div class="muted">Ablauf: ${expiry?esc(teamFormatStakeDate(expiry,true)):'<span class="warn">noch nicht verifiziert</span>'}</div>
     <div class="team-node-lifecycle-note">Staking-Position on-chain erkannt; Vertrags-Lifecycle bzw. Ablauf noch nicht vollständig verifiziert. Ein Unstake wird erst nach eindeutigem separatem On-Chain-Nachweis angezeigt.</div>
   </div>`;
 }
