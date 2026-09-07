@@ -6043,16 +6043,40 @@ function onNftWalletChange() {
   }
 }
 
+// Supabase/PostgreSQL akzeptiert in text/jsonb keine Unicode-NUL-Zeichen (U+0000).
+// NFT-Metadaten stammen von externen Indexern/Contracts und können solche Steuerzeichen
+// in Name, Collection, URL oder sonstigen Textfeldern enthalten. Vor dem Persistieren
+// werden ausschließlich U+0000-Zeichen rekursiv entfernt; alle übrigen Daten bleiben unverändert.
+function sanitizeNftCacheValue(value, stats=null) {
+  if (typeof value === "string") {
+    if (!value.includes("\u0000")) return value;
+    const cleaned = value.replace(/\u0000/g, "");
+    if (stats) stats.nulChars += value.length - cleaned.length;
+    return cleaned;
+  }
+  if (Array.isArray(value)) return value.map(v => sanitizeNftCacheValue(v, stats));
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k,v] of Object.entries(value)) out[k] = sanitizeNftCacheValue(v, stats);
+    return out;
+  }
+  return value;
+}
+
 async function saveNftCacheForWallet(w, nfts, chains) {
   const walletId = String(w.dbId || w.id);
-  const payload = {
+  const sanitizeStats = { nulChars: 0 };
+  const payload = sanitizeNftCacheValue({
     user_id: currentUser.id,
     wallet_id: walletId,
     wallet_label: w.label,
     selected_chains: chains,
     nfts,
     refreshed_at: new Date().toISOString()
-  };
+  }, sanitizeStats);
+  if (sanitizeStats.nulChars > 0) {
+    console.info(`NFT-Cache: ${sanitizeStats.nulChars} unzulässige U+0000-Zeichen aus externen NFT-Metadaten entfernt (${w.label}).`);
+  }
 
   // Kein PostgREST-Upsert mit on_conflict mehr: Auf der produktiven DB kann der
   // erwartete zusammengesetzte Unique-/Primary-Key vom historischen Schema abweichen.
@@ -6177,7 +6201,7 @@ async function setNftUserSpam(walletId, chain, tokenAddress, tokenId, marked) {
     nftKey(n) === key ? { ...n, userMarkedSpam: !!marked } : n
   );
   const { data, error } = await sb.from("nft_cache")
-    .update({ nfts: updated })
+    .update({ nfts: sanitizeNftCacheValue(updated) })
     .eq("user_id", currentUser.id)
     .eq("wallet_id", String(walletId))
     .select().single();
