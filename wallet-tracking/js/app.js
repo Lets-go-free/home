@@ -399,7 +399,12 @@ async function taxEvmBlockByTime(chain,targetEpoch){
       if(Number.isFinite(n)&&n>0)return {block:n,source:"Routescan getblocknobytime"};
       throw new Error("ungültige Blockantwort");
     } catch(e) {
-      console.warn(`${CHAIN_META[chain]?.label||chain}: kostenlose Stichtagsblock-Abfrage fehlgeschlagen; Archive-Fallback.`,e);
+      // "chain not supported" ist kein Laufzeitfehler der Anwendung, sondern eine
+      // bekannte Provider-Grenze. Direkt auf Archive-RPC wechseln, ohne die Konsole
+      // bei jedem Testlauf mit einer erwarteten Warnung zu befüllen.
+      if (!/chain not supported/i.test(String(e?.message || e))) {
+        console.warn(`${CHAIN_META[chain]?.label||chain}: kostenlose Stichtagsblock-Abfrage fehlgeschlagen; Archive-Fallback.`,e);
+      }
       taxRoutescanUnavailable.add(chain);
     }
   }
@@ -458,7 +463,12 @@ async function taxEvmTokenBalance(chain,address,token,block){
   }
   const ownerArg=String(address).toLowerCase().replace(/^0x/,"").padStart(64,"0");
   const raw=await archiveRpc(chain,"eth_call",[{to:token.address,data:"0x70a08231"+ownerArg},taxBlockHex(block)]);
-  return {amount:Number(BigInt(raw||"0x0"))/Math.pow(10,decimals),decimals,source:`Alchemy ERC-20 balanceOf @ Block ${block}`};
+  // Ein historischer eth_call kann bei einem Contract, der am Zielblock noch nicht
+  // existierte bzw. dort keinen decodierbaren Rückgabewert hatte, lediglich "0x"
+  // liefern. Das bedeutet für balanceOf wirtschaftlich 0 und darf nicht an BigInt()
+  // weitergegeben werden (BigInt("0x") wirft SyntaxError).
+  const normalizedRaw = (!raw || raw === "0x") ? "0x0" : raw;
+  return {amount:Number(BigInt(normalizedRaw))/Math.pow(10,decimals),decimals,source:`Alchemy ERC-20 balanceOf @ Block ${block}`};
 }
 
 async function historicalErc20Candidates(chain,address,targetBlock=null){
@@ -6061,7 +6071,13 @@ async function saveNftCacheForWallet(w, nfts, chains) {
     .eq("user_id", currentUser.id)
     .eq("wallet_id", walletId)
     .select();
-  if (updateError) throw new Error("NFT-Cache konnte nicht aktualisiert werden: " + updateError.message);
+  if (updateError) {
+    console.error("NFT-Cache UPDATE fehlgeschlagen", {
+      code:updateError.code, message:updateError.message, details:updateError.details, hint:updateError.hint,
+      wallet_id:walletId
+    });
+    throw new Error("NFT-Cache konnte nicht aktualisiert werden: " + [updateError.message,updateError.details,updateError.hint].filter(Boolean).join(" · "));
+  }
 
   let row = Array.isArray(updatedRows) && updatedRows.length ? updatedRows[0] : null;
   if (!row) {
@@ -6069,7 +6085,13 @@ async function saveNftCacheForWallet(w, nfts, chains) {
       .insert(payload)
       .select()
       .single();
-    if (insertError) throw new Error("NFT-Cache konnte nicht angelegt werden: " + insertError.message);
+    if (insertError) {
+      console.error("NFT-Cache INSERT fehlgeschlagen", {
+        code:insertError.code, message:insertError.message, details:insertError.details, hint:insertError.hint,
+        wallet_id:walletId
+      });
+      throw new Error("NFT-Cache konnte nicht angelegt werden: " + [insertError.message,insertError.details,insertError.hint].filter(Boolean).join(" · "));
+    }
     row = inserted;
   }
   nftCaches.set(walletId, row);
