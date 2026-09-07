@@ -160,7 +160,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 16:06:23 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 16:25:47 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -376,7 +376,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-160623';
+const BUILD_ID='20260907-162547';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -490,7 +490,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 16:06:23 CEST';
+const APP_VERSION='07.09.2026 16:25:47 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4471,6 +4471,19 @@ function knownStakingAssetAddress(address){
     return norm(x?.address||'')===a&&['lp_token','historical_staking_token','staking_token'].includes(cat);
   });
 }
+function knownNonStakingUnderlyingAddress(address){
+  const a=norm(address);if(!a||knownStakingAssetAddress(a))return false;
+  // Bereits bekannte Projekt-/Underlying-Token (z. B. USDT, VOW, v-Currencies)
+  // sind keine "neu entdeckten Staking-Assets", nur weil sie innerhalb einer
+  // Router-/Cave-Stake-Tx aus dem Wallet abfließen.
+  if((projectTokens||[]).some(x=>norm(x?.address||'')===a))return true;
+  if((window.__TLNVOW_DISCOVERY_UNDERLYINGS||[]).some(x=>norm(x?.address||x||'')===a))return true;
+  return (allProjectRows||[]).some(x=>{
+    if(norm(x?.address||'')!==a)return false;
+    const cat=String(x?.tln_vow_category||x?.defi_category||'').toLowerCase();
+    return !['lp_token','historical_staking_token','staking_token'].includes(cat);
+  });
+}
 async function ensureStakingDiscoveryCandidateCache(){
   if(STAKING_DISCOVERY_CANDIDATE_STATE.loaded)return;
   STAKING_DISCOVERY_CANDIDATE_STATE.loaded=true;STAKING_DISCOVERY_CANDIDATE_STATE.dirty=false;STAKING_DISCOVERY_CANDIDATE_STATE.entries=new Map();
@@ -4482,6 +4495,19 @@ async function ensureStakingDiscoveryCandidateCache(){
     const type=String(v.type||String(k).split('|')[0]||'unknown').toLowerCase();
     STAKING_DISCOVERY_CANDIDATE_STATE.entries.set(stakingDiscoveryCandidateKey(type,a),{...v,type,address:a});
   }
+  let removed=0;
+  for(const [k,v] of [...STAKING_DISCOVERY_CANDIDATE_STATE.entries]){
+    const type=String(v?.type||'').toLowerCase(),a=norm(v?.address||'');
+    const invalidUnderlying=type==='asset'&&knownNonStakingUnderlyingAddress(a);
+    const invalidCoverageAsset=type==='coverage'&&knownStakingAssetAddress(a)&&!knownStakingContractAddress(a);
+    if(invalidUnderlying||invalidCoverageAsset){
+      STAKING_DISCOVERY_CANDIDATE_STATE.entries.delete(k);removed++;
+    }
+  }
+  if(removed){
+    STAKING_DISCOVERY_CANDIDATE_STATE.dirty=true;
+    log(`Staking-Prüfliste bereinigt: ${removed} alte False-Positive-Kandidat(en) entfernt (bekanntes Underlying bzw. LP fälschlich als Duration-Contract).`,'ok');
+  }
   if(STAKING_DISCOVERY_CANDIDATE_STATE.entries.size)log(`Staking-Prüfliste: ${STAKING_DISCOVERY_CANDIDATE_STATE.entries.size} persistente Kandidat(en) geladen.`,'ok');
 }
 async function recordStakingDiscoveryCandidate(candidate){
@@ -4489,6 +4515,11 @@ async function recordStakingDiscoveryCandidate(candidate){
   if(!['contract','asset','coverage'].includes(type)||!ethers.isAddress(address))return {saved:false,reason:'invalid'};
   if(type==='contract'&&knownStakingContractAddress(address))return {saved:false,reason:'already_verified_registry'};
   if(type==='asset'&&knownStakingAssetAddress(address))return {saved:false,reason:'already_verified_registry'};
+  if(type==='asset'&&knownNonStakingUnderlyingAddress(address))return {saved:false,reason:'known_underlying_not_staking_asset'};
+  // Coverage-Fälle beziehen sich auf den Lifecycle-/Duration-Contract. Ein bekannter
+  // LP-/Staking-Asset-Contract darf niemals selbst als Duration-Coverage-Contract
+  // eingetragen werden.
+  if(type==='coverage'&&knownStakingAssetAddress(address)&&!knownStakingContractAddress(address))return {saved:false,reason:'asset_not_duration_contract'};
   // `coverage` bedeutet: Contract/Asset ist bekannt oder on-chain belegt, aber mindestens
   // ein Lifecycle-Detail (z. B. Lockdauer/Contract-Ende) ist noch nicht verifiziert.
   // Solche Faelle duerfen NICHT durch die normale Registry-Known-Pruefung verworfen werden.
@@ -4559,6 +4590,10 @@ async function captureIncompleteTeamLifecycleCandidates(wallet,lots){
     const asset=norm(lot?.p?.address||lot?.pair?.address||lot?.pair_address||lot?.staking?.pair_address||'');
     const txHash=norm(lot?.stakeTx||lot?.stake_tx||'');
     if(!ethers.isAddress(contract))continue;
+    if(ethers.isAddress(asset)&&contract===asset&&!knownStakingContractAddress(contract)){
+      log(`Staking-Prüfliste Coverage übersprungen: ${short(contract)} ist das LP-/Asset der Position und kein verifizierter Duration-Contract.`,'muted');
+      continue;
+    }
     const pair=safePairLabel(lot)||'Staking';
     const evidence=`Stake/Position on-chain erkannt (${pair}), aber Contract-Ende/Lockdauer noch nicht strikt verifiziert`;
     const r=await recordStakingDiscoveryCandidate({
@@ -7009,6 +7044,16 @@ async function synthesizeStakeRowsFromReceipts(calls,pairMap,wallet,rows){
 
       const calledContract=norm(c?._staking?.contract_address||c.to||'');
       const transferTarget=norm(tr.to||'');
+      const stakeEventContract=norm(c?._teamStakeEventContract||'');
+      const evidence=String(c?._teamPositionEvidence||'');
+      // Ein Call direkt an den LP-Token/Pair-Contract ist kein Staking-Contract.
+      // Ohne wallet-eigenes Stake-Event darf ein LP-Abfluss aus so einer Tx deshalb
+      // keine synthetische Staking-Position erzeugen. Genau dieser Fall erzeugte bei
+      // TLN-ID 40000518046 die falsche aktive 42.1-v€/v£-Position vom 05.09.2026.
+      if(calledContract===asset&&!stakeEventContract&&!evidence.startsWith('receipt:Stake(')){
+        log(`Stake-Synthese ausgeschlossen: Call ${short(hash)} geht direkt an LP ${short(asset)} und besitzt kein wallet-eigenes Stake-Event; LP-Abfluss wird nicht als neue Staking-Position gewertet.`,'muted');
+        continue;
+      }
       // Bei Controller-/Entry-Contracts kann der eigentliche LP-Transfer an den dahinterliegenden
       // Staking-Contract gehen. Für Duration/Lifecycle muss deshalb der tatsächliche Asset-Empfänger
       // bevorzugt werden, sofern er selbst als bekannter Staking-Contract registriert ist.
@@ -14577,10 +14622,18 @@ async function teamBatchPositionCalls(wallets,{forceFresh=false}={}){
           label:c?._staking?.label||`Entdeckter Staking-Contract ${short(actualContract)}`
         });
         for(const tr of (c._erc20Transfers||[]).filter(x=>norm(x.from)===norm(c._teamWallet)&&x.token&&x.amountRaw!=null)){
-          const asset=norm(tr.token);if(!asset||knownStakingAssetAddress(asset))continue;
+          const asset=norm(tr.token);
+          if(!asset||knownStakingAssetAddress(asset)||knownNonStakingUnderlyingAddress(asset))continue;
+          // Neue Assets aus komplexen Cave-/Router-Receipts nur als Staking-Asset
+          // vormerken, wenn die Adresse selbst on-chain als V2-Pair lesbar ist.
+          // Dadurch werden normale Underlyings wie USDT nicht mehr als Staking-Asset
+          // fehlklassifiziert.
+          const pairMeta=await inspectAnyPair(asset).catch(()=>null);
+          if(!(pairMeta?.token0&&pairMeta?.token1))continue;
           await recordStakingDiscoveryCandidate({
-            type:'asset',address:asset,wallet:c._teamWallet,txHash:c.hash,source:'step7:receipt-stake-principal',
-            evidence:`${evidence}+wallet-erc20-outflow`,stakingContract:actualContract||null,entryContract:entryContract||null
+            type:'asset',address:asset,wallet:c._teamWallet,txHash:c.hash,source:'step7:receipt-stake-principal:v2-pair',
+            evidence:`${evidence}+wallet-erc20-outflow+v2-pair`,stakingContract:actualContract||null,entryContract:entryContract||null,
+            label:pairMeta.pairLabel||null
           });
         }
       }
