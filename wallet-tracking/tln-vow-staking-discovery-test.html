@@ -160,7 +160,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 15:59:07 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 16:06:23 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -376,7 +376,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-155907';
+const BUILD_ID='20260907-160623';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -490,7 +490,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 15:59:07 CEST';
+const APP_VERSION='07.09.2026 16:06:23 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -5669,6 +5669,37 @@ function evmPushContainsExactUint(bytecode,target){
   }
   return false;
 }
+
+// Manuell/fachlich verifizierte Lockdauer-Regeln für exakt bekannte Staking-Contracts.
+// Diese Regeln werden absichtlich NICHT auf andere Contracts oder nur gleiche Implementations
+// verallgemeinert. Chris hat am 07.09.2026 für die neuen v£/VOW- und v€/VOW-Stakings
+// die vertragliche Laufzeit von 367 Tagen bestätigt. On-chain sind Stake, Wallet-Zuordnung,
+// Betrag und Positionszeit bereits positionsgenau belegt; die unbekannte ABI verhindert nur,
+// dass die Lockdauer selbst aus einem benannten Getter als Strict-Proof gelesen werden kann.
+const VERIFIED_MANUAL_DURATION_RULES=new Map([
+  ['0x3c0655c7d50f75addbd475d21a35e5660ad5f944',{days:367,label:'v£ / VOW',verifiedAt:'2026-09-07',source:'fachlich manuell verifiziert + positionsgenaue On-Chain-Evidenz'}],
+  ['0x2199898e1af5ff75bf5daa23fb205ac007ab7c26',{days:367,label:'v€ / VOW',verifiedAt:'2026-09-07',source:'fachlich manuell verifiziert + positionsgenaue On-Chain-Evidenz'}]
+]);
+function applyVerifiedManualDurationRule(lot){
+  const contract=norm(lotContractAddress(lot));
+  const rule=VERIFIED_MANUAL_DURATION_RULES.get(contract);
+  if(!rule)return false;
+  const stakeTs=lotStakeTsSeconds(lot);
+  if(!Number.isFinite(stakeTs)||stakeTs<=0)return false;
+  const sec=Number(rule.days)*86400;
+  lot.lockDurationSeconds=sec;
+  lot.durationDays=Number(rule.days);
+  lot.expiryTime=new Date((stakeTs+sec)*1000).toISOString();
+  lot.implementationStable=true;
+  lot.durationConfidence='strong';
+  lot.durationSource=`Verifizierte Contract-Regel · ${rule.source} · ${rule.verifiedAt}`;
+  lot.durationEvidence=`Exakter Staking-Contract ${contract}: ${rule.days} Tage fachlich verifiziert. Stake/Wallet/Betrag/Positionszeit wurden on-chain positionsgenau erkannt; die Regel gilt ausschließlich für diesen Contract und wird nicht auf unbekannte Contracts übertragen.`;
+  lot.durationStrictVerdict={cls:'ok',text:`Lockdauer ${rule.days} Tage aus verifizierter Contract-Regel für ${rule.label}.`};
+  lot.lockEvidence={found:true,mode:'verified-manual-contract-rule',elapsedSeconds:sec,elapsedDays:Number(rule.days),unlockTime:lot.expiryTime,evidence:lot.durationEvidence,confidence:'strong',implementationStable:true};
+  lot.durationManualVerifiedRule=true;
+  return true;
+}
+
 function applyExpected367Evidence(lot,diag){
   const EXPECTED_DAYS=367,sec=EXPECTED_DAYS*86400;
   const anchorTs=lotStakeTsSeconds(lot);
@@ -11948,7 +11979,17 @@ async function resolveDurationStrictOnce(lot,label=''){
   const cached=await loadTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration);
   if(applyDurationCacheToLot(lot,cached)){log(`Duration ${label}: ${safePairLabel(lot)} · Strict-Proof aus Supabase-Cache verwendet.`,'ok');return {proven:true,cacheHit:true,sharedRule:false}}
 
-  const contract=lotContractAddress(lot),shared=await loadSharedStrictDurationRule(contract);
+  const contract=lotContractAddress(lot);
+
+  // Exakt verifizierte Contract-Regeln zuerst anwenden. Dadurch laufen bekannte neue
+  // Generationen bei öffentlichen Lookups nicht erneut durch teure ABI-/Referenzdiagnosen.
+  if(applyVerifiedManualDurationRule(lot)){
+    await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
+    log(`Duration ${label}: ${safePairLabel(lot)} · verifizierte Contract-Regel ${lot.durationDays} Tage angewendet · Ablauf ${new Date(lot.expiryTime).toLocaleString('de-CH')}.`,'ok');
+    return {proven:true,cacheHit:false,sharedRule:false,manualContractRule:true};
+  }
+
+  const shared=await loadSharedStrictDurationRule(contract);
   if(shared){
     const check=await validateSharedDurationRule(lot,shared);
     if(check.ok){
