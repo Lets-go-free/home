@@ -1310,16 +1310,16 @@ async function detectPoolType(chain,address){
 
   let factory;
   try{
-    if(window.WalletPriceEngine){
-      configureSharedPriceEngine();
-      const state = await window.WalletPriceEngine.getPairState(chain,address,"latest");
-      factory = state.factory;
-    }else{
-      const minimal = new ethers.Contract(address,["function factory() view returns (address)"],providers[chain]);
-      factory = await minimal.factory();
-    }
+    /*
+     * Pooltyp muss vor dem V2-Pair-State bestimmt werden.
+     * Ein V3-Pool unterstützt kein getReserves()/totalSupply() wie ein V2-Pair.
+     * Deshalb hier bewusst nur factory() lesen und erst danach den
+     * typ-spezifischen Reader verwenden.
+     */
+    const minimal = new ethers.Contract(address,["function factory() view returns (address)"],providers[chain]);
+    factory = await minimal.factory();
   }catch(e){
-    throw new Error(`${chain}: ${address} · Pool-State/factory() fehlgeschlagen: ${e?.shortMessage || e?.reason || e?.message || e}`);
+    throw new Error(`${chain}: ${address} · factory() fehlgeschlagen: ${e?.shortMessage || e?.reason || e?.message || e}`);
   }
 
   let type = null;
