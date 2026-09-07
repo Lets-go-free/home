@@ -55,6 +55,9 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 .team-tree-section{margin:22px 0 34px;padding-top:8px;border-top:1px solid #263244}
 .team-tree-section:first-child{border-top:0;padding-top:0}
 .team-tree-heading{font-weight:800;margin:0 0 14px 2px}
+.team-tree-info{font-size:11px;line-height:1.45;color:#8f9caf;margin:4px 0 12px;padding:10px 12px;border:1px solid #283544;border-radius:10px;background:#0d151f}.team-tree-info p{margin:0 0 6px}.team-tree-info p:last-child{margin-bottom:0}.team-tree-info b{color:#b8c5d7;font-weight:700}.team-tree-info .team-info-line{display:block;margin-top:2px}
+.team-tree-status-info{font-size:11px;line-height:1.45;color:#8f9caf;margin-top:10px}.team-tree-status-info .team-info-line{display:block;margin:3px 0}
+.team-upline-context{width:max-content;max-width:100%;margin:0 0 8px 2px;opacity:.78}.team-upline-caption{display:flex;align-items:center;gap:7px;margin:0 0 6px 4px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8093aa;font-weight:800}.team-upline-caption:before{content:'↑';display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;border:1px solid #53667d;color:#9eb1c7;font-size:10px}.team-upline-node{min-width:300px;max-width:520px;border:1px dashed #53667d!important;background:linear-gradient(180deg,#101923,#0e161f)!important;box-shadow:none!important;filter:saturate(.7)}.team-upline-node .team-node-title{color:#b7c3d2}.team-upline-node .team-depth-badge{background:#263343!important;border-color:#52657c!important;color:#aebdd0!important}.team-upline-node .team-node-staking{background:#0d141c!important;border-color:#334354!important}.team-upline-link{height:22px;width:2px;background:linear-gradient(#53667d,#334a62);margin:0 0 2px 38px;position:relative}.team-upline-link:after{content:'▼';position:absolute;left:-5px;bottom:-7px;color:#536d87;font-size:10px}
 .team-hierarchy,.team-hierarchy ul{list-style:none;margin:0;padding:0;position:relative;display:flex;justify-content:center;align-items:flex-start;min-width:max-content}
 .team-hierarchy>li{padding-top:0}
 .team-hierarchy li{position:relative;text-align:center;padding:34px 9px 0}
@@ -152,7 +155,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 02:00:35 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 02:08:55 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -323,7 +326,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 <div class="card" id="teamTreeCard">
   <h2>🌳 TLN/VOW Team-/Referral-Baum</h2>
-  <p class="muted">Projektweite Sicht auf Klick: Alle unter „MEINE Wallets“ gespeicherten TLN/VOW-Wallets gelten für die Erfassungsmenge als eigene Leader-TLN-IDs. Als eigener sichtbarer Baum wird aber nur ein eigenes Wallet dargestellt, das keinem anderen eigenen Wallet untergeordnet ist. Eigene Wallets innerhalb eines bereits eigenen Team-Baums bleiben normale Team-Mitglieder an ihrer echten Parent-Position und werden farbig markiert. Die Darstellung ist als vertikaler Organigramm-Baum aufgebaut: Leader oben, Linie 1 darunter, Linie 2 darunter usw. Direkte Partner werden je Upline nach TLN-ID aufsteigend sortiert. Deutlich abgesetzte Verbindungslinien zeigen, welcher Partner zu welchem Parent gehört. Staking-Zusatzinfos verwenden ausschließlich verifizierte Discovery-/Lifecycle-Daten. Alle aktuell offenen Positionen eines Wallets werden in derselben Karte gezeigt; falls keine Position mehr offen ist, wird das zuletzt beendete Staking historisch angezeigt. Fehlende Lifecycle-Daten werden neutral gekennzeichnet und niemals aus Referral-Rewards als „unstaked“ abgeleitet. Testtiefe: maximal <b>20 Linien</b>. In WalletTracking wird dieser Wert später als TLN/VOW-Projektparameter im Admin-Bereich konfigurierbar.</p>
+  <div id="teamTreeIntro" class="team-tree-info"><span class="muted">Team-Information wird aus den aktuellen Projektdaten aufgebaut.</span></div>
   <div id="teamTreeStatus" class="muted">Wird beim Laden aus dem persistenten Team-Cache wiederhergestellt; Schritt 7 aktualisiert/verifiziert den Baum danach inkrementell.</div>
   <div id="teamHighlightControls" class="team-controls" style="display:none">
     <div class="team-highlight-head"><b>Hervorheben</b> <span class="muted">(keine Filterung – alle Team-Mitglieder bleiben sichtbar)</span></div>
@@ -358,7 +361,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-020035';
+const BUILD_ID='20260907-020855';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -472,7 +475,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 02:00:35 CEST';
+const APP_VERSION='07.09.2026 02:08:55 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13053,10 +13056,18 @@ function buildProjectTeamForest(edges){
     return av-bv||String(a).localeCompare(String(b));
   });
 
+  // Direct verified parent of each visible root is deliberately retained as context even
+  // though that wallet is outside the captured downline union. It is NOT made part of the
+  // visible team set and therefore does not affect counts, line depth or highlighting.
+  const rootUplines=new Map();
+  for(const root of roots){
+    const p=norm(edges.get(norm(root))?.parent||'');
+    if(ethers.isAddress(p)&&p!==norm(root))rootUplines.set(norm(root),p);
+  }
   // A nested own leader may extend coverage another 20 levels. Therefore rendering depth is
   // not capped relative to the top root; only inclusion per own leader is capped to 20.
-  const components=roots.map(root=>({root,children,parentByChild}));
-  return {ownMap,ownSet,ownDepths,orderedOwn,included,leaderStats,roots,components,children,parentByChild,edgeByChild};
+  const components=roots.map(root=>({root,children,parentByChild,upline:rootUplines.get(norm(root))||null}));
+  return {ownMap,ownSet,ownDepths,orderedOwn,included,leaderStats,roots,components,children,parentByChild,edgeByChild,rootUplines};
 }
 
 function teamFormatStakeDate(v,withTime=false){
@@ -14538,6 +14549,25 @@ function teamNodeHtml(wallet,depth,parent){
   </div>`;
 }
 
+function teamRootUplineHtml(root,forest){
+  const wallet=norm(forest?.rootUplines?.get(norm(root))||'');
+  if(!ethers.isAddress(wallet))return '';
+  const ident=TEAM_IDENTITY_CACHE.get(wallet)||{};
+  const alias=teamAliasFor(wallet,ident)||projectOwnWalletLabel(wallet)||'–';
+  const nodeLabel=`TLN-ID ${ident.nodeId||'?'}`;
+  const life=TEAM_STAKING_LIFECYCLE.get(wallet);
+  return `<div class="team-upline-context">
+    <div class="team-upline-caption">Direkte verifizierte Upline des Baum-Roots</div>
+    <div class="team-node team-upline-node ${life?.verified?'':'team-lifecycle-unknown'}">
+      <div class="team-node-title"><span class="team-depth-badge">UPLINE</span><span>${esc(nodeLabel)}</span></div>
+      <div class="team-node-name">Name: <b>${esc(alias)}</b></div>
+      <div class="team-wallet-row"><div class="team-node-meta">${esc(short(wallet))}</div><button type="button" class="team-copy-btn" data-copy-wallet="${esc(wallet)}" title="Wallet-Adresse kopieren" aria-label="Wallet-Adresse kopieren"><span class="team-copy-icon" aria-hidden="true"></span></button></div>
+      ${teamObservedStakeHtml(wallet)}
+    </div>
+    <div class="team-upline-link" aria-hidden="true"></div>
+  </div>`;
+}
+
 function teamTreeBranchHtml(wallet,forest,depth=0,seen=new Set()){
   wallet=norm(wallet);
   if(seen.has(wallet))return '';
@@ -14667,12 +14697,17 @@ function renderTeamTree(){
   for(const comp of sortedComponents){
     const rootIdent=TEAM_IDENTITY_CACHE.get(comp.root)||{};
     const rootLabel=teamAliasFor(comp.root,rootIdent)||`TLN-ID ${rootIdent.nodeId||'?'}`;
-    blocks.push(`<section class="team-tree-section"><div class="team-tree-heading">Eigener Team-Baum ab ${esc(rootLabel)}</div><ul class="team-hierarchy">${teamTreeBranchHtml(comp.root,forest,0)}</ul></section>`);
+    blocks.push(`<section class="team-tree-section"><div class="team-tree-heading">Eigener Team-Baum ab ${esc(rootLabel)}</div>${teamRootUplineHtml(comp.root,forest)}<ul class="team-hierarchy">${teamTreeBranchHtml(comp.root,forest,0)}</ul></section>`);
   }
   const orderText=(PROJECT_WALLET_FILTER==='all'?forest.orderedOwn:[norm(PROJECT_WALLET_FILTER)]).filter(w=>visible.has(w)).map(w=>{
     const i=TEAM_IDENTITY_CACHE.get(w)||{},d=forest.ownDepths.get(w)||0;
     return `${i.nodeId||short(w)}${d?` (unter ${d} eigener TLN-ID)`:''}`;
   }).join(' → ');
+  const intro=$('teamTreeIntro');
+  if(intro)intro.innerHTML=`<p><b>Projektweite Sicht.</b> ${forest.ownSet.size} unter „MEINE Wallets“ gespeicherte TLN/VOW-Wallet(s) gelten als eigene Leader für die Erfassungsmenge. Sichtbare Baum-Roots sind nur eigene Wallets, über denen kein weiteres eigenes Wallet liegt.</p>
+    <p>Eigene Wallets innerhalb eines bereits eigenen Team-Baums bleiben an ihrer echten SmartNode-Parent-Position. Direkte Partner werden je Upline nach TLN-ID aufsteigend sortiert.</p>
+    <p>Staking-Infos stammen ausschließlich aus verifizierten Discovery-/Lifecycle-Daten. Offene Positionen werden aktuell gezeigt, sonst das zuletzt beendete Staking. Fehlende Lifecycle-Daten werden nicht aus Referral-Rewards abgeleitet.</p>
+    <p><b>Erfassungstiefe:</b> maximal ${TLN_TEAM_MAX_LEVELS} Referral-Linien je eigenem Leader. Dieser Wert ist später als TLN/VOW-Projektparameter im Admin-Bereich vorgesehen.</p>`;
   status.innerHTML=`<div class="team-line-summary"><b>${externalCount}</b> externe Team-Partner + <b>${ownCount}</b> eigene TLN/VOW-Wallet(s) · <b>${sortedComponents.length}</b> sichtbare(r) Baum/Bäume · Lifecycle: <b>${verifiedLifecycleCount}</b> verifiziert / <b>${unknownLifecycleCount}</b> offen.</div>
     <div class="team-tree-legend">
       <span class="team-tree-legend-item"><span class="team-legend-dot own"></span>Meine Wallet</span>
@@ -14681,7 +14716,12 @@ function renderTeamTree(){
       <span class="team-tree-legend-item"><span class="team-legend-dot active"></span>Aktives Staking</span>
       <span class="team-tree-legend-item"><span class="team-legend-dot expired"></span>Abgelaufen, noch nicht unstaked</span>
     </div>
-    <div class="muted">Vertikale Darstellung: Leader oben, Team nach unten. Eigenständige Team-Bäume werden nach Leader-TLN-ID aufsteigend angeordnet; direkte Partner derselben Upline ebenfalls nach TLN-ID aufsteigend (niedrigste TLN-ID zuerst). Nur eigene Wallets ohne anderes eigenes Wallet in ihrer Upline werden als Baum-Root dargestellt. Eigene Wallets innerhalb eines anderen eigenen Teams erscheinen ausschließlich an ihrer echten Position im Baum. Jede Verbindung Linie 2 → Linie 1 usw. folgt der verifizierten SmartNode-Parent-Beziehung. Eigene Leader erweitern die erfasste Downline jeweils um maximal ${TLN_TEAM_MAX_LEVELS} Referral-Linien. Discovery-Reihenfolge: ${esc(orderText||'–')}.</div>`;
+    <div class="team-tree-status-info">
+      <span class="team-info-line"><b>Darstellung:</b> Leader oben, Team nach unten. Eigenständige Bäume und direkte Partner derselben Upline werden nach TLN-ID aufsteigend sortiert.</span>
+      <span class="team-info-line"><b>Parent-Beziehungen:</b> Jede Verbindung folgt der verifizierten SmartNode-Child→Parent-Beziehung; die dezente Upline-Karte oberhalb eines Roots ist nur Kontext und gehört nicht zur gezählten Downline.</span>
+      <span class="team-info-line"><b>Erfassung:</b> Jeder eigene Leader erweitert seine Downline um maximal ${TLN_TEAM_MAX_LEVELS} Referral-Linien.</span>
+      <span class="team-info-line"><b>Discovery-Reihenfolge:</b> ${esc(orderText||'–')}.</span>
+    </div>`;
   box.innerHTML=blocks.join('');
   if($('teamHighlightControls'))$('teamHighlightControls').style.display='block';
   if($('teamExpirySection'))$('teamExpirySection').style.display='block';
@@ -14740,8 +14780,10 @@ async function restoreTeamTreeFromPersistentCache(){
     // TLN-Wallets, danach die separat persistierten verifizierten Team-Lifecycles der
     // Partner. Genau dieser zweite Cache fehlte bisher beim Seitenstart; dadurch gingen
     // bereits bekannte Stake-/Ablauf-/Unstake-Daten optisch verloren, bis Step 7 erneut lief.
-    await teamLoadCachedDiscoveryLifecycles([...forest.included]);
-    const restoredPartnerLifecycles=await teamLoadPersistedLifecycleCache([...forest.included]);
+    const rootUplines=[...new Set([...(forest.rootUplines?.values?.()||[])])].filter(ethers.isAddress);
+    const lifecycleWallets=[...new Set([...forest.included,...rootUplines])];
+    await teamLoadCachedDiscoveryLifecycles(lifecycleWallets);
+    const restoredPartnerLifecycles=await teamLoadPersistedLifecycleCache(lifecycleWallets);
     DISCOVERY_PROCESS.done.team=true;
     const roots=forest.roots||[];
     setStepState(7,`Cache · ${roots.length} Baum-Root(s)`,'done');
@@ -14786,9 +14828,15 @@ async function prepareTeamTree(){
       }
     }
     forest=buildProjectTeamForest(full.edges);
+    const rootUplines=[...new Set([...(forest.rootUplines?.values?.()||[])])].filter(ethers.isAddress);
+    if(rootUplines.length){
+      await teamMapWithConcurrency(rootUplines.filter(w=>!TEAM_IDENTITY_CACHE.get(w)?.nodeId),4,w=>teamGetIdentity(w));
+      log(`Team-Root-Upline: ${rootUplines.length} direkte verifizierte Upline(s) als dezenter Kontext zum sichtbaren Baum ergänzt.`,'ok');
+    }
     CURRENT_TEAM_PROJECT_FOREST=forest;
-    await teamLoadCachedDiscoveryLifecycles([...forest.included]);
-    await teamVerifyMissingLifecycles([...forest.included]);
+    const lifecycleWallets=[...new Set([...forest.included,...rootUplines])];
+    await teamLoadCachedDiscoveryLifecycles(lifecycleWallets);
+    await teamVerifyMissingLifecycles(lifecycleWallets);
 
     const ownIds=forest.orderedOwn.map(w=>TEAM_IDENTITY_CACHE.get(w)?.nodeId||short(w));
     log(`Team-Discovery Projekt: ${forest.ownSet.size} eigene TLN/VOW-Wallet(s) als Leader · ${[...forest.included].filter(w=>!forest.ownSet.has(w)).length} externe Team-Partner in der Vereinigungsmenge.`,'ok');
