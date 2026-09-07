@@ -160,7 +160,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 14:28:19 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 14:44:51 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -376,7 +376,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-142819';
+const BUILD_ID='20260907-144451';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -490,7 +490,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 14:28:19 CEST';
+const APP_VERSION='07.09.2026 14:44:51 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -5590,6 +5590,77 @@ function timestampFromProbeResult(r){
   const w=rawWords(r.raw)[0];
   if(!w?.uint||!humanTimestamp(w.uint))return null;
   return Number(w.uint);
+}
+
+function durationProbeFingerprint(){
+  // Negative Duration-Funde sind nur für exakt denselben Satz fachlich relevanter
+  // Read-Probes gültig. Wird die Probe-Liste erweitert, muss ein alter Negativcache
+  // automatisch verfallen, damit neue Contract-Getter genau einmal geprüft werden.
+  return SC_READ_PROBES
+    .filter(p=>p.kind==='duration'||p.kind==='days'||p.kind==='timestamp')
+    .map(p=>`${p.sig}|${p.kind}|${(p.args||[]).join(',')}`)
+    .sort()
+    .join(';');
+}
+
+async function resolveDurationFromDirectReadProbes(lot){
+  const contract=lotContractAddress(lot),wallet=norm(CURRENT_WALLET),anchorTs=lotStakeTsSeconds(lot);
+  if(!knownStakingContractAddress(contract)||!ethers.isAddress(wallet)||!Number.isFinite(anchorTs)||anchorTs<=0)
+    return {proven:false,reason:'Contract/Wallet/Duration-Anker für direkten Getter-Proof fehlt.'};
+  let probed=null;
+  try{probed=await probeStakingContract(lot,wallet)}catch(e){return {proven:false,reason:e?.message||String(e)}}
+  const rows=Array.isArray(probed?.results)?probed.results:[];
+  const maxEnd=anchorTs+10*366*86400;
+
+  // Wallet-bezogene End-/Unlock-Timestamps sind die stärkste direkte Getter-Evidenz.
+  // Nur ein plausibler Zeitpunkt NACH dem tatsächlichen Duration-Anker wird akzeptiert.
+  const tsRows=rows.map(r=>({r,ts:timestampFromProbeResult(r)}))
+    .filter(x=>Number.isFinite(x.ts)&&x.ts>anchorTs&&x.ts<=maxEnd)
+    .sort((a,b)=>{
+      const pr=x=>/endTimestamp|endTime|stakeEndTime|maturityTime|unlockTimestamp|unlockTime|lockedUntil|lockEnd|releaseTime|releaseDate|unlockDate/i.test(x.r.label)?0:1;
+      return pr(a)-pr(b)||a.ts-b.ts;
+    });
+  if(tsRows.length){
+    const best=tsRows[0],sec=best.ts-anchorTs;
+    lot.lockDurationSeconds=sec;lot.durationDays=sec/86400;lot.expiryTime=new Date(best.ts*1000).toISOString();
+    lot.lastLockedBlock=null;lot.firstUnlockedBlock=null;lot.implementationStable=null;
+    lot.durationConfidence='strong';
+    lot.durationEvidence=`Direkter erfolgreicher On-chain Read ${best.r.label} für das Staking-Wallet liefert einen plausiblen End-/Unlock-Timestamp nach dem tatsächlichen Duration-Anker.`;
+    lot.durationSource=`Direkter Staking-Contract-Getter ${best.r.label}`;
+    lot.durationStrictVerdict={cls:'ok',text:`Contract-Ende direkt on-chain via ${best.r.label}: ${lot.expiryTime}`};
+    lot.lockEvidence={found:true,mode:'direct-contract-end-getter',elapsedSeconds:sec,elapsedDays:sec/86400,unlockTime:lot.expiryTime,evidence:lot.durationEvidence,confidence:'strong',probe:best.r.label};
+    return {proven:true,mode:'timestamp',probe:best.r.label};
+  }
+
+  // Contractweite Duration-Getter: Sekunden nur bei plausibler Sekunden-Semantik,
+  // explizite *Days()-Getter ausschließlich als Tage. Keine Einheit wird geraten.
+  const durationCandidates=[];
+  for(const r of rows){
+    if(r.kind==='duration'){
+      const sec=secondsDurationFromProbeResult(r);if(sec)durationCandidates.push({r,sec});
+    }else if(r.kind==='days'){
+      const w=rawWords(r.raw)[0];const days=w?.uint!=null?Number(w.uint):NaN;
+      if(Number.isFinite(days)&&days>=1&&days<=10*366)durationCandidates.push({r,sec:days*86400});
+    }
+  }
+  if(durationCandidates.length){
+    // Mehrere gleichartige Getter dürfen nicht widersprüchlich sein. Bei Konflikt bleibt
+    // die Duration offen und fällt auf die Referenzengine zurück.
+    const uniq=[...new Set(durationCandidates.map(x=>x.sec))];
+    if(uniq.length===1){
+      const best=durationCandidates[0],sec=best.sec,endTs=anchorTs+sec;
+      lot.lockDurationSeconds=sec;lot.durationDays=sec/86400;lot.expiryTime=new Date(endTs*1000).toISOString();
+      lot.lastLockedBlock=null;lot.firstUnlockedBlock=null;lot.implementationStable=null;
+      lot.durationConfidence='strong';
+      lot.durationEvidence=`Direkter erfolgreicher On-chain Read ${best.r.label} liefert eine eindeutige Vertragsdauer; Ablauf wird ab dem tatsächlichen Duration-Anker berechnet.`;
+      lot.durationSource=`Direkter Staking-Contract-Getter ${best.r.label}`;
+      lot.durationStrictVerdict={cls:'ok',text:`Lockdauer direkt on-chain via ${best.r.label}: ${lot.durationDays.toLocaleString('de-CH',{maximumFractionDigits:8})} Tage.`};
+      lot.lockEvidence={found:true,mode:'direct-contract-duration-getter',elapsedSeconds:sec,elapsedDays:sec/86400,unlockTime:lot.expiryTime,evidence:lot.durationEvidence,confidence:'strong',probe:best.r.label};
+      return {proven:true,mode:'duration',probe:best.r.label};
+    }
+    return {proven:false,reason:`Direkte Duration-Getter widersprechen sich (${uniq.map(x=>x/86400+' Tage').join(', ')}).`};
+  }
+  return {proven:false,reason:'Kein belastbarer direkter Endzeit-/Duration-Getter gefunden.'};
 }
 async function probeTimingAtBlock(lot,wallet,blockHex){
   const contract=norm(lot?.staking?.contract_address||lot?.counterparty||'');
@@ -11614,6 +11685,16 @@ async function resolveDurationStrictOnce(lot,label=''){
     log(`Duration ${label}: Shared Strict-Proof für ${safePairLabel(lot)} nicht positionsgenau bestätigt (${check.reason}); sicherer Voll-Lauf.`,'info');
   }
 
+  // Bevor ein früherer Negativbefund greift, prüfen wir explizite on-chain Endzeit-/
+  // Duration-Getter des verifizierten Staking-Contracts. Das ist insbesondere für neue
+  // Staking-Generationen wichtig, deren Storage-Struktur die Referenzengine noch nicht kennt.
+  const directGetter=await resolveDurationFromDirectReadProbes(lot);
+  if(directGetter?.proven){
+    await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
+    log(`Duration ${label}: ${safePairLabel(lot)} · Contract-Ende direkt on-chain via ${directGetter.probe} verifiziert: ${new Date(lot.expiryTime).toLocaleString('de-CH')} (${lot.durationDays.toLocaleString('de-CH',{maximumFractionDigits:8})} Tage).`,'ok');
+    return {proven:true,cacheHit:false,sharedRule:false,directGetter:true};
+  }
+
   // Ein bereits vollständig geprüfter, aber nicht streng beweisbarer Duration-Fall soll
   // bei öffentlichen Lookup-Klicks nicht immer wieder dieselbe teure Referenzengine starten.
   // Der Negativcache beweist KEINE Lockdauer und macht den Lifecycle NICHT verifiziert;
@@ -11622,7 +11703,12 @@ async function resolveDurationStrictOnce(lot,label=''){
   const inconclusive=await loadTechnicalProcessCache(DISCOVERY_PROCESS.wallet,inconclusiveKey,TECH_CACHE_VERSIONS.duration).catch(()=>null);
   const inconclusiveAge=inconclusive?.savedAt?Date.now()-Date.parse(inconclusive.savedAt):Infinity;
   const sameContract=!inconclusive?.stakingContract||norm(inconclusive.stakingContract)===norm(contract);
-  if(inconclusive&&sameContract&&inconclusiveAge>=0&&inconclusiveAge<24*60*60*1000){
+  const currentProbeFingerprint=durationProbeFingerprint();
+  const sameProbeSet=String(inconclusive?.probeFingerprint||'')===currentProbeFingerprint;
+  if(inconclusive&&sameContract&&!sameProbeSet){
+    log(`Duration ${label}: alter 24-h-Negativcache für ${safePairLabel(lot)} verworfen, weil sich die Endzeit-/Duration-Probe-Liste geändert hat. Neue Contract-Getter werden geprüft.`,'info');
+  }
+  if(inconclusive&&sameContract&&sameProbeSet&&inconclusiveAge>=0&&inconclusiveAge<24*60*60*1000){
     const ageMin=Math.floor(inconclusiveAge/60000);
     lot.durationDays=null;lot.lockDurationSeconds=null;lot.expiryTime=null;
     lot.durationSource=null;lot.durationEvidence=null;lot.durationConfidence=null;
@@ -11644,6 +11730,7 @@ async function resolveDurationStrictOnce(lot,label=''){
     stakingContract:norm(contract),
     pairLabel:safePairLabel(lot),
     reason:lot?.lockEvidence?.reason||lot?.durationReference?.verdict?.text||'Vollständige Referenzengine ohne belastbaren Strict-Proof',
+    probeFingerprint:durationProbeFingerprint(),
     savedAt:new Date().toISOString()
   },0).catch(()=>false);
   return {proven:false,cacheHit:false,sharedRule:false};
