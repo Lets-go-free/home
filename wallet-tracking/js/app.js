@@ -6034,18 +6034,45 @@ function onNftWalletChange() {
 }
 
 async function saveNftCacheForWallet(w, nfts, chains) {
+  const walletId = String(w.dbId || w.id);
   const payload = {
     user_id: currentUser.id,
-    wallet_id: String(w.dbId || w.id),
+    wallet_id: walletId,
     wallet_label: w.label,
     selected_chains: chains,
     nfts,
     refreshed_at: new Date().toISOString()
   };
-  const { data, error } = await sb.from("nft_cache")
-    .upsert(payload, { onConflict: "user_id,wallet_id" }).select().single();
-  if (error) throw new Error("NFT-Cache konnte nicht gespeichert werden: " + error.message);
-  nftCaches.set(String(w.dbId || w.id), data);
+
+  // Kein PostgREST-Upsert mit on_conflict mehr: Auf der produktiven DB kann der
+  // erwartete zusammengesetzte Unique-/Primary-Key vom historischen Schema abweichen.
+  // Das bisherige upsert(..., {onConflict:"user_id,wallet_id"}) erzeugte dann HTTP 400,
+  // obwohl Lesen und normales Aktualisieren der Tabelle funktionieren.
+  // Deshalb robust und schema-tolerant: vorhandene Wallet-Zeile gezielt UPDATE,
+  // andernfalls INSERT. Damit bleibt weiterhin exakt ein Cache-Datensatz je User/Wallet.
+  const updatePayload = {
+    wallet_label: payload.wallet_label,
+    selected_chains: payload.selected_chains,
+    nfts: payload.nfts,
+    refreshed_at: payload.refreshed_at
+  };
+  const { data: updatedRows, error: updateError } = await sb.from("nft_cache")
+    .update(updatePayload)
+    .eq("user_id", currentUser.id)
+    .eq("wallet_id", walletId)
+    .select();
+  if (updateError) throw new Error("NFT-Cache konnte nicht aktualisiert werden: " + updateError.message);
+
+  let row = Array.isArray(updatedRows) && updatedRows.length ? updatedRows[0] : null;
+  if (!row) {
+    const { data: inserted, error: insertError } = await sb.from("nft_cache")
+      .insert(payload)
+      .select()
+      .single();
+    if (insertError) throw new Error("NFT-Cache konnte nicht angelegt werden: " + insertError.message);
+    row = inserted;
+  }
+  nftCaches.set(walletId, row);
 }
 
 async function refreshApertumNftsForWallet(wallet,onProgress=null){
