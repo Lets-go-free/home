@@ -160,7 +160,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 13:38:30 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 13:45:26 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -376,7 +376,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-133830';
+const BUILD_ID='20260907-134526';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -490,7 +490,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 13:38:30 CEST';
+const APP_VERSION='07.09.2026 13:45:26 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -6344,6 +6344,9 @@ function renderPairTable(pairs,counts){
 }
 
 function isStakeCallCandidate(c){
+  // Explizit als Fremd-/Operator-Stake ausgeschlossene Calls dürfen in keiner späteren
+  // Stufe erneut als eigene Position des gesuchten Wallets auftauchen.
+  if(c?._teamPositionExcluded===true)return false;
   const selector=String(c?._selector||c?._input||'').slice(0,10).toLowerCase();
   const decoded=METHOD_SELECTORS.get(selector);
   if(decoded==='Stake')return true;
@@ -13965,15 +13968,29 @@ async function teamBatchPositionCalls(wallets,{forceFresh=false}={}){
   // Methode, gezielter Recovery-Seed, verifiziertes Staking-Asset oder verifizierter
   // Staking-/Entry-Contract. Nur fuer diese Kandidaten darf das Receipt die zweite
   // Evidenzstufe (Stake-Event bzw. Principal-Abfluss) liefern.
-  const receiptJobs=rows.filter(c=>{
+  // Öffentlicher Lookup-Schutz: Bei sehr aktiven Operator-/Admin-Wallets darf die bloße
+  // Tatsache, dass ein Call einen bekannten Staking-Contract berührt, NICHT reichen, um
+  // hunderte Receipts zu laden. Ab 200 Contract-Tx wechseln wir in einen Mass-Wallet-
+  // Modus und verlangen stärkere Vorab-Evidenz (bekannte Methode, Recovery-Seed oder
+  // bekanntes Staking-Asset). Damit bleibt die normale Partner-Erkennung unverändert,
+  // während Sonderwallets keine unkontrollierte Receipt-Lawine auslösen.
+  const massWalletMode=rows.length>200;
+  let receiptJobs=rows.filter(c=>{
     const method=String(c?._method||'').toLowerCase();
     if(method==='stake'||method==='unstake')return true;
     if(String(c?._teamPositionEvidenceSeed||''))return true;
     const asset=norm(c?.rawContract?.address||c?.assetContractAddress||'');
     if(asset&&knownStakingAssetAddress(asset))return true;
+    if(massWalletMode)return false;
     const called=norm(c?._tx?.to||c?.to||c?._staking?.contract_address||'');
     return !!(called&&knownStakingContractAddress(called));
   });
+  if(massWalletMode){
+    const beforeCap=receiptJobs.length;
+    const MAX_PUBLIC_RECEIPT_JOBS=80;
+    if(receiptJobs.length>MAX_PUBLIC_RECEIPT_JOBS)receiptJobs=receiptJobs.slice(0,MAX_PUBLIC_RECEIPT_JOBS);
+    log(`Team-Lifecycle Mass-Wallet-Schutz: ${rows.length} Contract-Tx erkannt · nur ${receiptJobs.length}${beforeCap>MAX_PUBLIC_RECEIPT_JOBS?` von ${beforeCap}`:''} stark vorqualifizierte Receipt(s) werden geprüft. Breite Known-Contract-Heuristik deaktiviert.`,'warn');
+  }
   const skippedReceiptRows=Math.max(0,rows.length-receiptJobs.length);
   if(skippedReceiptRows)log(`Team-Lifecycle Receipt-Vorfilter: ${receiptJobs.length}/${rows.length} fachlich plausible Staking-Tx werden per Receipt geprueft · ${skippedReceiptRows} unspezifische Contract-/ERC-20-Tx uebersprungen.`,'ok');
   let receiptFallbacks=0,receiptFallbackRecovered=0,receiptStillMissing=0;
@@ -14015,6 +14032,7 @@ async function teamBatchPositionCalls(wallets,{forceFresh=false}={}){
       let positionKind=explicitForeignStake?null:(methodLower==='stake'?'stake':methodLower==='unstake'?'unstake':null);
       let evidence=explicitForeignStake?'excluded:selector-stake-for-other-wallet':(positionKind?`selector:${methodLower}`:null);
       if(explicitForeignStake){
+        c._teamPositionExcluded=true;
         const users=[...new Set(allStakeEvents.map(l=>norm('0x'+String(l.topics[1]).slice(-40))).filter(ethers.isAddress))];
         log(`Team-Lifecycle Fremd-Stake ausgeschlossen: Sender ${short(wallet)} rief stake() auf, Receipt weist Position aber ${users.length===1?`User ${short(users[0])}`:`${users.length} anderen Usern`} zu · Tx ${short(norm(c.hash||''))}.`,'muted');
       }
@@ -14745,7 +14763,17 @@ async function teamVerifyMissingLifecycles(wallets,{forceFresh=false}={}){
       const synthetic=[];await synthesizeStakeRowsFromReceipts(calls,pairMap,wallet,synthetic);
       const built=buildDiagnosticLots(synthetic),lots=built.lots;await normalizeProvenTopUpsForPositions(lots);reconcileLotsWithContractCalls(lots,calls);associateContractCallsToLots(lots,calls);
       teamLogResolvedUnstakes(wallet,lots,calls);
-      let durationOk=true;for(let li=0;li<lots.length;li++){const lot=lots[li];if(lot.expiryTime)continue;const r=await teamResolveDurationWithContractCandidates(lot,`Team ${wi+1}/${missing.length} · Position ${li+1}/${lots.length}`);if(!r.proven)durationOk=false}
+      // Zweite harte Notbremse direkt vor der teuersten Stufe. Selbst falls eine neue
+      // Sondergeneration die Vorfilterung umgeht, darf ein einzelner Community-Lookup
+      // niemals hunderte vollständige Duration-Referenzläufe starten.
+      const MAX_PUBLIC_DURATION_POSITIONS=40;
+      const massLifecycleAbort=lots.length>MAX_PUBLIC_DURATION_POSITIONS;
+      let durationOk=!massLifecycleAbort;
+      if(massLifecycleAbort){
+        log(`Team-Lifecycle Sicherheitsabbruch TLN-ID ${TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'?'}: ${lots.length} mögliche Positionen überschreiten das öffentliche Limit von ${MAX_PUBLIC_DURATION_POSITIONS}. Duration-Analyse wird NICHT gestartet; Wallet bleibt unverifiziert und wird nicht als normaler Lifecycle gecacht.`,'warn');
+      }else{
+        for(let li=0;li<lots.length;li++){const lot=lots[li];if(lot.expiryTime)continue;const r=await teamResolveDurationWithContractCandidates(lot,`Team ${wi+1}/${missing.length} · Position ${li+1}/${lots.length}`);if(!r.proven)durationOk=false}
+      }
       const cov=coverage.get(wallet)||{total:0,ok:0,failed:1,errors:['Coverage unbekannt']};
       const scanComplete=cov.failed===0&&cov.ok===cov.total;
       const hasUnstakeOnly=lots.length===0&&calls.some(c=>String(c?._method||'').toLowerCase()==='unstake'||String(c?._teamPositionEvidence||'').toLowerCase().includes('unstake'));
@@ -14756,7 +14784,7 @@ async function teamVerifyMissingLifecycles(wallets,{forceFresh=false}={}){
       // als endgueltig verifiziert gespeichert werden. Neue Identity-Generationen koennen
       // neue Staking-Entry-/Event-Pfade verwenden, die die bestehende Registry noch nicht kennt.
       const unresolvedNewGeneration=lots.length===0&&newerIdentityContract;
-      const fullyVerified=durationOk&&scanComplete&&!hasUnstakeOnly&&!hasObservedEvidence&&!unresolvedNewGeneration;
+      const fullyVerified=durationOk&&!massLifecycleAbort&&scanComplete&&!hasUnstakeOnly&&!hasObservedEvidence&&!unresolvedNewGeneration;
       TEAM_STAKING_LIFECYCLE.set(wallet,teamLifecycleFromLots(wallet,lots,{verified:fullyVerified,source:scanComplete?'gebündelte Team-Staking-Discovery':'gebündelte Team-Staking-Discovery (unvollständig)',completedStep:fullyVerified?3:2}));
       if(fullyVerified){await teamSaveVerifiedLifecycle(wallet,lots);TEAM_LIFECYCLE_RECHECK_HINTS.delete(wallet);verified++}if(lots.length)withLots++;
       const evidenceSummary=calls.reduce((m,c)=>{const e=String(c?._teamPositionEvidence||'unbekannt');m[e]=(m[e]||0)+1;return m;},{});
