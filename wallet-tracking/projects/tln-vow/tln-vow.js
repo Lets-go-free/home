@@ -85,7 +85,13 @@ function configureSharedPriceEngine(){
   if(!window.WalletPriceEngine) return;
   window.WalletPriceEngine.configure(() => ({
     provider: chain => providers[chain] || null,
-    tokenMeta: async (chain,address) => await getToken(chain,address)
+    tokenMeta: async (chain,address) => await getToken(chain,address),
+    references: chain => references[chain] || {},
+    tokenCategory: (chain,address) => rowType(findDbRow(chain,address)),
+    findPair: async (chain,tokenA,tokenB) => await findPair(chain,tokenA,tokenB),
+    listPools: chain => configuredLPs(chain),
+    poolType: async (chain,address) => await detectPoolType(chain,address),
+    readV3Pool: async (chain,address) => await readV3Pool(chain,address)
   }));
 }
 
@@ -1223,78 +1229,38 @@ async function getUSD(chain,token){
   const key = chain + ":" + norm(token.address);
   if(priceCache.has(key)) return priceCache.get(key);
 
+  /*
+   * Phase 2: Die fachliche Preisentscheidung liegt zentral im
+   * WalletPriceEngine. TLN/VOW liefert nur Projekt-Konfiguration
+   * (Referenz-Tokens, Kategorie, Pair-Lookup und V3-Pools).
+   *
+   * Damit benutzen Token-Tabelle, LP-Bewertung und spätere weitere
+   * Consumer dieselbe Preisroute und denselben Pair-State-Cache.
+   */
+  if(window.WalletPriceEngine){
+    configureSharedPriceEngine();
+    const result = await window.WalletPriceEngine.getTokenPrice({
+      projectKey:PROJECT_KEY,
+      chain,
+      token,
+      block:"latest"
+    });
+    priceCache.set(key,result);
+    return result;
+  }
+
+  /*
+   * Sicherheits-Fallback für direkte Nutzung der Projektdatei ohne
+   * geladene gemeinsame Engine. In der produktiven index.html wird
+   * price-engine.js vor tln-vow.js geladen und dieser Block nicht benutzt.
+   */
   let result = null;
   const dbRow = findDbRow(chain,token.address);
-
-  /*
-   * Stablecoins.
-   */
   result = stableReference(chain,token.address);
-
-  /*
-   * v_currency:
-   * immer direkter v/VOW-Pool -> VOW/USDT.
-   */
-  if(
-    !result &&
-    dbRow &&
-    isVoucherRow(dbRow)
-  ){
-    result = await vCurrencyUSDPrice(
-      chain,
-      token
-    );
-  }
-
-  /*
-   * tln_vow_token:
-   *
-   * VOW selbst:
-   *   VOW -> USDT
-   *
-   * Andere Projekt-Tokens:
-   *   zuerst TOKEN -> VOW -> USDT
-   *   falls kein TOKEN/VOW-Pool: TOKEN -> USDT
-   */
-  if(
-    !result &&
-    dbRow &&
-    isProjectToken(dbRow)
-  ){
-    result = await projectTokenUSDPrice(
-      chain,
-      token
-    );
-  }
-
-  /*
-   * BTCB / WBNB / WETH / ETH / BNB:
-   * strikt vom VOW-Ökosystem getrennt.
-   */
-  if(
-    !result &&
-    strictCoreSymbol(token.symbol)
-  ){
-    result = await strictDirectUSDPrice(
-      chain,
-      token
-    );
-  }
-
-  /*
-   * Technischer Fallback nur für intern benötigte Tokens,
-   * die weder v_currency noch tln_vow_token sind.
-   */
-  if(
-    !result &&
-    (!dbRow || (!isVoucherRow(dbRow) && !isProjectToken(dbRow)))
-  ){
-    result = await ecosystemUSDPrice(
-      chain,
-      token
-    );
-  }
-
+  if(!result && dbRow && isVoucherRow(dbRow)) result = await vCurrencyUSDPrice(chain,token);
+  if(!result && dbRow && isProjectToken(dbRow)) result = await projectTokenUSDPrice(chain,token);
+  if(!result && strictCoreSymbol(token.symbol)) result = await strictDirectUSDPrice(chain,token);
+  if(!result && (!dbRow || (!isVoucherRow(dbRow) && !isProjectToken(dbRow)))) result = await ecosystemUSDPrice(chain,token);
   priceCache.set(key,result);
   return result;
 }
