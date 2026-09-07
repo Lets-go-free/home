@@ -1,0 +1,222 @@
+Übergabe-Summary – WalletTracking / TLN-VOW Discovery Stand: 07.09.2026
+Fokus: tln-vow-staking-discovery-test.html vollständig fertigstellen,
+stabilisieren und cachen. Noch nicht auf die Hauptseite wechseln.
+
+1.  AKTUELLE ARBEITSDATEI Verbindlicher Dateiname:
+    tln-vow-staking-discovery-test.html Aktuell letzter Build:
+    20260907-040731 Regeln: Datei niemals umbenennen; Timestamp und
+    BUILD_ID bei jeder Änderung aktualisieren; JS-Syntaxcheck nach jeder
+    Änderung; funktionierende/verifizierte Logik nicht unnötig umbauen;
+    kein ausführlicher sichtbarer Changelog; immer auf Deutsch
+    antworten.
+
+2.  DISCOVERY-ZIEL UND SCHRITTE Discovery ist technische
+    Referenz-/Verifikationsumgebung. Endergebnisse sollen persistent
+    gespeichert werden, damit die Hauptseite später weitgehend aus
+    Supabase lädt. Reihenfolge:
+
+1)  ERC-20 / Chain-Fakten und Cache
+2)  Staking-/LP-Discovery
+3)  Lock-/Vertragsdauer
+4)  Staking-Rewards
+5)  Referral-/Bonus-Rewards
+6)  Historische Bewertung / Stichtag 31.12.
+7)  Team-Baum / SmartNode Step 6 vor Step 7 ist bestätigt.
+
+3.  CACHING / PERSISTENZ Steps 1–5: verifizierte Endergebnisse
+    persistent in Supabase. Später höchstens ca. 1x täglich inkrementell
+    prüfen. Ohne Chain-Änderungen vorhandene Ergebnisse verwenden; nur
+    betroffene Teile neu berechnen. Step 6: historische
+    Bewertungs-/Stichtagsdaten separat persistent und mit
+    Projekt-Snapshots verbinden. Step 7: globaler SmartNode-Graph
+    persistent; Team on demand; Partner-Lifecycle persistent;
+    Partner-Details höchstens einmal täglich on demand.
+
+4.  PRODUKTIVER DISCOVERY-BEREICH Produktiver TLN/VOW-Bereich ist vom
+    roten DEV-/Analysebereich getrennt. Projektfilter „Alle meine
+    TLN/VOW-Wallets · aggregiert“ ist vom technischen walletSelect
+    getrennt. Produktive Ansichten verwenden persistente
+    Wallet-Snapshots.
+
+5.  TLN/VOW-TABS Übersicht; Staking/Rewards; Rewards Summary; Referral;
+    Bonus-Rewards; Team; Kurse und Pools; Hilfe später sinnvoll. Kein
+    eigener Historie/Stichtag-Tab. Stichtagsdaten gehören später
+    ausschließlich in „Bestandesaufnahme per 31.12.“.
+
+6.  NEUE TODO-BEREICHE Loans und Lending als zukünftige Bereiche
+    vorsehen. Noch zu definieren: Contracts, On-Chain-Erkennung,
+    fachliche Unterscheidung, Positionen/Beträge, Laufzeiten/Zinsen,
+    historische Daten, Rewards, Persistenz, UI und Aggregation. Zuerst
+    Discovery, später Hauptseite.
+
+7.  STAKING Discovery erkennt Contract, Asset, LP/Pair, Stake-Zeit,
+    Aufstockungen, Vertragsende, Unstake, Laufzeit, Status, historische
+    USD-Bewertung und Staking-Rewards. Legacy-Aufstockung: Erst-Stake
+    16.07.2024 + Aufstockung 18.07.2024 gehören zu einer Position. Bei
+    gültiger Aufstockung beginnt relevante Laufzeit neu. Neues System:
+    mehrere parallele Positionen statt Aufstockung. UI darf nicht
+    „Erst-Stake“ anzeigen, wenn Vertragsende von letzter Aufstockung
+    abhängt.
+
+8.  STAKING-REWARDS Step 4 getrennt von Referral/Bonus. Sonderregel: Ist
+    eine Tx exakt die verifizierte unstakeTx einer Position und enthält
+    dasselbe Receipt einen Reward-Mint von Zero Address direkt ans
+    Wallet, darf dieser als finaler automatischer Rest-Staking-Reward
+    derselben Position gezählt werden. Normale Underlying-Rückflüsse
+    bleiben ausgeschlossen. Mehrdeutige Legacy-Rewards bei parallelen
+    Positionen ohne Position-ID nicht heuristisch zuordnen.
+
+9.  REFERRAL Verifizierte Token: TLN
+    0xf7d142a354322c7560250caa0e2a06c89649e4c2 TLN+
+    0x29280091fa7f3abe4739ad5f1f7c5287feaf7736 TLNX
+    0x3dda9ea88136ecede768cd374a2af37219da55e7 Alle 18 Decimals.
+    Aggregation aus verifizierten strong-Tx, Deduplizierung nach
+    Tx-Hash. Mengen weiterhin auf Plausibilität testen.
+
+10. BONUS-REWARDS Eigener Bereich. claimBonus(address) verifiziert.
+    Produktive Tabelle enthält u.a. Wallet, Ausschüttungsdatum und
+    Claim-Datum. Bisher Reward-Mint/Transfer und claimBonus im gleichen
+    Receipt, daher gleicher Block-Timestamp. Nicht als zwei unabhängig
+    belegte Zeitpunkte darstellen. Bonus-Formel derzeit nicht
+    reverse-engineeren.
+
+11. STEP 6 – HISTORISCHE USD-BEWERTUNG BSC Legacy LPT:
+    0x30812DBE89b40b5B7aC1BC9134e82EbBc0b57995 ETH Origin-LP VOW/vUSD:
+    0x97BE09f2523B39B835Da9EA3857CfA1D3C660cBb ETH VOW/USDT:
+    0x1e49768714e438e789047f48fd386686a5707db2 Pfad: BSC historischer
+    Block → Timestamp → ETH-Block → VOW/vUSD Reserves + totalSupply →
+    VOW/USDT → USD je Origin-LP → 1:1 auf BSC-LPT. Cache-Version:
+    snapshot-valuation-v4-legacy-stake-market-price. Step-6-Werte werden
+    in produktive Projekt-Snapshots gemerged.
+
+12. ETH-STAKINGS / REWARDS 2023 – TODO 2023 liefen TLN/VOW-Stakings und
+    Rewards auf Ethereum. Noch vollständig abbilden:
+    ETH-Staking-Contracts, LPs/Tokens, Stakes, Unstakes, Laufzeiten,
+    Staking-Rewards, ggf. Referral/andere Rewards, historische
+    USD-Bewertung und Übergang ETH → BSC.
+
+13. TEAM / STEP 7 Persistente Tabellen: tln_vow_smartnode_graph_cache
+    und tln_vow_smartnode_graph_state. Zuletzt ca. 12’924 verifizierte
+    Child→Parent-Kanten, 34 sichtbare Wallets, 30 Partner-Lifecycles aus
+    persistentem Team-Cache. Step 7 danach primär inkrementelle
+    Aktualisierung/Nachverifikation.
+
+14. TEAM-REGEL Wallet ohne aktives Staking erhält keine
+    Referral-Rewards. Team-Discovery darf aber niemals aus
+    Referral-Rewards abgeleitet oder darauf begrenzt werden.
+    SmartNode-/Join-Graph ist maßgebliche Teamquelle.
+
+15. NEUE SMARTNODE-/REGISTRY-GENERATION Beispiel Wallet
+    0x113349b728f1374b9802eb8c0263cd8ce1899e89, TLN-ID 990000017795,
+    Registry 0x5c9ed6921a824e44a8db6ca041e03a59a63cb35c. Verifiziert
+    über nodeIdOf(address) + nodeUserOf(uint256). Upline aus
+    join(address).
+
+16. ROOT-UPLINE TLN-ID Direkte Upline wird oberhalb Root dargestellt,
+    als UPLINE markiert, optisch zurückhaltend, mit Staking-Infos und
+    Details. Für 0xd98c78…7db059 TLN-ID noch nicht abschließend
+    bestätigt. Aktueller Weg: persistente Identity → eigene Join-Tx aus
+    vollständigem Globalgraph → tatsächlicher Registry-Contract →
+    nodeIdOf → nodeUserOf → Legacy-Getter → zuletzt Wallet-History. Noch
+    testen.
+
+17. TLN-ID / WALLET-SUCHE Produktiv in Übersicht. Wallet → TLN-ID:
+    Supabase Cache → Globalgraph/eigene join-Tx → tatsächliche Registry
+    → nodeIdOf → nodeUserOf → Legacy SmartNode → zuletzt Wallet-History.
+    TLN-ID → Wallet: letzter Fehler cacheResolvedTlnIdentity is not
+    defined wurde in Build 20260907-040731 behoben. Produktiver Lookup
+    nutzt TEAM_IDENTITY_CACHE, lookupPersistIdentity und Supabase. Als
+    Nächstes testen: TLN-ID 22 → Wallet; 7205 → Wallet; bekannte Wallet
+    → ID; Root-Upline → ID; Reload und Cache-Wiederverwendung.
+
+18. PARTNER-DETAILS Details-Button im Team-Baum. Popup ähnlich
+    Staking-Tab, aber ohne Rewards. Enthält Contract, Stake-Zeit,
+    Vertragsende, Unstake, Laufzeit, Asset, USD-Werte, Status. Cache:
+    Seitenstart nur persistent; Details-Klick bei Daten <24h Cache,
+    sonst genau dieses Wallet neu laden; danach persistent speichern.
+    Historische USD-Werte ebenfalls on demand.
+
+19. TEAM-HERVORHEBUNGEN Checkboxen für kein aktives Staking,
+    abgelaufen/nicht unstaked, Ablauf innerhalb 20 Tagen. Checkboxen in
+    Build 20260907-040426 explizit auf 18x18 px korrigiert. Visuell noch
+    bestätigen.
+
+20. TABELLEN-/UI-STIL Neuer produktiver Stil soll allgemein gelten, u.a.
+    für Staking-Übersicht, abgelaufene Stakings, nächste Abläufe,
+    Staking-Rewards, Rewards Summary, Bonus-Rewards und Reward-Details.
+    Kein blauer Tabellenhintergrund. Stattdessen dunkelgrau, etwas
+    heller als Seitenhintergrund, klare Header, dezente Trennlinien,
+    Hover, Status-Chips, kompakte Typografie. Später zentral in
+    Hauptseiten-CSS übernehmen.
+
+21. FLUIDES LAYOUT Browserbreite dynamisch nutzen. Nicht wieder auf
+    schmalen festen max-width zurückbauen.
+
+22. OFFENE DISCOVERY-ARBEITEN
+
+1)  TLN-ID-Suche testen.
+2)  Root-Upline TLN-ID verifizieren.
+3)  Checkbox-Darstellung prüfen.
+4)  Graue Tabellenstile prüfen.
+5)  Referral-Aggregation auf plausible Mengen prüfen.
+6)  Partner-Details inkl. USD an mehreren Partnern testen.
+7)  Step 7 / Team-Cache finalisieren.
+8)  Gesamt-Caching testen: Cold Start, Warm Start, täglicher
+    inkrementeller Lauf, kein unnötiger RPC-/Event-Bruteforce.
+9)  ETH-Stakings/Rewards 2023 analysieren.
+10) Loans.
+11) Lending.
+
+23. UNBEKANNTE STAKING-CONTRACTS – TODO Neu entdeckte unverifizierte
+    TLN/VOW-Staking-Contracts/-Assets persistent mit Status „zu prüfen“
+    speichern. Chris bei neuem Eintrag automatisch per E-Mail
+    informieren. Nach manueller/on-chain Verifikation auf „verifiziert“
+    setzen. Keine automatische Promotion.
+
+24. HAUPTSEITE – SPÄTER Fokus bleibt Discovery. Später übernehmen:
+    Übersicht, Staking/Rewards, Rewards Summary, Referral,
+    Bonus-Rewards, Team, Kurse/Pools, Loans, Lending. Neuen
+    Discovery-Stil zentral im Hauptseiten-CSS bereitstellen: graue
+    Tabellen, Karten, Status-Chips, Team-Karten, fluides Layout,
+    Detail-Popups.
+
+25. HAUPTSEITE – BESTANDESAUFNAHME 31.12. Step-6-Daten ausschließlich in
+    „Bestandesaufnahme per 31.12.“ integrieren. Token, LPs, Stakings,
+    historische USD-Werte und relevante Projektpositionen
+    berücksichtigen. ETH-Historie 2023 entsprechend Stichtag
+    einbeziehen.
+
+26. HAUPTSEITE – EIGENE VS. VERWALTETE WALLETS Wallet-Eigenschaft
+    own/managed vorsehen. Filter „fremde, nur verwaltete Wallets
+    ignorieren“. Bei aktivem Filter managed Wallets aus persönlichen
+    Aggregationen, Rewards, Token-/Projekt-/Staking-Summen und
+    Bestandesaufnahme ausschließen. Wallets bleiben gespeichert, einzeln
+    aufrufbar und für Support nutzbar. Im Team-Baum voraussichtlich
+    sichtbar, aber als verwaltet markieren.
+
+27. HAUPTSEITE – WALLET LÖSCHEN Vor Löschen „Sind Sie sicher?“ mit
+    Hinweis auf vollständige Datenlöschung. Danach alle walletbezogenen
+    Daten entfernen: Wallet, TLN-ID-Zuordnung, Snapshots,
+    Discovery-Endergebnisse, Caches, Projektinformationen,
+    Stichtagsdaten usw. Globale gemeinsam genutzte Referenzdaten nicht
+    löschen.
+
+28. HAUPTSEITE – TÄGLICHE AKTUALISIERUNG Keine manuellen Steps.
+    Gespeicherten Stand/Quellblock prüfen, höchstens täglich relevante
+    Chain-Änderungen feststellen, ohne Änderungen Cache verwenden, bei
+    Änderungen nur betroffene Teile neu berechnen und persistieren. Team
+    separat on demand.
+
+29. CACHE-VERSIONIERUNG Nicht pauschal alle Caches vernichten. Fachlich
+    getrennte Cache-Versionen; nur betroffene Derived-Caches
+    invalidieren; teure verifizierte Chain-Fakten wiederverwenden.
+    Cold-Start-Performance ebenso optimieren wie Warm-Cache.
+
+30. STARTPUNKT NÄCHSTER CHAT Datei: tln-vow-staking-discovery-test.html
+    Build: 20260907-040731
+
+Als Erstes TLN-ID-/Wallet-Suche und Root-Upline-TLN-ID testen.
+
+Fokus: Discovery-Seite fachlich korrekt, vollständig, performant und
+persistent gecacht fertigstellen. Erst danach Hauptseiten-Integration.
+Danach insbesondere ETH-Stakings/Rewards 2023 sowie Loans und Lending.
