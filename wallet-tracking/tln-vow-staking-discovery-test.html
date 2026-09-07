@@ -160,7 +160,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 12:26:38 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 13:38:30 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -376,7 +376,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-122638';
+const BUILD_ID='20260907-133830';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -490,7 +490,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 12:26:38 CEST';
+const APP_VERSION='07.09.2026 13:38:30 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13995,23 +13995,35 @@ async function teamBatchPositionCalls(wallets,{forceFresh=false}={}){
       if(!receipt)receiptStillMissing++;
       c._receipt=receipt;c._success=receipt?.status==null?null:Number(BigInt(receipt.status))===1;c._erc20Transfers=receiptErc20Transfers(receipt);
       const methodLower=String(c._method||'').toLowerCase();
-      let positionKind=methodLower==='stake'?'stake':methodLower==='unstake'?'unstake':null;
-      let evidence=positionKind?`selector:${methodLower}`:null;
-      if(!positionKind&&receipt&&c._success!==false){
-        const wallet=norm(c._teamWallet),called=norm(c._staking?.contract_address||c.to||'');
-        const stakeTopic3=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-        const stakeTopic4=ethers.id('Stake(address,uint256,uint256,uint256)').toLowerCase();
+      const wallet=norm(c._teamWallet),called=norm(c._staking?.contract_address||c.to||'');
+      const stakeTopic3=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
+      const stakeTopic4=ethers.id('Stake(address,uint256,uint256,uint256)').toLowerCase();
+      // Ein bekannter stake()-Selector beweist nur, DASS der Sender eine Stake-Funktion
+      // aufgerufen hat – nicht, FUER WELCHES Wallet die Position angelegt wurde. Bei
+      // Operator-/Admin-Wallets koennen so hunderte Stakes fuer fremde User entstehen.
+      // Sobald das Receipt ein explizites Stake(address user,...) Event enthaelt, ist die
+      // dort kodierte User-Adresse die staerkere Eigentums-Evidenz. Ein Selector-Stake
+      // wird fuer das gesuchte Wallet daher verworfen, wenn ausschließlich andere User
+      // im Stake-Event stehen. Alte Generationen ohne solches User-Event behalten den
+      // bisherigen Selector-Fallback.
+      const allStakeEvents=(receipt?.logs||[]).filter(l=>{
+        const t0=norm(l?.topics?.[0]);
+        return (t0===stakeTopic3||t0===stakeTopic4)&&!!l?.topics?.[1];
+      });
+      const stakeEvents=allStakeEvents.filter(l=>norm('0x'+String(l.topics[1]).slice(-40))===wallet);
+      const explicitForeignStake=methodLower==='stake'&&allStakeEvents.length>0&&stakeEvents.length===0;
+      let positionKind=explicitForeignStake?null:(methodLower==='stake'?'stake':methodLower==='unstake'?'unstake':null);
+      let evidence=explicitForeignStake?'excluded:selector-stake-for-other-wallet':(positionKind?`selector:${methodLower}`:null);
+      if(explicitForeignStake){
+        const users=[...new Set(allStakeEvents.map(l=>norm('0x'+String(l.topics[1]).slice(-40))).filter(ethers.isAddress))];
+        log(`Team-Lifecycle Fremd-Stake ausgeschlossen: Sender ${short(wallet)} rief stake() auf, Receipt weist Position aber ${users.length===1?`User ${short(users[0])}`:`${users.length} anderen Usern`} zu · Tx ${short(norm(c.hash||''))}.`,'muted');
+      }
+      if(!positionKind&&!explicitForeignStake&&receipt&&c._success!==false){
         // Neue Entry-/Router-Generationen koennen den eigentlichen Stake in einem zweiten
         // Contract ausfuehren. Der neue Cave-Staking-Contract emittiert dabei
         // Stake(address user,uint256 caveId,uint256 tokenId,uint256 amount). Dieses Event
         // ist staerker als der aeltere 3-Parameter-Wrapper-Event, weil es die echte
         // Positions-ID (tokenId) und caveId enthaelt. Deshalb 4-Parameter-Event bevorzugen.
-        const stakeEvents=(receipt.logs||[]).filter(l=>{
-          const t0=norm(l?.topics?.[0]);
-          if((t0!==stakeTopic3&&t0!==stakeTopic4)||!l?.topics?.[1])return false;
-          const eventWallet=norm('0x'+String(l.topics[1]).slice(-40));
-          return eventWallet===wallet;
-        });
         const stakeEvent=stakeEvents.find(l=>norm(l?.topics?.[0])===stakeTopic4)||stakeEvents[0]||null;
         const outgoing=(c._erc20Transfers||[]).filter(tr=>norm(tr.from)===wallet&&tr.token&&tr.amountRaw!=null);
         const recheckHints=TEAM_LIFECYCLE_RECHECK_HINTS.get(wallet)||[];
