@@ -67,6 +67,7 @@ function exportProjectPrice(chain,address,result,kind="token"){
 }
 const v3PoolCache = new Map();
 const poolTypeCache = new Map();
+const lpSymbolCache = new Map();
 
 /*
  * Preisgraph pro Chain.
@@ -79,6 +80,14 @@ const graphCache = {};
 ========================================================= */
 function norm(x){ return String(x || "").trim().toLowerCase(); }
 function same(a,b){ return !!a && !!b && norm(a) === norm(b); }
+
+function configureSharedPriceEngine(){
+  if(!window.WalletPriceEngine) return;
+  window.WalletPriceEngine.configure(() => ({
+    provider: chain => providers[chain] || null,
+    tokenMeta: async (chain,address) => await getToken(chain,address)
+  }));
+}
 
 function fmt(value, decimals=8){
   if(value === null || value === undefined || !Number.isFinite(value)) return "-";
@@ -357,17 +366,19 @@ async function findPair(chain,tokenA,tokenB){
    V2 PRICE
 ========================================================= */
 async function getV2Price(chain,pairAddress,baseToken){
+  if(window.WalletPriceEngine){
+    configureSharedPriceEngine();
+    return await window.WalletPriceEngine.getV2Price(chain,pairAddress,baseToken,"latest");
+  }
+
   const pair = new ethers.Contract(pairAddress,V2_ABI,providers[chain]);
   const [a,b,res] = await Promise.all([pair.token0(),pair.token1(),pair.getReserves()]);
   const [t0,t1] = await Promise.all([getToken(chain,a),getToken(chain,b)]);
-
   const r0 = Number(ethers.formatUnits(res[0],t0.decimals));
   const r1 = Number(ethers.formatUnits(res[1],t1.decimals));
   if(!r0 || !r1) return null;
-
   if(same(baseToken,a)) return {price:r1/r0,quote:t1.address};
   if(same(baseToken,b)) return {price:r0/r1,quote:t0.address};
-
   return null;
 }
 
@@ -1297,22 +1308,23 @@ async function detectPoolType(chain,address){
   if(!providers[chain]) throw new Error(`${chain}: RPC-Provider für Pool ${address} fehlt.`);
   if(!ethers.isAddress(address)) throw new Error(`${chain}: Ungültige Pool-Adresse ${address}.`);
 
-  const minimal = new ethers.Contract(
-    address,
-    ["function factory() view returns (address)"],
-    providers[chain]
-  );
-
   let factory;
-  try{ factory = await minimal.factory(); }
-  catch(e){
-    throw new Error(`${chain}: ${address} · factory() fehlgeschlagen: ${e?.shortMessage || e?.reason || e?.message || e}`);
+  try{
+    if(window.WalletPriceEngine){
+      configureSharedPriceEngine();
+      const state = await window.WalletPriceEngine.getPairState(chain,address,"latest");
+      factory = state.factory;
+    }else{
+      const minimal = new ethers.Contract(address,["function factory() view returns (address)"],providers[chain]);
+      factory = await minimal.factory();
+    }
+  }catch(e){
+    throw new Error(`${chain}: ${address} · Pool-State/factory() fehlgeschlagen: ${e?.shortMessage || e?.reason || e?.message || e}`);
   }
 
   let type = null;
   if(same(factory,CONFIG[chain].v2Factory)) type = "v2";
   if(CONFIG[chain]?.v3Factory && same(factory,CONFIG[chain].v3Factory)) type = "v3";
-
   if(!type) throw new Error(`${chain}: ${address} gehört nicht zu einer konfigurierten V2/V3-Factory (factory=${factory}).`);
   poolTypeCache.set(key,type);
   return type;
@@ -1323,11 +1335,38 @@ async function detectPoolType(chain,address){
 ========================================================= */
 async function readV2Pool(chain,address){
   if(!providers[chain]) throw new Error(`${chain}: RPC-Provider für Pool ${address} fehlt.`);
-  const pair = new ethers.Contract(address,V2_ABI,providers[chain]);
 
-  // Kernfunktionen müssen funktionieren; wir lesen sie bewusst einzeln fehlertolerant
-  // und melden exakt, welcher Contract-Read fehlschlägt. So kann ein RPC-Revert nicht
-  // mehr als anonyme JSON-Meldung erscheinen. LP-Metadaten wie symbol() bleiben optional.
+  if(window.WalletPriceEngine){
+    configureSharedPriceEngine();
+    const state = await window.WalletPriceEngine.getPairState(chain,address,"latest");
+    if(!same(state.factory,CONFIG[chain].v2Factory)) throw new Error("Pool gehört nicht zur erwarteten V2-Factory.");
+
+    const lpSymbolKey = chain + ":" + norm(address);
+    let lpSymbol = lpSymbolCache.get(lpSymbolKey) || "LP";
+    if(!lpSymbolCache.has(lpSymbolKey)){
+      try {
+        const pair = new ethers.Contract(address,["function symbol() view returns (string)"],providers[chain]);
+        lpSymbol = String(await pair.symbol());
+      } catch(e) {
+        console.warn(`TLN/VOW ${chain} ${address}: LP symbol() nicht verfügbar`, e);
+      }
+      lpSymbolCache.set(lpSymbolKey,lpSymbol);
+    }
+
+    return {
+      type:"v2",
+      address,
+      token0:state.token0,
+      token1:state.token1,
+      r0:state.reserve0,
+      r1:state.reserve1,
+      lpSupply:state.totalSupply,
+      lpDecimals:state.lpDecimals,
+      lpSymbol
+    };
+  }
+
+  const pair = new ethers.Contract(address,V2_ABI,providers[chain]);
   const coreCalls = [
     ["token0()", () => pair.token0()],
     ["token1()", () => pair.token1()],
@@ -1348,24 +1387,9 @@ async function readV2Pool(chain,address){
   try { lpSymbol = String(await pair.symbol()); } catch(e) {
     console.warn(`TLN/VOW ${chain} ${address}: LP symbol() nicht verfügbar`, e);
   }
-
-  if(!same(factory,CONFIG[chain].v2Factory)){
-    throw new Error("Pool gehört nicht zur erwarteten V2-Factory.");
-  }
-
+  if(!same(factory,CONFIG[chain].v2Factory)) throw new Error("Pool gehört nicht zur erwarteten V2-Factory.");
   const [t0,t1] = await Promise.all([getToken(chain,token0),getToken(chain,token1)]);
-
-  return {
-    type:"v2",
-    address,
-    token0:t0,
-    token1:t1,
-    r0:Number(ethers.formatUnits(reserves[0],t0.decimals)),
-    r1:Number(ethers.formatUnits(reserves[1],t1.decimals)),
-    lpSupply:Number(ethers.formatUnits(totalSupply,Number(lpDecimals))),
-    lpDecimals:Number(lpDecimals),
-    lpSymbol
-  };
+  return {type:"v2",address,token0:t0,token1:t1,r0:Number(ethers.formatUnits(reserves[0],t0.decimals)),r1:Number(ethers.formatUnits(reserves[1],t1.decimals)),lpSupply:Number(ethers.formatUnits(totalSupply,Number(lpDecimals))),lpDecimals:Number(lpDecimals),lpSymbol};
 }
 
 /* =========================================================
@@ -1700,6 +1724,7 @@ async function loadDashboard(chain){
     tokenCache.clear();
     pairCache.clear();
     priceCache.clear();
+    if(window.WalletPriceEngine){ configureSharedPriceEngine(); window.WalletPriceEngine.clearCurrent(); }
     v3PoolCache.clear();
     poolTypeCache.clear();
     projectChains.forEach(c => graphCache[c]=null);
