@@ -3536,7 +3536,7 @@ async function evmRelevantActivitySince(w,chain,state){
 }
 function renderCentralRefreshProgress(lines=[]){
   const el=document.getElementById('centralRefreshProgress');if(!el)return;
-  el.innerHTML=lines.length?`<div class="custom-token-card"><strong>Aktualisierung</strong><div class="note" style="margin-top:7px">${lines.map(x=>escapeAttr(x)).join('<br>')}</div></div>`:'';
+  el.innerHTML=lines.length?`<div class="custom-token-card"><strong>Datenaktualisierung</strong><div class="note" style="margin-top:7px">${lines.map(x=>escapeAttr(x)).join('<br>')}</div></div>`:'';
 }
 async function refreshNftsForWallet(w,onProgress=null){
   const chains=nftChains();let walletNfts=[],errors=[];
@@ -3632,9 +3632,20 @@ async function loadAll(options = {}) {
   // LP-/Staking-Cache in die Tokenübersicht einmischen und aktuelle LP-Werte für Wallet-LPs bewerten.
   if(window.WalletLPEngine){for(const w of wallets){for(const chain of Object.keys(walletData[w.id]||{})){const cd=walletData[w.id]?.[chain];if(!cd?.tokens||!w.evm)continue;for(const t of cd.tokens){try{const p=await window.WalletLPEngine.pairInfo(chain,t.address);if(!p)continue;const pos=(await window.WalletLPEngine.positions(chain,w.evm,[t.address]))[0];if(pos)t.lpInfo=pos;}catch{}}}}}
   await mergeTlnBscStakingCacheIntoWalletData();renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();
-  if(failures.length===0){await createSnapshot(true);renderCacheStatusNote(automatic?'Tägliche Prüfung abgeschlossen · relevante Änderungen aktualisiert.':'Vollständige Aktualisierung abgeschlossen.');}
-  else renderCacheStatusNote(`Aktualisierung mit ${failures.length} Hinweis${failures.length===1?'':'en'} abgeschlossen. Letzter vollständiger Cache bleibt als Fallback erhalten.`);
-  progress.push(failures.length?'⚠ Fertig mit Hinweisen':'✓ Fertig');renderCentralRefreshProgress(progress);renderWalletDataFreshness();if(btn)btn.disabled=false;return {failures};
+  if(failures.length===0){
+    await createSnapshot(true);
+    renderCacheStatusNote(automatic?'Tägliche Prüfung abgeschlossen · relevante Änderungen aktualisiert.':'Vollständige Aktualisierung abgeschlossen.');
+    progress.push('✓ Fertig');
+  }else{
+    renderCacheStatusNote(`Aktualisierung mit ${failures.length} Hinweis${failures.length===1?'':'en'} abgeschlossen. Letzter vollständiger Cache bleibt als Fallback erhalten.`);
+    progress.push(`⚠ ${failures.length} Hinweis${failures.length===1?'':'e'} aus der Datenaktualisierung:`);
+    for(const failure of failures){
+      const detail=String(failure?.error||failure?.message||'Unbekannter Fehler');
+      progress.push(`  ↳ ${detail}`);
+    }
+    progress.push(`⚠ Fertig mit ${failures.length} Hinweis${failures.length===1?'':'en'}`);
+  }
+  renderCentralRefreshProgress(progress);renderWalletDataFreshness();if(btn)btn.disabled=false;return {failures};
 }
 
 // ---- Rendering ----
