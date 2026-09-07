@@ -160,7 +160,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 14:50:42 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 14:58:41 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -376,7 +376,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-145042';
+const BUILD_ID='20260907-145841';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -490,7 +490,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 14:50:42 CEST';
+const APP_VERSION='07.09.2026 14:58:41 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -5472,7 +5472,31 @@ async function contractCodeProfile(contract){
       return [...out].sort();
     };
     const runtimeSelectorCandidates=[...new Set([...dispatchSelectorCandidates(bytecode),...dispatchSelectorCandidates(implBytecode)])].sort();
-    return {contract,implementation,bytecode,implBytecode,dynamicProxy,selectorSupport,runtimeSelectorCandidates,bytecodeSize:Math.max(0,(bytecode.length-2)/2),implementationBytecodeSize:Math.max(0,(implBytecode.length-2)/2)};
+    // Engere Dispatcher-Erkennung: nur PUSH4-Werte, die im Opcode-Pfad kurz danach
+    // tatsächlich mit EQ/GT/LT verglichen werden. Dadurch fallen Custom-Error-Selectoren,
+    // ERC20-Konstanten und sonstige PUSH4-Daten weitgehend aus der ABI-Diagnose heraus.
+    const dispatcherSelectors=(hex)=>{
+      let h=String(hex||'0x').replace(/^0x/,'').toLowerCase();
+      const bad=h.search(/[^0-9a-f]/);if(bad>=0)h=h.slice(0,bad);
+      const ops=[];
+      for(let pc=0;pc*2+2<=h.length;){
+        const op=parseInt(h.slice(pc*2,pc*2+2),16);if(!Number.isFinite(op))break;
+        if(op>=0x60&&op<=0x7f){const n=op-0x5f,imm=h.slice(pc*2+2,pc*2+2+n*2);ops.push({pc,op,imm});pc+=1+n}
+        else{ops.push({pc,op,imm:''});pc++}
+      }
+      const out=new Set();
+      for(let i=0;i<ops.length;i++){
+        const o=ops[i];if(o.op!==0x63||o.imm.length!==8)continue;
+        // Solidity-Dispatcher vergleichen den Selector üblicherweise direkt per EQ,
+        // bei binärer Suche teils zunächst GT/LT. Revert-/MSTORE-Konstanten tun dies nicht.
+        const next=ops.slice(i+1,Math.min(ops.length,i+9));
+        if(next.some(x=>x.op===0x14||x.op===0x10||x.op===0x11))out.add('0x'+o.imm);
+      }
+      return [...out].sort();
+    };
+    const runtimeDispatcherSelectors=dispatcherSelectors(bytecode);
+    const implementationDispatcherSelectors=dispatcherSelectors(implBytecode);
+    return {contract,implementation,bytecode,implBytecode,dynamicProxy,selectorSupport,runtimeSelectorCandidates,runtimeDispatcherSelectors,implementationDispatcherSelectors,bytecodeSize:Math.max(0,(bytecode.length-2)/2),implementationBytecodeSize:Math.max(0,(implBytecode.length-2)/2)};
   })();
 
   CONTRACT_CODE_PROFILE_CACHE.set(contract,p);
@@ -5575,6 +5599,9 @@ async function probeStakingContract(lot,wallet){
    const knownSet=new Set(SC_READ_PROBES.map(p=>selectorFor(p.sig)));
    const unknown=(profile.runtimeSelectorCandidates||[]).filter(sel=>!knownSet.has(sel));
    if(unknown.length)log(`Contract-ABI-Diagnose ${short(contract)}: weitere PUSH4-Selector-Kandidat(en) im Runtime-Bytecode (${unknown.length}): ${unknown.slice(0,40).join(', ')}${unknown.length>40?' …':''}.`,'warn');
+   const dispatcher=[...new Set([...(profile.implementationDispatcherSelectors||[]),...(profile.runtimeDispatcherSelectors||[])])];
+   const unknownDispatcher=dispatcher.filter(sel=>!knownSet.has(sel));
+   log(`Contract-ABI-Diagnose ${short(contract)}: ${profile.implementation?`EIP-1967 Implementation ${short(profile.implementation)} · `:''}enge Dispatcher-Selector(en) ${dispatcher.length}: ${dispatcher.join(', ')||'keine'}${unknownDispatcher.length?` · davon unbekannt ${unknownDispatcher.length}: ${unknownDispatcher.join(', ')}`:''}.`,'warn');
    if(results.length){
      const values=results.map(r=>{const w=rawWords(r.raw)?.[0];const v=w?.uint!=null?String(w.uint):String(r.raw||'').slice(0,66);return `${r.label} → ${v}`});
      log(`Contract-ABI-Diagnose ${short(contract)}: erfolgreiche bekannte Read-Probe(s): ${values.join(' · ')}.`,'muted');
@@ -5589,6 +5616,79 @@ async function probeStakingContract(lot,wallet){
    implementationBytecodeSize:profile.implementationBytecodeSize,
    capabilitySkipped:skipped
  };
+}
+
+
+const UNKNOWN_SELECTOR_READ_CACHE=new Map();
+const UNKNOWN_SELECTOR_DIAG_VERSION='dispatcher-read-v1';
+const UNKNOWN_SELECTOR_SKIP=new Set([
+  '0xa694fc3a', // stake(uint256) - Write
+  '0xa9059cbb', // ERC20 transfer(address,uint256)
+  '0x23b872dd', // ERC20 transferFrom(address,address,uint256)
+  '0x40c10f19', // mint(address,uint256)
+  '0x1459457a', // initialize(...)
+  '0xbc9699f1', // beobachteter unstake(uint256,uint8) / Write
+  '0x4e487b71', // Solidity Panic(uint256)
+  '0x9996b315', // AddressEmptyCode(address) Custom Error
+  '0xb398979f', // ERC1967NonPayable() Custom Error
+  '0xffffffff'
+]);
+function unknownSelectorDiagFingerprint(){return `${UNKNOWN_SELECTOR_DIAG_VERSION}|${durationProbeFingerprint()}`}
+function encodeUnknownSelectorCall(selector,shape,wallet){
+  selector=String(selector||'').toLowerCase();
+  if(shape==='none')return selector;
+  if(shape==='address')return selector+ethers.AbiCoder.defaultAbiCoder().encode(['address'],[wallet]).slice(2);
+  return null;
+}
+function compactUnknownRaw(raw){
+  const words=rawWords(raw);if(!words.length)return String(raw||'0x').slice(0,130);
+  return words.slice(0,6).map((w,i)=>{
+    if(w.uint==null)return `W${i}=${w.word}`;
+    const n=Number(w.uint),ts=Number.isFinite(n)?humanTimestamp(n):null;
+    const dur=Number.isFinite(n)&&n>=3600&&n<=10*366*86400?`${(n/86400).toLocaleString('de-CH',{maximumFractionDigits:8})}d`:null;
+    return `W${i}=${w.uint.toString()}${ts?` (${ts})`:dur?` (${dur})`:''}`;
+  }).join(' · ')+(words.length>6?` · +${words.length-6} Wort(e)`:``);
+}
+async function probeUnknownDispatcherReads(lot,wallet){
+  const contract=lotContractAddress(lot),anchorTs=lotStakeTsSeconds(lot);
+  if(!ethers.isAddress(contract)||!ethers.isAddress(wallet))return {proven:false,attempted:0,hits:[]};
+  const profile=await contractCodeProfile(contract);
+  const knownSet=new Set(SC_READ_PROBES.map(p=>selectorFor(p.sig)));
+  // Bei Proxy-Verträgen ist die Implementation maßgeblich. Runtime-Dispatcher nur verwenden,
+  // wenn keine Implementation erkannt wurde; sonst würden Proxy-Admin-/Fallback-Selectoren
+  // als vermeintliche Staking-Getter geprüft.
+  const base=(profile.implementation?(profile.implementationDispatcherSelectors||[]):(profile.runtimeDispatcherSelectors||[]));
+  const selectors=[...new Set(base)].filter(sel=>!knownSet.has(sel)&&!UNKNOWN_SELECTOR_SKIP.has(sel)).slice(0,20);
+  if(!selectors.length)return {proven:false,attempted:0,hits:[]};
+  const cacheKey=`${contract}|${norm(wallet)}|${selectors.join(',')}`;
+  if(UNKNOWN_SELECTOR_READ_CACHE.has(cacheKey))return UNKNOWN_SELECTOR_READ_CACHE.get(cacheKey);
+  const jobs=[];
+  for(const selector of selectors){for(const shape of ['none','address']){const data=encodeUnknownSelectorCall(selector,shape,wallet);if(data)jobs.push({selector,shape,call:{method:'eth_call',params:[{to:contract,data},'latest']}})}}
+  let rr=[];try{rr=await rpcManyDiscovery(jobs.map(x=>x.call),40)}catch(e){return {proven:false,attempted:jobs.length,hits:[],error:String(e?.message||e)}}
+  const hits=[];
+  for(let i=0;i<jobs.length;i++){
+    const raw=rr[i]?.error?null:rr[i]?.result;if(!raw||raw==='0x')continue;
+    const words=rawWords(raw);if(!words.length)continue;
+    hits.push({...jobs[i],raw,words});
+  }
+  if(hits.length){
+    log(`Contract-ABI-Read-Diagnose ${short(contract)}: ${hits.length}/${jobs.length} sichere eth_call-Test(s) auf unbekannte Dispatcher-Selectoren lieferten Daten (nur Read-Simulation, keine Transaktion).`,'warn');
+    for(const h of hits.slice(0,24))log(`Contract-ABI-Read-Diagnose ${short(contract)}: ${h.selector}(${h.shape==='address'?'wallet':'ohne Argument'}) → ${compactUnknownRaw(h.raw)}.`,'warn');
+  }else log(`Contract-ABI-Read-Diagnose ${short(contract)}: ${jobs.length} Read-Simulation(en) auf ${selectors.length} unbekannte Dispatcher-Selector(en) ohne verwertbare Rückgabe.`,'info');
+
+  // Unbekannte Selector-Semantik wird NICHT als Duration geraten. Ein einzelner Unix-Zeitwert
+  // ist aber wertvoller Diagnosekandidat und wird explizit markiert, damit die Signatur danach
+  // gezielt verifiziert werden kann.
+  const timing=[];
+  for(const h of hits){
+    if(h.words.length!==1||h.words[0].uint==null)continue;
+    const n=Number(h.words[0].uint);
+    if(Number.isFinite(anchorTs)&&Number.isFinite(n)&&n>anchorTs&&n<=anchorTs+10*366*86400&&humanTimestamp(n))timing.push({selector:h.selector,shape:h.shape,value:n,type:'timestamp'});
+    else if(Number.isFinite(n)&&n>=3600&&n<=10*366*86400)timing.push({selector:h.selector,shape:h.shape,value:n,type:'duration_candidate'});
+  }
+  if(timing.length)log(`Contract-ABI-Read-Diagnose ${short(contract)}: Zeit-/Dauer-Kandidat(en) gefunden, aber wegen unbekannter ABI noch KEIN Strict-Proof: ${timing.map(x=>`${x.selector}/${x.shape}=${x.value}${x.type==='timestamp'?` (${new Date(x.value*1000).toLocaleString('de-CH')})`:` (${(x.value/86400).toLocaleString('de-CH',{maximumFractionDigits:8})} Tage?)`}`).join(' · ')}.`,'warn');
+  const result={proven:false,attempted:jobs.length,hits,timing,selectors,profileFingerprint:unknownSelectorDiagFingerprint()};
+  UNKNOWN_SELECTOR_READ_CACHE.set(cacheKey,result);return result;
 }
 
 function secondsDurationFromProbeResult(r){
@@ -11712,6 +11812,12 @@ async function resolveDurationStrictOnce(lot,label=''){
     return {proven:true,cacheHit:false,sharedRule:false,directGetter:true};
   }
 
+  // Für neue Contract-Generationen mit unbekannter ABI prüfen wir ausschließlich die eng
+  // als Dispatcher erkannten Selector-Kandidaten per eth_call mit 0 bzw. 1 address-Argument.
+  // Das ist eine reine Read-Simulation und erzeugt niemals eine Chain-Transaktion. Ergebnisse
+  // werden nur diagnostiziert; unbekannte Semantik wird nicht automatisch zur Lockdauer erklärt.
+  await probeUnknownDispatcherReads(lot,norm(CURRENT_WALLET)).catch(e=>log(`Duration ${label}: unbekannte Dispatcher-Read-Diagnose fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info'));
+
   // Ein bereits vollständig geprüfter, aber nicht streng beweisbarer Duration-Fall soll
   // bei öffentlichen Lookup-Klicks nicht immer wieder dieselbe teure Referenzengine starten.
   // Der Negativcache beweist KEINE Lockdauer und macht den Lifecycle NICHT verifiziert;
@@ -11720,7 +11826,7 @@ async function resolveDurationStrictOnce(lot,label=''){
   const inconclusive=await loadTechnicalProcessCache(DISCOVERY_PROCESS.wallet,inconclusiveKey,TECH_CACHE_VERSIONS.duration).catch(()=>null);
   const inconclusiveAge=inconclusive?.savedAt?Date.now()-Date.parse(inconclusive.savedAt):Infinity;
   const sameContract=!inconclusive?.stakingContract||norm(inconclusive.stakingContract)===norm(contract);
-  const currentProbeFingerprint=durationProbeFingerprint();
+  const currentProbeFingerprint=unknownSelectorDiagFingerprint();
   const sameProbeSet=String(inconclusive?.probeFingerprint||'')===currentProbeFingerprint;
   if(inconclusive&&sameContract&&!sameProbeSet){
     log(`Duration ${label}: alter 24-h-Negativcache für ${safePairLabel(lot)} verworfen, weil sich die Endzeit-/Duration-Probe-Liste geändert hat. Neue Contract-Getter werden geprüft.`,'info');
@@ -11747,7 +11853,7 @@ async function resolveDurationStrictOnce(lot,label=''){
     stakingContract:norm(contract),
     pairLabel:safePairLabel(lot),
     reason:lot?.lockEvidence?.reason||lot?.durationReference?.verdict?.text||'Vollständige Referenzengine ohne belastbaren Strict-Proof',
-    probeFingerprint:durationProbeFingerprint(),
+    probeFingerprint:unknownSelectorDiagFingerprint(),
     savedAt:new Date().toISOString()
   },0).catch(()=>false);
   return {proven:false,cacheHit:false,sharedRule:false};
