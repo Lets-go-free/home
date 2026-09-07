@@ -160,7 +160,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 15:28:43 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 15:35:04 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -376,7 +376,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-152843';
+const BUILD_ID='20260907-153504';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -490,7 +490,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 15:28:43 CEST';
+const APP_VERSION='07.09.2026 15:35:04 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -5620,7 +5620,7 @@ async function probeStakingContract(lot,wallet){
 
 
 const UNKNOWN_SELECTOR_READ_CACHE=new Map();
-const UNKNOWN_SELECTOR_DIAG_VERSION='dispatcher-read-v4-position-record-address-fix';
+const UNKNOWN_SELECTOR_DIAG_VERSION='dispatcher-read-v5-position-record-uint160';
 const UNKNOWN_SELECTOR_SKIP=new Set([
   '0xa694fc3a', // stake(uint256) - Write
   '0xa9059cbb', // ERC20 transfer(address,uint256)
@@ -5715,7 +5715,7 @@ async function probeUnknownDispatcherReads(lot,wallet){
   const indexedRecordSelectors=[...new Set(indexedHits.filter(h=>h.shape==='uint'&&h.words?.length>=5).map(h=>h.selector))];
   for(const selector of indexedRecordSelectors.slice(0,4)){
     const scanJobs=[];
-    for(let idx=0;idx<32;idx++){
+    for(let idx=0;idx<64;idx++){
       const data=encodeUnknownSelectorCall(selector,'uint',wallet,idx);
       scanJobs.push({selector,shape:'uint',index:idx,blockTag:'latest',call:{method:'eth_call',params:[{to:contract,data},'latest']}});
     }
@@ -5724,14 +5724,17 @@ async function probeUnknownDispatcherReads(lot,wallet){
       for(let i=0;i<scanJobs.length;i++){
         const raw=sr[i]?.error?null:sr[i]?.result;if(!raw||raw==='0x')continue;
         const words=rawWords(raw);if(!words.length)continue;
-        const w0=String(words[0]?.word||'').replace(/^0x/,'');
-        const addr0=w0&&w0.length===64?('0x'+w0.slice(24)).toLowerCase():null;
-        if(addr0===norm(wallet))positionRecordHits.push({...scanJobs[i],raw,words,addr0});
+        let addr0=null;
+        try{
+          const u0=words[0]?.uint;
+          if(u0!=null&&u0>=0n&&u0<=(1n<<160n)-1n)addr0='0x'+u0.toString(16).padStart(40,'0');
+        }catch{}
+        if(addr0&&norm(addr0)===norm(wallet))positionRecordHits.push({...scanJobs[i],raw,words,addr0});
       }
     }catch{}
   }
   if(positionRecordHits.length){
-    log(`Contract-ABI-Positionsscan ${short(contract)}: ${positionRecordHits.length} Datensatz/Datensätze für ${short(wallet)} in Index 0–31 gefunden.`,'warn');
+    log(`Contract-ABI-Positionsscan ${short(contract)}: ${positionRecordHits.length} Datensatz/Datensätze für ${short(wallet)} in Index 0–63 gefunden.`,'warn');
     for(const h of positionRecordHits){
       const all=h.words.map((w,i)=>{
         if(w.uint==null)return `W${i}=${w.word}`;
@@ -5785,7 +5788,7 @@ async function probeUnknownDispatcherReads(lot,wallet){
   const uniqTiming=[];const seenTiming=new Set();
   for(const x of timing){const k=`${x.selector}|${x.shape}|${x.index}|${x.word}|${x.value}|${x.blockTag}`;if(seenTiming.has(k))continue;seenTiming.add(k);uniqTiming.push(x)}
   if(uniqTiming.length)log(`Contract-ABI-Read-Diagnose ${short(contract)}: Zeit-/Dauer-Kandidat(en) gefunden, aber wegen unbekannter ABI noch KEIN Strict-Proof: ${uniqTiming.slice(0,20).map(x=>`${x.selector}/${x.shape}${x.index!=null?`[${x.index}]`:''}/W${x.word}@${x.blockTag}=${x.value}${x.type==='timestamp'?` (${new Date(x.value*1000).toLocaleString('de-CH')})`:` (${(x.value/86400).toLocaleString('de-CH',{maximumFractionDigits:8})} Tage?)`}`).join(' · ')}.`,'warn');
-  const result={proven:false,attempted:jobs.length+indexedJobs.length,hits,indexedHits,historicalHits,timing:uniqTiming,selectors,profileFingerprint:unknownSelectorDiagFingerprint()};
+  const result={proven:false,attempted:jobs.length+indexedJobs.length,hits,indexedHits,positionRecordHits,historicalHits,timing:uniqTiming,selectors,profileFingerprint:unknownSelectorDiagFingerprint()};
   UNKNOWN_SELECTOR_READ_CACHE.set(cacheKey,result);return result;
 }
 
