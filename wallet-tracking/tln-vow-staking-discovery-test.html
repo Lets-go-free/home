@@ -160,7 +160,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 15:35:04 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 07.09.2026 15:48:27 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -376,7 +376,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-153504';
+const BUILD_ID='20260907-154827';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -490,7 +490,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 15:35:04 CEST';
+const APP_VERSION='07.09.2026 15:48:27 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -5620,7 +5620,7 @@ async function probeStakingContract(lot,wallet){
 
 
 const UNKNOWN_SELECTOR_READ_CACHE=new Map();
-const UNKNOWN_SELECTOR_DIAG_VERSION='dispatcher-read-v5-position-record-uint160';
+const UNKNOWN_SELECTOR_DIAG_VERSION='dispatcher-read-v6-position-367-bytecode-evidence';
 const UNKNOWN_SELECTOR_SKIP=new Set([
   '0xa694fc3a', // stake(uint256) - Write
   '0xa9059cbb', // ERC20 transfer(address,uint256)
@@ -5651,6 +5651,52 @@ function compactUnknownRaw(raw){
     return `W${i}=${w.uint.toString()}${ts?` (${ts})`:dur?` (${dur})`:''}`;
   }).join(' · ')+(words.length>6?` · +${words.length-6} Wort(e)`:``);
 }
+
+function evmPushContainsExactUint(bytecode,target){
+  let h=String(bytecode||'0x').replace(/^0x/,'').toLowerCase();
+  if(!h||/[^0-9a-f]/.test(h))return false;
+  target=BigInt(target);
+  for(let pc=0;pc*2+2<=h.length;){
+    const op=parseInt(h.slice(pc*2,pc*2+2),16);
+    if(!Number.isFinite(op))break;
+    if(op>=0x60&&op<=0x7f){
+      const n=op-0x5f,imm=h.slice(pc*2+2,pc*2+2+n*2);
+      if(imm.length===n*2){
+        try{if(BigInt('0x'+imm)===target)return true}catch{}
+      }
+      pc+=1+n;
+    }else pc++;
+  }
+  return false;
+}
+function applyExpected367Evidence(lot,diag){
+  const EXPECTED_DAYS=367,sec=EXPECTED_DAYS*86400;
+  const anchorTs=lotStakeTsSeconds(lot);
+  const profile=diag?.profile||null;
+  const records=Array.isArray(diag?.positionRecordHits)?diag.positionRecordHits:[];
+  if(!Number.isFinite(anchorTs)||anchorTs<=0||!records.length||!profile)return false;
+  const code=profile.implBytecode||profile.bytecode||'0x';
+  if(!evmPushContainsExactUint(code,BigInt(sec)))return false;
+
+  // Mindestens ein Record muss zeitlich plausibel zur Position gehören.
+  // W4 hat sich bei dieser Generation als Stake-/Positionszeit-Kandidat gezeigt.
+  const related=records.find(h=>{
+    const w4=h?.words?.[4]?.uint;
+    if(w4==null)return false;
+    const ts=Number(w4);
+    if(!Number.isFinite(ts)||!humanTimestamp(ts))return false;
+    // Erster Stake kann vor einem spaeteren Top-up-/Duration-Anker liegen.
+    return ts<=anchorTs+3600 && ts>=anchorTs-14*86400;
+  })||records[0];
+
+  lot.expectedDurationDays=EXPECTED_DAYS;
+  lot.expectedLockDurationSeconds=sec;
+  lot.expectedExpiryTime=new Date((anchorTs+sec)*1000).toISOString();
+  lot.expectedDurationConfidence='onchain-supported-hypothesis';
+  lot.expectedDurationEvidence=`Gemeinsame Implementation enthält die exakte 367-Tage-Konstante (${sec} Sekunden); ${related.selector}(${related.index}) liefert einen positionsartigen Datensatz für exakt dieses Wallet. Die ABI-/Kontrollfluss-Semantik ist noch nicht vollständig als Strict-Proof bewiesen.`;
+  return true;
+}
+
 async function probeUnknownDispatcherReads(lot,wallet){
   const contract=lotContractAddress(lot),anchorTs=lotStakeTsSeconds(lot),stakeBlock=lotStakeBlock(lot);
   if(!ethers.isAddress(contract)||!ethers.isAddress(wallet))return {proven:false,attempted:0,hits:[]};
@@ -5724,12 +5770,16 @@ async function probeUnknownDispatcherReads(lot,wallet){
       for(let i=0;i<scanJobs.length;i++){
         const raw=sr[i]?.error?null:sr[i]?.result;if(!raw||raw==='0x')continue;
         const words=rawWords(raw);if(!words.length)continue;
-        let addr0=null;
+        let addr0=null,matchWallet=false;
         try{
           const u0=words[0]?.uint;
-          if(u0!=null&&u0>=0n&&u0<=(1n<<160n)-1n)addr0='0x'+u0.toString(16).padStart(40,'0');
+          const walletUint=BigInt(norm(wallet));
+          if(u0!=null&&u0>=0n&&u0<=(1n<<160n)-1n){
+            addr0='0x'+u0.toString(16).padStart(40,'0');
+            matchWallet=(u0===walletUint);
+          }
         }catch{}
-        if(addr0&&norm(addr0)===norm(wallet))positionRecordHits.push({...scanJobs[i],raw,words,addr0});
+        if(matchWallet)positionRecordHits.push({...scanJobs[i],raw,words,addr0});
       }
     }catch{}
   }
@@ -5788,7 +5838,7 @@ async function probeUnknownDispatcherReads(lot,wallet){
   const uniqTiming=[];const seenTiming=new Set();
   for(const x of timing){const k=`${x.selector}|${x.shape}|${x.index}|${x.word}|${x.value}|${x.blockTag}`;if(seenTiming.has(k))continue;seenTiming.add(k);uniqTiming.push(x)}
   if(uniqTiming.length)log(`Contract-ABI-Read-Diagnose ${short(contract)}: Zeit-/Dauer-Kandidat(en) gefunden, aber wegen unbekannter ABI noch KEIN Strict-Proof: ${uniqTiming.slice(0,20).map(x=>`${x.selector}/${x.shape}${x.index!=null?`[${x.index}]`:''}/W${x.word}@${x.blockTag}=${x.value}${x.type==='timestamp'?` (${new Date(x.value*1000).toLocaleString('de-CH')})`:` (${(x.value/86400).toLocaleString('de-CH',{maximumFractionDigits:8})} Tage?)`}`).join(' · ')}.`,'warn');
-  const result={proven:false,attempted:jobs.length+indexedJobs.length,hits,indexedHits,positionRecordHits,historicalHits,timing:uniqTiming,selectors,profileFingerprint:unknownSelectorDiagFingerprint()};
+  const result={proven:false,attempted:jobs.length+indexedJobs.length,hits,indexedHits,positionRecordHits,historicalHits,timing:uniqTiming,selectors,profile,profileFingerprint:unknownSelectorDiagFingerprint()};
   UNKNOWN_SELECTOR_READ_CACHE.set(cacheKey,result);return result;
 }
 
@@ -11917,7 +11967,13 @@ async function resolveDurationStrictOnce(lot,label=''){
   // als Dispatcher erkannten Selector-Kandidaten per eth_call mit 0 bzw. 1 address-Argument.
   // Das ist eine reine Read-Simulation und erzeugt niemals eine Chain-Transaktion. Ergebnisse
   // werden nur diagnostiziert; unbekannte Semantik wird nicht automatisch zur Lockdauer erklärt.
-  await probeUnknownDispatcherReads(lot,norm(CURRENT_WALLET)).catch(e=>log(`Duration ${label}: unbekannte Dispatcher-Read-Diagnose fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info'));
+  const unknownDiag=await probeUnknownDispatcherReads(lot,norm(CURRENT_WALLET)).catch(e=>{
+    log(`Duration ${label}: unbekannte Dispatcher-Read-Diagnose fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info');
+    return null;
+  });
+  if(unknownDiag&&applyExpected367Evidence(lot,unknownDiag)){
+    log(`Duration ${label}: ${safePairLabel(lot)} · 367-Tage-Hypothese on-chain gestützt: Implementation enthält exakt 31'708'800 Sekunden und ein positionsartiger Wallet-Datensatz wurde gefunden. Erwarteter Ablauf ab Duration-Anker: ${new Date(lot.expectedExpiryTime).toLocaleString('de-CH')} · noch KEIN Strict-Proof.`,'warn');
+  }
 
   // Ein bereits vollständig geprüfter, aber nicht streng beweisbarer Duration-Fall soll
   // bei öffentlichen Lookup-Klicks nicht immer wieder dieselbe teure Referenzengine starten.
@@ -11936,6 +11992,8 @@ async function resolveDurationStrictOnce(lot,label=''){
     const ageMin=Math.floor(inconclusiveAge/60000);
     lot.durationDays=null;lot.lockDurationSeconds=null;lot.expiryTime=null;
     lot.durationSource=null;lot.durationEvidence=null;lot.durationConfidence=null;
+    // expectedDuration* bleibt bewusst erhalten: es ist nur eine sichtbar markierte Hypothese,
+    // kein Strict-Proof und beeinflusst den Lifecycle-Status nicht.
     lot.durationInconclusiveCacheHit=true;
     log(`Duration ${label}: ${safePairLabel(lot)} · letzter vollständiger Strict-Proof-Versuch blieb ohne belastbare Lockdauer (${ageMin} min alt). 24-h-Negativcache verwendet; Referenzengine nicht erneut gestartet.`,'warn');
     return {proven:false,cacheHit:true,sharedRule:false,inconclusiveCache:true};
@@ -15181,6 +15239,7 @@ async function teamVerifyMissingLifecycles(wallets,{forceFresh=false}={}){
 function teamLotCardHtml(l,{historical=false}={}){
   const pair=safePairLabel(l)||l?.pairLabel||l?.symbol||'Staking';
   const expiry=l?.expiryTime||l?.contractEndTime||l?.releaseTime||null;
+  const expectedExpiry=!expiry?(l?.expectedExpiryTime||null):null;
   const unstake=l?.unstakeTime||l?.closedAt||null;
   const status=historical?'completed':teamLifecycleStatusForLot(l);
   const label=status==='active'?'Aktiv':status==='expired_still_staked'?'Abgelaufen':'Unstaked';
@@ -15188,7 +15247,7 @@ function teamLotCardHtml(l,{historical=false}={}){
   return `<div class="team-stake-item">
     <div class="team-stake-head"><b>${esc(teamLotAmountText(l))} ${esc(pair)}</b><span class="team-stake-status ${cls}">${esc(label)}</span></div>
     <div class="muted">Staking: ${esc(teamFormatStakeDate(l?.stakeTime||l?.startTime,true))}</div>
-    <div class="muted">Ablauf: ${expiry?esc(teamFormatStakeDate(expiry,true)):'<span class="warn">noch nicht verifiziert</span>'}</div>
+    <div class="muted">Ablauf: ${expiry?esc(teamFormatStakeDate(expiry,true)):(expectedExpiry?`<span class="warn">${esc(teamFormatStakeDate(expectedExpiry,true))} · 367 Tage erwartet · noch nicht Strict-verifiziert</span>`:'<span class="warn">noch nicht verifiziert</span>')}</div>
     ${status==='completed'?`<div class="muted">Unstaked: ${esc(teamFormatStakeDate(unstake,true))}</div>`:''}
   </div>`;
 }
@@ -15229,6 +15288,7 @@ function teamObservedStakeEvidenceHtml(wallet){
 function teamPartialLotCardHtml(l){
   const pair=safePairLabel(l)||l?.pairLabel||l?.symbol||'Staking';
   const expiry=l?.expiryTime||l?.contractEndTime||l?.releaseTime||null;
+  const expectedExpiry=!expiry?(l?.expectedExpiryTime||null):null;
   // Bei einem noch nicht verifizierten Lifecycle zeigen wir die sicher erkannte
   // Stake-Menge. `remaining` kann durch eine noch nicht verifizierte Exit-Heuristik
   // temporaer 0 sein und darf dann nicht als wirtschaftlich unstaked dargestellt werden.
@@ -15237,7 +15297,7 @@ function teamPartialLotCardHtml(l){
   return `<div class="team-stake-item">
     <div class="team-stake-head"><b>${esc(amount)} ${esc(pair)}</b><span class="muted">Lifecycle offen</span></div>
     <div class="muted">Staking: ${esc(teamFormatStakeDate(l?.stakeTime||l?.startTime,true))}</div>
-    <div class="muted">Ablauf: ${expiry?esc(teamFormatStakeDate(expiry,true)):'<span class="warn">noch nicht verifiziert</span>'}</div>
+    <div class="muted">Ablauf: ${expiry?esc(teamFormatStakeDate(expiry,true)):(expectedExpiry?`<span class="warn">${esc(teamFormatStakeDate(expectedExpiry,true))} · 367 Tage erwartet · noch nicht Strict-verifiziert</span>`:'<span class="warn">noch nicht verifiziert</span>')}</div>
     <div class="team-node-lifecycle-note">Staking-Position on-chain erkannt; Vertrags-Lifecycle bzw. Ablauf noch nicht vollständig verifiziert. Ein Unstake wird erst nach eindeutigem separatem On-Chain-Nachweis angezeigt.</div>
   </div>`;
 }
