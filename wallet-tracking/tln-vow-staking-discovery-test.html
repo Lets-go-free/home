@@ -376,7 +376,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260907-112736';
+const BUILD_ID='20260907-114235';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -490,7 +490,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='07.09.2026 11:27:36 CEST';
+const APP_VERSION='07.09.2026 11:42:35 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13944,10 +13944,25 @@ async function teamBatchPositionCalls(wallets,{forceFresh=false}={}){
   }
   if(unstakeReturnChecks)log(`Team-Lifecycle Unstake-Recovery: ${unstakeReturnChecks} Wallet(s) gezielt geprueft · ${unstakeReturnTxAdded} LP/LPT-Rueckfluss-Tx aufgenommen · ${unstakeReturnPages} Alchemy-Seite(n).`,unstakeReturnTxAdded?'ok':'muted');
 
-  // WICHTIG: Nicht erst nach erkannter Stake-/Unstake-Methode Receipts laden. Ein neuerer
-  // oder historischer Stake-Selector kann unbekannt sein; genau das Receipt liefert dann
-  // die bereits verifizierte zweite Evidenzstufe (Stake-Event bzw. LP-/Staking-Asset-Abfluss).
-  const receiptJobs=rows;
+  // Receipt-Safety bewusst auf fachlich plausible Staking-Kandidaten begrenzen.
+  // Ein ungecachtes Wallet kann in den 14 Contract-Historien hunderte normale Contract-/
+  // ERC-20-Tx enthalten. Diese pauschal per Receipt zu pruefen ist teuer und erzeugt zudem
+  // falsche `wallet-erc20-outflow`-Kandidaten. Unbekannte Stake-Selector bleiben trotzdem
+  // abgedeckt, wenn bereits eine starke Staking-Evidenz vorliegt: bekannte Stake-/Unstake-
+  // Methode, gezielter Recovery-Seed, verifiziertes Staking-Asset oder verifizierter
+  // Staking-/Entry-Contract. Nur fuer diese Kandidaten darf das Receipt die zweite
+  // Evidenzstufe (Stake-Event bzw. Principal-Abfluss) liefern.
+  const receiptJobs=rows.filter(c=>{
+    const method=String(c?._method||'').toLowerCase();
+    if(method==='stake'||method==='unstake')return true;
+    if(String(c?._teamPositionEvidenceSeed||''))return true;
+    const asset=norm(c?.rawContract?.address||c?.assetContractAddress||'');
+    if(asset&&knownStakingAssetAddress(asset))return true;
+    const called=norm(c?._tx?.to||c?.to||c?._staking?.contract_address||'');
+    return !!(called&&knownStakingContractAddress(called));
+  });
+  const skippedReceiptRows=Math.max(0,rows.length-receiptJobs.length);
+  if(skippedReceiptRows)log(`Team-Lifecycle Receipt-Vorfilter: ${receiptJobs.length}/${rows.length} fachlich plausible Staking-Tx werden per Receipt geprueft · ${skippedReceiptRows} unspezifische Contract-/ERC-20-Tx uebersprungen.`,'ok');
   let receiptFallbacks=0,receiptFallbackRecovered=0,receiptStillMissing=0;
   for(let i=0;i<receiptJobs.length;i+=40){
     const chunk=receiptJobs.slice(i,i+40),rr=await rpcManyDiscovery(chunk.map(c=>({method:'eth_getTransactionReceipt',params:[c.hash]})),40);
