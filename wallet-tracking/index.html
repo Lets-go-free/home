@@ -596,7 +596,7 @@
         </div>
         <div id="tlnvowLpBscContent"></div><div id="tlnvowLpEthContent" style="display:none"></div>
       </div>
-      <div id="tlnvow-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">TLN/VOW · Hilfe</h3><p class="note">Diese Projektansicht bewertet TLN/VOW-Assets direkt über die hinterlegten DEX-Pools. v-Währungen werden über TOKEN → VOW → USDT bewertet. TLN/VOW-Projekttoken verwenden TOKEN/VOW und als Fallback TOKEN/USDT. V2-LP-Token werden aus den Reserven beider Pool-Assets und der LP-TotalSupply bewertet. Der Liquidity-Pools-Tab trennt BNB Smart Chain (BSC/PCLP) und Ethereum (ETH/LP) in zwei Unter-Tabs. Beim ersten Öffnen eines Projekt-Tabs pro Tag werden noch nicht heute geprüfte Wallets automatisch aktualisiert; danach arbeitet der Tab aus dem Supabase-Cache. Eine manuelle Aktualisierung ist jederzeit möglich. LP-/Staking-Werte werden nach erfolgreichem Projekt-Refresh auch in die Token-Übersicht übernommen. Für die Bestandesaufnahme per 31.12 werden dieselben Regeln mit dem historischen Blockzustand verwendet.</p><p class="note">Wenn ein Projektpreis fehlt, zuerst prüfen, ob Token/LP in der Projekt-Konfiguration korrekt klassifiziert und der benötigte DEX/Pool aktiv ist. Die allgemeine Bedienung des Wallet-Trackings steht unter „Hilfe / Handbuch“.</p></div></div>
+      <div id="tlnvow-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">TLN/VOW · Hilfe</h3><p class="note">Diese Projektansicht bewertet TLN/VOW-Assets direkt über die hinterlegten DEX-Pools. v-Währungen werden über TOKEN → VOW → USDT bewertet. TLN/VOW-Projekttoken verwenden TOKEN/VOW und als Fallback TOKEN/USDT. V2-LP-Token werden aus den Reserven beider Pool-Assets und der LP-TotalSupply bewertet. Der Liquidity-Pools-Tab trennt BNB Smart Chain (BSC/PCLP) und Ethereum (ETH/LP) in zwei Unter-Tabs. Beim ersten Öffnen des Projekts wird der aktuelle Preis-/Poolstand aus Supabase geladen. Existiert für den heutigen Kalendertag noch kein Preisstand, wird er einmal on-chain aktualisiert und gespeichert. „Preise aktualisieren“ erneuert nur aktuelle Kurse, LP-Bewertungen und USD-Werte; Discovery, Stakings, Rewards, Team und historische Stichtage bleiben unverändert. LP-/Staking-Werte werden nach erfolgreichem Projekt-Refresh auch in die Token-Übersicht übernommen. Für die Bestandesaufnahme per 31.12 werden dieselben Regeln mit dem historischen Blockzustand verwendet.</p><p class="note">Wenn ein Projektpreis fehlt, zuerst prüfen, ob Token/LP in der Projekt-Konfiguration korrekt klassifiziert und der benötigte DEX/Pool aktiv ist. Die allgemeine Bedienung des Wallet-Trackings steht unter „Hilfe / Handbuch“.</p></div></div>
       <div id="tlnvow-subtab-overview" class="project-subtab-panel">
       <div class="custom-token-card" style="border-color:var(--accent)">
         <h3 style="margin-top:0">TLN/VOW · On-Chain Preise &amp; Liquidity Pools</h3>
@@ -606,6 +606,14 @@
           <code>tln_vow_token</code>: TOKEN → VOW → USDT; falls kein TOKEN/VOW-Pool existiert, TOKEN → USDT.
           VOW selbst wird direkt über VOW/USDT bewertet. Die Zuordnung zu Preisen erfolgt ausschließlich über Contract-Adressen.
         </div>
+      </div>
+
+      <div class="custom-token-card" style="margin-top:10px">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button id="tlnvowRefreshPricesBtn" onclick="TLNVOWProject.refreshPrices()">Preise aktualisieren</button>
+          <span id="tlnvowPriceStatus" class="note">Preisstand wird geprüft…</span>
+        </div>
+        <div class="note" style="margin-top:7px">Automatisch wird höchstens einmal pro Kalendertag ein neuer aktueller Preis-/Poolstand ermittelt. „Preise aktualisieren“ erneuert ausschließlich aktuelle Kurse, LP-Bewertungen und daraus abgeleitete aktuelle USD-Werte; Discovery, Stakings, Rewards, Team und historische Stichtage werden nicht neu berechnet.</div>
       </div>
 
       <div class="tab-nav project-chain-nav" style="margin-top:14px">
@@ -720,7 +728,7 @@
   </div>
 
   <footer>
-    Version vom 07.09.2026, 18:30:15 CEST · zentrale Price-Engine Phase 2<br>
+    Version vom 07.09.2026, 18:51:59 CEST · zentrale Price-Engine Phase 3 · Tagescache<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -753,6 +761,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 07.09.2026 18:30:15 CEST · Price-Engine Phase 2 · Build 20260907-183015</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 07.09.2026 18:51:59 CEST · Price-Engine Phase 3 · Build 20260907-185159</div>
 </body>
 </html>

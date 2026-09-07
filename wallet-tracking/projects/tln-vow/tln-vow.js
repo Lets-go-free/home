@@ -69,6 +69,15 @@ const v3PoolCache = new Map();
 const poolTypeCache = new Map();
 const lpSymbolCache = new Map();
 
+const CURRENT_PRICE_SNAPSHOT_TABLE = "defi_current_price_snapshots";
+const CURRENT_PRICE_SNAPSHOT_VERSION = "tln-vow-current-price-v1";
+const PRICE_TIMEZONE = "Europe/Zurich";
+let currentPriceCapturedAt = null;
+let currentPriceSource = "live";
+let priceRefreshPromise = null;
+let infrastructurePromise = null;
+
+
 /*
  * Preisgraph pro Chain.
  * Voucher-Währungen werden NICHT mehr automatisch über VOW geroutet.
@@ -80,6 +89,53 @@ const graphCache = {};
 ========================================================= */
 function norm(x){ return String(x || "").trim().toLowerCase(); }
 function same(a,b){ return !!a && !!b && norm(a) === norm(b); }
+
+function zurichDay(value=new Date()){
+  const d = value instanceof Date ? value : new Date(value);
+  if(Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA",{
+    timeZone:PRICE_TIMEZONE, year:"numeric", month:"2-digit", day:"2-digit"
+  }).formatToParts(d);
+  const get=t=>parts.find(p=>p.type===t)?.value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function isTodayZurich(iso){
+  return !!iso && zurichDay(iso) === zurichDay(new Date());
+}
+
+function formatPriceTimestamp(iso){
+  if(!iso) return "–";
+  const d=new Date(iso);
+  if(Number.isNaN(d.getTime())) return "–";
+  return d.toLocaleString("de-CH",{timeZone:PRICE_TIMEZONE,dateStyle:"medium",timeStyle:"medium"});
+}
+
+function serializableMap(map){
+  return [...map.entries()].filter(([,v])=>v && typeof v?.then !== "function");
+}
+
+function restoreMap(map,rows){
+  map.clear();
+  for(const row of Array.isArray(rows)?rows:[]){
+    if(Array.isArray(row) && row.length===2 && row[0]) map.set(String(row[0]),row[1]);
+  }
+}
+
+function setPriceStatus(text,kind="note"){
+  const el=document.getElementById("tlnvowPriceStatus");
+  if(!el) return;
+  el.className=kind;
+  el.textContent=text;
+}
+
+function setPriceRefreshBusy(busy){
+  const btn=document.getElementById("tlnvowRefreshPricesBtn");
+  if(btn){
+    btn.disabled=!!busy;
+    btn.textContent=busy ? "Preise werden aktualisiert…" : "Preise aktualisieren";
+  }
+}
 
 function configureSharedPriceEngine(){
   if(!window.WalletPriceEngine) return;
@@ -312,6 +368,110 @@ async function loadSupabase(){
   database={};
   for(const chain of projectChains){
     database[chain]=(rows||[]).filter(r => norm(r.chain)===chain && isAllowedRow(r));
+  }
+}
+
+async function ensureInfrastructure(){
+  if(!infrastructurePromise){
+    infrastructurePromise=(async()=>{
+      await loadProjectInfrastructure();
+      await loadSupabase();
+      configureSharedPriceEngine();
+      return true;
+    })();
+  }
+  return infrastructurePromise;
+}
+
+function resetCurrentPriceCaches(){
+  tokenCache.clear();
+  pairCache.clear();
+  priceCache.clear();
+  exportedPrices.clear();
+  v3PoolCache.clear();
+  poolTypeCache.clear();
+  lpSymbolCache.clear();
+  projectChains.forEach(c=>graphCache[c]=null);
+  if(window.WalletPriceEngine){
+    configureSharedPriceEngine();
+    window.WalletPriceEngine.clearCurrent();
+  }
+}
+
+function buildCurrentPriceSnapshot(){
+  return {
+    schemaVersion:1,
+    projectKey:PROJECT_KEY,
+    valuationVersion:CURRENT_PRICE_SNAPSHOT_VERSION,
+    references,
+    exportedPrices:serializableMap(exportedPrices),
+    tokenCache:serializableMap(tokenCache),
+    pairCache:serializableMap(pairCache),
+    v3PoolCache:serializableMap(v3PoolCache),
+    poolTypeCache:serializableMap(poolTypeCache),
+    lpSymbolCache:serializableMap(lpSymbolCache),
+    priceEngine:window.WalletPriceEngine?.exportCurrentState?.() || null
+  };
+}
+
+function hydrateCurrentPriceSnapshot(payload){
+  if(!payload || Number(payload.schemaVersion)!==1) return false;
+  references=payload.references || references;
+  restoreMap(exportedPrices,payload.exportedPrices);
+  restoreMap(tokenCache,payload.tokenCache);
+  restoreMap(pairCache,payload.pairCache);
+  restoreMap(v3PoolCache,payload.v3PoolCache);
+  restoreMap(poolTypeCache,payload.poolTypeCache);
+  restoreMap(lpSymbolCache,payload.lpSymbolCache);
+  if(window.WalletPriceEngine && payload.priceEngine){
+    configureSharedPriceEngine();
+    window.WalletPriceEngine.importCurrentState?.(payload.priceEngine,{replaceCurrent:true});
+  }
+  return true;
+}
+
+async function loadCurrentPriceSnapshot(){
+  try{
+    const {data,error}=await sb.from(CURRENT_PRICE_SNAPSHOT_TABLE)
+      .select("captured_at,payload,valuation_version")
+      .eq("project_key",PROJECT_KEY)
+      .eq("valuation_version",CURRENT_PRICE_SNAPSHOT_VERSION)
+      .maybeSingle();
+    if(error) throw error;
+    if(!data?.payload) return null;
+    return {capturedAt:data.captured_at,payload:data.payload,fresh:isTodayZurich(data.captured_at)};
+  }catch(e){
+    console.warn("TLN/VOW Preiscache konnte nicht aus Supabase geladen werden:",e);
+    return null;
+  }
+}
+
+async function saveCurrentPriceSnapshot(){
+  const capturedAt=new Date().toISOString();
+  const row={
+    project_key:PROJECT_KEY,
+    valuation_version:CURRENT_PRICE_SNAPSHOT_VERSION,
+    captured_at:capturedAt,
+    updated_at:capturedAt,
+    payload:buildCurrentPriceSnapshot()
+  };
+  try{
+    const {error}=await sb.from(CURRENT_PRICE_SNAPSHOT_TABLE)
+      .upsert(row,{onConflict:"project_key,valuation_version"});
+    if(error) throw error;
+    currentPriceCapturedAt=capturedAt;
+    return true;
+  }catch(e){
+    console.warn("TLN/VOW Preiscache konnte nicht in Supabase gespeichert werden:",e);
+    return false;
+  }
+}
+
+function notifyCurrentPricesUpdated(manual=false){
+  const detail={projectKey:PROJECT_KEY,capturedAt:currentPriceCapturedAt,manual,prices:Object.fromEntries(exportedPrices)};
+  window.dispatchEvent(new CustomEvent("wallettracking:prices-updated",{detail}));
+  if(typeof window.onWalletTrackingPricesUpdated === "function"){
+    try{ window.onWalletTrackingPricesUpdated(detail); }catch(e){ console.warn("Preis-Update-Hook fehlgeschlagen",e); }
   }
 }
 
@@ -1415,24 +1575,6 @@ async function renderTokenTable(chain){
 
   for(const row of tokens){
     try{
-      // Doppelte Sicherheitsprüfung:
-      // Falls versehentlich doch ein V2-LP-Contract in der Tokenliste landet,
-      // prüfen wir, ob token0()/token1() vorhanden sind und überspringen ihn.
-      try{
-        const maybePair = new ethers.Contract(
-          row.address,
-          ["function token0() view returns (address)","function token1() view returns (address)"],
-          providers[chain]
-        );
-
-        await Promise.all([maybePair.token0(), maybePair.token1()]);
-
-        console.warn("LP/Pool in Tokenliste übersprungen:", row.address);
-        continue;
-      }catch(_notPair){
-        // Normaler ERC20-Token -> weiter
-      }
-
       const token = await getToken(chain,row.address);
       const price = await getUSD(chain,token);
       if(price) exportProjectPrice(chain,token.address,price,"token");
@@ -1677,54 +1819,64 @@ async function renderPools(chain){
 }
 
 /* =========================================================
-   DASHBOARD LOAD
+   DASHBOARD LOAD / DAILY PRICE CACHE
 ========================================================= */
-async function loadDashboard(chain){
-  const status = document.getElementById(chain+"Status");
-
-  status.innerHTML = '<span class="loading">Supabase wird geladen…</span>';
-
+async function renderDashboard(chain,{cacheMode=false}={}){
+  const status=document.getElementById(chain+"Status");
   try{
-    await loadSupabase();
-
-    tokenCache.clear();
-    pairCache.clear();
-    priceCache.clear();
-    if(window.WalletPriceEngine){ configureSharedPriceEngine(); window.WalletPriceEngine.clearCurrent(); }
-    v3PoolCache.clear();
-    poolTypeCache.clear();
-    projectChains.forEach(c => graphCache[c]=null);
-
-    // USDT, USDC, WETH, WBNB, BTCB, BUSD anhand der echten
-    // On-Chain-Symbole der in Supabase gepflegten Token bestimmen.
-    await resolveReferences(chain);
-
-    document.getElementById(chain+"Summary").style.display = "grid";
-
-    const ref = references[chain];
-    const stableRefs = [
-      ref.usdt ? "USDT" : null,
-      ref.usdc ? "USDC" : null,
-      chain === "bsc" && ref.busd ? "BUSD" : null
-    ].filter(Boolean);
-
-    if(!stableRefs.length){
-      status.innerHTML =
-        `<span class="warning">Supabase verbunden, aber in den konfigurierten LPs wurde noch kein USDT/USDC${chain==="bsc"?"/BUSD":""}-Referenzasset erkannt.</span>`;
-    }else{
-      status.innerHTML =
-        `<span class="success">Referenzen erkannt: ${stableRefs.join(", ")} · Preise werden on-chain berechnet.</span>`;
-    }
-
+    document.getElementById(chain+"Summary").style.display="grid";
+    const ref=references[chain] || {};
+    const stableRefs=[ref.usdt?"USDT":null,ref.usdc?"USDC":null,chain==="bsc"&&ref.busd?"BUSD":null].filter(Boolean);
+    status.innerHTML=stableRefs.length
+      ? `<span class="success">${cacheMode?"Preis-/Poolstand aus Tagescache":"Referenzen erkannt"}: ${stableRefs.join(", ")}.</span>`
+      : `<span class="warning">Kein USDT/USDC${chain==="bsc"?"/BUSD":""}-Referenzasset erkannt.</span>`;
     await renderTokenTable(chain);
     await renderPools(chain);
-
-    status.innerHTML =
-      `<span class="success">Fertig · ${configuredTokens(chain).length} Tokens · ${configuredLPs(chain).length} LP/Pool-Einträge aus Supabase.</span>`;
+    status.innerHTML=`<span class="success">Fertig · ${configuredTokens(chain).length} Tokens · ${configuredLPs(chain).length} LP/Pool-Einträge${cacheMode?" · Tagescache":" · on-chain aktualisiert"}.</span>`;
   }catch(e){
     console.error(e);
-    status.innerHTML = `<span class="error">${e.message}</span>`;
+    status.innerHTML=`<span class="error">${e.message}</span>`;
+    throw e;
   }
+}
+
+async function refreshCurrentPrices({manual=false}={}){
+  if(priceRefreshPromise) return priceRefreshPromise;
+  priceRefreshPromise=(async()=>{
+    await ensureInfrastructure();
+    setPriceRefreshBusy(true);
+    setPriceStatus(manual?"Aktuelle Preise werden manuell neu ermittelt…":"Heutige Preise werden on-chain ermittelt…","loading");
+    resetCurrentPriceCaches();
+    for(const chain of projectChains.filter(c=>["bsc","eth"].includes(c))){
+      await resolveReferences(chain);
+    }
+    await Promise.all(projectChains.filter(c=>["bsc","eth"].includes(c)).map(chain=>renderDashboard(chain,{cacheMode:false})));
+    const saved=await saveCurrentPriceSnapshot();
+    currentPriceSource="live";
+    const stamp=formatPriceTimestamp(currentPriceCapturedAt || new Date());
+    setPriceStatus(saved
+      ? `Preisstand: ${stamp} · aktuell on-chain · in Supabase gespeichert.`
+      : `Preisstand: ${stamp} · aktuell on-chain · Supabase-Preiscache konnte nicht gespeichert werden.`,
+      saved?"success":"warning");
+    notifyCurrentPricesUpdated(manual);
+    return true;
+  })().finally(()=>{setPriceRefreshBusy(false);priceRefreshPromise=null;});
+  return priceRefreshPromise;
+}
+
+async function loadDailyPrices(){
+  await ensureInfrastructure();
+  setPriceStatus("Prüfe heutigen Preisstand in Supabase…","loading");
+  const cached=await loadCurrentPriceSnapshot();
+  if(cached?.fresh && hydrateCurrentPriceSnapshot(cached.payload)){
+    currentPriceCapturedAt=cached.capturedAt;
+    currentPriceSource="supabase";
+    await Promise.all(projectChains.filter(c=>["bsc","eth"].includes(c)).map(chain=>renderDashboard(chain,{cacheMode:true})));
+    setPriceStatus(`Preisstand: ${formatPriceTimestamp(currentPriceCapturedAt)} · aus Supabase-Tagescache.`,`success`);
+    notifyCurrentPricesUpdated(false);
+    return true;
+  }
+  return await refreshCurrentPrices({manual:false});
 }
 
 /* =========================================================
@@ -1740,17 +1892,18 @@ function switchChain(chain){
 /* =========================================================
    START
 ========================================================= */
-let initPromise = null;
+let initPromise=null;
 
 function ensureLoaded(){
   if(!initPromise){
-    initPromise = (async()=>{
-      await loadProjectInfrastructure();
-      await Promise.all(projectChains.filter(c => ["bsc","eth"].includes(c)).map(loadDashboard));
-      return true;
-    })();
+    initPromise=loadDailyPrices().catch(e=>{ initPromise=null; throw e; });
   }
   return initPromise;
+}
+
+async function manualRefreshPrices(){
+  await ensureInfrastructure();
+  return await refreshCurrentPrices({manual:true});
 }
 
 function getExportedPrice(chain,address){
@@ -1761,7 +1914,9 @@ function getExportedPrice(chain,address){
 return {
   ensureLoaded,
   switchChain,
-  getPrice:getExportedPrice
+  refreshPrices:manualRefreshPrices,
+  getPrice:getExportedPrice,
+  getPriceState:()=>({capturedAt:currentPriceCapturedAt,source:currentPriceSource,version:CURRENT_PRICE_SNAPSHOT_VERSION})
 };
 
 })();

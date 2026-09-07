@@ -469,6 +469,39 @@ window.WalletPriceEngine = (() => {
     for(const k of [...priceGraphCache.keys()]) if(k.endsWith("@latest")) priceGraphCache.delete(k);
   }
   function clearAll(){ pairStateCache.clear(); tokenMetaCache.clear(); tokenPriceCache.clear(); priceGraphCache.clear(); }
+
+  function currentEntries(map,latestOnly=false){
+    return [...map.entries()]
+      .filter(([key,value]) => !latestOnly || String(key).endsWith("@latest"))
+      .filter(([,value]) => value && typeof value?.then !== "function");
+  }
+
+  function exportCurrentState(){
+    return {
+      schemaVersion:1,
+      pairStates:currentEntries(pairStateCache,true),
+      tokenMeta:currentEntries(tokenMetaCache,false),
+      tokenPrices:currentEntries(tokenPriceCache,true),
+      priceGraphs:currentEntries(priceGraphCache,true)
+    };
+  }
+
+  function importCurrentState(state,{replaceCurrent=true}={}){
+    if(!state || Number(state.schemaVersion)!==1) return false;
+    if(replaceCurrent) clearCurrent();
+    const restore=(map,rows) => {
+      for(const row of Array.isArray(rows)?rows:[]){
+        if(!Array.isArray(row) || row.length!==2 || !row[0]) continue;
+        map.set(String(row[0]),row[1]);
+      }
+    };
+    restore(pairStateCache,state.pairStates);
+    restore(tokenMetaCache,state.tokenMeta);
+    restore(tokenPriceCache,state.tokenPrices);
+    restore(priceGraphCache,state.priceGraphs);
+    return true;
+  }
+
   function stats(){ return {pairStates:pairStateCache.size,tokenMeta:tokenMetaCache.size,tokenPrices:tokenPriceCache.size,priceGraphs:priceGraphCache.size}; }
 
   return {
@@ -488,6 +521,8 @@ window.WalletPriceEngine = (() => {
     graphUSDPrice,
     clearCurrent,
     clearAll,
+    exportCurrentState,
+    importCurrentState,
     stats
   };
 })();
