@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 12:57:08 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 13:10:24 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -377,7 +377,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260908-125708';
+const BUILD_ID='20260908-131024';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -385,6 +385,7 @@ const V2=new ethers.Interface(["function token0() view returns(address)","functi
 const ERC20=new ethers.Interface(["function symbol() view returns(string)","function decimals() view returns(uint8)"]);
 const ZERO='0x0000000000000000000000000000000000000000';
 let rpcUrl=null,alchemyBase=null,projectTokens=[],allProjectRows=[],stakingContracts=[],tlnWallets=[],CURRENT_ALL_TRANSFERS=[];
+const DISCOVERY_PRICE_REFERENCES={vow:null,usdt:null,usdc:null,busd:null};
 let projectTokenMap=new Map();
 const PROXY_IMPL_CACHE=new Map();
 let CURRENT_STAKING_LOTS=[],CURRENT_WALLET='',CURRENT_UNASSIGNED_REWARDS=[],CURRENT_PROVEN_REWARD_ROWS=[],CURRENT_REWARD_FLOW_BY_HASH=new Map();
@@ -491,7 +492,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='08.09.2026 12:57:08 CEST';
+const APP_VERSION='08.09.2026 13:10:24 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -7426,9 +7427,15 @@ async function primePairStatesAtBlock(pairs,blockHex){
 
 function discoveryPriceEngineReferences(){
   const rows=Array.isArray(window.__TLNVOW_DISCOVERY_UNDERLYINGS)?window.__TLNVOW_DISCOVERY_UNDERLYINGS:allProjectRows;
-  const bySymbol=sym=>norm((rows||[]).find(x=>String(x?.symbol||x?.label||'').trim().toUpperCase()===sym)?.address||'');
-  return {vow:bySymbol('VOW')||null,usdt:bySymbol('USDT')||null,usdc:bySymbol('USDC')||null,busd:bySymbol('BUSD')||null};
+  const bySymbol=sym=>norm((rows||[]).find(x=>String(x?.symbol||x?.label||x?.name||'').trim().toUpperCase()===sym)?.address||'');
+  return {
+    vow:DISCOVERY_PRICE_REFERENCES.vow||bySymbol('VOW')||null,
+    usdt:DISCOVERY_PRICE_REFERENCES.usdt||bySymbol('USDT')||null,
+    usdc:DISCOVERY_PRICE_REFERENCES.usdc||bySymbol('USDC')||null,
+    busd:DISCOVERY_PRICE_REFERENCES.busd||bySymbol('BUSD')||null
+  };
 }
+
 function discoveryPriceEngineCategory(address){
   const a=norm(address);
   const row=(allProjectRows||[]).find(x=>norm(x?.address||'')===a);
@@ -16689,7 +16696,9 @@ async function loadInitialDbRows(){
     sb.from('chains').select('rpc_url,discovery_provider,discovery_api_base').eq('chain_key','bsc').single(),
     sb.from('predefined_tokens').select('*').eq('chain','bsc').eq('defi_project_key','tln_vow'),
     sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
-    sb.from('wallets').select('id,label,evm_address').order('label')
+    sb.from('wallets').select('id,label,evm_address').order('label'),
+    sb.from('defi_project_tokens').select('contract_address,role').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
+    sb.from('predefined_tokens').select('address,symbol,label,name,decimals').eq('chain','bsc').in('symbol',['USDT','USDC','BUSD'])
   ]);
 }
 async function loadInitialDbRowsResilient(){
@@ -16708,7 +16717,7 @@ async function loadInitialDbRowsResilient(){
       await waitMs(750);
     }
   }
-  return [null,null,null,{error:last}];
+  return [null,null,null,{error:last},null,null];
 }
 async function init(){log(`Build geladen: ${BUILD_ID} · SC_READ_PROBES=${typeof SC_READ_PROBES!=='undefined'?SC_READ_PROBES.length:'FEHLT'}`,'ok');
   let user=null;
@@ -16725,8 +16734,8 @@ async function init(){log(`Build geladen: ${BUILD_ID} · SC_READ_PROBES=${typeof
   if(!user){$('auth').innerHTML='<span class="err">Nicht eingeloggt. Testseite auf derselben Domain wie Wallet-Tracking öffnen und zuerst einloggen.</span>';return}
   currentUserId=user.id;
   $('auth').innerHTML=`<span class="ok">Eingeloggt:</span> ${esc(user.email)}`;
-  const [cr,pt,sc,wq]=await loadInitialDbRowsResilient();
-  const dbErr=cr?.error||pt?.error||sc?.error||wq?.error;
+  const [cr,pt,sc,wq,projectRefs,stableRefs]=await loadInitialDbRowsResilient();
+  const dbErr=cr?.error||pt?.error||sc?.error||wq?.error||projectRefs?.error||stableRefs?.error;
   if(dbErr){
     const extra=isSupabaseAuthError(dbErr)?' Die Supabase-Session wurde automatisch erneuert, wird von PostgREST aber weiterhin nicht akzeptiert. Bitte einmal im Wallet-Tracking abmelden und neu anmelden und danach diese Testseite auf derselben Domain neu öffnen.':'';
     $('status').innerHTML=`<span class="err">DB-Fehler: ${esc(dbErr.message||String(dbErr))}${esc(extra)}</span>`;
@@ -16744,6 +16753,13 @@ async function init(){log(`Build geladen: ${BUILD_ID} · SC_READ_PROBES=${typeof
     rpcFallbackUrl()
   ]);
   allProjectRows=pt.data||[];loadHistoricalStakingAssets(allProjectRows);
+  const projectReferenceRow=(projectRefs?.data||[]).find(x=>String(x?.role||'').trim().toLowerCase()==='reference');
+  DISCOVERY_PRICE_REFERENCES.vow=projectReferenceRow?.contract_address?norm(projectReferenceRow.contract_address):null;
+  for(const row of (stableRefs?.data||[])){
+    const sym=String(row?.symbol||row?.label||row?.name||'').trim().toUpperCase();
+    if(['USDT','USDC','BUSD'].includes(sym)&&row?.address)DISCOVERY_PRICE_REFERENCES[sym.toLowerCase()]=norm(row.address);
+  }
+  log(`Zentrale Preis-Referenzen: VOW ${DISCOVERY_PRICE_REFERENCES.vow?short(DISCOVERY_PRICE_REFERENCES.vow):'–'} · USDT ${DISCOVERY_PRICE_REFERENCES.usdt?short(DISCOVERY_PRICE_REFERENCES.usdt):'–'} · USDC ${DISCOVERY_PRICE_REFERENCES.usdc?short(DISCOVERY_PRICE_REFERENCES.usdc):'–'} · BUSD ${DISCOVERY_PRICE_REFERENCES.busd?short(DISCOVERY_PRICE_REFERENCES.busd):'–'}.`,DISCOVERY_PRICE_REFERENCES.vow&&DISCOVERY_PRICE_REFERENCES.usdt?'ok':'warn');
     // Visible TLN/VOW project assets and technical discovery assets are different universes.
     // `tln_vow_category` is the project-specific classification; fall back to
     // `defi_category` for older rows.

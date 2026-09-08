@@ -693,7 +693,7 @@ async function taxV2LpHistoricalPrice(chain,asset,block,dateStr){
   return {price:(q0*p0.price+q1*p1.price)/lp,source:`V2 LP historisch · ${chain==="apertum"?"Sync/Transfer-Events":"Reserven + TotalSupply"} · ${pair} · Block ${block}`};
 }
 
-async function taxTlnVowHistoricalPrice(chain,asset,block,dateStr=""){
+async function taxTlnVowHistoricalPriceLegacy(chain,asset,block,dateStr=""){
   if(!asset?.address)return null;const a=normalizeAddress(asset.address,chain),k=chain+"|"+a;if(predefinedTokenProject[k]!=="tln_vow")return null;
   const cat=String(predefinedTokenCategory[k]||""),vow=await taxProjectReference("tln_vow",chain),usdt=taxPredefinedBySymbol(chain,"USDT");if(!vow||!usdt)return null;
   if(["lp_token","lp"].includes(cat))return await taxV2LpHistoricalPrice(chain,asset,block,dateStr);
@@ -704,6 +704,52 @@ async function taxTlnVowHistoricalPrice(chain,asset,block,dateStr=""){
   if(["defi_token","tln_vow_token"].includes(cat)){const leg=await taxDirectV2Price(chain,a,vow,block,bd,vd);if(leg)return {price:leg.price*vu.price,source:`TLN/VOW ${asset.symbol||"Token"}/VOW → VOW/USDT · Pools ${leg.pair}, ${vu.pair} · Block ${block}`};const d=await taxDirectV2Price(chain,a,usdt.address,block,bd,ud);return d?{price:d.price,source:`TLN/VOW ${asset.symbol||"Token"}/USDT · ${d.pair} · Block ${block}`}:null;}
   return null;
 }
+
+async function taxWalletPriceEnginePairState(chain,address,block){
+  const pair=normalizeAddress(address,chain),callBlock=block==="latest"?"latest":taxBlockHex(block);
+  const iface=new ethers.Interface(["function token0() view returns (address)","function token1() view returns (address)","function getReserves() view returns (uint112,uint112,uint32)","function totalSupply() view returns (uint256)","function decimals() view returns (uint8)","function factory() view returns (address)"]);
+  const [a0,a1,rr,ts,ld,fa]=await Promise.all(["token0","token1","getReserves","totalSupply","decimals","factory"].map(fn=>archiveRpc(chain,"eth_call",[{to:pair,data:iface.encodeFunctionData(fn,[])},callBlock])));
+  const [t0]=iface.decodeFunctionResult("token0",a0),[t1]=iface.decodeFunctionResult("token1",a1),[r0,r1,blockTimestampLast]=iface.decodeFunctionResult("getReserves",rr),[supply]=iface.decodeFunctionResult("totalSupply",ts),[lpDecimalsRaw]=iface.decodeFunctionResult("decimals",ld),[factory]=iface.decodeFunctionResult("factory",fa);
+  const mk=async t=>{const a=normalizeAddress(t,chain),k=chain+"|"+a,meta={address:a,symbol:predefinedTokenSymbols[k]||predefinedTokenLabels[k]||predefinedTokenNames[k]||a.slice(0,8)+"…",name:predefinedTokenNames[k]||predefinedTokenLabels[k]||predefinedTokenSymbols[k]||a.slice(0,8)+"…",decimals:predefinedTokenDecimals[k]??18};meta.decimals=await taxTokenDecimalsCurrent(chain,meta);return meta;};
+  const [m0,m1]=await Promise.all([mk(t0),mk(t1)]),lpDecimals=Number(lpDecimalsRaw);
+  return {token0:m0,token1:m1,reserve0:Number(ethers.formatUnits(r0,m0.decimals)),reserve1:Number(ethers.formatUnits(r1,m1.decimals)),totalSupply:Number(ethers.formatUnits(supply,lpDecimals)),lpDecimals,factory:normalizeAddress(factory,chain),blockTimestampLast:Number(blockTimestampLast)};
+}
+async function taxConfigureTlnVowPriceEngine(chain,block){
+  if(!window.WalletPriceEngine)return null;
+  const vow=await taxProjectReference("tln_vow",chain),usdt=taxPredefinedBySymbol(chain,"USDT"),usdc=taxPredefinedBySymbol(chain,"USDC"),busd=taxPredefinedBySymbol(chain,"BUSD");
+  if(!vow||!usdt?.address)return null;
+  const references={vow,usdt:usdt.address,usdc:usdc?.address||null,busd:busd?.address||null};
+  window.WalletPriceEngine.configure(()=>({
+    references:()=>references,
+    tokenMeta:async(_chain,address)=>{const a=normalizeAddress(address,chain),k=chain+"|"+a,meta={address:a,symbol:predefinedTokenSymbols[k]||predefinedTokenLabels[k]||predefinedTokenNames[k]||a.slice(0,8)+"…",name:predefinedTokenNames[k]||predefinedTokenLabels[k]||predefinedTokenSymbols[k]||a.slice(0,8)+"…",decimals:predefinedTokenDecimals[k]??18};meta.decimals=await taxTokenDecimalsCurrent(chain,meta);return meta;},
+    tokenCategory:(_chain,address)=>{const raw=String(predefinedTokenCategory[chain+"|"+normalizeAddress(address,chain)]||"").trim().toLowerCase();if(raw==="v_currency")return "voucher_currency";if(raw==="tln_vow_token")return "defi_token";return raw;},
+    findPair:async(_chain,a,b)=>await taxV2Pair(chain,a,b,block),
+    pairState:async(_chain,address,bl)=>await taxWalletPriceEnginePairState(chain,address,bl),
+    poolType:async()=>"v2"
+  }));
+  return references;
+}
+async function taxTlnVowHistoricalPrice(chain,asset,block,dateStr=""){
+  if(!asset?.address)return null;
+  const a=normalizeAddress(asset.address,chain),k=chain+"|"+a;if(predefinedTokenProject[k]!=="tln_vow")return null;
+  try{
+    const refs=await taxConfigureTlnVowPriceEngine(chain,block);
+    if(refs&&window.WalletPriceEngine){
+      const raw=String(predefinedTokenCategory[k]||"").trim().toLowerCase();
+      if(["lp_token","lp"].includes(raw)){
+        const result=await window.WalletPriceEngine.getLpValuation({projectKey:"tln_vow",chain,lpAddress:a,amount:1,block:Number(block)});
+        if(result?.priceUsd!=null)return {price:Number(result.priceUsd),source:`WalletPriceEngine · TLN/VOW LP historisch · Block ${block}`};
+      }else{
+        const meta={address:a,symbol:asset.symbol||predefinedTokenSymbols[k]||predefinedTokenLabels[k]||"Token",name:predefinedTokenNames[k]||asset.symbol||"Token",decimals:await taxTokenDecimalsCurrent(chain,asset)};
+        const result=await window.WalletPriceEngine.getTokenPrice({projectKey:"tln_vow",chain,token:meta,block:Number(block)});
+        if(result?.price!=null)return {price:Number(result.price),source:`WalletPriceEngine · ${result.route||result.source||"TLN/VOW"} · Block ${block}`};
+      }
+    }
+  }catch(e){console.warn("WalletPriceEngine TLN/VOW Historie – Sicherheits-Fallback",chain,asset?.symbol,e);}
+  // Übergangs-Fallback: bleibt bis die zentrale Engine auf Hauptseite und Discovery mit denselben Testfällen verifiziert ist.
+  return await taxTlnVowHistoricalPriceLegacy(chain,asset,block,dateStr);
+}
+
 async function taxApertumWrappedPrice(chain,asset,block,dateStr=""){
   if(chain!=="apertum"||!asset?.address)return null;
   const a=normalizeAddress(asset.address,chain),sym=String(asset.symbol||predefinedTokenSymbols[chain+"|"+a]||"").toUpperCase(),metaName=String(predefinedTokenNames[chain+"|"+a]||predefinedTokenLabels[chain+"|"+a]||"").toUpperCase();
