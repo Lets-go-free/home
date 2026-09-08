@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 12:51:59 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 12:57:08 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -377,7 +377,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260908-125159';
+const BUILD_ID='20260908-125708';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -491,7 +491,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='08.09.2026 12:51:59 CEST';
+const APP_VERSION='08.09.2026 12:57:08 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -7543,6 +7543,26 @@ async function legacyTokenHistoricalValue(pair,tokenAmount,blockHex,pricePairs){
   };
 }
 const STEP6_PRICE_FALLBACK_DIAG={engineErrors:0,localFallbackCalls:0,localFallbackValues:0,cases:[]};
+async function diagnoseStep6VoucherRoute(pair,blockHex,pricePairs){
+  try{
+    const tokens=[pair?.token0,pair?.token1].filter(Boolean);
+    const voucher=tokens.find(t=>discoveryPriceEngineCategory(t?.address)==='voucher_currency');
+    if(!voucher)return;
+    const refs=discoveryPriceEngineReferences(),vow=norm(refs.vow||''),usdt=norm(refs.usdt||'');
+    const findDirect=(a,b)=>(pricePairs||[]).find(p=>{
+      const p0=norm(p?.token0?.address),p1=norm(p?.token1?.address),x=norm(a),y=norm(b);
+      return (p0===x&&p1===y)||(p0===y&&p1===x);
+    })||null;
+    const vv=findDirect(voucher.address,vow),vu=findDirect(vow,usdt);
+    const [vvState,vuState]=await Promise.all([
+      vv?pairStateAt(vv,blockHex).catch(()=>null):Promise.resolve(null),
+      vu?pairStateAt(vu,blockHex).catch(()=>null):Promise.resolve(null)
+    ]);
+    const fmtPair=x=>x?.address?short(x.address):'–';
+    const fmtState=x=>x&&x.r0>0&&x.r1>0?`ok (${x.r0.toLocaleString('de-CH',{maximumFractionDigits:6})}/${x.r1.toLocaleString('de-CH',{maximumFractionDigits:6})})`:'nicht verfügbar';
+    log(`Step-6 Voucher-Route Diagnose @ ${Number(BigInt(blockHex)).toLocaleString('de-CH')}: ${voucher.symbol||'Voucher'}=${short(voucher.address)} · Kategorie ${discoveryPriceEngineCategory(voucher.address)||'–'} · VOW=${vow?short(vow):'–'} · USDT=${usdt?short(usdt):'–'} · Voucher/VOW ${fmtPair(vv)} ${fmtState(vvState)} · VOW/USDT ${fmtPair(vu)} ${fmtState(vuState)}.`,'warn');
+  }catch(e){log(`Step-6 Voucher-Route Diagnose fehlgeschlagen: ${e?.message||e}`,'warn')}
+}
 async function lpHistoricalValue(pair,lpAmount,blockHex,pricePairs){
   if(!pair||!blockHex||!(lpAmount>0))return null;
   if(window.WalletPriceEngine){
@@ -7573,6 +7593,7 @@ async function lpHistoricalValue(pair,lpAmount,blockHex,pricePairs){
       };
       STEP6_PRICE_FALLBACK_DIAG.cases.push(diagCase);
       log(`Step-6 lokaler Fallback nötig: ${diagCase.pair} @ ${diagCase.block.toLocaleString('de-CH')} · Engine ${result?'ohne vollständigen USD-Wert':'ohne Ergebnis'}${result?` · p0=${result.price0Usd==null?'–':'$'+Number(result.price0Usd).toLocaleString('de-CH',{maximumFractionDigits:10})} · p1=${result.price1Usd==null?'–':'$'+Number(result.price1Usd).toLocaleString('de-CH',{maximumFractionDigits:10})}`:''}.`,'warn');
+      await diagnoseStep6VoucherRoute(pair,blockHex,pricePairs);
     }catch(e){
       STEP6_PRICE_FALLBACK_DIAG.engineErrors++;
       log(`WalletPriceEngine Step-6-Fallback ${safePairLabel(pair)} @ ${Number(BigInt(blockHex))}: ${e?.message||e}`,'warn');
