@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 02:39:49 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 11:06:43 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -187,9 +187,9 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
     <div class="muted" style="margin-top:5px">Cold-Run-Test für Step 7: löscht die Team-Lifecycle- und Team-Contract-History-Caches dieses Benutzers und erzwingt beim nächsten Team-Lauf einen vollständigen SmartNode-On-Chain-Rescan ab Block 0. Der globale Shared-Graph/Graph-State bleibt in Supabase erhalten. Steps 1–5, normale Wallet-Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und der TLN-ID-/Wallet-Identity-Cache bleiben erhalten.</div>
   </div>
   <div style="margin-top:8px">
-    <button id="rebuildStep6Cache" type="button" disabled>DEV: Step-6 Cache neu aufbauen</button>
+    <button id="rebuildStep6Cache" type="button" disabled>DEV: Step 6 neu berechnen (Force)</button>
     <span id="rebuildStep6CacheState" class="muted" style="margin-left:8px"></span>
-    <div class="muted" style="margin-top:5px">Löscht nur den persistenten Step-6-Ergebnis-Snapshot für das aktuell gewählte Wallet und Stichtagsjahr und startet Step 6 sofort neu. Steps 1–5, Positionen, Rewards, Team sowie globale Chain-/Tx-/LP-/Duration-Caches bleiben erhalten.</div>
+    <div class="muted" style="margin-top:5px">Erzwingt eine echte Step-6-Neuberechnung und ignoriert dabei einmalig den vorhandenen Step-6-Ergebnis-Snapshot. Der bisherige persistente Snapshot wird vor dem Test nicht gelöscht und erst nach erfolgreicher Neuberechnung überschrieben. Steps 1–5 sowie globale Chain-/Tx-/LP-/Duration-Caches bleiben erhalten.</div>
   </div>
   <div style="margin-top:8px">
     <button id="forceDiscoveryFreshnessCheck" type="button" disabled>24h-Check jetzt testen</button>
@@ -377,7 +377,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260908-023949';
+const BUILD_ID='20260908-110643';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -491,7 +491,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='08.09.2026 02:39:49 CEST';
+const APP_VERSION='08.09.2026 11:06:43 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -5197,35 +5197,33 @@ async function rebuildStep6Cache(){
  if(!currentUserId){state.textContent='Nicht eingeloggt.';return}
  if(!ethers.isAddress(wallet)){state.textContent='Kein gültiges Wallet ausgewählt.';return}
  if(!DISCOVERY_PROCESS.done?.duration){state.textContent='Step 3 / Lockdauer fehlt.';return}
- const ok=confirm(`Step-6-Ergebnis-Cache für dieses Wallet wirklich neu aufbauen?\n\n${wallet}\nStichtag 31.12.${year}\n\nNur der Step-6-Snapshot wird gelöscht. Steps 1–5 und alle technischen Chain-/Tx-/LP-/Duration-Caches bleiben erhalten.`);
+ const ok=confirm(`Step 6 für dieses Wallet wirklich neu berechnen (Force)?\n\n${wallet}\nStichtag 31.12.${year}\n\nDer vorhandene persistente Step-6-Snapshot wird für diesen Lauf ignoriert, aber vorab NICHT gelöscht. Erst eine erfolgreiche Neuberechnung überschreibt ihn. Steps 1–5 und alle technischen Chain-/Tx-/LP-/Duration-Caches bleiben erhalten.`);
  if(!ok)return;
- btn.disabled=true;state.textContent='lösche Step-6-Snapshot …';
+ btn.disabled=true;state.textContent='Force-Neuberechnung startet …';
  try{
-   const cacheKey=snapshotValuationCacheKey(year);
-   const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE)
-     .delete().eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_address',wallet).eq('cache_key',cacheKey)
-     .select('cache_key');
-   if(error)throw error;
-   const deleted=Array.isArray(data)?data.length:0;
-
-   // Ausschließlich Step-6-Ableitungen aus dem aktuellen Prozess entfernen. Die
-   // verifizierten Positionen/Lifecycles und alle tieferen Chain-Fakten bleiben erhalten.
+   // Nur Step-6-Ableitungen im aktuellen Prozess verwerfen. Persistenter Snapshot und
+   // verifizierte Positionen/Lifecycles bleiben erhalten, bis ein erfolgreicher Lauf
+   // den Snapshot atomar durch das neue Step-6-Ergebnis ersetzt.
    DISCOVERY_PROCESS.snapshotValuation=null;
    DISCOVERY_PROCESS.snapshotBlockHex=null;
    DISCOVERY_PROCESS.done.valuation=false;
    for(const lot of (DISCOVERY_PROCESS.lots||[])){
-     for(const k of ['stakeUsd','stakeUsdSource','stakeUsdOrigin','stakeValuation','contractEndBlockHex','contractEndValuation','contractEndUsd','contractEndUsdSource','unstakeBlockHex','unstakeValuation','unstakeUsd','unstakeUsdSource','businessProbe'])delete lot[k];
+     for(const k of ['stakeUsd','stakeUsdSource','stakeUsdOrigin','stakeValuation','contractEndBlockHex','contractEndValuation','contractEndUsd','contractEndUsdSource','unstakeBlockHex','unstakeValuation','unstakeUsd','unstakeUsdSource','businessProbe','snapshotValuation'])delete lot[k];
    }
    renderProcessLotCards();
-   setStepState(6,`Rebuild 31.12.${year} läuft gleich …`,'running');
+   renderSnapshotValuation();
+   setStepState(6,`Force 31.12.${year} läuft gleich …`,'running');
    updateProcessButtons();
-   state.textContent=`${deleted} Step-6-Snapshot${deleted===1?'':'s'} gelöscht · Rebuild startet …`;
-   log(`DEV Step-6-Rebuild: ${deleted} persistente(r) Step-6-Snapshot(s) für ${wallet} / 31.12.${year} gelöscht. Steps 1–5 und technische Chain-/Tx-/LP-/Duration-Caches bleiben erhalten; Step 6 wird jetzt neu berechnet.`,'warn');
-   await processValuation();
-   state.textContent=`Step 6 für 31.12.${year} neu aufgebaut.`;
+   log(`DEV Step-6-Force: persistenter Step-6-Snapshot für ${wallet} / 31.12.${year} wird einmalig ignoriert. Snapshot bleibt bis zu einer erfolgreichen Neuberechnung erhalten; Steps 1–5 und technische Chain-/Tx-/LP-/Duration-Caches bleiben unverändert.`,'warn');
+   await processValuation({force:true});
+   if(DISCOVERY_PROCESS.done?.valuation){
+     state.textContent=`Step 6 für 31.12.${year} erzwungen neu berechnet.`;
+   }else{
+     state.textContent='Force-Lauf nicht erfolgreich abgeschlossen.';
+   }
  }catch(e){
-   state.textContent='Fehler beim Step-6-Rebuild.';
-   log(`DEV Step-6-Rebuild fehlgeschlagen: ${e?.message||e}`,'warn');
+   state.textContent='Fehler bei Step-6-Force.';
+   log(`DEV Step-6-Force fehlgeschlagen: ${e?.message||e}`,'warn');
  }finally{updateProcessButtons();btn.disabled=false}
 }
 
@@ -16357,13 +16355,14 @@ async function selectSnapshotYearFromCache(){
 }
 
 let STEP6_RUN_INFLIGHT=false;
-async function processValuation(){
+async function processValuation({force=false}={}){
   if(STEP6_RUN_INFLIGHT){log('Schritt 6: paralleler Zweitstart ignoriert – Bewertung läuft bereits.','warn');return}
   const requestedYear=snapshotYearFromUi();
-  if(await restoreSnapshotValuationCache(DISCOVERY_PROCESS.wallet,requestedYear)){
+  if(!force&&await restoreSnapshotValuationCache(DISCOVERY_PROCESS.wallet,requestedYear)){
     $('status').innerHTML=`<span class="ok">Historische Bewertung 31.12.${requestedYear} aus persistentem Cache geladen.</span>`;
     return;
   }
+  if(force)log(`Schritt 6 Force-Modus aktiv: persistenter Ergebnis-Snapshot 31.12.${requestedYear} wird für diesen Lauf bewusst übersprungen.`,'warn');
   STEP6_RUN_INFLIGHT=true;
   const b=$('stepValuation');b.disabled=true;setStepState(6,'läuft …','running');$('status').textContent='Schritt 6/7: historische Bewertung / Preisgraph …';
   resetStep6Diag();
