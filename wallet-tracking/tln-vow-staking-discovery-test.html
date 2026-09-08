@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 20:21:27 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 23:15:09 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -262,6 +262,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
       <button type="button" class="project-user-tab" data-project-panel="bonus">Bonus-Rewards</button>
       <button type="button" class="project-user-tab" data-project-panel="team">Team</button>
       <button type="button" class="project-user-tab" data-project-panel="prices">Kurse und Pools</button>
+      <button type="button" class="project-user-tab" data-project-panel="admin">Admin · Contracts</button>
     </div>
     <div id="projectPanel-overview" class="project-user-panel active"><div id="projectOverviewContent"><div class="muted">Noch keine Discovery-Daten geladen.</div></div><div id="projectLookupMount" class="project-mount"></div></div>
     <div id="projectPanel-stakings" class="project-user-panel"><div id="projectStakingsAggregate" class="project-aggregate"></div><div id="projectStakingsMount" class="project-mount"></div></div>
@@ -270,6 +271,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
     <div id="projectPanel-bonus" class="project-user-panel"><div id="projectBonusAggregate" class="project-aggregate"></div><div id="projectBonusMount" class="project-mount"></div></div>
     <div id="projectPanel-team" class="project-user-panel"><div id="projectTeamMount" class="project-mount"></div></div>
     <div id="projectPanel-prices" class="project-user-panel"><div class="project-placeholder"><b>Kurse und Pools</b><br>Dieser Tab bleibt in der Discovery-Seite bewusst leer. Bei der Hauptseitenintegration wird die bestehende TLN/VOW-Kurs-/Poolansicht aus <code>index.html</code> 1:1 beibehalten.</div></div>
+    <div id="projectPanel-admin" class="project-user-panel"><div class="card"><h2>Admin · TLN/VOW Contract-Registry</h2><p class="muted">Kontrollansicht aller bekannten Staking-Contracts sowie automatisch entdeckter, noch nicht verifizierter Contract-/Asset-Kandidaten. In der späteren Hauptseite ist dieser Tab ausschließlich für Admin-User sichtbar. Neue Funde werden hier nur als <b>zu prüfen</b> angezeigt und niemals automatisch als verifiziert promoted.</p><div id="projectAdminContractSummary" class="muted">Registry wird geladen …</div><div class="wrap" style="margin-top:10px"><table style="min-width:1250px"><thead><tr><th>Status</th><th>Name</th><th>Typ / Rolle</th><th>Contract / Asset</th><th>Pair / Bezug</th><th>Quelle / Evidenz</th><th>Zuletzt gesehen</th></tr></thead><tbody id="projectAdminContracts"><tr><td colspan="7">Noch keine Daten.</td></tr></tbody></table></div></div></div>
   </div>
 </div>
 
@@ -388,7 +390,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260908-202127';
+const BUILD_ID='20260908-231509';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -451,13 +453,21 @@ const METHOD_SELECTORS = new Map([
   [ethers.id('claimBonus()').slice(0,10).toLowerCase(),'Claim Bonus']
 ]);
 
-// Verifizierte Nicht-Staking-Selector, die bei Team-Cold-Runs wie Stake aussehen koennen,
-// weil dabei LP-Token aus dem Wallet abfliessen. 0xc50a74a6 wird projektweit fuer die
-// nachgelagerte Verarbeitung/Umwandlung des vUSD/VOW-LP verwendet (typisch nach Unstake
-// und LP-Approve). Der reine LP-Abfluss darf deshalb niemals als neuer Stake gewertet werden.
-const TEAM_KNOWN_NON_STAKING_SELECTORS=new Map([
-  ['0xc50a74a6','vUSD/VOW LP-Verarbeitung/Umwandlung · kein Staking']
+// ZENTRALE fachliche Ausschlussliste für verifizierte Nicht-Staking-Aktionen.
+// Diese Regel gilt absichtlich für die normale Step-2-Discovery UND die Step-7-Team-
+// Recovery. 0xc50a74a6 ist der TLN-Rebound/LP-Verarbeitungsweg: dabei kann ein echter
+// LP-Abfluss und anschließend ein v$-Mint auftreten, ohne dass eine neue Staking-Position
+// entsteht. Ein Rebound darf deshalb in keinem Discovery-/Fallback-Pfad als Stake gelten.
+const VERIFIED_NON_STAKING_SELECTORS=new Map([
+  ['0xc50a74a6','TLN Rebound / LP-Verarbeitung · kein Staking']
 ]);
+function verifiedNonStakingReason(callOrSelector){
+  const selector=typeof callOrSelector==='string'
+    ?String(callOrSelector).slice(0,10).toLowerCase()
+    :String(callOrSelector?._selector||callOrSelector?._input||'').slice(0,10).toLowerCase();
+  return VERIFIED_NON_STAKING_SELECTORS.get(selector)||null;
+}
+function isVerifiedNonStakingCall(callOrSelector){return !!verifiedNonStakingReason(callOrSelector)}
 
 const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const norm=a=>String(a||'').toLowerCase();
@@ -511,7 +521,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='08.09.2026 20:21:27 CEST';
+const APP_VERSION='08.09.2026 23:15:09 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4567,13 +4577,14 @@ async function recordStakingDiscoveryCandidate(candidate){
   };
   STAKING_DISCOVERY_CANDIDATE_STATE.entries.set(key,next);STAKING_DISCOVERY_CANDIDATE_STATE.dirty=true;
   if(!prev)log(`Neue Staking-Prüfliste: ${type==='contract'?'Contract':type==='asset'?'Asset':'Abdeckungsfall'} ${short(address)} mit starker On-Chain-Evidenz als „zu prüfen“ vorgemerkt · E-Mail-Benachrichtigung pending_email.`,'warn');
+  if($('projectAdminContracts'))void renderProjectAdminContractRegistry();
   return {saved:true,isNew:!prev,row:next};
 }
 async function flushStakingDiscoveryCandidateCache(){
   if(!STAKING_DISCOVERY_CANDIDATE_STATE.loaded||!STAKING_DISCOVERY_CANDIDATE_STATE.dirty)return false;
   const entries=Object.fromEntries(STAKING_DISCOVERY_CANDIDATE_STATE.entries);
   const ok=await saveTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,TECH_CACHE_KEYS.stakingDiscoveryCandidates,TECH_CACHE_VERSIONS.stakingDiscoveryCandidates,{kind:'staking_discovery_review_registry',schemaVersion:1,entries,savedAt:new Date().toISOString()});
-  if(ok){STAKING_DISCOVERY_CANDIDATE_STATE.dirty=false;log(`Staking-Prüfliste gespeichert: ${STAKING_DISCOVERY_CANDIDATE_STATE.entries.size} Kandidat(en) persistent · Status bleibt „zu prüfen“ bis zur manuellen/on-chain Verifikation.`,'ok')}
+  if(ok){STAKING_DISCOVERY_CANDIDATE_STATE.dirty=false;log(`Staking-Prüfliste gespeichert: ${STAKING_DISCOVERY_CANDIDATE_STATE.entries.size} Kandidat(en) persistent · Status bleibt „zu prüfen“ bis zur manuellen/on-chain Verifikation.`,'ok');if($('projectAdminContracts'))void renderProjectAdminContractRegistry()}
   return ok;
 }
 async function captureVerifiedTeamLifecycleCandidates(wallets){
@@ -6857,9 +6868,11 @@ function renderPairTable(pairs,counts){
 }
 
 function isStakeCallCandidate(c){
-  // Explizit als Fremd-/Operator-Stake ausgeschlossene Calls dürfen in keiner späteren
-  // Stufe erneut als eigene Position des gesuchten Wallets auftauchen.
-  if(c?._teamPositionExcluded===true)return false;
+  // Explizit als Fremd-/Operator-Stake ausgeschlossene Calls sowie zentral verifizierte
+  // Nicht-Staking-Aktionen (z. B. TLN Rebound) dürfen in keiner späteren Stufe erneut
+  // als eigene Position des gesuchten Wallets auftauchen. Diese Funktion wird sowohl
+  // von der normalen Step-2-Discovery als auch von Team-/Recovery-Pfaden verwendet.
+  if(c?._teamPositionExcluded===true||isVerifiedNonStakingCall(c))return false;
   const selector=String(c?._selector||c?._input||'').slice(0,10).toLowerCase();
   const decoded=METHOD_SELECTORS.get(selector);
   if(decoded==='Stake')return true;
@@ -11073,11 +11086,32 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
 }
 
 
+async function renderProjectAdminContractRegistry(){
+  const body=$('projectAdminContracts'),summary=$('projectAdminContractSummary');
+  if(!body||!summary)return;
+  try{await ensureStakingDiscoveryCandidateCache()}catch(e){log(`Admin Contract-Registry: Prüfliste nicht ladbar: ${e?.message||e}`,'warn')}
+  const verified=(stakingContracts||[]).map(x=>({
+    status:'verifiziert',name:stakingContractLabel(x),type:x.role||'staking_contract',address:norm(x.contract_address||''),
+    relation:x.pair_label||x.pair_address||'–',source:'Supabase · defi_staking_contracts',last:null,verified:true
+  })).filter(x=>ethers.isAddress(x.address));
+  const pending=[...STAKING_DISCOVERY_CANDIDATE_STATE.entries.values()].map(x=>({
+    status:String(x.status||'zu_pruefen'),name:x.label||`Unbekannter ${x.type==='asset'?'Staking-Asset':'Staking-Contract'} ${short(x.address)}`,
+    type:x.type==='coverage'?`Coverage / ${x.reviewReason||'Lifecycle offen'}`:x.type==='asset'?'Staking-Asset Kandidat':'Staking-Contract Kandidat',
+    address:norm(x.address||''),relation:x.stakingContract?`Staking ${short(x.stakingContract)}`:x.relatedAsset?`Asset ${short(x.relatedAsset)}`:x.entryContract?`Entry ${short(x.entryContract)}`:'–',
+    source:[...(x.sources||[]),...(x.evidences||[])].filter(Boolean).slice(-3).join(' · ')||'automatische Discovery',last:x.lastSeenAt||x.updatedAt||null,verified:false
+  })).filter(x=>ethers.isAddress(x.address));
+  const rows=[...verified,...pending];
+  rows.sort((a,b)=>Number(a.verified)-Number(b.verified)||String(a.name).localeCompare(String(b.name),'de'));
+  summary.innerHTML=`<b>${verified.length}</b> verifizierte Registry-Contract(s) · <b>${pending.length}</b> offene Kandidat(en) „zu prüfen“ · zentral ausgeschlossene Nicht-Staking-Selector: <span class="mono">${[...VERIFIED_NON_STAKING_SELECTORS.keys()].map(esc).join(', ')||'–'}</span>.`;
+  body.innerHTML=rows.length?rows.map(x=>`<tr><td>${x.verified?'<span class="ok"><b>✓ Verifiziert</b></span>':'<span class="warn"><b>⚠ Zu prüfen</b></span>'}</td><td><b>${esc(x.name)}</b></td><td>${esc(x.type)}</td><td class="mono">${esc(x.address)}</td><td>${esc(x.relation||'–')}</td><td>${esc(x.source||'–')}</td><td>${x.last?esc(new Date(x.last).toLocaleString('de-CH')):'–'}</td></tr>`).join(''):'<tr><td colspan="7">Keine Contract-Daten vorhanden.</td></tr>';
+}
+
 function switchProjectUserTab(name){
   const key=String(name||'overview');
   document.querySelectorAll('.project-user-tab').forEach(btn=>btn.classList.toggle('active',btn.dataset.projectPanel===key));
   document.querySelectorAll('.project-user-panel').forEach(panel=>panel.classList.toggle('active',panel.id===`projectPanel-${key}`));
   renderProjectUserView();
+  if(key==='admin')void renderProjectAdminContractRegistry();
 }
 function setupProjectUserTabs(){
   document.querySelectorAll('.project-user-tab').forEach(btn=>btn.addEventListener('click',()=>switchProjectUserTab(btn.dataset.projectPanel)));
@@ -11466,7 +11500,7 @@ function projectStakingSummaryRowHtml(l,showWallet,index){
       <div>${projectStakingSummaryDateHtml(expiry)}<div class="project-staking-sub">${esc(projectLockBaseReasonHtml(l))}</div></div>
       <div>${projectStakingSummaryDateHtml(l.unstakeTime)}</div>
       <div><div style="font-weight:800">${esc(duration)}</div><div class="project-staking-sub">${esc(status.life)}</div></div>
-      <div><div class="project-staking-amount">${amount.toLocaleString('de-CH',{maximumFractionDigits:12})}<span class="symbol">${esc(symbol)}</span></div>${l.remaining!=null&&Number(l.remaining)!==amount?`<div class="project-staking-sub">offen ${Number(l.remaining).toLocaleString('de-CH',{maximumFractionDigits:12})}</div>`:''}</div>
+      <div><div class="project-staking-amount">${amount.toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2})}<span class="symbol">${esc(symbol)}</span></div>${l.remaining!=null&&Number(l.remaining)!==amount?`<div class="project-staking-sub">offen ${Number(l.remaining).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>`:''}</div>
       <div><div class="project-usd-stack">${projectStakingUsdLineHtml('stake','Stake',l.stakeUsd)}${projectStakingUsdLineHtml('end','Ende',l.contractEndUsd)}${projectStakingUsdLineHtml('unstake','Unstake',l.status==='closed'?l.unstakeUsd:null)}</div>${source?`<div class="project-staking-source">${legacy?'Cross-Chain-Historienbewertung':'Historische On-Chain-Bewertung'}</div>`:''}</div>
       <div><span class="project-staking-status ${status.cls}">${esc(status.label)}</span>${(l.topUps||[]).length?`<div class="project-staking-sub">${l.topUps.length} Aufstockung(en)</div>`:''}</div>
     </div>
@@ -14709,7 +14743,7 @@ async function teamBatchPositionCalls(wallets,{forceFresh=false}={}){
     // koennen einen echten LP-Abfluss aus dem Wallet enthalten, erzeugen aber keine
     // Staking-Position. Ohne diesen Ausschluss wuerde der generische ERC20-Recovery-Pfad
     // daraus faelschlich einen neuen Staking-Contract bzw. eine offene Duration machen.
-    if(TEAM_KNOWN_NON_STAKING_SELECTORS.has(selector))return false;
+    if(isVerifiedNonStakingCall(selector))return false;
     const method=String(c?._method||'').toLowerCase();
     if(method==='stake'||method==='unstake')return true;
     if(String(c?._teamPositionEvidenceSeed||''))return true;
@@ -14766,6 +14800,14 @@ async function teamBatchPositionCalls(wallets,{forceFresh=false}={}){
       const selectorUnstakeVerifiedTarget=methodLower==='unstake'&&knownStakingContractAddress(called);
       let positionKind=explicitForeignStake?null:(methodLower==='stake'?'stake':selectorUnstakeVerifiedTarget?'unstake':null);
       let evidence=explicitForeignStake?'excluded:selector-stake-for-other-wallet':(positionKind?`selector:${methodLower}`:null);
+      // Zentrale Sicherheitsbarriere für verifizierte Nicht-Staking-Aktionen. Damit gilt
+      // dieselbe Rebound-Regel wie in Step 2 auch dann, wenn ein Call über Altcache,
+      // Recovery-Seed oder Receipt-Fallback bis in die Team-Klassifikation gelangt.
+      if(isVerifiedNonStakingCall(c)){
+        c._teamPositionEvidence=`excluded:${verifiedNonStakingReason(c)}`;
+        c._step2PositionRelevant=false;
+        continue;
+      }
       if(methodLower==='unstake'&&!selectorUnstakeVerifiedTarget){
         // 0x2e1a7d4d u.a. ist ein generischer withdraw(uint256)-Selector und kommt auch
         // auf Token-/Bridge-Contracts vor. Ohne verifizierten Staking-Contract oder
@@ -15754,7 +15796,7 @@ function teamPartnerStakingRowHtml(l,index){
     <div>${projectStakingSummaryDateHtml(expiry)}<div class="project-staking-sub">${esc(projectLockBaseReasonHtml(l))}</div></div>
     <div>${projectStakingSummaryDateHtml(l.unstakeTime)}</div>
     <div><div style="font-weight:800">${esc(duration)}</div><div class="project-staking-sub">${esc(status.life)}</div></div>
-    <div><div class="project-staking-amount">${amount.toLocaleString('de-CH',{maximumFractionDigits:12})}<span class="symbol">${esc(symbol)}</span></div>${l.remaining!=null&&Number(l.remaining)!==amount?`<div class="project-staking-sub">offen ${Number(l.remaining).toLocaleString('de-CH',{maximumFractionDigits:12})}</div>`:''}</div>
+    <div><div class="project-staking-amount">${amount.toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2})}<span class="symbol">${esc(symbol)}</span></div>${l.remaining!=null&&Number(l.remaining)!==amount?`<div class="project-staking-sub">offen ${Number(l.remaining).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>`:''}</div>
     <div><div class="project-usd-stack">${projectStakingUsdLineHtml('stake','Stake',l.stakeUsd)}${projectStakingUsdLineHtml('end','Ende',l.contractEndUsd)}${projectStakingUsdLineHtml('unstake','Unstake',l.status==='closed'?l.unstakeUsd:null)}</div></div>
     <div><span class="project-staking-status ${status.cls}">${esc(status.label)}</span>${(l.topUps||[]).length?`<div class="project-staking-sub">${l.topUps.length} Aufstockung(en)</div>`:''}</div>
   </div></div>`;
@@ -16846,6 +16888,7 @@ tlnWallets=(wq.data||[])
 populateTlnWalletDropdown();
 bindWalletDropdown();
 setupProjectUserTabs();
+void renderProjectAdminContractRegistry();
 populateProjectWalletFilter();await primeProjectReferralDecimals();loadProjectWalletSnapshots();
 $('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;bindStep6LifecycleControls();resetDiscoveryProcess($('wallet').value);setStepState(1,'bereit');if(!CURRENT_TEAM_PROJECT_FOREST)setStepState(7,'bereit');updateProcessButtons();log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok');if(ethers.isAddress($('wallet').value))await restoreDiscoveryResultSnapshot($('wallet').value);await restoreTeamTreeFromPersistentCache()}
 $('refresh').onclick=processBaseData;
