@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 23:15:09 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 01:24:23 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -390,7 +390,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260908-231509';
+const BUILD_ID='20260909-012423';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -521,7 +521,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='08.09.2026 23:15:09 CEST';
+const APP_VERSION='09.09.2026 01:24:23 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4508,6 +4508,10 @@ function knownNonStakingUnderlyingAddress(address){
   // sind keine "neu entdeckten Staking-Assets", nur weil sie innerhalb einer
   // Router-/Cave-Stake-Tx aus dem Wallet abfließen.
   if((projectTokens||[]).some(x=>norm(x?.address||'')===a))return true;
+  // Zentrale Preisreferenzen sind ebenfalls bekannte Underlyings. Insbesondere darf
+  // BSC-USDT niemals durch einen Receipt-/Downstream-Abfluss als neues Staking-Asset
+  // in die Admin-Pruefliste gelangen.
+  if(Object.values(DISCOVERY_PRICE_REFERENCES||{}).some(x=>norm(x||'')===a))return true;
   if((window.__TLNVOW_DISCOVERY_UNDERLYINGS||[]).some(x=>norm(x?.address||x||'')===a))return true;
   return (allProjectRows||[]).some(x=>{
     if(norm(x?.address||'')!==a)return false;
@@ -4545,6 +4549,48 @@ async function ensureStakingDiscoveryCandidateCache(){
   }
   if(STAKING_DISCOVERY_CANDIDATE_STATE.entries.size)log(`Staking-Prüfliste: ${STAKING_DISCOVERY_CANDIDATE_STATE.entries.size} persistente Kandidat(en) geladen.`,'ok');
 }
+function stakingDiscoveryLotContract(lot){
+  lot=lot?.lot||lot||{};
+  return norm(lot?.duration_contract||lot?.stake_event_contract||lot?.staking?.contract_address||lot?.counterparty||'');
+}
+function stakingDiscoveryLotHasVerifiedDuration(lot){
+  lot=lot?.lot||lot||{};
+  return !!(lot?.expiryTime||lot?.contractEndTime||lot?.releaseTime);
+}
+function allKnownVerifiedLifecycleLots(){
+  const out=[];
+  for(const life of TEAM_STAKING_LIFECYCLE?.values?.()||[]){
+    if(!life?.verified)continue;
+    for(const row of (life?.lots||[]))out.push(row?.lot||row);
+  }
+  for(const lot of (CURRENT_STAKING_LOTS||[]))out.push(lot?.lot||lot);
+  return out.filter(Boolean);
+}
+async function reconcileStakingDiscoveryCandidates(){
+  await ensureStakingDiscoveryCandidateCache();
+  const verifiedLots=allKnownVerifiedLifecycleLots();
+  let removed=0;const reasons={};
+  const drop=(k,reason)=>{STAKING_DISCOVERY_CANDIDATE_STATE.entries.delete(k);removed++;reasons[reason]=(reasons[reason]||0)+1};
+  for(const [k,v] of [...STAKING_DISCOVERY_CANDIDATE_STATE.entries]){
+    const type=String(v?.type||'').toLowerCase(),a=norm(v?.address||'');
+    if(type==='asset'&&(knownStakingAssetAddress(a)||knownNonStakingUnderlyingAddress(a))){drop(k,knownStakingAssetAddress(a)?'Asset inzwischen Registry-verifiziert':'bekanntes Underlying / kein Staking-Asset');continue}
+    if(type==='contract'&&knownStakingContractAddress(a)){drop(k,'Contract inzwischen Registry-verifiziert');continue}
+    if(type==='coverage'){
+      // Coverage ist kein historisches Fehlerarchiv: sobald derselbe Duration-/Staking-
+      // Contract in einem verifizierten Lifecycle eine belastbare Ablaufzeit besitzt,
+      // ist der offene duration_unverified-Fall erledigt und verschwindet automatisch.
+      const resolved=verifiedLots.some(lot=>stakingDiscoveryLotContract(lot)===a&&stakingDiscoveryLotHasVerifiedDuration(lot));
+      if(resolved){drop(k,'Duration inzwischen strikt/Lifecycle-verifiziert');continue}
+      if(knownStakingAssetAddress(a)&&!knownStakingContractAddress(a)){drop(k,'LP/Asset ist kein Duration-Contract');continue}
+    }
+  }
+  if(removed){
+    STAKING_DISCOVERY_CANDIDATE_STATE.dirty=true;
+    log(`Staking-Pruefliste Status-Abgleich: ${removed} erledigte/False-Positive Kandidat(en) automatisch entfernt · ${Object.entries(reasons).map(([r,n])=>`${n}× ${r}`).join(' · ')}.`,'ok');
+  }
+  return removed;
+}
+
 async function recordStakingDiscoveryCandidate(candidate){
   const type=String(candidate?.type||'').toLowerCase(),address=norm(candidate?.address||'');
   if(!['contract','asset','coverage'].includes(type)||!ethers.isAddress(address))return {saved:false,reason:'invalid'};
@@ -11089,7 +11135,7 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
 async function renderProjectAdminContractRegistry(){
   const body=$('projectAdminContracts'),summary=$('projectAdminContractSummary');
   if(!body||!summary)return;
-  try{await ensureStakingDiscoveryCandidateCache()}catch(e){log(`Admin Contract-Registry: Prüfliste nicht ladbar: ${e?.message||e}`,'warn')}
+  try{await ensureStakingDiscoveryCandidateCache();const reconciled=await reconcileStakingDiscoveryCandidates();if(reconciled)await flushStakingDiscoveryCandidateCache()}catch(e){log(`Admin Contract-Registry: Prüfliste nicht ladbar: ${e?.message||e}`,'warn')}
   const verified=(stakingContracts||[]).map(x=>({
     status:'verifiziert',name:stakingContractLabel(x),type:x.role||'staking_contract',address:norm(x.contract_address||''),
     relation:x.pair_label||x.pair_address||'–',source:'Supabase · defi_staking_contracts',last:null,verified:true
@@ -14135,8 +14181,10 @@ function teamFormatStakeDate(v,withTime=false){
   return withTime?d.toLocaleString('de-CH',{dateStyle:'short',timeStyle:'short'}):d.toLocaleDateString('de-CH');
 }
 function teamLotAmountText(l){
-  const amount=Number(l.remaining??l.original??l.amount??0);
-  return Number.isFinite(amount)?amount.toLocaleString('de-CH',{minimumFractionDigits:1,maximumFractionDigits:1}):'–';
+  // Positionsanzeige = tatsächlich eingesetzter LP-Betrag. Bei beendeten Positionen ist
+  // `remaining` korrekt 0 und darf deshalb nicht als ursprüngliche Staking-Menge erscheinen.
+  const amount=Number(l.original??l.amount??l.remaining??0);
+  return Number.isFinite(amount)?`${amount.toLocaleString('de-CH',{minimumFractionDigits:1,maximumFractionDigits:1})} LP`:'–';
 }
 function teamAmountOneDecimal(v){
   const n=Number(v);
@@ -15601,7 +15649,7 @@ function teamLotCardHtml(l,{historical=false}={}){
   const label=status==='active'?'Aktiv':status==='expired_still_staked'?'Abgelaufen':'Unstaked';
   const cls=status==='active'?'active':status==='expired_still_staked'?'expired':'unstaked';
   return `<div class="team-stake-item">
-    <div class="team-stake-head"><b>${esc(teamLotAmountText(l))} ${esc(pair)}</b><span class="team-stake-status ${cls}">${esc(label)}</span></div>
+    <div class="team-stake-head"><b>${esc(teamLotAmountText(l))} · ${esc(pair)}</b><span class="team-stake-status ${cls}">${esc(label)}</span></div>
     <div class="muted">Staking: ${esc(teamFormatStakeDate(l?.stakeTime||l?.startTime,true))}</div>
     <div class="muted">Ablauf: ${expiry?esc(teamFormatStakeDate(expiry,true)):(expectedExpiry?`<span class="warn">${esc(teamFormatStakeDate(expectedExpiry,true))} · 367 Tage erwartet · noch nicht Strict-verifiziert</span>`:'<span class="warn">noch nicht verifiziert</span>')}</div>
     ${status==='completed'?`<div class="muted">Unstaked: ${esc(teamFormatStakeDate(unstake,true))}</div>`:''}
@@ -15651,7 +15699,7 @@ function teamPartialLotCardHtml(l){
   const original=Number(l?.original??l?.amount??l?.remaining??0);
   const amount=Number.isFinite(original)?original.toLocaleString('de-CH',{minimumFractionDigits:1,maximumFractionDigits:1}):'–';
   return `<div class="team-stake-item">
-    <div class="team-stake-head"><b>${esc(amount)} ${esc(pair)}</b><span class="muted">Lifecycle offen</span></div>
+    <div class="team-stake-head"><b>${esc(amount)} LP · ${esc(pair)}</b><span class="muted">Lifecycle offen</span></div>
     <div class="muted">Staking: ${esc(teamFormatStakeDate(l?.stakeTime||l?.startTime,true))}</div>
     <div class="muted">Ablauf: ${expiry?esc(teamFormatStakeDate(expiry,true)):(expectedExpiry?`<span class="warn">${esc(teamFormatStakeDate(expectedExpiry,true))} · 367 Tage erwartet · noch nicht Strict-verifiziert</span>`:'<span class="warn">noch nicht verifiziert</span>')}</div>
     <div class="team-node-lifecycle-note">Staking-Position on-chain erkannt; Vertrags-Lifecycle bzw. Ablauf noch nicht vollständig verifiziert. Ein Unstake wird erst nach eindeutigem separatem On-Chain-Nachweis angezeigt.</div>
@@ -16362,7 +16410,9 @@ async function processTeamTree(){
     // Auch im Hot-Run werden bereits verifizierte Lifecycle-Caches gegen die aktuelle
     // Registry gespiegelt. So geht ein früher autonom entdeckter neuer Contract/Asset
     // nicht verloren, nur weil heute kein Cold-Lifecycle-Scan mehr nötig ist.
+    await reconcileStakingDiscoveryCandidates();
     await captureVerifiedTeamLifecycleCandidates([...CURRENT_TEAM_PROJECT_FOREST.included]);
+    await reconcileStakingDiscoveryCandidates();
     await flushStakingDiscoveryCandidateCache();
     const teamCompleteness=logTeamCompletenessDiagnostics(CURRENT_TEAM_PROJECT_FOREST);
     const teamCheck=teamRegressionSummary(CURRENT_TEAM_PROJECT_FOREST);
