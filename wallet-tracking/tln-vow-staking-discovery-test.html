@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 01:24:23 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 01:40:32 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -271,7 +271,16 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
     <div id="projectPanel-bonus" class="project-user-panel"><div id="projectBonusAggregate" class="project-aggregate"></div><div id="projectBonusMount" class="project-mount"></div></div>
     <div id="projectPanel-team" class="project-user-panel"><div id="projectTeamMount" class="project-mount"></div></div>
     <div id="projectPanel-prices" class="project-user-panel"><div class="project-placeholder"><b>Kurse und Pools</b><br>Dieser Tab bleibt in der Discovery-Seite bewusst leer. Bei der Hauptseitenintegration wird die bestehende TLN/VOW-Kurs-/Poolansicht aus <code>index.html</code> 1:1 beibehalten.</div></div>
-    <div id="projectPanel-admin" class="project-user-panel"><div class="card"><h2>Admin · TLN/VOW Contract-Registry</h2><p class="muted">Kontrollansicht aller bekannten Staking-Contracts sowie automatisch entdeckter, noch nicht verifizierter Contract-/Asset-Kandidaten. In der späteren Hauptseite ist dieser Tab ausschließlich für Admin-User sichtbar. Neue Funde werden hier nur als <b>zu prüfen</b> angezeigt und niemals automatisch als verifiziert promoted.</p><div id="projectAdminContractSummary" class="muted">Registry wird geladen …</div><div class="wrap" style="margin-top:10px"><table style="min-width:1250px"><thead><tr><th>Status</th><th>Name</th><th>Typ / Rolle</th><th>Contract / Asset</th><th>Pair / Bezug</th><th>Quelle / Evidenz</th><th>Zuletzt gesehen</th></tr></thead><tbody id="projectAdminContracts"><tr><td colspan="7">Noch keine Daten.</td></tr></tbody></table></div></div></div>
+    <div id="projectPanel-admin" class="project-user-panel"><div class="card"><h2>Admin · TLN/VOW Contract-Registry</h2><p class="muted">Kontrollansicht aller bekannten Staking-Contracts sowie automatisch entdeckter, noch nicht vollständig verifizierter Contract-/Asset-/Lifecycle-Fälle. In der späteren Hauptseite ist dieser Tab ausschließlich für Admin-User sichtbar. Neue Funde werden niemals automatisch als verifiziert promoted; erledigte Prüffälle werden nach belastbarer Verifikation automatisch bereinigt.</p><div id="projectAdminContractSummary" class="muted">Registry wird geladen …</div>
+      <div id="projectAdminContractLegend" class="project-placeholder" style="margin-top:12px;text-align:left">
+        <b>Legende · Status und Typen</b><br>
+        <b>✓ Verifiziert</b>: Contract und Rolle sind in der zentralen Registry bestätigt. <b>Staking</b> = regulärer Staking-Pool; <b>Legacy-Staking</b> = ältere TLN/VOW-Generation mit eigener historischer Logik; <b>System / Controller</b> = technischer Bestandteil des Staking-/Reward-Systems, aber kein eigener Pool.<br><br>
+        <b>⚠ Lockdauer offen</b>: Das Staking selbst ist on-chain bestätigt und der Contract kann bereits grün in der Registry stehen; für mindestens eine konkrete Position fehlt aber noch ein belastbarer Strict-Proof für Lockdauer/Contract-Ende. Das ist kein unbekannter Staking-Contract.<br>
+        <b>⚠ Contract/Asset prüfen</b>: Starke On-Chain-Evidenz wurde entdeckt, die Adresse ist aber noch nicht als zulässiger Staking-Contract bzw. Staking-Asset verifiziert.<br><br>
+        <b>Automatische Bereinigung:</b> Ein Prüffall verschwindet, sobald Contract/Asset verifiziert oder die zugehörige Lockdauer positionsgenau belastbar aufgelöst ist. Die Prüfliste ist damit eine aktuelle Arbeitsliste und kein historisches Fehlerarchiv.
+      </div>
+      <div id="projectAdminDurationStatus" class="project-placeholder" style="margin-top:10px;text-align:left">Duration-Prüfstand wird geladen …</div>
+      <div class="wrap" style="margin-top:10px"><table style="min-width:1250px"><thead><tr><th>Status</th><th>Name</th><th>Typ / Rolle</th><th>Contract / Asset</th><th>Pair / Bezug</th><th>Quelle / Evidenz</th><th>Zuletzt gesehen</th></tr></thead><tbody id="projectAdminContracts"><tr><td colspan="7">Noch keine Daten.</td></tr></tbody></table></div></div></div>
   </div>
 </div>
 
@@ -390,7 +399,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260909-012423';
+const BUILD_ID='20260909-014032';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -521,7 +530,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='09.09.2026 01:24:23 CEST';
+const APP_VERSION='09.09.2026 01:40:32 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4577,8 +4586,12 @@ async function reconcileStakingDiscoveryCandidates(){
     if(type==='contract'&&knownStakingContractAddress(a)){drop(k,'Contract inzwischen Registry-verifiziert');continue}
     if(type==='coverage'){
       // Coverage ist kein historisches Fehlerarchiv: sobald derselbe Duration-/Staking-
-      // Contract in einem verifizierten Lifecycle eine belastbare Ablaufzeit besitzt,
+      // Contract in einem verifizierten Lifecycle eine belastbare Ablaufzeit besitzt
+      // ODER eine explizit verifizierte, exakt contractgebundene Duration-Regel existiert,
       // ist der offene duration_unverified-Fall erledigt und verschwindet automatisch.
+      if(typeof VERIFIED_MANUAL_DURATION_RULES!=='undefined'&&VERIFIED_MANUAL_DURATION_RULES.has(a)){
+        drop(k,'Duration durch verifizierte exakte Contract-Regel geklärt');continue
+      }
       const resolved=verifiedLots.some(lot=>stakingDiscoveryLotContract(lot)===a&&stakingDiscoveryLotHasVerifiedDuration(lot));
       if(resolved){drop(k,'Duration inzwischen strikt/Lifecycle-verifiziert');continue}
       if(knownStakingAssetAddress(a)&&!knownStakingContractAddress(a)){drop(k,'LP/Asset ist kein Duration-Contract');continue}
@@ -5838,6 +5851,16 @@ function evmPushContainsExactUint(bytecode,target){
 const VERIFIED_MANUAL_DURATION_RULES=new Map([
   ['0x3c0655c7d50f75addbd475d21a35e5660ad5f944',{days:367,label:'v£ / VOW',verifiedAt:'2026-09-07',source:'fachlich manuell verifiziert + positionsgenaue On-Chain-Evidenz'}],
   ['0x2199898e1af5ff75bf5daa23fb205ac007ab7c26',{days:367,label:'v€ / VOW',verifiedAt:'2026-09-07',source:'fachlich manuell verifiziert + positionsgenaue On-Chain-Evidenz'}]
+]);
+
+// Dokumentierter Prüfstand der neueren v£/v€-Staking-Generation.
+// Die beiden 367-Tage-Regeln sind exakt contractgebunden. Für v£/v€ ist das
+// Staking selbst on-chain eindeutig belegt (Stake-Event + exakter LP-Transfer);
+// die Lockdauer bleibt bis zu einem eigenständigen Strict-Proof bewusst offen.
+const DOCUMENTED_DURATION_RESEARCH=new Map([
+  ['0x3c0655c7d50f75addbd475d21a35e5660ad5f944',{label:'v£ / VOW',status:'verified_rule',days:367,note:'367 Tage fachlich verifiziert; exakte Contract-Regel aktiv.'}],
+  ['0x2199898e1af5ff75bf5daa23fb205ac007ab7c26',{label:'v€ / VOW',status:'verified_rule',days:367,note:'367 Tage fachlich verifiziert; exakte Contract-Regel aktiv.'}],
+  ['0x8ab468a067983e617c37f2ee15419395caba73fb',{label:'v£ / v€',status:'duration_open',days:null,note:'Staking on-chain verifiziert (Stake-Event + LP-Transfer); Lockdauer noch nicht als Strict-Proof bewiesen.'}]
 ]);
 function applyVerifiedManualDurationRule(lot){
   const contract=norm(lotContractAddress(lot));
@@ -11133,23 +11156,42 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
 
 
 async function renderProjectAdminContractRegistry(){
-  const body=$('projectAdminContracts'),summary=$('projectAdminContractSummary');
+  const body=$('projectAdminContracts'),summary=$('projectAdminContractSummary'),durationBox=$('projectAdminDurationStatus');
   if(!body||!summary)return;
   try{await ensureStakingDiscoveryCandidateCache();const reconciled=await reconcileStakingDiscoveryCandidates();if(reconciled)await flushStakingDiscoveryCandidateCache()}catch(e){log(`Admin Contract-Registry: Prüfliste nicht ladbar: ${e?.message||e}`,'warn')}
+  const typeLabel=role=>{
+    const r=String(role||'').toLowerCase();
+    if(r==='legacy')return 'Legacy-Staking';
+    if(r==='controller')return 'System / Controller';
+    if(r==='staking'||r==='staking_contract')return 'Staking';
+    return role||'Staking';
+  };
   const verified=(stakingContracts||[]).map(x=>({
-    status:'verifiziert',name:stakingContractLabel(x),type:x.role||'staking_contract',address:norm(x.contract_address||''),
+    status:'verifiziert',statusLabel:'✓ Verifiziert',name:stakingContractLabel(x),type:typeLabel(x.role||'staking_contract'),address:norm(x.contract_address||''),
     relation:x.pair_label||x.pair_address||'–',source:'Supabase · defi_staking_contracts',last:null,verified:true
   })).filter(x=>ethers.isAddress(x.address));
-  const pending=[...STAKING_DISCOVERY_CANDIDATE_STATE.entries.values()].map(x=>({
-    status:String(x.status||'zu_pruefen'),name:x.label||`Unbekannter ${x.type==='asset'?'Staking-Asset':'Staking-Contract'} ${short(x.address)}`,
-    type:x.type==='coverage'?`Coverage / ${x.reviewReason||'Lifecycle offen'}`:x.type==='asset'?'Staking-Asset Kandidat':'Staking-Contract Kandidat',
-    address:norm(x.address||''),relation:x.stakingContract?`Staking ${short(x.stakingContract)}`:x.relatedAsset?`Asset ${short(x.relatedAsset)}`:x.entryContract?`Entry ${short(x.entryContract)}`:'–',
-    source:[...(x.sources||[]),...(x.evidences||[])].filter(Boolean).slice(-3).join(' · ')||'automatische Discovery',last:x.lastSeenAt||x.updatedAt||null,verified:false
-  })).filter(x=>ethers.isAddress(x.address));
+  const pending=[...STAKING_DISCOVERY_CANDIDATE_STATE.entries.values()].map(x=>{
+    const isCoverage=x.type==='coverage';
+    return {
+      status:String(x.status||'zu_pruefen'),statusLabel:isCoverage?'⚠ Lockdauer offen':'⚠ Contract/Asset prüfen',
+      name:x.label||`Unbekannter ${x.type==='asset'?'Staking-Asset':'Staking-Contract'} ${short(x.address)}`,
+      type:isCoverage?'Prüffall · Lockdauer':x.type==='asset'?'Prüffall · Staking-Asset':'Prüffall · Staking-Contract',
+      address:norm(x.address||''),relation:x.stakingContract?`Staking ${short(x.stakingContract)}`:x.relatedAsset?`Asset ${short(x.relatedAsset)}`:x.entryContract?`Entry ${short(x.entryContract)}`:'–',
+      source:[...(x.sources||[]),...(x.evidences||[])].filter(Boolean).slice(-3).join(' · ')||'automatische Discovery',last:x.lastSeenAt||x.updatedAt||null,verified:false,isCoverage
+    };
+  }).filter(x=>ethers.isAddress(x.address));
   const rows=[...verified,...pending];
   rows.sort((a,b)=>Number(a.verified)-Number(b.verified)||String(a.name).localeCompare(String(b.name),'de'));
-  summary.innerHTML=`<b>${verified.length}</b> verifizierte Registry-Contract(s) · <b>${pending.length}</b> offene Kandidat(en) „zu prüfen“ · zentral ausgeschlossene Nicht-Staking-Selector: <span class="mono">${[...VERIFIED_NON_STAKING_SELECTORS.keys()].map(esc).join(', ')||'–'}</span>.`;
-  body.innerHTML=rows.length?rows.map(x=>`<tr><td>${x.verified?'<span class="ok"><b>✓ Verifiziert</b></span>':'<span class="warn"><b>⚠ Zu prüfen</b></span>'}</td><td><b>${esc(x.name)}</b></td><td>${esc(x.type)}</td><td class="mono">${esc(x.address)}</td><td>${esc(x.relation||'–')}</td><td>${esc(x.source||'–')}</td><td>${x.last?esc(new Date(x.last).toLocaleString('de-CH')):'–'}</td></tr>`).join(''):'<tr><td colspan="7">Keine Contract-Daten vorhanden.</td></tr>';
+  const lockOpen=pending.filter(x=>x.isCoverage).length,otherOpen=pending.length-lockOpen;
+  summary.innerHTML=`<b>${verified.length}</b> verifizierte Registry-Contract(s) · <b>${lockOpen}</b> Lockdauer-Prüffall/-fälle offen · <b>${otherOpen}</b> unbekannte Contract-/Asset-Prüffälle · zentral ausgeschlossene Nicht-Staking-Selector: <span class="mono">${[...VERIFIED_NON_STAKING_SELECTORS.keys()].map(esc).join(', ')||'–'}</span>.`;
+  if(durationBox){
+    const research=[...DOCUMENTED_DURATION_RESEARCH.entries()].map(([address,r])=>{
+      const ok=r.status==='verified_rule';
+      return `<div style="margin-top:5px"><span class="${ok?'ok':'warn'}"><b>${ok?'✓ Geklärt':'⚠ Offen'} · ${esc(r.label)}</b></span> · <span class="mono">${esc(short(address))}</span> · ${esc(r.note)}</div>`;
+    }).join('');
+    durationBox.innerHTML=`<b>Dokumentierter Duration-Prüfstand · neue v£/v€-Generation</b>${research}<div class="muted" style="margin-top:7px">Wichtig: Ein grüner Registry-Contract bestätigt Contract und Rolle. Die Lockdauer ist eine zweite, positionsbezogene Verifikation. Deshalb kann derselbe Contract unten grün sein, während oben noch ein gelber Lockdauer-Prüffall existiert.</div>`;
+  }
+  body.innerHTML=rows.length?rows.map(x=>`<tr><td>${x.verified?'<span class="ok"><b>✓ Verifiziert</b></span>':`<span class="warn"><b>${esc(x.statusLabel)}</b></span>`}</td><td><b>${esc(x.name)}</b></td><td>${esc(x.type)}</td><td class="mono">${esc(x.address)}</td><td>${esc(x.relation||'–')}</td><td>${esc(x.source||'–')}</td><td>${x.last?esc(new Date(x.last).toLocaleString('de-CH')):'–'}</td></tr>`).join(''):'<tr><td colspan="7">Keine Contract-Daten vorhanden.</td></tr>';
 }
 
 function switchProjectUserTab(name){
