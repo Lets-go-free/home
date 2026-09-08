@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 11:24:38 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 11:33:33 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -377,7 +377,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260908-112438';
+const BUILD_ID='20260908-113333';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -491,7 +491,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='08.09.2026 11:24:38 CEST';
+const APP_VERSION='08.09.2026 11:33:33 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -1774,7 +1774,7 @@ async function scanReferralWallet(){
     const fmtReward=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:12});
     const partnerTable=partnerRows.length?`<h3 style="margin-top:16px">Referral-Rewards je Partner / TLN ID</h3>
       <table><thead><tr><th>Partner · TLN ID</th><th>Level</th>${rewardTokenList.map(t=>`<th>${esc(t.symbol)}</th>`).join('')}<th>Total</th></tr></thead><tbody>
-      ${partnerRows.map(p=>`<tr><td>${p.nodeId?`<b>${esc(p.nodeId)}</b>`:'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels?.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels?.size?`<span class="warn">${[...p.levels].join(' / ')}</span>`:'–'}</td>${rewardTokenList.map(t=>`<td>${fmtReward(p.amounts.get(t.address))}</td>`).join('')}<td><b>${fmtReward(p.total)}</b></td></tr>`).join('')}
+      ${partnerRows.map(p=>`<tr><td>${p.nodeId?tlnIdNameHtml(p.nodeId,[...p.wallets][0]):'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels?.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels?.size?`<span class="warn">${[...p.levels].join(' / ')}</span>`:'–'}</td>${rewardTokenList.map(t=>`<td>${fmtReward(p.amounts.get(t.address))}</td>`).join('')}<td><b>${fmtReward(p.total)}</b></td></tr>`).join('')}
       <tr><th>TOTAL</th><th>–</th>${rewardTokenList.map(t=>`<th>${fmtReward(tokens.get(t.address)?.total||0)}</th>`).join('')}<th>${fmtReward([...tokens.values()].reduce((sum,x)=>sum+x.total,0))}</th></tr>
       </tbody></table>`:'<span class="muted">Keine Referral-Rewards erkannt.</span>';
 
@@ -7542,6 +7542,7 @@ async function legacyTokenHistoricalValue(pair,tokenAmount,blockHex,pricePairs){
     source:`Historischer BSC-${pair.lpSymbol||pair.displayLabel||'Legacy-Token'}→USDT/USD-Preisweg @ Block ${Number(BigInt(blockHex))} · 1 ${pair.lpSymbol||'Token'} = $${Number(usdPerToken).toLocaleString('de-CH',{maximumFractionDigits:12})}`
   };
 }
+const STEP6_PRICE_FALLBACK_DIAG={engineErrors:0,localFallbackCalls:0,localFallbackValues:0};
 async function lpHistoricalValue(pair,lpAmount,blockHex,pricePairs){
   if(!pair||!blockHex||!(lpAmount>0))return null;
   if(window.WalletPriceEngine){
@@ -7564,12 +7565,17 @@ async function lpHistoricalValue(pair,lpAmount,blockHex,pricePairs){
         };
       }
     }catch(e){
+      STEP6_PRICE_FALLBACK_DIAG.engineErrors++;
       log(`WalletPriceEngine Step-6-Fallback ${safePairLabel(pair)} @ ${Number(BigInt(blockHex))}: ${e?.message||e}`,'warn');
     }
   }
-  // Sicherheits-Fallback auf den verifizierten bisherigen Discovery-Pfad.
+  // Isolierter Sicherheits-Fallback: bleibt vorerst nur als Rückfallebene bestehen, bis
+  // zentrale Engine + Legacy-Adapter auch mit offenen historischen Positionen verifiziert sind.
+  STEP6_PRICE_FALLBACK_DIAG.localFallbackCalls++;
   if(pair.assetType==='legacy_staking_token'||pair.assetType==='staking_token'){
-    return await legacyTokenHistoricalValue(pair,lpAmount,blockHex,pricePairs);
+    const fallback=await legacyTokenHistoricalValue(pair,lpAmount,blockHex,pricePairs);
+    if(fallback?.usd!=null)STEP6_PRICE_FALLBACK_DIAG.localFallbackValues++;
+    return fallback;
   }
   const st=await pairStateAt(pair,blockHex);if(!st||!(st.total>0))return null;
   const share=Number(lpAmount)/st.total;
@@ -7577,6 +7583,7 @@ async function lpHistoricalValue(pair,lpAmount,blockHex,pricePairs){
   const price=await historicalPriceGraph(pricePairs,blockHex);
   const p0=price(pair.token0.address),p1=price(pair.token1.address);
   if(p0==null&&p1==null)return {usd:null,a0,a1,p0,p1,source:'On-chain LP-Reserven; kein USD-Preisweg gefunden'};
+  STEP6_PRICE_FALLBACK_DIAG.localFallbackValues++;
   return {
     usd:(p0!=null?a0*p0:0)+(p1!=null?a1*p1:0),
     a0,a1,p0,p1,
@@ -10881,8 +10888,8 @@ function renderReferralRewards(lots){
     const fmt=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:12});
     const tokenList=ref.rewardTokenList||[];
     const partnerRows=ref.partnerRows||[];
-    const partnerTable=partnerRows.length?`<div class="claim-summary"><div class="claim-summary-title">Referral-Rewards je Partner / TLN ID · verifizierte Claim-Test-Logik</div><div class="wrap"><table style="min-width:850px"><thead><tr><th>Partner · TLN ID</th><th>Level</th>${tokenList.map(t=>`<th>${esc(t.symbol)}</th>`).join('')}<th>Total</th></tr></thead><tbody>${partnerRows.map(p=>`<tr><td>${p.nodeId?`<b>${esc(p.nodeId)}</b>`:'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels?.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels?.size?`<span class="warn">${[...p.levels].join(' / ')}</span>`:'–'}</td>${tokenList.map(t=>`<td>${fmt(p.amounts.get(t.address))}</td>`).join('')}<td><b>${fmt(p.total)}</b></td></tr>`).join('')}<tr><th>TOTAL</th><th>–</th>${tokenList.map(t=>`<th>${fmt(ref.tokenTotals?.get(t.address)?.total||0)}</th>`).join('')}<th>${fmt([...((ref.tokenTotals||new Map()).values())].reduce((s,x)=>s+Number(x.total||0),0))}</th></tr></tbody></table></div></div>`:'';
-    const rowsHtml=strong.length?`<div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Ursprünglich gestaked von</th><th>Staking</th><th>LP-Paar</th><th>TLN ID</th><th>Level</th><th>Stake-Nachweis</th><th>Tx</th><th>Evidenz</th></tr></thead><tbody>${strong.flatMap(r=>(r.mints||[]).map(m=>`<tr><td>${esc(r.timestamp?new Date(Number(r.timestamp)*1000).toLocaleString('de-CH'):'–')}</td><td><b>${esc(m.amount)} ${esc(m.symbol)}</b><div class="mono muted">${esc(m.token)}</div></td><td class="mono">${esc(r.sender)}</td><td>${r.staking?esc(r.staking.label||r.staking.name||r.to):r.stakeEvents?.length?'<b>Staking per Stake-Event erkannt</b>':'unbekannt'}<div class="mono muted">${esc(r.to)}</div></td><td>${r.lpPair?`<b>${esc(r.lpPair.label)}</b><div class="small mono muted">${esc(r.lpPair.pair)}</div><div class="small muted">${r.lpPair.source==='stake-transfer'?'on-chain aus Stake-Transfer':r.lpPair.source==='stake-tx-lp-transfer'?'on-chain aus LP-Abfluss der Stake-Tx':'Registry-Pair on-chain dekodiert'}</div>`:'–'}</td><td>${r.tlnIdentity?.nodeId?`<b>${esc(r.tlnIdentity.nodeId)}</b><div class="small muted">${esc(r.tlnIdentity.source)}</div>`:'<span class="warn">unresolved</span>'}</td><td>${Number.isInteger(r.referralLevel)&&r.referralLevel>0?`<b>Level ${r.referralLevel}</b><div class="small muted">SmartNode-Upline</div>`:'–'}</td><td>${referralStakeAmountHtmlDiscovery(r)}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a></td><td><b>fremder Stake → Mint zum Wallet</b><div class="small muted">${r.stakeAmountEvidence?.source==='stake-tx-lp-transfer'?'LP-Abfluss in Stake-Tx':r.principalTransfers?.length?'Stake-Zufluss per Transfer':r.stakeEvents?.length?'Stake-Event':'Staking-Registry'}</div></td></tr>`)).join('')}</tbody></table></div>`:'<div class="muted">Keine starken Referral-Reward-Tx erkannt.</div>';
+    const partnerTable=partnerRows.length?`<div class="claim-summary"><div class="claim-summary-title">Referral-Rewards je Partner / TLN ID · verifizierte Claim-Test-Logik</div><div class="wrap"><table style="min-width:850px"><thead><tr><th>Partner · TLN ID</th><th>Level</th>${tokenList.map(t=>`<th>${esc(t.symbol)}</th>`).join('')}<th>Total</th></tr></thead><tbody>${partnerRows.map(p=>`<tr><td>${p.nodeId?tlnIdNameHtml(p.nodeId,[...p.wallets][0]):'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels?.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels?.size?`<span class="warn">${[...p.levels].join(' / ')}</span>`:'–'}</td>${tokenList.map(t=>`<td>${fmt(p.amounts.get(t.address))}</td>`).join('')}<td><b>${fmt(p.total)}</b></td></tr>`).join('')}<tr><th>TOTAL</th><th>–</th>${tokenList.map(t=>`<th>${fmt(ref.tokenTotals?.get(t.address)?.total||0)}</th>`).join('')}<th>${fmt([...((ref.tokenTotals||new Map()).values())].reduce((s,x)=>s+Number(x.total||0),0))}</th></tr></tbody></table></div></div>`:'';
+    const rowsHtml=strong.length?`<div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Ursprünglich gestaked von</th><th>Staking</th><th>LP-Paar</th><th>TLN ID</th><th>Level</th><th>Stake-Nachweis</th><th>Tx</th><th>Evidenz</th></tr></thead><tbody>${strong.flatMap(r=>(r.mints||[]).map(m=>`<tr><td>${esc(r.timestamp?new Date(Number(r.timestamp)*1000).toLocaleString('de-CH'):'–')}</td><td><b>${esc(m.amount)} ${esc(m.symbol)}</b><div class="mono muted">${esc(m.token)}</div></td><td class="mono">${esc(r.sender)}</td><td>${r.staking?esc(r.staking.label||r.staking.name||r.to):r.stakeEvents?.length?'<b>Staking per Stake-Event erkannt</b>':'unbekannt'}<div class="mono muted">${esc(r.to)}</div></td><td>${r.lpPair?`<b>${esc(r.lpPair.label)}</b><div class="small mono muted">${esc(r.lpPair.pair)}</div><div class="small muted">${r.lpPair.source==='stake-transfer'?'on-chain aus Stake-Transfer':r.lpPair.source==='stake-tx-lp-transfer'?'on-chain aus LP-Abfluss der Stake-Tx':'Registry-Pair on-chain dekodiert'}</div>`:'–'}</td><td>${r.tlnIdentity?.nodeId?`${tlnIdNameHtml(r.tlnIdentity.nodeId,r.sender)}<div class="small muted">${esc(r.tlnIdentity.source)}</div>`:'<span class="warn">unresolved</span>'}</td><td>${Number.isInteger(r.referralLevel)&&r.referralLevel>0?`<b>Level ${r.referralLevel}</b><div class="small muted">SmartNode-Upline</div>`:'–'}</td><td>${referralStakeAmountHtmlDiscovery(r)}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a></td><td><b>fremder Stake → Mint zum Wallet</b><div class="small muted">${r.stakeAmountEvidence?.source==='stake-tx-lp-transfer'?'LP-Abfluss in Stake-Tx':r.principalTransfers?.length?'Stake-Zufluss per Transfer':r.stakeEvents?.length?'Stake-Event':'Staking-Registry'}</div></td></tr>`)).join('')}</tbody></table></div>`:'<div class="muted">Keine starken Referral-Reward-Tx erkannt.</div>';
     el.innerHTML=`<div class="muted" style="margin-bottom:12px"><b>Referenzengine:</b> ${ref.hashes?.length||0} gezielte Mint-Tx geprüft · <b>${strong.length}</b> starke Referral-Tx · ${candidates.length} nicht starke/mehrdeutige Kandidaten · ${ref.ownTxExcluded||0} eigene Tx früh ausgeschlossen. Wallet-TLN-ID: <b>${esc(ref.walletIdentity?.nodeId||'unresolved')}</b>.</div>${partnerTable}${rowsHtml}`;
     return;
   }
@@ -11514,8 +11521,8 @@ function projectReferralDetailHtml(rows,showOwnerWallet){
   });
   const tokenLabel=a=>list.find(r=>norm(r?.mint?.token||'')===a)?.mint?.symbol||projectTokenSymbol(a);
   const fmt=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:12});
-  const summary=`<div class="card"><h2>🤝 Referral Rewards · je Partner / TLN ID</h2><p class="muted">Zuordnung aus den verifizierten starken Referral-Tx des gespeicherten Discovery-Snapshots. Keine Ableitung aus Reward-Höhen.</p><div class="project-data-table wrap"><table style="min-width:850px"><thead><tr><th>Partner · TLN ID</th><th>Level</th><th>Claims</th>${tokenAddresses.map(a=>`<th>${esc(tokenLabel(a))}</th>`).join('')}</tr></thead><tbody>${partnerSummary.map(p=>`<tr><td>${p.nodeId?`<b>${esc(p.nodeId)}</b>`:'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels.size?[...p.levels].map(x=>`Level ${x}`).join(' / '):'–'}</td><td>${p.claims.size}</td>${tokenAddresses.map(a=>`<td class="num">${fmt(p.tokens.get(a)?.amount||0)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
-  const details=`<div class="card"><h2>🤝 Referral Rewards · einzelne Claims</h2><p class="muted">Jede Zeile zeigt den belegten Reward-Mint und den Partner/Staker, dessen fremde Staking-Transaktion diesem Referral-Reward zugeordnet wurde.</p><div class="project-data-table wrap"><table style="min-width:${showOwnerWallet?'1650':'1500'}px"><thead><tr><th>Zeitpunkt</th>${showOwnerWallet?'<th>Mein Wallet</th>':''}<th>Reward</th><th>Partner / Staker</th><th>TLN ID</th><th>Level</th><th>Staking</th><th>LP-Paar</th><th>Stake-Nachweis</th><th>Tx</th></tr></thead><tbody>${list.map(r=>`<tr><td>${r.timestamp?new Date(r.timestamp*1000).toLocaleString('de-CH'):'–'}</td>${showOwnerWallet?`<td><b>${esc(projectWalletLabel(r.ownerWallet))}</b><div class="small mono muted">${esc(r.ownerWallet)}</div></td>`:''}<td><b>${fmt(r?.mint?.amountHuman)} ${esc(r?.mint?.symbol||'–')}</b><div class="small mono muted">${esc(r?.mint?.token||'')}</div></td><td><b>Staker-Wallet</b><div class="mono">${esc(r.partnerWallet||'–')}</div></td><td>${r?.tlnIdentity?.nodeId?`<b>${esc(r.tlnIdentity.nodeId)}</b><div class="small muted">${esc(r.tlnIdentity.source||'Registry')}</div>`:'<span class="warn">unresolved</span>'}</td><td>${r.referralLevel?`<b>Level ${r.referralLevel}</b><div class="small muted">SmartNode-Upline</div>`:'–'}</td><td>${r.staking?esc(r.staking.label||r.staking.name||r.stakingContract):r.stakeEvents.length?'<b>Staking per Stake-Event erkannt</b>':'<span class="warn">unbekannt</span>'}<div class="small mono muted">${esc(r.stakingContract||'')}</div></td><td>${r.lpPair?`<b>${esc(r.lpPair.label||'LP')}</b><div class="small mono muted">${esc(r.lpPair.pair||'')}</div>`:'–'}</td><td>${referralStakeAmountHtmlDiscovery(r)}</td><td class="mono">${r.hash?`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a>`:'–'}</td></tr>`).join('')}</tbody></table></div></div>`;
+  const summary=`<div class="card"><h2>🤝 Referral Rewards · je Partner / TLN ID</h2><p class="muted">Zuordnung aus den verifizierten starken Referral-Tx des gespeicherten Discovery-Snapshots. Keine Ableitung aus Reward-Höhen.</p><div class="project-data-table wrap"><table style="min-width:850px"><thead><tr><th>Partner · TLN ID</th><th>Level</th><th>Claims</th>${tokenAddresses.map(a=>`<th>${esc(tokenLabel(a))}</th>`).join('')}</tr></thead><tbody>${partnerSummary.map(p=>`<tr><td>${p.nodeId?tlnIdNameHtml(p.nodeId,[...p.wallets][0]):'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels.size?[...p.levels].map(x=>`Level ${x}`).join(' / '):'–'}</td><td>${p.claims.size}</td>${tokenAddresses.map(a=>`<td class="num">${fmt(p.tokens.get(a)?.amount||0)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+  const details=`<div class="card"><h2>🤝 Referral Rewards · einzelne Claims</h2><p class="muted">Jede Zeile zeigt den belegten Reward-Mint und den Partner/Staker, dessen fremde Staking-Transaktion diesem Referral-Reward zugeordnet wurde.</p><div class="project-data-table wrap"><table style="min-width:${showOwnerWallet?'1650':'1500'}px"><thead><tr><th>Zeitpunkt</th>${showOwnerWallet?'<th>Mein Wallet</th>':''}<th>Reward</th><th>Partner / Staker</th><th>TLN ID</th><th>Level</th><th>Staking</th><th>LP-Paar</th><th>Stake-Nachweis</th><th>Tx</th></tr></thead><tbody>${list.map(r=>`<tr><td>${r.timestamp?new Date(r.timestamp*1000).toLocaleString('de-CH'):'–'}</td>${showOwnerWallet?`<td><b>${esc(projectWalletLabel(r.ownerWallet))}</b><div class="small mono muted">${esc(r.ownerWallet)}</div></td>`:''}<td><b>${fmt(r?.mint?.amountHuman)} ${esc(r?.mint?.symbol||'–')}</b><div class="small mono muted">${esc(r?.mint?.token||'')}</div></td><td><b>Staker-Wallet</b><div class="mono">${esc(r.partnerWallet||'–')}</div></td><td>${r?.tlnIdentity?.nodeId?`${tlnIdNameHtml(r.tlnIdentity.nodeId,r.partnerWallet)}<div class="small muted">${esc(r.tlnIdentity.source||'Registry')}</div>`:'<span class="warn">unresolved</span>'}</td><td>${r.referralLevel?`<b>Level ${r.referralLevel}</b><div class="small muted">SmartNode-Upline</div>`:'–'}</td><td>${r.staking?esc(r.staking.label||r.staking.name||r.stakingContract):r.stakeEvents.length?'<b>Staking per Stake-Event erkannt</b>':'<span class="warn">unbekannt</span>'}<div class="small mono muted">${esc(r.stakingContract||'')}</div></td><td>${r.lpPair?`<b>${esc(r.lpPair.label||'LP')}</b><div class="small mono muted">${esc(r.lpPair.pair||'')}</div>`:'–'}</td><td>${referralStakeAmountHtmlDiscovery(r)}</td><td class="mono">${r.hash?`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a>`:'–'}</td></tr>`).join('')}</tbody></table></div></div>`;
   return summary+details;
 }
 function renderProjectAggregateDetails(){
@@ -13295,6 +13302,23 @@ function teamAliasKey(wallet,ident){
 }
 function teamAliasFor(wallet,ident){
   return loadTeamAliases()[teamAliasKey(wallet,ident)]||'';
+}
+function teamWalletForNodeId(nodeId){
+  nodeId=String(nodeId||'').trim();if(!nodeId)return '';
+  for(const [wallet,ident] of TEAM_IDENTITY_CACHE.entries())if(String(ident?.nodeId||'')===nodeId)return norm(wallet);
+  for(const [wallet,ident] of tlnIdentityCache.entries())if(String(ident?.nodeId||'')===nodeId)return norm(wallet);
+  return '';
+}
+function teamNameForTlnId(nodeId,wallet=''){
+  nodeId=String(nodeId||'').trim();wallet=ethers.isAddress(norm(wallet))?norm(wallet):teamWalletForNodeId(nodeId);
+  if(!wallet)return '';
+  const ident=TEAM_IDENTITY_CACHE.get(wallet)||tlnIdentityCache.get(wallet)||{nodeId};
+  return String(teamAliasFor(wallet,ident)||projectOwnWalletLabel(wallet)||'').trim();
+}
+function tlnIdNameHtml(nodeId,wallet=''){
+  nodeId=String(nodeId||'').trim();if(!nodeId)return '<span class="warn"><b>unresolved</b></span>';
+  const name=teamNameForTlnId(nodeId,wallet);
+  return `<b>${esc(nodeId)}</b>${name?`<div class="small muted">${esc(name)}</div>`:''}`;
 }
 function projectOwnWalletMap(){
   const m=new Map();
@@ -16421,6 +16445,7 @@ async function processValuation({force=false}={}){
   STEP6_RUN_INFLIGHT=true;
   const b=$('stepValuation');b.disabled=true;setStepState(6,'läuft …','running');$('status').textContent='Schritt 6/7: historische Bewertung / Preisgraph …';
   resetStep6Diag();
+  STEP6_PRICE_FALLBACK_DIAG.engineErrors=0;STEP6_PRICE_FALLBACK_DIAG.localFallbackCalls=0;STEP6_PRICE_FALLBACK_DIAG.localFallbackValues=0;
   const cacheBefore={pair:PAIR_STATE_CACHE.size,business:BUSINESS_PROBE_CACHE.size,tx:TX_RPC_SESSION_CACHE.size,eth:ETH_CALL_SESSION_CACHE.size,timestamp:TIMESTAMP_BLOCK_CACHE.size,token:TOKEN_META_CACHE.size,lpFacts:LP_FACTS_CACHE_STATE.entries.size};
   try{
     if(!DISCOVERY_PROCESS.done.duration)throw new Error('Zuerst Schritt 3 ausführen.');
@@ -16558,6 +16583,7 @@ async function processValuation({force=false}={}){
     log(`Schritt-6 Phasen: ${phaseText||'keine'}.`,'ok');
     log(`Schritt-6 RPC-Typen: ${methodText||'keine'}.`,'ok');
     log(`Schritt-6 Cache-Größen vorher→nachher: Pair ${cacheBefore.pair}→${cacheAfter.pair} · Business ${cacheBefore.business}→${cacheAfter.business} · Tx/Receipt ${cacheBefore.tx}→${cacheAfter.tx} · eth_call ${cacheBefore.eth}→${cacheAfter.eth} · Timestamp→Block ${cacheBefore.timestamp}→${cacheAfter.timestamp} · TokenMeta ${cacheBefore.token}→${cacheAfter.token} · LP-Fakten ${cacheBefore.lpFacts}→${cacheAfter.lpFacts}.`,'ok');
+    log(`Step-6 Preis-Engine Abschluss: zentrale Engine-Fehler ${STEP6_PRICE_FALLBACK_DIAG.engineErrors} · lokaler Sicherheits-Fallback ${STEP6_PRICE_FALLBACK_DIAG.localFallbackCalls} Aufruf(e) / ${STEP6_PRICE_FALLBACK_DIAG.localFallbackValues} Wert(e).${STEP6_PRICE_FALLBACK_DIAG.localFallbackCalls===0?' Zentraler Preisweg vollständig verwendet.':' Fallback bleibt bis zur vollständigen Verifikation erhalten.'}`,STEP6_PRICE_FALLBACK_DIAG.localFallbackCalls===0?'ok':'warn');
     log('Schritt 6 abgeschlossen · Performance-Diagnose aktiv · 31.12.-Stichtagsbewertung ergänzt; Reward-Kurse unverändert nicht bewertet.','ok');
   }catch(e){finishStep6Diag();setStepState(6,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{STEP6_RUN_INFLIGHT=false;updateProcessButtons();b.disabled=false}
 }
