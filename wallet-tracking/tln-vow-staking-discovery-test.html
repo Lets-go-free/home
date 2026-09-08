@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 19:42:30 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 19:48:19 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -377,7 +377,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260908-194230';
+const BUILD_ID='20260908-194819';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -492,7 +492,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='08.09.2026 19:42:30 CEST';
+const APP_VERSION='08.09.2026 19:48:19 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -16136,6 +16136,70 @@ function teamRegressionSummary(forest){
   const identityText=verifiedNoId.length?`${identities}/${included.length} TLN-ID · ${verifiedNoId.length} verifiziert ohne ID`:`${identities}/${included.length} Identity`;
   return {ok,cycles:cycles.length,identities,verified,total:included.length,roots:roots.length,components:forest.components?.length||0,noActive,expiredOpen,missingIdentity,verifiedNoId,unresolvedIdentity,text:`${identityText} · ${verified}/${included.length} Lifecycle · ${cycles.length} Zyklus/Zyklen · ${roots.length}/${forest.components?.length||0} Roots · ${noActive} ohne aktives Staking · ${expiredOpen} abgelaufen/offen`};
 }
+function teamCompletenessDiagnostics(forest){
+  const wallets=[...new Set([...(forest?.included||[])].map(norm).filter(w=>ethers.isAddress(w)))];
+  const rows=wallets.map(wallet=>{
+    const life=TEAM_STAKING_LIFECYCLE.get(wallet)||null;
+    const ident=TEAM_IDENTITY_CACHE.get(wallet)||null;
+    const verified=!!life?.verified;
+    const lotRows=Array.isArray(life?.lots)?life.lots:[];
+    const lots=lotRows.map(x=>x?.lot||x).filter(Boolean);
+    const statuses=lots.map(l=>teamLifecycleStatusForLot(l));
+    const active=statuses.filter(x=>x==='active').length;
+    const expiredOpen=statuses.filter(x=>x==='expired_still_staked').length;
+    const completed=statuses.filter(x=>x==='completed').length;
+    const observed=teamHasObservedStakeEvidence(wallet);
+    const newerIdentity=ethers.isAddress(norm(ident?.contract||''))&&norm(ident.contract)!==norm(TEAM_SMARTNODE_CONTRACT);
+    const recheck=TEAM_LIFECYCLE_RECHECK_HINTS.has(wallet);
+    let classification='offen';
+    if(verified){
+      if(active)classification='aktiv';
+      else if(expiredOpen)classification='abgelaufen-offen';
+      else if(lots.length)classification='historisch-beendet';
+      else classification='kein-staking-verifiziert';
+    }
+    let gapReason='';
+    if(!verified){
+      if(!life)gapReason='kein Lifecycle geladen';
+      else if(observed)gapReason='historische Staking-Evidenz vorhanden, Lifecycle noch nicht rekonstruiert';
+      else if(newerIdentity)gapReason='neuere SmartNode-/Identity-Generation noch nicht vollständig abgedeckt';
+      else if(recheck)gapReason='gezielte Lifecycle-Nachverifikation vorgemerkt';
+      else if(Number(life?.completedStep||0)<3)gapReason=`Lifecycle nur bis Step ${Number(life?.completedStep||0)} verifiziert`;
+      else gapReason='Lifecycle technisch noch nicht vollständig verifiziert';
+    }
+    return {wallet,life,ident,verified,lots,active,expiredOpen,completed,classification,gapReason,observed,newerIdentity,recheck};
+  });
+  const verified=rows.filter(x=>x.verified);
+  const gaps=rows.filter(x=>!x.verified);
+  return {
+    total:rows.length,
+    verified:verified.length,
+    gaps,
+    withStaking:verified.filter(x=>x.lots.length>0).length,
+    noStakingVerified:verified.filter(x=>x.lots.length===0).length,
+    active:verified.filter(x=>x.active>0).length,
+    expiredOpen:verified.filter(x=>x.expiredOpen>0).length,
+    historicalOnly:verified.filter(x=>x.lots.length>0&&x.active===0&&x.expiredOpen===0).length,
+    rows
+  };
+}
+function logTeamCompletenessDiagnostics(forest){
+  const d=teamCompletenessDiagnostics(forest);
+  log(`Step-7 Vollständigkeit: ${d.total} Team-Wallet(s) · Lifecycle ${d.verified}/${d.total} verifiziert · ${d.gaps.length} offen · ${d.withStaking} verifiziert mit Staking-Historie · ${d.noStakingVerified} verifizierter Nullfund ohne Staking · Status-Wallets: ${d.active} aktiv / ${d.expiredOpen} abgelaufen-offen / ${d.historicalOnly} nur historisch-beendet.`,d.gaps.length?'warn':'ok');
+  if(!d.gaps.length){
+    log(`Step-7 Gap-Diagnose: 0 ungeprüfte Partner · jeder sichtbare Team-Knoten besitzt einen eindeutigen verifizierten Lifecycle-Status.`,'ok');
+    return d;
+  }
+  for(const x of d.gaps){
+    const parent=norm(forest?.parentByChild?.get(x.wallet)||'');
+    const parentId=parent?TEAM_IDENTITY_CACHE.get(parent)?.nodeId||null:null;
+    const id=x.ident?.nodeId||'?';
+    const src=x.life?.source||'kein Lifecycle-Cache';
+    log(`Step-7 Gap-Diagnose: TLN-ID ${id} · Wallet ${x.wallet} · ${x.gapReason} · Lifecycle-Quelle ${src} · Positionen ${x.lots.length} · beobachtete Stake-Evidenz ${x.observed?'ja':'nein'} · Upline ${parent||'–'}${parentId?` / TLN-ID ${parentId}`:''}.`,'warn');
+  }
+  return d;
+}
+
 function logTeamMissingIdentityDiagnostics(forest,teamCheck){
   const missing=teamCheck?.missingIdentity||[];
   for(const walletRaw of missing){
@@ -16168,8 +16232,9 @@ async function processTeamTree(){
     // nicht verloren, nur weil heute kein Cold-Lifecycle-Scan mehr nötig ist.
     await captureVerifiedTeamLifecycleCandidates([...CURRENT_TEAM_PROJECT_FOREST.included]);
     await flushStakingDiscoveryCandidateCache();
+    const teamCompleteness=logTeamCompletenessDiagnostics(CURRENT_TEAM_PROJECT_FOREST);
     const teamCheck=teamRegressionSummary(CURRENT_TEAM_PROJECT_FOREST);
-    log(`Step-7 Abschlusscheck: ${teamCheck.text} · ${teamCheck.ok?'PASS':'PRÜFEN'}.`,teamCheck.ok?'ok':'warn');
+    log(`Step-7 Abschlusscheck: ${teamCheck.text} · Vollständigkeit ${teamCompleteness.verified}/${teamCompleteness.total} Lifecycle · ${teamCompleteness.gaps.length} Gap(s) · ${teamCheck.ok?'PASS':'PRÜFEN'}.`,teamCheck.ok?'ok':'warn');
     if(teamCheck.missingIdentity?.length)logTeamMissingIdentityDiagnostics(CURRENT_TEAM_PROJECT_FOREST,teamCheck);
     DISCOVERY_PROCESS.done.team=true;
     const roots=CURRENT_TEAM_PROJECT_FOREST.roots||[];
