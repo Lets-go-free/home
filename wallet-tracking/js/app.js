@@ -399,7 +399,12 @@ async function taxEvmBlockByTime(chain,targetEpoch){
       if(Number.isFinite(n)&&n>0)return {block:n,source:"Routescan getblocknobytime"};
       throw new Error("ungültige Blockantwort");
     } catch(e) {
-      console.warn(`${CHAIN_META[chain]?.label||chain}: kostenlose Stichtagsblock-Abfrage fehlgeschlagen; Archive-Fallback.`,e);
+      // "chain not supported" ist kein Laufzeitfehler der Anwendung, sondern eine
+      // bekannte Provider-Grenze. Direkt auf Archive-RPC wechseln, ohne die Konsole
+      // bei jedem Testlauf mit einer erwarteten Warnung zu befüllen.
+      if (!/chain not supported/i.test(String(e?.message || e))) {
+        console.warn(`${CHAIN_META[chain]?.label||chain}: kostenlose Stichtagsblock-Abfrage fehlgeschlagen; Archive-Fallback.`,e);
+      }
       taxRoutescanUnavailable.add(chain);
     }
   }
@@ -458,7 +463,12 @@ async function taxEvmTokenBalance(chain,address,token,block){
   }
   const ownerArg=String(address).toLowerCase().replace(/^0x/,"").padStart(64,"0");
   const raw=await archiveRpc(chain,"eth_call",[{to:token.address,data:"0x70a08231"+ownerArg},taxBlockHex(block)]);
-  return {amount:Number(BigInt(raw||"0x0"))/Math.pow(10,decimals),decimals,source:`Alchemy ERC-20 balanceOf @ Block ${block}`};
+  // Ein historischer eth_call kann bei einem Contract, der am Zielblock noch nicht
+  // existierte bzw. dort keinen decodierbaren Rückgabewert hatte, lediglich "0x"
+  // liefern. Das bedeutet für balanceOf wirtschaftlich 0 und darf nicht an BigInt()
+  // weitergegeben werden (BigInt("0x") wirft SyntaxError).
+  const normalizedRaw = (!raw || raw === "0x") ? "0x0" : raw;
+  return {amount:Number(BigInt(normalizedRaw))/Math.pow(10,decimals),decimals,source:`Alchemy ERC-20 balanceOf @ Block ${block}`};
 }
 
 async function historicalErc20Candidates(chain,address,targetBlock=null){
@@ -3639,9 +3649,20 @@ async function loadAll(options = {}) {
   // LP-/Staking-Cache in die Tokenübersicht einmischen und aktuelle LP-Werte für Wallet-LPs bewerten.
   if(window.WalletLPEngine){for(const w of wallets){for(const chain of Object.keys(walletData[w.id]||{})){const cd=walletData[w.id]?.[chain];if(!cd?.tokens||!w.evm)continue;for(const t of cd.tokens){try{const p=await window.WalletLPEngine.pairInfo(chain,t.address);if(!p)continue;const pos=(await window.WalletLPEngine.positions(chain,w.evm,[t.address]))[0];if(pos)t.lpInfo=pos;}catch{}}}}}
   await mergeTlnBscStakingCacheIntoWalletData();renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();
-  if(failures.length===0){await createSnapshot(true);renderCacheStatusNote(automatic?'Tägliche Prüfung abgeschlossen · relevante Änderungen aktualisiert.':'Vollständige Aktualisierung abgeschlossen.');}
-  else renderCacheStatusNote(`Aktualisierung mit ${failures.length} Hinweis${failures.length===1?'':'en'} abgeschlossen. Letzter vollständiger Cache bleibt als Fallback erhalten.`);
-  progress.push(failures.length?'⚠ Fertig mit Hinweisen':'✓ Fertig');renderCentralRefreshProgress(progress,{collapsed:true,finished:true});renderWalletDataFreshness();if(btn)btn.disabled=false;return {failures};
+  if(failures.length===0){
+    await createSnapshot(true);
+    renderCacheStatusNote(automatic?'Tägliche Prüfung abgeschlossen · relevante Änderungen aktualisiert.':'Vollständige Aktualisierung abgeschlossen.');
+    progress.push('✓ Fertig');
+  }else{
+    renderCacheStatusNote(`Aktualisierung mit ${failures.length} Hinweis${failures.length===1?'':'en'} abgeschlossen. Letzter vollständiger Cache bleibt als Fallback erhalten.`);
+    progress.push(`⚠ ${failures.length} Hinweis${failures.length===1?'':'e'} aus der Datenaktualisierung:`);
+    for(const failure of failures){
+      const detail=String(failure?.error||failure?.message||'Unbekannter Fehler');
+      progress.push(`  ↳ ${detail}`);
+    }
+    progress.push(`⚠ Fertig mit ${failures.length} Hinweis${failures.length===1?'':'en'}`);
+  }
+  renderCentralRefreshProgress(progress,{collapsed:true,finished:true});renderWalletDataFreshness();if(btn)btn.disabled=false;return {failures};
 }
 
 // ---- Rendering ----
@@ -6029,19 +6050,82 @@ function onNftWalletChange() {
   }
 }
 
+// Supabase/PostgreSQL akzeptiert in text/jsonb keine Unicode-NUL-Zeichen (U+0000).
+// NFT-Metadaten stammen von externen Indexern/Contracts und können solche Steuerzeichen
+// in Name, Collection, URL oder sonstigen Textfeldern enthalten. Vor dem Persistieren
+// werden ausschließlich U+0000-Zeichen rekursiv entfernt; alle übrigen Daten bleiben unverändert.
+function sanitizeNftCacheValue(value, stats=null) {
+  if (typeof value === "string") {
+    if (!value.includes("\u0000")) return value;
+    const cleaned = value.replace(/\u0000/g, "");
+    if (stats) stats.nulChars += value.length - cleaned.length;
+    return cleaned;
+  }
+  if (Array.isArray(value)) return value.map(v => sanitizeNftCacheValue(v, stats));
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k,v] of Object.entries(value)) out[k] = sanitizeNftCacheValue(v, stats);
+    return out;
+  }
+  return value;
+}
+
 async function saveNftCacheForWallet(w, nfts, chains) {
-  const payload = {
+  const walletId = String(w.dbId || w.id);
+  const sanitizeStats = { nulChars: 0 };
+  const payload = sanitizeNftCacheValue({
     user_id: currentUser.id,
-    wallet_id: String(w.dbId || w.id),
+    wallet_id: walletId,
     wallet_label: w.label,
     selected_chains: chains,
     nfts,
     refreshed_at: new Date().toISOString()
+  }, sanitizeStats);
+  if (sanitizeStats.nulChars > 0) {
+    console.info(`NFT-Cache: ${sanitizeStats.nulChars} unzulässige U+0000-Zeichen aus externen NFT-Metadaten entfernt (${w.label}).`);
+  }
+
+  // Kein PostgREST-Upsert mit on_conflict mehr: Auf der produktiven DB kann der
+  // erwartete zusammengesetzte Unique-/Primary-Key vom historischen Schema abweichen.
+  // Das bisherige upsert(..., {onConflict:"user_id,wallet_id"}) erzeugte dann HTTP 400,
+  // obwohl Lesen und normales Aktualisieren der Tabelle funktionieren.
+  // Deshalb robust und schema-tolerant: vorhandene Wallet-Zeile gezielt UPDATE,
+  // andernfalls INSERT. Damit bleibt weiterhin exakt ein Cache-Datensatz je User/Wallet.
+  const updatePayload = {
+    wallet_label: payload.wallet_label,
+    selected_chains: payload.selected_chains,
+    nfts: payload.nfts,
+    refreshed_at: payload.refreshed_at
   };
-  const { data, error } = await sb.from("nft_cache")
-    .upsert(payload, { onConflict: "user_id,wallet_id" }).select().single();
-  if (error) throw new Error("NFT-Cache konnte nicht gespeichert werden: " + error.message);
-  nftCaches.set(String(w.dbId || w.id), data);
+  const { data: updatedRows, error: updateError } = await sb.from("nft_cache")
+    .update(updatePayload)
+    .eq("user_id", currentUser.id)
+    .eq("wallet_id", walletId)
+    .select();
+  if (updateError) {
+    console.error("NFT-Cache UPDATE fehlgeschlagen", {
+      code:updateError.code, message:updateError.message, details:updateError.details, hint:updateError.hint,
+      wallet_id:walletId
+    });
+    throw new Error("NFT-Cache konnte nicht aktualisiert werden: " + [updateError.message,updateError.details,updateError.hint].filter(Boolean).join(" · "));
+  }
+
+  let row = Array.isArray(updatedRows) && updatedRows.length ? updatedRows[0] : null;
+  if (!row) {
+    const { data: inserted, error: insertError } = await sb.from("nft_cache")
+      .insert(payload)
+      .select()
+      .single();
+    if (insertError) {
+      console.error("NFT-Cache INSERT fehlgeschlagen", {
+        code:insertError.code, message:insertError.message, details:insertError.details, hint:insertError.hint,
+        wallet_id:walletId
+      });
+      throw new Error("NFT-Cache konnte nicht angelegt werden: " + [insertError.message,insertError.details,insertError.hint].filter(Boolean).join(" · "));
+    }
+    row = inserted;
+  }
+  nftCaches.set(walletId, row);
 }
 
 async function refreshApertumNftsForWallet(wallet,onProgress=null){
@@ -6124,7 +6208,7 @@ async function setNftUserSpam(walletId, chain, tokenAddress, tokenId, marked) {
     nftKey(n) === key ? { ...n, userMarkedSpam: !!marked } : n
   );
   const { data, error } = await sb.from("nft_cache")
-    .update({ nfts: updated })
+    .update({ nfts: sanitizeNftCacheValue(updated) })
     .eq("user_id", currentUser.id)
     .eq("wallet_id", String(walletId))
     .select().single();
