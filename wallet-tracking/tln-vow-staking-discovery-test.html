@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 11:06:43 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 11:24:38 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -247,7 +247,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
       <button type="button" class="project-user-tab active" data-project-panel="overview">Übersicht</button>
       <button type="button" class="project-user-tab" data-project-panel="stakings">Staking/Rewards</button>
       <button type="button" class="project-user-tab" data-project-panel="rewards">Rewards Summary</button>
-      <button type="button" class="project-user-tab" data-project-panel="referral">Referral</button>
+      <button type="button" class="project-user-tab" data-project-panel="referral">Referral Rewards</button>
       <button type="button" class="project-user-tab" data-project-panel="bonus">Bonus-Rewards</button>
       <button type="button" class="project-user-tab" data-project-panel="team">Team</button>
       <button type="button" class="project-user-tab" data-project-panel="prices">Kurse und Pools</button>
@@ -377,7 +377,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260908-110643';
+const BUILD_ID='20260908-112438';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -491,7 +491,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='08.09.2026 11:06:43 CEST';
+const APP_VERSION='08.09.2026 11:24:38 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11227,8 +11227,34 @@ function projectReferralDataForPayload(payload){
   return {totals:raw.map(([address,x])=>({address,symbol:x?.symbol||projectTokenSymbol(address),amount:Number(x?.total||0),count:Number(x?.count||0)})).filter(x=>x.amount||x.count),txCount:0};
 }
 function projectReferralTotalsForPayload(payload){return projectReferralDataForPayload(payload).totals}
+function projectReferralRowsForPayload(payload,wallet){
+  const ref=payload?.globals?.claimReferenceResult;
+  if(!ref||ref.error)return [];
+  const strong=Array.isArray(ref.strong)?ref.strong:[];
+  const out=[];
+  for(const r of strong){
+    for(const m of (r?.mints||[])){
+      out.push({
+        ownerWallet:norm(wallet),
+        hash:String(r?.hash||''),
+        timestamp:Number(r?.timestamp||0)||null,
+        partnerWallet:norm(r?.sender||''),
+        staking:r?.staking||null,
+        stakingContract:norm(r?.to||''),
+        lpPair:r?.lpPair||null,
+        tlnIdentity:r?.tlnIdentity||null,
+        referralLevel:Number.isInteger(r?.referralLevel)&&r.referralLevel>0?r.referralLevel:null,
+        stakeAmountEvidence:r?.stakeAmountEvidence||null,
+        stakeEvents:Array.isArray(r?.stakeEvents)?r.stakeEvents:[],
+        principalTransfers:Array.isArray(r?.principalTransfers)?r.principalTransfers:[],
+        mint:{...m,amountHuman:projectReferralMintHumanAmount(m)}
+      });
+    }
+  }
+  return out;
+}
 function projectAggregateData(){
-  const scoped=projectSnapshotsForScope(),lots=[],stakingByToken=new Map(),referralByToken=new Map(),bonusByToken=new Map(),bonusRows=[];
+  const scoped=projectSnapshotsForScope(),lots=[],stakingByToken=new Map(),referralByToken=new Map(),bonusByToken=new Map(),referralRows=[],bonusRows=[];
   let referralClaims=0,stakingClaims=0,bonusClaims=0,lastChecked=0;
   for(const {wallet,payload} of scoped){
     lastChecked=Math.max(lastChecked,Date.parse(payload?.lastCheckedAt||payload?.savedAt||0)||0);
@@ -11239,13 +11265,15 @@ function projectAggregateData(){
     const referralData=projectReferralDataForPayload(payload);
     for(const x of referralData.totals)projectAddTokenTotal(referralByToken,x.address,x.symbol,x.amount,x.count);
     referralClaims+=referralData.txCount;
+    referralRows.push(...projectReferralRowsForPayload(payload,wallet));
     for(const row of projectBonusRowsForPayload(payload)){
       const c=row.claim||{};projectAddTokenTotal(bonusByToken,c.token,c.symbol||c.tokenSymbol,c.amount,1);bonusClaims++;
       bonusRows.push({...row,wallet});
     }
   }
+  referralRows.sort((a,b)=>Number(a.timestamp||0)-Number(b.timestamp||0));
   bonusRows.sort((a,b)=>rewardClaimTimestamp(a.claim)-rewardClaimTimestamp(b.claim));
-  return {scoped,lots,stakingByToken,referralByToken,bonusByToken,bonusRows,stakingClaims,referralClaims,bonusClaims,lastChecked};
+  return {scoped,lots,stakingByToken,referralByToken,bonusByToken,referralRows,bonusRows,stakingClaims,referralClaims,bonusClaims,lastChecked};
 }
 function projectTokenTotalsHtml(map,empty='–',digits=8){
   const rows=[...(map||new Map()).values()].filter(x=>x.amount||x.count).sort((a,b)=>String(a.symbol).localeCompare(String(b.symbol)));
@@ -11463,6 +11491,33 @@ function projectBonusDetailTableHtml(rows,showWallet){
     }).join('')}</tbody>
   </table></div>`;
 }
+function projectReferralDetailHtml(rows,showOwnerWallet){
+  const list=Array.isArray(rows)?rows:[];
+  if(!list.length)return `<div class="card"><h2>🤝 Referral Rewards · einzelne Claims</h2><div class="muted">Keine einzelnen verifizierten Referral-Claims im gewählten Scope gespeichert.</div></div>`;
+  const byPartner=new Map();
+  for(const r of list){
+    const nodeId=r?.tlnIdentity?.nodeId?String(r.tlnIdentity.nodeId):null;
+    const key=nodeId?`id:${nodeId}`:`wallet:${r.partnerWallet}`;
+    if(!byPartner.has(key))byPartner.set(key,{nodeId,wallets:new Set(),levels:new Set(),tokens:new Map(),claims:new Set()});
+    const p=byPartner.get(key);
+    if(r.partnerWallet)p.wallets.add(r.partnerWallet);
+    if(r.referralLevel)p.levels.add(r.referralLevel);
+    if(r.hash)p.claims.add(r.hash.toLowerCase());
+    const addr=norm(r?.mint?.token||''),sym=r?.mint?.symbol||projectTokenSymbol(addr);
+    if(!p.tokens.has(addr))p.tokens.set(addr,{symbol:sym,amount:0});
+    p.tokens.get(addr).amount+=Number(r?.mint?.amountHuman||0);
+  }
+  const tokenAddresses=[...new Set(list.map(r=>norm(r?.mint?.token||'')).filter(Boolean))];
+  const partnerSummary=[...byPartner.values()].sort((a,b)=>{
+    if(a.nodeId&&b.nodeId)return Number(a.nodeId)-Number(b.nodeId);
+    if(a.nodeId)return -1;if(b.nodeId)return 1;return ([...a.wallets][0]||'').localeCompare([...b.wallets][0]||'');
+  });
+  const tokenLabel=a=>list.find(r=>norm(r?.mint?.token||'')===a)?.mint?.symbol||projectTokenSymbol(a);
+  const fmt=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:12});
+  const summary=`<div class="card"><h2>🤝 Referral Rewards · je Partner / TLN ID</h2><p class="muted">Zuordnung aus den verifizierten starken Referral-Tx des gespeicherten Discovery-Snapshots. Keine Ableitung aus Reward-Höhen.</p><div class="project-data-table wrap"><table style="min-width:850px"><thead><tr><th>Partner · TLN ID</th><th>Level</th><th>Claims</th>${tokenAddresses.map(a=>`<th>${esc(tokenLabel(a))}</th>`).join('')}</tr></thead><tbody>${partnerSummary.map(p=>`<tr><td>${p.nodeId?`<b>${esc(p.nodeId)}</b>`:'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels.size?[...p.levels].map(x=>`Level ${x}`).join(' / '):'–'}</td><td>${p.claims.size}</td>${tokenAddresses.map(a=>`<td class="num">${fmt(p.tokens.get(a)?.amount||0)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+  const details=`<div class="card"><h2>🤝 Referral Rewards · einzelne Claims</h2><p class="muted">Jede Zeile zeigt den belegten Reward-Mint und den Partner/Staker, dessen fremde Staking-Transaktion diesem Referral-Reward zugeordnet wurde.</p><div class="project-data-table wrap"><table style="min-width:${showOwnerWallet?'1650':'1500'}px"><thead><tr><th>Zeitpunkt</th>${showOwnerWallet?'<th>Mein Wallet</th>':''}<th>Reward</th><th>Partner / Staker</th><th>TLN ID</th><th>Level</th><th>Staking</th><th>LP-Paar</th><th>Stake-Nachweis</th><th>Tx</th></tr></thead><tbody>${list.map(r=>`<tr><td>${r.timestamp?new Date(r.timestamp*1000).toLocaleString('de-CH'):'–'}</td>${showOwnerWallet?`<td><b>${esc(projectWalletLabel(r.ownerWallet))}</b><div class="small mono muted">${esc(r.ownerWallet)}</div></td>`:''}<td><b>${fmt(r?.mint?.amountHuman)} ${esc(r?.mint?.symbol||'–')}</b><div class="small mono muted">${esc(r?.mint?.token||'')}</div></td><td><b>Staker-Wallet</b><div class="mono">${esc(r.partnerWallet||'–')}</div></td><td>${r?.tlnIdentity?.nodeId?`<b>${esc(r.tlnIdentity.nodeId)}</b><div class="small muted">${esc(r.tlnIdentity.source||'Registry')}</div>`:'<span class="warn">unresolved</span>'}</td><td>${r.referralLevel?`<b>Level ${r.referralLevel}</b><div class="small muted">SmartNode-Upline</div>`:'–'}</td><td>${r.staking?esc(r.staking.label||r.staking.name||r.stakingContract):r.stakeEvents.length?'<b>Staking per Stake-Event erkannt</b>':'<span class="warn">unbekannt</span>'}<div class="small mono muted">${esc(r.stakingContract||'')}</div></td><td>${r.lpPair?`<b>${esc(r.lpPair.label||'LP')}</b><div class="small mono muted">${esc(r.lpPair.pair||'')}</div>`:'–'}</td><td>${referralStakeAmountHtmlDiscovery(r)}</td><td class="mono">${r.hash?`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a>`:'–'}</td></tr>`).join('')}</tbody></table></div></div>`;
+  return summary+details;
+}
 function renderProjectAggregateDetails(){
   const d=projectAggregateData(),all=PROJECT_WALLET_FILTER==='all';
   const scopeTitle=all?'alle Wallets':projectWalletLabel(PROJECT_WALLET_FILTER);
@@ -11473,7 +11528,7 @@ function renderProjectAggregateDetails(){
   }
   const rewardTable=(title,map,claims)=>`<div class="card"><h2>${title} · ${esc(scopeTitle)}</h2><div class="muted">${claims} belegte Tx im gewählten Scope. Die Spalte „Zahlungen“ zählt je Token; Mengen werden je Token separat summiert. Quelle: persistenter Snapshot des Projektfilters.</div><div class="project-data-table wrap"><table><thead><tr><th>Token</th><th>Zahlungen</th><th>Menge</th></tr></thead><tbody>${[...map.values()].length?[...map.values()].map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${x.count}</td><td class="num"><b>${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td></tr>`).join(''):'<tr><td colspan="3">Keine belegten Rewards.</td></tr>'}</tbody></table></div></div>`;
   if(rw){rw.style.display='block';rw.innerHTML=rewardTable('🏆 Staking-Rewards',d.stakingByToken,d.stakingClaims);}
-  if(rf){rf.style.display='block';rf.innerHTML=rewardTable('Referral-Rewards',d.referralByToken,d.referralClaims);}
+  if(rf){rf.style.display='block';rf.innerHTML=rewardTable('🤝 Referral Rewards · Summary',d.referralByToken,d.referralClaims)+projectReferralDetailHtml(d.referralRows,all);}
   if(bo){
     bo.style.display='block';
     bo.innerHTML=`${rewardTable('🎁 Bonus-Rewards',d.bonusByToken,d.bonusClaims)}
