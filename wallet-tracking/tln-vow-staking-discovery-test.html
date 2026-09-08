@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 01:40:32 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 01:48:20 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -275,6 +275,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
       <div id="projectAdminContractLegend" class="project-placeholder" style="margin-top:12px;text-align:left">
         <b>Legende · Status und Typen</b><br>
         <b>✓ Verifiziert</b>: Contract und Rolle sind in der zentralen Registry bestätigt. <b>Staking</b> = regulärer Staking-Pool; <b>Legacy-Staking</b> = ältere TLN/VOW-Generation mit eigener historischer Logik; <b>System / Controller</b> = technischer Bestandteil des Staking-/Reward-Systems, aber kein eigener Pool.<br><br>
+        <b>✓ Strict-Proof</b>: Die Lockdauer ist direkt aus Contract-/Positions-State oder unverändertem Contract-Control-Flow belastbar bewiesen und kann positionsbezogen aus dem globalen Supabase-Proof wiederverwendet werden.<br>
         <b>⚠ Lockdauer offen</b>: Das Staking selbst ist on-chain bestätigt und der Contract kann bereits grün in der Registry stehen; für mindestens eine konkrete Position fehlt aber noch ein belastbarer Strict-Proof für Lockdauer/Contract-Ende. Das ist kein unbekannter Staking-Contract.<br>
         <b>⚠ Contract/Asset prüfen</b>: Starke On-Chain-Evidenz wurde entdeckt, die Adresse ist aber noch nicht als zulässiger Staking-Contract bzw. Staking-Asset verifiziert.<br><br>
         <b>Automatische Bereinigung:</b> Ein Prüffall verschwindet, sobald Contract/Asset verifiziert oder die zugehörige Lockdauer positionsgenau belastbar aufgelöst ist. Die Prüfliste ist damit eine aktuelle Arbeitsliste und kein historisches Fehlerarchiv.
@@ -399,7 +400,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260909-014032';
+const BUILD_ID='20260909-014820';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -530,7 +531,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='09.09.2026 01:40:32 CEST';
+const APP_VERSION='09.09.2026 01:48:20 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4592,6 +4593,14 @@ async function reconcileStakingDiscoveryCandidates(){
       if(typeof VERIFIED_MANUAL_DURATION_RULES!=='undefined'&&VERIFIED_MANUAL_DURATION_RULES.has(a)){
         drop(k,'Duration durch verifizierte exakte Contract-Regel geklärt');continue
       }
+      // Auch ein bereits global persistierter Contract-Strict-Proof erledigt einen
+      // alten Coverage-Fall. Das ist besonders fuer die Cave-v£/v€-Generation wichtig:
+      // der Proof liegt contractweit in Supabase und muss nicht davon abhaengen, ob
+      // gerade zufaellig die konkrete Partnerposition im lokalen Lifecycle-Memory liegt.
+      const sharedStrict=await loadSharedStrictDurationRule(a).catch(()=>null);
+      if(sharedStrict&&Number(sharedStrict.lockDurationSeconds)>0){
+        drop(k,`Duration durch globalen Contract-Strict-Proof geklärt (${Number(sharedStrict.lockDurationSeconds)/86400} Tage)`);continue
+      }
       const resolved=verifiedLots.some(lot=>stakingDiscoveryLotContract(lot)===a&&stakingDiscoveryLotHasVerifiedDuration(lot));
       if(resolved){drop(k,'Duration inzwischen strikt/Lifecycle-verifiziert');continue}
       if(knownStakingAssetAddress(a)&&!knownStakingContractAddress(a)){drop(k,'LP/Asset ist kein Duration-Contract');continue}
@@ -5854,13 +5863,16 @@ const VERIFIED_MANUAL_DURATION_RULES=new Map([
 ]);
 
 // Dokumentierter Prüfstand der neueren v£/v€-Staking-Generation.
-// Die beiden 367-Tage-Regeln sind exakt contractgebunden. Für v£/v€ ist das
-// Staking selbst on-chain eindeutig belegt (Stake-Event + exakter LP-Transfer);
-// die Lockdauer bleibt bis zu einem eigenständigen Strict-Proof bewusst offen.
+// v£/VOW und v€/VOW verwenden exakt contractgebundene 367-Tage-Regeln.
+// Für den Cave-v£/v€-Contract ist die Dauer zusätzlich direkt aus dem Contract-
+// Control-Flow streng bewiesen: Positions-Struct Offset +4 liefert den 40-bit
+// Startzeitwert; (block.timestamp-start)/86'400 wird gegen 367 verglichen und
+// der Pfad unterhalb von 367 Tagen revertiert. Der Proof ist global in Supabase
+// persistiert und wird positionsbezogen nur nach Code-/State-Validierung verwendet.
 const DOCUMENTED_DURATION_RESEARCH=new Map([
   ['0x3c0655c7d50f75addbd475d21a35e5660ad5f944',{label:'v£ / VOW',status:'verified_rule',days:367,note:'367 Tage fachlich verifiziert; exakte Contract-Regel aktiv.'}],
   ['0x2199898e1af5ff75bf5daa23fb205ac007ab7c26',{label:'v€ / VOW',status:'verified_rule',days:367,note:'367 Tage fachlich verifiziert; exakte Contract-Regel aktiv.'}],
-  ['0x8ab468a067983e617c37f2ee15419395caba73fb',{label:'v£ / v€',status:'duration_open',days:null,note:'Staking on-chain verifiziert (Stake-Event + LP-Transfer); Lockdauer noch nicht als Strict-Proof bewiesen.'}]
+  ['0x8ab468a067983e617c37f2ee15419395caba73fb',{label:'v£ / v€',status:'strict_proof',days:367,note:'367 Tage Contract-Strict-Proof: Positions-Startzeit aus Struct +4 → (block.timestamp − Start) / 86’400 → Vergleich gegen 367 mit Revert unterhalb der Grenze; globaler Proof in Supabase.'}]
 ]);
 function applyVerifiedManualDurationRule(lot){
   const contract=norm(lotContractAddress(lot));
@@ -11186,8 +11198,8 @@ async function renderProjectAdminContractRegistry(){
   summary.innerHTML=`<b>${verified.length}</b> verifizierte Registry-Contract(s) · <b>${lockOpen}</b> Lockdauer-Prüffall/-fälle offen · <b>${otherOpen}</b> unbekannte Contract-/Asset-Prüffälle · zentral ausgeschlossene Nicht-Staking-Selector: <span class="mono">${[...VERIFIED_NON_STAKING_SELECTORS.keys()].map(esc).join(', ')||'–'}</span>.`;
   if(durationBox){
     const research=[...DOCUMENTED_DURATION_RESEARCH.entries()].map(([address,r])=>{
-      const ok=r.status==='verified_rule';
-      return `<div style="margin-top:5px"><span class="${ok?'ok':'warn'}"><b>${ok?'✓ Geklärt':'⚠ Offen'} · ${esc(r.label)}</b></span> · <span class="mono">${esc(short(address))}</span> · ${esc(r.note)}</div>`;
+      const ok=r.status==='verified_rule'||r.status==='strict_proof';
+      return `<div style="margin-top:5px"><span class="${ok?'ok':'warn'}"><b>${ok?(r.status==='strict_proof'?'✓ Strict-Proof':'✓ Geklärt'):'⚠ Offen'} · ${esc(r.label)}</b></span> · <span class="mono">${esc(short(address))}</span> · ${esc(r.note)}</div>`;
     }).join('');
     durationBox.innerHTML=`<b>Dokumentierter Duration-Prüfstand · neue v£/v€-Generation</b>${research}<div class="muted" style="margin-top:7px">Wichtig: Ein grüner Registry-Contract bestätigt Contract und Rolle. Die Lockdauer ist eine zweite, positionsbezogene Verifikation. Deshalb kann derselbe Contract unten grün sein, während oben noch ein gelber Lockdauer-Prüffall existiert.</div>`;
   }
