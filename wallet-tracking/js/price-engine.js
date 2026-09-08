@@ -72,6 +72,31 @@ window.WalletPriceEngine = (() => {
     if(pairStateCache.has(key)) return pairStateCache.get(key);
 
     const promise = (async()=>{
+      const c = ctx();
+      // Optionaler Chain-Facts-Adapter: Discovery kann bereits gebatchte/cachierte
+      // historische Pair-States einspeisen, ohne dieselben RPC-Reads erneut auszuführen.
+      if(typeof c.pairState === "function"){
+        const external = await c.pairState(chain,address,block);
+        if(external){
+          const t0 = external.token0?.address ? external.token0 : await tokenMeta(chain,external.token0);
+          const t1 = external.token1?.address ? external.token1 : await tokenMeta(chain,external.token1);
+          const out = {
+            chain,
+            address:norm(address),
+            block:block === "latest" ? "latest" : Number(block),
+            factory:norm(external.factory || ""),
+            token0:t0,
+            token1:t1,
+            reserve0:Number(external.reserve0 ?? external.r0),
+            reserve1:Number(external.reserve1 ?? external.r1),
+            totalSupply:Number(external.totalSupply ?? external.total),
+            lpDecimals:Number(external.lpDecimals ?? 18),
+            blockTimestampLast:Number(external.blockTimestampLast ?? 0)
+          };
+          if(out.token0?.address && out.token1?.address && Number.isFinite(out.reserve0) && Number.isFinite(out.reserve1) && Number.isFinite(out.totalSupply)) return out;
+        }
+      }
+
       const calls = [
         ["token0",[]], ["token1",[]], ["getReserves",[]],
         ["totalSupply",[]], ["decimals",[]], ["factory",[]]
@@ -447,6 +472,13 @@ window.WalletPriceEngine = (() => {
   }
 
   async function getLpValuation({chain,lpAddress,amount=1,block="latest",priceForToken,projectKey="default"}){
+    const c = ctx();
+    // Projektadapter für verifizierte Sonderfälle (z. B. BSC Legacy-LPT → ETH-Origin-LP).
+    // `null` bedeutet: normale zentrale V2/Token-Bewertung fortsetzen.
+    if(typeof c.specialLpValuation === "function"){
+      const special = await c.specialLpValuation({chain,lpAddress,amount:Number(amount),block,projectKey});
+      if(special != null) return special;
+    }
     const pair = await getPairState(chain,lpAddress,block);
     if(!(pair.totalSupply > 0)) return null;
     const share = Number(amount)/pair.totalSupply;
