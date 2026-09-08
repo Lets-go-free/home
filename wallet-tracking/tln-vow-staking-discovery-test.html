@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 20:04:55 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 20:21:27 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -388,7 +388,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260908-200455';
+const BUILD_ID='20260908-202127';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -451,6 +451,14 @@ const METHOD_SELECTORS = new Map([
   [ethers.id('claimBonus()').slice(0,10).toLowerCase(),'Claim Bonus']
 ]);
 
+// Verifizierte Nicht-Staking-Selector, die bei Team-Cold-Runs wie Stake aussehen koennen,
+// weil dabei LP-Token aus dem Wallet abfliessen. 0xc50a74a6 wird projektweit fuer die
+// nachgelagerte Verarbeitung/Umwandlung des vUSD/VOW-LP verwendet (typisch nach Unstake
+// und LP-Approve). Der reine LP-Abfluss darf deshalb niemals als neuer Stake gewertet werden.
+const TEAM_KNOWN_NON_STAKING_SELECTORS=new Map([
+  ['0xc50a74a6','vUSD/VOW LP-Verarbeitung/Umwandlung · kein Staking']
+]);
+
 const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const norm=a=>String(a||'').toLowerCase();
 function short(a){return a?`${a.slice(0,6)}…${a.slice(-4)}`:'–'}
@@ -503,7 +511,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='08.09.2026 20:04:55 CEST';
+const APP_VERSION='08.09.2026 20:21:27 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4513,7 +4521,11 @@ async function ensureStakingDiscoveryCandidateCache(){
     const type=String(v?.type||'').toLowerCase(),a=norm(v?.address||'');
     const invalidUnderlying=type==='asset'&&knownNonStakingUnderlyingAddress(a);
     const invalidCoverageAsset=type==='coverage'&&knownStakingAssetAddress(a)&&!knownStakingContractAddress(a);
-    if(invalidUnderlying||invalidCoverageAsset){
+    // Cold-Run-False-Positive 08.09.2026: 0x630a…7be3 wurde nur als zweites
+    // Argument/Empfaenger eines 0xc50a74a6-LP-Verarbeitungs-Calls in eine Position
+    // hineingezogen. Es ist kein belastbarer Staking-/Duration-Contract fuer diesen Fund.
+    const invalidKnownC50Coverage=type==='coverage'&&a==='0x630a51ba757775a480a955c75638eb814fe77be3';
+    if(invalidUnderlying||invalidCoverageAsset||invalidKnownC50Coverage){
       STAKING_DISCOVERY_CANDIDATE_STATE.entries.delete(k);removed++;
     }
   }
@@ -14692,6 +14704,12 @@ async function teamBatchPositionCalls(wallets,{forceFresh=false}={}){
   // während Sonderwallets keine unkontrollierte Receipt-Lawine auslösen.
   const massWalletMode=rows.length>200;
   let receiptJobs=rows.filter(c=>{
+    const selector=String(c?._selector||'').toLowerCase();
+    // Cold-Run-Schutz gegen bekannte LP-Verarbeitungs-/Umwandlungs-Calls. Diese Calls
+    // koennen einen echten LP-Abfluss aus dem Wallet enthalten, erzeugen aber keine
+    // Staking-Position. Ohne diesen Ausschluss wuerde der generische ERC20-Recovery-Pfad
+    // daraus faelschlich einen neuen Staking-Contract bzw. eine offene Duration machen.
+    if(TEAM_KNOWN_NON_STAKING_SELECTORS.has(selector))return false;
     const method=String(c?._method||'').toLowerCase();
     if(method==='stake'||method==='unstake')return true;
     if(String(c?._teamPositionEvidenceSeed||''))return true;
