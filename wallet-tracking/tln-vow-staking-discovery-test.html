@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 13:10:24 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 08.09.2026 19:42:30 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -377,7 +377,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260908-131024';
+const BUILD_ID='20260908-194230';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -492,7 +492,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='08.09.2026 13:10:24 CEST';
+const APP_VERSION='08.09.2026 19:42:30 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -7499,133 +7499,40 @@ function configureSharedHistoricalPriceEngine(pricePairs){
   return true;
 }
 
-async function historicalPriceGraph(pairs,blockHex){
-  await primePairStatesAtBlock(pairs,blockHex);
-  const graph=new Map(),anchors=new Set();
-  const add=(a,b,r)=>{a=norm(a);b=norm(b);if(!graph.has(a))graph.set(a,[]);graph.get(a).push([b,r])};
-  for(const p of (pairs||[])){
-    const st=await pairStateAt(p,blockHex);if(!st||st.r0<=0||st.r1<=0)continue;
-    add(p.token0.address,p.token1.address,st.r1/st.r0);
-    add(p.token1.address,p.token0.address,st.r0/st.r1);
-    if(PRICE_STABLE_SYMBOLS.test(p.token0.symbol))anchors.add(norm(p.token0.address));
-    if(PRICE_STABLE_SYMBOLS.test(p.token1.symbol))anchors.add(norm(p.token1.address));
-  }
-  return addr=>{
-    addr=norm(addr);if(anchors.has(addr))return 1;
-    const q=[[addr,1,0]],seen=new Set([addr]);
-    while(q.length){
-      const [a,m,d]=q.shift();if(d>5)continue;
-      for(const [b,r] of graph.get(a)||[]){
-        const nm=m*r;if(anchors.has(b))return nm;
-        if(!seen.has(b)){seen.add(b);q.push([b,nm,d+1])}
-      }
-    }
-    return null;
-  };
-}
-async function legacyTokenHistoricalValue(pair,tokenAmount,blockHex,pricePairs){
-  if(!pair||!blockHex||!(tokenAmount>0))return null;
-  const asset=norm(pair.address||pair.token0?.address||'');
-  if(!ethers.isAddress(asset))return null;
-  // Für den verifizierten TLN-1/2 LPT-Repräsentationstoken zuerst den historischen
-  // Ethereum-Origin-LP bewerten. Nur wenn dieser Cross-Chain-Pfad technisch nicht
-  // verfügbar ist, darf der allgemeine BSC-Preisgraph als Fallback probiert werden.
-  if(LEGACY_LPT_CROSSCHAIN_PRICE_MAP[asset]){
-    try{
-      const cross=await legacyCrossChainLptHistoricalValue(pair,tokenAmount,blockHex);
-      if(cross?.usd!=null)return cross;
-      log(`Legacy-LPT Cross-Chain-Preis ${short(asset)}: Origin-LP-Pfad lieferte keinen Wert; BSC-Preisgraph-Fallback wird geprüft.`,'warn');
-    }catch(e){
-      log(`Legacy-LPT Cross-Chain-Preis ${short(asset)} nicht verfügbar: ${e?.message||e} · BSC-Preisgraph-Fallback wird geprüft.`,'warn');
-    }
-  }
-  const price=await historicalPriceGraph(pricePairs,blockHex);
-  const usdPerToken=price(asset);
-  if(usdPerToken==null)return {usd:null,tokenAmount:Number(tokenAmount),usdPerToken:null,source:`Historischer ${pair.lpSymbol||pair.displayLabel||'Legacy-Token'}→USDT/USD-Preisweg @ Block ${Number(BigInt(blockHex))} nicht gefunden`};
-  return {
-    usd:Number(tokenAmount)*Number(usdPerToken),
-    tokenAmount:Number(tokenAmount),
-    usdPerToken:Number(usdPerToken),
-    source:`Historischer BSC-${pair.lpSymbol||pair.displayLabel||'Legacy-Token'}→USDT/USD-Preisweg @ Block ${Number(BigInt(blockHex))} · 1 ${pair.lpSymbol||'Token'} = $${Number(usdPerToken).toLocaleString('de-CH',{maximumFractionDigits:12})}`
-  };
-}
 const STEP6_PRICE_FALLBACK_DIAG={engineErrors:0,localFallbackCalls:0,localFallbackValues:0,cases:[]};
-async function diagnoseStep6VoucherRoute(pair,blockHex,pricePairs){
-  try{
-    const tokens=[pair?.token0,pair?.token1].filter(Boolean);
-    const voucher=tokens.find(t=>discoveryPriceEngineCategory(t?.address)==='voucher_currency');
-    if(!voucher)return;
-    const refs=discoveryPriceEngineReferences(),vow=norm(refs.vow||''),usdt=norm(refs.usdt||'');
-    const findDirect=(a,b)=>(pricePairs||[]).find(p=>{
-      const p0=norm(p?.token0?.address),p1=norm(p?.token1?.address),x=norm(a),y=norm(b);
-      return (p0===x&&p1===y)||(p0===y&&p1===x);
-    })||null;
-    const vv=findDirect(voucher.address,vow),vu=findDirect(vow,usdt);
-    const [vvState,vuState]=await Promise.all([
-      vv?pairStateAt(vv,blockHex).catch(()=>null):Promise.resolve(null),
-      vu?pairStateAt(vu,blockHex).catch(()=>null):Promise.resolve(null)
-    ]);
-    const fmtPair=x=>x?.address?short(x.address):'–';
-    const fmtState=x=>x&&x.r0>0&&x.r1>0?`ok (${x.r0.toLocaleString('de-CH',{maximumFractionDigits:6})}/${x.r1.toLocaleString('de-CH',{maximumFractionDigits:6})})`:'nicht verfügbar';
-    log(`Step-6 Voucher-Route Diagnose @ ${Number(BigInt(blockHex)).toLocaleString('de-CH')}: ${voucher.symbol||'Voucher'}=${short(voucher.address)} · Kategorie ${discoveryPriceEngineCategory(voucher.address)||'–'} · VOW=${vow?short(vow):'–'} · USDT=${usdt?short(usdt):'–'} · Voucher/VOW ${fmtPair(vv)} ${fmtState(vvState)} · VOW/USDT ${fmtPair(vu)} ${fmtState(vuState)}.`,'warn');
-  }catch(e){log(`Step-6 Voucher-Route Diagnose fehlgeschlagen: ${e?.message||e}`,'warn')}
-}
 async function lpHistoricalValue(pair,lpAmount,blockHex,pricePairs){
   if(!pair||!blockHex||!(lpAmount>0))return null;
-  if(window.WalletPriceEngine){
-    try{
-      configureSharedHistoricalPriceEngine(pricePairs);
-      const asset=norm(pair.address||pair.token0?.address||'');
-      const result=await window.WalletPriceEngine.getLpValuation({
-        projectKey:'tln_vow',chain:'bsc',lpAddress:asset,amount:Number(lpAmount),block:Number(BigInt(blockHex))
-      });
-      if(result?.valueUsd!=null){
-        if(result.special==='legacy-tln-lpt-crosschain-v1'){
-          return {usd:Number(result.valueUsd),tokenAmount:Number(lpAmount),usdPerToken:Number(result.priceUsd),source:`WalletPriceEngine · ${result.source}`,crossChain:result.crossChain,engine:'WalletPriceEngine',adapter:result.special};
-        }
-        return {
-          usd:Number(result.valueUsd),
-          a0:result.amount0,p0:result.price0Usd,
-          a1:result.amount1,p1:result.price1Usd,
-          source:`WalletPriceEngine · On-chain @ Block ${Number(BigInt(blockHex))} · ${result.pair?.token0?.symbol||'Token0'} ${result.price0Usd!=null?'$'+Number(result.price0Usd).toLocaleString('de-CH',{maximumFractionDigits:8}):'ohne USD-Pfad'} · ${result.pair?.token1?.symbol||'Token1'} ${result.price1Usd!=null?'$'+Number(result.price1Usd).toLocaleString('de-CH',{maximumFractionDigits:8}):'ohne USD-Pfad'}`,
-          engine:'WalletPriceEngine'
-        };
+  if(!window.WalletPriceEngine){
+    STEP6_PRICE_FALLBACK_DIAG.engineErrors++;
+    log(`WalletPriceEngine Step-6-Fehler ${safePairLabel(pair)} @ ${Number(BigInt(blockHex))}: zentrale WalletPriceEngine nicht geladen.`,'err');
+    return null;
+  }
+  try{
+    configureSharedHistoricalPriceEngine(pricePairs);
+    const asset=norm(pair.address||pair.token0?.address||'');
+    const result=await window.WalletPriceEngine.getLpValuation({
+      projectKey:'tln_vow',chain:'bsc',lpAddress:asset,amount:Number(lpAmount),block:Number(BigInt(blockHex))
+    });
+    if(result?.valueUsd!=null){
+      if(result.special==='legacy-tln-lpt-crosschain-v1'){
+        return {usd:Number(result.valueUsd),tokenAmount:Number(lpAmount),usdPerToken:Number(result.priceUsd),source:`WalletPriceEngine · ${result.source}`,crossChain:result.crossChain,engine:'WalletPriceEngine',adapter:result.special};
       }
-      const diagCase={
-        pair:safePairLabel(pair),
-        block:Number(BigInt(blockHex)),
-        amount:Number(lpAmount),
-        engineResult:result?{valueUsd:result.valueUsd??null,price0Usd:result.price0Usd??null,price1Usd:result.price1Usd??null,amount0:result.amount0??null,amount1:result.amount1??null,special:result.special||null}:null,
-        reason:result?'zentrale Engine lieferte keinen vollständigen USD-Wert':'zentrale Engine lieferte kein Ergebnis'
+      return {
+        usd:Number(result.valueUsd),
+        a0:result.amount0,p0:result.price0Usd,
+        a1:result.amount1,p1:result.price1Usd,
+        source:`WalletPriceEngine · On-chain @ Block ${Number(BigInt(blockHex))} · ${result.pair?.token0?.symbol||'Token0'} ${result.price0Usd!=null?'$'+Number(result.price0Usd).toLocaleString('de-CH',{maximumFractionDigits:8}):'ohne USD-Pfad'} · ${result.pair?.token1?.symbol||'Token1'} ${result.price1Usd!=null?'$'+Number(result.price1Usd).toLocaleString('de-CH',{maximumFractionDigits:8}):'ohne USD-Pfad'}`,
+        engine:'WalletPriceEngine'
       };
-      STEP6_PRICE_FALLBACK_DIAG.cases.push(diagCase);
-      log(`Step-6 lokaler Fallback nötig: ${diagCase.pair} @ ${diagCase.block.toLocaleString('de-CH')} · Engine ${result?'ohne vollständigen USD-Wert':'ohne Ergebnis'}${result?` · p0=${result.price0Usd==null?'–':'$'+Number(result.price0Usd).toLocaleString('de-CH',{maximumFractionDigits:10})} · p1=${result.price1Usd==null?'–':'$'+Number(result.price1Usd).toLocaleString('de-CH',{maximumFractionDigits:10})}`:''}.`,'warn');
-      await diagnoseStep6VoucherRoute(pair,blockHex,pricePairs);
-    }catch(e){
-      STEP6_PRICE_FALLBACK_DIAG.engineErrors++;
-      log(`WalletPriceEngine Step-6-Fallback ${safePairLabel(pair)} @ ${Number(BigInt(blockHex))}: ${e?.message||e}`,'warn');
     }
+    STEP6_PRICE_FALLBACK_DIAG.cases.push({pair:safePairLabel(pair),block:Number(BigInt(blockHex)),reason:result?'zentrale Engine lieferte keinen vollständigen USD-Wert':'zentrale Engine lieferte kein Ergebnis'});
+    log(`WalletPriceEngine Step-6 ohne USD-Wert: ${safePairLabel(pair)} @ ${Number(BigInt(blockHex)).toLocaleString('de-CH')} · ${result?'unvollständiges Ergebnis':'kein Ergebnis'}.`,'warn');
+    return null;
+  }catch(e){
+    STEP6_PRICE_FALLBACK_DIAG.engineErrors++;
+    log(`WalletPriceEngine Step-6-Fehler ${safePairLabel(pair)} @ ${Number(BigInt(blockHex))}: ${e?.message||e}`,'err');
+    return null;
   }
-  // Isolierter Sicherheits-Fallback: bleibt vorerst nur als Rückfallebene bestehen, bis
-  // zentrale Engine + Legacy-Adapter auch mit offenen historischen Positionen verifiziert sind.
-  STEP6_PRICE_FALLBACK_DIAG.localFallbackCalls++;
-  if(pair.assetType==='legacy_staking_token'||pair.assetType==='staking_token'){
-    const fallback=await legacyTokenHistoricalValue(pair,lpAmount,blockHex,pricePairs);
-    if(fallback?.usd!=null)STEP6_PRICE_FALLBACK_DIAG.localFallbackValues++;
-    return fallback;
-  }
-  const st=await pairStateAt(pair,blockHex);if(!st||!(st.total>0))return null;
-  const share=Number(lpAmount)/st.total;
-  const a0=st.r0*share,a1=st.r1*share;
-  const price=await historicalPriceGraph(pricePairs,blockHex);
-  const p0=price(pair.token0.address),p1=price(pair.token1.address);
-  if(p0==null&&p1==null)return {usd:null,a0,a1,p0,p1,source:'On-chain LP-Reserven; kein USD-Preisweg gefunden'};
-  STEP6_PRICE_FALLBACK_DIAG.localFallbackValues++;
-  return {
-    usd:(p0!=null?a0*p0:0)+(p1!=null?a1*p1:0),
-    a0,a1,p0,p1,
-    source:`On-chain @ Block ${Number(BigInt(blockHex))} · ${p0!=null?`${pair.token0.symbol} $${Number(p0).toLocaleString('de-CH',{maximumFractionDigits:8})}`:''}${p0!=null&&p1!=null?' · ':''}${p1!=null?`${pair.token1.symbol} $${Number(p1).toLocaleString('de-CH',{maximumFractionDigits:8})}`:''}`
-  };
 }
 
 const TIMESTAMP_BLOCK_CACHE=new Map();
@@ -16503,7 +16410,7 @@ async function processValuation({force=false}={}){
     const pricePairs=[...new Map([...DISCOVERY_PROCESS.pairs,...referencePairs].filter(p=>p.assetType!=='legacy_staking_token').map(p=>[norm(p.address),p])).values()];
     const sharedPriceEngineActive=configureSharedHistoricalPriceEngine(pricePairs);
     log(`Step-6 Preis-Engine: ${sharedPriceEngineActive?'zentrale WalletPriceEngine aktiv (Discovery-Chain-Facts + Legacy-Adapter)':'lokaler Discovery-Fallback aktiv'}.`,sharedPriceEngineActive?'ok':'warn');
-    DISCOVERY_PROCESS.pricePairs=pricePairs;log(`Bewertung: ${pricePairs.length} BSC-LP-Pools im historischen Preisgraph; verifizierter Legacy-LPT nutzt zusätzlich ETH-Origin-LP VOW/vUSD + VOW/USDT.`,'ok');
+    DISCOVERY_PROCESS.pricePairs=pricePairs;log(`Bewertung: ${pricePairs.length} BSC-LP-Pools für die zentrale historische WalletPriceEngine; verifizierter Legacy-LPT nutzt zusätzlich ETH-Origin-LP VOW/vUSD + VOW/USDT.`,'ok');
 
     const snapshotYear=snapshotYearFromUi(),snapshotCutoff=snapshotCutoffForYear(snapshotYear),snapshotCutoffMs=snapshotCutoff.getTime();
     const snapshotPrincipals=DISCOVERY_PROCESS.lots.map(lot=>snapshotPrincipalAt(lot,snapshotCutoffMs));
@@ -16625,11 +16532,11 @@ async function processValuation({force=false}={}){
     log(`Schritt-6 Phasen: ${phaseText||'keine'}.`,'ok');
     log(`Schritt-6 RPC-Typen: ${methodText||'keine'}.`,'ok');
     log(`Schritt-6 Cache-Größen vorher→nachher: Pair ${cacheBefore.pair}→${cacheAfter.pair} · Business ${cacheBefore.business}→${cacheAfter.business} · Tx/Receipt ${cacheBefore.tx}→${cacheAfter.tx} · eth_call ${cacheBefore.eth}→${cacheAfter.eth} · Timestamp→Block ${cacheBefore.timestamp}→${cacheAfter.timestamp} · TokenMeta ${cacheBefore.token}→${cacheAfter.token} · LP-Fakten ${cacheBefore.lpFacts}→${cacheAfter.lpFacts}.`,'ok');
-    log(`Step-6 Preis-Engine Abschluss: zentrale Engine-Fehler ${STEP6_PRICE_FALLBACK_DIAG.engineErrors} · lokaler Sicherheits-Fallback ${STEP6_PRICE_FALLBACK_DIAG.localFallbackCalls} Aufruf(e) / ${STEP6_PRICE_FALLBACK_DIAG.localFallbackValues} Wert(e).${STEP6_PRICE_FALLBACK_DIAG.localFallbackCalls===0?' Zentraler Preisweg vollständig verwendet.':' Fallback bleibt bis zur vollständigen Verifikation erhalten.'}`,STEP6_PRICE_FALLBACK_DIAG.localFallbackCalls===0?'ok':'warn');
+    log(`Step-6 Preis-Engine Abschluss: zentrale Engine-Fehler ${STEP6_PRICE_FALLBACK_DIAG.engineErrors} · lokaler Preis-Fallback entfernt · zentrale WalletPriceEngine exklusiv verwendet.`,STEP6_PRICE_FALLBACK_DIAG.engineErrors===0?'ok':'warn');
     if(STEP6_PRICE_FALLBACK_DIAG.cases.length){
       const grouped=new Map();
-      for(const c of STEP6_PRICE_FALLBACK_DIAG.cases){const k=`${c.pair}|${c.reason}|${c.engineResult?.price0Usd==null?'p0-':'p0+'}|${c.engineResult?.price1Usd==null?'p1-':'p1+'}`;if(!grouped.has(k))grouped.set(k,{...c,count:0,blocks:[]});const g=grouped.get(k);g.count++;g.blocks.push(c.block)}
-      for(const g of grouped.values())log(`Step-6 Fallback-Diagnose: ${g.pair} · ${g.count}× · ${g.reason} · p0 ${g.engineResult?.price0Usd==null?'fehlt':'vorhanden'} / p1 ${g.engineResult?.price1Usd==null?'fehlt':'vorhanden'} · Block(s) ${g.blocks.map(x=>Number(x).toLocaleString('de-CH')).join(', ')}.`,'warn');
+      for(const c of STEP6_PRICE_FALLBACK_DIAG.cases){const k=`${c.pair}|${c.reason}`;if(!grouped.has(k))grouped.set(k,{...c,count:0,blocks:[]});const g=grouped.get(k);g.count++;g.blocks.push(c.block)}
+      for(const g of grouped.values())log(`Step-6 zentrale Preis-Diagnose: ${g.pair} · ${g.count}× · ${g.reason} · Block(s) ${g.blocks.map(x=>Number(x).toLocaleString('de-CH')).join(', ')}.`,'warn');
     }
     log('Schritt 6 abgeschlossen · Performance-Diagnose aktiv · 31.12.-Stichtagsbewertung ergänzt; Reward-Kurse unverändert nicht bewertet.','ok');
   }catch(e){finishStep6Diag();setStepState(6,'Fehler','');$('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;log(e.stack||e.message,'err')}finally{STEP6_RUN_INFLIGHT=false;updateProcessButtons();b.disabled=false}
