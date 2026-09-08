@@ -16,8 +16,11 @@ window.WalletPriceEngine = (() => {
   let ctx = () => ({});
   const pairStateCache = new Map();
   const tokenMetaCache = new Map();
+  const tokenPriceCache = new Map();
+  const priceGraphCache = new Map();
 
   const norm = x => String(x || "").trim().toLowerCase();
+  const same = (a,b) => !!a && !!b && norm(a) === norm(b);
   const blockKey = block => block === "latest" || block == null ? "latest" : String(Number(block));
 
   async function call(chain,to,data,block="latest"){
@@ -69,6 +72,31 @@ window.WalletPriceEngine = (() => {
     if(pairStateCache.has(key)) return pairStateCache.get(key);
 
     const promise = (async()=>{
+      const c = ctx();
+      // Optionaler Chain-Facts-Adapter: Discovery kann bereits gebatchte/cachierte
+      // historische Pair-States einspeisen, ohne dieselben RPC-Reads erneut auszuführen.
+      if(typeof c.pairState === "function"){
+        const external = await c.pairState(chain,address,block);
+        if(external){
+          const t0 = external.token0?.address ? external.token0 : await tokenMeta(chain,external.token0);
+          const t1 = external.token1?.address ? external.token1 : await tokenMeta(chain,external.token1);
+          const out = {
+            chain,
+            address:norm(address),
+            block:block === "latest" ? "latest" : Number(block),
+            factory:norm(external.factory || ""),
+            token0:t0,
+            token1:t1,
+            reserve0:Number(external.reserve0 ?? external.r0),
+            reserve1:Number(external.reserve1 ?? external.r1),
+            totalSupply:Number(external.totalSupply ?? external.total),
+            lpDecimals:Number(external.lpDecimals ?? 18),
+            blockTimestampLast:Number(external.blockTimestampLast ?? 0)
+          };
+          if(out.token0?.address && out.token1?.address && Number.isFinite(out.reserve0) && Number.isFinite(out.reserve1) && Number.isFinite(out.totalSupply)) return out;
+        }
+      }
+
       const calls = [
         ["token0",[]], ["token1",[]], ["getReserves",[]],
         ["totalSupply",[]], ["decimals",[]], ["factory",[]]
@@ -123,15 +151,343 @@ window.WalletPriceEngine = (() => {
     return null;
   }
 
-  async function getLpValuation({chain,lpAddress,amount=1,block="latest",priceForToken}){
+  function getReferences(chain){
+    const c = ctx();
+    const r = typeof c.references === "function" ? c.references(chain) : c.references?.[chain];
+    return r || {};
+  }
+
+  function stableReference(chain,address){
+    const ref = getReferences(chain);
+    if(same(address,ref.usdt)) return {price:1,route:"USDT",stable:"USDT",hops:0,pathLiquidityUSD:Infinity,source:"stable-self"};
+    if(same(address,ref.usdc)) return {price:1,route:"USDC",stable:"USDC",hops:0,pathLiquidityUSD:Infinity,source:"stable-self"};
+    if(chain === "bsc" && same(address,ref.busd)) return {price:1,route:"BUSD",stable:"BUSD",hops:0,pathLiquidityUSD:Infinity,source:"stable-self"};
+    return null;
+  }
+
+  async function findPair(chain,tokenA,tokenB){
+    const c = ctx();
+    if(typeof c.findPair !== "function") throw new Error("WalletPriceEngine: findPair-Adapter fehlt.");
+    return await c.findPair(chain,tokenA,tokenB);
+  }
+
+  function tokenCategory(chain,address){
+    const c = ctx();
+    return String(typeof c.tokenCategory === "function" ? c.tokenCategory(chain,address) || "" : "").trim().toLowerCase();
+  }
+
+  function strictCoreSymbol(symbol){
+    return ["BTCB","WBNB","WETH","BNB","ETH"].includes(String(symbol || "").trim().toUpperCase());
+  }
+
+  async function directV2StableMarkets(chain,tokenAddress,block="latest"){
+    const ref = getReferences(chain);
+    const candidates = [
+      {name:"USDT",address:ref.usdt,priority:0},
+      {name:"USDC",address:ref.usdc,priority:1},
+      ...(chain === "bsc" ? [{name:"BUSD",address:ref.busd,priority:2}] : [])
+    ].filter(x => x.address);
+    const results = [];
+    const token = await tokenMeta(chain,tokenAddress);
+
+    for(const stable of candidates){
+      try{
+        const pairAddress = await findPair(chain,tokenAddress,stable.address);
+        if(!pairAddress) continue;
+        const pair = await getPairState(chain,pairAddress,block);
+        let tokenReserve = null, stableReserve = null, price = null;
+        if(same(pair.token0.address,tokenAddress)){
+          tokenReserve = pair.reserve0; stableReserve = pair.reserve1; price = pair.reserve1/pair.reserve0;
+        }else if(same(pair.token1.address,tokenAddress)){
+          tokenReserve = pair.reserve1; stableReserve = pair.reserve0; price = pair.reserve0/pair.reserve1;
+        }
+        if(!Number.isFinite(price) || price <= 0) continue;
+        results.push({
+          price,
+          route:`${token.symbol} → ${stable.name}`,
+          stable:stable.name,
+          stablePriority:stable.priority,
+          hops:1,
+          pathLiquidityUSD:tokenReserve*price + stableReserve,
+          source:"direct-v2",
+          pool:pairAddress
+        });
+      }catch(e){
+        console.warn("WalletPriceEngine: direkter V2-Stablemarkt fehlgeschlagen",chain,tokenAddress,stable.name,e);
+      }
+    }
+    return results;
+  }
+
+  async function directV3StableMarkets(chain,tokenAddress,block="latest"){
+    if(block !== "latest" || chain !== "eth") return [];
+    const c = ctx();
+    if(typeof c.listPools !== "function" || typeof c.poolType !== "function" || typeof c.readV3Pool !== "function") return [];
+    const ref = getReferences(chain);
+    const candidates = [
+      {name:"USDT",address:ref.usdt,priority:0},
+      {name:"USDC",address:ref.usdc,priority:1}
+    ].filter(x => x.address);
+    const results = [];
+    const token = await tokenMeta(chain,tokenAddress);
+
+    for(const dbPool of (c.listPools(chain) || [])){
+      try{
+        if(await c.poolType(chain,dbPool.address) !== "v3") continue;
+        const pool = await c.readV3Pool(chain,dbPool.address);
+        for(const stable of candidates){
+          if(same(pool.token0.address,tokenAddress) && same(pool.token1.address,stable.address)){
+            results.push({price:pool.price0,route:`${token.symbol} → ${stable.name} (Uniswap V3)`,stable:stable.name,stablePriority:stable.priority,hops:1,pathLiquidityUSD:null,source:"direct-v3",pool:dbPool.address});
+          }
+          if(same(pool.token1.address,tokenAddress) && same(pool.token0.address,stable.address)){
+            results.push({price:pool.price1,route:`${token.symbol} → ${stable.name} (Uniswap V3)`,stable:stable.name,stablePriority:stable.priority,hops:1,pathLiquidityUSD:null,source:"direct-v3",pool:dbPool.address});
+          }
+        }
+      }catch(e){
+        console.warn("WalletPriceEngine: V3-Stablemarkt fehlgeschlagen",dbPool?.address,e);
+      }
+    }
+    return results;
+  }
+
+  async function directUSDTFallback(chain,token,block="latest"){
+    const usdt = getReferences(chain).usdt;
+    if(!usdt) return null;
+    try{
+      const pairAddress = await findPair(chain,token.address,usdt);
+      if(!pairAddress) return null;
+      const pair = await getPairState(chain,pairAddress,block);
+      let price = null, tokenReserve = null, usdtReserve = null;
+      if(same(pair.token0.address,token.address)){
+        price = pair.reserve1/pair.reserve0; tokenReserve = pair.reserve0; usdtReserve = pair.reserve1;
+      }else if(same(pair.token1.address,token.address)){
+        price = pair.reserve0/pair.reserve1; tokenReserve = pair.reserve1; usdtReserve = pair.reserve0;
+      }
+      if(!Number.isFinite(price) || price <= 0) return null;
+      return {price,route:`${token.symbol} → USDT (direkter V2-Fallback)`,stable:"USDT",hops:1,pathLiquidityUSD:tokenReserve*price+usdtReserve,source:"direct-usdt-fallback",pool:pairAddress};
+    }catch(e){
+      console.warn("WalletPriceEngine: direkter USDT-Fallback fehlgeschlagen",chain,token.symbol,token.address,e);
+      return null;
+    }
+  }
+
+  async function vCurrencyUSDPrice(chain,token,block="latest"){
+    const ref = getReferences(chain);
+    const vow = ref.vow, usdt = ref.usdt;
+    if(!vow || !usdt) return null;
+    try{
+      const vToVowPair = await findPair(chain,token.address,vow);
+      if(!vToVowPair) return null;
+      const vToVow = await getV2Price(chain,vToVowPair,token.address,block);
+      if(!vToVow) return null;
+      const vowToUsdtPair = await findPair(chain,vow,usdt);
+      if(!vowToUsdtPair) return null;
+      const vowToUsdt = await getV2Price(chain,vowToUsdtPair,vow,block);
+      if(!vowToUsdt) return null;
+
+      const tokenUsd = vToVow.price*vowToUsdt.price;
+      const vPool = vToVow.pairState || await getPairState(chain,vToVowPair,block);
+      const vowPool = vowToUsdt.pairState || await getPairState(chain,vowToUsdtPair,block);
+      const vPoolTVL = same(vPool.token0.address,token.address)
+        ? vPool.reserve0*tokenUsd + vPool.reserve1*vowToUsdt.price
+        : vPool.reserve1*tokenUsd + vPool.reserve0*vowToUsdt.price;
+      const vowPoolTVL = same(vowPool.token0.address,vow)
+        ? vowPool.reserve0*vowToUsdt.price + vowPool.reserve1
+        : vowPool.reserve1*vowToUsdt.price + vowPool.reserve0;
+      const pathLiquidityUSD = Number.isFinite(vPoolTVL) && Number.isFinite(vowPoolTVL) ? Math.min(vPoolTVL,vowPoolTVL) : null;
+      return {price:tokenUsd,route:`${token.symbol} → VOW → USDT`,stable:"USDT",hops:2,pathLiquidityUSD,source:"v-currency-direct-vow-usdt",pools:[vToVowPair,vowToUsdtPair]};
+    }catch(e){
+      console.warn("WalletPriceEngine: v_currency-Preisroute fehlgeschlagen",chain,token.symbol,token.address,e);
+      return null;
+    }
+  }
+
+  async function projectTokenUSDPrice(chain,token,block="latest"){
+    const ref = getReferences(chain);
+    const vow = ref.vow, usdt = ref.usdt;
+    if(!usdt) return null;
+    if(vow && same(token.address,vow)) return await directUSDTFallback(chain,token,block);
+
+    if(vow){
+      try{
+        const tokenVowPair = await findPair(chain,token.address,vow);
+        if(tokenVowPair){
+          const tokenToVow = await getV2Price(chain,tokenVowPair,token.address,block);
+          if(tokenToVow){
+            const vowUsdtPair = await findPair(chain,vow,usdt);
+            if(vowUsdtPair){
+              const vowToUsdt = await getV2Price(chain,vowUsdtPair,vow,block);
+              if(vowToUsdt){
+                const tokenUsd = tokenToVow.price*vowToUsdt.price;
+                let pathLiquidityUSD = null;
+                try{
+                  const tokenVowPool = tokenToVow.pairState || await getPairState(chain,tokenVowPair,block);
+                  const vowUsdtPool = vowToUsdt.pairState || await getPairState(chain,vowUsdtPair,block);
+                  const tokenVowTVL = same(tokenVowPool.token0.address,token.address)
+                    ? tokenVowPool.reserve0*tokenUsd + tokenVowPool.reserve1*vowToUsdt.price
+                    : tokenVowPool.reserve1*tokenUsd + tokenVowPool.reserve0*vowToUsdt.price;
+                  const vowUsdtTVL = same(vowUsdtPool.token0.address,vow)
+                    ? vowUsdtPool.reserve0*vowToUsdt.price + vowUsdtPool.reserve1
+                    : vowUsdtPool.reserve1*vowToUsdt.price + vowUsdtPool.reserve0;
+                  if(Number.isFinite(tokenVowTVL) && Number.isFinite(vowUsdtTVL)) pathLiquidityUSD = Math.min(tokenVowTVL,vowUsdtTVL);
+                }catch(e){
+                  console.warn("WalletPriceEngine: Pfad-Liquidität für Projekt-Token fehlgeschlagen",token.symbol,e);
+                }
+                return {price:tokenUsd,route:`${token.symbol} → VOW → USDT`,stable:"USDT",hops:2,pathLiquidityUSD,source:"tln-vow-token-via-vow",pools:[tokenVowPair,vowUsdtPair]};
+              }
+            }
+          }
+        }
+      }catch(e){
+        console.warn("WalletPriceEngine: TOKEN/VOW-Route fehlgeschlagen",chain,token.symbol,token.address,e);
+      }
+    }
+    return await directUSDTFallback(chain,token,block);
+  }
+
+  async function strictDirectUSDPrice(chain,token,block="latest"){
+    const self = stableReference(chain,token.address);
+    if(self) return self;
+    const [v2,v3] = await Promise.all([
+      directV2StableMarkets(chain,token.address,block),
+      directV3StableMarkets(chain,token.address,block)
+    ]);
+    const all = [...v2,...v3];
+    if(!all.length) return null;
+    all.sort((a,b)=>{
+      const am = Number.isFinite(a.pathLiquidityUSD), bm = Number.isFinite(b.pathLiquidityUSD);
+      if(am && bm && a.pathLiquidityUSD !== b.pathLiquidityUSD) return b.pathLiquidityUSD-a.pathLiquidityUSD;
+      if(am !== bm) return am ? -1 : 1;
+      return (a.stablePriority ?? 99)-(b.stablePriority ?? 99);
+    });
+    return all[0];
+  }
+
+  async function buildPriceGraph(chain,block="latest"){
+    const c = ctx();
+    if(typeof c.listPools !== "function" || typeof c.poolType !== "function") return [];
+    const key = `${chain}@${blockKey(block)}`;
+    if(priceGraphCache.has(key)) return priceGraphCache.get(key);
+    const promise = (async()=>{
+      const edges = [];
+      for(const dbPool of (c.listPools(chain) || [])){
+        try{
+          const type = await c.poolType(chain,dbPool.address);
+          if(type === "v2"){
+            const p = await getPairState(chain,dbPool.address,block);
+            if(p.reserve0 > 0 && p.reserve1 > 0){
+              edges.push({type:"v2",from:p.token0.address,to:p.token1.address,rate:p.reserve1/p.reserve0,fromSymbol:p.token0.symbol,toSymbol:p.token1.symbol,pool:dbPool.address,reserveFrom:p.reserve0,reserveTo:p.reserve1});
+              edges.push({type:"v2",from:p.token1.address,to:p.token0.address,rate:p.reserve0/p.reserve1,fromSymbol:p.token1.symbol,toSymbol:p.token0.symbol,pool:dbPool.address,reserveFrom:p.reserve1,reserveTo:p.reserve0});
+            }
+          }else if(type === "v3" && block === "latest" && typeof c.readV3Pool === "function"){
+            const p = await c.readV3Pool(chain,dbPool.address);
+            if(Number.isFinite(p.price0) && p.price0 > 0){
+              edges.push({type:"v3",from:p.token0.address,to:p.token1.address,rate:p.price0,fromSymbol:p.token0.symbol,toSymbol:p.token1.symbol,pool:dbPool.address,reserveFrom:null,reserveTo:null});
+              edges.push({type:"v3",from:p.token1.address,to:p.token0.address,rate:p.price1,fromSymbol:p.token1.symbol,toSymbol:p.token0.symbol,pool:dbPool.address,reserveFrom:null,reserveTo:null});
+            }
+          }
+        }catch(e){
+          console.warn("WalletPriceEngine: Preisgraph-Pool nicht lesbar",dbPool?.address,e);
+        }
+      }
+      return edges;
+    })();
+    priceGraphCache.set(key,promise);
+    try{
+      const out = await promise;
+      priceGraphCache.set(key,out);
+      return out;
+    }catch(e){ priceGraphCache.delete(key); throw e; }
+  }
+
+  function scorePathLiquidity(path){
+    if(!path.edges.length){ path.pathLiquidityUSD = Infinity; return path; }
+    let usdTo=1, bottleneck=Infinity, measurable=0;
+    for(let i=path.edges.length-1;i>=0;i--){
+      const edge=path.edges[i], usdFrom=edge.rate*usdTo;
+      if(edge.type === "v2" && Number.isFinite(edge.reserveFrom) && Number.isFinite(edge.reserveTo)){
+        const tvl=edge.reserveFrom*usdFrom + edge.reserveTo*usdTo;
+        if(Number.isFinite(tvl) && tvl>0){ bottleneck=Math.min(bottleneck,tvl); measurable++; }
+      }
+      usdTo=usdFrom;
+    }
+    path.pathLiquidityUSD=measurable>0?bottleneck:null;
+    return path;
+  }
+
+  async function graphUSDPrice(chain,tokenAddress,maxHops=4,block="latest"){
+    const self=stableReference(chain,tokenAddress);
+    if(self) return self;
+    const edges=await buildPriceGraph(chain,block);
+    const ref=getReferences(chain);
+    const stablePriority=[{name:"USDT",address:ref.usdt,priority:0},{name:"USDC",address:ref.usdc,priority:1},...(chain==="bsc"?[{name:"BUSD",address:ref.busd,priority:2}]:[])].filter(x=>x.address);
+    const stableMap=new Map(stablePriority.map(x=>[norm(x.address),x]));
+    const token=await tokenMeta(chain,tokenAddress);
+    const paths=[];
+    const maxPaths=80;
+    async function dfs(current,multiplier,symbols,pathEdges,visited){
+      if(paths.length>=maxPaths || pathEdges.length>=maxHops) return;
+      for(const edge of edges.filter(e=>same(e.from,current))){
+        const nk=norm(edge.to); if(visited.has(nk)) continue;
+        const nextMultiplier=multiplier*edge.rate;
+        const nextSymbols=[...symbols,edge.toSymbol];
+        const nextEdges=[...pathEdges,edge];
+        const stable=stableMap.get(nk);
+        if(stable){ paths.push({price:nextMultiplier,route:nextSymbols.join(" → "),stable:stable.name,stablePriority:stable.priority,hops:nextEdges.length,edges:nextEdges,pathLiquidityUSD:null}); continue; }
+        const nv=new Set(visited); nv.add(nk);
+        await dfs(edge.to,nextMultiplier,nextSymbols,nextEdges,nv);
+      }
+    }
+    await dfs(tokenAddress,1,[token.symbol],[],new Set([norm(tokenAddress)]));
+    if(!paths.length) return null;
+    paths.forEach(scorePathLiquidity);
+    paths.sort((a,b)=>{
+      const am=Number.isFinite(a.pathLiquidityUSD), bm=Number.isFinite(b.pathLiquidityUSD);
+      if(am && bm && a.pathLiquidityUSD!==b.pathLiquidityUSD) return b.pathLiquidityUSD-a.pathLiquidityUSD;
+      if(am!==bm) return am?-1:1;
+      if((a.stablePriority??99)!==(b.stablePriority??99)) return (a.stablePriority??99)-(b.stablePriority??99);
+      return a.hops-b.hops;
+    });
+    const best=paths[0];
+    return {price:best.price,route:best.route,hops:best.hops,stable:best.stable,pathLiquidityUSD:best.pathLiquidityUSD,source:"ecosystem-graph",alternatives:paths.slice(1,4).map(p=>({price:p.price,route:p.route,stable:p.stable,hops:p.hops,pathLiquidityUSD:p.pathLiquidityUSD}))};
+  }
+
+  async function getTokenPrice({projectKey="default",chain,token,address,block="latest"}){
+    const resolvedToken = token || await tokenMeta(chain,address);
+    if(!resolvedToken?.address) return null;
+    const key=`${projectKey}|${chain}|${norm(resolvedToken.address)}@${blockKey(block)}`;
+    if(tokenPriceCache.has(key)) return tokenPriceCache.get(key);
+    const promise=(async()=>{
+      let result=stableReference(chain,resolvedToken.address);
+      const category=tokenCategory(chain,resolvedToken.address);
+      if(!result && category === "voucher_currency") result=await vCurrencyUSDPrice(chain,resolvedToken,block);
+      if(!result && category === "defi_token") result=await projectTokenUSDPrice(chain,resolvedToken,block);
+      if(!result && strictCoreSymbol(resolvedToken.symbol)) result=await strictDirectUSDPrice(chain,resolvedToken,block);
+      if(!result && category !== "voucher_currency" && category !== "defi_token") result=await graphUSDPrice(chain,resolvedToken.address,4,block);
+      return result;
+    })();
+    tokenPriceCache.set(key,promise);
+    try{ const out=await promise; tokenPriceCache.set(key,out); return out; }
+    catch(e){ tokenPriceCache.delete(key); throw e; }
+  }
+
+  async function getLpValuation({chain,lpAddress,amount=1,block="latest",priceForToken,projectKey="default"}){
+    const c = ctx();
+    // Projektadapter für verifizierte Sonderfälle (z. B. BSC Legacy-LPT → ETH-Origin-LP).
+    // `null` bedeutet: normale zentrale V2/Token-Bewertung fortsetzen.
+    if(typeof c.specialLpValuation === "function"){
+      const special = await c.specialLpValuation({chain,lpAddress,amount:Number(amount),block,projectKey});
+      if(special != null) return special;
+    }
     const pair = await getPairState(chain,lpAddress,block);
     if(!(pair.totalSupply > 0)) return null;
     const share = Number(amount)/pair.totalSupply;
     const amount0 = pair.reserve0*share;
     const amount1 = pair.reserve1*share;
-    const [p0,p1] = typeof priceForToken === "function"
-      ? await Promise.all([priceForToken(chain,pair.token0,block),priceForToken(chain,pair.token1,block)])
-      : [null,null];
+    const resolver = typeof priceForToken === "function"
+      ? priceForToken
+      : async (ch,tok,bl) => await getTokenPrice({projectKey,chain:ch,token:tok,block:bl});
+    const [p0,p1] = await Promise.all([resolver(chain,pair.token0,block),resolver(chain,pair.token1,block)]);
     const price0 = p0 == null ? null : Number(typeof p0 === "number" ? p0 : p0.price);
     const price1 = p1 == null ? null : Number(typeof p1 === "number" ? p1 : p1.price);
     const valueUsd = Number.isFinite(price0) && Number.isFinite(price1) ? amount0*price0 + amount1*price1 : null;
@@ -141,9 +497,64 @@ window.WalletPriceEngine = (() => {
   function configure(fn){ ctx = fn || ctx; }
   function clearCurrent(){
     for(const k of [...pairStateCache.keys()]) if(k.endsWith("@latest")) pairStateCache.delete(k);
+    for(const k of [...tokenPriceCache.keys()]) if(k.endsWith("@latest")) tokenPriceCache.delete(k);
+    for(const k of [...priceGraphCache.keys()]) if(k.endsWith("@latest")) priceGraphCache.delete(k);
   }
-  function clearAll(){ pairStateCache.clear(); tokenMetaCache.clear(); }
-  function stats(){ return {pairStates:pairStateCache.size,tokenMeta:tokenMetaCache.size}; }
+  function clearAll(){ pairStateCache.clear(); tokenMetaCache.clear(); tokenPriceCache.clear(); priceGraphCache.clear(); }
 
-  return {configure,getPairState,getV2Price,getLpValuation,tokenMeta,clearCurrent,clearAll,stats};
+  function currentEntries(map,latestOnly=false){
+    return [...map.entries()]
+      .filter(([key,value]) => !latestOnly || String(key).endsWith("@latest"))
+      .filter(([,value]) => value && typeof value?.then !== "function");
+  }
+
+  function exportCurrentState(){
+    return {
+      schemaVersion:1,
+      pairStates:currentEntries(pairStateCache,true),
+      tokenMeta:currentEntries(tokenMetaCache,false),
+      tokenPrices:currentEntries(tokenPriceCache,true),
+      priceGraphs:currentEntries(priceGraphCache,true)
+    };
+  }
+
+  function importCurrentState(state,{replaceCurrent=true}={}){
+    if(!state || Number(state.schemaVersion)!==1) return false;
+    if(replaceCurrent) clearCurrent();
+    const restore=(map,rows) => {
+      for(const row of Array.isArray(rows)?rows:[]){
+        if(!Array.isArray(row) || row.length!==2 || !row[0]) continue;
+        map.set(String(row[0]),row[1]);
+      }
+    };
+    restore(pairStateCache,state.pairStates);
+    restore(tokenMetaCache,state.tokenMeta);
+    restore(tokenPriceCache,state.tokenPrices);
+    restore(priceGraphCache,state.priceGraphs);
+    return true;
+  }
+
+  function stats(){ return {pairStates:pairStateCache.size,tokenMeta:tokenMetaCache.size,tokenPrices:tokenPriceCache.size,priceGraphs:priceGraphCache.size}; }
+
+  return {
+    configure,
+    getPairState,
+    getV2Price,
+    getTokenPrice,
+    getLpValuation,
+    tokenMeta,
+    stableReference,
+    directV2StableMarkets,
+    directV3StableMarkets,
+    directUSDTFallback,
+    strictDirectUSDPrice,
+    vCurrencyUSDPrice,
+    projectTokenUSDPrice,
+    graphUSDPrice,
+    clearCurrent,
+    clearAll,
+    exportCurrentState,
+    importCurrentState,
+    stats
+  };
 })();
