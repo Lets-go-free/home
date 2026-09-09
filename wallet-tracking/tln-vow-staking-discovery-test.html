@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 12:36:17 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 12:49:29 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -406,7 +406,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260909-123617';
+const BUILD_ID='20260909-124929';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -537,7 +537,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='09.09.2026 12:36:17 CEST';
+const APP_VERSION='09.09.2026 12:49:29 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -2036,13 +2036,49 @@ function tlnIdLog(s){$('tlnIdLog').textContent+=`[${new Date().toLocaleTimeStrin
 function hexWord(v){return BigInt(v).toString(16).padStart(64,'0').toLowerCase()}
 function addressWord(a){return norm(a).slice(2).padStart(64,'0').toLowerCase()}
 function containsWord(hex,word){return String(hex||'').toLowerCase().replace(/^0x/,'').includes(word)}
-const TLN_ID_EVIDENCE_CACHE_PREFIX='tln-id-evidence-v2:';
+const TLN_ID_EVIDENCE_CACHE_PREFIX='tln-id-evidence-v2:'; // Legacy localStorage prefix; nur noch Migration.
+const TLN_ID_EVIDENCE_STATE={loaded:false,entries:new Map()};
+function tlnIdEvidenceEntryKey(wallet,expected){return `${norm(wallet)}:${String(expected)}`}
 function tlnIdEvidenceCacheKey(wallet,expected){return TLN_ID_EVIDENCE_CACHE_PREFIX+norm(wallet)+':'+String(expected)}
-function loadTlnIdEvidenceCache(wallet,expected){
-  try{return JSON.parse(localStorage.getItem(tlnIdEvidenceCacheKey(wallet,expected))||'null')}catch{return null}
+async function ensureTlnIdEvidenceDbCache(){
+  if(TLN_ID_EVIDENCE_STATE.loaded)return;
+  TLN_ID_EVIDENCE_STATE.loaded=true;
+  const payload=await loadTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,TECH_CACHE_KEYS.tlnIdEvidence,TECH_CACHE_VERSIONS.tlnIdEvidence);
+  const entries=payload?.entries&&typeof payload.entries==='object'?payload.entries:{};
+  for(const [k,v] of Object.entries(entries))if(v?.hash)TLN_ID_EVIDENCE_STATE.entries.set(k,v);
+  let migrated=0;
+  try{
+    const legacyKeys=[];
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);if(k&&k.startsWith(TLN_ID_EVIDENCE_CACHE_PREFIX))legacyKeys.push(k);
+    }
+    for(const k of legacyKeys){
+      let v=null;try{v=JSON.parse(localStorage.getItem(k)||'null')}catch{}
+      const rest=k.slice(TLN_ID_EVIDENCE_CACHE_PREFIX.length),sep=rest.lastIndexOf(':');
+      if(sep<=0||!v?.hash)continue;
+      const wallet=norm(rest.slice(0,sep)),expected=rest.slice(sep+1),ek=tlnIdEvidenceEntryKey(wallet,expected);
+      if(!TLN_ID_EVIDENCE_STATE.entries.has(ek))TLN_ID_EVIDENCE_STATE.entries.set(ek,{...v,wallet,expected});
+      migrated++;
+    }
+    if(migrated){
+      const ok=await flushTlnIdEvidenceDbCache();
+      if(ok){for(const k of legacyKeys)try{localStorage.removeItem(k)}catch{};log(`TLN-ID Evidence: ${migrated} lokale Legacy-Treffer nach Supabase migriert.`,'ok')}
+      else log('TLN-ID Evidence: lokale Legacy-Treffer konnten noch nicht nach Supabase migriert werden; lokale Quelle bleibt erhalten.','warn');
+    }
+  }catch(e){log(`TLN-ID Evidence Migration fehlgeschlagen: ${e.message||e}`,'warn')}
 }
-function saveTlnIdEvidenceCache(wallet,expected,hit){
-  try{localStorage.setItem(tlnIdEvidenceCacheKey(wallet,expected),JSON.stringify({hash:hit.hash,block:hit.block,contracts:[...new Set(hit.logHits.map(x=>x.address))],savedAt:new Date().toISOString()}))}catch{}
+async function flushTlnIdEvidenceDbCache(){
+  const entries=Object.fromEntries(TLN_ID_EVIDENCE_STATE.entries);
+  return await saveTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,TECH_CACHE_KEYS.tlnIdEvidence,TECH_CACHE_VERSIONS.tlnIdEvidence,{kind:'tln_id_onchain_evidence',entries,savedAt:new Date().toISOString()});
+}
+async function loadTlnIdEvidenceCache(wallet,expected){
+  await ensureTlnIdEvidenceDbCache();
+  return TLN_ID_EVIDENCE_STATE.entries.get(tlnIdEvidenceEntryKey(wallet,expected))||null;
+}
+async function saveTlnIdEvidenceCache(wallet,expected,hit){
+  await ensureTlnIdEvidenceDbCache();
+  TLN_ID_EVIDENCE_STATE.entries.set(tlnIdEvidenceEntryKey(wallet,expected),{wallet:norm(wallet),expected:String(expected),hash:hit.hash,block:hit.block,contracts:[...new Set(hit.logHits.map(x=>x.address))],savedAt:new Date().toISOString()});
+  return await flushTlnIdEvidenceDbCache();
 }
 function tlnIdEvidenceFromReceipt(rec,wWord,idWord){
   const logHits=[];
@@ -2055,25 +2091,33 @@ function tlnIdEvidenceFromReceipt(rec,wWord,idWord){
   return logHits;
 }
 
-const TLN_ID_EVENT_RESOLVER_CACHE_KEY='tln-id-event-resolver-v1:bsc';
-let tlnIdentityEventResolver=null;
+const TLN_ID_EVENT_RESOLVER_CACHE_KEY='tln-id-event-resolver-v1:bsc'; // Legacy localStorage key; nur noch Migration.
+let tlnIdentityEventResolver=null,tlnIdentityEventResolverLoaded=false;
 function splitDataWords(data){
   const h=String(data||'').replace(/^0x/,'').toLowerCase();
   const out=[];for(let i=0;i+64<=h.length;i+=64)out.push(h.slice(i,i+64));return out;
 }
-function loadTlnIdEventResolver(){
-  if(tlnIdentityEventResolver)return tlnIdentityEventResolver;
+async function loadTlnIdEventResolver(){
+  if(tlnIdentityEventResolverLoaded)return tlnIdentityEventResolver;
+  tlnIdentityEventResolverLoaded=true;
+  const payload=await loadTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,TECH_CACHE_KEYS.tlnIdEventResolver,TECH_CACHE_VERSIONS.tlnIdEventResolver);
+  const x=payload?.resolver||null;
+  if(x?.contract&&x?.topic0&&x?.walletLocation?.kind&&x?.idLocation?.kind){tlnIdentityEventResolver=x;return x}
+  // Einmalige Migration des früheren Browser-Caches. Erst nach erfolgreichem DB-Save löschen.
   try{
-    const x=JSON.parse(localStorage.getItem(TLN_ID_EVENT_RESOLVER_CACHE_KEY)||'null');
-    if(x?.contract&&x?.topic0&&x?.walletLocation?.kind&&x?.idLocation?.kind){
-      tlnIdentityEventResolver=x;return x;
+    const legacy=JSON.parse(localStorage.getItem(TLN_ID_EVENT_RESOLVER_CACHE_KEY)||'null');
+    if(legacy?.contract&&legacy?.topic0&&legacy?.walletLocation?.kind&&legacy?.idLocation?.kind){
+      const ok=await saveTlnIdEventResolver(legacy);
+      if(ok){try{localStorage.removeItem(TLN_ID_EVENT_RESOLVER_CACHE_KEY)}catch{};log('TLN-ID Event-Resolver: lokaler Legacy-Resolver nach Supabase migriert.','ok')}
+      else log('TLN-ID Event-Resolver: Legacy-Resolver konnte noch nicht nach Supabase migriert werden; lokale Quelle bleibt erhalten.','warn');
+      return legacy;
     }
-  }catch{}
+  }catch(e){log(`TLN-ID Event-Resolver Migration fehlgeschlagen: ${e.message||e}`,'warn')}
   return null;
 }
-function saveTlnIdEventResolver(x){
-  tlnIdentityEventResolver=x;
-  try{localStorage.setItem(TLN_ID_EVENT_RESOLVER_CACHE_KEY,JSON.stringify(x))}catch{}
+async function saveTlnIdEventResolver(x){
+  tlnIdentityEventResolver=x;tlnIdentityEventResolverLoaded=true;
+  return await saveTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,TECH_CACHE_KEYS.tlnIdEventResolver,TECH_CACHE_VERSIONS.tlnIdEventResolver,{kind:'tln_id_event_resolver',resolver:x,savedAt:new Date().toISOString()});
 }
 function inspectTlnIdEventLayout(lg,wWord,idWord){
   const topics=(lg.topics||[]).map(x=>String(x).replace(/^0x/,'').toLowerCase());
@@ -2102,7 +2146,7 @@ function extractIdFromEventLog(lg,resolver){
   }catch{return null}
 }
 async function resolveTlnIdentityByEvent(wallet,{saveDb=true,logFn=walletLog}={}){
-  wallet=norm(wallet);const resolver=loadTlnIdEventResolver();
+  wallet=norm(wallet);const resolver=await loadTlnIdEventResolver();
   if(!resolver)return null;
   const topics=[resolver.topic0];
   if(resolver.walletLocation.kind==='topic'){
@@ -2198,7 +2242,7 @@ async function scanTlnIdHistory(){
     tlnIdLog('Optimierter Primärweg: zuerst gespeicherten Evidenz-Treffer mit genau 1 Receipt verifizieren; sonst Alchemy-Historie in kleinen Seiten laden und beim ersten belastbaren Treffer sofort stoppen. Kein Getter-Bruteforce.');
     const idWord=hexWord(expected),wWord=addressWord(wallet);let receipts=0,txReads=0,alchemyPages=0,alchemyTransfers=0,uniqueTx=0;let hit=null;
 
-    const cached=loadTlnIdEvidenceCache(wallet,expected);
+    const cached=await loadTlnIdEvidenceCache(wallet,expected);
     if(cached?.hash){
       tlnIdLog(`Cache-Kandidat: ${cached.hash} · verifiziere mit 1 Receipt.`);
       try{
@@ -2230,9 +2274,9 @@ async function scanTlnIdHistory(){
         let tx=null,inputHit=false;
         try{tx=await rpc('eth_getTransactionByHash',[h]);txReads++;inputHit=containsWord(tx?.input,idWord)&&containsWord(tx?.input,wWord)}catch{}
         hit={hash:h,block:rec.blockNumber,from:norm(rec.from),to:norm(rec.to),logHits,inputHit,input:tx?.input||null,source:'adaptive_history'};
-        saveTlnIdEvidenceCache(wallet,expected,hit);
+        await saveTlnIdEvidenceCache(wallet,expected,hit);
         tlnIdLog(`TREFFER ${h}: ${logHits.length} Log(s) enthalten Wallet + ID ${expected}; Contract(s): ${[...new Set(logHits.map(x=>x.address))].join(', ')}.`);
-        tlnIdLog('Treffer persistent im Browser gespeichert. Künftige Tests benötigen normalerweise nur noch 1 Receipt zur Verifikation.');
+        tlnIdLog('Treffer user-spezifisch in Supabase gespeichert. Künftige Tests benötigen normalerweise nur noch 1 Receipt zur Verifikation.');
         break;
       }
       if(hit)break;
@@ -4487,7 +4531,9 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   smartNodeIdentityIndex:'smartnode-identity-index-v1',
   stakingDiscoveryCandidates:'staking-discovery-candidates-v3',
   historicalLpPrices:'historical-lp-price-points-v2-bounded-tiered',
-  teamAliases:'team-aliases-v1-user-scoped'
+  teamAliases:'team-aliases-v1-user-scoped',
+  tlnIdEvidence:'tln-id-evidence-v3-supabase',
+  tlnIdEventResolver:'tln-id-event-resolver-v2-supabase'
 });
 const TECH_CACHE_KEYS=Object.freeze({
   lpFacts:'lp-chainfacts',
@@ -4500,7 +4546,9 @@ const TECH_CACHE_KEYS=Object.freeze({
   smartNodeIdentityIndex:'smartnode-identity-index-state',
   stakingDiscoveryCandidates:'staking-discovery-candidates',
   historicalLpPrices:'historical-lp-price-points',
-  teamAliases:'team-aliases'
+  teamAliases:'team-aliases',
+  tlnIdEvidence:'tln-id-evidence',
+  tlnIdEventResolver:'tln-id-event-resolver'
 });
 const TECH_CACHE_GLOBAL_SCOPE='0x0000000000000000000000000000000000000000';
 
