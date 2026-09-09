@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 04:23:18 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 12:31:44 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -206,6 +206,11 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
   <div style="margin-top:8px">
     <button id="forceDiscoveryFreshnessCheck" type="button" disabled>24h-Check jetzt testen</button>
     <span id="forceDiscoveryFreshnessCheckState" class="muted" style="margin-left:8px"></span>
+  </div>
+  <div style="margin-top:8px">
+    <button id="testTeamFreshnessProviderError" type="button" disabled>DEV: Lifecycle-Providerfehler simulieren</button>
+    <span id="testTeamFreshnessProviderErrorState" class="muted" style="margin-left:8px"></span>
+    <div class="muted" style="margin-top:5px">Simuliert ausschließlich einen Fehler im inkrementellen Team-Lifecycle-Freshness-Check. Erwartung: letzter verifizierter Cache bleibt erhalten und es wird kein historischer Fullscan gestartet.</div>
   </div>
   <div style="margin-top:8px">
     <select id="longGapBlocks" style="min-width:180px;width:180px">
@@ -401,7 +406,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260909-042318';
+const BUILD_ID='20260909-123144';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -532,7 +537,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='09.09.2026 04:23:18 CEST';
+const APP_VERSION='09.09.2026 12:31:44 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13573,6 +13578,24 @@ async function lookupShowStakings(wallet,btn){
 
 
 const TEAM_ALIAS_STORAGE_KEY='tln_vow_team_aliases_v1';
+function teamAliasStorageKey(){
+  return currentUserId?`${TEAM_ALIAS_STORAGE_KEY}:user:${currentUserId}`:'';
+}
+function migrateLegacyTeamAliasesToCurrentUser(){
+  if(!currentUserId)return 0;
+  const scopedKey=teamAliasStorageKey();
+  try{
+    const scoped=JSON.parse(localStorage.getItem(scopedKey)||'{}')||{};
+    const legacy=JSON.parse(localStorage.getItem(TEAM_ALIAS_STORAGE_KEY)||'{}')||{};
+    const legacyEntries=Object.entries(legacy).filter(([k,v])=>k&&String(v||'').trim());
+    if(!legacyEntries.length)return 0;
+    let migrated=0;
+    for(const [k,v] of legacyEntries){if(!String(scoped[k]||'').trim()){scoped[k]=String(v).trim();migrated++}}
+    localStorage.setItem(scopedKey,JSON.stringify(scoped));
+    localStorage.removeItem(TEAM_ALIAS_STORAGE_KEY);
+    return migrated;
+  }catch{return 0}
+}
 const TEAM_SMARTNODE_CONTRACT='0x028c911c10c9e346158206991e02d09bd0a8a35b';
 const TEAM_NODE_ID_SELECTOR=ethers.id('nodeIdOf(address)').slice(0,10);
 const TEAM_NODE_USER_SELECTOR=ethers.id('nodeUserOf(uint256)').slice(0,10);
@@ -13618,12 +13641,16 @@ const TEAM_LIFECYCLE_RECHECK_HINTS=new Map();
 let TEAM_HIGHLIGHT_STATE={noActive:false,expired:false,soon:false};
 
 function loadTeamAliases(){
-  try{return JSON.parse(localStorage.getItem(TEAM_ALIAS_STORAGE_KEY)||'{}')||{}}catch{return {}}
+  const storageKey=teamAliasStorageKey();
+  if(!storageKey)return {};
+  try{return JSON.parse(localStorage.getItem(storageKey)||'{}')||{}}catch{return {}}
 }
 function saveTeamAlias(key,value){
+  const storageKey=teamAliasStorageKey();
+  if(!storageKey){log('Partner-Name nicht gespeichert: kein eingeloggter Benutzer verfügbar.','warn');return}
   const m=loadTeamAliases();value=String(value||'').trim();
   if(value)m[key]=value;else delete m[key];
-  try{localStorage.setItem(TEAM_ALIAS_STORAGE_KEY,JSON.stringify(m))}catch{}
+  try{localStorage.setItem(storageKey,JSON.stringify(m))}catch{}
 }
 function teamAliasKey(wallet,ident){
   return ident?.nodeId?`id:${ident.nodeId}`:`wallet:${norm(wallet)}`;
@@ -16211,6 +16238,39 @@ const STAKING_DATA_SERVICE={
     return teamPartnerEnsureUsdValuations(w,life);
   }
 };
+async function testTeamFreshnessProviderErrorNoFullscan(){
+  const btn=$('testTeamFreshnessProviderError'),state=$('testTeamFreshnessProviderErrorState');
+  const candidate=[...TEAM_STAKING_LIFECYCLE.entries()].find(([wallet,life])=>ethers.isAddress(wallet)&&life?.verified);
+  if(!candidate){if(state)state.innerHTML='<span class="warn">Kein verifizierter Lifecycle im Cache. Seite neu laden bzw. Team-Cache restaurieren.</span>';return}
+  const [wallet,beforeLife]=candidate;
+  const originalCheck=STAKING_DATA_SERVICE.checkChangesSinceLastVerification;
+  const originalVerifier=teamVerifyMissingLifecycles;
+  let fullscanCalled=false;
+  if(btn)btn.disabled=true;
+  if(state)state.textContent=`Teste ${short(wallet)} …`;
+  log(`DEV Freshness-Fehlertest ${short(wallet)}: simulierter Providerfehler wird ausgelöst. Erwartung: Cache bleibt erhalten, kein historischer Fullscan.`,'muted');
+  try{
+    STAKING_DATA_SERVICE.checkChangesSinceLastVerification=async()=>{throw new Error('DEV_SIMULATED_PROVIDER_ERROR')};
+    teamVerifyMissingLifecycles=async(...args)=>{fullscanCalled=true;throw new Error('DEV_FULLSCAN_SENTINEL')};
+    const result=await STAKING_DATA_SERVICE.refreshLifecycle(wallet,{forceFresh:true,incrementalFirst:true,context:'DEV Freshness-Fehlertest'});
+    const sameCached=TEAM_STAKING_LIFECYCLE.get(wallet)===beforeLife;
+    const pass=!fullscanCalled&&result?.verified&&sameCached;
+    if(pass){
+      log(`DEV Freshness-Fehlertest ${short(wallet)}: PASS · Providerfehler abgefangen · verifizierter Cache unverändert erhalten · kein Fullscan aufgerufen.`,'ok');
+      if(state)state.innerHTML='<span class="ok"><b>PASS</b> · Cache erhalten · kein Fullscan</span>';
+    }else{
+      log(`DEV Freshness-Fehlertest ${short(wallet)}: FAIL · fullscanCalled=${fullscanCalled?'ja':'nein'} · sameCached=${sameCached?'ja':'nein'} · verified=${result?.verified?'ja':'nein'}.`,'err');
+      if(state)state.innerHTML='<span class="err"><b>FAIL</b> · Log prüfen</span>';
+    }
+  }catch(e){
+    log(`DEV Freshness-Fehlertest ${short(wallet)}: FAIL · unerwarteter Fehler ${e?.message||e}.`,'err');
+    if(state)state.innerHTML=`<span class="err"><b>FAIL</b> · ${esc(e?.message||e)}</span>`;
+  }finally{
+    STAKING_DATA_SERVICE.checkChangesSinceLastVerification=originalCheck;
+    teamVerifyMissingLifecycles=originalVerifier;
+    if(btn)btn.disabled=false;
+  }
+}
 function teamDetailsModalShows(wallet){
   const modal=$('teamDetailsModal');
   return !!modal?.classList.contains('open')&&norm(modal?.dataset?.wallet||'')===norm(wallet||'');
@@ -17303,6 +17363,8 @@ async function init(){log(`Build geladen: ${BUILD_ID} · SC_READ_PROBES=${typeof
   }catch(_e){}
   if(!user){$('auth').innerHTML='<span class="err">Nicht eingeloggt. Testseite auf derselben Domain wie Wallet-Tracking öffnen und zuerst einloggen.</span>';return}
   currentUserId=user.id;
+  const migratedAliases=migrateLegacyTeamAliasesToCurrentUser();
+  if(migratedAliases)log(`Partner-Namen: ${migratedAliases} bestehende lokale Alias(e) in den benutzerspezifischen Speicher migriert.`,'ok');
   $('auth').innerHTML=`<span class="ok">Eingeloggt:</span> ${esc(user.email)}`;
   const [cr,pt,sc,wq,projectRefs,stableRefs]=await loadInitialDbRowsResilient();
   const dbErr=cr?.error||pt?.error||sc?.error||wq?.error||projectRefs?.error||stableRefs?.error;
@@ -17372,6 +17434,8 @@ $('clearSingleTeamLifecycleCache').onclick=clearSingleTeamLifecycleCache;
 $('clearTeamColdRunCache').onclick=clearTeamColdRunCache;
 $('rebuildStep6Cache').onclick=rebuildStep6Cache;
 $('forceDiscoveryFreshnessCheck').onclick=forceCurrentDiscoveryFreshnessCheck;
+$('testTeamFreshnessProviderError').onclick=testTeamFreshnessProviderErrorNoFullscan;
+$('testTeamFreshnessProviderError').disabled=false;
 $('testDiscoveryLongGap').onclick=testCurrentDiscoveryLongGap;
 $('exportDiagnosisLog').onclick=exportDiagnosisLogTxt;
 $('lookupByTlnId').onclick=lookupWalletByTlnId;
