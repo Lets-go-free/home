@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 01:48:20 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 02:02:08 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -400,7 +400,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260909-014820';
+const BUILD_ID='20260909-020208';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -531,7 +531,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='09.09.2026 01:48:20 CEST';
+const APP_VERSION='09.09.2026 02:02:08 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4658,7 +4658,7 @@ async function flushStakingDiscoveryCandidateCache(){
 async function captureVerifiedTeamLifecycleCandidates(wallets){
   let hits=0;
   for(const wallet of [...new Set((wallets||[]).map(norm).filter(ethers.isAddress))]){
-    const life=TEAM_STAKING_LIFECYCLE.get(wallet);if(!life?.verified)continue;
+    const life=TEAM_STAKING_DATA_SERVICE.getCachedLifecycle(wallet);if(!life?.verified)continue;
     for(const row of (life.lots||[])){
       const lot=row?.lot||row;if(!lot)continue;
       const contract=norm(lot?.staking?.contract_address||lot?.duration_contract||lot?.counterparty||'');
@@ -13352,21 +13352,20 @@ async function lookupLifecycleForWallet(wallet){
 
   // Nur wenn für diese Wallet kein vollständiger Discovery-Snapshot existiert,
   // darf der kompakte Team-Lifecycle als Fallback dienen.
-  life=TEAM_STAKING_LIFECYCLE.get(wallet);
+  life=TEAM_STAKING_DATA_SERVICE.getCachedLifecycle(wallet);
   if(life?.verified){
     log(`Lookup Stakings ${short(wallet)}: kein Discovery-Snapshot vorhanden; verifizierter Team-Lifecycle-Fallback verwendet · ${life.lots?.length||0} Position(en).`,'warn');
     return life;
   }
 
   await teamLoadPersistedLifecycleCache([wallet]);
-  life=TEAM_STAKING_LIFECYCLE.get(wallet);
+  life=TEAM_STAKING_DATA_SERVICE.getCachedLifecycle(wallet);
   if(life?.verified){
     log(`Lookup Stakings ${short(wallet)}: kein Discovery-Snapshot vorhanden; persistenter Team-Lifecycle-Fallback verwendet · ${life.lots?.length||0} Position(en).`,'warn');
     return life;
   }
 
-  await teamVerifyMissingLifecycles([wallet]);
-  return TEAM_STAKING_LIFECYCLE.get(wallet)||null;
+  return await TEAM_STAKING_DATA_SERVICE.refreshLifecycle(wallet,{forceFresh:false,context:'Lookup Stakings'});
 }
 function lookupAllStakingsHtml(life){
   const rows=(life?.lots||[]).slice().sort((a,b)=>{
@@ -14328,15 +14327,16 @@ async function teamLoadPersistedLifecycleCache(wallets){
         log(`Team-Lifecycle TLN-ID ${TEAM_IDENTITY_CACHE.get(w)?.nodeId||'?'}: ${expiredOpenLots.length} historisch offene/abgelaufene Position(en) werden einmalig auf tatsaechlichen Unstake/LP-Rueckfluss nachverifiziert.`,'muted');
         continue;
       }
-      TEAM_STAKING_LIFECYCLE.set(w,teamLifecycleFromLots(w,lots,{verified:true,source:'persistenter Team-Lifecycle',completedStep:3,sourceSavedAt:row?.payload?.savedAt||row?.updated_at||null}));loaded++;
+      TEAM_STAKING_LIFECYCLE.set(w,teamLifecycleFromLots(w,lots,{verified:true,source:'persistenter Team-Lifecycle',completedStep:3,sourceSavedAt:row?.payload?.verifiedAt||row?.payload?.savedAt||row?.updated_at||null}));loaded++;
     }
   }
   if(loaded)log(`Team-Lifecycle: ${loaded} verifizierte Partner-Wallet(s) aus persistentem Team-Cache geladen.`,'ok');
   return loaded;
 }
-async function teamSaveVerifiedLifecycle(wallet,lots){
+async function teamSaveVerifiedLifecycle(wallet,lots,{verifiedAt=null}={}){
   const w=norm(wallet);if(!ethers.isAddress(w)||!currentUserId||!stakingScanDbCacheAvailable)return false;
-  return saveTechnicalProcessCache(w,TECH_CACHE_KEYS.teamLifecycle,TECH_CACHE_VERSIONS.teamLifecycle,{wallet:w,verified:true,lifecycleIntegrityVersion:'unstake-recheck-v1',lots:cacheJsonSafe(lots||[]),savedAt:new Date().toISOString()},0);
+  const nowIso=new Date().toISOString();
+  return saveTechnicalProcessCache(w,TECH_CACHE_KEYS.teamLifecycle,TECH_CACHE_VERSIONS.teamLifecycle,{wallet:w,verified:true,lifecycleIntegrityVersion:'unstake-recheck-v1',lots:cacheJsonSafe(lots||[]),verifiedAt:verifiedAt||nowIso,savedAt:nowIso},0);
 }
 async function teamLoadContractHistoryCache(wallets){
   const out=new Map();
@@ -15881,6 +15881,81 @@ function teamLifecycleFreshness(life){
   const ts=teamLifecycleReferenceTimestamp(life),age=ts?Math.max(0,Date.now()-ts):Infinity;
   return {ts,age,fresh:!!life?.verified&&age<TEAM_DETAILS_MAX_AGE_MS};
 }
+
+// Zentrale Staking-Daten-Schicht fuer Team-Details, Lookup und spaetere UI-Verwendungen.
+// UI-Komponenten sollen NICHT selbst historische Positionen neu scannen oder Preise laden,
+// sondern ausschliesslich diese Service-Funktionen verwenden. Damit bleibt die gleiche
+// Lifecycle-/Cache-/Single-Flight-Logik an allen Stellen konsistent.
+const TEAM_STAKING_DATA_SERVICE={
+  getCachedLifecycle(wallet){return TEAM_STAKING_LIFECYCLE.get(norm(wallet||''))||null;},
+  freshness(walletOrLife){
+    const life=typeof walletOrLife==='string'?this.getCachedLifecycle(walletOrLife):walletOrLife;
+    return teamLifecycleFreshness(life);
+  },
+  async refreshLifecycle(wallet,{forceFresh=true,context='Team-Staking-Service'}={}){
+    const w=norm(wallet||'');if(!ethers.isAddress(w))return null;
+    await teamLifecycleSingleFlight(w,()=>teamVerifyMissingLifecycles([w],{forceFresh}),context);
+    return this.getCachedLifecycle(w);
+  },
+  async ensureUsdValuations(wallet,life=null){
+    const w=norm(wallet||'');life=life||this.getCachedLifecycle(w);
+    if(!ethers.isAddress(w)||!life?.verified)return {valued:0,total:0,skipped:true};
+    return teamPartnerEnsureUsdValuations(w,life);
+  }
+};
+function teamDetailsModalShows(wallet){
+  const modal=$('teamDetailsModal');
+  return !!modal?.classList.contains('open')&&norm(modal?.dataset?.wallet||'')===norm(wallet||'');
+}
+function teamDetailsFreshnessText(life,{refreshing=false,valuationInfo=null,error=null}={}){
+  const fresh=teamLifecycleFreshness(life),ref=teamLifecycleReferenceTimestamp(life);
+  const ageText=ref?`${Math.max(0,Math.floor((Date.now()-ref)/3600000))} h alt`:'Zeitpunkt unbekannt';
+  const state=fresh.fresh?'Aktueller Lifecycle':'Letzter verifizierter Lifecycle';
+  const refreshText=refreshing?' · <b>Aktualisierung läuft im Hintergrund …</b>':(!fresh.fresh?' · Aktualisierung wird im Hintergrund geprüft.':'');
+  const valuationText=valuationInfo?` · USD-Bewertung ${valuationInfo.valued}/${valuationInfo.total} Position(en)${valuationInfo.cached?' aus Cache':''}.`:'';
+  const errorText=error?`<div class="warn" style="margin-top:8px"><b>Hintergrund-Aktualisierung nicht vollständig:</b> ${esc(error?.message||error)}. Der letzte verifizierte Stand bleibt sichtbar.</div>`:'';
+  return `<div class="team-details-freshness"><b>${state}</b> · ${esc(ageText)} · Quelle: ${esc(life?.source||'–')}.${refreshText}${valuationText}<br><span class="muted">Details werden immer sofort aus dem verifizierten Cache angezeigt. Lifecycle-Neuverifikation und fehlende historische USD-Werte laufen davon getrennt im Hintergrund.</span></div>${errorText}`;
+}
+function renderTeamDetailsCached(wallet,life,opts={}){
+  if(!teamDetailsModalShows(wallet))return;
+  const body=$('teamDetailsBody');if(!body)return;
+  if(!life?.verified){
+    body.innerHTML=`<div class="team-details-loading">Noch kein verifizierter Lifecycle im lokalen/persistenten Cache.<br><span class="muted">Nur dieses Wallet wird im Hintergrund geprüft.</span></div>`;
+    return;
+  }
+  body.innerHTML=`${teamDetailsFreshnessText(life,opts)}${teamPartnerStakingOverviewHtml(life)}`;
+}
+const TEAM_DETAILS_BACKGROUND_INFLIGHT=new Map();
+function teamScheduleDetailsBackgroundRefresh(wallet,{needLifecycle=false,needValuation=true,context='Team-Details'}={}){
+  const w=norm(wallet||'');if(!ethers.isAddress(w))return null;
+  const running=TEAM_DETAILS_BACKGROUND_INFLIGHT.get(w);if(running)return running;
+  const job=(async()=>{
+    let life=TEAM_STAKING_DATA_SERVICE.getCachedLifecycle(w),valuationInfo=null;
+    try{
+      if(needLifecycle){
+        const f=teamLifecycleFreshness(life),ident=TEAM_IDENTITY_CACHE.get(w)||{};
+        log(`${context} TLN-ID ${ident.nodeId||'?'}: ${f.ts?`Lifecycle ${Math.floor(f.age/3600000)} h alt`:'kein verifizierter Lifecycle'} · Hintergrund-Neuverifikation gestartet; Cache bleibt sichtbar.`,'muted');
+        const previous=life?.verified?life:null;
+        life=await TEAM_STAKING_DATA_SERVICE.refreshLifecycle(w,{forceFresh:true,context:`${context} TLN-ID ${ident.nodeId||'?'}`});
+        if(!life?.verified&&previous?.verified){TEAM_STAKING_LIFECYCLE.set(w,previous);life=previous;throw new Error('Neuverifikation blieb unvollständig')}
+        renderTeamTree();renderTeamExpiryList();renderTeamExpiredOpenList();
+        renderTeamDetailsCached(w,life,{refreshing:false});
+      }
+      if(needValuation&&life?.verified){
+        valuationInfo=await TEAM_STAKING_DATA_SERVICE.ensureUsdValuations(w,life);
+        renderTeamDetailsCached(w,life,{refreshing:false,valuationInfo});
+      }
+      return {life,valuationInfo};
+    }catch(e){
+      renderTeamDetailsCached(w,life,{refreshing:false,valuationInfo,error:e});
+      log(`${context} ${short(w)}: Hintergrund-Workflow nicht vollständig (${e?.message||e}).`,'warn');
+      return {life,valuationInfo,error:e};
+    }
+  })();
+  TEAM_DETAILS_BACKGROUND_INFLIGHT.set(w,job);
+  job.finally(()=>{if(TEAM_DETAILS_BACKGROUND_INFLIGHT.get(w)===job)TEAM_DETAILS_BACKGROUND_INFLIGHT.delete(w)});
+  return job;
+}
 function teamPartnerStakingRowHtml(l,index){
   // Same productive summary row as "Staking/Rewards", deliberately without the
   // expandable reward/claim details section.
@@ -15961,7 +16036,7 @@ async function teamPartnerEnsureUsdValuations(wallet,life){
   }
   // Persist the augmented lifecycle so the valuation is available on the next popup
   // without a new historical price scan.
-  if(life?.verified)await teamSaveVerifiedLifecycle(w,lots);
+  if(life?.verified){const verifiedAt=teamLifecycleReferenceTimestamp(life);await teamSaveVerifiedLifecycle(w,lots,{verifiedAt:verifiedAt?new Date(verifiedAt).toISOString():null});}
   return {valued,total:lots.length,cached:false};
 }
 
@@ -15972,7 +16047,7 @@ function teamPartnerStakingOverviewHtml(life){
   return `<div class="project-staking-table">${header}${lots.map(teamPartnerStakingRowHtml).join('')}</div>`;
 }
 function closeTeamDetails(){
-  const modal=$('teamDetailsModal');if(!modal)return;modal.classList.remove('open');modal.setAttribute('aria-hidden','true');
+  const modal=$('teamDetailsModal');if(!modal)return;modal.classList.remove('open');modal.setAttribute('aria-hidden','true');delete modal.dataset.wallet;
 }
 async function openTeamDetailsCore(wallet){
   const w=norm(wallet||'');if(!ethers.isAddress(w))return;
@@ -15981,53 +16056,31 @@ async function openTeamDetailsCore(wallet){
   const ident=TEAM_IDENTITY_CACHE.get(w)||{},alias=teamAliasFor(w,ident)||projectOwnWalletLabel(w)||'–';
   title.textContent=`Partner-Stakings · TLN-ID ${ident.nodeId||'?'}`;
   meta.textContent=`${alias} · ${w}`;
+  modal.dataset.wallet=w;
   modal.classList.add('open');modal.setAttribute('aria-hidden','false');
-  let life=TEAM_STAKING_LIFECYCLE.get(w),fresh=teamLifecycleFreshness(life);
-  if(!fresh.fresh){
-    body.innerHTML=`<div class="team-details-loading">Staking-Daten werden on-demand aktualisiert …<br><span class="muted">Nur dieses Wallet wird geprüft.</span></div>`;
-    const previous=life||null;
-    try{
-      log(`Team-Details TLN-ID ${ident.nodeId||'?'}: ${fresh.ts?`Lifecycle ${Math.floor(fresh.age/3600000)} h alt`:'kein frischer Lifecycle'} · On-Demand-Neuverifikation gestartet.`,'muted');
-      await teamLifecycleSingleFlight(
-        w,
-        ()=>teamVerifyMissingLifecycles([w],{forceFresh:true}),
-        `Team-Details TLN-ID ${ident.nodeId||'?'}`
-      );
-      life=TEAM_STAKING_LIFECYCLE.get(w);
-      if(!life?.verified&&previous?.verified){
-        TEAM_STAKING_LIFECYCLE.set(w,previous);life=previous;
-        throw new Error('Neuverifikation blieb unvollständig; letzter verifizierter Cache wird weiter angezeigt.');
-      }
-      renderTeamTree();renderTeamExpiryList();renderTeamExpiredOpenList();
-      fresh=teamLifecycleFreshness(life);
-    }catch(e){
-      body.innerHTML=`<div class="warn"><b>Aktualisierung nicht vollständig:</b> ${esc(e?.message||e)}</div>${previous?.verified?teamPartnerStakingOverviewHtml(previous):''}`;
-      return;
-    }
+
+  // STALE-WHILE-REVALIDATE: Der Klick auf Details darf niemals auf einen historischen
+  // Wallet-Scan oder eine Cross-Chain-Preisermittlung warten. Vorhandene verifizierte
+  // Stakings werden sofort gerendert; alles Teure laeuft danach zentral im Hintergrund.
+  let life=TEAM_STAKING_DATA_SERVICE.getCachedLifecycle(w);
+  const fresh=TEAM_STAKING_DATA_SERVICE.freshness(life);
+  if(life?.verified){
+    renderTeamDetailsCached(w,life,{refreshing:!fresh.fresh});
+    log(`Team-Details TLN-ID ${ident.nodeId||'?'}: ${life.lots?.length||0} Position(en) sofort aus verifiziertem Cache angezeigt · ${fresh.ts?`${Math.floor(fresh.age/3600000)} h alt`:'Alter unbekannt'}${fresh.fresh?'':' · Revalidierung asynchron'}.`,'ok');
+    const lots=(life?.lots||[]).map(x=>x?.lot||x).filter(Boolean);
+    const valuationMissing=lots.some(l=>l.stakeUsd==null||l.contractEndUsd==null||((l.status==='closed'||l.unstakeTime)&&l.unstakeUsd==null));
+    if(!fresh.fresh||valuationMissing)teamScheduleDetailsBackgroundRefresh(w,{needLifecycle:!fresh.fresh,needValuation:valuationMissing,context:'Team-Details'});
+    else log(`Team-Details TLN-ID ${ident.nodeId||'?'}: verifizierter Lifecycle + USD-Werte direkt aus Cache angezeigt · kein Hintergrundjob nötig.`,'ok');
+  }else{
+    renderTeamDetailsCached(w,life,{refreshing:true});
+    teamScheduleDetailsBackgroundRefresh(w,{needLifecycle:true,needValuation:true,context:'Team-Details'});
   }
-  let valuationInfo=null;
-  try{
-    body.innerHTML=`<div class="team-details-loading">Historische USD-Werte werden für dieses Wallet ergänzt …</div>`;
-    valuationInfo=await teamPartnerEnsureUsdValuations(w,life);
-  }catch(e){log(`Team-Details USD-Bewertung ${short(w)}: ${e?.message||e}`,'warn')}
-  const ref=teamLifecycleReferenceTimestamp(life);
-  const ageText=ref?`${Math.max(0,Math.floor((Date.now()-ref)/3600000))} h alt`:'Zeitpunkt unbekannt';
-  body.innerHTML=`<div class="team-details-freshness"><b>${fresh.fresh?'Aktueller Lifecycle':'Verifizierter Lifecycle'}</b> · ${esc(ageText)} · Quelle: ${esc(life?.source||'–')}. Automatische Lifecycle-Neuprüfung erfolgt höchstens 1× täglich und erst beim Klick auf „Details“.${valuationInfo?` · USD-Bewertung ${valuationInfo.valued}/${valuationInfo.total} Position(en)${valuationInfo.cached?' aus Cache':''}.`:''}</div>${teamPartnerStakingOverviewHtml(life)}`;
 }
-const TEAM_DETAILS_WORKFLOW_INFLIGHT=new Map();
 async function openTeamDetails(wallet){
-  const w=norm(wallet||'');if(!ethers.isAddress(w))return;
-  const running=TEAM_DETAILS_WORKFLOW_INFLIGHT.get(w);
-  if(running){
-    log(`Team-Details ${short(w)}: kompletter Detail-Workflow läuft bereits · vorhandener Job inkl. USD-Bewertung wird wiederverwendet.`,'muted');
-    return await running;
-  }
-  const promise=openTeamDetailsCore(w);
-  TEAM_DETAILS_WORKFLOW_INFLIGHT.set(w,promise);
-  try{return await promise;}
-  finally{
-    if(TEAM_DETAILS_WORKFLOW_INFLIGHT.get(w)===promise)TEAM_DETAILS_WORKFLOW_INFLIGHT.delete(w);
-  }
+  // openTeamDetailsCore kehrt nach dem ersten Cache-Render sofort zur UI zurueck.
+  // Single-Flight fuer teure Arbeiten sitzt zentral im TEAM_STAKING_DATA_SERVICE/
+  // TEAM_DETAILS_BACKGROUND_INFLIGHT und gilt damit auch fuer weitere Aufrufer.
+  return openTeamDetailsCore(wallet);
 }
 
 let TEAM_DETAILS_KEYDOWN_BOUND=false;
