@@ -249,3 +249,7 @@ Für TLN/VOW-BSC-LP-Token wird der historische Wallet-Bestand um die am Stichtag
 - `sql/017-bsc-tln-vow-staking.sql` – neue einmalige Migration.
 
 > `tln-vow-lp-test.html` bleibt als frühere isolierte Testdatei im Paket. Maßgeblich für Phase 2an ist die integrierte Logik in `js/app.js`, `js/lp-engine.js` und `js/staking-engine.js`.
+
+
+### 031 – Discovery-Cache Admin-Cooldown-Bypass
+`sql/031-discovery-cache-admin-cooldown-bypass.sql` hält die 30-Tage-Sperre für normale Benutzer aufrecht, erlaubt Admins aber Discovery-Rescans ohne Cooldown. Reine Spam-/Finding-Updates gelten nicht als neuer Scan.

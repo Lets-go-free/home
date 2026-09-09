@@ -340,7 +340,7 @@ window.DAO1Project = (() => {
     }
     el.innerHTML=`
       <div class="note" style="margin-bottom:10px">Die Klassifizierung gehört zur NFT selbst und bleibt deshalb auch nach einem Wallet-Transfer erhalten. Änderungen wirken sofort auf historische Claims, Filter, Summary und Exporte; ein neuer Blockchain-Scan ist nicht erforderlich.</div>
-      <div class="chain-table-wrap"><table class="chain-admin-table dao1-nft-class-table" style="table-layout:fixed;width:100%">
+      <div class="chain-table-wrap dao1-data-table"><table class="chain-admin-table dao1-nft-class-table" style="table-layout:fixed;width:100%">
         <colgroup><col style="width:34%"><col style="width:28%"><col style="width:38%"></colgroup>
         <thead><tr><th>NFT</th><th>Klassifizierung</th><th>Contract</th></tr></thead><tbody>
         ${nfts.map(n=>{
@@ -1453,6 +1453,38 @@ window.DAO1Project = (() => {
     return rows;
   }
 
+  function enforceDao1DateInput(el, kind, scope="tx"){
+    if(!el)return;
+    let value=String(el.value||"").trim();
+    const m=value.match(/^(\d{4,})-(\d{2})-(\d{2})$/);
+    if(m && m[1].length>4){
+      value=`${m[1].slice(0,4)}-${m[2]}-${m[3]}`;
+      el.value=value;
+    }
+    if(value){
+      const m4=value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if(!m4){
+        el.setCustomValidity("Bitte ein Datum mit genau vierstelligem Jahr eingeben.");
+        return;
+      }
+      const year=Number(m4[1]);
+      if(year<1000 || year>9999){
+        el.setCustomValidity("Das Jahr muss vierstellig sein (1000–9999).");
+        return;
+      }
+    }
+    el.setCustomValidity("");
+    if(scope==="mining"){
+      if(kind==="from")miningFilterFrom=value;
+      if(kind==="to")miningFilterTo=value;
+      renderMining();
+      return;
+    }
+    if(kind==="from")txFilterFrom=value;
+    if(kind==="to")txFilterTo=value;
+    renderTransactionHistory();
+  }
+
   function renderTransactionControls(){
     const el=document.getElementById("dao1TransactionControls");
     if(!el)return;
@@ -1475,8 +1507,8 @@ window.DAO1Project = (() => {
           <option value="__all" ${txFilterWallet==="__all"?"selected":""}>Alle Apertum-Wallets</option>
           ${wallets.map(w=>`<option value="${w.id}" ${String(w.id)===String(txFilterWallet)?"selected":""}>${w.label} · ${walletAddress(w)}</option>`).join("")}
         </select></label>
-        <label><span class="field-label">Von</span><input type="date" value="${txFilterFrom}" onchange="DAO1Project.setTransactionFilter('from',this.value)"></label>
-        <label><span class="field-label">Bis</span><input type="date" value="${txFilterTo}" onchange="DAO1Project.setTransactionFilter('to',this.value)"></label>
+        <label><span class="field-label">Von</span><input type="date" min="1000-01-01" max="9999-12-31" value="${txFilterFrom}" oninput="DAO1Project.enforceDao1DateInput(this,'from','tx')" onchange="DAO1Project.enforceDao1DateInput(this,'from','tx')"></label>
+        <label><span class="field-label">Bis</span><input type="date" min="1000-01-01" max="9999-12-31" value="${txFilterTo}" oninput="DAO1Project.enforceDao1DateInput(this,'to','tx')" onchange="DAO1Project.enforceDao1DateInput(this,'to','tx')"></label>
         <label><span class="field-label">Typ</span><select onchange="DAO1Project.setTransactionFilter('kind',this.value)">
           <option value="__all" ${txFilterKind==="__all"?"selected":""}>Alle</option>
           <option value="claims" ${txFilterKind==="claims"?"selected":""}>Claims</option>
@@ -1629,7 +1661,7 @@ window.DAO1Project = (() => {
     if(!table)return;
     if(!rows.length){table.innerHTML='<div class="empty">Keine Transaktionen für den gewählten Filter.</div>';return;}
     table.innerHTML=`<details><summary style="cursor:pointer;font-weight:700;padding:10px 0">Detailliste anzeigen (${rows.length} Transaktionen)</summary>
-      <div class="chain-table-wrap" style="margin-top:8px"><table class="chain-admin-table"><thead><tr>
+      <div class="chain-table-wrap dao1-data-table" style="margin-top:8px"><table class="chain-admin-table"><thead><tr>
       <th>Zeit</th>${txFilterWallet==="__all"?"<th>Wallet</th>":""}<th>Richtung</th><th>Methode</th><th>APTM</th><th>Claim / NFT</th><th>APTM/USD</th><th>USD</th><th>Gas APTM</th><th>Gas USD historisch</th><th>Tx</th>
     </tr></thead><tbody>${rows.map(r=>{
       const claim=r.claim_nft_id!=null;
@@ -2078,8 +2110,8 @@ window.DAO1Project = (() => {
       <div class="custom-token-card">
         <span class="field-label">Auswertung filtern</span>
         <div class="custom-token-grid" style="grid-template-columns:minmax(145px,.55fr) minmax(145px,.55fr) minmax(190px,.7fr) minmax(260px,1.1fr);margin-top:8px">
-          <label><span class="field-label">Von</span><input type="date" value="${miningFilterFrom}" onchange="DAO1Project.setMiningDateFilter('from',this.value)"></label>
-          <label><span class="field-label">Bis</span><input type="date" value="${miningFilterTo}" onchange="DAO1Project.setMiningDateFilter('to',this.value)"></label>
+          <label><span class="field-label">Von</span><input type="date" min="1000-01-01" max="9999-12-31" value="${miningFilterFrom}" oninput="DAO1Project.enforceDao1DateInput(this,'from','mining')" onchange="DAO1Project.enforceDao1DateInput(this,'from','mining')"></label>
+          <label><span class="field-label">Bis</span><input type="date" min="1000-01-01" max="9999-12-31" value="${miningFilterTo}" oninput="DAO1Project.enforceDao1DateInput(this,'to','mining')" onchange="DAO1Project.enforceDao1DateInput(this,'to','mining')"></label>
           <label><span class="field-label">NFT-Klassifizierung</span><select onchange="DAO1Project.setMiningClassFilter(this.value)">
             <option value="__all" ${miningFilterClass==="__all"?"selected":""}>Alle Klassifizierungen</option>
             ${classes.map(c=>`<option value="${c}" ${miningFilterClass===c?"selected":""}>${c}</option>`).join("")}
@@ -2165,7 +2197,7 @@ window.DAO1Project = (() => {
         <div class="custom-token-card project-summary-box"><span class="field-label">Gas</span><strong>${fmt(g)} APTM</strong></div>
       </div>
       ${byNft.size>1 ? `<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700">Aufschlüsselung je NFT</summary>
-        <div class="chain-table-wrap" style="margin-top:8px"><table class="chain-admin-table"><thead><tr><th>NFT</th><th>Typ</th><th>Claims</th><th>Reward APTM</th><th>Reward USD</th><th>Gas APTM</th></tr></thead><tbody>
+        <div class="chain-table-wrap dao1-data-table" style="margin-top:8px"><table class="chain-admin-table"><thead><tr><th>NFT</th><th>Typ</th><th>Claims</th><th>Reward APTM</th><th>Reward USD</th><th>Gas APTM</th></tr></thead><tbody>
         ${[...byNft.values()].map(a=>`<tr><td>${a.name} · #${a.id}</td><td>${a.subtype||"–"}</td><td>${a.claims}</td><td>${fmt(a.reward)}</td><td>${usd(a.rewardUsd)}</td><td>${fmt(a.gas)}</td></tr>`).join("")}
         </tbody></table></div></details>` : ""}`;
 
@@ -2178,7 +2210,7 @@ window.DAO1Project = (() => {
       table.innerHTML = '<div class="empty">Für den gewählten Datums-/NFT-Filter wurden keine Claims gefunden.</div>';
       return;
     }
-    table.innerHTML = `<div class="chain-table-wrap"><table class="chain-admin-table"><thead><tr><th>NFT</th><th>Zeit</th><th>Block</th><th>Reward APTM</th><th>APTM/USD</th><th>Reward USD</th><th>Gas APTM</th><th>Netto APTM</th><th>Tx</th></tr></thead><tbody>${visibleRows.map(x=>`<tr><td>${x.nftName || x.miner.label}<div class="meta">#${x.nftId || x.miner.nft_id}${x.nftSubtype?" · "+x.nftSubtype:""}</div></td><td>${x.timestamp}</td><td>${x.block}</td><td>${fmt(x.reward)}</td><td>${x.price == null ? "–" : fmt(x.price)}</td><td>${usd(x.rewardUsd)}</td><td>${fmt(x.gas)}</td><td>${fmt(x.net)}</td><td><a href="${EXPLORER}/tx/${x.tx}" target="_blank" rel="noopener">${x.tx.slice(0,12)}…</a></td></tr>`).join("")}</tbody></table></div>`;
+    table.innerHTML = `<div class="chain-table-wrap dao1-data-table"><table class="chain-admin-table"><thead><tr><th>NFT</th><th>Zeit</th><th>Block</th><th>Reward APTM</th><th>APTM/USD</th><th>Reward USD</th><th>Gas APTM</th><th>Netto APTM</th><th>Tx</th></tr></thead><tbody>${visibleRows.map(x=>`<tr><td>${x.nftName || x.miner.label}<div class="meta">#${x.nftId || x.miner.nft_id}${x.nftSubtype?" · "+x.nftSubtype:""}</div></td><td>${x.timestamp}</td><td>${x.block}</td><td>${fmt(x.reward)}</td><td>${x.price == null ? "–" : fmt(x.price)}</td><td>${usd(x.rewardUsd)}</td><td>${fmt(x.gas)}</td><td>${fmt(x.net)}</td><td><a href="${EXPLORER}/tx/${x.tx}" target="_blank" rel="noopener">${x.tx.slice(0,12)}…</a></td></tr>`).join("")}</tbody></table></div>`;
   }
 
   async function ensureLoaded() {
@@ -2188,6 +2220,6 @@ window.DAO1Project = (() => {
   }
 
   return { switchSubtab, configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
-    refreshTransactionHistory, setTransactionFilter, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
+    refreshTransactionHistory, setTransactionFilter, enforceDao1DateInput, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS };
 })();

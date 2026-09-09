@@ -6468,10 +6468,10 @@ function renderNftResults(nfts, errors = []) {
             ${spam ? `<div style="margin-top:5px"><span class="badge unsafe">⚠ ${n.userMarkedSpam ? "Manuell als Spam markiert" : "Spam-Verdacht"}</span></div>` : ""}
             ${n.userMarkedSafe ? `<div style="margin-top:5px"><span class="badge safe">✓ Manuell als sicher klassifiziert</span></div>` : ""}
             <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-              <button class="${n.userMarkedSpam ? "secondary" : "remove"}" style="padding:6px 8px;font-size:.72rem"
+              ${!n.userMarkedSafe ? `<button class="${n.userMarkedSpam ? "secondary" : "remove"}" style="padding:6px 8px;font-size:.72rem"
                 onclick="setNftUserSpam('${escapeAttr(String(n.walletId || ""))}','${n.chain}','${escapeAttr(n.tokenAddress || "")}','${escapeAttr(String(n.tokenId))}',${n.userMarkedSpam ? "false" : "true"})">
                 ${n.userMarkedSpam ? "Spam-Markierung entfernen" : "Als Spam markieren"}
-              </button>
+              </button>` : ""}
               ${!n.userMarkedSpam ? `<button class="secondary" style="padding:6px 8px;font-size:.72rem"
                 onclick="setNftUserSafe('${escapeAttr(String(n.walletId || ""))}','${n.chain}','${escapeAttr(n.tokenAddress || "")}','${escapeAttr(String(n.tokenId))}',${n.userMarkedSafe ? "false" : "true"})">
                 ${n.userMarkedSafe ? "Sicher-Klassifizierung entfernen" : "Als sicher klassifizieren"}
@@ -6978,7 +6978,12 @@ async function saveDiscoveryCache(w, findings, scanNotes) {
     .select()
     .single();
 
-  if (error) throw new Error("Discovery-Ergebnis konnte nicht gespeichert werden: " + error.message);
+  if (error) {
+    const adminHint = isAdmin && /erst wieder ab|cooldown|30[- ]?tage/i.test(String(error.message || ""))
+      ? " (Admin-Cooldown-Bypass in Supabase noch nicht aktiv; Migration 031 ausführen.)"
+      : "";
+    throw new Error("Discovery-Ergebnis konnte nicht gespeichert werden: " + error.message + adminHint);
+  }
 
   discoveryCaches.set(walletId, data);
   discoveryCache = data;

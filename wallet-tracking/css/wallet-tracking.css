@@ -440,3 +440,17 @@
 .lp-history-table th:nth-child(7), .lp-history-table td:nth-child(7) { width: 150px; }
 .lp-history-table th:nth-child(8), .lp-history-table td:nth-child(8) { width: 190px; }
 .lp-history-table th:nth-child(9), .lp-history-table td:nth-child(9) { width: 220px; }
+
+
+/* DAO1 / Apertum – produktiver Tabellenstil analog zur neuen Discovery-UI */
+.dao1-data-table{margin-top:10px;border:1px solid #3a414b;border-radius:14px;overflow:auto;background:#1b2027;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.dao1-data-table .chain-admin-table{width:100%;min-width:900px;border-collapse:collapse;border-spacing:0;background:transparent;font-size:.78rem}
+.dao1-data-table .chain-admin-table thead{background:#242a32}
+.dao1-data-table .chain-admin-table th{position:sticky;top:0;z-index:4;padding:11px 14px;background:#242a32;color:#c2c8d0;border:0;border-bottom:1px solid #414852;text-align:left;font-size:.72rem;white-space:nowrap}
+.dao1-data-table .chain-admin-table td{padding:13px 14px;border:0;border-bottom:1px solid #343a43;background:transparent;vertical-align:middle;white-space:nowrap}
+.dao1-data-table .chain-admin-table tbody tr{background:linear-gradient(180deg,#20252c,#1d2229)}
+.dao1-data-table .chain-admin-table tbody tr:hover td{background:#292f37}
+.dao1-data-table .chain-admin-table tbody tr:last-child td{border-bottom:0}
+.dao1-data-table .chain-admin-table .meta{margin-top:3px;font-size:.7rem}
+.dao1-data-table .chain-admin-table code{font-size:.72rem}
+@media(max-width:900px){.dao1-data-table .chain-admin-table{min-width:760px}}
