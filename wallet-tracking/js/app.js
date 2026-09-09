@@ -2808,11 +2808,44 @@ function sortWalletsByLabel() {
   wallets.sort((a, b) => a.label.localeCompare(b.label, "de"));
 }
 
+async function invokeWalletPrivate(action, body = {}) {
+  const { data, error } = await sb.functions.invoke("wallet-private", {
+    body: { action, ...body }
+  });
+  if (error) {
+    let detail = error.message || String(error);
+    try {
+      const ctx = error.context;
+      if (ctx?.clone) {
+        const response = ctx.clone();
+        const payload = await response.json();
+        if (payload?.error) detail = payload.error;
+      }
+    } catch (_) {}
+    throw new Error(detail);
+  }
+  if (!data?.ok) throw new Error(data?.error || `wallet-private/${action} fehlgeschlagen.`);
+  return data;
+}
+
 async function loadWalletsFromDb() {
-  const { data, error } = await sb.from("wallets").select("*").order("created_at");
-  if (error) { console.error(error); wallets = []; return; }
-  wallets = data.map(row => newWallet(row.label, row.evm_address, row.btc_address, row.xrp_address, row.sol_address, row.tron_address, row.akash_address, row.id));
-  sortWalletsByLabel();
+  try {
+    const data = await invokeWalletPrivate("wallet_list");
+    wallets = (data.wallets || []).map(row => newWallet(
+      row.label,
+      row.evm_address,
+      row.btc_address,
+      row.xrp_address,
+      row.sol_address,
+      row.tron_address,
+      row.akash_address,
+      row.id
+    ));
+    sortWalletsByLabel();
+  } catch (error) {
+    console.error("Wallets sicher laden:", error);
+    wallets = [];
+  }
 }
 
 function addWallet() {
@@ -2860,7 +2893,10 @@ async function purgeWalletRelatedData(w) {
   await deleteWalletRows("nft_cache", q => q.eq("user_id", userId).eq("wallet_id", walletId), "NFT-Cache");
   await deleteWalletRows("discovery_cache", q => q.eq("user_id", userId).eq("wallet_id", walletId), "Discovery-Cache");
 
-  if (evmAddress) {
+  if (dbWalletId) {
+    await deleteWalletRows("tln_vow_staking_scan_cache", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "TLN/VOW Discovery-/Staking-Cache");
+  } else if (evmAddress) {
+    // Nur Legacy-Fallback fuer noch nicht persistierte/alte Datenlagen.
     await deleteWalletRows("tln_vow_staking_scan_cache", q => q.eq("user_id", userId).eq("wallet_address", evmAddress), "TLN/VOW Discovery-/Staking-Cache");
   }
 }
@@ -2945,8 +2981,8 @@ async function saveWallet(id) {
 
   if (statusEl) statusEl.textContent = "Speichere...";
 
-  const payload = {
-    user_id: currentUser.id,
+  const walletPayload = {
+    id: w.dbId || undefined,
     label: w.label,
     evm_address: w.evm,
     btc_address: w.btc,
@@ -2956,19 +2992,19 @@ async function saveWallet(id) {
     akash_address: w.akash
   };
 
-  if (w.dbId) {
-    const { error } = await sb.from("wallets").update(payload).eq("id", w.dbId);
-    if (statusEl) statusEl.textContent = error ? "Fehler: " + error.message : "Gespeichert.";
-  } else {
-    const { data, error } = await sb.from("wallets").insert(payload).select().single();
-    if (error) {
-      if (statusEl) statusEl.textContent = "Fehler: " + error.message;
-    } else {
-      w.dbId = data.id;
-      w.id = data.id;
-      if (statusEl) statusEl.textContent = "Gespeichert.";
+  try {
+    const result = await invokeWalletPrivate("wallet_save", { wallet: walletPayload });
+    if (!w.dbId) {
+      w.dbId = result.id;
+      w.id = result.id;
     }
+    if (statusEl) statusEl.textContent = "Gespeichert.";
+  } catch (error) {
+    console.error("Wallet sicher speichern:", error);
+    if (statusEl) statusEl.textContent = "Fehler: " + (error.message || error);
+    return;
   }
+
   sortWalletsByLabel();
   renderWalletInputs();
   loadAll();
