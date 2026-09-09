@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 02:14:39 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 02:27:14 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -400,7 +400,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260909-021439';
+const BUILD_ID='20260909-022714';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -531,7 +531,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='09.09.2026 02:14:39 CEST';
+const APP_VERSION='09.09.2026 02:27:14 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4658,7 +4658,7 @@ async function flushStakingDiscoveryCandidateCache(){
 async function captureVerifiedTeamLifecycleCandidates(wallets){
   let hits=0;
   for(const wallet of [...new Set((wallets||[]).map(norm).filter(ethers.isAddress))]){
-    const life=TEAM_STAKING_DATA_SERVICE.getCachedLifecycle(wallet);if(!life?.verified)continue;
+    const life=STAKING_DATA_SERVICE.getCachedLifecycle(wallet);if(!life?.verified)continue;
     for(const row of (life.lots||[])){
       const lot=row?.lot||row;if(!lot)continue;
       const contract=norm(lot?.staking?.contract_address||lot?.duration_contract||lot?.counterparty||'');
@@ -13352,20 +13352,20 @@ async function lookupLifecycleForWallet(wallet){
 
   // Nur wenn für diese Wallet kein vollständiger Discovery-Snapshot existiert,
   // darf der kompakte Team-Lifecycle als Fallback dienen.
-  life=TEAM_STAKING_DATA_SERVICE.getCachedLifecycle(wallet);
+  life=STAKING_DATA_SERVICE.getCachedLifecycle(wallet);
   if(life?.verified){
     log(`Lookup Stakings ${short(wallet)}: kein Discovery-Snapshot vorhanden; verifizierter Team-Lifecycle-Fallback verwendet · ${life.lots?.length||0} Position(en).`,'warn');
     return life;
   }
 
   await teamLoadPersistedLifecycleCache([wallet]);
-  life=TEAM_STAKING_DATA_SERVICE.getCachedLifecycle(wallet);
+  life=STAKING_DATA_SERVICE.getCachedLifecycle(wallet);
   if(life?.verified){
     log(`Lookup Stakings ${short(wallet)}: kein Discovery-Snapshot vorhanden; persistenter Team-Lifecycle-Fallback verwendet · ${life.lots?.length||0} Position(en).`,'warn');
     return life;
   }
 
-  return await TEAM_STAKING_DATA_SERVICE.refreshLifecycle(wallet,{forceFresh:false,context:'Lookup Stakings'});
+  return await STAKING_DATA_SERVICE.refreshLifecycle(wallet,{forceFresh:false,context:'Lookup Stakings'});
 }
 function lookupAllStakingsHtml(life){
   const rows=(life?.lots||[]).slice().sort((a,b)=>{
@@ -15887,7 +15887,7 @@ function teamLifecycleFreshness(life){
 // Zentrale Staking-Daten-Schicht fuer Team-Details, Lookup und spaetere UI-Verwendungen.
 // UI-Komponenten sollen NICHT selbst historische Positionen neu scannen oder Preise laden,
 // sondern ausschliesslich diese Service-Funktionen verwenden. Damit bleibt die gleiche
-// Lifecycle-/Cache-/Single-Flight-Logik an allen Stellen konsistent.
+// Zentrale Lifecycle-/Cache-/Single-Flight-Logik an allen Staking-Verbrauchsstellen konsistent.
 const TEAM_STAKING_INCREMENTAL_OVERLAP=64;
 function teamKnownLifecycleTargets(){
   return new Set((stakingContracts||[]).map(x=>norm(x?.contract_address||'')).filter(ethers.isAddress));
@@ -15926,7 +15926,7 @@ async function teamCheckStakingChangesSince(wallet,life,{context='Team-Staking-S
   const w=norm(wallet);if(!ethers.isAddress(w)||!life?.verified)return {safeToReuse:false,reason:'kein verifizierter Lifecycle'};
   const anchor=await teamLifecycleVerifiedBlock(life);
   if(!(anchor.block>0))return {safeToReuse:false,reason:anchor.source};
-  const latest=Number(await latestBlockNumber());
+  const latest=Number(BigInt(await rpc('eth_blockNumber',[])));
   const from=Math.max(0,anchor.block-TEAM_STAKING_INCREMENTAL_OVERLAP+1);
   if(from>latest)return {safeToReuse:true,changed:false,fromBlock:from,toBlock:latest,anchorBlock:anchor.block,reason:'Anchor liegt am/über Chain-Head'};
   const [externalOut,erc20Out,erc20In]=await Promise.all([
@@ -15952,17 +15952,20 @@ async function teamCheckStakingChangesSince(wallet,life,{context='Team-Staking-S
   log(`${context} ${short(w)}: keine relevante Staking-Aktivität seit Block ${anchor.block.toLocaleString('de-CH')} · Lifecycle unverändert · verifiziert bis ${latest.toLocaleString('de-CH')} (${pages} Alchemy-Seite(n)).`,'ok');
   return {safeToReuse:true,changed:false,fromBlock:from,toBlock:latest,anchorBlock:anchor.block,pages};
 }
-const TEAM_STAKING_DATA_SERVICE={
+// Zentraler, kontextunabhängiger Staking-Datenservice. Team-Baum, TLN-ID-Lookup,
+// Step 2/7 und spaeter die Hauptseite sollen dieselben Lifecycle-/Freshness-/
+// Valuation-Funktionen verwenden statt eigene Staking-Suchen aufzubauen.
+const STAKING_DATA_SERVICE={
   getCachedLifecycle(wallet){return TEAM_STAKING_LIFECYCLE.get(norm(wallet||''))||null;},
   freshness(walletOrLife){
     const life=typeof walletOrLife==='string'?this.getCachedLifecycle(walletOrLife):walletOrLife;
     return teamLifecycleFreshness(life);
   },
-  async checkChangesSinceLastVerification(wallet,life=null,{context='Team-Staking-Service'}={}){
+  async checkChangesSinceLastVerification(wallet,life=null,{context='Staking-Data-Service'}={}){
     const w=norm(wallet||'');life=life||this.getCachedLifecycle(w);
     return teamCheckStakingChangesSince(w,life,{context});
   },
-  async refreshLifecycle(wallet,{forceFresh=true,incrementalFirst=true,context='Team-Staking-Service'}={}){
+  async refreshLifecycle(wallet,{forceFresh=true,incrementalFirst=true,context='Staking-Data-Service'}={}){
     const w=norm(wallet||'');if(!ethers.isAddress(w))return null;
     return await teamLifecycleSingleFlight(w,async()=>{
       const cached=this.getCachedLifecycle(w);
@@ -16007,19 +16010,19 @@ function teamScheduleDetailsBackgroundRefresh(wallet,{needLifecycle=false,needVa
   const w=norm(wallet||'');if(!ethers.isAddress(w))return null;
   const running=TEAM_DETAILS_BACKGROUND_INFLIGHT.get(w);if(running)return running;
   const job=(async()=>{
-    let life=TEAM_STAKING_DATA_SERVICE.getCachedLifecycle(w),valuationInfo=null;
+    let life=STAKING_DATA_SERVICE.getCachedLifecycle(w),valuationInfo=null;
     try{
       if(needLifecycle){
         const f=teamLifecycleFreshness(life),ident=TEAM_IDENTITY_CACHE.get(w)||{};
         log(`${context} TLN-ID ${ident.nodeId||'?'}: ${f.ts?`Lifecycle ${Math.floor(f.age/3600000)} h alt`:'kein verifizierter Lifecycle'} · Hintergrund-Freshness-Check gestartet; Cache bleibt sichtbar. Nur bei relevanter neuer Staking-Aktivität folgt eine Vollprüfung.`,'muted');
         const previous=life?.verified?life:null;
-        life=await TEAM_STAKING_DATA_SERVICE.refreshLifecycle(w,{forceFresh:true,context:`${context} TLN-ID ${ident.nodeId||'?'}`});
+        life=await STAKING_DATA_SERVICE.refreshLifecycle(w,{forceFresh:true,context:`${context} TLN-ID ${ident.nodeId||'?'}`});
         if(!life?.verified&&previous?.verified){TEAM_STAKING_LIFECYCLE.set(w,previous);life=previous;throw new Error('Neuverifikation blieb unvollständig')}
         renderTeamTree();renderTeamExpiryList();renderTeamExpiredOpenList();
         renderTeamDetailsCached(w,life,{refreshing:false});
       }
       if(needValuation&&life?.verified){
-        valuationInfo=await TEAM_STAKING_DATA_SERVICE.ensureUsdValuations(w,life);
+        valuationInfo=await STAKING_DATA_SERVICE.ensureUsdValuations(w,life);
         renderTeamDetailsCached(w,life,{refreshing:false,valuationInfo});
       }
       return {life,valuationInfo};
@@ -16139,8 +16142,8 @@ async function openTeamDetailsCore(wallet){
   // STALE-WHILE-REVALIDATE: Der Klick auf Details darf niemals auf einen historischen
   // Wallet-Scan oder eine Cross-Chain-Preisermittlung warten. Vorhandene verifizierte
   // Stakings werden sofort gerendert; alles Teure laeuft danach zentral im Hintergrund.
-  let life=TEAM_STAKING_DATA_SERVICE.getCachedLifecycle(w);
-  const fresh=TEAM_STAKING_DATA_SERVICE.freshness(life);
+  let life=STAKING_DATA_SERVICE.getCachedLifecycle(w);
+  const fresh=STAKING_DATA_SERVICE.freshness(life);
   if(life?.verified){
     renderTeamDetailsCached(w,life,{refreshing:!fresh.fresh});
     log(`Team-Details TLN-ID ${ident.nodeId||'?'}: ${life.lots?.length||0} Position(en) sofort aus verifiziertem Cache angezeigt · ${fresh.ts?`${Math.floor(fresh.age/3600000)} h alt`:'Alter unbekannt'}${fresh.fresh?'':' · Revalidierung asynchron'}.`,'ok');
@@ -16155,7 +16158,7 @@ async function openTeamDetailsCore(wallet){
 }
 async function openTeamDetails(wallet){
   // openTeamDetailsCore kehrt nach dem ersten Cache-Render sofort zur UI zurueck.
-  // Single-Flight fuer teure Arbeiten sitzt zentral im TEAM_STAKING_DATA_SERVICE/
+  // Single-Flight fuer teure Arbeiten sitzt zentral im STAKING_DATA_SERVICE/
   // TEAM_DETAILS_BACKGROUND_INFLIGHT und gilt damit auch fuer weitere Aufrufer.
   return openTeamDetailsCore(wallet);
 }
