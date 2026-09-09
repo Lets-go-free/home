@@ -1455,25 +1455,37 @@ window.DAO1Project = (() => {
 
   function enforceDao1DateInput(el, kind, scope="tx"){
     if(!el)return;
-    let value=String(el.value||"").trim();
-    const m=value.match(/^(\d{4,})-(\d{2})-(\d{2})$/);
-    if(m && m[1].length>4){
-      value=`${m[1].slice(0,4)}-${m[2]}-${m[3]}`;
-      el.value=value;
+
+    // Harte Eingabemaske JJJJ-MM-TT:
+    // maximal 8 Ziffern insgesamt, davon exakt maximal 4 fürs Jahr.
+    const digits=String(el.value||"").replace(/\D/g,"").slice(0,8);
+    let value=digits.slice(0,4);
+    if(digits.length>4)value+=`-${digits.slice(4,6)}`;
+    if(digits.length>6)value+=`-${digits.slice(6,8)}`;
+    if(el.value!==value)el.value=value;
+
+    // Während der Eingabe Filter erst ab vollständigem Datum anwenden.
+    const complete=/^\d{4}-\d{2}-\d{2}$/.test(value);
+    if(value && !complete){
+      el.setCustomValidity("");
+      return;
     }
-    if(value){
-      const m4=value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if(!m4){
-        el.setCustomValidity("Bitte ein Datum mit genau vierstelligem Jahr eingeben.");
-        return;
-      }
-      const year=Number(m4[1]);
-      if(year<1000 || year>9999){
-        el.setCustomValidity("Das Jahr muss vierstellig sein (1000–9999).");
+
+    if(complete){
+      const [y,m,d]=value.split("-").map(Number);
+      const test=new Date(Date.UTC(y,m-1,d));
+      const valid=
+        y>=1000 && y<=9999 &&
+        test.getUTCFullYear()===y &&
+        test.getUTCMonth()===m-1 &&
+        test.getUTCDate()===d;
+      if(!valid){
+        el.setCustomValidity("Bitte ein gültiges Datum im Format JJJJ-MM-TT eingeben.");
         return;
       }
     }
     el.setCustomValidity("");
+
     if(scope==="mining"){
       if(kind==="from")miningFilterFrom=value;
       if(kind==="to")miningFilterTo=value;
@@ -1507,8 +1519,8 @@ window.DAO1Project = (() => {
           <option value="__all" ${txFilterWallet==="__all"?"selected":""}>Alle Apertum-Wallets</option>
           ${wallets.map(w=>`<option value="${w.id}" ${String(w.id)===String(txFilterWallet)?"selected":""}>${w.label} · ${walletAddress(w)}</option>`).join("")}
         </select></label>
-        <label><span class="field-label">Von</span><input type="date" min="1000-01-01" max="9999-12-31" value="${txFilterFrom}" oninput="DAO1Project.enforceDao1DateInput(this,'from','tx')" onchange="DAO1Project.enforceDao1DateInput(this,'from','tx')"></label>
-        <label><span class="field-label">Bis</span><input type="date" min="1000-01-01" max="9999-12-31" value="${txFilterTo}" oninput="DAO1Project.enforceDao1DateInput(this,'to','tx')" onchange="DAO1Project.enforceDao1DateInput(this,'to','tx')"></label>
+        <label><span class="field-label">Von</span><input type="text" inputmode="numeric" maxlength="10" placeholder="JJJJ-MM-TT" value="${txFilterFrom}" oninput="DAO1Project.enforceDao1DateInput(this,'from','tx')" onchange="DAO1Project.enforceDao1DateInput(this,'from','tx')"></label>
+        <label><span class="field-label">Bis</span><input type="text" inputmode="numeric" maxlength="10" placeholder="JJJJ-MM-TT" value="${txFilterTo}" oninput="DAO1Project.enforceDao1DateInput(this,'to','tx')" onchange="DAO1Project.enforceDao1DateInput(this,'to','tx')"></label>
         <label><span class="field-label">Typ</span><select onchange="DAO1Project.setTransactionFilter('kind',this.value)">
           <option value="__all" ${txFilterKind==="__all"?"selected":""}>Alle</option>
           <option value="claims" ${txFilterKind==="claims"?"selected":""}>Claims</option>
@@ -2110,8 +2122,8 @@ window.DAO1Project = (() => {
       <div class="custom-token-card">
         <span class="field-label">Auswertung filtern</span>
         <div class="custom-token-grid" style="grid-template-columns:minmax(145px,.55fr) minmax(145px,.55fr) minmax(190px,.7fr) minmax(260px,1.1fr);margin-top:8px">
-          <label><span class="field-label">Von</span><input type="date" min="1000-01-01" max="9999-12-31" value="${miningFilterFrom}" oninput="DAO1Project.enforceDao1DateInput(this,'from','mining')" onchange="DAO1Project.enforceDao1DateInput(this,'from','mining')"></label>
-          <label><span class="field-label">Bis</span><input type="date" min="1000-01-01" max="9999-12-31" value="${miningFilterTo}" oninput="DAO1Project.enforceDao1DateInput(this,'to','mining')" onchange="DAO1Project.enforceDao1DateInput(this,'to','mining')"></label>
+          <label><span class="field-label">Von</span><input type="text" inputmode="numeric" maxlength="10" placeholder="JJJJ-MM-TT" value="${miningFilterFrom}" oninput="DAO1Project.enforceDao1DateInput(this,'from','mining')" onchange="DAO1Project.enforceDao1DateInput(this,'from','mining')"></label>
+          <label><span class="field-label">Bis</span><input type="text" inputmode="numeric" maxlength="10" placeholder="JJJJ-MM-TT" value="${miningFilterTo}" oninput="DAO1Project.enforceDao1DateInput(this,'to','mining')" onchange="DAO1Project.enforceDao1DateInput(this,'to','mining')"></label>
           <label><span class="field-label">NFT-Klassifizierung</span><select onchange="DAO1Project.setMiningClassFilter(this.value)">
             <option value="__all" ${miningFilterClass==="__all"?"selected":""}>Alle Klassifizierungen</option>
             ${classes.map(c=>`<option value="${c}" ${miningFilterClass===c?"selected":""}>${c}</option>`).join("")}
