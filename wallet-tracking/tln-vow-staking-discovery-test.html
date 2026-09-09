@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 12:31:44 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 12:36:17 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -406,7 +406,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260909-123144';
+const BUILD_ID='20260909-123617';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -537,7 +537,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='09.09.2026 12:31:44 CEST';
+const APP_VERSION='09.09.2026 12:36:17 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4486,7 +4486,8 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   teamContractHistory:'team-contract-history-v1',
   smartNodeIdentityIndex:'smartnode-identity-index-v1',
   stakingDiscoveryCandidates:'staking-discovery-candidates-v3',
-  historicalLpPrices:'historical-lp-price-points-v2-bounded-tiered'
+  historicalLpPrices:'historical-lp-price-points-v2-bounded-tiered',
+  teamAliases:'team-aliases-v1-user-scoped'
 });
 const TECH_CACHE_KEYS=Object.freeze({
   lpFacts:'lp-chainfacts',
@@ -4498,7 +4499,8 @@ const TECH_CACHE_KEYS=Object.freeze({
   teamContractHistory:'team-contract-history',
   smartNodeIdentityIndex:'smartnode-identity-index-state',
   stakingDiscoveryCandidates:'staking-discovery-candidates',
-  historicalLpPrices:'historical-lp-price-points'
+  historicalLpPrices:'historical-lp-price-points',
+  teamAliases:'team-aliases'
 });
 const TECH_CACHE_GLOBAL_SCOPE='0x0000000000000000000000000000000000000000';
 
@@ -13577,24 +13579,51 @@ async function lookupShowStakings(wallet,btn){
 }
 
 
-const TEAM_ALIAS_STORAGE_KEY='tln_vow_team_aliases_v1';
-function teamAliasStorageKey(){
+const TEAM_ALIAS_STORAGE_KEY='tln_vow_team_aliases_v1'; // nur einmalige Legacy-Migrationsquelle, keine aktive Persistenz mehr
+let TEAM_ALIAS_CACHE={};
+let TEAM_ALIAS_CACHE_LOADED=false;
+function teamAliasLegacyStorageKey(){
   return currentUserId?`${TEAM_ALIAS_STORAGE_KEY}:user:${currentUserId}`:'';
 }
-function migrateLegacyTeamAliasesToCurrentUser(){
-  if(!currentUserId)return 0;
-  const scopedKey=teamAliasStorageKey();
+async function loadTeamAliasesFromSupabase(){
+  TEAM_ALIAS_CACHE={};TEAM_ALIAS_CACHE_LOADED=true;
+  if(!currentUserId)return TEAM_ALIAS_CACHE;
   try{
-    const scoped=JSON.parse(localStorage.getItem(scopedKey)||'{}')||{};
-    const legacy=JSON.parse(localStorage.getItem(TEAM_ALIAS_STORAGE_KEY)||'{}')||{};
-    const legacyEntries=Object.entries(legacy).filter(([k,v])=>k&&String(v||'').trim());
-    if(!legacyEntries.length)return 0;
-    let migrated=0;
-    for(const [k,v] of legacyEntries){if(!String(scoped[k]||'').trim()){scoped[k]=String(v).trim();migrated++}}
-    localStorage.setItem(scopedKey,JSON.stringify(scoped));
-    localStorage.removeItem(TEAM_ALIAS_STORAGE_KEY);
+    const payload=await loadTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,TECH_CACHE_KEYS.teamAliases,TECH_CACHE_VERSIONS.teamAliases);
+    const aliases=payload?.aliases&&typeof payload.aliases==='object'?payload.aliases:{};
+    for(const [k,v] of Object.entries(aliases)){const name=String(v||'').trim();if(k&&name)TEAM_ALIAS_CACHE[k]=name}
+    if(Object.keys(TEAM_ALIAS_CACHE).length)log(`Partner-Namen: ${Object.keys(TEAM_ALIAS_CACHE).length} user-spezifische Alias(e) aus Supabase geladen.`,'ok');
+  }catch(e){log(`Partner-Namen konnten nicht aus Supabase geladen werden: ${e.message||e}`,'warn')}
+  return TEAM_ALIAS_CACHE;
+}
+async function persistTeamAliasesToSupabase(){
+  if(!currentUserId)return false;
+  const aliases={};
+  for(const [k,v] of Object.entries(TEAM_ALIAS_CACHE||{})){const name=String(v||'').trim();if(k&&name)aliases[k]=name}
+  const payload={kind:'user_team_aliases',schemaVersion:1,aliases,savedAt:new Date().toISOString()};
+  return await saveTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,TECH_CACHE_KEYS.teamAliases,TECH_CACHE_VERSIONS.teamAliases,payload,0);
+}
+async function migrateLegacyTeamAliasesToSupabase(){
+  if(!currentUserId)return 0;
+  const scopedKey=teamAliasLegacyStorageKey();
+  let legacy={},scoped={};
+  try{legacy=JSON.parse(localStorage.getItem(TEAM_ALIAS_STORAGE_KEY)||'{}')||{}}catch{}
+  try{scoped=scopedKey?(JSON.parse(localStorage.getItem(scopedKey)||'{}')||{}):{}}catch{}
+  const source={...legacy,...scoped};
+  let migrated=0;
+  for(const [k,v] of Object.entries(source)){
+    const name=String(v||'').trim();
+    if(k&&name&&!String(TEAM_ALIAS_CACHE[k]||'').trim()){TEAM_ALIAS_CACHE[k]=name;migrated++}
+  }
+  if(!migrated)return 0;
+  const ok=await persistTeamAliasesToSupabase();
+  if(ok){
+    try{localStorage.removeItem(TEAM_ALIAS_STORAGE_KEY)}catch{}
+    if(scopedKey)try{localStorage.removeItem(scopedKey)}catch{}
     return migrated;
-  }catch{return 0}
+  }
+  log('Partner-Namen: lokale Legacy-Aliase konnten noch nicht nach Supabase migriert werden; lokale Quelle bleibt zur Sicherheit erhalten.','warn');
+  return 0;
 }
 const TEAM_SMARTNODE_CONTRACT='0x028c911c10c9e346158206991e02d09bd0a8a35b';
 const TEAM_NODE_ID_SELECTOR=ethers.id('nodeIdOf(address)').slice(0,10);
@@ -13641,16 +13670,16 @@ const TEAM_LIFECYCLE_RECHECK_HINTS=new Map();
 let TEAM_HIGHLIGHT_STATE={noActive:false,expired:false,soon:false};
 
 function loadTeamAliases(){
-  const storageKey=teamAliasStorageKey();
-  if(!storageKey)return {};
-  try{return JSON.parse(localStorage.getItem(storageKey)||'{}')||{}}catch{return {}}
+  return TEAM_ALIAS_CACHE_LOADED?TEAM_ALIAS_CACHE:{};
 }
-function saveTeamAlias(key,value){
-  const storageKey=teamAliasStorageKey();
-  if(!storageKey){log('Partner-Name nicht gespeichert: kein eingeloggter Benutzer verfügbar.','warn');return}
-  const m=loadTeamAliases();value=String(value||'').trim();
-  if(value)m[key]=value;else delete m[key];
-  try{localStorage.setItem(storageKey,JSON.stringify(m))}catch{}
+async function saveTeamAlias(key,value){
+  if(!currentUserId){log('Partner-Name nicht gespeichert: kein eingeloggter Benutzer verfügbar.','warn');return false}
+  value=String(value||'').trim();
+  if(value)TEAM_ALIAS_CACHE[key]=value;else delete TEAM_ALIAS_CACHE[key];
+  const ok=await persistTeamAliasesToSupabase();
+  if(ok)log(`Partner-Name ${value?'in Supabase gespeichert':'aus Supabase gelöscht'} · user-spezifisch.`,'ok');
+  else log('Partner-Name konnte nicht in Supabase gespeichert werden.','warn');
+  return ok;
 }
 function teamAliasKey(wallet,ident){
   return ident?.nodeId?`id:${ident.nodeId}`:`wallet:${norm(wallet)}`;
@@ -16635,7 +16664,7 @@ function renderTeamTree(){
     setTimeout(()=>syncTeamGenerationHeights(),80);
   });
   box.querySelectorAll('.team-alias-input').forEach(inp=>inp.addEventListener('change',()=>{
-    saveTeamAlias(inp.dataset.teamAliasKey,inp.value);renderTeamTree();
+    saveTeamAlias(inp.dataset.teamAliasKey,inp.value).then(()=>renderTeamTree());
   }));
   box.querySelectorAll('.team-copy-btn').forEach(btn=>btn.addEventListener('click',async()=>{
     const wallet=btn.dataset.copyWallet||'';
@@ -17363,8 +17392,9 @@ async function init(){log(`Build geladen: ${BUILD_ID} · SC_READ_PROBES=${typeof
   }catch(_e){}
   if(!user){$('auth').innerHTML='<span class="err">Nicht eingeloggt. Testseite auf derselben Domain wie Wallet-Tracking öffnen und zuerst einloggen.</span>';return}
   currentUserId=user.id;
-  const migratedAliases=migrateLegacyTeamAliasesToCurrentUser();
-  if(migratedAliases)log(`Partner-Namen: ${migratedAliases} bestehende lokale Alias(e) in den benutzerspezifischen Speicher migriert.`,'ok');
+  await loadTeamAliasesFromSupabase();
+  const migratedAliases=await migrateLegacyTeamAliasesToSupabase();
+  if(migratedAliases)log(`Partner-Namen: ${migratedAliases} bestehende lokale Alias(e) user-spezifisch nach Supabase migriert.`,'ok');
   $('auth').innerHTML=`<span class="ok">Eingeloggt:</span> ${esc(user.email)}`;
   const [cr,pt,sc,wq,projectRefs,stableRefs]=await loadInitialDbRowsResilient();
   const dbErr=cr?.error||pt?.error||sc?.error||wq?.error||projectRefs?.error||stableRefs?.error;
