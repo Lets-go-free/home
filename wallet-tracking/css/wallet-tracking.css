@@ -454,3 +454,136 @@
 .dao1-data-table .chain-admin-table .meta{margin-top:3px;font-size:.7rem}
 .dao1-data-table .chain-admin-table code{font-size:.72rem}
 @media(max-width:900px){.dao1-data-table .chain-admin-table{min-width:760px}}
+
+
+/* DAO1 – Datumsfelder TT.MM.JJJJ mit separatem Kalender-Picker */
+.dao1-date-field{
+  position:relative;
+  display:grid;
+  grid-template-columns:minmax(118px,1fr) 38px;
+  gap:6px;
+  align-items:center;
+}
+.dao1-date-field .dao1-date-text{
+  width:100%;
+  min-width:118px;
+  font-variant-numeric:tabular-nums;
+}
+.dao1-date-field .dao1-date-button{
+  width:38px;
+  height:36px;
+  padding:0;
+  display:grid;
+  place-items:center;
+}
+.dao1-date-field .dao1-date-picker{
+  position:absolute;
+  width:1px;
+  height:1px;
+  opacity:0;
+  pointer-events:none;
+  right:38px;
+  bottom:0;
+}
+
+/* DAO1 Transaktionen – feste Spaltenlogik, damit Texte nicht ineinander laufen */
+.dao1-transaction-table{
+  min-width:1450px !important;
+  table-layout:auto;
+}
+.dao1-transaction-table th,
+.dao1-transaction-table td{
+  white-space:nowrap;
+}
+.dao1-transaction-table .dao1-col-time{
+  min-width:155px;
+}
+.dao1-transaction-table .dao1-col-wallet{
+  min-width:170px;
+  max-width:220px;
+}
+.dao1-transaction-table .dao1-col-wallet code{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.dao1-transaction-table .dao1-col-direction{
+  min-width:90px;
+}
+.dao1-transaction-table .dao1-col-method{
+  min-width:170px;
+  max-width:240px;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.dao1-transaction-table .dao1-col-claim{
+  min-width:220px;
+  max-width:300px;
+  white-space:normal;
+}
+.dao1-transaction-table .dao1-col-claim .meta{
+  white-space:normal;
+  line-height:1.35;
+}
+.dao1-transaction-table .dao1-col-price{
+  min-width:175px;
+  max-width:220px;
+  white-space:normal;
+}
+.dao1-transaction-table .dao1-col-price .meta{
+  white-space:normal;
+  line-height:1.3;
+}
+.dao1-transaction-table .dao1-col-usd{
+  min-width:100px;
+}
+
+/* DAO1 Liquidity Pools – gleicher produktiver Tabellenstil */
+.dao1-lp-data-table{
+  margin-top:10px;
+  border:1px solid #3a414b;
+  border-radius:14px;
+  overflow:auto;
+  background:#1b2027;
+  box-shadow:0 8px 24px rgba(0,0,0,.12);
+}
+.dao1-lp-data-table table{
+  width:100%;
+  border-collapse:collapse;
+  border-spacing:0;
+  background:transparent;
+  font-size:.78rem;
+}
+.dao1-lp-data-table thead{
+  background:#242a32;
+}
+.dao1-lp-data-table th{
+  position:sticky;
+  top:0;
+  z-index:4;
+  padding:11px 14px;
+  background:#242a32;
+  color:#c2c8d0;
+  border:0;
+  border-bottom:1px solid #414852;
+  text-align:left;
+  font-size:.72rem;
+  white-space:nowrap;
+}
+.dao1-lp-data-table td{
+  padding:13px 14px;
+  border:0;
+  border-bottom:1px solid #343a43;
+  background:transparent;
+  vertical-align:middle;
+  white-space:nowrap;
+}
+.dao1-lp-data-table tbody tr{
+  background:linear-gradient(180deg,#20252c,#1d2229);
+}
+.dao1-lp-data-table tbody tr:hover td{
+  background:#292f37;
+}
+.dao1-lp-data-table tbody tr:last-child td{
+  border-bottom:0;
+}

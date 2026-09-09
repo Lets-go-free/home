@@ -31,15 +31,21 @@ window.DAO1Project = (() => {
   const TX_SCAN_TYPE = "transactions_wallet_v1";
   let transactionRows = [];
   let txFilterWallet = "";
-  let txFilterFrom = "";
-  let txFilterTo = "";
+  const dao1TodayIso=()=>{
+    const d=new Date();
+    const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+  };
+  const DAO1_DEFAULT_FROM="2025-01-01";
+  let txFilterFrom = DAO1_DEFAULT_FROM;
+  let txFilterTo = dao1TodayIso();
   let txFilterKind = "__all";
   let txFilterClass = "__all";
   let txFilterNft = "__all";
   let transactionJobToken = 0;
   const DB_PAGE_SIZE = 1000;
-  let miningFilterFrom = "";
-  let miningFilterTo = "";
+  let miningFilterFrom = DAO1_DEFAULT_FROM;
+  let miningFilterTo = dao1TodayIso();
   let miningFilterClass = "__all";
   let miningFilterNft = "__all";
 
@@ -1453,48 +1459,101 @@ window.DAO1Project = (() => {
     return rows;
   }
 
+  function dao1IsoToDisplay(iso){
+    const m=String(iso||"").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m?`${m[3]}.${m[2]}.${m[1]}`:"";
+  }
+
+  function dao1DisplayToIso(value){
+    const m=String(value||"").match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if(!m)return null;
+    const d=Number(m[1]),mo=Number(m[2]),y=Number(m[3]);
+    const test=new Date(Date.UTC(y,mo-1,d));
+    if(y<1000||y>9999||test.getUTCFullYear()!==y||test.getUTCMonth()!==mo-1||test.getUTCDate()!==d)return null;
+    return `${m[3]}-${m[2]}-${m[1]}`;
+  }
+
   function enforceDao1DateInput(el, kind, scope="tx"){
     if(!el)return;
 
-    // Harte Eingabemaske JJJJ-MM-TT:
-    // maximal 8 Ziffern insgesamt, davon exakt maximal 4 fürs Jahr.
+    // Sichtbares Format TT.MM.JJJJ; insgesamt max. 8 Ziffern.
     const digits=String(el.value||"").replace(/\D/g,"").slice(0,8);
-    let value=digits.slice(0,4);
-    if(digits.length>4)value+=`-${digits.slice(4,6)}`;
-    if(digits.length>6)value+=`-${digits.slice(6,8)}`;
-    if(el.value!==value)el.value=value;
+    let display=digits.slice(0,2);
+    if(digits.length>2)display+=`.${digits.slice(2,4)}`;
+    if(digits.length>4)display+=`.${digits.slice(4,8)}`;
+    if(el.value!==display)el.value=display;
 
-    // Während der Eingabe Filter erst ab vollständigem Datum anwenden.
-    const complete=/^\d{4}-\d{2}-\d{2}$/.test(value);
-    if(value && !complete){
+    if(!display){
+      el.setCustomValidity("");
+      if(scope==="mining"){
+        if(kind==="from")miningFilterFrom="";
+        if(kind==="to")miningFilterTo="";
+        renderMining();
+      }else{
+        if(kind==="from")txFilterFrom="";
+        if(kind==="to")txFilterTo="";
+        renderTransactionHistory();
+      }
+      return;
+    }
+
+    // Während der Eingabe Filterwert noch nicht ändern.
+    if(!/^\d{2}\.\d{2}\.\d{4}$/.test(display)){
       el.setCustomValidity("");
       return;
     }
 
-    if(complete){
-      const [y,m,d]=value.split("-").map(Number);
-      const test=new Date(Date.UTC(y,m-1,d));
-      const valid=
-        y>=1000 && y<=9999 &&
-        test.getUTCFullYear()===y &&
-        test.getUTCMonth()===m-1 &&
-        test.getUTCDate()===d;
-      if(!valid){
-        el.setCustomValidity("Bitte ein gültiges Datum im Format JJJJ-MM-TT eingeben.");
-        return;
-      }
+    const iso=dao1DisplayToIso(display);
+    if(!iso){
+      el.setCustomValidity("Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben.");
+      return;
     }
     el.setCustomValidity("");
 
     if(scope==="mining"){
-      if(kind==="from")miningFilterFrom=value;
-      if(kind==="to")miningFilterTo=value;
+      if(kind==="from")miningFilterFrom=iso;
+      if(kind==="to")miningFilterTo=iso;
       renderMining();
       return;
     }
-    if(kind==="from")txFilterFrom=value;
-    if(kind==="to")txFilterTo=value;
+    if(kind==="from")txFilterFrom=iso;
+    if(kind==="to")txFilterTo=iso;
     renderTransactionHistory();
+  }
+
+  function setDao1DateFromPicker(picker,kind,scope="tx"){
+    if(!picker)return;
+    const iso=String(picker.value||"");
+    const visible=picker.closest(".dao1-date-field")?.querySelector(".dao1-date-text");
+    if(visible)visible.value=dao1IsoToDisplay(iso);
+    if(scope==="mining"){
+      if(kind==="from")miningFilterFrom=iso;
+      if(kind==="to")miningFilterTo=iso;
+      renderMining();
+    }else{
+      if(kind==="from")txFilterFrom=iso;
+      if(kind==="to")txFilterTo=iso;
+      renderTransactionHistory();
+    }
+  }
+
+  function openDao1DatePicker(button){
+    const picker=button?.closest(".dao1-date-field")?.querySelector(".dao1-date-picker");
+    if(!picker)return;
+    if(typeof picker.showPicker==="function")picker.showPicker();
+    else picker.click();
+  }
+
+  function dao1DateControl(value,kind,scope){
+    return `<div class="dao1-date-field">
+      <input class="dao1-date-text" type="text" inputmode="numeric" maxlength="10" placeholder="TT.MM.JJJJ"
+        value="${dao1IsoToDisplay(value)}"
+        oninput="DAO1Project.enforceDao1DateInput(this,'${kind}','${scope}')"
+        onchange="DAO1Project.enforceDao1DateInput(this,'${kind}','${scope}')">
+      <button type="button" class="secondary dao1-date-button" title="Datum wählen" onclick="DAO1Project.openDao1DatePicker(this)">📅</button>
+      <input class="dao1-date-picker" type="date" min="1000-01-01" max="9999-12-31" value="${value||""}"
+        onchange="DAO1Project.setDao1DateFromPicker(this,'${kind}','${scope}')">
+    </div>`;
   }
 
   function renderTransactionControls(){
@@ -1519,8 +1578,8 @@ window.DAO1Project = (() => {
           <option value="__all" ${txFilterWallet==="__all"?"selected":""}>Alle Apertum-Wallets</option>
           ${wallets.map(w=>`<option value="${w.id}" ${String(w.id)===String(txFilterWallet)?"selected":""}>${w.label} · ${walletAddress(w)}</option>`).join("")}
         </select></label>
-        <label><span class="field-label">Von</span><input type="text" inputmode="numeric" maxlength="10" placeholder="JJJJ-MM-TT" value="${txFilterFrom}" oninput="DAO1Project.enforceDao1DateInput(this,'from','tx')" onchange="DAO1Project.enforceDao1DateInput(this,'from','tx')"></label>
-        <label><span class="field-label">Bis</span><input type="text" inputmode="numeric" maxlength="10" placeholder="JJJJ-MM-TT" value="${txFilterTo}" oninput="DAO1Project.enforceDao1DateInput(this,'to','tx')" onchange="DAO1Project.enforceDao1DateInput(this,'to','tx')"></label>
+        <label><span class="field-label">Von</span>${dao1DateControl(txFilterFrom,"from","tx")}</label>
+        <label><span class="field-label">Bis</span>${dao1DateControl(txFilterTo,"to","tx")}</label>
         <label><span class="field-label">Typ</span><select onchange="DAO1Project.setTransactionFilter('kind',this.value)">
           <option value="__all" ${txFilterKind==="__all"?"selected":""}>Alle</option>
           <option value="claims" ${txFilterKind==="claims"?"selected":""}>Claims</option>
@@ -1673,7 +1732,7 @@ window.DAO1Project = (() => {
     if(!table)return;
     if(!rows.length){table.innerHTML='<div class="empty">Keine Transaktionen für den gewählten Filter.</div>';return;}
     table.innerHTML=`<details><summary style="cursor:pointer;font-weight:700;padding:10px 0">Detailliste anzeigen (${rows.length} Transaktionen)</summary>
-      <div class="chain-table-wrap dao1-data-table" style="margin-top:8px"><table class="chain-admin-table"><thead><tr>
+      <div class="chain-table-wrap dao1-data-table dao1-transaction-table-wrap" style="margin-top:8px"><table class="chain-admin-table dao1-transaction-table"><thead><tr>
       <th>Zeit</th>${txFilterWallet==="__all"?"<th>Wallet</th>":""}<th>Richtung</th><th>Methode</th><th>APTM</th><th>Claim / NFT</th><th>APTM/USD</th><th>USD</th><th>Gas APTM</th><th>Gas USD historisch</th><th>Tx</th>
     </tr></thead><tbody>${rows.map(r=>{
       const claim=r.claim_nft_id!=null;
@@ -1682,10 +1741,10 @@ window.DAO1Project = (() => {
       const amount=Number(r.value_aptm||0)+(claim?Number(r.claim_reward_aptm||0):0);
       const usdVal=claim?Number(r.claim_reward_usd||0):Number(r.value_usd||0);
       return `<tr>
-        <td>${r.tx_timestamp||"–"}</td>${txFilterWallet==="__all"?`<td><code>${r.wallet_address}</code></td>`:""}<td>${r.direction||"–"}</td><td>${r.method||"–"}</td>
+        <td class="dao1-col-time">${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH"):"–"}</td>${txFilterWallet==="__all"?`<td class="dao1-col-wallet"><code>${r.wallet_address||"–"}</code></td>`:""}<td class="dao1-col-direction">${r.direction||"–"}</td><td class="dao1-col-method">${r.method||"–"}</td>
         <td>${fmt(amount)}</td>
-        <td>${claim?`<strong>${currentName||"NFT"}</strong><div class="meta">#${r.claim_nft_id}${currentSubtype?" · "+currentSubtype:""} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td>
-        <td>${r.aptm_usd==null?"–":`${fmt(r.aptm_usd)}<div class="meta">${r.price_source||"historischer Poolpreis"}</div>`}</td><td>${usdVal?usd(usdVal):"–"}</td>
+        <td class="dao1-col-claim">${claim?`<strong>${currentName||"NFT"}</strong><div class="meta">#${r.claim_nft_id}${currentSubtype?" · "+currentSubtype:""} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td>
+        <td class="dao1-col-price">${r.aptm_usd==null?"–":`${fmt(r.aptm_usd)}<div class="meta">${r.price_source||"historischer Poolpreis"}</div>`}</td><td class="dao1-col-usd">${usdVal?usd(usdVal):"–"}</td>
         <td>${fmt(r.gas_aptm)}</td><td>${r.gas_usd==null?"–":usd(Number(r.gas_usd))}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${r.tx_hash.slice(0,12)}…</a></td>
       </tr>`;
     }).join("")}</tbody></table></div></details>`;
@@ -2122,8 +2181,8 @@ window.DAO1Project = (() => {
       <div class="custom-token-card">
         <span class="field-label">Auswertung filtern</span>
         <div class="custom-token-grid" style="grid-template-columns:minmax(145px,.55fr) minmax(145px,.55fr) minmax(190px,.7fr) minmax(260px,1.1fr);margin-top:8px">
-          <label><span class="field-label">Von</span><input type="text" inputmode="numeric" maxlength="10" placeholder="JJJJ-MM-TT" value="${miningFilterFrom}" oninput="DAO1Project.enforceDao1DateInput(this,'from','mining')" onchange="DAO1Project.enforceDao1DateInput(this,'from','mining')"></label>
-          <label><span class="field-label">Bis</span><input type="text" inputmode="numeric" maxlength="10" placeholder="JJJJ-MM-TT" value="${miningFilterTo}" oninput="DAO1Project.enforceDao1DateInput(this,'to','mining')" onchange="DAO1Project.enforceDao1DateInput(this,'to','mining')"></label>
+          <label><span class="field-label">Von</span>${dao1DateControl(miningFilterFrom,"from","mining")}</label>
+          <label><span class="field-label">Bis</span>${dao1DateControl(miningFilterTo,"to","mining")}</label>
           <label><span class="field-label">NFT-Klassifizierung</span><select onchange="DAO1Project.setMiningClassFilter(this.value)">
             <option value="__all" ${miningFilterClass==="__all"?"selected":""}>Alle Klassifizierungen</option>
             ${classes.map(c=>`<option value="${c}" ${miningFilterClass===c?"selected":""}>${c}</option>`).join("")}
@@ -2171,8 +2230,8 @@ window.DAO1Project = (() => {
   }
 
   function clearMiningFilters(){
-    miningFilterFrom="";
-    miningFilterTo="";
+    miningFilterFrom=DAO1_DEFAULT_FROM;
+    miningFilterTo=dao1TodayIso();
     miningFilterClass="__all";
     miningFilterNft="__all";
     renderMining();
@@ -2232,6 +2291,6 @@ window.DAO1Project = (() => {
   }
 
   return { switchSubtab, configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
-    refreshTransactionHistory, setTransactionFilter, enforceDao1DateInput, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
+    refreshTransactionHistory, setTransactionFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS };
 })();
