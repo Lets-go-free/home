@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 02:52:53 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 03:53:05 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -174,6 +174,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div style="margin-top:10px;padding:10px 12px;border:1px solid #5a3a3a;border-radius:9px;background:#181112">
   <b>Developer · Supabase-Cache</b>
   <div class="muted" style="margin:5px 0 8px">Löscht ausschließlich walletbezogene Einträge in <code>tln_vow_staking_scan_cache</code> für das aktuell ausgewählte Wallet auf BSC – einschließlich der persistenten Discovery-Endergebnisse Steps 1–5. Globale LP-/Tx-Fakten und contractweite Strict-Duration-Proofs bleiben erhalten.</div>
+  <div class="muted" style="margin:5px 0 10px;padding:8px 10px;border:1px solid #445066;border-radius:8px;background:#111722"><b>Historischer Preis-Cache:</b> keine Supabase-Zeile pro Block/Preis. Pro Benutzer wird genau <b>1 begrenzte technische Cache-Zeile</b> verwendet. Exakte Stake-/Unstake-/Stichtagswerte bleiben blockgenau; der Cache ist auf 1'200 exakte Punkte (max. 180 je Asset) plus 300 optionale, nur explizit ungefähre Block-Buckets begrenzt. Fertige USD-Werte bleiben zusätzlich direkt an den verifizierten Positionen erhalten.</div>
   <button id="clearWalletSupabaseCache" type="button" disabled>DEV: Wallet-Cache komplett zurücksetzen</button>
   <span id="clearWalletSupabaseCacheState" class="muted" style="margin-left:8px"></span>
   <div class="muted" style="margin-top:5px">Tiefer Wartungs-/Cold-Start-Reset für das ausgewählte Wallet: löscht alle walletbezogenen BSC-Einträge dieses Wallets aus dem Discovery-Cache. Shared Chain-Fakten, Registry, globale LP-Fakten, SmartNode-Globalgraph und contractweite Duration-Proofs bleiben erhalten.</div>
@@ -400,7 +401,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260909-025253';
+const BUILD_ID='20260909-035305';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -531,7 +532,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='09.09.2026 02:52:53 CEST';
+const APP_VERSION='09.09.2026 03:53:05 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4480,7 +4481,7 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   teamContractHistory:'team-contract-history-v1',
   smartNodeIdentityIndex:'smartnode-identity-index-v1',
   stakingDiscoveryCandidates:'staking-discovery-candidates-v3',
-  historicalLpPrices:'historical-lp-price-points-v1'
+  historicalLpPrices:'historical-lp-price-points-v2-bounded-tiered'
 });
 const TECH_CACHE_KEYS=Object.freeze({
   lpFacts:'lp-chainfacts',
@@ -4882,30 +4883,87 @@ async function saveTechnicalProcessCache(wallet,cacheKey,scannerVersion,payload,
 }
 
 
-// Zentraler persistenter Cache fuer historische LP-Preispunkte. Gespeichert wird
-// der USD-Wert PRO 1 LP je Asset+Block, damit alle Staking-Ansichten denselben
-// unveraenderlichen historischen Chain-Preispunkt wiederverwenden koennen.
-// Bestehende technische Supabase-Cache-Tabelle + globaler Scope; keine neue Tabelle.
+// Zentraler persistenter Cache fuer historische LP-Preispunkte.
+// Skalierungsregel: KEINE Zeile pro Preis/Block. Der gesamte Benutzer-Cache liegt als
+// begrenzter Payload in genau EINER vorhandenen technischen Cache-Zeile. Exakte
+// transaktions-/stichtagsrelevante Preise bleiben blockgenau; optionale Block-Buckets
+// sind nur fuer kuenftige, explizit ungefaehre Darstellungen vorgesehen und werden
+// niemals stillschweigend fuer Stake/Unstake/Steuerwerte verwendet.
+const HISTORICAL_PRICE_CACHE_POLICY=Object.freeze({
+  schemaVersion:2,
+  exactMax:1200,
+  bucketMax:300,
+  maxExactPerAsset:180,
+  approximateBlockBucketSize:28800, // ~1 Tag bei ~3s BSC-Blockzeit; NUR opt-in approximate
+  storageRowsPerUser:1,
+  exactUseCases:['stake','unstake','contract_end','reward','snapshot']
+});
 const HISTORICAL_LP_PRICE_POINT_CACHE=new Map();
+const HISTORICAL_LP_PRICE_BUCKET_CACHE=new Map();
 let HISTORICAL_LP_PRICE_POINT_CACHE_LOADED=false;
 let HISTORICAL_LP_PRICE_POINT_CACHE_LOAD_INFLIGHT=null;
 let HISTORICAL_LP_PRICE_POINT_CACHE_DIRTY=false;
 let HISTORICAL_LP_PRICE_POINT_CACHE_SAVE_TIMER=null;
-const HISTORICAL_LP_PRICE_POINT_CACHE_MAX=2000;
 function historicalLpPricePointKey(pair,blockHex){
   const asset=norm(pair?.address||pair?.lpAddress||pair?.asset||'');
   let block=0;try{block=Number(BigInt(blockHex||0))}catch{}
   return ethers.isAddress(asset)&&block>0?`${asset}|${block}`:'';
+}
+function historicalLpPriceBucketKey(pair,blockHex){
+  const asset=norm(pair?.address||pair?.lpAddress||pair?.asset||'');
+  let block=0;try{block=Number(BigInt(blockHex||0))}catch{}
+  if(!ethers.isAddress(asset)||block<=0)return '';
+  const bucket=Math.floor(block/HISTORICAL_PRICE_CACHE_POLICY.approximateBlockBucketSize);
+  return `${asset}|b${bucket}`;
+}
+function historicalPricePointRank(p){
+  const hits=Math.min(50,Number(p?.hitCount||0));
+  const used=Date.parse(p?.lastUsedAt||p?.storedAt||'')||0;
+  return used+hits*86400000;
+}
+function compactHistoricalPriceCache(){
+  let removedExact=0,removedBuckets=0;
+  // Zuerst pro Asset begrenzen, damit ein aktives LP nicht den gesamten Cache verdraengt.
+  const byAsset=new Map();
+  for(const [k,p] of HISTORICAL_LP_PRICE_POINT_CACHE){const a=norm(p?.asset||'');if(!byAsset.has(a))byAsset.set(a,[]);byAsset.get(a).push([k,p])}
+  for(const rows of byAsset.values()){
+    if(rows.length<=HISTORICAL_PRICE_CACHE_POLICY.maxExactPerAsset)continue;
+    rows.sort((a,b)=>historicalPricePointRank(b[1])-historicalPricePointRank(a[1]));
+    for(const [k] of rows.slice(HISTORICAL_PRICE_CACHE_POLICY.maxExactPerAsset)){HISTORICAL_LP_PRICE_POINT_CACHE.delete(k);removedExact++}
+  }
+  if(HISTORICAL_LP_PRICE_POINT_CACHE.size>HISTORICAL_PRICE_CACHE_POLICY.exactMax){
+    const rows=[...HISTORICAL_LP_PRICE_POINT_CACHE.entries()].sort((a,b)=>historicalPricePointRank(b[1])-historicalPricePointRank(a[1]));
+    for(const [k] of rows.slice(HISTORICAL_PRICE_CACHE_POLICY.exactMax)){HISTORICAL_LP_PRICE_POINT_CACHE.delete(k);removedExact++}
+  }
+  if(HISTORICAL_LP_PRICE_BUCKET_CACHE.size>HISTORICAL_PRICE_CACHE_POLICY.bucketMax){
+    const rows=[...HISTORICAL_LP_PRICE_BUCKET_CACHE.entries()].sort((a,b)=>historicalPricePointRank(b[1])-historicalPricePointRank(a[1]));
+    for(const [k] of rows.slice(HISTORICAL_PRICE_CACHE_POLICY.bucketMax)){HISTORICAL_LP_PRICE_BUCKET_CACHE.delete(k);removedBuckets++}
+  }
+  return {removedExact,removedBuckets};
+}
+async function loadHistoricalPriceCacheRawRow(){
+  if(!currentUserId||!stakingScanDbCacheAvailable)return null;
+  const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE).select('scanner_version,payload,updated_at').eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_address',norm(TECH_CACHE_GLOBAL_SCOPE)).eq('cache_key',TECH_CACHE_KEYS.historicalLpPrices).maybeSingle();
+  if(error)return null;
+  return data||null;
 }
 async function ensureHistoricalLpPricePointCacheLoaded(){
   if(HISTORICAL_LP_PRICE_POINT_CACHE_LOADED)return HISTORICAL_LP_PRICE_POINT_CACHE;
   if(HISTORICAL_LP_PRICE_POINT_CACHE_LOAD_INFLIGHT)return HISTORICAL_LP_PRICE_POINT_CACHE_LOAD_INFLIGHT;
   HISTORICAL_LP_PRICE_POINT_CACHE_LOAD_INFLIGHT=(async()=>{
     try{
-      const payload=await loadTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,TECH_CACHE_KEYS.historicalLpPrices,TECH_CACHE_VERSIONS.historicalLpPrices);
-      const points=Array.isArray(payload?.points)?payload.points:[];
-      for(const point of points){if(point?.key&&Number(point?.unitUsd)>0)HISTORICAL_LP_PRICE_POINT_CACHE.set(String(point.key),point)}
-      if(points.length)log(`Historischer LP-Preis-Cache: ${HISTORICAL_LP_PRICE_POINT_CACHE.size} persistente Preispunkt(e) geladen.`,'ok');
+      const row=await loadHistoricalPriceCacheRawRow();
+      const payload=row?.payload||null;
+      // v2: bounded exactPoints + optional approximate buckets. v1 wird einmalig
+      // eingelesen und beim naechsten Flush kompakt als v2 ueberschrieben.
+      const exactPoints=Array.isArray(payload?.exactPoints)?payload.exactPoints:(Array.isArray(payload?.points)?payload.points:[]);
+      const buckets=Array.isArray(payload?.buckets)?payload.buckets:[];
+      for(const point of exactPoints){if(point?.key&&Number(point?.unitUsd)>0)HISTORICAL_LP_PRICE_POINT_CACHE.set(String(point.key),{precision:'exact',hitCount:0,...point})}
+      for(const point of buckets){if(point?.key&&Number(point?.unitUsd)>0)HISTORICAL_LP_PRICE_BUCKET_CACHE.set(String(point.key),{precision:'approximate_bucket',hitCount:0,...point})}
+      const compacted=compactHistoricalPriceCache();
+      const migrated=!!(payload&&Array.isArray(payload?.points)&&!Array.isArray(payload?.exactPoints));
+      if(exactPoints.length||buckets.length)log(`Historischer LP-Preis-Cache: ${HISTORICAL_LP_PRICE_POINT_CACHE.size} exakte Preispunkt(e) + ${HISTORICAL_LP_PRICE_BUCKET_CACHE.size} optionale Bucket(s) aus 1 begrenzten Supabase-Cache-Zeile geladen${migrated?' · v1→v2 Migration vorgemerkt':''}.`,'ok');
+      if(migrated||compacted.removedExact||compacted.removedBuckets){HISTORICAL_LP_PRICE_POINT_CACHE_DIRTY=true;scheduleHistoricalLpPricePointCacheSave()}
     }catch(e){log(`Historischer LP-Preis-Cache konnte nicht geladen werden: ${e?.message||e}`,'warn')}
     HISTORICAL_LP_PRICE_POINT_CACHE_LOADED=true;HISTORICAL_LP_PRICE_POINT_CACHE_LOAD_INFLIGHT=null;
     return HISTORICAL_LP_PRICE_POINT_CACHE;
@@ -4914,7 +4972,9 @@ async function ensureHistoricalLpPricePointCacheLoaded(){
 }
 function historicalLpPricePointResult(point,amount){
   const n=Number(amount||0),unit=Number(point?.unitUsd);if(!(n>=0)||!(unit>0))return null;
-  const out={usd:n*unit,tokenAmount:n,usdPerToken:unit,source:`Persistenter historischer Preis-Cache · ${point.source||'verifizierter On-Chain-Preispunkt'}`,engine:point.engine||'WalletPriceEngine',adapter:point.adapter||null,crossChain:point.crossChain||null,cachedHistoricalPrice:true};
+  point.hitCount=Number(point.hitCount||0)+1;point.lastUsedAt=new Date().toISOString();
+  const approx=point?.precision==='approximate_bucket';
+  const out={usd:n*unit,tokenAmount:n,usdPerToken:unit,source:`Persistenter historischer Preis-Cache${approx?' (ungefaehrer Block-Bucket)':''} · ${point.source||'verifizierter On-Chain-Preispunkt'}`,engine:point.engine||'WalletPriceEngine',adapter:point.adapter||null,crossChain:point.crossChain||null,cachedHistoricalPrice:true,historicalPricePrecision:approx?'approximate_bucket':'exact'};
   if(Number.isFinite(Number(point?.a0PerToken)))out.a0=Number(point.a0PerToken)*n;
   if(Number.isFinite(Number(point?.a1PerToken)))out.a1=Number(point.a1PerToken)*n;
   if(Number.isFinite(Number(point?.p0)))out.p0=Number(point.p0);
@@ -4925,27 +4985,43 @@ function scheduleHistoricalLpPricePointCacheSave(){
   if(HISTORICAL_LP_PRICE_POINT_CACHE_SAVE_TIMER)clearTimeout(HISTORICAL_LP_PRICE_POINT_CACHE_SAVE_TIMER);
   HISTORICAL_LP_PRICE_POINT_CACHE_SAVE_TIMER=setTimeout(()=>{HISTORICAL_LP_PRICE_POINT_CACHE_SAVE_TIMER=null;flushHistoricalLpPricePointCache().catch(()=>{})},5000);
 }
-function rememberHistoricalLpPricePoint(pair,blockHex,amount,result){
+function rememberHistoricalLpPricePoint(pair,blockHex,amount,result,opts={}){
   const key=historicalLpPricePointKey(pair,blockHex),n=Number(amount||0),usd=Number(result?.usd),unit=Number(result?.usdPerToken)||(n>0&&usd>0?usd/n:0);
   if(!key||!(unit>0))return false;
-  const prev=HISTORICAL_LP_PRICE_POINT_CACHE.get(key);
+  const prev=HISTORICAL_LP_PRICE_POINT_CACHE.get(key),now=new Date().toISOString();
   const point={key,asset:norm(pair?.address||pair?.lpAddress||pair?.asset||''),block:Number(BigInt(blockHex)),unitUsd:unit,
     a0PerToken:n>0&&Number.isFinite(Number(result?.a0))?Number(result.a0)/n:null,a1PerToken:n>0&&Number.isFinite(Number(result?.a1))?Number(result.a1)/n:null,
     p0:Number.isFinite(Number(result?.p0))?Number(result.p0):null,p1:Number.isFinite(Number(result?.p1))?Number(result.p1):null,
-    source:String(result?.source||''),engine:String(result?.engine||'WalletPriceEngine'),adapter:result?.adapter||null,crossChain:result?.crossChain||null,storedAt:new Date().toISOString()};
+    source:String(result?.source||''),engine:String(result?.engine||'WalletPriceEngine'),adapter:result?.adapter||null,crossChain:result?.crossChain||null,
+    precision:'exact',reason:String(opts?.reason||prev?.reason||'exact_historical'),hitCount:Number(prev?.hitCount||0),lastUsedAt:prev?.lastUsedAt||now,storedAt:prev?.storedAt||now,updatedAt:now};
   HISTORICAL_LP_PRICE_POINT_CACHE.set(key,point);
-  if(HISTORICAL_LP_PRICE_POINT_CACHE.size>HISTORICAL_LP_PRICE_POINT_CACHE_MAX){
-    const oldest=[...HISTORICAL_LP_PRICE_POINT_CACHE.entries()].sort((a,b)=>String(a[1]?.storedAt||'').localeCompare(String(b[1]?.storedAt||'')))[0];if(oldest)HISTORICAL_LP_PRICE_POINT_CACHE.delete(oldest[0]);
+  // Bucket nur als zusaetzlicher, explizit ungefaehrer Wiederverwendungsindex. Exakte
+  // Bewertungswege lesen ihn niemals ohne allowApproximate=true.
+  const bucketKey=historicalLpPriceBucketKey(pair,blockHex);
+  if(bucketKey){
+    const bPrev=HISTORICAL_LP_PRICE_BUCKET_CACHE.get(bucketKey);
+    HISTORICAL_LP_PRICE_BUCKET_CACHE.set(bucketKey,{key:bucketKey,asset:point.asset,representativeBlock:point.block,unitUsd:unit,source:point.source,engine:point.engine,adapter:point.adapter,crossChain:point.crossChain,precision:'approximate_bucket',hitCount:Number(bPrev?.hitCount||0),lastUsedAt:bPrev?.lastUsedAt||now,storedAt:bPrev?.storedAt||now,updatedAt:now});
   }
-  if(!prev||Number(prev.unitUsd)!==unit){HISTORICAL_LP_PRICE_POINT_CACHE_DIRTY=true;scheduleHistoricalLpPricePointCacheSave()}
+  const compacted=compactHistoricalPriceCache();
+  if(!prev||Number(prev.unitUsd)!==unit||compacted.removedExact||compacted.removedBuckets){HISTORICAL_LP_PRICE_POINT_CACHE_DIRTY=true;scheduleHistoricalLpPricePointCacheSave()}
   return true;
+}
+function getHistoricalLpPricePoint(pair,blockHex,{allowApproximate=false}={}){
+  const exactKey=historicalLpPricePointKey(pair,blockHex),exact=exactKey?HISTORICAL_LP_PRICE_POINT_CACHE.get(exactKey):null;
+  if(exact)return {point:exact,precision:'exact'};
+  if(!allowApproximate)return null;
+  const bucketKey=historicalLpPriceBucketKey(pair,blockHex),bucket=bucketKey?HISTORICAL_LP_PRICE_BUCKET_CACHE.get(bucketKey):null;
+  return bucket?{point:bucket,precision:'approximate_bucket'}:null;
 }
 async function flushHistoricalLpPricePointCache(){
   if(!HISTORICAL_LP_PRICE_POINT_CACHE_DIRTY||!currentUserId||!stakingScanDbCacheAvailable)return false;
   if(HISTORICAL_LP_PRICE_POINT_CACHE_SAVE_TIMER){clearTimeout(HISTORICAL_LP_PRICE_POINT_CACHE_SAVE_TIMER);HISTORICAL_LP_PRICE_POINT_CACHE_SAVE_TIMER=null}
-  const points=[...HISTORICAL_LP_PRICE_POINT_CACHE.values()].sort((a,b)=>Number(a.block||0)-Number(b.block||0));
-  const ok=await saveTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,TECH_CACHE_KEYS.historicalLpPrices,TECH_CACHE_VERSIONS.historicalLpPrices,{schemaVersion:1,kind:'historical_lp_price_points',savedAt:new Date().toISOString(),points},0);
-  if(ok){HISTORICAL_LP_PRICE_POINT_CACHE_DIRTY=false;log(`Historischer LP-Preis-Cache gespeichert: ${points.length} Preispunkt(e).`,'ok')}
+  compactHistoricalPriceCache();
+  const exactPoints=[...HISTORICAL_LP_PRICE_POINT_CACHE.values()].sort((a,b)=>Number(a.block||0)-Number(b.block||0));
+  const buckets=[...HISTORICAL_LP_PRICE_BUCKET_CACHE.values()].sort((a,b)=>Number(a.representativeBlock||0)-Number(b.representativeBlock||0));
+  const payload={schemaVersion:HISTORICAL_PRICE_CACHE_POLICY.schemaVersion,kind:'bounded_historical_lp_price_cache',savedAt:new Date().toISOString(),policy:{exactMax:HISTORICAL_PRICE_CACHE_POLICY.exactMax,bucketMax:HISTORICAL_PRICE_CACHE_POLICY.bucketMax,maxExactPerAsset:HISTORICAL_PRICE_CACHE_POLICY.maxExactPerAsset,storageRowsPerUser:1},exactPoints,buckets};
+  const ok=await saveTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,TECH_CACHE_KEYS.historicalLpPrices,TECH_CACHE_VERSIONS.historicalLpPrices,payload,0);
+  if(ok){HISTORICAL_LP_PRICE_POINT_CACHE_DIRTY=false;log(`Historischer LP-Preis-Cache gespeichert: ${exactPoints.length} exakte Preispunkt(e) + ${buckets.length} Bucket(s) · weiterhin 1 begrenzte Supabase-Cache-Zeile.`,'ok')}
   return ok;
 }
 
@@ -4955,19 +5031,33 @@ async function seedHistoricalLpPricePointsFromLots(lots){
   for(const lot of (lots||[])){
     const pair=lot?.pair,amount=Number(lot?.original||lot?.amount||0);if(!pair||!(amount>0))continue;
     const candidates=[
-      [lot.stakeBlockHex,lot.stakeValuation||{usd:lot.stakeUsd,usdPerToken:Number(lot.stakeUsd)/amount,source:lot.stakeUsdSource}],
-      [lot.contractEndBlockHex,lot.contractEndValuation||{usd:lot.contractEndUsd,usdPerToken:Number(lot.contractEndUsd)/amount,source:lot.contractEndUsdSource}],
-      [lot.unstakeBlockHex,lot.unstakeValuation||{usd:lot.unstakeUsd,usdPerToken:Number(lot.unstakeUsd)/amount,source:lot.unstakeUsdSource}]
+      [lot.stakeBlockHex,lot.stakeValuation||{usd:lot.stakeUsd,usdPerToken:Number(lot.stakeUsd)/amount,source:lot.stakeUsdSource},'stake'],
+      [lot.contractEndBlockHex,lot.contractEndValuation||{usd:lot.contractEndUsd,usdPerToken:Number(lot.contractEndUsd)/amount,source:lot.contractEndUsdSource},'contract_end'],
+      [lot.unstakeBlockHex,lot.unstakeValuation||{usd:lot.unstakeUsd,usdPerToken:Number(lot.unstakeUsd)/amount,source:lot.unstakeUsdSource},'unstake']
     ];
-    for(const [block,val] of candidates){
+    for(const [block,val,reason] of candidates){
       if(!block||!(Number(val?.usd)>0))continue;
       const key=historicalLpPricePointKey(pair,block),had=key&&HISTORICAL_LP_PRICE_POINT_CACHE.has(key);
-      if(rememberHistoricalLpPricePoint(pair,block,amount,val)&&!had)added++;
+      if(rememberHistoricalLpPricePoint(pair,block,amount,val,{reason})&&!had)added++;
     }
   }
-  if(added){await flushHistoricalLpPricePointCache();log(`Historischer LP-Preis-Cache: ${added} Preispunkt(e) aus bereits verifizierten Lifecycle-USD-Werten übernommen.`,'ok')}
+  if(added){await flushHistoricalLpPricePointCache();log(`Historischer LP-Preis-Cache: ${added} exakte Preispunkt(e) aus bereits verifizierten Lifecycle-USD-Werten übernommen.`,'ok')}
   return added;
 }
+
+// Zentrale Service-Fassade fuer alle kuenftigen Verbraucher. Exakte historische
+// Bewertungswege (Stake/Unstake/Reward/Stichtag) nutzen getExact()/rememberExact().
+// Approximate Buckets sind bewusst opt-in und duerfen nur fuer nicht steuerkritische
+// UIs/Charts verwendet werden.
+const HISTORICAL_PRICE_CACHE_SERVICE=Object.freeze({
+  policy:HISTORICAL_PRICE_CACHE_POLICY,
+  ensureLoaded:ensureHistoricalLpPricePointCacheLoaded,
+  getExact:(pair,blockHex)=>getHistoricalLpPricePoint(pair,blockHex,{allowApproximate:false}),
+  getApproximate:(pair,blockHex)=>getHistoricalLpPricePoint(pair,blockHex,{allowApproximate:true}),
+  rememberExact:(pair,blockHex,amount,result,reason='exact_historical')=>rememberHistoricalLpPricePoint(pair,blockHex,amount,result,{reason}),
+  flush:flushHistoricalLpPricePointCache,
+  stats:()=>({exact:HISTORICAL_LP_PRICE_POINT_CACHE.size,buckets:HISTORICAL_LP_PRICE_BUCKET_CACHE.size,rowsPerUser:HISTORICAL_PRICE_CACHE_POLICY.storageRowsPerUser,exactMax:HISTORICAL_PRICE_CACHE_POLICY.exactMax,bucketMax:HISTORICAL_PRICE_CACHE_POLICY.bucketMax})
+});
 
 const DISCOVERY_RESULT_CACHE_MAX_AGE_MS=24*60*60*1000;
 const DISCOVERY_RESULT_SCAN_OVERLAP_BLOCKS=24;
@@ -7762,8 +7852,8 @@ async function lpHistoricalValue(pair,lpAmount,blockHex,pricePairs){
     // Historische Blockpreise sind unveraenderlich: zuerst zentralen persistenten
     // Preispunkt verwenden, bevor BSC-/ETH-RPCs oder die Price-Engine laufen.
     await ensureHistoricalLpPricePointCacheLoaded();
-    const priceKey=historicalLpPricePointKey(pair,blockHex),cachedPoint=priceKey?HISTORICAL_LP_PRICE_POINT_CACHE.get(priceKey):null;
-    if(cachedPoint){const cached=historicalLpPricePointResult(cachedPoint,Number(lpAmount));if(cached)return cached}
+    const cachedEntry=HISTORICAL_PRICE_CACHE_SERVICE.getExact(pair,blockHex);
+    if(cachedEntry?.point){const cached=historicalLpPricePointResult(cachedEntry.point,Number(lpAmount));if(cached)return cached}
     configureSharedHistoricalPriceEngine(pricePairs);
     const asset=norm(pair.address||pair.token0?.address||'');
     const result=await window.WalletPriceEngine.getLpValuation({projectKey:'tln_vow',chain:'bsc',lpAddress:asset,amount:Number(lpAmount),block:Number(BigInt(blockHex))});
@@ -7775,7 +7865,7 @@ async function lpHistoricalValue(pair,lpAmount,blockHex,pricePairs){
         valuation={usd:Number(result.valueUsd),tokenAmount:Number(lpAmount),usdPerToken:Number(result.priceUsd),a0:result.amount0,p0:result.price0Usd,a1:result.amount1,p1:result.price1Usd,
           source:`WalletPriceEngine · On-chain @ Block ${Number(BigInt(blockHex))} · ${result.pair?.token0?.symbol||'Token0'} ${result.price0Usd!=null?'$'+Number(result.price0Usd).toLocaleString('de-CH',{maximumFractionDigits:8}):'ohne USD-Pfad'} · ${result.pair?.token1?.symbol||'Token1'} ${result.price1Usd!=null?'$'+Number(result.price1Usd).toLocaleString('de-CH',{maximumFractionDigits:8}):'ohne USD-Pfad'}`,engine:'WalletPriceEngine'};
       }
-      rememberHistoricalLpPricePoint(pair,blockHex,Number(lpAmount),valuation);
+      HISTORICAL_PRICE_CACHE_SERVICE.rememberExact(pair,blockHex,Number(lpAmount),valuation,'exact_valuation');
       return valuation;
     }
     STEP6_PRICE_FALLBACK_DIAG.cases.push({pair:safePairLabel(pair),block:Number(BigInt(blockHex)),reason:result?'zentrale Engine lieferte keinen vollständigen USD-Wert':'zentrale Engine lieferte kein Ergebnis'});
