@@ -154,7 +154,7 @@ async function onLoggedIn(session) {
       historicalPrice: taxHistoricalPrice,
       currentRpc: (chain, method, params) => evmRpcCall(configuredRpcUrl(chain), method, params),
       archiveRpc,
-      sb, currentUser
+      sb, currentUser, wallets
     }));
   }
 
@@ -2894,6 +2894,15 @@ async function purgeWalletRelatedData(w) {
   await deleteWalletRows("discovery_cache", q => q.eq("user_id", userId).eq("wallet_id", walletId), "Discovery-Cache");
 
   if (dbWalletId) {
+    await deleteWalletRows("lp_history_events", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "LP-Historie");
+    await deleteWalletRows("lp_position_cache", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "LP-Positions-Cache");
+    await deleteWalletRows("project_miners", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-Miner");
+    await deleteWalletRows("project_miner_ownership", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Miner-Besitzerhistorie");
+    await deleteWalletRows("project_nft_claims", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-NFT-Claims");
+    await deleteWalletRows("project_nft_ownership", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-NFT-Besitzerhistorie");
+    await deleteWalletRows("project_scan_state", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-Scanstatus");
+    await deleteWalletRows("project_transactions", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-Transaktionen");
+    await deleteWalletRows("tln_wallet_identity_cache", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "TLN Wallet-Identity-Cache");
     await deleteWalletRows("tln_vow_staking_scan_cache", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "TLN/VOW Discovery-/Staking-Cache");
   } else if (evmAddress) {
     // Nur Legacy-Fallback fuer noch nicht persistierte/alte Datenlagen.

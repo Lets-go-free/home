@@ -207,6 +207,31 @@ window.DAO1Project = (() => {
     return String(wallet?.evm || "").trim();
   }
 
+  function walletByAddress(address){
+    const a=lower(address);
+    const ctx=getContext?.();
+    return (ctx?.wallets||[]).find(w=>lower(walletAddress(w))===a) || null;
+  }
+
+  function walletByDbId(walletId){
+    const id=String(walletId||"");
+    const ctx=getContext?.();
+    return (ctx?.wallets||[]).find(w=>String(w?.dbId||w?.id||"")===id) || null;
+  }
+
+  function walletIdForAddress(address){
+    const w=walletByAddress(address);
+    const id=String(w?.dbId||w?.id||"").trim();
+    if(!id || id.startsWith("local")) throw new Error(`Gespeicherte Wallet-ID für ${lower(address)||"Wallet"} fehlt.`);
+    return id;
+  }
+
+  function hydratePrivateWalletAddress(row){
+    if(!row)return row;
+    const w=walletByDbId(row.wallet_id);
+    return {...row,wallet_address:walletAddress(w)||row.wallet_address||""};
+  }
+
 
   const NFT_SUBTYPES = ["Mining-Bot","Trading-Bot","DID","DAO / Membership","Sonstige"];
   function categoryForSubtype(subtype){
@@ -343,7 +368,7 @@ window.DAO1Project = (() => {
       if (!/does not exist|schema cache/i.test(error.message || "")) console.warn("NFT Ownership Cache:", error);
       return;
     }
-    ownershipRows = data || [];
+    ownershipRows = (data || []).map(hydratePrivateWalletAddress);
   }
 
 
@@ -572,7 +597,10 @@ window.DAO1Project = (() => {
 
     // Cache only ownership periods involving one of this user's tracked EVM wallets.
     const tracked=new Set((ctx.wallets||[]).map(w=>lower(walletAddress(w))).filter(Boolean));
-    const ownPeriods=periods.filter(p=>tracked.has(lower(p.wallet_address)));
+    const ownPeriods=periods.filter(p=>tracked.has(lower(p.wallet_address))).map(p=>({
+      ...p,
+      wallet_id:walletIdForAddress(p.wallet_address)
+    }));
     if(!ownPeriods.length)return 0;
 
     await sb.from("project_nft_ownership")
@@ -618,7 +646,7 @@ window.DAO1Project = (() => {
       renderMinerEditor(error.message);
       return;
     }
-    miners = data || [];
+    miners = (data || []).map(hydratePrivateWalletAddress);
     renderMinerEditor();
   }
 
@@ -642,7 +670,9 @@ window.DAO1Project = (() => {
     const nft = Number(document.getElementById("dao1MinerNft")?.value);
     const label = document.getElementById("dao1MinerLabel")?.value.trim();
     if (!wallet || !Number.isFinite(nft)) return alert("Wallet und NFT-ID eingeben.");
-    const { error } = await sb.from("project_miners").insert({ user_id: ctx.currentUser.id, project_key: PROJECT_KEY, chain_key: CHAIN_KEY, wallet_address: wallet, nft_id: nft, label: label || `Miner #${nft}`, enabled: true });
+    let walletId;
+    try{walletId=walletIdForAddress(wallet);}catch(e){return alert("Die Miner-Wallet muss zuerst unter Meine Wallets gespeichert sein.");}
+    const { error } = await sb.from("project_miners").insert({ user_id: ctx.currentUser.id, project_key: PROJECT_KEY, chain_key: CHAIN_KEY, wallet_id: walletId, wallet_address: wallet, nft_id: nft, label: label || `Miner #${nft}`, enabled: true });
     if (error) return alert(error.message);
     await loadMiners();
   }
@@ -1042,7 +1072,7 @@ window.DAO1Project = (() => {
       .eq("user_id",getContext?.().currentUser.id)
       .eq("project_key",PROJECT_KEY)
       .eq("chain_key",CHAIN_KEY)
-      .eq("wallet_address",lower(address))
+      .eq("wallet_id",walletIdForAddress(address))
       .eq("scan_type",TX_SCAN_TYPE)
       .maybeSingle();
     if(error)throw error;
@@ -1053,18 +1083,18 @@ window.DAO1Project = (() => {
     const ctx=getContext?.();
     const row={
       user_id:ctx.currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
-      wallet_address:lower(address),scan_type:TX_SCAN_TYPE,
+      wallet_id:walletIdForAddress(address),wallet_address:lower(address),scan_type:TX_SCAN_TYPE,
       last_scanned_block:Number(lastBlock||0),last_scanned_at:new Date().toISOString()
     };
     const {error}=await sb.from("project_scan_state")
-      .upsert(row,{onConflict:"user_id,project_key,chain_key,wallet_address,scan_type"});
+      .upsert(row,{onConflict:"user_id,project_key,chain_key,wallet_id,scan_type"});
     if(error)throw error;
   }
 
   async function saveTransactionRows(rows){
     if(!rows.length)return;
     const {error}=await sb.from("project_transactions")
-      .upsert(rows,{onConflict:"user_id,project_key,chain_key,wallet_address,tx_hash"});
+      .upsert(rows,{onConflict:"user_id,project_key,chain_key,wallet_id,tx_hash"});
     if(error)throw error;
   }
 
@@ -1077,7 +1107,7 @@ window.DAO1Project = (() => {
         .eq("user_id",getContext?.().currentUser.id)
         .eq("project_key",PROJECT_KEY)
         .eq("chain_key",CHAIN_KEY);
-      if(address)q=q.eq("wallet_address",lower(address));
+      if(address)q=q.eq("wallet_id",walletIdForAddress(address));
       const {data,error}=await q
         .order("block_number",{ascending:false})
         .order("tx_hash",{ascending:true})
@@ -1151,6 +1181,7 @@ window.DAO1Project = (() => {
           user_id:ctx.currentUser.id,
           project_key:PROJECT_KEY,
           chain_key:CHAIN_KEY,
+          wallet_id:walletIdForAddress(address),
           wallet_address:lower(address),
           tx_hash:t.hash,
           block_number:block,
@@ -1214,7 +1245,7 @@ window.DAO1Project = (() => {
       // Claims keep their separately calculated reward USD; only transaction value/gas are backfilled here.
       const {error}=await sb.from("project_transactions").update(patch)
         .eq("user_id",getContext?.().currentUser.id)
-        .eq("wallet_address",lower(address))
+        .eq("wallet_id",walletIdForAddress(address))
         .eq("tx_hash",r.tx_hash);
       if(error){console.warn("Tx historical price backfill:",error);missing++;}
       else updated++;
@@ -1323,7 +1354,7 @@ window.DAO1Project = (() => {
       blocks.push(Number(t.block_number));
       claimRows.push({
         user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
-        wallet_address:lower(address),nft_contract:nft.contract||null,nft_id:Number(decodedId),
+        wallet_id:walletIdForAddress(address),wallet_address:lower(address),nft_contract:nft.contract||null,nft_id:Number(decodedId),
         nft_name:nft.classification?.nft_name || nft.name || `NFT #${decodedId}`,
         nft_subtype:nft.classification?.subtype||null,tx_hash:t.tx_hash,
         block_number:Number(t.block_number),tx_timestamp:t.tx_timestamp,
@@ -1367,7 +1398,7 @@ window.DAO1Project = (() => {
             updated_at:new Date().toISOString()
           })
           .eq("user_id",getContext?.().currentUser.id)
-          .eq("wallet_address",lower(address))
+          .eq("wallet_id",walletIdForAddress(address))
           .eq("tx_hash",r.tx_hash);
         if(error)console.warn("Tx Claim enrichment:",error);
       }
@@ -1550,7 +1581,7 @@ window.DAO1Project = (() => {
     };
     if(kind==="claim")txPatch.claim_reward_usd=Number(qty||0)*price;
     const {error}=await sb.from("project_transactions").update(txPatch)
-      .eq("user_id",userId).eq("wallet_address",lower(row.wallet_address)).eq("tx_hash",txHash);
+      .eq("user_id",userId).eq("wallet_id",String(row.wallet_id||walletIdForAddress(row.wallet_address))).eq("tx_hash",txHash);
     if(error)return alert(`Speichern fehlgeschlagen: ${error.message}`);
     if(kind==="claim"){
       const claimPatch={
@@ -1558,7 +1589,7 @@ window.DAO1Project = (() => {
         gas_usd:Number(row.gas_aptm||0)*price,
         price_source:source,price_is_manual:true,updated_at:new Date().toISOString()
       };
-      const q=sb.from("project_nft_claims").update(claimPatch).eq("user_id",userId).eq("wallet_address",lower(row.wallet_address)).eq("tx_hash",txHash);
+      const q=sb.from("project_nft_claims").update(claimPatch).eq("user_id",userId).eq("wallet_id",String(row.wallet_id||walletIdForAddress(row.wallet_address))).eq("tx_hash",txHash);
       const {error:ce}=await q;
       if(ce)console.warn("Manueller Claim-Kurs konnte nicht zusätzlich in project_nft_claims gespeichert werden:",ce);
     }
@@ -1681,7 +1712,7 @@ window.DAO1Project = (() => {
       .select("*")
       .eq("project_key",PROJECT_KEY)
       .eq("chain_key",CHAIN_KEY)
-      .eq("wallet_address",lower(walletAddress))
+      .eq("wallet_id",walletIdForAddress(walletAddress))
       .eq("scan_type",CLAIM_SCAN_TYPE)
       .maybeSingle();
     if(error && !/does not exist|schema cache/i.test(error.message||""))throw error;
@@ -1695,12 +1726,13 @@ window.DAO1Project = (() => {
       user_id:ctx.currentUser.id,
       project_key:PROJECT_KEY,
       chain_key:CHAIN_KEY,
+      wallet_id:walletIdForAddress(walletAddress),
       wallet_address:lower(walletAddress),
       scan_type:CLAIM_SCAN_TYPE,
       last_scanned_block:Number(lastBlock||0),
       last_scanned_at:new Date().toISOString()
     };
-    const {error}=await sb.from("project_scan_state").upsert(row,{onConflict:"user_id,project_key,chain_key,wallet_address,scan_type"});
+    const {error}=await sb.from("project_scan_state").upsert(row,{onConflict:"user_id,project_key,chain_key,wallet_id,scan_type"});
     if(error)throw error;
   }
 
@@ -1713,7 +1745,7 @@ window.DAO1Project = (() => {
         .eq("user_id",getContext?.().currentUser.id)
         .eq("project_key",PROJECT_KEY)
         .eq("chain_key",CHAIN_KEY)
-        .eq("wallet_address",lower(walletAddress));
+        .eq("wallet_id",walletIdForAddress(walletAddress));
       if(nftIds?.length)q=q.in("nft_id",nftIds.map(Number));
       const {data,error}=await q.order("block_number",{ascending:true}).order("tx_hash",{ascending:true}).range(offset,offset+DB_PAGE_SIZE-1);
       if(error && !/does not exist|schema cache/i.test(error.message||""))throw error;
@@ -1722,7 +1754,7 @@ window.DAO1Project = (() => {
       if(page.length<DB_PAGE_SIZE)break;
       offset+=DB_PAGE_SIZE;
     }
-    return rows;
+    return rows.map(hydratePrivateWalletAddress);
   }
 
   async function saveClaimRows(rows){
@@ -1898,6 +1930,7 @@ window.DAO1Project = (() => {
             user_id:ctx.currentUser.id,
             project_key:PROJECT_KEY,
             chain_key:CHAIN_KEY,
+            wallet_id:walletIdForAddress(address),
             wallet_address:lower(address),
             nft_contract:c.nft?.contract||null,
             nft_id:Number(c.nft.id),
