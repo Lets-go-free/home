@@ -1504,8 +1504,16 @@ window.DAO1Project = (() => {
       await refreshTransactionHistory(false);
       return;
     }
-    if(kind==="from")txFilterFrom=String(value||"");
-    if(kind==="to")txFilterTo=String(value||"");
+    if(kind==="from"){
+      txFilterFrom=String(value||"");
+      renderTransactionHistory();
+      return;
+    }
+    if(kind==="to"){
+      txFilterTo=String(value||"");
+      renderTransactionHistory();
+      return;
+    }
     if(kind==="kind")txFilterKind=String(value||"__all");
     if(kind==="class"){
       txFilterClass=String(value||"__all");

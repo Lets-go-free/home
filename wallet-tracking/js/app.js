@@ -472,6 +472,8 @@ async function taxEvmTokenBalance(chain,address,token,block){
 }
 
 async function historicalErc20Candidates(chain,address,targetBlock=null){
+  // Nur EVM-Chains: Tron/Solana verwenden eigene Discovery-Wege.
+  if (!CHAIN_CONFIG[chain]?.evmChainId) return [];
   const found=new Set();
   // Alchemy: Transferhistorie findet auch vollständig verkaufte Token/LPs.
   if(CHAIN_CONFIG[chain]?.discoveryProvider==="alchemy"){
@@ -6386,7 +6388,7 @@ async function setNftUserSpam(walletId, chain, tokenAddress, tokenId, marked) {
   if (!cache) return;
   const key = `${chain}|${normalizeAddress(tokenAddress || "", chain)}|${String(tokenId)}`;
   const updated = (cache.nfts || []).map(n =>
-    nftKey(n) === key ? { ...n, userMarkedSpam: !!marked } : n
+    nftKey(n) === key ? { ...n, userMarkedSpam: !!marked, userMarkedSafe: marked ? false : !!n.userMarkedSafe } : n
   );
   const { data, error } = await sb.from("nft_cache")
     .update({ nfts: sanitizeNftCacheValue(updated) })
@@ -6464,15 +6466,15 @@ function renderNftResults(nfts, errors = []) {
               <span class="dot ${meta.dot}" style="width:7px;height:7px"></span> ${meta.label} · ${escapeAttr(n.walletLabel || "")}
             </div>
             ${spam ? `<div style="margin-top:5px"><span class="badge unsafe">⚠ ${n.userMarkedSpam ? "Manuell als Spam markiert" : "Spam-Verdacht"}</span></div>` : ""}
-            ${n.userMarkedSafe && n.possibleSpam ? `<div style="margin-top:5px"><span class="badge safe">✓ Spam-Verdacht manuell ignoriert</span></div>` : ""}
+            ${n.userMarkedSafe ? `<div style="margin-top:5px"><span class="badge safe">✓ Manuell als sicher klassifiziert</span></div>` : ""}
             <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
               <button class="${n.userMarkedSpam ? "secondary" : "remove"}" style="padding:6px 8px;font-size:.72rem"
                 onclick="setNftUserSpam('${escapeAttr(String(n.walletId || ""))}','${n.chain}','${escapeAttr(n.tokenAddress || "")}','${escapeAttr(String(n.tokenId))}',${n.userMarkedSpam ? "false" : "true"})">
                 ${n.userMarkedSpam ? "Spam-Markierung entfernen" : "Als Spam markieren"}
               </button>
-              ${n.possibleSpam && !n.userMarkedSpam ? `<button class="secondary" style="padding:6px 8px;font-size:.72rem"
+              ${!n.userMarkedSpam ? `<button class="secondary" style="padding:6px 8px;font-size:.72rem"
                 onclick="setNftUserSafe('${escapeAttr(String(n.walletId || ""))}','${n.chain}','${escapeAttr(n.tokenAddress || "")}','${escapeAttr(String(n.tokenId))}',${n.userMarkedSafe ? "false" : "true"})">
-                ${n.userMarkedSafe ? "Spam-Verdacht wieder beachten" : "Spam-Verdacht ignorieren"}
+                ${n.userMarkedSafe ? "Sicher-Klassifizierung entfernen" : "Als sicher klassifizieren"}
               </button>` : ""}
             </div>
           </div>
@@ -7034,7 +7036,7 @@ async function runDiscoveryScan() {
 
   // Historische Kandidaten + generische V2-LP-Erkennung.
   if(w.evm){
-    for(const chain of discoveryChains().filter(c=>activeDiscoveryChains.has(c))){
+    for(const chain of discoveryChains().filter(c=>activeDiscoveryChains.has(c) && CHAIN_CONFIG[c]?.evmChainId)){
       try{
         const hist=await historicalErc20Candidates(chain,w.evm,null);
         const unknown=hist.filter(a=>!isSafeTokenAddress(a,chain));
