@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 09.09.2026 12:49:29 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 10.09.2026 17:16:50 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -196,7 +196,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
   <div style="margin-top:8px">
     <button id="clearTeamColdRunCache" type="button" disabled>DEV: Team-Cache vollständig löschen</button>
     <span id="clearTeamColdRunCacheState" class="muted" style="margin-left:8px"></span>
-    <div class="muted" style="margin-top:5px">Cold-Run-Test für Step 7: löscht die Team-Lifecycle- und Team-Contract-History-Caches dieses Benutzers und erzwingt beim nächsten Team-Lauf einen vollständigen SmartNode-On-Chain-Rescan ab Block 0. Der globale Shared-Graph/Graph-State bleibt in Supabase erhalten. Steps 1–5, normale Wallet-Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und der TLN-ID-/Wallet-Identity-Cache bleiben erhalten.</div>
+    <div class="muted" style="margin-top:5px">Cold-Run-Test für Step 7: löscht die Team-Lifecycle- und Team-Contract-History-Caches dieses Benutzers und erzwingt beim nächsten Team-Lauf einen vollständigen SmartNode-On-Chain-Rescan ab Block 0. Der globale Shared-Graph/Graph-State bleibt in Supabase erhalten. Steps 1–5, normale Wallet-Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und der globalen TLN-ID-/Wallet-Identity-Cache bleiben erhalten.</div>
   </div>
   <div style="margin-top:8px">
     <button id="rebuildStep6Cache" type="button" disabled>DEV: Step 6 neu berechnen (Force)</button>
@@ -406,7 +406,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260909-124929';
+const BUILD_ID='20260910-171650';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -537,7 +537,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='09.09.2026 12:49:29 CEST';
+const APP_VERSION='10.09.2026 17:16:50 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -906,179 +906,120 @@ async function ensureCurrentUserId(){
   return currentUserId;
 }
 
+
+// Security Phase 4c: private owned-wallet relation is resolved only through the
+// authenticated wallet-private Edge Function. No plaintext wallet address needs
+// to be stored beside user_id in Supabase caches.
+const PRIVATE_WALLET_ID_BY_EVM=new Map();
+let PRIVATE_WALLET_MAP_LOADED=false,PRIVATE_WALLET_MAP_INFLIGHT=null;
+async function ensurePrivateWalletIdMap(){
+  if(PRIVATE_WALLET_MAP_LOADED)return PRIVATE_WALLET_ID_BY_EVM;
+  if(PRIVATE_WALLET_MAP_INFLIGHT)return PRIVATE_WALLET_MAP_INFLIGHT;
+  PRIVATE_WALLET_MAP_INFLIGHT=(async()=>{
+    try{
+      const {data,error}=await sb.functions.invoke('wallet-private',{body:{action:'wallet_list'}});
+      if(error)throw error;
+      if(!data?.ok)throw new Error(data?.error||'wallet_list fehlgeschlagen');
+      PRIVATE_WALLET_ID_BY_EVM.clear();
+      for(const row of (data.wallets||[])){
+        const a=norm(row?.evm_address||'');
+        if(/^0x[0-9a-f]{40}$/.test(a)&&row?.id)PRIVATE_WALLET_ID_BY_EVM.set(a,String(row.id));
+      }
+      PRIVATE_WALLET_MAP_LOADED=true;
+    }catch(e){
+      log(`Private Wallet-ID-Zuordnung konnte nicht geladen werden: ${e?.message||e}`,'warn');
+    }finally{PRIVATE_WALLET_MAP_INFLIGHT=null}
+    return PRIVATE_WALLET_ID_BY_EVM;
+  })();
+  return PRIVATE_WALLET_MAP_INFLIGHT;
+}
+async function privateWalletIdForAddress(wallet){
+  const w=norm(wallet||'');
+  if(!/^0x[0-9a-f]{40}$/.test(w))return null;
+  await ensurePrivateWalletIdMap();
+  return PRIVATE_WALLET_ID_BY_EVM.get(w)||null;
+}
+async function technicalCacheScope(wallet){
+  const w=norm(wallet||'');
+  if(w===norm(TECH_CACHE_GLOBAL_SCOPE))return {kind:'global',scopeAddress:w,walletId:null};
+  const walletId=await privateWalletIdForAddress(w);
+  return walletId?{kind:'private',scopeAddress:null,walletId}:{kind:'global',scopeAddress:w,walletId:null};
+}
+
 let tlnIdentityDbAvailable=true;
 let tlnReferralGraphDbAvailable=true;
 let referralGraphPersistedThisRun=0;
 
 async function loadTlnIdentitiesFromDb(wallets){
-  await ensureCurrentUserId();
   const unique=[...new Set((wallets||[]).map(norm).filter(a=>/^0x[0-9a-f]{40}$/.test(a)))];
-  if(!currentUserId||!unique.length||!tlnIdentityDbAvailable)return new Map();
-
-  const {data,error}=await sb
-    .from('tln_wallet_identity_cache')
-    .select('wallet_address,node_id,referred_by_id,source,source_contract,source_method,verified_at')
-    .eq('user_id',currentUserId)
-    .eq('project_key','tln_vow')
-    .eq('chain_key','bsc')
-    .in('wallet_address',unique);
-
+  if(!unique.length||!tlnIdentityDbAvailable)return new Map();
+  const {data,error}=await sb.from(TLN_GLOBAL_IDENTITY_TABLE)
+    .select('wallet_address,node_id,registry_contract,source_method,source_tx_hash,source_block,verified_at')
+    .eq('chain_key','bsc').in('wallet_address',unique);
   if(error){
-    // Graceful fallback so the test still works before migration 022 is installed.
-    if(/tln_wallet_identity_cache|relation .* does not exist|schema cache/i.test(String(error.message||''))){
-      tlnIdentityDbAvailable=false;
-      walletLog('TLN-ID Supabase-Cache noch nicht verfügbar (Migration 022 ausführen). On-chain-Fallback bleibt aktiv.');
-      return new Map();
+    if(/tln_vow_identity_global_cache|relation .* does not exist|schema cache/i.test(String(error.message||''))){
+      tlnIdentityDbAvailable=false;walletLog('Globaler TLN-ID-Cache noch nicht verfügbar (Migration 038/039 ausführen). On-chain-Fallback bleibt aktiv.');return new Map();
     }
-    walletLog(`TLN-ID Supabase-Lesen fehlgeschlagen: ${error.message}`);
-    return new Map();
+    walletLog(`Globaler TLN-ID-Cache konnte nicht gelesen werden: ${error.message}`);return new Map();
   }
-
   const found=new Map();
   for(const row of data||[]){
-    const w=norm(row.wallet_address);
-    if(!w)continue;
-    const ident={
-      wallet:w,
-      nodeId:row.node_id==null?null:String(row.node_id),
-      referredById:row.referred_by_id==null?null:String(row.referred_by_id),
-      source:'supabase',
-      cachedSource:row.source||null,
-      chain:'BSC',
-      contract:row.source_contract||null,
-      method:row.source_method||null,
-      verifiedAt:row.verified_at||null
-    };
-    found.set(w,ident);
-    tlnIdentityCache.set(w,ident);
+    const w=norm(row.wallet_address);if(!w)continue;
+    const ident={wallet:w,nodeId:row.node_id==null?null:String(row.node_id),referredById:null,source:'supabase-global',cachedSource:'global-onchain',chain:'BSC',contract:row.registry_contract||null,method:row.source_method||null,verifiedAt:row.verified_at||null,evidenceTx:row.source_tx_hash||null,evidenceBlock:row.source_block||null};
+    found.set(w,ident);tlnIdentityCache.set(w,ident);
   }
-
-  walletLog(`TLN-ID Supabase: ${found.size}/${unique.length} Wallet(s) aus persistentem Cache geladen.`);
+  walletLog(`TLN-ID Globalcache: ${found.size}/${unique.length} Wallet(s) geladen.`);
   return found;
 }
 
 async function saveTlnIdentityToDb(identity){
   await ensureCurrentUserId();
   if(!currentUserId||!tlnIdentityDbAvailable||!identity?.nodeId)return false;
-
-  const row={
-    user_id:currentUserId,
-    project_key:'tln_vow',
-    chain_key:'bsc',
-    wallet_address:norm(identity.wallet),
-    node_id:Number(identity.nodeId),
-    referred_by_id:identity.referredById?Number(identity.referredById):null,
-    source:identity.source==='supabase'?(identity.cachedSource||'on-chain'):(identity.source||'on-chain'),
-    source_contract:identity.contract||null,
-    source_method:identity.method||null,
-    verified_at:new Date().toISOString(),
-    updated_at:new Date().toISOString()
-  };
-
-  const {error}=await sb
-    .from('tln_wallet_identity_cache')
-    .upsert(row,{onConflict:'user_id,project_key,chain_key,wallet_address'});
-
+  const wallet=norm(identity.wallet),contract=norm(identity.contract||TLN_SMARTNODE_CONTRACT);
+  if(!/^0x[0-9a-f]{40}$/.test(wallet)||!/^0x[0-9a-f]{40}$/.test(contract))return false;
+  const now=new Date().toISOString();
+  const row={chain_key:'bsc',registry_contract:contract,wallet_address:wallet,node_id:String(identity.nodeId),source_method:identity.method||'nodeIdOf(address)',source_tx_hash:identity.evidenceTx||null,source_block:identity.evidenceBlock?Number(identity.evidenceBlock):null,verified_at:now,created_by:currentUserId,updated_by:currentUserId,updated_at:now};
+  const {error}=await sb.from(TLN_GLOBAL_IDENTITY_TABLE).upsert(row,{onConflict:'chain_key,registry_contract,wallet_address'});
   if(error){
-    if(/tln_wallet_identity_cache|relation .* does not exist|schema cache/i.test(String(error.message||''))){
-      tlnIdentityDbAvailable=false;
-      walletLog('TLN-ID Supabase-Schreiben nicht verfügbar (Migration 022 ausführen).');
-      return false;
-    }
-    walletLog(`TLN-ID Supabase-Speichern ${short(identity.wallet)} fehlgeschlagen: ${error.message}`);
-    return false;
+    if(/tln_vow_identity_global_cache|relation .* does not exist|schema cache/i.test(String(error.message||''))){tlnIdentityDbAvailable=false;walletLog('Globaler TLN-ID-Cache nicht verfügbar.');return false}
+    walletLog(`TLN-ID Globalcache Speichern ${short(wallet)} fehlgeschlagen: ${error.message}`);return false;
   }
-
-  walletLog(`TLN-ID ${short(identity.wallet)} → ${identity.nodeId} in Supabase gespeichert.`);
-  return true;
+  walletLog(`TLN-ID ${short(wallet)} → ${identity.nodeId} global gespeichert.`);return true;
 }
 
 async function loadTlnReferralGraphFromDb(){
-  await ensureCurrentUserId();
-  if(!currentUserId||!tlnReferralGraphDbAvailable)return 0;
-  const {data,error}=await sb
-    .from('tln_wallet_identity_cache')
-    .select('wallet_address,node_id,referred_by_id,parent_wallet,parent_source,parent_source_hash,parent_verified_at,source,source_contract,source_method,verified_at')
-    .eq('user_id',currentUserId)
-    .eq('project_key','tln_vow')
-    .eq('chain_key','bsc');
-  if(error){
-    const msg=String(error.message||'');
-    if(/parent_wallet|parent_source|parent_verified_at|schema cache|column .* does not exist/i.test(msg)){
-      tlnReferralGraphDbAvailable=false;
-      walletLog('Referral-Graph Supabase noch nicht verfügbar (Migration 023 ausführen). On-chain-Upline-Fallback bleibt aktiv.');
-      return 0;
-    }
-    walletLog(`Referral-Graph Supabase-Lesen fehlgeschlagen: ${error.message}`);
-    return 0;
-  }
+  const children=[...tlnIdentityCache.keys()].filter(w=>/^0x[0-9a-f]{40}$/.test(w));
+  if(!children.length||!tlnReferralGraphDbAvailable)return 0;
   let parents=0;
-  for(const row of data||[]){
-    const w=norm(row.wallet_address);
-    if(!/^0x[0-9a-f]{40}$/.test(w))continue;
-    const existing=tlnIdentityCache.get(w)||{};
-    const ident={
-      ...existing,wallet:w,
-      nodeId:row.node_id==null?(existing.nodeId||null):String(row.node_id),
-      referredById:row.referred_by_id==null?(existing.referredById||null):String(row.referred_by_id),
-      parentWallet:row.parent_wallet?norm(row.parent_wallet):null,
-      parentSource:row.parent_source||null,
-      parentSourceHash:row.parent_source_hash||null,
-      parentVerifiedAt:row.parent_verified_at||null,
-      source:existing.source||'supabase',cachedSource:existing.cachedSource||row.source||null,
-      chain:'BSC',contract:existing.contract||row.source_contract||null,method:existing.method||row.source_method||null,
-      verifiedAt:existing.verifiedAt||row.verified_at||null
-    };
-    tlnIdentityCache.set(w,ident);
-    if(ident.parentWallet&&/^0x[0-9a-f]{40}$/.test(ident.parentWallet)&&ident.parentWallet!==w){
-      referralParentCache.set(w,{parent:ident.parentWallet,source:ident.parentSource||'Supabase Referral-Graph',hash:ident.parentSourceHash||null,cached:true});
-      parents++;
+  for(let i=0;i<children.length;i+=100){
+    const chunk=children.slice(i,i+100);
+    const {data,error}=await sb.from('tln_vow_smartnode_graph_cache')
+      .select('child_wallet,parent_wallet,join_tx_hash,verified_at,contract_address')
+      .eq('chain_key','bsc').in('child_wallet',chunk);
+    if(error){tlnReferralGraphDbAvailable=false;walletLog(`SmartNode-Globalgraph konnte für Referral nicht gelesen werden: ${error.message}`);return parents}
+    for(const row of data||[]){
+      const child=norm(row.child_wallet),parent=norm(row.parent_wallet);
+      if(!/^0x[0-9a-f]{40}$/.test(child)||!/^0x[0-9a-f]{40}$/.test(parent)||child===parent)continue;
+      const ident=tlnIdentityCache.get(child)||{wallet:child};
+      tlnIdentityCache.set(child,{...ident,parentWallet:parent,parentSource:'SmartNode Globalgraph',parentSourceHash:row.join_tx_hash||null,parentVerifiedAt:row.verified_at||null});
+      referralParentCache.set(child,{parent,source:'SmartNode Globalgraph',hash:row.join_tx_hash||null,cached:true});parents++;
     }
   }
-  walletLog(`Referral-Graph Supabase: ${parents} verifizierte Wallet→Parent-Wallet-Beziehung(en) geladen.`);
-  return parents;
+  walletLog(`Referral-Graph: ${parents} Wallet→Parent-Beziehung(en) aus globalem SmartNode-Graph geladen.`);return parents;
 }
 
 async function saveReferralParentToDb(childWallet,parentWallet,relation,parentIdentity=null){
-  await ensureCurrentUserId();
-  if(!currentUserId||!tlnReferralGraphDbAvailable)return false;
   const child=norm(childWallet),parent=norm(parentWallet);
   if(!/^0x[0-9a-f]{40}$/.test(child)||!/^0x[0-9a-f]{40}$/.test(parent)||child===parent)return false;
-  const childIdentity=tlnIdentityCache.get(child);
-  if(!childIdentity?.nodeId)return false;
-  const now=new Date().toISOString();
+  const childIdentity=tlnIdentityCache.get(child)||null;
   const pIdent=parentIdentity||tlnIdentityCache.get(parent)||null;
-  const patch={
-    parent_wallet:parent,
-    referred_by_id:pIdent?.nodeId?Number(pIdent.nodeId):(childIdentity.referredById?Number(childIdentity.referredById):null),
-    parent_source:relation?.source||'SmartNode',
-    parent_source_hash:relation?.hash||null,
-    parent_verified_at:now,
-    updated_at:now
-  };
-  const {error}=await sb
-    .from('tln_wallet_identity_cache')
-    .update(patch)
-    .eq('user_id',currentUserId)
-    .eq('project_key','tln_vow')
-    .eq('chain_key','bsc')
-    .eq('wallet_address',child);
-  if(error){
-    const msg=String(error.message||'');
-    if(/parent_wallet|parent_source|parent_verified_at|schema cache|column .* does not exist/i.test(msg)){
-      tlnReferralGraphDbAvailable=false;
-      walletLog('Referral-Graph Supabase-Schreiben nicht verfügbar (Migration 023 ausführen).');
-      return false;
-    }
-    walletLog(`Referral-Parent Supabase-Speichern ${short(child)} fehlgeschlagen: ${error.message}`);
-    return false;
-  }
-  const updated={...childIdentity,parentWallet:parent,parentSource:patch.parent_source,parentSourceHash:patch.parent_source_hash,parentVerifiedAt:now,referredById:patch.referred_by_id==null?childIdentity.referredById:String(patch.referred_by_id)};
-  tlnIdentityCache.set(child,updated);
-  referralParentCache.set(child,{parent,source:patch.parent_source,hash:patch.parent_source_hash,cached:true});
-  referralGraphPersistedThisRun++;
+  const now=new Date().toISOString();
+  const updated={...(childIdentity||{wallet:child}),parentWallet:parent,parentSource:relation?.source||'SmartNode',parentSourceHash:relation?.hash||null,parentVerifiedAt:now,referredById:pIdent?.nodeId?String(pIdent.nodeId):(childIdentity?.referredById||null)};
+  tlnIdentityCache.set(child,updated);referralParentCache.set(child,{parent,source:updated.parentSource,hash:updated.parentSourceHash,cached:true});
+  // Persistenz der Parent-Beziehung erfolgt zentral im globalen SmartNode-Graph; keine user-spezifische Wallet↔Partner-Zeile mehr.
   return true;
 }
+
 const tlnIdentityCache=new Map();
 let tlnIdentityResolver={contract:TLN_SMARTNODE_CONTRACT,method:TLN_SMARTNODE_ID_METHOD,source:'verified-smartnode'};
 let tlnIdentityDiscoveryDone=false;
@@ -1162,7 +1103,7 @@ async function resolveReferralLevel(partnerWallet,targetWallet,maxDepth=TLN_TEAM
       const parent=norm(rel?.parent);
       if(!parent||seen.has(parent))return {level:null,path,source:rel?.source||'unresolved',reason:!parent?'parent_unresolved':'cycle'};
       path.push(parent);seen.add(parent);
-      // Gefundene Parent-ID zusätzlich im bestehenden persistenten Identity-Cache hinterlegen.
+      // Gefundene Parent-ID zusätzlich im bestehenden globalen Identity-Cache hinterlegen.
       try{
         let childIdentity=tlnIdentityCache.get(child);
         if(!childIdentity?.nodeId)childIdentity=await getTlnIdentity(child);
@@ -2222,7 +2163,7 @@ async function decodeAndVerifyTlnIdEvent(){
       if(await saveTlnIdentityToDb(ident))saved++;
     }
     $('tlnIdStatus').innerHTML='<span class="ok">TLN-ID-Ermittlung abgeschlossen – direkter SmartNode-Getter bestätigt.</span>';
-    $('tlnIdResult').innerHTML=`<p class="ok"><b>Wallet → TLN ID ist direkt on-chain auflösbar.</b></p><div class="grid"><div class="kv"><b>SmartNode Registry</b><span class="mono">${esc(TLN_SMARTNODE_CONTRACT)}</span></div><div class="kv"><b>Getter</b><span class="mono">${esc(TLN_SMARTNODE_ID_METHOD)}</span></div><div class="kv"><b>Requests</b>1 eth_call pro Cache-Miss</div><div class="kv"><b>Validierung</b>${multi.results.map(r=>`${esc(r.wallet.slice(0,8))}… → <b>${esc(r.got)}</b>`).join('<br>')}</div><div class="kv"><b>Supabase</b>${saved}/${multi.results.length} Testvektor(en) gespeichert</div></div><p class="muted">Referral Rewards verwendet denselben zentralen Registry-Resolver wie der Team-Baum: zuerst <span class="mono">tln_wallet_identity_cache</span>, danach verifizierte SmartNode-/Registry-Getter und nur bei Bedarf gezielter History-Fallback für neue Registry-Generationen.</p>`;
+    $('tlnIdResult').innerHTML=`<p class="ok"><b>Wallet → TLN ID ist direkt on-chain auflösbar.</b></p><div class="grid"><div class="kv"><b>SmartNode Registry</b><span class="mono">${esc(TLN_SMARTNODE_CONTRACT)}</span></div><div class="kv"><b>Getter</b><span class="mono">${esc(TLN_SMARTNODE_ID_METHOD)}</span></div><div class="kv"><b>Requests</b>1 eth_call pro Cache-Miss</div><div class="kv"><b>Validierung</b>${multi.results.map(r=>`${esc(r.wallet.slice(0,8))}… → <b>${esc(r.got)}</b>`).join('<br>')}</div><div class="kv"><b>Supabase</b>${saved}/${multi.results.length} Testvektor(en) gespeichert</div></div><p class="muted">Referral Rewards verwendet denselben zentralen Registry-Resolver wie der Team-Baum: zuerst <span class="mono">tln_vow_identity_global_cache</span>, danach verifizierte SmartNode-/Registry-Getter und nur bei Bedarf gezielter History-Fallback für neue Registry-Generationen.</p>`;
     tlnIdLog(`ERFOLG: SmartNode.nodeIdOf(address) gegen ${multi.results.length} Testvektoren bestätigt; ${saved}/${multi.results.length} in Supabase gespeichert.`);
   }catch(e){
     $('tlnIdStatus').innerHTML=`<span class="bad">Fehler: ${esc(e.message)}</span>`;
@@ -4510,6 +4451,8 @@ async function alchemyMany(calls){
 
 const ERC20_TRANSFER_SESSION_CACHE=new Map();
 const STAKING_SCAN_CACHE_TABLE='tln_vow_staking_scan_cache';
+const TLN_GLOBAL_TECH_CACHE_TABLE='tln_vow_technical_global_cache';
+const TLN_GLOBAL_IDENTITY_TABLE='tln_vow_identity_global_cache';
 const STAKING_SCAN_CACHE_KEY='erc20-history-v1';
 
 // Technische Cache-Versionen bewusst zentral:
@@ -4892,51 +4835,47 @@ function compactTransferForCache(t){
  };
 }
 async function loadPersistentErc20Cache(wallet){
- if(!currentUserId||!stakingScanDbCacheAvailable)return null;
- const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE)
-   .select('last_scanned_block,complete_from_block,scanner_version,payload,updated_at')
-   .eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_address',norm(wallet)).eq('cache_key',STAKING_SCAN_CACHE_KEY).maybeSingle();
- if(error){
-  const m=String(error.message||'');
-  if(/tln_vow_staking_scan_cache|relation .* does not exist|schema cache/i.test(m)){
-   stakingScanDbCacheAvailable=false;log('Supabase Staking-Chain-Cache noch nicht verfügbar; normaler Chain-Scan bleibt aktiv. Migration tln_vow_staking_scan_cache ausführen.','warn');return null;
-  }
-  log(`Supabase Staking-Chain-Cache konnte nicht gelesen werden: ${m}`,'warn');return null;
- }
- if(!data||data.scanner_version!=='erc20-raw-v1'||!Array.isArray(data.payload))return null;
- const cached={rows:data.payload,latestBlock:Number(data.last_scanned_block||0),completeFromBlock:Number(data.complete_from_block||0),completeToBlock:Number(data.last_scanned_block||0),scannerVersion:data.scanner_version};
- log(`Supabase Staking-Chain-Cache: ${cached.rows.length} Transfers bis Block ${cached.latestBlock.toLocaleString('de-CH')} geladen.`,'ok');
- return cached;
+  if(!currentUserId||!stakingScanDbCacheAvailable)return null;
+  const walletId=await privateWalletIdForAddress(wallet);if(!walletId)return null;
+  const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE)
+    .select('last_scanned_block,complete_from_block,scanner_version,payload,updated_at')
+    .eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_id',walletId).eq('cache_key',STAKING_SCAN_CACHE_KEY).maybeSingle();
+  if(error){const m=String(error.message||'');if(/tln_vow_staking_scan_cache|relation .* does not exist|schema cache/i.test(m)){stakingScanDbCacheAvailable=false;log('Supabase Staking-Chain-Cache nicht verfügbar; Chain-Scan bleibt aktiv.','warn');return null}log(`Supabase Staking-Chain-Cache konnte nicht gelesen werden: ${m}`,'warn');return null}
+  if(!data||data.scanner_version!=='erc20-raw-v1'||!Array.isArray(data.payload))return null;
+  const cached={rows:data.payload,latestBlock:Number(data.last_scanned_block||0),completeFromBlock:Number(data.complete_from_block||0),completeToBlock:Number(data.last_scanned_block||0),scannerVersion:data.scanner_version};
+  log(`Supabase Staking-Chain-Cache: ${cached.rows.length} Transfers bis Block ${cached.latestBlock.toLocaleString('de-CH')} geladen.`,'ok');return cached;
 }
 async function savePersistentErc20Cache(wallet,cache){
- if(!currentUserId||!stakingScanDbCacheAvailable||!cache?.rows)return false;
- const row={user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',wallet_address:norm(wallet),cache_key:STAKING_SCAN_CACHE_KEY,
-   scanner_version:'erc20-raw-v1',complete_from_block:Number(cache.completeFromBlock||0),last_scanned_block:Number(cache.latestBlock||0),
-   payload:cache.rows.map(compactTransferForCache),updated_at:new Date().toISOString()};
- const {error}=await sb.from(STAKING_SCAN_CACHE_TABLE).upsert(row,{onConflict:'user_id,chain_key,wallet_address,cache_key'});
- if(error){
-  const m=String(error.message||'');
-  if(/tln_vow_staking_scan_cache|relation .* does not exist|schema cache/i.test(m)){stakingScanDbCacheAvailable=false;log('Supabase Staking-Chain-Cache noch nicht verfügbar; Speichern übersprungen.','warn');return false}
-  log(`Supabase Staking-Chain-Cache Speichern fehlgeschlagen: ${m}`,'warn');return false;
- }
- log(`Supabase Staking-Chain-Cache aktualisiert: ${cache.rows.length} Transfers · bis Block ${Number(cache.latestBlock||0).toLocaleString('de-CH')}.`,'ok');return true;
+  if(!currentUserId||!stakingScanDbCacheAvailable||!cache?.rows)return false;
+  const walletId=await privateWalletIdForAddress(wallet);if(!walletId){log(`Staking-Cache ${short(wallet)} nicht gespeichert: keine private wallet_id gefunden.`,'warn');return false}
+  const row={user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',wallet_id:walletId,wallet_address:null,cache_key:STAKING_SCAN_CACHE_KEY,scanner_version:'erc20-raw-v1',complete_from_block:Number(cache.completeFromBlock||0),last_scanned_block:Number(cache.latestBlock||0),payload:cache.rows.map(compactTransferForCache),updated_at:new Date().toISOString()};
+  const {error}=await sb.from(STAKING_SCAN_CACHE_TABLE).upsert(row,{onConflict:'user_id,chain_key,wallet_id,cache_key'});
+  if(error){log(`Supabase Staking-Chain-Cache Speichern fehlgeschlagen: ${error.message||error}`,'warn');return false}
+  log(`Supabase Staking-Chain-Cache aktualisiert: ${cache.rows.length} Transfers · wallet_id-basiert.`,'ok');return true;
 }
 
 async function loadTechnicalProcessCache(wallet,cacheKey,scannerVersion){
- if(!currentUserId||!stakingScanDbCacheAvailable)return null;
- const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE).select('scanner_version,payload,updated_at,last_scanned_block').eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_address',norm(wallet)).eq('cache_key',cacheKey).maybeSingle();
- if(error){log(`Technischer Cache ${cacheKey} konnte nicht gelesen werden: ${error.message||error}`,'warn');return null}
- if(!data||data.scanner_version!==scannerVersion||!data.payload)return null;
- return data.payload;
+  if(!currentUserId||!stakingScanDbCacheAvailable)return null;
+  const scope=await technicalCacheScope(wallet);
+  let q;
+  if(scope.kind==='private')q=sb.from(STAKING_SCAN_CACHE_TABLE).select('scanner_version,payload,updated_at,last_scanned_block').eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_id',scope.walletId).eq('cache_key',cacheKey);
+  else q=sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).select('scanner_version,payload,updated_at,last_scanned_block').eq('chain_key','bsc').eq('scope_address',scope.scopeAddress).eq('cache_key',cacheKey);
+  const {data,error}=await q.maybeSingle();
+  if(error){log(`Technischer Cache ${cacheKey} konnte nicht gelesen werden: ${error.message||error}`,'warn');return null}
+  if(!data||data.scanner_version!==scannerVersion||!data.payload)return null;return data.payload;
 }
 async function saveTechnicalProcessCache(wallet,cacheKey,scannerVersion,payload,lastBlock=0){
- if(!currentUserId||!stakingScanDbCacheAvailable||!payload)return false;
- const row={user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',wallet_address:norm(wallet),cache_key:cacheKey,scanner_version:scannerVersion,complete_from_block:0,last_scanned_block:Number(lastBlock||0),payload,updated_at:new Date().toISOString()};
- const {error}=await sb.from(STAKING_SCAN_CACHE_TABLE).upsert(row,{onConflict:'user_id,chain_key,wallet_address,cache_key'});
- if(error){log(`Technischer Cache ${cacheKey} konnte nicht gespeichert werden: ${error.message||error}`,'warn');return false}
- return true;
+  if(!currentUserId||!stakingScanDbCacheAvailable||!payload)return false;
+  const scope=await technicalCacheScope(wallet),now=new Date().toISOString();let error=null;
+  if(scope.kind==='private'){
+    const row={user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',wallet_id:scope.walletId,wallet_address:null,cache_key:cacheKey,scanner_version:scannerVersion,complete_from_block:0,last_scanned_block:Number(lastBlock||0),payload,updated_at:now};
+    ({error}=await sb.from(STAKING_SCAN_CACHE_TABLE).upsert(row,{onConflict:'user_id,chain_key,wallet_id,cache_key'}));
+  }else{
+    const row={chain_key:'bsc',scope_address:scope.scopeAddress,cache_key:cacheKey,scanner_version:scannerVersion,complete_from_block:0,last_scanned_block:Number(lastBlock||0),payload,created_by:currentUserId,updated_by:currentUserId,updated_at:now};
+    ({error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).upsert(row,{onConflict:'chain_key,scope_address,cache_key'}));
+  }
+  if(error){log(`Technischer Cache ${cacheKey} konnte nicht gespeichert werden: ${error.message||error}`,'warn');return false}return true;
 }
-
 
 // Zentraler persistenter Cache fuer historische LP-Preispunkte.
 // Skalierungsregel: KEINE Zeile pro Preis/Block. Der gesamte Benutzer-Cache liegt als
@@ -4998,7 +4937,7 @@ function compactHistoricalPriceCache(){
 }
 async function loadHistoricalPriceCacheRawRow(){
   if(!currentUserId||!stakingScanDbCacheAvailable)return null;
-  const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE).select('scanner_version,payload,updated_at').eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_address',norm(TECH_CACHE_GLOBAL_SCOPE)).eq('cache_key',TECH_CACHE_KEYS.historicalLpPrices).maybeSingle();
+  const {data,error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).select('scanner_version,payload,updated_at').eq('chain_key','bsc').eq('scope_address',norm(TECH_CACHE_GLOBAL_SCOPE)).eq('cache_key',TECH_CACHE_KEYS.historicalLpPrices).maybeSingle();
   if(error)return null;
   return data||null;
 }
@@ -5450,7 +5389,7 @@ async function clearSelectedWalletSupabaseCache(){
      .delete()
      .eq('user_id',currentUserId)
      .eq('chain_key','bsc')
-     .eq('wallet_address',wallet)
+     .eq('wallet_id',await privateWalletIdForAddress(wallet))
      .select('cache_key');
    if(error)throw error;
    const deleted=Array.isArray(data)?data.length:0;
@@ -5495,7 +5434,7 @@ async function clearDiscoveryResultCache(){
  btn.disabled=true;state.textContent='lösche …';
  try{
    const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE).delete()
-     .eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_address',wallet).eq('cache_key',TECH_CACHE_KEYS.discoveryResults)
+     .eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_id',await privateWalletIdForAddress(wallet)).eq('cache_key',TECH_CACHE_KEYS.discoveryResults)
      .select('cache_key');
    if(error)throw error;
    const deleted=Array.isArray(data)?data.length:0;
@@ -5518,7 +5457,7 @@ async function clearStep6SnapshotCache(){
  try{
    const key=snapshotValuationCacheKey(year);
    const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE).delete()
-     .eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_address',wallet).eq('cache_key',key)
+     .eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_id',await privateWalletIdForAddress(wallet)).eq('cache_key',key)
      .select('cache_key');
    if(error)throw error;
    const deleted=Array.isArray(data)?data.length:0;
@@ -5546,7 +5485,7 @@ async function clearSingleTeamLifecycleCache(){
      nodeId=raw.replace(/^0+(?=\d)/,'');
      for(const [w,ident] of TEAM_IDENTITY_CACHE.entries()){if(String(ident?.nodeId||'')===nodeId){wallet=norm(w);break}}
      if(!wallet){
-       const {data,error}=await sb.from('tln_wallet_identity_cache').select('wallet_address,node_id').eq('chain_key','bsc').eq('node_id',Number(nodeId)).limit(1);
+       const {data,error}=await sb.from(TLN_GLOBAL_IDENTITY_TABLE).select('wallet_address,node_id').eq('chain_key','bsc').eq('node_id',String(nodeId)).limit(1);
        if(error)throw new Error(`TLN-ID-Auflösung: ${error.message||error}`);
        const row=(data||[])[0];if(row&&ethers.isAddress(norm(row.wallet_address)))wallet=norm(row.wallet_address);
      }
@@ -5555,9 +5494,9 @@ async function clearSingleTeamLifecycleCache(){
    if(!nodeId)nodeId=String(TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'');
    if(!confirm(`Nur den persistenten Team-Lifecycle für ${nodeId?`TLN-ID ${nodeId} · `:''}${wallet} löschen?\n\nContract-Historie, SmartNode-Globalgraph, andere Partner-Lifecycles sowie Steps 1–5 bleiben erhalten.\n\nDer nächste Step-7-Lauf berechnet nur dieses Wallet neu.`)){return}
    state.textContent='lösche …';
-   const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE)
-     .delete().eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_address',wallet).eq('cache_key',TECH_CACHE_KEYS.teamLifecycle)
-     .select('wallet_address,cache_key');
+   const {data,error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE)
+     .delete().eq('chain_key','bsc').eq('scope_address',wallet).eq('cache_key',TECH_CACHE_KEYS.teamLifecycle)
+     .select('scope_address,cache_key');
    if(error)throw new Error(`Team-Lifecycle: ${error.message||error}`);
    const deleted=Array.isArray(data)?data.length:0;
    TEAM_STAKING_LIFECYCLE.delete(wallet);
@@ -5612,7 +5551,7 @@ async function rebuildStep6Cache(){
 async function clearTeamColdRunCache(){
  const btn=$('clearTeamColdRunCache'),state=$('clearTeamColdRunCacheState');
  if(!currentUserId){state.textContent='Nicht eingeloggt.';return}
- const ok=confirm(`Echten Step-7-Cold-Run vorbereiten?\n\nDer globale SmartNode-Cache bleibt als Shared Cache sicher in Supabase erhalten, wird beim nächsten Step-7-Lauf aber vollständig ignoriert. Der Team-Graph wird dann on-chain ab Block 0 neu aufgebaut.\n\nGelöscht werden:\n• Team-Lifecycle-Caches dieses Benutzers\n• Team-Contract-History-Caches dieses Benutzers\n\nSteps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und TLN-ID-/Wallet-Identity-Cache bleiben erhalten.`);
+ const ok=confirm(`Echten Step-7-Cold-Run vorbereiten?\n\nDer globale SmartNode-Cache bleibt als Shared Cache sicher in Supabase erhalten, wird beim nächsten Step-7-Lauf aber vollständig ignoriert. Der Team-Graph wird dann on-chain ab Block 0 neu aufgebaut.\n\nGelöscht werden:\n• Team-Lifecycle-Caches dieses Benutzers\n• Team-Contract-History-Caches dieses Benutzers\n\nSteps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und globalen TLN-ID-/Wallet-Identity-Cache bleiben erhalten.`);
  if(!ok)return;
  btn.disabled=true;state.textContent='lösche …';
  try{
@@ -5622,23 +5561,22 @@ async function clearTeamColdRunCache(){
    // nächste Step-7-Lauf den persistenten Graph vollständig und baut ihn on-chain
    // von Block 0 neu auf. So testen wir den Cold-Pfad ohne Shared Cache zu zerstören.
    TEAM_FORCE_FULL_GRAPH_RESCAN_ONCE=true;
-   const {data:cacheRows,error:cacheError}=await sb.from(STAKING_SCAN_CACHE_TABLE)
-     .delete().eq('user_id',currentUserId).eq('chain_key','bsc')
-     .in('cache_key',[TECH_CACHE_KEYS.teamLifecycle,TECH_CACHE_KEYS.teamContractHistory])
-     .select('wallet_address,cache_key');
-   if(cacheError)throw new Error(`Team-Lifecycle/History: ${cacheError.message||cacheError}`);
-   teamRows=Array.isArray(cacheRows)?cacheRows.length:0;
+   // Team-Lifecycle/Contract-History sind ab Phase 4c globale On-Chain-Caches.
+    // Für einen Cold-Run werden Shared-Daten nicht physisch gelöscht; der Lauf ignoriert
+    // sie in-memory und überschreibt/verifiziert anschließend nur die neu ermittelten Fakten.
+    TEAM_FORCE_IGNORE_GLOBAL_TEAM_CACHE_ONCE=true;
+    teamRows=0;
 
    TEAM_STAKING_LIFECYCLE.clear();
    CURRENT_TEAM_PROJECT_FOREST=null;
-   TEAM_IDENTITY_CACHE.clear(); // nur Session-Memoization; persistenter Identity-Cache bleibt bestehen
+   TEAM_IDENTITY_CACHE.clear(); // nur Session-Memoization; globaler Identity-Cache bleibt bestehen
    TEAM_GRAPH_DB_AVAILABLE=true;
    if($('teamTree'))$('teamTree').innerHTML='<span class="muted">Team-Cache gelöscht. Step 7 für Cold Run starten.</span>';
    if($('teamHighlightControls'))$('teamHighlightControls').style.display='none';
    if($('teamExpirySection'))$('teamExpirySection').style.display='none';
    setStepState(7,'Cold Run bereit');updateProcessButtons();
    state.textContent=`Full-Graph-Rescan vorgemerkt · ${teamRows} Team-Cache-Einträge gelöscht.`;
-   log(`DEV Team-Cold-Run vorbereitet: nächster Step-7-Lauf ignoriert den persistenten SmartNode-Globalgraph vollständig und baut ihn on-chain ab Block 0 neu auf · globaler Shared-Graph/Graph-State bleiben in Supabase erhalten · ${teamRows} Team-Lifecycle/Contract-History-Eintrag(e) dieses Benutzers gelöscht. Steps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und persistenter Identity-Cache blieben erhalten.`,'ok');
+   log(`DEV Team-Cold-Run vorbereitet: nächster Step-7-Lauf ignoriert den persistenten SmartNode-Globalgraph vollständig und baut ihn on-chain ab Block 0 neu auf · globaler Shared-Graph/Graph-State bleiben in Supabase erhalten · ${teamRows} Team-Lifecycle/Contract-History-Eintrag(e) dieses Benutzers gelöscht. Steps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und globaler Identity-Cache blieben erhalten.`,'ok');
  }catch(e){
    state.textContent='Fehler beim Löschen.';
    log(`DEV Team-Cold-Run Cache-Löschung fehlgeschlagen: ${e?.message||e}`,'warn');
@@ -13288,86 +13226,37 @@ async function lookupWalletByAddress(){
 }
 
 async function lookupDbWalletsByNodeId(nodeId){
-  if(!currentUserId){
-    try{currentUserId=(await sb.auth.getUser())?.data?.user?.id||null}catch{}
-  }
-  if(!currentUserId)return [];
   try{
-    const {data,error}=await sb.from('tln_wallet_identity_cache')
-      .select('wallet_address,node_id,source,source_contract,source_method,verified_at')
-      .eq('user_id',currentUserId).eq('project_key','tln_vow').eq('chain_key','bsc')
-      .eq('node_id',Number(nodeId)).order('updated_at',{ascending:false}).limit(50);
-    if(error){
-      const msg=String(error.message||'');
-      if(/tln_wallet_identity_cache|relation .* does not exist|schema cache/i.test(msg)){
-        log('TLN-ID / Wallet-Suche: persistenter Identitätscache nicht verfügbar; Globalgraph-Fallback bleibt aktiv.','warn');
-        return [];
-      }
-      throw error;
-    }
-    return (data||[]).filter(r=>ethers.isAddress(norm(r.wallet_address))).map(r=>({wallet:norm(r.wallet_address),nodeId:String(r.node_id),source:'persistenter TLN-ID-Cache',contract:r.source_contract?norm(r.source_contract):null,method:r.source_method||null}));
-  }catch(e){
-    log(`TLN-ID / Wallet-Suche: Supabase-Lesen fehlgeschlagen (${e.message||e}); Globalgraph-Fallback bleibt aktiv.`,'warn');
-    return [];
-  }
+    const {data,error}=await sb.from(TLN_GLOBAL_IDENTITY_TABLE)
+      .select('wallet_address,node_id,registry_contract,source_method,verified_at')
+      .eq('chain_key','bsc').eq('node_id',String(nodeId)).order('updated_at',{ascending:false}).limit(50);
+    if(error)throw error;
+    return (data||[]).filter(r=>ethers.isAddress(norm(r.wallet_address))).map(r=>({wallet:norm(r.wallet_address),nodeId:String(r.node_id),source:'globaler TLN-ID-Cache',contract:r.registry_contract?norm(r.registry_contract):null,method:r.source_method||null}));
+  }catch(e){log(`TLN-ID / Wallet-Suche: Globalcache-Lesen fehlgeschlagen (${e.message||e}); Globalgraph-Fallback bleibt aktiv.`,'warn');return []}
 }
 async function lookupPersistIdentity(wallet,nodeId,source='SmartNode.nodeUserOf(uint256)'){
-  if(!currentUserId){
-    try{currentUserId=(await sb.auth.getUser())?.data?.user?.id||null}catch{}
-  }
+  if(!currentUserId){try{currentUserId=(await sb.auth.getUser())?.data?.user?.id||null}catch{}}
   if(!currentUserId||!ethers.isAddress(norm(wallet))||!nodeId)return false;
-  const nowIso=new Date().toISOString();
-  const ident=TEAM_IDENTITY_CACHE.get(norm(wallet))||null;
-  const row={
-    user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',
-    wallet_address:norm(wallet),node_id:Number(nodeId),referred_by_id:ident?.referredById?Number(ident.referredById):null,
-    source,source_contract:ident?.contract||TEAM_SMARTNODE_CONTRACT,
-    source_method:ident?.method||(source.includes('nodeUserOf')?'nodeUserOf(uint256)':'nodeIdOf(address)'),
-    verified_at:nowIso,updated_at:nowIso
-  };
-  if(ident?.parentWallet&&ethers.isAddress(norm(ident.parentWallet))&&norm(ident.parentWallet)!==norm(wallet)){
-    row.parent_wallet=norm(ident.parentWallet);
-    row.parent_source=ident.source||'SmartNodeActivated(address,address,uint256)';
-    row.parent_source_hash=ident.evidenceTx||null;
-    row.parent_verified_at=nowIso;
-  }
-  try{
-    const {error}=await sb.from('tln_wallet_identity_cache')
-      .upsert(row,{onConflict:'user_id,project_key,chain_key,wallet_address'});
-    if(error)throw error;
-    return true;
-  }catch(e){
-    log(`TLN-ID / Wallet-Suche: Identitätszuordnung konnte nicht persistiert werden (${e.message||e}).`,'warn');
-    return false;
-  }
+  const nowIso=new Date().toISOString(),ident=TEAM_IDENTITY_CACHE.get(norm(wallet))||null;
+  const contract=norm(ident?.contract||TEAM_SMARTNODE_CONTRACT);
+  const row={chain_key:'bsc',registry_contract:contract,wallet_address:norm(wallet),node_id:String(nodeId),source_method:ident?.method||(source.includes('nodeUserOf')?'nodeUserOf(uint256)':'nodeIdOf(address)'),source_tx_hash:ident?.evidenceTx||null,source_block:ident?.evidenceBlock?Number(ident.evidenceBlock):null,verified_at:nowIso,created_by:currentUserId,updated_by:currentUserId,updated_at:nowIso};
+  try{const {error}=await sb.from(TLN_GLOBAL_IDENTITY_TABLE).upsert(row,{onConflict:'chain_key,registry_contract,wallet_address'});if(error)throw error;return true}
+  catch(e){log(`TLN-ID / Wallet-Suche: globale Identität konnte nicht persistiert werden (${e.message||e}).`,'warn');return false}
 }
 
 let LOOKUP_IDENTITY_INDEX_BUILD_PROMISE=null;
 
 async function lookupPersistIdentityIndexRows(edges){
-  if(!currentUserId){
-    try{currentUserId=(await sb.auth.getUser())?.data?.user?.id||null}catch{}
-  }
+  if(!currentUserId){try{currentUserId=(await sb.auth.getUser())?.data?.user?.id||null}catch{}}
   if(!currentUserId)return 0;
   const nowIso=new Date().toISOString(),byWallet=new Map();
   for(const e of (edges||[])){
     const wallet=norm(e?.child||e?.wallet||''),nodeId=String(e?.nodeId||'');
     if(!ethers.isAddress(wallet)||!nodeId||nodeId==='0')continue;
-    if(!byWallet.has(wallet))byWallet.set(wallet,{
-      user_id:currentUserId,project_key:'tln_vow',chain_key:'bsc',
-      wallet_address:wallet,node_id:Number(nodeId),referred_by_id:null,
-      source:'SmartNodeActivated(address,address,uint256)',
-      source_contract:TEAM_SMARTNODE_CONTRACT,
-      source_method:'event:SmartNodeActivated(address,address,uint256)',
-      verified_at:nowIso,updated_at:nowIso
-    });
+    if(!byWallet.has(wallet))byWallet.set(wallet,{chain_key:'bsc',registry_contract:TEAM_SMARTNODE_CONTRACT,wallet_address:wallet,node_id:nodeId,source_method:'event:SmartNodeActivated(address,address,uint256)',source_tx_hash:e?.hash||null,source_block:e?.block?Number(e.block):null,verified_at:nowIso,created_by:currentUserId,updated_by:currentUserId,updated_at:nowIso});
   }
   const rows=[...byWallet.values()];
-  for(let i=0;i<rows.length;i+=500){
-    const {error}=await sb.from('tln_wallet_identity_cache')
-      .upsert(rows.slice(i,i+500),{onConflict:'user_id,project_key,chain_key,wallet_address'});
-    if(error)throw new Error(`Reverse-Index Supabase-Speichern fehlgeschlagen: ${error.message||error}`);
-  }
+  for(let i=0;i<rows.length;i+=500){const {error}=await sb.from(TLN_GLOBAL_IDENTITY_TABLE).upsert(rows.slice(i,i+500),{onConflict:'chain_key,registry_contract,wallet_address'});if(error)throw new Error(`Globaler Reverse-Index Supabase-Speichern fehlgeschlagen: ${error.message||error}`)}
   return rows.length;
 }
 
@@ -13485,14 +13374,13 @@ async function lookupWalletByTlnId(){
         }
         if(currentUserId){
           for(const row of stale){
-            const {error}=await sb.from('tln_wallet_identity_cache')
-              .delete()
-              .eq('user_id',currentUserId)
-              .eq('project_key','tln_vow')
+            const nowIso=new Date().toISOString();
+            const {error}=await sb.from(TLN_GLOBAL_IDENTITY_TABLE)
+              .update({wallet_address:currentWallet,updated_by:currentUserId,updated_at:nowIso,verified_at:nowIso})
               .eq('chain_key','bsc')
               .eq('wallet_address',norm(row.wallet))
-              .eq('node_id',Number(nodeId));
-            if(error)log(`Veraltete TLN-ID-Zuordnung ${nodeId} → ${short(row.wallet)} konnte nicht automatisch gelöscht werden: ${error.message||error}`,'warn');
+              .eq('node_id',String(nodeId));
+            if(error)log(`Veraltete globale TLN-ID-Zuordnung ${nodeId} → ${short(row.wallet)} konnte nicht automatisch korrigiert werden: ${error.message||error}`,'warn');
           }
         }
         for(const row of stale)TEAM_IDENTITY_CACHE.delete(norm(row.wallet));
@@ -13530,16 +13418,12 @@ async function clearCurrentLookupIdentityCache(){
   if(!currentUserId){state.textContent='Nicht eingeloggt.';return}
 
   const desc=hasId?`TLN-ID ${BigInt(idRaw).toString()}`:`Wallet ${walletRaw}`;
-  if(!confirm(`Persistenten TLN-ID-/Wallet-Identity-Cache für ${desc} löschen?\n\nNur tln_wallet_identity_cache wird betroffen; Staking-/Discovery-Caches bleiben erhalten.`))return;
+  if(!confirm(`Globalen globalen TLN-ID-/Wallet-Identity-Cache für ${desc} löschen?\n\nDieser DEV-Vorgang betrifft den globalen On-Chain-Identity-Cache; Staking-/Discovery-Caches bleiben erhalten.`))return;
 
   btn.disabled=true;state.textContent='lösche …';
   try{
-    let q=sb.from('tln_wallet_identity_cache')
-      .delete()
-      .eq('user_id',currentUserId)
-      .eq('project_key','tln_vow')
-      .eq('chain_key','bsc');
-    if(hasId)q=q.eq('node_id',Number(BigInt(idRaw)));
+    let q=sb.from(TLN_GLOBAL_IDENTITY_TABLE).delete().eq('chain_key','bsc');
+    if(hasId)q=q.eq('node_id',String(BigInt(idRaw)));
     else q=q.eq('wallet_address',walletRaw);
     const {data,error}=await q.select('wallet_address,node_id');
     if(error)throw error;
@@ -13548,10 +13432,10 @@ async function clearCurrentLookupIdentityCache(){
     state.textContent=`${rows.length} Eintrag${rows.length===1?'':'e'} gelöscht.`;
     $('lookupResult').innerHTML='';
     LOOKUP_STATE.wallets=[];
-    log(`TLN-ID-/Wallet-Identity-Cache: ${rows.length} persistente Zuordnung(en) für ${desc} gelöscht. Staking-/Discovery-Caches unverändert.`,'ok');
+    log(`globalen TLN-ID-/Wallet-Identity-Cache: ${rows.length} persistente Zuordnung(en) für ${desc} gelöscht. Staking-/Discovery-Caches unverändert.`,'ok');
   }catch(e){
     state.textContent='Fehler beim Löschen.';
-    log(`TLN-ID-/Wallet-Identity-Cache Löschung fehlgeschlagen: ${e.message||e}`,'warn');
+    log(`globalen TLN-ID-/Wallet-Identity-Cache Löschung fehlgeschlagen: ${e.message||e}`,'warn');
   }finally{btn.disabled=false}
 }
 
@@ -13685,7 +13569,7 @@ const TEAM_GRAPH_CACHE_PAGE_SIZE=1000;
 const TEAM_GRAPH_OVERLAP_BLOCKS=64;
 const TEAM_GRAPH_CONFIRMATIONS=12;
 let TEAM_GRAPH_DB_AVAILABLE=true;
-let TEAM_FORCE_FULL_GRAPH_RESCAN_ONCE=false;
+let TEAM_FORCE_FULL_GRAPH_RESCAN_ONCE=false,TEAM_FORCE_IGNORE_GLOBAL_TEAM_CACHE_ONCE=false;
 const TEAM_IDENTITY_CACHE=new Map();
 // Wallets mit verifizierter Team-Relation, fuer die der konkrete join(address)-Registry-Contract
 // nodeIdOf(address)=0 liefert. Das ist kein erfundener TLN-ID-Wert, sondern ein expliziter
@@ -13790,32 +13674,15 @@ function teamDecodeSingleAddress(raw){
   return ethers.isAddress(wallet)&&wallet!==ZERO?wallet:null;
 }
 async function teamLoadIdentityCacheFromDb(){
-  let userId=currentUserId||null;
-  if(!userId){
-    try{userId=(await sb.auth.getUser())?.data?.user?.id||null}catch{}
-  }
-  if(!userId)return 0;
-  const {data,error}=await sb.from('tln_wallet_identity_cache')
-    .select('wallet_address,node_id,parent_wallet,parent_source,parent_source_hash,source_contract,source_method,source')
-    .eq('user_id',userId)
-    .eq('project_key','tln_vow')
-    .eq('chain_key','bsc');
-  if(error){
-    log(`Team-IDs: Supabase-Cache nicht lesbar: ${error.message}; nodeIdOf-Fallback bleibt aktiv.`,'warn');
-    return 0;
-  }
-  let n=0;
-  for(const row of data||[]){
-    const w=norm(row.wallet_address);
-    if(!/^0x[0-9a-f]{40}$/.test(w)||row.node_id==null)continue;
-    TEAM_IDENTITY_CACHE.set(w,{wallet:w,nodeId:String(row.node_id),source:'supabase',cachedSource:row.source||null,
-      contract:row.source_contract||null,method:row.source_method||null,
-      parentWallet:row.parent_wallet&&ethers.isAddress(norm(row.parent_wallet))?norm(row.parent_wallet):null,
-      parentSource:row.parent_source||null,parentSourceHash:row.parent_source_hash||null});
-    n++;
-  }
-  log(`Team-IDs: ${n} Wallet→TLN-ID Zuordnung(en) aus Supabase vorgeladen.`,'muted');
-  return n;
+  try{
+    const {data,error}=await sb.from(TLN_GLOBAL_IDENTITY_TABLE)
+      .select('wallet_address,node_id,registry_contract,source_method,source_tx_hash,verified_at')
+      .eq('chain_key','bsc');
+    if(error)throw error;
+    let n=0;
+    for(const row of data||[]){const w=norm(row.wallet_address);if(!/^0x[0-9a-f]{40}$/.test(w)||row.node_id==null)continue;TEAM_IDENTITY_CACHE.set(w,{wallet:w,nodeId:String(row.node_id),source:'supabase-global',cachedSource:'global-onchain',contract:row.registry_contract||null,method:row.source_method||null,evidenceTx:row.source_tx_hash||null,verifiedAt:row.verified_at||null});n++}
+    log(`Team-IDs: ${n} Wallet→TLN-ID Zuordnung(en) aus globalem Supabase-Cache vorgeladen.`,'muted');return n;
+  }catch(e){log(`Team-IDs: globaler Supabase-Cache nicht lesbar: ${e.message||e}; nodeIdOf-Fallback bleibt aktiv.`,'warn');return 0}
 }
 function teamMergeSupplementalIdentityEdges(edges){
   let added=0,conflicts=0;
@@ -13953,25 +13820,14 @@ async function teamHistoricalTransactionBatch(hashes){
 
 async function teamIdentityFromExactDb(wallet){
   const w=norm(wallet||'');if(!ethers.isAddress(w))return null;
-  let uid=currentUserId||null;
-  if(!uid){try{uid=(await sb.auth.getUser())?.data?.user?.id||null}catch{}}
-  if(!uid)return null;
   try{
-    const {data,error}=await sb.from('tln_wallet_identity_cache')
-      .select('wallet_address,node_id,parent_wallet,parent_source,parent_source_hash,source_contract,source_method,source,verified_at')
-      .eq('user_id',uid).eq('project_key','tln_vow').eq('chain_key','bsc').eq('wallet_address',w).limit(1);
-    if(error)throw error;
-    const row=data?.[0];if(!row||row.node_id==null)return null;
-    const ident={wallet:w,nodeId:String(row.node_id),source:'supabase-exact',cachedSource:row.source||null,
-      contract:row.source_contract||null,method:row.source_method||null,verifiedAt:row.verified_at||null,
-      parentWallet:row.parent_wallet&&ethers.isAddress(norm(row.parent_wallet))?norm(row.parent_wallet):null,
-      parentSource:row.parent_source||null,parentSourceHash:row.parent_source_hash||null};
-    TEAM_IDENTITY_CACHE.set(w,ident);
-    return ident;
-  }catch(e){
-    log(`Team-Identity Exact-Cache ${short(w)} nicht lesbar: ${e.message||e}`,'warn');
-    return null;
-  }
+    const {data,error}=await sb.from(TLN_GLOBAL_IDENTITY_TABLE)
+      .select('wallet_address,node_id,registry_contract,source_method,source_tx_hash,verified_at')
+      .eq('chain_key','bsc').eq('wallet_address',w).order('verified_at',{ascending:false}).limit(1);
+    if(error)throw error;const row=data?.[0];if(!row||row.node_id==null)return null;
+    const ident={wallet:w,nodeId:String(row.node_id),source:'supabase-global-exact',cachedSource:'global-onchain',contract:row.registry_contract||null,method:row.source_method||null,verifiedAt:row.verified_at||null,evidenceTx:row.source_tx_hash||null};
+    TEAM_IDENTITY_CACHE.set(w,ident);return ident;
+  }catch(e){log(`Team-Identity Globalcache ${short(w)} nicht lesbar: ${e.message||e}`,'warn');return null}
 }
 async function teamResolveRootUplineIdentity(wallet,graphOrCached,forest){
   const w=norm(wallet||'');if(!ethers.isAddress(w))return null;
@@ -14549,16 +14405,17 @@ async function teamLoadCachedDiscoveryLifecycles(wallets){
     TEAM_STAKING_LIFECYCLE.set(ownCurrent,teamLifecycleFromLots(ownCurrent,DISCOVERY_PROCESS.lots,{verified:!!DISCOVERY_PROCESS.done?.duration,source:'aktueller verifizierter Discovery-Lauf',completedStep:DISCOVERY_PROCESS.done?.duration?3:2}));
   }
   if(!currentUserId||!stakingScanDbCacheAvailable)return;
+  if(TEAM_FORCE_IGNORE_GLOBAL_TEAM_CACHE_ONCE){log('Team-Staking-Cache wird für diesen Cold-Run bewusst ignoriert.','muted');return}
   const need=[...new Set((wallets||[]).map(norm).filter(w=>ethers.isAddress(w)&&w!==ownCurrent))];
   let loaded=0;
   for(let i=0;i<need.length;i+=50){
     const chunk=need.slice(i,i+50);
-    const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE).select('wallet_address,scanner_version,payload,updated_at').eq('user_id',currentUserId).eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.discoveryResults).in('wallet_address',chunk);
+    const {data,error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).select('scope_address,scanner_version,payload,updated_at').eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.discoveryResults).in('scope_address',chunk);
     if(error){log(`Team-Staking-Cache konnte nicht gelesen werden: ${error.message||error}`,'warn');break}
     for(const row of (data||[])){
       const payload=row?.payload;if(!payload||row.scanner_version!==TECH_CACHE_VERSIONS.discoveryResults)continue;
       const step=Number(payload.completedStep||0);if(step<2)continue;
-      const w=norm(row.wallet_address||payload.wallet||'');
+      const w=norm(row.scope_address||payload.wallet||'');
       TEAM_STAKING_LIFECYCLE.set(w,teamLifecycleFromLots(w,payload?.process?.lots||[],{verified:step>=3,source:`persistente Discovery Steps 1–${step}`,completedStep:step,sourceSavedAt:payload?.lastCheckedAt||payload?.savedAt||row?.updated_at||null}));loaded++;
     }
   }
@@ -14570,6 +14427,7 @@ function teamHasObservedStakeEvidence(wallet){
 }
 async function teamLoadPersistedLifecycleCache(wallets){
   if(!currentUserId||!stakingScanDbCacheAvailable)return 0;
+  if(TEAM_FORCE_IGNORE_GLOBAL_TEAM_CACHE_ONCE){log('Persistenter Team-Lifecycle wird für diesen Cold-Run ignoriert.','muted');return 0}
   // Auch Wallets laden, die bereits aus einem Discovery-Ergebnis als verifiziert im
   // Speicher liegen. Deren Lots bleiben unangetastet, aber der separate Team-Lifecycle-
   // Cache kann einen wesentlich neueren blockgenauen Freshness-Anker enthalten.
@@ -14579,11 +14437,11 @@ async function teamLoadPersistedLifecycleCache(wallets){
   let loaded=0,anchorsMerged=0;
   for(let i=0;i<need.length;i+=50){
     const chunk=need.slice(i,i+50);
-    const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE).select('wallet_address,scanner_version,payload,updated_at,last_scanned_block').eq('user_id',currentUserId).eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.teamLifecycle).in('wallet_address',chunk);
+    const {data,error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).select('scope_address,scanner_version,payload,updated_at,last_scanned_block').eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.teamLifecycle).in('scope_address',chunk);
     if(error){log(`Team-Lifecycle-Cache nicht lesbar: ${error.message||error}`,'warn');break}
     for(const row of (data||[])){
       if(row?.scanner_version!==TECH_CACHE_VERSIONS.teamLifecycle||!row?.payload?.verified)continue;
-      const w=norm(row.wallet_address||row.payload.wallet||'');
+      const w=norm(row.scope_address||row.payload.wallet||'');
       const lots=Array.isArray(row.payload.lots)?row.payload.lots:[];
       // Ein leerer Team-Lifecycle darf nicht als endgültiger Nullfund wiederverwendet
       // werden, wenn Step 5 bereits starke historische Staking-Evidenz für dieses
@@ -14645,9 +14503,9 @@ async function teamSaveVerifiedLifecycle(wallet,lots,{verifiedAt=null,verifiedBl
   // USD-Persistierung darf einen bereits weiter fortgeschriebenen Freshness-Anker
   // niemals wieder auf einen älteren Block/Zeitpunkt zurücksetzen.
   try{
-    const {data}=await sb.from(STAKING_SCAN_CACHE_TABLE).select('payload,last_scanned_block,updated_at').eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_address',w).eq('cache_key',TECH_CACHE_KEYS.teamLifecycle).maybeSingle();
-    existingBlock=Number(data?.payload?.verifiedBlock||data?.payload?.lastVerifiedBlock||data?.last_scanned_block||0)||0;
-    existingVerifiedAt=data?.payload?.verifiedAt||data?.payload?.savedAt||data?.updated_at||null;
+    const payload=await loadTechnicalProcessCache(w,TECH_CACHE_KEYS.teamLifecycle,TECH_CACHE_VERSIONS.teamLifecycle);
+    existingBlock=Number(payload?.verifiedBlock||payload?.lastVerifiedBlock||0)||0;
+    existingVerifiedAt=payload?.verifiedAt||payload?.savedAt||null;
   }catch{}
   const requestedBlock=Number(verifiedBlock||0)||0,memBlock=Number(mem?.sourceVerifiedBlock||0)||0;
   const priorBlock=Math.max(existingBlock,memBlock),block=Math.max(priorBlock,requestedBlock);
@@ -14663,14 +14521,15 @@ async function teamSaveVerifiedLifecycle(wallet,lots,{verifiedAt=null,verifiedBl
 async function teamLoadContractHistoryCache(wallets){
   const out=new Map();
   if(!currentUserId||!stakingScanDbCacheAvailable)return out;
+  if(TEAM_FORCE_IGNORE_GLOBAL_TEAM_CACHE_ONCE){log('Team-Contract-History wird für diesen Cold-Run ignoriert.','muted');return out}
   const need=[...new Set((wallets||[]).map(norm).filter(ethers.isAddress))];
   for(let i=0;i<need.length;i+=50){
     const chunk=need.slice(i,i+50);
-    const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE).select('wallet_address,scanner_version,payload,updated_at').eq('user_id',currentUserId).eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.teamContractHistory).in('wallet_address',chunk);
+    const {data,error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).select('scope_address,scanner_version,payload,updated_at').eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.teamContractHistory).in('scope_address',chunk);
     if(error){log(`Team-Contract-History-Cache nicht lesbar: ${error.message||error}`,'warn');break}
     for(const row of (data||[])){
       if(row?.scanner_version!==TECH_CACHE_VERSIONS.teamContractHistory)continue;
-      const w=norm(row.wallet_address||row?.payload?.wallet||'');if(!ethers.isAddress(w))continue;
+      const w=norm(row.scope_address||row?.payload?.wallet||'');if(!ethers.isAddress(w))continue;
       const byContract=new Map();
       for(const [contract,val] of Object.entries(row?.payload?.contracts||{})){
         const c=norm(contract);if(!ethers.isAddress(c)||val?.ok!==true)continue;
@@ -16981,7 +16840,7 @@ async function processTeamTree(){
     setStepState(7,'Fehler','');
     $('status').innerHTML=`<span class="err">${esc(e.message)}</span>`;
     log(e.stack||e.message,'err');
-  }finally{TEAM_TREE_RUN_INFLIGHT=false;updateProcessButtons();b.disabled=false}
+  }finally{TEAM_FORCE_IGNORE_GLOBAL_TEAM_CACHE_ONCE=false;TEAM_TREE_RUN_INFLIGHT=false;updateProcessButtons();b.disabled=false}
 }
 
 function snapshotYearFromUi(){
