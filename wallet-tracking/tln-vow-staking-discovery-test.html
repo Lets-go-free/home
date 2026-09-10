@@ -1,5 +1,6 @@
 <!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0">
+<html lang="de"><head>
+<link rel="icon" href="data:,"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0">
 <title>TLN/VOW Staking Discovery Test – BSC</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
@@ -161,7 +162,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 10.09.2026 17:50:09 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 10.09.2026 18:05:15 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -406,7 +407,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260910-175009';
+const BUILD_ID='20260910-180515';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -537,7 +538,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='10.09.2026 17:50:09 CEST';
+const APP_VERSION='10.09.2026 18:05:15 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -5466,10 +5467,10 @@ async function clearSelectedWalletSupabaseCache(){
    if($('forceDiscoveryFreshnessCheckState'))$('forceDiscoveryFreshnessCheckState').textContent='';
    if($('testDiscoveryLongGapState'))$('testDiscoveryLongGapState').textContent='';
    resetDiscoveryProcess(wallet);
-   setStepState(1,'Cache gelöscht · bereit');
+   resetStepStatesAfterCacheChange('wallet-full');
    updateProcessButtons();
 
-   state.textContent=`${deleted} Supabase-Eintrag${deleted===1?'':'e'} gelöscht.`;
+   state.textContent=`${deleted} Supabase-Eintrag${deleted===1?'':'e'} gelöscht · Step-Anzeigen zurückgesetzt.`;
    log(`DEV Cache-Löschung: ${deleted} Supabase-Eintrag${deleted===1?'':'e'} für Wallet ${wallet} aus ${STAKING_SCAN_CACHE_TABLE} gelöscht. Globaler LP-Cache, globale Tx-/Receipt-Chain-Fakten und contractweite Strict-Duration-Proofs blieben erhalten.`,'ok');
  }catch(e){
    state.textContent='Fehler beim Löschen.';
@@ -5493,8 +5494,8 @@ async function clearDiscoveryResultCache(){
    if(error)throw error;
    const deleted=Array.isArray(data)?data.length:0;
    CURRENT_DISCOVERY_RESULT_SNAPSHOT=null;
-   resetDiscoveryProcess(wallet);setStepState(1,'Ergebnis-Cache gelöscht · bereit');updateProcessButtons();
-   state.textContent=`${deleted} Ergebnis-Snapshot${deleted===1?'':'s'} gelöscht.`;
+   resetDiscoveryProcess(wallet);resetStepStatesAfterCacheChange('results-1-5');updateProcessButtons();
+   state.textContent=`${deleted} Ergebnis-Snapshot${deleted===1?'':'s'} gelöscht · Steps 1–5 zurückgesetzt.`;
    log(`DEV Wartung: Steps-1–5-Ergebnis-Cache für ${wallet} gelöscht (${deleted} Eintrag${deleted===1?'':'e'}). Technische Chain-Caches, Step 6, Team/Lifecycle, Identity und globale Shared-Fakten blieben erhalten.`,'ok');
  }catch(e){state.textContent='Fehler beim Löschen.';log(`DEV Steps-1–5-Cache-Löschung fehlgeschlagen: ${e?.message||e}`,'warn')}
  finally{btn.disabled=false}
@@ -5516,8 +5517,8 @@ async function clearStep6SnapshotCache(){
    if(error)throw error;
    const deleted=Array.isArray(data)?data.length:0;
    DISCOVERY_PROCESS.snapshotValuation=null;DISCOVERY_PROCESS.snapshotBlockHex=null;DISCOVERY_PROCESS.done.valuation=false;
-   renderSnapshotValuation();setStepState(6,`bereit für 31.12.${year}`);updateProcessButtons();
-   state.textContent=`${deleted} Step-6-Snapshot${deleted===1?'':'s'} gelöscht.`;
+   renderSnapshotValuation();resetStepStatesAfterCacheChange('step6',year);updateProcessButtons();
+   state.textContent=`${deleted} Step-6-Snapshot${deleted===1?'':'s'} gelöscht · Step 6 zurückgesetzt.`;
    log(`DEV Wartung: Step-6-Snapshot für ${wallet} / 31.12.${year} gelöscht (${deleted} Eintrag${deleted===1?'':'e'}). Steps 1–5, technische Chain-Caches, Team/Lifecycle, Identity und globale Shared-Fakten blieben erhalten.`,'ok');
  }catch(e){state.textContent='Fehler beim Löschen.';log(`DEV Step-6-Snapshot-Löschung fehlgeschlagen: ${e?.message||e}`,'warn')}
  finally{btn.disabled=false}
@@ -5556,7 +5557,7 @@ async function clearSingleTeamLifecycleCache(){
    TEAM_STAKING_LIFECYCLE.delete(wallet);
    TEAM_LIFECYCLE_RECHECK_HINTS.delete(wallet);
    CURRENT_TEAM_PROJECT_FOREST=null;
-   setStepState(7,'Gezielter Nachtest bereit');updateProcessButtons();
+   resetStepStatesAfterCacheChange('team-single');updateProcessButtons();
    state.textContent=`${deleted} Lifecycle-Eintrag gelöscht · ${nodeId?`TLN-ID ${nodeId}`:short(wallet)}`;
    log(`DEV Team-Lifecycle gezielt gelöscht: ${nodeId?`TLN-ID ${nodeId} · `:''}${wallet} · ${deleted} persistente(r) Lifecycle-Eintrag(e). Contract-Historie, SmartNode-Globalgraph und übrige Partner-Caches blieben erhalten. Nächster Step-7-Lauf prüft nur dieses Wallet neu.`,'ok');
  }catch(e){
@@ -5628,7 +5629,7 @@ async function clearTeamColdRunCache(){
    if($('teamTree'))$('teamTree').innerHTML='<span class="muted">Team-Cache gelöscht. Step 7 für Cold Run starten.</span>';
    if($('teamHighlightControls'))$('teamHighlightControls').style.display='none';
    if($('teamExpirySection'))$('teamExpirySection').style.display='none';
-   setStepState(7,'Cold Run bereit');updateProcessButtons();
+   resetStepStatesAfterCacheChange('team-cold');updateProcessButtons();
    state.textContent=`Full-Graph-Rescan vorgemerkt · ${teamRows} Team-Cache-Einträge gelöscht.`;
    log(`DEV Team-Cold-Run vorbereitet: nächster Step-7-Lauf ignoriert den persistenten SmartNode-Globalgraph vollständig und baut ihn on-chain ab Block 0 neu auf · globaler Shared-Graph/Graph-State bleiben in Supabase erhalten · ${teamRows} Team-Lifecycle/Contract-History-Eintrag(e) dieses Benutzers gelöscht. Steps 1–5, normale Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und globaler Identity-Cache blieben erhalten.`,'ok');
  }catch(e){
@@ -11978,6 +11979,38 @@ function resetDiscoveryProcess(wallet=''){
 function setStepState(n,text,kind=''){
   const box=$(`stepBox${n}`),state=$(`stepState${n}`);if(state)state.textContent=text||'';if(box){box.classList.remove('done','running','locked');if(kind)box.classList.add(kind)}
 }
+function resetStepStatesAfterCacheChange(mode,year=snapshotYearFromUi()){
+  const ready=(n,text)=>setStepState(n,text||'bereit');
+  if(mode==='wallet-full'){
+    ready(1,'Cache gelöscht · bereit');
+    ready(2,'Cache gelöscht · nach Schritt 1');
+    ready(3,'Cache gelöscht · nach Schritt 2');
+    ready(4,'Cache gelöscht · nach Schritt 2');
+    ready(5,'Cache gelöscht · nach Schritt 4');
+    ready(6,`Cache gelöscht · nach Schritt 3 · 31.12.${year}`);
+    return;
+  }
+  if(mode==='results-1-5'){
+    ready(1,'Ergebnis-Cache gelöscht · bereit');
+    ready(2,'Ergebnis-Cache gelöscht · nach Schritt 1');
+    ready(3,'Ergebnis-Cache gelöscht · nach Schritt 2');
+    ready(4,'Ergebnis-Cache gelöscht · nach Schritt 2');
+    ready(5,'Ergebnis-Cache gelöscht · nach Schritt 4');
+    ready(6,`Step-6-Snapshot bleibt gespeichert · nach Schritt 3 wieder laden`);
+    return;
+  }
+  if(mode==='step6'){
+    ready(6,`Snapshot gelöscht · bereit für 31.12.${year}`);
+    return;
+  }
+  if(mode==='team-single'){
+    ready(7,'Teil-Cache gelöscht · gezielter Nachtest bereit');
+    return;
+  }
+  if(mode==='team-cold'){
+    ready(7,'Team-Cache wird ignoriert · Cold Run bereit');
+  }
+}
 function updateProcessButtons(){
   const d=DISCOVERY_PROCESS.done;
   if($('refresh'))$('refresh').disabled=!tlnWallets.length;
@@ -17341,7 +17374,7 @@ async function walletHasCurrentProjectToken(wallet,tokenRows){
 
 async function loadExistingProjectWalletIds(){
   try{
-    const {data,error}=await sb.from(TLN_STAKING_CACHE_TABLE)
+    const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE)
       .select('wallet_id').not('wallet_id','is',null);
     if(error)throw error;
     return new Set((data||[]).map(r=>String(r.wallet_id||'')).filter(Boolean));
@@ -17349,6 +17382,39 @@ async function loadExistingProjectWalletIds(){
     log(`Bestehende TLN/VOW-Wallet-Caches konnten für die Wallet-Auswahl nicht geprüft werden: ${e?.message||e}`,'warn');
     return new Set();
   }
+}
+
+async function loadHistoricallyKnownTlnVowAddresses(privateWallets){
+  const addresses=(privateWallets||[])
+    .map(w=>norm(w?.evm_address||''))
+    .filter(a=>/^0x[0-9a-f]{40}$/.test(a));
+  const known=new Set();
+  if(!addresses.length)return known;
+
+  // 1) Globaler Wallet↔TLN-ID-Cache: verifizierter Projektbezug bleibt auch dann
+  // erhalten, wenn der private Wallet-Cache bewusst gelöscht wurde.
+  try{
+    const {data,error}=await sb.from(TLN_GLOBAL_IDENTITY_TABLE)
+      .select('wallet_address').eq('chain_key','bsc').in('wallet_address',addresses);
+    if(error)throw error;
+    for(const r of (data||[])){
+      const a=norm(r?.wallet_address||'');if(/^0x[0-9a-f]{40}$/.test(a))known.add(a);
+    }
+  }catch(e){log(`Globaler TLN-Identity-Cache für Wallet-Auswahl nicht verfügbar: ${e?.message||e}`,'warn')}
+
+  // 2) SmartNode-Graph: ebenfalls ein öffentlicher, globaler TLN-Projektbezug.
+  // Zwei kleine IN-Abfragen reichen, da es nur um die eigenen Wallets geht.
+  try{
+    const [childQ,parentQ]=await Promise.all([
+      sb.from(TLN_TEAM_GRAPH_TABLE).select('child_wallet').in('child_wallet',addresses),
+      sb.from(TLN_TEAM_GRAPH_TABLE).select('parent_wallet').in('parent_wallet',addresses)
+    ]);
+    if(childQ.error)throw childQ.error;if(parentQ.error)throw parentQ.error;
+    for(const r of (childQ.data||[])){const a=norm(r?.child_wallet||'');if(a)known.add(a)}
+    for(const r of (parentQ.data||[])){const a=norm(r?.parent_wallet||'');if(a)known.add(a)}
+  }catch(e){log(`SmartNode-Graph für historische Wallet-Auswahl nicht verfügbar: ${e?.message||e}`,'warn')}
+
+  return known;
 }
 
 async function selectTlnVowProjectWallets(privateWallets,projectRows,projectRole){
@@ -17363,13 +17429,19 @@ async function selectTlnVowProjectWallets(privateWallets,projectRows,projectRole
     return !!projectRole(r);
   });
 
-  const existingWalletIds=await loadExistingProjectWalletIds();
+  const [existingWalletIds,historicallyKnownAddresses]=await Promise.all([
+    loadExistingProjectWalletIds(),
+    loadHistoricallyKnownTlnVowAddresses(candidates)
+  ]);
   const selected=[];
   for(const w of candidates){
     const walletId=String(w?.id||w?.dbId||'');
-    const historical=walletId&&existingWalletIds.has(walletId);
+    const address=norm(w?.evm_address||'');
+    const privateHistory=walletId&&existingWalletIds.has(walletId);
+    const globalHistory=historicallyKnownAddresses.has(address);
+    const historical=privateHistory||globalHistory;
     const current=historical?false:await walletHasCurrentProjectToken(w,eligibleTokens);
-    if(historical||current)selected.push({...w,_tlnVowSelectionReason:historical?'bestehende TLN/VOW-Projekthistorie':'aktueller TLN/VOW-Projekt-Token'});
+    if(historical||current)selected.push({...w,_tlnVowSelectionReason:historical?'bestehender/verifizierter TLN/VOW-Projektbezug':'aktueller TLN/VOW-Projekt-Token'});
   }
   return selected.sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'de'));
 }
