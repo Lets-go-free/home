@@ -162,7 +162,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 10.09.2026 18:05:15 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 10.09.2026 19:51:27 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -176,13 +176,13 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
   <b>Developer · Supabase-Cache</b>
   <div class="muted" style="margin:5px 0 8px">Löscht ausschließlich walletbezogene Einträge in <code>tln_vow_staking_scan_cache</code> für das aktuell ausgewählte Wallet auf BSC – einschließlich der persistenten Discovery-Endergebnisse Steps 1–5. Globale LP-/Tx-Fakten und contractweite Strict-Duration-Proofs bleiben erhalten.</div>
   <div class="muted" style="margin:5px 0 10px;padding:8px 10px;border:1px solid #445066;border-radius:8px;background:#111722"><b>Historischer Preis-Cache:</b> keine Supabase-Zeile pro Block/Preis. Pro Benutzer wird genau <b>1 begrenzte technische Cache-Zeile</b> verwendet. Exakte Stake-/Unstake-/Stichtagswerte bleiben blockgenau; der Cache ist auf 1'200 exakte Punkte (max. 180 je Asset) plus 300 optionale, nur explizit ungefähre Block-Buckets begrenzt. Fertige USD-Werte bleiben zusätzlich direkt an den verifizierten Positionen erhalten.</div>
-  <button id="clearWalletSupabaseCache" type="button" disabled>DEV: Wallet-Cache komplett zurücksetzen</button>
+  <button id="clearWalletSupabaseCache" type="button" disabled>DEV: Technischen Wallet-Cache komplett löschen</button>
   <span id="clearWalletSupabaseCacheState" class="muted" style="margin-left:8px"></span>
-  <div class="muted" style="margin-top:5px">Tiefer Wartungs-/Cold-Start-Reset für das ausgewählte Wallet: löscht alle walletbezogenen BSC-Einträge dieses Wallets aus dem Discovery-Cache. Shared Chain-Fakten, Registry, globale LP-Fakten, SmartNode-Globalgraph und contractweite Duration-Proofs bleiben erhalten.</div>
+  <div class="muted" style="margin-top:5px"><strong>Wann verwenden?</strong> Wenn du dieses Wallet einmal komplett neu prüfen möchtest.<br><strong>Wird gelöscht:</strong> technische Discovery-Daten und gespeicherte Ergebnisse dieses Wallets.<br><strong>Bleibt erhalten:</strong> gemeinsame/globale Daten, die nicht nur zu diesem Wallet gehören.</div>
   <div style="margin-top:8px">
-    <button id="clearDiscoveryResultCache" type="button" disabled>DEV: Ergebnis-Cache Steps 1–5 löschen</button>
+    <button id="clearDiscoveryResultCache" type="button" disabled>DEV: Nur Ergebnis-Cache Steps 1–5 löschen</button>
     <span id="clearDiscoveryResultCacheState" class="muted" style="margin-left:8px"></span>
-    <div class="muted" style="margin-top:5px">Für Korrekturen an der Discovery-/Reward-Logik: löscht nur den persistenten verifizierten Ergebnis-Snapshot Steps 1–5 des ausgewählten Wallets. Technische Chain-Caches, Step 6, Team, Identity und Shared-Fakten bleiben erhalten.</div>
+    <div class="muted" style="margin-top:5px"><strong>Wann verwenden?</strong> Wenn Steps 1–5 nur neu ausgewertet werden sollen.<br><strong>Wird gelöscht:</strong> nur das gespeicherte Endergebnis von Steps 1–5.<br><strong>Bleibt erhalten:</strong> technische Blockchain-/Analyse-Daten. Dadurch ist die Neuberechnung deutlich schneller.</div>
   </div>
   <div style="margin-top:8px">
     <button id="clearStep6SnapshotCache" type="button" disabled>DEV: Step-6-Snapshot löschen</button>
@@ -407,7 +407,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260910-180515';
+const BUILD_ID='20260910-195127';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -538,7 +538,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='10.09.2026 18:05:15 CEST';
+const APP_VERSION='10.09.2026 19:51:27 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13608,19 +13608,25 @@ async function loadTeamAliasesFromSupabase(){
   TEAM_ALIAS_CACHE={};TEAM_ALIAS_CACHE_LOADED=true;
   if(!currentUserId)return TEAM_ALIAS_CACHE;
   try{
-    const payload=await loadTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,TECH_CACHE_KEYS.teamAliases,TECH_CACHE_VERSIONS.teamAliases);
-    const aliases=payload?.aliases&&typeof payload.aliases==='object'?payload.aliases:{};
+    const {data,error}=await sb.functions.invoke('wallet-private',{body:{action:'team_alias_list'}});
+    if(error)throw error;
+    if(!data?.ok)throw new Error(data?.error||'team_alias_list fehlgeschlagen');
+    const aliases=data?.aliases&&typeof data.aliases==='object'?data.aliases:{};
     for(const [k,v] of Object.entries(aliases)){const name=String(v||'').trim();if(k&&name)TEAM_ALIAS_CACHE[k]=name}
-    if(Object.keys(TEAM_ALIAS_CACHE).length)log(`Partner-Namen: ${Object.keys(TEAM_ALIAS_CACHE).length} user-spezifische Alias(e) aus Supabase geladen.`,'ok');
-  }catch(e){log(`Partner-Namen konnten nicht aus Supabase geladen werden: ${e.message||e}`,'warn')}
+    log(`Partner-Namen: ${Object.keys(TEAM_ALIAS_CACHE).length} user-spezifische, verschlüsselte Alias(e) geladen.`,'ok');
+  }catch(e){log(`Partner-Namen konnten nicht verschlüsselt geladen werden: ${e.message||e}`,'warn')}
   return TEAM_ALIAS_CACHE;
 }
 async function persistTeamAliasesToSupabase(){
   if(!currentUserId)return false;
   const aliases={};
   for(const [k,v] of Object.entries(TEAM_ALIAS_CACHE||{})){const name=String(v||'').trim();if(k&&name)aliases[k]=name}
-  const payload={kind:'user_team_aliases',schemaVersion:1,aliases,savedAt:new Date().toISOString()};
-  return await saveTechnicalProcessCache(TECH_CACHE_GLOBAL_SCOPE,TECH_CACHE_KEYS.teamAliases,TECH_CACHE_VERSIONS.teamAliases,payload,0);
+  try{
+    const {data,error}=await sb.functions.invoke('wallet-private',{body:{action:'team_alias_replace_all',aliases}});
+    if(error)throw error;
+    if(!data?.ok)throw new Error(data?.error||'team_alias_replace_all fehlgeschlagen');
+    return true;
+  }catch(e){log(`Partner-Namen konnten nicht verschlüsselt gespeichert werden: ${e.message||e}`,'warn');return false}
 }
 async function migrateLegacyTeamAliasesToSupabase(){
   if(!currentUserId)return 0;
@@ -13639,9 +13645,10 @@ async function migrateLegacyTeamAliasesToSupabase(){
   if(ok){
     try{localStorage.removeItem(TEAM_ALIAS_STORAGE_KEY)}catch{}
     if(scopedKey)try{localStorage.removeItem(scopedKey)}catch{}
+    log(`Partner-Namen: ${migrated} lokale Legacy-Alias(e) verschlüsselt und user-spezifisch migriert.`,'ok');
     return migrated;
   }
-  log('Partner-Namen: lokale Legacy-Aliase konnten noch nicht nach Supabase migriert werden; lokale Quelle bleibt zur Sicherheit erhalten.','warn');
+  log('Partner-Namen: lokale Legacy-Aliase konnten noch nicht verschlüsselt migriert werden; lokale Quelle bleibt zur Sicherheit erhalten.','warn');
   return 0;
 }
 const TEAM_SMARTNODE_CONTRACT='0x028c911c10c9e346158206991e02d09bd0a8a35b';
@@ -13694,11 +13701,14 @@ function loadTeamAliases(){
 async function saveTeamAlias(key,value){
   if(!currentUserId){log('Partner-Name nicht gespeichert: kein eingeloggter Benutzer verfügbar.','warn');return false}
   value=String(value||'').trim();
-  if(value)TEAM_ALIAS_CACHE[key]=value;else delete TEAM_ALIAS_CACHE[key];
-  const ok=await persistTeamAliasesToSupabase();
-  if(ok)log(`Partner-Name ${value?'in Supabase gespeichert':'aus Supabase gelöscht'} · user-spezifisch.`,'ok');
-  else log('Partner-Name konnte nicht in Supabase gespeichert werden.','warn');
-  return ok;
+  try{
+    const {data,error}=await sb.functions.invoke('wallet-private',{body:{action:'team_alias_save',reference:key,alias:value}});
+    if(error)throw error;
+    if(!data?.ok)throw new Error(data?.error||'team_alias_save fehlgeschlagen');
+    if(value)TEAM_ALIAS_CACHE[key]=value;else delete TEAM_ALIAS_CACHE[key];
+    log(`Partner-Name ${value?'verschlüsselt gespeichert':'gelöscht'} · nur für diesen User.`,'ok');
+    return true;
+  }catch(e){log(`Partner-Name konnte nicht gespeichert werden: ${e.message||e}`,'warn');return false}
 }
 function teamAliasKey(wallet,ident){
   return ident?.nodeId?`id:${ident.nodeId}`:`wallet:${norm(wallet)}`;
