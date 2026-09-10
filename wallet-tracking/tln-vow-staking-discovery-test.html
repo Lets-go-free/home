@@ -161,7 +161,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 10.09.2026 17:16:50 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 10.09.2026 17:36:10 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -406,7 +406,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260910-171650';
+const BUILD_ID='20260910-173610';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -537,7 +537,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='10.09.2026 17:16:50 CEST';
+const APP_VERSION='10.09.2026 17:36:10 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -17205,11 +17205,11 @@ function populateTlnWalletDropdown(){
   const sel=$('walletSelect');
   sel.innerHTML=tlnWallets.length
     ? tlnWallets.map(w=>`<option value="${esc(w.evm_address)}">${esc(w.label)}</option>`).join('')
-    : '<option value="">Keine TLN-Wallets mit EVM-Adresse gefunden</option>';
+    : '<option value="">Keine Wallet mit TLN/VOW-Projektbezug gefunden</option>';
   sel.disabled=!tlnWallets.length;
   if(tlnWallets.length){
-    // TLN Chris bevorzugen, sonst erstes alphabetisches TLN-Wallet.
-    const preferred=tlnWallets.find(w=>String(w.label||'').trim().toLowerCase()==='tln chris')||tlnWallets[0];
+    // Keine Namensheuristik: erstes alphabetisch sortiertes Projekt-Wallet.
+    const preferred=tlnWallets[0];
     sel.value=preferred.evm_address;
     $('wallet').value=preferred.evm_address;
     $('walletAddress').textContent=preferred.evm_address;
@@ -17257,12 +17257,75 @@ async function refreshSupabaseSessionForDb(){
   }
 }
 function waitMs(ms){return new Promise(r=>setTimeout(r,ms))}
+
+async function loadPrivateWalletsForDiscovery(){
+  const {data,error}=await sb.functions.invoke('wallet-private',{body:{action:'wallet_list'}});
+  if(error)return {data:null,error};
+  if(!data?.ok)return {data:null,error:{message:data?.error||'wallet_list fehlgeschlagen'}};
+  return {data:(data.wallets||[]),error:null};
+}
+
+async function walletHasCurrentProjectToken(wallet,tokenRows){
+  const address=norm(wallet?.evm_address||'');
+  if(!/^0x[0-9a-f]{40}$/.test(address))return false;
+  const calldata='0x70a08231'+address.slice(2).padStart(64,'0');
+  const rows=(tokenRows||[])
+    .map(r=>norm(r?.address||r?.contract_address||''))
+    .filter(a=>/^0x[0-9a-f]{40}$/.test(a));
+  const BATCH=6;
+  for(let i=0;i<rows.length;i+=BATCH){
+    const balances=await Promise.all(rows.slice(i,i+BATCH).map(async token=>{
+      try{
+        const raw=await rpc('eth_call',[{to:token,data:calldata},'latest']);
+        return BigInt(raw||'0x0');
+      }catch{return 0n}
+    }));
+    if(balances.some(v=>v>0n))return true;
+  }
+  return false;
+}
+
+async function loadExistingProjectWalletIds(){
+  try{
+    const {data,error}=await sb.from(TLN_STAKING_CACHE_TABLE)
+      .select('wallet_id').not('wallet_id','is',null);
+    if(error)throw error;
+    return new Set((data||[]).map(r=>String(r.wallet_id||'')).filter(Boolean));
+  }catch(e){
+    log(`Bestehende TLN/VOW-Wallet-Caches konnten für die Wallet-Auswahl nicht geprüft werden: ${e?.message||e}`,'warn');
+    return new Set();
+  }
+}
+
+async function selectTlnVowProjectWallets(privateWallets,projectRows,projectRole){
+  const candidates=(privateWallets||[])
+    .filter(w=>/^0x[0-9a-f]{40}$/.test(norm(w?.evm_address||'')));
+
+  // Projektzugehörigkeit kommt aus echten TLN/VOW-Projektdaten, niemals aus dem Wallet-Namen.
+  // Wie auf der Hauptseite zählen alle aktiven TLN/VOW-Projektkategorien; zusätzlich bleiben
+  // Wallets mit bereits verifizierter TLN/VOW-Historie auswählbar.
+  const eligibleTokens=(projectRows||[]).filter(r=>{
+    if(r?.enabled===false||r?.historical_only||!r?.address)return false;
+    return !!projectRole(r);
+  });
+
+  const existingWalletIds=await loadExistingProjectWalletIds();
+  const selected=[];
+  for(const w of candidates){
+    const walletId=String(w?.id||w?.dbId||'');
+    const historical=walletId&&existingWalletIds.has(walletId);
+    const current=historical?false:await walletHasCurrentProjectToken(w,eligibleTokens);
+    if(historical||current)selected.push({...w,_tlnVowSelectionReason:historical?'bestehende TLN/VOW-Projekthistorie':'aktueller TLN/VOW-Projekt-Token'});
+  }
+  return selected.sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'de'));
+}
+
 async function loadInitialDbRows(){
   return Promise.all([
     sb.from('chains').select('rpc_url,discovery_provider,discovery_api_base').eq('chain_key','bsc').single(),
     sb.from('predefined_tokens').select('*').eq('chain','bsc').eq('defi_project_key','tln_vow'),
     sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
-    sb.from('wallets').select('id,label,evm_address').order('label'),
+    loadPrivateWalletsForDiscovery(),
     sb.from('defi_project_tokens').select('contract_address,role').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
     sb.from('predefined_tokens').select('address,symbol,label,name,decimals').eq('chain','bsc').in('symbol',['USDT','USDC','BUSD'])
   ]);
@@ -17347,9 +17410,15 @@ async function init(){log(`Build geladen: ${BUILD_ID} · SC_READ_PROBES=${typeof
     projectTokenMap=new Map(projectTokens.filter(x=>x.address).map(x=>[norm(x.address),x]));
     window.__TLNVOW_DISCOVERY_UNDERLYINGS=discoveryUnderlyingTokens;
     stakingContracts=sc.data||[];
-tlnWallets=(wq.data||[])
-  .filter(w=>w.evm_address&&/^tln(?:\s|$)/i.test(String(w.label||'').trim()))
-  .sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'de'));
+tlnWallets=await selectTlnVowProjectWallets(wq.data||[],allProjectRows,projectRole);
+PRIVATE_WALLET_ID_BY_EVM.clear();
+for(const w of (wq.data||[])){
+  const a=norm(w?.evm_address||'');
+  const id=w?.id||w?.dbId;
+  if(/^0x[0-9a-f]{40}$/.test(a)&&id)PRIVATE_WALLET_ID_BY_EVM.set(a,String(id));
+}
+PRIVATE_WALLET_MAP_LOADED=true;
+log(`TLN/VOW-Wallet-Auswahl: ${tlnWallets.length} von ${(wq.data||[]).filter(w=>/^0x[0-9a-f]{40}$/.test(norm(w?.evm_address||''))).length} EVM-Wallet(s) aufgrund echter Projekt-Daten ausgewählt; Wallet-Namen werden nicht mehr ausgewertet.`,'ok');
 populateTlnWalletDropdown();
 bindWalletDropdown();
 setupProjectUserTabs();
