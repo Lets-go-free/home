@@ -270,12 +270,16 @@ function taxSnapshotWalletId(row){
 }
 async function loadTaxSnapshot(date,walletSel="__all"){
   if(!currentUser||!date)return false;
-  let q=sb.from("year_end_positions").select("*").eq("snapshot_date",date).order("wallet_label").order("chain_key").order("symbol");
+  let q=sb.from("year_end_positions").select("*").eq("snapshot_date",date).order("wallet_id").order("chain_key").order("symbol");
   if(walletSel!=="__all")q=q.eq("wallet_id",walletSel);
   const {data,error}=await q;
   if(error){if(error.code!=="PGRST205")console.warn("Gespeicherte Bestandesaufnahme:",error);return false;}
   if(!data?.length)return false;
-  taxRows=data.map(r=>({wallet:r.wallet_label,wallet_address:r.wallet_address,chain:r.chain_key,asset:r.asset_key,symbol:r.symbol,amount:r.amount==null?null:Number(r.amount),decimals:r.decimals,block:r.block_ref,price_usd:r.price_usd==null?null:Number(r.price_usd),value_usd:r.value_usd==null?null:Number(r.value_usd),price_source:r.price_source,status:r.status,balance_source:r.balance_source,error:r.error_message||null,wallet_id:r.wallet_id}));
+  taxRows=data.map(r=>{
+    const w=wallets.find(x=>String(x.dbId||x.id)===String(r.wallet_id));
+    if(!w)return null;
+    return {wallet:w.label,wallet_address:walletAddressForChain(w,r.chain_key),chain:r.chain_key,asset:r.asset_key,symbol:r.symbol,amount:r.amount==null?null:Number(r.amount),decimals:r.decimals,block:r.block_ref,price_usd:r.price_usd==null?null:Number(r.price_usd),value_usd:r.value_usd==null?null:Number(r.value_usd),price_source:r.price_source,status:r.status,balance_source:r.balance_source,error:r.error_message||null,wallet_id:r.wallet_id};
+  }).filter(Boolean);
   let cq=sb.from("year_end_coverage").select("*").eq("snapshot_date",date);
   if(walletSel!=="__all")cq=cq.eq("wallet_scope",walletSel);
   else cq=cq.eq("wallet_scope","__all");
@@ -3939,8 +3943,10 @@ async function loadSnapshotsFromDb() {
   if (e2) console.error(e2);
   const byId = {};
   (itemRows || []).forEach(it => {
+    const w=wallets.find(x=>String(x.dbId||x.id)===String(it.wallet_id));
+    if(!w)return;
     byId[it.snapshot_id] = byId[it.snapshot_id] || [];
-    byId[it.snapshot_id].push(it);
+    byId[it.snapshot_id].push({...it,wallet_label:w.label});
   });
   const prevVisibility = {};
   snapshots.forEach(s => { prevVisibility[s.id] = s.visible; });
@@ -3972,8 +3978,7 @@ async function loadFromAutomatedCache() {
 
   (items || []).forEach(it => {
     const matchingWallet = wallets.find(w =>
-      (w.dbId && String(w.dbId) === String(it.wallet_id)) ||
-      (it.wallet_label && w.label === it.wallet_label)
+      String(w.dbId||w.id) === String(it.wallet_id)
     );
     if (!matchingWallet) return;
 
@@ -4380,8 +4385,7 @@ function visibleSnapshots() {
 // bleibt in dem Fall meist gleich, die ID aber nicht mehr).
 function snapshotItemBelongsToWallet(it, matchWallet) {
   if (!matchWallet) return true;
-  if (matchWallet.dbId && it.wallet_id === matchWallet.dbId) return true;
-  return it.wallet_label === matchWallet.label;
+  return String(it.wallet_id||"") === String(matchWallet.dbId||matchWallet.id||"");
 }
 
 function hasVisibleSnapshotDataForChain(chain, matchWallet) {
