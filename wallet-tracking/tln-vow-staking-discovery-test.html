@@ -162,7 +162,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 10.09.2026 19:51:27 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 11.09.2026 01:33:06 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -407,7 +407,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260910-195127';
+const BUILD_ID='20260911-013306';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -538,7 +538,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='10.09.2026 19:51:27 CEST';
+const APP_VERSION='11.09.2026 01:33:06 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -14416,7 +14416,13 @@ function hasOwnAncestor(wallet,ownSet,edges){
   return false;
 }
 function buildProjectTeamForest(edges){
-  const ownMap=projectOwnWalletMap(),own=[...ownMap.keys()],ownSet=new Set(own);
+  // Ein Wallet darf wegen TLN/VOW-Tokenbestand in der Projekt-Auswahl erscheinen,
+  // ist aber erst dann ein Team-Leader, wenn eine TLN-ID verifiziert wurde.
+  // So entstehen keine scheinbaren "Eigener Team-Baum ab TLN-ID ?"-Bäume für
+  // reine Projekt-/Token-Wallets ohne SmartNode/TLN-Identität.
+  const allOwnMap=projectOwnWalletMap();
+  const ownMap=new Map([...allOwnMap].filter(([wallet])=>!!TEAM_IDENTITY_CACHE.get(norm(wallet))?.nodeId));
+  const own=[...ownMap.keys()],ownSet=new Set(own);
   const ownDepths=new Map(own.map(w=>[w,graphOwnAncestorDepth(w,ownSet,edges)]));
   const orderedOwn=own.slice().sort((a,b)=>(ownDepths.get(b)||0)-(ownDepths.get(a)||0)||a.localeCompare(b));
 
@@ -16640,7 +16646,7 @@ function renderTeamTree(){
     return `${i.nodeId||short(w)}${d?` (unter ${d} eigener TLN-ID)`:''}`;
   }).join(' → ');
   const intro=$('teamTreeIntro');
-  if(intro)intro.innerHTML=`<p><b>Projektweite Sicht.</b> ${forest.ownSet.size} unter „MEINE Wallets“ gespeicherte TLN/VOW-Wallet(s) gelten als eigene Leader für die Erfassungsmenge. Sichtbare Baum-Roots sind nur eigene Wallets, über denen kein weiteres eigenes Wallet liegt.</p>
+  if(intro)intro.innerHTML=`<p><b>Projektweite Sicht.</b> ${forest.ownSet.size} eigene Wallet(s) mit <b>verifizierter TLN-ID</b> gelten als Team-Leader. Wallets mit TLN/VOW-Projektbezug, aber ohne verifizierte TLN-ID, bleiben in der Projekt-Auswahl erhalten, werden jedoch nicht als eigener Team-Baum dargestellt.</p>
     <p>Eigene Wallets innerhalb eines bereits eigenen Team-Baums bleiben an ihrer echten SmartNode-Parent-Position. Direkte Partner werden je Upline nach TLN-ID aufsteigend sortiert.</p>
     <p>Staking-Infos stammen ausschließlich aus verifizierten Discovery-/Lifecycle-Daten. Der Baum zeigt zunächst den persistenten Cache. Eine Neuprüfung eines Partner-Wallets erfolgt höchstens 1× täglich und ausschließlich on-demand beim Klick auf <b>„Details“</b>. Fehlende Lifecycle-Daten werden nicht aus Referral-Rewards abgeleitet.</p>
     <p><b>Erfassungstiefe:</b> maximal ${TLN_TEAM_MAX_LEVELS} Referral-Linien je eigenem Leader. Dieser Wert ist später als TLN/VOW-Projektparameter im Admin-Bereich vorgesehen.</p>`;
@@ -16705,6 +16711,11 @@ async function restoreTeamTreeFromPersistentCache(){
     }
 
     const forest=buildProjectTeamForest(edges);
+    const ownProjectWallets=[...projectOwnWalletMap().keys()];
+    const ownWithoutVerifiedTlnId=ownProjectWallets.filter(w=>!TEAM_IDENTITY_CACHE.get(norm(w))?.nodeId);
+    if(ownWithoutVerifiedTlnId.length){
+      log(`Team-Restore: ${ownWithoutVerifiedTlnId.length} eigene Projekt-Wallet(s) haben keine verifizierte TLN-ID und werden deshalb nicht als Team-Baum-Leader dargestellt: ${ownWithoutVerifiedTlnId.map(short).join(', ')}.`,'muted');
+    }
     if(!forest?.components?.length){
       log('Team-Restore: persistenter Globalgraph geladen, aber für die eigenen TLN/VOW-Wallets konnte kein sichtbarer Baum gebildet werden. Step 7 kann die Zuordnungen aktualisieren.','warn');
       renderTeamTree();
@@ -16769,6 +16780,12 @@ async function prepareTeamTree(){
       }
     }
     forest=buildProjectTeamForest(full.edges);
+    const ownProjectWallets=[...projectOwnWalletMap().keys()];
+    const ownTeamLeaders=[...forest.ownSet];
+    const ownWithoutVerifiedTlnId=ownProjectWallets.filter(w=>!TEAM_IDENTITY_CACHE.get(norm(w))?.nodeId);
+    if(ownWithoutVerifiedTlnId.length){
+      log(`Team-Discovery: ${ownWithoutVerifiedTlnId.length} eigene Projekt-Wallet(s) ohne verifizierte TLN-ID werden nicht als Team-Baum-Leader dargestellt: ${ownWithoutVerifiedTlnId.map(short).join(', ')}.`,'muted');
+    }
     const rootUplines=[...new Set([...(forest.rootUplines?.values?.()||[])])].filter(ethers.isAddress);
     if(rootUplines.length){
       const missing=rootUplines.filter(w=>!TEAM_IDENTITY_CACHE.get(w)?.nodeId);
@@ -16781,7 +16798,7 @@ async function prepareTeamTree(){
     await teamVerifyMissingLifecycles(lifecycleWallets);
 
     const ownIds=forest.orderedOwn.map(w=>TEAM_IDENTITY_CACHE.get(w)?.nodeId||short(w));
-    log(`Team-Discovery Projekt: ${forest.ownSet.size} eigene TLN/VOW-Wallet(s) als Leader · ${[...forest.included].filter(w=>!forest.ownSet.has(w)).length} externe Team-Partner in der Vereinigungsmenge.`,'ok');
+    log(`Team-Discovery Projekt: ${forest.ownSet.size} eigene Wallet(s) mit verifizierter TLN-ID als Leader · ${[...forest.included].filter(w=>!forest.ownSet.has(w)).length} externe Team-Partner in der Vereinigungsmenge.`,'ok');
     log(`Team-Discovery Reihenfolge: tiefste eigene TLN-ID zuerst → ${ownIds.join(' → ')||'–'}.`,'ok');
     log(`Team-Discovery projektweit vollständig: ${forest.components.length} eigenständige Baum-Root(s) · max. ${TLN_TEAM_MAX_LEVELS} Linien je eigener Leader-TLN-ID für die Erfassungsmenge.`,'ok');
   }catch(e){
