@@ -587,3 +587,94 @@
 .dao1-lp-data-table tbody tr:last-child td{
   border-bottom:0;
 }
+
+
+/* =====================================================================
+   Hauptseite – einheitliches produktives Tabellenlayout
+   Gilt für ALLE Tabellen innerhalb #appContent.
+   Bestehende tabellenspezifische Breiten/Spalten bleiben erhalten.
+   ===================================================================== */
+#appContent table{
+  border-collapse:separate;
+  border-spacing:0;
+  background:transparent;
+  font-size:.78rem;
+}
+#appContent table thead{
+  background:var(--card2);
+}
+#appContent table th{
+  padding:11px 14px;
+  background:var(--card2);
+  color:var(--muted);
+  border:0;
+  border-bottom:1px solid var(--border);
+  text-align:left;
+  font-size:.72rem;
+  font-weight:700;
+  letter-spacing:.015em;
+  white-space:nowrap;
+  vertical-align:middle;
+}
+#appContent table td{
+  padding:12px 14px;
+  border:0;
+  border-bottom:1px solid var(--border);
+  background:transparent;
+  vertical-align:middle;
+}
+#appContent table tbody tr{
+  background:color-mix(in srgb,var(--card) 94%,var(--card2) 6%);
+}
+#appContent table tbody tr:hover td{
+  background:color-mix(in srgb,var(--card2) 88%,var(--accent) 12%);
+}
+#appContent table tbody tr:last-child td{
+  border-bottom:0;
+}
+
+/* Standard-Tabellencontainer der Hauptseite */
+#appContent .chain-table-wrap,
+#appContent .lp-table-scroll,
+#appContent .lp-history-scroll{
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:auto;
+  background:var(--card);
+  box-shadow:0 8px 24px rgba(0,0,0,.10);
+}
+
+/* Auch Tabellen ohne eigenen Wrapper erhalten Kartenoptik dort, wo sie
+   über die bekannten Hauptseitenklassen gerendert werden. */
+#appContent .balance-table,
+#appContent .chain-admin-table,
+#appContent .lp-position-table,
+#appContent .lp-scan-table,
+#appContent .lp-history-table,
+#appContent .lp-staking-table{
+  border-radius:12px;
+}
+
+/* Alte vertikale Zelltrennlinien der Admin-Tabelle entfernen. */
+#appContent .chain-admin-table th,
+#appContent .chain-admin-table td{
+  border-right:0;
+}
+
+/* Header bleiben beim horizontalen Scrollen sichtbar. */
+#appContent .chain-admin-table th,
+#appContent .lp-position-table th,
+#appContent .lp-scan-table th,
+#appContent .lp-history-table th,
+#appContent .lp-staking-table th{
+  position:sticky;
+  top:0;
+  z-index:6;
+}
+
+/* Etwas mehr Luft und klare Zeilenführung bei Bestands-/Snapshot-Tabellen. */
+#appContent .balance-table th,
+#appContent .balance-table td{
+  padding-top:11px;
+  padding-bottom:11px;
+}

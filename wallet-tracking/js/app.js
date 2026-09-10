@@ -296,7 +296,7 @@ async function saveTaxSnapshot(date,tz,walletSel){
   await sb.from("year_end_positions").delete().eq("snapshot_date",date).in("wallet_id",[...ids]);
   const payload=taxRows.filter(r=>{const w=selected.find(x=>x.label===r.wallet&&walletAddressForChain(x,r.chain)===r.wallet_address);return !!w?.dbId;}).map(r=>{
     const w=selected.find(x=>x.label===r.wallet&&walletAddressForChain(x,r.chain)===r.wallet_address);
-    return {user_id:currentUser.id,snapshot_date:date,timezone:tz,wallet_id:w.dbId,wallet_label:r.wallet,wallet_address:r.wallet_address,chain_key:r.chain,asset_key:r.asset||"native",symbol:r.symbol||null,decimals:r.decimals??null,amount:r.amount??null,block_ref:r.block??null,price_usd:r.price_usd??null,value_usd:r.value_usd??null,balance_source:r.balance_source||null,price_source:r.price_source||null,status:r.status||"verifiziert",error_message:r.error||null,calculated_at:new Date().toISOString()};
+    return {user_id:currentUser.id,snapshot_date:date,timezone:tz,wallet_id:w.dbId,chain_key:r.chain,asset_key:r.asset||"native",symbol:r.symbol||null,decimals:r.decimals??null,amount:r.amount??null,block_ref:r.block??null,price_usd:r.price_usd??null,value_usd:r.value_usd??null,balance_source:r.balance_source||null,price_source:r.price_source||null,status:r.status||"verifiziert",error_message:r.error||null,calculated_at:new Date().toISOString()};
   });
   if(payload.length){const {error}=await sb.from("year_end_positions").upsert(payload,{onConflict:"user_id,snapshot_date,wallet_id,chain_key,asset_key"});if(error)throw error;}
   const scope=walletSel==="__all"?"__all":String(walletSel);
@@ -4015,7 +4015,6 @@ function buildCurrentSnapshotItems() {
       result.rows.forEach(r => {
         items.push({
           wallet_id: w.dbId,
-          wallet_label: w.label,
           chain,
           symbol: r.symbol,
           address: r.isNative ? null : (r.address || null),
