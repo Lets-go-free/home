@@ -6,7 +6,7 @@ window.DAO1Project = (() => {
   const SYSTEM_ADDRESS = "0x0200000000000000000000000000000000000001";
   const PAIR_ADDRESS = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
   const SYNC_TOPIC = "0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
-  const PRICE_SOURCE_TAG = "exact-v3";
+  const PRICE_SOURCE_TAG = "exact-v4";
   const PRICE_LOOKBACK_BLOCKS = 10000;
   const RPC_URL = "https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc";
   const EXPLORER_API = "https://explorer.apertum.io/api/v2";
@@ -1302,6 +1302,96 @@ window.DAO1Project = (() => {
     return {updated,missing};
   }
 
+  async function repriceCachedTransactionHistory(){
+    const job=++transactionJobToken;
+    const wallets=allProjectWalletOptions();
+    if(!wallets.length)return;
+
+    const selectedAll=txFilterWallet==="__all";
+    const targets=selectedAll ? wallets : wallets.filter(w=>String(w.id)===String(txFilterWallet));
+    if(!targets.length)return;
+
+    const btn=document.getElementById("dao1TxRepriceBtn");
+    if(btn){btn.disabled=true;btn.textContent="Historische Preise werden neu berechnet…";}
+
+    let totalRows=0,totalUpdated=0,totalMissing=0,totalClaims=0;
+    try{
+      for(let wi=0;wi<targets.length;wi++){
+        if(job!==transactionJobToken)return;
+        const w=targets[wi],address=walletAddress(w);
+        setTransactionStatus("db",`Wallet ${wi+1}/${targets.length}: gespeicherte Transaktionen werden für die Preis-Neuberechnung geladen…`,
+          `${w.label} · Kein erneuter Explorer-Transaktionsscan.`);
+        const rows=(await loadTransactionRows(address,null)).filter(r=>!r.price_is_manual && Number(r.block_number)>0);
+        totalRows+=rows.length;
+        if(!rows.length)continue;
+
+        const blocks=[...new Set(rows.map(r=>Number(r.block_number)).filter(Number.isFinite))];
+        setTransactionStatus("loading",`Wallet ${wi+1}/${targets.length}: historische Poolpreise werden geprüft…`,
+          `${rows.length.toLocaleString("de-DE")} gecachte Transaktionen · ${blocks.length.toLocaleString("de-DE")} unterschiedliche TX-Blöcke.`);
+        const history=await ensurePricesForClaimBlocks(blocks,document.getElementById("dao1TransactionStatus"));
+
+        for(let i=0;i<rows.length;i++){
+          if(job!==transactionJobToken)return;
+          const r=rows[i];
+          const px=await priceForTransaction(Number(r.block_number),r.tx_timestamp,history);
+          if(px.price==null){totalMissing++;continue;}
+          const price=Number(px.price);
+          const patch={
+            aptm_usd:price,
+            value_usd:Number(r.value_aptm||0)*price,
+            gas_usd:Number(r.gas_aptm||0)*price,
+            claim_reward_usd:r.claim_reward_aptm==null?r.claim_reward_usd:Number(r.claim_reward_aptm||0)*price,
+            price_source:px.source,
+            updated_at:new Date().toISOString()
+          };
+          const {error}=await sb.from("project_transactions").update(patch)
+            .eq("user_id",getContext?.().currentUser.id)
+            .eq("wallet_id",walletIdForAddress(address))
+            .eq("tx_hash",r.tx_hash);
+          if(error){console.warn("Tx historical reprice:",error);totalMissing++;continue;}
+          totalUpdated++;
+
+          if(r.claim_nft_id!=null){
+            totalClaims++;
+            const claimPatch={
+              aptm_usd:price,
+              reward_usd:Number(r.claim_reward_aptm||0)*price,
+              gas_usd:Number(r.gas_aptm||0)*price,
+              price_source:px.source,
+              updated_at:new Date().toISOString()
+            };
+            const {error:claimError}=await sb.from("project_nft_claims").update(claimPatch)
+              .eq("user_id",getContext?.().currentUser.id)
+              .eq("wallet_id",walletIdForAddress(address))
+              .eq("tx_hash",r.tx_hash)
+              .or("price_is_manual.is.null,price_is_manual.eq.false");
+            if(claimError)console.warn("Claim historical reprice:",claimError);
+          }
+
+          if(i===0 || (i+1)%100===0 || i+1===rows.length){
+            setTransactionStatus("db",`Wallet ${wi+1}/${targets.length}: historische Preise werden gespeichert ${i+1}/${rows.length}…`,
+              `Nur gecachte Transaktionen werden neu bewertet · Preislogik ${PRICE_SOURCE_TAG}.`);
+          }
+        }
+      }
+
+      if(job!==transactionJobToken)return;
+      transactionRows=await loadTransactionRows(selectedAll?null:walletAddress(targets[0]),null);
+      renderTransactionControls();
+      renderTransactionHistory();
+      const exactCount=transactionRows.filter(r=>String(r.price_source||"").includes(PRICE_SOURCE_TAG)).length;
+      const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
+      setTransactionStatus("ready",`Historische APTM-Preise neu berechnet – ${totalUpdated.toLocaleString("de-DE")} Transaktionen aktualisiert.`,
+        `${totalRows.toLocaleString("de-DE")} gecachte Transaktionen geprüft · ${totalClaims.toLocaleString("de-DE")} Claim-Datensätze mitgeführt · ${totalMissing.toLocaleString("de-DE")} ohne belastbaren Poolpreis · ${exactCount.toLocaleString("de-DE")} Zeilen ${PRICE_SOURCE_TAG} · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte. Kein Explorer-Transaktionsscan.`);
+    }catch(e){
+      console.error("DAO1 historische Preis-Neuberechnung:",e);
+      setTransactionStatus("error","Historische Preis-Neuberechnung fehlgeschlagen.",e?.message||String(e));
+    }finally{
+      const b=document.getElementById("dao1TxRepriceBtn");
+      if(b && job===transactionJobToken){b.disabled=false;b.textContent="Historische Preise neu berechnen";}
+    }
+  }
+
   async function refreshTransactionHistory(scan=false){
     const job=++transactionJobToken;
     const wallets=allProjectWalletOptions();
@@ -1617,6 +1707,7 @@ window.DAO1Project = (() => {
     el.innerHTML=`
       <div class="action-row" style="margin-bottom:10px">
         <button id="dao1TxScanBtn" onclick="DAO1Project.refreshTransactionHistory(true)">Daten aktualisieren</button>
+        <button id="dao1TxRepriceBtn" class="secondary" onclick="DAO1Project.repriceCachedTransactionHistory()">Historische Preise neu berechnen</button>
         <button class="secondary" onclick="DAO1Project.exportTransactionsExcel()">Excel exportieren</button>
         <button class="secondary" onclick="DAO1Project.exportTransactionsPdf()">PDF / Drucken</button>
       </div>
@@ -1643,7 +1734,7 @@ window.DAO1Project = (() => {
           ${nfts.map(n=>`<option value="${n.id}" ${String(txFilterNft)===n.id?"selected":""}>${n.name}${String(n.name||"").includes("#"+n.id)?"":" · #"+n.id}${n.subtype?" · "+n.subtype:""}</option>`).join("")}
         </select></label>
       </div>
-      <div class="note" style="margin-top:7px">Alle Filter wirken direkt auf Summary, Detailliste und Export. Historische NFTs bleiben berücksichtigt, sofern Claims zu ihnen gespeichert sind. Blockchain-Daten werden ausschließlich über „Daten aktualisieren“ nachgeladen.</div>`;
+      <div class="note" style="margin-top:7px">Alle Filter wirken direkt auf Summary, Detailliste und Export. Historische NFTs bleiben berücksichtigt, sofern Claims zu ihnen gespeichert sind. „Daten aktualisieren“ synchronisiert neue Blockchain-Transaktionen. „Historische Preise neu berechnen“ verwendet dagegen ausschließlich die bereits gecachten TX-Blöcke und erneuert daraus APTM/USD-, USD- und Gas-USD-Werte; die Transaktionshistorie wird dabei nicht erneut vom Explorer geladen.</div>`;
   }
 
   async function setTransactionFilter(kind,value){
@@ -2338,6 +2429,6 @@ window.DAO1Project = (() => {
   }
 
   return { switchSubtab, configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
-    refreshTransactionHistory, setTransactionFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
+    refreshTransactionHistory, repriceCachedTransactionHistory, setTransactionFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS };
 })();
