@@ -1023,6 +1023,65 @@ window.DAO1Project = (() => {
     return result.get(String(nftId))||[];
   }
 
+
+  async function fetchTransactionTokenTransfers(txHash){
+    const hash=String(txHash||"").toLowerCase();
+    if(!/^0x[0-9a-f]{64}$/.test(hash))return [];
+    const candidates=[
+      `${EXPLORER_API}/transactions/${hash}/token-transfers`,
+      `${EXPLORER_API}/transactions/${hash}/token-transfers?type=ERC-721%2CERC-1155`
+    ];
+    let lastError=null;
+    for(const initial of candidates){
+      try{
+        const rows=await fetchPagedUrl(initial,100);
+        if(Array.isArray(rows)&&rows.length)return rows;
+      }catch(e){lastError=e;}
+    }
+    if(lastError)console.warn("Apertum Tx-Token-Transfers:",hash,lastError);
+    return [];
+  }
+
+  function summarizeTokenTransfer(t){
+    const token=t?.token||{};
+    return {
+      contract:lower(token.address||token.address_hash||t.token_address||t.token_address_hash||""),
+      ids:transferTokenIds(t),
+      type:String(token.type||t.token_type||t.type||""),
+      symbol:String(token.symbol||t.symbol||""),
+      name:String(token.name||t.name||""),
+      from:transferFromAddress(t),
+      to:transferToAddress(t),
+      amount:String(t?.total?.value??t?.value??t?.amount??""),
+      block:Number(t?.block_number||0),
+      log_index:Number(t?.log_index||0),
+      tx:String(t?.transaction_hash||t?.tx_hash||H(t?.transaction)||"").toLowerCase()
+    };
+  }
+
+  async function diagnoseControlNft38483(nftContract,nftId,primary,walletFallback,cachedRows){
+    if(String(nftId)!=="38483")return;
+    const knownTx="0x31cd019cbba0c36c631debde1d9d3d020cd4671dc39d669a8f489eb026251de2";
+    const txRows=await fetchTransactionTokenTransfers(knownTx);
+    console.info("DAO1 NFT Kontrollfall #38483",{
+      expected:{
+        nft_number:"38483",
+        known_purchase_tx:knownTx,
+        expected_purchase_at:"2025-02-24T13:40:13.000Z",
+        expected_wallet:"0xc7e112d6db20a4a9213834b2cb235c34733e6591",
+        expected_payment:"10000 wUSDT"
+      },
+      requested_instance:{
+        contract:nftContract,
+        token_id:String(nftId)
+      },
+      transaction_token_transfers:txRows.map(summarizeTokenTransfer),
+      instance_history:(primary||[]).map(summarizeTokenTransfer),
+      own_wallet_history:(walletFallback||[]).map(summarizeTokenTransfer),
+      global_cache_history:(cachedRows||[]).map(summarizeTokenTransfer)
+    });
+  }
+
   async function discoverOwnershipForNft(nftId, nftContract=DEFAULT_MINER_NFT_CONTRACT, knownName="") {
     const ctx=getContext?.();
     nftContract=lower(nftContract || DEFAULT_MINER_NFT_CONTRACT);
@@ -1078,10 +1137,19 @@ window.DAO1Project = (() => {
 
     // Dritte Quelle: globaler serverseitiger Transfercache. Beim ersten Abruf wird
     // ausschließlich die indexierte Transferhistorie dieses NFT geladen; kein Chain-Vollscan.
+    let cachedHistoryRows=[];
     try{
       const cached=await fetchCachedNftHistories(nftContract,[String(nftId)]);
-      for(const t of (cached.get(String(nftId))||[]))transferMap.set(nftTransferDedupeKey(t),t);
+      cachedHistoryRows=cached.get(String(nftId))||[];
+      for(const t of cachedHistoryRows)transferMap.set(nftTransferDedupeKey(t),t);
     }catch(e){console.warn("Apertum globaler NFT-Historiencache",nftContract,nftId,e);}
+
+    // Verifizierter Kontrollfall: #38483 wurde laut Apertum Explorer am 24.02.2025
+    // in Tx 0x31cd...1de2 zusammen mit 10'000 wUSDT erworben. Die Diagnose prüft
+    // hier explizit, welche technische ERC-721 Token-ID diese Transaktion enthält.
+    try{await diagnoseControlNft38483(nftContract,nftId,primary,walletFallback,cachedHistoryRows);}
+    catch(e){console.warn("DAO1 NFT Kontrollfall #38483 Diagnose:",e);}
+
     const transfers=[...transferMap.values()];
     const chronological=[...transfers].sort((a,b)=>{
       const ba=Number(a.block_number||0), bb=Number(b.block_number||0);
