@@ -6,8 +6,8 @@ window.DAO1Project = (() => {
   const SYSTEM_ADDRESS = "0x0200000000000000000000000000000000000001";
   const PAIR_ADDRESS = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
   const SYNC_TOPIC = "0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
-  const PRICE_SOURCE_TAG = "exact-v10";
-  const PRICE_MISSING_TAG = "missing-v10";
+  const PRICE_SOURCE_TAG = "exact-v11";
+  const PRICE_MISSING_TAG = "missing-v11";
   const PRICE_LOOKBACK_BLOCKS = 10000;
   const PRICE_ANCHOR_VERSION = 1;
   const PRICE_ANCHOR_LOCAL_LOOKBACK = 512;
@@ -64,30 +64,82 @@ window.DAO1Project = (() => {
   }
 
   function renderPriceJobLog(){
-    const el=document.getElementById("dao1PriceJobLog");
-    if(!el)return;
-    if(!activePriceJobLog){el.style.display="none";el.innerHTML="";return;}
+    const panel=document.getElementById("dao1PriceJobPanel");
+    const metrics=document.getElementById("dao1PriceJobMetrics");
+    const logEl=document.getElementById("dao1PriceJobLog");
+    if(!panel||!metrics||!logEl)return;
+    if(!activePriceJobLog){
+      panel.style.display="block";
+      metrics.textContent="Noch kein historischer Preisjob in dieser Sitzung.";
+      logEl.textContent="Bereit.";
+      return;
+    }
     const x=activePriceJobLog;
     const elapsed=Date.now()-x.startedAt;
-    el.style.display="block";
-    el.innerHTML=`
-      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
-        <strong>Historische Preis-Neuberechnung</strong>
-        <span>Laufzeit: <strong>${fmtElapsed(elapsed)}</strong></span>
-        <span>TX: <strong>${x.txCount.toLocaleString("de-DE")}</strong></span>
-        <span>Preisblöcke: <strong>${x.blockCount.toLocaleString("de-DE")}</strong></span>
-        <span>Anchor-Cache: <strong>${x.anchorHits.toLocaleString("de-DE")}</strong></span>
-        <span>Anchors neu: <strong>${x.anchorScans.toLocaleString("de-DE")}</strong></span>
-        <span>Syncs verarbeitet: <strong>${x.syncLogs.toLocaleString("de-DE")}</strong></span>
-        <span>RPC-Requests: <strong>${x.rpcChunks.toLocaleString("de-DE")}</strong></span>
-        <span>DB-Batches: <strong>${x.dbBatches.toLocaleString("de-DE")}</strong></span>
-      </div>
-      <div style="max-height:150px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.45">${x.lines.slice(-30).map(l=>`<div>${l}</div>`).join("")}</div>`;
+    panel.style.display="block";
+    metrics.innerHTML=`
+      <span>Laufzeit: <strong>${fmtElapsed(elapsed)}</strong></span>
+      <span>TX: <strong>${x.txCount.toLocaleString("de-DE")}</strong></span>
+      <span>Preisblöcke: <strong>${x.blockCount.toLocaleString("de-DE")}</strong></span>
+      <span>Anchor-Cache: <strong>${x.anchorHits.toLocaleString("de-DE")}</strong></span>
+      <span>Anchors neu: <strong>${x.anchorScans.toLocaleString("de-DE")}</strong></span>
+      <span>Null-Anker neu geprüft: <strong>${Number(x.nullAnchorsRechecked||0).toLocaleString("de-DE")}</strong></span>
+      <span>Legacy-Anker genutzt: <strong>${Number(x.legacyAnchorHits||0).toLocaleString("de-DE")}</strong></span>
+      <span>Syncs verarbeitet: <strong>${x.syncLogs.toLocaleString("de-DE")}</strong></span>
+      <span>RPC-Requests: <strong>${x.rpcChunks.toLocaleString("de-DE")}</strong></span>
+      <span>DB-Batches: <strong>${x.dbBatches.toLocaleString("de-DE")}</strong></span>`;
+    logEl.textContent=x.lines.join("\n")||"Bereit.";
+    logEl.scrollTop=logEl.scrollHeight;
+  }
+
+  function priceJobLogText(){
+    if(!activePriceJobLog)return "DAO1 / Apertum – Historische Preis-Neuberechnung\nKein Laufzeitlog vorhanden.\n";
+    const x=activePriceJobLog;
+    const header=[
+      "DAO1 / Apertum – Historische Preis-Neuberechnung",
+      `Preislogik: ${PRICE_SOURCE_TAG}`,
+      `Laufzeit: ${fmtElapsed(Date.now()-x.startedAt)}`,
+      `TX: ${x.txCount}`,
+      `Preisblöcke: ${x.blockCount}`,
+      `Anchor-Cache: ${x.anchorHits}`,
+      `Anchors neu: ${x.anchorScans}`,
+      `Null-Anker neu geprüft: ${Number(x.nullAnchorsRechecked||0)}`,
+      `Legacy-Anker genutzt: ${Number(x.legacyAnchorHits||0)}`,
+      `Syncs verarbeitet: ${x.syncLogs}`,
+      `RPC-Requests: ${x.rpcChunks}`,
+      `DB-Batches: ${x.dbBatches}`,
+      ""
+    ];
+    return header.concat(x.lines||[]).join("\n")+"\n";
+  }
+
+  async function copyPriceJobLog(){
+    const text=priceJobLogText();
+    try{
+      await navigator.clipboard.writeText(text);
+      const state=document.getElementById("dao1PriceJobLogState");
+      if(state)state.textContent="Log kopiert.";
+    }catch(e){
+      const el=document.getElementById("dao1PriceJobLog");
+      if(el){el.focus();el.select?.();}
+      throw e;
+    }
+  }
+
+  function exportPriceJobLog(){
+    const blob=new Blob([priceJobLogText()],{type:"text/plain;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+    a.href=url;a.download=`dao1-apertum-preisjob_${stamp}.txt`;
+    document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+    const state=document.getElementById("dao1PriceJobLogState");
+    if(state)state.textContent="Log als TXT exportiert.";
   }
 
   function priceJobStart(txCount=0,blockCount=0){
     if(priceJobTimer){clearInterval(priceJobTimer);priceJobTimer=null;}
-    activePriceJobLog={startedAt:Date.now(),txCount:Number(txCount||0),blockCount:Number(blockCount||0),anchorHits:0,anchorScans:0,coverageHits:0,coverageScans:0,syncLogs:0,rpcChunks:0,dbBatches:0,lines:[]};
+    activePriceJobLog={startedAt:Date.now(),txCount:Number(txCount||0),blockCount:Number(blockCount||0),anchorHits:0,anchorScans:0,nullAnchorsRechecked:0,legacyAnchorHits:0,coverageHits:0,coverageScans:0,syncLogs:0,rpcChunks:0,dbBatches:0,lines:[]};
     priceJobLog(`Start · ${Number(txCount||0).toLocaleString("de-DE")} TX · ${Number(blockCount||0).toLocaleString("de-DE")} Preisblöcke`);
     priceJobTimer=setInterval(renderPriceJobLog,1000);
     renderPriceJobLog();
@@ -147,7 +199,11 @@ window.DAO1Project = (() => {
         <div id="dao1-subtab-liquidity" class="project-subtab-panel" style="display:none"><div id="dao1LpContent"></div></div>
         <div id="dao1-subtab-config" class="project-subtab-panel" style="display:none"><div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div></div>
         <div id="dao1-subtab-transactions" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><div class="chain-title">📒 Apertum Transaktionshistorie</div><div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Wallet-Wechsel lesen den Cache; erst „Daten aktualisieren“ lädt neue Blockchain-Daten, aktualisiert NFTs/Besitzerhistorie und reichert neue Claims an.</div><div id="dao1TransactionControls"></div><div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
-        <div id="dao1PriceJobLog" class="note" style="display:block;margin-top:8px;padding:8px 10px;border:1px solid rgba(128,128,128,.2);border-radius:8px">⏱️ Laufzeitdiagnose erscheint hier beim historischen Preisjob.</div><div id="dao1TransactionSummary" style="margin-top:10px"></div><div id="dao1TransactionTable" style="margin-top:10px"></div></div></div>
+        <div id="dao1PriceJobPanel" class="custom-token-card" style="display:block;margin-top:10px;padding:10px 12px">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><strong>⏱️ Historische Preis-Neuberechnung · Diagnose-Log</strong><button type="button" class="secondary" onclick="DAO1Project.copyPriceJobLog()">Log kopieren</button><button type="button" class="secondary" onclick="DAO1Project.exportPriceJobLog()">Log als TXT exportieren</button><span id="dao1PriceJobLogState" class="meta">Eigenes Log-Fenster wie in Discovery; vollständig kopier- und exportierbar.</span></div>
+          <div id="dao1PriceJobMetrics" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:8px" class="meta">Noch kein historischer Preisjob in dieser Sitzung.</div>
+          <textarea id="dao1PriceJobLog" readonly spellcheck="false" style="width:100%;min-height:260px;max-height:420px;resize:vertical;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.45;background:var(--card,#111);color:inherit;border:1px solid rgba(128,128,128,.25);border-radius:8px;padding:10px;box-sizing:border-box">Bereit.</textarea>
+        </div><div id="dao1TransactionSummary" style="margin-top:10px"></div><div id="dao1TransactionTable" style="margin-top:10px"></div></div></div>
         <div id="dao1-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">DAO1 / Apertum · Hilfe</h3><p class="note"><strong>Liquidity Pools:</strong> Beim Öffnen werden ausschließlich die zuletzt gespeicherten Supabase-Daten angezeigt. Aktuelle LP-Positionen, 31.12.-Vergleich und Add-/Remove-Historie werden nur über „Daten aktualisieren“ neu von Blockchain/Explorer ermittelt und danach wieder gecached.</p><p class="note"><strong>Transaktionen &amp; Claims:</strong> „Daten aktualisieren“ synchronisiert neue Transaktionen, Claims, historische APTM-Kurse sowie NFT-Bestand und Besitzerhistorie. Filter und Exporte arbeiten danach aus dem gespeicherten Bestand.</p><p class="note"><strong>Konfiguration:</strong> Hier werden DAO1-Projektassets und NFTs klassifiziert. Die Klassifizierung steuert Filter und Bezeichnungen, nicht die Erkennung der Blockchain-Transaktionen. Fehlende historische APTM-Kurse können manuell ergänzt werden und bleiben als manuell gekennzeichnet.</p></div></div>
       `;
       app.appendChild(panel);
@@ -1270,6 +1326,52 @@ window.DAO1Project = (() => {
     }
   }
 
+  async function loadLegacyPredecessorPrice(targetBlock){
+    const target=Number(targetBlock);
+    if(!Number.isFinite(target)||target<0)return null;
+    try{
+      const {data,error}=await sb.from("aptm_price_history").select("block_number,log_index,tx_hash,aptm_usd")
+        .eq("pool_address",lower(PAIR_ADDRESS)).lte("block_number",target)
+        .order("block_number",{ascending:false}).order("log_index",{ascending:false}).limit(1);
+      if(error)throw error;
+      const r=(data||[])[0];
+      if(!r||r.aptm_usd==null||!Number.isFinite(Number(r.aptm_usd))||Number(r.aptm_usd)<=0)return null;
+      return {
+        project_key:PROJECT_KEY,chain_key:CHAIN_KEY,pool_address:lower(PAIR_ADDRESS),parser_version:PRICE_ANCHOR_VERSION,
+        target_block:target,sync_block:Number(r.block_number),log_index:Number(r.log_index||0),tx_hash:r.tx_hash||null,
+        aptm_usd:Number(r.aptm_usd),scanned_from_block:Number(r.block_number),scanned_at:new Date().toISOString()
+      };
+    }catch(e){
+      console.warn("APTM Legacy-Preisanker lesen:",e);
+      return null;
+    }
+  }
+
+  async function revalidateNullCachedAnchors(rows,status){
+    const out=[];
+    for(let i=0;i<(rows||[]).length;i++){
+      const r=rows[i];
+      const target=Number(r.target_block);
+      if(status)status.textContent=`Leere Preisanker werden neu validiert ${i+1}/${rows.length}…`;
+      let replacement=await loadLegacyPredecessorPrice(target);
+      if(replacement){
+        if(activePriceJobLog)activePriceJobLog.legacyAnchorHits++;
+      }else{
+        const meta=await poolMeta();
+        const pred=await findPredecessorSync(target,meta,status);
+        replacement={
+          project_key:PROJECT_KEY,chain_key:CHAIN_KEY,pool_address:lower(PAIR_ADDRESS),parser_version:PRICE_ANCHOR_VERSION,
+          target_block:target,sync_block:pred.row?Number(pred.row.block_number):null,
+          log_index:pred.row?Number(pred.row.log_index):null,tx_hash:pred.row?.tx_hash||null,
+          aptm_usd:pred.row?Number(pred.row.aptm_usd):null,scanned_from_block:Number(pred.scannedFrom),scanned_at:new Date().toISOString()
+        };
+      }
+      out.push(replacement);
+      if(activePriceJobLog)activePriceJobLog.nullAnchorsRechecked++;
+    }
+    return out;
+  }
+
   async function findPredecessorSync(targetBlock,meta,status){
     let to=Math.max(0,Number(targetBlock));
     let span=PRICE_ANCHOR_LOCAL_LOOKBACK;
@@ -1328,8 +1430,19 @@ window.DAO1Project = (() => {
     if(!targets.length)return map;
 
     const cached=await loadCachedPriceAnchors(targets);
-    for(const r of cached)map.set(Number(r.target_block),r);
-    if(activePriceJobLog){activePriceJobLog.anchorHits+=cached.length;priceJobLog(`Anchor-Cache: ${cached.length}/${targets.length} Zielblöcke bereits vorhanden`);}
+    const validCached=cached.filter(r=>r?.aptm_usd!=null && r?.sync_block!=null);
+    const nullCached=cached.filter(r=>r?.aptm_usd==null || r?.sync_block==null);
+    for(const r of validCached)map.set(Number(r.target_block),r);
+    if(activePriceJobLog){activePriceJobLog.anchorHits+=validCached.length;priceJobLog(`Anchor-Cache: ${validCached.length}/${targets.length} gültige Zielblöcke · ${nullCached.length} leere Anchor(s) werden neu geprüft`);}
+
+    if(nullCached.length && getContext?.()?.isAdmin){
+      const repaired=await revalidateNullCachedAnchors(nullCached,status);
+      await savePriceAnchors(repaired);
+      for(const r of repaired)map.set(Number(r.target_block),r);
+      if(activePriceJobLog)priceJobLog(`Leere Anchor-Revalidierung: ${repaired.filter(r=>r.aptm_usd!=null).length}/${repaired.length} mit Preis wiederhergestellt`);
+    }else{
+      for(const r of nullCached)map.set(Number(r.target_block),r);
+    }
 
     const missing=targets.filter(b=>!map.has(b));
     if(!missing.length)return map;
@@ -2105,7 +2218,6 @@ window.DAO1Project = (() => {
         <button class="secondary" onclick="DAO1Project.exportTransactionsExcel()">Excel exportieren</button>
         <button class="secondary" onclick="DAO1Project.exportTransactionsPdf()">PDF / Drucken</button>
       </div>
-      <div id="dao1PriceJobLog" class="note" style="display:${activePriceJobLog?"block":"none"};margin:0 0 10px 0;padding:9px 10px"></div>
       <div class="custom-token-grid" style="grid-template-columns:minmax(270px,1.2fr) minmax(140px,.55fr) minmax(140px,.55fr) minmax(160px,.65fr) minmax(190px,.75fr) minmax(240px,1fr)">
         <label><span class="field-label">Wallet</span><select onchange="DAO1Project.setTransactionFilter('wallet',this.value)">
           <option value="__all" ${txFilterWallet==="__all"?"selected":""}>Alle Apertum-Wallets</option>
@@ -2827,6 +2939,6 @@ window.DAO1Project = (() => {
   }
 
   return { switchSubtab, configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
-    refreshTransactionHistory, repriceCachedTransactionHistory, setTransactionFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
+    refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS };
 })();
