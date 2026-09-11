@@ -46,6 +46,56 @@ window.DAO1Project = (() => {
   let txFilterClass = "__all";
   let txFilterNft = "__all";
   let transactionJobToken = 0;
+  let activePriceJobLog = null;
+  let priceJobTimer = null;
+
+  function fmtElapsed(ms){
+    const total=Math.max(0,Math.floor(Number(ms||0)/1000));
+    const h=Math.floor(total/3600),m=Math.floor((total%3600)/60),sec=total%60;
+    return h>0?`${h}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`:`${m}:${String(sec).padStart(2,"0")}`;
+  }
+
+  function renderPriceJobLog(){
+    const el=document.getElementById("dao1PriceJobLog");
+    if(!el)return;
+    if(!activePriceJobLog){el.style.display="none";el.innerHTML="";return;}
+    const x=activePriceJobLog;
+    const elapsed=Date.now()-x.startedAt;
+    el.style.display="block";
+    el.innerHTML=`
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+        <strong>Historische Preis-Neuberechnung</strong>
+        <span>Laufzeit: <strong>${fmtElapsed(elapsed)}</strong></span>
+        <span>TX: <strong>${x.txCount.toLocaleString("de-DE")}</strong></span>
+        <span>Preisblöcke: <strong>${x.blockCount.toLocaleString("de-DE")}</strong></span>
+        <span>Explorer-Seiten: <strong>${x.explorerPages.toLocaleString("de-DE")}</strong></span>
+        <span>Syncs: <strong>${x.explorerLogs.toLocaleString("de-DE")}</strong></span>
+        <span>RPC-Chunks: <strong>${x.rpcChunks.toLocaleString("de-DE")}</strong></span>
+        <span>DB-Batches: <strong>${x.dbBatches.toLocaleString("de-DE")}</strong></span>
+      </div>
+      <div style="max-height:150px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.45">${x.lines.slice(-30).map(l=>`<div>${l}</div>`).join("")}</div>`;
+  }
+
+  function priceJobStart(txCount=0,blockCount=0){
+    if(priceJobTimer){clearInterval(priceJobTimer);priceJobTimer=null;}
+    activePriceJobLog={startedAt:Date.now(),txCount:Number(txCount||0),blockCount:Number(blockCount||0),explorerPages:0,explorerLogs:0,rpcChunks:0,dbBatches:0,lines:[]};
+    priceJobLog(`Start · ${Number(txCount||0).toLocaleString("de-DE")} TX · ${Number(blockCount||0).toLocaleString("de-DE")} Preisblöcke`);
+    priceJobTimer=setInterval(renderPriceJobLog,1000);
+    renderPriceJobLog();
+  }
+
+  function priceJobLog(message){
+    if(!activePriceJobLog)return;
+    const elapsed=fmtElapsed(Date.now()-activePriceJobLog.startedAt);
+    activePriceJobLog.lines.push(`[${elapsed}] ${String(message||"")}`);
+    renderPriceJobLog();
+  }
+
+  function priceJobStop(){
+    if(priceJobTimer){clearInterval(priceJobTimer);priceJobTimer=null;}
+    renderPriceJobLog();
+  }
+
   const DB_PAGE_SIZE = 1000;
   let miningFilterFrom = DAO1_DEFAULT_FROM;
   let miningFilterTo = dao1TodayIso();
@@ -1563,6 +1613,7 @@ window.DAO1Project = (() => {
       console.error("DAO1 historische Preis-Neuberechnung:",e);
       setTransactionStatus("error","Historische Preis-Neuberechnung fehlgeschlagen.",e?.message||String(e));
     }finally{
+      priceJobStop();
       const b=document.getElementById("dao1TxRepriceBtn");
       if(b && job===transactionJobToken){b.disabled=false;b.textContent="Historische Preise neu berechnen";}
     }
@@ -1887,6 +1938,7 @@ window.DAO1Project = (() => {
         <button class="secondary" onclick="DAO1Project.exportTransactionsExcel()">Excel exportieren</button>
         <button class="secondary" onclick="DAO1Project.exportTransactionsPdf()">PDF / Drucken</button>
       </div>
+      <div id="dao1PriceJobLog" class="note" style="display:${activePriceJobLog?"block":"none"};margin:0 0 10px 0;padding:9px 10px"></div>
       <div class="custom-token-grid" style="grid-template-columns:minmax(270px,1.2fr) minmax(140px,.55fr) minmax(140px,.55fr) minmax(160px,.65fr) minmax(190px,.75fr) minmax(240px,1fr)">
         <label><span class="field-label">Wallet</span><select onchange="DAO1Project.setTransactionFilter('wallet',this.value)">
           <option value="__all" ${txFilterWallet==="__all"?"selected":""}>Alle Apertum-Wallets</option>
@@ -1911,6 +1963,7 @@ window.DAO1Project = (() => {
         </select></label>
       </div>
       <div class="note" style="margin-top:7px">Alle Filter wirken direkt auf Summary, Detailliste und Export. Historische NFTs bleiben berücksichtigt, sofern Claims zu ihnen gespeichert sind. „Daten aktualisieren“ synchronisiert neue Blockchain-Transaktionen. „Historische Preise neu berechnen“ verwendet dagegen ausschließlich die bereits gecachten TX-Blöcke und erneuert daraus APTM/USD-, USD- und Gas-USD-Werte; die Transaktionshistorie wird dabei nicht erneut vom Explorer geladen.</div>`;
+    renderPriceJobLog();
   }
 
   async function setTransactionFilter(kind,value){
