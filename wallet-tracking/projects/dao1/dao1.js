@@ -1251,6 +1251,8 @@ window.DAO1Project = (() => {
                 owned_to_block:null,
                 owned_to_at:null,
                 is_current:true,
+                entry_from_address:prev.from||null,
+                entry_tx_hash:String(prev?.raw?.transaction_hash||prev?.raw?.tx_hash||H(prev?.raw?.transaction)||"").toLowerCase()||null,
                 _inferred_from_chain:true
               };
             }
@@ -1282,7 +1284,9 @@ window.DAO1Project = (() => {
             owned_from_at:ts,
             owned_to_block:null,
             owned_to_at:null,
-            is_current:true
+            is_current:true,
+            entry_from_address:from||null,
+            entry_tx_hash:String(t?.transaction_hash||t?.tx_hash||H(t?.transaction)||"").toLowerCase()||null
           });
         }
       }
@@ -1295,6 +1299,51 @@ window.DAO1Project = (() => {
     // Deterministischer Neuaufbau aus der vollständigen NFT-Transferhistorie.
     // Alte Cache-Perioden dürfen keinen falschen Ersterwerb konservieren.
     const rebuilt=ownPeriods.sort((a,b)=>Number(a.owned_from_block||0)-Number(b.owned_from_block||0));
+
+    // "Erstmals von dir erworben" darf nur als verifiziert gelten, wenn wir den
+    // wirtschaftlichen Erwerb on-chain belegen können.
+    if(rebuilt.length){
+      const firstPeriod=rebuilt[0];
+      const zero="0x0000000000000000000000000000000000000000";
+      const entryFrom=lower(firstPeriod.entry_from_address||"");
+      let acquisitionKind="wallet_receipt_only";
+      let acquisitionVerified=false;
+
+      // Direkter Mint an eigene Wallet = sicherer on-chain Ersterwerb.
+      if(entryFrom===zero){
+        acquisitionKind="mint_to_own_wallet";
+        acquisitionVerified=true;
+      }else if(firstPeriod.entry_tx_hash){
+        // Sekundärkauf / Kaufvertrag: wenn in derselben Tx eine ERC-20-Zahlung
+        // von derselben eigenen Wallet ausgeht, werten wir den Eingang als Kauf.
+        try{
+          const txRows=await fetchTransactionTokenTransfers(firstPeriod.entry_tx_hash);
+          const ownWallet=trackedWallets.find(w=>String(w?.dbId||w?.id||"")===String(firstPeriod.wallet_id));
+          const ownAddr=lower(walletAddress(ownWallet)||"");
+          const hasPayment=txRows.some(t=>{
+            const token=t?.token||{};
+            const type=String(token.type||t?.token_type||t?.type||"").toUpperCase();
+            if(type!=="ERC-20")return false;
+            if(transferFromAddress(t)!==ownAddr)return false;
+            const raw=t?.total?.value??t?.value??t?.amount??null;
+            if(raw==null)return false;
+            try{return BigInt(String(raw))>0n;}catch{return Number(raw)>0;}
+          });
+          if(hasPayment){
+            acquisitionKind="purchase_same_tx";
+            acquisitionVerified=true;
+          }
+        }catch(e){
+          console.warn("DAO1 NFT Erwerbsnachweis-Tx",firstPeriod.entry_tx_hash,e);
+        }
+      }
+
+      for(const r of rebuilt){
+        r.acquisition_kind=acquisitionKind;
+        r.acquisition_verified=acquisitionVerified;
+        r.acquisition_tx_hash=acquisitionVerified?firstPeriod.entry_tx_hash||null:null;
+      }
+    }
 
     // Bei internen Transfers darf der vorherige eigene Besitzabschnitt nicht als
     // endgültiger Verlust der User-Eigentümersphäre interpretiert werden. Für die Anzeige

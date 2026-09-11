@@ -6255,7 +6255,7 @@ function isNftSpam(n) {
 async function loadNftOwnershipCacheFromDb(){
   if(!currentUser){nftOwnershipRows=[];nftGlobalFirstOwned=new Map();return;}
   try{
-    const {data,error}=await sb.from("project_nft_ownership").select("wallet_id,nft_contract,nft_id,nft_name,owned_from_block,owned_to_block,owned_from_at,owned_to_at,is_current")
+    const {data,error}=await sb.from("project_nft_ownership").select("wallet_id,nft_contract,nft_id,nft_name,owned_from_block,owned_to_block,owned_from_at,owned_to_at,is_current,entry_from_address,entry_tx_hash,acquisition_kind,acquisition_verified,acquisition_tx_hash")
       .eq("user_id",currentUser.id).eq("project_key","dao1").eq("chain_key","apertum").order("owned_from_block",{ascending:true});
     if(error)throw error;
     nftOwnershipRows=data||[];
@@ -6379,10 +6379,15 @@ function nftOwnershipInfo(n){
   const walletRows=rows.filter(r=>String(r.wallet_id||"")===walletId)
     .sort((x,y)=>Number(x.owned_from_block||0)-Number(y.owned_from_block||0));
   const current=walletRows.find(r=>r.is_current)||walletRows[walletRows.length-1]||null;
+  const acquisitionVerified=rows.some(r=>r.acquisition_verified===true);
+  const acquisitionRow=rows.find(r=>r.acquisition_verified===true)||null;
   return {
     known:true,
-    firstOwnedAt:first?.owned_from_at||null,
-    firstOwnedBlock:Number(first?.owned_from_block||0)||null,
+    acquisitionVerified,
+    acquisitionKind:acquisitionRow?.acquisition_kind||first?.acquisition_kind||"wallet_receipt_only",
+    acquisitionTxHash:acquisitionRow?.acquisition_tx_hash||null,
+    firstOwnedAt:acquisitionVerified?(acquisitionRow?.owned_from_at||first?.owned_from_at||null):null,
+    firstOwnedBlock:acquisitionVerified?(Number(acquisitionRow?.owned_from_block||first?.owned_from_block||0)||null):null,
     walletSinceAt:current?.owned_from_at||null,
     walletSinceBlock:Number(current?.owned_from_block||0)||null,
     currentInWallet:!!current?.is_current
@@ -7130,7 +7135,9 @@ function renderNftResults(nfts, errors = []) {
           const meta = CHAIN_META[n.chain] || {dot:"",label:n.chain};
           const spam = isNftSpam(n);
           const own=nftOwnershipInfo(n);
-          const firstOwned=own?.known?nftOwnershipDate(own.firstOwnedAt):"noch nicht ermittelt";
+          const firstOwned=own?.known
+            ? (own.acquisitionVerified?nftOwnershipDate(own.firstOwnedAt):"Kaufdatum nicht sicher ermittelt")
+            : "noch nicht ermittelt";
           const walletSince=own?.known?nftOwnershipDate(own.walletSinceAt):"noch nicht ermittelt";
           const statusParts=[];
           if(spam)statusParts.push(`<span class="badge unsafe">⚠ ${n.userMarkedSpam ? "Spam markiert" : "Spam-Verdacht"}</span>`);
@@ -7140,7 +7147,7 @@ function renderNftResults(nfts, errors = []) {
             <td>${n.image?`<img class="nft-table-thumb" src="${escapeAttr(n.image)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="nft-table-placeholder">Kein Bild</div>`}</td>
             <td><strong>${escapeAttr(n.name)}</strong><div class="meta">${n.collectionName?escapeAttr(n.collectionName)+" · ":""}#${escapeAttr(String(n.tokenId))}</div><div class="meta"><code>${escapeAttr(String(n.tokenAddress||""))}</code></div></td>
             <td><div style="display:flex;align-items:center;gap:5px"><span class="dot ${meta.dot}" style="width:7px;height:7px"></span><strong>${escapeAttr(meta.label||n.chain)}</strong></div><div class="meta">${escapeAttr(n.walletLabel||"")}</div></td>
-            <td><strong>${firstOwned}</strong>${own?.firstOwnedBlock?`<div class="meta">Block ${Number(own.firstOwnedBlock).toLocaleString("de-CH")}</div>`:""}${n.acquisitionTxHash&&CHAIN_META[n.chain]?.explorer?`<div class="meta"><a href="${CHAIN_META[n.chain].explorer}/tx/${escapeAttr(n.acquisitionTxHash)}" target="_blank" rel="noopener">Erwerbs-TX</a></div>`:""}</td>
+            <td><strong>${firstOwned}</strong>${own?.firstOwnedBlock?`<div class="meta">Block ${Number(own.firstOwnedBlock).toLocaleString("de-CH")}</div>`:""}${own?.acquisitionVerified?`<div class="meta">${own.acquisitionKind==="purchase_same_tx"?"✓ Kauf on-chain belegt":"✓ Mint/Erwerb on-chain belegt"}</div>`:`<div class="meta">Nur Wallet-Eingang on-chain belegt</div>`}${own?.acquisitionTxHash&&CHAIN_META[n.chain]?.explorer?`<div class="meta"><a href="${CHAIN_META[n.chain].explorer}/tx/${escapeAttr(own.acquisitionTxHash)}" target="_blank" rel="noopener">Erwerbs-TX</a></div>`:""}</td>
             <td><strong>${walletSince}</strong>${own?.walletSinceBlock?`<div class="meta">Block ${Number(own.walletSinceBlock).toLocaleString("de-CH")}${own.currentInWallet?" · aktuell":""}</div>`:""}</td>
             <td>${statusParts.join("<br>")}</td>
             <td><div style="display:flex;gap:6px;flex-wrap:wrap">
