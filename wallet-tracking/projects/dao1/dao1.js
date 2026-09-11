@@ -36,6 +36,11 @@ window.DAO1Project = (() => {
   let manualNftId = "";
   let nftMetaById = new Map();
   let currentApertumNfts = [];
+  // Ownership refresh performance caches. Wallet transfer history and direct
+  // on-chain logs are reused within the session instead of rescanning per NFT.
+  const ownershipWalletTransferCache=new Map();
+  const ownershipDirectTransferCache=new Map();
+
   let projectNfts = [];
   let selectedNftClass = "Mining-Bot";
   const CLAIM_SCAN_BUFFER_BLOCKS = 250;
@@ -670,7 +675,18 @@ window.DAO1Project = (() => {
   async function refreshWalletNftsAndOwnership(wallet,statusPrefix=""){
     const ctx=getContext?.(),address=walletAddress(wallet);if(!ctx?.currentUser||!address)return {nfts:0,ownership:0,failed:0};
     if(typeof ctx.refreshApertumNftsForWallet==="function")await ctx.refreshApertumNftsForWallet(wallet,p=>setTransactionStatus("loading",`${statusPrefix}${wallet.label}: Apertum-NFTs werden aktualisiert…`,`Explorer-Seite ${p}`));
-    const prev=selectedWalletId;selectedWalletId=String(wallet.id);await loadCurrentApertumNfts();let saved=0,failed=0;for(const n of currentApertumNfts){try{saved+=await discoverOwnershipForNft(n.id,n.contract,n.name);}catch(e){failed++;console.warn("NFT Ownership",n,e);}}selectedWalletId=prev;await loadOwnershipCache();return {nfts:currentApertumNfts.length,ownership:saved,failed};
+    const prev=selectedWalletId;
+    selectedWalletId=String(wallet.id);
+    await loadCurrentApertumNfts();
+    await prewarmDirectNftOwnership(currentApertumNfts,`${statusPrefix}${wallet.label}: `);
+    let saved=0,failed=0;
+    for(const n of currentApertumNfts){
+      try{saved+=await discoverOwnershipForNft(n.id,n.contract,n.name);}
+      catch(e){failed++;console.warn("NFT Ownership",n,e);}
+    }
+    selectedWalletId=prev;
+    await loadOwnershipCache();
+    return {nfts:currentApertumNfts.length,ownership:saved,failed};
   }
 
   async function discoverMinerNfts() {
@@ -683,7 +699,8 @@ window.DAO1Project = (() => {
     renderMinerSelector("Aktueller Apertum-NFT-Bestand wurde aus dem NFT-Tab übernommen. Besitzerhistorien werden für die sichtbaren NFTs ergänzt…");
 
     let saved=0, failed=0;
-    // Keep this bounded: process all non-spam current Apertum NFTs, but histories individually.
+    await prewarmDirectNftOwnership(currentApertumNfts,"DAO1: ");
+    // Contract scans are batched; individual ownership assembly below uses the run cache.
     for(const n of currentApertumNfts){
       try{ saved += await discoverOwnershipForNft(n.id,n.contract,n.name); }
       catch(e){ failed++; console.warn("NFT Ownership",n,e); }
@@ -694,30 +711,35 @@ window.DAO1Project = (() => {
   }
 
 
-  async function fetchWalletNftTransfersForOwnership(address,nftContract,nftId){
-    const out=[];
-    const contract=lower(nftContract),wantedId=String(nftId);
+  async function loadWalletNftTransferHistory(address){
+    const key=lower(address);
+    const cached=ownershipWalletTransferCache.get(key);
+    if(cached && Date.now()-cached.at<5*60*1000)return cached.rows;
+
     const candidates=[
       `${EXPLORER_API}/addresses/${address}/token-transfers?type=ERC-721%2CERC-1155`,
       `${EXPLORER_API}/addresses/${address}/token-transfers`
     ];
-    let lastError=null;
+    let rows=[],lastError=null;
     for(const initial of candidates){
       try{
-        const rows=await fetchPagedUrl(initial,500);
-        for(const t of rows){
-          const token=t?.token||{};
-          const c=lower(token.address||token.address_hash||t.token_address||t.token_address_hash||"");
-          if(c!==contract)continue;
-          const id=transferTokenId(t);
-          if(String(id)!==wantedId)continue;
-          if(isNonSpamNftTransfer(t))out.push(t);
-        }
-        if(out.length)break;
+        rows=await fetchPagedUrl(initial,500);
+        if(rows.length)break;
       }catch(e){lastError=e;}
     }
-    if(!out.length&&lastError)console.warn("Apertum Wallet-NFT-Transferfallback:",address,nftContract,nftId,lastError);
-    return out;
+    if(!rows.length&&lastError)console.warn("Apertum Wallet-NFT-Transferhistorie:",address,lastError);
+    ownershipWalletTransferCache.set(key,{at:Date.now(),rows});
+    return rows;
+  }
+
+  async function fetchWalletNftTransfersForOwnership(address,nftContract,nftId){
+    const contract=lower(nftContract),wantedId=String(nftId);
+    const rows=await loadWalletNftTransferHistory(address);
+    return rows.filter(t=>{
+      const token=t?.token||{};
+      const c=lower(token.address||token.address_hash||t.token_address||t.token_address_hash||"");
+      return c===contract && String(transferTokenId(t))===wantedId && isNonSpamNftTransfer(t);
+    });
   }
 
   function nftTransferDedupeKey(t){
@@ -741,40 +763,64 @@ window.DAO1Project = (() => {
     return t.length>=42?lower("0x"+t.slice(-40)):"";
   }
 
-  async function fetchErc721TransferLogsForNft(nftContract,nftId){
+  function nftDirectCacheKey(contract,id){return `${lower(contract)}|${String(id)}`;}
+
+  async function fetchErc721TransferLogsForNfts(nftContract,nftIds,statusPrefix=""){
+    const ids=[...new Set((nftIds||[]).map(String))].filter(id=>/^\d+$/.test(id));
+    if(!ids.length)return new Map();
+
+    const missing=ids.filter(id=>!ownershipDirectTransferCache.has(nftDirectCacheKey(nftContract,id)));
+    if(!missing.length){
+      return new Map(ids.map(id=>[id,ownershipDirectTransferCache.get(nftDirectCacheKey(nftContract,id))||[]]));
+    }
+
     const transferTopic=ethers.id("Transfer(address,address,uint256)");
-    const tokenTopic="0x"+BigInt(String(nftId)).toString(16).padStart(64,"0");
+    const tokenTopics=missing.map(id=>"0x"+BigInt(id).toString(16).padStart(64,"0"));
     const latestHex=await dao1ApertumRpc("eth_blockNumber",[]);
     const latest=Number(BigInt(latestHex));
-    const out=[];
-    const STEP=1000000;
-    for(let from=0;from<=latest;from+=STEP){
-      const to=Math.min(latest,from+STEP-1);
-      try{
+    const rawLogs=[];
+    let rpcChunks=0;
+
+    async function scanRange(from,to,step){
+      for(let sf=from;sf<=to;sf+=step){
+        const st=Math.min(to,sf+step-1);
+        rpcChunks++;
+        if(rpcChunks===1 || rpcChunks%10===0){
+          setTransactionStatus("loading",
+            `${statusPrefix}NFT-Besitzhistorie on-chain…`,
+            `${missing.length} NFT(s) · Contract ${nftContract.slice(0,10)}… · Block ${sf.toLocaleString("de-DE")}–${st.toLocaleString("de-DE")} · ${rpcChunks} RPC-Bereiche`);
+        }
         const logs=await dao1ApertumRpc("eth_getLogs",[{
           address:nftContract,
-          fromBlock:"0x"+from.toString(16),
-          toBlock:"0x"+to.toString(16),
-          topics:[transferTopic,null,null,tokenTopic]
+          fromBlock:"0x"+sf.toString(16),
+          toBlock:"0x"+st.toString(16),
+          topics:[transferTopic,null,null,tokenTopics.length===1?tokenTopics[0]:tokenTopics]
         }]);
-        for(const l of (logs||[]))out.push(l);
-      }catch(e){
-        // Manche RPCs erlauben kleinere Bereiche. In diesem Fall denselben 1M-Bereich in 100k teilen.
-        for(let sf=from;sf<=to;sf+=100000){
-          const st=Math.min(to,sf+99999);
-          const logs=await dao1ApertumRpc("eth_getLogs",[{
-            address:nftContract,
-            fromBlock:"0x"+sf.toString(16),
-            toBlock:"0x"+st.toString(16),
-            topics:[transferTopic,null,null,tokenTopic]
-          }]);
-          for(const l of (logs||[]))out.push(l);
+        for(const l of (logs||[]))rawLogs.push(l);
+      }
+    }
+
+    // Erst große 5-Mio.-Block-Fenster. Falls der RPC sie ablehnt, nur den betroffenen
+    // Bereich in 1 Mio. und notfalls 100k aufteilen.
+    const BIG=5000000;
+    for(let from=0;from<=latest;from+=BIG){
+      const to=Math.min(latest,from+BIG-1);
+      try{
+        await scanRange(from,to,BIG);
+      }catch(eBig){
+        try{
+          await scanRange(from,to,1000000);
+        }catch(eMid){
+          await scanRange(from,to,100000);
         }
       }
     }
+
+    const byId=new Map(missing.map(id=>[id,[]]));
     const blockTs=new Map();
-    const rows=[];
-    for(const l of out){
+    for(const l of rawLogs){
+      const id=String(BigInt(l.topics?.[3]||"0x0"));
+      if(!byId.has(id))continue;
       const block=Number(BigInt(l.blockNumber||"0x0"));
       if(!blockTs.has(block)){
         try{
@@ -782,7 +828,7 @@ window.DAO1Project = (() => {
           blockTs.set(block,b?.timestamp?new Date(Number(BigInt(b.timestamp))*1000).toISOString():null);
         }catch{blockTs.set(block,null);}
       }
-      rows.push({
+      byId.get(id).push({
         from:dao1TopicAddress(l.topics?.[1]),
         to:dao1TopicAddress(l.topics?.[2]),
         block_number:block,
@@ -790,10 +836,41 @@ window.DAO1Project = (() => {
         timestamp:blockTs.get(block),
         transaction_hash:String(l.transactionHash||"").toLowerCase(),
         token:{address:nftContract},
-        token_id:String(nftId)
+        token_id:id
       });
     }
-    return rows;
+
+    for(const id of missing){
+      ownershipDirectTransferCache.set(nftDirectCacheKey(nftContract,id),byId.get(id)||[]);
+    }
+    console.info("DAO1 NFT Batch-OnChain-Scan",{
+      contract:nftContract,
+      nftIds:missing,
+      rpcChunks,
+      logs:rawLogs.length
+    });
+    return new Map(ids.map(id=>[id,ownershipDirectTransferCache.get(nftDirectCacheKey(nftContract,id))||[]]));
+  }
+
+  async function prewarmDirectNftOwnership(nfts,statusPrefix=""){
+    const groups=new Map();
+    for(const n of (nfts||[])){
+      const contract=lower(n.contract||n.tokenAddress||DEFAULT_MINER_NFT_CONTRACT);
+      const id=String(n.id??n.tokenId??"");
+      if(!contract||!/^\d+$/.test(id))continue;
+      if(!groups.has(contract))groups.set(contract,[]);
+      groups.get(contract).push(id);
+    }
+    for(const [contract,ids] of groups){
+      await fetchErc721TransferLogsForNfts(contract,ids,statusPrefix);
+    }
+  }
+
+  async function fetchErc721TransferLogsForNft(nftContract,nftId){
+    const key=nftDirectCacheKey(nftContract,nftId);
+    if(ownershipDirectTransferCache.has(key))return ownershipDirectTransferCache.get(key)||[];
+    const result=await fetchErc721TransferLogsForNfts(nftContract,[String(nftId)]);
+    return result.get(String(nftId))||[];
   }
 
   async function discoverOwnershipForNft(nftId, nftContract=DEFAULT_MINER_NFT_CONTRACT, knownName="") {
