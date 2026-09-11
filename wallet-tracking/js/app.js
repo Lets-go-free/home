@@ -6748,11 +6748,22 @@ async function fetchExternalNftMetadata(uri){
   const url=normalizeNftImageUrl(uri);
   if(!url)return null;
   try{
+    const u=new URL(url);
+    if(u.hostname==="api.dao1.ai" && /^\/miner\/\d+\/?$/.test(u.pathname)){
+      const minerId=u.pathname.match(/\d+/)?.[0];
+      const {data,error}=await sb.functions.invoke("nft-metadata-proxy",{body:{provider:"dao1-miner",miner_id:minerId}});
+      if(error)throw error;
+      const payload=data?.metadata??data;
+      return payload&&typeof payload==="object"?payload:null;
+    }
     const res=await fetch(url,{headers:{"Accept":"application/json"}});
     if(!res.ok)return null;
     const j=await res.json();
     return j&&typeof j==="object"?j:null;
-  }catch(_){return null;}
+  }catch(e){
+    console.warn("Externe NFT-Metadaten nicht abrufbar:",url,e);
+    return null;
+  }
 }
 
 
