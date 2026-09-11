@@ -711,34 +711,70 @@ window.DAO1Project = (() => {
   }
 
 
-  async function loadWalletNftTransferHistory(address){
-    const key=lower(address);
+  async function loadWalletNftTransferHistory(address,nftContract){
+    const contract=lower(nftContract);
+    const key=`${lower(address)}|${contract}`;
     const cached=ownershipWalletTransferCache.get(key);
     if(cached && Date.now()-cached.at<5*60*1000)return cached.rows;
 
-    const candidates=[
-      `${EXPLORER_API}/addresses/${address}/token-transfers?type=ERC-721%2CERC-1155`,
-      `${EXPLORER_API}/addresses/${address}/token-transfers`
-    ];
-    let rows=[],lastError=null;
-    for(const initial of candidates){
+    const base=`${EXPLORER_API}/addresses/${address}/token-transfers`;
+    const directions=["to","from"];
+    const merged=new Map();
+    let lastError=null;
+
+    for(const filter of directions){
       try{
-        rows=await fetchPagedUrl(initial,500);
-        if(rows.length)break;
+        const initial=`${base}?type=${encodeURIComponent("ERC-721,ERC-1155")}&token=${encodeURIComponent(contract)}&filter=${filter}`;
+        const rows=await fetchPagedUrl(initial,500);
+        for(const t of rows){
+          if(!isNonSpamNftTransfer(t))continue;
+          merged.set(nftTransferDedupeKey(t),t);
+        }
+      }catch(e){
+        lastError=e;
+        console.warn("Apertum Wallet-NFT-Transferhistorie gezielt",address,contract,filter,e);
+      }
+    }
+
+    if(!merged.size){
+      try{
+        const initial=`${base}?type=${encodeURIComponent("ERC-721,ERC-1155")}&token=${encodeURIComponent(contract)}`;
+        const rows=await fetchPagedUrl(initial,500);
+        for(const t of rows){
+          if(!isNonSpamNftTransfer(t))continue;
+          merged.set(nftTransferDedupeKey(t),t);
+        }
       }catch(e){lastError=e;}
     }
-    if(!rows.length&&lastError)console.warn("Apertum Wallet-NFT-Transferhistorie:",address,lastError);
+
+    const rows=[...merged.values()];
+    if(!rows.length&&lastError)console.warn("Apertum Wallet-NFT-Transferhistorie:",address,contract,lastError);
     ownershipWalletTransferCache.set(key,{at:Date.now(),rows});
     return rows;
   }
 
+  function transferTokenIds(t){
+    const ids=[];
+    const candidates=[
+      t?.total?.token_id,t?.total?.id,t?.token_id,t?.tokenId,
+      t?.token_instance?.id,t?.token_instance?.token_id,
+      t?.token?.token_id,t?.token?.id
+    ];
+    for(const v of candidates)if(v!=null&&String(v)!=="")ids.push(String(v));
+    for(const arr of [t?.token_ids,t?.total?.token_ids,t?.token_instance?.token_ids]){
+      if(Array.isArray(arr))for(const v of arr)if(v!=null)ids.push(String(v));
+    }
+    return [...new Set(ids)];
+  }
+
   async function fetchWalletNftTransfersForOwnership(address,nftContract,nftId){
     const contract=lower(nftContract),wantedId=String(nftId);
-    const rows=await loadWalletNftTransferHistory(address);
+    const rows=await loadWalletNftTransferHistory(address,contract);
     return rows.filter(t=>{
       const token=t?.token||{};
       const c=lower(token.address||token.address_hash||t.token_address||t.token_address_hash||"");
-      return c===contract && String(transferTokenId(t))===wantedId && isNonSpamNftTransfer(t);
+      if(c!==contract)return false;
+      return transferTokenIds(t).includes(wantedId);
     });
   }
 
@@ -997,6 +1033,23 @@ window.DAO1Project = (() => {
     }
     const transferMap=new Map();
     for(const t of [...primary,...walletFallback])transferMap.set(nftTransferDedupeKey(t),t);
+    if(String(nftId)==="7993" || String(nftId)==="7994"){
+      console.info("DAO1 NFT Solar Quellen",{
+        nft:`${nftContract}#${nftId}`,
+        instance_transfers:primary.map(t=>({
+          block:Number(t.block_number||0),
+          time:t.timestamp||t.block_timestamp||null,
+          from:lower(H(t.from)),to:lower(H(t.to)),
+          ids:transferTokenIds(t)
+        })),
+        own_wallet_transfers:walletFallback.map(t=>({
+          block:Number(t.block_number||0),
+          time:t.timestamp||t.block_timestamp||null,
+          from:lower(H(t.from)),to:lower(H(t.to)),
+          ids:transferTokenIds(t)
+        }))
+      });
+    }
 
     // Dritte Quelle: globaler serverseitiger Transfercache. Beim ersten Abruf wird
     // ausschließlich die indexierte Transferhistorie dieses NFT geladen; kein Chain-Vollscan.
