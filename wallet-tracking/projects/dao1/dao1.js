@@ -832,20 +832,28 @@ window.DAO1Project = (() => {
     const transferMap=new Map();
     for(const t of [...primary,...walletFallback])transferMap.set(nftTransferDedupeKey(t),t);
 
-    // Dritte Quelle: direkter ERC-721 Transfer-Event-Scan für genau Contract + Token-ID.
-    // Nur wenn Explorer-/Wallet-Historie weniger als 2 Transfers liefert; damit bleibt der
-    // normale Refresh schnell, Walletwechsel werden aber vollständig rekonstruierbar.
-    if(transferMap.size<2){
-      try{
-        const direct=await fetchErc721TransferLogsForNft(nftContract,nftId);
-        for(const t of direct)transferMap.set(nftTransferDedupeKey(t),t);
-      }catch(e){console.warn("Apertum direkter NFT-Transfer-Log-Fallback",nftContract,nftId,e);}
-    }
+    // Dritte Quelle: vollständiger direkter ERC-721 Transfer-Event-Scan für exakt
+    // Contract + Token-ID. Dieser läuft IMMER. Explorer können mehrere Transfers liefern
+    // und trotzdem den frühesten Besitzerwechsel auslassen.
+    try{
+      const direct=await fetchErc721TransferLogsForNft(nftContract,nftId);
+      for(const t of direct)transferMap.set(nftTransferDedupeKey(t),t);
+    }catch(e){console.warn("Apertum direkter NFT-Transfer-Log-Fallback",nftContract,nftId,e);}
     const transfers=[...transferMap.values()];
     const chronological=[...transfers].sort((a,b)=>{
       const ba=Number(a.block_number||0), bb=Number(b.block_number||0);
       if(ba!==bb)return ba-bb;
       return Number(a.log_index||0)-Number(b.log_index||0);
+    });
+    console.info("DAO1 NFT Ownership Transferkette",{
+      nft:`${nftContract}#${nftId}`,
+      transfers:chronological.map(t=>({
+        block:Number(t.block_number||0),
+        time:t.timestamp||t.block_timestamp||t.blockTimeStamp||null,
+        from:lower(H(t.from)),
+        to:lower(H(t.to)),
+        tx:String(t.transaction_hash||t.tx_hash||H(t.transaction)||"")
+      }))
     });
     const periods=[];
     let current=null;
