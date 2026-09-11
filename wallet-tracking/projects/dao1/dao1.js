@@ -6,9 +6,14 @@ window.DAO1Project = (() => {
   const SYSTEM_ADDRESS = "0x0200000000000000000000000000000000000001";
   const PAIR_ADDRESS = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
   const SYNC_TOPIC = "0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
-  const PRICE_SOURCE_TAG = "exact-v9";
-  const PRICE_MISSING_TAG = "missing-v9";
+  const PRICE_SOURCE_TAG = "exact-v10";
+  const PRICE_MISSING_TAG = "missing-v10";
   const PRICE_LOOKBACK_BLOCKS = 10000;
+  const PRICE_ANCHOR_VERSION = 1;
+  const PRICE_ANCHOR_LOCAL_LOOKBACK = 512;
+  const PRICE_ANCHOR_CLUSTER_GAP = 512;
+  const PRICE_ANCHOR_CLUSTER_MAX_SPAN = 4096;
+  const PRICE_ANCHOR_CONCURRENCY = 8;
   const PRICE_COVERAGE_VERSION = 1;
   const PRICE_RPC_CHUNK = 25000;
   const PRICE_RPC_CONCURRENCY = 6;
@@ -71,9 +76,9 @@ window.DAO1Project = (() => {
         <span>Laufzeit: <strong>${fmtElapsed(elapsed)}</strong></span>
         <span>TX: <strong>${x.txCount.toLocaleString("de-DE")}</strong></span>
         <span>Preisblöcke: <strong>${x.blockCount.toLocaleString("de-DE")}</strong></span>
-        <span>Coverage genutzt: <strong>${x.coverageHits.toLocaleString("de-DE")}</strong></span>
-        <span>Neu geprüft: <strong>${x.coverageScans.toLocaleString("de-DE")}</strong></span>
-        <span>Syncs neu: <strong>${x.syncLogs.toLocaleString("de-DE")}</strong></span>
+        <span>Anchor-Cache: <strong>${x.anchorHits.toLocaleString("de-DE")}</strong></span>
+        <span>Anchors neu: <strong>${x.anchorScans.toLocaleString("de-DE")}</strong></span>
+        <span>Syncs verarbeitet: <strong>${x.syncLogs.toLocaleString("de-DE")}</strong></span>
         <span>RPC-Requests: <strong>${x.rpcChunks.toLocaleString("de-DE")}</strong></span>
         <span>DB-Batches: <strong>${x.dbBatches.toLocaleString("de-DE")}</strong></span>
       </div>
@@ -82,7 +87,7 @@ window.DAO1Project = (() => {
 
   function priceJobStart(txCount=0,blockCount=0){
     if(priceJobTimer){clearInterval(priceJobTimer);priceJobTimer=null;}
-    activePriceJobLog={startedAt:Date.now(),txCount:Number(txCount||0),blockCount:Number(blockCount||0),coverageHits:0,coverageScans:0,syncLogs:0,rpcChunks:0,dbBatches:0,lines:[]};
+    activePriceJobLog={startedAt:Date.now(),txCount:Number(txCount||0),blockCount:Number(blockCount||0),anchorHits:0,anchorScans:0,coverageHits:0,coverageScans:0,syncLogs:0,rpcChunks:0,dbBatches:0,lines:[]};
     priceJobLog(`Start · ${Number(txCount||0).toLocaleString("de-DE")} TX · ${Number(blockCount||0).toLocaleString("de-DE")} Preisblöcke`);
     priceJobTimer=setInterval(renderPriceJobLog,1000);
     renderPriceJobLog();
@@ -1180,16 +1185,28 @@ window.DAO1Project = (() => {
 
 
   async function priceForTransaction(block,timestamp,history){
-    const ph=priceAtBlock(history,Number(block));
-    if(ph){
-      return {
-        price:Number(ph.aptm_usd),
-        priceBlock:Number(ph.block_number),
-        source:`APTM/wUSDT Pool · Sync Block ${ph.block_number} · ${PRICE_SOURCE_TAG}`
-      };
+    const target=Number(block);
+    const anchorMap=history?._anchorByTarget;
+    if(anchorMap instanceof Map){
+      if(anchorMap.has(target)){
+        const a=anchorMap.get(target);
+        if(a?.sync_block!=null && a?.aptm_usd!=null){
+          return {
+            price:Number(a.aptm_usd),
+            priceBlock:Number(a.sync_block),
+            source:`APTM/wUSDT Pool · Sync Block ${a.sync_block} · ${PRICE_SOURCE_TAG}`
+          };
+        }
+      }
+      // Bei einer expliziten Anchor-Map darf niemals ein Preisanker eines anderen
+      // target_block als Ersatz dienen. Das würde die Exact-Garantie verletzen.
+      return {price:null,priceBlock:null,source:`Kein belastbarer historischer Poolpreis · ${PRICE_MISSING_TAG}`};
     }
-    // Apertum bleibt vollständig on-chain. Fehlt zum historischen Zeitpunkt ein
-    // belastbarer Pool-Sync, wird bewusst kein externer Marktpreis eingesetzt.
+    // Sicherheits-Fallback für alte Aufrufer ohne Anchor-Map.
+    const ph=priceAtBlock(history, target);
+    if(ph){
+      return {price:Number(ph.aptm_usd),priceBlock:Number(ph.block_number),source:`APTM/wUSDT Pool · Sync Block ${ph.block_number} · ${PRICE_SOURCE_TAG}`};
+    }
     return {price:null,priceBlock:null,source:`Kein belastbarer historischer Poolpreis · ${PRICE_MISSING_TAG}`};
   }
 
@@ -1207,42 +1224,158 @@ window.DAO1Project = (() => {
     return out;
   }
 
+  function splitAnchorClusters(blocks){
+    const sorted=[...new Set((blocks||[]).map(Number).filter(Number.isFinite))].sort((a,b)=>a-b);
+    const out=[];
+    let cur=[];
+    for(const b of sorted){
+      if(!cur.length){cur=[b];continue;}
+      const gap=b-cur[cur.length-1],span=b-cur[0];
+      if(gap<=PRICE_ANCHOR_CLUSTER_GAP && span<=PRICE_ANCHOR_CLUSTER_MAX_SPAN)cur.push(b);
+      else{out.push(cur);cur=[b];}
+    }
+    if(cur.length)out.push(cur);
+    return out;
+  }
+
+  async function loadCachedPriceAnchors(blocks){
+    const targets=[...new Set((blocks||[]).map(Number).filter(Number.isFinite))];
+    const out=[];
+    const BATCH=180;
+    try{
+      for(let i=0;i<targets.length;i+=BATCH){
+        const batch=targets.slice(i,i+BATCH);
+        const {data,error}=await sb.from("aptm_price_anchors").select("target_block,sync_block,log_index,tx_hash,aptm_usd,scanned_from_block,scanned_at")
+          .eq("project_key",PROJECT_KEY).eq("chain_key",CHAIN_KEY).eq("pool_address",lower(PAIR_ADDRESS))
+          .eq("parser_version",PRICE_ANCHOR_VERSION).in("target_block",batch);
+        if(error)throw error;
+        out.push(...(data||[]));
+      }
+    }catch(e){
+      console.warn("APTM Price-Anchor-Cache lesen:",e);
+      if(activePriceJobLog)priceJobLog("Anchor-Tabelle nicht verfügbar · SQL 048 prüfen");
+      return [];
+    }
+    return out;
+  }
+
+  async function savePriceAnchors(rows){
+    const ctx=getContext?.();
+    if(!ctx?.isAdmin || !rows?.length)return;
+    const BATCH=500;
+    for(let i=0;i<rows.length;i+=BATCH){
+      const {error}=await sb.from("aptm_price_anchors").upsert(rows.slice(i,i+BATCH),{onConflict:"pool_address,parser_version,target_block"});
+      if(error)throw error;
+      if(activePriceJobLog){activePriceJobLog.dbBatches++;renderPriceJobLog();}
+    }
+  }
+
+  async function findPredecessorSync(targetBlock,meta,status){
+    let to=Math.max(0,Number(targetBlock));
+    let span=PRICE_ANCHOR_LOCAL_LOOKBACK;
+    let rounds=0;
+    while(to>=0 && rounds<20){
+      rounds++;
+      const from=Math.max(0,to-span+1);
+      if(status)status.textContent=`Historischen Preisanker suchen: ${from}–${to}…`;
+      const logs=await fetchSyncLogsVerifiedAdaptive(from,to,null);
+      const parsed=(logs||[]).map(l=>priceRowFromSyncLog(l,meta)).filter(Boolean)
+        .sort((a,b)=>Number(a.block_number)-Number(b.block_number)||Number(a.log_index)-Number(b.log_index));
+      if(activePriceJobLog)activePriceJobLog.syncLogs+=parsed.length;
+      if(parsed.length)return {row:parsed[parsed.length-1],scannedFrom:from};
+      if(from===0)return {row:null,scannedFrom:0};
+      to=from-1;
+      span=Math.min(span*2,250000);
+    }
+    throw new Error(`Kein verifizierter Preisanker vor Block ${targetBlock} innerhalb der Suchgrenze gefunden.`);
+  }
+
+  async function buildAnchorsForCluster(targets,meta,status){
+    const sorted=[...targets].sort((a,b)=>a-b);
+    const first=sorted[0],last=sorted[sorted.length-1];
+    const from=Math.max(0,first-PRICE_ANCHOR_LOCAL_LOOKBACK+1);
+    if(status)status.textContent=`Historische APTM-Anker: lokale Blöcke ${from}–${last}…`;
+    const logs=await fetchSyncLogsVerifiedAdaptive(from,last,null);
+    const local=(logs||[]).map(l=>priceRowFromSyncLog(l,meta)).filter(Boolean)
+      .sort((a,b)=>Number(a.block_number)-Number(b.block_number)||Number(a.log_index)-Number(b.log_index));
+    if(activePriceJobLog)activePriceJobLog.syncLogs+=local.length;
+
+    let predecessor=null,scannedFrom=from;
+    const firstLocal=local.find(r=>Number(r.block_number)<=first);
+    if(!firstLocal && from>0){
+      const pred=await findPredecessorSync(from-1,meta,status);
+      predecessor=pred.row;
+      scannedFrom=pred.scannedFrom;
+    }
+
+    const rows=[];
+    let pos=0,lastSeen=predecessor;
+    for(const target of sorted){
+      while(pos<local.length && Number(local[pos].block_number)<=target){lastSeen=local[pos];pos++;}
+      rows.push({
+        project_key:PROJECT_KEY,chain_key:CHAIN_KEY,pool_address:lower(PAIR_ADDRESS),parser_version:PRICE_ANCHOR_VERSION,
+        target_block:Number(target),sync_block:lastSeen?Number(lastSeen.block_number):null,
+        log_index:lastSeen?Number(lastSeen.log_index):null,tx_hash:lastSeen?.tx_hash||null,
+        aptm_usd:lastSeen?Number(lastSeen.aptm_usd):null,scanned_from_block:Number(scannedFrom),scanned_at:new Date().toISOString()
+      });
+    }
+    return rows;
+  }
+
+  async function ensureExactPriceAnchors(blocks,status){
+    const targets=[...new Set((blocks||[]).map(Number).filter(Number.isFinite))].sort((a,b)=>a-b);
+    const map=new Map();
+    if(!targets.length)return map;
+
+    const cached=await loadCachedPriceAnchors(targets);
+    for(const r of cached)map.set(Number(r.target_block),r);
+    if(activePriceJobLog){activePriceJobLog.anchorHits+=cached.length;priceJobLog(`Anchor-Cache: ${cached.length}/${targets.length} Zielblöcke bereits vorhanden`);}
+
+    const missing=targets.filter(b=>!map.has(b));
+    if(!missing.length)return map;
+    const ctx=getContext?.();
+    if(!ctx?.isAdmin){
+      // Nicht-Admins profitieren vom globalen Cache. Fehlende Blöcke werden aus
+      // Cache-Poisoning-Gründen nicht clientseitig global geschrieben.
+      return map;
+    }
+
+    const meta=await poolMeta();
+    const clusters=splitAnchorClusters(missing);
+    if(activePriceJobLog)priceJobLog(`${missing.length} neue Zielblöcke · ${clusters.length} lokale Anchor-Cluster`);
+    const created=[];
+    let next=0,done=0;
+    async function worker(){
+      while(true){
+        const idx=next++;
+        if(idx>=clusters.length)return;
+        const cluster=clusters[idx];
+        const rows=await buildAnchorsForCluster(cluster,meta,status);
+        created.push(...rows);
+        for(const r of rows)map.set(Number(r.target_block),r);
+        done++;
+        if(activePriceJobLog){
+          activePriceJobLog.anchorScans+=rows.length;
+          if(done===1||done%10===0||done===clusters.length)priceJobLog(`Anchor-Cluster ${done}/${clusters.length} · ${rows.length} Zielblöcke im letzten Cluster`);
+          renderPriceJobLog();
+        }
+      }
+    }
+    await Promise.all(Array.from({length:Math.min(PRICE_ANCHOR_CONCURRENCY,clusters.length)},()=>worker()));
+    await savePriceAnchors(created);
+    if(activePriceJobLog)priceJobLog(`${created.length} globale Preisanker gespeichert`);
+    return map;
+  }
+
   async function ensurePricesForClaimBlocks(claimBlocks,status){
     const blocks=[...new Set((claimBlocks||[]).map(Number).filter(Number.isFinite))].sort((a,b)=>a-b);
-    if(!blocks.length)return [];
-    const minBlock=blocks[0],maxBlock=blocks[blocks.length-1];
-    let history=[];
-    try{history=await loadCachedPrices(minBlock,maxBlock);}catch(e){console.warn("APTM Preis-Cache:",e);}
-
-    const ctx=getContext?.();
-    if(ctx?.isAdmin){
-      // Verify only missing parts of merged pre-transaction windows. Coverage is global,
-      // pool-specific and parser-versioned, so new wallets/users reuse already proven ranges.
-      const windows=mergePriceWindows(blocks);
-      for(let i=0;i<windows.length;i++){
-        const [from,to]=windows[i];
-        try{
-          if(status)status.textContent=`Historische APTM-Kurse verifizieren ${i+1}/${windows.length}: ${from}–${to}…`;
-          await syncPriceRangeChunked(from,to,status);
-        }catch(e){
-          console.warn(`Historischer APTM-Preis ${from}-${to} konnte nicht ergänzt werden:`,e);
-        }
-      }
-
-      // One predecessor search per merged window is sufficient. The older pre-coverage path
-      // expanded backwards separately for every TX block without a recent Sync, which
-      // multiplied identical RPC work on quiet pool periods.
-      for(let i=0;i<windows.length;i++){
-        const [from]=windows[i];
-        if(from<=0)continue;
-        try{
-          if(status)status.textContent=`Historische APTM-Preisanker prüfen ${i+1}/${windows.length}…`;
-          await repairPriceAnchorBeforeBlock(from-1,status,{forceSearch:true});
-        }catch(e){
-          console.warn("APTM Preisanker vor Fenster:",e);
-        }
-      }
-      try{history=await loadCachedPrices(minBlock,maxBlock);}catch(e){console.warn("APTM Preis-Cache final neu laden:",e);}
+    const anchorMap=await ensureExactPriceAnchors(blocks,status);
+    // Interface-Kompatibilität: bestehende Aufrufer erhalten weiterhin ein Array.
+    // priceForTransaction nutzt aber ausschließlich die exakte target_block-Zuordnung.
+    const history=[];
+    history._anchorByTarget=anchorMap;
+    for(const r of anchorMap.values()){
+      if(r?.sync_block!=null && r?.aptm_usd!=null)history.push({block_number:Number(r.sync_block),log_index:Number(r.log_index||0),aptm_usd:Number(r.aptm_usd)});
     }
     return history;
   }
@@ -1533,7 +1666,7 @@ window.DAO1Project = (() => {
           `${rows.length.toLocaleString("de-DE")} gecachte Transaktionen · ${blocks.length.toLocaleString("de-DE")} unterschiedliche TX-Blöcke.`);
         priceJobLog("Preisanker laden/verifizieren gestartet");
         const history=await ensurePricesForClaimBlocks(blocks,document.getElementById("dao1TransactionStatus"));
-        priceJobLog(`Preisanker bereit · ${history.length.toLocaleString("de-DE")} Cache-Zeilen`);
+        priceJobLog(`Preisanker bereit · ${history._anchorByTarget?.size?.toLocaleString("de-DE")||0} Zielblöcke`);
         if(job!==transactionJobToken)return;
 
         const txPatches=[];
@@ -1642,7 +1775,7 @@ window.DAO1Project = (() => {
       const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
       if(activePriceJobLog)priceJobLog(`Fertig · ${totalUpdated.toLocaleString("de-DE")} TX aktualisiert · ${totalMissing.toLocaleString("de-DE")} ohne Preis`);
       setTransactionStatus("ready",`Historische APTM-Preise neu berechnet – ${totalUpdated.toLocaleString("de-DE")} Transaktionen aktualisiert.`,
-        `${totalRows.toLocaleString("de-DE")} gecachte Transaktionen geprüft · ${totalClaims.toLocaleString("de-DE")} Claim-Datensätze mitgeführt · Preisqualität: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte. Preislogik ${PRICE_SOURCE_TAG}; kein Explorer-Transaktionsscan; globaler Coverage-Cache v1.`);
+        `${totalRows.toLocaleString("de-DE")} gecachte Transaktionen geprüft · ${totalClaims.toLocaleString("de-DE")} Claim-Datensätze mitgeführt · Preisqualität: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte. Preislogik ${PRICE_SOURCE_TAG}; kein Explorer-Transaktionsscan; globaler Price-Anchor-Cache v1; lokale RPC-Fenster statt Sync-Vollhistorie.`);
     }catch(e){
       console.error("DAO1 historische Preis-Neuberechnung:",e);
       setTransactionStatus("error","Historische Preis-Neuberechnung fehlgeschlagen.",e?.message||String(e));
