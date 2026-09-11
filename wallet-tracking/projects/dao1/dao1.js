@@ -195,8 +195,10 @@ window.DAO1Project = (() => {
       panel.id = "tab-dao1";
       panel.className = "tab-panel";
       panel.innerHTML = `
-        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen &amp; Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); renderProjectLpTab('dao1',['apertum'],'dao1LpContent','2025-12-31',false)">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
+        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('claims',this)">Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('referrals',this)">Referral Rewards</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); renderProjectLpTab('dao1',['apertum'],'dao1LpContent','2025-12-31',false)">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
         <div id="dao1-subtab-overview" class="project-subtab-panel"><div class="custom-token-card"><div class="chain-title">DAO1 · Apertum</div><div class="note">Projektübersicht für DAO1-spezifische Assets auf Apertum. Detailfunktionen sind in die Unter-Tabs gegliedert.</div></div></div>
+        <div id="dao1-subtab-claims" class="project-subtab-panel" style="display:none"><div id="dao1ClaimsContent"></div></div>
+        <div id="dao1-subtab-referrals" class="project-subtab-panel" style="display:none"><div id="dao1ReferralContent"></div></div>
         <div id="dao1-subtab-liquidity" class="project-subtab-panel" style="display:none"><div id="dao1LpContent"></div></div>
         <div id="dao1-subtab-config" class="project-subtab-panel" style="display:none"><div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div></div>
         <div id="dao1-subtab-transactions" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><div class="chain-title">📒 Apertum Transaktionshistorie</div><div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Wallet-Wechsel lesen den Cache; erst „Daten aktualisieren“ lädt neue Blockchain-Daten, aktualisiert NFTs/Besitzerhistorie und reichert neue Claims an.</div><div id="dao1TransactionControls"></div><div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
@@ -222,8 +224,10 @@ window.DAO1Project = (() => {
     // Beim ersten Öffnen des Transaktions-Tabs muss der gespeicherte Cache sofort geladen
     // werden. Bisher wurde nur das Panel angezeigt; erst ein Wallet-Filterwechsel löste
     // refreshTransactionHistory(false) aus. Dadurch war "Alle Apertum-Wallets" initial leer.
-    if(name==="transactions"){
+    if(name==="transactions" || name==="claims" || name==="referrals"){
       await refreshTransactionHistory(false);
+      if(name==="claims")renderClaimsTab();
+      if(name==="referrals")renderReferralRewardsTab();
     }
   }
 
@@ -2218,6 +2222,44 @@ window.DAO1Project = (() => {
     return [...new Set(transactionRows.map(r=>transactionClaimDescriptor(r)?.subtype).filter(Boolean))].sort();
   }
 
+  function dao1TransactionType(r){
+    if(r?.claim_nft_id!=null || String(r?.selector||"").toLowerCase()===CLAIM_SELECTOR)return "Claim (Bot)";
+    if(r?.direction==="intern")return "Interner Transfer";
+    if(r?.direction==="eingang")return "Eingang";
+    if(r?.direction==="ausgang")return "Ausgang";
+    return r?.method&&r.method!=="Transfer"?"Contract Call":"Transaktion";
+  }
+
+  function referralRewardCandidates(){
+    const own=new Set(allProjectWalletOptions().map(w=>lower(walletAddress(w))).filter(Boolean));
+    return transactionRows.filter(r=>
+      r.claim_nft_id==null &&
+      String(r.selector||"").toLowerCase()!==CLAIM_SELECTOR &&
+      r.direction==="eingang" &&
+      Number(r.value_aptm||0)>0 &&
+      !own.has(lower(r.from_address||""))
+    );
+  }
+
+  function renderClaimsTab(){
+    const el=document.getElementById("dao1ClaimsContent");if(!el)return;
+    const rows=transactionRows.filter(r=>r.claim_nft_id!=null);
+    const total=rows.reduce((a,r)=>a+Number(r.claim_reward_aptm||0),0);
+    const totalUsd=rows.reduce((a,r)=>a+Number(r.claim_reward_usd||0),0);
+    el.innerHTML=`<div class="custom-token-card"><div class="chain-title">⛏️ Bot Claims</div><div class="note">Eigener Bereich für MineBot-/Bot-Claims. Diese Zahlungen werden unabhängig von Referral Rewards ausgewertet.</div></div>
+      <div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Claims</span><strong>${rows.length.toLocaleString("de-DE")}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Geclaimt</span><strong>${fmt(total)} APTM</strong><div class="meta">${totalUsd?usd(totalUsd):"–"}</div></div></div>
+      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap dao1-data-table dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>NFT</th><th>Reward APTM</th><th>USD historisch</th><th>Gas APTM</th><th>Tx</th></tr></thead><tbody>${rows.map(r=>{const d=transactionClaimDescriptor(r);return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td>${r.wallet_label||r.wallet_address||"–"}</td><td>Claim (Bot)</td><td><strong>${d?.name||"NFT"}</strong><div class="meta">#${r.claim_nft_id}${d?.subtype?" · "+d.subtype:""}</div></td><td>${fmt(r.claim_reward_aptm)}</td><td>${r.claim_reward_usd==null?"–":usd(Number(r.claim_reward_usd))}</td><td>${fmt(r.gas_aptm)}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join("")}</tbody></table></div></div>`;
+  }
+
+  function renderReferralRewardsTab(){
+    const el=document.getElementById("dao1ReferralContent");if(!el)return;
+    const candidates=referralRewardCandidates();
+    el.innerHTML=`<div class="custom-token-card"><div class="chain-title">🤝 Referral Rewards</div><div class="note">Referral-/Affiliate-Rewards werden als eigener fachlicher Bereich geführt. Unverifizierte Eingänge werden bewusst noch nicht als Reward summiert.</div></div>
+      <div class="custom-token-card"><strong>Verifizierte Referral Rewards</strong><div class="empty" style="margin-top:8px">On-Chain-Erkennungsregel wird noch verifiziert. Bis dahin werden keine unbestätigten Eingänge als Referral Reward gezählt.</div></div>
+      <div class="custom-token-card debug-frame"><strong>DEBUG / DEV · Referral-Kandidaten (${candidates.length})</strong><div class="note">Eingehende APTM-Transaktionen, die keine Bot-Claims und keine internen Wallet-Transfers sind. Diese Liste dient nur zur Verifikation der echten Referral-Verträge/Methoden.</div><div class="chain-table-wrap dao1-data-table dao1-transaction-table-wrap" style="margin-top:8px;max-height:420px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Von</th><th>Methode</th><th>APTM</th><th>Tx</th></tr></thead><tbody>${candidates.map(r=>`<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td>${r.wallet_label||r.wallet_address||"–"}</td><td><code>${r.from_address||"–"}</code></td><td>${r.method||"–"}</td><td>${fmt(r.value_aptm)}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`).join("")}</tbody></table></div></div>`;
+    window.applyDebugModeVisibility?.();
+  }
+
   function txVisibleRows(){
     let rows=[...transactionRows];
     if(txFilterFrom){
@@ -2521,10 +2563,10 @@ window.DAO1Project = (() => {
     if(!rows.length){table.innerHTML='<div class="empty">Keine Transaktionen für den gewählten Filter.</div>';return;}
     table.innerHTML=`<div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border,#2b303b)">
-        <div><strong>Transaktionen &amp; Claims</strong><div class="meta">${rows.length.toLocaleString("de-DE")} Einträge im aktuellen Filter</div></div>
+        <div><strong>Transaktionen</strong><div class="meta">${rows.length.toLocaleString("de-DE")} Einträge im aktuellen Filter</div></div>
       </div>
       <div class="chain-table-wrap dao1-data-table dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="chain-admin-table dao1-transaction-table" style="margin:0"><thead style="position:sticky;top:0;z-index:2"><tr>
-      <th>Zeit</th>${txFilterWallet==="__all"?"<th>Wallet</th>":""}<th>Richtung</th><th>Methode</th><th>APTM</th><th>Claim / NFT</th><th>APTM/USD</th><th>USD</th><th>Gas APTM</th><th>Gas USD historisch</th><th>Tx</th>
+      <th>Zeit</th>${txFilterWallet==="__all"?"<th>Wallet</th>":""}<th>Typ</th><th>Richtung</th><th>Methode</th><th>APTM</th><th>Claim / NFT</th><th>APTM/USD</th><th>USD</th><th>Gas APTM</th><th>Gas USD historisch</th><th>Tx</th>
     </tr></thead><tbody>${rows.map(r=>{
       const claim=r.claim_nft_id!=null;
       const currentSubtype=claim?currentSubtypeForClaim(r.claim_nft_id,r.claim_nft_subtype):"";
@@ -2532,7 +2574,7 @@ window.DAO1Project = (() => {
       const amount=Number(r.value_aptm||0)+(claim?Number(r.claim_reward_aptm||0):0);
       const usdVal=claim?Number(r.claim_reward_usd||0):Number(r.value_usd||0);
       return `<tr>
-        <td class="dao1-col-time">${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td>${txFilterWallet==="__all"?`<td class="dao1-col-wallet"><code>${r.wallet_address||"–"}</code></td>`:""}<td class="dao1-col-direction">${r.direction||"–"}</td><td class="dao1-col-method">${r.method||"–"}</td>
+        <td class="dao1-col-time">${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td>${txFilterWallet==="__all"?`<td class="dao1-col-wallet"><code>${r.wallet_address||"–"}</code></td>`:""}<td class="dao1-col-type"><strong>${dao1TransactionType(r)}</strong></td><td class="dao1-col-direction">${r.direction||"–"}</td><td class="dao1-col-method">${r.method||"–"}</td>
         <td>${fmt(amount)}</td>
         <td class="dao1-col-claim">${claim?`<strong>${currentName||"NFT"}</strong><div class="meta">#${r.claim_nft_id}${currentSubtype?" · "+currentSubtype:""} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td>
         <td class="dao1-col-price">${r.aptm_usd==null?`–<div class="meta">${historicalPriceQuality(r)==="prelaunch"?"Noch kein Marktpreis vorhanden (Pre-Launch)":(r.price_source||"Kein belastbarer historischer Preis")}</div>`:`${fmt(r.aptm_usd)}<div class="meta">${historicalPriceQuality(r)} · ${r.price_source||"historischer Poolpreis"}</div>`}</td><td class="dao1-col-usd">${usdVal?usd(usdVal):"–"}</td>

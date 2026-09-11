@@ -6053,15 +6053,18 @@ function normalizeNftImageUrl(url) {
 
 function nftMetadataImage(meta) {
   if (!meta || typeof meta !== "object") return null;
-  return normalizeNftImageUrl(
-    meta.image ||
-    meta.image_url ||
-    meta.imageUrl ||
-    meta.image_uri ||
-    meta.imageUri ||
-    meta.animation_url ||
-    null
-  );
+  const imageObj=meta.image&&typeof meta.image==="object"?meta.image:null;
+  const media0=Array.isArray(meta.media)?meta.media[0]:null;
+  const file0=Array.isArray(meta.files)?meta.files[0]:null;
+  const props=meta.properties&&typeof meta.properties==="object"?meta.properties:{};
+  const candidates=[
+    typeof meta.image==="string"?meta.image:null,meta.image_url,meta.imageUrl,meta.image_uri,meta.imageUri,
+    imageObj?.url,imageObj?.uri,imageObj?.gateway,props.image,props.image_url,props.imageUrl,
+    media0?.gateway,media0?.thumbnail,media0?.raw,media0?.url,media0?.uri,
+    file0?.uri,file0?.url,meta.animation_url
+  ];
+  for(const c of candidates){const u=normalizeNftImageUrl(c);if(u)return u;}
+  return null;
 }
 
 function blockscoutNftSpam(obj) {
@@ -6433,7 +6436,8 @@ function nftAcquisitionTransferKeys(t){
   const ids=[];
   if(t?.erc721TokenId!=null)ids.push(t.erc721TokenId);
   if(t?.tokenId!=null)ids.push(t.tokenId);
-  if(Array.isArray(t?.erc1155Metadata))for(const m of t.erc1155Metadata)if(m?.tokenId!=null)ids.push(m.tokenId);
+  const meta1155=t?.erc1155Metadata||t?.erc1155MetaData;
+  if(Array.isArray(meta1155))for(const m of meta1155)if(m?.tokenId!=null)ids.push(m.tokenId);
   for(const id of ids){
     const n=normalizeNftTransferTokenId(id);
     if(n)out.push(`${contract}|${n}`);
@@ -6446,9 +6450,12 @@ function nftTransferBlock(t){
   try{return typeof v==="string"&&/^0x/i.test(v)?Number(BigInt(v)):Number(v)||0;}catch(_){return 0;}
 }
 function nftTransferTimestamp(t){
-  const v=t?.metadata?.blockTimestamp??t?.blockTimestamp??t?.block_timestamp??t?.timestamp??null;
-  if(!v)return null;
-  const d=new Date(v);
+  const v=t?.metadata?.blockTimestamp??t?.blockTimestamp??t?.blockTimeStamp??t?.block_timestamp??t?.timestamp??null;
+  if(v===null||v===undefined||v==="")return null;
+  let d;
+  if(typeof v==="number")d=new Date(v<1e12?v*1000:v);
+  else if(/^\d+$/.test(String(v))) { const n=Number(v); d=new Date(n<1e12?n*1000:n); }
+  else d=new Date(v);
   return Number.isNaN(d.getTime())?null:d.toISOString();
 }
 
@@ -6461,7 +6468,7 @@ async function fetchIncomingNftTransfersForWallet(chain,address,onProgress=null)
     let pageKey=null,pages=0;
     do{
       pages++;if(onProgress)onProgress(pages);
-      const q={fromBlock:"0x0",toBlock:"latest",toAddress:address,category:["erc721","erc1155"],withMetadata:true,excludeZeroValue:false,maxCount:"0x3e8",order:"asc"};
+      const q={fromBlock:"0x0",toBlock:"latest",toAddress:address,category:["721","1155"],withMetadata:true,excludeZeroValue:false,maxCount:"0x3e8",order:"asc"};
       if(pageKey)q.pageKey=pageKey;
       const r=await nodeRealRpc("nr_getAssetTransfers",q);
       for(const t of (r?.transfers||[])){
@@ -6480,7 +6487,7 @@ async function fetchIncomingNftTransfersForWallet(chain,address,onProgress=null)
     let pageKey=null,pages=0;
     do{
       pages++;if(onProgress)onProgress(pages);
-      const q={fromBlock:"0x0",toBlock:"latest",toAddress:address,category:["erc721","erc1155"],withMetadata:true,excludeZeroValue:false,maxCount:"0x3e8",order:"asc"};
+      const q={fromBlock:"0x0",toBlock:"latest",toAddress:address,category:["721","1155"],withMetadata:true,excludeZeroValue:false,maxCount:"0x3e8",order:"asc"};
       if(pageKey)q.pageKey=pageKey;
       const r=await alchemyRpc(chain,"alchemy_getAssetTransfers",[q],"discovery");
       for(const t of (r?.transfers||[])){
@@ -6494,6 +6501,44 @@ async function fetchIncomingNftTransfersForWallet(chain,address,onProgress=null)
     }while(pageKey);
   }
   return rows;
+}
+
+async function fetchBscNftAcquisitionByTokenIds(address,nfts,onProgress=null){
+  const addr=String(address||"").toLowerCase();
+  const out=new Map();
+  const groups=new Map();
+  for(const n of (nfts||[])){
+    const contract=lowerAddressForNft(n?.tokenAddress);
+    const id=normalizeNftTransferTokenId(n?.tokenId);
+    if(!contract||!id)continue;
+    if(!groups.has(contract))groups.set(contract,[]);
+    groups.get(contract).push({n,id});
+  }
+  let requestNo=0;
+  for(const [contract,items] of groups){
+    for(let offset=0;offset<items.length;offset+=40){
+      const batch=items.slice(offset,offset+40);
+      let pageKey=null,pages=0;
+      do{
+        pages++;requestNo++;onProgress?.(requestNo);
+        const q={address:contract,tokenIds:batch.map(x=>"0x"+BigInt(x.id).toString(16)),maxCount:"0x3e8"};
+        if(pageKey)q.pageKey=pageKey;
+        const r=await nodeRealRpc("nr_getTransferByTokenId",q);
+        for(const t of (r?.transfers||[])){
+          if(String(t?.to||t?.toAddress||"").toLowerCase()!==addr)continue;
+          for(const key of nftAcquisitionTransferKeys(t)){
+            const block=nftTransferBlock(t),at=nftTransferTimestamp(t);
+            const prev=out.get(key);
+            if(!prev || (block&&(!prev.block||block<prev.block)))out.set(key,{block:block||null,at,txHash:String(t?.hash||t?.transactionHash||"")||null});
+          }
+        }
+        pageKey=r?.pageKey||r?.PageKey||null;
+        if(pageKey)await sleepMs(120);
+        if(pages>100)throw new Error("BSC NFT Token-Historie: Sicherheitsabbruch nach 100 Seiten");
+      }while(pageKey);
+    }
+  }
+  return out;
 }
 
 async function enrichNftsWithAcquisitionData(chain,address,nfts,onProgress=null){
@@ -6514,6 +6559,15 @@ async function enrichNftsWithAcquisitionData(chain,address,nfts,onProgress=null)
       if(!old || (block&&(!old.block||block<old.block))){
         firstByKey.set(key,{block:block||null,at,txHash:String(t?.hash||t?.transactionHash||t?.tx_hash||"")||null});
       }
+    }
+  }
+  if(chain==="bsc"){
+    const missing=nfts.filter(n=>!firstByKey.has(`${lowerAddressForNft(n.tokenAddress)}|${normalizeNftTransferTokenId(n.tokenId)}`));
+    if(missing.length){
+      try{
+        const direct=await fetchBscNftAcquisitionByTokenIds(address,missing,p=>onProgress?.(`Token-ID ${p}`));
+        for(const [k,v] of direct)if(!firstByKey.has(k))firstByKey.set(k,v);
+      }catch(e){console.warn("BSC NFT Token-ID-Erwerbshistorie fehlgeschlagen",e);}
     }
   }
   for(const n of nfts){
