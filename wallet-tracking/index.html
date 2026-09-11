@@ -449,10 +449,9 @@
         <div id="nftChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
 
         <div class="action-row" style="margin-top:10px;flex-wrap:wrap">
-          <button id="nftBtn" onclick="runNftLoad()">NFTs aktualisieren</button>
           <button id="nftOwnershipBtn" class="secondary" onclick="refreshSelectedApertumNftOwnership()">Apertum Besitzhistorie aktualisieren</button>
         </div>
-        <div id="nftCacheInfo" class="note" style="margin-top:7px">Gespeicherte NFTs werden aus Supabase geladen. „NFTs aktualisieren“ lädt Bestand, BSC-Erwerbsdaten und NFT-Metadaten/Bilder neu. „Apertum Besitzhistorie aktualisieren“ ergänzt separat die walletübergreifenden Apertum-Besitzperioden.</div>
+        <div id="nftCacheInfo" class="note" style="margin-top:7px">Gespeicherte NFTs werden aus Supabase geladen. Aktualisiert werden sie zentral über „Daten aktualisieren“ auf der Startseite. Apertum-Erwerbsdaten werden separat aus der On-Chain-Besitzhistorie ergänzt.</div>
         <div id="nftStatus" class="note" style="margin-top:10px"></div>
       </div>
       <div id="nftResults"></div>
@@ -734,7 +733,7 @@
   </div>
 
   <footer>
-    Version vom 11.09.2026 17:03:28 CEST · Phase 4.9 · v22 NFT-Refresh-Button<br>
+    Version vom 11.09.2026 17:08:21 CEST · Phase 4.9 · v23 NFT Historie/Metadata robust<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -747,11 +746,9 @@
 <script src="./js/lp-engine.js"></script>
 <script src="./js/staking-engine.js"></script>
 <script src="./projects/tln-vow/tln-vow.js"></script>
-<script src="./projects/dao1/dao1.js?v=20260911-165614-dao1-v21-asset-flows"></script>
+<script src="./projects/dao1/dao1.js?v=20260911-170821-nft-v23-ownership-rebuild"></script>
 
-<script src="./js/app.js?v=20260911-165614-nft-v21-acquisition-images"></script>
-
-
+<script src="./js/app.js?v=20260911-170821-nft-v23-metadata-acquisition"></script>
 
 
 
@@ -767,6 +764,8 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 11.09.2026 17:03:28 CEST · Phase 4.9 · Build 20260911-170328</div>
+
+
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 11.09.2026 17:08:21 CEST · Phase 4.9 · Build 20260911-170821</div>
 </body>
 </html>

@@ -6035,6 +6035,7 @@ async function fetchNftsForChain(chain, address, onProgress) {
         contractType: n.tokenType || contract.tokenType
       };
       if(!item.possibleSpam && (!item.image || !item.name || item.name==="Unbenannt"))item=await enrichAlchemyNftMetadata(chain,item);
+      if(!item.possibleSpam && !item.image)item=await enrichNftFromTokenUri(chain,item);
       nfts.push(item);
     }
     pageKey = data.pageKey || null;
@@ -6099,13 +6100,15 @@ async function enrichApertumNft(chain, nft) {
         image=nftMetadataImage(external)||image;
       }
     }
-    return {
+    let out={
       ...nft,
       name: meta.name || inst?.name || nft.name || token.name || token.symbol || `NFT #${nft.tokenId}`,
       collectionName: nft.collectionName || token.name || token.symbol || null,
       image,
       possibleSpam: !!(nft.possibleSpam || blockscoutNftSpam(inst))
     };
+    if(!out.possibleSpam&&!out.image)out=await enrichNftFromTokenUri(chain,out);
+    return out;
   } catch(e) {
     console.warn("Apertum NFT-Metadaten konnten nicht ergänzt werden:", nft.tokenAddress, nft.tokenId, e);
     return nft;
@@ -6493,10 +6496,35 @@ async function fetchIncomingNftTransfersForWallet(chain,address,onProgress=null)
   const rows=[];
   if(!addr)return rows;
 
+  // BSC: Alchemy ist für NFT-Transfers robuster als der bisherige NodeReal-Pfad.
+  // Wenn Alchemy nicht verfügbar ist, fällt BSC weiter auf NodeReal zurück.
+  if(chain==="bsc" && CHAIN_CONFIG[chain]?.nftProvider==="alchemy"){
+    try{
+      let pageKey=null,pages=0;
+      do{
+        pages++;onProgress?.(`Alchemy ${pages}`);
+        const q={fromBlock:"0x0",toBlock:"latest",toAddress:address,category:["erc721","erc1155"],withMetadata:true,excludeZeroValue:false,maxCount:"0x3e8",order:"asc"};
+        if(pageKey)q.pageKey=pageKey;
+        const r=await alchemyRpc(chain,"alchemy_getAssetTransfers",[q],"discovery");
+        for(const t of (r?.transfers||[])){
+          const to=String(t?.to||"").toLowerCase();
+          if(to&&to!==addr)continue;
+          rows.push(t);
+        }
+        pageKey=r?.pageKey||null;
+        if(pageKey)await sleepMs(150);
+        if(pages>500)throw new Error("BSC Alchemy NFT-Erwerbshistorie: Sicherheitsabbruch");
+      }while(pageKey);
+      if(rows.length)return rows;
+    }catch(e){
+      console.warn("BSC Alchemy NFT-Erwerbshistorie fehlgeschlagen, NodeReal-Fallback:",e);
+    }
+  }
+
   if(chain==="bsc"){
     let pageKey=null,pages=0;
     do{
-      pages++;if(onProgress)onProgress(pages);
+      pages++;onProgress?.(`NodeReal ${pages}`);
       const q={fromBlock:"0x0",toBlock:"latest",toAddress:address,category:["721","1155"],withMetadata:true,excludeZeroValue:false,maxCount:"0x3e8",order:"asc"};
       if(pageKey)q.pageKey=pageKey;
       const r=await nodeRealRpc("nr_getAssetTransfers",q);
@@ -6515,8 +6543,8 @@ async function fetchIncomingNftTransfersForWallet(chain,address,onProgress=null)
   if(CHAIN_CONFIG[chain]?.nftProvider==="alchemy"){
     let pageKey=null,pages=0;
     do{
-      pages++;if(onProgress)onProgress(pages);
-      const q={fromBlock:"0x0",toBlock:"latest",toAddress:address,category:["721","1155"],withMetadata:true,excludeZeroValue:false,maxCount:"0x3e8",order:"asc"};
+      pages++;onProgress?.(pages);
+      const q={fromBlock:"0x0",toBlock:"latest",toAddress:address,category:["erc721","erc1155"],withMetadata:true,excludeZeroValue:false,maxCount:"0x3e8",order:"asc"};
       if(pageKey)q.pageKey=pageKey;
       const r=await alchemyRpc(chain,"alchemy_getAssetTransfers",[q],"discovery");
       for(const t of (r?.transfers||[])){
@@ -6526,7 +6554,7 @@ async function fetchIncomingNftTransfersForWallet(chain,address,onProgress=null)
       }
       pageKey=r?.pageKey||null;
       if(pageKey)await sleepMs(180);
-      if(pages>500)throw new Error(`${CHAIN_META[chain]?.label||chain} NFT-Erwerbshistorie: Sicherheitsabbruch nach 500 Seiten`);
+      if(pages>500)throw new Error(`${CHAIN_META[chain]?.label||chain} NFT-Erwerbshistorie: Sicherheitsabbruch`);
     }while(pageKey);
   }
   return rows;
@@ -6590,6 +6618,57 @@ async function fetchBscNftAcquisitionByAddress(address,onProgress=null){
     if(pages>500)throw new Error("BSC NFT-Adresshistorie: Sicherheitsabbruch nach 500 Seiten");
   }while(pageKey);
   return rows;
+}
+
+
+async function evmNftMetadataUri(chain,contract,tokenId){
+  try{
+    const rpc=configuredRpcUrl(chain);
+    const provider=new ethers.JsonRpcProvider(rpc);
+    const id=BigInt(String(tokenId));
+    const erc721=new ethers.Interface(["function tokenURI(uint256) view returns (string)"]);
+    try{
+      const raw=await provider.call({to:contract,data:erc721.encodeFunctionData("tokenURI",[id])});
+      const [uri]=erc721.decodeFunctionResult("tokenURI",raw);
+      if(uri)return String(uri);
+    }catch(_){}
+    const erc1155=new ethers.Interface(["function uri(uint256) view returns (string)"]);
+    try{
+      const raw=await provider.call({to:contract,data:erc1155.encodeFunctionData("uri",[id])});
+      const [uri]=erc1155.decodeFunctionResult("uri",raw);
+      if(uri){
+        let out=String(uri);
+        if(out.includes("{id}"))out=out.replaceAll("{id}",id.toString(16).padStart(64,"0"));
+        return out;
+      }
+    }catch(_){}
+  }catch(e){console.warn("NFT tokenURI/uri konnte nicht gelesen werden",chain,contract,tokenId,e);}
+  return null;
+}
+
+async function enrichNftFromTokenUri(chain,nft){
+  if(!nft?.tokenAddress||nft?.tokenId==null)return nft;
+  try{
+    const uri=await evmNftMetadataUri(chain,nft.tokenAddress,nft.tokenId);
+    if(!uri)return nft;
+    let meta=null;
+    if(/^data:application\/json[,;]/i.test(uri)){
+      const payload=uri.split(",",2)[1]||"";
+      try{meta=JSON.parse(uri.includes(";base64,")?atob(payload):decodeURIComponent(payload));}catch(_){}
+    }else{
+      meta=await fetchExternalNftMetadata(uri);
+    }
+    if(!meta)return nft;
+    return {
+      ...nft,
+      name:nft.name&&nft.name!=="Unbenannt"?nft.name:(meta.name||nft.name),
+      image:nft.image||nftMetadataImage(meta)||null,
+      metadataUri:uri
+    };
+  }catch(e){
+    console.warn("NFT tokenURI-Metadaten-Fallback:",chain,nft?.tokenAddress,nft?.tokenId,e);
+    return nft;
+  }
 }
 
 async function enrichAlchemyNftMetadata(chain,nft){

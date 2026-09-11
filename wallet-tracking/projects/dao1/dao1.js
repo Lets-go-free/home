@@ -757,45 +757,20 @@ window.DAO1Project = (() => {
     });
     if(!ownPeriods.length)return 0;
 
-    // Sicherheitsregel: Ein späterer/incompletter Explorer-Lauf darf ältere bereits
-    // verifizierte Besitzabschnitte niemals löschen. Bestehende + neu gefundene Perioden
-    // werden vereinigt; bei identischem Wallet/Startblock gewinnt der neu gelesene Datensatz.
-    const {data:existing,error:existingError}=await sb.from("project_nft_ownership")
-      .select("*")
-      .eq("user_id",ctx.currentUser.id)
-      .eq("project_key",PROJECT_KEY)
-      .eq("chain_key",CHAIN_KEY)
-      .eq("nft_contract",nftContract)
-      .eq("nft_id",Number(nftId));
-    if(existingError && !/does not exist|schema cache/i.test(existingError.message||""))throw existingError;
+    // Deterministischer Neuaufbau aus der vollständigen NFT-Transferhistorie.
+    // Alte Cache-Perioden dürfen keinen falschen Ersterwerb konservieren.
+    const rebuilt=ownPeriods.sort((a,b)=>Number(a.owned_from_block||0)-Number(b.owned_from_block||0));
 
-    const merged=new Map();
-    for(const r of (existing||[])){
-      const key=`${String(r.wallet_id||"")}|${Number(r.owned_from_block||0)}`;
-      merged.set(key,{
-        user_id:r.user_id,project_key:r.project_key,chain_key:r.chain_key,
-        nft_contract:r.nft_contract,nft_id:r.nft_id,nft_name:r.nft_name||nftName,
-        wallet_id:r.wallet_id,owned_from_block:r.owned_from_block,owned_from_at:r.owned_from_at,
-        owned_to_block:r.owned_to_block,owned_to_at:r.owned_to_at,is_current:!!r.is_current
-      });
-    }
-    for(const r of ownPeriods){
-      const key=`${String(r.wallet_id||"")}|${Number(r.owned_from_block||0)}`;
-      merged.set(key,r);
-    }
-    const mergedPeriods=[...merged.values()].sort((a,b)=>Number(a.owned_from_block||0)-Number(b.owned_from_block||0));
-
-    // Nur der tatsächlich letzte Besitzabschnitt darf für das aktuelle Wallet "current" sein.
-    // Alte current-Flags aus einem früheren Wallet werden bei internem Transfer geschlossen.
-    const newest=mergedPeriods[mergedPeriods.length-1];
-    for(const r of mergedPeriods){
-      if(r!==newest && r.is_current){
-        const later=mergedPeriods.find(x=>Number(x.owned_from_block||0)>Number(r.owned_from_block||0));
-        if(later){
-          r.is_current=false;
-          if(r.owned_to_block==null)r.owned_to_block=Number(later.owned_from_block||0)||null;
-          if(r.owned_to_at==null)r.owned_to_at=later.owned_from_at||null;
-        }
+    // Bei internen Transfers darf der vorherige eigene Besitzabschnitt nicht als
+    // endgültiger Verlust der User-Eigentümersphäre interpretiert werden. Für die Anzeige
+    // bleibt jedoch jede Wallet-Periode einzeln erhalten.
+    for(let i=0;i<rebuilt.length;i++){
+      const r=rebuilt[i],next=rebuilt[i+1]||null;
+      r.is_current=!next && r.is_current!==false;
+      if(next && r.owned_to_block==null){
+        r.owned_to_block=Number(next.owned_from_block||0)||null;
+        r.owned_to_at=next.owned_from_at||null;
+        r.is_current=false;
       }
     }
 
@@ -807,11 +782,10 @@ window.DAO1Project = (() => {
       .eq("nft_contract",nftContract)
       .eq("nft_id",Number(nftId));
 
-    const {error}=await sb.from("project_nft_ownership").insert(mergedPeriods);
+    const {error}=await sb.from("project_nft_ownership").insert(rebuilt);
     if(error) throw error;
-    return mergedPeriods.length;
+    return rebuilt.length;
   }
-
   async function selectWallet(id){
     selectedWalletId=String(id||""); selectedNftId="";
     await loadCurrentApertumNfts();
