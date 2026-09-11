@@ -2933,6 +2933,7 @@ async function purgeWalletRelatedData(w) {
     await deleteWalletRows("project_nft_claims", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-NFT-Claims");
     await deleteWalletRows("project_nft_ownership", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-NFT-Besitzerhistorie");
     await deleteWalletRows("project_scan_state", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-Scanstatus");
+    await deleteWalletRows("project_transaction_asset_flows", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "DAO1 Asset-Flows");
     await deleteWalletRows("project_transactions", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-Transaktionen");
     await deleteWalletRows("tln_wallet_identity_cache", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "TLN Wallet-Identity-Cache");
     await deleteWalletRows("tln_vow_staking_scan_cache", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "TLN/VOW Discovery-/Staking-Cache");
@@ -6019,20 +6020,23 @@ async function fetchNftsForChain(chain, address, onProgress) {
     });
     if (!res.ok) throw new Error("Alchemy NFT HTTP " + res.status);
     const data = await res.json();
-    (data.ownedNfts || []).forEach(n => {
+    for (const n of (data.ownedNfts || [])) {
       const contract = n.contract || {};
       const image = n.image || {};
-      nfts.push({
+      const rawMeta=n?.raw?.metadata||{};
+      let item={
         chain,
         tokenAddress: contract.address,
         tokenId: n.tokenId,
-        name: n.name || (n.raw && n.raw.metadata && n.raw.metadata.name) || contract.name || "Unbenannt",
-        image: normalizeNftImageUrl(image.cachedUrl || image.thumbnailUrl || image.originalUrl || (n.raw && n.raw.metadata && n.raw.metadata.image)),
+        name: n.name || rawMeta?.name || contract.name || "Unbenannt",
+        image: normalizeNftImageUrl(image.cachedUrl || image.thumbnailUrl || image.pngUrl || image.originalUrl || n?.media?.[0]?.gateway || n?.media?.[0]?.thumbnail || n?.media?.[0]?.raw) || nftMetadataImage(rawMeta),
         collectionName: (n.collection && n.collection.name) || (contract.openSeaMetadata && contract.openSeaMetadata.collectionName) || contract.name,
         possibleSpam: contract.isSpam === true || contract.isSpam === "true" || (contract.spamClassifications || []).length > 0,
         contractType: n.tokenType || contract.tokenType
-      });
-    });
+      };
+      if(!item.possibleSpam && (!item.image || !item.name || item.name==="Unbenannt"))item=await enrichAlchemyNftMetadata(chain,item);
+      nfts.push(item);
+    }
     pageKey = data.pageKey || null;
   } while (pageKey && page < FEES_MAX_PAGES);
 
@@ -6084,13 +6088,22 @@ async function enrichApertumNft(chain, nft) {
     const res=await fetch(url);
     if(!res.ok) return nft;
     const inst=await res.json();
-    const meta=inst?.metadata || {};
+    let meta=inst?.metadata || {};
     const token=inst?.token || {};
+    let image=nft.image || normalizeNftImageUrl(inst?.image_url||inst?.media_url) || nftMetadataImage(meta);
+    if(!image){
+      const uri=inst?.metadata_url||inst?.token_uri||inst?.tokenUri||token?.metadata_url||token?.token_uri||meta?.external_url||null;
+      const external=uri?await fetchExternalNftMetadata(uri):null;
+      if(external){
+        meta={...external,...meta};
+        image=nftMetadataImage(external)||image;
+      }
+    }
     return {
       ...nft,
       name: meta.name || inst?.name || nft.name || token.name || token.symbol || `NFT #${nft.tokenId}`,
       collectionName: nft.collectionName || token.name || token.symbol || null,
-      image: nft.image || normalizeNftImageUrl(inst?.image_url) || nftMetadataImage(meta),
+      image,
       possibleSpam: !!(nft.possibleSpam || blockscoutNftSpam(inst))
     };
   } catch(e) {
@@ -6291,7 +6304,7 @@ async function refreshSelectedApertumNftOwnership(){
     await loadNftOwnershipCacheFromDb();
     lastNftFindings=cachedNftsForSelection();
     renderNftResults(lastNftFindings,[]);
-    if(status)status.textContent=`Apertum-Besitzhistorie aktualisiert: ${nfts} NFT(s), ${periods} Besitzabschnitt(e)${failed?`, ${failed} Historie(n) nicht abrufbar`:""}.`;
+    if(status)status.textContent=`Apertum-Besitzhistorie aktualisiert: ${nfts} NFT(s), ${periods} Besitzabschnitt(e)${failed?`, ${failed} Historie(n) nicht abrufbar`:""}. Hinweis: BSC-Erwerbsdaten und NFT-Bilder werden über „NFTs jetzt aktualisieren“ neu geladen.`;
   }catch(e){
     console.error(e);if(status)status.textContent="Besitzhistorie konnte nicht vollständig aktualisiert werden: "+(e.message||e);
   }finally{if(btn){btn.disabled=false;btn.textContent="Apertum Besitzhistorie aktualisieren";}}
@@ -6412,9 +6425,25 @@ async function saveNftCacheForWallet(w, nfts, chains) {
 }
 
 async function refreshApertumNftsForWallet(wallet,onProgress=null){
-  if(!currentUser||!wallet?.evm)throw new Error("Apertum-Wallet fehlt.");const chain="apertum",found=await fetchApertumNfts(chain,wallet.evm,p=>onProgress?.(p));found.forEach(n=>{n.walletLabel=wallet.label;n.walletId=String(wallet.dbId||wallet.id);});
-  const old=nftCaches.get(String(wallet.dbId||wallet.id)),flags=new Map(((old&&old.nfts)||[]).map(n=>[nftKey(n),{spam:!!n.userMarkedSpam,safe:!!n.userMarkedSafe}]));found.forEach(n=>{const f=flags.get(nftKey(n));if(f?.spam)n.userMarkedSpam=true;if(f?.safe)n.userMarkedSafe=true;});
-  const others=((old&&old.nfts)||[]).filter(n=>String(n.chain||"")!==chain);await saveNftCacheForWallet(wallet,others.concat(found),[...new Set([...(old?.selected_chains||[]),chain])]);return found;
+  if(!currentUser||!wallet?.evm)throw new Error("Apertum-Wallet fehlt.");
+  const chain="apertum",found=await fetchApertumNfts(chain,wallet.evm,p=>onProgress?.(p));
+  found.forEach(n=>{n.walletLabel=wallet.label;n.walletId=String(wallet.dbId||wallet.id);});
+  const old=nftCaches.get(String(wallet.dbId||wallet.id));
+  const flags=new Map(((old&&old.nfts)||[]).map(n=>[nftKey(n),{
+    spam:!!n.userMarkedSpam,safe:!!n.userMarkedSafe,image:n.image||null,
+    name:n.name||null,collectionName:n.collectionName||null
+  }]));
+  found.forEach(n=>{
+    const f=flags.get(nftKey(n));
+    if(f?.spam)n.userMarkedSpam=true;
+    if(f?.safe)n.userMarkedSafe=true;
+    if(!n.image&&f?.image)n.image=f.image;
+    if((!n.name||n.name==="Unbenannt")&&f?.name)n.name=f.name;
+    if(!n.collectionName&&f?.collectionName)n.collectionName=f.collectionName;
+  });
+  const others=((old&&old.nfts)||[]).filter(n=>String(n.chain||"")!==chain);
+  await saveNftCacheForWallet(wallet,others.concat(found),[...new Set([...(old?.selected_chains||[]),chain])]);
+  return found;
 }
 
 
@@ -6541,6 +6570,71 @@ async function fetchBscNftAcquisitionByTokenIds(address,nfts,onProgress=null){
   return out;
 }
 
+
+async function fetchBscNftAcquisitionByAddress(address,onProgress=null){
+  const addr=String(address||"").toLowerCase();
+  const rows=[];
+  let pageKey=null,pages=0;
+  do{
+    pages++;onProgress?.(pages);
+    const q={category:["721","1155"],addressType:"to",address,order:"asc",maxCount:"0x3e8"};
+    if(pageKey)q.pageKey=pageKey;
+    const r=await nodeRealRpc("nr_getTransactionByAddress",q);
+    for(const t of (r?.transfers||[])){
+      const to=String(t?.to||t?.toAddress||"").toLowerCase();
+      if(to&&to!==addr)continue;
+      rows.push(t);
+    }
+    pageKey=r?.pageKey||r?.PageKey||null;
+    if(pageKey)await sleepMs(120);
+    if(pages>500)throw new Error("BSC NFT-Adresshistorie: Sicherheitsabbruch nach 500 Seiten");
+  }while(pageKey);
+  return rows;
+}
+
+async function enrichAlchemyNftMetadata(chain,nft){
+  if(!nft?.tokenAddress||nft?.tokenId==null)return nft;
+  if(CHAIN_CONFIG[chain]?.nftProvider!=="alchemy")return nft;
+  try{
+    assertAlchemyConfigured();
+    const base=configuredNftBase(chain);
+    const qs=new URLSearchParams({
+      contractAddress:String(nft.tokenAddress),
+      tokenId:String(nft.tokenId),
+      refreshCache:"true"
+    });
+    const res=await fetch(`${base}/${encodeURIComponent(ALCHEMY_API_KEY)}/getNFTMetadata?${qs.toString()}`,{headers:{"Accept":"application/json"}});
+    if(!res.ok)return nft;
+    const data=await res.json();
+    const rawMeta=data?.raw?.metadata||data?.metadata||data?.rawMetadata||{};
+    const img=data?.image||{};
+    const image=normalizeNftImageUrl(
+      img.cachedUrl||img.thumbnailUrl||img.pngUrl||img.originalUrl||
+      data?.media?.[0]?.gateway||data?.media?.[0]?.thumbnail||data?.media?.[0]?.raw
+    )||nftMetadataImage(rawMeta);
+    return {
+      ...nft,
+      name:nft.name&&nft.name!=="Unbenannt"?nft.name:(data?.name||rawMeta?.name||nft.name),
+      collectionName:nft.collectionName||data?.collection?.name||data?.contract?.name||null,
+      image:nft.image||image||null
+    };
+  }catch(e){
+    console.warn("Alchemy NFT-Metadaten-Fallback:",chain,nft?.tokenAddress,nft?.tokenId,e);
+    return nft;
+  }
+}
+
+async function fetchExternalNftMetadata(uri){
+  const url=normalizeNftImageUrl(uri);
+  if(!url)return null;
+  try{
+    const res=await fetch(url,{headers:{"Accept":"application/json"}});
+    if(!res.ok)return null;
+    const j=await res.json();
+    return j&&typeof j==="object"?j:null;
+  }catch(_){return null;}
+}
+
 async function enrichNftsWithAcquisitionData(chain,address,nfts,onProgress=null){
   if(!Array.isArray(nfts)||!nfts.length||chain==="apertum")return nfts;
   let transfers=[];
@@ -6562,12 +6656,24 @@ async function enrichNftsWithAcquisitionData(chain,address,nfts,onProgress=null)
     }
   }
   if(chain==="bsc"){
-    const missing=nfts.filter(n=>!firstByKey.has(`${lowerAddressForNft(n.tokenAddress)}|${normalizeNftTransferTokenId(n.tokenId)}`));
+    let missing=nfts.filter(n=>!firstByKey.has(`${lowerAddressForNft(n.tokenAddress)}|${normalizeNftTransferTokenId(n.tokenId)}`));
     if(missing.length){
       try{
         const direct=await fetchBscNftAcquisitionByTokenIds(address,missing,p=>onProgress?.(`Token-ID ${p}`));
         for(const [k,v] of direct)if(!firstByKey.has(k))firstByKey.set(k,v);
       }catch(e){console.warn("BSC NFT Token-ID-Erwerbshistorie fehlgeschlagen",e);}
+    }
+    missing=nfts.filter(n=>!firstByKey.has(`${lowerAddressForNft(n.tokenAddress)}|${normalizeNftTransferTokenId(n.tokenId)}`));
+    if(missing.length){
+      try{
+        const byAddress=await fetchBscNftAcquisitionByAddress(address,p=>onProgress?.(`Adresshistorie ${p}`));
+        for(const t of byAddress){
+          const block=nftTransferBlock(t),at=nftTransferTimestamp(t);
+          for(const key of nftAcquisitionTransferKeys(t)){
+            if(!firstByKey.has(key))firstByKey.set(key,{block:block||null,at,txHash:String(t?.hash||t?.transactionHash||"")||null});
+          }
+        }
+      }catch(e){console.warn("BSC NFT Adress-Erwerbshistorie fehlgeschlagen",e);}
     }
   }
   for(const n of nfts){
@@ -6629,7 +6735,10 @@ async function runNftLoad() {
           acquiredAt:n.acquiredAt||null,
           acquiredBlock:n.acquiredBlock||null,
           acquisitionTxHash:n.acquisitionTxHash||null,
-          acquisitionSource:n.acquisitionSource||null
+          acquisitionSource:n.acquisitionSource||null,
+          image:n.image||null,
+          name:n.name||null,
+          collectionName:n.collectionName||null
         }]));
         found.forEach(n => {
           const flags=oldMap.get(nftKey(n));
@@ -6639,6 +6748,9 @@ async function runNftLoad() {
           if(!n.acquiredBlock&&flags?.acquiredBlock)n.acquiredBlock=flags.acquiredBlock;
           if(!n.acquisitionTxHash&&flags?.acquisitionTxHash)n.acquisitionTxHash=flags.acquisitionTxHash;
           if(!n.acquisitionSource&&flags?.acquisitionSource)n.acquisitionSource=flags.acquisitionSource;
+          if(!n.image&&flags?.image)n.image=flags.image;
+          if((!n.name||n.name==="Unbenannt")&&flags?.name)n.name=flags.name;
+          if(!n.collectionName&&flags?.collectionName)n.collectionName=flags.collectionName;
         });
         walletNfts = walletNfts.concat(found);
       } catch (e) {
