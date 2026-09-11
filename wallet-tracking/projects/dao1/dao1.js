@@ -1120,9 +1120,20 @@ window.DAO1Project = (() => {
     }));
 
     for(const row of normalizedChain){
-      if((!row.to || !/^0x[0-9a-f]{40}$/.test(row.to)) && /^0x[0-9a-f]{40}$/.test(row.nextFrom)){
+      const nextFromValid=/^0x[0-9a-f]{40}$/.test(row.nextFrom||"");
+      const toValid=/^0x[0-9a-f]{40}$/.test(row.to||"");
+
+      if(!toValid && nextFromValid){
         row.to=row.nextFrom;
         row.inferredTo=true;
+        row.inferenceReason="missing_to_next_from";
+      }
+
+      if(nextFromValid && tracked.has(row.nextFrom) && row.to!==row.nextFrom){
+        row.originalTo=row.to||"";
+        row.to=row.nextFrom;
+        row.inferredTo=true;
+        row.inferenceReason="owned_next_from_continuity";
       }
     }
 
@@ -1136,8 +1147,9 @@ window.DAO1Project = (() => {
         })),
         chain:normalizedChain.map(r=>({
           block:r.block,time:r.ts,from:r.from,to:r.to,next_from:r.nextFrom,
+          original_to:r.originalTo||null,
           from_is_own:tracked.has(r.from),to_is_own:tracked.has(r.to),
-          inferred_to:!!r.inferredTo
+          inferred_to:!!r.inferredTo,inference_reason:r.inferenceReason||null
         }))
       });
     }
