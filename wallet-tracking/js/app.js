@@ -6240,6 +6240,7 @@ function lowerAddressForNft(v){ return String(v||"").toLowerCase(); }
 // ---- NFT-Cache in Supabase: Live-Abfrage nur auf Knopfdruck ----
 let nftCaches = new Map(); // wallet_id -> DB-Zeile
 let nftOwnershipRows = []; // DAO1/Apertum-Besitzhistorie, userbezogen
+let nftGlobalFirstOwned = new Map(); // contract|id -> frühester Eingang in irgendeine eigene Wallet
 let lastNftFindings = [];
 
 function nftKey(n) {
@@ -6252,7 +6253,7 @@ function isNftSpam(n) {
 }
 
 async function loadNftOwnershipCacheFromDb(){
-  if(!currentUser){nftOwnershipRows=[];return;}
+  if(!currentUser){nftOwnershipRows=[];nftGlobalFirstOwned=new Map();return;}
   try{
     const {data,error}=await sb.from("project_nft_ownership").select("wallet_id,nft_contract,nft_id,nft_name,owned_from_block,owned_to_block,owned_from_at,owned_to_at,is_current")
       .eq("user_id",currentUser.id).eq("project_key","dao1").eq("chain_key","apertum").order("owned_from_block",{ascending:true});
@@ -6261,6 +6262,67 @@ async function loadNftOwnershipCacheFromDb(){
   }catch(e){
     nftOwnershipRows=[];
     if(!/does not exist|schema cache/i.test(String(e?.message||"")))console.warn("NFT-Besitzhistorie:",e);
+  }
+
+  // Robuster zweiter Wahrheitsweg für "Erstmals von dir erworben":
+  // Aus dem GLOBALEN öffentlichen Apertum-Transfercache wird der früheste Eingang
+  // an irgendeine eigene Wallet ermittelt. Damit bleibt ein Walletwechsel korrekt,
+  // selbst wenn eine historische project_nft_ownership-Periode fehlt.
+  nftGlobalFirstOwned=new Map();
+  try{
+    const ownedAddresses=new Set((wallets||[]).map(w=>lowerAddressForNft(w?.evm)).filter(Boolean));
+    if(!ownedAddresses.size)return;
+
+    const nftPairs=new Map();
+    for(const cache of nftCaches.values()){
+      for(const n of (Array.isArray(cache?.nfts)?cache.nfts:[])){
+        if(String(n?.chain||"")!=="apertum")continue;
+        const contract=lowerAddressForNft(n?.tokenAddress);
+        const id=String(n?.tokenId??"");
+        if(contract&&id)nftPairs.set(`${contract}|${id}`,{contract,id});
+      }
+    }
+    if(!nftPairs.size)return;
+
+    const byContract=new Map();
+    for(const {contract,id} of nftPairs.values()){
+      if(!byContract.has(contract))byContract.set(contract,[]);
+      byContract.get(contract).push(id);
+    }
+
+    for(const [contract,idsRaw] of byContract){
+      const ids=[...new Set(idsRaw)].filter(x=>/^\d+$/.test(String(x)));
+      for(let off=0;off<ids.length;off+=100){
+        const chunk=ids.slice(off,off+100).map(Number);
+        const {data,error}=await sb.from("apertum_nft_transfer_cache")
+          .select("nft_contract,nft_id,block_number,block_timestamp,to_address,tx_hash,log_index")
+          .eq("chain_key","apertum").eq("nft_contract",contract).in("nft_id",chunk)
+          .order("block_number",{ascending:true}).order("log_index",{ascending:true});
+        if(error)throw error;
+        for(const r of (data||[])){
+          if(!ownedAddresses.has(lowerAddressForNft(r.to_address)))continue;
+          const key=`${lowerAddressForNft(r.nft_contract)}|${String(r.nft_id)}`;
+          const candidate={
+            owned_from_block:Number(r.block_number||0)||null,
+            owned_from_at:r.block_timestamp||null,
+            tx_hash:r.tx_hash||null
+          };
+          const old=nftGlobalFirstOwned.get(key);
+          if(!old || (candidate.owned_from_block>0 && (!old.owned_from_block || candidate.owned_from_block<old.owned_from_block))){
+            nftGlobalFirstOwned.set(key,candidate);
+          }
+        }
+      }
+    }
+
+    for(const id of ["7993","7994"]){
+      const key=[...nftGlobalFirstOwned.keys()].find(k=>k.endsWith(`|${id}`));
+      if(key)console.info("DAO1 NFT Solar globaler Ersterwerb",id,nftGlobalFirstOwned.get(key));
+    }
+  }catch(e){
+    // Der Anzeige-Fallback darf die vorhandene Besitzhistorie nie blockieren.
+    console.warn("Apertum globaler NFT-Ersterwerb konnte nicht geladen werden:",e);
+    nftGlobalFirstOwned=new Map();
   }
 }
 
@@ -6284,7 +6346,7 @@ function nftOwnershipInfo(n){
 
   // "Erstmals von dir erworben" ist walletübergreifend: frühester Besitzabschnitt
   // irgendeiner eigenen Wallet. "In diesem Wallet seit" bleibt wallet-spezifisch.
-  const first=rows.reduce((best,r)=>{
+  let first=rows.reduce((best,r)=>{
     if(!best)return r;
     const bb=Number(best.owned_from_block||0),rb=Number(r.owned_from_block||0);
     if(rb>0 && (bb<=0 || rb<bb))return r;
@@ -6295,6 +6357,19 @@ function nftOwnershipInfo(n){
     }
     return best;
   },null);
+
+  const globalFirst=nftGlobalFirstOwned.get(`${contract}|${id}`)||null;
+  if(globalFirst){
+    const fb=Number(first?.owned_from_block||0),gb=Number(globalFirst.owned_from_block||0);
+    if(gb>0 && (fb<=0 || gb<fb)){
+      first={
+        ...first,
+        owned_from_block:gb,
+        owned_from_at:globalFirst.owned_from_at||null,
+        _source:"global-transfer-cache"
+      };
+    }
+  }
 
   const walletId=String(n?.walletId||n?.wallet_id||"");
   const walletRows=rows.filter(r=>String(r.wallet_id||"")===walletId)

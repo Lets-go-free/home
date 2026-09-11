@@ -1151,17 +1151,27 @@ window.DAO1Project = (() => {
     const {error}=await sb.from("project_nft_ownership").insert(rebuilt);
     if(error) throw error;
     if(String(nftId)==="7993" || String(nftId)==="7994"){
-      console.info("DAO1 NFT Solar Besitzperioden gespeichert",{
-        nft:`${nftContract}#${nftId}`,
-        periods:rebuilt.map(r=>({
-          wallet_id:r.wallet_id,
-          from_block:Number(r.owned_from_block||0),
-          from_at:r.owned_from_at||null,
-          to_block:Number(r.owned_to_block||0)||null,
-          to_at:r.owned_to_at||null,
-          current:!!r.is_current
-        }))
-      });
+      const compact=rebuilt.map(r=>({
+        wallet_id:r.wallet_id,
+        from_block:Number(r.owned_from_block||0),
+        from_at:r.owned_from_at||null,
+        to_block:Number(r.owned_to_block||0)||null,
+        to_at:r.owned_to_at||null,
+        current:!!r.is_current
+      }));
+      console.info("DAO1 NFT Solar Besitzperioden gespeichert",{nft:`${nftContract}#${nftId}`,periods:compact});
+      try{
+        const {data:verify,error:verifyError}=await sb.from("project_nft_ownership")
+          .select("wallet_id,owned_from_block,owned_from_at,owned_to_block,owned_to_at,is_current")
+          .eq("user_id",ctx.currentUser.id).eq("project_key",PROJECT_KEY).eq("chain_key",CHAIN_KEY)
+          .eq("nft_contract",nftContract).eq("nft_id",Number(nftId))
+          .order("owned_from_block",{ascending:true});
+        console.info("DAO1 NFT Solar Besitzperioden DB-Readback",{
+          nft:`${nftContract}#${nftId}`,
+          error:verifyError?.message||null,
+          periods:verify||[]
+        });
+      }catch(e){console.warn("DAO1 NFT Solar DB-Readback",e);}
     }
     return rebuilt.length;
   }
