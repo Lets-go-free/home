@@ -6,7 +6,7 @@ window.DAO1Project = (() => {
   const SYSTEM_ADDRESS = "0x0200000000000000000000000000000000000001";
   const PAIR_ADDRESS = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
   const SYNC_TOPIC = "0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
-  const PRICE_SOURCE_TAG = "exact-v2";
+  const PRICE_SOURCE_TAG = "exact-v3";
   const PRICE_LOOKBACK_BLOCKS = 10000;
   const RPC_URL = "https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc";
   const EXPLORER_API = "https://explorer.apertum.io/api/v2";
@@ -1341,10 +1341,16 @@ window.DAO1Project = (() => {
         renderTransactionHistory();
         if(selectedAll){
           const claims=transactionRows.filter(r=>r.claim_nft_id!=null).length;
+          const exactCount=transactionRows.filter(r=>String(r.price_source||"").includes(PRICE_SOURCE_TAG)).length;
+          const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
           setTransactionStatus("ready",`Bereit – ${transactionRows.length.toLocaleString("de-DE")} Transaktionen aus ${targets.length} Wallets, ${claims.toLocaleString("de-DE")} Claims.`,
-            "Blockchain-, NFT-Bestands- und Besitzerhistorien-Aktualisierung für alle ausgewählten Apertum-Wallets abgeschlossen.");
+            `Blockchain-, NFT-Bestands- und Besitzerhistorien-Aktualisierung abgeschlossen. Preisprüfung ${PRICE_SOURCE_TAG}: ${exactCount.toLocaleString("de-DE")} Zeilen · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte.`);
         }else{
           await showTransactionReadyStatus(walletAddress(targets[0]),transactionRows,"scan");
+          const exactCount=transactionRows.filter(r=>String(r.price_source||"").includes(PRICE_SOURCE_TAG)).length;
+          const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
+          const statusEl=document.getElementById("dao1TransactionStatus");
+          if(statusEl)statusEl.innerHTML+=`<div class="note" style="margin-top:4px">Preisprüfung ${PRICE_SOURCE_TAG}: ${exactCount.toLocaleString("de-DE")} Zeilen · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte.</div>`;
         }
       }else{
         setTransactionStatus("db",selectedAll?"Gespeicherte Daten aller Apertum-Wallets werden geladen…":"Gespeicherte Wallet-Daten werden geladen…",
