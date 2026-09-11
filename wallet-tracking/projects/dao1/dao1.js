@@ -6,8 +6,8 @@ window.DAO1Project = (() => {
   const SYSTEM_ADDRESS = "0x0200000000000000000000000000000000000001";
   const PAIR_ADDRESS = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
   const SYNC_TOPIC = "0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
-  const PRICE_SOURCE_TAG = "exact-v11";
-  const PRICE_MISSING_TAG = "missing-v11";
+  const PRICE_SOURCE_TAG = "exact-v12";
+  const PRICE_MISSING_TAG = "missing-v12";
   const PRICE_LOOKBACK_BLOCKS = 10000;
   const PRICE_ANCHOR_VERSION = 1;
   const PRICE_ANCHOR_LOCAL_LOOKBACK = 512;
@@ -139,7 +139,7 @@ window.DAO1Project = (() => {
 
   function priceJobStart(txCount=0,blockCount=0){
     if(priceJobTimer){clearInterval(priceJobTimer);priceJobTimer=null;}
-    activePriceJobLog={startedAt:Date.now(),txCount:Number(txCount||0),blockCount:Number(blockCount||0),anchorHits:0,anchorScans:0,nullAnchorsRechecked:0,legacyAnchorHits:0,coverageHits:0,coverageScans:0,syncLogs:0,rpcChunks:0,dbBatches:0,lines:[]};
+    activePriceJobLog={startedAt:Date.now(),txCount:Number(txCount||0),blockCount:Number(blockCount||0),anchorHits:0,anchorScans:0,nullAnchorsRechecked:0,legacyAnchorHits:0,coverageHits:0,coverageScans:0,syncLogs:0,rpcChunks:0,dbBatches:0,missingDiagnostics:[],lines:[]};
     priceJobLog(`Start · ${Number(txCount||0).toLocaleString("de-DE")} TX · ${Number(blockCount||0).toLocaleString("de-DE")} Preisblöcke`);
     priceJobTimer=setInterval(renderPriceJobLog,1000);
     renderPriceJobLog();
@@ -1320,7 +1320,12 @@ window.DAO1Project = (() => {
     if(!ctx?.isAdmin || !rows?.length)return;
     const BATCH=500;
     for(let i=0;i<rows.length;i+=BATCH){
-      const {error}=await sb.from("aptm_price_anchors").upsert(rows.slice(i,i+BATCH),{onConflict:"pool_address,parser_version,target_block"});
+      const payload=rows.slice(i,i+BATCH).map(r=>({
+        project_key:r.project_key,chain_key:r.chain_key,pool_address:r.pool_address,parser_version:r.parser_version,
+        target_block:r.target_block,sync_block:r.sync_block,log_index:r.log_index,tx_hash:r.tx_hash,aptm_usd:r.aptm_usd,
+        scanned_from_block:r.scanned_from_block,scanned_at:r.scanned_at
+      }));
+      const {error}=await sb.from("aptm_price_anchors").upsert(payload,{onConflict:"pool_address,parser_version,target_block"});
       if(error)throw error;
       if(activePriceJobLog){activePriceJobLog.dbBatches++;renderPriceJobLog();}
     }
@@ -1363,7 +1368,8 @@ window.DAO1Project = (() => {
           project_key:PROJECT_KEY,chain_key:CHAIN_KEY,pool_address:lower(PAIR_ADDRESS),parser_version:PRICE_ANCHOR_VERSION,
           target_block:target,sync_block:pred.row?Number(pred.row.block_number):null,
           log_index:pred.row?Number(pred.row.log_index):null,tx_hash:pred.row?.tx_hash||null,
-          aptm_usd:pred.row?Number(pred.row.aptm_usd):null,scanned_from_block:Number(pred.scannedFrom),scanned_at:new Date().toISOString()
+          aptm_usd:pred.row?Number(pred.row.aptm_usd):null,scanned_from_block:Number(pred.scannedFrom),scanned_at:new Date().toISOString(),
+          _diag_rounds:Number(pred.rounds||0),_diag_logs:Number(pred.totalLogs||0),_diag_reason:pred.reason||null
         };
       }
       out.push(replacement);
@@ -1373,23 +1379,28 @@ window.DAO1Project = (() => {
   }
 
   async function findPredecessorSync(targetBlock,meta,status){
-    let to=Math.max(0,Number(targetBlock));
+    const originalTarget=Math.max(0,Number(targetBlock));
+    let to=originalTarget;
     let span=PRICE_ANCHOR_LOCAL_LOOKBACK;
     let rounds=0;
+    let totalLogs=0;
+    let earliestScanned=originalTarget;
     while(to>=0 && rounds<20){
       rounds++;
       const from=Math.max(0,to-span+1);
+      earliestScanned=Math.min(earliestScanned,from);
       if(status)status.textContent=`Historischen Preisanker suchen: ${from}–${to}…`;
       const logs=await fetchSyncLogsVerifiedAdaptive(from,to,null);
       const parsed=(logs||[]).map(l=>priceRowFromSyncLog(l,meta)).filter(Boolean)
         .sort((a,b)=>Number(a.block_number)-Number(b.block_number)||Number(a.log_index)-Number(b.log_index));
+      totalLogs+=parsed.length;
       if(activePriceJobLog)activePriceJobLog.syncLogs+=parsed.length;
-      if(parsed.length)return {row:parsed[parsed.length-1],scannedFrom:from};
-      if(from===0)return {row:null,scannedFrom:0};
+      if(parsed.length)return {row:parsed[parsed.length-1],scannedFrom:from,rounds,totalLogs,reason:"sync_found"};
+      if(from===0)return {row:null,scannedFrom:0,rounds,totalLogs,reason:"genesis_reached"};
       to=from-1;
       span=Math.min(span*2,250000);
     }
-    throw new Error(`Kein verifizierter Preisanker vor Block ${targetBlock} innerhalb der Suchgrenze gefunden.`);
+    return {row:null,scannedFrom:earliestScanned,rounds,totalLogs,reason:"search_limit_reached"};
   }
 
   async function buildAnchorsForCluster(targets,meta,status){
@@ -1788,6 +1799,19 @@ window.DAO1Project = (() => {
           const px=await priceForTransaction(Number(r.block_number),r.tx_timestamp,history);
           if(px.price==null){
             totalMissing++;
+            const anchor=history._anchorByTarget?.get(Number(r.block_number));
+            const missingDiag={
+              wallet:w.label||address,
+              wallet_address:address,
+              tx_hash:r.tx_hash,
+              tx_timestamp:r.tx_timestamp||null,
+              target_block:Number(r.block_number),
+              scanned_from_block:anchor?.scanned_from_block??null,
+              search_rounds:anchor?._diag_rounds??null,
+              syncs_found:anchor?._diag_logs??0,
+              reason:anchor?._diag_reason||((anchor?.scanned_from_block===0)?"genesis_reached":"no_valid_sync_before_target")
+            };
+            if(activePriceJobLog)activePriceJobLog.missingDiagnostics.push(missingDiag);
             txPatches.push({
               user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
               wallet_id:walletIdForAddress(address),tx_hash:r.tx_hash,
@@ -1886,6 +1910,13 @@ window.DAO1Project = (() => {
       renderTransactionHistory();
       const quality=historicalPriceQualityCounts(transactionRows);
       const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
+      if(activePriceJobLog && activePriceJobLog.missingDiagnostics?.length){
+        priceJobLog("===== FEHLENDE PREISE · DETAILDIAGNOSE =====");
+        for(const d of activePriceJobLog.missingDiagnostics){
+          priceJobLog(`MISSING · Wallet=${d.wallet} · TX=${d.tx_hash} · Datum=${d.tx_timestamp||"–"} · TX-Block=${d.target_block} · geprüft_ab=${d.scanned_from_block??"–"} · Rückwärtsschritte=${d.search_rounds??"–"} · Syncs=${d.syncs_found??0} · Grund=${d.reason}`);
+        }
+        priceJobLog("===== ENDE FEHLENDE PREISE =====");
+      }
       if(activePriceJobLog)priceJobLog(`Fertig · ${totalUpdated.toLocaleString("de-DE")} TX aktualisiert · ${totalMissing.toLocaleString("de-DE")} ohne Preis`);
       setTransactionStatus("ready",`Historische APTM-Preise neu berechnet – ${totalUpdated.toLocaleString("de-DE")} Transaktionen aktualisiert.`,
         `${totalRows.toLocaleString("de-DE")} gecachte Transaktionen geprüft · ${totalClaims.toLocaleString("de-DE")} Claim-Datensätze mitgeführt · Preisqualität: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte. Preislogik ${PRICE_SOURCE_TAG}; kein Explorer-Transaktionsscan; globaler Price-Anchor-Cache v1; lokale RPC-Fenster statt Sync-Vollhistorie.`);
