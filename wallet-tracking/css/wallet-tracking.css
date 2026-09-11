@@ -678,3 +678,23 @@
   padding-top:11px;
   padding-bottom:11px;
 }
+
+/* WalletTracking DEV/Debug frames: im Normalbetrieb unsichtbar, nur Admin + Debug-Modus. */
+.debug-frame{display:none!important}
+body.admin-debug-mode .debug-frame{display:revert!important;position:relative;outline:2px solid #ef4444!important;outline-offset:2px;box-shadow:0 0 0 1px rgba(239,68,68,.35),0 0 22px rgba(239,68,68,.16)!important}
+body.admin-debug-mode .debug-frame::before{content:"DEBUG / DEV";display:inline-flex;position:absolute;top:-12px;right:12px;z-index:20;padding:2px 7px;border-radius:999px;background:#7f1d1d;border:1px solid #ef4444;color:#fee2e2;font-size:10px;font-weight:900;letter-spacing:.04em}
+#adminDebugModeBtn.debug-on{border-color:#ef4444!important;background:#4b1717!important;color:#fecaca!important}
+
+/* Neuer produktiver Tabellenstil für allgemeine Projekt-/NFT-Listen. */
+.project-data-table{margin-top:10px;border:1px solid #3a414b;border-radius:14px;overflow:auto;background:#1b2027;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.project-data-table table{width:100%;min-width:980px;border-collapse:collapse;border-spacing:0;background:transparent;font-size:.78rem}
+.project-data-table thead{background:#242a32}
+.project-data-table th{position:sticky;top:0;z-index:4;padding:11px 14px;background:#242a32;color:#c2c8d0;border:0;border-bottom:1px solid #414852;text-align:left;font-size:.72rem;white-space:nowrap}
+.project-data-table td{padding:13px 14px;border:0;border-bottom:1px solid #343a43;background:transparent;vertical-align:middle}
+.project-data-table tbody tr{background:linear-gradient(180deg,#20252c,#1d2229)}
+.project-data-table tbody tr:hover td{background:#292f37}
+.project-data-table tbody tr:last-child td{border-bottom:0}
+.project-data-table .meta{margin-top:3px;font-size:.7rem}
+.nft-table-thumb{width:52px;height:52px;border-radius:10px;object-fit:cover;background:var(--card2);display:block}
+.nft-table-placeholder{width:52px;height:52px;border-radius:10px;background:var(--card2);display:grid;place-items:center;color:var(--muted);font-size:.65rem}
+@media(max-width:900px){.project-data-table table{min-width:860px}}

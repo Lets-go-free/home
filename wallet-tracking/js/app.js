@@ -6,6 +6,8 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
 let isAdmin = false;
+let adminDebugMode = false;
+const ADMIN_DEBUG_SESSION_KEY = "wallet_tracking_admin_debug_v1";
 let defiProjectsCache = [];
 let predefinedTokenProject = {};
 
@@ -18,6 +20,23 @@ async function checkIsAdmin() {
   } catch (e) {
     return false;
   }
+}
+
+function applyAdminDebugMode(){
+  const enabled=!!(isAdmin&&adminDebugMode);
+  document.body.classList.toggle("admin-debug-mode",enabled);
+  const btn=document.getElementById("adminDebugModeBtn");
+  if(btn){
+    btn.textContent=`🛠️ Debug-Modus: ${enabled?"AN":"AUS"}`;
+    btn.classList.toggle("debug-on",enabled);
+    btn.title=enabled?"Technische Diagnose-/DEV-Bereiche sind sichtbar.":"Technische Diagnose-/DEV-Bereiche sind verborgen.";
+  }
+}
+function toggleAdminDebugMode(){
+  if(!isAdmin)return;
+  adminDebugMode=!adminDebugMode;
+  try{sessionStorage.setItem(ADMIN_DEBUG_SESSION_KEY,adminDebugMode?"1":"0");}catch(_){ }
+  applyAdminDebugMode();
 }
 
 async function sendMagicLink() {
@@ -128,6 +147,8 @@ async function onLoggedIn(session) {
   document.getElementById("appContent").style.display = "block";
 
   isAdmin = await checkIsAdmin();
+  try{adminDebugMode=isAdmin&&sessionStorage.getItem(ADMIN_DEBUG_SESSION_KEY)==="1";}catch(_){adminDebugMode=false;}
+  applyAdminDebugMode();
   document.getElementById("adminNavGroup").style.display = isAdmin ? "block" : "none";
   document.getElementById("userChatTabBtn").style.display = isAdmin ? "none" : "inline-block";
   document.getElementById("adminChatTabBtn").style.display = isAdmin ? "inline-block" : "none";
@@ -5040,7 +5061,7 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
 
   const currentTable=`<h3 class="lp-section-title">LP-Positionen</h3><div class="chain-table-wrap lp-table-scroll${dao1LpWrapClass}"><table class="lp-position-table"><thead><tr><th>Wallet</th><th>Pool</th><th>LP in Wallet</th><th>LP gestakt</th><th>LP gesamt</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} Wallet</th><th>${dateStr} gestakt</th><th>${dateStr} gesamt</th><th>${dateStr} USD</th></tr></thead><tbody>${displayRows.length?displayRows.map(r=>`<tr><td>${escapeAttr(r.w.label)}${r.historicalOnly?'<div class="meta"><span class="badge">nur Historie</span></div>':''}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta lp-address">${escapeAttr(r.pair.address)}</div></td><td>${f(r.cur?.walletBalance??r.cur?.balance??0)}</td><td>${f(r.cur?.stakedBalance||0)}</td><td><strong>${f(r.cur?.balance||0)}</strong></td><td>${r.historicalOnly?'–':(r.cur?`<div>${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}</div><div>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}</div><div class="meta">wirtschaftlicher Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–')}</td><td>${r.historicalOnly?'–':u(r.cur?.usd)}</td><td>${histCell(r.histWalletBal??r.histBal)}</td><td>${histCell(r.histStakedBal)}</td><td><strong>${histCell(r.histBal)}</strong></td><td>${r.histBal==null?'–':u(r.histUsd??(r.histPrice?.price!=null?r.histBal*r.histPrice.price:null))}</td></tr>`).join(''):'<tr><td colspan="11">Noch keine gespeicherten LP-Positionen. Bitte „Daten aktualisieren“ ausführen.</td></tr>'}</tbody></table></div>`;
 
-  const scanStatusTable=`<details class="lp-scan-details"><summary>Technische LP-Scan-Informationen</summary><div class="note" style="margin-bottom:8px">Diagnose pro Wallet. Diese Informationen sind primär für Fehleranalyse und Administration gedacht.</div><div class="chain-table-wrap lp-table-scroll${dao1LpWrapClass}"><table class="lp-scan-table"><thead><tr><th>Wallet</th><th>Adresse</th><th>Status</th><th>Letzter Scan</th><th>bis Block</th><th>Transfers</th><th>Kandidaten</th><th>Projekt-LPs</th><th>neu Events</th><th>davon Staking</th><th>Historien-Ereignisse</th><th>Positionszeilen</th></tr></thead><tbody>${displayScanStatuses.length?displayScanStatuses.map(s=>`<tr><td><strong>${escapeAttr(s.w?.label||'')}</strong></td><td class="meta lp-address">${escapeAttr(s.address||'')}</td><td>${s.warning?`<span class="badge danger">unvollständig</span><div class="meta">${escapeAttr(s.warning)}</div>`:s.lastBlock>0?`<span class="badge ${s.scanResult==='partial'?'danger':'safe'}">${s.scanResult==='partial'?'teilweise':'gescannt'}</span>`:'<span class="badge">noch nicht gescannt</span>'}</td><td>${s.lastAt?dt(s.lastAt):'–'}</td><td>${s.lastBlock>0?Number(s.lastBlock).toLocaleString('de-CH'):'–'}</td><td>${Number(s.transfersSeen||0).toLocaleString('de-CH')}</td><td>${Number(s.candidateContracts||0).toLocaleString('de-CH')}</td><td>${Number(s.projectPairs||0).toLocaleString('de-CH')}</td><td>${Number(s.eventsSaved||0).toLocaleString('de-CH')}</td><td>${Number(s.stakingEvents||0).toLocaleString('de-CH')}</td><td>${Number(s.eventCount||0).toLocaleString('de-CH')}</td><td>${Number(s.positionCount||0).toLocaleString('de-CH')}</td></tr>`).join(''):'<tr><td colspan="12">Keine Wallet-Adressen für diese Chain vorhanden.</td></tr>'}</tbody></table></div></details>`;
+  const scanStatusTable=`<details class="lp-scan-details debug-frame"><summary>Technische LP-Scan-Informationen</summary><div class="note" style="margin-bottom:8px">Diagnose pro Wallet. Diese Informationen sind primär für Fehleranalyse und Administration gedacht.</div><div class="chain-table-wrap lp-table-scroll${dao1LpWrapClass}"><table class="lp-scan-table"><thead><tr><th>Wallet</th><th>Adresse</th><th>Status</th><th>Letzter Scan</th><th>bis Block</th><th>Transfers</th><th>Kandidaten</th><th>Projekt-LPs</th><th>neu Events</th><th>davon Staking</th><th>Historien-Ereignisse</th><th>Positionszeilen</th></tr></thead><tbody>${displayScanStatuses.length?displayScanStatuses.map(s=>`<tr><td><strong>${escapeAttr(s.w?.label||'')}</strong></td><td class="meta lp-address">${escapeAttr(s.address||'')}</td><td>${s.warning?`<span class="badge danger">unvollständig</span><div class="meta">${escapeAttr(s.warning)}</div>`:s.lastBlock>0?`<span class="badge ${s.scanResult==='partial'?'danger':'safe'}">${s.scanResult==='partial'?'teilweise':'gescannt'}</span>`:'<span class="badge">noch nicht gescannt</span>'}</td><td>${s.lastAt?dt(s.lastAt):'–'}</td><td>${s.lastBlock>0?Number(s.lastBlock).toLocaleString('de-CH'):'–'}</td><td>${Number(s.transfersSeen||0).toLocaleString('de-CH')}</td><td>${Number(s.candidateContracts||0).toLocaleString('de-CH')}</td><td>${Number(s.projectPairs||0).toLocaleString('de-CH')}</td><td>${Number(s.eventsSaved||0).toLocaleString('de-CH')}</td><td>${Number(s.stakingEvents||0).toLocaleString('de-CH')}</td><td>${Number(s.eventCount||0).toLocaleString('de-CH')}</td><td>${Number(s.positionCount||0).toLocaleString('de-CH')}</td></tr>`).join(''):'<tr><td colspan="12">Keine Wallet-Adressen für diese Chain vorhanden.</td></tr>'}</tbody></table></div></details>`;
 
   const hrows=[...displayHistory].sort((a,b)=>Number(b.block_number)-Number(a.block_number)||Number(b.log_index||0)-Number(a.log_index||0));
   const actionLabel=e=>({add:'Add Liquidity',remove:'Remove Liquidity',stake:'Stake',unstake:'Unstake',send:'Versenden',receive:'Empfangen'}[e.event_type]||e.event_type);
@@ -6196,6 +6217,7 @@ function lowerAddressForNft(v){ return String(v||"").toLowerCase(); }
 
 // ---- NFT-Cache in Supabase: Live-Abfrage nur auf Knopfdruck ----
 let nftCaches = new Map(); // wallet_id -> DB-Zeile
+let nftOwnershipRows = []; // DAO1/Apertum-Besitzhistorie, userbezogen
 let lastNftFindings = [];
 
 function nftKey(n) {
@@ -6207,6 +6229,68 @@ function isNftSpam(n) {
   return !!n.possibleSpam;
 }
 
+async function loadNftOwnershipCacheFromDb(){
+  if(!currentUser){nftOwnershipRows=[];return;}
+  try{
+    const {data,error}=await sb.from("project_nft_ownership").select("wallet_id,nft_contract,nft_id,nft_name,owned_from_block,owned_to_block,owned_from_at,owned_to_at,is_current")
+      .eq("user_id",currentUser.id).eq("project_key","dao1").eq("chain_key","apertum").order("owned_from_block",{ascending:true});
+    if(error)throw error;
+    nftOwnershipRows=data||[];
+  }catch(e){
+    nftOwnershipRows=[];
+    if(!/does not exist|schema cache/i.test(String(e?.message||"")))console.warn("NFT-Besitzhistorie:",e);
+  }
+}
+
+function nftOwnershipInfo(n){
+  if(String(n?.chain||"")!=="apertum")return null;
+  const contract=lowerAddressForNft(n?.tokenAddress);
+  const id=String(n?.tokenId??"");
+  const rows=nftOwnershipRows.filter(r=>lowerAddressForNft(r.nft_contract)===contract&&String(r.nft_id)===id)
+    .sort((x,y)=>Number(x.owned_from_block||0)-Number(y.owned_from_block||0));
+  if(!rows.length)return {known:false};
+  const first=rows[0];
+  const walletRows=rows.filter(r=>String(r.wallet_id||"")===String(n.walletId||""));
+  const current=walletRows.find(r=>r.is_current)||walletRows[walletRows.length-1]||null;
+  return {
+    known:true,
+    firstOwnedAt:first.owned_from_at||null,firstOwnedBlock:Number(first.owned_from_block||0)||null,
+    walletSinceAt:current?.owned_from_at||null,walletSinceBlock:Number(current?.owned_from_block||0)||null,
+    currentInWallet:!!current?.is_current
+  };
+}
+
+function nftOwnershipDate(value){
+  if(!value)return "–";
+  const d=new Date(value);
+  return Number.isNaN(d.getTime())?"–":d.toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+}
+
+async function refreshSelectedApertumNftOwnership(){
+  const status=document.getElementById("nftStatus");
+  const btn=document.getElementById("nftOwnershipBtn");
+  if(!window.DAO1Project?.refreshNftOwnershipForWallet){if(status)status.textContent="DAO1-Besitzhistorie ist nicht verfügbar.";return;}
+  const walletId=document.getElementById("nftWalletSelect")?.value||"";
+  const targets=walletId==="all"?wallets.filter(w=>!!w.evm):wallets.filter(w=>String(w.id)===String(walletId)&&!!w.evm);
+  if(!targets.length){if(status)status.textContent="Bitte eine Wallet mit EVM-/Apertum-Adresse wählen.";return;}
+  if(btn){btn.disabled=true;btn.textContent="Besitzhistorie wird aktualisiert…";}
+  let nfts=0,periods=0,failed=0;
+  try{
+    for(let i=0;i<targets.length;i++){
+      const w=targets[i];
+      if(status)status.textContent=`Apertum-Besitzhistorie ${i+1}/${targets.length}: ${w.label}…`;
+      const r=await window.DAO1Project.refreshNftOwnershipForWallet(w);
+      nfts+=Number(r?.nfts||0);periods+=Number(r?.ownership||0);failed+=Number(r?.failed||0);
+    }
+    await loadNftOwnershipCacheFromDb();
+    lastNftFindings=cachedNftsForSelection();
+    renderNftResults(lastNftFindings,[]);
+    if(status)status.textContent=`Apertum-Besitzhistorie aktualisiert: ${nfts} NFT(s), ${periods} Besitzabschnitt(e)${failed?`, ${failed} Historie(n) nicht abrufbar`:""}.`;
+  }catch(e){
+    console.error(e);if(status)status.textContent="Besitzhistorie konnte nicht vollständig aktualisiert werden: "+(e.message||e);
+  }finally{if(btn){btn.disabled=false;btn.textContent="Apertum Besitzhistorie aktualisieren";}}
+}
+
 async function loadNftCacheFromDb() {
   if (!currentUser) return;
   const { data, error } = await sb.from("nft_cache").select("*").eq("user_id", currentUser.id);
@@ -6216,6 +6300,7 @@ async function loadNftCacheFromDb() {
   }
   nftCaches = new Map();
   (data || []).forEach(row => nftCaches.set(String(row.wallet_id), row));
+  await loadNftOwnershipCacheFromDb();
   onNftWalletChange();
 }
 
@@ -6461,34 +6546,37 @@ function renderNftResults(nfts, errors = []) {
   }
 
   el.innerHTML = `${errorNote}${filterBar}
-    <div class="note" style="margin-bottom:12px">${visible.length} von ${nfts.length} NFT(s) angezeigt</div>
-    <div class="nft-grid">
-      ${visible.map(n => {
-        const meta = CHAIN_META[n.chain] || {dot:"",label:n.chain};
-        const spam = isNftSpam(n);
-        return `<div class="nft-card">
-          ${n.image ? `<img src="${n.image}" loading="lazy" onerror="this.style.display='none'">` : `<div style="aspect-ratio:1;background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:0.75rem">Kein Bild</div>`}
-          <div class="nft-info">
-            <div class="nft-name" title="${escapeAttr(n.name)}">${escapeAttr(n.name)}</div>
-            <div class="nft-id">${n.collectionName ? escapeAttr(n.collectionName) + " · " : ""}#${escapeAttr(String(n.tokenId))}</div>
-            <div class="nft-id" style="margin-top:3px;display:flex;align-items:center;gap:5px">
-              <span class="dot ${meta.dot}" style="width:7px;height:7px"></span> ${meta.label} · ${escapeAttr(n.walletLabel || "")}
-            </div>
-            ${spam ? `<div style="margin-top:5px"><span class="badge unsafe">⚠ ${n.userMarkedSpam ? "Manuell als Spam markiert" : "Spam-Verdacht"}</span></div>` : ""}
-            ${n.userMarkedSafe ? `<div style="margin-top:5px"><span class="badge safe">✓ Manuell als sicher klassifiziert</span></div>` : ""}
-            <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-              ${!n.userMarkedSafe ? `<button class="${n.userMarkedSpam ? "secondary" : "remove"}" style="padding:6px 8px;font-size:.72rem"
-                onclick="setNftUserSpam('${escapeAttr(String(n.walletId || ""))}','${n.chain}','${escapeAttr(n.tokenAddress || "")}','${escapeAttr(String(n.tokenId))}',${n.userMarkedSpam ? "false" : "true"})">
-                ${n.userMarkedSpam ? "Spam-Markierung entfernen" : "Als Spam markieren"}
-              </button>` : ""}
-              ${!n.userMarkedSpam ? `<button class="secondary" style="padding:6px 8px;font-size:.72rem"
-                onclick="setNftUserSafe('${escapeAttr(String(n.walletId || ""))}','${n.chain}','${escapeAttr(n.tokenAddress || "")}','${escapeAttr(String(n.tokenId))}',${n.userMarkedSafe ? "false" : "true"})">
-                ${n.userMarkedSafe ? "Sicher-Klassifizierung entfernen" : "Als sicher klassifizieren"}
-              </button>` : ""}
-            </div>
-          </div>
-        </div>`;
-      }).join("")}
+    <div class="custom-token-card" style="padding:0;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border,#2b303b)">
+        <div><strong>NFT-Bestand</strong><div class="meta">${visible.length} von ${nfts.length} NFT(s) angezeigt · Apertum-Erwerbsdaten aus der gecachten On-Chain-Besitzhistorie</div></div>
+      </div>
+      <div class="project-data-table" style="margin:0;border:0;border-radius:0;max-height:720px">
+        <table><thead><tr><th>Bild</th><th>NFT</th><th>Chain / Wallet</th><th>Erstmals von dir erworben</th><th>In diesem Wallet seit</th><th>Status</th><th>Aktionen</th></tr></thead><tbody>
+        ${visible.map(n => {
+          const meta = CHAIN_META[n.chain] || {dot:"",label:n.chain};
+          const spam = isNftSpam(n);
+          const own=nftOwnershipInfo(n);
+          const firstOwned=own?.known?nftOwnershipDate(own.firstOwnedAt):(String(n.chain)==="apertum"?"noch nicht ermittelt":"–");
+          const walletSince=own?.known?nftOwnershipDate(own.walletSinceAt):(String(n.chain)==="apertum"?"noch nicht ermittelt":"–");
+          const statusParts=[];
+          if(spam)statusParts.push(`<span class="badge unsafe">⚠ ${n.userMarkedSpam ? "Spam markiert" : "Spam-Verdacht"}</span>`);
+          if(n.userMarkedSafe)statusParts.push(`<span class="badge safe">✓ Sicher</span>`);
+          if(!statusParts.length)statusParts.push(`<span class="badge safe">✓ unauffällig</span>`);
+          return `<tr>
+            <td>${n.image?`<img class="nft-table-thumb" src="${escapeAttr(n.image)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="nft-table-placeholder">Kein Bild</div>`}</td>
+            <td><strong>${escapeAttr(n.name)}</strong><div class="meta">${n.collectionName?escapeAttr(n.collectionName)+" · ":""}#${escapeAttr(String(n.tokenId))}</div><div class="meta"><code>${escapeAttr(String(n.tokenAddress||""))}</code></div></td>
+            <td><div style="display:flex;align-items:center;gap:5px"><span class="dot ${meta.dot}" style="width:7px;height:7px"></span><strong>${escapeAttr(meta.label||n.chain)}</strong></div><div class="meta">${escapeAttr(n.walletLabel||"")}</div></td>
+            <td><strong>${firstOwned}</strong>${own?.firstOwnedBlock?`<div class="meta">Block ${Number(own.firstOwnedBlock).toLocaleString("de-CH")}</div>`:""}</td>
+            <td><strong>${walletSince}</strong>${own?.walletSinceBlock?`<div class="meta">Block ${Number(own.walletSinceBlock).toLocaleString("de-CH")}${own.currentInWallet?" · aktuell":""}</div>`:""}</td>
+            <td>${statusParts.join("<br>")}</td>
+            <td><div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${!n.userMarkedSafe ? `<button class="${n.userMarkedSpam ? "secondary" : "remove"}" style="padding:6px 8px;font-size:.72rem" onclick="setNftUserSpam('${escapeAttr(String(n.walletId || ""))}','${n.chain}','${escapeAttr(n.tokenAddress || "")}','${escapeAttr(String(n.tokenId))}',${n.userMarkedSpam ? "false" : "true"})">${n.userMarkedSpam ? "Spam entfernen" : "Als Spam markieren"}</button>` : ""}
+              ${!n.userMarkedSpam ? `<button class="secondary" style="padding:6px 8px;font-size:.72rem" onclick="setNftUserSafe('${escapeAttr(String(n.walletId || ""))}','${n.chain}','${escapeAttr(n.tokenAddress || "")}','${escapeAttr(String(n.tokenId))}',${n.userMarkedSafe ? "false" : "true"})">${n.userMarkedSafe ? "Sicher entfernen" : "Als sicher klassifizieren"}</button>` : ""}
+            </div></td>
+          </tr>`;
+        }).join("")}
+        </tbody></table>
+      </div>
     </div>`;
 }
 

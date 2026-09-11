@@ -200,7 +200,7 @@ window.DAO1Project = (() => {
         <div id="dao1-subtab-liquidity" class="project-subtab-panel" style="display:none"><div id="dao1LpContent"></div></div>
         <div id="dao1-subtab-config" class="project-subtab-panel" style="display:none"><div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div></div>
         <div id="dao1-subtab-transactions" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><div class="chain-title">📒 Apertum Transaktionshistorie</div><div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Wallet-Wechsel lesen den Cache; erst „Daten aktualisieren“ lädt neue Blockchain-Daten, aktualisiert NFTs/Besitzerhistorie und reichert neue Claims an.</div><div id="dao1TransactionControls"></div><div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
-        <div id="dao1PriceJobPanel" class="custom-token-card" style="display:block;margin-top:10px;padding:10px 12px">
+        <div id="dao1PriceJobPanel" class="custom-token-card debug-frame" style="display:block;margin-top:10px;padding:10px 12px">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><strong>⏱️ Historische Preis-Neuberechnung · Diagnose-Log</strong><button type="button" class="secondary" onclick="DAO1Project.copyPriceJobLog()">Log kopieren</button><button type="button" class="secondary" onclick="DAO1Project.exportPriceJobLog()">Log als TXT exportieren</button><span id="dao1PriceJobLogState" class="meta">Eigenes Log-Fenster wie in Discovery; vollständig kopier- und exportierbar.</span></div>
           <div id="dao1PriceJobMetrics" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:8px" class="meta">Noch kein historischer Preisjob in dieser Sitzung.</div>
           <textarea id="dao1PriceJobLog" readonly spellcheck="false" style="width:100%;min-height:260px;max-height:420px;resize:vertical;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.45;background:var(--card,#111);color:inherit;border:1px solid rgba(128,128,128,.25);border-radius:8px;padding:10px;box-sizing:border-box">Bereit.</textarea>
@@ -2998,6 +2998,26 @@ window.DAO1Project = (() => {
     table.innerHTML = `<div class="chain-table-wrap dao1-data-table"><table class="chain-admin-table"><thead><tr><th>NFT</th><th>Zeit</th><th>Block</th><th>Reward APTM</th><th>APTM/USD</th><th>Reward USD</th><th>Gas APTM</th><th>Netto APTM</th><th>Tx</th></tr></thead><tbody>${visibleRows.map(x=>`<tr><td>${x.nftName || x.miner.label}<div class="meta">#${x.nftId || x.miner.nft_id}${x.nftSubtype?" · "+x.nftSubtype:""}</div></td><td>${x.timestamp}</td><td>${x.block}</td><td>${fmt(x.reward)}</td><td>${x.price == null ? "–" : fmt(x.price)}</td><td>${usd(x.rewardUsd)}</td><td>${fmt(x.gas)}</td><td>${fmt(x.net)}</td><td><a href="${EXPLORER}/tx/${x.tx}" target="_blank" rel="noopener">${x.tx.slice(0,12)}…</a></td></tr>`).join("")}</tbody></table></div>`;
   }
 
+  async function refreshNftOwnershipForWallet(wallet){
+    const ctx=getContext?.();
+    if(!ctx?.currentUser||!wallet)return {nfts:0,ownership:0,failed:0};
+    const walletId=String(wallet.dbId||wallet.id||"");
+    if(!walletId)return {nfts:0,ownership:0,failed:0};
+    const {data,error}=await sb.from("nft_cache").select("nfts").eq("user_id",ctx.currentUser.id).eq("wallet_id",walletId).maybeSingle();
+    if(error)throw error;
+    const nfts=(Array.isArray(data?.nfts)?data.nfts:[])
+      .filter(n=>String(n.chain||"")===CHAIN_KEY)
+      .filter(n=>!(n.possibleSpam||n.userMarkedSpam))
+      .map(n=>({id:String(n.tokenId),contract:lower(n.tokenAddress),name:n.name||n.collectionName||`NFT #${n.tokenId}`}));
+    let saved=0,failed=0;
+    for(const n of nfts){
+      try{saved+=await discoverOwnershipForNft(n.id,n.contract,n.name);}
+      catch(e){failed++;console.warn("NFT Ownership",n,e);}
+    }
+    await loadOwnershipCache();
+    return {nfts:nfts.length,ownership:saved,failed};
+  }
+
   async function ensureLoaded() {
     await ensureMounted();
     if (!loaded) { await refreshConfig(); loaded = true; }
@@ -3007,5 +3027,5 @@ window.DAO1Project = (() => {
   return { switchSubtab, configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
-    historicalAptmPriceAtBlock };
+    historicalAptmPriceAtBlock, refreshNftOwnershipForWallet };
 })();

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Token-Übersicht Wallets</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><text y=%2250%22 x=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2252%22>💼</text></svg>">
-<link rel="stylesheet" href="./css/wallet-tracking.css">
+<link rel="stylesheet" href="./css/wallet-tracking.css?v=20260911-140042-nft-debug-v15">
 </head>
 <body>
 <div class="wrap">
@@ -78,6 +78,7 @@
           <button class="tab-btn" data-tab="admin" data-open-admin="hardcoding" onclick="showTab('admin');showAdminTab('hardcoding')">🧪 Hardcoding-Audit</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="ideas" onclick="showTab('admin');showAdminTab('ideas')">💡 Ideen / Umbau</button>
           <button class="tab-btn" data-tab="admin" data-open-admin="documentation" onclick="showTab('admin');showAdminTab('documentation')">📚 Dokumentation</button>
+          <button class="tab-btn" id="adminDebugModeBtn" type="button" onclick="toggleAdminDebugMode()">🛠️ Debug-Modus: AUS</button>
         </div>
       </div>
       <div class="tab-nav-group" id="defiProjectsNavGroup" style="display:none">
@@ -447,7 +448,10 @@
         </div>
         <div id="nftChainContainer" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px"></div>
 
-        <div id="nftCacheInfo" class="note" style="margin-top:7px">Gespeicherte NFTs werden aus Supabase geladen. Aktualisiert werden sie zentral über „Daten aktualisieren“ auf der Startseite.</div>
+        <div class="action-row" style="margin-top:10px;flex-wrap:wrap">
+          <button id="nftOwnershipBtn" class="secondary" onclick="refreshSelectedApertumNftOwnership()">Apertum Besitzhistorie aktualisieren</button>
+        </div>
+        <div id="nftCacheInfo" class="note" style="margin-top:7px">Gespeicherte NFTs werden aus Supabase geladen. Aktualisiert werden sie zentral über „Daten aktualisieren“ auf der Startseite. Apertum-Erwerbsdaten werden separat aus der On-Chain-Besitzhistorie ergänzt.</div>
         <div id="nftStatus" class="note" style="margin-top:10px"></div>
       </div>
       <div id="nftResults"></div>
@@ -729,7 +733,7 @@
   </div>
 
   <footer>
-    Version vom 11.09.2026 13:54:26 CEST · Phase 4.9 · zentrale historische APTM-Preisengine<br>
+    Version vom 11.09.2026 14:00:42 CEST · Phase 4.9 · NFT-Erwerbsdaten + Admin-Debug-Modus<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -742,11 +746,9 @@
 <script src="./js/lp-engine.js"></script>
 <script src="./js/staking-engine.js"></script>
 <script src="./projects/tln-vow/tln-vow.js"></script>
-<script src="./projects/dao1/dao1.js?v=20260911-135426-dao1-central-historical-price"></script>
+<script src="./projects/dao1/dao1.js?v=20260911-140042-nft-debug-v15"></script>
 
-<script src="./js/app.js?v=20260911-135426-dao1-central-historical-price"></script>
-
-
+<script src="./js/app.js?v=20260911-140042-nft-debug-v15"></script>
 
 
 
@@ -762,6 +764,8 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 11.09.2026 13:54:26 CEST · Phase 4.9 · Build 20260911-135426</div>
+
+
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 11.09.2026 14:00:42 CEST · Phase 4.9 · Build 20260911-140042</div>
 </body>
 </html>
