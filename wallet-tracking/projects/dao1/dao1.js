@@ -793,39 +793,40 @@ window.DAO1Project = (() => {
     const rawLogs=[];
     let rpcChunks=0;
 
-    async function scanRange(from,to,step){
-      for(let sf=from;sf<=to;sf+=step){
-        const st=Math.min(to,sf+step-1);
-        rpcChunks++;
-        if(rpcChunks===1 || rpcChunks%10===0){
-          setTransactionStatus("loading",
-            `${statusPrefix}NFT-Besitzhistorie on-chain…`,
-            `${missing.length} NFT(s) · Contract ${nftContract.slice(0,10)}… · Block ${sf.toLocaleString("de-DE")}–${st.toLocaleString("de-DE")} · ${rpcChunks} RPC-Bereiche`);
-        }
+    async function scanAdaptive(from,to,depth=0){
+      rpcChunks++;
+      if(rpcChunks===1 || rpcChunks%10===0){
+        setTransactionStatus("loading",
+          `${statusPrefix}NFT-Besitzhistorie on-chain…`,
+          `${missing.length} NFT(s) · Contract ${nftContract.slice(0,10)}… · Block ${from.toLocaleString("de-DE")}–${to.toLocaleString("de-DE")} · ${rpcChunks} RPC-Bereiche`);
+      }
+      try{
         const logs=await dao1ApertumRpc("eth_getLogs",[{
           address:nftContract,
-          fromBlock:"0x"+sf.toString(16),
-          toBlock:"0x"+st.toString(16),
+          fromBlock:"0x"+from.toString(16),
+          toBlock:"0x"+to.toString(16),
           topics:[transferTopic,null,null,tokenTopics.length===1?tokenTopics[0]:tokenTopics]
         }]);
         for(const l of (logs||[]))rawLogs.push(l);
+        return;
+      }catch(e){
+        const span=to-from+1;
+        if(span<=10000 || depth>=12){
+          console.warn("Apertum NFT eth_getLogs Bereich übersprungen",{
+            contract:nftContract,from,to,span,error:e?.message||String(e)
+          });
+          return;
+        }
+        const mid=Math.floor((from+to)/2);
+        await scanAdaptive(from,mid,depth+1);
+        if(mid+1<=to)await scanAdaptive(mid+1,to,depth+1);
       }
     }
 
-    // Erst große 5-Mio.-Block-Fenster. Falls der RPC sie ablehnt, nur den betroffenen
-    // Bereich in 1 Mio. und notfalls 100k aufteilen.
     const BIG=5000000;
     for(let from=0;from<=latest;from+=BIG){
       const to=Math.min(latest,from+BIG-1);
-      try{
-        await scanRange(from,to,BIG);
-      }catch(eBig){
-        try{
-          await scanRange(from,to,1000000);
-        }catch(eMid){
-          await scanRange(from,to,100000);
-        }
-      }
+      await scanAdaptive(from,to,0);
     }
 
     const byId=new Map(missing.map(id=>[id,[]]));
