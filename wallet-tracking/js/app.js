@@ -6437,7 +6437,7 @@ async function refreshApertumNftsForWallet(wallet,onProgress=null){
   const old=nftCaches.get(String(wallet.dbId||wallet.id));
   const flags=new Map(((old&&old.nfts)||[]).map(n=>[nftKey(n),{
     spam:!!n.userMarkedSpam,safe:!!n.userMarkedSafe,image:n.image||null,
-    imageSource:n.imageSource||null,metadataUri:n.metadataUri||null,
+    imageSource:n.imageSource||null,metadataUri:n.metadataUri||null,metadataMethod:n.metadataMethod||null,
     name:n.name||null,collectionName:n.collectionName||null
   }]));
   found.forEach(n=>{
@@ -6447,6 +6447,7 @@ async function refreshApertumNftsForWallet(wallet,onProgress=null){
     if(!n.image&&f?.image)n.image=f.image;
     if(!n.imageSource&&f?.imageSource)n.imageSource=f.imageSource;
     if(!n.metadataUri&&f?.metadataUri)n.metadataUri=f.metadataUri;
+    if(!n.metadataMethod&&f?.metadataMethod)n.metadataMethod=f.metadataMethod;
     if((!n.name||n.name==="Unbenannt")&&f?.name)n.name=f.name;
     if(!n.collectionName&&f?.collectionName)n.collectionName=f.collectionName;
   });
@@ -6632,31 +6633,62 @@ async function evmNftMetadataUri(chain,contract,tokenId){
     const rpc=configuredRpcUrl(chain);
     const provider=new ethers.JsonRpcProvider(rpc);
     const id=BigInt(String(tokenId));
-    const erc721=new ethers.Interface(["function tokenURI(uint256) view returns (string)"]);
-    try{
-      const raw=await provider.call({to:contract,data:erc721.encodeFunctionData("tokenURI",[id])});
-      const [uri]=erc721.decodeFunctionResult("tokenURI",raw);
-      if(uri)return String(uri);
-    }catch(_){}
-    const erc1155=new ethers.Interface(["function uri(uint256) view returns (string)"]);
-    try{
-      const raw=await provider.call({to:contract,data:erc1155.encodeFunctionData("uri",[id])});
-      const [uri]=erc1155.decodeFunctionResult("uri",raw);
-      if(uri){
-        let out=String(uri);
-        if(out.includes("{id}"))out=out.replaceAll("{id}",id.toString(16).padStart(64,"0"));
-        return out;
-      }
-    }catch(_){}
-  }catch(e){console.warn("NFT tokenURI/uri konnte nicht gelesen werden",chain,contract,tokenId,e);}
+    const calls=[
+      {sig:"tokenURI(uint256)",abi:["function tokenURI(uint256) view returns (string)"],args:[id]},
+      {sig:"uri(uint256)",abi:["function uri(uint256) view returns (string)"],args:[id]},
+      {sig:"getTokenURI(uint256)",abi:["function getTokenURI(uint256) view returns (string)"],args:[id]},
+      {sig:"metadataURI(uint256)",abi:["function metadataURI(uint256) view returns (string)"],args:[id]},
+      {sig:"tokenMetadataURI(uint256)",abi:["function tokenMetadataURI(uint256) view returns (string)"],args:[id]}
+    ];
+    for(const c of calls){
+      try{
+        const iface=new ethers.Interface(c.abi);
+        const name=c.sig.slice(0,c.sig.indexOf("("));
+        const raw=await provider.call({to:contract,data:iface.encodeFunctionData(name,c.args)});
+        const [uri]=iface.decodeFunctionResult(name,raw);
+        if(uri){
+          let out=String(uri);
+          if(out.includes("{id}"))out=out.replaceAll("{id}",id.toString(16).padStart(64,"0"));
+          return {uri:out,method:c.sig};
+        }
+      }catch(_){}
+    }
+
+    // Contracts, die nur eine Basis-URI veröffentlichen.
+    const baseCalls=[
+      {sig:"baseURI()",abi:["function baseURI() view returns (string)"]},
+      {sig:"baseTokenURI()",abi:["function baseTokenURI() view returns (string)"]},
+      {sig:"BASE_URI()",abi:["function BASE_URI() view returns (string)"]}
+    ];
+    for(const c of baseCalls){
+      try{
+        const iface=new ethers.Interface(c.abi),name=c.sig.slice(0,c.sig.indexOf("("));
+        const raw=await provider.call({to:contract,data:iface.encodeFunctionData(name,[])});
+        const [base]=iface.decodeFunctionResult(name,raw);
+        if(!base)continue;
+        const b=String(base);
+        const candidates=[
+          b+id.toString(),
+          b+id.toString()+".json",
+          b.replace(/\/?$/,"/")+id.toString(),
+          b.replace(/\/?$/,"/")+id.toString()+".json"
+        ];
+        for(const uri of candidates){
+          const meta=await fetchExternalNftMetadata(uri);
+          if(meta)return {uri,method:c.sig+" + tokenId"};
+        }
+      }catch(_){}
+    }
+  }catch(e){console.warn("NFT Metadaten-URI konnte nicht gelesen werden",chain,contract,tokenId,e);}
   return null;
 }
 
 async function enrichNftFromTokenUri(chain,nft){
   if(!nft?.tokenAddress||nft?.tokenId==null)return nft;
   try{
-    const uri=await evmNftMetadataUri(chain,nft.tokenAddress,nft.tokenId);
-    if(!uri)return nft;
+    const resolved=await evmNftMetadataUri(chain,nft.tokenAddress,nft.tokenId);
+    if(!resolved?.uri)return {...nft,metadataMethod:nft.metadataMethod||"keine unterstützte URI-Funktion"};
+    const uri=resolved.uri;
     let meta=null;
     if(/^data:application\/json[,;]/i.test(uri)){
       const payload=uri.split(",",2)[1]||"";
@@ -6664,14 +6696,15 @@ async function enrichNftFromTokenUri(chain,nft){
     }else{
       meta=await fetchExternalNftMetadata(uri);
     }
-    if(!meta)return nft;
+    if(!meta)return {...nft,metadataUri:uri,metadataMethod:resolved.method||null};
     const resolvedImage=nft.image||nftMetadataImage(meta)||null;
     return {
       ...nft,
       name:nft.name&&nft.name!=="Unbenannt"?nft.name:(meta.name||nft.name),
       image:resolvedImage,
-      imageSource:nft.imageSource||(resolvedImage?"onchain-tokenURI":null),
-      metadataUri:uri
+      imageSource:nft.imageSource||(resolvedImage?"onchain-contract-metadata":null),
+      metadataUri:uri,
+      metadataMethod:resolved.method||null
     };
   }catch(e){
     console.warn("NFT tokenURI-Metadaten-Fallback:",chain,nft?.tokenAddress,nft?.tokenId,e);
@@ -6846,6 +6879,7 @@ async function runNftLoad() {
           image:n.image||null,
           imageSource:n.imageSource||null,
           metadataUri:n.metadataUri||null,
+          metadataMethod:n.metadataMethod||null,
           name:n.name||null,
           collectionName:n.collectionName||null
         }]));
@@ -6860,6 +6894,7 @@ async function runNftLoad() {
           if(!n.image&&flags?.image)n.image=flags.image;
           if(!n.imageSource&&flags?.imageSource)n.imageSource=flags.imageSource;
           if(!n.metadataUri&&flags?.metadataUri)n.metadataUri=flags.metadataUri;
+          if(!n.metadataMethod&&flags?.metadataMethod)n.metadataMethod=flags.metadataMethod;
           if((!n.name||n.name==="Unbenannt")&&flags?.name)n.name=flags.name;
           if(!n.collectionName&&flags?.collectionName)n.collectionName=flags.collectionName;
         });
@@ -6965,8 +7000,8 @@ function renderNftResults(nfts, errors = []) {
   const imageDebug=missingImages.length?`<div class="custom-token-card debug-frame" style="margin-bottom:14px">
     <strong>DEBUG / DEV · NFTs ohne Bild (${missingImages.length})</strong>
     <div class="note">Zeigt, ob eine Metadatenquelle/Token-URI gefunden wurde. DID-NFTs können absichtlich kein Bild besitzen.</div>
-    <div class="chain-table-wrap" style="margin-top:8px;max-height:360px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>NFT</th><th>Chain</th><th>Contract / ID</th><th>Bildquelle</th><th>Metadata URI</th></tr></thead><tbody>
-      ${missingImages.map(n=>`<tr><td>${escapeAttr(n.name||"NFT")}</td><td>${escapeAttr(n.chain||"")}</td><td><code>${escapeAttr(n.tokenAddress||"")}</code><br>#${escapeAttr(String(n.tokenId||""))}</td><td>${escapeAttr(n.imageSource||"keine Bildquelle gefunden")}</td><td><code>${escapeAttr(n.metadataUri||"–")}</code></td></tr>`).join("")}
+    <div class="chain-table-wrap" style="margin-top:8px;max-height:360px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>NFT</th><th>Chain</th><th>Contract / ID</th><th>Bildquelle</th><th>URI-Methode</th><th>Metadata URI</th></tr></thead><tbody>
+      ${missingImages.map(n=>`<tr><td>${escapeAttr(n.name||"NFT")}</td><td>${escapeAttr(n.chain||"")}</td><td><code>${escapeAttr(n.tokenAddress||"")}</code><br>#${escapeAttr(String(n.tokenId||""))}</td><td>${escapeAttr(n.imageSource||"keine Bildquelle gefunden")}</td><td>${escapeAttr(n.metadataMethod||"–")}</td><td><code>${escapeAttr(n.metadataUri||"–")}</code></td></tr>`).join("")}
     </tbody></table></div></div>`:"";
 
   el.innerHTML = `${errorNote}${filterBar}${imageDebug}

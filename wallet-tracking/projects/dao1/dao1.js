@@ -725,6 +725,77 @@ window.DAO1Project = (() => {
     return `${Number(t?.block_number||0)}|${Number(t?.log_index||0)}|${hash}|${lower(H(t?.from))}|${lower(H(t?.to))}`;
   }
 
+
+  async function dao1ApertumRpc(method,params=[]){
+    const cfg=getContext?.().chainConfig?.[CHAIN_KEY]||{};
+    const url=String(cfg.rpcUrl||cfg.rpc_url||"").trim();
+    if(!url)throw new Error("Apertum RPC fehlt in Chain-Konfiguration.");
+    const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})});
+    const j=await res.json();
+    if(!res.ok||j?.error)throw new Error(j?.error?.message||`Apertum RPC HTTP ${res.status}`);
+    return j.result;
+  }
+
+  function dao1TopicAddress(topic){
+    const t=String(topic||"");
+    return t.length>=42?lower("0x"+t.slice(-40)):"";
+  }
+
+  async function fetchErc721TransferLogsForNft(nftContract,nftId){
+    const transferTopic=ethers.id("Transfer(address,address,uint256)");
+    const tokenTopic="0x"+BigInt(String(nftId)).toString(16).padStart(64,"0");
+    const latestHex=await dao1ApertumRpc("eth_blockNumber",[]);
+    const latest=Number(BigInt(latestHex));
+    const out=[];
+    const STEP=1000000;
+    for(let from=0;from<=latest;from+=STEP){
+      const to=Math.min(latest,from+STEP-1);
+      try{
+        const logs=await dao1ApertumRpc("eth_getLogs",[{
+          address:nftContract,
+          fromBlock:"0x"+from.toString(16),
+          toBlock:"0x"+to.toString(16),
+          topics:[transferTopic,null,null,tokenTopic]
+        }]);
+        for(const l of (logs||[]))out.push(l);
+      }catch(e){
+        // Manche RPCs erlauben kleinere Bereiche. In diesem Fall denselben 1M-Bereich in 100k teilen.
+        for(let sf=from;sf<=to;sf+=100000){
+          const st=Math.min(to,sf+99999);
+          const logs=await dao1ApertumRpc("eth_getLogs",[{
+            address:nftContract,
+            fromBlock:"0x"+sf.toString(16),
+            toBlock:"0x"+st.toString(16),
+            topics:[transferTopic,null,null,tokenTopic]
+          }]);
+          for(const l of (logs||[]))out.push(l);
+        }
+      }
+    }
+    const blockTs=new Map();
+    const rows=[];
+    for(const l of out){
+      const block=Number(BigInt(l.blockNumber||"0x0"));
+      if(!blockTs.has(block)){
+        try{
+          const b=await dao1ApertumRpc("eth_getBlockByNumber",[l.blockNumber,false]);
+          blockTs.set(block,b?.timestamp?new Date(Number(BigInt(b.timestamp))*1000).toISOString():null);
+        }catch{blockTs.set(block,null);}
+      }
+      rows.push({
+        from:dao1TopicAddress(l.topics?.[1]),
+        to:dao1TopicAddress(l.topics?.[2]),
+        block_number:block,
+        log_index:Number(BigInt(l.logIndex||"0x0")),
+        timestamp:blockTs.get(block),
+        transaction_hash:String(l.transactionHash||"").toLowerCase(),
+        token:{address:nftContract},
+        token_id:String(nftId)
+      });
+    }
+    return rows;
+  }
+
   async function discoverOwnershipForNft(nftId, nftContract=DEFAULT_MINER_NFT_CONTRACT, knownName="") {
     const ctx=getContext?.();
     nftContract=lower(nftContract || DEFAULT_MINER_NFT_CONTRACT);
@@ -760,6 +831,16 @@ window.DAO1Project = (() => {
     }
     const transferMap=new Map();
     for(const t of [...primary,...walletFallback])transferMap.set(nftTransferDedupeKey(t),t);
+
+    // Dritte Quelle: direkter ERC-721 Transfer-Event-Scan für genau Contract + Token-ID.
+    // Nur wenn Explorer-/Wallet-Historie weniger als 2 Transfers liefert; damit bleibt der
+    // normale Refresh schnell, Walletwechsel werden aber vollständig rekonstruierbar.
+    if(transferMap.size<2){
+      try{
+        const direct=await fetchErc721TransferLogsForNft(nftContract,nftId);
+        for(const t of direct)transferMap.set(nftTransferDedupeKey(t),t);
+      }catch(e){console.warn("Apertum direkter NFT-Transfer-Log-Fallback",nftContract,nftId,e);}
+    }
     const transfers=[...transferMap.values()];
     const chronological=[...transfers].sort((a,b)=>{
       const ba=Number(a.block_number||0), bb=Number(b.block_number||0);
