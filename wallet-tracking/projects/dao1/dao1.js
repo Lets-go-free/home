@@ -678,7 +678,7 @@ window.DAO1Project = (() => {
     const prev=selectedWalletId;
     selectedWalletId=String(wallet.id);
     await loadCurrentApertumNfts();
-    await prewarmDirectNftOwnership(currentApertumNfts,`${statusPrefix}${wallet.label}: `);
+    await prewarmCachedNftOwnership(currentApertumNfts,`${statusPrefix}${wallet.label}: `);
     let saved=0,failed=0;
     for(const n of currentApertumNfts){
       try{saved+=await discoverOwnershipForNft(n.id,n.contract,n.name);}
@@ -699,7 +699,7 @@ window.DAO1Project = (() => {
     renderMinerSelector("Aktueller Apertum-NFT-Bestand wurde aus dem NFT-Tab übernommen. Besitzerhistorien werden für die sichtbaren NFTs ergänzt…");
 
     let saved=0, failed=0;
-    await prewarmDirectNftOwnership(currentApertumNfts,"DAO1: ");
+    await prewarmCachedNftOwnership(currentApertumNfts,"DAO1: ");
     // Contract scans are batched; individual ownership assembly below uses the run cache.
     for(const n of currentApertumNfts){
       try{ saved += await discoverOwnershipForNft(n.id,n.contract,n.name); }
@@ -865,6 +865,82 @@ window.DAO1Project = (() => {
     return new Map(ids.map(id=>[id,ownershipDirectTransferCache.get(nftDirectCacheKey(nftContract,id))||[]]));
   }
 
+
+  const ownershipGlobalHistoryCache=new Map();
+
+  function normalizeCachedTransfer(r){
+    return {
+      from:r.from_address||"",
+      to:r.to_address||"",
+      block_number:Number(r.block_number||0),
+      log_index:Number(r.log_index||0),
+      timestamp:r.block_timestamp||null,
+      transaction_hash:String(r.tx_hash||"").toLowerCase(),
+      token:{address:r.nft_contract||""},
+      token_id:String(r.nft_id??"")
+    };
+  }
+
+  async function fetchCachedNftHistories(contract,ids,statusPrefix=""){
+    const clean=[...new Set((ids||[]).map(String))].filter(id=>/^\d+$/.test(id));
+    if(!clean.length)return new Map();
+
+    const missing=clean.filter(id=>!ownershipGlobalHistoryCache.has(nftDirectCacheKey(contract,id)));
+    if(missing.length){
+      setTransactionStatus("loading",
+        `${statusPrefix}NFT-Besitzhistorie wird geladen…`,
+        `${missing.length} NFT(s) · schneller Explorer-/Global-Cache-Pfad`);
+      const {data,error}=await sb.functions.invoke("apertum-nft-history",{
+        body:{contract:lower(contract),token_ids:missing}
+      });
+      if(error){
+        let detail=error.message||String(error);
+        try{
+          const ctx=error.context;
+          if(ctx?.clone){
+            const response=ctx.clone();
+            const payload=await response.json();
+            if(payload?.error)detail=payload.error;
+          }
+        }catch(_){}
+        throw new Error(detail);
+      }
+      if(!data?.ok)throw new Error(data?.error||"apertum-nft-history fehlgeschlagen.");
+      const rows=Array.isArray(data.transfers)?data.transfers:[];
+      const byId=new Map(missing.map(id=>[id,[]]));
+      for(const r of rows){
+        const id=String(r.nft_id??"");
+        if(byId.has(id))byId.get(id).push(normalizeCachedTransfer(r));
+      }
+      for(const id of missing){
+        ownershipGlobalHistoryCache.set(nftDirectCacheKey(contract,id),byId.get(id)||[]);
+      }
+      console.info("DAO1 NFT Global-History-Cache",{
+        contract:lower(contract),
+        requested:missing.length,
+        transfers:rows.length,
+        cache_hits:Number(data.cache_hits||0),
+        refreshed:Number(data.refreshed||0),
+        duration_ms:Number(data.duration_ms||0)
+      });
+    }
+    return new Map(clean.map(id=>[id,ownershipGlobalHistoryCache.get(nftDirectCacheKey(contract,id))||[]]));
+  }
+
+  async function prewarmCachedNftOwnership(nfts,statusPrefix=""){
+    const groups=new Map();
+    for(const n of (nfts||[])){
+      const contract=lower(n.contract||n.tokenAddress||DEFAULT_MINER_NFT_CONTRACT);
+      const id=String(n.id??n.tokenId??"");
+      if(!contract||!/^\d+$/.test(id))continue;
+      if(!groups.has(contract))groups.set(contract,[]);
+      groups.get(contract).push(id);
+    }
+    for(const [contract,ids] of groups){
+      await fetchCachedNftHistories(contract,ids,statusPrefix);
+    }
+  }
+
   async function prewarmDirectNftOwnership(nfts,statusPrefix=""){
     const groups=new Map();
     for(const n of (nfts||[])){
@@ -922,13 +998,12 @@ window.DAO1Project = (() => {
     const transferMap=new Map();
     for(const t of [...primary,...walletFallback])transferMap.set(nftTransferDedupeKey(t),t);
 
-    // Dritte Quelle: vollständiger direkter ERC-721 Transfer-Event-Scan für exakt
-    // Contract + Token-ID. Dieser läuft IMMER. Explorer können mehrere Transfers liefern
-    // und trotzdem den frühesten Besitzerwechsel auslassen.
+    // Dritte Quelle: globaler serverseitiger Transfercache. Beim ersten Abruf wird
+    // ausschließlich die indexierte Transferhistorie dieses NFT geladen; kein Chain-Vollscan.
     try{
-      const direct=await fetchErc721TransferLogsForNft(nftContract,nftId);
-      for(const t of direct)transferMap.set(nftTransferDedupeKey(t),t);
-    }catch(e){console.warn("Apertum direkter NFT-Transfer-Log-Fallback",nftContract,nftId,e);}
+      const cached=await fetchCachedNftHistories(nftContract,[String(nftId)]);
+      for(const t of (cached.get(String(nftId))||[]))transferMap.set(nftTransferDedupeKey(t),t);
+    }catch(e){console.warn("Apertum globaler NFT-Historiencache",nftContract,nftId,e);}
     const transfers=[...transferMap.values()];
     const chronological=[...transfers].sort((a,b)=>{
       const ba=Number(a.block_number||0), bb=Number(b.block_number||0);
