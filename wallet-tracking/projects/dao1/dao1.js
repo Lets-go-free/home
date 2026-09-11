@@ -212,7 +212,20 @@ window.DAO1Project = (() => {
     mounted = true;
   }
 
-  function switchSubtab(name,button){document.querySelectorAll("#tab-dao1 .project-subtab-panel").forEach(x=>x.style.display="none");const el=document.getElementById("dao1-subtab-"+name);if(el)el.style.display="block";document.querySelectorAll("#tab-dao1 .project-subtabs .tab-btn").forEach(x=>x.classList.remove("active"));button?.classList.add("active");}
+  async function switchSubtab(name,button){
+    document.querySelectorAll("#tab-dao1 .project-subtab-panel").forEach(x=>x.style.display="none");
+    const el=document.getElementById("dao1-subtab-"+name);
+    if(el)el.style.display="block";
+    document.querySelectorAll("#tab-dao1 .project-subtabs .tab-btn").forEach(x=>x.classList.remove("active"));
+    button?.classList.add("active");
+
+    // Beim ersten Öffnen des Transaktions-Tabs muss der gespeicherte Cache sofort geladen
+    // werden. Bisher wurde nur das Panel angezeigt; erst ein Wallet-Filterwechsel löste
+    // refreshTransactionHistory(false) aus. Dadurch war "Alle Apertum-Wallets" initial leer.
+    if(name==="transactions"){
+      await refreshTransactionHistory(false);
+    }
+  }
 
   async function refreshConfig() {
     if (!sb) return;
@@ -721,8 +734,10 @@ window.DAO1Project = (() => {
     if(current) periods.push(current);
     if(!periods.length) return 0;
 
-    // Cache only ownership periods involving one of this user's tracked EVM wallets.
-    const tracked=new Set((ctx.wallets||[]).map(w=>lower(walletAddress(w))).filter(Boolean));
+    // User-Eigentum ist walletübergreifend: alle eigenen Apertum/EVM-Wallets bilden
+    // eine gemeinsame Eigentümersphäre. Ein Transfer Wallet A -> Wallet B ist KEIN Neuerwerb.
+    const trackedWallets=projectWallets();
+    const tracked=new Set(trackedWallets.map(w=>lower(walletAddress(w))).filter(Boolean));
     const ownPeriods=periods.filter(p=>tracked.has(lower(p.wallet_address))).map(p=>{
       const walletId=walletIdForAddress(p.wallet_address);
       const {wallet_address:_privateWalletAddress,...rest}=p;
@@ -730,16 +745,59 @@ window.DAO1Project = (() => {
     });
     if(!ownPeriods.length)return 0;
 
+    // Sicherheitsregel: Ein späterer/incompletter Explorer-Lauf darf ältere bereits
+    // verifizierte Besitzabschnitte niemals löschen. Bestehende + neu gefundene Perioden
+    // werden vereinigt; bei identischem Wallet/Startblock gewinnt der neu gelesene Datensatz.
+    const {data:existing,error:existingError}=await sb.from("project_nft_ownership")
+      .select("*")
+      .eq("user_id",ctx.currentUser.id)
+      .eq("project_key",PROJECT_KEY)
+      .eq("chain_key",CHAIN_KEY)
+      .eq("nft_contract",nftContract)
+      .eq("nft_id",Number(nftId));
+    if(existingError && !/does not exist|schema cache/i.test(existingError.message||""))throw existingError;
+
+    const merged=new Map();
+    for(const r of (existing||[])){
+      const key=`${String(r.wallet_id||"")}|${Number(r.owned_from_block||0)}`;
+      merged.set(key,{
+        user_id:r.user_id,project_key:r.project_key,chain_key:r.chain_key,
+        nft_contract:r.nft_contract,nft_id:r.nft_id,nft_name:r.nft_name||nftName,
+        wallet_id:r.wallet_id,owned_from_block:r.owned_from_block,owned_from_at:r.owned_from_at,
+        owned_to_block:r.owned_to_block,owned_to_at:r.owned_to_at,is_current:!!r.is_current
+      });
+    }
+    for(const r of ownPeriods){
+      const key=`${String(r.wallet_id||"")}|${Number(r.owned_from_block||0)}`;
+      merged.set(key,r);
+    }
+    const mergedPeriods=[...merged.values()].sort((a,b)=>Number(a.owned_from_block||0)-Number(b.owned_from_block||0));
+
+    // Nur der tatsächlich letzte Besitzabschnitt darf für das aktuelle Wallet "current" sein.
+    // Alte current-Flags aus einem früheren Wallet werden bei internem Transfer geschlossen.
+    const newest=mergedPeriods[mergedPeriods.length-1];
+    for(const r of mergedPeriods){
+      if(r!==newest && r.is_current){
+        const later=mergedPeriods.find(x=>Number(x.owned_from_block||0)>Number(r.owned_from_block||0));
+        if(later){
+          r.is_current=false;
+          if(r.owned_to_block==null)r.owned_to_block=Number(later.owned_from_block||0)||null;
+          if(r.owned_to_at==null)r.owned_to_at=later.owned_from_at||null;
+        }
+      }
+    }
+
     await sb.from("project_nft_ownership")
       .delete()
       .eq("user_id",ctx.currentUser.id)
       .eq("project_key",PROJECT_KEY)
+      .eq("chain_key",CHAIN_KEY)
       .eq("nft_contract",nftContract)
       .eq("nft_id",Number(nftId));
 
-    const {error}=await sb.from("project_nft_ownership").insert(ownPeriods);
+    const {error}=await sb.from("project_nft_ownership").insert(mergedPeriods);
     if(error) throw error;
-    return ownPeriods.length;
+    return mergedPeriods.length;
   }
 
   async function selectWallet(id){
@@ -1649,6 +1707,25 @@ window.DAO1Project = (() => {
     return rows.map(hydratePrivateWalletAddress);
   }
 
+  async function loadAllApertumTransactionRows(wallets,status=null){
+    const combined=[];
+    const seen=new Set();
+    const list=(wallets||[]).filter(w=>walletAddress(w));
+    for(let i=0;i<list.length;i++){
+      const w=list[i],address=walletAddress(w);
+      if(status)setTransactionStatus("db",`Gespeicherte Daten werden aggregiert ${i+1}/${list.length}…`,`${w.label||"Wallet"} · ${address}`);
+      const part=await loadTransactionRows(address,null);
+      for(const row of part){
+        const key=`${String(row.wallet_id||"")}::${String(row.tx_hash||"").toLowerCase()}`;
+        if(seen.has(key))continue;
+        seen.add(key);
+        combined.push(row);
+      }
+    }
+    combined.sort((a,b)=>Number(b.block_number||0)-Number(a.block_number||0)||String(a.tx_hash||"").localeCompare(String(b.tx_hash||"")));
+    return combined;
+  }
+
   function setTransactionStatus(kind,message,details=""){
     const el=document.getElementById("dao1TransactionStatus");
     if(!el)return;
@@ -1937,7 +2014,7 @@ window.DAO1Project = (() => {
       }
 
       if(job!==transactionJobToken)return;
-      transactionRows=await loadTransactionRows(selectedAll?null:walletAddress(targets[0]),null);
+      transactionRows=selectedAll?await loadAllApertumTransactionRows(targets,document.getElementById("dao1TransactionStatus")):await loadTransactionRows(walletAddress(targets[0]),null);
       renderTransactionControls();
       renderTransactionHistory();
       const quality=historicalPriceQualityCounts(transactionRows);
@@ -1996,7 +2073,7 @@ window.DAO1Project = (() => {
           await refreshWalletNftsAndOwnership(w,`Wallet ${i+1}/${targets.length} · `);
         }
         if(job!==transactionJobToken)return;
-        transactionRows=await loadTransactionRows(selectedAll?null:walletAddress(targets[0]),null);
+        transactionRows=selectedAll?await loadAllApertumTransactionRows(targets,document.getElementById("dao1TransactionStatus")):await loadTransactionRows(walletAddress(targets[0]),null);
         renderTransactionControls();
         renderTransactionHistory();
         if(selectedAll){
@@ -2015,7 +2092,7 @@ window.DAO1Project = (() => {
       }else{
         setTransactionStatus("db",selectedAll?"Gespeicherte Daten aller Apertum-Wallets werden geladen…":"Gespeicherte Wallet-Daten werden geladen…",
           "Keine Blockchain-Abfrage und keine Claim-Anreicherung.");
-        transactionRows=await loadTransactionRows(selectedAll?null:walletAddress(targets[0]),null);
+        transactionRows=selectedAll?await loadAllApertumTransactionRows(targets,document.getElementById("dao1TransactionStatus")):await loadTransactionRows(walletAddress(targets[0]),null);
         if(job!==transactionJobToken)return;
         renderTransactionControls();
         renderTransactionHistory();
