@@ -6714,6 +6714,25 @@ async function fetchExternalNftMetadata(uri){
   }catch(_){return null;}
 }
 
+
+const NFT_ACQUISITION_TX_HINTS={bsc:["0x36d8ea20beca0e24f8e61a6df7d1bcf6f8d873062d6984a3865f61fcf4cb6b71"]};
+async function recoverNftAcquisitionFromTxHints(chain,address,nfts){
+  const hints=NFT_ACQUISITION_TX_HINTS[chain]||[]; if(!hints.length)return new Map();
+  const wanted=new Set((nfts||[]).map(n=>`${lowerAddressForNft(n.tokenAddress)}|${normalizeNftTransferTokenId(n.tokenId)}`));
+  const out=new Map(),wallet=String(address||"").toLowerCase(),provider=new ethers.JsonRpcProvider(configuredRpcUrl(chain));
+  const t721=ethers.id("Transfer(address,address,uint256)").toLowerCase(),t1=ethers.id("TransferSingle(address,address,address,uint256,uint256)").toLowerCase(),tb=ethers.id("TransferBatch(address,address,address,uint256[],uint256[])").toLowerCase();
+  for(const hash of hints)try{
+    const rc=await provider.getTransactionReceipt(hash); if(!rc)continue;
+    const b=await provider.getBlock(rc.blockNumber),at=b?.timestamp?new Date(Number(b.timestamp)*1000).toISOString():null;
+    for(const log of (rc.logs||[])){
+      const c=lowerAddressForNft(log.address),tp=(log.topics||[]).map(x=>String(x).toLowerCase()); if(!c||!tp.length)continue;
+      if(tp[0]===t721&&tp.length>=4){const to="0x"+tp[2].slice(-40),id=normalizeNftTransferTokenId(tp[3]),k=`${c}|${id}`;if(to.toLowerCase()===wallet&&wanted.has(k))out.set(k,{block:Number(rc.blockNumber),at,txHash:hash});}
+      else if(tp[0]===t1&&tp.length>=4){const to="0x"+tp[3].slice(-40);if(to.toLowerCase()!==wallet)continue;const [id]=ethers.AbiCoder.defaultAbiCoder().decode(["uint256","uint256"],log.data),k=`${c}|${normalizeNftTransferTokenId(id)}`;if(wanted.has(k))out.set(k,{block:Number(rc.blockNumber),at,txHash:hash});}
+      else if(tp[0]===tb&&tp.length>=4){const to="0x"+tp[3].slice(-40);if(to.toLowerCase()!==wallet)continue;const [ids]=ethers.AbiCoder.defaultAbiCoder().decode(["uint256[]","uint256[]"],log.data);for(const id of ids){const k=`${c}|${normalizeNftTransferTokenId(id)}`;if(wanted.has(k))out.set(k,{block:Number(rc.blockNumber),at,txHash:hash});}}
+    }
+  }catch(e){console.warn("NFT Erwerbs-TX-Hinweis nicht validierbar",hash,e);}
+  return out;
+}
 async function enrichNftsWithAcquisitionData(chain,address,nfts,onProgress=null){
   if(!Array.isArray(nfts)||!nfts.length||chain==="apertum")return nfts;
   let transfers=[];
@@ -6755,6 +6774,7 @@ async function enrichNftsWithAcquisitionData(chain,address,nfts,onProgress=null)
       }catch(e){console.warn("BSC NFT Adress-Erwerbshistorie fehlgeschlagen",e);}
     }
   }
+  if(chain==="bsc"){try{const hinted=await recoverNftAcquisitionFromTxHints(chain,address,nfts);for(const [k,v] of hinted){const old=firstByKey.get(k);if(!old||(v.block&&(!old.block||v.block<old.block)))firstByKey.set(k,v);}}catch(e){console.warn("BSC NFT TX-Hinweis-Fallback fehlgeschlagen",e);}}
   for(const n of nfts){
     const key=`${lowerAddressForNft(n.tokenAddress)}|${normalizeNftTransferTokenId(n.tokenId)}`;
     const hit=firstByKey.get(key);
