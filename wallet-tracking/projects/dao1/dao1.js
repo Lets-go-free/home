@@ -6,7 +6,7 @@ window.DAO1Project = (() => {
   const SYSTEM_ADDRESS = "0x0200000000000000000000000000000000000001";
   const PAIR_ADDRESS = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
   const SYNC_TOPIC = "0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
-  const PRICE_SOURCE_TAG = "exact-v4";
+  const PRICE_SOURCE_TAG = "exact-v5";
   const PRICE_LOOKBACK_BLOCKS = 10000;
   const RPC_URL = "https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc";
   const EXPLORER_API = "https://explorer.apertum.io/api/v2";
@@ -822,14 +822,35 @@ window.DAO1Project = (() => {
   }
 
   async function loadCachedPrices(minBlock, maxBlock) {
-    const { data, error } = await sb.from("aptm_price_history").select("*").eq("pool_address", lower(PAIR_ADDRESS)).lte("block_number", maxBlock).order("block_number", { ascending: true }).order("log_index", { ascending: true });
-    if (error) throw error;
-    return data || [];
+    const min=Math.max(0,Number(minBlock||0)),max=Math.max(min,Number(maxBlock||0));
+    // Load only the requested range plus exactly one predecessor anchor. The previous
+    // implementation loaded the complete pool history from genesis on every call.
+    const {data,error}=await sb.from("aptm_price_history").select("*")
+      .eq("pool_address",lower(PAIR_ADDRESS)).gte("block_number",min).lte("block_number",max)
+      .order("block_number",{ascending:true}).order("log_index",{ascending:true});
+    if(error)throw error;
+    let predecessor=[];
+    if(min>0){
+      const {data:prev,error:prevError}=await sb.from("aptm_price_history").select("*")
+        .eq("pool_address",lower(PAIR_ADDRESS)).lt("block_number",min)
+        .order("block_number",{ascending:false}).order("log_index",{ascending:false}).limit(1);
+      if(prevError)throw prevError;
+      predecessor=prev||[];
+    }
+    return [...predecessor,...(data||[])].sort((a,b)=>Number(a.block_number)-Number(b.block_number)||Number(a.log_index)-Number(b.log_index));
   }
   function priceAtBlock(history, block) {
-    let best = null;
-    for (const p of history) { if (Number(p.block_number) <= block) best = p; else break; }
-    return best;
+    // History is sorted by block/log index. Binary search avoids O(history × tx)
+    // work during large repricing jobs.
+    const target=Number(block);
+    if(!Array.isArray(history)||!history.length||!Number.isFinite(target))return null;
+    let lo=0,hi=history.length-1,best=-1;
+    while(lo<=hi){
+      const mid=(lo+hi)>>1;
+      if(Number(history[mid].block_number)<=target){best=mid;lo=mid+1;}
+      else hi=mid-1;
+    }
+    return best>=0?history[best]:null;
   }
 
   function priceRowFromSyncLog(l,meta){
@@ -893,17 +914,28 @@ window.DAO1Project = (() => {
     const ctx=getContext?.();
     if(!ctx?.isAdmin)return [];
     const meta=await poolMeta();
-    const rows=[];
-    // Fixed moderate top-level chunks; adaptive splitter handles slow RPC ranges.
     const CHUNK=10000;
+    const CONCURRENCY=4;
+    const ranges=[];
     for(let from=Math.max(0,minBlock);from<=maxBlock;from+=CHUNK){
-      const to=Math.min(maxBlock,from+CHUNK-1);
-      const logs=await fetchSyncLogsAdaptive(from,to,status);
-      const part=(logs||[]).map(l=>priceRowFromSyncLog(l,meta)).filter(Boolean);
-      rows.push(...part);
-      await savePriceRows(part);
+      ranges.push([from,Math.min(maxBlock,from+CHUNK-1)]);
     }
-    return rows;
+    const rows=[];
+    let next=0,done=0;
+    async function worker(){
+      while(true){
+        const idx=next++;
+        if(idx>=ranges.length)return;
+        const [from,to]=ranges[idx];
+        const logs=await fetchSyncLogsAdaptive(from,to,null);
+        const part=(logs||[]).map(l=>priceRowFromSyncLog(l,meta)).filter(Boolean);
+        if(part.length){rows.push(...part);await savePriceRows(part);}
+        done++;
+        if(status)status.textContent=`Historische APTM-Kurse: Pool-Syncs ${done}/${ranges.length} Chunks geprüft…`;
+      }
+    }
+    await Promise.all(Array.from({length:Math.min(CONCURRENCY,ranges.length)},()=>worker()));
+    return rows.sort((a,b)=>Number(a.block_number)-Number(b.block_number)||Number(a.log_index)-Number(b.log_index));
   }
 
 
@@ -1028,9 +1060,8 @@ window.DAO1Project = (() => {
 
     const ctx=getContext?.();
     if(ctx?.isAdmin){
-      // A previous implementation treated "some cached Sync <= tx block" as complete
-      // historical coverage. That is false: newer Syncs may simply never have been fetched.
-      // Scan the immediate pre-transaction windows and merge overlaps to avoid duplicate RPC work.
+      // Verify merged pre-transaction windows once. Dense TX histories therefore become
+      // a handful of sequential RPC ranges instead of one lookup per transaction.
       const windows=mergePriceWindows(blocks);
       for(let i=0;i<windows.length;i++){
         const [from,to]=windows[i];
@@ -1041,21 +1072,21 @@ window.DAO1Project = (() => {
           console.warn(`Historischer APTM-Preis ${from}-${to} konnte nicht ergänzt werden:`,e);
         }
       }
-      try{history=await loadCachedPrices(minBlock,maxBlock);}catch(e){console.warn("APTM Preis-Cache neu laden:",e);}
 
-      // If no Sync exists in the immediate lookback window, expand backwards for that
-      // transaction until the actual preceding Sync is found.
-      const unresolved=blocks.filter(b=>!hasRecentVerifiedAnchor(history,b));
-      for(let i=0;i<unresolved.length;i++){
+      // One predecessor search per merged window is sufficient. The old exact-v4 path
+      // expanded backwards separately for every TX block without a recent Sync, which
+      // multiplied identical RPC work on quiet pool periods.
+      for(let i=0;i<windows.length;i++){
+        const [from]=windows[i];
+        if(from<=0)continue;
         try{
-          await repairPriceAnchorBeforeBlock(unresolved[i],status,{forceSearch:true});
+          if(status)status.textContent=`Historische APTM-Preisanker prüfen ${i+1}/${windows.length}…`;
+          await repairPriceAnchorBeforeBlock(from-1,status,{forceSearch:true});
         }catch(e){
-          console.warn("Gezielte APTM-Kursreparatur:",e);
+          console.warn("APTM Preisanker vor Fenster:",e);
         }
       }
-      if(unresolved.length){
-        try{history=await loadCachedPrices(minBlock,maxBlock);}catch(e){console.warn("APTM Preis-Cache final neu laden:",e);}
-      }
+      try{history=await loadCachedPrices(minBlock,maxBlock);}catch(e){console.warn("APTM Preis-Cache final neu laden:",e);}
     }
     return history;
   }
@@ -1137,6 +1168,16 @@ window.DAO1Project = (() => {
     const {error}=await sb.from("project_transactions")
       .upsert(rows,{onConflict:"user_id,project_key,chain_key,wallet_id,tx_hash"});
     if(error)throw error;
+  }
+
+  async function saveTransactionPricePatches(rows,status,label="Historische USD-Werte"){
+    const BATCH=500;
+    for(let i=0;i<rows.length;i+=BATCH){
+      const part=rows.slice(i,i+BATCH);
+      await saveTransactionRows(part);
+      if(status)setTransactionStatus("db",`${label} werden batchweise gespeichert ${Math.min(i+BATCH,rows.length)}/${rows.length}…`,
+        `Bis zu ${BATCH} Transaktionen pro Datenbank-Request statt Einzelupdates.`);
+    }
   }
 
   async function loadTransactionRows(address=null,status=null){
@@ -1272,34 +1313,24 @@ window.DAO1Project = (() => {
     setTransactionStatus("loading","Historische APTM-Kurse für Transaktionen werden ergänzt…",
       `${pending.length.toLocaleString("de-DE")} Transaktion(en) ohne vollständige historische USD-Bewertung.`);
     const history=await ensurePricesForClaimBlocks(blocks,document.getElementById("dao1TransactionStatus"));
-    let updated=0,missing=0;
+    let missing=0;
+    const priceRows=[];
     for(let i=0;i<pending.length;i++){
-      if(jobToken!==transactionJobToken)return {updated,missing:pending.length-i};
+      if(jobToken!==transactionJobToken)return {updated:0,missing:pending.length-i};
       const r=pending[i];
       const px=await priceForTransaction(Number(r.block_number),r.tx_timestamp,history);
       if(px.price==null){missing++;continue;}
-      const price=px.price;
-      const patch={
-        aptm_usd:price,
-        value_usd:Number(r.value_aptm||0)*price,
-        gas_usd:Number(r.gas_aptm||0)*price,
+      const price=Number(px.price);
+      priceRows.push({
+        user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+        wallet_id:walletIdForAddress(address),tx_hash:r.tx_hash,
+        aptm_usd:price,value_usd:Number(r.value_aptm||0)*price,gas_usd:Number(r.gas_aptm||0)*price,
         claim_reward_usd:r.claim_reward_aptm==null?r.claim_reward_usd:Number(r.claim_reward_aptm||0)*price,
-        price_source:px.source,
-        updated_at:new Date().toISOString()
-      };
-      // Claim reward USD is derived from the same transaction-block price and is repaired too.
-      const {error}=await sb.from("project_transactions").update(patch)
-        .eq("user_id",getContext?.().currentUser.id)
-        .eq("wallet_id",walletIdForAddress(address))
-        .eq("tx_hash",r.tx_hash);
-      if(error){console.warn("Tx historical price backfill:",error);missing++;}
-      else updated++;
-      if(i===0 || (i+1)%100===0 || i+1===pending.length){
-        setTransactionStatus("db",`Historische USD-Werte werden gespeichert ${i+1}/${pending.length}…`,
-          "APTM/USD und Gas-USD werden mit dem letzten Poolpreis am/ vor dem jeweiligen Transaktionsblock berechnet.");
-      }
+        price_source:px.source,updated_at:new Date().toISOString()
+      });
     }
-    return {updated,missing};
+    await saveTransactionPricePatches(priceRows,document.getElementById("dao1TransactionStatus"),"Historische USD-Werte");
+    return {updated:priceRows.length,missing};
   }
 
   async function repriceCachedTransactionHistory(){
@@ -1329,48 +1360,46 @@ window.DAO1Project = (() => {
         setTransactionStatus("loading",`Wallet ${wi+1}/${targets.length}: historische Poolpreise werden geprüft…`,
           `${rows.length.toLocaleString("de-DE")} gecachte Transaktionen · ${blocks.length.toLocaleString("de-DE")} unterschiedliche TX-Blöcke.`);
         const history=await ensurePricesForClaimBlocks(blocks,document.getElementById("dao1TransactionStatus"));
+        if(job!==transactionJobToken)return;
 
-        for(let i=0;i<rows.length;i++){
-          if(job!==transactionJobToken)return;
-          const r=rows[i];
+        const txPatches=[];
+        const claimPatches=[];
+        for(const r of rows){
           const px=await priceForTransaction(Number(r.block_number),r.tx_timestamp,history);
           if(px.price==null){totalMissing++;continue;}
           const price=Number(px.price);
-          const patch={
-            aptm_usd:price,
-            value_usd:Number(r.value_aptm||0)*price,
-            gas_usd:Number(r.gas_aptm||0)*price,
+          txPatches.push({
+            user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+            wallet_id:walletIdForAddress(address),tx_hash:r.tx_hash,
+            aptm_usd:price,value_usd:Number(r.value_aptm||0)*price,gas_usd:Number(r.gas_aptm||0)*price,
             claim_reward_usd:r.claim_reward_aptm==null?r.claim_reward_usd:Number(r.claim_reward_aptm||0)*price,
-            price_source:px.source,
-            updated_at:new Date().toISOString()
-          };
-          const {error}=await sb.from("project_transactions").update(patch)
-            .eq("user_id",getContext?.().currentUser.id)
-            .eq("wallet_id",walletIdForAddress(address))
-            .eq("tx_hash",r.tx_hash);
-          if(error){console.warn("Tx historical reprice:",error);totalMissing++;continue;}
-          totalUpdated++;
-
+            price_source:px.source,updated_at:new Date().toISOString()
+          });
           if(r.claim_nft_id!=null){
             totalClaims++;
-            const claimPatch={
-              aptm_usd:price,
-              reward_usd:Number(r.claim_reward_aptm||0)*price,
-              gas_usd:Number(r.gas_aptm||0)*price,
-              price_source:px.source,
-              updated_at:new Date().toISOString()
-            };
-            const {error:claimError}=await sb.from("project_nft_claims").update(claimPatch)
-              .eq("user_id",getContext?.().currentUser.id)
-              .eq("wallet_id",walletIdForAddress(address))
-              .eq("tx_hash",r.tx_hash)
-              .or("price_is_manual.is.null,price_is_manual.eq.false");
-            if(claimError)console.warn("Claim historical reprice:",claimError);
+            claimPatches.push({
+              user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+              wallet_id:walletIdForAddress(address),tx_hash:r.tx_hash,nft_contract:r.claim_nft_contract||null,nft_id:Number(r.claim_nft_id),
+              aptm_usd:price,reward_usd:Number(r.claim_reward_aptm||0)*price,gas_usd:Number(r.gas_aptm||0)*price,
+              price_source:px.source,updated_at:new Date().toISOString()
+            });
           }
+        }
 
-          if(i===0 || (i+1)%100===0 || i+1===rows.length){
-            setTransactionStatus("db",`Wallet ${wi+1}/${targets.length}: historische Preise werden gespeichert ${i+1}/${rows.length}…`,
-              `Nur gecachte Transaktionen werden neu bewertet · Preislogik ${PRICE_SOURCE_TAG}.`);
+        await saveTransactionPricePatches(txPatches,document.getElementById("dao1TransactionStatus"),`Wallet ${wi+1}/${targets.length}: historische Preise`);
+        totalUpdated+=txPatches.length;
+
+        // Claims are also written in batches. Keep manual claim prices protected by excluding
+        // them from the patch set using the currently cached claim rows.
+        if(claimPatches.length){
+          const cachedClaims=await loadCachedClaims(address,null);
+          const manualHashes=new Set(cachedClaims.filter(c=>c.price_is_manual).map(c=>String(c.tx_hash||"").toLowerCase()));
+          const safeClaims=claimPatches.filter(c=>!manualHashes.has(String(c.tx_hash||"").toLowerCase()));
+          const BATCH=500;
+          for(let i=0;i<safeClaims.length;i+=BATCH){
+            await saveClaimRows(safeClaims.slice(i,i+BATCH));
+            setTransactionStatus("db",`Wallet ${wi+1}/${targets.length}: Claim-USD werden batchweise gespeichert ${Math.min(i+BATCH,safeClaims.length)}/${safeClaims.length}…`,
+              `Preislogik ${PRICE_SOURCE_TAG}.`);
           }
         }
       }
@@ -1382,7 +1411,7 @@ window.DAO1Project = (() => {
       const exactCount=transactionRows.filter(r=>String(r.price_source||"").includes(PRICE_SOURCE_TAG)).length;
       const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
       setTransactionStatus("ready",`Historische APTM-Preise neu berechnet – ${totalUpdated.toLocaleString("de-DE")} Transaktionen aktualisiert.`,
-        `${totalRows.toLocaleString("de-DE")} gecachte Transaktionen geprüft · ${totalClaims.toLocaleString("de-DE")} Claim-Datensätze mitgeführt · ${totalMissing.toLocaleString("de-DE")} ohne belastbaren Poolpreis · ${exactCount.toLocaleString("de-DE")} Zeilen ${PRICE_SOURCE_TAG} · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte. Kein Explorer-Transaktionsscan.`);
+        `${totalRows.toLocaleString("de-DE")} gecachte Transaktionen geprüft · ${totalClaims.toLocaleString("de-DE")} Claim-Datensätze mitgeführt · ${totalMissing.toLocaleString("de-DE")} ohne belastbaren Poolpreis · ${exactCount.toLocaleString("de-DE")} Zeilen ${PRICE_SOURCE_TAG} · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte. Batch-Speicherung aktiv; kein Explorer-Transaktionsscan.`);
     }catch(e){
       console.error("DAO1 historische Preis-Neuberechnung:",e);
       setTransactionStatus("error","Historische Preis-Neuberechnung fehlgeschlagen.",e?.message||String(e));
