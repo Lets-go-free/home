@@ -749,13 +749,25 @@ window.DAO1Project = (() => {
 
 
   async function dao1ApertumRpc(method,params=[]){
-    const cfg=getContext?.().chainConfig?.[CHAIN_KEY]||{};
-    const url=String(cfg.rpcUrl||cfg.rpc_url||"").trim();
-    if(!url)throw new Error("Apertum RPC fehlt in Chain-Konfiguration.");
-    const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})});
-    const j=await res.json();
-    if(!res.ok||j?.error)throw new Error(j?.error?.message||`Apertum RPC HTTP ${res.status}`);
-    return j.result;
+    const allowed=new Set(["eth_blockNumber","eth_getLogs","eth_getBlockByNumber"]);
+    if(!allowed.has(method))throw new Error(`Apertum RPC-Methode nicht erlaubt: ${method}`);
+    const {data,error}=await sb.functions.invoke("apertum-rpc-proxy",{
+      body:{method,params}
+    });
+    if(error){
+      let detail=error.message||String(error);
+      try{
+        const ctx=error.context;
+        if(ctx?.clone){
+          const response=ctx.clone();
+          const payload=await response.json();
+          if(payload?.error)detail=payload.error;
+        }
+      }catch(_){}
+      throw new Error(detail);
+    }
+    if(!data?.ok)throw new Error(data?.error||`apertum-rpc-proxy/${method} fehlgeschlagen.`);
+    return data.result;
   }
 
   function dao1TopicAddress(topic){
