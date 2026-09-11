@@ -319,6 +319,7 @@
   .project-panel.active { display:block; }
   .project-chain-nav { margin-bottom:14px; }
   .project-summary {
+    display:grid;
     grid-template-columns:repeat(3,minmax(0,1fr));
     gap:12px;
     margin-bottom:14px;
@@ -698,3 +699,86 @@ body.admin-debug-mode .debug-frame::before{content:"DEBUG / DEV";display:inline-
 .nft-table-thumb{width:52px;height:52px;border-radius:10px;object-fit:cover;background:var(--card2);display:block}
 .nft-table-placeholder{width:52px;height:52px;border-radius:10px;background:var(--card2);display:grid;place-items:center;color:var(--muted);font-size:.65rem}
 @media(max-width:900px){.project-data-table table{min-width:860px}}
+
+
+/* DAO1 Transaktionen & Claims – produktives Tabellenlayout (v16) */
+.dao1-data-table-card{
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:var(--card);
+  box-shadow:0 8px 24px rgba(0,0,0,.10);
+}
+.dao1-transaction-table-wrap{
+  border:0 !important;
+  border-radius:0 0 14px 14px !important;
+  box-shadow:none !important;
+}
+.dao1-transaction-table{
+  min-width:1320px !important;
+  width:100%;
+  border-collapse:separate !important;
+  border-spacing:0 !important;
+  font-size:.78rem;
+}
+.dao1-transaction-table thead th{
+  position:sticky;
+  top:0;
+  z-index:4;
+  background:var(--card2) !important;
+  padding:10px 12px !important;
+  color:var(--muted) !important;
+  border-bottom:1px solid var(--border) !important;
+  font-size:.70rem !important;
+  text-transform:none;
+}
+.dao1-transaction-table tbody tr{
+  background:color-mix(in srgb,var(--card) 96%,var(--card2) 4%) !important;
+}
+.dao1-transaction-table tbody tr:nth-child(even){
+  background:color-mix(in srgb,var(--card) 90%,var(--card2) 10%) !important;
+}
+.dao1-transaction-table tbody tr:hover td{
+  background:color-mix(in srgb,var(--card2) 84%,var(--accent) 16%) !important;
+}
+.dao1-transaction-table td{
+  padding:10px 12px !important;
+  border-bottom:1px solid var(--border) !important;
+  vertical-align:top !important;
+}
+.dao1-transaction-table td code{
+  font-size:.69rem;
+}
+.dao1-transaction-table .meta{
+  font-size:.69rem;
+  line-height:1.35;
+  margin-top:3px;
+}
+@media (max-width:1100px){
+  .project-summary{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+
+
+/* NFT-Bestand – produktives Tabellenlayout (v17) */
+.nft-modern-table{background:var(--card,#171b22);border:0!important}
+.nft-modern-table table{min-width:1220px;font-size:.82rem}
+.nft-modern-table thead th{
+  background:var(--card2,#20252e);
+  color:var(--muted,#aeb6c3);
+  text-transform:uppercase;
+  letter-spacing:.035em;
+  font-size:.69rem;
+  font-weight:800;
+  padding:10px 12px;
+}
+.nft-modern-table tbody td{padding:11px 12px;vertical-align:middle}
+.nft-modern-table tbody tr:nth-child(even) td{background:rgba(255,255,255,.018)}
+.nft-modern-table tbody tr:hover td{background:rgba(104,139,255,.075)}
+.nft-modern-table th:nth-child(1),.nft-modern-table td:nth-child(1){width:72px}
+.nft-modern-table th:nth-child(2),.nft-modern-table td:nth-child(2){min-width:260px}
+.nft-modern-table th:nth-child(3),.nft-modern-table td:nth-child(3){min-width:210px}
+.nft-modern-table th:nth-child(4),.nft-modern-table td:nth-child(4),
+.nft-modern-table th:nth-child(5),.nft-modern-table td:nth-child(5){min-width:190px}
+.nft-modern-table th:nth-child(6),.nft-modern-table td:nth-child(6){min-width:135px}
+.nft-modern-table th:nth-child(7),.nft-modern-table td:nth-child(7){min-width:190px}
+.nft-modern-table code{font-size:.7rem;word-break:break-all}
+.nft-modern-table .badge{display:inline-flex;align-items:center;white-space:nowrap}

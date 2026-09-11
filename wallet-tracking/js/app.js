@@ -6243,7 +6243,10 @@ async function loadNftOwnershipCacheFromDb(){
 }
 
 function nftOwnershipInfo(n){
-  if(String(n?.chain||"")!=="apertum")return null;
+  if(String(n?.chain||"")!=="apertum"){
+    const at=n?.acquiredAt||null,block=Number(n?.acquiredBlock||0)||null;
+    return at||block?{known:true,firstOwnedAt:at,firstOwnedBlock:block,walletSinceAt:at,walletSinceBlock:block,currentInWallet:true,source:n?.acquisitionSource||"incoming-nft-transfer"}:{known:false};
+  }
   const contract=lowerAddressForNft(n?.tokenAddress);
   const id=String(n?.tokenId??"");
   const rows=nftOwnershipRows.filter(r=>lowerAddressForNft(r.nft_contract)===contract&&String(r.nft_id)===id)
@@ -6411,6 +6414,121 @@ async function refreshApertumNftsForWallet(wallet,onProgress=null){
   const others=((old&&old.nfts)||[]).filter(n=>String(n.chain||"")!==chain);await saveNftCacheForWallet(wallet,others.concat(found),[...new Set([...(old?.selected_chains||[]),chain])]);return found;
 }
 
+
+function normalizeNftTransferTokenId(v){
+  if(v===null||v===undefined)return "";
+  const raw=String(v).trim();
+  if(!raw)return "";
+  try{
+    if(/^0x[0-9a-f]+$/i.test(raw))return BigInt(raw).toString(10);
+    if(/^\d+$/.test(raw))return BigInt(raw).toString(10);
+  }catch(_){}
+  return raw.replace(/^0+/,"")||"0";
+}
+
+function nftAcquisitionTransferKeys(t){
+  const out=[];
+  const contract=lowerAddressForNft(t?.rawContract?.address||t?.contract?.address||t?.contractAddress||t?.tokenAddress||"");
+  if(!contract)return out;
+  const ids=[];
+  if(t?.erc721TokenId!=null)ids.push(t.erc721TokenId);
+  if(t?.tokenId!=null)ids.push(t.tokenId);
+  if(Array.isArray(t?.erc1155Metadata))for(const m of t.erc1155Metadata)if(m?.tokenId!=null)ids.push(m.tokenId);
+  for(const id of ids){
+    const n=normalizeNftTransferTokenId(id);
+    if(n)out.push(`${contract}|${n}`);
+  }
+  return [...new Set(out)];
+}
+
+function nftTransferBlock(t){
+  const v=t?.blockNum??t?.blockNumber??t?.block_number??0;
+  try{return typeof v==="string"&&/^0x/i.test(v)?Number(BigInt(v)):Number(v)||0;}catch(_){return 0;}
+}
+function nftTransferTimestamp(t){
+  const v=t?.metadata?.blockTimestamp??t?.blockTimestamp??t?.block_timestamp??t?.timestamp??null;
+  if(!v)return null;
+  const d=new Date(v);
+  return Number.isNaN(d.getTime())?null:d.toISOString();
+}
+
+async function fetchIncomingNftTransfersForWallet(chain,address,onProgress=null){
+  const addr=String(address||"").toLowerCase();
+  const rows=[];
+  if(!addr)return rows;
+
+  if(chain==="bsc"){
+    let pageKey=null,pages=0;
+    do{
+      pages++;if(onProgress)onProgress(pages);
+      const q={fromBlock:"0x0",toBlock:"latest",toAddress:address,category:["erc721","erc1155"],withMetadata:true,excludeZeroValue:false,maxCount:"0x3e8",order:"asc"};
+      if(pageKey)q.pageKey=pageKey;
+      const r=await nodeRealRpc("nr_getAssetTransfers",q);
+      for(const t of (r?.transfers||[])){
+        const to=String(t?.to||t?.toAddress||"").toLowerCase();
+        if(to&&to!==addr)continue;
+        rows.push(t);
+      }
+      pageKey=r?.pageKey||r?.PageKey||null;
+      if(pageKey)await sleepMs(180);
+      if(pages>500)throw new Error("BSC NFT-Erwerbshistorie: Sicherheitsabbruch nach 500 Seiten");
+    }while(pageKey);
+    return rows;
+  }
+
+  if(CHAIN_CONFIG[chain]?.nftProvider==="alchemy"){
+    let pageKey=null,pages=0;
+    do{
+      pages++;if(onProgress)onProgress(pages);
+      const q={fromBlock:"0x0",toBlock:"latest",toAddress:address,category:["erc721","erc1155"],withMetadata:true,excludeZeroValue:false,maxCount:"0x3e8",order:"asc"};
+      if(pageKey)q.pageKey=pageKey;
+      const r=await alchemyRpc(chain,"alchemy_getAssetTransfers",[q],"discovery");
+      for(const t of (r?.transfers||[])){
+        const to=String(t?.to||"").toLowerCase();
+        if(to&&to!==addr)continue;
+        rows.push(t);
+      }
+      pageKey=r?.pageKey||null;
+      if(pageKey)await sleepMs(180);
+      if(pages>500)throw new Error(`${CHAIN_META[chain]?.label||chain} NFT-Erwerbshistorie: Sicherheitsabbruch nach 500 Seiten`);
+    }while(pageKey);
+  }
+  return rows;
+}
+
+async function enrichNftsWithAcquisitionData(chain,address,nfts,onProgress=null){
+  if(!Array.isArray(nfts)||!nfts.length||chain==="apertum")return nfts;
+  let transfers=[];
+  try{
+    transfers=await fetchIncomingNftTransfersForWallet(chain,address,onProgress);
+  }catch(e){
+    console.warn("NFT-Erwerbsdaten konnten nicht geladen werden",chain,address,e);
+    return nfts;
+  }
+  const firstByKey=new Map();
+  for(const t of transfers){
+    const block=nftTransferBlock(t);
+    const at=nftTransferTimestamp(t);
+    for(const key of nftAcquisitionTransferKeys(t)){
+      const old=firstByKey.get(key);
+      if(!old || (block&&(!old.block||block<old.block))){
+        firstByKey.set(key,{block:block||null,at,txHash:String(t?.hash||t?.transactionHash||t?.tx_hash||"")||null});
+      }
+    }
+  }
+  for(const n of nfts){
+    const key=`${lowerAddressForNft(n.tokenAddress)}|${normalizeNftTransferTokenId(n.tokenId)}`;
+    const hit=firstByKey.get(key);
+    if(hit){
+      n.acquiredAt=hit.at||n.acquiredAt||null;
+      n.acquiredBlock=hit.block||n.acquiredBlock||null;
+      n.acquisitionTxHash=hit.txHash||n.acquisitionTxHash||null;
+      n.acquisitionSource="incoming-nft-transfer";
+    }
+  }
+  return nfts;
+}
+
 async function runNftLoad() {
   const btn = document.getElementById("nftBtn");
   const status = document.getElementById("nftStatus");
@@ -6444,17 +6562,29 @@ async function runNftLoad() {
           throw new Error(`NFT-Provider "${nftProvider || "–"}" ist nicht implementiert`);
         }
         found.forEach(n => { n.walletLabel = w.label; n.walletId = String(w.dbId || w.id); });
+        if(chain!=="apertum"){
+          status.textContent=`Erwerbsdaten für ${w.label} auf ${CHAIN_META[chain].label} werden angereichert…`;
+          await enrichNftsWithAcquisitionData(chain,w.evm,found,page=>status.textContent=`Erwerbsdaten für ${w.label} auf ${CHAIN_META[chain].label}… (Seite ${page})`);
+        }
 
         // vorhandene manuelle Spam-Markierungen über Contract + Token-ID übernehmen
         const old = nftCaches.get(String(w.dbId || w.id));
         const oldMap = new Map(((old && old.nfts) || []).map(n => [nftKey(n), {
           spam:!!n.userMarkedSpam,
-          safe:!!n.userMarkedSafe
+          safe:!!n.userMarkedSafe,
+          acquiredAt:n.acquiredAt||null,
+          acquiredBlock:n.acquiredBlock||null,
+          acquisitionTxHash:n.acquisitionTxHash||null,
+          acquisitionSource:n.acquisitionSource||null
         }]));
         found.forEach(n => {
           const flags=oldMap.get(nftKey(n));
           if(flags?.spam)n.userMarkedSpam=true;
           if(flags?.safe)n.userMarkedSafe=true;
+          if(!n.acquiredAt&&flags?.acquiredAt)n.acquiredAt=flags.acquiredAt;
+          if(!n.acquiredBlock&&flags?.acquiredBlock)n.acquiredBlock=flags.acquiredBlock;
+          if(!n.acquisitionTxHash&&flags?.acquisitionTxHash)n.acquisitionTxHash=flags.acquisitionTxHash;
+          if(!n.acquisitionSource&&flags?.acquisitionSource)n.acquisitionSource=flags.acquisitionSource;
         });
         walletNfts = walletNfts.concat(found);
       } catch (e) {
@@ -6527,7 +6657,16 @@ function renderNftResults(nfts, errors = []) {
   const oldToggle = document.getElementById("nftHideSpamToggle");
   const hideSpam = oldToggle ? oldToggle.checked : true;
   const spamCount = nfts.filter(isNftSpam).length;
-  const visible = hideSpam ? nfts.filter(n => !isNftSpam(n)) : nfts;
+  const visibleRaw = hideSpam ? nfts.filter(n => !isNftSpam(n)) : nfts;
+  const visible=[...visibleRaw].sort((a,b)=>{
+    const ao=nftOwnershipInfo(a),bo=nftOwnershipInfo(b);
+    const at=ao?.firstOwnedAt?new Date(ao.firstOwnedAt).getTime():0;
+    const bt=bo?.firstOwnedAt?new Date(bo.firstOwnedAt).getTime():0;
+    if(bt!==at)return bt-at;
+    const ab=Number(ao?.firstOwnedBlock||0),bb=Number(bo?.firstOwnedBlock||0);
+    if(bb!==ab)return bb-ab;
+    return String(a?.name||"").localeCompare(String(b?.name||""),"de");
+  });
 
   const filterBar = `<div class="custom-token-card" style="margin-bottom:14px">
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
@@ -6548,16 +6687,16 @@ function renderNftResults(nfts, errors = []) {
   el.innerHTML = `${errorNote}${filterBar}
     <div class="custom-token-card" style="padding:0;overflow:hidden">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border,#2b303b)">
-        <div><strong>NFT-Bestand</strong><div class="meta">${visible.length} von ${nfts.length} NFT(s) angezeigt · Apertum-Erwerbsdaten aus der gecachten On-Chain-Besitzhistorie</div></div>
+        <div><strong>NFT-Bestand</strong><div class="meta">${visible.length} von ${nfts.length} NFT(s) angezeigt · nach Erwerbsdatum sortiert · neuestes zuerst · On-Chain-Erwerbsdaten aus Cache/Besitzhistorie</div></div>
       </div>
-      <div class="project-data-table" style="margin:0;border:0;border-radius:0;max-height:720px">
+      <div class="project-data-table nft-modern-table" style="margin:0;border:0;border-radius:0;max-height:720px">
         <table><thead><tr><th>Bild</th><th>NFT</th><th>Chain / Wallet</th><th>Erstmals von dir erworben</th><th>In diesem Wallet seit</th><th>Status</th><th>Aktionen</th></tr></thead><tbody>
         ${visible.map(n => {
           const meta = CHAIN_META[n.chain] || {dot:"",label:n.chain};
           const spam = isNftSpam(n);
           const own=nftOwnershipInfo(n);
-          const firstOwned=own?.known?nftOwnershipDate(own.firstOwnedAt):(String(n.chain)==="apertum"?"noch nicht ermittelt":"–");
-          const walletSince=own?.known?nftOwnershipDate(own.walletSinceAt):(String(n.chain)==="apertum"?"noch nicht ermittelt":"–");
+          const firstOwned=own?.known?nftOwnershipDate(own.firstOwnedAt):"noch nicht ermittelt";
+          const walletSince=own?.known?nftOwnershipDate(own.walletSinceAt):"noch nicht ermittelt";
           const statusParts=[];
           if(spam)statusParts.push(`<span class="badge unsafe">⚠ ${n.userMarkedSpam ? "Spam markiert" : "Spam-Verdacht"}</span>`);
           if(n.userMarkedSafe)statusParts.push(`<span class="badge safe">✓ Sicher</span>`);
@@ -6566,7 +6705,7 @@ function renderNftResults(nfts, errors = []) {
             <td>${n.image?`<img class="nft-table-thumb" src="${escapeAttr(n.image)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="nft-table-placeholder">Kein Bild</div>`}</td>
             <td><strong>${escapeAttr(n.name)}</strong><div class="meta">${n.collectionName?escapeAttr(n.collectionName)+" · ":""}#${escapeAttr(String(n.tokenId))}</div><div class="meta"><code>${escapeAttr(String(n.tokenAddress||""))}</code></div></td>
             <td><div style="display:flex;align-items:center;gap:5px"><span class="dot ${meta.dot}" style="width:7px;height:7px"></span><strong>${escapeAttr(meta.label||n.chain)}</strong></div><div class="meta">${escapeAttr(n.walletLabel||"")}</div></td>
-            <td><strong>${firstOwned}</strong>${own?.firstOwnedBlock?`<div class="meta">Block ${Number(own.firstOwnedBlock).toLocaleString("de-CH")}</div>`:""}</td>
+            <td><strong>${firstOwned}</strong>${own?.firstOwnedBlock?`<div class="meta">Block ${Number(own.firstOwnedBlock).toLocaleString("de-CH")}</div>`:""}${n.acquisitionTxHash&&CHAIN_META[n.chain]?.explorer?`<div class="meta"><a href="${CHAIN_META[n.chain].explorer}/tx/${escapeAttr(n.acquisitionTxHash)}" target="_blank" rel="noopener">Erwerbs-TX</a></div>`:""}</td>
             <td><strong>${walletSince}</strong>${own?.walletSinceBlock?`<div class="meta">Block ${Number(own.walletSinceBlock).toLocaleString("de-CH")}${own.currentInWallet?" · aktuell":""}</div>`:""}</td>
             <td>${statusParts.join("<br>")}</td>
             <td><div style="display:flex;gap:6px;flex-wrap:wrap">
