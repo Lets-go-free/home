@@ -629,9 +629,7 @@ async function taxDexFactory(chain){
   // gelesen. Es wird nur die Factory on-chain ermittelt; Preise/Reserven bleiben live.
   if(!out&&chain==="apertum"){
     try{
-      let pair=null;
-      const {data:ph}=await sb.from("aptm_price_history").select("pool_address").eq("chain_key","apertum").order("block_number",{ascending:false}).limit(1).maybeSingle();
-      pair=ph?.pool_address||window.DAO1Project?.getAptmUsdtPairAddress?.()||null;
+      const pair=window.DAO1Project?.getAptmUsdtPairAddress?.()||null;
       if(pair){
         const fi=new ethers.Interface(["function factory() view returns (address)"]);
         const raw=await archiveRpc(chain,"eth_call",[{to:pair,data:fi.encodeFunctionData("factory",[])},"latest"]);
@@ -771,8 +769,15 @@ async function taxApertumWrappedPrice(chain,asset,block,dateStr=""){
 
 async function taxHistoricalPrice(chain,asset,dateStr,block=null,skipWrapped=false){
   if(chain==="apertum"&&asset==="native"&&block!=null){
-    try{const {data,error}=await sb.from("aptm_price_history").select("block_number,aptm_usd").eq("chain_key","apertum").lte("block_number",Number(block)).order("block_number",{ascending:false}).limit(1).maybeSingle();if(!error&&data&&Number(data.aptm_usd)>0)return {price:Number(data.aptm_usd),source:`Apertum DEX APTM/wUSDT · Block ${data.block_number}`};}catch{}
-    try{const wa=taxPredefinedBySymbol("apertum","WAPTM"),u=taxPredefinedBySymbol("apertum","WUSDT")||taxPredefinedBySymbol("apertum","USDT");if(wa&&u){const wd=await taxTokenDecimalsCurrent("apertum",wa),ud=await taxTokenDecimalsCurrent("apertum",u),d=await taxDirectV2Price("apertum",wa.address,u.address,Number(block),wd,ud);if(d)return {price:d.price,source:`Apertum DEX wAPTM/wUSDT · letzter Sync Block ${d.sourceBlock} (≤ ${block})`};}}catch(e){console.warn("APTM On-Chain-Historie",e);}
+    try{
+      const hp=await window.DAO1Project?.historicalAptmPriceAtBlock?.(Number(block));
+      if(hp?.price!=null)return {price:Number(hp.price),source:hp.source||`DAO1 APTM Anchor · Block ${block}`};
+      // Pre-Launch bzw. echte Preis-Lücke bleiben absichtlich ohne USD-Wert.
+      return null;
+    }catch(e){
+      console.warn("DAO1 zentrale APTM-Historienpreis-Engine",e);
+      return null;
+    }
   }
   if(block!=null&&asset!=="native"){try{const t=await taxTlnVowHistoricalPrice(chain,asset,block,dateStr);if(t)return t;if(!skipWrapped){const a=await taxApertumWrappedPrice(chain,asset,block,dateStr);if(a)return a;}if(asset?.address&&window.WalletLPEngine){const pi=await window.WalletLPEngine.pairInfo(chain,asset.address);if(pi){const lp=await taxV2LpHistoricalPrice(chain,{...asset,decimals:pi.decimals},block,dateStr);if(lp)return lp;}}}catch(e){console.warn("Historischer DEX-/LP-Preis:",chain,asset?.symbol,e);}}
   if(chain==="apertum")return null; // Apertum wird bewusst vollständig on-chain bewertet; kein CoinGecko-Fallback.
