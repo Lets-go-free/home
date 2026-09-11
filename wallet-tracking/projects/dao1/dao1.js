@@ -603,10 +603,11 @@ window.DAO1Project = (() => {
 
     // Cache only ownership periods involving one of this user's tracked EVM wallets.
     const tracked=new Set((ctx.wallets||[]).map(w=>lower(walletAddress(w))).filter(Boolean));
-    const ownPeriods=periods.filter(p=>tracked.has(lower(p.wallet_address))).map(p=>({
-      ...p,
-      wallet_id:walletIdForAddress(p.wallet_address)
-    }));
+    const ownPeriods=periods.filter(p=>tracked.has(lower(p.wallet_address))).map(p=>{
+      const walletId=walletIdForAddress(p.wallet_address);
+      const {wallet_address:_privateWalletAddress,...rest}=p;
+      return {...rest,wallet_id:walletId};
+    });
     if(!ownPeriods.length)return 0;
 
     await sb.from("project_nft_ownership")
@@ -678,7 +679,7 @@ window.DAO1Project = (() => {
     if (!wallet || !Number.isFinite(nft)) return alert("Wallet und NFT-ID eingeben.");
     let walletId;
     try{walletId=walletIdForAddress(wallet);}catch(e){return alert("Die Miner-Wallet muss zuerst unter Meine Wallets gespeichert sein.");}
-    const { error } = await sb.from("project_miners").insert({ user_id: ctx.currentUser.id, project_key: PROJECT_KEY, chain_key: CHAIN_KEY, wallet_id: walletId, wallet_address: wallet, nft_id: nft, label: label || `Miner #${nft}`, enabled: true });
+    const { error } = await sb.from("project_miners").insert({ user_id: ctx.currentUser.id, project_key: PROJECT_KEY, chain_key: CHAIN_KEY, wallet_id: walletId, nft_id: nft, label: label || `Miner #${nft}`, enabled: true });
     if (error) return alert(error.message);
     await loadMiners();
   }
@@ -1089,7 +1090,7 @@ window.DAO1Project = (() => {
     const ctx=getContext?.();
     const row={
       user_id:ctx.currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
-      wallet_id:walletIdForAddress(address),wallet_address:lower(address),scan_type:TX_SCAN_TYPE,
+      wallet_id:walletIdForAddress(address),scan_type:TX_SCAN_TYPE,
       last_scanned_block:Number(lastBlock||0),last_scanned_at:new Date().toISOString()
     };
     const {error}=await sb.from("project_scan_state")
@@ -1125,7 +1126,7 @@ window.DAO1Project = (() => {
       if(page.length<DB_PAGE_SIZE)break;
       offset+=DB_PAGE_SIZE;
     }
-    return rows;
+    return rows.map(hydratePrivateWalletAddress);
   }
 
   function setTransactionStatus(kind,message,details=""){
@@ -1188,7 +1189,6 @@ window.DAO1Project = (() => {
           project_key:PROJECT_KEY,
           chain_key:CHAIN_KEY,
           wallet_id:walletIdForAddress(address),
-          wallet_address:lower(address),
           tx_hash:t.hash,
           block_number:block,
           tx_timestamp:t.timestamp,
@@ -1360,7 +1360,7 @@ window.DAO1Project = (() => {
       blocks.push(Number(t.block_number));
       claimRows.push({
         user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
-        wallet_id:walletIdForAddress(address),wallet_address:lower(address),nft_contract:nft.contract||null,nft_id:Number(decodedId),
+        wallet_id:walletIdForAddress(address),nft_contract:nft.contract||null,nft_id:Number(decodedId),
         nft_name:nft.classification?.nft_name || nft.name || `NFT #${decodedId}`,
         nft_subtype:nft.classification?.subtype||null,tx_hash:t.tx_hash,
         block_number:Number(t.block_number),tx_timestamp:t.tx_timestamp,
@@ -1838,7 +1838,6 @@ window.DAO1Project = (() => {
       project_key:PROJECT_KEY,
       chain_key:CHAIN_KEY,
       wallet_id:walletIdForAddress(walletAddress),
-      wallet_address:lower(walletAddress),
       scan_type:CLAIM_SCAN_TYPE,
       last_scanned_block:Number(lastBlock||0),
       last_scanned_at:new Date().toISOString()
@@ -2042,7 +2041,6 @@ window.DAO1Project = (() => {
             project_key:PROJECT_KEY,
             chain_key:CHAIN_KEY,
             wallet_id:walletIdForAddress(address),
-            wallet_address:lower(address),
             nft_contract:c.nft?.contract||null,
             nft_id:Number(c.nft.id),
             nft_name:c.nft?.classification?.nft_name || c.nft?.name || `NFT #${c.nft.id}`,
