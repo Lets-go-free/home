@@ -693,6 +693,38 @@ window.DAO1Project = (() => {
     renderNftClassification();
   }
 
+
+  async function fetchWalletNftTransfersForOwnership(address,nftContract,nftId){
+    const out=[];
+    const contract=lower(nftContract),wantedId=String(nftId);
+    const candidates=[
+      `${EXPLORER_API}/addresses/${address}/token-transfers?type=ERC-721%2CERC-1155`,
+      `${EXPLORER_API}/addresses/${address}/token-transfers`
+    ];
+    let lastError=null;
+    for(const initial of candidates){
+      try{
+        const rows=await fetchPagedUrl(initial,500);
+        for(const t of rows){
+          const token=t?.token||{};
+          const c=lower(token.address||token.address_hash||t.token_address||t.token_address_hash||"");
+          if(c!==contract)continue;
+          const id=transferTokenId(t);
+          if(String(id)!==wantedId)continue;
+          if(isNonSpamNftTransfer(t))out.push(t);
+        }
+        if(out.length)break;
+      }catch(e){lastError=e;}
+    }
+    if(!out.length&&lastError)console.warn("Apertum Wallet-NFT-Transferfallback:",address,nftContract,nftId,lastError);
+    return out;
+  }
+
+  function nftTransferDedupeKey(t){
+    const hash=String(t?.transaction_hash||t?.tx_hash||H(t?.transaction)||"").toLowerCase();
+    return `${Number(t?.block_number||0)}|${Number(t?.log_index||0)}|${hash}|${lower(H(t?.from))}|${lower(H(t?.to))}`;
+  }
+
   async function discoverOwnershipForNft(nftId, nftContract=DEFAULT_MINER_NFT_CONTRACT, knownName="") {
     const ctx=getContext?.();
     nftContract=lower(nftContract || DEFAULT_MINER_NFT_CONTRACT);
@@ -715,7 +747,20 @@ window.DAO1Project = (() => {
     }
 
     const url=`${EXPLORER_API}/tokens/${nftContract}/instances/${nftId}/transfers`;
-    const transfers=(await fetchPagedUrl(url)).filter(isNonSpamNftTransfer);
+    const primary=(await fetchPagedUrl(url)).filter(isNonSpamNftTransfer);
+
+    // Zweite unabhängige Quelle: Transfers aus der Historie ALLER eigenen Wallets.
+    // Das ist wichtig bei Wallet 1 -> Wallet 2, falls der Instance-Endpoint ältere
+    // Transfers nicht vollständig liefert.
+    const walletFallback=[];
+    for(const w of ((ctx.wallets||[]).filter(w=>walletAddress(w)))){
+      try{
+        walletFallback.push(...await fetchWalletNftTransfersForOwnership(walletAddress(w),nftContract,nftId));
+      }catch(e){console.warn("NFT Wallet-Historie",w?.label||walletAddress(w),e);}
+    }
+    const transferMap=new Map();
+    for(const t of [...primary,...walletFallback])transferMap.set(nftTransferDedupeKey(t),t);
+    const transfers=[...transferMap.values()];
     const chronological=[...transfers].sort((a,b)=>{
       const ba=Number(a.block_number||0), bb=Number(b.block_number||0);
       if(ba!==bb)return ba-bb;
@@ -726,7 +771,7 @@ window.DAO1Project = (() => {
     for(const t of chronological){
       const from=lower(H(t.from)), to=lower(H(t.to));
       const block=Number(t.block_number||0);
-      const ts=t.timestamp||null;
+      const ts=t.timestamp||t.block_timestamp||t.blockTimeStamp||null;
       if(current && from===lower(current.wallet_address)){
         current.owned_to_block=block;
         current.owned_to_at=ts;

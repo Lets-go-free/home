@@ -6030,6 +6030,7 @@ async function fetchNftsForChain(chain, address, onProgress) {
         tokenId: n.tokenId,
         name: n.name || rawMeta?.name || contract.name || "Unbenannt",
         image: normalizeNftImageUrl(image.cachedUrl || image.thumbnailUrl || image.pngUrl || image.originalUrl || n?.media?.[0]?.gateway || n?.media?.[0]?.thumbnail || n?.media?.[0]?.raw) || nftMetadataImage(rawMeta),
+        imageSource:(image.cachedUrl||image.thumbnailUrl||image.pngUrl||image.originalUrl||n?.media?.[0]?.gateway||n?.media?.[0]?.thumbnail||n?.media?.[0]?.raw)?"alchemy-image":(nftMetadataImage(rawMeta)?"alchemy-raw-metadata":null),
         collectionName: (n.collection && n.collection.name) || (contract.openSeaMetadata && contract.openSeaMetadata.collectionName) || contract.name,
         possibleSpam: contract.isSpam === true || contract.isSpam === "true" || (contract.spamClassifications || []).length > 0,
         contractType: n.tokenType || contract.tokenType
@@ -6105,6 +6106,7 @@ async function enrichApertumNft(chain, nft) {
       name: meta.name || inst?.name || nft.name || token.name || token.symbol || `NFT #${nft.tokenId}`,
       collectionName: nft.collectionName || token.name || token.symbol || null,
       image,
+      imageSource:nft.imageSource||(image?"apertum-explorer-metadata":null),
       possibleSpam: !!(nft.possibleSpam || blockscoutNftSpam(inst))
     };
     if(!out.possibleSpam&&!out.image)out=await enrichNftFromTokenUri(chain,out);
@@ -6128,6 +6130,7 @@ function apertureNftFromOwnedItem(chain, item) {
     tokenId:String(tokenId),
     name:meta.name || item.name || (collectionName ? `${collectionName} #${tokenId}` : `NFT #${tokenId}`),
     image:normalizeNftImageUrl(item.image_url || item.media_url) || nftMetadataImage(meta),
+    imageSource:(item.image_url||item.media_url)?"apertum-owned-image":(nftMetadataImage(meta)?"apertum-owned-metadata":null),
     collectionName,
     possibleSpam:blockscoutNftSpam(item) || blockscoutNftSpam(token),
     contractType:token.type || item.token_type || item.type
@@ -6434,6 +6437,7 @@ async function refreshApertumNftsForWallet(wallet,onProgress=null){
   const old=nftCaches.get(String(wallet.dbId||wallet.id));
   const flags=new Map(((old&&old.nfts)||[]).map(n=>[nftKey(n),{
     spam:!!n.userMarkedSpam,safe:!!n.userMarkedSafe,image:n.image||null,
+    imageSource:n.imageSource||null,metadataUri:n.metadataUri||null,
     name:n.name||null,collectionName:n.collectionName||null
   }]));
   found.forEach(n=>{
@@ -6441,6 +6445,8 @@ async function refreshApertumNftsForWallet(wallet,onProgress=null){
     if(f?.spam)n.userMarkedSpam=true;
     if(f?.safe)n.userMarkedSafe=true;
     if(!n.image&&f?.image)n.image=f.image;
+    if(!n.imageSource&&f?.imageSource)n.imageSource=f.imageSource;
+    if(!n.metadataUri&&f?.metadataUri)n.metadataUri=f.metadataUri;
     if((!n.name||n.name==="Unbenannt")&&f?.name)n.name=f.name;
     if(!n.collectionName&&f?.collectionName)n.collectionName=f.collectionName;
   });
@@ -6659,10 +6665,12 @@ async function enrichNftFromTokenUri(chain,nft){
       meta=await fetchExternalNftMetadata(uri);
     }
     if(!meta)return nft;
+    const resolvedImage=nft.image||nftMetadataImage(meta)||null;
     return {
       ...nft,
       name:nft.name&&nft.name!=="Unbenannt"?nft.name:(meta.name||nft.name),
-      image:nft.image||nftMetadataImage(meta)||null,
+      image:resolvedImage,
+      imageSource:nft.imageSource||(resolvedImage?"onchain-tokenURI":null),
       metadataUri:uri
     };
   }catch(e){
@@ -6836,6 +6844,8 @@ async function runNftLoad() {
           acquisitionTxHash:n.acquisitionTxHash||null,
           acquisitionSource:n.acquisitionSource||null,
           image:n.image||null,
+          imageSource:n.imageSource||null,
+          metadataUri:n.metadataUri||null,
           name:n.name||null,
           collectionName:n.collectionName||null
         }]));
@@ -6848,6 +6858,8 @@ async function runNftLoad() {
           if(!n.acquisitionTxHash&&flags?.acquisitionTxHash)n.acquisitionTxHash=flags.acquisitionTxHash;
           if(!n.acquisitionSource&&flags?.acquisitionSource)n.acquisitionSource=flags.acquisitionSource;
           if(!n.image&&flags?.image)n.image=flags.image;
+          if(!n.imageSource&&flags?.imageSource)n.imageSource=flags.imageSource;
+          if(!n.metadataUri&&flags?.metadataUri)n.metadataUri=flags.metadataUri;
           if((!n.name||n.name==="Unbenannt")&&flags?.name)n.name=flags.name;
           if(!n.collectionName&&flags?.collectionName)n.collectionName=flags.collectionName;
         });
@@ -6949,7 +6961,15 @@ function renderNftResults(nfts, errors = []) {
     return;
   }
 
-  el.innerHTML = `${errorNote}${filterBar}
+  const missingImages=visible.filter(n=>!n.image);
+  const imageDebug=missingImages.length?`<div class="custom-token-card debug-frame" style="margin-bottom:14px">
+    <strong>DEBUG / DEV · NFTs ohne Bild (${missingImages.length})</strong>
+    <div class="note">Zeigt, ob eine Metadatenquelle/Token-URI gefunden wurde. DID-NFTs können absichtlich kein Bild besitzen.</div>
+    <div class="chain-table-wrap" style="margin-top:8px;max-height:360px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>NFT</th><th>Chain</th><th>Contract / ID</th><th>Bildquelle</th><th>Metadata URI</th></tr></thead><tbody>
+      ${missingImages.map(n=>`<tr><td>${escapeAttr(n.name||"NFT")}</td><td>${escapeAttr(n.chain||"")}</td><td><code>${escapeAttr(n.tokenAddress||"")}</code><br>#${escapeAttr(String(n.tokenId||""))}</td><td>${escapeAttr(n.imageSource||"keine Bildquelle gefunden")}</td><td><code>${escapeAttr(n.metadataUri||"–")}</code></td></tr>`).join("")}
+    </tbody></table></div></div>`:"";
+
+  el.innerHTML = `${errorNote}${filterBar}${imageDebug}
     <div class="custom-token-card" style="padding:0;overflow:hidden">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border,#2b303b)">
         <div><strong>NFT-Bestand</strong><div class="meta">${visible.length} von ${nfts.length} NFT(s) angezeigt · nach Erwerbsdatum sortiert · neuestes zuerst · On-Chain-Erwerbsdaten aus Cache/Besitzhistorie</div></div>
@@ -6982,6 +7002,7 @@ function renderNftResults(nfts, errors = []) {
         </tbody></table>
       </div>
     </div>`;
+  window.applyDebugModeVisibility?.();
 }
 
 // ---- Chat (User <-> Admin) ----
