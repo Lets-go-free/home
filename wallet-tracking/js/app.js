@@ -6271,16 +6271,41 @@ function nftOwnershipInfo(n){
   }
   const contract=lowerAddressForNft(n?.tokenAddress);
   const id=String(n?.tokenId??"");
-  const rows=nftOwnershipRows.filter(r=>lowerAddressForNft(r.nft_contract)===contract&&String(r.nft_id)===id)
-    .sort((x,y)=>Number(x.owned_from_block||0)-Number(y.owned_from_block||0));
+  const rows=nftOwnershipRows
+    .filter(r=>lowerAddressForNft(r.nft_contract)===contract&&String(r.nft_id)===id)
+    .sort((x,y)=>{
+      const xb=Number(x.owned_from_block||0),yb=Number(y.owned_from_block||0);
+      if(xb&&yb&&xb!==yb)return xb-yb;
+      const xt=x.owned_from_at?new Date(x.owned_from_at).getTime():Number.POSITIVE_INFINITY;
+      const yt=y.owned_from_at?new Date(y.owned_from_at).getTime():Number.POSITIVE_INFINITY;
+      return xt-yt;
+    });
   if(!rows.length)return {known:false};
-  const first=rows[0];
-  const walletRows=rows.filter(r=>String(r.wallet_id||"")===String(n.walletId||""));
+
+  // "Erstmals von dir erworben" ist walletübergreifend: frühester Besitzabschnitt
+  // irgendeiner eigenen Wallet. "In diesem Wallet seit" bleibt wallet-spezifisch.
+  const first=rows.reduce((best,r)=>{
+    if(!best)return r;
+    const bb=Number(best.owned_from_block||0),rb=Number(r.owned_from_block||0);
+    if(rb>0 && (bb<=0 || rb<bb))return r;
+    if(rb===bb){
+      const bt=best.owned_from_at?new Date(best.owned_from_at).getTime():Infinity;
+      const rt=r.owned_from_at?new Date(r.owned_from_at).getTime():Infinity;
+      if(rt<bt)return r;
+    }
+    return best;
+  },null);
+
+  const walletId=String(n?.walletId||n?.wallet_id||"");
+  const walletRows=rows.filter(r=>String(r.wallet_id||"")===walletId)
+    .sort((x,y)=>Number(x.owned_from_block||0)-Number(y.owned_from_block||0));
   const current=walletRows.find(r=>r.is_current)||walletRows[walletRows.length-1]||null;
   return {
     known:true,
-    firstOwnedAt:first.owned_from_at||null,firstOwnedBlock:Number(first.owned_from_block||0)||null,
-    walletSinceAt:current?.owned_from_at||null,walletSinceBlock:Number(current?.owned_from_block||0)||null,
+    firstOwnedAt:first?.owned_from_at||null,
+    firstOwnedBlock:Number(first?.owned_from_block||0)||null,
+    walletSinceAt:current?.owned_from_at||null,
+    walletSinceBlock:Number(current?.owned_from_block||0)||null,
     currentInWallet:!!current?.is_current
   };
 }

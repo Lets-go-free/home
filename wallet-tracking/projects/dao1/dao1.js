@@ -1073,41 +1073,55 @@ window.DAO1Project = (() => {
         tx:String(t.transaction_hash||t.tx_hash||H(t.transaction)||"")
       }))
     });
-    const periods=[];
-    let current=null;
+    // Besitzperioden DIREKT für die eigenen Wallets aus der vollständigen Transferkette
+    // rekonstruieren. Damit hängt "Erstmals von dir erworben" nicht davon ab, welche
+    // Wallet gerade ausgewählt ist oder welche fremden Zwischenbesitzer vorkommen.
+    const trackedWallets=(ctx.wallets||[]).filter(w=>walletAddress(w));
+    const tracked=new Set(trackedWallets.map(w=>lower(walletAddress(w))).filter(Boolean));
+    const openByWallet=new Map();
+    const ownPeriods=[];
+
     for(const t of chronological){
       const from=lower(H(t.from)), to=lower(H(t.to));
       const block=Number(t.block_number||0);
       const ts=t.timestamp||t.block_timestamp||t.blockTimeStamp||null;
-      if(current && from===lower(current.wallet_address)){
-        current.owned_to_block=block;
-        current.owned_to_at=ts;
-        current.is_current=false;
-        periods.push(current);
-        current=null;
+
+      if(from && tracked.has(from)){
+        const open=openByWallet.get(from);
+        if(open){
+          open.owned_to_block=block;
+          open.owned_to_at=ts;
+          open.is_current=false;
+          ownPeriods.push(open);
+          openByWallet.delete(from);
+        }
       }
-      if(to && to!=="0x0000000000000000000000000000000000000000"){
-        current={
-          user_id:ctx.currentUser.id, project_key:PROJECT_KEY, chain_key:CHAIN_KEY,
-          nft_contract:nftContract, nft_id:Number(nftId), nft_name:nftName,
-          wallet_address:to, owned_from_block:block, owned_from_at:ts,
-          owned_to_block:null, owned_to_at:null, is_current:true
-        };
+
+      if(to && tracked.has(to)){
+        // Doppelte Quellen desselben Transfers wurden vorher dedupliziert. Falls dennoch
+        // bereits eine offene Periode existiert, nicht künstlich einen Neuerwerb erzeugen.
+        if(!openByWallet.has(to)){
+          openByWallet.set(to,{
+            user_id:ctx.currentUser.id,
+            project_key:PROJECT_KEY,
+            chain_key:CHAIN_KEY,
+            nft_contract:nftContract,
+            nft_id:Number(nftId),
+            nft_name:nftName,
+            wallet_id:walletIdForAddress(to),
+            owned_from_block:block,
+            owned_from_at:ts,
+            owned_to_block:null,
+            owned_to_at:null,
+            is_current:true
+          });
+        }
       }
     }
-    if(current) periods.push(current);
-    if(!periods.length) return 0;
 
-    // User-Eigentum ist walletübergreifend: alle eigenen Apertum/EVM-Wallets bilden
-    // eine gemeinsame Eigentümersphäre. Ein Transfer Wallet A -> Wallet B ist KEIN Neuerwerb.
-    const trackedWallets=(ctx.wallets||[]).filter(w=>walletAddress(w));
-    const tracked=new Set(trackedWallets.map(w=>lower(walletAddress(w))).filter(Boolean));
-    const ownPeriods=periods.filter(p=>tracked.has(lower(p.wallet_address))).map(p=>{
-      const walletId=walletIdForAddress(p.wallet_address);
-      const {wallet_address:_privateWalletAddress,...rest}=p;
-      return {...rest,wallet_id:walletId};
-    });
+    for(const open of openByWallet.values())ownPeriods.push(open);
     if(!ownPeriods.length)return 0;
+
 
     // Deterministischer Neuaufbau aus der vollständigen NFT-Transferhistorie.
     // Alte Cache-Perioden dürfen keinen falschen Ersterwerb konservieren.
@@ -1136,6 +1150,19 @@ window.DAO1Project = (() => {
 
     const {error}=await sb.from("project_nft_ownership").insert(rebuilt);
     if(error) throw error;
+    if(String(nftId)==="7993" || String(nftId)==="7994"){
+      console.info("DAO1 NFT Solar Besitzperioden gespeichert",{
+        nft:`${nftContract}#${nftId}`,
+        periods:rebuilt.map(r=>({
+          wallet_id:r.wallet_id,
+          from_block:Number(r.owned_from_block||0),
+          from_at:r.owned_from_at||null,
+          to_block:Number(r.owned_to_block||0)||null,
+          to_at:r.owned_to_at||null,
+          current:!!r.is_current
+        }))
+      });
+    }
     return rebuilt.length;
   }
   async function selectWallet(id){
