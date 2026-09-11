@@ -6,7 +6,8 @@ window.DAO1Project = (() => {
   const SYSTEM_ADDRESS = "0x0200000000000000000000000000000000000001";
   const PAIR_ADDRESS = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
   const SYNC_TOPIC = "0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
-  const PRICE_SOURCE_TAG = "exact-v5";
+  const PRICE_SOURCE_TAG = "exact-v7";
+  const PRICE_MISSING_TAG = "missing-v7";
   const PRICE_LOOKBACK_BLOCKS = 10000;
   const RPC_URL = "https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc";
   const EXPLORER_API = "https://explorer.apertum.io/api/v2";
@@ -1048,7 +1049,21 @@ window.DAO1Project = (() => {
     }
     // Apertum bleibt vollständig on-chain. Fehlt zum historischen Zeitpunkt ein
     // belastbarer Pool-Sync, wird bewusst kein externer Marktpreis eingesetzt.
-    return {price:null,priceBlock:null,source:null};
+    return {price:null,priceBlock:null,source:`Kein belastbarer historischer Poolpreis · ${PRICE_MISSING_TAG}`};
+  }
+
+  function historicalPriceQuality(row){
+    if(row?.price_is_manual && row?.aptm_usd!=null)return "manual";
+    if(row?.aptm_usd==null)return "missing";
+    const source=String(row?.price_source||"");
+    if(source.includes("APTM/wUSDT Pool · Sync Block"))return "exact";
+    return "fallback";
+  }
+
+  function historicalPriceQualityCounts(rows){
+    const out={exact:0,fallback:0,missing:0,manual:0};
+    for(const row of rows||[])out[historicalPriceQuality(row)]++;
+    return out;
   }
 
   async function ensurePricesForClaimBlocks(claimBlocks,status){
@@ -1319,7 +1334,16 @@ window.DAO1Project = (() => {
       if(jobToken!==transactionJobToken)return {updated:0,missing:pending.length-i};
       const r=pending[i];
       const px=await priceForTransaction(Number(r.block_number),r.tx_timestamp,history);
-      if(px.price==null){missing++;continue;}
+      if(px.price==null){
+        missing++;
+        priceRows.push({
+          user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+          wallet_id:walletIdForAddress(address),tx_hash:r.tx_hash,
+          aptm_usd:null,value_usd:null,gas_usd:null,claim_reward_usd:r.claim_reward_aptm==null?r.claim_reward_usd:null,
+          price_source:px.source,updated_at:new Date().toISOString()
+        });
+        continue;
+      }
       const price=Number(px.price);
       priceRows.push({
         user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
@@ -1366,7 +1390,24 @@ window.DAO1Project = (() => {
         const claimPatches=[];
         for(const r of rows){
           const px=await priceForTransaction(Number(r.block_number),r.tx_timestamp,history);
-          if(px.price==null){totalMissing++;continue;}
+          if(px.price==null){
+            totalMissing++;
+            txPatches.push({
+              user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+              wallet_id:walletIdForAddress(address),tx_hash:r.tx_hash,
+              aptm_usd:null,value_usd:null,gas_usd:null,claim_reward_usd:r.claim_reward_aptm==null?r.claim_reward_usd:null,
+              price_source:px.source,updated_at:new Date().toISOString()
+            });
+            if(r.claim_nft_id!=null){
+              totalClaims++;
+              claimPatches.push({
+                user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+                wallet_id:walletIdForAddress(address),tx_hash:r.tx_hash,nft_contract:r.claim_nft_contract||null,nft_id:Number(r.claim_nft_id),
+                aptm_usd:null,reward_usd:null,gas_usd:null,price_block:null,price_source:px.source,updated_at:new Date().toISOString()
+              });
+            }
+            continue;
+          }
           const price=Number(px.price);
           txPatches.push({
             user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
@@ -1381,7 +1422,7 @@ window.DAO1Project = (() => {
               user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
               wallet_id:walletIdForAddress(address),tx_hash:r.tx_hash,nft_contract:r.claim_nft_contract||null,nft_id:Number(r.claim_nft_id),
               aptm_usd:price,reward_usd:Number(r.claim_reward_aptm||0)*price,gas_usd:Number(r.gas_aptm||0)*price,
-              price_source:px.source,updated_at:new Date().toISOString()
+              price_block:px.priceBlock||null,price_source:px.source,updated_at:new Date().toISOString()
             });
           }
         }
@@ -1389,17 +1430,53 @@ window.DAO1Project = (() => {
         await saveTransactionPricePatches(txPatches,document.getElementById("dao1TransactionStatus"),`Wallet ${wi+1}/${targets.length}: historische Preise`);
         totalUpdated+=txPatches.length;
 
-        // Claims are also written in batches. Keep manual claim prices protected by excluding
-        // them from the patch set using the currently cached claim rows.
+        // Claim-Repricing darf niemals neue/partielle project_nft_claims-Zeilen erzeugen.
+        // Ein partielles UPSERT würde NOT-NULL-Felder wie block_number verlieren bzw. als NULL
+        // einsetzen. Deshalb werden ausschließlich bereits gespeicherte Claim-Zeilen vollständig
+        // übernommen und nur deren Preisfelder ersetzt. Manuelle Preise bleiben geschützt.
         if(claimPatches.length){
           const cachedClaims=await loadCachedClaims(address,null);
-          const manualHashes=new Set(cachedClaims.filter(c=>c.price_is_manual).map(c=>String(c.tx_hash||"").toLowerCase()));
-          const safeClaims=claimPatches.filter(c=>!manualHashes.has(String(c.tx_hash||"").toLowerCase()));
+          const cachedByHash=new Map(cachedClaims.map(c=>[String(c.tx_hash||"").toLowerCase(),c]));
+          const safeClaims=[];
+          for(const patch of claimPatches){
+            const existing=cachedByHash.get(String(patch.tx_hash||"").toLowerCase());
+            if(!existing || existing.price_is_manual)continue;
+            const blockNumber=Number(existing.block_number);
+            if(!Number.isFinite(blockNumber) || blockNumber<=0){
+              console.warn("DAO1 Claim-Repricing übersprungen: gespeicherter Claim ohne belastbare block_number",existing.tx_hash);
+              continue;
+            }
+            safeClaims.push({
+              user_id:existing.user_id,
+              project_key:existing.project_key||PROJECT_KEY,
+              chain_key:existing.chain_key||CHAIN_KEY,
+              wallet_id:existing.wallet_id,
+              nft_contract:existing.nft_contract??null,
+              nft_id:existing.nft_id,
+              nft_name:existing.nft_name??null,
+              nft_subtype:existing.nft_subtype??null,
+              tx_hash:existing.tx_hash,
+              block_number:blockNumber,
+              tx_timestamp:existing.tx_timestamp??null,
+              param1:existing.param1??null,
+              param2:existing.param2??null,
+              reward_aptm:existing.reward_aptm,
+              gas_aptm:existing.gas_aptm,
+              net_aptm:existing.net_aptm,
+              aptm_usd:patch.aptm_usd,
+              reward_usd:patch.reward_usd,
+              gas_usd:patch.gas_usd,
+              price_block:patch.price_block??existing.price_block??null,
+              price_source:patch.price_source,
+              price_is_manual:existing.price_is_manual??false,
+              updated_at:new Date().toISOString()
+            });
+          }
           const BATCH=500;
           for(let i=0;i<safeClaims.length;i+=BATCH){
             await saveClaimRows(safeClaims.slice(i,i+BATCH));
             setTransactionStatus("db",`Wallet ${wi+1}/${targets.length}: Claim-USD werden batchweise gespeichert ${Math.min(i+BATCH,safeClaims.length)}/${safeClaims.length}…`,
-              `Preislogik ${PRICE_SOURCE_TAG}.`);
+              `Preislogik ${PRICE_SOURCE_TAG} · vorhandene Claim-Zeilen werden vollständig erhalten.`);
           }
         }
       }
@@ -1408,10 +1485,10 @@ window.DAO1Project = (() => {
       transactionRows=await loadTransactionRows(selectedAll?null:walletAddress(targets[0]),null);
       renderTransactionControls();
       renderTransactionHistory();
-      const exactCount=transactionRows.filter(r=>String(r.price_source||"").includes(PRICE_SOURCE_TAG)).length;
+      const quality=historicalPriceQualityCounts(transactionRows);
       const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
       setTransactionStatus("ready",`Historische APTM-Preise neu berechnet – ${totalUpdated.toLocaleString("de-DE")} Transaktionen aktualisiert.`,
-        `${totalRows.toLocaleString("de-DE")} gecachte Transaktionen geprüft · ${totalClaims.toLocaleString("de-DE")} Claim-Datensätze mitgeführt · ${totalMissing.toLocaleString("de-DE")} ohne belastbaren Poolpreis · ${exactCount.toLocaleString("de-DE")} Zeilen ${PRICE_SOURCE_TAG} · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte. Batch-Speicherung aktiv; kein Explorer-Transaktionsscan.`);
+        `${totalRows.toLocaleString("de-DE")} gecachte Transaktionen geprüft · ${totalClaims.toLocaleString("de-DE")} Claim-Datensätze mitgeführt · Preisqualität: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte. Preislogik ${PRICE_SOURCE_TAG}; kein Explorer-Transaktionsscan.`);
     }catch(e){
       console.error("DAO1 historische Preis-Neuberechnung:",e);
       setTransactionStatus("error","Historische Preis-Neuberechnung fehlgeschlagen.",e?.message||String(e));
@@ -1460,16 +1537,16 @@ window.DAO1Project = (() => {
         renderTransactionHistory();
         if(selectedAll){
           const claims=transactionRows.filter(r=>r.claim_nft_id!=null).length;
-          const exactCount=transactionRows.filter(r=>String(r.price_source||"").includes(PRICE_SOURCE_TAG)).length;
+          const quality=historicalPriceQualityCounts(transactionRows);
           const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
           setTransactionStatus("ready",`Bereit – ${transactionRows.length.toLocaleString("de-DE")} Transaktionen aus ${targets.length} Wallets, ${claims.toLocaleString("de-DE")} Claims.`,
-            `Blockchain-, NFT-Bestands- und Besitzerhistorien-Aktualisierung abgeschlossen. Preisprüfung ${PRICE_SOURCE_TAG}: ${exactCount.toLocaleString("de-DE")} Zeilen · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte.`);
+            `Blockchain-, NFT-Bestands- und Besitzerhistorien-Aktualisierung abgeschlossen. Preisqualität ${PRICE_SOURCE_TAG}: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte.`);
         }else{
           await showTransactionReadyStatus(walletAddress(targets[0]),transactionRows,"scan");
-          const exactCount=transactionRows.filter(r=>String(r.price_source||"").includes(PRICE_SOURCE_TAG)).length;
+          const quality=historicalPriceQualityCounts(transactionRows);
           const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
           const statusEl=document.getElementById("dao1TransactionStatus");
-          if(statusEl)statusEl.innerHTML+=`<div class="note" style="margin-top:4px">Preisprüfung ${PRICE_SOURCE_TAG}: ${exactCount.toLocaleString("de-DE")} Zeilen · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte.</div>`;
+          if(statusEl)statusEl.innerHTML+=`<div class="note" style="margin-top:4px">Preisqualität ${PRICE_SOURCE_TAG}: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte.</div>`;
         }
       }else{
         setTransactionStatus("db",selectedAll?"Gespeicherte Daten aller Apertum-Wallets werden geladen…":"Gespeicherte Wallet-Daten werden geladen…",
@@ -1888,6 +1965,7 @@ window.DAO1Project = (() => {
     const gasUsd=rows.reduce((a,r)=>a+Number(r.gas_usd||0),0);
     const claimUsdMissing=claims.filter(r=>r.claim_reward_usd==null).length;
     const gasUsdMissing=rows.filter(r=>Number(r.gas_aptm||0)>0 && r.gas_usd==null).length;
+    const priceQuality=historicalPriceQualityCounts(rows);
     if(summary)summary.innerHTML=`<div class="project-summary">
       <div class="custom-token-card project-summary-box"><span class="field-label">Transaktionen</span><strong>${rows.length}</strong></div>
       <div class="custom-token-card project-summary-box"><span class="field-label">Claims</span><strong>${claims.length}</strong></div>
@@ -1895,6 +1973,7 @@ window.DAO1Project = (() => {
       <div class="custom-token-card project-summary-box"><span class="field-label">Normale Eingänge</span><strong>${fmt(inAptm)} APTM</strong></div>
       <div class="custom-token-card project-summary-box"><span class="field-label">Ausgang</span><strong>${fmt(outAptm)} APTM</strong></div>
       <div class="custom-token-card project-summary-box"><span class="field-label">Gas</span><strong>${fmt(gas)} APTM</strong><div class="meta">${gasUsd?usd(gasUsd):"–"} · historischer USD-Wert zum Transaktionszeitpunkt${gasUsdMissing?` · <button class="secondary" style="padding:2px 6px;font-size:.75rem" onclick="DAO1Project.showMissingHistoricalPrices('gas')">${gasUsdMissing} ohne Kurs anzeigen</button>`:""}</div></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Preisqualität</span><strong>${priceQuality.exact} exact</strong><div class="meta">${priceQuality.fallback} fallback · ${priceQuality.missing} ohne Preis · ${priceQuality.manual} manuell</div></div>
     </div>`;
     if(!table)return;
     if(!rows.length){table.innerHTML='<div class="empty">Keine Transaktionen für den gewählten Filter.</div>';return;}
@@ -1911,7 +1990,7 @@ window.DAO1Project = (() => {
         <td class="dao1-col-time">${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH"):"–"}</td>${txFilterWallet==="__all"?`<td class="dao1-col-wallet"><code>${r.wallet_address||"–"}</code></td>`:""}<td class="dao1-col-direction">${r.direction||"–"}</td><td class="dao1-col-method">${r.method||"–"}</td>
         <td>${fmt(amount)}</td>
         <td class="dao1-col-claim">${claim?`<strong>${currentName||"NFT"}</strong><div class="meta">#${r.claim_nft_id}${currentSubtype?" · "+currentSubtype:""} · Reward ${fmt(r.claim_reward_aptm)} APTM</div>`:"–"}</td>
-        <td class="dao1-col-price">${r.aptm_usd==null?"–":`${fmt(r.aptm_usd)}<div class="meta">${r.price_source||"historischer Poolpreis"}</div>`}</td><td class="dao1-col-usd">${usdVal?usd(usdVal):"–"}</td>
+        <td class="dao1-col-price">${r.aptm_usd==null?`–<div class="meta">${r.price_source||"Kein belastbarer historischer Preis"}</div>`:`${fmt(r.aptm_usd)}<div class="meta">${historicalPriceQuality(r)} · ${r.price_source||"historischer Poolpreis"}</div>`}</td><td class="dao1-col-usd">${usdVal?usd(usdVal):"–"}</td>
         <td>${fmt(r.gas_aptm)}</td><td>${r.gas_usd==null?"–":usd(Number(r.gas_usd))}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${r.tx_hash.slice(0,12)}…</a></td>
       </tr>`;
     }).join("")}</tbody></table></div></details>`;
