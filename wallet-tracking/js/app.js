@@ -6270,7 +6270,11 @@ async function loadNftOwnershipCacheFromDb(){
   // selbst wenn eine historische project_nft_ownership-Periode fehlt.
   nftGlobalFirstOwned=new Map();
   try{
-    const ownedAddresses=new Set((wallets||[]).map(w=>lowerAddressForNft(w?.evm)).filter(Boolean));
+    const ownedAddresses=new Set((wallets||[]).map(w=>{
+      const v=w?.evm;
+      if(typeof v==="string")return lowerAddressForNft(v);
+      return lowerAddressForNft(v?.hash||v?.address||v?.address_hash||"");
+    }).filter(Boolean));
     if(!ownedAddresses.size)return;
 
     const nftPairs=new Map();

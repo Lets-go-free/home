@@ -173,6 +173,31 @@ window.DAO1Project = (() => {
 
   const H = x => typeof x === "string" ? x : (x?.hash || "");
   const lower = x => String(x || "").toLowerCase();
+
+  // Blockscout liefert Adressen je nach Endpoint/Cache in unterschiedlichen Formen.
+  // Für Ownership niemals nur auf `.hash` verlassen.
+  function transferAddress(value, fallback=""){
+    if(typeof value==="string")return lower(value);
+    if(value && typeof value==="object"){
+      return lower(
+        value.hash ??
+        value.address ??
+        value.address_hash ??
+        value.addressHash ??
+        value.value ??
+        fallback ??
+        ""
+      );
+    }
+    return lower(fallback||"");
+  }
+
+  function transferFromAddress(t){
+    return transferAddress(t?.from, t?.from_address ?? t?.fromAddress ?? t?.from_hash ?? "");
+  }
+  function transferToAddress(t){
+    return transferAddress(t?.to, t?.to_address ?? t?.toAddress ?? t?.to_hash ?? "");
+  }
   const fmt = n => new Intl.NumberFormat("de-CH", { maximumFractionDigits: 8 }).format(Number(n || 0));
   const usd = n => n == null ? "–" : new Intl.NumberFormat("de-CH", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(n);
 
@@ -1039,13 +1064,13 @@ window.DAO1Project = (() => {
         instance_transfers:primary.map(t=>({
           block:Number(t.block_number||0),
           time:t.timestamp||t.block_timestamp||null,
-          from:lower(H(t.from)),to:lower(H(t.to)),
+          from:transferFromAddress(t),to:transferToAddress(t),
           ids:transferTokenIds(t)
         })),
         own_wallet_transfers:walletFallback.map(t=>({
           block:Number(t.block_number||0),
           time:t.timestamp||t.block_timestamp||null,
-          from:lower(H(t.from)),to:lower(H(t.to)),
+          from:transferFromAddress(t),to:transferToAddress(t),
           ids:transferTokenIds(t)
         }))
       });
@@ -1068,8 +1093,8 @@ window.DAO1Project = (() => {
       transfers:chronological.map(t=>({
         block:Number(t.block_number||0),
         time:t.timestamp||t.block_timestamp||t.blockTimeStamp||null,
-        from:lower(H(t.from)),
-        to:lower(H(t.to)),
+        from:transferFromAddress(t),
+        to:transferToAddress(t),
         tx:String(t.transaction_hash||t.tx_hash||H(t.transaction)||"")
       }))
     });
@@ -1081,17 +1106,81 @@ window.DAO1Project = (() => {
     const openByWallet=new Map();
     const ownPeriods=[];
 
-    for(const t of chronological){
-      const from=lower(H(t.from)), to=lower(H(t.to));
-      const block=Number(t.block_number||0);
-      const ts=t.timestamp||t.block_timestamp||t.blockTimeStamp||null;
+    // Normalisierte Kette vorab aufbauen. Bei einer konsistenten ERC-721-Kette gilt:
+    // to[i] == from[i+1]. Wenn ein Explorer-Endpunkt beim früheren Transfer die
+    // Empfängeradresse nicht sauber liefert, kann sie aus dem nächsten `from` sicher
+    // rekonstruiert werden.
+    const normalizedChain=chronological.map((t,i)=>({
+      raw:t,
+      block:Number(t.block_number||0),
+      ts:t.timestamp||t.block_timestamp||t.blockTimeStamp||null,
+      from:transferFromAddress(t),
+      to:transferToAddress(t),
+      nextFrom:i+1<chronological.length?transferFromAddress(chronological[i+1]):""
+    }));
+
+    for(const row of normalizedChain){
+      if((!row.to || !/^0x[0-9a-f]{40}$/.test(row.to)) && /^0x[0-9a-f]{40}$/.test(row.nextFrom)){
+        row.to=row.nextFrom;
+        row.inferredTo=true;
+      }
+    }
+
+    if(String(nftId)==="7993" || String(nftId)==="7994"){
+      console.info("DAO1 NFT Solar Wallet-Matching",{
+        nft:`${nftContract}#${nftId}`,
+        tracked_wallets:trackedWallets.map(w=>({
+          wallet_id:String(w?.dbId||w?.id||""),
+          label:w?.label||"",
+          address:lower(walletAddress(w))
+        })),
+        chain:normalizedChain.map(r=>({
+          block:r.block,time:r.ts,from:r.from,to:r.to,next_from:r.nextFrom,
+          from_is_own:tracked.has(r.from),to_is_own:tracked.has(r.to),
+          inferred_to:!!r.inferredTo
+        }))
+      });
+    }
+
+    for(const row of normalizedChain){
+      const t=row.raw;
+      const from=row.from, to=row.to;
+      const block=row.block;
+      const ts=row.ts;
 
       if(from && tracked.has(from)){
-        const open=openByWallet.get(from);
+        let open=openByWallet.get(from);
+        if(!open){
+          const idx=normalizedChain.indexOf(row);
+          const prev=idx>0?normalizedChain[idx-1]:null;
+          if(prev && prev.block<block){
+            // Nur bei eindeutig konsistenter Kette: vorheriger Empfänger ist dieselbe
+            // eigene Wallet oder konnte aus diesem outgoing Transfer sicher abgeleitet werden.
+            const consistent=(prev.to===from) || (!!prev.inferredTo && prev.to===from);
+            if(consistent){
+              open={
+                user_id:ctx.currentUser.id,
+                project_key:PROJECT_KEY,
+                chain_key:CHAIN_KEY,
+                nft_contract:nftContract,
+                nft_id:Number(nftId),
+                nft_name:nftName,
+                wallet_id:walletIdForAddress(from),
+                owned_from_block:prev.block,
+                owned_from_at:prev.ts,
+                owned_to_block:null,
+                owned_to_at:null,
+                is_current:true,
+                _inferred_from_chain:true
+              };
+            }
+          }
+        }
         if(open){
           open.owned_to_block=block;
           open.owned_to_at=ts;
           open.is_current=false;
+          delete open._inferred_from_chain;
           ownPeriods.push(open);
           openByWallet.delete(from);
         }
