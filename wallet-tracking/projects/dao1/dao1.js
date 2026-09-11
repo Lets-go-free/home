@@ -6,6 +6,8 @@ window.DAO1Project = (() => {
   const SYSTEM_ADDRESS = "0x0200000000000000000000000000000000000001";
   const PAIR_ADDRESS = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
   const SYNC_TOPIC = "0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
+  const PRICE_SOURCE_TAG = "exact-v2";
+  const PRICE_LOOKBACK_BLOCKS = 10000;
   const RPC_URL = "https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc";
   const EXPLORER_API = "https://explorer.apertum.io/api/v2";
   const EXPLORER = "https://explorer.apertum.io";
@@ -905,23 +907,25 @@ window.DAO1Project = (() => {
   }
 
 
-  async function repairPriceAnchorBeforeBlock(block,status){
+  async function repairPriceAnchorBeforeBlock(block,status,{forceSearch=false}={}){
     block=Number(block);
     if(!Number.isFinite(block)||block<0)return null;
     let history=[];
     try{history=await loadCachedPrices(0,block);}catch{}
     let found=priceAtBlock(history,block);
-    if(found)return found;
+    if(found&&!forceSearch)return found;
 
-    // Search backwards from the affected transaction until the last real Sync before it is found.
-    // Windows grow progressively; this handles long periods without pool activity.
+    // IMPORTANT: a cached Sync somewhere before the transaction is not proof that the
+    // interval up to the transaction was scanned. Search backwards from the transaction
+    // itself until the real last Sync before it is found. This prevents one stale cached
+    // price from being reused for months of later transactions.
     let to=block;
-    let span=10000;
+    let span=PRICE_LOOKBACK_BLOCKS;
     let round=0;
     while(to>=0 && round<18){
       round++;
       const from=Math.max(0,to-span+1);
-      if(status)status.textContent=`Historischen APTM-Preis reparieren: Block ${block} · Suche ${from}–${to}…`;
+      if(status)status.textContent=`Historischen APTM-Preis verifizieren: Block ${block} · Suche ${from}–${to}…`;
       try{
         const logs=await fetchSyncLogsAdaptive(from,to,status);
         const meta=await poolMeta();
@@ -939,7 +943,25 @@ window.DAO1Project = (() => {
       to=from-1;
       span=Math.min(span*2,500000);
     }
-    return null;
+    return found||null;
+  }
+
+  function mergePriceWindows(blocks){
+    const raw=[...new Set((blocks||[]).map(Number).filter(Number.isFinite))]
+      .map(b=>[Math.max(0,b-PRICE_LOOKBACK_BLOCKS+1),b])
+      .sort((a,b)=>a[0]-b[0]);
+    const merged=[];
+    for(const w of raw){
+      const last=merged[merged.length-1];
+      if(last&&w[0]<=last[1]+1)last[1]=Math.max(last[1],w[1]);
+      else merged.push([...w]);
+    }
+    return merged;
+  }
+
+  function hasRecentVerifiedAnchor(history,block){
+    const ph=priceAtBlock(history,Number(block));
+    return !!(ph&&Number(ph.block_number)>=Number(block)-PRICE_LOOKBACK_BLOCKS+1);
   }
 
   async function repairMissingPriceBlocks(blocks,status){
@@ -989,7 +1011,7 @@ window.DAO1Project = (() => {
       return {
         price:Number(ph.aptm_usd),
         priceBlock:Number(ph.block_number),
-        source:`APTM/wUSDT Pool · Sync Block ${ph.block_number}`
+        source:`APTM/wUSDT Pool · Sync Block ${ph.block_number} · ${PRICE_SOURCE_TAG}`
       };
     }
     // Apertum bleibt vollständig on-chain. Fehlt zum historischen Zeitpunkt ein
@@ -998,29 +1020,41 @@ window.DAO1Project = (() => {
   }
 
   async function ensurePricesForClaimBlocks(claimBlocks,status){
-    if(!claimBlocks.length)return [];
-    const minBlock=Math.min(...claimBlocks),maxBlock=Math.max(...claimBlocks);
+    const blocks=[...new Set((claimBlocks||[]).map(Number).filter(Number.isFinite))].sort((a,b)=>a-b);
+    if(!blocks.length)return [];
+    const minBlock=blocks[0],maxBlock=blocks[blocks.length-1];
     let history=[];
     try{history=await loadCachedPrices(minBlock,maxBlock);}catch(e){console.warn("APTM Preis-Cache:",e);}
 
-    const windows=missingPriceWindows(history,claimBlocks);
-    for(const [from,to] of windows){
-      try{
-        await syncPriceRangeChunked(from,to,status);
-      }catch(e){
-        // Price enrichment is best-effort. Claims must still be saved.
-        console.warn(`Historischer APTM-Preis ${from}-${to} konnte nicht ergänzt werden:`,e);
+    const ctx=getContext?.();
+    if(ctx?.isAdmin){
+      // A previous implementation treated "some cached Sync <= tx block" as complete
+      // historical coverage. That is false: newer Syncs may simply never have been fetched.
+      // Scan the immediate pre-transaction windows and merge overlaps to avoid duplicate RPC work.
+      const windows=mergePriceWindows(blocks);
+      for(let i=0;i<windows.length;i++){
+        const [from,to]=windows[i];
+        try{
+          if(status)status.textContent=`Historische APTM-Kurse verifizieren ${i+1}/${windows.length}: ${from}–${to}…`;
+          await syncPriceRangeChunked(from,to,status);
+        }catch(e){
+          console.warn(`Historischer APTM-Preis ${from}-${to} konnte nicht ergänzt werden:`,e);
+        }
       }
-    }
-    try{history=await loadCachedPrices(minBlock,maxBlock);}catch(e){console.warn("APTM Preis-Cache neu laden:",e);}
+      try{history=await loadCachedPrices(minBlock,maxBlock);}catch(e){console.warn("APTM Preis-Cache neu laden:",e);}
 
-    const unresolved=[...new Set(claimBlocks.map(Number).filter(Number.isFinite))].filter(b=>!priceAtBlock(history,b));
-    if(unresolved.length){
-      try{
-        await repairMissingPriceBlocks(unresolved,status);
-        history=await loadCachedPrices(Math.min(...unresolved),maxBlock);
-      }catch(e){
-        console.warn("Gezielte APTM-Kursreparatur:",e);
+      // If no Sync exists in the immediate lookback window, expand backwards for that
+      // transaction until the actual preceding Sync is found.
+      const unresolved=blocks.filter(b=>!hasRecentVerifiedAnchor(history,b));
+      for(let i=0;i<unresolved.length;i++){
+        try{
+          await repairPriceAnchorBeforeBlock(unresolved[i],status,{forceSearch:true});
+        }catch(e){
+          console.warn("Gezielte APTM-Kursreparatur:",e);
+        }
+      }
+      if(unresolved.length){
+        try{history=await loadCachedPrices(minBlock,maxBlock);}catch(e){console.warn("APTM Preis-Cache final neu laden:",e);}
       }
     }
     return history;
@@ -1028,7 +1062,7 @@ window.DAO1Project = (() => {
 
   async function backfillCachedClaimPrices(walletAddress,nftIds,status){
     const claims=await loadCachedClaims(walletAddress,nftIds);
-    const missing=claims.filter(r=>r.aptm_usd==null);
+    const missing=claims.filter(r=>!r.price_is_manual && (r.aptm_usd==null || !String(r.price_source||"").includes(PRICE_SOURCE_TAG)));
     if(!missing.length)return claims;
     const blocks=missing.map(r=>Number(r.block_number)).filter(Number.isFinite);
     const history=await ensurePricesForClaimBlocks(blocks,status);
@@ -1226,7 +1260,11 @@ window.DAO1Project = (() => {
 
   async function enrichTransactionHistoricalPrices(address,jobToken=transactionJobToken){
     const txs=await loadTransactionRows(address,null);
-    const pending=txs.filter(r=>!r.price_is_manual && Number(r.block_number)>0 && (r.aptm_usd==null || (Number(r.gas_aptm||0)>0 && r.gas_usd==null)));
+    const pending=txs.filter(r=>!r.price_is_manual && Number(r.block_number)>0 && (
+      r.aptm_usd==null ||
+      (Number(r.gas_aptm||0)>0 && r.gas_usd==null) ||
+      !String(r.price_source||"").includes(PRICE_SOURCE_TAG)
+    ));
     if(!pending.length)return {updated:0,missing:0};
     if(jobToken!==transactionJobToken)return {updated:0,missing:pending.length};
 
@@ -1245,10 +1283,11 @@ window.DAO1Project = (() => {
         aptm_usd:price,
         value_usd:Number(r.value_aptm||0)*price,
         gas_usd:Number(r.gas_aptm||0)*price,
+        claim_reward_usd:r.claim_reward_aptm==null?r.claim_reward_usd:Number(r.claim_reward_aptm||0)*price,
         price_source:px.source,
         updated_at:new Date().toISOString()
       };
-      // Claims keep their separately calculated reward USD; only transaction value/gas are backfilled here.
+      // Claim reward USD is derived from the same transaction-block price and is repaired too.
       const {error}=await sb.from("project_transactions").update(patch)
         .eq("user_id",getContext?.().currentUser.id)
         .eq("wallet_id",walletIdForAddress(address))
@@ -1288,6 +1327,8 @@ window.DAO1Project = (() => {
           const walletRows=await loadTransactionRows(address,null);
           if(job!==transactionJobToken)return;
           await enrichTransactionsWithClaims(address,null,job);
+          if(job!==transactionJobToken)return;
+          await backfillCachedClaimPrices(address,null,document.getElementById("dao1TransactionStatus"));
           if(job!==transactionJobToken)return;
           await enrichTransactionHistoricalPrices(address,job);
           if(job!==transactionJobToken)return;
@@ -2034,8 +2075,9 @@ window.DAO1Project = (() => {
           const reward=rewardFromLogs(logs,address);
           const gas=feeAptm(c.t);
           const block=Number(c.t.block_number??c.t.block);
+          const px=await priceForTransaction(block,c.t.timestamp,history);
           const ph=priceAtBlock(history,block);
-          const price=ph?Number(ph.aptm_usd):null;
+          const price=px.price;
           claimRows.push({
             user_id:ctx.currentUser.id,
             project_key:PROJECT_KEY,
@@ -2056,7 +2098,8 @@ window.DAO1Project = (() => {
             aptm_usd:price,
             reward_usd:price==null?null:reward*price,
             gas_usd:price==null?null:gas*price,
-            price_block:ph?.block_number||null,
+            price_block:px.priceBlock||null,
+            price_source:px.source||null,
             updated_at:new Date().toISOString()
           });
         }
