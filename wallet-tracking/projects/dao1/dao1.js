@@ -87,7 +87,8 @@ window.DAO1Project = (() => {
         <div id="dao1-subtab-overview" class="project-subtab-panel"><div class="custom-token-card"><div class="chain-title">DAO1 · Apertum</div><div class="note">Projektübersicht für DAO1-spezifische Assets auf Apertum. Detailfunktionen sind in die Unter-Tabs gegliedert.</div></div></div>
         <div id="dao1-subtab-liquidity" class="project-subtab-panel" style="display:none"><div id="dao1LpContent"></div></div>
         <div id="dao1-subtab-config" class="project-subtab-panel" style="display:none"><div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div></div>
-        <div id="dao1-subtab-transactions" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><div class="chain-title">📒 Apertum Transaktionshistorie</div><div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Wallet-Wechsel lesen den Cache; erst „Daten aktualisieren“ lädt neue Blockchain-Daten, aktualisiert NFTs/Besitzerhistorie und reichert neue Claims an.</div><div id="dao1TransactionControls"></div><div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div><div id="dao1TransactionSummary" style="margin-top:10px"></div><div id="dao1TransactionTable" style="margin-top:10px"></div></div></div>
+        <div id="dao1-subtab-transactions" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><div class="chain-title">📒 Apertum Transaktionshistorie</div><div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Wallet-Wechsel lesen den Cache; erst „Daten aktualisieren“ lädt neue Blockchain-Daten, aktualisiert NFTs/Besitzerhistorie und reichert neue Claims an.</div><div id="dao1TransactionControls"></div><div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
+        <div id="dao1PriceJobLog" class="note" style="display:block;margin-top:8px;padding:8px 10px;border:1px solid rgba(128,128,128,.2);border-radius:8px">⏱️ Laufzeitdiagnose erscheint hier beim historischen Preisjob.</div><div id="dao1TransactionSummary" style="margin-top:10px"></div><div id="dao1TransactionTable" style="margin-top:10px"></div></div></div>
         <div id="dao1-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">DAO1 / Apertum · Hilfe</h3><p class="note"><strong>Liquidity Pools:</strong> Beim Öffnen werden ausschließlich die zuletzt gespeicherten Supabase-Daten angezeigt. Aktuelle LP-Positionen, 31.12.-Vergleich und Add-/Remove-Historie werden nur über „Daten aktualisieren“ neu von Blockchain/Explorer ermittelt und danach wieder gecached.</p><p class="note"><strong>Transaktionen &amp; Claims:</strong> „Daten aktualisieren“ synchronisiert neue Transaktionen, Claims, historische APTM-Kurse sowie NFT-Bestand und Besitzerhistorie. Filter und Exporte arbeiten danach aus dem gespeicherten Bestand.</p><p class="note"><strong>Konfiguration:</strong> Hier werden DAO1-Projektassets und NFTs klassifiziert. Die Klassifizierung steuert Filter und Bezeichnungen, nicht die Erkennung der Blockchain-Transaktionen. Fehlende historische APTM-Kurse können manuell ergänzt werden und bleiben als manuell gekennzeichnet.</p></div></div>
       `;
       app.appendChild(panel);
@@ -889,6 +890,7 @@ window.DAO1Project = (() => {
   async function fetchSyncLogsAdaptive(fromBlock,toBlock,status,depth=0){
     if(fromBlock>toBlock)return [];
     try{
+      if(activePriceJobLog){activePriceJobLog.rpcChunks++;renderPriceJobLog();}
       if(status)status.textContent=`Historische APTM-Kurse: Pool-Syncs ${fromBlock}–${toBlock}…`;
       return await rpc("eth_getLogs",[{
         fromBlock:hexBlock(fromBlock),
@@ -911,12 +913,67 @@ window.DAO1Project = (() => {
     }
   }
 
+  function isSyncExplorerLog(l){
+    const t0=String((l?.topics||[])[0]||"").toLowerCase();
+    if(t0)return t0===SYNC_TOPIC.toLowerCase();
+    const call=String(l?.decoded?.method_call||l?.decoded?.method||"").toLowerCase();
+    return call.startsWith("sync(")||call==="sync";
+  }
+
+  async function syncPriceRangeFromExplorer(minBlock,maxBlock,status){
+    const meta=await poolMeta();
+    let url=`${EXPLORER_API}/addresses/${PAIR_ADDRESS}/logs`;
+    const rows=[];
+    let pages=0,seenRelevantRange=false;
+    while(url && pages<500){
+      const j=await fetchJson(url,"Apertum Explorer Pool-Logs");
+      pages++;
+      if(activePriceJobLog){activePriceJobLog.explorerPages++;renderPriceJobLog();}
+      const items=j.items||[];
+      if(!items.length)break;
+      let oldest=Infinity,newest=-Infinity;
+      for(const l of items){
+        const b=Number(l.block_number??parseInt(l.blockNumber||"0",16));
+        if(Number.isFinite(b)){oldest=Math.min(oldest,b);newest=Math.max(newest,b);}
+        if(b<minBlock||b>maxBlock||!isSyncExplorerLog(l))continue;
+        seenRelevantRange=true;
+        const normalized={
+          data:l.data,blockNumber:hexBlock(b),logIndex:hexBlock(Number(l.index??l.log_index??0)),
+          transactionHash:l.transaction_hash||l.transactionHash||l.tx_hash||null
+        };
+        const row=priceRowFromSyncLog(normalized,meta);
+        if(row)rows.push(row);
+      }
+      if(status)status.textContent=`Historische APTM-Kurse: Explorer-Logs Seite ${pages} · ${rows.length} Syncs im Zielbereich…`;
+      if(activePriceJobLog){activePriceJobLog.explorerLogs=rows.length; if(pages===1||pages%10===0)priceJobLog(`Explorer Pool-Logs: Seite ${pages} · ${rows.length} Syncs`);}
+      // Blockscout address logs are newest-first. Once the page reaches below minBlock,
+      // older pages cannot contribute to the requested range.
+      if(Number.isFinite(oldest)&&oldest<=minBlock)break;
+      url=nextUrl(`${EXPLORER_API}/addresses/${PAIR_ADDRESS}/logs`,j.next_page_params);
+    }
+    if(rows.length){
+      await savePriceRows(rows);
+      if(activePriceJobLog)priceJobLog(`Explorer abgeschlossen · ${rows.length} Sync-Preisanker gespeichert`);
+    }
+    return {rows:rows.sort((a,b)=>Number(a.block_number)-Number(b.block_number)||Number(a.log_index)-Number(b.log_index)),pages,seenRelevantRange};
+  }
+
   async function syncPriceRangeChunked(minBlock,maxBlock,status){
     const ctx=getContext?.();
     if(!ctx?.isAdmin)return [];
+    try{
+      const viaExplorer=await syncPriceRangeFromExplorer(minBlock,maxBlock,status);
+      if(viaExplorer.rows.length || viaExplorer.seenRelevantRange){
+        return viaExplorer.rows;
+      }
+      if(activePriceJobLog)priceJobLog("Explorer lieferte keine verwertbaren Syncs · RPC-Fallback");
+    }catch(e){
+      console.warn("APTM Pool-Logs Explorer-Fallback:",e);
+      if(activePriceJobLog)priceJobLog(`Explorer nicht verfügbar · RPC-Fallback: ${e?.message||e}`);
+    }
     const meta=await poolMeta();
-    const CHUNK=10000;
-    const CONCURRENCY=4;
+    const CHUNK=25000;
+    const CONCURRENCY=6;
     const ranges=[];
     for(let from=Math.max(0,minBlock);from<=maxBlock;from+=CHUNK){
       ranges.push([from,Math.min(maxBlock,from+CHUNK-1)]);
@@ -1190,6 +1247,7 @@ window.DAO1Project = (() => {
     for(let i=0;i<rows.length;i+=BATCH){
       const part=rows.slice(i,i+BATCH);
       await saveTransactionRows(part);
+      if(activePriceJobLog){activePriceJobLog.dbBatches++;renderPriceJobLog();}
       if(status)setTransactionStatus("db",`${label} werden batchweise gespeichert ${Math.min(i+BATCH,rows.length)}/${rows.length}…`,
         `Bis zu ${BATCH} Transaktionen pro Datenbank-Request statt Einzelupdates.`);
     }
@@ -1376,14 +1434,22 @@ window.DAO1Project = (() => {
         const w=targets[wi],address=walletAddress(w);
         setTransactionStatus("db",`Wallet ${wi+1}/${targets.length}: gespeicherte Transaktionen werden für die Preis-Neuberechnung geladen…`,
           `${w.label} · Kein erneuter Explorer-Transaktionsscan.`);
-        const rows=(await loadTransactionRows(address,null)).filter(r=>!r.price_is_manual && Number(r.block_number)>0);
-        totalRows+=rows.length;
-        if(!rows.length)continue;
+        const allRows=(await loadTransactionRows(address,null)).filter(r=>!r.price_is_manual && Number(r.block_number)>0);
+        const rows=allRows.filter(r=>!String(r.price_source||"").includes(PRICE_SOURCE_TAG) && !String(r.price_source||"").includes(PRICE_MISSING_TAG));
+        totalRows+=allRows.length;
+        if(!rows.length){
+          setTransactionStatus("ready",`Wallet ${wi+1}/${targets.length}: historische Preise bereits aktuell.`,`Preisrevision ${PRICE_SOURCE_TAG}; ${allRows.length.toLocaleString("de-DE")} gecachte TX mussten nicht erneut geprüft werden.`);
+          continue;
+        }
 
         const blocks=[...new Set(rows.map(r=>Number(r.block_number)).filter(Number.isFinite))];
+        if(!activePriceJobLog)priceJobStart(rows.length,blocks.length);
+        priceJobLog(`Wallet ${wi+1}/${targets.length} · ${rows.length} veraltete TX · ${blocks.length} Preisblöcke`);
         setTransactionStatus("loading",`Wallet ${wi+1}/${targets.length}: historische Poolpreise werden geprüft…`,
           `${rows.length.toLocaleString("de-DE")} gecachte Transaktionen · ${blocks.length.toLocaleString("de-DE")} unterschiedliche TX-Blöcke.`);
+        priceJobLog("Preisanker laden/verifizieren gestartet");
         const history=await ensurePricesForClaimBlocks(blocks,document.getElementById("dao1TransactionStatus"));
+        priceJobLog(`Preisanker bereit · ${history.length.toLocaleString("de-DE")} Cache-Zeilen`);
         if(job!==transactionJobToken)return;
 
         const txPatches=[];
@@ -1427,8 +1493,10 @@ window.DAO1Project = (() => {
           }
         }
 
+        priceJobLog(`Preiszuordnung fertig · ${txPatches.length.toLocaleString("de-DE")} TX · Speichern startet`);
         await saveTransactionPricePatches(txPatches,document.getElementById("dao1TransactionStatus"),`Wallet ${wi+1}/${targets.length}: historische Preise`);
         totalUpdated+=txPatches.length;
+        priceJobLog(`TX-Preise gespeichert · ${txPatches.length.toLocaleString("de-DE")} Zeilen`);
 
         // Claim-Repricing darf niemals neue/partielle project_nft_claims-Zeilen erzeugen.
         // Ein partielles UPSERT würde NOT-NULL-Felder wie block_number verlieren bzw. als NULL
@@ -1475,6 +1543,7 @@ window.DAO1Project = (() => {
           const BATCH=500;
           for(let i=0;i<safeClaims.length;i+=BATCH){
             await saveClaimRows(safeClaims.slice(i,i+BATCH));
+            if(activePriceJobLog){activePriceJobLog.dbBatches++;renderPriceJobLog();}
             setTransactionStatus("db",`Wallet ${wi+1}/${targets.length}: Claim-USD werden batchweise gespeichert ${Math.min(i+BATCH,safeClaims.length)}/${safeClaims.length}…`,
               `Preislogik ${PRICE_SOURCE_TAG} · vorhandene Claim-Zeilen werden vollständig erhalten.`);
           }
@@ -1487,6 +1556,7 @@ window.DAO1Project = (() => {
       renderTransactionHistory();
       const quality=historicalPriceQualityCounts(transactionRows);
       const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
+      if(activePriceJobLog)priceJobLog(`Fertig · ${totalUpdated.toLocaleString("de-DE")} TX aktualisiert · ${totalMissing.toLocaleString("de-DE")} ohne Preis`);
       setTransactionStatus("ready",`Historische APTM-Preise neu berechnet – ${totalUpdated.toLocaleString("de-DE")} Transaktionen aktualisiert.`,
         `${totalRows.toLocaleString("de-DE")} gecachte Transaktionen geprüft · ${totalClaims.toLocaleString("de-DE")} Claim-Datensätze mitgeführt · Preisqualität: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte. Preislogik ${PRICE_SOURCE_TAG}; kein Explorer-Transaktionsscan.`);
     }catch(e){
