@@ -6,9 +6,12 @@ window.DAO1Project = (() => {
   const SYSTEM_ADDRESS = "0x0200000000000000000000000000000000000001";
   const PAIR_ADDRESS = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
   const SYNC_TOPIC = "0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
-  const PRICE_SOURCE_TAG = "exact-v7";
-  const PRICE_MISSING_TAG = "missing-v7";
+  const PRICE_SOURCE_TAG = "exact-v9";
+  const PRICE_MISSING_TAG = "missing-v9";
   const PRICE_LOOKBACK_BLOCKS = 10000;
+  const PRICE_COVERAGE_VERSION = 1;
+  const PRICE_RPC_CHUNK = 25000;
+  const PRICE_RPC_CONCURRENCY = 6;
   const RPC_URL = "https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc";
   const EXPLORER_API = "https://explorer.apertum.io/api/v2";
   const EXPLORER = "https://explorer.apertum.io";
@@ -68,9 +71,10 @@ window.DAO1Project = (() => {
         <span>Laufzeit: <strong>${fmtElapsed(elapsed)}</strong></span>
         <span>TX: <strong>${x.txCount.toLocaleString("de-DE")}</strong></span>
         <span>Preisblöcke: <strong>${x.blockCount.toLocaleString("de-DE")}</strong></span>
-        <span>Explorer-Seiten: <strong>${x.explorerPages.toLocaleString("de-DE")}</strong></span>
-        <span>Syncs: <strong>${x.explorerLogs.toLocaleString("de-DE")}</strong></span>
-        <span>RPC-Chunks: <strong>${x.rpcChunks.toLocaleString("de-DE")}</strong></span>
+        <span>Coverage genutzt: <strong>${x.coverageHits.toLocaleString("de-DE")}</strong></span>
+        <span>Neu geprüft: <strong>${x.coverageScans.toLocaleString("de-DE")}</strong></span>
+        <span>Syncs neu: <strong>${x.syncLogs.toLocaleString("de-DE")}</strong></span>
+        <span>RPC-Requests: <strong>${x.rpcChunks.toLocaleString("de-DE")}</strong></span>
         <span>DB-Batches: <strong>${x.dbBatches.toLocaleString("de-DE")}</strong></span>
       </div>
       <div style="max-height:150px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.45">${x.lines.slice(-30).map(l=>`<div>${l}</div>`).join("")}</div>`;
@@ -78,7 +82,7 @@ window.DAO1Project = (() => {
 
   function priceJobStart(txCount=0,blockCount=0){
     if(priceJobTimer){clearInterval(priceJobTimer);priceJobTimer=null;}
-    activePriceJobLog={startedAt:Date.now(),txCount:Number(txCount||0),blockCount:Number(blockCount||0),explorerPages:0,explorerLogs:0,rpcChunks:0,dbBatches:0,lines:[]};
+    activePriceJobLog={startedAt:Date.now(),txCount:Number(txCount||0),blockCount:Number(blockCount||0),coverageHits:0,coverageScans:0,syncLogs:0,rpcChunks:0,dbBatches:0,lines:[]};
     priceJobLog(`Start · ${Number(txCount||0).toLocaleString("de-DE")} TX · ${Number(blockCount||0).toLocaleString("de-DE")} Preisblöcke`);
     priceJobTimer=setInterval(renderPriceJobLog,1000);
     renderPriceJobLog();
@@ -934,100 +938,117 @@ window.DAO1Project = (() => {
     if(!rows.length)return;
     const {error}=await sb.from("aptm_price_history")
       .upsert(rows,{onConflict:"pool_address,block_number,log_index",ignoreDuplicates:true});
-    if(error)console.warn("APTM Preis-Cache speichern:",error);
+    if(error){console.warn("APTM Preis-Cache speichern:",error);throw error;}
   }
 
-  async function fetchSyncLogsAdaptive(fromBlock,toBlock,status,depth=0){
+  function mergeCoverageRanges(rows){
+    const ranges=(rows||[])
+      .map(r=>[Number(r.from_block),Number(r.to_block)])
+      .filter(([a,b])=>Number.isFinite(a)&&Number.isFinite(b)&&a<=b)
+      .sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+    const out=[];
+    for(const r of ranges){
+      const last=out[out.length-1];
+      if(last&&r[0]<=last[1]+1)last[1]=Math.max(last[1],r[1]);
+      else out.push([...r]);
+    }
+    return out;
+  }
+
+  async function loadPriceCoverage(fromBlock,toBlock){
+    const from=Math.max(0,Number(fromBlock||0)),to=Math.max(from,Number(toBlock||0));
+    try{
+      const all=[];
+      let offset=0;
+      while(true){
+        const {data,error}=await sb.from("aptm_price_coverage").select("from_block,to_block,sync_count")
+          .eq("project_key",PROJECT_KEY).eq("chain_key",CHAIN_KEY)
+          .eq("pool_address",lower(PAIR_ADDRESS)).eq("parser_version",PRICE_COVERAGE_VERSION)
+          .lte("from_block",to).gte("to_block",from)
+          .order("from_block",{ascending:true}).range(offset,offset+DB_PAGE_SIZE-1);
+        if(error)throw error;
+        const page=data||[];
+        all.push(...page);
+        if(page.length<DB_PAGE_SIZE)break;
+        offset+=DB_PAGE_SIZE;
+      }
+      return mergeCoverageRanges(all);
+    }catch(e){
+      // Deployment-safe: if migration 047 is not installed yet, pricing still works,
+      // only without persistent range reuse.
+      console.warn("APTM Coverage-Cache lesen:",e);
+      if(activePriceJobLog)priceJobLog("Coverage-Tabelle nicht verfügbar · temporärer RPC-Modus");
+      return [];
+    }
+  }
+
+  function subtractCoveredRange(fromBlock,toBlock,covered){
+    const from=Math.max(0,Number(fromBlock||0)),to=Math.max(from,Number(toBlock||0));
+    const gaps=[];
+    let cursor=from;
+    for(const [a0,b0] of mergeCoverageRanges((covered||[]).map(([a,b])=>({from_block:a,to_block:b})))){
+      const a=Math.max(from,a0),b=Math.min(to,b0);
+      if(b<cursor||a>to)continue;
+      if(a>cursor)gaps.push([cursor,a-1]);
+      cursor=Math.max(cursor,b+1);
+      if(cursor>to)break;
+    }
+    if(cursor<=to)gaps.push([cursor,to]);
+    return gaps;
+  }
+
+  async function savePriceCoverage(fromBlock,toBlock,syncCount){
+    const ctx=getContext?.();
+    if(!ctx?.isAdmin)return;
+    try{
+      const row={
+        project_key:PROJECT_KEY,chain_key:CHAIN_KEY,pool_address:lower(PAIR_ADDRESS),
+        parser_version:PRICE_COVERAGE_VERSION,from_block:Number(fromBlock),to_block:Number(toBlock),
+        sync_count:Number(syncCount||0),scanned_at:new Date().toISOString()
+      };
+      const {error}=await sb.from("aptm_price_coverage").upsert(row,{onConflict:"pool_address,parser_version,from_block,to_block"});
+      if(error)throw error;
+    }catch(e){
+      console.warn("APTM Coverage-Cache speichern:",e);
+      if(activePriceJobLog)priceJobLog("Coverage konnte nicht persistent gespeichert werden");
+    }
+  }
+
+  async function fetchSyncLogsVerifiedAdaptive(fromBlock,toBlock,status,depth=0){
     if(fromBlock>toBlock)return [];
     try{
       if(activePriceJobLog){activePriceJobLog.rpcChunks++;renderPriceJobLog();}
       if(status)status.textContent=`Historische APTM-Kurse: Pool-Syncs ${fromBlock}–${toBlock}…`;
       return await rpc("eth_getLogs",[{
-        fromBlock:hexBlock(fromBlock),
-        toBlock:hexBlock(toBlock),
-        address:PAIR_ADDRESS,
-        topics:[SYNC_TOPIC]
+        fromBlock:hexBlock(fromBlock),toBlock:hexBlock(toBlock),address:PAIR_ADDRESS,topics:[SYNC_TOPIC]
       }]);
     }catch(e){
       const span=toBlock-fromBlock+1;
-      // A timeout/range limit must not abort the whole mining scan.
-      // Recursively split until small chunks; below that leave this price gap unresolved.
-      if(span<=500 || depth>=12){
-        console.warn(`APTM Preis-Chunk ${fromBlock}-${toBlock} übersprungen:`,e);
-        return [];
-      }
+      if(span<=500||depth>=12)throw e; // never mark an unresolved range as covered
       const mid=Math.floor((fromBlock+toBlock)/2);
-      const left=await fetchSyncLogsAdaptive(fromBlock,mid,status,depth+1);
-      const right=await fetchSyncLogsAdaptive(mid+1,toBlock,status,depth+1);
+      const left=await fetchSyncLogsVerifiedAdaptive(fromBlock,mid,status,depth+1);
+      const right=await fetchSyncLogsVerifiedAdaptive(mid+1,toBlock,status,depth+1);
       return [...left,...right];
     }
-  }
-
-  function isSyncExplorerLog(l){
-    const t0=String((l?.topics||[])[0]||"").toLowerCase();
-    if(t0)return t0===SYNC_TOPIC.toLowerCase();
-    const call=String(l?.decoded?.method_call||l?.decoded?.method||"").toLowerCase();
-    return call.startsWith("sync(")||call==="sync";
-  }
-
-  async function syncPriceRangeFromExplorer(minBlock,maxBlock,status){
-    const meta=await poolMeta();
-    let url=`${EXPLORER_API}/addresses/${PAIR_ADDRESS}/logs`;
-    const rows=[];
-    let pages=0,seenRelevantRange=false;
-    while(url && pages<500){
-      const j=await fetchJson(url,"Apertum Explorer Pool-Logs");
-      pages++;
-      if(activePriceJobLog){activePriceJobLog.explorerPages++;renderPriceJobLog();}
-      const items=j.items||[];
-      if(!items.length)break;
-      let oldest=Infinity,newest=-Infinity;
-      for(const l of items){
-        const b=Number(l.block_number??parseInt(l.blockNumber||"0",16));
-        if(Number.isFinite(b)){oldest=Math.min(oldest,b);newest=Math.max(newest,b);}
-        if(b<minBlock||b>maxBlock||!isSyncExplorerLog(l))continue;
-        seenRelevantRange=true;
-        const normalized={
-          data:l.data,blockNumber:hexBlock(b),logIndex:hexBlock(Number(l.index??l.log_index??0)),
-          transactionHash:l.transaction_hash||l.transactionHash||l.tx_hash||null
-        };
-        const row=priceRowFromSyncLog(normalized,meta);
-        if(row)rows.push(row);
-      }
-      if(status)status.textContent=`Historische APTM-Kurse: Explorer-Logs Seite ${pages} · ${rows.length} Syncs im Zielbereich…`;
-      if(activePriceJobLog){activePriceJobLog.explorerLogs=rows.length; if(pages===1||pages%10===0)priceJobLog(`Explorer Pool-Logs: Seite ${pages} · ${rows.length} Syncs`);}
-      // Blockscout address logs are newest-first. Once the page reaches below minBlock,
-      // older pages cannot contribute to the requested range.
-      if(Number.isFinite(oldest)&&oldest<=minBlock)break;
-      url=nextUrl(`${EXPLORER_API}/addresses/${PAIR_ADDRESS}/logs`,j.next_page_params);
-    }
-    if(rows.length){
-      await savePriceRows(rows);
-      if(activePriceJobLog)priceJobLog(`Explorer abgeschlossen · ${rows.length} Sync-Preisanker gespeichert`);
-    }
-    return {rows:rows.sort((a,b)=>Number(a.block_number)-Number(b.block_number)||Number(a.log_index)-Number(b.log_index)),pages,seenRelevantRange};
   }
 
   async function syncPriceRangeChunked(minBlock,maxBlock,status){
     const ctx=getContext?.();
     if(!ctx?.isAdmin)return [];
-    try{
-      const viaExplorer=await syncPriceRangeFromExplorer(minBlock,maxBlock,status);
-      if(viaExplorer.rows.length || viaExplorer.seenRelevantRange){
-        return viaExplorer.rows;
-      }
-      if(activePriceJobLog)priceJobLog("Explorer lieferte keine verwertbaren Syncs · RPC-Fallback");
-    }catch(e){
-      console.warn("APTM Pool-Logs Explorer-Fallback:",e);
-      if(activePriceJobLog)priceJobLog(`Explorer nicht verfügbar · RPC-Fallback: ${e?.message||e}`);
+    const min=Math.max(0,Number(minBlock||0)),max=Math.max(min,Number(maxBlock||0));
+    const covered=await loadPriceCoverage(min,max);
+    const missing=subtractCoveredRange(min,max,covered);
+    if(activePriceJobLog){
+      activePriceJobLog.coverageHits+=covered.length;
+      priceJobLog(`Coverage ${min}–${max}: ${covered.length} vorhandene Bereiche · ${missing.length} Lücken`);
+    }
+    if(!missing.length)return [];
+
+    const ranges=[];
+    for(const [a,b] of missing){
+      for(let from=a;from<=b;from+=PRICE_RPC_CHUNK)ranges.push([from,Math.min(b,from+PRICE_RPC_CHUNK-1)]);
     }
     const meta=await poolMeta();
-    const CHUNK=25000;
-    const CONCURRENCY=6;
-    const ranges=[];
-    for(let from=Math.max(0,minBlock);from<=maxBlock;from+=CHUNK){
-      ranges.push([from,Math.min(maxBlock,from+CHUNK-1)]);
-    }
     const rows=[];
     let next=0,done=0;
     async function worker(){
@@ -1035,23 +1056,39 @@ window.DAO1Project = (() => {
         const idx=next++;
         if(idx>=ranges.length)return;
         const [from,to]=ranges[idx];
-        const logs=await fetchSyncLogsAdaptive(from,to,null);
-        const part=(logs||[]).map(l=>priceRowFromSyncLog(l,meta)).filter(Boolean);
-        if(part.length){rows.push(...part);await savePriceRows(part);}
-        done++;
-        if(status)status.textContent=`Historische APTM-Kurse: Pool-Syncs ${done}/${ranges.length} Chunks geprüft…`;
+        try{
+          const logs=await fetchSyncLogsVerifiedAdaptive(from,to,null);
+          const part=(logs||[]).map(l=>priceRowFromSyncLog(l,meta)).filter(Boolean);
+          // Order is deliberate: sync rows first, coverage second. Coverage is only proof
+          // after the complete RPC range succeeded and all discovered Sync rows were saved.
+          if(part.length)await savePriceRows(part);
+          await savePriceCoverage(from,to,part.length);
+          rows.push(...part);
+          done++;
+          if(activePriceJobLog){
+            activePriceJobLog.coverageScans++;
+            activePriceJobLog.syncLogs+=part.length;
+            if(done===1||done%10===0||done===ranges.length)priceJobLog(`RPC-Coverage ${done}/${ranges.length} · ${part.length} Syncs im letzten Bereich`);
+            renderPriceJobLog();
+          }
+          if(status)status.textContent=`Historische APTM-Kurse: ${done}/${ranges.length} fehlende Coverage-Chunks geprüft…`;
+        }catch(e){
+          console.warn(`APTM Coverage ${from}-${to} NICHT gespeichert:`,e);
+          if(activePriceJobLog)priceJobLog(`RPC-Bereich ${from}–${to} fehlgeschlagen · bleibt ungeprüft`);
+          // Continue with other independent ranges. Failed range intentionally remains a gap.
+        }
       }
     }
-    await Promise.all(Array.from({length:Math.min(CONCURRENCY,ranges.length)},()=>worker()));
+    await Promise.all(Array.from({length:Math.min(PRICE_RPC_CONCURRENCY,ranges.length)},()=>worker()));
     return rows.sort((a,b)=>Number(a.block_number)-Number(b.block_number)||Number(a.log_index)-Number(b.log_index));
   }
-
 
   async function repairPriceAnchorBeforeBlock(block,status,{forceSearch=false}={}){
     block=Number(block);
     if(!Number.isFinite(block)||block<0)return null;
     let history=[];
-    try{history=await loadCachedPrices(0,block);}catch{}
+    const localFrom=Math.max(0,block-PRICE_LOOKBACK_BLOCKS+1);
+    try{history=await loadCachedPrices(localFrom,block);}catch{}
     let found=priceAtBlock(history,block);
     if(found&&!forceSearch)return found;
 
@@ -1067,15 +1104,12 @@ window.DAO1Project = (() => {
       const from=Math.max(0,to-span+1);
       if(status)status.textContent=`Historischen APTM-Preis verifizieren: Block ${block} · Suche ${from}–${to}…`;
       try{
-        const logs=await fetchSyncLogsAdaptive(from,to,status);
-        const meta=await poolMeta();
-        const rows=(logs||[]).map(l=>priceRowFromSyncLog(l,meta)).filter(Boolean);
-        await savePriceRows(rows);
-        if(rows.length){
-          history=await loadCachedPrices(0,block);
-          found=priceAtBlock(history,block);
-          if(found)return found;
-        }
+        await syncPriceRangeChunked(from,to,status);
+        // Also reload when the interval was already fully covered and therefore needed
+        // zero new RPC calls. A cached Sync inside this verified interval is sufficient.
+        history=await loadCachedPrices(from,block);
+        found=priceAtBlock(history,block);
+        if(found&&Number(found.block_number)>=from)return found;
       }catch(e){
         console.warn(`APTM Preis-Anker ${from}-${to}:`,e);
       }
@@ -1182,8 +1216,8 @@ window.DAO1Project = (() => {
 
     const ctx=getContext?.();
     if(ctx?.isAdmin){
-      // Verify merged pre-transaction windows once. Dense TX histories therefore become
-      // a handful of sequential RPC ranges instead of one lookup per transaction.
+      // Verify only missing parts of merged pre-transaction windows. Coverage is global,
+      // pool-specific and parser-versioned, so new wallets/users reuse already proven ranges.
       const windows=mergePriceWindows(blocks);
       for(let i=0;i<windows.length;i++){
         const [from,to]=windows[i];
@@ -1195,7 +1229,7 @@ window.DAO1Project = (() => {
         }
       }
 
-      // One predecessor search per merged window is sufficient. The old exact-v4 path
+      // One predecessor search per merged window is sufficient. The older pre-coverage path
       // expanded backwards separately for every TX block without a recent Sync, which
       // multiplied identical RPC work on quiet pool periods.
       for(let i=0;i<windows.length;i++){
@@ -1608,7 +1642,7 @@ window.DAO1Project = (() => {
       const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
       if(activePriceJobLog)priceJobLog(`Fertig · ${totalUpdated.toLocaleString("de-DE")} TX aktualisiert · ${totalMissing.toLocaleString("de-DE")} ohne Preis`);
       setTransactionStatus("ready",`Historische APTM-Preise neu berechnet – ${totalUpdated.toLocaleString("de-DE")} Transaktionen aktualisiert.`,
-        `${totalRows.toLocaleString("de-DE")} gecachte Transaktionen geprüft · ${totalClaims.toLocaleString("de-DE")} Claim-Datensätze mitgeführt · Preisqualität: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte. Preislogik ${PRICE_SOURCE_TAG}; kein Explorer-Transaktionsscan.`);
+        `${totalRows.toLocaleString("de-DE")} gecachte Transaktionen geprüft · ${totalClaims.toLocaleString("de-DE")} Claim-Datensätze mitgeführt · Preisqualität: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte. Preislogik ${PRICE_SOURCE_TAG}; kein Explorer-Transaktionsscan; globaler Coverage-Cache v1.`);
     }catch(e){
       console.error("DAO1 historische Preis-Neuberechnung:",e);
       setTransactionStatus("error","Historische Preis-Neuberechnung fehlgeschlagen.",e?.message||String(e));
