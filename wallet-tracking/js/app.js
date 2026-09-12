@@ -24,6 +24,7 @@ async function checkIsAdmin() {
 
 function applyAdminDebugMode(){
   const enabled=!!(isAdmin&&adminDebugMode);
+  document.body.classList.toggle("admin-user",!!isAdmin);
   document.body.classList.toggle("admin-debug-mode",enabled);
   const btn=document.getElementById("adminDebugModeBtn");
   if(btn){
@@ -1264,6 +1265,13 @@ function renderAdminChainCoverage(){
 function yearEndCoverageLabel(chain,c){const wt=c.walletType||"";if(wt==="evm")return "✓ exakt · historischer Block";if(wt==="btc")return "✓ exakt · UTXO-Stichtag";if(wt==="xrp")return "✓ XRP nativ · Full-History Ledger";if(wt==="sol")return "✓ SOL + SPL/Token-2022 · historischer Slot";if(wt==="tron")return "Noch nicht unterstützt";return "Noch nicht unterstützt";}
 function renderHelpChainCoverage(){const el=document.getElementById("helpChainCoverage");if(!el)return;const balanceProviders=["rpc","evm_rpc","blockstream","mempool","xrpscan","solana_rpc","solana_publicnode","trongrid","akash_rest","apertum_explorer","blockscout"],feeProviders=["routescan","nodereal","blockscout","xrpscan","solana_publicnode","apertum_explorer","mempool","tronscan"];const rows=Object.keys(CHAIN_CONFIG).sort((a,b)=>(CHAIN_CONFIG[a]?.sortOrder||100)-(CHAIN_CONFIG[b]?.sortOrder||100)).map(chain=>{const c=CHAIN_CONFIG[chain]||{},m=CHAIN_META[chain]||{};return `<tr><td><strong>${escapeAttr(m.label||chain)}</strong></td><td>${coverageCell(true,c.balanceProvider,balanceProviders)}</td><td>${coverageCell(c.feesEnabled,c.feeProvider,feeProviders)}</td><td>${escapeAttr(yearEndCoverageLabel(chain,c))}</td></tr>`}).join("");el.innerHTML=`<div class="chain-table-wrap help-chain-coverage-wrap"><table class="chain-admin-table help-chain-coverage-table"><thead><tr><th>Chain</th><th>Aktueller Bestand</th><th>Gebühren</th><th>Bestand per 31.12.</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 function switchProjectSubtab(project,name,button){document.querySelectorAll(`#tab-${project} .project-subtab-panel`).forEach(x=>x.style.display="none");const p=document.getElementById(`${project}-subtab-${name}`);if(p)p.style.display="block";document.querySelectorAll(`#tab-${project} .project-subtabs .tab-btn`).forEach(x=>x.classList.remove("active"));button?.classList.add("active");}
+
+function openTlnDiscoveryTab(panel,button){
+  switchProjectSubtab('tlnvow','discovery',button);
+  const api=window.TLNVOWDiscovery;
+  if(api?.switchProjectUserTab)api.switchProjectUserTab(panel||'overview');
+}
+window.openTlnDiscoveryTab=openTlnDiscoveryTab;
 
 function adminSimpleInput(value,key,type="text",extra=""){
   if(type==="checkbox") return `<input data-field="${key}" type="checkbox" ${value!==false?"checked":""}>`;

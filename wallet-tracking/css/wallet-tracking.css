@@ -975,3 +975,9 @@ body.admin-debug-mode #tab-dao1 .debug-frame{
 body {
   overflow-x:hidden;
 }
+
+
+/* TLN/VOW Hauptseitenintegration · 12.09.2026 19:52:56 CEST · 20260912-195256 */
+#tab-tlnvow > .tln-vow-main-subtabs { margin-bottom:14px; }
+#tab-tlnvow > .tln-vow-main-subtabs .tab-btn { white-space:nowrap; }
+#tab-tlnvow > .tln-vow-main-subtabs { overflow-x:auto; padding-bottom:4px; }

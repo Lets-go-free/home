@@ -6,6 +6,7 @@
 <title>Token-Übersicht Wallets</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><text y=%2250%22 x=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2252%22>💼</text></svg>">
 <link rel="stylesheet" href="./css/wallet-tracking.css?v=20260912-175619-layout-v65-table-overflow">
+<link rel="stylesheet" href="./projects/tln-vow/tln-vow-discovery.css?v=20260912-195256">
 
 
 </head>
@@ -597,15 +598,18 @@
     </div>
 
     <div id="tab-tlnvow" class="tab-panel">
-      <div class="project-subtabs"><button class="tab-btn active" onclick="switchProjectSubtab('tlnvow','overview',this)">Übersicht</button><button class="tab-btn" onclick="switchProjectSubtab('tlnvow','liquidity',this); showTlnLpChain('bsc',document.getElementById('tlnLpBscBtn'))">Liquidity Pools</button><button class="tab-btn" onclick="switchProjectSubtab('tlnvow','help',this)">Hilfe</button></div>
-      <div id="tlnvow-subtab-liquidity" class="project-subtab-panel" style="display:none">
-        <div class="project-subtabs" style="margin:10px 0 14px">
-          <button id="tlnLpBscBtn" class="tab-btn active" onclick="showTlnLpChain('bsc',this)">BNB Smart Chain (BSC)</button>
-          <button id="tlnLpEthBtn" class="tab-btn" onclick="showTlnLpChain('eth',this)">Ethereum (ETH)</button>
-        </div>
-        <div id="tlnvowLpBscContent"></div><div id="tlnvowLpEthContent" style="display:none"></div>
+      <div class="project-subtabs tln-vow-main-subtabs">
+        <button class="tab-btn active" onclick="switchProjectSubtab('tlnvow','overview',this)">Kurse und Pools</button>
+        <button class="tab-btn" onclick="openTlnDiscoveryTab('overview',this)">Übersicht</button>
+        <button class="tab-btn" onclick="openTlnDiscoveryTab('stakings',this)">Staking/Rewards</button>
+        <button class="tab-btn" onclick="openTlnDiscoveryTab('rewards',this)">Rewards Summary</button>
+        <button class="tab-btn" onclick="openTlnDiscoveryTab('referral',this)">Referral Rewards</button>
+        <button class="tab-btn" onclick="openTlnDiscoveryTab('bonus',this)">Bonus-Rewards</button>
+        <button class="tab-btn" onclick="openTlnDiscoveryTab('team',this)">Team</button>
+        <button class="tab-btn tln-admin-only" onclick="openTlnDiscoveryTab('admin',this)">Admin · Contracts</button>
+        <button class="tab-btn" onclick="switchProjectSubtab('tlnvow','help',this)">Hilfe</button>
+        <button class="tab-btn" onclick="switchProjectSubtab('tlnvow','liquidity',this); showTlnLpChain('bsc',document.getElementById('tlnLpBscBtn'))">Liquidity Pools_old</button>
       </div>
-      <div id="tlnvow-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">TLN/VOW · Hilfe</h3><p class="note">Diese Projektansicht bewertet TLN/VOW-Assets direkt über die hinterlegten DEX-Pools. v-Währungen werden über TOKEN → VOW → USDT bewertet. TLN/VOW-Projekttoken verwenden TOKEN/VOW und als Fallback TOKEN/USDT. V2-LP-Token werden aus den Reserven beider Pool-Assets und der LP-TotalSupply bewertet. Der Liquidity-Pools-Tab trennt BNB Smart Chain (BSC/PCLP) und Ethereum (ETH/LP) in zwei Unter-Tabs. Der aktuelle Preis-/Poolstand wird zentral zusammen mit den übrigen aktuellen Preisen der Hauptseite verwaltet. Existiert für den heutigen Kalendertag noch kein Preisstand, wird er einmal aktualisiert und gespeichert. Der zentrale Button „Preise aktualisieren“ in der Token-Übersicht erneuert alle aktuellen Kurse einschließlich TLN/VOW, LP-Bewertungen und USD-Werte; Discovery, Stakings, Rewards, Team und historische Stichtage bleiben unverändert. LP-/Staking-Werte werden nach erfolgreichem Projekt-Refresh auch in die Token-Übersicht übernommen. Für die Bestandesaufnahme per 31.12 werden dieselben Regeln mit dem historischen Blockzustand verwendet.</p><p class="note">Wenn ein Projektpreis fehlt, zuerst prüfen, ob Token/LP in der Projekt-Konfiguration korrekt klassifiziert und der benötigte DEX/Pool aktiv ist. Die allgemeine Bedienung des Wallet-Trackings steht unter „Hilfe / Handbuch“.</p></div></div>
       <div id="tlnvow-subtab-overview" class="project-subtab-panel">
       <div class="custom-token-card" style="border-color:var(--accent)">
         <h3 style="margin-top:0">TLN/VOW · On-Chain Preise &amp; Liquidity Pools</h3>
@@ -693,6 +697,260 @@
         </div>
       </section>
       </div>
+      <div id="tlnvow-subtab-discovery" class="project-subtab-panel" style="display:none">
+        <div id="tlnvowDiscoveryHost">
+<div class="card analysis-zone debug-frame tln-discovery-dev" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
+<p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
+<label>TLN-Wallet<br>
+<select id="walletSelect" disabled>
+  <option value="">TLN-Wallets werden geladen…</option>
+</select></label>
+<div style="margin-top:8px"><span class="muted">BSC/EVM-Adresse:</span> <span id="walletAddress" class="mono">–</span></div>
+<input id="wallet" type="hidden" value="">
+<div style="margin-top:10px;padding:10px 12px;border:1px solid #5a3a3a;border-radius:9px;background:#181112">
+  <b>Developer · Supabase-Cache</b>
+  <div class="muted" style="margin:5px 0 8px">Löscht ausschließlich walletbezogene Einträge in <code>tln_vow_staking_scan_cache</code> für das aktuell ausgewählte Wallet auf BSC – einschließlich der persistenten Discovery-Endergebnisse Steps 1–5. Globale LP-/Tx-Fakten und contractweite Strict-Duration-Proofs bleiben erhalten.</div>
+  <div class="muted" style="margin:5px 0 10px;padding:8px 10px;border:1px solid #445066;border-radius:8px;background:#111722"><b>Historischer Preis-Cache:</b> keine Supabase-Zeile pro Block/Preis. Pro Benutzer wird genau <b>1 begrenzte technische Cache-Zeile</b> verwendet. Exakte Stake-/Unstake-/Stichtagswerte bleiben blockgenau; der Cache ist auf 1'200 exakte Punkte (max. 180 je Asset) plus 300 optionale, nur explizit ungefähre Block-Buckets begrenzt. Fertige USD-Werte bleiben zusätzlich direkt an den verifizierten Positionen erhalten.</div>
+  <button id="clearWalletSupabaseCache" type="button" disabled>DEV: Technischen Wallet-Cache komplett löschen</button>
+  <span id="clearWalletSupabaseCacheState" class="muted" style="margin-left:8px"></span>
+  <div class="muted" style="margin-top:5px"><strong>Wann verwenden?</strong> Wenn du dieses Wallet einmal komplett neu prüfen möchtest.<br><strong>Wird gelöscht:</strong> technische Discovery-Daten und gespeicherte Ergebnisse dieses Wallets.<br><strong>Bleibt erhalten:</strong> gemeinsame/globale Daten, die nicht nur zu diesem Wallet gehören.</div>
+  <div style="margin-top:8px">
+    <button id="clearDiscoveryResultCache" type="button" disabled>DEV: Nur Ergebnis-Cache Steps 1–5 löschen</button>
+    <span id="clearDiscoveryResultCacheState" class="muted" style="margin-left:8px"></span>
+    <div class="muted" style="margin-top:5px"><strong>Wann verwenden?</strong> Wenn Steps 1–5 nur neu ausgewertet werden sollen.<br><strong>Wird gelöscht:</strong> nur das gespeicherte Endergebnis von Steps 1–5.<br><strong>Bleibt erhalten:</strong> technische Blockchain-/Analyse-Daten. Dadurch ist die Neuberechnung deutlich schneller.</div>
+  </div>
+  <div style="margin-top:8px">
+    <button id="clearStep6SnapshotCache" type="button" disabled>DEV: Step-6-Snapshot löschen</button>
+    <span id="clearStep6SnapshotCacheState" class="muted" style="margin-left:8px"></span>
+    <div class="muted" style="margin-top:5px">Für Korrekturen an historischer Bewertung/Preislogik: löscht nur den persistenten Step-6-Snapshot des aktuell gewählten Stichtags. Steps 1–5, technische Caches, Team und Shared-Fakten bleiben erhalten.</div>
+  </div>
+  <div style="margin-top:8px">
+    <button id="clearSingleTeamLifecycleCache" type="button" disabled>DEV: Team-Lifecycle gezielt löschen</button>
+    <span id="clearSingleTeamLifecycleCacheState" class="muted" style="margin-left:8px"></span>
+    <div class="muted" style="margin-top:5px">Gezielter Step-7-Nachtest: löscht nur den persistenten Team-Lifecycle eines einzelnen Partner-Wallets. Wallet-Adresse oder TLN-ID kann eingegeben werden; Contract-Historie, Globalgraph und alle übrigen Partner-Caches bleiben erhalten.</div>
+  </div>
+  <div style="margin-top:8px">
+    <button id="clearTeamColdRunCache" type="button" disabled>DEV: Team-Cache vollständig löschen</button>
+    <span id="clearTeamColdRunCacheState" class="muted" style="margin-left:8px"></span>
+    <div class="muted" style="margin-top:5px">Cold-Run-Test für Step 7: löscht die Team-Lifecycle- und Team-Contract-History-Caches dieses Benutzers und erzwingt beim nächsten Team-Lauf einen vollständigen SmartNode-On-Chain-Rescan ab Block 0. Der globale Shared-Graph/Graph-State bleibt in Supabase erhalten. Steps 1–5, normale Wallet-Discovery-Ergebnisse, globale LP-/Tx-Fakten, Duration-Proofs und der globalen TLN-ID-/Wallet-Identity-Cache bleiben erhalten.</div>
+  </div>
+  <div style="margin-top:8px">
+    <button id="rebuildStep6Cache" type="button" disabled>DEV: Step 6 neu berechnen (Force)</button>
+    <span id="rebuildStep6CacheState" class="muted" style="margin-left:8px"></span>
+    <div class="muted" style="margin-top:5px">Erzwingt eine echte Step-6-Neuberechnung und ignoriert dabei einmalig den vorhandenen Step-6-Ergebnis-Snapshot. Der bisherige persistente Snapshot wird vor dem Test nicht gelöscht und erst nach erfolgreicher Neuberechnung überschrieben. Steps 1–5 sowie globale Chain-/Tx-/LP-/Duration-Caches bleiben erhalten.</div>
+  </div>
+  <div style="margin-top:8px">
+    <button id="forceDiscoveryFreshnessCheck" type="button" disabled>24h-Check jetzt testen</button>
+    <span id="forceDiscoveryFreshnessCheckState" class="muted" style="margin-left:8px"></span>
+  </div>
+  <div style="margin-top:8px">
+    <button id="testTeamFreshnessProviderError" type="button" disabled>DEV: Lifecycle-Providerfehler simulieren</button>
+    <span id="testTeamFreshnessProviderErrorState" class="muted" style="margin-left:8px"></span>
+    <div class="muted" style="margin-top:5px">Simuliert ausschließlich einen Fehler im inkrementellen Team-Lifecycle-Freshness-Check. Erwartung: letzter verifizierter Cache bleibt erhalten und es wird kein historischer Fullscan gestartet.</div>
+  </div>
+  <div style="margin-top:8px">
+    <select id="longGapBlocks" style="min-width:180px;width:180px">
+      <option value="100000">100'000 Blöcke</option>
+      <option value="500000">500'000 Blöcke</option>
+      <option value="1000000" selected>1'000'000 Blöcke</option>
+      <option value="2500000">2'500'000 Blöcke</option>
+    </select>
+    <button id="testDiscoveryLongGap" type="button" disabled>Große Blocklücke simulieren</button>
+    <span id="testDiscoveryLongGapState" class="muted" style="margin-left:8px"></span>
+  </div>
+</div>
+<div style="margin-top:12px;padding:10px 12px;border:1px solid #334155;border-radius:9px;background:#111722">
+  <b>Stichtagsbewertung offene Stakings</b>
+  <div class="muted" style="margin:5px 0 8px">Step 6 bewertet zusätzlich den tatsächlich am 31.12. gebundenen Staking-Bestand. Aufstockungen gehören zur ursprünglichen Position und übernehmen deren gemeinsames Vertragsende; nach diesem Ende gilt kein Teil der Position mehr als offenes Staking.</div>
+  <label>Stichtagsjahr<br><select id="snapshotYear" style="min-width:180px;width:180px">
+    <option value="2023">2023</option>
+    <option value="2024">2024</option>
+    <option value="2025" selected>2025</option>
+    <option value="2026">2026</option>
+  </select></label>
+</div>
+<div class="process-grid" id="processGrid">
+  <div class="process-step locked" id="stepBox1"><button id="refresh" disabled>1 · Basisdaten laden</button><span class="step-state" id="stepState1">bereit nach Initialisierung</span></div>
+  <div class="process-step locked" id="stepBox2"><button id="stepStaking" disabled>2 · Stakings erkennen</button><span class="step-state" id="stepState2">wartet auf Basisdaten</span></div>
+  <div class="process-step locked" id="stepBox3"><button id="stepDuration" disabled>3 · Lockdauer ermitteln</button><span class="step-state" id="stepState3">wartet auf Stakings</span></div>
+  <div class="process-step locked" id="stepBox4"><button id="stepRewards" disabled>4 · Staking-Rewards</button><span class="step-state" id="stepState4">wartet auf Stakings</span></div>
+  <div class="process-step locked" id="stepBox5"><button id="stepReferral" disabled>5 · Referral-Rewards</button><span class="step-state" id="stepState5">wartet auf Staking-Rewards</span></div>
+  <div class="process-step locked" id="stepBox6"><button id="stepValuation" disabled>6 · Bewertung / Preise</button><span class="step-state" id="stepState6">wartet auf Lockdauer</span></div>
+  <div class="process-step locked" id="stepBox7"><button id="stepTeam" disabled>7 · Team-Baum ermitteln</button><span class="step-state" id="stepState7">bereit nach Initialisierung</span></div>
+</div>
+<div style="margin-top:12px"><span id="status"></span></div>
+<div class="summary">
+ <div class="metric">ERC-20 Transfers<b id="mTransfers">–</b></div>
+ <div class="metric">Projekt-LPs<b id="mPairs">–</b></div>
+ <div class="metric">Stake-Events<b id="mStakes">–</b></div>
+ <div class="metric">Unstake-Events<b id="mUnstakes">–</b></div>
+ <div class="metric">Staking-Lots gesamt<b id="mLots">–</b></div>
+ <div class="metric">davon beendet<b id="mClosed">–</b></div>
+</div></div>
+
+<div class="project-user-view productive-zone tln-discovery-productive" id="projectUserView">
+  <div class="card">
+    <h2 style="margin-bottom:6px">TLN/VOW · Projektansicht</h2>
+    <div class="muted project-user-intro">Fachliche Zielstruktur für die spätere Integration in WalletTracking. Die technischen Steps 1–7 bleiben davon getrennte Entwicklungs-/Diagnoselogik.</div>
+    <div class="project-scope-row">
+      <label>Wallet-Filter<br><select id="projectWalletFilter"><option value="all">Alle meine TLN/VOW-Wallets · aggregiert</option></select></label>
+      <div class="project-scope-note" id="projectWalletFilterNote">Standard: alle Wallets werden zusammengefasst. Bei Bedarf kann auf ein einzelnes Wallet gefiltert werden.</div>
+    </div>
+    <div class="project-user-tabs" id="projectUserTabs">
+      <button type="button" class="project-user-tab active" data-project-panel="overview">Übersicht</button>
+      <button type="button" class="project-user-tab" data-project-panel="stakings">Staking/Rewards</button>
+      <button type="button" class="project-user-tab" data-project-panel="rewards">Rewards Summary</button>
+      <button type="button" class="project-user-tab" data-project-panel="referral">Referral Rewards</button>
+      <button type="button" class="project-user-tab" data-project-panel="bonus">Bonus-Rewards</button>
+      <button type="button" class="project-user-tab" data-project-panel="team">Team</button>
+      <button type="button" class="project-user-tab" data-project-panel="prices">Kurse und Pools</button>
+      <button type="button" class="project-user-tab" data-project-panel="admin">Admin · Contracts</button>
+    </div>
+    <div id="projectPanel-overview" class="project-user-panel active"><div id="projectOverviewContent"><div class="muted">Noch keine Discovery-Daten geladen.</div></div><div id="projectLookupMount" class="project-mount"></div></div>
+    <div id="projectPanel-stakings" class="project-user-panel"><div id="projectStakingsAggregate" class="project-aggregate"></div><div id="projectStakingsMount" class="project-mount"></div></div>
+    <div id="projectPanel-rewards" class="project-user-panel"><div id="projectRewardsAggregate" class="project-aggregate"></div><div id="projectRewardsCurrent" class="card"><h2>🏆 Staking-Rewards</h2><p class="muted">Ausschließlich Rewards, die einer eigenen Staking-Position eindeutig zugeordnet sind. Referral- und Bonus-Rewards werden hier nicht angezeigt. Ein finaler automatischer Rest-Reward in einer exakt verifizierten Unstake-Tx wird als solcher der Position zugeordnet.</p><div id="rewardClaiming"><div class="muted">Wird in Schritt 4 berechnet.</div></div></div></div>
+    <div id="projectPanel-referral" class="project-user-panel"><div id="projectReferralAggregate" class="project-aggregate"></div><div id="projectReferralMount" class="project-mount"></div></div>
+    <div id="projectPanel-bonus" class="project-user-panel"><div id="projectBonusAggregate" class="project-aggregate"></div><div id="projectBonusMount" class="project-mount"></div></div>
+    <div id="projectPanel-team" class="project-user-panel"><div id="projectTeamMount" class="project-mount"></div></div>
+    <div id="projectPanel-prices" class="project-user-panel"><div class="project-placeholder"><b>Kurse und Pools</b><br>Dieser Tab bleibt in der Discovery-Seite bewusst leer. Bei der Hauptseitenintegration wird die bestehende TLN/VOW-Kurs-/Poolansicht aus <code>index.html</code> 1:1 beibehalten.</div></div>
+    <div id="projectPanel-admin" class="project-user-panel"><div class="card"><h2>Admin · TLN/VOW Contract-Registry</h2><p class="muted">Kontrollansicht aller bekannten Staking-Contracts sowie automatisch entdeckter, noch nicht vollständig verifizierter Contract-/Asset-/Lifecycle-Fälle. In der späteren Hauptseite ist dieser Tab ausschließlich für Admin-User sichtbar. Neue Funde werden niemals automatisch als verifiziert promoted; erledigte Prüffälle werden nach belastbarer Verifikation automatisch bereinigt.</p><div id="projectAdminContractSummary" class="muted">Registry wird geladen …</div>
+      <div id="projectAdminContractLegend" class="project-placeholder" style="margin-top:12px;text-align:left">
+        <b>Legende · Status und Typen</b><br>
+        <b>✓ Verifiziert</b>: Contract und Rolle sind in der zentralen Registry bestätigt. <b>Staking</b> = regulärer Staking-Pool; <b>Legacy-Staking</b> = ältere TLN/VOW-Generation mit eigener historischer Logik; <b>System / Controller</b> = technischer Bestandteil des Staking-/Reward-Systems, aber kein eigener Pool.<br><br>
+        <b>✓ Strict-Proof</b>: Die Lockdauer ist direkt aus Contract-/Positions-State oder unverändertem Contract-Control-Flow belastbar bewiesen und kann positionsbezogen aus dem globalen Supabase-Proof wiederverwendet werden.<br>
+        <b>⚠ Lockdauer offen</b>: Das Staking selbst ist on-chain bestätigt und der Contract kann bereits grün in der Registry stehen; für mindestens eine konkrete Position fehlt aber noch ein belastbarer Strict-Proof für Lockdauer/Contract-Ende. Das ist kein unbekannter Staking-Contract.<br>
+        <b>⚠ Contract/Asset prüfen</b>: Starke On-Chain-Evidenz wurde entdeckt, die Adresse ist aber noch nicht als zulässiger Staking-Contract bzw. Staking-Asset verifiziert.<br><br>
+        <b>Automatische Bereinigung:</b> Ein Prüffall verschwindet, sobald Contract/Asset verifiziert oder die zugehörige Lockdauer positionsgenau belastbar aufgelöst ist. Die Prüfliste ist damit eine aktuelle Arbeitsliste und kein historisches Fehlerarchiv.
+      </div>
+      <div id="projectAdminDurationStatus" class="project-placeholder" style="margin-top:10px;text-align:left">Duration-Prüfstand wird geladen …</div>
+      <div class="wrap" style="margin-top:10px"><table style="min-width:1250px"><thead><tr><th>Status</th><th>Name</th><th>Typ / Rolle</th><th>Contract / Asset</th><th>Pair / Bezug</th><th>Quelle / Evidenz</th><th>Zuletzt gesehen</th></tr></thead><tbody id="projectAdminContracts"><tr><td colspan="7">Noch keine Daten.</td></tr></tbody></table></div></div></div>
+  </div>
+</div>
+
+<div id="teamDetailsModal" class="team-details-modal" aria-hidden="true">
+  <div class="team-details-dialog" role="dialog" aria-modal="true" aria-labelledby="teamDetailsTitle">
+    <div class="team-details-head">
+      <div><div id="teamDetailsTitle" class="team-details-title">Partner-Stakings</div><div id="teamDetailsMeta" class="team-details-meta"></div></div>
+      <button id="teamDetailsClose" type="button" class="team-details-close" aria-label="Schließen">×</button>
+    </div>
+    <div id="teamDetailsBody" class="team-details-body"><div class="team-details-loading">Noch keine Partnerdetails geöffnet.</div></div>
+  </div>
+</div>
+
+<div id="analysisDetailsZone" class="analysis-zone debug-frame tln-discovery-dev">
+<div class="card" id="tlnWalletLookupCard">
+  <h2>TLN-ID / Wallet-Suche</h2>
+  <p class="muted">Direkte Suche außerhalb des Team-Baums. Wallet ↔ TLN-ID wird über einen gemeinsamen Registry-Resolver aufgelöst. Zuerst wird der persistente Identitätscache verwendet; danach werden die verifizierten <code>nodeIdOf(address)</code>/<code>nodeUserOf(uint256)</code>-Getter des zugehörigen SmartNode-/Registry-Contracts geprüft. Für neue Registry-Generationen kann Wallet → TLN-ID gezielt aus der Wallet-Historie entdeckt und danach persistent wiederverwendet werden.</p>
+  <div class="lookup-grid">
+    <div class="lookup-box">
+      <label for="lookupTlnId">1 · TLN ID → Wallet-Adresse</label>
+      <div class="lookup-row"><input id="lookupTlnId" inputmode="numeric" placeholder="z. B. 7205"><button id="lookupByTlnId" type="button">Wallet suchen</button></div>
+    </div>
+    <div class="lookup-box">
+      <label for="lookupWallet">2 · Wallet-Adresse → TLN ID</label>
+      <div class="lookup-row"><input id="lookupWallet" class="mono" placeholder="0x…"><button id="lookupByWallet" type="button">TLN ID suchen</button></div>
+    </div>
+  </div>
+  <div id="lookupStatus" class="muted" style="margin-top:10px">Bereit.</div>
+  <div style="margin-top:8px">
+    <button id="clearLookupIdentityCache" type="button">TLN-ID-/Wallet-Cache für aktuelle Eingabe löschen</button>
+    <span id="clearLookupIdentityCacheState" class="muted" style="margin-left:8px"></span>
+  </div>
+  <div id="lookupResult" class="lookup-result"></div>
+</div>
+<details class="card collapsible-card"><summary>TLN/VOW-Projekt-Token</summary><div class="collapsible-body"><div id="projectCount" class="muted">Noch keine Daten.</div><div class="wrap"><table><thead><tr><th>Symbol</th><th>Kategorie</th><th>Contract</th></tr></thead><tbody id="projectTokens"><tr><td colspan="3">Noch keine Daten.</td></tr></tbody></table></div></div></details>
+<details class="card collapsible-card"><summary>Bekannte Staking-Contracts</summary><div class="collapsible-body"><div class="wrap"><table style="min-width:1050px"><thead><tr><th>Contract-Bezeichnung</th><th>Rolle</th><th>Contract</th><th>Pair-Hinweis</th><th>Laufzeit</th></tr></thead><tbody id="stakingContracts"><tr><td colspan="5">Noch keine Daten.</td></tr></tbody></table></div></div></details>
+<details class="card collapsible-card"><summary>Erkannte historische LP-Token</summary><div class="collapsible-body"><p class="muted">Diese Tabelle zeigt die LP-Token-Contracts, die als Grundlage für die historische LP-/Staking-Auswertung erkannt wurden. Normalfall: <code>token0()</code> und <code>token1()</code> funktionieren und mindestens ein Underlying gehört zum TLN/VOW-Projekt. Historischer Fallback: Bei einem anhand des rohen Method-Selectors als <code>stake(...)</code> erkannten Aufruf an einen bekannten Staking-Contract werden zusätzlich die ERC-20-Transfers genau dieser Transaktion ausgewertet. Ist ein übertragener LP heute nicht mehr lesbar, werden <code>token0()</code>, <code>token1()</code>, <code>factory()</code> und <code>decimals()</code> am historischen Stake-Block gelesen. Zusätzlich kann ein explizit bestätigtes historisches Nicht-V2-Staking-Asset (z. B. ein gebridgter Legacy-LPT) dynamisch aus <code>predefined_tokens</code> erkannt werden; solche Einträge werden nicht als heutige DEX-LPs behandelt. Ein aus dem Wallet heraus übertragener V2-LP kann dadurch auch dann erkannt werden, wenn sein Empfänger ein Controller/Zwischencontract war oder seine Underlyings heute nicht mehr in der aktuellen Projektliste stehen.</p><div class="wrap"><table><thead><tr><th>LP</th><th>Contract</th><th>token0</th><th>token1</th><th>Projekt-Treffer</th><th>Erkannt durch</th><th>Factory</th><th>Transfers</th></tr></thead><tbody id="pairs"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div></details>
+<details class="card collapsible-card"><summary>Historische LP-/Staking-Ereignisse</summary><div class="collapsible-body"><div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Aktion</th><th>LP</th><th>LP-Menge</th><th>Gegenstelle</th><th>Staking-Bezeichnung</th><th>Block</th><th>Transaktion</th></tr></thead><tbody id="events"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div></details>
+<details class="card collapsible-card"><summary>Direkte Wallet-Aufrufe an Staking-/Entry-Contracts</summary><div class="collapsible-body">
+<p class="muted">Ergänzende Diagnose: zeigt ausgehende Wallet-Transaktionen an bekannte Staking-Contracts sowie automatisch aus den Stake-Transaktionen erkannte Entry-/Controller-Contracts. Damit finden wir einen Unstake-Aufruf auch dann, wenn kein passender LP-Rücktransfer in der ERC-20-Historie erkannt wurde.</p>
+<div class="wrap"><table style="min-width:1350px"><thead><tr><th>Zeit</th><th>Erkannte Methode</th><th>Ausführung</th><th>Contract-Bezeichnung</th><th>Staking-Contract</th><th>Selector</th><th>1. uint256</th><th>Block</th><th>Tx</th></tr></thead><tbody id="contractCalls"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div></details>
+
+<div class="card"><h2>Rohe Staking-Ereignisse</h2>
+<p class="muted">Diese Tabelle zeigt <b>jede</b> LP-Übertragung zwischen Wallet und einem bestätigten Staking-Contract. Wenn hier ein historischer Stake steht, aber unten kein Lot entsteht, liegt der Fehler in der Lot-/FIFO-Rekonstruktion.</p>
+<div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Aktion</th><th>Pool</th><th>Staking-Contract</th><th>Bezeichnung</th><th>LP-Menge</th><th>Block</th><th>Tx</th></tr></thead><tbody id="stakingEvents"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
+
+<!--
+  DEAKTIVIERT 2026-09-02 – NICHT LÖSCHEN.
+  Dieser komplette UI-Block gehört nicht zu Schritt 2 (reine Staking-Erkennung).
+  Für eine spätere Reward-/Referral-Diagnose kann er bei Bedarf wieder aktiviert werden.
+
+  <div class="card"><h2>Wallet-bezogene Smart-Contract-Events</h2>
+  <p class="muted">Deep-Scan: alle Events der erkannten Staking-/Entry-Contracts, in denen die Wallet irgendwo in Topics oder Daten vorkommt. Damit sehen wir auch Legacy-Events mit unbekanntem Layout.</p>
+  <div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeit</th><th>Erkennung</th><th>Contract</th><th>Topic0</th><th>Tx von</th><th>Tx an</th><th>LP-Rückgabe?</th><th>Tx</th></tr></thead><tbody id="deepEvents"><tr><td colspan="8">Noch keine Daten.</td></tr></tbody></table></div></div>
+-->
+
+
+<div class="card" id="runningStakingsCard"><h2>🟢 Laufende Stakings</h2>
+<p class="muted">Aktuell noch offene Staking-Positionen. Der historische Endwert wird zum vertraglichen Freigabe-/Ablaufzeitpunkt bewertet – nicht erst bei einem späteren Unstake.</p>
+<div id="runningStakings"><div class="muted">Noch keine Daten.</div></div></div>
+
+<div class="card"><h2>📅 Stichtagsbewertung per 31.12.</h2>
+<p class="muted">Testbereich für die spätere „Bestandesaufnahme per 31.12.“ in WalletTracking. Angezeigt wird der am gewählten Stichtag tatsächlich noch gebundene Staking-Bestand. Aufstockungen werden der bestehenden Position zugerechnet und gelten nur innerhalb deren gemeinsamer Laufzeit; nach dem gemeinsamen Vertragsende gilt kein Teil der Position mehr als offenes Staking.</p>
+<div id="snapshotValuation"><div class="muted">Wird in Schritt 6 berechnet.</div></div></div>
+<div class="card" id="valuationLifecycleCard"><h2>⏳ Staking-Laufzeiten / Ausläufe</h2>
+<p class="muted">Abschlusskontrolle für Step 6: zeigt alle rekonstruierten Positionen mit verifiziertem Vertragsende. Die Filter arbeiten rein auf den bereits geladenen Lifecycle-Daten und verursachen keine zusätzlichen RPC-Reads.</p>
+<div class="lookup-row" style="margin-bottom:10px">
+  <label>Status<br><select id="valuationExpiryStatus" style="min-width:210px"><option value="all">Alle Positionen</option><option value="active">Aktiv / noch nicht abgelaufen</option><option value="expired_open">Abgelaufen, noch nicht unstaked</option><option value="closed">Beendet / unstaked</option></select></label>
+  <label>Ablaufjahr<br><select id="valuationExpiryYear" style="min-width:160px"><option value="all">Alle Jahre</option></select></label>
+</div>
+<div id="valuationLifecycleOverview"><div class="muted">Wird nach der Lockdauer-/Bewertungsanalyse aufgebaut.</div></div>
+</div>
+
+<div class="card" id="completedStakingsCard"><h2>✅ Abgeschlossene Stakings</h2>
+<p class="muted">Historische Stakings, die vollständig beendet / unstaked wurden. Ein echter Vertragsendwert wird nur gezeigt, wenn der Zeitpunkt aus dem SC belastbar ableitbar ist. Historische Unstake-Simulationen werden ausdrücklich als Simulation bezeichnet; der tatsächliche Unstake-Wert wird zusätzlich ausgewiesen.</p>
+<div id="completedStakings"><div class="muted">Noch keine Daten.</div></div></div>
+
+<details class="card collapsible-card" id="referralRewardsCard"><summary>🤝 Referral-Rewards</summary><div class="collapsible-body">
+<p class="muted">On-chain belegte Reward-Claims ohne Zuordnung zu einer eigenen Staking-Position. Die Seite sucht nach Referral-/Partner-Evidenz im Claim-Call und kennzeichnet die Stärke der Zuordnung. Ein fehlender eigener Staking-Bezug allein gilt nicht als harter Referral-Beweis.</p>
+<div id="referralRewards"><div class="muted">Noch keine Daten.</div></div></div></details>
+
+<div class="card" id="teamTreeCard">
+  <h2>🌳 TLN/VOW Team-/Referral-Baum</h2>
+  <div id="teamTreeIntro" class="team-tree-info"><span class="muted">Team-Information wird aus den aktuellen Projektdaten aufgebaut.</span></div>
+  <div id="teamTreeStatus" class="muted">Wird beim Laden aus dem persistenten Team-Cache wiederhergestellt; Schritt 7 aktualisiert/verifiziert den Baum danach inkrementell.</div>
+  <div id="teamHighlightControls" class="team-controls" style="display:none">
+    <div class="team-highlight-head"><b>Hervorheben</b> <span class="muted">(keine Filterung – alle Team-Mitglieder bleiben sichtbar)</span></div>
+    <div class="team-highlight-options">
+      <label><input type="checkbox" id="teamHlNoActive"> kein aktives Staking</label>
+      <label><input type="checkbox" id="teamHlExpired"> abgelaufen, noch nicht unstaked</label>
+      <label><input type="checkbox" id="teamHlSoon"> Ablauf innerhalb 20 Tagen</label>
+      <button type="button" id="teamHlClear">Hervorhebung löschen</button>
+    </div>
+    <div id="teamHighlightInfo" class="muted team-highlight-info">Nur verifizierte Lifecycle-Daten werden für die Hervorhebung verwendet.</div>
+  </div>
+  <div id="teamTree" class="team-tree"><div class="muted">Noch keine Team-Daten.</div></div>
+  <div id="teamExpirySection" style="display:none">
+    <div class="team-expiry-tools"><b>Abgelaufene Stakings, noch nicht unstaked</b></div>
+    <div id="teamExpiredOpenList" class="wrap"><div class="muted">Noch keine verifizierten abgelaufenen Stakings.</div></div>
+    <div class="team-expiry-tools" style="margin-top:14px"><b>Nächste Staking-Abläufe</b><label>Anzahl Tage bis Staking-Ablaufdatum <input id="teamExpiryDays" type="number" min="1" max="3650" value="60"></label></div>
+    <div id="teamExpiryList" class="wrap"><div class="muted">Noch keine verifizierten Ablaufdaten.</div></div>
+  </div>
+</div>
+
+<details class="card collapsible-card" id="bonusRewardsCard"><summary>🎁 Bonus-Rewards</summary><div class="collapsible-body">
+<p class="muted">On-chain belegte Bonus-Auszahlungen mit expliziter Bonus-Claim-Methode. Aktuell ist <code>claimBonus(address)</code> (Selector <code>0x0e99f5e6</code>) verifiziert. Diese Rewards werden bewusst getrennt von normalen Staking-Rewards und Referral-Rewards geführt; der konkrete Bonus-Untertyp bzw. seine Berechnung wird nicht geraten.</p>
+<div id="bonusRewards"><div class="muted">Noch keine Daten.</div></div></div></details>
+
+<details class="card collapsible-card"><summary>🧪 Claims ohne klare Zuordnung</summary><div class="collapsible-body">
+<p class="muted">Test-/Diagnosebereich für on-chain belegte Claim-/Reward-Transaktionen, deren Herkunft aktuell weder einem eigenen Staking noch einem belegten Referral eindeutig zugeordnet werden kann.</p>
+<div id="unassignedClaims"><div class="muted">Noch keine Daten.</div></div></div></details>
+
+<div class="card"><h2>Plausibilitätsprüfung</h2>
+<p class="muted">Vergleicht rohe Stake-/Unstake-Ereignisse mit der Lot-Rekonstruktion. Nicht zuordenbare Unstakes oder Differenzen werden ausdrücklich gemeldet.</p>
+<div class="wrap"><table style="min-width:1150px"><thead><tr><th>Pool</th><th>Staking-Contract</th><th>Stake Events</th><th>Gestakt gesamt</th><th>Unstake Events</th><th>Unstaked gesamt</th><th>Offene Lots</th><th>Offen LP</th><th>Diagnose</th></tr></thead><tbody id="checks"><tr><td colspan="9">Noch keine Daten.</td></tr></tbody></table></div></div>
+<div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
+</div><!-- /analysisDetailsZone -->
+        </div>
+      </div>
+      <div id="tlnvow-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">TLN/VOW · Hilfe</h3><p class="note">Diese Projektansicht bewertet TLN/VOW-Assets direkt über die hinterlegten DEX-Pools. v-Währungen werden über TOKEN → VOW → USDT bewertet. TLN/VOW-Projekttoken verwenden TOKEN/VOW und als Fallback TOKEN/USDT. V2-LP-Token werden aus den Reserven beider Pool-Assets und der LP-TotalSupply bewertet. Der Legacy-Tab „Liquidity Pools_old“ trennt BNB Smart Chain (BSC/PCLP) und Ethereum (ETH/LP) in zwei Unter-Tabs. Der aktuelle Preis-/Poolstand wird zentral zusammen mit den übrigen aktuellen Preisen der Hauptseite verwaltet. Existiert für den heutigen Kalendertag noch kein Preisstand, wird er einmal aktualisiert und gespeichert. Der zentrale Button „Preise aktualisieren“ in der Token-Übersicht erneuert alle aktuellen Kurse einschließlich TLN/VOW, LP-Bewertungen und USD-Werte; Discovery, Stakings, Rewards, Team und historische Stichtage bleiben unverändert. LP-/Staking-Werte werden nach erfolgreichem Projekt-Refresh auch in die Token-Übersicht übernommen. Für die Bestandesaufnahme per 31.12 werden dieselben Regeln mit dem historischen Blockzustand verwendet.</p><p class="note">Wenn ein Projektpreis fehlt, zuerst prüfen, ob Token/LP in der Projekt-Konfiguration korrekt klassifiziert und der benötigte DEX/Pool aktiv ist. Die allgemeine Bedienung des Wallet-Trackings steht unter „Hilfe / Handbuch“.</p></div></div>
+      <div id="tlnvow-subtab-liquidity" class="project-subtab-panel" style="display:none">
+        <div class="project-subtabs" style="margin:10px 0 14px">
+          <button id="tlnLpBscBtn" class="tab-btn active" onclick="showTlnLpChain('bsc',this)">BNB Smart Chain (BSC)</button>
+          <button id="tlnLpEthBtn" class="tab-btn" onclick="showTlnLpChain('eth',this)">Ethereum (ETH)</button>
+        </div>
+        <div id="tlnvowLpBscContent"></div><div id="tlnvowLpEthContent" style="display:none"></div>
+      </div>
     </div>
 
   </div>
@@ -736,7 +994,7 @@
   </div>
 
   <footer>
-    Version vom 12.09.2026 19:06:11 CEST · Phase 4.36 · v66 Full Width Summary Tables<br>
+    Version vom 12.09.2026 19:52:56 CEST · Phase 4.37 · v67 TLN/VOW Integration Step 1<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -751,7 +1009,8 @@
 <script src="./projects/tln-vow/tln-vow.js"></script>
 <script src="./projects/dao1/dao1.js?v=20260912-190611-dao1-v66-full-summary"></script>
 
-<script src="./js/app.js?v=20260912-164404-app-v61-project-table"></script>
+<script src="./js/app.js?v=20260912-195256-app-v67-tln-integration"></script>
+<script src="./projects/tln-vow/tln-vow-discovery.js?v=20260912-195256"></script>
 
 
 
@@ -769,6 +1028,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 12.09.2026 19:06:11 CEST · Phase 4.36 · Build 20260912-190611</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 12.09.2026 19:52:56 CEST · Phase 4.37 · Build 20260912-195256</div>
 </body>
 </html>
