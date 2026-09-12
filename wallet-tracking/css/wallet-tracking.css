@@ -459,18 +459,114 @@
 .lp-history-table th:nth-child(9), .lp-history-table td:nth-child(9) { width: 220px; }
 
 
-/* DAO1 / Apertum – produktiver Tabellenstil analog zur neuen Discovery-UI */
-.dao1-data-table{margin-top:10px;border:1px solid #3a414b;border-radius:14px;overflow:auto;background:#1b2027;box-shadow:0 8px 24px rgba(0,0,0,.12)}
-.dao1-data-table .chain-admin-table{width:100%;min-width:900px;border-collapse:collapse;border-spacing:0;background:transparent;font-size:.78rem}
-.dao1-data-table .chain-admin-table thead{background:#242a32}
-.dao1-data-table .chain-admin-table th{position:sticky;top:0;z-index:4;padding:11px 14px;background:#242a32;color:#c2c8d0;border:0;border-bottom:1px solid #414852;text-align:left;font-size:.72rem;white-space:nowrap}
-.dao1-data-table .chain-admin-table td{padding:13px 14px;border:0;border-bottom:1px solid #343a43;background:transparent;vertical-align:middle;white-space:nowrap}
-.dao1-data-table .chain-admin-table tbody tr{background:linear-gradient(180deg,#20252c,#1d2229)}
-.dao1-data-table .chain-admin-table tbody tr:hover td{background:#292f37}
-.dao1-data-table .chain-admin-table tbody tr:last-child td{border-bottom:0}
-.dao1-data-table .chain-admin-table .meta{margin-top:3px;font-size:.7rem}
-.dao1-data-table .chain-admin-table code{font-size:.72rem}
-@media(max-width:900px){.dao1-data-table .chain-admin-table{min-width:760px}}
+
+
+
+/* =========================================================
+   WalletTracking · zentraler produktiver Projekttabellenstil
+   Quelle/Referenz: verifizierter TLN/VOW-Discovery-Stil.
+   Für TLN/VOW, DAO1, NFTs und künftige Projekt-Unterseiten.
+========================================================= */
+.project-data-table,
+.team-lifecycle-list {
+  margin-top:10px;
+  border:1px solid #3a414b;
+  border-radius:14px;
+  overflow:auto;
+  background:#1b2027;
+  box-shadow:0 8px 24px rgba(0,0,0,.12);
+}
+
+.project-data-table table,
+.team-lifecycle-list table {
+  width:100%;
+  border-collapse:collapse;
+  border-spacing:0;
+  min-width:900px;
+  background:transparent;
+}
+
+.project-data-table thead,
+.team-lifecycle-list thead {
+  background:#242a32;
+}
+
+.project-data-table th,
+.team-lifecycle-list th {
+  padding:11px 14px;
+  text-align:left;
+  font-size:11px;
+  color:#c2c8d0;
+  border:0;
+  border-bottom:1px solid #414852;
+  white-space:nowrap;
+  background:#242a32;
+}
+
+.project-data-table td,
+.team-lifecycle-list td {
+  padding:13px 14px;
+  border:0;
+  border-bottom:1px solid #343a43;
+  font-size:12px;
+  vertical-align:middle;
+  background:transparent;
+}
+
+.project-data-table tbody tr:last-child td,
+.team-lifecycle-list tbody tr:last-child td {
+  border-bottom:0;
+}
+
+.project-data-table tbody tr,
+.team-lifecycle-list tbody tr {
+  background:linear-gradient(180deg,#20252c,#1d2229);
+}
+
+.project-data-table tbody tr:hover td,
+.team-lifecycle-list tbody tr:hover td {
+  background:#292f37;
+}
+
+.project-data-table .mono,
+.team-lifecycle-list .mono {
+  color:#aeb6c1;
+}
+
+.project-data-table .meta,
+.team-lifecycle-list .meta {
+  margin-top:3px;
+  font-size:.7rem;
+  line-height:1.35;
+}
+
+.project-data-table code,
+.team-lifecycle-list code {
+  font-size:.72rem;
+}
+
+/* Lange Tabellen können Sticky-Header explizit aktivieren. */
+.project-data-table.sticky-header th {
+  position:sticky;
+  top:0;
+  z-index:4;
+}
+
+/* Kompatibilitätsalias für bereits vorhandene DAO1-Markups.
+   Neue Tabellen sollen direkt .project-data-table verwenden. */
+.dao1-data-table {
+  margin-top:10px;
+}
+.dao1-data-table.chain-table-wrap {
+  overflow:auto;
+}
+
+@media(max-width:900px){
+  .project-data-table table,
+  .team-lifecycle-list table {
+    min-width:760px;
+  }
+}
 
 
 /* DAO1 – Datumsfelder TT.MM.JJJJ mit separatem Kalender-Picker */
@@ -800,79 +896,6 @@ body.admin-debug-mode .debug-frame::before{content:"DEBUG / DEV";display:inline-
 .nft-modern-table .badge{display:inline-flex;align-items:center;white-space:nowrap}
 
 
-/* v60 · DAO1 Tabellenvereinheitlichung
-   LP-Positionen, LP-Historie und technische Scan-Tabelle verwenden denselben
-   produktiven Karten-/Header-/Zeilenstil wie Bot-Claims und Transaktionen. */
-#tab-dao1 .dao1-lp-data-table{
-  border:1px solid var(--border) !important;
-  border-radius:14px !important;
-  background:var(--card) !important;
-  box-shadow:0 8px 24px rgba(0,0,0,.10) !important;
-  overflow:auto !important;
-}
-
-#tab-dao1 .dao1-lp-data-table table{
-  border-collapse:separate !important;
-  border-spacing:0 !important;
-  background:transparent !important;
-  font-size:.78rem !important;
-}
-
-#tab-dao1 .dao1-lp-data-table thead th{
-  position:sticky !important;
-  top:0 !important;
-  z-index:6 !important;
-  background:var(--card2) !important;
-  color:var(--muted) !important;
-  padding:10px 12px !important;
-  border:0 !important;
-  border-bottom:1px solid var(--border) !important;
-  font-size:.70rem !important;
-  text-transform:none !important;
-  white-space:nowrap !important;
-}
-
-#tab-dao1 .dao1-lp-data-table tbody tr{
-  background:color-mix(in srgb,var(--card) 96%,var(--card2) 4%) !important;
-}
-
-#tab-dao1 .dao1-lp-data-table tbody tr:nth-child(even){
-  background:color-mix(in srgb,var(--card) 90%,var(--card2) 10%) !important;
-}
-
-#tab-dao1 .dao1-lp-data-table tbody tr:hover td{
-  background:color-mix(in srgb,var(--card2) 84%,var(--accent) 16%) !important;
-}
-
-#tab-dao1 .dao1-lp-data-table td{
-  padding:10px 12px !important;
-  border:0 !important;
-  border-bottom:1px solid var(--border) !important;
-  vertical-align:top !important;
-  background:transparent !important;
-}
-
-#tab-dao1 .dao1-lp-data-table tbody tr:last-child td{
-  border-bottom:0 !important;
-}
-
-#tab-dao1 .dao1-lp-data-table .meta{
-  font-size:.69rem !important;
-  line-height:1.35;
-  margin-top:3px;
-}
-
-/* DAO1-Konfiguration ebenfalls exakt im produktiven Tabellenstil halten. */
-#tab-dao1 .dao1-data-table .chain-admin-table{
-  background:transparent !important;
-}
-#tab-dao1 .dao1-data-table .chain-admin-table thead th{
-  background:var(--card2) !important;
-  color:var(--muted) !important;
-}
-#tab-dao1 .dao1-data-table .chain-admin-table tbody tr:nth-child(even){
-  background:color-mix(in srgb,var(--card) 90%,var(--card2) 10%) !important;
-}
 
 /* DEV/Diagnose: doppelte Absicherung.
    Ohne die zentrale Admin-Debug-Klasse bleiben alle Debug-Frames ausnahmslos verborgen. */
