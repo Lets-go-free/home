@@ -3,6 +3,19 @@ window.DAO1Project = (() => {
   const PROJECT_NAME = "DAO1";
   const CHAIN_KEY = "apertum";
   const CLAIM_SELECTOR = "0x86bb8f37";
+  const NEW_MINER_CLAIM_SELECTOR = "0x19da4078";
+  function isKnownClaimSelector(value){
+    const v=String(value||"").toLowerCase();
+    return v===CLAIM_SELECTOR || v===NEW_MINER_CLAIM_SELECTOR;
+  }
+  function isNewMinerClaimSelector(value){
+    return String(value||"").toLowerCase()===NEW_MINER_CLAIM_SELECTOR;
+  }
+  function isClaimTxRow(r){
+    return r?.claim_nft_id!=null
+      || !!r?.claim_nft_name
+      || isKnownClaimSelector(r?.selector);
+  }
   // Verifizierte DAO1-Referral-Auszahlung auf Apertum (On-Chain geprüft 12.09.2026):
   // wUSDT wird vom Distributor direkt an die Referral-Empfänger transferiert.
   // Andere wUSDT-Eingänge bleiben bewusst nur Kandidaten und werden nicht als Referral gewertet.
@@ -2314,8 +2327,12 @@ window.DAO1Project = (() => {
   }
 
   function methodLabel(t){
-    return String(t.method || t.method_name || t.decoded_input?.method_call || "").trim()
-      || (String(t.raw_input||t.input||"").slice(0,10).toLowerCase()===CLAIM_SELECTOR ? "claimReward" : "Transfer/Call");
+    const explicit=String(t.method || t.method_name || t.decoded_input?.method_call || "").trim();
+    if(explicit)return explicit;
+    const sel=String(t.raw_input||t.input||"").slice(0,10).toLowerCase();
+    if(sel===CLAIM_SELECTOR)return "claimReward";
+    if(sel===NEW_MINER_CLAIM_SELECTOR)return "Miner Claim";
+    return "Transfer/Call";
   }
 
 
@@ -2851,8 +2868,8 @@ window.DAO1Project = (() => {
   }
 
   function transactionStatusSnapshot(rows,state){
-    const claimCalls=rows.filter(r=>r.selector===CLAIM_SELECTOR);
-    const enriched=claimCalls.filter(r=>r.claim_nft_id!=null);
+    const claimCalls=rows.filter(r=>isKnownClaimSelector(r.selector));
+    const enriched=claimCalls.filter(r=>r.claim_nft_id!=null || !!r.claim_nft_name);
     const pending=claimCalls.length-enriched.length;
     const missingPrice=enriched.filter(r=>r.aptm_usd==null).length;
     const gasRows=rows.filter(r=>Number(r.gas_aptm||0)>0);
@@ -3244,10 +3261,16 @@ window.DAO1Project = (() => {
     // Nur für noch nicht verarbeitete Kandidaten werden anschließend deren Token-Transfers
     // direkt über /transactions/<hash>/token-transfers nachgeladen und persistent gecacht.
     function candidateEvidence(t){
-      if(String(t?.selector||"").toLowerCase()===CLAIM_SELECTOR)return {legacy:true,id:null};
+      const selector=String(t?.selector||"").toLowerCase();
+      if(selector===CLAIM_SELECTOR)return {legacy:true,newMiner:false,id:null};
+      // v48: der neue Apertum Miner verwendet 0x19da4078 und claimt nicht
+      // zwingend ein einzelnes NFT per ABI-Parameter. Deshalb reicht der
+      // verifizierte Selector als Kandidat; zum echten Claim wird die TX erst
+      // bei einem tatsächlichen eingehenden Reward-Asset-Flow.
+      if(selector===NEW_MINER_CLAIM_SELECTOR)return {legacy:false,newMiner:true,id:null};
       const ps=words(t?.raw_input||"");
       const knownId=[ps[0],ps[1],ps[2]].filter(v=>v!=null).map(v=>v.toString()).find(id=>nftMap.has(id));
-      return knownId?{legacy:false,id:String(knownId)}:null;
+      return knownId?{legacy:false,newMiner:false,id:String(knownId)}:null;
     }
     const candidateByHash=new Map();
     for(const t of txs){
@@ -3285,6 +3308,8 @@ window.DAO1Project = (() => {
       if(!ev)return null;
       if(ev.legacy)return ev;
       const incoming=(flowsByTx.get(h)||[]).filter(f=>f.direction==="eingang");
+      // 0x19da4078 wird bewusst NICHT allein als fertiger Claim gewertet:
+      // erst ein realer Reward-Flow an die Wallet bestätigt die Auszahlung.
       return incoming.length?ev:null;
     }
     const evidenceByHash=new Map();
@@ -3304,13 +3329,21 @@ window.DAO1Project = (() => {
       }
       const ps=words(t.raw_input||"");
       const evidence=evidenceByHash.get(String(t.tx_hash||"").toLowerCase());
+      const isNewMiner=!!evidence?.newMiner;
       const knownId=evidence?.id || [ps[0],ps[1],ps[2]].filter(v=>v!=null).map(v=>v.toString()).find(id=>nftMap.has(id));
-      const decodedId=knownId || ps[0]?.toString() || ps[1]?.toString();
-      if(!decodedId || !/^\d+$/.test(decodedId))continue;
-      const nft=nftMap.get(String(decodedId))||{
-        id:String(decodedId),contract:lower(DEFAULT_MINER_NFT_CONTRACT),
-        name:`NFT #${decodedId}`,classification:null
-      };
+      const decodedId=knownId || (!isNewMiner ? (ps[0]?.toString() || ps[1]?.toString()) : null);
+      if(!isNewMiner && (!decodedId || !/^\d+$/.test(decodedId)))continue;
+      const nft=isNewMiner
+        ? {
+            id:null,
+            contract:lower(t.to_address||""),
+            name:"Apertum Miner",
+            classification:{nft_name:"Apertum Miner",subtype:"Mining-Bot"}
+          }
+        : (nftMap.get(String(decodedId))||{
+            id:String(decodedId),contract:lower(DEFAULT_MINER_NFT_CONTRACT),
+            name:`NFT #${decodedId}`,classification:null
+          });
 
       const incoming=(flowsByTx.get(String(t.tx_hash||"").toLowerCase())||[])
         .filter(f=>f.direction==="eingang")
@@ -3337,8 +3370,8 @@ window.DAO1Project = (() => {
 
       claimRows.push({
         user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
-        wallet_id:walletIdForAddress(address),nft_contract:nft.contract||null,nft_id:Number(decodedId),
-        nft_name:nft.classification?.nft_name || nft.name || `NFT #${decodedId}`,
+        wallet_id:walletIdForAddress(address),nft_contract:nft.contract||null,nft_id:isNewMiner?null:Number(decodedId),
+        nft_name:nft.classification?.nft_name || nft.name || (decodedId?`NFT #${decodedId}`:"Apertum Miner"),
         nft_subtype:nft.classification?.subtype||null,tx_hash:t.tx_hash,
         block_number:Number(t.block_number),tx_timestamp:t.tx_timestamp,
         param1:ps[0]?.toString(),param2:ps[1]?.toString(),
@@ -3382,7 +3415,12 @@ window.DAO1Project = (() => {
   }
 
   function transactionClaimDescriptor(r){
-    if(r.claim_nft_id==null)return null;
+    if(r.claim_nft_id==null){
+      if(isNewMinerClaimSelector(r?.selector) || r?.claim_nft_name){
+        return {id:null,subtype:r?.claim_nft_subtype||"Mining-Bot",name:r?.claim_nft_name||"Apertum Miner"};
+      }
+      return null;
+    }
     const subtype=currentSubtypeForClaim(r.claim_nft_id,r.claim_nft_subtype);
     const name=currentNameForClaim(r.claim_nft_id,r.claim_nft_name);
     return {id:String(r.claim_nft_id),subtype,name};
@@ -3392,7 +3430,7 @@ window.DAO1Project = (() => {
     const map=new Map();
     for(const r of transactionRows){
       const d=transactionClaimDescriptor(r);
-      if(!d)continue;
+      if(!d || d.id==null)continue;
       if(txFilterClass!=="__all" && d.subtype!==txFilterClass)continue;
       if(!map.has(d.id))map.set(d.id,d);
     }
@@ -3423,7 +3461,7 @@ window.DAO1Project = (() => {
   }
 
   function dao1TransactionType(r){
-    if(r?.claim_nft_id!=null || String(r?.selector||"").toLowerCase()===CLAIM_SELECTOR)return "Claim (Bot)";
+    if(isClaimTxRow(r))return "Claim (Bot)";
     if(verifiedReferralFlowsForTx(r).length)return "Referral Reward";
     if(unverifiedReferralCandidateFlowsForTx(r).length)return "wUSDT-Eingang (prüfen)";
     if(assetFlowsForTx(r).length)return "Token-Transfer";
@@ -3436,7 +3474,7 @@ window.DAO1Project = (() => {
   function verifiedReferralRewards(sourceRows=transactionRows){
     const out=[];
     for(const r of sourceRows){
-      if(r.claim_nft_id!=null || String(r.selector||"").toLowerCase()===CLAIM_SELECTOR)continue;
+      if(isClaimTxRow(r))continue;
       const flows=verifiedReferralFlowsForTx(r);
       if(flows.length)out.push({...r,_referralFlows:flows});
     }
@@ -3446,7 +3484,7 @@ window.DAO1Project = (() => {
   function referralRewardCandidates(sourceRows=transactionRows){
     const out=[];
     for(const r of sourceRows){
-      if(r.claim_nft_id!=null || String(r.selector||"").toLowerCase()===CLAIM_SELECTOR)continue;
+      if(isClaimTxRow(r))continue;
       const flows=unverifiedReferralCandidateFlowsForTx(r);
       if(flows.length)out.push({...r,_referralFlows:flows});
     }
@@ -3469,12 +3507,12 @@ window.DAO1Project = (() => {
 
   function renderClaimsTab(){
     const el=document.getElementById("dao1ClaimsContent");if(!el)return;
-    const rows=tabWalletFilteredRows(transactionRows.filter(r=>r.claim_nft_id!=null || String(r.selector||"").toLowerCase()===CLAIM_SELECTOR),claimFilterWallet);
+    const rows=tabWalletFilteredRows(transactionRows.filter(isClaimTxRow),claimFilterWallet);
     const flowCount=rows.reduce((a,r)=>a+incomingAssetFlowsForTx(r).length,0);
     const totalUsd=rows.reduce((a,r)=>a+incomingAssetFlowsForTx(r).reduce((x,f)=>x+Number(f.value_usd||0),0),0);
-    el.innerHTML=`<div class="custom-token-card"><div class="chain-title">⛏️ Bot Claims</div><div class="note">Claims werden über Legacy-Claim-Selector oder bei neuen Mining-Bots über bekannte NFT-ID + tatsächlichen Reward-Asset-Flow erkannt. Dadurch sind wAPTM, wUSDT und weitere Wrapped Tokens möglich.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px)">${tabWalletFilterHtml("claims",claimFilterWallet)}</div></div>
+    el.innerHTML=`<div class="custom-token-card"><div class="chain-title">⛏️ Bot Claims</div><div class="note">Claims werden über den Legacy-Selector 0x86bb8f37 sowie den neuen Apertum-Miner-Selector 0x19da4078 erkannt. Beim neuen Miner bestätigt erst ein tatsächlicher eingehender Reward-Asset-Flow den Claim. Dadurch sind wAPTM, wUSDT und weitere Wrapped Tokens möglich.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px)">${tabWalletFilterHtml("claims",claimFilterWallet)}</div></div>
       <div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Claims</span><strong>${rows.length.toLocaleString("de-DE")}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Asset-Flows</span><strong>${flowCount.toLocaleString("de-DE")}</strong><div class="meta">${totalUsd?usd(totalUsd):"USD noch nicht für alle Assets verfügbar"}</div></div></div>
-      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap dao1-data-table dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>NFT</th><th>Auszahlung</th><th>USD historisch</th><th>Gas APTM</th><th>Tx</th></tr></thead><tbody>${rows.map(r=>{const d=transactionClaimDescriptor(r);const flows=incomingAssetFlowsForTx(r);const flowUsd=flows.reduce((a,f)=>a+Number(f.value_usd||0),0);return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td>${r.wallet_label||r.wallet_address||"–"}</td><td>Claim (Bot)</td><td><strong>${d?.name||"NFT"}</strong>${r.claim_nft_id!=null?`<div class="meta">#${r.claim_nft_id}${d?.subtype?" · "+d.subtype:""}</div>`:""}</td><td>${flows.length?flows.map(f=>`<strong>${flowDisplay(f)}</strong><div class="meta">${f.token_address||""}</div>`).join(""):(r.claim_reward_aptm!=null?`${fmt(r.claim_reward_aptm)} APTM <span class="meta">(Legacy)</span>`:"–")}</td><td>${flowUsd?usd(flowUsd):(r.claim_reward_usd==null?"–":usd(Number(r.claim_reward_usd)))}</td><td>${fmt(r.gas_aptm)}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join("")}</tbody></table></div></div>`;
+      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap dao1-data-table dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>NFT</th><th>Auszahlung</th><th>USD historisch</th><th>Gas APTM</th><th>Tx</th></tr></thead><tbody>${rows.map(r=>{const d=transactionClaimDescriptor(r);const flows=incomingAssetFlowsForTx(r);const flowUsd=flows.reduce((a,f)=>a+Number(f.value_usd||0),0);return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td>${r.wallet_label||r.wallet_address||"–"}</td><td>Claim (Bot)</td><td><strong>${d?.name||"Apertum Miner"}</strong>${r.claim_nft_id!=null?`<div class="meta">#${r.claim_nft_id}${d?.subtype?" · "+d.subtype:""}</div>`:(d?.subtype?`<div class="meta">${d.subtype}</div>`:"")}</td><td>${flows.length?flows.map(f=>`<strong>${flowDisplay(f)}</strong><div class="meta">${f.token_address||""}</div>`).join(""):(r.claim_reward_aptm!=null?`${fmt(r.claim_reward_aptm)} APTM <span class="meta">(Legacy)</span>`:"–")}</td><td>${flowUsd?usd(flowUsd):(r.claim_reward_usd==null?"–":usd(Number(r.claim_reward_usd)))}</td><td>${fmt(r.gas_aptm)}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join("")}</tbody></table></div></div>`;
   }
 
   function renderReferralRewardsTab(){
@@ -3500,7 +3538,7 @@ window.DAO1Project = (() => {
       const t=new Date(txFilterTo+"T23:59:59.999").getTime();
       rows=rows.filter(r=>new Date(r.tx_timestamp).getTime()<=t);
     }
-    if(txFilterKind==="claims")rows=rows.filter(r=>r.claim_nft_id!=null || String(r.selector||"").toLowerCase()===CLAIM_SELECTOR);
+    if(txFilterKind==="claims")rows=rows.filter(isClaimTxRow);
     else if(txFilterKind==="referrals")rows=rows.filter(r=>verifiedReferralFlowsForTx(r).length>0);
     else if(txFilterKind!=="__all")rows=rows.filter(r=>r.direction===txFilterKind);
 
