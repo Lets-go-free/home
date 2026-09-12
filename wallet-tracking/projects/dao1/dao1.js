@@ -3941,11 +3941,17 @@ window.DAO1Project = (() => {
     return {byToken,totalUsd,missingUsd};
   }
 
-  function payoutSummaryCardHtml(title,summary,extraText=""){
+  function payoutSummaryCardHtml(title,summary,extraText="",countLabel="",countValue=null){
     const lines=[...summary.byToken.entries()]
       .sort((a,b)=>a[0].localeCompare(b[0]))
       .map(([sym,e])=>payoutSummaryLineHtml(sym,e))
       .join("");
+    const countRow=countLabel&&countValue!=null?`<tr class="payout-summary-count">
+      <td><strong>${countLabel}</strong></td>
+      <td><strong>${Number(countValue||0).toLocaleString("de-DE")}</strong></td>
+      <td></td>
+      <td></td>
+    </tr>`:"";
     const total=`<tr class="payout-summary-total">
       <td colspan="2"><strong>Total historischer USD-Wert</strong></td>
       <td style="text-align:right;font-variant-numeric:tabular-nums"><strong>${usd2(Number(summary.totalUsd||0))}</strong></td>
@@ -3956,7 +3962,7 @@ window.DAO1Project = (() => {
       :"";
     return `<div class="custom-token-card project-summary-box">
       <span class="field-label">${title}</span>
-      ${lines?`<div class="project-data-table payout-summary-table" style="margin-top:10px">
+      ${lines?`<div class="project-data-table compact-table payout-summary-table" style="margin-top:10px">
         <table>
           <thead><tr>
             <th>Token</th>
@@ -3964,7 +3970,7 @@ window.DAO1Project = (() => {
             <th style="text-align:right">Wert in USD hist.</th>
             <th>Status</th>
           </tr></thead>
-          <tbody>${lines}${total}</tbody>
+          <tbody>${countRow}${lines}${total}</tbody>
         </table>
       </div>`:`<div class="meta" style="margin-top:8px">Keine Auszahlungen im aktuellen Filter.</div>`}
       ${missing}${extraText}
@@ -3980,7 +3986,7 @@ window.DAO1Project = (() => {
     const payoutSummary=botClaimPayoutSummary(rows);
     const unresolvedText=payoutSummary.unresolvedClaims?`<div class="meta" style="margin-top:5px">${payoutSummary.unresolvedClaims.toLocaleString("de-DE")} Claim(s) noch ohne ermittelte Auszahlung.</div>`:"";
     el.innerHTML=`<div class="custom-token-card"><div class="chain-title">⛏️ Bot-Claims</div><div class="note">Bot-Claims werden über den Legacy-Selector 0x86bb8f37 sowie den neuen Apertum-Miner-Selector 0x19da4078 erkannt. DID-Auszahlungen sind fachlich Referral Rewards und werden hier bewusst ausgeschlossen. Beim neuen Miner bestätigt erst eine tatsächliche Auszahlung den Claim.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px) minmax(220px,320px)">${tabWalletFilterHtml("claims",claimFilterWallet)}${claimNftFilterHtml(walletRows)}</div></div>
-      <div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Bot-Claims</span><strong>${rows.length.toLocaleString("de-DE")}</strong></div>${payoutSummaryCardHtml("Auszahlungen",payoutSummary,unresolvedText)}</div>
+      <div class="project-summary" style="grid-template-columns:1fr">${payoutSummaryCardHtml("Auszahlungen",payoutSummary,unresolvedText,"Bot-Claims",rows.length)}</div>
       <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>NFT</th><th>Auszahlung<div class="meta">Wert in USD hist.</div></th><th>APTM-Preis USD<div class="meta">historisch</div></th><th>Gas APTM<div class="meta">Wert in USD hist.</div></th><th>Tx</th></tr></thead><tbody>${rows.map(r=>{const d=transactionClaimDescriptor(r);const flows=incomingAssetFlowsForTx(r);const flowUsd=flows.reduce((a,f)=>a+Number(f.value_usd||0),0);const w=claimWalletDisplay(r);const gasUsd=claimGasHistoricalUsd(r);const payoutHtml=flows.length?flows.map(f=>{const amount=isWrappedAptmSymbol(f.token_symbol,f.token_name)?`${fmt(Number(f.amount||0))} wAPTM`:flowDisplay(f);const histUsd=Number(f.value_usd||0);return `<strong>${amount}</strong><div class="meta">${histUsd?usd(histUsd):"USD hist. –"}</div>`;}).join(""):(r.claim_reward_aptm!=null?`<strong>${fmt(r.claim_reward_aptm)} APTM <span class="meta">(Legacy)</span></strong><div class="meta">${r.claim_reward_usd==null?"USD hist. –":usd(Number(r.claim_reward_usd))}</div>`:"–");return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td><strong>${w.name||"Wallet"}</strong><div class="meta">${w.address||"–"}</div></td><td>Claim (Bot)</td><td><strong>${d?.name||"Apertum Miner"}</strong>${r.claim_nft_id!=null?`<div class="meta">#${r.claim_nft_id}${d?.subtype?" · "+d.subtype:""}</div>`:(d?.subtype?`<div class="meta">${d.subtype}</div>`:"")}</td><td>${payoutHtml}</td><td>${Number(r.aptm_usd)>0?usd(Number(r.aptm_usd)):"–"}</td><td>${fmt(r.gas_aptm)}${gasUsd!=null?`<div class="meta">${usd(gasUsd)}</div>`:`<div class="meta">–</div>`}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join("")}</tbody></table></div></div>`;
   }
 
@@ -3991,7 +3997,7 @@ window.DAO1Project = (() => {
     const candidates=referralRewardCandidates(sourceRows);
     const payoutSummary=referralPayoutSummary(rows);
     el.innerHTML=`<div class="custom-token-card"><div class="chain-title">🤝 Referral Rewards</div><div class="note">Fachregel: Alle Auszahlungen, die dem DID zugeordnet sind, sind Referral Rewards. Sie werden ausschließlich für Wallet 0x239c…B47 ausgewertet und nicht mehr als Bot-Claims gezählt. Das Auszahlungsasset kann z. B. wUSDT oder wSOL sein.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px)">${tabWalletFilterHtml("referrals",referralFilterWallet)}</div></div>
-      <div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Referral Rewards</span><strong>${rows.length.toLocaleString("de-DE")}</strong></div>${payoutSummaryCardHtml("Auszahlungen",payoutSummary)}</div>
+      <div class="project-summary" style="grid-template-columns:1fr">${payoutSummaryCardHtml("Auszahlungen",payoutSummary,"","Referral Rewards",rows.length)}</div>
       <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>DID</th><th>Auszahlung</th><th>Gas APTM</th><th>Tx</th></tr></thead><tbody>${rows.length?rows.map(r=>{const d=transactionClaimDescriptor(r);const flows=r._referralFlows||[];const value=flows.reduce((a,f)=>a+Number(f.value_usd||0),0);return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td>${r.wallet_label||r.wallet_address||"–"}</td><td><strong>Referral Reward</strong></td><td><strong>${d?.name||"DID"}</strong>${d?.id?`<div class="meta">#${d.id} · DID</div>`:""}</td><td>${flows.length?flows.map(f=>`<strong>${flowDisplay(f)}</strong><div class="meta">${f.token_address||""}</div>`).join(""):"–"}</td><td>${value?usd(value):(r.claim_reward_usd==null?"–":usd(Number(r.claim_reward_usd)))}</td><td>${fmt(r.gas_aptm)}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join(""):`<tr><td colspan="8"><div class="empty">Keine Referral Rewards im geladenen Zeitraum gefunden.</div></td></tr>`}</tbody></table></div></div>
       ${candidates.length?`<div class="custom-token-card debug-frame"><strong>DEBUG / DEV · weitere wUSDT-Kandidaten (${candidates.length})</strong><div class="note">Nur Diagnose: Diese Zeilen sind keinem DID zugeordnet und werden nicht als Referral Reward summiert.</div></div>`:""}`;
     window.applyDebugModeVisibility?.();
