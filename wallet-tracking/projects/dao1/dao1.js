@@ -3869,12 +3869,12 @@ window.DAO1Project = (() => {
 
   function payoutSummaryLineHtml(symbol,entry){
     const missing=Number(entry?.missingUsd||0);
-    return `<div style="display:grid;grid-template-columns:minmax(110px,0.7fr) minmax(180px,1fr) minmax(170px,0.8fr) minmax(150px,0.7fr);gap:18px;align-items:baseline;padding:7px 0">
-      <strong>${symbol}</strong>
-      <span>${Number(entry?.count||0).toLocaleString("de-DE")} Auszahlung(en)</span>
-      <strong style="text-align:right;font-variant-numeric:tabular-nums">${usd2(Number(entry?.usd||0))}</strong>
-      <span class="meta">${missing?`${missing.toLocaleString("de-DE")} ohne USD-Wert`:"vollständig bewertet"}</span>
-    </div>`;
+    return `<tr>
+      <td><strong>${symbol}</strong></td>
+      <td>${Number(entry?.count||0).toLocaleString("de-DE")} Auszahlung(en)</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums"><strong>${usd2(Number(entry?.usd||0))}</strong></td>
+      <td class="meta">${missing?`${missing.toLocaleString("de-DE")} ohne USD-Wert`:"vollständig bewertet"}</td>
+    </tr>`;
   }
 
   function botClaimPayoutSummary(rows){
@@ -3946,9 +3946,29 @@ window.DAO1Project = (() => {
       .sort((a,b)=>a[0].localeCompare(b[0]))
       .map(([sym,e])=>payoutSummaryLineHtml(sym,e))
       .join("");
-    const total=`<div style="border-top:1px solid rgba(255,255,255,.10);margin-top:10px;padding-top:10px;display:grid;grid-template-columns:1fr minmax(170px,0.8fr) minmax(150px,0.7fr);gap:18px;align-items:baseline"><strong>Total historischer USD-Wert</strong><strong style="font-size:1.15em;text-align:right;font-variant-numeric:tabular-nums">${usd2(Number(summary.totalUsd||0))}</strong><span></span></div>`;
-    const missing=Number(summary.missingUsd||0)>0?`<div class="meta" style="margin-top:5px">${summary.missingUsd.toLocaleString("de-DE")} Auszahlung(en) noch ohne historischen USD-Wert.</div>`:"";
-    return `<div class="custom-token-card project-summary-box"><span class="field-label">${title}</span>${lines||`<div class="meta">Keine Auszahlungen im aktuellen Filter.</div>`}${total}${missing}${extraText}</div>`;
+    const total=`<tr class="payout-summary-total">
+      <td colspan="2"><strong>Total historischer USD-Wert</strong></td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums"><strong>${usd2(Number(summary.totalUsd||0))}</strong></td>
+      <td></td>
+    </tr>`;
+    const missing=Number(summary.missingUsd||0)>0
+      ?`<div class="meta" style="margin-top:8px">${summary.missingUsd.toLocaleString("de-DE")} Auszahlung(en) noch ohne historischen USD-Wert.</div>`
+      :"";
+    return `<div class="custom-token-card project-summary-box">
+      <span class="field-label">${title}</span>
+      ${lines?`<div class="project-data-table payout-summary-table" style="margin-top:10px">
+        <table>
+          <thead><tr>
+            <th>Token</th>
+            <th>Auszahlungen</th>
+            <th style="text-align:right">Wert in USD hist.</th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody>${lines}${total}</tbody>
+        </table>
+      </div>`:`<div class="meta" style="margin-top:8px">Keine Auszahlungen im aktuellen Filter.</div>`}
+      ${missing}${extraText}
+    </div>`;
   }
 
   function renderClaimsTab(){
