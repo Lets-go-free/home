@@ -60,6 +60,7 @@ window.DAO1Project = (() => {
   // on-chain logs are reused within the session instead of rescanning per NFT.
   const ownershipWalletTransferCache=new Map();
   const ownershipDirectTransferCache=new Map();
+  const dao1TokenMetaCache=new Map();
 
   let projectNfts = [];
   let selectedNftClass = "Mining-Bot";
@@ -602,6 +603,62 @@ window.DAO1Project = (() => {
         console.warn("Historische NFT-Metadaten:",m,e);
       }
     }
+  }
+
+  async function loadWalletNftMap(address) {
+    const ctx=getContext?.();
+    const a=lower(address);
+    const wallet=projectWallets().find(w=>lower(walletAddress(w))===a);
+    if(!ctx?.currentUser || !wallet)return new Map();
+
+    const walletId=String(wallet.dbId || wallet.id);
+    const {data,error}=await sb.from("nft_cache")
+      .select("nfts")
+      .eq("user_id",ctx.currentUser.id)
+      .eq("wallet_id",walletId)
+      .maybeSingle();
+    if(error)throw error;
+
+    const items=new Map();
+    for(const n of (Array.isArray(data?.nfts)?data.nfts:[])){
+      if(String(n.chain||"")!==CHAIN_KEY)continue;
+      if(n.possibleSpam || n.userMarkedSpam)continue;
+      const contract=lower(n.tokenAddress||"");
+      const id=String(n.tokenId??"");
+      if(!contract || !id)continue;
+      const cls=classificationFor(contract,id);
+      const key=`${contract}|${id}`;
+      items.set(key,{
+        key,contract,id,
+        name:cls?.nft_name || n.name || n.collectionName || `NFT #${id}`,
+        collectionName:n.collectionName || "",
+        image:n.image || null,
+        current:true,
+        classification:cls
+      });
+    }
+
+    // Historische Besitzdaten desselben Wallets ergänzen.
+    for(const o of ownershipRows){
+      if(String(o.chain_key||CHAIN_KEY)!==CHAIN_KEY)continue;
+      const sameWalletId=String(o.wallet_id||"")===walletId;
+      const sameAddress=o.wallet_address && lower(o.wallet_address)===a;
+      if(!sameWalletId && !sameAddress)continue;
+      const contract=lower(o.nft_contract||"");
+      const id=String(o.nft_id);
+      const key=`${contract}|${id}`;
+      if(items.has(key))continue;
+      const cls=classificationFor(contract,id);
+      const metaName=nftMetaById.get(`${contract}|${id}`)?.name;
+      items.set(key,{
+        key,contract,id,
+        name:cls?.nft_name || metaName || o.nft_name || `NFT #${id}`,
+        current:!!o.is_current,
+        historical:true,
+        classification:cls
+      });
+    }
+    return items;
   }
 
   async function loadCurrentApertumNfts() {
@@ -2593,6 +2650,119 @@ window.DAO1Project = (() => {
     };
   }
 
+  const ERC20_TRANSFER_TOPIC="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+
+  function rawTopicValue(v){
+    if(typeof v==="string")return v;
+    return String(v?.hex || v?.value || v?.hash || "");
+  }
+
+  function numericHexOrNumber(v,fallback=0){
+    if(v==null)return fallback;
+    try{
+      if(typeof v==="string" && /^0x[0-9a-f]+$/i.test(v))return Number(BigInt(v));
+      const n=Number(v);
+      return Number.isFinite(n)?n:fallback;
+    }catch{return fallback;}
+  }
+
+  function logContractAddress(log){
+    return lower(
+      log?.address_hash ||
+      log?.address?.address_hash ||
+      log?.address?.hash ||
+      H(log?.address) ||
+      log?.address ||
+      ""
+    );
+  }
+
+  async function tokenMetaForContract(contract){
+    contract=lower(contract);
+    if(!contract)return {symbol:"",name:"",decimals:18};
+    if(dao1TokenMetaCache.has(contract))return dao1TokenMetaCache.get(contract);
+    let meta={symbol:"",name:"",decimals:18};
+    try{
+      const j=await fetchJson(`${EXPLORER_API}/tokens/${contract}`,"Apertum Explorer · Token-Metadaten");
+      meta={
+        symbol:String(j?.symbol||j?.token?.symbol||""),
+        name:String(j?.name||j?.token?.name||""),
+        decimals:Number(j?.decimals??j?.token?.decimals??18)
+      };
+      if(!Number.isFinite(meta.decimals))meta.decimals=18;
+    }catch(e){
+      console.warn("DAO1 Token-Metadaten Fallback",contract,e);
+    }
+    dao1TokenMetaCache.set(contract,meta);
+    return meta;
+  }
+
+  async function fetchClaimTransferLogs(txHash){
+    const hash=String(txHash||"").toLowerCase();
+    let logs=[];
+    try{
+      logs=await fetchAll(`/transactions/${hash}/logs`);
+    }catch(e){
+      console.warn("DAO1 Claim Logs via Explorer",hash,e);
+    }
+    if(logs.length)return logs;
+
+    // Zweite Quelle: RPC-Receipt. Wichtig, falls Blockscout für eine Tx keine
+    // token-transfers liefert, die ERC-20 Transfer-Events aber im Receipt vorhanden sind.
+    try{
+      const receipt=await rpc("eth_getTransactionReceipt",[hash]);
+      return Array.isArray(receipt?.logs)?receipt.logs:[];
+    }catch(e){
+      console.warn("DAO1 Claim Logs via RPC Receipt",hash,e);
+      return [];
+    }
+  }
+
+  async function assetFlowRowsFromTransferLogs(txHash,address,txMeta=null){
+    const hash=String(txHash||"").toLowerCase();
+    const wallet=lower(address);
+    const logs=await fetchClaimTransferLogs(hash);
+    const rows=[];
+
+    for(let i=0;i<logs.length;i++){
+      const log=logs[i]||{};
+      const topics=Array.isArray(log.topics)?log.topics.map(rawTopicValue):[];
+      if(String(topics[0]||"").toLowerCase()!==ERC20_TRANSFER_TOPIC || topics.length<3)continue;
+
+      const from=lower(topicAddr(topics[1]));
+      const to=lower(topicAddr(topics[2]));
+      if(from!==wallet && to!==wallet)continue;
+
+      const contract=logContractAddress(log);
+      if(!contract)continue;
+
+      let raw="0";
+      try{ raw=BigInt(String(log.data||"0x0")).toString(); }catch{ continue; }
+      const meta=await tokenMetaForContract(contract);
+
+      const pseudo={
+        token:{
+          address_hash:contract,
+          symbol:meta.symbol,
+          name:meta.name,
+          decimals:meta.decimals
+        },
+        from:{hash:from},
+        to:{hash:to},
+        value:raw,
+        transaction_hash:hash,
+        block_number:numericHexOrNumber(log.block_number??log.blockNumber,Number(txMeta?.block_number||0)),
+        timestamp:log.timestamp||log.block_timestamp||txMeta?.tx_timestamp||null,
+        log_index:numericHexOrNumber(log.log_index??log.logIndex,i)
+      };
+
+      const row=assetFlowRowFromTransfer(pseudo,address,i);
+      if(row && ["eingang","ausgang","intern"].includes(row.direction))rows.push(row);
+    }
+
+    return rows;
+  }
+
   async function cacheAssetFlowsForTransaction(txHash,address,txMeta=null){
     const hash=String(txHash||"").toLowerCase();
     const transfers=await fetchTransactionTokenTransfers(hash);
@@ -2602,10 +2772,21 @@ window.DAO1Project = (() => {
       block_number:t?.block_number ?? t?.block ?? txMeta?.block_number ?? 0,
       timestamp:t?.timestamp || t?.block_timestamp || txMeta?.tx_timestamp || null
     }));
-    const rows=normalized
+    let rows=normalized
       .map((t,i)=>assetFlowRowFromTransfer(t,address,i))
       .filter(Boolean)
       .filter(r=>r.direction==="eingang" || r.direction==="ausgang" || r.direction==="intern");
+
+    // v53: Der neue Miner liefert über Blockscout teilweise keine tx-token-transfers.
+    // Wenn kein eingehender Reward sichtbar ist, Standard-ERC20-Transfer-Events direkt
+    // aus Explorer-Logs bzw. RPC-Receipt auslesen.
+    if(!rows.some(r=>r.direction==="eingang")){
+      const logRows=await assetFlowRowsFromTransferLogs(hash,address,txMeta);
+      const byKey=new Map(rows.map(r=>[r.flow_key,r]));
+      for(const r of logRows)byKey.set(r.flow_key,r);
+      rows=[...byKey.values()];
+    }
+
     if(!rows.length){
       console.warn("DAO1 Claim Tx ohne parsebare Token-Flows",{
         tx_hash:hash,
@@ -2614,6 +2795,7 @@ window.DAO1Project = (() => {
       });
       return [];
     }
+
     await valueAssetFlows(rows);
     await saveAssetFlowRows(rows);
     return rows;
@@ -2973,9 +3155,9 @@ window.DAO1Project = (() => {
     return projectWallets().filter(w=>walletAddress(w));
   }
 
-  async function enrichTransactionHistoricalPrices(address,jobToken=transactionJobToken){
+  async function enrichTransactionHistoricalPrices(address,jobToken=transactionJobToken,minBlock=null){
     const txs=await loadTransactionRows(address,null);
-    const pending=txs.filter(r=>!r.price_is_manual && Number(r.block_number)>0 && (
+    const pending=txs.filter(r=>(minBlock==null || Number(r.block_number)>=Number(minBlock)) && !r.price_is_manual && Number(r.block_number)>0 && (
       r.aptm_usd==null ||
       (Number(r.gas_aptm||0)>0 && r.gas_usd==null) ||
       !String(r.price_source||"").includes(PRICE_SOURCE_TAG)
@@ -3211,7 +3393,7 @@ window.DAO1Project = (() => {
           if(job!==transactionJobToken)return;
           const w=targets[i],address=walletAddress(w);
           setTransactionStatus("loading",`Wallet ${i+1}/${targets.length}: ${w.label} wird aktualisiert…`,address);
-          await syncApertumTransactionCache(address,null);
+          const txSync=await syncApertumTransactionCache(address,null);
           if(job!==transactionJobToken)return;
           await syncTargetedReferralWusdt(address);
           if(job!==transactionJobToken)return;
@@ -3226,7 +3408,9 @@ window.DAO1Project = (() => {
             await backfillCachedClaimPrices(address,null,document.getElementById("dao1TransactionStatus"));
             if(job!==transactionJobToken)return;
           }
-          await enrichTransactionHistoricalPrices(address,job);
+          // Nur neue/überlappende Blöcke prüfen. Alte bereits gecachte Historie wird
+          // beim normalen Update nicht erneut durch die Preisengine geschickt.
+          await enrichTransactionHistoricalPrices(address,job,txSync?.fromBlock);
           if(job!==transactionJobToken)return;
           setTransactionStatus("loading",`Wallet ${i+1}/${targets.length}: ${w.label} · NFTs werden aktualisiert…`,"Apertum NFT-Bestand wird live abgeglichen; Besitzerhistorien werden nur bei tatsächlichen Besitzänderungen neu aufgebaut.");
           await refreshWalletNftsAndOwnership(w,`Wallet ${i+1}/${targets.length} · `);
@@ -3275,7 +3459,9 @@ window.DAO1Project = (() => {
 
   async function enrichTransactionsWithClaims(address,status=null,jobToken=transactionJobToken){
     const txs=await loadTransactionRows(address,null);
-    const nftMap=allKnownNftsForWallet(address);
+    // v53: Claims verwenden direkt den persistenten NFT-Cache DES betreffenden Wallets.
+    // Dadurch ist die Zuordnung unabhängig davon, welches Wallet im NFT-Tab ausgewählt ist.
+    const nftMap=await loadWalletNftMap(address);
     const cachedClaims=await loadCachedClaims(address,null);
     const claimByHash=new Map(cachedClaims.map(c=>[String(c.tx_hash||"").toLowerCase(),c]));
 
