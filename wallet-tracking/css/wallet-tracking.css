@@ -464,17 +464,19 @@
 
 /* =========================================================
    WalletTracking · zentraler produktiver Projekttabellenstil
-   Quelle/Referenz: verifizierter TLN/VOW-Discovery-Stil.
-   Für TLN/VOW, DAO1, NFTs und künftige Projekt-Unterseiten.
+   Referenz: TLN/VOW Discovery.
+   Gilt für TLN/VOW, DAO1, NFTs und künftige Projekt-Unterseiten.
 ========================================================= */
 .project-data-table,
 .team-lifecycle-list {
-  margin-top:10px;
-  border:1px solid #3a414b;
-  border-radius:14px;
+  margin-top:12px;
+  border:1px solid #3b424c;
+  border-radius:16px;
   overflow:auto;
-  background:#1b2027;
-  box-shadow:0 8px 24px rgba(0,0,0,.12);
+  background:#20252c;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.02) inset,
+    0 10px 28px rgba(0,0,0,.18);
 }
 
 .project-data-table table,
@@ -483,31 +485,32 @@
   border-collapse:collapse;
   border-spacing:0;
   min-width:900px;
-  background:transparent;
+  background:#20252c;
 }
 
 .project-data-table thead,
 .team-lifecycle-list thead {
-  background:#242a32;
+  background:#2a3038;
 }
 
 .project-data-table th,
 .team-lifecycle-list th {
-  padding:11px 14px;
+  padding:12px 14px;
   text-align:left;
   font-size:11px;
-  color:#c2c8d0;
+  font-weight:700;
+  color:#c7cdd5;
   border:0;
-  border-bottom:1px solid #414852;
+  border-bottom:1px solid #454c56;
   white-space:nowrap;
-  background:#242a32;
+  background:#2a3038;
 }
 
 .project-data-table td,
 .team-lifecycle-list td {
-  padding:13px 14px;
+  padding:14px;
   border:0;
-  border-bottom:1px solid #343a43;
+  border-bottom:1px solid #3a4049;
   font-size:12px;
   vertical-align:middle;
   background:transparent;
@@ -520,24 +523,30 @@
 
 .project-data-table tbody tr,
 .team-lifecycle-list tbody tr {
-  background:linear-gradient(180deg,#20252c,#1d2229);
+  background:linear-gradient(180deg,#232930 0%,#20252c 100%);
+}
+
+.project-data-table tbody tr:nth-child(even),
+.team-lifecycle-list tbody tr:nth-child(even) {
+  background:linear-gradient(180deg,#21272e 0%,#1f242b 100%);
 }
 
 .project-data-table tbody tr:hover td,
 .team-lifecycle-list tbody tr:hover td {
-  background:#292f37;
+  background:#2c333c;
 }
 
 .project-data-table .mono,
 .team-lifecycle-list .mono {
-  color:#aeb6c1;
+  color:#b2bac4;
 }
 
 .project-data-table .meta,
 .team-lifecycle-list .meta {
   margin-top:3px;
-  font-size:.7rem;
+  font-size:.70rem;
   line-height:1.35;
+  color:#aeb6c1;
 }
 
 .project-data-table code,
@@ -545,17 +554,24 @@
   font-size:.72rem;
 }
 
-/* Lange Tabellen können Sticky-Header explizit aktivieren. */
 .project-data-table.sticky-header th {
   position:sticky;
   top:0;
   z-index:4;
 }
 
-/* Kompatibilitätsalias für bereits vorhandene DAO1-Markups.
-   Neue Tabellen sollen direkt .project-data-table verwenden. */
+/* Karten, die ausschließlich eine Tabelle enthalten, sollen die Tabelle nicht
+   nochmals mit einer zweiten gleichfarbigen Innenfläche umschließen. */
+.dao1-data-table-card {
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+}
+
+/* Alte Alias-Klasse nur noch für Kompatibilität. Neue Tabellen direkt mit
+   .project-data-table markieren. */
 .dao1-data-table {
-  margin-top:10px;
+  margin-top:12px;
 }
 .dao1-data-table.chain-table-wrap {
   overflow:auto;
