@@ -2553,6 +2553,74 @@ window.DAO1Project = (() => {
     return rows;
   }
 
+  function assetFlowRowFromTransfer(t,address,index=0){
+    const ctx=getContext?.();
+    const tokenAddress=tokenTransferAddress(t);
+    const txHash=tokenTransferTxHash(t);
+    if(!tokenAddress||!txHash)return null;
+    const decimals=tokenTransferDecimals(t);
+    const raw=tokenTransferRawValue(t);
+    return {
+      user_id:ctx.currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+      wallet_id:walletIdForAddress(address),flow_key:tokenFlowKey(t,address,index),
+      tx_hash:txHash,block_number:Number(t.block_number??t.block??0),
+      tx_timestamp:t.timestamp||t.block_timestamp||null,
+      log_index:Number(t.log_index??t.logIndex??-1),
+      token_address:tokenAddress,token_symbol:tokenFlowSymbol(t),token_name:tokenFlowName(t),
+      token_decimals:decimals,amount_raw:raw,amount:decimalAmount(raw,decimals),
+      counterparty_address:tokenFlowCounterparty(t,address),direction:tokenFlowDirection(t,address),
+      price_usd:null,value_usd:null,price_source:null,updated_at:new Date().toISOString()
+    };
+  }
+
+  async function cacheAssetFlowsForTransaction(txHash,address){
+    const transfers=await fetchTransactionTokenTransfers(txHash);
+    const rows=transfers
+      .map((t,i)=>assetFlowRowFromTransfer(t,address,i))
+      .filter(Boolean)
+      .filter(r=>r.direction==="eingang" || r.direction==="ausgang" || r.direction==="intern");
+    if(!rows.length)return [];
+    await valueAssetFlows(rows);
+    await saveAssetFlowRows(rows);
+    return rows;
+  }
+
+  // v47: Referral-Daten gezielt statt Wallet-weitem ERC-20-Vollscan laden.
+  // Blockscout unterstützt beim Address-Token-Transfer Endpoint sowohl filter=to
+  // als auch token=<contract>. Damit laden wir nur eingehendes DAO1-wUSDT.
+  async function syncTargetedReferralWusdt(address){
+    const base=`${EXPLORER_API}/addresses/${address}/token-transfers?type=ERC-20&filter=to&token=${encodeURIComponent(REFERRAL_WUSDT_TOKEN)}`;
+    setTransactionStatus("loading","Referral Rewards werden gezielt geprüft…","Nur eingehende wUSDT-Transfers werden geladen; kein ERC-20-Wallet-Vollscan.");
+    const transfers=await fetchPagedUrl(base,100);
+    const rows=transfers
+      .map((t,i)=>assetFlowRowFromTransfer(t,address,i))
+      .filter(Boolean)
+      .filter(r=>r.direction==="eingang" && lower(r.token_address)===REFERRAL_WUSDT_TOKEN);
+    if(!rows.length)return {flows:0,synthetic:0};
+    await valueAssetFlows(rows);
+    await saveAssetFlowRows(rows);
+
+    // Ein Referral-Transfer kann das Wallet nur als Event-Empfänger enthalten und
+    // deshalb in der normalen Address-TX-Liste fehlen. Für genau diese wUSDT-TXs
+    // ergänzen wir eine synthetische Transaktionszeile aus dem bereits geladenen Event.
+    const existing=await loadTransactionRows(address,null);
+    const hashes=new Set(existing.map(r=>String(r.tx_hash||"").toLowerCase()));
+    const byTx=new Map();
+    for(const f of rows){
+      const h=String(f.tx_hash||"").toLowerCase();
+      if(!hashes.has(h)&&!byTx.has(h))byTx.set(h,f);
+    }
+    const synthetic=[...byTx.values()].map(f=>({
+      user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+      wallet_id:walletIdForAddress(address),tx_hash:f.tx_hash,block_number:Number(f.block_number||0),
+      tx_timestamp:f.tx_timestamp,from_address:f.counterparty_address||null,to_address:null,
+      direction:"eingang",method:"ERC-20 Transfer",selector:"",status:"token-flow",
+      value_aptm:0,gas_aptm:0,raw_input:"",updated_at:new Date().toISOString()
+    }));
+    if(synthetic.length)await saveTransactionRows(synthetic);
+    return {flows:rows.length,synthetic:synthetic.length};
+  }
+
   async function syncApertumTokenFlowCache(address){
     const ctx=getContext?.();
     const state=await getTokenFlowScanState(address);
@@ -2582,11 +2650,33 @@ window.DAO1Project = (() => {
       // So wirkt eine hängende Explorer-Seite nicht minutenlang wie ein Freeze.
       let j;
       try{
-        const r=await fetchWithRetry(url,{headers:{accept:"application/json"}},"Apertum Explorer · ERC-20 Token-Transfers",2,12000);
-        j=await r.json();
+        // v46: Timeout muss die komplette Antwort inkl. JSON-Body umfassen.
+        // fetch() kann bereits nach Eingang der Header auflösen, während der Body noch hängt.
+        // Deshalb bleibt der AbortController aktiv, bis r.json() vollständig beendet ist.
+        let lastError=null;
+        for(let attempt=1;attempt<=2;attempt++){
+          const controller=new AbortController();
+          const timeout=setTimeout(()=>controller.abort(),12000);
+          try{
+            const r=await fetch(url,{headers:{accept:"application/json"},signal:controller.signal});
+            if(!r.ok)throw new Error(`Apertum Explorer · ERC-20 Token-Transfers: HTTP ${r.status}`);
+            j=await r.json();
+            clearTimeout(timeout);
+            lastError=null;
+            break;
+          }catch(e){
+            clearTimeout(timeout);
+            lastError=e;
+            if(attempt<2)await sleep(600*attempt);
+          }
+        }
+        if(lastError){
+          const detail=lastError?.name==="AbortError"?"Zeitüberschreitung beim Laden der vollständigen JSON-Antwort":(lastError?.message||"unbekannter Fehler");
+          throw new Error(`Apertum Explorer · ERC-20 Token-Transfers: ${detail}`);
+        }
       }catch(e){
-        setTransactionStatus("error",`ERC-20 Asset-Flows: Explorer antwortet auf Seite ${page} nicht.`,
-          `${saved.toLocaleString("de-DE")} Transfers dieser Aktualisierung sind bereits sicher gespeichert. Erneut „Daten aktualisieren“ versucht den Scan nochmals; der Scan-State wird erst nach vollständigem Durchlauf fortgeschrieben.`);
+        setTransactionStatus("error",`ERC-20 Asset-Flows: Explorer antwortet auf Seite ${page} nicht vollständig.`,
+          `${saved.toLocaleString("de-DE")} Transfers dieser Aktualisierung sind bereits sicher gespeichert. Die vollständige Antwort wurde nach 2 × 12 Sekunden abgebrochen. Erneut „Daten aktualisieren“ versucht den Scan nochmals; der Scan-State wird erst nach vollständigem Durchlauf fortgeschrieben.`);
         throw e;
       }
 
@@ -3088,7 +3178,7 @@ window.DAO1Project = (() => {
           setTransactionStatus("loading",`Wallet ${i+1}/${targets.length}: ${w.label} wird aktualisiert…`,address);
           await syncApertumTransactionCache(address,null);
           if(job!==transactionJobToken)return;
-          await syncApertumTokenFlowCache(address);
+          await syncTargetedReferralWusdt(address);
           if(job!==transactionJobToken)return;
           const walletRows=await loadTransactionRows(address,null);
           if(job!==transactionJobToken)return;
@@ -3146,27 +3236,59 @@ window.DAO1Project = (() => {
   async function enrichTransactionsWithClaims(address,status=null,jobToken=transactionJobToken){
     const txs=await loadTransactionRows(address,null);
     const nftMap=allKnownNftsForWallet(address);
-    const allFlows=await loadAssetFlowRows(address);
+    const cachedClaims=await loadCachedClaims(address,null);
+    const claimByHash=new Map(cachedClaims.map(c=>[String(c.tx_hash||"").toLowerCase(),c]));
+
+    // v47: Zuerst nur aus den bereits vorhandenen Transaktionen Claim-Kandidaten bilden.
+    // Für neue Mining-Bots genügt zunächst eine bekannte NFT-ID in den ersten ABI-Wörtern.
+    // Nur für noch nicht verarbeitete Kandidaten werden anschließend deren Token-Transfers
+    // direkt über /transactions/<hash>/token-transfers nachgeladen und persistent gecacht.
+    function candidateEvidence(t){
+      if(String(t?.selector||"").toLowerCase()===CLAIM_SELECTOR)return {legacy:true,id:null};
+      const ps=words(t?.raw_input||"");
+      const knownId=[ps[0],ps[1],ps[2]].filter(v=>v!=null).map(v=>v.toString()).find(id=>nftMap.has(id));
+      return knownId?{legacy:false,id:String(knownId)}:null;
+    }
+    const candidateByHash=new Map();
+    for(const t of txs){
+      const ev=candidateEvidence(t);
+      if(ev)candidateByHash.set(String(t.tx_hash||"").toLowerCase(),ev);
+    }
+
+    let allFlows=await loadAssetFlowRows(address);
+    const cachedFlowHashes=new Set(allFlows.map(f=>String(f.tx_hash||"").toLowerCase()));
+    const detailTargets=txs.filter(t=>{
+      const h=String(t.tx_hash||"").toLowerCase();
+      const ev=candidateByHash.get(h);
+      if(!ev)return false;
+      const c=claimByHash.get(h);
+      if(t.claim_nft_id!=null && c?.reward_asset_symbol)return false;
+      return !cachedFlowHashes.has(h);
+    });
+    for(let i=0;i<detailTargets.length;i++){
+      if(jobToken!==transactionJobToken)return;
+      const t=detailTargets[i];
+      setTransactionStatus("loading",`Claim-Details werden gezielt geladen ${i+1}/${detailTargets.length}…`,"Nur Token-Transfers der noch offenen Claim-Kandidaten werden abgefragt.");
+      try{await cacheAssetFlowsForTransaction(t.tx_hash,address);}catch(e){console.warn("DAO1 Claim Detail-Flow",t.tx_hash,e);}
+    }
+
+    allFlows=await loadAssetFlowRows(address);
     const flowsByTx=new Map();
     for(const f of allFlows){
       const h=String(f.tx_hash||"").toLowerCase();
       if(!flowsByTx.has(h))flowsByTx.set(h,[]);
       flowsByTx.get(h).push(f);
     }
-    // v43: Neue Mining-Bots dürfen einen anderen Claim-Entry-Point als den Legacy-Selector nutzen.
-    // Generische Evidenz: bekannte NFT-ID in den ersten ABI-Wörtern + eingehender Reward-Asset-Flow.
     function claimEvidence(t){
-      if(String(t?.selector||"").toLowerCase()===CLAIM_SELECTOR)return {legacy:true,id:null};
-      const incoming=(flowsByTx.get(String(t?.tx_hash||"").toLowerCase())||[]).filter(f=>f.direction==="eingang");
-      if(!incoming.length)return null;
-      const ps=words(t?.raw_input||"");
-      const knownId=[ps[0],ps[1],ps[2]].filter(v=>v!=null).map(v=>v.toString()).find(id=>nftMap.has(id));
-      return knownId?{legacy:false,id:String(knownId)}:null;
+      const h=String(t?.tx_hash||"").toLowerCase();
+      const ev=candidateByHash.get(h);
+      if(!ev)return null;
+      if(ev.legacy)return ev;
+      const incoming=(flowsByTx.get(h)||[]).filter(f=>f.direction==="eingang");
+      return incoming.length?ev:null;
     }
     const evidenceByHash=new Map();
     const allClaimTxs=txs.filter(t=>{const ev=claimEvidence(t);if(ev)evidenceByHash.set(String(t.tx_hash||"").toLowerCase(),ev);return !!ev;});
-    const cachedClaims=await loadCachedClaims(address,null);
-    const claimByHash=new Map(cachedClaims.map(c=>[String(c.tx_hash||"").toLowerCase(),c]));
     const claimTxs=allClaimTxs.filter(t=>{const c=claimByHash.get(String(t.tx_hash||"").toLowerCase());return t.claim_nft_id==null || !c?.reward_asset_symbol;});
     if(!claimTxs.length){
       setTransactionStatus("ready",`Keine neuen Claims anzureichern.`,`${allClaimTxs.length.toLocaleString("de-DE")} Claim-Transaktionen (Legacy + neue Mining-Bot-Evidenz) sind bereits assetgenau verarbeitet.`);
