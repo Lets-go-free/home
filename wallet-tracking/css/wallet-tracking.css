@@ -472,7 +472,9 @@
   margin-top:12px;
   border:1px solid #3b424c;
   border-radius:16px;
-  overflow:auto;
+  overflow-x:auto;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
   background:#20252c;
   box-shadow:
     0 1px 0 rgba(255,255,255,.02) inset,
@@ -920,4 +922,56 @@ body:not(.admin-debug-mode) #tab-dao1 .debug-frame{
 }
 body.admin-debug-mode #tab-dao1 .debug-frame{
   display:revert !important;
+}
+
+
+/* Kompakte Variante des zentralen Projekttabellenstils:
+   gleicher Look, aber ohne Mindestbreite für kleine Summary-Karten. */
+.project-data-table.compact-table {
+  overflow-x:auto !important;
+  overflow-y:visible;
+  -webkit-overflow-scrolling:touch;
+}
+.project-data-table.compact-table table {
+  width:100% !important;
+  min-width:720px !important;
+  table-layout:auto;
+}
+.project-data-table.compact-table th,
+.project-data-table.compact-table td {
+  white-space:normal;
+  overflow-wrap:normal;
+  word-break:normal;
+}
+.project-data-table.compact-table th:nth-child(1),
+.project-data-table.compact-table td:nth-child(1) { width:18%; }
+.project-data-table.compact-table th:nth-child(2),
+.project-data-table.compact-table td:nth-child(2) { width:26%; }
+.project-data-table.compact-table th:nth-child(3),
+.project-data-table.compact-table td:nth-child(3) { width:30%; }
+.project-data-table.compact-table th:nth-child(4),
+.project-data-table.compact-table td:nth-child(4) { width:26%; }
+
+
+/* v65 · Generelle Tabellenregel:
+   Reicht die verfügbare Breite nicht aus, scrollt nur der Tabellenbereich horizontal.
+   Die gesamte Seite bleibt ohne horizontalen Overflow. */
+.chain-table-wrap,
+.table-wrap,
+.lp-table-scroll,
+.dao1-transaction-table-wrap {
+  max-width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+}
+
+.project-data-table table,
+.team-lifecycle-list table,
+.chain-table-wrap table,
+.table-wrap table {
+  max-width:none;
+}
+
+body {
+  overflow-x:hidden;
 }
