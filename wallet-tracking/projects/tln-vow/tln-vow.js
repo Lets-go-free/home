@@ -151,6 +151,22 @@ function configureSharedPriceEngine(){
   }));
 }
 
+/* Zentrale Anzeigepräzision kommt aus public.predefined_tokens.
+ * Technische ERC-20 decimals bleiben davon vollständig getrennt. */
+function displayDecimalsFor(symbol,{kind="token",summary=false,address=null}={}){
+  const globalDigits=window.WalletTokenFormat?.digits;
+  if(typeof globalDigits==="function") return globalDigits({chain:"bsc",address,symbol},summary);
+  return kind==="lp"?6:6;
+}
+
+function formatTokenAmount(value,symbol,options={}){
+  const globalFormat=window.WalletTokenFormat?.amount;
+  if(typeof globalFormat==="function") return globalFormat(value,{chain:"bsc",address:options?.address||null,symbol},{summary:!!options?.summary});
+  const n=Number(value);
+  if(!Number.isFinite(n)) return "–";
+  return n.toLocaleString("de-CH",{maximumFractionDigits:options?.kind==="lp"?6:6});
+}
+
 function fmt(value, decimals=8){
   if(value === null || value === undefined || !Number.isFinite(value)) return "-";
   return value.toLocaleString("de-CH",{maximumFractionDigits:decimals});
@@ -1660,8 +1676,8 @@ async function renderV2Pool(chain,dbPool,wallet){
       <div class="address">${pool.token1.address}</div>
     </td>
     <td>
-      ${fmt(pool.r0)} ${pool.token0.symbol}<br>
-      ${fmt(pool.r1)} ${pool.token1.symbol}
+      ${formatTokenAmount(pool.r0,pool.token0.symbol)} ${pool.token0.symbol}<br>
+      ${formatTokenAmount(pool.r1,pool.token1.symbol)} ${pool.token1.symbol}
     </td>
     <td>
       <div class="price">${fmt(pool.r1/pool.r0,12)}</div>
@@ -1690,11 +1706,11 @@ async function renderV2Pool(chain,dbPool,wallet){
       <div class="lp">${lpPrice !== null ? usd(lpPrice) : "nicht verfügbar"}</div>
       <div class="small">Wert von 1 ${pool.lpSymbol}</div>
       <hr>
-      <div class="small">Supply: ${fmt(pool.lpSupply,6)} ${pool.lpSymbol}</div>
+      <div class="small">Supply: ${formatTokenAmount(pool.lpSupply,pool.lpSymbol,{kind:"lp"})} ${pool.lpSymbol}</div>
       <div class="small">
         1 LP enthält:<br>
-        ${pool.lpSupply ? fmt(pool.r0/pool.lpSupply,12) : "-"} ${pool.token0.symbol}<br>
-        ${pool.lpSupply ? fmt(pool.r1/pool.lpSupply,12) : "-"} ${pool.token1.symbol}
+        ${pool.lpSupply ? formatTokenAmount(pool.r0/pool.lpSupply,pool.token0.symbol) : "-"} ${pool.token0.symbol}<br>
+        ${pool.lpSupply ? formatTokenAmount(pool.r1/pool.lpSupply,pool.token1.symbol) : "-"} ${pool.token1.symbol}
       </div>
     </td>
   `;
@@ -1916,6 +1932,8 @@ return {
   switchChain,
   refreshPrices:manualRefreshPrices,
   getPrice:getExportedPrice,
+  displayDecimalsFor,
+  formatTokenAmount,
   getPriceState:()=>({capturedAt:currentPriceCapturedAt,source:currentPriceSource,version:CURRENT_PRICE_SNAPSHOT_VERSION})
 };
 

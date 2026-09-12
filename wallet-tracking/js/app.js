@@ -200,6 +200,7 @@ async function onLoggedIn(session) {
         chainConfig: CHAIN_CONFIG,
         predefinedTokenProject,
         predefinedTokenCategory,
+        tokenFormat: window.WalletTokenFormat,
         normalizeAddress,
         dustThreshold: DUST_THRESHOLD,
         lpEngine: window.WalletLPEngine,
@@ -1091,7 +1092,7 @@ function renderTaxResults(date="",tz=""){
   if(!taxRows.length){out.innerHTML='<div class="empty">Keine Positionen gefunden oder keine Chain konnte verifiziert werden.</div>';return;}
   out.innerHTML=`<details><summary style="cursor:pointer;font-weight:700;padding:10px 0">Stichtagspositionen anzeigen (${taxRows.length})</summary>
     <div class="chain-table-wrap"><table class="chain-admin-table"><thead><tr><th>Wallet</th><th>Chain</th><th>Asset</th><th>Bestand</th><th>Preis USD</th><th>Wert USD</th><th>Block/Ledger</th><th>Status / Quelle</th></tr></thead><tbody>
-    ${taxRows.map(r=>`<tr><td>${escapeAttr(r.wallet)}<div class="meta">${escapeAttr(r.wallet_address||"")}</div></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${escapeAttr(r.symbol||"–")}</strong><div class="meta">${r.asset&&r.asset!=="native"?escapeAttr(r.asset):"nativ"}</div></td><td>${r.amount==null?"–":fmt(r.amount)}</td><td>${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td>${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td><td>${r.block||"–"}</td><td>${r.status==="verifiziert"?'<span class="badge safe">verifiziert</span>':'<span class="badge unsafe">nicht verifizierbar</span>'}<div class="meta">${escapeAttr(r.error||r.balance_source||"")}${r.price_source?` · Preis: ${escapeAttr(r.price_source)}`:""}</div></td></tr>`).join("")}
+    ${taxRows.map(r=>`<tr><td>${escapeAttr(r.wallet)}<div class="meta">${escapeAttr(r.wallet_address||"")}</div></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><strong>${escapeAttr(r.symbol||"–")}</strong><div class="meta">${r.asset&&r.asset!=="native"?escapeAttr(r.asset):"nativ"}</div></td><td>${r.amount==null?"–":fmt(r.amount,{chain:r.chain,address:r.asset&&r.asset!=="native"?r.asset:null,symbol:r.symbol})}</td><td>${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td>${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td><td>${r.block||"–"}</td><td>${r.status==="verifiziert"?'<span class="badge safe">verifiziert</span>':'<span class="badge unsafe">nicht verifizierbar</span>'}<div class="meta">${escapeAttr(r.error||r.balance_source||"")}${r.price_source?` · Preis: ${escapeAttr(r.price_source)}`:""}</div></td></tr>`).join("")}
     </tbody></table></div></details>`;
 }
 
@@ -1122,8 +1123,8 @@ function exportTaxPdf(){
   const walletNames=[...new Set(taxRows.map(r=>r.wallet))].sort((a,b)=>a.localeCompare(b,"de"));
   const grouped=new Map();for(const r of ok){const k=r.chain+"|"+(r.asset||r.symbol),x=grouped.get(k)||{chain:r.chain,symbol:r.symbol,asset:r.asset,amount:0,value:0,priced:true,price:r.price_usd};x.amount+=Number(r.amount||0);if(r.value_usd==null)x.priced=false;else x.value+=Number(r.value_usd||0);if(x.price==null&&r.price_usd!=null)x.price=r.price_usd;grouped.set(k,x);}
   const chainKeys=[...new Set([...grouped.values()].map(x=>x.chain))].sort((a,b)=>(CHAIN_CONFIG[a]?.sortOrder||999)-(CHAIN_CONFIG[b]?.sortOrder||999));
-  const chainSummary=chainKeys.map(chain=>{const ar=[...grouped.values()].filter(x=>x.chain===chain),sum=ar.filter(x=>x.priced).reduce((q,x)=>q+x.value,0),rows=ar.map(x=>`<tr><td><b>${escapeAttr(x.symbol||"–")}</b><small>${x.asset&&x.asset!=="native"?escapeAttr(x.asset):"nativ"}</small></td><td class="n">${fmt(x.amount)}</td><td class="n">${x.price==null?"–":fmtUsd(x.price)}</td><td class="n">${x.priced?fmtUsd(x.value):"–"}</td></tr>`).join("");return `<h2>${escapeAttr(CHAIN_META[chain]?.label||chain)}</h2><table><thead><tr><th>Token</th><th>Gesamtbestand</th><th>Kurs USD</th><th>Wert USD</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3">SUBTOTAL ${escapeAttr(CHAIN_META[chain]?.label||chain)}</td><td class="n">${fmtUsd(sum)}</td></tr></tfoot></table>`}).join("");
-  const walletSections=walletNames.map(name=>{const wr=taxRows.filter(r=>r.wallet===name),wp=wr.filter(r=>r.value_usd!=null),sum=wp.reduce((s,r)=>s+Number(r.value_usd||0),0),addr=[...new Set(wr.map(r=>r.wallet_address).filter(Boolean))].join(" · ");const rows=wr.map(r=>`<tr><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><b>${escapeAttr(r.symbol||"")}</b><small>${escapeAttr(r.asset||"")}</small></td><td class="n">${r.amount==null?"–":fmt(r.amount)}</td><td class="n">${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td class="n">${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td><td>${r.block||"–"}</td><td>${escapeAttr(r.status)}<small>${escapeAttr(r.error||r.balance_source||"")}${r.price_source?`<br>Preis: ${escapeAttr(r.price_source)}`:""}</small></td></tr>`).join("");return `<section class="wallet-page"><h1>${escapeAttr(name)}</h1><div class="address">${escapeAttr(addr)}</div><div class="wallet-summary">Wallet-Wert bewerteter Positionen: <b>${fmtUsd(sum)}</b> · ${wp.length}/${wr.filter(r=>r.status==="verifiziert").length} Positionen bewertet</div><table><thead><tr><th>Chain</th><th>Asset</th><th>Bestand</th><th>Preis USD</th><th>Wert USD</th><th>Block / Slot / Ledger</th><th>Status / Quellen</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="4">SUMME WALLET</td><td class="n">${fmtUsd(sum)}</td><td colspan="2"></td></tr></tfoot></table></section>`;}).join("");
+  const chainSummary=chainKeys.map(chain=>{const ar=[...grouped.values()].filter(x=>x.chain===chain),sum=ar.filter(x=>x.priced).reduce((q,x)=>q+x.value,0),rows=ar.map(x=>`<tr><td><b>${escapeAttr(x.symbol||"–")}</b><small>${x.asset&&x.asset!=="native"?escapeAttr(x.asset):"nativ"}</small></td><td class="n">${fmt(x.amount,{chain:x.chain,address:x.asset&&x.asset!=="native"?x.asset:null,symbol:x.symbol},{summary:true})}</td><td class="n">${x.price==null?"–":fmtUsd(x.price)}</td><td class="n">${x.priced?fmtUsd(x.value):"–"}</td></tr>`).join("");return `<h2>${escapeAttr(CHAIN_META[chain]?.label||chain)}</h2><table><thead><tr><th>Token</th><th>Gesamtbestand</th><th>Kurs USD</th><th>Wert USD</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3">SUBTOTAL ${escapeAttr(CHAIN_META[chain]?.label||chain)}</td><td class="n">${fmtUsd(sum)}</td></tr></tfoot></table>`}).join("");
+  const walletSections=walletNames.map(name=>{const wr=taxRows.filter(r=>r.wallet===name),wp=wr.filter(r=>r.value_usd!=null),sum=wp.reduce((s,r)=>s+Number(r.value_usd||0),0),addr=[...new Set(wr.map(r=>r.wallet_address).filter(Boolean))].join(" · ");const rows=wr.map(r=>`<tr><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain)}</td><td><b>${escapeAttr(r.symbol||"")}</b><small>${escapeAttr(r.asset||"")}</small></td><td class="n">${r.amount==null?"–":fmt(r.amount,{chain:r.chain,address:r.asset&&r.asset!=="native"?r.asset:null,symbol:r.symbol})}</td><td class="n">${r.price_usd==null?"–":fmtUsd(r.price_usd)}</td><td class="n">${r.value_usd==null?"–":fmtUsd(r.value_usd)}</td><td>${r.block||"–"}</td><td>${escapeAttr(r.status)}<small>${escapeAttr(r.error||r.balance_source||"")}${r.price_source?`<br>Preis: ${escapeAttr(r.price_source)}`:""}</small></td></tr>`).join("");return `<section class="wallet-page"><h1>${escapeAttr(name)}</h1><div class="address">${escapeAttr(addr)}</div><div class="wallet-summary">Wallet-Wert bewerteter Positionen: <b>${fmtUsd(sum)}</b> · ${wp.length}/${wr.filter(r=>r.status==="verifiziert").length} Positionen bewertet</div><table><thead><tr><th>Chain</th><th>Asset</th><th>Bestand</th><th>Preis USD</th><th>Wert USD</th><th>Block / Slot / Ledger</th><th>Status / Quellen</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="4">SUMME WALLET</td><td class="n">${fmtUsd(sum)}</td><td colspan="2"></td></tr></tfoot></table></section>`;}).join("");
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Bestandesaufnahme ${date}</title><style>@page{size:A4 landscape;margin:15mm}body{font:9px Arial;color:#18202a;margin:0}h1{font-size:22px;margin:0 0 5px}h2{margin:14px 0 5px}.summary-page,.chain-summary-page{page-break-after:always}.wallet-page{break-before:page;page-break-before:always}.head{border-bottom:3px solid;padding-bottom:9px}.cards{display:flex;gap:8px;margin:12px 0}.card{border:1px solid #ccd2d9;border-radius:6px;padding:8px;min-width:150px}.card b{display:block;font-size:14px}table{border-collapse:collapse;width:100%;margin:8px 0}thead{display:table-header-group}tr{page-break-inside:avoid}th,td{border:1px solid #c8ced5;padding:4px;vertical-align:top}th,tfoot td{background:#eef1f4;font-weight:bold}.n{text-align:right;white-space:nowrap}small,.address{display:block;color:#666;font-size:7px;word-break:break-all}.wallet-summary{margin:10px 0;padding:8px;border:1px solid #ccd2d9;border-radius:6px}tfoot td{border-top:2px solid #18202a;font-size:10px}</style></head><body><section class="summary-page"><div class="head"><h1>Bestandesaufnahme per 31.12</h1><p><b>Stichtag:</b> ${escapeAttr(date)} · ${escapeAttr(tz)} &nbsp; <b>Erstellt:</b> ${new Date().toLocaleString("de-CH")}</p></div><div class="cards"><div class="card">Wallets<b>${walletNames.length}</b></div><div class="card">Verifizierte Positionen<b>${ok.length}</b></div><div class="card">Historisch bewertet<b>${priced.length}/${ok.length}</b></div><div class="card">Gesamtwert<b>${fmtUsd(total)}</b></div></div><h2>Chain-Abdeckung dieses Laufs</h2><table><thead><tr><th>Chain</th><th>Status</th><th>Abdeckung</th><th>Details</th></tr></thead><tbody>${cov}</tbody></table><p>${escapeAttr(quality)}. Bestände werden nicht geschätzt; Positionen ohne Kurs sind nicht in USD-Summen enthalten.</p></section><section class="chain-summary-page"><h1>Summary nach Chain</h1><p>Tokenbestände sind über alle ausgewählten Wallets je Chain zusammengefasst.</p>${chainSummary}<table><tfoot><tr><td>GESAMTSUMME – bewertete Positionen</td><td class="n">${fmtUsd(total)}</td></tr></tfoot></table></section>${walletSections}<script>window.onload=()=>window.print();<\/script></body></html>`);w.document.close();
 }
 
@@ -2257,6 +2258,23 @@ async function updatePredefinedTokenLabel(chain, address, newLabel) {
   predefinedTokenLabels[chain + "|" + address] = newLabel;
 }
 
+async function updatePredefinedTokenDisplayDecimals(chain,address,field,value){
+  const allowNull=field==="summary_decimals";
+  const raw=String(value??"").trim();
+  const dbValue=allowNull&&raw===""?null:Number(raw);
+  if(dbValue!==null && (!Number.isInteger(dbValue)||dbValue<0||dbValue>18)){
+    alert("Kommastellen müssen eine ganze Zahl zwischen 0 und 18 sein.");
+    renderSafeTokenTable();
+    return;
+  }
+  const {error}=await matchAddressQuery(sb.from("predefined_tokens").update({[field]:dbValue}).eq("chain",chain),chain,address);
+  if(error){alert("Fehler beim Speichern: "+error.message);renderSafeTokenTable();return;}
+  await loadPredefinedTokensFromDb();
+  renderSafeTokenTable();
+  renderResults();
+  window.dispatchEvent(new CustomEvent("wallettracking:token-display-settings-changed",{detail:{chain,address,field,value:dbValue}}));
+}
+
 async function deletePredefinedToken(chain, address, label) {
   if (!confirm(`"${label}" (${chain}) wirklich aus der vordefinierten Liste löschen? Betrifft ALLE User.`)) return;
   const { error } = await matchAddressQuery(sb.from("predefined_tokens").delete().eq("chain", chain), chain, address);
@@ -2275,6 +2293,9 @@ async function loadPredefinedTokensFromDb() {
   const symbols = {};
   const names = {};
   const decimals = {};
+  const displayDecimals = {};
+  const summaryDecimals = {};
+  const byChainSymbol = {};
   const seen = new Set(); // Dedupe für den Fall, dass dieselbe Adresse mit unterschiedlicher
                            // Gross-/Kleinschreibung mehrfach in der DB steht (case-sensitiver PK)
   data.forEach(row => {
@@ -2293,6 +2314,12 @@ async function loadPredefinedTokensFromDb() {
     if (row.symbol) symbols[dedupeKey] = row.symbol;
     if (row.name) names[dedupeKey] = row.name;
     if (row.decimals !== null && row.decimals !== undefined) decimals[dedupeKey] = Number(row.decimals);
+    const display = Number.isInteger(Number(row.display_decimals)) ? Number(row.display_decimals) : 6;
+    const summary = row.summary_decimals === null || row.summary_decimals === undefined || row.summary_decimals === "" ? null : Number(row.summary_decimals);
+    displayDecimals[dedupeKey] = display;
+    summaryDecimals[dedupeKey] = Number.isInteger(summary) ? summary : null;
+    const symbolKey=String(row.symbol||row.label||"").trim().toUpperCase();
+    if(symbolKey) byChainSymbol[`${chain}|${symbolKey}`]={display,summary:summaryDecimals[dedupeKey]};
   });
   SAFE_ADDRESSES = addresses;
   predefinedTokenLabels = labels;
@@ -2302,6 +2329,9 @@ async function loadPredefinedTokensFromDb() {
   predefinedTokenSymbols = symbols;
   predefinedTokenNames = names;
   predefinedTokenDecimals = decimals;
+  predefinedTokenDisplayDecimals = displayDecimals;
+  predefinedTokenSummaryDecimals = summaryDecimals;
+  predefinedTokenDisplayByChainSymbol = byChainSymbol;
 }
 
 // Apertum: Balance-Abfrage über die öffentliche Blockscout-Explorer-API (CORS-freundlich für Browser-Zugriffe)
@@ -2431,7 +2461,12 @@ function renderSafeTokenTable() {
         const cached = tokenMetaCache[chain + "|" + address];
         label = cached ? cached.symbol : null;
       }
-      rows.push({ chain, address, label });
+      const key=chain+"|"+address;
+      rows.push({ chain, address, label,
+        technicalDecimals:predefinedTokenDecimals[key],
+        displayDecimals:predefinedTokenDisplayDecimals[key],
+        summaryDecimals:predefinedTokenSummaryDecimals[key]
+      });
     });
   });
 
@@ -2472,7 +2507,7 @@ function renderSafeTokenTable() {
 
   const DEFI_CATEGORY_LABELS = { voucher_currency:"Voucher-Währung", lp_token:"LP Token", defi_token:"DeFi-Token" };
 
-  el.innerHTML = `<table><thead><tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th><th>DeFi-Projekt</th><th>Projekt-Kategorie</th>${isAdmin ? '<th></th>' : ''}</tr></thead><tbody>
+  el.innerHTML = `<table><thead><tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:center">Decimals<br><span class="meta">technisch</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Anzeige</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Summary</span></th><th style="text-align:right">Kurs (USD)</th><th>DeFi-Projekt</th><th>Projekt-Kategorie</th>${isAdmin ? '<th></th>' : ''}</tr></thead><tbody>
     ${filtered.map(r => {
       let p;
       if (r.isNative) {
@@ -2518,6 +2553,9 @@ function renderSafeTokenTable() {
       <td><span class="dot" style="margin-right:6px;background:${escapeAttr(CHAIN_CONFIG[r.chain]?.displayColor || "#6b7280")}"></span>${r.chain.toUpperCase()}</td>
       <td>${labelCell}</td>
       <td style="font-size:0.78rem;word-break:break-all">${r.isNative ? '<span style="color:var(--muted)">– (nativ)</span>' : r.address}</td>
+      <td style="text-align:center">${r.isNative?'<span style="color:var(--muted)">–</span>':(r.technicalDecimals??'<span style="color:var(--muted)">–</span>')}</td>
+      <td style="text-align:center">${r.isNative?'<span style="color:var(--muted)">Fallback 6</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6}" style="width:68px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','display_decimals',this.value)">`:(Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6))}</td>
+      <td style="text-align:center">${r.isNative?'<span style="color:var(--muted)">wie Anzeige</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):''}" placeholder="wie Anzeige" title="Leer = Kommastellen Anzeige übernehmen" style="width:92px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','summary_decimals',this.value)">`:(Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):'<span style="color:var(--muted)">wie Anzeige</span>'))}</td>
       <td style="text-align:right">${priceCell}</td>
       <td>${projectCell}</td>
       <td>${categoryCell}</td>
@@ -2650,7 +2688,38 @@ window.refreshAllCurrentPrices=refreshAllCurrentPrices;
 let predefinedTokenCoinGeckoIds = {}; // "chain|adresse" -> CoinGecko-ID
 let predefinedTokenSymbols = {};      // "chain|adresse" -> Symbol
 let predefinedTokenNames = {};        // "chain|adresse" -> Name
-let predefinedTokenDecimals = {};     // "chain|adresse" -> decimals
+let predefinedTokenDecimals = {};     // "chain|adresse" -> technische Blockchain-decimals
+let predefinedTokenDisplayDecimals = {}; // "chain|adresse" -> UI-Nachkommastellen
+let predefinedTokenSummaryDecimals = {}; // "chain|adresse" -> Summary-Nachkommastellen (null = Anzeige übernehmen)
+let predefinedTokenDisplayByChainSymbol = {}; // "chain|SYMBOL" -> Anzeige-Metadaten
+
+function tokenDisplayMeta({chain,address,symbol}={}){
+  const c=String(chain||"").trim().toLowerCase();
+  const a=address&&address!=="native"?normalizeAddress(String(address),c):"";
+  const direct=a?`${c}|${a}`:"";
+  if(direct && Object.prototype.hasOwnProperty.call(predefinedTokenDisplayDecimals,direct)){
+    return {display:predefinedTokenDisplayDecimals[direct],summary:predefinedTokenSummaryDecimals[direct]};
+  }
+  const sym=String(symbol||"").replace(/\s*\(nativ\)\s*$/i,"").trim().toUpperCase();
+  return predefinedTokenDisplayByChainSymbol[`${c}|${sym}`] || null;
+}
+function tokenDisplayDigits(meta={},summary=false){
+  const hit=tokenDisplayMeta(meta);
+  const display=Number.isInteger(Number(hit?.display))?Number(hit.display):6;
+  if(summary && Number.isInteger(Number(hit?.summary))) return Number(hit.summary);
+  return display;
+}
+function formatTokenAmountGlobal(value,meta={},options={}){
+  const n=Number(value);
+  if(!Number.isFinite(n)) return "–";
+  const digits=tokenDisplayDigits(meta,!!options.summary);
+  return n.toLocaleString("de-CH",{maximumFractionDigits:digits});
+}
+window.WalletTokenFormat={
+  amount:formatTokenAmountGlobal,
+  digits:tokenDisplayDigits,
+  meta:tokenDisplayMeta
+};
 
 // GeckoTerminal (dieselbe Firma wie CoinGecko, DEX-basierte Kurse) als Ergänzung für alle
 // anderen sicheren Token - deckt auch kleinere/eigene Token ab, sofern sie irgendwo auf
@@ -3897,7 +3966,8 @@ function badge(safe) {
     : `<span class="badge unsafe">ungeprüft</span>`;
 }
 
-function fmt(n) {
+function fmt(n, tokenMeta=null, options={}) {
+  if(tokenMeta && typeof tokenMeta==="object") return formatTokenAmountGlobal(n,tokenMeta,options);
   return Number(n).toLocaleString('de-CH', { maximumFractionDigits: 6 });
 }
 
@@ -3936,6 +4006,7 @@ function chainRows(chainData, chainKey) {
       price: p ? p.price : undefined,
       change24h: p ? p.change24h : undefined,
       source: p ? "CoinGecko" : undefined,
+      chain: chainKey,
       usdValue: p ? chainData.native * p.price : undefined
     });
   }
@@ -3949,6 +4020,7 @@ function chainRows(chainData, chainKey) {
         safe,
         isNative: false,
         address: t.address,
+        chain: chainKey,
         price: p ? p.price : undefined,
         change24h: p ? p.change24h : undefined,
         source: t.lpInfo ? `${t.lpInfo.lpLabel} · ${t.lpInfo.t0.symbol}/${t.lpInfo.t1.symbol}` : (p ? p.source : undefined),
@@ -4489,6 +4561,7 @@ function attachSnapshotColumns(rows, chain, matchWallet) {
         const p = it.is_native ? nativePrices[chain] : priceForToken(chain, it.address);
         const extraRow = {
           symbol: it.symbol + " (aktuell 0)",
+          chain,
           amount: 0, safe: true, isNative: it.is_native, address: it.address,
           price: p ? p.price : undefined, usdValue: 0, isHistoricalOnly: true,
           snapshotValues: {},
@@ -4517,8 +4590,8 @@ function renderTable(rows, skipHeader) {
       ${skipHeader ? "" : '<thead><tr><th>Token</th><th style="text-align:right">Anzahl</th><th style="text-align:right">Kurs (USD)</th><th style="text-align:right">24h %</th><th style="text-align:right">Wert (USD)</th></tr></thead>'}
       <tbody>
       ${rows.map(r => `<tr class="${r.isNative ? 'native-row' : ''}">
-        <td>${r.symbol} ${badge(r.safe)}${r.lpInfo?.stakedBalance>0?`<span class="price-source">davon gestakt: ${fmt(r.lpInfo.stakedBalance)} ${escapeAttr(r.lpInfo.lpLabel||"LP")}</span>`:""}</td>
-        <td class="num">${fmt(r.amount)}</td>
+        <td>${r.symbol} ${badge(r.safe)}${r.lpInfo?.stakedBalance>0?`<span class="price-source">davon gestakt: ${fmt(r.lpInfo.stakedBalance,{chain:r.chain||"",address:r.address,symbol:r.symbol})} ${escapeAttr(r.lpInfo.lpLabel||"LP")}</span>`:""}</td>
+        <td class="num">${fmt(r.amount,{chain:r.chain||"",address:r.address,symbol:r.symbol})}</td>
         <td class="num">${r.price !== undefined ? fmtPrice(r.price) + (r.source ? `<span class="price-source">${r.source}</span>` : "") : '<span style="color:var(--muted)">–</span>'}</td>
         <td class="num">${fmtChange(r.change24h)}</td>
         <td class="num">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td>
@@ -4547,7 +4620,7 @@ function renderTable(rows, skipHeader) {
     const snapCells = snaps.map(s => {
       const amt = r.snapshotValues ? r.snapshotValues[s.id] : null;
       const historicalPrice = r.snapshotPrices ? r.snapshotPrices[s.id] : null;
-      const amountHtml = amt !== null && amt !== undefined ? fmt(amt) : '<span style="color:var(--muted)">–</span>';
+      const amountHtml = amt !== null && amt !== undefined ? fmt(amt,{chain:r.chain||"",address:r.address,symbol:r.symbol}) : '<span style="color:var(--muted)">–</span>';
       const priceHtml = historicalPrice !== null && historicalPrice !== undefined
         ? fmtPrice(historicalPrice)
         : '<span style="color:var(--muted)">–</span>';
@@ -4558,8 +4631,8 @@ function renderTable(rows, skipHeader) {
     }).join("");
     const mutedStyle = r.isHistoricalOnly ? "opacity:0.6;" : "";
     return `<tr class="${r.isNative ? 'native-row' : ''}" style="${mutedStyle}">
-      <td style="${sticky}${mutedStyle}">${r.symbol}${r.isHistoricalOnly ? '' : ' ' + badge(r.safe)}${r.lpInfo?.stakedBalance>0?`<span class="price-source">davon gestakt: ${fmt(r.lpInfo.stakedBalance)} ${escapeAttr(r.lpInfo.lpLabel||"LP")}</span>`:""}</td>
-      <td class="num" style="${mutedStyle}">${fmt(r.amount)}</td>
+      <td style="${sticky}${mutedStyle}">${r.symbol}${r.isHistoricalOnly ? '' : ' ' + badge(r.safe)}${r.lpInfo?.stakedBalance>0?`<span class="price-source">davon gestakt: ${fmt(r.lpInfo.stakedBalance,{chain:r.chain||"",address:r.address,symbol:r.symbol})} ${escapeAttr(r.lpInfo.lpLabel||"LP")}</span>`:""}</td>
+      <td class="num" style="${mutedStyle}">${fmt(r.amount,{chain:r.chain||"",address:r.address,symbol:r.symbol})}</td>
       <td class="num" style="${mutedStyle}">${r.price !== undefined ? fmtPrice(r.price) + (r.source ? `<span class="price-source">${r.source}</span>` : "") : '<span style="color:var(--muted)">–</span>'}</td>
       <td class="num" style="${mutedStyle}">${fmtChange(r.change24h)}</td>
       <td class="num" style="${mutedStyle}">${r.usdValue !== undefined ? fmtUsd(r.usdValue) : '<span style="color:var(--muted)">–</span>'}</td>
@@ -5067,23 +5140,23 @@ async function renderProjectLpTab(projectKey,chains,targetId,dateStr="2025-12-31
   const displayHistory=selectedWallet==='all'?history:history.filter(r=>walletDbId(r.w)===selectedWallet);
   const displayScanStatuses=selectedWallet==='all'?scanStatuses:scanStatuses.filter(r=>walletDbId(r.w)===selectedWallet);
 
-  const f=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:8}),u=n=>n==null?'–':'$'+Number(n).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}),dt=x=>x?new Date(x).toLocaleString('de-CH'):'–';
-  const histCell=n=>n==null?'–':f(n);
+  const f=(n,meta={},summary=false)=>formatTokenAmountGlobal(n,meta,{summary}),u=n=>n==null?'–':'$'+Number(n).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}),dt=x=>x?new Date(x).toLocaleString('de-CH'):'–';
+  const histCell=(n,r)=>n==null?'–':f(n,{chain:r.chain,address:r.pair?.address,symbol:window.WalletLPEngine.label(r.chain)});
   // v61: Gemeinsamer produktiver Tabellenstil aus der TLN/VOW-Discovery.
   // Gilt gleichermaßen für TLN/VOW, DAO1 und künftige Projekt-LP-Tabellen.
   const projectLpWrapClass=' project-data-table';
 
-  const currentTable=`<h3 class="lp-section-title">LP-Positionen</h3><div class="chain-table-wrap lp-table-scroll${projectLpWrapClass}"><table class="lp-position-table"><thead><tr><th>Wallet</th><th>Pool</th><th>LP in Wallet</th><th>LP gestakt</th><th>LP gesamt</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} Wallet</th><th>${dateStr} gestakt</th><th>${dateStr} gesamt</th><th>${dateStr} USD</th></tr></thead><tbody>${displayRows.length?displayRows.map(r=>`<tr><td>${escapeAttr(r.w.label)}${r.historicalOnly?'<div class="meta"><span class="badge">nur Historie</span></div>':''}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta lp-address">${escapeAttr(r.pair.address)}</div></td><td>${f(r.cur?.walletBalance??r.cur?.balance??0)}</td><td>${f(r.cur?.stakedBalance||0)}</td><td><strong>${f(r.cur?.balance||0)}</strong></td><td>${r.historicalOnly?'–':(r.cur?`<div>${f(r.cur.amount0)} ${escapeAttr(r.pair.t0.symbol)}</div><div>${f(r.cur.amount1)} ${escapeAttr(r.pair.t1.symbol)}</div><div class="meta">wirtschaftlicher Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–')}</td><td>${r.historicalOnly?'–':u(r.cur?.usd)}</td><td>${histCell(r.histWalletBal??r.histBal)}</td><td>${histCell(r.histStakedBal)}</td><td><strong>${histCell(r.histBal)}</strong></td><td>${r.histBal==null?'–':u(r.histUsd??(r.histPrice?.price!=null?r.histBal*r.histPrice.price:null))}</td></tr>`).join(''):'<tr><td colspan="11">Noch keine gespeicherten LP-Positionen. Bitte „Daten aktualisieren“ ausführen.</td></tr>'}</tbody></table></div>`;
+  const currentTable=`<h3 class="lp-section-title">LP-Positionen</h3><div class="chain-table-wrap lp-table-scroll${projectLpWrapClass}"><table class="lp-position-table"><thead><tr><th>Wallet</th><th>Pool</th><th>LP in Wallet</th><th>LP gestakt</th><th>LP gesamt</th><th>aktuelle Underlyings</th><th>aktuell USD</th><th>${dateStr} Wallet</th><th>${dateStr} gestakt</th><th>${dateStr} gesamt</th><th>${dateStr} USD</th></tr></thead><tbody>${displayRows.length?displayRows.map(r=>`<tr><td>${escapeAttr(r.w.label)}${r.historicalOnly?'<div class="meta"><span class="badge">nur Historie</span></div>':''}</td><td><strong>${window.WalletLPEngine.label(r.chain)} ${escapeAttr(r.pair.t0.symbol)}/${escapeAttr(r.pair.t1.symbol)}</strong><div class="meta lp-address">${escapeAttr(r.pair.address)}</div></td><td>${f(r.cur?.walletBalance??r.cur?.balance??0,{chain:r.chain,address:r.pair.address,symbol:window.WalletLPEngine.label(r.chain)})}</td><td>${f(r.cur?.stakedBalance||0,{chain:r.chain,address:r.pair.address,symbol:window.WalletLPEngine.label(r.chain)})}</td><td><strong>${f(r.cur?.balance||0,{chain:r.chain,address:r.pair.address,symbol:window.WalletLPEngine.label(r.chain)})}</strong></td><td>${r.historicalOnly?'–':(r.cur?`<div>${f(r.cur.amount0,{chain:r.chain,address:r.pair.t0.address,symbol:r.pair.t0.symbol})} ${escapeAttr(r.pair.t0.symbol)}</div><div>${f(r.cur.amount1,{chain:r.chain,address:r.pair.t1.address,symbol:r.pair.t1.symbol})} ${escapeAttr(r.pair.t1.symbol)}</div><div class="meta">wirtschaftlicher Pool-Anteil ${(r.cur.share*100).toLocaleString('de-CH',{maximumFractionDigits:6})}%</div>`:'–')}</td><td>${r.historicalOnly?'–':u(r.cur?.usd)}</td><td>${histCell(r.histWalletBal??r.histBal,r)}</td><td>${histCell(r.histStakedBal,r)}</td><td><strong>${histCell(r.histBal,r)}</strong></td><td>${r.histBal==null?'–':u(r.histUsd??(r.histPrice?.price!=null?r.histBal*r.histPrice.price:null))}</td></tr>`).join(''):'<tr><td colspan="11">Noch keine gespeicherten LP-Positionen. Bitte „Daten aktualisieren“ ausführen.</td></tr>'}</tbody></table></div>`;
 
   const scanStatusTable=`<details class="lp-scan-details debug-frame"><summary>Technische LP-Scan-Informationen</summary><div class="note" style="margin-bottom:8px">Diagnose pro Wallet. Diese Informationen sind primär für Fehleranalyse und Administration gedacht.</div><div class="chain-table-wrap lp-table-scroll${projectLpWrapClass}"><table class="lp-scan-table"><thead><tr><th>Wallet</th><th>Adresse</th><th>Status</th><th>Letzter Scan</th><th>bis Block</th><th>Transfers</th><th>Kandidaten</th><th>Projekt-LPs</th><th>neu Events</th><th>davon Staking</th><th>Historien-Ereignisse</th><th>Positionszeilen</th></tr></thead><tbody>${displayScanStatuses.length?displayScanStatuses.map(s=>`<tr><td><strong>${escapeAttr(s.w?.label||'')}</strong></td><td class="meta lp-address">${escapeAttr(s.address||'')}</td><td>${s.warning?`<span class="badge danger">unvollständig</span><div class="meta">${escapeAttr(s.warning)}</div>`:s.lastBlock>0?`<span class="badge ${s.scanResult==='partial'?'danger':'safe'}">${s.scanResult==='partial'?'teilweise':'gescannt'}</span>`:'<span class="badge">noch nicht gescannt</span>'}</td><td>${s.lastAt?dt(s.lastAt):'–'}</td><td>${s.lastBlock>0?Number(s.lastBlock).toLocaleString('de-CH'):'–'}</td><td>${Number(s.transfersSeen||0).toLocaleString('de-CH')}</td><td>${Number(s.candidateContracts||0).toLocaleString('de-CH')}</td><td>${Number(s.projectPairs||0).toLocaleString('de-CH')}</td><td>${Number(s.eventsSaved||0).toLocaleString('de-CH')}</td><td>${Number(s.stakingEvents||0).toLocaleString('de-CH')}</td><td>${Number(s.eventCount||0).toLocaleString('de-CH')}</td><td>${Number(s.positionCount||0).toLocaleString('de-CH')}</td></tr>`).join(''):'<tr><td colspan="12">Keine Wallet-Adressen für diese Chain vorhanden.</td></tr>'}</tbody></table></div></details>`;
 
   const hrows=[...displayHistory].sort((a,b)=>Number(b.block_number)-Number(a.block_number)||Number(b.log_index||0)-Number(a.log_index||0));
   const actionLabel=e=>({add:'Add Liquidity',remove:'Remove Liquidity',stake:'Stake',unstake:'Unstake',send:'Versenden',receive:'Empfangen'}[e.event_type]||e.event_type);
   const actionBadge=e=>['add','stake','receive'].includes(e.event_type)?'safe':['remove','unstake'].includes(e.event_type)?'danger':'';
-  const historyTable=`<h3 class="lp-section-title">LP-/Staking-Historie</h3><div class="chain-table-wrap lp-history-scroll${projectLpWrapClass}"><table class="lp-history-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Aktion</th><th>Pool</th><th>Gegenstelle / Staking</th><th>LP Δ</th><th>Wallet-LP-Saldo</th><th>Underlying</th><th>historischer USD-Wert</th></tr></thead><tbody>${hrows.length?hrows.map(e=>`<tr><td>${dt(e.tx_timestamp)}<div class="meta">Block ${e.block_number}</div></td><td>${escapeAttr(e.w.label)}</td><td><span class="badge ${actionBadge(e)}">${escapeAttr(actionLabel(e))}</span></td><td><strong>${escapeAttr(e.lp_label||window.WalletLPEngine.label(e.chain))} ${escapeAttr(e.token0_symbol||'Token0')}/${escapeAttr(e.token1_symbol||'Token1')}</strong><div class="meta lp-address">${escapeAttr(e.pair_address||'')}</div></td><td>${e.staking_label?`<strong>${escapeAttr(e.staking_label)}</strong><div class="meta lp-address">${escapeAttr(e.staking_contract||e.counterparty||'')}</div>`:`<div class="meta lp-address">${escapeAttr(e.counterparty||'–')}</div>`}</td><td>${Number(e.lp_delta)>0?'+':''}${f(e.lp_delta)}</td><td>${f(e.running_balance)}</td><td><div>${f(e.amount0)} ${escapeAttr(e.token0_symbol||'')}</div><div>${f(e.amount1)} ${escapeAttr(e.token1_symbol||'')}</div></td><td><strong>${u(e.value_usd)}</strong>${e.price_source?`<div class="meta lp-price-source">${escapeAttr(e.price_source)}</div>`:''}</td></tr>`).join(''):'<tr><td colspan="9">Noch keine LP-Ereignisse im Cache.</td></tr>'}</tbody></table></div>`;
+  const historyTable=`<h3 class="lp-section-title">LP-/Staking-Historie</h3><div class="chain-table-wrap lp-history-scroll${projectLpWrapClass}"><table class="lp-history-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Aktion</th><th>Pool</th><th>Gegenstelle / Staking</th><th>LP Δ</th><th>Wallet-LP-Saldo</th><th>Underlying</th><th>historischer USD-Wert</th></tr></thead><tbody>${hrows.length?hrows.map(e=>`<tr><td>${dt(e.tx_timestamp)}<div class="meta">Block ${e.block_number}</div></td><td>${escapeAttr(e.w.label)}</td><td><span class="badge ${actionBadge(e)}">${escapeAttr(actionLabel(e))}</span></td><td><strong>${escapeAttr(e.lp_label||window.WalletLPEngine.label(e.chain))} ${escapeAttr(e.token0_symbol||'Token0')}/${escapeAttr(e.token1_symbol||'Token1')}</strong><div class="meta lp-address">${escapeAttr(e.pair_address||'')}</div></td><td>${e.staking_label?`<strong>${escapeAttr(e.staking_label)}</strong><div class="meta lp-address">${escapeAttr(e.staking_contract||e.counterparty||'')}</div>`:`<div class="meta lp-address">${escapeAttr(e.counterparty||'–')}</div>`}</td><td>${Number(e.lp_delta)>0?'+':''}${f(e.lp_delta,{chain:e.chain,address:e.pair_address,symbol:e.lp_label||window.WalletLPEngine.label(e.chain)})}</td><td>${f(e.running_balance,{chain:e.chain,address:e.pair_address,symbol:e.lp_label||window.WalletLPEngine.label(e.chain)})}</td><td><div>${f(e.amount0,{chain:e.chain,address:e.token0_address,symbol:e.token0_symbol})} ${escapeAttr(e.token0_symbol||'')}</div><div>${f(e.amount1,{chain:e.chain,address:e.token1_address,symbol:e.token1_symbol})} ${escapeAttr(e.token1_symbol||'')}</div></td><td><strong>${u(e.value_usd)}</strong>${e.price_source?`<div class="meta lp-price-source">${escapeAttr(e.price_source)}</div>`:''}</td></tr>`).join(''):'<tr><td colspan="9">Noch keine LP-Ereignisse im Cache.</td></tr>'}</tbody></table></div>`;
 
   const stakingLots=(projectKey==="tln_vow"&&chains.includes("bsc")&&window.WalletStakingEngine)?scopeWallets.flatMap(w=>window.WalletStakingEngine.buildLots(displayHistory.filter(e=>e.chain==="bsc"&&e.w?.id===w.id)).map(l=>({...l,w}))):[];
-  const stakingTable=projectKey==="tln_vow"&&chains.includes("bsc")?`<h3 class="lp-section-title">Staking-Positionen</h3><div class="note" style="margin-bottom:8px">Jeder Stake bleibt als eigenes Lot sichtbar. Unstakes reduzieren die offenen Lots chronologisch (FIFO). Eine Lock-Dauer wird nur angezeigt, wenn sie im Staking-Contract-Katalog verifiziert hinterlegt ist.</div><div class="chain-table-wrap lp-table-scroll project-data-table"><table class="lp-staking-table"><thead><tr><th>Wallet</th><th>Pool</th><th>Staking-Bezeichnung</th><th>Staking-Contract</th><th>Stake-Datum</th><th>LP ursprünglich</th><th>LP offen</th><th>Status</th></tr></thead><tbody>${stakingLots.length?stakingLots.slice().reverse().map(l=>`<tr><td>${escapeAttr(l.w?.label||'')}</td><td class="meta lp-address">${escapeAttr(l.pair_address||'')}</td><td><strong>${escapeAttr(l.staking_label||window.WalletStakingEngine.displayName(l,'LP'))}</strong></td><td class="meta lp-address">${escapeAttr(l.staking_contract||'–')}</td><td>${dt(l.stake_timestamp)}</td><td>${f(l.original_lp)}</td><td><strong>${f(l.remaining_lp)}</strong></td><td>${l.status==='closed'?'<span class="badge">beendet</span>':l.status==='partial'?'<span class="badge">teilweise unstaked</span>':'<span class="badge safe">offen</span>'}</td></tr>`).join(''):'<tr><td colspan="8">Keine Staking-Positionen im Cache erkannt.</td></tr>'}</tbody></table></div>`:'';
+  const stakingTable=projectKey==="tln_vow"&&chains.includes("bsc")?`<h3 class="lp-section-title">Staking-Positionen</h3><div class="note" style="margin-bottom:8px">Jeder Stake bleibt als eigenes Lot sichtbar. Unstakes reduzieren die offenen Lots chronologisch (FIFO). Eine Lock-Dauer wird nur angezeigt, wenn sie im Staking-Contract-Katalog verifiziert hinterlegt ist.</div><div class="chain-table-wrap lp-table-scroll project-data-table"><table class="lp-staking-table"><thead><tr><th>Wallet</th><th>Pool</th><th>Staking-Bezeichnung</th><th>Staking-Contract</th><th>Stake-Datum</th><th>LP ursprünglich</th><th>LP offen</th><th>Status</th></tr></thead><tbody>${stakingLots.length?stakingLots.slice().reverse().map(l=>`<tr><td>${escapeAttr(l.w?.label||'')}</td><td class="meta lp-address">${escapeAttr(l.pair_address||'')}</td><td><strong>${escapeAttr(l.staking_label||window.WalletStakingEngine.displayName(l,'LP'))}</strong></td><td class="meta lp-address">${escapeAttr(l.staking_contract||'–')}</td><td>${dt(l.stake_timestamp)}</td><td>${f(l.original_lp,{chain:'bsc',address:l.pair_address,symbol:'LP'})}</td><td><strong>${f(l.remaining_lp,{chain:'bsc',address:l.pair_address,symbol:'LP'})}</strong></td><td>${l.status==='closed'?'<span class="badge">beendet</span>':l.status==='partial'?'<span class="badge">teilweise unstaked</span>':'<span class="badge safe">offen</span>'}</td></tr>`).join(''):'<tr><td colspan="8">Keine Staking-Positionen im Cache erkannt.</td></tr>'}</tbody></table></div>`:'';
 
   const cacheStand=latestCacheRefresh?`<div class="lp-cache-stand">Cache-Stand: ${latestCacheRefresh.toLocaleString('de-CH')}</div>`:'<div class="lp-cache-stand">Cache-Stand: noch kein Positions-Cache vorhanden</div>';
   el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Liquidity Pools</div><div class="note">Beim Öffnen werden <strong>ausschließlich Supabase-Caches</strong> gelesen. Blockchain, Explorer, Reserven, Kurse und Historie werden nur über „Daten aktualisieren“ erneuert. Add-/Remove-Historie und Positionsdaten bleiben danach gespeichert. Auf BSC heißen V2-LP-Token <strong>PCLP</strong>.</div>${refreshButton}${walletFilterHtml}${cacheStand}${scanStatusTable}${cacheNew?`<div class="success" style="margin-top:8px">${cacheNew} neue LP-Historien-Ereignis(se) im DB-Cache gespeichert.</div>`:''}${cacheWarnings.length?`<div class="note" style="margin-top:8px"><strong>LP-Historie momentan nicht vollständig nachladbar:</strong> ${escapeAttr(cacheWarnings.join(' · '))}</div>`:''}${cacheErrors.length?`<div class="error" style="margin-top:8px">${refresh?'Cache teilweise nicht aktualisiert':'Cache teilweise nicht lesbar'}: ${escapeAttr(cacheErrors.join(' · '))}</div>`:''}</div>${stakingTable}${currentTable}${historyTable}`;
@@ -7847,7 +7920,7 @@ function renderDiscoveryResults(findings) {
     }
     return `<div class="custom-token-row" style="align-items:flex-start;${scam ? 'border-color:var(--danger)' : ''}">
       <div>
-        <div><span class="dot" style="margin-right:6px;background:${escapeAttr(CHAIN_CONFIG[f.chain]?.displayColor || "#6b7280")}"></span>${escapeAttr(f.symbol)}${f.name && f.name !== f.symbol ? ' <span class="note" style="display:inline">(' + escapeAttr(f.name) + ')</span>' : ''} · ${f.historical && Number(f.amount)<DUST_THRESHOLD ? '<span class="badge">historisch gehalten</span>' : fmt(f.amount)} · <span class="note" style="display:inline">${escapeAttr(f.walletLabel)}</span></div>
+        <div><span class="dot" style="margin-right:6px;background:${escapeAttr(CHAIN_CONFIG[f.chain]?.displayColor || "#6b7280")}"></span>${escapeAttr(f.symbol)}${f.name && f.name !== f.symbol ? ' <span class="note" style="display:inline">(' + escapeAttr(f.name) + ')</span>' : ''} · ${f.historical && Number(f.amount)<DUST_THRESHOLD ? '<span class="badge">historisch gehalten</span>' : fmt(f.amount,{chain:f.chain,address:f.address,symbol:f.symbol})} · <span class="note" style="display:inline">${escapeAttr(f.walletLabel)}</span></div>
         <div class="meta">${meta.label} · ${f.address}</div>
         <div style="margin-top:6px">${riskHtml}</div>
       </div>

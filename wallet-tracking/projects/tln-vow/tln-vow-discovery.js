@@ -1,13 +1,56 @@
-/* TLN/VOW Discovery shared engine · Build 20260912-195256 */
+/* TLN/VOW Discovery shared engine · Build 20260912-202105 */
 (()=>{
-const BUILD_ID='20260912-195256';
+const BUILD_ID='20260912-202105';
+
+// Reine UI-Formatierung: technische Token-decimals und Rechenwerte bleiben unverändert.
+function displayTokenAmount(value,symbol,options={}){
+  const shared=window.TLNVOWProject?.formatTokenAmount;
+  if(typeof shared==='function') return shared(value,symbol,options);
+  const n=Number(value);
+  if(!Number.isFinite(n)) return '–';
+  const sym=String(symbol||'').trim().toUpperCase();
+  const row=(typeof displayTokenRows!=='undefined'?displayTokenRows:[]).find(x=>String(x?.symbol||x?.label||x?.name||'').trim().toUpperCase()===sym);
+  const display=Number.isInteger(Number(row?.display_decimals))?Number(row.display_decimals):(options?.kind==='lp'?6:6);
+  const summary=Number.isInteger(Number(row?.summary_decimals))?Number(row.summary_decimals):display;
+  return n.toLocaleString('de-CH',{maximumFractionDigits:options?.summary?summary:display});
+}
+
+function normalizeTlnVowProjectTables(root=document.getElementById('tlnvowDiscoveryHost')){
+  if(!root)return;
+  root.querySelectorAll('table').forEach(table=>{
+    if(table.closest('.project-data-table'))return;
+    const parent=table.parentElement;
+    if(parent?.classList?.contains('wrap')){
+      parent.classList.add('project-data-table');
+      return;
+    }
+    const wrapper=document.createElement('div');
+    wrapper.className='project-data-table';
+    table.before(wrapper);
+    wrapper.appendChild(table);
+  });
+}
+
+let tlnTableObserver=null;
+function enableTlnVowProjectTableNormalization(){
+  const root=document.getElementById('tlnvowDiscoveryHost');
+  if(!root)return;
+  normalizeTlnVowProjectTables(root);
+  if(tlnTableObserver)return;
+  let queued=false;
+  tlnTableObserver=new MutationObserver(()=>{
+    if(queued)return; queued=true;
+    queueMicrotask(()=>{queued=false;normalizeTlnVowProjectTables(root)});
+  });
+  tlnTableObserver.observe(root,{childList:true,subtree:true});
+}
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const V2=new ethers.Interface(["function token0() view returns(address)","function token1() view returns(address)","function factory() view returns(address)","function decimals() view returns(uint8)","function getReserves() view returns(uint112,uint112,uint32)","function totalSupply() view returns(uint256)"]);
 const ERC20=new ethers.Interface(["function symbol() view returns(string)","function decimals() view returns(uint8)"]);
 const ZERO='0x0000000000000000000000000000000000000000';
-let rpcUrl=null,alchemyBase=null,projectTokens=[],allProjectRows=[],stakingContracts=[],tlnWallets=[],CURRENT_ALL_TRANSFERS=[];
+let rpcUrl=null,alchemyBase=null,projectTokens=[],allProjectRows=[],displayTokenRows=[],stakingContracts=[],tlnWallets=[],CURRENT_ALL_TRANSFERS=[];
 const DISCOVERY_PRICE_REFERENCES={vow:null,usdt:null,usdc:null,busd:null};
 let projectTokenMap=new Map();
 const PROXY_IMPL_CACHE=new Map();
@@ -131,7 +174,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='12.09.2026 19:52:56 CEST';
+const APP_VERSION='12.09.2026 20:21:05 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -1352,11 +1395,11 @@ async function scanReferralWallet(){
       if(a.nodeId&&b.nodeId)return Number(a.nodeId)-Number(b.nodeId);
       if(a.nodeId)return -1;if(b.nodeId)return 1;return [...a.wallets][0].localeCompare([...b.wallets][0]);
     });
-    const fmtReward=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:12});
+    const fmtReward=(n,symbol)=>displayTokenAmount(n,symbol);
     const partnerTable=partnerRows.length?`<h3 style="margin-top:16px">Referral-Rewards je Partner / TLN ID</h3>
       <table><thead><tr><th>Partner · TLN ID</th><th>Level</th>${rewardTokenList.map(t=>`<th>${esc(t.symbol)}</th>`).join('')}<th>Total</th></tr></thead><tbody>
-      ${partnerRows.map(p=>`<tr><td>${p.nodeId?tlnIdNameHtml(p.nodeId,[...p.wallets][0]):'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels?.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels?.size?`<span class="warn">${[...p.levels].join(' / ')}</span>`:'–'}</td>${rewardTokenList.map(t=>`<td>${fmtReward(p.amounts.get(t.address))}</td>`).join('')}<td><b>${fmtReward(p.total)}</b></td></tr>`).join('')}
-      <tr><th>TOTAL</th><th>–</th>${rewardTokenList.map(t=>`<th>${fmtReward(tokens.get(t.address)?.total||0)}</th>`).join('')}<th>${fmtReward([...tokens.values()].reduce((sum,x)=>sum+x.total,0))}</th></tr>
+      ${partnerRows.map(p=>`<tr><td>${p.nodeId?tlnIdNameHtml(p.nodeId,[...p.wallets][0]):'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels?.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels?.size?`<span class="warn">${[...p.levels].join(' / ')}</span>`:'–'}</td>${rewardTokenList.map(t=>`<td>${fmtReward(p.amounts.get(t.address),t.symbol)}</td>`).join('')}<td><b>${fmtReward(p.total)}</b></td></tr>`).join('')}
+      <tr><th>TOTAL</th><th>–</th>${rewardTokenList.map(t=>`<th>${fmtReward(tokens.get(t.address)?.total||0,t.symbol)}</th>`).join('')}<th>${fmtReward([...tokens.values()].reduce((sum,x)=>sum+x.total,0))}</th></tr>
       </tbody></table>`:'<span class="muted">Keine Referral-Rewards erkannt.</span>';
 
     $('walletSummary').innerHTML=`<div class="grid">
@@ -1371,7 +1414,7 @@ async function scanReferralWallet(){
 
     const renderRows=arr=>arr.length?`<table><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Ursprünglich gestaked von</th><th>Staking</th><th>LP-Paar</th><th>TLN ID</th><th>Level</th><th>Stake-Zufluss</th><th>Tx</th><th>Nachweis</th></tr></thead><tbody>${arr.flatMap(r=>r.mints.map(m=>`<tr>
       <td>${esc(fmtTime(r.timestamp))}</td>
-      <td><b>${esc(m.amount)} ${esc(m.symbol)}</b><div class="mono">${esc(m.token)}</div></td>
+      <td><b>${esc(displayTokenAmount(m.amount,m.symbol))} ${esc(m.symbol)}</b><div class="mono">${esc(m.token)}</div></td>
       <td><b>Staker-Wallet</b><div class="mono">${esc(r.sender)}</div></td>
       <td>${r.staking?esc(r.staking.label||r.staking.name||r.to):r.stakeEvents?.length?'<span class="ok"><b>Staking per Stake-Event erkannt</b></span>':'<span class="warn">unbekannt</span>'}<div class="mono">${esc(r.to)}</div></td>
       <td>${r.lpPair?`<b>${esc(r.lpPair.label)}</b><div class="small mono muted">${esc(r.lpPair.pair)}</div><div class="small muted">${r.lpPair.source==='stake-transfer'?'on-chain aus Stake-Transfer':r.lpPair.source==='stake-tx-lp-transfer'?'on-chain aus LP-Abfluss der Stake-Tx':'Registry-Pair on-chain dekodiert'}</div>`:'<span class="muted">nicht bestimmt</span>'}</td>
@@ -6976,7 +7019,7 @@ async function inspectCandidate(address,projectSet){
 }
 function transferAmount(t,p){const raw=t.rawContract?.value;const dec=Number(t.rawContract?.decimal||p.lpDecimals||18);if(raw!=null){try{return Number(ethers.formatUnits(BigInt(raw),dec))}catch{}}return Number(t.value||0)}
 function classify(t,p,stakeMap,wallet){const from=norm(t.from),to=norm(t.to),w=norm(wallet);const cp=from===w?to:from;let action=from===w?'Versenden':'Empfangen',staking=null;if(from===ZERO&&to===w)action='Add Liquidity';else if(to===ZERO&&from===w)action='Remove Liquidity';else if(from===w&&stakeMap.has(to)){action='Stake';staking=stakeMap.get(to)}else if(to===w&&stakeMap.has(from)){action='Unstake';staking=stakeMap.get(from)}return{action,counterparty:cp,staking}}
-function renderEvents(transfers,pairMap,wallet){const stakeMap=new Map(stakingContracts.filter(x=>x.classify_transfers).map(x=>[norm(x.contract_address),x]));const rows=[];for(const t of transfers){const p=pairMap.get(norm(t.rawContract?.address));if(!p)continue;const c=classify(t,p,stakeMap,wallet);rows.push({t,p,...c,amount:transferAmount(t,p)})}rows.sort((a,b)=>String(a.t.metadata?.blockTimestamp||'').localeCompare(String(b.t.metadata?.blockTimestamp||'')));$('events').innerHTML=rows.length?rows.map(r=>{const ts=r.t.metadata?.blockTimestamp?new Date(r.t.metadata.blockTimestamp).toLocaleString('de-CH'):'–';const block=r.t.blockNum?parseInt(r.t.blockNum,16):'–';const cls=r.action==='Stake'?'ok':r.action==='Unstake'?'warn':'';return `<tr><td>${esc(ts)}</td><td class="${cls}"><b>${esc(r.action)}</b></td><td>${esc(safePairLabel(r))}<div class="mono">${esc(safePairAddress(r))}</div></td><td>${r.amount.toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="mono">${esc(r.counterparty)}</td><td>${r.staking?esc(r.staking.label):'–'}</td><td>${esc(block)}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.t.hash)}">${esc(r.t.hash)}</a></td></tr>`}).join(''):'<tr><td colspan="8">Keine TLN/VOW-LP-Ereignisse gefunden.</td></tr>';return rows}
+function renderEvents(transfers,pairMap,wallet){const stakeMap=new Map(stakingContracts.filter(x=>x.classify_transfers).map(x=>[norm(x.contract_address),x]));const rows=[];for(const t of transfers){const p=pairMap.get(norm(t.rawContract?.address));if(!p)continue;const c=classify(t,p,stakeMap,wallet);rows.push({t,p,...c,amount:transferAmount(t,p)})}rows.sort((a,b)=>String(a.t.metadata?.blockTimestamp||'').localeCompare(String(b.t.metadata?.blockTimestamp||'')));$('events').innerHTML=rows.length?rows.map(r=>{const ts=r.t.metadata?.blockTimestamp?new Date(r.t.metadata.blockTimestamp).toLocaleString('de-CH'):'–';const block=r.t.blockNum?parseInt(r.t.blockNum,16):'–';const cls=r.action==='Stake'?'ok':r.action==='Unstake'?'warn':'';return `<tr><td>${esc(ts)}</td><td class="${cls}"><b>${esc(r.action)}</b></td><td>${esc(safePairLabel(r))}<div class="mono">${esc(safePairAddress(r))}</div></td><td>${displayTokenAmount(r.amount,r?.p?.lpSymbol||r?.p?.symbol||'LP',{kind:'lp'})}</td><td class="mono">${esc(r.counterparty)}</td><td>${r.staking?esc(r.staking.label):'–'}</td><td>${esc(block)}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.t.hash)}">${esc(r.t.hash)}</a></td></tr>`}).join(''):'<tr><td colspan="8">Keine TLN/VOW-LP-Ereignisse gefunden.</td></tr>';return rows}
 
 
 function safePairAddress(obj){
@@ -7086,7 +7129,7 @@ function renderRawStakingEvents(rows){
     return `<tr><td>${esc(ts)}</td><td class="${r.action==='Stake'?'ok':'warn'}"><b>${esc(r.action)}</b></td>
       <td><b>${esc(safePairLabel(r))}</b><div class="mono">${esc(safePairAddress(r))}</div></td>
       <td class="mono">${esc(r.staking?.contract_address||r.counterparty)}</td><td>${esc(r.staking?.label||'–')}</td>
-      <td class="num">${r.amount.toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td>${esc(block)}</td>
+      <td class="num">${displayTokenAmount(r.amount,r?.p?.lpSymbol||r?.p?.symbol||'LP',{kind:'lp'})}</td><td>${esc(block)}</td>
       <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.t.hash)}">${esc(r.t.hash)}</a></td></tr>`;
   }).join(''):'<tr><td colspan="8">Keine bestätigten Stake-/Unstake-Transfers gefunden.</td></tr>';
   return stakeRows;
@@ -9741,7 +9784,7 @@ function rewardClaimSummaryHtml(lot){
     for(const x of sumsFor(grouped[type])){
       summaryRows+=`<tr>
         <td><b>${esc(label)}</b></td>
-        <td><b>${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</b></td>
+        <td><b>${displayTokenAmount(x.amount,x.symbol)} ${esc(x.symbol)}</b></td>
         <td>${x.count}</td>
         <td class="mono">${esc(x.token)}</td>
       </tr>`;
@@ -10373,9 +10416,9 @@ function positionCardHtml(l,index,isClosed){
     <div class="stake-facts">
       <div class="stake-fact"><span class="k">Erster Stake</span><span class="v">${l.stakeTime?new Date(l.stakeTime).toLocaleString('de-CH'):'–'}</span></div>
       ${(l.topUps||[]).length?`<div class="stake-fact"><span class="k">Letzte Aufstockung</span><span class="v">${l.lastTopUpTime?new Date(l.lastTopUpTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">${(l.topUps||[]).length} Aufstockung(en) erkannt · Laufzeitbasis wurde auf die letzte Aufstockung gesetzt.</div></div>`:''}
-      <div class="stake-fact"><span class="k">Gesamt eingezahltes Staking-Asset</span><span class="v">${Number(l.original||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
+      <div class="stake-fact"><span class="k">Gesamt eingezahltes Staking-Asset</span><span class="v">${displayTokenAmount(l.original,l?.pair?.lpSymbol||l?.pair?.symbol||'LP',{kind:'lp'})}</span></div>
       <div class="stake-fact"><span class="k">USD-Wert beim Stake</span>${stakeValue}</div>
-      <div class="stake-fact"><span class="k">LP aktuell offen</span><span class="v">${Number(l.remaining||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
+      <div class="stake-fact"><span class="k">LP aktuell offen</span><span class="v">${displayTokenAmount(l.remaining,l?.pair?.lpSymbol||l?.pair?.symbol||'LP',{kind:'lp'})}</span></div>
       <div class="stake-fact"><span class="k">Vertragliche Staking-Laufzeit</span><span class="v">${l.durationDays!=null?`${l.durationDays.toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span><div class="value-source">${esc(projectLockBaseReasonHtml(l))} · ${l.durationSource?esc(l.durationSource):'Keine belastbare vertragliche Laufzeit ermittelbar.'}</div></div>
       <div class="stake-fact"><span class="k">Vertragliches Laufzeitende</span><span class="v">${l.expiryTime?new Date(l.expiryTime).toLocaleString('de-CH'):'–'}</span><div class="value-source">${l.expiryTime?esc(l.durationSource||'Belastbar ermittelt'):'Keine belastbare Freigabe/Laufzeit ermittelbar.'}</div></div>
       ${l.durationEvidence?`<div class="stake-fact"><span class="k">Lock-Evidenz</span><span class="v">${esc(l.durationEvidence)}</span><div class="value-source">Konfidenz: ${esc(l.durationConfidence||'–')}${l.implementationStable!=null?` · Contract/Implementation über Grenze ${l.implementationStable?'unverändert':'nicht stabil'}`:''}</div></div>`:''}
@@ -10390,7 +10433,7 @@ function positionCardHtml(l,index,isClosed){
       <div class="stake-fact"><span class="k">Contract-Graph</span><span class="v">${l.contractGraph?`${l.contractGraph.nodes.size} Contracts/Adressen · ${l.contractGraph.edges.length} belegte Beziehungen`: '–'}</span></div>
     </div>
     ${l.contractGraph&&l.contractGraph.edges.length?`<details class="diag-details"><summary>Contract-Graph anzeigen</summary><div class="wrap"><table><thead><tr><th>Von</th><th>Beziehung</th><th>Zu</th><th>Evidenz</th></tr></thead><tbody>${l.contractGraph.edges.map(e=>`<tr><td class="mono">${esc(e.from)}</td><td>${esc(e.type)}</td><td class="mono">${esc(e.to)}</td><td>${esc(e.evidence?.kind||'')} ${e.evidence?.tx?`<span class="mono">${esc(e.evidence.tx)}</span>`:''}</td></tr>`).join('')}</tbody></table></div></details>`:''}
-    ${(l.topUps||[]).length?`<div class="reward-box"><div class="reward-title">Aufstockungen dieser Staking-Position</div><div class="wrap"><table><thead><tr><th>Zeit</th><th>Zusätzlich</th><th>Gesamt danach</th><th>Tx</th></tr></thead><tbody>${l.topUps.map(x=>`<tr><td>${x.time?new Date(x.time).toLocaleString('de-CH'):'–'}</td><td class="num">+${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="num">${Number(x.resultingPrincipal||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(x.tx)}">${esc(x.tx||'–')}</a></td></tr>`).join('')}</tbody></table></div></div>`:''}
+    ${(l.topUps||[]).length?`<div class="reward-box"><div class="reward-title">Aufstockungen dieser Staking-Position</div><div class="wrap"><table><thead><tr><th>Zeit</th><th>Zusätzlich</th><th>Gesamt danach</th><th>Tx</th></tr></thead><tbody>${l.topUps.map(x=>`<tr><td>${x.time?new Date(x.time).toLocaleString('de-CH'):'–'}</td><td class="num">+${displayTokenAmount(x.amount,l?.pair?.lpSymbol||l?.pair?.symbol||'LP',{kind:'lp'})}</td><td class="num">${displayTokenAmount(x.resultingPrincipal,l?.pair?.lpSymbol||l?.pair?.symbol||'LP',{kind:'lp'})}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(x.tx)}">${esc(x.tx||'–')}</a></td></tr>`).join('')}</tbody></table></div></div>`:''}
     ${rewardHtml(l)}
     <div class="stake-actions">
       <details><summary>Transaktionen (${(l.transactions||[]).length})</summary>${txRowsHtml(l)}</details>
@@ -10677,7 +10720,7 @@ function rewardTokenSummaryHtml(rows){
     <div class="claim-summary-item">
       <div class="claim-summary-token">${esc(x.symbol)}</div>
       <div><b>${x.count.toLocaleString('de-CH')}</b> Reward-Tx</div>
-      <div class="num">${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</div>
+      <div class="num">${displayTokenAmount(x.amount,x.symbol)} ${esc(x.symbol)}</div>
       ${x.token?`<div class="mono muted">${esc(x.token)}</div>`:''}
     </div>`).join('');
 }
@@ -10706,7 +10749,7 @@ function renderRewardClaiming(lots){
     <tbody>${rows.map(({lot,claim,from,to})=>`<tr>
       <td>${rewardClaimDateText(claim)}</td>
       <td><b>${claim.eventType==='stake_reward'?'Reward beim Stake':claim.eventType==='distribution'?'Reward-Ausschüttung':'Claim / Reward-Abholung'}</b></td>
-      <td class="num"><b>${Number(claim.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td>
+      <td class="num"><b>${displayTokenAmount(claim.amount,claim.symbol)}</b></td>
       <td><b>${esc(claim.symbol||'–')}</b>${claim.token?`<div class="mono muted">${esc(claim.token)}</div>`:''}</td>
       <td><b>${esc(safePairLabel(lot))}</b><div class="muted">${esc(stakingContractLabel(lot.staking))}</div></td>
       <td>${from}</td><td>${to}</td>
@@ -10813,11 +10856,11 @@ function renderReferralRewards(lots){
   const ref=CURRENT_CLAIM_REFERENCE_RESULT;
   if(ref&&!ref.error){
     const strong=Array.isArray(ref.strong)?ref.strong:[], candidates=Array.isArray(ref.candidates)?ref.candidates:[];
-    const fmt=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:12});
+    const fmt=(n,symbol)=>displayTokenAmount(n,symbol,{summary:true});
     const tokenList=ref.rewardTokenList||[];
     const partnerRows=ref.partnerRows||[];
-    const partnerTable=partnerRows.length?`<div class="claim-summary"><div class="claim-summary-title">Referral-Rewards je Partner / TLN ID · verifizierte Claim-Test-Logik</div><div class="wrap"><table style="min-width:850px"><thead><tr><th>Partner · TLN ID</th><th>Level</th>${tokenList.map(t=>`<th>${esc(t.symbol)}</th>`).join('')}<th>Total</th></tr></thead><tbody>${partnerRows.map(p=>`<tr><td>${p.nodeId?tlnIdNameHtml(p.nodeId,[...p.wallets][0]):'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels?.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels?.size?`<span class="warn">${[...p.levels].join(' / ')}</span>`:'–'}</td>${tokenList.map(t=>`<td>${fmt(p.amounts.get(t.address))}</td>`).join('')}<td><b>${fmt(p.total)}</b></td></tr>`).join('')}<tr><th>TOTAL</th><th>–</th>${tokenList.map(t=>`<th>${fmt(ref.tokenTotals?.get(t.address)?.total||0)}</th>`).join('')}<th>${fmt([...((ref.tokenTotals||new Map()).values())].reduce((s,x)=>s+Number(x.total||0),0))}</th></tr></tbody></table></div></div>`:'';
-    const rowsHtml=strong.length?`<div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Ursprünglich gestaked von</th><th>Staking</th><th>LP-Paar</th><th>TLN ID</th><th>Level</th><th>Stake-Nachweis</th><th>Tx</th><th>Evidenz</th></tr></thead><tbody>${strong.flatMap(r=>(r.mints||[]).map(m=>`<tr><td>${esc(r.timestamp?new Date(Number(r.timestamp)*1000).toLocaleString('de-CH'):'–')}</td><td><b>${esc(m.amount)} ${esc(m.symbol)}</b><div class="mono muted">${esc(m.token)}</div></td><td class="mono">${esc(r.sender)}</td><td>${r.staking?esc(r.staking.label||r.staking.name||r.to):r.stakeEvents?.length?'<b>Staking per Stake-Event erkannt</b>':'unbekannt'}<div class="mono muted">${esc(r.to)}</div></td><td>${r.lpPair?`<b>${esc(r.lpPair.label)}</b><div class="small mono muted">${esc(r.lpPair.pair)}</div><div class="small muted">${r.lpPair.source==='stake-transfer'?'on-chain aus Stake-Transfer':r.lpPair.source==='stake-tx-lp-transfer'?'on-chain aus LP-Abfluss der Stake-Tx':'Registry-Pair on-chain dekodiert'}</div>`:'–'}</td><td>${r.tlnIdentity?.nodeId?`${tlnIdNameHtml(r.tlnIdentity.nodeId,r.sender)}<div class="small muted">${esc(r.tlnIdentity.source)}</div>`:'<span class="warn">unresolved</span>'}</td><td>${Number.isInteger(r.referralLevel)&&r.referralLevel>0?`<b>Level ${r.referralLevel}</b><div class="small muted">SmartNode-Upline</div>`:'–'}</td><td>${referralStakeAmountHtmlDiscovery(r)}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a></td><td><b>fremder Stake → Mint zum Wallet</b><div class="small muted">${r.stakeAmountEvidence?.source==='stake-tx-lp-transfer'?'LP-Abfluss in Stake-Tx':r.principalTransfers?.length?'Stake-Zufluss per Transfer':r.stakeEvents?.length?'Stake-Event':'Staking-Registry'}</div></td></tr>`)).join('')}</tbody></table></div>`:'<div class="muted">Keine starken Referral-Reward-Tx erkannt.</div>';
+    const partnerTable=partnerRows.length?`<div class="claim-summary"><div class="claim-summary-title">Referral-Rewards je Partner / TLN ID · verifizierte Claim-Test-Logik</div><div class="wrap"><table style="min-width:850px"><thead><tr><th>Partner · TLN ID</th><th>Level</th>${tokenList.map(t=>`<th>${esc(t.symbol)}</th>`).join('')}<th>Total</th></tr></thead><tbody>${partnerRows.map(p=>`<tr><td>${p.nodeId?tlnIdNameHtml(p.nodeId,[...p.wallets][0]):'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels?.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels?.size?`<span class="warn">${[...p.levels].join(' / ')}</span>`:'–'}</td>${tokenList.map(t=>`<td>${fmt(p.amounts.get(t.address),t.symbol)}</td>`).join('')}<td><b>${fmt(p.total)}</b></td></tr>`).join('')}<tr><th>TOTAL</th><th>–</th>${tokenList.map(t=>`<th>${fmt(ref.tokenTotals?.get(t.address)?.total||0,t.symbol)}</th>`).join('')}<th>${fmt([...((ref.tokenTotals||new Map()).values())].reduce((s,x)=>s+Number(x.total||0),0))}</th></tr></tbody></table></div></div>`:'';
+    const rowsHtml=strong.length?`<div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Ursprünglich gestaked von</th><th>Staking</th><th>LP-Paar</th><th>TLN ID</th><th>Level</th><th>Stake-Nachweis</th><th>Tx</th><th>Evidenz</th></tr></thead><tbody>${strong.flatMap(r=>(r.mints||[]).map(m=>`<tr><td>${esc(r.timestamp?new Date(Number(r.timestamp)*1000).toLocaleString('de-CH'):'–')}</td><td><b>${esc(displayTokenAmount(m.amount,m.symbol))} ${esc(m.symbol)}</b><div class="mono muted">${esc(m.token)}</div></td><td class="mono">${esc(r.sender)}</td><td>${r.staking?esc(r.staking.label||r.staking.name||r.to):r.stakeEvents?.length?'<b>Staking per Stake-Event erkannt</b>':'unbekannt'}<div class="mono muted">${esc(r.to)}</div></td><td>${r.lpPair?`<b>${esc(r.lpPair.label)}</b><div class="small mono muted">${esc(r.lpPair.pair)}</div><div class="small muted">${r.lpPair.source==='stake-transfer'?'on-chain aus Stake-Transfer':r.lpPair.source==='stake-tx-lp-transfer'?'on-chain aus LP-Abfluss der Stake-Tx':'Registry-Pair on-chain dekodiert'}</div>`:'–'}</td><td>${r.tlnIdentity?.nodeId?`${tlnIdNameHtml(r.tlnIdentity.nodeId,r.sender)}<div class="small muted">${esc(r.tlnIdentity.source)}</div>`:'<span class="warn">unresolved</span>'}</td><td>${Number.isInteger(r.referralLevel)&&r.referralLevel>0?`<b>Level ${r.referralLevel}</b><div class="small muted">SmartNode-Upline</div>`:'–'}</td><td>${referralStakeAmountHtmlDiscovery(r)}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a></td><td><b>fremder Stake → Mint zum Wallet</b><div class="small muted">${r.stakeAmountEvidence?.source==='stake-tx-lp-transfer'?'LP-Abfluss in Stake-Tx':r.principalTransfers?.length?'Stake-Zufluss per Transfer':r.stakeEvents?.length?'Stake-Event':'Staking-Registry'}</div></td></tr>`)).join('')}</tbody></table></div>`:'<div class="muted">Keine starken Referral-Reward-Tx erkannt.</div>';
     el.innerHTML=`<div class="muted" style="margin-bottom:12px"><b>Referenzengine:</b> ${ref.hashes?.length||0} gezielte Mint-Tx geprüft · <b>${strong.length}</b> starke Referral-Tx · ${candidates.length} nicht starke/mehrdeutige Kandidaten · ${ref.ownTxExcluded||0} eigene Tx früh ausgeschlossen. Wallet-TLN-ID: <b>${esc(ref.walletIdentity?.nodeId||'unresolved')}</b>.</div>${partnerTable}${rowsHtml}`;
     return;
   }
@@ -10846,7 +10889,7 @@ function renderBonusRewards(lots){
       <td>${rewardClaimDateText(claim)}<div class="muted">im claimBonus-Receipt</div></td>
       <td>${rewardClaimDateText(claim)}<div class="muted">claimBonus-Tx</div></td>
       <td><b>Bonus-Reward</b><div class="muted">expliziter Bonus-Claim</div></td>
-      <td class="num"><b>${Number(claim.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td>
+      <td class="num"><b>${displayTokenAmount(claim.amount,claim.symbol)}</b></td>
       <td><b>${esc(claim.symbol||'–')}</b>${claim.token?`<div class="mono muted">${esc(claim.token)}</div>`:''}</td>
       <td class="mono">${esc(claim.calledContract||'–')}</td>
       <td><b>${esc(bonus.method)}</b><div class="mono muted">${esc(claim.selector||'–')}</div></td>
@@ -10888,7 +10931,7 @@ function renderUnassignedClaims(lots){
     </tr></thead>
     <tbody>${rows.map(({claim,referral})=>`<tr>
       <td>${rewardClaimDateText(claim)}</td>
-      <td class="num"><b>${Number(claim.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td>
+      <td class="num"><b>${displayTokenAmount(claim.amount,claim.symbol)}</b></td>
       <td><b>${esc(claim.symbol||'–')}</b>${claim.token?`<div class="mono muted">${esc(claim.token)}</div>`:''}</td>
       <td><b>${referral.kind==='referral_candidate'?'Referral-Kandidat, nicht bewiesen':'Noch ungeklärt'}</b><div class="muted">Evidenz ${esc(referral.confidence||'–')}</div></td>
       <td>${esc(referral.reason||'–')}</td>
@@ -10969,7 +11012,7 @@ async function renderLots(stakingRows,contractCalls=[],contractEvents=[],pricePa
   $('completedStakings').innerHTML=completed.length?completed.map(l=>positionCardHtml(l,indexOfLot(l),true)).join(''):'<div class="empty-note">Keine abgeschlossenen Stakings gefunden.</div>';
   bindLotDetailEvents();
   const learnedRows=[...LEARNED_REWARD_PATHS.values()];
-  if($('learnedRewardPaths')) $('learnedRewardPaths').innerHTML=learnedRows.length?`<div class="wrap"><table style="min-width:980px"><thead><tr><th>Contract</th><th>Selector</th><th>Belege</th><th>Empfangene Token</th><th>Beispiel-Tx</th></tr></thead><tbody>${learnedRows.map(r=>`<tr><td class="mono">${esc(r.contract)}</td><td class="mono">${esc(r.selector)}</td><td>${r.count}</td><td>${[...r.tokens.values()].map(x=>`${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)} (${x.count})`).join('<br>')}</td><td class="mono">${r.examples.map(h=>`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(h)}">${esc(h)}</a>`).join('<br>')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="muted">Keine Reward-/Claim-Pfade dynamisch gelernt.</div>';
+  if($('learnedRewardPaths')) $('learnedRewardPaths').innerHTML=learnedRows.length?`<div class="wrap"><table style="min-width:980px"><thead><tr><th>Contract</th><th>Selector</th><th>Belege</th><th>Empfangene Token</th><th>Beispiel-Tx</th></tr></thead><tbody>${learnedRows.map(r=>`<tr><td class="mono">${esc(r.contract)}</td><td class="mono">${esc(r.selector)}</td><td>${r.count}</td><td>${[...r.tokens.values()].map(x=>`${displayTokenAmount(x.amount,x.symbol)} ${esc(x.symbol)} (${x.count})`).join('<br>')}</td><td class="mono">${r.examples.map(h=>`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(h)}">${esc(h)}</a>`).join('<br>')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="muted">Keine Reward-/Claim-Pfade dynamisch gelernt.</div>';
   const checks=[];
   for(const key of new Set(stakingRows.map(stakingKey))){
     const rs=stakingRows.filter(r=>stakingKey(r)===key),ls=lots.filter(l=>l.key===key);
@@ -11268,7 +11311,7 @@ function renderProjectOverview(){
   el.innerHTML=`<div class="project-overview-grid">
     <div class="project-overview-card"><span class="k">Wallet-Sicht</span><span class="v" style="font-size:1rem">${esc(scopeLabel)}</span><div class="muted">${PROJECT_WALLET_FILTER==='all'?'alle verfügbaren Wallets aggregiert':'Einzelwallet gefiltert'}</div></div>
     <div class="project-overview-card"><span class="k">Staking-Positionen</span><span class="v">${lots.length}</span><div class="muted">${active.length} offen · ${closed.length} beendet</div></div>
-    <div class="project-overview-card"><span class="k">Offener Staking-Einsatz</span><span class="v">${lpOpen.toLocaleString('de-CH',{maximumFractionDigits:12})}</span><div class="muted">LP/LPT gemäß erkannten Positionen</div></div>
+    <div class="project-overview-card"><span class="k">Offener Staking-Einsatz</span><span class="v">${displayTokenAmount(lpOpen,'LP',{kind:'lp',summary:true})}</span><div class="muted">LP/LPT gemäß erkannten Positionen</div></div>
     <div class="project-overview-card"><span class="k">Nächstes Vertragsende</span><span class="v" style="font-size:1rem">${nextExpiry?nextExpiry.toLocaleString('de-CH'):'–'}</span></div>
     <div class="project-overview-card"><span class="k">Staking-Rewards</span><span class="v" style="font-size:1rem">${projectTokenTotalsHtml(d.stakingByToken,'Keine belegten Staking-Rewards',1)}</span></div>
     <div class="project-overview-card"><span class="k">Referral-Rewards</span><span class="v" style="font-size:1rem">${projectTokenTotalsHtml(d.referralByToken,'Keine belegten Referral-Rewards',1)}</span><div class="muted">Keine Addition unterschiedlicher Token mehr.</div></div>
@@ -11317,7 +11360,7 @@ function projectRewardClaimSummaryHtml(lot){
   let summaryRows='';
   for(const [type,label] of sections){
     for(const x of sumsFor(grouped[type])){
-      summaryRows+=`<tr><td><b>${esc(label)}</b></td><td><b>${x.amount.toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(x.symbol)}</b></td><td>${x.count}</td><td class="mono">${esc(x.token)}</td></tr>`;
+      summaryRows+=`<tr><td><b>${esc(label)}</b></td><td><b>${displayTokenAmount(x.amount,x.symbol,{summary:true})} ${esc(x.symbol)}</b></td><td>${x.count}</td><td class="mono">${esc(x.token)}</td></tr>`;
     }
   }
   const rows=claims.map(c=>{
@@ -11326,7 +11369,7 @@ function projectRewardClaimSummaryHtml(lot){
     return `<tr>
       <td>${c.time?new Date(c.time).toLocaleString('de-CH'):'–'}</td>
       <td><b>${esc(label)}</b></td>
-      <td class="num"><b>${Number(c.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})} ${esc(c.symbol)}</b><div class="mono muted">${esc(c.token)}</div></td>
+      <td class="num"><b>${displayTokenAmount(c.amount,c.symbol)} ${esc(c.symbol)}</b><div class="mono muted">${esc(c.token)}</div></td>
       <td>${esc(c.method||'Reward-relevante Tx')}<div class="muted">${esc(c.source||'')}</div></td>
       <td class="mono">${c.calledContract?esc(c.calledContract):'–'}</td>
       <td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(c.hash)}">${esc(c.hash)}</a></td>
@@ -11371,8 +11414,8 @@ function projectStakingPositionCardHtml(l,showWallet){
     </div>
     <div class="stake-facts">
       <div class="stake-fact"><span class="k">Staking-Datum</span><span class="v">${l.stakeTime?new Date(l.stakeTime).toLocaleString('de-CH'):'–'}</span></div>
-      <div class="stake-fact"><span class="k">LP-/Staking-Asset gesamt</span><span class="v">${Number(l.original||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
-      <div class="stake-fact"><span class="k">Aktuell offen</span><span class="v">${Number(l.remaining||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</span></div>
+      <div class="stake-fact"><span class="k">LP-/Staking-Asset gesamt</span><span class="v">${displayTokenAmount(l.original,l?.pair?.lpSymbol||l?.pair?.symbol||'LP',{kind:'lp'})}</span></div>
+      <div class="stake-fact"><span class="k">Aktuell offen</span><span class="v">${displayTokenAmount(l.remaining,l?.pair?.lpSymbol||l?.pair?.symbol||'LP',{kind:'lp'})}</span></div>
       <div class="stake-fact"><span class="k">Vertragliche Laufzeit</span><span class="v">${l.durationDays!=null?`${Number(l.durationDays).toLocaleString('de-CH',{maximumFractionDigits:3})} Tage`:'–'}</span></div>
       <div class="stake-fact"><span class="k">Ablaufdatum / Vertragsende</span><span class="v">${expiry?new Date(expiry).toLocaleString('de-CH'):'–'}</span><div class="value-source">${esc(projectLockBaseReasonHtml(l))}</div></div>
       <div class="stake-fact"><span class="k">Unstake-Datum</span><span class="v">${l.unstakeTime?new Date(l.unstakeTime).toLocaleString('de-CH'):'–'}</span></div>
@@ -11383,7 +11426,7 @@ function projectStakingPositionCardHtml(l,showWallet){
       <div class="stake-fact"><span class="k">Staking-Contract</span><span class="v mono">${esc(l.staking?.contract_address||l.counterparty||'–')}</span></div>
       ${(l?.pair?.historicalOnly||l?.pair?.historical_only)?`<div class="stake-fact"><span class="k">Historisches Staking-Asset</span><span class="v">${esc(l?.pair?.displayLabel||l?.pair?.lpSymbol||safePairLabel(l)||'Legacy-Asset')}</span><div class="value-source">${l?.pair?.originChain?`Ursprungskette laut Registry: ${esc(l.pair.originChain)} · `:''}${esc(l?.pair?.historicalNote||'Als historisches Legacy-Staking-Asset klassifiziert; nicht automatisch als heutiger V2-LP bewertet.')}</div></div>`:''}
     </div>
-    ${topUps.length?`<div class="reward-box"><div class="reward-title">Aufstockungen dieser Position</div><div class="wrap"><table><thead><tr><th>Zeit</th><th>Zusätzlich</th><th>Gesamt danach</th><th>Tx</th></tr></thead><tbody>${topUps.map(x=>`<tr><td>${x.time?new Date(x.time).toLocaleString('de-CH'):'–'}</td><td class="num">+${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="num">${Number(x.resultingPrincipal||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</td><td class="mono">${x.tx?`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(x.tx)}">${esc(x.tx)}</a>`:'–'}</td></tr>`).join('')}</tbody></table></div></div>`:''}
+    ${topUps.length?`<div class="reward-box"><div class="reward-title">Aufstockungen dieser Position</div><div class="wrap"><table><thead><tr><th>Zeit</th><th>Zusätzlich</th><th>Gesamt danach</th><th>Tx</th></tr></thead><tbody>${topUps.map(x=>`<tr><td>${x.time?new Date(x.time).toLocaleString('de-CH'):'–'}</td><td class="num">+${displayTokenAmount(x.amount,l?.pair?.lpSymbol||l?.pair?.symbol||'LP',{kind:'lp'})}</td><td class="num">${displayTokenAmount(x.resultingPrincipal,l?.pair?.lpSymbol||l?.pair?.symbol||'LP',{kind:'lp'})}</td><td class="mono">${x.tx?`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(x.tx)}">${esc(x.tx)}</a>`:'–'}</td></tr>`).join('')}</tbody></table></div></div>`:''}
     <div class="reward-box">
       <div class="reward-title">🏆 Staking-Rewards / Claims dieser Position</div>
       ${claims.length?projectRewardClaimSummaryHtml(l):'<div class="empty-note">Keine eindeutig dieser Staking-Position zugeordneten Reward-/Claim-Transaktionen.</div>'}
@@ -11423,7 +11466,7 @@ function projectStakingSummaryRowHtml(l,showWallet,index){
       <div>${projectStakingSummaryDateHtml(expiry)}<div class="project-staking-sub">${esc(projectLockBaseReasonHtml(l))}</div></div>
       <div>${projectStakingSummaryDateHtml(l.unstakeTime)}</div>
       <div><div style="font-weight:800">${esc(duration)}</div><div class="project-staking-sub">${esc(status.life)}</div></div>
-      <div><div class="project-staking-amount">${amount.toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2})}<span class="symbol">${esc(symbol)}</span></div>${l.remaining!=null&&Number(l.remaining)!==amount?`<div class="project-staking-sub">offen ${Number(l.remaining).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>`:''}</div>
+      <div><div class="project-staking-amount">${displayTokenAmount(amount,symbol,{kind:'lp'})}<span class="symbol">${esc(symbol)}</span></div>${l.remaining!=null&&Number(l.remaining)!==amount?`<div class="project-staking-sub">offen ${displayTokenAmount(l.remaining,symbol,{kind:'lp'})}</div>`:''}</div>
       <div><div class="project-usd-stack">${projectStakingUsdLineHtml('stake','Stake',l.stakeUsd)}${projectStakingUsdLineHtml('end','Ende',l.contractEndUsd)}${projectStakingUsdLineHtml('unstake','Unstake',l.status==='closed'?l.unstakeUsd:null)}</div>${source?`<div class="project-staking-source">${legacy?'Cross-Chain-Historienbewertung':'Historische On-Chain-Bewertung'}</div>`:''}</div>
       <div><span class="project-staking-status ${status.cls}">${esc(status.label)}</span>${(l.topUps||[]).length?`<div class="project-staking-sub">${l.topUps.length} Aufstockung(en)</div>`:''}</div>
     </div>
@@ -11458,7 +11501,7 @@ function projectBonusDetailTableHtml(rows,showWallet){
         ${showWallet?`<td>${esc(projectWalletLabel(wallet))}<div class="mono muted">${esc(short(wallet))}</div></td>`:''}
         <td><b>${esc(payoutDate)}</b><div class="muted">im claimBonus-Receipt</div></td>
         <td><b>${esc(claimDate)}</b><div class="muted">claimBonus-Tx</div></td>
-        <td class="num"><b>${Number(claim?.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td>
+        <td class="num"><b>${displayTokenAmount(claim?.amount,claim?.symbol)}</b></td>
         <td><b>${esc(claim?.symbol||'–')}</b>${claim?.token?`<div class="mono muted">${esc(short(claim.token))}</div>`:''}</td>
         <td>${esc(bonus?.method||'–')}</td>
         <td class="mono">${claim?.hash?`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(claim.hash)}">${esc(short(claim.hash))}</a>`:'–'}</td>
@@ -11488,9 +11531,9 @@ function projectReferralDetailHtml(rows,showOwnerWallet){
     if(a.nodeId)return -1;if(b.nodeId)return 1;return ([...a.wallets][0]||'').localeCompare([...b.wallets][0]||'');
   });
   const tokenLabel=a=>list.find(r=>norm(r?.mint?.token||'')===a)?.mint?.symbol||projectTokenSymbol(a);
-  const fmt=n=>Number(n||0).toLocaleString('de-CH',{maximumFractionDigits:12});
-  const summary=`<div class="card"><h2>🤝 Referral Rewards · je Partner / TLN ID</h2><p class="muted">Zuordnung aus den verifizierten starken Referral-Tx des gespeicherten Discovery-Snapshots. Keine Ableitung aus Reward-Höhen.</p><div class="project-data-table wrap"><table style="min-width:850px"><thead><tr><th>Partner · TLN ID</th><th>Level</th><th>Claims</th>${tokenAddresses.map(a=>`<th>${esc(tokenLabel(a))}</th>`).join('')}</tr></thead><tbody>${partnerSummary.map(p=>`<tr><td>${p.nodeId?tlnIdNameHtml(p.nodeId,[...p.wallets][0]):'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels.size?[...p.levels].map(x=>`Level ${x}`).join(' / '):'–'}</td><td>${p.claims.size}</td>${tokenAddresses.map(a=>`<td class="num">${fmt(p.tokens.get(a)?.amount||0)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
-  const details=`<div class="card"><h2>🤝 Referral Rewards · einzelne Claims</h2><p class="muted">Jede Zeile zeigt den belegten Reward-Mint und den Partner/Staker, dessen fremde Staking-Transaktion diesem Referral-Reward zugeordnet wurde.</p><div class="project-data-table wrap"><table style="min-width:${showOwnerWallet?'1650':'1500'}px"><thead><tr><th>Zeitpunkt</th>${showOwnerWallet?'<th>Mein Wallet</th>':''}<th>Reward</th><th>Partner / Staker</th><th>TLN ID</th><th>Level</th><th>Staking</th><th>LP-Paar</th><th>Stake-Nachweis</th><th>Tx</th></tr></thead><tbody>${list.map(r=>`<tr><td>${r.timestamp?new Date(r.timestamp*1000).toLocaleString('de-CH'):'–'}</td>${showOwnerWallet?`<td><b>${esc(projectWalletLabel(r.ownerWallet))}</b><div class="small mono muted">${esc(r.ownerWallet)}</div></td>`:''}<td><b>${fmt(r?.mint?.amountHuman)} ${esc(r?.mint?.symbol||'–')}</b><div class="small mono muted">${esc(r?.mint?.token||'')}</div></td><td><b>Staker-Wallet</b><div class="mono">${esc(r.partnerWallet||'–')}</div></td><td>${r?.tlnIdentity?.nodeId?`${tlnIdNameHtml(r.tlnIdentity.nodeId,r.partnerWallet)}<div class="small muted">${esc(r.tlnIdentity.source||'Registry')}</div>`:'<span class="warn">unresolved</span>'}</td><td>${r.referralLevel?`<b>Level ${r.referralLevel}</b><div class="small muted">SmartNode-Upline</div>`:'–'}</td><td>${r.staking?esc(r.staking.label||r.staking.name||r.stakingContract):r.stakeEvents.length?'<b>Staking per Stake-Event erkannt</b>':'<span class="warn">unbekannt</span>'}<div class="small mono muted">${esc(r.stakingContract||'')}</div></td><td>${r.lpPair?`<b>${esc(r.lpPair.label||'LP')}</b><div class="small mono muted">${esc(r.lpPair.pair||'')}</div>`:'–'}</td><td>${referralStakeAmountHtmlDiscovery(r)}</td><td class="mono">${r.hash?`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a>`:'–'}</td></tr>`).join('')}</tbody></table></div></div>`;
+  const fmt=(n,symbol)=>displayTokenAmount(n,symbol,{summary:true});
+  const summary=`<div class="card"><h2>🤝 Referral Rewards · je Partner / TLN ID</h2><p class="muted">Zuordnung aus den verifizierten starken Referral-Tx des gespeicherten Discovery-Snapshots. Keine Ableitung aus Reward-Höhen.</p><div class="project-data-table wrap"><table style="min-width:850px"><thead><tr><th>Partner · TLN ID</th><th>Level</th><th>Claims</th>${tokenAddresses.map(a=>`<th>${esc(tokenLabel(a))}</th>`).join('')}</tr></thead><tbody>${partnerSummary.map(p=>`<tr><td>${p.nodeId?tlnIdNameHtml(p.nodeId,[...p.wallets][0]):'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels.size?[...p.levels].map(x=>`Level ${x}`).join(' / '):'–'}</td><td>${p.claims.size}</td>${tokenAddresses.map(a=>`<td class="num">${fmt(p.tokens.get(a)?.amount||0,tokenLabel(a))}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+  const details=`<div class="card"><h2>🤝 Referral Rewards · einzelne Claims</h2><p class="muted">Jede Zeile zeigt den belegten Reward-Mint und den Partner/Staker, dessen fremde Staking-Transaktion diesem Referral-Reward zugeordnet wurde.</p><div class="project-data-table wrap"><table style="min-width:${showOwnerWallet?'1650':'1500'}px"><thead><tr><th>Zeitpunkt</th>${showOwnerWallet?'<th>Mein Wallet</th>':''}<th>Reward</th><th>Partner / Staker</th><th>TLN ID</th><th>Level</th><th>Staking</th><th>LP-Paar</th><th>Stake-Nachweis</th><th>Tx</th></tr></thead><tbody>${list.map(r=>`<tr><td>${r.timestamp?new Date(r.timestamp*1000).toLocaleString('de-CH'):'–'}</td>${showOwnerWallet?`<td><b>${esc(projectWalletLabel(r.ownerWallet))}</b><div class="small mono muted">${esc(r.ownerWallet)}</div></td>`:''}<td><b>${fmt(r?.mint?.amountHuman,r?.mint?.symbol)} ${esc(r?.mint?.symbol||'–')}</b><div class="small mono muted">${esc(r?.mint?.token||'')}</div></td><td><b>Staker-Wallet</b><div class="mono">${esc(r.partnerWallet||'–')}</div></td><td>${r?.tlnIdentity?.nodeId?`${tlnIdNameHtml(r.tlnIdentity.nodeId,r.partnerWallet)}<div class="small muted">${esc(r.tlnIdentity.source||'Registry')}</div>`:'<span class="warn">unresolved</span>'}</td><td>${r.referralLevel?`<b>Level ${r.referralLevel}</b><div class="small muted">SmartNode-Upline</div>`:'–'}</td><td>${r.staking?esc(r.staking.label||r.staking.name||r.stakingContract):r.stakeEvents.length?'<b>Staking per Stake-Event erkannt</b>':'<span class="warn">unbekannt</span>'}<div class="small mono muted">${esc(r.stakingContract||'')}</div></td><td>${r.lpPair?`<b>${esc(r.lpPair.label||'LP')}</b><div class="small mono muted">${esc(r.lpPair.pair||'')}</div>`:'–'}</td><td>${referralStakeAmountHtmlDiscovery(r)}</td><td class="mono">${r.hash?`<a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a>`:'–'}</td></tr>`).join('')}</tbody></table></div></div>`;
   return summary+details;
 }
 function renderProjectAggregateDetails(){
@@ -11501,7 +11544,7 @@ function renderProjectAggregateDetails(){
     st.style.display='block';
     st.innerHTML=projectStakingPositionOverviewHtml(d.lots,scopeTitle,all);
   }
-  const rewardTable=(title,map,claims)=>`<div class="card"><h2>${title} · ${esc(scopeTitle)}</h2><div class="muted">${claims} belegte Tx im gewählten Scope. Die Spalte „Zahlungen“ zählt je Token; Mengen werden je Token separat summiert. Quelle: persistenter Snapshot des Projektfilters.</div><div class="project-data-table wrap"><table><thead><tr><th>Token</th><th>Zahlungen</th><th>Menge</th></tr></thead><tbody>${[...map.values()].length?[...map.values()].map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${x.count}</td><td class="num"><b>${Number(x.amount||0).toLocaleString('de-CH',{maximumFractionDigits:12})}</b></td></tr>`).join(''):'<tr><td colspan="3">Keine belegten Rewards.</td></tr>'}</tbody></table></div></div>`;
+  const rewardTable=(title,map,claims)=>`<div class="card"><h2>${title} · ${esc(scopeTitle)}</h2><div class="muted">${claims} belegte Tx im gewählten Scope. Die Spalte „Zahlungen“ zählt je Token; Mengen werden je Token separat summiert. Quelle: persistenter Snapshot des Projektfilters.</div><div class="project-data-table wrap"><table><thead><tr><th>Token</th><th>Zahlungen</th><th>Menge</th></tr></thead><tbody>${[...map.values()].length?[...map.values()].map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${x.count}</td><td class="num"><b>${displayTokenAmount(x.amount,x.symbol,{summary:true})}</b></td></tr>`).join(''):'<tr><td colspan="3">Keine belegten Rewards.</td></tr>'}</tbody></table></div></div>`;
   if(rw){rw.style.display='block';rw.innerHTML=rewardTable('🏆 Staking-Rewards',d.stakingByToken,d.stakingClaims);}
   if(rf){rf.style.display='block';rf.innerHTML=rewardTable('🤝 Referral Rewards · Summary',d.referralByToken,d.referralClaims)+projectReferralDetailHtml(d.referralRows,all);}
   if(bo){
@@ -15973,7 +16016,7 @@ function teamPartnerStakingRowHtml(l,index){
     <div>${projectStakingSummaryDateHtml(expiry)}<div class="project-staking-sub">${esc(projectLockBaseReasonHtml(l))}</div></div>
     <div>${projectStakingSummaryDateHtml(l.unstakeTime)}</div>
     <div><div style="font-weight:800">${esc(duration)}</div><div class="project-staking-sub">${esc(status.life)}</div></div>
-    <div><div class="project-staking-amount">${amount.toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2})}<span class="symbol">${esc(symbol)}</span></div>${l.remaining!=null&&Number(l.remaining)!==amount?`<div class="project-staking-sub">offen ${Number(l.remaining).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>`:''}</div>
+    <div><div class="project-staking-amount">${displayTokenAmount(amount,symbol,{kind:'lp'})}<span class="symbol">${esc(symbol)}</span></div>${l.remaining!=null&&Number(l.remaining)!==amount?`<div class="project-staking-sub">offen ${displayTokenAmount(l.remaining,symbol,{kind:'lp'})}</div>`:''}</div>
     <div><div class="project-usd-stack">${projectStakingUsdLineHtml('stake','Stake',l.stakeUsd)}${projectStakingUsdLineHtml('end','Ende',l.contractEndUsd)}${projectStakingUsdLineHtml('unstake','Unstake',l.status==='closed'?l.unstakeUsd:null)}</div></div>
     <div><span class="project-staking-status ${status.cls}">${esc(status.label)}</span>${(l.topUps||[]).length?`<div class="project-staking-sub">${l.topUps.length} Aufstockung(en)</div>`:''}</div>
   </div></div>`;
@@ -16596,8 +16639,8 @@ function snapshotUnderlyingText(lot,val){
   if(!val)return '–';
   const pair=lot?.pair||lot?.p;
   const parts=[];
-  if(Number.isFinite(Number(val.a0))&&pair?.token0?.symbol)parts.push(`${Number(val.a0).toLocaleString('de-CH',{maximumFractionDigits:10})} ${pair.token0.symbol}`);
-  if(Number.isFinite(Number(val.a1))&&pair?.token1?.symbol)parts.push(`${Number(val.a1).toLocaleString('de-CH',{maximumFractionDigits:10})} ${pair.token1.symbol}`);
+  if(Number.isFinite(Number(val.a0))&&pair?.token0?.symbol)parts.push(`${displayTokenAmount(val.a0,pair.token0.symbol)} ${pair.token0.symbol}`);
+  if(Number.isFinite(Number(val.a1))&&pair?.token1?.symbol)parts.push(`${displayTokenAmount(val.a1,pair.token1.symbol)} ${pair.token1.symbol}`);
   return parts.join(' + ')||'–';
 }
 function step6LifecycleStatus(lot,nowMs=Date.now()){
@@ -17073,7 +17116,7 @@ async function loadInitialDbRows(){
     sb.from('defi_staking_contracts').select('*').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
     loadPrivateWalletsForDiscovery(),
     sb.from('defi_project_tokens').select('contract_address,role').eq('project_key','tln_vow').eq('chain_key','bsc').eq('enabled',true),
-    sb.from('predefined_tokens').select('address,symbol,label,name,decimals').eq('chain','bsc').in('symbol',['USDT','USDC','BUSD'])
+    sb.from('predefined_tokens').select('address,symbol,label,name,decimals,display_decimals,summary_decimals').eq('chain','bsc').in('symbol',['USDT','USDC','BUSD'])
   ]);
 }
 async function loadInitialDbRowsResilient(){
@@ -17130,7 +17173,7 @@ async function init(){log(`Build geladen: ${BUILD_ID} · SC_READ_PROBES=${typeof
     'https://bsc-dataseed1.ninicoin.io/',
     rpcFallbackUrl()
   ]);
-  allProjectRows=pt.data||[];loadHistoricalStakingAssets(allProjectRows);
+  allProjectRows=pt.data||[];displayTokenRows=[...allProjectRows,...(stableRefs?.data||[])];loadHistoricalStakingAssets(allProjectRows);
   const projectReferenceRow=(projectRefs?.data||[]).find(x=>String(x?.role||'').trim().toLowerCase()==='reference');
   DISCOVERY_PRICE_REFERENCES.vow=projectReferenceRow?.contract_address?norm(projectReferenceRow.contract_address):null;
   for(const row of (stableRefs?.data||[])){
@@ -17204,4 +17247,5 @@ window.TLNVOWDiscovery={
   getVersion:()=>APP_VERSION
 };
 init();
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',enableTlnVowProjectTableNormalization,{once:true});else enableTlnVowProjectTableNormalization();
 })();

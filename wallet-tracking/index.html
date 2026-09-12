@@ -6,7 +6,7 @@
 <title>Token-Übersicht Wallets</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><text y=%2250%22 x=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2252%22>💼</text></svg>">
 <link rel="stylesheet" href="./css/wallet-tracking.css?v=20260912-175619-layout-v65-table-overflow">
-<link rel="stylesheet" href="./projects/tln-vow/tln-vow-discovery.css?v=20260912-195256">
+<link rel="stylesheet" href="./projects/tln-vow/tln-vow-discovery.css?v=20260912-201045">
 
 
 </head>
@@ -599,8 +599,8 @@
 
     <div id="tab-tlnvow" class="tab-panel">
       <div class="project-subtabs tln-vow-main-subtabs">
-        <button class="tab-btn active" onclick="switchProjectSubtab('tlnvow','overview',this)">Kurse und Pools</button>
-        <button class="tab-btn" onclick="openTlnDiscoveryTab('overview',this)">Übersicht</button>
+        <button class="tab-btn active" onclick="openTlnDiscoveryTab('overview',this)">Übersicht</button>
+        <button class="tab-btn" onclick="switchProjectSubtab('tlnvow','overview',this)">Kurse und Pools</button>
         <button class="tab-btn" onclick="openTlnDiscoveryTab('stakings',this)">Staking/Rewards</button>
         <button class="tab-btn" onclick="openTlnDiscoveryTab('rewards',this)">Rewards Summary</button>
         <button class="tab-btn" onclick="openTlnDiscoveryTab('referral',this)">Referral Rewards</button>
@@ -610,7 +610,7 @@
         <button class="tab-btn" onclick="switchProjectSubtab('tlnvow','help',this)">Hilfe</button>
         <button class="tab-btn" onclick="switchProjectSubtab('tlnvow','liquidity',this); showTlnLpChain('bsc',document.getElementById('tlnLpBscBtn'))">Liquidity Pools_old</button>
       </div>
-      <div id="tlnvow-subtab-overview" class="project-subtab-panel">
+      <div id="tlnvow-subtab-overview" class="project-subtab-panel" style="display:none">
       <div class="custom-token-card" style="border-color:var(--accent)">
         <h3 style="margin-top:0">TLN/VOW · On-Chain Preise &amp; Liquidity Pools</h3>
         <div class="note">
@@ -697,7 +697,7 @@
         </div>
       </section>
       </div>
-      <div id="tlnvow-subtab-discovery" class="project-subtab-panel" style="display:none">
+      <div id="tlnvow-subtab-discovery" class="project-subtab-panel">
         <div id="tlnvowDiscoveryHost">
 <div class="card analysis-zone debug-frame tln-discovery-dev" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -994,7 +994,7 @@
   </div>
 
   <footer>
-    Version vom 12.09.2026 19:52:56 CEST · Phase 4.37 · v67 TLN/VOW Integration Step 1<br>
+    Version vom 12.09.2026 20:21:05 CEST · Phase 4.39 · v69 Zentrale Token-Anzeigepräzision<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1006,13 +1006,11 @@
 <script src="./js/price-engine.js"></script>
 <script src="./js/lp-engine.js"></script>
 <script src="./js/staking-engine.js"></script>
-<script src="./projects/tln-vow/tln-vow.js"></script>
-<script src="./projects/dao1/dao1.js?v=20260912-190611-dao1-v66-full-summary"></script>
+<script src="./projects/tln-vow/tln-vow.js?v=20260912-202105"></script>
+<script src="./projects/dao1/dao1.js?v=20260912-202105-dao1-v69-token-format"></script>
 
-<script src="./js/app.js?v=20260912-195256-app-v67-tln-integration"></script>
-<script src="./projects/tln-vow/tln-vow-discovery.js?v=20260912-195256"></script>
-
-
+<script src="./js/app.js?v=20260912-202105-app-v69-token-format"></script>
+<script src="./projects/tln-vow/tln-vow-discovery.js?v=20260912-202105"></script>
 
 
 
@@ -1028,6 +1026,8 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 12.09.2026 19:52:56 CEST · Phase 4.37 · Build 20260912-195256</div>
+
+
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 12.09.2026 20:21:05 CEST · Phase 4.39 · Build 20260912-202105</div>
 </body>
 </html>
