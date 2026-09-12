@@ -3217,10 +3217,15 @@ window.DAO1Project = (() => {
           if(job!==transactionJobToken)return;
           const walletRows=await loadTransactionRows(address,null);
           if(job!==transactionJobToken)return;
-          await enrichTransactionsWithClaims(address,null,job);
+          const claimEnrich=await enrichTransactionsWithClaims(address,null,job);
           if(job!==transactionJobToken)return;
-          await backfillCachedClaimPrices(address,null,document.getElementById("dao1TransactionStatus"));
-          if(job!==transactionJobToken)return;
+          // v52: Claim-Preis-Backfill nur nach echter Claim-Anreicherung.
+          // Ohne neue/erneuerte Claims werden historische Claim-Preise nicht
+          // bei jedem normalen "Daten aktualisieren" erneut abgearbeitet.
+          if(Number(claimEnrich?.updatedClaims||0)>0){
+            await backfillCachedClaimPrices(address,null,document.getElementById("dao1TransactionStatus"));
+            if(job!==transactionJobToken)return;
+          }
           await enrichTransactionHistoricalPrices(address,job);
           if(job!==transactionJobToken)return;
           setTransactionStatus("loading",`Wallet ${i+1}/${targets.length}: ${w.label} · NFTs werden aktualisiert…`,"Apertum NFT-Bestand wird live abgeglichen; Besitzerhistorien werden nur bei tatsächlichen Besitzänderungen neu aufgebaut.");
@@ -3314,9 +3319,10 @@ window.DAO1Project = (() => {
       if(!ev)return false;
       const c=claimByHash.get(h);
       const cachedForTx=cachedFlowsByHash.get(h)||[];
-      const hasUsableDirection=cachedForTx.some(f=>["eingang","ausgang","intern"].includes(String(f.direction||"")));
-      // v50: alte v49-Detailflows mit direction='sonst' gezielt neu laden.
-      if(ev.newMiner && !hasUsableDirection)return true;
+      const hasIncoming=cachedForTx.some(f=>String(f.direction||"")==="eingang");
+      // v52: Beim neuen Miner gilt die Detail-TX erst dann als vollständig,
+      // wenn tatsächlich ein eingehender Reward-Flow vorhanden ist.
+      if(ev.newMiner && !hasIncoming)return true;
       if(t.claim_nft_id!=null && c?.reward_asset_symbol)return false;
       return !cachedFlowHashes.has(h);
     });
@@ -3352,9 +3358,18 @@ window.DAO1Project = (() => {
       const ev=candidateByHash.get(h);
       if(!ev)return null;
       if(ev.legacy)return ev;
-      const incoming=(flowsByTx.get(h)||[]).filter(f=>f.direction==="eingang");
-      // 0x19da4078 wird bewusst NICHT allein als fertiger Claim gewertet:
-      // erst ein realer Reward-Flow an die Wallet bestätigt die Auszahlung.
+      const allForTx=(flowsByTx.get(h)||[]);
+      const incoming=allForTx.filter(f=>f.direction==="eingang");
+      if(ev.newMiner && !incoming.length){
+        console.warn("DAO1 neuer Miner weiterhin ohne eingehenden Reward-Flow",{
+          tx_hash:h,
+          flows:allForTx.map(f=>({
+            direction:f.direction,symbol:f.token_symbol,amount:f.amount,
+            token:f.token_address,counterparty:f.counterparty_address
+          }))
+        });
+      }
+      // 0x19da4078 wird erst durch einen realen eingehenden Asset-Flow bestätigt.
       return incoming.length?ev:null;
     }
     const evidenceByHash=new Map();
@@ -3362,7 +3377,7 @@ window.DAO1Project = (() => {
     const claimTxs=allClaimTxs.filter(t=>{const c=claimByHash.get(String(t.tx_hash||"").toLowerCase());return t.claim_nft_id==null || !c?.reward_asset_symbol;});
     if(!claimTxs.length){
       setTransactionStatus("ready",`Keine neuen Claims anzureichern.`,`${allClaimTxs.length.toLocaleString("de-DE")} Claim-Transaktionen (Legacy + neue Mining-Bot-Evidenz) sind bereits assetgenau verarbeitet.`);
-      return;
+      return {updatedClaims:0,detailTargets:detailTargets.length};
     }
     setTransactionStatus("loading",`${claimTxs.length.toLocaleString("de-DE")} Claim(s) werden assetgenau angereichert…`,`Legacy- und neue Mining-Bot-Claims werden assetgenau geprüft; wAPTM wird 1:1 mit dem bereits vorhandenen historischen APTM/USD-Kurs bewertet.`);
     const claimRows=[];
@@ -3463,6 +3478,7 @@ window.DAO1Project = (() => {
       }
       setTransactionStatus("ready",`${claimRows.length.toLocaleString("de-DE")} Claim(s) assetgenau angereichert und gespeichert.`);
     }
+    return {updatedClaims:claimRows.length,detailTargets:detailTargets.length};
   }
 
   function transactionClaimDescriptor(r){
@@ -4191,21 +4207,24 @@ window.DAO1Project = (() => {
   }
 
   function knownNewMinerNftIdFromInventory(nftMap){
-    // Führende Quelle ist der bereits aufgebaute NFT-Bestand / die Besitzhistorie.
-    // Der neue MB1 erscheint dort als Collection "Apertum Miner" (z.B. #31722).
-    const candidates=[...nftMap.values()].filter(n=>{
+    // Führende Quelle ist der vorhandene NFT-Bestand. Ein expliziter
+    // "MinerBot MB1" wird vor generischen Apertum-Miner-Einträgen priorisiert.
+    const current=[...nftMap.values()].filter(n=>!!n?.current);
+    const exactMb1=current.filter(n=>{
+      const name=String(n?.name||"").toLowerCase();
+      const clsName=String(n?.classification?.nft_name||"").toLowerCase();
+      return name.includes("minerbot mb1") || clsName.includes("minerbot mb1");
+    });
+    if(exactMb1.length===1)return String(exactMb1[0].id);
+
+    const generic=current.filter(n=>{
       const name=String(n?.name||"").toLowerCase();
       const collection=String(n?.collectionName||"").toLowerCase();
-      const clsName=String(n?.classification?.nft_name||"").toLowerCase();
       const subtype=String(n?.classification?.subtype||"").toLowerCase();
-      return !!n?.current && (
-        collection.includes("apertum miner") ||
-        name.includes("minerbot mb1") ||
-        clsName.includes("minerbot mb1") ||
-        (name.includes("apertum miner") && subtype==="mining-bot")
-      );
+      return collection.includes("apertum miner")
+        || (name.includes("apertum miner") && subtype==="mining-bot");
     });
-    return candidates.length===1?String(candidates[0].id):null;
+    return generic.length===1?String(generic[0].id):null;
   }
 
   function collectKnownNftIdsFromValue(value,nftMap,out=new Set(),depth=0){
