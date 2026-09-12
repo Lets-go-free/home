@@ -3674,9 +3674,32 @@ window.DAO1Project = (() => {
     return rows.map(hydratePrivateWalletAddress);
   }
 
+  const CLAIM_DB_FIELDS = new Set([
+    "user_id","project_key","chain_key","wallet_id",
+    "nft_contract","nft_id","nft_name","nft_subtype",
+    "tx_hash","block_number","tx_timestamp","param1","param2",
+    "reward_aptm","gas_aptm","net_aptm",
+    "aptm_usd","reward_usd","gas_usd","price_block","price_source","price_is_manual",
+    "reward_asset_address","reward_asset_symbol","reward_asset_decimals",
+    "reward_asset_amount","reward_asset_usd","reward_asset_price_source",
+    "updated_at"
+  ]);
+
+  function claimRowForDatabase(row){
+    const clean={};
+    for(const [key,value] of Object.entries(row||{})){
+      if(CLAIM_DB_FIELDS.has(key))clean[key]=value;
+    }
+    // Privacy-Schranke: Klartext-Walletadressen werden nur zur Laufzeit hydriert und
+    // dürfen niemals zurück in den persistenten Claim-Cache geschrieben werden.
+    delete clean.wallet_address;
+    return clean;
+  }
+
   async function saveClaimRows(rows){
     if(!rows.length)return;
-    const {error}=await sb.from("project_nft_claims").upsert(rows,{onConflict:"user_id,project_key,chain_key,tx_hash"});
+    const safeRows=rows.map(claimRowForDatabase);
+    const {error}=await sb.from("project_nft_claims").upsert(safeRows,{onConflict:"user_id,project_key,chain_key,tx_hash"});
     if(error)throw error;
   }
 
