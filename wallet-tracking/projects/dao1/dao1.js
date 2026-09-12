@@ -251,7 +251,7 @@ window.DAO1Project = (() => {
       panel.id = "tab-dao1";
       panel.className = "tab-panel";
       panel.innerHTML = `
-        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('claims',this)">Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('referrals',this)">Referral Rewards</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); renderProjectLpTab('dao1',['apertum'],'dao1LpContent','2025-12-31',false)">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
+        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('claims',this)">Bot-Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('referrals',this)">Referral Rewards</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); renderProjectLpTab('dao1',['apertum'],'dao1LpContent','2025-12-31',false)">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
         <div id="dao1-subtab-overview" class="project-subtab-panel"><div class="custom-token-card"><div class="chain-title">DAO1 · Apertum</div><div class="note">Projektübersicht für DAO1-spezifische Assets auf Apertum. Detailfunktionen sind in die Unter-Tabs gegliedert.</div></div></div>
         <div id="dao1-subtab-claims" class="project-subtab-panel" style="display:none"><div id="dao1ClaimsContent"></div></div>
         <div id="dao1-subtab-referrals" class="project-subtab-panel" style="display:none"><div id="dao1ReferralContent"></div></div>
@@ -263,7 +263,7 @@ window.DAO1Project = (() => {
           <div id="dao1PriceJobMetrics" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:8px" class="meta">Noch kein historischer Preisjob in dieser Sitzung.</div>
           <textarea id="dao1PriceJobLog" readonly spellcheck="false" style="width:100%;min-height:260px;max-height:420px;resize:vertical;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.45;background:var(--card,#111);color:inherit;border:1px solid rgba(128,128,128,.25);border-radius:8px;padding:10px;box-sizing:border-box">Bereit.</textarea>
         </div><div id="dao1TransactionSummary" style="margin-top:10px"></div><div id="dao1TransactionTable" style="margin-top:10px"></div></div></div>
-        <div id="dao1-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">DAO1 / Apertum · Hilfe</h3><p class="note"><strong>Liquidity Pools:</strong> Beim Öffnen werden ausschließlich die zuletzt gespeicherten Supabase-Daten angezeigt. Aktuelle LP-Positionen, 31.12.-Vergleich und Add-/Remove-Historie werden nur über „Daten aktualisieren“ neu von Blockchain/Explorer ermittelt und danach wieder gecached.</p><p class="note"><strong>Transaktionen &amp; Claims:</strong> „Daten aktualisieren“ synchronisiert neue Transaktionen, Claims, historische APTM-Kurse sowie NFT-Bestand und Besitzerhistorie. Filter und Exporte arbeiten danach aus dem gespeicherten Bestand.</p><p class="note"><strong>Konfiguration:</strong> Hier werden DAO1-Projektassets und NFTs klassifiziert. Die Klassifizierung steuert Filter und Bezeichnungen, nicht die Erkennung der Blockchain-Transaktionen. Fehlende historische APTM-Kurse können manuell ergänzt werden und bleiben als manuell gekennzeichnet.</p></div></div>
+        <div id="dao1-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">DAO1 / Apertum · Hilfe</h3><p class="note"><strong>Liquidity Pools:</strong> Beim Öffnen werden ausschließlich die zuletzt gespeicherten Supabase-Daten angezeigt. Aktuelle LP-Positionen, 31.12.-Vergleich und Add-/Remove-Historie werden nur über „Daten aktualisieren“ neu von Blockchain/Explorer ermittelt und danach wieder gecached.</p><p class="note"><strong>Transaktionen &amp; Bot-Claims:</strong> „Daten aktualisieren“ synchronisiert neue Transaktionen, Claims, historische APTM-Kurse sowie NFT-Bestand und Besitzerhistorie. Filter und Exporte arbeiten danach aus dem gespeicherten Bestand.</p><p class="note"><strong>Konfiguration:</strong> Hier werden DAO1-Projektassets und NFTs klassifiziert. Die Klassifizierung steuert Filter und Bezeichnungen, nicht die Erkennung der Blockchain-Transaktionen. Fehlende historische APTM-Kurse können manuell ergänzt werden und bleiben als manuell gekennzeichnet.</p></div></div>
       `;
       app.appendChild(panel);
     }
@@ -3249,7 +3249,12 @@ window.DAO1Project = (() => {
         setTransactionStatus("db",`Wallet ${wi+1}/${targets.length}: gespeicherte Transaktionen werden für die Preis-Neuberechnung geladen…`,
           `${w.label} · Kein erneuter Explorer-Transaktionsscan.`);
         const allRows=(await loadTransactionRows(address,null)).filter(r=>!r.price_is_manual && Number(r.block_number)>0);
-        const rows=allRows.filter(r=>!String(r.price_source||"").includes(PRICE_SOURCE_TAG) && !String(r.price_source||"").includes(PRICE_MISSING_TAG));
+        // v56: Der manuelle Preisjob versucht auch bisherige "ohne Preis"-Fälle erneut.
+        // Nur bereits exakte Preise und bestätigte Pre-Launch-Fälle werden ausgelassen.
+        const rows=allRows.filter(r=>
+          !String(r.price_source||"").includes(PRICE_SOURCE_TAG) &&
+          !String(r.price_source||"").includes(PRICE_PRELAUNCH_TAG)
+        );
         totalRows+=allRows.length;
         if(!rows.length){
           setTransactionStatus("ready",`Wallet ${wi+1}/${targets.length}: historische Preise bereits aktuell.`,`Preisrevision ${PRICE_SOURCE_TAG}; ${allRows.length.toLocaleString("de-DE")} gecachte TX mussten nicht erneut geprüft werden.`);
@@ -3260,7 +3265,7 @@ window.DAO1Project = (() => {
         if(!activePriceJobLog)priceJobStart(rows.length,blocks.length);
         priceJobLog(`Wallet ${wi+1}/${targets.length} · ${rows.length} veraltete TX · ${blocks.length} Preisblöcke`);
         setTransactionStatus("loading",`Wallet ${wi+1}/${targets.length}: historische Poolpreise werden geprüft…`,
-          `${rows.length.toLocaleString("de-DE")} gecachte Transaktionen · ${blocks.length.toLocaleString("de-DE")} unterschiedliche TX-Blöcke.`);
+          `${rows.length.toLocaleString("de-DE")} gecachte Transaktionen inkl. bisheriger „ohne Preis“-Fälle · ${blocks.length.toLocaleString("de-DE")} unterschiedliche TX-Blöcke.`);
         priceJobLog("Preisanker laden/verifizieren gestartet");
         const history=await ensurePricesForClaimBlocks(blocks,document.getElementById("dao1TransactionStatus"));
         priceJobLog(`Preisanker bereit · ${history._anchorByTarget?.size?.toLocaleString("de-DE")||0} Zielblöcke`);
@@ -3857,16 +3862,99 @@ window.DAO1Project = (() => {
     return gas*price;
   }
 
+  function payoutSummaryLineHtml(symbol,entry){
+    const missing=Number(entry?.missingUsd||0);
+    return `<div style="display:grid;grid-template-columns:minmax(70px,1fr) auto auto;gap:12px;align-items:baseline;padding:3px 0">
+      <strong>${symbol}</strong>
+      <span class="meta">${Number(entry?.count||0).toLocaleString("de-DE")} Auszahlung(en)</span>
+      <span>${usd(Number(entry?.usd||0))}${missing?` <span class="meta">· ${missing} ohne USD</span>`:""}</span>
+    </div>`;
+  }
+
+  function botClaimPayoutSummary(rows){
+    const byToken=new Map();
+    let unresolvedClaims=0;
+    let totalUsd=0;
+    let missingUsd=0;
+
+    function add(symbol,valueUsd,hasUsd){
+      const sym=String(symbol||"TOKEN")||"TOKEN";
+      if(!byToken.has(sym))byToken.set(sym,{count:0,usd:0,missingUsd:0});
+      const e=byToken.get(sym);
+      e.count++;
+      if(hasUsd){
+        const v=Number(valueUsd||0);
+        if(Number.isFinite(v)){e.usd+=v;totalUsd+=v;}
+      }else{
+        e.missingUsd++;
+        missingUsd++;
+      }
+    }
+
+    for(const r of rows){
+      const flows=incomingAssetFlowsForTx(r);
+      if(flows.length){
+        for(const f of flows){
+          const sym=isWrappedAptmSymbol(f.token_symbol,f.token_name)?"wAPTM":String(f.token_symbol||f.token_name||"TOKEN");
+          const hasUsd=f.value_usd!=null && Number.isFinite(Number(f.value_usd));
+          add(sym,f.value_usd,hasUsd);
+        }
+      }else if(r.claim_reward_aptm!=null){
+        const hasUsd=r.claim_reward_usd!=null && Number.isFinite(Number(r.claim_reward_usd));
+        add("APTM",r.claim_reward_usd,hasUsd);
+      }else{
+        unresolvedClaims++;
+      }
+    }
+    return {byToken,totalUsd,missingUsd,unresolvedClaims};
+  }
+
+  function referralPayoutSummary(rows){
+    const byToken=new Map();
+    let totalUsd=0;
+    let missingUsd=0;
+    function add(symbol,valueUsd,hasUsd){
+      const sym=String(symbol||"TOKEN")||"TOKEN";
+      if(!byToken.has(sym))byToken.set(sym,{count:0,usd:0,missingUsd:0});
+      const e=byToken.get(sym);
+      e.count++;
+      if(hasUsd){
+        const v=Number(valueUsd||0);
+        if(Number.isFinite(v)){e.usd+=v;totalUsd+=v;}
+      }else{
+        e.missingUsd++;
+        missingUsd++;
+      }
+    }
+    for(const r of rows){
+      for(const f of (r._referralFlows||[])){
+        const hasUsd=f.value_usd!=null && Number.isFinite(Number(f.value_usd));
+        add(f.token_symbol||f.token_name||"TOKEN",f.value_usd,hasUsd);
+      }
+    }
+    return {byToken,totalUsd,missingUsd};
+  }
+
+  function payoutSummaryCardHtml(title,summary,extraText=""){
+    const lines=[...summary.byToken.entries()]
+      .sort((a,b)=>a[0].localeCompare(b[0]))
+      .map(([sym,e])=>payoutSummaryLineHtml(sym,e))
+      .join("");
+    const total=`<div style="border-top:1px solid rgba(255,255,255,.10);margin-top:7px;padding-top:7px;display:flex;justify-content:space-between;gap:14px"><strong>Total historischer USD-Wert</strong><strong>${usd(Number(summary.totalUsd||0))}</strong></div>`;
+    const missing=Number(summary.missingUsd||0)>0?`<div class="meta" style="margin-top:5px">${summary.missingUsd.toLocaleString("de-DE")} Auszahlung(en) noch ohne historischen USD-Wert.</div>`:"";
+    return `<div class="custom-token-card project-summary-box"><span class="field-label">${title}</span>${lines||`<div class="meta">Keine Auszahlungen im aktuellen Filter.</div>`}${total}${missing}${extraText}</div>`;
+  }
+
   function renderClaimsTab(){
     const el=document.getElementById("dao1ClaimsContent");if(!el)return;
     const walletRows=tabWalletFilteredRows(transactionRows.filter(r=>isClaimTxRow(r) && !isDidReferralRow(r)),claimFilterWallet);
     let rows=[...walletRows];
     if(claimFilterNft==="__unassigned")rows=rows.filter(r=>r.claim_nft_id==null);
     else if(claimFilterNft!=="__all")rows=rows.filter(r=>String(r.claim_nft_id??"")===claimFilterNft);
-    const flowCount=rows.reduce((a,r)=>a+incomingAssetFlowsForTx(r).length,0);
-    const totalUsd=rows.reduce((a,r)=>a+incomingAssetFlowsForTx(r).reduce((x,f)=>x+Number(f.value_usd||0),0),0);
-    el.innerHTML=`<div class="custom-token-card"><div class="chain-title">⛏️ Bot Claims</div><div class="note">Bot-Claims werden über den Legacy-Selector 0x86bb8f37 sowie den neuen Apertum-Miner-Selector 0x19da4078 erkannt. DID-Auszahlungen sind fachlich Referral Rewards und werden hier bewusst ausgeschlossen. Beim neuen Miner bestätigt erst ein tatsächlicher eingehender Reward-Asset-Flow den Claim.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px) minmax(220px,320px)">${tabWalletFilterHtml("claims",claimFilterWallet)}${claimNftFilterHtml(walletRows)}</div></div>
-      <div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Claims</span><strong>${rows.length.toLocaleString("de-DE")}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Asset-Flows</span><strong>${flowCount.toLocaleString("de-DE")}</strong><div class="meta">${totalUsd?usd(totalUsd):"USD noch nicht für alle Assets verfügbar"}</div></div></div>
+    const payoutSummary=botClaimPayoutSummary(rows);
+    const unresolvedText=payoutSummary.unresolvedClaims?`<div class="meta" style="margin-top:5px">${payoutSummary.unresolvedClaims.toLocaleString("de-DE")} Claim(s) noch ohne ermittelte Auszahlung.</div>`:"";
+    el.innerHTML=`<div class="custom-token-card"><div class="chain-title">⛏️ Bot-Claims</div><div class="note">Bot-Claims werden über den Legacy-Selector 0x86bb8f37 sowie den neuen Apertum-Miner-Selector 0x19da4078 erkannt. DID-Auszahlungen sind fachlich Referral Rewards und werden hier bewusst ausgeschlossen. Beim neuen Miner bestätigt erst eine tatsächliche Auszahlung den Claim.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px) minmax(220px,320px)">${tabWalletFilterHtml("claims",claimFilterWallet)}${claimNftFilterHtml(walletRows)}</div></div>
+      <div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Bot-Claims</span><strong>${rows.length.toLocaleString("de-DE")}</strong></div>${payoutSummaryCardHtml("Auszahlungen",payoutSummary,unresolvedText)}</div>
       <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap dao1-data-table dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>NFT</th><th>Auszahlung<div class="meta">Kurs USD hist.</div></th><th>Gas APTM</th><th>Tx</th></tr></thead><tbody>${rows.map(r=>{const d=transactionClaimDescriptor(r);const flows=incomingAssetFlowsForTx(r);const flowUsd=flows.reduce((a,f)=>a+Number(f.value_usd||0),0);const w=claimWalletDisplay(r);const gasUsd=claimGasHistoricalUsd(r);const payoutHtml=flows.length?flows.map(f=>{const amount=isWrappedAptmSymbol(f.token_symbol,f.token_name)?`${fmt(Number(f.amount||0))} wAPTM`:flowDisplay(f);const histUsd=Number(f.value_usd||0);return `<strong>${amount}</strong><div class="meta">${histUsd?usd(histUsd):"USD hist. –"}</div>`;}).join(""):(r.claim_reward_aptm!=null?`<strong>${fmt(r.claim_reward_aptm)} APTM <span class="meta">(Legacy)</span></strong><div class="meta">${r.claim_reward_usd==null?"USD hist. –":usd(Number(r.claim_reward_usd))}</div>`:"–");return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td><strong>${w.name||"Wallet"}</strong><div class="meta">${w.address||"–"}</div></td><td>Claim (Bot)</td><td><strong>${d?.name||"Apertum Miner"}</strong>${r.claim_nft_id!=null?`<div class="meta">#${r.claim_nft_id}${d?.subtype?" · "+d.subtype:""}</div>`:(d?.subtype?`<div class="meta">${d.subtype}</div>`:"")}</td><td>${payoutHtml}</td><td>${fmt(r.gas_aptm)}${gasUsd!=null?`<div class="meta">${usd(gasUsd)}</div>`:`<div class="meta">USD hist. –</div>`}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join("")}</tbody></table></div></div>`;
   }
 
@@ -3875,18 +3963,9 @@ window.DAO1Project = (() => {
     const sourceRows=tabWalletFilteredRows(transactionRows,referralFilterWallet);
     const rows=verifiedReferralRewards(sourceRows);
     const candidates=referralRewardCandidates(sourceRows);
-    const totals=new Map();
-    let totalUsd=0;
-    for(const r of rows){
-      for(const f of (r._referralFlows||[])){
-        const sym=String(f.token_symbol||"TOKEN")||"TOKEN";
-        totals.set(sym,(totals.get(sym)||0)+Number(f.amount||0));
-        totalUsd+=Number(f.value_usd||0);
-      }
-    }
-    const assetSummary=[...totals.entries()].map(([sym,amount])=>`${fmt(amount)} ${sym}`).join(" · ") || "–";
+    const payoutSummary=referralPayoutSummary(rows);
     el.innerHTML=`<div class="custom-token-card"><div class="chain-title">🤝 Referral Rewards</div><div class="note">Fachregel: Alle Auszahlungen, die dem DID zugeordnet sind, sind Referral Rewards. Sie werden ausschließlich für Wallet 0x239c…B47 ausgewertet und nicht mehr als Bot-Claims gezählt. Das Auszahlungsasset kann z. B. wUSDT oder wSOL sein.</div><div class="custom-token-grid" style="margin-top:10px;grid-template-columns:minmax(320px,520px)">${tabWalletFilterHtml("referrals",referralFilterWallet)}</div></div>
-      <div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Referral Rewards</span><strong>${rows.length.toLocaleString("de-DE")}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Auszahlungen</span><strong>${assetSummary}</strong><div class="meta">Historischer USD-Wert: ${totalUsd?usd(totalUsd):"noch nicht für alle Assets verfügbar"}</div></div></div>
+      <div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Referral Rewards</span><strong>${rows.length.toLocaleString("de-DE")}</strong></div>${payoutSummaryCardHtml("Auszahlungen",payoutSummary)}</div>
       <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap dao1-data-table dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>DID</th><th>Auszahlung</th><th>Gas APTM</th><th>Tx</th></tr></thead><tbody>${rows.length?rows.map(r=>{const d=transactionClaimDescriptor(r);const flows=r._referralFlows||[];const value=flows.reduce((a,f)=>a+Number(f.value_usd||0),0);return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td>${r.wallet_label||r.wallet_address||"–"}</td><td><strong>Referral Reward</strong></td><td><strong>${d?.name||"DID"}</strong>${d?.id?`<div class="meta">#${d.id} · DID</div>`:""}</td><td>${flows.length?flows.map(f=>`<strong>${flowDisplay(f)}</strong><div class="meta">${f.token_address||""}</div>`).join(""):"–"}</td><td>${value?usd(value):(r.claim_reward_usd==null?"–":usd(Number(r.claim_reward_usd)))}</td><td>${fmt(r.gas_aptm)}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join(""):`<tr><td colspan="8"><div class="empty">Keine Referral Rewards im geladenen Zeitraum gefunden.</div></td></tr>`}</tbody></table></div></div>
       ${candidates.length?`<div class="custom-token-card debug-frame"><strong>DEBUG / DEV · weitere wUSDT-Kandidaten (${candidates.length})</strong><div class="note">Nur Diagnose: Diese Zeilen sind keinem DID zugeordnet und werden nicht als Referral Reward summiert.</div></div>`:""}`;
     window.applyDebugModeVisibility?.();
