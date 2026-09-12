@@ -702,21 +702,85 @@ window.DAO1Project = (() => {
     return "";
   }
 
+  function nftOwnershipKey(contract,id){return `${lower(contract||"")}|${String(id??"")}`;}
+
+  function invalidateOwnershipRuntimeCaches(nfts){
+    const ctx=getContext?.();
+    const contracts=new Set();
+    for(const n of (nfts||[])){
+      const contract=lower(n.contract||n.nft_contract||DEFAULT_MINER_NFT_CONTRACT);
+      const id=String(n.id??n.nft_id??"");
+      if(!contract||!id)continue;
+      contracts.add(contract);
+      const key=nftDirectCacheKey(contract,id);
+      ownershipDirectTransferCache.delete(key);
+      ownershipGlobalHistoryCache.delete(key);
+    }
+    // Wallet-/Contract-Historien sind nur ein Laufzeitcache. Sobald sich der aktuelle
+    // NFT-Bestand geändert hat, müssen die betroffenen Contracts für alle eigenen
+    // Wallets frisch gelesen werden, damit ein Walletwechsel sicher erkannt wird.
+    for(const w of (ctx?.wallets||[])){
+      const a=lower(walletAddress(w));
+      if(!a)continue;
+      for(const contract of contracts)ownershipWalletTransferCache.delete(`${a}|${contract}`);
+    }
+  }
+
   async function refreshWalletNftsAndOwnership(wallet,statusPrefix=""){
-    const ctx=getContext?.(),address=walletAddress(wallet);if(!ctx?.currentUser||!address)return {nfts:0,ownership:0,failed:0};
-    if(typeof ctx.refreshApertumNftsForWallet==="function")await ctx.refreshApertumNftsForWallet(wallet,p=>setTransactionStatus("loading",`${statusPrefix}${wallet.label}: Apertum-NFTs werden aktualisiert…`,`Explorer-Seite ${p}`));
+    const ctx=getContext?.(),address=walletAddress(wallet);if(!ctx?.currentUser||!address)return {nfts:0,ownership:0,failed:0,changed:0,skipped:0};
+    const walletId=String(wallet.dbId||wallet.id||"");
+
+    // v42: Der aktuelle NFT-Bestand wird weiterhin live abgeglichen. Die teure komplette
+    // Transferketten-Rekonstruktion läuft danach aber nur noch für NFTs, deren aktueller
+    // Besitzerzustand gegenüber project_nft_ownership tatsächlich geändert ist.
+    // Unveränderte NFTs werden vollständig aus dem persistenten Ownership-Cache übernommen.
+    if(typeof ctx.refreshApertumNftsForWallet==="function")await ctx.refreshApertumNftsForWallet(wallet,p=>setTransactionStatus("loading",`${statusPrefix}${wallet.label}: Apertum-NFT-Bestand wird abgeglichen…`,`Explorer-Seite ${p} · Besitzerhistorien nur bei Änderungen`));
     const prev=selectedWalletId;
     selectedWalletId=String(wallet.id);
     await loadCurrentApertumNfts();
-    await prewarmCachedNftOwnership(currentApertumNfts,`${statusPrefix}${wallet.label}: `);
+
+    const currentByKey=new Map(currentApertumNfts.map(n=>[nftOwnershipKey(n.contract,n.id),n]));
+    const dbCurrent=ownershipRows.filter(r=>
+      String(r.chain_key||CHAIN_KEY)===CHAIN_KEY &&
+      String(r.wallet_id||"")===walletId &&
+      !!r.is_current
+    );
+    const dbCurrentByKey=new Map(dbCurrent.map(r=>[nftOwnershipKey(r.nft_contract,r.nft_id),r]));
+    const affected=new Map();
+
+    // Neu in dieser Wallet: Historie dieses NFT neu zusammensetzen.
+    for(const [key,n] of currentByKey){
+      if(!dbCurrentByKey.has(key))affected.set(key,n);
+    }
+    // Nicht mehr in dieser Wallet: Historie ebenfalls neu zusammensetzen, damit die
+    // bisher offene Besitzperiode geschlossen bzw. ein interner Walletwechsel erfasst wird.
+    for(const [key,r] of dbCurrentByKey){
+      if(!currentByKey.has(key))affected.set(key,{
+        id:String(r.nft_id),contract:lower(r.nft_contract),name:r.nft_name||`NFT #${r.nft_id}`,
+        historical:true
+      });
+    }
+
+    const unchanged=Math.max(0,currentByKey.size-[...currentByKey.keys()].filter(k=>affected.has(k)).length);
+    if(!affected.size){
+      selectedWalletId=prev;
+      setTransactionStatus("loading",`${statusPrefix}${wallet.label}: NFT-Besitz unverändert.`,`${currentByKey.size} aktuelle NFT(s) aus Cache bestätigt · keine Transferketten neu geladen.`);
+      return {nfts:currentByKey.size,ownership:0,failed:0,changed:0,skipped:unchanged};
+    }
+
+    const changedNfts=[...affected.values()];
+    invalidateOwnershipRuntimeCaches(changedNfts);
+    setTransactionStatus("loading",`${statusPrefix}${wallet.label}: ${changedNfts.length} NFT-Besitzänderung(en) werden geprüft…`,`${unchanged} unverändert · nur betroffene Transferketten werden aktualisiert.`);
+    await prewarmCachedNftOwnership(changedNfts,`${statusPrefix}${wallet.label}: `);
+
     let saved=0,failed=0;
-    for(const n of currentApertumNfts){
+    for(const n of changedNfts){
       try{saved+=await discoverOwnershipForNft(n.id,n.contract,n.name);}
-      catch(e){failed++;console.warn("NFT Ownership",n,e);}
+      catch(e){failed++;console.warn("NFT Ownership inkrementell",n,e);}
     }
     selectedWalletId=prev;
     await loadOwnershipCache();
-    return {nfts:currentApertumNfts.length,ownership:saved,failed};
+    return {nfts:currentByKey.size,ownership:saved,failed,changed:changedNfts.length,skipped:unchanged};
   }
 
   async function discoverMinerNfts() {
@@ -2971,7 +3035,7 @@ window.DAO1Project = (() => {
           if(job!==transactionJobToken)return;
           await enrichTransactionHistoricalPrices(address,job);
           if(job!==transactionJobToken)return;
-          setTransactionStatus("loading",`Wallet ${i+1}/${targets.length}: ${w.label} · NFTs werden aktualisiert…`,"Apertum NFT-Bestand und Besitzerhistorie werden mit demselben Voll-Scan aktualisiert.");
+          setTransactionStatus("loading",`Wallet ${i+1}/${targets.length}: ${w.label} · NFTs werden aktualisiert…`,"Apertum NFT-Bestand wird live abgeglichen; Besitzerhistorien werden nur bei tatsächlichen Besitzänderungen neu aufgebaut.");
           await refreshWalletNftsAndOwnership(w,`Wallet ${i+1}/${targets.length} · `);
         }
         if(job!==transactionJobToken)return;
@@ -2984,7 +3048,7 @@ window.DAO1Project = (() => {
           const quality=historicalPriceQualityCounts(transactionRows);
           const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
           setTransactionStatus("ready",`Bereit – ${transactionRows.length.toLocaleString("de-DE")} Transaktionen aus ${targets.length} Wallets, ${claims.toLocaleString("de-DE")} Claims.`,
-            `Blockchain-, NFT-Bestands- und Besitzerhistorien-Aktualisierung abgeschlossen. Preisqualität ${PRICE_SOURCE_TAG}: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.prelaunch.toLocaleString("de-DE")} Pre-Launch · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte.`);
+            `Blockchain-Aktualisierung und inkrementeller NFT-Besitzabgleich abgeschlossen. Preisqualität ${PRICE_SOURCE_TAG}: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.prelaunch.toLocaleString("de-DE")} Pre-Launch · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte.`);
         }else{
           await showTransactionReadyStatus(walletAddress(targets[0]),transactionRows,"scan");
           const quality=historicalPriceQualityCounts(transactionRows);
