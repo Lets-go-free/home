@@ -2593,13 +2593,27 @@ window.DAO1Project = (() => {
     };
   }
 
-  async function cacheAssetFlowsForTransaction(txHash,address){
-    const transfers=await fetchTransactionTokenTransfers(txHash);
-    const rows=transfers
+  async function cacheAssetFlowsForTransaction(txHash,address,txMeta=null){
+    const hash=String(txHash||"").toLowerCase();
+    const transfers=await fetchTransactionTokenTransfers(hash);
+    const normalized=transfers.map(t=>({
+      ...t,
+      transaction_hash:t?.transaction_hash || t?.tx_hash || H(t?.transaction) || hash,
+      block_number:t?.block_number ?? t?.block ?? txMeta?.block_number ?? 0,
+      timestamp:t?.timestamp || t?.block_timestamp || txMeta?.tx_timestamp || null
+    }));
+    const rows=normalized
       .map((t,i)=>assetFlowRowFromTransfer(t,address,i))
       .filter(Boolean)
       .filter(r=>r.direction==="eingang" || r.direction==="ausgang" || r.direction==="intern");
-    if(!rows.length)return [];
+    if(!rows.length){
+      console.warn("DAO1 Claim Tx ohne parsebare Token-Flows",{
+        tx_hash:hash,
+        wallet:address,
+        transfer_count:transfers.length
+      });
+      return [];
+    }
     await valueAssetFlows(rows);
     await saveAssetFlowRows(rows);
     return rows;
@@ -3272,7 +3286,8 @@ window.DAO1Project = (() => {
       // verifizierte Selector als Kandidat; zum echten Claim wird die TX erst
       // bei einem tatsächlichen eingehenden Reward-Asset-Flow.
       if(selector===NEW_MINER_CLAIM_SELECTOR){
-        const id=uniqueKnownNftIdFromInput(t?.raw_input||"",nftMap);
+        const id=knownNewMinerNftIdFromInventory(nftMap)
+          || uniqueKnownNftIdFromInput(t?.raw_input||"",nftMap);
         return {legacy:false,newMiner:true,id:id||null};
       }
       const ps=words(t?.raw_input||"");
@@ -3309,7 +3324,7 @@ window.DAO1Project = (() => {
       if(jobToken!==transactionJobToken)return;
       const t=detailTargets[i];
       setTransactionStatus("loading",`Claim-Details werden gezielt geladen ${i+1}/${detailTargets.length}…`,"Nur Token-Transfers der noch offenen Claim-Kandidaten werden abgefragt.");
-      try{await cacheAssetFlowsForTransaction(t.tx_hash,address);}catch(e){console.warn("DAO1 Claim Detail-Flow",t.tx_hash,e);}
+      try{await cacheAssetFlowsForTransaction(t.tx_hash,address,t);}catch(e){console.warn("DAO1 Claim Detail-Flow",t.tx_hash,e);}
     }
 
     allFlows=await loadAssetFlowRows(address);
@@ -3349,7 +3364,7 @@ window.DAO1Project = (() => {
       setTransactionStatus("ready",`Keine neuen Claims anzureichern.`,`${allClaimTxs.length.toLocaleString("de-DE")} Claim-Transaktionen (Legacy + neue Mining-Bot-Evidenz) sind bereits assetgenau verarbeitet.`);
       return;
     }
-    setTransactionStatus("loading",`${claimTxs.length.toLocaleString("de-DE")} Claim(s) werden assetgenau angereichert…`,`Legacy- und neue Mining-Bot-Claims werden assetgenau geprüft.`);
+    setTransactionStatus("loading",`${claimTxs.length.toLocaleString("de-DE")} Claim(s) werden assetgenau angereichert…`,`Legacy- und neue Mining-Bot-Claims werden assetgenau geprüft; wAPTM wird 1:1 mit dem bereits vorhandenen historischen APTM/USD-Kurs bewertet.`);
     const claimRows=[];
     for(let i=0;i<claimTxs.length;i++){
       if(jobToken!==transactionJobToken)return;
@@ -3360,9 +3375,11 @@ window.DAO1Project = (() => {
       const ps=words(t.raw_input||"");
       const evidence=evidenceByHash.get(String(t.tx_hash||"").toLowerCase());
       const isNewMiner=!!evidence?.newMiner;
-      let knownId=evidence?.id || uniqueKnownNftIdFromInput(t.raw_input||"",nftMap);
+      let knownId=evidence?.id
+        || (isNewMiner?knownNewMinerNftIdFromInventory(nftMap):null)
+        || uniqueKnownNftIdFromInput(t.raw_input||"",nftMap);
       if(isNewMiner && !knownId){
-        setTransactionStatus("loading",`Neuer Miner · NFT-Zuordnung ${i+1}/${claimTxs.length}…`,`Tx-Detail und Event-Logs werden nur gegen bereits bekannte Wallet-NFTs geprüft.`);
+        setTransactionStatus("loading",`Neuer Miner · NFT-Zuordnung ${i+1}/${claimTxs.length}…`,`NFT-Bestand war nicht eindeutig; Tx-Detail und Event-Logs werden nur als Fallback gegen bekannte Wallet-NFTs geprüft.`);
         knownId=await resolveNewMinerNftId(t,nftMap);
       }
       const decodedId=knownId || (!isNewMiner ? (ps[0]?.toString() || ps[1]?.toString()) : null);
@@ -4171,6 +4188,24 @@ window.DAO1Project = (() => {
   function uniqueKnownNftIdFromInput(input,nftMap){
     const matches=[...new Set(words(input||"").map(v=>v.toString()).filter(id=>nftMap.has(id)))];
     return matches.length===1?matches[0]:null;
+  }
+
+  function knownNewMinerNftIdFromInventory(nftMap){
+    // Führende Quelle ist der bereits aufgebaute NFT-Bestand / die Besitzhistorie.
+    // Der neue MB1 erscheint dort als Collection "Apertum Miner" (z.B. #31722).
+    const candidates=[...nftMap.values()].filter(n=>{
+      const name=String(n?.name||"").toLowerCase();
+      const collection=String(n?.collectionName||"").toLowerCase();
+      const clsName=String(n?.classification?.nft_name||"").toLowerCase();
+      const subtype=String(n?.classification?.subtype||"").toLowerCase();
+      return !!n?.current && (
+        collection.includes("apertum miner") ||
+        name.includes("minerbot mb1") ||
+        clsName.includes("minerbot mb1") ||
+        (name.includes("apertum miner") && subtype==="mining-bot")
+      );
+    });
+    return candidates.length===1?String(candidates[0].id):null;
   }
 
   function collectKnownNftIdsFromValue(value,nftMap,out=new Set(),depth=0){
