@@ -1540,11 +1540,11 @@ window.DAO1Project = (() => {
 
   function sleep(ms){ return new Promise(resolve=>setTimeout(resolve,ms)); }
 
-  async function fetchWithRetry(url, options={}, label="Netzwerk", attempts=3) {
+  async function fetchWithRetry(url, options={}, label="Netzwerk", attempts=3, timeoutMs=30000) {
     let lastError=null;
     for(let i=1;i<=attempts;i++){
       const controller=new AbortController();
-      const timeout=setTimeout(()=>controller.abort(),30000);
+      const timeout=setTimeout(()=>controller.abort(),timeoutMs);
       try{
         const r=await fetch(url,{...options,signal:controller.signal});
         clearTimeout(timeout);
@@ -2558,16 +2558,43 @@ window.DAO1Project = (() => {
     const state=await getTokenFlowScanState(address);
     const fromBlock=state?.last_scanned_block?Math.max(0,Number(state.last_scanned_block)-CLAIM_SCAN_BUFFER_BLOCKS):null;
     const base=`${EXPLORER_API}/addresses/${address}/token-transfers?type=ERC-20`;
-    let url=base,page=0,maxSeen=Number(state?.last_scanned_block||0),fetched=0;
-    const rows=[];
+    let url=base,page=0,maxSeen=Number(state?.last_scanned_block||0),fetched=0,saved=0,syntheticCount=0;
+    const seenUrls=new Set();
+
+    // Bereits vorhandene TX-Hashes nur einmal laden. Neue reine ERC-20-Ereignisse
+    // werden seitenweise als synthetische TX-Zeilen ergänzt.
+    const existing=await loadTransactionRows(address,null);
+    const existingHashes=new Set(existing.map(r=>String(r.tx_hash||"").toLowerCase()));
+
     while(url){
+      if(seenUrls.has(url)){
+        throw new Error(`Apertum Explorer · ERC-20 Token-Transfers: Pagination wiederholt dieselbe Seite (${page+1}).`);
+      }
+      seenUrls.add(url);
       page++;
+
       setTransactionStatus("loading",`ERC-20 Asset-Flows werden geladen · Seite ${page}…`,
-        fromBlock==null?`${fetched.toLocaleString("de-DE")} Token-Transfers bisher.`:`Ab Block ${fromBlock.toLocaleString("de-DE")} inkl. Sicherheitspuffer.`);
-      const j=await fetchJson(url,"Apertum Explorer · ERC-20 Token-Transfers");
+        fromBlock==null
+          ? `${fetched.toLocaleString("de-DE")} geladen · ${saved.toLocaleString("de-DE")} bereits gespeichert.`
+          : `Ab Block ${fromBlock.toLocaleString("de-DE")} inkl. Sicherheitspuffer · ${saved.toLocaleString("de-DE")} bereits gespeichert.`);
+
+      // Für diesen Massenscan bewusst kürzer warten: zwei Versuche à 12 Sekunden.
+      // So wirkt eine hängende Explorer-Seite nicht minutenlang wie ein Freeze.
+      let j;
+      try{
+        const r=await fetchWithRetry(url,{headers:{accept:"application/json"}},"Apertum Explorer · ERC-20 Token-Transfers",2,12000);
+        j=await r.json();
+      }catch(e){
+        setTransactionStatus("error",`ERC-20 Asset-Flows: Explorer antwortet auf Seite ${page} nicht.`,
+          `${saved.toLocaleString("de-DE")} Transfers dieser Aktualisierung sind bereits sicher gespeichert. Erneut „Daten aktualisieren“ versucht den Scan nochmals; der Scan-State wird erst nach vollständigem Durchlauf fortgeschrieben.`);
+        throw e;
+      }
+
       const items=j.items||[];
       fetched+=items.length;
       let oldest=Infinity;
+      const pageRows=[];
+
       for(let ix=0;ix<items.length;ix++){
         const t=items[ix];
         const block=Number(t.block_number??t.block??0);
@@ -2581,7 +2608,7 @@ window.DAO1Project = (() => {
         }
         const decimals=tokenTransferDecimals(t);
         const raw=tokenTransferRawValue(t);
-        rows.push({
+        pageRows.push({
           user_id:ctx.currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
           wallet_id:walletIdForAddress(address),flow_key:tokenFlowKey(t,address,ix),
           tx_hash:txHash,block_number:block,tx_timestamp:t.timestamp||t.block_timestamp||null,
@@ -2592,36 +2619,52 @@ window.DAO1Project = (() => {
           price_usd:null,value_usd:null,price_source:null,updated_at:new Date().toISOString()
         });
       }
+
+      // Wichtig für Robustheit: jede erfolgreiche Explorer-Seite sofort persistieren.
+      // Zuerst Rohdaten sichern, anschließend bewerten und nochmals anreichern.
+      if(pageRows.length){
+        await saveAssetFlowRows(pageRows);
+        saved+=pageRows.length;
+
+        await valueAssetFlows(pageRows);
+        await saveAssetFlowRows(pageRows);
+
+        const synthetic=[];
+        const byTx=new Map();
+        for(const f of pageRows){
+          const h=String(f.tx_hash||"").toLowerCase();
+          if(existingHashes.has(h))continue;
+          if(!byTx.has(h))byTx.set(h,f);
+        }
+        for(const f of byTx.values()){
+          synthetic.push({
+            user_id:ctx.currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
+            wallet_id:walletIdForAddress(address),tx_hash:f.tx_hash,block_number:Number(f.block_number||0),
+            tx_timestamp:f.tx_timestamp,
+            from_address:f.direction==="eingang"?(f.counterparty_address||null):null,
+            to_address:f.direction==="ausgang"?(f.counterparty_address||null):null,
+            direction:f.direction,method:"ERC-20 Transfer",selector:"",status:"token-flow",
+            value_aptm:0,gas_aptm:0,raw_input:"",updated_at:new Date().toISOString()
+          });
+          existingHashes.add(String(f.tx_hash||"").toLowerCase());
+        }
+        if(synthetic.length){
+          await saveTransactionRows(synthetic);
+          syntheticCount+=synthetic.length;
+        }
+      }
+
+      setTransactionStatus("loading",`ERC-20 Asset-Flows · Seite ${page} gespeichert.`,
+        `${fetched.toLocaleString("de-DE")} geladen · ${saved.toLocaleString("de-DE")} persistent gespeichert.`);
+
       if(fromBlock!=null&&Number.isFinite(oldest)&&oldest<fromBlock)break;
       url=nextUrl(base,j.next_page_params);
     }
-    await valueAssetFlows(rows);
-    await saveAssetFlowRows(rows);
 
-    // ERC-20-Eingänge können existieren, obwohl die Wallet nicht from/to der Basis-TX ist.
-    // Solche Events werden als Transaktionszeile ergänzt, damit Rewards nicht unsichtbar bleiben.
-    const existing=await loadTransactionRows(address,null);
-    const existingHashes=new Set(existing.map(r=>String(r.tx_hash||"").toLowerCase()));
-    const synthetic=[];
-    const byTx=new Map();
-    for(const f of rows){
-      if(existingHashes.has(String(f.tx_hash).toLowerCase()))continue;
-      if(!byTx.has(f.tx_hash))byTx.set(f.tx_hash,f);
-    }
-    for(const f of byTx.values()){
-      synthetic.push({
-        user_id:ctx.currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
-        wallet_id:walletIdForAddress(address),tx_hash:f.tx_hash,block_number:Number(f.block_number||0),
-        tx_timestamp:f.tx_timestamp,
-        from_address:f.direction==="eingang"?(f.counterparty_address||null):null,
-        to_address:f.direction==="ausgang"?(f.counterparty_address||null):null,
-        direction:f.direction,method:"ERC-20 Transfer",selector:"",status:"token-flow",
-        value_aptm:0,gas_aptm:0,raw_input:"",updated_at:new Date().toISOString()
-      });
-    }
-    if(synthetic.length)await saveTransactionRows(synthetic);
+    // Scan-State nur nach vollständigem Durchlauf fortschreiben. Dadurch kann ein
+    // abgebrochener Vollscan niemals fälschlich als abgeschlossen markiert werden.
     if(maxSeen)await saveTokenFlowScanState(address,maxSeen);
-    return {flows:rows.length,synthetic:synthetic.length,maxSeen};
+    return {flows:saved,synthetic:syntheticCount,maxSeen};
   }
 
   async function getTransactionScanState(address){
