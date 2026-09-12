@@ -798,3 +798,87 @@ body.admin-debug-mode .debug-frame::before{content:"DEBUG / DEV";display:inline-
 .nft-modern-table th:nth-child(7),.nft-modern-table td:nth-child(7){min-width:190px}
 .nft-modern-table code{font-size:.7rem;word-break:break-all}
 .nft-modern-table .badge{display:inline-flex;align-items:center;white-space:nowrap}
+
+
+/* v60 · DAO1 Tabellenvereinheitlichung
+   LP-Positionen, LP-Historie und technische Scan-Tabelle verwenden denselben
+   produktiven Karten-/Header-/Zeilenstil wie Bot-Claims und Transaktionen. */
+#tab-dao1 .dao1-lp-data-table{
+  border:1px solid var(--border) !important;
+  border-radius:14px !important;
+  background:var(--card) !important;
+  box-shadow:0 8px 24px rgba(0,0,0,.10) !important;
+  overflow:auto !important;
+}
+
+#tab-dao1 .dao1-lp-data-table table{
+  border-collapse:separate !important;
+  border-spacing:0 !important;
+  background:transparent !important;
+  font-size:.78rem !important;
+}
+
+#tab-dao1 .dao1-lp-data-table thead th{
+  position:sticky !important;
+  top:0 !important;
+  z-index:6 !important;
+  background:var(--card2) !important;
+  color:var(--muted) !important;
+  padding:10px 12px !important;
+  border:0 !important;
+  border-bottom:1px solid var(--border) !important;
+  font-size:.70rem !important;
+  text-transform:none !important;
+  white-space:nowrap !important;
+}
+
+#tab-dao1 .dao1-lp-data-table tbody tr{
+  background:color-mix(in srgb,var(--card) 96%,var(--card2) 4%) !important;
+}
+
+#tab-dao1 .dao1-lp-data-table tbody tr:nth-child(even){
+  background:color-mix(in srgb,var(--card) 90%,var(--card2) 10%) !important;
+}
+
+#tab-dao1 .dao1-lp-data-table tbody tr:hover td{
+  background:color-mix(in srgb,var(--card2) 84%,var(--accent) 16%) !important;
+}
+
+#tab-dao1 .dao1-lp-data-table td{
+  padding:10px 12px !important;
+  border:0 !important;
+  border-bottom:1px solid var(--border) !important;
+  vertical-align:top !important;
+  background:transparent !important;
+}
+
+#tab-dao1 .dao1-lp-data-table tbody tr:last-child td{
+  border-bottom:0 !important;
+}
+
+#tab-dao1 .dao1-lp-data-table .meta{
+  font-size:.69rem !important;
+  line-height:1.35;
+  margin-top:3px;
+}
+
+/* DAO1-Konfiguration ebenfalls exakt im produktiven Tabellenstil halten. */
+#tab-dao1 .dao1-data-table .chain-admin-table{
+  background:transparent !important;
+}
+#tab-dao1 .dao1-data-table .chain-admin-table thead th{
+  background:var(--card2) !important;
+  color:var(--muted) !important;
+}
+#tab-dao1 .dao1-data-table .chain-admin-table tbody tr:nth-child(even){
+  background:color-mix(in srgb,var(--card) 90%,var(--card2) 10%) !important;
+}
+
+/* DEV/Diagnose: doppelte Absicherung.
+   Ohne die zentrale Admin-Debug-Klasse bleiben alle Debug-Frames ausnahmslos verborgen. */
+body:not(.admin-debug-mode) #tab-dao1 .debug-frame{
+  display:none !important;
+}
+body.admin-debug-mode #tab-dao1 .debug-frame{
+  display:revert !important;
+}

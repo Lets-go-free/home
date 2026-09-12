@@ -258,7 +258,7 @@ window.DAO1Project = (() => {
         <div id="dao1-subtab-liquidity" class="project-subtab-panel" style="display:none"><div id="dao1LpContent"></div></div>
         <div id="dao1-subtab-config" class="project-subtab-panel" style="display:none"><div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div></div>
         <div id="dao1-subtab-transactions" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><div class="chain-title">📒 Apertum Transaktionshistorie</div><div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Wallet-Wechsel lesen den Cache; erst „Daten aktualisieren“ lädt neue Blockchain-Daten, aktualisiert NFTs/Besitzerhistorie und reichert neue Claims an.</div><div id="dao1TransactionControls"></div><div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
-        <div id="dao1PriceJobPanel" class="custom-token-card debug-frame" style="display:block;margin-top:10px;padding:10px 12px">
+        <div id="dao1PriceJobPanel" class="custom-token-card debug-frame" style="margin-top:10px;padding:10px 12px">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><strong>⏱️ Historische Preis-Neuberechnung · Diagnose-Log</strong><button type="button" class="secondary" onclick="DAO1Project.copyPriceJobLog()">Log kopieren</button><button type="button" class="secondary" onclick="DAO1Project.exportPriceJobLog()">Log als TXT exportieren</button><span id="dao1PriceJobLogState" class="meta">Eigenes Log-Fenster wie in Discovery; vollständig kopier- und exportierbar.</span></div>
           <div id="dao1PriceJobMetrics" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:8px" class="meta">Noch kein historischer Preisjob in dieser Sitzung.</div>
           <textarea id="dao1PriceJobLog" readonly spellcheck="false" style="width:100%;min-height:260px;max-height:420px;resize:vertical;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.45;background:var(--card,#111);color:inherit;border:1px solid rgba(128,128,128,.25);border-radius:8px;padding:10px;box-sizing:border-box">Bereit.</textarea>
@@ -3862,12 +3862,17 @@ window.DAO1Project = (() => {
     return gas*price;
   }
 
+  function usd2(value){
+    const n=Number(value||0);
+    return `$ ${Number.isFinite(n)?n.toLocaleString("de-CH",{minimumFractionDigits:2,maximumFractionDigits:2}):"0.00"}`;
+  }
+
   function payoutSummaryLineHtml(symbol,entry){
     const missing=Number(entry?.missingUsd||0);
-    return `<div style="display:grid;grid-template-columns:minmax(110px,0.7fr) minmax(180px,1fr) minmax(160px,0.8fr) minmax(150px,0.7fr);gap:18px;align-items:baseline;padding:7px 0">
+    return `<div style="display:grid;grid-template-columns:minmax(110px,0.7fr) minmax(180px,1fr) minmax(170px,0.8fr) minmax(150px,0.7fr);gap:18px;align-items:baseline;padding:7px 0">
       <strong>${symbol}</strong>
       <span>${Number(entry?.count||0).toLocaleString("de-DE")} Auszahlung(en)</span>
-      <strong>${usd(Number(entry?.usd||0))}</strong>
+      <strong style="text-align:right;font-variant-numeric:tabular-nums">${usd2(Number(entry?.usd||0))}</strong>
       <span class="meta">${missing?`${missing.toLocaleString("de-DE")} ohne USD-Wert`:"vollständig bewertet"}</span>
     </div>`;
   }
@@ -3941,7 +3946,7 @@ window.DAO1Project = (() => {
       .sort((a,b)=>a[0].localeCompare(b[0]))
       .map(([sym,e])=>payoutSummaryLineHtml(sym,e))
       .join("");
-    const total=`<div style="border-top:1px solid rgba(255,255,255,.10);margin-top:10px;padding-top:10px;display:grid;grid-template-columns:1fr auto;gap:18px;align-items:baseline"><strong>Total historischer USD-Wert</strong><strong style="font-size:1.15em">${usd(Number(summary.totalUsd||0))}</strong></div>`;
+    const total=`<div style="border-top:1px solid rgba(255,255,255,.10);margin-top:10px;padding-top:10px;display:grid;grid-template-columns:1fr minmax(170px,0.8fr) minmax(150px,0.7fr);gap:18px;align-items:baseline"><strong>Total historischer USD-Wert</strong><strong style="font-size:1.15em;text-align:right;font-variant-numeric:tabular-nums">${usd2(Number(summary.totalUsd||0))}</strong><span></span></div>`;
     const missing=Number(summary.missingUsd||0)>0?`<div class="meta" style="margin-top:5px">${summary.missingUsd.toLocaleString("de-DE")} Auszahlung(en) noch ohne historischen USD-Wert.</div>`:"";
     return `<div class="custom-token-card project-summary-box"><span class="field-label">${title}</span>${lines||`<div class="meta">Keine Auszahlungen im aktuellen Filter.</div>`}${total}${missing}${extraText}</div>`;
   }

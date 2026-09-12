@@ -32,6 +32,9 @@ function applyAdminDebugMode(){
     btn.title=enabled?"Technische Diagnose-/DEV-Bereiche sind sichtbar.":"Technische Diagnose-/DEV-Bereiche sind verborgen.";
   }
 }
+// Zentrale Sichtbarkeitsfunktion für dynamisch gerenderte DEV-/Diagnose-Bereiche.
+// Sichtbar ausschließlich bei Admin + explizit aktiviertem Debug-Modus.
+window.applyDebugModeVisibility=applyAdminDebugMode;
 function toggleAdminDebugMode(){
   if(!isAdmin)return;
   adminDebugMode=!adminDebugMode;
