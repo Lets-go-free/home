@@ -51,7 +51,7 @@ window.DAO1Project = (() => {
   const CLAIM_SCAN_BUFFER_BLOCKS = 250;
   const CLAIM_SCAN_TYPE = "claims_wallet_v2";
   const TX_SCAN_TYPE = "transactions_wallet_v1";
-  const TOKEN_FLOW_SCAN_TYPE = "token_flows_wallet_v1";
+  const TOKEN_FLOW_SCAN_TYPE = "token_flows_wallet_v2";
   let transactionRows = [];
   let transactionAssetFlows = [];
   let txFilterWallet = "";
@@ -2324,7 +2324,18 @@ window.DAO1Project = (() => {
   }
 
   function tokenTransferAddress(t){
-    return lower(H(t?.token) || t?.token_address || t?.address || "");
+    // Blockscout v2 liefert den ERC-20-Contract unter token.address_hash.
+    // Ältere/alternative Explorer-Formate bleiben als Fallback unterstützt.
+    return lower(
+      t?.token?.address_hash ||
+      t?.token?.contract_address_hash ||
+      t?.token?.address ||
+      H(t?.token) ||
+      t?.token_address ||
+      t?.address_hash ||
+      t?.address ||
+      ""
+    );
   }
 
   function tokenTransferRawValue(t){
@@ -2564,7 +2575,10 @@ window.DAO1Project = (() => {
         if(fromBlock!=null&&block<fromBlock)continue;
         const tokenAddress=tokenTransferAddress(t);
         const txHash=tokenTransferTxHash(t);
-        if(!tokenAddress||!txHash)continue;
+        if(!tokenAddress||!txHash){
+          console.warn("DAO1 ERC-20 Transfer nicht parsebar",{tokenAddress,txHash,transfer:t});
+          continue;
+        }
         const decimals=tokenTransferDecimals(t);
         const raw=tokenTransferRawValue(t);
         rows.push({
