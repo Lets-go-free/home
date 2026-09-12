@@ -53,6 +53,15 @@
         </div>
       </div>
       <div class="tab-nav-group">
+        <span class="tab-nav-group-label">🧰 Wallets &amp; Token</span>
+        <div class="tab-nav">
+          <button class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
+          <button class="tab-btn" data-tab="predefined" onclick="showTab('predefined')">Vordefinierte Token</button>
+          <button class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
+          <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
+        </div>
+      </div>
+      <div class="tab-nav-group">
         <span class="tab-nav-group-label">📊 Übersicht &amp; Analyse</span>
         <div class="tab-nav">
           <button class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking - Token-Übersicht</button>
@@ -60,15 +69,6 @@
           <button class="tab-btn" id="feesTabBtn" data-tab="fees" onclick="showTab('fees')" style="display:none">💸 Gebühren</button>
           <button class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
           <button class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
-        </div>
-      </div>
-      <div class="tab-nav-group">
-        <span class="tab-nav-group-label">⚙️ Verwaltung</span>
-        <div class="tab-nav">
-          <button class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
-          <button class="tab-btn" data-tab="predefined" onclick="showTab('predefined')">Vordefinierte Token</button>
-          <button class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
-          <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
         </div>
       </div>
       <div class="tab-nav-group" id="adminNavGroup" style="display:none">
@@ -994,7 +994,7 @@
   </div>
 
   <footer>
-    Version vom 12.09.2026 20:21:05 CEST · Phase 4.39 · v69 Zentrale Token-Anzeigepräzision<br>
+    Version vom 12.09.2026 23:42:00 CEST · Phase 4.41 · v71 Token-Adminansicht & Menü<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1006,13 +1006,11 @@
 <script src="./js/price-engine.js"></script>
 <script src="./js/lp-engine.js"></script>
 <script src="./js/staking-engine.js"></script>
-<script src="./projects/tln-vow/tln-vow.js?v=20260912-202105"></script>
-<script src="./projects/dao1/dao1.js?v=20260912-202105-dao1-v69-token-format"></script>
+<script src="./projects/tln-vow/tln-vow.js?v=20260912-234200"></script>
+<script src="./projects/dao1/dao1.js?v=20260912-234200-dao1-v71-token-admin-view"></script>
 
-<script src="./js/app.js?v=20260912-202105-app-v69-token-format"></script>
-<script src="./projects/tln-vow/tln-vow-discovery.js?v=20260912-202105"></script>
-
-
+<script src="./js/app.js?v=20260912-234200-app-v71-token-admin-view"></script>
+<script src="./projects/tln-vow/tln-vow-discovery.js?v=20260912-234200"></script>
 
 
 
@@ -1028,6 +1026,8 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 12.09.2026 20:21:05 CEST · Phase 4.39 · Build 20260912-202105</div>
+
+
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 12.09.2026 23:36:00 CEST · Phase 4.40 · Build 20260912-234200</div>
 </body>
 </html>

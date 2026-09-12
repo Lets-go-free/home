@@ -1544,6 +1544,37 @@ function readChainEditor(id) {
   return out;
 }
 
+function inferNativeTechnicalDecimals(walletType,chainKey){
+  const t=String(walletType||"").toLowerCase();
+  if(t==="evm") return 18;
+  if(t==="sol") return 9;
+  if(t==="tron") return 6;
+  if(t==="btc") return 8;
+  if(t==="xrp") return 6;
+  return null;
+}
+
+async function syncNativeAssetForChain(chainKey,chainRow={}){
+  const chain=String(chainKey||chainRow.chain_key||"").trim();
+  if(!chain) return;
+  const symbol=String(chainRow.native_symbol||NATIVE_SYMBOL[chain]||chain.toUpperCase()).trim();
+  const payload={
+    chain,address:"native",is_native:true,label:`${symbol} (nativ)`,symbol,
+    name:chainRow.label||CHAIN_META[chain]?.label||symbol,
+    coingecko_id:chainRow.coingecko_id||CHAIN_META[chain]?.coingeckoId||null,
+    decimals:inferNativeTechnicalDecimals(chainRow.wallet_type||CHAIN_CONFIG[chain]?.walletType,chain),enabled:true
+  };
+  const {data,error}=await sb.from("predefined_tokens").select("chain,address").eq("chain",chain).eq("address","native").maybeSingle();
+  if(error) throw error;
+  if(data){
+    const {error:updateError}=await sb.from("predefined_tokens").update(payload).eq("chain",chain).eq("address","native");
+    if(updateError) throw updateError;
+  }else{
+    const {error:insertError}=await sb.from("predefined_tokens").insert(payload);
+    if(insertError) throw insertError;
+  }
+}
+
 async function saveAdminChain(id,isNew=false) {
   if (!isAdmin) return;
   try {
@@ -1551,6 +1582,8 @@ async function saveAdminChain(id,isNew=false) {
     if (isNew && !row.chain_key) throw new Error("Chain-Key ist erforderlich.");
     if (!row.label) throw new Error("Anzeigename ist erforderlich.");
     if (!row.native_symbol) throw new Error("Natives Symbol ist erforderlich.");
+    const savedChainKey=isNew?row.chain_key:id;
+    const nativeSyncRow={...row,chain_key:savedChainKey};
     let q;
     if (isNew) q=sb.from("chains").insert(row);
     else {
@@ -1559,8 +1592,10 @@ async function saveAdminChain(id,isNew=false) {
     }
     const {error}=await q;
     if (error) throw error;
+    await syncNativeAssetForChain(savedChainKey,nativeSyncRow);
     closeNewChainEditor();
     await loadChainConfigFromDb();
+    await loadPredefinedTokensFromDb();
     activeChainFilter = new Set(Object.keys(CHAIN_META));
     await loadAdminChains();
     alert("Chain-Konfiguration gespeichert.");
@@ -2219,6 +2254,7 @@ async function loadDefiProjectsCache(){
 }
 
 async function addPredefinedToken() {
+  if (!isAdmin) { alert("Nur Admins können vordefinierte Token ändern."); return; }
   const chain = document.getElementById("newPredefChain").value;
   const addressRaw = document.getElementById("newPredefAddress").value.trim();
   const label = document.getElementById("newPredefLabel").value.trim();
@@ -2251,6 +2287,7 @@ function matchAddressQuery(query, chain, address) {
 }
 
 async function updatePredefinedTokenLabel(chain, address, newLabel) {
+  if (!isAdmin) return;
   newLabel = newLabel.trim();
   if (!newLabel) return;
   const { error } = await matchAddressQuery(sb.from("predefined_tokens").update({ label: newLabel }).eq("chain", chain), chain, address);
@@ -2259,6 +2296,7 @@ async function updatePredefinedTokenLabel(chain, address, newLabel) {
 }
 
 async function updatePredefinedTokenDisplayDecimals(chain,address,field,value){
+  if (!isAdmin) return;
   const allowNull=field==="summary_decimals";
   const raw=String(value??"").trim();
   const dbValue=allowNull&&raw===""?null:Number(raw);
@@ -2276,6 +2314,7 @@ async function updatePredefinedTokenDisplayDecimals(chain,address,field,value){
 }
 
 async function deletePredefinedToken(chain, address, label) {
+  if (!isAdmin) return;
   if (!confirm(`"${label}" (${chain}) wirklich aus der vordefinierten Liste löschen? Betrifft ALLE User.`)) return;
   const { error } = await matchAddressQuery(sb.from("predefined_tokens").delete().eq("chain", chain), chain, address);
   if (error) { alert("Fehler beim Löschen: " + error.message); return; }
@@ -2296,17 +2335,29 @@ async function loadPredefinedTokensFromDb() {
   const displayDecimals = {};
   const summaryDecimals = {};
   const byChainSymbol = {};
+  const nativeAssets = {};
   const seen = new Set(); // Dedupe für den Fall, dass dieselbe Adresse mit unterschiedlicher
                            // Gross-/Kleinschreibung mehrfach in der DB steht (case-sensitiver PK)
   data.forEach(row => {
     if (row.enabled === false) return;
     const chain = row.chain;
-    const address = normalizeAddress(row.address, chain);
+    const isNative = row.is_native === true || String(row.address||"").toLowerCase() === "native";
+    const address = isNative ? "native" : normalizeAddress(row.address, chain);
     const dedupeKey = chain + "|" + address;
     if (seen.has(dedupeKey)) return;
     seen.add(dedupeKey);
-    addresses[chain] = addresses[chain] || [];
-    addresses[chain].push(address);
+    if (!isNative) {
+      addresses[chain] = addresses[chain] || [];
+      addresses[chain].push(address);
+    } else {
+      nativeAssets[chain] = {
+        chain, address:"native", label:row.label || `${row.symbol||NATIVE_SYMBOL[chain]||chain.toUpperCase()} (nativ)`,
+        symbol:row.symbol || NATIVE_SYMBOL[chain] || chain.toUpperCase(), name:row.name || CHAIN_META[chain]?.label || chain,
+        technicalDecimals:row.decimals == null ? null : Number(row.decimals),
+        displayDecimals:Number.isInteger(Number(row.display_decimals)) ? Number(row.display_decimals) : 6,
+        summaryDecimals:row.summary_decimals == null || row.summary_decimals === "" ? null : Number(row.summary_decimals)
+      };
+    }
     if (row.label) labels[dedupeKey] = row.label;
     categories[dedupeKey] = row.defi_category || null;
     projects[dedupeKey] = row.defi_project_key || null;
@@ -2332,6 +2383,7 @@ async function loadPredefinedTokensFromDb() {
   predefinedTokenDisplayDecimals = displayDecimals;
   predefinedTokenSummaryDecimals = summaryDecimals;
   predefinedTokenDisplayByChainSymbol = byChainSymbol;
+  predefinedNativeAssets = nativeAssets;
 }
 
 // Apertum: Balance-Abfrage über die öffentliche Blockscout-Explorer-API (CORS-freundlich für Browser-Zugriffe)
@@ -2449,9 +2501,15 @@ function renderSafeTokenTable() {
   const el = document.getElementById("safeTokenTable");
   const rows = [];
 
-  // Native Coins zuerst - eine Zeile pro Chain
+  // Native Coins zuerst – als echte Stammdaten aus predefined_tokens.
+  // Falls Migration/Datensatz bei einer neuen Chain noch fehlt, bleibt die Zeile sichtbar,
+  // ist aber als nicht konfiguriert erkennbar und wird NICHT still als Token-Contract behandelt.
   Object.keys(CHAIN_META).forEach(chain => {
-    rows.push({ chain, address: null, label: (NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)", isNative: true });
+    const native=predefinedNativeAssets[chain];
+    rows.push(native ? { ...native, isNative:true } : {
+      chain, address:"native", label:(NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)", isNative:true, nativeMissing:true,
+      technicalDecimals:null, displayDecimals:null, summaryDecimals:null
+    });
   });
 
   Object.keys(SAFE_ADDRESSES).forEach(chain => {
@@ -2507,7 +2565,10 @@ function renderSafeTokenTable() {
 
   const DEFI_CATEGORY_LABELS = { voucher_currency:"Voucher-Währung", lp_token:"LP Token", defi_token:"DeFi-Token" };
 
-  el.innerHTML = `<table><thead><tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:center">Decimals<br><span class="meta">technisch</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Anzeige</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Summary</span></th><th style="text-align:right">Kurs (USD)</th><th>DeFi-Projekt</th><th>Projekt-Kategorie</th>${isAdmin ? '<th></th>' : ''}</tr></thead><tbody>
+  const tableHeader = isAdmin
+    ? `<tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:center">Decimals<br><span class="meta">technisch</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Anzeige</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Summary</span></th><th style="text-align:right">Kurs (USD)</th><th>DeFi-Projekt</th><th>Projekt-Kategorie</th><th></th></tr>`
+    : `<tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th></tr>`;
+  el.innerHTML = `<table class="project-data-table"><thead>${tableHeader}</thead><tbody>
     ${filtered.map(r => {
       let p;
       if (r.isNative) {
@@ -2519,6 +2580,17 @@ function renderSafeTokenTable() {
       const priceCell = p
         ? `${fmtPrice(p.price)}<span class="price-source">${p.source}</span>`
         : '<span style="color:var(--muted)">–</span>';
+
+      if (!isAdmin) {
+        const readonlyLabel = r.label ? escapeAttr(r.label) : '<span style="color:var(--muted)">unbekannt</span>';
+        const readonlyAddress = r.isNative ? '<span style="color:var(--muted)">native</span>' : r.address;
+        return `<tr>
+          <td><span class="dot" style="margin-right:6px;background:${escapeAttr(CHAIN_CONFIG[r.chain]?.displayColor || "#6b7280")}"></span>${r.chain.toUpperCase()}</td>
+          <td>${readonlyLabel}</td>
+          <td style="font-size:0.78rem;word-break:break-all">${readonlyAddress}</td>
+          <td style="text-align:right">${priceCell}</td>
+        </tr>`;
+      }
 
       const categoryKey = r.chain + "|" + (r.address || "");
       const category = predefinedTokenCategory[categoryKey] || "";
@@ -2552,10 +2624,10 @@ function renderSafeTokenTable() {
       return `<tr>
       <td><span class="dot" style="margin-right:6px;background:${escapeAttr(CHAIN_CONFIG[r.chain]?.displayColor || "#6b7280")}"></span>${r.chain.toUpperCase()}</td>
       <td>${labelCell}</td>
-      <td style="font-size:0.78rem;word-break:break-all">${r.isNative ? '<span style="color:var(--muted)">– (nativ)</span>' : r.address}</td>
-      <td style="text-align:center">${r.isNative?'<span style="color:var(--muted)">–</span>':(r.technicalDecimals??'<span style="color:var(--muted)">–</span>')}</td>
-      <td style="text-align:center">${r.isNative?'<span style="color:var(--muted)">Fallback 6</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6}" style="width:68px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','display_decimals',this.value)">`:(Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6))}</td>
-      <td style="text-align:center">${r.isNative?'<span style="color:var(--muted)">wie Anzeige</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):''}" placeholder="wie Anzeige" title="Leer = Kommastellen Anzeige übernehmen" style="width:92px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','summary_decimals',this.value)">`:(Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):'<span style="color:var(--muted)">wie Anzeige</span>'))}</td>
+      <td style="font-size:0.78rem;word-break:break-all">${r.isNative ? '<span style="color:var(--muted)">native</span>' : r.address}</td>
+      <td style="text-align:center">${r.technicalDecimals??'<span style="color:var(--muted)">–</span>'}</td>
+      <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--danger,#ef4444)">nicht konfiguriert</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6}" style="width:68px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','display_decimals',this.value)">`:(Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6))}</td>
+      <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--muted)">–</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):''}" placeholder="wie Anzeige" title="Leer = Kommastellen Anzeige übernehmen" style="width:92px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','summary_decimals',this.value)">`:(Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):'<span style="color:var(--muted)">wie Anzeige</span>'))}</td>
       <td style="text-align:right">${priceCell}</td>
       <td>${projectCell}</td>
       <td>${categoryCell}</td>
@@ -2566,6 +2638,7 @@ function renderSafeTokenTable() {
 }
 
 async function setPredefinedTokenDefi(chain,address,field,value){
+  if (!isAdmin) return;
   const dbValue=value||null;
   const {error}=await matchAddressQuery(sb.from("predefined_tokens").update({[field]:dbValue}).eq("chain",chain),chain,address);
   if(error){ alert("Fehler beim Speichern: "+error.message); return; }
@@ -2692,10 +2765,12 @@ let predefinedTokenDecimals = {};     // "chain|adresse" -> technische Blockchai
 let predefinedTokenDisplayDecimals = {}; // "chain|adresse" -> UI-Nachkommastellen
 let predefinedTokenSummaryDecimals = {}; // "chain|adresse" -> Summary-Nachkommastellen (null = Anzeige übernehmen)
 let predefinedTokenDisplayByChainSymbol = {}; // "chain|SYMBOL" -> Anzeige-Metadaten
+let predefinedNativeAssets = {}; // chain -> echter predefined_tokens-Datensatz mit is_native=true
 
 function tokenDisplayMeta({chain,address,symbol}={}){
   const c=String(chain||"").trim().toLowerCase();
-  const a=address&&address!=="native"?normalizeAddress(String(address),c):"";
+  const rawAddress=String(address||"").trim();
+  const a=rawAddress.toLowerCase()==="native"?"native":(rawAddress?normalizeAddress(rawAddress,c):"");
   const direct=a?`${c}|${a}`:"";
   if(direct && Object.prototype.hasOwnProperty.call(predefinedTokenDisplayDecimals,direct)){
     return {display:predefinedTokenDisplayDecimals[direct],summary:predefinedTokenSummaryDecimals[direct]};
