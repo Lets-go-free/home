@@ -6446,6 +6446,13 @@ function cachedNftsForSelection() {
   return rows.flatMap(r => Array.isArray(r.nfts) ? r.nfts : []);
 }
 
+// DAO1 darf exakt dieselbe persistente NFT-Quelle verwenden wie der normale NFT-Tab.
+// Nur Daten des aktuell angemeldeten Users aus dessen bereits geladenem nft_cache.
+window.getCachedNftsForWalletId = function(walletId) {
+  const row=nftCaches.get(String(walletId));
+  return Array.isArray(row?.nfts) ? row.nfts : [];
+};
+
 function onNftWalletChange() {
   lastNftFindings = cachedNftsForSelection();
   renderNftResults(lastNftFindings, []);

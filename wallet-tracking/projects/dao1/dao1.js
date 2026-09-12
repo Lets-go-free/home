@@ -612,15 +612,21 @@ window.DAO1Project = (() => {
     if(!ctx?.currentUser || !wallet)return new Map();
 
     const walletId=String(wallet.dbId || wallet.id);
-    const {data,error}=await sb.from("nft_cache")
-      .select("nfts")
-      .eq("user_id",ctx.currentUser.id)
-      .eq("wallet_id",walletId)
-      .maybeSingle();
-    if(error)throw error;
+    // v54: Primär exakt dieselbe In-Memory-nft_cache-Zeile wie der normale NFT-Tab.
+    // DB nur als Fallback, falls der zentrale Cache noch nicht geladen ist.
+    let cached=window.getCachedNftsForWalletId?.(walletId);
+    if(!Array.isArray(cached) || !cached.length){
+      const {data,error}=await sb.from("nft_cache")
+        .select("nfts")
+        .eq("user_id",ctx.currentUser.id)
+        .eq("wallet_id",walletId)
+        .maybeSingle();
+      if(error)throw error;
+      cached=Array.isArray(data?.nfts)?data.nfts:[];
+    }
 
     const items=new Map();
-    for(const n of (Array.isArray(data?.nfts)?data.nfts:[])){
+    for(const n of cached){
       if(String(n.chain||"")!==CHAIN_KEY)continue;
       if(n.possibleSpam || n.userMarkedSpam)continue;
       const contract=lower(n.tokenAddress||"");
@@ -1683,6 +1689,31 @@ window.DAO1Project = (() => {
       const targets = (l.topics || []).slice(1).map(topicAddr);
       if (!targets.some(a => lower(a) === lower(wallet))) continue;
       try { total += Number(BigInt(l.data || "0"))/1e18; } catch {}
+    }
+    return total;
+  }
+
+  async function rewardFromInternalTransactions(txHash,wallet,expectedFrom=null){
+    const target=lower(wallet);
+    const source=lower(expectedFrom||"");
+    let rows=[];
+    try{
+      rows=await fetchAll(`/transactions/${String(txHash||"").toLowerCase()}/internal-transactions`);
+    }catch(e){
+      console.warn("DAO1 Claim Internal Transactions",txHash,e);
+      return 0;
+    }
+    let total=0;
+    for(const r of rows){
+      const to=lower(H(r?.to) || r?.to_address || r?.to_address_hash || "");
+      const from=lower(H(r?.from) || r?.from_address || r?.from_address_hash || "");
+      if(to!==target)continue;
+      if(source && from!==source)continue;
+      if(r?.error || r?.success===false || String(r?.status||"").toLowerCase()==="error")continue;
+      try{
+        const raw=r?.value?.value ?? r?.value ?? "0";
+        total += Number(BigInt(String(raw)))/1e18;
+      }catch{}
     }
     return total;
   }
@@ -3546,16 +3577,10 @@ window.DAO1Project = (() => {
       if(ev.legacy)return ev;
       const allForTx=(flowsByTx.get(h)||[]);
       const incoming=allForTx.filter(f=>f.direction==="eingang");
-      if(ev.newMiner && !incoming.length){
-        console.warn("DAO1 neuer Miner weiterhin ohne eingehenden Reward-Flow",{
-          tx_hash:h,
-          flows:allForTx.map(f=>({
-            direction:f.direction,symbol:f.token_symbol,amount:f.amount,
-            token:f.token_address,counterparty:f.counterparty_address
-          }))
-        });
-      }
-      // 0x19da4078 wird erst durch einen realen eingehenden Asset-Flow bestätigt.
+      // Neuer Miner zahlt nachweislich über eine interne native APTM-Transaktion aus.
+      // Deshalb darf fehlender ERC-20-Flow die Claim-Anreicherung nicht blockieren;
+      // die tatsächliche Auszahlung wird im Claim-Loop über Internal Transactions bestätigt.
+      if(ev.newMiner)return ev;
       return incoming.length?ev:null;
     }
     const evidenceByHash=new Map();
@@ -3565,7 +3590,7 @@ window.DAO1Project = (() => {
       setTransactionStatus("ready",`Keine neuen Claims anzureichern.`,`${allClaimTxs.length.toLocaleString("de-DE")} Claim-Transaktionen (Legacy + neue Mining-Bot-Evidenz) sind bereits assetgenau verarbeitet.`);
       return {updatedClaims:0,detailTargets:detailTargets.length};
     }
-    setTransactionStatus("loading",`${claimTxs.length.toLocaleString("de-DE")} Claim(s) werden assetgenau angereichert…`,`Legacy- und neue Mining-Bot-Claims werden assetgenau geprüft; wAPTM wird 1:1 mit dem bereits vorhandenen historischen APTM/USD-Kurs bewertet.`);
+    setTransactionStatus("loading",`${claimTxs.length.toLocaleString("de-DE")} Claim(s) werden assetgenau angereichert…`,`Legacy-Claims werden wie bisher assetgenau geprüft; neue Apertum-Miner-Claims lesen die native APTM-Auszahlung aus der Internal Transaction und verwenden den bereits vorhandenen historischen APTM/USD-Kurs.`);
     const claimRows=[];
     for(let i=0;i<claimTxs.length;i++){
       if(jobToken!==transactionJobToken)return;
@@ -3602,20 +3627,33 @@ window.DAO1Project = (() => {
         .sort((a,b)=>Number(b.value_usd||0)-Number(a.value_usd||0));
       const primary=incoming[0]||null;
 
-      // Legacy-native APTM nur verwenden, wenn in dieser Claim-TX kein ERC-20-Reward gefunden wurde.
-      let legacyAptm=0;
+      // Native APTM-Fallback: neue Miner-Generation zahlt per Internal Transaction
+      // direkt vom Apertum-Miner-Contract an das Wallet. Legacy bleibt Log-basiert.
+      let nativeRewardAptm=0;
       if(!primary){
-        try{
-          const logs=await fetchAll(`/transactions/${t.tx_hash}/logs`);
-          legacyAptm=rewardFromLogs(logs,address);
-        }catch(e){console.warn("Claim legacy reward logs:",e);}
+        if(isNewMiner){
+          nativeRewardAptm=await rewardFromInternalTransactions(t.tx_hash,address,t.to_address||DEFAULT_MINER_NFT_CONTRACT);
+        }else{
+          try{
+            const logs=await fetchAll(`/transactions/${t.tx_hash}/logs`);
+            nativeRewardAptm=rewardFromLogs(logs,address);
+          }catch(e){console.warn("Claim legacy reward logs:",e);}
+        }
       }
 
-      const rewardAmount=primary?Number(primary.amount||0):Number(legacyAptm||0);
+      const rewardAmount=primary?Number(primary.amount||0):Number(nativeRewardAptm||0);
       const rewardSymbol=primary?String(primary.token_symbol||"TOKEN"):"APTM";
-      const rewardUsd=primary?.value_usd==null?null:Number(primary.value_usd);
-      const rewardPrice=primary?.price_usd==null?null:Number(primary.price_usd);
-      const rewardSource=primary?.price_source||null;
+      let rewardUsd=primary?.value_usd==null?null:Number(primary.value_usd);
+      let rewardPrice=primary?.price_usd==null?null:Number(primary.price_usd);
+      let rewardSource=primary?.price_source||null;
+      if(!primary && rewardAmount>0){
+        const txPrice=Number(t.aptm_usd||0);
+        if(txPrice>0){
+          rewardPrice=txPrice;
+          rewardUsd=rewardAmount*txPrice;
+          rewardSource=t.price_source||"Historischer APTM/USD-Kurs der Claim-TX";
+        }
+      }
       const legacyRewardAptm=primary
         ? (isWrappedAptmSymbol(primary.token_symbol,primary.token_name)?rewardAmount:null)
         : rewardAmount;
@@ -3635,9 +3673,9 @@ window.DAO1Project = (() => {
         reward_asset_amount:rewardAmount,
         reward_asset_usd:rewardUsd,
         reward_asset_price_source:rewardSource,
-        aptm_usd:null,reward_usd:rewardUsd,gas_usd:null,
-        price_block:null,
-        price_source:null,updated_at:new Date().toISOString()
+        aptm_usd:(!primary && rewardPrice>0)?rewardPrice:null,reward_usd:rewardUsd,gas_usd:null,
+        price_block:(!primary && rewardPrice>0)?Number(t.block_number):null,
+        price_source:(!primary && rewardPrice>0)?rewardSource:null,updated_at:new Date().toISOString()
       });
     }
 
