@@ -163,7 +163,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 13.09.2026 11:40:00 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 13.09.2026 12:36:14 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -299,7 +299,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
           </p>
           <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
             <label>Max. Kandidaten analysieren<br><input id="loanGoldGlobalLimit" type="number" min="10" max="1000" step="10" value="250" style="width:130px"></label>
-            <label><input id="loanGoldUnknownOnly" type="checkbox" checked> nur unbekannte Event-Werte bevorzugen</label>
+            <label><input id="loanGoldUnknownOnly" type="checkbox" checked> bekannte Event-Werte 1–5 ausblenden</label>
             <button id="loanGoldGlobalRun" type="button">Global suchen</button>
           </div>
           <div id="loanGoldGlobalState" class="muted" style="margin-top:8px">Noch nicht gestartet.</div>
@@ -458,7 +458,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260913-114000';
+const BUILD_ID='20260913-123614';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -589,7 +589,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='13.09.2026 11:40:00 CEST';
+const APP_VERSION='13.09.2026 12:36:14 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11506,6 +11506,7 @@ const LOAN_DURATION_DAYS=372;
 const LOAN_BOOSTER_BY_EVENT_VALUE3=Object.freeze({
   '1':'TLN Plus 2x',
   '2':'TLN Plus 0.25x',
+  '3':'TLN Gold Booster ×2',
   '4':'TLN Gold Rebound',
   '5':'TLN Gold Extended'
 });
@@ -11965,10 +11966,10 @@ async function loanSearchGoldVariantsGlobal(){
 
     const knownValues=new Set(Object.keys(LOAN_BOOSTER_BY_EVENT_VALUE3));
     let rows=analyzed.slice();
+    if(unknownOnly){
+      rows=rows.filter(r=>!knownValues.has(String(r.eventValue3)));
+    }
     rows.sort((a,b)=>{
-      const au=knownValues.has(String(a.eventValue3))?1:0;
-      const bu=knownValues.has(String(b.eventValue3))?1:0;
-      if(unknownOnly&&au!==bu)return au-bu;
       const ac=a.candidate==='offen'?1:0,bc=b.candidate==='offen'?1:0;
       if(ac!==bc)return ac-bc;
       return String(b.date||'').localeCompare(String(a.date||''));
@@ -12019,7 +12020,7 @@ async function loanSearchGoldVariantsGlobal(){
           <tbody>${trs||'<tr><td colspan="14">Keine Kandidaten gefunden.</td></tr>'}</tbody>
         </table>
       </div>`;
-    loanGoldGlobalSetState(`Fertig: ${rows.length} TLN-GOLD-Burn-Txs analysiert · ${x2} ×2-Kandidat(en) · ${x4} ×4-Kandidat(en).`,(x2||x4)?'ok':'warn');
+    loanGoldGlobalSetState(`Fertig: ${analyzed.length} TLN-GOLD-Burn-Txs analysiert · ${rows.length} nach Filter sichtbar · ${x2} ×2-Kandidat(en) · ${x4} ×4-Kandidat(en).`,(rows.length||x2||x4)?'ok':'warn');
   }catch(e){
     console.error('[TLN GOLD global scan]',e);
     loanGoldGlobalSetState(`Fehler: ${e?.message||e}`,'err');
