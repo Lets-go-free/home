@@ -27,7 +27,7 @@ let LOAN_DISCOVERY_LOADED=false;
 const LOAN_RECEIPT_CACHE=new Map();
 const LOAN_META_CACHE=new Map();
 const LOAN_CACHE_KEY='loan-openings-lifecycle';
-const LOAN_CACHE_VERSION='loan-engine-v2-central-verified-interest';
+const LOAN_CACHE_VERSION='loan-engine-v3-cashflow-collateral';
 const LOAN_CACHE_OVERLAP_BLOCKS=24;
 const LOAN_TOKEN_CANONICAL=Object.freeze({'0x29280091fa7f3abe4739ad5f1f7c5287feaf7736':{symbol:'TLN+'},'0xaa90a8cdab8b8e902293a2817d1d286f66cbcec5':{symbol:'TLNGOLD'}});
 const LOAN_TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
@@ -144,7 +144,7 @@ function loanInterestModel({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18}
   if(ev3==='0'||ev3==='1')return 'im Voraus bezahlt · 18 % · on-chain bestätigt';
   if(ev3==='2'||ev3==='3')return 'fällig bei Rückzahlung · 18 % · on-chain bestätigt';
   if(ev3==='4')return 'keine eigene Rückzahlung · TLN Gold Rebound';
-  if(ev3==='5')return 'keine eigene Rückzahlung · TLN Gold Extended';
+  if(ev3==='5')return 'vom geminteten v$-Betrag abgezogen · 18 % · wenn 82%-Nettoauszahlung on-chain bestätigt';
   if(tlnPlus>0&&vusd>0&&loanClose(vusd,tlnPlus*.82,.01))
     return 'vom geminteten v$-Betrag abgezogen · 18 %';
   if(interest>0&&vusd>0&&loanClose(interest,vusd*.18,.01))
@@ -154,8 +154,14 @@ function loanInterestModel({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18}
 
 function loanDebtFields({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18}){
   const ev3=String(rawType??'').trim();
-  if(ev3==='4'||ev3==='5')
-    return {principal:null,repayment:null,interestDue:null,interestRate:null,repaymentSource:'keine eigene Rückzahlung (Booster/Option)'};
+  if(ev3==='4')
+    return {principal:null,repayment:null,interestDue:null,interestRate:null,repaymentSource:'keine eigene Rückzahlung · TLN Gold Rebound'};
+
+  if(ev3==='5'){
+    const principal=(eventAmount18>0)?eventAmount18:(vusd||null);
+    return {principal,repayment:null,interestDue:principal!=null?principal*.18:null,interestRate:principal!=null?18:null,
+      repaymentSource:'TLN Gold Extended · Rückzahlung optional; Rückzahlungsbetrag und Collateral-Rückgabe positionsbezogen on-chain verifizieren'};
+  }
 
   if(['0','1','2','3'].includes(ev3)){
     const principal=(eventAmount18>0)?eventAmount18:(vusd||null);
@@ -242,6 +248,12 @@ function loanApplyRepayments(rows,repayments){
       r.interestRate=rp.interestRate??r.interestRate;
     }
     r.repaymentSource=`LoanRepay on-chain · Position ${rp.positionRef} · Principal ${loanNum(rp.principal,8)} v$ · tatsächlich bezahlt ${rp.paid==null?'–':loanNum(rp.paid,8)+' v$'}`;
+    r.collateralReturnedVow=rp.vowReleased??r.collateralReturnedVow??null;
+    if(rp.vowReleased!=null&&rp.vowReleased>0){
+      r.collateralStatus=`zurückgegeben · ${loanNum(rp.vowReleased,8)} VOW · LoanRepay on-chain`;
+    }else if(r.collateralSource==='eigene VOW aus Wallet'){
+      r.collateralStatus='Repay bestätigt · Collateral-Rückgabe im Lifecycle noch separat prüfen';
+    }
     r.status='Zurückbezahlt · on-chain bestätigt';
     r.link=`Repay-Position ${rp.positionRef}`;
     r.evidence='verified';
@@ -258,7 +270,10 @@ async function loanBuildRow(wallet,burns){
   const vs=transfers.filter(x=>loanNormSymbol(x.symbol)==='V$');
   const principalCandidates=vs.filter(x=>x.from!==w||x.to===w).map(x=>x.amount).filter(x=>x>0);
   const vusd=principalCandidates.length?Math.max(...principalCandidates):null;
-  const interest=sum(vs.filter(x=>x.from===w&&x.to!==LOAN_ZERO&&x.to!==w))||null;
+  const explicitInterest=sum(vs.filter(x=>x.from===w&&x.to!==LOAN_ZERO&&x.to!==w))||null;
+  const netVusdToWallet=sum(vs.filter(x=>x.to===w&&x.from!==w&&x.from!==LOAN_ZERO))||null;
+  const mintedFromZero=vs.filter(x=>x.from===LOAN_ZERO).map(x=>Number(x.amount||0)).filter(x=>x>0);
+  const grossMintFromTransfer=mintedFromZero.length?Math.max(...mintedFromZero):null;
   const vows=transfers.filter(x=>loanNormSymbol(x.symbol)==='VOW'&&x.from!==LOAN_ZERO&&x.to!==LOAN_ZERO);
   const walletCollateral=vows.filter(x=>x.from===w).map(x=>x.amount).filter(x=>x>0);
   const inheritedCollateral=(tlnGold&&vows.length)?vows.map(x=>x.amount).filter(x=>x>0):[];
@@ -273,12 +288,29 @@ async function loanBuildRow(wallet,burns){
   }
   let date=burns.find(x=>x?.metadata?.blockTimestamp)?.metadata?.blockTimestamp||null;
   if(!date&&receipt.blockNumber){try{const b=await rpc('eth_getBlockByNumber',[receipt.blockNumber,false]);if(b?.timestamp)date=new Date(Number(BigInt(b.timestamp))*1000).toISOString()}catch{}}
-  const type=loanClassify({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18});
-  const interestModel=loanInterestModel({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18});
-  const debt=loanDebtFields({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18});
+  const grossMintVusd=(eventAmount18>0)?eventAmount18:(grossMintFromTransfer||vusd||null);
+  const deductedInterest=(grossMintVusd>0&&netVusdToWallet>0&&grossMintVusd>netVusdToWallet&&loanClose(netVusdToWallet,grossMintVusd*.82,.01))
+    ?grossMintVusd-netVusdToWallet:null;
+  const interest=explicitInterest||deductedInterest||null;
+  const type=loanClassify({tlnPlus,tlnGold,vusd:grossMintVusd||vusd,interest,rawType,eventAmount18});
+  let interestModel=loanInterestModel({tlnPlus,tlnGold,vusd:grossMintVusd||vusd,interest,rawType,eventAmount18});
+  const debt=loanDebtFields({tlnPlus,tlnGold,vusd:grossMintVusd||vusd,interest,rawType,eventAmount18});
+  if(String(rawType)==='5'&&deductedInterest!=null){
+    interestModel='vom geminteten v$-Betrag abgezogen · 18 % · on-chain aus Brutto-/Netto-v$-Flow bestätigt';
+  }
+  const collateralSource=walletCollateral.length
+    ?'eigene VOW aus Wallet'
+    :(['0','1','2','3'].includes(String(rawType))?'aus geminteten v$ gekauft / Swap':'noch zu bestimmen');
+  const collateralStatus=walletCollateral.length
+    ?'eigene VOW gebunden · Rückgabe bei Repay / Verfall bei Nicht-Rückzahlung noch live zu prüfen'
+    :((collateralVow!=null)?'Collateral erkannt · Herkunft/Lifecycle weiter prüfen':'noch zu bestimmen');
   const evidence=vusd?'verified':'likely';
   const idLabel=eventId?`Option #${eventId}`:'Option # noch nicht erkannt';
-  return {date,wallet:w,idLabel,eventId,type,tlnPlus,tlnGold,vusd,principal:debt.principal,repayment:debt.repayment,interest:(debt.interestDue??interest??null),interestRate:debt.interestRate,interestModel,repaymentSource:debt.repaymentSource,collateralVow,
+  return {date,wallet:w,idLabel,eventId,type,tlnPlus,tlnGold,
+    vusd:grossMintVusd||vusd,grossMintVusd:grossMintVusd||vusd,netVusdToWallet,
+    principal:debt.principal,repayment:debt.repayment,interest:(deductedInterest??debt.interestDue??interest??null),
+    interestRate:(debt.interestRate??((grossMintVusd>0&&deductedInterest!=null)?deductedInterest/grossMintVusd*100:null)),
+    interestModel,repaymentSource:debt.repaymentSource,collateralVow,collateralSource,collateralStatus,collateralReturnedVow:null,
     status:'Eröffnung on-chain erkannt · Lifecycle wird bei jedem Laden live geprüft',swapDate:null,
     maturityDate:null,repaymentDate:null,
     maturitySource:'offen · Fälligkeit beginnt erst mit v$→VOW-Swap / Marktstart',
@@ -760,34 +792,43 @@ function renderLoanDiscovery(){
   const rows=LOAN_DISCOVERY_ROWS.filter(r=>{const day=String(r.date||'').slice(0,10);if(from&&day<from)return false;if(to&&day>to)return false;if(htmin&&(r.tlnPlus==null||r.tlnPlus<tmin))return false;if(htmax&&(r.tlnPlus==null||r.tlnPlus>tmax))return false;if(hgmin&&(r.tlnGold==null||r.tlnGold<gmin))return false;if(hgmax&&(r.tlnGold==null||r.tlnGold>gmax))return false;if(walletFilter!=='all'&&norm(r.wallet)!==walletFilter)return false;if(typ!=='all'&&r.type!==typ)return false;return true;}).sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
   const reboundRows=rows.filter(r=>r.type==='TLN Gold Rebound');
   const loanRows=rows.filter(r=>r.type!=='TLN Gold Rebound');
-  const rowHtml=r=>`<tr><td>${loanDate(r.date)}</td><td><span class="team-lifecycle-name">${esc(projectOwnWalletLabel(r.wallet)||'Wallet')}</span><span class="team-lifecycle-sub mono">${esc(r.wallet)}</span></td><td><b>${esc(r.idLabel)}</b></td><td>${esc(r.type)}</td><td style="text-align:right">${loanNum(r.tlnPlus)}</td><td style="text-align:right">${loanNum(r.tlnGold)}</td><td style="text-align:right">${r.vusd==null?'–':loanNum(r.vusd,8)+' v$'}</td><td style="text-align:right">${r.principal==null?'–':loanNum(r.principal,8)+' v$'}</td><td style="text-align:right">${r.repayment==null?'–':loanNum(r.repayment,8)+' v$'}</td><td style="text-align:right">${r.interest==null?'–':loanNum(r.interest,8)+' v$'}</td><td style="text-align:right">${r.interestRate==null?'–':loanNum(r.interestRate,4)+' %'}</td><td>${esc(r.interestModel)}</td><td>${esc(r.repaymentSource||'–')}</td><td style="text-align:right">${r.collateralVow==null?'–':loanNum(r.collateralVow,8)+' VOW'}</td><td>${esc(r.status)}</td><td>${loanDate(r.swapDate)}</td><td>${r.maturityDate?`${loanDate(r.maturityDate)}<span class="team-lifecycle-sub">${esc(r.maturitySource||'')}</span>`:'–'}</td><td>${r.repaymentDate?loanDate(r.repaymentDate):'–'}</td><td>${esc(r.link)}</td><td class="loan-link"><a href="https://bscscan.com/tx/${encodeURIComponent(r.tx)}" target="_blank" rel="noopener">${esc(r.tx.slice(0,10))}…${esc(r.tx.slice(-8))}</a></td><td>${loanEvidence(r.evidence)}</td><td class="loan-raw">${esc(r.rawType)}</td><td class="loan-raw">${esc(r.rawParams)}</td><td class="loan-raw">${esc(r.rawContract)}</td></tr>`;
-  body.innerHTML=loanRows.length?loanRows.map(rowHtml).join(''):`<tr><td colspan="20">${LOAN_DISCOVERY_LOADING?'Loans werden on-chain geladen …':'Keine Loans entsprechen den Filtern.'}</td></tr>`;
-  reboundBody.innerHTML=reboundRows.length?reboundRows.map(rowHtml).join(''):`<tr><td colspan="20">${LOAN_DISCOVERY_LOADING?'Rebound-Optionen werden on-chain geladen …':'Keine TLN Gold Rebound Optionen entsprechen den Filtern.'}</td></tr>`;
+  const rowHtml=r=>`<tr><td>${loanDate(r.date)}</td><td><span class="team-lifecycle-name">${esc(projectOwnWalletLabel(r.wallet)||'Wallet')}</span><span class="team-lifecycle-sub mono">${esc(r.wallet)}</span></td><td><b>${esc(r.idLabel)}</b></td><td>${esc(r.type)}</td><td style="text-align:right">${loanNum(r.tlnPlus)}</td><td style="text-align:right">${loanNum(r.tlnGold)}</td><td style="text-align:right">${r.grossMintVusd==null?'–':loanNum(r.grossMintVusd,8)+' v$'}</td><td style="text-align:right">${r.netVusdToWallet==null?'0 v$':loanNum(r.netVusdToWallet,8)+' v$'}</td><td style="text-align:right">${r.principal==null?'–':loanNum(r.principal,8)+' v$'}</td><td style="text-align:right">${r.repayment==null?'–':loanNum(r.repayment,8)+' v$'}</td><td style="text-align:right">${r.interest==null?'–':loanNum(r.interest,8)+' v$'}</td><td style="text-align:right">${r.interestRate==null?'–':loanNum(r.interestRate,4)+' %'}</td><td>${esc(r.interestModel)}</td><td>${esc(r.repaymentSource||'–')}</td><td>${esc(r.collateralSource||'–')}</td><td style="text-align:right">${r.collateralVow==null?'–':loanNum(r.collateralVow,8)+' VOW'}</td><td>${esc(r.collateralStatus||'–')}</td><td>${esc(r.status)}</td><td>${loanDate(r.swapDate)}</td><td>${r.maturityDate?`${loanDate(r.maturityDate)}<span class="team-lifecycle-sub">${esc(r.maturitySource||'')}</span>`:'–'}</td><td>${r.repaymentDate?loanDate(r.repaymentDate):'–'}</td><td>${esc(r.link)}</td><td class="loan-link"><a href="https://bscscan.com/tx/${encodeURIComponent(r.tx)}" target="_blank" rel="noopener">${esc(r.tx.slice(0,10))}…${esc(r.tx.slice(-8))}</a></td><td>${loanEvidence(r.evidence)}</td><td class="loan-raw">${esc(r.rawType)}</td><td class="loan-raw">${esc(r.rawParams)}</td><td class="loan-raw">${esc(r.rawContract)}</td></tr>`;
+  body.innerHTML=loanRows.length?loanRows.map(rowHtml).join(''):`<tr><td colspan="27">${LOAN_DISCOVERY_LOADING?'Loans werden on-chain geladen …':'Keine Loans entsprechen den Filtern.'}</td></tr>`;
+  reboundBody.innerHTML=reboundRows.length?reboundRows.map(rowHtml).join(''):`<tr><td colspan="27">${LOAN_DISCOVERY_LOADING?'Rebound-Optionen werden on-chain geladen …':'Keine TLN Gold Rebound Optionen entsprechen den Filtern.'}</td></tr>`;
   const sumVal=(subset,key)=>subset.reduce((a,r)=>a+(Number(r?.[key])||0),0);
   const summaryRows=(subset,kind)=>{
     const cell=(v,d=2)=>loanNum(v,d);
     const isRebound=kind==='rebound';
-    const repaidCount=subset.filter(r=>!!r.repaymentDate || /^Zurückbezahlt/i.test(String(r.status||''))).length;
-    const openCount=subset.filter(r=>!r.repaymentDate && !/^Zurückbezahlt/i.test(String(r.status||''))).length;
+    const repaidRows=subset.filter(r=>!!r.repaymentDate || /^Zurückbezahlt/i.test(String(r.status||'')));
+    const openRows=subset.filter(r=>!r.repaymentDate && !/^Zurückbezahlt/i.test(String(r.status||'')));
     const extendedCount=subset.filter(r=>r.type==='TLN Gold Extended').length;
+    const repaymentTotal=sumVal(subset,'repayment');
+    const repaymentOpen=sumVal(openRows,'repayment');
+    const repaymentPaid=sumVal(repaidRows,'repayment');
+    const interestTotal=sumVal(subset,'interest');
+    const upfrontInterest=sumVal(subset.filter(r=>String(r.interestModel||'').startsWith('im Voraus bezahlt')),'interest');
+    const repayInterest=sumVal(subset.filter(r=>String(r.interestModel||'').startsWith('fällig bei Rückzahlung')),'interest');
+    const deductedInterest=sumVal(subset.filter(r=>String(r.interestModel||'').startsWith('vom geminteten')),'interest');
+    const valueWithBreakdown=(main,parts)=>`${cell(main,2)}<span class="team-lifecycle-sub">${parts.filter(Boolean).join(' · ')}</span>`;
     const rows=[
       [isRebound?'Anzahl Rebounds':'Anzahl Loans / Optionen', String(subset.length)],
-      ['davon offen', String(openCount)]
+      ['davon offen', String(openRows.length)]
     ];
     if(!isRebound)rows.push(
-      ['davon zurückbezahlt', String(repaidCount)],
+      ['davon zurückbezahlt', String(repaidRows.length)],
       ['davon TLN Gold Extended', String(extendedCount)]
     );
     rows.push(
       ['TLN+ Burn gesamt', cell(sumVal(subset,'tlnPlus'),4)],
       ['TLN GOLD Burn gesamt', cell(sumVal(subset,'tlnGold'),8)],
-      ['v$ Loan / Option gesamt', cell(sumVal(subset,'vusd'),2)]
+      ['v$ Brutto-Mint / Option gesamt', cell(sumVal(subset,'grossMintVusd'),2)],
+      ['v$ netto an Wallets ausgezahlt', cell(sumVal(subset,'netVusdToWallet'),2)]
     );
     if(!isRebound){
       rows.push(
         ['Principal / Schuld gesamt', cell(sumVal(subset,'principal'),2)],
-        ['Rückzahlung gesamt', cell(sumVal(subset,'repayment'),2)],
-        ['Zinsen gesamt', cell(sumVal(subset,'interest'),2)]
+        ['Rückzahlung gesamt', valueWithBreakdown(repaymentTotal,[`davon offen ${cell(repaymentOpen,2)} v$`,`zurückbezahlt ${cell(repaymentPaid,2)} v$`])],
+        ['Zinsen gesamt', valueWithBreakdown(interestTotal,[`vorausbezahlt ${cell(upfrontInterest,2)} v$`,`bei Rückzahlung fällig ${cell(repayInterest,2)} v$`,`vom Mint abgezogen ${cell(deductedInterest,2)} v$`])]
       );
     }
     return rows.map(([label,value],i)=>`<tr><td${i===0?' style="font-weight:700"':''}>${label}</td><td class="loan-num"${i===0?' style="font-weight:700"':''}>${value}</td></tr>`).join('');
@@ -858,7 +899,7 @@ async function discoverLoansOnchain({force=false}={}){
 
           if(saveCache)await saveCache(wallet,LOAN_CACHE_KEY,LOAN_CACHE_VERSION,{
             kind:'tln_vow_loans',
-            schemaVersion:2,
+            schemaVersion:3,
             rows:rows.map(r=>{const x={...r};delete x.wallet;return x;}),
             lastOpeningBlock:latestBlock,
             lastLifecycleBlock:latestBlock,

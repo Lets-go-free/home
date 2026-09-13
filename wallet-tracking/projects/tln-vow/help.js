@@ -1,8 +1,8 @@
 (() => {
 // WalletTracking · TLN/VOW Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260913-185305";
-const HELP_MODULE_TIMESTAMP="13.09.2026 18:53:05 CEST";
+const HELP_MODULE_BUILD="20260913-235127";
+const HELP_MODULE_TIMESTAMP="13.09.2026 23:51:27 CEST";
 function renderTlnVowHelp(){
   const el=document.getElementById("tlnVowHelpContent");
   if(!el)return;
@@ -20,7 +20,7 @@ function renderTlnVowHelp(){
 
         <div class="custom-token-card"><h3 style="margin-top:0">Caching &amp; Aktualisierung</h3><p class="note">Große historische Datenmengen werden persistent und inkrementell gecacht. Bereits bestätigte Historie soll nicht bei jedem Tab-Wechsel neu geladen werden. Gleichzeitig gilt: Ein Cache darf veränderliche Zustände nicht einfrieren. Bei Loans, offenen Stakings und anderen Lifecycle-Daten werden relevante Statusänderungen weiterhin nachgeprüft.</p></div>
 
-        <div class="custom-token-card"><h3 style="margin-top:0">Admin / Diagnose</h3><p class="note">Unbekannte Contracts, Assets oder Loan-Typen werden nicht still verworfen. Sie sollen als „zu prüfen“ sichtbar bleiben und nach Verifikation zentral registriert werden. Admin-/DEV-Diagnosewerkzeuge dienen der On-Chain-Verifikation und sind nicht Teil der normalen Benutzeroberfläche.</p></div>`;
+        <div class="custom-token-card"><h3 style="margin-top:0">Admin / Diagnose</h3><p class="note">Unbekannte Contracts, Assets oder Loan-Typen werden nicht still verworfen. Sie sollen als „zu prüfen“ sichtbar bleiben und nach Verifikation zentral registriert werden. Admin-/DEV-Diagnosewerkzeuge dienen der On-Chain-Verifikation und sind nicht Teil der normalen Benutzeroberfläche.</p></div><div class="custom-token-card"><h3 style="margin-top:0">Loan-Cashflows &amp; Collateral</h3><p class="note">Die Loan-Tabelle trennt die tatsächlichen Geld-/Asset-Flüsse: <strong>v$ Brutto-Mint</strong>, <strong>v$ netto ans Wallet</strong>, <strong>Zins 18 %</strong>, <strong>Zinsmodell</strong>, <strong>Collateral-Quelle</strong>, <strong>VOW Collateral</strong> und <strong>Collateral-Status</strong>. Bei normalen Booster-Loans werden die Collateral-VOW aus den geminteten v$ gekauft; bei TLN Gold Extended können eigene VOW aus dem Wallet als Collateral hinterlegt sein. Eine Rückzahlung ist nicht zwingend: Wird nicht zurückbezahlt, kann das Collateral an den Kreditgeber fallen. Die wirtschaftliche Gewinn-/Verlustrechnung ist bewusst noch nicht definiert und wird erst nach verifizierter Bewertungslogik ergänzt.</p></div>`;
 }
 window.renderTlnVowHelp=renderTlnVowHelp;
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>renderTlnVowHelp(),{once:true});

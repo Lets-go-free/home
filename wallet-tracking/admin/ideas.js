@@ -3,8 +3,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260913-182440";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "13.09.2026 18:24:40 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260913-235127";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "13.09.2026 23:51:27 CEST";
 
 const ADMIN_IDEAS = [
   { status: "done", title: "Projekt-Caches nur noch bewusst aktualisieren", desc: `Phase 2am: Die Liquidity-Pool-Tabs von DAO1 und TLN/VOW sind beim Öffnen vollständig cache-only.
@@ -103,6 +103,14 @@ OFFEN / NÄCHSTER SCHRITT: Lifecycle vollständig on-chain bestimmen:
 • effektives Rückzahlungsdatum separat vom Ablaufdatum
 • mögliche Karenzfrist verifizieren
 • Rückzahlung/Abschluss positionsgenau zuordnen
+
+CASHFLOW-DARSTELLUNG:
+• Brutto-v$ Mint / Option
+• Netto-v$ ans Wallet
+• Zinsbetrag + Zinsmodell
+• Collateral-Quelle (eigene VOW / aus Mint gekauft)
+• VOW Collateral + Collateral-Status
+• Rückzahlung und Collateral-Rückgabe getrennt betrachten
 
 CACHE-REGEL: Immutable Eröffnungsdaten persistent cachen. Veränderliche Lifecycle-Felder (Status, Waiting-to-Swap, Swap, Fälligkeit, Rückzahlung) bei jedem relevanten Refresh neu prüfen; Cache darf neue On-Chain-Informationen niemals verdecken.
 
@@ -267,6 +275,33 @@ START-/MIGRATIONSLOGIK:
 • Status transparent im UI/Diagnose-Log ausweisen
 
 WICHTIGKEIT: SEHR HOCH. Dieser Umbau sollte erfolgen, bevor deutlich mehr separat austauschbare Module hinzukommen, weil er Build-Anzeige, Browser-Cache, Einzeldatei-Updates und gezielte Datenmigration gemeinsam löst.`
+  },
+  {
+    status: "open",
+    category: "Projekt TLN/VOW",
+    priority: "high",
+    title: "TLN/VOW Loans · Wirtschaftlichkeit / Gewinn-Verlust je Position",
+    desc: `ZIEL: Für jeden Loan später nachvollziehbar ausweisen, ob der gesamte Vorgang wirtschaftlich Gewinn oder Verlust gebracht hat.
+
+NOCH NICHT FACHLICH DEFINIERT – deshalb derzeit KEINE P&L-Zahl anzeigen.
+
+ZU BERÜCKSICHTIGEN:
+• tatsächliche Netto-v$-Auszahlung an das Wallet
+• Brutto-v$-Mint / Principal
+• 18-%-Zins und Zinsmodell (vorausbezahlt / bei Rückzahlung fällig / vom Mint abgezogen)
+• tatsächlich zurückgezahlte v$
+• Herkunft des VOW-Collaterals: eigene VOW oder aus Loan-Mint gekauft
+• VOW Collateral zurückgegeben / weiterhin gebunden / bei Nicht-Rückzahlung verfallen
+• historische und ggf. aktuelle Bewertung des VOW-Collaterals
+• mögliche TLN/TLN-GOLD-Burn-Kosten, falls sie in die Gesamtrentabilität einbezogen werden sollen
+
+BESONDERHEIT TLN GOLD EXTENDED: User erhält netto v$ aufs Wallet und stellt eigene VOW als Collateral. Bei Rückzahlung kommen die VOW zurück; bei Nicht-Rückzahlung bleiben die v$ beim User, aber das eigene VOW-Collateral geht an den Kreditgeber. Welche Zeitpunkte/Kurse für eine faire P&L-Bewertung verwendet werden, ist noch zu definieren.
+
+VOR P&L-IMPLEMENTIERUNG:
+1. alle Cashflows und Collateral-Lifecycle-Felder on-chain vollständig verifizieren,
+2. Bewertungszeitpunkte festlegen,
+3. realisierte vs. unrealisierte Wirtschaftlichkeit definieren,
+4. erst danach Summary-/P&L-Anzeige implementieren.`
   }];
 
 const ADMIN_IDEA_STATUS_META = {
