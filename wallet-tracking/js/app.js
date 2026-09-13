@@ -1134,7 +1134,7 @@ function showTab(name) {
   if (name === "tlnvow" && !hasTlnVowTokenInSummary()) name = "tracking";
 
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".tab-btn[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
   const panel = document.getElementById("tab-" + name);
   if (panel) panel.classList.add("active");
   if (name === "predefined") { ensurePredefinedNames(); renderSafeTokenTable(); }
@@ -1156,6 +1156,12 @@ function showTab(name) {
   }
   if (name === "tlnvow" && window.TLNVOWProject) {
     window.TLNVOWProject.ensureLoaded();
+    const tlnSubtabs = document.querySelectorAll("#tab-tlnvow .tln-vow-main-subtabs .tab-btn");
+    const hasActiveTlnSubtab = [...tlnSubtabs].some(b => b.classList.contains("active"));
+    if (!hasActiveTlnSubtab) {
+      const overviewBtn = [...tlnSubtabs].find(b => /Übersicht/.test(b.textContent || ""));
+      if (overviewBtn) openTlnDiscoveryTab("overview", overviewBtn);
+    }
     maybeAutoRefreshProject('tln_vow','bsc','tlnvowLpBscContent').catch(e=>console.warn('TLN/VOW Projekt-Autoload:',e));
   }
   if (name === "dao1" && window.DAO1Project) {
