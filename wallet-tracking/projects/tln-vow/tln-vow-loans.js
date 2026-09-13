@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260913-150133 */
+/* TLN/VOW Loans central engine · Build 20260913-181616 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -763,9 +763,20 @@ function renderLoanDiscovery(){
   const rowHtml=r=>`<tr><td>${loanDate(r.date)}</td><td><span class="team-lifecycle-name">${esc(projectOwnWalletLabel(r.wallet)||'Wallet')}</span><span class="team-lifecycle-sub mono">${esc(r.wallet)}</span></td><td><b>${esc(r.idLabel)}</b></td><td>${esc(r.type)}</td><td style="text-align:right">${loanNum(r.tlnPlus)}</td><td style="text-align:right">${loanNum(r.tlnGold)}</td><td style="text-align:right">${r.vusd==null?'–':loanNum(r.vusd,8)+' v$'}</td><td style="text-align:right">${r.principal==null?'–':loanNum(r.principal,8)+' v$'}</td><td style="text-align:right">${r.repayment==null?'–':loanNum(r.repayment,8)+' v$'}</td><td style="text-align:right">${r.interest==null?'–':loanNum(r.interest,8)+' v$'}</td><td style="text-align:right">${r.interestRate==null?'–':loanNum(r.interestRate,4)+' %'}</td><td>${esc(r.interestModel)}</td><td>${esc(r.repaymentSource||'–')}</td><td style="text-align:right">${r.collateralVow==null?'–':loanNum(r.collateralVow,8)+' VOW'}</td><td>${esc(r.status)}</td><td>${loanDate(r.swapDate)}</td><td>${r.maturityDate?`${loanDate(r.maturityDate)}<span class="team-lifecycle-sub">${esc(r.maturitySource||'')}</span>`:'–'}</td><td>${r.repaymentDate?loanDate(r.repaymentDate):'–'}</td><td>${esc(r.link)}</td><td class="loan-link"><a href="https://bscscan.com/tx/${encodeURIComponent(r.tx)}" target="_blank" rel="noopener">${esc(r.tx.slice(0,10))}…${esc(r.tx.slice(-8))}</a></td><td>${loanEvidence(r.evidence)}</td><td class="loan-raw">${esc(r.rawType)}</td><td class="loan-raw">${esc(r.rawParams)}</td><td class="loan-raw">${esc(r.rawContract)}</td></tr>`;
   body.innerHTML=loanRows.length?loanRows.map(rowHtml).join(''):`<tr><td colspan="20">${LOAN_DISCOVERY_LOADING?'Loans werden on-chain geladen …':'Keine Loans entsprechen den Filtern.'}</td></tr>`;
   reboundBody.innerHTML=reboundRows.length?reboundRows.map(rowHtml).join(''):`<tr><td colspan="20">${LOAN_DISCOVERY_LOADING?'Rebound-Optionen werden on-chain geladen …':'Keine TLN Gold Rebound Optionen entsprechen den Filtern.'}</td></tr>`;
-  const summaryHtml=(subset,label)=>`<div class="metric">${label}<b>${subset.length}</b></div><div class="metric">TLN+ gesamt<b>${loanNum(subset.reduce((a,r)=>a+(r.tlnPlus||0),0),4)}</b></div><div class="metric">TLN GOLD gesamt<b>${loanNum(subset.reduce((a,r)=>a+(r.tlnGold||0),0),8)}</b></div><div class="metric">v$ Loan/Option gesamt<b>${loanNum(subset.reduce((a,r)=>a+(r.vusd||0),0),2)}</b></div>`;
-  const sum=document.getElementById('loanDiscoverySummary');if(sum)sum.innerHTML=summaryHtml(loanRows,'Gefilterte Loans');
-  const reboundSum=document.getElementById('loanReboundSummary');if(reboundSum)reboundSum.innerHTML=summaryHtml(reboundRows,'Gefilterte Rebounds');
+  const sumVal=(subset,key)=>subset.reduce((a,r)=>a+(Number(r?.[key])||0),0);
+  const allRows=[...loanRows,...reboundRows];
+  const summary=document.getElementById('loanSummaryRows');
+  if(summary){
+    const cell=(v,d=2)=>loanNum(v,d);
+    summary.innerHTML=`
+      <tr><td><b>Anzahl Positionen</b></td><td style="text-align:right">${loanRows.length}</td><td style="text-align:right">${reboundRows.length}</td><td style="text-align:right"><b>${allRows.length}</b></td></tr>
+      <tr><td>TLN+ Burn gesamt</td><td style="text-align:right">${cell(sumVal(loanRows,'tlnPlus'),4)}</td><td style="text-align:right">${cell(sumVal(reboundRows,'tlnPlus'),4)}</td><td style="text-align:right"><b>${cell(sumVal(allRows,'tlnPlus'),4)}</b></td></tr>
+      <tr><td>TLN GOLD Burn gesamt</td><td style="text-align:right">${cell(sumVal(loanRows,'tlnGold'),8)}</td><td style="text-align:right">${cell(sumVal(reboundRows,'tlnGold'),8)}</td><td style="text-align:right"><b>${cell(sumVal(allRows,'tlnGold'),8)}</b></td></tr>
+      <tr><td>v$ Loan / Option gesamt</td><td style="text-align:right">${cell(sumVal(loanRows,'vusd'),2)}</td><td style="text-align:right">${cell(sumVal(reboundRows,'vusd'),2)}</td><td style="text-align:right"><b>${cell(sumVal(allRows,'vusd'),2)}</b></td></tr>
+      <tr><td>Principal / Schuld gesamt</td><td style="text-align:right">${cell(sumVal(loanRows,'principal'),2)}</td><td style="text-align:right">${cell(sumVal(reboundRows,'principal'),2)}</td><td style="text-align:right"><b>${cell(sumVal(allRows,'principal'),2)}</b></td></tr>
+      <tr><td>Rückzahlung gesamt</td><td style="text-align:right">${cell(sumVal(loanRows,'repayment'),2)}</td><td style="text-align:right">${cell(sumVal(reboundRows,'repayment'),2)}</td><td style="text-align:right"><b>${cell(sumVal(allRows,'repayment'),2)}</b></td></tr>
+      <tr><td>Zinsen gesamt</td><td style="text-align:right">${cell(sumVal(loanRows,'interest'),2)}</td><td style="text-align:right">${cell(sumVal(reboundRows,'interest'),2)}</td><td style="text-align:right"><b>${cell(sumVal(allRows,'interest'),2)}</b></td></tr>`;
+  }
 }
 async function discoverLoansOnchain({force=false}={}){
   if(LOAN_DISCOVERY_LOADING)return;
@@ -853,9 +864,24 @@ async function discoverLoansOnchain({force=false}={}){
     LOAN_DISCOVERY_LOADING=false;if(reload)reload.disabled=false;renderLoanDiscovery();
   }
 }
+function loanShowInnerPanel(name){
+  const target=name==='rebounds'?'rebounds':'loans';
+  document.querySelectorAll('#loanInnerTabs [data-loan-panel]').forEach(btn=>{
+    btn.classList.toggle('active',btn.dataset.loanPanel===target);
+  });
+  const loans=document.getElementById('loanInnerPanel-loans');
+  const rebounds=document.getElementById('loanInnerPanel-rebounds');
+  if(loans)loans.style.display=target==='loans'?'block':'none';
+  if(rebounds)rebounds.style.display=target==='rebounds'?'block':'none';
+}
+
 function initLoanDiscovery(){
   const sel=document.getElementById('loanFilterType'),walletSel=document.getElementById('loanFilterWallet');if(!sel||!walletSel||sel.dataset.ready==='1')return;sel.dataset.ready='1';
   loanRefreshFilterOptions();
+  document.querySelectorAll('#loanInnerTabs [data-loan-panel]').forEach(btn=>{
+    btn.addEventListener('click',()=>loanShowInnerPanel(btn.dataset.loanPanel));
+  });
+  loanShowInnerPanel('loans');
   ['loanFilterFrom','loanFilterTo','loanFilterTlnMin','loanFilterTlnMax','loanFilterGoldMin','loanFilterGoldMax','loanFilterWallet','loanFilterType'].forEach(id=>document.getElementById(id)?.addEventListener('input',renderLoanDiscovery));
   document.getElementById('loanFilterReset')?.addEventListener('click',()=>{['loanFilterFrom','loanFilterTo','loanFilterTlnMin','loanFilterTlnMax','loanFilterGoldMin','loanFilterGoldMax'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});walletSel.value='all';sel.value='all';renderLoanDiscovery();});
   document.getElementById('loanDiscoveryReload')?.addEventListener('click',()=>void discoverLoansOnchain({force:true}));

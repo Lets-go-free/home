@@ -3,8 +3,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260913-170644";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "13.09.2026 17:06:44 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260913-181616";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "13.09.2026 18:16:16 CEST";
 
 const ADMIN_IDEAS = [
   { status: "done", title: "Projekt-Caches nur noch bewusst aktualisieren", desc: `Phase 2am: Die Liquidity-Pool-Tabs von DAO1 und TLN/VOW sind beim Öffnen vollständig cache-only.
@@ -106,7 +106,7 @@ OFFEN / NÄCHSTER SCHRITT: Lifecycle vollständig on-chain bestimmen:
 
 CACHE-REGEL: Immutable Eröffnungsdaten persistent cachen. Veränderliche Lifecycle-Felder (Status, Waiting-to-Swap, Swap, Fälligkeit, Rückzahlung) bei jedem relevanten Refresh neu prüfen; Cache darf neue On-Chain-Informationen niemals verdecken.
 
-TABELLENREGEL: Zins immer als 18 % zeigen und zusätzlich „Zinsmodell“ (im Voraus bezahlt / fällig bei Rückzahlung) sowie Principal, Zinsbetrag und Rückzahlung gesamt getrennt darstellen. Nicht aus einem Repay von 100 % fälschlich „0 % Zins“ ableiten.`
+TABELLENREGEL: Zins immer als 18 % zeigen und zusätzlich „Zinsmodell“ (im Voraus bezahlt / fällig bei Rückzahlung) sowie Principal, Zinsbetrag und Rückzahlung gesamt getrennt darstellen. Nicht aus einem Repay von 100 % fälschlich „0 % Zins“ ableiten.\n\nUI-STAND: Hauptseite → TLN/VOW → Loans ist in die Unter-Tabs „Loans“ und „Rebounds“ getrennt. Gemeinsame Filter und ein tabellarisches Summary im Header bleiben über beide Unter-Tabs sichtbar.`
   },
   {
     status: "open",

@@ -850,10 +850,12 @@
       <div class="card">
         <h2>💳 Loans</h2>
         <p class="muted">Zentrale On-Chain-Auswertung aller erkannten TLN/VOW-Loans und Optionen über deine erfassten Wallets. Eröffnungsdaten werden persistent gecacht und nur inkrementell ergänzt. Veränderliche Lifecycle-Daten werden beim Öffnen dieses Tabs immer live nachgeprüft; bereits bestätigte Rückzahlungen bleiben im Cache erhalten. Unbekannte Typen bleiben sichtbar und werden nicht weggefiltert.</p>
+
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0 12px">
           <button id="loanDiscoveryReload" type="button">Loans aktualisieren</button>
           <span id="loanDiscoveryState" class="muted">Noch nicht geladen.</span>
         </div>
+
         <div class="loan-filter-grid">
           <label>Von<br><input id="loanFilterFrom" type="date"></label>
           <label>Bis<br><input id="loanFilterTo" type="date"></label>
@@ -865,18 +867,38 @@
           <label>Typ<br><select id="loanFilterType"><option value="all">Alle Booster / Typen</option></select></label>
           <button id="loanFilterReset" type="button">Filter zurücksetzen</button>
         </div>
-        <h3>Loans (inkl. Extended)</h3>
-        <div id="loanDiscoverySummary" class="loan-summary"></div>
-        <div class="wrap project-data-table"><table style="min-width:3150px"><thead><tr>
-          <th>Datum</th><th>Wallet</th><th>Option #</th><th>Booster / Typ</th><th>TLN+ Burn</th><th>TLN GOLD Burn</th><th>v$ Loan / Option</th><th>Principal / Schuld</th><th>Rückzahlung gesamt</th><th>Zinsen</th><th>Zinssatz</th><th>Zinsmodell</th><th>Quelle Rückzahlung</th><th>VOW Collateral</th><th>Status</th><th>Swap-Datum</th><th>Ablaufdatum</th><th>Rückzahlungsdatum</th><th>Verknüpfung</th><th>Tx</th><th>Evidenz</th><th>Event-Wert 3</th><th>Event-Parameter roh</th><th>Event-Contract / Hinweis</th>
-        </tr></thead><tbody id="loanDiscoveryRows"><tr><td colspan="24">Noch keine Loan-Daten.</td></tr></tbody></table></div>
-        <h3 style="margin-top:22px">TLN Gold Rebound</h3>
-        <div id="loanReboundSummary" class="loan-summary"></div>
-        <div class="wrap project-data-table"><table style="min-width:3150px"><thead><tr>
-          <th>Datum</th><th>Wallet</th><th>Option #</th><th>Booster / Typ</th><th>TLN+ Burn</th><th>TLN GOLD Burn</th><th>v$ Loan / Option</th><th>Principal / Schuld</th><th>Rückzahlung gesamt</th><th>Zinsen</th><th>Zinssatz</th><th>Zinsmodell</th><th>Quelle Rückzahlung</th><th>VOW Collateral</th><th>Status</th><th>Swap-Datum</th><th>Ablaufdatum</th><th>Rückzahlungsdatum</th><th>Verknüpfung</th><th>Tx</th><th>Evidenz</th><th>Event-Wert 3</th><th>Event-Parameter roh</th><th>Event-Contract / Hinweis</th>
-        </tr></thead><tbody id="loanReboundRows"><tr><td colspan="24">Noch keine Rebound-Daten.</td></tr></tbody></table></div>
+
+        <h3 style="margin:18px 0 8px">Summary</h3>
+        <div class="wrap project-data-table">
+          <table style="min-width:820px">
+            <thead>
+              <tr><th>Kennzahl</th><th>Loans</th><th>Rebounds</th><th>Gesamt</th></tr>
+            </thead>
+            <tbody id="loanSummaryRows">
+              <tr><td colspan="4">Noch keine Loan-Daten.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="project-user-tabs" id="loanInnerTabs" style="margin-top:18px">
+          <button type="button" class="project-user-tab active" data-loan-panel="loans">Loans</button>
+          <button type="button" class="project-user-tab" data-loan-panel="rebounds">Rebounds</button>
+        </div>
+
+        <div id="loanInnerPanel-loans">
+          <div class="wrap project-data-table"><table style="min-width:3150px"><thead><tr>
+            <th>Datum</th><th>Wallet</th><th>Option #</th><th>Booster / Typ</th><th>TLN+ Burn</th><th>TLN GOLD Burn</th><th>v$ Loan / Option</th><th>Principal / Schuld</th><th>Rückzahlung gesamt</th><th>Zinsen</th><th>Zinssatz</th><th>Zinsmodell</th><th>Quelle Rückzahlung</th><th>VOW Collateral</th><th>Status</th><th>Swap-Datum</th><th>Ablaufdatum</th><th>Rückzahlungsdatum</th><th>Verknüpfung</th><th>Tx</th><th>Evidenz</th><th>Event-Wert 3</th><th>Event-Parameter roh</th><th>Event-Contract / Hinweis</th>
+          </tr></thead><tbody id="loanDiscoveryRows"><tr><td colspan="24">Noch keine Loan-Daten.</td></tr></tbody></table></div>
+        </div>
+
+        <div id="loanInnerPanel-rebounds" style="display:none">
+          <div class="wrap project-data-table"><table style="min-width:3150px"><thead><tr>
+            <th>Datum</th><th>Wallet</th><th>Option #</th><th>Booster / Typ</th><th>TLN+ Burn</th><th>TLN GOLD Burn</th><th>v$ Loan / Option</th><th>Principal / Schuld</th><th>Rückzahlung gesamt</th><th>Zinsen</th><th>Zinssatz</th><th>Zinsmodell</th><th>Quelle Rückzahlung</th><th>VOW Collateral</th><th>Status</th><th>Swap-Datum</th><th>Ablaufdatum</th><th>Rückzahlungsdatum</th><th>Verknüpfung</th><th>Tx</th><th>Evidenz</th><th>Event-Wert 3</th><th>Event-Parameter roh</th><th>Event-Contract / Hinweis</th>
+          </tr></thead><tbody id="loanReboundRows"><tr><td colspan="24">Noch keine Rebound-Daten.</td></tr></tbody></table></div>
+        </div>
       </div>
     </div>
+
     <div id="projectPanel-rewards" class="project-user-panel"><div id="projectRewardsAggregate" class="project-aggregate"></div><div id="projectRewardsCurrent" class="card"><h2>🏆 Staking-Rewards</h2><p class="muted">Ausschließlich Rewards, die einer eigenen Staking-Position eindeutig zugeordnet sind. Referral- und Bonus-Rewards werden hier nicht angezeigt. Ein finaler automatischer Rest-Reward in einer exakt verifizierten Unstake-Tx wird als solcher der Position zugeordnet.</p><div id="rewardClaiming"><div class="muted">Wird in Schritt 4 berechnet.</div></div></div></div>
     <div id="projectPanel-referral" class="project-user-panel"><div id="projectReferralAggregate" class="project-aggregate"></div><div id="projectReferralMount" class="project-mount"></div></div>
     <div id="projectPanel-bonus" class="project-user-panel"><div id="projectBonusAggregate" class="project-aggregate"></div><div id="projectBonusMount" class="project-mount"></div></div>
@@ -1077,18 +1099,18 @@
 <script src="./js/price-engine.js"></script>
 <script src="./js/lp-engine.js"></script>
 <script src="./js/staking-engine.js"></script>
-<script src="./projects/tln-vow/tln-vow-loans.js?v=20260913-180423"></script>
+<script src="./projects/tln-vow/tln-vow-loans.js?v=20260913-181616"></script>
 <script src="./projects/tln-vow/tln-vow.js?v=20260912-234200"></script>
 <script src="./projects/dao1/dao1.js?v=20260913-180423"></script>
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20260913-180423"></script>
-<script src="./help/help-general.js?v=20260913-180423"></script>
-<script src="./projects/tln-vow/help.js?v=20260913-180423"></script>
-<script src="./projects/dao1/help.js?v=20260913-180423"></script>
-<script src="./js/app.js?v=20260913-180423"></script>
-<script src="./projects/tln-vow/tln-vow-discovery.js?v=20260913-180423"></script>
+<script src="./admin/ideas.js?v=20260913-181616"></script>
+<script src="./help/help-general.js?v=20260913-181616"></script>
+<script src="./projects/tln-vow/help.js?v=20260913-181616"></script>
+<script src="./projects/dao1/help.js?v=20260913-181616"></script>
+<script src="./js/app.js?v=20260913-181616"></script>
+<script src="./projects/tln-vow/tln-vow-discovery.js?v=20260913-181616"></script>
 
 
 
@@ -1106,6 +1128,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 13.09.2026 18:04:23 CEST · Phase 4.43 · Build 20260913-180423</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 13.09.2026 18:16:16 CEST · Phase 4.43 · Build 20260913-181616</div>
 </body>
 </html>
