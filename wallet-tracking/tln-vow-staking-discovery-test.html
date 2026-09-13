@@ -163,7 +163,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 13.09.2026 04:55:00 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 13.09.2026 05:06:15 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -278,7 +278,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
     <div id="projectPanel-loans" class="project-user-panel">
       <div class="card">
         <h2>💳 Loans · Discovery</h2>
-        <p class="muted">On-Chain-Discovery aller erkennbaren TLN/VOW-Loan- und Options-Eröffnungen über die TLN+/TLNGOLD-Burn-Historie der vorhandenen TLN/VOW-Wallets. Bekannte fachliche Werte stehen links; noch nicht vollständig verstandene Event-Parameter bleiben bewusst ganz rechts sichtbar. Es gibt keine festen Betragsfilter für einzelne Kontrollfälle.</p><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0 12px"><button id="loanDiscoveryReload" type="button">Loans on-chain neu laden</button><span id="loanDiscoveryState" class="muted">Noch nicht geladen.</span></div>
+        <p class="muted">On-Chain-Discovery aller erkennbaren TLN/VOW-Loan- und Options-Eröffnungen über die TLN+/TLNGOLD-Burn-Historie der vorhandenen TLN/VOW-Wallets. Bekannte fachliche Werte stehen links; noch nicht vollständig verstandene Event-Parameter bleiben bewusst ganz rechts sichtbar. Es gibt keine festen Betragsfilter für einzelne Kontrollfälle. <b>TLN GOLD ×2/×4</b> sind vorläufige Arbeitsnamen und werden nur bei passenden on-chain Mengen-/Zinsmustern angezeigt; unbekannte Varianten bleiben offen sichtbar.</p><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0 12px"><button id="loanDiscoveryReload" type="button">Loans on-chain neu laden</button><span id="loanDiscoveryState" class="muted">Noch nicht geladen.</span></div>
         <details class="loan-position-diag" style="margin:10px 0 14px">
           <summary><b>DEV · Position rückwärts suchen</b></summary>
           <p class="muted" style="margin:8px 0">Sucht in allen erkennbaren TLN+/TLN-GOLD-Loan-Eröffnungs-Txs eines Wallets nach einer Positions-/Collateral-Referenz aus einem späteren <code>LoanRepay</code>-Event. Es wird nichts aus Beträgen geraten.</p>
@@ -443,7 +443,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260913-045500';
+const BUILD_ID='20260913-050615';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -574,7 +574,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='13.09.2026 04:55:00 CEST';
+const APP_VERSION='13.09.2026 05:06:15 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11552,15 +11552,31 @@ function loanFindEvent(receipt,wallet){
   candidates.sort((a,b)=>b.score-a.score||b.words.length-a.words.length||b.index-a.index);
   return candidates[0]||null;
 }
-function loanClassify({tlnPlus,tlnGold,vusd,interest,rawType}){
+function loanClassify({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18}){
   const eventValue3=String(rawType??'').trim();
   const booster=LOAN_BOOSTER_BY_EVENT_VALUE3[eventValue3];
   if(booster)return booster;
-  // Wichtig: TLNGOLD-Burn allein bedeutet NICHT "Second Chance".
-  // Booster und Lifecycle werden getrennt behandelt.
+
+  // Unbekannte TLN-GOLD-Varianten werden NICHT nach Namen geraten.
+  // Wir kennzeichnen nur belastbare Mengenmuster als Arbeitsnamen.
+  if((tlnGold||0)>0&&(vusd||0)>0){
+    const nominal2=(eventAmount18>0)?eventAmount18:tlnGold*2;
+    const isGold2=(eventAmount18>0&&loanClose(eventAmount18,tlnGold*2,.01)&&loanClose(vusd,eventAmount18*.82,.01))
+      ||(!(eventAmount18>0)&&loanClose(vusd,tlnGold*2*.82,.01));
+    if(isGold2)return 'TLN GOLD ×2 · Arbeitsname';
+
+    const nominal4=(eventAmount18>0)?eventAmount18:vusd;
+    const isGold4=((eventAmount18>0&&loanClose(eventAmount18,tlnGold*4,.01))||loanClose(vusd,tlnGold*4,.01))
+      && interest>0 && loanClose(interest,nominal4*.18,.01);
+    if(isGold4)return 'TLN GOLD ×4 · Arbeitsname';
+
+    if(eventValue3&&eventValue3!=='–')return `TLN GOLD · Event-Wert 3 = ${eventValue3} · noch offen`;
+    return 'TLN GOLD · Booster noch offen';
+  }
+
   if(eventValue3&&eventValue3!=='–')return `Unbekannt · Event-Wert 3 = ${eventValue3}`;
-  if((tlnGold||0)>0)return 'TLN GOLD · Booster noch offen';
   if(!(tlnPlus>0)||!(vusd>0))return 'Loan · Typ offen';
+
   const mintedPerTln=vusd/tlnPlus;
   let base='TLN+ Loan';
   if(loanClose(mintedPerTln,2))base='TLN Plus 2x';
@@ -11568,28 +11584,95 @@ function loanClassify({tlnPlus,tlnGold,vusd,interest,rawType}){
   else if(loanClose(mintedPerTln,.25))base='TLN Plus 0.25x';
   else if(loanClose(mintedPerTln,.82))base='Original · 18 % vom Mint abgezogen';
   else base=`TLN+ Loan · ${loanNum(tlnPlus/vusd,4)} TLN+ / v$`;
+
   if(interest>0&&loanClose(interest,vusd*.18,.01))base+=' · 18 % vorausbezahlt';
   return base;
 }
 
-function loanInterestModel({tlnPlus,vusd,interest,rawType}){
+function loanInterestModel({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18}){
   const ev3=String(rawType??'').trim();
   if(ev3==='4')return 'keine Rückzahlung · TLN Gold Rebound';
   if(ev3==='5')return 'keine eigene Rückzahlung · TLN Gold Extended';
-  if(ev3==='2')return 'bei Rückzahlung · on-chain noch zu verifizieren';
-  if(ev3==='1'&&interest>0&&vusd>0&&loanClose(interest,vusd*.18,.01))return '18 % v$ im Voraus bezahlt';
-  if(interest>0&&vusd>0&&loanClose(interest,vusd*.18,.01))return '18 % v$ im Voraus bezahlt';
-  if(tlnPlus>0&&vusd>0&&loanClose(vusd,tlnPlus*.82,.01))return `18 % vom Mint abgezogen; Nominal ${loanNum(tlnPlus,2)} v$`;
+
+  // 0.25x ist jetzt durch Position 2693 on-chain bestätigt:
+  // Eröffnung: Principal 447.015 / Event-Wert 3 = 2
+  // Repay: 527.4777 v$ = 447.015 + 18 %
+  if(ev3==='2')return '18 % bei Rückzahlung · on-chain bestätigt';
+
+  if(ev3==='1'&&interest>0&&vusd>0&&loanClose(interest,vusd*.18,.01))
+    return '18 % v$ im Voraus bezahlt · on-chain bestätigt';
+
+  if((tlnGold||0)>0&&(vusd||0)>0){
+    const nominal2=(eventAmount18>0)?eventAmount18:tlnGold*2;
+    if(((eventAmount18>0&&loanClose(eventAmount18,tlnGold*2,.01))||!(eventAmount18>0))
+      && loanClose(vusd,nominal2*.82,.01))
+      return '18 % vom Mint abgezogen · Arbeitsmodell on-chain abgeleitet';
+
+    const nominal4=(eventAmount18>0)?eventAmount18:vusd;
+    if((((eventAmount18>0&&loanClose(eventAmount18,tlnGold*4,.01))||loanClose(vusd,tlnGold*4,.01)))
+      && interest>0&&loanClose(interest,nominal4*.18,.01))
+      return '18 % v$ im Voraus bezahlt · Arbeitsmodell on-chain abgeleitet';
+  }
+
+  if(interest>0&&vusd>0&&loanClose(interest,vusd*.18,.01))
+    return '18 % v$ im Voraus bezahlt';
+  if(tlnPlus>0&&vusd>0&&loanClose(vusd,tlnPlus*.82,.01))
+    return `18 % vom Mint abgezogen; Nominal ${loanNum(tlnPlus,2)} v$`;
   return interest>0?`v$-Zahlung bei Eröffnung: ${loanNum(interest,8)}`:'noch zu bestimmen';
 }
-function loanDebtFields({tlnPlus,vusd,interest,rawType}){
+
+function loanDebtFields({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18}){
   const ev3=String(rawType??'').trim();
-  // Nur on-chain beobachtete Werte verwenden. Keine 18%-Rückzahlung künstlich hochrechnen.
-  if(ev3==='4'||ev3==='5')return {principal:null,repayment:null,interestRate:null,repaymentSource:'keine eigene Rückzahlung (Booster/Option)'};
-  if(ev3==='1')return {principal:vusd||null,repayment:vusd||null,interestRate:interest&&vusd?interest/vusd*100:18,repaymentSource:'Principal aus v$ Mint on-chain · Zins bei Eröffnung on-chain bezahlt'};
-  if(ev3==='2')return {principal:vusd||null,repayment:null,interestRate:null,repaymentSource:'Principal aus v$ Mint on-chain · Zinsmodell/Rückzahlung noch nicht unabhängig der offenen Position on-chain zugeordnet'};
-  if(tlnPlus>0&&vusd>0&&loanClose(vusd,tlnPlus*.82,.01))return {principal:tlnPlus,repayment:tlnPlus,interestRate:18,repaymentSource:'Nominalschuld aus Loan-Eröffnung on-chain (TLN+ Burn); Mint = 82 %'};
-  return {principal:vusd||null,repayment:null,interestRate:null,repaymentSource:'Rückzahlung on-chain noch zu bestimmen'};
+
+  if(ev3==='4'||ev3==='5')
+    return {principal:null,repayment:null,interestDue:null,interestRate:null,repaymentSource:'keine eigene Rückzahlung (Booster/Option)'};
+
+  if(ev3==='1'){
+    const principal=(eventAmount18>0)?eventAmount18:(vusd||null);
+    const rate=(interest&&principal)?interest/principal*100:18;
+    return {principal,repayment:principal,interestDue:interest||null,interestRate:rate,
+      repaymentSource:'Principal on-chain aus Options-Event/v$ Mint · Zins bei Eröffnung on-chain bezahlt'};
+  }
+
+  if(ev3==='2'){
+    const principal=(eventAmount18>0)?eventAmount18:(vusd||null);
+    const interestDue=principal!=null?principal*.18:null;
+    const repayment=principal!=null?principal*1.18:null;
+    return {principal,repayment,interestDue,interestRate:18,
+      repaymentSource:'Principal on-chain aus Options-Event; Gesamt-Rückzahlung abgeleitet aus on-chain bestätigtem 18%-Repay-Modell (Referenz Position 2693)'};
+  }
+
+  if((tlnGold||0)>0&&(vusd||0)>0){
+    // Arbeitsmodell TLN GOLD ×2: Nominalbetrag ist bevorzugt Event-Wert 2.
+    const nominal2=(eventAmount18>0)?eventAmount18:tlnGold*2;
+    const gold2=((eventAmount18>0&&loanClose(eventAmount18,tlnGold*2,.01))||!(eventAmount18>0))
+      && loanClose(vusd,nominal2*.82,.01);
+    if(gold2){
+      const interestDue=nominal2-vusd;
+      return {principal:nominal2,repayment:nominal2,interestDue,interestRate:nominal2>0?interestDue/nominal2*100:null,
+        repaymentSource:eventAmount18>0
+          ?'Principal on-chain aus Event-Wert 2; Mint = 82 % des Nominalbetrags'
+          :'Principal aus on-chain TLN-GOLD-Burn ×2 abgeleitet; Mint = 82 %'};
+    }
+
+    // Arbeitsmodell TLN GOLD ×4: v$-Principal + separater 18%-Zinstransfer bei Eröffnung.
+    const nominal4=(eventAmount18>0)?eventAmount18:vusd;
+    const gold4=(((eventAmount18>0&&loanClose(eventAmount18,tlnGold*4,.01))||loanClose(vusd,tlnGold*4,.01)))
+      && interest>0&&loanClose(interest,nominal4*.18,.01);
+    if(gold4){
+      return {principal:nominal4,repayment:nominal4,interestDue:interest,interestRate:interest/nominal4*100,
+        repaymentSource:eventAmount18>0
+          ?'Principal on-chain aus Event-Wert 2; 18%-Zins bei Eröffnung on-chain bezahlt'
+          :'Principal aus v$ Mint on-chain; 18%-Zins bei Eröffnung on-chain bezahlt'};
+    }
+  }
+
+  if(tlnPlus>0&&vusd>0&&loanClose(vusd,tlnPlus*.82,.01))
+    return {principal:tlnPlus,repayment:tlnPlus,interestDue:tlnPlus-vusd,interestRate:18,
+      repaymentSource:'Nominalschuld aus Loan-Eröffnung on-chain (TLN+ Burn); Mint = 82 %'};
+
+  return {principal:(eventAmount18>0?eventAmount18:(vusd||null)),repayment:null,interestDue:null,interestRate:null,
+    repaymentSource:'Rückzahlung on-chain noch zu bestimmen'};
 }
 async function loanReceipt(hash){
   const h=String(hash||'').toLowerCase();if(LOAN_RECEIPT_CACHE.has(h))return LOAN_RECEIPT_CACHE.get(h);
@@ -11662,22 +11745,23 @@ async function loanBuildRow(wallet,burns){
   const walletCollateral=vows.filter(x=>x.from===w).map(x=>x.amount).filter(x=>x>0);
   const inheritedCollateral=(tlnGold&&vows.length)?vows.map(x=>x.amount).filter(x=>x>0):[];
   const collateralVow=walletCollateral.length?Math.max(...walletCollateral):(inheritedCollateral.length?Math.max(...inheritedCollateral):null);
-  const ev=loanFindEvent(receipt,wallet);let eventId=null,rawType='–',rawParams='–',rawContract='–'; // rawType = unveränderter dritter Data-Wert des Options-Events (Event-Wert 3)
+  const ev=loanFindEvent(receipt,wallet);let eventId=null,rawType='–',rawParams='–',rawContract='–',eventAmount18=null; // rawType = unveränderter dritter Data-Wert des Options-Events (Event-Wert 3)
   if(ev){
     if(ev.words[0]>0n&&ev.words[0]<1000000000n)eventId=Number(ev.words[0]);
     const last=ev.words.at(-1);if(last>=0n&&last<=50n)rawType=String(last);
+    if(ev.words.length>=2){try{eventAmount18=Number(ethers.formatUnits(ev.words[1],18))}catch{}}
     rawParams=ev.words.map((x,i)=>`w${i+1}=${loanRawWord(x)}`).join(' · ');
     rawContract=`${ev.address} · log ${ev.index}`;
   }
   let date=burns.find(x=>x?.metadata?.blockTimestamp)?.metadata?.blockTimestamp||null;
   if(!date&&receipt.blockNumber){try{const b=await rpc('eth_getBlockByNumber',[receipt.blockNumber,false]);if(b?.timestamp)date=new Date(Number(BigInt(b.timestamp))*1000).toISOString()}catch{}}
   const expiryDate=loanExpiryFrom(date);
-  const type=loanClassify({tlnPlus,tlnGold,vusd,interest,rawType});
-  const interestModel=loanInterestModel({tlnPlus,vusd,interest,rawType});
-  const debt=loanDebtFields({tlnPlus,vusd,interest,rawType});
+  const type=loanClassify({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18});
+  const interestModel=loanInterestModel({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18});
+  const debt=loanDebtFields({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18});
   const evidence=vusd?'verified':'likely';
   const idLabel=eventId?`Option #${eventId}`:'Option # noch nicht erkannt';
-  return {date,wallet:w,idLabel,eventId,type,tlnPlus,tlnGold,vusd,principal:debt.principal,repayment:debt.repayment,interest,interestRate:debt.interestRate,interestModel,repaymentSource:debt.repaymentSource,collateralVow,
+  return {date,wallet:w,idLabel,eventId,type,tlnPlus,tlnGold,vusd,principal:debt.principal,repayment:debt.repayment,interest:(interest??debt.interestDue??null),interestRate:debt.interestRate,interestModel,repaymentSource:debt.repaymentSource,collateralVow,
     status:'Eröffnung on-chain erkannt · aktueller Swap-Status noch offen',swapDate:null,
     maturityDate:expiryDate||null,repaymentDate:null,
     maturitySource:expiryDate?'vorläufig: Loan-Datum + 372 Tage; bei Swap neu zu setzen':'offen',
