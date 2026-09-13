@@ -767,12 +767,22 @@ function renderLoanDiscovery(){
   const summaryRows=(subset,kind)=>{
     const cell=(v,d=2)=>loanNum(v,d);
     const isRebound=kind==='rebound';
+    const repaidCount=subset.filter(r=>!!r.repaymentDate || /^Zurückbezahlt/i.test(String(r.status||''))).length;
+    const openCount=subset.filter(r=>!r.repaymentDate && !/^Zurückbezahlt/i.test(String(r.status||''))).length;
+    const extendedCount=subset.filter(r=>r.type==='TLN Gold Extended').length;
     const rows=[
-      ['Anzahl Positionen', String(subset.length)],
+      [isRebound?'Anzahl Rebounds':'Anzahl Loans / Optionen', String(subset.length)],
+      ['davon offen', String(openCount)]
+    ];
+    if(!isRebound)rows.push(
+      ['davon zurückbezahlt', String(repaidCount)],
+      ['davon TLN Gold Extended', String(extendedCount)]
+    );
+    rows.push(
       ['TLN+ Burn gesamt', cell(sumVal(subset,'tlnPlus'),4)],
       ['TLN GOLD Burn gesamt', cell(sumVal(subset,'tlnGold'),8)],
       ['v$ Loan / Option gesamt', cell(sumVal(subset,'vusd'),2)]
-    ];
+    );
     if(!isRebound){
       rows.push(
         ['Principal / Schuld gesamt', cell(sumVal(subset,'principal'),2)],
@@ -876,7 +886,9 @@ async function discoverLoansOnchain({force=false}={}){
 function loanShowInnerPanel(name){
   const target=name==='rebounds'?'rebounds':'loans';
   document.querySelectorAll('#loanInnerTabs [data-loan-panel]').forEach(btn=>{
-    btn.classList.toggle('active',btn.dataset.loanPanel===target);
+    const active=btn.dataset.loanPanel===target;
+    btn.classList.toggle('active',active);
+    btn.setAttribute('aria-selected',active?'true':'false');
   });
   const loans=document.getElementById('loanInnerPanel-loans');
   const rebounds=document.getElementById('loanInnerPanel-rebounds');

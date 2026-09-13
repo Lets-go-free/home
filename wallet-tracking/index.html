@@ -868,9 +868,9 @@
           <button id="loanFilterReset" type="button">Filter zurücksetzen</button>
         </div>
 
-        <div class="project-user-tabs" id="loanInnerTabs" style="margin-top:18px">
-          <button type="button" class="project-user-tab active" data-loan-panel="loans">Loans</button>
-          <button type="button" class="project-user-tab" data-loan-panel="rebounds">Rebounds</button>
+        <div class="loan-inner-tabs" id="loanInnerTabs" role="tablist" aria-label="Loans Bereich">
+          <button type="button" class="tab-btn active" data-loan-panel="loans" role="tab" aria-selected="true">Loans</button>
+          <button type="button" class="tab-btn" data-loan-panel="rebounds" role="tab" aria-selected="false">Rebounds</button>
         </div>
 
         <div id="loanInnerPanel-loans">
@@ -1101,7 +1101,7 @@
 <script src="./js/price-engine.js"></script>
 <script src="./js/lp-engine.js"></script>
 <script src="./js/staking-engine.js"></script>
-<script src="./projects/tln-vow/tln-vow-loans.js?v=20260913-183105"></script>
+<script src="./projects/tln-vow/tln-vow-loans.js?v=20260913-185305"></script>
 <script src="./projects/tln-vow/tln-vow.js?v=20260912-234200"></script>
 <script src="./projects/dao1/dao1.js?v=20260913-180423"></script>
 
@@ -1109,7 +1109,7 @@
      Kein dynamischer document.write-Loader mehr. -->
 <script src="./admin/ideas.js?v=20260913-183105"></script>
 <script src="./help/help-general.js?v=20260913-183105"></script>
-<script src="./projects/tln-vow/help.js?v=20260913-183105"></script>
+<script src="./projects/tln-vow/help.js?v=20260913-185305"></script>
 <script src="./projects/dao1/help.js?v=20260913-183105"></script>
 <script src="./js/app.js?v=20260913-183105"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20260913-183105"></script>
@@ -1130,6 +1130,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 13.09.2026 18:31:05 CEST · Phase 4.43 · Build 20260913-183105-181616</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 13.09.2026 18:53:05 CEST · Phase 4.43 · Build 20260913-185305-183105-181616</div>
 </body>
 </html>
