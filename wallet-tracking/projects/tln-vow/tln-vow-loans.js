@@ -764,19 +764,28 @@ function renderLoanDiscovery(){
   body.innerHTML=loanRows.length?loanRows.map(rowHtml).join(''):`<tr><td colspan="20">${LOAN_DISCOVERY_LOADING?'Loans werden on-chain geladen …':'Keine Loans entsprechen den Filtern.'}</td></tr>`;
   reboundBody.innerHTML=reboundRows.length?reboundRows.map(rowHtml).join(''):`<tr><td colspan="20">${LOAN_DISCOVERY_LOADING?'Rebound-Optionen werden on-chain geladen …':'Keine TLN Gold Rebound Optionen entsprechen den Filtern.'}</td></tr>`;
   const sumVal=(subset,key)=>subset.reduce((a,r)=>a+(Number(r?.[key])||0),0);
-  const allRows=[...loanRows,...reboundRows];
-  const summary=document.getElementById('loanSummaryRows');
-  if(summary){
+  const summaryRows=(subset,kind)=>{
     const cell=(v,d=2)=>loanNum(v,d);
-    summary.innerHTML=`
-      <tr><td><b>Anzahl Positionen</b></td><td style="text-align:right">${loanRows.length}</td><td style="text-align:right">${reboundRows.length}</td><td style="text-align:right"><b>${allRows.length}</b></td></tr>
-      <tr><td>TLN+ Burn gesamt</td><td style="text-align:right">${cell(sumVal(loanRows,'tlnPlus'),4)}</td><td style="text-align:right">${cell(sumVal(reboundRows,'tlnPlus'),4)}</td><td style="text-align:right"><b>${cell(sumVal(allRows,'tlnPlus'),4)}</b></td></tr>
-      <tr><td>TLN GOLD Burn gesamt</td><td style="text-align:right">${cell(sumVal(loanRows,'tlnGold'),8)}</td><td style="text-align:right">${cell(sumVal(reboundRows,'tlnGold'),8)}</td><td style="text-align:right"><b>${cell(sumVal(allRows,'tlnGold'),8)}</b></td></tr>
-      <tr><td>v$ Loan / Option gesamt</td><td style="text-align:right">${cell(sumVal(loanRows,'vusd'),2)}</td><td style="text-align:right">${cell(sumVal(reboundRows,'vusd'),2)}</td><td style="text-align:right"><b>${cell(sumVal(allRows,'vusd'),2)}</b></td></tr>
-      <tr><td>Principal / Schuld gesamt</td><td style="text-align:right">${cell(sumVal(loanRows,'principal'),2)}</td><td style="text-align:right">${cell(sumVal(reboundRows,'principal'),2)}</td><td style="text-align:right"><b>${cell(sumVal(allRows,'principal'),2)}</b></td></tr>
-      <tr><td>Rückzahlung gesamt</td><td style="text-align:right">${cell(sumVal(loanRows,'repayment'),2)}</td><td style="text-align:right">${cell(sumVal(reboundRows,'repayment'),2)}</td><td style="text-align:right"><b>${cell(sumVal(allRows,'repayment'),2)}</b></td></tr>
-      <tr><td>Zinsen gesamt</td><td style="text-align:right">${cell(sumVal(loanRows,'interest'),2)}</td><td style="text-align:right">${cell(sumVal(reboundRows,'interest'),2)}</td><td style="text-align:right"><b>${cell(sumVal(allRows,'interest'),2)}</b></td></tr>`;
-  }
+    const isRebound=kind==='rebound';
+    const rows=[
+      ['Anzahl Positionen', String(subset.length)],
+      ['TLN+ Burn gesamt', cell(sumVal(subset,'tlnPlus'),4)],
+      ['TLN GOLD Burn gesamt', cell(sumVal(subset,'tlnGold'),8)],
+      ['v$ Loan / Option gesamt', cell(sumVal(subset,'vusd'),2)]
+    ];
+    if(!isRebound){
+      rows.push(
+        ['Principal / Schuld gesamt', cell(sumVal(subset,'principal'),2)],
+        ['Rückzahlung gesamt', cell(sumVal(subset,'repayment'),2)],
+        ['Zinsen gesamt', cell(sumVal(subset,'interest'),2)]
+      );
+    }
+    return rows.map(([label,value],i)=>`<tr><td${i===0?' style="font-weight:700"':''}>${label}</td><td class="loan-num"${i===0?' style="font-weight:700"':''}>${value}</td></tr>`).join('');
+  };
+  const loanSummary=document.getElementById('loanSummaryLoansRows');
+  if(loanSummary)loanSummary.innerHTML=summaryRows(loanRows,'loan');
+  const reboundSummary=document.getElementById('loanSummaryReboundsRows');
+  if(reboundSummary)reboundSummary.innerHTML=summaryRows(reboundRows,'rebound');
 }
 async function discoverLoansOnchain({force=false}={}){
   if(LOAN_DISCOVERY_LOADING)return;
