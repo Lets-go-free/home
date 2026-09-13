@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260914-003545 */
+/* TLN/VOW Loans central engine · Build 20260914-005301 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -260,6 +260,58 @@ function loanApplyRepayments(rows,repayments){
     r.evidence='verified';
   }
 }
+function loanExtendedRelationCandidateIds(receipt,eventId){
+  const current=Number(eventId||0),out=[];
+  for(const l of (receipt?.logs||[])){
+    if(String(l?.topics?.[0]||'').toLowerCase()===LOAN_TRANSFER_TOPIC)continue;
+    for(const w of loanDataWords(l?.data)){
+      if(w<=50n||w>=1000000000n)continue;
+      const n=Number(w);
+      if(!Number.isSafeInteger(n)||n===current||out.includes(n))continue;
+      out.push(n);
+    }
+  }
+  return out;
+}
+async function loanResolveExtendedRelations(rows){
+  const byWalletPosition=new Map();
+  for(const r of rows){
+    const id=Number(r?.eventId||0),wallet=norm(r?.wallet||'');
+    if(wallet&&Number.isSafeInteger(id)&&id>0)byWalletPosition.set(`${wallet}|${id}`,r);
+    delete r.replacedByPositionId;delete r.replacedByDate;
+  }
+  for(const r of rows){
+    if(String(r?.rawType??'').trim()!=='5'&&r?.type!=='TLN Gold Extended')continue;
+    let ids=Array.isArray(r.extendedRelationCandidateIds)?r.extendedRelationCandidateIds.map(Number).filter(Number.isSafeInteger):[];
+    if(!ids.length&&r?.tx){
+      try{const receipt=await loanReceipt(r.tx);ids=loanExtendedRelationCandidateIds(receipt,r.eventId)}catch{}
+      r.extendedRelationCandidateIds=ids;
+    }
+    const matches=ids.map(id=>byWalletPosition.get(`${norm(r.wallet)}|${id}`)).filter(Boolean)
+      .filter(old=>!r.date||!old.date||new Date(old.date)<=new Date(r.date));
+    if(matches.length!==1){
+      r.replacesPositionId=null;r.replacesDate=null;
+      continue;
+    }
+    const old=matches[0];
+    r.replacesPositionId=Number(old.eventId);r.replacesDate=old.date||null;
+    r.link=`Ersetzt Position ${r.replacesPositionId}`;
+    old.replacedByPositionId=Number(r.eventId);old.replacedByDate=r.date||null;
+  }
+}
+function loanOptionCellHtml(r){
+  const parts=[`<b>${esc(r.idLabel)}</b>`];
+  if(r.replacesPositionId){
+    parts.push(`<span class="team-lifecycle-sub">↳ ersetzt #${esc(String(r.replacesPositionId))}</span>`);
+    if(r.replacesDate)parts.push(`<span class="team-lifecycle-sub">Loan vom ${loanDate(r.replacesDate)}</span>`);
+  }
+  if(r.replacedByPositionId){
+    parts.push(`<span class="team-lifecycle-sub">↳ ersetzt durch #${esc(String(r.replacedByPositionId))}</span>`);
+    if(r.replacedByDate)parts.push(`<span class="team-lifecycle-sub">Extended am ${loanDate(r.replacedByDate)}</span>`);
+  }
+  return parts.join('');
+}
+
 async function loanBuildRow(wallet,burns){
   const hash=String(burns?.[0]?.hash||'').toLowerCase();if(!hash)return null;
   const receipt=await loanReceipt(hash);if(!receipt||receipt.status==='0x0')return null;
@@ -316,6 +368,8 @@ async function loanBuildRow(wallet,burns){
     maturityDate:null,repaymentDate:null,
     maturitySource:'offen · Fälligkeit beginnt erst mit v$→VOW-Swap / Marktstart',
     link:'Lifecycle-Verknüpfung noch zu ermitteln',tx:hash,evidence,rawType,rawParams,rawContract,
+    extendedRelationCandidateIds:String(rawType)==='5'?loanExtendedRelationCandidateIds(receipt,eventId):[],
+    replacesPositionId:null,replacesDate:null,replacedByPositionId:null,replacedByDate:null,
     blockNumber:receipt.blockNumber||null,receiptTo:norm(receipt.to||''),transferCount:transfers.length};
 }
 
@@ -837,7 +891,7 @@ function renderLoanDiscovery(){
   const rows=LOAN_DISCOVERY_ROWS.filter(r=>{const day=String(r.date||'').slice(0,10);if(from&&day<from)return false;if(to&&day>to)return false;if(htmin&&(r.tlnPlus==null||r.tlnPlus<tmin))return false;if(htmax&&(r.tlnPlus==null||r.tlnPlus>tmax))return false;if(hgmin&&(r.tlnGold==null||r.tlnGold<gmin))return false;if(hgmax&&(r.tlnGold==null||r.tlnGold>gmax))return false;if(walletFilter!=='all'&&norm(r.wallet)!==walletFilter)return false;if(typ!=='all'&&r.type!==typ)return false;return true;}).sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
   const reboundRows=rows.filter(r=>r.type==='TLN Gold Rebound');
   const loanRows=rows.filter(r=>r.type!=='TLN Gold Rebound');
-  const rowHtml=r=>`<tr><td>${loanDate(r.date)}</td><td><span class="team-lifecycle-name">${esc(projectOwnWalletLabel(r.wallet)||'Wallet')}</span><span class="team-lifecycle-sub mono">${esc(r.wallet)}</span></td><td><b>${esc(r.idLabel)}</b></td><td>${esc(r.type)}</td><td style="text-align:right">${loanNum(r.tlnPlus)}</td><td style="text-align:right">${loanNum(r.tlnGold)}</td><td style="text-align:right">${r.grossMintVusd==null?'–':loanNum(r.grossMintVusd,8)+' v$'}</td><td style="text-align:right">${r.netVusdToWallet==null?'0 v$':loanNum(r.netVusdToWallet,8)+' v$'}</td><td style="text-align:right">${r.principal==null?'–':loanNum(r.principal,8)+' v$'}</td><td style="text-align:right">${r.repayment==null?'–':loanNum(r.repayment,8)+' v$'}</td><td style="text-align:right">${r.interest==null?'–':loanNum(r.interest,8)+' v$'}</td><td style="text-align:right">${r.interestRate==null?'–':loanNum(r.interestRate,4)+' %'}</td><td>${esc(r.interestModel)}</td><td>${esc(r.repaymentSource||'–')}</td><td>${esc(r.collateralSource||'–')}</td><td style="text-align:right">${r.collateralVow==null?'–':loanNum(r.collateralVow,8)+' VOW'}</td><td>${esc(r.collateralStatus||'–')}</td><td>${esc(r.status)}</td><td>${loanDate(r.swapDate)}</td><td>${r.maturityDate?`${loanDate(r.maturityDate)}<span class="team-lifecycle-sub">${esc(r.maturitySource||'')}</span>`:'–'}</td><td>${r.repaymentDate?loanDate(r.repaymentDate):'–'}</td><td>${esc(r.link)}</td><td class="loan-link"><a href="https://bscscan.com/tx/${encodeURIComponent(r.tx)}" target="_blank" rel="noopener">${esc(r.tx.slice(0,10))}…${esc(r.tx.slice(-8))}</a></td><td>${loanEvidence(r.evidence)}</td><td class="loan-raw">${esc(r.rawType)}</td><td class="loan-raw">${esc(r.rawParams)}</td><td class="loan-raw">${esc(r.rawContract)}</td></tr>`;
+  const rowHtml=r=>`<tr><td>${loanDate(r.date)}</td><td><span class="team-lifecycle-name">${esc(projectOwnWalletLabel(r.wallet)||'Wallet')}</span><span class="team-lifecycle-sub mono">${esc(r.wallet)}</span></td><td>${loanOptionCellHtml(r)}</td><td>${esc(r.type)}</td><td style="text-align:right">${loanNum(r.tlnPlus)}</td><td style="text-align:right">${loanNum(r.tlnGold)}</td><td style="text-align:right">${r.grossMintVusd==null?'–':loanNum(r.grossMintVusd,8)+' v$'}</td><td style="text-align:right">${r.netVusdToWallet==null?'0 v$':loanNum(r.netVusdToWallet,8)+' v$'}</td><td style="text-align:right">${r.principal==null?'–':loanNum(r.principal,8)+' v$'}</td><td style="text-align:right">${r.repayment==null?'–':loanNum(r.repayment,8)+' v$'}</td><td style="text-align:right">${r.interest==null?'–':loanNum(r.interest,8)+' v$'}</td><td style="text-align:right">${r.interestRate==null?'–':loanNum(r.interestRate,4)+' %'}</td><td>${esc(r.interestModel)}</td><td>${esc(r.repaymentSource||'–')}</td><td>${esc(r.collateralSource||'–')}</td><td style="text-align:right">${r.collateralVow==null?'–':loanNum(r.collateralVow,8)+' VOW'}</td><td>${esc(r.collateralStatus||'–')}</td><td>${esc(r.status)}</td><td>${loanDate(r.swapDate)}</td><td>${r.maturityDate?`${loanDate(r.maturityDate)}<span class="team-lifecycle-sub">${esc(r.maturitySource||'')}</span>`:'–'}</td><td>${r.repaymentDate?loanDate(r.repaymentDate):'–'}</td><td>${esc(r.link)}</td><td class="loan-link"><a href="https://bscscan.com/tx/${encodeURIComponent(r.tx)}" target="_blank" rel="noopener">${esc(r.tx.slice(0,10))}…${esc(r.tx.slice(-8))}</a></td><td>${loanEvidence(r.evidence)}</td><td class="loan-raw">${esc(r.rawType)}</td><td class="loan-raw">${esc(r.rawParams)}</td><td class="loan-raw">${esc(r.rawContract)}</td></tr>`;
   body.innerHTML=loanRows.length?loanRows.map(rowHtml).join(''):`<tr><td colspan="27">${LOAN_DISCOVERY_LOADING?'Loans werden on-chain geladen …':'Keine Loans entsprechen den Filtern.'}</td></tr>`;
   reboundBody.innerHTML=reboundRows.length?reboundRows.map(rowHtml).join(''):`<tr><td colspan="27">${LOAN_DISCOVERY_LOADING?'Rebound-Optionen werden on-chain geladen …':'Keine TLN Gold Rebound Optionen entsprechen den Filtern.'}</td></tr>`;
   const sumVal=(subset,key)=>subset.reduce((a,r)=>a+(Number(r?.[key])||0),0);
@@ -931,6 +985,7 @@ async function discoverLoansOnchain({force=false}={}){
             catch(e){errors++;log(`Loan-Repay-Discovery ${short(wallet)} ${String(tr?.hash||'').slice(0,12)}: ${e.message||e}`,'warn')}
           }
           loanApplyRepayments(rows,repaymentRows);
+          await loanResolveExtendedRelations(rows);
 
           // Swap-/Fälligkeitsdaten bleiben bewusst offen, bis deren On-Chain-Event/State
           // verifiziert ist. Die Architektur prüft den Lifecycle bei jedem Laden neu.
@@ -1008,5 +1063,5 @@ function initLoanDiscovery(){
     constants:{optionsContract:LOAN_OPTIONS_CONTRACT,vusd:LOAN_VUSD_ADDRESS,boosterByEventValue3:LOAN_BOOSTER_BY_EVENT_VALUE3}
   };
 }
-global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-003545'});
+global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-005301'});
 })(window);

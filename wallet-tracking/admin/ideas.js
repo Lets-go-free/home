@@ -3,8 +3,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260914-000221";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "14.09.2026 00:02:21 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260914-005301";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "14.09.2026 00:53:01 CEST";
 
 const ADMIN_IDEAS = [
   { status: "done", title: "Projekt-Caches nur noch bewusst aktualisieren", desc: `Phase 2am: Die Liquidity-Pool-Tabs von DAO1 und TLN/VOW sind beim Öffnen vollständig cache-only.
@@ -94,7 +94,7 @@ VERIFIZIERTE ZINSREGELN:
 • Event 2 · TLN Plus 0.25x: 18 % fällig bei Rückzahlung; Repay = 118 % Principal.
 • Event 3 · TLN Gold Booster ×2: 18 % fällig bei Rückzahlung; Repay = 118 % Principal.
 • Event 4 · TLN Gold Rebound: kein echter rückzahlbarer Loan; separat darstellen.
-• Event 5 · TLN Gold Extended: keine normale Rückzahlung; gehört in Loans inkl. Extended, nicht in Rebound.
+• Event 5 · TLN Gold Extended: keine normale Rückzahlung; gehört in Loans inkl. Extended, nicht in Rebound. Alt→Neu-Verknüpfung ist verifiziert und umgesetzt: Referenzfall #5722 (24.04.2025) → Extended #32646 (06.09.2026). Die Tabelle zeigt beim neuen Loan die ersetzte Position plus ursprüngliches Loan-Datum und beim alten Loan die neue Extended-Position plus Extended-Datum.
 
 OFFEN / NÄCHSTER SCHRITT: Lifecycle vollständig on-chain bestimmen:
 • Status „Waiting to Swap“ / geswappt
