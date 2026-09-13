@@ -1,7 +1,8 @@
+(() => {
 // WalletTracking · DAO1 Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260913-170644";
-const HELP_MODULE_TIMESTAMP="13.09.2026 17:06:44 CEST";
+const HELP_MODULE_BUILD="20260913-180715";
+const HELP_MODULE_TIMESTAMP="13.09.2026 18:07:15 CEST";
 function renderDAO1Help(){
   const el=document.getElementById("dao1HelpContent");
   if(!el)return;
@@ -18,3 +19,4 @@ function renderDAO1Help(){
 window.renderDAO1Help=renderDAO1Help;
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>renderDAO1Help(),{once:true});
 else renderDAO1Help();
+})();

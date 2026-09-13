@@ -1,7 +1,8 @@
+(() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260913-170644";
-const HELP_MODULE_TIMESTAMP="13.09.2026 17:06:44 CEST";
+const HELP_MODULE_BUILD="20260913-180715";
+const HELP_MODULE_TIMESTAMP="13.09.2026 18:07:15 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;
@@ -35,3 +36,4 @@ function renderGeneralHelp(){
 window.renderGeneralHelp=renderGeneralHelp;
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>renderGeneralHelp(),{once:true});
 else renderGeneralHelp();
+})();
