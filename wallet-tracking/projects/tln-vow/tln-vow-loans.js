@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260913-181616 */
+/* TLN/VOW Loans central engine · Build 20260914-003545 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -25,6 +25,7 @@ let LOAN_DISCOVERY_ROWS=[];
 let LOAN_DISCOVERY_LOADING=false;
 let LOAN_DISCOVERY_LOADED=false;
 const LOAN_RECEIPT_CACHE=new Map();
+const LOAN_TX_CACHE=new Map();
 const LOAN_META_CACHE=new Map();
 const LOAN_CACHE_KEY='loan-openings-lifecycle';
 const LOAN_CACHE_VERSION='loan-engine-v3-cashflow-collateral';
@@ -726,6 +727,45 @@ async function loanDiagTxDate(receipt,transfer){
   }
   return d;
 }
+async function loanDiagTransaction(hash){
+  const h=String(hash||'').toLowerCase();if(!h)return null;if(LOAN_TX_CACHE.has(h))return LOAN_TX_CACHE.get(h);
+  const tx=await rpc('eth_getTransactionByHash',[h]);LOAN_TX_CACHE.set(h,tx||null);return tx||null;
+}
+function loanDiagInputWords(input){
+  const h=String(input||'').replace(/^0x/,'');if(h.length<=8)return [];
+  const payload=h.slice(8),out=[];for(let i=0;i+64<=payload.length;i+=64){try{out.push(BigInt('0x'+payload.slice(i,i+64)))}catch{}}return out;
+}
+function loanDiagSmallPositionCandidates(tx,receipt,currentPosition){
+  const cur=BigInt(currentPosition);const hits=[];
+  const add=(value,source)=>{try{const n=BigInt(value);if(n===cur||n<=50n||n>=1000000000n)return;hits.push({n,source})}catch{}};
+  loanDiagInputWords(tx?.input).forEach((n,i)=>add(n,`Tx-Input Wort ${i+1}`));
+  for(const [logIndex,l] of (receipt?.logs||[]).entries()){
+    if(String(l?.topics?.[0]||'').toLowerCase()===LOAN_TRANSFER_TOPIC)continue;
+    loanDataWords(l?.data).forEach((n,i)=>add(n,`Log ${logIndex} Data-Wort ${i+1}`));
+    (l?.topics||[]).slice(1).forEach((t,i)=>{try{add(BigInt(t),`Log ${logIndex} Topic ${i+1}`)}catch{}});
+  }
+  const seen=new Set();return hits.filter(x=>{const k=x.n.toString();if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>Number(a.n-b.n));
+}
+function loanDiagTxDetailsHtml(tx,receipt,currentPosition){
+  if(!tx&&!receipt)return '<div class="warn">Transaktionsdetails nicht verfügbar.</div>';
+  const input=String(tx?.input||'0x'),selector=input.length>=10?input.slice(0,10):'–',inputWords=loanDiagInputWords(input);
+  const candidateRows=loanDiagSmallPositionCandidates(tx,receipt,currentPosition).map(x=>`<tr><td><b>${loanDiagEsc(x.n.toString())}</b></td><td>${loanDiagEsc(x.source)}</td></tr>`).join('');
+  const logRows=(receipt?.logs||[]).map((l,logIndex)=>{
+    if(String(l?.topics?.[0]||'').toLowerCase()===LOAN_TRANSFER_TOPIC)return '';
+    const words=loanDataWords(l?.data),topics=(l?.topics||[]).map((t,i)=>`t${i}=${t}`).join(' | ');
+    return `<tr><td>${logIndex}</td><td class="loan-link">${loanDiagEsc(norm(l?.address||''))}</td><td class="loan-raw">${loanDiagEsc(topics||'–')}</td><td class="loan-raw">${loanDiagEsc(words.length?words.map((w,i)=>`w${i+1}=${w.toString()}`).join(' | '):String(l?.data||'–'))}</td></tr>`;
+  }).filter(Boolean).join('');
+  return `<details open style="margin-top:10px"><summary><b>Typ-5-Diagnose · Tx-Input + Non-Transfer-Events</b></summary>
+    <div class="muted" style="margin:8px 0">Gesucht wird insbesondere eine zweite kleine Positionsnummer neben der neuen Position ${loanDiagEsc(currentPosition.toString())}. Keine automatische Alt→Neu-Zuordnung ohne eindeutigen Beleg.</div>
+    <div class="wrap"><table class="project-data-table" style="min-width:900px"><tbody>
+      <tr><th>Tx von</th><td class="loan-link">${loanDiagEsc(norm(tx?.from||''))}</td></tr><tr><th>Tx an</th><td class="loan-link">${loanDiagEsc(norm(tx?.to||''))}</td></tr>
+      <tr><th>Function Selector</th><td class="loan-raw">${loanDiagEsc(selector)}</td></tr><tr><th>Input-Wörter dezimal</th><td class="loan-raw">${loanDiagEsc(inputWords.length?inputWords.map((w,i)=>`w${i+1}=${w.toString()}`).join(' | '):'–')}</td></tr>
+      <tr><th>Tx-Input roh</th><td class="loan-raw">${loanDiagEsc(input)}</td></tr>
+    </tbody></table></div>
+    <div style="margin-top:10px"><b>Mögliche weitere Positionsnummern</b></div><div class="wrap"><table class="project-data-table" style="min-width:520px"><thead><tr><th>Wert</th><th>Fundstelle</th></tr></thead><tbody>${candidateRows||'<tr><td colspan="2">Keine weitere kleine Ganzzahl &gt; 50 und &lt; 1 Mrd. gefunden.</td></tr>'}</tbody></table></div>
+    <div style="margin-top:10px"><b>Alle Non-Transfer-Events der Transaktion</b></div><div class="wrap"><table class="project-data-table" style="min-width:1250px"><thead><tr><th>Log</th><th>Contract</th><th>Topics</th><th>Data / Wörter dezimal</th></tr></thead><tbody>${logRows||'<tr><td colspan="4">Keine Non-Transfer-Events gefunden.</td></tr>'}</tbody></table></div>
+  </details>`;
+}
 async function loanSearchPositionBackwards(){
   const wallet=norm(document.getElementById('loanDiagWallet')?.value||'');
   let position;
@@ -760,8 +800,13 @@ async function loanSearchPositionBackwards(){
         const booster=LOAN_BOOSTER_BY_EVENT_VALUE3[ev3]||'–';
         rows.push(`<tr><td>${loanDate(date)}</td><td><a target="_blank" href="https://bscscan.com/tx/${hit.hash}">${short(hit.hash)}</a></td><td>${ev.logIndex}</td><td class="loan-link">${loanDiagEsc(ev.address)}</td><td class="loan-raw">${loanDiagEsc(ev.words.map(x=>x.toString()).join(' | '))}</td><td>${loanDiagEsc(ev3||'–')}</td><td>${loanDiagEsc(booster)}</td></tr>`);
       }
-      out.innerHTML=`<div class="ok"><b>${direct.length} direkter Treffer</b> für Referenz ${position.toString()}.</div><div class="wrap" style="margin-top:8px"><table class="project-data-table"><thead><tr><th>Datum</th><th>Tx</th><th>Log</th><th>Event-Contract</th><th>Data-Werte dezimal</th><th>Event-Wert 3</th><th>Booster</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
-      loanDiagSetState(`Fertig: ${direct.length} direkter Treffer in ${byHash.size} möglichen Eröffnungs-Txs.`, 'ok');
+      const detailHtml=[];
+      for(const hit of direct){
+        const tx=await loanDiagTransaction(hit.hash).catch(()=>null);
+        detailHtml.push(loanDiagTxDetailsHtml(tx,hit.receipt,position));
+      }
+      out.innerHTML=`<div class="ok"><b>${direct.length} direkter Treffer</b> für Referenz ${position.toString()}.</div><div class="wrap" style="margin-top:8px"><table class="project-data-table"><thead><tr><th>Datum</th><th>Tx</th><th>Log</th><th>Event-Contract</th><th>Data-Werte dezimal</th><th>Event-Wert 3</th><th>Booster</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>${detailHtml.join('')}`;
+      loanDiagSetState(`Fertig: ${direct.length} direkter Treffer · Tx-Input und Non-Transfer-Events eingeblendet.`, 'ok');
     }else{
       const rows=candidates.slice(0,40).map(c=>{
         const ev=c.event,ev3=ev.words.length>=3?ev.words[2].toString():'',booster=LOAN_BOOSTER_BY_EVENT_VALUE3[ev3]||'–';
@@ -963,5 +1008,5 @@ function initLoanDiscovery(){
     constants:{optionsContract:LOAN_OPTIONS_CONTRACT,vusd:LOAN_VUSD_ADDRESS,boosterByEventValue3:LOAN_BOOSTER_BY_EVENT_VALUE3}
   };
 }
-global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260913-150133'});
+global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-003545'});
 })(window);
