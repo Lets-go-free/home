@@ -1,6 +1,22 @@
-/* TLN/VOW Discovery shared engine · Build 20260912-202105 */
+/* TLN/VOW Discovery shared engine · Build 20260913-150133 */
 (()=>{
-const BUILD_ID='20260912-202105';
+const BUILD_ID='20260913-150133';
+
+let loanEngine=null;
+function initCentralLoanEngine(){
+  if(loanEngine)return loanEngine;
+  if(!window.TLNVOWLoanEngine)throw new Error('Zentraler TLN/VOW Loan-Engine fehlt.');
+  loanEngine=window.TLNVOWLoanEngine.create({
+    ethers,rpc,alchemy,norm,esc,short,tokenMeta,log,
+    projectOwnWalletLabel,
+    getWallets:()=>tlnWallets||[],
+    getProjectRows:()=>allProjectRows||[],
+    hasAlchemy:()=>!!alchemyBase,
+    loadCache:loadTechnicalProcessCache,
+    saveCache:saveTechnicalProcessCache
+  });
+  return loanEngine;
+}
 
 // Reine UI-Formatierung: technische Token-decimals und Rechenwerte bleiben unverändert.
 function displayTokenAmount(value,symbol,options={}){
@@ -174,7 +190,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='12.09.2026 20:21:05 CEST';
+const APP_VERSION='13.09.2026 15:01:33 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11078,9 +11094,11 @@ function switchProjectUserTab(name){
   document.querySelectorAll('.project-user-panel').forEach(panel=>panel.classList.toggle('active',panel.id===`projectPanel-${key}`));
   renderProjectUserView();
   if(key==='admin')void renderProjectAdminContractRegistry();
+  if(key==='loans')void initCentralLoanEngine().discover();
 }
 function setupProjectUserTabs(){
   document.querySelectorAll('.project-user-tab').forEach(btn=>btn.addEventListener('click',()=>switchProjectUserTab(btn.dataset.projectPanel)));
+  initCentralLoanEngine().init();
   const move=(id,mountId)=>{const el=$(id),mount=$(mountId);if(el&&mount&&!mount.contains(el))mount.appendChild(el)};
   move('runningStakingsCard','projectStakingsMount');
   move('valuationLifecycleCard','projectStakingsMount');
@@ -17243,6 +17261,8 @@ window.TLNVOWDiscovery={
   switchProjectUserTab,
   renderProjectUserView,
   renderProjectAdminContractRegistry,
+  getLoanRows:()=>loanEngine?.getRows?.()||[],
+  refreshLoans:()=>initCentralLoanEngine().discover({force:false}),
   getBuildId:()=>BUILD_ID,
   getVersion:()=>APP_VERSION
 };

@@ -163,3 +163,17 @@ body.admin-user .tln-admin-only { display:inline-block !important; }
 #tlnvowDiscoveryHost .productive-zone { border:0; padding:0; margin:0; background:transparent; }
 #tlnvowDiscoveryHost .productive-zone > .card { border:0; padding:0; background:transparent; }
 #tlnvowDiscoveryHost #projectUserView > .card > h2,#tlnvowDiscoveryHost #projectUserView > .card > .project-user-intro { display:none; }
+
+
+/* Loans · zentrale produktive Tabelle */
+.loan-filter-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;align-items:end;margin:12px 0}
+.loan-filter-grid label{font-size:12px;color:var(--muted,#9ba7b7)}
+.loan-filter-grid input,.loan-filter-grid select{margin-top:4px;width:100%}
+.loan-summary{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 12px}
+.loan-summary .metric{min-width:150px}
+.loan-evidence-ok{color:#22c55e;font-weight:700}
+.loan-evidence-likely{color:#d97706;font-weight:700}
+.loan-evidence-open{color:#dc2626;font-weight:700}
+.loan-raw,.loan-link{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;white-space:nowrap}
+.loan-position-diag{border:1px solid var(--border,#394354);border-radius:10px;padding:8px 10px}
+.loan-position-diag summary{cursor:pointer}
