@@ -1,0 +1,411 @@
+// WalletTracking · Ideen / Umbau
+// Zentrale Arbeits- und Übergabeliste.
+// Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
+// Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
+
+const ADMIN_IDEAS_MODULE_BUILD = "20260913-170644";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "13.09.2026 17:06:44 CEST";
+
+const ADMIN_IDEAS = [
+  { status: "done", title: "Projekt-Caches nur noch bewusst aktualisieren", desc: `Phase 2am: Die Liquidity-Pool-Tabs von DAO1 und TLN/VOW sind beim Öffnen vollständig cache-only.
+
+• Button „Daten aktualisieren“ erscheint sofort.
+• Beim Öffnen werden nur lp_position_cache und lp_history_events aus Supabase gelesen.
+• Keine versteckte Blocksuche, pairInfo/getReserves/balanceOf- oder Preisabfrage.
+• Erst „Daten aktualisieren“ liest Blockchain/Explorer und ersetzt danach den Positions-Cache.
+• DAO1 → Transaktionen & Claims bleibt ebenfalls manuell über „Daten aktualisieren“.
+• Dadurch entstehen beim Navigieren zwischen Projekt-Tabs keine unnötigen Blockchain-Scans.` },
+  { status: "done", title: "Discovery-Metadaten + Solana-Default", desc: "Phase 2ag: Alle discovery_enabled Chains sind beim Öffnen standardmäßig aktiviert, inklusive Solana. Historisch gefundene EVM-/Apertum-Token laden Symbol, Name und Decimals direkt vom Contract und cachen die Metadaten lokal." },
+  { status: "done", title: "Apertum Kurse vollständig on-chain", desc: `Phase 2al: Im Tab Vordefinierte Token gilt für die komplette Apertum-Chain ausschließlich On-Chain-Bewertung; die Preisermittlung verwendet dieselbe wAPTM/wUSDT-Referenz wie DAO1 und erkennt Wrapped-Tokens auch dann korrekt, wenn in predefined_tokens nur das Label statt eines separaten symbol-Felds gepflegt ist.
+
+• Nativer APTM wird 1:1 über wAPTM/wUSDT bewertet.
+• wUSDT/wUSDC werden als 1 USD behandelt.
+• Weitere Token nutzen direkt TOKEN/wUSDT oder TOKEN/wAPTM → wUSDT.
+• archive_rpc_url ist optional; falls leer, wird wie im DB-Schema vorgesehen rpc_url verwendet.
+• CoinGecko/GeckoTerminal werden für Apertum nicht als Fallback verwendet.` },
+  { status: "in_progress", title: "TLN/VOW Liquidity Pools nach Chain getrennt", desc: `BSC/PCLP ist funktional integriert und wird aktuell inklusive Historie und Staking weiter gehärtet. Ethereum (ETH/LP) ist funktional noch nicht vollständig umgesetzt und bleibt ausdrücklich OFFEN.
+
+Ziel: ETH-Liquidity-Pools analog zu BSC vollständig integrieren – LP-Erkennung, aktuelle Positionen, historische Werte und Cache. Die sichtbare ETH-Unterseite allein gilt nicht als erledigte ETH-Integration.` },
+  { status: "done", title: "LP/PCLP-Historie und Positionen persistent cachen", desc: "Phase 2af speichert Add/Remove, LP-Delta, laufenden LP-Saldo, Underlyings und historische USD-Werte in lp_history_events. Seit Phase 2am speichert lp_position_cache zusätzlich den zuletzt bewusst aktualisierten aktuellen LP/PCLP-Bestand inklusive Underlyings, Pool-Anteil, USD-Wert und 31.12.-Vergleichsstand. Beim Öffnen der Projekt-Tabs werden ausschließlich diese Supabase-Caches gelesen." },
+  {
+    status: "in_progress",
+    title: "Konfiguration aus HTML nach Supabase verlagern",
+    desc: "Umbau gestartet 26.08.2026. HAUPTTEIL ERLEDIGT, ABER NACH AUDIT NOCH NICHT GANZ ABSCHLIESSEN: public.chains ist Single Source of Truth für Chain-Stammdaten sowie Balance-, Gebühren-, Discovery-, Approval- und NFT-Provider/API-Konfiguration. predefined_tokens enthält Token-Metadaten und Preis-Zuordnung. loadAll() ist dynamisch; die früheren Chain-Maps für Fees/RPC/Alchemy/GoPlus sind entfernt. AUDIT 26.08.2026: DeFi-/DEX-Struktur umgesetzt: TLN/VOW ist nun als erstes generisches DeFi-Projekt modelliert; VOW-Referenz-Contracts liegen in defi_project_tokens, PancakeSwap-/Uniswap-Factorys in dex_configs und RPCs werden aus public.chains wiederverwendet. Die bestehenden Werte werden durch das Migrations-SQL automatisch übernommen. Strenger Audit läuft weiter: Chain-Farben wurden aus CSS nach public.chains.display_color verschoben; Wallet-EVM-Hinweis und Custom-Token-Chain-Auswahl sind jetzt DB-dynamisch. Noch offen: Routescan-URL-Fallback entfernen, Tron-Decimallogik bereinigen und die TLN/VOW-Spezial-UI langfristig zur generischen DeFi-Projektansicht machen. SOLANA-ABDECKUNG: Entdecken ist jetzt ohne Alchemy über getTokenAccountsByOwner umgesetzt; klassisches SPL Token Program und Token-2022 werden berücksichtigt. Der normale Solana-Wallet-Load liefert dabei auch die Tokenbestände, sodass als sicher hinzugefügte Solana-Mints im Wallet-Tracking nutzbar sind. Globale App-/Service-Konfigurationen wie Supabase-Projekt, CoinGecko/GeckoTerminal/GoPlus, CDN-URLs, revoke.cash und IPFS-Gateway sind keine Chain-Stammdaten und müssen nicht zwingend in public.chains. Credentials/Keys (Alchemy, PublicNode, NodeReal) gehören ausdrücklich NICHT in eine normale öffentliche DB-Tabelle."
+  },
+  {
+    status: "in_progress",
+    title: "Hardcoding-Audit / Restbereinigung",
+    desc: "Audit gestartet 26.08.2026. PRIORITÄT A – umgesetzt: generische Tabellen defi_projects, defi_project_tokens und dex_configs; TLN/VOW/VOW-Referenzen und PancakeSwap-/Uniswap-Factorys werden per Migration übernommen, RPCs kommen aus CHAIN_CONFIG. Admin-Masken DeFi-Projekte und DEX sind vorhanden. Routescan-Funktion hat noch einen hartcodierten API-URL-Fallback; entfernen, sodass fehlendes fee_api_base als Konfigurationsfehler sichtbar wird. PRIORITÄT B – fachlich prüfen: TRON_TOKEN_DECIMALS_DEFAULT=6 wird aktuell pauschal auf TRC20 angewendet; besser decimals aus predefined_tokens/Token-Metadaten verwenden. NodeReal-BSC-URL enthält den Key direkt; PublicNode- und Alchemy-Keys stehen ebenfalls im Frontend. Das ist derzeit bewusst so, sollte bei späterer Secret-/Proxy-Lösung separat behandelt werden und NICHT in public.chains landen. PRIORITÄT C – bewusst im HTML belassen: Supabase-App-URL/Publishable-Key, CDN-Bibliotheken, globale CoinGecko-/GeckoTerminal-/GoPlus-Endpunkte, revoke.cash-Link, IPFS-Gateway, Redirect-URL sowie UI-spezifische Spenden-Auswahl. NÄCHSTE SCHRITTE: (1) DEX/TLN-VOW-Infrastruktur-Tabelle definieren; (2) TLN/VOW-Modul auf CHAIN_CONFIG + neue Tabelle umstellen; (3) Routescan-Fallback entfernen; (4) Tron-Decimallogik korrigieren; (5) danach erneut automatisierten URL/Contract-/Chain-Literal-Scan durchführen und diesen Punkt auf DONE setzen."
+  },
+  {
+    status: "in_progress",
+    title: "Chat-Benachrichtigungen",
+    desc: "Umgesetzt im Frontend/DB-Modell: read_at für Nachrichten, Ungelesen-Badge für User und Admin, ungelesene Anzahl je User in der Admin-Konversationsauswahl und serverseitige E-Mail-Sperrlogik. Regel: erste neue Nachricht löst eine E-Mail aus; weitere Nachrichten derselben Seite lösen keine weitere Mail aus, bis der Empfänger geantwortet hat. Danach ist die nächste neue Nachricht wieder mailberechtigt. E-Mail enthält keinen Nachrichtentext, aber den direkten Link https://www.letsgofree.me/wallet-tracking. Für den tatsächlichen Versand wird die Supabase Edge Function chat-notify mit einem serverseitigen Resend-Key verwendet; RESEND_API_KEY und CHAT_FROM_EMAIL müssen als Supabase Secrets gesetzt werden."
+  },
+  {
+    status: "open",
+    title: "Alchemy vollständig auf öffentliche Datenquellen reduzieren",
+    desc: "ZIEL: Alchemy nur noch als optionalen Fallback verwenden oder ganz entfernen, ohne Funktionen oder Datenqualität zu verlieren. Gebühren sind bereits ohne Alchemy umgesetzt. Verbleibende Alchemy-Nutzung betrifft vor allem manuelle Spezialfunktionen wie Entdecken/Token-Discovery, Approvals auf einzelnen EVM-Chains und NFTs. VORGEHEN PRO FUNKTION UND CHAIN: (1) aktuellen Alchemy-Aufruf und benötigte Daten exakt inventarisieren; (2) Blockscout API v2, Routescan, öffentliche RPCs und ggf. weitere kostenlose Explorer/API-Angebote praktisch testen; (3) bei Historien immer Pagination, alte/große Wallets, Rate-Limits, CORS und Vollständigkeit prüfen – ein grundsätzlich antwortender Endpoint reicht nicht; (4) Approvals bevorzugt aus Explorer-Transaktionen/Logs ermitteln und den heutigen allowance(owner,spender) per öffentlichem RPC verifizieren, wie bereits für Apertum umgesetzt; (5) Token-Discovery über Explorer-Tokenlisten/Transfers statt alchemy_getAssetTransfers prüfen; (6) NFTs über Blockscout/Routescan bzw. geeignete kostenlose Indexer prüfen, inklusive ERC-721/ERC-1155, Metadaten, Pagination und Spam-Erkennung; (7) Provider-Auswahl weiterhin ausschließlich über public.chains steuern, keine neuen Chain-URL-Maps im HTML; (8) Alchemy erst pro Chain/Funktion deaktivieren, wenn die Alternative mit realen Wallets validiert ist. ERFOLGSKRITERIUM: normale Wallet-Bestände und Gebühren bleiben Alchemy-frei; Discovery/Approvals/NFT möglichst ebenfalls öffentlich, Alchemy höchstens Fallback. Bereits bekannte Ausgangslage: Gebühren ETH/Avalanche Routescan, BSC NodeReal, Polygon/Arbitrum/Base Blockscout; Apertum-Approvals Blockscout + RPC allowance. Die frühere Gebühren-Recherche hat außerdem gezeigt, dass große/alte Wallets und vollständige Pagination ausdrücklich Teil der Validierung sein müssen."
+  },
+  { status: "done", title: "Bestandesaufnahme per 31.12", desc: "Exakte historische Stichtagsbestände mit persistentem Supabase-Snapshot, Preis-Refresh, Excel/PDF, Chain-Coverage und PDF-Summary nach Chain. EVM/BTC/XRP/Solana sind historisch angebunden; Tron/Akash bleiben bis zu einer belastbaren exakten historischen Quelle ausdrücklich als nicht unterstützt markiert." },
+  { status: "open", title: "Gewinn/Verlust statt nur Bestand", desc: "Einstandspreis-Feld bzw. Transaktions-/Kostenbasis-Konzept definieren, um Performance (Plus/Minus, %) statt nur heutigen Bestand zu zeigen." },
+  { status: "clarifying", title: "Staking-Anzeige / gestakte LP-Positionen", desc: "Gestakte LP-Token liegen im Staking-/Farm-Contract und nicht im Wallet. Für TLN/VOW wurden einzelne Contracts/Pools bereits untersucht; für eine allgemeine Anzeige fehlt noch ein belastbares Modell pro Staking-Contract (Contract-Adresse, Stake-/Unstake-Events bzw. View-Funktionen, LP-Zuordnung)." },
+  { status: "done", title: "TLN/VOW- und v-Währungs-Preislogik", desc: "On-chain umgesetzt: v_currency über direkten v/VOW-Pool und VOW/USDT; tln_vow_token bevorzugt TOKEN/VOW→VOW/USDT, sonst TOKEN/USDT; VOW selbst direkt VOW/USDT. Zuordnung erfolgt über Contract-Adressen und Supabase-Kategorien." },
+  { status: "done", category: "Security & Privacy", title: "Private Walletdaten & Partner-Aliase verschlüsseln", desc: "Umgesetzt: Konzept „Maximale Bequemlichkeit“ ohne Passwort/Recovery-Code für User. Private Walletdaten und Partner-Aliase werden userbezogen verschlüsselt gespeichert; Partnernamen liegen in user_team_aliases_private. Öffentlicher Supabase-Key allein reicht nicht zur Entschlüsselung." },
+  {
+    status: "open",
+    title: "Automatische Snapshots: ereignisbasiert + monatlicher Hintergrund-Job",
+    desc: `Keine 7-Tage-Regel.
+
+Beim normalen Seitenaufruf soll ein automatischer Snapshot nur bei einer wirklich relevanten Bestands-/Wertänderung entstehen, z. B. neuer/entfernter Token oder deutliche Veränderung des Gesamtwerts. Die konkrete Schwelle wird vor Umsetzung festgelegt.
+
+Zusätzlich soll ein monatlicher Hintergrund-Job serverseitig einen Monats-Snapshot erstellen, auch wenn der User die Seite in diesem Monat nicht öffnet. Ziel: einmal pro Monat ein verlässlicher Stand ohne Benutzeraktion.
+
+Hinweis an den User:
+• Bei ereignisbasiertem Snapshot direkt ein Popup mit Grund anzeigen.
+• Bei einem durch den Hintergrund-Job erstellten Monats-Snapshot beim nächsten Login informieren, z. B. „Am 31.07.2026 wurde automatisch ein Monats-Snapshot erstellt.“
+
+Der bestehende spezielle Bestand per 31.12. bleibt davon unabhängig.`
+  },
+  { status: "done", title: "Wachhalte-Mechanismus gegen Supabase-Inaktivitäts-Pause", desc: "GitHub Actions Workflow pingt Supabase regelmäßig extern an." },
+  { status: "done", title: "Netzwerkgebühren ohne Alchemy", desc: "Gebührenprovider migriert: Ethereum Routescan, BSC NodeReal, Polygon/Arbitrum/Base Blockscout, Avalanche Routescan; Apertum/XRP/Solana über eigene kostenlose Quellen. Supabase-Cache + inkrementelle Aktualisierung; alle 30-Tage-Sperren gelten nur für Nicht-Admins. Historische USD-Bewertung bewusst als spätere Phase offen." },
+  { status: "open", title: "Historischer USD-Wert der Netzwerkgebühren", desc: "Phase 2 der Gebührenanzeige. Native Gebühren sind vorhanden; gesucht wird noch eine praktikable historische Preisquelle über mehr als 365 Tage für ETH, BNB, POL, AVAX usw. CoinGecko Public API reicht dafür nicht." },
+  { status: "done", title: "Token-Approval-Checker", desc: "Zeigt aktive/unlimitierte Freigaben; Revoke läuft extern über revoke.cash (bewusst rein lesend)." },
+  { status: "done", title: "Portfolio-Allokation als Grafik", desc: "Kreisdiagramm nach Chain/Token, Total oder je Wallet." },
+  { status: "open", title: "Token-Kursverlauf als Chart", desc: "Im Token-Summary pro Token ein kleines Grafik-Symbol ergänzen. Klick darauf öffnet einen Kursverlauf als Linienchart, z.B. 7 Tage / 30 Tage / 1 Jahr / Max. Für native Coins kann die historische Preisquelle über die CoinGecko-ID der Chain laufen; für ERC-20/BEP-20/etc. über die in predefined_tokens hinterlegte coingecko_id oder alternativ eine DEX-basierte Historie. Vor Umsetzung historische Datenquelle und Free-API-Limits prüfen: CoinGecko Public ist für ältere historische Daten aktuell begrenzt, daher ggf. zweite Quelle oder eigener täglicher Preis-Cache in Supabase. Ziel: Chart ohne erneute HTML-Anpassung für jeden Token, vollständig über die DB-Metadaten gesteuert." },
+  { status: "done", title: "NFT-Anzeige", desc: "NFTs je Wallet/Chain inkl. Spam-Verdacht und Supabase-Cache." },
+  { status: "done", title: "Willkommen + Hilfe + Krypto-Unterstützung", desc: "Willkommensdialog für neue und bestehende User mit 'Nicht mehr anzeigen', aktualisierte Hilfe sowie Unterstützen-Dialog mit USDT/USDC auf Ethereum/BSC/Polygon und QR-Code." },
+  { status: "done", title: "Akash Network", desc: "Akash-Wallet-Adresse, native AKT-Balance und aktueller AKT-Kurs integriert. Akash-Gebühren sind noch nicht Bestandteil des Gebührenmoduls." },
+  { status: "reverted", title: "Automatischer Scam-Hinweis beim Login", desc: "War umgesetzt und wurde wieder entfernt, weil die damaligen API-Abfragen das Tageskontingent stark belasteten. Manueller Entdecken-Tab bleibt der Ersatz." },
+  { status: "open", title: "CSV-Export der aktuellen Bestände", desc: "Export für eigene Excel-/Steuer-Auswertungen." },
+  { status: "open", title: "Mehrsprachigkeit (DE/FR/IT/EN)", desc: "Für einen breiteren Nutzerkreis." },
+  { status: "open", title: "Als installierbare Mobile-App (PWA)", desc: "Homescreen-Installation und app-artige Nutzung." }
+  ,
+  {
+    status: "in_progress",
+    category: "Projekt TLN/VOW",
+    priority: "critical",
+    title: "TLN/VOW Loans · Lifecycle vollständig on-chain",
+    desc: `ZIEL / STAND: Die zentrale Loan-Engine wird von Discovery und Hauptseite gemeinsam verwendet; keine zweite fachliche Erkennungslogik anlegen. Die bekannten Event-Werte 0–5 und die vier echten Loan-Zinsmodelle 0–3 sind on-chain verifiziert.
+
+VERIFIZIERTE ZINSREGELN:
+• Event 0 · TLN Gold Booster ×4: 18 % bei Eröffnung vorausbezahlt; Repay = 100 % Principal. End-to-End-Beispiel #7281: 272 TLN GOLD Burn → 1'088 v$ Principal → 195.84 v$ Vorauszins → später 1'088 v$ Repay.
+• Event 1 · TLN Plus 2x: 18 % bei Eröffnung vorausbezahlt; Repay = 100 % Principal. Beispiel #844: 1'000 TLN Burn → 2'000 v$ Principal → 360 v$ Vorauszins → später 2'000 v$ Repay.
+• Event 2 · TLN Plus 0.25x: 18 % fällig bei Rückzahlung; Repay = 118 % Principal.
+• Event 3 · TLN Gold Booster ×2: 18 % fällig bei Rückzahlung; Repay = 118 % Principal.
+• Event 4 · TLN Gold Rebound: kein echter rückzahlbarer Loan; separat darstellen.
+• Event 5 · TLN Gold Extended: keine normale Rückzahlung; gehört in Loans inkl. Extended, nicht in Rebound.
+
+OFFEN / NÄCHSTER SCHRITT: Lifecycle vollständig on-chain bestimmen:
+• Status „Waiting to Swap“ / geswappt
+• tatsächliches Swap-Datum v$ → VOW
+• Ablauf-/Fälligkeitsdatum des Vertrags
+• effektives Rückzahlungsdatum separat vom Ablaufdatum
+• mögliche Karenzfrist verifizieren
+• Rückzahlung/Abschluss positionsgenau zuordnen
+
+CACHE-REGEL: Immutable Eröffnungsdaten persistent cachen. Veränderliche Lifecycle-Felder (Status, Waiting-to-Swap, Swap, Fälligkeit, Rückzahlung) bei jedem relevanten Refresh neu prüfen; Cache darf neue On-Chain-Informationen niemals verdecken.
+
+TABELLENREGEL: Zins immer als 18 % zeigen und zusätzlich „Zinsmodell“ (im Voraus bezahlt / fällig bei Rückzahlung) sowie Principal, Zinsbetrag und Rückzahlung gesamt getrennt darstellen. Nicht aus einem Repay von 100 % fälschlich „0 % Zins“ ableiten.`
+  },
+  {
+    status: "open",
+    category: "Projekt TLN/VOW",
+    priority: "high",
+    title: "Unbekannte Loan-/Booster-Typen automatisch zur Prüfung melden",
+    desc: `ZIEL: Neue Loan-/Booster-Varianten dürfen nie still fehlen. Die zentrale Loan-Engine muss unbekannte Event-Werte, neue Contract-/Event-Strukturen oder nicht passende Mengen-/Zinsmodelle erkennen.
+
+VERHALTEN:
+• Position trotzdem in der Übersicht anzeigen, auch wenn Angaben unvollständig sind.
+• Status „zu prüfen“ setzen; niemals unbekannte Typen als bekannten Typ raten.
+• relevante Rohdaten/Tx/Event-Contract/Log-Index für Diagnose speichern.
+• Admin in der Anwendung informieren und E-Mail an Chris auslösen.
+• identische unbekannte Varianten deduplizieren, damit keine Meldungsflut entsteht.
+• nach gemeinsamer On-Chain-Verifikation den neuen Typ zentral registrieren; Discovery und Hauptseite übernehmen ihn automatisch.
+
+ARCHITEKTUR: Keine typabhängige Parallel-Logik in Tabellen/UI. Typ/Klassifikation muss aus der zentralen Loan-Erkennung kommen.`
+  },
+  {
+    status: "open",
+    category: "Projekt TLN/VOW",
+    priority: "medium",
+    title: "TLN/VOW Ethereum-Historie 2023 ergänzen",
+    desc: "Historische TLN/VOW-Stakings und Rewards aus der Ethereum-Phase vor BSC vollständig in Discovery und Hauptseite integrieren."
+  },
+  {
+    status: "open",
+    category: "Projekt TLN/VOW",
+    priority: "medium",
+    title: "TLN-Team-Baum um LP/QLP-Status erweitern",
+    desc: "Pro Partner im TLN-Team-Baum den Status LP / QLP / kein Status on-chain ermitteln und sichtbar machen, sofern die Contract-Logik belastbar identifiziert ist."
+  },
+  {
+    status: "open",
+    category: "Projekt TLN/VOW",
+    priority: "medium",
+    title: "Lending-Bereich ergänzen",
+    desc: "Nach Abschluss des Loan-Bereichs Lending fachlich definieren: On-Chain-Erkennung, Positionen, Zinsen/Rewards, Status, Datenmodell, Cache und Darstellung."
+  },
+  {
+    status: "open",
+    category: "Projekt DAO1",
+    priority: "high",
+    title: "DAO1 Team-Baum bis 20 Ebenen",
+    desc: `ZIEL: Im DAO1-Projekt einen Team-Baum der eigenen Partner bis maximal 20 Ebenen tief darstellen.
+
+ANZEIGE PRO PARTNER:
+• Partner/Wallet bzw. vorhandene DAO1-Identität
+• Ebene im Team
+• sichtbar kennzeichnen, ob eine DAO1-Mitgliedschaft vorhanden ist
+• Mitgliedschaft wird über einen eigenen Membership-NFT-Typ erkannt, nicht aus TLN-Daten abgeleitet
+• Klick auf „Details“ zeigt die NFTs dieses Partners; vorhandene NFT-Klassifikation (z. B. Mining-Bot, DID, Trading-Bot, Membership) wiederverwenden
+
+REFERENZ: UI, Auf-/Zuklappen, Navigation und Detailidee können vom bestehenden TLN-Team-Baum übernommen werden. Die Datenquelle, Partnerbeziehungen und Membership-/NFT-Erkennung müssen jedoch DAO1-/Apertum-spezifisch sein.
+
+OFFEN VOR IMPLEMENTIERUNG: DAO1-On-Chain-Datenquelle für Parent/Referral-Beziehung und eindeutigen Membership-NFT-Contract/Typ verifizieren. Danach Cache-/Persistenzstrategie für bis zu 20 Ebenen festlegen.`
+  },
+  {
+    status: "open",
+    category: "Projekt DAO1",
+    priority: "high",
+    title: "DAO1 Abschluss-Plausibilitätscheck",
+    desc: "Claims, Referral Rewards, NFT-Zuordnung, Token-Anzahlen und historische USD-Summen nochmals mit bekannten Kontrollfällen plausibilisieren, bevor DAO1 als fachlich abgeschlossen gilt."
+  },
+  {
+    status: "open",
+    category: "UI/UX",
+    priority: "medium",
+    title: "Sticky Tabellen-Header zentral einführen",
+    desc: "ZIEL: Bei langen Tabellen bleibt die Kopfzeile beim vertikalen Scrollen sichtbar (sticky header). Zentral im allgemeinen Tabellen-CSS lösen, nicht tabweise. Bestehende globale Tabellenregel beibehalten: Wenn Spalten horizontal nicht lesbar passen, nicht zusammendrücken/abschneiden, sondern horizontalen Scrollbereich verwenden. Sticky Header muss auch innerhalb dieses Scrollcontainers korrekt funktionieren."
+  },
+  {
+    status: "open",
+    category: "Caching & Daten",
+    priority: "high",
+    title: "Zentrale Cache-/Schema-Versionierung pro Job",
+    desc: "ZIEL: Zentrale Cache-/Schema-Versionierung je Datenjob statt verstreuter Einzelregeln. Fachliche Änderung → betroffene Cache-Version erhöhen → veraltete Daten erkennen → wenn möglich migrieren/reklassifizieren, sonst gezielt neu aufbauen. Nicht blind alle Caches löschen. WICHTIG: Lifecycle-Daten, deren Zustand sich on-chain ändern kann, benötigen zusätzlich einen inkrementellen Refresh und dürfen nicht allein wegen gültiger Cache-Version als aktuell gelten. Diese Regel ist besonders für TLN/VOW Loans (Waiting-to-Swap, Fälligkeit, Repay) relevant."
+  },
+  {
+    status: "open",
+    category: "Security & Privacy",
+    priority: "high",
+    title: "Wallet vollständig löschen / Alle Daten löschen",
+    desc: "Wallet-Löschung mit Bestätigung und vollständigem Purge aller walletbezogenen DB-/Cache-Daten. Zusätzlich userweite Funktion „Alle Daten löschen“ vorsehen."
+  },
+  {
+    status: "done",
+    category: "Projekt TLN/VOW",
+    title: "Loans · zentrale Engine für Discovery und Hauptseite",
+    desc: "Erkennungs-, Typ-, Zins- und Repayment-Logik zentralisiert. Discovery und Hauptseite verwenden dieselbe Loan-Engine; keine doppelte fachliche Implementierung."
+  },
+  {
+    status: "done",
+    category: "UI/UX",
+    title: "Token-Anzeige-Kommastellen zentral konfigurierbar",
+    desc: "Technische Decimals und Anzeige-/Summary-Kommastellen sind getrennt. Anzeigepräzision kann zentral über die Token-Stammdaten gesteuert werden, inklusive Native Coins."
+  },
+  {
+    status: "done",
+    category: "Security & Privacy",
+    title: "Vordefinierte Token · User read-only / Admin bearbeitbar",
+    desc: "Normale User sehen nur Chain, Token, Adresse und Kurs (USD); Bearbeitung und technische Spalten sind Admin-only. DB-seitige RLS-Härtung für predefined_tokens ist als Migration vorgesehen/geprüft."
+  }
+
+  ,
+  {
+    status: "in_progress",
+    category: "Plattform & Allgemein",
+    priority: "high",
+    title: "Hilfe & Projektdokumentation laufend aktuell halten",
+    desc: `DAUERREGEL: Funktionale Änderungen sind nicht abgeschlossen, solange die passende Hilfe veraltet ist.
+• Allgemeine Funktionen gehören in „❓ Hilfe / Handbuch“.
+• Projektspezifische Bedienung, Fachlogik, Statusmodelle, Cache-/Refresh-Regeln und Besonderheiten gehören in den eigenen Hilfe-Tab des jeweiligen Projekts (z. B. TLN/VOW, DAO1).
+• Bei neuen/änderten Tabs, Statusregeln oder fachlichen Modellen die Hilfe im selben Änderungspaket mitpflegen.
+• Keine projektspezifischen Detailregeln doppelt in der allgemeinen Hilfe dokumentieren; dort nur auf den Projekt-Hilfe-Tab verweisen.`
+  }
+];
+
+const ADMIN_IDEA_STATUS_META = {
+  open: { label: "Offen", color: "#9aa0ac" },
+  in_progress: { label: "In Umsetzung", color: "#3b82f6" },
+  clarifying: { label: "In Abklärung", color: "#f0b90b" },
+  done: { label: "Umgesetzt", color: "#46c878" },
+  reverted: { label: "Umgesetzt, dann zurückgebaut", color: "var(--danger)" },
+  paused: { label: "Pausiert", color: "#8247e5" }
+};
+
+const ADMIN_IDEA_CATEGORY_ORDER = [
+  "Projekt TLN/VOW",
+  "Projekt DAO1",
+  "Caching & Daten",
+  "UI/UX",
+  "Security & Privacy",
+  "Architektur & Infrastruktur",
+  "Blockchain & Provider",
+  "Analyse & Export",
+  "Chat & Support",
+  "Plattform & Allgemein"
+];
+
+let adminIdeasFilterState = { category: "all", status: "all", priority: "all", search: "", showDone: false };
+
+const ADMIN_IDEA_PRIORITY_META = {
+  critical: { label: "Sehr hoch", rank: 0, color: "var(--danger)" },
+  high: { label: "Hoch", rank: 1, color: "#f59e0b" },
+  medium: { label: "Mittel", rank: 2, color: "#3b82f6" },
+  low: { label: "Niedrig", rank: 3, color: "#9aa0ac" }
+};
+
+function adminIdeaPriority(idea){
+  if(idea?.priority && ADMIN_IDEA_PRIORITY_META[idea.priority])return idea.priority;
+  if(idea?.status==="in_progress")return "high";
+  if(idea?.status==="clarifying")return "high";
+  if(idea?.status==="open")return "medium";
+  return "low";
+}
+
+function adminIdeaCategory(idea){
+  if(idea?.category)return idea.category;
+  const t=`${idea?.title||""} ${idea?.desc||""}`.toLowerCase();
+  if(/dao1|apertum/.test(t))return "Projekt DAO1";
+  if(/tln\/vow|staking|v-währung|vow\b|liquidity pools nach chain/.test(t))return "Projekt TLN/VOW";
+  if(/cache|snapshot|datenversion|historie persistent|schema-version/.test(t))return "Caching & Daten";
+  if(/verschlüssel|privacy|security|rls|wallet-bezeichnung/.test(t))return "Security & Privacy";
+  if(/hardcoding|konfiguration aus html|supabase|architektur|secret|proxy/.test(t))return "Architektur & Infrastruktur";
+  if(/alchemy|netzwerkgebühr|akasha?|chain|rpc|provider/.test(t))return "Blockchain & Provider";
+  if(/export|gewinn\/verlust|allokation|chart|kursverlauf|csv|pdf|excel/.test(t))return "Analyse & Export";
+  if(/chat|benachrichtigung|support/.test(t))return "Chat & Support";
+  if(/mehrsprach|pwa|willkommen|hilfe|mobile/.test(t))return "Plattform & Allgemein";
+  if(/nft|tabelle|anzeige|ui|layout/.test(t))return "UI/UX";
+  return "Plattform & Allgemein";
+}
+
+function setAdminIdeasFilter(key,value){
+  if(!(key in adminIdeasFilterState))return;
+  adminIdeasFilterState[key]=String(value??"");
+  renderAdminIdeas();
+}
+
+function renderAdminIdeas() {
+  const el = document.getElementById("adminIdeasList");
+  if(!el)return;
+
+  const configDiag = chainConfigStatus.source === "Supabase public.chains"
+    ? `<div class="custom-token-card" style="margin-bottom:12px;border-color:var(--safe)">
+        <strong>⚙️ Chain-Konfiguration: Supabase ✓</strong>
+        <div class="meta">${chainConfigStatus.count} aktive Chains aus <code>public.chains</code> geladen · ${chainConfigStatus.loadedAt ? new Date(chainConfigStatus.loadedAt).toLocaleString("de-CH") : "–"}</div>
+        <div class="meta">HTML-Fallback für Chain-Metadaten: <strong>entfernt</strong></div>
+      </div>`
+    : `<div class="custom-token-card" style="margin-bottom:12px;border-color:var(--danger)">
+        <strong>⚙️ Chain-Konfiguration: ${escapeAttr(chainConfigStatus.source)}</strong>
+      </div>`;
+
+  const rows = ADMIN_IDEAS.map((idea,index)=>({...idea,_index:index,_category:adminIdeaCategory(idea),_priority:adminIdeaPriority(idea)}));
+  const categories=[...new Set(rows.map(x=>x._category))].sort((a,b)=>{
+    const ai=ADMIN_IDEA_CATEGORY_ORDER.indexOf(a),bi=ADMIN_IDEA_CATEGORY_ORDER.indexOf(b);
+    return (ai<0?999:ai)-(bi<0?999:bi)||a.localeCompare(b,"de");
+  });
+
+  const statusValue=adminIdeasFilterState.status||"all";
+  const categoryValue=adminIdeasFilterState.category||"all";
+  const priorityValue=adminIdeasFilterState.priority||"all";
+  const showDone=!!adminIdeasFilterState.showDone;
+  const search=String(adminIdeasFilterState.search||"").trim().toLowerCase();
+
+  const visible=rows.filter(idea=>{
+    if(!showDone&&["done","reverted"].includes(idea.status))return false;
+    if(categoryValue!=="all"&&idea._category!==categoryValue)return false;
+    if(priorityValue!=="all"&&idea._priority!==priorityValue)return false;
+    if(statusValue==="active"&&!["open","in_progress","clarifying","paused"].includes(idea.status))return false;
+    if(statusValue!=="all"&&statusValue!=="active"&&idea.status!==statusValue)return false;
+    if(search&&!`${idea.title} ${idea.desc} ${idea._category}`.toLowerCase().includes(search))return false;
+    return true;
+  });
+
+  const statusOrder={in_progress:0,clarifying:1,open:2,paused:3,done:4,reverted:5};
+  visible.sort((a,b)=>(ADMIN_IDEA_PRIORITY_META[a._priority]?.rank??99)-(ADMIN_IDEA_PRIORITY_META[b._priority]?.rank??99)||(statusOrder[a.status]??99)-(statusOrder[b.status]??99)||a.title.localeCompare(b.title,"de"));
+
+  const countStatus=(status)=>rows.filter(x=>x.status===status).length;
+  const activeCount=rows.filter(x=>["open","in_progress","clarifying","paused"].includes(x.status)).length;
+
+  const controls=`
+    <div class="custom-token-card" style="margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;align-items:end">
+        <label><span class="field-label">Kategorie</span>
+          <select onchange="setAdminIdeasFilter('category',this.value)">
+            <option value="all"${categoryValue==="all"?" selected":""}>Alle Kategorien</option>
+            ${categories.map(c=>`<option value="${escapeAttr(c)}"${categoryValue===c?" selected":""}>${escapeAttr(c)}</option>`).join("")}
+          </select>
+        </label>
+        <label><span class="field-label">Status</span>
+          <select onchange="setAdminIdeasFilter('status',this.value)">
+            <option value="all"${statusValue==="all"?" selected":""}>Alle offenen Status</option>
+            <option value="active"${statusValue==="active"?" selected":""}>Aktiv / offen</option>
+            ${Object.entries(ADMIN_IDEA_STATUS_META)
+              .filter(([key])=>showDone||!["done","reverted"].includes(key))
+              .map(([key,m])=>`<option value="${key}"${statusValue===key?" selected":""}>${escapeAttr(m.label)}</option>`).join("")}
+          </select>
+        </label>
+        <label><span class="field-label">Wichtigkeit</span>
+          <select onchange="setAdminIdeasFilter('priority',this.value)">
+            <option value="all"${priorityValue==="all"?" selected":""}>Alle Wichtigkeiten</option>
+            ${Object.entries(ADMIN_IDEA_PRIORITY_META).map(([key,m])=>`<option value="${key}"${priorityValue===key?" selected":""}>${escapeAttr(m.label)}</option>`).join("")}
+          </select>
+        </label>
+        <label><span class="field-label">Suche</span>
+          <input type="search" value="${escapeAttr(adminIdeasFilterState.search||"")}" placeholder="Titel, Beschreibung …"
+            oninput="setAdminIdeasFilter('search',this.value)">
+        </label>
+      </div>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:12px">
+        <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
+          <input type="checkbox" ${showDone?"checked":""} onchange="setAdminIdeasFilter('showDone',this.checked)">
+          <span><strong>Erledigte anzeigen</strong> <span class="meta">(${countStatus("done")} umgesetzt${countStatus("reverted")?` · ${countStatus("reverted")} zurückgebaut`:""})</span></span>
+        </label>
+        <button class="secondary" onclick="adminIdeasFilterState={category:'all',status:'all',priority:'all',search:'',showDone:false};renderAdminIdeas()">Filter zurücksetzen</button>
+      </div>
+    </div>`;
+
+  const summary=`
+    <div class="summary" style="margin-bottom:14px">
+      <div class="metric">Gesamt<b>${rows.length}</b></div>
+      <div class="metric">Aktiv / offen<b>${activeCount}</b></div>
+      <div class="metric">In Umsetzung<b>${countStatus("in_progress")}</b></div>
+      <div class="metric">Umgesetzt<b>${countStatus("done")}</b></div>
+      <div class="metric">Gefiltert<b>${visible.length}</b></div>
+    </div>`;
+
+  const groups=categories.map(category=>{
+    const items=visible.filter(x=>x._category===category);
+    if(!items.length)return "";
+    return `
+      <div style="margin:18px 0 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <h3 style="margin:0">${escapeAttr(category)}</h3>
+        <span class="badge">${items.length}</span>
+      </div>
+      ${items.map(idea=>{
+        const sm=ADMIN_IDEA_STATUS_META[idea.status]||{label:idea.status||"–",color:"#9aa0ac"};
+        const isDone=idea.status==="done";
+        return `<div class="custom-token-card" style="margin-bottom:10px;border-left:4px solid ${sm.color}">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
+            <div style="min-width:220px;flex:1">
+              <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+                <strong>${escapeAttr(idea.title)}</strong>
+                <span class="badge" style="background:${sm.color}22;color:${sm.color}">${escapeAttr(sm.label)}</span>
+                ${(()=>{const pm=ADMIN_IDEA_PRIORITY_META[idea._priority]||ADMIN_IDEA_PRIORITY_META.low;return `<span class="badge" style="background:${pm.color}18;color:${pm.color}">Wichtigkeit: ${escapeAttr(pm.label)}</span>`;})()}
+                <span class="badge" style="background:rgba(148,163,184,.12);color:var(--muted)">${escapeAttr(idea._category)}</span>
+              </div>
+              <div class="meta idea-desc" style="margin-top:7px;white-space:pre-line;line-height:1.45">${escapeAttr(idea.desc)}</div>
+            </div>
+          </div>
+        </div>`;
+      }).join("")}`;
+  }).join("");
+
+  el.innerHTML=configDiag+controls+summary+(groups||`<div class="empty">Keine Ideen/TODOs entsprechen den gewählten Filtern.</div>`);
+}
+
+
+window.renderAdminIdeas = renderAdminIdeas;
+window.setAdminIdeasFilter = setAdminIdeasFilter;
+window.adminIdeasFilterState = adminIdeasFilterState;

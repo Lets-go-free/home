@@ -1,0 +1,26 @@
+// WalletTracking · TLN/VOW Hilfe
+// Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
+const HELP_MODULE_BUILD="20260913-170644";
+const HELP_MODULE_TIMESTAMP="13.09.2026 17:06:44 CEST";
+function renderTlnVowHelp(){
+  const el=document.getElementById("tlnVowHelpContent");
+  if(!el)return;
+  el.innerHTML=`<div class="custom-token-card"><h3 style="margin-top:0">TLN/VOW · Hilfe</h3><p class="note">Diese Hilfe beschreibt ausschließlich die TLN/VOW-Projektlogik. Die allgemeine Bedienung von WalletTracking, Wallets, Preisen, Gebühren, NFTs und Stichtagen steht unter „❓ Hilfe / Handbuch“.</p></div>
+
+        <div class="custom-token-card"><h3 style="margin-top:0">Übersicht &amp; Wallet-Filter</h3><p class="note">Standardmäßig werden alle gespeicherten TLN/VOW-Wallets aggregiert. Über den Wallet-Filter kann auf eine einzelne Wallet eingeschränkt werden. Tabellen und Summaries folgen demselben Filter. Partner-Aliase im Team sind user-spezifisch und verschlüsselt gespeichert.</p></div>
+
+        <div class="custom-token-card"><h3 style="margin-top:0">Kurse &amp; Pools</h3><p class="note">Aktuelle TLN/VOW-Kurse werden über die zentral hinterlegten Projekt-Token und DEX-Pools bestimmt. v-Währungen werden über ihre vorgesehenen VOW-/USD-Pfade bewertet; VOW wird über seine USD-Referenz bewertet. Der zentrale Button „Preise aktualisieren“ in der Token-Übersicht aktualisiert die aktuellen Kurse und USD-Werte. Dadurch werden Discovery, Stakings, Rewards, Loans, Team oder historische Stichtage nicht automatisch neu gescannt.</p></div>
+
+        <div class="custom-token-card"><h3 style="margin-top:0">Staking / Rewards</h3><p class="note">Staking-Positionen werden positionsbezogen rekonstruiert. Angezeigt werden – soweit on-chain verifizierbar – Stake-Datum, Laufzeit/Ende, Unstake, Top-ups, LP-/Asset-Zuordnung und zugehörige Rewards. Normale Staking-Rewards, Referral Rewards und Bonus-Rewards werden bewusst getrennt geführt. Ein finaler Reward in einer verifizierten Unstake-Tx kann der Position zugeordnet werden, wenn der Reward im selben Receipt eindeutig als Mint an die Wallet erscheint.</p></div>
+
+        <div class="custom-token-card"><h3 style="margin-top:0">Loans</h3><p class="note">Die Loan-Erkennung ist zentral implementiert und wird von Hauptseite und Discovery gemeinsam verwendet. Bekannte Eröffnungsdaten werden persistent gecacht; veränderliche Lifecycle-Daten werden bei relevanten Aktualisierungen erneut on-chain geprüft. Deshalb können Felder wie „Waiting to Swap“, Swap-Datum, Fälligkeit oder Rückzahlungsdatum zunächst offen bleiben, bis ihre On-Chain-Quelle eindeutig erkannt ist.</p><div class="wrap project-data-table" style="margin-top:10px"><table style="min-width:980px"><thead><tr><th>Event-Wert 3</th><th>Typ</th><th>Zins</th><th>Zinsmodell</th><th>Rückzahlung</th></tr></thead><tbody><tr><td>0</td><td>TLN Gold Booster ×4</td><td>18 %</td><td>im Voraus bezahlt</td><td>100 % Principal</td></tr><tr><td>1</td><td>TLN Plus 2x</td><td>18 %</td><td>im Voraus bezahlt</td><td>100 % Principal</td></tr><tr><td>2</td><td>TLN Plus 0.25x</td><td>18 %</td><td>fällig bei Rückzahlung</td><td>118 % Principal</td></tr><tr><td>3</td><td>TLN Gold Booster ×2</td><td>18 %</td><td>fällig bei Rückzahlung</td><td>118 % Principal</td></tr><tr><td>4</td><td>TLN Gold Rebound</td><td>–</td><td>keine normale Loan-Rückzahlung</td><td>separat geführt</td></tr><tr><td>5</td><td>TLN Gold Extended</td><td>–</td><td>keine normale Loan-Rückzahlung</td><td>als Extended geführt</td></tr></tbody></table></div><p class="note" style="margin-top:10px">Bei allen echten Loan-Typen 0–3 beträgt der wirtschaftliche Zins 18 %. Ein Repay von 100 % Principal bedeutet bei vorausbezahlten Modellen nicht „0 % Zins“. Unbekannte Loan-/Booster-Typen sollen sichtbar bleiben und nicht als bekannte Variante geraten werden.</p></div>
+
+        <div class="custom-token-card"><h3 style="margin-top:0">Team</h3><p class="note">Der TLN-Team-Baum wird über die TLN-/SmartNode-Beziehungen aufgebaut und kann über alle eigenen TLN/VOW-Wallets aggregiert werden. Eigene Partnernamen/Aliase werden userbezogen verschlüsselt gespeichert. Technische Diagnose-/DEV-Werkzeuge bleiben normalen Benutzern verborgen.</p></div>
+
+        <div class="custom-token-card"><h3 style="margin-top:0">Caching &amp; Aktualisierung</h3><p class="note">Große historische Datenmengen werden persistent und inkrementell gecacht. Bereits bestätigte Historie soll nicht bei jedem Tab-Wechsel neu geladen werden. Gleichzeitig gilt: Ein Cache darf veränderliche Zustände nicht einfrieren. Bei Loans, offenen Stakings und anderen Lifecycle-Daten werden relevante Statusänderungen weiterhin nachgeprüft.</p></div>
+
+        <div class="custom-token-card"><h3 style="margin-top:0">Admin / Diagnose</h3><p class="note">Unbekannte Contracts, Assets oder Loan-Typen werden nicht still verworfen. Sie sollen als „zu prüfen“ sichtbar bleiben und nach Verifikation zentral registriert werden. Admin-/DEV-Diagnosewerkzeuge dienen der On-Chain-Verifikation und sind nicht Teil der normalen Benutzeroberfläche.</p></div>`;
+}
+window.renderTlnVowHelp=renderTlnVowHelp;
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>renderTlnVowHelp(),{once:true});
+else renderTlnVowHelp();

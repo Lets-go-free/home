@@ -263,7 +263,9 @@ window.DAO1Project = (() => {
           <div id="dao1PriceJobMetrics" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:8px" class="meta">Noch kein historischer Preisjob in dieser Sitzung.</div>
           <textarea id="dao1PriceJobLog" readonly spellcheck="false" style="width:100%;min-height:260px;max-height:420px;resize:vertical;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.45;background:var(--card,#111);color:inherit;border:1px solid rgba(128,128,128,.25);border-radius:8px;padding:10px;box-sizing:border-box">Bereit.</textarea>
         </div><div id="dao1TransactionSummary" style="margin-top:10px"></div><div id="dao1TransactionTable" style="margin-top:10px"></div></div></div>
-        <div id="dao1-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">DAO1 / Apertum · Hilfe</h3><p class="note"><strong>Liquidity Pools:</strong> Beim Öffnen werden ausschließlich die zuletzt gespeicherten Supabase-Daten angezeigt. Aktuelle LP-Positionen, 31.12.-Vergleich und Add-/Remove-Historie werden nur über „Daten aktualisieren“ neu von Blockchain/Explorer ermittelt und danach wieder gecached.</p><p class="note"><strong>Transaktionen &amp; Bot-Claims:</strong> „Daten aktualisieren“ synchronisiert neue Transaktionen, Claims, historische APTM-Kurse sowie NFT-Bestand und Besitzerhistorie. Filter und Exporte arbeiten danach aus dem gespeicherten Bestand.</p><p class="note"><strong>Konfiguration:</strong> Hier werden DAO1-Projektassets und NFTs klassifiziert. Die Klassifizierung steuert Filter und Bezeichnungen, nicht die Erkennung der Blockchain-Transaktionen. Fehlende historische APTM-Kurse können manuell ergänzt werden und bleiben als manuell gekennzeichnet.</p></div></div>
+        <div id="dao1-subtab-help" class="project-subtab-panel" style="display:none">
+          <div id="dao1HelpContent"><div class="status"><span class="loading">DAO1-Hilfe wird geladen…</span></div></div>
+        </div>
       `;
       app.appendChild(panel);
     }
@@ -282,6 +284,8 @@ window.DAO1Project = (() => {
     // refreshTransactionHistory(false) aus. Dadurch war "Alle Apertum-Wallets" initial leer.
     if(name==="transactions"){
       await refreshTransactionHistory(false);
+    }else if(name==="help"){
+      if(typeof window.renderDAO1Help==="function")window.renderDAO1Help();
     }else if(name==="claims" || name==="referrals"){
       const wallets=allProjectWalletOptions();
       transactionRows=await loadAllApertumTransactionRows(wallets,null);

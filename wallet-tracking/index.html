@@ -6,7 +6,7 @@
 <title>Token-Übersicht Wallets</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><text y=%2250%22 x=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2252%22>💼</text></svg>">
 <link rel="stylesheet" href="./css/wallet-tracking.css?v=20260912-175619-layout-v65-table-overflow">
-<link rel="stylesheet" href="./projects/tln-vow/tln-vow-discovery.css?v=20260913-152301">
+<link rel="stylesheet" href="./projects/tln-vow/tln-vow-discovery.css?v=20260913-170644">
 
 
 </head>
@@ -573,8 +573,11 @@
       <div id="admintab-ideas" class="admin-tab-panel">
         <div class="section-title">💡 Ideen / Umbau</div>
         <div class="note" style="margin-bottom:14px">
-          Zentrale Ideen-, Umbau- und TODO-Liste für WalletTracking. Hier sollen projektübergreifende sowie TLN/VOW- und DAO1-spezifische Punkte gesammelt werden.
-          Über Kategorie und Status kann die Liste gefiltert werden; umgesetzte Punkte bleiben als Historie sichtbar.
+          <strong>Zentrale Arbeits- und Übergabeliste für WalletTracking.</strong>
+          Dieser Tab ist die verbindliche Quelle für offene Arbeiten, fachliche Regeln, verifizierte Erkenntnisse, Abhängigkeiten und nächste Schritte.
+          Vor einem neuen Chat soll kein separates Übergabe-Summary mehr nötig sein: Änderungen am Projektstand werden hier laufend nachgeführt.
+          Ein offener Punkt soll deshalb genügend Kontext enthalten, damit er ohne Wissen aus einem früheren Chat fortgesetzt werden kann.
+          Erledigte Punkte bleiben als Projekthistorie erhalten, sind standardmäßig aber ausgeblendet.
         </div>
         <div id="adminIdeasList"></div>
       </div>
@@ -587,18 +590,7 @@
     </div>
 
     <div id="tab-help" class="tab-panel">
-      <div class="section-title">❓ Hilfe / Handbuch</div>
-      <div class="custom-token-card">
-        <h3 style="margin-top:0">Schnellstart</h3>
-        <p class="note"><strong>1.</strong> Unter „Meine Wallets“ die eigenen Adressen erfassen und speichern. <strong>2.</strong> In der Token-Übersicht „Daten aktualisieren“ verwenden. <strong>3.</strong> Unbekannte Token bei Bedarf über „Entdecken“ prüfen und als eigene sichere Token übernehmen. <strong>4.</strong> Für einen Jahresabschluss „Bestandesaufnahme per 31.12“ öffnen, Stichtag und Wallet(s) wählen und „Neu berechnen“ starten. Bereits gespeicherte Jahresstände werden später ohne Blockchain-Abfragen geladen.</p>
-      </div>
-      <div class="custom-token-card"><h3 style="margin-top:0">📊 Wallet-Tracking</h3><p class="note">Zeigt native Coins und freigegebene sichere Token über deine gespeicherten Wallets. Beim Login erscheint zuerst der Cache. Automatisch wird höchstens einmal pro Kalendertag live aktualisiert; danach erfolgt jede weitere Aktualisierung manuell über „Daten aktualisieren“. LP/PCLP werden als V2-Paare erkannt und mit Underlyings, Pool-Anteil und USD-Wert dargestellt. Bei TLN/VOW auf BSC zählen auch offene Staking-Positionen zum wirtschaftlichen LP-Bestand; in der Token-Übersicht wird der gestakte Anteil separat ausgewiesen. Snapshots dienen der laufenden Portfolio-Historie; die „Bestandesaufnahme per 31.12“ ist dagegen eine exakte historische Stichtagsabfrage.</p></div>
-      <div class="custom-token-card"><h3 style="margin-top:0">🧾 Bestandesaufnahme per 31.12</h3><p class="note">Wähle Datum, Zeitzone und eine Wallet oder „Alle Wallets“. „Neu berechnen“ liest historische Blockchain-Zustände und speichert das Ergebnis dauerhaft. „Nur Kurse aktualisieren“ lässt bereits verifizierte Bestände unverändert. Positionen ohne historischen Kurs bleiben sichtbar und werden nicht in USD-Summen eingerechnet. Gestakte TLN/VOW-PCLP auf BSC werden anhand der gecachten Stake-/Unstake-Historie zum Stichtagsbestand hinzugerechnet. PDF und Excel dokumentieren Quellen und Abdeckung.</p></div>
-      <div class="custom-token-card"><h3 style="margin-top:0">💸 Gebühren · 🖼️ NFTs · 🔓 Freigaben</h3><p class="note">Gebühren werden je Wallet gecacht und nur gezielt aktualisiert. NFTs werden über den zentralen Startseiten-Refresh geladen; Spam-Markierungen können manuell korrigiert werden. Freigaben zeigen aktive Token-Approvals rein lesend an; ein Widerruf erfolgt extern mit der eigenen Wallet.</p></div>
-      <div class="custom-token-card"><h3 style="margin-top:0">⚙️ Verwaltung</h3><p class="note"><strong>Meine Wallets:</strong> Adressen speichern. <strong>Vordefinierte Token:</strong> globale sichere Tokenliste. <strong>Eigene sichere Token:</strong> persönliche Ergänzungen. <strong>Entdecken:</strong> sucht auch in der Transferhistorie nach früher gehaltenen Token und LP/PCLP, selbst wenn der heutige Bestand 0 ist. Änderungen an Wallets oder sicheren Token wirken sich auf nachfolgende Live-Abfragen aus.</p></div>
-      <div class="custom-token-card"><h3 style="margin-top:0">📋 Chain-Abdeckung</h3><p class="note">Die Tabelle zeigt, welche Funktionen pro Chain technisch vorgesehen sind. „Bestand per 31.12.“ beschreibt die historische Stichtags-Unterstützung; der konkrete Lauf weist zusätzlich aus, ob eine einzelne Abfrage erfolgreich war.</p><div id="helpChainCoverage"></div></div>
-      <div class="custom-token-card"><h3 style="margin-top:0">🏦 Projekte</h3><p class="note">Projektspezifische Bedienung und Fachlogik stehen bewusst nicht in diesem allgemeinen Handbuch. Öffne das jeweilige DeFi-Projekt und dort den Unter-Tab „Hilfe“. Projekte dürfen eigene Unter-Tabs für Übersicht, Transaktionen, Konfiguration und Hilfe besitzen.</p></div>
-      <div class="custom-token-card"><h3 style="margin-top:0">💬 Support</h3><p class="note">Wenn Daten fehlen oder eine Abfrage fehlschlägt, sende über den Chat möglichst Chain, Wallet-Bezeichnung, Funktion und die sichtbare Fehlermeldung. Private Keys oder Seed-Phrases gehören niemals in den Chat.</p></div>
+      <div id="generalHelpContent"><div class="status"><span class="loading">Hilfe wird geladen…</span></div></div>
     </div>
 
     <div id="tab-tlnvow" class="tab-panel">
@@ -612,7 +604,7 @@
         <button class="tab-btn" onclick="openTlnDiscoveryTab('bonus',this)">Bonus-Rewards</button>
         <button class="tab-btn" onclick="openTlnDiscoveryTab('team',this)">Team</button>
         <button class="tab-btn tln-admin-only" onclick="openTlnDiscoveryTab('admin',this)">Admin · Contracts</button>
-        <button class="tab-btn" onclick="switchProjectSubtab('tlnvow','help',this)">Hilfe</button>
+        <button class="tab-btn" onclick="switchProjectSubtab('tlnvow','help',this); if(window.renderTlnVowHelp)window.renderTlnVowHelp()">Hilfe</button>
         <button class="tab-btn" onclick="switchProjectSubtab('tlnvow','liquidity',this); showTlnLpChain('bsc',document.getElementById('tlnLpBscBtn'))">Liquidity Pools_old</button>
       </div>
       <div id="tlnvow-subtab-overview" class="project-subtab-panel" style="display:none">
@@ -981,7 +973,9 @@
 </div><!-- /analysisDetailsZone -->
         </div>
       </div>
-      <div id="tlnvow-subtab-help" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><h3 style="margin-top:0">TLN/VOW · Hilfe</h3><p class="note">Diese Projektansicht bewertet TLN/VOW-Assets direkt über die hinterlegten DEX-Pools. v-Währungen werden über TOKEN → VOW → USDT bewertet. TLN/VOW-Projekttoken verwenden TOKEN/VOW und als Fallback TOKEN/USDT. V2-LP-Token werden aus den Reserven beider Pool-Assets und der LP-TotalSupply bewertet. Der Legacy-Tab „Liquidity Pools_old“ trennt BNB Smart Chain (BSC/PCLP) und Ethereum (ETH/LP) in zwei Unter-Tabs. Der aktuelle Preis-/Poolstand wird zentral zusammen mit den übrigen aktuellen Preisen der Hauptseite verwaltet. Existiert für den heutigen Kalendertag noch kein Preisstand, wird er einmal aktualisiert und gespeichert. Der zentrale Button „Preise aktualisieren“ in der Token-Übersicht erneuert alle aktuellen Kurse einschließlich TLN/VOW, LP-Bewertungen und USD-Werte; Discovery, Stakings, Rewards, Team und historische Stichtage bleiben unverändert. LP-/Staking-Werte werden nach erfolgreichem Projekt-Refresh auch in die Token-Übersicht übernommen. Für die Bestandesaufnahme per 31.12 werden dieselben Regeln mit dem historischen Blockzustand verwendet.</p><p class="note">Wenn ein Projektpreis fehlt, zuerst prüfen, ob Token/LP in der Projekt-Konfiguration korrekt klassifiziert und der benötigte DEX/Pool aktiv ist. Die allgemeine Bedienung des Wallet-Trackings steht unter „Hilfe / Handbuch“.</p></div></div>
+      <div id="tlnvow-subtab-help" class="project-subtab-panel" style="display:none">
+        <div id="tlnVowHelpContent"><div class="status"><span class="loading">TLN/VOW-Hilfe wird geladen…</span></div></div>
+      </div>
       <div id="tlnvow-subtab-liquidity" class="project-subtab-panel" style="display:none">
         <div class="project-subtabs" style="margin:10px 0 14px">
           <button id="tlnLpBscBtn" class="tab-btn active" onclick="showTlnLpChain('bsc',this)">BNB Smart Chain (BSC)</button>
@@ -1032,7 +1026,7 @@
   </div>
 
   <footer>
-    Version vom 13.09.2026 15:23:01 CEST · Phase 4.43 · v73 Alias-Reload-Fix<br>
+    Version vom 13.09.2026 17:06:44 CEST · Phase 4.43 · v73 Alias-Reload-Fix<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1044,29 +1038,40 @@
 <script src="./js/price-engine.js"></script>
 <script src="./js/lp-engine.js"></script>
 <script src="./js/staking-engine.js"></script>
-<script src="./projects/tln-vow/tln-vow-loans.js?v=20260913-152301"></script>
+<script src="./projects/tln-vow/tln-vow-loans.js?v=20260913-170644"></script>
 <script src="./projects/tln-vow/tln-vow.js?v=20260912-234200"></script>
-<script src="./projects/dao1/dao1.js?v=20260912-234200-dao1-v71-token-admin-view"></script>
+<script src="./projects/dao1/dao1.js?v=20260913-170644"></script>
 
-<script src="./js/app.js?v=20260913-152301"></script>
-<script src="./projects/tln-vow/tln-vow-discovery.js?v=20260913-152301"></script>
-
-
-
-
-
-
-
-
-
-
-
-
-
+<script>
+  // Ideen/Umbau ist absichtlich ausgelagert und wird ohne Browser-Cache geladen,
+  // damit künftige TODO-/Statusänderungen nur admin/ideas.js benötigen.
+  document.write('<script src="./admin/ideas.js?ts=' + Date.now() + '"><\\/script>');
+</script>
+<script>
+  // Hilfen werden bewusst ohne Browser-Cache geladen, damit künftig nur die jeweilige Hilfe-Datei aktualisiert werden muss.
+  document.write('<script src="./help/help-general.js?ts=' + Date.now() + '"><\\/script>');
+  document.write('<script src="./projects/tln-vow/help.js?ts=' + Date.now() + '"><\\/script>');
+  document.write('<script src="./projects/dao1/help.js?ts=' + Date.now() + '"><\\/script>');
+</script>
+<script src="./js/app.js?v=20260913-170644"></script>
+<script src="./projects/tln-vow/tln-vow-discovery.js?v=20260913-170644"></script>
 
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 13.09.2026 15:23:01 CEST · Phase 4.43 · Build 20260913-152301</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 13.09.2026 17:06:44 CEST · Phase 4.43 · Build 20260913-170644</div>
 </body>
 </html>
