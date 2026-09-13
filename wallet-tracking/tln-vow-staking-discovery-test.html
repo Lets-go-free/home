@@ -163,7 +163,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 13.09.2026 03:02:00 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 13.09.2026 03:49:00 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -432,7 +432,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260913-034500';
+const BUILD_ID='20260913-034900';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -563,7 +563,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='13.09.2026 03:02:00 CEST';
+const APP_VERSION='13.09.2026 03:49:00 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11473,6 +11473,9 @@ const LOAN_META_CACHE=new Map();
 const LOAN_TOKEN_CANONICAL=Object.freeze({'0x29280091fa7f3abe4739ad5f1f7c5287feaf7736':{symbol:'TLN+'},'0xaa90a8cdab8b8e902293a2817d1d286f66cbcec5':{symbol:'TLNGOLD'}});
 const LOAN_TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const LOAN_ZERO='0x0000000000000000000000000000000000000000';
+const LOAN_OPTIONS_CONTRACT='0x82bf5fd4f64b8d9f3509723613abe1a6ae287bbd';
+const LOAN_VUSD_ADDRESS='0x9c23942ca2c35e06d1d20747f33705983a18d2ab';
+const LOAN_REPAY_TOPIC=ethers.id('LoanRepay(address,uint256,uint256,uint256)').toLowerCase();
 const LOAN_DURATION_DAYS=372;
 const LOAN_BOOSTER_BY_EVENT_VALUE3=Object.freeze({
   '1':'TLN Plus 2x',
@@ -11589,6 +11592,49 @@ async function loanBurnCandidatesForWallet(wallet){
   const dedup=new Map();for(const tr of out){const k=`${String(tr?.hash||'').toLowerCase()}|${String(tr?.uniqueId||tr?.logIndex||'')}|${norm(tr?.rawContract?.address||'')}`;if(!dedup.has(k))dedup.set(k,tr)}
   const filtered=[];for(const tr of dedup.values()){const addr=norm(tr?.rawContract?.address||'');let sym=LOAN_TOKEN_CANONICAL[addr]?.symbol||loanNormSymbol(tr?.asset);if(!['TLN+','TLNGOLD'].includes(loanNormSymbol(sym))&&addr){const m=await loanMeta(addr);sym=m?.symbol||sym}sym=loanNormSymbol(sym);if(['TLN+','TLNGOLD'].includes(sym))filtered.push({...tr,_loanSymbol:sym})}return filtered;
 }
+async function loanRepayCandidatesForWallet(wallet){
+  const out=[];let pageKey=null,pages=0;
+  do{
+    const q={fromBlock:'0x0',toBlock:'latest',fromAddress:wallet,contractAddresses:[LOAN_VUSD_ADDRESS],category:['erc20'],excludeZeroValue:false,withMetadata:true,maxCount:'0x3e8',order:'asc',...(pageKey?{pageKey}:{})};
+    const r=await alchemy('alchemy_getAssetTransfers',[q]);pages++;
+    for(const tr of (r?.transfers||[]))if(norm(tr?.to||'')===LOAN_OPTIONS_CONTRACT)out.push(tr);
+    pageKey=r?.pageKey||null;if(pages>250)throw new Error(`Loan-Repay-Scan ${short(wallet)}: Pagination >250 Seiten abgebrochen.`)
+  }while(pageKey);
+  return out;
+}
+async function loanBuildRepayment(wallet,tr){
+  const hash=String(tr?.hash||'').toLowerCase();if(!hash)return null;
+  const receipt=await loanReceipt(hash);if(!receipt||receipt.status==='0x0')return null;
+  const w=norm(wallet),wt='0x'+w.slice(2).padStart(64,'0');
+  const ev=(receipt.logs||[]).find(l=>String(l?.topics?.[0]||'').toLowerCase()===LOAN_REPAY_TOPIC&&String(l?.topics?.[1]||'').toLowerCase()===wt);
+  if(!ev)return null;
+  const words=loanDataWords(ev.data);if(words.length<3)return null;
+  const transfers=await loanDecodeTransfers(receipt);
+  const paid=transfers.filter(x=>x.token===LOAN_VUSD_ADDRESS&&x.from===w&&x.to===LOAN_OPTIONS_CONTRACT).reduce((n,x)=>n+Number(x.amount||0),0)||null;
+  let principal=null,vowReleased=null;
+  try{principal=Number(ethers.formatUnits(words[1],18))}catch{}
+  try{vowReleased=Number(ethers.formatUnits(words[2],18))}catch{}
+  let date=tr?.metadata?.blockTimestamp||null;
+  if(!date&&receipt.blockNumber){try{const b=await rpc('eth_getBlockByNumber',[receipt.blockNumber,false]);if(b?.timestamp)date=new Date(Number(BigInt(b.timestamp))*1000).toISOString()}catch{}}
+  const interest=(paid!=null&&principal!=null)?paid-principal:null;
+  const interestRate=(interest!=null&&principal>0)?interest/principal*100:null;
+  return {wallet:w,tx:hash,date,positionRef:Number(words[0]),principal,paid,interest,interestRate,vowReleased,rawEvent:words.map((x,i)=>`w${i+1}=${loanRawWord(x)}`).join(' · ')};
+}
+function loanApplyRepayments(rows,repayments){
+  for(const rp of repayments){
+    if(rp.principal==null)continue;
+    const candidates=rows.filter(r=>norm(r.wallet)===rp.wallet&&r.principal!=null&&loanClose(r.principal,rp.principal,.0001)&&!r.repaymentDate);
+    if(candidates.length!==1)continue;
+    const r=candidates[0];
+    r.repayment=rp.paid??rp.principal;r.repaymentDate=rp.date||null;
+    r.interest=rp.interest??r.interest;r.interestRate=rp.interestRate??r.interestRate;
+    r.interestModel=rp.interestRate!=null?`${loanNum(rp.interestRate,4)} % bei Rückzahlung · on-chain bestätigt`:'bei Rückzahlung · on-chain bestätigt';
+    r.repaymentSource=`LoanRepay on-chain · Principal ${loanNum(rp.principal,8)} v$ aus Event · Gesamtzahlung ${rp.paid==null?'–':loanNum(rp.paid,8)+' v$'} aus v$ Transfer`;
+    r.status='Zurückbezahlt · on-chain bestätigt';
+    r.link=(r.link&&r.link!=='Lifecycle-Verknüpfung noch zu ermitteln'?r.link+' · ':'')+`Repay-Position ${rp.positionRef}`;
+    r.evidence='verified';
+  }
+}
 async function loanBuildRow(wallet,burns){
   const hash=String(burns?.[0]?.hash||'').toLowerCase();if(!hash)return null;
   const receipt=await loanReceipt(hash);if(!receipt||receipt.status==='0x0')return null;
@@ -11661,22 +11707,24 @@ async function discoverLoansOnchain({force=false}={}){
   LOAN_DISCOVERY_LOADING=true;const reload=document.getElementById('loanDiscoveryReload');if(reload)reload.disabled=true;
   if(force){LOAN_DISCOVERY_ROWS=[];LOAN_RECEIPT_CACHE.clear();}
   renderLoanDiscovery();loanSetState(`On-chain Scan startet für ${wallets.length} Wallet(s) …`);
-  const rows=[];let burnTxs=0,errors=0;
+  const rows=[];const repaymentRows=[];let burnTxs=0,errors=0;
   try{
     for(let base=0;base<wallets.length;base+=3){
       const group=wallets.slice(base,base+3);
       const results=await Promise.all(group.map(async wallet=>{
         try{
           loanSetState(`Burn-Historie ${Math.min(base+group.length,wallets.length)}/${wallets.length} Wallet(s) · ${short(wallet)} …`);
-          const burns=await loanBurnCandidatesForWallet(wallet);const byTx=new Map();
+          const [burns,repayTransfers]=await Promise.all([loanBurnCandidatesForWallet(wallet),loanRepayCandidatesForWallet(wallet)]);const byTx=new Map();
           for(const b of burns){const h=String(b?.hash||'').toLowerCase();if(!h)continue;if(!byTx.has(h))byTx.set(h,[]);byTx.get(h).push(b)}
           const out=[];for(const bs of byTx.values()){burnTxs++;try{const row=await loanBuildRow(wallet,bs);if(row)out.push(row)}catch(e){errors++;log(`Loan-Discovery ${short(wallet)} ${String(bs?.[0]?.hash||'').slice(0,12)}: ${e.message||e}`,'warn')}}
+          for(const tr of repayTransfers){try{const rp=await loanBuildRepayment(wallet,tr);if(rp)repaymentRows.push(rp)}catch(e){errors++;log(`Loan-Repay-Discovery ${short(wallet)} ${String(tr?.hash||'').slice(0,12)}: ${e.message||e}`,'warn')}}
           return out;
         }catch(e){errors++;log(`Loan-Burn-Scan ${short(wallet)}: ${e.message||e}`,'warn');return []}
       }));
       rows.push(...results.flat());LOAN_DISCOVERY_ROWS=[...rows];loanRefreshFilterOptions();renderLoanDiscovery();
     }
     const dedup=new Map();for(const r of rows)dedup.set(`${norm(r.wallet)}|${String(r.tx).toLowerCase()}`,r);LOAN_DISCOVERY_ROWS=[...dedup.values()].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+    loanApplyRepayments(LOAN_DISCOVERY_ROWS,repaymentRows);
     LOAN_DISCOVERY_LOADED=true;loanRefreshFilterOptions();renderLoanDiscovery();
     loanSetState(`${LOAN_DISCOVERY_ROWS.length} Loan-Eröffnung(en) aus ${burnTxs} TLN+/TLNGOLD-Burn-Tx(s) in ${wallets.length} Wallet(s) erkannt${errors?` · ${errors} Prüffehler`:''}.` ,errors?'warn':'ok');
   }catch(e){loanSetState(`Loan-Discovery fehlgeschlagen: ${e.message||e}`,'err');log(e.stack||e.message||String(e),'err')}
