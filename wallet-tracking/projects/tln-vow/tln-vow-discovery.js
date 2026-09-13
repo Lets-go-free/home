@@ -1,6 +1,6 @@
-/* TLN/VOW Discovery shared engine · Build 20260913-151006 */
+/* TLN/VOW Discovery shared engine · Build 20260913-175652 */
 (()=>{
-const BUILD_ID='20260913-151006';
+const BUILD_ID='20260913-175652';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -62,7 +62,9 @@ function enableTlnVowProjectTableNormalization(){
 }
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
-const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+// Reuse the single Supabase client created by js/app.js.
+// Do NOT create a second GoTrueClient with the same auth storage key here.
+// `sb` is the top-level global lexical binding from app.js, which is loaded before this engine.
 const V2=new ethers.Interface(["function token0() view returns(address)","function token1() view returns(address)","function factory() view returns(address)","function decimals() view returns(uint8)","function getReserves() view returns(uint112,uint112,uint32)","function totalSupply() view returns(uint256)"]);
 const ERC20=new ethers.Interface(["function symbol() view returns(string)","function decimals() view returns(uint8)"]);
 const ZERO='0x0000000000000000000000000000000000000000';
