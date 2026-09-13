@@ -3,8 +3,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260913-181616";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "13.09.2026 18:16:16 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260913-182440";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "13.09.2026 18:24:40 CEST";
 
 const ADMIN_IDEAS = [
   { status: "done", title: "Projekt-Caches nur noch bewusst aktualisieren", desc: `Phase 2am: Die Liquidity-Pool-Tabs von DAO1 und TLN/VOW sind beim Öffnen vollständig cache-only.
@@ -223,7 +223,51 @@ OFFEN VOR IMPLEMENTIERUNG: DAO1-On-Chain-Datenquelle für Parent/Referral-Bezieh
 • Bei neuen/änderten Tabs, Statusregeln oder fachlichen Modellen die Hilfe im selben Änderungspaket mitpflegen.
 • Keine projektspezifischen Detailregeln doppelt in der allgemeinen Hilfe dokumentieren; dort nur auf den Projekt-Hilfe-Tab verweisen.`
   }
-];
+,
+  {
+    status: "open",
+    category: "Architektur & Infrastruktur",
+    priority: "critical",
+    title: "Zentrale Build-, Modul- und Datenversionierung",
+    desc: `ZIEL: Einzelne Module/Dateien unabhängig aktualisieren können, ohne index.html nur wegen Buildnummern oder Cache-Bustern anfassen zu müssen. Gleichzeitig soll WalletTracking beim Seitenstart gezielt entscheiden, welche Daten neu geladen, nur neu klassifiziert oder unverändert aus Cache verwendet werden können.
+
+ARCHITEKTURVORSCHLAG:
+1. MODULE BUILD
+• jedes austauschbare Modul meldet beim Laden eigene Build-ID + Timestamp
+• Beispiele: app-core, ideas, help-general, tln-vow, tln-vow-loans, tln-vow-help, dao1, dao1-help
+• sichtbarer Runtime-Build im Header = neuester Build aller tatsächlich geladenen Module
+• reine Änderung z. B. an ideas.js darf nur diese Datei erfordern
+
+2. ZENTRALER MODULE-LOADER / CACHE-BUSTING
+• keine fest in index.html eingetragenen versionsabhängigen ?v=... Werte pro Modul
+• kleiner stabiler Loader lädt Module mit kontrolliertem Cache-Buster
+• KEIN document.write; dynamische script-Elemente bzw. robuste Loader-Logik verwenden
+• Ziel: geänderte Einzeldatei wird nach Reload sicher neu geladen, ohne index.html anzufassen
+
+3. DATENVERSION PRO JOB / CACHE
+• Build-Version strikt von fachlicher Datenversion trennen
+• je Datenbereich eigene Version, z. B. balances, nft-discovery, dao1-transactions, tln-stakings, tln-loans-opening, tln-loans-lifecycle, team-graph, prices
+• UI-/Textänderung darf niemals unnötigen Blockchain-Reload auslösen
+• fachliche Änderung invalidiert nur betroffene Datenbereiche
+
+4. DISCOVERY- VS. KLASSIFIKATIONS-VERSION
+• Discovery-Version erhöhen, wenn bisher relevante On-Chain-Ereignisse gar nicht gefunden wurden → gezielter Nach-/Fullscan
+• Klassifikations-Version erhöhen, wenn Rohdaten bereits vorhanden sind, aber neu interpretiert werden müssen → nur Re-Klassifikation, kein unnötiger Chain-Scan
+
+5. LIFECYCLE-DATEN
+• gültige Cache-/Schema-Version bedeutet nicht automatisch „aktueller Zustand“
+• veränderliche Daten wie TLN/VOW Loan Waiting-to-Swap, Swap-Datum, Fälligkeit und Repayment müssen trotz gültigem Cache inkrementell neu geprüft werden
+• bereits bestätigte immutable Daten dürfen erhalten bleiben
+
+START-/MIGRATIONSLOGIK:
+• beim Seitenstart geladene Modulversionen registrieren
+• Datenversionsstand des Caches prüfen
+• nur notwendige Migration/Reklassifikation/Refresh-Jobs auslösen
+• alten Cache möglichst als Fallback behalten, bis Neuaufbau erfolgreich ist
+• Status transparent im UI/Diagnose-Log ausweisen
+
+WICHTIGKEIT: SEHR HOCH. Dieser Umbau sollte erfolgen, bevor deutlich mehr separat austauschbare Module hinzukommen, weil er Build-Anzeige, Browser-Cache, Einzeldatei-Updates und gezielte Datenmigration gemeinsam löst.`
+  }];
 
 const ADMIN_IDEA_STATUS_META = {
   open: { label: "Offen", color: "#9aa0ac" },
