@@ -1,6 +1,6 @@
-/* TLN/VOW Discovery shared engine · Build 20260913-150133 */
+/* TLN/VOW Discovery shared engine · Build 20260913-151006 */
 (()=>{
-const BUILD_ID='20260913-150133';
+const BUILD_ID='20260913-151006';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -190,7 +190,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='13.09.2026 15:01:33 CEST';
+const APP_VERSION='13.09.2026 15:10:06 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13259,16 +13259,31 @@ function teamAliasLegacyStorageKey(){
   return currentUserId?`${TEAM_ALIAS_STORAGE_KEY}:user:${currentUserId}`:'';
 }
 async function loadTeamAliasesFromSupabase(){
-  TEAM_ALIAS_CACHE={};TEAM_ALIAS_CACHE_LOADED=true;
-  if(!currentUserId)return TEAM_ALIAS_CACHE;
-  try{
-    const {data,error}=await sb.functions.invoke('wallet-private',{body:{action:'team_alias_list'}});
-    if(error)throw error;
-    if(!data?.ok)throw new Error(data?.error||'team_alias_list fehlgeschlagen');
-    const aliases=data?.aliases&&typeof data.aliases==='object'?data.aliases:{};
-    for(const [k,v] of Object.entries(aliases)){const name=String(v||'').trim();if(k&&name)TEAM_ALIAS_CACHE[k]=name}
-    log(`Partner-Namen: ${Object.keys(TEAM_ALIAS_CACHE).length} user-spezifische, verschlüsselte Alias(e) geladen.`,'ok');
-  }catch(e){log(`Partner-Namen konnten nicht verschlüsselt geladen werden: ${e.message||e}`,'warn')}
+  if(!currentUserId){TEAM_ALIAS_CACHE_LOADED=false;return TEAM_ALIAS_CACHE}
+  let lastErr=null;
+  for(let attempt=1;attempt<=3;attempt++){
+    try{
+      const {data,error}=await sb.functions.invoke('wallet-private',{body:{action:'team_alias_list'}});
+      if(error)throw error;
+      if(!data?.ok)throw new Error(data?.error||'team_alias_list fehlgeschlagen');
+      const aliases=data?.aliases&&typeof data.aliases==='object'?data.aliases:{};
+      const next={};
+      for(const [k,v] of Object.entries(aliases)){const name=String(v||'').trim();if(k&&name)next[k]=name}
+      TEAM_ALIAS_CACHE=next;
+      TEAM_ALIAS_CACHE_LOADED=true;
+      log(`Partner-Namen: ${Object.keys(TEAM_ALIAS_CACHE).length} user-spezifische, verschlüsselte Alias(e) geladen (Versuch ${attempt}/3).`,'ok');
+      return TEAM_ALIAS_CACHE;
+    }catch(e){
+      lastErr=e;
+      TEAM_ALIAS_CACHE_LOADED=false;
+      log(`Partner-Namen: Laden fehlgeschlagen (Versuch ${attempt}/3): ${e?.message||e}`,'warn');
+      if(attempt<3){
+        try{await sb.auth.refreshSession()}catch(_e){}
+        await new Promise(r=>setTimeout(r,500*attempt));
+      }
+    }
+  }
+  log(`Partner-Namen konnten nach 3 Versuchen nicht verschlüsselt geladen werden. Vorhandener In-Memory-Cache bleibt unangetastet. Letzter Fehler: ${lastErr?.message||lastErr||'unbekannt'}`,'warn');
   return TEAM_ALIAS_CACHE;
 }
 async function persistTeamAliasesToSupabase(){
@@ -17172,6 +17187,10 @@ async function init(){log(`Build geladen: ${BUILD_ID} · SC_READ_PROBES=${typeof
   await loadTeamAliasesFromSupabase();
   const migratedAliases=await migrateLegacyTeamAliasesToSupabase();
   if(migratedAliases)log(`Partner-Namen: ${migratedAliases} bestehende lokale Alias(e) user-spezifisch nach Supabase migriert.`,'ok');
+  // Falls der Team-Baum bereits aus einem persistenten Snapshot sichtbar war,
+  // nach erfolgreichem Alias-Laden explizit neu rendern. Dadurch bleiben Namen
+  // nicht leer, wenn die verschlüsselte Alias-Abfrage etwas später fertig wird.
+  if(CURRENT_TEAM_PROJECT_FOREST)renderTeamTree();
   $('auth').innerHTML=`<span class="ok">Eingeloggt:</span> ${esc(user.email)}`;
   const [cr,pt,sc,wq,projectRefs,stableRefs]=await loadInitialDbRowsResilient();
   const dbErr=cr?.error||pt?.error||sc?.error||wq?.error||projectRefs?.error||stableRefs?.error;
