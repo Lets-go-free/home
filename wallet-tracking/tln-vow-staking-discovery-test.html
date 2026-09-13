@@ -163,7 +163,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 13.09.2026 05:06:15 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 13.09.2026 05:13:31 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -289,6 +289,21 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
           </div>
           <div id="loanDiagState" class="muted" style="margin-top:8px">Noch nicht gestartet.</div>
           <div id="loanDiagResult" style="margin-top:8px"></div>
+        </details>
+        <details class="loan-position-diag" style="margin:10px 0 14px">
+          <summary><b>DEV · TLN GOLD Varianten global suchen</b></summary>
+          <p class="muted" style="margin:8px 0">
+            Sucht chainweit nach TLN-GOLD-Burns zur Zero Address und analysiert die jeweilige vollständige Tx.
+            Ziel ist, bislang unbekannte Varianten anhand der tatsächlichen On-Chain-Struktur zu finden.
+            Die Bezeichnungen ×2/×4 sind nur Arbeitsnamen.
+          </p>
+          <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+            <label>Max. Kandidaten analysieren<br><input id="loanGoldGlobalLimit" type="number" min="10" max="1000" step="10" value="250" style="width:130px"></label>
+            <label><input id="loanGoldUnknownOnly" type="checkbox" checked> nur unbekannte Event-Werte bevorzugen</label>
+            <button id="loanGoldGlobalRun" type="button">Global suchen</button>
+          </div>
+          <div id="loanGoldGlobalState" class="muted" style="margin-top:8px">Noch nicht gestartet.</div>
+          <div id="loanGoldGlobalResult" style="margin-top:8px"></div>
         </details>
         <div class="loan-filter-grid">
           <label>Von<br><input id="loanFilterFrom" type="date"></label>
@@ -443,7 +458,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260913-050615';
+const BUILD_ID='20260913-051331';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -574,7 +589,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='13.09.2026 05:06:15 CEST';
+const APP_VERSION='13.09.2026 05:13:31 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11769,6 +11784,191 @@ async function loanBuildRow(wallet,burns){
     blockNumber:receipt.blockNumber||null,receiptTo:norm(receipt.to||''),transferCount:transfers.length};
 }
 
+
+const LOAN_TLNGOLD_ADDRESS=Object.keys(LOAN_TOKEN_CANONICAL).find(a=>loanNormSymbol(LOAN_TOKEN_CANONICAL[a]?.symbol)==='TLNGOLD')||'0xaa90a8cdab8b8e902293a2817d1d286f66cbcec5';
+
+function loanGoldGlobalSetState(text,kind='muted'){
+  const el=document.getElementById('loanGoldGlobalState');if(!el)return;
+  el.className=kind==='ok'?'ok':kind==='warn'?'warn':kind==='err'?'err':'muted';
+  el.textContent=text;
+}
+
+async function loanGoldGlobalBurns(limit=250){
+  const out=[];let pageKey=null,pages=0;
+  do{
+    const q={
+      fromBlock:'0x0',toBlock:'latest',
+      toAddress:LOAN_ZERO,
+      contractAddresses:[LOAN_TLNGOLD_ADDRESS],
+      category:['erc20'],
+      excludeZeroValue:false,
+      withMetadata:true,
+      maxCount:'0x3e8',
+      order:'desc',
+      ...(pageKey?{pageKey}:{})
+    };
+    const r=await alchemy('alchemy_getAssetTransfers',[q]);pages++;
+    for(const tr of (r?.transfers||[])){
+      out.push(tr);
+      if(out.length>=limit)return out;
+    }
+    pageKey=r?.pageKey||null;
+    if(pages>100)break;
+  }while(pageKey&&out.length<limit);
+  return out.slice(0,limit);
+}
+
+async function loanGoldAnalyzeBurnTransfer(tr){
+  const hash=String(tr?.hash||'').toLowerCase();if(!hash)return null;
+  const receipt=await loanReceipt(hash);if(!receipt||receipt.status==='0x0')return null;
+  const transfers=await loanDecodeTransfers(receipt);
+  const wallet=norm(tr?.from||'');
+  if(!/^0x[0-9a-f]{40}$/.test(wallet))return null;
+
+  const sum=arr=>arr.reduce((n,x)=>n+Number(x.amount||0),0);
+  const goldBurn=sum(transfers.filter(x=>x.from===wallet&&x.to===LOAN_ZERO&&loanNormSymbol(x.symbol)==='TLNGOLD'))||null;
+  if(!(goldBurn>0))return null;
+
+  const vs=transfers.filter(x=>loanNormSymbol(x.symbol)==='V$');
+  const mintedCandidates=vs.filter(x=>x.from===LOAN_ZERO||x.to===LOAN_OPTIONS_CONTRACT||x.to===wallet).map(x=>Number(x.amount||0)).filter(x=>x>0);
+  const vusd=mintedCandidates.length?Math.max(...mintedCandidates):null;
+  const interest=sum(vs.filter(x=>x.from===wallet&&x.to!==wallet&&x.to!==LOAN_ZERO))||null;
+
+  const ev=loanFindEvent(receipt,wallet);
+  let optionId=null,eventValue3='–',eventAmount18=null,eventContract='–',raw='–',logIndex=null;
+  if(ev){
+    if(ev.words?.[0]>0n&&ev.words[0]<1000000000n)optionId=Number(ev.words[0]);
+    if(ev.words?.length>=2){try{eventAmount18=Number(ethers.formatUnits(ev.words[1],18))}catch{}}
+    const last=ev.words?.at(-1);
+    if(last!=null&&last>=0n&&last<=50n)eventValue3=String(last);
+    eventContract=ev.address||'–';logIndex=ev.index;
+    raw=ev.words.map((x,i)=>`w${i+1}=${x.toString()}`).join(' · ');
+  }
+
+  let date=tr?.metadata?.blockTimestamp||null;
+  if(!date&&receipt.blockNumber){
+    try{const b=await rpc('eth_getBlockByNumber',[receipt.blockNumber,false]);if(b?.timestamp)date=new Date(Number(BigInt(b.timestamp))*1000).toISOString()}catch{}
+  }
+
+  const ratioMint=(goldBurn&&vusd)?vusd/goldBurn:null;
+  const ratioEvent=(goldBurn&&eventAmount18)?eventAmount18/goldBurn:null;
+
+  let candidate='offen';
+  let confidence='offen';
+
+  // ×2 working model: nominal ≈ GOLD*2 and mint ≈ 82% of nominal
+  const nominal2=eventAmount18>0?eventAmount18:(goldBurn*2);
+  const is2=((eventAmount18>0&&loanClose(eventAmount18,goldBurn*2,.02))||!(eventAmount18>0))
+    && vusd>0 && loanClose(vusd,nominal2*.82,.02);
+  if(is2){
+    candidate='TLN GOLD ×2 · Kandidat';
+    confidence=eventAmount18>0?'stark':'mittel';
+  }
+
+  // ×4 working model: principal ≈ GOLD*4 and separate 18% interest at opening
+  const nominal4=eventAmount18>0?eventAmount18:vusd;
+  const is4=(((eventAmount18>0&&loanClose(eventAmount18,goldBurn*4,.02))||loanClose(vusd,goldBurn*4,.02)))
+    && interest>0 && loanClose(interest,nominal4*.18,.02);
+  if(is4){
+    candidate='TLN GOLD ×4 · Kandidat';
+    confidence=eventAmount18>0?'stark':'mittel';
+  }
+
+  const knownBooster=LOAN_BOOSTER_BY_EVENT_VALUE3[String(eventValue3||'')]||null;
+
+  return {
+    date,wallet,hash,optionId,eventValue3,eventAmount18,eventContract,logIndex,raw,
+    goldBurn,vusd,interest,ratioMint,ratioEvent,candidate,confidence,knownBooster,
+    blockNumber:receipt.blockNumber||null
+  };
+}
+
+async function loanSearchGoldVariantsGlobal(){
+  const btn=document.getElementById('loanGoldGlobalRun');
+  const result=document.getElementById('loanGoldGlobalResult');
+  const limit=Math.max(10,Math.min(1000,Number(document.getElementById('loanGoldGlobalLimit')?.value||250)));
+  const unknownOnly=!!document.getElementById('loanGoldUnknownOnly')?.checked;
+  if(btn)btn.disabled=true;
+  if(result)result.innerHTML='';
+  loanGoldGlobalSetState(`Suche bis zu ${limit} TLN-GOLD-Burns chainweit …`);
+
+  try{
+    if(!alchemyBase)throw new Error('Keine Alchemy Discovery-API für BSC konfiguriert.');
+    const burns=await loanGoldGlobalBurns(limit);
+    const analyzed=[];
+    for(let i=0;i<burns.length;i++){
+      if(i===0||i%10===0)loanGoldGlobalSetState(`Analysiere ${i+1}/${burns.length} TLN-GOLD-Burn-Txs …`);
+      try{
+        const row=await loanGoldAnalyzeBurnTransfer(burns[i]);
+        if(row)analyzed.push(row);
+      }catch(e){console.warn('[TLN GOLD global candidate]',e)}
+    }
+
+    const knownValues=new Set(Object.keys(LOAN_BOOSTER_BY_EVENT_VALUE3));
+    let rows=analyzed.slice();
+    rows.sort((a,b)=>{
+      const au=knownValues.has(String(a.eventValue3))?1:0;
+      const bu=knownValues.has(String(b.eventValue3))?1:0;
+      if(unknownOnly&&au!==bu)return au-bu;
+      const ac=a.candidate==='offen'?1:0,bc=b.candidate==='offen'?1:0;
+      if(ac!==bc)return ac-bc;
+      return String(b.date||'').localeCompare(String(a.date||''));
+    });
+
+    const unknownCount=rows.filter(r=>!knownValues.has(String(r.eventValue3))).length;
+    const x2=rows.filter(r=>r.candidate.includes('×2')).length;
+    const x4=rows.filter(r=>r.candidate.includes('×4')).length;
+
+    const trs=rows.map(r=>{
+      const ev3=loanDiagEsc(r.eventValue3??'–');
+      const booster=r.knownBooster||'–';
+      const option=r.optionId?`#${r.optionId}`:'–';
+      const ratioMint=r.ratioMint==null?'–':loanNum(r.ratioMint,6);
+      const ratioEvent=r.ratioEvent==null?'–':loanNum(r.ratioEvent,6);
+      return `<tr>
+        <td>${loanDate(r.date)}</td>
+        <td><span>${loanDiagEsc(short(r.wallet))}</span></td>
+        <td>${option}</td>
+        <td><b>${loanDiagEsc(r.candidate)}</b><div class="muted">${loanDiagEsc(r.confidence)}</div></td>
+        <td>${loanNum(r.goldBurn,8)}</td>
+        <td>${r.vusd==null?'–':loanNum(r.vusd,8)}</td>
+        <td>${r.eventAmount18==null?'–':loanNum(r.eventAmount18,8)}</td>
+        <td>${r.interest==null?'–':loanNum(r.interest,8)}</td>
+        <td>${ratioMint}</td>
+        <td>${ratioEvent}</td>
+        <td>${ev3}</td>
+        <td>${loanDiagEsc(booster)}</td>
+        <td><a target="_blank" href="https://bscscan.com/tx/${r.hash}">${short(r.hash)}</a></td>
+        <td class="loan-raw">${loanDiagEsc(r.raw)}</td>
+      </tr>`;
+    }).join('');
+
+    result.innerHTML=`
+      <div class="loan-summary">
+        <div class="metric"><b>${rows.length}</b><span>analysierte Burns</span></div>
+        <div class="metric"><b>${unknownCount}</b><span>unbekannte Event-Werte</span></div>
+        <div class="metric"><b>${x2}</b><span>×2-Kandidaten</span></div>
+        <div class="metric"><b>${x4}</b><span>×4-Kandidaten</span></div>
+      </div>
+      <div class="wrap">
+        <table class="project-data-table" style="min-width:2200px">
+          <thead><tr>
+            <th>Datum</th><th>Wallet</th><th>Option #</th><th>Kandidat</th>
+            <th>TLN GOLD Burn</th><th>v$ Mint / Flow</th><th>Event-Wert 2</th><th>v$ Zinsflow</th>
+            <th>v$/GOLD</th><th>Event2/GOLD</th><th>Event-Wert 3</th><th>bekannter Booster</th><th>Tx</th><th>Rohwerte</th>
+          </tr></thead>
+          <tbody>${trs||'<tr><td colspan="14">Keine Kandidaten gefunden.</td></tr>'}</tbody>
+        </table>
+      </div>`;
+    loanGoldGlobalSetState(`Fertig: ${rows.length} TLN-GOLD-Burn-Txs analysiert · ${x2} ×2-Kandidat(en) · ${x4} ×4-Kandidat(en).`,(x2||x4)?'ok':'warn');
+  }catch(e){
+    console.error('[TLN GOLD global scan]',e);
+    loanGoldGlobalSetState(`Fehler: ${e?.message||e}`,'err');
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
+
 function loanDiagSetState(text,kind='muted'){
   const el=document.getElementById('loanDiagState');if(!el)return;
   el.className=kind==='ok'?'ok':kind==='warn'?'warn':kind==='err'?'err':'muted';el.textContent=text;
@@ -11892,6 +12092,7 @@ function initLoanDiscovery(){
   document.getElementById('loanFilterReset')?.addEventListener('click',()=>{['loanFilterFrom','loanFilterTo','loanFilterTlnMin','loanFilterTlnMax','loanFilterGoldMin','loanFilterGoldMax'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});walletSel.value='all';sel.value='all';renderLoanDiscovery();});
   document.getElementById('loanDiscoveryReload')?.addEventListener('click',()=>void discoverLoansOnchain({force:true}));
   document.getElementById('loanDiagRun')?.addEventListener('click',()=>void loanSearchPositionBackwards());
+  document.getElementById('loanGoldGlobalRun')?.addEventListener('click',()=>void loanSearchGoldVariantsGlobal());
   renderLoanDiscovery();
 }
 
