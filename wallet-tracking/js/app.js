@@ -1656,7 +1656,7 @@ Ziel: ETH-Liquidity-Pools analog zu BSC vollständig integrieren – LP-Erkennun
   { status: "open", title: "Gewinn/Verlust statt nur Bestand", desc: "Einstandspreis-Feld bzw. Transaktions-/Kostenbasis-Konzept definieren, um Performance (Plus/Minus, %) statt nur heutigen Bestand zu zeigen." },
   { status: "clarifying", title: "Staking-Anzeige / gestakte LP-Positionen", desc: "Gestakte LP-Token liegen im Staking-/Farm-Contract und nicht im Wallet. Für TLN/VOW wurden einzelne Contracts/Pools bereits untersucht; für eine allgemeine Anzeige fehlt noch ein belastbares Modell pro Staking-Contract (Contract-Adresse, Stake-/Unstake-Events bzw. View-Funktionen, LP-Zuordnung)." },
   { status: "done", title: "TLN/VOW- und v-Währungs-Preislogik", desc: "On-chain umgesetzt: v_currency über direkten v/VOW-Pool und VOW/USDT; tln_vow_token bevorzugt TOKEN/VOW→VOW/USDT, sonst TOKEN/USDT; VOW selbst direkt VOW/USDT. Zuordnung erfolgt über Contract-Adressen und Supabase-Kategorien." },
-  { status: "open", title: "Wallet-Bezeichnungen verschlüsseln (Stufe 1)", desc: "Nur Labels verschlüsseln, nicht öffentliche Blockchain-Adressen. Vor Umsetzung Schlüsselverwaltung und Auswirkungen auf Suche/Sortierung klären." },
+  { status: "done", category: "Security & Privacy", title: "Private Walletdaten & Partner-Aliase verschlüsseln", desc: "Umgesetzt: Konzept „Maximale Bequemlichkeit“ ohne Passwort/Recovery-Code für User. Private Walletdaten und Partner-Aliase werden userbezogen verschlüsselt gespeichert; Partnernamen liegen in user_team_aliases_private. Öffentlicher Supabase-Key allein reicht nicht zur Entschlüsselung." },
   {
     status: "open",
     title: "Automatische Snapshots: ereignisbasiert + monatlicher Hintergrund-Job",
@@ -1685,10 +1685,156 @@ Der bestehende spezielle Bestand per 31.12. bleibt davon unabhängig.`
   { status: "open", title: "CSV-Export der aktuellen Bestände", desc: "Export für eigene Excel-/Steuer-Auswertungen." },
   { status: "open", title: "Mehrsprachigkeit (DE/FR/IT/EN)", desc: "Für einen breiteren Nutzerkreis." },
   { status: "open", title: "Als installierbare Mobile-App (PWA)", desc: "Homescreen-Installation und app-artige Nutzung." }
+  ,
+  {
+    status: "in_progress",
+    category: "Projekt TLN/VOW",
+    title: "TLN/VOW Loans · Lifecycle vollständig on-chain",
+    desc: `Zentrale Loan-Engine ist in Discovery und Hauptseite integriert. Offen bleibt die vollständige Lifecycle-Erkennung:
+• Status „Waiting to Swap“ / geswappt
+• tatsächliches Swap-Datum v$ → VOW
+• aktuelles Ablauf-/Fälligkeitsdatum nach Swap
+• mögliche Karenzfrist verifizieren
+• Rückzahlung/Abschluss positionsgenau zuordnen
+Eröffnungsdaten dürfen persistent gecacht werden; veränderliche Lifecycle-Felder müssen bei jedem relevanten Refresh erneut on-chain geprüft werden.`
+  },
+  {
+    status: "open",
+    category: "Projekt TLN/VOW",
+    title: "Unbekannte Loan-/Booster-Typen automatisch zur Prüfung melden",
+    desc: `Wenn die Loan-Discovery einen neuen Event-Wert, ein unbekanntes Mengen-/Zinsmodell oder eine neue Event-/Contract-Struktur erkennt:
+• Datensatz trotzdem anzeigen
+• automatisch „zu prüfen“ markieren
+• Roh-/Diagnosedaten speichern
+• Admin-Hinweis + E-Mail
+• gleiche unbekannte Typen deduplizieren
+Nach Verifikation wird der Typ in die zentrale Registry/Erkennungslogik übernommen.`
+  },
+  {
+    status: "open",
+    category: "Projekt TLN/VOW",
+    title: "TLN/VOW Ethereum-Historie 2023 ergänzen",
+    desc: "Historische TLN/VOW-Stakings und Rewards aus der Ethereum-Phase vor BSC vollständig in Discovery und Hauptseite integrieren."
+  },
+  {
+    status: "open",
+    category: "Projekt TLN/VOW",
+    title: "TLN-Team-Baum um LP/QLP-Status erweitern",
+    desc: "Pro Partner im TLN-Team-Baum den Status LP / QLP / kein Status on-chain ermitteln und sichtbar machen, sofern die Contract-Logik belastbar identifiziert ist."
+  },
+  {
+    status: "open",
+    category: "Projekt TLN/VOW",
+    title: "Lending-Bereich ergänzen",
+    desc: "Nach Abschluss des Loan-Bereichs Lending fachlich definieren: On-Chain-Erkennung, Positionen, Zinsen/Rewards, Status, Datenmodell, Cache und Darstellung."
+  },
+  {
+    status: "open",
+    category: "Projekt DAO1",
+    title: "DAO1 Team-Baum bis 20 Ebenen",
+    desc: `Team-Baum der eigenen DAO1-Partner bis 20 Ebenen tief.
+• pro Partner anzeigen, ob eine Mitgliedschaft vorhanden ist
+• Mitgliedschaft über eigenen NFT-Typ erkennen
+• „Details“ öffnet die NFTs des jeweiligen Partners
+• TLN-Team-Baum als UI-/Interaktionsreferenz verwenden
+• Datenquelle und NFT-/Membership-Logik bleiben DAO1-spezifisch`
+  },
+  {
+    status: "open",
+    category: "Projekt DAO1",
+    title: "DAO1 Abschluss-Plausibilitätscheck",
+    desc: "Claims, Referral Rewards, NFT-Zuordnung, Token-Anzahlen und historische USD-Summen nochmals mit bekannten Kontrollfällen plausibilisieren, bevor DAO1 als fachlich abgeschlossen gilt."
+  },
+  {
+    status: "open",
+    category: "UI/UX",
+    title: "Sticky Tabellen-Header zentral einführen",
+    desc: "Bei langen Tabellen soll die Titel-/Headerzeile beim vertikalen Scrollen sichtbar bleiben. Zentral im allgemeinen Tabellen-CSS lösen, nicht tabweise."
+  },
+  {
+    status: "open",
+    category: "Caching & Daten",
+    title: "Zentrale Cache-/Schema-Versionierung pro Job",
+    desc: "Zentrale Versionierung je Datenjob/Cache einführen: veraltete Daten erkennen, bei fachlichen Änderungen invalidieren bzw. migrieren und nur notwendige Bereiche neu aufbauen."
+  },
+  {
+    status: "open",
+    category: "Security & Privacy",
+    title: "Wallet vollständig löschen / Alle Daten löschen",
+    desc: "Wallet-Löschung mit Bestätigung und vollständigem Purge aller walletbezogenen DB-/Cache-Daten. Zusätzlich userweite Funktion „Alle Daten löschen“ vorsehen."
+  },
+  {
+    status: "done",
+    category: "Projekt TLN/VOW",
+    title: "Loans · zentrale Engine für Discovery und Hauptseite",
+    desc: "Erkennungs-, Typ-, Zins- und Repayment-Logik zentralisiert. Discovery und Hauptseite verwenden dieselbe Loan-Engine; keine doppelte fachliche Implementierung."
+  },
+  {
+    status: "done",
+    category: "UI/UX",
+    title: "Token-Anzeige-Kommastellen zentral konfigurierbar",
+    desc: "Technische Decimals und Anzeige-/Summary-Kommastellen sind getrennt. Anzeigepräzision kann zentral über die Token-Stammdaten gesteuert werden, inklusive Native Coins."
+  },
+  {
+    status: "done",
+    category: "Security & Privacy",
+    title: "Vordefinierte Token · User read-only / Admin bearbeitbar",
+    desc: "Normale User sehen nur Chain, Token, Adresse und Kurs (USD); Bearbeitung und technische Spalten sind Admin-only. DB-seitige RLS-Härtung für predefined_tokens ist als Migration vorgesehen/geprüft."
+  }
+
 ];
+
+
+const ADMIN_IDEA_STATUS_META = {
+  open: { label: "Offen", color: "#9aa0ac" },
+  in_progress: { label: "In Umsetzung", color: "#3b82f6" },
+  clarifying: { label: "In Abklärung", color: "#f0b90b" },
+  done: { label: "Umgesetzt", color: "#46c878" },
+  reverted: { label: "Umgesetzt, dann zurückgebaut", color: "var(--danger)" },
+  paused: { label: "Pausiert", color: "#8247e5" }
+};
+
+const ADMIN_IDEA_CATEGORY_ORDER = [
+  "Projekt TLN/VOW",
+  "Projekt DAO1",
+  "Caching & Daten",
+  "UI/UX",
+  "Security & Privacy",
+  "Architektur & Infrastruktur",
+  "Blockchain & Provider",
+  "Analyse & Export",
+  "Chat & Support",
+  "Plattform & Allgemein"
+];
+
+let adminIdeasFilterState = { category: "all", status: "all", search: "" };
+
+function adminIdeaCategory(idea){
+  if(idea?.category)return idea.category;
+  const t=`${idea?.title||""} ${idea?.desc||""}`.toLowerCase();
+  if(/dao1|apertum/.test(t))return "Projekt DAO1";
+  if(/tln\/vow|staking|v-währung|vow\b|liquidity pools nach chain/.test(t))return "Projekt TLN/VOW";
+  if(/cache|snapshot|datenversion|historie persistent|schema-version/.test(t))return "Caching & Daten";
+  if(/verschlüssel|privacy|security|rls|wallet-bezeichnung/.test(t))return "Security & Privacy";
+  if(/hardcoding|konfiguration aus html|supabase|architektur|secret|proxy/.test(t))return "Architektur & Infrastruktur";
+  if(/alchemy|netzwerkgebühr|akasha?|chain|rpc|provider/.test(t))return "Blockchain & Provider";
+  if(/export|gewinn\/verlust|allokation|chart|kursverlauf|csv|pdf|excel/.test(t))return "Analyse & Export";
+  if(/chat|benachrichtigung|support/.test(t))return "Chat & Support";
+  if(/mehrsprach|pwa|willkommen|hilfe|mobile/.test(t))return "Plattform & Allgemein";
+  if(/nft|tabelle|anzeige|ui|layout/.test(t))return "UI/UX";
+  return "Plattform & Allgemein";
+}
+
+function setAdminIdeasFilter(key,value){
+  if(!(key in adminIdeasFilterState))return;
+  adminIdeasFilterState[key]=String(value??"");
+  renderAdminIdeas();
+}
 
 function renderAdminIdeas() {
   const el = document.getElementById("adminIdeasList");
+  if(!el)return;
+
   const configDiag = chainConfigStatus.source === "Supabase public.chains"
     ? `<div class="custom-token-card" style="margin-bottom:12px;border-color:var(--safe)">
         <strong>⚙️ Chain-Konfiguration: Supabase ✓</strong>
@@ -1698,23 +1844,91 @@ function renderAdminIdeas() {
     : `<div class="custom-token-card" style="margin-bottom:12px;border-color:var(--danger)">
         <strong>⚙️ Chain-Konfiguration: ${escapeAttr(chainConfigStatus.source)}</strong>
       </div>`;
-  const statusMeta = {
-    open: { label: "Offen", color: "#9aa0ac" },
-    in_progress: { label: "In Umsetzung", color: "#3b82f6" },
-    clarifying: { label: "In Abklärung", color: "#f0b90b" },
-    done: { label: "Umgesetzt", color: "#46c878" },
-    reverted: { label: "Umgesetzt, dann zurückgebaut", color: "var(--danger)" },
-    paused: { label: "Code fertig, Deployment pausiert", color: "#8247e5" }
-  };
-  el.innerHTML = configDiag + ADMIN_IDEAS.map(idea => {
-    const s = statusMeta[idea.status];
-    return `<div class="custom-token-row" style="align-items:flex-start">
-      <div>
-        <div><strong>${escapeAttr(idea.title)}</strong> <span class="badge" style="background:${s.color}22;color:${s.color}">${s.label}</span></div>
-        <div class="meta idea-desc" style="margin-top:4px">${escapeAttr(idea.desc)}</div>
+
+  const rows = ADMIN_IDEAS.map((idea,index)=>({...idea,_index:index,_category:adminIdeaCategory(idea)}));
+  const categories=[...new Set(rows.map(x=>x._category))].sort((a,b)=>{
+    const ai=ADMIN_IDEA_CATEGORY_ORDER.indexOf(a),bi=ADMIN_IDEA_CATEGORY_ORDER.indexOf(b);
+    return (ai<0?999:ai)-(bi<0?999:bi)||a.localeCompare(b,"de");
+  });
+
+  const statusValue=adminIdeasFilterState.status||"all";
+  const categoryValue=adminIdeasFilterState.category||"all";
+  const search=String(adminIdeasFilterState.search||"").trim().toLowerCase();
+
+  const visible=rows.filter(idea=>{
+    if(categoryValue!=="all"&&idea._category!==categoryValue)return false;
+    if(statusValue==="active"&&!["open","in_progress","clarifying","paused"].includes(idea.status))return false;
+    if(statusValue!=="all"&&statusValue!=="active"&&idea.status!==statusValue)return false;
+    if(search&&!`${idea.title} ${idea.desc} ${idea._category}`.toLowerCase().includes(search))return false;
+    return true;
+  });
+
+  const statusOrder={in_progress:0,clarifying:1,open:2,paused:3,done:4,reverted:5};
+  visible.sort((a,b)=>(statusOrder[a.status]??99)-(statusOrder[b.status]??99)||a.title.localeCompare(b.title,"de"));
+
+  const countStatus=(status)=>rows.filter(x=>x.status===status).length;
+  const activeCount=rows.filter(x=>["open","in_progress","clarifying","paused"].includes(x.status)).length;
+
+  const controls=`
+    <div class="custom-token-card" style="margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;align-items:end">
+        <label><span class="field-label">Kategorie</span>
+          <select onchange="setAdminIdeasFilter('category',this.value)">
+            <option value="all"${categoryValue==="all"?" selected":""}>Alle Kategorien</option>
+            ${categories.map(c=>`<option value="${escapeAttr(c)}"${categoryValue===c?" selected":""}>${escapeAttr(c)}</option>`).join("")}
+          </select>
+        </label>
+        <label><span class="field-label">Status</span>
+          <select onchange="setAdminIdeasFilter('status',this.value)">
+            <option value="all"${statusValue==="all"?" selected":""}>Alle Status</option>
+            <option value="active"${statusValue==="active"?" selected":""}>Aktiv / offen</option>
+            ${Object.entries(ADMIN_IDEA_STATUS_META).map(([key,m])=>`<option value="${key}"${statusValue===key?" selected":""}>${escapeAttr(m.label)}</option>`).join("")}
+          </select>
+        </label>
+        <label><span class="field-label">Suche</span>
+          <input type="search" value="${escapeAttr(adminIdeasFilterState.search||"")}" placeholder="Titel, Beschreibung, Kategorie …"
+            oninput="setAdminIdeasFilter('search',this.value)">
+        </label>
+        <button class="secondary" onclick="adminIdeasFilterState={category:'all',status:'all',search:''};renderAdminIdeas()">Filter zurücksetzen</button>
       </div>
     </div>`;
+
+  const summary=`
+    <div class="summary" style="margin-bottom:14px">
+      <div class="metric">Gesamt<b>${rows.length}</b></div>
+      <div class="metric">Aktiv / offen<b>${activeCount}</b></div>
+      <div class="metric">In Umsetzung<b>${countStatus("in_progress")}</b></div>
+      <div class="metric">Umgesetzt<b>${countStatus("done")}</b></div>
+      <div class="metric">Gefiltert<b>${visible.length}</b></div>
+    </div>`;
+
+  const groups=categories.map(category=>{
+    const items=visible.filter(x=>x._category===category);
+    if(!items.length)return "";
+    return `
+      <div style="margin:18px 0 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <h3 style="margin:0">${escapeAttr(category)}</h3>
+        <span class="badge">${items.length}</span>
+      </div>
+      ${items.map(idea=>{
+        const sm=ADMIN_IDEA_STATUS_META[idea.status]||{label:idea.status||"–",color:"#9aa0ac"};
+        const isDone=idea.status==="done";
+        return `<div class="custom-token-card" style="margin-bottom:10px;border-left:4px solid ${sm.color}">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
+            <div style="min-width:220px;flex:1">
+              <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+                <strong>${escapeAttr(idea.title)}</strong>
+                <span class="badge" style="background:${sm.color}22;color:${sm.color}">${escapeAttr(sm.label)}</span>
+                <span class="badge" style="background:rgba(148,163,184,.12);color:var(--muted)">${escapeAttr(idea._category)}</span>
+              </div>
+              <div class="meta idea-desc" style="margin-top:7px;white-space:pre-line;line-height:1.45">${escapeAttr(idea.desc)}</div>
+            </div>
+          </div>
+        </div>`;
+      }).join("")}`;
   }).join("");
+
+  el.innerHTML=configDiag+controls+summary+(groups||`<div class="empty">Keine Ideen/TODOs entsprechen den gewählten Filtern.</div>`);
 }
 
 // ---- Admin: eigene sichere Token aller User einsehen/übernehmen/ignorieren ----
