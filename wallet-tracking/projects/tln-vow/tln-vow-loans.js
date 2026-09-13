@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260914-005301 */
+/* TLN/VOW Loans central engine · Build 20260914-010218 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -873,19 +873,16 @@ async function loanSearchPositionBackwards(){
 }
 
 function loanRefreshFilterOptions(){
-  const typeSel=document.getElementById('loanFilterType'),walletSel=document.getElementById('loanFilterWallet');if(!typeSel||!walletSel)return;
-  const keepType=typeSel.value||'all',keepWallet=walletSel.value||'all';
-  typeSel.innerHTML='<option value="all">Alle Booster / Typen</option>';walletSel.innerHTML='<option value="all">Alle Wallets</option>';
-  const wallets=[...new Set([...(getWallets()||[]).map(x=>norm(x?.evm_address||'')),...LOAN_DISCOVERY_ROWS.map(r=>norm(r.wallet))].filter(x=>/^0x[0-9a-f]{40}$/.test(x)))];
-  wallets.sort((a,b)=>String(projectOwnWalletLabel(a)||a).localeCompare(String(projectOwnWalletLabel(b)||b),'de')).forEach(w=>{const o=document.createElement('option');o.value=w;const name=projectOwnWalletLabel(w)||'Wallet';o.textContent=`${name} · ${w.slice(0,8)}…${w.slice(-6)}`;walletSel.appendChild(o)});
+  const typeSel=document.getElementById('loanFilterType');if(!typeSel)return;
+  const keepType=typeSel.value||'all';
+  typeSel.innerHTML='<option value="all">Alle Booster / Typen</option>';
   [...new Set(LOAN_DISCOVERY_ROWS.map(r=>r.type).filter(Boolean))].sort().forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;typeSel.appendChild(o)});
-  if([...walletSel.options].some(o=>o.value===keepWallet))walletSel.value=keepWallet;
   if([...typeSel.options].some(o=>o.value===keepType))typeSel.value=keepType;
 }
 function renderLoanDiscovery(){
   const body=document.getElementById('loanDiscoveryRows'),reboundBody=document.getElementById('loanReboundRows');if(!body||!reboundBody)return;
   const val=id=>document.getElementById(id)?.value??'';
-  const from=val('loanFilterFrom'),to=val('loanFilterTo'),walletFilter=val('loanFilterWallet')||'all',typ=val('loanFilterType')||'all';
+  const from=val('loanFilterFrom'),to=val('loanFilterTo'),walletFilter=document.getElementById('projectWalletFilter')?.value||'all',typ=val('loanFilterType')||'all';
   const tmin=Number(val('loanFilterTlnMin')),tmax=Number(val('loanFilterTlnMax')),gmin=Number(val('loanFilterGoldMin')),gmax=Number(val('loanFilterGoldMax'));
   const htmin=val('loanFilterTlnMin')!=='',htmax=val('loanFilterTlnMax')!=='',hgmin=val('loanFilterGoldMin')!=='',hgmax=val('loanFilterGoldMax')!=='';
   const rows=LOAN_DISCOVERY_ROWS.filter(r=>{const day=String(r.date||'').slice(0,10);if(from&&day<from)return false;if(to&&day>to)return false;if(htmin&&(r.tlnPlus==null||r.tlnPlus<tmin))return false;if(htmax&&(r.tlnPlus==null||r.tlnPlus>tmax))return false;if(hgmin&&(r.tlnGold==null||r.tlnGold<gmin))return false;if(hgmax&&(r.tlnGold==null||r.tlnGold>gmax))return false;if(walletFilter!=='all'&&norm(r.wallet)!==walletFilter)return false;if(typ!=='all'&&r.type!==typ)return false;return true;}).sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
@@ -1038,14 +1035,14 @@ function loanShowInnerPanel(name){
 }
 
 function initLoanDiscovery(){
-  const sel=document.getElementById('loanFilterType'),walletSel=document.getElementById('loanFilterWallet');if(!sel||!walletSel||sel.dataset.ready==='1')return;sel.dataset.ready='1';
+  const sel=document.getElementById('loanFilterType');if(!sel||sel.dataset.ready==='1')return;sel.dataset.ready='1';
   loanRefreshFilterOptions();
   document.querySelectorAll('#loanInnerTabs [data-loan-panel]').forEach(btn=>{
     btn.addEventListener('click',()=>loanShowInnerPanel(btn.dataset.loanPanel));
   });
   loanShowInnerPanel('loans');
-  ['loanFilterFrom','loanFilterTo','loanFilterTlnMin','loanFilterTlnMax','loanFilterGoldMin','loanFilterGoldMax','loanFilterWallet','loanFilterType'].forEach(id=>document.getElementById(id)?.addEventListener('input',renderLoanDiscovery));
-  document.getElementById('loanFilterReset')?.addEventListener('click',()=>{['loanFilterFrom','loanFilterTo','loanFilterTlnMin','loanFilterTlnMax','loanFilterGoldMin','loanFilterGoldMax'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});walletSel.value='all';sel.value='all';renderLoanDiscovery();});
+  ['loanFilterFrom','loanFilterTo','loanFilterTlnMin','loanFilterTlnMax','loanFilterGoldMin','loanFilterGoldMax','loanFilterType'].forEach(id=>document.getElementById(id)?.addEventListener('input',renderLoanDiscovery));
+  document.getElementById('loanFilterReset')?.addEventListener('click',()=>{['loanFilterFrom','loanFilterTo','loanFilterTlnMin','loanFilterTlnMax','loanFilterGoldMin','loanFilterGoldMax'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});sel.value='all';renderLoanDiscovery();});
   document.getElementById('loanDiscoveryReload')?.addEventListener('click',()=>void discoverLoansOnchain({force:true}));
   document.getElementById('loanDiagRun')?.addEventListener('click',()=>void loanSearchPositionBackwards());
   document.getElementById('loanGoldGlobalRun')?.addEventListener('click',()=>void loanSearchGoldVariantsGlobal());

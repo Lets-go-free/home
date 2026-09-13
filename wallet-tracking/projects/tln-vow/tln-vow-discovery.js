@@ -1,6 +1,6 @@
-/* TLN/VOW Discovery shared engine · Build 20260913-175652 */
+/* TLN/VOW Discovery shared engine · Build 20260914-010218 */
 (()=>{
-const BUILD_ID='20260913-175652';
+const BUILD_ID='20260914-010218';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -11112,7 +11112,7 @@ function setupProjectUserTabs(){
   // gehört in die Übersicht, nicht in den roten DEV/Test-Bereich.
   move('tlnWalletLookupCard','projectLookupMount');
   const filter=$('projectWalletFilter');
-  if(filter){filter.onchange=async()=>{PROJECT_WALLET_FILTER=filter.value||'all';await applyProjectWalletFilter();};}
+  if(filter){filter.onchange=async()=>{PROJECT_WALLET_FILTER=filter.value||'all';await applyProjectWalletFilter();initCentralLoanEngine().render();};}
   renderProjectUserView();
 }
 function projectRewardTotal(lots){
