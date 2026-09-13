@@ -163,7 +163,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 13.09.2026 13:59:30 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 13.09.2026 14:07:02 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -310,10 +310,10 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
           <p class="muted" style="margin:8px 0">
             Sucht globale <code>LoanRepay</code>-Fälle, verfolgt die Positionsreferenz zur Eröffnungs-Tx zurück
             und zeigt Event-Wert 3, Booster, Principal, tatsächliche v$-Zahlung und effektiven Zinssatz.
-            Damit können insbesondere die Repay-Regeln für TLN Gold ×4 (0), TLN Plus 2x (1), TLN Plus 0.25x (2) und TLN Gold ×2 (3) unabhängig bestätigt werden. Für seltene Typen kann die Suche bis zu 2’000 Repay-Txs rückwärts prüfen und stoppt nach 5 Treffern.
+            Damit können insbesondere die Repay-Regeln für TLN Gold ×4 (0), TLN Plus 2x (1), TLN Plus 0.25x (2) und TLN Gold ×2 (3) unabhängig bestätigt werden. Für seltene Typen kann die Suche bis zu 10’000 Repay-Txs rückwärts prüfen. Zusätzlich kann die Suche alle bzw. nur unbekannte Event-Werte statistisch auswerten; passende Eröffnungen werden automatisch rückwärts aufgelöst.
           </p>
           <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
-            <label>Max. Repay-Txs prüfen<br><input id="loanRepayVerifyLimit" type="number" min="50" max="2000" step="50" value="500" style="width:110px"></label>
+            <label>Max. Repay-Txs prüfen<br><input id="loanRepayVerifyLimit" type="number" min="50" max="10000" step="50" value="500" style="width:110px"></label>
             <label>Zieltyp<br>
               <select id="loanRepayVerifyType">
                 <option value="0">Event-Wert 3 = 0 · TLN Gold ×4</option>
@@ -321,7 +321,8 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
                 <option value="1">Event-Wert 3 = 1 · TLN Plus 2x</option>
                 <option value="3">Event-Wert 3 = 3 · TLN Gold ×2</option>
                 <option value="2">Event-Wert 3 = 2 · TLN Plus 0.25x</option>
-                <option value="all">alle Typen</option>
+                <option value="unknown">nur unbekannte Event-Werte</option>
+                <option value="all">alle Typen / Statistik</option>
               </select>
             </label>
             <button id="loanRepayVerifyRun" type="button">Repay-Fälle suchen</button>
@@ -482,7 +483,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260913-135930';
+const BUILD_ID='20260913-140702';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -613,7 +614,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='13.09.2026 13:59:30 CEST';
+const APP_VERSION='13.09.2026 14:07:02 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -12146,26 +12147,34 @@ async function loanFindOpeningByPosition(wallet,positionRef){
 
 async function loanVerifyRepaymentModels(){
   const btn=document.getElementById('loanRepayVerifyRun'),result=document.getElementById('loanRepayVerifyResult');
-  const scanLimit=Math.max(50,Math.min(2000,Number(document.getElementById('loanRepayVerifyLimit')?.value||500)));
+  const scanLimit=Math.max(50,Math.min(10000,Number(document.getElementById('loanRepayVerifyLimit')?.value||500)));
   const target=String(document.getElementById('loanRepayVerifyType')?.value||'all');
   if(btn)btn.disabled=true;if(result)result.innerHTML='';
   loanRepayVerifySetState(`Suche bis zu ${scanLimit} globale v$→Loan-Contract Repay-Txs …`);
   try{
     const trs=await loanGlobalRepayTransfers(scanLimit);
     const rows=[];let checked=0;
+    const typeStats=new Map(),unknownStats=new Map();
+    const KNOWN_REPAY_TYPES=new Set(['0','1','2','3','4','5']);
+    const maxRows=(target==='all'||target==='unknown')?100:5;
     for(const tr of trs){
-      if(rows.length>=5)break;
-      checked++;if(checked===1||checked%5===0)loanRepayVerifySetState(`Prüfe Repay ${checked}/${trs.length} …`);
+      if(rows.length>=maxRows && target!=='all' && target!=='unknown')break;
+      checked++;if(checked===1||checked%25===0)loanRepayVerifySetState(`Prüfe Repay ${checked}/${trs.length} · ${rows.length} Treffer …`);
       const rp=await loanBuildRepayment(norm(tr?.from||''),tr);
       if(!rp)continue;
       loanRepayVerifySetState(`Repay Position ${rp.positionRef}: suche Eröffnung …`);
       let opening=null;
       try{opening=await loanFindOpeningByPosition(rp.wallet,rp.positionRef)}catch(e){console.warn('[Repay opening lookup]',e)}
-      if(target!=='all'){
+      const resolvedType=String(opening?.eventValue3??'–');
+      typeStats.set(resolvedType,(typeStats.get(resolvedType)||0)+1);
+      if(!KNOWN_REPAY_TYPES.has(resolvedType))unknownStats.set(resolvedType,(unknownStats.get(resolvedType)||0)+1);
+      if(target==='unknown'){
+        if(KNOWN_REPAY_TYPES.has(resolvedType))continue;
+      }else if(target!=='all'){
         const allowed=new Set(target.split(',').map(x=>x.trim()).filter(Boolean));
-        if(!allowed.has(String(opening?.eventValue3||'')))continue;
+        if(!allowed.has(resolvedType))continue;
       }
-      rows.push({rp,opening});
+      if(rows.length<maxRows)rows.push({rp,opening});
     }
 
     const html=rows.map(({rp,opening})=>{
@@ -12192,11 +12201,26 @@ async function loanVerifyRepaymentModels(){
       </tr>`;
     }).join('');
 
-    result.innerHTML=`<div class="wrap"><table class="project-data-table" style="min-width:1500px"><thead><tr>
-      <th>Repay-Datum</th><th>Wallet</th><th>Position</th><th>Event-Wert 3</th><th>Booster</th>
-      <th>Principal</th><th>bezahlt</th><th>Zins</th><th>Zinssatz</th><th>Modell-Check</th><th>Eröffnung</th><th>Tx</th>
-    </tr></thead><tbody>${html||'<tr><td colspan="12">Keine passenden Repay-Fälle gefunden.</td></tr>'}</tbody></table></div>`;
-    loanRepayVerifySetState(`Fertig: ${checked} Repay-Txs geprüft · ${rows.length} passende Position(en) gefunden.`,rows.length?'ok':'warn');
+    const statRows=[...typeStats.entries()].sort((a,b)=>b[1]-a[1]).map(([typ,n])=>{
+      const known=KNOWN_REPAY_TYPES.has(String(typ));
+      return `<tr><td>${loanDiagEsc(typ)}</td><td style="text-align:right">${n}</td><td>${known?'bekannt':'UNBEKANNT · prüfen'}</td><td>${loanDiagEsc(LOAN_BOOSTER_BY_EVENT_VALUE3[String(typ)]||'–')}</td></tr>`;
+    }).join('');
+    const unknownTotal=[...unknownStats.values()].reduce((a,b)=>a+b,0);
+    result.innerHTML=`
+      <div class="loan-summary">
+        <div class="metric"><b>${checked}</b><span>Repay-Txs geprüft</span></div>
+        <div class="metric"><b>${typeStats.size}</b><span>Event-Werte gefunden</span></div>
+        <div class="metric"><b>${unknownTotal}</b><span>unbekannte Typ-Fälle</span></div>
+        <div class="metric"><b>${rows.length}</b><span>angezeigte Treffer</span></div>
+      </div>
+      <div class="wrap"><table class="project-data-table" style="min-width:720px"><thead><tr>
+        <th>Event-Wert 3</th><th>Anzahl</th><th>Status</th><th>bekannter Booster</th>
+      </tr></thead><tbody>${statRows||'<tr><td colspan="4">Keine Eröffnungs-Typen aufgelöst.</td></tr>'}</tbody></table></div>
+      <div class="wrap" style="margin-top:10px"><table class="project-data-table" style="min-width:1500px"><thead><tr>
+        <th>Repay-Datum</th><th>Wallet</th><th>Position</th><th>Event-Wert 3</th><th>Booster</th>
+        <th>Principal</th><th>bezahlt</th><th>Zins</th><th>Zinssatz</th><th>Modell-Check</th><th>Eröffnung</th><th>Tx</th>
+      </tr></thead><tbody>${html||'<tr><td colspan="12">Keine passenden Repay-Fälle gefunden.</td></tr>'}</tbody></table></div>`;
+    loanRepayVerifySetState(`Fertig: ${checked} Repay-Txs geprüft · ${typeStats.size} Event-Wert(e) · ${unknownTotal} unbekannte Typ-Fälle · ${rows.length} Treffer angezeigt.`,(rows.length||typeStats.size)?'ok':'warn');
   }catch(e){
     console.error('[Loan repay model verify]',e);loanRepayVerifySetState(`Fehler: ${e?.message||e}`,'err');
   }finally{if(btn)btn.disabled=false}
