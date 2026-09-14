@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260914-011857 */
+/* TLN/VOW Loans central engine · Build 20260914-022900 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -146,7 +146,7 @@ function loanInterestModel({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18}
   if(ev3==='0'||ev3==='1')return 'im Voraus bezahlt · 18 % · on-chain bestätigt';
   if(ev3==='2'||ev3==='3')return 'fällig bei Rückzahlung · 18 % · on-chain bestätigt';
   if(ev3==='4')return 'keine eigene Rückzahlung · TLN Gold Rebound';
-  if(ev3==='5')return 'Zins aus ersetztem ursprünglichem Loan übernehmen · nicht erneut auf Extended-Principal berechnen';
+  if(ev3==='5')return 'eigener Extended-Zins bei Rückzahlung · Betrag ausschließlich on-chain ermitteln';
   if(tlnPlus>0&&vusd>0&&loanClose(vusd,tlnPlus*.82,.01))
     return 'vom geminteten v$-Betrag abgezogen · 18 %';
   if(interest>0&&vusd>0&&loanClose(interest,vusd*.18,.01))
@@ -161,10 +161,12 @@ function loanDebtFields({tlnPlus,tlnGold,vusd,interest,rawType,eventAmount18}){
 
   if(ev3==='5'){
     const principal=(eventAmount18>0)?eventAmount18:(vusd||null);
-    // WICHTIG: Extended übernimmt den Zins des ersetzten ursprünglichen Loans.
-    // Der Extended-Principal ist bereits der fortgeführte Betrag und darf NICHT nochmals mit 18 % verzinst werden.
+    // TLN Gold Extended / Second Chance ist ein neuer, eigenständiger Loan.
+    // Weder Zins noch Schuld des verfallenen Alt-Loans werden übernommen.
+    // Rückzahlungsbetrag und eigener Extended-Zins dürfen NICHT rechnerisch abgeleitet werden:
+    // beide erst anzeigen, wenn sie für die neue Position on-chain belegt sind.
     return {principal,repayment:null,interestDue:null,interestRate:null,
-      repaymentSource:'TLN Gold Extended · Zins aus ersetztem Loan übernehmen; Rückzahlung optional; Rückzahlungsbetrag und Collateral-Rückgabe positionsbezogen on-chain verifizieren'};
+      repaymentSource:'TLN Gold Extended · neuer eigenständiger Second-Chance-Loan · Rückzahlungsbetrag und eigener Zins ausschließlich positionsbezogen on-chain ermitteln'};
   }
 
   if(['0','1','2','3'].includes(ev3)){
@@ -302,28 +304,17 @@ async function loanResolveExtendedRelations(rows){
     old.replacedByPositionId=Number(r.eventId);old.replacedByDate=r.date||null;
   }
 
-  // Zins für TLN Gold Extended immer aus der ersetzten Loan-Kette übernehmen.
-  // Beispiel verifiziert: #5722 (1'000 v$ ursprünglicher Principal, 180 v$ Zins) → #32646 (820 v$ Extended-Principal).
-  // 820 × 18 % = 147.6 v$ wäre fachlich falsch, weil damit der bereits reduzierte Extended-Betrag erneut verzinst würde.
+  // TLN Gold Extended / Second Chance:
+  // Alt→Neu bleibt ausschließlich als historische Beziehung bestehen.
+  // Der alte Loan ist verfallen; Zins/Schuld werden NICHT auf den neuen Extended-Loan übertragen.
+  // Solange Rückzahlungsbetrag/Zins der neuen Position nicht on-chain belegt sind, bleiben diese Felder leer.
   for(const r of rows){
     if(String(r?.rawType??'').trim()!=='5'&&r?.type!=='TLN Gold Extended')continue;
-    let source=null,cur=r,guard=0;
-    while(cur?.replacesPositionId&&guard++<50){
-      const prev=byWalletPosition.get(`${norm(r.wallet)}|${Number(cur.replacesPositionId)}`);
-      if(!prev)break;
-      const prevIsExtended=String(prev?.rawType??'').trim()==='5'||prev?.type==='TLN Gold Extended';
-      if(!prevIsExtended&&prev.interest!=null&&Number.isFinite(Number(prev.interest))){source=prev;break;}
-      cur=prev;
-    }
-    if(source){
-      r.interest=Number(source.interest);
-      r.interestRate=(source.interestRate!=null&&Number.isFinite(Number(source.interestRate)))?Number(source.interestRate):null;
-      r.interestModel=`aus ursprünglichem Loan #${source.eventId} übernommen · nicht erneut auf Extended-Principal berechnet`;
-    }else{
-      r.interest=null;
-      r.interestRate=null;
-      r.interestModel='Zins aus ersetztem ursprünglichem Loan noch nicht aufgelöst · keine Neuberechnung auf Extended-Principal';
-    }
+    r.interest=null;
+    r.interestRate=null;
+    r.repayment=null;
+    r.interestModel='eigener Extended-Zins bei Rückzahlung · on-chain noch nicht aufgelöst';
+    r.repaymentSource='TLN Gold Extended · neuer eigenständiger Second-Chance-Loan · Rückzahlungsbetrag und eigener Zins ausschließlich positionsbezogen on-chain ermitteln';
   }
 }
 function loanOptionCellHtml(r){
@@ -757,6 +748,11 @@ async function loanVerifyRepaymentModels(){
       }else if(String(typ)==='2'||String(typ)==='3'){
         if(paidVsPrincipal!=null&&loanClose(paidVsPrincipal,1.18,.001))modelCheck='118 % Principal · bestätigt';
         else if(paidVsPrincipal!=null)modelCheck=`${loanNum(paidVsPrincipal*100,4)} % des Principal`;
+      }else if(String(typ)==='5'){
+        // Extended / Second Chance: keine 18-%-Annahme. Nur reale Repay-Daten auswerten.
+        if(rp.paid!=null&&rp.principal!=null&&rp.principal>0){
+          modelCheck=`Extended on-chain · bezahlt ${loanNum(rp.paid,8)} v$ / Principal ${loanNum(rp.principal,8)} v$ · Differenz ${loanNum(rp.paid-rp.principal,8)} v$ (${loanNum((rp.paid/rp.principal-1)*100,4)} %)`;
+        }else modelCheck='Extended · Repay-Daten unvollständig';
       }
       return `<tr>
         <td>${loanDate(rp.date)}</td><td>${loanDiagEsc(short(rp.wallet))}</td><td>${rp.positionRef}</td>
@@ -932,7 +928,7 @@ function renderLoanDiscovery(){
     const upfrontInterest=sumVal(subset.filter(r=>String(r.interestModel||'').startsWith('im Voraus bezahlt')),'interest');
     const repayInterest=sumVal(subset.filter(r=>String(r.interestModel||'').startsWith('fällig bei Rückzahlung')),'interest');
     const deductedInterest=sumVal(subset.filter(r=>String(r.interestModel||'').startsWith('vom geminteten')),'interest');
-    const inheritedInterest=sumVal(subset.filter(r=>String(r.interestModel||'').startsWith('aus ursprünglichem Loan')),'interest');
+    const unresolvedExtendedInterest=subset.filter(r=>(String(r?.rawType??'').trim()==='5'||r?.type==='TLN Gold Extended')&&r.interest==null).length;
     const valueWithBreakdown=(main,parts)=>`${cell(main,2)}<span class="team-lifecycle-sub">${parts.filter(Boolean).join(' · ')}</span>`;
     const rows=[
       [isRebound?'Anzahl Rebounds':'Anzahl Loans / Optionen', String(subset.length)],
@@ -952,7 +948,7 @@ function renderLoanDiscovery(){
       rows.push(
         ['Principal / Schuld gesamt', cell(sumVal(subset,'principal'),2)],
         ['Rückzahlung gesamt', valueWithBreakdown(repaymentTotal,[`davon offen ${cell(repaymentOpen,2)} v$`,`zurückbezahlt ${cell(repaymentPaid,2)} v$`])],
-        ['Zinsen gesamt', valueWithBreakdown(interestTotal,[`vorausbezahlt ${cell(upfrontInterest,2)} v$`,`bei Rückzahlung fällig ${cell(repayInterest,2)} v$`,`vom Mint abgezogen ${cell(deductedInterest,2)} v$`,`aus Alt-Loan übernommen ${cell(inheritedInterest,2)} v$`])]
+        ['Zinsen gesamt', valueWithBreakdown(interestTotal,[`vorausbezahlt ${cell(upfrontInterest,2)} v$`,`bei Rückzahlung fällig ${cell(repayInterest,2)} v$`,`vom Mint abgezogen ${cell(deductedInterest,2)} v$`,unresolvedExtendedInterest?`Extended on-chain offen ${unresolvedExtendedInterest}`:''])]
       );
     }
     return rows.map(([label,value],i)=>`<tr><td${i===0?' style="font-weight:700"':''}>${label}</td><td class="loan-num"${i===0?' style="font-weight:700"':''}>${value}</td></tr>`).join('');
@@ -1088,5 +1084,5 @@ function initLoanDiscovery(){
     constants:{optionsContract:LOAN_OPTIONS_CONTRACT,vusd:LOAN_VUSD_ADDRESS,boosterByEventValue3:LOAN_BOOSTER_BY_EVENT_VALUE3}
   };
 }
-global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-011857'});
+global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-022900'});
 })(window);
