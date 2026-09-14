@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260914-175800 */
+/* TLN/VOW Loans central engine · Build 20260914-182500 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -1274,6 +1274,8 @@ async function loanInspectPositionLifecycle(){
 }
 
 
+let LOAN_GLOBAL_REFERENCE_RESULTS=[];
+
 function loanGlobalRefSetState(text,kind='muted'){
   const el=document.getElementById('loanGlobalRefState');if(!el)return;
   el.className=kind==='ok'?'ok':kind==='warn'?'warn':kind==='err'?'err':'muted';
@@ -1390,6 +1392,69 @@ async function loanGlobalResolveOpening(position,wallet,seedRow,seedTransfer){
   }
   return null;
 }
+
+function loanPickBestReference(type){
+  const rows=LOAN_GLOBAL_REFERENCE_RESULTS.filter(x=>x.typ===type);
+  if(!rows.length)return null;
+  // Prefer true lifecycle evidence, then older cases, then latest position id as tiebreaker.
+  return [...rows].sort((a,b)=>{
+    if((b.score||0)!==(a.score||0))return (b.score||0)-(a.score||0);
+    const ad=Date.parse(a.row?.date||0)||0,bd=Date.parse(b.row?.date||0)||0;
+    if(ad!==bd)return ad-bd;
+    return Number(a.row?.eventId||0)-Number(b.row?.eventId||0);
+  })[0]||null;
+}
+async function loanInspectBestReference(type){
+  const out=document.getElementById('loanGlobalBestRefResult');
+  const hit=loanPickBestReference(type);
+  if(!hit){
+    if(out)out.innerHTML=`<div class="warn">Kein Referenzfall für ${loanDiagEsc(type)} vorhanden.</div>`;
+    return;
+  }
+  if(out)out.innerHTML=`<div class="muted">Analysiere besten Referenzfall ${loanDiagEsc(type)} · #${loanDiagEsc(hit.row.eventId)} …</div>`;
+  try{
+    const r=hit.row;
+    const receipt=r.tx?await loanReceipt(r.tx):null;
+    const tx=r.tx?await loanDiagTransaction(r.tx):null;
+    const transfers=receipt?await loanLifecycleRelevantTransfers(receipt,r.wallet):[];
+    const state=hit.state||await loanReadPositionStructRaw(r.eventId,r.wallet);
+    const words=state?.words||[];
+    const transferRows=transfers.map(t=>`<tr>
+      <td>${loanDiagEsc(t.symbol||'–')}</td><td class="loan-link">${loanDiagEsc(t.from||'–')}</td>
+      <td class="loan-link">${loanDiagEsc(t.to||'–')}</td><td style="text-align:right">${loanDiagEsc(loanNum(t.amount,8))}</td>
+    </tr>`).join('');
+    const structRows=words.map(w=>`<tr><td>w${w.index}</td><td class="loan-raw">${loanDiagEsc(w.uint)}</td>
+      <td style="text-align:right">${loanDiagEsc(w.as18)}</td><td>${loanDiagEsc(w.timestamp)}</td><td class="loan-link">${loanDiagEsc(w.address)}</td></tr>`).join('');
+    const ev3=String(r.rawType??'–');
+    const suggestedEvidence=(hit.score||0)>=4?'weiter fortgeschrittener Struct-Kandidat':'Basis-/Wait-State-Kandidat';
+    out.innerHTML=`
+      <div class="custom-token-card" style="margin-top:8px">
+        <h3 style="margin-top:0">Bester Referenzfall · ${loanDiagEsc(type)}</h3>
+        <div class="wrap"><table class="project-data-table" style="min-width:900px"><tbody>
+          <tr><th>Position</th><td>#${loanDiagEsc(r.eventId)}</td></tr>
+          <tr><th>Typ-ID</th><td>${loanDiagEsc(ev3)}</td></tr>
+          <tr><th>Eröffnung</th><td>${loanDiagEsc(loanDate(r.date))}</td></tr>
+          <tr><th>Wallet</th><td class="loan-link">${loanDiagEsc(r.wallet)}</td></tr>
+          <tr><th>Lifecycle-Score</th><td>${loanDiagEsc(hit.score||0)} · ${loanDiagEsc(suggestedEvidence)}</td></tr>
+          <tr><th>Repay</th><td>${r.repaymentDate?loanDiagEsc(loanDate(r.repaymentDate)):'–'}</td></tr>
+          <tr><th>Eröffnungs-Tx</th><td>${r.tx?`<a target="_blank" href="https://bscscan.com/tx/${loanDiagEsc(r.tx)}">${loanDiagEsc(short(r.tx))}</a>`:'–'}</td></tr>
+        </tbody></table></div>
+        <div style="margin-top:10px"><b>Positions-Struct</b></div>
+        <div class="wrap"><table class="project-data-table" style="min-width:1000px"><thead><tr>
+          <th>Feld</th><th>uint roh</th><th style="text-align:right">/1e18</th><th>Timestamp-Kandidat</th><th>Address-Kandidat</th>
+        </tr></thead><tbody>${structRows||'<tr><td colspan="5">Struct nicht lesbar.</td></tr>'}</tbody></table></div>
+        <div style="margin-top:10px"><b>Relevante Transfers der Eröffnungs-Tx</b></div>
+        <div class="wrap"><table class="project-data-table" style="min-width:1000px"><thead><tr>
+          <th>Token</th><th>Von</th><th>An</th><th style="text-align:right">Betrag</th>
+        </tr></thead><tbody>${transferRows||'<tr><td colspan="4">Keine relevanten Transfers dekodiert.</td></tr>'}</tbody></table></div>
+        ${loanDiagTxDetailsHtml(tx,receipt,BigInt(r.eventId))}
+      </div>`;
+  }catch(e){
+    console.error('[Best loan reference]',e);
+    if(out)out.innerHTML=`<div class="err">Referenzanalyse fehlgeschlagen: ${loanDiagEsc(e?.message||e)}</div>`;
+  }
+}
+
 async function loanSearchGlobalReferenceLoans(){
   const btn=document.getElementById('loanGlobalRefRun');
   const out=document.getElementById('loanGlobalRefResult');
@@ -1420,7 +1485,18 @@ async function loanSearchGlobalReferenceLoans(){
     found.sort((a,b)=>a.typ.localeCompare(b.typ)||b.score-a.score||Number(b.row.eventId)-Number(a.row.eventId));
     const counts={};for(const f of found)counts[f.typ]=(counts[f.typ]||0)+1;
 
-    const summary=[...targetTypes].map(t=>`<tr><td><b>${loanDiagEsc(t)}</b></td><td style="text-align:right">${counts[t]||0}</td><td>${counts[t]?((found.filter(f=>f.typ===t).some(f=>f.score>=4))?'mind. ein weiter fortgeschrittener Struct-Kandidat':'nur Basis-/Wait-State-Kandidaten'):'kein Treffer'}</td></tr>`).join('');
+    LOAN_GLOBAL_REFERENCE_RESULTS=found.map(f=>({
+      typ:f.typ,score:f.score,row:{...f.row},state:f.state?{...f.state,words:(f.state.words||[]).map(w=>({...w}))}:null
+    }));
+    const summary=[...targetTypes].map(t=>{
+      const subset=found.filter(f=>f.typ===t);
+      return `<tr>
+        <td><b>${loanDiagEsc(t)}</b></td>
+        <td style="text-align:right">${subset.length}</td>
+        <td>${subset.length?(subset.some(f=>f.score>=4)?'mind. ein weiter fortgeschrittener Struct-Kandidat':'nur Basis-/Wait-State-Kandidaten'):'kein Treffer'}</td>
+        <td>${subset.length?`<button type="button" class="secondary loan-best-ref-btn" data-loan-best-type="${loanDiagEsc(t)}">Besten Referenzfall untersuchen</button>`:'–'}</td>
+      </tr>`;
+    }).join('');
 
     const rows=found.slice(0,80).map(f=>{
       const words=f.state?.words||[];
@@ -1441,11 +1517,14 @@ async function loanSearchGlobalReferenceLoans(){
     }).join('');
 
     out.innerHTML=`
-      <div class="wrap"><table class="project-data-table" style="min-width:700px"><thead><tr><th>Typ</th><th style="text-align:right">Treffer</th><th>Struct-Hinweis</th></tr></thead><tbody>${summary}</tbody></table></div>
+      <div class="wrap"><table class="project-data-table" style="min-width:900px"><thead><tr><th>Typ</th><th style="text-align:right">Treffer</th><th>Struct-Hinweis</th><th>Referenzanalyse</th></tr></thead><tbody>${summary}</tbody></table></div>
       <div class="muted" style="margin:8px 0">Lifecycle-Score ist nur eine Sortierhilfe: positive w5/w6-Felder erhöhen den Score. Das ist noch kein Beweis für VOW-Collateral oder erfolgten Swap.</div>
       <div class="wrap"><table class="project-data-table" style="min-width:1400px"><thead><tr>
         <th>Typ</th><th>Typ-ID</th><th>Position</th><th>Eröffnung</th><th>Wallet</th><th style="text-align:right">Score</th><th style="text-align:right">w5 /1e18</th><th style="text-align:right">w6 /1e18</th><th style="text-align:right">w7</th><th>Repay</th><th>Tx</th>
       </tr></thead><tbody>${rows||'<tr><td colspan="11">Keine passenden Referenz-Loans gefunden.</td></tr>'}</tbody></table></div>`;
+    document.querySelectorAll('.loan-best-ref-btn').forEach(btn=>{
+      btn.addEventListener('click',()=>void loanInspectBestReference(String(btn.dataset.loanBestType||'')));
+    });
     loanGlobalRefSetState(`Fertig: ${done} Kandidaten geprüft · ${found.length} passende Referenz-Loans gefunden.`,found.length?'ok':'warn');
   }catch(e){
     console.error('[Loan global references]',e);
@@ -1646,5 +1725,5 @@ function initLoanDiscovery(){
     constants:{optionsContract:LOAN_OPTIONS_CONTRACT,vusd:LOAN_VUSD_ADDRESS,boosterByEventValue3:LOAN_BOOSTER_BY_EVENT_VALUE3}
   };
 }
-global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-175800'});
+global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-182500'});
 })(window);
