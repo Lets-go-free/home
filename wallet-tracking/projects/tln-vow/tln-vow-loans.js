@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260914-150500 */
+/* TLN/VOW Loans central engine · Build 20260914-175800 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -393,6 +393,7 @@ async function loanBuildRow(wallet,burns){
 
 
 const LOAN_TLNGOLD_ADDRESS=Object.keys(LOAN_TOKEN_CANONICAL).find(a=>loanNormSymbol(LOAN_TOKEN_CANONICAL[a]?.symbol)==='TLNGOLD')||'0xaa90a8cdab8b8e902293a2817d1d286f66cbcec5';
+const LOAN_TLNPLUS_ADDRESS=Object.keys(LOAN_TOKEN_CANONICAL).find(a=>loanNormSymbol(LOAN_TOKEN_CANONICAL[a]?.symbol)==='TLN+')||'0x29280091fa7f3abe4739ad5f1f7c5287feaf7736';
 
 function loanGoldGlobalSetState(text,kind='muted'){
   const el=document.getElementById('loanGoldGlobalState');if(!el)return;
@@ -1301,40 +1302,77 @@ function loanGlobalRefLifecycleScore(words){
   }catch{}
   return score;
 }
-async function loanGlobalReferenceCandidates(limit){
-  const out=[];
-  // Reuse chainwide TLN-GOLD search source for gold types, and global Repay/opening resolver for TLN+ where possible.
-  // First source: globally discovered repayments already resolve opening position/type.
-  try{
-    const logs=await rpc('eth_getLogs',[{address:LOAN_OPTIONS_CONTRACT,fromBlock:'0x0',toBlock:'latest',topics:[LOAN_REPAY_TOPIC]}]);
-    for(const l of logs||[]){
-      if(out.length>=limit)break;
-      const words=loanDataWords(l.data);
-      if(!words.length)continue;
-      const position=words[0]&&words[0]<1000000000n?Number(words[0]):null;
-      if(!position)continue;
-      // position-only candidate; wallet is topic1 in LoanRepay when indexed.
-      const wallet=(l.topics?.[1])?loanTopicAddress(l.topics[1]):null;
-      if(wallet)out.push({position,wallet,source:'LoanRepay',tx:l.transactionHash||null,blockNumber:l.blockNumber||null});
+async function loanGlobalBurnTransfersForToken(tokenAddress,limit){
+  if(!hasAlchemy())throw new Error('Keine Alchemy Discovery-API für BSC konfiguriert.');
+  const latestHex=await rpc('eth_blockNumber',[]);
+  const latest=Number(BigInt(latestHex));
+  const out=[],seen=new Set();
+  let toBlock=latest,window=250000,windows=0;
+  while(toBlock>=0&&out.length<limit){
+    const fromBlock=Math.max(0,toBlock-window+1);
+    let pageKey=null,tmp=[],ok=false;
+    try{
+      do{
+        const q={
+          fromBlock:'0x'+fromBlock.toString(16),toBlock:'0x'+toBlock.toString(16),
+          contractAddresses:[tokenAddress],category:['erc20'],excludeZeroValue:false,
+          withMetadata:true,maxCount:'0x3e8',order:'desc',...(pageKey?{pageKey}:{})
+        };
+        const r=await alchemy('alchemy_getAssetTransfers',[q]);
+        for(const tr of (r?.transfers||[])){
+          if(norm(tr?.to||'')!==LOAN_ZERO)continue;
+          const from=norm(tr?.from||'');
+          if(!/^0x[0-9a-f]{40}$/.test(from)||from===LOAN_ZERO)continue;
+          const hash=String(tr?.hash||'').toLowerCase();
+          const key=`${hash}|${String(tr?.uniqueId||tr?.logIndex||'')}`;
+          if(seen.has(key))continue;seen.add(key);tmp.push(tr);
+        }
+        pageKey=r?.pageKey||null;
+        if(tmp.length+out.length>=limit)break;
+      }while(pageKey);
+      ok=true;
+    }catch(e){
+      if(window>1000){window=Math.max(1000,Math.floor(window/2));continue}
+      throw e;
     }
-  }catch{}
-
-  // Second source: loaded rows can contribute known openings from current project wallets.
-  for(const r of LOAN_DISCOVERY_ROWS||[]){
-    if(out.length>=limit)break;
-    if(r?.eventId&&r?.wallet)out.push({position:Number(r.eventId),wallet:norm(r.wallet),source:'loaded',row:r,tx:r.tx||null,blockNumber:r.blockNumber||null});
+    if(ok){
+      tmp.sort((a,b)=>String(b?.metadata?.blockTimestamp||'').localeCompare(String(a?.metadata?.blockTimestamp||'')));
+      for(const tr of tmp){out.push(tr);if(out.length>=limit)break}
+      if(fromBlock===0)break;
+      toBlock=fromBlock-1;windows++;
+      if(windows%5===0&&window<250000)window=Math.min(250000,window*2);
+      if(windows>5000)break;
+    }
   }
-
-  // Deduplicate by position+wallet.
-  const seen=new Set();
-  return out.filter(x=>{
-    const k=`${String(x.wallet||'').toLowerCase()}|${x.position}`;
-    if(seen.has(k))return false;seen.add(k);return true;
-  }).slice(0,limit);
+  return out;
 }
-async function loanGlobalResolveOpening(position,wallet,seedRow){
+async function loanGlobalReferenceCandidates(limit){
+  // True chainwide opening source: scan TLN+ and TLN-GOLD burns to zero, then
+  // reconstruct each opening from the full receipt. This avoids bias toward
+  // repayments or the user's own wallets.
+  const perToken=Math.max(100,limit);
+  const [plusBurns,goldBurns]=await Promise.all([
+    loanGlobalBurnTransfersForToken(LOAN_TLNPLUS_ADDRESS,perToken),
+    loanGlobalBurnTransfersForToken(LOAN_TLNGOLD_ADDRESS,perToken)
+  ]);
+  const seeds=[];
+  for(const tr of [...plusBurns,...goldBurns]){
+    const wallet=norm(tr?.from||'');
+    const hash=String(tr?.hash||'').toLowerCase();
+    if(!wallet||!hash)continue;
+    seeds.push({wallet,tx:hash,transfer:tr,source:'global-burn'});
+  }
+  const seen=new Set();
+  return seeds.filter(s=>{const k=s.tx;if(seen.has(k))return false;seen.add(k);return true})
+    .sort((a,b)=>String(b.transfer?.metadata?.blockTimestamp||'').localeCompare(String(a.transfer?.metadata?.blockTimestamp||'')))
+    .slice(0,Math.max(limit*2,limit));
+}
+async function loanGlobalResolveOpening(position,wallet,seedRow,seedTransfer){
   if(seedRow)return seedRow;
-  // Search current wallet opening history backwards using existing machinery.
+  if(seedTransfer){
+    return await loanBuildRow(wallet,[seedTransfer]).catch(()=>null);
+  }
+  if(position==null)return null;
   const trs=await loanBurnCandidatesForWallet(wallet).catch(()=>[]);
   const byHash=new Map();
   for(const tr of trs){
@@ -1357,7 +1395,7 @@ async function loanSearchGlobalReferenceLoans(){
   const out=document.getElementById('loanGlobalRefResult');
   const limit=Math.max(100,Math.min(5000,Number(document.getElementById('loanGlobalRefLimit')?.value||800)));
   if(btn)btn.disabled=true;if(out)out.innerHTML='';
-  loanGlobalRefSetState(`Suche bis zu ${limit} globale Referenzkandidaten …`);
+  loanGlobalRefSetState(`Scanne chainweit TLN+ und TLN GOLD Burns · Ziel bis zu ${limit} je Token …`);
   try{
     const seeds=await loanGlobalReferenceCandidates(limit);
     const targetTypes=new Set(['TLN+ 0.25','TLN+ x2','TLN Gold x2','TLN Gold x4']);
@@ -1366,7 +1404,7 @@ async function loanSearchGlobalReferenceLoans(){
     for(const seed of seeds){
       done++;
       if(done===1||done%20===0)loanGlobalRefSetState(`Prüfe ${done}/${seeds.length} Kandidaten · ${found.length} passende Referenzen …`);
-      const row=await loanGlobalResolveOpening(seed.position,seed.wallet,seed.row).catch(()=>null);
+      const row=await loanGlobalResolveOpening(seed.position??null,seed.wallet,seed.row,seed.transfer).catch(()=>null);
       if(!row)continue;
       const typ=loanGlobalRefType(row.rawType,row.type);
       if(!typ||!targetTypes.has(typ))continue;
@@ -1608,5 +1646,5 @@ function initLoanDiscovery(){
     constants:{optionsContract:LOAN_OPTIONS_CONTRACT,vusd:LOAN_VUSD_ADDRESS,boosterByEventValue3:LOAN_BOOSTER_BY_EVENT_VALUE3}
   };
 }
-global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-150500'});
+global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-175800'});
 })(window);
