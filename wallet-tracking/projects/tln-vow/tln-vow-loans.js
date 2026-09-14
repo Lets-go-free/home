@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260914-110700 */
+/* TLN/VOW Loans central engine · Build 20260914-112200 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -1063,8 +1063,9 @@ function loanStatusCompareSetState(text,kind='muted'){
 function loanStatusKnownLifecycleLabel(r){
   if(r?.repaymentDate)return 'zurückbezahlt';
   if(r?.swapDate)return 'Swap erkannt';
-  if(String(r?.rawType??'').trim()==='5'||r?.type==='TLN Gold Extended')return 'Extended · Swap noch nicht verifiziert';
-  return 'offen / Lifecycle unvollständig';
+  if(String(r?.rawType??'').trim()==='5'||r?.type==='TLN Gold Extended')return 'Extended · Wait to Swap (fachlich bekannt)';
+  if(/Rebound/i.test(String(r?.type||'')))return 'Rebound · Wait to Swap (fachlich bekannt)';
+  return 'älterer Kontrollfall / Lifecycle prüfen';
 }
 async function loanReadPositionStructRaw(position,wallet){
   const posHex=loanStateHexWord(BigInt(position));
@@ -1089,15 +1090,30 @@ async function loanComparePositionStatusFields(){
   const limit=Math.max(5,Math.min(200,Number(document.getElementById('loanStatusCompareLimit')?.value||40)));
   if(btn)btn.disabled=true;if(out)out.innerHTML='';
   try{
-    let rows=(LOAN_DISCOVERY_ROWS||[]).filter(r=>r?.eventId&&r?.wallet);
-    rows=[...rows].sort((a,b)=>{
-      const ra=a?.repaymentDate?1:0, rb=b?.repaymentDate?1:0;
-      if(ra!==rb)return rb-ra;
-      const ea=(String(a?.rawType??'').trim()==='5'||a?.type==='TLN Gold Extended')?1:0;
-      const eb=(String(b?.rawType??'').trim()==='5'||b?.type==='TLN Gold Extended')?1:0;
-      if(ea!==eb)return eb-ea;
-      return Number(b?.eventId||0)-Number(a?.eventId||0);
-    }).slice(0,limit);
+    const mode=document.getElementById('loanStatusCompareMode')?.value||'mixed';
+    const allRows=(LOAN_DISCOVERY_ROWS||[]).filter(r=>r?.eventId&&r?.wallet);
+    const isWaitType=r=>{
+      const raw=String(r?.rawType??'').trim(),typ=String(r?.type||'');
+      return raw==='5'||typ==='TLN Gold Extended'||/Rebound/i.test(typ);
+    };
+    const newest=(arr,n)=>[...arr].sort((a,b)=>Number(b?.eventId||0)-Number(a?.eventId||0)).slice(0,n);
+    const oldest=(arr,n)=>[...arr].sort((a,b)=>Number(a?.eventId||0)-Number(b?.eventId||0)).slice(0,n);
+    let rows;
+    if(mode==='old'){
+      rows=oldest(allRows.filter(r=>!isWaitType(r)),limit);
+    }else if(mode==='all'){
+      rows=newest(allRows,limit);
+    }else{
+      // Deliberately force two different populations into the same comparison.
+      // Current Extended/Rebound positions are known by the user to be Wait-to-Swap;
+      // older non-Extended/Rebound loans provide the needed control group.
+      const waitCount=Math.max(3,Math.floor(limit/3));
+      const controlCount=Math.max(3,limit-waitCount);
+      rows=[
+        ...newest(allRows.filter(isWaitType),waitCount),
+        ...oldest(allRows.filter(r=>!isWaitType(r)),controlCount)
+      ];
+    }
 
     if(!rows.length){
       loanStatusCompareSetState('Keine geladenen Loan-Positionen vorhanden. Zuerst Loans on-chain neu laden.','warn');
@@ -1146,7 +1162,7 @@ async function loanComparePositionStatusFields(){
         <th>Eröffnung</th><th>Position</th><th>Typ</th><th>bekannter Lifecycle</th><th>Repay</th><th style="text-align:right">letztes Feld</th><th>Getter-Form</th><th>Struct-Rohwerte</th>
       </tr></thead><tbody>${html||'<tr><td colspan="8">Keine Structs lesbar.</td></tr>'}</tbody></table></div>`;
 
-    loanStatusCompareSetState(`Fertig: ${rows.length} Positionen geprüft · ${result.length} Structs lesbar · ${counts.size} verschiedene letzte Rohwerte.`,result.length?'ok':'warn');
+    loanStatusCompareSetState(`Fertig: ${rows.length} Positionen geprüft · ${result.length} Structs lesbar · ${counts.size} verschiedene letzte Rohwerte · Vergleichsgruppe ${mode}.`,result.length?'ok':'warn');
   }catch(e){
     console.error('[Loan status compare]',e);
     loanStatusCompareSetState(`Fehler: ${e?.message||e}`,'err');
@@ -1344,5 +1360,5 @@ function initLoanDiscovery(){
     constants:{optionsContract:LOAN_OPTIONS_CONTRACT,vusd:LOAN_VUSD_ADDRESS,boosterByEventValue3:LOAN_BOOSTER_BY_EVENT_VALUE3}
   };
 }
-global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-110700'});
+global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-112200'});
 })(window);
