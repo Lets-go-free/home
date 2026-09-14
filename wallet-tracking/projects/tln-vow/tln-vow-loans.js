@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260914-112200 */
+/* TLN/VOW Loans central engine · Build 20260914-122500 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -1103,16 +1103,14 @@ async function loanComparePositionStatusFields(){
       rows=oldest(allRows.filter(r=>!isWaitType(r)),limit);
     }else if(mode==='all'){
       rows=newest(allRows,limit);
+    }else if(mode==='collateral'){
+      const waitRows=newest(allRows.filter(isWaitType),Math.max(5,Math.floor(limit/3)));
+      const controlPool=oldest(allRows.filter(r=>!isWaitType(r)),Math.max(limit*3,80));
+      rows=[...waitRows,...controlPool];
     }else{
-      // Deliberately force two different populations into the same comparison.
-      // Current Extended/Rebound positions are known by the user to be Wait-to-Swap;
-      // older non-Extended/Rebound loans provide the needed control group.
       const waitCount=Math.max(3,Math.floor(limit/3));
       const controlCount=Math.max(3,limit-waitCount);
-      rows=[
-        ...newest(allRows.filter(isWaitType),waitCount),
-        ...oldest(allRows.filter(r=>!isWaitType(r)),controlCount)
-      ];
+      rows=[...newest(allRows.filter(isWaitType),waitCount),...oldest(allRows.filter(r=>!isWaitType(r)),controlCount)];
     }
 
     if(!rows.length){
@@ -1128,16 +1126,24 @@ async function loanComparePositionStatusFields(){
       if(!state)continue;
       const words=state.words;
       const last=words.at(-1)?.uint??'–';
-      result.push({r,state,last});
+      const w5=BigInt(words[4]?.uint||0),w6=BigInt(words[5]?.uint||0);
+      const collateralCandidate=(w5>0n||w6>0n);
+      result.push({r,state,last,collateralCandidate});
     }
 
+    let shown=result;
+    if(mode==='collateral'){
+      const waits=result.filter(v=>isWaitType(v.r)).slice(0,Math.max(5,Math.floor(limit/3)));
+      const controls=result.filter(v=>!isWaitType(v.r)&&v.collateralCandidate).slice(0,Math.max(5,limit-waits.length));
+      shown=[...waits,...controls];
+    }
     const counts=new Map();
-    for(const x of result)counts.set(x.last,(counts.get(x.last)||0)+1);
+    for(const x of shown)counts.set(x.last,(counts.get(x.last)||0)+1);
 
     const summary=[...counts.entries()].sort((a,b)=>b[1]-a[1]).map(([v,n])=>
       `<tr><td>${loanDiagEsc(v)}</td><td style="text-align:right">${n}</td></tr>`).join('');
 
-    const html=result.map(({r,state,last})=>{
+    const html=shown.map(({r,state,last,collateralCandidate})=>{
       const words=state.words;
       const wordText=words.map(w=>`w${w.index}=${w.uint}${w.as18!=='–'?` (/1e18 ${w.as18})`:''}${w.timestamp!=='–'?` (${w.timestamp})`:''}`).join(' · ');
       return `<tr>
@@ -1146,6 +1152,7 @@ async function loanComparePositionStatusFields(){
         <td>${loanDiagEsc(r.type||'–')}</td>
         <td>${loanDiagEsc(loanStatusKnownLifecycleLabel(r))}</td>
         <td>${r.repaymentDate?loanDate(r.repaymentDate):'–'}</td>
+        <td>${collateralCandidate?'<b>positiver w5/w6-Kandidat</b>':'–'}</td>
         <td style="text-align:right"><b>${loanDiagEsc(last)}</b></td>
         <td>${loanDiagEsc(state.form)}</td>
         <td class="loan-raw">${loanDiagEsc(wordText)}</td>
@@ -1159,8 +1166,8 @@ async function loanComparePositionStatusFields(){
       <div style="margin-bottom:10px"><b>Verteilung letztes Struct-Feld</b></div>
       <div class="wrap"><table class="project-data-table" style="min-width:420px"><thead><tr><th>Rohwert</th><th style="text-align:right">Anzahl</th></tr></thead><tbody>${summary||'<tr><td colspan="2">Keine Werte.</td></tr>'}</tbody></table></div>
       <div class="wrap" style="margin-top:10px"><table class="project-data-table" style="min-width:1500px"><thead><tr>
-        <th>Eröffnung</th><th>Position</th><th>Typ</th><th>bekannter Lifecycle</th><th>Repay</th><th style="text-align:right">letztes Feld</th><th>Getter-Form</th><th>Struct-Rohwerte</th>
-      </tr></thead><tbody>${html||'<tr><td colspan="8">Keine Structs lesbar.</td></tr>'}</tbody></table></div>`;
+        <th>Eröffnung</th><th>Position</th><th>Typ</th><th>bekannter Lifecycle</th><th>Repay</th><th>VOW-Collateral-Indiz</th><th style="text-align:right">letztes Feld</th><th>Getter-Form</th><th>Struct-Rohwerte</th>
+      </tr></thead><tbody>${html||'<tr><td colspan="9">Keine Structs lesbar.</td></tr>'}</tbody></table></div>`;
 
     loanStatusCompareSetState(`Fertig: ${rows.length} Positionen geprüft · ${result.length} Structs lesbar · ${counts.size} verschiedene letzte Rohwerte · Vergleichsgruppe ${mode}.`,result.length?'ok':'warn');
   }catch(e){
@@ -1360,5 +1367,5 @@ function initLoanDiscovery(){
     constants:{optionsContract:LOAN_OPTIONS_CONTRACT,vusd:LOAN_VUSD_ADDRESS,boosterByEventValue3:LOAN_BOOSTER_BY_EVENT_VALUE3}
   };
 }
-global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-112200'});
+global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-122500'});
 })(window);
