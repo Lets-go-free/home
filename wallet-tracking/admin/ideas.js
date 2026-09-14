@@ -3,8 +3,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260914-022900";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "14.09.2026 02:29:00 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260914-105300";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "14.09.2026 10:53:00 CEST";
 
 const ADMIN_IDEAS = [
   { status: "done", title: "Projekt-Caches nur noch bewusst aktualisieren", desc: `Phase 2am: Die Liquidity-Pool-Tabs von DAO1 und TLN/VOW sind beim Öffnen vollständig cache-only.
@@ -104,6 +104,7 @@ OFFEN / NÄCHSTER SCHRITT: Lifecycle vollständig on-chain bestimmen:
 • mögliche Karenzfrist verifizieren
 • Rückzahlung/Abschluss positionsgenau zuordnen
 • TLN Gold Extended: neuen Rückzahlungsbetrag und eigenen Zins der neuen Position on-chain ermitteln; keine Übernahme aus Alt-Loan und keine rechnerische Ableitung
+  DEV-STAND: Contract-State-Reader ergänzt. Er liest den aktuellen Options-Proxy/Implementation-State ABI-unabhängig via eth_call und zeigt erfolgreiche Rohantworten für Position/Wallet. Nächster Kontrollfall: #32646; gesucht wird insbesondere ein positionsbezogener Rückzahlungs-/Debt-Wert. Eröffnungs-Logs enthalten 820 v$ und Typ 5, aber keinen belegten Rückzahlungsbetrag.
   - DEV Repay-Verifier erweitert: Event-Wert 5 kann gezielt gesucht werden; keine 18-%-Annahme. Reale Typ-5-Repays zeigen Principal, tatsächlich bezahlte v$ und daraus die on-chain belegte Differenz/Zinsquote. Nächster Test: historische Typ-5-Repays suchen; bei keinem Treffer Scan bis 10’000 Repay-Txs erweitern.
 
 CASHFLOW-DARSTELLUNG:

@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260914-022900 */
+/* TLN/VOW Loans central engine · Build 20260914-105300 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -895,6 +895,164 @@ async function loanSearchPositionBackwards(){
   }catch(e){console.error('[Loans position diagnostic]',e);loanDiagSetState(`Fehler: ${e?.message||e}`,'err')}
 }
 
+
+const LOAN_EIP1967_IMPLEMENTATION_SLOT='0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
+
+function loanStateSetState(text,kind='muted'){
+  const el=document.getElementById('loanStateState');if(!el)return;
+  el.className=kind==='ok'?'ok':kind==='warn'?'warn':kind==='err'?'err':'muted';el.textContent=text;
+}
+function loanStateHexWord(v){
+  try{return BigInt(v).toString(16).padStart(64,'0')}catch{return ''}
+}
+function loanStateDecodeAddressWord(wordHex){
+  const h=String(wordHex||'').replace(/^0x/,'').padStart(64,'0');
+  const lead=h.slice(0,24);
+  if(!/^0+$/.test(lead))return null;
+  const addr='0x'+h.slice(-40);
+  return /^0x0{40}$/i.test(addr)?null:norm(addr);
+}
+function loanStateReturnWords(data){
+  const h=String(data||'').replace(/^0x/,'');
+  if(!h||h.length%64!==0)return [];
+  const out=[];
+  for(let i=0;i<h.length;i+=64){
+    const raw=h.slice(i,i+64);
+    try{
+      const n=BigInt('0x'+raw);
+      const addr=loanStateDecodeAddressWord(raw);
+      let as18='–';
+      if(n>0n){
+        const whole=n/1000000000000000000n, frac=n%1000000000000000000n;
+        if(whole<1000000000000n){
+          const fs=frac.toString().padStart(18,'0').replace(/0+$/,'').slice(0,8);
+          as18=whole.toString()+(fs?'.'+fs:'');
+        }
+      }
+      let time='–';
+      if(n>=946684800n&&n<=4102444800n){
+        try{time=new Date(Number(n)*1000).toISOString()}catch{}
+      }
+      out.push({index:out.length+1,raw:'0x'+raw,uint:n.toString(),as18,address:addr||'–',timestamp:time});
+    }catch{}
+  }
+  return out;
+}
+function loanStateExtractSelectors(bytecode){
+  const h=String(bytecode||'').replace(/^0x/,'').toLowerCase(),set=new Set();
+  // PUSH4 <selector>. Solidity/Vyper dispatcher selectors appear this way in runtime bytecode.
+  for(const m of h.matchAll(/63([0-9a-f]{8})/g))set.add('0x'+m[1]);
+  return [...set];
+}
+function loanStateCallData(selector,types,values){
+  const enc=types.length?ethers.AbiCoder.defaultAbiCoder().encode(types,values).slice(2):'';
+  return selector+enc;
+}
+async function loanStateEthCall(to,data){
+  try{
+    const r=await rpc('eth_call',[{to,data},'latest']);
+    if(!r||r==='0x'||/^0x0*$/.test(r))return null;
+    return r;
+  }catch{return null}
+}
+async function loanReadPositionState(){
+  const wallet=norm(document.getElementById('loanStateWallet')?.value||'');
+  let position;
+  try{position=BigInt(String(document.getElementById('loanStatePosition')?.value||'').trim())}catch{loanStateSetState('Ungültige Position.','err');return}
+  if(!/^0x[0-9a-f]{40}$/.test(wallet)){loanStateSetState('Ungültige EVM-Wallet-Adresse.','err');return}
+  const btn=document.getElementById('loanStateRun'),out=document.getElementById('loanStateResult');
+  if(btn)btn.disabled=true;if(out)out.innerHTML='';
+  loanStateSetState(`Lese Proxy/Implementation und prüfe Position ${position.toString()} …`);
+  try{
+    const storage=await rpc('eth_getStorageAt',[LOAN_OPTIONS_CONTRACT,LOAN_EIP1967_IMPLEMENTATION_SLOT,'latest']);
+    const impl=storage&&storage!=='0x'?norm('0x'+String(storage).replace(/^0x/,'').slice(-40)):null;
+    if(!impl||!/^0x[0-9a-f]{40}$/.test(impl))throw new Error('Implementation-Adresse aus EIP-1967-Slot nicht lesbar.');
+    const bytecode=await rpc('eth_getCode',[impl,'latest']);
+    const extracted=loanStateExtractSelectors(bytecode);
+    const namedSignatures=[
+      'loan(uint256)','loans(uint256)','getLoan(uint256)','position(uint256)','positions(uint256)','getPosition(uint256)',
+      'option(uint256)','options(uint256)','getOption(uint256)','debt(uint256)','debts(uint256)',
+      'loan(address,uint256)','loans(address,uint256)','position(address,uint256)','positions(address,uint256)',
+      'getLoan(address,uint256)','getPosition(address,uint256)'
+    ];
+    const named=new Map(namedSignatures.map(sig=>['0x'+ethers.id(sig).slice(2,10),sig]));
+    const selectors=[...new Set([...extracted,...named.keys()])];
+    const positionHex=loanStateHexWord(position);
+    const walletHex=wallet.slice(2).padStart(64,'0');
+    const probes=[];
+    for(const selector of selectors){
+      const known=named.get(selector)||'';
+      probes.push({selector,signature:known,form:'(uint256 position)',data:selector+positionHex});
+      probes.push({selector,signature:known,form:'(address wallet, uint256 position)',data:selector+walletHex+positionHex});
+      probes.push({selector,signature:known,form:'(uint256 position, address wallet)',data:selector+positionHex+walletHex});
+      // no-arg is useful for selectors that reveal global config/rate/status constants.
+      probes.push({selector,signature:known,form:'()',data:selector});
+    }
+    const successes=[];
+    const concurrency=8;
+    let cursor=0,done=0;
+    const worker=async()=>{
+      while(cursor<probes.length){
+        const idx=cursor++,p=probes[idx];
+        const ret=await loanStateEthCall(LOAN_OPTIONS_CONTRACT,p.data);
+        done++;
+        if(done===1||done%40===0)loanStateSetState(`State-Probe ${done}/${probes.length} · ${successes.length} nichtleere Treffer …`);
+        if(ret){
+          const words=loanStateReturnWords(ret);
+          successes.push({...p,ret,words});
+        }
+      }
+    };
+    await Promise.all(Array.from({length:Math.min(concurrency,probes.length)},worker));
+
+    // Deduplicate identical selector/form/results and prioritize results that contain position-like / v$-like values.
+    const seen=new Set(),rows=[];
+    for(const hit of successes){
+      const k=hit.selector+'|'+hit.form+'|'+hit.ret;if(seen.has(k))continue;seen.add(k);
+      let score=0;
+      for(const w of hit.words){
+        try{
+          const n=BigInt(w.uint);
+          if(n===position)score+=8;
+          if(n>=1000000000000000000n&&n<=1000000000000000000000000n)score+=3;
+          if(n===820000000000000000000n||n===967600000000000000000n)score+=20;
+          if(n>=946684800n&&n<=4102444800n)score+=2;
+        }catch{}
+      }
+      rows.push({...hit,score});
+    }
+    rows.sort((a,b)=>b.score-a.score||a.selector.localeCompare(b.selector));
+
+    const resultRows=rows.map(hit=>{
+      const wordHtml=hit.words.length?hit.words.map(w=>`<div style="margin:2px 0"><b>w${w.index}</b> · uint ${loanDiagEsc(w.uint)} · /1e18 ${loanDiagEsc(w.as18)} · addr ${loanDiagEsc(w.address)} · time ${loanDiagEsc(w.timestamp)}</div>`).join(''):`<span class="loan-raw">${loanDiagEsc(hit.ret)}</span>`;
+      return `<tr><td class="loan-raw">${loanDiagEsc(hit.selector)}</td><td>${loanDiagEsc(hit.signature||'unbekannter Selector')}</td><td>${loanDiagEsc(hit.form)}</td><td style="text-align:right">${hit.score}</td><td class="loan-raw">${wordHtml}<details><summary>Rohantwort</summary>${loanDiagEsc(hit.ret)}</details></td></tr>`;
+    }).join('');
+
+    const extractedNamed=extracted.map(s=>`${s}${named.has(s)?` = ${named.get(s)}`:''}`).join(' · ');
+    out.innerHTML=`
+      <div class="wrap"><table class="project-data-table" style="min-width:900px"><tbody>
+        <tr><th>Options-Proxy</th><td class="loan-link">${loanDiagEsc(LOAN_OPTIONS_CONTRACT)}</td></tr>
+        <tr><th>EIP-1967 Implementation</th><td class="loan-link">${loanDiagEsc(impl)}</td></tr>
+        <tr><th>Runtime-Bytecode</th><td>${String(bytecode||'0x').length>2?Math.floor((String(bytecode).length-2)/2).toLocaleString('de-CH')+' Bytes':'–'}</td></tr>
+        <tr><th>PUSH4-Selectoren</th><td>${extracted.length}</td></tr>
+        <tr><th>Position</th><td>${loanDiagEsc(position.toString())}</td></tr>
+        <tr><th>Wallet</th><td class="loan-link">${loanDiagEsc(wallet)}</td></tr>
+      </tbody></table></div>
+      <details style="margin-top:8px"><summary><b>Gefundene Runtime-Selectoren (${extracted.length})</b></summary><div class="loan-raw" style="word-break:break-all">${loanDiagEsc(extractedNamed||'keine')}</div></details>
+      <div class="muted" style="margin:10px 0">
+        Treffer werden nur als Roh-State angezeigt. „/1e18“ ist lediglich eine technische Dezimalansicht für mögliche 18-Decimal-Werte, keine fachliche Interpretation.
+        Score dient nur zum Sortieren auffälliger Antworten; er ist kein Beweis.
+      </div>
+      <div class="wrap"><table class="project-data-table" style="min-width:1450px"><thead><tr>
+        <th>Selector</th><th>bekannte Signatur</th><th>Probeform</th><th style="text-align:right">Score</th><th>Return-Wörter</th>
+      </tr></thead><tbody>${resultRows||'<tr><td colspan="5">Keine nichtleeren eth_call-Antworten gefunden.</td></tr>'}</tbody></table></div>`;
+    loanStateSetState(`Fertig: ${selectors.length} Selectoren · ${probes.length} eth_call-Proben · ${rows.length} nichtleere Treffer.`,rows.length?'ok':'warn');
+  }catch(e){
+    console.error('[Loan contract state diagnostic]',e);
+    loanStateSetState(`Fehler: ${e?.message||e}`,'err');
+  }finally{if(btn)btn.disabled=false}
+}
+
 function loanRefreshFilterOptions(){
   const typeSel=document.getElementById('loanFilterType');if(!typeSel)return;
   const keepType=typeSel.value||'all';
@@ -1069,6 +1227,7 @@ function initLoanDiscovery(){
   document.getElementById('loanFilterReset')?.addEventListener('click',()=>{['loanFilterFrom','loanFilterTo','loanFilterTlnMin','loanFilterTlnMax','loanFilterGoldMin','loanFilterGoldMax'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});sel.value='all';renderLoanDiscovery();});
   document.getElementById('loanDiscoveryReload')?.addEventListener('click',()=>void discoverLoansOnchain({force:true}));
   document.getElementById('loanDiagRun')?.addEventListener('click',()=>void loanSearchPositionBackwards());
+  document.getElementById('loanStateRun')?.addEventListener('click',()=>void loanReadPositionState());
   document.getElementById('loanGoldGlobalRun')?.addEventListener('click',()=>void loanSearchGoldVariantsGlobal());
   document.getElementById('loanRepayVerifyRun')?.addEventListener('click',()=>void loanVerifyRepaymentModels());
   renderLoanDiscovery();
@@ -1084,5 +1243,5 @@ function initLoanDiscovery(){
     constants:{optionsContract:LOAN_OPTIONS_CONTRACT,vusd:LOAN_VUSD_ADDRESS,boosterByEventValue3:LOAN_BOOSTER_BY_EVENT_VALUE3}
   };
 }
-global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-022900'});
+global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-105300'});
 })(window);
