@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260914-105300 */
+/* TLN/VOW Loans central engine · Build 20260914-110700 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -1053,6 +1053,106 @@ async function loanReadPositionState(){
   }finally{if(btn)btn.disabled=false}
 }
 
+
+const LOAN_POSITION_STRUCT_SELECTOR='0xe4ba13c7';
+
+function loanStatusCompareSetState(text,kind='muted'){
+  const el=document.getElementById('loanStatusCompareState');if(!el)return;
+  el.className=kind==='ok'?'ok':kind==='warn'?'warn':kind==='err'?'err':'muted';el.textContent=text;
+}
+function loanStatusKnownLifecycleLabel(r){
+  if(r?.repaymentDate)return 'zurückbezahlt';
+  if(r?.swapDate)return 'Swap erkannt';
+  if(String(r?.rawType??'').trim()==='5'||r?.type==='TLN Gold Extended')return 'Extended · Swap noch nicht verifiziert';
+  return 'offen / Lifecycle unvollständig';
+}
+async function loanReadPositionStructRaw(position,wallet){
+  const posHex=loanStateHexWord(BigInt(position));
+  const walletHex=String(wallet||'').replace(/^0x/,'').toLowerCase().padStart(64,'0');
+  const forms=[
+    {form:'(uint256 position)',data:LOAN_POSITION_STRUCT_SELECTOR+posHex},
+    {form:'(uint256 position, address wallet)',data:LOAN_POSITION_STRUCT_SELECTOR+posHex+walletHex},
+    {form:'(address wallet, uint256 position)',data:LOAN_POSITION_STRUCT_SELECTOR+walletHex+posHex}
+  ];
+  for(const f of forms){
+    const ret=await loanStateEthCall(LOAN_OPTIONS_CONTRACT,f.data);
+    if(ret){
+      const words=loanStateReturnWords(ret);
+      if(words.length>=2)return {form:f.form,ret,words};
+    }
+  }
+  return null;
+}
+async function loanComparePositionStatusFields(){
+  const out=document.getElementById('loanStatusCompareResult');
+  const btn=document.getElementById('loanStatusCompareRun');
+  const limit=Math.max(5,Math.min(200,Number(document.getElementById('loanStatusCompareLimit')?.value||40)));
+  if(btn)btn.disabled=true;if(out)out.innerHTML='';
+  try{
+    let rows=(LOAN_DISCOVERY_ROWS||[]).filter(r=>r?.eventId&&r?.wallet);
+    rows=[...rows].sort((a,b)=>{
+      const ra=a?.repaymentDate?1:0, rb=b?.repaymentDate?1:0;
+      if(ra!==rb)return rb-ra;
+      const ea=(String(a?.rawType??'').trim()==='5'||a?.type==='TLN Gold Extended')?1:0;
+      const eb=(String(b?.rawType??'').trim()==='5'||b?.type==='TLN Gold Extended')?1:0;
+      if(ea!==eb)return eb-ea;
+      return Number(b?.eventId||0)-Number(a?.eventId||0);
+    }).slice(0,limit);
+
+    if(!rows.length){
+      loanStatusCompareSetState('Keine geladenen Loan-Positionen vorhanden. Zuerst Loans on-chain neu laden.','warn');
+      return;
+    }
+
+    const result=[];
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i];
+      if(i===0||i%5===0)loanStatusCompareSetState(`Lese Struct ${i+1}/${rows.length} …`);
+      const state=await loanReadPositionStructRaw(r.eventId,r.wallet);
+      if(!state)continue;
+      const words=state.words;
+      const last=words.at(-1)?.uint??'–';
+      result.push({r,state,last});
+    }
+
+    const counts=new Map();
+    for(const x of result)counts.set(x.last,(counts.get(x.last)||0)+1);
+
+    const summary=[...counts.entries()].sort((a,b)=>b[1]-a[1]).map(([v,n])=>
+      `<tr><td>${loanDiagEsc(v)}</td><td style="text-align:right">${n}</td></tr>`).join('');
+
+    const html=result.map(({r,state,last})=>{
+      const words=state.words;
+      const wordText=words.map(w=>`w${w.index}=${w.uint}${w.as18!=='–'?` (/1e18 ${w.as18})`:''}${w.timestamp!=='–'?` (${w.timestamp})`:''}`).join(' · ');
+      return `<tr>
+        <td>${loanDate(r.date)}</td>
+        <td>${loanDiagEsc(r.idLabel||('#'+r.eventId))}</td>
+        <td>${loanDiagEsc(r.type||'–')}</td>
+        <td>${loanDiagEsc(loanStatusKnownLifecycleLabel(r))}</td>
+        <td>${r.repaymentDate?loanDate(r.repaymentDate):'–'}</td>
+        <td style="text-align:right"><b>${loanDiagEsc(last)}</b></td>
+        <td>${loanDiagEsc(state.form)}</td>
+        <td class="loan-raw">${loanDiagEsc(wordText)}</td>
+      </tr>`;
+    }).join('');
+
+    out.innerHTML=`
+      <div class="muted" style="margin-bottom:8px">
+        Wichtig: Das letzte Feld wird nur als Rohwert verglichen. Erst wenn derselbe Wert konsistent mit einem bekannten Lifecycle-Zustand korreliert, darf eine fachliche Bezeichnung vergeben werden.
+      </div>
+      <div style="margin-bottom:10px"><b>Verteilung letztes Struct-Feld</b></div>
+      <div class="wrap"><table class="project-data-table" style="min-width:420px"><thead><tr><th>Rohwert</th><th style="text-align:right">Anzahl</th></tr></thead><tbody>${summary||'<tr><td colspan="2">Keine Werte.</td></tr>'}</tbody></table></div>
+      <div class="wrap" style="margin-top:10px"><table class="project-data-table" style="min-width:1500px"><thead><tr>
+        <th>Eröffnung</th><th>Position</th><th>Typ</th><th>bekannter Lifecycle</th><th>Repay</th><th style="text-align:right">letztes Feld</th><th>Getter-Form</th><th>Struct-Rohwerte</th>
+      </tr></thead><tbody>${html||'<tr><td colspan="8">Keine Structs lesbar.</td></tr>'}</tbody></table></div>`;
+
+    loanStatusCompareSetState(`Fertig: ${rows.length} Positionen geprüft · ${result.length} Structs lesbar · ${counts.size} verschiedene letzte Rohwerte.`,result.length?'ok':'warn');
+  }catch(e){
+    console.error('[Loan status compare]',e);
+    loanStatusCompareSetState(`Fehler: ${e?.message||e}`,'err');
+  }finally{if(btn)btn.disabled=false}
+}
+
 function loanRefreshFilterOptions(){
   const typeSel=document.getElementById('loanFilterType');if(!typeSel)return;
   const keepType=typeSel.value||'all';
@@ -1228,6 +1328,7 @@ function initLoanDiscovery(){
   document.getElementById('loanDiscoveryReload')?.addEventListener('click',()=>void discoverLoansOnchain({force:true}));
   document.getElementById('loanDiagRun')?.addEventListener('click',()=>void loanSearchPositionBackwards());
   document.getElementById('loanStateRun')?.addEventListener('click',()=>void loanReadPositionState());
+  document.getElementById('loanStatusCompareRun')?.addEventListener('click',()=>void loanComparePositionStatusFields());
   document.getElementById('loanGoldGlobalRun')?.addEventListener('click',()=>void loanSearchGoldVariantsGlobal());
   document.getElementById('loanRepayVerifyRun')?.addEventListener('click',()=>void loanVerifyRepaymentModels());
   renderLoanDiscovery();
@@ -1243,5 +1344,5 @@ function initLoanDiscovery(){
     constants:{optionsContract:LOAN_OPTIONS_CONTRACT,vusd:LOAN_VUSD_ADDRESS,boosterByEventValue3:LOAN_BOOSTER_BY_EVENT_VALUE3}
   };
 }
-global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-105300'});
+global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-110700'});
 })(window);
