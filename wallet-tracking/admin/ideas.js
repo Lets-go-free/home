@@ -3,8 +3,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260914-122500";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "14.09.2026 12:25:00 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260914-142000";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "14.09.2026 14:20:00 CEST";
 
 const ADMIN_IDEAS = [
   { status: "done", title: "Projekt-Caches nur noch bewusst aktualisieren", desc: `Phase 2am: Die Liquidity-Pool-Tabs von DAO1 und TLN/VOW sind beim Öffnen vollständig cache-only.

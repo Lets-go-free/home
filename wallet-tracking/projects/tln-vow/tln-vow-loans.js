@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260914-122500 */
+/* TLN/VOW Loans central engine · Build 20260914-142000 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -1176,6 +1176,102 @@ async function loanComparePositionStatusFields(){
   }finally{if(btn)btn.disabled=false}
 }
 
+
+function loanLifecycleSetState(text,kind='muted'){
+  const el=document.getElementById('loanLifecycleState');if(!el)return;
+  el.className=kind==='ok'?'ok':kind==='warn'?'warn':kind==='err'?'err':'muted';
+  el.textContent=text;
+}
+function loanLifecycleFindRowByPosition(position){
+  const id=Number(position);
+  const matches=(LOAN_DISCOVERY_ROWS||[]).filter(r=>Number(r?.eventId)===id&&r?.wallet);
+  if(matches.length===1)return matches[0];
+  if(matches.length>1){
+    // Prefer exact option row with known type/date; position ids should be unique per current universe.
+    return matches.sort((a,b)=>String(b?.date||'').localeCompare(String(a?.date||'')))[0];
+  }
+  return null;
+}
+async function loanLifecycleRelevantTransfers(receipt,wallet){
+  const transfers=await loanDecodeTransfers(receipt).catch(()=>[]);
+  const w=norm(wallet);
+  return transfers.filter(t=>{
+    const sym=loanNormSymbol(t?.symbol);
+    return ['VOW','V$','VUSD','TLN+','TLNGOLD'].includes(sym)||t.from===w||t.to===w||t.to===LOAN_OPTIONS_CONTRACT||t.from===LOAN_OPTIONS_CONTRACT;
+  });
+}
+async function loanInspectPositionLifecycle(){
+  const out=document.getElementById('loanLifecycleResult');
+  const btn=document.getElementById('loanLifecycleRun');
+  let position;
+  try{position=BigInt(String(document.getElementById('loanLifecyclePosition')?.value||'').trim())}
+  catch{loanLifecycleSetState('Ungültige Positionsnummer.','err');return}
+  const row=loanLifecycleFindRowByPosition(position);
+  if(!row){
+    loanLifecycleSetState(`Position #${position.toString()} nicht in den geladenen Loan-Daten gefunden. Zuerst „Loans on-chain neu laden“.`, 'warn');
+    if(out)out.innerHTML='';
+    return;
+  }
+  const wallet=norm(row.wallet);
+  if(btn)btn.disabled=true;if(out)out.innerHTML='';
+  loanLifecycleSetState(`Position #${position.toString()} · Wallet automatisch erkannt: ${short(wallet)} · prüfe Lifecycle …`);
+  try{
+    const state=await loanReadPositionStructRaw(position,wallet);
+    const receipt=row.tx?await loanReceipt(row.tx):null;
+    const tx=row.tx?await loanDiagTransaction(row.tx):null;
+    const transfers=receipt?await loanLifecycleRelevantTransfers(receipt,wallet):[];
+    const structWords=state?.words||[];
+
+    const transferRows=transfers.map(t=>`<tr>
+      <td>${loanDiagEsc(t.symbol||'–')}</td>
+      <td>${loanDiagEsc(t.from||'–')}</td>
+      <td>${loanDiagEsc(t.to||'–')}</td>
+      <td style="text-align:right">${loanDiagEsc(loanNum(t.amount,8))}</td>
+    </tr>`).join('');
+
+    const structRows=structWords.map(w=>`<tr>
+      <td>w${w.index}</td>
+      <td class="loan-raw">${loanDiagEsc(w.uint)}</td>
+      <td style="text-align:right">${loanDiagEsc(w.as18)}</td>
+      <td>${loanDiagEsc(w.timestamp)}</td>
+      <td class="loan-link">${loanDiagEsc(w.address)}</td>
+    </tr>`).join('');
+
+    const knownLifecycle=loanStatusKnownLifecycleLabel(row);
+    const relation=row.replacesPositionId?`ersetzt #${row.replacesPositionId}`:(row.replacedByPositionId?`ersetzt durch #${row.replacedByPositionId}`:'–');
+
+    out.innerHTML=`
+      <div class="wrap"><table class="project-data-table" style="min-width:900px"><tbody>
+        <tr><th>Position</th><td>#${loanDiagEsc(position.toString())}</td></tr>
+        <tr><th>Wallet automatisch</th><td class="loan-link">${loanDiagEsc(wallet)}</td></tr>
+        <tr><th>Typ</th><td>${loanDiagEsc(row.type||'–')}</td></tr>
+        <tr><th>Eröffnung</th><td>${loanDate(row.date)}</td></tr>
+        <tr><th>Eröffnungs-Tx</th><td>${row.tx?`<a target="_blank" href="https://bscscan.com/tx/${loanDiagEsc(row.tx)}">${loanDiagEsc(short(row.tx))}</a>`:'–'}</td></tr>
+        <tr><th>Bekannter Lifecycle</th><td>${loanDiagEsc(knownLifecycle)}</td></tr>
+        <tr><th>Alt/Neu-Bezug</th><td>${loanDiagEsc(relation)}</td></tr>
+        <tr><th>Repay-Datum</th><td>${row.repaymentDate?loanDate(row.repaymentDate):'–'}</td></tr>
+        <tr><th>Swap-Datum</th><td>${row.swapDate?loanDate(row.swapDate):'noch nicht verifiziert'}</td></tr>
+      </tbody></table></div>
+
+      <div style="margin-top:10px"><b>Aktueller Positions-Struct · Getter ${loanDiagEsc(LOAN_POSITION_STRUCT_SELECTOR)}</b></div>
+      <div class="wrap"><table class="project-data-table" style="min-width:1000px"><thead><tr>
+        <th>Feld</th><th>uint roh</th><th style="text-align:right">/1e18</th><th>Timestamp-Kandidat</th><th>Address-Kandidat</th>
+      </tr></thead><tbody>${structRows||'<tr><td colspan="5">Struct nicht lesbar.</td></tr>'}</tbody></table></div>
+
+      <div style="margin-top:10px"><b>Relevante Transfers der Eröffnungs-Tx</b></div>
+      <div class="wrap"><table class="project-data-table" style="min-width:1000px"><thead><tr>
+        <th>Token</th><th>Von</th><th>An</th><th style="text-align:right">Betrag</th>
+      </tr></thead><tbody>${transferRows||'<tr><td colspan="4">Keine relevanten Transfers dekodiert.</td></tr>'}</tbody></table></div>
+
+      ${loanDiagTxDetailsHtml(tx,receipt,position)}
+    `;
+    loanLifecycleSetState(`Fertig: Position #${position.toString()} · Wallet ${short(wallet)} automatisch aufgelöst.`, 'ok');
+  }catch(e){
+    console.error('[Loan position lifecycle]',e);
+    loanLifecycleSetState(`Fehler: ${e?.message||e}`,'err');
+  }finally{if(btn)btn.disabled=false}
+}
+
 function loanRefreshFilterOptions(){
   const typeSel=document.getElementById('loanFilterType');if(!typeSel)return;
   const keepType=typeSel.value||'all';
@@ -1352,6 +1448,7 @@ function initLoanDiscovery(){
   document.getElementById('loanDiagRun')?.addEventListener('click',()=>void loanSearchPositionBackwards());
   document.getElementById('loanStateRun')?.addEventListener('click',()=>void loanReadPositionState());
   document.getElementById('loanStatusCompareRun')?.addEventListener('click',()=>void loanComparePositionStatusFields());
+  document.getElementById('loanLifecycleRun')?.addEventListener('click',()=>void loanInspectPositionLifecycle());
   document.getElementById('loanGoldGlobalRun')?.addEventListener('click',()=>void loanSearchGoldVariantsGlobal());
   document.getElementById('loanRepayVerifyRun')?.addEventListener('click',()=>void loanVerifyRepaymentModels());
   renderLoanDiscovery();
@@ -1367,5 +1464,5 @@ function initLoanDiscovery(){
     constants:{optionsContract:LOAN_OPTIONS_CONTRACT,vusd:LOAN_VUSD_ADDRESS,boosterByEventValue3:LOAN_BOOSTER_BY_EVENT_VALUE3}
   };
 }
-global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-122500'});
+global.TLNVOWLoanEngine=Object.freeze({create:createLoanEngine,version:'20260914-142000'});
 })(window);
