@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260915-120600 */
+/* TLN/VOW Loans central engine · Build 20260915-150041 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -709,10 +709,16 @@ async function loanFindOpeningByPosition(wallet,positionRef){
 
 async function loanVerifyRepaymentModels(){
   const btn=document.getElementById('loanRepayVerifyRun'),result=document.getElementById('loanRepayVerifyResult');
-  const scanLimit=Math.max(50,Math.min(10000,Number(document.getElementById('loanRepayVerifyLimit')?.value||500)));
+  const requestedScanLimit=Math.max(50,Math.min(10000,Number(document.getElementById('loanRepayVerifyLimit')?.value||500)));
   const target=String(document.getElementById('loanRepayVerifyType')?.value||'all');
+  const autoExtendedDepth=target==='5'&&document.getElementById('loanRepayVerifyAutoExtended')?.checked!==false;
+  // Typ 5 ist selten. Im automatischen historischen Prüfmodus wird deshalb der dokumentierte
+  // Vollscan bis 10'000 Repay-Transfers verwendet, ohne irgendein Zinsmodell vorauszusetzen.
+  const scanLimit=autoExtendedDepth?10000:requestedScanLimit;
   if(btn)btn.disabled=true;if(result)result.innerHTML='';
-  loanRepayVerifySetState(`Suche bis zu ${scanLimit} globale v$→Loan-Contract Repay-Txs …`);
+  loanRepayVerifySetState(autoExtendedDepth
+    ? `Historische Typ-5-Suche: prüfe automatisch bis zu ${scanLimit} globale v$→Loan-Contract Repay-Txs …`
+    : `Suche bis zu ${scanLimit} globale v$→Loan-Contract Repay-Txs …`);
   try{
     const trs=await loanGlobalRepayTransfers(scanLimit);
     const rows=[];let checked=0;
@@ -787,7 +793,11 @@ async function loanVerifyRepaymentModels(){
         <th>Repay-Datum</th><th>Wallet</th><th>Position</th><th>Event-Wert 3</th><th>Booster</th>
         <th>Principal</th><th>bezahlt</th><th>Zins</th><th>Zinssatz</th><th>Modell-Check</th><th>Eröffnung</th><th>Tx</th>
       </tr></thead><tbody>${html||'<tr><td colspan="12">Keine passenden Repay-Fälle gefunden.</td></tr>'}</tbody></table></div>`;
-    loanRepayVerifySetState(`Fertig: ${checked} Repay-Txs geprüft · ${typeStats.size} Event-Wert(e) · ${unknownTotal} unbekannte Typ-Fälle · ${rows.length} Treffer angezeigt.`,(rows.length||typeStats.size)?'ok':'warn');
+    const extendedExhausted=target==='5'&&rows.length===0&&checked===trs.length;
+    loanRepayVerifySetState(extendedExhausted
+      ? `Kein Typ-5-Repay gefunden: ${checked} verfügbare Repay-Txs geprüft (angeforderte Suchgrenze ${scanLimit}). Damit ist derzeit kein historischer Extended-Rückzahlungsfall in diesem Suchumfang belegt.`
+      : `Fertig: ${checked} Repay-Txs geprüft · ${typeStats.size} Event-Wert(e) · ${unknownTotal} unbekannte Typ-Fälle · ${rows.length} Treffer angezeigt.`,
+      extendedExhausted?'warn':((rows.length||typeStats.size)?'ok':'warn'));
   }catch(e){
     console.error('[Loan repay model verify]',e);loanRepayVerifySetState(`Fehler: ${e?.message||e}`,'err');
   }finally{if(btn)btn.disabled=false}
