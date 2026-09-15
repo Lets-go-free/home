@@ -25,8 +25,7 @@ window.DAO1Project = (() => {
   const REFERRAL_WUSDT_TOKEN = "0x1487db421f6b58e77bfefc905fdc1ede5fb85c7f";
   const SYSTEM_ADDRESS = "0x0200000000000000000000000000000000000001";
   const PAIR_ADDRESS = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
-  // Verifizierter On-Chain-Marktstart des wAPTM/wUSDT-Pools: erster Mint/Sync.
-  // Vor diesem Block existiert aus diesem Markt noch kein belastbarer Poolpreis.
+  // Erster on-chain definierter wAPTM/wUSDT-Marktpreis: Pair-Erstellung + erste Liquidität.
   const APTM_MARKET_START_BLOCK = 88356;
   const APTM_MARKET_START_UTC = "2025-02-18T12:39:52Z";
   const SYNC_TOPIC = "0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1";
@@ -1778,7 +1777,9 @@ window.DAO1Project = (() => {
   }
 
   async function loadCachedPrices(minBlock, maxBlock) {
-    const min=Math.max(0,Number(minBlock||0)),max=Math.max(min,Number(maxBlock||0));
+    const requestedMin=Math.max(0,Number(minBlock||0)),max=Math.max(requestedMin,Number(maxBlock||0));
+    if(max<APTM_MARKET_START_BLOCK)return [];
+    const min=Math.max(APTM_MARKET_START_BLOCK,requestedMin);
     // Load only the requested range plus exactly one predecessor anchor. The previous
     // implementation loaded the complete pool history from genesis on every call.
     const {data,error}=await sb.from("aptm_price_history").select("*")
@@ -1856,7 +1857,9 @@ window.DAO1Project = (() => {
   }
 
   async function loadPriceCoverage(fromBlock,toBlock){
-    const from=Math.max(0,Number(fromBlock||0)),to=Math.max(from,Number(toBlock||0));
+    const requestedFrom=Math.max(0,Number(fromBlock||0)),to=Math.max(requestedFrom,Number(toBlock||0));
+    if(to<APTM_MARKET_START_BLOCK)return [];
+    const from=Math.max(APTM_MARKET_START_BLOCK,requestedFrom);
     try{
       const all=[];
       let offset=0;
@@ -1935,7 +1938,9 @@ window.DAO1Project = (() => {
   async function syncPriceRangeChunked(minBlock,maxBlock,status){
     const ctx=getContext?.();
     if(!ctx?.isAdmin)return [];
-    const min=Math.max(0,Number(minBlock||0)),max=Math.max(min,Number(maxBlock||0));
+    const requestedMin=Math.max(0,Number(minBlock||0)),max=Math.max(requestedMin,Number(maxBlock||0));
+    if(max<APTM_MARKET_START_BLOCK)return [];
+    const min=Math.max(APTM_MARKET_START_BLOCK,requestedMin);
     const covered=await loadPriceCoverage(min,max);
     const missing=subtractCoveredRange(min,max,covered);
     if(activePriceJobLog){
@@ -2220,9 +2225,6 @@ window.DAO1Project = (() => {
 
   async function findPredecessorSync(targetBlock,meta,status){
     const originalTarget=Math.max(0,Number(targetBlock));
-    if(originalTarget<APTM_MARKET_START_BLOCK){
-      return {row:null,scannedFrom:APTM_MARKET_START_BLOCK,rounds:0,totalLogs:0,reason:"before_market_start"};
-    }
     let to=originalTarget;
     let span=PRICE_ANCHOR_LOCAL_LOOKBACK;
     let rounds=0;
@@ -2249,7 +2251,7 @@ window.DAO1Project = (() => {
   async function buildAnchorsForCluster(targets,meta,status){
     const sorted=[...targets].sort((a,b)=>a-b);
     const first=sorted[0],last=sorted[sorted.length-1];
-    const from=Math.max(APTM_MARKET_START_BLOCK,first-PRICE_ANCHOR_LOCAL_LOOKBACK+1);
+    const from=Math.max(0,first-PRICE_ANCHOR_LOCAL_LOOKBACK+1);
     if(status)status.textContent=`Historische APTM-Anker: lokale Blöcke ${from}–${last}…`;
     const logs=await fetchSyncLogsVerifiedAdaptive(from,last,null);
     const local=(logs||[]).map(l=>priceRowFromSyncLog(l,meta)).filter(Boolean)
@@ -2258,7 +2260,7 @@ window.DAO1Project = (() => {
 
     let predecessor=null,scannedFrom=from;
     const firstLocal=local.find(r=>Number(r.block_number)<=first);
-    if(!firstLocal && from>APTM_MARKET_START_BLOCK){
+    if(!firstLocal && from>0){
       const pred=await findPredecessorSync(from-1,meta,status);
       predecessor=pred.row;
       scannedFrom=pred.scannedFrom;
@@ -2283,18 +2285,7 @@ window.DAO1Project = (() => {
     const map=new Map();
     if(!targets.length)return map;
 
-    // Harte Marktstartgrenze: Zielblöcke vor dem ersten Pool-Sync werden ohne RPC-Suche
-    // als „noch kein On-Chain-Marktpreis“ klassifiziert.
-    const preMarketTargets=targets.filter(b=>b<APTM_MARKET_START_BLOCK);
-    const marketTargets=targets.filter(b=>b>=APTM_MARKET_START_BLOCK);
-    for(const b of preMarketTargets)map.set(b,{
-      project_key:PROJECT_KEY,chain_key:CHAIN_KEY,pool_address:lower(PAIR_ADDRESS),parser_version:PRICE_ANCHOR_VERSION,
-      target_block:b,sync_block:null,log_index:null,tx_hash:null,aptm_usd:null,
-      scanned_from_block:APTM_MARKET_START_BLOCK,scanned_at:new Date().toISOString(),_diag_reason:"before_market_start"
-    });
-    if(!marketTargets.length)return map;
-
-    const cached=await loadCachedPriceAnchors(marketTargets);
+    const cached=await loadCachedPriceAnchors(targets);
     const validCached=cached.filter(r=>r?.aptm_usd!=null && r?.sync_block!=null);
     const nullCached=cached.filter(r=>r?.aptm_usd==null || r?.sync_block==null);
     for(const r of validCached)map.set(Number(r.target_block),r);
@@ -2309,7 +2300,7 @@ window.DAO1Project = (() => {
       for(const r of nullCached)map.set(Number(r.target_block),r);
     }
 
-    const missing=marketTargets.filter(b=>!map.has(b));
+    const missing=targets.filter(b=>!map.has(b));
     if(!missing.length)return map;
     const ctx=getContext?.();
     if(!ctx?.isAdmin){
@@ -2361,6 +2352,7 @@ window.DAO1Project = (() => {
   async function historicalAptmPriceAtBlock(block,status=null){
     const target=Number(block);
     if(!Number.isFinite(target) || target<0)return null;
+    if(target<APTM_MARKET_START_BLOCK)return {price:null,priceBlock:null,source:`Noch kein On-Chain-Marktpreis vorhanden · Marktstart Block ${APTM_MARKET_START_BLOCK} · ${PRICE_PRELAUNCH_TAG}`,quality:"prelaunch"};
     const history=await ensurePricesForClaimBlocks([target],status);
     const anchor=history?._anchorByTarget?.get(target) || null;
     if(anchor?.sync_block!=null && anchor?.aptm_usd!=null){
@@ -2371,7 +2363,7 @@ window.DAO1Project = (() => {
         quality:"exact"
       };
     }
-    if(target<APTM_MARKET_START_BLOCK || anchor?._diag_reason==="before_market_start"){
+    if(anchor && Number(anchor.scanned_from_block)===0){
       return {
         price:null,
         priceBlock:null,
@@ -3278,7 +3270,7 @@ window.DAO1Project = (() => {
           `${w.label} · Kein erneuter Explorer-Transaktionsscan.`);
         const allRows=(await loadTransactionRows(address,null)).filter(r=>!r.price_is_manual && Number(r.block_number)>0);
         // v56: Der manuelle Preisjob versucht auch bisherige "ohne Preis"-Fälle erneut.
-        // Nur bereits exakte Preise und bestätigte Fälle vor Marktstart werden ausgelassen.
+        // Nur bereits exakte Preise und bestätigte Pre-Launch-Fälle werden ausgelassen.
         const rows=allRows.filter(r=>
           !String(r.price_source||"").includes(PRICE_SOURCE_TAG) &&
           !String(r.price_source||"").includes(PRICE_PRELAUNCH_TAG)
@@ -3314,15 +3306,15 @@ window.DAO1Project = (() => {
               scanned_from_block:anchor?.scanned_from_block??null,
               search_rounds:anchor?._diag_rounds??null,
               syncs_found:anchor?._diag_logs??0,
-              reason:(Number(r.block_number)<APTM_MARKET_START_BLOCK?"before_market_start":(anchor?._diag_reason||((anchor?.scanned_from_block===0)?"genesis_reached":"no_valid_sync_before_target")))
+              reason:anchor?._diag_reason||((anchor?.scanned_from_block===0)?"genesis_reached":"no_valid_sync_before_target")
             };
-            if(missingDiag.reason==="before_market_start"||missingDiag.reason==="genesis_reached")totalPrelaunch++; else totalMissing++;
+            if(missingDiag.reason==="genesis_reached")totalPrelaunch++; else totalMissing++;
             if(activePriceJobLog)activePriceJobLog.missingDiagnostics.push(missingDiag);
             txPatches.push({
               user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
               wallet_id:walletIdForAddress(address),tx_hash:r.tx_hash,
               aptm_usd:null,value_usd:null,gas_usd:null,claim_reward_usd:r.claim_reward_aptm==null?r.claim_reward_usd:null,
-              price_source:((missingDiag.reason==="before_market_start"||missingDiag.reason==="genesis_reached")?`Noch kein On-Chain-Marktpreis vorhanden · ${PRICE_PRELAUNCH_TAG}`:px.source),updated_at:new Date().toISOString()
+              price_source:(missingDiag.reason==="genesis_reached"?`Noch kein On-Chain-Marktpreis vorhanden · ${PRICE_PRELAUNCH_TAG}`:px.source),updated_at:new Date().toISOString()
             });
             if(r.claim_nft_id!=null){
               totalClaims++;
@@ -3330,7 +3322,7 @@ window.DAO1Project = (() => {
                 user_id:getContext?.().currentUser.id,project_key:PROJECT_KEY,chain_key:CHAIN_KEY,
                 wallet_id:walletIdForAddress(address),tx_hash:r.tx_hash,nft_contract:r.claim_nft_contract||null,nft_id:Number(r.claim_nft_id),
                 aptm_usd:null,reward_usd:null,gas_usd:null,price_block:null,
-                price_source:((missingDiag.reason==="before_market_start"||missingDiag.reason==="genesis_reached")?`Noch kein On-Chain-Marktpreis vorhanden · ${PRICE_PRELAUNCH_TAG}`:px.source),updated_at:new Date().toISOString()
+                price_source:(missingDiag.reason==="genesis_reached"?`Noch kein On-Chain-Marktpreis vorhanden · ${PRICE_PRELAUNCH_TAG}`:px.source),updated_at:new Date().toISOString()
               });
             }
             continue;
@@ -3424,9 +3416,9 @@ window.DAO1Project = (() => {
         }
         priceJobLog("===== ENDE FEHLENDE PREISE =====");
       }
-      if(activePriceJobLog)priceJobLog(`Fertig · ${totalUpdated.toLocaleString("de-DE")} TX aktualisiert · ${totalPrelaunch.toLocaleString("de-DE")} vor Marktstart ohne On-Chain-Marktpreis · ${totalMissing.toLocaleString("de-DE")} echte Preis-Lücken`);
+      if(activePriceJobLog)priceJobLog(`Fertig · ${totalUpdated.toLocaleString("de-DE")} TX aktualisiert · ${totalPrelaunch.toLocaleString("de-DE")} Pre-Launch ohne Marktpreis · ${totalMissing.toLocaleString("de-DE")} echte Preis-Lücken`);
       setTransactionStatus("ready",`Historische APTM-Preise neu berechnet – ${totalUpdated.toLocaleString("de-DE")} Transaktionen aktualisiert.`,
-        `${totalRows.toLocaleString("de-DE")} gecachte Transaktionen geprüft · ${totalClaims.toLocaleString("de-DE")} Claim-Datensätze mitgeführt · Preisqualität: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.prelaunch.toLocaleString("de-DE")} vor Marktstart · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte. Preislogik ${PRICE_SOURCE_TAG}; kein Explorer-Transaktionsscan; globaler Price-Anchor-Cache v1; lokale RPC-Fenster statt Sync-Vollhistorie.`);
+        `${totalRows.toLocaleString("de-DE")} gecachte Transaktionen geprüft · ${totalClaims.toLocaleString("de-DE")} Claim-Datensätze mitgeführt · Preisqualität: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.prelaunch.toLocaleString("de-DE")} Pre-Launch · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte. Preislogik ${PRICE_SOURCE_TAG}; kein Explorer-Transaktionsscan; globaler Price-Anchor-Cache v1; lokale RPC-Fenster statt Sync-Vollhistorie.`);
     }catch(e){
       console.error("DAO1 historische Preis-Neuberechnung:",e);
       setTransactionStatus("error","Historische Preis-Neuberechnung fehlgeschlagen.",e?.message||String(e));
@@ -3489,13 +3481,13 @@ window.DAO1Project = (() => {
           const quality=historicalPriceQualityCounts(transactionRows);
           const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
           setTransactionStatus("ready",`Bereit – ${transactionRows.length.toLocaleString("de-DE")} Transaktionen aus ${targets.length} Wallets, ${claims.toLocaleString("de-DE")} Claims.`,
-            `Blockchain-Aktualisierung und inkrementeller NFT-Besitzabgleich abgeschlossen. Preisqualität ${PRICE_SOURCE_TAG}: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.prelaunch.toLocaleString("de-DE")} vor Marktstart · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte.`);
+            `Blockchain-Aktualisierung und inkrementeller NFT-Besitzabgleich abgeschlossen. Preisqualität ${PRICE_SOURCE_TAG}: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.prelaunch.toLocaleString("de-DE")} Pre-Launch · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte.`);
         }else{
           await showTransactionReadyStatus(walletAddress(targets[0]),transactionRows,"scan");
           const quality=historicalPriceQualityCounts(transactionRows);
           const distinctPrices=new Set(transactionRows.filter(r=>r.aptm_usd!=null).map(r=>Number(r.aptm_usd).toPrecision(12))).size;
           const statusEl=document.getElementById("dao1TransactionStatus");
-          if(statusEl)statusEl.innerHTML+=`<div class="note" style="margin-top:4px">Preisqualität ${PRICE_SOURCE_TAG}: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.prelaunch.toLocaleString("de-DE")} vor Marktstart · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte.</div>`;
+          if(statusEl)statusEl.innerHTML+=`<div class="note" style="margin-top:4px">Preisqualität ${PRICE_SOURCE_TAG}: ${quality.exact.toLocaleString("de-DE")} exact · ${quality.fallback.toLocaleString("de-DE")} fallback · ${quality.prelaunch.toLocaleString("de-DE")} Pre-Launch · ${quality.missing.toLocaleString("de-DE")} ohne Preis · ${quality.manual.toLocaleString("de-DE")} manuell · ${distinctPrices.toLocaleString("de-DE")} unterschiedliche APTM/USD-Werte.</div>`;
         }
       }else{
         setTransactionStatus("db",selectedAll?"Gespeicherte Daten aller Apertum-Wallets werden geladen…":"Gespeicherte Wallet-Daten werden geladen…",
@@ -4339,7 +4331,7 @@ window.DAO1Project = (() => {
       <div class="custom-token-card project-summary-box"><span class="field-label">Normale Eingänge</span><strong>${fmt(inAptm)} APTM</strong></div>
       <div class="custom-token-card project-summary-box"><span class="field-label">Ausgang</span><strong>${fmt(outAptm)} APTM</strong></div>
       <div class="custom-token-card project-summary-box"><span class="field-label">Gas</span><strong>${fmt(gas)} APTM</strong><div class="meta">${gasUsd?usd(gasUsd):"–"} · historischer USD-Wert zum Transaktionszeitpunkt${gasUsdMissing?` · <button class="secondary" style="padding:2px 6px;font-size:.75rem" onclick="DAO1Project.showMissingHistoricalPrices('gas')">${gasUsdMissing} ohne Kurs anzeigen</button>`:""}</div></div>
-      <div class="custom-token-card project-summary-box"><span class="field-label">Preisqualität</span><strong>${priceQuality.exact} exact</strong><div class="meta">${priceQuality.fallback} fallback · ${priceQuality.prelaunch} vor Marktstart (kein On-Chain-Marktpreis) · ${priceQuality.missing} ohne Preis · ${priceQuality.manual} manuell</div></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Preisqualität</span><strong>${priceQuality.exact} exact</strong><div class="meta">${priceQuality.fallback} fallback · ${priceQuality.prelaunch} Pre-Launch (noch kein Marktpreis) · ${priceQuality.missing} ohne Preis · ${priceQuality.manual} manuell</div></div>
     </div>`;
     if(!table)return;
     if(!rows.length){table.innerHTML='<div class="empty">Keine Transaktionen für den gewählten Filter.</div>';return;}
@@ -5030,5 +5022,6 @@ window.DAO1Project = (() => {
   return { switchSubtab, configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
+    getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,
     historicalAptmPriceAtBlock, refreshNftOwnershipForWallet };
 })();

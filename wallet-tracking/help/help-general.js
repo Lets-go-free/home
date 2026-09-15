@@ -1,8 +1,8 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260913-180715";
-const HELP_MODULE_TIMESTAMP="13.09.2026 18:07:15 CEST";
+const HELP_MODULE_BUILD="20260916-014124";
+const HELP_MODULE_TIMESTAMP="16.09.2026 01:41:24 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;
@@ -12,6 +12,8 @@ function renderGeneralHelp(){
         <h3 style="margin-top:0">Schnellstart</h3>
         <p class="note"><strong>1.</strong> Unter „Meine Wallets“ die eigenen Wallets erfassen. <strong>2.</strong> In „Wallet-Tracking · Token-Übersicht“ mit „Daten aktualisieren“ Bestände und projektübergreifende Daten aktualisieren. <strong>3.</strong> „Preise aktualisieren“ erneuert davon getrennt die aktuellen Kurse und USD-Werte. <strong>4.</strong> Unbekannte Token bei Bedarf unter „Entdecken“ prüfen und als eigene sichere Token übernehmen. <strong>5.</strong> Für projektspezifische Funktionen das jeweilige DeFi-Projekt öffnen und dort den Unter-Tab „Hilfe“ verwenden.</p>
       </div>
+
+      <div class="custom-token-card"><h3 style="margin-top:0">🔤 Darstellung</h3><p class="note">Die Schriftgrösse der gesamten Anwendung kann oben im Kopfbereich mit dem Regler „Schrift“ individuell von 85 % bis 125 % eingestellt werden. Die Einstellung wird auf diesem Gerät gespeichert. Farben, Cards, Tabs und Tabellen werden zentral über <code>css/wallet-tracking.css</code> gesteuert.</p></div>
 
       <div class="custom-token-card"><h3 style="margin-top:0">📊 Wallet-Tracking &amp; Aktualisierung</h3><p class="note">Beim Login wird zuerst der zuletzt gespeicherte Stand angezeigt. Automatische Live-Prüfungen werden pro Wallet und Datentyp begrenzt; manuelle Aktualisierungen bleiben möglich. „Daten aktualisieren“ erneuert Bestände und die dafür vorgesehenen Datenjobs. „Preise aktualisieren“ erneuert ausschließlich aktuelle Kurse und daraus berechnete USD-Werte – ohne automatisch Discovery-, Staking-, Reward-, Team- oder historische Stichtagsdaten neu aufzubauen. Leere Ergebnisse gelten als gültiger Zustand, wenn der betreffende Datenjob erfolgreich abgeschlossen wurde.</p></div>
 
