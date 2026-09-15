@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260914-182500 */
+/* TLN/VOW Loans central engine · Build 20260915-120600 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -1304,12 +1304,25 @@ function loanGlobalRefLifecycleScore(words){
   }catch{}
   return score;
 }
-async function loanGlobalBurnTransfersForToken(tokenAddress,limit){
+async function loanBlockAtOrBeforeDate(dateIso){
+  const targetMs=Date.parse(dateIso);
+  if(!Number.isFinite(targetMs))throw new Error('Ungültiger historischer Stichtag.');
+  const latest=Number(BigInt(await rpc('eth_blockNumber',[])));
+  let lo=0,hi=latest,best=0;
+  while(lo<=hi){
+    const mid=Math.floor((lo+hi)/2);
+    const b=await rpc('eth_getBlockByNumber',['0x'+mid.toString(16),false]);
+    const ms=b?.timestamp?Number(BigInt(b.timestamp))*1000:0;
+    if(ms<=targetMs){best=mid;lo=mid+1}else hi=mid-1;
+  }
+  return best;
+}
+async function loanGlobalBurnTransfersForToken(tokenAddress,limit,startToBlock=null){
   if(!hasAlchemy())throw new Error('Keine Alchemy Discovery-API für BSC konfiguriert.');
   const latestHex=await rpc('eth_blockNumber',[]);
   const latest=Number(BigInt(latestHex));
   const out=[],seen=new Set();
-  let toBlock=latest,window=250000,windows=0;
+  let toBlock=startToBlock==null?latest:Math.max(0,Math.min(latest,Number(startToBlock))),window=250000,windows=0;
   while(toBlock>=0&&out.length<limit){
     const fromBlock=Math.max(0,toBlock-window+1);
     let pageKey=null,tmp=[],ok=false;
@@ -1348,14 +1361,14 @@ async function loanGlobalBurnTransfersForToken(tokenAddress,limit){
   }
   return out;
 }
-async function loanGlobalReferenceCandidates(limit){
+async function loanGlobalReferenceCandidates(limit,startToBlock=null){
   // True chainwide opening source: scan TLN+ and TLN-GOLD burns to zero, then
   // reconstruct each opening from the full receipt. This avoids bias toward
   // repayments or the user's own wallets.
   const perToken=Math.max(100,limit);
   const [plusBurns,goldBurns]=await Promise.all([
-    loanGlobalBurnTransfersForToken(LOAN_TLNPLUS_ADDRESS,perToken),
-    loanGlobalBurnTransfersForToken(LOAN_TLNGOLD_ADDRESS,perToken)
+    loanGlobalBurnTransfersForToken(LOAN_TLNPLUS_ADDRESS,perToken,startToBlock),
+    loanGlobalBurnTransfersForToken(LOAN_TLNGOLD_ADDRESS,perToken,startToBlock)
   ]);
   const seeds=[];
   for(const tr of [...plusBurns,...goldBurns]){
@@ -1459,10 +1472,13 @@ async function loanSearchGlobalReferenceLoans(){
   const btn=document.getElementById('loanGlobalRefRun');
   const out=document.getElementById('loanGlobalRefResult');
   const limit=Math.max(100,Math.min(5000,Number(document.getElementById('loanGlobalRefLimit')?.value||800)));
+  const cutoffValue=String(document.getElementById('loanGlobalRefCutoff')?.value||'').trim();
   if(btn)btn.disabled=true;if(out)out.innerHTML='';
-  loanGlobalRefSetState(`Scanne chainweit TLN+ und TLN GOLD Burns · Ziel bis zu ${limit} je Token …`);
   try{
-    const seeds=await loanGlobalReferenceCandidates(limit);
+    const cutoffIso=cutoffValue?`${cutoffValue}T23:59:59Z`:null;
+    const startToBlock=cutoffIso?await loanBlockAtOrBeforeDate(cutoffIso):null;
+    loanGlobalRefSetState(`Historischer Scan: TLN+ und TLN GOLD Burns${cutoffValue?` bis ${cutoffValue}`:''} · bis zu ${limit} je Token …`);
+    const seeds=await loanGlobalReferenceCandidates(limit,startToBlock);
     const targetTypes=new Set(['TLN+ 0.25','TLN+ x2','TLN Gold x2','TLN Gold x4']);
     const found=[];
     let done=0;
@@ -1525,7 +1541,7 @@ async function loanSearchGlobalReferenceLoans(){
     document.querySelectorAll('.loan-best-ref-btn').forEach(btn=>{
       btn.addEventListener('click',()=>void loanInspectBestReference(String(btn.dataset.loanBestType||'')));
     });
-    loanGlobalRefSetState(`Fertig: ${done} Kandidaten geprüft · ${found.length} passende Referenz-Loans gefunden.`,found.length?'ok':'warn');
+    loanGlobalRefSetState(`Fertig: ${done} Kandidaten geprüft · ${found.length} passende Referenz-Loans gefunden${cutoffValue?` · Stichtag ≤ ${cutoffValue}`:''}.`,found.length?'ok':'warn');
   }catch(e){
     console.error('[Loan global references]',e);
     loanGlobalRefSetState(`Fehler: ${e?.message||e}`,'err');
