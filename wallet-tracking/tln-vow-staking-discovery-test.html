@@ -5,7 +5,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
 <script src="./js/price-engine.js"></script>
-<script src="./projects/tln-vow/tln-vow-loans.js?v=20260915-120600"></script>
+<script src="./projects/tln-vow/tln-vow-loans.js?v=20260915-150041"></script>
 <style>
 body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:clamp(10px,1.25vw,24px);width:100%;max-width:none;box-sizing:border-box}
 @media(max-width:900px){body{padding:16px}}@media(max-width:600px){body{padding:10px}}h1{margin:0 0 6px}h2{margin-top:0}.muted{color:#9aa3b3}.card{background:#151a22;border:1px solid #29313d;border-radius:14px;padding:16px;margin:16px 0}button{background:#6488f7;color:#07101f;border:0;border-radius:10px;padding:11px 16px;font-weight:700;cursor:pointer}button:disabled{opacity:.45}input,select{background:#222936;color:#e8ebf2;border:1px solid #394354;border-radius:9px;padding:10px 12px;min-width:460px}table{border-collapse:collapse;width:100%;min-width:1050px}th,td{padding:10px;border-bottom:1px solid #29313d;text-align:left;vertical-align:top}th{color:#aeb6c5}.wrap{overflow-x:auto}.ok{color:#54d68b}.err{color:#ff6b6b}.warn{color:#f5c451}.mono{font-family:ui-monospace,monospace;font-size:.88em;word-break:break-all}.pill{padding:3px 8px;border-radius:8px;background:#222936;display:inline-block}pre{white-space:pre-wrap}
@@ -164,7 +164,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 
 </style></head><body>
 <h1>TLN/VOW – Staking/LP Discovery Test</h1>
-<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 14.09.2026 02:29:00 CEST</div>
+<div class="muted">BSC-only · isolierte Diagnose · Entwicklungsstand: 15.09.2026 16:04:31 CEST</div>
 <p class="muted"><b>Step 6:</b> Historische Bewertung inkl. Stichtagsprüfung offener Stakings per 31.12.; Reward-Kurse bleiben bewusst außerhalb dieser Bewertung. <b>Step 7:</b> TLN/VOW-Team-Baum nur auf Klick ermitteln; der vollständige SmartNode-Graph wird global in Supabase persistiert und danach nur inkrementell mit Block-Overlap aktualisiert; ohne Global-Cache bleibt der vollständige History-Fallback aktiv.</p>
 <div class="card analysis-zone" id="discoveryEngineCard"><div id="auth">Initialisierung…</div>
 <p class="muted"><b>Neue Discovery-Logik:</b> Staking-first statt Wallet-weitem LP-Bruteforce. Nach dem gecachten ERC-20-Basisscan werden in Schritt 2 nur Assets geprüft, die direkt mit bekannten Staking-Contracts interagieren, als verifiziertes Registry-Pair/Historien-Asset vorkommen oder aus einer tatsächlich gefundenen Stake-Transaktion stammen. Ein Scan aller jemals übertragenen ERC-20-Contracts als mögliche LPs findet in Schritt 2 nicht mehr statt. Stake/Unstake wird nur bei einer Gegenadresse aus <code>defi_staking_contracts</code> mit <code>classify_transfers=true</code> vergeben.</p>
@@ -408,6 +408,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
                 <option value="all">alle Typen / Statistik</option>
               </select>
             </label>
+            <label><input id="loanRepayVerifyAutoExtended" type="checkbox" checked> Typ 5 automatisch bis 10’000 prüfen</label>
             <button id="loanRepayVerifyRun" type="button">Repay-Fälle suchen</button>
           </div>
           <div id="loanRepayVerifyState" class="muted" style="margin-top:8px">Noch nicht gestartet.</div>
@@ -566,7 +567,7 @@ body{font-family:system-ui;background:#0d1015;color:#e8ebf2;margin:0;padding:cla
 <div class="card"><h2>Diagnose</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button id="exportDiagnosisLog" type="button">Diagnose-Log als TXT exportieren</button><span id="exportDiagnosisLogState" class="muted">Exportiert den aktuell sichtbaren Diagnose-Log.</span></div><pre id="log" class="mono muted">Bereit.</pre></div>
 </div><!-- /analysisDetailsZone -->
 <script>
-const BUILD_ID='20260914-182500';
+const BUILD_ID='20260915-160431';
 const SUPABASE_URL="https://cfnxuesibpnlgyklzqkj.supabase.co",SUPABASE_ANON_KEY="sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N",PUBLICNODE_TOKEN="a39e5bb34dbfbaa3dbd07f8e2d5292c769941030dc99ca5b8776b76e3df78b36",ALCHEMY_API_KEY="alch_UMCNBKNtoimHNHHPBk7kV";
 const NODEREAL_BSC_URL="https://bsc-mainnet.nodereal.io/v1/65ef2c8e97554306a0c34579410ea31b";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -697,7 +698,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='14.09.2026 18:25:00 CEST';
+const APP_VERSION='15.09.2026 16:04:31 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -17683,6 +17684,43 @@ async function loadInitialDbRowsResilient(){
   }
   return [null,null,null,{error:last},null,null];
 }
+function isLocalDiscoveryPreview(){
+  return ['localhost','127.0.0.1'].includes(String(location.hostname||'').toLowerCase());
+}
+function localDiscoveryRedirectUrl(){
+  return `${location.origin}${location.pathname}`;
+}
+async function sendLocalDiscoveryMagicLink(){
+  const email=String($('localDiscoveryAuthEmail')?.value||'').trim();
+  const state=$('localDiscoveryAuthState');
+  if(!email){if(state){state.className='warn';state.textContent='Bitte E-Mail-Adresse eingeben.'}return}
+  if(state){state.className='muted';state.textContent='Login-Link wird gesendet …'}
+  const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:localDiscoveryRedirectUrl()}});
+  if(state){
+    state.className=error?'err':'ok';
+    state.textContent=error
+      ? `Login-Link konnte nicht gesendet werden: ${error.message||error}`
+      : 'Login-Link verschickt. Öffne die E-Mail auf diesem Mac und klicke auf den Link.';
+  }
+}
+function renderLocalDiscoveryLogin(){
+  const auth=$('auth');if(!auth)return;
+  if(!isLocalDiscoveryPreview()){
+    auth.innerHTML='<span class="err">Nicht eingeloggt. Testseite auf derselben Domain wie Wallet-Tracking öffnen und zuerst einloggen.</span>';
+    return;
+  }
+  auth.innerHTML=`<div style="padding:12px;border:1px solid #5f3438;border-radius:10px;background:#181112">
+    <b>Lokale Test-Anmeldung</b>
+    <div class="muted" style="margin:6px 0 10px">Der Login-Link führt zurück auf diese lokale Discovery-Testseite. Voraussetzung: <code>${esc(localDiscoveryRedirectUrl())}</code> ist in Supabase als erlaubte Redirect-URL eingetragen.</div>
+    <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+      <label>E-Mail-Adresse<br><input id="localDiscoveryAuthEmail" type="email" autocomplete="email" placeholder="deine@email.ch"></label>
+      <button id="localDiscoveryAuthSend" type="button">Login-Link senden</button>
+    </div>
+    <div id="localDiscoveryAuthState" class="muted" style="margin-top:8px"></div>
+  </div>`;
+  $('localDiscoveryAuthSend')?.addEventListener('click',()=>void sendLocalDiscoveryMagicLink());
+  $('localDiscoveryAuthEmail')?.addEventListener('keydown',e=>{if(e.key==='Enter')void sendLocalDiscoveryMagicLink()});
+}
 async function init(){log(`Build geladen: ${BUILD_ID} · SC_READ_PROBES=${typeof SC_READ_PROBES!=='undefined'?SC_READ_PROBES.length:'FEHLT'}`,'ok');
   let user=null;
   try{
@@ -17695,7 +17733,7 @@ async function init(){log(`Build geladen: ${BUILD_ID} · SC_READ_PROBES=${typeof
       user=u2?.data?.user||null;
     }
   }catch(_e){}
-  if(!user){$('auth').innerHTML='<span class="err">Nicht eingeloggt. Testseite auf derselben Domain wie Wallet-Tracking öffnen und zuerst einloggen.</span>';return}
+  if(!user){renderLocalDiscoveryLogin();return}
   currentUserId=user.id;
   await loadTeamAliasesFromSupabase();
   const migratedAliases=await migrateLegacyTeamAliasesToSupabase();
