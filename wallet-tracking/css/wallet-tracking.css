@@ -1056,3 +1056,33 @@ body.admin-debug-mode .dev-only,body.admin-debug-mode .debug-only{outline:2px so
 
 @media(max-width:900px){.ui-font-control{order:3;width:100%;justify-content:flex-end}.app-hero{flex-wrap:wrap}.tab-nav-groups{position:static}.tab-nav-group-label{flex-basis:120px}}
 @media(max-width:720px){.wrap{width:96%}.tab-nav-group{display:block}.tab-nav-group-label{padding-bottom:5px}.tab-btn{padding:9px 11px}.ui-font-control{justify-content:center}}
+
+/* ======================================================================
+   WalletTracking App-Shell + Crypto-Identität · Build 20260916-020500
+   ZENTRAL: Sidebar, responsive Layout und Chain-/Token-Icons.
+   ====================================================================== */
+.app-shell{display:grid;grid-template-columns:250px minmax(0,1fr);gap:18px;align-items:start;margin-top:16px}
+.app-sidebar{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;background:rgba(255,255,255,.96);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);padding:12px}
+.app-main{min-width:0}
+.sidebar-brand{display:flex;align-items:center;gap:10px;padding:7px 8px 14px;border-bottom:1px solid #edf2f8;margin-bottom:7px}
+.sidebar-brand-mark{display:grid;place-items:center;width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#1769ff,#69a2ff);color:#fff;font-weight:900;font-size:1.05rem;box-shadow:0 6px 16px rgba(23,105,255,.2)}
+.sidebar-brand strong{display:block;font-size:.92rem}.sidebar-brand small{display:block;color:var(--muted);font-size:.68rem;margin-top:1px}
+.app-sidebar .tab-nav-groups{position:static;padding:0;background:transparent;border:0;box-shadow:none;border-radius:0}
+.app-sidebar .tab-nav-groups::before{display:none}
+.app-sidebar .tab-nav-group{display:block;padding:8px 0;border-bottom:1px solid #edf2f8}
+.app-sidebar .tab-nav-group:last-child{border-bottom:0}
+.app-sidebar .tab-nav-group-label{display:block;padding:3px 8px 7px;min-width:0;color:#7a8dac;font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+.app-sidebar .tab-nav{display:flex;flex-direction:column;gap:4px}
+.app-sidebar .tab-btn{width:100%;text-align:left;justify-content:flex-start;border:1px solid transparent;background:transparent;padding:9px 10px;border-radius:10px;color:#38577e;box-shadow:none;white-space:normal}
+.app-sidebar .tab-btn:hover{background:#f1f6ff;border-color:#e1ebf8;transform:none}
+.app-sidebar .tab-btn.active{background:linear-gradient(90deg,#e8f1ff,#f5f9ff);border-color:#b8d1ff;color:#0755cf;box-shadow:inset 3px 0 0 #1769ff;font-weight:800}
+
+.crypto-icon{display:inline-grid;place-items:center;width:28px;height:28px;min-width:28px;border-radius:50%;overflow:hidden;vertical-align:middle;margin-right:8px;background:#edf3fb;border:1px solid rgba(17,47,91,.08);box-shadow:0 2px 7px rgba(37,76,132,.10)}
+.crypto-icon img{display:block;width:100%;height:100%;object-fit:cover}
+.crypto-icon.sm{width:22px;height:22px;min-width:22px;margin-right:6px}
+.crypto-identity{display:inline-flex;align-items:center;vertical-align:middle}
+.chain-card .crypto-icon,.project-summary-box .crypto-icon{width:36px;height:36px;min-width:36px}
+
+@media(max-width:1050px){.app-shell{grid-template-columns:210px minmax(0,1fr);gap:12px}}
+@media(max-width:820px){.app-shell{display:block}.app-sidebar{position:static;max-height:none;margin-bottom:14px}.app-sidebar .tab-nav-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.app-sidebar .tab-nav-group{border:1px solid var(--border);border-radius:12px;padding:8px}.app-sidebar .tab-nav{flex-direction:row;flex-wrap:wrap}.app-sidebar .tab-btn{width:auto;flex:1 1 140px}}
+@media(max-width:560px){.app-sidebar .tab-nav-groups{grid-template-columns:1fr}.app-sidebar .tab-btn{flex-basis:100%}}

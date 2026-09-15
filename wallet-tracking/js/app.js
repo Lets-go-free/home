@@ -8010,3 +8010,43 @@ async function addDiscoveredToken(chain, address, symbol) {
 // Alles Weitere (Wallets/Token laden, rendern) passiert erst nach erfolgreichem
 // Login in initAuth() -> onLoggedIn(), siehe oben.
 initAuth();
+
+/* WalletTracking Crypto-Icons · zentraler UI-Decorator · Build 20260916-020500 */
+(function initCryptoIdentityDecorator(){
+  const ICONS={
+    aptm:'./assets/crypto/aptm.svg', waptm:'./assets/crypto/aptm.svg', apertum:'./assets/crypto/aptm.svg',
+    bnb:'./assets/crypto/bnb.svg', bsc:'./assets/crypto/bnb.svg',
+    avax:'./assets/crypto/avax.svg', avalanche:'./assets/crypto/avax.svg',
+    eth:'./assets/crypto/eth.svg', ethereum:'./assets/crypto/eth.svg',
+    usdt:'./assets/crypto/usdt.svg', wusdt:'./assets/crypto/usdt.svg',
+    vow:'./assets/crypto/vow.svg'
+  };
+  function iconKey(text){
+    const t=String(text||'').trim().toLowerCase();
+    if(!t) return '';
+    if(/^(w?aptm)\b/.test(t)||t.startsWith('apertum')) return t.startsWith('waptm')?'waptm':'aptm';
+    if(/^w?usdt\b/.test(t)) return t.startsWith('wusdt')?'wusdt':'usdt';
+    if(/^bnb\b/.test(t)||t.startsWith('bnb smart chain')) return 'bnb';
+    if(/^avax\b/.test(t)||t.startsWith('avalanche')) return 'avax';
+    if(/^eth\b/.test(t)||t.startsWith('ethereum')) return 'eth';
+    if(/^vow\b/.test(t)) return 'vow';
+    return '';
+  }
+  function decorate(root=document){
+    const nodes=root.querySelectorAll?.('td, .chain-card h3, .chain-card h4, .project-summary-box .label, .project-data-table td')||[];
+    nodes.forEach(el=>{
+      if(el.dataset.cryptoDecorated==='1'||el.querySelector(':scope > .crypto-icon')) return;
+      const key=iconKey(el.textContent); if(!key||!ICONS[key]) return;
+      const badge=document.createElement('span'); badge.className='crypto-icon sm'; badge.setAttribute('aria-hidden','true');
+      const img=document.createElement('img'); img.src=ICONS[key]; img.alt=''; badge.appendChild(img);
+      el.insertBefore(badge,el.firstChild); el.dataset.cryptoDecorated='1';
+    });
+  }
+  function boot(){
+    decorate(document);
+    const target=document.getElementById('appContent')||document.body;
+    let queued=false;
+    new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;decorate(target);});}).observe(target,{childList:true,subtree:true});
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true}); else boot();
+})();
