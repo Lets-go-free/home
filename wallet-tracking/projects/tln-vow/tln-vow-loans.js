@@ -1,4 +1,4 @@
-/* TLN/VOW Loans central engine · Build 20260915-150041 */
+/* TLN/VOW Loans central engine · Build 20260915-173339 */
 (function(global){
 'use strict';
 function createLoanEngine(ctx={}){
@@ -642,9 +642,14 @@ function loanRepayVerifySetState(text,kind='muted'){
   el.className=kind==='ok'?'ok':kind==='warn'?'warn':kind==='err'?'err':'muted';el.textContent=text;
 }
 
-async function loanGlobalRepayTransfers(limit=25){
-  const latestHex=await rpc('eth_blockNumber',[]);
-  const latest=Number(BigInt(latestHex));
+let LOAN_REPAY_VERIFY_CONTINUATION=null;
+function loanRepayTransferBlock(tr){
+  try{return Number(BigInt(tr?.blockNum??tr?.blockNumber??0))}catch{return 0}
+}
+
+async function loanGlobalRepayTransfers(limit=25,startToBlock=null){
+  const latestHex=startToBlock==null?await rpc('eth_blockNumber',[]):null;
+  const latest=startToBlock==null?Number(BigInt(latestHex)):Math.max(0,Number(startToBlock));
   if(!Number.isFinite(latest)||latest<=0)throw new Error('Aktuellen BSC-Block konnte nicht ermittelt werden.');
   const out=[],seen=new Set();
   let toBlock=latest,window=250000,windows=0;
@@ -681,7 +686,10 @@ async function loanGlobalRepayTransfers(limit=25){
       if(windows>5000)break;
     }
   }
-  return out;
+  const blocks=out.map(loanRepayTransferBlock).filter(x=>Number.isFinite(x)&&x>0);
+  const oldestBlock=blocks.length?Math.min(...blocks):null;
+  const newestBlock=blocks.length?Math.max(...blocks):null;
+  return {transfers:out,newestBlock,oldestBlock,nextToBlock:oldestBlock!=null&&oldestBlock>0?oldestBlock-1:null};
 }
 
 async function loanFindOpeningByPosition(wallet,positionRef){
@@ -707,26 +715,37 @@ async function loanFindOpeningByPosition(wallet,positionRef){
   return null;
 }
 
-async function loanVerifyRepaymentModels(){
-  const btn=document.getElementById('loanRepayVerifyRun'),result=document.getElementById('loanRepayVerifyResult');
+async function loanVerifyRepaymentModels(continueOlder=false){
+  const btn=document.getElementById('loanRepayVerifyRun'),olderBtn=document.getElementById('loanRepayVerifyOlder'),result=document.getElementById('loanRepayVerifyResult');
   const requestedScanLimit=Math.max(50,Math.min(10000,Number(document.getElementById('loanRepayVerifyLimit')?.value||500)));
   const target=String(document.getElementById('loanRepayVerifyType')?.value||'all');
   const autoExtendedDepth=target==='5'&&document.getElementById('loanRepayVerifyAutoExtended')?.checked!==false;
   // Typ 5 ist selten. Im automatischen historischen Prüfmodus wird deshalb der dokumentierte
   // Vollscan bis 10'000 Repay-Transfers verwendet, ohne irgendein Zinsmodell vorauszusetzen.
   const scanLimit=autoExtendedDepth?10000:requestedScanLimit;
-  if(btn)btn.disabled=true;if(result)result.innerHTML='';
-  loanRepayVerifySetState(autoExtendedDepth
-    ? `Historische Typ-5-Suche: prüfe automatisch bis zu ${scanLimit} globale v$→Loan-Contract Repay-Txs …`
-    : `Suche bis zu ${scanLimit} globale v$→Loan-Contract Repay-Txs …`);
+  if(btn)btn.disabled=true;if(olderBtn)olderBtn.disabled=true;if(result)result.innerHTML='';
   try{
-    const trs=await loanGlobalRepayTransfers(scanLimit);
+    if(continueOlder&&(!LOAN_REPAY_VERIFY_CONTINUATION||LOAN_REPAY_VERIFY_CONTINUATION.target!==target)){
+      loanRepayVerifySetState('Ermittle zuerst den Fortsetzungspunkt nach den bereits geprüften neuesten 10’000 Repays …');
+      const firstRange=await loanGlobalRepayTransfers(10000);
+      LOAN_REPAY_VERIFY_CONTINUATION={target,totalChecked:firstRange.transfers.length,batch:1,nextToBlock:firstRange.nextToBlock};
+    }
+    const continuation=continueOlder?LOAN_REPAY_VERIFY_CONTINUATION:null;
+    const startToBlock=continuation?.nextToBlock??null;
+    if(continueOlder&&startToBlock==null)throw new Error('Kein älterer Blockbereich mehr verfügbar.');
+    const effectiveLimit=continueOlder?10000:scanLimit;
+    loanRepayVerifySetState(continueOlder
+      ? `Suche weitere ${effectiveLimit} ältere Repays vor Block ${startToBlock} …`
+      : (autoExtendedDepth
+        ? `Historische Typ-5-Suche: prüfe automatisch bis zu ${effectiveLimit} globale v$→Loan-Contract Repay-Txs …`
+        : `Suche bis zu ${effectiveLimit} globale v$→Loan-Contract Repay-Txs …`));
+    const range=await loanGlobalRepayTransfers(effectiveLimit,startToBlock);
+    const trs=range.transfers;
     const rows=[];let checked=0;
     const typeStats=new Map(),unknownStats=new Map();
     const KNOWN_REPAY_TYPES=new Set(['0','1','2','3','4','5']);
     const maxRows=(target==='all'||target==='unknown')?100:5;
     for(const tr of trs){
-      if(rows.length>=maxRows && target!=='all' && target!=='unknown')break;
       checked++;if(checked===1||checked%25===0)loanRepayVerifySetState(`Prüfe Repay ${checked}/${trs.length} · ${rows.length} Treffer …`);
       const rp=await loanBuildRepayment(norm(tr?.from||''),tr);
       if(!rp)continue;
@@ -779,13 +798,19 @@ async function loanVerifyRepaymentModels(){
       return `<tr><td>${loanDiagEsc(typ)}</td><td style="text-align:right">${n}</td><td>${known?'bekannt':'UNBEKANNT · prüfen'}</td><td>${loanDiagEsc(LOAN_BOOSTER_BY_EVENT_VALUE3[String(typ)]||'–')}</td></tr>`;
     }).join('');
     const unknownTotal=[...unknownStats.values()].reduce((a,b)=>a+b,0);
+    const previousChecked=continueOlder?Number(continuation?.totalChecked||0):0;
+    const cumulativeChecked=previousChecked+checked;
+    const batchNumber=continueOlder?Number(continuation?.batch||1)+1:1;
+    LOAN_REPAY_VERIFY_CONTINUATION={target,totalChecked:cumulativeChecked,batch:batchNumber,nextToBlock:range.nextToBlock};
     result.innerHTML=`
       <div class="loan-summary">
-        <div class="metric"><b>${checked}</b><span>Repay-Txs geprüft</span></div>
+        <div class="metric"><b>${checked}</b><span>Repay-Txs in Batch ${batchNumber}</span></div>
+        <div class="metric"><b>${cumulativeChecked}</b><span>kumuliert geprüft</span></div>
         <div class="metric"><b>${typeStats.size}</b><span>Event-Werte gefunden</span></div>
         <div class="metric"><b>${unknownTotal}</b><span>unbekannte Typ-Fälle</span></div>
         <div class="metric"><b>${rows.length}</b><span>angezeigte Treffer</span></div>
       </div>
+      <div class="muted" style="margin:8px 0">Blockbereich Batch ${batchNumber}: ${range.newestBlock??'–'} bis ${range.oldestBlock??'–'} · nächste Fortsetzung vor Block ${range.nextToBlock??'–'}</div>
       <div class="wrap"><table class="project-data-table" style="min-width:720px"><thead><tr>
         <th>Event-Wert 3</th><th>Anzahl</th><th>Status</th><th>bekannter Booster</th>
       </tr></thead><tbody>${statRows||'<tr><td colspan="4">Keine Eröffnungs-Typen aufgelöst.</td></tr>'}</tbody></table></div>
@@ -795,12 +820,12 @@ async function loanVerifyRepaymentModels(){
       </tr></thead><tbody>${html||'<tr><td colspan="12">Keine passenden Repay-Fälle gefunden.</td></tr>'}</tbody></table></div>`;
     const extendedExhausted=target==='5'&&rows.length===0&&checked===trs.length;
     loanRepayVerifySetState(extendedExhausted
-      ? `Kein Typ-5-Repay gefunden: ${checked} verfügbare Repay-Txs geprüft (angeforderte Suchgrenze ${scanLimit}). Damit ist derzeit kein historischer Extended-Rückzahlungsfall in diesem Suchumfang belegt.`
+      ? `Kein Typ-5-Repay in Batch ${batchNumber}: ${checked} Repays geprüft · kumuliert ${cumulativeChecked}. Mit „Weitere 10’000 ältere Repays prüfen“ kann die Suche vor Block ${range.nextToBlock??'–'} fortgesetzt werden.`
       : `Fertig: ${checked} Repay-Txs geprüft · ${typeStats.size} Event-Wert(e) · ${unknownTotal} unbekannte Typ-Fälle · ${rows.length} Treffer angezeigt.`,
       extendedExhausted?'warn':((rows.length||typeStats.size)?'ok':'warn'));
   }catch(e){
     console.error('[Loan repay model verify]',e);loanRepayVerifySetState(`Fehler: ${e?.message||e}`,'err');
-  }finally{if(btn)btn.disabled=false}
+  }finally{if(btn)btn.disabled=false;if(olderBtn)olderBtn.disabled=!Number.isFinite(LOAN_REPAY_VERIFY_CONTINUATION?.nextToBlock)}
 }
 
 function loanDiagSetState(text,kind='muted'){
@@ -1738,6 +1763,7 @@ function initLoanDiscovery(){
   document.getElementById('loanGlobalRefRun')?.addEventListener('click',()=>void loanSearchGlobalReferenceLoans());
   document.getElementById('loanGoldGlobalRun')?.addEventListener('click',()=>void loanSearchGoldVariantsGlobal());
   document.getElementById('loanRepayVerifyRun')?.addEventListener('click',()=>void loanVerifyRepaymentModels());
+  document.getElementById('loanRepayVerifyOlder')?.addEventListener('click',()=>void loanVerifyRepaymentModels(true));
   renderLoanDiscovery();
 }
 
