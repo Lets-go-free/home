@@ -8094,3 +8094,49 @@ initAuth();
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true}); else boot();
 })();
+
+
+/* WalletTracking Tabellen-Semantik · Build 20260916-063600
+   Einheitlich im ganzen Dokument: Text/Datum links, Zahlen/Beträge rechts.
+   Header und Zellen einer Spalte erhalten immer dieselbe Ausrichtung. */
+(function initTableColumnAlignment(){
+  const numericHeader = /(?:^|\b)(anzahl|menge|betrag|bestand|gesamtbestand|wert|preis|kurs|usd|eur|chf|claims?|zahlungen?|rewards?|gebühr(?:en)?|gas|anteil|prozent|%|saldo|delta|\bΔ\b|lp(?:\s|$)|staked|token\s*menge|auszahlung(?:en)?|eingang|ausgang|positionen|transaktionen|nfts?|block(?:nummer)?|slot|ledger)(?:\b|$)/i;
+  const textHeader = /(?:datum|zeit|timestamp|wallet|adresse|address|token|asset|chain|status|quelle|source|typ|type|methode|method|richtung|partner|tln\s*id|level|name|pool|contract|aktion|gegenstelle|staking|claim\s*\/\s*nft)/i;
+
+  function classifyTable(table){
+    if(!table || table.dataset.columnAlignmentDone==='1') return;
+    const headRow=table.tHead?.rows?.[table.tHead.rows.length-1] || table.querySelector('tr');
+    if(!headRow) return;
+    const headers=[...headRow.cells];
+    headers.forEach((th,idx)=>{
+      const label=(th.textContent||'').replace(/\s+/g,' ').trim();
+      let numeric=th.classList.contains('num');
+      if(!numeric && !textHeader.test(label) && numericHeader.test(label)) numeric=true;
+      /* Bereits explizit numerische Datenzellen machen auch den Titel numerisch. */
+      if(!numeric){
+        const rows=[...(table.tBodies||[])].flatMap(tb=>[...tb.rows]).slice(0,12);
+        numeric=rows.some(row=>row.cells[idx]?.classList.contains('num'));
+      }
+      const cls=numeric?'col-numeric':'col-text';
+      th.classList.add(cls);
+      for(const tb of table.tBodies||[]){
+        for(const row of tb.rows){ if(row.cells[idx]) row.cells[idx].classList.add(cls); }
+      }
+    });
+    table.dataset.columnAlignmentDone='1';
+  }
+  function scan(root=document){
+    if(root.matches?.('table')) classifyTable(root);
+    root.querySelectorAll?.('table').forEach(classifyTable);
+  }
+  function boot(){
+    scan(document);
+    const target=document.getElementById('appContent')||document.body;
+    let queued=false;
+    new MutationObserver(()=>{
+      if(queued)return; queued=true;
+      requestAnimationFrame(()=>{queued=false; target.querySelectorAll('table').forEach(t=>{t.dataset.columnAlignmentDone=''; classifyTable(t);});});
+    }).observe(target,{childList:true,subtree:true});
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true}); else boot();
+})();

@@ -1251,3 +1251,31 @@ body.admin-debug-mode .dev-only,body.admin-debug-mode .debug-only{outline:2px so
 #tlnvowDiscoveryHost .stake-fact .k,#tlnvowDiscoveryHost .value-source,#tlnvowDiscoveryHost .reward-item .rk,
 #tlnvowDiscoveryHost .reward-note,#tlnvowDiscoveryHost .team-node-sub,#tlnvowDiscoveryHost .team-node-meta,
 #tlnvowDiscoveryHost .team-node-lifecycle-note,#tlnvowDiscoveryHost .team-details-meta{color:var(--muted)}
+
+
+/* ======================================================================
+   Einheitliche Tabellen-Ausrichtung + sichere Seiten-Navigation
+   Build 20260916-063600
+   Text/Datum: Header + Werte links. Zahlen/Beträge: Header + Werte rechts.
+   ====================================================================== */
+/* Semantik wird zentral durch app.js pro Spalte markiert. Explizite .num-
+   Klassen bleiben ebenfalls gültig. */
+table th, table td { text-align:left; }
+table th.num, table td.num,
+table th.col-numeric, table td.col-numeric,
+table .num { text-align:right!important; font-variant-numeric:tabular-nums; }
+table th.col-text, table td.col-text { text-align:left!important; }
+
+/* Der gewünschte negative Einzug bleibt erhalten, darf die Navigation aber
+   bei 100 % Zoom / schmaleren Desktop-Viewports nie aus dem Viewport schieben. */
+.app-shell{
+  margin-left:max(-210px, calc(-5vw + 8px));
+  width:calc(100% - max(-210px, calc(-5vw + 8px)));
+}
+@media(max-width:1250px){
+  .app-shell{
+    margin-left:max(-184px, calc(-5vw + 8px));
+    width:calc(100% - max(-184px, calc(-5vw + 8px)));
+  }
+}
+@media(max-width:1050px){.app-shell{margin-left:0;width:100%}}
