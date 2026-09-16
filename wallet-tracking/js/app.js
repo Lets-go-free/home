@@ -2756,7 +2756,7 @@ function formatTokenAmountGlobal(value,meta={},options={}){
   const n=Number(value);
   if(!Number.isFinite(n)) return "–";
   const digits=tokenDisplayDigits(meta,!!options.summary);
-  return n.toLocaleString("de-CH",{maximumFractionDigits:digits});
+  return n.toLocaleString("de-CH",{minimumFractionDigits:digits,maximumFractionDigits:digits});
 }
 window.WalletTokenFormat={
   amount:formatTokenAmountGlobal,
