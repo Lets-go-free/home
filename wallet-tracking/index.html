@@ -741,10 +741,10 @@
 </select></label>
 <div style="margin-top:8px"><span class="muted">BSC/EVM-Adresse:</span> <span id="walletAddress" class="mono">–</span></div>
 <input id="wallet" type="hidden" value="">
-<div style="margin-top:10px;padding:10px 12px;border:1px solid #5a3a3a;border-radius:9px;background:#181112">
+<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--danger-border);border-radius:9px;background:var(--danger-soft)">
   <b>Developer · Supabase-Cache</b>
   <div class="muted" style="margin:5px 0 8px">Löscht ausschließlich walletbezogene Einträge in <code>tln_vow_staking_scan_cache</code> für das aktuell ausgewählte Wallet auf BSC – einschließlich der persistenten Discovery-Endergebnisse Steps 1–5. Globale LP-/Tx-Fakten und contractweite Strict-Duration-Proofs bleiben erhalten.</div>
-  <div class="muted" style="margin:5px 0 10px;padding:8px 10px;border:1px solid #445066;border-radius:8px;background:#111722"><b>Historischer Preis-Cache:</b> keine Supabase-Zeile pro Block/Preis. Pro Benutzer wird genau <b>1 begrenzte technische Cache-Zeile</b> verwendet. Exakte Stake-/Unstake-/Stichtagswerte bleiben blockgenau; der Cache ist auf 1'200 exakte Punkte (max. 180 je Asset) plus 300 optionale, nur explizit ungefähre Block-Buckets begrenzt. Fertige USD-Werte bleiben zusätzlich direkt an den verifizierten Positionen erhalten.</div>
+  <div class="muted" style="margin:5px 0 10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card2)"><b>Historischer Preis-Cache:</b> keine Supabase-Zeile pro Block/Preis. Pro Benutzer wird genau <b>1 begrenzte technische Cache-Zeile</b> verwendet. Exakte Stake-/Unstake-/Stichtagswerte bleiben blockgenau; der Cache ist auf 1'200 exakte Punkte (max. 180 je Asset) plus 300 optionale, nur explizit ungefähre Block-Buckets begrenzt. Fertige USD-Werte bleiben zusätzlich direkt an den verifizierten Positionen erhalten.</div>
   <button id="clearWalletSupabaseCache" type="button" disabled>DEV: Technischen Wallet-Cache komplett löschen</button>
   <span id="clearWalletSupabaseCacheState" class="muted" style="margin-left:8px"></span>
   <div class="muted" style="margin-top:5px"><strong>Wann verwenden?</strong> Wenn du dieses Wallet einmal komplett neu prüfen möchtest.<br><strong>Wird gelöscht:</strong> technische Discovery-Daten und gespeicherte Ergebnisse dieses Wallets.<br><strong>Bleibt erhalten:</strong> gemeinsame/globale Daten, die nicht nur zu diesem Wallet gehören.</div>
@@ -793,7 +793,7 @@
     <span id="testDiscoveryLongGapState" class="muted" style="margin-left:8px"></span>
   </div>
 </div>
-<div style="margin-top:12px;padding:10px 12px;border:1px solid #334155;border-radius:9px;background:#111722">
+<div style="margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--card2)">
   <b>Stichtagsbewertung offene Stakings</b>
   <div class="muted" style="margin:5px 0 8px">Step 6 bewertet zusätzlich den tatsächlich am 31.12. gebundenen Staking-Bestand. Aufstockungen gehören zur ursprünglichen Position und übernehmen deren gemeinsames Vertragsende; nach diesem Ende gilt kein Teil der Position mehr als offenes Staking.</div>
   <label>Stichtagsjahr<br><select id="snapshotYear" style="min-width:180px;width:180px">
@@ -1129,6 +1129,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 16.09.2026 02:27:00 CEST · Phase 4.60 · Build 20260916-022700</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 16.09.2026 06:28:00 CEST · Phase 4.62 · Build 20260916-062800</div>
 </body>
 </html>

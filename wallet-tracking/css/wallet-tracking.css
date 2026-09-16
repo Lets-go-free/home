@@ -1202,3 +1202,52 @@ body.admin-debug-mode .dev-only,body.admin-debug-mode .debug-only{outline:2px so
 :root[data-theme="dark"] #tlnvowDiscoveryHost .project-staking-wallet,
 :root[data-theme="dark"] #tlnvowDiscoveryHost .project-staking-date .time,
 :root[data-theme="dark"] #tlnvowDiscoveryHost .project-staking-amount .symbol {color:var(--muted)!important}
+
+/* ======================================================================
+   Theme audit · Phase 4.62 · 16.09.2026
+   Zentrale semantische Farben für Projektmodule. Keine Projektansicht soll
+   neutrale Dark-Flächen hart codieren. Statusfarben bleiben fachlich erhalten.
+   ====================================================================== */
+:root{
+  --field-bg:#ffffff;
+  --table-head-bg:#f3f7fc;
+  --row-hover:#f1f6ff;
+  --chip-bg:#eef3f9;
+  --border-strong:#b9c7d9;
+  --accent-border:#a9c8ff;
+  --accent-text:#2563a9;
+  --success-soft:#eefaf4;
+  --success-border:#9bd8b6;
+  --success-text:#16734b;
+  --danger-soft:#fff3f4;
+  --danger-border:#e7a8b2;
+}
+:root[data-theme="dark"]{
+  --field-bg:#151f30;
+  --table-head-bg:#1c293d;
+  --row-hover:#20314b;
+  --chip-bg:#263343;
+  --border-strong:#53667d;
+  --accent-border:#45698c;
+  --accent-text:#9fc5ff;
+  --success-soft:#0e1b16;
+  --success-border:#2f7d55;
+  --success-text:#9bd6ae;
+  --danger-soft:#24171a;
+  --danger-border:#5f3438;
+}
+
+/* Projektmodule erben die zentralen Formular-/Tabellenfarben. */
+#tlnvowDiscoveryHost input,#tlnvowDiscoveryHost select,#tlnvowDiscoveryHost textarea{background:var(--field-bg);color:var(--text);border-color:var(--border)}
+#tlnvowDiscoveryHost .stake-pos,#tlnvowDiscoveryHost .reward-box,#tlnvowDiscoveryHost .claim-summary,
+#tlnvowDiscoveryHost .claim-summary-item,#tlnvowDiscoveryHost .reward-mechanism,#tlnvowDiscoveryHost .reward-token-card,
+#tlnvowDiscoveryHost .process-step,#tlnvowDiscoveryHost .lookup-box,#tlnvowDiscoveryHost .lookup-wallet-card,
+#tlnvowDiscoveryHost .project-placeholder,#tlnvowDiscoveryHost .project-overview-card,
+#tlnvowDiscoveryHost .team-tree-info,#tlnvowDiscoveryHost .team-tree-legend,#tlnvowDiscoveryHost .team-controls,
+#tlnvowDiscoveryHost .team-node,#tlnvowDiscoveryHost .team-node-staking,#tlnvowDiscoveryHost .team-details-dialog,
+#tlnvowDiscoveryHost .team-details-head,#tlnvowDiscoveryHost .team-details-freshness{
+  color:var(--text);border-color:var(--border);
+}
+#tlnvowDiscoveryHost .stake-fact .k,#tlnvowDiscoveryHost .value-source,#tlnvowDiscoveryHost .reward-item .rk,
+#tlnvowDiscoveryHost .reward-note,#tlnvowDiscoveryHost .team-node-sub,#tlnvowDiscoveryHost .team-node-meta,
+#tlnvowDiscoveryHost .team-node-lifecycle-note,#tlnvowDiscoveryHost .team-details-meta{color:var(--muted)}
