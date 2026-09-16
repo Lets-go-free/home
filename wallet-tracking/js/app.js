@@ -25,6 +25,36 @@ function initUiFontScale(){
   applyUiFontScale(n,false);
 }
 window.applyUiFontScale=applyUiFontScale;
+function stepUiFontScale(delta){
+  const slider=document.getElementById("uiFontScale");
+  applyUiFontScale((Number(slider?.value)||UI_FONT_SCALE_DEFAULT)+Number(delta||0));
+}
+function resetUiFontScale(){ applyUiFontScale(UI_FONT_SCALE_DEFAULT); }
+window.stepUiFontScale=stepUiFontScale;
+window.resetUiFontScale=resetUiFontScale;
+
+const MAIN_SECTION_TABS={
+  overview:["tracking","nfts","fees","approvals"],
+  wallets:["wallets","predefined","custom","discovery"],
+  support:["chat","help"],
+  admin:["admin"], projects:["tlnvow","dao1"], tax:["tax"]
+};
+function mainSectionForTab(name){
+  for(const [section,tabs] of Object.entries(MAIN_SECTION_TABS)) if(tabs.includes(name)) return section;
+  return "overview";
+}
+function updateContextNavigation(tabName){
+  const section=mainSectionForTab(tabName);
+  document.querySelectorAll("[data-main-section]").forEach(b=>b.classList.toggle("active",b.dataset.mainSection===section && (section!=="projects" || ((tabName==="dao1") === (b.id==="dao1MainNavBtn")))));
+  document.querySelectorAll("[data-nav-section]").forEach(g=>g.style.display=(g.dataset.navSection===section?"block":"none"));
+  const context=document.getElementById("contextNav");
+  if(context) context.style.display=["tax"].includes(section)?"none":"block";
+}
+function showMainSection(section,preferredTab){
+  const tabs=MAIN_SECTION_TABS[section]||["tracking"];
+  showTab(preferredTab||tabs[0]);
+}
+window.showMainSection=showMainSection;
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",initUiFontScale,{once:true});else initUiFontScale();
 let defiProjectsCache = [];
 let predefinedTokenProject = {};
@@ -173,6 +203,7 @@ async function onLoggedIn(session) {
   try{adminDebugMode=isAdmin&&sessionStorage.getItem(ADMIN_DEBUG_SESSION_KEY)==="1";}catch(_){adminDebugMode=false;}
   applyAdminDebugMode();
   document.getElementById("adminNavGroup").style.display = isAdmin ? "block" : "none";
+  const adminMainNavBtn=document.getElementById("adminMainNavBtn"); if(adminMainNavBtn) adminMainNavBtn.style.display=isAdmin?"flex":"none";
   document.getElementById("userChatTabBtn").style.display = isAdmin ? "none" : "inline-block";
   document.getElementById("adminChatTabBtn").style.display = isAdmin ? "inline-block" : "none";
   document.getElementById("feesTabBtn").style.display = "inline-block";
@@ -1149,6 +1180,7 @@ function exportTaxPdf(){
 function showTab(name) {
   // TLN/VOW ist nur erreichbar, wenn ein passender Projekt-Token im Summary-Bestand liegt.
   if (name === "tlnvow" && !hasTlnVowTokenInSummary()) name = "tracking";
+  updateContextNavigation(name);
 
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".tab-btn[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
