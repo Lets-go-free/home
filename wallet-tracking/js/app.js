@@ -10,6 +10,7 @@ let adminDebugMode = false;
 const ADMIN_DEBUG_SESSION_KEY = "wallet_tracking_admin_debug_v1";
 const UI_FONT_SCALE_KEY = "wallet_tracking_font_scale_v1";
 const UI_FONT_SCALE_DEFAULT = 100;
+const UI_THEME_KEY = "wallet_tracking_theme_v1";
 function applyUiFontScale(value, persist=true){
   const n=Math.max(85,Math.min(125,Number(value)||UI_FONT_SCALE_DEFAULT));
   document.documentElement.style.setProperty("--ui-font-scale",String(n/100));
@@ -32,12 +33,22 @@ function stepUiFontScale(delta){
 function resetUiFontScale(){ applyUiFontScale(UI_FONT_SCALE_DEFAULT); }
 window.stepUiFontScale=stepUiFontScale;
 window.resetUiFontScale=resetUiFontScale;
+function applyUiTheme(theme,persist=true){
+  const mode=theme==="dark"?"dark":"light";
+  document.documentElement.dataset.theme=mode;
+  const btn=document.getElementById("uiThemeToggle");
+  if(btn){btn.textContent=mode==="dark"?"☀":"☾";btn.title=mode==="dark"?"Hellmodus einschalten":"Dunkelmodus einschalten";}
+  if(persist){try{localStorage.setItem(UI_THEME_KEY,mode);}catch(_){}}
+}
+function initUiTheme(){let mode="light";try{mode=localStorage.getItem(UI_THEME_KEY)||"light";}catch(_){}applyUiTheme(mode,false);}
+function toggleUiTheme(){applyUiTheme(document.documentElement.dataset.theme==="dark"?"light":"dark");}
+window.toggleUiTheme=toggleUiTheme;
 
 const MAIN_SECTION_TABS={
-  overview:["tracking","nfts","fees","approvals"],
+  overview:["tracking","tax","fees","nfts","approvals"],
   wallets:["wallets","predefined","custom","discovery"],
   support:["chat","help"],
-  admin:["admin"], projects:["tlnvow","dao1"], tax:["tax"]
+  admin:["admin"], projects:["tlnvow","dao1"]
 };
 function mainSectionForTab(name){
   for(const [section,tabs] of Object.entries(MAIN_SECTION_TABS)) if(tabs.includes(name)) return section;
@@ -45,17 +56,18 @@ function mainSectionForTab(name){
 }
 function updateContextNavigation(tabName){
   const section=mainSectionForTab(tabName);
-  document.querySelectorAll("[data-main-section]").forEach(b=>b.classList.toggle("active",b.dataset.mainSection===section && (section!=="projects" || ((tabName==="dao1") === (b.id==="dao1MainNavBtn")))));
+  document.querySelectorAll("[data-main-section]").forEach(b=>b.classList.toggle("active",b.dataset.mainSection===section));
   document.querySelectorAll("[data-nav-section]").forEach(g=>g.style.display=(g.dataset.navSection===section?"block":"none"));
   const context=document.getElementById("contextNav");
-  if(context) context.style.display=["tax"].includes(section)?"none":"block";
+  if(context) context.style.display="block";
 }
 function showMainSection(section,preferredTab){
   const tabs=MAIN_SECTION_TABS[section]||["tracking"];
   showTab(preferredTab||tabs[0]);
 }
 window.showMainSection=showMainSection;
-if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",initUiFontScale,{once:true});else initUiFontScale();
+function initUiDisplay(){initUiFontScale();initUiTheme();}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",initUiDisplay,{once:true});else initUiDisplay();
 let defiProjectsCache = [];
 let predefinedTokenProject = {};
 

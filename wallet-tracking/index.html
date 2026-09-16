@@ -44,7 +44,7 @@
 </script>
 <title>Token-Übersicht Wallets</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><text y=%2250%22 x=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2252%22>💼</text></svg>">
-<link rel="stylesheet" href="./css/wallet-tracking.css?v=20260916-022000-hybrid-nav">
+<link rel="stylesheet" href="./css/wallet-tracking.css?v=20260916-021903-nav-fix">
 <link rel="stylesheet" href="./projects/tln-vow/tln-vow-discovery.css?v=20260913-180423">
 
 
@@ -53,7 +53,7 @@
 <div class="wrap">
   <div class="app-hero">
     <div><h1>Wallet-Tracking inkl. Token-Übersicht und Kurse</h1><div class="sub">Wallet-Bestände, Token, Kurse, DeFi-Projekte und Analysen an einem Ort.</div></div>
-    <div class="ui-font-control" title="Schriftgrösse individuell einstellen"><span>Schrift</span><input id="uiFontScale" type="range" min="85" max="125" step="1" value="100" oninput="applyUiFontScale(this.value)"><button type="button" class="font-step-btn" onclick="stepUiFontScale(-1)" aria-label="Schrift verkleinern">−</button><button type="button" class="font-reset-btn" onclick="resetUiFontScale()" title="Auf 100 % zurücksetzen"><strong id="uiFontScaleValue">100%</strong></button><button type="button" class="font-step-btn" onclick="stepUiFontScale(1)" aria-label="Schrift vergrössern">+</button></div>
+    <div class="ui-display-controls"><button type="button" id="uiThemeToggle" class="theme-toggle-btn" onclick="toggleUiTheme()" title="Hell-/Dunkelmodus umschalten" aria-label="Hell-/Dunkelmodus umschalten">☾</button><div class="ui-font-control" title="Schriftgrösse individuell einstellen"><span>Schrift</span><button type="button" class="font-step-btn" onclick="stepUiFontScale(-1)" aria-label="Schrift verkleinern">−</button><input id="uiFontScale" type="range" min="85" max="125" step="1" value="100" oninput="applyUiFontScale(this.value)"><button type="button" class="font-step-btn" onclick="stepUiFontScale(1)" aria-label="Schrift vergrössern">+</button><button type="button" class="font-reset-btn" onclick="resetUiFontScale()" title="Auf 100 % zurücksetzen"><strong id="uiFontScaleValue">100%</strong></button></div></div>
     <div id="heroUserActions" style="display:none;min-width:280px">
       <div class="action-row" style="justify-content:flex-end;align-items:center;margin:0 0 10px;gap:12px">
         <span id="userEmailLabel" class="note" style="margin:0;font-size:1rem"></span>
@@ -84,66 +84,50 @@
   <div id="appContent" style="display:none">
     <div class="app-shell">
     <aside class="app-sidebar" aria-label="Hauptnavigation">
-      <div class="sidebar-brand"><span class="sidebar-brand-mark">W</span><div><strong>WalletTracking</strong><small>Navigation</small></div></div>
+      <div class="sidebar-brand"><span class="sidebar-brand-mark">W</span><div><strong>WalletTracking</strong><small>Bereiche</small></div></div>
       <nav class="main-nav">
-        <button class="main-nav-btn" data-main-section="overview" onclick="showMainSection('overview')">⌂ <span>Übersicht</span></button>
-        <button class="main-nav-btn" data-main-section="projects" onclick="showMainSection('projects','tlnvow')">⛓ <span>TLN / VOW</span></button>
-        <button class="main-nav-btn" data-main-section="projects" id="dao1MainNavBtn" onclick="showTab('dao1')">◉ <span>DAO1</span></button>
-        <button class="main-nav-btn" data-main-section="wallets" onclick="showMainSection('wallets')">▣ <span>Wallets</span></button>
-        <button class="main-nav-btn" data-main-section="tax" onclick="showTab('tax')">▤ <span>Bestandesaufnahme</span></button>
-        <button class="main-nav-btn" data-main-section="support" onclick="showMainSection('support')">? <span>Hilfe &amp; Support</span></button>
-        <button class="main-nav-btn" data-main-section="admin" id="adminMainNavBtn" onclick="showMainSection('admin')" style="display:none">⚙ <span>Admin</span></button>
+        <button type="button" class="main-nav-btn" data-main-section="support" onclick="showMainSection('support')">💬 <span>Support &amp; Info</span></button>
+        <button type="button" class="main-nav-btn" data-main-section="wallets" onclick="showMainSection('wallets')">🧰 <span>Wallets &amp; Token</span></button>
+        <button type="button" class="main-nav-btn" data-main-section="overview" onclick="showMainSection('overview')">📊 <span>Übersicht &amp; Analyse</span></button>
+        <button type="button" class="main-nav-btn" data-main-section="projects" onclick="showMainSection('projects','tlnvow')">🏦 <span>DeFi-Projekte</span></button>
+        <button type="button" class="main-nav-btn" data-main-section="admin" id="adminMainNavBtn" onclick="showMainSection('admin')" style="display:none">⚙️ <span>Admin-Bereich</span></button>
       </nav>
     </aside>
     <main class="app-main">
       <div id="contextNav" class="context-nav"><div class="tab-nav-groups">
-      <div class="tab-nav-group" data-nav-section="projects" data-nav-section="admin" data-nav-section="overview" data-nav-section="wallets" data-nav-section="support">
-        <span class="tab-nav-group-label">💬 Support &amp; Info</span>
-        <div class="tab-nav">
-          <button class="tab-btn" id="userChatTabBtn" data-tab="chat" onclick="showTab('chat')">💬 Chat <span id="userChatUnreadBadge" class="chat-unread-badge"></span></button>
-          <button class="tab-btn" id="adminChatTabBtn" data-tab="chat" onclick="showTab('chat')" style="display:none">💬 Admin-Chat <span id="adminChatUnreadBadge" class="chat-unread-badge"></span></button>
-          <button class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
-        </div>
-      </div>
-      <div class="tab-nav-group">
-        <span class="tab-nav-group-label">🧰 Wallets &amp; Token</span>
-        <div class="tab-nav">
-          <button class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
-          <button class="tab-btn" data-tab="predefined" onclick="showTab('predefined')">Vordefinierte Token</button>
-          <button class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
-          <button class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
-        </div>
-      </div>
-      <div class="tab-nav-group">
-        <span class="tab-nav-group-label">📊 Übersicht &amp; Analyse</span>
-        <div class="tab-nav">
-          <button class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking - Token-Übersicht</button>
-          <button class="tab-btn" data-tab="tax" onclick="showTab('tax')">🧾 Bestandesaufnahme per 31.12</button>
-          <button class="tab-btn" id="feesTabBtn" data-tab="fees" onclick="showTab('fees')" style="display:none">💸 Gebühren</button>
-          <button class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
-          <button class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
-        </div>
-      </div>
-      <div class="tab-nav-group" id="adminNavGroup" style="display:none">
-        <span class="tab-nav-group-label">⚙️ Admin-Bereich</span>
-        <div class="tab-nav">
-          <button class="tab-btn" data-tab="admin" data-open-admin="customtokens" onclick="showTab('admin');showAdminTab('customtokens')">Eigene sichere Token</button>
-          <button class="tab-btn" data-tab="admin" data-open-admin="chains" onclick="showTab('admin');showAdminTab('chains')">⛓️ Chains</button>
-          <button class="tab-btn" data-tab="admin" data-open-admin="defiprojects" onclick="showTab('admin');showAdminTab('defiprojects')">🏦 DeFi-Projekte</button>
-          <button class="tab-btn" data-tab="admin" data-open-admin="dex" onclick="showTab('admin');showAdminTab('dex')">🔄 DEX</button>
-          <button class="tab-btn" data-tab="admin" data-open-admin="hardcoding" onclick="showTab('admin');showAdminTab('hardcoding')">🧪 Hardcoding-Audit</button>
-          <button class="tab-btn" data-tab="admin" data-open-admin="ideas" onclick="showTab('admin');showAdminTab('ideas')">💡 Ideen / Umbau</button>
-          <button class="tab-btn" data-tab="admin" data-open-admin="documentation" onclick="showTab('admin');showAdminTab('documentation')">📚 Dokumentation</button>
-          <button class="tab-btn" id="adminDebugModeBtn" type="button" onclick="toggleAdminDebugMode()">🛠️ Debug-Modus: AUS</button>
-        </div>
-      </div>
-      <div class="tab-nav-group" id="defiProjectsNavGroup" style="display:none">
-        <span class="tab-nav-group-label">🏦 Defi-Projekte</span>
-        <div class="tab-nav">
-          <button class="tab-btn" id="tlnVowTabBtn" data-tab="tlnvow" onclick="showTab('tlnvow')">TLN/VOW</button>
-        </div>
-      </div>
-    </div>
+        <div class="tab-nav-group" data-nav-section="support"><div class="tab-nav">
+          <button type="button" class="tab-btn" id="userChatTabBtn" data-tab="chat" onclick="showTab('chat')">💬 Chat <span id="userChatUnreadBadge" class="chat-unread-badge"></span></button>
+          <button type="button" class="tab-btn" id="adminChatTabBtn" data-tab="chat" onclick="showTab('chat')" style="display:none">💬 Admin-Chat <span id="adminChatUnreadBadge" class="chat-unread-badge"></span></button>
+          <button type="button" class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
+        </div></div>
+        <div class="tab-nav-group" data-nav-section="wallets"><div class="tab-nav">
+          <button type="button" class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
+          <button type="button" class="tab-btn" data-tab="predefined" onclick="showTab('predefined')">Vordefinierte Token</button>
+          <button type="button" class="tab-btn" data-tab="custom" onclick="showTab('custom')">Eigene sichere Token</button>
+          <button type="button" class="tab-btn" data-tab="discovery" onclick="showTab('discovery')">🔍 Entdecken</button>
+        </div></div>
+        <div class="tab-nav-group" data-nav-section="overview"><div class="tab-nav">
+          <button type="button" class="tab-btn" data-tab="tracking" onclick="showTab('tracking')">Wallet-Tracking · Token-Übersicht</button>
+          <button type="button" class="tab-btn" data-tab="tax" onclick="showTab('tax')">🧾 Bestandesaufnahme per 31.12</button>
+          <button type="button" class="tab-btn" id="feesTabBtn" data-tab="fees" onclick="showTab('fees')" style="display:none">💸 Gebühren</button>
+          <button type="button" class="tab-btn" data-tab="nfts" onclick="showTab('nfts')">🖼️ NFTs</button>
+          <button type="button" class="tab-btn" data-tab="approvals" onclick="showTab('approvals')">🔓 Freigaben</button>
+        </div></div>
+        <div class="tab-nav-group" data-nav-section="projects"><div class="tab-nav">
+          <button type="button" class="tab-btn" id="tlnVowTabBtn" data-tab="tlnvow" onclick="showTab('tlnvow')">TLN / VOW</button>
+          <button type="button" class="tab-btn" data-tab="dao1" onclick="showTab('dao1')">DAO1</button>
+        </div></div>
+        <div class="tab-nav-group" data-nav-section="admin" id="adminNavGroup" style="display:none"><div class="tab-nav">
+          <button type="button" class="tab-btn" data-tab="admin" data-open-admin="customtokens" onclick="showTab('admin');showAdminTab('customtokens')">Eigene sichere Token</button>
+          <button type="button" class="tab-btn" data-tab="admin" data-open-admin="chains" onclick="showTab('admin');showAdminTab('chains')">⛓️ Chains</button>
+          <button type="button" class="tab-btn" data-tab="admin" data-open-admin="defiprojects" onclick="showTab('admin');showAdminTab('defiprojects')">🏦 DeFi-Projekte</button>
+          <button type="button" class="tab-btn" data-tab="admin" data-open-admin="dex" onclick="showTab('admin');showAdminTab('dex')">🔄 DEX</button>
+          <button type="button" class="tab-btn" data-tab="admin" data-open-admin="hardcoding" onclick="showTab('admin');showAdminTab('hardcoding')">🧪 Hardcoding-Audit</button>
+          <button type="button" class="tab-btn" data-tab="admin" data-open-admin="ideas" onclick="showTab('admin');showAdminTab('ideas')">💡 Ideen / Umbau</button>
+          <button type="button" class="tab-btn" data-tab="admin" data-open-admin="documentation" onclick="showTab('admin');showAdminTab('documentation')">📚 Dokumentation</button>
+          <button type="button" class="tab-btn" id="adminDebugModeBtn" onclick="toggleAdminDebugMode()">🛠️ Debug-Modus: AUS</button>
+        </div></div>
+      </div></div>
 
     <div id="tab-tracking" class="tab-panel">
       <div class="action-row" style="align-items:center;flex-wrap:wrap">
@@ -1145,6 +1129,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 16.09.2026 02:20:00 CEST · Phase 4.58 · Build 20260916-022000</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 16.09.2026 02:19:03 CEST · Phase 4.59 · Build 20260916-021903</div>
 </body>
 </html>
