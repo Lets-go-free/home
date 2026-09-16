@@ -164,11 +164,12 @@ ARCHITEKTUR: Keine typabhängige Parallel-Logik in Tabellen/UI. Typ/Klassifikati
     category: "Projekt DAO1",
     priority: "high",
     title: "DAO1 Team-Baum bis 20 Ebenen",
-    desc: `ZIEL: Im DAO1-Projekt einen Team-Baum der eigenen Partner bis maximal 20 Ebenen tief darstellen.
+    desc: `ZIEL: Im DAO1-Projekt zwei strikt getrennte Team-Bäume der eigenen Partner bis maximal 20 Ebenen tief darstellen: „Tree DAO1 (alt)“ und „Tree APTMDAO (neu)“. Die beiden Strukturen dürfen fachlich und technisch nicht vermischt oder zusammengeführt werden.
 
 ANZEIGE PRO PARTNER:
 • Partner/Wallet bzw. vorhandene DAO1-Identität
-• Ebene im Team
+• Ebene im jeweiligen Tree
+• Tree-Zugehörigkeit ist strikt DAO1 alt ODER APTMDAO neu; keine tree-übergreifende Aggregation
 • sichtbar kennzeichnen, ob eine DAO1-Mitgliedschaft vorhanden ist
 • Mitgliedschaft wird über einen eigenen Membership-NFT-Typ erkannt, nicht aus TLN-Daten abgeleitet
 • Klick auf „Details“ zeigt die NFTs dieses Partners; vorhandene NFT-Klassifikation (z. B. Mining-Bot, DID, Trading-Bot, Membership) wiederverwenden

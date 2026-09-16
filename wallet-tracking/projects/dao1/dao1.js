@@ -254,10 +254,11 @@ window.DAO1Project = (() => {
       panel.id = "tab-dao1";
       panel.className = "tab-panel";
       panel.innerHTML = `
-        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('claims',this)">Bot-Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('referrals',this)">Referral Rewards</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); renderProjectLpTab('dao1',['apertum'],'dao1LpContent','2025-12-31',false)">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
+        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('claims',this)">Bot-Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('referrals',this)">Referral Rewards</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('team',this)">Team</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); renderProjectLpTab('dao1',['apertum'],'dao1LpContent','2025-12-31',false)">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
         <div id="dao1-subtab-overview" class="project-subtab-panel"><div class="custom-token-card"><div class="chain-title">DAO1 · Apertum</div><div class="note">Projektübersicht für DAO1-spezifische Assets auf Apertum. Detailfunktionen sind in die Unter-Tabs gegliedert.</div></div></div>
         <div id="dao1-subtab-claims" class="project-subtab-panel" style="display:none"><div id="dao1ClaimsContent"></div></div>
         <div id="dao1-subtab-referrals" class="project-subtab-panel" style="display:none"><div id="dao1ReferralContent"></div></div>
+        <div id="dao1-subtab-team" class="project-subtab-panel" style="display:none"><div id="dao1TeamContent"></div></div>
         <div id="dao1-subtab-liquidity" class="project-subtab-panel" style="display:none"><div id="dao1LpContent"></div></div>
         <div id="dao1-subtab-config" class="project-subtab-panel" style="display:none"><div id="dao1AssetSummary" class="custom-token-card"><span class="loading">Projekt-Konfiguration wird geladen…</span></div></div>
         <div id="dao1-subtab-transactions" class="project-subtab-panel" style="display:none"><div class="custom-token-card"><div class="chain-title">📒 Apertum Transaktionshistorie</div><div class="note" style="margin-bottom:10px">Zentrale, dauerhaft gespeicherte Apertum-Historie. Wallet-Wechsel lesen den Cache; erst „Daten aktualisieren“ lädt neue Blockchain-Daten, aktualisiert NFTs/Besitzerhistorie und reichert neue Claims an.</div><div id="dao1TransactionControls"></div><div id="dao1TransactionStatus" class="status" style="margin-top:10px"></div>
@@ -289,6 +290,8 @@ window.DAO1Project = (() => {
       await refreshTransactionHistory(false);
     }else if(name==="help"){
       if(typeof window.renderDAO1Help==="function")window.renderDAO1Help();
+    }else if(name==="team"){
+      renderDAO1TeamTab();
     }else if(name==="claims" || name==="referrals"){
       const wallets=allProjectWalletOptions();
       transactionRows=await loadAllApertumTransactionRows(wallets,null);
@@ -4010,6 +4013,44 @@ window.DAO1Project = (() => {
       <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden"><div class="chain-table-wrap project-data-table sticky-header dao1-transaction-table-wrap" style="margin:0;max-height:680px;overflow:auto"><table class="dao1-transaction-table"><thead><tr><th>Zeit</th><th>Wallet</th><th>Typ</th><th>NFT</th><th>Auszahlung<div class="meta">Wert in USD hist.</div></th><th>APTM-Preis USD<div class="meta">historisch</div></th><th>Gas APTM<div class="meta">Wert in USD hist.</div></th><th>Tx</th></tr></thead><tbody>${rows.map(r=>{const d=transactionClaimDescriptor(r);const flows=incomingAssetFlowsForTx(r);const flowUsd=flows.reduce((a,f)=>a+Number(f.value_usd||0),0);const w=claimWalletDisplay(r);const gasUsd=claimGasHistoricalUsd(r);const payoutHtml=flows.length?flows.map(f=>{const amount=isWrappedAptmSymbol(f.token_symbol,f.token_name)?`${tokenAmount(Number(f.amount||0),{address:f.token_address||null,symbol:f.token_symbol||"wAPTM"})} wAPTM`:flowDisplay(f);const histUsd=Number(f.value_usd||0);return `<strong>${amount}</strong><div class="meta">${histUsd?usd(histUsd):"USD hist. –"}</div>`;}).join(""):(r.claim_reward_aptm!=null?`<strong>${fmt(r.claim_reward_aptm)} APTM <span class="meta">(Legacy)</span></strong><div class="meta">${r.claim_reward_usd==null?"USD hist. –":usd(Number(r.claim_reward_usd))}</div>`:"–");return `<tr><td>${r.tx_timestamp?new Date(r.tx_timestamp).toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"}</td><td><strong>${w.name||"Wallet"}</strong><div class="meta">${w.address||"–"}</div></td><td>Claim (Bot)</td><td><strong>${d?.name||"Apertum Miner"}</strong>${r.claim_nft_id!=null?`<div class="meta">#${r.claim_nft_id}${d?.subtype?" · "+d.subtype:""}</div>`:(d?.subtype?`<div class="meta">${d.subtype}</div>`:"")}</td><td>${payoutHtml}</td><td>${Number(r.aptm_usd)>0?usd(Number(r.aptm_usd)):"–"}</td><td>${fmt(r.gas_aptm)}${gasUsd!=null?`<div class="meta">${usd(gasUsd)}</div>`:`<div class="meta">–</div>`}</td><td><a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${String(r.tx_hash||"").slice(0,12)}…</a></td></tr>`;}).join("")}</tbody></table></div></div>`;
   }
 
+  let dao1TeamTreeMode="legacy";
+
+  function setDAO1TeamTreeMode(mode,button){
+    dao1TeamTreeMode=mode==="aptmdao"?"aptmdao":"legacy";
+    document.querySelectorAll("#dao1TeamTreeTabs .tab-btn").forEach(x=>x.classList.remove("active"));
+    button?.classList.add("active");
+    renderDAO1TeamTreePanel();
+  }
+
+  function renderDAO1TeamTab(){
+    const el=document.getElementById("dao1TeamContent");if(!el)return;
+    el.innerHTML=`<div class="custom-token-card">
+      <div class="chain-title">🌳 DAO1 Team</div>
+      <div class="note">Die beiden Team-Strukturen sind fachlich strikt getrennt. Partner, Ebenen, DIDs und Referral Rewards werden niemals zwischen dem alten DAO1-Tree und dem neuen APTMDAO-Tree vermischt.</div>
+      <div id="dao1TeamTreeTabs" class="project-subtabs" style="margin-top:12px">
+        <button class="tab-btn ${dao1TeamTreeMode==="legacy"?"active":""}" onclick="DAO1Project.setTeamTreeMode('legacy',this)">Tree DAO1 (alt)</button>
+        <button class="tab-btn ${dao1TeamTreeMode==="aptmdao"?"active":""}" onclick="DAO1Project.setTeamTreeMode('aptmdao',this)">Tree APTMDAO (neu)</button>
+      </div>
+    </div><div id="dao1TeamTreePanel"></div>`;
+    renderDAO1TeamTreePanel();
+  }
+
+  function renderDAO1TeamTreePanel(){
+    const el=document.getElementById("dao1TeamTreePanel");if(!el)return;
+    const isOld=dao1TeamTreeMode==="legacy";
+    el.innerHTML=`<div class="custom-token-card" style="margin-top:12px">
+      <div class="chain-title">${isOld?"Tree DAO1 (alt)":"Tree APTMDAO (neu)"}</div>
+      <div class="status info" style="margin-top:10px"><strong>Discovery vorbereitet · Datenquelle noch zu verifizieren</strong><div class="note" style="margin-top:4px">Für diesen Tree werden erst Partner angezeigt, wenn Parent/Referral-Kanten on-chain eindeutig belegt sind. Es werden keine Beziehungen aus Namen, Wallet-Wechseln, Reward-Höhen oder aus dem jeweils anderen Tree abgeleitet.</div></div>
+      <div class="project-summary" style="margin-top:12px">
+        <div class="custom-token-card project-summary-box"><span class="field-label">Tree</span><strong>${isOld?"DAO1 alt":"APTMDAO neu"}</strong></div>
+        <div class="custom-token-card project-summary-box"><span class="field-label">Partner</span><strong>–</strong><div class="meta">noch nicht verifiziert</div></div>
+        <div class="custom-token-card project-summary-box"><span class="field-label">Ebenen</span><strong>– / 20</strong></div>
+        <div class="custom-token-card project-summary-box"><span class="field-label">Referral Rewards</span><strong>–</strong><div class="meta">je Partner erst nach Beweis</div></div>
+      </div>
+      <div class="note" style="margin-top:12px"><strong>Details je Partner nach Discovery:</strong> DID/Wallet, Ebene, Membership, alle zugeordneten NFTs/Bots mit Name sowie – soweit on-chain belegbar – Kaufdatum und Kaufpreis; Referral Rewards dieses Partners mit Anzahl Zahlungen und Token-Summen.</div>
+    </div>`;
+  }
+
   function renderReferralRewardsTab(){
     const el=document.getElementById("dao1ReferralContent");if(!el)return;
     const sourceRows=tabWalletFilteredRows(transactionRows,referralFilterWallet);
@@ -5019,7 +5060,7 @@ window.DAO1Project = (() => {
     updateVisibility();
   }
 
-  return { switchSubtab, configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
+  return { switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,
