@@ -4076,25 +4076,56 @@ window.DAO1Project = (() => {
   }
 
   async function loadDAO1OwnedDidRoots(){
+    // Root-DIDs muessen aus den bereits gespeicherten DAO1-NFT-Daten sofort
+    // sichtbar sein. Die Tree-Discovery ist dafuer NICHT Voraussetzung.
+    // Primärquelle ist project_nft_ownership (inkl. wallet_id); nft_cache ist
+    // nur ein zusaetzlicher Fallback fuer einen frischeren aktuellen Bestand.
     const roots=[];
-    for(const w of projectWallets()){
+    const wallets=projectWallets();
+    const walletById=new Map(wallets.map(w=>[String(w.dbId||w.id||""),w]));
+    const pushRoot=(did,w,address,name,source)=>{
+      const n=Number(did);if(!Number.isFinite(n)||n<=0||!w)return;
+      roots.push({did:n,wallet:w,wallet_address:address||walletAddress(w),name:name||`DID #${n}`,source});
+    };
+
+    // 1) Bereits persistierte Ownership-Zuordnung. Diese ist fuer DAO1 die
+    // robuste Quelle, weil DID-NFTs im Projekt schon den Wallets zugeordnet sind.
+    for(const o of ownershipRows){
+      if(String(o.chain_key||CHAIN_KEY)!==CHAIN_KEY || !o.is_current)continue;
+      const contract=lower(o.nft_contract||"");
+      const id=String(o.nft_id||"");
+      const cls=classificationFor(contract,id);
+      const isDidContract=contract===DAO1_OLD_DID_CONTRACT;
+      const isDidClass=String(cls?.subtype||"").toUpperCase()==="DID";
+      if(!isDidContract && !isDidClass)continue;
+      const w=walletById.get(String(o.wallet_id||"")) || walletByAddress(o.wallet_address||"");
+      if(!w)continue;
+      pushRoot(id,w,walletAddress(w)||o.wallet_address,cls?.nft_name||o.nft_name||`DID #${id}`,"ownership");
+    }
+
+    // 2) Aktueller nft_cache als Fallback/Ergaenzung. Ein Fehler bei einem
+    // Wallet darf die bereits aus Ownership erkannten Roots nicht entfernen.
+    for(const w of wallets){
       const address=walletAddress(w);if(!address)continue;
       try{
         const nftMap=await loadWalletNftMap(address);
         for(const n of nftMap.values()){
           const cls=n.classification||classificationFor(n.contract,n.id);
-          // Die DID ist bereits als NFT bekannt. Die Root-Erkennung darf nicht davon
-          // abhängen, ob die optionale User-Klassifizierung geladen wurde: der
-          // verifizierte DID-Contract selbst ist die primäre Identität.
           const isDidContract=lower(n.contract)===DAO1_OLD_DID_CONTRACT;
           const isDidClass=String(cls?.subtype||"").toUpperCase()==="DID";
           if((!isDidContract && !isDidClass) || !n.current)continue;
-          const did=Number(n.id);if(!Number.isFinite(did)||did<=0)continue;
-          roots.push({did,wallet:w,wallet_address:address,name:cls?.nft_name||n.name||`DID #${did}`});
+          pushRoot(n.id,w,address,cls?.nft_name||n.name||`DID #${n.id}`,"nft_cache");
         }
-      }catch(e){console.warn("DAO1 DID-Roots",w?.label||address,e);}
+      }catch(e){console.warn("DAO1 DID-Roots nft_cache",w?.label||address,e);}
     }
-    const byDid=new Map();for(const r of roots)byDid.set(r.did,r);
+
+    // Eine DID hat immer genau einen aktuellen Owner. Falls dieselbe DID aus
+    // mehreren Quellen kommt, gewinnt die persistierte Ownership-Zuordnung.
+    const byDid=new Map();
+    for(const r of roots){
+      const prev=byDid.get(r.did);
+      if(!prev || (r.source==="ownership" && prev.source!=="ownership"))byDid.set(r.did,r);
+    }
     dao1OwnedDidRoots=[...byDid.values()].sort((a,b)=>a.did-b.did);
     if(dao1TeamRootFilter!=="__all" && !dao1OwnedDidRoots.some(r=>String(r.did)===String(dao1TeamRootFilter)))dao1TeamRootFilter="__all";
     return dao1OwnedDidRoots;
