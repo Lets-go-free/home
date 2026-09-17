@@ -4056,7 +4056,7 @@ window.DAO1Project = (() => {
     }catch(_){return null;}
   }
 
-  async function scanOldDao1Tree(){
+  async function scanOldDao1TreeCore(){
     const st=dao1TeamDiscovery.legacy;if(st.running)return;
     st.running=true;st.error="";st.status="Blockchain wird gelesen …";renderDAO1TeamTreePanel();
     try{
@@ -4074,15 +4074,24 @@ window.DAO1Project = (() => {
     }catch(e){st.error=e?.message||String(e);st.status="Discovery fehlgeschlagen";}
     finally{st.running=false;renderDAO1TeamTreePanel();}
   }
+  async function scanOldDao1Tree(){
+    if(typeof window.runDataJob==="function") return window.runDataJob("DAO1 Team-Daten werden aktualisiert …",scanOldDao1TreeCore);
+    return scanOldDao1TreeCore();
+  }
 
-  async function loadDAO1OwnedDidRoots(){
+  async function loadDAO1OwnedDidRoots(includeNftCache=true){
     // Root-DIDs muessen aus den bereits gespeicherten DAO1-NFT-Daten sofort
     // sichtbar sein. Die Tree-Discovery ist dafuer NICHT Voraussetzung.
     // Primärquelle ist project_nft_ownership (inkl. wallet_id); nft_cache ist
     // nur ein zusaetzlicher Fallback fuer einen frischeren aktuellen Bestand.
     const roots=[];
+    // Ownership kann auch zu einem Wallet gehören, das im aktuellen Balance-Lauf
+    // gerade kein DAO1-Asset oberhalb der Dust-Grenze hat. Deshalb für die
+    // persistierte DID-Zuordnung ALLE bekannten User-Wallets berücksichtigen.
+    const ctx=getContext?.();
+    const allWallets=(ctx?.wallets||[]).filter(w=>walletAddress(w));
     const wallets=projectWallets();
-    const walletById=new Map(wallets.map(w=>[String(w.dbId||w.id||""),w]));
+    const walletById=new Map(allWallets.map(w=>[String(w.dbId||w.id||""),w]));
     const pushRoot=(did,w,address,name,source)=>{
       const n=Number(did);if(!Number.isFinite(n)||n<=0||!w)return;
       roots.push({did:n,wallet:w,wallet_address:address||walletAddress(w),name:name||`DID #${n}`,source});
@@ -4105,7 +4114,7 @@ window.DAO1Project = (() => {
 
     // 2) Aktueller nft_cache als Fallback/Ergaenzung. Ein Fehler bei einem
     // Wallet darf die bereits aus Ownership erkannten Roots nicht entfernen.
-    for(const w of wallets){
+    if(includeNftCache) for(const w of wallets){
       const address=walletAddress(w);if(!address)continue;
       try{
         const nftMap=await loadWalletNftMap(address);
@@ -4145,6 +4154,11 @@ window.DAO1Project = (() => {
 
   function setDAO1TeamRootFilter(value){dao1TeamRootFilter=String(value||"__all");renderDAO1TeamTreePanel();}
 
+  function teamOwnedRootCardsHtml(){
+    if(!dao1OwnedDidRoots.length)return `<div class="status warn" style="margin-top:12px"><strong>Keine eigene DID aus dem gespeicherten Ownership-Bestand erkannt.</strong><div class="note" style="margin-top:4px">Die Team-Ansicht bleibt trotzdem sichtbar. NFT-Cache und Wallet-Bestand werden im Hintergrund als zweite Quelle geprüft.</div></div>`;
+    return `<div class="project-summary" style="margin-top:12px">${dao1OwnedDidRoots.map(r=>`<div class="custom-token-card project-summary-box"><span class="field-label">Eigene DID / Root</span><strong>DID #${r.did}</strong><div class="meta">${escapeHtml(r.wallet?.label||"Wallet")} · ${teamShortAddress(r.wallet_address)}</div></div>`).join("")}</div>`;
+  }
+
   function teamRootSelectorHtml(){
     if(!dao1OwnedDidRoots.length)return `<div class="status warn"><strong>Keine eigene DID gefunden.</strong><div class="note" style="margin-top:4px">Die Roots werden automatisch aus den aktuell zu deinen DAO-Wallets gehörenden DID-NFTs ermittelt. Der verifizierte DID-Contract wird direkt erkannt; eine zusätzliche manuelle NFT-Klassifizierung ist nicht nötig. Falls hier keine DID erscheint, bitte den NFT-Bestand der DAO-Wallets aktualisieren.</div></div>`;
     const opts=[`<option value="__all" ${dao1TeamRootFilter==="__all"?"selected":""}>Alle DIDs (${dao1OwnedDidRoots.length})</option>`,...dao1OwnedDidRoots.map(r=>`<option value="${r.did}" ${String(dao1TeamRootFilter)===String(r.did)?"selected":""}>DID #${r.did} · ${escapeHtml(r.wallet?.label||"Wallet")}</option>`)].join("");
@@ -4168,20 +4182,41 @@ window.DAO1Project = (() => {
 
   async function renderDAO1TeamTab(){
     const el=document.getElementById("dao1TeamContent");if(!el)return;
-    await loadDAO1OwnedDidRoots();
+    // Wichtig: nie vor dem ersten Rendern auf DB/RPC/NFT-Cache warten. Genau das
+    // führte bisher zum komplett leeren Team-Tab.
     el.innerHTML=`<div class="custom-token-card">
       <div class="chain-title">🌳 DAO1 Team</div>
       <div class="note">Die beiden Team-Strukturen sind fachlich strikt getrennt. Partner, Ebenen, DIDs und Referral Rewards werden niemals zwischen dem alten DAO1-Tree und dem neuen APTMDAO-Tree vermischt.</div>
+      <div id="dao1TeamRootArea"><div class="status info" style="margin-top:12px"><strong>Eigene DID wird aus dem gespeicherten NFT-Bestand ermittelt …</strong></div></div>
       <div id="dao1TeamTreeTabs" class="project-subtabs" style="margin-top:12px">
         <button class="tab-btn ${dao1TeamTreeMode==="legacy"?"active":""}" onclick="DAO1Project.setTeamTreeMode('legacy',this)">Tree DAO1 (alt)</button>
         <button class="tab-btn ${dao1TeamTreeMode==="aptmdao"?"active":""}" onclick="DAO1Project.setTeamTreeMode('aptmdao',this)">Tree APTMDAO (neu)</button>
       </div>
     </div><div id="dao1TeamTreePanel"></div>`;
     renderDAO1TeamTreePanel();
-    // Wie beim TLN-Baum: vorhandene eigene DIDs reichen als Root. Der alte Tree
-    // startet beim ersten Öffnen automatisch im Hintergrund; Navigation bleibt frei.
-    if(dao1TeamTreeMode==="legacy" && dao1OwnedDidRoots.length && !dao1TeamDiscovery.legacy.running && !dao1TeamDiscovery.legacy.edges.length){
-      scanOldDao1Tree().catch(e=>console.warn("DAO1 Team Auto-Discovery",e));
+    try{
+      // Frisch aus Supabase laden, damit die Team-Ansicht nicht von der Reihenfolge
+      // des allgemeinen DAO1-Initial-Ladevorgangs abhängt.
+      await loadOwnershipCache();
+      await loadDAO1OwnedDidRoots(false);
+      const rootArea=document.getElementById("dao1TeamRootArea");
+      if(rootArea)rootArea.innerHTML=teamOwnedRootCardsHtml();
+      renderDAO1TeamTreePanel();
+
+      // NFT-Cache nur als Hintergrund-Fallback. Er blockiert die Root-Anzeige nie.
+      loadDAO1OwnedDidRoots(true).then(()=>{
+        const a=document.getElementById("dao1TeamRootArea");if(a)a.innerHTML=teamOwnedRootCardsHtml();
+        renderDAO1TeamTreePanel();
+        if(dao1TeamTreeMode==="legacy" && dao1OwnedDidRoots.length && !dao1TeamDiscovery.legacy.running && !dao1TeamDiscovery.legacy.edges.length)
+          scanOldDao1Tree().catch(e=>console.warn("DAO1 Team Auto-Discovery",e));
+      }).catch(e=>console.warn("DAO1 DID-Root Fallback",e));
+
+      if(dao1TeamTreeMode==="legacy" && dao1OwnedDidRoots.length && !dao1TeamDiscovery.legacy.running && !dao1TeamDiscovery.legacy.edges.length)
+        scanOldDao1Tree().catch(e=>console.warn("DAO1 Team Auto-Discovery",e));
+    }catch(e){
+      const rootArea=document.getElementById("dao1TeamRootArea");
+      if(rootArea)rootArea.innerHTML=`<div class="status warn" style="margin-top:12px"><strong>DID-Ownership konnte nicht geladen werden.</strong><div class="note" style="margin-top:4px">${escapeHtml(e?.message||String(e))}</div></div>`;
+      renderDAO1TeamTreePanel();
     }
   }
 
