@@ -21,3 +21,6 @@ window.renderDAO1Help=renderDAO1Help;
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>renderDAO1Help(),{once:true});
 else renderDAO1Help();
 })();
+
+// Phase 4.74: DAO1 Team alt zeigt das on-chain DID-Mint-Datum direkt im Baum. Partner-Details verwenden
+// vorhandene Ownership-Daten für Membership und NFTs/Bots; unbekannte Kaufpreise werden nicht geschätzt.

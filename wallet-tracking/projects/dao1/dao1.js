@@ -4039,6 +4039,8 @@ window.DAO1Project = (() => {
   let dao1TeamAliases={};
   let dao1TeamAliasesLoaded=false;
   const dao1TeamCollapsed=new Set();
+  const dao1TeamBlockTimeCache=new Map();
+  const dao1TeamPartnerDetailsCache=new Map();
 
   function dao1TeamAliasKey(did){return `dao1:did:${String(did||"").trim()}`;}
   function dao1TeamAlias(did){return String(dao1TeamAliases[dao1TeamAliasKey(did)]||"").trim();}
@@ -4208,6 +4210,41 @@ window.DAO1Project = (() => {
     return `<label><span class="field-label">Eigene DID / Root</span><select onchange="DAO1Project.setTeamRootFilter(this.value)">${opts}</select></label>`;
   }
 
+  function dao1TeamDate(ts){
+    if(!ts)return "–";
+    const d=new Date(ts);if(Number.isNaN(d.getTime()))return "–";
+    return d.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric"});
+  }
+  async function dao1TeamBlockTimestamp(block){
+    block=Number(block||0);if(!block)return null;
+    if(dao1TeamBlockTimeCache.has(block))return dao1TeamBlockTimeCache.get(block);
+    const raw=await dao1ApertumRpc("eth_getBlockByNumber",["0x"+block.toString(16),false]);
+    const sec=teamHexNumber(raw?.timestamp||0),iso=sec?new Date(sec*1000).toISOString():null;
+    dao1TeamBlockTimeCache.set(block,iso);return iso;
+  }
+  function dao1TeamMintEdge(did,st=dao1TeamDiscovery.legacy){return st.edges.find(e=>Number(e.child_id)===Number(did))||null;}
+  async function hydrateDAO1TeamMintDates(host,st){
+    const els=[...(host||document).querySelectorAll("[data-dao1-mint-block]")].filter(el=>!el.dataset.loaded);
+    let cursor=0;
+    async function worker(){while(cursor<els.length){const el=els[cursor++],block=Number(el.dataset.dao1MintBlock||0);el.dataset.loaded="1";try{const ts=await dao1TeamBlockTimestamp(block);el.textContent=ts?`DID Mint: ${dao1TeamDate(ts)}`:"DID Mint: –";el.title=ts?new Date(ts).toLocaleString("de-CH"):"";}catch(_){el.textContent="DID Mint: nicht ermittelt";}}}
+    await Promise.all(Array.from({length:Math.min(4,els.length)},worker));
+  }
+  function dao1TeamKnownNfts(wallet){
+    const a=lower(wallet||"");if(!a)return [];
+    const rows=ownershipRows.filter(o=>lower(o.wallet_address||walletAddress(walletByDbId(o.wallet_id))||"")===a);
+    const seen=new Set(),out=[];
+    for(const o of rows){const key=`${lower(o.nft_contract)}|${o.nft_id}`;if(seen.has(key))continue;seen.add(key);const cls=classificationFor(o.nft_contract,o.nft_id);out.push({id:String(o.nft_id),name:cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`,subtype:cls?.subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null});}
+    return out;
+  }
+  function dao1TeamMembershipLabel(nfts){
+    const memberships=nfts.filter(n=>n.subtype==="DAO / Membership");
+    if(!memberships.length)return "keine bekannte Membership";
+    return memberships.some(n=>n.current)?"aktiv":"historisch / nicht aktiv";
+  }
+  function dao1TeamNftTableHtml(nfts){
+    if(!nfts.length)return '<div class="empty">Für dieses Wallet sind im vorhandenen Ownership-Bestand keine DAO1-NFTs/Bots gespeichert.</div>';
+    return `<div class="chain-table-wrap project-data-table"><table><thead><tr><th>Typ</th><th>NFT</th><th>Name</th><th>Erworben am</th><th>Kaufpreis</th><th>Status</th></tr></thead><tbody>${nfts.map(n=>`<tr><td>${escapeHtml(n.subtype)}</td><td>#${escapeHtml(n.id)}</td><td><strong>${escapeHtml(n.name)}</strong></td><td>${n.owned_from_at?dao1TeamDate(n.owned_from_at):"nicht ermittelt"}</td><td>${n.acquisition_verified?"on-chain Erwerb verifiziert · Preis noch nicht ermittelt":"nicht ermittelt"}</td><td>${n.current?"aktuell":"historisch"}</td></tr>`).join("")}</tbody></table></div>`;
+  }
   function dao1TeamNodeHtml(node,childrenMap,level=0,rootDid=0,seen=new Set()){
     const did=Number(node.child_id||node.did||rootDid), wallet=String(node.wallet||"");
     if(!did||seen.has(did))return "";
@@ -4220,6 +4257,7 @@ window.DAO1Project = (() => {
       <div class="wt-team-node-title"><span class="wt-team-depth-badge">${level===0?"Leader":`Linie ${level}`}</span><span>DID #${did}</span>${root?'<span class="wt-team-own-badge">MEINE DID</span>':""}</div>
       ${displayName?`<div class="wt-team-node-name"><b>${escapeHtml(displayName)}</b></div>`:""}
       <div class="wt-team-wallet-row"><div class="wt-team-node-meta">${escapeHtml(teamShortAddress(wallet||root?.wallet_address||"–"))}</div></div>
+      ${(()=>{const mint=dao1TeamMintEdge(did);return mint?.block?`<div class="wt-team-node-mint" data-dao1-mint-block="${Number(mint.block)}">DID Mint: wird geladen …</div>`:`<div class="wt-team-node-mint">DID Mint: nicht ermittelt</div>`;})()}
       ${level?`<div class="wt-team-node-parent">Upline: DID #${Number(node.parent_id||0)}</div>`:""}
       <div class="wt-team-alias-row"><span class="wt-team-alias-label">Name</span><input class="wt-team-alias-input" data-dao1-team-alias="${did}" value="${escapeHtml(alias)}" placeholder="Name / Alias"></div>
       <div class="wt-team-node-actions">${kids.length?`<button type="button" class="wt-team-toggle-btn" data-dao1-team-toggle="${did}">${collapsed?`+ ${kids.length} Partner anzeigen`:`− ${kids.length} Partner`}</button>`:""}<button type="button" class="wt-team-details-btn" data-dao1-team-details="${did}">Details</button></div>
@@ -4242,16 +4280,18 @@ window.DAO1Project = (() => {
   }
 
   function dao1TeamDetailsHtml(did,st){
-    did=Number(did);const edge=st.edges.find(e=>Number(e.child_id)===did);const root=dao1OwnedDidRoots.find(r=>Number(r.did)===did);
+    did=Number(did);const edge=dao1TeamMintEdge(did,st);const root=dao1OwnedDidRoots.find(r=>Number(r.did)===did);
     const wallet=edge?.wallet||root?.wallet_address||"";const kids=st.edges.filter(e=>Number(e.parent_id)===did).length;
-    return `<div class="wt-team-details-modal open" id="dao1TeamDetailsModal"><div class="wt-team-details-dialog"><div class="wt-team-details-head"><div><strong>DID #${did}${dao1TeamAlias(did)?` · ${escapeHtml(dao1TeamAlias(did))}`:""}</strong><div class="meta">${escapeHtml(wallet||"Wallet nicht ermittelt")}</div></div><button type="button" class="wt-team-details-close" onclick="document.getElementById('dao1TeamDetailsModal')?.remove()">×</button></div><div class="wt-team-details-body"><div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Ebene / Parent</span><strong>${edge?`DID #${edge.parent_id}`:"Root"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Direkte Partner</span><strong>${kids}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Membership</span><strong>nicht ermittelt</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">NFTs / Bots</span><strong>noch nicht geladen</strong></div></div>${edge?`<div class="wt-team-tree-info" style="margin-top:12px"><b>Mint-Nachweis:</b> Block ${Number(edge.block||0).toLocaleString("de-DE")} · ${edge.tx_hash?`<a href="${EXPLORER}/tx/${edge.tx_hash}" target="_blank" rel="noopener">Transaktion öffnen</a>`:"–"}</div>`:""}<div class="note" style="margin-top:12px">Membership, fremde NFT-/Bot-Bestände, Kaufdatum/-preis und Referral Rewards werden nur ergänzt, wenn sie für dieses Partner-Wallet belastbar on-chain ermittelt wurden; unbekannte Werte werden nicht geschätzt.</div></div></div></div>`;
+    const nfts=dao1TeamKnownNfts(wallet),membership=dao1TeamMembershipLabel(nfts);
+    return `<div class="wt-team-details-modal open" id="dao1TeamDetailsModal"><div class="wt-team-details-dialog"><div class="wt-team-details-head"><div><strong>DID #${did}${dao1TeamAlias(did)?` · ${escapeHtml(dao1TeamAlias(did))}`:""}</strong><div class="meta">${escapeHtml(wallet||"Wallet nicht ermittelt")}</div></div><button type="button" class="wt-team-details-close" onclick="document.getElementById('dao1TeamDetailsModal')?.remove()">×</button></div><div class="wt-team-details-body"><div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Upline</span><strong>${edge?`DID #${edge.parent_id}`:"Root / außerhalb Auswahl"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Direkte Partner</span><strong>${kids}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">DID Mint</span><strong data-dao1-mint-block="${Number(edge?.block||0)}">${edge?.block?"wird geladen …":"nicht ermittelt"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Membership</span><strong>${escapeHtml(membership)}</strong></div></div>${edge?`<div class="wt-team-tree-info" style="margin-top:12px"><b>Mint-Nachweis:</b> Block ${Number(edge.block||0).toLocaleString("de-DE")} · ${edge.tx_hash?`<a href="${EXPLORER}/tx/${edge.tx_hash}" target="_blank" rel="noopener">Transaktion öffnen</a>`:"–"}</div>`:""}<h4 style="margin:18px 0 8px">NFTs / Bots</h4>${dao1TeamNftTableHtml(nfts)}<div class="note" style="margin-top:12px">Kaufdatum/-preis und Referral Rewards werden nur angezeigt, wenn sie aus den vorhandenen bzw. on-chain verifizierten Daten belastbar hervorgehen. Fremde Partner-Wallets werden nicht aufgrund von Annahmen klassifiziert.</div></div></div></div>`;
   }
 
   function bindDAO1TeamTreeControls(st){
     const host=document.getElementById("dao1TeamTreePanel");if(!host)return;
     host.querySelectorAll("[data-dao1-team-alias]").forEach(inp=>inp.addEventListener("change",()=>saveDAO1TeamAlias(inp.dataset.dao1TeamAlias,inp.value)));
     host.querySelectorAll("[data-dao1-team-toggle]").forEach(btn=>btn.addEventListener("click",()=>{const did=Number(btn.dataset.dao1TeamToggle);dao1TeamCollapsed.has(did)?dao1TeamCollapsed.delete(did):dao1TeamCollapsed.add(did);renderDAO1TeamTreePanel();}));
-    host.querySelectorAll("[data-dao1-team-details]").forEach(btn=>btn.addEventListener("click",()=>{document.getElementById("dao1TeamDetailsModal")?.remove();document.body.insertAdjacentHTML("beforeend",dao1TeamDetailsHtml(btn.dataset.dao1TeamDetails,st));}));
+    host.querySelectorAll("[data-dao1-team-details]").forEach(btn=>btn.addEventListener("click",()=>{document.getElementById("dao1TeamDetailsModal")?.remove();document.body.insertAdjacentHTML("beforeend",dao1TeamDetailsHtml(btn.dataset.dao1TeamDetails,st));hydrateDAO1TeamMintDates(document.getElementById("dao1TeamDetailsModal"),st);}));
+    hydrateDAO1TeamMintDates(host,st);
   }
 
   function teamDiscoveryTableHtml(st,isOld){
