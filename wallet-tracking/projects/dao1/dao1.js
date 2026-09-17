@@ -4184,7 +4184,9 @@ window.DAO1Project = (() => {
       // Phase 4.84: Nur veränderliche/fachliche Kantendaten schreiben. Konstanten wie
       // chain_key, contract_address und source werden nicht mehr 65k-mal dupliziert.
       child_id:Number(e.child_id),parent_id:Number(e.parent_id),wallet_address:lower(e.wallet||""),
-      mint_block:Number(e.block||0),mint_tx_hash:e.tx_hash||null,log_index:Number(e.log_index||0),verified_at:now,updated_at:now
+      mint_block:Number(e.block||0),mint_tx_hash:e.tx_hash||null,log_index:Number(e.log_index||0),
+      // Audit-Spalten bleiben erhalten, weil die bestehenden RLS-Policies damit Schreibzugriffe absichern.
+      created_by:uid,updated_by:uid,verified_at:now,updated_at:now
     }));
     for(let i=0;i<rows.length;i+=500){
       const {error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE).upsert(rows.slice(i,i+500),{onConflict:"child_id"});
