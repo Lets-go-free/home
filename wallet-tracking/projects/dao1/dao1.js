@@ -4420,7 +4420,7 @@ window.DAO1Project = (() => {
   function dao1TeamAcquisitionText(n){
     if(n?.subtype==="DID")return "DID Mint";
     if(n?.purchase?.amount>0||n?.acquisition_kind==="purchase"||n?.acquisition_kind==="purchase_same_tx")return "Kauf";
-    if(n?.acquisition_kind==="mint"||n?.acquisition_kind==="mint_to_own_wallet")return "Mint";
+    if(n?.acquisition_kind==="mint"||n?.acquisition_kind==="mint_to_own_wallet")return "Mint / Kaufprüfung offen";
     if(n?.acquisition_kind==="own_transfer")return "Transfer eigene Wallets";
     if(n?.acquisition_kind==="transfer")return "NFT-Transfer";
     return n?.acquisition_verified?"on-chain Erwerb":"nicht ermittelt";

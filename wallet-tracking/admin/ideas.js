@@ -589,3 +589,7 @@ window.adminIdeasFilterState = adminIdeasFilterState;
 // Kauf (verifizierte Zahlung), Mint, NFT-Transfer und Transfer zwischen eigenen Wallets getrennt anzeigen.
 // Quellwallet bei Transfers sichtbar machen; "Bonus" niemals allein aus Transfer ableiten.
 // Offene Discovery: Trading-Funding je Bot-ID (inkl. Nachladungen/mehrere Währungen), Target/Progress/Abschlussstatus.
+
+// Phase 4.81 / DAO1 Bot-Lifecycle: ältere Mint+Kauf-Pfade weiter dekodieren.
+// Kein Kaufpreis aus NFT-Metadaten schätzen. Mint allein beweist weder Gratis/Bonus noch Kauf.
+// Trading-Funding, Nachladungen, Target/Fortschritt und Abschlussstatus anschließend on-chain verifizieren.

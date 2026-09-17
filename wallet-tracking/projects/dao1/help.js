@@ -48,3 +48,7 @@ else renderDAO1Help();
 // Bot-Erwerb: In Team-Details wird neben Kaufpreis auch die on-chain ermittelte Erwerbsart angezeigt.
 // Ein NFT-Transfer ohne verifizierte Zahlung erhält keinen erfundenen Kaufpreis; die Quellwallet wird angezeigt.
 // "Bonus" wird nur verwendet, wenn ein eigener on-chain Nachweis dafür existiert.
+
+// Phase 4.81: Ein NFT-Mint ohne ERC-20-Zahlung in derselben Tx gilt nicht als kostenloser Bot.
+// Anzeige deshalb "Mint / Kaufprüfung offen"; echte Kaufpreise bleiben nur bei verifiziertem Zahlungsfluss.
+// Bekannte Discovery-Testfälle: #90068, #90067, #90066, #90065, #89908; #90054 dient als Referenzfall.

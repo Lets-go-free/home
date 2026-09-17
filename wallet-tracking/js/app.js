@@ -216,11 +216,13 @@ async function initAuth() {
   const { data: { session } } = await sb.auth.getSession();
   sb.auth.onAuthStateChange((event, newSession) => {
     if (newSession && !currentUser) {
-      onLoggedIn(newSession);
+      beginDataJobUi("Daten werden geladen …");
+      onLoggedIn(newSession).finally(()=>endDataJobUi());
     }
   });
   if (session) {
-    await onLoggedIn(session);
+    beginDataJobUi("Daten werden geladen …");
+    try { await onLoggedIn(session); } finally { endDataJobUi(); }
   }
 }
 
@@ -372,13 +374,15 @@ async function onLoggedIn(session) {
   if(!userNavigationTouched) showTab(wallets.length === 0 ? "wallets" : "tracking");
   maybeShowWelcomeModal();
 
-  // Nicht blockierend: Nur wenn der automatisierte Cache noch nicht von heute ist,
-  // wird genau einmal täglich automatisch live aktualisiert. Danach nur noch manuell.
+  // Initial-Load bleibt bewusst innerhalb des globalen Lade-Locks: Navigation wird
+  // erst freigegeben, wenn auch die ggf. nötige tägliche Live-Aktualisierung fertig ist.
   if (autoRefreshNeeded) {
-    loadAll({ automatic: true }).catch(e => {
+    try {
+      await loadAll({ automatic: true });
+    } catch(e) {
       console.error("Automatische Live-Aktualisierung:", e);
       renderCacheStatusNote("Tägliche automatische Live-Aktualisierung fehlgeschlagen – letzter gespeicherter Stand bleibt sichtbar. Erneut aktualisieren bitte manuell.");
-    });
+    }
   }
 }
 
