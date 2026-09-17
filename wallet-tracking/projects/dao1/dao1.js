@@ -1865,11 +1865,27 @@ window.DAO1Project = (() => {
     };
   }
 
+  function compactPriceRowsByBlock(rows){
+    // aptm_price_history is a block-level fallback cache. Historical valuation asks
+    // for the last known pool state at/before a target block, never for an earlier
+    // Sync inside the same block. Keep only the highest log_index per pool+block so
+    // the global cache cannot grow again with redundant intra-block Sync states.
+    const byBlock=new Map();
+    for(const row of rows||[]){
+      const key=`${lower(row?.pool_address||PAIR_ADDRESS)}|${Number(row?.block_number)}`;
+      const prev=byBlock.get(key);
+      if(!prev || Number(row?.log_index||0)>Number(prev?.log_index||0))byBlock.set(key,row);
+    }
+    return [...byBlock.values()].sort((a,b)=>Number(a.block_number)-Number(b.block_number)||Number(a.log_index)-Number(b.log_index));
+  }
+
   async function savePriceRows(rows){
-    if(!rows.length)return;
+    const compact=compactPriceRowsByBlock(rows);
+    if(!compact.length)return [];
     const {error}=await sb.from("aptm_price_history")
-      .upsert(rows,{onConflict:"pool_address,block_number,log_index",ignoreDuplicates:true});
+      .upsert(compact,{onConflict:"pool_address,block_number,log_index",ignoreDuplicates:true});
     if(error){console.warn("APTM Preis-Cache speichern:",error);throw error;}
+    return compact;
   }
 
   function mergeCoverageRanges(rows){
@@ -1996,9 +2012,9 @@ window.DAO1Project = (() => {
           const part=(logs||[]).map(l=>priceRowFromSyncLog(l,meta)).filter(Boolean);
           // Order is deliberate: sync rows first, coverage second. Coverage is only proof
           // after the complete RPC range succeeded and all discovered Sync rows were saved.
-          if(part.length)await savePriceRows(part);
+          const saved=part.length?await savePriceRows(part):[];
           await savePriceCoverage(from,to,part.length);
-          rows.push(...part);
+          rows.push(...saved);
           done++;
           if(activePriceJobLog){
             activePriceJobLog.coverageScans++;
