@@ -4112,7 +4112,7 @@ window.DAO1Project = (() => {
       return false;
     }finally{if(input)input.disabled=false;}
   }
-  const dao1OldTreeCacheDiag={source:"–",localRows:0,deltaRows:0,dbRows:0,idbMs:0,versionMs:0,schemaMs:0,totalCacheMs:0,scanMs:0,renderMs:0,note:"Noch kein Lauf"};
+  const dao1OldTreeCacheDiag={source:"–",localRows:0,deltaRows:0,dbRows:0,idbMs:0,stateMs:0,metaMs:0,registryMs:0,probeMs:0,deltaDbMs:0,totalCacheMs:0,latestBlockMs:0,overlapRpcMs:0,saveMs:0,scanMs:0,renderMs:0,note:"Noch kein Lauf"};
   const dao1TeamDiscovery={
     legacy:{running:false,status:"Noch nicht geladen",edges:[],lastBlock:0,error:""},
     aptmdao:{running:false,status:"Noch nicht geladen",edges:[],lastBlock:0,error:""}
@@ -4164,14 +4164,14 @@ window.DAO1Project = (() => {
 
   async function loadOldDao1TreeCache(){
     const t0=performance.now();
-    Object.assign(dao1OldTreeCacheDiag,{source:"START",localRows:0,deltaRows:0,dbRows:0,idbMs:0,versionMs:0,schemaMs:0,totalCacheMs:0,note:"Cache-Prüfung läuft"});
+    Object.assign(dao1OldTreeCacheDiag,{source:"START",localRows:0,deltaRows:0,dbRows:0,idbMs:0,stateMs:0,metaMs:0,registryMs:0,probeMs:0,deltaDbMs:0,totalCacheMs:0,latestBlockMs:0,overlapRpcMs:0,saveMs:0,note:"Cache-Prüfung läuft"});
     const ctx=getContext?.();
     if(!sb||!ctx?.currentUser||!dao1OldTreeDbAvailable){dao1OldTreeCacheDiag.note="Supabase/User/DB-Cache nicht verfügbar";return null;}
     const contract=lower(DAO1_OLD_DID_CONTRACT),bc=window.WalletTrackingBrowserCache;
     const rootIds=dao1OwnedDidRoots.map(r=>Number(r.did)).filter(Number.isFinite);
     const ts=performance.now();
     const {data:states,error:stateError}=await sb.from(DAO1_OLD_TREE_STATE_TABLE).select("last_verified_block,edge_count,verified_at,updated_at").eq("chain_key",CHAIN_KEY).eq("contract_address",contract).limit(1);
-    dao1OldTreeCacheDiag.versionMs+=performance.now()-ts;
+    dao1OldTreeCacheDiag.stateMs+=performance.now()-ts;
     if(stateError){const msg=String(stateError.message||"");if(/dao1_old_tree_graph_state|relation .* does not exist|schema cache/i.test(msg))dao1OldTreeDbAvailable=false;console.warn("DAO1 Tree Global-Cache State",stateError);dao1OldTreeCacheDiag.note="Global-Cache-State Fehler";return null;}
     const state=states?.[0];if(!state){dao1OldTreeCacheDiag.note="Kein Global-Cache-State";return null;}
 
@@ -4189,12 +4189,13 @@ window.DAO1Project = (() => {
 
     if(bc){
       try{
-        const tp=performance.now();
-        const [meta,remoteVersion,schemaProbe]=await Promise.all([
-          bc.getMeta(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY),loadOldDao1TreeVersion(),
-          sb.from(DAO1_OLD_TREE_CACHE_TABLE).select("*").limit(1)
-        ]);
-        dao1OldTreeCacheDiag.schemaMs=performance.now()-tp;
+        const tm0=performance.now();
+        const metaPromise=bc.getMeta(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY).then(v=>{dao1OldTreeCacheDiag.metaMs=performance.now()-tm0;return v;});
+        const tv0=performance.now();
+        const versionPromise=loadOldDao1TreeVersion().then(v=>{dao1OldTreeCacheDiag.registryMs=performance.now()-tv0;return v;});
+        const tp0=performance.now();
+        const probePromise=sb.from(DAO1_OLD_TREE_CACHE_TABLE).select("*").limit(1).then(v=>{dao1OldTreeCacheDiag.probeMs=performance.now()-tp0;return v;});
+        const [meta,remoteVersion,schemaProbe]=await Promise.all([metaPromise,versionPromise,probePromise]);
         const remoteSchemaFingerprint=schemaProbe?.error?null:Object.keys(schemaProbe?.data?.[0]||{}).sort().join("|");
         if(meta){
           const schemaOk=Number(meta.payloadSchemaVersion||0)===DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION && Number(meta.storageFormatVersion||0)===DAO1_OLD_TREE_BROWSER_STORAGE_VERSION && (!remoteVersion||Number(remoteVersion.payload_schema_version||1)===DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION) && (!remoteSchemaFingerprint||meta.schemaFingerprint===remoteSchemaFingerprint);
@@ -4207,8 +4208,9 @@ window.DAO1Project = (() => {
               return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),browserCache:true,totalEdgeCount:globalCount};
             }
             if(remoteDataVersion>localDataVersion && meta.syncCursor){
-              const delta=[];let offset=0;
+              const delta=[];let offset=0;const td0=performance.now();
               while(true){const {data,error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE).select("*").gt("updated_at",meta.syncCursor).order("updated_at",{ascending:true}).range(offset,offset+DAO1_OLD_TREE_CACHE_PAGE_SIZE-1);if(error)throw error;const part=data||[];delta.push(...part);if(part.length<DAO1_OLD_TREE_CACHE_PAGE_SIZE)break;offset+=DAO1_OLD_TREE_CACHE_PAGE_SIZE;}
+              dao1OldTreeCacheDiag.deltaDbMs=performance.now()-td0;
               dao1OldTreeCacheDiag.deltaRows=delta.length;dao1OldTreeCacheDiag.dbRows+=delta.length;
               const nextMeta={payloadSchemaVersion:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,storageFormatVersion:DAO1_OLD_TREE_BROWSER_STORAGE_VERSION,schemaFingerprint:remoteSchemaFingerprint||meta.schemaFingerprint,dataVersion:remoteDataVersion,syncCursor:remoteVersion?.sync_cursor||remoteVersion?.updated_at||new Date().toISOString(),rowCount:globalCount};
               const tm=performance.now();await bc.merge(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,delta,{keyField:"child_id",parentField:"parent_id",meta:nextMeta});dao1OldTreeCacheDiag.idbMs+=performance.now()-tm;
@@ -4265,7 +4267,9 @@ window.DAO1Project = (() => {
     st.running=true;st.error="";st.status="DAO1 Tree-Cache wird geladen …";renderDAO1TeamTreePanel();
     try{
       const scanT0=performance.now();
+      const tl0=performance.now();
       const latest=teamHexNumber(await dao1ApertumRpc("eth_blockNumber",[]));
+      dao1OldTreeCacheDiag.latestBlockMs=performance.now()-tl0;
       const cached=forceFull?null:await loadOldDao1TreeCache();
       const byChild=new Map();
       if(cached?.edges?.length)for(const e of cached.edges)byChild.set(e.child_id,e);
@@ -4281,12 +4285,14 @@ window.DAO1Project = (() => {
       for(let from=fromStart;from<=latest;from+=DAO1_TEAM_RPC_CHUNK){
         const to=Math.min(latest,from+DAO1_TEAM_RPC_CHUNK-1);
         st.status=`DAO1 alt · ${cached?"inkrementell":"Vollscan"} · Block ${from.toLocaleString("de-DE")}–${to.toLocaleString("de-DE")} / ${latest.toLocaleString("de-DE")}`;renderDAO1TeamTreePanel();
+        const tr0=performance.now();
         const logs=await dao1ApertumRpc("eth_getLogs",[{address:DAO1_OLD_DID_CONTRACT,fromBlock:"0x"+from.toString(16),toBlock:"0x"+to.toString(16),topics:[DAO1_OLD_MINT_TOPIC]}]);
+        dao1OldTreeCacheDiag.overlapRpcMs+=performance.now()-tr0;
         for(const log of logs||[]){const e=parseOldDao1MintLog(log);if(e){byChild.set(e.child_id,e);changed.add(e.child_id);}}
       }
       st.edges=[...byChild.values()].sort((a,b)=>a.child_id-b.child_id);st.lastBlock=latest;
-      if(dao1OldTreeDbAvailable){const newGlobalRows=cached?[...changed].filter(id=>Number(byChild.get(id)?.block||0)>Number(cached.lastBlock||0)).length:0;const globalCount=cached?Number(cached.totalEdgeCount||0)+newGlobalRows:st.edges.length;await saveOldDao1TreeCache(st.edges,latest,cached?changed:null,globalCount);}
-      st.status=`${st.edges.length.toLocaleString("de-DE")} verifizierte DID→fid-Kanten · bis Block ${latest.toLocaleString("de-DE")}${cached?" · Cache + 24 Block Overlap":""}`;
+      if(dao1OldTreeDbAvailable){const newGlobalRows=cached?[...changed].filter(id=>Number(byChild.get(id)?.block||0)>Number(cached.lastBlock||0)).length:0;const globalCount=cached?Number(cached.totalEdgeCount||0)+newGlobalRows:st.edges.length;const tsave0=performance.now();await saveOldDao1TreeCache(st.edges,latest,cached?changed:null,globalCount);dao1OldTreeCacheDiag.saveMs=performance.now()-tsave0;}
+      st.status=`${st.edges.length.toLocaleString("de-DE")} Partner-Verbindungen im ausgewählten Baum${cached?" · aktualisiert":""}`;
       dao1OldTreeCacheDiag.scanMs=performance.now()-scanT0;
     }catch(e){st.error=e?.message||String(e);st.status="Discovery fehlgeschlagen";}
     finally{st.running=false;renderDAO1TeamTreePanel();}
@@ -4747,14 +4753,14 @@ window.DAO1Project = (() => {
     const isOld=dao1TeamTreeMode==="legacy",st=teamDiscoveryState();
     const renderT0=performance.now();
     const d=dao1OldTreeCacheDiag;
-    const cacheDiagHtml=isOld?`<div class="custom-token-card debug-frame" style="margin-top:12px"><strong>DEBUG / DEV · DAO1 Tree Browser-Cache</strong><div class="note" style="margin-top:6px"><strong>${escapeHtml(d.source)}</strong> · lokal ${Number(d.localRows||0).toLocaleString("de-DE")} Rows · DB ${Number(d.dbRows||0).toLocaleString("de-DE")} Rows · Delta ${Number(d.deltaRows||0).toLocaleString("de-DE")} Rows</div><div class="note">IndexedDB ${Number(d.idbMs||0).toFixed(1)} ms · Version/State ${Number(d.versionMs||0).toFixed(1)} ms · Schema-Prüfung ${Number(d.schemaMs||0).toFixed(1)} ms · Cache gesamt ${Number(d.totalCacheMs||0).toFixed(1)} ms · kompletter Scan/Lauf ${Number(d.scanMs||0).toFixed(1)} ms · letzter Render ${Number(d.renderMs||0).toFixed(1)} ms</div><div class="note">${escapeHtml(d.note||"")}</div></div>`:"";
+    const cacheDiagHtml=isOld?`<div class="custom-token-card debug-frame" style="margin-top:12px"><strong>DEBUG / DEV · DAO1 Tree Browser-Cache</strong><div class="note" style="margin-top:6px"><strong>${escapeHtml(d.source)}</strong> · lokal ${Number(d.localRows||0).toLocaleString("de-DE")} Rows · DB ${Number(d.dbRows||0).toLocaleString("de-DE")} Rows · Delta ${Number(d.deltaRows||0).toLocaleString("de-DE")} Rows</div><div class="note">IndexedDB ${Number(d.idbMs||0).toFixed(1)} ms · State ${Number(d.stateMs||0).toFixed(1)} ms · IDB-Meta ${Number(d.metaMs||0).toFixed(1)} ms · DATA_VERSIONS ${Number(d.registryMs||0).toFixed(1)} ms · Schema-Probe ${Number(d.probeMs||0).toFixed(1)} ms · Delta-DB ${Number(d.deltaDbMs||0).toFixed(1)} ms</div><div class="note">Cache gesamt ${Number(d.totalCacheMs||0).toFixed(1)} ms · Latest Block ${Number(d.latestBlockMs||0).toFixed(1)} ms · 24-Block-RPC ${Number(d.overlapRpcMs||0).toFixed(1)} ms · Cache speichern ${Number(d.saveMs||0).toFixed(1)} ms · kompletter Lauf ${Number(d.scanMs||0).toFixed(1)} ms · Render ${Number(d.renderMs||0).toFixed(1)} ms</div><div class="note">${escapeHtml(d.note||"")}</div></div>`:"";
     el.innerHTML=`<div class="custom-token-card" style="margin-top:12px">
       <div class="chain-title">${isOld?"Tree DAO1 (alt)":"Tree APTMDAO (neu)"}</div>
       <div class="status ${st.error?"warn":"info"}" style="margin-top:10px"><strong>${st.status}</strong>${st.error?`<div class="note" style="margin-top:4px">${escapeHtml(st.error)}</div>`:""}<div class="note" style="margin-top:4px">${isOld?"Verifizierte Quelle: DID-Mint-Event TokenMinted(to, tokenId, fid). fid wird als Parent-ID des alten Trees verwendet.":"Neue Struktur bleibt vollständig getrennt. Parent-Kanten werden erst nach eindeutiger Event-Dekodierung freigegeben."}</div></div>
       <div style="margin-top:10px"><div class="custom-token-grid" style="grid-template-columns:minmax(260px,420px) auto;align-items:end">${teamRootSelectorHtml()}${isOld?`<div><button type="button" onclick="DAO1Project.discoverTeamTree()" ${st.running?"disabled":""}>${st.running?"Discovery läuft …":"Tree DAO1 on-chain ermitteln"}</button></div>`:"<div></div>"}</div></div>
       <div class="project-summary" style="margin-top:12px">
         <div class="custom-token-card project-summary-box"><span class="field-label">Tree</span><strong>${isOld?"DAO1 alt":"APTMDAO neu"}</strong></div>
-        <div class="custom-token-card project-summary-box"><span class="field-label">Verifizierte Kanten</span><strong>${st.edges.length?st.edges.length.toLocaleString("de-DE"):"–"}</strong></div>
+        <div class="custom-token-card project-summary-box"><span class="field-label">Partner-Verbindungen</span><strong>${st.edges.length?st.edges.length.toLocaleString("de-DE"):"–"}</strong></div>
         <div class="custom-token-card project-summary-box"><span class="field-label">Max. Ebenen</span><strong>${DAO1_TEAM_MAX_LEVELS}</strong></div>
         <div class="custom-token-card project-summary-box"><span class="field-label">Referral Rewards</span><strong>–</strong><div class="meta">Partner-Zuordnung separat zu beweisen</div></div>
       </div>
