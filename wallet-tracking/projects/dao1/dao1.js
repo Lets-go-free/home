@@ -65,6 +65,12 @@ window.DAO1Project = (() => {
   const DAO1_OLD_TREE_STATE_TABLE = "dao1_old_tree_graph_state";
   const DAO1_OLD_TREE_CACHE_PAGE_SIZE = 1000;
   const DAO1_OLD_TREE_OVERLAP_BLOCKS = 24;
+  const DATA_VERSIONS_TABLE = "cache_data_versions";
+  const DAO1_OLD_TREE_BROWSER_NAMESPACE = "dao1";
+  const DAO1_OLD_TREE_BROWSER_KEY = "legacy-tree";
+  // Erhöhen, wenn bestehende DB-Zeilen wegen neuer/anders interpretierter Felder neu
+  // in den Browser müssen. Neue DB-Spalten werden durch select("*") vollständig übernommen.
+  const DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION = 1;
   let dao1OldTreeDbAvailable = true;
   const DAO1_OLD_MINT_TOPIC = ethers.id("TokenMinted(address,uint256,uint256)").toLowerCase();
 
@@ -4144,36 +4150,63 @@ window.DAO1Project = (() => {
     }catch(_){return null;}
   }
 
+  async function loadOldDao1TreeVersion(){
+    const {data,error}=await sb.from(DATA_VERSIONS_TABLE).select("data_version,payload_schema_version,row_count,sync_cursor,updated_at").eq("namespace",DAO1_OLD_TREE_BROWSER_NAMESPACE).eq("cache_key",DAO1_OLD_TREE_BROWSER_KEY).limit(1);
+    if(error){console.warn("DATA_VERSIONS DAO1 Tree",error);return null;}
+    return data?.[0]||null;
+  }
+
+  function dao1TreeEdgeFromRow(r){
+    return {tree:"legacy",child_id:Number(r.child_id),parent_id:Number(r.parent_id),wallet:lower(r.wallet_address||""),block:Number(r.mint_block||0),tx_hash:String(r.mint_tx_hash||""),log_index:Number(r.log_index||0)};
+  }
+
   async function loadOldDao1TreeCache(){
     const ctx=getContext?.();
     if(!sb||!ctx?.currentUser||!dao1OldTreeDbAvailable)return null;
-    const contract=lower(DAO1_OLD_DID_CONTRACT);
-    const {data:states,error:stateError}=await sb.from(DAO1_OLD_TREE_STATE_TABLE)
-      .select("last_verified_block,edge_count,verified_at,updated_at")
-      .eq("chain_key",CHAIN_KEY).eq("contract_address",contract).limit(1);
-    if(stateError){
-      const msg=String(stateError.message||"");
-      if(/dao1_old_tree_graph_state|relation .* does not exist|schema cache/i.test(msg))dao1OldTreeDbAvailable=false;
-      console.warn("DAO1 Tree Global-Cache State",stateError);return null;
-    }
+    const contract=lower(DAO1_OLD_DID_CONTRACT),bc=window.WalletTrackingBrowserCache;
+    const {data:states,error:stateError}=await sb.from(DAO1_OLD_TREE_STATE_TABLE).select("last_verified_block,edge_count,verified_at,updated_at").eq("chain_key",CHAIN_KEY).eq("contract_address",contract).limit(1);
+    if(stateError){const msg=String(stateError.message||"");if(/dao1_old_tree_graph_state|relation .* does not exist|schema cache/i.test(msg))dao1OldTreeDbAvailable=false;console.warn("DAO1 Tree Global-Cache State",stateError);return null;}
     const state=states?.[0];if(!state)return null;
-    const edges=[];let offset=0;
-    while(true){
-      const {data,error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE)
-        .select("child_id,parent_id,wallet_address,mint_block,mint_tx_hash,log_index")
-        // Phase 4.84: Diese Tabelle ist absichtlich nur der globale Legacy-DAO1-DID-Graph.
-        // chain_key/contract_address sind deshalb keine Zeilendimensionen mehr.
-        .order("child_id",{ascending:true}).range(offset,offset+DAO1_OLD_TREE_CACHE_PAGE_SIZE-1);
-      if(error){console.warn("DAO1 Tree Global-Cache Kanten",error);return null;}
-      const rows=data||[];
-      for(const r of rows)edges.push({tree:"legacy",child_id:Number(r.child_id),parent_id:Number(r.parent_id),wallet:lower(r.wallet_address||""),block:Number(r.mint_block||0),tx_hash:String(r.mint_tx_hash||""),log_index:Number(r.log_index||0)});
-      if(rows.length<DAO1_OLD_TREE_CACHE_PAGE_SIZE)break;
-      offset+=DAO1_OLD_TREE_CACHE_PAGE_SIZE;
-      if(offset>200000)throw new Error("DAO1 Tree Cache unerwartet groß; Abbruch statt Teilgraph.");
+
+    // Local-first: der grosse Graph kommt sofort aus IndexedDB. Supabase liefert danach
+    // nur die winzige DATA_VERSIONS-Zeile und bei Bedarf ein Delta.
+    if(bc){
+      try{
+        // Eine einzige DB-Zeile dient zusätzlich als automatischer Schema-Fingerprint.
+        // So erkennen wir auch eine neu hinzugefügte Spalte, selbst wenn kein bestehendes
+        // updated_at dadurch verändert wurde und die Registry-Version noch nicht angepasst ist.
+        const [meta,remoteVersion,schemaProbe]=await Promise.all([
+          bc.getMeta(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY),loadOldDao1TreeVersion(),
+          sb.from(DAO1_OLD_TREE_CACHE_TABLE).select("*").limit(1)
+        ]);
+        const remoteSchemaFingerprint=schemaProbe?.error?null:Object.keys(schemaProbe?.data?.[0]||{}).sort().join("|");
+        if(meta){
+          const schemaOk=Number(meta.payloadSchemaVersion||0)===DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION && (!remoteVersion||Number(remoteVersion.payload_schema_version||1)===DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION) && (!remoteSchemaFingerprint||meta.schemaFingerprint===remoteSchemaFingerprint);
+          if(schemaOk){
+            let rows=await bc.getAll(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY);
+            const remoteDataVersion=Number(remoteVersion?.data_version||state.last_verified_block||0),localDataVersion=Number(meta.dataVersion||0);
+            if(remoteDataVersion===localDataVersion && (!state.edge_count||rows.length===Number(state.edge_count))){return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),browserCache:true};}
+            if(remoteDataVersion>localDataVersion && meta.syncCursor){
+              const delta=[];let offset=0;
+              while(true){const {data,error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE).select("*").gt("updated_at",meta.syncCursor).order("updated_at",{ascending:true}).range(offset,offset+DAO1_OLD_TREE_CACHE_PAGE_SIZE-1);if(error)throw error;const part=data||[];delta.push(...part);if(part.length<DAO1_OLD_TREE_CACHE_PAGE_SIZE)break;offset+=DAO1_OLD_TREE_CACHE_PAGE_SIZE;}
+              const nextMeta={payloadSchemaVersion:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,schemaFingerprint:remoteSchemaFingerprint||meta.schemaFingerprint,dataVersion:remoteDataVersion,syncCursor:remoteVersion?.sync_cursor||remoteVersion?.updated_at||new Date().toISOString()};
+              await bc.merge(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,delta,{keyField:"child_id",meta:nextMeta});rows=await bc.getAll(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY);
+              if(!state.edge_count||rows.length===Number(state.edge_count))return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),browserCache:true,deltaRows:delta.length};
+            }
+          }
+          await bc.clear(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY);
+        }
+      }catch(e){console.warn("DAO1 Tree Browser-Cache",e);}
     }
-    const expected=Number(state.edge_count||0);
-    if(expected && edges.length!==expected){console.warn(`DAO1 Tree Cache unvollständig: ${edges.length}/${expected}`);return null;}
-    return {edges,lastBlock:Number(state.last_verified_block||0)};
+
+    // Rekonstruktion/Fallback. select("*") ist absichtlich schemaoffen, damit neue
+    // DB-Felder im lokalen Cache nicht verloren gehen.
+    const rawRows=[];let offset=0;
+    while(true){const {data,error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE).select("*").order("child_id",{ascending:true}).range(offset,offset+DAO1_OLD_TREE_CACHE_PAGE_SIZE-1);if(error){console.warn("DAO1 Tree Global-Cache Kanten",error);return null;}const rows=data||[];rawRows.push(...rows);if(rows.length<DAO1_OLD_TREE_CACHE_PAGE_SIZE)break;offset+=DAO1_OLD_TREE_CACHE_PAGE_SIZE;if(offset>200000)throw new Error("DAO1 Tree Cache unerwartet groß; Abbruch statt Teilgraph.");}
+    const expected=Number(state.edge_count||0);if(expected&&rawRows.length!==expected){console.warn(`DAO1 Tree Cache unvollständig: ${rawRows.length}/${expected}`);return null;}
+    const remoteVersion=await loadOldDao1TreeVersion();
+    if(bc)try{await bc.replace(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rawRows,{keyField:"child_id",meta:{payloadSchemaVersion:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,schemaFingerprint:Object.keys(rawRows[0]||{}).sort().join("|"),dataVersion:Number(remoteVersion?.data_version||state.last_verified_block||0),syncCursor:remoteVersion?.sync_cursor||remoteVersion?.updated_at||state.updated_at||new Date().toISOString()}});}catch(e){console.warn("DAO1 Tree Browser-Cache initial speichern",e);}
+    return {edges:rawRows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0)};
   }
 
   async function saveOldDao1TreeCache(edges,lastBlock,changedChildren=null){
@@ -4194,6 +4227,12 @@ window.DAO1Project = (() => {
     }
     const {error}=await sb.from(DAO1_OLD_TREE_STATE_TABLE).upsert({chain_key:CHAIN_KEY,contract_address:contract,last_verified_block:Number(lastBlock||0),edge_count:edges.length,verified_at:now,updated_by:uid,updated_at:now},{onConflict:"chain_key,contract_address"});
     if(error){console.warn("DAO1 Tree Cache State speichern",error);return false;}
+    // data_version folgt der verifizierten Blockhöhe. sync_cursor wird erst NACH den
+    // Kantenwrites gesetzt, damit ein Browser-Delta niemals halbfertige Daten bestätigt.
+    const {error:versionError}=await sb.from(DATA_VERSIONS_TABLE).upsert({namespace:DAO1_OLD_TREE_BROWSER_NAMESPACE,cache_key:DAO1_OLD_TREE_BROWSER_KEY,data_version:Number(lastBlock||0),payload_schema_version:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,row_count:edges.length,sync_cursor:now,updated_at:now,updated_by:uid},{onConflict:"namespace,cache_key"});
+    if(versionError)console.warn("DATA_VERSIONS DAO1 Tree speichern",versionError);
+    // Den lokalen Cache direkt mit den gerade bestätigten Änderungen mitziehen.
+    const bc=window.WalletTrackingBrowserCache;if(bc&&rows.length)try{await bc.merge(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rows,{keyField:"child_id",meta:{payloadSchemaVersion:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,dataVersion:Number(lastBlock||0),syncCursor:now}});}catch(e){console.warn("DAO1 Tree Browser-Cache nachführen",e);}
     return true;
   }
 
