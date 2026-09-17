@@ -1865,11 +1865,27 @@ window.DAO1Project = (() => {
     };
   }
 
+  function compactPriceRowsByBlock(rows){
+    // aptm_price_history is a block-level fallback cache. Historical valuation asks
+    // for the last known pool state at/before a target block, never for an earlier
+    // Sync inside the same block. Keep only the highest log_index per pool+block so
+    // the global cache cannot grow again with redundant intra-block Sync states.
+    const byBlock=new Map();
+    for(const row of rows||[]){
+      const key=`${lower(row?.pool_address||PAIR_ADDRESS)}|${Number(row?.block_number)}`;
+      const prev=byBlock.get(key);
+      if(!prev || Number(row?.log_index||0)>Number(prev?.log_index||0))byBlock.set(key,row);
+    }
+    return [...byBlock.values()].sort((a,b)=>Number(a.block_number)-Number(b.block_number)||Number(a.log_index)-Number(b.log_index));
+  }
+
   async function savePriceRows(rows){
-    if(!rows.length)return;
+    const compact=compactPriceRowsByBlock(rows);
+    if(!compact.length)return [];
     const {error}=await sb.from("aptm_price_history")
-      .upsert(rows,{onConflict:"pool_address,block_number,log_index",ignoreDuplicates:true});
+      .upsert(compact,{onConflict:"pool_address,block_number,log_index",ignoreDuplicates:true});
     if(error){console.warn("APTM Preis-Cache speichern:",error);throw error;}
+    return compact;
   }
 
   function mergeCoverageRanges(rows){
@@ -1996,9 +2012,9 @@ window.DAO1Project = (() => {
           const part=(logs||[]).map(l=>priceRowFromSyncLog(l,meta)).filter(Boolean);
           // Order is deliberate: sync rows first, coverage second. Coverage is only proof
           // after the complete RPC range succeeded and all discovered Sync rows were saved.
-          if(part.length)await savePriceRows(part);
+          const saved=part.length?await savePriceRows(part):[];
           await savePriceCoverage(from,to,part.length);
-          rows.push(...part);
+          rows.push(...saved);
           done++;
           if(activePriceJobLog){
             activePriceJobLog.coverageScans++;
@@ -4145,7 +4161,8 @@ window.DAO1Project = (() => {
     while(true){
       const {data,error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE)
         .select("child_id,parent_id,wallet_address,mint_block,mint_tx_hash,log_index")
-        .eq("chain_key",CHAIN_KEY).eq("contract_address",contract)
+        // Phase 4.84: Diese Tabelle ist absichtlich nur der globale Legacy-DAO1-DID-Graph.
+        // chain_key/contract_address sind deshalb keine Zeilendimensionen mehr.
         .order("child_id",{ascending:true}).range(offset,offset+DAO1_OLD_TREE_CACHE_PAGE_SIZE-1);
       if(error){console.warn("DAO1 Tree Global-Cache Kanten",error);return null;}
       const rows=data||[];
@@ -4164,11 +4181,15 @@ window.DAO1Project = (() => {
     const uid=ctx.currentUser.id,contract=lower(DAO1_OLD_DID_CONTRACT),now=new Date().toISOString();
     const changed=changedChildren?new Set(changedChildren):null;
     const rows=edges.filter(e=>!changed||changed.has(e.child_id)).map(e=>({
-      chain_key:CHAIN_KEY,contract_address:contract,child_id:Number(e.child_id),parent_id:Number(e.parent_id),wallet_address:lower(e.wallet||""),
-      mint_block:Number(e.block||0),mint_tx_hash:e.tx_hash||null,log_index:Number(e.log_index||0),source:"TokenMinted(to, tokenId, fid)",verified_at:now,created_by:uid,updated_by:uid,updated_at:now
+      // Phase 4.84: Nur veränderliche/fachliche Kantendaten schreiben. Konstanten wie
+      // chain_key, contract_address und source werden nicht mehr 65k-mal dupliziert.
+      child_id:Number(e.child_id),parent_id:Number(e.parent_id),wallet_address:lower(e.wallet||""),
+      mint_block:Number(e.block||0),mint_tx_hash:e.tx_hash||null,log_index:Number(e.log_index||0),
+      // Audit-Spalten bleiben erhalten, weil die bestehenden RLS-Policies damit Schreibzugriffe absichern.
+      created_by:uid,updated_by:uid,verified_at:now,updated_at:now
     }));
     for(let i=0;i<rows.length;i+=500){
-      const {error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE).upsert(rows.slice(i,i+500),{onConflict:"chain_key,contract_address,child_id"});
+      const {error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE).upsert(rows.slice(i,i+500),{onConflict:"child_id"});
       if(error){console.warn("DAO1 Tree Cache speichern",error);return false;}
     }
     const {error}=await sb.from(DAO1_OLD_TREE_STATE_TABLE).upsert({chain_key:CHAIN_KEY,contract_address:contract,last_verified_block:Number(lastBlock||0),edge_count:edges.length,verified_at:now,updated_by:uid,updated_at:now},{onConflict:"chain_key,contract_address"});

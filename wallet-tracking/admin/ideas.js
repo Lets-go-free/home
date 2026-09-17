@@ -3,10 +3,71 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260917-180200";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "17.09.2026 18:02:00 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260917-230100";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "17.09.2026 23:01:00 CEST";
 
 const ADMIN_IDEAS = [
+  {
+    status: "open",
+    category: "Performance / Skalierung",
+    priority: "high",
+    title: "PRIORITÄT NÄCHSTER SCHRITT · Browser-Cache + DATA_VERSIONS + Delta-Synchronisation",
+    desc: `STATUS: Offen – als nächster Entwicklungsschritt umsetzen, bevor weitere grössere Funktionen bzw. eine breitere User-Freigabe erfolgen.
+
+ZIEL
+Grosse, überwiegend unveränderliche Blockchain-Cache-Daten, die bereits aus Supabase geladen wurden, sollen nicht bei jedem Seitenaufruf erneut vollständig aus der Datenbank übertragen werden. Dadurch Supabase-Egress deutlich reduzieren, Datenbank/API entlasten und WalletTracking spürbar schneller starten.
+
+ARCHITEKTUR
+• Für grosse öffentliche Blockchain-Caches IndexedDB als persistenten Browser-Cache verwenden; nicht nur den normalen HTTP-/Session-Cache.
+• Beim ersten Aufruf auf einem Gerät benötigte Daten aus Supabase laden und lokal in IndexedDB speichern.
+• Bei späteren Aufrufen vorhandene lokale Daten sofort anzeigen.
+• Danach im Hintergrund nur einen kleinen Versions-/Freshness-Check gegen Supabase durchführen.
+• Nur wenn sich Daten geändert haben, ausschliesslich neue/geänderte Datensätze (Delta) laden und IndexedDB aktualisieren.
+• Bestehende inkrementelle Blockchain-Scans und Overlap-Logik weiterverwenden; keine zusätzlichen Vollscans pro User.
+
+DATA_VERSIONS
+Die bereits geplante zentrale DATA_VERSIONS Registry dafür verbindlich umsetzen. Jeder grosse Cache-Bereich erhält eine eigene Version bzw. einen geeigneten Änderungsstand. Beispiel: Browser DAO1_TREE_VERSION=17, Supabase=17 → kein Tree-Download. Supabase=18 → nur Delta seit lokalem Stand laden. Versions-/Freshness-Abfragen müssen sehr klein sein.
+
+GEEIGNETE DATEN
+• DAO1 alter globaler Tree: sehr hohe Priorität; historischer Graph ändert sich kaum, daher einmal laden + Delta.
+• TLN Team-/Graph-Cache: einmal laden + Delta/Freshness.
+• APTM historische Preise: nur benötigte Preisanker/-bereiche lokal halten; niemals blind die gesamte Historie zum Browser übertragen.
+• Öffentliche NFT-/Bot-Blockchain-Daten: vorhandene Datensätze lokal behalten und nur neue/geänderte ergänzen.
+• Staking-/Transaktionshistorien: historische abgeschlossene Daten lokal wiederverwenden und nur neue Events ergänzen, sofern fachlich passend.
+
+PROJEKTTRENNUNG
+TLN/VOW und DAO1/APTM bleiben strikt unabhängige Projekte. Gemeinsame IndexedDB-/Versions-Infrastruktur ist zentral erlaubt, aber Stores, Cache-Keys, Versionen, Delta-Endpunkte und Daten müssen eindeutige Projekt-Namespaces besitzen. Keine DAO-Daten in TLN-Caches und umgekehrt.
+
+PRIVACY / SICHERHEIT
+• Öffentliche On-Chain-Daten dürfen persistent lokal gecacht werden.
+• Private/userbezogene Daten wie Wallet-Aliase, Partnernamen oder andere geschützte Informationen nicht unverschlüsselt in einen neuen dauerhaften Browser-Cache kopieren. Bestehende Verschlüsselungs-/Privacy-Architektur bleibt maßgeblich.
+• Logout/Userwechsel darf keine privaten Daten eines anderen Users sichtbar machen.
+
+STARTVERHALTEN
+Seite öffnen → lokalen Cache sofort lesen/anzeigen → im Hintergrund DATA_VERSIONS/Freshness prüfen → nur Delta laden → lokalen Cache aktualisieren → UI bei Bedarf aktualisieren. Fehlender/defekter/veralteter lokaler Cache muss automatisch sicher aus Supabase rekonstruierbar sein.
+
+EGRESS-MESSUNG
+Vor und nach Umsetzung die übertragenen Daten für typische Abläufe messen: Login/Start, DAO1 Team alt, TLN Team, DAO1 Übersicht/NFTs und historische Preisabfragen. Ziel ist nicht nur subjektiv schnelleres Laden, sondern nachweisbar deutlich weniger Supabase-Egress pro wiederkehrendem User. Grosse Volltabellen-Downloads im normalen Seitenbetrieb gezielt identifizieren und eliminieren.
+
+UMSETZUNGSREIHENFOLGE
+1. Bestehende Supabase-Ladepfade und Egress-Hotspots inventarisieren.
+2. Zentrale IndexedDB-Cache-Schicht mit Schema-/Cache-Version und sauberer Fehler-/Reset-Strategie bauen.
+3. DATA_VERSIONS Registry zentral umsetzen.
+4. DAO1 alten Tree als ersten grossen Referenzcache migrieren und Delta-Sync testen.
+5. TLN Team-/Graph-Cache migrieren.
+6. APTM-Preisanker sowie geeignete NFT/Bot-/Staking-Caches schrittweise anbinden.
+7. DEV-Diagnose für Local hit / Supabase delta / Full rebuild / übertragene Datensätze bzw. Bytes ergänzen.
+8. Egress erneut messen und daraus realistische User-Kapazität für den aktuellen Supabase-Plan ableiten.
+
+ERFOLGSKRITERIEN
+• Wiederholter Seitenaufruf lädt grosse unveränderte globale Caches nicht erneut vollständig aus Supabase.
+• Anzeige kann aus lokalem Cache schnell starten.
+• Änderungen werden zuverlässig inkrementell nachgezogen.
+• Cache kann jederzeit kontrolliert neu aufgebaut/gelöscht werden.
+• Keine Vermischung von TLN und DAO.
+• Keine Schwächung der bestehenden Privacy-/Verschlüsselungsregeln.
+• Supabase-Egress pro wiederkehrendem User sinkt messbar deutlich.`
+  },
   {
     status: "open",
     category: "Benachrichtigungen / Alerts",
