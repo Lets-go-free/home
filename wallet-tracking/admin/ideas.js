@@ -176,7 +176,7 @@ ANZEIGE PRO PARTNER:
 
 REFERENZ: UI, Auf-/Zuklappen, Navigation und Detailidee können vom bestehenden TLN-Team-Baum übernommen werden. Die Datenquelle, Partnerbeziehungen und Membership-/NFT-Erkennung müssen jedoch DAO1-/Apertum-spezifisch sein.
 
-OFFEN VOR IMPLEMENTIERUNG: DAO1-On-Chain-Datenquelle für Parent/Referral-Beziehung und eindeutigen Membership-NFT-Contract/Typ verifizieren. Danach Cache-/Persistenzstrategie für bis zu 20 Ebenen festlegen.`
+STAND 16.09.2026: Alter DAO1-Tree: Parent-Beziehung on-chain verifiziert über DID-Event TokenMinted(to, tokenId, fid); fid ist die Parent-ID. Ein manueller On-Chain-Discovery-Scan ist im Team-Tab eingebaut und zeigt ausschließlich dekodierbare Kanten. Neuer APTMDAO-Tree: NFT- und Manager-Contract sind getrennt hinterlegt; Parent-Kanten bleiben bis zur eindeutigen Dekodierung der Manager-Event-ABI gesperrt. OFFEN: APTMDAO-Parent-Event final dekodieren; danach persistente Cache-Strategie, Membership-/Bot-Details und Referral-Reward→Partner-Zuordnung ergänzen.`
   },
   {
     status: "open",
