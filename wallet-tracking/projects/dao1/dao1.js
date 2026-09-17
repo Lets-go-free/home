@@ -4203,6 +4203,7 @@ window.DAO1Project = (() => {
             if(remoteDataVersion===localDataVersion && (!globalCount||Number(meta.rowCount||0)===globalCount)){
               const rows=await readLocalSubtree(meta);
               Object.assign(dao1OldTreeCacheDiag,{source:"IDB SUBTREE HIT",totalCacheMs:performance.now()-t0,note:`Global ${globalCount.toLocaleString("de-DE")} Rows im Cache · nur ${rows.length.toLocaleString("de-DE")} relevante Rows gelesen`});
+              renderDAO1TeamTreePanel();
               return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),browserCache:true,totalEdgeCount:globalCount};
             }
             if(remoteDataVersion>localDataVersion && meta.syncCursor){
@@ -4213,6 +4214,7 @@ window.DAO1Project = (() => {
               const tm=performance.now();await bc.merge(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,delta,{keyField:"child_id",parentField:"parent_id",meta:nextMeta});dao1OldTreeCacheDiag.idbMs+=performance.now()-tm;
               const rows=await readLocalSubtree(nextMeta);
               Object.assign(dao1OldTreeCacheDiag,{source:"IDB SUBTREE + DELTA",totalCacheMs:performance.now()-t0,note:`Nur ${delta.length} Delta-Row(s) aus DB · ${rows.length.toLocaleString("de-DE")} relevante Rows lokal gelesen`});
+              renderDAO1TeamTreePanel();
               return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),browserCache:true,deltaRows:delta.length,totalEdgeCount:globalCount};
             }
           }
