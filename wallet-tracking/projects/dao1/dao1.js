@@ -4036,6 +4036,30 @@ window.DAO1Project = (() => {
   let dao1TeamTreeMode="legacy";
   let dao1TeamRootFilter="__all";
   let dao1OwnedDidRoots=[];
+  let dao1TeamAliases={};
+  let dao1TeamAliasesLoaded=false;
+  const dao1TeamCollapsed=new Set();
+
+  function dao1TeamAliasKey(did){return `dao1:did:${String(did||"").trim()}`;}
+  function dao1TeamAlias(did){return String(dao1TeamAliases[dao1TeamAliasKey(did)]||"").trim();}
+  async function loadDAO1TeamAliases(){
+    dao1TeamAliases={};dao1TeamAliasesLoaded=true;
+    try{
+      const {data,error}=await sb.functions.invoke("wallet-private",{body:{action:"team_alias_list"}});
+      if(error)throw error;if(!data?.ok)throw new Error(data?.error||"team_alias_list fehlgeschlagen");
+      for(const [k,v] of Object.entries(data?.aliases||{})){if(k.startsWith("dao1:did:")&&String(v||"").trim())dao1TeamAliases[k]=String(v).trim();}
+    }catch(e){console.warn("DAO1 Team-Namen",e);}
+    return dao1TeamAliases;
+  }
+  async function saveDAO1TeamAlias(did,value){
+    const reference=dao1TeamAliasKey(did),alias=String(value||"").trim();
+    try{
+      const {data,error}=await sb.functions.invoke("wallet-private",{body:{action:"team_alias_save",reference,alias}});
+      if(error)throw error;if(!data?.ok)throw new Error(data?.error||"team_alias_save fehlgeschlagen");
+      if(alias)dao1TeamAliases[reference]=alias;else delete dao1TeamAliases[reference];
+      renderDAO1TeamTreePanel();return true;
+    }catch(e){console.warn("DAO1 Team-Name speichern",e);alert(`Name konnte nicht gespeichert werden: ${e?.message||e}`);return false;}
+  }
   const dao1TeamDiscovery={
     legacy:{running:false,status:"Noch nicht geladen",edges:[],lastBlock:0,error:""},
     aptmdao:{running:false,status:"Noch nicht geladen",edges:[],lastBlock:0,error:""}
@@ -4184,12 +4208,58 @@ window.DAO1Project = (() => {
     return `<label><span class="field-label">Eigene DID / Root</span><select onchange="DAO1Project.setTeamRootFilter(this.value)">${opts}</select></label>`;
   }
 
+  function dao1TeamNodeHtml(node,childrenMap,level=0,rootDid=0,seen=new Set()){
+    const did=Number(node.child_id||node.did||rootDid), wallet=String(node.wallet||"");
+    if(!did||seen.has(did))return "";
+    const nextSeen=new Set(seen);nextSeen.add(did);
+    const kids=(childrenMap.get(did)||[]).slice().sort((a,b)=>a.child_id-b.child_id);
+    const collapsed=dao1TeamCollapsed.has(did),alias=dao1TeamAlias(did);
+    const root=dao1OwnedDidRoots.find(r=>Number(r.did)===did);
+    const displayName=alias||root?.wallet?.label||"";
+    return `<li class="wt-team-li"><div class="wt-team-node ${level===0?"root":""} ${root?"own-wallet":""}">
+      <div class="wt-team-node-title"><span class="wt-team-depth-badge">${level===0?"Leader":`Linie ${level}`}</span><span>DID #${did}</span>${root?'<span class="wt-team-own-badge">MEINE DID</span>':""}</div>
+      ${displayName?`<div class="wt-team-node-name"><b>${escapeHtml(displayName)}</b></div>`:""}
+      <div class="wt-team-wallet-row"><div class="wt-team-node-meta">${escapeHtml(teamShortAddress(wallet||root?.wallet_address||"–"))}</div></div>
+      ${level?`<div class="wt-team-node-parent">Upline: DID #${Number(node.parent_id||0)}</div>`:""}
+      <div class="wt-team-alias-row"><span class="wt-team-alias-label">Name</span><input class="wt-team-alias-input" data-dao1-team-alias="${did}" value="${escapeHtml(alias)}" placeholder="Name / Alias"></div>
+      <div class="wt-team-node-actions">${kids.length?`<button type="button" class="wt-team-toggle-btn" data-dao1-team-toggle="${did}">${collapsed?`+ ${kids.length} Partner anzeigen`:`− ${kids.length} Partner`}</button>`:""}<button type="button" class="wt-team-details-btn" data-dao1-team-details="${did}">Details</button></div>
+    </div>${kids.length&&!collapsed&&level<DAO1_TEAM_MAX_LEVELS?`<ul class="wt-team-branch-children">${kids.map(k=>dao1TeamNodeHtml(k,childrenMap,level+1,rootDid,nextSeen)).join("")}</ul>`:""}</li>`;
+  }
+
+  function dao1TeamForestHtml(st){
+    const children=new Map();for(const e of st.edges){if(!children.has(Number(e.parent_id)))children.set(Number(e.parent_id),[]);children.get(Number(e.parent_id)).push(e);}
+    const selected=selectedDAO1DidRoots();if(!selected.length)return "";
+    // Bei „Alle DIDs“ eigene DIDs, die bereits unter einer anderen eigenen DID liegen,
+    // nicht nochmals als zweiter Baum duplizieren.
+    const ownSet=new Set(selected.map(r=>Number(r.did)));
+    const roots=selected.filter(r=>{const edge=st.edges.find(e=>Number(e.child_id)===Number(r.did));return !(edge&&ownSet.has(Number(edge.parent_id)));});
+    const blocks=roots.map(r=>{
+      const synthetic={child_id:r.did,parent_id:0,wallet:r.wallet_address,did:r.did};
+      const direct=(children.get(Number(r.did))||[]).length;
+      return `<section class="wt-team-tree-section"><div class="wt-team-tree-heading">DID #${r.did}${dao1TeamAlias(r.did)?` · ${escapeHtml(dao1TeamAlias(r.did))}`:""} <span class="meta">· ${direct} direkte Partner</span></div><div class="wt-team-tree"><ul class="wt-team-hierarchy">${dao1TeamNodeHtml(synthetic,children,0,r.did)}</ul></div></section>`;
+    }).join("");
+    return `<div class="custom-token-card wt-team-tree-card" style="margin-top:12px"><div class="wt-team-tree-info"><b>Darstellung:</b> Leader oben, Team nach unten. Verbindungen stammen ausschließlich aus den verifizierten DID→fid-Mint-Kanten. Maximal ${DAO1_TEAM_MAX_LEVELS} Ebenen.</div>${blocks||'<div class="empty">Für die gewählte DID wurden keine Downline-Kanten gefunden.</div>'}</div>`;
+  }
+
+  function dao1TeamDetailsHtml(did,st){
+    did=Number(did);const edge=st.edges.find(e=>Number(e.child_id)===did);const root=dao1OwnedDidRoots.find(r=>Number(r.did)===did);
+    const wallet=edge?.wallet||root?.wallet_address||"";const kids=st.edges.filter(e=>Number(e.parent_id)===did).length;
+    return `<div class="wt-team-details-modal open" id="dao1TeamDetailsModal"><div class="wt-team-details-dialog"><div class="wt-team-details-head"><div><strong>DID #${did}${dao1TeamAlias(did)?` · ${escapeHtml(dao1TeamAlias(did))}`:""}</strong><div class="meta">${escapeHtml(wallet||"Wallet nicht ermittelt")}</div></div><button type="button" class="wt-team-details-close" onclick="document.getElementById('dao1TeamDetailsModal')?.remove()">×</button></div><div class="wt-team-details-body"><div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Ebene / Parent</span><strong>${edge?`DID #${edge.parent_id}`:"Root"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Direkte Partner</span><strong>${kids}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Membership</span><strong>nicht ermittelt</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">NFTs / Bots</span><strong>noch nicht geladen</strong></div></div>${edge?`<div class="wt-team-tree-info" style="margin-top:12px"><b>Mint-Nachweis:</b> Block ${Number(edge.block||0).toLocaleString("de-DE")} · ${edge.tx_hash?`<a href="${EXPLORER}/tx/${edge.tx_hash}" target="_blank" rel="noopener">Transaktion öffnen</a>`:"–"}</div>`:""}<div class="note" style="margin-top:12px">Membership, fremde NFT-/Bot-Bestände, Kaufdatum/-preis und Referral Rewards werden nur ergänzt, wenn sie für dieses Partner-Wallet belastbar on-chain ermittelt wurden; unbekannte Werte werden nicht geschätzt.</div></div></div></div>`;
+  }
+
+  function bindDAO1TeamTreeControls(st){
+    const host=document.getElementById("dao1TeamTreePanel");if(!host)return;
+    host.querySelectorAll("[data-dao1-team-alias]").forEach(inp=>inp.addEventListener("change",()=>saveDAO1TeamAlias(inp.dataset.dao1TeamAlias,inp.value)));
+    host.querySelectorAll("[data-dao1-team-toggle]").forEach(btn=>btn.addEventListener("click",()=>{const did=Number(btn.dataset.dao1TeamToggle);dao1TeamCollapsed.has(did)?dao1TeamCollapsed.delete(did):dao1TeamCollapsed.add(did);renderDAO1TeamTreePanel();}));
+    host.querySelectorAll("[data-dao1-team-details]").forEach(btn=>btn.addEventListener("click",()=>{document.getElementById("dao1TeamDetailsModal")?.remove();document.body.insertAdjacentHTML("beforeend",dao1TeamDetailsHtml(btn.dataset.dao1TeamDetails,st));}));
+  }
+
   function teamDiscoveryTableHtml(st,isOld){
     if(!isOld)return `<div class="status info" style="margin-top:12px"><strong>APTMDAO Discovery vorbereitet</strong><div class="note" style="margin-top:4px">NFT <code>${APTMDAO_NFT_CONTRACT}</code> und Manager <code>${APTMDAO_MANAGER_CONTRACT}</code> sind getrennt hinterlegt. Die Parent-ID wird erst produktiv verwendet, sobald die genaue Event-ABI des neuen Managers eindeutig dekodiert ist; rohe zweite IDs werden nicht als Partnerbeziehung geraten.</div></div>`;
     if(!st.edges.length)return "";
-    const rows=legacyTreeRows(st.edges).slice(0,500);
     if(!dao1OwnedDidRoots.length)return `<div class="custom-token-card" style="margin-top:12px"><div class="note">Keine eigene DID-Root aus dem aktuellen DAO-Wallet-/NFT-Bestand verfügbar.</div></div>`;
-    return `<div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden;margin-top:12px"><div class="chain-table-wrap project-data-table" style="margin:0;max-height:620px;overflow:auto"><table><thead><tr><th>Root</th><th>Ebene</th><th>DID</th><th>Parent / fid</th><th>Wallet</th><th>Block</th><th>Mint-Tx</th></tr></thead><tbody>${rows.map(r=>`<tr><td><strong>#${r.root_did}</strong></td><td>${r.level}</td><td><strong>#${r.child_id}</strong></td><td>#${r.parent_id}</td><td><code>${teamShortAddress(r.wallet)}</code></td><td>${Number(r.block||0).toLocaleString("de-DE")}</td><td>${r.tx_hash?`<a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${r.tx_hash.slice(0,12)}…</a>`:"–"}</td></tr>`).join("")}</tbody></table></div>${st.edges.length>rows.length?`<div class="note" style="padding:10px 14px">Vorschau auf ${rows.length.toLocaleString("de-DE")} Zeilen; ${st.edges.length.toLocaleString("de-DE")} Kanten wurden verifiziert.</div>`:""}</div>`;
+    const rows=legacyTreeRows(st.edges).slice(0,500);
+    return `${dao1TeamForestHtml(st)}<details class="custom-token-card debug-frame" style="margin-top:12px"><summary style="cursor:pointer;font-weight:800">DEV / Diagnose · verifizierte DID→fid-Kanten</summary><div class="chain-table-wrap project-data-table" style="margin-top:10px;max-height:620px;overflow:auto"><table><thead><tr><th>Root</th><th>Ebene</th><th>DID</th><th>Parent / fid</th><th>Wallet</th><th>Block</th><th>Mint-Tx</th></tr></thead><tbody>${rows.map(r=>`<tr><td><strong>#${r.root_did}</strong></td><td>${r.level}</td><td><strong>#${r.child_id}</strong></td><td>#${r.parent_id}</td><td><code>${teamShortAddress(r.wallet)}</code></td><td>${Number(r.block||0).toLocaleString("de-DE")}</td><td>${r.tx_hash?`<a href="${EXPLORER}/tx/${r.tx_hash}" target="_blank" rel="noopener">${r.tx_hash.slice(0,12)}…</a>`:"–"}</td></tr>`).join("")}</tbody></table></div></details>`;
   }
 
   function setDAO1TeamTreeMode(mode,button){
@@ -4216,6 +4286,7 @@ window.DAO1Project = (() => {
     try{
       // Frisch aus Supabase laden, damit die Team-Ansicht nicht von der Reihenfolge
       // des allgemeinen DAO1-Initial-Ladevorgangs abhängt.
+      if(!dao1TeamAliasesLoaded) await loadDAO1TeamAliases();
       await loadOwnershipCache();
       await loadDAO1OwnedDidRoots(false);
       const rootArea=document.getElementById("dao1TeamRootArea");
@@ -4254,6 +4325,8 @@ window.DAO1Project = (() => {
       </div>
       <div class="note" style="margin-top:12px"><strong>Details je Partner:</strong> DID/Wallet, Ebene, Membership, NFTs/Bots, Kaufdatum/-preis und Referral Rewards werden schrittweise ergänzt; unbekannte Werte werden nicht geschätzt.</div>
     </div>${teamDiscoveryTableHtml(st,isOld)}`;
+    if(isOld && st.edges.length) bindDAO1TeamTreeControls(st);
+    window.applyDebugModeVisibility?.();
   }
 
   async function discoverDAO1TeamTree(){
@@ -5270,7 +5343,7 @@ window.DAO1Project = (() => {
     updateVisibility();
   }
 
-  return { switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
+  return { switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,
