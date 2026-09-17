@@ -35,3 +35,7 @@ else renderDAO1Help();
 // einer Zahlung derselben Transaktion. Nicht belegbare Werte bleiben "nicht ermittelt".
 // Partnernamen verwenden weiterhin wallet-private; bei einem fehlerhaften Einzel-Save
 // wird sicher auf list + replace_all des verschlüsselten Alias-Bestands zurückgefallen.
+
+// Phase 4.77: DAO1-Teamdetails zeigen Kaufpreis-Totals je Bot-Typ/Token (nur verifizierte Beträge),
+// Bot-Anzahlen in Baumkacheln, Wallet-Copy analog TLN und ESC/Backdrop zum Schliessen des Detaildialogs.
+// Bot-Status: aktuelle Bots werden als "laufend" angezeigt; "abgeschlossen" erst nach verifiziertem Target-/Contract-Nachweis.

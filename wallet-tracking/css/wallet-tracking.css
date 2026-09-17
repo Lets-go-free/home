@@ -1330,3 +1330,12 @@ body.data-job-active .context-nav .tab-btn[data-tab]{cursor:wait!important;opaci
 
 /* DAO1/TLN gemeinsame Team-Tree Eingaben: sichtbarer Persistenzfehler */
 .wt-team-alias-input.save-error{outline:2px solid var(--danger,#c62828);outline-offset:1px}
+
+/* Phase 4.77 · gemeinsame Team-Tree-Ergaenzungen */
+.wt-team-copy-btn{flex:none;width:24px!important;height:24px!important;min-height:0!important;padding:0!important;border:1px solid var(--accent-border)!important;border-radius:7px!important;background:var(--card2)!important;color:var(--muted)!important;font-size:13px!important;line-height:1!important;cursor:pointer}
+.wt-team-node-bots{min-height:14px;margin-top:4px;font-size:10px;color:var(--muted)}
+.wt-team-node-bots:empty{display:none}
+.wt-team-purchase-totals{margin-top:10px;border:1px solid var(--border);border-radius:10px;background:var(--card2);overflow:hidden}
+.wt-team-purchase-totals-title{padding:9px 12px;font-size:12px;font-weight:800;border-bottom:1px solid var(--border)}
+.wt-team-purchase-total-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:8px 12px;font-size:12px}
+.wt-team-purchase-total-row+.wt-team-purchase-total-row{border-top:1px solid var(--border)}

@@ -4395,9 +4395,39 @@ window.DAO1Project = (() => {
     if(!memberships.length)return "keine bekannte Membership";
     return memberships.some(n=>n.current)?"aktiv":"historisch / nicht aktiv";
   }
+  function dao1TeamIsBot(n){return n?.subtype==="Mining-Bot"||n?.subtype==="Trading-Bot";}
+  function dao1TeamBotStatus(n){
+    if(!dao1TeamIsBot(n))return n?.current?"aktuell":"historisch";
+    // Ein abgeschlossener Bot wird erst nach eindeutigem Target-/Contract-Nachweis gesetzt.
+    return n?.current?"laufend":"Status nicht ermittelt";
+  }
+  function dao1TeamPurchaseTotalsHtml(nfts){
+    const groups=new Map();
+    for(const n of nfts||[]){
+      const p=n?.purchase;if(!dao1TeamIsBot(n)||!(p?.amount>0))continue;
+      const key=`${n.subtype}|${String(p.symbol||"TOKEN")}|${lower(p.contract||"")}`;
+      const g=groups.get(key)||{subtype:n.subtype,symbol:String(p.symbol||"TOKEN"),contract:p.contract||"",count:0,amount:0};
+      g.count++;g.amount+=Number(p.amount||0);groups.set(key,g);
+    }
+    if(!groups.size)return "";
+    const rows=[...groups.values()].sort((a,b)=>a.subtype.localeCompare(b.subtype)||a.symbol.localeCompare(b.symbol));
+    return `<div class="wt-team-purchase-totals"><div class="wt-team-purchase-totals-title">Total Kaufpreis</div>${rows.map(g=>`<div class="wt-team-purchase-total-row"><span><strong>${escapeHtml(g.subtype)}</strong> · ${g.count} ${g.count===1?"Stück":"Stück"}</span><strong>${tokenAmount(g.amount,{address:g.contract,symbol:g.symbol})} ${escapeHtml(g.symbol)}</strong></div>`).join("")}</div>`;
+  }
   function dao1TeamNftTableHtml(nfts){
     if(!nfts.length)return '<div class="empty">Für dieses Wallet sind im vorhandenen Ownership-Bestand keine DAO1-NFTs/Bots gespeichert.</div>';
-    return `<div class="chain-table-wrap project-data-table"><table><thead><tr><th>Typ</th><th>NFT</th><th>Name</th><th>Erworben am</th><th>Kaufpreis</th><th>Status</th></tr></thead><tbody>${nfts.map(n=>`<tr><td>${escapeHtml(n.subtype)}</td><td>#${escapeHtml(n.id)}</td><td><strong>${escapeHtml(n.name)}</strong></td><td>${n.owned_from_at?dao1TeamDate(n.owned_from_at):"nicht ermittelt"}</td><td>${dao1TeamPurchaseText(n)}</td><td>${n.current?"aktuell":"historisch"}</td></tr>`).join("")}</tbody></table></div>`;
+    return `<div class="chain-table-wrap project-data-table"><table><thead><tr><th>Typ</th><th>NFT</th><th>Name</th><th>Erworben am</th><th>Kaufpreis</th><th>Status</th></tr></thead><tbody>${nfts.map(n=>`<tr><td>${escapeHtml(n.subtype)}</td><td>#${escapeHtml(n.id)}</td><td><strong>${escapeHtml(n.name)}</strong></td><td>${n.owned_from_at?dao1TeamDate(n.owned_from_at):"nicht ermittelt"}</td><td>${dao1TeamPurchaseText(n)}</td><td>${escapeHtml(dao1TeamBotStatus(n))}</td></tr>`).join("")}</tbody></table></div>${dao1TeamPurchaseTotalsHtml(nfts)}`;
+  }
+  function dao1TeamBotSummaryHtml(wallet){
+    const a=lower(wallet||"");if(!a)return "";
+    const cached=dao1TeamPartnerDetailsCache.get(a);
+    const nfts=cached?.nfts?.length?cached.nfts:dao1TeamKnownNfts(a);
+    const counts=new Map();for(const n of nfts||[]){if(!dao1TeamIsBot(n)||!n.current)continue;counts.set(n.subtype,(counts.get(n.subtype)||0)+1);}
+    if(!counts.size)return `<div class="wt-team-node-bots" data-dao1-bot-summary="${a}"></div>`;
+    return `<div class="wt-team-node-bots" data-dao1-bot-summary="${a}">${[...counts.entries()].map(([t,c])=>`${escapeHtml(t)}: <strong>${c}</strong>`).join(" · ")}</div>`;
+  }
+  function dao1TeamCopyButtonHtml(wallet){
+    const a=String(wallet||"");if(!/^0x[0-9a-fA-F]{40}$/.test(a))return "";
+    return `<button type="button" class="team-copy-btn wt-team-copy-btn" data-dao1-copy-wallet="${escapeHtml(a)}" title="Wallet-Adresse kopieren" aria-label="Wallet-Adresse kopieren">⧉</button>`;
   }
   function dao1TeamNodeHtml(node,childrenMap,level=0,rootDid=0,seen=new Set()){
     const did=Number(node.child_id||node.did||rootDid), wallet=String(node.wallet||"");
@@ -4410,7 +4440,8 @@ window.DAO1Project = (() => {
     return `<li class="wt-team-li"><div class="wt-team-node ${level===0?"root":""} ${root?"own-wallet":""}">
       <div class="wt-team-node-title"><span class="wt-team-depth-badge">${level===0?"Leader":`Linie ${level}`}</span><span>DID #${did}</span>${root?'<span class="wt-team-own-badge">MEINE DID</span>':""}</div>
       ${displayName?`<div class="wt-team-node-name"><b>${escapeHtml(displayName)}</b></div>`:""}
-      <div class="wt-team-wallet-row"><div class="wt-team-node-meta">${escapeHtml(teamShortAddress(wallet||root?.wallet_address||"–"))}</div></div>
+      <div class="wt-team-wallet-row"><div class="wt-team-node-meta">${escapeHtml(teamShortAddress(wallet||root?.wallet_address||"–"))}</div>${dao1TeamCopyButtonHtml(wallet||root?.wallet_address||"")}</div>
+      ${dao1TeamBotSummaryHtml(wallet||root?.wallet_address||"")}
       ${(()=>{const mint=dao1TeamMintEdge(did);return mint?.block?`<div class="wt-team-node-mint" data-dao1-mint-block="${Number(mint.block)}">DID Mint: wird geladen …</div>`:`<div class="wt-team-node-mint">DID Mint: nicht ermittelt</div>`;})()}
       ${level?`<div class="wt-team-node-parent">Upline: DID #${Number(node.parent_id||0)}</div>`:""}
       <div class="wt-team-alias-row"><span class="wt-team-alias-label">Name</span><input class="wt-team-alias-input" data-dao1-team-alias="${did}" value="${escapeHtml(alias)}" placeholder="Name / Alias"></div>
@@ -4443,10 +4474,18 @@ window.DAO1Project = (() => {
   function bindDAO1TeamTreeControls(st){
     const host=document.getElementById("dao1TeamTreePanel");if(!host)return;
     host.querySelectorAll("[data-dao1-team-alias]").forEach(inp=>inp.addEventListener("change",()=>saveDAO1TeamAlias(inp.dataset.dao1TeamAlias,inp.value,inp)));
+    host.querySelectorAll("[data-dao1-copy-wallet]").forEach(btn=>btn.addEventListener("click",async()=>{
+      const wallet=btn.dataset.dao1CopyWallet||"";try{await navigator.clipboard.writeText(wallet);}catch(_){const ta=document.createElement("textarea");ta.value=wallet;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();}
+      const old=btn.title;btn.title="Kopiert";btn.setAttribute("aria-label","Kopiert");setTimeout(()=>{btn.title=old;btn.setAttribute("aria-label","Wallet-Adresse kopieren");},1200);
+    }));
     host.querySelectorAll("[data-dao1-team-toggle]").forEach(btn=>btn.addEventListener("click",()=>{const did=Number(btn.dataset.dao1TeamToggle);dao1TeamCollapsed.has(did)?dao1TeamCollapsed.delete(did):dao1TeamCollapsed.add(did);renderDAO1TeamTreePanel();}));
     host.querySelectorAll("[data-dao1-team-details]").forEach(btn=>btn.addEventListener("click",async()=>{
       const did=Number(btn.dataset.dao1TeamDetails);document.getElementById("dao1TeamDetailsModal")?.remove();document.body.insertAdjacentHTML("beforeend",dao1TeamDetailsHtml(did,st));
       const modal=document.getElementById("dao1TeamDetailsModal");hydrateDAO1TeamMintDates(modal,st);
+      if(modal){
+        modal.addEventListener("click",e=>{if(e.target===modal)modal.remove();});
+        const esc=e=>{if(e.key==="Escape"&&document.getElementById("dao1TeamDetailsModal")){document.getElementById("dao1TeamDetailsModal")?.remove();document.removeEventListener("keydown",esc);}};document.addEventListener("keydown",esc);
+      }
       const edge=dao1TeamMintEdge(did,st),root=dao1OwnedDidRoots.find(r=>Number(r.did)===did),wallet=edge?.wallet||root?.wallet_address||"";
       const area=modal?.querySelector("[data-dao1-partner-assets]");if(!area||!wallet)return;
       area.innerHTML='<div class="status info"><strong>NFTs / Bots werden on-chain geladen …</strong></div>';
@@ -4455,6 +4494,8 @@ window.DAO1Project = (() => {
         if(!nfts.length||!root){const live=await dao1TeamFetchPartnerNfts(wallet);const by=new Map([...nfts,...live].map(n=>[`${lower(n.contract)}|${n.id}`,n]));nfts=[...by.values()];}
         for(const n of nfts){const acq=await dao1TeamAcquisitionForNft(n,wallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;}
         area.innerHTML=dao1TeamNftTableHtml(nfts);
+        const counts=new Map();for(const n of nfts){if(dao1TeamIsBot(n)&&n.current)counts.set(n.subtype,(counts.get(n.subtype)||0)+1);}
+        document.querySelectorAll(`[data-dao1-bot-summary="${lower(wallet)}"]`).forEach(el=>{el.innerHTML=[...counts.entries()].map(([t,c])=>`${escapeHtml(t)}: <strong>${c}</strong>`).join(" · ");});
         const membershipEl=modal?.querySelector("[data-dao1-membership]");if(membershipEl)membershipEl.textContent=dao1TeamMembershipLabel(nfts);
       }catch(e){console.warn("DAO1 Team Partnerdetails",e);area.innerHTML=`<div class="status warn"><strong>Partner-NFTs konnten nicht geladen werden.</strong><div class="note">${escapeHtml(e?.message||e)}</div></div>`;}
     }));

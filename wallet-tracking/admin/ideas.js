@@ -7,6 +7,65 @@ const ADMIN_IDEAS_MODULE_BUILD = "20260915-173339";
 const ADMIN_IDEAS_MODULE_TIMESTAMP = "15.09.2026 17:33:39 CEST";
 
 const ADMIN_IDEAS = [
+  {
+    status: "open",
+    category: "Benachrichtigungen / Alerts",
+    priority: "high",
+    title: "Benachrichtigungen / Alerts / Telegram",
+    desc: `STATUS: Idee / Konzept – noch nicht umgesetzt.
+
+ZIEL
+WalletTracking soll wichtige Ereignisse automatisch im Hintergrund erkennen und den jeweiligen User benachrichtigen. Die Event-Erkennung wird unabhängig vom Benachrichtigungskanal aufgebaut. Als erster Kanal ist Telegram über einen eigenen WalletTracking-Bot vorgesehen; später können Web-Push oder E-Mail ergänzt werden.
+
+MÖGLICHE EVENTS
+TLN / VOW:
+• Neuer Partner wurde im eigenen Team registriert.
+• Ein Partner eröffnet ein neues Staking.
+• Eigenes Staking läuft in X Tagen aus.
+• Später weitere relevante Loan-/Staking-/Team-Events.
+
+DAO1 / APTM:
+• Neuer Partner wurde im eigenen Team registriert.
+• Partner kauft einen neuen Bot/Miner.
+• Partner eröffnet ein neues Staking.
+• Später weitere relevante NFT-/Team-Events.
+
+KURSE
+• User kann pro unterstütztem Token eigene Kursalarme definieren: Kurs steigt über X / fällt unter X.
+• Später optional prozentuale Kursbewegungen innerhalb eines Zeitraums.
+• Voraussetzung: zentrale aktuelle und historische Kursfunktion für die unterstützten Tokens.
+
+TELEGRAM-VERKNÜPFUNG
+1. User klickt „Telegram verbinden“.
+2. Backend erzeugt einen kurzlebigen einmaligen Verbindungstoken.
+3. Telegram-Bot wird über einen Deep-Link mit diesem Token geöffnet.
+4. User startet den Bot.
+5. Telegram-Chat-ID wird serverseitig dem WalletTracking-User zugeordnet.
+6. Verbindungstoken wird anschließend ungültig.
+7. Verbindung kann jederzeit getrennt werden.
+Keine manuelle Eingabe eines Telegram-Usernamens.
+
+ARCHITEKTUR
+Projektübergreifendes zentrales System, nicht separat in TLN/VOW und DAO1/APTM:
+Blockchain-/Kursdaten → Background Jobs → Event Detection → User Notification Rules → Notification Queue/Log → Telegram bzw. weitere Kanäle.
+Bestehende Discovery-Logik und globale Caches wiederverwenden; keine vollständigen Blockchain-Scans separat pro User. Beispiele: TLN Team Discovery → NEW_PARTNER; Staking Discovery → NEW_STAKING; DAO NFT Discovery → NEW_BOT; gespeichertes Staking-Enddatum → STAKING_EXPIRING; zentrale Kursfunktion → PRICE_ABOVE / PRICE_BELOW.
+
+TECHNISCHE REGELN
+• Event-Erkennung und Benachrichtigungsversand strikt trennen.
+• Blockchain-Events möglichst einmal global erkennen und danach betroffenen Usern zuordnen.
+• Bestehende Discovery-/Cache-Daten wiederverwenden.
+• Events eindeutig identifizieren, damit Overlap-Scans keine Doppelmeldungen erzeugen.
+• Notification-Log führen: erkannt, versendet, fehlgeschlagen etc.
+• User kann Events projektweise bzw. einzeln aktivieren/deaktivieren.
+• Private User-/Telegram-Zuordnungen gemäß bestehendem Privacy-/Verschlüsselungskonzept behandeln.
+• Staking-Ablaufwarnungen verwenden bereits ermittelte/on-chain bestätigte Laufzeit-/Enddaten und lösen keine unnötigen neuen Blockchain-Scans aus.
+
+UI
+Neuer zentraler Bereich „Benachrichtigungen“ mit Telegram verbunden/nicht verbunden/trennen, TLN/VOW- und DAO1/APTM-Regeln, Vorlauf fürs Staking-Ende (z. B. 30/14/7/1 Tage), Kursalarme pro Token und Benachrichtigungshistorie.
+
+UMSETZUNG
+Vor Implementierung zuerst grafisches Mockup gemäß WalletTracking-UI-Regel. Danach schrittweise: (1) Datenmodell Events/Rules/Log, (2) Telegram-Bot + sichere Account-Verknüpfung, (3) UI-Einstellungen, (4) TLN-/DAO-Team-Events, (5) Staking-Events/Ablaufwarnungen, (6) Bot-/Miner-Käufe, (7) zentrale Kursfunktion/Kursalarme, (8) interne Benachrichtigungshistorie.`
+  },
   { status: "open", category: "UI / Navigation", title: "Navigation während initialem Datenladen entkoppeln", desc: "TODO 17.09.2026: Navigation ist während/kurz nach dem initialen Datenladen zeitlich noch nicht sauber entkoppelt. Ein im laufenden Load gewählter Bereich darf nach Abschluss eines Hintergrundjobs nicht durch einen älteren Render-/Restore-Schritt überschrieben werden. Navigation soll benutzbar bleiben; Datenjobs aktualisieren nur ihren Datenbereich im Hintergrund." },
   { status: "done", category: "DAO1", title: "DAO1 alter Team-Baum hierarchisch darstellen", desc: "Phase 4.73: Der verifizierte Legacy-DID→fid-Graph wird analog zum TLN/VOW-Team als hierarchischer Baum bis 20 Ebenen dargestellt. Eigene DIDs werden als Roots erkannt; eine eigene DID, die unter einer anderen eigenen DID liegt, wird bei Alle DIDs nicht doppelt als separater Root gerendert. Pro DID gibt es ein verschlüsselt gespeichertes Name/Alias-Feld. Zweige sind einklappbar; Mint-Nachweis in Details; technische Kantentabelle nur DEV/Diagnose." },
   { status: "done", title: "Projekt-Caches nur noch bewusst aktualisieren", desc: `Phase 2am: Die Liquidity-Pool-Tabs von DAO1 und TLN/VOW sind beim Öffnen vollständig cache-only.
@@ -509,3 +568,7 @@ window.adminIdeasFilterState = adminIdeasFilterState;
 // TODO Ausbau: historischen (nicht mehr aktuellen) NFT-Bestand fremder Partner global
 // und inkrementell cachen, sobald dafür ein verifizierter serverseitiger Public-Chain-Cache
 // bereitsteht. Keine fremden Wallet-Adressen in user-private Klartexttabellen speichern.
+
+// Phase 4.77 / DAO1 Bot-Lifecycle TODO:
+// Target/Fortschritt der Mining-/Trading-Bots on-chain eindeutig dekodieren. Status "abgeschlossen" erst setzen,
+// wenn Target und Zielerreichung aus Contract-State/Event beweisbar sind; keine Ableitung nur aus Ownership/Transfer.
