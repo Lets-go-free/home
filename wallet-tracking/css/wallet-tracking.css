@@ -1339,3 +1339,13 @@ body.data-job-active .context-nav .tab-btn[data-tab]{cursor:wait!important;opaci
 .wt-team-purchase-totals-title{padding:9px 12px;font-size:12px;font-weight:800;border-bottom:1px solid var(--border)}
 .wt-team-purchase-total-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:8px 12px;font-size:12px}
 .wt-team-purchase-total-row+.wt-team-purchase-total-row{border-top:1px solid var(--border)}
+
+/* Phase 4.78 · Initial-/Daten-Load: klar sichtbarer Lock + Aktivitätsbalken */
+body.data-job-active .app-sidebar{position:relative}
+body.data-job-active .main-nav{filter:saturate(.55)}
+.global-data-job-notice{border-radius:16px;min-width:min(460px,calc(100vw - 28px));align-items:flex-start}
+.global-data-job-copy{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.global-data-job-sub{font-size:.76rem;color:var(--muted)}
+.global-data-job-bar{display:block;position:relative;height:4px;margin-top:5px;overflow:hidden;border-radius:999px;background:var(--border)}
+.global-data-job-bar i{position:absolute;inset:0 auto 0 -35%;width:35%;border-radius:999px;background:var(--accent);animation:globalDataJobBar 1.15s ease-in-out infinite}
+@keyframes globalDataJobBar{0%{left:-35%}55%{left:55%}100%{left:105%}}

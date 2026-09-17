@@ -4335,17 +4335,25 @@ window.DAO1Project = (() => {
     for(const o of rows){const key=`${lower(o.nft_contract)}|${o.nft_id}`;if(seen.has(key))continue;seen.add(key);const cls=classificationFor(o.nft_contract,o.nft_id);out.push({id:String(o.nft_id),contract:lower(o.nft_contract),name:cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`,subtype:cls?.subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null,acquisition_tx_hash:o.acquisition_tx_hash||null,purchase:null});}
     return out;
   }
-  function dao1TeamProjectNftSubtype(contract,id,name=""){
+  function dao1TeamProjectNftSubtype(contract,id,name="",collection=""){
     contract=lower(contract);const cls=classificationFor(contract,id);
     if(cls?.subtype)return cls.subtype;
+    const label=`${name||""} ${collection||""}`.toLowerCase();
+    // Partner verwenden dieselbe fachliche Typisierung wie eigene Wallets. Falls eine
+    // konkrete project_nfts-Zeile fehlt, dürfen explizite Collection-/NFT-Metadaten den
+    // Typ liefern ("Trading Bot", "MinerBot" usw.); aus einer bloßen ID wird nichts geraten.
+    if(/trading[ _-]*bot|trade[ _-]*bot/.test(label))return "Trading-Bot";
+    if(/miner[ _-]*bot|mining[ _-]*bot|apertum miner/.test(label))return "Mining-Bot";
+    if(/membership/.test(label))return "DAO / Membership";
+    if(/\bdid\b/.test(label))return "DID";
     if(contract===lower(DEFAULT_MINER_NFT_CONTRACT))return "Mining-Bot";
     if(contract===lower(DAO1_OLD_DID_CONTRACT))return "DID";
     if(contract===lower(APTMDAO_NFT_CONTRACT))return "APTMDAO NFT";
     return "nicht klassifiziert";
   }
-  function dao1TeamIsRelevantNft(contract,id){
+  function dao1TeamIsRelevantNft(contract,id,name="",collection=""){
     contract=lower(contract);
-    return contract===lower(DEFAULT_MINER_NFT_CONTRACT)||contract===lower(DAO1_OLD_DID_CONTRACT)||contract===lower(APTMDAO_NFT_CONTRACT)||!!classificationFor(contract,id);
+    return contract===lower(DEFAULT_MINER_NFT_CONTRACT)||contract===lower(DAO1_OLD_DID_CONTRACT)||contract===lower(APTMDAO_NFT_CONTRACT)||!!classificationFor(contract,id)||dao1TeamProjectNftSubtype(contract,id,name,collection)!=="nicht klassifiziert";
   }
   async function dao1TeamFetchPartnerNfts(wallet){
     const a=lower(wallet);if(!/^0x[0-9a-f]{40}$/.test(a))return [];
@@ -4355,9 +4363,12 @@ window.DAO1Project = (() => {
     const out=[];
     for(const item of rows){
       const token=item?.token||{};const contract=lower(token.address||token.address_hash||item.token_address||item.address||"");
-      const id=String(item.id??item.token_id??item.token_instance?.id??"");if(!contract||!id||!dao1TeamIsRelevantNft(contract,id))continue;
+      const id=String(item.id??item.token_id??item.token_instance?.id??"");if(!contract||!id)continue;
       const meta=item.metadata||item.token_instance?.metadata||{};const cls=classificationFor(contract,id);
-      out.push({id,contract,name:cls?.nft_name||meta.name||item.name||token.name||token.symbol||`NFT #${id}`,subtype:dao1TeamProjectNftSubtype(contract,id),current:true,owned_from_at:null,acquisition_verified:false,acquisition_kind:null,acquisition_tx_hash:null,purchase:null,partner_live:true});
+      const rawName=cls?.nft_name||meta.name||item.name||token.name||token.symbol||`NFT #${id}`;
+      const collection=String(item.collection_name||item.collectionName||token.name||token.symbol||"");
+      if(!dao1TeamIsRelevantNft(contract,id,rawName,collection))continue;
+      out.push({id,contract,name:rawName,collectionName:collection,subtype:dao1TeamProjectNftSubtype(contract,id,rawName,collection),current:true,owned_from_at:null,acquisition_verified:false,acquisition_kind:null,acquisition_tx_hash:null,purchase:null,partner_live:true});
     }
     const dedup=[...new Map(out.map(n=>[`${n.contract}|${n.id}`,n])).values()];
     dao1TeamPartnerDetailsCache.set(a,{...(cached||{}),nfts:dedup,loadedAt:Date.now()});return dedup;
@@ -4377,11 +4388,21 @@ window.DAO1Project = (() => {
     if(txHash){
       try{
         const transfers=await fetchTransactionTokenTransfers(txHash);
-        const pays=transfers.filter(t=>{
-          const token=t?.token||{};const type=String(token.type||t.token_type||t.type||"").toUpperCase();
-          return type==="ERC-20"&&transferFromAddress(t)===a&&BigInt(tokenTransferRawValue(t)||"0")>0n;
-        }).map(t=>({amount:Number(decimalAmount(tokenTransferRawValue(t),tokenTransferDecimals(t))),symbol:String(t?.token?.symbol||t?.symbol||"TOKEN"),contract:tokenTransferAddress(t),block:Number(t.block_number||block||0),timestamp:t.timestamp||t.block_timestamp||at}));
-        if(pays.length)purchase=pays.sort((x,y)=>y.amount-x.amount)[0];
+        const groups=new Map();
+        for(const t of transfers){
+          const token=t?.token||{},type=String(token.type||t.token_type||t.type||"").toUpperCase();
+          let raw=0n;try{raw=BigInt(tokenTransferRawValue(t)||"0");}catch(_){raw=0n;}
+          if(type!=="ERC-20"||transferFromAddress(t)!==a||raw<=0n)continue;
+          const contract=tokenTransferAddress(t),symbol=String(token.symbol||t.symbol||"TOKEN"),amount=Number(decimalAmount(raw.toString(),tokenTransferDecimals(t)));
+          if(!(amount>0))continue;
+          const key=contract||symbol.toUpperCase(),g=groups.get(key)||{amount:0,symbol,contract,block:Number(t.block_number||block||0),timestamp:t.timestamp||t.block_timestamp||at};g.amount+=amount;groups.set(key,g);
+        }
+        const pays=[...groups.values()];
+        // Eindeutig bleiben: bekannte wUSDT-Zahlung hat Vorrang; sonst nur genau einen
+        // ausgehenden ERC-20-Zahlungstoken als Kaufpreis verwenden. Mehrere Assets werden
+        // nicht willkürlich gegeneinander verglichen.
+        const wusdt=pays.find(p=>lower(p.contract)===lower(REFERRAL_WUSDT_TOKEN)||String(p.symbol).toUpperCase()==="WUSDT");
+        if(wusdt)purchase=wusdt;else if(pays.length===1)purchase=pays[0];
       }catch(e){console.warn("DAO1 Team Kaufpreis",txHash,e);}
     }
     const result={txHash,at,block,purchase};dao1TeamPartnerDetailsCache.set(cacheKey,result);return result;
@@ -4492,7 +4513,7 @@ window.DAO1Project = (() => {
       try{
         let nfts=dao1TeamKnownNfts(wallet);
         if(!nfts.length||!root){const live=await dao1TeamFetchPartnerNfts(wallet);const by=new Map([...nfts,...live].map(n=>[`${lower(n.contract)}|${n.id}`,n]));nfts=[...by.values()];}
-        for(const n of nfts){const acq=await dao1TeamAcquisitionForNft(n,wallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;}
+        await Promise.all(nfts.map(async n=>{const acq=await dao1TeamAcquisitionForNft(n,wallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;}));
         area.innerHTML=dao1TeamNftTableHtml(nfts);
         const counts=new Map();for(const n of nfts){if(dao1TeamIsBot(n)&&n.current)counts.set(n.subtype,(counts.get(n.subtype)||0)+1);}
         document.querySelectorAll(`[data-dao1-bot-summary="${lower(wallet)}"]`).forEach(el=>{el.innerHTML=[...counts.entries()].map(([t,c])=>`${escapeHtml(t)}: <strong>${c}</strong>`).join(" · ");});
@@ -4500,6 +4521,23 @@ window.DAO1Project = (() => {
       }catch(e){console.warn("DAO1 Team Partnerdetails",e);area.innerHTML=`<div class="status warn"><strong>Partner-NFTs konnten nicht geladen werden.</strong><div class="note">${escapeHtml(e?.message||e)}</div></div>`;}
     }));
     hydrateDAO1TeamMintDates(host,st);
+    // Bot-Anzahl der aktuell sichtbaren Partner automatisch nachladen. Kein globaler
+    // 65k-Wallet-Scan: nur Wallets, deren Kacheln gerade im DOM stehen, mit kleiner
+    // Parallelität. Details ist damit nicht mehr der Trigger für die Kachel-Zahlen.
+    queueMicrotask(()=>hydrateDAO1VisiblePartnerBotSummaries(host));
+  }
+
+  let dao1VisiblePartnerHydrationRun=0;
+  async function hydrateDAO1VisiblePartnerBotSummaries(host){
+    const run=++dao1VisiblePartnerHydrationRun;
+    const wallets=[...new Set([...(host||document).querySelectorAll('[data-dao1-bot-summary]')].map(el=>lower(el.dataset.dao1BotSummary||"")).filter(a=>/^0x[0-9a-f]{40}$/.test(a)))];
+    let cursor=0;
+    async function worker(){while(cursor<wallets.length&&run===dao1VisiblePartnerHydrationRun){const wallet=wallets[cursor++];try{
+      let nfts=dao1TeamKnownNfts(wallet);const live=await dao1TeamFetchPartnerNfts(wallet);const by=new Map([...nfts,...live].map(n=>[`${lower(n.contract)}|${n.id}`,n]));nfts=[...by.values()];
+      const counts=new Map();for(const n of nfts){if(dao1TeamIsBot(n)&&n.current)counts.set(n.subtype,(counts.get(n.subtype)||0)+1);}
+      (host||document).querySelectorAll(`[data-dao1-bot-summary="${wallet}"]`).forEach(el=>{el.innerHTML=counts.size?[...counts.entries()].map(([t,c])=>`${escapeHtml(t)}: <strong>${c}</strong>`).join(" · "):"";});
+    }catch(e){console.warn("DAO1 Team Bot-Anzahl",wallet,e);}}}
+    await Promise.all(Array.from({length:Math.min(4,wallets.length)},worker));
   }
 
   function teamDiscoveryTableHtml(st,isOld){

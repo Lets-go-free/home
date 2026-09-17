@@ -39,3 +39,8 @@ else renderDAO1Help();
 // Phase 4.77: DAO1-Teamdetails zeigen Kaufpreis-Totals je Bot-Typ/Token (nur verifizierte Beträge),
 // Bot-Anzahlen in Baumkacheln, Wallet-Copy analog TLN und ESC/Backdrop zum Schliessen des Detaildialogs.
 // Bot-Status: aktuelle Bots werden als "laufend" angezeigt; "abgeschlossen" erst nach verifiziertem Target-/Contract-Nachweis.
+
+// Phase 4.78: Team-Kacheln laden Mining-/Trading-Bot-Anzahlen für die aktuell sichtbaren
+// Partner automatisch im Hintergrund. Partner-NFTs verwenden project_nfts und explizite
+// NFT-/Collection-Metadaten für dieselbe Bot-Typisierung wie eigene Wallets. Kaufpreise
+// werden nur aus eindeutig zuordenbaren ausgehenden ERC-20-Zahlungen der Erwerbs-Tx gezeigt.

@@ -572,3 +572,8 @@ window.adminIdeasFilterState = adminIdeasFilterState;
 // Phase 4.77 / DAO1 Bot-Lifecycle TODO:
 // Target/Fortschritt der Mining-/Trading-Bots on-chain eindeutig dekodieren. Status "abgeschlossen" erst setzen,
 // wenn Target und Zielerreichung aus Contract-State/Event beweisbar sind; keine Ableitung nur aus Ownership/Transfer.
+
+// Phase 4.78 umgesetzt: sichtbare DAO1-Partnerkacheln laden Bot-Anzahlen ohne Details-Klick;
+// Trading-/Mining-Typisierung für Partner an Own-Wallet-Logik + explizite Metadaten angeglichen;
+// Kaufpreis-Ermittlung gruppiert ERC-20-Flows je Token und vermeidet willkürliche Auswahl;
+// zentraler Datenjob sperrt Navigation und zeigt sofort Ladehinweis + Aktivitätsbalken.

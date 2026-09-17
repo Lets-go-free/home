@@ -77,6 +77,38 @@ if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",
 let defiProjectsCache = [];
 let predefinedTokenProject = {};
 
+// ---- Zentraler Datenjob-Manager (Phase 4.69) ----
+// Datenaufbauten laufen strikt seriell. Solange ein Job aktiv ist, bleibt die
+// Navigation gesperrt. Erst bei >2 s Laufzeit wird ein globaler Hinweis gezeigt.
+const DATA_JOB_NOTICE_DELAY_MS=0;
+let dataJobTail=Promise.resolve();
+let dataJobActiveCount=0;
+let dataJobNoticeTimer=null;
+function ensureDataJobNotice(){
+  let el=document.getElementById("globalDataJobNotice");
+  if(el)return el;
+  el=document.createElement("div");el.id="globalDataJobNotice";el.className="global-data-job-notice";
+  el.innerHTML='<span class="global-data-job-spinner" aria-hidden="true"></span><div class="global-data-job-copy"><strong id="globalDataJobText">Daten werden geladen …</strong><span class="global-data-job-sub">Navigation ist während des Datenaufbaus gesperrt.</span><span class="global-data-job-bar" aria-hidden="true"><i></i></span></div>';
+  document.body.appendChild(el);return el;
+}
+function setDataJobUi(active,label="Daten werden aktualisiert …"){
+  document.body.classList.toggle("data-job-active",!!active);
+  document.querySelectorAll("[data-main-section], .context-nav .tab-btn[data-tab]").forEach(b=>{b.disabled=!!active;b.setAttribute("aria-disabled",active?"true":"false");});
+  const el=ensureDataJobNotice(),txt=document.getElementById("globalDataJobText");if(txt)txt.textContent=label||"Daten werden aktualisiert …";
+  if(!active){clearTimeout(dataJobNoticeTimer);dataJobNoticeTimer=null;el.classList.remove("visible");}
+}
+function beginDataJobUi(label){
+  dataJobActiveCount++;setDataJobUi(true,label);
+  if(dataJobActiveCount===1){clearTimeout(dataJobNoticeTimer);dataJobNoticeTimer=null;ensureDataJobNotice().classList.add("visible");}
+}
+function endDataJobUi(){dataJobActiveCount=Math.max(0,dataJobActiveCount-1);if(!dataJobActiveCount)setDataJobUi(false);}
+function runDataJob(label,job){
+  const execute=async()=>{beginDataJobUi(label);try{return await job();}finally{endDataJobUi();}};
+  const result=dataJobTail.then(execute,execute);dataJobTail=result.catch(()=>{});return result;
+}
+window.runDataJob=runDataJob;
+window.isDataJobActive=()=>dataJobActiveCount>0;
+
 
 async function checkIsAdmin() {
   try {
@@ -1196,6 +1228,7 @@ function exportTaxPdf(){
 
 
 function showTab(name) {
+  if(window.isDataJobActive?.()) return;
   // TLN/VOW ist nur erreichbar, wenn ein passender Projekt-Token im Summary-Bestand liegt.
   if (name === "tlnvow" && !hasTlnVowTokenInSummary()) name = "tracking";
   updateContextNavigation(name);
@@ -3951,7 +3984,7 @@ function renderWalletDataFreshness(){
   el.innerHTML=`<div class="custom-token-card"><div class="chain-title">Datenstand pro Wallet</div><div class="note" style="margin-bottom:8px">„Geprüft“ bedeutet: Die Blockchain wurde heute kontrolliert; ohne relevante Aktivität wurde der bestehende Datenstand bewusst weiterverwendet.</div><div class="chain-table-wrap"><table><thead><tr><th>Wallet</th><th>Bestände</th><th>TLN/VOW · LP & Staking</th><th>NFTs</th></tr></thead><tbody>${body||'<tr><td colspan="4">Keine Wallets vorhanden.</td></tr>'}</tbody></table></div></div>`;
 }
 
-async function loadAll(options = {}) {
+async function loadAllCore(options = {}) {
   const automatic=!!options.automatic,btn=document.getElementById('loadBtn');if(btn)btn.disabled=true;
   const progress=[];renderCentralRefreshProgress(progress);renderCacheStatusNote(automatic?'Tägliche Wallet-Prüfung läuft…':'Vollständige Aktualisierung läuft…');
   await refreshAllCurrentPrices({manual:false}).catch(e=>console.warn('Preisabruf:',e));
@@ -4006,6 +4039,11 @@ async function loadAll(options = {}) {
     progress.push(`⚠ Fertig mit ${failures.length} Hinweis${failures.length===1?'':'en'}`);
   }
   renderCentralRefreshProgress(progress,{collapsed:true,finished:true});renderWalletDataFreshness();if(btn)btn.disabled=false;return {failures};
+}
+
+async function loadAll(options = {}) {
+  const automatic=!!options.automatic;
+  return runDataJob(automatic?"Daten werden aktualisiert …":"Daten werden vollständig aktualisiert …",()=>loadAllCore(options));
 }
 
 // ---- Rendering ----
