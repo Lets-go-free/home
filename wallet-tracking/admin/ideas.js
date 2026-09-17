@@ -3,8 +3,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260915-173339";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "15.09.2026 17:33:39 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260917-180200";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "17.09.2026 18:02:00 CEST";
 
 const ADMIN_IDEAS = [
   {
@@ -65,6 +65,118 @@ Neuer zentraler Bereich „Benachrichtigungen“ mit Telegram verbunden/nicht ve
 
 UMSETZUNG
 Vor Implementierung zuerst grafisches Mockup gemäß WalletTracking-UI-Regel. Danach schrittweise: (1) Datenmodell Events/Rules/Log, (2) Telegram-Bot + sichere Account-Verknüpfung, (3) UI-Einstellungen, (4) TLN-/DAO-Team-Events, (5) Staking-Events/Ablaufwarnungen, (6) Bot-/Miner-Käufe, (7) zentrale Kursfunktion/Kursalarme, (8) interne Benachrichtigungshistorie.`
+  },
+  {
+    status: "open",
+    category: "Übersicht / Analyse",
+    priority: "high",
+    title: "Persönliches Gesamt-Dashboard",
+    desc: `Gesamtvermögen über alle eigenen Wallets und Projekte mit Aufteilung nach Token, Stakings, Loans, NFTs, Rewards und frei verfügbarem Guthaben. Entwicklung über 24 Stunden, 7 Tage, 30 Tage, Jahr und seit Einstieg; Kennzahlen investiert, zurückerhalten, aktueller Wert sowie realisierter/unrealisierter Gewinn oder Verlust. PROJEKTREGEL: TLN/VOW und DAO1/APTM bleiben strikt getrennt; projektübergreifend werden ausschließlich aggregierte Werte gezeigt, Details öffnen immer den jeweiligen Projektbereich.`
+  },
+  {
+    status: "open",
+    category: "Übersicht / Aktionen",
+    priority: "high",
+    title: "Aktionszentrale · Was muss ich tun?",
+    desc: `Zentrale priorisierte Aufgabenliste mit Dringlichkeit, Fälligkeit, Projekt und Wallet: bald endendes Staking, fälliger Loan, verfügbarer Reward/Claim, Waiting-to-Swap, erkannte erforderliche Aktion, zu niedriger Gas-Token-Bestand sowie unvollständige/veraltete Positionsdaten. Handlungshinweise verständlich formulieren, aber nur auf fachlich/on-chain bestätigten Regeln aufbauen.`
+  },
+  {
+    status: "open",
+    category: "Übersicht / Analyse",
+    priority: "high",
+    title: "Gewinn-/Verlust- und Renditeauswertung ausbauen",
+    desc: `Bestehende Idee „Gewinn/Verlust statt nur Bestand“ erweitern: Auswertung pro Projekt, Wallet, Token und Position. Ein-/Auszahlungen, Rewards, Claims, Gebühren und Gas sowie historische Kurse zum Transaktionszeitpunkt berücksichtigen. Realisierte und unrealisierte Ergebnisse trennen; Rendite absolut, prozentual und – fachlich sinnvoll – annualisiert. Fehlende Kurse und unsichere Rekonstruktionen klar kennzeichnen.`
+  },
+  {
+    status: "open",
+    category: "Datenqualität",
+    priority: "high",
+    title: "Datenqualität und Aktualitätsstatus",
+    desc: `Vertrauensstatus je Auswertung/Position: vollständig on-chain bestätigt, teilweise rekonstruiert, historischer Preis fehlt, Historie noch nicht vollständig gescannt, Daten möglicherweise veraltet oder unbekannter/nicht klassifizierter Contract-/Eventtyp. Zusätzlich letzte Aktualisierung, verwendete Blockhöhe und offene Prüfschritte anzeigen.`
+  },
+  {
+    status: "open",
+    category: "Benachrichtigungen / Alerts",
+    priority: "high",
+    title: "Alerts · Regel-Editor und Zusammenfassungen",
+    desc: `Die bestehende Idee „Benachrichtigungen / Alerts / Telegram“ um frei definierbare Regeln und Digests erweitern. Regeln u. a. für Kursgrenzen/-bewegungen, Portfolioänderungen, grosse Ein-/Ausgänge, neues Staking/Loan/Bot/NFT, Fälligkeiten, neue Claims/Rewards, Partner-/Statusänderungen, LP/QLP, Gasbestand sowie unbekannte Contracts/ungewöhnliche Transaktionen. Pro Regel Projekt/Wallet, Schwellenwert, Häufigkeit und Versandart. Versand als Sofortmeldung, Tages- oder Wochenzusammenfassung; gleichartige Events bündeln und bestätigte/erledigte Meldungen nicht unnötig wiederholen. Event-Erkennung und Versand bleiben getrennt.`
+  },
+  {
+    status: "open",
+    category: "Sicherheit",
+    priority: "high",
+    title: "Wallet-Sicherheitscenter",
+    desc: `Grosse/ungewöhnliche ausgehende Transaktionen, neue unbekannte Contract-Interaktionen und verdächtige Tokenbewegungen erkennen. Tokenfreigaben/Allowances analysieren und hohe/riskante Freigaben hervorheben. Unerwartete Bestandsänderungen beobachteter Wallets melden. Contracts userbezogen als bekannt, geprüft, unbekannt oder ignoriert klassifizieren.`
+  },
+  {
+    status: "open",
+    category: "Historie / Analyse",
+    priority: "medium",
+    title: "Portfolio-Zeitreise",
+    desc: `Beliebigen historischen Stichtag rekonstruieren: damalige Bestände, Portfoliowert, aktive Stakings, Loans, NFTs, Teamgrösse und kumulierte Rewards. Zwei Stichtage direkt vergleichen. Fehlende historische Kurse und unvollständige Scans sichtbar ausweisen.`
+  },
+  {
+    status: "open",
+    category: "Planung / Analyse",
+    priority: "medium",
+    title: "Szenario- und Ertragsrechner",
+    desc: `Auswirkungen veränderter Tokenkurse simulieren, erwarteten Wert/Ertrag bei regulärem Staking-Ende darstellen, Reinvestition vs. Auszahlung vergleichen sowie zukünftige Cashflows/Fälligkeiten zeigen. Kritische Positionen bei definierten Kurswerten hervorheben. Annahmen strikt von on-chain bestätigten Fakten trennen.`
+  },
+  {
+    status: "open",
+    category: "Aktivität",
+    priority: "medium",
+    title: "Persönlicher Aktivitätsfeed",
+    desc: `Relevante Ereignisse der eigenen Wallets chronologisch und verständlich anzeigen; Filter nach Projekt, Wallet, Ereignistyp und Zeitraum. Zusammengehörige technische Blockchain-Events zu einem fachlichen Vorgang bündeln.`
+  },
+  {
+    status: "open",
+    category: "Team / Partner",
+    priority: "medium",
+    title: "Team-Aktivitätsfeed und Team-Kennzahlen",
+    desc: `PROJEKTGETRENNT für TLN/VOW bzw. DAO1/APTM: chronologische Team-Ereignisse wie neuer Partner, Mitgliedschaft/Status, Bot-Kauf, Staking Start/Aufstockung/Ende, Claim und LP/QLP-Änderung. Kennzahlen: aktive/inaktive Partner, neue Partner nach Zeitraum/Ebene, Teamgrössenentwicklung, Mitglieder-/Bot-/Staking-Verteilung, Partner ohne erkennbare Aktivität seit X Tagen und Zeitvergleiche. Definition „aktiv“ je Projekt separat fachlich festlegen.`
+  },
+  {
+    status: "open",
+    category: "Team / Partner",
+    priority: "medium",
+    title: "Verschlüsselte Partnernotizen, Tags und Gruppen",
+    desc: `Projektbezogene verschlüsselte Notizen, Tags und frei definierbare Gruppen/Filter, z. B. Kunde, Interessent, Support nötig, Nachfassen. STRIKTE TRENNUNG: keine gemeinsame oder gegenseitig verwendete Partneridentität zwischen TLN/VOW und DAO1/APTM.`
+  },
+  {
+    status: "open",
+    category: "Wallets / Rollen",
+    priority: "medium",
+    title: "Watch-only-Wallets und Rollen",
+    desc: `Wallets beobachten, ohne sie als eigene Wallet zu behandeln, z. B. Familie, Kunden, Teammitglieder, Projekt-/Treasury-Wallets. Klare Kennzeichnung und getrennte Auswertungen. Später optional Rollen und eingeschränkte Zugriffe für Berater/Kunden.`
+  },
+  {
+    status: "open",
+    category: "Export / Berichte",
+    priority: "medium",
+    title: "Steuer- und Transaktionsexport ausbauen",
+    desc: `Bestehenden CSV-Export zu einem Export für CSV und Excel, später optional PDF-Bericht, ausbauen. Käufe, Verkäufe, Transfers, Rewards, Claims, historische Kurse, Gasgebühren und Jahresendbestände; Auswahl nach Jahr, Projekt, Wallet und Transaktionstyp. Datenbasis für Steuer/Buchhaltung liefern, ohne verbindliche steuerliche Beurteilung.`
+  },
+  {
+    status: "open",
+    category: "Export / Berichte",
+    priority: "low",
+    title: "Berichte und teilbare Ansichten",
+    desc: `Monats-, Quartals- und Jahresberichte; optionales Branding. Schreibgeschützter Link mit Ablaufdatum, sensible Werte/Bereiche gezielt ausblendbar sowie anonymisierte Ansicht für Supportfälle.`
+  },
+  {
+    status: "open",
+    category: "Komfort / Erklärung",
+    priority: "medium",
+    title: "Transaktions-Erklärer",
+    desc: `Technische Transaktionen automatisch in verständliche Alltagssprache übersetzen und zusammengehörige Blockchain-Events als einen fachlichen Vorgang erklären. Erklärungen bleiben projektspezifisch und dürfen ausschließlich bestätigte Regeln verwenden.`
+  },
+  {
+    status: "open",
+    category: "Komfort / Suche",
+    priority: "medium",
+    title: "Globale Suche",
+    desc: `Suche über Wallet-Adresse, TLN-ID, NFT-/Bot-ID, Partneralias, Contract-Adresse und Transaktionshash mit direktem Sprung zur Position/Person/Transaktion. Projektherkunft eindeutig kennzeichnen; Zugriffsrechte und Verschlüsselung vollständig berücksichtigen. TLN- und DAO-Identitäten werden dabei nicht zusammengeführt.`
   },
   { status: "open", category: "UI / Navigation", title: "Navigation während initialem Datenladen entkoppeln", desc: "TODO 17.09.2026: Navigation ist während/kurz nach dem initialen Datenladen zeitlich noch nicht sauber entkoppelt. Ein im laufenden Load gewählter Bereich darf nach Abschluss eines Hintergrundjobs nicht durch einen älteren Render-/Restore-Schritt überschrieben werden. Navigation soll benutzbar bleiben; Datenjobs aktualisieren nur ihren Datenbereich im Hintergrund." },
   { status: "done", category: "DAO1", title: "DAO1 alter Team-Baum hierarchisch darstellen", desc: "Phase 4.73: Der verifizierte Legacy-DID→fid-Graph wird analog zum TLN/VOW-Team als hierarchischer Baum bis 20 Ebenen dargestellt. Eigene DIDs werden als Roots erkannt; eine eigene DID, die unter einer anderen eigenen DID liegt, wird bei Alle DIDs nicht doppelt als separater Root gerendert. Pro DID gibt es ein verschlüsselt gespeichertes Name/Alias-Feld. Zweige sind einklappbar; Mint-Nachweis in Details; technische Kantentabelle nur DEV/Diagnose." },
@@ -593,3 +705,6 @@ window.adminIdeasFilterState = adminIdeasFilterState;
 // Phase 4.81 / DAO1 Bot-Lifecycle: ältere Mint+Kauf-Pfade weiter dekodieren.
 // Kein Kaufpreis aus NFT-Metadaten schätzen. Mint allein beweist weder Gratis/Bonus noch Kauf.
 // Trading-Funding, Nachladungen, Target/Fortschritt und Abschlussstatus anschließend on-chain verifizieren.
+
+// Phase 4.82: TLN/VOW und DAO1/APTM sind strikt getrennte Projekte. DAO1-Partnernamen verwenden ausschließlich dao1:did:<DID>; kein TLN-id:- oder Wallet-Fallback. wallet-private muss diesen Namespace serverseitig explizit akzeptieren.
+// Phase 4.82 Analyse: DAO1 Bot-Lifecycle bleibt auf zentralem NFT-Bestand aufgebaut. Offene Discovery: ältere Mint+Kauf-Transaktionen (u.a. #90068/#90067/#90066/#90065/#89908) vollständig dekodieren; Trading-Funding/Nachladungen je Bot-ID und Währung; Target/Fortschritt/Abschlussstatus. Keine Schätzung.

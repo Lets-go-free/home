@@ -4061,46 +4061,32 @@ window.DAO1Project = (() => {
     return dao1TeamAliases;
   }
   async function dao1WalletPrivate(action,body={}){
-    let lastErr=null;
-    for(let attempt=1;attempt<=2;attempt++){
-      try{
-        const {data,error}=await sb.functions.invoke("wallet-private",{body:{action,...body}});
-        if(error){
-          let detail=error.message||String(error);
-          try{const response=error.context?.clone?.();const payload=response?await response.json():null;if(payload?.error)detail=payload.error;}catch(_e){}
-          throw new Error(detail);
-        }
-        if(!data?.ok)throw new Error(data?.error||`wallet-private/${action} fehlgeschlagen`);
-        return data;
-      }catch(e){lastErr=e;if(attempt<2){try{await sb.auth.refreshSession();}catch(_e){}await new Promise(r=>setTimeout(r,350));}}
+    const {data,error}=await sb.functions.invoke("wallet-private",{body:{action,...body}});
+    if(error){
+      let detail=error.message||String(error);
+      try{const response=error.context?.clone?.();const payload=response?await response.json():null;if(payload?.error)detail=payload.error;}catch(_e){}
+      throw new Error(detail);
     }
-    throw lastErr||new Error(`wallet-private/${action} fehlgeschlagen`);
+    if(!data?.ok)throw new Error(data?.error||`wallet-private/${action} fehlgeschlagen`);
+    return data;
   }
   async function saveDAO1TeamAlias(did,value,input=null){
     const reference=dao1TeamAliasKey(did),alias=String(value||"").trim();
     const oldValue=dao1TeamAliases[reference]||"";
     if(input){input.disabled=true;input.classList.remove("save-error");}
     try{
-      try{
-        await dao1WalletPrivate("team_alias_save",{reference,alias});
-      }catch(primaryError){
-        // Derselbe sichere Fallback wie bei der TLN-Legacy-Migration: kompletten
-        // verschluesselten Alias-Bestand lesen, genau diesen Key aendern und atomar ersetzen.
-        // So bleibt DAO1 kompatibel mit wallet-private Deployments, bei denen der
-        // Einzel-Save-Endpunkt noch nicht sauber antwortet.
-        const listed=await dao1WalletPrivate("team_alias_list");
-        const aliases={...(listed?.aliases&&typeof listed.aliases==="object"?listed.aliases:{})};
-        if(alias)aliases[reference]=alias;else delete aliases[reference];
-        try{await dao1WalletPrivate("team_alias_replace_all",{aliases});}
-        catch(fallbackError){throw new Error(`${primaryError?.message||primaryError}; Fallback: ${fallbackError?.message||fallbackError}`);}
-      }
+      // DAO1 bleibt fachlich strikt getrennt von TLN/VOW. Die Referenz ist immer
+      // dao1:did:<DID>; niemals id:<TLN-ID> und niemals ein TLN-Fallback.
+      await dao1WalletPrivate("team_alias_save",{reference,alias});
       if(alias)dao1TeamAliases[reference]=alias;else delete dao1TeamAliases[reference];
-      if(input){input.dataset.savedValue=alias;input.title="Name verschlüsselt gespeichert";}
+      if(input){input.dataset.savedValue=alias;input.title="DAO1-Name verschlüsselt gespeichert";}
       renderDAO1TeamTreePanel();return true;
     }catch(e){
       dao1TeamAliases[reference]=oldValue;
       if(input){input.value=oldValue;input.classList.add("save-error");input.title=`Speichern fehlgeschlagen: ${e?.message||e}`;}
-      console.warn("DAO1 Team-Name speichern",e);alert(`Name konnte nicht gespeichert werden: ${e?.message||e}`);return false;
+      console.warn("DAO1 Team-Name speichern",e);
+      alert(`DAO1-Name konnte nicht gespeichert werden: ${e?.message||e}`);
+      return false;
     }finally{if(input)input.disabled=false;}
   }
   const dao1TeamDiscovery={

@@ -52,3 +52,6 @@ else renderDAO1Help();
 // Phase 4.81: Ein NFT-Mint ohne ERC-20-Zahlung in derselben Tx gilt nicht als kostenloser Bot.
 // Anzeige deshalb "Mint / Kaufprüfung offen"; echte Kaufpreise bleiben nur bei verifiziertem Zahlungsfluss.
 // Bekannte Discovery-Testfälle: #90068, #90067, #90066, #90065, #89908; #90054 dient als Referenzfall.
+
+// Phase 4.82: TLN/VOW und DAO1/APTM sind strikt getrennte Projekte. DAO1-Partnernamen verwenden ausschließlich dao1:did:<DID>; kein TLN-id:- oder Wallet-Fallback. wallet-private muss diesen Namespace serverseitig explizit akzeptieren.
+// DAO1-Namen/Aliase: verschlüsselte Speicherung mit Referenz dao1:did:<DID>. TLN/VOW-Referenzen werden dafür ausdrücklich nicht verwendet.
