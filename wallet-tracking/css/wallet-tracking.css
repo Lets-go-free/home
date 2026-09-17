@@ -1327,3 +1327,6 @@ body.data-job-active .context-nav .tab-btn[data-tab]{cursor:wait!important;opaci
 :root{--team-tree-node-width:286px;--team-tree-node-radius:10px;--team-tree-node-pad-y:10px;--team-tree-node-pad-x:11px;--team-tree-branch-gap:34px}
 #tlnvowDiscoveryHost .team-node,.wt-team-node{width:var(--team-tree-node-width)!important;min-width:var(--team-tree-node-width)!important;border-radius:var(--team-tree-node-radius)!important;padding:var(--team-tree-node-pad-y) var(--team-tree-node-pad-x)!important}
 #tlnvowDiscoveryHost .team-branch-children,.wt-team-branch-children{margin-top:var(--team-tree-branch-gap)!important}
+
+/* DAO1/TLN gemeinsame Team-Tree Eingaben: sichtbarer Persistenzfehler */
+.wt-team-alias-input.save-error{outline:2px solid var(--danger,#c62828);outline-offset:1px}

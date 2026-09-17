@@ -504,3 +504,8 @@ function renderAdminIdeas() {
 window.renderAdminIdeas = renderAdminIdeas;
 window.setAdminIdeasFilter = setAdminIdeasFilter;
 window.adminIdeasFilterState = adminIdeasFilterState;
+
+// Phase 4.76 / DAO1 Team: Partner-NFT/Bot-Anreicherung ist on-demand umgesetzt.
+// TODO Ausbau: historischen (nicht mehr aktuellen) NFT-Bestand fremder Partner global
+// und inkrementell cachen, sobald dafür ein verifizierter serverseitiger Public-Chain-Cache
+// bereitsteht. Keine fremden Wallet-Adressen in user-private Klartexttabellen speichern.

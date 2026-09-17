@@ -28,3 +28,10 @@ else renderDAO1Help();
 // Phase 4.75: Der alte DAO1-Team-Graph wird nach dem ersten Vollscan global in Supabase
 // persistiert. Folgeläufe laden den Baum sofort aus dem Cache und scannen nur ab
 // last_verified_block - 24 bis zum aktuellen Apertum-Block. Migration 054 erforderlich.
+
+// Phase 4.76: DAO1-Team-Partnerdetails werden beim Öffnen on-chain angereichert.
+// Aktuelle DAO1 Miner/Bots fremder Partner-Wallets werden über den Apertum-NFT-Bestand
+// ermittelt. Kaufdatum und Kaufpreis stammen, soweit beweisbar, aus dem NFT-Eingang und
+// einer Zahlung derselben Transaktion. Nicht belegbare Werte bleiben "nicht ermittelt".
+// Partnernamen verwenden weiterhin wallet-private; bei einem fehlerhaften Einzel-Save
+// wird sicher auf list + replace_all des verschlüsselten Alias-Bestands zurückgefallen.

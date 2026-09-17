@@ -4058,14 +4058,48 @@ window.DAO1Project = (() => {
     }catch(e){console.warn("DAO1 Team-Namen",e);}
     return dao1TeamAliases;
   }
-  async function saveDAO1TeamAlias(did,value){
+  async function dao1WalletPrivate(action,body={}){
+    let lastErr=null;
+    for(let attempt=1;attempt<=2;attempt++){
+      try{
+        const {data,error}=await sb.functions.invoke("wallet-private",{body:{action,...body}});
+        if(error){
+          let detail=error.message||String(error);
+          try{const response=error.context?.clone?.();const payload=response?await response.json():null;if(payload?.error)detail=payload.error;}catch(_e){}
+          throw new Error(detail);
+        }
+        if(!data?.ok)throw new Error(data?.error||`wallet-private/${action} fehlgeschlagen`);
+        return data;
+      }catch(e){lastErr=e;if(attempt<2){try{await sb.auth.refreshSession();}catch(_e){}await new Promise(r=>setTimeout(r,350));}}
+    }
+    throw lastErr||new Error(`wallet-private/${action} fehlgeschlagen`);
+  }
+  async function saveDAO1TeamAlias(did,value,input=null){
     const reference=dao1TeamAliasKey(did),alias=String(value||"").trim();
+    const oldValue=dao1TeamAliases[reference]||"";
+    if(input){input.disabled=true;input.classList.remove("save-error");}
     try{
-      const {data,error}=await sb.functions.invoke("wallet-private",{body:{action:"team_alias_save",reference,alias}});
-      if(error)throw error;if(!data?.ok)throw new Error(data?.error||"team_alias_save fehlgeschlagen");
+      try{
+        await dao1WalletPrivate("team_alias_save",{reference,alias});
+      }catch(primaryError){
+        // Derselbe sichere Fallback wie bei der TLN-Legacy-Migration: kompletten
+        // verschluesselten Alias-Bestand lesen, genau diesen Key aendern und atomar ersetzen.
+        // So bleibt DAO1 kompatibel mit wallet-private Deployments, bei denen der
+        // Einzel-Save-Endpunkt noch nicht sauber antwortet.
+        const listed=await dao1WalletPrivate("team_alias_list");
+        const aliases={...(listed?.aliases&&typeof listed.aliases==="object"?listed.aliases:{})};
+        if(alias)aliases[reference]=alias;else delete aliases[reference];
+        try{await dao1WalletPrivate("team_alias_replace_all",{aliases});}
+        catch(fallbackError){throw new Error(`${primaryError?.message||primaryError}; Fallback: ${fallbackError?.message||fallbackError}`);}
+      }
       if(alias)dao1TeamAliases[reference]=alias;else delete dao1TeamAliases[reference];
+      if(input){input.dataset.savedValue=alias;input.title="Name verschlüsselt gespeichert";}
       renderDAO1TeamTreePanel();return true;
-    }catch(e){console.warn("DAO1 Team-Name speichern",e);alert(`Name konnte nicht gespeichert werden: ${e?.message||e}`);return false;}
+    }catch(e){
+      dao1TeamAliases[reference]=oldValue;
+      if(input){input.value=oldValue;input.classList.add("save-error");input.title=`Speichern fehlgeschlagen: ${e?.message||e}`;}
+      console.warn("DAO1 Team-Name speichern",e);alert(`Name konnte nicht gespeichert werden: ${e?.message||e}`);return false;
+    }finally{if(input)input.disabled=false;}
   }
   const dao1TeamDiscovery={
     legacy:{running:false,status:"Noch nicht geladen",edges:[],lastBlock:0,error:""},
@@ -4298,8 +4332,63 @@ window.DAO1Project = (() => {
     const a=lower(wallet||"");if(!a)return [];
     const rows=ownershipRows.filter(o=>lower(o.wallet_address||walletAddress(walletByDbId(o.wallet_id))||"")===a);
     const seen=new Set(),out=[];
-    for(const o of rows){const key=`${lower(o.nft_contract)}|${o.nft_id}`;if(seen.has(key))continue;seen.add(key);const cls=classificationFor(o.nft_contract,o.nft_id);out.push({id:String(o.nft_id),name:cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`,subtype:cls?.subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null});}
+    for(const o of rows){const key=`${lower(o.nft_contract)}|${o.nft_id}`;if(seen.has(key))continue;seen.add(key);const cls=classificationFor(o.nft_contract,o.nft_id);out.push({id:String(o.nft_id),contract:lower(o.nft_contract),name:cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`,subtype:cls?.subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null,acquisition_tx_hash:o.acquisition_tx_hash||null,purchase:null});}
     return out;
+  }
+  function dao1TeamProjectNftSubtype(contract,id,name=""){
+    contract=lower(contract);const cls=classificationFor(contract,id);
+    if(cls?.subtype)return cls.subtype;
+    if(contract===lower(DEFAULT_MINER_NFT_CONTRACT))return "Mining-Bot";
+    if(contract===lower(DAO1_OLD_DID_CONTRACT))return "DID";
+    if(contract===lower(APTMDAO_NFT_CONTRACT))return "APTMDAO NFT";
+    return "nicht klassifiziert";
+  }
+  function dao1TeamIsRelevantNft(contract,id){
+    contract=lower(contract);
+    return contract===lower(DEFAULT_MINER_NFT_CONTRACT)||contract===lower(DAO1_OLD_DID_CONTRACT)||contract===lower(APTMDAO_NFT_CONTRACT)||!!classificationFor(contract,id);
+  }
+  async function dao1TeamFetchPartnerNfts(wallet){
+    const a=lower(wallet);if(!/^0x[0-9a-f]{40}$/.test(a))return [];
+    const cached=dao1TeamPartnerDetailsCache.get(a);if(cached?.nfts)return cached.nfts;
+    let url=`${EXPLORER_API}/addresses/${a}/nft`,rows=[],pages=0;
+    while(url&&pages<50){pages++;const j=await fetchJson(url,"DAO1 Team · Partner-NFTs");rows.push(...(j.items||[]));url=nextUrl(`${EXPLORER_API}/addresses/${a}/nft`,j.next_page_params);}
+    const out=[];
+    for(const item of rows){
+      const token=item?.token||{};const contract=lower(token.address||token.address_hash||item.token_address||item.address||"");
+      const id=String(item.id??item.token_id??item.token_instance?.id??"");if(!contract||!id||!dao1TeamIsRelevantNft(contract,id))continue;
+      const meta=item.metadata||item.token_instance?.metadata||{};const cls=classificationFor(contract,id);
+      out.push({id,contract,name:cls?.nft_name||meta.name||item.name||token.name||token.symbol||`NFT #${id}`,subtype:dao1TeamProjectNftSubtype(contract,id),current:true,owned_from_at:null,acquisition_verified:false,acquisition_kind:null,acquisition_tx_hash:null,purchase:null,partner_live:true});
+    }
+    const dedup=[...new Map(out.map(n=>[`${n.contract}|${n.id}`,n])).values()];
+    dao1TeamPartnerDetailsCache.set(a,{...(cached||{}),nfts:dedup,loadedAt:Date.now()});return dedup;
+  }
+  async function dao1TeamAcquisitionForNft(nft,wallet){
+    const a=lower(wallet),cacheKey=`acq:${lower(nft.contract)}:${nft.id}:${a}`;
+    const cached=dao1TeamPartnerDetailsCache.get(cacheKey);if(cached)return cached;
+    let txHash=nft.acquisition_tx_hash||null,at=nft.owned_from_at||null,block=0;
+    if(!txHash&&nft.contract&&nft.id){
+      try{
+        const rows=await fetchPagedUrl(`${EXPLORER_API}/tokens/${nft.contract}/instances/${nft.id}/transfers`,100);
+        const incoming=rows.filter(t=>transferToAddress(t)===a).sort((x,y)=>Number(y.block_number||0)-Number(x.block_number||0))[0];
+        if(incoming){txHash=String(incoming.transaction_hash||incoming.tx_hash||H(incoming.transaction)||"").toLowerCase()||null;at=incoming.timestamp||incoming.block_timestamp||at;block=Number(incoming.block_number||0);}
+      }catch(e){console.warn("DAO1 Team Partner-NFT Erwerb",nft,wallet,e);}
+    }
+    let purchase=null;
+    if(txHash){
+      try{
+        const transfers=await fetchTransactionTokenTransfers(txHash);
+        const pays=transfers.filter(t=>{
+          const token=t?.token||{};const type=String(token.type||t.token_type||t.type||"").toUpperCase();
+          return type==="ERC-20"&&transferFromAddress(t)===a&&BigInt(tokenTransferRawValue(t)||"0")>0n;
+        }).map(t=>({amount:Number(decimalAmount(tokenTransferRawValue(t),tokenTransferDecimals(t))),symbol:String(t?.token?.symbol||t?.symbol||"TOKEN"),contract:tokenTransferAddress(t),block:Number(t.block_number||block||0),timestamp:t.timestamp||t.block_timestamp||at}));
+        if(pays.length)purchase=pays.sort((x,y)=>y.amount-x.amount)[0];
+      }catch(e){console.warn("DAO1 Team Kaufpreis",txHash,e);}
+    }
+    const result={txHash,at,block,purchase};dao1TeamPartnerDetailsCache.set(cacheKey,result);return result;
+  }
+  function dao1TeamPurchaseText(n){
+    if(n?.purchase?.amount>0)return `${tokenAmount(n.purchase.amount,{address:n.purchase.contract,symbol:n.purchase.symbol})} ${escapeHtml(n.purchase.symbol)}`;
+    return n?.acquisition_verified?"Erwerb on-chain verifiziert · Zahlung nicht ermittelt":"nicht ermittelt";
   }
   function dao1TeamMembershipLabel(nfts){
     const memberships=nfts.filter(n=>n.subtype==="DAO / Membership");
@@ -4308,7 +4397,7 @@ window.DAO1Project = (() => {
   }
   function dao1TeamNftTableHtml(nfts){
     if(!nfts.length)return '<div class="empty">Für dieses Wallet sind im vorhandenen Ownership-Bestand keine DAO1-NFTs/Bots gespeichert.</div>';
-    return `<div class="chain-table-wrap project-data-table"><table><thead><tr><th>Typ</th><th>NFT</th><th>Name</th><th>Erworben am</th><th>Kaufpreis</th><th>Status</th></tr></thead><tbody>${nfts.map(n=>`<tr><td>${escapeHtml(n.subtype)}</td><td>#${escapeHtml(n.id)}</td><td><strong>${escapeHtml(n.name)}</strong></td><td>${n.owned_from_at?dao1TeamDate(n.owned_from_at):"nicht ermittelt"}</td><td>${n.acquisition_verified?"on-chain Erwerb verifiziert · Preis noch nicht ermittelt":"nicht ermittelt"}</td><td>${n.current?"aktuell":"historisch"}</td></tr>`).join("")}</tbody></table></div>`;
+    return `<div class="chain-table-wrap project-data-table"><table><thead><tr><th>Typ</th><th>NFT</th><th>Name</th><th>Erworben am</th><th>Kaufpreis</th><th>Status</th></tr></thead><tbody>${nfts.map(n=>`<tr><td>${escapeHtml(n.subtype)}</td><td>#${escapeHtml(n.id)}</td><td><strong>${escapeHtml(n.name)}</strong></td><td>${n.owned_from_at?dao1TeamDate(n.owned_from_at):"nicht ermittelt"}</td><td>${dao1TeamPurchaseText(n)}</td><td>${n.current?"aktuell":"historisch"}</td></tr>`).join("")}</tbody></table></div>`;
   }
   function dao1TeamNodeHtml(node,childrenMap,level=0,rootDid=0,seen=new Set()){
     const did=Number(node.child_id||node.did||rootDid), wallet=String(node.wallet||"");
@@ -4348,14 +4437,27 @@ window.DAO1Project = (() => {
     did=Number(did);const edge=dao1TeamMintEdge(did,st);const root=dao1OwnedDidRoots.find(r=>Number(r.did)===did);
     const wallet=edge?.wallet||root?.wallet_address||"";const kids=st.edges.filter(e=>Number(e.parent_id)===did).length;
     const nfts=dao1TeamKnownNfts(wallet),membership=dao1TeamMembershipLabel(nfts);
-    return `<div class="wt-team-details-modal open" id="dao1TeamDetailsModal"><div class="wt-team-details-dialog"><div class="wt-team-details-head"><div><strong>DID #${did}${dao1TeamAlias(did)?` · ${escapeHtml(dao1TeamAlias(did))}`:""}</strong><div class="meta">${escapeHtml(wallet||"Wallet nicht ermittelt")}</div></div><button type="button" class="wt-team-details-close" onclick="document.getElementById('dao1TeamDetailsModal')?.remove()">×</button></div><div class="wt-team-details-body"><div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Upline</span><strong>${edge?`DID #${edge.parent_id}`:"Root / außerhalb Auswahl"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Direkte Partner</span><strong>${kids}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">DID Mint</span><strong data-dao1-mint-block="${Number(edge?.block||0)}">${edge?.block?"wird geladen …":"nicht ermittelt"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Membership</span><strong>${escapeHtml(membership)}</strong></div></div>${edge?`<div class="wt-team-tree-info" style="margin-top:12px"><b>Mint-Nachweis:</b> Block ${Number(edge.block||0).toLocaleString("de-DE")} · ${edge.tx_hash?`<a href="${EXPLORER}/tx/${edge.tx_hash}" target="_blank" rel="noopener">Transaktion öffnen</a>`:"–"}</div>`:""}<h4 style="margin:18px 0 8px">NFTs / Bots</h4>${dao1TeamNftTableHtml(nfts)}<div class="note" style="margin-top:12px">Kaufdatum/-preis und Referral Rewards werden nur angezeigt, wenn sie aus den vorhandenen bzw. on-chain verifizierten Daten belastbar hervorgehen. Fremde Partner-Wallets werden nicht aufgrund von Annahmen klassifiziert.</div></div></div></div>`;
+    return `<div class="wt-team-details-modal open" id="dao1TeamDetailsModal"><div class="wt-team-details-dialog"><div class="wt-team-details-head"><div><strong>DID #${did}${dao1TeamAlias(did)?` · ${escapeHtml(dao1TeamAlias(did))}`:""}</strong><div class="meta">${escapeHtml(wallet||"Wallet nicht ermittelt")}</div></div><button type="button" class="wt-team-details-close" onclick="document.getElementById('dao1TeamDetailsModal')?.remove()">×</button></div><div class="wt-team-details-body"><div class="project-summary"><div class="custom-token-card project-summary-box"><span class="field-label">Upline</span><strong>${edge?`DID #${edge.parent_id}`:"Root / außerhalb Auswahl"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Direkte Partner</span><strong>${kids}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">DID Mint</span><strong data-dao1-mint-block="${Number(edge?.block||0)}">${edge?.block?"wird geladen …":"nicht ermittelt"}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Membership</span><strong data-dao1-membership>${escapeHtml(membership)}</strong></div></div>${edge?`<div class="wt-team-tree-info" style="margin-top:12px"><b>Mint-Nachweis:</b> Block ${Number(edge.block||0).toLocaleString("de-DE")} · ${edge.tx_hash?`<a href="${EXPLORER}/tx/${edge.tx_hash}" target="_blank" rel="noopener">Transaktion öffnen</a>`:"–"}</div>`:""}<h4 style="margin:18px 0 8px">NFTs / Bots</h4><div data-dao1-partner-assets>${dao1TeamNftTableHtml(nfts)}</div><div class="note" style="margin-top:12px">Kaufdatum/-preis und Referral Rewards werden nur angezeigt, wenn sie aus den vorhandenen bzw. on-chain verifizierten Daten belastbar hervorgehen. Fremde Partner-Wallets werden nicht aufgrund von Annahmen klassifiziert.</div></div></div></div>`;
   }
 
   function bindDAO1TeamTreeControls(st){
     const host=document.getElementById("dao1TeamTreePanel");if(!host)return;
-    host.querySelectorAll("[data-dao1-team-alias]").forEach(inp=>inp.addEventListener("change",()=>saveDAO1TeamAlias(inp.dataset.dao1TeamAlias,inp.value)));
+    host.querySelectorAll("[data-dao1-team-alias]").forEach(inp=>inp.addEventListener("change",()=>saveDAO1TeamAlias(inp.dataset.dao1TeamAlias,inp.value,inp)));
     host.querySelectorAll("[data-dao1-team-toggle]").forEach(btn=>btn.addEventListener("click",()=>{const did=Number(btn.dataset.dao1TeamToggle);dao1TeamCollapsed.has(did)?dao1TeamCollapsed.delete(did):dao1TeamCollapsed.add(did);renderDAO1TeamTreePanel();}));
-    host.querySelectorAll("[data-dao1-team-details]").forEach(btn=>btn.addEventListener("click",()=>{document.getElementById("dao1TeamDetailsModal")?.remove();document.body.insertAdjacentHTML("beforeend",dao1TeamDetailsHtml(btn.dataset.dao1TeamDetails,st));hydrateDAO1TeamMintDates(document.getElementById("dao1TeamDetailsModal"),st);}));
+    host.querySelectorAll("[data-dao1-team-details]").forEach(btn=>btn.addEventListener("click",async()=>{
+      const did=Number(btn.dataset.dao1TeamDetails);document.getElementById("dao1TeamDetailsModal")?.remove();document.body.insertAdjacentHTML("beforeend",dao1TeamDetailsHtml(did,st));
+      const modal=document.getElementById("dao1TeamDetailsModal");hydrateDAO1TeamMintDates(modal,st);
+      const edge=dao1TeamMintEdge(did,st),root=dao1OwnedDidRoots.find(r=>Number(r.did)===did),wallet=edge?.wallet||root?.wallet_address||"";
+      const area=modal?.querySelector("[data-dao1-partner-assets]");if(!area||!wallet)return;
+      area.innerHTML='<div class="status info"><strong>NFTs / Bots werden on-chain geladen …</strong></div>';
+      try{
+        let nfts=dao1TeamKnownNfts(wallet);
+        if(!nfts.length||!root){const live=await dao1TeamFetchPartnerNfts(wallet);const by=new Map([...nfts,...live].map(n=>[`${lower(n.contract)}|${n.id}`,n]));nfts=[...by.values()];}
+        for(const n of nfts){const acq=await dao1TeamAcquisitionForNft(n,wallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;}
+        area.innerHTML=dao1TeamNftTableHtml(nfts);
+        const membershipEl=modal?.querySelector("[data-dao1-membership]");if(membershipEl)membershipEl.textContent=dao1TeamMembershipLabel(nfts);
+      }catch(e){console.warn("DAO1 Team Partnerdetails",e);area.innerHTML=`<div class="status warn"><strong>Partner-NFTs konnten nicht geladen werden.</strong><div class="note">${escapeHtml(e?.message||e)}</div></div>`;}
+    }));
     hydrateDAO1TeamMintDates(host,st);
   }
 
