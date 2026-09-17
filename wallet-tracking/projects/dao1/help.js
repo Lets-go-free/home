@@ -44,3 +44,7 @@ else renderDAO1Help();
 // Partner automatisch im Hintergrund. Partner-NFTs verwenden project_nfts und explizite
 // NFT-/Collection-Metadaten für dieselbe Bot-Typisierung wie eigene Wallets. Kaufpreise
 // werden nur aus eindeutig zuordenbaren ausgehenden ERC-20-Zahlungen der Erwerbs-Tx gezeigt.
+
+// Bot-Erwerb: In Team-Details wird neben Kaufpreis auch die on-chain ermittelte Erwerbsart angezeigt.
+// Ein NFT-Transfer ohne verifizierte Zahlung erhält keinen erfundenen Kaufpreis; die Quellwallet wird angezeigt.
+// "Bonus" wird nur verwendet, wenn ein eigener on-chain Nachweis dafür existiert.

@@ -584,3 +584,8 @@ window.adminIdeasFilterState = adminIdeasFilterState;
 // TODO Discovery: Funding-Call/Event + Bot-ID-Verknüpfung für Trading-Bots on-chain verifizieren;
 // fehlende Einzelkaufpreise (u.a. bekannte Testfälle #10676/#90068/#90067/#90066/#90065/#89908)
 // anhand Erwerbs-Tx/Receipt/Kaufcontract dekodieren, ohne Schätzung oder ID-Hardcoding.
+
+// Phase 4.80 / DAO1 Bot-Erwerb: Erwerbsart aus ERC-721-Transferkette ableiten.
+// Kauf (verifizierte Zahlung), Mint, NFT-Transfer und Transfer zwischen eigenen Wallets getrennt anzeigen.
+// Quellwallet bei Transfers sichtbar machen; "Bonus" niemals allein aus Transfer ableiten.
+// Offene Discovery: Trading-Funding je Bot-ID (inkl. Nachladungen/mehrere Währungen), Target/Progress/Abschlussstatus.
