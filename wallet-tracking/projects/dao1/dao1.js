@@ -4050,13 +4050,23 @@ window.DAO1Project = (() => {
       const topics=log.topics||[],data=String(log.data||"0x");
       if(String(topics[0]||"").toLowerCase()!==DAO1_OLD_MINT_TOPIC)return null;
       let to="",child=0,parent=0;
-      if(topics.length>=2){
-        // Übliche Contract-Variante: `to` indexed, tokenId/fid im data-Feld.
+      if(topics.length>=3){
+        // Verifizierte Legacy-Form auf Apertum:
+        // TokenMinted(address to, uint256 tokenId, uint256 fid)
+        // `to` und `tokenId` sind indexed (topics[1]/topics[2]); `fid` liegt
+        // im data-Feld. Einzelne Explorer/ABI-Darstellungen markieren auch fid
+        // als indexed; deshalb wird topics[3] defensiv ebenfalls unterstützt.
+        to=dao1TopicAddress(topics[1]);
+        child=teamHexNumber(topics[2]);
+        if(topics.length>=4) parent=teamHexNumber(topics[3]);
+        else if(data && data!=="0x") parent=Number(ethers.AbiCoder.defaultAbiCoder().decode(["uint256"],data)[0]);
+      }else if(topics.length>=2){
+        // Fallback für eine Variante mit nur `to` indexed.
         to=dao1TopicAddress(topics[1]);
         const decoded=ethers.AbiCoder.defaultAbiCoder().decode(["uint256","uint256"],data);
         child=Number(decoded[0]);parent=Number(decoded[1]);
       }else{
-        // Defensive Variante für historische Deployments ohne indexed `to`.
+        // Defensive Variante ohne indexed Parameter.
         const decoded=ethers.AbiCoder.defaultAbiCoder().decode(["address","uint256","uint256"],data);
         to=lower(String(decoded[0]));child=Number(decoded[1]);parent=Number(decoded[2]);
       }
