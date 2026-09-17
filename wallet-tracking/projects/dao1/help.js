@@ -55,4 +55,6 @@ else renderDAO1Help();
 
 // Phase 4.82: TLN/VOW und DAO1/APTM sind strikt getrennte Projekte. DAO1-Partnernamen verwenden ausschließlich dao1:did:<DID>; kein TLN-id:- oder Wallet-Fallback. wallet-private muss diesen Namespace serverseitig explizit akzeptieren.
 // Phase 4.83: Historische APTM-Preise bleiben DAO1-spezifisch. aptm_price_history ist nur der globale Block-Fallback-Cache und speichert künftig höchstens den letzten Sync je Pool+Block. Exakte Transaktions-/Claim-Bewertungen verwenden aptm_price_anchors je target_block; Coverage verhindert wiederholte RPC-Scans.
+
+// Phase 4.84: Der globale Legacy-DAO1-Tree-Cache ist auf eine spezialisierte Kantenstruktur verschlankt: child_id ist global eindeutig; redundante Konstanten (chain_key, contract_address, source) sowie userbezogene Audit-Spalten werden aus der Kantentabelle entfernt. Parent- und Block-Indizes bleiben für Baumaufbau bzw. inkrementelle Discovery erhalten. Der separate Graph-State behält Chain/Contract zur Cache-Identität.
 // DAO1-Namen/Aliase: verschlüsselte Speicherung mit Referenz dao1:did:<DID>. TLN/VOW-Referenzen werden dafür ausdrücklich nicht verwendet.

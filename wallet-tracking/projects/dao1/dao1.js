@@ -4161,7 +4161,8 @@ window.DAO1Project = (() => {
     while(true){
       const {data,error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE)
         .select("child_id,parent_id,wallet_address,mint_block,mint_tx_hash,log_index")
-        .eq("chain_key",CHAIN_KEY).eq("contract_address",contract)
+        // Phase 4.84: Diese Tabelle ist absichtlich nur der globale Legacy-DAO1-DID-Graph.
+        // chain_key/contract_address sind deshalb keine Zeilendimensionen mehr.
         .order("child_id",{ascending:true}).range(offset,offset+DAO1_OLD_TREE_CACHE_PAGE_SIZE-1);
       if(error){console.warn("DAO1 Tree Global-Cache Kanten",error);return null;}
       const rows=data||[];
@@ -4180,11 +4181,13 @@ window.DAO1Project = (() => {
     const uid=ctx.currentUser.id,contract=lower(DAO1_OLD_DID_CONTRACT),now=new Date().toISOString();
     const changed=changedChildren?new Set(changedChildren):null;
     const rows=edges.filter(e=>!changed||changed.has(e.child_id)).map(e=>({
-      chain_key:CHAIN_KEY,contract_address:contract,child_id:Number(e.child_id),parent_id:Number(e.parent_id),wallet_address:lower(e.wallet||""),
-      mint_block:Number(e.block||0),mint_tx_hash:e.tx_hash||null,log_index:Number(e.log_index||0),source:"TokenMinted(to, tokenId, fid)",verified_at:now,created_by:uid,updated_by:uid,updated_at:now
+      // Phase 4.84: Nur veränderliche/fachliche Kantendaten schreiben. Konstanten wie
+      // chain_key, contract_address und source werden nicht mehr 65k-mal dupliziert.
+      child_id:Number(e.child_id),parent_id:Number(e.parent_id),wallet_address:lower(e.wallet||""),
+      mint_block:Number(e.block||0),mint_tx_hash:e.tx_hash||null,log_index:Number(e.log_index||0),verified_at:now,updated_at:now
     }));
     for(let i=0;i<rows.length;i+=500){
-      const {error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE).upsert(rows.slice(i,i+500),{onConflict:"chain_key,contract_address,child_id"});
+      const {error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE).upsert(rows.slice(i,i+500),{onConflict:"child_id"});
       if(error){console.warn("DAO1 Tree Cache speichern",error);return false;}
     }
     const {error}=await sb.from(DAO1_OLD_TREE_STATE_TABLE).upsert({chain_key:CHAIN_KEY,contract_address:contract,last_verified_block:Number(lastBlock||0),edge_count:edges.length,verified_at:now,updated_by:uid,updated_at:now},{onConflict:"chain_key,contract_address"});
