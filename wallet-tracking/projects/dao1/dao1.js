@@ -256,7 +256,10 @@ window.DAO1Project = (() => {
       nav.appendChild(btn);
     }
 
-    const app = document.getElementById("appContent");
+    // Projekt-Panels gehören in denselben Content-Container wie TLN/VOW.
+    // Direktes Anhängen an #appContent würde das CSS-Grid umgehen und DAO1
+    // unter/über die linke Navigation laufen lassen.
+    const app = document.querySelector("#appContent .app-main") || document.getElementById("appContent");
     if (app && !document.getElementById("tab-dao1")) {
       const panel = document.createElement("div");
       panel.id = "tab-dao1";
@@ -4080,7 +4083,12 @@ window.DAO1Project = (() => {
         const nftMap=await loadWalletNftMap(address);
         for(const n of nftMap.values()){
           const cls=n.classification||classificationFor(n.contract,n.id);
-          if(String(cls?.subtype||"").toUpperCase()!=="DID" || !n.current)continue;
+          // Die DID ist bereits als NFT bekannt. Die Root-Erkennung darf nicht davon
+          // abhängen, ob die optionale User-Klassifizierung geladen wurde: der
+          // verifizierte DID-Contract selbst ist die primäre Identität.
+          const isDidContract=lower(n.contract)===DAO1_OLD_DID_CONTRACT;
+          const isDidClass=String(cls?.subtype||"").toUpperCase()==="DID";
+          if((!isDidContract && !isDidClass) || !n.current)continue;
           const did=Number(n.id);if(!Number.isFinite(did)||did<=0)continue;
           roots.push({did,wallet:w,wallet_address:address,name:cls?.nft_name||n.name||`DID #${did}`});
         }
@@ -4107,7 +4115,7 @@ window.DAO1Project = (() => {
   function setDAO1TeamRootFilter(value){dao1TeamRootFilter=String(value||"__all");renderDAO1TeamTreePanel();}
 
   function teamRootSelectorHtml(){
-    if(!dao1OwnedDidRoots.length)return `<div class="status warn"><strong>Keine eigene DID gefunden.</strong><div class="note" style="margin-top:4px">Die Roots werden automatisch aus den aktuell zu deinen DAO-Wallets gehörenden DID-NFTs ermittelt. Bitte zuerst den NFT-Bestand der DAO-Wallets aktualisieren.</div></div>`;
+    if(!dao1OwnedDidRoots.length)return `<div class="status warn"><strong>Keine eigene DID gefunden.</strong><div class="note" style="margin-top:4px">Die Roots werden automatisch aus den aktuell zu deinen DAO-Wallets gehörenden DID-NFTs ermittelt. Der verifizierte DID-Contract wird direkt erkannt; eine zusätzliche manuelle NFT-Klassifizierung ist nicht nötig. Falls hier keine DID erscheint, bitte den NFT-Bestand der DAO-Wallets aktualisieren.</div></div>`;
     const opts=[`<option value="__all" ${dao1TeamRootFilter==="__all"?"selected":""}>Alle DIDs (${dao1OwnedDidRoots.length})</option>`,...dao1OwnedDidRoots.map(r=>`<option value="${r.did}" ${String(dao1TeamRootFilter)===String(r.did)?"selected":""}>DID #${r.did} · ${escapeHtml(r.wallet?.label||"Wallet")}</option>`)].join("");
     return `<label><span class="field-label">Eigene DID / Root</span><select onchange="DAO1Project.setTeamRootFilter(this.value)">${opts}</select></label>`;
   }
@@ -4139,6 +4147,11 @@ window.DAO1Project = (() => {
       </div>
     </div><div id="dao1TeamTreePanel"></div>`;
     renderDAO1TeamTreePanel();
+    // Wie beim TLN-Baum: vorhandene eigene DIDs reichen als Root. Der alte Tree
+    // startet beim ersten Öffnen automatisch im Hintergrund; Navigation bleibt frei.
+    if(dao1TeamTreeMode==="legacy" && dao1OwnedDidRoots.length && !dao1TeamDiscovery.legacy.running && !dao1TeamDiscovery.legacy.edges.length){
+      scanOldDao1Tree().catch(e=>console.warn("DAO1 Team Auto-Discovery",e));
+    }
   }
 
   function renderDAO1TeamTreePanel(){

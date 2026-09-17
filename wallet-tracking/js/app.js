@@ -66,6 +66,12 @@ function showMainSection(section,preferredTab){
   showTab(preferredTab||tabs[0]);
 }
 window.showMainSection=showMainSection;
+// Navigation bleibt während asynchroner Start-/Refresh-Läufe beim vom User gewählten Ziel.
+// Ein Daten-Refresh darf die Ansicht nach Abschluss niemals ungefragt zurücksetzen.
+let userNavigationTouched=false;
+document.addEventListener("click",e=>{
+  if(e.target?.closest?.("[data-tab],[data-main-section],.project-subtabs .tab-btn")) userNavigationTouched=true;
+},true);
 function initUiDisplay(){initUiFontScale();initUiTheme();}
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",initUiDisplay,{once:true});else initUiDisplay();
 let defiProjectsCache = [];
@@ -331,7 +337,7 @@ async function onLoggedIn(session) {
   // einmal pro Kalendertag frisch ermitteln. Bestände/Discovery werden dabei nicht angefasst.
   await refreshAllCurrentPrices({manual:false}).catch(e=>console.warn("Zentrale Tagespreise:",e));
 
-  showTab(wallets.length === 0 ? "wallets" : "tracking");
+  if(!userNavigationTouched) showTab(wallets.length === 0 ? "wallets" : "tracking");
   maybeShowWelcomeModal();
 
   // Nicht blockierend: Nur wenn der automatisierte Cache noch nicht von heute ist,

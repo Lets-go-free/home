@@ -1279,3 +1279,24 @@ table th.col-text, table td.col-text { text-align:left!important; }
   }
 }
 @media(max-width:1050px){.app-shell{margin-left:0;width:100%}}
+
+
+/* ======================================================================
+   Projekt-Content-Geometrie · Build 20260917-090200
+   Sidebar darf negativ in den äußeren Rand ragen; der eigentliche Content
+   beginnt immer erst rechts von Sidebar + Gap. DAO1/TLN nutzen exakt dieselbe
+   zentrale Geometrie und können nicht unter die Navigation laufen.
+   ====================================================================== */
+.app-shell{
+  --sidebar-w:190px;
+  --shell-gap:20px;
+  grid-template-columns:var(--sidebar-w) minmax(0,1fr);
+  column-gap:var(--shell-gap);
+  box-sizing:border-box;
+}
+.app-main{min-width:0;max-width:100%;overflow:visible}
+#appContent .tab-panel,#tab-dao1,#tab-tlnvow{min-width:0;max-width:100%;box-sizing:border-box}
+#tab-dao1>.project-subtabs,#tab-tlnvow>.project-subtabs{max-width:100%;box-sizing:border-box;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap}
+@media(max-width:1250px){.app-shell{--sidebar-w:170px;--shell-gap:14px}}
+@media(max-width:1050px){.app-shell{--sidebar-w:180px;--shell-gap:14px}}
+@media(max-width:820px){#tab-dao1>.project-subtabs,#tab-tlnvow>.project-subtabs{flex-wrap:nowrap}}
