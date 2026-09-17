@@ -310,8 +310,8 @@ async function onLoggedIn(session) {
         refreshApertumNftsForWallet
       })
     });
+    // Cache-first/Lazy: DAO1 wird nur gemountet. DB-/Projekt-Caches werden erst beim Öffnen des DAO1-Tabs geladen.
     await window.DAO1Project.ensureMounted();
-    await window.DAO1Project.refreshConfig();
   }
 
   activeChainFilter = new Set(Object.keys(CHAIN_META)); // Chain-Filter IMMER mit allen Chains starten
@@ -358,12 +358,12 @@ async function onLoggedIn(session) {
     renderAllocationChart();
     renderCacheStatusNote(
       autoRefreshNeeded
-        ? "Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – tägliche Live-Aktualisierung startet…"
+        ? "Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – Aktualisierung verfügbar; kein automatischer On-Chain-Refresh beim Seitenstart."
         : "Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – heute bereits live aktualisiert. Weitere Aktualisierungen nur manuell."
     );
   } else {
     renderCacheStatusNote(wallets.length > 0
-      ? "Noch kein gespeicherter Stand – erste tägliche Live-Aktualisierung startet…"
+      ? "Noch kein gespeicherter Stand – bitte „Daten aktualisieren“ starten."
       : "Noch kein gespeicherter Stand.");
   }
 
@@ -374,15 +374,14 @@ async function onLoggedIn(session) {
   if(!userNavigationTouched) showTab(wallets.length === 0 ? "wallets" : "tracking");
   maybeShowWelcomeModal();
 
-  // Initial-Load bleibt bewusst innerhalb des globalen Lade-Locks: Navigation wird
-  // erst freigegeben, wenn auch die ggf. nötige tägliche Live-Aktualisierung fertig ist.
-  if (autoRefreshNeeded) {
-    try {
-      await loadAll({ automatic: true });
-    } catch(e) {
-      console.error("Automatische Live-Aktualisierung:", e);
-      renderCacheStatusNote("Tägliche automatische Live-Aktualisierung fehlgeschlagen – letzter gespeicherter Stand bleibt sichtbar. Erneut aktualisieren bitte manuell.");
-    }
+  // Cache-first Start: Ein Seiten-Reload startet keinen grossen On-Chain-Refresh mehr.
+  // Gespeicherte Daten werden sofort angezeigt; Live-/On-Chain-Aktualisierung erfolgt bewusst
+  // über „Daten aktualisieren“ bzw. projektspezifische Refresh-Aktionen. Das verhindert, dass
+  // ein Reload unbemerkt Balance-, NFT- oder Projekt-RPC-Jobs auslöst.
+  if (autoRefreshNeeded && wallets.length > 0) {
+    renderCacheStatusNote(cachedAt
+      ? "Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – Aktualisierung verfügbar. Live-Daten werden erst über „Daten aktualisieren“ geprüft."
+      : "Noch kein gespeicherter Stand – bitte „Daten aktualisieren“ starten.");
   }
 }
 

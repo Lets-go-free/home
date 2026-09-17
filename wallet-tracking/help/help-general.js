@@ -1,3 +1,4 @@
+// Cache-first Start ab 18.09.2026: Seiten-Reload zeigt gespeicherte Daten und startet keine grossen Balance/NFT/Projekt-On-Chain-Jobs automatisch. Projektmodule wie DAO1 laden Detail-Caches lazy beim Öffnen.
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.

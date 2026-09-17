@@ -3,8 +3,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260917-230100";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "17.09.2026 23:01:00 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260918-005258";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 00:52:58 CEST";
 
 const ADMIN_IDEAS = [
   {
@@ -12,7 +12,7 @@ const ADMIN_IDEAS = [
     category: "Performance / Skalierung",
     priority: "high",
     title: "PRIORITÄT NÄCHSTER SCHRITT · Browser-Cache + DATA_VERSIONS + Delta-Synchronisation",
-    desc: `STATUS: Offen – als nächster Entwicklungsschritt umsetzen, bevor weitere grössere Funktionen bzw. eine breitere User-Freigabe erfolgen.
+    desc: `STATUS: In Arbeit – zentrale Browser-Cache-/DATA_VERSIONS-Infrastruktur wird schrittweise umgesetzt. DAO1 alter Tree ist der Referenzcache; Seitenstart wird parallel auf Cache-first/Lazy Loading umgestellt.
 
 ZIEL
 Grosse, überwiegend unveränderliche Blockchain-Cache-Daten, die bereits aus Supabase geladen wurden, sollen nicht bei jedem Seitenaufruf erneut vollständig aus der Datenbank übertragen werden. Dadurch Supabase-Egress deutlich reduzieren, Datenbank/API entlasten und WalletTracking spürbar schneller starten.
