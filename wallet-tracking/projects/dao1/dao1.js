@@ -61,6 +61,11 @@ window.DAO1Project = (() => {
   const DAO1_OLD_TREE_START_BLOCK = 0;
   const DAO1_TEAM_MAX_LEVELS = 20;
   const DAO1_TEAM_RPC_CHUNK = 25000;
+  const DAO1_OLD_TREE_CACHE_TABLE = "dao1_old_tree_graph_cache";
+  const DAO1_OLD_TREE_STATE_TABLE = "dao1_old_tree_graph_state";
+  const DAO1_OLD_TREE_CACHE_PAGE_SIZE = 1000;
+  const DAO1_OLD_TREE_OVERLAP_BLOCKS = 24;
+  let dao1OldTreeDbAvailable = true;
   const DAO1_OLD_MINT_TOPIC = ethers.id("TokenMinted(address,uint256,uint256)").toLowerCase();
 
   let sb = null;
@@ -4101,27 +4106,87 @@ window.DAO1Project = (() => {
     }catch(_){return null;}
   }
 
-  async function scanOldDao1TreeCore(){
+  async function loadOldDao1TreeCache(){
+    const ctx=getContext?.();
+    if(!sb||!ctx?.currentUser||!dao1OldTreeDbAvailable)return null;
+    const contract=lower(DAO1_OLD_DID_CONTRACT);
+    const {data:states,error:stateError}=await sb.from(DAO1_OLD_TREE_STATE_TABLE)
+      .select("last_verified_block,edge_count,verified_at,updated_at")
+      .eq("chain_key",CHAIN_KEY).eq("contract_address",contract).limit(1);
+    if(stateError){
+      const msg=String(stateError.message||"");
+      if(/dao1_old_tree_graph_state|relation .* does not exist|schema cache/i.test(msg))dao1OldTreeDbAvailable=false;
+      console.warn("DAO1 Tree Global-Cache State",stateError);return null;
+    }
+    const state=states?.[0];if(!state)return null;
+    const edges=[];let offset=0;
+    while(true){
+      const {data,error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE)
+        .select("child_id,parent_id,wallet_address,mint_block,mint_tx_hash,log_index")
+        .eq("chain_key",CHAIN_KEY).eq("contract_address",contract)
+        .order("child_id",{ascending:true}).range(offset,offset+DAO1_OLD_TREE_CACHE_PAGE_SIZE-1);
+      if(error){console.warn("DAO1 Tree Global-Cache Kanten",error);return null;}
+      const rows=data||[];
+      for(const r of rows)edges.push({tree:"legacy",child_id:Number(r.child_id),parent_id:Number(r.parent_id),wallet:lower(r.wallet_address||""),block:Number(r.mint_block||0),tx_hash:String(r.mint_tx_hash||""),log_index:Number(r.log_index||0)});
+      if(rows.length<DAO1_OLD_TREE_CACHE_PAGE_SIZE)break;
+      offset+=DAO1_OLD_TREE_CACHE_PAGE_SIZE;
+      if(offset>200000)throw new Error("DAO1 Tree Cache unerwartet groß; Abbruch statt Teilgraph.");
+    }
+    const expected=Number(state.edge_count||0);
+    if(expected && edges.length!==expected){console.warn(`DAO1 Tree Cache unvollständig: ${edges.length}/${expected}`);return null;}
+    return {edges,lastBlock:Number(state.last_verified_block||0)};
+  }
+
+  async function saveOldDao1TreeCache(edges,lastBlock,changedChildren=null){
+    const ctx=getContext?.();if(!sb||!ctx?.currentUser||!dao1OldTreeDbAvailable)return false;
+    const uid=ctx.currentUser.id,contract=lower(DAO1_OLD_DID_CONTRACT),now=new Date().toISOString();
+    const changed=changedChildren?new Set(changedChildren):null;
+    const rows=edges.filter(e=>!changed||changed.has(e.child_id)).map(e=>({
+      chain_key:CHAIN_KEY,contract_address:contract,child_id:Number(e.child_id),parent_id:Number(e.parent_id),wallet_address:lower(e.wallet||""),
+      mint_block:Number(e.block||0),mint_tx_hash:e.tx_hash||null,log_index:Number(e.log_index||0),source:"TokenMinted(to, tokenId, fid)",verified_at:now,created_by:uid,updated_by:uid,updated_at:now
+    }));
+    for(let i=0;i<rows.length;i+=500){
+      const {error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE).upsert(rows.slice(i,i+500),{onConflict:"chain_key,contract_address,child_id"});
+      if(error){console.warn("DAO1 Tree Cache speichern",error);return false;}
+    }
+    const {error}=await sb.from(DAO1_OLD_TREE_STATE_TABLE).upsert({chain_key:CHAIN_KEY,contract_address:contract,last_verified_block:Number(lastBlock||0),edge_count:edges.length,verified_at:now,updated_by:uid,updated_at:now},{onConflict:"chain_key,contract_address"});
+    if(error){console.warn("DAO1 Tree Cache State speichern",error);return false;}
+    return true;
+  }
+
+  async function scanOldDao1TreeCore({forceFull=false}={}){
     const st=dao1TeamDiscovery.legacy;if(st.running)return;
-    st.running=true;st.error="";st.status="Blockchain wird gelesen …";renderDAO1TeamTreePanel();
+    st.running=true;st.error="";st.status="DAO1 Tree-Cache wird geladen …";renderDAO1TeamTreePanel();
     try{
       const latest=teamHexNumber(await dao1ApertumRpc("eth_blockNumber",[]));
-      const byChild=new Map();let chunks=0;
-      for(let from=DAO1_OLD_TREE_START_BLOCK;from<=latest;from+=DAO1_TEAM_RPC_CHUNK){
+      const cached=forceFull?null:await loadOldDao1TreeCache();
+      const byChild=new Map();
+      if(cached?.edges?.length)for(const e of cached.edges)byChild.set(e.child_id,e);
+      let fromStart=DAO1_OLD_TREE_START_BLOCK;
+      if(cached?.lastBlock>0){
+        fromStart=Math.max(DAO1_OLD_TREE_START_BLOCK,cached.lastBlock-DAO1_OLD_TREE_OVERLAP_BLOCKS);
+        st.edges=[...byChild.values()].sort((a,b)=>a.child_id-b.child_id);st.lastBlock=cached.lastBlock;
+        st.status=`${st.edges.length.toLocaleString("de-DE")} Kanten aus Cache · Aktualisierung ab Block ${fromStart.toLocaleString("de-DE")}`;renderDAO1TeamTreePanel();
+      }else if(!dao1OldTreeDbAvailable){
+        st.status="DAO1 Tree-Cache nicht installiert · vollständiger Scan";renderDAO1TeamTreePanel();
+      }
+      const changed=new Set();
+      for(let from=fromStart;from<=latest;from+=DAO1_TEAM_RPC_CHUNK){
         const to=Math.min(latest,from+DAO1_TEAM_RPC_CHUNK-1);
-        st.status=`DAO1 alt · Block ${from.toLocaleString("de-DE")}–${to.toLocaleString("de-DE")} / ${latest.toLocaleString("de-DE")}`;renderDAO1TeamTreePanel();
+        st.status=`DAO1 alt · ${cached?"inkrementell":"Vollscan"} · Block ${from.toLocaleString("de-DE")}–${to.toLocaleString("de-DE")} / ${latest.toLocaleString("de-DE")}`;renderDAO1TeamTreePanel();
         const logs=await dao1ApertumRpc("eth_getLogs",[{address:DAO1_OLD_DID_CONTRACT,fromBlock:"0x"+from.toString(16),toBlock:"0x"+to.toString(16),topics:[DAO1_OLD_MINT_TOPIC]}]);
-        for(const log of logs||[]){const e=parseOldDao1MintLog(log);if(e)byChild.set(e.child_id,e);}
-        chunks++;
+        for(const log of logs||[]){const e=parseOldDao1MintLog(log);if(e){byChild.set(e.child_id,e);changed.add(e.child_id);}}
       }
       st.edges=[...byChild.values()].sort((a,b)=>a.child_id-b.child_id);st.lastBlock=latest;
-      st.status=`${st.edges.length.toLocaleString("de-DE")} verifizierte DID→fid-Kanten · bis Block ${latest.toLocaleString("de-DE")}`;
+      if(dao1OldTreeDbAvailable)await saveOldDao1TreeCache(st.edges,latest,cached?changed:null);
+      st.status=`${st.edges.length.toLocaleString("de-DE")} verifizierte DID→fid-Kanten · bis Block ${latest.toLocaleString("de-DE")}${cached?" · Cache + 24 Block Overlap":""}`;
     }catch(e){st.error=e?.message||String(e);st.status="Discovery fehlgeschlagen";}
     finally{st.running=false;renderDAO1TeamTreePanel();}
   }
-  async function scanOldDao1Tree(){
-    if(typeof window.runDataJob==="function") return window.runDataJob("DAO1 Team-Daten werden aktualisiert …",scanOldDao1TreeCore);
-    return scanOldDao1TreeCore();
+  async function scanOldDao1Tree(options={}){
+    const job=()=>scanOldDao1TreeCore(options);
+    if(typeof window.runDataJob==="function") return window.runDataJob("DAO1 Team-Daten werden aktualisiert …",job);
+    return job();
   }
 
   async function loadDAO1OwnedDidRoots(includeNftCache=true){

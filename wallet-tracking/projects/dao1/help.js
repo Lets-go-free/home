@@ -24,3 +24,7 @@ else renderDAO1Help();
 
 // Phase 4.74: DAO1 Team alt zeigt das on-chain DID-Mint-Datum direkt im Baum. Partner-Details verwenden
 // vorhandene Ownership-Daten für Membership und NFTs/Bots; unbekannte Kaufpreise werden nicht geschätzt.
+
+// Phase 4.75: Der alte DAO1-Team-Graph wird nach dem ersten Vollscan global in Supabase
+// persistiert. Folgeläufe laden den Baum sofort aus dem Cache und scannen nur ab
+// last_verified_block - 24 bis zum aktuellen Apertum-Block. Migration 054 erforderlich.
