@@ -1,6 +1,15 @@
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
+  // Lokaler HTML-Escaper: dao1.js darf nicht von einem globalen Helper abhängen.
+  function escapeHtml(value){
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
   const CHAIN_KEY = "apertum";
   const CLAIM_SELECTOR = "0x86bb8f37";
   const NEW_MINER_CLAIM_SELECTOR = "0x19da4078";
