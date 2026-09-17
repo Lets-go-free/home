@@ -311,7 +311,9 @@ window.DAO1Project = (() => {
     // Beim ersten Öffnen des Transaktions-Tabs muss der gespeicherte Cache sofort geladen
     // werden. Bisher wurde nur das Panel angezeigt; erst ein Wallet-Filterwechsel löste
     // refreshTransactionHistory(false) aus. Dadurch war "Alle Apertum-Wallets" initial leer.
-    if(name==="transactions"){
+    if(name==="overview"){
+      await renderDAO1BotOverview();
+    }else if(name==="transactions"){
       await refreshTransactionHistory(false);
     }else if(name==="help"){
       if(typeof window.renderDAO1Help==="function")window.renderDAO1Help();
@@ -4408,9 +4410,68 @@ window.DAO1Project = (() => {
     const result={txHash,at,block,purchase};dao1TeamPartnerDetailsCache.set(cacheKey,result);return result;
   }
   function dao1TeamPurchaseText(n){
+    // Eine DID ist Identität/Tree-Root und kein Bot-Kauf. Deshalb dort nie einen
+    // vermeintlich fehlenden Kaufpreis anzeigen.
+    if(n?.subtype==="DID")return "–";
     if(n?.purchase?.amount>0)return `${tokenAmount(n.purchase.amount,{address:n.purchase.contract,symbol:n.purchase.symbol})} ${escapeHtml(n.purchase.symbol)}`;
     return n?.acquisition_verified?"Erwerb on-chain verifiziert · Zahlung nicht ermittelt":"nicht ermittelt";
   }
+  function dao1BotClaimTotalsForNft(nftId){
+    const groups=new Map();
+    for(const r of transactionRows||[]){
+      if(String(r.claim_nft_id??"")!==String(nftId))continue;
+      for(const f of incomingAssetFlowsForTx(r)){
+        const symbol=isWrappedAptmSymbol(f.token_symbol,f.token_name)?"wAPTM":String(f.token_symbol||"TOKEN");
+        const key=`${lower(f.token_address||"")}|${symbol}`;
+        const g=groups.get(key)||{amount:0,symbol,contract:f.token_address||null};g.amount+=Number(f.amount||0);groups.set(key,g);
+      }
+      if(!incomingAssetFlowsForTx(r).length && Number(r.claim_reward_aptm||0)>0){
+        const key="legacy|APTM",g=groups.get(key)||{amount:0,symbol:"APTM",contract:null};g.amount+=Number(r.claim_reward_aptm||0);groups.set(key,g);
+      }
+    }
+    return [...groups.values()].filter(x=>x.amount>0);
+  }
+  function dao1MultiAssetText(groups){
+    if(!groups?.length)return "–";
+    return groups.map(g=>`${tokenAmount(g.amount,{address:g.contract,symbol:g.symbol})} ${escapeHtml(g.symbol)}`).join(" + ");
+  }
+  function dao1BotOverviewRows(){
+    const by=new Map();
+    for(const w of allProjectWalletOptions()){
+      const address=walletAddress(w);if(!address)continue;
+      for(const n of dao1TeamKnownNfts(address)){
+        if(!dao1TeamIsBot(n))continue;
+        const key=`${lower(n.contract)}|${n.id}|${lower(address)}`;
+        if(!by.has(key))by.set(key,{...n,wallet:address,walletLabel:w.label||"Wallet"});
+      }
+    }
+    return [...by.values()].sort((a,b)=>String(b.owned_from_at||"").localeCompare(String(a.owned_from_at||""))||Number(b.id)-Number(a.id));
+  }
+  function dao1BotOverviewTableHtml(rows,loading=false){
+    const purchaseGroups=new Map(),claimGroups=new Map();
+    for(const n of rows){
+      if(n.purchase?.amount>0){const k=`${n.purchase.contract||""}|${n.purchase.symbol}`,g=purchaseGroups.get(k)||{amount:0,symbol:n.purchase.symbol,contract:n.purchase.contract};g.amount+=n.purchase.amount;purchaseGroups.set(k,g);}
+      for(const c of dao1BotClaimTotalsForNft(n.id)){const k=`${c.contract||""}|${c.symbol}`,g=claimGroups.get(k)||{amount:0,symbol:c.symbol,contract:c.contract};g.amount+=c.amount;claimGroups.set(k,g);}
+    }
+    const mining=rows.filter(n=>n.subtype==="Mining-Bot").length,trading=rows.filter(n=>n.subtype==="Trading-Bot").length;
+    return `<div class="custom-token-card"><div class="chain-title">🤖 Bots</div><div class="note">Zentrale NFT-Basis, ergänzt um DAO1-spezifische Lifecycle-Daten. Kaufpreis = Lizenz-/Bot-Kauf. Trading-Guthaben wird getrennt geführt und erst angezeigt, sobald Funding-Transaktion und Bot-ID on-chain eindeutig verknüpft sind. Claims bleiben je Währung getrennt.</div></div>
+      <div class="project-summary" style="margin-top:12px"><div class="custom-token-card project-summary-box"><span class="field-label">Mining-Bots</span><strong>${mining}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Trading-Bots</span><strong>${trading}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Kaufpreise</span><strong>${dao1MultiAssetText([...purchaseGroups.values()])}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Geclaimt</span><strong>${dao1MultiAssetText([...claimGroups.values()])}</strong></div></div>
+      ${loading?'<div class="status info" style="margin-top:12px"><strong>Bot-Lifecycle wird ergänzt …</strong><div class="note">Kauftransaktionen werden on-chain geprüft.</div></div>':""}
+      <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden;margin-top:12px"><div class="chain-table-wrap project-data-table"><table><thead><tr><th>Typ</th><th>Bot</th><th>Name</th><th>Wallet</th><th>Erworben am</th><th>Kaufpreis</th><th>Trading-Guthaben</th><th>Geclaimt</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(n=>`<tr><td>${escapeHtml(n.subtype)}</td><td><strong>#${escapeHtml(n.id)}</strong></td><td><strong>${escapeHtml(n.name)}</strong></td><td>${escapeHtml(n.walletLabel)}<div class="meta">${teamShortAddress(n.wallet)}</div></td><td>${n.owned_from_at?dao1TeamDate(n.owned_from_at):"nicht ermittelt"}</td><td>${dao1TeamPurchaseText(n)}</td><td>${n.subtype==="Trading-Bot"?"noch nicht ermittelt":"–"}</td><td>${dao1MultiAssetText(dao1BotClaimTotalsForNft(n.id))}</td><td>${escapeHtml(dao1TeamBotStatus(n))}</td></tr>`).join(""):'<tr><td colspan="9" class="empty">Keine klassifizierten Bots im aktuellen NFT-Bestand.</td></tr>'}</tbody></table></div></div>`;
+  }
+  let dao1BotOverviewRun=0;
+  async function renderDAO1BotOverview(){
+    const el=document.getElementById("dao1-subtab-overview");if(!el)return;
+    const run=++dao1BotOverviewRun;
+    try{
+      const wallets=allProjectWalletOptions();
+      transactionRows=await loadAllApertumTransactionRows(wallets,null);transactionAssetFlows=await loadAllAssetFlowRows(wallets);
+      const rows=dao1BotOverviewRows();el.innerHTML=dao1BotOverviewTableHtml(rows,true);
+      let cursor=0;async function worker(){while(cursor<rows.length&&run===dao1BotOverviewRun){const n=rows[cursor++];try{const acq=await dao1TeamAcquisitionForNft(n,n.wallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;}catch(e){console.warn("DAO1 Übersicht Bot-Erwerb",n.id,e);}}}
+      await Promise.all(Array.from({length:Math.min(5,rows.length)},worker));if(run===dao1BotOverviewRun)el.innerHTML=dao1BotOverviewTableHtml(rows,false);
+    }catch(e){console.warn("DAO1 Bot-Übersicht",e);el.innerHTML=`<div class="status warn"><strong>Bot-Übersicht konnte nicht geladen werden.</strong><div class="note">${escapeHtml(e?.message||e)}</div></div>`;}
+  }
+
   function dao1TeamMembershipLabel(nfts){
     const memberships=nfts.filter(n=>n.subtype==="DAO / Membership");
     if(!memberships.length)return "keine bekannte Membership";

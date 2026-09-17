@@ -577,3 +577,10 @@ window.adminIdeasFilterState = adminIdeasFilterState;
 // Trading-/Mining-Typisierung für Partner an Own-Wallet-Logik + explizite Metadaten angeglichen;
 // Kaufpreis-Ermittlung gruppiert ERC-20-Flows je Token und vermeidet willkürliche Auswahl;
 // zentraler Datenjob sperrt Navigation und zeigt sofort Ladehinweis + Aktivitätsbalken.
+
+// Phase 4.79 / DAO1 Bot-Lifecycle: zentrale NFT-Basis auch für DAO1-Übersicht.
+// Umgesetzt: DID-Kaufpreis wird ignoriert; Bot-Übersicht mit Typ/ID/Name/Wallet/Kaufdatum/
+// verifiziertem Kaufpreis/Claims je Asset/Status. Trading-Funding bleibt strikt getrennt.
+// TODO Discovery: Funding-Call/Event + Bot-ID-Verknüpfung für Trading-Bots on-chain verifizieren;
+// fehlende Einzelkaufpreise (u.a. bekannte Testfälle #10676/#90068/#90067/#90066/#90065/#89908)
+// anhand Erwerbs-Tx/Receipt/Kaufcontract dekodieren, ohne Schätzung oder ID-Hardcoding.

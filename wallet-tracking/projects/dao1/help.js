@@ -1,13 +1,13 @@
 (() => {
 // WalletTracking · DAO1 Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260913-180715";
-const HELP_MODULE_TIMESTAMP="13.09.2026 18:07:15 CEST";
+const HELP_MODULE_BUILD="20260917-131500";
+const HELP_MODULE_TIMESTAMP="17.09.2026 13:15:00 CEST";
 function renderDAO1Help(){
   const el=document.getElementById("dao1HelpContent");
   if(!el)return;
   el.innerHTML=`<div class="custom-token-card"><h3 style="margin-top:0">DAO1 / Apertum · Hilfe</h3><p class="note">Diese Hilfe beschreibt ausschließlich die DAO1-/Apertum-Funktionen. Allgemeine WalletTracking-Funktionen stehen unter „❓ Hilfe / Handbuch“.</p></div>
-          <div class="custom-token-card"><h3 style="margin-top:0">Übersicht</h3><p class="note">Die DAO1-Ansicht fasst die projektspezifischen Apertum-Daten der gespeicherten DAO1-Wallets zusammen. Projektfunktionen sind bewusst in eigene Unter-Tabs getrennt, damit Transaktionen, Claims, Referral Rewards, Liquidity Pools und Konfiguration unabhängig geprüft werden können.</p></div>
+          <div class="custom-token-card"><h3 style="margin-top:0">Übersicht</h3><p class="note">Die DAO1-Ansicht fasst die projektspezifischen Apertum-Daten der gespeicherten DAO1-Wallets zusammen. Die Bot-Übersicht verwendet den zentralen NFT-/Ownership-Bestand und ergänzt Mining-/Trading-Bots um Kaufdatum, verifizierten Kaufpreis, Claims je Währung sowie den Lifecycle-Status. Trading-Guthaben/Funding wird bewusst getrennt vom Lizenz-Kaufpreis geführt und erst angezeigt, wenn die Einzahlung on-chain eindeutig dem Bot zugeordnet werden kann. DIDs sind keine Bot-Käufe und erhalten keinen Kaufpreis. Projektfunktionen sind bewusst in eigene Unter-Tabs getrennt, damit Transaktionen, Claims, Referral Rewards, Liquidity Pools und Konfiguration unabhängig geprüft werden können.</p></div>
           <div class="custom-token-card"><h3 style="margin-top:0">Transaktionen</h3><p class="note">Die „Apertum Transaktionshistorie“ ist eine dauerhaft gespeicherte Historie. Standardmäßig wird ab 01.01.2025 bis heute gearbeitet; Datumsfilter können angepasst werden. „Daten aktualisieren“ ergänzt neue Blockchain-Daten und zugehörige Asset-Flows, ohne die bereits gespeicherte Historie bei jedem Öffnen vollständig neu aufzubauen. Historische USD-Werte verwenden die DAO1-/Apertum-Preislogik und vorhandene Preis-Caches.</p></div>
           <div class="custom-token-card"><h3 style="margin-top:0">Bot-Claims</h3><p class="note">Claims werden als eigene DAO1-Transaktionsart ausgewertet und den bekannten Miner-/Bot-NFTs zugeordnet. Der Claim-Bereich besitzt einen NFT-Filter, damit einzelne Miner getrennt geprüft werden können. Neue Miner-/NFT-Zuordnungen sollen aus der On-Chain-Historie erkannt und anschließend in der Projektklassifikation sauber benannt werden.</p></div>
           <div class="custom-token-card"><h3 style="margin-top:0">Referral Rewards</h3><p class="note">Referral Rewards werden getrennt von normalen Bot-Claims ausgewiesen und nur dort gezählt, wo eine echte Referral-Struktur belegt ist. Fehlende Referral-Aktivität darf nicht als Claim oder anderer Reward-Typ geraten werden.</p></div>
