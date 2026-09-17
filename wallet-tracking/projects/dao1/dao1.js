@@ -4205,7 +4205,7 @@ window.DAO1Project = (() => {
               const rows=await readLocalSubtree(meta);
               Object.assign(dao1OldTreeCacheDiag,{source:"IDB SUBTREE HIT",totalCacheMs:performance.now()-t0,note:`Global ${globalCount.toLocaleString("de-DE")} Rows im Cache · nur ${rows.length.toLocaleString("de-DE")} relevante Rows gelesen`});
               renderDAO1TeamTreePanel();
-              return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),browserCache:true,totalEdgeCount:globalCount};
+              return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),browserCache:true,registryFresh:true,registryUpdatedAt:remoteVersion?.updated_at||null,totalEdgeCount:globalCount};
             }
             if(remoteDataVersion>localDataVersion && meta.syncCursor){
               const delta=[];let offset=0;const td0=performance.now();
@@ -4217,7 +4217,7 @@ window.DAO1Project = (() => {
               const rows=await readLocalSubtree(nextMeta);
               Object.assign(dao1OldTreeCacheDiag,{source:"IDB SUBTREE + DELTA",totalCacheMs:performance.now()-t0,note:`Nur ${delta.length} Delta-Row(s) aus DB · ${rows.length.toLocaleString("de-DE")} relevante Rows lokal gelesen`});
               renderDAO1TeamTreePanel();
-              return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),browserCache:true,deltaRows:delta.length,totalEdgeCount:globalCount};
+              return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),browserCache:true,registryFresh:true,registryUpdatedAt:remoteVersion?.updated_at||null,deltaRows:delta.length,totalEdgeCount:globalCount};
             }
           }
           dao1OldTreeCacheDiag.note=schemaOk?"Cache inkonsistent → Neuaufbau":"Schema/Cacheformat geändert → Neuaufbau";await bc.clear(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY);
@@ -4258,7 +4258,7 @@ window.DAO1Project = (() => {
     const {error:versionError}=await sb.from(DATA_VERSIONS_TABLE).upsert({namespace:DAO1_OLD_TREE_BROWSER_NAMESPACE,cache_key:DAO1_OLD_TREE_BROWSER_KEY,data_version:Number(lastBlock||0),payload_schema_version:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,row_count:globalEdgeCount,sync_cursor:now,updated_at:now,updated_by:uid},{onConflict:"namespace,cache_key"});
     if(versionError)console.warn("DATA_VERSIONS DAO1 Tree speichern",versionError);
     // Den lokalen Cache direkt mit den gerade bestätigten Änderungen mitziehen.
-    const bc=window.WalletTrackingBrowserCache;if(bc&&rows.length)try{await bc.merge(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rows,{keyField:"child_id",parentField:"parent_id",meta:{payloadSchemaVersion:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,storageFormatVersion:DAO1_OLD_TREE_BROWSER_STORAGE_VERSION,dataVersion:Number(lastBlock||0),syncCursor:now,rowCount:globalEdgeCount}});}catch(e){console.warn("DAO1 Tree Browser-Cache nachführen",e);}
+    const bc=window.WalletTrackingBrowserCache;if(bc)try{await bc.merge(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rows,{keyField:"child_id",parentField:"parent_id",meta:{payloadSchemaVersion:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,storageFormatVersion:DAO1_OLD_TREE_BROWSER_STORAGE_VERSION,dataVersion:Number(lastBlock||0),syncCursor:now,rowCount:globalEdgeCount}});}catch(e){console.warn("DAO1 Tree Browser-Cache nachführen",e);}
     return true;
   }
 
@@ -4267,12 +4267,31 @@ window.DAO1Project = (() => {
     st.running=true;st.error="";st.status="DAO1 Tree-Cache wird geladen …";renderDAO1TeamTreePanel();
     try{
       const scanT0=performance.now();
-      const tl0=performance.now();
-      const latest=teamHexNumber(await dao1ApertumRpc("eth_blockNumber",[]));
-      dao1OldTreeCacheDiag.latestBlockMs=performance.now()-tl0;
       const cached=forceFull?null:await loadOldDao1TreeCache();
       const byChild=new Map();
       if(cached?.edges?.length)for(const e of cached.edges)byChild.set(e.child_id,e);
+      // DATA_VERSIONS ist das primäre Sync-Gate. Bei einem frisch bestätigten
+      // Registry-Stand entfällt sogar der Block-RPC. Ohne externen Backend-Job
+      // wird nach kurzer Freshness-Frist einmal die Chain-Höhe geprüft, damit
+      // der Browsercache nicht dauerhaft veralten kann.
+      const registryAgeMs=cached?.registryUpdatedAt ? (Date.now()-Date.parse(cached.registryUpdatedAt)) : Infinity;
+      if(cached?.registryFresh && Number.isFinite(registryAgeMs) && registryAgeMs>=0 && registryAgeMs<300000){
+        st.edges=[...byChild.values()].sort((a,b)=>a.child_id-b.child_id);st.lastBlock=cached.lastBlock;
+        st.status=`${st.edges.length.toLocaleString("de-DE")} Partner-Verbindungen im ausgewählten Baum · Cache aktuell`;
+        dao1OldTreeCacheDiag.note+=` · DATA_VERSIONS aktuell (${Math.round(registryAgeMs/1000)} s)`;
+        dao1OldTreeCacheDiag.scanMs=performance.now()-scanT0;
+        return;
+      }
+      const tl0=performance.now();
+      const latest=teamHexNumber(await dao1ApertumRpc("eth_blockNumber",[]));
+      dao1OldTreeCacheDiag.latestBlockMs=performance.now()-tl0;
+      if(cached?.registryFresh && Number(latest||0)<=Number(cached.lastBlock||0)){
+        st.edges=[...byChild.values()].sort((a,b)=>a.child_id-b.child_id);st.lastBlock=cached.lastBlock;
+        st.status=`${st.edges.length.toLocaleString("de-DE")} Partner-Verbindungen im ausgewählten Baum · Cache aktuell`;
+        dao1OldTreeCacheDiag.note+=` · Chain unverändert, kein 24-Block-Scan`;
+        dao1OldTreeCacheDiag.scanMs=performance.now()-scanT0;
+        return;
+      }
       let fromStart=DAO1_OLD_TREE_START_BLOCK;
       if(cached?.lastBlock>0){
         fromStart=Math.max(DAO1_OLD_TREE_START_BLOCK,cached.lastBlock-DAO1_OLD_TREE_OVERLAP_BLOCKS);
