@@ -71,6 +71,7 @@ window.DAO1Project = (() => {
   // Erhöhen, wenn bestehende DB-Zeilen wegen neuer/anders interpretierter Felder neu
   // in den Browser müssen. Neue DB-Spalten werden durch select("*") vollständig übernommen.
   const DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION = 1;
+  const DAO1_OLD_TREE_BROWSER_STORAGE_VERSION = 2; // parent_id-Index für gezielte Subtree-Lesezugriffe
   let dao1OldTreeDbAvailable = true;
   const DAO1_OLD_MINT_TOPIC = ethers.id("TokenMinted(address,uint256,uint256)").toLowerCase();
 
@@ -4167,11 +4168,24 @@ window.DAO1Project = (() => {
     const ctx=getContext?.();
     if(!sb||!ctx?.currentUser||!dao1OldTreeDbAvailable){dao1OldTreeCacheDiag.note="Supabase/User/DB-Cache nicht verfügbar";return null;}
     const contract=lower(DAO1_OLD_DID_CONTRACT),bc=window.WalletTrackingBrowserCache;
+    const rootIds=dao1OwnedDidRoots.map(r=>Number(r.did)).filter(Number.isFinite);
     const ts=performance.now();
     const {data:states,error:stateError}=await sb.from(DAO1_OLD_TREE_STATE_TABLE).select("last_verified_block,edge_count,verified_at,updated_at").eq("chain_key",CHAIN_KEY).eq("contract_address",contract).limit(1);
     dao1OldTreeCacheDiag.versionMs+=performance.now()-ts;
     if(stateError){const msg=String(stateError.message||"");if(/dao1_old_tree_graph_state|relation .* does not exist|schema cache/i.test(msg))dao1OldTreeDbAvailable=false;console.warn("DAO1 Tree Global-Cache State",stateError);dao1OldTreeCacheDiag.note="Global-Cache-State Fehler";return null;}
     const state=states?.[0];if(!state){dao1OldTreeCacheDiag.note="Kein Global-Cache-State";return null;}
+
+    async function readLocalSubtree(meta){
+      const ti=performance.now();
+      const [rootRows,desc]=await Promise.all([
+        bc.getByKeys(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rootIds),
+        bc.getDescendants(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rootIds,{maxDepth:DAO1_TEAM_MAX_LEVELS})
+      ]);
+      dao1OldTreeCacheDiag.idbMs+=performance.now()-ti;
+      const byChild=new Map();for(const r of [...rootRows,...desc])byChild.set(Number(r.child_id),r);
+      dao1OldTreeCacheDiag.localRows=byChild.size;
+      return [...byChild.values()];
+    }
 
     if(bc){
       try{
@@ -4183,21 +4197,26 @@ window.DAO1Project = (() => {
         dao1OldTreeCacheDiag.schemaMs=performance.now()-tp;
         const remoteSchemaFingerprint=schemaProbe?.error?null:Object.keys(schemaProbe?.data?.[0]||{}).sort().join("|");
         if(meta){
-          const schemaOk=Number(meta.payloadSchemaVersion||0)===DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION && (!remoteVersion||Number(remoteVersion.payload_schema_version||1)===DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION) && (!remoteSchemaFingerprint||meta.schemaFingerprint===remoteSchemaFingerprint);
+          const schemaOk=Number(meta.payloadSchemaVersion||0)===DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION && Number(meta.storageFormatVersion||0)===DAO1_OLD_TREE_BROWSER_STORAGE_VERSION && (!remoteVersion||Number(remoteVersion.payload_schema_version||1)===DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION) && (!remoteSchemaFingerprint||meta.schemaFingerprint===remoteSchemaFingerprint);
           if(schemaOk){
-            const ti=performance.now();let rows=await bc.getAll(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY);dao1OldTreeCacheDiag.idbMs=performance.now()-ti;dao1OldTreeCacheDiag.localRows=rows.length;
-            const remoteDataVersion=Number(remoteVersion?.data_version||state.last_verified_block||0),localDataVersion=Number(meta.dataVersion||0);
-            if(remoteDataVersion===localDataVersion && (!state.edge_count||rows.length===Number(state.edge_count))){Object.assign(dao1OldTreeCacheDiag,{source:"IDB HIT",totalCacheMs:performance.now()-t0,note:"Vollständiger Graph nur lokal; DB nur State/Version/Schema-Probe"});return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),browserCache:true};}
+            const remoteDataVersion=Number(remoteVersion?.data_version||state.last_verified_block||0),localDataVersion=Number(meta.dataVersion||0),globalCount=Number(state.edge_count||meta.rowCount||0);
+            if(remoteDataVersion===localDataVersion && (!globalCount||Number(meta.rowCount||0)===globalCount)){
+              const rows=await readLocalSubtree(meta);
+              Object.assign(dao1OldTreeCacheDiag,{source:"IDB SUBTREE HIT",totalCacheMs:performance.now()-t0,note:`Global ${globalCount.toLocaleString("de-DE")} Rows im Cache · nur ${rows.length.toLocaleString("de-DE")} relevante Rows gelesen`});
+              return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),browserCache:true,totalEdgeCount:globalCount};
+            }
             if(remoteDataVersion>localDataVersion && meta.syncCursor){
               const delta=[];let offset=0;
               while(true){const {data,error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE).select("*").gt("updated_at",meta.syncCursor).order("updated_at",{ascending:true}).range(offset,offset+DAO1_OLD_TREE_CACHE_PAGE_SIZE-1);if(error)throw error;const part=data||[];delta.push(...part);if(part.length<DAO1_OLD_TREE_CACHE_PAGE_SIZE)break;offset+=DAO1_OLD_TREE_CACHE_PAGE_SIZE;}
               dao1OldTreeCacheDiag.deltaRows=delta.length;dao1OldTreeCacheDiag.dbRows+=delta.length;
-              const nextMeta={payloadSchemaVersion:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,schemaFingerprint:remoteSchemaFingerprint||meta.schemaFingerprint,dataVersion:remoteDataVersion,syncCursor:remoteVersion?.sync_cursor||remoteVersion?.updated_at||new Date().toISOString()};
-              const tm=performance.now();await bc.merge(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,delta,{keyField:"child_id",meta:nextMeta});rows=await bc.getAll(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY);dao1OldTreeCacheDiag.idbMs+=performance.now()-tm;dao1OldTreeCacheDiag.localRows=rows.length;
-              if(!state.edge_count||rows.length===Number(state.edge_count)){Object.assign(dao1OldTreeCacheDiag,{source:"IDB + DELTA",totalCacheMs:performance.now()-t0,note:`Nur ${delta.length} Delta-Row(s) aus DB`});return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),browserCache:true,deltaRows:delta.length};}
+              const nextMeta={payloadSchemaVersion:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,storageFormatVersion:DAO1_OLD_TREE_BROWSER_STORAGE_VERSION,schemaFingerprint:remoteSchemaFingerprint||meta.schemaFingerprint,dataVersion:remoteDataVersion,syncCursor:remoteVersion?.sync_cursor||remoteVersion?.updated_at||new Date().toISOString(),rowCount:globalCount};
+              const tm=performance.now();await bc.merge(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,delta,{keyField:"child_id",parentField:"parent_id",meta:nextMeta});dao1OldTreeCacheDiag.idbMs+=performance.now()-tm;
+              const rows=await readLocalSubtree(nextMeta);
+              Object.assign(dao1OldTreeCacheDiag,{source:"IDB SUBTREE + DELTA",totalCacheMs:performance.now()-t0,note:`Nur ${delta.length} Delta-Row(s) aus DB · ${rows.length.toLocaleString("de-DE")} relevante Rows lokal gelesen`});
+              return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),browserCache:true,deltaRows:delta.length,totalEdgeCount:globalCount};
             }
           }
-          dao1OldTreeCacheDiag.note=schemaOk?"Cache inkonsistent → Neuaufbau":"Schema/Version geändert → Neuaufbau";await bc.clear(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY);
+          dao1OldTreeCacheDiag.note=schemaOk?"Cache inkonsistent → Neuaufbau":"Schema/Cacheformat geändert → Neuaufbau";await bc.clear(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY);
         }else dao1OldTreeCacheDiag.note="Kein lokaler Cache → Erstaufbau";
       }catch(e){console.warn("DAO1 Tree Browser-Cache",e);dao1OldTreeCacheDiag.note=`Browser-Cache Fehler: ${e?.message||e}`;}
     }
@@ -4206,15 +4225,16 @@ window.DAO1Project = (() => {
     while(true){const {data,error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE).select("*").order("child_id",{ascending:true}).range(offset,offset+DAO1_OLD_TREE_CACHE_PAGE_SIZE-1);if(error){console.warn("DAO1 Tree Global-Cache Kanten",error);return null;}const rows=data||[];rawRows.push(...rows);dao1OldTreeCacheDiag.dbRows+=rows.length;if(rows.length<DAO1_OLD_TREE_CACHE_PAGE_SIZE)break;offset+=DAO1_OLD_TREE_CACHE_PAGE_SIZE;if(offset>200000)throw new Error("DAO1 Tree Cache unerwartet groß; Abbruch statt Teilgraph.");}
     const expected=Number(state.edge_count||0);if(expected&&rawRows.length!==expected){console.warn(`DAO1 Tree Cache unvollständig: ${rawRows.length}/${expected}`);dao1OldTreeCacheDiag.note=`DB-Vollcache unvollständig ${rawRows.length}/${expected}`;return null;}
     const remoteVersion=await loadOldDao1TreeVersion();
-    if(bc)try{const ti=performance.now();await bc.replace(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rawRows,{keyField:"child_id",meta:{payloadSchemaVersion:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,schemaFingerprint:Object.keys(rawRows[0]||{}).sort().join("|"),dataVersion:Number(remoteVersion?.data_version||state.last_verified_block||0),syncCursor:remoteVersion?.sync_cursor||remoteVersion?.updated_at||state.updated_at||new Date().toISOString()}});dao1OldTreeCacheDiag.idbMs+=performance.now()-ti;}catch(e){console.warn("DAO1 Tree Browser-Cache initial speichern",e);}
-    Object.assign(dao1OldTreeCacheDiag,{source:"DB FULL",localRows:rawRows.length,totalCacheMs:performance.now()-t0});
-    return {edges:rawRows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0)};
+    if(bc)try{const ti=performance.now();await bc.replace(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rawRows,{keyField:"child_id",parentField:"parent_id",meta:{payloadSchemaVersion:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,storageFormatVersion:DAO1_OLD_TREE_BROWSER_STORAGE_VERSION,schemaFingerprint:Object.keys(rawRows[0]||{}).sort().join("|"),dataVersion:Number(remoteVersion?.data_version||state.last_verified_block||0),syncCursor:remoteVersion?.sync_cursor||remoteVersion?.updated_at||state.updated_at||new Date().toISOString(),rowCount:rawRows.length}});dao1OldTreeCacheDiag.idbMs+=performance.now()-ti;}catch(e){console.warn("DAO1 Tree Browser-Cache initial speichern",e);}
+    Object.assign(dao1OldTreeCacheDiag,{source:"DB FULL / INDEX BUILD",localRows:rawRows.length,totalCacheMs:performance.now()-t0,note:"Einmaliger Neuaufbau des lokalen parent_id-Index"});
+    return {edges:rawRows.map(dao1TreeEdgeFromRow),lastBlock:Number(state.last_verified_block||0),totalEdgeCount:rawRows.length};
   }
 
-  async function saveOldDao1TreeCache(edges,lastBlock,changedChildren=null){
+  async function saveOldDao1TreeCache(edges,lastBlock,changedChildren=null,totalEdgeCount=null){
     const ctx=getContext?.();if(!sb||!ctx?.currentUser||!dao1OldTreeDbAvailable)return false;
     const uid=ctx.currentUser.id,contract=lower(DAO1_OLD_DID_CONTRACT),now=new Date().toISOString();
     const changed=changedChildren?new Set(changedChildren):null;
+    const globalEdgeCount=Number(totalEdgeCount??edges.length);
     const rows=edges.filter(e=>!changed||changed.has(e.child_id)).map(e=>({
       // Phase 4.84: Nur veränderliche/fachliche Kantendaten schreiben. Konstanten wie
       // chain_key, contract_address und source werden nicht mehr 65k-mal dupliziert.
@@ -4227,14 +4247,14 @@ window.DAO1Project = (() => {
       const {error}=await sb.from(DAO1_OLD_TREE_CACHE_TABLE).upsert(rows.slice(i,i+500),{onConflict:"child_id"});
       if(error){console.warn("DAO1 Tree Cache speichern",error);return false;}
     }
-    const {error}=await sb.from(DAO1_OLD_TREE_STATE_TABLE).upsert({chain_key:CHAIN_KEY,contract_address:contract,last_verified_block:Number(lastBlock||0),edge_count:edges.length,verified_at:now,updated_by:uid,updated_at:now},{onConflict:"chain_key,contract_address"});
+    const {error}=await sb.from(DAO1_OLD_TREE_STATE_TABLE).upsert({chain_key:CHAIN_KEY,contract_address:contract,last_verified_block:Number(lastBlock||0),edge_count:globalEdgeCount,verified_at:now,updated_by:uid,updated_at:now},{onConflict:"chain_key,contract_address"});
     if(error){console.warn("DAO1 Tree Cache State speichern",error);return false;}
     // data_version folgt der verifizierten Blockhöhe. sync_cursor wird erst NACH den
     // Kantenwrites gesetzt, damit ein Browser-Delta niemals halbfertige Daten bestätigt.
-    const {error:versionError}=await sb.from(DATA_VERSIONS_TABLE).upsert({namespace:DAO1_OLD_TREE_BROWSER_NAMESPACE,cache_key:DAO1_OLD_TREE_BROWSER_KEY,data_version:Number(lastBlock||0),payload_schema_version:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,row_count:edges.length,sync_cursor:now,updated_at:now,updated_by:uid},{onConflict:"namespace,cache_key"});
+    const {error:versionError}=await sb.from(DATA_VERSIONS_TABLE).upsert({namespace:DAO1_OLD_TREE_BROWSER_NAMESPACE,cache_key:DAO1_OLD_TREE_BROWSER_KEY,data_version:Number(lastBlock||0),payload_schema_version:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,row_count:globalEdgeCount,sync_cursor:now,updated_at:now,updated_by:uid},{onConflict:"namespace,cache_key"});
     if(versionError)console.warn("DATA_VERSIONS DAO1 Tree speichern",versionError);
     // Den lokalen Cache direkt mit den gerade bestätigten Änderungen mitziehen.
-    const bc=window.WalletTrackingBrowserCache;if(bc&&rows.length)try{await bc.merge(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rows,{keyField:"child_id",meta:{payloadSchemaVersion:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,dataVersion:Number(lastBlock||0),syncCursor:now}});}catch(e){console.warn("DAO1 Tree Browser-Cache nachführen",e);}
+    const bc=window.WalletTrackingBrowserCache;if(bc&&rows.length)try{await bc.merge(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rows,{keyField:"child_id",parentField:"parent_id",meta:{payloadSchemaVersion:DAO1_OLD_TREE_PAYLOAD_SCHEMA_VERSION,storageFormatVersion:DAO1_OLD_TREE_BROWSER_STORAGE_VERSION,dataVersion:Number(lastBlock||0),syncCursor:now,rowCount:globalEdgeCount}});}catch(e){console.warn("DAO1 Tree Browser-Cache nachführen",e);}
     return true;
   }
 
@@ -4263,7 +4283,7 @@ window.DAO1Project = (() => {
         for(const log of logs||[]){const e=parseOldDao1MintLog(log);if(e){byChild.set(e.child_id,e);changed.add(e.child_id);}}
       }
       st.edges=[...byChild.values()].sort((a,b)=>a.child_id-b.child_id);st.lastBlock=latest;
-      if(dao1OldTreeDbAvailable)await saveOldDao1TreeCache(st.edges,latest,cached?changed:null);
+      if(dao1OldTreeDbAvailable){const newGlobalRows=cached?[...changed].filter(id=>Number(byChild.get(id)?.block||0)>Number(cached.lastBlock||0)).length:0;const globalCount=cached?Number(cached.totalEdgeCount||0)+newGlobalRows:st.edges.length;await saveOldDao1TreeCache(st.edges,latest,cached?changed:null,globalCount);}
       st.status=`${st.edges.length.toLocaleString("de-DE")} verifizierte DID→fid-Kanten · bis Block ${latest.toLocaleString("de-DE")}${cached?" · Cache + 24 Block Overlap":""}`;
       dao1OldTreeCacheDiag.scanMs=performance.now()-scanT0;
     }catch(e){st.error=e?.message||String(e);st.status="Discovery fehlgeschlagen";}
