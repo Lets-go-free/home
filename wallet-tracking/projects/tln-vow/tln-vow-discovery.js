@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260918-174217 */
 (()=>{
-const BUILD_ID='20260918-205201';
+const BUILD_ID='20260918-211928';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 20:52:01 CEST';
+const APP_VERSION='18.09.2026 21:14:21 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -12249,20 +12249,45 @@ function applySharedDurationRuleToLot(lot,rule,validation){
   lot.durationCacheHit=true;lot.durationSharedRuleHit=true;return true;
 }
 
+async function applyStoredEndFromSharedStruct(lot,shared,label=''){
+  // Phase 5.19: Für bekannte Positions-Structs niemals eine feste Tageszahl als Ersatz
+  // verwenden. Der Contract speichert den individuellen End-/Unlock-Timestamp bereits beim
+  // Stake. Wir lesen Start + gespeichertes Ende positionsbezogen direkt am Stake-Block.
+  const contract=lotContractAddress(lot),wallet=norm(CURRENT_WALLET),stakeBlock=lotStakeBlock(lot),stakeTs=lotStakeTsSeconds(lot);
+  if(!ethers.isAddress(contract)||!ethers.isAddress(wallet)||!Number.isInteger(stakeBlock)||stakeBlock<=1||!Number.isFinite(stakeTs))return false;
+  const proof=await ensureSharedDurationStructProof(shared).catch(()=>null);
+  if(!proof||!Number.isInteger(Number(proof.root))||!Number.isInteger(Number(proof.startOffset))||!Array.isArray(proof.futureTimestampOffsets)||!proof.futureTimestampOffsets.length)return false;
+  const offsets=[...new Set([Number(proof.startOffset),...proof.futureTimestampOffsets.map(Number)].filter(Number.isInteger))].sort((a,b)=>a-b);
+  if(offsets.length<2)return false;
+  try{
+    const rows=await lockReadOffsets(contract,wallet,Number(proof.root),offsets,'0x'+stakeBlock.toString(16),stakeTs);
+    const start=rows.find(r=>r.offset===Number(proof.startOffset));
+    if(!start?.timestamp||Math.abs(Number(start.timestamp)-stakeTs)>10)return false;
+    const ends=rows.filter(r=>proof.futureTimestampOffsets.includes(r.offset)&&Number(r?.timestamp)>stakeTs).sort((a,b)=>Number(a.timestamp)-Number(b.timestamp));
+    if(!ends.length)return false;
+    const end=ends[0],endTs=Number(end.timestamp),sec=endTs-stakeTs;
+    if(!(sec>0)||sec>1000*86400)return false;
+    lot.expiryTime=new Date(endTs*1000).toISOString();
+    lot.lockDurationSeconds=sec;lot.durationDays=sec/86400;lot.durationConfidence='strong';
+    lot.durationSource='Contract-Storage · positionsbezogener gespeicherter End-/Unlock-Timestamp · Strict-Proof';
+    lot.durationEvidence=`Start-/End-Timestamp im selben Wallet-Mapping · Root ${proof.root} · Start-Offset ${proof.startOffset} · End-Offset ${end.offset}`;
+    lot.durationStrictVerdict={cls:'ok',text:`Ablauf direkt aus dem positionsbezogenen Contract-Storage gelesen (${new Date(endTs*1000).toLocaleString('de-CH')}).`};
+    lot.lockEvidence={found:true,mode:'duration-reference-stored-end-timestamp',unlockTimestamp:endTs,unlockTime:lot.expiryTime,elapsedSeconds:sec,elapsedDays:sec/86400,evidence:'Start-/End-Timestamp im selben Wallet-Mapping',confidence:'strong'};
+    lot.duration_contract=contract;
+    log(`Duration ${label}: ${safePairLabel(lot)} · positionsbezogenes Contract-Ende direkt aus Storage gelesen: Root ${proof.root}, Start-Offset ${proof.startOffset}, End-Offset ${end.offset} · ${new Date(endTs*1000).toLocaleString('de-CH')}.`,'ok');
+    return true;
+  }catch(e){
+    log(`Duration ${label}: positionsbezogener Stored-End-Read fehlgeschlagen (${String(e?.message||e).slice(0,180)}); normale Strict-Engine bleibt aktiv.`,'info');
+    return false;
+  }
+}
+
 async function resolveDurationStrictOnce(lot,label=''){
   const cacheKey=durationCacheKeyForLot(lot);
   const cached=await loadTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration);
   if(applyDurationCacheToLot(lot,cached)){log(`Duration ${label}: ${safePairLabel(lot)} · Strict-Proof aus Supabase-Cache verwendet.`,'ok');return {proven:true,cacheHit:true,sharedRule:false}}
 
   const contract=lotContractAddress(lot);
-
-  // Exakt verifizierte Contract-Regeln zuerst anwenden. Dadurch laufen bekannte neue
-  // Generationen bei öffentlichen Lookups nicht erneut durch teure ABI-/Referenzdiagnosen.
-  if(applyVerifiedManualDurationRule(lot)){
-    await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
-    log(`Duration ${label}: ${safePairLabel(lot)} · verifizierte Contract-Regel ${lot.durationDays} Tage angewendet · Ablauf ${new Date(lot.expiryTime).toLocaleString('de-CH')}.`,'ok');
-    return {proven:true,cacheHit:false,sharedRule:false,manualContractRule:true};
-  }
 
   const shared=await loadSharedStrictDurationRule(contract);
   if(shared){
@@ -12273,7 +12298,20 @@ async function resolveDurationStrictOnce(lot,label=''){
       log(`Duration ${label}: ${safePairLabel(lot)} · Shared Strict-Proof ${shared.durationDays.toLocaleString('de-CH',{maximumFractionDigits:8})} Tage · positionsbezogene State-/Core-Feld-Validierung statt Voll-Binärsuche.`,'ok');
       return {proven:true,cacheHit:true,sharedRule:true};
     }
-    log(`Duration ${label}: Shared Strict-Proof für ${safePairLabel(lot)} nicht positionsgenau bestätigt (${check.reason}); sicherer Voll-Lauf.`,'info');
+    log(`Duration ${label}: Shared Strict-Proof für ${safePairLabel(lot)} nicht positionsgenau bestätigt (${check.reason}); prüfe zuerst den im bekannten Positions-Struct gespeicherten End-/Unlock-Timestamp direkt on-chain.`,'info');
+    if(await applyStoredEndFromSharedStruct(lot,shared,label)){
+      await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
+      return {proven:true,cacheHit:false,sharedRule:true,storedEndTimestamp:true};
+    }
+  }
+
+  // Manuelle Contract-Regeln bleiben nur für Contract-Generationen bestehen, bei denen kein
+  // positionsbezogener gespeicherter End-Timestamp als Strict-Proof verfügbar ist. Der alte
+  // v$/VOW-Contract 0x4857…d590 ist ausdrücklich NICHT mehr in dieser Liste.
+  if(applyVerifiedManualDurationRule(lot)){
+    await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
+    log(`Duration ${label}: ${safePairLabel(lot)} · verifizierte Contract-Regel ${lot.durationDays} Tage angewendet · Ablauf ${new Date(lot.expiryTime).toLocaleString('de-CH')}.`,'ok');
+    return {proven:true,cacheHit:false,sharedRule:false,manualContractRule:true};
   }
 
   // Bevor ein früherer Negativbefund greift, prüfen wir explizite on-chain Endzeit-/
