@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260914-010218 */
 (()=>{
-const BUILD_ID='20260918-131051';
+const BUILD_ID='20260918-134459';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 13:10:51 CEST';
+const APP_VERSION='18.09.2026 13:44:59 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13336,7 +13336,8 @@ const TEAM_GRAPH_CACHE_PAGE_SIZE=1000;
 const TEAM_GRAPH_OVERLAP_BLOCKS=64;
 const TEAM_GRAPH_CONFIRMATIONS=12;
 const TEAM_GRAPH_BROWSER_NAMESPACE='tln-vow';
-const TEAM_GRAPH_BROWSER_KEY='smartnode-team-slice-v2';
+const TEAM_GRAPH_BROWSER_KEY='smartnode-global-graph';
+const TEAM_GRAPH_SLICE_BROWSER_KEY='smartnode-team-slice-v2';
 const TEAM_GRAPH_REMOTE_VERSION_KEY='smartnode-global-graph';
 const TEAM_GRAPH_PAYLOAD_SCHEMA_VERSION=1;
 const TEAM_GRAPH_BROWSER_STORAGE_VERSION=1;
@@ -13748,6 +13749,52 @@ async function teamGetAuthenticatedUserId(){
     return data?.user?.id||null;
   }catch{return null}
 }
+function teamRowsToRelevantSlice(rows,roots,maxDepth=TLN_TEAM_MAX_LEVELS){
+  const byParent=new Map(),byChild=new Map();
+  for(const row of rows||[]){
+    const child=norm(row?.child_wallet),parent=norm(row?.parent_wallet);
+    if(!/^0x[0-9a-f]{40}$/.test(child)||!/^0x[0-9a-f]{40}$/.test(parent)||child===parent)continue;
+    if(!byChild.has(child))byChild.set(child,row);
+    if(!byParent.has(parent))byParent.set(parent,[]);
+    byParent.get(parent).push(row);
+  }
+  const wanted=new Map(),queue=[];
+  for(const root of roots||[])queue.push({wallet:norm(root),depth:0});
+  const seenDepth=new Map();
+  while(queue.length){
+    const {wallet,depth}=queue.shift();
+    const old=seenDepth.get(wallet);if(old!=null&&old<=depth)continue;seenDepth.set(wallet,depth);
+    if(depth>=maxDepth)continue;
+    for(const row of byParent.get(wallet)||[]){
+      const child=norm(row.child_wallet);if(!wanted.has(child))wanted.set(child,row);
+      queue.push({wallet:child,depth:depth+1});
+    }
+  }
+  for(const root0 of roots||[]){
+    let child=norm(root0),guard=0,seen=new Set();
+    while(child&&!seen.has(child)&&guard++<1000){
+      seen.add(child);const row=byChild.get(child);if(!row)break;
+      if(!wanted.has(norm(row.child_wallet)))wanted.set(norm(row.child_wallet),row);
+      child=norm(row.parent_wallet);
+    }
+  }
+  return [...wanted.values()];
+}
+async function teamTryMigrateLegacyBrowserGraph(roots,remoteVersion){
+  const bc=window.WalletTrackingBrowserCache;if(!bc)return null;
+  try{
+    const legacyMeta=await bc.getMeta(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_BROWSER_KEY);
+    if(!legacyMeta)return null;
+    const legacyRows=await bc.getAll(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_BROWSER_KEY);
+    if(!legacyRows?.length)return null;
+    const rows=teamRowsToRelevantSlice(legacyRows,roots,TLN_TEAM_MAX_LEVELS);
+    if(!rows.length)return null;
+    const rootsKey=roots.slice().sort().join('|');
+    await bc.replace(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_SLICE_BROWSER_KEY,rows,{keyField:'child_wallet',parentField:'parent_wallet',meta:{payloadSchemaVersion:TEAM_GRAPH_PAYLOAD_SCHEMA_VERSION,storageFormatVersion:TEAM_GRAPH_BROWSER_STORAGE_VERSION,dataVersion:Number(remoteVersion?.data_version||legacyMeta.dataVersion||0),syncCursor:remoteVersion?.sync_cursor||remoteVersion?.updated_at||legacyMeta.syncCursor||null,rowCount:rows.length,rootsKey,legacyMigratedAt:new Date().toISOString()}});
+    log(`Team-Slice: vorhandener Browser-Globalgraph lokal in ${rows.length} relevante Kanten migriert · Supabase-Nutzdaten 0.`,'ok');
+    return rows;
+  }catch(e){log(`Team-Slice Legacy-Migration übersprungen: ${e.message||e}`,'muted');return null}
+}
 async function teamLoadRelevantGraphSlice(ownWallets){
   const roots=[...new Set((ownWallets||[]).map(norm).filter(w=>/^0x[0-9a-f]{40}$/.test(w)))];
   if(!roots.length)return null;
@@ -13755,12 +13802,16 @@ async function teamLoadRelevantGraphSlice(ownWallets){
   let remoteVersion=null,meta=null;
   try{
     [meta,remoteVersion]=await Promise.all([
-      bc?.getMeta(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_BROWSER_KEY),
+      bc?.getMeta(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_SLICE_BROWSER_KEY),
       sb.from(DATA_VERSIONS_TABLE).select('data_version,payload_schema_version,sync_cursor,updated_at').eq('namespace',TEAM_GRAPH_BROWSER_NAMESPACE).eq('cache_key',TEAM_GRAPH_REMOTE_VERSION_KEY).limit(1).then(r=>{if(r.error)throw r.error;return r.data?.[0]||null})
     ]);
     const rootsKey=roots.slice().sort().join('|');
+    if(bc&&(!meta||meta.rootsKey!==rootsKey)){
+      const migrated=await teamTryMigrateLegacyBrowserGraph(roots,remoteVersion);
+      if(migrated?.length)meta=await bc.getMeta(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_SLICE_BROWSER_KEY);
+    }
     if(bc&&meta&&remoteVersion&&meta.rootsKey===rootsKey&&Number(meta.dataVersion||0)===Number(remoteVersion.data_version||0)&&Number(meta.payloadSchemaVersion||0)===TEAM_GRAPH_PAYLOAD_SCHEMA_VERSION&&Number(meta.storageFormatVersion||0)===TEAM_GRAPH_BROWSER_STORAGE_VERSION){
-      const rows=await bc.getAll(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_BROWSER_KEY),edges=new Map();
+      const rows=await bc.getAll(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_SLICE_BROWSER_KEY),edges=new Map();
       for(const row of rows){const child=norm(row.child_wallet),parent=norm(row.parent_wallet);if(/^0x[0-9a-f]{40}$/.test(child)&&/^0x[0-9a-f]{40}$/.test(parent)&&child!==parent&&!edges.has(child))edges.set(child,{child,parent,hash:norm(row.join_tx_hash),blockNumber:row.join_block==null?null:Number(row.join_block),source:row.source||'IndexedDB SmartNode Team-Slice'});}
       window.setWtDataStatus?.('tln-team',{updatedAt:remoteVersion.sync_cursor||remoteVersion.updated_at,cacheAt:meta.savedAt,source:'cache'});
       log(`Team-Slice: IDB + DATA_VERSIONS HIT · ${edges.size} relevante Kanten lokal · Supabase-Nutzdaten 0.`,'ok');
@@ -13770,12 +13821,28 @@ async function teamLoadRelevantGraphSlice(ownWallets){
     if(error)throw error;
     const rows=data||[],edges=new Map();
     for(const row of rows){const child=norm(row.child_wallet),parent=norm(row.parent_wallet);if(/^0x[0-9a-f]{40}$/.test(child)&&/^0x[0-9a-f]{40}$/.test(parent)&&child!==parent&&!edges.has(child))edges.set(child,{child,parent,hash:norm(row.join_tx_hash),blockNumber:row.join_block==null?null:Number(row.join_block),source:row.source||'Supabase SmartNode Team-Slice'});}
-    if(bc)await bc.replace(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_BROWSER_KEY,rows,{keyField:'child_wallet',parentField:'parent_wallet',meta:{payloadSchemaVersion:TEAM_GRAPH_PAYLOAD_SCHEMA_VERSION,storageFormatVersion:TEAM_GRAPH_BROWSER_STORAGE_VERSION,dataVersion:Number(remoteVersion?.data_version||0),syncCursor:remoteVersion?.sync_cursor||remoteVersion?.updated_at||null,rowCount:rows.length,rootsKey}});
+    if(bc)await bc.replace(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_SLICE_BROWSER_KEY,rows,{keyField:'child_wallet',parentField:'parent_wallet',meta:{payloadSchemaVersion:TEAM_GRAPH_PAYLOAD_SCHEMA_VERSION,storageFormatVersion:TEAM_GRAPH_BROWSER_STORAGE_VERSION,dataVersion:Number(remoteVersion?.data_version||0),syncCursor:remoteVersion?.sync_cursor||remoteVersion?.updated_at||null,rowCount:rows.length,rootsKey}});
     window.setWtDataStatus?.('tln-team',{updatedAt:remoteVersion?.sync_cursor||remoteVersion?.updated_at,cacheAt:new Date().toISOString(),source:'cache'});
     log(`Team-Slice: ${edges.size} für eigene TLN-Leader relevante Kanten aus Supabase geladen; kein Download des Globalgraphs.`,'ok');
     return {edges,state:{lastVerifiedBlock:Number(remoteVersion?.data_version||0),edgeCount:edges.size,verifiedAt:remoteVersion?.sync_cursor||remoteVersion?.updated_at||null},browserCache:false,registryFresh:false};
   }catch(e){
-    log(`Team-Slice nicht verfügbar: ${e.message||e}. Kein automatischer Globalgraph-Download beim Tab-Restore.`,'warn');
+    log(`Team-Slice Versions-/DB-Prüfung fehlgeschlagen: ${e.message||e}. Versuche vorhandenen Browser-Cache statt leeren Baum.`,'warn');
+    try{
+      if(bc){
+        const rootsKey=roots.slice().sort().join('|');
+        let localMeta=await bc.getMeta(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_SLICE_BROWSER_KEY);
+        if(!localMeta||localMeta.rootsKey!==rootsKey){
+          await teamTryMigrateLegacyBrowserGraph(roots,null);
+          localMeta=await bc.getMeta(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_SLICE_BROWSER_KEY);
+        }
+        if(localMeta?.rootsKey===rootsKey){
+          const rows=await bc.getAll(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_SLICE_BROWSER_KEY),edges=new Map();
+          for(const row of rows){const child=norm(row.child_wallet),parent=norm(row.parent_wallet);if(/^0x[0-9a-f]{40}$/.test(child)&&/^0x[0-9a-f]{40}$/.test(parent)&&child!==parent&&!edges.has(child))edges.set(child,{child,parent,hash:norm(row.join_tx_hash),blockNumber:row.join_block==null?null:Number(row.join_block),source:row.source||'IndexedDB SmartNode Team-Slice (offline/stale)'});}
+          if(edges.size){log(`Team-Slice: ${edges.size} relevante Kanten aus vorhandenem IndexedDB-Fallback angezeigt · Supabase-Nutzdaten 0.`,'ok');return {edges,state:{lastVerifiedBlock:Number(localMeta.dataVersion||0),edgeCount:edges.size,verifiedAt:localMeta.syncCursor||localMeta.savedAt||null},browserCache:true,registryFresh:false,staleFallback:true};}
+        }
+      }
+    }catch(localErr){log(`Team-Slice lokaler Fallback fehlgeschlagen: ${localErr.message||localErr}`,'warn')}
+    log('Team-Slice nicht verfügbar. Kein automatischer Globalgraph-Download beim Tab-Restore.','warn');
     return null;
   }
 }
