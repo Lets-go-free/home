@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260918-174217 */
 (()=>{
-const BUILD_ID='20260918-201715';
+const BUILD_ID='20260918-205201';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 20:17:15 CEST';
+const APP_VERSION='18.09.2026 20:52:01 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13458,6 +13458,21 @@ function teamAliasFor(wallet,ident){
   }
   return '';
 }
+// Phase 5.17: Nach Identity-/Registry-Restore vorhandene entschluesselte Alias-
+// Referenzen auf die aktuell sichtbaren kanonischen id:-Keys spiegeln. Keine DB-Aenderung.
+function teamRebindVisibleAliases(){
+  let rebound=0;
+  for(const [wallet,ident] of TEAM_IDENTITY_CACHE){
+    const nodeId=String(ident?.nodeId||'').trim();if(!nodeId)continue;
+    const canonical=`id:${nodeId}`;
+    if(String(TEAM_ALIAS_CACHE[canonical]||'').trim())continue;
+    const value=teamAliasFor(wallet,ident);
+    if(value){TEAM_ALIAS_CACHE[canonical]=value;rebound++;}
+  }
+  if(rebound)log(`Partner-Namen Restore-Rebind: ${rebound} historische Alias-Referenz(en) an sichtbare TLN-ID(s) gebunden; keine Klartextnamen geloggt.`,'ok');
+  return rebound;
+}
+
 function teamWalletForNodeId(nodeId){
   nodeId=String(nodeId||'').trim();if(!nodeId)return '';
   // Wichtig: Diese UI-Hilfe wird bereits beim Restore der Steps 1–5 aufgerufen.
@@ -14826,12 +14841,42 @@ function teamScheduleLifecycleBackground(wallets){
 // bereits eine vollstaendige Contract-History fuer ALLE aktuell bekannten Staking-Targets
 // besitzt, duerfen einmal cache-backed nachverifiziert werden. Alles andere bleibt offen
 // und benoetigt weiterhin den expliziten Step-7-Pfad. So bleibt ein neues Geraet billig.
+// Phase 5.17: Sichtbare Partner einer neuen SmartNode-Registry ohne kompatiblen
+// Lifecycle erhalten nach dem Cache-first Render genau EINEN Pass des bereits bestehenden
+// Team-Verifiers. Die Staking-Erkennung selbst bleibt unveraendert.
+async function teamScheduleSupplementalRegistryLifecycleCompletion(wallets){
+  const targets=[...new Set((wallets||[]).map(norm).filter(w=>{
+    if(!ethers.isAddress(w)||TEAM_STAKING_LIFECYCLE.get(w)?.verified)return false;
+    const c=norm(TEAM_IDENTITY_CACHE.get(w)?.contract||'');
+    return ethers.isAddress(c)&&c!==norm(TEAM_SMARTNODE_CONTRACT);
+  }))];
+  if(!targets.length)return 0;
+  const run=async()=>{
+    log(`Team-Zusatzregistry Lifecycle: ${targets.length} sichtbare Partner-Wallet(s) ohne kompatiblen Lifecycle werden einmal mit der bestehenden Staking-Discovery vervollstaendigt.`,'muted');
+    for(const w of targets){
+      try{await teamVerifyMissingLifecycles([w],{forceFresh:false})}
+      catch(e){log(`Team-Zusatzregistry Lifecycle TLN-ID ${TEAM_IDENTITY_CACHE.get(w)?.nodeId||'?'}: ${e.message||e}`,'warn')}
+      renderTeamTree();renderProjectOverview();
+    }
+    return targets.length;
+  };
+  if(typeof requestIdleCallback==='function')requestIdleCallback(()=>run().catch(e=>log(`Team-Zusatzregistry Lifecycle: ${e.message||e}`,'warn')),{timeout:3000});
+  else setTimeout(()=>run().catch(e=>log(`Team-Zusatzregistry Lifecycle: ${e.message||e}`,'warn')),1200);
+  return targets.length;
+}
+
 async function teamScheduleSafeCachedLifecycleCompletion(wallets){
   const open=[...new Set((wallets||[]).map(norm).filter(w=>ethers.isAddress(w)&&!TEAM_STAKING_LIFECYCLE.get(w)?.verified))];
   if(!open.length){log('Team-Lifecycle Cache-Nachlauf: kein offener Lifecycle; 0 RPC.','ok');return}
   const expected=[...new Set((stakingContracts||[]).map(x=>norm(x?.contract_address||'')).filter(ethers.isAddress))];
   const histories=await teamLoadContractHistoryCache(open);
-  const safe=open.filter(w=>{const m=histories.get(w);return !!m&&expected.every(c=>m.get(c)?.ok===true)});
+  // New-Registry-Partner werden separat genau einmal ueber den normalen Verifier
+  // vervollstaendigt und duerfen nicht parallel auch in diesen Cache-Nachlauf geraten.
+  const safe=open.filter(w=>{
+    const c=norm(TEAM_IDENTITY_CACHE.get(w)?.contract||'');
+    if(ethers.isAddress(c)&&c!==norm(TEAM_SMARTNODE_CONTRACT))return false;
+    const m=histories.get(w);return !!m&&expected.every(x=>m.get(x)?.ok===true);
+  });
   const skipped=open.filter(w=>!safe.includes(w));
   log(`Team-Lifecycle Cache-Nachlauf: ${safe.length}/${open.length} offene Wallet(s) besitzen serverseitig vollstaendige Contract-History (${expected.length} Targets) und duerfen ohne Wallet-History-Fallback nachverifiziert werden${skipped.length?` · ${skipped.length} bleiben bewusst offen`:''}.`,safe.length?'muted':'warn');
   if(!safe.length)return;
@@ -16988,6 +17033,7 @@ async function restoreTeamTreeFromPersistentCache(){
     if(!supplementalSeeds)await teamRestoreAdditionalRegistryGraph();
     await teamHydrateSupplementalIdentityParentsFromEvidence();
     teamMergeSupplementalIdentityEdges(edges);
+    teamRebindVisibleAliases();
     const forest=buildProjectTeamForest(edges);
     const ownProjectWallets=[...projectOwnWalletMap().keys()];
     const ownWithoutVerifiedTlnId=ownProjectWallets.filter(w=>!TEAM_IDENTITY_CACHE.get(norm(w))?.nodeId);
@@ -17033,6 +17079,7 @@ async function restoreTeamTreeFromPersistentCache(){
     log(`Team-Restore aus Supabase: ${forest.included.size} Wallet(s) · ${roots.length} Baum-Root(s) · ${restoredPartnerLifecycles} Partner-Lifecycle(s) zusätzlich aus persistentem Team-Cache restauriert. ${stillOpen.length} Lifecycle(s) nach Restore offen; nur vollständig serverseitig gecachte Contract-Historien dürfen automatisch einmal nachverifiziert werden.`,'ok');
     // Erst NACH dem sichtbaren Restore. Die Funktion selbst prueft nochmals streng, dass
     // kein Wallet-History-/Receipt-Fallback notwendig werden kann.
+    teamScheduleSupplementalRegistryLifecycleCompletion(stillOpen).catch(e=>log(`Team-Zusatzregistry Lifecycle: ${e.message||e}`,'warn'));
     teamScheduleSafeCachedLifecycleCompletion(stillOpen).catch(e=>log(`Team-Lifecycle sicherer Cache-Nachlauf: ${e.message||e}`,'warn'));
     return true;
   }catch(e){
