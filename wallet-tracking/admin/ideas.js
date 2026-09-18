@@ -73,7 +73,7 @@ ERFOLGSKRITERIEN
 • Cache kann jederzeit kontrolliert neu aufgebaut/gelöscht werden.
 • Keine Vermischung von TLN und DAO.
 • Keine Schwächung der bestehenden Privacy-/Verschlüsselungsregeln.
-• Supabase-Egress pro wiederkehrendem User sinkt messbar deutlich.`
+• Supabase-Egress pro wiederkehrendem User sinkt messbar deutlich. Phase 4.99: Linke Navigation korrigiert: Der Ein-/Ausklapp-Pfeil sitzt im aufgeklappten Zustand rechts neben WalletTracking und ist vertikal zur Titelzeile zentriert. Im eingeklappten Zustand bleiben die Menü-Icons sichtbar; nur die Textlabels werden ausgeblendet.`
   },
   {
     status: "open",
