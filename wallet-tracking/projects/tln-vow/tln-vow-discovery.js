@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260918-174217 */
 (()=>{
-const BUILD_ID='20260918-191056';
+const BUILD_ID='20260918-191822';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 19:10:56 CEST';
+const APP_VERSION='18.09.2026 19:18:22 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4124,7 +4124,7 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   duration:'duration-strict-v16-contract-proof-cache',
   discoveryResults:'discovery-results-v1',
   snapshotValuation:'snapshot-valuation-v4-legacy-stake-market-price',
-  teamLifecycle:'team-lifecycle-v8-null-coverage-proof',
+  teamLifecycle:'team-lifecycle-v9-partial-lifecycle-persist',
   teamLifecycleQueue:'team-lifecycle-queue-v1',
   teamContractHistory:'team-contract-history-v1',
   smartNodeIdentityIndex:'smartnode-identity-index-v1',
@@ -4134,6 +4134,14 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   tlnIdEvidence:'tln-id-evidence-v3-supabase',
   tlnIdEventResolver:'tln-id-event-resolver-v2-supabase'
 });
+// Phase 5.08: Lifecycle-Cache-Versionen sind Datenformat-Versionen, keine Release-Versionen.
+// v8 enthält bereits die abgesicherte Nullfund-Verifikation; v9 ergänzt nur persistente
+// Teil-Lifecycles. Deshalb bleiben vollständig verifizierte v8-Ergebnisse gültig und
+// werden beim Reload wiederverwendet, statt wegen eines UI/Worker-Releases neu zu scannen.
+const TEAM_LIFECYCLE_CACHE_COMPAT_VERSIONS=new Set([
+  'team-lifecycle-v8-null-coverage-proof',
+  TECH_CACHE_VERSIONS.teamLifecycle
+]);
 const TECH_CACHE_KEYS=Object.freeze({
   lpFacts:'lp-chainfacts',
   txFacts:'tx-chainfacts',
@@ -13271,9 +13279,24 @@ async function loadTeamAliasesFromSupabase(){
       const {data,error}=await sb.functions.invoke('wallet-private',{body:{action:'team_alias_list'}});
       if(error)throw error;
       if(!data?.ok)throw new Error(data?.error||'team_alias_list fehlgeschlagen');
-      const aliases=data?.aliases&&typeof data.aliases==='object'?data.aliases:{};
+      // wallet-private hatte waehrend der Security-/Encryption-Umstellung mehrere
+      // kompatible Response-Formen. Alle akzeptieren, damit vorhandene verschluesselte
+      // Partnernamen nicht wegen eines reinen Response-Shape-Wechsels als "0 Aliase"
+      // erscheinen. Klartext wird weiterhin ausschliesslich von wallet-private geliefert.
+      const payload=data?.aliases??data?.items??data?.rows??data?.data??{};
       const next={};
-      for(const [k,v] of Object.entries(aliases)){const name=String(v||'').trim();if(k&&name)next[k]=name}
+      if(Array.isArray(payload)){
+        for(const row of payload){
+          const k=String(row?.reference??row?.partner_reference??row?.partner_ref??row?.reference_key??row?.team_reference??row?.key??row?.ref??'').trim();
+          const name=String(row?.alias??row?.display_name??row?.name??row?.value??'').trim();
+          if(k&&name)next[k]=name;
+        }
+      }else if(payload&&typeof payload==='object'){
+        for(const [k,v0] of Object.entries(payload)){
+          const v=(v0&&typeof v0==='object')?(v0.alias??v0.display_name??v0.name??v0.value??''):v0;
+          const name=String(v||'').trim();if(k&&name)next[k]=name;
+        }
+      }
       TEAM_ALIAS_CACHE=next;
       TEAM_ALIAS_CACHE_LOADED=true;
       log(`Partner-Namen: ${Object.keys(TEAM_ALIAS_CACHE).length} user-spezifische, verschlüsselte Alias(e) geladen (Versuch ${attempt}/3).`,'ok');
@@ -13377,9 +13400,7 @@ const TEAM_LIFECYCLE_RECHECK_HINTS=new Map();
 let TEAM_HIGHLIGHT_STATE={noActive:false,expired:false,soon:false};
 
 function loadTeamAliases(){
-  // Ein bereits geladener In-Memory-Bestand darf bei einem spaeteren Auth-/Edge-Fehler
-  // nicht unsichtbar werden. Die Persistenz bleibt ausschliesslich user-spezifisch in Supabase.
-  return TEAM_ALIAS_CACHE||{};
+  return TEAM_ALIAS_CACHE_LOADED?TEAM_ALIAS_CACHE:{};
 }
 async function saveTeamAlias(key,value){
   if(!currentUserId){log('Partner-Name nicht gespeichert: kein eingeloggter Benutzer verfügbar.','warn');return false}
@@ -13398,15 +13419,14 @@ function teamAliasKey(wallet,ident){
 }
 function teamAliasFor(wallet,ident){
   const aliases=loadTeamAliases(),w=norm(wallet);
-  // Aliase koennen historisch bereits gespeichert worden sein, bevor die TLN-ID des
-  // Wallets aufgeloest war. Nach dem Identity-Restore darf der Wechsel von wallet:...
-  // auf id:... deshalb den Namen nicht unsichtbar machen. TLN-ID bleibt bevorzugt.
+  // Aliase koennen historisch unter unterschiedlichen, aber fachlich gleichwertigen
+  // Referenzen gespeichert worden sein. Neue Saves verwenden id:/wallet:, beim Lesen
+  // bleiben wir rueckwaertskompatibel zu nackter TLN-ID bzw. nackter Wallet-Adresse.
+  // So verschwinden bestehende userbezogene Namen nach Identity-/Cache-Migrationen nicht.
   const nodeId=String(ident?.nodeId||'').trim();
-  const idKey=nodeId?`id:${nodeId}`:'';
-  // Kompatibilitaet zu bereits existierenden Alias-Bestaenden: waehrend der frueheren
-  // Migrationen kamen sowohl kanonische id:/wallet:-Referenzen als auch rohe ID-/Wallet-
-  // Referenzen vor. Lesen darf alle bestaetigten Altformen; neue Saves bleiben kanonisch.
-  return (idKey&&aliases[idKey])||(nodeId&&aliases[nodeId])||aliases[`wallet:${w}`]||aliases[w]||'';
+  const candidates=[nodeId?`id:${nodeId}`:'',nodeId,w?`wallet:${w}`:'',w].filter(Boolean);
+  for(const key of candidates){const value=String(aliases[key]||'').trim();if(value)return value}
+  return '';
 }
 function teamWalletForNodeId(nodeId){
   nodeId=String(nodeId||'').trim();if(!nodeId)return '';
@@ -13476,6 +13496,77 @@ async function teamLoadIdentityCacheFromDb(wallets=null){
     log(`Team-IDs: ${n} Wallet→TLN-ID Zuordnung(en) ${wanted.length?'gezielt':'aus globalem Supabase-Cache'} geladen.`,'muted');return n;
   }catch(e){log(`Team-IDs: globaler Supabase-Cache nicht lesbar: ${e.message||e}; nodeIdOf-Fallback bleibt aktiv.`,'warn');return 0}
 }
+async function teamLoadSupplementalRegistryIdentitiesFromDb(){
+  // Phase 5.11: Neue SmartNode-Generationen nicht nur ueber registry_contract finden.
+  // Aeltere persistierte Identity-Zeilen koennen fuer sehr neue IDs noch keinen
+  // registry_contract enthalten. Genau dadurch konnte z.B. TLN-ID 990000017795 beim
+  // Cache-Restore fehlen. Wir laden deshalb zusaetzlich nur den kleinen High-ID-Bereich;
+  // kein Globalgraph-Download und kein Staking-/On-Chain-Vollscan.
+  try{
+    const cols='wallet_address,node_id,registry_contract,source_method,source_tx_hash,verified_at';
+    const [byContract,byHighId]=await Promise.all([
+      sb.from(TLN_GLOBAL_IDENTITY_TABLE).select(cols).eq('chain_key','bsc').neq('registry_contract',norm(TEAM_SMARTNODE_CONTRACT)),
+      sb.from(TLN_GLOBAL_IDENTITY_TABLE).select(cols).eq('chain_key','bsc').gte('node_id','990000000000')
+    ]);
+    if(byContract.error)throw byContract.error;
+    if(byHighId.error)throw byHighId.error;
+    const rows=new Map();
+    for(const row of [...(byContract.data||[]),...(byHighId.data||[])]){
+      const w=norm(row.wallet_address);if(!/^0x[0-9a-f]{40}$/.test(w)||row.node_id==null)continue;
+      rows.set(`${w}:${String(row.node_id)}`,row);
+    }
+    let n=0;
+    for(const row of rows.values()){
+      const w=norm(row.wallet_address),contract=norm(row.registry_contract||'');
+      const previous=TEAM_IDENTITY_CACHE.get(w)||{};
+      TEAM_IDENTITY_CACHE.set(w,{...previous,wallet:w,nodeId:String(row.node_id),source:'supabase-global-new-registry',cachedSource:'global-onchain',contract:ethers.isAddress(contract)?contract:(previous.contract||null),method:row.source_method||previous.method||null,evidenceTx:row.source_tx_hash||previous.evidenceTx||null,verifiedAt:row.verified_at||previous.verifiedAt||null});
+      n++;
+    }
+    log(`Team-IDs neue Registries: ${n} verifizierte Identity(s) fuer gezielten Parent-Restore geladen (Registry + High-ID-Fallback).`,'muted');
+    return n;
+  }catch(e){log(`Team-IDs neue Registries: Zusatz-Cache nicht lesbar: ${e.message||e}. Legacy-Team-Slice bleibt verwendbar.`,'warn');return 0}
+}
+
+async function teamHydrateSupplementalIdentityParentsFromEvidence(){
+  // Phase 5.11: Parent aus der bereits persistierten Evidence-Tx rekonstruieren.
+  // Der persistierte registry_contract darf fehlen: wenn die Evidence selbst ein
+  // verifizierbarer join(address)-Call der Wallet ist, ist tx.to der Registry-Contract.
+  // Pro offener Supplemental-Identity maximal eine Tx-Abfrage; kein History-/Staking-Scan.
+  const pending=[];
+  for(const [wallet,ident] of TEAM_IDENTITY_CACHE){
+    const w=norm(wallet),hash=norm(ident?.evidenceTx||'');
+    const isHighId=(()=>{try{return BigInt(String(ident?.nodeId||'0'))>=990000000000n}catch{return false}})();
+    const contract=norm(ident?.contract||'');
+    const supplemental=isHighId||(ethers.isAddress(contract)&&contract!==norm(TEAM_SMARTNODE_CONTRACT));
+    if(!ethers.isAddress(w)||!supplemental)continue;
+    if(ethers.isAddress(norm(ident?.parentWallet||'')))continue;
+    if(!/^0x[0-9a-f]{64}$/.test(hash))continue;
+    pending.push({wallet:w,ident,contract,hash});
+  }
+  if(!pending.length)return 0;
+  try{if(!rpcUrl)await initRpc()}catch(e){log(`Team-Registry-Parent-Restore: RPC-Init fehlgeschlagen: ${e.message||e}`,'warn');return 0}
+  let restored=0;
+  await teamMapWithConcurrency(pending,3,async item=>{
+    try{
+      const tx=await rpc('eth_getTransactionByHash',[item.hash]);
+      const input=String(tx?.input||'').toLowerCase(),to=norm(tx?.to||''),from=norm(tx?.from||'');
+      if(from!==item.wallet||!ethers.isAddress(to)||input.slice(0,10)!==TEAM_JOIN_SELECTOR)return null;
+      if(ethers.isAddress(item.contract)&&item.contract!==norm(TEAM_SMARTNODE_CONTRACT)&&to!==item.contract)return null;
+      const parent=teamDecodeAddressArg(input,0);
+      if(!ethers.isAddress(parent)||parent===item.wallet)return null;
+      item.ident.contract=to;
+      item.ident.parentWallet=parent;
+      item.ident.parentSource='persistente Identity · verifizierte join(address)-Tx';
+      item.ident.parentSourceHash=item.hash;
+      TEAM_IDENTITY_CACHE.set(item.wallet,item.ident);
+      restored++;
+      return parent;
+    }catch(e){log(`Team-Registry-Parent-Restore ${short(item.wallet)}: ${e.message||e}`,'muted');return null}
+  });
+  if(restored)log(`Team-Registry-Parent-Restore: ${restored}/${pending.length} Parent-Beziehung(en) neuer Registry-Generationen aus persistierter join(address)-Evidenz rekonstruiert.`,'ok');
+  return restored;
+}
+
 function teamMergeSupplementalIdentityEdges(edges){
   let added=0,conflicts=0;
   for(const [wallet,ident] of TEAM_IDENTITY_CACHE){
@@ -14349,9 +14440,17 @@ async function teamLoadPersistedLifecycleCache(wallets){
     const {data,error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).select('scope_address,scanner_version,payload,updated_at,last_scanned_block').eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.teamLifecycle).in('scope_address',chunk);
     if(error){log(`Team-Lifecycle-Cache nicht lesbar: ${error.message||error}`,'warn');break}
     for(const row of (data||[])){
-      if(row?.scanner_version!==TECH_CACHE_VERSIONS.teamLifecycle||!row?.payload?.verified)continue;
+      if(!TEAM_LIFECYCLE_CACHE_COMPAT_VERSIONS.has(String(row?.scanner_version||'')))continue;
       const w=norm(row.scope_address||row.payload.wallet||'');
       const lots=Array.isArray(row.payload.lots)?row.payload.lots:[];
+      if(!row?.payload?.verified){
+        if(lots.length){
+          const existingLife=TEAM_STAKING_LIFECYCLE.get(w)||null;
+          const mergedLots=teamMergeLifecycleLots(existingLife,lots);
+          TEAM_STAKING_LIFECYCLE.set(w,teamLifecycleFromLots(w,mergedLots,{verified:false,source:'persistenter Team-Lifecycle Teilstand',completedStep:2,sourceSavedAt:row?.payload?.savedAt||row?.updated_at||null}));loaded++;
+        }
+        continue;
+      }
       // Ein leerer Team-Lifecycle darf nicht als endgültiger Nullfund wiederverwendet
       // werden, wenn Step 5 bereits starke historische Staking-Evidenz für dieses
       // Wallet enthält. Sonst würde eine frühere Discovery-Lücke dauerhaft gecacht.
@@ -14404,6 +14503,26 @@ async function teamLoadPersistedLifecycleCache(wallets){
   }
   if(loaded||anchorsMerged)log(`Team-Lifecycle: ${loaded} verifizierte Partner-Wallet(s) aus persistentem Team-Cache geladen${anchorsMerged?` · ${anchorsMerged} blockgenaue Freshness-Anker in bereits geladene Discovery-Lifecycles übernommen`:''}.`,'ok');
   return loaded;
+}
+async function teamSavePartialLifecycle(wallet,lots,{savedAt=null}={}){
+  const w=norm(wallet);if(!ethers.isAddress(w)||!currentUserId||!stakingScanDbCacheAvailable||!Array.isArray(lots)||!lots.length)return false;
+  const nowIso=savedAt||new Date().toISOString();
+  const payload={wallet:w,verified:false,lots:teamMergeLifecycleLots(lots),savedAt:nowIso,lifecycleIntegrityVersion:'partial-v1'};
+  try{
+    // Ein Teilstand darf niemals einen bereits vollständig verifizierten Lifecycle
+    // derselben Wallet degradieren. Genau das konnte beim Hintergrund-Worker bisher
+    // passieren, weil Partial und Verified denselben Cache-Key verwenden.
+    const {data:existing,error:readError}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE)
+      .select('payload,scanner_version').eq('chain_key','bsc').eq('scope_address',w).eq('cache_key',TECH_CACHE_KEYS.teamLifecycle).limit(1);
+    if(readError)throw readError;
+    if(existing?.[0]?.payload?.verified===true){
+      log(`Team-Lifecycle Teilstand ${short(w)} nicht gespeichert: vorhandener verifizierter Cache bleibt maßgeblich.`,'muted');
+      return true;
+    }
+    const {error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).upsert({chain_key:'bsc',scope_address:w,cache_key:TECH_CACHE_KEYS.teamLifecycle,scanner_version:TECH_CACHE_VERSIONS.teamLifecycle,payload,updated_at:nowIso},{onConflict:'chain_key,scope_address,cache_key'});
+    if(error)throw error;
+    return true;
+  }catch(e){log(`Team-Lifecycle Teilstand ${short(w)} konnte nicht persistent gespeichert werden: ${e?.message||e}`,'warn');return false}
 }
 async function teamSaveVerifiedLifecycle(wallet,lots,{verifiedAt=null,verifiedBlock=null}={}){
   const w=norm(wallet);if(!ethers.isAddress(w)||!currentUserId||!stakingScanDbCacheAvailable)return false;
@@ -15913,7 +16032,9 @@ async function teamVerifyMissingLifecycles(wallets,{forceFresh=false}={}){
       const mergedDurationOk=completeLots.every(l=>(l?.status==='closed'||l?.unstakeTime||l?.closedAt||l?.expiryTime||l?.contractEndTime||l?.releaseTime));
       const finalVerified=fullyVerified&&mergedDurationOk;
       TEAM_STAKING_LIFECYCLE.set(wallet,teamLifecycleFromLots(wallet,completeLots,{verified:finalVerified,source:scanComplete?'gebündelte Team-Staking-Discovery + Cache-Merge':'gebündelte Team-Staking-Discovery (unvollständig) + Cache-Merge',completedStep:finalVerified?3:2,sourceVerifiedBlock:verifiedBlock}));
-      if(finalVerified){await teamSaveVerifiedLifecycle(wallet,completeLots,{verifiedBlock});TEAM_LIFECYCLE_RECHECK_HINTS.delete(wallet);verified++}if(completeLots.length)withLots++;
+      if(finalVerified){await teamSaveVerifiedLifecycle(wallet,completeLots,{verifiedBlock});TEAM_LIFECYCLE_RECHECK_HINTS.delete(wallet);verified++}
+      else if(completeLots.length)await teamSavePartialLifecycle(wallet,completeLots);
+      if(completeLots.length)withLots++;
       const evidenceSummary=calls.reduce((m,c)=>{const e=String(c?._teamPositionEvidence||'unbekannt');m[e]=(m[e]||0)+1;return m;},{});
       log(`Team-Lifecycle ${wi+1}/${missing.length} · TLN-ID ${TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'?'}: ${calls.length} Positionskandidat(en) · ${lots.length} Position(en) · Contract-Historie ${cov.ok}/${cov.total}${cov.failed?` (${cov.failed} fehlgeschlagen)`:''} · Evidenz ${Object.entries(evidenceSummary).map(([k,v])=>`${k}=${v}`).join(', ')||'keine'} · ${finalVerified?'Lifecycle verifiziert':hasObservedEvidence?'NICHT verifiziert – historische Staking-Evidenz noch nicht rekonstruiert':unresolvedNewGeneration?'NICHT verifiziert – neue SmartNode-Generation, Staking-Pfad noch nicht rekonstruiert':scanComplete?'Duration noch offen':'NICHT verifiziert – Scan unvollständig'}.`,finalVerified?'ok':'warn');
     }
@@ -16667,8 +16788,12 @@ async function restoreTeamTreeFromPersistentCache(){
     const edges=new Map(cached.edges);
     const relevantWallets=[...new Set([...edges.keys(),...[...edges.values()].map(e=>norm(e.parent)),...ownWallets])];
     await teamLoadIdentityCacheFromDb(relevantWallets);
-    // Bereits verifizierte Beziehungen neuer Registry-Generationen dürfen auch beim
-    // reinen Cache-Restore den kanonischen Globalgraph ergänzen, ohne ihn zu überschreiben.
+    // Phase 5.10: Der relevante Legacy-Slice kann einen Partner einer NEUEN Registry
+    // naturgemaess nicht enthalten. Deshalb die kleine Menge verifizierter New-Registry-
+    // Identities separat laden, deren persistierte join(address)-Tx in eine Parent-Kante
+    // rekonstruieren und ERST DANN den sichtbaren Forest bauen. Genau hier fehlte Ernie.
+    await teamLoadSupplementalRegistryIdentitiesFromDb();
+    await teamHydrateSupplementalIdentityParentsFromEvidence();
     teamMergeSupplementalIdentityEdges(edges);
     const forest=buildProjectTeamForest(edges);
     const ownProjectWallets=[...projectOwnWalletMap().keys()];
@@ -16722,6 +16847,7 @@ async function prepareTeamTree(){
     const full=await scanCompleteSmartNodeJoinGraph();
     // Neuere SmartNode-Registries können bereits über die direkte Wallet-Suche verifiziert worden sein.
     // Diese Beziehungen ergänzen den alten globalen SmartNode-Graph, ohne dessen kanonische Kanten zu überschreiben.
+    await teamHydrateSupplementalIdentityParentsFromEvidence();
     teamMergeSupplementalIdentityEdges(full.edges);
     const ownWallets=[...projectOwnWalletMap().keys()];
     if(!ownWallets.length)throw new Error('Keine TLN/VOW-Wallets unter „MEINE Wallets“ gefunden.');
@@ -16743,11 +16869,6 @@ async function prepareTeamTree(){
         if(remainingIdentityMisses.length)log(`Team-IDs Join-Registry-Nachweis: ${remainingIdentityMisses.length} Wallet(s) technisch weiterhin unresolved.`,'warn');
       }
     }
-    // Neue Registry-Identities werden teilweise erst in den gezielten Fallbacks oben entdeckt.
-    // Deren verifizierte parentWallet-Beziehung muss VOR dem finalen Forest-Rebuild wieder in
-    // den Graph gemerged werden. Sonst verschwindet z.B. TLN-ID 990000017795 (Ernie), obwohl
-    // Identity, Join-Registry und Staking bereits verifiziert/cached sind. Kein neuer Chain-Scan.
-    teamMergeSupplementalIdentityEdges(full.edges);
     forest=buildProjectTeamForest(full.edges);
     const ownProjectWallets=[...projectOwnWalletMap().keys()];
     const ownTeamLeaders=[...forest.ownSet];
@@ -17491,6 +17612,17 @@ async function init(){log(`Build geladen: ${BUILD_ID} · SC_READ_PROBES=${typeof
   // nach erfolgreichem Alias-Laden explizit neu rendern. Dadurch bleiben Namen
   // nicht leer, wenn die verschlüsselte Alias-Abfrage etwas später fertig wird.
   if(CURRENT_TEAM_PROJECT_FOREST)renderTeamTree();
+  // Nach Security-/Cache-Migrationen darf ein temporär leerer Alias-Response nicht dazu
+  // führen, dass der komplette Baum dauerhaft namenlos bleibt. Ein einziger verzögerter
+  // Re-Read ist billig und überschreibt keine Daten.
+  if(TEAM_ALIAS_CACHE_LOADED&&Object.keys(TEAM_ALIAS_CACHE).length===0){
+    setTimeout(async()=>{
+      const before=Object.keys(TEAM_ALIAS_CACHE).length;
+      await loadTeamAliasesFromSupabase();
+      const after=Object.keys(TEAM_ALIAS_CACHE).length;
+      if(after!==before&&CURRENT_TEAM_PROJECT_FOREST)renderTeamTree();
+    },1200);
+  }
   $('auth').innerHTML=`<span class="ok">Eingeloggt:</span> ${esc(user.email)}`;
   const [cr,pt,sc,wq,projectRefs,stableRefs]=await loadInitialDbRowsResilient();
   const dbErr=cr?.error||pt?.error||sc?.error||wq?.error||projectRefs?.error||stableRefs?.error;
