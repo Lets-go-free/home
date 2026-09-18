@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260914-010218 */
 (()=>{
-const BUILD_ID='20260918-141753';
+const BUILD_ID='20260918-143058';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 14:17:53 CEST';
+const APP_VERSION='18.09.2026 14:30:58 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -14392,6 +14392,47 @@ const TEAM_LIFECYCLE_BACKGROUND_SESSION=new Set();
 const TEAM_LIFECYCLE_BACKGROUND_BATCH=3;
 const TEAM_LIFECYCLE_RETRY_MS=24*60*60*1000;
 const TEAM_LIFECYCLE_RUNNING_STALE_MS=15*60*1000;
+const TEAM_LIFECYCLE_CONVERGENCE_MAX_PASSES=4;
+
+(function ensureTeamBackgroundStatusStyle(){
+  if(document.getElementById('teamBackgroundStatusStyle'))return;
+  const st=document.createElement('style');st.id='teamBackgroundStatusStyle';st.textContent=`
+.team-background-update{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 12px;border:1px solid rgba(59,130,246,.24);border-radius:10px;background:rgba(59,130,246,.06);font-size:13px}.team-background-update.done{border-color:rgba(34,197,94,.22);background:rgba(34,197,94,.05)}.team-background-spinner{width:16px;height:16px;border:2px solid rgba(59,130,246,.22);border-top-color:currentColor;border-radius:50%;animation:teamBgSpin .8s linear infinite;flex:0 0 auto}@keyframes teamBgSpin{to{transform:rotate(360deg)}}
+`;document.head.appendChild(st);
+})();
+const TEAM_LIFECYCLE_BACKGROUND_UI={running:false,total:0,done:0,currentWallet:null,currentPass:0,message:'',lastResult:''};
+function teamLifecycleProgressSignature(wallet){
+  const life=TEAM_STAKING_LIFECYCLE.get(norm(wallet));
+  const lots=(life?.lots||[]).map(x=>x?.lot||x).filter(Boolean).map(l=>[l?.tokenId||l?.positionId||'',l?.stakeTx||'',l?.stakeTime||l?.startTime||'',l?.expiryTime||l?.contractEndTime||l?.releaseTime||'',l?.unstakeTx||'',l?.unstakeTime||l?.closedAt||'',l?.durationConfidence||'',l?.durationSource||''].join('|')).sort();
+  return JSON.stringify({verified:!!life?.verified,completedStep:Number(life?.completedStep||0),lots});
+}
+function teamSetLifecycleBackgroundUi(patch={}){
+  Object.assign(TEAM_LIFECYCLE_BACKGROUND_UI,patch);
+  renderTeamLifecycleBackgroundStatus();
+}
+function renderTeamLifecycleBackgroundStatus(){
+  const el=$('teamLifecycleBackgroundStatus');if(!el)return;
+  const st=TEAM_LIFECYCLE_BACKGROUND_UI;
+  if(st.running){
+    const ident=st.currentWallet?TEAM_IDENTITY_CACHE.get(norm(st.currentWallet)):null;
+    const who=ident?.nodeId?` · TLN-ID ${ident.nodeId}`:'';
+    const pass=st.currentPass>1?` · Prüfschritt ${st.currentPass}`:'';
+    el.innerHTML=`<div class="team-background-update running"><span class="team-background-spinner" aria-hidden="true"></span><span><b>TLN-Teamdaten werden im Hintergrund aktualisiert …</b><br><span class="muted">Lifecycle-Prüfung: ${Math.min(st.done+1,st.total)} von ${st.total}${esc(who)}${esc(pass)}. Der bereits verifizierte Datenstand bleibt sichtbar.</span></span></div>`;
+  }else if(st.lastResult){
+    el.innerHTML=`<div class="team-background-update done"><span><b>${esc(st.lastResult)}</b></span></div>`;
+  }else el.innerHTML='';
+}
+async function teamVerifyLifecycleToConvergence(wallet){
+  const w=norm(wallet);let previous=teamLifecycleProgressSignature(w),passes=0,progressed=false;
+  while(passes<TEAM_LIFECYCLE_CONVERGENCE_MAX_PASSES&&!TEAM_STAKING_LIFECYCLE.get(w)?.verified){
+    passes++;teamSetLifecycleBackgroundUi({currentWallet:w,currentPass:passes});
+    await teamVerifyMissingLifecycles([w],{forceFresh:passes>1});
+    const next=teamLifecycleProgressSignature(w);
+    if(next===previous)break;
+    progressed=true;previous=next;
+  }
+  return {verified:!!TEAM_STAKING_LIFECYCLE.get(w)?.verified,passes,progressed,signature:previous};
+}
 async function teamLoadLifecycleQueueState(wallets){
   const out=new Map();
   if(!currentUserId||!stakingScanDbCacheAvailable)return out;
@@ -14440,12 +14481,21 @@ async function teamRunLifecycleBackgroundBatch(wallets){
   await Promise.all(eligible.map(w=>teamSaveLifecycleQueueState(w,{status:'running',lastAttemptAt:startedAt}))).catch(()=>{});
   log(`Team-Lifecycle Hintergrund: ${eligible.length} noch nie/noch nicht vollständig verifizierte Wallet(s) werden kontrolliert nachverifiziert (max. ${TEAM_LIFECYCLE_BACKGROUND_BATCH} pro Idle-Batch).`,'muted');
   try{
-    await teamVerifyMissingLifecycles(eligible);
-    for(const w of eligible){
+    teamSetLifecycleBackgroundUi({running:true,total:eligible.length,done:0,currentWallet:null,currentPass:0,lastResult:''});
+    for(let i=0;i<eligible.length;i++){
+      const w=eligible[i];
+      teamSetLifecycleBackgroundUi({done:i,currentWallet:w,currentPass:1});
+      const result=await teamVerifyLifecycleToConvergence(w);
       const life=TEAM_STAKING_LIFECYCLE.get(w),verified=!!life?.verified;
-      await teamSaveLifecycleQueueState(w,{status:verified?'verified':'retry_wait',lastAttemptAt:startedAt,verifiedAt:verified?(life?.sourceSavedAt||new Date().toISOString()):null,verifiedBlock:Number(life?.sourceVerifiedBlock||0)||null,retryAfter:verified?null:new Date(Date.now()+TEAM_LIFECYCLE_RETRY_MS).toISOString()});
+      // Wenn weitere Prüfschritte keinen neuen belastbaren Lifecycle-Stand mehr liefern,
+      // ist das Wallet für diesen Lauf fachlich offen statt künstlich "noch einen Schritt"
+      // pro Reload weiterzuschieben. Echte technische Fehler bleiben error_retry.
+      await teamSaveLifecycleQueueState(w,{status:verified?'verified':'open_stable',lastAttemptAt:startedAt,verifiedAt:verified?(life?.sourceSavedAt||new Date().toISOString()):null,verifiedBlock:Number(life?.sourceVerifiedBlock||0)||null,retryAfter:null,passes:result.passes,stable:!verified});
+      teamSetLifecycleBackgroundUi({done:i+1,currentWallet:null,currentPass:0});
+      renderTeamTree();renderProjectOverview();
     }
-    renderTeamTree();renderProjectOverview();
+    const openNow=eligible.filter(w=>!TEAM_STAKING_LIFECYCLE.get(w)?.verified).length;
+    teamSetLifecycleBackgroundUi({running:false,currentWallet:null,currentPass:0,lastResult:openNow?`Aktualisierung abgeschlossen · ${openNow} Lifecycle${openNow===1?'':'s'} fachlich weiterhin offen`:'TLN-Teamdaten aktuell'});
     // Phase 4.97: Ein Cache-Restore darf keinen Partner dauerhaft auf "Lifecycle noch nicht
     // verifiziert" stehen lassen, nur weil er hinter dem bisherigen 3er-Limit lag. Pro Idle-
     // Durchlauf bleiben es maximal drei Wallets; danach wird der noch nie versuchte Backlog
@@ -14459,6 +14509,7 @@ async function teamRunLifecycleBackgroundBatch(wallets){
   }catch(e){
     const retryAfter=new Date(Date.now()+TEAM_LIFECYCLE_RETRY_MS).toISOString();
     for(const w of eligible)await teamSaveLifecycleQueueState(w,{status:'error_retry',lastAttemptAt:startedAt,retryAfter,error:String(e?.message||e).slice(0,500)}).catch(()=>{});
+    teamSetLifecycleBackgroundUi({running:false,currentWallet:null,currentPass:0,lastResult:'Hintergrund-Aktualisierung nicht vollständig'});
     log(`Team-Lifecycle Hintergrund fehlgeschlagen: ${e.message||e}. Nächster Versuch frühestens nach dem Retry-Fenster.`,'warn');
   }
 }
@@ -16508,9 +16559,9 @@ function renderTeamTree(){
   const intro=$('teamTreeIntro');
   if(intro)intro.innerHTML=`<p><b>Projektweite Sicht.</b> ${forest.ownSet.size} eigene Wallet(s) mit <b>verifizierter TLN-ID</b> gelten als Team-Leader. Wallets mit TLN/VOW-Projektbezug, aber ohne verifizierte TLN-ID, bleiben in der Projekt-Auswahl erhalten, werden jedoch nicht als eigener Team-Baum dargestellt.</p>
     <p>Eigene Wallets innerhalb eines bereits eigenen Team-Baums bleiben an ihrer echten SmartNode-Parent-Position. Direkte Partner werden je Upline nach TLN-ID aufsteigend sortiert.</p>
-    <p>Staking-Infos stammen ausschließlich aus verifizierten Discovery-/Lifecycle-Daten. Der Baum zeigt zunächst den persistenten Cache. Eine Neuprüfung eines Partner-Wallets erfolgt höchstens 1× täglich und ausschließlich on-demand beim Klick auf <b>„Details“</b>. Fehlende Lifecycle-Daten werden nicht aus Referral-Rewards abgeleitet.</p>
+    <p>Staking-Infos stammen ausschließlich aus verifizierten Discovery-/Lifecycle-Daten. Der Baum zeigt zunächst den persistenten Cache. Offene Lifecycle-Daten werden nach dem cache-first Render in kleinen Batches sichtbar im Hintergrund nachverifiziert. Ein begonnenes Wallet wird dabei in mehreren Prüfschritten bis zum verifizierten Zustand oder bis zu einem stabilen fachlich offenen Endstand abgearbeitet. Fehlende Lifecycle-Daten werden nicht aus Referral-Rewards abgeleitet.</p>
     <p><b>Erfassungstiefe:</b> maximal ${TLN_TEAM_MAX_LEVELS} Referral-Linien je eigenem Leader. Dieser Wert ist später als TLN/VOW-Projektparameter im Admin-Bereich vorgesehen.</p>`;
-  status.innerHTML=`<div class="team-line-summary"><b>${externalCount}</b> externe Team-Partner + <b>${ownCount}</b> eigene TLN/VOW-Wallet(s) · <b>${sortedComponents.length}</b> sichtbare(r) Baum/Bäume · Lifecycle: <b>${verifiedLifecycleCount}</b> verifiziert / <b>${unknownLifecycleCount}</b> offen.</div>
+  status.innerHTML=`<div id="teamLifecycleBackgroundStatus"></div><div class="team-line-summary"><b>${externalCount}</b> externe Team-Partner + <b>${ownCount}</b> eigene TLN/VOW-Wallet(s) · <b>${sortedComponents.length}</b> sichtbare(r) Baum/Bäume · Lifecycle: <b>${verifiedLifecycleCount}</b> verifiziert / <b>${unknownLifecycleCount}</b> offen.</div>
     <div class="team-tree-legend">
       <span class="team-tree-legend-item"><span class="team-legend-dot own"></span>Meine Wallet</span>
       <span class="team-tree-legend-item"><span class="team-legend-dot member"></span>Team-Mitglied</span>
@@ -16525,6 +16576,7 @@ function renderTeamTree(){
       <span class="team-info-line"><b>Discovery-Reihenfolge:</b> ${esc(orderText||'–')}.</span>
     </div>`;
   box.innerHTML=blocks.join('');
+  renderTeamLifecycleBackgroundStatus();
   if($('teamHighlightControls'))$('teamHighlightControls').style.display='block';
   if($('teamExpirySection'))$('teamExpirySection').style.display='block';
   bindTeamControls();bindTeamDetailControls();applyTeamHighlights();renderTeamExpiredOpenList();renderTeamExpiryList();
