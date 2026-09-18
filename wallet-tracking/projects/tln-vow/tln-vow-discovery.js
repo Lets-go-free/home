@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260914-010218 */
 (()=>{
-const BUILD_ID='20260918-140810';
+const BUILD_ID='20260918-141753';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 14:08:10 CEST';
+const APP_VERSION='18.09.2026 14:17:53 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -15878,11 +15878,25 @@ function teamPartialLotCardHtml(l){
   const pair=safePairLabel(l)||l?.pairLabel||l?.symbol||'Staking';
   const expiry=l?.expiryTime||l?.contractEndTime||l?.releaseTime||null;
   const expectedExpiry=!expiry?(l?.expectedExpiryTime||null):null;
-  // Bei einem noch nicht verifizierten Lifecycle zeigen wir die sicher erkannte
+  const unstake=l?.unstakeTime||l?.closedAt||null;
+  // Ein Wallet-Lifecycle kann insgesamt noch unvollständig sein, obwohl einzelne Lots
+  // bereits eindeutig geschlossen sind. Der sichere Unstake-Nachweis dieser Position
+  // darf dann nicht durch den offenen Status einer anderen Position verdeckt werden.
+  const completed=teamLifecycleStatusForLot(l)==='completed';
+  // Bei einem noch nicht verifizierten offenen Lifecycle zeigen wir die sicher erkannte
   // Stake-Menge. `remaining` kann durch eine noch nicht verifizierte Exit-Heuristik
   // temporaer 0 sein und darf dann nicht als wirtschaftlich unstaked dargestellt werden.
   const original=Number(l?.original??l?.amount??l?.remaining??0);
   const amount=Number.isFinite(original)?original.toLocaleString('de-CH',{minimumFractionDigits:1,maximumFractionDigits:1}):'–';
+  if(completed){
+    return `<div class="team-stake-item">
+      <div class="team-stake-head"><b>${esc(amount)} LP · ${esc(pair)}</b><span class="team-stake-status unstaked">Unstaked</span></div>
+      <div class="muted">Staking: ${esc(teamFormatStakeDate(l?.stakeTime||l?.startTime,true))}</div>
+      <div class="muted">Ablauf: ${expiry?esc(teamFormatStakeDate(expiry,true)):(expectedExpiry?`<span class="warn">${esc(teamFormatStakeDate(expectedExpiry,true))} · 367 Tage erwartet · noch nicht Strict-verifiziert</span>`:'<span class="warn">noch nicht verifiziert</span>')}</div>
+      <div class="muted">Unstaked: ${esc(teamFormatStakeDate(unstake,true))}</div>
+      <div class="team-node-lifecycle-note">Diese Staking-Position ist durch einen separaten On-Chain-Unstake-Nachweis geschlossen. Andere Positionen dieses Wallets können weiterhin noch nicht vollständig verifiziert sein.</div>
+    </div>`;
+  }
   return `<div class="team-stake-item">
     <div class="team-stake-head"><b>${esc(amount)} LP · ${esc(pair)}</b><span class="muted">Lifecycle offen</span></div>
     <div class="muted">Staking: ${esc(teamFormatStakeDate(l?.stakeTime||l?.startTime,true))}</div>

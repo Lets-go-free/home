@@ -3,7 +3,7 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260918-140810";
+const ADMIN_IDEAS_MODULE_BUILD = "20260918-141753";
 const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 14:08:10 CEST";
 
 const ADMIN_IDEAS = [
@@ -73,7 +73,7 @@ ERFOLGSKRITERIEN
 • Cache kann jederzeit kontrolliert neu aufgebaut/gelöscht werden.
 • Keine Vermischung von TLN und DAO.
 • Keine Schwächung der bestehenden Privacy-/Verschlüsselungsregeln.
-• Supabase-Egress pro wiederkehrendem User sinkt messbar deutlich. Phase 4.99: Linke Navigation korrigiert: Der Ein-/Ausklapp-Pfeil sitzt im aufgeklappten Zustand rechts neben WalletTracking und ist vertikal zur Titelzeile zentriert. Im eingeklappten Zustand bleiben die Menü-Icons sichtbar; nur die Textlabels werden ausgeblendet.`
+• Supabase-Egress pro wiederkehrendem User sinkt messbar deutlich. Phase 4.99: Linke Navigation korrigiert: Der Ein-/Ausklapp-Pfeil sitzt im aufgeklappten Zustand rechts neben WalletTracking und ist vertikal zur Titelzeile zentriert. Im eingeklappten Zustand bleiben die Menü-Icons sichtbar; nur die Textlabels werden ausgeblendet. Phase 5.00: TLN/VOW Team-Lifecycle-Darstellung korrigiert: Bei teilweise verifizierten Wallets werden pro Position bereits eindeutig on-chain geschlossene/unstakete Stakings als solche angezeigt; ein offener Duration-Proof einer anderen Position darf einen bestätigten Unstake nicht mehr als „Lifecycle offen“ darstellen.`
   },
   {
     status: "open",
