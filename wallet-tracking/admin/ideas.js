@@ -3,8 +3,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260918-023400";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 02:34:00 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260918-104244";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 10:42:44 CEST";
 
 const ADMIN_IDEAS = [
   {
@@ -19,7 +19,7 @@ const ADMIN_IDEAS = [
     category: "Performance / Skalierung",
     priority: "high",
     title: "PRIORITÄT NÄCHSTER SCHRITT · Browser-Cache + DATA_VERSIONS + Delta-Synchronisation",
-    desc: `STATUS: In Arbeit – zentrale Browser-Cache-/DATA_VERSIONS-Infrastruktur wird schrittweise umgesetzt. DAO1 alter Tree ist der Referenzcache; Phase 4.89: echtes DATA_VERSIONS-Gate eingebaut. Bei identischer lokaler/zentraler Version endet normales Team-Öffnen nach IndexedDB + Registry ohne State-Read, Schema-Probe, Delta-DB oder RPC. Manueller Discovery-Button erzwingt weiterhin den Chain-Freshness-Check. Migration 057 macht den DB-Trigger zum autoritativen Registry-Writer. Praxistest noch ausstehend.
+    desc: `STATUS: In Arbeit – zentrale Browser-Cache-/DATA_VERSIONS-Infrastruktur wird schrittweise umgesetzt. DAO1 alter Tree ist der Referenzcache; Phase 4.91: DAO1 alter Tree als Referenzpfad weiter validiert. Echtes DATA_VERSIONS-Gate eingebaut. Bei identischer lokaler/zentraler Version endet normales Team-Öffnen nach IndexedDB + Registry ohne State-Read, Schema-Probe, Delta-DB oder RPC. Manueller Discovery-Button erzwingt weiterhin den Chain-Freshness-Check. Migration 057 macht den DB-Trigger zum autoritativen Registry-Writer. Praxistest normaler Tab-Pfad bestanden: IDB + DATA_VERSIONS HIT, DB 0, Delta 0, RPC 0. Manueller inkrementeller On-chain-Update-Pfad ist diagnostisch getrennt und bleibt bis zum abschließenden End-to-End-Gegentest in Arbeit.
 
 ZIEL
 Grosse, überwiegend unveränderliche Blockchain-Cache-Daten, die bereits aus Supabase geladen wurden, sollen nicht bei jedem Seitenaufruf erneut vollständig aus der Datenbank übertragen werden. Dadurch Supabase-Egress deutlich reduzieren, Datenbank/API entlasten und WalletTracking spürbar schneller starten.

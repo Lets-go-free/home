@@ -1,3 +1,4 @@
+// WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -4200,7 +4201,7 @@ window.DAO1Project = (() => {
           const countOk=!globalCount||Number(meta.rowCount||0)===globalCount;
           if(schemaOk&&countOk&&remoteDataVersion===localDataVersion){
             const rows=await readLocalSubtree(meta);
-            Object.assign(dao1OldTreeCacheDiag,{source:"IDB + DATA_VERSIONS HIT",totalCacheMs:performance.now()-t0,note:`Gate HIT · Version ${remoteDataVersion.toLocaleString("de-DE")} · Global ${globalCount.toLocaleString("de-DE")} Rows · nur ${rows.length.toLocaleString("de-DE")} relevante Rows aus IndexedDB`});
+            Object.assign(dao1OldTreeCacheDiag,{source:"IDB + DATA_VERSIONS HIT",totalCacheMs:performance.now()-t0,note:`Ausgangsbasis: IDB + DATA_VERSIONS HIT · Version ${remoteDataVersion.toLocaleString("de-DE")} · Global ${globalCount.toLocaleString("de-DE")} Rows · nur ${rows.length.toLocaleString("de-DE")} relevante Rows aus IndexedDB`});
             renderDAO1TeamTreePanel();
             return {edges:rows.map(dao1TreeEdgeFromRow),lastBlock:remoteDataVersion,browserCache:true,registryFresh:true,registryUpdatedAt:remoteVersion.updated_at||null,totalEdgeCount:globalCount};
           }

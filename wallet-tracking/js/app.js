@@ -1,3 +1,4 @@
+// WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N";
@@ -1336,8 +1337,8 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-tx",level:2,label:"Transaktionen",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Apertum Transaktionshistorie","RAM","Supabase zentrale Historie/Asset-Flows","Apertum RPC/Explorer","Wallet-Wechsel Cache; Daten aktualisieren lädt neue Chain-Daten"]]},
   {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","RAM","Supabase Claim-/Tx-Cache","Apertum","Lazy; Aktualisierung reichert neue Claims an"]]},
   {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","RAM","Supabase Tx/Flow Cache","Apertum","Lazy; nur relevantes DAO1 Referral-Wallet"]]},
-  {id:"dao-team",level:2,label:"Team",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"–",daily:"–",open:"IndexedDB + Version",manual:"Delta/Scan",details:[
-    ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Discovery","Normal: IDB + DATA_VERSIONS → fertig; bei Versionsänderung Delta-DB; RPC nur explizit"],
+  {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
+    ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → fertig, DB 0 / RPC 0 bei HIT; manueller On-chain-Pfad 🟡 bis End-to-End-Abschlusstest"],
     ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Bei jedem Team-Öffnen kleiner Gate-Check; Migration 057 aktualisiert Registry DB-seitig"],
     ["Partner-Botdetails","RAM/Cache","Supabase NFT/Ownership Caches","Apertum on-demand","Details/Anreicherung bei Bedarf"]]},
   {id:"dao-lp",level:2,label:"Liquidity Pools",status:"in_progress",start:"–",daily:"–",open:"DB/Cache",manual:"RPC",details:[["DAO1 LP-Positionen","LP Cache","Supabase LP Cache","Apertum RPC","Beim Untertab öffnen renderProjectLpTab"]]},
