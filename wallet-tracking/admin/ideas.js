@@ -3,8 +3,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260918-022655";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 02:26:55 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260918-023400";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 02:34:00 CEST";
 
 const ADMIN_IDEAS = [
   {

@@ -4112,7 +4112,7 @@ window.DAO1Project = (() => {
       return false;
     }finally{if(input)input.disabled=false;}
   }
-  const dao1OldTreeCacheDiag={source:"–",localRows:0,deltaRows:0,dbRows:0,idbMs:0,stateMs:0,metaMs:0,registryMs:0,probeMs:0,deltaDbMs:0,totalCacheMs:0,latestBlockMs:0,overlapRpcMs:0,saveMs:0,scanMs:0,renderMs:0,note:"Noch kein Lauf"};
+  const dao1OldTreeCacheDiag={source:"–",localRows:0,deltaRows:0,dbRows:0,idbMs:0,stateMs:0,metaMs:0,registryMs:0,probeMs:0,deltaDbMs:0,totalCacheMs:0,latestBlockMs:0,overlapRpcMs:0,saveMs:0,scanMs:0,renderMs:0,scanMode:"–",fromBlock:0,toBlock:0,scannedBlocks:0,rpcLogs:0,changedEdges:0,note:"Noch kein Lauf"};
   const dao1TeamDiscovery={
     legacy:{running:false,status:"Noch nicht geladen",edges:[],lastBlock:0,error:""},
     aptmdao:{running:false,status:"Noch nicht geladen",edges:[],lastBlock:0,error:""}
@@ -4164,7 +4164,7 @@ window.DAO1Project = (() => {
 
   async function loadOldDao1TreeCache(){
     const t0=performance.now();
-    Object.assign(dao1OldTreeCacheDiag,{source:"START",localRows:0,deltaRows:0,dbRows:0,idbMs:0,stateMs:0,metaMs:0,registryMs:0,probeMs:0,deltaDbMs:0,totalCacheMs:0,latestBlockMs:0,overlapRpcMs:0,saveMs:0,note:"Cache-Prüfung läuft"});
+    Object.assign(dao1OldTreeCacheDiag,{source:"START",localRows:0,deltaRows:0,dbRows:0,idbMs:0,stateMs:0,metaMs:0,registryMs:0,probeMs:0,deltaDbMs:0,totalCacheMs:0,latestBlockMs:0,overlapRpcMs:0,saveMs:0,scanMode:"NORMAL",fromBlock:0,toBlock:0,scannedBlocks:0,rpcLogs:0,changedEdges:0,note:"Cache-Prüfung läuft"});
     const ctx=getContext?.();
     if(!sb||!ctx?.currentUser||!dao1OldTreeDbAvailable){dao1OldTreeCacheDiag.note="Supabase/User/DB-Cache nicht verfügbar";return null;}
     const contract=lower(DAO1_OLD_DID_CONTRACT),bc=window.WalletTrackingBrowserCache;
@@ -4284,6 +4284,7 @@ window.DAO1Project = (() => {
     try{
       const scanT0=performance.now();
       const cached=forceFull?null:await loadOldDao1TreeCache();
+      dao1OldTreeCacheDiag.scanMode=forceFull?"MANUELLER VOLLSCAN":(checkChain?"MANUELLER ON-CHAIN UPDATE":"NORMALER TAB-AUFRUF");
       const byChild=new Map();
       if(cached?.edges?.length)for(const e of cached.edges)byChild.set(e.child_id,e);
       // Normales Öffnen ist strikt cache-/registry-first. Ein Chain-Freshness-Check
@@ -4314,14 +4315,16 @@ window.DAO1Project = (() => {
         st.status="DAO1 Tree-Cache nicht installiert · vollständiger Scan";renderDAO1TeamTreePanel();
       }
       const changed=new Set();
+      dao1OldTreeCacheDiag.fromBlock=fromStart;dao1OldTreeCacheDiag.toBlock=latest;dao1OldTreeCacheDiag.scannedBlocks=Math.max(0,latest-fromStart+1);
       for(let from=fromStart;from<=latest;from+=DAO1_TEAM_RPC_CHUNK){
         const to=Math.min(latest,from+DAO1_TEAM_RPC_CHUNK-1);
         st.status=`DAO1 alt · ${cached?"inkrementell":"Vollscan"} · Block ${from.toLocaleString("de-DE")}–${to.toLocaleString("de-DE")} / ${latest.toLocaleString("de-DE")}`;renderDAO1TeamTreePanel();
         const tr0=performance.now();
         const logs=await dao1ApertumRpc("eth_getLogs",[{address:DAO1_OLD_DID_CONTRACT,fromBlock:"0x"+from.toString(16),toBlock:"0x"+to.toString(16),topics:[DAO1_OLD_MINT_TOPIC]}]);
-        dao1OldTreeCacheDiag.overlapRpcMs+=performance.now()-tr0;
+        dao1OldTreeCacheDiag.overlapRpcMs+=performance.now()-tr0;dao1OldTreeCacheDiag.rpcLogs+=(logs||[]).length;
         for(const log of logs||[]){const e=parseOldDao1MintLog(log);if(e){byChild.set(e.child_id,e);changed.add(e.child_id);}}
       }
+      dao1OldTreeCacheDiag.changedEdges=changed.size;
       st.edges=[...byChild.values()].sort((a,b)=>a.child_id-b.child_id);st.lastBlock=latest;
       if(dao1OldTreeDbAvailable){const newGlobalRows=cached?[...changed].filter(id=>Number(byChild.get(id)?.block||0)>Number(cached.lastBlock||0)).length:0;const globalCount=cached?Number(cached.totalEdgeCount||0)+newGlobalRows:st.edges.length;const tsave0=performance.now();await saveOldDao1TreeCache(st.edges,latest,cached?changed:null,globalCount);dao1OldTreeCacheDiag.saveMs=performance.now()-tsave0;}
       st.status=`${st.edges.length.toLocaleString("de-DE")} Partner-Verbindungen im ausgewählten Baum${cached?" · aktualisiert":""}`;
@@ -4785,11 +4788,11 @@ window.DAO1Project = (() => {
     const isOld=dao1TeamTreeMode==="legacy",st=teamDiscoveryState();
     const renderT0=performance.now();
     const d=dao1OldTreeCacheDiag;
-    const cacheDiagHtml=isOld?`<div class="custom-token-card debug-frame" style="margin-top:12px"><strong>DEBUG / DEV · DAO1 Tree Browser-Cache</strong><div class="note" style="margin-top:6px"><strong>${escapeHtml(d.source)}</strong> · lokal ${Number(d.localRows||0).toLocaleString("de-DE")} Rows · DB ${Number(d.dbRows||0).toLocaleString("de-DE")} Rows · Delta ${Number(d.deltaRows||0).toLocaleString("de-DE")} Rows</div><div class="note">IndexedDB ${Number(d.idbMs||0).toFixed(1)} ms · State ${Number(d.stateMs||0).toFixed(1)} ms · IDB-Meta ${Number(d.metaMs||0).toFixed(1)} ms · DATA_VERSIONS ${Number(d.registryMs||0).toFixed(1)} ms · Schema-Probe ${Number(d.probeMs||0).toFixed(1)} ms · Delta-DB ${Number(d.deltaDbMs||0).toFixed(1)} ms</div><div class="note">Cache gesamt ${Number(d.totalCacheMs||0).toFixed(1)} ms · Latest Block ${Number(d.latestBlockMs||0).toFixed(1)} ms · 24-Block-RPC ${Number(d.overlapRpcMs||0).toFixed(1)} ms · Cache speichern ${Number(d.saveMs||0).toFixed(1)} ms · kompletter Lauf ${Number(d.scanMs||0).toFixed(1)} ms · Render ${Number(d.renderMs||0).toFixed(1)} ms</div><div class="note">${escapeHtml(d.note||"")}</div></div>`:"";
+    const cacheDiagHtml=isOld?`<div class="custom-token-card debug-frame" style="margin-top:12px"><strong>DEBUG / DEV · DAO1 Tree Browser-Cache</strong><div class="note" style="margin-top:6px"><strong>${escapeHtml(d.source)}</strong> · lokal ${Number(d.localRows||0).toLocaleString("de-DE")} Rows · DB ${Number(d.dbRows||0).toLocaleString("de-DE")} Rows · Delta ${Number(d.deltaRows||0).toLocaleString("de-DE")} Rows</div><div class="note">IndexedDB ${Number(d.idbMs||0).toFixed(1)} ms · State ${Number(d.stateMs||0).toFixed(1)} ms · IDB-Meta ${Number(d.metaMs||0).toFixed(1)} ms · DATA_VERSIONS ${Number(d.registryMs||0).toFixed(1)} ms · Schema-Probe ${Number(d.probeMs||0).toFixed(1)} ms · Delta-DB ${Number(d.deltaDbMs||0).toFixed(1)} ms</div><div class="note">Cache gesamt ${Number(d.totalCacheMs||0).toFixed(1)} ms · Latest Block ${Number(d.latestBlockMs||0).toFixed(1)} ms · 24-Block-RPC ${Number(d.overlapRpcMs||0).toFixed(1)} ms · Cache speichern ${Number(d.saveMs||0).toFixed(1)} ms · kompletter Lauf ${Number(d.scanMs||0).toFixed(1)} ms · Render ${Number(d.renderMs||0).toFixed(1)} ms</div><div class="note">${escapeHtml(d.note||"")}</div><div class="note"><strong>${escapeHtml(d.scanMode||"–")}</strong>${d.scannedBlocks?` · geprüft Block ${Number(d.fromBlock).toLocaleString("de-DE")}–${Number(d.toBlock).toLocaleString("de-DE")} (${Number(d.scannedBlocks).toLocaleString("de-DE")} Blöcke) · RPC-Logs ${Number(d.rpcLogs||0).toLocaleString("de-DE")} · geänderte Kanten ${Number(d.changedEdges||0).toLocaleString("de-DE")}`:""}</div></div>`:"";
     el.innerHTML=`<div class="custom-token-card" style="margin-top:12px">
       <div class="chain-title">${isOld?"Tree DAO1 (alt)":"Tree APTMDAO (neu)"}</div>
       <div class="status ${st.error?"warn":"info"}" style="margin-top:10px"><strong>${st.status}</strong>${st.error?`<div class="note" style="margin-top:4px">${escapeHtml(st.error)}</div>`:""}<div class="note" style="margin-top:4px">${isOld?"Verifizierte Quelle: DID-Mint-Event TokenMinted(to, tokenId, fid). fid wird als Parent-ID des alten Trees verwendet.":"Neue Struktur bleibt vollständig getrennt. Parent-Kanten werden erst nach eindeutiger Event-Dekodierung freigegeben."}</div></div>
-      <div style="margin-top:10px"><div class="custom-token-grid" style="grid-template-columns:minmax(260px,420px) auto;align-items:end">${teamRootSelectorHtml()}${isOld?`<div><button type="button" onclick="DAO1Project.discoverTeamTree()" ${st.running?"disabled":""}>${st.running?"Discovery läuft …":"Tree DAO1 on-chain ermitteln"}</button></div>`:"<div></div>"}</div></div>
+      <div style="margin-top:10px"><div class="custom-token-grid" style="grid-template-columns:minmax(260px,420px) auto;align-items:end">${teamRootSelectorHtml()}${isOld?`<div><button type="button" onclick="DAO1Project.discoverTeamTree()" ${st.running?"disabled":""}>${st.running?"Discovery läuft …":"Tree DAO1 on-chain aktualisieren"}</button></div>`:"<div></div>"}</div></div>
       <div class="project-summary" style="margin-top:12px">
         <div class="custom-token-card project-summary-box"><span class="field-label">Tree</span><strong>${isOld?"DAO1 alt":"APTMDAO neu"}</strong></div>
         <div class="custom-token-card project-summary-box"><span class="field-label">Partner-Verbindungen</span><strong>${st.edges.length?st.edges.length.toLocaleString("de-DE"):"–"}</strong></div>
