@@ -3,13 +3,10 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260918-184403";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 18:44:03 CEST";
-// Phase 5.10: Cache-Restore laedt verifizierte Identities neuer SmartNode-Registries separat, rekonstruiert deren join(address)-Parent-Kanten vor dem Forest-Build (Fix fuer fehlenden Partner Ernie / TLN-ID 990000017795). Alias-Loader akzeptiert kompatible wallet-private Response-Shapes, damit bestehende verschluesselte Namen wieder erscheinen. Staking-Discovery unveraendert. Systemuebersicht geprueft.
-// Phase 5.09: TLN-Team Cache-Restore rekonstruiert Parent-Kanten neuer SmartNode-Registries aus persistierter join(address)-Evidenz; Partial-Lifecycle darf verifizierten Cache nicht mehr degradieren; Alias-Leerantwort erhält einen einmaligen sicheren Re-Read. Staking-Discovery fachlich unverändert. Systemübersicht geprüft: Team-Datenquelle ergänzt um Registry-Identity + join-Tx beim Restore.
-// Phase 5.07: TLN-Team-Anzeige repariert: userbezogene Partnernamen werden rueckwaertskompatibel aus id:/wallet: sowie historischen nackten Referenzen gelesen; Details ist auch fuer eigene Wallets verfuegbar; erkannte, aber wegen offener Duration noch nicht voll verifizierte Partner-Stakings werden persistent gespeichert und beim Reload wieder gemergt. Systemübersicht geprüft: Datenquelle/Ladezeitpunkt unverändert.
-// Phase 5.06: Nullfund-Verifikation im TLN-Team abgesichert: Ein Wallet darf nur noch als „kein Staking gefunden / verifiziert“ gelten, wenn mindestens ein relevanter Contract tatsächlich geprüft wurde und die komplette Contract-Coverage fehlerfrei ist. Alte team-lifecycle-v7-Ergebnisse werden durch Cache-Version v8 nicht mehr als verifiziert übernommen und bei Bedarf neu geprüft. Systemübersicht geprüft: Datenquelle/Ladezeitpunkt unverändert.
-// Phase 5.05: Das Lifecycle-3er-Limit ist jetzt technisch nur noch Batch-Groesse: ein gestarteter Worker arbeitet den gesamten freigegebenen Partner-Backlog in fortlaufenden 3er-Batches ab; Fehler eines einzelnen Wallets stoppen die restliche Queue nicht. Sichtbarer Fortschritt zaehlt ueber alle Partner. Systemübersicht geprüft: Datenquelle/Ladezeitpunkt unverändert.
+const ADMIN_IDEAS_MODULE_BUILD = "20260918-191056";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 19:10:56 CEST";
+// Phase 5.07: TLN-Team Restore repariert: nach gezielter neuer SmartNode-/Join-Registry-Identity-Auflösung werden verifizierte Parent-Beziehungen vor dem finalen Forest-Rebuild erneut in den Graph gemerged (u. a. TLN-ID 990000017795 / Ernie). Details-Button wird auch bei eigenen Wallets angezeigt. Alias-Lesen akzeptiert vorhandene kanonische und historische Referenzformen; In-Memory-Aliase verschwinden bei einem späteren Ladefehler nicht. Keine Änderung an der Staking-Discovery und keine zusätzlichen Chain-Scans. Systemübersicht geprüft: Datenquelle/Ladezeitpunkt unverändert.
+// Phase 5.06: Nullfund-Verifikation im TLN-Team abgesichert: Ein Wallet darf nur noch als „kein Staking gefunden / verifiziert“ gelten, wenn mindestens ein relevanter Contract tatsächlich geprüft wurde und die komplette Contract-Coverage fehlerfrei ist. Alte team-lifecycle-v7-Ergebnisse werden durch Cache-Version v8 nicht mehr als verifiziert übernommen und bei Bedarf neu geprüft. Systemübersicht geprüft: Datenquelle/Ladezeitpunkt unverändert.\n// Phase 5.05: Das Lifecycle-3er-Limit ist jetzt technisch nur noch Batch-Groesse: ein gestarteter Worker arbeitet den gesamten freigegebenen Partner-Backlog in fortlaufenden 3er-Batches ab; Fehler eines einzelnen Wallets stoppen die restliche Queue nicht. Sichtbarer Fortschritt zaehlt ueber alle Partner. Systemübersicht geprüft: Datenquelle/Ladezeitpunkt unverändert.
 // Phase 5.04: TLN-Team Egress-First korrigiert: der Team-Slice-RPC erhält den definierten SmartNode-Contract statt an einer undefinierten Variable zu scheitern. Damit funktioniert der Supabase-Slice-Erstaufbau wieder ohne Globalgraph-Download. Performance/Egress-Messung bleibt nächster eigener TODO-Block.
 
 const ADMIN_IDEAS = [
@@ -400,10 +397,8 @@ ARCHITEKTUR: Keine typabhängige Parallel-Logik in Tabellen/UI. Typ/Klassifikati
     desc: `REFERENZ 18.09.2026: Der Team-Baum ist fachlich noch nicht vollständig. Vor weiteren allgemeinen Performance-Umbauten zuerst diesen Datenpfad stabilisieren.
 
 OFFEN / VERBINDLICH:
-• Phase 5.10 umgesetzt: Cache-Restore lädt Identities neuer SmartNode-Registries separat und rekonstruiert deren verifizierte join(address)-Parent-Kanten VOR dem Forest-Build (Referenz Ernie / TLN-ID 990000017795); Alias-Loader akzeptiert kompatible wallet-private Response-Shapes. Staking-Discovery unverändert.
-• Phase 5.09 umgesetzt: Partial-Lifecycle kann verifizierten Cache nicht mehr überschreiben; Alias-Leerantwort erhält sicheren Re-Read
-• Phase 5.07 umgesetzt: userbezogene Partnernamen/Aliase werden nach Cache-Restore rückwärtskompatibel über TLN-ID- und Wallet-Referenzen geladen und angezeigt
-• Phase 5.07 umgesetzt: auch erkannte Teil-Lifecycles mit noch offener Duration werden persistent gespeichert und beim Cache-Restore gemergt; bereits erkannte Positionen dürfen dadurch nicht verschwinden
+• userbezogene Partnernamen/Aliase müssen nach Cache-Restore für alle bekannten TLN-IDs/Wallets zuverlässig geladen und angezeigt werden
+• pro Partner müssen alle bereits erkannten Staking-Positionen aus Discovery-/Lifecycle-Daten erhalten bleiben; Cache-Restore darf keine Positionen reduzieren oder verlieren
 • Referenzfall TLN-ID 11674 weiterführen: TLN Legacy LPT ist geschlossen/verifiziert; vUSD/VOW ist erkannt, aber der positionsgenaue Duration-/Lifecycle-Nachweis ist noch offen und muss ohne Schätzung vollständig on-chain geklärt werden
 • ein Cache-Stand darf niemals weniger fachliche Information anzeigen als der bereits verifizierte persistente Datenbestand
 • Hintergrund-/Lifecycle-Aktualisierung muss einen Lade-/Fortschrittsbalken anzeigen, der beim Scrollen im Viewport sichtbar bleibt und nach Abschluss wieder verschwindet
