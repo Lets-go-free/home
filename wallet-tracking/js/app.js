@@ -1337,8 +1337,8 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","RAM","Supabase Claim-/Tx-Cache","Apertum","Lazy; Aktualisierung reichert neue Claims an"]]},
   {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","RAM","Supabase Tx/Flow Cache","Apertum","Lazy; nur relevantes DAO1 Referral-Wallet"]]},
   {id:"dao-team",level:2,label:"Team",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"–",daily:"–",open:"IndexedDB + Version",manual:"Delta/Scan",details:[
-    ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei Scan","Subtree aus IDB; DATA_VERSIONS Registry als Freshness-Gate"],
-    ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Kleiner Versionscheck; Migration 057 verbindet DAO1 Writer mit Registry"],
+    ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Discovery","Normal: IDB + DATA_VERSIONS → fertig; bei Versionsänderung Delta-DB; RPC nur explizit"],
+    ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Bei jedem Team-Öffnen kleiner Gate-Check; Migration 057 aktualisiert Registry DB-seitig"],
     ["Partner-Botdetails","RAM/Cache","Supabase NFT/Ownership Caches","Apertum on-demand","Details/Anreicherung bei Bedarf"]]},
   {id:"dao-lp",level:2,label:"Liquidity Pools",status:"in_progress",start:"–",daily:"–",open:"DB/Cache",manual:"RPC",details:[["DAO1 LP-Positionen","LP Cache","Supabase LP Cache","Apertum RPC","Beim Untertab öffnen renderProjectLpTab"]]},
   {id:"dao-config",level:2,label:"Konfiguration",status:"planning",start:"–",daily:"–",open:"bereits Lazy geladen",manual:"DB",details:[["Miner/Projekt-NFT/Konfiguration","RAM","Supabase DAO1 Tabellen","–","DAO1 ensureLoaded/refreshConfig"]]},
