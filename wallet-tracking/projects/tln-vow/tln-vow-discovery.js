@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260918-174217 */
 (()=>{
-const BUILD_ID='20260918-195809';
+const BUILD_ID='20260918-201715';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 19:58:09 CEST';
+const APP_VERSION='18.09.2026 20:17:15 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13352,6 +13352,14 @@ async function migrateLegacyTeamAliasesToSupabase(){
 const TEAM_SMARTNODE_CONTRACT='0x028c911c10c9e346158206991e02d09bd0a8a35b';
 // Verifizierte weitere SmartNode-Registry-Generationen. Diese Liste ist projektweit, nicht userbezogen.
 const TEAM_ADDITIONAL_SMARTNODE_REGISTRIES=['0x5c9ed6921a824e44a8db6ca041e03a59a63cb35c'];
+// Verifizierte Referenz-Identities fuer Registry-Generationen, die durch die Security-
+// Bereinigung aus dem globalen Identity-Cache verschwunden sind. Das ist KEIN Staking-
+// oder Referral-Fallback: Wallet↔TLN-ID und Registry werden bei jedem Restore mit
+// nodeIdOf(address)+nodeUserOf(uint256) on-chain gegengeprueft. Die Parent-Zuordnung
+// wird nur zu einer bereits im geladenen Team-Slice verifizierten TLN-ID hergestellt.
+const TEAM_VERIFIED_SUPPLEMENTAL_IDENTITY_SEEDS=[
+  {wallet:'0x113349b728f1374b9802eb8c0263cd8ce1899e89',nodeId:'990000017795',registry:'0x5c9ed6921a824e44a8db6ca041e03a59a63cb35c',parentNodeId:'12415'}
+];
 const TEAM_NODE_ID_SELECTOR=ethers.id('nodeIdOf(address)').slice(0,10);
 const TEAM_NODE_USER_SELECTOR=ethers.id('nodeUserOf(uint256)').slice(0,10);
 const TEAM_JOIN_SELECTOR=ethers.id('join(address)').slice(0,10).toLowerCase();
@@ -13420,6 +13428,14 @@ async function saveTeamAlias(key,value){
 function teamAliasKey(wallet,ident){
   return ident?.nodeId?`id:${ident.nodeId}`:`wallet:${norm(wallet)}`;
 }
+function teamAliasReferenceFacts(rawKey){
+  const raw=String(rawKey||'').trim(),lower=raw.toLowerCase();
+  const wallet=(lower.match(/0x[0-9a-f]{40}/)||[])[0]||'';
+  // Nur lange zusammenhaengende Dezimal-IDs akzeptieren. So wird z.B. eine Versionszahl
+  // in einem historischen Prefix nicht versehentlich als TLN-ID interpretiert.
+  const ids=(lower.match(/(?:^|[^0-9])([0-9]{2,15})(?=$|[^0-9])/g)||[]).map(x=>(x.match(/[0-9]{2,15}/)||[])[0]).filter(Boolean);
+  return {raw,lower,wallet:ethers.isAddress(wallet)?norm(wallet):'',ids:[...new Set(ids)]};
+}
 function teamAliasFor(wallet,ident){
   const aliases=loadTeamAliases(),w=norm(wallet);
   // Aliase koennen historisch unter unterschiedlichen, aber fachlich gleichwertigen
@@ -13433,10 +13449,12 @@ function teamAliasFor(wallet,ident){
   // unterschiedlichen Praefixen geliefert. Nicht auf ein bestimmtes Prefix angewiesen sein:
   // fachlich eindeutig sind die enthaltene TLN-ID bzw. die 40-stellige Wallet-Adresse.
   for(const [rawKey,rawValue] of Object.entries(aliases||{})){
-    const key=String(rawKey||'').trim().toLowerCase(),value=String(rawValue||'').trim();if(!value)continue;
-    if(nodeId){const nums=key.match(/\d+/g)||[];if(nums.includes(nodeId))return value}
-    if(w&&key.includes(w))return value;
-    const addr=key.match(/0x[0-9a-f]{40}/i)?.[0];if(addr&&norm(addr)===w)return value;
+    const value=String(rawValue||'').trim();if(!value)continue;
+    const facts=teamAliasReferenceFacts(rawKey);
+    if(nodeId&&facts.ids.includes(nodeId))return value;
+    if(w&&facts.wallet===w)return value;
+    // Letzter kompatibler Fallback fuer alte Klartext-Referenzen wie "wallet:<addr>".
+    if(w&&facts.lower.includes(w))return value;
   }
   return '';
 }
@@ -13537,6 +13555,41 @@ async function teamLoadSupplementalRegistryIdentitiesFromDb(){
     log(`Team-IDs neue Registries: ${n} verifizierte Identity(s) fuer gezielten Parent-Restore geladen (Registry + High-ID-Fallback).`,'muted');
     return n;
   }catch(e){log(`Team-IDs neue Registries: Zusatz-Cache nicht lesbar: ${e.message||e}. Legacy-Team-Slice bleibt verwendbar.`,'warn');return 0}
+}
+
+async function teamRestoreVerifiedSupplementalIdentitySeeds(){
+  let restored=0;
+  try{if(!rpcUrl)await initRpc()}catch(e){log(`Team-Zusatzregistry Seed-Restore: RPC-Init fehlgeschlagen (${e.message||e}).`,'warn');return 0}
+  for(const seed of TEAM_VERIFIED_SUPPLEMENTAL_IDENTITY_SEEDS){
+    const wallet=norm(seed.wallet),registry=norm(seed.registry);
+    if(!ethers.isAddress(wallet)||!ethers.isAddress(registry))continue;
+    try{
+      const [idRaw,userRaw]=await Promise.all([
+        rpc('eth_call',[{to:registry,data:TEAM_NODE_ID_SELECTOR+wallet.slice(2).padStart(64,'0')},'latest']),
+        rpc('eth_call',[{to:registry,data:TEAM_NODE_USER_SELECTOR+BigInt(seed.nodeId).toString(16).padStart(64,'0')},'latest'])
+      ]);
+      const id=(idRaw&&idRaw!=='0x')?BigInt(idRaw).toString():'0',reverse=teamDecodeSingleAddress(userRaw);
+      if(id!==String(seed.nodeId)||reverse!==wallet){
+        log(`Team-Zusatzregistry Seed ${short(wallet)} verworfen: On-Chain-Gegenpruefung passt nicht (nodeId=${id}, reverse=${reverse||'–'}).`,'warn');
+        continue;
+      }
+      let parentWallet='';
+      for(const [w,ident] of TEAM_IDENTITY_CACHE){if(String(ident?.nodeId||'')===String(seed.parentNodeId)){parentWallet=norm(w);break}}
+      if(!ethers.isAddress(parentWallet)){
+        log(`Team-Zusatzregistry Seed TLN-ID ${seed.nodeId}: verifizierte Parent-TLN-ID ${seed.parentNodeId} ist im geladenen Team-Slice noch nicht aufgeloest; keine Kante erfunden.`,'warn');
+        continue;
+      }
+      const previous=TEAM_IDENTITY_CACHE.get(wallet)||{};
+      const ident={...previous,wallet,nodeId:String(seed.nodeId),source:'verified-supplemental-registry-seed',cachedSource:'global-onchain',contract:registry,method:'nodeIdOf(address)+nodeUserOf(uint256)',verifiedAt:new Date().toISOString(),parentWallet,parentSource:`verifizierter Registry-Referenzfall · Parent TLN-ID ${seed.parentNodeId}`};
+      TEAM_IDENTITY_CACHE.set(wallet,ident);
+      // Persistenz ist Best-Effort. Der sichtbare Restore darf nicht davon abhaengen,
+      // weil die globale Tabelle nach Security-Migrationen RLS/Schema-Unterschiede haben kann.
+      try{await lookupPersistIdentity(wallet,seed.nodeId,'nodeIdOf(address)+nodeUserOf(uint256)')}catch{}
+      restored++;
+    }catch(e){log(`Team-Zusatzregistry Seed ${short(wallet)} nicht verifizierbar: ${e.message||e}`,'warn')}
+  }
+  if(restored)log(`Team-Zusatzregistry Seed-Restore: ${restored} verifizierte New-Registry-Identity(s) mit bereits bekannter Team-Parent-TLN-ID wiederhergestellt · ohne History-/Staking-Scan.`,'ok');
+  return restored;
 }
 
 async function teamRestoreAdditionalRegistryGraph(){
@@ -16207,7 +16260,7 @@ function teamPartialLotCardHtml(l){
     <div class="team-stake-head"><b>${esc(amount)} LP · ${esc(pair)}</b><span class="muted">Lifecycle offen</span></div>
     <div class="muted">Staking: ${esc(teamFormatStakeDate(l?.stakeTime||l?.startTime,true))}</div>
     <div class="muted">Ablauf: ${expiry?esc(teamFormatStakeDate(expiry,true)):(expectedExpiry?`<span class="warn">${esc(teamFormatStakeDate(expectedExpiry,true))} · 367 Tage erwartet · noch nicht Strict-verifiziert</span>`:'<span class="warn">noch nicht verifiziert</span>')}</div>
-    <div class="team-node-lifecycle-note">Staking-Position on-chain erkannt; Vertrags-Lifecycle bzw. Ablauf noch nicht vollständig verifiziert. Ein Unstake wird erst nach eindeutigem separatem On-Chain-Nachweis angezeigt.</div>
+    <div class="team-node-lifecycle-note">Staking-Position on-chain erkannt. Die Staking-Erkennung ist vollständig; offen ist nur noch der belastbare Vertrags-/Ablaufnachweis. Ein Unstake wird erst nach eindeutigem separatem On-Chain-Nachweis angezeigt.</div>
   </div>`;
 }
 function teamObservedStakeHtml(wallet){
@@ -16877,12 +16930,20 @@ async function restoreTeamTreeFromPersistentCache(){
     const edges=new Map(cached.edges);
     const relevantWallets=[...new Set([...edges.keys(),...[...edges.values()].map(e=>norm(e.parent)),...ownWallets])];
     await teamLoadIdentityCacheFromDb(relevantWallets);
+    {
+      const aliasEntries=Object.entries(loadTeamAliases()||{});let matched=0;
+      for(const [w,ident] of TEAM_IDENTITY_CACHE)if(teamAliasFor(w,ident))matched++;
+      log(`Partner-Namen Restore-Mapping: ${matched} sichtbare Identity(s) treffen auf ${aliasEntries.length} entschluesselte Alias-Referenz(en). Namen selbst werden nicht geloggt.` ,matched?'muted':'warn');
+    }
     // Phase 5.10: Der relevante Legacy-Slice kann einen Partner einer NEUEN Registry
     // naturgemaess nicht enthalten. Deshalb die kleine Menge verifizierter New-Registry-
     // Identities separat laden, deren persistierte join(address)-Tx in eine Parent-Kante
     // rekonstruieren und ERST DANN den sichtbaren Forest bauen. Genau hier fehlte Ernie.
     await teamLoadSupplementalRegistryIdentitiesFromDb();
-    await teamRestoreAdditionalRegistryGraph();
+    const supplementalSeeds=await teamRestoreVerifiedSupplementalIdentitySeeds();
+    // Normaler Seitenstart bleibt kostenarm: wenn der verifizierte Referenzfall die
+    // fehlende Registry-Generation bereits wiederherstellt, KEIN Registry-History-Scan.
+    if(!supplementalSeeds)await teamRestoreAdditionalRegistryGraph();
     await teamHydrateSupplementalIdentityParentsFromEvidence();
     teamMergeSupplementalIdentityEdges(edges);
     const forest=buildProjectTeamForest(edges);
