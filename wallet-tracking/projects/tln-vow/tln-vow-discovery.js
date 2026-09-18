@@ -1,6 +1,6 @@
-/* TLN/VOW Discovery shared engine · Build 20260918-173428 */
+/* TLN/VOW Discovery shared engine · Build 20260918-174217 */
 (()=>{
-const BUILD_ID='20260918-173428';
+const BUILD_ID='20260918-174217';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 17:34:28 CEST';
+const APP_VERSION='18.09.2026 17:42:17 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -14491,61 +14491,58 @@ async function teamSaveLifecycleQueueState(wallet,state={}){
 async function teamRunLifecycleBackgroundBatch(wallets){
   const all=[...new Set((wallets||[]).map(norm).filter(w=>ethers.isAddress(w)&&!TEAM_STAKING_LIFECYCLE.get(w)?.verified&&!TEAM_LIFECYCLE_BACKGROUND_SESSION.has(w)))];
   if(!all.length)return;
-  const queue=await teamLoadLifecycleQueueState(all),now=Date.now();
-  // Phase 4.98: Ein frueherer normaler Null-/Teilfund (retry_wait) darf einen weiterhin
-  // unverifizierten Lifecycle nicht 24h blockieren. Das Retry-Fenster ist ausschliesslich
-  // fuer echte technische Fehler reserviert. Ein abgebrochener "running"-Status wird nach
-  // kurzer Sicherheitsfrist wieder freigegeben; der Session-Set verhindert Doppelpruefungen
-  // innerhalb derselben laufenden Seite.
+  const now=Date.now(),queue=await teamLoadLifecycleQueueState(all);
+  // Phase 5.05: Das 3er-Limit ist ausschliesslich die Parallel-/Batch-Groesse. Ein gestarteter
+  // Background-Worker arbeitet den gesamten beim Start offenen, freigegebenen Backlog in
+  // aufeinanderfolgenden 3er-Batches ab. Damit kann kein requestIdleCallback-/Scheduling-
+  // Abbruch nach dem ersten Batch dazu fuehren, dass nur drei Partner bearbeitet werden.
   const blocked=[];
-  const eligible=all.filter(w=>{
+  const actionable=all.filter(w=>{
     const q=queue.get(w),status=String(q?.status||'');
     const last=Date.parse(q?.lastAttemptAt||q?.savedAt||q?.updatedAt||'');
     if(status==='error_retry'&&Number.isFinite(last)&&(now-last)<TEAM_LIFECYCLE_RETRY_MS){blocked.push({w,status,last});return false}
     if(status==='running'&&Number.isFinite(last)&&(now-last)<TEAM_LIFECYCLE_RUNNING_STALE_MS){blocked.push({w,status,last});return false}
     return true;
-  }).slice(0,TEAM_LIFECYCLE_BACKGROUND_BATCH);
+  });
   if(blocked.length){
     const desc=blocked.map(({w,status})=>`TLN-ID ${TEAM_IDENTITY_CACHE.get(w)?.nodeId||'?'} (${short(w)} · ${status})`).join(', ');
     log(`Team-Lifecycle Queue: ${blocked.length} Wallet(s) wegen echtem Fehler-/Running-Schutz noch gesperrt: ${desc}.`,'muted');
   }
-  if(!eligible.length){log('Team-Lifecycle Hintergrund: aktuell keine freigegebene offene Wallet; nur echter Fehler-/Running-Schutz aktiv, kein RPC.','muted');return}
-  log(`Team-Lifecycle Queue freigegeben: ${eligible.map(w=>`TLN-ID ${TEAM_IDENTITY_CACHE.get(w)?.nodeId||'?'} (${short(w)})`).join(', ')}.`,'muted');
-  eligible.forEach(w=>TEAM_LIFECYCLE_BACKGROUND_SESSION.add(w));
-  const startedAt=new Date().toISOString();
-  await Promise.all(eligible.map(w=>teamSaveLifecycleQueueState(w,{status:'running',lastAttemptAt:startedAt}))).catch(()=>{});
-  log(`Team-Lifecycle Hintergrund: ${eligible.length} noch nie/noch nicht vollständig verifizierte Wallet(s) werden kontrolliert nachverifiziert (max. ${TEAM_LIFECYCLE_BACKGROUND_BATCH} pro Idle-Batch).`,'muted');
+  if(!actionable.length){log('Team-Lifecycle Hintergrund: aktuell keine freigegebene offene Wallet; nur echter Fehler-/Running-Schutz aktiv, kein RPC.','muted');return}
+  log(`Team-Lifecycle Hintergrund: ${actionable.length} offene Wallet(s) werden jetzt vollstaendig in Batches zu max. ${TEAM_LIFECYCLE_BACKGROUND_BATCH} abgearbeitet.`,'muted');
+  teamSetLifecycleBackgroundUi({running:true,total:actionable.length,done:0,currentWallet:null,currentPass:0,lastResult:''});
+  let done=0;
   try{
-    teamSetLifecycleBackgroundUi({running:true,total:eligible.length,done:0,currentWallet:null,currentPass:0,lastResult:''});
-    for(let i=0;i<eligible.length;i++){
-      const w=eligible[i];
-      teamSetLifecycleBackgroundUi({done:i,currentWallet:w,currentPass:1});
-      const result=await teamVerifyLifecycleToConvergence(w);
-      const life=TEAM_STAKING_LIFECYCLE.get(w),verified=!!life?.verified;
-      // Wenn weitere Prüfschritte keinen neuen belastbaren Lifecycle-Stand mehr liefern,
-      // ist das Wallet für diesen Lauf fachlich offen statt künstlich "noch einen Schritt"
-      // pro Reload weiterzuschieben. Echte technische Fehler bleiben error_retry.
-      await teamSaveLifecycleQueueState(w,{status:verified?'verified':'open_stable',lastAttemptAt:startedAt,verifiedAt:verified?(life?.sourceSavedAt||new Date().toISOString()):null,verifiedBlock:Number(life?.sourceVerifiedBlock||0)||null,retryAfter:null,passes:result.passes,stable:!verified});
-      teamSetLifecycleBackgroundUi({done:i+1,currentWallet:null,currentPass:0});
-      renderTeamTree();renderProjectOverview();
+    for(let offset=0;offset<actionable.length;offset+=TEAM_LIFECYCLE_BACKGROUND_BATCH){
+      const eligible=actionable.slice(offset,offset+TEAM_LIFECYCLE_BACKGROUND_BATCH);
+      const startedAt=new Date().toISOString();
+      eligible.forEach(w=>TEAM_LIFECYCLE_BACKGROUND_SESSION.add(w));
+      await Promise.all(eligible.map(w=>teamSaveLifecycleQueueState(w,{status:'running',lastAttemptAt:startedAt}))).catch(()=>{});
+      log(`Team-Lifecycle Batch ${Math.floor(offset/TEAM_LIFECYCLE_BACKGROUND_BATCH)+1}: ${eligible.map(w=>`TLN-ID ${TEAM_IDENTITY_CACHE.get(w)?.nodeId||'?'} (${short(w)})`).join(', ')}.`,'muted');
+      for(const w of eligible){
+        teamSetLifecycleBackgroundUi({done,currentWallet:w,currentPass:1});
+        try{
+          const result=await teamVerifyLifecycleToConvergence(w);
+          const life=TEAM_STAKING_LIFECYCLE.get(w),verified=!!life?.verified;
+          await teamSaveLifecycleQueueState(w,{status:verified?'verified':'open_stable',lastAttemptAt:startedAt,verifiedAt:verified?(life?.sourceSavedAt||new Date().toISOString()):null,verifiedBlock:Number(life?.sourceVerifiedBlock||0)||null,retryAfter:null,passes:result.passes,stable:!verified});
+        }catch(e){
+          const retryAfter=new Date(Date.now()+TEAM_LIFECYCLE_RETRY_MS).toISOString();
+          await teamSaveLifecycleQueueState(w,{status:'error_retry',lastAttemptAt:startedAt,retryAfter,error:String(e?.message||e).slice(0,500)}).catch(()=>{});
+          log(`Team-Lifecycle TLN-ID ${TEAM_IDENTITY_CACHE.get(w)?.nodeId||'?'} fehlgeschlagen: ${e.message||e}. Die restliche Queue wird weiter abgearbeitet.`,'warn');
+        }
+        done++;
+        teamSetLifecycleBackgroundUi({done,currentWallet:null,currentPass:0});
+        renderTeamTree();renderProjectOverview();
+      }
+      // Browser kurz freigeben, danach direkt mit dem naechsten 3er-Batch fortsetzen.
+      if(offset+TEAM_LIFECYCLE_BACKGROUND_BATCH<actionable.length)await new Promise(resolve=>setTimeout(resolve,0));
     }
-    const openNow=eligible.filter(w=>!TEAM_STAKING_LIFECYCLE.get(w)?.verified).length;
-    teamSetLifecycleBackgroundUi({running:false,currentWallet:null,currentPass:0,lastResult:openNow?`Aktualisierung abgeschlossen · ${openNow} Lifecycle${openNow===1?'':'s'} fachlich weiterhin offen`:'TLN-Teamdaten aktuell'});
-    // Phase 4.97: Ein Cache-Restore darf keinen Partner dauerhaft auf "Lifecycle noch nicht
-    // verifiziert" stehen lassen, nur weil er hinter dem bisherigen 3er-Limit lag. Pro Idle-
-    // Durchlauf bleiben es maximal drei Wallets; danach wird der noch nie versuchte Backlog
-    // kontrolliert in weiteren kleinen Batches abgearbeitet. Bereits verifizierte Wallets
-    // verschwinden aus dem Backlog, Fehler/Nullfunde respektieren weiterhin das 24h-Retryfenster.
-    const remaining=all.filter(w=>!TEAM_STAKING_LIFECYCLE.get(w)?.verified&&!TEAM_LIFECYCLE_BACKGROUND_SESSION.has(w));
-    if(remaining.length){
-      log(`Team-Lifecycle Hintergrund: ${remaining.length} weitere offene Wallet(s) im Backlog; nächster kleiner Batch wird im Idle-Fenster gestartet.`,'muted');
-      teamScheduleLifecycleBackground(remaining);
-    }
+    const openNow=actionable.filter(w=>!TEAM_STAKING_LIFECYCLE.get(w)?.verified).length;
+    teamSetLifecycleBackgroundUi({running:false,total:actionable.length,done:actionable.length,currentWallet:null,currentPass:0,lastResult:openNow?`Aktualisierung abgeschlossen · ${actionable.length} Partner geprüft · ${openNow} Lifecycle${openNow===1?'':'s'} fachlich weiterhin offen`:`TLN-Teamdaten aktuell · ${actionable.length} Partner geprüft`});
+    log(`Team-Lifecycle Hintergrund abgeschlossen: ${actionable.length} Partner in ${Math.ceil(actionable.length/TEAM_LIFECYCLE_BACKGROUND_BATCH)} Batch(es) abgearbeitet; ${blocked.length} wegen Retry-/Running-Schutz ausgelassen.`,'ok');
   }catch(e){
-    const retryAfter=new Date(Date.now()+TEAM_LIFECYCLE_RETRY_MS).toISOString();
-    for(const w of eligible)await teamSaveLifecycleQueueState(w,{status:'error_retry',lastAttemptAt:startedAt,retryAfter,error:String(e?.message||e).slice(0,500)}).catch(()=>{});
-    teamSetLifecycleBackgroundUi({running:false,currentWallet:null,currentPass:0,lastResult:'Hintergrund-Aktualisierung nicht vollständig'});
-    log(`Team-Lifecycle Hintergrund fehlgeschlagen: ${e.message||e}. Nächster Versuch frühestens nach dem Retry-Fenster.`,'warn');
+    teamSetLifecycleBackgroundUi({running:false,currentWallet:null,currentPass:0,lastResult:`Hintergrund-Aktualisierung nach ${done} von ${actionable.length} Partnern unterbrochen`});
+    log(`Team-Lifecycle Hintergrund nach ${done}/${actionable.length} Partnern fehlgeschlagen: ${e.message||e}.`,'warn');
   }
 }
 function teamScheduleLifecycleBackground(wallets){
