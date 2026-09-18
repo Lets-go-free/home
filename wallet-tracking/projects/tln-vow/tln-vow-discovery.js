@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260918-174217 */
 (()=>{
-const BUILD_ID='20260918-174959';
+const BUILD_ID='20260918-180343';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 17:49:59 CEST';
+const APP_VERSION='18.09.2026 18:03:43 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4124,7 +4124,7 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   duration:'duration-strict-v16-contract-proof-cache',
   discoveryResults:'discovery-results-v1',
   snapshotValuation:'snapshot-valuation-v4-legacy-stake-market-price',
-  teamLifecycle:'team-lifecycle-v8-null-coverage-proof',
+  teamLifecycle:'team-lifecycle-v9-partial-lifecycle-persist',
   teamLifecycleQueue:'team-lifecycle-queue-v1',
   teamContractHistory:'team-contract-history-v1',
   smartNodeIdentityIndex:'smartnode-identity-index-v1',
@@ -13396,11 +13396,14 @@ function teamAliasKey(wallet,ident){
 }
 function teamAliasFor(wallet,ident){
   const aliases=loadTeamAliases(),w=norm(wallet);
-  // Aliase koennen historisch bereits gespeichert worden sein, bevor die TLN-ID des
-  // Wallets aufgeloest war. Nach dem Identity-Restore darf der Wechsel von wallet:...
-  // auf id:... deshalb den Namen nicht unsichtbar machen. TLN-ID bleibt bevorzugt.
-  const idKey=ident?.nodeId?`id:${ident.nodeId}`:'';
-  return (idKey&&aliases[idKey])||aliases[`wallet:${w}`]||'';
+  // Aliase koennen historisch unter unterschiedlichen, aber fachlich gleichwertigen
+  // Referenzen gespeichert worden sein. Neue Saves verwenden id:/wallet:, beim Lesen
+  // bleiben wir rueckwaertskompatibel zu nackter TLN-ID bzw. nackter Wallet-Adresse.
+  // So verschwinden bestehende userbezogene Namen nach Identity-/Cache-Migrationen nicht.
+  const nodeId=String(ident?.nodeId||'').trim();
+  const candidates=[nodeId?`id:${nodeId}`:'',nodeId,w?`wallet:${w}`:'',w].filter(Boolean);
+  for(const key of candidates){const value=String(aliases[key]||'').trim();if(value)return value}
+  return '';
 }
 function teamWalletForNodeId(nodeId){
   nodeId=String(nodeId||'').trim();if(!nodeId)return '';
@@ -14343,9 +14346,17 @@ async function teamLoadPersistedLifecycleCache(wallets){
     const {data,error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).select('scope_address,scanner_version,payload,updated_at,last_scanned_block').eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.teamLifecycle).in('scope_address',chunk);
     if(error){log(`Team-Lifecycle-Cache nicht lesbar: ${error.message||error}`,'warn');break}
     for(const row of (data||[])){
-      if(row?.scanner_version!==TECH_CACHE_VERSIONS.teamLifecycle||!row?.payload?.verified)continue;
+      if(row?.scanner_version!==TECH_CACHE_VERSIONS.teamLifecycle)continue;
       const w=norm(row.scope_address||row.payload.wallet||'');
       const lots=Array.isArray(row.payload.lots)?row.payload.lots:[];
+      if(!row?.payload?.verified){
+        if(lots.length){
+          const existingLife=TEAM_STAKING_LIFECYCLE.get(w)||null;
+          const mergedLots=teamMergeLifecycleLots(existingLife,lots);
+          TEAM_STAKING_LIFECYCLE.set(w,teamLifecycleFromLots(w,mergedLots,{verified:false,source:'persistenter Team-Lifecycle Teilstand',completedStep:2,sourceSavedAt:row?.payload?.savedAt||row?.updated_at||null}));loaded++;
+        }
+        continue;
+      }
       // Ein leerer Team-Lifecycle darf nicht als endgültiger Nullfund wiederverwendet
       // werden, wenn Step 5 bereits starke historische Staking-Evidenz für dieses
       // Wallet enthält. Sonst würde eine frühere Discovery-Lücke dauerhaft gecacht.
@@ -14398,6 +14409,16 @@ async function teamLoadPersistedLifecycleCache(wallets){
   }
   if(loaded||anchorsMerged)log(`Team-Lifecycle: ${loaded} verifizierte Partner-Wallet(s) aus persistentem Team-Cache geladen${anchorsMerged?` · ${anchorsMerged} blockgenaue Freshness-Anker in bereits geladene Discovery-Lifecycles übernommen`:''}.`,'ok');
   return loaded;
+}
+async function teamSavePartialLifecycle(wallet,lots,{savedAt=null}={}){
+  const w=norm(wallet);if(!ethers.isAddress(w)||!currentUserId||!stakingScanDbCacheAvailable||!Array.isArray(lots)||!lots.length)return false;
+  const nowIso=savedAt||new Date().toISOString();
+  const payload={wallet:w,verified:false,lots:teamMergeLifecycleLots(lots),savedAt:nowIso,lifecycleIntegrityVersion:'partial-v1'};
+  try{
+    const {error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).upsert({chain_key:'bsc',scope_address:w,cache_key:TECH_CACHE_KEYS.teamLifecycle,scanner_version:TECH_CACHE_VERSIONS.teamLifecycle,payload,updated_at:nowIso},{onConflict:'chain_key,scope_address,cache_key'});
+    if(error)throw error;
+    return true;
+  }catch(e){log(`Team-Lifecycle Teilstand ${short(w)} konnte nicht persistent gespeichert werden: ${e?.message||e}`,'warn');return false}
 }
 async function teamSaveVerifiedLifecycle(wallet,lots,{verifiedAt=null,verifiedBlock=null}={}){
   const w=norm(wallet);if(!ethers.isAddress(w)||!currentUserId||!stakingScanDbCacheAvailable)return false;
@@ -15907,7 +15928,9 @@ async function teamVerifyMissingLifecycles(wallets,{forceFresh=false}={}){
       const mergedDurationOk=completeLots.every(l=>(l?.status==='closed'||l?.unstakeTime||l?.closedAt||l?.expiryTime||l?.contractEndTime||l?.releaseTime));
       const finalVerified=fullyVerified&&mergedDurationOk;
       TEAM_STAKING_LIFECYCLE.set(wallet,teamLifecycleFromLots(wallet,completeLots,{verified:finalVerified,source:scanComplete?'gebündelte Team-Staking-Discovery + Cache-Merge':'gebündelte Team-Staking-Discovery (unvollständig) + Cache-Merge',completedStep:finalVerified?3:2,sourceVerifiedBlock:verifiedBlock}));
-      if(finalVerified){await teamSaveVerifiedLifecycle(wallet,completeLots,{verifiedBlock});TEAM_LIFECYCLE_RECHECK_HINTS.delete(wallet);verified++}if(completeLots.length)withLots++;
+      if(finalVerified){await teamSaveVerifiedLifecycle(wallet,completeLots,{verifiedBlock});TEAM_LIFECYCLE_RECHECK_HINTS.delete(wallet);verified++}
+      else if(completeLots.length)await teamSavePartialLifecycle(wallet,completeLots);
+      if(completeLots.length)withLots++;
       const evidenceSummary=calls.reduce((m,c)=>{const e=String(c?._teamPositionEvidence||'unbekannt');m[e]=(m[e]||0)+1;return m;},{});
       log(`Team-Lifecycle ${wi+1}/${missing.length} · TLN-ID ${TEAM_IDENTITY_CACHE.get(wallet)?.nodeId||'?'}: ${calls.length} Positionskandidat(en) · ${lots.length} Position(en) · Contract-Historie ${cov.ok}/${cov.total}${cov.failed?` (${cov.failed} fehlgeschlagen)`:''} · Evidenz ${Object.entries(evidenceSummary).map(([k,v])=>`${k}=${v}`).join(', ')||'keine'} · ${finalVerified?'Lifecycle verifiziert':hasObservedEvidence?'NICHT verifiziert – historische Staking-Evidenz noch nicht rekonstruiert':unresolvedNewGeneration?'NICHT verifiziert – neue SmartNode-Generation, Staking-Pfad noch nicht rekonstruiert':scanComplete?'Duration noch offen':'NICHT verifiziert – Scan unvollständig'}.`,finalVerified?'ok':'warn');
     }
@@ -16057,7 +16080,7 @@ function teamNodeHtml(wallet,depth,parent){
     ${parent?`<div class="team-node-parent">Upline: ${esc(parentLabel)}</div>`:''}
     <div class="team-alias-row"><span class="team-alias-label">Name</span><input class="team-alias-input" data-team-alias-key="${esc(key)}" value="${esc(alias)}" placeholder="Name / Alias"></div>
     ${teamObservedStakeHtml(wallet)}
-    ${own?'':`<button type="button" class="team-details-btn" data-team-details-wallet="${esc(wallet)}">Details</button>`}
+    <button type="button" class="team-details-btn" data-team-details-wallet="${esc(wallet)}">Details</button>
   </div>`;
 }
 

@@ -3,8 +3,9 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260918-174959";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 17:49:59 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260918-180343";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 18:03:43 CEST";
+// Phase 5.07: TLN-Team-Anzeige repariert: userbezogene Partnernamen werden rueckwaertskompatibel aus id:/wallet: sowie historischen nackten Referenzen gelesen; Details ist auch fuer eigene Wallets verfuegbar; erkannte, aber wegen offener Duration noch nicht voll verifizierte Partner-Stakings werden persistent gespeichert und beim Reload wieder gemergt. Systemübersicht geprüft: Datenquelle/Ladezeitpunkt unverändert.
 // Phase 5.06: Nullfund-Verifikation im TLN-Team abgesichert: Ein Wallet darf nur noch als „kein Staking gefunden / verifiziert“ gelten, wenn mindestens ein relevanter Contract tatsächlich geprüft wurde und die komplette Contract-Coverage fehlerfrei ist. Alte team-lifecycle-v7-Ergebnisse werden durch Cache-Version v8 nicht mehr als verifiziert übernommen und bei Bedarf neu geprüft. Systemübersicht geprüft: Datenquelle/Ladezeitpunkt unverändert.\n// Phase 5.05: Das Lifecycle-3er-Limit ist jetzt technisch nur noch Batch-Groesse: ein gestarteter Worker arbeitet den gesamten freigegebenen Partner-Backlog in fortlaufenden 3er-Batches ab; Fehler eines einzelnen Wallets stoppen die restliche Queue nicht. Sichtbarer Fortschritt zaehlt ueber alle Partner. Systemübersicht geprüft: Datenquelle/Ladezeitpunkt unverändert.
 // Phase 5.04: TLN-Team Egress-First korrigiert: der Team-Slice-RPC erhält den definierten SmartNode-Contract statt an einer undefinierten Variable zu scheitern. Damit funktioniert der Supabase-Slice-Erstaufbau wieder ohne Globalgraph-Download. Performance/Egress-Messung bleibt nächster eigener TODO-Block.
 
@@ -396,8 +397,8 @@ ARCHITEKTUR: Keine typabhängige Parallel-Logik in Tabellen/UI. Typ/Klassifikati
     desc: `REFERENZ 18.09.2026: Der Team-Baum ist fachlich noch nicht vollständig. Vor weiteren allgemeinen Performance-Umbauten zuerst diesen Datenpfad stabilisieren.
 
 OFFEN / VERBINDLICH:
-• userbezogene Partnernamen/Aliase müssen nach Cache-Restore für alle bekannten TLN-IDs/Wallets zuverlässig geladen und angezeigt werden
-• pro Partner müssen alle bereits erkannten Staking-Positionen aus Discovery-/Lifecycle-Daten erhalten bleiben; Cache-Restore darf keine Positionen reduzieren oder verlieren
+• Phase 5.07 umgesetzt: userbezogene Partnernamen/Aliase werden nach Cache-Restore rückwärtskompatibel über TLN-ID- und Wallet-Referenzen geladen und angezeigt
+• Phase 5.07 umgesetzt: auch erkannte Teil-Lifecycles mit noch offener Duration werden persistent gespeichert und beim Cache-Restore gemergt; bereits erkannte Positionen dürfen dadurch nicht verschwinden
 • Referenzfall TLN-ID 11674 weiterführen: TLN Legacy LPT ist geschlossen/verifiziert; vUSD/VOW ist erkannt, aber der positionsgenaue Duration-/Lifecycle-Nachweis ist noch offen und muss ohne Schätzung vollständig on-chain geklärt werden
 • ein Cache-Stand darf niemals weniger fachliche Information anzeigen als der bereits verifizierte persistente Datenbestand
 • Hintergrund-/Lifecycle-Aktualisierung muss einen Lade-/Fortschrittsbalken anzeigen, der beim Scrollen im Viewport sichtbar bleibt und nach Abschluss wieder verschwindet
