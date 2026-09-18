@@ -3,8 +3,9 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260918-194817";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 19:48:17 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260918-195809";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 19:58:09 CEST";
+// Phase 5.14: Normaler Team-Restore ist strikt cache-only und startet auf neuen Geraeten keine automatische Lifecycle-/Wallet-History-/Receipt-Nachverifikation mehr; offene Lifecycles bleiben sichtbar und werden nur ueber Step 7 aktualisiert. Dadurch kein browserlokaler Cache als Voraussetzung und kein Request-Sturm beim Geraetewechsel. Staking-Discovery unveraendert. Systemuebersicht geprueft.
 // Phase 5.13: Zusatzregistry-Graph wird cache-first separat restauriert und bei leerem Registry-Cache einmalig aus verifizierten join(address)+nodeIdOf/nodeUserOf-Fakten aufgebaut; Alias-Referenzen werden prefix-unabhaengig ueber TLN-ID/Wallet aufgeloest; positive verifizierte v7-Lifecycles werden wiederverwendet, v7-Nullfunde bleiben ungueltig. Staking-Discovery unveraendert. Systemuebersicht geprueft.
 // Phase 5.12: index.html Cache-Buster fuer discovery.js und ideas.js auf aktuellen Build angehoben, damit Browser/CDN die tatsaechlich geaenderte Team-Logik laden. Staking-Discovery unveraendert.
 // Phase 5.11: Cache-Restore laedt verifizierte Identities neuer SmartNode-Registries separat, rekonstruiert deren join(address)-Parent-Kanten vor dem Forest-Build (Fix fuer fehlenden Partner Ernie / TLN-ID 990000017795). Alias-Loader akzeptiert kompatible wallet-private Response-Shapes, damit bestehende verschluesselte Namen wieder erscheinen. Staking-Discovery unveraendert. Systemuebersicht geprueft.
@@ -402,6 +403,7 @@ ARCHITEKTUR: Keine typabhängige Parallel-Logik in Tabellen/UI. Typ/Klassifikati
     desc: `REFERENZ 18.09.2026: Der Team-Baum ist fachlich noch nicht vollständig. Vor weiteren allgemeinen Performance-Umbauten zuerst diesen Datenpfad stabilisieren.
 
 OFFEN / VERBINDLICH:
+• Phase 5.14 umgesetzt: normaler Seiten-/Team-Restore ist strikt cache-only. Auf einem neuen Geraet wird nach dem Supabase-Restore keine automatische Lifecycle-/Wallet-History-/Receipt-Nachverifikation mehr gestartet; offene Lifecycles bleiben sichtbar und werden nur ueber Step 7 aktualisiert. Browser-/IndexedDB-Cache ist damit nur Beschleuniger, nicht Voraussetzung. Staking-Discovery unveraendert.
 • Phase 5.13 umgesetzt: neue SmartNode-Registry-Generationen besitzen einen eigenen cache-first Join-Graph; falls fuer eine konfigurierte Zusatzregistry noch kein Graphcache existiert, wird nur diese Registry einmalig ueber join(address) + nodeIdOf/nodeUserOf verifiziert und danach persistiert. Alias-Referenzen werden unabhaengig vom historischen Prefix ueber TLN-ID/Wallet erkannt. Positive, vollstaendig verifizierte v7-Lifecycles werden wiederverwendet; alte v7-Nullfunde bleiben wegen der Coverage-Korrektur ungueltig. Staking-Discovery unveraendert.
 • Phase 5.11 umgesetzt: Cache-Restore lädt Identities neuer SmartNode-Registries separat und rekonstruiert deren verifizierte join(address)-Parent-Kanten VOR dem Forest-Build (Referenz Ernie / TLN-ID 990000017795); Alias-Loader akzeptiert kompatible wallet-private Response-Shapes. Staking-Discovery unverändert.
 • Phase 5.09 umgesetzt: Partial-Lifecycle kann verifizierten Cache nicht mehr überschreiben; Alias-Leerantwort erhält sicheren Re-Read
