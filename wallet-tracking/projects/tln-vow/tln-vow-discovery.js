@@ -1,6 +1,6 @@
-/* TLN/VOW Discovery shared engine · Build 20260918-174217 */
+/* TLN/VOW Discovery shared engine · Build 20260918-220029 */
 (()=>{
-const BUILD_ID='20260918-211928';
+const BUILD_ID='20260918-220029';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 21:14:21 CEST';
+const APP_VERSION='18.09.2026 22:00:29 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -5312,7 +5312,13 @@ function applyDurationCacheToLot(lot,c){
  if(!c||!c.expiryTime||!Number.isFinite(Number(c.lockDurationSeconds)))return false;
  lot.durationDays=Number(c.durationDays);lot.lockDurationSeconds=Number(c.lockDurationSeconds);lot.expiryTime=c.expiryTime;lot.lastLockedBlock=c.lastLockedBlock??null;lot.firstUnlockedBlock=c.firstUnlockedBlock??null;lot.implementationStable=c.implementationStable??null;lot.durationEvidence=c.durationEvidence||'Supabase Strict-Proof Cache';lot.durationConfidence='strong';lot.durationSource=c.durationSource||'Supabase · zuvor verifizierter Duration Strict-Proof';lot.durationStrictVerdict=c.durationStrictVerdict||null;lot.durationCacheHit=true;return true;
 }
-function compactDurationCache(lot){return {stakeTx:lot.stakeTx||null,durationAnchorTx:lot.durationAnchorTx||null,lastTopUpTx:lot?.topUps?.at?.(-1)?.tx||null,lockBaseTime:lot.lockBaseTime||lot.stakeTime||null,stakingContract:norm(lot?.staking?.contract_address||lot.counterparty||''),durationDays:lot.durationDays,lockDurationSeconds:lot.lockDurationSeconds,expiryTime:lot.expiryTime,lastLockedBlock:lot.lastLockedBlock??null,firstUnlockedBlock:lot.firstUnlockedBlock??null,implementationStable:lot.implementationStable??null,durationEvidence:lot.durationEvidence||null,durationSource:lot.durationSource||null,durationStrictVerdict:lot.durationStrictVerdict||null,savedAt:new Date().toISOString()}}
+function compactDurationCache(lot){return {stakeTx:lot.stakeTx||null,durationAnchorTx:lot.durationAnchorTx||null,lastTopUpTx:lot?.topUps?.at?.(-1)?.tx||null,lockBaseTime:lot.lockBaseTime||lot.stakeTime||null,stakingContract:norm(lot?.staking?.contract_address||lot.counterparty||''),durationDays:lot.durationDays,lockDurationSeconds:lot.lockDurationSeconds,expiryTime:lot.expiryTime,lastLockedBlock:lot.lastLockedBlock??null,firstUnlockedBlock:lot.firstUnlockedBlock??null,implementationStable:lot.implementationStable??null,durationEvidence:lot.durationEvidence||null,durationSource:lot.durationSource||null,durationStrictVerdict:lot.durationStrictVerdict||null,proofMode:lot.durationProofMode||null,savedAt:new Date().toISOString()}}
+function isStoredEndStrictDurationCache(c,lot){
+  if(!c||c.proofMode!=='stored-end-position-strict')return false;
+  const cachedContract=norm(c.stakingContract||''),contract=lotContractAddress(lot);
+  const cachedStake=String(c.stakeTx||'').toLowerCase(),stake=String(lot?.stakeTx||'').toLowerCase();
+  return !!cachedContract&&cachedContract===norm(contract)&&!!cachedStake&&cachedStake===stake&&!!c.expiryTime&&Number.isFinite(Number(c.lockDurationSeconds));
+}
 
 function transferIdentity(t){const c=norm(t?.rawContract?.address);return t?.uniqueId||`${String(t?.hash||'').toLowerCase()}|${c}|${norm(t?.from)}|${norm(t?.to)}|${t?.rawContract?.value||t?.value||''}`}
 async function alchemyErc20Range(wallet,fromBlock,toBlock='latest'){
@@ -12249,8 +12255,40 @@ function applySharedDurationRuleToLot(lot,rule,validation){
   lot.durationCacheHit=true;lot.durationSharedRuleHit=true;return true;
 }
 
+async function applyStoredEndDirectFromPosition(lot,label=''){
+  // Phase 5.22: Der Legacy-v$/VOW-Contract speichert Start und individuelles Ende
+  // positionsbezogen im Wallet-Mapping. Dieser Read ist absichtlich NICHT von einem
+  // bereits geladenen Shared-/Cache-Proof abhängig: dieselbe automatische Struct-Erkennung
+  // wie in der bewährten Duration-Referenzengine wird direkt am konkreten Stake-Block benutzt.
+  const contract=lotContractAddress(lot),wallet=norm(CURRENT_WALLET),stakeBlock=lotStakeBlock(lot),stakeTs=lotStakeTsSeconds(lot);
+  if(!ethers.isAddress(contract)||!ethers.isAddress(wallet)||!Number.isInteger(stakeBlock)||stakeBlock<=1||!Number.isFinite(stakeTs))return false;
+  try{
+    const targeted=await lockDetectWalletStruct(contract,wallet,stakeBlock,stakeTs);
+    if(!targeted?.available||!targeted?.startRow?.stake?.timestamp)return false;
+    const startTs=Number(targeted.startRow.stake.timestamp);
+    if(Math.abs(startTs-stakeTs)>10)return false;
+    const ends=[...(targeted.storedFutureTimestampAtStake||[])].filter(x=>Number(x?.timestamp)>stakeTs).sort((a,b)=>Number(a.timestamp)-Number(b.timestamp));
+    if(!ends.length)return false;
+    const end=ends[0],endTs=Number(end.timestamp),sec=endTs-stakeTs;
+    if(!(sec>0)||sec>1000*86400)return false;
+    lot.expiryTime=new Date(endTs*1000).toISOString();
+    lot.lockDurationSeconds=sec;lot.durationDays=sec/86400;lot.durationConfidence='strong';
+    lot.durationSource='Contract-Storage · positionsbezogener gespeicherter End-/Unlock-Timestamp · Strict-Proof';
+    lot.durationEvidence=`Start-/End-Timestamp im selben Wallet-Mapping · Root ${targeted.root} · Start-Offset ${targeted.startRow.offset} · End-Offset ${end.offset}`;
+    lot.durationStrictVerdict={cls:'ok',text:`Ablauf direkt aus dem positionsbezogenen Contract-Storage gelesen (${new Date(endTs*1000).toLocaleString('de-CH')}).`};
+    lot.lockEvidence={found:true,mode:'duration-reference-stored-end-timestamp',unlockTimestamp:endTs,unlockTime:lot.expiryTime,elapsedSeconds:sec,elapsedDays:sec/86400,evidence:'Start-/End-Timestamp im selben Wallet-Mapping',confidence:'strong'};
+    lot.duration_contract=contract;
+    lot.durationProofMode='stored-end-position-strict';
+    log(`Duration ${label}: ${safePairLabel(lot)} · individuelles Contract-Ende direkt aus Positions-Storage erkannt: Root ${targeted.root}, Start-Offset ${targeted.startRow.offset}, End-Offset ${end.offset} · ${new Date(endTs*1000).toLocaleString('de-CH')}.`,'ok');
+    return true;
+  }catch(e){
+    log(`Duration ${label}: direkter positionsbezogener Stored-End-Read fehlgeschlagen (${String(e?.message||e).slice(0,180)}); normale Strict-Engine bleibt aktiv.`,'info');
+    return false;
+  }
+}
+
 async function applyStoredEndFromSharedStruct(lot,shared,label=''){
-  // Phase 5.19: Für bekannte Positions-Structs niemals eine feste Tageszahl als Ersatz
+  // Phase 5.20: Für bekannte Positions-Structs niemals eine feste Tageszahl als Ersatz
   // verwenden. Der Contract speichert den individuellen End-/Unlock-Timestamp bereits beim
   // Stake. Wir lesen Start + gespeichertes Ende positionsbezogen direkt am Stake-Block.
   const contract=lotContractAddress(lot),wallet=norm(CURRENT_WALLET),stakeBlock=lotStakeBlock(lot),stakeTs=lotStakeTsSeconds(lot);
@@ -12274,6 +12312,7 @@ async function applyStoredEndFromSharedStruct(lot,shared,label=''){
     lot.durationStrictVerdict={cls:'ok',text:`Ablauf direkt aus dem positionsbezogenen Contract-Storage gelesen (${new Date(endTs*1000).toLocaleString('de-CH')}).`};
     lot.lockEvidence={found:true,mode:'duration-reference-stored-end-timestamp',unlockTimestamp:endTs,unlockTime:lot.expiryTime,elapsedSeconds:sec,elapsedDays:sec/86400,evidence:'Start-/End-Timestamp im selben Wallet-Mapping',confidence:'strong'};
     lot.duration_contract=contract;
+    lot.durationProofMode='stored-end-position-strict';
     log(`Duration ${label}: ${safePairLabel(lot)} · positionsbezogenes Contract-Ende direkt aus Storage gelesen: Root ${proof.root}, Start-Offset ${proof.startOffset}, End-Offset ${end.offset} · ${new Date(endTs*1000).toLocaleString('de-CH')}.`,'ok');
     return true;
   }catch(e){
@@ -12284,24 +12323,61 @@ async function applyStoredEndFromSharedStruct(lot,shared,label=''){
 
 async function resolveDurationStrictOnce(lot,label=''){
   const cacheKey=durationCacheKeyForLot(lot);
-  const cached=await loadTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration);
-  if(applyDurationCacheToLot(lot,cached)){log(`Duration ${label}: ${safePairLabel(lot)} · Strict-Proof aus Supabase-Cache verwendet.`,'ok');return {proven:true,cacheHit:true,sharedRule:false}}
-
   const contract=lotContractAddress(lot);
+  const STORED_END_FIRST_CONTRACTS=new Set(['0x4857d369e18aba003ff6ec934cf046148df5d590']);
+  const storedEndFirst=STORED_END_FIRST_CONTRACTS.has(norm(contract));
+
+  // Phase 5.20: Der alte v$/VOW-Contract speichert ein individuelles Positionsende.
+  // Deshalb dürfen weder ein alter positionsbezogener Duration-Cache noch die contractweite
+  // Shared-Dauer zuerst gewinnen. Zuerst wird Start + gespeichertes Ende aus DEMSELBEN Struct
+  // gelesen. Nur wenn dieser positionsbezogene Strict-Read nicht möglich ist, läuft die
+  // bestehende allgemeine Strict-Engine weiter; es wird keine feste Tageszahl erfunden.
+  if(storedEndFirst){
+    log(`Duration ${label}: ${safePairLabel(lot)} · Legacy-v$/VOW: direkter Positions-Storage-Read vor JEDEM Duration-/Shared-/Negativcache.`,'info');
+    if(await applyStoredEndDirectFromPosition(lot,label)){
+      await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
+      return {proven:true,cacheHit:false,sharedRule:false,storedEndTimestamp:true,directPositionStruct:true};
+    }
+  }else{
+    const cached=await loadTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration);
+    if(applyDurationCacheToLot(lot,cached)){log(`Duration ${label}: ${safePairLabel(lot)} · Strict-Proof aus Supabase-Cache verwendet.`,'ok');return {proven:true,cacheHit:true,sharedRule:false}}
+  }
+
+  // Phase 5.22: Falls der Live-Storage-Read des Legacy-v$/VOW-Contracts temporaer
+  // scheitert, darf ausschliesslich ein zuvor von genau diesem positionsbezogenen
+  // Stored-End-Strict-Proof erzeugter Cache wiederverwendet werden. Alte/generische
+  // Duration-Caches bleiben fuer diesen Contract absichtlich ausgeschlossen.
+  if(storedEndFirst){
+    const storedEndCached=await loadTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration);
+    if(isStoredEndStrictDurationCache(storedEndCached,lot)&&applyDurationCacheToLot(lot,storedEndCached)){
+      lot.durationProofMode='stored-end-position-strict';
+      log(`Duration ${label}: ${safePairLabel(lot)} · Live-Stored-End-Read nicht verfuegbar; zuvor positionsbezogen bewiesener Stored-End-Strict-Cache verwendet.`,'ok');
+      return {proven:true,cacheHit:true,sharedRule:false,storedEndTimestamp:true,storedEndStrictCache:true};
+    }
+  }
 
   const shared=await loadSharedStrictDurationRule(contract);
   if(shared){
+    if(storedEndFirst){
+      log(`Duration ${label}: ${safePairLabel(lot)} · Legacy-v$/VOW: positionsbezogener Stored-End-Read hat Vorrang vor Cache und contractweiter Shared-Dauer.`,'info');
+      if(await applyStoredEndFromSharedStruct(lot,shared,label)){
+        await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
+        return {proven:true,cacheHit:false,sharedRule:true,storedEndTimestamp:true};
+      }
+    }
     const check=await validateSharedDurationRule(lot,shared);
-    if(check.ok){
+    if(check.ok&&!storedEndFirst){
       applySharedDurationRuleToLot(lot,shared,check);
       await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),lot.firstUnlockedBlock||0);
       log(`Duration ${label}: ${safePairLabel(lot)} · Shared Strict-Proof ${shared.durationDays.toLocaleString('de-CH',{maximumFractionDigits:8})} Tage · positionsbezogene State-/Core-Feld-Validierung statt Voll-Binärsuche.`,'ok');
       return {proven:true,cacheHit:true,sharedRule:true};
     }
-    log(`Duration ${label}: Shared Strict-Proof für ${safePairLabel(lot)} nicht positionsgenau bestätigt (${check.reason}); prüfe zuerst den im bekannten Positions-Struct gespeicherten End-/Unlock-Timestamp direkt on-chain.`,'info');
-    if(await applyStoredEndFromSharedStruct(lot,shared,label)){
-      await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
-      return {proven:true,cacheHit:false,sharedRule:true,storedEndTimestamp:true};
+    if(!check.ok){
+      log(`Duration ${label}: Shared Strict-Proof für ${safePairLabel(lot)} nicht positionsgenau bestätigt (${check.reason}); prüfe den im bekannten Positions-Struct gespeicherten End-/Unlock-Timestamp direkt on-chain.`,'info');
+      if(!storedEndFirst&&await applyStoredEndFromSharedStruct(lot,shared,label)){
+        await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
+        return {proven:true,cacheHit:false,sharedRule:true,storedEndTimestamp:true};
+      }
     }
   }
 
@@ -13336,9 +13412,18 @@ async function loadTeamAliasesFromSupabase(){
           const name=String(v||'').trim();if(k&&name)next[k]=name;
         }
       }
+      // wallet-private/index.ts liefert bei team_alias_list exakt {ok,action,aliases},
+      // aliases = { reference: alias }. Nach erfolgreicher Entschlüsselung spiegeln wir
+      // die offiziell erlaubten id:/wallet:-Referenzen zusätzlich kanonisch, damit der
+      // spätere Identity-/Registry-Restore keine bereits geladenen Namen verlieren kann.
+      for(const [rawKey,rawValue] of Object.entries({...next})){
+        const name=String(rawValue||'').trim(),key=String(rawKey||'').trim();if(!name||!key)continue;
+        const idm=key.match(/^id:(\d{1,78})$/i);if(idm)next[`id:${idm[1]}`]=name;
+        const wm=key.match(/^wallet:(0x[0-9a-fA-F]{40})$/);if(wm)next[`wallet:${norm(wm[1])}`]=name;
+      }
       TEAM_ALIAS_CACHE=next;
       TEAM_ALIAS_CACHE_LOADED=true;
-      log(`Partner-Namen: ${Object.keys(TEAM_ALIAS_CACHE).length} user-spezifische, verschlüsselte Alias(e) geladen (Versuch ${attempt}/3).`,'ok');
+      log(`Partner-Namen: ${Object.keys(TEAM_ALIAS_CACHE).length} user-spezifische, verschlüsselte Alias-Referenz(en) aus wallet-private geladen (Versuch ${attempt}/3).`,'ok');
       return TEAM_ALIAS_CACHE;
     }catch(e){
       lastErr=e;
@@ -13353,10 +13438,22 @@ async function loadTeamAliasesFromSupabase(){
   log(`Partner-Namen konnten nach 3 Versuchen nicht verschlüsselt geladen werden. Vorhandener In-Memory-Cache bleibt unangetastet. Letzter Fehler: ${lastErr?.message||lastErr||'unbekannt'}`,'warn');
   return TEAM_ALIAS_CACHE;
 }
+function canonicalTeamAliasReference(rawKey){
+  const raw=String(rawKey||'').trim();if(!raw)return '';
+  let m=raw.match(/^id:(\d{1,78})$/i);if(m)return `id:${m[1]}`;
+  m=raw.match(/^(?:tln-id|tln):(\d{1,78})$/i);if(m)return `id:${m[1]}`;
+  if(/^\d{1,78}$/.test(raw))return `id:${raw}`;
+  m=raw.match(/^wallet:(0x[0-9a-fA-F]{40})$/);if(m)return `wallet:${norm(m[1])}`;
+  if(/^0x[0-9a-fA-F]{40}$/.test(raw))return `wallet:${norm(raw)}`;
+  return '';
+}
 async function persistTeamAliasesToSupabase(){
   if(!currentUserId)return false;
   const aliases={};
-  for(const [k,v] of Object.entries(TEAM_ALIAS_CACHE||{})){const name=String(v||'').trim();if(k&&name)aliases[k]=name}
+  for(const [k,v] of Object.entries(TEAM_ALIAS_CACHE||{})){
+    const name=String(v||'').trim(),canonical=canonicalTeamAliasReference(k);
+    if(canonical&&name&&!String(aliases[canonical]||'').trim())aliases[canonical]=name;
+  }
   try{
     const {data,error}=await sb.functions.invoke('wallet-private',{body:{action:'team_alias_replace_all',aliases}});
     if(error)throw error;
@@ -13371,17 +13468,23 @@ async function migrateLegacyTeamAliasesToSupabase(){
   try{legacy=JSON.parse(localStorage.getItem(TEAM_ALIAS_STORAGE_KEY)||'{}')||{}}catch{}
   try{scoped=scopedKey?(JSON.parse(localStorage.getItem(scopedKey)||'{}')||{}):{}}catch{}
   const source={...legacy,...scoped};
-  let migrated=0;
+  let migrated=0,unsupported=0;
   for(const [k,v] of Object.entries(source)){
-    const name=String(v||'').trim();
-    if(k&&name&&!String(TEAM_ALIAS_CACHE[k]||'').trim()){TEAM_ALIAS_CACHE[k]=name;migrated++}
+    const name=String(v||'').trim(),canonical=canonicalTeamAliasReference(k);
+    if(name&&!canonical){unsupported++;continue}
+    // wallet-private akzeptiert nur id:<TLN-ID> bzw. wallet:<Adresse>. Historische
+    // nackte/tln:/tln-id:-Schluessel werden vor dem serverseitigen Replace kanonisiert;
+    // unbekannte Legacy-Schluessel bleiben lokal erhalten und blockieren die Migration nicht.
+    if(canonical&&name&&!String(TEAM_ALIAS_CACHE[canonical]||'').trim()){TEAM_ALIAS_CACHE[canonical]=name;migrated++}
   }
   if(!migrated)return 0;
   const ok=await persistTeamAliasesToSupabase();
   if(ok){
-    try{localStorage.removeItem(TEAM_ALIAS_STORAGE_KEY)}catch{}
-    if(scopedKey)try{localStorage.removeItem(scopedKey)}catch{}
-    log(`Partner-Namen: ${migrated} lokale Legacy-Alias(e) verschlüsselt und user-spezifisch migriert.`,'ok');
+    if(unsupported===0){
+      try{localStorage.removeItem(TEAM_ALIAS_STORAGE_KEY)}catch{}
+      if(scopedKey)try{localStorage.removeItem(scopedKey)}catch{}
+    }
+    log(`Partner-Namen: ${migrated} lokale Legacy-Alias(e) kanonisiert, verschlüsselt und user-spezifisch migriert${unsupported?`; ${unsupported} unbekannte Legacy-Referenz(en) sicherheitshalber lokal belassen`:''}.`,'ok');
     return migrated;
   }
   log('Partner-Namen: lokale Legacy-Aliase konnten noch nicht verschlüsselt migriert werden; lokale Quelle bleibt zur Sicherheit erhalten.','warn');
