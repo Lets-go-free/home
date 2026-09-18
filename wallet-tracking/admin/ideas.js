@@ -3,8 +3,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260918-143058";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 14:30:58 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260918-144343";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 14:43:43 CEST";
 
 const ADMIN_IDEAS = [
   {
@@ -385,6 +385,21 @@ ARCHITEKTUR: Keine typabhängige Parallel-Logik in Tabellen/UI. Typ/Klassifikati
     priority: "medium",
     title: "TLN/VOW Ethereum-Historie 2023 ergänzen",
     desc: "Historische TLN/VOW-Stakings und Rewards aus der Ethereum-Phase vor BSC vollständig in Discovery und Hauptseite integrieren."
+  },
+  {
+    status: "in_progress",
+    category: "Projekt TLN/VOW",
+    priority: "high",
+    title: "TLN-Team-Baum · Datenvollständigkeit und sichtbarer Ladefortschritt",
+    desc: `REFERENZ 18.09.2026: Der Team-Baum ist fachlich noch nicht vollständig. Vor weiteren allgemeinen Performance-Umbauten zuerst diesen Datenpfad stabilisieren.
+
+OFFEN / VERBINDLICH:
+• userbezogene Partnernamen/Aliase müssen nach Cache-Restore für alle bekannten TLN-IDs/Wallets zuverlässig geladen und angezeigt werden
+• pro Partner müssen alle bereits erkannten Staking-Positionen aus Discovery-/Lifecycle-Daten erhalten bleiben; Cache-Restore darf keine Positionen reduzieren oder verlieren
+• Referenzfall TLN-ID 11674 weiterführen: TLN Legacy LPT ist geschlossen/verifiziert; vUSD/VOW ist erkannt, aber der positionsgenaue Duration-/Lifecycle-Nachweis ist noch offen und muss ohne Schätzung vollständig on-chain geklärt werden
+• ein Cache-Stand darf niemals weniger fachliche Information anzeigen als der bereits verifizierte persistente Datenbestand
+• Hintergrund-/Lifecycle-Aktualisierung muss einen Lade-/Fortschrittsbalken anzeigen, der beim Scrollen im Viewport sichtbar bleibt und nach Abschluss wieder verschwindet
+• Diagnose/Optimierung des Request-Aufkommens für technical_global_cache / staking_scan_cache erst so durchführen, dass keine fachlichen Datenverluste durch Egress-Optimierung kaschiert werden.`,
   },
   {
     status: "open",

@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260914-010218 */
 (()=>{
-const BUILD_ID='20260918-143058';
+const BUILD_ID='20260918-144343';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 14:30:58 CEST';
+const APP_VERSION='18.09.2026 14:43:43 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -14397,7 +14397,7 @@ const TEAM_LIFECYCLE_CONVERGENCE_MAX_PASSES=4;
 (function ensureTeamBackgroundStatusStyle(){
   if(document.getElementById('teamBackgroundStatusStyle'))return;
   const st=document.createElement('style');st.id='teamBackgroundStatusStyle';st.textContent=`
-.team-background-update{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 12px;border:1px solid rgba(59,130,246,.24);border-radius:10px;background:rgba(59,130,246,.06);font-size:13px}.team-background-update.done{border-color:rgba(34,197,94,.22);background:rgba(34,197,94,.05)}.team-background-spinner{width:16px;height:16px;border:2px solid rgba(59,130,246,.22);border-top-color:currentColor;border-radius:50%;animation:teamBgSpin .8s linear infinite;flex:0 0 auto}@keyframes teamBgSpin{to{transform:rotate(360deg)}}
+.team-background-update{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 12px;border:1px solid rgba(59,130,246,.24);border-radius:10px;background:var(--card,#fff);font-size:13px;box-shadow:0 8px 24px rgba(15,23,42,.12)}.team-background-update.running{position:fixed;z-index:10020;top:12px;left:50%;transform:translateX(-50%);width:min(760px,calc(100vw - 28px));margin:0;border-color:rgba(59,130,246,.38);background:var(--card,#fff)}.team-background-update.done{border-color:rgba(34,197,94,.22);background:rgba(34,197,94,.05)}.team-background-copy{flex:1;min-width:0}.team-background-progress{height:5px;margin-top:7px;border-radius:999px;background:rgba(59,130,246,.14);overflow:hidden}.team-background-progress>span{display:block;height:100%;border-radius:inherit;background:currentColor;transition:width .2s ease}.team-background-spinner{width:16px;height:16px;border:2px solid rgba(59,130,246,.22);border-top-color:currentColor;border-radius:50%;animation:teamBgSpin .8s linear infinite;flex:0 0 auto}@keyframes teamBgSpin{to{transform:rotate(360deg)}}
 `;document.head.appendChild(st);
 })();
 const TEAM_LIFECYCLE_BACKGROUND_UI={running:false,total:0,done:0,currentWallet:null,currentPass:0,message:'',lastResult:''};
@@ -14417,7 +14417,8 @@ function renderTeamLifecycleBackgroundStatus(){
     const ident=st.currentWallet?TEAM_IDENTITY_CACHE.get(norm(st.currentWallet)):null;
     const who=ident?.nodeId?` · TLN-ID ${ident.nodeId}`:'';
     const pass=st.currentPass>1?` · Prüfschritt ${st.currentPass}`:'';
-    el.innerHTML=`<div class="team-background-update running"><span class="team-background-spinner" aria-hidden="true"></span><span><b>TLN-Teamdaten werden im Hintergrund aktualisiert …</b><br><span class="muted">Lifecycle-Prüfung: ${Math.min(st.done+1,st.total)} von ${st.total}${esc(who)}${esc(pass)}. Der bereits verifizierte Datenstand bleibt sichtbar.</span></span></div>`;
+    const pct=st.total?Math.max(2,Math.min(100,Math.round((st.done/Math.max(1,st.total))*100))):2;
+    el.innerHTML=`<div class="team-background-update running"><span class="team-background-spinner" aria-hidden="true"></span><span class="team-background-copy"><b>TLN-Teamdaten werden im Hintergrund aktualisiert …</b><br><span class="muted">Lifecycle-Prüfung: ${Math.min(st.done+1,st.total)} von ${st.total}${esc(who)}${esc(pass)}. Der bereits verifizierte Datenstand bleibt sichtbar.</span><span class="team-background-progress" aria-hidden="true"><span style="width:${pct}%"></span></span></span></div>`;
   }else if(st.lastResult){
     el.innerHTML=`<div class="team-background-update done"><span><b>${esc(st.lastResult)}</b></span></div>`;
   }else el.innerHTML='';
