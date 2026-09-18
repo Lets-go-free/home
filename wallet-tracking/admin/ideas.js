@@ -3,8 +3,9 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260918-223736";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 22:37:36 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260919-013647";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "19.09.2026 01:36:47 CEST";
+// Phase 5.25: Dashboard als Cache-first-Startseite, Wallet-Besitzer/Personenfilter und Dashboard-Tokenflag ergänzt. TLN/VOW-Discovery sowie manuelle Snapshots, Discovery-, Gebühren- und NFT-Caches werden nicht mehr beim Login, sondern erst beim Öffnen des jeweiligen Bereichs initialisiert. Fach-/Discovery-Algorithmen unverändert; nur Auslösezeitpunkte verschoben. Systemübersicht und Hilfe synchronisiert.
 // Phase 5.24: Team-Lifecycle-Restore fuer eigene Wallets korrigiert. Root Cause fuer fehlende eigene Stakings: Discovery-Result-Caches eigener Wallets liegen datenschutzkonform user_id/wallet_id-basiert in der privaten Staking-Cache-Tabelle, der Team-Restore las bisher aber nur den globalen scope_address-Cache. Eigene Projekt-Wallets werden jetzt ueber denselben technicalCacheScope wie die Projektansicht geladen; externe Partner bleiben im globalen Batch-Read. Zusaetzlich wird ein positiver historischer Lifecycle bei vorgemerkter Unstake-Nachpruefung nicht mehr optisch verworfen, sondern mit belegten Lots als unvollstaendig sichtbar gehalten. Alias-Abdeckung wird nach komplettem Identity-/Registry-Restore als matched/visible/stored/missing geloggt; fehlende Namen werden nicht erfunden. Staking-Discovery und Duration-Proof-Logik unveraendert. Systemuebersicht geprueft: Supabase-Datenquelle bleibt gleich, private/global Cache-Aufteilung des Restore-Pfads dokumentiert.
 // Phase 5.23: Duration-Regression korrigiert. Fuer Legacy-v$/VOW 0x4857…d590 war die in 5.20-5.22 eingefuehrte Annahme eines individuellen Stored-End-Timestamps falsch und blockierte bereits verifizierte positive Strict-Caches sowie den Shared-Contract-Proof. Reihenfolge wieder korrekt: positiver positionsbezogener Strict-Cache → Shared Strict-Proof mit Fingerprint-/State-Validierung → exakt verifizierter historischer On-Chain Contract-Proof (367 Tage; !Minimum Staking Period unmittelbar vor der Grenze, Erfolg bei exakt 367 Tagen) mit erneutem Fingerprint-/Wallet-State-Abgleich → weitere bestehende Proof-Pfade → erst zuletzt Negativcache. Top-up-Anker bleibt letzter on-chain bestaetigter Top-up. Staking-Discovery unveraendert. Alias-Log bestaetigt 5 entschluesselte Referenzen und 5 sichtbare Matches; deshalb kein weiterer spekulativer Alias-Umbau. Systemuebersicht geprueft: Datenquelle/Ladezeitpunkt/Struktur unveraendert.
 // Phase 5.22 (durch 5.23 bei Legacy-v$/VOW fachlich korrigiert): Bereinigungsrelease: Legacy-v$/VOW liest weiterhin zuerst den individuellen Stored-End-Timestamp positionsbezogen; bei temporaer fehlendem Live-Read ist nur ein zuvor aus genau diesem Stored-End-Strict-Proof erzeugter positionsbezogener Cache als Fallback erlaubt. Legacy-TLN-Alias-Referenzen werden vor team_alias_replace_all auf die von wallet-private erlaubten id:/wallet:-Formate kanonisiert; unbekannte Legacy-Keys bleiben lokal. Staking-Discovery unverändert. Systemübersicht geprüft: Datenquelle/Ladezeitpunkt/Struktur unverändert.
@@ -29,7 +30,7 @@ const ADMIN_IDEAS = [
     category: "Admin / Diagnose",
     priority: "high",
     title: "Systemübersicht · Funktionsbaum und Ladezeitpunkte",
-    desc: `STATUS: In Arbeit. Admin-Übersicht mit Menü → Tab → Untertab als Baum. Pro Bereich werden normaler App-Start, erster Start des Tages, Öffnen des Tabs und manuelle Aktualisierung sichtbar. Klick auf eine Zeile zeigt die einzelnen Datenbestände sowie Browser-Cache, Supabase und On-chain/API-Quelle. Detailansicht öffnet als Popup, damit der Baum beim Prüfen an seiner Position bleibt. DeFi-Projekte besitzt einen neutralen Übersicht-Tab, der beim Öffnen keine projektspezifischen Daten lädt. VERBINDLICHE REGEL: Dieser Baum muss bei jeder Programmänderung, Erweiterung oder Korrektur mitgeprüft und im selben Release aktualisiert werden, wenn Struktur, Status, Datenquelle oder Ladezeitpunkt betroffen ist. Phase 4.95: Baumknoten einzeln sowie global auf-/zuklappbar; neue Spalte „Aktueller Datenstand“ nutzt dieselben zentralen Metadaten wie die sichtbaren Datenstatus-Zeilen in den Tabs. Linke Hauptnavigation ist ein-/ausklappbar; Phase 4.95 zeigt im eingeklappten Zustand die echten Menü-Icons und zentriert/verkleinert den Pfeil. Strukturknoten im Systembaum zeigen keine Datenstands-/Ladespalten mehr; diese Informationen stehen nur auf echten Blatt-/Tab-Zeilen. Phase 5.24 geprüft: TLN-Team-Ladeauslöser bleibt unverändert. Beim Restore werden eigene Wallet-Discovery-Snapshots nun korrekt aus dem privaten user_id/wallet_id-Cache geladen, externe Partner weiterhin aus dem globalen scope_address-Cache. Positive Lifecycle-Lots bleiben während einer vorgemerkten Unstake-Nachprüfung sichtbar. Alias-Coverage wird nur diagnostisch gezählt; Namen werden nicht aus globalen Daten abgeleitet. Nächster Ausbau: tatsächliche Laufdiagnose/Requests/Rows/Bytes mitschreiben und Soll gegen letzten Ist-Lauf vergleichen.`
+    desc: `STATUS: In Arbeit. Admin-Übersicht mit Menü → Tab → Untertab als Baum. Pro Bereich werden normaler App-Start, erster Start des Tages, Öffnen des Tabs und manuelle Aktualisierung sichtbar. Klick auf eine Zeile zeigt die einzelnen Datenbestände sowie Browser-Cache, Supabase und On-chain/API-Quelle. Detailansicht öffnet als Popup, damit der Baum beim Prüfen an seiner Position bleibt. DeFi-Projekte besitzt einen neutralen Übersicht-Tab, der beim Öffnen keine projektspezifischen Daten lädt. VERBINDLICHE REGEL: Dieser Baum muss bei jeder Programmänderung, Erweiterung oder Korrektur mitgeprüft und im selben Release aktualisiert werden, wenn Struktur, Status, Datenquelle oder Ladezeitpunkt betroffen ist. Phase 4.95: Baumknoten einzeln sowie global auf-/zuklappbar; neue Spalte „Aktueller Datenstand“ nutzt dieselben zentralen Metadaten wie die sichtbaren Datenstatus-Zeilen in den Tabs. Linke Hauptnavigation ist ein-/ausklappbar; Phase 4.95 zeigt im eingeklappten Zustand die echten Menü-Icons und zentriert/verkleinert den Pfeil. Strukturknoten im Systembaum zeigen keine Datenstands-/Ladespalten mehr; diese Informationen stehen nur auf echten Blatt-/Tab-Zeilen. Phase 5.24: private/globale TLN-Team-Cachepfade dokumentiert. Phase 5.25: Dashboard als Startseite ergänzt und Ladezeitpunkte neu aufgenommen. TLN/VOW-Discovery sowie manuelle Snapshots, allgemeiner Discovery-Cache, Gebühren-Summary und NFT-Cache starten erst beim Öffnen ihres Bereichs; die fachliche Discovery-Logik bleibt unverändert. Nächster Ausbau: tatsächliche Laufdiagnose/Requests/Rows/Bytes mitschreiben und Soll gegen letzten Ist-Lauf vergleichen.`
   },
   {
     status: "in_progress",
@@ -152,11 +153,34 @@ UMSETZUNG
 Vor Implementierung zuerst grafisches Mockup gemäß WalletTracking-UI-Regel. Danach schrittweise: (1) Datenmodell Events/Rules/Log, (2) Telegram-Bot + sichere Account-Verknüpfung, (3) UI-Einstellungen, (4) TLN-/DAO-Team-Events, (5) Staking-Events/Ablaufwarnungen, (6) Bot-/Miner-Käufe, (7) zentrale Kursfunktion/Kursalarme, (8) interne Benachrichtigungshistorie.`
   },
   {
-    status: "open",
+    status: "in_progress",
     category: "Übersicht / Analyse",
     priority: "high",
     title: "Persönliches Gesamt-Dashboard",
-    desc: `Gesamtvermögen über alle eigenen Wallets und Projekte mit Aufteilung nach Token, Stakings, Loans, NFTs, Rewards und frei verfügbarem Guthaben. Entwicklung über 24 Stunden, 7 Tage, 30 Tage, Jahr und seit Einstieg; Kennzahlen investiert, zurückerhalten, aktueller Wert sowie realisierter/unrealisierter Gewinn oder Verlust. PROJEKTREGEL: TLN/VOW und DAO1/APTM bleiben strikt getrennt; projektübergreifend werden ausschließlich aggregierte Werte gezeigt, Details öffnen immer den jeweiligen Projektbereich.`
+    desc: `Gesamtvermögen über alle eigenen Wallets und Projekte mit Aufteilung nach Token, Stakings, Loans, NFTs, Rewards und frei verfügbarem Guthaben. Entwicklung über 24 Stunden, 7 Tage, 30 Tage, Jahr und seit Einstieg; Kennzahlen investiert, zurückerhalten, aktueller Wert sowie realisierter/unrealisierter Gewinn oder Verlust. PROJEKTREGEL: TLN/VOW und DAO1/APTM bleiben strikt getrennt; projektübergreifend werden ausschließlich aggregierte Werte gezeigt, Details öffnen immer den jeweiligen Projektbereich.
+
+PHASE 5.25 · ERSTE AUSBAUSTUFE:
+• Dashboard ist Startseite nach dem Login.
+• Kennzahlen werden aus bereits geladenem Bestands-/Preiscache gebildet; fehlende Werte bleiben sichtbar „–“ und starten keine Discovery.
+• Kursliste verwendet das zentrale Token-Flag predefined_tokens.dashboard_visible.
+• Projekt-Kacheln erscheinen nur, wenn im gewählten Wallet-/Personenbereich ein klassifizierter Projektbestand vorhanden ist.
+• Start lädt nur den vorhandenen Preis-Snapshot; fehlender/veralteter Preis-Cache löst keine API-/RPC-/TLN-Infrastruktur-Abfrage aus.
+• Aktuelles Staking wird in V1 nur berücksichtigt, wenn ein vorhandener Positionscache bereits im Bestand steckt. Monats-Rewards/Referral-Rewards, Partner-Staking-Aktionen, Verlauf sowie investiert/realisiert/unrealisiert bleiben nächste Dashboard-Cache-Stufen.
+• Manuelle Snapshots, allgemeiner Discovery-Cache, Gebühren-Summary, NFT-Cache und die vollständige TLN/VOW-Initialisierung sind aus dem Login-Start entfernt und werden erst beim Öffnen ihres Bereichs geladen.
+• Nächster Architekturpunkt: einen kompakten userbezogenen Dashboard-Snapshot definieren, damit weitere Basisabfragen beim Start entfallen können.`
+  },
+  {
+    status: "in_progress",
+    category: "Wallets / Filter",
+    priority: "high",
+    title: "Wallet-Besitzer und zentraler Personenfilter",
+    desc: `Jede Wallet wird entweder als „Eigenes Wallet“ markiert oder einer benannten Person zugeordnet. Besitzername wird wie die Walletdaten serverseitig userbezogen verschlüsselt gespeichert. Der zentrale Filter bietet „Wallets aller Personen“, „Eigene Wallets“ und jede erfasste Person.
+
+PHASE 5.25:
+• Datenmodell, verschlüsselte Edge-Function-Felder, Wallet-Eingabe und zentraler Filter umgesetzt.
+• Dashboard sowie allgemeine Token-Übersicht/Wallet-Auswahl verwenden den Filter ohne zusätzliche DB-Abfrage.
+• Bestehende Discovery-/Refresh-Fachlogik arbeitet weiterhin mit allen gespeicherten Wallets und wird durch einen reinen Anzeigefilter nicht verändert.
+• OFFEN: Filter schrittweise in Tax, Gebühren, NFTs, Approvals sowie die projektspezifischen Ergebnisansichten übernehmen; technische Scans dürfen dabei nicht unbeabsichtigt eingeschränkt werden.`
   },
   {
     status: "open",

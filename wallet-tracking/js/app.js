@@ -1,4 +1,4 @@
-/* WalletTracking Phase 4.95 · 18.09.2026 13:10:51 CEST · Build 20260918-131051 */
+/* WalletTracking Phase 5.25 · 19.09.2026 01:36:47 CEST · Build 20260919-013647 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -47,6 +47,7 @@ function toggleUiTheme(){applyUiTheme(document.documentElement.dataset.theme==="
 window.toggleUiTheme=toggleUiTheme;
 
 const MAIN_SECTION_TABS={
+  dashboard:["dashboard"],
   overview:["tracking","tax","fees","nfts","approvals"],
   wallets:["wallets","predefined","custom","discovery"],
   support:["chat","help"],
@@ -61,7 +62,7 @@ function updateContextNavigation(tabName){
   document.querySelectorAll("[data-main-section]").forEach(b=>b.classList.toggle("active",b.dataset.mainSection===section));
   document.querySelectorAll("[data-nav-section]").forEach(g=>g.style.display=(g.dataset.navSection===section?"block":"none"));
   const context=document.getElementById("contextNav");
-  if(context) context.style.display="block";
+  if(context) context.style.display=section==="dashboard"?"none":"block";
 }
 function showMainSection(section,preferredTab){
   const tabs=MAIN_SECTION_TABS[section]||["tracking"];
@@ -78,6 +79,7 @@ function initUiDisplay(){initUiFontScale();initUiTheme();}
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",initUiDisplay,{once:true});else initUiDisplay();
 let defiProjectsCache = [];
 let predefinedTokenProject = {};
+let predefinedTokenDashboardVisible = {};
 
 // ---- Zentraler Datenjob-Manager (Phase 4.69) ----
 // Datenaufbauten laufen strikt seriell. Solange ein Job aktiv ist, bleibt die
@@ -273,7 +275,6 @@ async function onLoggedIn(session) {
   await loadPredefinedTokensFromDb();
   await loadWalletsFromDb();
   await loadCustomSafeTokensFromDb();
-  await loadSnapshotsFromDb();
 
   if (window.WalletLPEngine) {
     window.WalletLPEngine.configure(() => ({
@@ -319,7 +320,7 @@ async function onLoggedIn(session) {
   activeChainFilter = new Set(Object.keys(CHAIN_META)); // Chain-Filter IMMER mit allen Chains starten
   renderChainFilter();
   renderWalletInputs();
-  renderTaxWalletSelect();
+  renderGlobalWalletPersonFilter();
   renderEvmWalletChainsNote();
   renderCustomChainSelect();
   renderCustomTokenList();
@@ -332,20 +333,17 @@ async function onLoggedIn(session) {
   activeDiscoveryChains = new Set(discoveryChains());
   renderDiscoveryChainFilter();
   renderDiscoveryWalletSelect();
-  await loadDiscoveryCacheFromDb();
   await loadWalletRefreshStates();
   renderWalletDataFreshness();
   activeFeesChains = new Set(feeChains());
   renderFeesChainFilter();
   renderFeesWalletSelect();
-  await renderFeesSummary();
   activeApprovalsChains = new Set(approvalsChains());
   renderApprovalsChainFilter();
   renderApprovalsWalletSelect();
   activeNftChains = new Set(nftChains());
   renderNftChainFilter();
   renderNftWalletSelect();
-  await loadNftCacheFromDb();
 
   // Zuerst den letzten automatisierten Snapshot sofort anzeigen. Eine automatische
   // Live-Aktualisierung erfolgt höchstens einmal pro Kalendertag. Ist der Cache bereits
@@ -369,11 +367,11 @@ async function onLoggedIn(session) {
       : "Noch kein gespeicherter Stand.");
   }
 
-  // Preise sind ein eigener Datenbereich: täglich aus Supabase laden bzw. höchstens
-  // einmal pro Kalendertag frisch ermitteln. Bestände/Discovery werden dabei nicht angefasst.
-  await refreshAllCurrentPrices({manual:false}).catch(e=>console.warn("Zentrale Tagespreise:",e));
+  // Cache-first: Beim Start ausschliesslich den gespeicherten Preisstand laden.
+  // APIs, Pool-RPC und TLN-Infrastruktur werden nur durch die manuelle Preisaktualisierung gestartet.
+  await loadCachedCurrentPricesAtStart().catch(e=>console.warn("Gespeicherter Preisstand:",e));
 
-  if(!userNavigationTouched) showTab(wallets.length === 0 ? "wallets" : "tracking");
+  if(!userNavigationTouched) showTab(wallets.length === 0 ? "wallets" : "dashboard");
   maybeShowWelcomeModal();
 
   // Cache-first Start: Ein Seiten-Reload startet keinen grossen On-Chain-Refresh mehr.
@@ -1256,6 +1254,7 @@ function showTab(name) {
   document.querySelectorAll(".tab-btn[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
   const panel = document.getElementById("tab-" + name);
   if (panel) { panel.classList.add("active"); ensureTabDataStatus(panel,name); }
+  if (name === "dashboard") renderDashboard();
   if (name === "predefined") { ensurePredefinedNames(); renderSafeTokenTable(); }
   if (name === "admin" && !document.querySelector(".admin-tab-panel.active")) showAdminTab("customtokens");
   if (name === "chat") {
@@ -1265,26 +1264,33 @@ function showTab(name) {
     if (adminView) adminView.style.display = isAdmin ? "block" : "none";
     if (isAdmin) renderAdminChatUserSelect(); else loadOwnChat();
   }
-  if (name === "tax") renderTaxWalletSelect();
+  if (name === "tracking") ensureSnapshotsLoaded().then(()=>{renderSnapshotManager();renderResults();renderChartWalletSelect();}).catch(e=>console.warn("Manuelle Snapshots:",e));
+  if (name === "tax") ensureSnapshotsLoaded().then(()=>renderTaxWalletSelect()).catch(e=>console.warn("Steuer-Snapshots:",e));
   if (name === "help") {
     if (typeof window.renderGeneralHelp === "function") window.renderGeneralHelp();
     renderHelpChainCoverage();
   }
-  if (name === "nfts") onNftWalletChange();
+  if (name === "nfts") ensureNftCacheLoaded().then(()=>onNftWalletChange()).catch(e=>console.warn("NFT-Cache:",e));
   if (name === "fees") { renderFeesSummary(); onFeesWalletChange(); }
   if (name === "discovery") {
-    renderDiscoveryCacheState();
-    if (lastDiscoveryFindings.length > 0) renderDiscoveryResults(lastDiscoveryFindings);
+    ensureDiscoveryCacheLoaded().then(()=>{
+      renderDiscoveryCacheState();
+      if (lastDiscoveryFindings.length > 0) renderDiscoveryResults(lastDiscoveryFindings);
+    }).catch(e=>console.warn("Discovery-Cache:",e));
   }
   if (name === "tlnvow" && window.TLNVOWProject) {
-    window.TLNVOWProject.ensureLoaded();
-    const tlnSubtabs = document.querySelectorAll("#tab-tlnvow .tln-vow-main-subtabs .tab-btn");
-    const hasActiveTlnSubtab = [...tlnSubtabs].some(b => b.classList.contains("active"));
-    if (!hasActiveTlnSubtab) {
-      const overviewBtn = [...tlnSubtabs].find(b => /Übersicht/.test(b.textContent || ""));
-      if (overviewBtn) openTlnDiscoveryTab("overview", overviewBtn);
-    }
-    maybeAutoRefreshProject('tln_vow','bsc','tlnvowLpBscContent').catch(e=>console.warn('TLN/VOW Projekt-Autoload:',e));
+    Promise.resolve(window.TLNVOWDiscovery?.ensureInitialized?.())
+      .then(()=>window.TLNVOWProject.ensureLoaded())
+      .then(()=>{
+        const tlnSubtabs = document.querySelectorAll("#tab-tlnvow .tln-vow-main-subtabs .tab-btn");
+        const hasActiveTlnSubtab = [...tlnSubtabs].some(b => b.classList.contains("active"));
+        if (!hasActiveTlnSubtab) {
+          const overviewBtn = [...tlnSubtabs].find(b => /Übersicht/.test(b.textContent || ""));
+          if (overviewBtn) openTlnDiscoveryTab("overview", overviewBtn);
+        }
+        return maybeAutoRefreshProject('tln_vow','bsc','tlnvowLpBscContent');
+      })
+      .catch(e=>console.warn('TLN/VOW Projekt-Autoload:',e));
   }
   if (name === "dao1" && window.DAO1Project) {
     window.DAO1Project.ensureLoaded();
@@ -1317,19 +1323,24 @@ const ADMIN_SYSTEM_TREE = [
   {id:"help",level:1,label:"Hilfe",status:"planning",start:"Datei/DOM",daily:"–",open:"lokal",manual:"–",details:[["Allgemeine Hilfe","JS-Modul","–","–","Tab öffnen"]]},
 
   {id:"walletsgrp",level:0,label:"🧰 Wallets & Token",status:"planning",start:"DB",daily:"–",open:"Cache/DB",manual:"je Funktion",details:[]},
-  {id:"wallets",level:1,label:"Meine Wallets",status:"planning",start:"DB",daily:"–",open:"bereits geladen",manual:"DB",details:[["Wallet-Konfiguration","RAM nach Login","Supabase · Wallet-Daten","–","App-Start"]]},
-  {id:"predefined",level:1,label:"Vordefinierte Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB neu",details:[["Vordefinierte Token","RAM","Supabase · predefined_tokens","–","App-Start; manuell neu laden"]]},
+  {id:"wallets",level:1,label:"Meine Wallets",status:"in_progress",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"verschlüsselt speichern",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"]]},
+  {id:"predefined",level:1,label:"Vordefinierte Token",status:"in_progress",start:"DB",daily:"–",open:"RAM",manual:"DB neu",details:[["Vordefinierte Token + Dashboard-Flag","RAM","Supabase · predefined_tokens.dashboard_visible","–","App-Start; Flag-Änderung nur Admin, danach Dashboard aus RAM neu rendern"]]},
   {id:"custom",level:1,label:"Eigene sichere Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB",details:[["User-Token","RAM","Supabase · userbezogene Token","–","App-Start"]]},
-  {id:"discovery",level:1,label:"🔍 Entdecken",status:"planning",start:"DB-Cache",daily:"–",open:"Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Cache am Start; Scan nur manuell"]]},
+  {id:"discovery",level:1,label:"🔍 Entdecken",status:"planning",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Erst beim Öffnen des Tabs; Scan nur manuell"]]},
 
-  {id:"analysis",level:0,label:"📊 Übersicht & Analyse",status:"in_progress",start:"mehrere DB-Caches",daily:"zentrale Preise",open:"Cache",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Discovery Cache · Refresh-State · Gebühren-Summary · NFT-Cache","Preisquellen nur falls Tagespreis fehlt","Beim Login werden mehrere kleine/mittlere DB-Caches gelesen; grosser Balance/NFT/Projekt-On-chain-Refresh bleibt aus"]]},
+  {id:"analysis",level:0,label:"📊 Übersicht & Analyse",status:"in_progress",start:"Basis + Dashboard-Caches",daily:"keine Live-Abfrage",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","keine Preis-/On-chain-Abfrage beim Start","Discovery-, manuelle Snapshot-, Gebühren-, NFT- und TLN/VOW-Caches werden erst beim Öffnen ihres Bereichs geladen. Nächster Optimierungsschritt bleibt ein kompakter Dashboard-Snapshot."]]},
+  {id:"dashboard",level:1,label:"Dashboard · Startseite",status:"in_progress",idea:"kompakter Dashboard-Snapshot",start:"Wallet-/Bestands-/Preiscache",daily:"keine Live-Abfrage",open:"RAM",manual:"Daten/Preise",details:[
+    ["Vermögenskennzahlen","RAM aus Automated Snapshot","bereits geladener Bestands-Cache","–","App-Start: vorhandenen Cache aggregieren; fehlende Positionswerte bleiben –"],
+    ["Dashboard-Kurse","RAM","wallet_current_price_snapshots + predefined_tokens.dashboard_visible","Preis-API/RPC nur manuell","App-Start lädt ausschliesslich gespeicherten Preisstand, auch wenn älter"],
+    ["Projekt-Kacheln","RAM aus klassifizierten Beständen","predefined_tokens Projektzuordnung","keine Discovery","Nur vorhandene Projekte; Staking/Rewards werden nur aus bereits verfügbarem Positionscache gezeigt"],
+    ["Personenfilter","RAM","verschlüsselte Wallet-Besitzer aus wallet-private","–","Eigene Wallets / alle Personen / bestimmte Person; keine Zusatzabfrage"]]},
   {id:"tracking",level:1,label:"Wallet-Tracking · Token-Übersicht",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"gespeicherter Stand",daily:"Preise frisch",open:"Cache",manual:"Bestände + Projekte + NFTs",details:[
     ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain","Start: nur gespeicherter Stand; On-chain erst Daten aktualisieren"],
-    ["Aktuelle Kurse","Tages-Snapshot/RAM","Supabase Price Snapshots","Preis-APIs + DEX/Pool RPC","Beim Start täglich prüfen; falls Tagescache fehlt frisch ermitteln"],
+    ["Aktuelle Kurse","Tages-Snapshot/RAM","Supabase Price Snapshots","Preis-APIs + DEX/Pool RPC","App-Start: nur gespeicherten Cache laden; Live-Ermittlung ausschliesslich manuell"],
     ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Nicht automatisch beim Reload; manuelle Datenaktualisierung"]]},
-  {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"planning",start:"DB-Snapshots",daily:"–",open:"RAM/DB",manual:"historisch",details:[["Snapshots","RAM","Supabase Snapshots","–","App-Start lädt gespeicherte Snapshots"],["Historische Bewertung","Cache","Supabase Preis-/LP-Historie","Archive RPC/API bei Bedarf","Stichtagsberechnung"]]},
-  {id:"fees",level:1,label:"💸 Gebühren",status:"planning",start:"DB-Summary",daily:"–",open:"Cache",manual:"Delta/API",details:[["Gebühren-Summary","RAM","Supabase Fee Cache/Summary","–","App-Start: renderFeesSummary liest gespeicherten Stand"],["Gebührenhistorie","RAM","Supabase Fee Cache","Routescan/NodeReal/Blockscout etc.","On-chain/API erst bei Aktualisierung"]]},
-  {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"DB-Cache",daily:"kein Fresh-Load",open:"RAM/Cache",manual:"On-chain/API",details:[["NFT-Bestand","RAM","Supabase NFT Cache","Chain-spezifische NFT Quellen/RPC","App-Start lädt NFT-Cache aus DB; kein automatischer Chain-Refresh"],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
+  {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"planning",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","Supabase Snapshots","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung","Cache","Supabase Preis-/LP-Historie","Archive RPC/API bei Bedarf","Stichtagsberechnung"]]},
+  {id:"fees",level:1,label:"💸 Gebühren",status:"planning",start:"–",daily:"–",open:"DB-Summary",manual:"Delta/API",details:[["Gebühren-Summary","RAM nach Lazy Load","Supabase Fee Cache/Summary","–","Gespeicherten Gebührenstand erst beim Öffnen des Tabs lesen"],["Gebührenhistorie","RAM","Supabase Fee Cache","Routescan/NodeReal/Blockscout etc.","On-chain/API erst bei Aktualisierung"]]},
+  {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"nur Freshness",daily:"kein Fresh-Load",open:"DB-Cache",manual:"On-chain/API",details:[["NFT-Bestand","RAM nach Lazy Load","Supabase NFT Cache","Chain-spezifische NFT Quellen/RPC","NFT- und Besitzcache erst beim Öffnen des Tabs; kein automatischer Chain-Refresh"],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
   {id:"approvals",level:1,label:"🔓 Freigaben",status:"planning",start:"–",daily:"–",open:"bei Auswahl",manual:"On-chain/API",details:[["Token-Freigaben","–","–","Alchemy/RPC je unterstützter Chain","Spezialfunktion; nicht beim App-Start"]]},
 
   {id:"projects",level:0,label:"🏦 DeFi-Projekte",status:"in_progress",start:"Konfig DB",daily:"Preise",open:"Übersicht · keine Projektdaten",manual:"projektbezogen",details:[]},
@@ -2269,10 +2280,11 @@ function setAllChainFilter(selectAll) {
 function renderWalletNav() {
   const el = document.getElementById("walletNav");
   if (el) {
+    const visibleWallets=walletsForCurrentView();
     const current = el.value;
     el.innerHTML = `<option value="">– auswählen –</option>` +
-      wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
-    if (wallets.some(w => w.id === current)) el.value = current;
+      visibleWallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+    if (visibleWallets.some(w => w.id === current)) el.value = current;
   }
   renderDiscoveryWalletSelect();
   renderChartWalletSelect();
@@ -2469,6 +2481,7 @@ async function loadPredefinedTokensFromDb() {
   const decimals = {};
   const displayDecimals = {};
   const summaryDecimals = {};
+  const dashboardVisible = {};
   const byChainSymbol = {};
   const nativeAssets = {};
   const seen = new Set(); // Dedupe für den Fall, dass dieselbe Adresse mit unterschiedlicher
@@ -2490,7 +2503,8 @@ async function loadPredefinedTokensFromDb() {
         symbol:row.symbol || NATIVE_SYMBOL[chain] || chain.toUpperCase(), name:row.name || CHAIN_META[chain]?.label || chain,
         technicalDecimals:row.decimals == null ? null : Number(row.decimals),
         displayDecimals:Number.isInteger(Number(row.display_decimals)) ? Number(row.display_decimals) : 6,
-        summaryDecimals:row.summary_decimals == null || row.summary_decimals === "" ? null : Number(row.summary_decimals)
+        summaryDecimals:row.summary_decimals == null || row.summary_decimals === "" ? null : Number(row.summary_decimals),
+        dashboardVisible:row.dashboard_visible === true
       };
     }
     if (row.label) labels[dedupeKey] = row.label;
@@ -2504,6 +2518,7 @@ async function loadPredefinedTokensFromDb() {
     const summary = row.summary_decimals === null || row.summary_decimals === undefined || row.summary_decimals === "" ? null : Number(row.summary_decimals);
     displayDecimals[dedupeKey] = display;
     summaryDecimals[dedupeKey] = Number.isInteger(summary) ? summary : null;
+    dashboardVisible[dedupeKey] = row.dashboard_visible === true;
     const symbolKey=String(row.symbol||row.label||"").trim().toUpperCase();
     if(symbolKey) byChainSymbol[`${chain}|${symbolKey}`]={display,summary:summaryDecimals[dedupeKey]};
   });
@@ -2517,6 +2532,7 @@ async function loadPredefinedTokensFromDb() {
   predefinedTokenDecimals = decimals;
   predefinedTokenDisplayDecimals = displayDecimals;
   predefinedTokenSummaryDecimals = summaryDecimals;
+  predefinedTokenDashboardVisible = dashboardVisible;
   predefinedTokenDisplayByChainSymbol = byChainSymbol;
   predefinedNativeAssets = nativeAssets;
 }
@@ -2643,7 +2659,7 @@ function renderSafeTokenTable() {
     const native=predefinedNativeAssets[chain];
     rows.push(native ? { ...native, isNative:true } : {
       chain, address:"native", label:(NATIVE_SYMBOL[chain] || chain.toUpperCase()) + " (nativ)", isNative:true, nativeMissing:true,
-      technicalDecimals:null, displayDecimals:null, summaryDecimals:null
+      technicalDecimals:null, displayDecimals:null, summaryDecimals:null, dashboardVisible:false
     });
   });
 
@@ -2658,7 +2674,8 @@ function renderSafeTokenTable() {
       rows.push({ chain, address, label,
         technicalDecimals:predefinedTokenDecimals[key],
         displayDecimals:predefinedTokenDisplayDecimals[key],
-        summaryDecimals:predefinedTokenSummaryDecimals[key]
+        summaryDecimals:predefinedTokenSummaryDecimals[key],
+        dashboardVisible:predefinedTokenDashboardVisible[key]===true
       });
     });
   });
@@ -2701,7 +2718,7 @@ function renderSafeTokenTable() {
   const DEFI_CATEGORY_LABELS = { voucher_currency:"Voucher-Währung", lp_token:"LP Token", defi_token:"DeFi-Token" };
 
   const tableHeader = isAdmin
-    ? `<tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:center">Decimals<br><span class="meta">technisch</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Anzeige</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Summary</span></th><th style="text-align:right">Kurs (USD)</th><th>DeFi-Projekt</th><th>Projekt-Kategorie</th><th></th></tr>`
+    ? `<tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:center">Decimals<br><span class="meta">technisch</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Anzeige</span></th><th style="text-align:center">Kommastellen<br><span class="meta">Summary</span></th><th style="text-align:center">Im Dashboard<br>anzeigen</th><th style="text-align:right">Kurs (USD)</th><th>DeFi-Projekt</th><th>Projekt-Kategorie</th><th></th></tr>`
     : `<tr><th>Chain</th><th>Token</th><th>Adresse</th><th style="text-align:right">Kurs (USD)</th></tr>`;
   el.innerHTML = `<table class="project-data-table"><thead>${tableHeader}</thead><tbody>
     ${filtered.map(r => {
@@ -2763,6 +2780,7 @@ function renderSafeTokenTable() {
       <td style="text-align:center">${r.technicalDecimals??'<span style="color:var(--muted)">–</span>'}</td>
       <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--danger,#ef4444)">nicht konfiguriert</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6}" style="width:68px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','display_decimals',this.value)">`:(Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6))}</td>
       <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--muted)">–</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):''}" placeholder="wie Anzeige" title="Leer = Kommastellen Anzeige übernehmen" style="width:92px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','summary_decimals',this.value)">`:(Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):'<span style="color:var(--muted)">wie Anzeige</span>'))}</td>
+      <td style="text-align:center"><input type="checkbox" style="width:auto" ${r.dashboardVisible?"checked":""} ${r.nativeMissing?"disabled":""} onchange="setPredefinedTokenDashboardVisible('${r.chain}','${r.address}',this.checked)"></td>
       <td style="text-align:right">${priceCell}</td>
       <td>${projectCell}</td>
       <td>${categoryCell}</td>
@@ -2771,6 +2789,17 @@ function renderSafeTokenTable() {
     }).join("")}
   </tbody></table>`;
 }
+
+async function setPredefinedTokenDashboardVisible(chain,address,visible){
+  if(!isAdmin)return;
+  const normalized=address==="native"?"native":normalizeAddress(address,chain);
+  const {error}=await matchAddressQuery(sb.from("predefined_tokens").update({dashboard_visible:!!visible}).eq("chain",chain),chain,normalized);
+  if(error){alert("Dashboard-Auswahl konnte nicht gespeichert werden: "+error.message);renderSafeTokenTable();return;}
+  predefinedTokenDashboardVisible[chain+"|"+normalized]=!!visible;
+  if(predefinedNativeAssets[chain]&&normalized==="native")predefinedNativeAssets[chain].dashboardVisible=!!visible;
+  renderSafeTokenTable();renderDashboard();
+}
+window.setPredefinedTokenDashboardVisible=setPredefinedTokenDashboardVisible;
 
 async function setPredefinedTokenDefi(chain,address,field,value){
   if (!isAdmin) return;
@@ -2857,8 +2886,24 @@ async function loadDailyGeneralPrices({force=false}={}){
   await saveUserCurrentPriceSnapshot();
   return currentPriceCacheState;
 }
+async function loadCachedCurrentPricesAtStart(){
+  const cached=await loadUserCurrentPriceSnapshot();
+  if(cached?.payload&&hydrateUserCurrentPriceSnapshot(cached.payload)){
+    currentPriceCacheState={capturedAt:cached.capturedAt,source:"supabase"};
+    const ageLabel=cached.fresh?"heutiger Cache":"gespeicherter Cache";
+    setCentralPriceStatus(`${formatCurrentPriceTimestamp(cached.capturedAt)} · ${ageLabel}; keine Live-Preisabfrage beim Start.`,cached.fresh?"success":"warning");
+    setWtDataStatus("dashboard",{updatedAt:cached.capturedAt,cacheAt:cached.capturedAt,source:"cache",label:"Dashboard"});
+    rerenderAllCurrentPriceViews();
+    renderDashboard();
+    return currentPriceCacheState;
+  }
+  setCentralPriceStatus("Kein gespeicherter Preisstand vorhanden. Preise können manuell aktualisiert werden.","warning");
+  renderDashboard();
+  return null;
+}
 function rerenderAllCurrentPriceViews(){
   renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();
+  renderDashboard();
   if(document.getElementById("tab-predefined")?.classList.contains("active"))renderSafeTokenTable();
 }
 async function refreshAllCurrentPrices({manual=false}={}){
@@ -3114,15 +3159,43 @@ function fmtPrice(n) {
 let walletCounter = 0;
 let wallets = [];
 let walletData = {}; // id -> { eth:{native, tokens}|{error}, bsc:{...}, matic:{...}, btc:{...}, xrp:{...}, sol:{...} }
+let globalWalletPersonFilter = "__own";
 
-function newWallet(label, evm, btc, xrp, sol, tron, akash, dbId) {
+function newWallet(label, evm, btc, xrp, sol, tron, akash, dbId, isOwnWallet=true, ownerName="") {
   walletCounter++;
   return {
     id: dbId || ("local" + walletCounter), dbId: dbId || null,
     label: label || ("Wallet " + walletCounter),
-    evm: evm || "", btc: btc || "", xrp: xrp || "", sol: sol || "", tron: tron || "", akash: akash || ""
+    evm: evm || "", btc: btc || "", xrp: xrp || "", sol: sol || "", tron: tron || "", akash: akash || "",
+    isOwnWallet:isOwnWallet !== false,
+    ownerName:String(ownerName||"").trim()
   };
 }
+
+function walletOwnerLabel(w){return w?.isOwnWallet!==false?"Eigenes Wallet":(String(w?.ownerName||"").trim()||"Nicht zugeordnet");}
+function walletsForCurrentView(){
+  if(globalWalletPersonFilter==="__all")return wallets.slice();
+  if(globalWalletPersonFilter==="__own")return wallets.filter(w=>w.isOwnWallet!==false);
+  if(globalWalletPersonFilter.startsWith("owner:")){
+    const name=globalWalletPersonFilter.slice(6);
+    return wallets.filter(w=>w.isOwnWallet===false&&String(w.ownerName||"")===name);
+  }
+  return wallets.slice();
+}
+function renderGlobalWalletPersonFilter(){
+  const el=document.getElementById("globalWalletPersonFilter");if(!el)return;
+  const names=[...new Set(wallets.filter(w=>w.isOwnWallet===false&&w.ownerName).map(w=>w.ownerName))].sort((a,b)=>a.localeCompare(b,"de"));
+  const valid=globalWalletPersonFilter==="__all"||globalWalletPersonFilter==="__own"||(globalWalletPersonFilter.startsWith("owner:")&&names.includes(globalWalletPersonFilter.slice(6)));
+  if(!valid)globalWalletPersonFilter="__own";
+  el.innerHTML=`<option value="__all">Wallets aller Personen</option><option value="__own">Eigene Wallets</option>${names.map(n=>`<option value="owner:${escapeAttr(n)}">${escapeAttr(n)}</option>`).join("")}`;
+  el.value=globalWalletPersonFilter;
+}
+function setGlobalWalletPersonFilter(value){
+  globalWalletPersonFilter=String(value||"__own");
+  renderDashboard();renderResults();renderWalletNav();renderAllocationChart();
+  if(document.getElementById("tab-tax")?.classList.contains("active"))renderTaxWalletSelect();
+}
+window.setGlobalWalletPersonFilter=setGlobalWalletPersonFilter;
 
 // Zentrale Sortierung nach Wallet-Bezeichnung (alphabetisch) - nach jeder Änderung
 // aufgerufen, damit ALLE Stellen (Liste, "Gehe zu Wallet", Details je Wallet,
@@ -3162,7 +3235,9 @@ async function loadWalletsFromDb() {
       row.sol_address,
       row.tron_address,
       row.akash_address,
-      row.id
+      row.id,
+      row.is_own_wallet,
+      row.owner_name
     ));
     sortWalletsByLabel();
   } catch (error) {
@@ -3281,6 +3356,8 @@ async function removeWallet(id) {
   clearWalletRelatedMemory(w);
   wallets = wallets.filter(x => x.id !== id);
   renderWalletInputs();
+  renderGlobalWalletPersonFilter();
+  renderDashboard();
   renderResults();
   renderTaxWalletSelect?.();
   onNftWalletChange?.();
@@ -3293,6 +3370,12 @@ function updateWalletField(id, field, value) {
   if (w) w[field] = value;
   updateAllValidationIcons();
 }
+function setWalletOwnership(id,isOwn){
+  const w=wallets.find(w=>w.id===id);if(!w)return;
+  w.isOwnWallet=!!isOwn;
+  renderWalletInputs();renderGlobalWalletPersonFilter();renderDashboard();
+}
+window.setWalletOwnership=setWalletOwnership;
 
 async function saveWallet(id) {
   const w = wallets.find(w => w.id === id);
@@ -3311,12 +3394,18 @@ async function saveWallet(id) {
       return;
     }
   }
+  if(w.isOwnWallet===false&&!String(w.ownerName||"").trim()){
+    alert("Bitte den Namen des Besitzers eingeben oder «Eigenes Wallet» aktivieren.");
+    return;
+  }
 
   if (statusEl) statusEl.textContent = "Speichere...";
 
   const walletPayload = {
     id: w.dbId || undefined,
     label: w.label,
+    is_own_wallet:w.isOwnWallet!==false,
+    owner_name:w.isOwnWallet===false?String(w.ownerName||"").trim():"",
     evm_address: w.evm,
     btc_address: w.btc,
     xrp_address: w.xrp,
@@ -3340,6 +3429,8 @@ async function saveWallet(id) {
 
   sortWalletsByLabel();
   renderWalletInputs();
+  renderGlobalWalletPersonFilter();
+  renderDashboard();
   loadAll();
 }
 
@@ -3423,6 +3514,13 @@ function renderWalletInputs() {
         <button class="remove" onclick="removeWallet('${w.id}')">Entfernen</button>
       </div>
       <div class="field-grid">
+        <div class="wallet-owner-fields">
+          <label class="wallet-own-check"><input type="checkbox" ${w.isOwnWallet!==false?"checked":""} onchange="setWalletOwnership('${w.id}',this.checked)"> <span>Eigenes Wallet</span></label>
+          <div>
+            <span class="field-label">Besitzer${w.isOwnWallet!==false?" (bei eigenem Wallet nicht erforderlich)":""}</span>
+            <input type="text" value="${escapeAttr(w.ownerName)}" ${w.isOwnWallet!==false?"disabled":""} oninput="updateWalletField('${w.id}','ownerName',this.value)" placeholder="Name der Person" />
+          </div>
+        </div>
         <div>
           <span class="field-label">EVM-Adresse</span>
           <input type="text" value="${escapeAttr(w.evm)}" oninput="updateWalletField('${w.id}','evm',this.value)" placeholder="0x..." />
@@ -4153,7 +4251,7 @@ async function loadAllCore(options = {}) {
   }
   // LP-/Staking-Cache in die Tokenübersicht einmischen und aktuelle LP-Werte für Wallet-LPs bewerten.
   if(window.WalletLPEngine){for(const w of wallets){for(const chain of Object.keys(walletData[w.id]||{})){const cd=walletData[w.id]?.[chain];if(!cd?.tokens||!w.evm)continue;for(const t of cd.tokens){try{const p=await window.WalletLPEngine.pairInfo(chain,t.address);if(!p)continue;const pos=(await window.WalletLPEngine.positions(chain,w.evm,[t.address]))[0];if(pos)t.lpInfo=pos;}catch{}}}}}
-  await mergeTlnBscStakingCacheIntoWalletData();renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();
+  await mergeTlnBscStakingCacheIntoWalletData();renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();
   if(failures.length===0){
     await createSnapshot(true);
     renderCacheStatusNote(automatic?'Tägliche Prüfung abgeschlossen · relevante Änderungen aktualisiert.':'Vollständige Aktualisierung abgeschlossen.');
@@ -4249,6 +4347,78 @@ function chainRows(chainData, chainKey) {
   return { rows };
 }
 
+function dashboardPriceRows(){
+  const rows=[];
+  for(const [key,visible] of Object.entries(predefinedTokenDashboardVisible)){
+    if(!visible)continue;
+    const split=key.indexOf("|");if(split<1)continue;
+    const chain=key.slice(0,split),address=key.slice(split+1);
+    const native=address==="native";
+    const meta=native?predefinedNativeAssets[chain]:null;
+    const symbol=meta?.symbol||predefinedTokenSymbols[key]||predefinedTokenLabels[key]||address;
+    const price=native?nativePrices[chain]:priceForToken(chain,address);
+    rows.push({key,chain,address,symbol,project:predefinedTokenProject[key]||null,price});
+  }
+  return rows.sort((a,b)=>(a.project||"").localeCompare(b.project||"")||a.symbol.localeCompare(b.symbol));
+}
+
+function dashboardPortfolio(targetWallets){
+  let freeUsd=0,boundUsd=0,unknownValues=0,boundEvidence=0;
+  const projects=new Map();
+  for(const w of targetWallets){
+    for(const chain of Object.keys(CHAIN_META)){
+      const result=chainRows(walletData[w.id]?.[chain],chain);if(!result||result.error)continue;
+      for(const row of result.rows){
+        const usdValue=Number(row.usdValue);
+        const staked=Number(row.lpInfo?.stakedBalance||0);
+        const totalAmount=Number(row.amount||0);
+        let rowBound=0;
+        if(staked>0&&totalAmount>0&&Number.isFinite(usdValue)){
+          rowBound=usdValue*Math.min(1,staked/totalAmount);boundEvidence++;
+        }
+        if(Number.isFinite(usdValue)){boundUsd+=rowBound;freeUsd+=Math.max(0,usdValue-rowBound);}else unknownValues++;
+        if(!row.isNative&&row.address){
+          const key=chain+"|"+normalizeAddress(row.address,chain),projectKey=predefinedTokenProject[key];
+          if(projectKey){const p=projects.get(projectKey)||{valueUsd:0,boundUsd:0,assets:0};if(Number.isFinite(usdValue))p.valueUsd+=usdValue;p.boundUsd+=rowBound;p.assets++;projects.set(projectKey,p);}
+        }
+      }
+    }
+  }
+  return {freeUsd,boundUsd,totalUsd:freeUsd+boundUsd,unknownValues,boundEvidence,projects};
+}
+
+function dashboardProjectTitle(key){return defiProjectsCache.find(p=>p.project_key===key)?.name||({tln_vow:"TLN / VOW",dao1:"DAO1 / APTM"}[key]||key);}
+function dashboardProjectOpen(key){if(key==="tln_vow")showTab("tlnvow");else if(key==="dao1")showTab("dao1");else showTab("projects-overview");}
+window.dashboardProjectOpen=dashboardProjectOpen;
+
+function renderDashboard(){
+  const root=document.getElementById("dashboardContent");if(!root)return;
+  renderGlobalWalletPersonFilter();
+  const targetWallets=walletsForCurrentView(),portfolio=dashboardPortfolio(targetWallets),prices=dashboardPriceRows();
+  const money=v=>fmtUsd(Number(v||0));
+  const boundValue=portfolio.boundEvidence?money(portfolio.boundUsd):"–";
+  const priceTable=prices.length?`<div class="dashboard-table-wrap"><table class="dashboard-price-table"><thead><tr><th>Token</th><th>Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${prices.map(r=>`<tr><td><strong>${escapeAttr(r.symbol)}</strong></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?escapeAttr(r.price.source||"Preis-Cache"):"Kein gespeicherter Kurs"}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">Noch keine Token sind für das Dashboard aktiviert. Als Admin unter „Vordefinierte Token“ die Spalte „Im Dashboard anzeigen“ auswählen.</div>`;
+  const projectCards=[...portfolio.projects.entries()].filter(([,p])=>p.assets>0).map(([key,p])=>{
+    const projectPrices=prices.filter(x=>x.project===key);
+    return `<article class="dashboard-project-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Projekt</span><h3>${escapeAttr(dashboardProjectTitle(key))}</h3></div><strong>${money(p.valueUsd)}</strong></div><div class="dashboard-project-stats"><div><span>Aktuelles Staking</span><strong>${p.boundUsd>0?money(p.boundUsd):"–"}</strong></div><div><span>Rewards · Monat</span><strong>–</strong></div><div><span>Referral · Monat</span><strong>–</strong></div></div>${projectPrices.length?`<div class="dashboard-project-prices">${projectPrices.map(r=>`<span>${escapeAttr(r.symbol)} <strong>${r.price?fmtPrice(r.price.price):"–"}</strong></span>`).join("")}</div>`:""}<button class="secondary" onclick="dashboardProjectOpen('${escapeAttr(key)}')">Projekt öffnen</button><div class="dashboard-cache-note">Cache-first: fehlende Staking-/Reward-Werte lösen hier keine Discovery aus.</div></article>`;
+  }).join("");
+  const staleWallets=targetWallets.filter(w=>Object.keys(CHAIN_CONFIG).some(c=>walletAddressForChain(w,c)&&!refreshedToday(w,c,"balances"))).length;
+  root.innerHTML=`
+    <div class="dashboard-heading"><div><h2>Persönliches Dashboard</h2><p>Gespeicherter Stand für ${escapeAttr(document.getElementById("globalWalletPersonFilter")?.selectedOptions?.[0]?.textContent||"Eigene Wallets")}</p></div><button onclick="loadAll()">Daten aktualisieren</button></div>
+    <section class="dashboard-kpi-grid">
+      <article class="dashboard-kpi dashboard-kpi-blue"><span>Gesamtvermögen</span><strong>${money(portfolio.totalUsd)}</strong><small>aktuell bewertbarer Cache-Stand</small></article>
+      <article class="dashboard-kpi dashboard-kpi-green"><span>Frei verfügbar</span><strong>${money(portfolio.freeUsd)}</strong><small>direkt in ${targetWallets.length} ausgewählten Wallet(s)</small></article>
+      <article class="dashboard-kpi dashboard-kpi-purple"><span>Aktuell gebunden</span><strong>${boundValue}</strong><small>${portfolio.boundEvidence?"aus vorhandenem Positionscache":"Positionscache noch nicht im Dashboard verfügbar"}</small></article>
+      <article class="dashboard-kpi dashboard-kpi-gold"><span>Rewards · aktueller Monat</span><strong>–</strong><small>folgt aus Projektcaches, ohne Start-Discovery</small></article>
+    </section>
+    ${portfolio.unknownValues?`<div class="dashboard-data-warning">${portfolio.unknownValues} Vermögenswert(e) ohne gespeicherten Kurs sind in den Geldsummen nicht enthalten.</div>`:""}
+    <section class="dashboard-main-grid"><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Aktuelle Kurse</h3><p>Nur zentral für das Dashboard aktivierte Token</p></div><button class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button></div>${priceTable}</article><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Was muss ich tun?</h3><p>Nur aus bestätigten Cache-Daten</p></div></div><div class="dashboard-action-list">${staleWallets?`<div><span class="dashboard-action-icon warning">!</span><p><strong>${staleWallets} Wallet(s) mit älterem Bestandsstand</strong><small>Eine Aktualisierung ist verfügbar.</small></p></div>`:`<div><span class="dashboard-action-icon ok">✓</span><p><strong>Bestandsstände aktuell</strong><small>Keine fällige Bestandsaktualisierung erkannt.</small></p></div>`}<div><span class="dashboard-action-icon neutral">↗</span><p><strong>Partner-Stakings</strong><small>Auslaufende/abgelaufene Positionen werden nach Anschluss des TLN-Team-Caches hier angezeigt.</small></p></div></div></article></section>
+    <div class="dashboard-section-title"><h3>Projekte${isAdmin?" & Administration":""}</h3><span>Nur vorhandene Projekte</span></div>
+    <section class="dashboard-project-grid">${projectCards||'<div class="empty">In den ausgewählten Wallets ist noch kein Projektbestand im gespeicherten Stand vorhanden.</div>'}${isAdmin?`<article class="dashboard-project-card dashboard-admin-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Nur Admin</span><h3>Administration</h3></div><strong>Prüfliste</strong></div><div class="dashboard-admin-links"><button class="secondary" onclick="showTab('admin');showAdminTab('customtokens')">Neue sichere Token prüfen</button><button class="secondary" onclick="showTab('tlnvow')">TLN-Staking-Varianten prüfen</button></div><div class="dashboard-cache-note">Zähler werden später aus einem eigenen kompakten Admin-Cache ergänzt.</div></article>`:""}</section>`;
+  setWtDataStatus("dashboard",{updatedAt:currentPriceCacheState.capturedAt,cacheAt:currentPriceCacheState.capturedAt,source:"cache",label:"Dashboard"});
+}
+window.renderDashboard=renderDashboard;
+
 function fmtChange(pct) {
   if (pct === undefined || pct === null || isNaN(pct)) {
     return '<span style="color:var(--muted)">–</span>';
@@ -4261,10 +4431,18 @@ function fmtChange(pct) {
 
 // ---- Snapshots (Token-Bestand zu einem Zeitpunkt) ----
 let snapshots = []; // [{id, createdAt, visible, items: [...]}]
+let snapshotsLoaded = false;
+let snapshotsLoadPromise = null;
+
+function ensureSnapshotsLoaded() {
+  if (snapshotsLoaded) return Promise.resolve(snapshots);
+  if (!snapshotsLoadPromise) snapshotsLoadPromise = loadSnapshotsFromDb().finally(()=>{ snapshotsLoadPromise = null; });
+  return snapshotsLoadPromise;
+}
 
 async function loadSnapshotsFromDb() {
   const { data: snapRows, error: e1 } = await sb.from("snapshots").select("*").eq("is_automated", false).order("created_at", { ascending: false });
-  if (e1) { console.error(e1); snapshots = []; return; }
+  if (e1) { console.error(e1); snapshots = []; return snapshots; }
   const { data: itemRows, error: e2 } = await sb.from("snapshot_items").select("*");
   if (e2) console.error(e2);
   const byId = {};
@@ -4282,6 +4460,8 @@ async function loadSnapshotsFromDb() {
     visible: prevVisibility.hasOwnProperty(s.id) ? prevVisibility[s.id] : true,
     items: byId[s.id] || []
   }));
+  snapshotsLoaded = true;
+  return snapshots;
 }
 
 // ---- Automatisierter Tages-Cache (Bestände) ----
@@ -4460,10 +4640,11 @@ let snapshotChartInstance = null;
 function renderChartWalletSelect() {
   const el = document.getElementById("chartWalletSelect");
   if (!el) return;
+  const visibleWallets=walletsForCurrentView();
   const current = el.value;
   el.innerHTML = `<option value="">Total (alle Wallets)</option>` +
-    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
-  if (current === "" || wallets.some(w => w.id === current)) el.value = current;
+    visibleWallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (current === "" || visibleWallets.some(w => w.id === current)) el.value = current;
 }
 
 // Ermittelt genau die Chain/Token-Kombinationen, die auch in der Summary-Tabelle
@@ -4474,7 +4655,7 @@ function computeAvailableChartOptions() {
   Object.keys(CHAIN_META).forEach(chain => {
     const found = {}; // key -> {label, isNative}
 
-    wallets.forEach(w => {
+    walletsForCurrentView().forEach(w => {
       const cd = (walletData[w.id] || {})[chain];
       if (!cd || cd.error) return;
       if (cd.native !== null && cd.native !== undefined && cd.native > 0) {
@@ -4622,10 +4803,11 @@ const ALLOC_COLORS = ["#6c8cff", "#f0b90b", "#8247e5", "#28a0f0", "#0052ff", "#e
 function renderAllocWalletSelect() {
   const el = document.getElementById("allocWalletSelect");
   if (!el) return;
+  const visibleWallets=walletsForCurrentView();
   const current = el.value;
   el.innerHTML = `<option value="">Total (alle Wallets)</option>` +
-    wallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
-  if (current === "" || wallets.some(w => w.id === current)) el.value = current;
+    visibleWallets.map(w => `<option value="${w.id}">${escapeAttr(w.label)}</option>`).join("");
+  if (current === "" || visibleWallets.some(w => w.id === current)) el.value = current;
 }
 
 function renderAllocationChart() {
@@ -4633,7 +4815,8 @@ function renderAllocationChart() {
   if (!container) return;
   const walletId = document.getElementById("allocWalletSelect").value;
   const groupBy = document.getElementById("allocGroupSelect").value; // "chain" | "token"
-  const targetWallets = walletId ? wallets.filter(w => w.id === walletId) : wallets;
+  const visibleWallets=walletsForCurrentView();
+  const targetWallets = walletId ? visibleWallets.filter(w => w.id === walletId) : visibleWallets;
 
   const totals = {}; // key -> {label, value}
   let hasAnyValue = false;
@@ -4710,6 +4893,7 @@ function visibleSnapshots() {
 // bleibt in dem Fall meist gleich, die ID aber nicht mehr).
 function snapshotItemBelongsToWallet(it, matchWallet) {
   if (!matchWallet) return true;
+  if(Array.isArray(matchWallet))return matchWallet.some(w=>String(it.wallet_id||"")===String(w.dbId||w.id||""));
   return String(it.wallet_id||"") === String(matchWallet.dbId||matchWallet.id||"");
 }
 
@@ -4980,12 +5164,13 @@ function updateTlnVowTabVisibility() {
 }
 
 function renderResults() {
+  const visibleWallets=walletsForCurrentView();
   // --- Details je Wallet ---
   const resultsContainer = document.getElementById("resultsContainer");
-  if (wallets.length === 0) {
-    resultsContainer.innerHTML = `<div class="empty">Keine Wallets erfasst.</div>`;
+  if (visibleWallets.length === 0) {
+    resultsContainer.innerHTML = `<div class="empty">Für den gewählten Personenfilter sind keine Wallets vorhanden.</div>`;
   } else {
-    resultsContainer.innerHTML = wallets.map(w => {
+    resultsContainer.innerHTML = visibleWallets.map(w => {
       const data = walletData[w.id] || {};
       const chainCards = Object.keys(CHAIN_META).filter(chain => activeChainFilter.has(chain)).map(chain => {
         const meta = CHAIN_META[chain];
@@ -5034,7 +5219,7 @@ function renderResults() {
     const totals = {}; // key -> {symbol, amount, safe, isNative}
     let hadError = false;
 
-    wallets.forEach(w => {
+    visibleWallets.forEach(w => {
       const cd = (walletData[w.id] || {})[chain];
       if (!cd) return;
       if (cd.error) { hadError = true; return; }
@@ -5073,10 +5258,10 @@ function renderResults() {
       }
     });
 
-    if (rows.length === 0 && !hadError && !hasVisibleSnapshotDataForChain(chain, null)) return ""; // keine Bestände -> gar nicht anzeigen
+    if (rows.length === 0 && !hadError && !hasVisibleSnapshotDataForChain(chain, visibleWallets)) return ""; // keine Bestände -> gar nicht anzeigen
 
     const sortedRows = rows.sort((a, b) => b.amount - a.amount);
-    let body = renderTable(attachSnapshotColumns(sortedRows, chain, null)) || '<div class="empty">Keine aktuellen Bestände, aber Snapshot-Daten vorhanden.</div>';
+    let body = renderTable(attachSnapshotColumns(sortedRows, chain, visibleWallets)) || '<div class="empty">Keine aktuellen Bestände, aber Snapshot-Daten vorhanden.</div>';
     if (hadError) {
       body += `<div class="error" style="margin-top:6px">Hinweis: Bei mindestens einem Wallet trat auf dieser Chain ein Fehler auf — Summe ist unvollständig.</div>`;
     }
@@ -6727,6 +6912,15 @@ async function refreshSelectedApertumNftOwnership(){
   }finally{if(btn){btn.disabled=false;btn.textContent="Apertum Besitzhistorie aktualisieren";}}
 }
 
+let nftCacheLoaded = false;
+let nftCacheLoadPromise = null;
+
+function ensureNftCacheLoaded() {
+  if (nftCacheLoaded) return Promise.resolve(nftCaches);
+  if (!nftCacheLoadPromise) nftCacheLoadPromise = loadNftCacheFromDb().finally(()=>{ nftCacheLoadPromise = null; });
+  return nftCacheLoadPromise;
+}
+
 async function loadNftCacheFromDb() {
   if (!currentUser) return;
   const { data, error } = await sb.from("nft_cache").select("*").eq("user_id", currentUser.id);
@@ -6737,7 +6931,9 @@ async function loadNftCacheFromDb() {
   nftCaches = new Map();
   (data || []).forEach(row => nftCaches.set(String(row.wallet_id), row));
   await loadNftOwnershipCacheFromDb();
+  nftCacheLoaded = true;
   onNftWalletChange();
+  return nftCaches;
 }
 
 function cachedNftsForSelection() {
@@ -7836,6 +8032,14 @@ function riskFlags(info) {
 const DISCOVERY_COOLDOWN_DAYS = 30;
 let discoveryCaches = new Map(); // wallet_id -> Cache-Zeile
 let discoveryCache = null;       // Cache der aktuell ausgewählten Wallet
+let discoveryCacheLoaded = false;
+let discoveryCacheLoadPromise = null;
+
+function ensureDiscoveryCacheLoaded() {
+  if (discoveryCacheLoaded) return Promise.resolve(discoveryCaches);
+  if (!discoveryCacheLoadPromise) discoveryCacheLoadPromise = loadDiscoveryCacheFromDb().finally(()=>{ discoveryCacheLoadPromise = null; });
+  return discoveryCacheLoadPromise;
+}
 
 function currentDiscoveryWalletId() {
   const select = document.getElementById("discoveryWalletSelect");
@@ -7889,7 +8093,9 @@ async function loadDiscoveryCacheFromDb() {
     }
   });
 
+  discoveryCacheLoaded = true;
   onDiscoveryWalletChange();
+  return discoveryCaches;
 }
 
 function onDiscoveryWalletChange() {

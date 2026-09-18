@@ -1,6 +1,6 @@
-/* TLN/VOW Discovery shared engine · Build 20260918-223736 */
+/* TLN/VOW Discovery shared engine · Build 20260919-013647 */
 (()=>{
-const BUILD_ID='20260918-223736';
+const BUILD_ID='20260919-013647';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 22:37:36 CEST';
+const APP_VERSION='19.09.2026 01:36:47 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -18149,7 +18149,13 @@ $('clearLookupIdentityCache').onclick=clearCurrentLookupIdentityCache;
 $('lookupTlnId').addEventListener('keydown',e=>{if(e.key==='Enter')lookupWalletByTlnId()});
 $('lookupWallet').addEventListener('keydown',e=>{if(e.key==='Enter')lookupWalletByAddress()});
 
+let initializationPromise=null;
+function ensureInitialized(){
+  if(!initializationPromise)initializationPromise=init().catch(error=>{initializationPromise=null;throw error});
+  return initializationPromise;
+}
 window.TLNVOWDiscovery={
+  ensureInitialized,
   switchProjectUserTab,
   renderProjectUserView,
   renderProjectAdminContractRegistry,
@@ -18158,6 +18164,5 @@ window.TLNVOWDiscovery={
   getBuildId:()=>BUILD_ID,
   getVersion:()=>APP_VERSION
 };
-init();
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',enableTlnVowProjectTableNormalization,{once:true});else enableTlnVowProjectTableNormalization();
 })();
