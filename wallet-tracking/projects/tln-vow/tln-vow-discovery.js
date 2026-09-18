@@ -14545,7 +14545,12 @@ async function teamLoadCachedDiscoveryLifecycles(wallets){
   }
   if(!currentUserId||!stakingScanDbCacheAvailable)return;
   if(TEAM_FORCE_IGNORE_GLOBAL_TEAM_CACHE_ONCE){log('Team-Staking-Cache wird für diesen Cold-Run bewusst ignoriert.','muted');return}
-  const need=[...new Set((wallets||[]).map(norm).filter(w=>ethers.isAddress(w)&&w!==ownCurrent))];
+  // Phase 5.16: CURRENT_WALLET nur dann aus dem persistenten Restore ausnehmen, wenn
+  // fuer genau dieses Wallet bereits ein aktueller Step-2/3-Lauf im Speicher steckt.
+  // Auf einem neuen Browser war CURRENT_WALLET sonst zwar gesetzt, DISCOVERY_PROCESS aber leer;
+  // dadurch wurde z.B. TLN-ID 17276 trotz vorhandenem Supabase-Snapshot nicht restauriert.
+  const hasLiveCurrent=ethers.isAddress(ownCurrent)&&TEAM_STAKING_LIFECYCLE.has(ownCurrent);
+  const need=[...new Set((wallets||[]).map(norm).filter(w=>ethers.isAddress(w)&&(!hasLiveCurrent||w!==ownCurrent)))];
   let loaded=0;
   for(let i=0;i<need.length;i+=50){
     const chunk=need.slice(i,i+50);
@@ -14815,6 +14820,43 @@ async function teamRunLifecycleBackgroundBatch(wallets){
 function teamScheduleLifecycleBackground(wallets){
   const run=()=>teamRunLifecycleBackgroundBatch(wallets).catch(e=>log(`Team-Lifecycle Hintergrund: ${e.message||e}`,'warn'));
   if(typeof requestIdleCallback==='function')requestIdleCallback(run,{timeout:2500});else setTimeout(run,900);
+}
+// Phase 5.16: Automatische Vervollstaendigung nach einem Cache-Restore darf NIEMALS
+// einen Wallet-Gesamthistorien-/Receipt-Fallback ausloesen. Nur Wallets, fuer die Supabase
+// bereits eine vollstaendige Contract-History fuer ALLE aktuell bekannten Staking-Targets
+// besitzt, duerfen einmal cache-backed nachverifiziert werden. Alles andere bleibt offen
+// und benoetigt weiterhin den expliziten Step-7-Pfad. So bleibt ein neues Geraet billig.
+async function teamScheduleSafeCachedLifecycleCompletion(wallets){
+  const open=[...new Set((wallets||[]).map(norm).filter(w=>ethers.isAddress(w)&&!TEAM_STAKING_LIFECYCLE.get(w)?.verified))];
+  if(!open.length){log('Team-Lifecycle Cache-Nachlauf: kein offener Lifecycle; 0 RPC.','ok');return}
+  const expected=[...new Set((stakingContracts||[]).map(x=>norm(x?.contract_address||'')).filter(ethers.isAddress))];
+  const histories=await teamLoadContractHistoryCache(open);
+  const safe=open.filter(w=>{const m=histories.get(w);return !!m&&expected.every(c=>m.get(c)?.ok===true)});
+  const skipped=open.filter(w=>!safe.includes(w));
+  log(`Team-Lifecycle Cache-Nachlauf: ${safe.length}/${open.length} offene Wallet(s) besitzen serverseitig vollstaendige Contract-History (${expected.length} Targets) und duerfen ohne Wallet-History-Fallback nachverifiziert werden${skipped.length?` · ${skipped.length} bleiben bewusst offen`:''}.`,safe.length?'muted':'warn');
+  if(!safe.length)return;
+  const run=async()=>{
+    teamSetLifecycleBackgroundUi({running:true,total:safe.length,done:0,currentWallet:null,currentPass:0,lastResult:''});
+    let done=0;
+    for(let offset=0;offset<safe.length;offset+=TEAM_LIFECYCLE_BACKGROUND_BATCH){
+      const batch=safe.slice(offset,offset+TEAM_LIFECYCLE_BACKGROUND_BATCH);
+      for(const w of batch){
+        teamSetLifecycleBackgroundUi({done,currentWallet:w,currentPass:1});
+        try{
+          // exakt EIN Pass, forceFresh=false: keine Convergence-Fresh-Runs beim Auto-Restore.
+          await teamVerifyMissingLifecycles([w],{forceFresh:false});
+        }catch(e){log(`Team-Lifecycle Cache-Nachlauf TLN-ID ${TEAM_IDENTITY_CACHE.get(w)?.nodeId||'?'}: ${e.message||e}`,'warn')}
+        done++;teamSetLifecycleBackgroundUi({done,currentWallet:null,currentPass:0});
+        renderTeamTree();renderProjectOverview();
+      }
+      if(offset+TEAM_LIFECYCLE_BACKGROUND_BATCH<safe.length)await new Promise(r=>setTimeout(r,0));
+    }
+    const still=safe.filter(w=>!TEAM_STAKING_LIFECYCLE.get(w)?.verified).length;
+    teamSetLifecycleBackgroundUi({running:false,total:safe.length,done:safe.length,currentWallet:null,currentPass:0,lastResult:still?`Cache-Nachlauf abgeschlossen · ${safe.length-still}/${safe.length} Lifecycle(s) verifiziert · ${still} fachlich offen`:`TLN-Teamdaten aus Cache vervollstaendigt · ${safe.length} Lifecycle(s) verifiziert`});
+    log(`Team-Lifecycle Cache-Nachlauf abgeschlossen: ${safe.length} Wallet(s) ausschliesslich aus serverseitiger Contract-History nachverifiziert · kein Wallet-History-/Fresh-Fallback.`,still?'warn':'ok');
+  };
+  if(typeof requestIdleCallback==='function')requestIdleCallback(()=>run().catch(e=>log(`Team-Lifecycle Cache-Nachlauf: ${e.message||e}`,'warn')),{timeout:2500});
+  else setTimeout(()=>run().catch(e=>log(`Team-Lifecycle Cache-Nachlauf: ${e.message||e}`,'warn')),900);
 }
 
 async function teamLoadContractHistoryCache(wallets){
@@ -16987,7 +17029,11 @@ async function restoreTeamTreeFromPersistentCache(){
     // fuer die Darstellung noch fuer einen Geraetewechsel zulaessig. Offene Lifecycles
     // bleiben sichtbar als offen und werden erst durch den expliziten Step-7-Updatepfad
     // oder spaeter einen serverseitigen Job aktualisiert. Staking-Discovery unveraendert.
-    log(`Team-Restore aus Supabase: ${forest.included.size} Wallet(s) · ${roots.length} Baum-Root(s) · ${restoredPartnerLifecycles} Partner-Lifecycle(s) zusätzlich aus persistentem Team-Cache restauriert. Cache-only Restore: keine automatische On-Chain-/Alchemy-Nachverifikation beim Seitenstart; offene Lifecycles werden nur über Step 7 aktualisiert.`,'ok');
+    const stillOpen=lifecycleWallets.filter(w=>!TEAM_STAKING_LIFECYCLE.get(norm(w))?.verified);
+    log(`Team-Restore aus Supabase: ${forest.included.size} Wallet(s) · ${roots.length} Baum-Root(s) · ${restoredPartnerLifecycles} Partner-Lifecycle(s) zusätzlich aus persistentem Team-Cache restauriert. ${stillOpen.length} Lifecycle(s) nach Restore offen; nur vollständig serverseitig gecachte Contract-Historien dürfen automatisch einmal nachverifiziert werden.`,'ok');
+    // Erst NACH dem sichtbaren Restore. Die Funktion selbst prueft nochmals streng, dass
+    // kein Wallet-History-/Receipt-Fallback notwendig werden kann.
+    teamScheduleSafeCachedLifecycleCompletion(stillOpen).catch(e=>log(`Team-Lifecycle sicherer Cache-Nachlauf: ${e.message||e}`,'warn'));
     return true;
   }catch(e){
     CURRENT_TEAM_PROJECT_FOREST=null;
