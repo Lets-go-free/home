@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260918-174217 */
 (()=>{
-const BUILD_ID='20260918-180343';
+const BUILD_ID='20260918-181504';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 18:03:43 CEST';
+const APP_VERSION='18.09.2026 18:15:04 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4134,6 +4134,14 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   tlnIdEvidence:'tln-id-evidence-v3-supabase',
   tlnIdEventResolver:'tln-id-event-resolver-v2-supabase'
 });
+// Phase 5.08: Lifecycle-Cache-Versionen sind Datenformat-Versionen, keine Release-Versionen.
+// v8 enthält bereits die abgesicherte Nullfund-Verifikation; v9 ergänzt nur persistente
+// Teil-Lifecycles. Deshalb bleiben vollständig verifizierte v8-Ergebnisse gültig und
+// werden beim Reload wiederverwendet, statt wegen eines UI/Worker-Releases neu zu scannen.
+const TEAM_LIFECYCLE_CACHE_COMPAT_VERSIONS=new Set([
+  'team-lifecycle-v8-null-coverage-proof',
+  TECH_CACHE_VERSIONS.teamLifecycle
+]);
 const TECH_CACHE_KEYS=Object.freeze({
   lpFacts:'lp-chainfacts',
   txFacts:'tx-chainfacts',
@@ -14346,7 +14354,7 @@ async function teamLoadPersistedLifecycleCache(wallets){
     const {data,error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).select('scope_address,scanner_version,payload,updated_at,last_scanned_block').eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.teamLifecycle).in('scope_address',chunk);
     if(error){log(`Team-Lifecycle-Cache nicht lesbar: ${error.message||error}`,'warn');break}
     for(const row of (data||[])){
-      if(row?.scanner_version!==TECH_CACHE_VERSIONS.teamLifecycle)continue;
+      if(!TEAM_LIFECYCLE_CACHE_COMPAT_VERSIONS.has(String(row?.scanner_version||'')))continue;
       const w=norm(row.scope_address||row.payload.wallet||'');
       const lots=Array.isArray(row.payload.lots)?row.payload.lots:[];
       if(!row?.payload?.verified){
