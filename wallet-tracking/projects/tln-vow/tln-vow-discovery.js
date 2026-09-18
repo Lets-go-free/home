@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260914-010218 */
 (()=>{
-const BUILD_ID='20260918-140045';
+const BUILD_ID='20260918-140810';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 14:00:45 CEST';
+const APP_VERSION='18.09.2026 14:08:10 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -14391,6 +14391,7 @@ async function teamSaveVerifiedLifecycle(wallet,lots,{verifiedAt=null,verifiedBl
 const TEAM_LIFECYCLE_BACKGROUND_SESSION=new Set();
 const TEAM_LIFECYCLE_BACKGROUND_BATCH=3;
 const TEAM_LIFECYCLE_RETRY_MS=24*60*60*1000;
+const TEAM_LIFECYCLE_RUNNING_STALE_MS=15*60*1000;
 async function teamLoadLifecycleQueueState(wallets){
   const out=new Map();
   if(!currentUserId||!stakingScanDbCacheAvailable)return out;
@@ -14415,11 +14416,25 @@ async function teamRunLifecycleBackgroundBatch(wallets){
   const all=[...new Set((wallets||[]).map(norm).filter(w=>ethers.isAddress(w)&&!TEAM_STAKING_LIFECYCLE.get(w)?.verified&&!TEAM_LIFECYCLE_BACKGROUND_SESSION.has(w)))];
   if(!all.length)return;
   const queue=await teamLoadLifecycleQueueState(all),now=Date.now();
+  // Phase 4.98: Ein frueherer normaler Null-/Teilfund (retry_wait) darf einen weiterhin
+  // unverifizierten Lifecycle nicht 24h blockieren. Das Retry-Fenster ist ausschliesslich
+  // fuer echte technische Fehler reserviert. Ein abgebrochener "running"-Status wird nach
+  // kurzer Sicherheitsfrist wieder freigegeben; der Session-Set verhindert Doppelpruefungen
+  // innerhalb derselben laufenden Seite.
+  const blocked=[];
   const eligible=all.filter(w=>{
-    const q=queue.get(w),last=Date.parse(q?.lastAttemptAt||q?.savedAt||q?.updatedAt||'');
-    return !Number.isFinite(last)||(now-last)>=TEAM_LIFECYCLE_RETRY_MS;
+    const q=queue.get(w),status=String(q?.status||'');
+    const last=Date.parse(q?.lastAttemptAt||q?.savedAt||q?.updatedAt||'');
+    if(status==='error_retry'&&Number.isFinite(last)&&(now-last)<TEAM_LIFECYCLE_RETRY_MS){blocked.push({w,status,last});return false}
+    if(status==='running'&&Number.isFinite(last)&&(now-last)<TEAM_LIFECYCLE_RUNNING_STALE_MS){blocked.push({w,status,last});return false}
+    return true;
   }).slice(0,TEAM_LIFECYCLE_BACKGROUND_BATCH);
-  if(!eligible.length){log('Team-Lifecycle Hintergrund: offene Wallets vorhanden, aber Retry-Fenster noch aktiv; kein RPC.','muted');return}
+  if(blocked.length){
+    const desc=blocked.map(({w,status})=>`TLN-ID ${TEAM_IDENTITY_CACHE.get(w)?.nodeId||'?'} (${short(w)} · ${status})`).join(', ');
+    log(`Team-Lifecycle Queue: ${blocked.length} Wallet(s) wegen echtem Fehler-/Running-Schutz noch gesperrt: ${desc}.`,'muted');
+  }
+  if(!eligible.length){log('Team-Lifecycle Hintergrund: aktuell keine freigegebene offene Wallet; nur echter Fehler-/Running-Schutz aktiv, kein RPC.','muted');return}
+  log(`Team-Lifecycle Queue freigegeben: ${eligible.map(w=>`TLN-ID ${TEAM_IDENTITY_CACHE.get(w)?.nodeId||'?'} (${short(w)})`).join(', ')}.`,'muted');
   eligible.forEach(w=>TEAM_LIFECYCLE_BACKGROUND_SESSION.add(w));
   const startedAt=new Date().toISOString();
   await Promise.all(eligible.map(w=>teamSaveLifecycleQueueState(w,{status:'running',lastAttemptAt:startedAt}))).catch(()=>{});
