@@ -1,6 +1,6 @@
-/* TLN/VOW Discovery shared engine · Build 20260918-220029 */
+/* TLN/VOW Discovery shared engine · Build 20260918-222006 */
 (()=>{
-const BUILD_ID='20260918-220029';
+const BUILD_ID='20260918-222006';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 22:00:29 CEST';
+const APP_VERSION='18.09.2026 22:20:06 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4257,8 +4257,11 @@ async function reconcileStakingDiscoveryCandidates(){
       // Contract in einem verifizierten Lifecycle eine belastbare Ablaufzeit besitzt
       // ODER eine explizit verifizierte, exakt contractgebundene Duration-Regel existiert,
       // ist der offene duration_unverified-Fall erledigt und verschwindet automatisch.
+      if(typeof VERIFIED_ONCHAIN_DURATION_RULES!=='undefined'&&VERIFIED_ONCHAIN_DURATION_RULES.has(a)){
+        drop(k,'Duration durch historisch on-chain bewiesene exakte Contract-Regel geklaert');continue
+      }
       if(typeof VERIFIED_MANUAL_DURATION_RULES!=='undefined'&&VERIFIED_MANUAL_DURATION_RULES.has(a)){
-        drop(k,'Duration durch verifizierte exakte Contract-Regel geklärt');continue
+        drop(k,'Duration durch verifizierte exakte Contract-Regel geklaert');continue
       }
       // Auch ein bereits global persistierter Contract-Strict-Proof erledigt einen
       // alten Coverage-Fall. Das ist besonders fuer die Cave-v£/v€-Generation wichtig:
@@ -5313,13 +5316,6 @@ function applyDurationCacheToLot(lot,c){
  lot.durationDays=Number(c.durationDays);lot.lockDurationSeconds=Number(c.lockDurationSeconds);lot.expiryTime=c.expiryTime;lot.lastLockedBlock=c.lastLockedBlock??null;lot.firstUnlockedBlock=c.firstUnlockedBlock??null;lot.implementationStable=c.implementationStable??null;lot.durationEvidence=c.durationEvidence||'Supabase Strict-Proof Cache';lot.durationConfidence='strong';lot.durationSource=c.durationSource||'Supabase · zuvor verifizierter Duration Strict-Proof';lot.durationStrictVerdict=c.durationStrictVerdict||null;lot.durationCacheHit=true;return true;
 }
 function compactDurationCache(lot){return {stakeTx:lot.stakeTx||null,durationAnchorTx:lot.durationAnchorTx||null,lastTopUpTx:lot?.topUps?.at?.(-1)?.tx||null,lockBaseTime:lot.lockBaseTime||lot.stakeTime||null,stakingContract:norm(lot?.staking?.contract_address||lot.counterparty||''),durationDays:lot.durationDays,lockDurationSeconds:lot.lockDurationSeconds,expiryTime:lot.expiryTime,lastLockedBlock:lot.lastLockedBlock??null,firstUnlockedBlock:lot.firstUnlockedBlock??null,implementationStable:lot.implementationStable??null,durationEvidence:lot.durationEvidence||null,durationSource:lot.durationSource||null,durationStrictVerdict:lot.durationStrictVerdict||null,proofMode:lot.durationProofMode||null,savedAt:new Date().toISOString()}}
-function isStoredEndStrictDurationCache(c,lot){
-  if(!c||c.proofMode!=='stored-end-position-strict')return false;
-  const cachedContract=norm(c.stakingContract||''),contract=lotContractAddress(lot);
-  const cachedStake=String(c.stakeTx||'').toLowerCase(),stake=String(lot?.stakeTx||'').toLowerCase();
-  return !!cachedContract&&cachedContract===norm(contract)&&!!cachedStake&&cachedStake===stake&&!!c.expiryTime&&Number.isFinite(Number(c.lockDurationSeconds));
-}
-
 function transferIdentity(t){const c=norm(t?.rawContract?.address);return t?.uniqueId||`${String(t?.hash||'').toLowerCase()}|${c}|${norm(t?.from)}|${norm(t?.to)}|${t?.rawContract?.value||t?.value||''}`}
 async function alchemyErc20Range(wallet,fromBlock,toBlock='latest'){
  const out=[];
@@ -5792,6 +5788,91 @@ function applyVerifiedManualDurationRule(lot){
   lot.lockEvidence={found:true,mode:'verified-manual-contract-rule',elapsedSeconds:sec,elapsedDays:Number(rule.days),unlockTime:lot.expiryTime,evidence:lot.durationEvidence,confidence:'strong',implementationStable:true};
   lot.durationManualVerifiedRule=true;
   return true;
+}
+
+
+// Exakt verifizierter historischer ON-CHAIN Contract-Proof fuer Legacy v$/VOW.
+// Quelle der Dauer ist NICHT eine Annahme: Beim Referenz-Stake revertiert die historische
+// Unstake-Simulation exakt eine Sekunde vor 367 Tagen mit "!Minimum Staking Period" und
+// ist im unmittelbar folgenden Block bei exakt 367 Tagen erfolgreich. Fuer jede neue
+// Position wird zusaetzlich geprueft, dass am konkreten Stake-/Top-up-Block derselbe
+// Contract-/Implementation-Fingerprint wie beim Referenz-Stake aktiv war und dass der
+// Wallet-Positions-State den exakten Startzeitpunkt plus mindestens ein Kernfeld schreibt.
+const VERIFIED_ONCHAIN_DURATION_RULES=new Map([
+  ['0x4857d369e18aba003ff6ec934cf046148df5d590',{
+    days:367,
+    label:'v$ / VOW (Legacy)',
+    referenceWallet:'0xea796a228b7c231298e217417fd5978556a9c27f',
+    referenceStakeTx:'0x0f0320b0da7d7df1678fe6de455879cffee8a5f10e0d77200c625333a7dfcd57',
+    referenceStakeBlock:43914121,
+    boundaryBeforeBlock:68525821,
+    boundaryAfterBlock:68525822,
+    boundaryBeforeTime:'2025-11-17T16:04:34.000Z',
+    boundaryAfterTime:'2025-11-17T16:04:35.000Z',
+    revertReason:'!Minimum Staking Period',
+    verifiedAt:'2026-08-31'
+  }]
+]);
+const VERIFIED_ONCHAIN_DURATION_REFERENCE_FP_CACHE=new Map();
+async function verifiedOnchainReferenceFingerprint(contract,rule){
+  const c=norm(contract);
+  if(VERIFIED_ONCHAIN_DURATION_REFERENCE_FP_CACHE.has(c))return VERIFIED_ONCHAIN_DURATION_REFERENCE_FP_CACHE.get(c);
+  const p=(async()=>{
+    let block=Number(rule?.referenceStakeBlock||0);
+    if(!Number.isInteger(block)||block<=1){
+      const tx=await txForDurationValidation(rule?.referenceStakeTx).catch(()=>null);
+      block=tx?.blockNumber?Number(BigInt(tx.blockNumber)):0;
+    }
+    if(!Number.isInteger(block)||block<=1)return null;
+    return await contractDurationFingerprintAt(c,block).catch(()=>null);
+  })();
+  VERIFIED_ONCHAIN_DURATION_REFERENCE_FP_CACHE.set(c,p);
+  const fp=await p;
+  if(!fp)VERIFIED_ONCHAIN_DURATION_REFERENCE_FP_CACHE.delete(c);
+  return fp;
+}
+async function applyVerifiedOnchainDurationRule(lot,label=''){
+  const contract=norm(lotContractAddress(lot)),rule=VERIFIED_ONCHAIN_DURATION_RULES.get(contract);
+  if(!rule)return false;
+  const wallet=norm(CURRENT_WALLET),stakeBlock=lotStakeBlock(lot),stakeTs=lotStakeTsSeconds(lot);
+  if(!ethers.isAddress(wallet)||!Number.isInteger(stakeBlock)||stakeBlock<=1||!Number.isFinite(stakeTs)||stakeTs<=0)return false;
+  try{
+    const [referenceFp,positionFp,targeted]=await Promise.all([
+      verifiedOnchainReferenceFingerprint(contract,rule),
+      contractDurationFingerprintAt(contract,stakeBlock).catch(()=>null),
+      lockDetectWalletStruct(contract,wallet,stakeBlock,stakeTs).catch(()=>null)
+    ]);
+    if(!referenceFp||!positionFp||!sameDurationFingerprint(referenceFp,positionFp)){
+      log(`Duration ${label}: ${safePairLabel(lot)} · verifizierte Legacy-v$/VOW-Referenz NICHT angewendet: Contract-/Implementation-Fingerprint am Positions-Block weicht vom Strict-Proof-Referenz-Stake ab oder ist nicht lesbar.`,'warn');
+      return false;
+    }
+    const startOffset=Number(targeted?.startRow?.offset??targeted?.timestampOffset),root=Number(targeted?.root);
+    const startTs=Number(targeted?.startRow?.stake?.timestamp||0);
+    const coreOffsets=[...new Set((targeted?.coreOffsets||[]).map(Number).filter(Number.isInteger))];
+    const changedOffsets=[...new Set((targeted?.changedAtStake||[]).map(x=>Number(x?.offset)).filter(Number.isInteger))];
+    const changedNonStart=changedOffsets.filter(x=>x!==startOffset&&coreOffsets.includes(x));
+    if(!targeted?.available||!Number.isInteger(root)||!Number.isInteger(startOffset)||Math.abs(startTs-stakeTs)>10||coreOffsets.length<2||changedNonStart.length<1){
+      log(`Duration ${label}: ${safePairLabel(lot)} · verifizierte Legacy-v$/VOW-Referenz NICHT angewendet: konkreter Wallet-Positions-State am Stake-/Top-up-Block entspricht dem Strict-Proof-Schema nicht belastbar.`,'warn');
+      return false;
+    }
+    const sec=Number(rule.days)*86400,endTs=stakeTs+sec;
+    lot.lockDurationSeconds=sec;
+    lot.durationDays=Number(rule.days);
+    lot.expiryTime=new Date(endTs*1000).toISOString();
+    lot.implementationStable=true;
+    lot.durationConfidence='strong';
+    lot.durationProofMode='verified-onchain-contract-boundary-position-state';
+    lot.durationSource=`Historischer Contract-Strict-Proof · on-chain Lock-Revert→Erfolg bei exakt ${rule.days} Tagen · positionsbezogener Fingerprint-/State-Abgleich`;
+    lot.durationEvidence=`Exakter Contract ${contract}: historischer Unstake-Grenzproof ${rule.boundaryBeforeBlock}→${rule.boundaryAfterBlock}, Revert "${rule.revertReason}" unmittelbar vor exakt ${rule.days} Tagen; konkrete Position: identischer Contract-/Implementation-Fingerprint am Block ${stakeBlock}, Wallet-Struct Root ${root}, Start-Offset ${startOffset}=${stakeTs}, geänderte Kernfelder [${changedNonStart.join(', ')}].`;
+    lot.durationStrictVerdict={cls:'ok',text:`Lockdauer ${rule.days} Tage aus historischem On-Chain Strict-Proof; konkrete Position per Contract-Fingerprint und Wallet-Positions-State validiert.`};
+    lot.lockEvidence={found:true,mode:'verified-onchain-contract-boundary-position-state',unlockTimestamp:endTs,unlockTime:lot.expiryTime,elapsedSeconds:sec,elapsedDays:Number(rule.days),evidence:lot.durationEvidence,confidence:'strong',implementationStable:true,reference:{wallet:rule.referenceWallet,stakeTx:rule.referenceStakeTx,beforeBlock:rule.boundaryBeforeBlock,afterBlock:rule.boundaryAfterBlock,revertReason:rule.revertReason},positionState:{root,startOffset,coreOffsets,changedNonStart,stakeBlock,stakeTimestamp:stakeTs}};
+    lot.duration_contract=contract;
+    log(`Duration ${label}: ${safePairLabel(lot)} · Legacy-v$/VOW Strict-Proof bestaetigt: ${rule.days} Tage · Referenz-Lockgrenze on-chain bewiesen · konkrete Position Fingerprint + Wallet-State validiert · Ablauf ${new Date(lot.expiryTime).toLocaleString('de-CH')}.`,'ok');
+    return true;
+  }catch(e){
+    log(`Duration ${label}: verifizierte Legacy-v$/VOW-Referenz konnte fuer diese Position nicht belastbar validiert werden (${String(e?.message||e).slice(0,180)}); Voll-Engine bleibt als Fallback aktiv.`,'warn');
+    return false;
+  }
 }
 
 function applyExpected367Evidence(lot,diag){
@@ -12255,143 +12336,58 @@ function applySharedDurationRuleToLot(lot,rule,validation){
   lot.durationCacheHit=true;lot.durationSharedRuleHit=true;return true;
 }
 
-async function applyStoredEndDirectFromPosition(lot,label=''){
-  // Phase 5.22: Der Legacy-v$/VOW-Contract speichert Start und individuelles Ende
-  // positionsbezogen im Wallet-Mapping. Dieser Read ist absichtlich NICHT von einem
-  // bereits geladenen Shared-/Cache-Proof abhängig: dieselbe automatische Struct-Erkennung
-  // wie in der bewährten Duration-Referenzengine wird direkt am konkreten Stake-Block benutzt.
-  const contract=lotContractAddress(lot),wallet=norm(CURRENT_WALLET),stakeBlock=lotStakeBlock(lot),stakeTs=lotStakeTsSeconds(lot);
-  if(!ethers.isAddress(contract)||!ethers.isAddress(wallet)||!Number.isInteger(stakeBlock)||stakeBlock<=1||!Number.isFinite(stakeTs))return false;
-  try{
-    const targeted=await lockDetectWalletStruct(contract,wallet,stakeBlock,stakeTs);
-    if(!targeted?.available||!targeted?.startRow?.stake?.timestamp)return false;
-    const startTs=Number(targeted.startRow.stake.timestamp);
-    if(Math.abs(startTs-stakeTs)>10)return false;
-    const ends=[...(targeted.storedFutureTimestampAtStake||[])].filter(x=>Number(x?.timestamp)>stakeTs).sort((a,b)=>Number(a.timestamp)-Number(b.timestamp));
-    if(!ends.length)return false;
-    const end=ends[0],endTs=Number(end.timestamp),sec=endTs-stakeTs;
-    if(!(sec>0)||sec>1000*86400)return false;
-    lot.expiryTime=new Date(endTs*1000).toISOString();
-    lot.lockDurationSeconds=sec;lot.durationDays=sec/86400;lot.durationConfidence='strong';
-    lot.durationSource='Contract-Storage · positionsbezogener gespeicherter End-/Unlock-Timestamp · Strict-Proof';
-    lot.durationEvidence=`Start-/End-Timestamp im selben Wallet-Mapping · Root ${targeted.root} · Start-Offset ${targeted.startRow.offset} · End-Offset ${end.offset}`;
-    lot.durationStrictVerdict={cls:'ok',text:`Ablauf direkt aus dem positionsbezogenen Contract-Storage gelesen (${new Date(endTs*1000).toLocaleString('de-CH')}).`};
-    lot.lockEvidence={found:true,mode:'duration-reference-stored-end-timestamp',unlockTimestamp:endTs,unlockTime:lot.expiryTime,elapsedSeconds:sec,elapsedDays:sec/86400,evidence:'Start-/End-Timestamp im selben Wallet-Mapping',confidence:'strong'};
-    lot.duration_contract=contract;
-    lot.durationProofMode='stored-end-position-strict';
-    log(`Duration ${label}: ${safePairLabel(lot)} · individuelles Contract-Ende direkt aus Positions-Storage erkannt: Root ${targeted.root}, Start-Offset ${targeted.startRow.offset}, End-Offset ${end.offset} · ${new Date(endTs*1000).toLocaleString('de-CH')}.`,'ok');
-    return true;
-  }catch(e){
-    log(`Duration ${label}: direkter positionsbezogener Stored-End-Read fehlgeschlagen (${String(e?.message||e).slice(0,180)}); normale Strict-Engine bleibt aktiv.`,'info');
-    return false;
-  }
-}
-
-async function applyStoredEndFromSharedStruct(lot,shared,label=''){
-  // Phase 5.20: Für bekannte Positions-Structs niemals eine feste Tageszahl als Ersatz
-  // verwenden. Der Contract speichert den individuellen End-/Unlock-Timestamp bereits beim
-  // Stake. Wir lesen Start + gespeichertes Ende positionsbezogen direkt am Stake-Block.
-  const contract=lotContractAddress(lot),wallet=norm(CURRENT_WALLET),stakeBlock=lotStakeBlock(lot),stakeTs=lotStakeTsSeconds(lot);
-  if(!ethers.isAddress(contract)||!ethers.isAddress(wallet)||!Number.isInteger(stakeBlock)||stakeBlock<=1||!Number.isFinite(stakeTs))return false;
-  const proof=await ensureSharedDurationStructProof(shared).catch(()=>null);
-  if(!proof||!Number.isInteger(Number(proof.root))||!Number.isInteger(Number(proof.startOffset))||!Array.isArray(proof.futureTimestampOffsets)||!proof.futureTimestampOffsets.length)return false;
-  const offsets=[...new Set([Number(proof.startOffset),...proof.futureTimestampOffsets.map(Number)].filter(Number.isInteger))].sort((a,b)=>a-b);
-  if(offsets.length<2)return false;
-  try{
-    const rows=await lockReadOffsets(contract,wallet,Number(proof.root),offsets,'0x'+stakeBlock.toString(16),stakeTs);
-    const start=rows.find(r=>r.offset===Number(proof.startOffset));
-    if(!start?.timestamp||Math.abs(Number(start.timestamp)-stakeTs)>10)return false;
-    const ends=rows.filter(r=>proof.futureTimestampOffsets.includes(r.offset)&&Number(r?.timestamp)>stakeTs).sort((a,b)=>Number(a.timestamp)-Number(b.timestamp));
-    if(!ends.length)return false;
-    const end=ends[0],endTs=Number(end.timestamp),sec=endTs-stakeTs;
-    if(!(sec>0)||sec>1000*86400)return false;
-    lot.expiryTime=new Date(endTs*1000).toISOString();
-    lot.lockDurationSeconds=sec;lot.durationDays=sec/86400;lot.durationConfidence='strong';
-    lot.durationSource='Contract-Storage · positionsbezogener gespeicherter End-/Unlock-Timestamp · Strict-Proof';
-    lot.durationEvidence=`Start-/End-Timestamp im selben Wallet-Mapping · Root ${proof.root} · Start-Offset ${proof.startOffset} · End-Offset ${end.offset}`;
-    lot.durationStrictVerdict={cls:'ok',text:`Ablauf direkt aus dem positionsbezogenen Contract-Storage gelesen (${new Date(endTs*1000).toLocaleString('de-CH')}).`};
-    lot.lockEvidence={found:true,mode:'duration-reference-stored-end-timestamp',unlockTimestamp:endTs,unlockTime:lot.expiryTime,elapsedSeconds:sec,elapsedDays:sec/86400,evidence:'Start-/End-Timestamp im selben Wallet-Mapping',confidence:'strong'};
-    lot.duration_contract=contract;
-    lot.durationProofMode='stored-end-position-strict';
-    log(`Duration ${label}: ${safePairLabel(lot)} · positionsbezogenes Contract-Ende direkt aus Storage gelesen: Root ${proof.root}, Start-Offset ${proof.startOffset}, End-Offset ${end.offset} · ${new Date(endTs*1000).toLocaleString('de-CH')}.`,'ok');
-    return true;
-  }catch(e){
-    log(`Duration ${label}: positionsbezogener Stored-End-Read fehlgeschlagen (${String(e?.message||e).slice(0,180)}); normale Strict-Engine bleibt aktiv.`,'info');
-    return false;
-  }
-}
-
 async function resolveDurationStrictOnce(lot,label=''){
   const cacheKey=durationCacheKeyForLot(lot);
   const contract=lotContractAddress(lot);
-  const STORED_END_FIRST_CONTRACTS=new Set(['0x4857d369e18aba003ff6ec934cf046148df5d590']);
-  const storedEndFirst=STORED_END_FIRST_CONTRACTS.has(norm(contract));
 
-  // Phase 5.20: Der alte v$/VOW-Contract speichert ein individuelles Positionsende.
-  // Deshalb dürfen weder ein alter positionsbezogener Duration-Cache noch die contractweite
-  // Shared-Dauer zuerst gewinnen. Zuerst wird Start + gespeichertes Ende aus DEMSELBEN Struct
-  // gelesen. Nur wenn dieser positionsbezogene Strict-Read nicht möglich ist, läuft die
-  // bestehende allgemeine Strict-Engine weiter; es wird keine feste Tageszahl erfunden.
-  if(storedEndFirst){
-    log(`Duration ${label}: ${safePairLabel(lot)} · Legacy-v$/VOW: direkter Positions-Storage-Read vor JEDEM Duration-/Shared-/Negativcache.`,'info');
-    if(await applyStoredEndDirectFromPosition(lot,label)){
-      await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
-      return {proven:true,cacheHit:false,sharedRule:false,storedEndTimestamp:true,directPositionStruct:true};
-    }
-  }else{
-    const cached=await loadTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration);
-    if(applyDurationCacheToLot(lot,cached)){log(`Duration ${label}: ${safePairLabel(lot)} · Strict-Proof aus Supabase-Cache verwendet.`,'ok');return {proven:true,cacheHit:true,sharedRule:false}}
+  // Phase 5.23: Positive, positionsbezogene Strict-Proofs muessen IMMER vor einem
+  // Negativcache gewinnen. Phase 5.20-5.22 hatte fuer 0x4857…d590 bereits historisch
+  // verifizierte Duration-Caches und den Shared-Contract-Proof absichtlich uebersprungen.
+  // Das war die Regression hinter den wieder offenen Lifecycles (u.a. 17652/17449).
+  const cached=await loadTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration);
+  if(applyDurationCacheToLot(lot,cached)){
+    log(`Duration ${label}: ${safePairLabel(lot)} · positionsbezogener Strict-Proof aus Supabase-Cache verwendet.`,'ok');
+    return {proven:true,cacheHit:true,sharedRule:false};
   }
 
-  // Phase 5.22: Falls der Live-Storage-Read des Legacy-v$/VOW-Contracts temporaer
-  // scheitert, darf ausschliesslich ein zuvor von genau diesem positionsbezogenen
-  // Stored-End-Strict-Proof erzeugter Cache wiederverwendet werden. Alte/generische
-  // Duration-Caches bleiben fuer diesen Contract absichtlich ausgeschlossen.
-  if(storedEndFirst){
-    const storedEndCached=await loadTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration);
-    if(isStoredEndStrictDurationCache(storedEndCached,lot)&&applyDurationCacheToLot(lot,storedEndCached)){
-      lot.durationProofMode='stored-end-position-strict';
-      log(`Duration ${label}: ${safePairLabel(lot)} · Live-Stored-End-Read nicht verfuegbar; zuvor positionsbezogen bewiesener Stored-End-Strict-Cache verwendet.`,'ok');
-      return {proven:true,cacheHit:true,sharedRule:false,storedEndTimestamp:true,storedEndStrictCache:true};
-    }
-  }
-
+  // Zweite Prioritaet: dauerhafter contractweiter Strict-Proof. Er wird NICHT blind
+  // uebernommen, sondern fuer genau diese Position mit historischem Contract-/Implementation-
+  // Fingerprint und dem bewiesenen Wallet-Positions-State am Stake-/Top-up-Block validiert.
   const shared=await loadSharedStrictDurationRule(contract);
   if(shared){
-    if(storedEndFirst){
-      log(`Duration ${label}: ${safePairLabel(lot)} · Legacy-v$/VOW: positionsbezogener Stored-End-Read hat Vorrang vor Cache und contractweiter Shared-Dauer.`,'info');
-      if(await applyStoredEndFromSharedStruct(lot,shared,label)){
-        await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
-        return {proven:true,cacheHit:false,sharedRule:true,storedEndTimestamp:true};
-      }
-    }
     const check=await validateSharedDurationRule(lot,shared);
-    if(check.ok&&!storedEndFirst){
+    if(check.ok){
       applySharedDurationRuleToLot(lot,shared,check);
       await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),lot.firstUnlockedBlock||0);
-      log(`Duration ${label}: ${safePairLabel(lot)} · Shared Strict-Proof ${shared.durationDays.toLocaleString('de-CH',{maximumFractionDigits:8})} Tage · positionsbezogene State-/Core-Feld-Validierung statt Voll-Binärsuche.`,'ok');
+      log(`Duration ${label}: ${safePairLabel(lot)} · Shared Strict-Proof ${shared.durationDays.toLocaleString('de-CH',{maximumFractionDigits:8})} Tage · positionsbezogene State-/Core-Feld-Validierung.`,'ok');
       return {proven:true,cacheHit:true,sharedRule:true};
     }
-    if(!check.ok){
-      log(`Duration ${label}: Shared Strict-Proof für ${safePairLabel(lot)} nicht positionsgenau bestätigt (${check.reason}); prüfe den im bekannten Positions-Struct gespeicherten End-/Unlock-Timestamp direkt on-chain.`,'info');
-      if(!storedEndFirst&&await applyStoredEndFromSharedStruct(lot,shared,label)){
-        await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
-        return {proven:true,cacheHit:false,sharedRule:true,storedEndTimestamp:true};
-      }
-    }
+    log(`Duration ${label}: Shared Strict-Proof fuer ${safePairLabel(lot)} nicht positionsgenau bestaetigt (${check.reason}); pruefe verifizierte exakte Contract-Referenz bzw. Voll-Engine.`,'info');
   }
 
-  // Manuelle Contract-Regeln bleiben nur für Contract-Generationen bestehen, bei denen kein
-  // positionsbezogener gespeicherter End-Timestamp als Strict-Proof verfügbar ist. Der alte
-  // v$/VOW-Contract 0x4857…d590 ist ausdrücklich NICHT mehr in dieser Liste.
+  // Der Legacy-v$/VOW-Contract 0x4857…d590 besitzt KEINEN belastbar nachgewiesenen
+  // individuellen End-Timestamp im Wallet-Struct. Die fruehere Stored-End-Annahme war falsch.
+  // Fuer exakt diesen Contract existiert dagegen ein historischer ON-CHAIN Strict-Proof:
+  // Referenz-Wallet/Stake 15.11.2024 17:04:35; Unstake-Simulation 17.11.2025 17:04:34
+  // revertiert mit "!Minimum Staking Period", der unmittelbar folgende Block um 17:04:35
+  // ist erfolgreich = exakt 367 Tage. Vor Anwendung wird die konkrete Position nochmals
+  // gegen den Referenz-Fingerprint und ihren am Stake-/Top-up-Block geschriebenen Wallet-State
+  // validiert. Damit ist dies keine Schaetzung und keine pauschale 367-Tage-Annahme.
+  const verifiedHistorical=await applyVerifiedOnchainDurationRule(lot,label);
+  if(verifiedHistorical){
+    await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
+    return {proven:true,cacheHit:false,sharedRule:false,verifiedOnchainContractRule:true};
+  }
+
+  // Bestehende fachlich verifizierte Regeln anderer exakter Contract-Generationen.
   if(applyVerifiedManualDurationRule(lot)){
     await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),0);
     log(`Duration ${label}: ${safePairLabel(lot)} · verifizierte Contract-Regel ${lot.durationDays} Tage angewendet · Ablauf ${new Date(lot.expiryTime).toLocaleString('de-CH')}.`,'ok');
     return {proven:true,cacheHit:false,sharedRule:false,manualContractRule:true};
   }
 
-  // Bevor ein früherer Negativbefund greift, prüfen wir explizite on-chain Endzeit-/
-  // Duration-Getter des verifizierten Staking-Contracts. Das ist insbesondere für neue
+  // Bevor ein frueherer Negativbefund greift, pruefen wir explizite on-chain Endzeit-/
+  // Duration-Getter des verifizierten Staking-Contracts. Das ist insbesondere fuer neue
   // Staking-Generationen wichtig, deren Storage-Struktur die Referenzengine noch nicht kennt.
   const directGetter=await resolveDurationFromDirectReadProbes(lot);
   if(directGetter?.proven){
@@ -12400,22 +12396,20 @@ async function resolveDurationStrictOnce(lot,label=''){
     return {proven:true,cacheHit:false,sharedRule:false,directGetter:true};
   }
 
-  // Für neue Contract-Generationen mit unbekannter ABI prüfen wir ausschließlich die eng
-  // als Dispatcher erkannten Selector-Kandidaten per eth_call mit 0 bzw. 1 address-Argument.
-  // Das ist eine reine Read-Simulation und erzeugt niemals eine Chain-Transaktion. Ergebnisse
-  // werden nur diagnostiziert; unbekannte Semantik wird nicht automatisch zur Lockdauer erklärt.
+  // Fuer neue Contract-Generationen mit unbekannter ABI pruefen wir ausschliesslich die eng
+  // als Dispatcher erkannten Selector-Kandidaten per eth_call. Unbekannte Semantik wird
+  // weiterhin niemals automatisch zur Lockdauer erklaert.
   const unknownDiag=await probeUnknownDispatcherReads(lot,norm(CURRENT_WALLET)).catch(e=>{
     log(`Duration ${label}: unbekannte Dispatcher-Read-Diagnose fehlgeschlagen: ${String(e?.message||e).slice(0,180)}.`,'info');
     return null;
   });
   if(unknownDiag&&applyExpected367Evidence(lot,unknownDiag)){
-    log(`Duration ${label}: ${safePairLabel(lot)} · 367-Tage-Hypothese on-chain gestützt: Implementation enthält exakt 31'708'800 Sekunden und ein positionsartiger Wallet-Datensatz wurde gefunden. Erwarteter Ablauf ab Duration-Anker: ${new Date(lot.expectedExpiryTime).toLocaleString('de-CH')} · noch KEIN Strict-Proof.`,'warn');
+    log(`Duration ${label}: ${safePairLabel(lot)} · 367-Tage-Hypothese on-chain gestuetzt: Implementation enthaelt exakt 31'708'800 Sekunden und ein positionsartiger Wallet-Datensatz wurde gefunden. Erwarteter Ablauf ab Duration-Anker: ${new Date(lot.expectedExpiryTime).toLocaleString('de-CH')} · noch KEIN Strict-Proof.`,'warn');
   }
 
-  // Ein bereits vollständig geprüfter, aber nicht streng beweisbarer Duration-Fall soll
-  // bei öffentlichen Lookup-Klicks nicht immer wieder dieselbe teure Referenzengine starten.
-  // Der Negativcache beweist KEINE Lockdauer und macht den Lifecycle NICHT verifiziert;
-  // er verhindert lediglich für 24 h eine identische Wiederholung desselben Volltests.
+  // Ein bereits vollstaendig gepruefter, aber nicht streng beweisbarer Duration-Fall soll
+  // nicht bei jedem Lookup dieselbe teure Referenzengine starten. Der Negativcache beweist
+  // KEINE Lockdauer. Wichtig: er kommt erst NACH allen positiven Proof-Pfaden oben.
   const inconclusiveKey=`${cacheKey}:inconclusive-v1`;
   const inconclusive=await loadTechnicalProcessCache(DISCOVERY_PROCESS.wallet,inconclusiveKey,TECH_CACHE_VERSIONS.duration).catch(()=>null);
   const inconclusiveAge=inconclusive?.savedAt?Date.now()-Date.parse(inconclusive.savedAt):Infinity;
@@ -12423,20 +12417,18 @@ async function resolveDurationStrictOnce(lot,label=''){
   const currentProbeFingerprint=unknownSelectorDiagFingerprint();
   const sameProbeSet=String(inconclusive?.probeFingerprint||'')===currentProbeFingerprint;
   if(inconclusive&&sameContract&&!sameProbeSet){
-    log(`Duration ${label}: alter 24-h-Negativcache für ${safePairLabel(lot)} verworfen, weil sich die Endzeit-/Duration-Probe-Liste geändert hat. Neue Contract-Getter werden geprüft.`,'info');
+    log(`Duration ${label}: alter 24-h-Negativcache fuer ${safePairLabel(lot)} verworfen, weil sich die Endzeit-/Duration-Probe-Liste geaendert hat. Neue Contract-Getter werden geprueft.`,'info');
   }
   if(inconclusive&&sameContract&&sameProbeSet&&inconclusiveAge>=0&&inconclusiveAge<24*60*60*1000){
     const ageMin=Math.floor(inconclusiveAge/60000);
     lot.durationDays=null;lot.lockDurationSeconds=null;lot.expiryTime=null;
     lot.durationSource=null;lot.durationEvidence=null;lot.durationConfidence=null;
-    // expectedDuration* bleibt bewusst erhalten: es ist nur eine sichtbar markierte Hypothese,
-    // kein Strict-Proof und beeinflusst den Lifecycle-Status nicht.
     lot.durationInconclusiveCacheHit=true;
-    log(`Duration ${label}: ${safePairLabel(lot)} · letzter vollständiger Strict-Proof-Versuch blieb ohne belastbare Lockdauer (${ageMin} min alt). 24-h-Negativcache verwendet; Referenzengine nicht erneut gestartet.`,'warn');
+    log(`Duration ${label}: ${safePairLabel(lot)} · letzter vollstaendiger Strict-Proof-Versuch blieb ohne belastbare Lockdauer (${ageMin} min alt). 24-h-Negativcache verwendet; Referenzengine nicht erneut gestartet.`,'warn');
     return {proven:false,cacheHit:true,sharedRule:false,inconclusiveCache:true};
   }
 
-  log(`Duration ${label}: ${safePairLabel(lot)} · vollständige Referenzengine …`);
+  log(`Duration ${label}: ${safePairLabel(lot)} · vollstaendige Referenzengine …`);
   await resolveLotContractTiming(lot,null);
   if(lot.expiryTime){
     await saveTechnicalProcessCache(DISCOVERY_PROCESS.wallet,cacheKey,TECH_CACHE_VERSIONS.duration,compactDurationCache(lot),lot.firstUnlockedBlock||0);
@@ -12448,7 +12440,7 @@ async function resolveDurationStrictOnce(lot,label=''){
     durationAnchorTx:lot.durationAnchorTx||lot?.topUps?.at?.(-1)?.tx||null,
     stakingContract:norm(contract),
     pairLabel:safePairLabel(lot),
-    reason:lot?.lockEvidence?.reason||lot?.durationReference?.verdict?.text||'Vollständige Referenzengine ohne belastbaren Strict-Proof',
+    reason:lot?.lockEvidence?.reason||lot?.durationReference?.verdict?.text||'Vollstaendige Referenzengine ohne belastbaren Strict-Proof',
     probeFingerprint:unknownSelectorDiagFingerprint(),
     savedAt:new Date().toISOString()
   },0).catch(()=>false);
