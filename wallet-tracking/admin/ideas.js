@@ -3,12 +3,19 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260918-005258";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 00:52:58 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260918-020345";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 02:03:45 CEST";
 
 const ADMIN_IDEAS = [
   {
-    status: "open",
+    status: "in_progress",
+    category: "Admin / Diagnose",
+    priority: "high",
+    title: "Systemübersicht · Funktionsbaum und Ladezeitpunkte",
+    desc: `STATUS: In Arbeit. Admin-Übersicht mit Menü → Tab → Untertab als Baum. Pro Bereich werden normaler App-Start, erster Start des Tages, Öffnen des Tabs und manuelle Aktualisierung sichtbar. Klick auf eine Zeile zeigt die einzelnen Datenbestände sowie Browser-Cache, Supabase und On-chain/API-Quelle. Nächster Ausbau: tatsächliche Laufdiagnose/Requests/Rows/Bytes mitschreiben und Soll gegen letzten Ist-Lauf vergleichen.`
+  },
+  {
+    status: "in_progress",
     category: "Performance / Skalierung",
     priority: "high",
     title: "PRIORITÄT NÄCHSTER SCHRITT · Browser-Cache + DATA_VERSIONS + Delta-Synchronisation",

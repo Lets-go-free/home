@@ -1287,10 +1287,96 @@ function showAdminTab(name) {
   if (name === "defiprojects") loadAdminDefiProjects();
   if (name === "dex") loadAdminDexConfigs();
   if (name === "hardcoding") renderHardcodingAudit();
+  if (name === "system") renderAdminSystemOverview();
   if (name === "ideas" && typeof window.renderAdminIdeas === "function") window.renderAdminIdeas();
   if (name === "documentation") renderAdminDocumentation();
 }
 
+
+
+const ADMIN_SYSTEM_TREE = [
+  {id:"support",level:0,label:"💬 Support & Info",status:"planning",start:"DB Basis",daily:"–",open:"–",manual:"–",details:[]},
+  {id:"chat",level:1,label:"Chat",status:"planning",start:"DB + Realtime",daily:"–",open:"DB",manual:"DB",details:[
+    ["Nachrichten","–","Supabase · Chat-Tabellen","–","Login/Tab öffnen/Realtime"],["Ungelesen-Zähler","–","Supabase","–","App-Start"]]},
+  {id:"help",level:1,label:"Hilfe",status:"planning",start:"Datei/DOM",daily:"–",open:"lokal",manual:"–",details:[["Allgemeine Hilfe","JS-Modul","–","–","Tab öffnen"]]},
+
+  {id:"walletsgrp",level:0,label:"🧰 Wallets & Token",status:"planning",start:"DB",daily:"–",open:"Cache/DB",manual:"je Funktion",details:[]},
+  {id:"wallets",level:1,label:"Meine Wallets",status:"planning",start:"DB",daily:"–",open:"bereits geladen",manual:"DB",details:[["Wallet-Konfiguration","RAM nach Login","Supabase · Wallet-Daten","–","App-Start"]]},
+  {id:"predefined",level:1,label:"Vordefinierte Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB neu",details:[["Vordefinierte Token","RAM","Supabase · predefined_tokens","–","App-Start; manuell neu laden"]]},
+  {id:"custom",level:1,label:"Eigene sichere Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB",details:[["User-Token","RAM","Supabase · userbezogene Token","–","App-Start"]]},
+  {id:"discovery",level:1,label:"🔍 Entdecken",status:"planning",start:"DB-Cache",daily:"–",open:"Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Cache am Start; Scan nur manuell"]]},
+
+  {id:"analysis",level:0,label:"📊 Übersicht & Analyse",status:"in_progress",start:"Cache + DB",daily:"Preise",open:"Cache",manual:"je Funktion",details:[]},
+  {id:"tracking",level:1,label:"Wallet-Tracking · Token-Übersicht",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"gespeicherter Stand",daily:"Preise frisch",open:"Cache",manual:"Bestände + Projekte + NFTs",details:[
+    ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain","Start: nur gespeicherter Stand; On-chain erst Daten aktualisieren"],
+    ["Aktuelle Kurse","Tages-Snapshot/RAM","Supabase Price Snapshots","Preis-APIs + DEX/Pool RPC","Beim Start täglich prüfen; falls Tagescache fehlt frisch ermitteln"],
+    ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Nicht automatisch beim Reload; manuelle Datenaktualisierung"]]},
+  {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"planning",start:"DB-Snapshots",daily:"–",open:"RAM/DB",manual:"historisch",details:[["Snapshots","RAM","Supabase Snapshots","–","App-Start lädt gespeicherte Snapshots"],["Historische Bewertung","Cache","Supabase Preis-/LP-Historie","Archive RPC/API bei Bedarf","Stichtagsberechnung"]]},
+  {id:"fees",level:1,label:"💸 Gebühren",status:"planning",start:"DB-Cache",daily:"–",open:"Cache",manual:"Delta/API",details:[["Gebührenhistorie","RAM","Supabase Fee Cache","Routescan/NodeReal/Blockscout etc.","Gespeichert anzeigen; Aktualisierung manuell"]]},
+  {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"DB-Cache",daily:"kein Fresh-Load",open:"Cache",manual:"On-chain/API",details:[["NFT-Bestand","RAM","Supabase NFT Cache","Chain-spezifische NFT Quellen/RPC","Cache am Start; On-chain über Daten aktualisieren"]]},
+  {id:"approvals",level:1,label:"🔓 Freigaben",status:"planning",start:"–",daily:"–",open:"bei Auswahl",manual:"On-chain/API",details:[["Token-Freigaben","–","–","Alchemy/RPC je unterstützter Chain","Spezialfunktion; nicht beim App-Start"]]},
+
+  {id:"projects",level:0,label:"🏦 DeFi-Projekte",status:"in_progress",start:"Konfig DB",daily:"Preise",open:"Lazy",manual:"projektbezogen",details:[]},
+  {id:"tln",level:1,label:"TLN / VOW",status:"in_progress",start:"nicht geladen",daily:"über zentrale Preise",open:"Lazy + Projekt-Autoload",manual:"projektbezogen",details:[]},
+  {id:"tln-overview",level:2,label:"Übersicht",status:"in_progress",start:"–",daily:"Preis-Tagescache",open:"DB + Preis-Cache",manual:"Preise",details:[["Token/Pool-Konfiguration","–/RAM","Supabase Projekt-Konfiguration","–","TLN/VOW erstmals öffnen"],["Aktuelle Preise/Pools","Tagescache","Supabase Current Price Snapshot","BSC/ETH Pool-RPC","Täglich über zentrale Preislogik"]]},
+  {id:"tln-prices",level:2,label:"Kurse und Pools",status:"in_progress",start:"–",daily:"Preise",open:"Cache + ggf. Projekt-Autoload",manual:"RPC",details:[["LP/Pool-Daten","Projektcache","Supabase LP Cache","BSC/ETH RPC","Beim Öffnen kann maybeAutoRefreshProject Tagesstatus prüfen"]]},
+  {id:"tln-staking",level:2,label:"Staking/Rewards",status:"in_progress",start:"–",daily:"–",open:"Discovery-Cache",manual:"Discovery/RPC",details:[["Staking-Positionen/Rewards","Browser/DB Cache je Teilbereich","Supabase TLN/VOW Caches","BSC/ETH RPC","Lazy beim Projekt; Aktualisierung/Discovery gezielt"]]},
+  {id:"tln-loans",level:2,label:"Loans",status:"in_progress",start:"–",daily:"–",open:"Discovery-Cache",manual:"Discovery/RPC",details:[["Loans/Rebounds","Cache","Supabase/Discovery-Daten","BSC RPC","Nicht Teil des normalen App-Starts"]]},
+  {id:"tln-rewards",level:2,label:"Rewards Summary",status:"in_progress",start:"–",daily:"–",open:"Cache",manual:"Discovery",details:[["Reward Summary","Cache","Supabase/Discovery Cache","BSC/ETH bei Discovery","Projekt-Tab"]]},
+  {id:"tln-referral",level:2,label:"Referral Rewards",status:"in_progress",start:"–",daily:"–",open:"Cache",manual:"Discovery",details:[["Referral Rewards","Cache","Supabase/Discovery Cache","BSC/ETH bei Discovery","Projekt-Tab"]]},
+  {id:"tln-bonus",level:2,label:"Bonus-Rewards",status:"in_progress",start:"–",daily:"–",open:"Cache",manual:"Discovery",details:[["Bonus Rewards","Cache","Supabase/Discovery Cache","BSC/ETH bei Discovery","Projekt-Tab"]]},
+  {id:"tln-team",level:2,label:"Team",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"–",daily:"–",open:"DB/Graph-Cache",manual:"Delta/RPC",details:[["SmartNode Team-Graph","noch nicht zentral auf neuen Browsercache migriert","Supabase globaler TLN Graph","BSC Registry/RPC","Nächster Cache-Migrationsbereich nach DAO1"]]},
+  {id:"tln-admin",level:2,label:"Admin · Contracts",status:"planning",start:"–",daily:"–",open:"DB/Cache",manual:"Discovery",details:[["Contract Registry/Prüffälle","–","Supabase","BSC/ETH RPC bei Discovery","Nur Admin"]]},
+  {id:"tln-help",level:2,label:"Hilfe",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[["TLN/VOW Hilfe","JS-Modul","–","–","Tab öffnen"]]},
+  {id:"tln-lpold",level:2,label:"Liquidity Pools_old",status:"planning",start:"–",daily:"–",open:"Cache/DB",manual:"RPC",details:[["Legacy LP-Ansicht","Cache","Supabase LP Cache","BSC/ETH RPC","Legacy-Bereich"]]},
+
+  {id:"dao",level:1,label:"DAO1",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"nur Mount",daily:"–",open:"Lazy DB",manual:"projektbezogen",details:[["Projekt-Basis","DOM Mount","Supabase erst bei ensureLoaded","–","App-Start mountet nur; refreshConfig erst beim Öffnen"]]},
+  {id:"dao-overview",level:2,label:"Übersicht",status:"in_progress",start:"–",daily:"–",open:"DB/RAM",manual:"Projektrefresh",details:[["DAO1 Übersicht/Bot-Summen","RAM nach Lazy Load","Supabase DAO1 Caches","Apertum bei Aktualisierung","Erst beim Öffnen DAO1"]]},
+  {id:"dao-tx",level:2,label:"Transaktionen",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Apertum Transaktionshistorie","RAM","Supabase zentrale Historie/Asset-Flows","Apertum RPC/Explorer","Wallet-Wechsel Cache; Daten aktualisieren lädt neue Chain-Daten"]]},
+  {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","RAM","Supabase Claim-/Tx-Cache","Apertum","Lazy; Aktualisierung reichert neue Claims an"]]},
+  {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","RAM","Supabase Tx/Flow Cache","Apertum","Lazy; nur relevantes DAO1 Referral-Wallet"]]},
+  {id:"dao-team",level:2,label:"Team",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"–",daily:"–",open:"IndexedDB + Version",manual:"Delta/Scan",details:[
+    ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei Scan","Subtree aus IDB; DATA_VERSIONS Registry als Freshness-Gate"],
+    ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Kleiner Versionscheck; Migration 057 verbindet DAO1 Writer mit Registry"],
+    ["Partner-Botdetails","RAM/Cache","Supabase NFT/Ownership Caches","Apertum on-demand","Details/Anreicherung bei Bedarf"]]},
+  {id:"dao-lp",level:2,label:"Liquidity Pools",status:"in_progress",start:"–",daily:"–",open:"DB/Cache",manual:"RPC",details:[["DAO1 LP-Positionen","LP Cache","Supabase LP Cache","Apertum RPC","Beim Untertab öffnen renderProjectLpTab"]]},
+  {id:"dao-config",level:2,label:"Konfiguration",status:"planning",start:"–",daily:"–",open:"bereits Lazy geladen",manual:"DB",details:[["Miner/Projekt-NFT/Konfiguration","RAM","Supabase DAO1 Tabellen","–","DAO1 ensureLoaded/refreshConfig"]]},
+  {id:"dao-help",level:2,label:"Hilfe",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[["DAO1 Hilfe","JS-Modul","–","–","Tab öffnen"]]},
+
+  {id:"admin",level:0,label:"⚙️ Admin-Bereich",status:"in_progress",start:"Admin-Prüfung",daily:"–",open:"on demand",manual:"DB",details:[]},
+  {id:"admin-token",level:1,label:"Eigene sichere Token",status:"planning",start:"–",daily:"–",open:"DB",manual:"DB",details:[]},
+  {id:"admin-chains",level:1,label:"⛓️ Chains",status:"planning",start:"Chain-Konfig DB",daily:"–",open:"DB",manual:"DB",details:[["Chain-Konfiguration","RAM","Supabase public.chains","–","Grundkonfiguration wird beim Login geladen; Editor on demand"]]},
+  {id:"admin-defi",level:1,label:"🏦 DeFi-Projekte",status:"planning",start:"Projekt-Konfig DB",daily:"–",open:"DB",manual:"DB",details:[]},
+  {id:"admin-dex",level:1,label:"🔄 DEX",status:"planning",start:"–",daily:"–",open:"DB",manual:"DB",details:[]},
+  {id:"admin-hard",level:1,label:"🧪 Hardcoding-Audit",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[]},
+  {id:"admin-system",level:1,label:"🗺️ Systemübersicht",status:"in_progress",idea:"Systemübersicht · Funktionsbaum",start:"–",daily:"–",open:"lokal",manual:"–",details:[["Funktions-/Ladebaum","JS Definition","–","–","Admin-Tab öffnen; Status mit Ideen/TODOs verknüpft"]]},
+  {id:"admin-ideas",level:1,label:"💡 Ideen / Umbau",status:"in_progress",start:"JS geladen",daily:"–",open:"lokal",manual:"–",details:[["Projekt-TODOs","admin/ideas.js","–","–","Datei wird mit Cache-Buster geladen"]]},
+  {id:"admin-doc",level:1,label:"📚 Dokumentation",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[]}
+];
+
+let adminSystemSelectedId="dao-team";
+function adminSystemIdeaStatus(row){
+  if(!row.idea||!Array.isArray(window.ADMIN_IDEAS)&&typeof ADMIN_IDEAS==="undefined")return row.status||"planning";
+  const list=(typeof ADMIN_IDEAS!=="undefined"?ADMIN_IDEAS:[]).filter(x=>`${x.title} ${x.desc}`.toLowerCase().includes(String(row.idea).toLowerCase()));
+  if(!list.length)return row.status||"planning";
+  if(list.some(x=>x.status==="error"))return "error";
+  if(list.some(x=>["in_progress","clarifying","paused"].includes(x.status)))return "in_progress";
+  if(list.every(x=>x.status==="done"))return "done";
+  return "planning";
+}
+function adminSystemStatusMeta(status){
+  return ({done:["🟢","Erledigt"],in_progress:["🟡","In Arbeit"],error:["🔴","Fehlerhaft"],planning:["⚪","In Planung"]})[status]||["⚪","In Planung"];
+}
+function renderAdminSystemOverview(){
+  const host=document.getElementById("adminSystemOverview");if(!host||!isAdmin)return;
+  const selected=ADMIN_SYSTEM_TREE.find(x=>x.id===adminSystemSelectedId)||ADMIN_SYSTEM_TREE.find(x=>x.details?.length);
+  const rows=ADMIN_SYSTEM_TREE.map(r=>{const st=adminSystemIdeaStatus(r),m=adminSystemStatusMeta(st);return `<tr class="wt-system-row${r.id===selected?.id?' selected':''}" onclick="selectAdminSystemRow('${escapeAttr(r.id)}')"><td style="padding-left:${12+r.level*24}px;white-space:nowrap">${r.level?'<span style="color:var(--muted)">↳</span> ':''}<strong>${escapeAttr(r.label)}</strong></td><td style="white-space:nowrap" title="${m[1]}">${m[0]} ${m[1]}</td><td>${escapeAttr(r.start||'–')}</td><td>${escapeAttr(r.daily||'–')}</td><td>${escapeAttr(r.open||'–')}</td><td>${escapeAttr(r.manual||'–')}</td></tr>`}).join("");
+  const detailRows=(selected?.details||[]).map(d=>`<tr><td><strong>${escapeAttr(d[0])}</strong></td><td>${escapeAttr(d[1]||'–')}</td><td>${escapeAttr(d[2]||'–')}</td><td>${escapeAttr(d[3]||'–')}</td><td>${escapeAttr(d[4]||'–')}</td></tr>`).join("");
+  host.innerHTML=`<div class="custom-token-card" style="margin-bottom:14px"><div style="display:flex;gap:16px;flex-wrap:wrap"><span>🟢 erledigt</span><span>🟡 in Arbeit</span><span>🔴 fehlerhaft</span><span>⚪ in Planung</span></div><div class="meta" style="margin-top:7px">Status wird, wo verknüpft, aus <code>admin/ideas.js</code> abgeleitet. Ladezeitpunkte bilden den aktuell geprüften Codepfad ab.</div></div><div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1120px"><thead><tr><th>Bereich / Baum</th><th>Status</th><th>Normaler App-Start</th><th>1. Start am Tag</th><th>Tab / Bereich öffnen</th><th>Manuell aktualisieren</th></tr></thead><tbody>${rows}</tbody></table></div><div class="custom-token-card" style="margin-top:16px"><h3 style="margin-top:0">Datenquellen · ${escapeAttr(selected?.label||'–')}</h3>${detailRows?`<div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1050px"><thead><tr><th>Datenbestand</th><th>Browser / lokaler Cache</th><th>Supabase / DB</th><th>On-chain / API</th><th>Ladezeitpunkt / Auslöser</th></tr></thead><tbody>${detailRows}</tbody></table></div>`:`<div class="note">Für diesen Gruppeneintrag gibt es keine eigenen Daten. Wähle einen Tab oder Untertab.</div>`}</div>`;
+}
+function selectAdminSystemRow(id){adminSystemSelectedId=id;renderAdminSystemOverview();}
+window.renderAdminSystemOverview=renderAdminSystemOverview;
+window.selectAdminSystemRow=selectAdminSystemRow;
 
 
 function renderAdminDocumentation(){
