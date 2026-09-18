@@ -3,8 +3,9 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260918-191822";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 19:18:22 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260918-192353";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 19:23:53 CEST";
+// Phase 5.12: index.html Cache-Buster fuer discovery.js und ideas.js auf aktuellen Build angehoben, damit Browser/CDN die tatsaechlich geaenderte Team-Logik laden. Staking-Discovery unveraendert.
 // Phase 5.11: Cache-Restore laedt verifizierte Identities neuer SmartNode-Registries separat, rekonstruiert deren join(address)-Parent-Kanten vor dem Forest-Build (Fix fuer fehlenden Partner Ernie / TLN-ID 990000017795). Alias-Loader akzeptiert kompatible wallet-private Response-Shapes, damit bestehende verschluesselte Namen wieder erscheinen. Staking-Discovery unveraendert. Systemuebersicht geprueft.
 // Phase 5.09: TLN-Team Cache-Restore rekonstruiert Parent-Kanten neuer SmartNode-Registries aus persistierter join(address)-Evidenz; Partial-Lifecycle darf verifizierten Cache nicht mehr degradieren; Alias-Leerantwort erhält einen einmaligen sicheren Re-Read. Staking-Discovery fachlich unverändert. Systemübersicht geprüft: Team-Datenquelle ergänzt um Registry-Identity + join-Tx beim Restore.
 // Phase 5.07: TLN-Team-Anzeige repariert: userbezogene Partnernamen werden rueckwaertskompatibel aus id:/wallet: sowie historischen nackten Referenzen gelesen; Details ist auch fuer eigene Wallets verfuegbar; erkannte, aber wegen offener Duration noch nicht voll verifizierte Partner-Stakings werden persistent gespeichert und beim Reload wieder gemergt. Systemübersicht geprüft: Datenquelle/Ladezeitpunkt unverändert.
