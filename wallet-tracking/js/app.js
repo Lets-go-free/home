@@ -48,7 +48,7 @@ const MAIN_SECTION_TABS={
   overview:["tracking","tax","fees","nfts","approvals"],
   wallets:["wallets","predefined","custom","discovery"],
   support:["chat","help"],
-  admin:["admin"], projects:["tlnvow","dao1"]
+  admin:["admin"], projects:["projects-overview","tlnvow","dao1"]
 };
 function mainSectionForTab(name){
   for(const [section,tabs] of Object.entries(MAIN_SECTION_TABS)) if(tabs.includes(name)) return section;
@@ -1316,7 +1316,8 @@ const ADMIN_SYSTEM_TREE = [
   {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"DB-Cache",daily:"kein Fresh-Load",open:"Cache",manual:"On-chain/API",details:[["NFT-Bestand","RAM","Supabase NFT Cache","Chain-spezifische NFT Quellen/RPC","Cache am Start; On-chain über Daten aktualisieren"]]},
   {id:"approvals",level:1,label:"🔓 Freigaben",status:"planning",start:"–",daily:"–",open:"bei Auswahl",manual:"On-chain/API",details:[["Token-Freigaben","–","–","Alchemy/RPC je unterstützter Chain","Spezialfunktion; nicht beim App-Start"]]},
 
-  {id:"projects",level:0,label:"🏦 DeFi-Projekte",status:"in_progress",start:"Konfig DB",daily:"Preise",open:"Lazy",manual:"projektbezogen",details:[]},
+  {id:"projects",level:0,label:"🏦 DeFi-Projekte",status:"in_progress",start:"Konfig DB",daily:"Preise",open:"Übersicht · keine Projektdaten",manual:"projektbezogen",details:[]},
+  {id:"projects-overview",level:1,label:"Übersicht",status:"in_progress",start:"–",daily:"–",open:"nur lokale UI",manual:"–",details:[["DeFi-Projektübersicht","lokale UI","–","–","Öffnen lädt keine TLN/VOW- oder DAO1-Projektdaten; Inhalt noch zu definieren"]]},
   {id:"tln",level:1,label:"TLN / VOW",status:"in_progress",start:"nicht geladen",daily:"über zentrale Preise",open:"Lazy + Projekt-Autoload",manual:"projektbezogen",details:[]},
   {id:"tln-overview",level:2,label:"Übersicht",status:"in_progress",start:"–",daily:"Preis-Tagescache",open:"DB + Preis-Cache",manual:"Preise",details:[["Token/Pool-Konfiguration","–/RAM","Supabase Projekt-Konfiguration","–","TLN/VOW erstmals öffnen"],["Aktuelle Preise/Pools","Tagescache","Supabase Current Price Snapshot","BSC/ETH Pool-RPC","Täglich über zentrale Preislogik"]]},
   {id:"tln-prices",level:2,label:"Kurse und Pools",status:"in_progress",start:"–",daily:"Preise",open:"Cache + ggf. Projekt-Autoload",manual:"RPC",details:[["LP/Pool-Daten","Projektcache","Supabase LP Cache","BSC/ETH RPC","Beim Öffnen kann maybeAutoRefreshProject Tagesstatus prüfen"]]},
@@ -1369,14 +1370,28 @@ function adminSystemStatusMeta(status){
 }
 function renderAdminSystemOverview(){
   const host=document.getElementById("adminSystemOverview");if(!host||!isAdmin)return;
-  const selected=ADMIN_SYSTEM_TREE.find(x=>x.id===adminSystemSelectedId)||ADMIN_SYSTEM_TREE.find(x=>x.details?.length);
-  const rows=ADMIN_SYSTEM_TREE.map(r=>{const st=adminSystemIdeaStatus(r),m=adminSystemStatusMeta(st);return `<tr class="wt-system-row${r.id===selected?.id?' selected':''}" onclick="selectAdminSystemRow('${escapeAttr(r.id)}')"><td style="padding-left:${12+r.level*24}px;white-space:nowrap">${r.level?'<span style="color:var(--muted)">↳</span> ':''}<strong>${escapeAttr(r.label)}</strong></td><td style="white-space:nowrap" title="${m[1]}">${m[0]} ${m[1]}</td><td>${escapeAttr(r.start||'–')}</td><td>${escapeAttr(r.daily||'–')}</td><td>${escapeAttr(r.open||'–')}</td><td>${escapeAttr(r.manual||'–')}</td></tr>`}).join("");
-  const detailRows=(selected?.details||[]).map(d=>`<tr><td><strong>${escapeAttr(d[0])}</strong></td><td>${escapeAttr(d[1]||'–')}</td><td>${escapeAttr(d[2]||'–')}</td><td>${escapeAttr(d[3]||'–')}</td><td>${escapeAttr(d[4]||'–')}</td></tr>`).join("");
-  host.innerHTML=`<div class="custom-token-card" style="margin-bottom:14px"><div style="display:flex;gap:16px;flex-wrap:wrap"><span>🟢 erledigt</span><span>🟡 in Arbeit</span><span>🔴 fehlerhaft</span><span>⚪ in Planung</span></div><div class="meta" style="margin-top:7px">Status wird, wo verknüpft, aus <code>admin/ideas.js</code> abgeleitet. Ladezeitpunkte bilden den aktuell geprüften Codepfad ab.</div></div><div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1120px"><thead><tr><th>Bereich / Baum</th><th>Status</th><th>Normaler App-Start</th><th>1. Start am Tag</th><th>Tab / Bereich öffnen</th><th>Manuell aktualisieren</th></tr></thead><tbody>${rows}</tbody></table></div><div class="custom-token-card" style="margin-top:16px"><h3 style="margin-top:0">Datenquellen · ${escapeAttr(selected?.label||'–')}</h3>${detailRows?`<div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1050px"><thead><tr><th>Datenbestand</th><th>Browser / lokaler Cache</th><th>Supabase / DB</th><th>On-chain / API</th><th>Ladezeitpunkt / Auslöser</th></tr></thead><tbody>${detailRows}</tbody></table></div>`:`<div class="note">Für diesen Gruppeneintrag gibt es keine eigenen Daten. Wähle einen Tab oder Untertab.</div>`}</div>`;
+  const rows=ADMIN_SYSTEM_TREE.map(r=>{const st=adminSystemIdeaStatus(r),m=adminSystemStatusMeta(st);return `<tr class="wt-system-row" onclick="selectAdminSystemRow('${escapeAttr(r.id)}')"><td style="padding-left:${12+r.level*24}px;white-space:nowrap">${r.level?'<span style="color:var(--muted)">↳</span> ':''}<strong>${escapeAttr(r.label)}</strong></td><td style="white-space:nowrap" title="${m[1]}">${m[0]} ${m[1]}</td><td>${escapeAttr(r.start||'–')}</td><td>${escapeAttr(r.daily||'–')}</td><td>${escapeAttr(r.open||'–')}</td><td>${escapeAttr(r.manual||'–')}</td></tr>`}).join("");
+  host.innerHTML=`<div class="custom-token-card" style="margin-bottom:14px"><div style="display:flex;gap:16px;flex-wrap:wrap"><span>🟢 erledigt</span><span>🟡 in Arbeit</span><span>🔴 fehlerhaft</span><span>⚪ in Planung</span></div><div class="meta" style="margin-top:7px">Status wird, wo verknüpft, aus <code>admin/ideas.js</code> abgeleitet. Ladezeitpunkte bilden den aktuell geprüften Codepfad ab. Zeile anklicken = Datenquellen als Popup.</div></div><div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1120px"><thead><tr><th>Bereich / Baum</th><th>Status</th><th>Normaler App-Start</th><th>1. Start am Tag</th><th>Tab / Bereich öffnen</th><th>Manuell aktualisieren</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
-function selectAdminSystemRow(id){adminSystemSelectedId=id;renderAdminSystemOverview();}
+function ensureAdminSystemDetailModal(){
+  let modal=document.getElementById("adminSystemDetailModal");if(modal)return modal;
+  modal=document.createElement("div");modal.id="adminSystemDetailModal";modal.className="wt-system-detail-modal";modal.setAttribute("aria-hidden","true");
+  modal.innerHTML=`<div class="wt-system-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="adminSystemDetailTitle"><div class="wt-system-detail-head"><h3 id="adminSystemDetailTitle">Datenquellen</h3><button type="button" class="secondary wt-system-detail-close" onclick="closeAdminSystemDetailModal()" aria-label="Schließen">×</button></div><div id="adminSystemDetailBody" class="wt-system-detail-body"></div></div>`;
+  modal.addEventListener("click",e=>{if(e.target===modal)closeAdminSystemDetailModal();});document.body.appendChild(modal);return modal;
+}
+function openAdminSystemDetailModal(row){
+  const modal=ensureAdminSystemDetailModal(),title=document.getElementById("adminSystemDetailTitle"),body=document.getElementById("adminSystemDetailBody");
+  if(title)title.textContent=`Datenquellen · ${row?.label||'–'}`;
+  const detailRows=(row?.details||[]).map(d=>`<tr><td><strong>${escapeAttr(d[0])}</strong></td><td>${escapeAttr(d[1]||'–')}</td><td>${escapeAttr(d[2]||'–')}</td><td>${escapeAttr(d[3]||'–')}</td><td>${escapeAttr(d[4]||'–')}</td></tr>`).join("");
+  if(body)body.innerHTML=detailRows?`<div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1050px"><thead><tr><th>Datenbestand</th><th>Browser / lokaler Cache</th><th>Supabase / DB</th><th>On-chain / API</th><th>Ladezeitpunkt / Auslöser</th></tr></thead><tbody>${detailRows}</tbody></table></div>`:`<div class="note">Für diesen Gruppeneintrag gibt es keine eigenen Daten. Wähle einen Tab oder Untertab.</div>`;
+  modal.classList.add("open");modal.setAttribute("aria-hidden","false");document.body.classList.add("wt-modal-open");
+}
+function closeAdminSystemDetailModal(){const modal=document.getElementById("adminSystemDetailModal");if(!modal)return;modal.classList.remove("open");modal.setAttribute("aria-hidden","true");document.body.classList.remove("wt-modal-open");}
+function selectAdminSystemRow(id){adminSystemSelectedId=id;const row=ADMIN_SYSTEM_TREE.find(x=>x.id===id);if(row)openAdminSystemDetailModal(row);}
 window.renderAdminSystemOverview=renderAdminSystemOverview;
 window.selectAdminSystemRow=selectAdminSystemRow;
+window.closeAdminSystemDetailModal=closeAdminSystemDetailModal;
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&document.getElementById("adminSystemDetailModal")?.classList.contains("open"))closeAdminSystemDetailModal();});
 
 
 function renderAdminDocumentation(){

@@ -3,8 +3,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260918-020345";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 02:03:45 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260918-022022";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 02:20:22 CEST";
 
 const ADMIN_IDEAS = [
   {
@@ -12,7 +12,7 @@ const ADMIN_IDEAS = [
     category: "Admin / Diagnose",
     priority: "high",
     title: "Systemübersicht · Funktionsbaum und Ladezeitpunkte",
-    desc: `STATUS: In Arbeit. Admin-Übersicht mit Menü → Tab → Untertab als Baum. Pro Bereich werden normaler App-Start, erster Start des Tages, Öffnen des Tabs und manuelle Aktualisierung sichtbar. Klick auf eine Zeile zeigt die einzelnen Datenbestände sowie Browser-Cache, Supabase und On-chain/API-Quelle. Nächster Ausbau: tatsächliche Laufdiagnose/Requests/Rows/Bytes mitschreiben und Soll gegen letzten Ist-Lauf vergleichen.`
+    desc: `STATUS: In Arbeit. Admin-Übersicht mit Menü → Tab → Untertab als Baum. Pro Bereich werden normaler App-Start, erster Start des Tages, Öffnen des Tabs und manuelle Aktualisierung sichtbar. Klick auf eine Zeile zeigt die einzelnen Datenbestände sowie Browser-Cache, Supabase und On-chain/API-Quelle. Detailansicht öffnet als Popup, damit der Baum beim Prüfen an seiner Position bleibt. DeFi-Projekte besitzt einen neutralen Übersicht-Tab, der beim Öffnen keine projektspezifischen Daten lädt. VERBINDLICHE REGEL: Dieser Baum muss bei jeder Programmänderung, Erweiterung oder Korrektur mitgeprüft und im selben Release aktualisiert werden, wenn Struktur, Status, Datenquelle oder Ladezeitpunkt betroffen ist. Nächster Ausbau: tatsächliche Laufdiagnose/Requests/Rows/Bytes mitschreiben und Soll gegen letzten Ist-Lauf vergleichen.`
   },
   {
     status: "in_progress",

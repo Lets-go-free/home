@@ -2,8 +2,8 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260916-014124";
-const HELP_MODULE_TIMESTAMP="16.09.2026 01:41:24 CEST";
+const HELP_MODULE_BUILD="20260918-022022";
+const HELP_MODULE_TIMESTAMP="18.09.2026 02:20:22 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;
@@ -32,7 +32,7 @@ function renderGeneralHelp(){
 
       <div class="custom-token-card"><h3 style="margin-top:0">📋 Chain-Abdeckung</h3><p class="note">Die Tabelle zeigt, welche allgemeinen Funktionen pro Chain technisch vorgesehen sind. Die konkrete Abdeckung eines einzelnen Laufs kann davon abweichen und wird beim jeweiligen Ergebnis ausgewiesen.</p><div id="helpChainCoverage"></div></div>
 
-      <div class="custom-token-card"><h3 style="margin-top:0">🏦 Projekte</h3><p class="note"><strong>Projektspezifische Bedienung und Fachlogik gehören nicht in dieses allgemeine Handbuch.</strong> Öffne TLN/VOW, DAO1 oder ein anderes DeFi-Projekt und dort den eigenen Unter-Tab „Hilfe“. Dort werden projektspezifische Tabs, Datenquellen, Cache-/Refresh-Regeln, Statusmodelle und Besonderheiten dokumentiert.</p></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">🏦 Projekte</h3><p class="note"><strong>Projektspezifische Bedienung und Fachlogik gehören nicht in dieses allgemeine Handbuch.</strong> Der Hauptpunkt „DeFi-Projekte“ öffnet zuerst eine neutrale Übersicht und lädt dabei bewusst noch keine projektspezifischen Daten. Öffne danach TLN/VOW, DAO1 oder ein anderes DeFi-Projekt und dort den eigenen Unter-Tab „Hilfe“. Dort werden projektspezifische Tabs, Datenquellen, Cache-/Refresh-Regeln, Statusmodelle und Besonderheiten dokumentiert.</p></div>
 
       <div class="custom-token-card"><h3 style="margin-top:0">💬 Support</h3><p class="note">Wenn Daten fehlen oder eine Abfrage fehlschlägt, sende möglichst Projekt/Chain, Wallet-Bezeichnung, betroffene Funktion sowie die sichtbare Fehlermeldung oder Tx. Private Keys und Seed-Phrases gehören niemals in den Chat.</p></div>`;
 }

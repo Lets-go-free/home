@@ -1349,3 +1349,16 @@ body.data-job-active .main-nav{filter:saturate(.55)}
 .global-data-job-bar{display:block;position:relative;height:4px;margin-top:5px;overflow:hidden;border-radius:999px;background:var(--border)}
 .global-data-job-bar i{position:absolute;inset:0 auto 0 -35%;width:35%;border-radius:999px;background:var(--accent);animation:globalDataJobBar 1.15s ease-in-out infinite}
 @keyframes globalDataJobBar{0%{left:-35%}55%{left:55%}100%{left:105%}}
+
+
+/* Phase 4.88 · Systemübersicht: Datenquellen im Popup statt unter dem Baum */
+body.wt-modal-open{overflow:hidden}
+.wt-system-row{cursor:pointer}
+.wt-system-row:hover td{background:var(--card2)}
+.wt-system-detail-modal{position:fixed;inset:0;z-index:10020;display:none;align-items:flex-start;justify-content:center;padding:6vh 18px;background:rgba(3,8,14,.72);backdrop-filter:blur(4px);overflow:auto}
+.wt-system-detail-modal.open{display:flex}
+.wt-system-detail-dialog{width:min(1500px,97vw);max-height:88vh;display:flex;flex-direction:column;border:1px solid var(--accent-border);border-radius:16px;background:var(--card);box-shadow:0 24px 70px rgba(0,0,0,.35);overflow:hidden}
+.wt-system-detail-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 18px;border-bottom:1px solid var(--border);background:var(--card)}
+.wt-system-detail-head h3{margin:0;text-transform:uppercase;letter-spacing:.02em}
+.wt-system-detail-close{flex:none;width:36px;height:36px;padding:0!important;font-size:22px;line-height:1}
+.wt-system-detail-body{padding:16px 18px 20px;overflow:auto}
