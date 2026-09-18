@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260918-174217 */
 (()=>{
-const BUILD_ID='20260918-174217';
+const BUILD_ID='20260918-174959';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 17:42:17 CEST';
+const APP_VERSION='18.09.2026 17:49:59 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4124,7 +4124,7 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   duration:'duration-strict-v16-contract-proof-cache',
   discoveryResults:'discovery-results-v1',
   snapshotValuation:'snapshot-valuation-v4-legacy-stake-market-price',
-  teamLifecycle:'team-lifecycle-v7',
+  teamLifecycle:'team-lifecycle-v8-null-coverage-proof',
   teamLifecycleQueue:'team-lifecycle-queue-v1',
   teamContractHistory:'team-contract-history-v1',
   smartNodeIdentityIndex:'smartnode-identity-index-v1',
@@ -15881,7 +15881,7 @@ async function teamVerifyMissingLifecycles(wallets,{forceFresh=false}={}){
         for(let li=0;li<lots.length;li++){const lot=lots[li];if(lot.expiryTime)continue;const r=await teamResolveDurationWithContractCandidates(lot,`Team ${wi+1}/${missing.length} · Position ${li+1}/${lots.length}`);if(!r.proven)durationOk=false}
       }
       const cov=coverage.get(wallet)||{total:0,ok:0,failed:1,errors:['Coverage unbekannt']};
-      const scanComplete=cov.failed===0&&cov.ok===cov.total;
+      const scanComplete=cov.total>0&&cov.failed===0&&cov.ok===cov.total;
       const hasUnstakeOnly=lots.length===0&&calls.some(c=>String(c?._teamPositionEvidence||'').toLowerCase()==='receipt:verified-open-asset-return');
       const hasObservedEvidence=lots.length===0&&teamHasObservedStakeEvidence(wallet);
       const ident=TEAM_IDENTITY_CACHE.get(wallet)||null;
