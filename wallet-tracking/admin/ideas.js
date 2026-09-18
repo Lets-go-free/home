@@ -3,8 +3,9 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260918-144343";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 14:43:43 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260918-145031";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 14:50:31 CEST";
+// Phase 5.03: TLN-Team-Aliase fallen ID→Wallet-Key zurück; Lifecycle-Positionen werden cache-/scanübergreifend verlustfrei gemergt; vUSD/VOW 0x43e4…264e nutzt die verifizierte 367-Tage-Contract-Regel. Performance/Egress-Optimierung bleibt nächster eigener TODO-Block.
 
 const ADMIN_IDEAS = [
   {
