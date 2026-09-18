@@ -3,8 +3,9 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260918-182919";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 18:29:19 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260918-184403";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "18.09.2026 18:44:03 CEST";
+// Phase 5.10: Cache-Restore laedt verifizierte Identities neuer SmartNode-Registries separat, rekonstruiert deren join(address)-Parent-Kanten vor dem Forest-Build (Fix fuer fehlenden Partner Ernie / TLN-ID 990000017795). Alias-Loader akzeptiert kompatible wallet-private Response-Shapes, damit bestehende verschluesselte Namen wieder erscheinen. Staking-Discovery unveraendert. Systemuebersicht geprueft.
 // Phase 5.09: TLN-Team Cache-Restore rekonstruiert Parent-Kanten neuer SmartNode-Registries aus persistierter join(address)-Evidenz; Partial-Lifecycle darf verifizierten Cache nicht mehr degradieren; Alias-Leerantwort erhält einen einmaligen sicheren Re-Read. Staking-Discovery fachlich unverändert. Systemübersicht geprüft: Team-Datenquelle ergänzt um Registry-Identity + join-Tx beim Restore.
 // Phase 5.07: TLN-Team-Anzeige repariert: userbezogene Partnernamen werden rueckwaertskompatibel aus id:/wallet: sowie historischen nackten Referenzen gelesen; Details ist auch fuer eigene Wallets verfuegbar; erkannte, aber wegen offener Duration noch nicht voll verifizierte Partner-Stakings werden persistent gespeichert und beim Reload wieder gemergt. Systemübersicht geprüft: Datenquelle/Ladezeitpunkt unverändert.
 // Phase 5.06: Nullfund-Verifikation im TLN-Team abgesichert: Ein Wallet darf nur noch als „kein Staking gefunden / verifiziert“ gelten, wenn mindestens ein relevanter Contract tatsächlich geprüft wurde und die komplette Contract-Coverage fehlerfrei ist. Alte team-lifecycle-v7-Ergebnisse werden durch Cache-Version v8 nicht mehr als verifiziert übernommen und bei Bedarf neu geprüft. Systemübersicht geprüft: Datenquelle/Ladezeitpunkt unverändert.
@@ -399,7 +400,8 @@ ARCHITEKTUR: Keine typabhängige Parallel-Logik in Tabellen/UI. Typ/Klassifikati
     desc: `REFERENZ 18.09.2026: Der Team-Baum ist fachlich noch nicht vollständig. Vor weiteren allgemeinen Performance-Umbauten zuerst diesen Datenpfad stabilisieren.
 
 OFFEN / VERBINDLICH:
-• Phase 5.09 umgesetzt: neue Registry-Partner werden beim Cache-Restore aus persistierter Identity + verifizierter join(address)-Tx wieder in die Parent→Child-Hierarchie ergänzt; Partial-Lifecycle kann verifizierten Cache nicht mehr überschreiben; Alias-Laden erhält einmaligen sicheren Re-Read
+• Phase 5.10 umgesetzt: Cache-Restore lädt Identities neuer SmartNode-Registries separat und rekonstruiert deren verifizierte join(address)-Parent-Kanten VOR dem Forest-Build (Referenz Ernie / TLN-ID 990000017795); Alias-Loader akzeptiert kompatible wallet-private Response-Shapes. Staking-Discovery unverändert.
+• Phase 5.09 umgesetzt: Partial-Lifecycle kann verifizierten Cache nicht mehr überschreiben; Alias-Leerantwort erhält sicheren Re-Read
 • Phase 5.07 umgesetzt: userbezogene Partnernamen/Aliase werden nach Cache-Restore rückwärtskompatibel über TLN-ID- und Wallet-Referenzen geladen und angezeigt
 • Phase 5.07 umgesetzt: auch erkannte Teil-Lifecycles mit noch offener Duration werden persistent gespeichert und beim Cache-Restore gemergt; bereits erkannte Positionen dürfen dadurch nicht verschwinden
 • Referenzfall TLN-ID 11674 weiterführen: TLN Legacy LPT ist geschlossen/verifiziert; vUSD/VOW ist erkannt, aber der positionsgenaue Duration-/Lifecycle-Nachweis ist noch offen und muss ohne Schätzung vollständig on-chain geklärt werden
