@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260914-010218 */
 (()=>{
-const BUILD_ID='20260918-110917';
+const BUILD_ID='20260918-130601';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 11:09:17 CEST';
+const APP_VERSION='18.09.2026 13:06:01 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4125,6 +4125,7 @@ const TECH_CACHE_VERSIONS=Object.freeze({
   discoveryResults:'discovery-results-v1',
   snapshotValuation:'snapshot-valuation-v4-legacy-stake-market-price',
   teamLifecycle:'team-lifecycle-v7',
+  teamLifecycleQueue:'team-lifecycle-queue-v1',
   teamContractHistory:'team-contract-history-v1',
   smartNodeIdentityIndex:'smartnode-identity-index-v1',
   stakingDiscoveryCandidates:'staking-discovery-candidates-v3',
@@ -4140,6 +4141,7 @@ const TECH_CACHE_KEYS=Object.freeze({
   discoveryResults:'verified-discovery-results',
   snapshotValuation:'snapshot-valuation',
   teamLifecycle:'team-staking-lifecycle',
+  teamLifecycleQueue:'team-lifecycle-queue',
   teamContractHistory:'team-contract-history',
   smartNodeIdentityIndex:'smartnode-identity-index-state',
   stakingDiscoveryCandidates:'staking-discovery-candidates',
@@ -14283,6 +14285,60 @@ async function teamSaveVerifiedLifecycle(wallet,lots,{verifiedAt=null,verifiedBl
   if(mem?.verified){mem.sourceVerifiedBlock=block||null;mem.sourceSavedAt=effectiveVerifiedAt;mem.loadedAt=effectiveVerifiedAt;}
   return saveTechnicalProcessCache(w,TECH_CACHE_KEYS.teamLifecycle,TECH_CACHE_VERSIONS.teamLifecycle,{wallet:w,verified:true,lifecycleIntegrityVersion:'unstake-recheck-v1',lots:cacheJsonSafe(lots||[]),verifiedAt:effectiveVerifiedAt,verifiedBlock:block||null,savedAt:nowIso},block||0);
 }
+const TEAM_LIFECYCLE_BACKGROUND_SESSION=new Set();
+const TEAM_LIFECYCLE_BACKGROUND_BATCH=3;
+const TEAM_LIFECYCLE_RETRY_MS=24*60*60*1000;
+async function teamLoadLifecycleQueueState(wallets){
+  const out=new Map();
+  if(!currentUserId||!stakingScanDbCacheAvailable)return out;
+  const need=[...new Set((wallets||[]).map(norm).filter(w=>ethers.isAddress(w)))];
+  for(let i=0;i<need.length;i+=50){
+    const chunk=need.slice(i,i+50);
+    const {data,error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).select('scope_address,scanner_version,payload,updated_at').eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.teamLifecycleQueue).in('scope_address',chunk);
+    if(error){log(`Team-Lifecycle Queue nicht lesbar: ${error.message||error}`,'warn');break}
+    for(const row of (data||[])){
+      if(row?.scanner_version!==TECH_CACHE_VERSIONS.teamLifecycleQueue)continue;
+      const w=norm(row.scope_address||row?.payload?.wallet||'');if(ethers.isAddress(w))out.set(w,{...(row.payload||{}),updatedAt:row.updated_at||null});
+    }
+  }
+  return out;
+}
+async function teamSaveLifecycleQueueState(wallet,state={}){
+  const w=norm(wallet);if(!ethers.isAddress(w)||!currentUserId||!stakingScanDbCacheAvailable)return false;
+  const nowIso=new Date().toISOString();
+  return saveTechnicalProcessCache(w,TECH_CACHE_KEYS.teamLifecycleQueue,TECH_CACHE_VERSIONS.teamLifecycleQueue,{wallet:w,...state,savedAt:nowIso},Number(state?.verifiedBlock||0)||0);
+}
+async function teamRunLifecycleBackgroundBatch(wallets){
+  const all=[...new Set((wallets||[]).map(norm).filter(w=>ethers.isAddress(w)&&!TEAM_STAKING_LIFECYCLE.get(w)?.verified&&!TEAM_LIFECYCLE_BACKGROUND_SESSION.has(w)))];
+  if(!all.length)return;
+  const queue=await teamLoadLifecycleQueueState(all),now=Date.now();
+  const eligible=all.filter(w=>{
+    const q=queue.get(w),last=Date.parse(q?.lastAttemptAt||q?.savedAt||q?.updatedAt||'');
+    return !Number.isFinite(last)||(now-last)>=TEAM_LIFECYCLE_RETRY_MS;
+  }).slice(0,TEAM_LIFECYCLE_BACKGROUND_BATCH);
+  if(!eligible.length){log('Team-Lifecycle Hintergrund: offene Wallets vorhanden, aber Retry-Fenster noch aktiv; kein RPC.','muted');return}
+  eligible.forEach(w=>TEAM_LIFECYCLE_BACKGROUND_SESSION.add(w));
+  const startedAt=new Date().toISOString();
+  await Promise.all(eligible.map(w=>teamSaveLifecycleQueueState(w,{status:'running',lastAttemptAt:startedAt}))).catch(()=>{});
+  log(`Team-Lifecycle Hintergrund: ${eligible.length} noch nie/noch nicht vollständig verifizierte Wallet(s) werden kontrolliert nachverifiziert (max. ${TEAM_LIFECYCLE_BACKGROUND_BATCH} pro Tab-Sitzung).`,'muted');
+  try{
+    await teamVerifyMissingLifecycles(eligible);
+    for(const w of eligible){
+      const life=TEAM_STAKING_LIFECYCLE.get(w),verified=!!life?.verified;
+      await teamSaveLifecycleQueueState(w,{status:verified?'verified':'retry_wait',lastAttemptAt:startedAt,verifiedAt:verified?(life?.sourceSavedAt||new Date().toISOString()):null,verifiedBlock:Number(life?.sourceVerifiedBlock||0)||null,retryAfter:verified?null:new Date(Date.now()+TEAM_LIFECYCLE_RETRY_MS).toISOString()});
+    }
+    renderTeamTree();renderProjectOverview();
+  }catch(e){
+    const retryAfter=new Date(Date.now()+TEAM_LIFECYCLE_RETRY_MS).toISOString();
+    for(const w of eligible)await teamSaveLifecycleQueueState(w,{status:'error_retry',lastAttemptAt:startedAt,retryAfter,error:String(e?.message||e).slice(0,500)}).catch(()=>{});
+    log(`Team-Lifecycle Hintergrund fehlgeschlagen: ${e.message||e}. Nächster Versuch frühestens nach dem Retry-Fenster.`,'warn');
+  }
+}
+function teamScheduleLifecycleBackground(wallets){
+  const run=()=>teamRunLifecycleBackgroundBatch(wallets).catch(e=>log(`Team-Lifecycle Hintergrund: ${e.message||e}`,'warn'));
+  if(typeof requestIdleCallback==='function')requestIdleCallback(run,{timeout:2500});else setTimeout(run,900);
+}
+
 async function teamLoadContractHistoryCache(wallets){
   const out=new Map();
   if(!currentUserId||!stakingScanDbCacheAvailable)return out;
@@ -16403,7 +16459,11 @@ async function restoreTeamTreeFromPersistentCache(){
     setStepState(7,`Cache · ${roots.length} Baum-Root(s)`,'done');
     renderTeamTree();
     renderProjectOverview();
-    log(`Team-Restore aus Supabase: ${forest.included.size} Wallet(s) · ${roots.length} Baum-Root(s) · ${restoredPartnerLifecycles} Partner-Lifecycle(s) zusätzlich aus persistentem Team-Cache restauriert. Step 7 ist nur für die inkrementelle Aktualisierung/Nachverifikation nötig.`,'ok');
+    // Cache-first bleibt interaktiv: erst rendern, danach höchstens wenige noch offene
+    // Lifecycle-Wallets im Idle-Hintergrund nachverifizieren. Retry-Zeitpunkte werden
+    // persistent gespeichert, damit ein Reload nicht immer wieder dieselben RPCs startet.
+    teamScheduleLifecycleBackground(lifecycleWallets);
+    log(`Team-Restore aus Supabase: ${forest.included.size} Wallet(s) · ${roots.length} Baum-Root(s) · ${restoredPartnerLifecycles} Partner-Lifecycle(s) zusätzlich aus persistentem Team-Cache restauriert. Offene Lifecycles werden danach kontrolliert im Hintergrund nachverifiziert; Step 7 bleibt für die vollständige inkrementelle Aktualisierung verfügbar.`,'ok');
     return true;
   }catch(e){
     CURRENT_TEAM_PROJECT_FOREST=null;
