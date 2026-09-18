@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260918-174217 */
 (()=>{
-const BUILD_ID='20260918-194817';
+const BUILD_ID='20260918-195809';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 19:48:17 CEST';
+const APP_VERSION='18.09.2026 19:58:09 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -16919,8 +16919,14 @@ async function restoreTeamTreeFromPersistentCache(){
     // Cache-first bleibt interaktiv: erst rendern, danach höchstens wenige noch offene
     // Lifecycle-Wallets im Idle-Hintergrund nachverifizieren. Retry-Zeitpunkte werden
     // persistent gespeichert, damit ein Reload nicht immer wieder dieselben RPCs startet.
-    teamScheduleLifecycleBackground(lifecycleWallets);
-    log(`Team-Restore aus Supabase: ${forest.included.size} Wallet(s) · ${roots.length} Baum-Root(s) · ${restoredPartnerLifecycles} Partner-Lifecycle(s) zusätzlich aus persistentem Team-Cache restauriert. Offene Lifecycles werden danach kontrolliert im Hintergrund nachverifiziert; Step 7 bleibt für die vollständige inkrementelle Aktualisierung verfügbar.`,'ok');
+    // Phase 5.14: Ein normaler Seiten-/Tab-Restore ist strikt cache-only.
+    // Auf einem neuen Browser existiert absichtlich noch kein IndexedDB-Teilcache; die
+    // bisherige Idle-Nachverifikation hat deshalb fuer offene Lifecycles komplette Wallet-
+    // Historien + Receipts erneut geladen (im Referenzlauf >1'400 Requests). Das ist weder
+    // fuer die Darstellung noch fuer einen Geraetewechsel zulaessig. Offene Lifecycles
+    // bleiben sichtbar als offen und werden erst durch den expliziten Step-7-Updatepfad
+    // oder spaeter einen serverseitigen Job aktualisiert. Staking-Discovery unveraendert.
+    log(`Team-Restore aus Supabase: ${forest.included.size} Wallet(s) · ${roots.length} Baum-Root(s) · ${restoredPartnerLifecycles} Partner-Lifecycle(s) zusätzlich aus persistentem Team-Cache restauriert. Cache-only Restore: keine automatische On-Chain-/Alchemy-Nachverifikation beim Seitenstart; offene Lifecycles werden nur über Step 7 aktualisiert.`,'ok');
     return true;
   }catch(e){
     CURRENT_TEAM_PROJECT_FOREST=null;
