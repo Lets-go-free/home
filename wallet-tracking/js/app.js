@@ -1,4 +1,4 @@
-/* WalletTracking Phase 4.94 · 18.09.2026 13:06:01 CEST · Build 20260918-130601 */
+/* WalletTracking Phase 4.95 · 18.09.2026 13:10:51 CEST · Build 20260918-131051 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1233,7 +1233,7 @@ function exportTaxPdf(){
 
 
 
-// Phase 4.94 · zentrale Datenstands-Metadaten für Tabs + Systemübersicht
+// Phase 4.95 · zentrale Datenstands-Metadaten für Tabs + Systemübersicht
 const WT_DATA_STATUS = window.WT_DATA_STATUS || (window.WT_DATA_STATUS = {});
 function wtFormatDataStamp(v){if(!v)return null;const d=new Date(v);if(Number.isNaN(d.getTime()))return null;return d.toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:false});}
 function setWtDataStatus(key,{updatedAt=null,cacheAt=null,source=null,label=null}={}){const prev=WT_DATA_STATUS[key]||{},next={...prev,updatedAt,cacheAt,source,label};if(JSON.stringify(prev)===JSON.stringify(next))return;WT_DATA_STATUS[key]=next;document.dispatchEvent(new CustomEvent("wallettracking:data-status",{detail:{key,...next}}));}
@@ -1342,7 +1342,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"tln-rewards",level:2,label:"Rewards Summary",status:"in_progress",start:"–",daily:"–",open:"Cache",manual:"Discovery",details:[["Reward Summary","Cache","Supabase/Discovery Cache","BSC/ETH bei Discovery","Projekt-Tab"]]},
   {id:"tln-referral",level:2,label:"Referral Rewards",status:"in_progress",start:"–",daily:"–",open:"Cache",manual:"Discovery",details:[["Referral Rewards","Cache","Supabase/Discovery Cache","BSC/ETH bei Discovery","Projekt-Tab"]]},
   {id:"tln-bonus",level:2,label:"Bonus-Rewards",status:"in_progress",start:"–",daily:"–",open:"Cache",manual:"Discovery",details:[["Bonus Rewards","Cache","Supabase/Discovery Cache","BSC/ETH bei Discovery","Projekt-Tab"]]},
-  {id:"tln-team",level:2,label:"Team",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"–",daily:"–",open:"🟡 IDB + Version",manual:"Delta/RPC",details:[["SmartNode Team-Graph","IndexedDB · tln-vow/smartnode-global-graph","Supabase globaler TLN Graph + cache_data_versions","BSC Registry/RPC nur Discovery/Update","Phase 4.94: DATA_VERSIONS-Gate implementiert; bei HIT DB-Kanten 0. Migration 058 erforderlich; Praxistest noch offen. Lifecycle separat: verifizierte Ergebnisse persistent; offene Wallets nach Cache-Render in persistenter Retry-Queue, max. 3 Hintergrundprüfungen pro Tab-Sitzung, 24h Retry"]]},
+  {id:"tln-team",level:2,label:"Team",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"–",daily:"–",open:"🟡 IDB + Version",manual:"Delta/RPC",details:[["SmartNode Team-Graph","IndexedDB · tln-vow/smartnode-global-graph","Supabase globaler TLN Graph + cache_data_versions","BSC Registry/RPC nur Discovery/Update","Phase 4.95: Egress-first Team-Slice. Normaler Tab lädt bei MISS nur die für eigene Leader relevante Downline/Upline per DB-RPC, nie mehr automatisch den kompletten Globalgraph; bei HIT IDB + DATA_VERSIONS und Supabase-Nutzdaten 0. Migration 059 erforderlich. Lifecycle separat: verifizierte Ergebnisse persistent; offene Wallets nach Cache-Render in persistenter Retry-Queue, max. 3 Hintergrundprüfungen pro Tab-Sitzung, 24h Retry"]]},
   {id:"tln-admin",level:2,label:"Admin · Contracts",status:"planning",start:"–",daily:"–",open:"DB/Cache",manual:"Discovery",details:[["Contract Registry/Prüffälle","–","Supabase","BSC/ETH RPC bei Discovery","Nur Admin"]]},
   {id:"tln-help",level:2,label:"Hilfe",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[["TLN/VOW Hilfe","JS-Modul","–","–","Tab öffnen"]]},
   {id:"tln-lpold",level:2,label:"Liquidity Pools_old",status:"planning",start:"–",daily:"–",open:"Cache/DB",manual:"RPC",details:[["Legacy LP-Ansicht","Cache","Supabase LP Cache","BSC/ETH RPC","Legacy-Bereich"]]},

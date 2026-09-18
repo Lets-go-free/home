@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260914-010218 */
 (()=>{
-const BUILD_ID='20260918-130601';
+const BUILD_ID='20260918-131051';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 13:06:01 CEST';
+const APP_VERSION='18.09.2026 13:10:51 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13336,7 +13336,8 @@ const TEAM_GRAPH_CACHE_PAGE_SIZE=1000;
 const TEAM_GRAPH_OVERLAP_BLOCKS=64;
 const TEAM_GRAPH_CONFIRMATIONS=12;
 const TEAM_GRAPH_BROWSER_NAMESPACE='tln-vow';
-const TEAM_GRAPH_BROWSER_KEY='smartnode-global-graph';
+const TEAM_GRAPH_BROWSER_KEY='smartnode-team-slice-v2';
+const TEAM_GRAPH_REMOTE_VERSION_KEY='smartnode-global-graph';
 const TEAM_GRAPH_PAYLOAD_SCHEMA_VERSION=1;
 const TEAM_GRAPH_BROWSER_STORAGE_VERSION=1;
 const DATA_VERSIONS_TABLE='cache_data_versions';
@@ -13448,15 +13449,18 @@ function teamDecodeSingleAddress(raw){
   const wallet=norm('0x'+hex.slice(-40));
   return ethers.isAddress(wallet)&&wallet!==ZERO?wallet:null;
 }
-async function teamLoadIdentityCacheFromDb(){
+async function teamLoadIdentityCacheFromDb(wallets=null){
   try{
-    const {data,error}=await sb.from(TLN_GLOBAL_IDENTITY_TABLE)
+    let q=sb.from(TLN_GLOBAL_IDENTITY_TABLE)
       .select('wallet_address,node_id,registry_contract,source_method,source_tx_hash,verified_at')
       .eq('chain_key','bsc');
+    const wanted=[...new Set((wallets||[]).map(norm).filter(w=>/^0x[0-9a-f]{40}$/.test(w)))];
+    if(wanted.length)q=q.in('wallet_address',wanted);
+    const {data,error}=await q;
     if(error)throw error;
     let n=0;
     for(const row of data||[]){const w=norm(row.wallet_address);if(!/^0x[0-9a-f]{40}$/.test(w)||row.node_id==null)continue;TEAM_IDENTITY_CACHE.set(w,{wallet:w,nodeId:String(row.node_id),source:'supabase-global',cachedSource:'global-onchain',contract:row.registry_contract||null,method:row.source_method||null,evidenceTx:row.source_tx_hash||null,verifiedAt:row.verified_at||null});n++}
-    log(`Team-IDs: ${n} Wallet→TLN-ID Zuordnung(en) aus globalem Supabase-Cache vorgeladen.`,'muted');return n;
+    log(`Team-IDs: ${n} Wallet→TLN-ID Zuordnung(en) ${wanted.length?'gezielt':'aus globalem Supabase-Cache'} geladen.`,'muted');return n;
   }catch(e){log(`Team-IDs: globaler Supabase-Cache nicht lesbar: ${e.message||e}; nodeIdOf-Fallback bleibt aktiv.`,'warn');return 0}
 }
 function teamMergeSupplementalIdentityEdges(edges){
@@ -13744,6 +13748,38 @@ async function teamGetAuthenticatedUserId(){
     return data?.user?.id||null;
   }catch{return null}
 }
+async function teamLoadRelevantGraphSlice(ownWallets){
+  const roots=[...new Set((ownWallets||[]).map(norm).filter(w=>/^0x[0-9a-f]{40}$/.test(w)))];
+  if(!roots.length)return null;
+  const bc=window.WalletTrackingBrowserCache;
+  let remoteVersion=null,meta=null;
+  try{
+    [meta,remoteVersion]=await Promise.all([
+      bc?.getMeta(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_BROWSER_KEY),
+      sb.from(DATA_VERSIONS_TABLE).select('data_version,payload_schema_version,sync_cursor,updated_at').eq('namespace',TEAM_GRAPH_BROWSER_NAMESPACE).eq('cache_key',TEAM_GRAPH_REMOTE_VERSION_KEY).limit(1).then(r=>{if(r.error)throw r.error;return r.data?.[0]||null})
+    ]);
+    const rootsKey=roots.slice().sort().join('|');
+    if(bc&&meta&&remoteVersion&&meta.rootsKey===rootsKey&&Number(meta.dataVersion||0)===Number(remoteVersion.data_version||0)&&Number(meta.payloadSchemaVersion||0)===TEAM_GRAPH_PAYLOAD_SCHEMA_VERSION&&Number(meta.storageFormatVersion||0)===TEAM_GRAPH_BROWSER_STORAGE_VERSION){
+      const rows=await bc.getAll(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_BROWSER_KEY),edges=new Map();
+      for(const row of rows){const child=norm(row.child_wallet),parent=norm(row.parent_wallet);if(/^0x[0-9a-f]{40}$/.test(child)&&/^0x[0-9a-f]{40}$/.test(parent)&&child!==parent&&!edges.has(child))edges.set(child,{child,parent,hash:norm(row.join_tx_hash),blockNumber:row.join_block==null?null:Number(row.join_block),source:row.source||'IndexedDB SmartNode Team-Slice'});}
+      window.setWtDataStatus?.('tln-team',{updatedAt:remoteVersion.sync_cursor||remoteVersion.updated_at,cacheAt:meta.savedAt,source:'cache'});
+      log(`Team-Slice: IDB + DATA_VERSIONS HIT · ${edges.size} relevante Kanten lokal · Supabase-Nutzdaten 0.`,'ok');
+      return {edges,state:{lastVerifiedBlock:Number(remoteVersion.data_version||0),edgeCount:edges.size,verifiedAt:remoteVersion.sync_cursor||remoteVersion.updated_at||null},browserCache:true,registryFresh:true};
+    }
+    const {data,error}=await sb.rpc('wt_tln_smartnode_graph_slice',{p_wallets:roots,p_contract:contract,p_max_depth:TLN_TEAM_MAX_LEVELS});
+    if(error)throw error;
+    const rows=data||[],edges=new Map();
+    for(const row of rows){const child=norm(row.child_wallet),parent=norm(row.parent_wallet);if(/^0x[0-9a-f]{40}$/.test(child)&&/^0x[0-9a-f]{40}$/.test(parent)&&child!==parent&&!edges.has(child))edges.set(child,{child,parent,hash:norm(row.join_tx_hash),blockNumber:row.join_block==null?null:Number(row.join_block),source:row.source||'Supabase SmartNode Team-Slice'});}
+    if(bc)await bc.replace(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_BROWSER_KEY,rows,{keyField:'child_wallet',parentField:'parent_wallet',meta:{payloadSchemaVersion:TEAM_GRAPH_PAYLOAD_SCHEMA_VERSION,storageFormatVersion:TEAM_GRAPH_BROWSER_STORAGE_VERSION,dataVersion:Number(remoteVersion?.data_version||0),syncCursor:remoteVersion?.sync_cursor||remoteVersion?.updated_at||null,rowCount:rows.length,rootsKey}});
+    window.setWtDataStatus?.('tln-team',{updatedAt:remoteVersion?.sync_cursor||remoteVersion?.updated_at,cacheAt:new Date().toISOString(),source:'cache'});
+    log(`Team-Slice: ${edges.size} für eigene TLN-Leader relevante Kanten aus Supabase geladen; kein Download des Globalgraphs.`,'ok');
+    return {edges,state:{lastVerifiedBlock:Number(remoteVersion?.data_version||0),edgeCount:edges.size,verifiedAt:remoteVersion?.sync_cursor||remoteVersion?.updated_at||null},browserCache:false,registryFresh:false};
+  }catch(e){
+    log(`Team-Slice nicht verfügbar: ${e.message||e}. Kein automatischer Globalgraph-Download beim Tab-Restore.`,'warn');
+    return null;
+  }
+}
+
 async function teamLoadGlobalGraphCache(){
   const teamUserId=await teamGetAuthenticatedUserId();if(!teamUserId||!TEAM_GRAPH_DB_AVAILABLE)return null;
   const contract=norm(TEAM_SMARTNODE_CONTRACT),bc=window.WalletTrackingBrowserCache;
@@ -13752,7 +13788,7 @@ async function teamLoadGlobalGraphCache(){
     try{
       let schemaProbe;[meta,remoteVersion,schemaProbe]=await Promise.all([
         bc.getMeta(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_BROWSER_KEY),
-        sb.from(DATA_VERSIONS_TABLE).select('data_version,payload_schema_version,row_count,sync_cursor,updated_at').eq('namespace',TEAM_GRAPH_BROWSER_NAMESPACE).eq('cache_key',TEAM_GRAPH_BROWSER_KEY).limit(1).then(r=>{if(r.error)throw r.error;return r.data?.[0]||null}),
+        sb.from(DATA_VERSIONS_TABLE).select('data_version,payload_schema_version,row_count,sync_cursor,updated_at').eq('namespace',TEAM_GRAPH_BROWSER_NAMESPACE).eq('cache_key',TEAM_GRAPH_REMOTE_VERSION_KEY).limit(1).then(r=>{if(r.error)throw r.error;return r.data?.[0]||null}),
         sb.from(TEAM_GRAPH_CACHE_TABLE).select('*').eq('chain_key','bsc').eq('contract_address',contract).limit(1).then(r=>{if(r.error)throw r.error;return r.data?.[0]||null})
       ]);remoteSchemaFingerprint=Object.keys(schemaProbe||{}).sort().join('|');
       if(meta&&remoteVersion){
@@ -16410,24 +16446,27 @@ function renderTeamTree(){
 async function restoreTeamTreeFromPersistentCache(){
   try{
     TEAM_IDENTITY_CACHE.clear();
-    await teamLoadIdentityCacheFromDb();
-    const cached=await teamLoadGlobalGraphCache();
-    if(!cached?.edges?.size){
-      log('Team-Restore: kein vollständiger persistenter SmartNode-Globalgraph verfügbar. Step 7 bleibt für den ersten Aufbau erforderlich.','muted');
-      renderTeamTree();
-      return false;
-    }
-
-    const edges=new Map(cached.edges);
-    // Bereits verifizierte Beziehungen neuer Registry-Generationen dürfen auch beim
-    // reinen Cache-Restore den kanonischen Globalgraph ergänzen, ohne ihn zu überschreiben.
-    teamMergeSupplementalIdentityEdges(edges);
     const ownWallets=[...projectOwnWalletMap().keys()];
     if(!ownWallets.length){
       log('Team-Restore: keine TLN/VOW-Wallets unter „MEINE Wallets“ gefunden.','warn');
       return false;
     }
+    // Egress-first: zuerst nur eigene IDs, danach nur die für diese Leader relevante Graph-Scheibe.
+    // Der globale Identity-Cache und der globale SmartNode-Graph werden beim normalen Tab-Aufruf NICHT heruntergeladen.
+    await teamLoadIdentityCacheFromDb(ownWallets);
+    const cached=await teamLoadRelevantGraphSlice(ownWallets);
+    if(!cached?.edges?.size){
+      log('Team-Restore: kein relevanter persistenter Team-Slice verfügbar. Step 7 bleibt für Discovery/Neuaufbau zuständig; kein automatischer Globalgraph-Download.','muted');
+      renderTeamTree();
+      return false;
+    }
 
+    const edges=new Map(cached.edges);
+    const relevantWallets=[...new Set([...edges.keys(),...[...edges.values()].map(e=>norm(e.parent)),...ownWallets])];
+    await teamLoadIdentityCacheFromDb(relevantWallets);
+    // Bereits verifizierte Beziehungen neuer Registry-Generationen dürfen auch beim
+    // reinen Cache-Restore den kanonischen Globalgraph ergänzen, ohne ihn zu überschreiben.
+    teamMergeSupplementalIdentityEdges(edges);
     const forest=buildProjectTeamForest(edges);
     const ownProjectWallets=[...projectOwnWalletMap().keys()];
     const ownWithoutVerifiedTlnId=ownProjectWallets.filter(w=>!TEAM_IDENTITY_CACHE.get(norm(w))?.nodeId);
