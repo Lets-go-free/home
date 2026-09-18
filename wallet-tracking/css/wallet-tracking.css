@@ -1362,3 +1362,26 @@ body.wt-modal-open{overflow:hidden}
 .wt-system-detail-head h3{margin:0;text-transform:uppercase;letter-spacing:.02em}
 .wt-system-detail-close{flex:none;width:36px;height:36px;padding:0!important;font-size:22px;line-height:1}
 .wt-system-detail-body{padding:16px 18px 20px;overflow:auto}
+
+
+/* Phase 4.93 · einklappbare Hauptnavigation + zentrale Datenstatus-Zeilen */
+.app-sidebar{position:sticky}
+.sidebar-collapse-btn{position:absolute;right:8px;top:8px;width:30px;height:30px;padding:0;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1.25rem;line-height:1;z-index:3}
+.sidebar-brand{padding-right:34px}
+.app-shell.sidebar-collapsed{--sidebar-w:54px}
+.app-shell.sidebar-collapsed .app-sidebar{padding:8px 6px;overflow:visible}
+.app-shell.sidebar-collapsed .sidebar-brand>div,.app-shell.sidebar-collapsed .main-nav-btn span{display:none}
+.app-shell.sidebar-collapsed .sidebar-brand{padding:38px 0 6px;justify-content:center}
+.app-shell.sidebar-collapsed .sidebar-brand-mark{margin:0}
+.app-shell.sidebar-collapsed .main-nav-btn{justify-content:center;padding:10px 6px;font-size:0;min-height:42px}
+.app-shell.sidebar-collapsed .main-nav-btn::first-letter{font-size:1.1rem}
+.app-shell.sidebar-collapsed .sidebar-collapse-btn{right:12px;transform:rotate(180deg)}
+.wt-data-status-line,.wt-tab-data-status{font-size:.92rem;color:var(--muted);line-height:1.45}
+.wt-tab-data-status{margin:8px 0 12px;padding:7px 10px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+.wt-system-tree-toggle{width:24px;height:24px;padding:0;margin-right:6px;border:0;background:transparent;color:inherit;box-shadow:none;font-size:.9rem;vertical-align:middle}
+.wt-system-tree-toggle:hover{transform:none;background:var(--soft,#f3f6fa)}
+@media(max-width:820px){.sidebar-collapse-btn{display:none}.app-shell.sidebar-collapsed{--sidebar-w:180px}.app-shell.sidebar-collapsed .sidebar-brand>div,.app-shell.sidebar-collapsed .main-nav-btn span{display:initial}.app-shell.sidebar-collapsed .main-nav-btn{font-size:inherit;justify-content:flex-start}}
+
+.wt-global-data-status{display:flex;gap:18px;flex-wrap:wrap;margin:0 0 10px;padding:7px 10px;font-size:.92rem;color:var(--muted);border:1px solid var(--border);border-radius:10px;background:var(--card)}
+
+/* Release Phase 4.93 · 18.09.2026 11:09:17 CEST · Build 20260918-110917 */

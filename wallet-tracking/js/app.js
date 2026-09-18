@@ -1,3 +1,4 @@
+/* WalletTracking Phase 4.93 · 18.09.2026 11:09:17 CEST · Build 20260918-110917 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1231,6 +1232,20 @@ function exportTaxPdf(){
 }
 
 
+
+// Phase 4.93 · zentrale Datenstands-Metadaten für Tabs + Systemübersicht
+const WT_DATA_STATUS = window.WT_DATA_STATUS || (window.WT_DATA_STATUS = {});
+function wtFormatDataStamp(v){if(!v)return null;const d=new Date(v);if(Number.isNaN(d.getTime()))return null;return d.toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:false});}
+function setWtDataStatus(key,{updatedAt=null,cacheAt=null,source=null,label=null}={}){const prev=WT_DATA_STATUS[key]||{},next={...prev,updatedAt,cacheAt,source,label};if(JSON.stringify(prev)===JSON.stringify(next))return;WT_DATA_STATUS[key]=next;document.dispatchEvent(new CustomEvent("wallettracking:data-status",{detail:{key,...next}}));}
+function wtDataStatusText(key){const x=WT_DATA_STATUS[key];if(!x)return "Datenstand: noch nicht instrumentiert";const u=wtFormatDataStamp(x.updatedAt),c=wtFormatDataStamp(x.cacheAt);if(c&&x.source==="cache")return `aus Cache vom ${c}`;if(u)return `Daten aktualisiert am ${u}`;if(c)return `aus Cache vom ${c}`;return "Datenstand: noch nicht instrumentiert";}
+function ensureTabDataStatus(panel,name){if(!panel||name==="admin")return;let el=panel.querySelector(":scope > .wt-tab-data-status");if(!el){el=document.createElement("div");el.className="wt-tab-data-status";panel.insertBefore(el,panel.firstChild);}const key=name==="tlnvow"?"tln":name==="dao1"?"dao":name;el.innerHTML=`<strong>Datenstand:</strong> ${escapeAttr(wtDataStatusText(key).replace(/^Datenstand:\s*/,""))}`;}
+function toggleSidebarCollapsed(force){const shell=document.querySelector(".app-shell");if(!shell)return;const next=typeof force==="boolean"?force:!shell.classList.contains("sidebar-collapsed");shell.classList.toggle("sidebar-collapsed",next);try{localStorage.setItem("wt-sidebar-collapsed",next?"1":"0")}catch{};const b=document.getElementById("sidebarCollapseBtn");if(b)b.setAttribute("aria-expanded",next?"false":"true");}
+window.setWtDataStatus=setWtDataStatus;window.toggleSidebarCollapsed=toggleSidebarCollapsed;
+document.addEventListener("DOMContentLoaded",()=>{try{toggleSidebarCollapsed(localStorage.getItem("wt-sidebar-collapsed")==="1")}catch{}
+  const syncGlobal=()=>{const ds=document.getElementById("cacheStatusNote"),ps=document.getElementById("currentPriceStatus"),gd=document.getElementById("globalDataStatusText"),gp=document.getElementById("globalPriceStatusText");if(gd&&ds?.textContent)gd.textContent=ds.textContent.trim();if(gp&&ps?.textContent)gp.textContent=ps.textContent.replace(/^Preisstand:\s*/,"").trim()};syncGlobal();const obs=new MutationObserver(syncGlobal);const ds=document.getElementById("cacheStatusNote"),ps=document.getElementById("currentPriceStatus");if(ds)obs.observe(ds,{childList:true,subtree:true,characterData:true});if(ps)obs.observe(ps,{childList:true,subtree:true,characterData:true});
+});
+document.addEventListener("wallettracking:data-status",()=>{const p=document.querySelector(".tab-panel.active");if(p)ensureTabDataStatus(p,p.id.replace(/^tab-/,""));if(document.getElementById("admintab-system")?.classList.contains("active"))renderAdminSystemOverview();});
+
 function showTab(name) {
   if(window.isDataJobActive?.()) return;
   // TLN/VOW ist nur erreichbar, wenn ein passender Projekt-Token im Summary-Bestand liegt.
@@ -1240,7 +1255,7 @@ function showTab(name) {
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".tab-btn[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
   const panel = document.getElementById("tab-" + name);
-  if (panel) panel.classList.add("active");
+  if (panel) { panel.classList.add("active"); ensureTabDataStatus(panel,name); }
   if (name === "predefined") { ensurePredefinedNames(); renderSafeTokenTable(); }
   if (name === "admin" && !document.querySelector(".admin-tab-panel.active")) showAdminTab("customtokens");
   if (name === "chat") {
@@ -1327,7 +1342,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"tln-rewards",level:2,label:"Rewards Summary",status:"in_progress",start:"–",daily:"–",open:"Cache",manual:"Discovery",details:[["Reward Summary","Cache","Supabase/Discovery Cache","BSC/ETH bei Discovery","Projekt-Tab"]]},
   {id:"tln-referral",level:2,label:"Referral Rewards",status:"in_progress",start:"–",daily:"–",open:"Cache",manual:"Discovery",details:[["Referral Rewards","Cache","Supabase/Discovery Cache","BSC/ETH bei Discovery","Projekt-Tab"]]},
   {id:"tln-bonus",level:2,label:"Bonus-Rewards",status:"in_progress",start:"–",daily:"–",open:"Cache",manual:"Discovery",details:[["Bonus Rewards","Cache","Supabase/Discovery Cache","BSC/ETH bei Discovery","Projekt-Tab"]]},
-  {id:"tln-team",level:2,label:"Team",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"–",daily:"–",open:"DB/Graph-Cache",manual:"Delta/RPC",details:[["SmartNode Team-Graph","noch nicht zentral auf neuen Browsercache migriert","Supabase globaler TLN Graph","BSC Registry/RPC","Inventar bestätigt: nächster grosser Referenzbereich für DATA_VERSIONS/IndexedDB nach DAO1"]]},
+  {id:"tln-team",level:2,label:"Team",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"–",daily:"–",open:"🟡 IDB + Version",manual:"Delta/RPC",details:[["SmartNode Team-Graph","IndexedDB · tln-vow/smartnode-global-graph","Supabase globaler TLN Graph + cache_data_versions","BSC Registry/RPC nur Discovery/Update","Phase 4.93: DATA_VERSIONS-Gate implementiert; bei HIT DB-Kanten 0. Migration 058 erforderlich; Praxistest noch offen"]]},
   {id:"tln-admin",level:2,label:"Admin · Contracts",status:"planning",start:"–",daily:"–",open:"DB/Cache",manual:"Discovery",details:[["Contract Registry/Prüffälle","–","Supabase","BSC/ETH RPC bei Discovery","Nur Admin"]]},
   {id:"tln-help",level:2,label:"Hilfe",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[["TLN/VOW Hilfe","JS-Modul","–","–","Tab öffnen"]]},
   {id:"tln-lpold",level:2,label:"Liquidity Pools_old",status:"planning",start:"–",daily:"–",open:"Cache/DB",manual:"RPC",details:[["Legacy LP-Ansicht","Cache","Supabase LP Cache","BSC/ETH RPC","Legacy-Bereich"]]},
@@ -1357,22 +1372,30 @@ const ADMIN_SYSTEM_TREE = [
 ];
 
 let adminSystemSelectedId="dao-team";
+const WT_SYSTEM_TREE_STATE_KEY="wt-system-tree-expanded-v1";
+let wtSystemExpanded=new Set();
+try{const a=JSON.parse(localStorage.getItem(WT_SYSTEM_TREE_STATE_KEY)||"[]");if(Array.isArray(a))wtSystemExpanded=new Set(a)}catch{}
+function wtSystemChildrenMap(){const m=new Map();const stack=[];for(const r of ADMIN_SYSTEM_TREE){while(stack.length&&stack[stack.length-1].level>=r.level)stack.pop();const parent=stack.length?stack[stack.length-1]:null;if(parent){if(!m.has(parent.id))m.set(parent.id,[]);m.get(parent.id).push(r.id)}stack.push(r)}return m}
+function wtSystemParentMap(){const m=new Map(),stack=[];for(const r of ADMIN_SYSTEM_TREE){while(stack.length&&stack[stack.length-1].level>=r.level)stack.pop();m.set(r.id,stack.length?stack[stack.length-1].id:null);stack.push(r)}return m}
+function wtSystemVisible(row,parentMap){let p=parentMap.get(row.id);while(p){if(!wtSystemExpanded.has(p))return false;p=parentMap.get(p)}return true}
+function wtSaveSystemTree(){try{localStorage.setItem(WT_SYSTEM_TREE_STATE_KEY,JSON.stringify([...wtSystemExpanded]))}catch{}}
+function toggleAdminSystemNode(id,event){event?.stopPropagation?.();if(wtSystemExpanded.has(id))wtSystemExpanded.delete(id);else wtSystemExpanded.add(id);wtSaveSystemTree();renderAdminSystemOverview()}
+function setAdminSystemTreeExpanded(expand){const cm=wtSystemChildrenMap();wtSystemExpanded=expand?new Set(cm.keys()):new Set();wtSaveSystemTree();renderAdminSystemOverview()}
+window.toggleAdminSystemNode=toggleAdminSystemNode;window.setAdminSystemTreeExpanded=setAdminSystemTreeExpanded;
 function adminSystemIdeaStatus(row){
   if(!row.idea||!Array.isArray(window.ADMIN_IDEAS)&&typeof ADMIN_IDEAS==="undefined")return row.status||"planning";
   const list=(typeof ADMIN_IDEAS!=="undefined"?ADMIN_IDEAS:[]).filter(x=>`${x.title} ${x.desc}`.toLowerCase().includes(String(row.idea).toLowerCase()));
-  if(!list.length)return row.status||"planning";
-  if(list.some(x=>x.status==="error"))return "error";
-  if(list.some(x=>["in_progress","clarifying","paused"].includes(x.status)))return "in_progress";
-  if(list.every(x=>x.status==="done"))return "done";
-  return "planning";
+  if(!list.length)return row.status||"planning";if(list.some(x=>x.status==="error"))return "error";if(list.some(x=>["in_progress","clarifying","paused"].includes(x.status)))return "in_progress";if(list.every(x=>x.status==="done"))return "done";return "planning";
 }
-function adminSystemStatusMeta(status){
-  return ({done:["🟢","Erledigt"],in_progress:["🟡","In Arbeit"],error:["🔴","Fehlerhaft"],planning:["⚪","In Planung"]})[status]||["⚪","In Planung"];
-}
+function adminSystemStatusMeta(status){return ({done:["🟢","Erledigt"],in_progress:["🟡","In Arbeit"],error:["🔴","Fehlerhaft"],planning:["⚪","In Planung"]})[status]||["⚪","In Planung"]}
+function wtSystemDataKey(row){if(row.id==="tracking")return "tracking";if(row.id==="dao-team")return "dao-team";if(row.id==="tln-team")return "tln-team";if(row.id.startsWith("dao"))return "dao";if(row.id.startsWith("tln"))return "tln";return row.id}
+function wtSystemCurrentText(row,childrenMap){const own=WT_DATA_STATUS[wtSystemDataKey(row)];if(own)return wtDataStatusText(wtSystemDataKey(row));const kids=childrenMap.get(row.id)||[];const vals=[...new Set(kids.map(id=>{const r=ADMIN_SYSTEM_TREE.find(x=>x.id===id);const x=r&&WT_DATA_STATUS[wtSystemDataKey(r)];return x?wtDataStatusText(wtSystemDataKey(r)):null}).filter(Boolean))];return vals.length>1?"mehrere Datenstände":vals[0]||"noch nicht instrumentiert"}
+async function refreshAdminSystemDataVersions(){if(!sb||!isAdmin)return;try{const {data,error}=await sb.from("cache_data_versions").select("namespace,cache_key,data_version,sync_cursor,updated_at").in("namespace",["dao1","tln-vow"]);if(error)throw error;for(const r of data||[]){const key=r.namespace==="dao1"&&r.cache_key==="legacy-tree"?"dao-team":r.namespace==="tln-vow"&&r.cache_key==="smartnode-global-graph"?"tln-team":null;if(key)setWtDataStatus(key,{updatedAt:r.sync_cursor||r.updated_at,cacheAt:r.updated_at,source:"cache"})}}catch(e){console.warn("Systemübersicht DATA_VERSIONS",e)}}
 function renderAdminSystemOverview(){
-  const host=document.getElementById("adminSystemOverview");if(!host||!isAdmin)return;
-  const rows=ADMIN_SYSTEM_TREE.map(r=>{const st=adminSystemIdeaStatus(r),m=adminSystemStatusMeta(st);return `<tr class="wt-system-row" onclick="selectAdminSystemRow('${escapeAttr(r.id)}')"><td style="padding-left:${12+r.level*24}px;white-space:nowrap">${r.level?'<span style="color:var(--muted)">↳</span> ':''}<strong>${escapeAttr(r.label)}</strong></td><td style="white-space:nowrap" title="${m[1]}">${m[0]} ${m[1]}</td><td>${escapeAttr(r.start||'–')}</td><td>${escapeAttr(r.daily||'–')}</td><td>${escapeAttr(r.open||'–')}</td><td>${escapeAttr(r.manual||'–')}</td></tr>`}).join("");
-  host.innerHTML=`<div class="custom-token-card" style="margin-bottom:14px"><div style="display:flex;gap:16px;flex-wrap:wrap"><span>🟢 erledigt</span><span>🟡 in Arbeit</span><span>🔴 fehlerhaft</span><span>⚪ in Planung</span></div><div class="meta" style="margin-top:7px">Status wird, wo verknüpft, aus <code>admin/ideas.js</code> abgeleitet. Ladezeitpunkte bilden den aktuell geprüften Codepfad ab. Zeile anklicken = Datenquellen als Popup.</div></div><div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1120px"><thead><tr><th>Bereich / Baum</th><th>Status</th><th>Normaler App-Start</th><th>1. Start am Tag</th><th>Tab / Bereich öffnen</th><th>Manuell aktualisieren</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  const host=document.getElementById("adminSystemOverview");if(!host||!isAdmin)return;const cm=wtSystemChildrenMap(),pm=wtSystemParentMap();try{if(localStorage.getItem(WT_SYSTEM_TREE_STATE_KEY)===null)wtSystemExpanded=new Set(cm.keys())}catch{};
+  const rows=ADMIN_SYSTEM_TREE.filter(r=>wtSystemVisible(r,pm)).map(r=>{const st=adminSystemIdeaStatus(r),m=adminSystemStatusMeta(st),hasKids=cm.has(r.id),toggle=hasKids?`<button class="wt-system-tree-toggle" onclick="toggleAdminSystemNode('${escapeAttr(r.id)}',event)" title="${wtSystemExpanded.has(r.id)?'Zuklappen':'Aufklappen'}">${wtSystemExpanded.has(r.id)?'▼':'▶'}</button>`:'<span style="display:inline-block;width:30px"></span>';return `<tr class="wt-system-row" onclick="selectAdminSystemRow('${escapeAttr(r.id)}')"><td style="padding-left:${8+r.level*20}px;white-space:nowrap">${toggle}<strong>${escapeAttr(r.label)}</strong></td><td style="white-space:nowrap" title="${m[1]}">${m[0]} ${m[1]}</td><td>${escapeAttr(wtSystemCurrentText(r,cm))}</td><td>${escapeAttr(r.start||'–')}</td><td>${escapeAttr(r.daily||'–')}</td><td>${escapeAttr(r.open||'–')}</td><td>${escapeAttr(r.manual||'–')}</td></tr>`}).join("");
+  host.innerHTML=`<div class="custom-token-card" style="margin-bottom:14px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button type="button" class="secondary" onclick="setAdminSystemTreeExpanded(true)">Alle aufklappen</button><button type="button" class="secondary" onclick="setAdminSystemTreeExpanded(false)">Alle zuklappen</button><span>🟢 erledigt</span><span>🟡 in Arbeit</span><span>🔴 fehlerhaft</span><span>⚪ in Planung</span></div><div class="meta" style="margin-top:7px">Aktueller Datenstand und Tabs verwenden dieselben zentralen Metadaten. Knotenpfeil = Ast auf/zu; Zeile = Datenquellen-Popup.</div></div><div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1320px"><thead><tr><th>Bereich / Baum</th><th>Status</th><th>Aktueller Datenstand</th><th>Normaler App-Start</th><th>1. Start am Tag</th><th>Tab / Bereich öffnen</th><th>Manuell aktualisieren</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  refreshAdminSystemDataVersions();
 }
 function ensureAdminSystemDetailModal(){
   let modal=document.getElementById("adminSystemDetailModal");if(modal)return modal;
@@ -2797,7 +2820,7 @@ function formatCurrentPriceTimestamp(value){
   return Number.isNaN(d.getTime())?"–":new Intl.DateTimeFormat("de-CH",{timeZone:CURRENT_PRICE_TIMEZONE,day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"}).format(d);
 }
 function setCentralPriceBusy(busy){const b=document.getElementById("currentPriceRefreshBtn");if(b){b.disabled=!!busy;b.textContent=busy?"Preise werden aktualisiert…":"Preise aktualisieren";}}
-function setCentralPriceStatus(text,kind="note"){const el=document.getElementById("currentPriceStatus");if(!el)return;const cls=kind==="success"?"success":kind==="warning"?"warning":kind==="error"?"error":"note";el.className=cls;el.textContent=text;}
+function setCentralPriceStatus(text,kind="note"){const el=document.getElementById("currentPriceStatus");if(!el)return;const cls=kind==="success"?"success":kind==="warning"?"warning":kind==="error"?"error":"note";el.className=cls+" wt-data-status-line";const clean=String(text||"").replace(/^Preisstand:\s*/,"");el.innerHTML=`<strong>Preisstand:</strong> ${escapeAttr(clean)}`;}
 async function loadUserCurrentPriceSnapshot(){
   if(!currentUser)return null;
   try{
@@ -2856,10 +2879,11 @@ async function refreshAllCurrentPrices({manual=false}={}){
     const tlnStamp=tlnState?.capturedAt?formatCurrentPriceTimestamp(tlnState.capturedAt):null;
     const allCached=general?.source==="supabase"&&(!tlnState||tlnState.source==="supabase");
     const saved=general?.source!=="live-unsaved";
-    let text=`Preisstand: ${generalStamp}`;
+    let text=`${generalStamp}`;
     if(tlnStamp&&tlnStamp!==generalStamp)text+=` · TLN/VOW ${tlnStamp}`;
     text+=allCached?" · aus Supabase-Tagescache.":(saved?" · aktuell geladen und in Supabase gespeichert.":" · aktuell geladen; allgemeiner Supabase-Preiscache konnte nicht gespeichert werden.");
-    setCentralPriceStatus(text,allCached||saved?"success":"warning");
+    setCentralPriceStatus(`Preisstand: ${text}`,allCached||saved?"success":"warning");
+    const priceAt=general?.capturedAt||null;setWtDataStatus("tracking",{updatedAt:priceAt,cacheAt:allCached?priceAt:null,source:allCached?"cache":"live",label:"Wallet-Tracking"});
     window.dispatchEvent(new CustomEvent("wallettracking:all-prices-updated",{detail:{manual,general,tln:tlnState}}));
     return {general,tln:tlnState};
   })().catch(e=>{setCentralPriceStatus(`Preisaktualisierung fehlgeschlagen: ${e.message||e}`,"error");throw e;}).finally(()=>{setCentralPriceBusy(false);allCurrentPricesPromise=null;});

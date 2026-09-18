@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260914-010218 */
 (()=>{
-const BUILD_ID='20260914-010218';
+const BUILD_ID='20260918-110917';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='13.09.2026 15:10:06 CEST';
+const APP_VERSION='18.09.2026 11:09:17 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13333,6 +13333,11 @@ const TEAM_GRAPH_STATE_TABLE='tln_vow_smartnode_graph_state';
 const TEAM_GRAPH_CACHE_PAGE_SIZE=1000;
 const TEAM_GRAPH_OVERLAP_BLOCKS=64;
 const TEAM_GRAPH_CONFIRMATIONS=12;
+const TEAM_GRAPH_BROWSER_NAMESPACE='tln-vow';
+const TEAM_GRAPH_BROWSER_KEY='smartnode-global-graph';
+const TEAM_GRAPH_PAYLOAD_SCHEMA_VERSION=1;
+const TEAM_GRAPH_BROWSER_STORAGE_VERSION=1;
+const DATA_VERSIONS_TABLE='cache_data_versions';
 let TEAM_GRAPH_DB_AVAILABLE=true;
 let TEAM_FORCE_FULL_GRAPH_RESCAN_ONCE=false,TEAM_FORCE_IGNORE_GLOBAL_TEAM_CACHE_ONCE=false;
 const TEAM_IDENTITY_CACHE=new Map();
@@ -13738,58 +13743,42 @@ async function teamGetAuthenticatedUserId(){
   }catch{return null}
 }
 async function teamLoadGlobalGraphCache(){
-  const teamUserId=await teamGetAuthenticatedUserId();
-  if(!teamUserId||!TEAM_GRAPH_DB_AVAILABLE)return null;
-  const contract=norm(TEAM_SMARTNODE_CONTRACT);
-  const {data:stateRows,error:stateError}=await sb.from(TEAM_GRAPH_STATE_TABLE)
-    .select('chain_key,contract_address,last_verified_block,transfer_count,edge_count,verified_at,updated_at')
-    .eq('chain_key','bsc').eq('contract_address',contract).limit(1);
-  if(stateError){
-    const msg=String(stateError.message||'');
-    if(/tln_vow_smartnode_graph_state|relation .* does not exist|schema cache/i.test(msg)){
-      TEAM_GRAPH_DB_AVAILABLE=false;
-      log('Team-Global-Cache noch nicht verfügbar (Migration 025 ausführen). Vollständiger SmartNode-Historienscan bleibt aktiv.','warn');
-      return null;
-    }
-    log(`Team-Global-Cache State nicht lesbar: ${stateError.message}. Vollscan bleibt aktiv.`,'warn');
-    return null;
+  const teamUserId=await teamGetAuthenticatedUserId();if(!teamUserId||!TEAM_GRAPH_DB_AVAILABLE)return null;
+  const contract=norm(TEAM_SMARTNODE_CONTRACT),bc=window.WalletTrackingBrowserCache;
+  let remoteVersion=null,meta=null,remoteSchemaFingerprint=null;
+  if(bc){
+    try{
+      let schemaProbe;[meta,remoteVersion,schemaProbe]=await Promise.all([
+        bc.getMeta(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_BROWSER_KEY),
+        sb.from(DATA_VERSIONS_TABLE).select('data_version,payload_schema_version,row_count,sync_cursor,updated_at').eq('namespace',TEAM_GRAPH_BROWSER_NAMESPACE).eq('cache_key',TEAM_GRAPH_BROWSER_KEY).limit(1).then(r=>{if(r.error)throw r.error;return r.data?.[0]||null}),
+        sb.from(TEAM_GRAPH_CACHE_TABLE).select('*').eq('chain_key','bsc').eq('contract_address',contract).limit(1).then(r=>{if(r.error)throw r.error;return r.data?.[0]||null})
+      ]);remoteSchemaFingerprint=Object.keys(schemaProbe||{}).sort().join('|');
+      if(meta&&remoteVersion){
+        const schemaOk=Number(meta.payloadSchemaVersion||0)===TEAM_GRAPH_PAYLOAD_SCHEMA_VERSION&&Number(meta.storageFormatVersion||0)===TEAM_GRAPH_BROWSER_STORAGE_VERSION&&Number(remoteVersion.payload_schema_version||1)===TEAM_GRAPH_PAYLOAD_SCHEMA_VERSION&&(!remoteSchemaFingerprint||meta.schemaFingerprint===remoteSchemaFingerprint);
+        const versionOk=Number(meta.dataVersion||0)===Number(remoteVersion.data_version||0),countOk=!Number(remoteVersion.row_count||0)||Number(meta.rowCount||0)===Number(remoteVersion.row_count||0);
+        if(schemaOk&&versionOk&&countOk){
+          const rows=await bc.getAll(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_BROWSER_KEY),edges=new Map();
+          for(const row of rows){const child=norm(row.child_wallet),parent=norm(row.parent_wallet);if(/^0x[0-9a-f]{40}$/.test(child)&&/^0x[0-9a-f]{40}$/.test(parent)&&child!==parent&&!edges.has(child))edges.set(child,{child,parent,hash:norm(row.join_tx_hash),blockNumber:row.join_block==null?null:Number(row.join_block),source:row.source||'IndexedDB SmartNode Global-Cache'});}
+          if(edges.size===Number(remoteVersion.row_count||edges.size)){
+            window.setWtDataStatus?.('tln-team',{updatedAt:remoteVersion.sync_cursor||remoteVersion.updated_at,cacheAt:meta.savedAt,source:'cache'});
+            log(`Team-Global-Cache: IDB + DATA_VERSIONS HIT · ${edges.size} Kanten lokal · DB-Kanten 0 · verifiziert bis Block ${Number(remoteVersion.data_version||0).toLocaleString('de-CH')}.`,'ok');
+            return {edges,state:{lastVerifiedBlock:Number(remoteVersion.data_version||0),transferCount:Number(meta.transferCount||0),edgeCount:edges.size,verifiedAt:remoteVersion.sync_cursor||remoteVersion.updated_at||null},dbPages:0,browserCache:true,registryFresh:true};
+          }
+        }
+      }
+    }catch(e){log(`Team Browser-Cache Gate: ${e.message||e}; Supabase-Fallback wird verwendet.`,'warn')}
   }
-  const state=stateRows?.[0]||null;
-  if(!state||state.last_verified_block==null||state.edge_count==null)return null;
-
-  const edges=new Map();
-  let offset=0,dbPages=0;
-  while(true){
-    const {data,error}=await sb.from(TEAM_GRAPH_CACHE_TABLE)
-      .select('child_wallet,parent_wallet,join_tx_hash,join_block,source,verified_at')
-      .eq('chain_key','bsc').eq('contract_address',contract)
-      .order('child_wallet',{ascending:true})
-      .range(offset,offset+TEAM_GRAPH_CACHE_PAGE_SIZE-1);
-    if(error){
-      const msg=String(error.message||'');
-      if(/tln_vow_smartnode_graph_cache|relation .* does not exist|schema cache/i.test(msg))TEAM_GRAPH_DB_AVAILABLE=false;
-      log(`Team-Global-Cache Kanten nicht lesbar: ${error.message}. Vollscan bleibt aktiv.`,'warn');
-      return null;
-    }
-    const rows=data||[];dbPages++;
-    for(const row of rows){
-      const child=norm(row.child_wallet),parent=norm(row.parent_wallet);
-      if(!/^0x[0-9a-f]{40}$/.test(child)||!/^0x[0-9a-f]{40}$/.test(parent)||child===parent)continue;
-      if(!edges.has(child))edges.set(child,{child,parent,hash:norm(row.join_tx_hash),blockNumber:row.join_block==null?null:Number(row.join_block),source:row.source||'Supabase SmartNode Global-Cache'});
-    }
-    if(rows.length<TEAM_GRAPH_CACHE_PAGE_SIZE)break;
-    offset+=TEAM_GRAPH_CACHE_PAGE_SIZE;
-    if(dbPages>100)throw new Error('Team-Global-Cache überschreitet 100 Supabase-Seiten; Abbruch statt Teilgraph.');
-  }
-  const expected=Number(state.edge_count||0);
-  if(expected!==edges.size||edges.size<100){
-    log(`Team-Global-Cache unvollständig: State erwartet ${expected} Kanten, geladen wurden ${edges.size}. Vollständiger History-Scan wird verwendet.`,'warn');
-    return null;
-  }
-  log(`Team-Global-Cache: ${edges.size} verifizierte Child→Parent-Beziehungen aus Supabase geladen · letzter verifizierter Block ${Number(state.last_verified_block).toLocaleString('de-CH')} · ${dbPages} DB-Seite(n).`,'ok');
+  const {data:stateRows,error:stateError}=await sb.from(TEAM_GRAPH_STATE_TABLE).select('*').eq('chain_key','bsc').eq('contract_address',contract).limit(1);
+  if(stateError){const msg=String(stateError.message||'');if(/tln_vow_smartnode_graph_state|relation .* does not exist|schema cache/i.test(msg)){TEAM_GRAPH_DB_AVAILABLE=false;log('Team-Global-Cache noch nicht verfügbar (Migration 025 ausführen). Vollständiger SmartNode-Historienscan bleibt aktiv.','warn');return null}log(`Team-Global-Cache State nicht lesbar: ${stateError.message}. Vollscan bleibt aktiv.`,'warn');return null}
+  const state=stateRows?.[0]||null;if(!state||state.last_verified_block==null||state.edge_count==null)return null;
+  const rawRows=[],edges=new Map();let offset=0,dbPages=0;
+  while(true){const {data,error}=await sb.from(TEAM_GRAPH_CACHE_TABLE).select('*').eq('chain_key','bsc').eq('contract_address',contract).order('child_wallet',{ascending:true}).range(offset,offset+TEAM_GRAPH_CACHE_PAGE_SIZE-1);if(error){const msg=String(error.message||'');if(/tln_vow_smartnode_graph_cache|relation .* does not exist|schema cache/i.test(msg))TEAM_GRAPH_DB_AVAILABLE=false;log(`Team-Global-Cache Kanten nicht lesbar: ${error.message}. Vollscan bleibt aktiv.`,'warn');return null}const rows=data||[];rawRows.push(...rows);dbPages++;for(const row of rows){const child=norm(row.child_wallet),parent=norm(row.parent_wallet);if(!/^0x[0-9a-f]{40}$/.test(child)||!/^0x[0-9a-f]{40}$/.test(parent)||child===parent)continue;if(!edges.has(child))edges.set(child,{child,parent,hash:norm(row.join_tx_hash),blockNumber:row.join_block==null?null:Number(row.join_block),source:row.source||'Supabase SmartNode Global-Cache'})}if(rows.length<TEAM_GRAPH_CACHE_PAGE_SIZE)break;offset+=TEAM_GRAPH_CACHE_PAGE_SIZE;if(dbPages>100)throw new Error('Team-Global-Cache überschreitet 100 Supabase-Seiten; Abbruch statt Teilgraph.')}
+  const expected=Number(state.edge_count||0);if(expected!==edges.size||edges.size<100){log(`Team-Global-Cache unvollständig: State erwartet ${expected} Kanten, geladen wurden ${edges.size}. Vollständiger History-Scan wird verwendet.`,'warn');return null}
+  if(bc)try{await bc.replace(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_BROWSER_KEY,rawRows,{keyField:'child_wallet',parentField:'parent_wallet',meta:{payloadSchemaVersion:TEAM_GRAPH_PAYLOAD_SCHEMA_VERSION,storageFormatVersion:TEAM_GRAPH_BROWSER_STORAGE_VERSION,schemaFingerprint:remoteSchemaFingerprint||Object.keys(rawRows[0]||{}).sort().join('|'),dataVersion:Number(remoteVersion?.data_version||state.last_verified_block||0),syncCursor:remoteVersion?.sync_cursor||remoteVersion?.updated_at||state.updated_at||state.verified_at,transferCount:Number(state.transfer_count||0),rowCount:expected}})}catch(e){log(`Team Browser-Cache Erstaufbau fehlgeschlagen: ${e.message||e}`,'warn')}
+  window.setWtDataStatus?.('tln-team',{updatedAt:state.updated_at||state.verified_at,cacheAt:new Date().toISOString(),source:'cache'});
+  log(`Team-Global-Cache: ${edges.size} verifizierte Child→Parent-Beziehungen aus Supabase geladen · letzter verifizierter Block ${Number(state.last_verified_block).toLocaleString('de-CH')} · ${dbPages} DB-Seite(n); IndexedDB aufgebaut.`,'ok');
   return {edges,state:{lastVerifiedBlock:Number(state.last_verified_block),transferCount:Number(state.transfer_count||0),edgeCount:expected,verifiedAt:state.verified_at||null},dbPages};
 }
-
 async function teamSaveGlobalGraphCache(edges,{lastVerifiedBlock,transferCount,onlyChildren=null}={}){
   const teamUserId=await teamGetAuthenticatedUserId();
   if(!teamUserId||!TEAM_GRAPH_DB_AVAILABLE||!edges?.size)return false;
@@ -13821,6 +13810,8 @@ async function teamSaveGlobalGraphCache(edges,{lastVerifiedBlock,transferCount,o
     log(`Team-Global-Cache State-Speichern fehlgeschlagen: ${stateError.message}. Nächster Lauf fällt sicher auf Vollscan zurück.`,'warn');
     return false;
   }
+  const bc=window.WalletTrackingBrowserCache;if(bc)try{await bc.merge(TEAM_GRAPH_BROWSER_NAMESPACE,TEAM_GRAPH_BROWSER_KEY,rows,{keyField:'child_wallet',parentField:'parent_wallet',meta:{payloadSchemaVersion:TEAM_GRAPH_PAYLOAD_SCHEMA_VERSION,storageFormatVersion:TEAM_GRAPH_BROWSER_STORAGE_VERSION,dataVersion:Number(lastVerifiedBlock||0),syncCursor:nowIso,transferCount:Number(transferCount||0),rowCount:edges.size}})}catch(e){log(`Team Browser-Cache Nachführung fehlgeschlagen: ${e.message||e}`,'warn')}
+  window.setWtDataStatus?.('tln-team',{updatedAt:nowIso,cacheAt:nowIso,source:'cache'});
   log(`Team-Global-Cache gespeichert: ${rows.length} ${filter?'neue/geänderte':'vollständige'} Kante(n) · Gesamtgraph ${edges.size} · verifiziert bis Block ${Number(lastVerifiedBlock||0).toLocaleString('de-CH')}.`,'ok');
   return true;
 }
