@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260918-174217 */
 (()=>{
-const BUILD_ID='20260918-192353';
+const BUILD_ID='20260918-194817';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 19:23:53 CEST';
+const APP_VERSION='18.09.2026 19:48:17 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4139,6 +4139,7 @@ const TECH_CACHE_VERSIONS=Object.freeze({
 // Teil-Lifecycles. Deshalb bleiben vollständig verifizierte v8-Ergebnisse gültig und
 // werden beim Reload wiederverwendet, statt wegen eines UI/Worker-Releases neu zu scannen.
 const TEAM_LIFECYCLE_CACHE_COMPAT_VERSIONS=new Set([
+  'team-lifecycle-v7',
   'team-lifecycle-v8-null-coverage-proof',
   TECH_CACHE_VERSIONS.teamLifecycle
 ]);
@@ -13349,6 +13350,8 @@ async function migrateLegacyTeamAliasesToSupabase(){
   return 0;
 }
 const TEAM_SMARTNODE_CONTRACT='0x028c911c10c9e346158206991e02d09bd0a8a35b';
+// Verifizierte weitere SmartNode-Registry-Generationen. Diese Liste ist projektweit, nicht userbezogen.
+const TEAM_ADDITIONAL_SMARTNODE_REGISTRIES=['0x5c9ed6921a824e44a8db6ca041e03a59a63cb35c'];
 const TEAM_NODE_ID_SELECTOR=ethers.id('nodeIdOf(address)').slice(0,10);
 const TEAM_NODE_USER_SELECTOR=ethers.id('nodeUserOf(uint256)').slice(0,10);
 const TEAM_JOIN_SELECTOR=ethers.id('join(address)').slice(0,10).toLowerCase();
@@ -13424,8 +13427,17 @@ function teamAliasFor(wallet,ident){
   // bleiben wir rueckwaertskompatibel zu nackter TLN-ID bzw. nackter Wallet-Adresse.
   // So verschwinden bestehende userbezogene Namen nach Identity-/Cache-Migrationen nicht.
   const nodeId=String(ident?.nodeId||'').trim();
-  const candidates=[nodeId?`id:${nodeId}`:'',nodeId,w?`wallet:${w}`:'',w].filter(Boolean);
+  const candidates=[nodeId?`id:${nodeId}`:'',nodeId?`tln-id:${nodeId}`:'',nodeId?`tln:${nodeId}`:'',nodeId,w?`wallet:${w}`:'',w].filter(Boolean);
   for(const key of candidates){const value=String(aliases[key]||'').trim();if(value)return value}
+  // Security-Migrationen haben die entschluesselte Partnerreferenz zeitweise mit
+  // unterschiedlichen Praefixen geliefert. Nicht auf ein bestimmtes Prefix angewiesen sein:
+  // fachlich eindeutig sind die enthaltene TLN-ID bzw. die 40-stellige Wallet-Adresse.
+  for(const [rawKey,rawValue] of Object.entries(aliases||{})){
+    const key=String(rawKey||'').trim().toLowerCase(),value=String(rawValue||'').trim();if(!value)continue;
+    if(nodeId){const nums=key.match(/\d+/g)||[];if(nums.includes(nodeId))return value}
+    if(w&&key.includes(w))return value;
+    const addr=key.match(/0x[0-9a-f]{40}/i)?.[0];if(addr&&norm(addr)===w)return value;
+  }
   return '';
 }
 function teamWalletForNodeId(nodeId){
@@ -13525,6 +13537,80 @@ async function teamLoadSupplementalRegistryIdentitiesFromDb(){
     log(`Team-IDs neue Registries: ${n} verifizierte Identity(s) fuer gezielten Parent-Restore geladen (Registry + High-ID-Fallback).`,'muted');
     return n;
   }catch(e){log(`Team-IDs neue Registries: Zusatz-Cache nicht lesbar: ${e.message||e}. Legacy-Team-Slice bleibt verwendbar.`,'warn');return 0}
+}
+
+async function teamRestoreAdditionalRegistryGraph(){
+  // Phase 5.13: Neue Registry-Generationen besitzen einen eigenen join(address)-Graph.
+  // Zuerst nur persistierte Kanten laden. Nur wenn fuer eine konfigurierte Registry noch
+  // gar keine Kante persistiert ist, wird deren (kleine) Join-Historie einmalig on-chain
+  // aufgebaut und danach global gecacht. Keine Staking-Discovery und kein Legacy-Globalgraph-Scan.
+  let restored=0,scanned=0;
+  for(const registry0 of TEAM_ADDITIONAL_SMARTNODE_REGISTRIES){
+    const registry=norm(registry0);if(!ethers.isAddress(registry))continue;
+    let rows=[];
+    try{
+      const {data,error}=await sb.from(TEAM_GRAPH_CACHE_TABLE).select('child_wallet,parent_wallet,join_tx_hash,join_block,source').eq('chain_key','bsc').eq('contract_address',registry).limit(1000);
+      if(error)throw error;rows=data||[];
+    }catch(e){log(`Team-Zusatzregistry ${short(registry)}: Graph-Cache nicht lesbar (${e.message||e}).`,'warn')}
+    if(!rows.length){
+      try{
+        let pageKey=null,pages=0;const joins=[];
+        do{
+          const q={fromBlock:'0x0',toBlock:'latest',toAddress:registry,category:['external'],excludeZeroValue:false,withMetadata:false,maxCount:'0x3e8',order:'asc'};if(pageKey)q.pageKey=pageKey;
+          const r=await teamAlchemyRpc('alchemy_getAssetTransfers',[q]);pages++;
+          for(const x of (r?.transfers||[])){
+            const h=norm(x?.hash||'');if(!h)continue;
+            let tx=null;try{tx=await rpc('eth_getTransactionByHash',[h])}catch{}
+            const input=String(tx?.input||'').toLowerCase(),child=norm(tx?.from||'');
+            if(norm(tx?.to||'')!==registry||input.slice(0,10)!==TEAM_JOIN_SELECTOR||!ethers.isAddress(child))continue;
+            const parent=teamDecodeAddressArg(input,0);if(!ethers.isAddress(parent)||parent===child)continue;
+            joins.push({child,parent,hash:h,blockNumber:teamTransferBlockNumber(x)});
+          }
+          pageKey=r?.pageKey||null;if(pages>=20&&pageKey)throw new Error('mehr als 20 Seiten; Abbruch statt Teilgraph');
+        }while(pageKey);
+        const nowIso=new Date().toISOString();
+        for(const j of joins){
+          let nodeId=null;
+          try{const raw=await rpc('eth_call',[{to:registry,data:TEAM_NODE_ID_SELECTOR+j.child.slice(2).padStart(64,'0')},'latest']);if(raw&&raw!=='0x'){const v=BigInt(raw);if(v>0n)nodeId=v.toString()}}catch{}
+          if(!nodeId)continue;
+          let reverse=null;try{const raw=await rpc('eth_call',[{to:registry,data:TEAM_NODE_USER_SELECTOR+BigInt(nodeId).toString(16).padStart(64,'0')},'latest']);reverse=teamDecodeSingleAddress(raw)}catch{}
+          if(reverse!==j.child)continue;
+          const ident={wallet:j.child,nodeId,source:'additional-registry-join',cachedSource:'global-onchain',contract:registry,method:'nodeIdOf(address)+nodeUserOf(uint256)',evidenceTx:j.hash,evidenceBlock:j.blockNumber||null,verifiedAt:nowIso,parentWallet:j.parent,parentSource:'verifizierte Zusatzregistry join(address)',parentSourceHash:j.hash};
+          TEAM_IDENTITY_CACHE.set(j.child,ident);await lookupPersistIdentity(j.child,nodeId,'nodeIdOf(address)+nodeUserOf(uint256)');
+          rows.push({child_wallet:j.child,parent_wallet:j.parent,join_tx_hash:j.hash,join_block:j.blockNumber,source:'SmartNode.join(address) Zusatzregistry'});scanned++;
+        }
+        if(rows.length&&currentUserId){
+          const dbRows=rows.map(r=>({chain_key:'bsc',contract_address:registry,child_wallet:norm(r.child_wallet),parent_wallet:norm(r.parent_wallet),join_tx_hash:r.join_tx_hash||null,join_block:Number.isFinite(Number(r.join_block))?Number(r.join_block):null,source:r.source||'SmartNode.join(address) Zusatzregistry',verified_at:nowIso,created_by:currentUserId,updated_at:nowIso}));
+          const {error}=await sb.from(TEAM_GRAPH_CACHE_TABLE).upsert(dbRows,{onConflict:'chain_key,contract_address,child_wallet'});if(error)log(`Team-Zusatzregistry ${short(registry)}: Kanten konnten nicht persistiert werden (${error.message||error}).`,'warn');
+        }
+        log(`Team-Zusatzregistry ${short(registry)}: ${rows.length} verifizierte Join-Kante(n) aufgebaut · ${pages} Alchemy-Seite(n).`,'ok');
+      }catch(e){log(`Team-Zusatzregistry ${short(registry)}: einmaliger Join-Aufbau fehlgeschlagen (${e.message||e}).`,'warn')}
+    }
+    if(rows.length){
+      const wallets=[...new Set(rows.flatMap(r=>[norm(r.child_wallet),norm(r.parent_wallet)]).filter(ethers.isAddress))];
+      await teamLoadIdentityCacheFromDb(wallets);
+      // Graph-Kante und Identity sind getrennte globale Fakten. Falls eine fruehere
+      // Security-/Cache-Bereinigung nur die Identity-Zeile entfernt hat, die vorhandene
+      // verifizierte Join-Kante NICHT verlieren: nodeIdOf + Reverse-Lookup gezielt reparieren.
+      for(const r of rows){
+        const child=norm(r.child_wallet);if(!ethers.isAddress(child)||TEAM_IDENTITY_CACHE.get(child)?.nodeId)continue;
+        try{
+          const raw=await rpc('eth_call',[{to:registry,data:TEAM_NODE_ID_SELECTOR+child.slice(2).padStart(64,'0')},'latest']);
+          const nodeId=(raw&&raw!=='0x'&&BigInt(raw)>0n)?BigInt(raw).toString():null;if(!nodeId)continue;
+          const revRaw=await rpc('eth_call',[{to:registry,data:TEAM_NODE_USER_SELECTOR+BigInt(nodeId).toString(16).padStart(64,'0')},'latest']);
+          if(teamDecodeSingleAddress(revRaw)!==child)continue;
+          const ident={wallet:child,nodeId,source:'additional-registry-cache-repair',cachedSource:'global-onchain',contract:registry,method:'nodeIdOf(address)+nodeUserOf(uint256)',evidenceTx:r.join_tx_hash||null,evidenceBlock:r.join_block||null,verifiedAt:new Date().toISOString()};
+          TEAM_IDENTITY_CACHE.set(child,ident);await lookupPersistIdentity(child,nodeId,'nodeIdOf(address)+nodeUserOf(uint256)');
+        }catch(e){log(`Team-Zusatzregistry Identity-Reparatur ${short(child)}: ${e.message||e}`,'muted')}
+      }
+      for(const r of rows){
+        const child=norm(r.child_wallet),parent=norm(r.parent_wallet);if(!ethers.isAddress(child)||!ethers.isAddress(parent)||child===parent)continue;
+        const ident=TEAM_IDENTITY_CACHE.get(child)||{wallet:child};ident.parentWallet=parent;ident.parentSource=r.source||'persistenter Zusatzregistry-Graph';ident.parentSourceHash=r.join_tx_hash||null;TEAM_IDENTITY_CACHE.set(child,ident);restored++;
+      }
+    }
+  }
+  if(restored)log(`Team-Zusatzregistry-Restore: ${restored} Parent-Kante(n) vor Forest-Build verfügbar${scanned?` · ${scanned} davon neu on-chain verifiziert`:''}.`,'ok');
+  return restored;
 }
 
 async function teamHydrateSupplementalIdentityParentsFromEvidence(){
@@ -14443,6 +14529,9 @@ async function teamLoadPersistedLifecycleCache(wallets){
       if(!TEAM_LIFECYCLE_CACHE_COMPAT_VERSIONS.has(String(row?.scanner_version||'')))continue;
       const w=norm(row.scope_address||row.payload.wallet||'');
       const lots=Array.isArray(row.payload.lots)?row.payload.lots:[];
+      // v7 wird ausschliesslich fuer POSITIVE, damals vollstaendig verifizierte Positionen
+      // wiederverwendet. Alte v7-Nullfunde bleiben wegen der spaeter behobenen Coverage-Luecke ungueltig.
+      if(String(row?.scanner_version||'')==='team-lifecycle-v7'&&(!row?.payload?.verified||!lots.length))continue;
       if(!row?.payload?.verified){
         if(lots.length){
           const existingLife=TEAM_STAKING_LIFECYCLE.get(w)||null;
@@ -16793,6 +16882,7 @@ async function restoreTeamTreeFromPersistentCache(){
     // Identities separat laden, deren persistierte join(address)-Tx in eine Parent-Kante
     // rekonstruieren und ERST DANN den sichtbaren Forest bauen. Genau hier fehlte Ernie.
     await teamLoadSupplementalRegistryIdentitiesFromDb();
+    await teamRestoreAdditionalRegistryGraph();
     await teamHydrateSupplementalIdentityParentsFromEvidence();
     teamMergeSupplementalIdentityEdges(edges);
     const forest=buildProjectTeamForest(edges);
@@ -16845,6 +16935,7 @@ async function prepareTeamTree(){
     TEAM_IDENTITY_CACHE.clear();
     await teamLoadIdentityCacheFromDb();
     const full=await scanCompleteSmartNodeJoinGraph();
+    await teamRestoreAdditionalRegistryGraph();
     // Neuere SmartNode-Registries können bereits über die direkte Wallet-Suche verifiziert worden sein.
     // Diese Beziehungen ergänzen den alten globalen SmartNode-Graph, ohne dessen kanonische Kanten zu überschreiben.
     await teamHydrateSupplementalIdentityParentsFromEvidence();
