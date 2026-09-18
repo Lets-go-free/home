@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260914-010218 */
 (()=>{
-const BUILD_ID='20260918-134459';
+const BUILD_ID='20260918-140045';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 13:44:59 CEST';
+const APP_VERSION='18.09.2026 14:00:45 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -14423,7 +14423,7 @@ async function teamRunLifecycleBackgroundBatch(wallets){
   eligible.forEach(w=>TEAM_LIFECYCLE_BACKGROUND_SESSION.add(w));
   const startedAt=new Date().toISOString();
   await Promise.all(eligible.map(w=>teamSaveLifecycleQueueState(w,{status:'running',lastAttemptAt:startedAt}))).catch(()=>{});
-  log(`Team-Lifecycle Hintergrund: ${eligible.length} noch nie/noch nicht vollständig verifizierte Wallet(s) werden kontrolliert nachverifiziert (max. ${TEAM_LIFECYCLE_BACKGROUND_BATCH} pro Tab-Sitzung).`,'muted');
+  log(`Team-Lifecycle Hintergrund: ${eligible.length} noch nie/noch nicht vollständig verifizierte Wallet(s) werden kontrolliert nachverifiziert (max. ${TEAM_LIFECYCLE_BACKGROUND_BATCH} pro Idle-Batch).`,'muted');
   try{
     await teamVerifyMissingLifecycles(eligible);
     for(const w of eligible){
@@ -14431,6 +14431,16 @@ async function teamRunLifecycleBackgroundBatch(wallets){
       await teamSaveLifecycleQueueState(w,{status:verified?'verified':'retry_wait',lastAttemptAt:startedAt,verifiedAt:verified?(life?.sourceSavedAt||new Date().toISOString()):null,verifiedBlock:Number(life?.sourceVerifiedBlock||0)||null,retryAfter:verified?null:new Date(Date.now()+TEAM_LIFECYCLE_RETRY_MS).toISOString()});
     }
     renderTeamTree();renderProjectOverview();
+    // Phase 4.97: Ein Cache-Restore darf keinen Partner dauerhaft auf "Lifecycle noch nicht
+    // verifiziert" stehen lassen, nur weil er hinter dem bisherigen 3er-Limit lag. Pro Idle-
+    // Durchlauf bleiben es maximal drei Wallets; danach wird der noch nie versuchte Backlog
+    // kontrolliert in weiteren kleinen Batches abgearbeitet. Bereits verifizierte Wallets
+    // verschwinden aus dem Backlog, Fehler/Nullfunde respektieren weiterhin das 24h-Retryfenster.
+    const remaining=all.filter(w=>!TEAM_STAKING_LIFECYCLE.get(w)?.verified&&!TEAM_LIFECYCLE_BACKGROUND_SESSION.has(w));
+    if(remaining.length){
+      log(`Team-Lifecycle Hintergrund: ${remaining.length} weitere offene Wallet(s) im Backlog; nächster kleiner Batch wird im Idle-Fenster gestartet.`,'muted');
+      teamScheduleLifecycleBackground(remaining);
+    }
   }catch(e){
     const retryAfter=new Date(Date.now()+TEAM_LIFECYCLE_RETRY_MS).toISOString();
     for(const w of eligible)await teamSaveLifecycleQueueState(w,{status:'error_retry',lastAttemptAt:startedAt,retryAfter,error:String(e?.message||e).slice(0,500)}).catch(()=>{});
@@ -17261,8 +17271,8 @@ async function loadHistoricallyKnownTlnVowAddresses(privateWallets){
   // Zwei kleine IN-Abfragen reichen, da es nur um die eigenen Wallets geht.
   try{
     const [childQ,parentQ]=await Promise.all([
-      sb.from(TLN_TEAM_GRAPH_TABLE).select('child_wallet').in('child_wallet',addresses),
-      sb.from(TLN_TEAM_GRAPH_TABLE).select('parent_wallet').in('parent_wallet',addresses)
+      sb.from(TEAM_GRAPH_CACHE_TABLE).select('child_wallet').in('child_wallet',addresses),
+      sb.from(TEAM_GRAPH_CACHE_TABLE).select('parent_wallet').in('parent_wallet',addresses)
     ]);
     if(childQ.error)throw childQ.error;if(parentQ.error)throw parentQ.error;
     for(const r of (childQ.data||[])){const a=norm(r?.child_wallet||'');if(a)known.add(a)}
