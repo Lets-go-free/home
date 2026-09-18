@@ -1,6 +1,6 @@
-/* TLN/VOW Discovery shared engine · Build 20260914-010218 */
+/* TLN/VOW Discovery shared engine · Build 20260918-173428 */
 (()=>{
-const BUILD_ID='20260918-145031';
+const BUILD_ID='20260918-173428';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='18.09.2026 14:50:31 CEST';
+const APP_VERSION='18.09.2026 17:34:28 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -13802,6 +13802,7 @@ async function teamTryMigrateLegacyBrowserGraph(roots,remoteVersion){
   }catch(e){log(`Team-Slice Legacy-Migration übersprungen: ${e.message||e}`,'muted');return null}
 }
 async function teamLoadRelevantGraphSlice(ownWallets){
+  const contract=norm(TEAM_SMARTNODE_CONTRACT);
   const roots=[...new Set((ownWallets||[]).map(norm).filter(w=>/^0x[0-9a-f]{40}$/.test(w)))];
   if(!roots.length)return null;
   const bc=window.WalletTrackingBrowserCache;
