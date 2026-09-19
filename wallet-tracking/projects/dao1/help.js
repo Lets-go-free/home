@@ -1,8 +1,8 @@
 (() => {
 // WalletTracking · DAO1 Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260919-220046";
-const HELP_MODULE_TIMESTAMP="19.09.2026 22:00:46 CEST";
+const HELP_MODULE_BUILD="20260919-221656";
+const HELP_MODULE_TIMESTAMP="19.09.2026 22:16:56 CEST";
 function renderDAO1Help(){
   const el=document.getElementById("dao1HelpContent");
   if(!el)return;
@@ -66,6 +66,8 @@ else renderDAO1Help();
 // Dokumentationsstand: 19.09.2026 17:04:54 CEST · Phase 5.38 · Build 20260919-170454
 
 // Phase 5.42: DAO1/APTMDAO Partner-Bots werden bei gemeinsam verwendetem Bot-Contract nur mit eindeutiger Erwerbs-Tx-Evidenz dem jeweiligen Tree zugeordnet. Evidenzbasierte Bot-Lifecycles werden userbezogen in dao_partner_bot_lifecycle_cache gespeichert; unklare Fälle bleiben unzugeordnet.
-// Dokumentationsstand: 19.09.2026 22:00:46 CEST · Phase 5.42 · Build 20260919-220046
+// Dokumentationsstand: 19.09.2026 22:16:56 CEST · Phase 5.43 · Build 20260919-221656
 
 // Phase 5.42: Partnerdetails sind DID-zentriert. DID-NFTs derselben Wallet werden nicht als Assets einer DID angezeigt; nur eindeutig dem DAO-System belegte Mining-/Trading-Bots sowie Memberships. LP in Wallet gilt ohne Lock als frei verfügbar; nur tatsächlich gestaktes LP als gebunden.
+
+// Phase 5.43: Team-Tree-Rendering bleibt Explorer-frei/cache-only. Partnerdetails laden den Wallet-NFT-Bestand gezielt einmal, deduplizieren parallele gleiche Requests und prüfen Erwerbe mit maximal zwei Workern. Identitäts-NFTs werden vor Erwerbsabfragen entfernt. Neue Bots eigener Roots werden dadurch auch ohne vorheriges Öffnen des NFT-Tabs entdeckt; bei fehlender Erwerbs-Tx-Systemevidenz ist eine Zuordnung nur erlaubt, wenn die Wallet im aktiven Tree eindeutig genau einer DID gehört.
