@@ -73,3 +73,5 @@ else renderDAO1Help();
 // Phase 5.43: Team-Tree-Rendering bleibt Explorer-frei/cache-only. Partnerdetails laden den Wallet-NFT-Bestand gezielt einmal, deduplizieren parallele gleiche Requests und prüfen Erwerbe mit maximal zwei Workern. Identitäts-NFTs werden vor Erwerbsabfragen entfernt. Neue Bots eigener Roots werden dadurch auch ohne vorheriges Öffnen des NFT-Tabs entdeckt; bei fehlender Erwerbs-Tx-Systemevidenz ist eine Zuordnung nur erlaubt, wenn die Wallet im aktiven Tree eindeutig genau einer DID gehört.
 
 // Phase 5.46: Bot→DID historisch über Besitz am Erwerbsblock; keine breite Wallet-NFT-Paginierung mehr.
+
+// Phase 5.47: Eigene historische Bots werden auch nach späteren Wallet-Transfers zur DID-Ermittlung herangezogen; Zuordnung erfolgt über Erwerbs-Wallet + DID-Besitz am Erwerbsblock. Identitäts-NFTs werden aus der Bot-Tabelle ausgeschlossen.
