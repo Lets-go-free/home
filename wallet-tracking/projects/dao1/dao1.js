@@ -1,4 +1,4 @@
-// WalletTracking Phase 5.47 · 19.09.2026 23:50:53 CEST · Build 20260919-235053
+// WalletTracking Phase 5.48 · 20.09.2026 00:30:18 CEST · Build 20260920-003018
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -4693,16 +4693,26 @@ window.DAO1Project = (() => {
   }
 
   async function dao1TeamResolveBotAssignment(nft,wallet,acq){
-    const a=lower(wallet),block=Number(acq?.block||0);
+    const a=lower(wallet),block=Number(acq?.block||nft?.owned_from_block||0);
     if(!dao1TeamIsBot(nft)||!/^0x[0-9a-f]{40}$/.test(a)||!(block>0))return {system:null,did:null,type:"did_ownership_not_resolved"};
-    if(!(Number(acq?.purchase?.amount||0)>0)||acq?.acquisitionKind!=="purchase")return {system:null,did:null,type:"bot_transfer_without_purchase_evidence"};
-    // Fachregel: Entscheidend ist der Besitz ZUM BOT-ERWERB. Bot und DID können
-    // unabhängig transferiert werden; heutiger Owner oder ursprüngliche Mint-Wallet
-    // sind deshalb keine Zuordnungsbeweise.
+    // Fachregel: Ein erkannter Kaufpreis ist für die DID-Zuordnung nicht zwingend.
+    // Bei eigenen Bots ist der persistente, historisch verifizierte erste Besitzabschnitt
+    // bereits unser Erwerbsnachweis; alte DAO1-Käufe dürfen nicht nur deshalb verworfen
+    // werden, weil ihre Zahlungs-Tx anders strukturiert ist. Bei fremden/live gefundenen
+    // Bots bleibt dagegen ein Kaufnachweis Pflicht, damit ein späterer NFT-Transfer nicht
+    // fälschlich als neuer Bot-Kauf einer DID zugeordnet wird.
+    const purchaseVerified=Number(acq?.purchase?.amount||0)>0&&acq?.acquisitionKind==="purchase";
+    const persistedOwnAcquisition=!!nft?.own_history&&!!(nft?.acquisition_verified||nft?.acquisition_tx_hash||nft?.owned_from_block);
+    if(!purchaseVerified&&!persistedOwnAcquisition)return {system:null,did:null,type:"bot_transfer_without_purchase_evidence"};
+    // Entscheidend ist anschließend der historische Besitz zum Erwerbsblock: Bot und
+    // DID sind unabhängig transferierbare NFTs.
     const [aptmIds,legacyIds]=await Promise.all([
       dao1TeamHeldTokenIdsAtBlock(a,APTMDAO_NFT_CONTRACT,block),
       dao1TeamHeldTokenIdsAtBlock(a,DAO1_OLD_DID_CONTRACT,block)
     ]);
+    // APTMDAO hat ab seinem historischen Besitzzeitpunkt Vorrang. Das entspricht der
+    // fachlichen Generationstrennung: Bot-Erwerb während APTMDAO-DID-Besitz => neu,
+    // davor (bei genau einer alten DAO1-DID) => DAO1 alt.
     if(aptmIds.length===1)return {system:"aptmdao",did:Number(aptmIds[0]),type:"did_ownership_at_bot_acquisition"};
     if(aptmIds.length>1)return {system:null,did:null,type:"ambiguous_aptmdao_dids_at_bot_acquisition",aptmIds,legacyIds};
     if(legacyIds.length===1)return {system:"legacy",did:Number(legacyIds[0]),type:"did_ownership_at_bot_acquisition"};

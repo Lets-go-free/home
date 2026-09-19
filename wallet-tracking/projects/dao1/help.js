@@ -75,3 +75,5 @@ else renderDAO1Help();
 // Phase 5.46: Bot→DID historisch über Besitz am Erwerbsblock; keine breite Wallet-NFT-Paginierung mehr.
 
 // Phase 5.47: Eigene historische Bots werden auch nach späteren Wallet-Transfers zur DID-Ermittlung herangezogen; Zuordnung erfolgt über Erwerbs-Wallet + DID-Besitz am Erwerbsblock. Identitäts-NFTs werden aus der Bot-Tabelle ausgeschlossen.
+// Phase 5.48: DAO1-alt: Für eigene Bots kann der persistierte historisch verifizierte erste Besitzabschnitt als Erwerbsnachweis dienen; Kaufpreis-Erkennung ist für die DID-Zuordnung nicht zwingend. Fremde/live Bots benötigen weiterhin Kaufnachweis. Historische DID-Besitzlage am Erwerbsblock bleibt maßgeblich.
+// Dokumentationsstand: 20.09.2026 00:30:18 CEST · Phase 5.48 · Build 20260920-003018
