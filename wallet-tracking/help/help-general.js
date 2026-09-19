@@ -1,3 +1,4 @@
+// Phase 5.42: Dashboard-Kurse: Token ohne Icon, Chain mit Native-Symbol, bekannte Tokenstammdaten vor Contract-Fallback; DAO-DID/Bot-Trennung und LP-frei/gebunden fachlich geschärft.
 // Phase 5.41: Dashboard-Werte auditierbar aufgesplittet; LP-Staking ohne Doppelzählung; DAO1/APTMDAO Partner-Bots nur bei eindeutiger Tree-Evidenz; Partner-Bot-Lifecycle persistent; Preis-Freshness je Asset.
 // Cache-first Start ab 18.09.2026: Seiten-Reload zeigt gespeicherte Daten und startet keine grossen Balance/NFT/Projekt-On-Chain-Jobs automatisch. Projektmodule wie DAO1 laden Detail-Caches lazy beim Öffnen.
 (() => {
