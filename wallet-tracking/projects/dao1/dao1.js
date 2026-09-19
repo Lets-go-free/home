@@ -1,4 +1,4 @@
-// WalletTracking Phase 5.32 · 19.09.2026 13:51:38 CEST · Build 20260919-135138
+// WalletTracking Phase 5.33 · 19.09.2026 14:08:11 CEST · Build 20260919-140811
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -5822,16 +5822,67 @@ window.DAO1Project = (() => {
     updateVisibility();
   }
 
-  async function loadDashboardSummary(){
-    await ensureLoaded();
-    try{
-      await loadDAO1OwnedDidRoots(false);
-      const cached=await loadOldDao1TreeCache();
-      if(cached?.edges){
-        dao1TeamDiscovery.legacy.edges=cached.edges;
-        const rows=legacyTreeRows(cached.edges),partners=new Set(rows.map(r=>Number(r.child_id)).filter(Number.isFinite));
-        window.setDashboardProjectCacheStats?.("dao1",{teamPartners:partners.size,updatedAt:cached.state?.updated_at||new Date().toISOString()});
+  function dashboardRewardPeriods(rows,flows){
+    const flowByTx=new Map();
+    for(const f of (flows||[])){
+      const k=`${String(f.wallet_id||"")}::${String(f.tx_hash||"").toLowerCase()}`;
+      if(!flowByTx.has(k))flowByTx.set(k,[]);flowByTx.get(k).push(f);
+    }
+    const now=new Date(),year=now.getFullYear(),month=now.getMonth(),prevYear=year-1;
+    const sums={total:0,previousYear:0,year:0,month:0},known={total:true,previousYear:true,year:true,month:true};
+    const add=(keys,value,ok)=>{for(const k of keys){if(ok)sums[k]+=value;else known[k]=false;}};
+    for(const r of (rows||[])){
+      const dt=new Date(r.tx_timestamp||0);if(!Number.isFinite(dt.getTime()))continue;
+      const keys=["total"];if(dt.getFullYear()===prevYear)keys.push("previousYear");if(dt.getFullYear()===year){keys.push("year");if(dt.getMonth()===month)keys.push("month");}
+      const txKey=`${String(r.wallet_id||"")}::${String(r.tx_hash||"").toLowerCase()}`,txFlows=(flowByTx.get(txKey)||[]).filter(f=>f.direction==="eingang");
+      const isDid=rowWalletAddress(r)===REFERRAL_WALLET && String(r.claim_nft_subtype||"").toUpperCase()==="DID";
+      const isVerifiedReferral=rowWalletAddress(r)===REFERRAL_WALLET && lower(r.to_address||"")===REFERRAL_REWARD_CONTRACT
+        && txFlows.some(f=>lower(f.token_address||"")===REFERRAL_WUSDT_TOKEN && lower(f.counterparty_address||"")===REFERRAL_REWARD_CONTRACT);
+      const isBot=isClaimTxRow(r)&&!isDid;
+      if(!isBot&&!isDid&&!isVerifiedReferral)continue;
+      let values=[];
+      if(isDid)values=txFlows;
+      else if(isVerifiedReferral)values=txFlows.filter(f=>lower(f.token_address||"")===REFERRAL_WUSDT_TOKEN && lower(f.counterparty_address||"")===REFERRAL_REWARD_CONTRACT);
+      else values=txFlows;
+      if(values.length){
+        const ok=values.every(f=>f.value_usd!=null&&Number.isFinite(Number(f.value_usd)));
+        add(keys,values.reduce((a,f)=>a+Number(f.value_usd||0),0),ok);
+      }else{
+        const ok=r.claim_reward_usd!=null&&Number.isFinite(Number(r.claim_reward_usd));
+        add(keys,Number(r.claim_reward_usd||0),ok);
       }
+    }
+    return Object.fromEntries(Object.keys(sums).map(k=>[k,known[k]?sums[k]:null]));
+  }
+
+  async function loadDashboardRewardCache(){
+    const ctx=getContext?.();if(!ctx?.currentUser?.id)return null;
+    const loadPaged=async(table)=>{
+      const out=[];let offset=0;
+      while(true){
+        const {data,error}=await sb.from(table).select("*").eq("user_id",ctx.currentUser.id).eq("project_key",PROJECT_KEY).eq("chain_key",CHAIN_KEY).range(offset,offset+DB_PAGE_SIZE-1);
+        if(error)throw error;const page=data||[];out.push(...page);if(page.length<DB_PAGE_SIZE)break;offset+=DB_PAGE_SIZE;
+      }
+      return out.map(hydratePrivateWalletAddress);
+    };
+    const [rows,flows]=await Promise.all([loadPaged("project_transactions"),loadPaged("project_transaction_asset_flows")]);
+    return dashboardRewardPeriods(rows,flows);
+  }
+
+  async function loadDashboardSummary(){
+    // Absichtlich KEIN ensureLoaded(): Das Dashboard darf den vollständigen DAO1-Tab
+    // (NFTs, Konfiguration, Transaktions-UI usw.) nicht als Nebeneffekt initialisieren.
+    try{
+      const [cached,rewards]=await Promise.all([loadOldDao1TreeCache(),loadDashboardRewardCache()]);
+      const patch={updatedAt:new Date().toISOString()};
+      if(cached?.edges){
+        const rows=legacyTreeRows(cached.edges),partners=new Set(rows.map(r=>Number(r.child_id)).filter(Number.isFinite));
+        patch.teamPartners=partners.size;patch.updatedAt=cached.state?.updated_at||patch.updatedAt;
+      }
+      if(rewards)patch.rewards=rewards;
+      // "davon aktiv" bleibt bewusst offen: Im aktuellen DAO1-Code existiert noch kein
+      // belastbarer Contract-/Target-Proof, der "Bot läuft" vs. "Target erreicht" trennt.
+      window.setDashboardProjectCacheStats?.("dao1",patch);
     }catch(e){console.warn("DAO1 Dashboard-Summary Cache",e);}
   }
 

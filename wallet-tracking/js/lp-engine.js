@@ -188,6 +188,19 @@ window.WalletLPEngine = (() => {
     const {data,error}=await c.sb.from("lp_position_cache").select("*").eq("project_key",projectKey).eq("chain_key",chain).eq("wallet_id",walletIdForAddress(wallet)).order("pair_address",{ascending:true});
     if(error)throw error;return data||[];
   }
+  async function loadPositionCacheBatch(projectKey,chain,wallets){
+    const c=ctx();if(!c.sb||!c.currentUser?.id)return new Map();
+    const addresses=[...new Set((wallets||[]).map(norm).filter(Boolean))];
+    const byAddress=new Map(addresses.map(a=>[a,[]]));if(!addresses.length)return byAddress;
+    const ids=[],idToAddress=new Map();
+    for(const a of addresses){const id=walletIdForAddress(a);ids.push(id);idToAddress.set(String(id),a);}
+    const {data,error}=await c.sb.from("lp_position_cache").select("*")
+      .eq("user_id",c.currentUser.id).eq("project_key",projectKey).eq("chain_key",chain)
+      .in("wallet_id",ids).order("pair_address",{ascending:true});
+    if(error)throw error;
+    for(const row of (data||[])){const a=idToAddress.get(String(row.wallet_id))||norm(row.wallet_address);if(!byAddress.has(a))byAddress.set(a,[]);byAddress.get(a).push(row);}
+    return byAddress;
+  }
   async function replacePositionCache(projectKey,chain,wallet,rows){
     const c=ctx();if(!c.sb||!c.currentUser?.id)return;
     const wa=norm(wallet),walletId=walletIdForAddress(wallet),now=new Date().toISOString(),scope=()=>c.sb.from("lp_position_cache");
@@ -227,5 +240,5 @@ window.WalletLPEngine = (() => {
   }
   async function latestBlock(chain){return Number(BigInt(await rpc(chain,"eth_blockNumber",[])));}
   function configure(fn){ctx=fn||ctx;}
-  return {configure,pairTokens,pairDescriptor,pairInfo,balance,positions,valuePosition,label,meta,rpc,latestBlock,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,replacePositionCache,getScanState,getScanStateInfo,setScanState};
+  return {configure,pairTokens,pairDescriptor,pairInfo,balance,positions,valuePosition,label,meta,rpc,latestBlock,historyEventFromReceipt,loadHistory,saveHistory,loadPositionCache,loadPositionCacheBatch,replacePositionCache,getScanState,getScanStateInfo,setScanState};
 })();

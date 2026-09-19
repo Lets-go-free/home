@@ -1,6 +1,6 @@
-/* TLN/VOW Discovery shared engine · Build 20260919-135138 */
+/* TLN/VOW Discovery shared engine · Build 20260919-140811 */
 (()=>{
-const BUILD_ID='20260919-135138';
+const BUILD_ID='20260919-140811';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -17126,8 +17126,18 @@ function renderTeamTree(){
   // Gezählt werden nur externe Partner. Unverifizierte Lifecycles werden nicht als inaktiv interpretiert.
   try{
     const partnerRows=[...visible].filter(w=>!forest.ownSet.has(w));
-    const activePartners=partnerRows.filter(w=>{const life=TEAM_STAKING_LIFECYCLE.get(norm(w));if(!life?.verified)return false;return (life.lots||[]).map(x=>x?.lot||x).some(l=>teamLifecycleStatusForLot(l)==='active');}).length;
-    window.setDashboardProjectCacheStats?.('tln_vow',{teamPartners:partnerRows.length,activePartners,updatedAt:new Date().toISOString()});
+    const verifiedPartners=partnerRows.filter(w=>TEAM_STAKING_LIFECYCLE.get(norm(w))?.verified);
+    const activePartners=verifiedPartners.filter(w=>{const life=TEAM_STAKING_LIFECYCLE.get(norm(w));return (life.lots||[]).map(x=>x?.lot||x).some(l=>teamLifecycleStatusForLot(l)==='active');}).length;
+    const unknownPartners=Math.max(0,partnerRows.length-verifiedPartners.length);
+    // Solange Lifecycles offen sind, darf die Teilmenge nicht als endgültiges "davon aktiv"
+    // erscheinen. Dashboard zeigt deshalb bestätigte Aktive + offene Prüfungen getrennt.
+    window.setDashboardProjectCacheStats?.('tln_vow',{
+      teamPartners:partnerRows.length,
+      activePartners:unknownPartners?null:activePartners,
+      activePartnersVerified:activePartners,
+      activePartnersUnknown:unknownPartners,
+      updatedAt:new Date().toISOString()
+    });
   }catch(e){console.warn('TLN Dashboard-Summary',e);}
   const blocks=[];
   const scopedComponents=PROJECT_WALLET_FILTER==='all'?(forest.components||[]):((visible.has(norm(PROJECT_WALLET_FILTER)))?[{root:norm(PROJECT_WALLET_FILTER)}]:[]);

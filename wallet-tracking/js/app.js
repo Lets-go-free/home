@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.30 · 19.09.2026 12:16:59 CEST · Build 20260919-121659 */
+/* WalletTracking Phase 5.33 · 19.09.2026 14:08:11 CEST · Build 20260919-140811 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1363,8 +1363,8 @@ const ADMIN_SYSTEM_TREE = [
 
   {id:"projects",level:0,label:"🏦 DeFi-Projekte",status:"in_progress",start:"Konfig DB",daily:"Preise",open:"Übersicht · keine Projektdaten",manual:"projektbezogen",details:[]},
   {id:"projects-overview",level:1,label:"Übersicht",status:"in_progress",start:"–",daily:"–",open:"nur lokale UI",manual:"–",details:[["DeFi-Projektübersicht","lokale UI","–","–","Öffnen lädt keine TLN/VOW- oder DAO1-Projektdaten; Inhalt noch zu definieren"]]},
-  {id:"tln",level:1,label:"TLN / VOW",status:"in_progress",start:"nicht geladen",daily:"über zentrale Preise",open:"Lazy + Projekt-Autoload",manual:"projektbezogen",details:[]},
-  {id:"tln-overview",level:2,label:"Übersicht",status:"in_progress",start:"–",daily:"Preis-Tagescache",open:"DB + Preis-Cache",manual:"Preise",details:[["Token/Pool-Konfiguration","–/RAM","Supabase Projekt-Konfiguration","–","TLN/VOW erstmals öffnen"],["Aktuelle Preise/Pools","Tagescache","Supabase Current Price Snapshot","BSC/ETH Pool-RPC","Täglich über zentrale Preislogik"]]},
+  {id:"tln",level:1,label:"TLN / VOW",status:"in_progress",start:"Summary-Cache",daily:"Grunddaten + zentrale Preise",open:"Lazy + Projekt-Autoload",manual:"projektbezogen",details:[]},
+  {id:"tln-overview",level:2,label:"Übersicht",status:"in_progress",start:"–",daily:"global 15 Min.",open:"DB + Preis-Cache",manual:"Preise",details:[["Token/Pool-Konfiguration","–/RAM","Supabase Projekt-Konfiguration","–","TLN/VOW erstmals öffnen"],["Aktuelle Preise/Pools","globaler 15-Min.-Snapshot","Supabase Current Price Snapshot","BSC/ETH Pool-RPC","Bei aktivem User max. 1x je xx:00/15/30/45-Slot"]]},
   {id:"tln-prices",level:2,label:"Kurse und Pools",status:"in_progress",start:"–",daily:"Preise",open:"Cache + ggf. Projekt-Autoload",manual:"RPC",details:[["LP/Pool-Daten","Projektcache","Supabase LP Cache","BSC/ETH RPC","Beim Öffnen kann maybeAutoRefreshProject Tagesstatus prüfen"]]},
   {id:"tln-staking",level:2,label:"Staking/Rewards",status:"in_progress",start:"–",daily:"–",open:"Discovery-Cache",manual:"Discovery/RPC",details:[["Staking-Positionen/Rewards","Browser/DB Cache je Teilbereich","Supabase TLN/VOW Caches","BSC/ETH RPC","Lazy beim Projekt; Aktualisierung/Discovery gezielt"]]},
   {id:"tln-loans",level:2,label:"Loans",status:"in_progress",start:"–",daily:"–",open:"Discovery-Cache",manual:"Discovery/RPC",details:[["Loans/Rebounds","Cache","Supabase/Discovery-Daten","BSC RPC","Nicht Teil des normalen App-Starts"]]},
@@ -1376,12 +1376,12 @@ const ADMIN_SYSTEM_TREE = [
   {id:"tln-help",level:2,label:"Hilfe",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[["TLN/VOW Hilfe","JS-Modul","–","–","Tab öffnen"]]},
   {id:"tln-lpold",level:2,label:"Liquidity Pools_old",status:"planning",start:"–",daily:"–",open:"Cache/DB",manual:"RPC",details:[["Legacy LP-Ansicht","Cache","Supabase LP Cache","BSC/ETH RPC","Legacy-Bereich"]]},
 
-  {id:"dao",level:1,label:"DAO1",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"nur Mount",daily:"–",open:"Lazy DB",manual:"projektbezogen",details:[["Projekt-Basis","DOM Mount","Supabase erst bei ensureLoaded","–","App-Start mountet nur; refreshConfig erst beim Öffnen"]]},
+  {id:"dao",level:1,label:"DAO1",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"Summary-Cache",daily:"Grunddaten",open:"Lazy DB",manual:"projektbezogen",details:[["Projekt-Basis","DOM Mount + Dashboard-Summary","Supabase gezielte Summary-/Tree-Caches","–","App-Start zeigt Summary cache-first; vollständiges refreshConfig erst beim Öffnen"]]},
   {id:"dao-overview",level:2,label:"Übersicht",status:"in_progress",start:"–",daily:"–",open:"DB/RAM",manual:"Projektrefresh",details:[["DAO1 Übersicht/Bot-Summen","RAM nach Lazy Load","Supabase DAO1 Caches","Apertum bei Aktualisierung","Erst beim Öffnen DAO1"]]},
   {id:"dao-prices",level:2,label:"Kurse und Pools",status:"in_progress",start:"–",daily:"–",open:"vorhandener Preis-Cache",manual:"zentrale Preisaktualisierung",details:[["DAO1 aktuelle Kurse/Preisrouten","RAM/zentraler Preiscache","bestehende DAO1/Apertum Preislogik","Apertum DEX nur bei zentraler Preisaktualisierung","Tab zeigt ausschließlich bereits ermittelte Preise, Routen und Pools; keine eigene Preisermittlung"]]},
   {id:"dao-tx",level:2,label:"Transaktionen",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Apertum Transaktionshistorie","RAM","Supabase zentrale Historie/Asset-Flows","Apertum RPC/Explorer","Wallet-Wechsel Cache; Daten aktualisieren lädt neue Chain-Daten"]]},
-  {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","RAM","Supabase Claim-/Tx-Cache","Apertum","Lazy; Aktualisierung reichert neue Claims an"]]},
-  {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","RAM","Supabase Tx/Flow Cache","Apertum","Lazy; nur relevantes DAO1 Referral-Wallet"]]},
+  {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase project_transactions + project_transaction_asset_flows","Apertum nur bei manueller Aktualisierung","Dashboard liest nur vorhandene historische USD-Werte; Detailansicht lazy"]]},
+  {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase Tx/Flow Cache","Apertum nur bei manueller Aktualisierung","Dashboard und Detail verwenden dieselben Referral-Regeln; nur relevantes DAO1 Referral-Wallet"]]},
   {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
     ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → fertig, DB 0 / RPC 0 bei HIT; Praxistest 18.09.2026 bestanden. Manueller Update-Pfad 🟢: inkrementeller Blockbereich mit 24-Block-Overlap, RPC nur nach explizitem Klick"],
     ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Bei jedem Team-Öffnen kleiner Gate-Check; Migration 057 aktualisiert Registry DB-seitig"],
@@ -3055,7 +3055,12 @@ async function loadApertumCurrentPrices(){
   const prefix=chain+"|";
   const addresses=[...new Set([...(SAFE_ADDRESSES[chain]||[]),...Object.keys(predefinedTokenLabels).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length)),...Object.keys(predefinedTokenSymbols).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length))])];
   for(const rawAddr of addresses){
-    const addr=normalizeAddress(rawAddr,chain),key=chain+"|"+addr,sym=predefinedTokenTicker(chain,addr).toUpperCase();
+    // "native" ist ein interner Asset-Key und keine EVM-Adresse. Native APTM wird
+    // bereits über nativePrices gesetzt und darf nie in ethers ABI-Address-Encoding gelangen.
+    if(String(rawAddr||"").toLowerCase()==="native")continue;
+    const addr=normalizeAddress(rawAddr,chain);
+    if(!ethers.isAddress(addr))continue;
+    const key=chain+"|"+addr,sym=predefinedTokenTicker(chain,addr).toUpperCase();
     if(["WUSDT","USDT","WUSDC","USDC"].includes(sym)){tokenPrices[key]={price:1,source:"Apertum DEX · Stablecoin 1 USD"};continue;}
     if(sym==="WAPTM"){tokenPrices[key]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`};continue;}
     const asset={address:addr,symbol:sym,decimals:predefinedTokenDecimals[key]};const bd=await taxTokenDecimalsCurrent(chain,asset);
@@ -4107,9 +4112,16 @@ async function loadWalletChain(wallet, chain, preserveCachedOnError = false) {
 async function mergeTlnBscStakingCacheIntoWalletData(){
   if(!window.WalletLPEngine)return;
   const chain="bsc",projectKey="tln_vow";
-  for(const w of wallets){
-    const wa=walletAddressForChain(w,chain);if(!wa)continue;
-    let cached=[];try{cached=await window.WalletLPEngine.loadPositionCache(projectKey,chain,wa);}catch(e){console.warn("TLN/VOW Staking-Cache",w.label,e);continue;}
+  const targets=wallets.map(w=>({w,wa:walletAddressForChain(w,chain)})).filter(x=>x.wa);
+  let batchByWallet=null;
+  if(window.WalletLPEngine.loadPositionCacheBatch){
+    try{batchByWallet=await window.WalletLPEngine.loadPositionCacheBatch(projectKey,chain,targets.map(x=>x.wa));}
+    catch(e){console.warn("TLN/VOW Staking-Cache Batch",e);}
+  }
+  for(const {w,wa} of targets){
+    let cached=[];
+    try{cached=batchByWallet?.get(normalizeAddress(wa,chain))||(!batchByWallet?await window.WalletLPEngine.loadPositionCache(projectKey,chain,wa):[]);}
+    catch(e){console.warn("TLN/VOW Staking-Cache",w.label,e);continue;}
     if(!walletData[w.id]?.[chain])walletData[w.id][chain]={native:null,nativeSymbol:CHAIN_META[chain]?.nativeSymbol||"BNB",tokens:[]};
     const cd=walletData[w.id][chain];if(cd.error)continue;cd.tokens=cd.tokens||[];
     for(const c of cached||[]){
@@ -4534,6 +4546,11 @@ const dashboardProjectCacheStats={
   dao1:{teamPartners:null,activePartners:null,rewards:{total:null,previousYear:null,year:null,month:null}}
 };
 function dashboardMetric(v,formatter){return v==null?"–":(formatter?formatter(v):String(v));}
+function dashboardActivePartners(stats){
+  const unknown=Number(stats?.activePartnersUnknown||0),verified=Number(stats?.activePartnersVerified);
+  if(unknown>0 && Number.isFinite(verified))return `${verified} bestätigt · ${unknown} offen`;
+  return dashboardMetric(stats?.activePartners);
+}
 function dashboardProjectSummaryStorageKey(){return currentUser?.id?`wallettracking:dashboard-project-summary:${currentUser.id}`:null;}
 function restoreDashboardProjectCacheStats(){const key=dashboardProjectSummaryStorageKey();if(!key)return;try{const saved=JSON.parse(localStorage.getItem(key)||"null");if(!saved||typeof saved!=="object")return;for(const projectKey of ["tln_vow","dao1"]){const x=saved[projectKey];if(!x)continue;dashboardProjectCacheStats[projectKey]={...dashboardProjectCacheStats[projectKey],...x,rewards:{...(dashboardProjectCacheStats[projectKey].rewards||{}),...(x.rewards||{})}};}}catch(e){console.warn("Dashboard Project-Summary Cache",e);}}
 function persistDashboardProjectCacheStats(){const key=dashboardProjectSummaryStorageKey();if(!key)return;try{localStorage.setItem(key,JSON.stringify(dashboardProjectCacheStats));}catch(e){console.warn("Dashboard Project-Summary speichern",e);}}
@@ -4563,7 +4580,7 @@ function renderDashboard(){
     const stats=dashboardProjectCacheStats[key]||{rewards:{}};
     const rewards=stats.rewards||{};
     return `<article class="dashboard-project-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Projekt</span><h3>${escapeAttr(dashboardProjectTitle(key))}</h3></div><strong>${money(p.valueUsd)}</strong></div>
-      <div class="dashboard-project-stats dashboard-project-stats-compact"><div><span>Aktuelles Staking</span><strong>${p.boundUsd>0?money(p.boundUsd):"–"}</strong></div><div><span>Teampartner</span><strong>${dashboardMetric(stats.teamPartners)}</strong></div><div><span>davon aktiv</span><strong>${dashboardMetric(stats.activePartners)}</strong></div></div>
+      <div class="dashboard-project-stats dashboard-project-stats-compact"><div><span>Aktuelles Staking</span><strong>${p.boundUsd>0?money(p.boundUsd):"–"}</strong></div><div><span>Teampartner</span><strong>${dashboardMetric(stats.teamPartners)}</strong></div><div><span>davon aktiv</span><strong>${dashboardActivePartners(stats)}</strong></div></div>
       <div class="dashboard-reward-lines"><div><span>Rewards · Gesamt</span><strong>${dashboardMetric(rewards.total,money)}</strong></div><div><span>Rewards · Vorjahr</span><strong>${dashboardMetric(rewards.previousYear,money)}</strong></div><div><span>Rewards · Jahr</span><strong>${dashboardMetric(rewards.year,money)}</strong></div><div><span>Rewards · Monat</span><strong>${dashboardMetric(rewards.month,money)}</strong></div></div>
       ${projectPrices.length?`<div class="dashboard-project-prices">${projectPrices.map(r=>`<span><span class="dashboard-project-token-name">${escapeAttr(r.displayName||r.symbol)}</span>${dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${dashboardAddressHtml(r.address)} <strong>${r.price?fmtPrice(r.price.price):"–"}</strong></span>`).join("")}</div>`:""}<button class="secondary" onclick="dashboardProjectOpen('${escapeAttr(key)}')">Projekt öffnen</button><div class="dashboard-cache-note">Dashboard-Grunddaten werden aus persistenten Projektcaches übernommen. Fehlende/veraltete Grunddaten werden durch den zentralen Hintergrundlauf nachgeführt; vollständige Discovery bleibt projektbezogen.</div></article>`;
   }).join("");

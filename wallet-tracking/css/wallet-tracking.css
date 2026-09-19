@@ -1451,3 +1451,13 @@ body.wt-modal-open{overflow:hidden}
 @media(min-width:1450px){.dashboard-project-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:900px){.dashboard-project-grid{grid-template-columns:1fr}.dashboard-project-prices{grid-template-columns:1fr}}
 @media(max-width:720px){.dashboard-onboarding-steps{grid-template-columns:1fr}}
+
+/* Phase 5.33 · Dashboard-Summary Validierung / konsistente Reward-Kacheln */
+.dashboard-reward-lines{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0 12px}
+.dashboard-reward-lines>div{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;padding:10px 12px;border-radius:11px;background:var(--card2);border:1px solid var(--border)}
+.dashboard-reward-lines span{color:var(--muted);min-width:0}
+.dashboard-reward-lines strong{white-space:nowrap;font-variant-numeric:tabular-nums}
+.dashboard-project-stats strong{overflow-wrap:anywhere}
+@media(max-width:720px){.dashboard-reward-lines{grid-template-columns:1fr}}
+
+/* Release Phase 5.33 · 19.09.2026 14:08:11 CEST · Build 20260919-140811 */
