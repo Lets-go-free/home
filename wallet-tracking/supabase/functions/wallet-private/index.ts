@@ -229,9 +229,13 @@ function normalizeTeamAliasReference(value: unknown): string {
     return `id:${ref.slice(3)}`
   }
 
-  // DAO1/APTM – eigener Namespace; Identitaet folgt der DID.
+  // DAO1 und APTMDAO – getrennte Namespaces; keine Alias-Zusammenführung.
   if (/^dao1:did:\d{1,78}$/i.test(ref)) {
     return `dao1:did:${ref.slice(9)}`
+  }
+
+  if (/^aptmdao:did:\d{1,78}$/i.test(ref)) {
+    return `aptmdao:did:${ref.slice(12)}`
   }
 
   // Bestehende Wallet-Referenzen weiter lesen/speichern.
@@ -240,7 +244,7 @@ function normalizeTeamAliasReference(value: unknown): string {
   }
 
   throw new Error(
-    'Partner-Referenz muss id:<TLN-ID>, dao1:did:<DID> oder wallet:<EVM-Adresse> sein.',
+    'Partner-Referenz muss id:<TLN-ID>, dao1:did:<DID>, aptmdao:did:<DID> oder wallet:<EVM-Adresse> sein.',
   )
 }
 
