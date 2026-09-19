@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260919-182627';
+const BUILD_ID='20260919-220046';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='19.09.2026 18:26:27 CEST';
+const APP_VERSION='19.09.2026 22:00:46 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11574,7 +11574,7 @@ function projectStakingSummaryDateHtml(value){
   return `<span class="project-staking-date">${d.toLocaleDateString('de-CH')}<span class="time">${d.toLocaleTimeString('de-CH')}</span></span>`;
 }
 function projectStakingUsdLineHtml(kind,label,value){
-  return `<div class="project-usd-line"><span class="project-usd-dot ${kind}"></span><span class="label">${esc(label)}</span><span class="value">${value!=null?formatUsd(value):'–'}</span></div>`;
+  return `<div class="project-usd-line"${value==null?' title="Noch keine persistente historische Bewertung für diesen Zeitpunkt vorhanden. Fehlende Werte werden bei der Step-6-/Detailbewertung gezielt nachermittelt."':''}><span class="project-usd-dot ${kind}"></span><span class="label">${esc(label)}</span><span class="value">${value!=null?formatUsd(value):'–'}</span></div>`;
 }
 function projectStakingStatusMeta(l){
   const isClosed=l.status==='closed',expiry=l.expiryTime||l.contractEndTime||l.releaseTime||null;
@@ -17157,12 +17157,25 @@ function renderTeamTree(){
         expiredPartnerStakings.push({wallet:w,tlnId:String(ident.nodeId||''),name:teamAliasFor(w,ident)||projectOwnWalletLabel(w)||`TLN-ID ${ident.nodeId||'?'}`,asset:safePairLabel(lot)||lot.pairLabel||lot.symbol||'Staking',expiry:expiry?teamFormatStakeDate(expiry,true):''});
       }
     }
+    const recentPartnerActivities=[];
+    for(const w of partnerRows){
+      const life=TEAM_STAKING_LIFECYCLE.get(norm(w));if(!life?.verified)continue;
+      const ident=TEAM_IDENTITY_CACHE.get(norm(w))||{};
+      for(const x of (life.lots||[])){
+        const lot=x?.lot||x||{},rawDate=lot.stakeTime||lot.startTime||lot.createdAt||lot.timestamp||null;
+        const dt=rawDate?(typeof rawDate==='number'&&rawDate<1e12?new Date(rawDate*1000):new Date(rawDate)):null;
+        if(!dt||Number.isNaN(dt.getTime()))continue;
+        recentPartnerActivities.push({date:dt.toISOString(),project:'TLN / VOW',partner:teamAliasFor(w,ident)||`TLN-ID ${ident.nodeId||'?'}`,what:`Staking · ${safePairLabel(lot)||lot.pairLabel||lot.symbol||'Position'}`});
+      }
+    }
+    recentPartnerActivities.sort((a,b)=>new Date(b.date)-new Date(a.date));
     window.setDashboardProjectCacheStats?.('tln_vow',{
       teamPartners:partnerRows.length,
       activePartners:unknownPartners?null:activePartners,
       activePartnersVerified:activePartners,
       activePartnersUnknown:unknownPartners,
       expiredPartnerStakings,
+      recentPartnerActivities:recentPartnerActivities.slice(0,20),
       updatedAt:new Date().toISOString()
     });
   }catch(e){console.warn('TLN Dashboard-Summary',e);}

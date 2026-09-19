@@ -28,3 +28,5 @@ window.renderTlnVowHelp=renderTlnVowHelp;
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>renderTlnVowHelp(),{once:true});
 else renderTlnVowHelp();
 })();
+
+// Phase 5.42: Fehlende historische Stake/Ende/Unstake-USD-Werte werden als noch nicht persistierte Bewertung kenntlich; bestehende Step-6-/Detailbewertung ermittelt fehlende Zeitpunkte gezielt nach und bewahrt vorhandene Werte.
