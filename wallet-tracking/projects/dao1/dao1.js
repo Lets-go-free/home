@@ -1,4 +1,4 @@
-// WalletTracking Phase 5.33 · 19.09.2026 14:08:11 CEST · Build 20260919-140811
+// WalletTracking Phase 5.34 · 19.09.2026 14:27:05 CEST · Build 20260919-142705
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -5823,36 +5823,26 @@ window.DAO1Project = (() => {
   }
 
   function dashboardRewardPeriods(rows,flows){
+    // Dashboard verwendet exakt dieselbe fachliche Trennung wie die Detailtabs:
+    // Bot-Claims = isClaimTxRow && nicht DID; Referral = DID-Referral oder verifizierter Referral-Contract.
     const flowByTx=new Map();
-    for(const f of (flows||[])){
-      const k=`${String(f.wallet_id||"")}::${String(f.tx_hash||"").toLowerCase()}`;
-      if(!flowByTx.has(k))flowByTx.set(k,[]);flowByTx.get(k).push(f);
-    }
+    for(const f of (flows||[])){const k=`${String(f.wallet_id||"")}::${String(f.tx_hash||"").toLowerCase()}`;if(!flowByTx.has(k))flowByTx.set(k,[]);flowByTx.get(k).push(f);}
     const now=new Date(),year=now.getFullYear(),month=now.getMonth(),prevYear=year-1;
-    const sums={total:0,previousYear:0,year:0,month:0},known={total:true,previousYear:true,year:true,month:true};
-    const add=(keys,value,ok)=>{for(const k of keys){if(ok)sums[k]+=value;else known[k]=false;}};
+    const empty=()=>({sums:{total:0,previousYear:0,year:0,month:0},known:{total:true,previousYear:true,year:true,month:true},count:0});
+    const bot=empty(),referral=empty();
+    const keysFor=(dt)=>{const keys=["total"];if(dt.getFullYear()===prevYear)keys.push("previousYear");if(dt.getFullYear()===year){keys.push("year");if(dt.getMonth()===month)keys.push("month");}return keys;};
+    const add=(bucket,keys,values,fallbackUsd=null)=>{bucket.count++;if(values.length){const ok=values.every(f=>f.value_usd!=null&&Number.isFinite(Number(f.value_usd)));for(const k of keys){if(ok)bucket.sums[k]+=values.reduce((a,f)=>a+Number(f.value_usd||0),0);else bucket.known[k]=false;}}else{const ok=fallbackUsd!=null&&Number.isFinite(Number(fallbackUsd));for(const k of keys){if(ok)bucket.sums[k]+=Number(fallbackUsd);else bucket.known[k]=false;}}};
     for(const r of (rows||[])){
-      const dt=new Date(r.tx_timestamp||0);if(!Number.isFinite(dt.getTime()))continue;
-      const keys=["total"];if(dt.getFullYear()===prevYear)keys.push("previousYear");if(dt.getFullYear()===year){keys.push("year");if(dt.getMonth()===month)keys.push("month");}
-      const txKey=`${String(r.wallet_id||"")}::${String(r.tx_hash||"").toLowerCase()}`,txFlows=(flowByTx.get(txKey)||[]).filter(f=>f.direction==="eingang");
-      const isDid=rowWalletAddress(r)===REFERRAL_WALLET && String(r.claim_nft_subtype||"").toUpperCase()==="DID";
-      const isVerifiedReferral=rowWalletAddress(r)===REFERRAL_WALLET && lower(r.to_address||"")===REFERRAL_REWARD_CONTRACT
-        && txFlows.some(f=>lower(f.token_address||"")===REFERRAL_WUSDT_TOKEN && lower(f.counterparty_address||"")===REFERRAL_REWARD_CONTRACT);
-      const isBot=isClaimTxRow(r)&&!isDid;
-      if(!isBot&&!isDid&&!isVerifiedReferral)continue;
-      let values=[];
-      if(isDid)values=txFlows;
-      else if(isVerifiedReferral)values=txFlows.filter(f=>lower(f.token_address||"")===REFERRAL_WUSDT_TOKEN && lower(f.counterparty_address||"")===REFERRAL_REWARD_CONTRACT);
-      else values=txFlows;
-      if(values.length){
-        const ok=values.every(f=>f.value_usd!=null&&Number.isFinite(Number(f.value_usd)));
-        add(keys,values.reduce((a,f)=>a+Number(f.value_usd||0),0),ok);
-      }else{
-        const ok=r.claim_reward_usd!=null&&Number.isFinite(Number(r.claim_reward_usd));
-        add(keys,Number(r.claim_reward_usd||0),ok);
-      }
+      const dt=new Date(r.tx_timestamp||0);if(!Number.isFinite(dt.getTime()))continue;const keys=keysFor(dt);
+      const txKey=`${String(r.wallet_id||"")}::${String(r.tx_hash||"").toLowerCase()}`,incoming=(flowByTx.get(txKey)||[]).filter(f=>f.direction==="eingang");
+      const wallet=rowWalletAddress(r),isDid=wallet===REFERRAL_WALLET&&String(r.claim_nft_subtype||"").toUpperCase()==="DID";
+      const isVerifiedReferral=wallet===REFERRAL_WALLET&&lower(r.to_address||"")===REFERRAL_REWARD_CONTRACT&&incoming.some(isVerifiedReferralFlow);
+      if(isDid){add(referral,keys,incoming,r.claim_reward_usd);continue;}
+      if(isVerifiedReferral&&!isClaimTxRow(r)){add(referral,keys,incoming.filter(isVerifiedReferralFlow),r.claim_reward_usd);continue;}
+      if(isClaimTxRow(r)){add(bot,keys,incoming,r.claim_reward_usd);}
     }
-    return Object.fromEntries(Object.keys(sums).map(k=>[k,known[k]?sums[k]:null]));
+    const finish=b=>Object.fromEntries(Object.keys(b.sums).map(k=>[k,b.known[k]?b.sums[k]:null]));
+    return {rewards:finish(bot),referralRewards:finish(referral),counts:{rewards:bot.count,referralRewards:referral.count}};
   }
 
   async function loadDashboardRewardCache(){
@@ -5873,13 +5863,15 @@ window.DAO1Project = (() => {
     // Absichtlich KEIN ensureLoaded(): Das Dashboard darf den vollständigen DAO1-Tab
     // (NFTs, Konfiguration, Transaktions-UI usw.) nicht als Nebeneffekt initialisieren.
     try{
+      // Root-DIDs vor dem Tree-Cache bestimmen; sonst liest der Subtree-Cache mit leerer Root-Liste 0 Partner.
+      await loadDAO1OwnedDidRoots(true).catch(e=>console.warn("DAO1 Dashboard DID-Roots",e));
       const [cached,rewards]=await Promise.all([loadOldDao1TreeCache(),loadDashboardRewardCache()]);
       const patch={updatedAt:new Date().toISOString()};
-      if(cached?.edges){
+      if(cached?.edges && dao1OwnedDidRoots.length){
         const rows=legacyTreeRows(cached.edges),partners=new Set(rows.map(r=>Number(r.child_id)).filter(Number.isFinite));
-        patch.teamPartners=partners.size;patch.updatedAt=cached.state?.updated_at||patch.updatedAt;
+        patch.teamPartners=partners.size;patch.updatedAt=cached.registryUpdatedAt||cached.state?.updated_at||patch.updatedAt;
       }
-      if(rewards)patch.rewards=rewards;
+      if(rewards){patch.rewards=rewards.rewards;patch.referralRewards=rewards.referralRewards;}
       // "davon aktiv" bleibt bewusst offen: Im aktuellen DAO1-Code existiert noch kein
       // belastbarer Contract-/Target-Proof, der "Bot läuft" vs. "Target erreicht" trennt.
       window.setDashboardProjectCacheStats?.("dao1",patch);

@@ -47,7 +47,7 @@
 </script>
 <title>Token-Übersicht Wallets</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><text y=%2250%22 x=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2252%22>💼</text></svg>">
-<link rel="stylesheet" href="./css/wallet-tracking.css?v=20260919-140811">
+<link rel="stylesheet" href="./css/wallet-tracking.css?v=20260919-142705">
 <link rel="stylesheet" href="./projects/tln-vow/tln-vow-discovery.css?v=20260913-180423">
 
 
@@ -625,7 +625,7 @@
       <div id="admintab-system" class="admin-tab-panel">
         <div class="section-title">🗺️ Systemübersicht · Daten &amp; Ladezeitpunkte</div>
         <div class="note" style="margin-bottom:14px">
-          Phase 5.33: Dashboard-Summary liest Projekt-Grunddaten gezielt und ohne vollständige Projektinitialisierung; LP-Positionscache wird beim Start walletübergreifend gebündelt. DAO1-Rewards kommen aus dem vorhandenen Tx-/Asset-Flow-Cache. DAO1 „aktiv“ bleibt offen, bis ein belastbarer Bot-Target-/Contract-Proof existiert. Baum der sichtbaren WalletTracking-Bereiche. Die Spalten zeigen, was der aktuelle Code beim normalen App-Start, im asynchronen Hintergrund-/Tageslauf, beim Öffnen des Bereichs und bei einer manuellen Aktualisierung tut. Dashboard-Grunddaten dürfen unabhängig vom Öffnen eines Projekt-Tabs aus persistenten Caches nachgeführt werden; vollständige Discovery bleibt projektbezogen. <strong>Cache</strong> = vorhandene Daten verwenden, <strong>Prüfung</strong> = kleiner Freshness-/Versionscheck, <strong>Delta</strong> = nur Änderungen, <strong>Neu</strong> = Daten frisch laden. Eine Zeile anklicken, um die einzelnen Datensätze und Quellen zu sehen.
+          Phase 5.34: Dashboard-Summary liest Projekt-Grunddaten gezielt und ohne vollständige Projektinitialisierung; LP-Positionscache wird beim Start walletübergreifend gebündelt. DAO1-Rewards und DAO1-Referral-Rewards werden fachlich getrennt aus demselben vorhandenen Tx-/Asset-Flow-Cache wie die Detailtabs gebildet. DAO1 „aktiv“ bleibt offen, bis ein belastbarer Bot-Target-/Contract-Proof existiert. Baum der sichtbaren WalletTracking-Bereiche. Die Spalten zeigen, was der aktuelle Code beim normalen App-Start, im asynchronen Hintergrund-/Tageslauf, beim Öffnen des Bereichs und bei einer manuellen Aktualisierung tut. Dashboard-Grunddaten dürfen unabhängig vom Öffnen eines Projekt-Tabs aus persistenten Caches nachgeführt werden; vollständige Discovery bleibt projektbezogen. <strong>Cache</strong> = vorhandene Daten verwenden, <strong>Prüfung</strong> = kleiner Freshness-/Versionscheck, <strong>Delta</strong> = nur Änderungen, <strong>Neu</strong> = Daten frisch laden. Eine Zeile anklicken, um die einzelnen Datensätze und Quellen zu sehen.
         </div>
         <div id="adminSystemOverview"></div>
       </div>
@@ -1119,7 +1119,7 @@
   </div>
 
   <footer>
-    Version vom 19.09.2026 14:08:11 CEST · Phase 5.33 · Dashboard-Summary-Validierung und Start-Optimierung<br>
+    Version vom 19.09.2026 14:27:05 CEST · Phase 5.34 · Reward-/Referral-Trennung und Summary-Konsistenz<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1130,20 +1130,20 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="./js/browser-cache.js?v=20260917-235359"></script>
 <script src="./js/price-engine.js"></script>
-<script src="./js/lp-engine.js?v=20260919-140811"></script>
+<script src="./js/lp-engine.js?v=20260919-142705"></script>
 <script src="./js/staking-engine.js"></script>
 <script src="./projects/tln-vow/tln-vow-loans.js?v=20260915-173339"></script>
 <script src="./projects/tln-vow/tln-vow.js?v=20260919-121659"></script>
-<script src="./projects/dao1/dao1.js?v=20260919-140811"></script>
+<script src="./projects/dao1/dao1.js?v=20260919-142705"></script>
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20260919-140811"></script>
-<script src="./help/help-general.js?v=20260919-140811"></script>
+<script src="./admin/ideas.js?v=20260919-142705"></script>
+<script src="./help/help-general.js?v=20260919-142705"></script>
 <script src="./projects/tln-vow/help.js?v=20260914-182500"></script>
 <script src="./projects/dao1/help.js?v=20260917-215800"></script>
-<script src="./js/app.js?v=20260919-140811"></script>
-<script src="./projects/tln-vow/tln-vow-discovery.js?v=20260919-140811"></script>
+<script src="./js/app.js?v=20260919-142705"></script>
+<script src="./projects/tln-vow/tln-vow-discovery.js?v=20260919-142705"></script>
 
 
 
@@ -1161,6 +1161,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 19.09.2026 14:08:11 CEST · Phase 5.33 · Build 20260919-140811</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 19.09.2026 14:27:05 CEST · Phase 5.34 · Build 20260919-142705</div>
 </body>
 </html>

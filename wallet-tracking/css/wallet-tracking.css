@@ -1460,4 +1460,9 @@ body.wt-modal-open{overflow:hidden}
 .dashboard-project-stats strong{overflow-wrap:anywhere}
 @media(max-width:720px){.dashboard-reward-lines{grid-template-columns:1fr}}
 
-/* Release Phase 5.33 · 19.09.2026 14:08:11 CEST · Build 20260919-140811 */
+/* Release Phase 5.34 · 19.09.2026 14:27:05 CEST · Build 20260919-142705 */
+
+/* Phase 5.34: Rewards und Referral Rewards im Dashboard fachlich/optisch getrennt. */
+.dashboard-reward-group{margin-top:12px}
+.dashboard-reward-group-title{font-weight:800;color:var(--text,#14243f);margin:0 0 7px 2px}
+.dashboard-project-card .dashboard-reward-lines{margin-top:0}
