@@ -1,4 +1,4 @@
-// WalletTracking Phase 5.41 · 19.09.2026 21:22:29 CEST · Build 20260919-212229
+// WalletTracking Phase 5.42 · 19.09.2026 22:00:46 CEST · Build 20260919-220046
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -4555,9 +4555,15 @@ window.DAO1Project = (() => {
   }
   function dao1TeamNftMatchesMode(nft,mode=dao1TeamTreeMode){
     mode=mode==="aptmdao"?"aptmdao":"legacy";
-    const direct=dao1TeamNftSystemDirect(nft);if(direct)return direct===mode;
+    // DID-NFTs sind Identitäten/Tree-Knoten und niemals "Bots" einer anderen DID.
+    // In Partnerdetails erscheinen nur nachweislich zugehörige Bots sowie Memberships.
+    if(nft?.subtype==="DID"||nft?.subtype==="APTMDAO NFT")return false;
+    if(nft?.subtype==="DAO / Membership"){
+      const direct=dao1TeamNftSystemDirect(nft);
+      return direct?direct===mode:mode==="legacy";
+    }
     if(dao1TeamIsBot(nft))return nft?.system_evidence===mode;
-    return mode==="legacy"; // übrige alte klassifizierte DAO1-NFTs bleiben im alten Tree
+    return false;
   }
   async function saveDAO1PartnerBotLifecycle(nft,wallet,did,mode){
     const ctx=getContext?.();if(!ctx?.currentUser?.id||!dao1TeamIsBot(nft)||!nft?.acquisition_tx_hash||!nft?.system_evidence)return;
@@ -4702,7 +4708,7 @@ window.DAO1Project = (() => {
     return `<div class="wt-team-purchase-totals"><div class="wt-team-purchase-totals-title">Total Kaufpreis</div>${rows.map(g=>`<div class="wt-team-purchase-total-row"><span><strong>${escapeHtml(g.subtype)}</strong> · ${g.count} ${g.count===1?"Stück":"Stück"}</span><strong>${tokenAmount(g.amount,{address:g.contract,symbol:g.symbol})} ${escapeHtml(g.symbol)}</strong></div>`).join("")}</div>`;
   }
   function dao1TeamNftTableHtml(nfts){
-    if(!nfts.length)return '<div class="empty">Für dieses Wallet sind im vorhandenen Ownership-Bestand keine DAO1-NFTs/Bots gespeichert.</div>';
+    if(!nfts.length)return '<div class="empty">Für diese DID sind aktuell keine eindeutig zugeordneten Bots oder Memberships belegt.</div>';
     return `<div class="chain-table-wrap project-data-table"><table><thead><tr><th>Typ</th><th>NFT</th><th>Name</th><th>Erworben am</th><th>Erwerbsart</th><th>Kaufpreis</th><th>Status</th></tr></thead><tbody>${nfts.map(n=>`<tr><td>${escapeHtml(n.subtype)}</td><td>#${escapeHtml(n.id)}</td><td><strong>${escapeHtml(n.name)}</strong></td><td>${n.owned_from_at?dao1TeamDate(n.owned_from_at):"nicht ermittelt"}</td><td>${escapeHtml(dao1TeamAcquisitionText(n))}${dao1TeamSourceText(n)?`<div class="meta">von ${escapeHtml(dao1TeamSourceText(n))}</div>`:""}</td><td>${dao1TeamPurchaseText(n)}</td><td>${escapeHtml(dao1TeamBotStatus(n))}</td></tr>`).join("")}</tbody></table></div>${dao1TeamPurchaseTotalsHtml(nfts)}`;
   }
   function dao1TeamBotSummaryHtml(wallet){
