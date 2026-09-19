@@ -4789,6 +4789,16 @@ window.DAO1Project = (() => {
     const isOld=dao1TeamTreeMode==="legacy",st=teamDiscoveryState();
     const renderT0=performance.now();
     const d=dao1OldTreeCacheDiag;
+    if(isOld){
+      const scopedRows=legacyTreeRows(st.edges||[]);
+      const partnerRows=[...new Map(scopedRows.map(r=>[Number(r.child_id),r])).values()];
+      const activePartners=partnerRows.filter(r=>{
+        const wallet=lower(r.wallet||r.wallet_address||'');
+        if(!wallet)return false;
+        return dao1TeamKnownNfts(wallet).some(n=>dao1TeamIsBot(n)&&n.current);
+      }).length;
+      window.setDashboardProjectCacheStats?.('dao1',{teamPartners:partnerRows.length,activePartners});
+    }
     const cacheDiagHtml=isOld?`<div class="custom-token-card debug-frame" style="margin-top:12px"><strong>DEBUG / DEV · DAO1 Tree Browser-Cache</strong><div class="note" style="margin-top:6px"><strong>${escapeHtml(d.source)}</strong> · lokal ${Number(d.localRows||0).toLocaleString("de-DE")} Rows · DB ${Number(d.dbRows||0).toLocaleString("de-DE")} Rows · Delta ${Number(d.deltaRows||0).toLocaleString("de-DE")} Rows</div><div class="note">IndexedDB ${Number(d.idbMs||0).toFixed(1)} ms · State ${Number(d.stateMs||0).toFixed(1)} ms · IDB-Meta ${Number(d.metaMs||0).toFixed(1)} ms · DATA_VERSIONS ${Number(d.registryMs||0).toFixed(1)} ms · Schema-Probe ${Number(d.probeMs||0).toFixed(1)} ms · Delta-DB ${Number(d.deltaDbMs||0).toFixed(1)} ms</div><div class="note">Cache gesamt ${Number(d.totalCacheMs||0).toFixed(1)} ms · Latest Block ${Number(d.latestBlockMs||0).toFixed(1)} ms · 24-Block-RPC ${Number(d.overlapRpcMs||0).toFixed(1)} ms · Cache speichern ${Number(d.saveMs||0).toFixed(1)} ms · kompletter Lauf ${Number(d.scanMs||0).toFixed(1)} ms · Render ${Number(d.renderMs||0).toFixed(1)} ms</div><div class="note">${escapeHtml(d.note||"")}</div><div class="note"><strong>${escapeHtml(d.scanMode||"–")}</strong>${d.scannedBlocks?` · geprüft Block ${Number(d.fromBlock).toLocaleString("de-DE")}–${Number(d.toBlock).toLocaleString("de-DE")} (${Number(d.scannedBlocks).toLocaleString("de-DE")} Blöcke) · RPC-Logs ${Number(d.rpcLogs||0).toLocaleString("de-DE")} · geänderte Kanten ${Number(d.changedEdges||0).toLocaleString("de-DE")}`:""}</div></div>`:"";
     el.innerHTML=`<div class="custom-token-card" style="margin-top:12px">
       <div class="chain-title">${isOld?"Tree DAO1 (alt)":"Tree APTMDAO (neu)"}</div>

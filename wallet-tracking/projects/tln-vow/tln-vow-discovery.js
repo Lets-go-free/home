@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260919-013647 */
 (()=>{
-const BUILD_ID='20260919-013647';
+const BUILD_ID='20260919-112007';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='19.09.2026 01:36:47 CEST';
+const APP_VERSION='19.09.2026 11:20:07 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -17122,6 +17122,12 @@ function renderTeamTree(){
   const externalCount=[...visible].filter(w=>!forest.ownSet.has(w)).length;
   const verifiedLifecycleCount=[...visible].filter(w=>TEAM_STAKING_LIFECYCLE.get(norm(w))?.verified).length;
   const unknownLifecycleCount=visible.size-verifiedLifecycleCount;
+  const activePartnerCount=[...visible].filter(w=>{
+    if(forest.ownSet.has(w))return false;
+    const life=TEAM_STAKING_LIFECYCLE.get(norm(w));
+    return !!life?.verified && (life.open||[]).some(x=>x?.status==='active'||teamLifecycleStatusForLot(x?.lot||x)==='active');
+  }).length;
+  window.setDashboardProjectCacheStats?.('tln_vow',{teamPartners:externalCount,activePartners:activePartnerCount});
   const blocks=[];
   const scopedComponents=PROJECT_WALLET_FILTER==='all'?(forest.components||[]):((visible.has(norm(PROJECT_WALLET_FILTER)))?[{root:norm(PROJECT_WALLET_FILTER)}]:[]);
   const sortedComponents=scopedComponents.slice().sort((a,b)=>{

@@ -273,6 +273,10 @@ async function onLoggedIn(session) {
   loadTokenMetaCache();
   await loadDefiProjectsCache();
   await loadPredefinedTokensFromDb();
+  if(isAdmin){
+    const nativeChanged=await ensureNativeAssetsConfigured().catch(e=>{console.warn("Native-Coin-Stammdaten",e);return false;});
+    if(nativeChanged) await loadPredefinedTokensFromDb();
+  }
   await loadWalletsFromDb();
   await loadCustomSafeTokensFromDb();
 
@@ -2382,6 +2386,23 @@ function normalizeAddress(address, chain) {
   return CHAIN_CONFIG[chain]?.walletType === "evm" ? value.toLowerCase() : value;
 }
 
+async function ensureNativeAssetsConfigured(){
+  if(!isAdmin)return false;
+  let changed=false;
+  for(const chain of Object.keys(CHAIN_META)){
+    if(predefinedNativeAssets[chain])continue;
+    await syncNativeAssetForChain(chain,{
+      chain_key:chain,
+      native_symbol:NATIVE_SYMBOL[chain]||chain.toUpperCase(),
+      label:CHAIN_META[chain]?.label||chain,
+      wallet_type:CHAIN_CONFIG[chain]?.walletType||null,
+      coingecko_id:CHAIN_META[chain]?.coingeckoId||null
+    });
+    changed=true;
+  }
+  return changed;
+}
+
 async function refreshPredefinedTokens() {
   await loadPredefinedTokensFromDb();
   renderSafeTokenTable();
@@ -4356,8 +4377,9 @@ function dashboardPriceRows(){
     const native=address==="native";
     const meta=native?predefinedNativeAssets[chain]:null;
     const symbol=meta?.symbol||predefinedTokenSymbols[key]||predefinedTokenLabels[key]||address;
+    const displayName=meta?.name||predefinedTokenNames[key]||predefinedTokenLabels[key]||symbol;
     const price=native?nativePrices[chain]:priceForToken(chain,address);
-    rows.push({key,chain,address,symbol,project:predefinedTokenProject[key]||null,price});
+    rows.push({key,chain,address,symbol,displayName,project:predefinedTokenProject[key]||null,price});
   }
   return rows.sort((a,b)=>(a.project||"").localeCompare(b.project||"")||a.symbol.localeCompare(b.symbol));
 }
@@ -4391,17 +4413,39 @@ function dashboardProjectTitle(key){return defiProjectsCache.find(p=>p.project_k
 function dashboardProjectOpen(key){if(key==="tln_vow")showTab("tlnvow");else if(key==="dao1")showTab("dao1");else showTab("projects-overview");}
 window.dashboardProjectOpen=dashboardProjectOpen;
 
+const dashboardProjectCacheStats={
+  tln_vow:{teamPartners:null,activePartners:null,rewards:{total:null,previousYear:null,year:null,month:null}},
+  dao1:{teamPartners:null,activePartners:null,rewards:{total:null,previousYear:null,year:null,month:null}}
+};
+function dashboardMetric(v,formatter){return v==null?"–":(formatter?formatter(v):String(v));}
+function setDashboardProjectCacheStats(projectKey,patch={}){
+  const cur=dashboardProjectCacheStats[projectKey]||(dashboardProjectCacheStats[projectKey]={rewards:{}});
+  if(Object.prototype.hasOwnProperty.call(patch,"teamPartners"))cur.teamPartners=patch.teamPartners;
+  if(Object.prototype.hasOwnProperty.call(patch,"activePartners"))cur.activePartners=patch.activePartners;
+  if(patch.rewards)cur.rewards={...(cur.rewards||{}),...patch.rewards};
+  renderDashboard();
+}
+window.setDashboardProjectCacheStats=setDashboardProjectCacheStats;
+
 function renderDashboard(){
   const root=document.getElementById("dashboardContent");if(!root)return;
   renderGlobalWalletPersonFilter();
   const targetWallets=walletsForCurrentView(),portfolio=dashboardPortfolio(targetWallets),prices=dashboardPriceRows();
   const money=v=>fmtUsd(Number(v||0));
   const boundValue=portfolio.boundEvidence?money(portfolio.boundUsd):"–";
-  const priceTable=prices.length?`<div class="dashboard-table-wrap"><table class="dashboard-price-table"><thead><tr><th>Token</th><th>Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${prices.map(r=>`<tr><td><strong>${escapeAttr(r.symbol)}</strong></td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?escapeAttr(r.price.source||"Preis-Cache"):"Kein gespeicherter Kurs"}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">Noch keine Token sind für das Dashboard aktiviert. Als Admin unter „Vordefinierte Token“ die Spalte „Im Dashboard anzeigen“ auswählen.</div>`;
+  const priceTable=prices.length?`<div class="dashboard-table-wrap"><table class="dashboard-price-table"><thead><tr><th>Token</th><th>Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${prices.map(r=>`<tr><td><strong>${escapeAttr(r.displayName||r.symbol)}</strong>${r.displayName&&r.symbol&&r.displayName!==r.symbol?`<div class="meta">${escapeAttr(r.symbol)}</div>`:""}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?escapeAttr(r.price.source||"Preis-Cache"):"Kein gespeicherter Kurs"}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">Noch keine Token sind für das Dashboard aktiviert. Als Admin unter „Vordefinierte Token“ die Spalte „Im Dashboard anzeigen“ auswählen.</div>`;
   const projectCards=[...portfolio.projects.entries()].filter(([,p])=>p.assets>0).map(([key,p])=>{
     const projectPrices=prices.filter(x=>x.project===key);
-    return `<article class="dashboard-project-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Projekt</span><h3>${escapeAttr(dashboardProjectTitle(key))}</h3></div><strong>${money(p.valueUsd)}</strong></div><div class="dashboard-project-stats"><div><span>Aktuelles Staking</span><strong>${p.boundUsd>0?money(p.boundUsd):"–"}</strong></div><div><span>Rewards · Monat</span><strong>–</strong></div><div><span>Referral · Monat</span><strong>–</strong></div></div>${projectPrices.length?`<div class="dashboard-project-prices">${projectPrices.map(r=>`<span>${escapeAttr(r.symbol)} <strong>${r.price?fmtPrice(r.price.price):"–"}</strong></span>`).join("")}</div>`:""}<button class="secondary" onclick="dashboardProjectOpen('${escapeAttr(key)}')">Projekt öffnen</button><div class="dashboard-cache-note">Cache-first: fehlende Staking-/Reward-Werte lösen hier keine Discovery aus.</div></article>`;
+    const stats=dashboardProjectCacheStats[key]||{rewards:{}};
+    const rewards=stats.rewards||{};
+    return `<article class="dashboard-project-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Projekt</span><h3>${escapeAttr(dashboardProjectTitle(key))}</h3></div><strong>${money(p.valueUsd)}</strong></div>
+      <div class="dashboard-project-stats dashboard-project-stats-compact"><div><span>Aktuelles Staking</span><strong>${p.boundUsd>0?money(p.boundUsd):"–"}</strong></div><div><span>Teampartner</span><strong>${dashboardMetric(stats.teamPartners)}</strong></div><div><span>davon aktiv</span><strong>${dashboardMetric(stats.activePartners)}</strong></div></div>
+      <div class="dashboard-reward-lines"><div><span>Rewards · Gesamt</span><strong>${dashboardMetric(rewards.total,money)}</strong></div><div><span>Rewards · Vorjahr</span><strong>${dashboardMetric(rewards.previousYear,money)}</strong></div><div><span>Rewards · Jahr</span><strong>${dashboardMetric(rewards.year,money)}</strong></div><div><span>Rewards · Monat</span><strong>${dashboardMetric(rewards.month,money)}</strong></div></div>
+      ${projectPrices.length?`<div class="dashboard-project-prices">${projectPrices.map(r=>`<span>${escapeAttr(r.symbol)} <strong>${r.price?fmtPrice(r.price.price):"–"}</strong></span>`).join("")}</div>`:""}<button class="secondary" onclick="dashboardProjectOpen('${escapeAttr(key)}')">Projekt öffnen</button><div class="dashboard-cache-note">Cache-first: Team-/Reward-Werte werden nur aus vorhandenen Projektcaches übernommen; fehlende Werte starten keine Discovery.</div></article>`;
   }).join("");
+  const globalRewards={total:0,previousYear:0,year:0,month:0},globalRewardKnown={total:false,previousYear:false,year:false,month:false};
+  for(const st of Object.values(dashboardProjectCacheStats)){for(const k of Object.keys(globalRewards)){const v=Number(st?.rewards?.[k]);if(Number.isFinite(v)){globalRewards[k]+=v;globalRewardKnown[k]=true;}}}
+  const overallReward=(k)=>globalRewardKnown[k]?money(globalRewards[k]):"–";
   const staleWallets=targetWallets.filter(w=>Object.keys(CHAIN_CONFIG).some(c=>walletAddressForChain(w,c)&&!refreshedToday(w,c,"balances"))).length;
   root.innerHTML=`
     <div class="dashboard-heading"><div><h2>Persönliches Dashboard</h2><p>Gespeicherter Stand für ${escapeAttr(document.getElementById("globalWalletPersonFilter")?.selectedOptions?.[0]?.textContent||"Eigene Wallets")}</p></div><button onclick="loadAll()">Daten aktualisieren</button></div>
@@ -4409,12 +4453,13 @@ function renderDashboard(){
       <article class="dashboard-kpi dashboard-kpi-blue"><span>Gesamtvermögen</span><strong>${money(portfolio.totalUsd)}</strong><small>aktuell bewertbarer Cache-Stand</small></article>
       <article class="dashboard-kpi dashboard-kpi-green"><span>Frei verfügbar</span><strong>${money(portfolio.freeUsd)}</strong><small>direkt in ${targetWallets.length} ausgewählten Wallet(s)</small></article>
       <article class="dashboard-kpi dashboard-kpi-purple"><span>Aktuell gebunden</span><strong>${boundValue}</strong><small>${portfolio.boundEvidence?"aus vorhandenem Positionscache":"Positionscache noch nicht im Dashboard verfügbar"}</small></article>
-      <article class="dashboard-kpi dashboard-kpi-gold"><span>Rewards · aktueller Monat</span><strong>–</strong><small>folgt aus Projektcaches, ohne Start-Discovery</small></article>
+      <article class="dashboard-kpi dashboard-kpi-gold dashboard-reward-kpi"><span>Rewards</span><div class="dashboard-kpi-reward-lines"><div><small>Gesamt</small><strong>${overallReward("total")}</strong></div><div><small>Vorjahr</small><strong>${overallReward("previousYear")}</strong></div><div><small>Jahr</small><strong>${overallReward("year")}</strong></div><div><small>Monat</small><strong>${overallReward("month")}</strong></div></div></article>
     </section>
     ${portfolio.unknownValues?`<div class="dashboard-data-warning">${portfolio.unknownValues} Vermögenswert(e) ohne gespeicherten Kurs sind in den Geldsummen nicht enthalten.</div>`:""}
     <section class="dashboard-main-grid"><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Aktuelle Kurse</h3><p>Nur zentral für das Dashboard aktivierte Token</p></div><button class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button></div>${priceTable}</article><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Was muss ich tun?</h3><p>Nur aus bestätigten Cache-Daten</p></div></div><div class="dashboard-action-list">${staleWallets?`<div><span class="dashboard-action-icon warning">!</span><p><strong>${staleWallets} Wallet(s) mit älterem Bestandsstand</strong><small>Eine Aktualisierung ist verfügbar.</small></p></div>`:`<div><span class="dashboard-action-icon ok">✓</span><p><strong>Bestandsstände aktuell</strong><small>Keine fällige Bestandsaktualisierung erkannt.</small></p></div>`}<div><span class="dashboard-action-icon neutral">↗</span><p><strong>Partner-Stakings</strong><small>Auslaufende/abgelaufene Positionen werden nach Anschluss des TLN-Team-Caches hier angezeigt.</small></p></div></div></article></section>
-    <div class="dashboard-section-title"><h3>Projekte${isAdmin?" & Administration":""}</h3><span>Nur vorhandene Projekte</span></div>
-    <section class="dashboard-project-grid">${projectCards||'<div class="empty">In den ausgewählten Wallets ist noch kein Projektbestand im gespeicherten Stand vorhanden.</div>'}${isAdmin?`<article class="dashboard-project-card dashboard-admin-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Nur Admin</span><h3>Administration</h3></div><strong>Prüfliste</strong></div><div class="dashboard-admin-links"><button class="secondary" onclick="showTab('admin');showAdminTab('customtokens')">Neue sichere Token prüfen</button><button class="secondary" onclick="showTab('tlnvow')">TLN-Staking-Varianten prüfen</button></div><div class="dashboard-cache-note">Zähler werden später aus einem eigenen kompakten Admin-Cache ergänzt.</div></article>`:""}</section>`;
+    <div class="dashboard-section-title"><h3>Projekte</h3><span>Nur vorhandene Projekte</span></div>
+    <section class="dashboard-project-grid">${projectCards||'<div class="empty">In den ausgewählten Wallets ist noch kein Projektbestand im gespeicherten Stand vorhanden.</div>'}</section>
+    ${isAdmin?`<div class="dashboard-section-title dashboard-admin-title"><h3>Administration</h3><span>Nur Admin</span></div><section class="dashboard-admin-grid"><article class="dashboard-project-card dashboard-admin-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Administration</span><h3>Prüfliste & Verwaltung</h3></div><strong>Admin</strong></div><div class="dashboard-admin-links"><button class="secondary" onclick="showTab('admin');showAdminTab('customtokens')">Neue sichere Token prüfen</button><button class="secondary" onclick="showTab('tlnvow')">TLN-Staking-Varianten prüfen</button></div><div class="dashboard-cache-note">Administrationsfunktionen sind bewusst vom Projektbereich getrennt.</div></article></section>`:""}`;
   setWtDataStatus("dashboard",{updatedAt:currentPriceCacheState.capturedAt,cacheAt:currentPriceCacheState.capturedAt,source:"cache",label:"Dashboard"});
 }
 window.renderDashboard=renderDashboard;
