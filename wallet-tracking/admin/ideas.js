@@ -1,3 +1,4 @@
+// Phase 5.40: Dashboard-Audit fortgesetzt: Preisrefresh stale-while-refresh (alter gültiger Snapshot bleibt sichtbar), Kursliste zweispaltig/kompakt, Reward-Assets periodenübergreifend zeilengleich, TLN Partner-Staking-TODO mit Ladezustand, gebundener Wert mit Projektaufschlüsselung, letzte bestätigte Partneraktivitäten aus Projektcaches. DAO1-Bot-Kauf-Aktivitäten bleiben bis zu einem belastbaren persistenten Partner-NFT-Eventcache offen.
 // WalletTracking · Ideen / Umbau
 // Phase 5.39: Dashboard-Daten-Audit fortgesetzt: Hauptsummary in Vermögen/Rewards/Referral Rewards gruppiert; persistenter lp_position_cache wird beim Start cache-only für gebundene DAO1/TLN-LP-Werte gelesen; TLN-Team-Restore liefert verifizierte abgelaufene, noch gestakte Partnerpositionen an 'Was muss ich tun?'; Datenstand-Texte benutzerverständlich statt 'nicht instrumentiert'. Systemübersicht/Datenquellen/Ladezeitpunkte geprüft.
 // Zentrale Arbeits- und Übergabeliste.
