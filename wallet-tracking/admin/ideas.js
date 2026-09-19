@@ -3,8 +3,9 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260919-113733";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "19.09.2026 11:37:33 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260919-120422";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "19.09.2026 12:04:22 CEST";
+// Phase 5.29: Dashboard-Gerüst wird unmittelbar nach Login sichtbar, bevor Chain-/DB-Konfiguration fertig geladen ist. TLN/VOW-Dashboardpreise zeigen tatsächliche DEX-Quelle (BSC PancakeSwap / ETH Uniswap) plus vorhandene Preisroute. DAO1 hat neu „Kurse und Pools“ als reine Sicht auf die bereits bestehende Apertum-Preislogik; keine neue Preisermittlung.
 // Phase 5.27: Summary (Verlauf, Portfolio-Allokation und Bestands-Summary) aus „Übersicht & Analyse“ ins Dashboard verschoben. Globaler Wallet-Ansicht-Filter aktualisiert auch die Summary-Wallet-Auswahlen. Dashboard-Kursnamen lösen vordefinierte und eigene sichere Token robust über gepflegte Namen/Labels statt Contract-Adresse auf. Chart-Legende verwendet die aktuelle Theme-Textfarbe für lesbare Darstellung in Hell/Dunkel. Dashboard bleibt Startseite und cache-first. Systemübersicht/Hilfe geprüft.
 // Phase 5.26: Dashboard-Finish: Native Coins werden bei Admin-Start als echte predefined_tokens-Stammdaten sichergestellt und sind damit für Dashboard-Flag sowie Anzeige-/Summary-Kommastellen editierbar. Kursliste zeigt den gepflegten Token-Namen statt einer Fallback-Adresse. Projekte und Administration sind getrennte Dashboard-Bereiche; Projektkarten besitzen Team-Partner gesamt/aktiv sowie Rewards Gesamt/Vorjahr/Jahr/Monat. Alle Projektwerte bleiben strikt cache-first; fehlende Werte starten keine Discovery/Chain-Abfrage. Sidebar-W entfernt und Einklapp-Pfeil kollisionsfrei positioniert. Systemübersicht/Hilfe geprüft.
 // Phase 5.25: Dashboard als Cache-first-Startseite, Wallet-Besitzer/Personenfilter und Dashboard-Tokenflag ergänzt. TLN/VOW-Discovery sowie manuelle Snapshots, Discovery-, Gebühren- und NFT-Caches werden nicht mehr beim Login, sondern erst beim Öffnen des jeweiligen Bereichs initialisiert. Fach-/Discovery-Algorithmen unverändert; nur Auslösezeitpunkte verschoben. Systemübersicht und Hilfe synchronisiert.

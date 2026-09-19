@@ -2,8 +2,8 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260919-113733";
-const HELP_MODULE_TIMESTAMP="19.09.2026 11:37:33 CEST";
+const HELP_MODULE_BUILD="20260919-120422";
+const HELP_MODULE_TIMESTAMP="19.09.2026 12:04:22 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;
@@ -22,7 +22,7 @@ function renderGeneralHelp(){
 
       <div class="custom-token-card"><h3 style="margin-top:0">💾 Cache &amp; Datenstand</h3><p class="note">WalletTracking arbeitet bewusst mit persistenten Caches, damit bereits bekannte Blockchain-Historien nicht bei jedem Öffnen vollständig neu geladen werden. Fachlich unveränderliche Historie wird inkrementell ergänzt. Daten, deren Zustand sich später ändern kann, müssen trotz Cache erneut geprüft werden. Eine gültige Cache-Version bedeutet deshalb nicht automatisch, dass ein veränderlicher On-Chain-Status für immer aktuell bleibt.</p></div>
 
-      <div class="custom-token-card"><h3 style="margin-top:0">💰 Kurse</h3><p class="note">Die aktuelle Kursaktualisierung wird zentral über „Preise aktualisieren“ gesteuert. Administratoren wählen in der Token-Tabelle über „Im Dashboard anzeigen“, welche Tokenkurse auf dem Dashboard erscheinen. Das gilt auch für native Coins; sie werden als zentrale Stammdaten geführt und besitzen eigene Anzeige-/Summary-Kommastellen. Im Dashboard wird der gepflegte Token-Name angezeigt, nicht die Contract-Adresse. Projektkurse werden nur zusammen mit einer tatsächlich vorhandenen Projekt-Kachel gezeigt. Anzeige-Kommastellen sind von den technischen Token-Decimalseinstellungen getrennt. Historische Bewertungen verwenden weiterhin ihre eigene historische Preislogik.</p></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">💰 Kurse</h3><p class="note">Die aktuelle Kursaktualisierung wird zentral über „Preise aktualisieren“ gesteuert. Administratoren wählen in der Token-Tabelle über „Im Dashboard anzeigen“, welche Tokenkurse auf dem Dashboard erscheinen. Das gilt auch für native Coins; sie werden als zentrale Stammdaten geführt und besitzen eigene Anzeige-/Summary-Kommastellen. Im Dashboard wird der gepflegte Token-Name angezeigt; Contract-Adressen erscheinen nur verkürzt mit Kopierfunktion. Bei Projektkursen werden die tatsächliche DEX-Quelle und – soweit vorhanden – die bereits ermittelte Preisroute angezeigt. DAO1 besitzt dafür einen eigenen Tab „Kurse und Pools“, der ausschließlich die bestehende Apertum-Preislogik und deren gespeicherte Ergebnisse sichtbar macht und keine neue Preisermittlung startet. Projektkurse werden nur zusammen mit einer tatsächlich vorhandenen Projekt-Kachel gezeigt. Anzeige-Kommastellen sind von den technischen Token-Decimalseinstellungen getrennt. Historische Bewertungen verwenden weiterhin ihre eigene historische Preislogik.</p></div>
 
       <div class="custom-token-card"><h3 style="margin-top:0">🧾 Bestandesaufnahme per 31.12.</h3><p class="note">Wähle Stichtag, Zeitzone und eine Wallet oder „Alle Wallets“. „Neu berechnen“ ermittelt den historischen Bestand und speichert den verifizierten Jahresstand dauerhaft. „Nur Kurse aktualisieren“ verändert bereits bestätigte Bestandsmengen nicht. Positionen ohne historischen Kurs bleiben sichtbar und werden nicht stillschweigend aus der Historie entfernt. PDF-/Excel-Exporte dokumentieren die verfügbaren Werte und Quellen.</p></div>
 

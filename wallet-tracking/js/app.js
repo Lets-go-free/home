@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.27 · 19.09.2026 11:37:33 CEST · Build 20260919-113733 */
+/* WalletTracking Phase 5.29 · 19.09.2026 12:04:22 CEST · Build 20260919-120422 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -233,7 +233,12 @@ async function initAuth() {
 async function onLoggedIn(session) {
   currentUser = session.user;
   document.getElementById("authGate").style.display = "none";
-  document.getElementById("appContent").style.display = "none";
+  // Das App-Gerüst und der Dashboard-Tab werden sofort sichtbar. Chain-/DB-Konfiguration
+  // lädt danach; dadurch blockiert kein Supabase-Read die sichtbare Startseite.
+  document.getElementById("appContent").style.display = "block";
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  document.getElementById("tab-dashboard")?.classList.add("active");
+  document.querySelectorAll(".tab-btn[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === "dashboard"));
   document.getElementById("userEmailLabel").textContent = "Eingeloggt als " + currentUser.email;
   document.getElementById("heroUserActions").style.display = "block";
 
@@ -1366,6 +1371,7 @@ const ADMIN_SYSTEM_TREE = [
 
   {id:"dao",level:1,label:"DAO1",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"nur Mount",daily:"–",open:"Lazy DB",manual:"projektbezogen",details:[["Projekt-Basis","DOM Mount","Supabase erst bei ensureLoaded","–","App-Start mountet nur; refreshConfig erst beim Öffnen"]]},
   {id:"dao-overview",level:2,label:"Übersicht",status:"in_progress",start:"–",daily:"–",open:"DB/RAM",manual:"Projektrefresh",details:[["DAO1 Übersicht/Bot-Summen","RAM nach Lazy Load","Supabase DAO1 Caches","Apertum bei Aktualisierung","Erst beim Öffnen DAO1"]]},
+  {id:"dao-prices",level:2,label:"Kurse und Pools",status:"in_progress",start:"–",daily:"–",open:"vorhandener Preis-Cache",manual:"zentrale Preisaktualisierung",details:[["DAO1 aktuelle Kurse/Preisrouten","RAM/zentraler Preiscache","bestehende DAO1/Apertum Preislogik","Apertum DEX nur bei zentraler Preisaktualisierung","Tab zeigt ausschließlich bereits ermittelte Preise, Routen und Pools; keine eigene Preisermittlung"]]},
   {id:"dao-tx",level:2,label:"Transaktionen",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Apertum Transaktionshistorie","RAM","Supabase zentrale Historie/Asset-Flows","Apertum RPC/Explorer","Wallet-Wechsel Cache; Daten aktualisieren lädt neue Chain-Daten"]]},
   {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","RAM","Supabase Claim-/Tx-Cache","Apertum","Lazy; Aktualisierung reichert neue Claims an"]]},
   {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","RAM","Supabase Tx/Flow Cache","Apertum","Lazy; nur relevantes DAO1 Referral-Wallet"]]},
@@ -4377,6 +4383,55 @@ function dashboardTokenDisplayName(chain,address,symbol){
   return String(predefinedTokenNames[key]||predefinedTokenLabels[key]||custom?.label||cached.name||cached.symbol||symbol||address).trim();
 }
 
+function dashboardShortAddress(address){
+  const a=String(address||"").trim();
+  if(!a||a==="native")return "";
+  return a.length>14?`${a.slice(0,8)}…${a.slice(-6)}`:a;
+}
+async function copyDashboardAddress(address,btn){
+  try{
+    await navigator.clipboard.writeText(String(address||""));
+    if(btn){const old=btn.textContent;btn.textContent="✓";setTimeout(()=>{btn.textContent=old;},900);}
+  }catch(e){console.error("Adresse konnte nicht kopiert werden",e);}
+}
+window.copyDashboardAddress=copyDashboardAddress;
+function dashboardAddressHtml(address){
+  const short=dashboardShortAddress(address);
+  if(!short)return "";
+  return `<div class="meta dashboard-token-address"><code>${escapeAttr(short)}</code><button type="button" class="dashboard-copy-address" style="padding:0 3px;margin-left:4px;border:0;background:transparent;color:inherit;box-shadow:none;font-size:.9em;vertical-align:baseline" title="Token-Adresse kopieren" aria-label="Token-Adresse kopieren" onclick="copyDashboardAddress('${escapeAttr(address)}',this)">⧉</button></div>`;
+}
+
+function dao1PriceSourceParts(price){
+  const raw=String(price?.source||"").trim();
+  if(!raw)return {source:"–",route:"–",pools:[]};
+  const parts=raw.split(" · ").map(x=>x.trim()).filter(Boolean);
+  const source=parts[0]||"Apertum DEX";
+  const pools=parts.filter(x=>/^0x[a-fA-F0-9]{40}$/.test(x));
+  let route=source.replace(/^Apertum DEX\s*/i,"").trim();
+  if(!route||route===source)route=parts.find(x=>x.includes("/")||x.includes("→"))||"–";
+  return {source:"Apertum DEX",route,pools};
+}
+function renderDao1PricesPools(){
+  const target=document.getElementById("dao1PricesPoolsContent");
+  if(!target)return;
+  const prefix="apertum|", rows=[];
+  for(const key of new Set([...Object.keys(predefinedTokenSymbols),...Object.keys(predefinedTokenLabels),...Object.keys(predefinedTokenNames)])){
+    if(!key.startsWith(prefix))continue;
+    const address=key.slice(prefix.length),symbol=predefinedTokenSymbols[key]||predefinedTokenLabels[key]||predefinedTokenNames[key]||address;
+    const project=predefinedTokenProject[key];
+    if(project!=="dao1" && !["WAPTM","APTM","WUSDT","USDT"].includes(String(symbol).toUpperCase()))continue;
+    const price=priceForToken("apertum",address); if(!price)continue;
+    const info=dao1PriceSourceParts(price);
+    rows.push({address,symbol,displayName:dashboardTokenDisplayName("apertum",address,symbol),price,info});
+  }
+  const native=nativePrices.apertum;
+  if(native)rows.unshift({address:"native",symbol:"APTM",displayName:"APTM (nativ)",price:native,info:dao1PriceSourceParts(native)});
+  const ref=window.DAO1Project?.getAptmUsdtPairAddress?.()||null;
+  target.innerHTML=`<div class="custom-token-card"><h3 style="margin-top:0">DAO1 · Kurse &amp; Pools</h3><div class="note">Diese Ansicht verwendet ausschließlich die bereits vorhandene DAO1-/Apertum-Preislogik. Es wird keine zusätzliche Preisquelle und keine neue Preisermittlung gestartet. APTM und wAPTM werden 1:1 behandelt; die USD-Referenz stammt aus dem bestehenden wAPTM/wUSDT-Pool.</div>${ref?`<div class="note" style="margin-top:8px"><strong>Referenzpool wAPTM/wUSDT:</strong> <code>${escapeAttr(dashboardShortAddress(ref))}</code> <button type="button" class="dashboard-copy-address" title="Pool-Adresse kopieren" onclick="copyDashboardAddress('${escapeAttr(ref)}',this)">⧉</button></div>`:""}</div>
+  <div class="custom-token-card" style="margin-top:10px"><div class="chain-table-wrap"><table class="chain-admin-table"><thead><tr><th>Token</th><th class="num">Kurs USD</th><th>Datenquelle</th><th>Preisroute</th><th>Pool(s)</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td><strong>${escapeAttr(r.displayName||r.symbol)}</strong>${dashboardAddressHtml(r.address)}</td><td class="num">${fmtPrice(r.price.price)}</td><td>${escapeAttr(r.info.source)}</td><td>${escapeAttr(r.info.route)}</td><td>${r.info.pools.length?r.info.pools.map(a=>`${escapeAttr(dashboardShortAddress(a))} <button type="button" class="dashboard-copy-address" title="Pool-Adresse kopieren" onclick="copyDashboardAddress('${escapeAttr(a)}',this)">⧉</button>`).join("<br>"):"–"}</td></tr>`).join(""):`<tr><td colspan="5">Noch kein gespeicherter aktueller DAO1-Preisstand vorhanden. Die bestehende zentrale Preisaktualisierung liefert diese Daten.</td></tr>`}</tbody></table></div></div>`;
+}
+window.renderDao1PricesPools=renderDao1PricesPools;
+
 function dashboardPriceRows(){
   const rows=[];
   for(const [key,visible] of Object.entries(predefinedTokenDashboardVisible)){
@@ -4442,7 +4497,7 @@ function renderDashboard(){
   const targetWallets=walletsForCurrentView(),portfolio=dashboardPortfolio(targetWallets),prices=dashboardPriceRows();
   const money=v=>fmtUsd(Number(v||0));
   const boundValue=portfolio.boundEvidence?money(portfolio.boundUsd):"–";
-  const priceTable=prices.length?`<div class="dashboard-table-wrap"><table class="dashboard-price-table"><thead><tr><th>Token</th><th>Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${prices.map(r=>`<tr><td><strong>${escapeAttr(r.displayName||r.symbol)}</strong>${r.displayName&&r.symbol&&r.displayName!==r.symbol?`<div class="meta">${escapeAttr(r.symbol)}</div>`:""}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?escapeAttr(r.price.source||"Preis-Cache"):"Kein gespeicherter Kurs"}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">Noch keine Token sind für das Dashboard aktiviert. Als Admin unter „Vordefinierte Token“ die Spalte „Im Dashboard anzeigen“ auswählen.</div>`;
+  const priceTable=prices.length?`<div class="dashboard-table-wrap"><table class="dashboard-price-table"><thead><tr><th>Token</th><th>Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${prices.map(r=>`<tr><td><strong>${escapeAttr(r.displayName||r.symbol)}</strong>${r.displayName&&r.symbol&&r.displayName!==r.symbol?`<div class="meta">${escapeAttr(r.symbol)}</div>`:""}${dashboardAddressHtml(r.address)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?`<strong>${escapeAttr(r.price.source||"Preis-Cache")}</strong>${r.price.route?`<div class="meta">Preisroute: ${escapeAttr(r.price.route)}</div>`:""}`:"Kein gespeicherter Kurs"}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">Noch keine Token sind für das Dashboard aktiviert. Als Admin unter „Vordefinierte Token“ die Spalte „Im Dashboard anzeigen“ auswählen.</div>`;
   const projectCards=[...portfolio.projects.entries()].filter(([,p])=>p.assets>0).map(([key,p])=>{
     const projectPrices=prices.filter(x=>x.project===key);
     const stats=dashboardProjectCacheStats[key]||{rewards:{}};
@@ -4450,7 +4505,7 @@ function renderDashboard(){
     return `<article class="dashboard-project-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Projekt</span><h3>${escapeAttr(dashboardProjectTitle(key))}</h3></div><strong>${money(p.valueUsd)}</strong></div>
       <div class="dashboard-project-stats dashboard-project-stats-compact"><div><span>Aktuelles Staking</span><strong>${p.boundUsd>0?money(p.boundUsd):"–"}</strong></div><div><span>Teampartner</span><strong>${dashboardMetric(stats.teamPartners)}</strong></div><div><span>davon aktiv</span><strong>${dashboardMetric(stats.activePartners)}</strong></div></div>
       <div class="dashboard-reward-lines"><div><span>Rewards · Gesamt</span><strong>${dashboardMetric(rewards.total,money)}</strong></div><div><span>Rewards · Vorjahr</span><strong>${dashboardMetric(rewards.previousYear,money)}</strong></div><div><span>Rewards · Jahr</span><strong>${dashboardMetric(rewards.year,money)}</strong></div><div><span>Rewards · Monat</span><strong>${dashboardMetric(rewards.month,money)}</strong></div></div>
-      ${projectPrices.length?`<div class="dashboard-project-prices">${projectPrices.map(r=>`<span>${escapeAttr(r.symbol)} <strong>${r.price?fmtPrice(r.price.price):"–"}</strong></span>`).join("")}</div>`:""}<button class="secondary" onclick="dashboardProjectOpen('${escapeAttr(key)}')">Projekt öffnen</button><div class="dashboard-cache-note">Cache-first: Team-/Reward-Werte werden nur aus vorhandenen Projektcaches übernommen; fehlende Werte starten keine Discovery.</div></article>`;
+      ${projectPrices.length?`<div class="dashboard-project-prices">${projectPrices.map(r=>`<span><span class="dashboard-project-token-name">${escapeAttr(r.displayName||r.symbol)}</span>${r.displayName&&r.symbol&&r.displayName!==r.symbol?` <small>${escapeAttr(r.symbol)}</small>`:""}${dashboardAddressHtml(r.address)} <strong>${r.price?fmtPrice(r.price.price):"–"}</strong></span>`).join("")}</div>`:""}<button class="secondary" onclick="dashboardProjectOpen('${escapeAttr(key)}')">Projekt öffnen</button><div class="dashboard-cache-note">Cache-first: Team-/Reward-Werte werden nur aus vorhandenen Projektcaches übernommen; fehlende Werte starten keine Discovery.</div></article>`;
   }).join("");
   const globalRewards={total:0,previousYear:0,year:0,month:0},globalRewardKnown={total:false,previousYear:false,year:false,month:false};
   for(const st of Object.values(dashboardProjectCacheStats)){for(const k of Object.keys(globalRewards)){const v=Number(st?.rewards?.[k]);if(Number.isFinite(v)){globalRewards[k]+=v;globalRewardKnown[k]=true;}}}

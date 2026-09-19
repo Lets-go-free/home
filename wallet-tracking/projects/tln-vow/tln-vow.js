@@ -60,7 +60,7 @@ function exportProjectPrice(chain,address,result,kind="token"){
   exportedPrices.set(chain + "|" + norm(address), {
     price:Number(result.price),
     change24h:undefined,
-    source:"Projekt " + PROJECT_NAME,
+    source:chain === "bsc" ? "PancakeSwap" : (chain === "eth" ? "Uniswap" : ("DEX · " + PROJECT_NAME)),
     route:result.route || null,
     kind
   });
