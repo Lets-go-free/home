@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.29 · 19.09.2026 12:04:22 CEST · Build 20260919-120422 */
+/* WalletTracking Phase 5.30 · 19.09.2026 12:16:59 CEST · Build 20260919-121659 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1342,7 +1342,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"analysis",level:0,label:"📊 Übersicht & Analyse",status:"in_progress",start:"Basis + Dashboard-Caches",daily:"keine Live-Abfrage",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","keine Preis-/On-chain-Abfrage beim Start","Discovery-, manuelle Snapshot-, Gebühren-, NFT- und TLN/VOW-Caches werden erst beim Öffnen ihres Bereichs geladen. Nächster Optimierungsschritt bleibt ein kompakter Dashboard-Snapshot."]]},
   {id:"dashboard",level:1,label:"Dashboard · Startseite",status:"in_progress",idea:"kompakter Dashboard-Snapshot",start:"Wallet-/Bestands-/Preiscache",daily:"keine Live-Abfrage",open:"RAM",manual:"Daten/Preise",details:[
     ["Vermögenskennzahlen","RAM aus Automated Snapshot","bereits geladener Bestands-Cache","–","App-Start: vorhandenen Cache aggregieren; fehlende Positionswerte bleiben –"],
-    ["Dashboard-Kurse","RAM","wallet_current_price_snapshots + predefined_tokens.dashboard_visible","Preis-API/RPC nur manuell","App-Start lädt ausschliesslich gespeicherten Preisstand, auch wenn älter"],
+    ["Dashboard-Kurse","RAM","wallet_current_price_snapshots + predefined_tokens.dashboard_visible + TLN/VOW Projekt-PriceEngine","Preis-API/RPC nur manuell","App-Start lädt ausschliesslich gespeicherten Preisstand. TLN/VOW-Contracts verwenden ausschließlich die zentrale Projekt-PriceEngine (BSC PancakeSwap / ETH Uniswap); kein CoinGecko-/GeckoTerminal-Fallback."],
     ["Projekt-Kacheln","RAM aus klassifizierten Beständen","predefined_tokens Projektzuordnung","keine Discovery","Nur vorhandene Projekte; Staking/Rewards werden nur aus bereits verfügbarem Positionscache gezeigt"],
     ["Personenfilter","RAM","verschlüsselte Wallet-Besitzer aus wallet-private","–","Eigene Wallets / alle Personen / bestimmte Person; keine Zusatzabfrage"]]},
   {id:"tracking",level:1,label:"Wallet-Tracking · Token-Übersicht",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"gespeicherter Stand",daily:"Preise frisch",open:"Cache",manual:"Bestände + Projekte + NFTs",details:[
@@ -3086,6 +3086,7 @@ async function loadNativePrices() {
     Object.keys(SAFE_ADDRESSES).forEach(chain => {
       if(chain === "apertum") return; // Apertum: kein CoinGecko-Fallback
       (SAFE_ADDRESSES[chain] || []).forEach(address => {
+        if(isTlnVowManagedToken(chain,address)) return;
         const tokenKey = chain + "|" + address;
         const cgId = predefinedTokenCoinGeckoIds[tokenKey];
         if (cgId && data[cgId] && typeof data[cgId].usd === "number") {
@@ -3140,6 +3141,7 @@ async function loadTokenPricesViaGeckoTerminal(alreadyPriced) {
     const list = (SAFE_ADDRESSES[chain] || [])
       .concat(customSafeTokens.filter(t => t.chain === chain).map(t => t.address))
       .filter((addr, idx, arr) => arr.indexOf(addr) === idx) // Duplikate raus
+      .filter(addr => !isTlnVowManagedToken(chain,addr)) // TLN/VOW ausschließlich über zentrale Projekt-PriceEngine
       .filter(addr => !alreadyPriced[chain + "|" + addr]);
 
     if (list.length === 0) return;
@@ -4320,12 +4322,24 @@ function fmt(n, tokenMeta=null, options={}) {
 const DUST_THRESHOLD = 1e-25;
 
 // Kurs für Token-Zeilen anhand des Symbols (nur exaktes USDT/USDC, siehe oben)
+function isTlnVowManagedToken(chain,address){
+  if(!address || address === "native") return false;
+  const key=chain+"|"+normalizeAddress(address,chain);
+  return String(predefinedTokenProject[key]||"").toLowerCase().replace(/[\s\/-]+/g,"_")==="tln_vow";
+}
+
 function priceForToken(chain, address) {
   if (!address) return null;
   const normalized = normalizeAddress(address, chain);
 
-  // Projektpreise haben Vorrang – Zuordnung AUSSCHLIESSLICH über Contract-Adresse.
-  // Kein Symbol-/Namens-Matching.
+  // TLN/VOW hat genau eine autoritative aktuelle Preisquelle: die zentrale
+  // Projekt-PriceEngine (BSC: PancakeSwap, ETH: Uniswap). Für diese Contracts
+  // darf niemals auf den allgemeinen CoinGecko-/GeckoTerminal-Cache gefallen werden.
+  if (isTlnVowManagedToken(chain, normalized)) {
+    return window.TLNVOWProject?.getPrice(chain, normalized) || null;
+  }
+
+  // Für nicht projektverwaltete Token bleibt die allgemeine Preislogik bestehen.
   if (window.TLNVOWProject) {
     const projectPrice = window.TLNVOWProject.getPrice(chain, normalized);
     if (projectPrice) return projectPrice;
@@ -4395,6 +4409,12 @@ async function copyDashboardAddress(address,btn){
   }catch(e){console.error("Adresse konnte nicht kopiert werden",e);}
 }
 window.copyDashboardAddress=copyDashboardAddress;
+function dashboardSymbolMetaHtml(symbol,address,displayName){
+  const sym=String(symbol||"").trim(), addr=String(address||"").trim();
+  if(!sym || sym===displayName || sym.toLowerCase()===addr.toLowerCase() || sym.toLowerCase()==="native") return "";
+  return `<div class="meta">${escapeAttr(sym)}</div>`;
+}
+
 function dashboardAddressHtml(address){
   const short=dashboardShortAddress(address);
   if(!short)return "";
@@ -4497,7 +4517,7 @@ function renderDashboard(){
   const targetWallets=walletsForCurrentView(),portfolio=dashboardPortfolio(targetWallets),prices=dashboardPriceRows();
   const money=v=>fmtUsd(Number(v||0));
   const boundValue=portfolio.boundEvidence?money(portfolio.boundUsd):"–";
-  const priceTable=prices.length?`<div class="dashboard-table-wrap"><table class="dashboard-price-table"><thead><tr><th>Token</th><th>Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${prices.map(r=>`<tr><td><strong>${escapeAttr(r.displayName||r.symbol)}</strong>${r.displayName&&r.symbol&&r.displayName!==r.symbol?`<div class="meta">${escapeAttr(r.symbol)}</div>`:""}${dashboardAddressHtml(r.address)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?`<strong>${escapeAttr(r.price.source||"Preis-Cache")}</strong>${r.price.route?`<div class="meta">Preisroute: ${escapeAttr(r.price.route)}</div>`:""}`:"Kein gespeicherter Kurs"}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">Noch keine Token sind für das Dashboard aktiviert. Als Admin unter „Vordefinierte Token“ die Spalte „Im Dashboard anzeigen“ auswählen.</div>`;
+  const priceTable=prices.length?`<div class="dashboard-table-wrap"><table class="dashboard-price-table"><thead><tr><th>Token</th><th>Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${prices.map(r=>`<tr><td><strong>${escapeAttr(r.displayName||r.symbol)}</strong>${dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${dashboardAddressHtml(r.address)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?`<strong>${escapeAttr(r.price.source||"Preis-Cache")}</strong>${r.price.route?`<div class="meta">Preisroute: ${escapeAttr(r.price.route)}</div>`:""}`:"Kein gespeicherter Kurs"}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">Noch keine Token sind für das Dashboard aktiviert. Als Admin unter „Vordefinierte Token“ die Spalte „Im Dashboard anzeigen“ auswählen.</div>`;
   const projectCards=[...portfolio.projects.entries()].filter(([,p])=>p.assets>0).map(([key,p])=>{
     const projectPrices=prices.filter(x=>x.project===key);
     const stats=dashboardProjectCacheStats[key]||{rewards:{}};
@@ -4505,7 +4525,7 @@ function renderDashboard(){
     return `<article class="dashboard-project-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Projekt</span><h3>${escapeAttr(dashboardProjectTitle(key))}</h3></div><strong>${money(p.valueUsd)}</strong></div>
       <div class="dashboard-project-stats dashboard-project-stats-compact"><div><span>Aktuelles Staking</span><strong>${p.boundUsd>0?money(p.boundUsd):"–"}</strong></div><div><span>Teampartner</span><strong>${dashboardMetric(stats.teamPartners)}</strong></div><div><span>davon aktiv</span><strong>${dashboardMetric(stats.activePartners)}</strong></div></div>
       <div class="dashboard-reward-lines"><div><span>Rewards · Gesamt</span><strong>${dashboardMetric(rewards.total,money)}</strong></div><div><span>Rewards · Vorjahr</span><strong>${dashboardMetric(rewards.previousYear,money)}</strong></div><div><span>Rewards · Jahr</span><strong>${dashboardMetric(rewards.year,money)}</strong></div><div><span>Rewards · Monat</span><strong>${dashboardMetric(rewards.month,money)}</strong></div></div>
-      ${projectPrices.length?`<div class="dashboard-project-prices">${projectPrices.map(r=>`<span><span class="dashboard-project-token-name">${escapeAttr(r.displayName||r.symbol)}</span>${r.displayName&&r.symbol&&r.displayName!==r.symbol?` <small>${escapeAttr(r.symbol)}</small>`:""}${dashboardAddressHtml(r.address)} <strong>${r.price?fmtPrice(r.price.price):"–"}</strong></span>`).join("")}</div>`:""}<button class="secondary" onclick="dashboardProjectOpen('${escapeAttr(key)}')">Projekt öffnen</button><div class="dashboard-cache-note">Cache-first: Team-/Reward-Werte werden nur aus vorhandenen Projektcaches übernommen; fehlende Werte starten keine Discovery.</div></article>`;
+      ${projectPrices.length?`<div class="dashboard-project-prices">${projectPrices.map(r=>`<span><span class="dashboard-project-token-name">${escapeAttr(r.displayName||r.symbol)}</span>${dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${dashboardAddressHtml(r.address)} <strong>${r.price?fmtPrice(r.price.price):"–"}</strong></span>`).join("")}</div>`:""}<button class="secondary" onclick="dashboardProjectOpen('${escapeAttr(key)}')">Projekt öffnen</button><div class="dashboard-cache-note">Cache-first: Team-/Reward-Werte werden nur aus vorhandenen Projektcaches übernommen; fehlende Werte starten keine Discovery.</div></article>`;
   }).join("");
   const globalRewards={total:0,previousYear:0,year:0,month:0},globalRewardKnown={total:false,previousYear:false,year:false,month:false};
   for(const st of Object.values(dashboardProjectCacheStats)){for(const k of Object.keys(globalRewards)){const v=Number(st?.rewards?.[k]);if(Number.isFinite(v)){globalRewards[k]+=v;globalRewardKnown[k]=true;}}}
