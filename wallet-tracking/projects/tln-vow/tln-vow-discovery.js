@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260919-140811 */
 (()=>{
-const BUILD_ID='20260919-152652';
+const BUILD_ID='20260919-155800';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='19.09.2026 15:26:52 CEST';
+const APP_VERSION='19.09.2026 15:58:00 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -18154,7 +18154,7 @@ populateTlnWalletDropdown();
 bindWalletDropdown();
 setupProjectUserTabs();
 void renderProjectAdminContractRegistry();
-populateProjectWalletFilter();await primeProjectReferralDecimals();loadProjectWalletSnapshots();
+populateProjectWalletFilter();await primeProjectReferralDecimals();await loadProjectWalletSnapshots();
 $('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;bindStep6LifecycleControls();resetDiscoveryProcess($('wallet').value);setStepState(1,'bereit');if(!CURRENT_TEAM_PROJECT_FOREST)setStepState(7,'bereit');updateProcessButtons();log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok');if(ethers.isAddress($('wallet').value))await restoreDiscoveryResultSnapshot($('wallet').value);await restoreTeamTreeFromPersistentCache()}
 $('refresh').onclick=processBaseData;
 $('stepStaking').onclick=processStakingDiscovery;
