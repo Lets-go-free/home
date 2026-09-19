@@ -1,3 +1,4 @@
+// Phase 5.47: Bei DAO1/APTMDAO wird ein Bot seiner DID anhand der historischen Besitzlage beim ursprünglichen Erwerb zugeordnet. Spätere unabhängige Transfers von Bot oder DID ändern die Zuordnung nicht; Identitäts-NFTs erscheinen nicht nochmals als Bot-Zeile.
 // Phase 5.46: DAO1/APTMDAO-Bots werden anhand des historischen DID-Besitzes am Bot-Erwerbsblock zugeordnet. Heutiger Wallet-Besitz, Mint-Wallet oder gemeinsamer MineBot-Contract reichen nicht. Breite NFT-Wallet-Scans wurden aus den Teamdetails entfernt.
 // Phase 5.45: DAO1/APTMDAO-Bots werden nicht mehr per gemeinsamer Besitzer-Wallet einem Tree zugeschlagen. Neue APTMDAO-Bots brauchen positiven Erwerbs-/Manager-Nachweis; alte DAO1-Bots behalten die bestehende Legacy-Erwerbs- und Kaufpreislogik.
 // Phase 5.44: Hotfix: DAO1/APTMDAO-Teammodul lädt wieder vollständig; fehlende Tree-Modus-/Render-Funktionen aus dem 5.43-Umbau wurden wiederhergestellt.
