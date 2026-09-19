@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.35 · 19.09.2026 14:41:24 CEST · Build 20260919-144124 */
+/* WalletTracking Phase 5.36 · 19.09.2026 15:26:52 CEST · Build 20260919-152652 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1347,10 +1347,10 @@ const ADMIN_SYSTEM_TREE = [
   {id:"analysis",level:0,label:"📊 Übersicht & Analyse",status:"in_progress",start:"Dashboard sofort + Caches",daily:"Grunddaten-Prüfung",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","keine Preis-/On-chain-Abfrage beim Start","Discovery-, manuelle Snapshot-, Gebühren-, NFT- und TLN/VOW-Caches werden erst beim Öffnen ihres Bereichs geladen. Nächster Optimierungsschritt bleibt ein kompakter Dashboard-Snapshot."]]},
   {id:"dashboard",level:1,label:"Dashboard · Startseite",status:"in_progress",idea:"Project-Summary-Cache",start:"sofort + Cache",daily:"Grunddaten + Preise",open:"RAM",manual:"Daten/Preise",details:[
     ["Vermögenskennzahlen","RAM aus Automated Snapshot","bereits geladener Bestands-Cache","RPC nur im fälligen Hintergrundlauf","Dashboard sofort; fehlende/veraltete Grunddaten werden danach höchstens 1× täglich asynchron geprüft"],
-    ["Project-Summary","localStorage Anzeige-Cache + Projektcaches","TLN/DAO Projektcaches","keine eigene Discovery","Projektmodule schreiben bestätigte Summary-Werte zurück; TLN Team nutzt denselben Forest/Lifecycle. Rewards/DAO-Aktivstatus werden schrittweise an dieselbe Bridge angeschlossen."],
+    ["Project-Summary","localStorage Anzeige-Cache + Projektcaches","TLN/DAO Projektcaches","keine eigene Discovery","Projektmodule schreiben bestätigte Summary-Werte zurück; TLN Team nutzt denselben Forest/Lifecycle. TLN/DAO Rewards und Referral Rewards sind in Originaltoken angeschlossen; DAO1/APTMDAO Partnerzahlen stammen aus getrennten Tree-Caches. DAO-Aktivstatus bleibt bis zum Bot-Target-Proof offen."],
     ["Erststart ohne Wallet","lokale UI","–","–","Dashboard bleibt Startseite und erklärt den Ablauf; Ein-Klick-Aktion legt eine neue Wallet-Zeile an. Nach Speichern startet automatisch der Grunddaten-Erstaufbau."],
     ["Dashboard-Kurse","RAM","wallet_global_current_price_snapshot + predefined_tokens.dashboard_visible + TLN/VOW Projekt-PriceEngine","global alle 15 Min. bei aktivem Client + manuell","App-Start lädt den globalen Snapshot. Pro :00/:15/:30/:45 claimt genau ein aktiver Client den globalen Refresh-Slot. TLN/VOW: BSC PancakeSwap / ETH Uniswap; kein CoinGecko-/GeckoTerminal-Fallback."],
-    ["Projekt-Kacheln","RAM + Project-Summary","predefined_tokens + persistente Projektcaches","keine eigene Discovery","Breite Karten; Token einheitlich 2-spaltig/klein 1-spaltig. Fehlende Summary-Werte bleiben – bis ein fachlicher Cache sie bestätigt."],
+    ["Projekt-Kacheln","RAM + Project-Summary","predefined_tokens + persistente Projektcaches","keine eigene Discovery","Breite Karten; Token einheitlich 2-spaltig/klein 1-spaltig und nur bei Bestand > 0. Reward-Summaries nutzen Summary-Kommastellen (leer = Anzeige übernehmen, 0 = keine Nachkommastellen). Fehlende Summary-Werte bleiben – bis ein fachlicher Cache sie bestätigt."],
     ["Personenfilter","RAM","verschlüsselte Wallet-Besitzer aus wallet-private","–","Eigene Wallets / alle Personen / bestimmte Person; keine Zusatzabfrage"]]},
   {id:"tracking",level:1,label:"Wallet-Tracking · Token-Übersicht",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"gespeicherter Stand",daily:"Preise frisch",open:"Cache",manual:"Bestände + Projekte + NFTs",details:[
     ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain","Start zeigt Cache sofort; falls fällig läuft danach höchstens 1× täglich die asynchrone Hintergrundprüfung. Neue Wallet: Erstaufbau direkt nach Speichern."],
@@ -1383,8 +1383,9 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase project_transactions + project_transaction_asset_flows","Apertum nur bei manueller Aktualisierung","Dashboard summiert Originaltoken/-mengen aus vorhandenen Asset-Flows; keine USD-Umrechnung; Detailansicht lazy"]]},
   {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase Tx/Flow Cache","Apertum nur bei manueller Aktualisierung","Dashboard und Detail verwenden dieselben Referral-Regeln; nur relevantes DAO1 Referral-Wallet"]]},
   {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
-    ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → fertig, DB 0 / RPC 0 bei HIT; Praxistest 18.09.2026 bestanden. Manueller Update-Pfad 🟢: inkrementeller Blockbereich mit 24-Block-Overlap, RPC nur nach explizitem Klick"],
-    ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Bei jedem Team-Öffnen kleiner Gate-Check; Migration 057 aktualisiert Registry DB-seitig"],
+    ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → fertig, DB 0 / RPC 0 bei HIT; manueller Update-Pfad inkrementell mit 24-Block-Overlap"],
+    ["APTMDAO Team-Kanten","IndexedDB · dao1/aptmdao-tree","Supabase aptmdao_tree_*","Apertum NFT-Mint-Event; RPC nur bei Update/Erstaufbau","Phase 5.36: child/parent/wallet on-chain verifiziert; eigener Graph, max. 20 Ebenen; Migration 063. Normaler Cache-HIT ohne RPC, Update mit 24-Block-Overlap."],
+    ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Legacy: Migration 057; APTMDAO: Migration 063. Kleine Registry-Gates statt Graph-Vollread bei Cache-HIT."],
     ["Partner-Botdetails","RAM/Cache","Supabase NFT/Ownership Caches","Apertum on-demand","Details/Anreicherung bei Bedarf"]]},
   {id:"dao-lp",level:2,label:"Liquidity Pools",status:"in_progress",start:"–",daily:"–",open:"DB/Cache",manual:"RPC",details:[["DAO1 LP-Positionen","LP Cache","Supabase LP Cache","Apertum RPC","Beim Untertab öffnen renderProjectLpTab"]]},
   {id:"dao-config",level:2,label:"Konfiguration",status:"planning",start:"–",daily:"–",open:"bereits Lazy geladen",manual:"DB",details:[["Miner/Projekt-NFT/Konfiguration","RAM","Supabase DAO1 Tabellen","–","DAO1 ensureLoaded/refreshConfig"]]},
@@ -1420,7 +1421,7 @@ function adminSystemIdeaStatus(row){
 function adminSystemStatusMeta(status){return ({done:["🟢","Erledigt"],in_progress:["🟡","In Arbeit"],error:["🔴","Fehlerhaft"],planning:["⚪","In Planung"]})[status]||["⚪","In Planung"]}
 function wtSystemDataKey(row){if(row.id==="tracking")return "tracking";if(row.id==="dao-team")return "dao-team";if(row.id==="tln-team")return "tln-team";if(row.id.startsWith("dao"))return "dao";if(row.id.startsWith("tln"))return "tln";return row.id}
 function wtSystemCurrentText(row,childrenMap){if(childrenMap.has(row.id))return "–";const own=WT_DATA_STATUS[wtSystemDataKey(row)];return own?wtDataStatusText(wtSystemDataKey(row)):"noch nicht instrumentiert"}
-async function refreshAdminSystemDataVersions(){if(!sb||!isAdmin)return;try{const {data,error}=await sb.from("cache_data_versions").select("namespace,cache_key,data_version,sync_cursor,updated_at").in("namespace",["dao1","tln-vow"]);if(error)throw error;for(const r of data||[]){const key=r.namespace==="dao1"&&r.cache_key==="legacy-tree"?"dao-team":r.namespace==="tln-vow"&&r.cache_key==="smartnode-global-graph"?"tln-team":null;if(key)setWtDataStatus(key,{updatedAt:r.sync_cursor||r.updated_at,cacheAt:r.updated_at,source:"cache"})}}catch(e){console.warn("Systemübersicht DATA_VERSIONS",e)}}
+async function refreshAdminSystemDataVersions(){if(!sb||!isAdmin)return;try{const {data,error}=await sb.from("cache_data_versions").select("namespace,cache_key,data_version,sync_cursor,updated_at").in("namespace",["dao1","tln-vow"]);if(error)throw error;for(const r of data||[]){const key=r.namespace==="dao1"&&["legacy-tree","aptmdao-tree"].includes(r.cache_key)?"dao-team":r.namespace==="tln-vow"&&r.cache_key==="smartnode-global-graph"?"tln-team":null;if(key)setWtDataStatus(key,{updatedAt:r.sync_cursor||r.updated_at,cacheAt:r.updated_at,source:"cache"})}}catch(e){console.warn("Systemübersicht DATA_VERSIONS",e)}}
 function renderAdminSystemOverview(){
   const host=document.getElementById("adminSystemOverview");if(!host||!isAdmin)return;const cm=wtSystemChildrenMap(),pm=wtSystemParentMap();try{if(localStorage.getItem(WT_SYSTEM_TREE_STATE_KEY)===null)wtSystemExpanded=new Set(cm.keys())}catch{};
   const rows=ADMIN_SYSTEM_TREE.filter(r=>wtSystemVisible(r,pm)).map(r=>{const st=adminSystemIdeaStatus(r),m=adminSystemStatusMeta(st),hasKids=cm.has(r.id),toggle=hasKids?`<button class="wt-system-tree-toggle" onclick="toggleAdminSystemNode('${escapeAttr(r.id)}',event)" title="${wtSystemExpanded.has(r.id)?'Zuklappen':'Aufklappen'}">${wtSystemExpanded.has(r.id)?'▼':'▶'}</button>`:'<span style="display:inline-block;width:30px"></span>';const leaf=!hasKids;return `<tr class="wt-system-row" onclick="selectAdminSystemRow('${escapeAttr(r.id)}')"><td style="padding-left:${8+r.level*20}px;white-space:nowrap">${toggle}<strong>${escapeAttr(r.label)}</strong></td><td style="white-space:nowrap" title="${m[1]}">${m[0]} ${m[1]}</td><td>${escapeAttr(leaf?wtSystemCurrentText(r,cm):'–')}</td><td>${escapeAttr(leaf?(r.start||'–'):'–')}</td><td>${escapeAttr(leaf?(r.daily||'–'):'–')}</td><td>${escapeAttr(leaf?(r.open||'–'):'–')}</td><td>${escapeAttr(leaf?(r.manual||'–'):'–')}</td></tr>`}).join("");
@@ -2815,7 +2816,7 @@ function renderSafeTokenTable() {
       <td style="font-size:0.78rem;word-break:break-all">${r.isNative ? '<span style="color:var(--muted)">native</span>' : r.address}</td>
       <td style="text-align:center">${r.technicalDecimals??'<span style="color:var(--muted)">–</span>'}</td>
       <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--danger,#ef4444)">nicht konfiguriert</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6}" style="width:68px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','display_decimals',this.value)">`:(Number.isInteger(Number(r.displayDecimals))?Number(r.displayDecimals):6))}</td>
-      <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--muted)">–</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):''}" placeholder="wie Anzeige" title="Leer = Kommastellen Anzeige übernehmen" style="width:92px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','summary_decimals',this.value)">`:(Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):'<span style="color:var(--muted)">wie Anzeige</span>'))}</td>
+      <td style="text-align:center">${r.nativeMissing?'<span style="color:var(--muted)">–</span>':(isAdmin?`<input type="number" min="0" max="18" step="1" value="${r.summaryDecimals!==null&&r.summaryDecimals!==undefined&&r.summaryDecimals!==''&&Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):''}" placeholder="wie Anzeige" title="Leer = Kommastellen Anzeige übernehmen" style="width:92px;text-align:center" onchange="updatePredefinedTokenDisplayDecimals('${r.chain}','${r.address}','summary_decimals',this.value)">`:(r.summaryDecimals!==null&&r.summaryDecimals!==undefined&&r.summaryDecimals!==''&&Number.isInteger(Number(r.summaryDecimals))?Number(r.summaryDecimals):'<span style="color:var(--muted)">wie Anzeige</span>'))}</td>
       <td style="text-align:center"><input type="checkbox" style="width:auto" ${r.dashboardVisible?"checked":""} ${r.nativeMissing?"disabled":""} onchange="setPredefinedTokenDashboardVisible('${r.chain}','${r.address}',this.checked)"></td>
       <td style="text-align:right">${priceCell}</td>
       <td>${projectCell}</td>
@@ -3005,7 +3006,7 @@ function tokenDisplayMeta({chain,address,symbol}={}){
 function tokenDisplayDigits(meta={},summary=false){
   const hit=tokenDisplayMeta(meta);
   const display=Number.isInteger(Number(hit?.display))?Number(hit.display):6;
-  if(summary && Number.isInteger(Number(hit?.summary))) return Number(hit.summary);
+  if(summary && hit?.summary !== null && hit?.summary !== undefined && hit?.summary !== "" && Number.isInteger(Number(hit.summary))) return Number(hit.summary);
   return display;
 }
 function formatTokenAmountGlobal(value,meta={},options={}){
@@ -4489,9 +4490,21 @@ function renderDao1PricesPools(){
 }
 window.renderDao1PricesPools=renderDao1PricesPools;
 
-function dashboardPriceRows(){
+function dashboardPriceRows(targetWallets=walletsForCurrentView()){
+  // Dashboard-Schalter = grundsätzlich zulassen. Sichtbar ist ein Asset nur, wenn
+  // in der aktuellen Wallet-Sicht tatsächlich ein positiver Bestand vorhanden ist.
+  const held=new Set();
+  for(const w of (targetWallets||[])) for(const chain of Object.keys(CHAIN_META)){
+    const result=chainRows(walletData[w.id]?.[chain],chain);if(!result||result.error)continue;
+    for(const row of result.rows||[]){
+      const amount=Number(row.amount||0);if(!(amount>0))continue;
+      const address=row.isNative?"native":(row.address?normalizeAddress(row.address,chain):"");
+      if(address)held.add(`${chain}|${address}`);
+    }
+  }
   const rows=[];
   for(const [key,visible] of Object.entries(predefinedTokenDashboardVisible)){
+    if(!held.has(key))continue;
     if(!visible)continue;
     const split=key.indexOf("|");if(split<1)continue;
     const chain=key.slice(0,split),address=key.slice(split+1);
@@ -4549,8 +4562,8 @@ const dashboardProjectCacheStats={
 };
 function dashboardMetric(v,formatter){return v==null?"–":(formatter?formatter(v):String(v));}
 function dashboardRewardAssetKey(x){return `${String(x?.chain||"").toLowerCase()}|${String(x?.address||x?.assetId||x?.symbol||"").toLowerCase()}`;}
-function dashboardRewardAmount(n){const v=Number(n||0);if(!Number.isFinite(v))return "–";return v.toLocaleString("de-CH",{maximumFractionDigits:8});}
-function dashboardRewardPeriodHtml(rows){const list=Array.isArray(rows)?rows:[];if(!list.length)return "–";return `<span class="dashboard-reward-assets">${list.map(x=>`<span><strong>${dashboardRewardAmount(x.amount)}</strong> ${escapeAttr(x.symbol||x.name||"TOKEN")}</span>`).join("")}</span>`;}
+function dashboardRewardAmount(n,asset={}){const v=Number(n||0);if(!Number.isFinite(v))return "–";return formatTokenAmountGlobal(v,{chain:asset.chain,address:asset.address||"",symbol:asset.symbol||asset.name},{summary:true});}
+function dashboardRewardPeriodHtml(rows){const list=Array.isArray(rows)?rows:[];if(!list.length)return "–";return `<span class="dashboard-reward-assets">${list.map(x=>`<span><strong>${dashboardRewardAmount(x.amount,x)}</strong> ${escapeAttr(x.symbol||x.name||"TOKEN")}</span>`).join("")}</span>`;}
 function dashboardMergeRewardPeriods(field){const out=dashboardEmptyRewardPeriods();for(const period of Object.keys(out)){const byKey=new Map();for(const st of Object.values(dashboardProjectCacheStats)){for(const x of (Array.isArray(st?.[field]?.[period])?st[field][period]:[])){const key=dashboardRewardAssetKey(x);if(!key)continue;const cur=byKey.get(key)||{...x,amount:0};cur.amount+=Number(x.amount||0);byKey.set(key,cur);}}out[period]=[...byKey.values()].filter(x=>Number.isFinite(Number(x.amount))&&Number(x.amount)!==0).sort((a,b)=>String(a.symbol||"").localeCompare(String(b.symbol||"")));}return out;}
 function dashboardActivePartners(stats){
   const unknown=Number(stats?.activePartnersUnknown||0),verified=Number(stats?.activePartnersVerified);
@@ -4566,6 +4579,7 @@ function setDashboardProjectCacheStats(projectKey,patch={}){
   if(Object.prototype.hasOwnProperty.call(patch,"activePartners"))cur.activePartners=patch.activePartners;
   if(Object.prototype.hasOwnProperty.call(patch,"activePartnersVerified"))cur.activePartnersVerified=patch.activePartnersVerified;
   if(Object.prototype.hasOwnProperty.call(patch,"activePartnersUnknown"))cur.activePartnersUnknown=patch.activePartnersUnknown;
+  for(const field of ["dao1Partners","aptmdaoPartners","uniqueDidPartners"])if(Object.prototype.hasOwnProperty.call(patch,field))cur[field]=patch[field];
   if(patch.rewards)cur.rewards={...(cur.rewards||{}),...patch.rewards};
   if(patch.referralRewards)cur.referralRewards={...(cur.referralRewards||{}),...patch.referralRewards};
   cur.updatedAt=patch.updatedAt||new Date().toISOString();persistDashboardProjectCacheStats();
@@ -4576,7 +4590,7 @@ window.setDashboardProjectCacheStats=setDashboardProjectCacheStats;
 function renderDashboard(){
   const root=document.getElementById("dashboardContent");if(!root)return;
   renderGlobalWalletPersonFilter();
-  const targetWallets=walletsForCurrentView(),portfolio=dashboardPortfolio(targetWallets),prices=dashboardPriceRows();
+  const targetWallets=walletsForCurrentView(),portfolio=dashboardPortfolio(targetWallets),prices=dashboardPriceRows(targetWallets);
   if(wallets.length===0){
     root.innerHTML=`<div class="dashboard-heading"><div><h2>Willkommen bei WalletTracking</h2><p>Dein Dashboard wird automatisch aufgebaut, sobald du deine erste Wallet erfasst hast.</p></div></div><section class="dashboard-empty-onboarding"><article class="dashboard-card dashboard-onboarding-card"><div class="dashboard-onboarding-icon">＋</div><h3>Noch keine Wallet erfasst</h3><p>Erfasse zuerst eine oder mehrere Wallets. Danach lädt WalletTracking die benötigten Grunddaten automatisch im Hintergrund und aktualisiert dieses Dashboard. Für Detailanalysen kannst du später die einzelnen Projektbereiche öffnen.</p><button onclick="dashboardAddFirstWallet()">Erste Wallet erfassen</button><div class="dashboard-onboarding-steps"><span><b>1</b> Wallet erfassen</span><span><b>2</b> Grunddaten werden geladen</span><span><b>3</b> Dashboard füllt sich automatisch</span></div></article></section>`;
     setWtDataStatus("dashboard",{source:"local",label:"Dashboard · noch keine Wallet"});return;

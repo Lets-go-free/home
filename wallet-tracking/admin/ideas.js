@@ -3,8 +3,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260919-144124";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "19.09.2026 14:41:24 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260919-152652";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "19.09.2026 15:26:52 CEST";
 // Phase 5.33: Dashboard-Summary validiert und Start weiter entkoppelt. Apertum-native-Fehler behoben: interner Asset-Key "native" wird nie mehr als EVM-Adresse ABI-encodiert. TLN/BSC lp_position_cache wird beim Dashboard-Start walletübergreifend in einem Batch gelesen statt mit Einzelrequest pro Wallet. TLN "davon aktiv" zeigt bei unvollständig verifizierten Lifecycles keine scheinbar endgültige Zahl mehr, sondern bestätigte Aktive plus offene Partner; erst bei vollständiger Lifecycle-Abdeckung wird die Endzahl gesetzt. DAO1 Dashboard-Rewards werden gezielt aus vorhandenen project_transactions + project_transaction_asset_flows gelesen, ohne ensureLoaded()/vollständige DAO1-Tab-Initialisierung. Phase 5.35 ersetzt die frühere USD-Summary: Gesamt/Vorjahr/Jahr/Monat zeigen Originaltoken/-mengen; historische USD-Bewertungen sind dafür nicht erforderlich. DAO1 "aktiv" bleibt bewusst offen: aktueller Code enthält keinen belastbaren Bot-Target-/Completed-Contract-Proof. Reward-Zeilen der Projektkarten wieder als konsistente Kacheln gestaltet. Systemübersicht, Admin-Doku und Hilfe synchronisiert. Build 20260919-140811.
 // Phase 5.30: TLN/VOW-Contracts werden aus der allgemeinen CoinGecko-/GeckoTerminal-Preisermittlung ausgeschlossen und ausschließlich über die bestehende zentrale Projekt-PriceEngine bewertet (BSC PancakeSwap / ETH Uniswap). Dashboard zeigt Contract-Adressen einheitlich nur verkürzt mit Copy-Funktion; vollständige Adressen werden nicht zusätzlich als Symbolzeile ausgegeben. Preisrouten/-berechnungen selbst unverändert.
 // Phase 5.29: Dashboard-Gerüst wird unmittelbar nach Login sichtbar, bevor Chain-/DB-Konfiguration fertig geladen ist. TLN/VOW-Dashboardpreise zeigen tatsächliche DEX-Quelle (BSC PancakeSwap / ETH Uniswap) plus vorhandene Preisroute. DAO1 hat neu „Kurse und Pools“ als reine Sicht auf die bereits bestehende Apertum-Preislogik; keine neue Preisermittlung.
@@ -31,6 +31,7 @@ const ADMIN_IDEAS_MODULE_TIMESTAMP = "19.09.2026 14:41:24 CEST";
 
 const ADMIN_IDEAS = [
   {title:"Phase 5.35 · Dashboard Rewards/DAO-Partner",desc:"UMGESETZT: Reward- und Referral-Reward-Summaries zeigen Originalmenge je Chain+Asset/Contract statt USD. DAO-Partner: DAO1 und APTMDAO getrennt; projektweite Hauptzahl dedupliziert nach DID, sobald beide fachlich verifizierten DID-Sets vorliegen. Solange APTMDAO-Parent-Kanten noch nicht bewiesen sind, zeigt das Dashboard transparent nur den DAO1-Mindeststand statt APTMDAO=0 zu erfinden. Fehlende aktuelle Kurse nennen die betroffenen Assets."},
+  {title:"Phase 5.36 · Dashboard-Präzision, TLN-Rewards & APTMDAO-Tree",desc:"UMGESETZT: Summary-Kommastellen sind eindeutig: leer = Anzeige übernehmen, 0 = null Nachkommastellen. Dashboard-Token erscheinen nur bei Bestand > 0. TLN/VOW normale Rewards und Referral Rewards werden aus den persistenten Discovery-Snapshots periodisiert in Originaltoken ins Dashboard gespiegelt. Reward-KPIs sind kompakter. Neuer APTMDAO-Tree ist über den verifizierten NFT-Mint-Event child/parent/wallet on-chain dekodiert, besitzt eigenen globalen Supabase-/IndexedDB-Cache (Migration 063), 24-Block-Overlap und dieselbe hierarchische UI wie DAO1. DAO-interne Partnernamen sind walletbezogen, bestehende DID-Aliase bleiben lesbar."},
   {
     status: "in_progress",
     category: "Admin / Diagnose",
@@ -501,7 +502,7 @@ ANZEIGE PRO PARTNER:
 
 REFERENZ: UI, Auf-/Zuklappen, Navigation und Detailidee können vom bestehenden TLN-Team-Baum übernommen werden. Die Datenquelle, Partnerbeziehungen und Membership-/NFT-Erkennung müssen jedoch DAO1-/Apertum-spezifisch sein.
 
-STAND 16.09.2026: Alter DAO1-Tree: Parent-Beziehung on-chain verifiziert über DID-Event TokenMinted(to, tokenId, fid); fid ist die Parent-ID. Ein manueller On-Chain-Discovery-Scan ist im Team-Tab eingebaut und zeigt ausschließlich dekodierbare Kanten. Neuer APTMDAO-Tree: NFT- und Manager-Contract sind getrennt hinterlegt; Parent-Kanten bleiben bis zur eindeutigen Dekodierung der Manager-Event-ABI gesperrt. OFFEN: APTMDAO-Parent-Event final dekodieren; danach persistente Cache-Strategie, Membership-/Bot-Details und Referral-Reward→Partner-Zuordnung ergänzen.`
+STAND 16.09.2026: Alter DAO1-Tree: Parent-Beziehung on-chain verifiziert über DID-Event TokenMinted(to, tokenId, fid); fid ist die Parent-ID. Ein manueller On-Chain-Discovery-Scan ist im Team-Tab eingebaut und zeigt ausschließlich dekodierbare Kanten. Neuer APTMDAO-Tree: Parent-Kanten sind in Phase 5.36 on-chain über den NFT-Mint-Event verifiziert (child, parent, wallet). Eigener globaler Supabase-/IndexedDB-Cache mit DATA_VERSIONS und 24-Block-Overlap ist umgesetzt. OFFEN bleiben Bot-Target/Aktivstatus und eine belastbare Referral-Reward→Partner-Zuordnung.`
   },
   {
     status: "open",

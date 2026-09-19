@@ -1469,3 +1469,14 @@ body.wt-modal-open{overflow:hidden}
 
 /* Phase 5.35 · Reward-Originalassets */
 .dashboard-reward-assets{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:0}.dashboard-reward-assets>span{white-space:nowrap;font-variant-numeric:tabular-nums}.dashboard-reward-lines>div,.dashboard-kpi-reward-lines>div{align-items:flex-start}.dashboard-reward-lines>div>span:first-child,.dashboard-kpi-reward-lines small{padding-top:2px}
+
+
+/* Phase 5.36 · kompakte Reward-KPIs / Summary-Kommastellen */
+.dashboard-reward-kpi{min-height:0;padding:14px 16px}
+.dashboard-kpi-reward-lines{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:8px}
+.dashboard-kpi-reward-lines>div{min-width:0;padding:7px 9px;border-radius:9px;background:color-mix(in srgb,var(--card) 58%,transparent);border:1px solid color-mix(in srgb,var(--border) 72%,transparent)}
+.dashboard-kpi-reward-lines small{margin:0 0 3px;font-size:.66rem}
+.dashboard-reward-kpi .dashboard-reward-assets{gap:1px;align-items:flex-start}
+.dashboard-reward-kpi .dashboard-reward-assets>span{font-size:.78rem;line-height:1.25}
+.dashboard-reward-kpi .dashboard-reward-assets strong{display:inline;margin:0!important;font-size:.82rem!important;line-height:1.25!important}
+@media(max-width:720px){.dashboard-kpi-reward-lines{grid-template-columns:1fr}}

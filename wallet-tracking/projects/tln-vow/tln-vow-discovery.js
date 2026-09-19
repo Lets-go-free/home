@@ -1,6 +1,6 @@
 /* TLN/VOW Discovery shared engine · Build 20260919-140811 */
 (()=>{
-const BUILD_ID='20260919-140811';
+const BUILD_ID='20260919-152652';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='19.09.2026 01:36:47 CEST';
+const APP_VERSION='19.09.2026 15:26:52 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11390,6 +11390,21 @@ function projectReferralRowsForPayload(payload,wallet){
   }
   return out;
 }
+function projectDashboardRewardPeriods(){
+  const empty=()=>({total:new Map(),previousYear:new Map(),year:new Map(),month:new Map()});
+  const rewards=empty(),referralRewards=empty(),now=new Date(),year=now.getFullYear(),prevYear=year-1,month=now.getMonth();
+  const periodKeys=value=>{const n=Number(value||0),d=new Date(n>1e12?n:n*1000);if(!Number.isFinite(d.getTime()))return [];const out=["total"];if(d.getFullYear()===prevYear)out.push("previousYear");if(d.getFullYear()===year){out.push("year");if(d.getMonth()===month)out.push("month");}return out;};
+  const add=(bucket,keys,address,symbol,amount)=>{const n=Number(amount||0);if(!keys.length||!Number.isFinite(n)||n===0)return;const a=norm(address||"")||null,id=a||`symbol:${String(symbol||"TOKEN").toLowerCase()}`;for(const period of keys){const map=bucket[period],key=`bsc|${id}`,cur=map.get(key)||{chain:"bsc",address:a,assetId:id,symbol:projectTokenSymbol(a,symbol),amount:0};cur.amount+=n;map.set(key,cur);}};
+  // Dashboard immer über alle eigenen TLN/VOW-Snapshots; ein Detailtab-Filter darf
+  // die globale Dashboard-Summary nicht verändern. Bonus-Rewards bleiben separat.
+  for(const [wallet,payload] of PROJECT_WALLET_SNAPSHOTS.entries()){
+    for(const row of projectRewardRowsForPayload(payload)){const c=row?.claim||{};add(rewards,periodKeys(rewardClaimTimestamp(c)),c.token,c.symbol||c.tokenSymbol,c.amount);}
+    for(const row of projectReferralRowsForPayload(payload,wallet)){const m=row?.mint||{};add(referralRewards,periodKeys(row.timestamp),m.token,m.symbol,Number(m.amountHuman||projectReferralMintHumanAmount(m)));}
+  }
+  const finish=b=>Object.fromEntries(Object.entries(b).map(([k,map])=>[k,[...map.values()].filter(x=>Number.isFinite(x.amount)&&x.amount!==0).sort((a,b)=>String(a.symbol).localeCompare(String(b.symbol)))]));
+  return {rewards:finish(rewards),referralRewards:finish(referralRewards)};
+}
+
 function projectAggregateData(){
   const scoped=projectSnapshotsForScope(),lots=[],stakingByToken=new Map(),referralByToken=new Map(),bonusByToken=new Map(),referralRows=[],bonusRows=[];
   let referralClaims=0,stakingClaims=0,bonusClaims=0,lastChecked=0;
@@ -18173,7 +18188,7 @@ function ensureInitialized(){
 }
 window.TLNVOWDiscovery={
   ensureInitialized,
-  loadDashboardSummary:async()=>{await ensureInitialized();if(CURRENT_TEAM_PROJECT_FOREST)renderTeamTree();},
+  loadDashboardSummary:async()=>{await ensureInitialized();if(CURRENT_TEAM_PROJECT_FOREST)renderTeamTree();try{const r=projectDashboardRewardPeriods();window.setDashboardProjectCacheStats?.('tln_vow',{rewards:r.rewards,referralRewards:r.referralRewards,updatedAt:new Date().toISOString()});}catch(e){console.warn('TLN Dashboard Reward-Summary',e);}},
   switchProjectUserTab,
   renderProjectUserView,
   renderProjectAdminContractRegistry,
