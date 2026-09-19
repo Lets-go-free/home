@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.46 · 19.09.2026 23:39:15 CEST · Build 20260919-233915 */
+/* WalletTracking Phase 5.47 · 19.09.2026 23:50:53 CEST · Build 20260919-235053 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1385,7 +1385,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
     ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → fertig, DB 0 / RPC 0 bei HIT; manueller Update-Pfad inkrementell mit 24-Block-Overlap"],
     ["APTMDAO Team-Kanten","IndexedDB · dao1/aptmdao-tree","Supabase aptmdao_tree_*","Apertum NFT-Mint-Event; RPC nur bei Update/Erstaufbau","Phase 5.39: child/parent/wallet on-chain verifiziert; eigener Graph, max. 20 Ebenen; Migration 063. DAO1/APTMDAO sind eigenständige DID-/Alias-Systeme. Normaler Cache-HIT ohne RPC, Update mit 24-Block-Overlap."],
-    ["DAO Partner-Bot-Lifecycle","RAM + Dashboard-Summary","dao_partner_bot_lifecycle_cache","Apertum Explorer nur beim gezielten Öffnen von Partnerdetails","Phase 5.46: Tree-Render bleibt cache-only. Beim gezielten Öffnen der Details werden nur bekannte Bot-Contracts über contract-gefilterte Transferhistorien gelesen; kein breiter Wallet-NFT-Scan. Bot→DID wird am historischen Bot-Erwerbsblock bestimmt: genau eine damals gehaltene APTMDAO-DID hat Vorrang, sonst genau eine alte DAO1-DID; mehrdeutige/fehlende Besitzlagen bleiben unzugeordnet. Persistente Altzuordnungen desselben Bots werden beim bestätigten Neuschreiben ersetzt. Migration 065."],
+    ["DAO Partner-Bot-Lifecycle","RAM + Dashboard-Summary","dao_partner_bot_lifecycle_cache","Apertum Explorer nur beim gezielten Öffnen von Partnerdetails","Phase 5.47: Tree-Render bleibt cache-only. Beim gezielten Öffnen werden nur bekannte Bot-Contracts geprüft. Für eigene DIDs werden auch historisch bekannte Bots einbezogen, selbst wenn Bot und DID heute auf unterschiedlichen Wallets liegen. Bot→DID wird am ursprünglichen Bot-Erwerbsblock über die damals auf der Erwerbs-Wallet gehaltene DID bestimmt; Identitäts-NFTs werden nicht als Bots/Membership-Zeile dupliziert. Migration 065."],
     ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Legacy: Migration 057; APTMDAO: Migration 063. Kleine Registry-Gates statt Graph-Vollread bei Cache-HIT."],
     ["Partner-Botdetails","RAM/Cache","Supabase NFT/Ownership Caches","Apertum on-demand","Details/Anreicherung bei Bedarf"]]},
   {id:"dao-lp",level:2,label:"Liquidity Pools",status:"in_progress",start:"–",daily:"–",open:"DB/Cache",manual:"RPC",details:[["DAO1 LP-Positionen","LP Cache","Supabase LP Cache","Apertum RPC","Beim Untertab öffnen renderProjectLpTab"]]},
