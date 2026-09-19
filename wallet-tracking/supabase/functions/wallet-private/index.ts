@@ -573,6 +573,9 @@ async function saveAlias(
       ALIAS_VALUE_AAD[0],
       alias,
     ),
+    // DB-Lookup-Schlüssel ist Pflicht (NOT NULL). Namespaced Referenz wird vollständig
+    // gehasht, damit dao1:did:7803 und aptmdao:did:7803 garantiert getrennt bleiben.
+    reference_hash: await referenceHmac(userId, reference),
   }
 
   const result = existing

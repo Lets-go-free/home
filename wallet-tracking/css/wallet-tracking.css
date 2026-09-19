@@ -1481,7 +1481,7 @@ body.wt-modal-open{overflow:hidden}
 .dashboard-reward-kpi .dashboard-reward-assets strong{display:inline;margin:0!important;font-size:.82rem!important;line-height:1.25!important}
 @media(max-width:720px){.dashboard-kpi-reward-lines{grid-template-columns:1fr}}
 
-/* Phase 5.37 · 19.09.2026 15:58:00 CEST · kompaktere Reward-Summary */
+/* Phase 5.38 · 19.09.2026 17:04:54 CEST · kompaktere Reward-Summary */
 .dashboard-reward-kpi{padding:11px 13px}
 .dashboard-reward-kpi h3,.dashboard-reward-kpi .dashboard-kpi-title{font-size:.88rem;line-height:1.15}
 .dashboard-kpi-reward-lines{gap:5px;margin-top:6px}
@@ -1489,3 +1489,5 @@ body.wt-modal-open{overflow:hidden}
 .dashboard-reward-kpi .dashboard-reward-assets>span{font-size:.70rem;line-height:1.18}
 .dashboard-reward-kpi .dashboard-reward-assets strong{font-size:.74rem!important;line-height:1.18!important}
 .dashboard-project-card .dashboard-reward-assets>span{font-size:.78rem}
+
+/* Phase 5.38 · 19.09.2026 17:04:54 CEST · Dashboard-Daten-Audit / Kurslogik / TLN-Bonus */

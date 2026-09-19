@@ -58,3 +58,9 @@ else renderDAO1Help();
 
 // Phase 4.85: Der globale Legacy-DAO1-Tree-Cache ist auf eine spezialisierte Kantenstruktur verschlankt: child_id ist global eindeutig; redundante Konstanten (chain_key, contract_address, source) werden aus der Kantentabelle entfernt. created_by/updated_by bleiben bewusst erhalten, weil die bestehenden RLS-Policies damit INSERT/UPDATE absichern. Parent- und Block-Indizes bleiben kompakt für Baumaufbau bzw. inkrementelle Discovery. Der separate Graph-State behält Chain/Contract zur Cache-Identität.
 // DAO1-Namen/Aliase: verschlüsselte Speicherung mit Referenz dao1:did:<DID>. TLN/VOW-Referenzen werden dafür ausdrücklich nicht verwendet.
+
+// Phase 5.38: DAO1 und APTMDAO sind auch bei Partnernamen strikt getrennt.
+// Referenzen: dao1:did:<DID> bzw. aptmdao:did:<DID>. Keine automatische Übernahme,
+// Addition oder Deduplizierung zwischen den beiden Trees. wallet-private erzeugt den
+// verpflichtenden reference_hash aus der vollständigen namespaced Referenz.
+// Dokumentationsstand: 19.09.2026 17:04:54 CEST · Phase 5.38 · Build 20260919-170454
