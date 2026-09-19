@@ -1,3 +1,4 @@
+// Phase 5.44: Hotfix: DAO1/APTMDAO-Teammodul lädt wieder vollständig; fehlende Tree-Modus-/Render-Funktionen aus dem 5.43-Umbau wurden wiederhergestellt.
 // Phase 5.43: DAO-Team bleibt beim Rendern cache-only; Explorer-NFT/Tx-Abfragen erfolgen nur gezielt in Partnerdetails, werden dedupliziert und begrenzt. Neue Bots eigener Roots werden dort live ergänzt; DID-NFTs selbst erscheinen nie als Bots.
 // Phase 5.42: Dashboard-Kurse: Token ohne Icon, Chain mit Native-Symbol, bekannte Tokenstammdaten vor Contract-Fallback; DAO-DID/Bot-Trennung und LP-frei/gebunden fachlich geschärft.
 // Phase 5.41: Dashboard-Werte auditierbar aufgesplittet; LP-Staking ohne Doppelzählung; DAO1/APTMDAO Partner-Bots nur bei eindeutiger Tree-Evidenz; Partner-Bot-Lifecycle persistent; Preis-Freshness je Asset.
