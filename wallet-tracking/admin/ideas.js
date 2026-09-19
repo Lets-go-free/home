@@ -4,7 +4,7 @@
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
 const ADMIN_IDEAS_MODULE_BUILD = "20260919-120422";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "19.09.2026 12:16:59 CEST";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "19.09.2026 13:32:14 CEST";
 // Phase 5.30: TLN/VOW-Contracts werden aus der allgemeinen CoinGecko-/GeckoTerminal-Preisermittlung ausgeschlossen und ausschließlich über die bestehende zentrale Projekt-PriceEngine bewertet (BSC PancakeSwap / ETH Uniswap). Dashboard zeigt Contract-Adressen einheitlich nur verkürzt mit Copy-Funktion; vollständige Adressen werden nicht zusätzlich als Symbolzeile ausgegeben. Preisrouten/-berechnungen selbst unverändert.
 // Phase 5.29: Dashboard-Gerüst wird unmittelbar nach Login sichtbar, bevor Chain-/DB-Konfiguration fertig geladen ist. TLN/VOW-Dashboardpreise zeigen tatsächliche DEX-Quelle (BSC PancakeSwap / ETH Uniswap) plus vorhandene Preisroute. DAO1 hat neu „Kurse und Pools“ als reine Sicht auf die bereits bestehende Apertum-Preislogik; keine neue Preisermittlung.
 // Phase 5.27: Summary (Verlauf, Portfolio-Allokation und Bestands-Summary) aus „Übersicht & Analyse“ ins Dashboard verschoben. Globaler Wallet-Ansicht-Filter aktualisiert auch die Summary-Wallet-Auswahlen. Dashboard-Kursnamen lösen vordefinierte und eigene sichere Token robust über gepflegte Namen/Labels statt Contract-Adresse auf. Chart-Legende verwendet die aktuelle Theme-Textfarbe für lesbare Darstellung in Hell/Dunkel. Dashboard bleibt Startseite und cache-first. Systemübersicht/Hilfe geprüft.

@@ -1844,11 +1844,11 @@ async function renderDashboard(chain,{cacheMode=false}={}){
     const ref=references[chain] || {};
     const stableRefs=[ref.usdt?"USDT":null,ref.usdc?"USDC":null,chain==="bsc"&&ref.busd?"BUSD":null].filter(Boolean);
     status.innerHTML=stableRefs.length
-      ? `<span class="success">${cacheMode?"Preis-/Poolstand aus Tagescache":"Referenzen erkannt"}: ${stableRefs.join(", ")}.</span>`
+      ? `<span class="success">${cacheMode?"Preis-/Poolstand aus globalem Cache":"Referenzen erkannt"}: ${stableRefs.join(", ")}.</span>`
       : `<span class="warning">Kein USDT/USDC${chain==="bsc"?"/BUSD":""}-Referenzasset erkannt.</span>`;
     await renderTokenTable(chain);
     await renderPools(chain);
-    status.innerHTML=`<span class="success">Fertig · ${configuredTokens(chain).length} Tokens · ${configuredLPs(chain).length} LP/Pool-Einträge${cacheMode?" · Tagescache":" · on-chain aktualisiert"}.</span>`;
+    status.innerHTML=`<span class="success">Fertig · ${configuredTokens(chain).length} Tokens · ${configuredLPs(chain).length} LP/Pool-Einträge${cacheMode?" · globaler Cache":" · on-chain aktualisiert"}.</span>`;
   }catch(e){
     console.error(e);
     status.innerHTML=`<span class="error">${e.message}</span>`;
@@ -1861,7 +1861,7 @@ async function refreshCurrentPrices({manual=false}={}){
   priceRefreshPromise=(async()=>{
     await ensureInfrastructure();
     setPriceRefreshBusy(true);
-    setPriceStatus(manual?"Aktuelle Preise werden manuell neu ermittelt…":"Heutige Preise werden on-chain ermittelt…","loading");
+    setPriceStatus(manual?"Aktuelle Preise werden manuell neu ermittelt…":"Aktuelle Projektpreise werden on-chain ermittelt…","loading");
     resetCurrentPriceCaches();
     for(const chain of projectChains.filter(c=>["bsc","eth"].includes(c))){
       await resolveReferences(chain);
@@ -1882,13 +1882,13 @@ async function refreshCurrentPrices({manual=false}={}){
 
 async function loadDailyPrices(){
   await ensureInfrastructure();
-  setPriceStatus("Prüfe heutigen Preisstand in Supabase…","loading");
+  setPriceStatus("Prüfe gespeicherten Preisstand in Supabase…","loading");
   const cached=await loadCurrentPriceSnapshot();
   if(cached?.fresh && hydrateCurrentPriceSnapshot(cached.payload)){
     currentPriceCapturedAt=cached.capturedAt;
     currentPriceSource="supabase";
     await Promise.all(projectChains.filter(c=>["bsc","eth"].includes(c)).map(chain=>renderDashboard(chain,{cacheMode:true})));
-    setPriceStatus(`Preisstand: ${formatPriceTimestamp(currentPriceCapturedAt)} · aus Supabase-Tagescache.`,`success`);
+    setPriceStatus(`Preisstand: ${formatPriceTimestamp(currentPriceCapturedAt)} · aus globalem Supabase-Cache.`,`success`);
     notifyCurrentPricesUpdated(false);
     return true;
   }
@@ -1917,6 +1917,14 @@ function ensureLoaded(){
   return initPromise;
 }
 
+async function loadCachedPrices(){
+  const cached=await loadCurrentPriceSnapshot();
+  if(cached?.payload&&hydrateCurrentPriceSnapshot(cached.payload)){
+    currentPriceCapturedAt=cached.capturedAt;currentPriceSource="supabase";notifyCurrentPricesUpdated(false);return true;
+  }
+  return false;
+}
+
 async function manualRefreshPrices(){
   await ensureInfrastructure();
   return await refreshCurrentPrices({manual:true});
@@ -1931,6 +1939,7 @@ return {
   ensureLoaded,
   switchChain,
   refreshPrices:manualRefreshPrices,
+  loadCachedPrices,
   getPrice:getExportedPrice,
   displayDecimalsFor,
   formatTokenAmount,

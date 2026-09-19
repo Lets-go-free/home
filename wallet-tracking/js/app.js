@@ -262,7 +262,17 @@ async function onLoggedIn(session) {
   // Dashboard sofort als sichtbare Startseite setzen; die Cache-Daten füllen sich danach schrittweise.
   if(!userNavigationTouched) showTab("dashboard");
 
-  isAdmin = await checkIsAdmin();
+  // Unabhängige Start-Reads parallel ausführen. Das Dashboard bleibt währenddessen sichtbar.
+  // Dieses Muster entspricht den Projekt-Trees: kleiner Startkern, Cache/DB parallel, keine Discovery.
+  loadTokenMetaCache();
+  const [adminResult]=await Promise.all([
+    checkIsAdmin(),
+    loadDefiProjectsCache(),
+    loadPredefinedTokensFromDb(),
+    loadWalletsFromDb(),
+    loadCustomSafeTokensFromDb()
+  ]);
+  isAdmin=!!adminResult;
   try{adminDebugMode=isAdmin&&sessionStorage.getItem(ADMIN_DEBUG_SESSION_KEY)==="1";}catch(_){adminDebugMode=false;}
   applyAdminDebugMode();
   document.getElementById("adminNavGroup").style.display = isAdmin ? "block" : "none";
@@ -271,21 +281,10 @@ async function onLoggedIn(session) {
   document.getElementById("adminChatTabBtn").style.display = isAdmin ? "inline-block" : "none";
   document.getElementById("feesTabBtn").style.display = "inline-block";
   document.getElementById("adminAddPredefinedTokenCard").style.display = isAdmin ? "block" : "none";
-  if (isAdmin) {
-    document.getElementById("newPredefChain").innerHTML = Object.keys(CHAIN_META).map(c => `<option value="${c}">${CHAIN_META[c].label}</option>`).join("");
-  }
+  if (isAdmin) document.getElementById("newPredefChain").innerHTML = Object.keys(CHAIN_META).map(c => `<option value="${c}">${CHAIN_META[c].label}</option>`).join("");
   setupChatRealtime();
-  await updateChatUnreadBadge();
-
-  loadTokenMetaCache();
-  await loadDefiProjectsCache();
-  await loadPredefinedTokensFromDb();
-  if(isAdmin){
-    const nativeChanged=await ensureNativeAssetsConfigured().catch(e=>{console.warn("Native-Coin-Stammdaten",e);return false;});
-    if(nativeChanged) await loadPredefinedTokensFromDb();
-  }
-  await loadWalletsFromDb();
-  await loadCustomSafeTokensFromDb();
+  // Badge ist für den Start nicht kritisch und blockiert den Dashboard-Aufbau nicht mehr.
+  updateChatUnreadBadge().catch(e=>console.warn("Chat-Badge",e));
 
   if (window.WalletLPEngine) {
     window.WalletLPEngine.configure(() => ({
@@ -381,6 +380,7 @@ async function onLoggedIn(session) {
   // Cache-first: Beim Start ausschliesslich den gespeicherten Preisstand laden.
   // APIs, Pool-RPC und TLN-Infrastruktur werden nur durch die manuelle Preisaktualisierung gestartet.
   await loadCachedCurrentPricesAtStart().catch(e=>console.warn("Gespeicherter Preisstand:",e));
+  scheduleGlobalPriceRefresh();
 
   if(!userNavigationTouched) showTab(wallets.length === 0 ? "wallets" : "dashboard");
   maybeShowWelcomeModal();
@@ -1342,7 +1342,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"analysis",level:0,label:"📊 Übersicht & Analyse",status:"in_progress",start:"Basis + Dashboard-Caches",daily:"keine Live-Abfrage",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","keine Preis-/On-chain-Abfrage beim Start","Discovery-, manuelle Snapshot-, Gebühren-, NFT- und TLN/VOW-Caches werden erst beim Öffnen ihres Bereichs geladen. Nächster Optimierungsschritt bleibt ein kompakter Dashboard-Snapshot."]]},
   {id:"dashboard",level:1,label:"Dashboard · Startseite",status:"in_progress",idea:"kompakter Dashboard-Snapshot",start:"Wallet-/Bestands-/Preiscache",daily:"keine Live-Abfrage",open:"RAM",manual:"Daten/Preise",details:[
     ["Vermögenskennzahlen","RAM aus Automated Snapshot","bereits geladener Bestands-Cache","–","App-Start: vorhandenen Cache aggregieren; fehlende Positionswerte bleiben –"],
-    ["Dashboard-Kurse","RAM","wallet_current_price_snapshots + predefined_tokens.dashboard_visible + TLN/VOW Projekt-PriceEngine","Preis-API/RPC nur manuell","App-Start lädt ausschliesslich gespeicherten Preisstand. TLN/VOW-Contracts verwenden ausschließlich die zentrale Projekt-PriceEngine (BSC PancakeSwap / ETH Uniswap); kein CoinGecko-/GeckoTerminal-Fallback."],
+    ["Dashboard-Kurse","RAM","wallet_global_current_price_snapshot + predefined_tokens.dashboard_visible + TLN/VOW Projekt-PriceEngine","global alle 15 Min. bei aktivem Client + manuell","App-Start lädt den globalen Snapshot. Pro :00/:15/:30/:45 claimt genau ein aktiver Client den globalen Refresh-Slot. TLN/VOW: BSC PancakeSwap / ETH Uniswap; kein CoinGecko-/GeckoTerminal-Fallback."],
     ["Projekt-Kacheln","RAM aus klassifizierten Beständen","predefined_tokens Projektzuordnung","keine Discovery","Nur vorhandene Projekte; Staking/Rewards werden nur aus bereits verfügbarem Positionscache gezeigt"],
     ["Personenfilter","RAM","verschlüsselte Wallet-Besitzer aus wallet-private","–","Eigene Wallets / alle Personen / bestimmte Person; keine Zusatzabfrage"]]},
   {id:"tracking",level:1,label:"Wallet-Tracking · Token-Übersicht",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"gespeicherter Stand",daily:"Preise frisch",open:"Cache",manual:"Bestände + Projekte + NFTs",details:[
@@ -2856,113 +2856,120 @@ function populateSelectPreserving(selectId, values, labelFn, placeholderLabel) {
 let nativePrices = {}; // chainKey -> {price, change24h}
 let tokenPrices = {}; // "chain|adresse" -> {price, change24h, source}
 
-// Zentraler, benutzerbezogener Tagescache für ALLE allgemeinen aktuellen Preise.
-// TLN/VOW hält zusätzlich seinen projektweiten On-Chain-Poolcache; die Bedienung erfolgt
-// trotzdem ausschließlich über die zentrale Preissteuerung der Hauptseite.
-const CURRENT_PRICE_USER_CACHE_TABLE = "wallet_current_price_snapshots";
-const CURRENT_PRICE_USER_CACHE_VERSION = "wallettracking-current-prices-v1";
+// Globaler, nicht personenbezogener Snapshot für aktuelle Preise.
+// Keine Historisierung: pro Refresh wird genau der aktuelle Stand überschrieben.
+// TLN/VOW hält seinen globalen Projekt-Snapshot parallel, damit Route/Poolzustand erhalten bleiben.
+const CURRENT_PRICE_GLOBAL_CACHE_TABLE = "wallet_global_current_price_snapshot";
+const CURRENT_PRICE_GLOBAL_CACHE_VERSION = "wallettracking-current-prices-v2";
 const CURRENT_PRICE_TIMEZONE = "Europe/Zurich";
+const CURRENT_PRICE_SLOT_MINUTES = 15;
 let currentPriceCacheState = { capturedAt:null, source:"none" };
 let allCurrentPricesPromise = null;
+let globalPriceTimer = null;
 
-function priceCalendarDayZurich(value){
+function priceSlotKey(value=new Date()){
   const d=value instanceof Date?value:new Date(value);
   if(Number.isNaN(d.getTime()))return "";
-  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:CURRENT_PRICE_TIMEZONE,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(d);
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:CURRENT_PRICE_TIMEZONE,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(d);
   const x=Object.fromEntries(parts.filter(p=>p.type!=="literal").map(p=>[p.type,p.value]));
-  return `${x.year}-${x.month}-${x.day}`;
+  const minute=Math.floor(Number(x.minute||0)/CURRENT_PRICE_SLOT_MINUTES)*CURRENT_PRICE_SLOT_MINUTES;
+  return `${x.year}-${x.month}-${x.day}T${x.hour}:${String(minute).padStart(2,"0")}`;
 }
-function isPriceSnapshotToday(value){return !!value&&priceCalendarDayZurich(value)===priceCalendarDayZurich(new Date());}
+function nextPriceSlotDelayMs(){
+  const now=Date.now(),d=new Date(now),m=d.getMinutes(),next=(Math.floor(m/CURRENT_PRICE_SLOT_MINUTES)+1)*CURRENT_PRICE_SLOT_MINUTES;
+  const n=new Date(d);n.setSeconds(2,0);if(next>=60){n.setHours(d.getHours()+1,0,2,0);}else n.setMinutes(next,2,0);
+  return Math.max(1000,n.getTime()-now);
+}
 function formatCurrentPriceTimestamp(value){
   const d=value instanceof Date?value:new Date(value);
   return Number.isNaN(d.getTime())?"–":new Intl.DateTimeFormat("de-CH",{timeZone:CURRENT_PRICE_TIMEZONE,day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"}).format(d);
 }
 function setCentralPriceBusy(busy){const b=document.getElementById("currentPriceRefreshBtn");if(b){b.disabled=!!busy;b.textContent=busy?"Preise werden aktualisiert…":"Preise aktualisieren";}}
 function setCentralPriceStatus(text,kind="note"){const el=document.getElementById("currentPriceStatus");if(!el)return;const cls=kind==="success"?"success":kind==="warning"?"warning":kind==="error"?"error":"note";el.className=cls+" wt-data-status-line";const clean=String(text||"").replace(/^Preisstand:\s*/,"");el.innerHTML=`<strong>Preisstand:</strong> ${escapeAttr(clean)}`;}
-async function loadUserCurrentPriceSnapshot(){
-  if(!currentUser)return null;
+async function loadGlobalCurrentPriceSnapshot(){
   try{
-    const {data,error}=await sb.from(CURRENT_PRICE_USER_CACHE_TABLE).select("captured_at,payload").eq("user_id",currentUser.id).eq("valuation_version",CURRENT_PRICE_USER_CACHE_VERSION).maybeSingle();
+    const {data,error}=await sb.from(CURRENT_PRICE_GLOBAL_CACHE_TABLE).select("captured_at,payload,slot_key").eq("snapshot_key","current").eq("valuation_version",CURRENT_PRICE_GLOBAL_CACHE_VERSION).maybeSingle();
     if(error)throw error;if(!data?.payload)return null;
-    return {capturedAt:data.captured_at,payload:data.payload,fresh:isPriceSnapshotToday(data.captured_at)};
-  }catch(e){console.warn("Zentraler Preiscache konnte nicht aus Supabase geladen werden",e);return null;}
+    return {capturedAt:data.captured_at,payload:data.payload,slotKey:data.slot_key,currentSlot:data.slot_key===priceSlotKey()};
+  }catch(e){console.warn("Globaler Preiscache konnte nicht aus Supabase geladen werden",e);return null;}
 }
-function hydrateUserCurrentPriceSnapshot(payload){
+function hydrateGlobalCurrentPriceSnapshot(payload){
   if(!payload||typeof payload!=="object")return false;
   nativePrices=payload.nativePrices&&typeof payload.nativePrices==="object"?payload.nativePrices:{};
   tokenPrices=payload.tokenPrices&&typeof payload.tokenPrices==="object"?payload.tokenPrices:{};
   return true;
 }
-async function saveUserCurrentPriceSnapshot(){
-  if(!currentUser)return false;
-  const capturedAt=new Date().toISOString();
-  const payload={nativePrices,tokenPrices};
+async function saveGlobalCurrentPriceSnapshot(slotKey=priceSlotKey()){
+  const capturedAt=new Date().toISOString(),payload={nativePrices,tokenPrices};
   try{
-    const {error}=await sb.from(CURRENT_PRICE_USER_CACHE_TABLE).upsert({user_id:currentUser.id,valuation_version:CURRENT_PRICE_USER_CACHE_VERSION,captured_at:capturedAt,payload,updated_at:capturedAt},{onConflict:"user_id,valuation_version"});
-    if(error)throw error;currentPriceCacheState={capturedAt,source:"live"};return true;
-  }catch(e){console.warn("Zentraler Preiscache konnte nicht in Supabase gespeichert werden",e);currentPriceCacheState={capturedAt,source:"live-unsaved"};return false;}
+    const {error}=await sb.from(CURRENT_PRICE_GLOBAL_CACHE_TABLE).upsert({snapshot_key:"current",valuation_version:CURRENT_PRICE_GLOBAL_CACHE_VERSION,slot_key:slotKey,captured_at:capturedAt,payload,updated_at:capturedAt},{onConflict:"snapshot_key,valuation_version"});
+    if(error)throw error;currentPriceCacheState={capturedAt,source:"live",slotKey};return true;
+  }catch(e){console.warn("Globaler Preiscache konnte nicht gespeichert werden",e);currentPriceCacheState={capturedAt,source:"live-unsaved",slotKey};return false;}
 }
-async function loadDailyGeneralPrices({force=false}={}){
-  if(!force){
-    const cached=await loadUserCurrentPriceSnapshot();
-    if(cached?.fresh&&hydrateUserCurrentPriceSnapshot(cached.payload)){
-      currentPriceCacheState={capturedAt:cached.capturedAt,source:"supabase"};
-      await refreshFeePriceViews().catch(e=>console.warn("Gebühren-Kursansicht aus Cache aktualisieren:",e));
-      return currentPriceCacheState;
-    }
-  }
-  await loadNativePrices();
-  await saveUserCurrentPriceSnapshot();
-  return currentPriceCacheState;
+async function claimGlobalPriceSlot(slotKey=priceSlotKey()){
+  try{
+    const {data,error}=await sb.rpc("wallettracking_claim_price_refresh_slot",{p_slot_key:slotKey,p_valuation_version:CURRENT_PRICE_GLOBAL_CACHE_VERSION});
+    if(error)throw error;return data===true;
+  }catch(e){console.warn("Globaler Preis-Slot konnte nicht reserviert werden",e);return false;}
 }
 async function loadCachedCurrentPricesAtStart(){
-  const cached=await loadUserCurrentPriceSnapshot();
-  if(cached?.payload&&hydrateUserCurrentPriceSnapshot(cached.payload)){
-    currentPriceCacheState={capturedAt:cached.capturedAt,source:"supabase"};
-    const ageLabel=cached.fresh?"heutiger Cache":"gespeicherter Cache";
-    setCentralPriceStatus(`${formatCurrentPriceTimestamp(cached.capturedAt)} · ${ageLabel}; keine Live-Preisabfrage beim Start.`,cached.fresh?"success":"warning");
+  const [cached]=await Promise.all([
+    loadGlobalCurrentPriceSnapshot(),
+    window.TLNVOWProject?.loadCachedPrices?.().catch?.(e=>{console.warn("TLN/VOW Preissnapshot",e);return null;}) || Promise.resolve(null)
+  ]);
+  if(cached?.payload&&hydrateGlobalCurrentPriceSnapshot(cached.payload)){
+    currentPriceCacheState={capturedAt:cached.capturedAt,source:"supabase",slotKey:cached.slotKey};
+    setCentralPriceStatus(`${formatCurrentPriceTimestamp(cached.capturedAt)} · global gespeichert${cached.currentSlot?" · aktueller 15-Min.-Slot":""}.`,cached.currentSlot?"success":"warning");
     setWtDataStatus("dashboard",{updatedAt:cached.capturedAt,cacheAt:cached.capturedAt,source:"cache",label:"Dashboard"});
-    rerenderAllCurrentPriceViews();
-    renderDashboard();
-    return currentPriceCacheState;
+    rerenderAllCurrentPriceViews();renderDashboard();return currentPriceCacheState;
   }
-  setCentralPriceStatus("Kein gespeicherter Preisstand vorhanden. Preise können manuell aktualisiert werden.","warning");
-  renderDashboard();
-  return null;
+  setCentralPriceStatus("Noch kein global gespeicherter Preisstand vorhanden.","warning");renderDashboard();return null;
 }
-function rerenderAllCurrentPriceViews(){
-  renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();
-  renderDashboard();
-  if(document.getElementById("tab-predefined")?.classList.contains("active"))renderSafeTokenTable();
+function rerenderAllCurrentPriceViews(){renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();if(document.getElementById("tab-predefined")?.classList.contains("active"))renderSafeTokenTable();}
+async function runGlobalPriceRefresh({manual=false,slotKey=priceSlotKey()}={}){
+  setCentralPriceBusy(true);setCentralPriceStatus(manual?"Alle aktuellen Preise werden neu ermittelt…":"Globaler 15-Minuten-Preisstand wird aktualisiert…","note");
+  await loadNativePrices();
+  let tlnState=null;
+  if(window.TLNVOWProject){await window.TLNVOWProject.refreshPrices();tlnState=window.TLNVOWProject.getPriceState?.()||null;}
+  const saved=await saveGlobalCurrentPriceSnapshot(slotKey);
+  rerenderAllCurrentPriceViews();await refreshFeePriceViews().catch(e=>console.warn("Gebühren-Kursansicht aktualisieren:",e));
+  const stamp=formatCurrentPriceTimestamp(currentPriceCacheState.capturedAt);
+  setCentralPriceStatus(`${stamp} · globaler Preisstand${saved?" gespeichert":" (Speichern fehlgeschlagen)"}.`,saved?"success":"warning");
+  setWtDataStatus("tracking",{updatedAt:currentPriceCacheState.capturedAt,cacheAt:saved?currentPriceCacheState.capturedAt:null,source:saved?"cache":"live",label:"Wallet-Tracking"});
+  window.dispatchEvent(new CustomEvent("wallettracking:all-prices-updated",{detail:{manual,general:currentPriceCacheState,tln:tlnState}}));
+  return {general:currentPriceCacheState,tln:tlnState};
 }
 async function refreshAllCurrentPrices({manual=false}={}){
   if(allCurrentPricesPromise)return allCurrentPricesPromise;
   allCurrentPricesPromise=(async()=>{
-    setCentralPriceBusy(true);
-    setCentralPriceStatus(manual?"Alle aktuellen Preise werden neu ermittelt…":"Heutiger Preisstand wird geprüft…","note");
-    const general=await loadDailyGeneralPrices({force:manual});
-    let tlnState=null;
-    if(window.TLNVOWProject){
-      if(manual)await window.TLNVOWProject.refreshPrices();
-      else await window.TLNVOWProject.ensureLoaded();
-      tlnState=window.TLNVOWProject.getPriceState?.()||null;
+    const slotKey=priceSlotKey();
+    if(!manual){
+      const cached=await loadGlobalCurrentPriceSnapshot();
+      if(cached?.currentSlot&&hydrateGlobalCurrentPriceSnapshot(cached.payload)){
+        currentPriceCacheState={capturedAt:cached.capturedAt,source:"supabase",slotKey:cached.slotKey};
+        await window.TLNVOWProject?.loadCachedPrices?.();rerenderAllCurrentPriceViews();
+        setCentralPriceStatus(`${formatCurrentPriceTimestamp(cached.capturedAt)} · global gespeichert · aktueller 15-Min.-Slot.`,`success`);return {general:currentPriceCacheState,tln:window.TLNVOWProject?.getPriceState?.()||null};
+      }
+      const claimed=await claimGlobalPriceSlot(slotKey);
+      if(!claimed){
+        // Ein anderer aktiver Client aktualisiert gerade. Kurz darauf den globalen Snapshot übernehmen.
+        await new Promise(r=>setTimeout(r,2500));const after=await loadGlobalCurrentPriceSnapshot();
+        if(after?.payload&&hydrateGlobalCurrentPriceSnapshot(after.payload)){currentPriceCacheState={capturedAt:after.capturedAt,source:"supabase",slotKey:after.slotKey};await window.TLNVOWProject?.loadCachedPrices?.();rerenderAllCurrentPriceViews();setCentralPriceStatus(`${formatCurrentPriceTimestamp(after.capturedAt)} · global gespeichert.`,`success`);return {general:currentPriceCacheState,tln:window.TLNVOWProject?.getPriceState?.()||null};}
+        return null;
+      }
     }
-    rerenderAllCurrentPriceViews();
-    await refreshFeePriceViews().catch(e=>console.warn("Gebühren-Kursansicht aktualisieren:",e));
-    const generalStamp=formatCurrentPriceTimestamp(general?.capturedAt);
-    const tlnStamp=tlnState?.capturedAt?formatCurrentPriceTimestamp(tlnState.capturedAt):null;
-    const allCached=general?.source==="supabase"&&(!tlnState||tlnState.source==="supabase");
-    const saved=general?.source!=="live-unsaved";
-    let text=`${generalStamp}`;
-    if(tlnStamp&&tlnStamp!==generalStamp)text+=` · TLN/VOW ${tlnStamp}`;
-    text+=allCached?" · aus Supabase-Tagescache.":(saved?" · aktuell geladen und in Supabase gespeichert.":" · aktuell geladen; allgemeiner Supabase-Preiscache konnte nicht gespeichert werden.");
-    setCentralPriceStatus(`Preisstand: ${text}`,allCached||saved?"success":"warning");
-    const priceAt=general?.capturedAt||null;setWtDataStatus("tracking",{updatedAt:priceAt,cacheAt:allCached?priceAt:null,source:allCached?"cache":"live",label:"Wallet-Tracking"});
-    window.dispatchEvent(new CustomEvent("wallettracking:all-prices-updated",{detail:{manual,general,tln:tlnState}}));
-    return {general,tln:tlnState};
+    return await runGlobalPriceRefresh({manual,slotKey});
   })().catch(e=>{setCentralPriceStatus(`Preisaktualisierung fehlgeschlagen: ${e.message||e}`,"error");throw e;}).finally(()=>{setCentralPriceBusy(false);allCurrentPricesPromise=null;});
   return allCurrentPricesPromise;
 }
+function scheduleGlobalPriceRefresh(){
+  if(globalPriceTimer)clearTimeout(globalPriceTimer);
+  const tick=async()=>{if(currentUser)await refreshAllCurrentPrices({manual:false}).catch(e=>console.warn("Globaler 15-Minuten-Preisjob",e));globalPriceTimer=setTimeout(tick,nextPriceSlotDelayMs());};
+  // Beim Login aktuellen Slot prüfen; danach an :00/:15/:30/:45 (mit 2 s Sicherheitsabstand).
+  setTimeout(()=>{if(currentUser)refreshAllCurrentPrices({manual:false}).catch(e=>console.warn("Globaler Preisstart",e));},300);
+  globalPriceTimer=setTimeout(tick,nextPriceSlotDelayMs());
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&currentUser)refreshAllCurrentPrices({manual:false}).catch(e=>console.warn("Preisstand nach Rückkehr",e));});
 window.refreshAllCurrentPrices=refreshAllCurrentPrices;
 
 // Preis-/Token-Metadaten der vordefinierten Token kommen ab Phase 1 aus Supabase.
@@ -3076,7 +3083,8 @@ async function loadNativePrices() {
       if (data[id] && typeof data[id].usd === "number") {
         prices[chain] = {
           price: data[id].usd,
-          change24h: typeof data[id].usd_24h_change === "number" ? data[id].usd_24h_change : undefined
+          change24h: typeof data[id].usd_24h_change === "number" ? data[id].usd_24h_change : undefined,
+          source: "CoinGecko"
         };
       }
     });
@@ -3139,7 +3147,6 @@ async function loadTokenPricesViaGeckoTerminal(alreadyPriced) {
   const chainJobs = Object.keys(GECKOTERMINAL_NETWORK).filter(chain=>chain!=="apertum").map(async chain => {
     const network = GECKOTERMINAL_NETWORK[chain];
     const list = (SAFE_ADDRESSES[chain] || [])
-      .concat(customSafeTokens.filter(t => t.chain === chain).map(t => t.address))
       .filter((addr, idx, arr) => arr.indexOf(addr) === idx) // Duplikate raus
       .filter(addr => !isTlnVowManagedToken(chain,addr)) // TLN/VOW ausschließlich über zentrale Projekt-PriceEngine
       .filter(addr => !alreadyPriced[chain + "|" + addr]);
@@ -4517,7 +4524,7 @@ function renderDashboard(){
   const targetWallets=walletsForCurrentView(),portfolio=dashboardPortfolio(targetWallets),prices=dashboardPriceRows();
   const money=v=>fmtUsd(Number(v||0));
   const boundValue=portfolio.boundEvidence?money(portfolio.boundUsd):"–";
-  const priceTable=prices.length?`<div class="dashboard-table-wrap"><table class="dashboard-price-table"><thead><tr><th>Token</th><th>Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${prices.map(r=>`<tr><td><strong>${escapeAttr(r.displayName||r.symbol)}</strong>${dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${dashboardAddressHtml(r.address)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?`<strong>${escapeAttr(r.price.source||"Preis-Cache")}</strong>${r.price.route?`<div class="meta">Preisroute: ${escapeAttr(r.price.route)}</div>`:""}`:"Kein gespeicherter Kurs"}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">Noch keine Token sind für das Dashboard aktiviert. Als Admin unter „Vordefinierte Token“ die Spalte „Im Dashboard anzeigen“ auswählen.</div>`;
+  const priceTable=prices.length?`<div class="dashboard-table-wrap"><table class="dashboard-price-table"><thead><tr><th>Token</th><th>Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${prices.map(r=>`<tr><td><strong>${escapeAttr(r.displayName||r.symbol)}</strong>${dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${dashboardAddressHtml(r.address)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?`<strong>${escapeAttr(r.price.source||"Quelle unbekannt")}</strong>${r.price.route?`<div class="meta">Preisroute: ${escapeAttr(r.price.route)}</div>`:""}`:"Kein gespeicherter Kurs"}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">Noch keine Token sind für das Dashboard aktiviert. Als Admin unter „Vordefinierte Token“ die Spalte „Im Dashboard anzeigen“ auswählen.</div>`;
   const projectCards=[...portfolio.projects.entries()].filter(([,p])=>p.assets>0).map(([key,p])=>{
     const projectPrices=prices.filter(x=>x.project===key);
     const stats=dashboardProjectCacheStats[key]||{rewards:{}};
