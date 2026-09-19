@@ -1509,3 +1509,18 @@ body.wt-modal-open{overflow:hidden}
 :root[data-theme="dark"] .dashboard-wealth-lines small,:root[data-theme="dark"] .dashboard-wealth-lines em{color:#c0cde0}
 @media(max-width:1180px){.dashboard-kpi-grid-main{grid-template-columns:1fr}.dashboard-wealth-lines{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:720px){.dashboard-wealth-lines{grid-template-columns:1fr}}
+
+/* Phase 5.40 · 19.09.2026 19:21:00 CEST · Dashboard-Audit / stale-while-refresh */
+.dashboard-price-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
+.dashboard-price-table-compact{min-width:0;width:100%;font-size:.72rem}
+.dashboard-price-table-compact th,.dashboard-price-table-compact td{padding:5px 7px;vertical-align:middle}
+.dashboard-price-table-compact td .meta{font-size:.62rem;line-height:1.15}
+.dashboard-price-table-compact td:first-child .meta{display:none}
+.dashboard-chain-icon-cell{text-align:center;width:34px}
+.dashboard-chain-dot{display:inline-block;width:13px;height:13px;border-radius:50%;background:var(--accent);box-shadow:inset 0 0 0 2px rgba(255,255,255,.55)}
+.dashboard-activities{margin-top:12px}
+.dashboard-activity-list{display:grid;gap:0}
+.dashboard-activity-list>div{display:grid;grid-template-columns:95px 110px minmax(120px,.8fr) minmax(180px,1.4fr);gap:10px;padding:8px 4px;border-top:1px solid var(--border);align-items:center;font-size:.78rem}
+.dashboard-activity-list time{color:var(--muted);font-variant-numeric:tabular-nums}.dashboard-activity-list strong{color:var(--text)}
+@media(max-width:1180px){.dashboard-price-columns{grid-template-columns:1fr}.dashboard-price-table-compact{font-size:.78rem}}
+@media(max-width:720px){.dashboard-activity-list>div{grid-template-columns:1fr 1fr}.dashboard-activity-list>div span:last-child{grid-column:1/-1}}
