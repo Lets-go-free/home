@@ -171,7 +171,17 @@ PHASE 5.25 · ERSTE AUSBAUSTUFE:
 • Start lädt nur den vorhandenen Preis-Snapshot; fehlender/veralteter Preis-Cache löst keine API-/RPC-/TLN-Infrastruktur-Abfrage aus.
 • Aktuelles Staking wird in V1 nur berücksichtigt, wenn ein vorhandener Positionscache bereits im Bestand steckt. Monats-Rewards/Referral-Rewards, Partner-Staking-Aktionen, Verlauf sowie investiert/realisiert/unrealisiert bleiben nächste Dashboard-Cache-Stufen.
 • Manuelle Snapshots, allgemeiner Discovery-Cache, Gebühren-Summary, NFT-Cache und die vollständige TLN/VOW-Initialisierung sind aus dem Login-Start entfernt und werden erst beim Öffnen ihres Bereichs geladen.
-• Nächster Architekturpunkt: einen kompakten userbezogenen Dashboard-Snapshot definieren, damit weitere Basisabfragen beim Start entfallen können.`
+• Nächster Architekturpunkt: einen kompakten userbezogenen Dashboard-Snapshot definieren, damit weitere Basisabfragen beim Start entfallen können.
+
+PHASE 5.31/5.32 · START-/DASHBOARD-ARCHITEKTUR:
+• Aktuelle Preise sind ein globaler, nicht historisierter 15-Minuten-Snapshot. Ein globaler Slot-Lock verhindert parallele Preisjobs mehrerer User. Datenquelle und Cache-Status sind getrennte Begriffe.
+• Dashboard bleibt immer Startseite – auch bei einem komplett neuen User ohne Wallet. Ohne Wallet erscheint eine verständliche Erststart-Hilfe mit Ein-Klick-Aktion „Erste Wallet erfassen“.
+• Nach dem Speichern einer neuen Wallet startet automatisch der vorhandene zentrale Grunddatenlauf. Der User muss keinen Projekt-Tab öffnen, damit der erste Bestands-/Projektpositions-/NFT-Cache aufgebaut wird.
+• Bei bestehenden Wallets startet nach dem sofort sichtbaren Cache-Dashboard höchstens 1× täglich je Wallet/Datentyp eine asynchrone Hintergrundprüfung, sofern der Refresh-State dies verlangt.
+• Projekt-Detail-Discovery bleibt getrennt. Dashboard-Grunddaten dürfen aus persistenten Projektcaches/Summaries übernommen werden; das Dashboard selbst startet keinen Globalgraph-/Historien-Vollscan.
+• Dashboard-Project-Summary wird userbezogen lokal als schneller Anzeige-Cache persistiert. Fachliche Projektcaches bleiben die Wahrheit. TLN-Teamansicht schreibt Teampartner + aktiv aus demselben verifizierten Forest/Lifecycle in die Dashboard-Summary; unverifizierte Lifecycles werden nicht als inaktiv gezählt.
+• Nächste fachliche Ausbaustufe: Reward-Summaries und DAO1 aktiv/Team aus ihren bestehenden persistenten Projektcaches an dieselbe Summary-Bridge anschließen – ohne zweite Discovery-Logik.
+• Projektkarten breiter; Token in allen Projektkarten einheitlich zweispaltig, responsiv einspaltig.`
   },
   {
     status: "in_progress",

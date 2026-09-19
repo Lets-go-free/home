@@ -273,6 +273,7 @@ async function onLoggedIn(session) {
     loadCustomSafeTokensFromDb()
   ]);
   isAdmin=!!adminResult;
+  restoreDashboardProjectCacheStats();
   try{adminDebugMode=isAdmin&&sessionStorage.getItem(ADMIN_DEBUG_SESSION_KEY)==="1";}catch(_){adminDebugMode=false;}
   applyAdminDebugMode();
   document.getElementById("adminNavGroup").style.display = isAdmin ? "block" : "none";
@@ -381,8 +382,11 @@ async function onLoggedIn(session) {
   // APIs, Pool-RPC und TLN-Infrastruktur werden nur durch die manuelle Preisaktualisierung gestartet.
   await loadCachedCurrentPricesAtStart().catch(e=>console.warn("Gespeicherter Preisstand:",e));
   scheduleGlobalPriceRefresh();
+  // Projekt-Grunddaten werden unabhängig vom Öffnen der Detail-Tabs aus ihren persistenten Caches restauriert.
+  // Das Dashboard wartet nicht darauf; die Summary-Bridge rendert nach Abschluss erneut.
+  if(wallets.length)setTimeout(()=>refreshDashboardProjectSummaries().catch(e=>console.warn("Dashboard Project-Summaries Start",e)),120);
 
-  if(!userNavigationTouched) showTab(wallets.length === 0 ? "wallets" : "dashboard");
+  if(!userNavigationTouched) showTab("dashboard");
   maybeShowWelcomeModal();
 
   // Cache-first Start: Ein Seiten-Reload startet keinen grossen On-Chain-Refresh mehr.
@@ -391,8 +395,9 @@ async function onLoggedIn(session) {
   // ein Reload unbemerkt Balance-, NFT- oder Projekt-RPC-Jobs auslöst.
   if (autoRefreshNeeded && wallets.length > 0) {
     renderCacheStatusNote(cachedAt
-      ? "Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – Aktualisierung verfügbar. Live-Daten werden erst über „Daten aktualisieren“ geprüft."
-      : "Noch kein gespeicherter Stand – bitte „Daten aktualisieren“ starten.");
+      ? "Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – tägliche Hintergrundprüfung wird gestartet."
+      : "Noch kein gespeicherter Stand – Grunddaten werden im Hintergrund aufgebaut.");
+    setTimeout(()=>loadAll({automatic:true}).catch(e=>console.warn("Tägliche Hintergrundaktualisierung",e)),350);
   }
 }
 
@@ -1339,16 +1344,18 @@ const ADMIN_SYSTEM_TREE = [
   {id:"custom",level:1,label:"Eigene sichere Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB",details:[["User-Token","RAM","Supabase · userbezogene Token","–","App-Start"]]},
   {id:"discovery",level:1,label:"🔍 Entdecken",status:"planning",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Erst beim Öffnen des Tabs; Scan nur manuell"]]},
 
-  {id:"analysis",level:0,label:"📊 Übersicht & Analyse",status:"in_progress",start:"Basis + Dashboard-Caches",daily:"keine Live-Abfrage",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","keine Preis-/On-chain-Abfrage beim Start","Discovery-, manuelle Snapshot-, Gebühren-, NFT- und TLN/VOW-Caches werden erst beim Öffnen ihres Bereichs geladen. Nächster Optimierungsschritt bleibt ein kompakter Dashboard-Snapshot."]]},
-  {id:"dashboard",level:1,label:"Dashboard · Startseite",status:"in_progress",idea:"kompakter Dashboard-Snapshot",start:"Wallet-/Bestands-/Preiscache",daily:"keine Live-Abfrage",open:"RAM",manual:"Daten/Preise",details:[
-    ["Vermögenskennzahlen","RAM aus Automated Snapshot","bereits geladener Bestands-Cache","–","App-Start: vorhandenen Cache aggregieren; fehlende Positionswerte bleiben –"],
+  {id:"analysis",level:0,label:"📊 Übersicht & Analyse",status:"in_progress",start:"Dashboard sofort + Caches",daily:"Grunddaten-Prüfung",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","keine Preis-/On-chain-Abfrage beim Start","Discovery-, manuelle Snapshot-, Gebühren-, NFT- und TLN/VOW-Caches werden erst beim Öffnen ihres Bereichs geladen. Nächster Optimierungsschritt bleibt ein kompakter Dashboard-Snapshot."]]},
+  {id:"dashboard",level:1,label:"Dashboard · Startseite",status:"in_progress",idea:"Project-Summary-Cache",start:"sofort + Cache",daily:"Grunddaten + Preise",open:"RAM",manual:"Daten/Preise",details:[
+    ["Vermögenskennzahlen","RAM aus Automated Snapshot","bereits geladener Bestands-Cache","RPC nur im fälligen Hintergrundlauf","Dashboard sofort; fehlende/veraltete Grunddaten werden danach höchstens 1× täglich asynchron geprüft"],
+    ["Project-Summary","localStorage Anzeige-Cache + Projektcaches","TLN/DAO Projektcaches","keine eigene Discovery","Projektmodule schreiben bestätigte Summary-Werte zurück; TLN Team nutzt denselben Forest/Lifecycle. Rewards/DAO-Aktivstatus werden schrittweise an dieselbe Bridge angeschlossen."],
+    ["Erststart ohne Wallet","lokale UI","–","–","Dashboard bleibt Startseite und erklärt den Ablauf; Ein-Klick-Aktion legt eine neue Wallet-Zeile an. Nach Speichern startet automatisch der Grunddaten-Erstaufbau."],
     ["Dashboard-Kurse","RAM","wallet_global_current_price_snapshot + predefined_tokens.dashboard_visible + TLN/VOW Projekt-PriceEngine","global alle 15 Min. bei aktivem Client + manuell","App-Start lädt den globalen Snapshot. Pro :00/:15/:30/:45 claimt genau ein aktiver Client den globalen Refresh-Slot. TLN/VOW: BSC PancakeSwap / ETH Uniswap; kein CoinGecko-/GeckoTerminal-Fallback."],
-    ["Projekt-Kacheln","RAM aus klassifizierten Beständen","predefined_tokens Projektzuordnung","keine Discovery","Nur vorhandene Projekte; Staking/Rewards werden nur aus bereits verfügbarem Positionscache gezeigt"],
+    ["Projekt-Kacheln","RAM + Project-Summary","predefined_tokens + persistente Projektcaches","keine eigene Discovery","Breite Karten; Token einheitlich 2-spaltig/klein 1-spaltig. Fehlende Summary-Werte bleiben – bis ein fachlicher Cache sie bestätigt."],
     ["Personenfilter","RAM","verschlüsselte Wallet-Besitzer aus wallet-private","–","Eigene Wallets / alle Personen / bestimmte Person; keine Zusatzabfrage"]]},
   {id:"tracking",level:1,label:"Wallet-Tracking · Token-Übersicht",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"gespeicherter Stand",daily:"Preise frisch",open:"Cache",manual:"Bestände + Projekte + NFTs",details:[
-    ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain","Start: nur gespeicherter Stand; On-chain erst Daten aktualisieren"],
-    ["Aktuelle Kurse","Tages-Snapshot/RAM","Supabase Price Snapshots","Preis-APIs + DEX/Pool RPC","App-Start: nur gespeicherten Cache laden; Live-Ermittlung ausschliesslich manuell"],
-    ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Nicht automatisch beim Reload; manuelle Datenaktualisierung"]]},
+    ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain","Start zeigt Cache sofort; falls fällig läuft danach höchstens 1× täglich die asynchrone Hintergrundprüfung. Neue Wallet: Erstaufbau direkt nach Speichern."],
+    ["Aktuelle Kurse","Globaler 15-Minuten-Snapshot/RAM","wallet_global_current_price_snapshot","Preis-APIs + DEX/Pool RPC","Global :00/:15/:30/:45 nur bei aktivem Client; ein atomarer Slot-Claim verhindert Doppeljobs. Keine Historisierung dieses aktuellen Snapshots."],
+    ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Im fälligen Grunddaten-Hintergrundlauf; vollständige Projekt-Discovery bleibt separat"]]},
   {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"planning",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","Supabase Snapshots","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung","Cache","Supabase Preis-/LP-Historie","Archive RPC/API bei Bedarf","Stichtagsberechnung"]]},
   {id:"fees",level:1,label:"💸 Gebühren",status:"planning",start:"–",daily:"–",open:"DB-Summary",manual:"Delta/API",details:[["Gebühren-Summary","RAM nach Lazy Load","Supabase Fee Cache/Summary","–","Gespeicherten Gebührenstand erst beim Öffnen des Tabs lesen"],["Gebührenhistorie","RAM","Supabase Fee Cache","Routescan/NodeReal/Blockscout etc.","On-chain/API erst bei Aktualisierung"]]},
   {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"nur Freshness",daily:"kein Fresh-Load",open:"DB-Cache",manual:"On-chain/API",details:[["NFT-Bestand","RAM nach Lazy Load","Supabase NFT Cache","Chain-spezifische NFT Quellen/RPC","NFT- und Besitzcache erst beim Öffnen des Tabs; kein automatischer Chain-Refresh"],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
@@ -1451,13 +1458,13 @@ function renderAdminDocumentation(){
   <p><strong>Invalidieren statt blind löschen:</strong> Alte Daten bleiben als Fallback erhalten, bis ein notwendiger Neuaufbau erfolgreich abgeschlossen ist.</p></div></div>
 
   <div class="custom-token-card"><h3 style="margin-top:0">2. Ladeprozess</h3><div class="note">
-  <p><strong>Zentraler Startseiten-Refresh:</strong> pro Wallet sequentiell: Wallet-/Tokenbestände → Projektpositionen inkl. LP/Staking → NFTs. Danach nächstes Wallet.</p>
-  <p><strong>Automatisch:</strong> höchstens 1× täglich pro Wallet, Chain und Datentyp. Neue Wallets haben keinen Tagesstatus und werden sofort berücksichtigt.</p>
+  <p><strong>Start:</strong> Dashboard sofort anzeigen → vorhandene Caches/Summaries lesen → erst danach fehlende oder veraltete Grunddaten asynchron nachführen.</p><p><strong>Zentraler Hintergrundlauf:</strong> pro Wallet sequentiell: Wallet-/Tokenbestände → Projektpositionen inkl. LP/Staking → NFTs. Danach nächstes Wallet. Projekt-Detail-Discovery bleibt getrennt.</p>
+  <p><strong>Automatisch:</strong> höchstens 1× täglich pro Wallet, Chain und Datentyp. Neue Wallets haben keinen Tagesstatus und starten direkt nach dem Speichern ihren Grunddaten-Erstaufbau; das Dashboard aktualisiert sich danach ohne Tab-Klick.</p>
   <p><strong>Manuell:</strong> jederzeit möglich; die Tagesbegrenzung gilt nur für automatische Läufe.</p>
   <p><strong>Entscheidungsreihenfolge:</strong> Datenversion prüfen → nötigen Neuaufbau erzwingen → Tagesstatus prüfen → Activity-Check → inkrementell aktualisieren.</p>
   <p><strong>Activity-Check:</strong> bei aktuellem Cache zuerst relevante Blockchain-Aktivität prüfen. Nur vom User bestätigter Spam darf ignoriert werden.</p>
   <p><strong>Leeres Ergebnis = erfolgreich:</strong> 0 NFTs, 0 LP-/Staking-Positionen, 0 Gebühren oder 0 relevante Aktivitäten dürfen niemals als „noch nie geprüft“ erscheinen, wenn der Prozess erfolgreich abgeschlossen wurde.</p>
-  <p><strong>Entdecken / Gebühren:</strong> ausschließlich manuell. Projekt-Tabs: beim ersten Öffnen des Tages automatisch je Wallet, danach manuell.</p></div></div>
+  <p><strong>Entdecken / Gebühren:</strong> ausschließlich manuell. Projekt-Detail-Discovery bleibt projektbezogen; Dashboard-Grunddaten dürfen unabhängig vom Tab aus vorhandenen Caches bzw. dem zentralen Tageslauf nachgeführt werden.</p></div></div>
 
   <div class="custom-token-card"><h3 style="margin-top:0">3. Cache-/Scan-Versionierung</h3><div class="note">
   <p>Version nur erhöhen, wenn eine fachliche Änderung vorhandene Daten unvollständig/falsch macht. UI-/Layout-/Textänderungen benötigen keine neue Datenversion.</p>
@@ -1478,7 +1485,7 @@ function renderAdminDocumentation(){
 
   <div class="custom-token-card"><h3 style="margin-top:0">6. Release-/Fehlerbehebungsregel</h3><div class="note">
   <p>Bei jeder fachlichen Korrektur prüfen: betroffener Datenbereich, Re-Klassifikation vs. inkrementeller Nachscan vs. Fullscan, nötige <code>data_version</code>, nötiger neuer <code>scan_type</code>.</p>
-  <p>README und Migrationsstatus aktualisieren; sichtbaren Versions-Timestamp auf tatsächliche Erstellzeit setzen; JS-Syntax, doppelte DOM-IDs und Regressionen prüfen.</p></div></div>
+  <p><strong>Dokumentation ist Definition of Done:</strong> Systemübersicht, Admin-Dokumentation, Ideen/TODO, Hilfe-/Erklärungstexte sowie technische Angaben zu Datenquellen, Caches, Jobs und Ladezeitpunkten bei jeder Änderung mitprüfen. README/Migrationsstatus aktualisieren, falls im gelieferten Projekt vorhanden; sichtbaren Versions-Timestamp auf tatsächliche Schweizer Zeit setzen; JS-Syntax, doppelte DOM-IDs und Regressionen prüfen.</p></div></div>
 
   <div class="custom-token-card"><h3 style="margin-top:0">7. Vorgesehene Architekturverbesserungen</h3><div class="note">
   <p><strong>Raw Events / Interpretation trennen:</strong> Blockchain-Rohdaten langfristig separat von Add/Remove/Send/Receive/Stake/Unstake halten, damit Klassifikationsfehler ohne Fullscan korrigiert werden können.</p>
@@ -3469,7 +3476,7 @@ async function saveWallet(id) {
   renderWalletInputs();
   renderGlobalWalletPersonFilter();
   renderDashboard();
-  loadAll();
+  loadAll({automatic:true}).catch(e=>console.warn("Erstaufbau nach Wallet-Speicherung",e));
 }
 
 // Format-Validierung pro Chain (Länge/Präfix/Zeichensatz) - rein strukturell, keine
@@ -4306,9 +4313,20 @@ async function loadAllCore(options = {}) {
   renderCentralRefreshProgress(progress,{collapsed:true,finished:true});renderWalletDataFreshness();if(btn)btn.disabled=false;return {failures};
 }
 
+async function refreshDashboardProjectSummaries(){
+  if(!currentUser||!wallets.length)return;
+  const jobs=[];
+  if(window.TLNVOWDiscovery?.loadDashboardSummary)jobs.push(window.TLNVOWDiscovery.loadDashboardSummary().catch(e=>console.warn("TLN Dashboard-Grunddaten",e)));
+  if(window.DAO1Project?.loadDashboardSummary)jobs.push(window.DAO1Project.loadDashboardSummary().catch(e=>console.warn("DAO1 Dashboard-Grunddaten",e)));
+  await Promise.all(jobs);renderDashboard();
+}
+window.refreshDashboardProjectSummaries=refreshDashboardProjectSummaries;
+
 async function loadAll(options = {}) {
   const automatic=!!options.automatic;
-  return runDataJob(automatic?"Daten werden aktualisiert …":"Daten werden vollständig aktualisiert …",()=>loadAllCore(options));
+  const result=await runDataJob(automatic?"Daten werden aktualisiert …":"Daten werden vollständig aktualisiert …",()=>loadAllCore(options));
+  refreshDashboardProjectSummaries().catch(e=>console.warn("Dashboard Project-Summaries",e));
+  return result;
 }
 
 // ---- Rendering ----
@@ -4500,6 +4518,13 @@ function dashboardPortfolio(targetWallets){
   return {freeUsd,boundUsd,totalUsd:freeUsd+boundUsd,unknownValues,boundEvidence,projects};
 }
 
+function dashboardAddFirstWallet(){
+  if(!wallets.length)addWallet();
+  showTab("wallets");
+  setTimeout(()=>{document.querySelector("#walletInputs input")?.focus?.();document.getElementById("walletInputs")?.scrollIntoView?.({behavior:"smooth",block:"start"});},80);
+}
+window.dashboardAddFirstWallet=dashboardAddFirstWallet;
+
 function dashboardProjectTitle(key){return defiProjectsCache.find(p=>p.project_key===key)?.name||({tln_vow:"TLN / VOW",dao1:"DAO1 / APTM"}[key]||key);}
 function dashboardProjectOpen(key){if(key==="tln_vow")showTab("tlnvow");else if(key==="dao1")showTab("dao1");else showTab("projects-overview");}
 window.dashboardProjectOpen=dashboardProjectOpen;
@@ -4509,11 +4534,15 @@ const dashboardProjectCacheStats={
   dao1:{teamPartners:null,activePartners:null,rewards:{total:null,previousYear:null,year:null,month:null}}
 };
 function dashboardMetric(v,formatter){return v==null?"–":(formatter?formatter(v):String(v));}
+function dashboardProjectSummaryStorageKey(){return currentUser?.id?`wallettracking:dashboard-project-summary:${currentUser.id}`:null;}
+function restoreDashboardProjectCacheStats(){const key=dashboardProjectSummaryStorageKey();if(!key)return;try{const saved=JSON.parse(localStorage.getItem(key)||"null");if(!saved||typeof saved!=="object")return;for(const projectKey of ["tln_vow","dao1"]){const x=saved[projectKey];if(!x)continue;dashboardProjectCacheStats[projectKey]={...dashboardProjectCacheStats[projectKey],...x,rewards:{...(dashboardProjectCacheStats[projectKey].rewards||{}),...(x.rewards||{})}};}}catch(e){console.warn("Dashboard Project-Summary Cache",e);}}
+function persistDashboardProjectCacheStats(){const key=dashboardProjectSummaryStorageKey();if(!key)return;try{localStorage.setItem(key,JSON.stringify(dashboardProjectCacheStats));}catch(e){console.warn("Dashboard Project-Summary speichern",e);}}
 function setDashboardProjectCacheStats(projectKey,patch={}){
   const cur=dashboardProjectCacheStats[projectKey]||(dashboardProjectCacheStats[projectKey]={rewards:{}});
   if(Object.prototype.hasOwnProperty.call(patch,"teamPartners"))cur.teamPartners=patch.teamPartners;
   if(Object.prototype.hasOwnProperty.call(patch,"activePartners"))cur.activePartners=patch.activePartners;
   if(patch.rewards)cur.rewards={...(cur.rewards||{}),...patch.rewards};
+  cur.updatedAt=patch.updatedAt||new Date().toISOString();persistDashboardProjectCacheStats();
   renderDashboard();
 }
 window.setDashboardProjectCacheStats=setDashboardProjectCacheStats;
@@ -4522,6 +4551,10 @@ function renderDashboard(){
   const root=document.getElementById("dashboardContent");if(!root)return;
   renderGlobalWalletPersonFilter();
   const targetWallets=walletsForCurrentView(),portfolio=dashboardPortfolio(targetWallets),prices=dashboardPriceRows();
+  if(wallets.length===0){
+    root.innerHTML=`<div class="dashboard-heading"><div><h2>Willkommen bei WalletTracking</h2><p>Dein Dashboard wird automatisch aufgebaut, sobald du deine erste Wallet erfasst hast.</p></div></div><section class="dashboard-empty-onboarding"><article class="dashboard-card dashboard-onboarding-card"><div class="dashboard-onboarding-icon">＋</div><h3>Noch keine Wallet erfasst</h3><p>Erfasse zuerst eine oder mehrere Wallets. Danach lädt WalletTracking die benötigten Grunddaten automatisch im Hintergrund und aktualisiert dieses Dashboard. Für Detailanalysen kannst du später die einzelnen Projektbereiche öffnen.</p><button onclick="dashboardAddFirstWallet()">Erste Wallet erfassen</button><div class="dashboard-onboarding-steps"><span><b>1</b> Wallet erfassen</span><span><b>2</b> Grunddaten werden geladen</span><span><b>3</b> Dashboard füllt sich automatisch</span></div></article></section>`;
+    setWtDataStatus("dashboard",{source:"local",label:"Dashboard · noch keine Wallet"});return;
+  }
   const money=v=>fmtUsd(Number(v||0));
   const boundValue=portfolio.boundEvidence?money(portfolio.boundUsd):"–";
   const priceTable=prices.length?`<div class="dashboard-table-wrap"><table class="dashboard-price-table"><thead><tr><th>Token</th><th>Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${prices.map(r=>`<tr><td><strong>${escapeAttr(r.displayName||r.symbol)}</strong>${dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${dashboardAddressHtml(r.address)}</td><td>${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?`<strong>${escapeAttr(r.price.source||"Quelle unbekannt")}</strong>${r.price.route?`<div class="meta">Preisroute: ${escapeAttr(r.price.route)}</div>`:""}`:"Kein gespeicherter Kurs"}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">Noch keine Token sind für das Dashboard aktiviert. Als Admin unter „Vordefinierte Token“ die Spalte „Im Dashboard anzeigen“ auswählen.</div>`;
@@ -4532,7 +4565,7 @@ function renderDashboard(){
     return `<article class="dashboard-project-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Projekt</span><h3>${escapeAttr(dashboardProjectTitle(key))}</h3></div><strong>${money(p.valueUsd)}</strong></div>
       <div class="dashboard-project-stats dashboard-project-stats-compact"><div><span>Aktuelles Staking</span><strong>${p.boundUsd>0?money(p.boundUsd):"–"}</strong></div><div><span>Teampartner</span><strong>${dashboardMetric(stats.teamPartners)}</strong></div><div><span>davon aktiv</span><strong>${dashboardMetric(stats.activePartners)}</strong></div></div>
       <div class="dashboard-reward-lines"><div><span>Rewards · Gesamt</span><strong>${dashboardMetric(rewards.total,money)}</strong></div><div><span>Rewards · Vorjahr</span><strong>${dashboardMetric(rewards.previousYear,money)}</strong></div><div><span>Rewards · Jahr</span><strong>${dashboardMetric(rewards.year,money)}</strong></div><div><span>Rewards · Monat</span><strong>${dashboardMetric(rewards.month,money)}</strong></div></div>
-      ${projectPrices.length?`<div class="dashboard-project-prices">${projectPrices.map(r=>`<span><span class="dashboard-project-token-name">${escapeAttr(r.displayName||r.symbol)}</span>${dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${dashboardAddressHtml(r.address)} <strong>${r.price?fmtPrice(r.price.price):"–"}</strong></span>`).join("")}</div>`:""}<button class="secondary" onclick="dashboardProjectOpen('${escapeAttr(key)}')">Projekt öffnen</button><div class="dashboard-cache-note">Cache-first: Team-/Reward-Werte werden nur aus vorhandenen Projektcaches übernommen; fehlende Werte starten keine Discovery.</div></article>`;
+      ${projectPrices.length?`<div class="dashboard-project-prices">${projectPrices.map(r=>`<span><span class="dashboard-project-token-name">${escapeAttr(r.displayName||r.symbol)}</span>${dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${dashboardAddressHtml(r.address)} <strong>${r.price?fmtPrice(r.price.price):"–"}</strong></span>`).join("")}</div>`:""}<button class="secondary" onclick="dashboardProjectOpen('${escapeAttr(key)}')">Projekt öffnen</button><div class="dashboard-cache-note">Dashboard-Grunddaten werden aus persistenten Projektcaches übernommen. Fehlende/veraltete Grunddaten werden durch den zentralen Hintergrundlauf nachgeführt; vollständige Discovery bleibt projektbezogen.</div></article>`;
   }).join("");
   const globalRewards={total:0,previousYear:0,year:0,month:0},globalRewardKnown={total:false,previousYear:false,year:false,month:false};
   for(const st of Object.values(dashboardProjectCacheStats)){for(const k of Object.keys(globalRewards)){const v=Number(st?.rewards?.[k]);if(Number.isFinite(v)){globalRewards[k]+=v;globalRewardKnown[k]=true;}}}

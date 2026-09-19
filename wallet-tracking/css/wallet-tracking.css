@@ -1436,17 +1436,18 @@ body.wt-modal-open{overflow:hidden}
 
 /* Release Phase 4.94 · 18.09.2026 13:06:01 CEST · Build 20260918-130601 */
 
-/* Phase 5.26 · Dashboard-Finish */
-.sidebar-brand{padding-right:34px}
-.sidebar-collapse-btn{right:4px;top:8px;transform:none}
-.app-shell.sidebar-collapsed .sidebar-brand{padding:4px 0 8px;min-height:34px}
-.app-shell.sidebar-collapsed .sidebar-collapse-btn{position:static;transform:rotate(180deg);margin:0 auto}
-.dashboard-project-stats-compact{grid-template-columns:repeat(3,minmax(0,1fr))}
-.dashboard-reward-lines{display:grid;gap:6px;margin:0 0 10px}
-.dashboard-reward-lines>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 9px;border-radius:9px;background:var(--card2)}
-.dashboard-reward-lines span{color:var(--muted);font-size:.68rem}
-.dashboard-reward-lines strong{color:var(--text)!important;font-size:.82rem;font-variant-numeric:tabular-nums}
-.dashboard-admin-title{margin-top:24px}.dashboard-admin-grid{display:grid;grid-template-columns:minmax(280px,520px);gap:12px}
-@media(max-width:720px){.dashboard-project-stats-compact{grid-template-columns:1fr}}
-.dashboard-reward-kpi{padding-bottom:14px}.dashboard-kpi-reward-lines{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px}.dashboard-kpi-reward-lines>div{padding:5px 7px;border-radius:8px;background:rgba(255,255,255,.34)}.dashboard-kpi-reward-lines small{margin:0;font-size:.62rem}.dashboard-kpi-reward-lines strong{margin-top:2px;font-size:.86rem!important}
-:root[data-theme="dark"] .dashboard-kpi-reward-lines>div{background:rgba(0,0,0,.16)}
+/* Phase 5.32 · Dashboard: breitere Projektkarten + einheitliches Tokenraster + Erststart-Hilfe */
+.dashboard-project-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.dashboard-project-prices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.dashboard-project-prices>span{min-width:0;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;justify-content:initial;gap:8px}
+.dashboard-project-token-name{white-space:nowrap}
+.dashboard-empty-onboarding{display:flex;justify-content:center;padding:18px 0 8px}
+.dashboard-onboarding-card{width:min(760px,100%);text-align:center;padding:30px}
+.dashboard-onboarding-icon{width:58px;height:58px;margin:0 auto 12px;border-radius:18px;background:var(--accent-soft);display:grid;place-items:center;font-size:2rem;color:var(--accent);font-weight:800}
+.dashboard-onboarding-card h3{font-size:1.25rem;color:var(--text);margin:4px 0 8px}
+.dashboard-onboarding-card p{max-width:650px;margin:0 auto 18px;color:var(--muted)}
+.dashboard-onboarding-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:20px;text-align:left}
+.dashboard-onboarding-steps span{background:var(--card2);border-radius:10px;padding:10px;color:var(--muted);font-size:.78rem}.dashboard-onboarding-steps b{color:var(--accent);margin-right:5px}
+@media(min-width:1450px){.dashboard-project-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:900px){.dashboard-project-grid{grid-template-columns:1fr}.dashboard-project-prices{grid-template-columns:1fr}}
+@media(max-width:720px){.dashboard-onboarding-steps{grid-template-columns:1fr}}

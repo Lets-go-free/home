@@ -1,4 +1,4 @@
-// WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
+// WalletTracking Phase 5.32 · 19.09.2026 13:51:38 CEST · Build 20260919-135138
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -287,9 +287,8 @@ window.DAO1Project = (() => {
       panel.id = "tab-dao1";
       panel.className = "tab-panel";
       panel.innerHTML = `
-        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('prices',this)">Kurse und Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('claims',this)">Bot-Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('referrals',this)">Referral Rewards</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('team',this)">Team</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); renderProjectLpTab('dao1',['apertum'],'dao1LpContent','2025-12-31',false)">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
+        <div class="project-subtabs"><button class="tab-btn active" onclick="DAO1Project.switchSubtab('overview',this)">Übersicht</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('transactions',this)">Transaktionen</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('claims',this)">Bot-Claims</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('referrals',this)">Referral Rewards</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('team',this)">Team</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('liquidity',this); renderProjectLpTab('dao1',['apertum'],'dao1LpContent','2025-12-31',false)">Liquidity Pools</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('config',this)">Konfiguration</button><button class="tab-btn" onclick="DAO1Project.switchSubtab('help',this)">Hilfe</button></div>
         <div id="dao1-subtab-overview" class="project-subtab-panel"><div class="custom-token-card"><div class="chain-title">DAO1 · Apertum</div><div class="note">Projektübersicht für DAO1-spezifische Assets auf Apertum. Detailfunktionen sind in die Unter-Tabs gegliedert.</div></div></div>
-        <div id="dao1-subtab-prices" class="project-subtab-panel" style="display:none"><div id="dao1PricesPoolsContent"><div class="empty">Gespeicherte DAO1-Kurse werden geladen…</div></div></div>
         <div id="dao1-subtab-claims" class="project-subtab-panel" style="display:none"><div id="dao1ClaimsContent"></div></div>
         <div id="dao1-subtab-referrals" class="project-subtab-panel" style="display:none"><div id="dao1ReferralContent"></div></div>
         <div id="dao1-subtab-team" class="project-subtab-panel" style="display:none"><div id="dao1TeamContent"></div></div>
@@ -322,8 +321,6 @@ window.DAO1Project = (() => {
     // refreshTransactionHistory(false) aus. Dadurch war "Alle Apertum-Wallets" initial leer.
     if(name==="overview"){
       await renderDAO1BotOverview();
-    }else if(name==="prices"){
-      if(typeof window.renderDao1PricesPools==="function")window.renderDao1PricesPools();
     }else if(name==="transactions"){
       await refreshTransactionHistory(false);
     }else if(name==="help"){
@@ -4790,6 +4787,7 @@ window.DAO1Project = (() => {
   function renderDAO1TeamTreePanel(){
     const el=document.getElementById("dao1TeamTreePanel");if(!el)return;
     const isOld=dao1TeamTreeMode==="legacy",st=teamDiscoveryState();
+    if(isOld){try{const rows=legacyTreeRows(st.edges||[]),partners=new Set(rows.map(r=>Number(r.child_id)).filter(Number.isFinite));window.setDashboardProjectCacheStats?.("dao1",{teamPartners:partners.size,updatedAt:new Date().toISOString()});}catch(e){console.warn("DAO1 Dashboard-Summary",e);}}
     const renderT0=performance.now();
     const d=dao1OldTreeCacheDiag;
     const cacheDiagHtml=isOld?`<div class="custom-token-card debug-frame" style="margin-top:12px"><strong>DEBUG / DEV · DAO1 Tree Browser-Cache</strong><div class="note" style="margin-top:6px"><strong>${escapeHtml(d.source)}</strong> · lokal ${Number(d.localRows||0).toLocaleString("de-DE")} Rows · DB ${Number(d.dbRows||0).toLocaleString("de-DE")} Rows · Delta ${Number(d.deltaRows||0).toLocaleString("de-DE")} Rows</div><div class="note">IndexedDB ${Number(d.idbMs||0).toFixed(1)} ms · State ${Number(d.stateMs||0).toFixed(1)} ms · IDB-Meta ${Number(d.metaMs||0).toFixed(1)} ms · DATA_VERSIONS ${Number(d.registryMs||0).toFixed(1)} ms · Schema-Probe ${Number(d.probeMs||0).toFixed(1)} ms · Delta-DB ${Number(d.deltaDbMs||0).toFixed(1)} ms</div><div class="note">Cache gesamt ${Number(d.totalCacheMs||0).toFixed(1)} ms · Latest Block ${Number(d.latestBlockMs||0).toFixed(1)} ms · 24-Block-RPC ${Number(d.overlapRpcMs||0).toFixed(1)} ms · Cache speichern ${Number(d.saveMs||0).toFixed(1)} ms · kompletter Lauf ${Number(d.scanMs||0).toFixed(1)} ms · Render ${Number(d.renderMs||0).toFixed(1)} ms</div><div class="note">${escapeHtml(d.note||"")}</div><div class="note"><strong>${escapeHtml(d.scanMode||"–")}</strong>${d.scannedBlocks?` · geprüft Block ${Number(d.fromBlock).toLocaleString("de-DE")}–${Number(d.toBlock).toLocaleString("de-DE")} (${Number(d.scannedBlocks).toLocaleString("de-DE")} Blöcke) · RPC-Logs ${Number(d.rpcLogs||0).toLocaleString("de-DE")} · geänderte Kanten ${Number(d.changedEdges||0).toLocaleString("de-DE")}`:""}</div></div>`:"";
@@ -5824,7 +5822,20 @@ window.DAO1Project = (() => {
     updateVisibility();
   }
 
-  return { switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
+  async function loadDashboardSummary(){
+    await ensureLoaded();
+    try{
+      await loadDAO1OwnedDidRoots(false);
+      const cached=await loadOldDao1TreeCache();
+      if(cached?.edges){
+        dao1TeamDiscovery.legacy.edges=cached.edges;
+        const rows=legacyTreeRows(cached.edges),partners=new Set(rows.map(r=>Number(r.child_id)).filter(Number.isFinite));
+        window.setDashboardProjectCacheStats?.("dao1",{teamPartners:partners.size,updatedAt:cached.state?.updated_at||new Date().toISOString()});
+      }
+    }catch(e){console.warn("DAO1 Dashboard-Summary Cache",e);}
+  }
+
+  return { switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, loadDashboardSummary, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,
