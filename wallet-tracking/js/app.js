@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.40 · 19.09.2026 19:21:00 CEST · Build 20260919-192100 */
+/* WalletTracking Phase 5.41 · 19.09.2026 21:22:29 CEST · Build 20260919-212229 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1350,11 +1350,11 @@ const ADMIN_SYSTEM_TREE = [
     ["Project-Summary","localStorage Anzeige-Cache + Projektcaches","TLN/DAO Projektcaches","keine eigene Discovery","Projektmodule schreiben bestätigte Summary-Werte zurück; TLN Team nutzt denselben Forest/Lifecycle. TLN Staking-/Referral-/Bonus-Rewards und DAO Rewards/Referral Rewards sind in Originaltoken angeschlossen; DAO1/APTMDAO Partnerzahlen stammen aus strikt getrennten Tree-Caches; sie werden nicht addiert oder dedupliziert. DAO-Aktivstatus bleibt bis zum Bot-Target-Proof offen."],
     ["Erststart ohne Wallet","lokale UI","–","–","Dashboard bleibt Startseite und erklärt den Ablauf; Ein-Klick-Aktion legt eine neue Wallet-Zeile an. Nach Speichern startet automatisch der Grunddaten-Erstaufbau."],
     ["Dashboard-Kurse","RAM","wallet_global_current_price_snapshot + predefined_tokens.dashboard_visible + TLN/VOW Projekt-PriceEngine","global alle 15 Min. bei aktivem Client + manuell","App-Start lädt den globalen Snapshot. Pro :00/:15/:30/:45 claimt genau ein aktiver Client den globalen Refresh-Slot. TLN/VOW: BSC PancakeSwap / ETH Uniswap; kein CoinGecko-/GeckoTerminal-Fallback."],
-    ["Projekt-Kacheln","RAM + Project-Summary","predefined_tokens + persistente Projektcaches","keine eigene Discovery","Breite Karten; Token einheitlich 2-spaltig/klein 1-spaltig. Kursliste automatisch bei Bestand > USD 1; „immer anzeigen“ erlaubt Bestand 0; Projekt-Token nur bei belegter Projektbeteiligung. Reward-Summaries nutzen Summary-Kommastellen (leer = Anzeige übernehmen, 0 = keine Nachkommastellen). Fehlende Summary-Werte bleiben – bis ein fachlicher Cache sie bestätigt."],
+    ["Projekt-Kacheln","RAM + Project-Summary","predefined_tokens + persistente Projektcaches","keine eigene Discovery","Breite Karten; Projektwert wird zusätzlich in frei verfügbar / aktuell gebunden / gesamt aufgesplittet. LP-Staking wird nur einmal gezählt, auch wenn walletData und lp_position_cache dieselbe Position enthalten. Kursliste automatisch bei Bestand > USD 1; „immer anzeigen“ erlaubt Bestand 0; Projekt-Token nur bei belegter Projektbeteiligung. Reward-Summaries nutzen Summary-Kommastellen (leer = Anzeige übernehmen, 0 = keine Nachkommastellen). Fehlende Summary-Werte bleiben – bis ein fachlicher Cache sie bestätigt."],
     ["Personenfilter","RAM","verschlüsselte Wallet-Besitzer aus wallet-private","–","Eigene Wallets / alle Personen / bestimmte Person; keine Zusatzabfrage"]]},
   {id:"tracking",level:1,label:"Wallet-Tracking · Token-Übersicht",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"gespeicherter Stand",daily:"Preise frisch",open:"Cache",manual:"Bestände + Projekte + NFTs",details:[
     ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain","Start zeigt Cache sofort; falls fällig läuft danach höchstens 1× täglich die asynchrone Hintergrundprüfung. Neue Wallet: Erstaufbau direkt nach Speichern."],
-    ["Aktuelle Kurse","Globaler 15-Minuten-Snapshot/RAM","wallet_global_current_price_snapshot","Preis-APIs + DEX/Pool RPC","Global :00/:15/:30/:45 nur bei aktivem Client; ein atomarer Slot-Claim verhindert Doppeljobs. Phase 5.40: stale-while-refresh – der letzte gültige Snapshot bleibt während Refresh/Teilfehler aktiv; neue gültige Assetpreise werden atomar übernommen. Keine Historisierung dieses aktuellen Snapshots."],
+    ["Aktuelle Kurse","Globaler 15-Minuten-Snapshot/RAM","wallet_global_current_price_snapshot","Preis-APIs + DEX/Pool RPC","Global :00/:15/:30/:45 nur bei aktivem Client; ein atomarer Slot-Claim verhindert Doppeljobs. Phase 5.41: stale-while-refresh – der letzte gültige Snapshot bleibt während Refresh/Teilfehler aktiv; tatsächlich neu geladene Assetpreise tragen zusätzlich refreshedAt. Alte Einzelpreise werden dadurch nicht als im aktuellen Lauf erneuert interpretiert. Keine Historisierung dieses aktuellen Snapshots."],
     ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Im fälligen Grunddaten-Hintergrundlauf; vollständige Projekt-Discovery bleibt separat"]]},
   {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"planning",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","Supabase Snapshots","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung","Cache","Supabase Preis-/LP-Historie","Archive RPC/API bei Bedarf","Stichtagsberechnung"]]},
   {id:"fees",level:1,label:"💸 Gebühren",status:"planning",start:"–",daily:"–",open:"DB-Summary",manual:"Delta/API",details:[["Gebühren-Summary","RAM nach Lazy Load","Supabase Fee Cache/Summary","–","Gespeicherten Gebührenstand erst beim Öffnen des Tabs lesen"],["Gebührenhistorie","RAM","Supabase Fee Cache","Routescan/NodeReal/Blockscout etc.","On-chain/API erst bei Aktualisierung"]]},
@@ -1385,6 +1385,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
     ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → fertig, DB 0 / RPC 0 bei HIT; manueller Update-Pfad inkrementell mit 24-Block-Overlap"],
     ["APTMDAO Team-Kanten","IndexedDB · dao1/aptmdao-tree","Supabase aptmdao_tree_*","Apertum NFT-Mint-Event; RPC nur bei Update/Erstaufbau","Phase 5.39: child/parent/wallet on-chain verifiziert; eigener Graph, max. 20 Ebenen; Migration 063. DAO1/APTMDAO sind eigenständige DID-/Alias-Systeme. Normaler Cache-HIT ohne RPC, Update mit 24-Block-Overlap."],
+    ["DAO Partner-Bot-Lifecycle","RAM + Dashboard-Summary","dao_partner_bot_lifecycle_cache","Apertum Explorer nur bei sichtbaren Partnern/Details","Phase 5.41: Bot wird nur bei eindeutiger Erwerbs-Tx-Evidenz DAO1 oder APTMDAO zugeordnet. Unklare Fälle bleiben offen. Persistenter userbezogener Cache liefert letzte Bot-Käufe beim Dashboardstart; Migration 065."],
     ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Legacy: Migration 057; APTMDAO: Migration 063. Kleine Registry-Gates statt Graph-Vollread bei Cache-HIT."],
     ["Partner-Botdetails","RAM/Cache","Supabase NFT/Ownership Caches","Apertum on-demand","Details/Anreicherung bei Bedarf"]]},
   {id:"dao-lp",level:2,label:"Liquidity Pools",status:"in_progress",start:"–",daily:"–",open:"DB/Cache",manual:"RPC",details:[["DAO1 LP-Positionen","LP Cache","Supabase LP Cache","Apertum RPC","Beim Untertab öffnen renderProjectLpTab"]]},
@@ -3038,6 +3039,7 @@ async function apertumCurrentDirectPrice(base,quote,bd,qd,explicitPair=null){
   return rb>0&&rq>0?{price:rq/rb,pair,baseReserve:rb,quoteReserve:rq}:null;
 }
 async function loadApertumCurrentPrices(){
+  const refreshedAt=new Date().toISOString();
   const chain="apertum",u=taxPredefinedBySymbol(chain,"WUSDT")||taxPredefinedBySymbol(chain,"USDT"),wa=taxPredefinedBySymbol(chain,"WAPTM");
   if(!u||!wa){console.warn("Apertum Live-Kurse: wAPTM oder wUSDT nicht in predefined_tokens gefunden");return;}
   const ud=await taxTokenDecimalsCurrent(chain,u),wd=await taxTokenDecimalsCurrent(chain,wa);
@@ -3050,9 +3052,9 @@ async function loadApertumCurrentPrices(){
     try{aptmLeg=await apertumCurrentDirectPrice(wa.address,u.address,wd,ud);}catch(e){console.warn("Apertum Referenzpool via Factory",e);}
   }
   const aptm=aptmLeg?.price;if(!(aptm>0)){console.warn("Apertum Live-Kurse: kein wAPTM/wUSDT-Preis ermittelbar");return;}
-  nativePrices[chain]={price:aptm,change24h:undefined,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`};
-  tokenPrices[chain+"|"+normalizeAddress(u.address,chain)]={price:1,source:"Apertum DEX · Stablecoin 1 USD"};
-  tokenPrices[chain+"|"+normalizeAddress(wa.address,chain)]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`};
+  nativePrices[chain]={price:aptm,change24h:undefined,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`,refreshedAt};
+  tokenPrices[chain+"|"+normalizeAddress(u.address,chain)]={price:1,source:"Apertum DEX · Stablecoin 1 USD",refreshedAt};
+  tokenPrices[chain+"|"+normalizeAddress(wa.address,chain)]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`,refreshedAt};
   const prefix=chain+"|";
   const addresses=[...new Set([...(SAFE_ADDRESSES[chain]||[]),...Object.keys(predefinedTokenLabels).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length)),...Object.keys(predefinedTokenSymbols).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length))])];
   for(const rawAddr of addresses){
@@ -3062,20 +3064,21 @@ async function loadApertumCurrentPrices(){
     const addr=normalizeAddress(rawAddr,chain);
     if(!ethers.isAddress(addr))continue;
     const key=chain+"|"+addr,sym=predefinedTokenTicker(chain,addr).toUpperCase();
-    if(["WUSDT","USDT","WUSDC","USDC"].includes(sym)){tokenPrices[key]={price:1,source:"Apertum DEX · Stablecoin 1 USD"};continue;}
-    if(sym==="WAPTM"){tokenPrices[key]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`};continue;}
+    if(["WUSDT","USDT","WUSDC","USDC"].includes(sym)){tokenPrices[key]={price:1,source:"Apertum DEX · Stablecoin 1 USD",refreshedAt};continue;}
+    if(sym==="WAPTM"){tokenPrices[key]={price:aptm,source:`Apertum DEX wAPTM/wUSDT · ${aptmLeg.pair}`,refreshedAt};continue;}
     const asset={address:addr,symbol:sym,decimals:predefinedTokenDecimals[key]};const bd=await taxTokenDecimalsCurrent(chain,asset);
     try{
       const direct=await apertumCurrentDirectPrice(addr,u.address,bd,ud);
       const via=await apertumCurrentDirectPrice(addr,wa.address,bd,wd);
       const directLiquidity=direct?direct.quoteReserve:0,viaLiquidity=via?via.quoteReserve*aptm:0;
-      if(direct&&directLiquidity>=viaLiquidity)tokenPrices[key]={price:direct.price,source:`Apertum DEX ${sym||"Token"}/wUSDT · ${direct.pair}`};
-      else if(via)tokenPrices[key]={price:via.price*aptm,source:`Apertum DEX ${sym||"Token"}/wAPTM → wUSDT · ${via.pair} · ${aptmLeg.pair}`};
+      if(direct&&directLiquidity>=viaLiquidity)tokenPrices[key]={price:direct.price,source:`Apertum DEX ${sym||"Token"}/wUSDT · ${direct.pair}`,refreshedAt};
+      else if(via)tokenPrices[key]={price:via.price*aptm,source:`Apertum DEX ${sym||"Token"}/wAPTM → wUSDT · ${via.pair} · ${aptmLeg.pair}`,refreshedAt};
     }catch(e){console.warn("Apertum Live-Kurs",sym||addr,e);}
   }
 }
 
 async function loadNativePrices() {
+  const refreshedAt=new Date().toISOString();
   const ids = [...new Set(
     Object.entries(CHAIN_META).filter(([chain])=>chain!=="apertum").map(([,m]) => m.coingeckoId)
       .concat(Object.entries(predefinedTokenCoinGeckoIds).filter(([key])=>!key.startsWith("apertum|")).map(([,id])=>id))
@@ -3097,7 +3100,8 @@ async function loadNativePrices() {
         prices[chain] = {
           price: data[id].usd,
           change24h: typeof data[id].usd_24h_change === "number" ? data[id].usd_24h_change : undefined,
-          source: "CoinGecko"
+          source: "CoinGecko",
+          refreshedAt
         };
       }
     });
@@ -3117,7 +3121,8 @@ async function loadNativePrices() {
           tPrices[key] = {
             price: data[cgId].usd,
             change24h: typeof data[cgId].usd_24h_change === "number" ? data[cgId].usd_24h_change : undefined,
-            source: "CoinGecko"
+            source: "CoinGecko",
+            refreshedAt
           };
           alreadyPriced[key] = true;
         }
@@ -3186,7 +3191,8 @@ async function loadTokenPricesViaGeckoTerminal(alreadyPriced) {
           tokenPrices[key] = {
             price,
             change24h: isFinite(change) ? change : undefined,
-            source: "GeckoTerminal (DEX)"
+            source: "GeckoTerminal (DEX)",
+            refreshedAt:new Date().toISOString()
           };
         });
       } catch (e) {
@@ -3342,6 +3348,7 @@ async function purgeWalletRelatedData(w) {
   await deleteWalletRows("wallet_fee_cache", q => q.eq("user_id", userId).eq("wallet_id", walletId), "Gebühren-Cache");
   await deleteWalletRows("nft_cache", q => q.eq("user_id", userId).eq("wallet_id", walletId), "NFT-Cache");
   await deleteWalletRows("discovery_cache", q => q.eq("user_id", userId).eq("wallet_id", walletId), "Discovery-Cache");
+  if (evmAddress) await deleteWalletRows("dao_partner_bot_lifecycle_cache", q => q.eq("user_id", userId).eq("wallet_address", evmAddress), "DAO Partner-Bot-Lifecycle");
 
   if (dbWalletId) {
     await deleteWalletRows("lp_history_events", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "LP-Historie");
@@ -4550,6 +4557,7 @@ window.loadDashboardLpPositionCache=loadDashboardLpPositionCache;
 
 function dashboardPortfolio(targetWallets){
   let freeUsd=0,boundUsd=0,unknownValues=0,boundEvidence=0;
+  const integratedLpKeys=new Set();
   const unknownAssets=new Map();
   const projects=new Map();
   for(const w of targetWallets){
@@ -4562,11 +4570,12 @@ function dashboardPortfolio(targetWallets){
         let rowBound=0;
         if(staked>0&&totalAmount>0&&Number.isFinite(usdValue)){
           rowBound=usdValue*Math.min(1,staked/totalAmount);boundEvidence++;
+          if(row.address)integratedLpKeys.add(`${String(w.dbId||w.id||'')}|${chain}|${normalizeAddress(row.address,chain)}`);
         }
         if(Number.isFinite(usdValue)){boundUsd+=rowBound;freeUsd+=Math.max(0,usdValue-rowBound);}else {unknownValues++;const uk=`${chain}|${row.isNative?"native":normalizeAddress(row.address||"",chain)}`;if(!unknownAssets.has(uk))unknownAssets.set(uk,{symbol:row.symbol||row.name||"Token",chain,address:row.isNative?"native":row.address||null});}
         if(!row.isNative&&row.address){
           const key=chain+"|"+normalizeAddress(row.address,chain),projectKey=predefinedTokenProject[key];
-          if(projectKey){const p=projects.get(projectKey)||{valueUsd:0,boundUsd:0,assets:0};if(Number.isFinite(usdValue))p.valueUsd+=usdValue;p.boundUsd+=rowBound;p.assets++;projects.set(projectKey,p);}
+          if(projectKey){const p=projects.get(projectKey)||{valueUsd:0,freeUsd:0,boundUsd:0,assets:0};if(Number.isFinite(usdValue)){p.valueUsd+=usdValue;p.freeUsd+=Math.max(0,usdValue-rowBound);}p.boundUsd+=rowBound;p.assets++;projects.set(projectKey,p);}
         }
       }
     }
@@ -4580,8 +4589,12 @@ function dashboardPortfolio(targetWallets){
     const totalLp=Number(r.current_lp||0),stakedLp=Number(r.current_staked_lp||0),usd=Number(r.current_usd);
     if(!(stakedLp>0)||!(totalLp>0)||!Number.isFinite(usd))continue;
     const stakedUsd=usd*Math.min(1,stakedLp/totalLp);if(!(stakedUsd>0))continue;
+    const lpKey=`${String(r.wallet_id||'')}|${String(r.chain_key||'')}|${normalizeAddress(r.pair_address||'',String(r.chain_key||''))}`;
+    // TLN/VOW integriert gestaktes LP bereits in walletData (Wallet-LP + Staking).
+    // Nur nicht bereits integrierte Positionscaches – z. B. DAO1 – zusätzlich zählen.
+    if(integratedLpKeys.has(lpKey))continue;
     boundUsd+=stakedUsd;boundEvidence++;
-    const projectKey=String(r.project_key||'');if(projectKey){const p=projects.get(projectKey)||{valueUsd:0,boundUsd:0,assets:0};p.valueUsd+=stakedUsd;p.boundUsd+=stakedUsd;p.assets++;projects.set(projectKey,p);}
+    const projectKey=String(r.project_key||'');if(projectKey){const p=projects.get(projectKey)||{valueUsd:0,freeUsd:0,boundUsd:0,assets:0};p.valueUsd+=stakedUsd;p.boundUsd+=stakedUsd;p.assets++;projects.set(projectKey,p);}
   }
   return {freeUsd,boundUsd,totalUsd:freeUsd+boundUsd,unknownValues,unknownAssets:[...unknownAssets.values()],boundEvidence,projects};
 }
@@ -4647,14 +4660,14 @@ function renderDashboard(){
   const chainIcon=r=>`<span class="dashboard-chain-dot chain-dot ${escapeAttr(CHAIN_META[r.chain]?.dot||r.chain)}" title="${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}"></span>`;
   const priceRows=rows=>`<div class="dashboard-table-wrap"><table class="dashboard-price-table dashboard-price-table-compact"><thead><tr><th>Token</th><th title="Chain">Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${rows.map(r=>`<tr><td><strong>${escapeAttr(r.displayName||r.symbol)}</strong>${dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${dashboardAddressHtml(r.address)}</td><td class="dashboard-chain-icon-cell">${chainIcon(r)}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?`<strong>${escapeAttr(r.price.source||"Quelle unbekannt")}</strong>${r.price.route?`<div class="meta">${escapeAttr(r.price.route)}</div>`:""}`:"Kein gespeicherter Kurs"}</td></tr>`).join("")}</tbody></table></div>`;
   const split=Math.ceil(prices.length/2),priceTable=prices.length?`<div class="dashboard-price-columns">${priceRows(prices.slice(0,split))}${priceRows(prices.slice(split))}</div>`:`<div class="empty">Keine Dashboard-Kurse gemäß aktueller Regel: Bestand &gt; 1 USD oder Flag „Im Dashboard immer anzeigen“.</div>`;
-  const projectCards=[...involvedProjects].map(key=>[key,portfolio.projects.get(key)||{valueUsd:0,boundUsd:0,assets:0}]).map(([key,p])=>{
+  const projectCards=[...involvedProjects].map(key=>[key,portfolio.projects.get(key)||{valueUsd:0,freeUsd:0,boundUsd:0,assets:0}]).map(([key,p])=>{
     const projectPrices=prices.filter(x=>x.project===key);
     const stats=dashboardProjectCacheStats[key]||{rewards:{}};
     const rewards=stats.rewards||{},referralRewards=stats.referralRewards||{},bonusRewards=stats.bonusRewards||{};
     const rewardBlock=(title,data)=>{const order=dashboardRewardAssetOrder(data);return `<div class="dashboard-reward-group"><div class="dashboard-reward-group-title">${title}</div><div class="dashboard-reward-lines"><div><span>Gesamt</span>${dashboardRewardPeriodHtml(data.total,order)}</div><div><span>Vorjahr</span>${dashboardRewardPeriodHtml(data.previousYear,order)}</div><div><span>Jahr</span>${dashboardRewardPeriodHtml(data.year,order)}</div><div><span>Monat</span>${dashboardRewardPeriodHtml(data.month,order)}</div></div></div>`;};
     const teamStats=key==="dao1"?`<div><span>DAO1 Partner</span><strong>${dashboardMetric(stats.dao1Partners)}</strong></div><div><span>APTMDAO Partner</span><strong>${dashboardMetric(stats.aptmdaoPartners)}</strong></div>`:`<div><span>Teampartner</span><strong>${dashboardMetric(stats.teamPartners)}</strong></div><div><span>davon aktiv</span><strong>${dashboardActivePartners(stats)}</strong></div>`;
     return `<article class="dashboard-project-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Projekt</span><h3>${escapeAttr(dashboardProjectTitle(key))}</h3></div><strong>${money(p.valueUsd)}</strong></div>
-      <div class="dashboard-project-stats dashboard-project-stats-compact"><div><span>Aktuelles Staking</span><strong>${p.boundUsd>0?money(p.boundUsd):"–"}</strong></div>${teamStats}</div>
+      <div class="dashboard-project-stats dashboard-project-stats-compact"><div><span>Frei verfügbar</span><strong>${money(p.freeUsd||0)}</strong></div><div><span>Aktuell gebunden</span><strong>${p.boundUsd>0?money(p.boundUsd):"–"}</strong></div><div><span>Projektwert gesamt</span><strong>${money(p.valueUsd||0)}</strong></div>${teamStats}</div>
       ${rewardBlock("Rewards",rewards)}${rewardBlock("Referral Rewards",referralRewards)}${key==="tln_vow"?rewardBlock("Bonus Rewards",bonusRewards):""}
       ${projectPrices.length?`<div class="dashboard-project-prices">${projectPrices.map(r=>`<span><span class="dashboard-project-token-name">${escapeAttr(r.displayName||r.symbol)}</span>${dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${dashboardAddressHtml(r.address)} <strong>${r.price?fmtPrice(r.price.price):"–"}</strong></span>`).join("")}</div>`:""}<button class="secondary" onclick="dashboardProjectOpen('${escapeAttr(key)}')">Projekt öffnen</button><div class="dashboard-cache-note">Dashboard-Grunddaten werden aus persistenten Projektcaches übernommen. Fehlende/veraltete Grunddaten werden durch den zentralen Hintergrundlauf nachgeführt; vollständige Discovery bleibt projektbezogen.</div></article>`;
   }).join("");
