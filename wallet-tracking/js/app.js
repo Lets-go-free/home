@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.42 · 19.09.2026 22:00:46 CEST · Build 20260919-220046 */
+/* WalletTracking Phase 5.43 · 19.09.2026 22:16:56 CEST · Build 20260919-221656 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1385,7 +1385,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
     ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → fertig, DB 0 / RPC 0 bei HIT; manueller Update-Pfad inkrementell mit 24-Block-Overlap"],
     ["APTMDAO Team-Kanten","IndexedDB · dao1/aptmdao-tree","Supabase aptmdao_tree_*","Apertum NFT-Mint-Event; RPC nur bei Update/Erstaufbau","Phase 5.39: child/parent/wallet on-chain verifiziert; eigener Graph, max. 20 Ebenen; Migration 063. DAO1/APTMDAO sind eigenständige DID-/Alias-Systeme. Normaler Cache-HIT ohne RPC, Update mit 24-Block-Overlap."],
-    ["DAO Partner-Bot-Lifecycle","RAM + Dashboard-Summary","dao_partner_bot_lifecycle_cache","Apertum Explorer nur bei sichtbaren Partnern/Details","Phase 5.41: Bot wird nur bei eindeutiger Erwerbs-Tx-Evidenz DAO1 oder APTMDAO zugeordnet. Unklare Fälle bleiben offen. Persistenter userbezogener Cache liefert letzte Bot-Käufe beim Dashboardstart; Migration 065."],
+    ["DAO Partner-Bot-Lifecycle","RAM + Dashboard-Summary","dao_partner_bot_lifecycle_cache","Apertum Explorer nur beim gezielten Öffnen von Partnerdetails","Phase 5.43: Tree-Render bleibt cache-only; gleiche Explorer-Requests werden dedupliziert und Erwerbsprüfungen auf 2 parallel begrenzt. Identitäts-NFTs werden nie als Bots geführt. Fehlt Tx-Systemevidenz, ist eine Bot→DID-Zuordnung nur bei genau einer DID derselben Wallet im aktiven DAO-Tree zulässig. Persistenter Cache liefert letzte Bot-Käufe; Migration 065."],
     ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Legacy: Migration 057; APTMDAO: Migration 063. Kleine Registry-Gates statt Graph-Vollread bei Cache-HIT."],
     ["Partner-Botdetails","RAM/Cache","Supabase NFT/Ownership Caches","Apertum on-demand","Details/Anreicherung bei Bedarf"]]},
   {id:"dao-lp",level:2,label:"Liquidity Pools",status:"in_progress",start:"–",daily:"–",open:"DB/Cache",manual:"RPC",details:[["DAO1 LP-Positionen","LP Cache","Supabase LP Cache","Apertum RPC","Beim Untertab öffnen renderProjectLpTab"]]},
