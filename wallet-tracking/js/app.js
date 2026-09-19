@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.25 · 19.09.2026 01:36:47 CEST · Build 20260919-013647 */
+/* WalletTracking Phase 5.27 · 19.09.2026 11:37:33 CEST · Build 20260919-113733 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -254,6 +254,8 @@ async function onLoggedIn(session) {
   }
 
   document.getElementById("appContent").style.display = "block";
+  // Dashboard sofort als sichtbare Startseite setzen; die Cache-Daten füllen sich danach schrittweise.
+  if(!userNavigationTouched) showTab("dashboard");
 
   isAdmin = await checkIsAdmin();
   try{adminDebugMode=isAdmin&&sessionStorage.getItem(ADMIN_DEBUG_SESSION_KEY)==="1";}catch(_){adminDebugMode=false;}
@@ -3213,7 +3215,7 @@ function renderGlobalWalletPersonFilter(){
 }
 function setGlobalWalletPersonFilter(value){
   globalWalletPersonFilter=String(value||"__own");
-  renderDashboard();renderResults();renderWalletNav();renderAllocationChart();
+  renderDashboard();renderResults();renderWalletNav();renderChartWalletSelect();renderAllocWalletSelect();renderAllocationChart();
   if(document.getElementById("tab-tax")?.classList.contains("active"))renderTaxWalletSelect();
 }
 window.setGlobalWalletPersonFilter=setGlobalWalletPersonFilter;
@@ -4368,6 +4370,13 @@ function chainRows(chainData, chainKey) {
   return { rows };
 }
 
+function dashboardTokenDisplayName(chain,address,symbol){
+  const normalized=normalizeAddress(address,chain), key=chain+"|"+normalized;
+  const custom=customSafeTokens.find(t=>t.chain===chain&&normalizeAddress(t.address,chain)===normalized);
+  const cached=tokenMetaCache[key]||{};
+  return String(predefinedTokenNames[key]||predefinedTokenLabels[key]||custom?.label||cached.name||cached.symbol||symbol||address).trim();
+}
+
 function dashboardPriceRows(){
   const rows=[];
   for(const [key,visible] of Object.entries(predefinedTokenDashboardVisible)){
@@ -4377,7 +4386,7 @@ function dashboardPriceRows(){
     const native=address==="native";
     const meta=native?predefinedNativeAssets[chain]:null;
     const symbol=meta?.symbol||predefinedTokenSymbols[key]||predefinedTokenLabels[key]||address;
-    const displayName=meta?.name||predefinedTokenNames[key]||predefinedTokenLabels[key]||symbol;
+    const displayName=meta?.name||dashboardTokenDisplayName(chain,address,symbol);
     const price=native?nativePrices[chain]:priceForToken(chain,address);
     rows.push({key,chain,address,symbol,displayName,project:predefinedTokenProject[key]||null,price});
   }
@@ -4910,7 +4919,7 @@ function renderAllocationChart() {
     options: {
       responsive: true,
       plugins: {
-        legend: { position: "bottom", labels: { color: "#e8e9ec", boxWidth: 12, padding: 10 } },
+        legend: { position: "bottom", labels: { color: getComputedStyle(document.documentElement).getPropertyValue("--text").trim() || "#10213f", boxWidth: 12, padding: 10 } },
         tooltip: {
           callbacks: {
             label: (ctx) => {

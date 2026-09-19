@@ -2,8 +2,8 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260919-013647";
-const HELP_MODULE_TIMESTAMP="19.09.2026 01:36:47 CEST";
+const HELP_MODULE_BUILD="20260919-113733";
+const HELP_MODULE_TIMESTAMP="19.09.2026 11:37:33 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;

@@ -47,7 +47,7 @@
 </script>
 <title>Token-Übersicht Wallets</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><text y=%2250%22 x=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2252%22>💼</text></svg>">
-<link rel="stylesheet" href="./css/wallet-tracking.css?v=20260919-112007">
+<link rel="stylesheet" href="./css/wallet-tracking.css?v=20260919-113733">
 <link rel="stylesheet" href="./projects/tln-vow/tln-vow-discovery.css?v=20260913-180423">
 
 
@@ -138,53 +138,6 @@
 
     <div id="tab-dashboard" class="tab-panel">
       <div id="dashboardContent"><div class="empty">Dashboard-Cache wird geladen…</div></div>
-    </div>
-
-    <div id="tab-tracking" class="tab-panel">
-      <div class="action-row" style="align-items:center;flex-wrap:wrap">
-        <button id="loadBtn" onclick="loadAll()">Daten aktualisieren</button>
-        <button id="currentPriceRefreshBtn" class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button>
-        <span class="note" style="margin:0"><strong>Datenstatus:</strong> <span id="cacheStatusNote"></span></span>
-      </div>
-      <div id="currentPriceStatus" class="note wt-data-status-line" style="margin:8px 0 12px"><strong>Preisstand:</strong> wird geprüft…</div>
-      <div id="centralRefreshProgress"></div>
-      <div id="walletDataFreshness"></div>
-      <div id="centralProjectRefreshScratch" style="display:none"></div>
-      <div class="note" style="margin-bottom:14px">
-        Beim Login wird zuerst der letzte gespeicherte Stand angezeigt. Pro Wallet und Datentyp wird höchstens einmal pro Kalendertag automatisch geprüft. Nur bei relevanter Blockchain-Aktivität werden Bestände, Projektpositionen/LP/Staking und NFTs neu geladen. „Daten aktualisieren“ erneuert diese Bestandsdaten. „Preise aktualisieren“ erneuert dagegen ausschließlich <strong>alle aktuellen Kurse</strong> (native Coins, sichere/eigene Token, Apertum sowie TLN/VOW inklusive aktueller LP-Bewertungen) und die daraus abgeleiteten USD-Werte – ohne Bestände, Discovery, Stakings, Rewards, Team oder historische Stichtage neu zu berechnen. Entdecken und Gebühren bleiben bewusst manuell.
-        Die Balance-Abfrage wird pro Chain über die zentrale Supabase-Konfiguration gesteuert; angezeigt werden native Coins sowie vordefinierte und eigene sichere Token.
-      </div>
-
-      <div class="custom-token-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <span class="field-label" style="margin:0">Chains anzeigen</span>
-          <div style="display:flex;gap:8px">
-            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllChainFilter(true)">Alle wählen</button>
-            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllChainFilter(false)">Alle abwählen</button>
-          </div>
-        </div>
-        <div id="chainFilterContainer" style="display:flex;flex-wrap:wrap;gap:14px"></div>
-      </div>
-
-      <div class="field-grid" style="grid-template-columns:220px auto;align-items:end;margin-bottom:20px">
-        <div>
-          <span class="field-label">Gehe zu Wallet</span>
-          <select id="walletNav" onchange="goToWallet(this.value)">
-            <option value="">– auswählen –</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="custom-token-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <span class="field-label" style="margin:0">Snapshots (Token-Bestand zu einem Zeitpunkt, als zusätzliche Spalten je Wallet)</span>
-          <button onclick="createSnapshot()">📸 Snapshot erstellen</button>
-        </div>
-        <details>
-          <summary style="cursor:pointer;font-size:0.85rem;color:var(--muted)">Erstellte Snapshots anzeigen/verwalten</summary>
-          <div id="snapshotManagerList" style="margin-top:10px"></div>
-        </details>
-      </div>
 
       <h2>Summary (alle Wallets)</h2>
 
@@ -237,6 +190,55 @@
       </div>
 
       <div id="summaryContainer"></div>
+
+    </div>
+
+    <div id="tab-tracking" class="tab-panel">
+      <div class="action-row" style="align-items:center;flex-wrap:wrap">
+        <button id="loadBtn" onclick="loadAll()">Daten aktualisieren</button>
+        <button id="currentPriceRefreshBtn" class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button>
+        <span class="note" style="margin:0"><strong>Datenstatus:</strong> <span id="cacheStatusNote"></span></span>
+      </div>
+      <div id="currentPriceStatus" class="note wt-data-status-line" style="margin:8px 0 12px"><strong>Preisstand:</strong> wird geprüft…</div>
+      <div id="centralRefreshProgress"></div>
+      <div id="walletDataFreshness"></div>
+      <div id="centralProjectRefreshScratch" style="display:none"></div>
+      <div class="note" style="margin-bottom:14px">
+        Beim Login wird zuerst der letzte gespeicherte Stand angezeigt. Pro Wallet und Datentyp wird höchstens einmal pro Kalendertag automatisch geprüft. Nur bei relevanter Blockchain-Aktivität werden Bestände, Projektpositionen/LP/Staking und NFTs neu geladen. „Daten aktualisieren“ erneuert diese Bestandsdaten. „Preise aktualisieren“ erneuert dagegen ausschließlich <strong>alle aktuellen Kurse</strong> (native Coins, sichere/eigene Token, Apertum sowie TLN/VOW inklusive aktueller LP-Bewertungen) und die daraus abgeleiteten USD-Werte – ohne Bestände, Discovery, Stakings, Rewards, Team oder historische Stichtage neu zu berechnen. Entdecken und Gebühren bleiben bewusst manuell.
+        Die Balance-Abfrage wird pro Chain über die zentrale Supabase-Konfiguration gesteuert; angezeigt werden native Coins sowie vordefinierte und eigene sichere Token.
+      </div>
+
+      <div class="custom-token-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="field-label" style="margin:0">Chains anzeigen</span>
+          <div style="display:flex;gap:8px">
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllChainFilter(true)">Alle wählen</button>
+            <button class="secondary" style="padding:4px 10px;font-size:0.78rem" onclick="setAllChainFilter(false)">Alle abwählen</button>
+          </div>
+        </div>
+        <div id="chainFilterContainer" style="display:flex;flex-wrap:wrap;gap:14px"></div>
+      </div>
+
+      <div class="field-grid" style="grid-template-columns:220px auto;align-items:end;margin-bottom:20px">
+        <div>
+          <span class="field-label">Gehe zu Wallet</span>
+          <select id="walletNav" onchange="goToWallet(this.value)">
+            <option value="">– auswählen –</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="custom-token-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="field-label" style="margin:0">Snapshots (Token-Bestand zu einem Zeitpunkt, als zusätzliche Spalten je Wallet)</span>
+          <button onclick="createSnapshot()">📸 Snapshot erstellen</button>
+        </div>
+        <details>
+          <summary style="cursor:pointer;font-size:0.85rem;color:var(--muted)">Erstellte Snapshots anzeigen/verwalten</summary>
+          <div id="snapshotManagerList" style="margin-top:10px"></div>
+        </details>
+      </div>
+
 
       <h2>Details je Wallet</h2>
       <div id="resultsContainer"></div>
@@ -1115,7 +1117,7 @@
   </div>
 
   <footer>
-    Version vom 19.09.2026 11:20:07 CEST · Phase 5.26 · Dashboard-Finish und Native-Coin-Stammdaten<br>
+    Version vom 19.09.2026 11:37:33 CEST · Phase 5.27 · Dashboard-Summary und Token-Namen<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1134,12 +1136,12 @@
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20260919-112007"></script>
-<script src="./help/help-general.js?v=20260919-112007"></script>
+<script src="./admin/ideas.js?v=20260919-113733"></script>
+<script src="./help/help-general.js?v=20260919-113733"></script>
 <script src="./projects/tln-vow/help.js?v=20260914-182500"></script>
 <script src="./projects/dao1/help.js?v=20260917-215800"></script>
-<script src="./js/app.js?v=20260919-112007"></script>
-<script src="./projects/tln-vow/tln-vow-discovery.js?v=20260919-112007"></script>
+<script src="./js/app.js?v=20260919-113733"></script>
+<script src="./projects/tln-vow/tln-vow-discovery.js?v=20260919-113733"></script>
 
 
 
@@ -1157,6 +1159,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 19.09.2026 01:36:47 CEST · Phase 5.25 · Build 20260919-013647</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 19.09.2026 11:37:33 CEST · Phase 5.27 · Build 20260919-113733</div>
 </body>
 </html>
