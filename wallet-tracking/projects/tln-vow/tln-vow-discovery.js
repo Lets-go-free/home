@@ -1,6 +1,6 @@
-/* TLN/VOW Discovery shared engine · Build 20260919-140811 */
+/* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260919-170454';
+const BUILD_ID='20260919-182627';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +192,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='19.09.2026 17:04:54 CEST';
+const APP_VERSION='19.09.2026 18:26:27 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -17147,11 +17147,22 @@ function renderTeamTree(){
     const unknownPartners=Math.max(0,partnerRows.length-verifiedPartners.length);
     // Solange Lifecycles offen sind, darf die Teilmenge nicht als endgültiges "davon aktiv"
     // erscheinen. Dashboard zeigt deshalb bestätigte Aktive + offene Prüfungen getrennt.
+    const expiredPartnerStakings=[];
+    for(const w of partnerRows){
+      const life=TEAM_STAKING_LIFECYCLE.get(norm(w));if(!life?.verified)continue;
+      const ident=TEAM_IDENTITY_CACHE.get(norm(w))||{};
+      for(const x of (life.open||[])){
+        if(x.status!=='expired_still_staked')continue;
+        const lot=x.lot||{},expiry=lot.expiryTime||lot.contractEndTime||lot.releaseTime||null;
+        expiredPartnerStakings.push({wallet:w,tlnId:String(ident.nodeId||''),name:teamAliasFor(w,ident)||projectOwnWalletLabel(w)||`TLN-ID ${ident.nodeId||'?'}`,asset:safePairLabel(lot)||lot.pairLabel||lot.symbol||'Staking',expiry:expiry?teamFormatStakeDate(expiry,true):''});
+      }
+    }
     window.setDashboardProjectCacheStats?.('tln_vow',{
       teamPartners:partnerRows.length,
       activePartners:unknownPartners?null:activePartners,
       activePartnersVerified:activePartners,
       activePartnersUnknown:unknownPartners,
+      expiredPartnerStakings,
       updatedAt:new Date().toISOString()
     });
   }catch(e){console.warn('TLN Dashboard-Summary',e);}

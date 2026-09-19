@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.38 · 19.09.2026 17:04:54 CEST · Build 20260919-170454 */
+/* WalletTracking Phase 5.39 · 19.09.2026 18:26:27 CEST · Build 20260919-182627 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1251,7 +1251,7 @@ function exportTaxPdf(){
 const WT_DATA_STATUS = window.WT_DATA_STATUS || (window.WT_DATA_STATUS = {});
 function wtFormatDataStamp(v){if(!v)return null;const d=new Date(v);if(Number.isNaN(d.getTime()))return null;return d.toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:false});}
 function setWtDataStatus(key,{updatedAt=null,cacheAt=null,source=null,label=null}={}){const prev=WT_DATA_STATUS[key]||{},next={...prev,updatedAt,cacheAt,source,label};if(JSON.stringify(prev)===JSON.stringify(next))return;WT_DATA_STATUS[key]=next;document.dispatchEvent(new CustomEvent("wallettracking:data-status",{detail:{key,...next}}));}
-function wtDataStatusText(key){const x=WT_DATA_STATUS[key];if(!x)return "Datenstand: noch nicht instrumentiert";const u=wtFormatDataStamp(x.updatedAt),c=wtFormatDataStamp(x.cacheAt);if(c&&x.source==="cache")return `aus Cache vom ${c}`;if(u)return `Daten aktualisiert am ${u}`;if(c)return `aus Cache vom ${c}`;return "Datenstand: noch nicht instrumentiert";}
+function wtDataStatusText(key){const x=WT_DATA_STATUS[key];if(!x)return "Aktualisierungszeitpunkt noch nicht verfügbar";const u=wtFormatDataStamp(x.updatedAt),c=wtFormatDataStamp(x.cacheAt);if(c&&x.source==="cache")return `aus Cache vom ${c}`;if(u)return `Daten aktualisiert am ${u}`;if(c)return `aus Cache vom ${c}`;return "Aktualisierungszeitpunkt noch nicht verfügbar";}
 function ensureTabDataStatus(panel,name){if(!panel||name==="admin")return;let el=panel.querySelector(":scope > .wt-tab-data-status");if(!el){el=document.createElement("div");el.className="wt-tab-data-status";panel.insertBefore(el,panel.firstChild);}const key=name==="tlnvow"?"tln":name==="dao1"?"dao":name;el.innerHTML=`<strong>Datenstand:</strong> ${escapeAttr(wtDataStatusText(key).replace(/^Datenstand:\s*/,""))}`;}
 function toggleSidebarCollapsed(force){const shell=document.querySelector(".app-shell");if(!shell)return;const next=typeof force==="boolean"?force:!shell.classList.contains("sidebar-collapsed");shell.classList.toggle("sidebar-collapsed",next);try{localStorage.setItem("wt-sidebar-collapsed",next?"1":"0")}catch{};const b=document.getElementById("sidebarCollapseBtn");if(b)b.setAttribute("aria-expanded",next?"false":"true");}
 window.setWtDataStatus=setWtDataStatus;window.toggleSidebarCollapsed=toggleSidebarCollapsed;
@@ -1384,7 +1384,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase Tx/Flow Cache","Apertum nur bei manueller Aktualisierung","Dashboard und Detail verwenden dieselben Referral-Regeln; nur relevantes DAO1 Referral-Wallet"]]},
   {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
     ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → fertig, DB 0 / RPC 0 bei HIT; manueller Update-Pfad inkrementell mit 24-Block-Overlap"],
-    ["APTMDAO Team-Kanten","IndexedDB · dao1/aptmdao-tree","Supabase aptmdao_tree_*","Apertum NFT-Mint-Event; RPC nur bei Update/Erstaufbau","Phase 5.38: child/parent/wallet on-chain verifiziert; eigener Graph, max. 20 Ebenen; Migration 063. DAO1/APTMDAO sind eigenständige DID-/Alias-Systeme. Normaler Cache-HIT ohne RPC, Update mit 24-Block-Overlap."],
+    ["APTMDAO Team-Kanten","IndexedDB · dao1/aptmdao-tree","Supabase aptmdao_tree_*","Apertum NFT-Mint-Event; RPC nur bei Update/Erstaufbau","Phase 5.39: child/parent/wallet on-chain verifiziert; eigener Graph, max. 20 Ebenen; Migration 063. DAO1/APTMDAO sind eigenständige DID-/Alias-Systeme. Normaler Cache-HIT ohne RPC, Update mit 24-Block-Overlap."],
     ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Legacy: Migration 057; APTMDAO: Migration 063. Kleine Registry-Gates statt Graph-Vollread bei Cache-HIT."],
     ["Partner-Botdetails","RAM/Cache","Supabase NFT/Ownership Caches","Apertum on-demand","Details/Anreicherung bei Bedarf"]]},
   {id:"dao-lp",level:2,label:"Liquidity Pools",status:"in_progress",start:"–",daily:"–",open:"DB/Cache",manual:"RPC",details:[["DAO1 LP-Positionen","LP Cache","Supabase LP Cache","Apertum RPC","Beim Untertab öffnen renderProjectLpTab"]]},
@@ -1420,7 +1420,7 @@ function adminSystemIdeaStatus(row){
 }
 function adminSystemStatusMeta(status){return ({done:["🟢","Erledigt"],in_progress:["🟡","In Arbeit"],error:["🔴","Fehlerhaft"],planning:["⚪","In Planung"]})[status]||["⚪","In Planung"]}
 function wtSystemDataKey(row){if(row.id==="tracking")return "tracking";if(row.id==="dao-team")return "dao-team";if(row.id==="tln-team")return "tln-team";if(row.id.startsWith("dao"))return "dao";if(row.id.startsWith("tln"))return "tln";return row.id}
-function wtSystemCurrentText(row,childrenMap){if(childrenMap.has(row.id))return "–";const own=WT_DATA_STATUS[wtSystemDataKey(row)];return own?wtDataStatusText(wtSystemDataKey(row)):"noch nicht instrumentiert"}
+function wtSystemCurrentText(row,childrenMap){if(childrenMap.has(row.id))return "–";const own=WT_DATA_STATUS[wtSystemDataKey(row)];return own?wtDataStatusText(wtSystemDataKey(row)):"Aktualisierungszeitpunkt noch nicht verfügbar"}
 async function refreshAdminSystemDataVersions(){if(!sb||!isAdmin)return;try{const {data,error}=await sb.from("cache_data_versions").select("namespace,cache_key,data_version,sync_cursor,updated_at").in("namespace",["dao1","tln-vow"]);if(error)throw error;for(const r of data||[]){const key=r.namespace==="dao1"&&["legacy-tree","aptmdao-tree"].includes(r.cache_key)?"dao-team":r.namespace==="tln-vow"&&r.cache_key==="smartnode-global-graph"?"tln-team":null;if(key)setWtDataStatus(key,{updatedAt:r.sync_cursor||r.updated_at,cacheAt:r.updated_at,source:"cache"})}}catch(e){console.warn("Systemübersicht DATA_VERSIONS",e)}}
 function renderAdminSystemOverview(){
   const host=document.getElementById("adminSystemOverview");if(!host||!isAdmin)return;const cm=wtSystemChildrenMap(),pm=wtSystemParentMap();try{if(localStorage.getItem(WT_SYSTEM_TREE_STATE_KEY)===null)wtSystemExpanded=new Set(cm.keys())}catch{};
@@ -4331,6 +4331,7 @@ async function refreshDashboardProjectSummaries(){
   const jobs=[];
   if(window.TLNVOWDiscovery?.loadDashboardSummary)jobs.push(window.TLNVOWDiscovery.loadDashboardSummary().catch(e=>console.warn("TLN Dashboard-Grunddaten",e)));
   if(window.DAO1Project?.loadDashboardSummary)jobs.push(window.DAO1Project.loadDashboardSummary().catch(e=>console.warn("DAO1 Dashboard-Grunddaten",e)));
+  jobs.push(loadDashboardLpPositionCache().catch(e=>console.warn("Dashboard LP-Positionscache",e)));
   await Promise.all(jobs);renderDashboard();
 }
 window.refreshDashboardProjectSummaries=refreshDashboardProjectSummaries;
@@ -4497,7 +4498,7 @@ function dashboardProjectHasSummaryEvidence(projectKey){
   return ["rewards","referralRewards","bonusRewards"].some(field=>Object.values(st[field]||{}).some(rows=>Array.isArray(rows)&&rows.some(x=>Number(x?.amount||0)!==0)));
 }
 function dashboardPriceRows(targetWallets=walletsForCurrentView(),involvedProjects=new Set()){
-  // Phase 5.38: positive Bestände werden automatisch berücksichtigt, sobald ihr
+  // Phase 5.39: positive Bestände werden automatisch berücksichtigt, sobald ihr
   // bewertbarer Gesamtbestand > USD 1 ist. Das Flag bedeutet nur noch "immer anzeigen"
   // und hält einen Kurs auch bei Bestand 0 sichtbar. Projekt-Token bleiben verborgen,
   // solange der User im betreffenden Projekt nicht nachweisbar beteiligt ist.
@@ -4530,6 +4531,22 @@ function dashboardPriceRows(targetWallets=walletsForCurrentView(),involvedProjec
   return rows.sort((a,b)=>(a.project||"").localeCompare(b.project||"")||a.symbol.localeCompare(b.symbol));
 }
 
+let dashboardLpPositionCache=[];
+async function loadDashboardLpPositionCache(){
+  if(!currentUser?.id||!wallets.length||!sb){dashboardLpPositionCache=[];return []}
+  const ids=wallets.map(w=>String(w.dbId||w.id||'')).filter(x=>x&&!x.startsWith('local'));
+  if(!ids.length){dashboardLpPositionCache=[];return []}
+  try{
+    const {data,error}=await sb.from('lp_position_cache').select('project_key,chain_key,wallet_id,wallet_address,pair_address,current_wallet_lp,current_staked_lp,current_lp,current_usd,refreshed_at,updated_at').eq('user_id',currentUser.id).in('wallet_id',ids);
+    if(error)throw error;
+    dashboardLpPositionCache=(data||[]).filter(r=>Number(r.current_lp||0)>0||Number(r.current_staked_lp||0)>0);
+    const stamps=dashboardLpPositionCache.map(r=>r.refreshed_at||r.updated_at).filter(Boolean).sort();
+    setWtDataStatus('lp-positions',{updatedAt:stamps.at(-1)||null,cacheAt:stamps.at(-1)||null,source:'cache',label:'LP-Positionscache'});
+    return dashboardLpPositionCache;
+  }catch(e){console.warn('Dashboard LP-Positionscache',e);return dashboardLpPositionCache}
+}
+window.loadDashboardLpPositionCache=loadDashboardLpPositionCache;
+
 function dashboardPortfolio(targetWallets){
   let freeUsd=0,boundUsd=0,unknownValues=0,boundEvidence=0;
   const unknownAssets=new Map();
@@ -4552,6 +4569,18 @@ function dashboardPortfolio(targetWallets){
         }
       }
     }
+  }
+  // Persistente LP-Positionen sind die fachliche Quelle für gebundene LP-Werte. Nur der
+  // gestakte Anteil wird zusätzlich zum Wallet-Bestand berücksichtigt; der frei im Wallet
+  // liegende LP-Anteil steckt bereits in den normalen Beständen und würde sonst doppelt zählen.
+  const selectedIds=new Set((targetWallets||[]).map(w=>String(w.dbId||w.id||'')));
+  for(const r of dashboardLpPositionCache){
+    if(selectedIds.size&&!selectedIds.has(String(r.wallet_id||'')))continue;
+    const totalLp=Number(r.current_lp||0),stakedLp=Number(r.current_staked_lp||0),usd=Number(r.current_usd);
+    if(!(stakedLp>0)||!(totalLp>0)||!Number.isFinite(usd))continue;
+    const stakedUsd=usd*Math.min(1,stakedLp/totalLp);if(!(stakedUsd>0))continue;
+    boundUsd+=stakedUsd;boundEvidence++;
+    const projectKey=String(r.project_key||'');if(projectKey){const p=projects.get(projectKey)||{valueUsd:0,boundUsd:0,assets:0};p.valueUsd+=stakedUsd;p.boundUsd+=stakedUsd;p.assets++;projects.set(projectKey,p);}
   }
   return {freeUsd,boundUsd,totalUsd:freeUsd+boundUsd,unknownValues,unknownAssets:[...unknownAssets.values()],boundEvidence,projects};
 }
@@ -4591,7 +4620,7 @@ function setDashboardProjectCacheStats(projectKey,patch={}){
   if(Object.prototype.hasOwnProperty.call(patch,"activePartners"))cur.activePartners=patch.activePartners;
   if(Object.prototype.hasOwnProperty.call(patch,"activePartnersVerified"))cur.activePartnersVerified=patch.activePartnersVerified;
   if(Object.prototype.hasOwnProperty.call(patch,"activePartnersUnknown"))cur.activePartnersUnknown=patch.activePartnersUnknown;
-  for(const field of ["dao1Partners","aptmdaoPartners"])if(Object.prototype.hasOwnProperty.call(patch,field))cur[field]=patch[field];
+  for(const field of ["dao1Partners","aptmdaoPartners","expiredPartnerStakings","upcomingPartnerStakings"])if(Object.prototype.hasOwnProperty.call(patch,field))cur[field]=patch[field];
   if(patch.rewards)cur.rewards={...(cur.rewards||{}),...patch.rewards};
   if(patch.referralRewards)cur.referralRewards={...(cur.referralRewards||{}),...patch.referralRewards};
   if(patch.bonusRewards)cur.bonusRewards={...(cur.bonusRewards||{}),...patch.bonusRewards};
@@ -4630,15 +4659,13 @@ function renderDashboard(){
   const staleWallets=targetWallets.filter(w=>Object.keys(CHAIN_CONFIG).some(c=>walletAddressForChain(w,c)&&!refreshedToday(w,c,"balances"))).length;
   root.innerHTML=`
     <div class="dashboard-heading"><div><h2>Persönliches Dashboard</h2><p>Gespeicherter Stand für ${escapeAttr(document.getElementById("globalWalletPersonFilter")?.selectedOptions?.[0]?.textContent||"Eigene Wallets")}</p></div><button onclick="loadAll()">Daten aktualisieren</button></div>
-    <section class="dashboard-kpi-grid">
-      <article class="dashboard-kpi dashboard-kpi-blue"><span>Gesamtvermögen</span><strong>${money(portfolio.totalUsd)}</strong><small>aktuell bewertbarer Cache-Stand</small></article>
-      <article class="dashboard-kpi dashboard-kpi-green"><span>Frei verfügbar</span><strong>${money(portfolio.freeUsd)}</strong><small>direkt in ${targetWallets.length} ausgewählten Wallet(s)</small></article>
-      <article class="dashboard-kpi dashboard-kpi-purple"><span>Aktuell gebunden</span><strong>${boundValue}</strong><small>${portfolio.boundEvidence?"aus vorhandenem Positionscache":"Positionscache noch nicht im Dashboard verfügbar"}</small></article>
+    <section class="dashboard-kpi-grid dashboard-kpi-grid-main">
+      <article class="dashboard-kpi dashboard-kpi-blue dashboard-wealth-kpi"><span class="dashboard-kpi-main-title">Vermögen</span><div class="dashboard-wealth-lines"><div><small>Gesamtvermögen</small><strong>${money(portfolio.totalUsd)}</strong><em>aktuell bewertbarer Cache-Stand</em></div><div><small>Frei verfügbar</small><strong>${money(portfolio.freeUsd)}</strong><em>direkt in ${targetWallets.length} ausgewählten Wallet(s)</em></div><div><small>Aktuell gebunden</small><strong>${boundValue}</strong><em>${portfolio.boundEvidence?"aus persistentem Positionscache":"noch kein bewertbarer Positionscache"}</em></div></div></article>
       ${rewardKpi("Rewards",globalRewards)}
       ${rewardKpi("Referral Rewards",globalReferralRewards)}
     </section>
     ${portfolio.unknownValues?`<div class="dashboard-data-warning"><strong>${portfolio.unknownValues} Vermögenswert(e) ohne gespeicherten Kurs:</strong> ${portfolio.unknownAssets.map(x=>`${escapeAttr(x.symbol)} (${escapeAttr(CHAIN_META[x.chain]?.label||x.chain.toUpperCase())})`).join(", ")} – nicht in den Geldsummen enthalten.</div>`:""}
-    <section class="dashboard-main-grid"><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Aktuelle Kurse</h3><p>Bestand &gt; 1 USD sowie „immer anzeigen“-Token</p></div><button class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button></div>${priceTable}</article><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Was muss ich tun?</h3><p>Nur aus bestätigten Cache-Daten</p></div></div><div class="dashboard-action-list">${staleWallets?`<div><span class="dashboard-action-icon warning">!</span><p><strong>${staleWallets} Wallet(s) mit älterem Bestandsstand</strong><small>Eine Aktualisierung ist verfügbar.</small></p></div>`:`<div><span class="dashboard-action-icon ok">✓</span><p><strong>Bestandsstände aktuell</strong><small>Keine fällige Bestandsaktualisierung erkannt.</small></p></div>`}<div><span class="dashboard-action-icon neutral">↗</span><p><strong>Partner-Stakings</strong><small>Auslaufende/abgelaufene Positionen werden nach Anschluss des TLN-Team-Caches hier angezeigt.</small></p></div></div></article></section>
+    <section class="dashboard-main-grid"><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Aktuelle Kurse</h3><p>Bestand &gt; 1 USD sowie „immer anzeigen“-Token</p></div><button class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button></div>${priceTable}</article><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Was muss ich tun?</h3><p>Nur aus bestätigten Cache-Daten</p></div></div><div class="dashboard-action-list">${staleWallets?`<div><span class="dashboard-action-icon warning">!</span><p><strong>${staleWallets} Wallet(s) mit älterem Bestandsstand</strong><small>Eine Aktualisierung ist verfügbar.</small></p></div>`:`<div><span class="dashboard-action-icon ok">✓</span><p><strong>Bestandsstände aktuell</strong><small>Keine fällige Bestandsaktualisierung erkannt.</small></p></div>`}${(()=>{const rows=Array.isArray(dashboardProjectCacheStats.tln_vow?.expiredPartnerStakings)?dashboardProjectCacheStats.tln_vow.expiredPartnerStakings:[];if(!rows.length)return `<div><span class="dashboard-action-icon ok">✓</span><p><strong>Partner-Stakings</strong><small>Keine verifizierten abgelaufenen, noch gestakten Partner-Positionen im aktuellen Team-Cache.</small></p></div>`;return `<div><span class="dashboard-action-icon warning">!</span><p><strong>${rows.length} abgelaufene Partner-Staking${rows.length===1?'':'s'} noch zu unstaken</strong><small>${rows.slice(0,3).map(r=>`${escapeAttr(r.name||r.tlnId||'Partner')} · ${escapeAttr(r.asset||'Staking')} · abgelaufen ${escapeAttr(r.expiry||'')}`).join('<br>')}${rows.length>3?`<br>+ ${rows.length-3} weitere`:''}</small></p></div>`})()}</div></article></section>
     <div class="dashboard-section-title"><h3>Projekte</h3><span>Nur vorhandene Projekte</span></div>
     <section class="dashboard-project-grid">${projectCards||'<div class="empty">In den ausgewählten Wallets ist noch kein Projektbestand im gespeicherten Stand vorhanden.</div>'}</section>
     ${isAdmin?`<div class="dashboard-section-title dashboard-admin-title"><h3>Administration</h3><span>Nur Admin</span></div><section class="dashboard-admin-grid"><article class="dashboard-project-card dashboard-admin-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Administration</span><h3>Prüfliste & Verwaltung</h3></div><strong>Admin</strong></div><div class="dashboard-admin-links"><button class="secondary" onclick="showTab('admin');showAdminTab('customtokens')">Neue sichere Token prüfen</button><button class="secondary" onclick="showTab('tlnvow')">TLN-Staking-Varianten prüfen</button></div><div class="dashboard-cache-note">Administrationsfunktionen sind bewusst vom Projektbereich getrennt.</div></article></section>`:""}`;

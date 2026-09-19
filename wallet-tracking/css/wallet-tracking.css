@@ -1491,3 +1491,21 @@ body.wt-modal-open{overflow:hidden}
 .dashboard-project-card .dashboard-reward-assets>span{font-size:.78rem}
 
 /* Phase 5.38 · 19.09.2026 17:04:54 CEST · Dashboard-Daten-Audit / Kurslogik / TLN-Bonus */
+
+/* Phase 5.39 · Dashboard-Audit: drei gleichwertige Hauptkacheln */
+.dashboard-kpi-grid-main{grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch}
+.dashboard-kpi-grid-main>.dashboard-kpi{min-height:190px}
+.dashboard-kpi-main-title{font-size:.92rem!important;color:var(--text)!important;margin-bottom:10px}
+.dashboard-wealth-lines{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.dashboard-wealth-lines>div{padding:10px;border-radius:11px;background:color-mix(in srgb,#fff 60%,transparent);min-width:0}
+.dashboard-wealth-lines small{margin:0;color:#38516f;font-size:.7rem;font-weight:750}
+.dashboard-wealth-lines strong{margin-top:7px;font-size:clamp(1.05rem,1.45vw,1.45rem)}
+.dashboard-wealth-lines em{display:block;margin-top:6px;color:#38516f;font-size:.62rem;font-style:normal;line-height:1.25}
+.dashboard-kpi-grid-main .dashboard-reward-kpi{padding:16px 18px}
+.dashboard-kpi-grid-main .dashboard-reward-kpi>span{font-size:.92rem;color:var(--text)}
+.dashboard-kpi-grid-main .dashboard-reward-assets>span{font-size:.82rem;line-height:1.28}
+.dashboard-kpi-grid-main .dashboard-reward-assets strong{font-size:.88rem!important;line-height:1.28!important}
+:root[data-theme="dark"] .dashboard-wealth-lines>div{background:rgba(255,255,255,.055)}
+:root[data-theme="dark"] .dashboard-wealth-lines small,:root[data-theme="dark"] .dashboard-wealth-lines em{color:#c0cde0}
+@media(max-width:1180px){.dashboard-kpi-grid-main{grid-template-columns:1fr}.dashboard-wealth-lines{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:720px){.dashboard-wealth-lines{grid-template-columns:1fr}}
