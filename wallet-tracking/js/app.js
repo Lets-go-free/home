@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.34 · 19.09.2026 14:27:05 CEST · Build 20260919-142705 */
+/* WalletTracking Phase 5.35 · 19.09.2026 14:41:24 CEST · Build 20260919-144124 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1380,7 +1380,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-overview",level:2,label:"Übersicht",status:"in_progress",start:"–",daily:"–",open:"DB/RAM",manual:"Projektrefresh",details:[["DAO1 Übersicht/Bot-Summen","RAM nach Lazy Load","Supabase DAO1 Caches","Apertum bei Aktualisierung","Erst beim Öffnen DAO1"]]},
   {id:"dao-prices",level:2,label:"Kurse und Pools",status:"in_progress",start:"–",daily:"–",open:"vorhandener Preis-Cache",manual:"zentrale Preisaktualisierung",details:[["DAO1 aktuelle Kurse/Preisrouten","RAM/zentraler Preiscache","bestehende DAO1/Apertum Preislogik","Apertum DEX nur bei zentraler Preisaktualisierung","Tab zeigt ausschließlich bereits ermittelte Preise, Routen und Pools; keine eigene Preisermittlung"]]},
   {id:"dao-tx",level:2,label:"Transaktionen",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Apertum Transaktionshistorie","RAM","Supabase zentrale Historie/Asset-Flows","Apertum RPC/Explorer","Wallet-Wechsel Cache; Daten aktualisieren lädt neue Chain-Daten"]]},
-  {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase project_transactions + project_transaction_asset_flows","Apertum nur bei manueller Aktualisierung","Dashboard liest nur vorhandene historische USD-Werte; Detailansicht lazy"]]},
+  {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase project_transactions + project_transaction_asset_flows","Apertum nur bei manueller Aktualisierung","Dashboard summiert Originaltoken/-mengen aus vorhandenen Asset-Flows; keine USD-Umrechnung; Detailansicht lazy"]]},
   {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase Tx/Flow Cache","Apertum nur bei manueller Aktualisierung","Dashboard und Detail verwenden dieselben Referral-Regeln; nur relevantes DAO1 Referral-Wallet"]]},
   {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
     ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → fertig, DB 0 / RPC 0 bei HIT; Praxistest 18.09.2026 bestanden. Manueller Update-Pfad 🟢: inkrementeller Blockbereich mit 24-Block-Overlap, RPC nur nach explizitem Klick"],
@@ -4507,6 +4507,7 @@ function dashboardPriceRows(){
 
 function dashboardPortfolio(targetWallets){
   let freeUsd=0,boundUsd=0,unknownValues=0,boundEvidence=0;
+  const unknownAssets=new Map();
   const projects=new Map();
   for(const w of targetWallets){
     for(const chain of Object.keys(CHAIN_META)){
@@ -4519,7 +4520,7 @@ function dashboardPortfolio(targetWallets){
         if(staked>0&&totalAmount>0&&Number.isFinite(usdValue)){
           rowBound=usdValue*Math.min(1,staked/totalAmount);boundEvidence++;
         }
-        if(Number.isFinite(usdValue)){boundUsd+=rowBound;freeUsd+=Math.max(0,usdValue-rowBound);}else unknownValues++;
+        if(Number.isFinite(usdValue)){boundUsd+=rowBound;freeUsd+=Math.max(0,usdValue-rowBound);}else {unknownValues++;const uk=`${chain}|${row.isNative?"native":normalizeAddress(row.address||"",chain)}`;if(!unknownAssets.has(uk))unknownAssets.set(uk,{symbol:row.symbol||row.name||"Token",chain,address:row.isNative?"native":row.address||null});}
         if(!row.isNative&&row.address){
           const key=chain+"|"+normalizeAddress(row.address,chain),projectKey=predefinedTokenProject[key];
           if(projectKey){const p=projects.get(projectKey)||{valueUsd:0,boundUsd:0,assets:0};if(Number.isFinite(usdValue))p.valueUsd+=usdValue;p.boundUsd+=rowBound;p.assets++;projects.set(projectKey,p);}
@@ -4527,7 +4528,7 @@ function dashboardPortfolio(targetWallets){
       }
     }
   }
-  return {freeUsd,boundUsd,totalUsd:freeUsd+boundUsd,unknownValues,boundEvidence,projects};
+  return {freeUsd,boundUsd,totalUsd:freeUsd+boundUsd,unknownValues,unknownAssets:[...unknownAssets.values()],boundEvidence,projects};
 }
 
 function dashboardAddFirstWallet(){
@@ -4541,12 +4542,16 @@ function dashboardProjectTitle(key){return defiProjectsCache.find(p=>p.project_k
 function dashboardProjectOpen(key){if(key==="tln_vow")showTab("tlnvow");else if(key==="dao1")showTab("dao1");else showTab("projects-overview");}
 window.dashboardProjectOpen=dashboardProjectOpen;
 
-const dashboardEmptyRewardPeriods=()=>({total:null,previousYear:null,year:null,month:null});
+const dashboardEmptyRewardPeriods=()=>({total:[],previousYear:[],year:[],month:[]});
 const dashboardProjectCacheStats={
   tln_vow:{teamPartners:null,activePartners:null,rewards:dashboardEmptyRewardPeriods(),referralRewards:dashboardEmptyRewardPeriods()},
   dao1:{teamPartners:null,activePartners:null,rewards:dashboardEmptyRewardPeriods(),referralRewards:dashboardEmptyRewardPeriods()}
 };
 function dashboardMetric(v,formatter){return v==null?"–":(formatter?formatter(v):String(v));}
+function dashboardRewardAssetKey(x){return `${String(x?.chain||"").toLowerCase()}|${String(x?.address||x?.assetId||x?.symbol||"").toLowerCase()}`;}
+function dashboardRewardAmount(n){const v=Number(n||0);if(!Number.isFinite(v))return "–";return v.toLocaleString("de-CH",{maximumFractionDigits:8});}
+function dashboardRewardPeriodHtml(rows){const list=Array.isArray(rows)?rows:[];if(!list.length)return "–";return `<span class="dashboard-reward-assets">${list.map(x=>`<span><strong>${dashboardRewardAmount(x.amount)}</strong> ${escapeAttr(x.symbol||x.name||"TOKEN")}</span>`).join("")}</span>`;}
+function dashboardMergeRewardPeriods(field){const out=dashboardEmptyRewardPeriods();for(const period of Object.keys(out)){const byKey=new Map();for(const st of Object.values(dashboardProjectCacheStats)){for(const x of (Array.isArray(st?.[field]?.[period])?st[field][period]:[])){const key=dashboardRewardAssetKey(x);if(!key)continue;const cur=byKey.get(key)||{...x,amount:0};cur.amount+=Number(x.amount||0);byKey.set(key,cur);}}out[period]=[...byKey.values()].filter(x=>Number.isFinite(Number(x.amount))&&Number(x.amount)!==0).sort((a,b)=>String(a.symbol||"").localeCompare(String(b.symbol||"")));}return out;}
 function dashboardActivePartners(stats){
   const unknown=Number(stats?.activePartnersUnknown||0),verified=Number(stats?.activePartnersVerified);
   if(unknown>0 && Number.isFinite(verified))return `${verified} bestätigt · ${unknown} offen`;
@@ -4583,16 +4588,15 @@ function renderDashboard(){
     const projectPrices=prices.filter(x=>x.project===key);
     const stats=dashboardProjectCacheStats[key]||{rewards:{}};
     const rewards=stats.rewards||{},referralRewards=stats.referralRewards||{};
-    const rewardBlock=(title,data)=>`<div class="dashboard-reward-group"><div class="dashboard-reward-group-title">${title}</div><div class="dashboard-reward-lines"><div><span>Gesamt</span><strong>${dashboardMetric(data.total,money)}</strong></div><div><span>Vorjahr</span><strong>${dashboardMetric(data.previousYear,money)}</strong></div><div><span>Jahr</span><strong>${dashboardMetric(data.year,money)}</strong></div><div><span>Monat</span><strong>${dashboardMetric(data.month,money)}</strong></div></div></div>`;
+    const rewardBlock=(title,data)=>`<div class="dashboard-reward-group"><div class="dashboard-reward-group-title">${title}</div><div class="dashboard-reward-lines"><div><span>Gesamt</span>${dashboardRewardPeriodHtml(data.total)}</div><div><span>Vorjahr</span>${dashboardRewardPeriodHtml(data.previousYear)}</div><div><span>Jahr</span>${dashboardRewardPeriodHtml(data.year)}</div><div><span>Monat</span>${dashboardRewardPeriodHtml(data.month)}</div></div></div>`;
+    const teamStats=key==="dao1"?`<div><span>Partner (eindeutige DID)</span><strong>${stats.uniqueDidPartners!=null?dashboardMetric(stats.uniqueDidPartners):(stats.dao1Partners!=null?`mind. ${stats.dao1Partners}`:"–")}</strong></div><div><span>DAO1</span><strong>${dashboardMetric(stats.dao1Partners)}</strong></div><div><span>APTMDAO</span><strong>${dashboardMetric(stats.aptmdaoPartners)}</strong></div>`:`<div><span>Teampartner</span><strong>${dashboardMetric(stats.teamPartners)}</strong></div><div><span>davon aktiv</span><strong>${dashboardActivePartners(stats)}</strong></div>`;
     return `<article class="dashboard-project-card"><div class="dashboard-project-head"><div><span class="dashboard-project-kicker">Projekt</span><h3>${escapeAttr(dashboardProjectTitle(key))}</h3></div><strong>${money(p.valueUsd)}</strong></div>
-      <div class="dashboard-project-stats dashboard-project-stats-compact"><div><span>Aktuelles Staking</span><strong>${p.boundUsd>0?money(p.boundUsd):"–"}</strong></div><div><span>Teampartner</span><strong>${dashboardMetric(stats.teamPartners)}</strong></div><div><span>davon aktiv</span><strong>${dashboardActivePartners(stats)}</strong></div></div>
+      <div class="dashboard-project-stats dashboard-project-stats-compact"><div><span>Aktuelles Staking</span><strong>${p.boundUsd>0?money(p.boundUsd):"–"}</strong></div>${teamStats}</div>
       ${rewardBlock("Rewards",rewards)}${rewardBlock("Referral Rewards",referralRewards)}
       ${projectPrices.length?`<div class="dashboard-project-prices">${projectPrices.map(r=>`<span><span class="dashboard-project-token-name">${escapeAttr(r.displayName||r.symbol)}</span>${dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${dashboardAddressHtml(r.address)} <strong>${r.price?fmtPrice(r.price.price):"–"}</strong></span>`).join("")}</div>`:""}<button class="secondary" onclick="dashboardProjectOpen('${escapeAttr(key)}')">Projekt öffnen</button><div class="dashboard-cache-note">Dashboard-Grunddaten werden aus persistenten Projektcaches übernommen. Fehlende/veraltete Grunddaten werden durch den zentralen Hintergrundlauf nachgeführt; vollständige Discovery bleibt projektbezogen.</div></article>`;
   }).join("");
-  const aggregateRewardKind=(field)=>{const sums={total:0,previousYear:0,year:0,month:0},known={total:false,previousYear:false,year:false,month:false};for(const st of Object.values(dashboardProjectCacheStats)){for(const k of Object.keys(sums)){const raw=st?.[field]?.[k];if(raw!=null&&Number.isFinite(Number(raw))){sums[k]+=Number(raw);known[k]=true;}}}return {sums,known};};
-  const globalRewards=aggregateRewardKind("rewards"),globalReferralRewards=aggregateRewardKind("referralRewards");
-  const overallReward=(group,k)=>group.known[k]?money(group.sums[k]):"–";
-  const rewardKpi=(title,group)=>`<article class="dashboard-kpi dashboard-kpi-gold dashboard-reward-kpi"><span>${title}</span><div class="dashboard-kpi-reward-lines"><div><small>Gesamt</small><strong>${overallReward(group,"total")}</strong></div><div><small>Vorjahr</small><strong>${overallReward(group,"previousYear")}</strong></div><div><small>Jahr</small><strong>${overallReward(group,"year")}</strong></div><div><small>Monat</small><strong>${overallReward(group,"month")}</strong></div></div></article>`;
+  const globalRewards=dashboardMergeRewardPeriods("rewards"),globalReferralRewards=dashboardMergeRewardPeriods("referralRewards");
+  const rewardKpi=(title,group)=>`<article class="dashboard-kpi dashboard-kpi-gold dashboard-reward-kpi"><span>${title}</span><div class="dashboard-kpi-reward-lines"><div><small>Gesamt</small>${dashboardRewardPeriodHtml(group.total)}</div><div><small>Vorjahr</small>${dashboardRewardPeriodHtml(group.previousYear)}</div><div><small>Jahr</small>${dashboardRewardPeriodHtml(group.year)}</div><div><small>Monat</small>${dashboardRewardPeriodHtml(group.month)}</div></div></article>`;
   const staleWallets=targetWallets.filter(w=>Object.keys(CHAIN_CONFIG).some(c=>walletAddressForChain(w,c)&&!refreshedToday(w,c,"balances"))).length;
   root.innerHTML=`
     <div class="dashboard-heading"><div><h2>Persönliches Dashboard</h2><p>Gespeicherter Stand für ${escapeAttr(document.getElementById("globalWalletPersonFilter")?.selectedOptions?.[0]?.textContent||"Eigene Wallets")}</p></div><button onclick="loadAll()">Daten aktualisieren</button></div>
@@ -4603,7 +4607,7 @@ function renderDashboard(){
       ${rewardKpi("Rewards",globalRewards)}
       ${rewardKpi("Referral Rewards",globalReferralRewards)}
     </section>
-    ${portfolio.unknownValues?`<div class="dashboard-data-warning">${portfolio.unknownValues} Vermögenswert(e) ohne gespeicherten Kurs sind in den Geldsummen nicht enthalten.</div>`:""}
+    ${portfolio.unknownValues?`<div class="dashboard-data-warning"><strong>${portfolio.unknownValues} Vermögenswert(e) ohne gespeicherten Kurs:</strong> ${portfolio.unknownAssets.map(x=>`${escapeAttr(x.symbol)} (${escapeAttr(CHAIN_META[x.chain]?.label||x.chain.toUpperCase())})`).join(", ")} – nicht in den Geldsummen enthalten.</div>`:""}
     <section class="dashboard-main-grid"><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Aktuelle Kurse</h3><p>Nur zentral für das Dashboard aktivierte Token</p></div><button class="secondary" onclick="refreshAllCurrentPrices({manual:true})">Preise aktualisieren</button></div>${priceTable}</article><article class="dashboard-card"><div class="dashboard-card-head"><div><h3>Was muss ich tun?</h3><p>Nur aus bestätigten Cache-Daten</p></div></div><div class="dashboard-action-list">${staleWallets?`<div><span class="dashboard-action-icon warning">!</span><p><strong>${staleWallets} Wallet(s) mit älterem Bestandsstand</strong><small>Eine Aktualisierung ist verfügbar.</small></p></div>`:`<div><span class="dashboard-action-icon ok">✓</span><p><strong>Bestandsstände aktuell</strong><small>Keine fällige Bestandsaktualisierung erkannt.</small></p></div>`}<div><span class="dashboard-action-icon neutral">↗</span><p><strong>Partner-Stakings</strong><small>Auslaufende/abgelaufene Positionen werden nach Anschluss des TLN-Team-Caches hier angezeigt.</small></p></div></div></article></section>
     <div class="dashboard-section-title"><h3>Projekte</h3><span>Nur vorhandene Projekte</span></div>
     <section class="dashboard-project-grid">${projectCards||'<div class="empty">In den ausgewählten Wallets ist noch kein Projektbestand im gespeicherten Stand vorhanden.</div>'}</section>

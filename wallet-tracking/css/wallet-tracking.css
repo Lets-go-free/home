@@ -1466,3 +1466,6 @@ body.wt-modal-open{overflow:hidden}
 .dashboard-reward-group{margin-top:12px}
 .dashboard-reward-group-title{font-weight:800;color:var(--text,#14243f);margin:0 0 7px 2px}
 .dashboard-project-card .dashboard-reward-lines{margin-top:0}
+
+/* Phase 5.35 · Reward-Originalassets */
+.dashboard-reward-assets{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:0}.dashboard-reward-assets>span{white-space:nowrap;font-variant-numeric:tabular-nums}.dashboard-reward-lines>div,.dashboard-kpi-reward-lines>div{align-items:flex-start}.dashboard-reward-lines>div>span:first-child,.dashboard-kpi-reward-lines small{padding-top:2px}

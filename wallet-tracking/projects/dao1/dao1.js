@@ -1,4 +1,4 @@
-// WalletTracking Phase 5.34 · 19.09.2026 14:27:05 CEST · Build 20260919-142705
+// WalletTracking Phase 5.35 · 19.09.2026 14:41:24 CEST · Build 20260919-144124
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -4787,7 +4787,7 @@ window.DAO1Project = (() => {
   function renderDAO1TeamTreePanel(){
     const el=document.getElementById("dao1TeamTreePanel");if(!el)return;
     const isOld=dao1TeamTreeMode==="legacy",st=teamDiscoveryState();
-    if(isOld){try{const rows=legacyTreeRows(st.edges||[]),partners=new Set(rows.map(r=>Number(r.child_id)).filter(Number.isFinite));window.setDashboardProjectCacheStats?.("dao1",{teamPartners:partners.size,updatedAt:new Date().toISOString()});}catch(e){console.warn("DAO1 Dashboard-Summary",e);}}
+    if(isOld){try{const rows=legacyTreeRows(st.edges||[]),partners=new Set(rows.map(r=>Number(r.child_id)).filter(Number.isFinite));window.setDashboardProjectCacheStats?.("dao1",{teamPartners:partners.size,dao1Partners:partners.size,updatedAt:new Date().toISOString()});}catch(e){console.warn("DAO1 Dashboard-Summary",e);}}
     const renderT0=performance.now();
     const d=dao1OldTreeCacheDiag;
     const cacheDiagHtml=isOld?`<div class="custom-token-card debug-frame" style="margin-top:12px"><strong>DEBUG / DEV · DAO1 Tree Browser-Cache</strong><div class="note" style="margin-top:6px"><strong>${escapeHtml(d.source)}</strong> · lokal ${Number(d.localRows||0).toLocaleString("de-DE")} Rows · DB ${Number(d.dbRows||0).toLocaleString("de-DE")} Rows · Delta ${Number(d.deltaRows||0).toLocaleString("de-DE")} Rows</div><div class="note">IndexedDB ${Number(d.idbMs||0).toFixed(1)} ms · State ${Number(d.stateMs||0).toFixed(1)} ms · IDB-Meta ${Number(d.metaMs||0).toFixed(1)} ms · DATA_VERSIONS ${Number(d.registryMs||0).toFixed(1)} ms · Schema-Probe ${Number(d.probeMs||0).toFixed(1)} ms · Delta-DB ${Number(d.deltaDbMs||0).toFixed(1)} ms</div><div class="note">Cache gesamt ${Number(d.totalCacheMs||0).toFixed(1)} ms · Latest Block ${Number(d.latestBlockMs||0).toFixed(1)} ms · 24-Block-RPC ${Number(d.overlapRpcMs||0).toFixed(1)} ms · Cache speichern ${Number(d.saveMs||0).toFixed(1)} ms · kompletter Lauf ${Number(d.scanMs||0).toFixed(1)} ms · Render ${Number(d.renderMs||0).toFixed(1)} ms</div><div class="note">${escapeHtml(d.note||"")}</div><div class="note"><strong>${escapeHtml(d.scanMode||"–")}</strong>${d.scannedBlocks?` · geprüft Block ${Number(d.fromBlock).toLocaleString("de-DE")}–${Number(d.toBlock).toLocaleString("de-DE")} (${Number(d.scannedBlocks).toLocaleString("de-DE")} Blöcke) · RPC-Logs ${Number(d.rpcLogs||0).toLocaleString("de-DE")} · geänderte Kanten ${Number(d.changedEdges||0).toLocaleString("de-DE")}`:""}</div></div>`:"";
@@ -5823,26 +5823,27 @@ window.DAO1Project = (() => {
   }
 
   function dashboardRewardPeriods(rows,flows){
-    // Dashboard verwendet exakt dieselbe fachliche Trennung wie die Detailtabs:
-    // Bot-Claims = isClaimTxRow && nicht DID; Referral = DID-Referral oder verifizierter Referral-Contract.
+    // Dashboard zeigt bewusst Originalmengen je Asset; keine USD-Umrechnung.
+    // Identität intern = Chain + Contract (Fallback Symbol), damit gleichnamige Token nicht vermischt werden.
     const flowByTx=new Map();
     for(const f of (flows||[])){const k=`${String(f.wallet_id||"")}::${String(f.tx_hash||"").toLowerCase()}`;if(!flowByTx.has(k))flowByTx.set(k,[]);flowByTx.get(k).push(f);}
     const now=new Date(),year=now.getFullYear(),month=now.getMonth(),prevYear=year-1;
-    const empty=()=>({sums:{total:0,previousYear:0,year:0,month:0},known:{total:true,previousYear:true,year:true,month:true},count:0});
+    const empty=()=>({total:new Map(),previousYear:new Map(),year:new Map(),month:new Map()});
     const bot=empty(),referral=empty();
-    const keysFor=(dt)=>{const keys=["total"];if(dt.getFullYear()===prevYear)keys.push("previousYear");if(dt.getFullYear()===year){keys.push("year");if(dt.getMonth()===month)keys.push("month");}return keys;};
-    const add=(bucket,keys,values,fallbackUsd=null)=>{bucket.count++;if(values.length){const ok=values.every(f=>f.value_usd!=null&&Number.isFinite(Number(f.value_usd)));for(const k of keys){if(ok)bucket.sums[k]+=values.reduce((a,f)=>a+Number(f.value_usd||0),0);else bucket.known[k]=false;}}else{const ok=fallbackUsd!=null&&Number.isFinite(Number(fallbackUsd));for(const k of keys){if(ok)bucket.sums[k]+=Number(fallbackUsd);else bucket.known[k]=false;}}};
+    const keysFor=dt=>{const keys=["total"];if(dt.getFullYear()===prevYear)keys.push("previousYear");if(dt.getFullYear()===year){keys.push("year");if(dt.getMonth()===month)keys.push("month");}return keys;};
+    const addAsset=(bucket,keys,flow)=>{const amount=Number(flow?.amount||0);if(!Number.isFinite(amount)||amount===0)return;const symbol=String(flow?.token_symbol||flow?.token_name||"TOKEN");const address=lower(flow?.token_address||"")||null;const assetId=address||`symbol:${symbol.toLowerCase()}`;for(const period of keys){const map=bucket[period],id=`${CHAIN_KEY}|${assetId}`,cur=map.get(id)||{chain:CHAIN_KEY,address,assetId,symbol,amount:0};cur.amount+=amount;map.set(id,cur);}};
+    const addLegacyAptm=(bucket,keys,r)=>{const amount=Number(r?.claim_reward_aptm||0);if(!Number.isFinite(amount)||amount===0)return;for(const period of keys){const map=bucket[period],id=`${CHAIN_KEY}|native`,cur=map.get(id)||{chain:CHAIN_KEY,address:"native",assetId:"native",symbol:"APTM",amount:0};cur.amount+=amount;map.set(id,cur);}};
     for(const r of (rows||[])){
       const dt=new Date(r.tx_timestamp||0);if(!Number.isFinite(dt.getTime()))continue;const keys=keysFor(dt);
       const txKey=`${String(r.wallet_id||"")}::${String(r.tx_hash||"").toLowerCase()}`,incoming=(flowByTx.get(txKey)||[]).filter(f=>f.direction==="eingang");
       const wallet=rowWalletAddress(r),isDid=wallet===REFERRAL_WALLET&&String(r.claim_nft_subtype||"").toUpperCase()==="DID";
       const isVerifiedReferral=wallet===REFERRAL_WALLET&&lower(r.to_address||"")===REFERRAL_REWARD_CONTRACT&&incoming.some(isVerifiedReferralFlow);
-      if(isDid){add(referral,keys,incoming,r.claim_reward_usd);continue;}
-      if(isVerifiedReferral&&!isClaimTxRow(r)){add(referral,keys,incoming.filter(isVerifiedReferralFlow),r.claim_reward_usd);continue;}
-      if(isClaimTxRow(r)){add(bot,keys,incoming,r.claim_reward_usd);}
+      if(isDid){for(const f of incoming)addAsset(referral,keys,f);continue;}
+      if(isVerifiedReferral&&!isClaimTxRow(r)){for(const f of incoming.filter(isVerifiedReferralFlow))addAsset(referral,keys,f);continue;}
+      if(isClaimTxRow(r)){if(incoming.length)for(const f of incoming)addAsset(bot,keys,f);else addLegacyAptm(bot,keys,r);}
     }
-    const finish=b=>Object.fromEntries(Object.keys(b.sums).map(k=>[k,b.known[k]?b.sums[k]:null]));
-    return {rewards:finish(bot),referralRewards:finish(referral),counts:{rewards:bot.count,referralRewards:referral.count}};
+    const finish=b=>Object.fromEntries(Object.entries(b).map(([k,map])=>[k,[...map.values()].filter(x=>x.amount!==0)]));
+    return {rewards:finish(bot),referralRewards:finish(referral)};
   }
 
   async function loadDashboardRewardCache(){
@@ -5868,8 +5869,15 @@ window.DAO1Project = (() => {
       const [cached,rewards]=await Promise.all([loadOldDao1TreeCache(),loadDashboardRewardCache()]);
       const patch={updatedAt:new Date().toISOString()};
       if(cached?.edges && dao1OwnedDidRoots.length){
-        const rows=legacyTreeRows(cached.edges),partners=new Set(rows.map(r=>Number(r.child_id)).filter(Number.isFinite));
-        patch.teamPartners=partners.size;patch.updatedAt=cached.registryUpdatedAt||cached.state?.updated_at||patch.updatedAt;
+        const rows=legacyTreeRows(cached.edges),ownDids=new Set(dao1OwnedDidRoots.map(r=>Number(r.did)).filter(Number.isFinite));
+        const dao1Partners=new Set(rows.map(r=>Number(r.child_id)).filter(x=>Number.isFinite(x)&&!ownDids.has(x)));
+        patch.dao1Partners=dao1Partners.size;patch.teamPartners=dao1Partners.size;
+        // APTMDAO-Parent-Kanten sind im aktuellen Projekt noch nicht fachlich verifiziert.
+        // Deshalb keine erfundene 0: Gesamtzahl bleibt als Mindestwert, bis beide DID-Sets vorliegen.
+        const aptmEdges=Array.isArray(dao1TeamDiscovery.aptmdao?.edges)?dao1TeamDiscovery.aptmdao.edges:[];
+        if(aptmEdges.length){const aptmPartners=new Set(aptmEdges.map(r=>Number(r.child_id)).filter(x=>Number.isFinite(x)&&!ownDids.has(x)));patch.aptmdaoPartners=aptmPartners.size;patch.uniqueDidPartners=new Set([...dao1Partners,...aptmPartners]).size;}
+        else {patch.aptmdaoPartners=null;patch.uniqueDidPartners=null;}
+        patch.updatedAt=cached.registryUpdatedAt||cached.state?.updated_at||patch.updatedAt;
       }
       if(rewards){patch.rewards=rewards.rewards;patch.referralRewards=rewards.referralRewards;}
       // "davon aktiv" bleibt bewusst offen: Im aktuellen DAO1-Code existiert noch kein
