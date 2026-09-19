@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.41 · 19.09.2026 21:22:29 CEST · Build 20260919-212229 */
+/* WalletTracking Phase 5.42 · 19.09.2026 22:00:46 CEST · Build 20260919-220046 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -4441,13 +4441,15 @@ function dashboardTokenDisplayName(chain,address,symbol){
   const normalized=normalizeAddress(address,chain), key=chain+"|"+normalized;
   const custom=customSafeTokens.find(t=>t.chain===chain&&normalizeAddress(t.address,chain)===normalized);
   const cached=tokenMetaCache[key]||{};
-  return String(predefinedTokenNames[key]||predefinedTokenLabels[key]||custom?.label||cached.name||cached.symbol||symbol||address).trim();
+  const candidates=[predefinedTokenNames[key],predefinedTokenLabels[key],predefinedTokenSymbols[key],custom?.label,cached.name,cached.symbol,symbol];
+  const named=candidates.map(x=>String(x||"").trim()).find(x=>x && normalizeAddress(x,chain)!==normalized && !/^0x[0-9a-f]{40}$/i.test(x));
+  return named||dashboardShortAddress(address)||String(address||"").trim();
 }
 
 function dashboardShortAddress(address){
   const a=String(address||"").trim();
   if(!a||a==="native")return "";
-  return a.length>14?`${a.slice(0,8)}…${a.slice(-6)}`:a;
+  return a.length>12?`${a.slice(0,6)}…${a.slice(-4)}`:a;
 }
 async function copyDashboardAddress(address,btn){
   try{
@@ -4657,8 +4659,8 @@ function renderDashboard(){
   }
   const money=v=>fmtUsd(Number(v||0));
   const boundValue=portfolio.boundEvidence?money(portfolio.boundUsd):"–";
-  const chainIcon=r=>`<span class="dashboard-chain-dot chain-dot ${escapeAttr(CHAIN_META[r.chain]?.dot||r.chain)}" title="${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}"></span>`;
-  const priceRows=rows=>`<div class="dashboard-table-wrap"><table class="dashboard-price-table dashboard-price-table-compact"><thead><tr><th>Token</th><th title="Chain">Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${rows.map(r=>`<tr><td><strong>${escapeAttr(r.displayName||r.symbol)}</strong>${dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${dashboardAddressHtml(r.address)}</td><td class="dashboard-chain-icon-cell">${chainIcon(r)}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?`<strong>${escapeAttr(r.price.source||"Quelle unbekannt")}</strong>${r.price.route?`<div class="meta">${escapeAttr(r.price.route)}</div>`:""}`:"Kein gespeicherter Kurs"}</td></tr>`).join("")}</tbody></table></div>`;
+  const chainIcon=r=>{const sym=String(NATIVE_SYMBOL[r.chain]||r.chain||"?").trim();return `<span class="dashboard-chain-native-symbol" title="${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}">${escapeAttr(sym.slice(0,4))}</span>`;};
+  const priceRows=rows=>`<div class="dashboard-table-wrap"><table class="dashboard-price-table dashboard-price-table-compact"><thead><tr><th>Token</th><th title="Chain">Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${rows.map(r=>{const primary=String(r.displayName||r.symbol||"");const isAddr=/^0x[0-9a-f]{40}$/i.test(primary);return `<tr><td><strong>${escapeAttr(isAddr?dashboardShortAddress(primary):primary)}</strong>${isAddr?"":dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${isAddr?"":dashboardAddressHtml(r.address)}</td><td class="dashboard-chain-icon-cell">${chainIcon(r)}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?`<strong>${escapeAttr(r.price.source||"Quelle unbekannt")}</strong>${r.price.route?`<div class="meta">${escapeAttr(r.price.route)}</div>`:""}`:"Kein gespeicherter Kurs"}</td></tr>`}).join("")}</tbody></table></div>`;
   const split=Math.ceil(prices.length/2),priceTable=prices.length?`<div class="dashboard-price-columns">${priceRows(prices.slice(0,split))}${priceRows(prices.slice(split))}</div>`:`<div class="empty">Keine Dashboard-Kurse gemäß aktueller Regel: Bestand &gt; 1 USD oder Flag „Im Dashboard immer anzeigen“.</div>`;
   const projectCards=[...involvedProjects].map(key=>[key,portfolio.projects.get(key)||{valueUsd:0,freeUsd:0,boundUsd:0,assets:0}]).map(([key,p])=>{
     const projectPrices=prices.filter(x=>x.project===key);
