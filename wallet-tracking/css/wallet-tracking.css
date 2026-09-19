@@ -1524,3 +1524,6 @@ body.wt-modal-open{overflow:hidden}
 .dashboard-activity-list time{color:var(--muted);font-variant-numeric:tabular-nums}.dashboard-activity-list strong{color:var(--text)}
 @media(max-width:1180px){.dashboard-price-columns{grid-template-columns:1fr}.dashboard-price-table-compact{font-size:.78rem}}
 @media(max-width:720px){.dashboard-activity-list>div{grid-template-columns:1fr 1fr}.dashboard-activity-list>div span:last-child{grid-column:1/-1}}
+
+/* Phase 5.42: Chain-Kennung in der kompakten Kursliste nutzt das Native-Symbol; Token-Spalte bleibt iconfrei. */
+.dashboard-chain-native-symbol{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:20px;padding:0 4px;border-radius:10px;border:1px solid var(--border);font-size:10px;font-weight:800;line-height:1;background:var(--card)}
