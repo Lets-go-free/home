@@ -1,8 +1,8 @@
 (() => {
 // WalletTracking · DAO1 Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260919-152652";
-const HELP_MODULE_TIMESTAMP="19.09.2026 15:26:52 CEST";
+const HELP_MODULE_BUILD="20260919-212229";
+const HELP_MODULE_TIMESTAMP="19.09.2026 21:22:29 CEST";
 function renderDAO1Help(){
   const el=document.getElementById("dao1HelpContent");
   if(!el)return;
@@ -64,3 +64,6 @@ else renderDAO1Help();
 // Addition oder Deduplizierung zwischen den beiden Trees. wallet-private erzeugt den
 // verpflichtenden reference_hash aus der vollständigen namespaced Referenz.
 // Dokumentationsstand: 19.09.2026 17:04:54 CEST · Phase 5.38 · Build 20260919-170454
+
+// Phase 5.41: DAO1/APTMDAO Partner-Bots werden bei gemeinsam verwendetem Bot-Contract nur mit eindeutiger Erwerbs-Tx-Evidenz dem jeweiligen Tree zugeordnet. Evidenzbasierte Bot-Lifecycles werden userbezogen in dao_partner_bot_lifecycle_cache gespeichert; unklare Fälle bleiben unzugeordnet.
+// Dokumentationsstand: 19.09.2026 21:22:29 CEST · Phase 5.41 · Build 20260919-212229
