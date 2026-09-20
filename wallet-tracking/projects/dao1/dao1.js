@@ -1,4 +1,4 @@
-// WalletTracking Phase 5.49 · 20.09.2026 02:55:41 CEST · Build 20260920-025541
+// WalletTracking Phase 5.50 · 20.09.2026 03:19:33 CEST · Build 20260920-031933
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -4461,7 +4461,11 @@ window.DAO1Project = (() => {
     // persistierte DID-Zuordnung ALLE bekannten User-Wallets berücksichtigen.
     const ctx=getContext?.();
     const allWallets=(ctx?.wallets||[]).filter(w=>walletAddress(w));
-    const wallets=projectWallets();
+    // Root-Erkennung darf NICHT von aktuellen DAO-Assets/Dust abhängen. Eine Wallet
+    // kann eine DID besitzen, obwohl projectWallets() sie im aktuellen Balance-Lauf
+    // nicht als DAO-Projektwallet einstuft. Deshalb auch der nft_cache-Fallback über
+    // alle gespeicherten User-Wallets.
+    const wallets=allWallets;
     const walletById=new Map(allWallets.map(w=>[String(w.dbId||w.id||""),w]));
     const pushRoot=(did,w,address,name,source)=>{
       const n=Number(did);if(!Number.isFinite(n)||n<=0||!w)return;
@@ -6346,7 +6350,10 @@ window.DAO1Project = (() => {
     // Absichtlich KEIN ensureLoaded(): Das Dashboard darf den vollständigen DAO1-Tab
     // (NFTs, Konfiguration, Transaktions-UI usw.) nicht als Nebeneffekt initialisieren.
     try{
-      // Root-DIDs vor dem Tree-Cache bestimmen; sonst liest der Subtree-Cache mit leerer Root-Liste 0 Partner.
+      // Ownership zuerst laden: Root-DIDs dürfen weder von einem zuvor geöffneten DAO-Tab
+      // noch von projectWallets()/aktuellen Balances abhängen. Erst danach werden die
+      // Tree-Subcaches mit den erkannten Roots gelesen.
+      await loadOwnershipCache().catch(e=>console.warn("DAO1 Dashboard Ownership",e));
       await loadDAO1OwnedDidRoots(true).catch(e=>console.warn("DAO1 Dashboard DID-Roots",e));
       const [cached,aptmCached,rewards,recentPartnerActivities]=await Promise.all([loadOldDao1TreeCache(),loadAptmdaoTreeCache(),loadDashboardRewardCache(),loadDashboardPartnerBotActivities()]);
       const patch={updatedAt:new Date().toISOString()};

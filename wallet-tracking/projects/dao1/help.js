@@ -1,7 +1,7 @@
 (() => {
 // WalletTracking · DAO1 Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260920-025541";
+const HELP_MODULE_BUILD="20260920-031933";
 const HELP_MODULE_TIMESTAMP="20.09.2026 02:55:41 CEST";
 function renderDAO1Help(){
   const el=document.getElementById("dao1HelpContent");
@@ -79,4 +79,7 @@ else renderDAO1Help();
 // Dokumentationsstand: 20.09.2026 00:30:18 CEST · Phase 5.48 · Build 20260920-003018
 
 // Phase 5.49: Wallet-zentrierter DAO-Team-Baum; 1 Wallet = 1 Partner. APTMDAO-Priorität nur bei belegter eigener Downline. Neuer MinerBot-Kauf liest APTMDAO-DID direkt aus Kaufinput; Referenz #31722 → DID #7315 → Parent #23. Eigene Wallets aus Partneraktivitäten ausgeschlossen.
-// Dokumentationsstand: 20.09.2026 02:55:41 CEST · Phase 5.49 · Build 20260920-025541
+// Historischer Stand Phase 5.49: 20.09.2026 02:55:41 CEST · Build 20260920-025541
+
+// Phase 5.50: Root-Erkennung nach wallet-zentriertem Umbau gehärtet. project_nft_ownership ist Primärquelle; nft_cache-Fallback läuft über alle User-Wallets statt nur aktuelle DAO-Projektwallets. Dashboard lädt Ownership vor dem Tree-Cache.
+// Dokumentationsstand: 20.09.2026 03:19:33 CEST · Phase 5.50 · Build 20260920-031933
