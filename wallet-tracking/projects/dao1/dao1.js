@@ -1,4 +1,4 @@
-// Phase 5.59: DAO1/APTMDAO Team-Cache ergänzt Upline-/Ancestor-Lesen für aktuelle eigene DIDs und reagiert auf geänderte Root-Mengen.
+// Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
 // WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
@@ -5211,9 +5211,10 @@ window.DAO1Project = (() => {
 
   function dao1WalletForestHtml(){
     const graph=dao1BuildWalletGraph();
-    let roots=[...graph.nodes.values()].filter(n=>!graph.childWallets.has(n.wallet) && (n.own||n.upstream));
-    // Sicherheitsfallback bei unvollständigem Parent-Wallet-Mapping: lieber die eigenen
-    // Wallets zeigen als einen leeren Baum. Normalfall ist genau der oberste eigene Knoten.
+    let roots=[...graph.nodes.values()].filter(n=>n.own&&!graph.childWallets.has(n.wallet));
+    // Sicherheitsfallback bei unvollständigem Parent-Wallet-Mapping: ausschließlich eigene
+    // Wallets als Einstieg zeigen. Geladene Ancestors dienen nur zur Upline-Auflösung und
+    // dürfen niemals als zusätzliche Team-Roots unterhalb der persönlichen Sicht erscheinen.
     if(!roots.length)roots=[...graph.nodes.values()].filter(n=>n.own);
     const partnerCount=[...graph.nodes.values()].filter(n=>!n.own&&!n.upstream&&n.primary).length;
     if(!roots.length)return '<div class="custom-token-card" style="margin-top:12px"><div class="empty">Keine eigenen DAO-Wallets mit DID erkannt.</div></div>';
