@@ -1527,3 +1527,6 @@ body.wt-modal-open{overflow:hidden}
 
 /* Phase 5.42: Chain-Kennung in der kompakten Kursliste nutzt das Native-Symbol; Token-Spalte bleibt iconfrei. */
 .dashboard-chain-native-symbol{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:20px;padding:0 4px;border-radius:10px;border:1px solid var(--border);font-size:10px;font-weight:800;line-height:1;background:var(--card)}
+
+/* Phase 5.52 · DAO wallet-zentrierter Baum: DAO1/APTMDAO-DIDs visuell getrennt */
+.wt-team-wallet-dids{display:grid;gap:3px;margin-top:6px}.wt-team-did-row{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:3px 6px;border-radius:7px;font-size:10px}.wt-team-did-row span{font-weight:700}.wt-team-did-row strong{font-size:11px}.wt-team-did-row.dao1{background:rgba(40,135,255,.09);color:var(--text)}.wt-team-did-row.dao1 strong{color:#287ee8}.wt-team-did-row.aptmdao{background:rgba(132,78,255,.09);color:var(--text)}.wt-team-did-row.aptmdao strong{color:#7b55df}

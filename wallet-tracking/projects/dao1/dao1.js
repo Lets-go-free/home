@@ -1,4 +1,4 @@
-// WalletTracking Phase 5.50 · 20.09.2026 03:19:33 CEST · Build 20260920-031933
+// WalletTracking Phase 5.52 · 20.09.2026 11:35:50 CEST · Build 20260920-113550
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -4184,9 +4184,17 @@ window.DAO1Project = (() => {
       const legacy=usable.filter(r=>r.system==="legacy").sort((a,b)=>a.level-b.level||a.childDid-b.childDid);
       n.primary=aptm[0]||legacy[0]||null;
     }
-    const children=new Map();for(const n of nodes.values()){if(n.own)continue;const p=n.primary?.parentWallet;if(!p||p===n.wallet)continue;if(!children.has(p))children.set(p,[]);children.get(p).push(n);}
+    // Auch eigene Wallets folgen der belegten DID-Beziehung. Eine zweite eigene Wallet
+    // ist nicht automatisch eine zweite Root: zeigt z. B. deren DAO1-DID auf eine DID
+    // der ersten eigenen Wallet, wird sie als Kind in denselben Baum eingehängt. Für
+    // Partnerzahlen bleibt sie trotzdem "eigene Wallet" und zählt nicht als Partner.
+    const children=new Map(),childWallets=new Set();
+    for(const n of nodes.values()){
+      const p=n.primary?.parentWallet;if(!p||p===n.wallet||!nodes.has(p))continue;
+      if(!children.has(p))children.set(p,[]);children.get(p).push(n);childWallets.add(n.wallet);
+    }
     for(const arr of children.values())arr.sort((a,b)=>{const aa=dao1WalletDisplayName(a),bb=dao1WalletDisplayName(b);return aa.localeCompare(bb,"de")||a.wallet.localeCompare(b.wallet);});
-    return {nodes,children,own};
+    return {nodes,children,own,childWallets};
   }
   function dao1WalletDisplayName(node){
     const aptm=[...node.aptmdaoDids],legacy=[...node.dao1Dids];
@@ -4196,7 +4204,7 @@ window.DAO1Project = (() => {
   }
   function dao1WalletDidListHtml(node){
     const legacy=[...node.dao1Dids].sort((a,b)=>a-b),aptm=[...node.aptmdaoDids].sort((a,b)=>a-b);
-    return `${legacy.length?`<div class="wt-team-node-meta"><b>DAO1-DIDs:</b> ${legacy.map(x=>`#${x}`).join(", ")}</div>`:""}${aptm.length?`<div class="wt-team-node-meta"><b>APTMDAO-DIDs:</b> ${aptm.map(x=>`#${x}`).join(", ")}</div>`:""}`;
+    return `<div class="wt-team-wallet-dids">${legacy.length?`<div class="wt-team-did-row dao1"><span>DAO1-DIDs:</span><strong>${legacy.map(x=>`#${x}`).join(", ")}</strong></div>`:""}${aptm.length?`<div class="wt-team-did-row aptmdao"><span>APTMDAO-DIDs:</span><strong>${aptm.map(x=>`#${x}`).join(", ")}</strong></div>`:""}</div>`;
   }
 
   function parseOldDao1MintLog(log){
@@ -4725,9 +4733,13 @@ window.DAO1Project = (() => {
         });
       }
     }
-    // Aktuellen Status separat über alle Besitzabschnitte setzen.
+    // Aktuellen Status/Owner separat über alle Besitzabschnitte setzen. Der historische
+    // Erwerb bleibt am Bot erhalten, aber die normale Wallet-Detailansicht zeigt ihn nur
+    // beim HEUTIGEN Owner. So bleiben Kaufpreis und Kauf-Wallet trotz späterem Transfer erhalten.
     for(const n of by.values()){
-      n.current=(ownershipRows||[]).some(o=>lower(o?.nft_contract)===n.contract&&String(o?.nft_id)===n.id&&!!o?.is_current);
+      const currentRow=(ownershipRows||[]).find(o=>lower(o?.nft_contract)===n.contract&&String(o?.nft_id)===n.id&&!!o?.is_current);
+      n.current=!!currentRow;
+      n.current_wallet=currentRow?lower(currentRow?.wallet_address||walletAddress(walletByDbId(currentRow?.wallet_id))||""):"";
     }
     return [...by.values()];
   }
@@ -4997,9 +5009,9 @@ window.DAO1Project = (() => {
     const rows=[...groups.values()].sort((a,b)=>a.subtype.localeCompare(b.subtype)||a.symbol.localeCompare(b.symbol));
     return `<div class="wt-team-purchase-totals"><div class="wt-team-purchase-totals-title">Total Kaufpreis</div>${rows.map(g=>`<div class="wt-team-purchase-total-row"><span><strong>${escapeHtml(g.subtype)}</strong> · ${g.count} ${g.count===1?"Stück":"Stück"}</span><strong>${tokenAmount(g.amount,{address:g.contract,symbol:g.symbol})} ${escapeHtml(g.symbol)}</strong></div>`).join("")}</div>`;
   }
-  function dao1TeamNftTableHtml(nfts){
-    if(!nfts.length)return '<div class="empty">Für diese DID sind aktuell keine eindeutig zugeordneten Bots oder Memberships belegt.</div>';
-    return `<div class="chain-table-wrap project-data-table"><table><thead><tr><th>Typ</th><th>NFT</th><th>Name</th><th>Erworben am</th><th>Erwerbsart</th><th>Kaufpreis</th><th>Status</th></tr></thead><tbody>${nfts.map(n=>`<tr><td>${escapeHtml(n.subtype)}</td><td>#${escapeHtml(n.id)}</td><td><strong>${escapeHtml(n.name)}</strong></td><td>${n.owned_from_at?dao1TeamDate(n.owned_from_at):"nicht ermittelt"}</td><td>${escapeHtml(dao1TeamAcquisitionText(n))}${dao1TeamSourceText(n)?`<div class="meta">von ${escapeHtml(dao1TeamSourceText(n))}</div>`:""}</td><td>${dao1TeamPurchaseText(n)}</td><td>${escapeHtml(dao1TeamBotStatus(n))}</td></tr>`).join("")}</tbody></table></div>${dao1TeamPurchaseTotalsHtml(nfts)}`;
+  function dao1TeamNftTableHtml(nfts,{emptyText="Für diese DID sind aktuell keine eindeutig zugeordneten Bots oder Memberships belegt.",showTotals=true}={}){
+    if(!nfts.length)return `<div class="empty">${escapeHtml(emptyText)}</div>`;
+    return `<div class="chain-table-wrap project-data-table"><table><thead><tr><th>Typ</th><th>NFT</th><th>Name</th><th>Erworben am</th><th>Erwerbsart</th><th>Kaufpreis</th><th>Status</th></tr></thead><tbody>${nfts.map(n=>`<tr><td>${escapeHtml(n.subtype)}</td><td>#${escapeHtml(n.id)}</td><td><strong>${escapeHtml(n.name)}</strong></td><td>${n.owned_from_at?dao1TeamDate(n.owned_from_at):"nicht ermittelt"}</td><td>${escapeHtml(dao1TeamAcquisitionText(n))}${dao1TeamSourceText(n)?`<div class="meta">von ${escapeHtml(dao1TeamSourceText(n))}</div>`:""}${n.current_wallet&&lower(n.current_wallet)!==lower(n.acquisition_wallet||"")?`<div class="meta">heute: ${escapeHtml(teamShortAddress(n.current_wallet))}</div>`:""}</td><td>${dao1TeamPurchaseText(n)}</td><td>${escapeHtml(dao1TeamBotStatus(n))}</td></tr>`).join("")}</tbody></table></div>${showTotals?dao1TeamPurchaseTotalsHtml(nfts):""}`;
   }
   function dao1TeamBotSummaryHtml(wallet,did){
     const a=lower(wallet||"");if(!a)return "";
@@ -5050,9 +5062,28 @@ window.DAO1Project = (() => {
     return `<div class="custom-token-card wt-team-tree-card" style="margin-top:12px"><div class="wt-team-tree-info"><b>Darstellung:</b> Leader oben, Team nach unten. Verbindungen stammen ausschließlich aus den verifizierten ${dao1TeamTreeMode==="legacy"?"DID→fid":"APTMDAO child→parent"}-Mint-Kanten. Maximal ${DAO1_TEAM_MAX_LEVELS} Ebenen.</div>${blocks||'<div class="empty">Für die gewählte DID wurden keine Downline-Kanten gefunden.</div>'}</div>`;
   }
 
+  function dao1WalletUplineRows(node){
+    const rows=[];
+    for(const [system,dids] of [["legacy",node.dao1Dids],["aptmdao",node.aptmdaoDids]]){
+      for(const did of [...dids].sort((a,b)=>a-b)){
+        const rel=(node.relations||[]).find(r=>r.system===system&&Number(r.childDid)===Number(did));
+        const rawParent=rel?.parentDid ?? dao1KnownParentDid(system,did);
+        if(rawParent==null)continue;
+        const parent=Number(rawParent);
+        if(parent>=0 && Number.isFinite(parent))rows.push({system,did:Number(did),parentDid:parent});
+      }
+    }
+    return rows;
+  }
   function dao1WalletRelationLabel(node){
-    const r=node.primary;if(!r)return node.own?"Eigene Wallet / Root":"Upline nicht ermittelt";
-    return `${r.system==="aptmdao"?"APTMDAO":"DAO1"} · Upline DID #${r.parentDid}`;
+    const rows=dao1WalletUplineRows(node);
+    if(!rows.length)return node.own?"Oberster dargestellter Knoten":"Upline nicht ermittelt";
+    return rows.map(r=>`${r.system==="aptmdao"?"APTMDAO":"DAO1"} #${r.did} → Upline #${r.parentDid}`).join(" · ");
+  }
+  function dao1WalletUplineHtml(node){
+    const rows=dao1WalletUplineRows(node);
+    if(!rows.length)return `<div class="wt-team-node-parent">${node.own?"Oberster dargestellter Knoten":"Upline nicht ermittelt"}</div>`;
+    return rows.map(r=>`<div class="wt-team-node-parent"><b>${r.system==="aptmdao"?"APTMDAO":"DAO1"}-Upline:</b> DID #${r.parentDid}</div>`).join("");
   }
   function dao1WalletRelevantDidSet(node){
     // Alle DIDs, die über unsere geladenen Downline-Graphen zu diesem Wallet führen,
@@ -5072,17 +5103,20 @@ window.DAO1Project = (() => {
       <div class="wt-team-node-name"><b>${escapeHtml(name)}</b></div>
       <div class="wt-team-wallet-row"><div class="wt-team-node-meta"><code>${escapeHtml(teamShortAddress(key))}</code></div>${dao1TeamCopyButtonHtml(key)}</div>
       ${dao1WalletDidListHtml(node)}
-      <div class="wt-team-node-parent">${escapeHtml(dao1WalletRelationLabel(node))}</div>
-      ${node.dao1Dids.size&&node.aptmdaoDids.size?'<div class="meta" style="margin-top:4px">Mehrere DIDs, aber nur 1 Partner · APTMDAO hat Vorrang, wenn diese Beziehung in deiner Downline liegt.</div>':""}
+      ${dao1WalletUplineHtml(node)}
       <div class="wt-team-node-actions">${kids.length?`<button type="button" class="wt-team-toggle-btn" data-dao1-wallet-toggle="${key}">${collapsed?`+ ${kids.length} Partner anzeigen`:`− ${kids.length} Partner`}</button>`:""}<button type="button" class="wt-team-details-btn" data-dao1-wallet-details="${key}">Details</button></div>
     </div>${kids.length&&!collapsed&&level<DAO1_TEAM_MAX_LEVELS?`<ul class="wt-team-branch-children">${kids.map(k=>dao1WalletNodeHtml(k,graph,level+1,nextSeen)).join("")}</ul>`:""}</li>`;
   }
   function dao1WalletForestHtml(){
-    const graph=dao1BuildWalletGraph(),roots=[...graph.nodes.values()].filter(n=>n.own);
+    const graph=dao1BuildWalletGraph();
+    let roots=[...graph.nodes.values()].filter(n=>n.own&&!graph.childWallets.has(n.wallet));
+    // Sicherheitsfallback bei unvollständigem Parent-Wallet-Mapping: lieber die eigenen
+    // Wallets zeigen als einen leeren Baum. Normalfall ist genau der oberste eigene Knoten.
+    if(!roots.length)roots=[...graph.nodes.values()].filter(n=>n.own);
     const partnerCount=[...graph.nodes.values()].filter(n=>!n.own&&n.primary).length;
     if(!roots.length)return '<div class="custom-token-card" style="margin-top:12px"><div class="empty">Keine eigenen DAO-Wallets mit DID erkannt.</div></div>';
-    const blocks=roots.map(r=>`<section class="wt-team-tree-section"><div class="wt-team-tree-heading">${escapeHtml(dao1WalletDisplayName(r))} <span class="meta">· ${teamShortAddress(r.wallet)}</span></div><div class="wt-team-tree"><ul class="wt-team-hierarchy">${dao1WalletNodeHtml(r,graph,0,new Set())}</ul></div></section>`).join("");
-    return `<div class="custom-token-card wt-team-tree-card" style="margin-top:12px"><div class="wt-team-tree-info"><b>Wallet-zentrierte Darstellung:</b> Ein Wallet erscheint genau einmal. Alle erreichbaren DAO1-/APTMDAO-DIDs dieses Wallets werden zusammengefasst. Ist dasselbe Wallet über beide Systeme in deiner Downline, bestimmt APTMDAO die Position. Bots werden nur über die für deinen Zweig relevante DID-Beziehung berücksichtigt.</div><div class="project-summary" style="margin-top:10px"><div class="custom-token-card project-summary-box"><span class="field-label">Eindeutige Partner-Wallets</span><strong>${partnerCount.toLocaleString("de-DE")}</strong></div></div>${blocks}</div>`;
+    const blocks=roots.map(r=>`<section class="wt-team-tree-section"><div class="wt-team-tree"><ul class="wt-team-hierarchy">${dao1WalletNodeHtml(r,graph,0,new Set())}</ul></div></section>`).join("");
+    return `<div class="custom-token-card wt-team-tree-card" style="margin-top:12px"><div class="wt-team-tree-info"><b>Wallet-zentrierte Darstellung:</b> 1 Wallet = 1 Knoten. DAO1 und APTMDAO bleiben on-chain getrennt, werden hier aber in einem gemeinsamen Baum über ihre belegten DID-Uplines verbunden. Eigene Wallets bleiben sichtbar, zählen jedoch nicht als Partner. Bei zwei belegten Beziehungen bestimmt APTMDAO die grafische Position.</div><div class="project-summary" style="margin-top:10px"><div class="custom-token-card project-summary-box"><span class="field-label">Eindeutige Partner-Wallets</span><strong>${partnerCount.toLocaleString("de-DE")}</strong></div></div>${blocks}</div>`;
   }
   function dao1WalletDetailsHtml(node,graph){
     const relevant=dao1WalletRelevantDidSet(node),r=node.primary,kids=(graph.children.get(node.wallet)||[]).length;
@@ -5110,14 +5144,39 @@ window.DAO1Project = (() => {
       const modal=document.getElementById("dao1TeamDetailsModal");if(modal)modal.addEventListener("click",e=>{if(e.target===modal)modal.remove();});
       const area=modal?.querySelector("[data-dao1-wallet-assets]");if(!area)return;
       try{
-        let nfts=[...dao1TeamKnownNfts(wallet),...await dao1TeamFetchPartnerNfts(wallet,"wallet")];
-        if(node.own)nfts.push(...dao1TeamOwnHistoricalBotCandidates());
+        // Bei eigenen Wallets hat der historische Ersterwerbsdatensatz Vorrang vor dem
+        // heutigen Wallet-Snapshot. Nur so bleiben ursprüngliches Kauf-Wallet, Kauf-Tx und
+        // Kaufpreis nach einem internen NFT-Transfer erhalten. Live/Current-Daten ergänzen
+        // anschließend nur noch Bots, die in der Historie noch nicht vorhanden sind.
+        const historicalOwn=node.own?dao1TeamOwnHistoricalBotCandidates():[];
+        let nfts=[...historicalOwn,...dao1TeamKnownNfts(wallet),...await dao1TeamFetchPartnerNfts(wallet,"wallet")];
         nfts=[...new Map(nfts.filter(n=>dao1TeamIsBot(n)&&!dao1TeamIsIdentityNft(n)).map(n=>[`${lower(n.contract)}|${n.id}`,n])).values()];
         let cursor=0;async function worker(){while(cursor<nfts.length){const n=nfts[cursor++],acquisitionWallet=lower(n.acquisition_wallet||wallet),acq=await dao1TeamAcquisitionForNft(n,acquisitionWallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;if(acq.sourceWallet)n.source_wallet=acq.sourceWallet;if(acq.acquisitionKind)n.acquisition_kind=acq.acquisitionKind;const assignment=await dao1TeamResolveBotAssignment(n,acquisitionWallet,acq);n.assigned_system=assignment.system;n.assigned_did=assignment.did;n.assignment_type=assignment.type;n.assigned_parent_did=assignment.parentDid||0;}}
         await Promise.all(Array.from({length:Math.min(2,nfts.length)},worker));
         await Promise.all(nfts.filter(n=>n.assigned_system&&n.assigned_did).map(n=>saveDAO1PartnerBotLifecycle(n,lower(n.acquisition_wallet||wallet))));
-        const relevant=dao1WalletRelevantDidSet(node);nfts=nfts.filter(n=>n.assigned_did&&relevant.has(Number(n.assigned_did)));
-        area.innerHTML=dao1TeamNftTableHtml(nfts);
+        const relevant=dao1WalletRelevantDidSet(node);
+        const related=nfts.filter(n=>n.assigned_did&&relevant.has(Number(n.assigned_did)));
+        // Eigene Wallets: aktueller Bestand ausschließlich beim heutigen Owner. Bots, die
+        // hier gekauft und später auf eine andere eigene Wallet übertragen wurden, bleiben
+        // darunter als einklappbare Historie sichtbar. Bei fremden Partnern bleibt die
+        // bestehende current-Information maßgebend.
+        const current=related.filter(n=>{
+          if(!n.current)return false;
+          const owner=lower(n.current_wallet||wallet);
+          return !node.own||!owner||owner===wallet;
+        });
+        // Erhaltene Transfers auf eigene Wallets gehören zum aktuellen Bestand, auch wenn
+        // ihre ursprüngliche DID außerhalb des heutigen Knotens lag. Die historische
+        // Zuordnung wird dadurch nicht umgeschrieben.
+        if(node.own){
+          for(const n of nfts){
+            const owner=lower(n.current_wallet||"");
+            if(n.current&&owner===wallet&&!current.some(x=>lower(x.contract)===lower(n.contract)&&String(x.id)===String(n.id)))current.push(n);
+          }
+        }
+        const historical=node.own?related.filter(n=>lower(n.acquisition_wallet||"")===wallet&&(!n.current||lower(n.current_wallet||"")!==wallet)):[];
+        area.innerHTML=dao1TeamNftTableHtml(current,{emptyText:"Auf diesem Wallet befinden sich aktuell keine zugeordneten Bots."})+
+          (historical.length?`<details class="custom-token-card" style="margin-top:12px"><summary style="cursor:pointer;font-weight:800">Frühere Bots / übertragen (${historical.length})</summary><div class="note" style="margin:8px 0">Historische Käufe dieses Wallets, die heute nicht mehr hier liegen. Kaufdaten und Kaufpreise bleiben erhalten.</div>${dao1TeamNftTableHtml(historical,{showTotals:false})}</details>`:"");
       }catch(e){console.warn("DAO Wallet-Partnerdetails",e);area.innerHTML=`<div class="status warn"><strong>Partner-Bots konnten nicht geladen werden.</strong><div class="note">${escapeHtml(e?.message||e)}</div></div>`;}
     }));
     host.querySelectorAll("[data-dao1-team-toggle]").forEach(btn=>btn.addEventListener("click",()=>{const did=Number(btn.dataset.dao1TeamToggle);dao1TeamCollapsed.has(did)?dao1TeamCollapsed.delete(did):dao1TeamCollapsed.add(did);renderDAO1TeamTreePanel();}));
