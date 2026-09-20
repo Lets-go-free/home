@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.50 · 20.09.2026 03:19:33 CEST · Build 20260920-031933 */
+/* WalletTracking Phase 5.51 · 20.09.2026 03:45:30 CEST · Build 20260920-034530 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -239,6 +239,9 @@ async function onLoggedIn(session) {
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   document.getElementById("tab-dashboard")?.classList.add("active");
   document.querySelectorAll(".tab-btn[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === "dashboard"));
+  // Startzustand vollständig wie bei einem manuellen Dashboard-Klick synchronisieren.
+  // showTab() ist während des Start-Datenjobs absichtlich gesperrt, daher Navigation hier direkt setzen.
+  updateContextNavigation("dashboard");
   document.getElementById("userEmailLabel").textContent = "Eingeloggt als " + currentUser.email;
   document.getElementById("heroUserActions").style.display = "block";
 
@@ -1358,7 +1361,7 @@ const ADMIN_SYSTEM_TREE = [
     ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Im fälligen Grunddaten-Hintergrundlauf; vollständige Projekt-Discovery bleibt separat"]]},
   {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"planning",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","Supabase Snapshots","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung","Cache","Supabase Preis-/LP-Historie","Archive RPC/API bei Bedarf","Stichtagsberechnung"]]},
   {id:"fees",level:1,label:"💸 Gebühren",status:"planning",start:"–",daily:"–",open:"DB-Summary",manual:"Delta/API",details:[["Gebühren-Summary","RAM nach Lazy Load","Supabase Fee Cache/Summary","–","Gespeicherten Gebührenstand erst beim Öffnen des Tabs lesen"],["Gebührenhistorie","RAM","Supabase Fee Cache","Routescan/NodeReal/Blockscout etc.","On-chain/API erst bei Aktualisierung"]]},
-  {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"nur Freshness",daily:"kein Fresh-Load",open:"DB-Cache",manual:"On-chain/API",details:[["NFT-Bestand","RAM nach Lazy Load","Supabase NFT Cache","Chain-spezifische NFT Quellen/RPC","NFT- und Besitzcache erst beim Öffnen des Tabs; kein automatischer Chain-Refresh"],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
+  {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"nur Freshness",daily:"kein Fresh-Load",open:"DB-Cache",manual:"On-chain/API",details:[["NFT-Bestand","RAM nach Lazy Load","Supabase NFT Cache","Chain-spezifische NFT Quellen/RPC","NFT- und Besitzcache erst beim Öffnen des Tabs; kein automatischer Chain-Refresh. Phase 5.51: Tabelle zeigt verifiziertes Kauf/Mint-Wallet und aktuelles Wallet gekürzt mit Copy-Funktion; Walletwechsel bleiben über Ownership-Historie nachvollziehbar."],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
   {id:"approvals",level:1,label:"🔓 Freigaben",status:"planning",start:"–",daily:"–",open:"bei Auswahl",manual:"On-chain/API",details:[["Token-Freigaben","–","–","Alchemy/RPC je unterstützter Chain","Spezialfunktion; nicht beim App-Start"]]},
 
   {id:"projects",level:0,label:"🏦 DeFi-Projekte",status:"in_progress",start:"Konfig DB",daily:"Preise",open:"Übersicht · keine Projektdaten",manual:"projektbezogen",details:[]},
@@ -7070,7 +7073,8 @@ async function loadNftOwnershipCacheFromDb(){
           const candidate={
             owned_from_block:Number(r.block_number||0)||null,
             owned_from_at:r.block_timestamp||null,
-            tx_hash:r.tx_hash||null
+            tx_hash:r.tx_hash||null,
+            wallet_address:r.to_address||null
           };
           const old=nftGlobalFirstOwned.get(key);
           if(!old || (candidate.owned_from_block>0 && (!old.owned_from_block || candidate.owned_from_block<old.owned_from_block))){
@@ -7094,7 +7098,7 @@ async function loadNftOwnershipCacheFromDb(){
 function nftOwnershipInfo(n){
   if(String(n?.chain||"")!=="apertum"){
     const at=n?.acquiredAt||null,block=Number(n?.acquiredBlock||0)||null;
-    return at||block?{known:true,firstOwnedAt:at,firstOwnedBlock:block,walletSinceAt:at,walletSinceBlock:block,currentInWallet:true,source:n?.acquisitionSource||"incoming-nft-transfer"}:{known:false};
+    return at||block?{known:true,firstOwnedAt:at,firstOwnedBlock:block,firstOwnedWalletId:String(n?.walletId||n?.wallet_id||""),firstOwnedWalletAddress:n?.walletAddress||null,walletSinceAt:at,walletSinceBlock:block,currentWalletId:String(n?.walletId||n?.wallet_id||""),currentInWallet:true,source:n?.acquisitionSource||"incoming-nft-transfer"}:{known:false};
   }
   const contract=lowerAddressForNft(n?.tokenAddress);
   const id=String(n?.tokenId??"");
@@ -7131,6 +7135,7 @@ function nftOwnershipInfo(n){
         ...first,
         owned_from_block:gb,
         owned_from_at:globalFirst.owned_from_at||null,
+        wallet_address:globalFirst.wallet_address||first?.wallet_address||null,
         _source:"global-transfer-cache"
       };
     }
@@ -7149,8 +7154,11 @@ function nftOwnershipInfo(n){
     acquisitionTxHash:acquisitionRow?.acquisition_tx_hash||null,
     firstOwnedAt:acquisitionVerified?(acquisitionRow?.owned_from_at||first?.owned_from_at||null):null,
     firstOwnedBlock:acquisitionVerified?(Number(acquisitionRow?.owned_from_block||first?.owned_from_block||0)||null):null,
+    firstOwnedWalletId:acquisitionVerified?String(acquisitionRow?.wallet_id||first?.wallet_id||""):"",
+    firstOwnedWalletAddress:acquisitionVerified?(acquisitionRow?.wallet_address||first?.wallet_address||globalFirst?.wallet_address||null):null,
     walletSinceAt:current?.owned_from_at||null,
     walletSinceBlock:Number(current?.owned_from_block||0)||null,
+    currentWalletId:String(current?.wallet_id||walletId||""),
     currentInWallet:!!current?.is_current
   };
 }
@@ -7159,6 +7167,15 @@ function nftOwnershipDate(value){
   if(!value)return "–";
   const d=new Date(value);
   return Number.isNaN(d.getTime())?"–":d.toLocaleString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+}
+function nftWalletAddressById(walletId,chain="apertum"){
+  const w=wallets.find(x=>String(x.id||x.dbId||"")===String(walletId||""));
+  return w?walletAddressForChain(w,chain):null;
+}
+function nftWalletAddressHtml(address,label="Wallet"){
+  const a=String(address||"").trim();
+  if(!a)return `<div class="meta">${escapeAttr(label)}: –</div>`;
+  return `<div class="meta" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap"><span>${escapeAttr(label)}: ${escapeAttr(dashboardShortAddress(a))}</span><button type="button" class="dashboard-copy-btn" title="Wallet-Adresse kopieren" aria-label="Wallet-Adresse kopieren" onclick="copyDashboardAddress('${escapeAttr(a)}',this)">📋</button></div>`;
 }
 
 async function refreshSelectedApertumNftOwnership(){
@@ -7918,6 +7935,8 @@ function renderNftResults(nfts, errors = []) {
             ? (own.acquisitionVerified?nftOwnershipDate(own.firstOwnedAt):"Kaufdatum nicht sicher ermittelt")
             : "noch nicht ermittelt";
           const walletSince=own?.known?nftOwnershipDate(own.walletSinceAt):"noch nicht ermittelt";
+          const firstWalletAddress=own?.firstOwnedWalletAddress||nftWalletAddressById(own?.firstOwnedWalletId,n.chain);
+          const currentWalletAddress=nftWalletAddressById(own?.currentWalletId||n?.walletId||n?.wallet_id,n.chain)||n?.walletAddress||null;
           const statusParts=[];
           if(spam)statusParts.push(`<span class="badge unsafe">⚠ ${n.userMarkedSpam ? "Spam markiert" : "Spam-Verdacht"}</span>`);
           if(n.userMarkedSafe)statusParts.push(`<span class="badge safe">✓ Sicher</span>`);
@@ -7926,8 +7945,8 @@ function renderNftResults(nfts, errors = []) {
             <td>${n.image?`<img class="nft-table-thumb" src="${escapeAttr(n.image)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="nft-table-placeholder">Kein Bild</div>`}</td>
             <td><strong>${escapeAttr(n.name)}</strong><div class="meta">${n.collectionName?escapeAttr(n.collectionName)+" · ":""}#${escapeAttr(String(n.tokenId))}</div><div class="meta"><code>${escapeAttr(String(n.tokenAddress||""))}</code></div></td>
             <td><div style="display:flex;align-items:center;gap:5px"><span class="dot ${meta.dot}" style="width:7px;height:7px"></span><strong>${escapeAttr(meta.label||n.chain)}</strong></div><div class="meta">${escapeAttr(n.walletLabel||"")}</div></td>
-            <td><strong>${firstOwned}</strong>${own?.firstOwnedBlock?`<div class="meta">Block ${Number(own.firstOwnedBlock).toLocaleString("de-CH")}</div>`:""}${own?.acquisitionVerified?`<div class="meta">${own.acquisitionKind==="purchase_same_tx"?"✓ Kauf on-chain belegt":"✓ Mint/Erwerb on-chain belegt"}</div>`:`<div class="meta">Nur Wallet-Eingang on-chain belegt</div>`}${own?.acquisitionTxHash&&CHAIN_META[n.chain]?.explorer?`<div class="meta"><a href="${CHAIN_META[n.chain].explorer}/tx/${escapeAttr(own.acquisitionTxHash)}" target="_blank" rel="noopener">Erwerbs-TX</a></div>`:""}</td>
-            <td><strong>${walletSince}</strong>${own?.walletSinceBlock?`<div class="meta">Block ${Number(own.walletSinceBlock).toLocaleString("de-CH")}${own.currentInWallet?" · aktuell":""}</div>`:""}</td>
+            <td><strong>${firstOwned}</strong>${nftWalletAddressHtml(firstWalletAddress,"Kauf/Mint-Wallet")}${own?.firstOwnedBlock?`<div class="meta">Block ${Number(own.firstOwnedBlock).toLocaleString("de-CH")}</div>`:""}${own?.acquisitionVerified?`<div class="meta">${own.acquisitionKind==="purchase_same_tx"?"✓ Kauf on-chain belegt":"✓ Mint/Erwerb on-chain belegt"}</div>`:`<div class="meta">Nur Wallet-Eingang on-chain belegt</div>`}${own?.acquisitionTxHash&&CHAIN_META[n.chain]?.explorer?`<div class="meta"><a href="${CHAIN_META[n.chain].explorer}/tx/${escapeAttr(own.acquisitionTxHash)}" target="_blank" rel="noopener">Erwerbs-TX</a></div>`:""}</td>
+            <td><strong>${walletSince}</strong>${nftWalletAddressHtml(currentWalletAddress,"Aktuelles Wallet")}${own?.walletSinceBlock?`<div class="meta">Block ${Number(own.walletSinceBlock).toLocaleString("de-CH")}${own.currentInWallet?" · aktuell":""}</div>`:""}</td>
             <td>${statusParts.join("<br>")}</td>
             <td><div style="display:flex;gap:6px;flex-wrap:wrap">
               ${!n.userMarkedSafe ? `<button class="${n.userMarkedSpam ? "secondary" : "remove"}" style="padding:6px 8px;font-size:.72rem" onclick="setNftUserSpam('${escapeAttr(String(n.walletId || ""))}','${n.chain}','${escapeAttr(n.tokenAddress || "")}','${escapeAttr(String(n.tokenId))}',${n.userMarkedSpam ? "false" : "true"})">${n.userMarkedSpam ? "Spam entfernen" : "Als Spam markieren"}</button>` : ""}
