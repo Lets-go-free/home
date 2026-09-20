@@ -1,3 +1,4 @@
+// Phase 5.62: Partner-Bots werden zentral im Hintergrund gepflegt; Karten zeigen Bot-Zahlen, Partner-Aliase sind editierbar, direkte Uplines bleiben vom Downline-Graph getrennt.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
 // WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
 window.DAO1Project = (() => {
@@ -4097,6 +4098,9 @@ window.DAO1Project = (() => {
   const dao1TeamCollapsed=new Set();
   const dao1TeamBlockTimeCache=new Map();
   const dao1TeamPartnerDetailsCache=new Map();
+  const dao1PartnerBotStats=new Map();
+  let dao1PartnerBotRefreshRunning=false;
+  let dao1PartnerBotCacheLoaded=false;
 
   function dao1TeamAliasKey(did,mode=dao1TeamTreeMode){return `${mode==="aptmdao"?"aptmdao":"dao1"}:did:${String(did||"").trim()}`;}
   function dao1TeamAliasFor(did,mode){const direct=dao1TeamAliases[dao1TeamAliasKey(did,mode)];return direct?String(direct).trim():"";}
@@ -4123,8 +4127,8 @@ window.DAO1Project = (() => {
     if(!data?.ok)throw new Error(data?.error||`wallet-private/${action} fehlgeschlagen`);
     return data;
   }
-  async function saveDAO1TeamAlias(did,value,input=null){
-    const reference=dao1TeamAliasKey(did),alias=String(value||"").trim();
+  async function saveDAO1TeamAlias(did,value,input=null,mode=dao1TeamTreeMode){
+    const reference=dao1TeamAliasKey(did,mode),alias=String(value||"").trim();
     const oldValue=dao1TeamAliases[reference]||"";
     if(input){input.disabled=true;input.classList.remove("save-error");}
     try{
@@ -4132,13 +4136,13 @@ window.DAO1Project = (() => {
       // Übernahme über Wallet oder gleichlautende IDs zwischen den beiden Trees.
       await dao1WalletPrivate("team_alias_save",{reference,alias});
       if(alias)dao1TeamAliases[reference]=alias;else delete dao1TeamAliases[reference];
-      if(input){input.dataset.savedValue=alias;input.title=`${dao1TeamTreeMode==="aptmdao"?"APTMDAO":"DAO1"}-Name verschlüsselt gespeichert`;}
+      if(input){input.dataset.savedValue=alias;input.title=`${mode==="aptmdao"?"APTMDAO":"DAO1"}-Name verschlüsselt gespeichert`;}
       renderDAO1TeamTreePanel();return true;
     }catch(e){
       dao1TeamAliases[reference]=oldValue;
       if(input){input.value=oldValue;input.classList.add("save-error");input.title=`Speichern fehlgeschlagen: ${e?.message||e}`;}
       console.warn("DAO1 Team-Name speichern",e);
-      alert(`${dao1TeamTreeMode==="aptmdao"?"APTMDAO":"DAO1"}-Name konnte nicht gespeichert werden: ${e?.message||e}`);
+      alert(`${mode==="aptmdao"?"APTMDAO":"DAO1"}-Name konnte nicht gespeichert werden: ${e?.message||e}`);
       return false;
     }finally{if(input)input.disabled=false;}
   }
@@ -4246,6 +4250,7 @@ window.DAO1Project = (() => {
     // Partnerzahlen bleibt sie trotzdem "eigene Wallet" und zählt nicht als Partner.
     const children=new Map(),childWallets=new Set();
     for(const n of nodes.values()){
+      if(n.upstream&&!n.own)continue; // reine Ancestors/Uplines sind niemals Downline-Partner
       const p=n.primary?.parentWallet;if(!p||p===n.wallet||!nodes.has(p))continue;
       if(!children.has(p))children.set(p,[]);children.get(p).push(n);childWallets.add(n.wallet);
     }
@@ -5181,6 +5186,17 @@ window.DAO1Project = (() => {
     // landet deshalb gar nicht in aptmdaoDids.
     return new Set([...node.dao1Dids,...node.aptmdaoDids].map(Number));
   }
+  function dao1WalletAliasEditorHtml(node){
+    if(node?.own)return "";
+    const aptm=[...node.aptmdaoDids].sort((a,b)=>a-b),legacy=[...node.dao1Dids].sort((a,b)=>a-b);
+    const did=aptm[0]||legacy[0];if(!did)return "";const mode=aptm.length?"aptmdao":"legacy",value=dao1TeamAliasFor(did,mode)||"";
+    return `<label class="field-label" style="display:block;margin-top:7px">Name / Alias<input type="text" value="${escapeAttr(value)}" placeholder="Partnername" data-dao1-team-alias="${did}" data-dao1-team-alias-mode="${mode}" style="margin-top:4px;width:100%"></label>`;
+  }
+  function dao1PartnerBotCountHtml(node){
+    if(node?.own)return "";const st=dao1PartnerBotStats.get(lower(node.wallet));
+    if(!st)return `<div class="wt-team-node-parent">Bots: <span class="meta">werden geladen …</span></div>`;
+    return `<div class="wt-team-node-parent"><b>Mining-Bots:</b> ${Number(st.mining||0)} · <b>Trading-Bots:</b> ${Number(st.trading||0)}</div>`;
+  }
   function dao1WalletNodeHtml(node,graph,level=0,seen=new Set()){
     const key=lower(node?.wallet||"");if(!key||seen.has(key))return "";
     const nextSeen=new Set(seen);nextSeen.add(key);const kids=(graph.children.get(key)||[]).filter(k=>!nextSeen.has(k.wallet));
@@ -5191,6 +5207,8 @@ window.DAO1Project = (() => {
       <div class="wt-team-node-name"><b>${escapeHtml(name)}</b></div>
       <div class="wt-team-wallet-row"><div class="wt-team-node-meta"><code>${escapeHtml(teamShortAddress(key))}</code></div>${dao1TeamCopyButtonHtml(key)}</div>
       ${dao1WalletDidListHtml(node)}
+      ${dao1WalletAliasEditorHtml(node)}
+      ${dao1PartnerBotCountHtml(node)}
       ${dao1WalletUplineHtml(node)}
       <div class="wt-team-node-actions">${kids.length?`<button type="button" class="wt-team-toggle-btn" data-dao1-wallet-toggle="${key}">${collapsed?`+ ${kids.length} Partner anzeigen`:`− ${kids.length} Partner`}</button>`:""}<button type="button" class="wt-team-details-btn" data-dao1-wallet-details="${key}">Details</button></div>
     </div>${kids.length&&!collapsed&&level<DAO1_TEAM_MAX_LEVELS?`<ul class="wt-team-branch-children">${kids.map(k=>dao1WalletNodeHtml(k,graph,level+1,nextSeen)).join("")}</ul>`:""}</li>`;
@@ -5206,7 +5224,7 @@ window.DAO1Project = (() => {
   }
   function dao1ExternalUplineHtml(node,graph){
     const rows=dao1ExternalUplineRelations(node,graph);if(!rows.length)return "";
-    return `<div class="wt-team-upline-wrap"><div class="wt-team-upline-label">Meine Upline${rows.length>1?"s":""}</div><div class="wt-team-upline-row">${rows.map(r=>{const pn=graph.nodes.get(lower(r.parentWallet));const label=pn?dao1WalletDisplayName(pn):"Upline-Wallet";return `<div class="wt-team-node wt-team-upline-node"><div class="wt-team-node-title"><span class="wt-team-depth-badge">${r.system==="aptmdao"?"APTMDAO":"DAO1"}</span></div><div class="wt-team-node-name"><b>${escapeHtml(label)}</b></div><div class="wt-team-wallet-row"><div class="wt-team-node-meta"><code>${escapeHtml(teamShortAddress(r.parentWallet))}</code></div>${dao1TeamCopyButtonHtml(r.parentWallet)}</div><div class="wt-team-wallet-dids"><div class="wt-team-did-row ${r.system==="aptmdao"?"aptmdao":"dao1"}"><span>${r.system==="aptmdao"?"APTMDAO-DID":"DAO1-DID"}:</span><strong>#${Number(r.parentDid)}</strong></div></div><div class="wt-team-node-parent">Upline von ${r.system==="aptmdao"?"APTMDAO":"DAO1"} #${Number(r.childDid)}</div></div>`;}).join("")}</div><div class="wt-team-upline-connector">↓</div></div>`;
+    return `<div class="wt-team-upline-wrap"><div class="wt-team-upline-label">DIREKTE UPLINE${rows.length>1?"S":""} DES WALLET-ROOTS</div><div class="wt-team-upline-row">${rows.map(r=>{const pn=graph.nodes.get(lower(r.parentWallet));const label=pn?dao1WalletDisplayName(pn):"Upline-Wallet";return `<div class="wt-team-node wt-team-upline-node"><div class="wt-team-node-title"><span class="wt-team-depth-badge">UPLINE</span><span class="wt-team-depth-badge" style="margin-left:4px">${r.system==="aptmdao"?"APTMDAO":"DAO1"}</span></div><div class="wt-team-node-name"><b>${escapeHtml(label)}</b></div><div class="wt-team-wallet-row"><div class="wt-team-node-meta"><code>${escapeHtml(teamShortAddress(r.parentWallet))}</code></div>${dao1TeamCopyButtonHtml(r.parentWallet)}</div><div class="wt-team-wallet-dids"><div class="wt-team-did-row ${r.system==="aptmdao"?"aptmdao":"dao1"}"><span>${r.system==="aptmdao"?"APTMDAO-DID":"DAO1-DID"}:</span><strong>#${Number(r.parentDid)}</strong></div></div><div class="wt-team-node-parent">Upline von ${r.system==="aptmdao"?"APTMDAO":"DAO1"} #${Number(r.childDid)}</div></div>`;}).join("")}</div><div class="wt-team-upline-connector">↓</div></div>`;
   }
 
   function dao1WalletForestHtml(){
@@ -5251,9 +5269,36 @@ window.DAO1Project = (() => {
     return [...by.values()];
   }
 
+  function dao1BindDetailsModalEscape(modal){
+    if(!modal)return;const esc=e=>{if(e.key==="Escape"&&modal.isConnected){modal.remove();document.removeEventListener("keydown",esc);}};
+    document.addEventListener("keydown",esc,{passive:true});
+  }
+  function dao1BotStatsFromRows(rows){let mining=0,trading=0;for(const n of rows||[]){const t=String(n.subtype||n.bot_type||n.name||"").toLowerCase();if(t.includes("trading"))trading++;else if(t.includes("min")||t.includes("solar"))mining++;}return {mining,trading,loadedAt:new Date().toISOString()};}
+  async function dao1WalletHash(wallet){const bytes=new TextEncoder().encode(lower(wallet));const buf=await crypto.subtle.digest("SHA-256",bytes);return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("");}
+  async function dao1LoadPartnerBotStatsCache(){
+    if(dao1PartnerBotCacheLoaded||!sb||!getContext?.()?.currentUser)return;dao1PartnerBotCacheLoaded=true;
+    try{const {data,error}=await sb.from("dao_partner_bot_lifecycle_cache").select("wallet_address,bot_id,bot_type").eq("user_id",getContext().currentUser.id).eq("project_key",PROJECT_KEY);if(error)throw error;const by=new Map();for(const r of data||[]){const w=lower(r.wallet_address);if(!w)continue;if(!by.has(w))by.set(w,[]);by.get(w).push(r);}for(const [w,rows] of by)dao1PartnerBotStats.set(w,dao1BotStatsFromRows(rows));}catch(e){console.warn("DAO Partner-Bot Statistik-Cache",e);}
+  }
+  async function dao1PartnerBotScanDue(wallet){
+    try{const hash=await dao1WalletHash(wallet),uid=getContext?.()?.currentUser?.id;if(!uid)return {due:false,hash};const {data,error}=await sb.from("dao_partner_bot_scan_state").select("last_scanned_at,status").eq("user_id",uid).eq("project_key",PROJECT_KEY).eq("wallet_hash",hash).maybeSingle();if(error)throw error;const age=data?.last_scanned_at?Date.now()-new Date(data.last_scanned_at).getTime():Infinity;return {due:!data||data.status!=="ok"||age>=86400000,hash};}catch(e){console.warn("DAO Partner-Bot Scan-State",e);return {due:true,hash:await dao1WalletHash(wallet)};}
+  }
+  async function dao1SavePartnerBotScanState(hash,status,errorText=""){
+    const uid=getContext?.()?.currentUser?.id;if(!uid)return;const now=new Date().toISOString();try{await sb.from("dao_partner_bot_scan_state").upsert({user_id:uid,project_key:PROJECT_KEY,wallet_hash:hash,last_scanned_at:now,status,last_error:errorText||null,updated_at:now},{onConflict:"user_id,project_key,wallet_hash"});}catch(e){console.warn("DAO Partner-Bot Scan-State speichern",e);}
+  }
+  async function dao1RefreshOnePartnerBots(node){
+    const wallet=lower(node.wallet),due=await dao1PartnerBotScanDue(wallet);if(!due.due)return false;
+    try{let nfts=(await dao1TeamFetchPartnerNfts(wallet,"wallet")).filter(n=>dao1TeamIsBot(n)&&!dao1TeamIsIdentityNft(n));dao1PartnerBotStats.set(wallet,dao1BotStatsFromRows(nfts));
+      let cursor=0;async function worker(){while(cursor<nfts.length){const n=nfts[cursor++],acq=await dao1TeamAcquisitionForNft(n,wallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;if(acq.sourceWallet)n.source_wallet=acq.sourceWallet;if(acq.acquisitionKind)n.acquisition_kind=acq.acquisitionKind;const a=await dao1TeamResolveBotAssignment(n,wallet,acq);n.assigned_system=a.system;n.assigned_did=a.did;n.assignment_type=a.type;n.assigned_parent_did=a.parentDid||0;}}
+      await Promise.all(Array.from({length:Math.min(2,nfts.length)},worker));await Promise.all(nfts.filter(n=>n.assigned_system&&n.assigned_did).map(n=>saveDAO1PartnerBotLifecycle(n,wallet)));await dao1SavePartnerBotScanState(due.hash,"ok");return true;
+    }catch(e){await dao1SavePartnerBotScanState(due.hash,"error",String(e?.message||e).slice(0,500));console.warn("DAO Partner-Bot Refresh",wallet,e);return false;}
+  }
+  async function dao1EnsurePartnerBots(graph){
+    if(dao1PartnerBotRefreshRunning)return;dao1PartnerBotRefreshRunning=true;try{await dao1LoadPartnerBotStatsCache();const partners=[...graph.nodes.values()].filter(n=>!n.own&&!n.upstream&&n.primary);let changed=false;for(let i=0;i<partners.length;i+=3){const batch=partners.slice(i,i+3);const r=await Promise.all(batch.map(dao1RefreshOnePartnerBots));changed=r.some(Boolean)||changed;if(changed&&document.getElementById("dao1TeamTreePanel"))renderDAO1TeamTreePanel();await new Promise(res=>setTimeout(res,0));}}finally{dao1PartnerBotRefreshRunning=false;}
+  }
+
   function bindDAO1TeamTreeControls(st){
     const host=document.getElementById("dao1TeamTreePanel");if(!host)return;
-    host.querySelectorAll("[data-dao1-team-alias]").forEach(inp=>inp.addEventListener("change",()=>saveDAO1TeamAlias(inp.dataset.dao1TeamAlias,inp.value,inp)));
+    host.querySelectorAll("[data-dao1-team-alias]").forEach(inp=>inp.addEventListener("change",()=>saveDAO1TeamAlias(inp.dataset.dao1TeamAlias,inp.value,inp,inp.dataset.dao1TeamAliasMode||dao1TeamTreeMode)));
     host.querySelectorAll("[data-dao1-copy-wallet]").forEach(btn=>btn.addEventListener("click",async()=>{
       const wallet=btn.dataset.dao1CopyWallet||"";try{await navigator.clipboard.writeText(wallet);}catch(_){const ta=document.createElement("textarea");ta.value=wallet;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();}
       const old=btn.title;btn.title="Kopiert";btn.setAttribute("aria-label","Kopiert");setTimeout(()=>{btn.title=old;btn.setAttribute("aria-label","Wallet-Adresse kopieren");},1200);
@@ -5262,7 +5307,7 @@ window.DAO1Project = (() => {
     host.querySelectorAll("[data-dao1-wallet-details]").forEach(btn=>btn.addEventListener("click",async()=>{
       const wallet=lower(btn.dataset.dao1WalletDetails||""),graph=dao1BuildWalletGraph(),node=graph.nodes.get(wallet);if(!node)return;
       document.getElementById("dao1TeamDetailsModal")?.remove();document.body.insertAdjacentHTML("beforeend",dao1WalletDetailsHtml(node,graph));
-      const modal=document.getElementById("dao1TeamDetailsModal");if(modal)modal.addEventListener("click",e=>{if(e.target===modal)modal.remove();});
+      const modal=document.getElementById("dao1TeamDetailsModal");if(modal){modal.addEventListener("click",e=>{if(e.target===modal)modal.remove();});dao1BindDetailsModalEscape(modal);}
       const area=modal?.querySelector("[data-dao1-wallet-assets]");if(!area)return;
       try{
         // Bei eigenen Wallets hat der historische Ersterwerbsdatensatz Vorrang vor dem
@@ -5287,10 +5332,10 @@ window.DAO1Project = (() => {
         // hier gekauft und später auf eine andere eigene Wallet übertragen wurden, bleiben
         // darunter als einklappbare Historie sichtbar. Bei fremden Partnern bleibt die
         // bestehende current-Information maßgebend.
-        const current=related.filter(n=>{
+        const current=(node.own?related:nfts).filter(n=>{
           if(!n.current)return false;
           const owner=lower(n.current_wallet||wallet);
-          return !node.own||!owner||owner===wallet;
+          return !owner||owner===wallet;
         });
         // Erhaltene Transfers auf eigene Wallets gehören zum aktuellen Bestand, auch wenn
         // ihre ursprüngliche DID außerhalb des heutigen Knotens lag. Die historische
@@ -5312,7 +5357,7 @@ window.DAO1Project = (() => {
       const modal=document.getElementById("dao1TeamDetailsModal");hydrateDAO1TeamMintDates(modal,st);
       if(modal){
         modal.addEventListener("click",e=>{if(e.target===modal)modal.remove();});
-        const esc=e=>{if(e.key==="Escape"&&document.getElementById("dao1TeamDetailsModal")){document.getElementById("dao1TeamDetailsModal")?.remove();document.removeEventListener("keydown",esc);}};document.addEventListener("keydown",esc);
+        dao1BindDetailsModalEscape(modal);
       }
       const edge=dao1TeamMintEdge(did,st),root=dao1TeamRootList().find(r=>Number(r.did)===did),wallet=edge?.wallet||root?.wallet_address||"";
       const area=modal?.querySelector("[data-dao1-partner-assets]");if(!area||!wallet)return;
@@ -5463,7 +5508,7 @@ window.DAO1Project = (() => {
         <div style="margin-top:10px"><button type="button" onclick="DAO1Project.discoverTeamTree()" ${running?"disabled":""}>${running?"Discovery läuft …":"Beide Trees on-chain aktualisieren"}</button></div>
         <div class="project-summary" style="margin-top:12px"><div class="custom-token-card project-summary-box"><span class="field-label">Partner-Wallets</span><strong>${partners.length.toLocaleString("de-DE")}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">davon DAO1-Bezug</span><strong>${dao1Partners.size.toLocaleString("de-DE")}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">davon APTMDAO-Bezug</span><strong>${aptmPartners.size.toLocaleString("de-DE")}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Max. Ebenen</span><strong>${DAO1_TEAM_MAX_LEVELS}</strong></div></div>
       </div>${dao1WalletForestHtml()}<details class="custom-token-card debug-frame" style="margin-top:12px"><summary style="cursor:pointer;font-weight:800">DEV / Diagnose · getrennte Graphen</summary><div class="note" style="margin-top:8px">DAO1: ${(legacy.edges||[]).length.toLocaleString("de-DE")} Kanten · APTMDAO: ${(aptm.edges||[]).length.toLocaleString("de-DE")} Kanten. Die Wallet-Ansicht verändert keine on-chain Beziehung, sondern dedupliziert ausschließlich die Darstellung.</div></details>`;
-      bindDAO1TeamTreeControls({edges:[]});window.applyDebugModeVisibility?.();return;
+      bindDAO1TeamTreeControls({edges:[]});window.applyDebugModeVisibility?.();queueMicrotask(()=>dao1EnsurePartnerBots(graph).catch(e=>console.warn("DAO Partner-Bots Hintergrund",e)));return;
     }
     const isOld=dao1TeamTreeMode==="legacy",st=teamDiscoveryState();
     try{const rows=legacyTreeRows(st.edges||[]),wallets=new Set(rows.map(r=>lower(r.wallet)).filter(Boolean)),patch={updatedAt:new Date().toISOString()};if(isOld){patch.dao1Partners=wallets.size;}else patch.aptmdaoPartners=wallets.size;window.setDashboardProjectCacheStats?.("dao1",patch);}catch(e){console.warn("DAO Team Dashboard-Summary",e);}
