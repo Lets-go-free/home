@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801 */
+/* WalletTracking Phase 5.59 · 20.09.2026 22:46:29 CEST · Build 20260920-224629 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -13,6 +13,23 @@ const ADMIN_DEBUG_SESSION_KEY = "wallet_tracking_admin_debug_v1";
 const UI_FONT_SCALE_KEY = "wallet_tracking_font_scale_v1";
 const UI_FONT_SCALE_DEFAULT = 100;
 const UI_THEME_KEY = "wallet_tracking_theme_v1";
+let uiPreferencesSaveTimer=null;
+function currentUiPreferences(){return {theme:document.documentElement.dataset.theme==="dark"?"dark":"light",font_scale:Math.max(85,Math.min(125,Number(document.getElementById("uiFontScale")?.value)||UI_FONT_SCALE_DEFAULT))};}
+async function saveUiPreferencesToDb(){
+  if(!currentUser?.id||!sb)return;
+  const pref=currentUiPreferences();
+  try{const {error}=await sb.from("user_ui_preferences").upsert({user_id:currentUser.id,theme:pref.theme,font_scale:pref.font_scale,updated_at:new Date().toISOString()},{onConflict:"user_id"});if(error)throw error;}catch(e){console.warn("UI-Einstellungen speichern",e);}
+}
+function scheduleUiPreferencesSave(){clearTimeout(uiPreferencesSaveTimer);uiPreferencesSaveTimer=setTimeout(saveUiPreferencesToDb,250);}
+async function loadUiPreferencesFromDb(){
+  if(!currentUser?.id||!sb)return;
+  try{
+    const {data,error}=await sb.from("user_ui_preferences").select("theme,font_scale").eq("user_id",currentUser.id).maybeSingle();if(error)throw error;
+    if(data){applyUiFontScale(data.font_scale,false);applyUiTheme(data.theme,false);try{localStorage.setItem(UI_FONT_SCALE_KEY,String(data.font_scale));localStorage.setItem(UI_THEME_KEY,data.theme);}catch(_){}return;}
+    // Einmalige Übernahme bestehender lokaler Einstellungen in die userbezogene DB.
+    await saveUiPreferencesToDb();
+  }catch(e){console.warn("UI-Einstellungen laden; lokaler Fallback bleibt aktiv",e);}
+}
 function applyUiFontScale(value, persist=true){
   const n=Math.max(85,Math.min(125,Number(value)||UI_FONT_SCALE_DEFAULT));
   document.documentElement.style.setProperty("--ui-font-scale",String(n/100));
@@ -20,27 +37,17 @@ function applyUiFontScale(value, persist=true){
   const label=document.getElementById("uiFontScaleValue");
   if(slider)slider.value=String(n);
   if(label)label.textContent=`${n}%`;
-  if(persist){try{localStorage.setItem(UI_FONT_SCALE_KEY,String(n));}catch(_){}}
+  if(persist){try{localStorage.setItem(UI_FONT_SCALE_KEY,String(n));}catch(_){}scheduleUiPreferencesSave();}
 }
-function initUiFontScale(){
-  let n=UI_FONT_SCALE_DEFAULT;
-  try{n=Number(localStorage.getItem(UI_FONT_SCALE_KEY)||UI_FONT_SCALE_DEFAULT);}catch(_){}
-  applyUiFontScale(n,false);
-}
+function initUiFontScale(){let n=UI_FONT_SCALE_DEFAULT;try{n=Number(localStorage.getItem(UI_FONT_SCALE_KEY)||UI_FONT_SCALE_DEFAULT);}catch(_){}applyUiFontScale(n,false);}
 window.applyUiFontScale=applyUiFontScale;
-function stepUiFontScale(delta){
-  const slider=document.getElementById("uiFontScale");
-  applyUiFontScale((Number(slider?.value)||UI_FONT_SCALE_DEFAULT)+Number(delta||0));
-}
-function resetUiFontScale(){ applyUiFontScale(UI_FONT_SCALE_DEFAULT); }
-window.stepUiFontScale=stepUiFontScale;
-window.resetUiFontScale=resetUiFontScale;
+function stepUiFontScale(delta){const slider=document.getElementById("uiFontScale");applyUiFontScale((Number(slider?.value)||UI_FONT_SCALE_DEFAULT)+Number(delta||0));}
+function resetUiFontScale(){applyUiFontScale(UI_FONT_SCALE_DEFAULT);}
+window.stepUiFontScale=stepUiFontScale;window.resetUiFontScale=resetUiFontScale;
 function applyUiTheme(theme,persist=true){
-  const mode=theme==="dark"?"dark":"light";
-  document.documentElement.dataset.theme=mode;
-  const btn=document.getElementById("uiThemeToggle");
-  if(btn){btn.textContent=mode==="dark"?"☀":"☾";btn.title=mode==="dark"?"Hellmodus einschalten":"Dunkelmodus einschalten";}
-  if(persist){try{localStorage.setItem(UI_THEME_KEY,mode);}catch(_){}}
+  const mode=theme==="dark"?"dark":"light";document.documentElement.dataset.theme=mode;
+  const btn=document.getElementById("uiThemeToggle");if(btn){btn.textContent=mode==="dark"?"☀":"☾";btn.title=mode==="dark"?"Hellmodus einschalten":"Dunkelmodus einschalten";}
+  if(persist){try{localStorage.setItem(UI_THEME_KEY,mode);}catch(_){}scheduleUiPreferencesSave();}
 }
 function initUiTheme(){let mode="light";try{mode=localStorage.getItem(UI_THEME_KEY)||"light";}catch(_){}applyUiTheme(mode,false);}
 function toggleUiTheme(){applyUiTheme(document.documentElement.dataset.theme==="dark"?"light":"dark");}
@@ -276,6 +283,7 @@ async function onLoggedIn(session) {
     loadCustomSafeTokensFromDb()
   ]);
   isAdmin=!!adminResult;
+  await loadUiPreferencesFromDb();
   restoreDashboardProjectCacheStats();
   try{adminDebugMode=isAdmin&&sessionStorage.getItem(ADMIN_DEBUG_SESSION_KEY)==="1";}catch(_){adminDebugMode=false;}
   applyAdminDebugMode();
@@ -1381,7 +1389,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"tln-rewards",level:2,label:"Rewards Summary",status:"in_progress",start:"–",daily:"–",open:"Cache",manual:"Discovery",details:[["Reward Summary","Cache","Supabase/Discovery Cache","BSC/ETH bei Discovery","Projekt-Tab"]]},
   {id:"tln-referral",level:2,label:"Referral Rewards",status:"in_progress",start:"–",daily:"–",open:"Cache",manual:"Discovery",details:[["Referral Rewards","Cache","Supabase/Discovery Cache","BSC/ETH bei Discovery","Projekt-Tab"]]},
   {id:"tln-bonus",level:2,label:"Bonus-Rewards",status:"in_progress",start:"–",daily:"–",open:"Cache",manual:"Discovery",details:[["Bonus Rewards","Cache","Supabase/Discovery Cache","BSC/ETH bei Discovery","Projekt-Tab"]]},
-  {id:"tln-team",level:2,label:"Team",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"–",daily:"–",open:"🟡 IDB + Version",manual:"Delta/RPC",details:[["SmartNode Team-Graph","IndexedDB · tln-vow/smartnode-global-graph","Supabase globaler TLN Graph + cache_data_versions","BSC Registry/RPC nur Discovery/Update","Phase 4.95: Egress-first Team-Slice. Normaler Tab lädt bei MISS nur die für eigene Leader relevante Downline/Upline per DB-RPC, nie mehr automatisch den kompletten Globalgraph; bei HIT IDB + DATA_VERSIONS und Supabase-Nutzdaten 0. Migration 059 erforderlich. Lifecycle separat: verifizierte Ergebnisse pro Wallet persistent; v8/v9-verifizierte Cache-Ergebnisse werden releaseübergreifend wiederverwendet. Offene Wallets laufen nach Cache-Render vollständig in sequenziellen Batches zu max. 3; 24h Retry nur bei echten Fehlern. Ein Release-/UI-Wechsel invalidiert keine fachlich weiterhin gültigen verifizierten Lifecycles."]]},
+  {id:"tln-team",level:2,label:"Team",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"–",daily:"–",open:"🟡 IDB + Version",manual:"Delta/RPC",details:[["SmartNode Team-Graph","IndexedDB · tln-vow/smartnode-global-graph","Supabase globaler TLN Graph + cache_data_versions","BSC Registry/RPC nur Discovery/Update","Phase 4.95: Egress-first Team-Slice. Normaler Tab lädt bei MISS nur die für eigene Leader relevante Downline/Upline per DB-RPC, nie mehr automatisch den kompletten Globalgraph; bei HIT IDB + DATA_VERSIONS und Supabase-Nutzdaten 0. Der lokale Slice trägt eine Root-Signatur der aktuellen eigenen Wallets; Änderungen auf einem anderen Gerät erzwingen daher einen neuen relevanten Slice statt eines falschen Cache-Hits. Migration 059 erforderlich. Lifecycle separat: verifizierte Ergebnisse pro Wallet persistent; v8/v9-verifizierte Cache-Ergebnisse werden releaseübergreifend wiederverwendet. Offene Wallets laufen nach Cache-Render vollständig in sequenziellen Batches zu max. 3; 24h Retry nur bei echten Fehlern. Ein Release-/UI-Wechsel invalidiert keine fachlich weiterhin gültigen verifizierten Lifecycles."]]},
   {id:"tln-admin",level:2,label:"Admin · Contracts",status:"planning",start:"–",daily:"–",open:"DB/Cache",manual:"Discovery",details:[["Contract Registry/Prüffälle","–","Supabase","BSC/ETH RPC bei Discovery","Nur Admin"]]},
   {id:"tln-help",level:2,label:"Hilfe",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[["TLN/VOW Hilfe","JS-Modul","–","–","Tab öffnen"]]},
   {id:"tln-lpold",level:2,label:"Liquidity Pools_old",status:"planning",start:"–",daily:"–",open:"Cache/DB",manual:"RPC",details:[["Legacy LP-Ansicht","Cache","Supabase LP Cache","BSC/ETH RPC","Legacy-Bereich"]]},
@@ -1393,7 +1401,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase project_transactions + project_transaction_asset_flows","Apertum nur bei manueller Aktualisierung","Dashboard summiert Originaltoken/-mengen aus vorhandenen Asset-Flows; keine USD-Umrechnung; Detailansicht lazy"]]},
   {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase Tx/Flow Cache","Apertum nur bei manueller Aktualisierung","Dashboard und Detail verwenden dieselben Referral-Regeln; nur relevantes DAO1 Referral-Wallet"]]},
   {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
-    ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → fertig, DB 0 / RPC 0 bei HIT; manueller Update-Pfad inkrementell mit 24-Block-Overlap"],
+    ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → Root + Downline + Upline der aktuell eigenen DIDs lokal lesen, DB 0 / RPC 0 bei HIT; manueller Update-Pfad inkrementell mit 24-Block-Overlap"],
     ["APTMDAO Team-Kanten","IndexedDB · dao1/aptmdao-tree","Supabase aptmdao_tree_*","Apertum NFT-Mint-Event; RPC nur bei Update/Erstaufbau","Phase 5.39: child/parent/wallet on-chain verifiziert; eigener Graph, max. 20 Ebenen; Migration 063. DAO1/APTMDAO sind eigenständige DID-/Alias-Systeme. Normaler Cache-HIT ohne RPC, Update mit 24-Block-Overlap."],
     ["DAO Wallet-Team + Partner-Bot-Lifecycle","RAM + Dashboard-Summary","dao1_old_tree_* + aptmdao_tree_* + dao_partner_bot_lifecycle_cache","Apertum RPC/Explorer nur bei Tree-Update bzw. gezielten Partnerdetails","Phase 5.55: DAO1-alt und APTMDAO werden als getrennte vollständige Graphquellen in einen Walletgraph überführt; zentrale aktuelle NFT-/Ownership-Zuordnung hat bei DID→Wallet Vorrang vor historischen Tree-Event-Adressen. Mehrere externe Uplines eines eigenen Wallets werden getrennt nach DAO1/APTMDAO parallel oberhalb des Einstiegsknotens gezeigt. Belegte Upline-Ketten oberhalb eigener DIDs werden als echte Knoten gezeigt; eigene Wallets folgen ihrer DID-Parent-Kante (z. B. #25924 unter #21043) und zählen nicht als Partner. DAO1-only-Partner benötigen keine APTMDAO-DID. Für eigene Wallets ist der zentrale NFT-/Ownership-Bestand die Single Source of Truth; der Team-Baum startet keine parallele NFT-Discovery. Aktueller Owner und historische Erwerbs-/Kaufdaten bleiben getrennte Eigenschaften desselben NFT-Datensatzes. Root-Erkennung bleibt von aktuellen Projekt-Balances entkoppelt; Ownership wird vor Dashboard-/Tree-Cache geladen. Standardansicht ist wallet-zentriert (1 Wallet = 1 Knoten/Partner). Eigene Wallets werden anhand ihrer belegten DAO1-/APTMDAO-Upline ebenfalls in denselben Baum eingehängt statt künstlich als separate Roots dargestellt; sie zählen nicht als Partner. DAO1-/APTMDAO-DIDs desselben Wallets bleiben on-chain getrennt und werden im Knoten visuell getrennt gezeigt. APTMDAO bestimmt bei zwei belegten Downline-Beziehungen die grafische Position. Bot-Details trennen aktuellen Owner-Bestand von früher auf diesem Wallet gekauften/übertragenen Bots; historische Kaufdaten bleiben am Bot. Neue MinerBot-Käufe lesen die verwendete APTMDAO-DID direkt aus dem Kaufaufruf (Referenz #31722: DID #7315, Parent #23); historische Ownership bleibt Fallback. Eigene Wallets sind aus Letzte Partneraktivitäten ausgeschlossen. Migration 065."],
     ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Legacy: Migration 057; APTMDAO: Migration 063. Kleine Registry-Gates statt Graph-Vollread bei Cache-HIT."],
@@ -4639,8 +4647,9 @@ function dashboardActivePartners(stats){
   return dashboardMetric(stats?.activePartners);
 }
 function dashboardProjectSummaryStorageKey(){return currentUser?.id?`wallettracking:dashboard-project-summary:${currentUser.id}`:null;}
-function restoreDashboardProjectCacheStats(){const key=dashboardProjectSummaryStorageKey();if(!key)return;try{const saved=JSON.parse(localStorage.getItem(key)||"null");if(!saved||typeof saved!=="object")return;for(const projectKey of ["tln_vow","dao1"]){const x=saved[projectKey];if(!x)continue;dashboardProjectCacheStats[projectKey]={...dashboardProjectCacheStats[projectKey],...x,rewards:{...(dashboardProjectCacheStats[projectKey].rewards||{}),...(x.rewards||{})},referralRewards:{...(dashboardProjectCacheStats[projectKey].referralRewards||{}),...(x.referralRewards||{})},bonusRewards:{...(dashboardProjectCacheStats[projectKey].bonusRewards||{}),...(x.bonusRewards||{})}};}}catch(e){console.warn("Dashboard Project-Summary Cache",e);}}
-function persistDashboardProjectCacheStats(){const key=dashboardProjectSummaryStorageKey();if(!key)return;try{localStorage.setItem(key,JSON.stringify(dashboardProjectCacheStats));}catch(e){console.warn("Dashboard Project-Summary speichern",e);}}
+function dashboardWalletScopeSignature(){return (wallets||[]).filter(w=>w?.isOwnWallet!==false).map(w=>String(w.dbId||w.id||"")+":"+String(w.evm||"").toLowerCase()).sort().join("|");}
+function restoreDashboardProjectCacheStats(){const key=dashboardProjectSummaryStorageKey();if(!key)return;try{const saved=JSON.parse(localStorage.getItem(key)||"null");if(!saved||typeof saved!=="object")return;if(saved.__walletScopeSignature!==dashboardWalletScopeSignature()){localStorage.removeItem(key);return;}for(const projectKey of ["tln_vow","dao1"]){const x=saved[projectKey];if(!x)continue;dashboardProjectCacheStats[projectKey]={...dashboardProjectCacheStats[projectKey],...x,rewards:{...(dashboardProjectCacheStats[projectKey].rewards||{}),...(x.rewards||{})},referralRewards:{...(dashboardProjectCacheStats[projectKey].referralRewards||{}),...(x.referralRewards||{})},bonusRewards:{...(dashboardProjectCacheStats[projectKey].bonusRewards||{}),...(x.bonusRewards||{})}};}}catch(e){console.warn("Dashboard Project-Summary Cache",e);}}
+function persistDashboardProjectCacheStats(){const key=dashboardProjectSummaryStorageKey();if(!key)return;try{localStorage.setItem(key,JSON.stringify({...dashboardProjectCacheStats,__walletScopeSignature:dashboardWalletScopeSignature()}));}catch(e){console.warn("Dashboard Project-Summary speichern",e);}}
 function setDashboardProjectCacheStats(projectKey,patch={}){
   const cur=dashboardProjectCacheStats[projectKey]||(dashboardProjectCacheStats[projectKey]={rewards:{}});
   if(Object.prototype.hasOwnProperty.call(patch,"teamPartners"))cur.teamPartners=patch.teamPartners;

@@ -1,3 +1,4 @@
+// Phase 5.59: Browser-Graphcache unterstützt Ancestor-/Upline-Lesen entlang parentKey.
 // WalletTracking · zentraler persistenter Browser-Cache (IndexedDB)
 // Schemaoffen: Payloads werden als vollständige Objekte gespeichert. DB-Spalten dürfen
 // ergänzt werden, ohne dass dafür das IndexedDB-Schema geändert werden muss.
@@ -47,6 +48,20 @@
     while(queue.length){const {key,depth}=queue.shift();if(depth>=maxDepth)continue;const rows=await request(idx.getAll(IDBKeyRange.only([namespace,cacheKey,key])));for(const r of rows){if(seen.has(r.itemKey))continue;seen.add(r.itemKey);out.push(r.payload);queue.push({key:r.itemKey,depth:depth+1});}}
     return out;
   }
+  async function getAncestors(namespace,cacheKey,rootKeys,{maxDepth=20}={}){
+    const db=await openDb(),tx=db.transaction(ITEM_STORE,"readonly"),store=tx.objectStore(ITEM_STORE);
+    const out=[],seen=new Set(),queue=(rootKeys||[]).map(k=>({key:String(k),depth:0}));
+    while(queue.length){
+      const {key,depth}=queue.shift();if(depth>=maxDepth)continue;
+      const r=await request(store.get([namespace,cacheKey,key]));if(!r)continue;
+      const parent=r.parentKey==null?null:String(r.parentKey);
+      if(parent==null||seen.has(parent))continue;
+      seen.add(parent);
+      const pr=await request(store.get([namespace,cacheKey,parent]));
+      if(pr){out.push(pr.payload);queue.push({key:parent,depth:depth+1});}
+    }
+    return out;
+  }
   async function replace(namespace,cacheKey,rows,{keyField,parentField,meta}={}){
     const db=await openDb(),tx=db.transaction([ITEM_STORE,META_STORE],"readwrite"),items=tx.objectStore(ITEM_STORE),idx=items.index("cache");
     await new Promise((resolve,reject)=>{const r=idx.openKeyCursor(IDBKeyRange.only([namespace,cacheKey]));r.onerror=()=>reject(r.error);r.onsuccess=()=>{const c=r.result;if(!c)return resolve();items.delete(c.primaryKey);c.continue();};});
@@ -64,5 +79,5 @@
     await new Promise((resolve,reject)=>{const r=idx.openKeyCursor(IDBKeyRange.only([namespace,cacheKey]));r.onerror=()=>reject(r.error);r.onsuccess=()=>{const c=r.result;if(!c)return resolve();items.delete(c.primaryKey);c.continue();};});
     tx.objectStore(META_STORE).delete([namespace,cacheKey]);await txDone(tx);
   }
-  window.WalletTrackingBrowserCache={getMeta,getAll,getByKeys,getDescendants,replace,merge,clear,DB_NAME,DB_VERSION};
+  window.WalletTrackingBrowserCache={getMeta,getAll,getByKeys,getDescendants,getAncestors,replace,merge,clear,DB_NAME,DB_VERSION};
 })();

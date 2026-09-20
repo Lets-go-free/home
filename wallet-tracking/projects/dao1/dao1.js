@@ -1,3 +1,4 @@
+// Phase 5.59: DAO1/APTMDAO Team-Cache ergänzt Upline-/Ancestor-Lesen für aktuelle eigene DIDs und reagiert auf geänderte Root-Mengen.
 // WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
@@ -4312,12 +4313,13 @@ window.DAO1Project = (() => {
 
     async function readLocalSubtree(meta){
       const ti=performance.now();
-      const [rootRows,desc]=await Promise.all([
+      const [rootRows,desc,anc]=await Promise.all([
         bc.getByKeys(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rootIds),
-        bc.getDescendants(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rootIds,{maxDepth:DAO1_TEAM_MAX_LEVELS})
+        bc.getDescendants(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rootIds,{maxDepth:DAO1_TEAM_MAX_LEVELS}),
+        bc.getAncestors?bc.getAncestors(DAO1_OLD_TREE_BROWSER_NAMESPACE,DAO1_OLD_TREE_BROWSER_KEY,rootIds,{maxDepth:DAO1_TEAM_MAX_LEVELS}):Promise.resolve([])
       ]);
       dao1OldTreeCacheDiag.idbMs+=performance.now()-ti;
-      const byChild=new Map();for(const r of [...rootRows,...desc])byChild.set(Number(r.child_id),r);
+      const byChild=new Map();for(const r of [...rootRows,...desc,...anc])byChild.set(Number(r.child_id),r);
       dao1OldTreeCacheDiag.localRows=byChild.size;
       return [...byChild.values()];
     }
@@ -4488,7 +4490,7 @@ window.DAO1Project = (() => {
     if(!sb||!getContext?.()?.currentUser||!aptmdaoTreeDbAvailable)return null;const bc=window.WalletTrackingBrowserCache,rootIds=aptmdaoOwnedDidRoots.map(r=>Number(r.did)).filter(Number.isFinite);
     try{
       const [meta,ver]=bc?await Promise.all([bc.getMeta(DAO1_OLD_TREE_BROWSER_NAMESPACE,APTMDAO_TREE_BROWSER_KEY),loadAptmdaoTreeVersion()]):[null,await loadAptmdaoTreeVersion()];
-      if(bc&&meta&&ver&&Number(meta.dataVersion||0)===Number(ver.data_version||0)&&Number(meta.payloadSchemaVersion||0)===APTMDAO_TREE_PAYLOAD_SCHEMA_VERSION){const [roots,desc]=await Promise.all([bc.getByKeys(DAO1_OLD_TREE_BROWSER_NAMESPACE,APTMDAO_TREE_BROWSER_KEY,rootIds),bc.getDescendants(DAO1_OLD_TREE_BROWSER_NAMESPACE,APTMDAO_TREE_BROWSER_KEY,rootIds,{maxDepth:DAO1_TEAM_MAX_LEVELS})]);const by=new Map([...(roots||[]),...(desc||[])].map(r=>[Number(r.child_id),r]));aptmdaoTreeCacheDiag.source="IDB + DATA_VERSIONS HIT";aptmdaoTreeCacheDiag.localRows=by.size;return {edges:[...by.values()].map(aptmdaoTreeEdgeFromRow),lastBlock:Number(ver.data_version||0),registryFresh:true,totalEdgeCount:Number(ver.row_count||0),registryUpdatedAt:ver.updated_at||null};}
+      if(bc&&meta&&ver&&Number(meta.dataVersion||0)===Number(ver.data_version||0)&&Number(meta.payloadSchemaVersion||0)===APTMDAO_TREE_PAYLOAD_SCHEMA_VERSION){const [roots,desc,anc]=await Promise.all([bc.getByKeys(DAO1_OLD_TREE_BROWSER_NAMESPACE,APTMDAO_TREE_BROWSER_KEY,rootIds),bc.getDescendants(DAO1_OLD_TREE_BROWSER_NAMESPACE,APTMDAO_TREE_BROWSER_KEY,rootIds,{maxDepth:DAO1_TEAM_MAX_LEVELS}),bc.getAncestors?bc.getAncestors(DAO1_OLD_TREE_BROWSER_NAMESPACE,APTMDAO_TREE_BROWSER_KEY,rootIds,{maxDepth:DAO1_TEAM_MAX_LEVELS}):Promise.resolve([])]);const by=new Map([...(roots||[]),...(desc||[]),...(anc||[])].map(r=>[Number(r.child_id),r]));aptmdaoTreeCacheDiag.source="IDB + DATA_VERSIONS HIT";aptmdaoTreeCacheDiag.localRows=by.size;return {edges:[...by.values()].map(aptmdaoTreeEdgeFromRow),lastBlock:Number(ver.data_version||0),registryFresh:true,totalEdgeCount:Number(ver.row_count||0),registryUpdatedAt:ver.updated_at||null};}
       const {data:states,error:se}=await sb.from(APTMDAO_TREE_STATE_TABLE).select("last_verified_block,edge_count,updated_at").eq("chain_key",CHAIN_KEY).eq("contract_address",lower(APTMDAO_NFT_CONTRACT)).limit(1);if(se)throw se;const state=states?.[0];if(!state)return null;
       const rows=[];for(let from=0;;from+=DAO1_OLD_TREE_CACHE_PAGE_SIZE){const {data,error}=await sb.from(APTMDAO_TREE_CACHE_TABLE).select("*").order("child_id").range(from,from+DAO1_OLD_TREE_CACHE_PAGE_SIZE-1);if(error)throw error;rows.push(...(data||[]));if((data||[]).length<DAO1_OLD_TREE_CACHE_PAGE_SIZE)break;}
       aptmdaoTreeCacheDiag.source="Supabase Global-Cache";aptmdaoTreeCacheDiag.dbRows=rows.length;
