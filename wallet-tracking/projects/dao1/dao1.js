@@ -1560,7 +1560,10 @@ window.DAO1Project = (() => {
       for(const r of rebuilt){
         r.acquisition_kind=acquisitionKind;
         r.acquisition_verified=acquisitionVerified;
-        r.acquisition_tx_hash=acquisitionVerified?firstPeriod.entry_tx_hash||null:null;
+        // Phase 5.57: Die Entry-Tx ist auch dann wertvolle Evidence, wenn der wirtschaftliche
+        // Kauf noch nicht verifiziert wurde. Ohne diese Tx konnte der zentrale Preisresolver
+        // historische DAO1-Käufe später nicht mehr nachanalysieren.
+        r.acquisition_tx_hash=firstPeriod.entry_tx_hash||null;
       }
     }
 
@@ -6461,15 +6464,21 @@ window.DAO1Project = (() => {
       acquisition_kind:input.acquisitionKind||null
     };
     const acq=await dao1TeamAcquisitionForNft(nft,wallet);
+    const txHash=acq?.txHash||nft.acquisition_tx_hash||null;
+    // Ein negativer Preisbefund ist nur endgültig, wenn eine konkrete Erwerbs-Tx
+    // vollständig untersucht werden konnte. Fehlende Tx-Evidence bleibt offen und wird
+    // nicht als "keine Zahlung" dauerhaft eingefroren.
+    const fullyChecked=!!txHash;
     return {
       purchase:acq?.purchase||null,
       acquisitionKind:acq?.acquisitionKind||null,
-      acquisitionTxHash:acq?.txHash||nft.acquisition_tx_hash||null,
+      acquisitionTxHash:txHash,
       acquiredAt:acq?.at||nft.owned_from_at||null,
       acquiredBlock:Number(acq?.block||nft.owned_from_block||0)||null,
       sourceWallet:acq?.sourceWallet||null,
-      checked:true,
-      checkedAt:new Date().toISOString()
+      checked:fullyChecked,
+      status:acq?.purchase?"price_verified":(fullyChecked?"tx_checked_no_unique_payment":"incomplete_missing_acquisition_tx"),
+      checkedAt:fullyChecked?new Date().toISOString():null
     };
   }
 
