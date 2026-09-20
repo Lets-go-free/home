@@ -1368,7 +1368,7 @@ const ADMIN_SYSTEM_TREE = [
     ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Im fälligen Grunddaten-Hintergrundlauf; vollständige Projekt-Discovery bleibt separat"]]},
   {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"planning",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","Supabase Snapshots","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung","Cache","Supabase Preis-/LP-Historie","Archive RPC/API bei Bedarf","Stichtagsberechnung"]]},
   {id:"fees",level:1,label:"💸 Gebühren",status:"planning",start:"–",daily:"–",open:"DB-Summary",manual:"Delta/API",details:[["Gebühren-Summary","RAM nach Lazy Load","Supabase Fee Cache/Summary","–","Gespeicherten Gebührenstand erst beim Öffnen des Tabs lesen"],["Gebührenhistorie","RAM","Supabase Fee Cache","Routescan/NodeReal/Blockscout etc.","On-chain/API erst bei Aktualisierung"]]},
-  {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"DB-Registry",daily:"inkrementeller Refresh",open:"RAM/DB-Cache",manual:"On-chain/API",details:[["NFT-Bestand","RAM ab App-Start","Supabase NFT Cache + project_nft_ownership","Chain-spezifische NFT Quellen/RPC","Phase 5.57: historische NFT-Entry-Txs bleiben auch ohne bereits verifizierten Kauf erhalten, damit fehlende DAO1-Kaufpreise zentral nachanalysiert werden können. Negative Preisbefunde werden nur mit konkreter geprüfter Erwerbs-Tx persistent abgeschlossen. Phase 5.56: zentrale NFT-Registry wird beim App-Start geladen; NFT-Tab, DAO-Team und weitere Verbraucher verwenden dieselbe Datenbasis. Der tägliche Chain-Refresh bleibt inkrementell. Phase 5.54: Phase 5.54: Kauf/Mint-Wallet und aktuelles Wallet werden gekürzt mit dem transparenten Standard-Copy-Icon gezeigt. Der früheste on-chain Besitzzeitpunkt bleibt auch ohne Kaufnachweis sichtbar; Kauf/Mint-Verifikation wird weiterhin separat gekennzeichnet."],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
+  {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"DB-Registry",daily:"inkrementeller Refresh",open:"RAM/DB-Cache",manual:"On-chain/API",details:[["NFT-Bestand","RAM ab App-Start","Supabase NFT Cache + project_nft_ownership","Chain-spezifische NFT Quellen/RPC","Phase 5.58: Kaufpreis-Resolver v2 prüft ERC-20, nativen APTM-Tx-Value und Internal Transactions; reine Transfers/Mints werden von ungeklärten Käufen getrennt. Historische NFT-Entry-Txs bleiben auch ohne bereits verifizierten Kauf erhalten, damit fehlende DAO1-Kaufpreise zentral nachanalysiert werden können. Negative Preisbefunde werden nur mit konkreter geprüfter Erwerbs-Tx persistent abgeschlossen. Phase 5.56: zentrale NFT-Registry wird beim App-Start geladen; NFT-Tab, DAO-Team und weitere Verbraucher verwenden dieselbe Datenbasis. Der tägliche Chain-Refresh bleibt inkrementell. Phase 5.54: Phase 5.54: Kauf/Mint-Wallet und aktuelles Wallet werden gekürzt mit dem transparenten Standard-Copy-Icon gezeigt. Der früheste on-chain Besitzzeitpunkt bleibt auch ohne Kaufnachweis sichtbar; Kauf/Mint-Verifikation wird weiterhin separat gekennzeichnet."],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
   {id:"approvals",level:1,label:"🔓 Freigaben",status:"planning",start:"–",daily:"–",open:"bei Auswahl",manual:"On-chain/API",details:[["Token-Freigaben","–","–","Alchemy/RPC je unterstützter Chain","Spezialfunktion; nicht beim App-Start"]]},
 
   {id:"projects",level:0,label:"🏦 DeFi-Projekte",status:"in_progress",start:"Konfig DB",daily:"Preise",open:"Übersicht · keine Projektdaten",manual:"projektbezogen",details:[]},
@@ -7891,6 +7891,7 @@ async function setNftUserSafe(walletId, chain, tokenAddress, tokenId, marked) {
 function nftPurchaseText(n){
   const p=n?.purchaseEvidence?.purchase;
   if(Number(p?.amount||0)>0)return `${Number(p.amount).toLocaleString("de-CH",{maximumFractionDigits:8})} ${escapeAttr(p.symbol||"TOKEN")}`;
+  if(["transfer_no_purchase_expected","mint_no_purchase_expected"].includes(n?.purchaseEvidence?.status))return "–";
   if(n?.purchaseEvidence?.checked)return "keine eindeutige Zahlung";
   return "Prüfung offen";
 }
@@ -7903,10 +7904,11 @@ async function enrichCentralNftPurchaseEvidence({force=false}={}){
     for(const n of list){
       if(String(n?.chain||"")!=="apertum")continue;
       // Alte 5.56-Negativbefunde ohne konkrete Erwerbs-Tx waren nicht belastbar und
-      // werden in 5.57 automatisch erneut geprüft.
+      // werden in 5.58 automatisch erneut geprüft.
       const ev=n?.purchaseEvidence||null;
-      const reliableNegative=!!(ev?.checked&&ev?.acquisitionTxHash);
-      if(!force&&(ev?.purchase||reliableNegative))continue;
+      const reliableNegative=!!(ev?.checked&&ev?.acquisitionTxHash&&Number(ev?.resolverVersion||0)>=2);
+      const verifiedPrice=!!(ev?.purchase&&Number(ev?.resolverVersion||0)>=2);
+      if(!force&&(verifiedPrice||reliableNegative))continue;
       const own=nftOwnershipInfo(n);
       const acquisitionWallet=own?.firstOwnedWalletAddress||nftWalletAddressById(own?.firstOwnedWalletId,n.chain);
       if(!acquisitionWallet)continue;

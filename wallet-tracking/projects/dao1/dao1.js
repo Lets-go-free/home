@@ -1560,7 +1560,7 @@ window.DAO1Project = (() => {
       for(const r of rebuilt){
         r.acquisition_kind=acquisitionKind;
         r.acquisition_verified=acquisitionVerified;
-        // Phase 5.57: Die Entry-Tx ist auch dann wertvolle Evidence, wenn der wirtschaftliche
+        // Phase 5.58: Die Entry-Tx ist auch dann wertvolle Evidence, wenn der wirtschaftliche
         // Kauf noch nicht verifiziert wurde. Ohne diese Tx konnte der zentrale Preisresolver
         // historische DAO1-Käufe später nicht mehr nachanalysieren.
         r.acquisition_tx_hash=firstPeriod.entry_tx_hash||null;
@@ -4955,9 +4955,40 @@ window.DAO1Project = (() => {
           if(!(amount>0))continue;
           const key=contract||symbol.toUpperCase(),g=groups.get(key)||{amount:0,symbol,contract,block:Number(t.block_number||block||0),timestamp:t.timestamp||t.block_timestamp||at};g.amount+=amount;groups.set(key,g);
         }
+        // ERC-20 ist nur eine von mehreren historischen Kaufarten. Ältere DAO1-/Apertum-
+        // Verträge können die Zahlung als nativen APTM-Value oder über einen internen Call
+        // verbuchen. Alle Kandidaten werden deshalb aus derselben Erwerbs-Tx zusammengeführt.
         const pays=[...groups.values()];
+        try{
+          const txFrom=lower(H(txDetail?.from)||txDetail?.from_address_hash||txDetail?.from_address||"");
+          const rawNative=txDetail?.value?.value ?? txDetail?.value ?? "0";
+          let nativeAmount=0;try{nativeAmount=Number(BigInt(String(rawNative)))/1e18;}catch(_){nativeAmount=Number(rawNative)||0;}
+          if(txFrom===a&&nativeAmount>0)pays.push({amount:nativeAmount,symbol:"APTM",contract:"native",block,timestamp:at,evidence:"tx_value"});
+        }catch(_){}
+        try{
+          const internals=await fetchAll(`/transactions/${txHash}/internal-transactions`);
+          let nativeInternal=0;
+          for(const r of internals||[]){
+            const from=lower(H(r?.from)||r?.from_address||r?.from_address_hash||"");
+            if(from!==a||r?.error||r?.success===false||String(r?.status||"").toLowerCase()==="error")continue;
+            try{const raw=r?.value?.value??r?.value??"0";nativeInternal+=Number(BigInt(String(raw)))/1e18;}catch(_){}
+          }
+          if(nativeInternal>0)pays.push({amount:nativeInternal,symbol:"APTM",contract:"native",block,timestamp:at,evidence:"internal_tx"});
+        }catch(e){console.warn("DAO1 Kaufpreis Internal Transactions",txHash,e);}
+        // Gleiche Assets aus unterschiedlichen technischen Ebenen nicht doppelt zählen.
+        // Direkter tx.value und Internal-Call können denselben wirtschaftlichen Wert spiegeln;
+        // bei mehreren nativen Kandidaten wird daher nur ein eindeutiger Betrag akzeptiert.
         const wusdt=pays.find(p=>lower(p.contract)===lower(REFERRAL_WUSDT_TOKEN)||String(p.symbol).toUpperCase()==="WUSDT");
-        if(wusdt)purchase=wusdt;else if(pays.length===1)purchase=pays[0];
+        if(wusdt)purchase=wusdt;
+        else {
+          const byAsset=new Map();
+          for(const p of pays){const k=lower(p.contract)||String(p.symbol||"").toUpperCase();if(!byAsset.has(k))byAsset.set(k,[]);byAsset.get(k).push(p);}
+          if(byAsset.size===1){
+            const candidates=[...byAsset.values()][0];
+            const amounts=[...new Set(candidates.map(p=>Number(p.amount||0)).filter(v=>v>0).map(v=>v.toPrecision(15)))];
+            if(amounts.length===1)purchase=candidates[0];
+          }
+        }
         if(purchase)acquisitionKind="purchase";
       }catch(e){console.warn("DAO1 Team Kaufpreis",txHash,e);}
     }
@@ -6477,7 +6508,8 @@ window.DAO1Project = (() => {
       acquiredBlock:Number(acq?.block||nft.owned_from_block||0)||null,
       sourceWallet:acq?.sourceWallet||null,
       checked:fullyChecked,
-      status:acq?.purchase?"price_verified":(fullyChecked?"tx_checked_no_unique_payment":"incomplete_missing_acquisition_tx"),
+      resolverVersion:2,
+      status:acq?.purchase?"price_verified":(acq?.acquisitionKind==="transfer"?"transfer_no_purchase_expected":(String(acq?.acquisitionKind||"").startsWith("mint")?"mint_no_purchase_expected":(fullyChecked?"tx_checked_no_unique_payment":"incomplete_missing_acquisition_tx"))),
       checkedAt:fullyChecked?new Date().toISOString():null
     };
   }
