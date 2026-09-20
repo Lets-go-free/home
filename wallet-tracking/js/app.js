@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.52 · 20.09.2026 11:35:50 CEST · Build 20260920-113550 */
+/* WalletTracking Phase 5.53 · 20.09.2026 11:55:56 CEST · Build 20260920-115556 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1361,7 +1361,7 @@ const ADMIN_SYSTEM_TREE = [
     ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Im fälligen Grunddaten-Hintergrundlauf; vollständige Projekt-Discovery bleibt separat"]]},
   {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"planning",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","Supabase Snapshots","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung","Cache","Supabase Preis-/LP-Historie","Archive RPC/API bei Bedarf","Stichtagsberechnung"]]},
   {id:"fees",level:1,label:"💸 Gebühren",status:"planning",start:"–",daily:"–",open:"DB-Summary",manual:"Delta/API",details:[["Gebühren-Summary","RAM nach Lazy Load","Supabase Fee Cache/Summary","–","Gespeicherten Gebührenstand erst beim Öffnen des Tabs lesen"],["Gebührenhistorie","RAM","Supabase Fee Cache","Routescan/NodeReal/Blockscout etc.","On-chain/API erst bei Aktualisierung"]]},
-  {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"nur Freshness",daily:"kein Fresh-Load",open:"DB-Cache",manual:"On-chain/API",details:[["NFT-Bestand","RAM nach Lazy Load","Supabase NFT Cache","Chain-spezifische NFT Quellen/RPC","NFT- und Besitzcache erst beim Öffnen des Tabs; kein automatischer Chain-Refresh. Phase 5.52: Tabelle zeigt verifiziertes Kauf/Mint-Wallet und aktuelles Wallet gekürzt mit einheitlicher Copy-Funktion; Walletwechsel bleiben über Ownership-Historie nachvollziehbar."],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
+  {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"nur Freshness",daily:"kein Fresh-Load",open:"DB-Cache",manual:"On-chain/API",details:[["NFT-Bestand","RAM nach Lazy Load","Supabase NFT Cache","Chain-spezifische NFT Quellen/RPC","NFT- und Besitzcache erst beim Öffnen des Tabs; kein automatischer Chain-Refresh. Phase 5.53: Kauf/Mint-Wallet und aktuelles Wallet werden gekürzt mit dem transparenten Standard-Copy-Icon gezeigt. Der früheste on-chain Besitzzeitpunkt bleibt auch ohne Kaufnachweis sichtbar; Kauf/Mint-Verifikation wird weiterhin separat gekennzeichnet."],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
   {id:"approvals",level:1,label:"🔓 Freigaben",status:"planning",start:"–",daily:"–",open:"bei Auswahl",manual:"On-chain/API",details:[["Token-Freigaben","–","–","Alchemy/RPC je unterstützter Chain","Spezialfunktion; nicht beim App-Start"]]},
 
   {id:"projects",level:0,label:"🏦 DeFi-Projekte",status:"in_progress",start:"Konfig DB",daily:"Preise",open:"Übersicht · keine Projektdaten",manual:"projektbezogen",details:[]},
@@ -1388,7 +1388,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
     ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → fertig, DB 0 / RPC 0 bei HIT; manueller Update-Pfad inkrementell mit 24-Block-Overlap"],
     ["APTMDAO Team-Kanten","IndexedDB · dao1/aptmdao-tree","Supabase aptmdao_tree_*","Apertum NFT-Mint-Event; RPC nur bei Update/Erstaufbau","Phase 5.39: child/parent/wallet on-chain verifiziert; eigener Graph, max. 20 Ebenen; Migration 063. DAO1/APTMDAO sind eigenständige DID-/Alias-Systeme. Normaler Cache-HIT ohne RPC, Update mit 24-Block-Overlap."],
-    ["DAO Wallet-Team + Partner-Bot-Lifecycle","RAM + Dashboard-Summary","dao1_old_tree_* + aptmdao_tree_* + dao_partner_bot_lifecycle_cache","Apertum RPC/Explorer nur bei Tree-Update bzw. gezielten Partnerdetails","Phase 5.52: Root-Erkennung bleibt von aktuellen Projekt-Balances entkoppelt; Ownership wird vor Dashboard-/Tree-Cache geladen. Standardansicht ist wallet-zentriert (1 Wallet = 1 Knoten/Partner). Eigene Wallets werden anhand ihrer belegten DAO1-/APTMDAO-Upline ebenfalls in denselben Baum eingehängt statt künstlich als separate Roots dargestellt; sie zählen nicht als Partner. DAO1-/APTMDAO-DIDs desselben Wallets bleiben on-chain getrennt und werden im Knoten visuell getrennt gezeigt. APTMDAO bestimmt bei zwei belegten Downline-Beziehungen die grafische Position. Bot-Details trennen aktuellen Owner-Bestand von früher auf diesem Wallet gekauften/übertragenen Bots; historische Kaufdaten bleiben am Bot. Neue MinerBot-Käufe lesen die verwendete APTMDAO-DID direkt aus dem Kaufaufruf (Referenz #31722: DID #7315, Parent #23); historische Ownership bleibt Fallback. Eigene Wallets sind aus Letzte Partneraktivitäten ausgeschlossen. Migration 065."],
+    ["DAO Wallet-Team + Partner-Bot-Lifecycle","RAM + Dashboard-Summary","dao1_old_tree_* + aptmdao_tree_* + dao_partner_bot_lifecycle_cache","Apertum RPC/Explorer nur bei Tree-Update bzw. gezielten Partnerdetails","Phase 5.53: Eigene Root-DIDs erhalten zusätzlich ihre direkte Parent-Kante, damit z. B. #25924 unter #21043 hängt. Aktueller Bot-Bestand und historische Erwerbszuordnung werden beim Merge getrennt behandelt; Live-Owner überschreibt nicht mehr die historischen Kaufdaten. Root-Erkennung bleibt von aktuellen Projekt-Balances entkoppelt; Ownership wird vor Dashboard-/Tree-Cache geladen. Standardansicht ist wallet-zentriert (1 Wallet = 1 Knoten/Partner). Eigene Wallets werden anhand ihrer belegten DAO1-/APTMDAO-Upline ebenfalls in denselben Baum eingehängt statt künstlich als separate Roots dargestellt; sie zählen nicht als Partner. DAO1-/APTMDAO-DIDs desselben Wallets bleiben on-chain getrennt und werden im Knoten visuell getrennt gezeigt. APTMDAO bestimmt bei zwei belegten Downline-Beziehungen die grafische Position. Bot-Details trennen aktuellen Owner-Bestand von früher auf diesem Wallet gekauften/übertragenen Bots; historische Kaufdaten bleiben am Bot. Neue MinerBot-Käufe lesen die verwendete APTMDAO-DID direkt aus dem Kaufaufruf (Referenz #31722: DID #7315, Parent #23); historische Ownership bleibt Fallback. Eigene Wallets sind aus Letzte Partneraktivitäten ausgeschlossen. Migration 065."],
     ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Legacy: Migration 057; APTMDAO: Migration 063. Kleine Registry-Gates statt Graph-Vollread bei Cache-HIT."],
     ["Partner-Botdetails","RAM/Cache","Supabase NFT/Ownership Caches","Apertum on-demand","Details/Anreicherung bei Bedarf"]]},
   {id:"dao-lp",level:2,label:"Liquidity Pools",status:"in_progress",start:"–",daily:"–",open:"DB/Cache",manual:"RPC",details:[["DAO1 LP-Positionen","LP Cache","Supabase LP Cache","Apertum RPC","Beim Untertab öffnen renderProjectLpTab"]]},
@@ -7152,10 +7152,10 @@ function nftOwnershipInfo(n){
     acquisitionVerified,
     acquisitionKind:acquisitionRow?.acquisition_kind||first?.acquisition_kind||"wallet_receipt_only",
     acquisitionTxHash:acquisitionRow?.acquisition_tx_hash||null,
-    firstOwnedAt:acquisitionVerified?(acquisitionRow?.owned_from_at||first?.owned_from_at||null):null,
-    firstOwnedBlock:acquisitionVerified?(Number(acquisitionRow?.owned_from_block||first?.owned_from_block||0)||null):null,
-    firstOwnedWalletId:acquisitionVerified?String(acquisitionRow?.wallet_id||first?.wallet_id||""):"",
-    firstOwnedWalletAddress:acquisitionVerified?(acquisitionRow?.wallet_address||first?.wallet_address||globalFirst?.wallet_address||null):null,
+    firstOwnedAt:acquisitionRow?.owned_from_at||first?.owned_from_at||null,
+    firstOwnedBlock:Number(acquisitionRow?.owned_from_block||first?.owned_from_block||0)||null,
+    firstOwnedWalletId:String(acquisitionRow?.wallet_id||first?.wallet_id||""),
+    firstOwnedWalletAddress:acquisitionRow?.wallet_address||first?.wallet_address||globalFirst?.wallet_address||null,
     walletSinceAt:current?.owned_from_at||null,
     walletSinceBlock:Number(current?.owned_from_block||0)||null,
     currentWalletId:String(current?.wallet_id||walletId||""),
@@ -7175,7 +7175,7 @@ function nftWalletAddressById(walletId,chain="apertum"){
 function nftWalletAddressHtml(address,label="Wallet"){
   const a=String(address||"").trim();
   if(!a)return `<div class="meta">${escapeAttr(label)}: –</div>`;
-  return `<div class="meta" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap"><span>${escapeAttr(label)}: ${escapeAttr(dashboardShortAddress(a))}</span><button type="button" class="dashboard-copy-btn" title="Wallet-Adresse kopieren" aria-label="Wallet-Adresse kopieren" onclick="copyDashboardAddress('${escapeAttr(a)}',this)">⧉</button></div>`;
+  return `<div class="meta" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap"><span>${escapeAttr(label)}: ${escapeAttr(dashboardShortAddress(a))}</span><button type="button" class="dashboard-copy-address" style="padding:0 3px;margin-left:1px;border:0;background:transparent;color:inherit;box-shadow:none;font-size:.9em;vertical-align:baseline" title="Wallet-Adresse kopieren" aria-label="Wallet-Adresse kopieren" onclick="copyDashboardAddress('${escapeAttr(a)}',this)">⧉</button></div>`;
 }
 
 async function refreshSelectedApertumNftOwnership(){

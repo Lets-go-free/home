@@ -2,7 +2,7 @@
 // WalletTracking · DAO1 Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
 const HELP_MODULE_BUILD="20260920-031933";
-const HELP_MODULE_TIMESTAMP="20.09.2026 02:55:41 CEST";
+const HELP_MODULE_TIMESTAMP="20.09.2026 11:55:56 CEST";
 function renderDAO1Help(){
   const el=document.getElementById("dao1HelpContent");
   if(!el)return;
@@ -85,3 +85,5 @@ else renderDAO1Help();
 // Dokumentationsstand: 20.09.2026 03:19:33 CEST · Phase 5.50 · Build 20260920-031933
 
 // Phase 5.52: Gemeinsamer Wallet-Baum über verbundene eigene Wallets; aktueller Bot-Bestand strikt nach heutigem Owner, frühere/übertragene Bots separat; historische Erwerbsevidenz bleibt erhalten.
+
+// Phase 5.53: Parent-Kante eigener DIDs wird in den Walletgraph aufgenommen (#25924 → #21043). Walletdetails zeigen den heutigen NFT-/Bot-Bestand nach Owner; historische Kaufdaten bleiben separat erhalten.
