@@ -1,3 +1,4 @@
+// Phase 5.55: Im wallet-zentrierten DAO-Baum ist die zentrale aktuelle NFT-/Ownership-Registry autoritativ für DID→Wallet. Tree-Event-Adressen sind nur Fallback und dürfen eine bekannte aktuelle DID-Zuordnung nicht überschreiben. Ein eigenes Wallet kann gleichzeitig eine DAO1- und eine APTMDAO-Upline haben; beide werden getrennt oberhalb des eigenen Einstiegsknotens gezeigt. Beziehungen zwischen zwei eigenen Wallets bleiben normale Baumkanten (z. B. DAO1 #25924 unter #21043).
 (() => {
 // WalletTracking · DAO1 Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.

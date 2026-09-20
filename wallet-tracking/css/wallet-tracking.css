@@ -1530,3 +1530,5 @@ body.wt-modal-open{overflow:hidden}
 
 /* Phase 5.52 · DAO wallet-zentrierter Baum: DAO1/APTMDAO-DIDs visuell getrennt */
 .wt-team-wallet-dids{display:grid;gap:3px;margin-top:6px}.wt-team-did-row{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:3px 6px;border-radius:7px;font-size:10px}.wt-team-did-row span{font-weight:700}.wt-team-did-row strong{font-size:11px}.wt-team-did-row.dao1{background:rgba(40,135,255,.09);color:var(--text)}.wt-team-did-row.dao1 strong{color:#287ee8}.wt-team-did-row.aptmdao{background:rgba(132,78,255,.09);color:var(--text)}.wt-team-did-row.aptmdao strong{color:#7b55df}
+/* Phase 5.55: mehrere projektspezifische DAO-Uplines oberhalb des eigenen Einstiegsknotens */
+.wt-team-upline-wrap{display:flex;flex-direction:column;align-items:center;margin:8px auto 14px;max-width:900px}.wt-team-upline-label{font-weight:800;margin-bottom:8px}.wt-team-upline-row{display:flex;flex-wrap:wrap;justify-content:center;gap:12px}.wt-team-upline-node{min-width:220px;max-width:300px}.wt-team-upline-connector{font-size:22px;line-height:1;margin-top:6px;color:var(--muted,#6b7a99)}

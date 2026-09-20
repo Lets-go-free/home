@@ -4150,8 +4150,12 @@ window.DAO1Project = (() => {
   function dao1OwnWalletSet(){return new Set((getContext?.().wallets||[]).map(w=>lower(walletAddress(w))).filter(Boolean));}
   function dao1DidWalletMap(system){
     const edges=dao1TeamDiscovery[system]?.edges||[],roots=system==="aptmdao"?aptmdaoOwnedDidRoots:dao1OwnedDidRoots;
-    const out=new Map();for(const r of roots)if(r?.did&&r?.wallet_address)out.set(Number(r.did),lower(r.wallet_address));
+    const out=new Map();
+    // Tree-Events liefern historische/technische Wallet-Adressen. Fuer eine DID, deren
+    // aktueller Owner bereits in der zentralen NFT-/Ownership-Registry belegt ist, darf
+    // diese Event-Adresse den Owner niemals ueberschreiben (Phase 5.55).
     for(const e of edges)if(Number(e.child_id)>=0&&e.wallet)out.set(Number(e.child_id),lower(e.wallet));
+    for(const r of roots)if(r?.did&&r?.wallet_address)out.set(Number(r.did),lower(r.wallet_address));
     return out;
   }
   function dao1KnownParentDid(system,did){
@@ -4221,7 +4225,16 @@ window.DAO1Project = (() => {
       const usable=n.relations.filter(r=>r.parentWallet&&r.parentWallet!==n.wallet);
       const aptm=usable.filter(r=>r.system==="aptmdao").sort((a,b)=>a.level-b.level||a.childDid-b.childDid);
       const legacy=usable.filter(r=>r.system==="legacy").sort((a,b)=>a.level-b.level||a.childDid-b.childDid);
-      n.primary=aptm[0]||legacy[0]||null;
+      if(n.own){
+        // Eigene Wallets bleiben der persoenliche Einstiegspunkt. Nur eine belegte
+        // Beziehung zu einer ANDEREN eigenen Wallet bestimmt ihre Position (z. B.
+        // #25924 unter #21043). Externe DAO1-/APTMDAO-Uplines werden separat oberhalb
+        // des Einstiegsknotens dargestellt; so koennen auch zwei Uplines gleichzeitig
+        // sichtbar sein, ohne einen DAG kuenstlich in einen einzelnen Parent zu pressen.
+        const ownAptm=aptm.filter(r=>own.has(r.parentWallet));
+        const ownLegacy=legacy.filter(r=>own.has(r.parentWallet));
+        n.primary=ownAptm[0]||ownLegacy[0]||null;
+      }else n.primary=aptm[0]||legacy[0]||null;
     }
     // Auch eigene Wallets folgen der belegten DID-Beziehung. Eine zweite eigene Wallet
     // ist nicht automatisch eine zweite Root: zeigt z. B. deren DAO1-DID auf eine DID
@@ -5146,6 +5159,20 @@ window.DAO1Project = (() => {
       <div class="wt-team-node-actions">${kids.length?`<button type="button" class="wt-team-toggle-btn" data-dao1-wallet-toggle="${key}">${collapsed?`+ ${kids.length} Partner anzeigen`:`− ${kids.length} Partner`}</button>`:""}<button type="button" class="wt-team-details-btn" data-dao1-wallet-details="${key}">Details</button></div>
     </div>${kids.length&&!collapsed&&level<DAO1_TEAM_MAX_LEVELS?`<ul class="wt-team-branch-children">${kids.map(k=>dao1WalletNodeHtml(k,graph,level+1,nextSeen)).join("")}</ul>`:""}</li>`;
   }
+  function dao1ExternalUplineRelations(node,graph){
+    if(!node?.own)return [];
+    const seen=new Set(),rows=[];
+    for(const r of node.relations||[]){
+      if(!(Number(r.parentDid)>0) || !r.parentWallet || graph.own.has(lower(r.parentWallet)))continue;
+      const k=`${r.system}|${Number(r.parentDid)}|${lower(r.parentWallet)}`;if(seen.has(k))continue;seen.add(k);rows.push(r);
+    }
+    return rows.sort((a,b)=>String(a.system).localeCompare(String(b.system))||Number(a.parentDid)-Number(b.parentDid));
+  }
+  function dao1ExternalUplineHtml(node,graph){
+    const rows=dao1ExternalUplineRelations(node,graph);if(!rows.length)return "";
+    return `<div class="wt-team-upline-wrap"><div class="wt-team-upline-label">Meine Upline${rows.length>1?"s":""}</div><div class="wt-team-upline-row">${rows.map(r=>{const pn=graph.nodes.get(lower(r.parentWallet));const label=pn?dao1WalletDisplayName(pn):"Upline-Wallet";return `<div class="wt-team-node wt-team-upline-node"><div class="wt-team-node-title"><span class="wt-team-depth-badge">${r.system==="aptmdao"?"APTMDAO":"DAO1"}</span></div><div class="wt-team-node-name"><b>${escapeHtml(label)}</b></div><div class="wt-team-wallet-row"><div class="wt-team-node-meta"><code>${escapeHtml(teamShortAddress(r.parentWallet))}</code></div>${dao1TeamCopyButtonHtml(r.parentWallet)}</div><div class="wt-team-wallet-dids"><div class="wt-team-did-row ${r.system==="aptmdao"?"aptmdao":"dao1"}"><span>${r.system==="aptmdao"?"APTMDAO-DID":"DAO1-DID"}:</span><strong>#${Number(r.parentDid)}</strong></div></div><div class="wt-team-node-parent">Upline von ${r.system==="aptmdao"?"APTMDAO":"DAO1"} #${Number(r.childDid)}</div></div>`;}).join("")}</div><div class="wt-team-upline-connector">↓</div></div>`;
+  }
+
   function dao1WalletForestHtml(){
     const graph=dao1BuildWalletGraph();
     let roots=[...graph.nodes.values()].filter(n=>!graph.childWallets.has(n.wallet) && (n.own||n.upstream));
@@ -5154,7 +5181,7 @@ window.DAO1Project = (() => {
     if(!roots.length)roots=[...graph.nodes.values()].filter(n=>n.own);
     const partnerCount=[...graph.nodes.values()].filter(n=>!n.own&&!n.upstream&&n.primary).length;
     if(!roots.length)return '<div class="custom-token-card" style="margin-top:12px"><div class="empty">Keine eigenen DAO-Wallets mit DID erkannt.</div></div>';
-    const blocks=roots.map(r=>`<section class="wt-team-tree-section"><div class="wt-team-tree"><ul class="wt-team-hierarchy">${dao1WalletNodeHtml(r,graph,0,new Set())}</ul></div></section>`).join("");
+    const blocks=roots.map(r=>`<section class="wt-team-tree-section">${dao1ExternalUplineHtml(r,graph)}<div class="wt-team-tree"><ul class="wt-team-hierarchy">${dao1WalletNodeHtml(r,graph,0,new Set())}</ul></div></section>`).join("");
     return `<div class="custom-token-card wt-team-tree-card" style="margin-top:12px"><div class="wt-team-tree-info"><b>Wallet-zentrierte Darstellung:</b> 1 Wallet = 1 Knoten. DAO1 und APTMDAO bleiben on-chain getrennt, werden hier aber in einem gemeinsamen Baum über ihre belegten DID-Uplines verbunden. Eigene Wallets bleiben sichtbar, zählen jedoch nicht als Partner. Bei zwei belegten Beziehungen bestimmt APTMDAO die grafische Position.</div><div class="project-summary" style="margin-top:10px"><div class="custom-token-card project-summary-box"><span class="field-label">Eindeutige Partner-Wallets</span><strong>${partnerCount.toLocaleString("de-DE")}</strong></div></div>${blocks}</div>`;
   }
   function dao1WalletDetailsHtml(node,graph){
