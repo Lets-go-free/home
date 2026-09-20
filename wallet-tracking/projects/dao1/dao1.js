@@ -1,4 +1,4 @@
-// Phase 5.62: Partner-Bots werden zentral im Hintergrund gepflegt; Karten zeigen Bot-Zahlen, Partner-Aliase sind editierbar, direkte Uplines bleiben vom Downline-Graph getrennt.
+// Phase 5.63: Wallet-Speicherung startet den gezielten DAO-Erstaufbau; direkte Uplines werden an jeder eigenen Wallet grafisch angebunden.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
 // WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
 window.DAO1Project = (() => {
@@ -5202,7 +5202,7 @@ window.DAO1Project = (() => {
     const nextSeen=new Set(seen);nextSeen.add(key);const kids=(graph.children.get(key)||[]).filter(k=>!nextSeen.has(k.wallet));
     const collapseKey=`wallet:${key}`,collapsed=dao1TeamCollapsed.has(collapseKey);const name=dao1WalletDisplayName(node);
     const badges=`${node.dao1Dids.size?'<span class="wt-team-depth-badge">DAO1</span>':""}${node.aptmdaoDids.size?'<span class="wt-team-depth-badge" style="margin-left:4px">APTMDAO</span>':""}`;
-    return `<li class="wt-team-li"><div class="wt-team-node ${level===0?"root":""} ${node.own?"own-wallet":""}">
+    return `<li class="wt-team-li">${node.own?dao1ExternalUplineHtml(node,graph):""}<div class="wt-team-node ${level===0?"root":""} ${node.own?"own-wallet":""}">
       <div class="wt-team-node-title"><span class="wt-team-depth-badge">${level===0?"Leader":`Linie ${level}`}</span>${badges}${node.own?'<span class="wt-team-own-badge">MEINE WALLET</span>':""}</div>
       <div class="wt-team-node-name"><b>${escapeHtml(name)}</b></div>
       <div class="wt-team-wallet-row"><div class="wt-team-node-meta"><code>${escapeHtml(teamShortAddress(key))}</code></div>${dao1TeamCopyButtonHtml(key)}</div>
@@ -5236,7 +5236,7 @@ window.DAO1Project = (() => {
     if(!roots.length)roots=[...graph.nodes.values()].filter(n=>n.own);
     const partnerCount=[...graph.nodes.values()].filter(n=>!n.own&&!n.upstream&&n.primary).length;
     if(!roots.length)return '<div class="custom-token-card" style="margin-top:12px"><div class="empty">Keine eigenen DAO-Wallets mit DID erkannt.</div></div>';
-    const blocks=roots.map(r=>`<section class="wt-team-tree-section">${dao1ExternalUplineHtml(r,graph)}<div class="wt-team-tree"><ul class="wt-team-hierarchy">${dao1WalletNodeHtml(r,graph,0,new Set())}</ul></div></section>`).join("");
+    const blocks=roots.map(r=>`<section class="wt-team-tree-section"><div class="wt-team-tree"><ul class="wt-team-hierarchy">${dao1WalletNodeHtml(r,graph,0,new Set())}</ul></div></section>`).join("");
     return `<div class="custom-token-card wt-team-tree-card" style="margin-top:12px"><div class="wt-team-tree-info"><b>Wallet-zentrierte Darstellung:</b> 1 Wallet = 1 Knoten. DAO1 und APTMDAO bleiben on-chain getrennt, werden hier aber in einem gemeinsamen Baum über ihre belegten DID-Uplines verbunden. Eigene Wallets bleiben sichtbar, zählen jedoch nicht als Partner. Bei zwei belegten Beziehungen bestimmt APTMDAO die grafische Position.</div><div class="project-summary" style="margin-top:10px"><div class="custom-token-card project-summary-box"><span class="field-label">Eindeutige Partner-Wallets</span><strong>${partnerCount.toLocaleString("de-DE")}</strong></div></div>${blocks}</div>`;
   }
   function dao1WalletDetailsHtml(node,graph){
@@ -6562,6 +6562,30 @@ window.DAO1Project = (() => {
     };
   }
 
+  async function refreshWalletAfterSave(walletId){
+    await ensureLoaded();
+    const ctx=getContext?.();
+    const wallet=(ctx?.wallets||[]).find(w=>String(w.dbId||w.id||"")===String(walletId||""));
+    const address=walletAddress(wallet);
+    if(!wallet||!address)return {skipped:true};
+    // Nur die gespeicherte Wallet: NFT-Bestand/Ownership, Projekt-Tx/Claims und
+    // danach die eigenen DAO1-/APTMDAO-DID-Roots. Bestehende Wallets werden nicht
+    // pauschal neu gescannt.
+    await loadOwnershipCache();
+    const ownership=await refreshWalletNftsAndOwnership(wallet,"Wallet gespeichert · ");
+    const txSync=await syncApertumTransactionCache(address,null);
+    await syncTargetedReferralWusdt(address);
+    await loadTransactionRows(address,null);
+    await enrichTransactionsWithClaims(address,null,transactionJobToken);
+    await loadDAO1OwnedDidRoots(true);
+    const [legacy,aptm]=await Promise.all([loadOldDao1TreeCache(),loadAptmdaoTreeCache()]);
+    if(legacy?.edges)dao1TeamDiscovery.legacy.edges=legacy.edges;
+    if(aptm?.edges)dao1TeamDiscovery.aptmdao.edges=aptm.edges;
+    renderDAO1TeamTreePanel();
+    await loadDashboardSummary().catch(()=>{});
+    return {ok:true,ownership,txSync};
+  }
+
   async function ensureLoaded() {
     await ensureMounted();
     if (!loaded) { await refreshConfig(); loaded = true; }
@@ -6641,7 +6665,7 @@ window.DAO1Project = (() => {
     }catch(e){console.warn("DAO1 Dashboard-Summary Cache",e);}
   }
 
-  return { switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, loadDashboardSummary, resolveNftPurchaseEvidence, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
+  return { switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, refreshWalletAfterSave, loadDashboardSummary, resolveNftPurchaseEvidence, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,

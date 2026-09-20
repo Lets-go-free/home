@@ -93,3 +93,9 @@ else renderDAO1Help();
 // Phase 5.54: Parent-Kante eigener DIDs wird in den Walletgraph aufgenommen (#25924 → #21043). Walletdetails zeigen den heutigen NFT-/Bot-Bestand nach Owner; historische Kaufdaten bleiben separat erhalten.
 
 // Phase 5.54: NFT-/Ownership-Ermittlung ist für eigene Wallets zentralisiert: NFT-Tab, DAO-Baum und Dashboard lesen denselben Ownership-/NFT-Cache; der Team-Baum startet für eigene Wallets keine zweite NFT-Discovery. Der kombinierte DAO-Walletgraph lädt DAO1-alt und APTMDAO vollständig als getrennte Quellen, lädt die belegte Upline-Kette oberhalb eigener DIDs zur Parent-/Wallet-Auflösung, rendert davon in der normalen Ansicht aber nur die direkten Uplines; weitere eigene Wallets werden anhand ihrer DID-Parent-Kante analog TLN in denselben Baum gehängt. DAO1-only-Partner benötigen keine APTMDAO-DID. Historische Kauf-/Preis-Evidenz bleibt am zentralen NFT-Datensatz.
+
+/* Phase 5.63 · 21.09.2026 01:43:10 CEST
+ * Nach dem Speichern einer eigenen Wallet werden DAO1/APTMDAO NFT-Ownership,
+ * Transaktionen/Claims und DID-Roots gezielt für diese Wallet nachgeführt. Ein
+ * manueller Projekt-Refresh ist für den Erstaufbau nicht erforderlich.
+ */

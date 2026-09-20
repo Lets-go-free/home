@@ -892,3 +892,9 @@ window.adminIdeasFilterState = adminIdeasFilterState;
 // Audit offen: Aktuelles Staking/gebundener Wert gegen positionsgenaue Projektcaches verifizieren; DAO Bot-Target/Aktivstatus on-chain beweisen.
 
 // Phase 5.54 erledigt: DAO-NFT-Ermittlung zentralisiert; kombinierter DAO1/APTMDAO-Walletgraph zeigt DAO1-only-Downline und belegte Uplines oberhalb eigener Wallets, eigene Wallets bleiben echte Knoten ohne Partnerzählung. Kaufpreis-Evidence-Cache bleibt zentrale Grundlage; offene/unbelegte Preise werden nicht erfunden.
+
+/* Phase 5.63 · 21.09.2026 01:43:10 CEST
+ * - Eigene Wallet speichern: projektbezogener Erstaufbau muss ohne manuellen Refresh laufen.
+ * - DAO-Team: direkte Uplines an jeder eigenen Wallet grafisch anbinden.
+ * - Dashboard-To-dos projektweise gruppieren; Details standardmäßig zuklappen.
+ */
