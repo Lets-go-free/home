@@ -1,3 +1,4 @@
+// Phase 5.56: DAO1/APTMDAO stellt der zentralen NFT-Registry nur noch den projektspezifischen Kaufpreis-Resolver bereit. Kaufpreis-Evidenz wird zentral im nft_cache persistiert und im NFT-Tab angezeigt; bereits geprüfte Fälle werden nicht erneut on-chain analysiert.
 // Phase 5.55: Im wallet-zentrierten DAO-Baum ist die zentrale aktuelle NFT-/Ownership-Registry autoritativ für DID→Wallet. Tree-Event-Adressen sind nur Fallback und dürfen eine bekannte aktuelle DID-Zuordnung nicht überschreiben. Ein eigenes Wallet kann gleichzeitig eine DAO1- und eine APTMDAO-Upline haben; beide werden getrennt oberhalb des eigenen Einstiegsknotens gezeigt. Beziehungen zwischen zwei eigenen Wallets bleiben normale Baumkanten (z. B. DAO1 #25924 unter #21043).
 (() => {
 // WalletTracking · DAO1 Hilfe

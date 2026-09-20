@@ -6445,6 +6445,34 @@ window.DAO1Project = (() => {
     return {nfts:nfts.length,ownership:saved,failed};
   }
 
+  async function resolveNftPurchaseEvidence(input={}) {
+    // Projektadapter fuer die zentrale NFT-Registry: DAO1/APTMDAO-spezifische
+    // Zahlungslogik bleibt hier, der NFT-Tab speichert das Ergebnis am zentralen NFT-Datensatz.
+    await ensureLoaded();
+    const contract=lower(input.contract||input.tokenAddress||"");
+    const id=String(input.id??input.tokenId??"");
+    const wallet=lower(input.acquisitionWallet||input.wallet||"");
+    if(!contract||!id||!/^0x[0-9a-f]{40}$/.test(wallet))return null;
+    const nft={
+      contract,id,
+      owned_from_at:input.acquiredAt||null,
+      owned_from_block:Number(input.acquiredBlock||0)||0,
+      acquisition_tx_hash:lower(input.acquisitionTxHash||"" )||null,
+      acquisition_kind:input.acquisitionKind||null
+    };
+    const acq=await dao1TeamAcquisitionForNft(nft,wallet);
+    return {
+      purchase:acq?.purchase||null,
+      acquisitionKind:acq?.acquisitionKind||null,
+      acquisitionTxHash:acq?.txHash||nft.acquisition_tx_hash||null,
+      acquiredAt:acq?.at||nft.owned_from_at||null,
+      acquiredBlock:Number(acq?.block||nft.owned_from_block||0)||null,
+      sourceWallet:acq?.sourceWallet||null,
+      checked:true,
+      checkedAt:new Date().toISOString()
+    };
+  }
+
   async function ensureLoaded() {
     await ensureMounted();
     if (!loaded) { await refreshConfig(); loaded = true; }
@@ -6524,7 +6552,7 @@ window.DAO1Project = (() => {
     }catch(e){console.warn("DAO1 Dashboard-Summary Cache",e);}
   }
 
-  return { switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, loadDashboardSummary, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
+  return { switchSubtab, setTeamTreeMode:setDAO1TeamTreeMode, saveTeamAlias:saveDAO1TeamAlias, setTeamRootFilter:setDAO1TeamRootFilter, discoverTeamTree:discoverDAO1TeamTree, configure, ensureMounted, refreshConfig, ensureLoaded, loadDashboardSummary, resolveNftPurchaseEvidence, updateVisibility, loadMiningRewards, addMiner, deleteMiner, selectWallet, selectNft, selectNftClass, discoverMinerNfts, useManualNft, saveNftClassification, setMiningDateFilter, setMiningClassFilter, setMiningResultNft, clearMiningFilters,
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,
