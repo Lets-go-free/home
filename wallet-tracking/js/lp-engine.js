@@ -180,7 +180,7 @@ window.WalletLPEngine = (() => {
   }
   async function saveHistory(projectKey,chain,wallet,pair,event){
     const c=ctx();if(!c.sb||!c.currentUser?.id)return;
-    const row={user_id:c.currentUser.id,project_key:projectKey,chain_key:chain,wallet_id:walletIdForAddress(wallet),wallet_address:norm(wallet),pair_address:norm(pair.address),lp_label:label(chain),token0_address:norm(pair.t0.address),token0_symbol:String(pair.t0.symbol||""),token0_decimals:pair.t0.decimals,token1_address:norm(pair.t1.address),token1_symbol:String(pair.t1.symbol||""),token1_decimals:pair.t1.decimals,...event,updated_at:new Date().toISOString()};
+    const row={user_id:c.currentUser.id,project_key:projectKey,chain_key:chain,wallet_id:walletIdForAddress(wallet),pair_address:norm(pair.address),lp_label:label(chain),token0_address:norm(pair.t0.address),token0_symbol:String(pair.t0.symbol||""),token0_decimals:pair.t0.decimals,token1_address:norm(pair.t1.address),token1_symbol:String(pair.t1.symbol||""),token1_decimals:pair.t1.decimals,...event,updated_at:new Date().toISOString()};
     const {error}=await c.sb.from("lp_history_events").upsert(row,{onConflict:"user_id,project_key,chain_key,wallet_id,pair_address,tx_hash,event_type"});if(error)throw error;
   }
   async function loadPositionCache(projectKey,chain,wallet){
@@ -203,12 +203,12 @@ window.WalletLPEngine = (() => {
   }
   async function replacePositionCache(projectKey,chain,wallet,rows){
     const c=ctx();if(!c.sb||!c.currentUser?.id)return;
-    const wa=norm(wallet),walletId=walletIdForAddress(wallet),now=new Date().toISOString(),scope=()=>c.sb.from("lp_position_cache");
+    const walletId=walletIdForAddress(wallet),now=new Date().toISOString(),scope=()=>c.sb.from("lp_position_cache");
     if(!rows?.length){
       const {error}=await scope().delete().eq("user_id",c.currentUser.id).eq("project_key",projectKey).eq("chain_key",chain).eq("wallet_id",walletId);if(error)throw error;return;
     }
     const payload=rows.map(r=>({
-      user_id:c.currentUser.id,project_key:projectKey,chain_key:chain,wallet_id:walletId,wallet_address:wa,
+      user_id:c.currentUser.id,project_key:projectKey,chain_key:chain,wallet_id:walletId,
       pair_address:norm(r.pair_address),lp_label:r.lp_label||label(chain),
       token0_address:norm(r.token0_address),token0_symbol:r.token0_symbol||null,token0_decimals:Number(r.token0_decimals??18),
       token1_address:norm(r.token1_address),token1_symbol:r.token1_symbol||null,token1_decimals:Number(r.token1_decimals??18),
@@ -234,7 +234,7 @@ window.WalletLPEngine = (() => {
   }
   async function setScanState(projectKey,chain,wallet,lastBlock,scanType="lp_history_v2",diagnostics={}){
     const c=ctx();if(!c.sb||!c.currentUser?.id)return;
-    const now=new Date().toISOString(),row={user_id:c.currentUser.id,project_key:projectKey,chain_key:chain,wallet_id:walletIdForAddress(wallet),wallet_address:norm(wallet),scan_type:scanType,last_scanned_block:Number(lastBlock||0),last_scanned_at:now,updated_at:now,
+    const now=new Date().toISOString(),row={user_id:c.currentUser.id,project_key:projectKey,chain_key:chain,wallet_id:walletIdForAddress(wallet),scan_type:scanType,last_scanned_block:Number(lastBlock||0),last_scanned_at:now,updated_at:now,
       last_transfers_seen:Number(diagnostics.transfersSeen||0),last_candidate_contracts:Number(diagnostics.candidateContracts||0),last_project_pairs:Number(diagnostics.projectPairs||0),last_events_saved:Number(diagnostics.eventsSaved||0),last_staking_events:Number(diagnostics.stakingEvents||0),last_scan_result:diagnostics.result||'ok',last_scan_message:diagnostics.message||null};
     const {error}=await c.sb.from("project_scan_state").upsert(row,{onConflict:"user_id,project_key,chain_key,wallet_id,scan_type"});if(error)throw error;
   }
