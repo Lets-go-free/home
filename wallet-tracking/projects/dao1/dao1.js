@@ -1,4 +1,4 @@
-// WalletTracking Phase 5.53 · 20.09.2026 11:55:56 CEST · Build 20260920-115556
+// WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -4168,7 +4168,7 @@ window.DAO1Project = (() => {
   }
   function dao1BuildWalletGraph(){
     const own=dao1OwnWalletSet(),nodes=new Map();
-    const ensure=(wallet)=>{const a=lower(wallet);if(!a)return null;if(!nodes.has(a))nodes.set(a,{wallet:a,own:own.has(a),dao1Dids:new Set(),aptmdaoDids:new Set(),relations:[],primary:null});return nodes.get(a);};
+    const ensure=(wallet)=>{const a=lower(wallet);if(!a)return null;if(!nodes.has(a))nodes.set(a,{wallet:a,own:own.has(a),upstream:false,dao1Dids:new Set(),aptmdaoDids:new Set(),relations:[],primary:null});return nodes.get(a);};
     for(const r of dao1OwnedDidRoots){const n=ensure(r.wallet_address);if(n)n.dao1Dids.add(Number(r.did));}
     for(const r of aptmdaoOwnedDidRoots){const n=ensure(r.wallet_address);if(n)n.aptmdaoDids.add(Number(r.did));}
     for(const rel of [...dao1ReachableRelations("legacy"),...dao1ReachableRelations("aptmdao")]){
@@ -4180,12 +4180,37 @@ window.DAO1Project = (() => {
     // (z. B. DAO1 #25924 -> #21043) und die eigene Upline fachlich zu kennen.
     for(const [system,roots] of [["legacy",dao1OwnedDidRoots],["aptmdao",aptmdaoOwnedDidRoots]]){
       const st=dao1TeamDiscovery[system]||{edges:[]},didWallet=dao1DidWalletMap(system);
+      // Eigene Roots sind nur Einstiegspunkte der persönlichen Sicht, keine künstlichen
+      // Graph-Roots. Ihre Parent-Kante und die bekannte Upline-Kette werden deshalb
+      // ebenfalls als echte Wallet-Knoten aufgenommen (analog TLN).
+      for(const r of roots||[]){
+        let childDid=Number(r.did),childWallet=lower(r.wallet_address||didWallet.get(childDid)||"");
+        const chainSeen=new Set();
+        for(let depth=0;depth<DAO1_TEAM_MAX_LEVELS&&childDid>0&&!chainSeen.has(childDid);depth++){
+          chainSeen.add(childDid);
+          const edge=(st.edges||[]).find(e=>Number(e.child_id)===childDid);if(!edge)break;
+          const parentDid=Number(edge.parent_id),parentWallet=lower(didWallet.get(parentDid)||"");
+          const n=ensure(childWallet);if(n){
+            const rel={system,childDid,parentDid,childWallet,parentWallet,level:-depth,rootDid:Number(r.did),edge};
+            if(!n.relations.some(x=>x.system===system&&Number(x.childDid)===childDid&&Number(x.parentDid)===parentDid))n.relations.push(rel);
+          }
+          if(!(parentDid>0)||!parentWallet)break;
+          const pn=ensure(parentWallet);if(pn){(system==="aptmdao"?pn.aptmdaoDids:pn.dao1Dids).add(parentDid);if(!pn.own)pn.upstream=true;}
+          childDid=parentDid;childWallet=parentWallet;
+        }
+      }
+      // Harte Eigenwallet-Verknüpfung: wenn die Parent-DID einer eigenen DID auf einer
+      // anderen eigenen Wallet liegt, muss diese Kante unabhängig von Traversal-/Cache-
+      // Reihenfolge den kombinierten Walletbaum bestimmen.
+      const ownDidWallet=new Map((roots||[]).map(x=>[Number(x.did),lower(x.wallet_address||"")]));
       for(const r of roots||[]){
         const childDid=Number(r.did),edge=(st.edges||[]).find(e=>Number(e.child_id)===childDid);if(!edge)continue;
-        const childWallet=lower(r.wallet_address||didWallet.get(childDid)||edge.wallet||""),parentDid=Number(edge.parent_id),parentWallet=lower(didWallet.get(parentDid)||"");
-        const n=ensure(childWallet);if(!n)continue;
-        const rel={system,childDid,parentDid,childWallet,parentWallet,level:0,rootDid:childDid,edge};
-        if(!n.relations.some(x=>x.system===system&&Number(x.childDid)===childDid&&Number(x.parentDid)===parentDid))n.relations.push(rel);
+        const parentDid=Number(edge.parent_id),parentWallet=ownDidWallet.get(parentDid)||lower(didWallet.get(parentDid)||"");
+        const childWallet=lower(r.wallet_address||didWallet.get(childDid)||"");
+        const n=ensure(childWallet);if(n&&parentWallet&&parentWallet!==childWallet){
+          const rel={system,childDid,parentDid,childWallet,parentWallet,level:0,rootDid:childDid,edge};
+          n.relations=n.relations.filter(x=>!(x.system===system&&Number(x.childDid)===childDid));n.relations.push(rel);
+        }
       }
     }
     // Ein Wallet darf im kombinierten Baum nur einmal vorkommen. Ist eine APTMDAO-
@@ -5123,11 +5148,11 @@ window.DAO1Project = (() => {
   }
   function dao1WalletForestHtml(){
     const graph=dao1BuildWalletGraph();
-    let roots=[...graph.nodes.values()].filter(n=>n.own&&!graph.childWallets.has(n.wallet));
+    let roots=[...graph.nodes.values()].filter(n=>!graph.childWallets.has(n.wallet) && (n.own||n.upstream));
     // Sicherheitsfallback bei unvollständigem Parent-Wallet-Mapping: lieber die eigenen
     // Wallets zeigen als einen leeren Baum. Normalfall ist genau der oberste eigene Knoten.
     if(!roots.length)roots=[...graph.nodes.values()].filter(n=>n.own);
-    const partnerCount=[...graph.nodes.values()].filter(n=>!n.own&&n.primary).length;
+    const partnerCount=[...graph.nodes.values()].filter(n=>!n.own&&!n.upstream&&n.primary).length;
     if(!roots.length)return '<div class="custom-token-card" style="margin-top:12px"><div class="empty">Keine eigenen DAO-Wallets mit DID erkannt.</div></div>';
     const blocks=roots.map(r=>`<section class="wt-team-tree-section"><div class="wt-team-tree"><ul class="wt-team-hierarchy">${dao1WalletNodeHtml(r,graph,0,new Set())}</ul></div></section>`).join("");
     return `<div class="custom-token-card wt-team-tree-card" style="margin-top:12px"><div class="wt-team-tree-info"><b>Wallet-zentrierte Darstellung:</b> 1 Wallet = 1 Knoten. DAO1 und APTMDAO bleiben on-chain getrennt, werden hier aber in einem gemeinsamen Baum über ihre belegten DID-Uplines verbunden. Eigene Wallets bleiben sichtbar, zählen jedoch nicht als Partner. Bei zwei belegten Beziehungen bestimmt APTMDAO die grafische Position.</div><div class="project-summary" style="margin-top:10px"><div class="custom-token-card project-summary-box"><span class="field-label">Eindeutige Partner-Wallets</span><strong>${partnerCount.toLocaleString("de-DE")}</strong></div></div>${blocks}</div>`;
@@ -5181,7 +5206,11 @@ window.DAO1Project = (() => {
         // Kaufpreis nach einem internen NFT-Transfer erhalten. Live/Current-Daten ergänzen
         // anschließend nur noch Bots, die in der Historie noch nicht vorhanden sind.
         const historicalOwn=node.own?dao1TeamOwnHistoricalBotCandidates():[];
-        const known=dao1TeamKnownNfts(wallet),live=(await dao1TeamFetchPartnerNfts(wallet,"wallet")).map(n=>({...n,current_wallet:n.current?wallet:(n.current_wallet||"")}));
+        const known=dao1TeamKnownNfts(wallet);
+        // Single Source of Truth für eigene Wallets: zentraler NFT-/Ownership-Cache.
+        // Der Team-Baum startet keine zweite NFT-Discovery. Nur für fremde Partner, die
+        // nicht im User-NFT-Bestand liegen, bleibt die gezielte Partnerabfrage erlaubt.
+        const live=node.own?[]:(await dao1TeamFetchPartnerNfts(wallet,"wallet")).map(n=>({...n,current_wallet:n.current?wallet:(n.current_wallet||"")}));
         // Reihenfolge ist absichtlich egal: der Merge kombiniert historische Erwerbsdaten
         // mit dem aktuellen Owner-Status, statt den ersten Datensatz je NFT zu behalten.
         let nfts=dao1MergeWalletBotCandidates([...historicalOwn,...known,...live].filter(n=>dao1TeamIsBot(n)&&!dao1TeamIsIdentityNft(n)));
@@ -5358,7 +5387,7 @@ window.DAO1Project = (() => {
     const renderT0=performance.now();
     if(dao1TeamTreeMode==="wallet"){
       const graph=dao1BuildWalletGraph();
-      const partners=[...graph.nodes.values()].filter(n=>!n.own&&n.primary);
+      const partners=[...graph.nodes.values()].filter(n=>!n.own&&!n.upstream&&n.primary);
       const dao1Partners=new Set(partners.filter(n=>n.dao1Dids.size).map(n=>n.wallet));
       const aptmPartners=new Set(partners.filter(n=>n.aptmdaoDids.size).map(n=>n.wallet));
       window.setDashboardProjectCacheStats?.("dao1",{updatedAt:new Date().toISOString(),teamPartners:partners.length,dao1Partners:dao1Partners.size,aptmdaoPartners:aptmPartners.size});

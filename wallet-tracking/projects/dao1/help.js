@@ -2,7 +2,7 @@
 // WalletTracking · DAO1 Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
 const HELP_MODULE_BUILD="20260920-031933";
-const HELP_MODULE_TIMESTAMP="20.09.2026 11:55:56 CEST";
+const HELP_MODULE_TIMESTAMP="20.09.2026 12:18:01 CEST";
 function renderDAO1Help(){
   const el=document.getElementById("dao1HelpContent");
   if(!el)return;
@@ -86,4 +86,6 @@ else renderDAO1Help();
 
 // Phase 5.52: Gemeinsamer Wallet-Baum über verbundene eigene Wallets; aktueller Bot-Bestand strikt nach heutigem Owner, frühere/übertragene Bots separat; historische Erwerbsevidenz bleibt erhalten.
 
-// Phase 5.53: Parent-Kante eigener DIDs wird in den Walletgraph aufgenommen (#25924 → #21043). Walletdetails zeigen den heutigen NFT-/Bot-Bestand nach Owner; historische Kaufdaten bleiben separat erhalten.
+// Phase 5.54: Parent-Kante eigener DIDs wird in den Walletgraph aufgenommen (#25924 → #21043). Walletdetails zeigen den heutigen NFT-/Bot-Bestand nach Owner; historische Kaufdaten bleiben separat erhalten.
+
+// Phase 5.54: NFT-/Ownership-Ermittlung ist für eigene Wallets zentralisiert: NFT-Tab, DAO-Baum und Dashboard lesen denselben Ownership-/NFT-Cache; der Team-Baum startet für eigene Wallets keine zweite NFT-Discovery. Der kombinierte DAO-Walletgraph lädt DAO1-alt und APTMDAO vollständig als getrennte Quellen, nimmt die belegte Upline-Kette oberhalb eigener DIDs als echte Knoten auf und hängt weitere eigene Wallets anhand ihrer DID-Parent-Kante analog TLN in denselben Baum. DAO1-only-Partner benötigen keine APTMDAO-DID. Historische Kauf-/Preis-Evidenz bleibt am zentralen NFT-Datensatz.
