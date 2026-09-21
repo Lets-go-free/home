@@ -22,8 +22,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260919-152652";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "19.09.2026 18:26:27 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260921-141307";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "21.09.2026 14:13:07 CEST";
 // Phase 5.33: Dashboard-Summary validiert und Start weiter entkoppelt. Apertum-native-Fehler behoben: interner Asset-Key "native" wird nie mehr als EVM-Adresse ABI-encodiert. TLN/BSC lp_position_cache wird beim Dashboard-Start walletübergreifend in einem Batch gelesen statt mit Einzelrequest pro Wallet. TLN "davon aktiv" zeigt bei unvollständig verifizierten Lifecycles keine scheinbar endgültige Zahl mehr, sondern bestätigte Aktive plus offene Partner; erst bei vollständiger Lifecycle-Abdeckung wird die Endzahl gesetzt. DAO1 Dashboard-Rewards werden gezielt aus vorhandenen project_transactions + project_transaction_asset_flows gelesen, ohne ensureLoaded()/vollständige DAO1-Tab-Initialisierung. Phase 5.35 ersetzt die frühere USD-Summary: Gesamt/Vorjahr/Jahr/Monat zeigen Originaltoken/-mengen; historische USD-Bewertungen sind dafür nicht erforderlich. DAO1 "aktiv" bleibt bewusst offen: aktueller Code enthält keinen belastbaren Bot-Target-/Completed-Contract-Proof. Reward-Zeilen der Projektkarten wieder als konsistente Kacheln gestaltet. Systemübersicht, Admin-Doku und Hilfe synchronisiert. Build 20260919-140811.
 // Phase 5.30: TLN/VOW-Contracts werden aus der allgemeinen CoinGecko-/GeckoTerminal-Preisermittlung ausgeschlossen und ausschließlich über die bestehende zentrale Projekt-PriceEngine bewertet (BSC PancakeSwap / ETH Uniswap). Dashboard zeigt Contract-Adressen einheitlich nur verkürzt mit Copy-Funktion; vollständige Adressen werden nicht zusätzlich als Symbolzeile ausgegeben. Preisrouten/-berechnungen selbst unverändert.
 // Phase 5.29: Dashboard-Gerüst wird unmittelbar nach Login sichtbar, bevor Chain-/DB-Konfiguration fertig geladen ist. TLN/VOW-Dashboardpreise zeigen tatsächliche DEX-Quelle (BSC PancakeSwap / ETH Uniswap) plus vorhandene Preisroute. DAO1 hat neu „Kurse und Pools“ als reine Sicht auf die bereits bestehende Apertum-Preislogik; keine neue Preisermittlung.
@@ -200,7 +200,7 @@ PHASE 5.31/5.32 · START-/DASHBOARD-ARCHITEKTUR:
 • Aktuelle Preise sind ein globaler, nicht historisierter 15-Minuten-Snapshot. Ein globaler Slot-Lock verhindert parallele Preisjobs mehrerer User. Datenquelle und Cache-Status sind getrennte Begriffe.
 • Dashboard bleibt immer Startseite – auch bei einem komplett neuen User ohne Wallet. Ohne Wallet erscheint eine verständliche Erststart-Hilfe mit Ein-Klick-Aktion „Erste Wallet erfassen“.
 • Nach dem Speichern einer neuen Wallet startet automatisch der vorhandene zentrale Grunddatenlauf. Der User muss keinen Projekt-Tab öffnen, damit der erste Bestands-/Projektpositions-/NFT-Cache aufgebaut wird.
-• Bei bestehenden Wallets startet nach dem sofort sichtbaren Cache-Dashboard höchstens 1× täglich je Wallet/Datentyp eine asynchrone Hintergrundprüfung, sofern der Refresh-State dies verlangt.
+• Historischer Stand bis Phase 5.74: Bei bestehenden Wallets konnte nach dem Cache-Dashboard eine tägliche Hintergrundprüfung starten. Seit Phase 5.75 ist dieser allgemeine Login-Auto-Refresh entfernt; bestehende Wallets bleiben beim normalen Start cache-first und werden gezielt manuell bzw. über zuständige Projekt-/Freshness-Pfade aktualisiert.
 • Projekt-Detail-Discovery bleibt getrennt. Dashboard-Grunddaten dürfen aus persistenten Projektcaches/Summaries übernommen werden; das Dashboard selbst startet keinen Globalgraph-/Historien-Vollscan.
 • Dashboard-Project-Summary wird userbezogen lokal als schneller Anzeige-Cache persistiert. Fachliche Projektcaches bleiben die Wahrheit. TLN-Teamansicht schreibt Teampartner + aktiv aus demselben verifizierten Forest/Lifecycle in die Dashboard-Summary; unverifizierte Lifecycles werden nicht als inaktiv gezählt.
 • Nächste fachliche Ausbaustufe: Reward-Summaries und DAO1 aktiv/Team aus ihren bestehenden persistenten Projektcaches an dieselbe Summary-Bridge anschließen – ohne zweite Discovery-Logik.
@@ -1011,3 +1011,38 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    Dashboard/DAO "Registration APTMDAO offen"; Membership-Ablaufdatum erst nach verifizierter on-chain Quelle.
 
    Build 20260921-134840. */
+
+
+/* Phase 5.75 · 21.09.2026 14:13:07 CEST
+   Cache-/Request-Audit und erste Startoptimierung umgesetzt.
+
+   Neu:
+   - Zentraler Session-Request-Audit misst fetch-basierte Supabase-/RPC-/API-Aufrufe mit Request-Signatur,
+     Scope/Filter, Aufrufer, Dauer, HTTP-Status und Response-Grösse/Content-Range. Login, Tab-Wechsel und
+     manuelle/automatische Refresh-Läufe erhalten Marker. Audit ist im Admin-Systemtab sichtbar und exportierbar.
+   - Normaler Seitenstart startet kein loadAll({automatic:true}) mehr. Vorhandene Cache-Daten werden angezeigt;
+     ein fälliger Refresh wird nur signalisiert und muss bewusst ausgelöst werden.
+   - TLN/VOW-Dashboard-Summary initialisiert das komplette Discovery-Modul nicht mehr beim Login. Bis der
+     TLN/VOW-Bereich geöffnet wurde, bleibt der bereits persistierte Dashboard-Summary-Cache maßgeblich.
+   - Zentrale NFT-Registry lädt beim Start weiterhin Current State + project_nft_ownership, aber die globale
+     apertum_nft_transfer_cache-Auswertung für frühesten Erwerb sowie Kaufpreis-History startet erst im NFT-Tab.
+     Current State wird dort sofort gerendert; historische Aufbereitung läuft danach separat.
+   - DAO1 nutzt beim Dashboard/Initialload die zentrale NFT-/Ownership-RAM-Registry, statt dieselben Daten direkt
+     erneut aus Supabase zu laden. DAO-Transaktions-/Asset-Flow-Historie wird nicht mehr pauschal in refreshConfig
+     vorgeladen; sie bleibt Untertab-spezifisch. Historische NFT-Metadaten laufen nachgelagert.
+   - Gleichzeitige identische DAO1-/APTMDAO-Tree-Scans werden über In-Flight-Promises zusammengeführt; auch
+     Dashboard-Projekt-Summary-Läufe der Hauptseite sind innerhalb eines laufenden Requests dedupliziert.
+
+   Unverändert:
+   - Keine Fachregel zu Staking, Rewards, Referral, DAO1/APTMDAO-DID/Bot-Zuordnung oder Kaufpreis geändert.
+   - Current State und History bleiben fachlich getrennt.
+   - Test-HTML-Dateien bleiben unverändert und werden von der produktiven index.html nicht geladen.
+
+   Nächster Prüfschritt nach Deployment:
+   - Einen echten Warm-Start sowie Wechsel Dashboard -> NFT -> DAO1 -> TLN/VOW -> Dashboard messen und
+     Audit exportieren. Danach verbleibende Mehrfachsignaturen anhand echter Dauer/Scope priorisieren.
+   - DAO-Reward-Summary-Aggregation und weitere globale Shared-Loads erst nach Messbeleg umbauen.
+   - Regression DAO nach Deployment prüfen: Monica 0x568281…fe4940 => DAO1 #21044, APTMDAO #7803,
+     9 Mining-Bots, 1 Trading-Bot. Die Bestands-/Klassifikationslogik wurde in diesem Release nicht verändert.
+
+   Build 20260921-141307. */

@@ -1,6 +1,7 @@
+// Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260919-220046';
+const BUILD_ID='20260921-141307';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -192,7 +193,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='19.09.2026 22:00:46 CEST';
+const APP_VERSION='21.09.2026 14:13:07 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -18213,7 +18214,17 @@ function ensureInitialized(){
 }
 window.TLNVOWDiscovery={
   ensureInitialized,
-  loadDashboardSummary:async()=>{await ensureInitialized();if(CURRENT_TEAM_PROJECT_FOREST)renderTeamTree();try{const r=projectDashboardRewardPeriods();window.setDashboardProjectCacheStats?.('tln_vow',{rewards:r.rewards,referralRewards:r.referralRewards,bonusRewards:r.bonusRewards,updatedAt:new Date().toISOString()});}catch(e){console.warn('TLN Dashboard Reward-Summary',e);}},
+  loadDashboardSummary:async()=>{
+    // App-Start darf das komplette Discovery-Modul nicht nur für eine Dashboard-Summary
+    // initialisieren. Bis TLN/VOW bewusst geöffnet wurde, verwendet das Dashboard den
+    // bereits restaurierten lokalen Summary-Cache. Nach init() wird dieselbe Summary
+    // aus den persistenten Projekt-Snapshots aktualisiert.
+    if(!initializationPromise)return {deferred:true};
+    await initializationPromise;
+    if(CURRENT_TEAM_PROJECT_FOREST)renderTeamTree();
+    try{const r=projectDashboardRewardPeriods();window.setDashboardProjectCacheStats?.('tln_vow',{rewards:r.rewards,referralRewards:r.referralRewards,bonusRewards:r.bonusRewards,updatedAt:new Date().toISOString()});}catch(e){console.warn('TLN Dashboard Reward-Summary',e);}
+    return {deferred:false};
+  },
   switchProjectUserTab,
   renderProjectUserView,
   renderProjectAdminContractRegistry,

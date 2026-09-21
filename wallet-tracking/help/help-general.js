@@ -13,11 +13,12 @@
 // Phase 5.43: DAO-Team bleibt beim Rendern cache-only; Explorer-NFT/Tx-Abfragen erfolgen nur gezielt in Partnerdetails, werden dedupliziert und begrenzt. Neue Bots eigener Roots werden dort live ergänzt; DID-NFTs selbst erscheinen nie als Bots.
 // Phase 5.42: Dashboard-Kurse: Token ohne Icon, Chain mit Native-Symbol, bekannte Tokenstammdaten vor Contract-Fallback; DAO-DID/Bot-Trennung und LP-frei/gebunden fachlich geschärft.
 // Phase 5.41: Dashboard-Werte auditierbar aufgesplittet; LP-Staking ohne Doppelzählung; DAO1/APTMDAO Partner-Bots nur bei eindeutiger Tree-Evidenz; Partner-Bot-Lifecycle persistent; Preis-Freshness je Asset.
+// Phase 5.75: Request-Audit im Admin-Systemtab; Seiten-Reload startet strikt kein loadAll(). TLN/VOW wird nicht für eine Dashboard-Summary initialisiert. NFT-Current-State bleibt Startcache, historische Ersterwerbs-/Kaufpreis-Aufbereitung beginnt erst im NFT-Tab.
 // Cache-first Start ab 18.09.2026: Seiten-Reload zeigt gespeicherte Daten und startet keine grossen Balance/NFT/Projekt-On-Chain-Jobs automatisch. Projektmodule wie DAO1 laden Detail-Caches lazy beim Öffnen.
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260919-152652";
+const HELP_MODULE_BUILD="20260921-141307";
 const HELP_MODULE_TIMESTAMP="19.09.2026 01:36:47 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
@@ -51,7 +52,7 @@ function renderGeneralHelp(){
 
       <div class="custom-token-card"><h3 style="margin-top:0">🏦 Projekte</h3><p class="note"><strong>Projektspezifische Bedienung und Fachlogik gehören nicht in dieses allgemeine Handbuch.</strong> Der Hauptpunkt „DeFi-Projekte“ öffnet zuerst eine neutrale Übersicht und lädt dabei bewusst noch keine projektspezifischen Daten. Öffne danach TLN/VOW, DAO1 oder ein anderes DeFi-Projekt und dort den eigenen Unter-Tab „Hilfe“. Dort werden projektspezifische Tabs, Datenquellen, Cache-/Refresh-Regeln, Statusmodelle und Besonderheiten dokumentiert.</p></div>
 
-      <div class="custom-token-card"><h3 style="margin-top:0">⚡ Cache- &amp; Ladeprinzip</h3><p class="note">WalletTracking arbeitet cache-first: vorhandene bestätigte Daten sollen sofort angezeigt und nur notwendige Deltas nachgeladen werden. Große globale Datenbestände sollen innerhalb eines App-Laufs gemeinsam wiederverwendet statt pro Tab erneut geladen werden. Cache-Gültigkeit wird über Datenversion, Scope/Root-Signatur und Scan-Cursor bestimmt; ein vorhandener Cache gilt nicht automatisch als aktuell. Aktuelle Bestände (z. B. Wallet-, NFT- oder Bot-Bestand) bleiben technisch von historischen Kaufpreis-, Lifecycle- und DID-Zuordnungen getrennt. Der nächste technische Optimierungsschritt ist ein Request-Audit, das doppelte Supabase-/RPC-Abfragen und unnötige Vollscans beim App-Start sichtbar macht.</p></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">⚡ Cache- &amp; Ladeprinzip</h3><p class="note">WalletTracking arbeitet cache-first: vorhandene bestätigte Daten werden sofort angezeigt. Ein Seitenreload startet keinen breiten <code>loadAll()</code>-On-Chain-Lauf mehr; eine fällige Aktualisierung wird angezeigt und bewusst ausgelöst. Große globale Datenbestände sollen innerhalb eines App-Laufs gemeinsam wiederverwendet werden. Aktuelle Bestände (Wallet/NFT/Bot/Position) bleiben technisch von historischen Kaufpreis-, Lifecycle- und DID-Zuordnungen getrennt. Deshalb lädt die zentrale NFT-Registry beim Start den Current State, während globale Ersterwerbs- und Kaufpreis-Historie erst beim NFT-Tab nachläuft. Im Admin-Systemtab zeigt der Request-Audit Supabase-/RPC-/API-Signaturen, Scope/Filter, Anzahl und Laufzeiten des aktuellen Browser-Tabs.</p></div>
 
       <div class="custom-token-card"><h3 style="margin-top:0">💬 Support</h3><p class="note">Wenn Daten fehlen oder eine Abfrage fehlschlägt, sende möglichst Projekt/Chain, Wallet-Bezeichnung, betroffene Funktion sowie die sichtbare Fehlermeldung oder Tx. Private Keys und Seed-Phrases gehören niemals in den Chat.</p></div>`;
 }
@@ -63,3 +64,5 @@ else renderGeneralHelp();
 // Phase 5.54: DAO-NFT-Daten folgen einer zentralen Single-Source-of-Truth. Ansichten lösen Ownership/Kaufhistorie nicht parallel neu auf, sondern verwenden den persistierten NFT-/Ownership-Bestand.
 
 // Phase 5.74 · 21.09.2026 13:48:40 CEST: Nächster Entwicklungsfokus ist ein zentraler Cache-/Request-Audit. App-Start bleibt cache-first; identische parallele Supabase-/RPC-Abfragen sollen über In-Flight-Reuse zusammengeführt, große globale Datenbestände pro Session nur einmal geladen und Delta-Scans über DATA_VERSIONS/Scope/rootsKey/Cursor/Overlap gesteuert werden. Current State darf nicht auf historische Kaufpreis-/Lifecycle-/DID-Aufbereitung warten. Build 20260921-134840.
+
+// Phase 5.75 · 21.09.2026 14:13:07 CEST: Zentraler Session-Request-Audit aktiv; kein automatisches loadAll() beim Login; TLN/VOW-Dashboard startet keine Discovery-Initialisierung; NFT-History erst im NFT-Tab. Build 20260921-141307.

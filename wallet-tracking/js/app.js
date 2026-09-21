@@ -1,9 +1,86 @@
-/* WalletTracking Phase 5.74 · 21.09.2026 13:48:40 CEST · Build 20260921-134840 */
+/* WalletTracking Phase 5.75 · 21.09.2026 14:13:07 CEST · Build 20260921-141307 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_mz_vXAY0Z6sm7iXMg_bjyQ_beZDiQ1N";
 const REDIRECT_URL = "https://letsgofree.me/wallet-tracking/";
+
+// ---- Zentraler Request-Audit (Phase 5.75) ----
+// Leichtgewichtige Laufzeitmessung aller fetch-basierten Supabase-/RPC-/API-Requests.
+// Es werden bewusst keine Auth-Header, API-Keys, Klartext-Wallets oder Request-Bodies gespeichert.
+// Die Messdaten leben nur im RAM des aktuellen Browser-Tabs und sind ausschließlich im
+// Admin-Systembereich sichtbar/exportierbar.
+const WT_REQUEST_AUDIT_LIMIT = 800;
+const WT_REQUEST_AUDIT = { startedAt:new Date().toISOString(), entries:[], marks:[] };
+const WT_NATIVE_FETCH = window.fetch.bind(window);
+function wtAuditShortValue(v){
+  let s=String(v??"");
+  s=s.replace(/0x[0-9a-f]{40}/ig,m=>`${m.slice(0,8)}…${m.slice(-6)}`);
+  s=s.replace(/[0-9a-f]{8}-[0-9a-f-]{20,}/ig,m=>`${m.slice(0,6)}…${m.slice(-4)}`);
+  return s.length>110?`${s.slice(0,107)}…`:s;
+}
+function wtAuditSafePath(path){
+  return String(path||"").split("/").map(seg=>{if(/^0x[0-9a-f]{40}$/i.test(seg))return wtAuditShortValue(seg);if(/^[A-Za-z0-9_-]{28,}$/.test(seg))return `${seg.slice(0,6)}…${seg.slice(-4)}`;return seg;}).join("/");
+}
+function wtAuditCaller(){
+  try{
+    const lines=String(new Error().stack||"").split("\n").slice(2);
+    const line=lines.find(x=>/wallet-tracking\//.test(x)&&!/wtAudit|window\.fetch/.test(x))||lines.find(x=>!/wtAudit|window\.fetch/.test(x))||"";
+    return line.trim().replace(/^at\s+/,"").replace(/https?:\/\/[^/]+\/wallet-tracking\//,"/").slice(0,180);
+  }catch(_){return "";}
+}
+function wtAuditDescribe(input,init={}){
+  let raw="";try{raw=typeof input==="string"?input:(input?.url||String(input||""));}catch(_){}
+  let u=null;try{u=new URL(raw,location.href);}catch(_){}
+  const method=String(init?.method||input?.method||"GET").toUpperCase();
+  let kind="api",resource=u?`${u.hostname}${wtAuditSafePath(u.pathname)}`:wtAuditShortValue(raw),scope="",rpcMethod="";
+  if(u?.hostname===new URL(SUPABASE_URL).hostname){
+    kind="supabase";
+    const m=u.pathname.match(/^\/rest\/v1\/([^/?]+)/);
+    const f=u.pathname.match(/^\/functions\/v1\/([^/?]+)/);
+    const r=u.pathname.match(/^\/rest\/v1\/rpc\/([^/?]+)/);
+    resource=r?`rpc:${r[1]}`:m?m[1]:f?`edge:${f[1]}`:u.pathname.replace(/^\//,"");
+    if(u.searchParams.size){
+      const parts=[];
+      for(const [k,v] of u.searchParams.entries()){
+        if(["apikey","token","access_token"].includes(k.toLowerCase()))continue;
+        const safe=/user_id/i.test(k)?"self":wtAuditShortValue(v.replace(/^(eq|neq|gt|gte|lt|lte|like|ilike|in)\./,"$1."));
+        parts.push(`${k}=${safe}`);
+      }
+      scope=parts.join(" & ").slice(0,360);
+    }
+  }
+  const body=init?.body;
+  if(typeof body==="string"&&body.length<50000){
+    try{const j=JSON.parse(body);if(j?.jsonrpc&&j?.method){kind="rpc";rpcMethod=String(j.method);resource=u?u.hostname:"rpc";scope=`${rpcMethod}${Array.isArray(j.params)?` · params:${j.params.length}`:""}`;}}catch(_){}
+  }
+  return {kind,resource:wtAuditShortValue(resource),method,scope,rpcMethod,caller:wtAuditCaller()};
+}
+function wtAuditPush(entry){
+  WT_REQUEST_AUDIT.entries.push(entry);
+  if(WT_REQUEST_AUDIT.entries.length>WT_REQUEST_AUDIT_LIMIT)WT_REQUEST_AUDIT.entries.splice(0,WT_REQUEST_AUDIT.entries.length-WT_REQUEST_AUDIT_LIMIT);
+}
+window.fetch=async function(input,init){
+  const meta=wtAuditDescribe(input,init||{}),t0=performance.now(),startedAt=new Date().toISOString();
+  try{
+    const res=await WT_NATIVE_FETCH(input,init);
+    wtAuditPush({...meta,startedAt,durationMs:Math.round((performance.now()-t0)*10)/10,status:res.status,ok:res.ok,bytes:Number(res.headers?.get?.("content-length")||0)||null,contentRange:res.headers?.get?.("content-range")||null});
+    return res;
+  }catch(e){
+    wtAuditPush({...meta,startedAt,durationMs:Math.round((performance.now()-t0)*10)/10,status:0,ok:false,error:String(e?.message||e).slice(0,160)});
+    throw e;
+  }
+};
+function markRequestAudit(label){WT_REQUEST_AUDIT.marks.push({label:String(label||""),at:new Date().toISOString(),entryIndex:WT_REQUEST_AUDIT.entries.length});if(WT_REQUEST_AUDIT.marks.length>120)WT_REQUEST_AUDIT.marks.shift();}
+function resetRequestAudit(){WT_REQUEST_AUDIT.startedAt=new Date().toISOString();WT_REQUEST_AUDIT.entries.length=0;WT_REQUEST_AUDIT.marks.length=0;markRequestAudit("audit-reset");renderAdminSystemOverview?.();}
+function requestAuditSnapshot(){return {startedAt:WT_REQUEST_AUDIT.startedAt,generatedAt:new Date().toISOString(),marks:[...WT_REQUEST_AUDIT.marks],entries:[...WT_REQUEST_AUDIT.entries]};}
+function exportRequestAudit(){
+  const snap=requestAuditSnapshot(),lines=[`WalletTracking Request-Audit`, `Start: ${snap.startedAt}`, `Export: ${snap.generatedAt}`, "", "MARKS", ...snap.marks.map(m=>`${m.at} · #${m.entryIndex} · ${m.label}`), "", "REQUESTS", ...snap.entries.map((e,i)=>`${i+1}. ${e.kind} · ${e.method} · ${e.resource}${e.scope?` · ${e.scope}`:""} · ${e.durationMs} ms · HTTP ${e.status}${e.caller?` · ${e.caller}`:""}`)];
+  const blob=new Blob([lines.join("\n")],{type:"text/plain;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`wallettracking-request-audit-${new Date().toISOString().replace(/[:.]/g,"-")}.txt`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+window.getRequestAuditSnapshot=requestAuditSnapshot;window.resetRequestAudit=resetRequestAudit;window.exportRequestAudit=exportRequestAudit;window.markRequestAudit=markRequestAudit;
+markRequestAudit("script-start");
+
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
@@ -255,6 +332,7 @@ async function initAuth() {
 }
 
 async function onLoggedIn(session) {
+  markRequestAudit("login-start");
   currentUser = session.user;
   document.getElementById("authGate").style.display = "none";
   // Das App-Gerüst und der Dashboard-Tab werden sofort sichtbar. Chain-/DB-Konfiguration
@@ -384,10 +462,9 @@ async function onLoggedIn(session) {
   renderNftChainFilter();
   renderNftWalletSelect();
 
-  // Zuerst den letzten automatisierten Snapshot sofort anzeigen. Eine automatische
-  // Live-Aktualisierung erfolgt höchstens einmal pro Kalendertag. Ist der Cache bereits
-  // von heute, bleibt es beim gespeicherten Stand; weitere Aktualisierungen an diesem
-  // Tag erfolgen ausschließlich manuell über „Jetzt live aktualisieren“.
+  // Zuerst den letzten automatisierten Snapshot sofort anzeigen. Seit Phase 5.75
+  // startet ein normaler Login/Reload keinen allgemeinen Live-Grunddatenlauf mehr.
+  // Der Refresh-State dient hier nur zur Anzeige, ob eine gezielte Aktualisierung sinnvoll ist.
   const cachedAt = await loadFromAutomatedCache();
   const autoRefreshNeeded = wallets.some(w => Object.keys(CHAIN_CONFIG).some(c => walletAddressForChain(w,c) && CHAIN_CONFIG[c]?.balanceProvider && !refreshedToday(w,c,'balances')) || (w.evm && !refreshedToday(w,'bsc','project:tln_vow')) || !refreshedToday(w,'','nft'));
   if (cachedAt) {
@@ -409,13 +486,10 @@ async function onLoggedIn(session) {
   // Cache-first: Beim Start ausschliesslich den gespeicherten Preisstand laden.
   // APIs, Pool-RPC und TLN-Infrastruktur werden nur durch die manuelle Preisaktualisierung gestartet.
   await loadCachedCurrentPricesAtStart().catch(e=>console.warn("Gespeicherter Preisstand:",e));
-  // Zentrale NFT-Registry beim App-Start aus Supabase restaurieren. Alle Verbraucher
+  // Zentrale NFT-Current-State-Registry beim App-Start aus Supabase restaurieren. Alle Verbraucher
   // (NFT-Tab, DAO-Team, Dashboard/Alerts) sehen damit denselben Bestand, ohne dass
-  // der NFT-Tab zuerst geöffnet werden muss. Chain-Refresh bleibt inkrementell/täglich.
+  // der NFT-Tab zuerst geöffnet werden muss. Historische Ersterwerbs-/Kaufpreisarbeit bleibt getrennt.
   await ensureNftCacheLoaded().catch(e=>console.warn("NFT-Registry Start:",e));
-  // Offene historische Apertum-Kaufpreise werden im Hintergrund einmalig ergänzt.
-  // Bereits geprüfte/gespeicherte Evidence wird nicht erneut on-chain untersucht.
-  setTimeout(()=>enrichCentralNftPurchaseEvidence().catch(e=>console.warn("NFT Kaufpreis-Cache Start:",e)),500);
   scheduleGlobalPriceRefresh();
   // Projekt-Grunddaten werden unabhängig vom Öffnen der Detail-Tabs aus ihren persistenten Caches restauriert.
   // Das Dashboard wartet nicht darauf; die Summary-Bridge rendert nach Abschluss erneut.
@@ -424,16 +498,15 @@ async function onLoggedIn(session) {
   if(!userNavigationTouched) showTab("dashboard");
   maybeShowWelcomeModal();
 
-  // Cache-first Start: Ein Seiten-Reload startet keinen grossen On-Chain-Refresh mehr.
-  // Gespeicherte Daten werden sofort angezeigt; Live-/On-Chain-Aktualisierung erfolgt bewusst
-  // über „Daten aktualisieren“ bzw. projektspezifische Refresh-Aktionen. Das verhindert, dass
-  // ein Reload unbemerkt Balance-, NFT- oder Projekt-RPC-Jobs auslöst.
+  // Strikt cache-first: Ein Seiten-Reload startet KEIN loadAll() und damit keine breite
+  // Balance-/NFT-/Projekt-On-Chain-Prüfung. Wir zeigen nur an, dass ein Refresh verfügbar ist.
+  // Aktualisierung erfolgt über „Daten aktualisieren“ bzw. projektspezifische Refresh-Aktionen.
   if (autoRefreshNeeded && wallets.length > 0) {
     renderCacheStatusNote(cachedAt
-      ? "Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – tägliche Hintergrundprüfung wird gestartet."
-      : "Noch kein gespeicherter Stand – Grunddaten werden im Hintergrund aufgebaut.");
-    setTimeout(()=>loadAll({automatic:true}).catch(e=>console.warn("Tägliche Hintergrundaktualisierung",e)),350);
+      ? "Bestände vom " + fmtSnapshotDateTime(cachedAt) + " – Aktualisierung verfügbar; kein automatischer On-Chain-Refresh beim Seitenstart."
+      : "Noch kein gespeicherter Stand – bitte „Daten aktualisieren“ starten.");
   }
+  markRequestAudit("login-ready");
 }
 
 
@@ -1297,6 +1370,7 @@ document.addEventListener("wallettracking:data-status",()=>{const p=document.que
 
 function showTab(name) {
   if(window.isDataJobActive?.()) return;
+  markRequestAudit(`tab:${name}`);
   // TLN/VOW ist nur erreichbar, wenn ein passender Projekt-Token im Summary-Bestand liegt.
   if (name === "tlnvow" && !hasTlnVowTokenInSummary()) name = "tracking";
   updateContextNavigation(name);
@@ -1321,7 +1395,15 @@ function showTab(name) {
     if (typeof window.renderGeneralHelp === "function") window.renderGeneralHelp();
     renderHelpChainCoverage();
   }
-  if (name === "nfts") ensureNftCacheLoaded().then(()=>onNftWalletChange()).catch(e=>console.warn("NFT-Cache:",e));
+  if (name === "nfts") ensureNftCacheLoaded().then(()=>{
+    // Current State sofort aus RAM anzeigen. Historische Ersterwerbs-/Kaufpreis-Aufbereitung
+    // läuft erst im NFT-Bereich und blockiert den aktuellen Bestand nicht.
+    onNftWalletChange();
+    ensureNftGlobalFirstOwnedLoaded().then(()=>{
+      onNftWalletChange();
+      enrichCentralNftPurchaseEvidence().then(()=>onNftWalletChange()).catch(e=>console.warn("NFT Kaufpreis-Cache:",e));
+    }).catch(e=>console.warn("NFT Besitzhistorie:",e));
+  }).catch(e=>console.warn("NFT-Cache:",e));
   if (name === "fees") { renderFeesSummary(); onFeesWalletChange(); }
   if (name === "discovery") {
     ensureDiscoveryCacheLoaded().then(()=>{
@@ -1331,6 +1413,7 @@ function showTab(name) {
   }
   if (name === "tlnvow" && window.TLNVOWProject) {
     Promise.resolve(window.TLNVOWDiscovery?.ensureInitialized?.())
+      .then(()=>window.TLNVOWDiscovery?.loadDashboardSummary?.())
       .then(()=>window.TLNVOWProject.ensureLoaded())
       .then(()=>{
         const tlnSubtabs = document.querySelectorAll("#tab-tlnvow .tln-vow-main-subtabs .tab-btn");
@@ -1349,6 +1432,7 @@ function showTab(name) {
 }
 
 function showAdminTab(name) {
+  markRequestAudit(`admin-tab:${name}`);
   document.querySelectorAll(".admin-tab-panel").forEach(p => p.classList.remove("active"));
   document.querySelectorAll("[data-admin-tab]").forEach(b => b.classList.toggle("active", b.dataset.adminTab === name));
   document.querySelectorAll("[data-open-admin]").forEach(b => b.classList.toggle("active", b.dataset.openAdmin === name));
@@ -1379,21 +1463,21 @@ const ADMIN_SYSTEM_TREE = [
   {id:"custom",level:1,label:"Eigene sichere Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB",details:[["User-Token","RAM","Supabase · userbezogene Token","–","App-Start"]]},
   {id:"discovery",level:1,label:"🔍 Entdecken",status:"planning",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Erst beim Öffnen des Tabs; Scan nur manuell"]]},
 
-  {id:"analysis",level:0,label:"📊 Übersicht & Analyse",status:"in_progress",start:"Dashboard sofort + Caches",daily:"Grunddaten-Prüfung",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","keine Preis-/On-chain-Abfrage beim Start","Discovery-, manuelle Snapshot-, Gebühren-, NFT- und TLN/VOW-Caches werden erst beim Öffnen ihres Bereichs geladen. Nächster Optimierungsschritt bleibt ein kompakter Dashboard-Snapshot."]]},
+  {id:"analysis",level:0,label:"📊 Übersicht & Analyse",status:"in_progress",start:"Dashboard sofort + Caches",daily:"kein allgemeiner Auto-Refresh",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","keine allgemeine Preis-/On-chain-Aktualisierung beim Start","Phase 5.75: Der normale Login zeigt persistierte Current-State-Caches und startet kein loadAll() mehr. Projekt- und Historienjobs laufen nur über ihren jeweiligen Tab bzw. eine explizite Aktion; eine neue Wallet behält ihren gezielten Erstaufbau."]]},
   {id:"dashboard",level:1,label:"Dashboard · Startseite",status:"in_progress",idea:"Project-Summary-Cache",start:"sofort + Cache",daily:"Grunddaten + Preise",open:"RAM",manual:"Daten/Preise",details:[
-    ["Vermögenskennzahlen","RAM aus Automated Snapshot","bereits geladener Bestands-Cache","RPC nur im fälligen Hintergrundlauf","Dashboard sofort; fehlende/veraltete Grunddaten werden danach höchstens 1× täglich asynchron geprüft"],
+    ["Vermögenskennzahlen","RAM aus Automated Snapshot","bereits geladener Bestands-Cache","kein allgemeiner Start-RPC","Dashboard sofort aus Cache. Phase 5.75: Ein normaler Seitenreload startet keinen allgemeinen Grunddatenlauf; Aktualisierung erfolgt gezielt manuell, beim Erstaufbau einer neuen Wallet oder über projektspezifische Tab-Logik."],
     ["Project-Summary","localStorage Anzeige-Cache + Projektcaches","TLN/DAO Projektcaches","keine eigene Discovery","Projektmodule schreiben bestätigte Summary-Werte zurück; TLN Team nutzt denselben Forest/Lifecycle. TLN Staking-/Referral-/Bonus-Rewards und DAO Rewards/Referral Rewards sind in Originaltoken angeschlossen; DAO1/APTMDAO-Bezüge stammen aus getrennten Tree-Caches; die übergreifende Partnerzahl wird wallet-zentriert dedupliziert (1 Wallet = 1 Partner), während die beiden Einzelzahlen separat sichtbar bleiben. DAO-Aktivstatus bleibt bis zum Bot-Target-Proof offen."],
     ["Erststart ohne Wallet","lokale UI","–","–","Dashboard bleibt Startseite und erklärt den Ablauf; Ein-Klick-Aktion legt eine neue Wallet-Zeile an. Nach Speichern startet automatisch der Grunddaten-Erstaufbau."],
     ["Dashboard-Kurse","RAM","wallet_global_current_price_snapshot + predefined_tokens.dashboard_visible + TLN/VOW Projekt-PriceEngine","global alle 15 Min. bei aktivem Client + manuell","App-Start lädt den globalen Snapshot. Pro :00/:15/:30/:45 claimt genau ein aktiver Client den globalen Refresh-Slot. TLN/VOW: BSC PancakeSwap / ETH Uniswap; kein CoinGecko-/GeckoTerminal-Fallback."],
     ["Projekt-Kacheln","RAM + Project-Summary","predefined_tokens + persistente Projektcaches","keine eigene Discovery","Breite Karten; Projektwert wird zusätzlich in frei verfügbar / aktuell gebunden / gesamt aufgesplittet. LP-Staking wird nur einmal gezählt, auch wenn walletData und lp_position_cache dieselbe Position enthalten. Kursliste automatisch bei Bestand > USD 1; „immer anzeigen“ erlaubt Bestand 0; Projekt-Token nur bei belegter Projektbeteiligung. Reward-Summaries nutzen Summary-Kommastellen (leer = Anzeige übernehmen, 0 = keine Nachkommastellen). Fehlende Summary-Werte bleiben – bis ein fachlicher Cache sie bestätigt."],
     ["Personenfilter","RAM","verschlüsselte Wallet-Besitzer aus wallet-private","–","Eigene Wallets / alle Personen / bestimmte Person; keine Zusatzabfrage"]]},
   {id:"tracking",level:1,label:"Wallet-Tracking · Token-Übersicht",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"gespeicherter Stand",daily:"Preise frisch",open:"Cache",manual:"Bestände + Projekte + NFTs",details:[
-    ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain","Start zeigt Cache sofort; falls fällig läuft danach höchstens 1× täglich die asynchrone Hintergrundprüfung. Neue Wallet: Erstaufbau direkt nach Speichern."],
+    ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain nur bei gezieltem Refresh","Start zeigt Cache sofort und startet keinen allgemeinen Auto-Refresh. Neue Wallet: Erstaufbau direkt nach Speichern; bestehende Wallets werden manuell bzw. über die zuständige Projekt-/Refresh-Funktion aktualisiert."],
     ["Aktuelle Kurse","Globaler 15-Minuten-Snapshot/RAM","wallet_global_current_price_snapshot","Preis-APIs + DEX/Pool RPC","Global :00/:15/:30/:45 nur bei aktivem Client; ein atomarer Slot-Claim verhindert Doppeljobs. Phase 5.41: stale-while-refresh – der letzte gültige Snapshot bleibt während Refresh/Teilfehler aktiv; tatsächlich neu geladene Assetpreise tragen zusätzlich refreshedAt. Alte Einzelpreise werden dadurch nicht als im aktuellen Lauf erneuert interpretiert. Keine Historisierung dieses aktuellen Snapshots."],
     ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Im fälligen Grunddaten-Hintergrundlauf; vollständige Projekt-Discovery bleibt separat"]]},
   {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"planning",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","Supabase Snapshots","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung","Cache","Supabase Preis-/LP-Historie","Archive RPC/API bei Bedarf","Stichtagsberechnung"]]},
   {id:"fees",level:1,label:"💸 Gebühren",status:"planning",start:"–",daily:"–",open:"DB-Summary",manual:"Delta/API",details:[["Gebühren-Summary","RAM nach Lazy Load","Supabase Fee Cache/Summary","–","Gespeicherten Gebührenstand erst beim Öffnen des Tabs lesen"],["Gebührenhistorie","RAM","Supabase Fee Cache","Routescan/NodeReal/Blockscout etc.","On-chain/API erst bei Aktualisierung"]]},
-  {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"DB-Registry",daily:"inkrementeller Refresh",open:"RAM/DB-Cache",manual:"On-chain/API",details:[["NFT-Bestand","RAM ab App-Start","Supabase NFT Cache + project_nft_ownership","Chain-spezifische NFT Quellen/RPC","Phase 5.58: Kaufpreis-Resolver v2 prüft ERC-20, nativen APTM-Tx-Value und Internal Transactions; reine Transfers/Mints werden von ungeklärten Käufen getrennt. Historische NFT-Entry-Txs bleiben auch ohne bereits verifizierten Kauf erhalten, damit fehlende DAO1-Kaufpreise zentral nachanalysiert werden können. Negative Preisbefunde werden nur mit konkreter geprüfter Erwerbs-Tx persistent abgeschlossen. Phase 5.56: zentrale NFT-Registry wird beim App-Start geladen; NFT-Tab, DAO-Team und weitere Verbraucher verwenden dieselbe Datenbasis. Der tägliche Chain-Refresh bleibt inkrementell. Phase 5.54: Phase 5.54: Kauf/Mint-Wallet und aktuelles Wallet werden gekürzt mit dem transparenten Standard-Copy-Icon gezeigt. Der früheste on-chain Besitzzeitpunkt bleibt auch ohne Kaufnachweis sichtbar; Kauf/Mint-Verifikation wird weiterhin separat gekennzeichnet."],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
+  {id:"nfts",level:1,label:"🖼️ NFTs",status:"in_progress",start:"Current-State DB-Registry",daily:"kein Blind-Refresh",open:"RAM zuerst · History danach",manual:"On-chain/API",details:[["NFT-Bestand","RAM ab App-Start","Supabase NFT Cache + project_nft_ownership","Chain-spezifische NFT Quellen/RPC","Phase 5.58: Kaufpreis-Resolver v2 prüft ERC-20, nativen APTM-Tx-Value und Internal Transactions; reine Transfers/Mints werden von ungeklärten Käufen getrennt. Historische NFT-Entry-Txs bleiben auch ohne bereits verifizierten Kauf erhalten, damit fehlende DAO1-Kaufpreise zentral nachanalysiert werden können. Negative Preisbefunde werden nur mit konkreter geprüfter Erwerbs-Tx persistent abgeschlossen. Phase 5.75: zentrale NFT-Registry lädt beim App-Start nur den für Current State nötigen Bestand/Ownership. Globale Ersterwerbs- und Kaufpreis-Historie wird erst beim Öffnen des NFT-Tabs nachgeladen. NFT-Tab, DAO-Team und weitere Verbraucher verwenden dieselbe zentrale Datenbasis. Manuelle/gezielte Chain-Refreshs bleiben inkrementell. Phase 5.54: Phase 5.54: Kauf/Mint-Wallet und aktuelles Wallet werden gekürzt mit dem transparenten Standard-Copy-Icon gezeigt. Der früheste on-chain Besitzzeitpunkt bleibt auch ohne Kaufnachweis sichtbar; Kauf/Mint-Verifikation wird weiterhin separat gekennzeichnet."],["NFT-Freshness","RAM","wallet_refresh_state","–","App-Start prüft nur, ob Aktualisierung verfügbar ist"]]},
   {id:"approvals",level:1,label:"🔓 Freigaben",status:"planning",start:"–",daily:"–",open:"bei Auswahl",manual:"On-chain/API",details:[["Token-Freigaben","–","–","Alchemy/RPC je unterstützter Chain","Spezialfunktion; nicht beim App-Start"]]},
 
   {id:"projects",level:0,label:"🏦 DeFi-Projekte",status:"in_progress",start:"Konfig DB",daily:"Preise",open:"Übersicht · keine Projektdaten",manual:"projektbezogen",details:[]},
@@ -1427,8 +1511,8 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-config",level:2,label:"Konfiguration",status:"planning",start:"–",daily:"–",open:"bereits Lazy geladen",manual:"DB",details:[["Miner/Projekt-NFT/Konfiguration","RAM","Supabase DAO1 Tabellen","–","DAO1 ensureLoaded/refreshConfig"]]},
   {id:"dao-help",level:2,label:"Hilfe",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[["DAO1 Hilfe","JS-Modul","–","–","Tab öffnen"]]},
 
-  {id:"cache-audit",level:0,label:"⚡ Cache-/Request-Audit",status:"in_progress",idea:"Cache-/Request-Audit und Startoptimierung",start:"Audit normaler App-Start",daily:"Messung statt neuer Vollscans",open:"pro Bereich messen",manual:"nur gezielte Vergleichsläufe",details:[
-    ["Request-Inventar","Session/RAM/In-Flight","Supabase Tabellen + cache_data_versions","RPC/API je tatsächlich ausgeführtem Call","Pro Request: Scope/Filter, Aufrufer, Dauer, Ergebnisgrösse, Hit/Miss erfassen"],
+  {id:"cache-audit",level:0,label:"⚡ Cache-/Request-Audit",status:"in_progress",idea:"Cache-/Request-Audit und Startoptimierung",start:"🟢 Session-Audit + kein Auto-loadAll",daily:"kein Blind-Refresh",open:"Tab-Marker + Messung",manual:"gezielte Vergleichsläufe",details:[
+    ["Request-Inventar","Session/RAM","Supabase Tabellen + cache_data_versions","RPC/API je tatsächlich ausgeführtem Call","Phase 5.75: fetch-basierter Audit misst Request-Signatur, Scope/Filter, Aufrufer, Dauer, HTTP-Status und Content-Length/Range; Start-/Tab-/Refresh-Marker segmentieren den Lauf"],
     ["Shared Loads","RAM pro App-Lauf","globale/öffentliche Cache-Tabellen","–","Identische DB-Reads/Graph-Paginierungen innerhalb eines Laufs einmal laden und teilen"],
     ["Delta-Invalidierung","IndexedDB/local cache","DATA_VERSIONS + rootsKey + sync_cursor/last_scanned_block","Chain Head + kleiner Overlap","Nur bei Versions-/Scope-/Cursor-Abweichung nachziehen; kein Blind-Rebuild"],
     ["Current State vs History","zentraler Current-State-Cache","NFT/Ownership/Projektcaches","historische Reads nur bei Bedarf","Aktuelle Bestände nie auf Kaufpreis/Lifecycle/historische DID-Auflösung warten lassen"],
@@ -1464,10 +1548,24 @@ function adminSystemStatusMeta(status){return ({done:["🟢","Erledigt"],in_prog
 function wtSystemDataKey(row){if(row.id==="tracking")return "tracking";if(row.id==="dao-team")return "dao-team";if(row.id==="tln-team")return "tln-team";if(row.id.startsWith("dao"))return "dao";if(row.id.startsWith("tln"))return "tln";return row.id}
 function wtSystemCurrentText(row,childrenMap){if(childrenMap.has(row.id))return "–";const own=WT_DATA_STATUS[wtSystemDataKey(row)];return own?wtDataStatusText(wtSystemDataKey(row)):"Aktualisierungszeitpunkt noch nicht verfügbar"}
 async function refreshAdminSystemDataVersions(){if(!sb||!isAdmin)return;try{const {data,error}=await sb.from("cache_data_versions").select("namespace,cache_key,data_version,sync_cursor,updated_at").in("namespace",["dao1","tln-vow"]);if(error)throw error;for(const r of data||[]){const key=r.namespace==="dao1"&&["legacy-tree","aptmdao-tree"].includes(r.cache_key)?"dao-team":r.namespace==="tln-vow"&&r.cache_key==="smartnode-global-graph"?"tln-team":null;if(key)setWtDataStatus(key,{updatedAt:r.sync_cursor||r.updated_at,cacheAt:r.updated_at,source:"cache"})}}catch(e){console.warn("Systemübersicht DATA_VERSIONS",e)}}
+function requestAuditAggregateRows(){
+  const groups=new Map();
+  for(const e of WT_REQUEST_AUDIT.entries){
+    const key=[e.kind,e.method,e.resource,e.scope||""].join("|");
+    const g=groups.get(key)||{...e,count:0,totalMs:0,maxMs:0,lastCaller:""};
+    g.count++;g.totalMs+=Number(e.durationMs||0);g.maxMs=Math.max(g.maxMs,Number(e.durationMs||0));if(e.caller)g.lastCaller=e.caller;groups.set(key,g);
+  }
+  return [...groups.values()].sort((a,b)=>b.count-a.count||b.totalMs-a.totalMs);
+}
+function requestAuditPanelHtml(){
+  const rows=requestAuditAggregateRows(),total=WT_REQUEST_AUDIT.entries.length,totalMs=WT_REQUEST_AUDIT.entries.reduce((s,e)=>s+Number(e.durationMs||0),0),duplicates=rows.filter(r=>r.count>1).length;
+  const body=rows.slice(0,80).map(r=>`<tr><td>${escapeAttr(r.kind)}</td><td><strong>${escapeAttr(`${r.method} ${r.resource}`)}</strong></td><td class="meta">${escapeAttr(r.scope||"–")}</td><td class="num">${r.count}</td><td class="num">${(r.totalMs/r.count).toFixed(1)} ms</td><td class="num">${r.maxMs.toFixed(1)} ms</td><td class="meta">${escapeAttr(r.lastCaller||"–")}</td></tr>`).join("");
+  return `<div class="custom-token-card" style="margin-top:14px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">⚡ Laufender Request-Audit</h3><button type="button" class="secondary" onclick="renderAdminSystemOverview()">Neu anzeigen</button><button type="button" class="secondary" onclick="exportRequestAudit()">Audit exportieren</button><button type="button" class="secondary" onclick="resetRequestAudit()">Audit zurücksetzen</button></div><div class="meta" style="margin-top:7px">Seit ${escapeAttr(wtFormatDataStamp(WT_REQUEST_AUDIT.startedAt)||WT_REQUEST_AUDIT.startedAt)} · ${total} Requests · ${rows.length} eindeutige Signaturen · ${duplicates} mehrfach aufgerufene Signaturen · kumuliert ${Math.round(totalMs)} ms. Filterwerte werden gekürzt/anonymisiert; Auth-Header und Bodies werden nicht gespeichert.</div><div class="chain-table-wrap" style="margin-top:10px"><table class="chain-admin-table" style="min-width:1250px"><thead><tr><th>Typ</th><th>Request</th><th>Scope / Filter</th><th class="num">Anzahl</th><th class="num">Ø</th><th class="num">Max</th><th>letzter Aufrufer</th></tr></thead><tbody>${body||'<tr><td colspan="7">Noch keine Requests gemessen.</td></tr>'}</tbody></table></div></div>`;
+}
 function renderAdminSystemOverview(){
   const host=document.getElementById("adminSystemOverview");if(!host||!isAdmin)return;const cm=wtSystemChildrenMap(),pm=wtSystemParentMap();try{if(localStorage.getItem(WT_SYSTEM_TREE_STATE_KEY)===null)wtSystemExpanded=new Set(cm.keys())}catch{};
   const rows=ADMIN_SYSTEM_TREE.filter(r=>wtSystemVisible(r,pm)).map(r=>{const st=adminSystemIdeaStatus(r),m=adminSystemStatusMeta(st),hasKids=cm.has(r.id),toggle=hasKids?`<button class="wt-system-tree-toggle" onclick="toggleAdminSystemNode('${escapeAttr(r.id)}',event)" title="${wtSystemExpanded.has(r.id)?'Zuklappen':'Aufklappen'}">${wtSystemExpanded.has(r.id)?'▼':'▶'}</button>`:'<span style="display:inline-block;width:30px"></span>';const leaf=!hasKids;return `<tr class="wt-system-row" onclick="selectAdminSystemRow('${escapeAttr(r.id)}')"><td style="padding-left:${8+r.level*20}px;white-space:nowrap">${toggle}<strong>${escapeAttr(r.label)}</strong></td><td style="white-space:nowrap" title="${m[1]}">${m[0]} ${m[1]}</td><td>${escapeAttr(leaf?wtSystemCurrentText(r,cm):'–')}</td><td>${escapeAttr(leaf?(r.start||'–'):'–')}</td><td>${escapeAttr(leaf?(r.daily||'–'):'–')}</td><td>${escapeAttr(leaf?(r.open||'–'):'–')}</td><td>${escapeAttr(leaf?(r.manual||'–'):'–')}</td></tr>`}).join("");
-  host.innerHTML=`<div class="custom-token-card" style="margin-bottom:14px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button type="button" class="secondary" onclick="setAdminSystemTreeExpanded(true)">Alle aufklappen</button><button type="button" class="secondary" onclick="setAdminSystemTreeExpanded(false)">Alle zuklappen</button><span>🟢 erledigt</span><span>🟡 in Arbeit</span><span>🔴 fehlerhaft</span><span>⚪ in Planung</span></div><div class="meta" style="margin-top:7px">Aktueller Datenstand und Tabs verwenden dieselben zentralen Metadaten. Knotenpfeil = Ast auf/zu; Zeile = Datenquellen-Popup.</div></div><div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1320px"><thead><tr><th>Bereich / Baum</th><th>Status</th><th>Aktueller Datenstand</th><th>Normaler App-Start</th><th>1. Start am Tag</th><th>Tab / Bereich öffnen</th><th>Manuell aktualisieren</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  host.innerHTML=`<div class="custom-token-card" style="margin-bottom:14px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button type="button" class="secondary" onclick="setAdminSystemTreeExpanded(true)">Alle aufklappen</button><button type="button" class="secondary" onclick="setAdminSystemTreeExpanded(false)">Alle zuklappen</button><span>🟢 erledigt</span><span>🟡 in Arbeit</span><span>🔴 fehlerhaft</span><span>⚪ in Planung</span></div><div class="meta" style="margin-top:7px">Aktueller Datenstand und Tabs verwenden dieselben zentralen Metadaten. Knotenpfeil = Ast auf/zu; Zeile = Datenquellen-Popup.</div></div><div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1320px"><thead><tr><th>Bereich / Baum</th><th>Status</th><th>Aktueller Datenstand</th><th>Normaler App-Start</th><th>1. Start am Tag</th><th>Tab / Bereich öffnen</th><th>Manuell aktualisieren</th></tr></thead><tbody>${rows}</tbody></table></div>${requestAuditPanelHtml()}`;
   refreshAdminSystemDataVersions();
 }
 function ensureAdminSystemDetailModal(){
@@ -1494,7 +1592,7 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"&&document.getElement
 function renderAdminDocumentation(){
   const el=document.getElementById("adminDocumentation"); if(!el)return;
   el.innerHTML=`
-  <div class="custom-token-card"><h3 style="margin-top:0">Nächster technischer Schwerpunkt · Cache-/Request-Audit</h3><div class="note"><p><strong>Ziel:</strong> normalen App-Start und Tab-Wechsel messen, bevor weitere Cache-Logik umgebaut wird. Identische Supabase-/RPC-Abfragen sollen pro Lauf dedupliziert, große Graph-/Registry-Daten geteilt und Deltas nur über DATA_VERSIONS, Root-Signaturen und Scan-Cursor nachgezogen werden.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) ist von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt. Historische Reads dürfen aktuelle Anzeigen nicht blockieren.</p><p><strong>Regression DAO:</strong> Monica 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
+  <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.75</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW wird nicht allein für die Dashboard-Summary initialisiert. NFT-Current-State wird sofort aus der zentralen Registry gezeigt; globale Ersterwerbs-/Kaufpreis-Historie startet erst beim NFT-Tab.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Monica 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
   <div class="custom-token-card"><h3 style="margin-top:0">1. Architekturregeln</h3><div class="note">
   <p><strong>Neuester Stand:</strong> Änderungen immer auf dem zuletzt ausgelieferten Stand aufbauen.</p>
   <p><strong>Supabase als Konfigurationsquelle:</strong> Chain-, Provider-, Projekt- und Token-Konfiguration möglichst datenbankgesteuert; keine neue fachliche Chain-Hardcodierung.</p>
@@ -1502,8 +1600,8 @@ function renderAdminDocumentation(){
   <p><strong>Invalidieren statt blind löschen:</strong> Alte Daten bleiben als Fallback erhalten, bis ein notwendiger Neuaufbau erfolgreich abgeschlossen ist.</p></div></div>
 
   <div class="custom-token-card"><h3 style="margin-top:0">2. Ladeprozess</h3><div class="note">
-  <p><strong>Start:</strong> Dashboard sofort anzeigen → vorhandene Caches/Summaries lesen → erst danach fehlende oder veraltete Grunddaten asynchron nachführen.</p><p><strong>Zentraler Hintergrundlauf:</strong> pro Wallet sequentiell: Wallet-/Tokenbestände → Projektpositionen inkl. LP/Staking → NFTs. Danach nächstes Wallet. Projekt-Detail-Discovery bleibt getrennt.</p>
-  <p><strong>Automatisch:</strong> höchstens 1× täglich pro Wallet, Chain und Datentyp. Neue Wallets haben keinen Tagesstatus und starten direkt nach dem Speichern ihren Grunddaten-Erstaufbau; das Dashboard aktualisiert sich danach ohne Tab-Klick.</p>
+  <p><strong>Start:</strong> Dashboard sofort anzeigen → vorhandene Current-State-Caches/Summaries lesen. Ein normaler Login/Reload startet seit Phase 5.75 keinen allgemeinen <code>loadAll()</code>-Hintergrundlauf mehr.</p><p><strong>Zentraler Grunddatenlauf:</strong> bleibt für gezielte Aktualisierung und den Erstaufbau neuer Wallets erhalten: pro Wallet sequentiell Wallet-/Tokenbestände → Projektpositionen inkl. LP/Staking → NFTs. Projekt-Detail-Discovery bleibt getrennt.</p>
+  <p><strong>Automatisch:</strong> Eine neu gespeicherte Wallet startet ihren Grunddaten-Erstaufbau. Bestehende Wallets werden beim normalen Login nicht blind täglich aktualisiert; projektspezifische Tabs dürfen ihre eigene versionierte Freshness-Prüfung ausführen.</p>
   <p><strong>Manuell:</strong> jederzeit möglich; die Tagesbegrenzung gilt nur für automatische Läufe.</p>
   <p><strong>Entscheidungsreihenfolge:</strong> Datenversion prüfen → nötigen Neuaufbau erzwingen → Tagesstatus prüfen → Activity-Check → inkrementell aktualisieren.</p>
   <p><strong>Activity-Check:</strong> bei aktuellem Cache zuerst relevante Blockchain-Aktivität prüfen. Nur vom User bestätigter Spam darf ignoriert werden.</p>
@@ -4405,21 +4503,29 @@ async function loadAllCore(options = {}) {
   renderCentralRefreshProgress(progress,{collapsed:true,finished:true});renderWalletDataFreshness();if(btn)btn.disabled=false;return {failures};
 }
 
+let dashboardProjectSummaryPromise=null;
 async function refreshDashboardProjectSummaries(){
   if(!currentUser||!wallets.length)return;
-  const jobs=[];
-  if(window.TLNVOWDiscovery?.loadDashboardSummary)jobs.push(window.TLNVOWDiscovery.loadDashboardSummary().catch(e=>console.warn("TLN Dashboard-Grunddaten",e)));
-  if(window.DAO1Project?.loadDashboardSummary)jobs.push(window.DAO1Project.loadDashboardSummary().catch(e=>console.warn("DAO1 Dashboard-Grunddaten",e)));
-  jobs.push(loadDashboardLpPositionCache().catch(e=>console.warn("Dashboard LP-Positionscache",e)));
-  await Promise.all(jobs);renderDashboard();
+  if(dashboardProjectSummaryPromise)return dashboardProjectSummaryPromise;
+  dashboardProjectSummaryPromise=(async()=>{
+    const jobs=[];
+    if(window.TLNVOWDiscovery?.loadDashboardSummary)jobs.push(window.TLNVOWDiscovery.loadDashboardSummary().catch(e=>console.warn("TLN Dashboard-Grunddaten",e)));
+    if(window.DAO1Project?.loadDashboardSummary)jobs.push(window.DAO1Project.loadDashboardSummary().catch(e=>console.warn("DAO1 Dashboard-Grunddaten",e)));
+    jobs.push(loadDashboardLpPositionCache().catch(e=>console.warn("Dashboard LP-Positionscache",e)));
+    await Promise.all(jobs);renderDashboard();
+  })();
+  try{return await dashboardProjectSummaryPromise;}finally{dashboardProjectSummaryPromise=null;}
 }
 window.refreshDashboardProjectSummaries=refreshDashboardProjectSummaries;
 
 async function loadAll(options = {}) {
   const automatic=!!options.automatic;
-  const result=await runDataJob(automatic?"Daten werden aktualisiert …":"Daten werden vollständig aktualisiert …",()=>loadAllCore(options));
-  refreshDashboardProjectSummaries().catch(e=>console.warn("Dashboard Project-Summaries",e));
-  return result;
+  markRequestAudit(automatic?"refresh:auto:start":"refresh:manual:start");
+  try{
+    const result=await runDataJob(automatic?"Daten werden aktualisiert …":"Daten werden vollständig aktualisiert …",()=>loadAllCore(options));
+    refreshDashboardProjectSummaries().catch(e=>console.warn("Dashboard Project-Summaries",e));
+    return result;
+  }finally{markRequestAudit(automatic?"refresh:auto:end":"refresh:manual:end");}
 }
 
 // ---- Rendering ----
@@ -7074,6 +7180,8 @@ function lowerAddressForNft(v){ return String(v||"").toLowerCase(); }
 let nftCaches = new Map(); // wallet_id -> DB-Zeile
 let nftOwnershipRows = []; // DAO1/Apertum-Besitzhistorie, userbezogen
 let nftGlobalFirstOwned = new Map(); // contract|id -> frühester Eingang in irgendeine eigene Wallet
+let nftGlobalFirstOwnedLoaded=false;
+let nftGlobalFirstOwnedPromise=null;
 let lastNftFindings = [];
 
 function nftKey(n) {
@@ -7097,6 +7205,11 @@ async function loadNftOwnershipCacheFromDb(){
     if(!/does not exist|schema cache/i.test(String(e?.message||"")))console.warn("NFT-Besitzhistorie:",e);
   }
 
+  nftGlobalFirstOwnedLoaded=false;
+  nftGlobalFirstOwned=new Map();
+}
+
+async function loadNftGlobalFirstOwnedFromDb(){
   // Robuster zweiter Wahrheitsweg für "Erstmals von dir erworben":
   // Aus dem GLOBALEN öffentlichen Apertum-Transfercache wird der früheste Eingang
   // an irgendeine eigene Wallet ermittelt. Damit bleibt ein Walletwechsel korrekt,
@@ -7108,7 +7221,7 @@ async function loadNftOwnershipCacheFromDb(){
       if(typeof v==="string")return lowerAddressForNft(v);
       return lowerAddressForNft(v?.hash||v?.address||v?.address_hash||"");
     }).filter(Boolean));
-    if(!ownedAddresses.size)return;
+    if(!ownedAddresses.size){nftGlobalFirstOwnedLoaded=true;return nftGlobalFirstOwned;}
 
     const nftPairs=new Map();
     for(const cache of nftCaches.values()){
@@ -7119,7 +7232,7 @@ async function loadNftOwnershipCacheFromDb(){
         if(contract&&id)nftPairs.set(`${contract}|${id}`,{contract,id});
       }
     }
-    if(!nftPairs.size)return;
+    if(!nftPairs.size){nftGlobalFirstOwnedLoaded=true;return nftGlobalFirstOwned;}
 
     const byContract=new Map();
     for(const {contract,id} of nftPairs.values()){
@@ -7162,6 +7275,13 @@ async function loadNftOwnershipCacheFromDb(){
     console.warn("Apertum globaler NFT-Ersterwerb konnte nicht geladen werden:",e);
     nftGlobalFirstOwned=new Map();
   }
+  nftGlobalFirstOwnedLoaded=true;
+  return nftGlobalFirstOwned;
+}
+async function ensureNftGlobalFirstOwnedLoaded(){
+  if(nftGlobalFirstOwnedLoaded)return nftGlobalFirstOwned;
+  if(!nftGlobalFirstOwnedPromise)nftGlobalFirstOwnedPromise=loadNftGlobalFirstOwnedFromDb().finally(()=>{nftGlobalFirstOwnedPromise=null;});
+  return nftGlobalFirstOwnedPromise;
 }
 
 function nftOwnershipInfo(n){
@@ -7313,6 +7433,8 @@ window.getCachedNftsForWalletId = function(walletId) {
 window.getAllCachedNfts = function() {
   return [...nftCaches.values()].flatMap(row=>Array.isArray(row?.nfts)?row.nfts:[]);
 };
+window.isCentralNftCacheLoaded = () => !!nftCacheLoaded;
+window.getCentralNftOwnershipRows = () => nftCacheLoaded ? nftOwnershipRows.map(r=>({...r})) : null;
 
 function onNftWalletChange() {
   lastNftFindings = cachedNftsForSelection();

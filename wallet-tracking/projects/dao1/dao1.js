@@ -1,7 +1,8 @@
+// Phase 5.75: Cache-/Request-Audit: zentrale NFT-/Ownership-RAM-Daten werden für Dashboard/Initialload geteilt, historische Metadaten blockieren den DAO-Start nicht mehr und identische Tree-Scans werden in-flight dedupliziert.
 // Phase 5.73: Team-Bot-Bestand nutzt dieselbe zentrale nft_cache-Klassifikation wie der NFT-Tab; Trading-Bot-Contracts werden daraus abgeleitet, Bestand und Kaufpreis-Abdeckung werden getrennt angezeigt.
 // Phase 5.69: Partner-Identity und Bot-Bestand laufen unabhaengig; ein langsamer Identity-Contract darf Bot-Zahlen nicht blockieren.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
-// WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
+// WalletTracking Phase 5.75 · 21.09.2026 14:13:07 CEST · Build 20260921-141307
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -98,6 +99,7 @@ window.DAO1Project = (() => {
   let miners = [];
   let rewardRows = [];
   let ownershipRows = [];
+  let ownershipLoadPromise=null;
   let selectedWalletId = "";
   let selectedNftId = "";
   let manualNftId = "";
@@ -359,8 +361,7 @@ window.DAO1Project = (() => {
     } else projectRefs = data || [];
     await loadMiners();
     await loadProjectNfts();
-    await loadOwnershipCache();
-    await enrichHistoricalNftNames();
+    await loadOwnershipCache({preferShared:true});
     const walletsNow=projectWallets();
     if(!walletsNow.some(w=>String(w.id)===String(selectedWalletId))) selectedWalletId=String(walletsNow[0]?.id||"");
     await loadCurrentApertumNfts();
@@ -370,18 +371,9 @@ window.DAO1Project = (() => {
     renderMiningFilters();
     renderTransactionControls();
     if(!txFilterWallet) txFilterWallet="__all";
-    try{
-      const wallets=allProjectWalletOptions();
-      if(txFilterWallet==="__all"){
-        transactionRows=await loadAllApertumTransactionRows(wallets,null);
-        transactionAssetFlows=await loadAllAssetFlowRows(wallets);
-      }else{
-        const tw=projectWallets().find(w=>String(w.id)===String(txFilterWallet));
-        transactionRows=tw?await loadTransactionRows(walletAddress(tw),null):[];
-        transactionAssetFlows=tw?await loadAssetFlowRows(walletAddress(tw)):[];
-      }
-      renderTransactionHistory();
-    }catch(e){console.warn("Transaction cache init:",e);setTransactionStatus("error",e.message||String(e));}
+    // Transaktions-/Flow-Historie wird erst vom jeweiligen Untertab geladen.
+    // Historische NFT-Namen werden ebenfalls nachgelagert und blockieren den Current-State-Start nicht.
+    enrichHistoricalNftNames().then(()=>renderNftClassification()).catch(e=>console.warn("Historische NFT-Metadaten:",e));
     updateVisibility();
   }
 
@@ -623,20 +615,31 @@ window.DAO1Project = (() => {
         </tbody></table></div>`;
   }
 
-  async function loadOwnershipCache() {
+  async function loadOwnershipCache({preferShared=false}={}) {
     const ctx = getContext?.();
     if (!sb || !ctx?.currentUser) return;
-    const { data, error } = await sb.from("project_nft_ownership")
-      .select("*")
-      .eq("user_id", ctx.currentUser.id)
-      .eq("project_key", PROJECT_KEY)
-      .order("owned_from_block", { ascending: true });
-    if (error) {
-      ownershipRows = [];
-      if (!/does not exist|schema cache/i.test(error.message || "")) console.warn("NFT Ownership Cache:", error);
-      return;
+    // App-Start/Dashboard verwenden die bereits zentral geladene Ownership-Registry.
+    // Mutations-/Refreshpfade rufen die Funktion ohne preferShared auf und lesen bewusst frisch aus DB.
+    if(preferShared && window.isCentralNftCacheLoaded?.()){
+      const shared=window.getCentralNftOwnershipRows?.();
+      if(Array.isArray(shared)){ownershipRows=shared.map(hydratePrivateWalletAddress);return ownershipRows;}
     }
-    ownershipRows = (data || []).map(hydratePrivateWalletAddress);
+    if(ownershipLoadPromise)return ownershipLoadPromise;
+    ownershipLoadPromise=(async()=>{
+      const { data, error } = await sb.from("project_nft_ownership")
+        .select("*")
+        .eq("user_id", ctx.currentUser.id)
+        .eq("project_key", PROJECT_KEY)
+        .order("owned_from_block", { ascending: true });
+      if (error) {
+        ownershipRows = [];
+        if (!/does not exist|schema cache/i.test(error.message || "")) console.warn("NFT Ownership Cache:", error);
+        return ownershipRows;
+      }
+      ownershipRows = (data || []).map(hydratePrivateWalletAddress);
+      return ownershipRows;
+    })();
+    try{return await ownershipLoadPromise;}finally{ownershipLoadPromise=null;}
   }
 
 
@@ -673,8 +676,8 @@ window.DAO1Project = (() => {
     const walletId=String(wallet.dbId || wallet.id);
     // v54: Primär exakt dieselbe In-Memory-nft_cache-Zeile wie der normale NFT-Tab.
     // DB nur als Fallback, falls der zentrale Cache noch nicht geladen ist.
-    let cached=window.getCachedNftsForWalletId?.(walletId);
-    if(!Array.isArray(cached) || !cached.length){
+    let cached=window.isCentralNftCacheLoaded?.() ? window.getCachedNftsForWalletId?.(walletId) : null;
+    if(!Array.isArray(cached)){
       const {data,error}=await sb.from("nft_cache")
         .select("nfts")
         .eq("user_id",ctx.currentUser.id)
@@ -731,13 +734,18 @@ window.DAO1Project = (() => {
     const wallet=projectWallets().find(w=>String(w.id)===String(selectedWalletId));
     if(!ctx?.currentUser || !wallet){ currentApertumNfts=[]; return; }
     const walletId=String(wallet.dbId || wallet.id);
-    const {data,error}=await sb.from("nft_cache")
-      .select("nfts")
-      .eq("user_id",ctx.currentUser.id)
-      .eq("wallet_id",walletId)
-      .maybeSingle();
-    if(error){ console.warn("DAO1 NFT-Cache:",error); currentApertumNfts=[]; return; }
-    currentApertumNfts=(Array.isArray(data?.nfts)?data.nfts:[])
+    let rows=null;
+    if(window.isCentralNftCacheLoaded?.())rows=window.getCachedNftsForWalletId?.(walletId);
+    if(!Array.isArray(rows)){
+      const {data,error}=await sb.from("nft_cache")
+        .select("nfts")
+        .eq("user_id",ctx.currentUser.id)
+        .eq("wallet_id",walletId)
+        .maybeSingle();
+      if(error){ console.warn("DAO1 NFT-Cache:",error); currentApertumNfts=[]; return; }
+      rows=Array.isArray(data?.nfts)?data.nfts:[];
+    }
+    currentApertumNfts=rows
       .filter(n=>String(n.chain||"")===CHAIN_KEY)
       .filter(n=>!(n.possibleSpam || n.userMarkedSpam))
       .map(n=>({
@@ -4491,10 +4499,13 @@ window.DAO1Project = (() => {
     }catch(e){st.error=e?.message||String(e);st.status="Discovery fehlgeschlagen";}
     finally{st.running=false;renderDAO1TeamTreePanel();}
   }
+  const daoTreeScanInflight=new Map();
   async function scanOldDao1Tree(options={}){
+    const key=`legacy|${!!options.forceFull}|${!!options.checkChain}`;
+    if(daoTreeScanInflight.has(key))return daoTreeScanInflight.get(key);
     const job=()=>scanOldDao1TreeCore(options);
-    if(typeof window.runDataJob==="function") return window.runDataJob("DAO1 Team-Daten werden aktualisiert …",job);
-    return job();
+    const p=Promise.resolve(typeof window.runDataJob==="function"?window.runDataJob("DAO1 Team-Daten werden aktualisiert …",job):job()).finally(()=>daoTreeScanInflight.delete(key));
+    daoTreeScanInflight.set(key,p);return p;
   }
 
   const aptmdaoTreeCacheDiag={source:"–",localRows:0,dbRows:0,scanMs:0,fromBlock:0,toBlock:0,rpcLogs:0,changedEdges:0,note:"Noch kein Lauf"};
@@ -4530,7 +4541,7 @@ window.DAO1Project = (() => {
       st.edges=[...byChild.values()].sort((a,b)=>a.child_id-b.child_id);st.lastBlock=latest;aptmdaoTreeCacheDiag.changedEdges=changed.size;if(aptmdaoTreeDbAvailable){const newGlobalRows=cached?[...changed].filter(id=>Number(byChild.get(id)?.block||0)>Number(cached.lastBlock||0)).length:0,globalCount=cached?Number(cached.totalEdgeCount||0)+newGlobalRows:st.edges.length;await saveAptmdaoTreeCache(st.edges,latest,cached?changed:null,globalCount);}st.status=`${st.edges.length.toLocaleString("de-DE")} APTMDAO Partner-Verbindungen${cached?" · aktualisiert":""}`;
     }catch(e){st.error=e?.message||String(e);st.status="APTMDAO Discovery fehlgeschlagen";}finally{aptmdaoTreeCacheDiag.scanMs=performance.now()-t0;st.running=false;renderDAO1TeamTreePanel();}
   }
-  async function scanAptmdaoTree(options={}){const job=()=>scanAptmdaoTreeCore(options);if(typeof window.runDataJob==="function")return window.runDataJob("APTMDAO Team-Daten werden aktualisiert …",job);return job();}
+  async function scanAptmdaoTree(options={}){const key=`aptmdao|${!!options.forceFull}|${!!options.checkChain}`;if(daoTreeScanInflight.has(key))return daoTreeScanInflight.get(key);const job=()=>scanAptmdaoTreeCore(options);const p=Promise.resolve(typeof window.runDataJob==="function"?window.runDataJob("APTMDAO Team-Daten werden aktualisiert …",job):job()).finally(()=>daoTreeScanInflight.delete(key));daoTreeScanInflight.set(key,p);return p;}
 
   async function loadDAO1OwnedDidRoots(includeNftCache=true){
     // Root-DIDs muessen aus den bereits gespeicherten DAO1-NFT-Daten sofort
@@ -6741,7 +6752,7 @@ window.DAO1Project = (() => {
       // Ownership zuerst laden: Root-DIDs dürfen weder von einem zuvor geöffneten DAO-Tab
       // noch von projectWallets()/aktuellen Balances abhängen. Erst danach werden die
       // Tree-Subcaches mit den erkannten Roots gelesen.
-      await loadOwnershipCache().catch(e=>console.warn("DAO1 Dashboard Ownership",e));
+      await loadOwnershipCache({preferShared:true}).catch(e=>console.warn("DAO1 Dashboard Ownership",e));
       await loadDAO1OwnedDidRoots(true).catch(e=>console.warn("DAO1 Dashboard DID-Roots",e));
       const [cached,aptmCached,rewards,recentPartnerActivities]=await Promise.all([loadOldDao1TreeCache(),loadAptmdaoTreeCache(),loadDashboardRewardCache(),loadDashboardPartnerBotActivities()]);
       const patch={updatedAt:new Date().toISOString()};
