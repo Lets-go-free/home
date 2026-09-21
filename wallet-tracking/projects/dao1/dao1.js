@@ -1,4 +1,4 @@
-// Phase 5.68: fehlender Identity-NFT-Praedikat-Helper repariert Partner-Bot-Refresh; Karten duerfen nicht mehr mit ReferenceError haengen.
+// Phase 5.69: Partner-Identity und Bot-Bestand laufen unabhaengig; ein langsamer Identity-Contract darf Bot-Zahlen nicht blockieren.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
 // WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
 window.DAO1Project = (() => {
@@ -4751,13 +4751,22 @@ window.DAO1Project = (() => {
     return dao1TeamHeldTokenIdsAtBlock(a,c,Number.MAX_SAFE_INTEGER);
   }
 
+  function dao1PartnerRerenderIfVisible(){
+    if(document.getElementById("dao1TeamTreePanel"))renderDAO1TeamTreePanel();
+  }
+
   async function dao1TeamFetchPartnerIdentity(wallet){
     const a=lower(wallet);if(!/^0x[0-9a-f]{40}$/.test(a))return {legacy:[],aptmdao:[]};
-    const result={legacy:[],aptmdao:[]};
-    for(const [system,contract] of [["legacy",lower(DAO1_OLD_DID_CONTRACT)],["aptmdao",lower(APTMDAO_NFT_CONTRACT)]]){
-      const ids=await dao1TeamCurrentContractHoldings(a,contract);
-      result[system]=ids.map(Number).filter(x=>Number.isFinite(x)&&x>0).sort((x,y)=>x-y);
-    }
+    const result=dao1PartnerIdentityStats.get(a)||{legacy:[],aptmdao:[]};
+    const jobs=[["legacy",lower(DAO1_OLD_DID_CONTRACT)],["aptmdao",lower(APTMDAO_NFT_CONTRACT)]].map(async([system,contract])=>{
+      try{
+        const ids=await dao1TeamCurrentContractHoldings(a,contract);
+        result[system]=ids.map(Number).filter(x=>Number.isFinite(x)&&x>0).sort((x,y)=>x-y);
+        dao1PartnerIdentityStats.set(a,{legacy:[...(result.legacy||[])],aptmdao:[...(result.aptmdao||[])]});
+        dao1PartnerRerenderIfVisible();
+      }catch(e){console.warn("DAO Partner-Identity",a,system,e);}
+    });
+    await Promise.allSettled(jobs);
     dao1PartnerIdentityStats.set(a,result);return result;
   }
 
@@ -4769,19 +4778,27 @@ window.DAO1Project = (() => {
     if(dao1PartnerNftInflight.has(walletCacheKey))return dao1PartnerNftInflight.get(walletCacheKey);
     const job=(async()=>{
       const out=[];
-      for(const contract of dao1TeamBotContracts()){
-        const ids=await dao1TeamCurrentContractHoldings(a,contract);
-        for(const id of ids){
-          const cls=classificationFor(contract,id),rawName=cls?.nft_name||`NFT #${id}`;
-          // Der bekannte Miner-Contract ist selbst die belastbare Typ-Evidenz. Einzelne
-          // Token muessen keinen Kaufpreis/keine project_nfts-Zeile besitzen, um im
-          // aktuellen Bestand als Mining-Bot gezaehlt zu werden.
-          let subtype=dao1TeamProjectNftSubtype(contract,id,rawName,"");
-          if(lower(contract)===lower(DEFAULT_MINER_NFT_CONTRACT))subtype="Mining-Bot";
-          if(!["Mining-Bot","Trading-Bot"].includes(subtype))continue;
-          out.push({id:String(id),contract:lower(contract),name:rawName,subtype,current:true,current_wallet:a,owned_from_at:null,acquisition_verified:false,acquisition_kind:null,acquisition_tx_hash:null,purchase:null});
-        }
-      }
+      const jobs=dao1TeamBotContracts().map(async contract=>{
+        try{
+          const ids=await dao1TeamCurrentContractHoldings(a,contract);
+          for(const id of ids){
+            const cls=classificationFor(contract,id),rawName=cls?.nft_name||`NFT #${id}`;
+            // Der bekannte Miner-Contract ist selbst die belastbare Typ-Evidenz. Einzelne
+            // Token muessen keinen Kaufpreis/keine project_nfts-Zeile besitzen, um im
+            // aktuellen Bestand als Mining-Bot gezaehlt zu werden.
+            let subtype=dao1TeamProjectNftSubtype(contract,id,rawName,"");
+            if(lower(contract)===lower(DEFAULT_MINER_NFT_CONTRACT))subtype="Mining-Bot";
+            if(!["Mining-Bot","Trading-Bot"].includes(subtype))continue;
+            out.push({id:String(id),contract:lower(contract),name:rawName,subtype,current:true,current_wallet:a,owned_from_at:null,acquisition_verified:false,acquisition_kind:null,acquisition_tx_hash:null,purchase:null});
+          }
+          // Bereits abgeschlossene Contract-Ergebnisse sofort in der Karte zeigen. Ein
+          // langsamer zweiter Bot-Contract darf den bekannten Miner-Bestand nicht verdecken.
+          const partial=[...new Map(out.map(n=>[`${lower(n.contract)}|${n.id}`,n])).values()];
+          dao1PartnerBotStats.set(a,dao1BotStatsFromRows(partial,{currentOnly:true}));
+          dao1PartnerRerenderIfVisible();
+        }catch(e){console.warn("DAO Partner-Bot Contract-Bestand",a,contract,e);}
+      });
+      await Promise.allSettled(jobs);
       const dedup=[...new Map(out.map(n=>[`${lower(n.contract)}|${n.id}`,n])).values()];
       dao1TeamPartnerDetailsCache.set(walletCacheKey,{nfts:dedup,loadedAt:Date.now()});return dedup;
     })();
@@ -5264,9 +5281,15 @@ window.DAO1Project = (() => {
       // Die Kachel braucht bei jedem frischen Seitenlauf den aktuellen NFT-Besitz. Das ist
       // bewusst unabhaengig vom 24h-Lifecycle-Scan: Transferhistorien der bekannten
       // Contracts sind gecacht/inkrementell und Kaufpreis-Evidenz wird hier nicht verlangt.
-      if(!hadIdentity)await dao1TeamFetchPartnerIdentity(wallet);
-      let nfts=(await dao1TeamFetchPartnerNfts(wallet,"wallet")).filter(n=>dao1TeamIsBot(n)&&!dao1TeamIsIdentityNft(n));
+      // Identity und Bot-Bestand sind zwei unabhaengige aktuelle Bestandsfragen.
+      // Besonders wichtig fuer Wallets mit alter + neuer DID: ein langsamer Legacy-DID-
+      // Transferlauf darf weder Mining-/Trading-Bots noch APTMDAO-DID blockieren.
+      const identityJob=hadIdentity?Promise.resolve():dao1TeamFetchPartnerIdentity(wallet);
+      const nftJob=dao1TeamFetchPartnerNfts(wallet,"wallet");
+      let nfts=(await nftJob).filter(n=>dao1TeamIsBot(n)&&!dao1TeamIsIdentityNft(n));
       dao1PartnerBotStats.set(wallet,dao1BotStatsFromRows(nfts,{currentOnly:true}));
+      dao1PartnerRerenderIfVisible();
+      await identityJob;
       const due=await dao1PartnerBotScanDue(wallet);
       if(!due.due)return !hadIdentity||!hadStats;
       let cursor=0;async function worker(){while(cursor<nfts.length){const n=nfts[cursor++],acq=await dao1TeamAcquisitionForNft(n,wallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;if(acq.sourceWallet)n.source_wallet=acq.sourceWallet;if(acq.acquisitionKind)n.acquisition_kind=acq.acquisitionKind;const a=await dao1TeamResolveBotAssignment(n,wallet,acq);n.assigned_system=a.system;n.assigned_did=a.did;n.assignment_type=a.type;n.assigned_parent_did=a.parentDid||0;}}

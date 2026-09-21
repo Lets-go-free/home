@@ -937,3 +937,10 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    die Bestandsauswertung erreichen. Login-Link kann nach E-Mail-Eingabe zusätzlich per Enter gesendet werden.
    Bestehende TODOs „Partner projektbezogen inaktiv“ und „Registration APTMDAO offen“ bleiben offen.
 */
+
+
+/* Phase 5.69 · 21.09.2026 03:51:12 CEST
+   5.68-Nachkorrektur: Partner-Identity und Bot-Bestand sind technisch getrennte aktuelle
+   Bestandsabfragen. Teilresultate werden sofort gerendert, damit ein langsamer Identity-/Bot-Contract
+   andere bekannte Werte nicht auf „werden geladen …“ festhaelt. Bestehende TODOs bleiben offen.
+*/

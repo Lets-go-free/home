@@ -137,3 +137,12 @@ else renderDAO1Help();
    mehr dauerhaft auf „Bots: werden geladen …“ lassen. Login: Enter im E-Mail-Feld sendet denselben
    Magic-Link wie der Button. Datenquellen/DB-Schema unverändert.
 */
+
+
+/* Phase 5.69 · 21.09.2026 03:51:12 CEST
+   Partner-Identity und aktueller Bot-Bestand werden unabhaengig und contractweise geladen.
+   Ein langsamer DAO1-Legacy-DID-Lauf darf APTMDAO-DID oder Bot-Zahlen nicht mehr blockieren.
+   Bereits abgeschlossene Bot-Contracts aktualisieren die Kachel sofort; historische Kauf-/Lifecycle-
+   Aufbereitung bleibt nachgelagert. Referenzfall zur Verifikation: Michaela 0x568281…fe4940 ->
+   DAO1 #21044 + APTMDAO #7803 + 9 Mining-Bots + 1 Trading-Bot.
+*/
