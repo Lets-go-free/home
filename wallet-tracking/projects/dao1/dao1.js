@@ -1,3 +1,4 @@
+// Phase 5.70: Automatischer DAO-Team-Start prueft beide Tree-Caches inkrementell gegen die Chain; manueller Voll-/Update-Klick ist fuer normale Freshness nicht mehr erforderlich.
 // Phase 5.69: Partner-Identity und Bot-Bestand laufen unabhaengig; ein langsamer Identity-Contract darf Bot-Zahlen nicht blockieren.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
 // WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
@@ -5451,8 +5452,8 @@ window.DAO1Project = (() => {
     button?.classList.add("active");
     const rootArea=document.getElementById("dao1TeamRootArea");if(rootArea)rootArea.innerHTML=teamOwnedRootCardsHtml();
     renderDAO1TeamTreePanel();
-    if((dao1TeamTreeMode==="legacy"||dao1TeamTreeMode==="wallet")&&dao1OwnedDidRoots.length&&!dao1TeamDiscovery.legacy.running&&!dao1TeamDiscovery.legacy.edges.length)scanOldDao1Tree().catch(e=>console.warn("DAO1 Team Auto-Discovery",e));
-    if((dao1TeamTreeMode==="aptmdao"||dao1TeamTreeMode==="wallet")&&aptmdaoOwnedDidRoots.length&&!dao1TeamDiscovery.aptmdao.running&&!dao1TeamDiscovery.aptmdao.edges.length)scanAptmdaoTree().catch(e=>console.warn("APTMDAO Team Auto-Discovery",e));
+    if((dao1TeamTreeMode==="legacy"||dao1TeamTreeMode==="wallet")&&dao1OwnedDidRoots.length&&!dao1TeamDiscovery.legacy.running&&!dao1TeamDiscovery.legacy.edges.length)scanOldDao1Tree({checkChain:true}).catch(e=>console.warn("DAO1 Team Auto-Discovery",e));
+    if((dao1TeamTreeMode==="aptmdao"||dao1TeamTreeMode==="wallet")&&aptmdaoOwnedDidRoots.length&&!dao1TeamDiscovery.aptmdao.running&&!dao1TeamDiscovery.aptmdao.edges.length)scanAptmdaoTree({checkChain:true}).catch(e=>console.warn("APTMDAO Team Auto-Discovery",e));
   }
 
 
@@ -5485,12 +5486,12 @@ window.DAO1Project = (() => {
       loadDAO1OwnedDidRoots(true).then(()=>{
         const a=document.getElementById("dao1TeamRootArea");if(a)a.innerHTML=teamOwnedRootCardsHtml();
         renderDAO1TeamTreePanel();
-        if((dao1TeamTreeMode==="legacy"||dao1TeamTreeMode==="wallet") && dao1OwnedDidRoots.length && !dao1TeamDiscovery.legacy.running && !dao1TeamDiscovery.legacy.edges.length) scanOldDao1Tree().catch(e=>console.warn("DAO1 Team Auto-Discovery",e));
-        if((dao1TeamTreeMode==="aptmdao"||dao1TeamTreeMode==="wallet") && aptmdaoOwnedDidRoots.length && !dao1TeamDiscovery.aptmdao.running && !dao1TeamDiscovery.aptmdao.edges.length) scanAptmdaoTree().catch(e=>console.warn("APTMDAO Team Auto-Discovery",e));
+        if((dao1TeamTreeMode==="legacy"||dao1TeamTreeMode==="wallet") && dao1OwnedDidRoots.length && !dao1TeamDiscovery.legacy.running && !dao1TeamDiscovery.legacy.edges.length) scanOldDao1Tree({checkChain:true}).catch(e=>console.warn("DAO1 Team Auto-Discovery",e));
+        if((dao1TeamTreeMode==="aptmdao"||dao1TeamTreeMode==="wallet") && aptmdaoOwnedDidRoots.length && !dao1TeamDiscovery.aptmdao.running && !dao1TeamDiscovery.aptmdao.edges.length) scanAptmdaoTree({checkChain:true}).catch(e=>console.warn("APTMDAO Team Auto-Discovery",e));
       }).catch(e=>console.warn("DAO1 DID-Root Fallback",e));
 
-      if((dao1TeamTreeMode==="legacy"||dao1TeamTreeMode==="wallet") && dao1OwnedDidRoots.length && !dao1TeamDiscovery.legacy.running && !dao1TeamDiscovery.legacy.edges.length) scanOldDao1Tree().catch(e=>console.warn("DAO1 Team Auto-Discovery",e));
-      if((dao1TeamTreeMode==="aptmdao"||dao1TeamTreeMode==="wallet") && aptmdaoOwnedDidRoots.length && !dao1TeamDiscovery.aptmdao.running && !dao1TeamDiscovery.aptmdao.edges.length) scanAptmdaoTree().catch(e=>console.warn("APTMDAO Team Auto-Discovery",e));
+      if((dao1TeamTreeMode==="legacy"||dao1TeamTreeMode==="wallet") && dao1OwnedDidRoots.length && !dao1TeamDiscovery.legacy.running && !dao1TeamDiscovery.legacy.edges.length) scanOldDao1Tree({checkChain:true}).catch(e=>console.warn("DAO1 Team Auto-Discovery",e));
+      if((dao1TeamTreeMode==="aptmdao"||dao1TeamTreeMode==="wallet") && aptmdaoOwnedDidRoots.length && !dao1TeamDiscovery.aptmdao.running && !dao1TeamDiscovery.aptmdao.edges.length) scanAptmdaoTree({checkChain:true}).catch(e=>console.warn("APTMDAO Team Auto-Discovery",e));
     }catch(e){
       const rootArea=document.getElementById("dao1TeamRootArea");
       if(rootArea)rootArea.innerHTML=`<div class="status warn" style="margin-top:12px"><strong>DID-Ownership konnte nicht geladen werden.</strong><div class="note" style="margin-top:4px">${escapeHtml(e?.message||String(e))}</div></div>`;
