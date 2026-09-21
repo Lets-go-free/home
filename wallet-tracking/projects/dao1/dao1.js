@@ -1,4 +1,4 @@
-// Phase 5.70: Automatischer DAO-Team-Start prueft beide Tree-Caches inkrementell gegen die Chain; manueller Voll-/Update-Klick ist fuer normale Freshness nicht mehr erforderlich.
+// Phase 5.71: DAO Wallet-Details: fehlende historische Own-Bot-Quelle definiert; Detailansicht bricht nicht mehr mit ReferenceError ab.
 // Phase 5.69: Partner-Identity und Bot-Bestand laufen unabhaengig; ein langsamer Identity-Contract darf Bot-Zahlen nicht blockieren.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
 // WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
@@ -4664,6 +4664,28 @@ window.DAO1Project = (() => {
     const seen=new Set(),out=[];
     for(const o of rows){const key=`${lower(o.nft_contract)}|${o.nft_id}`;if(seen.has(key))continue;seen.add(key);const cls=classificationFor(o.nft_contract,o.nft_id);out.push({id:String(o.nft_id),contract:lower(o.nft_contract),name:cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`,subtype:cls?.subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,owned_from_block:Number(o.owned_from_block||0)||0,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null,acquisition_tx_hash:o.acquisition_tx_hash||null,purchase:null,current_wallet:!!o.is_current?a:""});}
     return out;
+  }
+  function dao1TeamOwnHistoricalBotCandidates(){
+    // Historische Bot-Kandidaten aller eigenen DAO-Wallets aus derselben zentralen
+    // Ownership-Tabelle wie die übrige DAO-NFT-Ansicht. Diese Funktion war seit dem
+    // Detail-Umbau referenziert, aber nicht definiert (5.70: ReferenceError).
+    const own=new Set((getContext?.()?.wallets||[]).map(w=>lower(walletAddress(w))).filter(Boolean));
+    if(!own.size)return [];
+    const currentOwnerByKey=new Map();
+    for(const o of ownershipRows){
+      if(!o?.is_current)continue;
+      const owner=lower(o.wallet_address||walletAddress(walletByDbId(o.wallet_id))||"");
+      if(owner)currentOwnerByKey.set(`${lower(o.nft_contract)}|${o.nft_id}`,owner);
+    }
+    const out=[];
+    for(const o of ownershipRows){
+      const acquisitionWallet=lower(o.wallet_address||walletAddress(walletByDbId(o.wallet_id))||"");
+      if(!own.has(acquisitionWallet))continue;
+      const cls=classificationFor(o.nft_contract,o.nft_id);
+      const n={id:String(o.nft_id),contract:lower(o.nft_contract),name:cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`,subtype:cls?.subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,owned_from_block:Number(o.owned_from_block||0)||0,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null,acquisition_tx_hash:o.acquisition_tx_hash||null,purchase:null,acquisition_wallet:acquisitionWallet,current_wallet:currentOwnerByKey.get(`${lower(o.nft_contract)}|${o.nft_id}`)||"",own_history:true};
+      if(dao1TeamIsBot(n)&&!dao1TeamIsIdentityNft(n))out.push(n);
+    }
+    return dao1MergeWalletBotCandidates(out);
   }
   function dao1TeamProjectNftSubtype(contract,id,name="",collection=""){
     contract=lower(contract);

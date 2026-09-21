@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.70 · 21.09.2026 11:17:46 CEST · Build 20260921-111746 */
+/* WalletTracking Phase 5.71 · 21.09.2026 11:39:58 CEST · Build 20260921-113958 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";

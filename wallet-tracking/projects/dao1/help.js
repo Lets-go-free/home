@@ -147,7 +147,12 @@ else renderDAO1Help();
    DAO1 #21044 + APTMDAO #7803 + 9 Mining-Bots + 1 Trading-Bot.
 */
 
-/* Phase 5.70 · 21.09.2026 11:17:46 CEST
+/* Phase 5.71 · 21.09.2026 11:39:58 CEST
    Normaler DAO-Team-Start ist weiterhin Cache-first, fuehrt bei vorhandenen Roots aber automatisch einen inkrementellen Chain-Freshness-Check fuer DAO1-alt und APTMDAO aus. Ist die Chain unveraendert, endet der Lauf ohne Delta-Scan; bei neuen Bloecken wird nur ab letztem bestaetigten Block mit Overlap nachgezogen. Dadurch darf ein veralteter Tree-Cache nicht erst durch „Beide Trees on-chain aktualisieren“ korrigiert werden. Referenzwallet Monica 0x568281…fe4940: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots; Trading-Bot-Zuordnung bleibt separat offen.
-   Build 20260921-111746.
+   Build 20260921-113958.
+*/
+
+/* Phase 5.71 · 21.09.2026 11:39:58 CEST
+   DAO Wallet-Partnerdetails: dao1TeamOwnHistoricalBotCandidates ist jetzt definiert und nutzt project_nft_ownership als zentrale historische Quelle eigener Bots. Der bisherige ReferenceError beim Öffnen der Details entfällt. Trading-Bot-Klassifikation bleibt separat zu verifizieren.
+   Build 20260921-113958.
 */

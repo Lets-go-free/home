@@ -945,7 +945,12 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    andere bekannte Werte nicht auf „werden geladen …“ festhaelt. Bestehende TODOs bleiben offen.
 */
 
-/* Phase 5.70 · 21.09.2026 11:17:46 CEST
+/* Phase 5.71 · 21.09.2026 11:39:58 CEST
    Korrigiert: DAO-Team-Caches werden beim automatischen Erstladen inkrementell gegen die Chain geprueft; der manuelle Button „Beide Trees on-chain aktualisieren“ ist nicht mehr Voraussetzung fuer neue Partner-/DID-Kanten. Referenzname korrigiert: 0x568281…fe4940 = Monica. Offen: 1 Trading-Bot bei Monica fachlich/contractseitig eindeutig zuordnen.
-   Build 20260921-111746.
+   Build 20260921-113958.
+*/
+
+/* Phase 5.71 · 21.09.2026 11:39:58 CEST
+   DAO Wallet-Partnerdetails: dao1TeamOwnHistoricalBotCandidates ist jetzt definiert und nutzt project_nft_ownership als zentrale historische Quelle eigener Bots. Der bisherige ReferenceError beim Öffnen der Details entfällt. Trading-Bot-Klassifikation bleibt separat zu verifizieren.
+   Build 20260921-113958.
 */
