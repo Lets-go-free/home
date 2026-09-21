@@ -130,3 +130,10 @@ else renderDAO1Help();
    wallet-private wird vor privaten DAO-Team-/Alias-Zugriffen gegen die aktuelle Supabase-Session abgesichert.
    401/403 löst genau einen Session-Refresh + Retry aus; Fehler verlassen den Datenjob weiterhin über finally.
 */
+
+/* Phase 5.68 · 21.09.2026 03:37:37 CEST
+   Partner-Bot-Refresh: fehlender dao1TeamIsIdentityNft-Helper ergänzt. Identity-Contracts werden
+   vor der Bot-Auswertung sicher ausgeschlossen; ein ReferenceError darf die Partnerkarten nicht
+   mehr dauerhaft auf „Bots: werden geladen …“ lassen. Login: Enter im E-Mail-Feld sendet denselben
+   Magic-Link wie der Button. Datenquellen/DB-Schema unverändert.
+*/

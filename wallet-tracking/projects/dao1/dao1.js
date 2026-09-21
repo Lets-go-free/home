@@ -1,4 +1,4 @@
-// Phase 5.67: Auth-Retry für wallet-private; abgelaufene Sessions blockieren DAO-Team-Jobs nicht mehr.
+// Phase 5.68: fehlender Identity-NFT-Praedikat-Helper repariert Partner-Bot-Refresh; Karten duerfen nicht mehr mit ReferenceError haengen.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
 // WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
 window.DAO1Project = (() => {
@@ -4684,6 +4684,12 @@ window.DAO1Project = (() => {
     if(contract===lower(DAO1_OLD_DID_CONTRACT))return "DID";
     if(contract===lower(APTMDAO_NFT_CONTRACT))return "APTMDAO NFT";
     return "nicht klassifiziert";
+  }
+  function dao1TeamIsIdentityNft(n){
+    const contract=lower(n?.contract||n?.nft_contract||"");
+    if(contract===lower(DAO1_OLD_DID_CONTRACT)||contract===lower(APTMDAO_NFT_CONTRACT))return true;
+    const subtype=dao1TeamProjectNftSubtype(contract,n?.id??n?.nft_id,n?.name||n?.nft_name||"",n?.collection||"");
+    return subtype==="DID"||subtype==="APTMDAO NFT";
   }
   function dao1TeamIsRelevantNft(contract,id,name="",collection=""){
     contract=lower(contract);

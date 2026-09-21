@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.67 · 21.09.2026 03:28:09 CEST · Build 20260921-032809 */
+/* WalletTracking Phase 5.68 · 21.09.2026 03:37:37 CEST · Build 20260921-033737 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -166,6 +166,18 @@ async function sendMagicLink() {
     ? "Fehler: " + error.message
     : "Link verschickt - check dein E-Mail-Postfach und klick auf den Link.";
 }
+
+function bindAuthEmailEnter(){
+  const input=document.getElementById("authEmail");
+  if(!input||input.dataset.enterBound==="1")return;
+  input.dataset.enterBound="1";
+  input.addEventListener("keydown",e=>{
+    if(e.key!=="Enter"||e.isComposing)return;
+    e.preventDefault();
+    sendMagicLink();
+  });
+}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bindAuthEmailEnter,{once:true});else bindAuthEmailEnter();
 
 const WELCOME_META_KEY = "wallet_tracking_welcome_dismissed_v1";
 const DONATION_EVM_ADDRESS = "0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382";

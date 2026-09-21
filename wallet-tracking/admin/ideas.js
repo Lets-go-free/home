@@ -930,3 +930,10 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    DAO-Team-Jobs bleiben bei abgelaufenem JWT nicht in der globalen Navigationssperre hängen; runDataJob-finally bleibt Freigabegarantie.
    Datenquellen/Projektstruktur unverändert; Systemübersicht geprüft.
 */
+
+/* Phase 5.68 · 21.09.2026 03:37:37 CEST
+   Fehlerkorrektur: dao1TeamIsIdentityNft ist wieder definiert und wird zentral anhand der bekannten
+   DAO1-/APTMDAO-Identity-Contracts bzw. Identity-Subtypen ausgewertet. Partner-Bot-Refresh kann damit
+   die Bestandsauswertung erreichen. Login-Link kann nach E-Mail-Eingabe zusätzlich per Enter gesendet werden.
+   Bestehende TODOs „Partner projektbezogen inaktiv“ und „Registration APTMDAO offen“ bleiben offen.
+*/
