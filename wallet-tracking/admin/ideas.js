@@ -954,3 +954,8 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    DAO Wallet-Partnerdetails: dao1TeamOwnHistoricalBotCandidates ist jetzt definiert und nutzt project_nft_ownership als zentrale historische Quelle eigener Bots. Der bisherige ReferenceError beim Öffnen der Details entfällt. Trading-Bot-Klassifikation bleibt separat zu verifizieren.
    Build 20260921-113958.
 */
+
+/* Phase 5.72 · 21.09.2026 11:57:19 CEST
+   Aktuelle Mining-/Trading-Bot-Zahlen im DAO-Team verwenden die zentrale aktuelle NFT-/Ownership-Klassifikation. Kaufpreis, historische DID-Zuordnung und ownerOf@Block beeinflussen den heutigen Bestand nicht. Referenz Monica: 9 Mining-Bots + 1 Trading-Bot.
+   Build 20260921-115719.
+*/

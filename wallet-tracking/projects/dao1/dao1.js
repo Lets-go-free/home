@@ -1,4 +1,4 @@
-// Phase 5.71: DAO Wallet-Details: fehlende historische Own-Bot-Quelle definiert; Detailansicht bricht nicht mehr mit ReferenceError ab.
+// Phase 5.72: Team-Bot-Bestand nutzt zentrale aktuelle NFT-/Ownership-Klassifikation; Trading-Bots sind von Kaufpreis/DID-Historie entkoppelt.
 // Phase 5.69: Partner-Identity und Bot-Bestand laufen unabhaengig; ein langsamer Identity-Contract darf Bot-Zahlen nicht blockieren.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
 // WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
@@ -5284,6 +5284,24 @@ window.DAO1Project = (() => {
     document.addEventListener("keydown",esc,{passive:true});
   }
   function dao1BotStatsFromRows(rows,{currentOnly=false}={}){let mining=0,trading=0;for(const n of rows||[]){if(currentOnly&&n.current!==true)continue;const t=String(n.subtype||n.bot_type||n.name||"").toLowerCase();if(t.includes("trading"))trading++;else if(t.includes("min")||t.includes("solar"))mining++;}return {mining,trading,loadedAt:new Date().toISOString()};}
+  function dao1CurrentBotRowsFromOwnership(wallet){
+    // Zentrale aktuelle NFT-/Ownership-Quelle: dieselbe Klassifikation wie im NFT-Bereich.
+    // Kaufpreis, historische DID-Zuordnung und ownerOf@Block sind fuer den HEUTIGEN Bestand irrelevant.
+    const a=lower(wallet||"");if(!a)return [];
+    const out=[];
+    for(const o of ownershipRows||[]){
+      if(!o?.is_current)continue;
+      const owner=lower(o.wallet_address||walletAddress(walletByDbId(o.wallet_id))||"");
+      if(owner!==a)continue;
+      const contract=lower(o.nft_contract||""),id=String(o.nft_id);
+      const cls=classificationFor(contract,id);
+      const name=cls?.nft_name||o.nft_name||nftMetaById.get(`${contract}|${id}`)?.name||`NFT #${id}`;
+      const subtype=dao1TeamProjectNftSubtype(contract,id,name,"");
+      if(!["Mining-Bot","Trading-Bot"].includes(subtype))continue;
+      out.push({id,contract,name,subtype,current:true,current_wallet:a,owned_from_at:o.owned_from_at||null,owned_from_block:Number(o.owned_from_block||0)||0,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null,acquisition_tx_hash:o.acquisition_tx_hash||null,purchase:null});
+    }
+    return [...new Map(out.map(n=>[`${n.contract}|${n.id}`,n])).values()];
+  }
   async function dao1WalletHash(wallet){const bytes=new TextEncoder().encode(lower(wallet));const buf=await crypto.subtle.digest("SHA-256",bytes);return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("");}
   async function dao1LoadPartnerBotStatsCache(){
     if(dao1PartnerBotCacheLoaded||!sb||!getContext?.()?.currentUser)return;dao1PartnerBotCacheLoaded=true;
@@ -5308,8 +5326,16 @@ window.DAO1Project = (() => {
       // Besonders wichtig fuer Wallets mit alter + neuer DID: ein langsamer Legacy-DID-
       // Transferlauf darf weder Mining-/Trading-Bots noch APTMDAO-DID blockieren.
       const identityJob=hadIdentity?Promise.resolve():dao1TeamFetchPartnerIdentity(wallet);
+      // Sofort aus der zentralen Ownership-Quelle zaehlen. Genau diese Quelle kennt auch
+      // klassifizierte Trading-Bots des NFT-Bereichs; historische Kauf-/DID-Logik ist hier tabu.
+      const centralCurrent=dao1CurrentBotRowsFromOwnership(wallet);
+      if(centralCurrent.length){
+        dao1PartnerBotStats.set(wallet,dao1BotStatsFromRows(centralCurrent,{currentOnly:true}));
+        dao1PartnerRerenderIfVisible();
+      }
       const nftJob=dao1TeamFetchPartnerNfts(wallet,"wallet");
-      let nfts=(await nftJob).filter(n=>dao1TeamIsBot(n)&&!dao1TeamIsIdentityNft(n));
+      const fetched=(await nftJob).filter(n=>dao1TeamIsBot(n)&&!dao1TeamIsIdentityNft(n));
+      let nfts=[...new Map([...centralCurrent,...fetched].map(n=>[`${lower(n.contract)}|${n.id}`,n])).values()];
       dao1PartnerBotStats.set(wallet,dao1BotStatsFromRows(nfts,{currentOnly:true}));
       dao1PartnerRerenderIfVisible();
       await identityJob;
