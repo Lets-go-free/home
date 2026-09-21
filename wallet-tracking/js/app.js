@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.66 · 21.09.2026 03:22:39 CEST · Build 20260921-032239 */
+/* WalletTracking Phase 5.67 · 21.09.2026 03:28:09 CEST · Build 20260921-032809 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -226,9 +226,14 @@ async function logout() {
 async function initAuth() {
   const { data: { session } } = await sb.auth.getSession();
   sb.auth.onAuthStateChange((event, newSession) => {
-    if (newSession && !currentUser) {
+    if(newSession?.user)currentUser=newSession.user;
+    if (newSession && !document.getElementById("appContent")?.style.display) {
       beginDataJobUi("Daten werden geladen …");
       onLoggedIn(newSession).finally(()=>endDataJobUi());
+    }
+    if(event==="SIGNED_OUT"){
+      currentUser=null;
+      dataJobActiveCount=0;setDataJobUi(false);
     }
   });
   if (session) {
@@ -3280,25 +3285,50 @@ function sortWalletsByLabel() {
   wallets.sort((a, b) => a.label.localeCompare(b.label, "de"));
 }
 
-async function invokeWalletPrivate(action, body = {}) {
-  const { data, error } = await sb.functions.invoke("wallet-private", {
-    body: { action, ...body }
-  });
-  if (error) {
-    let detail = error.message || String(error);
-    try {
-      const ctx = error.context;
-      if (ctx?.clone) {
-        const response = ctx.clone();
-        const payload = await response.json();
-        if (payload?.error) detail = payload.error;
-      }
-    } catch (_) {}
-    throw new Error(detail);
+async function walletPrivateSessionReady(forceRefresh=false) {
+  const {data,error}=await sb.auth.getSession();
+  if(error)throw error;
+  let session=data?.session||null;
+  if(!session)throw new Error("Sitzung abgelaufen. Bitte neu anmelden.");
+  const expiresMs=Number(session.expires_at||0)*1000;
+  if(forceRefresh||(expiresMs&&expiresMs-Date.now()<90000)){
+    const refreshed=await sb.auth.refreshSession();
+    if(refreshed.error||!refreshed.data?.session)throw (refreshed.error||new Error("Sitzung konnte nicht erneuert werden."));
+    session=refreshed.data.session;
+    if(session.user)currentUser=session.user;
   }
-  if (!data?.ok) throw new Error(data?.error || `wallet-private/${action} fehlgeschlagen.`);
-  return data;
+  return session;
 }
+function walletPrivateAuthStatus(error){
+  const status=Number(error?.context?.status||error?.status||0);
+  return status===401||status===403;
+}
+async function invokeWalletPrivate(action, body = {}) {
+  await walletPrivateSessionReady(false);
+  let lastError=null;
+  for(let attempt=0;attempt<2;attempt++){
+    const { data, error } = await sb.functions.invoke("wallet-private", {body: { action, ...body }});
+    if(!error){
+      if (!data?.ok) throw new Error(data?.error || `wallet-private/${action} fehlgeschlagen.`);
+      return data;
+    }
+    lastError=error;
+    if(attempt===0&&walletPrivateAuthStatus(error)){
+      await walletPrivateSessionReady(true);
+      continue;
+    }
+    break;
+  }
+  let detail = lastError?.message || String(lastError||"wallet-private fehlgeschlagen");
+  try {
+    const response = lastError?.context?.clone?.();
+    const payload = response ? await response.json() : null;
+    if (payload?.error) detail = payload.error;
+  } catch (_) {}
+  throw new Error(detail);
+}
+window.walletPrivateSessionReady=walletPrivateSessionReady;
+window.invokeWalletPrivate=invokeWalletPrivate;
 
 async function loadWalletsFromDb() {
   try {

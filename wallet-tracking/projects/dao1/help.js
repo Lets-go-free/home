@@ -125,3 +125,8 @@ else renderDAO1Help();
    Miner-Contract zaehlt aktuelle Token unabhaengig von Kaufpreis oder Einzelklassifikation als Mining-Bots.
    Historische Kauf-/Lifecycle-Aufbereitung bleibt nachgelagert und blockiert die Kachel nicht.
 */
+
+/* Phase 5.67 · 21.09.2026 03:28:09 CEST
+   wallet-private wird vor privaten DAO-Team-/Alias-Zugriffen gegen die aktuelle Supabase-Session abgesichert.
+   401/403 löst genau einen Session-Refresh + Retry aus; Fehler verlassen den Datenjob weiterhin über finally.
+*/

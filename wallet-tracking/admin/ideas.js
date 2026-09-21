@@ -924,3 +924,9 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    Miner-Contract zaehlt aktuelle Token unabhaengig von Kaufpreis oder Einzelklassifikation als Mining-Bots.
    Historische Kauf-/Lifecycle-Aufbereitung bleibt nachgelagert und blockiert die Kachel nicht.
 */
+
+/* Phase 5.67 · 21.09.2026 03:28:09 CEST
+   Fix: private Supabase-Zugriffe erhalten zentrale Session-Prüfung und einmaligen 401/403-Refresh/Retry.
+   DAO-Team-Jobs bleiben bei abgelaufenem JWT nicht in der globalen Navigationssperre hängen; runDataJob-finally bleibt Freigabegarantie.
+   Datenquellen/Projektstruktur unverändert; Systemübersicht geprüft.
+*/

@@ -1,4 +1,4 @@
-// Phase 5.66: Partner-DIDs/Bot-Bestand werden contract-gezielt aus ERC-721-Transfers rekonstruiert; kein blockierender breiter NFT-Snapshot.
+// Phase 5.67: Auth-Retry für wallet-private; abgelaufene Sessions blockieren DAO-Team-Jobs nicht mehr.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
 // WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
 window.DAO1Project = (() => {
@@ -4122,12 +4122,11 @@ window.DAO1Project = (() => {
     return dao1TeamAliases;
   }
   async function dao1WalletPrivate(action,body={}){
+    // Eine einzige zentrale Auth-/Retry-Implementierung verhindert, dass DAO-Team-Jobs
+    // bei einem abgelaufenen JWT mit 401/403 in einem halbfertigen Zustand bleiben.
+    if(typeof window.invokeWalletPrivate==="function")return window.invokeWalletPrivate(action,body);
     const {data,error}=await sb.functions.invoke("wallet-private",{body:{action,...body}});
-    if(error){
-      let detail=error.message||String(error);
-      try{const response=error.context?.clone?.();const payload=response?await response.json():null;if(payload?.error)detail=payload.error;}catch(_e){}
-      throw new Error(detail);
-    }
+    if(error)throw error;
     if(!data?.ok)throw new Error(data?.error||`wallet-private/${action} fehlgeschlagen`);
     return data;
   }
