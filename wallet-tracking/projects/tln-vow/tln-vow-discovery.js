@@ -1,8 +1,9 @@
+// Phase 5.82 · 21.09.2026 23:57:38 CEST: Wallet-Speichern aktualisiert TLN/VOW gezielt nur dann sofort, wenn das Modul in der Session bereits initialisiert ist; sonst bleibt der Erstaufbau lazy. Build 20260921-235738.
 // Phase 5.78: TLN/VOW-Init bündelt Current-State-Walletprüfung projektweit, lädt Discovery-Snapshots per DB-Batch/Sessioncache und vermeidet RPC für bekannte Referral-Decmals; Team/History bleiben lazy.
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260921-172935';
+const BUILD_ID='20260921-235738';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -194,7 +195,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='21.09.2026 17:29:35 CEST';
+const APP_VERSION='21.09.2026 23:57:38 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -18311,8 +18312,26 @@ function ensureInitialized(){
   if(!initializationPromise)initializationPromise=init().catch(error=>{initializationPromise=null;throw error});
   return initializationPromise;
 }
+async function refreshWalletAfterSave(walletId){
+  // Wenn TLN/VOW in dieser Session noch nie geöffnet wurde, nichts vorladen.
+  // Beim ersten Öffnen liest init() automatisch die frisch gespeicherte Wallet aus wallet-private.
+  if(!initializationPromise)return {deferred:true};
+  await initializationPromise;
+  const wq=await loadPrivateWalletsForDiscovery();
+  if(wq?.error)throw wq.error;
+  const role=x=>String(x?.tln_vow_category||x?.defi_category||'').toLowerCase();
+  tlnWallets=await selectTlnVowProjectWallets(wq.data||[],allProjectRows,role);
+  PRIVATE_WALLET_ID_BY_EVM.clear();
+  for(const w of (wq.data||[])){const a=norm(w?.evm_address||''),id=w?.id||w?.dbId;if(/^0x[0-9a-f]{40}$/.test(a)&&id)PRIVATE_WALLET_ID_BY_EVM.set(a,String(id));}
+  PRIVATE_WALLET_MAP_LOADED=true;
+  populateTlnWalletDropdown();populateProjectWalletFilter();
+  await loadProjectWalletSnapshots({withHistoricalValuation:false});
+  return {ok:true,walletId:String(walletId||''),projectWallets:tlnWallets.length};
+}
+
 window.TLNVOWDiscovery={
   ensureInitialized,
+  refreshWalletAfterSave,
   loadDashboardSummary:async()=>{
     // App-Start darf das komplette Discovery-Modul nicht nur für eine Dashboard-Summary
     // initialisieren. Bis TLN/VOW bewusst geöffnet wurde, verwendet das Dashboard den

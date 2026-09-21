@@ -1,4 +1,4 @@
-// Phase 5.81 · 21.09.2026 23:36:49 CEST: Wallet-Löschung serverseitig/transaktional vervollständigt; Snapshots, 31.12.-Bestände, Projekt-/History-/Cache-Daten und abgeleitete Summen werden vollständig bereinigt. Build 20260921-233649.
+// Phase 5.82 · 21.09.2026 23:57:38 CEST: Chain-Logos datengetrieben über public.chains.icon_path; gezielter Erstaufbau neuer/gespeicherter Wallets statt breitem loadAll(), inkl. Current State und projektbezogener Lazy-/Target-Initialisierung. Build 20260921-235738.
 /* WalletTracking Phase 5.79 · 21.09.2026 17:57:25 CEST · Build 20260921-175725 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
@@ -1499,7 +1499,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"help",level:1,label:"Hilfe",status:"planning",start:"Datei/DOM",daily:"–",open:"lokal",manual:"–",details:[["Allgemeine Hilfe","JS-Modul","–","–","Tab öffnen"]]},
 
   {id:"walletsgrp",level:0,label:"🧰 Wallets & Token",status:"planning",start:"DB",daily:"–",open:"Cache/DB",manual:"je Funktion",details:[]},
-  {id:"wallets",level:1,label:"Meine Wallets",status:"done",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"verschlüsselt speichern / vollständig löschen",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"],["Wallet vollständig löschen","RAM wird nach Erfolg verworfen","wallet-private → transaktionale RPC; walletbezogene Tabellen + Snapshot-/31.12.-Daten + abgeleitete User-Caches","keine globalen Registry-/On-Chain-Fakten","Löschen in Meine Wallets; danach Reload und Neuaufbau aller Summen aus verbleibenden Daten"]]},
+  {id:"wallets",level:1,label:"Meine Wallets",status:"done",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"gezielt speichern / vollständig löschen",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"],["Neue/gespeicherte Wallet · Erstaufbau","nur diese Wallet","Current-State je konfigurierter Chain + NFT/DAO-Target-Refresh; TLN/VOW lazy bzw. Session-Refresh","RPC/API nur für diese Wallet","Phase 5.82: Speichern startet kein breites loadAll() über alle Wallets mehr. Bestehende Wallets bleiben unangetastet; Current State wird gezielt aufgebaut, DAO1/APTMDAO aktualisiert nur diese Wallet und TLN/VOW übernimmt sie sofort, falls das Modul bereits initialisiert ist – sonst beim ersten Öffnen."],["Wallet vollständig löschen","RAM wird nach Erfolg verworfen","wallet-private → transaktionale RPC; walletbezogene Tabellen + Snapshot-/31.12.-Daten + abgeleitete User-Caches","keine globalen Registry-/On-Chain-Fakten","Löschen in Meine Wallets; danach Reload und Neuaufbau aller Summen aus verbleibenden Daten"]]},
   {id:"predefined",level:1,label:"Vordefinierte Token",status:"in_progress",start:"DB",daily:"–",open:"RAM",manual:"DB neu",details:[["Vordefinierte Token + Dashboard-Flag","RAM","Supabase · predefined_tokens.dashboard_visible","–","App-Start; Flag bedeutet „immer anzeigen“. Positive Bestände > USD 1 erscheinen automatisch; Flag-Änderung nur Admin, danach Dashboard aus RAM neu rendern"]]},
   {id:"custom",level:1,label:"Eigene sichere Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB",details:[["User-Token","RAM","Supabase · userbezogene Token","–","App-Start"]]},
   {id:"discovery",level:1,label:"🔍 Entdecken",status:"planning",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Erst beim Öffnen des Tabs; Scan nur manuell"]]},
@@ -1513,7 +1513,7 @@ const ADMIN_SYSTEM_TREE = [
     ["Projekt-Kacheln","RAM + Project-Summary","predefined_tokens + persistente Projektcaches","keine eigene Discovery","Breite Karten; Projektwert wird zusätzlich in frei verfügbar / aktuell gebunden / gesamt aufgesplittet. LP-Staking wird nur einmal gezählt, auch wenn walletData und lp_position_cache dieselbe Position enthalten. Kursliste automatisch bei Bestand > USD 1; „immer anzeigen“ erlaubt Bestand 0; Projekt-Token nur bei belegter Projektbeteiligung. Reward-Summaries nutzen Summary-Kommastellen (leer = Anzeige übernehmen, 0 = keine Nachkommastellen). Fehlende Summary-Werte bleiben – bis ein fachlicher Cache sie bestätigt."],
     ["Personenfilter","RAM","verschlüsselte Wallet-Besitzer aus wallet-private","–","Eigene Wallets / alle Personen / bestimmte Person; keine Zusatzabfrage"]]},
   {id:"tracking",level:1,label:"Wallet-Tracking · Token-Übersicht",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"gespeicherter Stand",daily:"Preise frisch",open:"Cache",manual:"Bestände + Projekte + NFTs",details:[
-    ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain nur bei gezieltem Refresh","Start zeigt Cache sofort und startet keinen allgemeinen Auto-Refresh. Neue Wallet: Erstaufbau direkt nach Speichern; bestehende Wallets werden manuell bzw. über die zuständige Projekt-/Refresh-Funktion aktualisiert."],
+    ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain nur bei gezieltem Refresh","Start zeigt Cache sofort und startet keinen allgemeinen Auto-Refresh. Neue Wallet: gezielter Erstaufbau nur für diese Wallet direkt nach Speichern; kein loadAll() über bestehende Wallets. Projekte aktualisieren nur ihren relevanten Wallet-Scope bzw. bleiben lazy."],
     ["Aktuelle Kurse","Globaler 15-Minuten-Snapshot/RAM","wallet_global_current_price_snapshot","Preis-APIs + DEX/Pool RPC","Global :00/:15/:30/:45 nur bei aktivem Client; ein atomarer Slot-Claim verhindert Doppeljobs. Phase 5.41: stale-while-refresh – der letzte gültige Snapshot bleibt während Refresh/Teilfehler aktiv; tatsächlich neu geladene Assetpreise tragen zusätzlich refreshedAt. Alte Einzelpreise werden dadurch nicht als im aktuellen Lauf erneuert interpretiert. Keine Historisierung dieses aktuellen Snapshots."],
     ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Im fälligen Grunddaten-Hintergrundlauf; vollständige Projekt-Discovery bleibt separat"]]},
   {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"planning",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","Supabase Snapshots","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung","Cache","Supabase Preis-/LP-Historie","Archive RPC/API bei Bedarf","Stichtagsberechnung"]]},
@@ -1918,6 +1918,7 @@ const ADMIN_CHAIN_FIELDS = [
   {k:"explorer_url_template", l:"Explorer-URL ({address})", critical:true, type:"text", cls:"xwide-input"},
   {k:"geckoterminal_network", l:"GeckoTerminal Network", type:"text"},
   {k:"display_color", l:"Anzeigefarbe", critical:false, type:"color"},
+  {k:"icon_path", l:"Chain-Logo (Pfad)", critical:false, type:"text", cls:"xwide-input"},
   {k:"rpc_url", l:"RPC-/REST-Endpunkt", critical:true, type:"text", cls:"xwide-input"},
   {k:"archive_rpc_provider", l:"Historie-Provider", critical:false, type:"text"},
   {k:"archive_rpc_url", l:"Historie-/Archive-RPC", critical:false, type:"text", cls:"xwide-input"},
@@ -2409,10 +2410,17 @@ const GECKOTERMINAL_NETWORK = {};
 let chainConfigStatus = { source: "nicht geladen", count: 0, loadedAt: null };
 
 async function loadChainConfigFromDb() {
-  const { data, error } = await sb.from("chains")
-    .select("chain_key,label,native_symbol,coingecko_id,wallet_type,explorer_url_template,geckoterminal_network,sort_order,enabled,evm_chain_id,rpc_url,archive_rpc_url,archive_rpc_provider,balance_provider,fee_provider,fee_api_base,fee_finality_blocks,fee_overlap_blocks,fees_enabled,discovery_enabled,approvals_enabled,nft_enabled,discovery_provider,discovery_api_base,approvals_provider,approvals_api_base,nft_provider,nft_api_base,balance_api_base,display_color")
-    .eq("enabled", true)
-    .order("sort_order", { ascending: true });
+  const chainFields="chain_key,label,native_symbol,coingecko_id,wallet_type,explorer_url_template,geckoterminal_network,icon_path,sort_order,enabled,evm_chain_id,rpc_url,archive_rpc_url,archive_rpc_provider,balance_provider,fee_provider,fee_api_base,fee_finality_blocks,fee_overlap_blocks,fees_enabled,discovery_enabled,approvals_enabled,nft_enabled,discovery_provider,discovery_api_base,approvals_provider,approvals_api_base,nft_provider,nft_api_base,balance_api_base,display_color";
+  let q=await sb.from("chains").select(chainFields).eq("enabled", true).order("sort_order", { ascending: true });
+  // Rollout-tolerant: Website darf zwischen Deploy und SQL-Migration nicht ausfallen.
+  // Fehlt icon_path noch, lädt die App die bisherige Chain-Konfiguration weiter ohne Logos.
+  if(q.error && /icon_path/i.test(String(q.error.message||q.error.details||""))){
+    q=await sb.from("chains")
+      .select(chainFields.replace(",icon_path",""))
+      .eq("enabled", true)
+      .order("sort_order", { ascending: true });
+  }
+  const {data,error}=q;
 
   if (error) {
     chainConfigStatus = { source: "FEHLER", count: 0, loadedAt: new Date().toISOString(), error: error.message };
@@ -2434,7 +2442,9 @@ async function loadChainConfigFromDb() {
     CHAIN_META[key] = {
       label: row.label || key,
       dot: key, // reine Darstellungs-Klasse; keine Chain-Daten im HTML nötig
-      coingeckoId: row.coingecko_id || null
+      coingeckoId: row.coingecko_id || null,
+      nativeSymbol: row.native_symbol || key.toUpperCase(),
+      iconPath: row.icon_path || null
     };
     CHAIN_CONFIG[key] = {
       walletType: row.wallet_type || null,
@@ -3644,9 +3654,49 @@ function setWalletOwnership(id,isOwn){
 }
 window.setWalletOwnership=setWalletOwnership;
 
+async function initializeSavedWalletTargeted(w,{isNew=false}={}) {
+  if(!w||!currentUser)return {skipped:true};
+  const failures=[];
+  // Nur diese Wallet neu aufbauen. Bestehende Wallets und deren Caches werden nicht breit aktualisiert.
+  walletData[w.id]={};
+  const chains=Object.keys(CHAIN_CONFIG).filter(c=>CHAIN_CONFIG[c]?.balanceProvider&&walletAddressForChain(w,c));
+  for(const chain of chains){
+    try{
+      const r=await loadWalletChain(w,chain,false);
+      if(r?.ok===false)throw new Error(r.error||"Bestand konnte nicht geladen werden");
+      await saveWalletRefreshState(w,chain,'balances',{last_checked_at:new Date().toISOString(),last_refreshed_at:new Date().toISOString(),last_result:'refreshed'});
+    }catch(e){failures.push(`${CHAIN_META[chain]?.label||chain}: ${e.message||e}`);}
+  }
+
+  // DAO1 besitzt bereits einen gezielten Wallet-Erstaufbau inkl. Apertum-NFT/Ownership/Tx.
+  let daoHandledApertum=false;
+  if(w.evm&&window.DAO1Project?.refreshWalletAfterSave){
+    try{const r=await window.DAO1Project.refreshWalletAfterSave(w.dbId||w.id);daoHandledApertum=!!r?.ok;}
+    catch(e){failures.push(`DAO1/APTMDAO: ${e.message||e}`);}
+  }
+
+  // Andere NFT-Chains current-state aktualisieren; Apertum nicht doppelt laden, wenn DAO es bereits erledigt hat.
+  try{
+    const nr=await refreshNftsForWallet(w,null,{skipChains:daoHandledApertum?["apertum"]:[]});
+    if(nr?.errors?.length)failures.push(...nr.errors.map(x=>`NFT: ${x}`));
+    await saveWalletRefreshState(w,'','nft',{last_checked_at:new Date().toISOString(),last_refreshed_at:new Date().toISOString(),last_result:Number(nr?.count||0)===0?'no_nfts':'refreshed'});
+  }catch(e){failures.push(`NFTs: ${e.message||e}`);}
+
+  // TLN/VOW aktualisiert nur seine Wallet-Auswahl/Current-State-Verknüpfung, falls das Modul bereits offen war.
+  // War es noch nie geöffnet, bleibt der Erstaufbau bewusst lazy und verwendet beim ersten Öffnen die neue DB-Wallet.
+  try{await window.TLNVOWDiscovery?.refreshWalletAfterSave?.(w.dbId||w.id);}catch(e){failures.push(`TLN/VOW: ${e.message||e}`);}
+
+  await mergeTlnBscStakingCacheIntoWalletData().catch(()=>{});
+  renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();renderWalletDataFreshness();
+  try{await createSnapshot(true);}catch(e){failures.push(`Snapshot: ${e.message||e}`);}
+  await refreshDashboardProjectSummaries().catch(()=>{});
+  return {ok:failures.length===0,failures,isNew};
+}
+
 async function saveWallet(id) {
   const w = wallets.find(w => w.id === id);
   if (!w) return;
+  const isNewWallet = !w.dbId;
   const statusEl = document.getElementById("saveStatus-" + id);
 
   const invalidFields = ["evm", "btc", "xrp", "sol", "tron", "akash"].filter(f => w[f] && !isValidAddressFormat(f, w[f]));
@@ -3698,11 +3748,9 @@ async function saveWallet(id) {
   renderWalletInputs();
   renderGlobalWalletPersonFilter();
   renderDashboard();
-  loadAll({automatic:true}).catch(e=>console.warn("Erstaufbau nach Wallet-Speicherung",e));
-  // Projekt-Erstaufbau darf nach einer neu hinzugefügten/geänderten Wallet nicht
-  // vom Öffnen des DAO-Tabs oder einem manuellen Aktualisieren abhängen.
-  Promise.resolve(window.DAO1Project?.refreshWalletAfterSave?.(w.dbId||w.id))
-    .catch(e=>console.warn("DAO1/APTMDAO Erstaufbau nach Wallet-Speicherung",e));
+  initializeSavedWalletTargeted(w,{isNew:isNewWallet}).then(r=>{
+    if(r?.failures?.length)console.warn("Gezielter Wallet-Erstaufbau mit Hinweisen",r.failures);
+  }).catch(e=>console.warn("Gezielter Erstaufbau nach Wallet-Speicherung",e));
 }
 
 // Format-Validierung pro Chain (Länge/Präfix/Zeichensatz) - rein strukturell, keine
@@ -4436,9 +4484,12 @@ function renderCentralRefreshProgress(lines=[],options={}){
     <div class="note" style="margin-top:9px">${lines.map(x=>escapeAttr(x)).join('<br>')}</div>
   </details>`;
 }
-async function refreshNftsForWallet(w,onProgress=null){
-  const chains=nftChains();let walletNfts=[],errors=[];
+async function refreshNftsForWallet(w,onProgress=null,options={}){
+  const chains=nftChains(),skipChains=new Set((options?.skipChains||[]).map(String));
+  const old=nftCaches.get(walletDbId(w));
+  let walletNfts=((old?.nfts)||[]).filter(n=>skipChains.has(String(n?.chain||""))),errors=[];
   for(const chain of chains){
+    if(skipChains.has(chain))continue;
     if(!walletAddressForChain(w,chain))continue;
     try{
       onProgress?.(chain);
@@ -4447,11 +4498,11 @@ async function refreshNftsForWallet(w,onProgress=null){
       else if(provider==='alchemy')found=await fetchNftsForChain(chain,walletAddressForChain(w,chain));
       else continue;
       found.forEach(n=>{n.walletLabel=w.label;n.walletId=walletDbId(w);});
-      const old=nftCaches.get(walletDbId(w));const oldMap=new Map(((old?.nfts)||[]).map(n=>[nftKey(n),{spam:!!n.userMarkedSpam,safe:!!n.userMarkedSafe}]));
+      const oldMap=new Map(((old?.nfts)||[]).map(n=>[nftKey(n),{spam:!!n.userMarkedSpam,safe:!!n.userMarkedSafe}]));
       found.forEach(n=>{const f=oldMap.get(nftKey(n));if(f?.spam)n.userMarkedSpam=true;if(f?.safe)n.userMarkedSafe=true;});walletNfts.push(...found);
     }catch(e){errors.push(`${CHAIN_META[chain]?.label||chain}: ${e.message}`);}
   }
-  await saveNftCacheForWallet(w,walletNfts,chains);return {errors,count:walletNfts.length};
+  await saveNftCacheForWallet(w,walletNfts,[...new Set([...(old?.selected_chains||[]),...chains.filter(c=>!skipChains.has(c))])]);return {errors,count:walletNfts.length};
 }
 async function refreshProjectWallet(w,projectKey='tln_vow',chain='bsc'){
   if(!walletAddressForChain(w,chain))return {skipped:true};
@@ -4867,6 +4918,17 @@ function setDashboardProjectCacheStats(projectKey,patch={}){
 }
 window.setDashboardProjectCacheStats=setDashboardProjectCacheStats;
 
+function chainIconHtml(chain,sizeClass="sm") {
+  const key=String(chain||"").trim();
+  const meta=CHAIN_META[key]||{};
+  const sym=String(NATIVE_SYMBOL[key]||meta.nativeSymbol||key||"?").trim();
+  const title=escapeAttr(meta.label||key.toUpperCase());
+  if(meta.iconPath){
+    return `<span class="crypto-icon ${escapeAttr(sizeClass)}" title="${title}" aria-hidden="true"><img src="${escapeAttr(meta.iconPath)}" alt=""></span><span class="dashboard-chain-native-symbol">${escapeAttr(sym.slice(0,5))}</span>`;
+  }
+  return `<span class="dashboard-chain-native-symbol" title="${title}">${escapeAttr(sym.slice(0,5))}</span>`;
+}
+
 function renderDashboard(){
   const root=document.getElementById("dashboardContent");if(!root)return;
   renderGlobalWalletPersonFilter();
@@ -4880,7 +4942,7 @@ function renderDashboard(){
   }
   const money=v=>fmtUsd(Number(v||0));
   const boundValue=portfolio.boundEvidence?money(portfolio.boundUsd):"–";
-  const chainIcon=r=>{const sym=String(NATIVE_SYMBOL[r.chain]||r.chain||"?").trim();return `<span class="dashboard-chain-native-symbol" title="${escapeAttr(CHAIN_META[r.chain]?.label||r.chain.toUpperCase())}">${escapeAttr(sym.slice(0,4))}</span>`;};
+  const chainIcon=r=>chainIconHtml(r.chain,"sm");
   const priceRows=rows=>`<div class="dashboard-table-wrap"><table class="dashboard-price-table dashboard-price-table-compact"><thead><tr><th>Token</th><th title="Chain">Chain</th><th>Projekt</th><th class="num">Kurs USD</th><th class="num">24 Std.</th><th>Datenquelle</th></tr></thead><tbody>${rows.map(r=>{const primary=String(r.displayName||r.symbol||"");const isAddr=/^0x[0-9a-f]{40}$/i.test(primary);return `<tr><td><strong>${escapeAttr(isAddr?dashboardShortAddress(primary):primary)}</strong>${isAddr?"":dashboardSymbolMetaHtml(r.symbol,r.address,r.displayName)}${isAddr?"":dashboardAddressHtml(r.address)}</td><td class="dashboard-chain-icon-cell">${chainIcon(r)}</td><td>${escapeAttr(r.project?dashboardProjectTitle(r.project):"Allgemein")}</td><td class="num">${r.price?fmtPrice(r.price.price):"–"}</td><td class="num">${r.price?fmtChange(r.price.change24h):"–"}</td><td>${r.price?`<strong>${escapeAttr(r.price.source||"Quelle unbekannt")}</strong>${r.price.route?`<div class="meta">${escapeAttr(r.price.route)}</div>`:""}`:"Kein gespeicherter Kurs"}</td></tr>`}).join("")}</tbody></table></div>`;
   const split=Math.ceil(prices.length/2),priceTable=prices.length?`<div class="dashboard-price-columns">${priceRows(prices.slice(0,split))}${priceRows(prices.slice(split))}</div>`:`<div class="empty">Keine Dashboard-Kurse gemäß aktueller Regel: Bestand &gt; 1 USD oder Flag „Im Dashboard immer anzeigen“.</div>`;
   const projectCards=[...involvedProjects].map(key=>[key,portfolio.projects.get(key)||{valueUsd:0,freeUsd:0,boundUsd:0,assets:0}]).map(([key,p])=>{
@@ -9018,7 +9080,10 @@ initAuth();
     avax:'./assets/crypto/avax.svg', avalanche:'./assets/crypto/avax.svg',
     eth:'./assets/crypto/eth.svg', ethereum:'./assets/crypto/eth.svg',
     usdt:'./assets/crypto/usdt.svg', wusdt:'./assets/crypto/usdt.svg',
-    vow:'./assets/crypto/vow.svg'
+    vow:'./assets/crypto/vow.svg', btc:'./assets/crypto/btc.svg', bitcoin:'./assets/crypto/btc.svg',
+    sol:'./assets/crypto/sol.svg', solana:'./assets/crypto/sol.svg', xrp:'./assets/crypto/xrp.svg',
+    trx:'./assets/crypto/trx.svg', tron:'./assets/crypto/trx.svg', akt:'./assets/crypto/akt.svg', akash:'./assets/crypto/akt.svg',
+    pol:'./assets/crypto/polygon.svg', matic:'./assets/crypto/polygon.svg', polygon:'./assets/crypto/polygon.svg'
   };
   function iconKey(text){
     const t=String(text||'').trim().toLowerCase();
@@ -9029,15 +9094,25 @@ initAuth();
     if(/^avax\b/.test(t)||t.startsWith('avalanche')) return 'avax';
     if(/^eth\b/.test(t)||t.startsWith('ethereum')) return 'eth';
     if(/^vow\b/.test(t)) return 'vow';
+    if(/^btc\b/.test(t)||t.startsWith('bitcoin')) return 'btc';
+    if(/^sol\b/.test(t)||t.startsWith('solana')) return 'sol';
+    if(/^xrp\b/.test(t)) return 'xrp';
+    if(/^trx\b/.test(t)||t.startsWith('tron')) return 'trx';
+    if(/^akt\b/.test(t)||t.startsWith('akash')) return 'akt';
+    if(/^pol\b/.test(t)||/^matic\b/.test(t)||t.startsWith('polygon')) return 'polygon';
+    for(const [chain,meta] of Object.entries(CHAIN_META||{})){
+      const label=String(meta?.label||'').toLowerCase(),sym=String(NATIVE_SYMBOL?.[chain]||meta?.nativeSymbol||'').toLowerCase();
+      if((label&&t.startsWith(label))||(sym&&new RegExp('^'+sym.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b').test(t))) return meta?.iconPath?`chain:${chain}`:'';
+    }
     return '';
   }
   function decorate(root=document){
     const nodes=root.querySelectorAll?.('td, .chain-card h3, .chain-card h4, .project-summary-box .label, .project-data-table td')||[];
     nodes.forEach(el=>{
       if(el.dataset.cryptoDecorated==='1'||el.querySelector(':scope > .crypto-icon')) return;
-      const key=iconKey(el.textContent); if(!key||!ICONS[key]) return;
+      const key=iconKey(el.textContent); const src=key?.startsWith('chain:')?CHAIN_META[key.slice(6)]?.iconPath:ICONS[key]; if(!key||!src) return;
       const badge=document.createElement('span'); badge.className='crypto-icon sm'; badge.setAttribute('aria-hidden','true');
-      const img=document.createElement('img'); img.src=ICONS[key]; img.alt=''; badge.appendChild(img);
+      const img=document.createElement('img'); img.src=src; img.alt=''; badge.appendChild(img);
       el.insertBefore(badge,el.firstChild); el.dataset.cryptoDecorated='1';
     });
   }

@@ -1,3 +1,4 @@
+// Phase 5.82 · 21.09.2026 23:57:38 CEST: Wallet-Speichern nutzt den bestehenden gezielten DAO1/APTMDAO-Erstaufbau weiter; allgemeine Bestände werden nur für diese Wallet aktualisiert, kein globales loadAll(). Build 20260921-235738.
 // Phase 5.80 · 21.09.2026 18:15:39 CEST: DAO-Dokumentation bereinigt; Cache-/Request-Audit ist abgeschlossen, 24h Partner-Current-State Warm-Run praktisch bestätigt. Build 20260921-181539.
 // Phase 5.79: DAO Team hat nur noch eine normale wallet-zentrierte Ansicht; separate DAO1-alt/APTMDAO-neu Tabs entfernt, Graphen bleiben intern getrennt und im DEV-Nachweis sichtbar.
 // Phase 5.78 · 21.09.2026 17:29:35 CEST: DAO-Team nutzt zusätzlich einen 24h-IndexedDB-Current-State-Cache für fremde Partner-Wallet+NFT-Contracts; History/DID/Kaufpreis bleiben getrennt. Build 20260921-172935.
@@ -8,8 +9,8 @@
 (() => {
 // WalletTracking · DAO1 Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260921-181539";
-const HELP_MODULE_TIMESTAMP="21.09.2026 18:15:39 CEST";
+const HELP_MODULE_BUILD="20260921-235738";
+const HELP_MODULE_TIMESTAMP="21.09.2026 23:57:38 CEST";
 function renderDAO1Help(){
   const el=document.getElementById("dao1HelpContent");
   if(!el)return;
