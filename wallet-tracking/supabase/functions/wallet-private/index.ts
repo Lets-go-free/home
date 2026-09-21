@@ -1,3 +1,4 @@
+// Phase 5.81 · 21.09.2026 23:36:49 CEST · vollständige Einzel-Wallet-Löschung via transaktionaler DB-RPC · Build 20260921-233649
 import { withSupabase } from 'npm:@supabase/server@^1'
 
 const ENCRYPTION_VERSION = 1
@@ -810,6 +811,44 @@ export default {
       if (action === 'wallet_save') {
         const id = await saveWallet(ctx.supabase, key, userId, body.wallet)
         return json({ ok: true, action, id })
+      }
+
+      if (action === 'wallet_delete') {
+        const walletId = cleanString(body.wallet_id, 64)
+        if (!/^[0-9a-fA-F-]{36}$/.test(walletId)) {
+          throw new Error('Ungueltige Wallet-ID.')
+        }
+
+        // Zielwallet vor dem Purge sicher entschluesseln. So kann ein eventuell
+        // vorhandener wallet:<adresse>-Alias über seinen usergebundenen HMAC-Key
+        // im selben DB-Purge entfernt werden, ohne die Klartextadresse an SQL zu geben.
+        const wallets = await loadWallets(ctx.supabase, key, userId)
+        const target = wallets.find((w) => String(w.id) === walletId)
+        if (!target) {
+          throw new Error('Wallet existiert nicht oder gehoert nicht zum angemeldeten User.')
+        }
+
+        const evm = String(target.evm_address ?? '').trim().toLowerCase()
+        const aliasHash = /^0x[0-9a-f]{40}$/.test(evm)
+          ? await referenceHmac(userId, `wallet:${evm}`)
+          : null
+
+        const { data: result, error } = await ctx.supabase.rpc(
+          'wallettracking_delete_wallet_complete',
+          {
+            p_wallet_id: walletId,
+            p_wallet_alias_hash: aliasHash,
+          },
+        )
+
+        if (error) {
+          const hint = /wallettracking_delete_wallet_complete|function .* does not exist/i.test(error.message || '')
+            ? ' Migration 069-wallet-complete-delete.sql zuerst in Supabase ausfuehren.'
+            : ''
+          throw new Error(`Wallet vollstaendig loeschen fehlgeschlagen: ${error.message}${hint}`)
+        }
+
+        return json({ ok: true, action, result })
       }
 
       if (action === 'team_alias_list') {

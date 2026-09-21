@@ -1,4 +1,4 @@
-// Phase 5.80 · 21.09.2026 18:15:39 CEST: Projektbereinigung nach Request-Audit; Messwerte dokumentiert, Audit als umgesetzt geführt, kleine TLN-Preissnapshot-Doppelabfrage dedupliziert. Build 20260921-181539.
+// Phase 5.81 · 21.09.2026 23:36:49 CEST: Vollständige Einzel-Wallet-Löschung dokumentiert; Snapshots, 31.12.-Bestände, History/Projekt-/Cache-Daten und Summen werden bereinigt bzw. aus verbleibenden Quellen neu aufgebaut. Build 20260921-233649.
 // Phase 5.79: DAO Team ist in der User-Oberfläche eine einzige wallet-zentrierte Ansicht; alte/neue Einzelgraphen bleiben intern getrennte Datenquellen und keine eigenen User-Tabs.
 // Phase 5.78 · 21.09.2026 17:29:35 CEST: Cache-/Request-Audit Runde 2: TLN Wallet-/Snapshot-Batches, Session-Dedup, Preis-Infrastruktur erst im Kurse/Pools-Tab; DAO-Partner-Current-State 24h IndexedDB; Navigation Active-State zentral stabilisiert.
 // Phase 5.58: Apertum-NFT-Kaufpreise prüfen nun ERC-20 sowie native APTM-Zahlungen in der Erwerbs-Tx und deren Internal Transactions. Alte negative Preisbefunde werden wegen Resolver-Version 2 einmalig neu ausgewertet. Reine Transfers/Mints werden nicht als fehlender Kaufpreis dargestellt.\n// Phase 5.58: Historische NFT-Entry-Txs werden auch bei noch offener Kaufprüfung erhalten. Kaufpreis-Negativbefunde gelten nur mit konkret geprüfter Erwerbs-Tx als abgeschlossen; alte unvollständige 5.56-Befunde werden automatisch erneut geprüft.\n// Phase 5.56: NFT-Daten werden bereits beim App-Start aus der zentralen Supabase-Registry geladen. Historische Kaufpreis-Evidenz wird am NFT persistent gecacht und von allen Verbrauchern gemeinsam genutzt; der NFT-Tab muss nicht zuerst geöffnet werden.
@@ -21,8 +21,8 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260921-181539";
-const HELP_MODULE_TIMESTAMP="21.09.2026 18:15:39 CEST";
+const HELP_MODULE_BUILD="20260921-233649";
+const HELP_MODULE_TIMESTAMP="21.09.2026 23:36:49 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;
@@ -47,7 +47,7 @@ function renderGeneralHelp(){
 
       <div class="custom-token-card"><h3 style="margin-top:0">💸 Gebühren · 🖼️ NFTs · 🔓 Freigaben</h3><p class="note"><strong>Gebühren:</strong> werden walletbezogen gespeichert und gezielt aktualisiert. <strong>NFTs:</strong> werden über die vorgesehenen Wallet-/Projektjobs geladen; Spam-/Sicher-Klassifikationen bleiben getrennt von der eigentlichen On-Chain-Erkennung. <strong>Freigaben:</strong> zeigen Token-Approvals rein lesend an; ein Widerruf erfolgt extern mit der eigenen Wallet.</p></div>
 
-      <div class="custom-token-card"><h3 style="margin-top:0">⚙️ Verwaltung</h3><p class="note"><strong>Meine Wallets:</strong> eigene Wallets verwalten. <strong>Vordefinierte Token:</strong> normale Benutzer sehen die freigegebenen Stammdaten nur lesend; Bearbeitung und technische Verwaltungsfelder sind Admin-Funktionen. <strong>Eigene sichere Token:</strong> persönliche Ergänzungen. <strong>Entdecken:</strong> durchsucht bei Bedarf auch historische Aktivitäten nach früher gehaltenen Token/Positionen.</p></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">⚙️ Verwaltung</h3><p class="note"><strong>Meine Wallets:</strong> eigene Wallets verwalten. <strong>Wallet löschen bedeutet vollständig löschen:</strong> Die Wallet wird auch aus manuellen/automatischen Snapshots, „Bestand per 31.12.“, Gebühren, NFTs, Claims/Rewards, Projekttransaktionen, LP-/Staking-/Discovery-Daten sowie daraus abgeleiteten userbezogenen Summen/Caches entfernt. Nach erfolgreichem Löschen lädt WalletTracking neu und baut Summen ausschließlich aus den verbleibenden Daten auf. Globale öffentliche Blockchain-/Registry-Fakten werden nicht gelöscht. <strong>Vordefinierte Token:</strong> normale Benutzer sehen die freigegebenen Stammdaten nur lesend; Bearbeitung und technische Verwaltungsfelder sind Admin-Funktionen. <strong>Eigene sichere Token:</strong> persönliche Ergänzungen. <strong>Entdecken:</strong> durchsucht bei Bedarf auch historische Aktivitäten nach früher gehaltenen Token/Positionen.</p></div>
 
       <div class="custom-token-card"><h3 style="margin-top:0">🔐 Datenschutz</h3><p class="note">Private Scan-/LP-Caches referenzieren eigene Wallets ausschließlich über die usergebundene wallet_id; eigene Wallet-Adressen werden dort nicht zusätzlich persistent gespeichert. RLS-Schutzregeln verhindern ein versehentliches Wiedereintragen von Klartextadressen. Private Walletdaten, Wallet-Besitzernamen und persönliche Partner-Aliase werden userbezogen verschlüsselt gespeichert. Der Besitzername wird ausschließlich über die geschützte Wallet-Edge-Function gelesen und geschrieben. Öffentliche Blockchain-Daten bleiben naturgemäß öffentlich. Private Namen/Zuordnungen gehören nicht in globale oder öffentliche Caches.</p></div>
 

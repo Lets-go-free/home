@@ -17,13 +17,14 @@
 // Phase 5.41: Dashboard-Projektwerte in frei/gebunden/gesamt aufgesplittet; TLN/VOW-LP-Doppelzählung zwischen walletData und lp_position_cache verhindert; aktuelle Preise mit Asset-refreshedAt; DAO1/APTMDAO Partner-Bots tree-spezifisch über eindeutige Erwerbs-Tx-Evidenz getrennt; evidenzbasierter Partner-Bot-Lifecycle persistent (Migration 065) und als Cache-Quelle für letzte Partneraktivitäten. Unklare Bot-Zuordnungen werden keinem Tree geraten.
 // Phase 5.40: Dashboard-Audit fortgesetzt: Preisrefresh stale-while-refresh (alter gültiger Snapshot bleibt sichtbar), Kursliste zweispaltig/kompakt, Reward-Assets periodenübergreifend zeilengleich, TLN Partner-Staking-TODO mit Ladezustand, gebundener Wert mit Projektaufschlüsselung, letzte bestätigte Partneraktivitäten aus Projektcaches. DAO1-Bot-Kauf-Aktivitäten bleiben bis zu einem belastbaren persistenten Partner-NFT-Eventcache offen.
 // WalletTracking · Ideen / Umbau
+// Phase 5.81 · 21.09.2026 23:36:49 CEST: Einzelne Wallet vollständig löschen umgesetzt: serverseitig/transaktionaler Purge inkl. Snapshots, 31.12.-Beständen, Projekt-/History-/Cache-Daten und Invalidierung abgeleiteter User-Summaries; globale On-Chain-/Registry-Fakten bleiben erhalten. Userweite Funktion „Alle Daten löschen“ bleibt separat offen. Build 20260921-233649.
 // Phase 5.39: Dashboard-Daten-Audit fortgesetzt: Hauptsummary in Vermögen/Rewards/Referral Rewards gruppiert; persistenter lp_position_cache wird beim Start cache-only für gebundene DAO1/TLN-LP-Werte gelesen; TLN-Team-Restore liefert verifizierte abgelaufene, noch gestakte Partnerpositionen an 'Was muss ich tun?'; Datenstand-Texte benutzerverständlich statt 'nicht instrumentiert'. Systemübersicht/Datenquellen/Ladezeitpunkte geprüft.
 // Zentrale Arbeits- und Übergabeliste.
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260921-181539";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "21.09.2026 18:15:39 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260921-233649";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "21.09.2026 23:36:49 CEST";
 // Phase 5.33: Dashboard-Summary validiert und Start weiter entkoppelt. Apertum-native-Fehler behoben: interner Asset-Key "native" wird nie mehr als EVM-Adresse ABI-encodiert. TLN/BSC lp_position_cache wird beim Dashboard-Start walletübergreifend in einem Batch gelesen statt mit Einzelrequest pro Wallet. TLN "davon aktiv" zeigt bei unvollständig verifizierten Lifecycles keine scheinbar endgültige Zahl mehr, sondern bestätigte Aktive plus offene Partner; erst bei vollständiger Lifecycle-Abdeckung wird die Endzahl gesetzt. DAO1 Dashboard-Rewards werden gezielt aus vorhandenen project_transactions + project_transaction_asset_flows gelesen, ohne ensureLoaded()/vollständige DAO1-Tab-Initialisierung. Phase 5.35 ersetzt die frühere USD-Summary: Gesamt/Vorjahr/Jahr/Monat zeigen Originaltoken/-mengen; historische USD-Bewertungen sind dafür nicht erforderlich. DAO1 "aktiv" bleibt bewusst offen: aktueller Code enthält keinen belastbaren Bot-Target-/Completed-Contract-Proof. Reward-Zeilen der Projektkarten wieder als konsistente Kacheln gestaltet. Systemübersicht, Admin-Doku und Hilfe synchronisiert. Build 20260919-140811.
 // Phase 5.30: TLN/VOW-Contracts werden aus der allgemeinen CoinGecko-/GeckoTerminal-Preisermittlung ausgeschlossen und ausschließlich über die bestehende zentrale Projekt-PriceEngine bewertet (BSC PancakeSwap / ETH Uniswap). Dashboard zeigt Contract-Adressen einheitlich nur verkürzt mit Copy-Funktion; vollständige Adressen werden nicht zusätzlich als Symbolzeile ausgegeben. Preisrouten/-berechnungen selbst unverändert.
 // Phase 5.29: Dashboard-Gerüst wird unmittelbar nach Login sichtbar, bevor Chain-/DB-Konfiguration fertig geladen ist. TLN/VOW-Dashboardpreise zeigen tatsächliche DEX-Quelle (BSC PancakeSwap / ETH Uniswap) plus vorhandene Preisroute. DAO1 hat neu „Kurse und Pools“ als reine Sicht auf die bereits bestehende Apertum-Preislogik; keine neue Preisermittlung.
@@ -548,11 +549,18 @@ OFFEN: Bot-Target/Aktivstatus belastbar on-chain beweisen; Referral-Reward→Par
     desc: "ZIEL: Zentrale Cache-/Schema-Versionierung je Datenjob statt verstreuter Einzelregeln. Fachliche Änderung → betroffene Cache-Version erhöhen → veraltete Daten erkennen → wenn möglich migrieren/reklassifizieren, sonst gezielt neu aufbauen. Nicht blind alle Caches löschen. WICHTIG: Lifecycle-Daten, deren Zustand sich on-chain ändern kann, benötigen zusätzlich einen inkrementellen Refresh und dürfen nicht allein wegen gültiger Cache-Version als aktuell gelten. Diese Regel ist besonders für TLN/VOW Loans (Waiting-to-Swap, Fälligkeit, Repay) relevant."
   },
   {
+    status: "done",
+    category: "Security & Privacy",
+    priority: "high",
+    title: "Einzelne Wallet vollständig löschen",
+    desc: "Phase 5.81 umgesetzt: Löschen in „Meine Wallets“ bedeutet vollständiger Purge. Server-/DB-seitig werden alle eindeutig walletbezogenen Bestände, manuelle/automatische Snapshot-Items, Bestand-per-31.12.-Positionen und -Coverage, Gebühren, NFTs, Claims/Rewards, Projekttransaktionen/Asset-Flows, LP-/Staking-/Discovery-/Scan-/Refresh-Caches entfernt. Nicht mehr gültige userbezogene DAO-Partner-Lifecycle-/Scan-Caches werden vollständig invalidiert und später aus verbleibenden Wallets neu aufgebaut. Leere Snapshot-Hüllen werden entfernt; Summen werden nie durch Subtraktion fortgeschrieben, sondern nach Reload aus den verbleibenden Quelldaten neu gebildet. Globale On-Chain-/Registry-/Token-/Contract-Fakten bleiben erhalten."
+  },
+  {
     status: "open",
     category: "Security & Privacy",
     priority: "high",
-    title: "Wallet vollständig löschen / Alle Daten löschen",
-    desc: "Wallet-Löschung mit Bestätigung und vollständigem Purge aller walletbezogenen DB-/Cache-Daten. Zusätzlich userweite Funktion „Alle Daten löschen“ vorsehen."
+    title: "Alle Userdaten vollständig löschen",
+    desc: "Zusätzlich zur fertigen Einzel-Wallet-Löschung eine userweite Funktion vorsehen, die sämtliche persönlichen WalletTracking-Daten löscht (Wallets, userbezogene Projekt-/History-/Cache-Daten, Aliase, UI-Einstellungen und weitere user_id-Daten) und danach lokale Browserdaten bereinigt."
   },
   {
     status: "done",
@@ -1098,3 +1106,13 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    - Kleine technische Bereinigung: TLN/VOW Preis-Snapshot-Read wird kurzzeitig in-flight/session wiederverwendet, damit App-Start und direktes Öffnen des Projekts denselben Supabase-Snapshot nicht unmittelbar doppelt lesen.
    - Keine Fachlogik zu DAO/TLN/Loans/Staking/Rewards geändert. Loans bewusst zurückgestellt.
    Build 20260921-181539. */
+
+/* Phase 5.81 · 21.09.2026 23:36:49 CEST
+   Vollständige Einzel-Wallet-Löschung:
+   - wallet-private Aktion wallet_delete ruft eine transaktionale, usergebundene DB-RPC auf.
+   - Walletbezogene Snapshot-/31.12.-/Projekt-/History-/LP-/Staking-/Discovery-/Gebühren-/NFT-/Scan-/Refresh-Daten werden vollständig entfernt.
+   - __all-Stichtags-Coverage und nicht eindeutig root-gebundene DAO-Partner-Lifecycle-/Scan-Caches werden invalidiert und aus verbleibenden Wallets neu aufgebaut.
+   - Leere Snapshot-Hüllen werden entfernt; nach erfolgreicher Löschung erzwingt die App einen Reload, damit Summen ausschließlich aus verbleibenden Quelldaten entstehen.
+   - Globale On-Chain-/Registry-/Token-/Contract-Fakten bleiben erhalten.
+   - Userweite Funktion „Alle Userdaten löschen“ bleibt als separater offener Security-Punkt bestehen.
+   Build 20260921-233649. */

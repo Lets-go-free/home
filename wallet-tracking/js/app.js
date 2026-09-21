@@ -1,4 +1,4 @@
-// Phase 5.80 · 21.09.2026 18:15:39 CEST: Systemübersicht/Request-Audit Status bereinigt und Abschlussmessungen dokumentiert. Build 20260921-181539.
+// Phase 5.81 · 21.09.2026 23:36:49 CEST: Wallet-Löschung serverseitig/transaktional vervollständigt; Snapshots, 31.12.-Bestände, Projekt-/History-/Cache-Daten und abgeleitete Summen werden vollständig bereinigt. Build 20260921-233649.
 /* WalletTracking Phase 5.79 · 21.09.2026 17:57:25 CEST · Build 20260921-175725 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
@@ -1499,7 +1499,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"help",level:1,label:"Hilfe",status:"planning",start:"Datei/DOM",daily:"–",open:"lokal",manual:"–",details:[["Allgemeine Hilfe","JS-Modul","–","–","Tab öffnen"]]},
 
   {id:"walletsgrp",level:0,label:"🧰 Wallets & Token",status:"planning",start:"DB",daily:"–",open:"Cache/DB",manual:"je Funktion",details:[]},
-  {id:"wallets",level:1,label:"Meine Wallets",status:"in_progress",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"verschlüsselt speichern",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"]]},
+  {id:"wallets",level:1,label:"Meine Wallets",status:"done",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"verschlüsselt speichern / vollständig löschen",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"],["Wallet vollständig löschen","RAM wird nach Erfolg verworfen","wallet-private → transaktionale RPC; walletbezogene Tabellen + Snapshot-/31.12.-Daten + abgeleitete User-Caches","keine globalen Registry-/On-Chain-Fakten","Löschen in Meine Wallets; danach Reload und Neuaufbau aller Summen aus verbleibenden Daten"]]},
   {id:"predefined",level:1,label:"Vordefinierte Token",status:"in_progress",start:"DB",daily:"–",open:"RAM",manual:"DB neu",details:[["Vordefinierte Token + Dashboard-Flag","RAM","Supabase · predefined_tokens.dashboard_visible","–","App-Start; Flag bedeutet „immer anzeigen“. Positive Bestände > USD 1 erscheinen automatisch; Flag-Änderung nur Admin, danach Dashboard aus RAM neu rendern"]]},
   {id:"custom",level:1,label:"Eigene sichere Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB",details:[["User-Token","RAM","Supabase · userbezogene Token","–","App-Start"]]},
   {id:"discovery",level:1,label:"🔍 Entdecken",status:"planning",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Erst beim Öffnen des Tabs; Scan nur manuell"]]},
@@ -3543,62 +3543,9 @@ function addWallet() {
   renderWalletInputs();
 }
 
-function isMissingTableDeleteError(error) {
-  const code = String(error?.code || "");
-  const msg = String(error?.message || "");
-  return code === "42P01" || /relation .* does not exist|schema cache/i.test(msg);
-}
-
-async function deleteWalletRows(table, buildQuery, label) {
-  const query = buildQuery(sb.from(table).delete());
-  const { error } = await query;
-  if (!error) return;
-  // Einige optionale Projekt-/Cache-Tabellen sind installationsabhängig. Wenn eine
-  // Tabelle gar nicht existiert, gibt es dort auch keine walletbezogenen Daten zu löschen.
-  if (isMissingTableDeleteError(error)) return;
-  throw new Error(`${label || table}: ${error.message || error}`);
-}
-
-async function purgeWalletRelatedData(w) {
-  if (!currentUser || !w) return;
-  const userId = currentUser.id;
-  const walletId = String(w.dbId || w.id || "");
-  const dbWalletId = w.dbId ? String(w.dbId) : null;
-  const evmAddress = String(w.evm || "").trim().toLowerCase();
-
-  // User-/walletbezogene Persistenz zuerst löschen. Der eigentliche Wallet-Datensatz
-  // wird bewusst ERST danach entfernt, damit bei einem Fehler keine verwaiste Cache-Lage
-  // zurückbleibt. Globale/on-chain Fakten (z.B. TLN Identity-/Team-Graph, LP-/Contract-Fakten)
-  // sind nicht userbezogen und bleiben erhalten.
-  if (dbWalletId) {
-    await deleteWalletRows("snapshot_items", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Snapshots");
-    await deleteWalletRows("year_end_positions", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Stichtagsbestände");
-    await deleteWalletRows("year_end_coverage", q => q.eq("user_id", userId).in("wallet_scope", [dbWalletId, "__all"]), "Stichtags-Abdeckung");
-  }
-
-  await deleteWalletRows("wallet_refresh_state", q => q.eq("user_id", userId).eq("wallet_id", walletId), "Refresh-Status");
-  await deleteWalletRows("wallet_fee_transactions", q => q.eq("user_id", userId).eq("wallet_id", walletId), "Gebühren-Transaktionen");
-  await deleteWalletRows("wallet_fee_cache", q => q.eq("user_id", userId).eq("wallet_id", walletId), "Gebühren-Cache");
-  await deleteWalletRows("nft_cache", q => q.eq("user_id", userId).eq("wallet_id", walletId), "NFT-Cache");
-  await deleteWalletRows("discovery_cache", q => q.eq("user_id", userId).eq("wallet_id", walletId), "Discovery-Cache");
-  if (evmAddress) await deleteWalletRows("dao_partner_bot_lifecycle_cache", q => q.eq("user_id", userId).eq("wallet_address", evmAddress), "DAO Partner-Bot-Lifecycle");
-
-  if (dbWalletId) {
-    await deleteWalletRows("lp_history_events", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "LP-Historie");
-    await deleteWalletRows("lp_position_cache", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "LP-Positions-Cache");
-    await deleteWalletRows("project_miners", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-Miner");
-    await deleteWalletRows("project_miner_ownership", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Miner-Besitzerhistorie");
-    await deleteWalletRows("project_nft_claims", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-NFT-Claims");
-    await deleteWalletRows("project_nft_ownership", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-NFT-Besitzerhistorie");
-    await deleteWalletRows("project_scan_state", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-Scanstatus");
-    await deleteWalletRows("project_transaction_asset_flows", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "DAO1 Asset-Flows");
-    await deleteWalletRows("project_transactions", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "Projekt-Transaktionen");
-    await deleteWalletRows("tln_wallet_identity_cache", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "TLN Wallet-Identity-Cache");
-    await deleteWalletRows("tln_vow_staking_scan_cache", q => q.eq("user_id", userId).eq("wallet_id", dbWalletId), "TLN/VOW Discovery-/Staking-Cache");
-  } else if (evmAddress) {
-    // Nur Legacy-Fallback fuer noch nicht persistierte/alte Datenlagen.
-    await deleteWalletRows("tln_vow_staking_scan_cache", q => q.eq("user_id", userId).eq("wallet_address", evmAddress), "TLN/VOW Discovery-/Staking-Cache");
-  }
+async function deleteWalletCompletely(w) {
+  if (!currentUser || !w?.dbId) throw new Error("Gespeicherte Wallet-ID fehlt.");
+  return invokeWalletPrivate("wallet_delete", {wallet_id:String(w.dbId)});
 }
 
 function clearWalletRelatedMemory(w) {
@@ -3619,9 +3566,31 @@ function clearWalletRelatedMemory(w) {
   if (typeof walletRefreshStates !== "undefined" && walletRefreshStates?.keys) {
     for (const key of [...walletRefreshStates.keys()]) if (String(key).startsWith(walletId + "|")) walletRefreshStates.delete(key);
   }
+
+  // Historische/aggregierte Ansichten dürfen nach einer vollständigen Wallet-Löschung
+  // keine bereits geladenen Werte der gelöschten Wallet im RAM behalten.
   if (Array.isArray(taxRows)) {
     taxRows = taxRows.filter(r => String(r.wallet_id || "") !== walletId && !(w?.label && r.wallet === w.label));
   }
+  taxCoverage = [];
+  taxSnapshotLoaded = false;
+  taxPriceCache?.clear?.();
+
+  if (Array.isArray(snapshots)) {
+    snapshots = snapshots
+      .map(s => ({...s,items:(s.items||[]).filter(it=>String(it.wallet_id||"")!==walletId)}))
+      .filter(s => (s.items||[]).length > 0);
+  }
+  snapshotsLoaded = false;
+  snapshotsLoadPromise = null;
+
+  // Projekt-Summaries enthalten aggregierte Werte über mehrere Wallets. Die lokale
+  // Persistenz wird invalidiert; nach dem folgenden Reload wird sie ausschließlich
+  // aus den verbleibenden Wallets/DB-Daten neu aufgebaut.
+  try {
+    const key = dashboardProjectSummaryStorageKey?.();
+    if (key) localStorage.removeItem(key);
+  } catch (_) {}
 }
 
 async function removeWallet(id) {
@@ -3629,24 +3598,30 @@ async function removeWallet(id) {
   if (!w) return;
 
   const persistedText = w.dbId
-    ? "Dabei werden alle zu dieser Wallet gespeicherten Daten und userbezogenen Caches unwiderruflich gelöscht (Bestände/Snapshots, Stichtagsdaten, Gebühren, NFTs, Discovery, Refresh-Status und TLN/VOW-Wallet-Caches)."
-    : "Die Wallet ist noch nicht gespeichert und wird aus der aktuellen Liste entfernt.";
-  if (!confirm(`Wallet "${w.label}" wirklich löschen?\n\n${persistedText}\n\nDieser Vorgang kann nicht rückgängig gemacht werden.`)) return;
+    ? "Dabei wird diese Wallet vollständig aus WalletTracking gelöscht – inklusive Beständen, manuellen und automatischen Snapshots, Bestand per 31.12., Gebühren, NFTs, Claims/Rewards, Projekt-Transaktionen, LP-/Staking-/Discovery-Daten, Refresh-/Scan-States und allen daraus berechneten userbezogenen Summen/Caches. Globale Blockchain-/Registry-Fakten bleiben erhalten."
+    : "Die Wallet ist noch nicht gespeichert und wird nur aus der aktuellen Liste entfernt.";
+  if (!confirm(`Wallet "${w.label}" wirklich VOLLSTÄNDIG löschen?\n\n${persistedText}\n\nDieser Vorgang kann nicht rückgängig gemacht werden.`)) return;
 
   try {
-    if (w.dbId) {
-      await purgeWalletRelatedData(w);
-      const { error } = await sb.from("wallets").delete().eq("user_id", currentUser.id).eq("id", w.dbId);
-      if (error) throw new Error("Wallet-Datensatz: " + (error.message || error));
-    }
+    if (w.dbId) await deleteWalletCompletely(w);
   } catch (e) {
     console.error("Wallet vollständig löschen:", e);
-    alert("Die Wallet wurde NICHT gelöscht, weil nicht alle zugehörigen Daten sicher entfernt werden konnten.\n\n" + (e.message || e));
+    alert("Die Wallet wurde NICHT vollständig gelöscht.\n\n" + (e.message || e));
     return;
   }
 
   clearWalletRelatedMemory(w);
   wallets = wallets.filter(x => x.id !== id);
+
+  // Ein kompletter Reload ist hier Absicht: sämtliche userbezogenen Aggregationen,
+  // Projekt-Summaries und Caches werden danach aus dem bereinigten DB-Stand neu
+  // aufgebaut. So kann keine alte Summe der gelöschten Wallet im RAM stehen bleiben.
+  if (w.dbId) {
+    alert(`Wallet "${w.label}" wurde vollständig gelöscht. WalletTracking wird neu geladen, damit alle Summen und historischen Ansichten aus den verbleibenden Daten neu aufgebaut werden.`);
+    location.reload();
+    return;
+  }
+
   renderWalletInputs();
   renderGlobalWalletPersonFilter();
   renderDashboard();
