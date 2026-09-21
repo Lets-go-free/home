@@ -1,3 +1,4 @@
+// Phase 5.85 · 22.09.2026 00:53:12 CEST: Hotfix – DAO1 Übersicht wird beim ersten Öffnen des Projekts sofort gerendert, ohne dass der Übersicht-Untertab zuerst manuell angeklickt werden muss. Build 20260922-005312.
 // Phase 5.84 · 22.09.2026 00:38:20 CEST: DAO1 Übersicht erhält cache-basierte Summary-Kacheln für Wallets, Bots, DIDs/Membership, Bot-Claims, Referral-Rewards und wallet-zentrierte Team-Partner. Build 20260922-003820.
 // Phase 5.79: DAO Team vereinfacht: nur noch eine wallet-zentrierte User-Ansicht; alte/neue Einzelgraphen bleiben intern/DEV-Nachweis, nicht als normale Tabs.
 // Phase 5.78: DAO-Team ergänzt einen 24h-IndexedDB-Current-State-Cache pro fremdem Partner-Wallet/NFT-Contract; History/Kaufpreis/DID bleiben separat. Navigation/History-Sessioncache unverändert fachlich.
@@ -6815,6 +6816,11 @@ window.DAO1Project = (() => {
     await ensureMounted();
     if (!loaded) { await refreshConfig(); loaded = true; }
     updateVisibility();
+    // Die Übersicht ist beim ersten Mount bereits sichtbar/aktiv, ohne dass
+    // switchSubtab("overview") ausgeführt wird. Deshalb muss sie hier selbst
+    // gerendert werden, sonst bleibt der alte Platzhalter bis zum ersten Klick stehen.
+    const overview = document.getElementById("dao1-subtab-overview");
+    if (overview && overview.style.display !== "none") await renderDAO1BotOverview();
   }
 
   function dashboardRewardPeriods(rows,flows){
