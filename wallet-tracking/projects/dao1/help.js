@@ -109,3 +109,10 @@ else renderDAO1Help();
    Voraussetzung fuer die Anzahl. Membership-Ablaufdaten bleiben offen, bis die konkrete
    on-chain Expiry-Quelle fuer DAO1 und APTMDAO verifiziert ist.
 */
+
+
+/* Phase 5.65 · 21.09.2026 02:38:12 CEST
+   Partnerkarten verwenden fuer DAO1-/APTMDAO-DIDs und aktuelle Mining-/Trading-Bot-Anzahlen
+   zuerst den aktuellen ERC-721-Walletbestand. Historische Erwerbs-, Kaufpreis- und DID-Zuordnung
+   werden nachgelagert ermittelt und blockieren die Bestandsanzeige nicht.
+*/

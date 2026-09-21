@@ -1,4 +1,4 @@
-// Phase 5.64: Partner-DIDs werden aus aktuellem ERC-721-Besitz ergaenzt; Bot-Anzahlen basieren ausschliesslich auf aktuellem Bestand.
+// Phase 5.65: Partner-DIDs werden aus aktuellem ERC-721-Besitz ergaenzt; Bot-Anzahlen basieren ausschliesslich auf aktuellem Bestand.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
 // WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
 window.DAO1Project = (() => {
@@ -4739,113 +4739,60 @@ window.DAO1Project = (() => {
     return [...held];
   }
 
+  async function dao1TeamFetchCurrentWalletNfts(wallet){
+    const a=lower(wallet);if(!/^0x[0-9a-f]{40}$/.test(a))return [];
+    const key=`current-nfts:${a}`,cached=dao1TeamPartnerDetailsCache.get(key);
+    if(cached?.nfts&&Date.now()-Number(cached.loadedAt||0)<300000)return cached.nfts;
+    const base=`${EXPLORER_API}/addresses/${a}/nft?type=ERC-721`;
+    let url=base,out=[],pages=0;
+    while(url&&pages++<30){
+      const j=await fetchJson(url,"Apertum Explorer aktueller NFT-Bestand");
+      out.push(...(j.items||[]));url=nextUrl(base,j.next_page_params);
+    }
+    const rows=out.map(x=>{
+      const token=x?.token||{},instance=x?.token_instance||x?.instance||{},meta=instance?.metadata||x?.metadata||{};
+      const contract=lower(token?.address_hash||token?.address||x?.token_address||x?.contract_address||"");
+      const id=String(x?.id??x?.token_id??instance?.id??"");
+      return {id,contract,name:meta?.name||token?.name||token?.symbol||`NFT #${id}`,collectionName:String(token?.name||token?.symbol||""),current:true,current_wallet:a,partner_live:true};
+    }).filter(x=>/^0x[0-9a-f]{40}$/.test(x.contract)&&x.id!=="");
+    dao1TeamPartnerDetailsCache.set(key,{nfts:rows,loadedAt:Date.now()});return rows;
+  }
+
   async function dao1TeamFetchPartnerIdentity(wallet){
     const a=lower(wallet);if(!/^0x[0-9a-f]{40}$/.test(a))return {legacy:[],aptmdao:[]};
     const result={legacy:[],aptmdao:[]};
+    // Fuer die Kachel nur den aktuellen Explorer-NFT-Bestand verwenden. Dadurch muss fuer
+    // eine DID nicht zuerst die komplette Transferhistorie des Partner-Wallets geladen werden.
+    const current=await dao1TeamFetchCurrentWalletNfts(a);
     for(const [system,contract] of [["legacy",lower(DAO1_OLD_DID_CONTRACT)],["aptmdao",lower(APTMDAO_NFT_CONTRACT)]]){
-      const rows=await loadWalletNftTransferHistory(a,contract);
-      const held=new Set();
-      for(const t of dao1TeamSortTransfersAsc(rows)){
-        const ids=transferTokenIds(t);if(!ids.length)continue;
-        const from=transferFromAddress(t),to=transferToAddress(t);
-        if(from===a&&to!==a)for(const id of ids)held.delete(String(id));
-        if(to===a)for(const id of ids)held.add(String(id));
-      }
-      result[system]=[...held].map(Number).filter(x=>Number.isFinite(x)&&x>0).sort((x,y)=>x-y);
+      result[system]=current.filter(n=>lower(n.contract)===contract).map(n=>Number(n.id)).filter(x=>Number.isFinite(x)&&x>0).sort((x,y)=>x-y);
     }
-    dao1PartnerIdentityStats.set(a,result);
-    return result;
+    dao1PartnerIdentityStats.set(a,result);return result;
   }
 
   async function dao1TeamFetchPartnerNfts(wallet,mode=dao1TeamTreeMode){
     const a=lower(wallet);if(!/^0x[0-9a-f]{40}$/.test(a))return [];
     mode=mode==="aptmdao"?"aptmdao":"legacy";
     const walletCacheKey=`wallet:${mode}:${a}`;
-    const cached=dao1TeamPartnerDetailsCache.get(walletCacheKey);if(cached?.nfts)return cached.nfts;
+    const cached=dao1TeamPartnerDetailsCache.get(walletCacheKey);if(cached?.nfts&&Date.now()-Number(cached.loadedAt||0)<300000)return cached.nfts;
     if(dao1PartnerNftInflight.has(walletCacheKey))return dao1PartnerNftInflight.get(walletCacheKey);
     const job=(async()=>{
+      // Aktueller Bestand ist eine Snapshot-Frage. Kauf-/Lifecycle-Historie wird erst
+      // danach separat ermittelt und darf die Kachel nicht blockieren.
+      const current=await dao1TeamFetchCurrentWalletNfts(a),botContracts=new Set(dao1TeamBotContracts().map(lower));
       const out=[];
-      // Kein breiter /addresses/{wallet}/nft-Scan mehr. Nur bekannte Bot-Contracts
-      // werden über die bereits vorhandene, contract-gefilterte Transferhistorie geprüft.
-      for(const contract of dao1TeamBotContracts()){
-        const rows=await loadWalletNftTransferHistory(a,contract);
-        const held=new Set(),everReceived=new Set();
-        for(const t of dao1TeamSortTransfersAsc(rows)){
-          const ids=transferTokenIds(t);if(!ids.length)continue;
-          const from=transferFromAddress(t),to=transferToAddress(t);
-          if(from===a&&to!==a)for(const id of ids)held.delete(String(id));
-          if(to===a)for(const id of ids){held.add(String(id));everReceived.add(String(id));}
-        }
-        for(const id of everReceived){
-          const related=rows.filter(t=>transferTokenIds(t).includes(String(id))).sort((x,y)=>Number(y?.block_number||0)-Number(x?.block_number||0));
-          const sample=related[0]||{},token=sample?.token||{},meta=sample?.token_instance?.metadata||sample?.metadata||{};
-          const cls=classificationFor(contract,id);
-          const rawName=cls?.nft_name||meta.name||token.name||token.symbol||`NFT #${id}`;
-          const collection=String(token.name||token.symbol||"");
-          const subtype=dao1TeamProjectNftSubtype(contract,id,rawName,collection);
-          if(!["Mining-Bot","Trading-Bot"].includes(subtype))continue;
-          out.push({id:String(id),contract,name:rawName,collectionName:collection,subtype,current:held.has(String(id)),owned_from_at:null,acquisition_verified:false,acquisition_kind:null,acquisition_tx_hash:null,purchase:null,partner_live:true});
-        }
+      for(const n of current){
+        if(!botContracts.has(lower(n.contract)))continue;
+        const cls=classificationFor(n.contract,n.id);
+        const rawName=cls?.nft_name||n.name||`NFT #${n.id}`;
+        const subtype=dao1TeamProjectNftSubtype(n.contract,n.id,rawName,n.collectionName||"");
+        if(!["Mining-Bot","Trading-Bot"].includes(subtype))continue;
+        out.push({...n,name:rawName,subtype,current:true,current_wallet:a,owned_from_at:null,acquisition_verified:false,acquisition_kind:null,acquisition_tx_hash:null,purchase:null});
       }
-      const dedup=[...new Map(out.map(n=>[`${n.contract}|${n.id}`,n])).values()];
-      dao1TeamPartnerDetailsCache.set(walletCacheKey,{...(cached||{}),nfts:dedup,loadedAt:Date.now()});return dedup;
+      const dedup=[...new Map(out.map(n=>[`${lower(n.contract)}|${n.id}`,n])).values()];
+      dao1TeamPartnerDetailsCache.set(walletCacheKey,{nfts:dedup,loadedAt:Date.now()});return dedup;
     })();
-    dao1PartnerNftInflight.set(walletCacheKey,job);
-    try{return await job;}finally{dao1PartnerNftInflight.delete(walletCacheKey);}
-  }
-
-  function dao1TeamOwnHistoricalBotCandidates(){
-    // Eigene Bots dürfen unabhängig von ihrem HEUTIGEN Wallet einer DID zugeordnet werden.
-    // Bot und DID sind frei transferierbare NFTs. Deshalb verwenden wir für eigene DIDs
-    // den frühesten gespeicherten Besitzabschnitt des Bots (wirtschaftlicher Erwerb) und
-    // prüfen die DID-Besitzlage genau an diesem historischen Erwerbsblock.
-    const by=new Map();
-    for(const o of ownershipRows||[]){
-      const contract=lower(o?.nft_contract||"");
-      const id=String(o?.nft_id??"");
-      if(!contract||!id)continue;
-      const cls=classificationFor(contract,id);
-      const subtype=dao1TeamProjectNftSubtype(contract,id,cls?.nft_name||o?.nft_name||`NFT #${id}`,"");
-      if(!["Mining-Bot","Trading-Bot"].includes(subtype))continue;
-      const wallet=lower(o?.wallet_address||walletAddress(walletByDbId(o?.wallet_id))||"");
-      if(!/^0x[0-9a-f]{40}$/.test(wallet))continue;
-      const block=Number(o?.owned_from_block||0)||0;
-      const at=o?.owned_from_at||null;
-      const key=`${contract}|${id}`;
-      const prev=by.get(key);
-      const prevBlock=Number(prev?.owned_from_block||0)||Number.MAX_SAFE_INTEGER;
-      // Frühester belegter Besitzabschnitt = Kandidat für den ursprünglichen Erwerb.
-      if(!prev || (block>0&&block<prevBlock) || (!prevBlock&&at&&String(at)<String(prev?.owned_from_at||"9999"))){
-        by.set(key,{
-          id,contract,name:cls?.nft_name||o?.nft_name||`NFT #${id}`,subtype,
-          current:false,owned_from_at:at,owned_from_block:block,
-          acquisition_verified:!!o?.acquisition_verified,acquisition_kind:o?.acquisition_kind||null,
-          acquisition_tx_hash:o?.acquisition_tx_hash||null,purchase:null,
-          acquisition_wallet:wallet,partner_live:false,own_history:true
-        });
-      }
-    }
-    // Aktuellen Status/Owner separat über alle Besitzabschnitte setzen. Der historische
-    // Erwerb bleibt am Bot erhalten, aber die normale Wallet-Detailansicht zeigt ihn nur
-    // beim HEUTIGEN Owner. So bleiben Kaufpreis und Kauf-Wallet trotz späterem Transfer erhalten.
-    for(const n of by.values()){
-      const currentRow=(ownershipRows||[]).find(o=>lower(o?.nft_contract)===n.contract&&String(o?.nft_id)===n.id&&!!o?.is_current);
-      n.current=!!currentRow;
-      n.current_wallet=currentRow?lower(currentRow?.wallet_address||walletAddress(walletByDbId(currentRow?.wallet_id))||""):"";
-    }
-    return [...by.values()];
-  }
-
-  function dao1TeamIsIdentityNft(nft){
-    const c=lower(nft?.contract||"");
-    return c===lower(DAO1_OLD_DID_CONTRACT)||c===lower(APTMDAO_NFT_CONTRACT);
-  }
-
-  function dao1TeamNftSystemDirect(nft){
-    const c=lower(nft?.contract||"");
-    if(c===lower(APTMDAO_NFT_CONTRACT))return "aptmdao";
-    if(c===lower(DAO1_OLD_DID_CONTRACT))return "legacy";
-    return null;
+    dao1PartnerNftInflight.set(walletCacheKey,job);try{return await job;}finally{dao1PartnerNftInflight.delete(walletCacheKey);}
   }
 
   function dao1TeamNftMatchesMode(nft,mode=dao1TeamTreeMode,did=null){

@@ -906,3 +906,12 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    anzeigen, sobald die jeweilige on-chain Expiry-Quelle belastbar verifiziert ist;
    unbekannt darf nie als fehlende Membership dargestellt werden.
 */
+
+
+/* Phase 5.65 · 21.09.2026 02:38:12 CEST
+   5.64-Korrektur: Partner-DID und Bot-Kachel lesen zuerst einen aktuellen ERC-721-NFT-Snapshot
+   des Wallets. Kauf-/Lifecycle-Historie laeuft davon getrennt und darf die Kachel nicht blockieren.
+   TODO: Partner projektbezogen als inaktiv markieren (userbezogen, historisch sichtbar, optisch heller).
+   TODO Dashboard/DAO: eigene relevante Wallets ohne belegte APTMDAO-DID unter
+   „Registration APTMDAO offen“ anzeigen; unbekannt/nicht geladen darf nicht als fehlend gelten.
+*/
