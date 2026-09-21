@@ -1,9 +1,10 @@
+// Phase 5.83 · 22.09.2026 00:14:45 CEST: Referral-Rewards normalisieren persistierte Raw-Units robust über verifizierte Contract-Decimals; alte Snapshot-Fallbacks und DEV-Renderer verwenden denselben Human-Amount-Pfad. Build 20260922-001445.
 // Phase 5.82 · 21.09.2026 23:57:38 CEST: Wallet-Speichern aktualisiert TLN/VOW gezielt nur dann sofort, wenn das Modul in der Session bereits initialisiert ist; sonst bleibt der Erstaufbau lazy. Build 20260921-235738.
 // Phase 5.78: TLN/VOW-Init bündelt Current-State-Walletprüfung projektweit, lädt Discovery-Snapshots per DB-Batch/Sessioncache und vermeidet RPC für bekannte Referral-Decmals; Team/History bleiben lazy.
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260921-235738';
+const BUILD_ID='20260922-001445';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -195,7 +196,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='21.09.2026 23:57:38 CEST';
+const APP_VERSION='22.09.2026 00:14:45 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -1385,7 +1386,7 @@ async function scanReferralWallet(){
     const tokens=new Map(referralTokens.map(t=>[t.address,{symbol:t.symbol,count:0,total:0}]));
     for(const r of strong)for(const m of r.mints){
       if(!tokens.has(m.token))continue;
-      const x=tokens.get(m.token);x.count++;x.total+=Number(m.amount);
+      const x=tokens.get(m.token);x.count++;x.total+=projectReferralMintHumanAmount(m);
     }
 
     const rewardTokenList=[...tokens.entries()].map(([address,x])=>({address,symbol:x.symbol}));
@@ -1407,7 +1408,7 @@ async function scanReferralWallet(){
       if(Number.isInteger(r.referralLevel)&&r.referralLevel>0)partner.levels.add(r.referralLevel);
       for(const m of r.mints){
         if(!partner.amounts.has(m.token))continue;
-        const amount=Number(m.amount)||0;
+        const amount=projectReferralMintHumanAmount(m);
         partner.amounts.set(m.token,(partner.amounts.get(m.token)||0)+amount);
         partner.total+=amount;
       }
@@ -1435,7 +1436,7 @@ async function scanReferralWallet(){
 
     const renderRows=arr=>arr.length?`<table><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Ursprünglich gestaked von</th><th>Staking</th><th>LP-Paar</th><th>TLN ID</th><th>Level</th><th>Stake-Zufluss</th><th>Tx</th><th>Nachweis</th></tr></thead><tbody>${arr.flatMap(r=>r.mints.map(m=>`<tr>
       <td>${esc(fmtTime(r.timestamp))}</td>
-      <td><b>${esc(displayTokenAmount(m.amount,m.symbol))} ${esc(m.symbol)}</b><div class="mono">${esc(m.token)}</div></td>
+      <td><b>${esc(displayTokenAmount(projectReferralMintHumanAmount(m),m.symbol))} ${esc(m.symbol)}</b><div class="mono">${esc(m.token)}</div></td>
       <td><b>Staker-Wallet</b><div class="mono">${esc(r.sender)}</div></td>
       <td>${r.staking?esc(r.staking.label||r.staking.name||r.to):r.stakeEvents?.length?'<span class="ok"><b>Staking per Stake-Event erkannt</b></span>':'<span class="warn">unbekannt</span>'}<div class="mono">${esc(r.to)}</div></td>
       <td>${r.lpPair?`<b>${esc(r.lpPair.label)}</b><div class="small mono muted">${esc(r.lpPair.pair)}</div><div class="small muted">${r.lpPair.source==='stake-transfer'?'on-chain aus Stake-Transfer':r.lpPair.source==='stake-tx-lp-transfer'?'on-chain aus LP-Abfluss der Stake-Tx':'Registry-Pair on-chain dekodiert'}</div>`:'<span class="muted">nicht bestimmt</span>'}</td>
@@ -2155,7 +2156,7 @@ async function scanWalletHeadless(wallet,startBlock=0n){
       if(Number.isInteger(r.referralLevel)&&r.referralLevel>0)partner.levels.add(r.referralLevel);
       for(const m of r.mints){
         if(!partner.amounts.has(m.token))continue;
-        const amount=Number(m.amount)||0;
+        const amount=projectReferralMintHumanAmount(m);
         partner.amounts.set(m.token,(partner.amounts.get(m.token)||0)+amount); partner.total+=amount;
         const tt=tokenTotals.get(m.token); if(tt){tt.count++;tt.total+=amount;}
       }
@@ -11003,7 +11004,7 @@ function renderReferralRewards(lots){
     const tokenList=ref.rewardTokenList||[];
     const partnerRows=ref.partnerRows||[];
     const partnerTable=partnerRows.length?`<div class="claim-summary"><div class="claim-summary-title">Referral-Rewards je Partner / TLN ID · verifizierte Claim-Test-Logik</div><div class="wrap"><table style="min-width:850px"><thead><tr><th>Partner · TLN ID</th><th>Level</th>${tokenList.map(t=>`<th>${esc(t.symbol)}</th>`).join('')}<th>Total</th></tr></thead><tbody>${partnerRows.map(p=>`<tr><td>${p.nodeId?tlnIdNameHtml(p.nodeId,[...p.wallets][0]):'<span class="warn"><b>unresolved</b></span>'}<div class="small mono muted">${[...p.wallets].map(esc).join('<br>')}</div></td><td>${p.levels?.size===1?`<b>Level ${[...p.levels][0]}</b>`:p.levels?.size?`<span class="warn">${[...p.levels].join(' / ')}</span>`:'–'}</td>${tokenList.map(t=>`<td>${fmt(p.amounts.get(t.address),t.symbol)}</td>`).join('')}<td><b>${fmt(p.total)}</b></td></tr>`).join('')}<tr><th>TOTAL</th><th>–</th>${tokenList.map(t=>`<th>${fmt(ref.tokenTotals?.get(t.address)?.total||0,t.symbol)}</th>`).join('')}<th>${fmt([...((ref.tokenTotals||new Map()).values())].reduce((s,x)=>s+Number(x.total||0),0))}</th></tr></tbody></table></div></div>`:'';
-    const rowsHtml=strong.length?`<div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Ursprünglich gestaked von</th><th>Staking</th><th>LP-Paar</th><th>TLN ID</th><th>Level</th><th>Stake-Nachweis</th><th>Tx</th><th>Evidenz</th></tr></thead><tbody>${strong.flatMap(r=>(r.mints||[]).map(m=>`<tr><td>${esc(r.timestamp?new Date(Number(r.timestamp)*1000).toLocaleString('de-CH'):'–')}</td><td><b>${esc(displayTokenAmount(m.amount,m.symbol))} ${esc(m.symbol)}</b><div class="mono muted">${esc(m.token)}</div></td><td class="mono">${esc(r.sender)}</td><td>${r.staking?esc(r.staking.label||r.staking.name||r.to):r.stakeEvents?.length?'<b>Staking per Stake-Event erkannt</b>':'unbekannt'}<div class="mono muted">${esc(r.to)}</div></td><td>${r.lpPair?`<b>${esc(r.lpPair.label)}</b><div class="small mono muted">${esc(r.lpPair.pair)}</div><div class="small muted">${r.lpPair.source==='stake-transfer'?'on-chain aus Stake-Transfer':r.lpPair.source==='stake-tx-lp-transfer'?'on-chain aus LP-Abfluss der Stake-Tx':'Registry-Pair on-chain dekodiert'}</div>`:'–'}</td><td>${r.tlnIdentity?.nodeId?`${tlnIdNameHtml(r.tlnIdentity.nodeId,r.sender)}<div class="small muted">${esc(r.tlnIdentity.source)}</div>`:'<span class="warn">unresolved</span>'}</td><td>${Number.isInteger(r.referralLevel)&&r.referralLevel>0?`<b>Level ${r.referralLevel}</b><div class="small muted">SmartNode-Upline</div>`:'–'}</td><td>${referralStakeAmountHtmlDiscovery(r)}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a></td><td><b>fremder Stake → Mint zum Wallet</b><div class="small muted">${r.stakeAmountEvidence?.source==='stake-tx-lp-transfer'?'LP-Abfluss in Stake-Tx':r.principalTransfers?.length?'Stake-Zufluss per Transfer':r.stakeEvents?.length?'Stake-Event':'Staking-Registry'}</div></td></tr>`)).join('')}</tbody></table></div>`:'<div class="muted">Keine starken Referral-Reward-Tx erkannt.</div>';
+    const rowsHtml=strong.length?`<div class="wrap"><table style="min-width:1450px"><thead><tr><th>Zeitpunkt</th><th>Reward</th><th>Ursprünglich gestaked von</th><th>Staking</th><th>LP-Paar</th><th>TLN ID</th><th>Level</th><th>Stake-Nachweis</th><th>Tx</th><th>Evidenz</th></tr></thead><tbody>${strong.flatMap(r=>(r.mints||[]).map(m=>`<tr><td>${esc(r.timestamp?new Date(Number(r.timestamp)*1000).toLocaleString('de-CH'):'–')}</td><td><b>${esc(displayTokenAmount(projectReferralMintHumanAmount(m),m.symbol))} ${esc(m.symbol)}</b><div class="mono muted">${esc(m.token)}</div></td><td class="mono">${esc(r.sender)}</td><td>${r.staking?esc(r.staking.label||r.staking.name||r.to):r.stakeEvents?.length?'<b>Staking per Stake-Event erkannt</b>':'unbekannt'}<div class="mono muted">${esc(r.to)}</div></td><td>${r.lpPair?`<b>${esc(r.lpPair.label)}</b><div class="small mono muted">${esc(r.lpPair.pair)}</div><div class="small muted">${r.lpPair.source==='stake-transfer'?'on-chain aus Stake-Transfer':r.lpPair.source==='stake-tx-lp-transfer'?'on-chain aus LP-Abfluss der Stake-Tx':'Registry-Pair on-chain dekodiert'}</div>`:'–'}</td><td>${r.tlnIdentity?.nodeId?`${tlnIdNameHtml(r.tlnIdentity.nodeId,r.sender)}<div class="small muted">${esc(r.tlnIdentity.source)}</div>`:'<span class="warn">unresolved</span>'}</td><td>${Number.isInteger(r.referralLevel)&&r.referralLevel>0?`<b>Level ${r.referralLevel}</b><div class="small muted">SmartNode-Upline</div>`:'–'}</td><td>${referralStakeAmountHtmlDiscovery(r)}</td><td class="mono"><a style="color:#8fb1ff" target="_blank" href="https://bscscan.com/tx/${esc(r.hash)}">${esc(r.hash)}</a></td><td><b>fremder Stake → Mint zum Wallet</b><div class="small muted">${r.stakeAmountEvidence?.source==='stake-tx-lp-transfer'?'LP-Abfluss in Stake-Tx':r.principalTransfers?.length?'Stake-Zufluss per Transfer':r.stakeEvents?.length?'Stake-Event':'Staking-Registry'}</div></td></tr>`)).join('')}</tbody></table></div>`:'<div class="muted">Keine starken Referral-Reward-Tx erkannt.</div>';
     el.innerHTML=`<div class="muted" style="margin-bottom:12px"><b>Referenzengine:</b> ${ref.hashes?.length||0} gezielte Mint-Tx geprüft · <b>${strong.length}</b> starke Referral-Tx · ${candidates.length} nicht starke/mehrdeutige Kandidaten · ${ref.ownTxExcluded||0} eigene Tx früh ausgeschlossen. Wallet-TLN-ID: <b>${esc(ref.walletIdentity?.nodeId||'unresolved')}</b>.</div>${partnerTable}${rowsHtml}`;
     return;
   }
@@ -11316,17 +11317,26 @@ function projectBonusRowsForPayload(payload){
   return rows;
 }
 const PROJECT_REFERRAL_REWARD_TOKENS=Object.freeze([
-  {symbol:'TLN',address:'0xf7d142a354322c7560250caa0e2a06c89649e4c2'},
-  {symbol:'TLN+',address:'0x29280091fa7f3abe4739ad5f1f7c5287feaf7736'},
-  {symbol:'TLNX',address:'0x3dda9ea88136ecede768cd374a2af37219da55e7'}
+  // Contract-decimals on BSC, independently verified. Keeping this contract-level
+  // fallback prevents old persisted snapshots from ever being rendered as raw wei-like units
+  // before DB/token metadata has finished loading. DB/chain metadata is still checked below.
+  {symbol:'TLN', address:'0xf7d142a354322c7560250caa0e2a06c89649e4c2',decimals:18},
+  {symbol:'TLN+',address:'0x29280091fa7f3abe4739ad5f1f7c5287feaf7736',decimals:18},
+  {symbol:'TLNX',address:'0x3dda9ea88136ecede768cd374a2af37219da55e7',decimals:18}
 ]);
-const PROJECT_REFERRAL_DECIMALS=new Map();
+const PROJECT_REFERRAL_DECIMALS=new Map(PROJECT_REFERRAL_REWARD_TOKENS.map(t=>[norm(t.address),t.decimals]));
 async function primeProjectReferralDecimals(){
   const rows=await Promise.all(PROJECT_REFERRAL_REWARD_TOKENS.map(async t=>{
     const a=norm(t.address);
     const dbRow=(allProjectRows||[]).find(r=>norm(r?.address||r?.contract_address||'')===a)||(displayTokenRows||[]).find(r=>norm(r?.address||r?.contract_address||'')===a);
+    const verified=Number(t.decimals);
     const dbDecimals=Number(dbRow?.decimals);
     if(Number.isInteger(dbDecimals)&&dbDecimals>=0&&dbDecimals<=36){
+      if(Number.isInteger(verified)&&dbDecimals!==verified){
+        log(`Referral-Token ${t.symbol}: DB-decimals ${dbDecimals} weichen vom verifizierten Contract-Wert ${verified} ab; verifizierter Wert bleibt aktiv.`,'warn');
+        PROJECT_REFERRAL_DECIMALS.set(a,verified);
+        return `${t.symbol}:${verified} (verified; DB=${dbDecimals})`;
+      }
       PROJECT_REFERRAL_DECIMALS.set(a,dbDecimals);
       return `${t.symbol}:${dbDecimals} (DB)`;
     }
@@ -11403,7 +11413,7 @@ function projectReferralDataForPayload(payload){
   }
   // Rückwärtskompatibler Fallback nur für sehr alte Snapshots ohne strong-Detailzeilen.
   const raw=ref.tokenTotals instanceof Map?[...ref.tokenTotals.entries()]:Object.entries(ref.tokenTotals||{});
-  return {totals:raw.map(([address,x])=>({address,symbol:x?.symbol||projectTokenSymbol(address),amount:Number(x?.total||0),count:Number(x?.count||0)})).filter(x=>x.amount||x.count),txCount:0};
+  return {totals:raw.map(([address,x])=>({address,symbol:x?.symbol||projectTokenSymbol(address),amount:projectReferralMintHumanAmount({token:address,amount:x?.total,decimals:x?.decimals}),count:Number(x?.count||0)})).filter(x=>x.amount||x.count),txCount:0};
 }
 function projectReferralTotalsForPayload(payload){return projectReferralDataForPayload(payload).totals}
 function projectReferralRowsForPayload(payload,wallet){
