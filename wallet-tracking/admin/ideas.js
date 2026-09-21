@@ -22,7 +22,7 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260921-170817";
+const ADMIN_IDEAS_MODULE_BUILD = "20260921-172935";
 const ADMIN_IDEAS_MODULE_TIMESTAMP = "21.09.2026 16:25:41 CEST";
 // Phase 5.33: Dashboard-Summary validiert und Start weiter entkoppelt. Apertum-native-Fehler behoben: interner Asset-Key "native" wird nie mehr als EVM-Adresse ABI-encodiert. TLN/BSC lp_position_cache wird beim Dashboard-Start walletübergreifend in einem Batch gelesen statt mit Einzelrequest pro Wallet. TLN "davon aktiv" zeigt bei unvollständig verifizierten Lifecycles keine scheinbar endgültige Zahl mehr, sondern bestätigte Aktive plus offene Partner; erst bei vollständiger Lifecycle-Abdeckung wird die Endzahl gesetzt. DAO1 Dashboard-Rewards werden gezielt aus vorhandenen project_transactions + project_transaction_asset_flows gelesen, ohne ensureLoaded()/vollständige DAO1-Tab-Initialisierung. Phase 5.35 ersetzt die frühere USD-Summary: Gesamt/Vorjahr/Jahr/Monat zeigen Originaltoken/-mengen; historische USD-Bewertungen sind dafür nicht erforderlich. DAO1 "aktiv" bleibt bewusst offen: aktueller Code enthält keinen belastbaren Bot-Target-/Completed-Contract-Proof. Reward-Zeilen der Projektkarten wieder als konsistente Kacheln gestaltet. Systemübersicht, Admin-Doku und Hilfe synchronisiert. Build 20260919-140811.
 // Phase 5.30: TLN/VOW-Contracts werden aus der allgemeinen CoinGecko-/GeckoTerminal-Preisermittlung ausgeschlossen und ausschließlich über die bestehende zentrale Projekt-PriceEngine bewertet (BSC PancakeSwap / ETH Uniswap). Dashboard zeigt Contract-Adressen einheitlich nur verkürzt mit Copy-Funktion; vollständige Adressen werden nicht zusätzlich als Symbolzeile ausgegeben. Preisrouten/-berechnungen selbst unverändert.
@@ -1066,3 +1066,13 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    - Current State und History bleiben getrennt.
    Regression: Monica 0x568281…fe4940 weiterhin DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
    Nächster Schritt: Messlauf gegen 5.76-Baseline; keine weiteren fachlichen Umbauten vor Messergebnis. Build 20260921-170817. */
+
+/* Phase 5.78 · 21.09.2026 17:29:35 CEST
+   Cache-/Request-Audit – Optimierungsrunde 2 umgesetzt:
+   - TLN/VOW: Noch unbekannte Wallets werden für aktuelle Projekt-Token in einem einzigen Multicall über alle Wallet/Token-Kombinationen geprüft; sicherer Einzelcall-Fallback bleibt bestehen.
+   - TLN/VOW: verified-discovery-results aller eigenen Wallets werden im Projekt-Einstieg per einem Supabase-Batch geladen und als Session-Cache bereitgestellt; gleiche technische Cache-Reads sind in-flight/session dedupliziert.
+   - TLN/VOW: Referral-Token-Decmals werden zuerst aus vorhandenen DB-Metadaten gelesen; RPC nur noch bei fehlender DB-Angabe. Der normale TLN-Haupttab lädt nur den gespeicherten Preis-Snapshot; DEX-Konfiguration/Provider/Live-Preislogik starten erst beim Untertab „Kurse und Pools“. Provider verwenden bekannte statische Chain-IDs statt zusätzlicher Netzwerk-Erkennung.
+   - DAO Team: aktueller Partner-NFT-/Bot-Bestand je Wallet+Contract wird als öffentlicher abgeleiteter Current-State-Cache 24h in IndexedDB wiederverwendet. Historische Erwerbs-/DID-/Kaufpreisprüfung bleibt davon getrennt und blockgenau.
+   - Navigation: ein Benutzerklick ist für den sichtbaren Active-State der jeweiligen Haupt-/Kontext-/Projekt-/Admin-Button-Gruppe autoritativ; genau der gewählte Tab bleibt markiert.
+   - Keine Fachregel zu Staking, Rewards, Referral oder DAO1/APTMDAO-Zuordnung geändert. Regression Monica bleibt verpflichtend: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
+   Nächster Schritt: Messlauf TLN/VOW Haupttab sowie DAO-Team Warm-Reload; danach verbleibende Requests bewerten. Build 20260921-172935. */

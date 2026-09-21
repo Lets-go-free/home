@@ -1,4 +1,4 @@
-// Phase 5.77 · 21.09.2026 17:08:17 CEST: Bot-Claims/Referral-Rewards verwenden gemeinsamen Session-History-Cache; Partner-Bot-Scan-State wird gebündelt und laufende identische Partner-Jobs werden dedupliziert. Build 20260921-170817.
+// Phase 5.78 · 21.09.2026 17:29:35 CEST: DAO-Team nutzt zusätzlich einen 24h-IndexedDB-Current-State-Cache für fremde Partner-Wallet+NFT-Contracts; History/DID/Kaufpreis bleiben getrennt. Build 20260921-172935.
 // Phase 5.62: DAO-Team lädt Partner-Bots zentral/persistent für Team und Dashboard; Partnerkarten zeigen Mining-/Trading-Bot-Zahlen, direkte Uplines und editierbare Aliase; ESC schließt Details.
 // Phase 5.60: Direkte DAO1-/APTMDAO-Uplines werden oberhalb der eigenen Wallet angezeigt; weiter geladene Ancestors dienen nur zur Auflösung und werden nicht als zusätzliche Team-Bäume gerendert.
 // Phase 5.58: Der zentrale DAO1/APTMDAO-Kaufpreisadapter wertet ERC-20-Abgänge, direkten nativen APTM-Value und ausgehende native Internal Transactions derselben Erwerbs-Tx aus. Nur eindeutige Zahlungs-Evidenz wird als Kaufpreis gespeichert; Transfer/Mint bleibt ohne erfundenen Preis.\n// Phase 5.58: DAO1-Ownership speichert die Erwerbs-Tx auch bei Wallet-Eingang ohne bereits verifizierten Kauf. Dadurch kann die zentrale NFT-Registry fehlende historische Kaufpreise nachträglich auflösen; negative Preisbefunde ohne Tx bleiben offen.\n// Phase 5.56: DAO1/APTMDAO stellt der zentralen NFT-Registry nur noch den projektspezifischen Kaufpreis-Resolver bereit. Kaufpreis-Evidenz wird zentral im nft_cache persistiert und im NFT-Tab angezeigt; bereits geprüfte Fälle werden nicht erneut on-chain analysiert.
@@ -6,8 +6,8 @@
 (() => {
 // WalletTracking · DAO1 Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260921-170817";
-const HELP_MODULE_TIMESTAMP="21.09.2026 14:13:07 CEST";
+const HELP_MODULE_BUILD="20260921-172935";
+const HELP_MODULE_TIMESTAMP="21.09.2026 17:29:35 CEST";
 function renderDAO1Help(){
   const el=document.getElementById("dao1HelpContent");
   if(!el)return;

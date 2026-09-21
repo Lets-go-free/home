@@ -1,9 +1,9 @@
-// Phase 5.77: DAO-History wird innerhalb der Session pro Wallet gemeinsam für Übersicht/Bot-Claims/Referral-Rewards wiederverwendet; Partner-Bot-Scan-State wird vorab gebündelt und in-flight dedupliziert.
+// Phase 5.78: DAO-Team ergänzt einen 24h-IndexedDB-Current-State-Cache pro fremdem Partner-Wallet/NFT-Contract; History/Kaufpreis/DID bleiben separat. Navigation/History-Sessioncache unverändert fachlich.
 // Phase 5.75: Cache-/Request-Audit: zentrale NFT-/Ownership-RAM-Daten werden für Dashboard/Initialload geteilt, historische Metadaten blockieren den DAO-Start nicht mehr und identische Tree-Scans werden in-flight dedupliziert.
 // Phase 5.73: Team-Bot-Bestand nutzt dieselbe zentrale nft_cache-Klassifikation wie der NFT-Tab; Trading-Bot-Contracts werden daraus abgeleitet, Bestand und Kaufpreis-Abdeckung werden getrennt angezeigt.
 // Phase 5.69: Partner-Identity und Bot-Bestand laufen unabhaengig; ein langsamer Identity-Contract darf Bot-Zahlen nicht blockieren.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
-// WalletTracking Phase 5.77 · 21.09.2026 17:08:17 CEST · Build 20260921-170817
+// WalletTracking Phase 5.78 · 21.09.2026 17:29:35 CEST · Build 20260921-172935
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -4785,6 +4785,9 @@ window.DAO1Project = (() => {
     return contract===lower(DEFAULT_MINER_NFT_CONTRACT)||contract===lower(DAO1_OLD_DID_CONTRACT)||contract===lower(APTMDAO_NFT_CONTRACT)||!!classificationFor(contract,id)||dao1TeamProjectNftSubtype(contract,id,name,collection)!=="nicht klassifiziert";
   }
   const dao1PartnerNftInflight=new Map();
+  const DAO1_PARTNER_HOLDINGS_BROWSER_NAMESPACE="dao1";
+  const DAO1_PARTNER_HOLDINGS_BROWSER_KEY="partner-current-holdings-v1";
+  const DAO1_PARTNER_HOLDINGS_TTL_MS=24*60*60*1000;
 
   function dao1TeamBotContracts(){
     const contracts=new Set([lower(DEFAULT_MINER_NFT_CONTRACT)]);
@@ -4837,9 +4840,28 @@ window.DAO1Project = (() => {
 
   async function dao1TeamCurrentContractHoldings(wallet,contract){
     const a=lower(wallet),c=lower(contract);if(!/^0x[0-9a-f]{40}$/.test(a)||!/^0x[0-9a-f]{40}$/.test(c))return [];
+    // Phase 5.78: Der aktuelle Partner-Bestand ist ein abgeleiteter, öffentlicher Chain-Cache.
+    // Er darf deshalb 24h im zentralen IndexedDB-Cache wiederverwendet werden – passend zum
+    // bestehenden Partner-Scan-State. Dadurch muss ein Browser-Reload nicht erneut die volle
+    // ERC-721-Transferhistorie jeder Partner-Wallet laden. Historische DID-Zuordnung/Kaufpreis
+    // nutzt weiterhin blockgenaue Transferdaten und wird dadurch nicht ersetzt.
+    const bc=window.WalletTrackingBrowserCache,itemKey=`${a}|${c}`;
+    if(bc){
+      try{
+        const rows=await bc.getByKeys(DAO1_PARTNER_HOLDINGS_BROWSER_NAMESPACE,DAO1_PARTNER_HOLDINGS_BROWSER_KEY,[itemKey]);
+        const hit=rows?.[0],checked=Date.parse(hit?.checkedAt||0);
+        if(hit&&Array.isArray(hit.ids)&&Number.isFinite(checked)&&Date.now()-checked<DAO1_PARTNER_HOLDINGS_TTL_MS)return hit.ids.map(String);
+      }catch(e){console.warn("DAO Partner-Bestand Browser-Cache lesen",e)}
+    }
     // Kachel-/Identity-Bestand nur aus dem bekannten Contract rekonstruieren. Kein breiter
     // /address/nft-Snapshot: dieser konnte bei Explorer-Retries minutenlang blockieren.
-    return dao1TeamHeldTokenIdsAtBlock(a,c,Number.MAX_SAFE_INTEGER);
+    const ids=await dao1TeamHeldTokenIdsAtBlock(a,c,Number.MAX_SAFE_INTEGER);
+    if(bc){
+      try{
+        await bc.merge(DAO1_PARTNER_HOLDINGS_BROWSER_NAMESPACE,DAO1_PARTNER_HOLDINGS_BROWSER_KEY,[{item_key:itemKey,wallet:a,contract:c,ids:[...ids].map(String),checkedAt:new Date().toISOString()}],{keyField:"item_key",meta:{ttlMs:DAO1_PARTNER_HOLDINGS_TTL_MS}});
+      }catch(e){console.warn("DAO Partner-Bestand Browser-Cache speichern",e)}
+    }
+    return ids;
   }
 
   function dao1PartnerRerenderIfVisible(){

@@ -1,15 +1,15 @@
-// Phase 5.77 · 21.09.2026 17:08:17 CEST: TLN/VOW Haupttab trennt Current State von Team-, LP-History- und 31.12.-History-Loads; Wallet-Token-Prüfung gebündelt via Multicall3 mit Fallback. Build 20260921-170817.
+// Phase 5.78 · 21.09.2026 17:29:35 CEST: TLN/VOW Haupttab bündelt Wallet-Token-Prüfung projektweit, lädt Discovery-Snapshots per DB-Batch/Sessioncache und initialisiert DEX/Provider erst bei „Kurse und Pools“. Build 20260921-172935.
 (() => {
-// WalletTracking · TLN/VOW Hilfe · Build 20260921-170817
+// WalletTracking · TLN/VOW Hilfe · Build 20260921-172935
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260921-170817";
-const HELP_MODULE_TIMESTAMP="21.09.2026 14:13:07 CEST";
+const HELP_MODULE_BUILD="20260921-172935";
+const HELP_MODULE_TIMESTAMP="21.09.2026 17:29:35 CEST";
 function renderTlnVowHelp(){
   const el=document.getElementById("tlnVowHelpContent");
   if(!el)return;
   el.innerHTML=`<div class="custom-token-card"><h3 style="margin-top:0">TLN/VOW · Hilfe</h3><p class="note">Diese Hilfe beschreibt ausschließlich die TLN/VOW-Projektlogik. Die allgemeine Bedienung von WalletTracking, Wallets, Preisen, Gebühren, NFTs und Stichtagen steht unter „❓ Hilfe / Handbuch“.</p></div>
 
-        <div class="custom-token-card"><h3 style="margin-top:0">Übersicht &amp; Wallet-Filter</h3><p class="note"><strong>Startverhalten Phase 5.75:</strong> Das Dashboard initialisiert TLN/VOW nicht mehr allein für eine Summary. Beim normalen App-Start wird der zuletzt persistierte Dashboard-Summary-Cache gezeigt; erst beim bewussten Öffnen von TLN/VOW wird das Projektmodul initialisiert und die Summary aus den persistenten Projekt-Snapshots aktualisiert.</p><p class="note">Standardmäßig werden alle gespeicherten TLN/VOW-Wallets aggregiert. Über den Wallet-Filter kann auf eine einzelne Wallet eingeschränkt werden. Tabellen und Summaries folgen demselben Filter. Partner-Aliase im Team sind user-spezifisch und verschlüsselt gespeichert.</p></div>
+        <div class="custom-token-card"><h3 style="margin-top:0">Übersicht &amp; Wallet-Filter</h3><p class="note"><strong>Startverhalten Phase 5.78:</strong> Das Dashboard initialisiert TLN/VOW nicht allein für eine Summary. Beim bewussten Öffnen von TLN/VOW werden Projekt-Wallets und persistente Discovery-Snapshots cache-first gebündelt geladen; Team, LP-Historie und 31.12.-Historie bleiben lazy. DEX-Konfiguration, Provider und Live-Preislogik starten erst beim Untertab „Kurse und Pools“.</p><p class="note">Standardmäßig werden alle gespeicherten TLN/VOW-Wallets aggregiert. Über den Wallet-Filter kann auf eine einzelne Wallet eingeschränkt werden. Tabellen und Summaries folgen demselben Filter. Partner-Aliase im Team sind user-spezifisch und verschlüsselt gespeichert.</p></div>
 
         <div class="custom-token-card"><h3 style="margin-top:0">Kurse &amp; Pools</h3><p class="note">Aktuelle TLN/VOW-Kurse werden über die zentral hinterlegten Projekt-Token und DEX-Pools bestimmt. v-Währungen werden über ihre vorgesehenen VOW-/USD-Pfade bewertet; VOW wird über seine USD-Referenz bewertet. Der zentrale Button „Preise aktualisieren“ in der Token-Übersicht aktualisiert die aktuellen Kurse und USD-Werte. Dadurch werden Discovery, Stakings, Rewards, Loans, Team oder historische Stichtage nicht automatisch neu gescannt.</p></div>
 

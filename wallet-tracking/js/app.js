@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.77 · 21.09.2026 17:08:17 CEST · Build 20260921-170817 */
+/* WalletTracking Phase 5.78 · 21.09.2026 17:29:35 CEST · Build 20260921-172935 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -157,8 +157,43 @@ window.showMainSection=showMainSection;
 // Ein Daten-Refresh darf die Ansicht nach Abschluss niemals ungefragt zurücksetzen.
 let userNavigationTouched=false;
 document.addEventListener("click",e=>{
-  if(e.target?.closest?.("[data-tab],[data-main-section],.project-subtabs .tab-btn")) userNavigationTouched=true;
+  if(e.target?.closest?.("[data-tab],[data-main-section],.project-subtabs .tab-btn,[data-admin-tab],[data-open-admin]")) userNavigationTouched=true;
 },true);
+// Phase 5.78: Ein echter Benutzerklick ist fuer die optische Navigation autoritativ.
+// Einzelne Projekt-/Admin-Loader duerfen den Active-State nicht versehentlich stehen lassen
+// oder entfernen. Das laeuft in der Bubble-Phase NACH den Inline-Handlern und korrigiert
+// ausschliesslich die jeweilige sichtbare Button-Gruppe; die Daten-/Fachlogik bleibt unberuehrt.
+document.addEventListener("click",e=>{
+  const btn=e.target?.closest?.(".tab-btn,[data-main-section],[data-admin-tab],[data-open-admin]");
+  if(!btn)return;
+  if(btn.matches(".project-subtabs .tab-btn")){
+    const group=btn.closest(".project-subtabs");
+    group?.querySelectorAll(":scope > .tab-btn").forEach(x=>x.classList.toggle("active",x===btn));
+    return;
+  }
+  if(btn.matches("[data-admin-tab]")){
+    const name=btn.dataset.adminTab;
+    document.querySelectorAll("[data-admin-tab]").forEach(x=>x.classList.toggle("active",x.dataset.adminTab===name));
+    document.querySelectorAll("[data-open-admin]").forEach(x=>x.classList.toggle("active",x.dataset.openAdmin===name));
+    return;
+  }
+  if(btn.matches("[data-open-admin]")){
+    const name=btn.dataset.openAdmin;
+    document.querySelectorAll("[data-open-admin]").forEach(x=>x.classList.toggle("active",x.dataset.openAdmin===name));
+    document.querySelectorAll("[data-admin-tab]").forEach(x=>x.classList.toggle("active",x.dataset.adminTab===name));
+    return;
+  }
+  if(btn.matches("[data-tab]")){
+    const name=btn.dataset.tab;
+    const section=btn.closest("[data-nav-section]");
+    if(section)section.querySelectorAll(".tab-btn[data-tab]").forEach(x=>x.classList.toggle("active",x===btn || (name==="chat"&&x.dataset.tab===name&&x.offsetParent!==null)));
+    return;
+  }
+  if(btn.matches("[data-main-section]")){
+    const section=btn.dataset.mainSection;
+    document.querySelectorAll("[data-main-section]").forEach(x=>x.classList.toggle("active",x.dataset.mainSection===section));
+  }
+},false);
 function initUiDisplay(){initUiFontScale();initUiTheme();}
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",initUiDisplay,{once:true});else initUiDisplay();
 let defiProjectsCache = [];
@@ -1414,7 +1449,10 @@ function showTab(name) {
   if (name === "tlnvow" && window.TLNVOWProject) {
     Promise.resolve(window.TLNVOWDiscovery?.ensureInitialized?.())
       .then(()=>window.TLNVOWDiscovery?.loadDashboardSummary?.())
-      .then(()=>window.TLNVOWProject.ensureLoaded())
+      // Phase 5.78: Der normale Projekt-Einstieg braucht nur den bereits gespeicherten
+      // Preis-Snapshot. DEX-Konfiguration/Provider und Live-Preislogik werden erst beim
+      // expliziten Untertab „Kurse und Pools“ initialisiert.
+      .then(()=>window.TLNVOWProject.loadCachedPrices?.())
       .then(()=>{
         const tlnSubtabs = document.querySelectorAll("#tab-tlnvow .tln-vow-main-subtabs .tab-btn");
         const hasActiveTlnSubtab = [...tlnSubtabs].some(b => b.classList.contains("active"));
@@ -1484,9 +1522,9 @@ const ADMIN_SYSTEM_TREE = [
 
   {id:"projects",level:0,label:"🏦 DeFi-Projekte",status:"in_progress",start:"Konfig DB",daily:"Preise",open:"Übersicht · keine Projektdaten",manual:"projektbezogen",details:[]},
   {id:"projects-overview",level:1,label:"Übersicht",status:"in_progress",start:"–",daily:"–",open:"nur lokale UI",manual:"–",details:[["DeFi-Projektübersicht","lokale UI","–","–","Öffnen lädt keine TLN/VOW- oder DAO1-Projektdaten; Inhalt noch zu definieren"]]},
-  {id:"tln",level:1,label:"TLN / VOW",status:"in_progress",start:"Summary-Cache",daily:"Grunddaten + zentrale Preise",open:"Lazy + Projekt-Autoload",manual:"projektbezogen",details:[]},
-  {id:"tln-overview",level:2,label:"Übersicht",status:"in_progress",start:"–",daily:"global 15 Min.",open:"DB + Preis-Cache",manual:"Preise",details:[["Token/Pool-Konfiguration","–/RAM","Supabase Projekt-Konfiguration","–","TLN/VOW erstmals öffnen"],["Aktuelle Preise/Pools","globaler 15-Min.-Snapshot","Supabase Current Price Snapshot","BSC/ETH Pool-RPC","Bei aktivem User max. 1x je xx:00/15/30/45-Slot"]]},
-  {id:"tln-prices",level:2,label:"Kurse und Pools",status:"in_progress",start:"–",daily:"Preise",open:"Cache + ggf. Projekt-Autoload",manual:"RPC",details:[["LP/Pool-Daten","Projektcache","Supabase LP Cache","BSC/ETH RPC","Beim Öffnen kann maybeAutoRefreshProject Tagesstatus prüfen"]]},
+  {id:"tln",level:1,label:"TLN / VOW",status:"in_progress",start:"Summary-Cache",daily:"Grunddaten + zentrale Preise",open:"Lazy Current-State",manual:"projektbezogen",details:[]},
+  {id:"tln-overview",level:2,label:"Übersicht",status:"in_progress",start:"–",daily:"global 15 Min.",open:"DB-Batch + Preis-Snapshot",manual:"–",details:[["Projekt-Wallets + Discovery-Snapshots","Session/RAM","Supabase Projektgrunddaten + verified-discovery-results als Batch","ein Multicall nur für Wallets ohne bekannten Projektbezug","TLN/VOW erstmals öffnen; gleiche technische Cache-Reads danach Session-Hit"],["Aktueller Preisstand","globaler 15-Min.-Snapshot","Supabase Current Price Snapshot","–","Übersicht liest nur gespeicherten Snapshot; keine DEX-/Provider-Initialisierung"]]},
+  {id:"tln-prices",level:2,label:"Kurse und Pools",status:"in_progress",start:"–",daily:"Preise",open:"Preis-/DEX-Infrastruktur lazy",manual:"RPC",details:[["LP/Pool-Daten + Preisrouten","Projektcache","Supabase DeFi-/DEX-Konfiguration + Current Price Snapshot","BSC/ETH Pool-RPC","Erst beim Öffnen dieses Untertabs werden DEX-Konfiguration und RPC-Provider initialisiert; statische Chain-IDs vermeiden Provider-Netzwerk-Erkennung"]]},
   {id:"tln-staking",level:2,label:"Staking/Rewards",status:"in_progress",start:"–",daily:"–",open:"Discovery-Cache",manual:"Discovery/RPC",details:[["Staking-Positionen/Rewards","Browser/DB Cache je Teilbereich","Supabase TLN/VOW Caches","BSC/ETH RPC","Lazy beim Projekt; Aktualisierung/Discovery gezielt"]]},
   {id:"tln-loans",level:2,label:"Loans",status:"in_progress",start:"–",daily:"–",open:"Discovery-Cache",manual:"Discovery/RPC",details:[["Loans/Rebounds","Cache","Supabase/Discovery-Daten","BSC RPC","Nicht Teil des normalen App-Starts"]]},
   {id:"tln-rewards",level:2,label:"Rewards Summary",status:"in_progress",start:"–",daily:"–",open:"Cache",manual:"Discovery",details:[["Reward Summary","Cache","Supabase/Discovery Cache","BSC/ETH bei Discovery","Projekt-Tab"]]},
@@ -1508,13 +1546,13 @@ const ADMIN_SYSTEM_TREE = [
     ["APTMDAO Team-Kanten","IndexedDB · dao1/aptmdao-tree","Supabase aptmdao_tree_*","Apertum NFT-Mint-Event; RPC nur bei Update/Erstaufbau","Phase 5.39: child/parent/wallet on-chain verifiziert; eigener Graph, max. 20 Ebenen; Migration 063. DAO1/APTMDAO sind eigenständige DID-/Alias-Systeme. Normaler Cache-HIT ohne RPC, Update mit 24-Block-Overlap."],
     ["DAO Wallet-Team + Partner-Bot-Lifecycle","RAM + Dashboard-Summary","dao1_old_tree_* + aptmdao_tree_* + dao_partner_bot_lifecycle_cache","Apertum RPC/Explorer nur bei Tree-Update bzw. gezielten Partnerdetails","Phase 5.62: Partner-Bots fremder Team-Wallets werden nach Entdeckung zentral in kleinen Batches aktualisiert, per userbezogenem SHA-256-Scan-State max. täglich erneut geprüft und in den bestehenden Lifecycle für Dashboard/Team persistiert. Direkte Uplines bleiben reine Upline-Knoten und werden weder als Downline noch als Partner gezählt. Phase 5.55: DAO1-alt und APTMDAO werden als getrennte vollständige Graphquellen in einen Walletgraph überführt; zentrale aktuelle NFT-/Ownership-Zuordnung hat bei DID→Wallet Vorrang vor historischen Tree-Event-Adressen. Mehrere externe Uplines eines eigenen Wallets werden getrennt nach DAO1/APTMDAO parallel oberhalb des Einstiegsknotens gezeigt. Belegte Upline-Ketten oberhalb eigener DIDs werden als echte Knoten gezeigt; eigene Wallets folgen ihrer DID-Parent-Kante (z. B. #25924 unter #21043) und zählen nicht als Partner. DAO1-only-Partner benötigen keine APTMDAO-DID. Für eigene Wallets ist der zentrale NFT-/Ownership-Bestand die Single Source of Truth; der Team-Baum startet keine parallele NFT-Discovery. Aktueller Owner und historische Erwerbs-/Kaufdaten bleiben getrennte Eigenschaften desselben NFT-Datensatzes. Root-Erkennung bleibt von aktuellen Projekt-Balances entkoppelt; Ownership wird vor Dashboard-/Tree-Cache geladen. Standardansicht ist wallet-zentriert (1 Wallet = 1 Knoten/Partner). Eigene Wallets werden anhand ihrer belegten DAO1-/APTMDAO-Upline ebenfalls in denselben Baum eingehängt statt künstlich als separate Roots dargestellt; sie zählen nicht als Partner. DAO1-/APTMDAO-DIDs desselben Wallets bleiben on-chain getrennt und werden im Knoten visuell getrennt gezeigt. APTMDAO bestimmt bei zwei belegten Downline-Beziehungen die grafische Position. Bot-Details trennen aktuellen Owner-Bestand von früher auf diesem Wallet gekauften/übertragenen Bots; historische Kaufdaten bleiben am Bot. Neue MinerBot-Käufe lesen die verwendete APTMDAO-DID direkt aus dem Kaufaufruf (Referenz #31722: DID #7315, Parent #23); historische Ownership bleibt Fallback. Eigene Wallets sind aus Letzte Partneraktivitäten ausgeschlossen. Migration 065."],
     ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Legacy: Migration 057; APTMDAO: Migration 063. Kleine Registry-Gates statt Graph-Vollread bei Cache-HIT."],
-    ["Partner-Botdetails","RAM/Cache","Supabase NFT/Ownership Caches","Apertum on-demand","Details/Anreicherung bei Bedarf"]]},
+    ["Partner-Botdetails","RAM + 24h IndexedDB Current-State","Supabase NFT/Ownership/Lifecycle Caches","Apertum nur bei abgelaufenem/fehlendem Current-State-Cache","Phase 5.78: fremde Partner-Wallet+Contract-Holdings werden 24h browserseitig wiederverwendet; historische Erwerbs-/DID-/Kaufpreislogik bleibt separat und blockgenau"]]},
   {id:"dao-lp",level:2,label:"Liquidity Pools",status:"in_progress",start:"–",daily:"–",open:"DB/Cache",manual:"RPC",details:[["DAO1 LP-Positionen","LP Cache","Supabase LP Cache","Apertum RPC","Beim Untertab öffnen renderProjectLpTab"]]},
   {id:"dao-config",level:2,label:"Konfiguration",status:"planning",start:"–",daily:"–",open:"bereits Lazy geladen",manual:"DB",details:[["Miner/Projekt-NFT/Konfiguration","RAM","Supabase DAO1 Tabellen","–","DAO1 ensureLoaded/refreshConfig"]]},
   {id:"dao-help",level:2,label:"Hilfe",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[["DAO1 Hilfe","JS-Modul","–","–","Tab öffnen"]]},
 
   {id:"cache-audit",level:0,label:"⚡ Cache-/Request-Audit",status:"in_progress",idea:"Cache-/Request-Audit und Startoptimierung",start:"🟢 Session-Audit + kein Auto-loadAll",daily:"kein Blind-Refresh",open:"Tab-Marker + Messung",manual:"gezielte Vergleichsläufe",details:[
-    ["Request-Inventar","Session/RAM","Supabase Tabellen + cache_data_versions","RPC/API je tatsächlich ausgeführtem Call","Phase 5.77: Audit bleibt aktiv; zusätzlich werden DAO-History-Reads pro Wallet innerhalb der Session geteilt, DAO-Partner-Scan-State gebündelt gelesen und TLN/VOW trennt Main-Tab, Team, LP-History und 31.12.-Bewertung stärker. DATA_VERSIONS bleibt in-flight dedupliziert und 30 s gecacht; Start-/Tab-/Refresh-Marker segmentieren den Lauf"],
+    ["Request-Inventar","Session/RAM","Supabase Tabellen + cache_data_versions","RPC/API je tatsächlich ausgeführtem Call","Phase 5.78: TLN/VOW bündelt die Wallet-Token-Prüfung jetzt projektweit in einem Multicall, lädt Discovery-Snapshots aller eigenen Wallets in einem DB-Batch und memoisiert technische Cache-Reads pro Session. Der normale TLN-Haupttab initialisiert DEX/Provider nicht mehr; Kurse/Pools tun dies erst beim Untertab. DAO-Partner-Current-Holdings werden 24h im zentralen IndexedDB-Cache wiederverwendet. DATA_VERSIONS bleibt in-flight dedupliziert und 30 s gecacht; Start-/Tab-/Refresh-Marker segmentieren den Lauf"],
     ["Shared Loads","RAM pro App-Lauf","globale/öffentliche Cache-Tabellen","–","Identische DB-Reads/Graph-Paginierungen innerhalb eines Laufs einmal laden und teilen"],
     ["Delta-Invalidierung","IndexedDB/local cache","DATA_VERSIONS + rootsKey + sync_cursor/last_scanned_block","Chain Head + kleiner Overlap","Nur bei Versions-/Scope-/Cursor-Abweichung nachziehen; kein Blind-Rebuild"],
     ["Current State vs History","zentraler Current-State-Cache","NFT/Ownership/Projektcaches","historische Reads nur bei Bedarf","Aktuelle Bestände nie auf Kaufpreis/Lifecycle/historische DID-Auflösung warten lassen"],
@@ -1616,7 +1654,7 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"&&document.getElement
 function renderAdminDocumentation(){
   const el=document.getElementById("adminDocumentation"); if(!el)return;
   el.innerHTML=`
-  <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.77</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW lädt beim Projekt-Einstieg keine LP-Historie automatisch; Team-Cache und historische 31.12.-Bewertung werden erst im passenden Kontext geladen. NFT-Current-State wird sofort aus der zentralen Registry gezeigt.</p><p><strong>DAO:</strong> Bot-Claims und Referral-Rewards teilen sich denselben Session-History-Cache; Partner-Scan-State wird gebündelt gelesen und identische laufende Partner-Jobs werden dedupliziert.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Monica 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
+  <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.78</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW lädt beim Projekt-Einstieg weder LP-Historie/Team/31.12.-Historie noch DEX-/Provider-Infrastruktur; Kurse/Pools initialisieren diese Preis-Infrastruktur erst beim eigenen Untertab. Discovery-Snapshots werden gebündelt und technische Cache-Reads innerhalb der Session wiederverwendet. NFT-Current-State wird sofort aus der zentralen Registry gezeigt.</p><p><strong>DAO:</strong> Bot-Claims und Referral-Rewards teilen sich denselben Session-History-Cache; Partner-Scan-State wird gebündelt gelesen und identische laufende Partner-Jobs werden dedupliziert. Der aktuelle NFT-/Bot-Bestand fremder Partner wird als öffentlicher abgeleiteter Chain-Cache 24 Stunden in IndexedDB wiederverwendet; historische DID-/Kaufpreislogik bleibt blockgenau getrennt.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Monica 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
   <div class="custom-token-card"><h3 style="margin-top:0">1. Architekturregeln</h3><div class="note">
   <p><strong>Neuester Stand:</strong> Änderungen immer auf dem zuletzt ausgelieferten Stand aufbauen.</p>
   <p><strong>Supabase als Konfigurationsquelle:</strong> Chain-, Provider-, Projekt- und Token-Konfiguration möglichst datenbankgesteuert; keine neue fachliche Chain-Hardcodierung.</p>
@@ -1706,6 +1744,11 @@ function openTlnDiscoveryTab(panel,button){
   if(api?.switchProjectUserTab)api.switchProjectUserTab(panel||'overview');
 }
 window.openTlnDiscoveryTab=openTlnDiscoveryTab;
+function openTlnPoolsTab(button){
+  switchProjectSubtab('tlnvow','overview',button);
+  Promise.resolve(window.TLNVOWProject?.ensureLoaded?.()).catch(e=>console.warn('TLN/VOW Kurse/Pools:',e));
+}
+window.openTlnPoolsTab=openTlnPoolsTab;
 
 function adminSimpleInput(value,key,type="text",extra=""){
   if(type==="checkbox") return `<input data-field="${key}" type="checkbox" ${value!==false?"checked":""}>`;

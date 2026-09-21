@@ -1,3 +1,4 @@
+// Phase 5.78 · 21.09.2026 17:29:35 CEST: DEX/RPC-Provider werden erst im Kurse/Pools-Untertab initialisiert; bekannte BSC/ETH-Netzwerke nutzen staticNetwork ohne zusätzliche Chain-Erkennung. Build 20260921-172935.
 window.TLNVOWProject = (() => {
 
 /* =========================================================
@@ -293,7 +294,10 @@ async function loadProjectInfrastructure(){
       v3Factory:v3?.factory_address || null
     };
     if(!CONFIG[chain].v2Factory) throw new Error(`${PROJECT_NAME}: Für ${chain} fehlt eine aktive V2-DEX-Factory.`);
-    providers[chain]=new ethers.JsonRpcProvider(CONFIG[chain].rpc);
+    const staticNetwork=chain==="bsc"?{chainId:56,name:"bsc"}:chain==="eth"?{chainId:1,name:"mainnet"}:undefined;
+    providers[chain]=staticNetwork
+      ? new ethers.JsonRpcProvider(CONFIG[chain].rpc,staticNetwork,{staticNetwork:true})
+      : new ethers.JsonRpcProvider(CONFIG[chain].rpc);
     graphCache[chain]=null;
     references[chain]=references[chain] || {};
   }

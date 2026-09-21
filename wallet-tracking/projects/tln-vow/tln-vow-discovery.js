@@ -1,8 +1,8 @@
-// Phase 5.77: TLN/VOW-Init trennt Current State von Team/History stärker; Token-Balance-Prüfung nutzt Multicall3 mit sicherem Fallback, Team-Cache wird erst im Team-Tab restauriert und 31.12.-Bewertung nicht beim Haupttab geladen.
+// Phase 5.78: TLN/VOW-Init bündelt Current-State-Walletprüfung projektweit, lädt Discovery-Snapshots per DB-Batch/Sessioncache und vermeidet RPC für bekannte Referral-Decmals; Team/History bleiben lazy.
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260921-170817';
+const BUILD_ID='20260921-172935';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -194,7 +194,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='21.09.2026 17:08:17 CEST';
+const APP_VERSION='21.09.2026 17:29:35 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -4579,15 +4579,33 @@ async function savePersistentErc20Cache(wallet,cache){
   log(`Supabase Staking-Chain-Cache aktualisiert: ${cache.rows.length} Transfers · wallet_id-basiert.`,'ok');return true;
 }
 
+const TECHNICAL_PROCESS_SESSION_CACHE=new Map();
+const TECHNICAL_PROCESS_SESSION_INFLIGHT=new Map();
+function technicalProcessSessionKey(scope,cacheKey,scannerVersion){
+  return `${scope?.kind||'unknown'}|${scope?.walletId||scope?.scopeAddress||''}|${cacheKey}|${scannerVersion}`;
+}
+function clearTechnicalProcessSessionCache(){
+  TECHNICAL_PROCESS_SESSION_CACHE.clear();
+  TECHNICAL_PROCESS_SESSION_INFLIGHT.clear();
+}
+
 async function loadTechnicalProcessCache(wallet,cacheKey,scannerVersion){
   if(!currentUserId||!stakingScanDbCacheAvailable)return null;
-  const scope=await technicalCacheScope(wallet);
-  let q;
-  if(scope.kind==='private')q=sb.from(STAKING_SCAN_CACHE_TABLE).select('scanner_version,payload,updated_at,last_scanned_block').eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_id',scope.walletId).eq('cache_key',cacheKey);
-  else q=sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).select('scanner_version,payload,updated_at,last_scanned_block').eq('chain_key','bsc').eq('scope_address',scope.scopeAddress).eq('cache_key',cacheKey);
-  const {data,error}=await q.maybeSingle();
-  if(error){log(`Technischer Cache ${cacheKey} konnte nicht gelesen werden: ${error.message||error}`,'warn');return null}
-  if(!data||data.scanner_version!==scannerVersion||!data.payload)return null;return data.payload;
+  const scope=await technicalCacheScope(wallet),sessionKey=technicalProcessSessionKey(scope,cacheKey,scannerVersion);
+  if(TECHNICAL_PROCESS_SESSION_CACHE.has(sessionKey))return TECHNICAL_PROCESS_SESSION_CACHE.get(sessionKey);
+  if(TECHNICAL_PROCESS_SESSION_INFLIGHT.has(sessionKey))return TECHNICAL_PROCESS_SESSION_INFLIGHT.get(sessionKey);
+  const job=(async()=>{
+    let q;
+    if(scope.kind==='private')q=sb.from(STAKING_SCAN_CACHE_TABLE).select('scanner_version,payload,updated_at,last_scanned_block').eq('user_id',currentUserId).eq('chain_key','bsc').eq('wallet_id',scope.walletId).eq('cache_key',cacheKey);
+    else q=sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).select('scanner_version,payload,updated_at,last_scanned_block').eq('chain_key','bsc').eq('scope_address',scope.scopeAddress).eq('cache_key',cacheKey);
+    const {data,error}=await q.maybeSingle();
+    if(error){log(`Technischer Cache ${cacheKey} konnte nicht gelesen werden: ${error.message||error}`,'warn');return null}
+    const payload=(!data||data.scanner_version!==scannerVersion||!data.payload)?null:data.payload;
+    TECHNICAL_PROCESS_SESSION_CACHE.set(sessionKey,payload);
+    return payload;
+  })();
+  TECHNICAL_PROCESS_SESSION_INFLIGHT.set(sessionKey,job);
+  try{return await job}finally{TECHNICAL_PROCESS_SESSION_INFLIGHT.delete(sessionKey)}
 }
 async function saveTechnicalProcessCache(wallet,cacheKey,scannerVersion,payload,lastBlock=0){
   if(!currentUserId||!stakingScanDbCacheAvailable||!payload)return false;
@@ -4599,7 +4617,9 @@ async function saveTechnicalProcessCache(wallet,cacheKey,scannerVersion,payload,
     const row={chain_key:'bsc',scope_address:scope.scopeAddress,cache_key:cacheKey,scanner_version:scannerVersion,complete_from_block:0,last_scanned_block:Number(lastBlock||0),payload,created_by:currentUserId,updated_by:currentUserId,updated_at:now};
     ({error}=await sb.from(TLN_GLOBAL_TECH_CACHE_TABLE).upsert(row,{onConflict:'chain_key,scope_address,cache_key'}));
   }
-  if(error){log(`Technischer Cache ${cacheKey} konnte nicht gespeichert werden: ${error.message||error}`,'warn');return false}return true;
+  if(error){log(`Technischer Cache ${cacheKey} konnte nicht gespeichert werden: ${error.message||error}`,'warn');return false}
+  TECHNICAL_PROCESS_SESSION_CACHE.set(technicalProcessSessionKey(scope,cacheKey,scannerVersion),payload);
+  return true;
 }
 
 // Zentraler persistenter Cache fuer historische LP-Preispunkte.
@@ -5118,6 +5138,7 @@ async function clearSelectedWalletSupabaseCache(){
      .select('cache_key');
    if(error)throw error;
    const deleted=Array.isArray(data)?data.length:0;
+   clearTechnicalProcessSessionCache();
 
    // Nur walletbezogene In-Memory-Caches zurücksetzen. Der globale LP-Fakten-Cache
    // gehört nicht ausschließlich zu diesem Wallet und bleibt bewusst erhalten.
@@ -5163,6 +5184,7 @@ async function clearDiscoveryResultCache(){
      .select('cache_key');
    if(error)throw error;
    const deleted=Array.isArray(data)?data.length:0;
+   clearTechnicalProcessSessionCache();
    CURRENT_DISCOVERY_RESULT_SNAPSHOT=null;
    resetDiscoveryProcess(wallet);resetStepStatesAfterCacheChange('results-1-5');updateProcessButtons();
    state.textContent=`${deleted} Ergebnis-Snapshot${deleted===1?'':'s'} gelöscht · Steps 1–5 zurückgesetzt.`;
@@ -5186,6 +5208,7 @@ async function clearStep6SnapshotCache(){
      .select('cache_key');
    if(error)throw error;
    const deleted=Array.isArray(data)?data.length:0;
+   clearTechnicalProcessSessionCache();
    DISCOVERY_PROCESS.snapshotValuation=null;DISCOVERY_PROCESS.snapshotBlockHex=null;DISCOVERY_PROCESS.done.valuation=false;
    renderSnapshotValuation();resetStepStatesAfterCacheChange('step6',year);updateProcessButtons();
    state.textContent=`${deleted} Step-6-Snapshot${deleted===1?'':'s'} gelöscht · Step 6 zurückgesetzt.`;
@@ -11299,17 +11322,24 @@ const PROJECT_REFERRAL_REWARD_TOKENS=Object.freeze([
 const PROJECT_REFERRAL_DECIMALS=new Map();
 async function primeProjectReferralDecimals(){
   const rows=await Promise.all(PROJECT_REFERRAL_REWARD_TOKENS.map(async t=>{
+    const a=norm(t.address);
+    const dbRow=(allProjectRows||[]).find(r=>norm(r?.address||r?.contract_address||'')===a)||(displayTokenRows||[]).find(r=>norm(r?.address||r?.contract_address||'')===a);
+    const dbDecimals=Number(dbRow?.decimals);
+    if(Number.isInteger(dbDecimals)&&dbDecimals>=0&&dbDecimals<=36){
+      PROJECT_REFERRAL_DECIMALS.set(a,dbDecimals);
+      return `${t.symbol}:${dbDecimals} (DB)`;
+    }
     try{
       const meta=await tokenMeta(t.address);
       const d=Number(meta?.decimals);
       if(Number.isInteger(d)&&d>=0&&d<=36){
-        PROJECT_REFERRAL_DECIMALS.set(norm(t.address),d);
-        return `${t.symbol}:${d}`;
+        PROJECT_REFERRAL_DECIMALS.set(a,d);
+        return `${t.symbol}:${d} (Chain)`;
       }
     }catch{}
     return `${t.symbol}:?`;
   }));
-  log(`Referral-Token-Decimals on-chain vorgeladen: ${rows.join(' · ')}.`,'ok');
+  log(`Referral-Token-Decimals vorgeladen: ${rows.join(' · ')}.`,'ok');
 }
 function projectKnownTokenDecimals(address,fallback=null){
   const a=norm(address||'');
@@ -11720,17 +11750,45 @@ async function loadProjectWalletSnapshots({withHistoricalValuation=false}={}){
   PROJECT_WALLET_SNAPSHOTS_LOADING=true;
   try{
     PROJECT_WALLET_SNAPSHOTS.clear();
-    await Promise.all((tlnWallets||[]).map(async w=>{
-      const wallet=norm(w.evm_address);if(!ethers.isAddress(wallet))return;
-      const payload=await loadTechnicalProcessCache(wallet,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults);
-      if(payload?.kind==='verified_discovery_results'&&norm(payload.wallet)===wallet){
-        // 31.12.-/History-Bewertung ist kein Current State und wird nicht mehr beim
-        // normalen TLN/VOW-Einstieg mitgeladen. Sie bleibt explizit nachladbar.
-        if(withHistoricalValuation)await hydrateProjectSnapshotValuation(wallet,payload,snapshotYearFromUi());
-        PROJECT_WALLET_SNAPSHOTS.set(wallet,payload);
-      }
-    }));
-    log(`Projektansicht: ${PROJECT_WALLET_SNAPSHOTS.size}/${tlnWallets.length} Wallet-Ergebnis-Snapshot(s) für die Aggregation geladen.`,'ok');
+    const wanted=(tlnWallets||[]).map(w=>({wallet:norm(w.evm_address),walletId:String(w?.id||w?.dbId||PRIVATE_WALLET_ID_BY_EVM.get(norm(w.evm_address))||'')})).filter(x=>ethers.isAddress(x.wallet));
+    const byWalletId=new Map(wanted.filter(x=>x.walletId).map(x=>[x.walletId,x.wallet]));
+    let batched=false;
+    if(byWalletId.size){
+      try{
+        const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE)
+          .select('wallet_id,scanner_version,payload,updated_at,last_scanned_block')
+          .eq('user_id',currentUserId).eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.discoveryResults)
+          .in('wallet_id',[...byWalletId.keys()]);
+        if(error)throw error;batched=true;
+        const seenIds=new Set();
+        for(const row of (data||[])){
+          const rowId=String(row.wallet_id||'');seenIds.add(rowId);
+          const scope={kind:'private',walletId:rowId,scopeAddress:null};
+          const payload=(row?.scanner_version===TECH_CACHE_VERSIONS.discoveryResults&&row?.payload)?row.payload:null;
+          TECHNICAL_PROCESS_SESSION_CACHE.set(technicalProcessSessionKey(scope,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults),payload);
+          const wallet=byWalletId.get(rowId);
+          if(wallet&&payload?.kind==='verified_discovery_results'&&norm(payload.wallet)===wallet)PROJECT_WALLET_SNAPSHOTS.set(wallet,payload);
+        }
+        // Ein erfolgreicher Batch beweist auch Nullfunde. Diese werden für die Session memoisiert,
+        // damit spaetere Renderer nicht wieder einzelne maybeSingle()-Reads ausloesen.
+        for(const [walletId] of byWalletId){
+          if(seenIds.has(walletId))continue;
+          const scope={kind:'private',walletId,scopeAddress:null};
+          TECHNICAL_PROCESS_SESSION_CACHE.set(technicalProcessSessionKey(scope,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults),null);
+        }
+      }catch(e){log(`Projekt-Snapshot Batch-Read nicht verfügbar; Einzelcache-Fallback: ${e?.message||e}`,'warn')}
+    }
+    const missing=batched?wanted.filter(x=>!x.walletId):wanted.filter(x=>!PROJECT_WALLET_SNAPSHOTS.has(x.wallet));
+    if(missing.length){
+      await Promise.all(missing.map(async x=>{
+        const payload=await loadTechnicalProcessCache(x.wallet,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults);
+        if(payload?.kind==='verified_discovery_results'&&norm(payload.wallet)===x.wallet)PROJECT_WALLET_SNAPSHOTS.set(x.wallet,payload);
+      }));
+    }
+    if(withHistoricalValuation){
+      await Promise.all([...PROJECT_WALLET_SNAPSHOTS.entries()].map(([wallet,payload])=>hydrateProjectSnapshotValuation(wallet,payload,snapshotYearFromUi())));
+    }
+    log(`Projektansicht: ${PROJECT_WALLET_SNAPSHOTS.size}/${tlnWallets.length} Wallet-Ergebnis-Snapshot(s) für die Aggregation geladen${batched?' · 1 Batch-Read statt Wallet-Einzelreads':''}.`,'ok');
   }finally{PROJECT_WALLET_SNAPSHOTS_LOADING=false;renderProjectUserView();}
 }
 async function applyProjectWalletFilter(){
@@ -17981,40 +18039,48 @@ async function loadPrivateWalletsForDiscovery(){
 }
 
 async function walletHasCurrentProjectToken(wallet,tokenRows){
-  const address=norm(wallet?.evm_address||'');
-  if(!/^0x[0-9a-f]{40}$/.test(address))return false;
-  const calldata='0x70a08231'+address.slice(2).padStart(64,'0');
-  const rows=[...new Set((tokenRows||[])
-    .map(r=>norm(r?.address||r?.contract_address||''))
-    .filter(a=>/^0x[0-9a-f]{40}$/.test(a)))];
-  if(!rows.length)return false;
+  const hit=await walletsWithCurrentProjectToken([wallet],tokenRows);
+  return hit.has(norm(wallet?.evm_address||''));
+}
 
-  // Phase 5.77: dieselbe balanceOf-Fachlogik, aber gebündelt über Multicall3.
-  // Dadurch wird aus N Token-RPCs pro Wallet normalerweise genau ein eth_call.
+// Phase 5.78: Current-State-Gate fuer alle noch unbekannten Wallets in EINEM Multicall.
+// Fachlich bleibt es exakt dieselbe balanceOf-Pruefung je Wallet/Projekt-Token; nur der
+// Transport wird ueber Wallets hinweg gebuendelt. Bei Multicall-Fehler bleibt der sichere
+// bisherige Einzelcall-Fallback erhalten.
+async function walletsWithCurrentProjectToken(wallets,tokenRows){
+  const candidates=(wallets||[]).map(w=>({wallet:w,address:norm(w?.evm_address||'')})).filter(x=>/^0x[0-9a-f]{40}$/.test(x.address));
+  const tokens=[...new Set((tokenRows||[]).map(r=>norm(r?.address||r?.contract_address||'')).filter(a=>/^0x[0-9a-f]{40}$/.test(a)))];
+  const hit=new Set();if(!candidates.length||!tokens.length)return hit;
   try{
     const multicall='0xca11bde05977b3631167028862be2a173976ca11';
     const iface=new ethers.Interface(['function aggregate3(tuple(address target,bool allowFailure,bytes callData)[] calls) payable returns (tuple(bool success,bytes returnData)[] returnData)']);
-    const data=iface.encodeFunctionData('aggregate3',[rows.map(token=>({target:token,allowFailure:true,callData:calldata}))]);
+    const calls=[];
+    for(const c of candidates){
+      const calldata='0x70a08231'+c.address.slice(2).padStart(64,'0');
+      for(const token of tokens)calls.push({target:token,allowFailure:true,callData:calldata,_wallet:c.address});
+    }
+    const data=iface.encodeFunctionData('aggregate3',[calls.map(({target,allowFailure,callData})=>({target,allowFailure,callData}))]);
     const raw=await rpc('eth_call',[{to:multicall,data},'latest']);
     const [result]=iface.decodeFunctionResult('aggregate3',raw);
-    for(const item of result||[]){
-      if(!item?.success)continue;
-      try{if(BigInt(item.returnData||'0x0')>0n)return true}catch{}
+    for(let i=0;i<(result||[]).length;i++){
+      const item=result[i];if(!item?.success)continue;
+      try{if(BigInt(item.returnData||'0x0')>0n)hit.add(calls[i]._wallet)}catch{}
     }
-    return false;
+    return hit;
   }catch(e){
-    log(`TLN/VOW Wallet-Token Multicall nicht verfügbar; sicherer Einzelcall-Fallback: ${e?.message||e}`,'warn');
+    log(`TLN/VOW Wallet-Token Sammel-Multicall nicht verfügbar; sicherer Einzelcall-Fallback: ${e?.message||e}`,'warn');
   }
-
-  const BATCH=6;
-  for(let i=0;i<rows.length;i+=BATCH){
-    const balances=await Promise.all(rows.slice(i,i+BATCH).map(async token=>{
-      try{const raw=await rpc('eth_call',[{to:token,data:calldata},'latest']);return BigInt(raw||'0x0');}
-      catch{return 0n}
-    }));
-    if(balances.some(v=>v>0n))return true;
+  for(const c of candidates){
+    const calldata='0x70a08231'+c.address.slice(2).padStart(64,'0');
+    const BATCH=6;
+    for(let i=0;i<tokens.length;i+=BATCH){
+      const balances=await Promise.all(tokens.slice(i,i+BATCH).map(async token=>{
+        try{const raw=await rpc('eth_call',[{to:token,data:calldata},'latest']);return BigInt(raw||'0x0')}catch{return 0n}
+      }));
+      if(balances.some(v=>v>0n)){hit.add(c.address);break}
+    }
   }
-  return false;
+  return hit;
 }
 
 async function loadExistingProjectWalletIds(){
@@ -18078,15 +18144,19 @@ async function selectTlnVowProjectWallets(privateWallets,projectRows,projectRole
     loadExistingProjectWalletIds(),
     loadHistoricallyKnownTlnVowAddresses(candidates)
   ]);
-  const selected=[];
+  const selected=[],unknown=[];
   for(const w of candidates){
     const walletId=String(w?.id||w?.dbId||'');
     const address=norm(w?.evm_address||'');
     const privateHistory=walletId&&existingWalletIds.has(walletId);
     const globalHistory=historicallyKnownAddresses.has(address);
-    const historical=privateHistory||globalHistory;
-    const current=historical?false:await walletHasCurrentProjectToken(w,eligibleTokens);
-    if(historical||current)selected.push({...w,_tlnVowSelectionReason:historical?'bestehender/verifizierter TLN/VOW-Projektbezug':'aktueller TLN/VOW-Projekt-Token'});
+    if(privateHistory||globalHistory)selected.push({...w,_tlnVowSelectionReason:'bestehender/verifizierter TLN/VOW-Projektbezug'});
+    else unknown.push(w);
+  }
+  const currentWallets=await walletsWithCurrentProjectToken(unknown,eligibleTokens);
+  for(const w of unknown){
+    const address=norm(w?.evm_address||'');
+    if(currentWallets.has(address))selected.push({...w,_tlnVowSelectionReason:'aktueller TLN/VOW-Projekt-Token'});
   }
   return selected.sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'de'));
 }
