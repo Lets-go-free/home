@@ -966,3 +966,48 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    Kaufpreis-/DID-Historie entscheidet nicht über den Bestand. Summen trennen Bot-Anzahl und Kaufpreis-Abdeckung.
    Referenz Monica: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots + 1 Trading-Bot.
    Build 20260921-122250. */
+
+
+/* Phase 5.74 · 21.09.2026 13:48:40 CEST
+   NÄCHSTER CHAT · Cache-/Request-Audit und Startoptimierung (Priorität hoch)
+
+   Ziel:
+   - Keine neue Fachlogik bauen. Zuerst messen, welche DB-/RPC-Abfragen beim normalen App-Start
+     und beim Öffnen der Projekt-Tabs tatsächlich ausgeführt werden, wie oft und warum.
+   - Doppelabfragen innerhalb eines App-Laufs vermeiden; bereits geladene globale Datenbestände
+     zwischen Dashboard, NFT, DAO und TLN wiederverwenden.
+   - Cache-first beibehalten, aber veraltete/unvollständige Caches zuverlässig über DATA_VERSIONS,
+     Root-Signaturen, Scan-Cursor und kleinen Block-Overlap erkennen.
+
+   Audit-Reihenfolge:
+   1) Vollständigen App-Start instrumentieren: Quelle/Tabelle bzw. RPC, Filter/Scope, Aufrufer, Start/Ende, Dauer, Ergebnisgrösse, Cache-Hit/Miss.
+   2) Identische parallele Requests über In-Flight-Promises zusammenführen.
+   3) Große Graph-/Cache-Reads innerhalb derselben Session nur einmal laden und als RAM-Quelle teilen.
+   4) DAO Partner-Bot-Discovery: neuer Partner einmal vollständig, danach nur Delta ab persistiertem last_scanned_block + Overlap.
+   5) Current State strikt von History trennen: heutiger NFT/Bot-/Wallet-Bestand darf nie auf Kaufpreis-, Lifecycle- oder historische DID-Aufbereitung warten.
+   6) Historisches ownerOf@Block / eth_call separat reparieren und Resultate persistent cachen; dieser Pfad darf die aktuelle Bestandsanzeige nicht beeinflussen.
+   7) Für jede Cache-Domäne prüfen/vereinheitlichen: data_version/schema_version, scope/rootsKey, last_scanned_block bzw. sync_cursor, complete_until_block, updated_at.
+   8) Nach Optimierung Warm-Start messen und mit Cold-Rebuild vergleichen.
+
+   Besonders zu prüfen (aus bisherigen Network-Logs):
+   - cache_data_versions
+   - tln_vow_staking_scan_cache
+   - tln_vow_identity_global_cache
+   - tln_vow_technical_global_cache
+   - dao_partner_bot_lifecycle_cache
+   - nft_cache / project_nft_ownership / apertum_nft_transfer_cache
+   - DAO1 legacy-tree / APTMDAO tree graph caches
+   - TLN SmartNode-/Registry-Graph und Team-Slices
+
+   Erfolgskriterien:
+   - normaler Start zeigt vorhandene Daten sofort aus Cache; keine unnötige Voll-Discovery beim Login.
+   - gleiche DB-/RPC-Abfrage mit gleichem Scope/Filter pro Lauf nicht mehrfach parallel.
+   - neue Chain-Daten werden inkrementell nachgezogen; kein manueller "Beide Trees on-chain aktualisieren"-Schritt nötig.
+   - aktuelle Bestandsanzeigen bleiben unabhängig von historischen Preis-/Lifecycle-/DID-Auflösungen.
+   - Regressionstest DAO: Monica 0x568281…fe4940 => DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
+   - bestehende fachliche Discovery-Regeln nicht ändern, solange das Audit keinen konkreten Fehler beweist.
+
+   Offene fachfremde TODOs bleiben separat: projektbezogen Partner als inaktiv markieren;
+   Dashboard/DAO "Registration APTMDAO offen"; Membership-Ablaufdatum erst nach verifizierter on-chain Quelle.
+
+   Build 20260921-134840. */

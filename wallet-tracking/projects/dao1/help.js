@@ -168,3 +168,14 @@ else renderDAO1Help();
    Kaufpreis-/DID-Historie entscheidet nicht über den Bestand. Summen trennen Bot-Anzahl und Kaufpreis-Abdeckung.
    Referenz Monica: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots + 1 Trading-Bot.
    Build 20260921-122250. */
+
+
+/* Phase 5.74 · 21.09.2026 13:48:40 CEST
+   Nächster DAO-Technikschritt: Cache-/Request-Audit.
+   - Aktueller NFT-/Bot-Bestand bleibt zentrale Current-State-Quelle für NFT-Tab, Team-Karten und Partnerdetails.
+   - Partner-Bot-Historie/Kaufpreis/DID-Zuordnung sind History und dürfen den aktuellen Bestand nicht blockieren.
+   - Neue Partner: relevanten Bot-/NFT-Verlauf einmal vollständig aufbauen; danach inkrementell ab persistiertem Scan-Cursor mit Overlap.
+   - DAO1-/APTMDAO-Tree-Caches beim normalen Start nur inkrementell gegen DATA_VERSIONS/Graph-State/letzten Block prüfen; große Graphen innerhalb eines Laufs wiederverwenden.
+   - Historisches ownerOf@Block benötigt einen gezielten erlaubten eth_call-Pfad bzw. geeigneten Archive-RPC und persistenten Ergebnis-Cache; kein Einfluss auf Current State.
+   Regression: Monica 0x568281…fe4940 = DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
+   Build 20260921-134840. */

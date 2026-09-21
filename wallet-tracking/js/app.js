@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.73 · 21.09.2026 12:22:50 CEST · Build 20260921-122250 */
+/* WalletTracking Phase 5.74 · 21.09.2026 13:48:40 CEST · Build 20260921-134840 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1427,6 +1427,12 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-config",level:2,label:"Konfiguration",status:"planning",start:"–",daily:"–",open:"bereits Lazy geladen",manual:"DB",details:[["Miner/Projekt-NFT/Konfiguration","RAM","Supabase DAO1 Tabellen","–","DAO1 ensureLoaded/refreshConfig"]]},
   {id:"dao-help",level:2,label:"Hilfe",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[["DAO1 Hilfe","JS-Modul","–","–","Tab öffnen"]]},
 
+  {id:"cache-audit",level:0,label:"⚡ Cache-/Request-Audit",status:"in_progress",idea:"Cache-/Request-Audit und Startoptimierung",start:"Audit normaler App-Start",daily:"Messung statt neuer Vollscans",open:"pro Bereich messen",manual:"nur gezielte Vergleichsläufe",details:[
+    ["Request-Inventar","Session/RAM/In-Flight","Supabase Tabellen + cache_data_versions","RPC/API je tatsächlich ausgeführtem Call","Pro Request: Scope/Filter, Aufrufer, Dauer, Ergebnisgrösse, Hit/Miss erfassen"],
+    ["Shared Loads","RAM pro App-Lauf","globale/öffentliche Cache-Tabellen","–","Identische DB-Reads/Graph-Paginierungen innerhalb eines Laufs einmal laden und teilen"],
+    ["Delta-Invalidierung","IndexedDB/local cache","DATA_VERSIONS + rootsKey + sync_cursor/last_scanned_block","Chain Head + kleiner Overlap","Nur bei Versions-/Scope-/Cursor-Abweichung nachziehen; kein Blind-Rebuild"],
+    ["Current State vs History","zentraler Current-State-Cache","NFT/Ownership/Projektcaches","historische Reads nur bei Bedarf","Aktuelle Bestände nie auf Kaufpreis/Lifecycle/historische DID-Auflösung warten lassen"],
+    ["Historisches ownerOf@Block","persistenter Ergebnis-Cache","DAO Lifecycle/History Cache","gezielter eth_call über geeigneten RPC","Separat reparieren; darf aktuelle Bot-Anzahl nicht beeinflussen"]]},
   {id:"admin",level:0,label:"⚙️ Admin-Bereich",status:"in_progress",start:"Admin-Prüfung",daily:"–",open:"on demand",manual:"DB",details:[]},
   {id:"admin-token",level:1,label:"Eigene sichere Token",status:"planning",start:"–",daily:"–",open:"DB",manual:"DB",details:[]},
   {id:"admin-chains",level:1,label:"⛓️ Chains",status:"planning",start:"Chain-Konfig DB",daily:"–",open:"DB",manual:"DB",details:[["Chain-Konfiguration","RAM","Supabase public.chains","–","Grundkonfiguration wird beim Login geladen; Editor on demand"]]},
@@ -1488,6 +1494,7 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"&&document.getElement
 function renderAdminDocumentation(){
   const el=document.getElementById("adminDocumentation"); if(!el)return;
   el.innerHTML=`
+  <div class="custom-token-card"><h3 style="margin-top:0">Nächster technischer Schwerpunkt · Cache-/Request-Audit</h3><div class="note"><p><strong>Ziel:</strong> normalen App-Start und Tab-Wechsel messen, bevor weitere Cache-Logik umgebaut wird. Identische Supabase-/RPC-Abfragen sollen pro Lauf dedupliziert, große Graph-/Registry-Daten geteilt und Deltas nur über DATA_VERSIONS, Root-Signaturen und Scan-Cursor nachgezogen werden.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) ist von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt. Historische Reads dürfen aktuelle Anzeigen nicht blockieren.</p><p><strong>Regression DAO:</strong> Monica 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
   <div class="custom-token-card"><h3 style="margin-top:0">1. Architekturregeln</h3><div class="note">
   <p><strong>Neuester Stand:</strong> Änderungen immer auf dem zuletzt ausgelieferten Stand aufbauen.</p>
   <p><strong>Supabase als Konfigurationsquelle:</strong> Chain-, Provider-, Projekt- und Token-Konfiguration möglichst datenbankgesteuert; keine neue fachliche Chain-Hardcodierung.</p>

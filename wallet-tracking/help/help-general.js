@@ -51,6 +51,8 @@ function renderGeneralHelp(){
 
       <div class="custom-token-card"><h3 style="margin-top:0">🏦 Projekte</h3><p class="note"><strong>Projektspezifische Bedienung und Fachlogik gehören nicht in dieses allgemeine Handbuch.</strong> Der Hauptpunkt „DeFi-Projekte“ öffnet zuerst eine neutrale Übersicht und lädt dabei bewusst noch keine projektspezifischen Daten. Öffne danach TLN/VOW, DAO1 oder ein anderes DeFi-Projekt und dort den eigenen Unter-Tab „Hilfe“. Dort werden projektspezifische Tabs, Datenquellen, Cache-/Refresh-Regeln, Statusmodelle und Besonderheiten dokumentiert.</p></div>
 
+      <div class="custom-token-card"><h3 style="margin-top:0">⚡ Cache- &amp; Ladeprinzip</h3><p class="note">WalletTracking arbeitet cache-first: vorhandene bestätigte Daten sollen sofort angezeigt und nur notwendige Deltas nachgeladen werden. Große globale Datenbestände sollen innerhalb eines App-Laufs gemeinsam wiederverwendet statt pro Tab erneut geladen werden. Cache-Gültigkeit wird über Datenversion, Scope/Root-Signatur und Scan-Cursor bestimmt; ein vorhandener Cache gilt nicht automatisch als aktuell. Aktuelle Bestände (z. B. Wallet-, NFT- oder Bot-Bestand) bleiben technisch von historischen Kaufpreis-, Lifecycle- und DID-Zuordnungen getrennt. Der nächste technische Optimierungsschritt ist ein Request-Audit, das doppelte Supabase-/RPC-Abfragen und unnötige Vollscans beim App-Start sichtbar macht.</p></div>
+
       <div class="custom-token-card"><h3 style="margin-top:0">💬 Support</h3><p class="note">Wenn Daten fehlen oder eine Abfrage fehlschlägt, sende möglichst Projekt/Chain, Wallet-Bezeichnung, betroffene Funktion sowie die sichtbare Fehlermeldung oder Tx. Private Keys und Seed-Phrases gehören niemals in den Chat.</p></div>`;
 }
 window.renderGeneralHelp=renderGeneralHelp;
@@ -59,3 +61,5 @@ else renderGeneralHelp();
 })();
 
 // Phase 5.54: DAO-NFT-Daten folgen einer zentralen Single-Source-of-Truth. Ansichten lösen Ownership/Kaufhistorie nicht parallel neu auf, sondern verwenden den persistierten NFT-/Ownership-Bestand.
+
+// Phase 5.74 · 21.09.2026 13:48:40 CEST: Nächster Entwicklungsfokus ist ein zentraler Cache-/Request-Audit. App-Start bleibt cache-first; identische parallele Supabase-/RPC-Abfragen sollen über In-Flight-Reuse zusammengeführt, große globale Datenbestände pro Session nur einmal geladen und Delta-Scans über DATA_VERSIONS/Scope/rootsKey/Cursor/Overlap gesteuert werden. Current State darf nicht auf historische Kaufpreis-/Lifecycle-/DID-Aufbereitung warten. Build 20260921-134840.
