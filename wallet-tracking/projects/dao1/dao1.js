@@ -1,9 +1,10 @@
+// Phase 5.79: DAO Team vereinfacht: nur noch eine wallet-zentrierte User-Ansicht; alte/neue Einzelgraphen bleiben intern/DEV-Nachweis, nicht als normale Tabs.
 // Phase 5.78: DAO-Team ergänzt einen 24h-IndexedDB-Current-State-Cache pro fremdem Partner-Wallet/NFT-Contract; History/Kaufpreis/DID bleiben separat. Navigation/History-Sessioncache unverändert fachlich.
 // Phase 5.75: Cache-/Request-Audit: zentrale NFT-/Ownership-RAM-Daten werden für Dashboard/Initialload geteilt, historische Metadaten blockieren den DAO-Start nicht mehr und identische Tree-Scans werden in-flight dedupliziert.
 // Phase 5.73: Team-Bot-Bestand nutzt dieselbe zentrale nft_cache-Klassifikation wie der NFT-Tab; Trading-Bot-Contracts werden daraus abgeleitet, Bestand und Kaufpreis-Abdeckung werden getrennt angezeigt.
 // Phase 5.69: Partner-Identity und Bot-Bestand laufen unabhaengig; ein langsamer Identity-Contract darf Bot-Zahlen nicht blockieren.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
-// WalletTracking Phase 5.78 · 21.09.2026 17:29:35 CEST · Build 20260921-172935
+// WalletTracking Phase 5.79 · 21.09.2026 17:57:25 CEST · Build 20260921-175725
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -5638,18 +5639,18 @@ window.DAO1Project = (() => {
 
   async function renderDAO1TeamTab(){
     const el=document.getElementById("dao1TeamContent");if(!el)return;
+    // Phase 5.79: DAO Team besitzt nur noch eine normale User-Ansicht.
+    // Die beiden on-chain Graphen bleiben intern getrennt, werden in der UI aber
+    // ausschließlich wallet-zentriert zusammengeführt (1 Wallet = 1 Partner).
+    dao1TeamTreeMode="wallet";
     // Wichtig: nie vor dem ersten Rendern auf DB/RPC/NFT-Cache warten. Genau das
     // führte bisher zum komplett leeren Team-Tab.
     el.innerHTML=`<div class="custom-token-card">
       <div class="chain-title">🌳 DAO Team</div>
-      <div class="note">Standard ist die wallet-zentrierte Sicht: <strong>1 Wallet = 1 Partner</strong>. Alle erreichbaren DAO1-/APTMDAO-DIDs eines Wallets werden zusammengefasst; die beiden on-chain Graphen bleiben intern getrennt und belegbar.</div>
+      <div class="note"><strong>1 Wallet = 1 Partner.</strong> Alle erreichbaren DAO1-/APTMDAO-DIDs eines Wallets werden in diesem Team-Baum zusammengefasst. Die beiden on-chain Graphen bleiben intern getrennt und belegbar; separate DAO1-/APTMDAO-Diagnoseansichten gehören nicht zur normalen User-Oberfläche.</div>
       <div id="dao1TeamRootArea"><div class="status info" style="margin-top:12px"><strong>Eigene DAO-Wallets / DIDs werden aus dem gespeicherten Ownership-Bestand ermittelt …</strong></div></div>
-      <div id="dao1TeamTreeTabs" class="project-subtabs" style="margin-top:12px">
-        <button class="tab-btn ${dao1TeamTreeMode==="wallet"?"active":""}" onclick="DAO1Project.setTeamTreeMode('wallet',this)">Partner nach Wallet</button>
-        <button class="tab-btn ${dao1TeamTreeMode==="legacy"?"active":""}" onclick="DAO1Project.setTeamTreeMode('legacy',this)">DAO1 (alt) · Diagnose</button>
-        <button class="tab-btn ${dao1TeamTreeMode==="aptmdao"?"active":""}" onclick="DAO1Project.setTeamTreeMode('aptmdao',this)">APTMDAO (neu) · Diagnose</button>
-      </div>
-    </div><div id="dao1TeamTreePanel"></div>`;
+      <div id="dao1TeamTreePanel"></div>
+    </div>`;
     renderDAO1TeamTreePanel();
     try{
       // Frisch aus Supabase laden, damit die Team-Ansicht nicht von der Reihenfolge
@@ -5680,6 +5681,8 @@ window.DAO1Project = (() => {
 
   function renderDAO1TeamTreePanel(){
     const el=document.getElementById("dao1TeamTreePanel");if(!el)return;
+    // Normale DAO-Team-Oberfläche ist seit Phase 5.79 ausschließlich wallet-zentriert.
+    dao1TeamTreeMode="wallet";
     const rootArea=document.getElementById("dao1TeamRootArea");if(rootArea&&dao1AllOwnedDidRoots().length)rootArea.innerHTML=teamOwnedRootCardsHtml();
     const renderT0=performance.now();
     if(dao1TeamTreeMode==="wallet"){
@@ -5690,12 +5693,10 @@ window.DAO1Project = (() => {
       window.setDashboardProjectCacheStats?.("dao1",{updatedAt:new Date().toISOString(),teamPartners:partners.length,dao1Partners:dao1Partners.size,aptmdaoPartners:aptmPartners.size});
       const legacy=dao1TeamDiscovery.legacy,aptm=dao1TeamDiscovery.aptmdao;
       const running=legacy.running||aptm.running,error=legacy.error||aptm.error;
-      el.innerHTML=`<div class="custom-token-card" style="margin-top:12px">
-        <div class="chain-title">Partner nach Wallet</div>
-        <div class="status ${error?"warn":"info"}" style="margin-top:10px"><strong>${running?"Teamdaten werden aktualisiert …":"Wallet-zentrierter Team-Baum"}</strong>${error?`<div class="note" style="margin-top:4px">${escapeHtml(error)}</div>`:""}<div class="note" style="margin-top:4px">DAO1 und APTMDAO bleiben als getrennte on-chain Graphen gespeichert. Für die Anzeige werden alle erreichbaren DIDs je Wallet zusammengeführt; ein Wallet zählt nur einmal als Partner. APTMDAO hat nur dann Vorrang, wenn diese APTMDAO-Beziehung tatsächlich in deiner Downline liegt.</div></div>
-        <div style="margin-top:10px"><button type="button" onclick="DAO1Project.discoverTeamTree()" ${running?"disabled":""}>${running?"Discovery läuft …":"Beide Trees on-chain aktualisieren"}</button></div>
+      el.innerHTML=`<div class="status ${error?"warn":"info"}" style="margin-top:12px"><strong>${running?"Teamdaten werden aktualisiert …":"Team-Baum"}</strong>${error?`<div class="note" style="margin-top:4px">${escapeHtml(error)}</div>`:""}<div class="note" style="margin-top:4px">Wallet-zentrierte Darstellung: DAO1 und APTMDAO bleiben als getrennte on-chain Graphen gespeichert; in der Anzeige werden die belegten DIDs je Wallet zusammengeführt. APTMDAO hat nur dann Vorrang, wenn diese Beziehung tatsächlich in deiner Downline liegt.</div></div>
+        <div style="margin-top:10px"><button type="button" onclick="DAO1Project.discoverTeamTree()" ${running?"disabled":""}>${running?"Discovery läuft …":"Team on-chain aktualisieren"}</button></div>
         <div class="project-summary" style="margin-top:12px"><div class="custom-token-card project-summary-box"><span class="field-label">Partner-Wallets</span><strong>${partners.length.toLocaleString("de-DE")}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">davon DAO1-Bezug</span><strong>${dao1Partners.size.toLocaleString("de-DE")}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">davon APTMDAO-Bezug</span><strong>${aptmPartners.size.toLocaleString("de-DE")}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Max. Ebenen</span><strong>${DAO1_TEAM_MAX_LEVELS}</strong></div></div>
-      </div>${dao1WalletForestHtml()}<details class="custom-token-card debug-frame" style="margin-top:12px"><summary style="cursor:pointer;font-weight:800">DEV / Diagnose · getrennte Graphen</summary><div class="note" style="margin-top:8px">DAO1: ${(legacy.edges||[]).length.toLocaleString("de-DE")} Kanten · APTMDAO: ${(aptm.edges||[]).length.toLocaleString("de-DE")} Kanten. Die Wallet-Ansicht verändert keine on-chain Beziehung, sondern dedupliziert ausschließlich die Darstellung.</div></details>`;
+        ${dao1WalletForestHtml()}<details class="custom-token-card debug-frame" style="margin-top:12px"><summary style="cursor:pointer;font-weight:800">DEV / Diagnose · getrennte on-chain Graphen</summary><div class="note" style="margin-top:8px">DAO1: ${(legacy.edges||[]).length.toLocaleString("de-DE")} Kanten · APTMDAO: ${(aptm.edges||[]).length.toLocaleString("de-DE")} Kanten. Die User-Ansicht verändert keine on-chain Beziehung, sondern dedupliziert ausschließlich die wallet-zentrierte Darstellung.</div></details>`;
       bindDAO1TeamTreeControls({edges:[]});window.applyDebugModeVisibility?.();queueMicrotask(()=>dao1EnsurePartnerBots(graph).catch(e=>console.warn("DAO Partner-Bots Hintergrund",e)));return;
     }
     const isOld=dao1TeamTreeMode==="legacy",st=teamDiscoveryState();

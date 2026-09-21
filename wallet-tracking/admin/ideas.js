@@ -6,7 +6,7 @@
 // Phase 5.52: DAO-Team-Audit: eigene Wallets folgen jetzt ebenfalls ihren belegten DID-Uplines und werden zu einem gemeinsamen wallet-zentrierten Baum verbunden; eigene Wallets bleiben sichtbar, zählen aber nicht als Partner. Knoten zeigen DAO1/APTMDAO-DIDs kompakt getrennt. Wallet-Details trennen aktuellen Bot-Bestand von früher hier gekauften/übertragenen Bots; historischer Ersterwerb hat Vorrang, damit Kauf-Wallet/Kaufpreis bei internen Transfers erhalten bleiben. NFT-Wallet-Copy-Icon vereinheitlicht.
 // Phase 5.51: Dashboard-Startnavigation vollständig synchronisiert (aktive Hauptnavigation + keine fremde Kontext-Tab-Leiste). NFT-Bestand zeigt Kauf/Mint-Wallet und aktuelles Wallet gekürzt mit Copy-Icon; ursprüngliches Wallet wird aus Ownership-/Transferhistorie ermittelt und bleibt bei späteren Walletwechseln erhalten.
 // Phase 5.50: DAO-Team Root-/Startfix nach 5.49: eigene DAO1/APTMDAO-DIDs werden aus persistierter Ownership plus NFT-Cache über ALLE User-Wallets erkannt, unabhängig von aktuellen DAO-Assets/Dust. Dashboard lädt Ownership vor den Tree-Subcaches; damit kein 0-Partner-Zustand nur wegen Initialisierungsreihenfolge. Wallet-zentrierte Fachlogik aus 5.49 unverändert.
-// Phase 5.49: DAO-Team auf wallet-zentrierte Standardansicht umgestellt: 1 Wallet = 1 Partner, mehrere DAO1/APTMDAO-DIDs pro Wallet werden in einem Knoten zusammengeführt; APTMDAO hat nur bei tatsächlich eigener APTMDAO-Downline Vorrang. Neue MinerBot-Käufe lesen die verwendete APTMDAO-DID direkt aus dem Kaufaufruf (Referenz #31722: DID #7315 → Upline #23). Eigene Wallets aus Letzte Partneraktivitäten ausgeschlossen; alte/new Tree-Tabs bleiben als Diagnose.
+// Phase 5.49: DAO-Team auf wallet-zentrierte Standardansicht umgestellt: 1 Wallet = 1 Partner, mehrere DAO1/APTMDAO-DIDs pro Wallet werden in einem Knoten zusammengeführt; APTMDAO hat nur bei tatsächlich eigener APTMDAO-Downline Vorrang. Neue MinerBot-Käufe lesen die verwendete APTMDAO-DID direkt aus dem Kaufaufruf (Referenz #31722: DID #7315 → Upline #23). Eigene Wallets aus Letzte Partneraktivitäten ausgeschlossen. Phase 5.79 entfernt die separaten alten/neuen Tree-Tabs aus der normalen UI.
 // Phase 5.48: DAO1-alt Abschlussfix: Eigene historisch verifizierte Bots dürfen für die DID-Zuordnung den persistierten ersten Besitzabschnitt als Erwerbsnachweis verwenden; ein erneut erkannter Kaufpreis ist dafür nicht zwingend. Fremde/live Bots brauchen weiterhin echten Kaufnachweis. Historische DID-Besitzlage am Bot-Erwerbsblock bleibt maßgeblich; APTMDAO-Logik unverändert.
 // Phase 5.47: DAO1/APTMDAO Bot↔DID Abschlussfix. Eigene Bots werden DID-zentriert aus der vollständigen gespeicherten Ownership-Historie berücksichtigt, auch wenn Bot/DID später unabhängig auf andere Wallets verschoben wurden. Entscheidend bleibt die DID-Besitzlage auf der damaligen Erwerbs-Wallet am Bot-Erwerbsblock. Identitäts-NFTs/Membership werden nicht mehr in der Bot-Tabelle dupliziert.
 // Phase 5.46: DAO1/APTMDAO Bot-Zuordnung final auf historischen Besitz zum Bot-Erwerbsblock umgestellt. Bot und DID werden unabhängig behandelt: maßgeblich ist, welche DID(s) derselben Wallet exakt beim Bot-Erwerb on-chain gehalten wurden. APTMDAO hat Vorrang, wenn genau eine APTMDAO-DID zu diesem Zeitpunkt gehalten wurde; sonst genau eine alte DAO1-DID; mehrere/keine DIDs bleiben unzugeordnet. Breiter Wallet-NFT-Scan entfernt; Bot-Kandidaten kommen nur aus bekannten Bot-Contracts und contract-gefilterter Transferhistorie. Persistente alte Fehlzuordnungen je Bot werden vor dem Speichern ersetzt.
@@ -22,8 +22,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260921-172935";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "21.09.2026 16:25:41 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260921-175725";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "21.09.2026 17:57:25 CEST";
 // Phase 5.33: Dashboard-Summary validiert und Start weiter entkoppelt. Apertum-native-Fehler behoben: interner Asset-Key "native" wird nie mehr als EVM-Adresse ABI-encodiert. TLN/BSC lp_position_cache wird beim Dashboard-Start walletübergreifend in einem Batch gelesen statt mit Einzelrequest pro Wallet. TLN "davon aktiv" zeigt bei unvollständig verifizierten Lifecycles keine scheinbar endgültige Zahl mehr, sondern bestätigte Aktive plus offene Partner; erst bei vollständiger Lifecycle-Abdeckung wird die Endzahl gesetzt. DAO1 Dashboard-Rewards werden gezielt aus vorhandenen project_transactions + project_transaction_asset_flows gelesen, ohne ensureLoaded()/vollständige DAO1-Tab-Initialisierung. Phase 5.35 ersetzt die frühere USD-Summary: Gesamt/Vorjahr/Jahr/Monat zeigen Originaltoken/-mengen; historische USD-Bewertungen sind dafür nicht erforderlich. DAO1 "aktiv" bleibt bewusst offen: aktueller Code enthält keinen belastbaren Bot-Target-/Completed-Contract-Proof. Reward-Zeilen der Projektkarten wieder als konsistente Kacheln gestaltet. Systemübersicht, Admin-Doku und Hilfe synchronisiert. Build 20260919-140811.
 // Phase 5.30: TLN/VOW-Contracts werden aus der allgemeinen CoinGecko-/GeckoTerminal-Preisermittlung ausgeschlossen und ausschließlich über die bestehende zentrale Projekt-PriceEngine bewertet (BSC PancakeSwap / ETH Uniswap). Dashboard zeigt Contract-Adressen einheitlich nur verkürzt mit Copy-Funktion; vollständige Adressen werden nicht zusätzlich als Symbolzeile ausgegeben. Preisrouten/-berechnungen selbst unverändert.
 // Phase 5.29: Dashboard-Gerüst wird unmittelbar nach Login sichtbar, bevor Chain-/DB-Konfiguration fertig geladen ist. TLN/VOW-Dashboardpreise zeigen tatsächliche DEX-Quelle (BSC PancakeSwap / ETH Uniswap) plus vorhandene Preisroute. DAO1 hat neu „Kurse und Pools“ als reine Sicht auf die bereits bestehende Apertum-Preislogik; keine neue Preisermittlung.
@@ -506,23 +506,23 @@ OFFEN / VERBINDLICH:
     desc: "Nach Abschluss des Loan-Bereichs Lending fachlich definieren: On-Chain-Erkennung, Positionen, Zinsen/Rewards, Status, Datenmodell, Cache und Darstellung."
   },
   {
-    status: "open",
+    status: "in_progress",
     category: "Projekt DAO1",
     priority: "high",
-    title: "DAO1 Team-Baum bis 20 Ebenen",
-    desc: `ZIEL: Im DAO1-Projekt zwei strikt getrennte Team-Bäume der eigenen Partner bis maximal 20 Ebenen tief darstellen: „Tree DAO1 (alt)“ und „Tree APTMDAO (neu)“. Die beiden Strukturen dürfen fachlich und technisch nicht vermischt oder zusammengeführt werden.
+    title: "DAO Team · wallet-zentrierter Baum bis 20 Ebenen",
+    desc: `AKTUELLER ZIELZUSTAND: In der normalen User-Oberfläche gibt es genau einen DAO-Team-Baum. Fachregel: 1 Wallet = 1 Partner. Alle belegten DAO1- und APTMDAO-DIDs eines Wallets werden in einem Wallet-Knoten zusammengeführt. Die zugrunde liegenden DAO1-alt- und APTMDAO-neu-Graphen bleiben technisch und on-chain strikt getrennte Nachweisquellen und dürfen fachlich nicht vermischt werden.
 
-ANZEIGE PRO PARTNER:
-• Partner/Wallet bzw. vorhandene DAO1-Identität
-• Ebene im jeweiligen Tree
-• Tree-Zugehörigkeit ist strikt DAO1 alt ODER APTMDAO neu; keine tree-übergreifende Aggregation
-• sichtbar kennzeichnen, ob eine DAO1-Mitgliedschaft vorhanden ist
-• Mitgliedschaft wird über einen eigenen Membership-NFT-Typ erkannt, nicht aus TLN-Daten abgeleitet
-• Klick auf „Details“ zeigt die NFTs dieses Partners; vorhandene NFT-Klassifikation (z. B. Mining-Bot, DID, Trading-Bot, Membership) wiederverwenden
+USER-UI:
+• keine separaten Tabs „Partner nach Wallet“, „DAO1 (alt) · Diagnose“ oder „APTMDAO (neu) · Diagnose“
+• wallet-zentrierter Team-Baum direkt in der Hauptmaske „DAO Team“
+• eigene Wallets bleiben sichtbar, zählen aber nicht als Partner
+• Partnerzahl dedupliziert wallet-zentriert; DAO1-/APTMDAO-Bezug separat ausweisbar
+• Partnerdetails verwenden die vorhandene NFT-Klassifikation (Mining-Bot, DID, Trading-Bot, Membership)
+• technische Einzelgraph-Diagnose nur noch im Admin/DEV-Kontext, nicht in der normalen Navigation
 
-REFERENZ: UI, Auf-/Zuklappen, Navigation und Detailidee können vom bestehenden TLN-Team-Baum übernommen werden. Die Datenquelle, Partnerbeziehungen und Membership-/NFT-Erkennung müssen jedoch DAO1-/Apertum-spezifisch sein.
+DATEN-/FACHREGEL: Alter DAO1-Tree bleibt über TokenMinted(to, tokenId, fid) belegt; APTMDAO über den verifizierten Mint-Event child/parent/wallet. Beide Graphen haben weiterhin eigene persistente Supabase-/IndexedDB-Caches, DATA_VERSIONS und inkrementellen Chain-Abgleich. Die gemeinsame Darstellung ändert keine on-chain Beziehung.
 
-STAND 16.09.2026: Alter DAO1-Tree: Parent-Beziehung on-chain verifiziert über DID-Event TokenMinted(to, tokenId, fid); fid ist die Parent-ID. Ein manueller On-Chain-Discovery-Scan ist im Team-Tab eingebaut und zeigt ausschließlich dekodierbare Kanten. Neuer APTMDAO-Tree: Parent-Kanten sind in Phase 5.36 on-chain über den NFT-Mint-Event verifiziert (child, parent, wallet). Eigener globaler Supabase-/IndexedDB-Cache mit DATA_VERSIONS und 24-Block-Overlap ist umgesetzt. OFFEN bleiben Bot-Target/Aktivstatus und eine belastbare Referral-Reward→Partner-Zuordnung.`
+OFFEN: Bot-Target/Aktivstatus belastbar on-chain beweisen; Referral-Reward→Partner-Zuordnung nur übernehmen, wenn fachlich eindeutig belegt. Phase 5.79 hat die überflüssigen sichtbaren Einzelgraph-Tabs entfernt und die wallet-zentrierte Ansicht direkt in „DAO Team“ integriert.`
   },
   {
     status: "open",
@@ -1076,3 +1076,13 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    - Navigation: ein Benutzerklick ist für den sichtbaren Active-State der jeweiligen Haupt-/Kontext-/Projekt-/Admin-Button-Gruppe autoritativ; genau der gewählte Tab bleibt markiert.
    - Keine Fachregel zu Staking, Rewards, Referral oder DAO1/APTMDAO-Zuordnung geändert. Regression Monica bleibt verpflichtend: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
    Nächster Schritt: Messlauf TLN/VOW Haupttab sowie DAO-Team Warm-Reload; danach verbleibende Requests bewerten. Build 20260921-172935. */
+
+
+/* Phase 5.79 · 21.09.2026 17:57:25 CEST
+   DAO-Team-UI vereinfacht und Dokumentation konsolidiert:
+   - Normale User-Oberfläche besitzt nur noch eine Ansicht „DAO Team“.
+   - Tabs „Partner nach Wallet“, „DAO1 (alt) · Diagnose“ und „APTMDAO (neu) · Diagnose“ entfernt.
+   - Wallet-zentrierter Team-Baum (1 Wallet = 1 Partner) ist direkt Bestandteil der DAO-Team-Hauptmaske.
+   - DAO1-alt/APTMDAO-neu bleiben intern getrennte on-chain Graphen und persistente Cache-/Nachweisquellen; technische Diagnose nur DEV/Admin.
+   - Systemübersicht, allgemeine Hilfe und DAO1-Hilfe auf denselben Zielzustand geprüft/aktualisiert.
+   Build 20260921-175725. */

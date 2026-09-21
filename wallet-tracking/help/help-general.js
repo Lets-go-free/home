@@ -1,3 +1,4 @@
+// Phase 5.79: DAO Team ist in der User-Oberfläche eine einzige wallet-zentrierte Ansicht; alte/neue Einzelgraphen bleiben intern getrennte Datenquellen und keine eigenen User-Tabs.
 // Phase 5.78 · 21.09.2026 17:29:35 CEST: Cache-/Request-Audit Runde 2: TLN Wallet-/Snapshot-Batches, Session-Dedup, Preis-Infrastruktur erst im Kurse/Pools-Tab; DAO-Partner-Current-State 24h IndexedDB; Navigation Active-State zentral stabilisiert.
 // Phase 5.58: Apertum-NFT-Kaufpreise prüfen nun ERC-20 sowie native APTM-Zahlungen in der Erwerbs-Tx und deren Internal Transactions. Alte negative Preisbefunde werden wegen Resolver-Version 2 einmalig neu ausgewertet. Reine Transfers/Mints werden nicht als fehlender Kaufpreis dargestellt.\n// Phase 5.58: Historische NFT-Entry-Txs werden auch bei noch offener Kaufprüfung erhalten. Kaufpreis-Negativbefunde gelten nur mit konkret geprüfter Erwerbs-Tx als abgeschlossen; alte unvollständige 5.56-Befunde werden automatisch erneut geprüft.\n// Phase 5.56: NFT-Daten werden bereits beim App-Start aus der zentralen Supabase-Registry geladen. Historische Kaufpreis-Evidenz wird am NFT persistent gecacht und von allen Verbrauchern gemeinsam genutzt; der NFT-Tab muss nicht zuerst geöffnet werden.
 // Phase 5.55: DAO-Team verwendet für bekannte eigene DIDs die zentrale NFT-/Ownership-Zuordnung als autoritative DID→Wallet-Quelle. Historische Tree-Event-Wallets dürfen einen aktuellen Owner nicht überschreiben. Mehrere projektspezifische Uplines eines eigenen Wallets (DAO1/APTMDAO) werden parallel oberhalb des Einstiegsknotens angezeigt.
@@ -19,8 +20,8 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260921-162541";
-const HELP_MODULE_TIMESTAMP="19.09.2026 01:36:47 CEST";
+const HELP_MODULE_BUILD="20260921-175725";
+const HELP_MODULE_TIMESTAMP="21.09.2026 17:57:25 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;
