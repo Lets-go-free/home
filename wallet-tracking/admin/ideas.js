@@ -22,7 +22,7 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260921-162541";
+const ADMIN_IDEAS_MODULE_BUILD = "20260921-170817";
 const ADMIN_IDEAS_MODULE_TIMESTAMP = "21.09.2026 16:25:41 CEST";
 // Phase 5.33: Dashboard-Summary validiert und Start weiter entkoppelt. Apertum-native-Fehler behoben: interner Asset-Key "native" wird nie mehr als EVM-Adresse ABI-encodiert. TLN/BSC lp_position_cache wird beim Dashboard-Start walletübergreifend in einem Batch gelesen statt mit Einzelrequest pro Wallet. TLN "davon aktiv" zeigt bei unvollständig verifizierten Lifecycles keine scheinbar endgültige Zahl mehr, sondern bestätigte Aktive plus offene Partner; erst bei vollständiger Lifecycle-Abdeckung wird die Endzahl gesetzt. DAO1 Dashboard-Rewards werden gezielt aus vorhandenen project_transactions + project_transaction_asset_flows gelesen, ohne ensureLoaded()/vollständige DAO1-Tab-Initialisierung. Phase 5.35 ersetzt die frühere USD-Summary: Gesamt/Vorjahr/Jahr/Monat zeigen Originaltoken/-mengen; historische USD-Bewertungen sind dafür nicht erforderlich. DAO1 "aktiv" bleibt bewusst offen: aktueller Code enthält keinen belastbaren Bot-Target-/Completed-Contract-Proof. Reward-Zeilen der Projektkarten wieder als konsistente Kacheln gestaltet. Systemübersicht, Admin-Doku und Hilfe synchronisiert. Build 20260919-140811.
 // Phase 5.30: TLN/VOW-Contracts werden aus der allgemeinen CoinGecko-/GeckoTerminal-Preisermittlung ausgeschlossen und ausschließlich über die bestehende zentrale Projekt-PriceEngine bewertet (BSC PancakeSwap / ETH Uniswap). Dashboard zeigt Contract-Adressen einheitlich nur verkürzt mit Copy-Funktion; vollständige Adressen werden nicht zusätzlich als Symbolzeile ausgegeben. Preisrouten/-berechnungen selbst unverändert.
@@ -1056,3 +1056,13 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    - renderAdminSystemOverview kann dadurch Status-Events verarbeiten, ohne rekursiv neue Supabase-Reads zu erzeugen.
    - Fachlogik und Current-State/History-Trennung unverändert.
    Nächster Messlauf erst mit zurückgesetztem Audit nach Deployment. Build 20260921-162541. */
+
+
+/* Phase 5.77 · 21.09.2026 17:08:17 CEST
+   Cache-/Request-Audit – Optimierungsrunde 1 umgesetzt:
+   - DAO1: project_transactions und project_transaction_asset_flows werden pro Wallet in der Browser-Session geteilt; Bot-Claims/Referral-Rewards laden dieselbe Historie nicht erneut.
+   - DAO Team: dao_partner_bot_scan_state wird für Partner gebündelt vorgeladen; identische laufende Partner-Refreshs werden pro Wallet dedupliziert. Fachliche Bot-/DID-Regeln unverändert.
+   - TLN/VOW: aktuelle Token-Prüfung über Multicall3 (Fallback auf bisherige Einzelcalls); Team-Persistent-Cache erst beim Team-Tab; 31.12.-Snapshotbewertung nicht beim normalen Projekt-Einstieg; kein automatisches LP-History-Rendering beim Haupttab.
+   - Current State und History bleiben getrennt.
+   Regression: Monica 0x568281…fe4940 weiterhin DAO1 #21044, APTMDAO #7803, 9 Mining-Bots, 1 Trading-Bot.
+   Nächster Schritt: Messlauf gegen 5.76-Baseline; keine weiteren fachlichen Umbauten vor Messergebnis. Build 20260921-170817. */

@@ -1,7 +1,8 @@
+// Phase 5.77: TLN/VOW-Init trennt Current State von Team/History stärker; Token-Balance-Prüfung nutzt Multicall3 mit sicherem Fallback, Team-Cache wird erst im Team-Tab restauriert und 31.12.-Bewertung nicht beim Haupttab geladen.
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260921-141307';
+const BUILD_ID='20260921-170817';
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -193,7 +194,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='21.09.2026 14:13:07 CEST';
+const APP_VERSION='21.09.2026 17:08:17 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11190,12 +11191,21 @@ async function renderProjectAdminContractRegistry(){
   body.innerHTML=rows.length?rows.map(x=>`<tr><td>${x.verified?'<span class="ok"><b>✓ Verifiziert</b></span>':`<span class="warn"><b>${esc(x.statusLabel)}</b></span>`}</td><td><b>${esc(x.name)}</b></td><td>${esc(x.type)}</td><td class="mono">${esc(x.address)}</td><td>${esc(x.relation||'–')}</td><td>${esc(x.source||'–')}</td><td>${x.last?esc(new Date(x.last).toLocaleString('de-CH')):'–'}</td></tr>`).join(''):'<tr><td colspan="7">Keine Contract-Daten vorhanden.</td></tr>';
 }
 
+let teamPersistentRestorePromise=null;
+function ensureTeamPersistentCacheLoaded(){
+  if(!teamPersistentRestorePromise){
+    teamPersistentRestorePromise=Promise.resolve(restoreTeamTreeFromPersistentCache()).catch(e=>{teamPersistentRestorePromise=null;throw e});
+  }
+  return teamPersistentRestorePromise;
+}
+
 function switchProjectUserTab(name){
   const key=String(name||'overview');
   document.querySelectorAll('.project-user-tab').forEach(btn=>btn.classList.toggle('active',btn.dataset.projectPanel===key));
   document.querySelectorAll('.project-user-panel').forEach(panel=>panel.classList.toggle('active',panel.id===`projectPanel-${key}`));
   renderProjectUserView();
   if(key==='admin')void renderProjectAdminContractRegistry();
+  if(key==='team')void ensureTeamPersistentCacheLoaded().then(()=>{renderTeamTree();renderTeamExpiryList();renderTeamExpiredOpenList();}).catch(e=>log(`Team-Cache konnte nicht geladen werden: ${e?.message||e}`,'warn'));
   if(key==='loans')void initCentralLoanEngine().discover();
 }
 function setupProjectUserTabs(){
@@ -11705,7 +11715,7 @@ function populateProjectWalletFilter(){
   sel.innerHTML=`<option value="all">Alle meine TLN/VOW-Wallets · aggregiert</option>${tlnWallets.map(w=>`<option value="${esc(norm(w.evm_address))}">${esc(w.label)} · ${esc(short(w.evm_address))}</option>`).join('')}`;
   sel.value=[...sel.options].some(o=>o.value===current)?current:'all';PROJECT_WALLET_FILTER=sel.value;
 }
-async function loadProjectWalletSnapshots(){
+async function loadProjectWalletSnapshots({withHistoricalValuation=false}={}){
   if(PROJECT_WALLET_SNAPSHOTS_LOADING||!currentUserId)return;
   PROJECT_WALLET_SNAPSHOTS_LOADING=true;
   try{
@@ -11714,7 +11724,9 @@ async function loadProjectWalletSnapshots(){
       const wallet=norm(w.evm_address);if(!ethers.isAddress(wallet))return;
       const payload=await loadTechnicalProcessCache(wallet,TECH_CACHE_KEYS.discoveryResults,TECH_CACHE_VERSIONS.discoveryResults);
       if(payload?.kind==='verified_discovery_results'&&norm(payload.wallet)===wallet){
-        await hydrateProjectSnapshotValuation(wallet,payload,snapshotYearFromUi());
+        // 31.12.-/History-Bewertung ist kein Current State und wird nicht mehr beim
+        // normalen TLN/VOW-Einstieg mitgeladen. Sie bleibt explizit nachladbar.
+        if(withHistoricalValuation)await hydrateProjectSnapshotValuation(wallet,payload,snapshotYearFromUi());
         PROJECT_WALLET_SNAPSHOTS.set(wallet,payload);
       }
     }));
@@ -17972,16 +17984,33 @@ async function walletHasCurrentProjectToken(wallet,tokenRows){
   const address=norm(wallet?.evm_address||'');
   if(!/^0x[0-9a-f]{40}$/.test(address))return false;
   const calldata='0x70a08231'+address.slice(2).padStart(64,'0');
-  const rows=(tokenRows||[])
+  const rows=[...new Set((tokenRows||[])
     .map(r=>norm(r?.address||r?.contract_address||''))
-    .filter(a=>/^0x[0-9a-f]{40}$/.test(a));
+    .filter(a=>/^0x[0-9a-f]{40}$/.test(a)))];
+  if(!rows.length)return false;
+
+  // Phase 5.77: dieselbe balanceOf-Fachlogik, aber gebündelt über Multicall3.
+  // Dadurch wird aus N Token-RPCs pro Wallet normalerweise genau ein eth_call.
+  try{
+    const multicall='0xca11bde05977b3631167028862be2a173976ca11';
+    const iface=new ethers.Interface(['function aggregate3(tuple(address target,bool allowFailure,bytes callData)[] calls) payable returns (tuple(bool success,bytes returnData)[] returnData)']);
+    const data=iface.encodeFunctionData('aggregate3',[rows.map(token=>({target:token,allowFailure:true,callData:calldata}))]);
+    const raw=await rpc('eth_call',[{to:multicall,data},'latest']);
+    const [result]=iface.decodeFunctionResult('aggregate3',raw);
+    for(const item of result||[]){
+      if(!item?.success)continue;
+      try{if(BigInt(item.returnData||'0x0')>0n)return true}catch{}
+    }
+    return false;
+  }catch(e){
+    log(`TLN/VOW Wallet-Token Multicall nicht verfügbar; sicherer Einzelcall-Fallback: ${e?.message||e}`,'warn');
+  }
+
   const BATCH=6;
   for(let i=0;i<rows.length;i+=BATCH){
     const balances=await Promise.all(rows.slice(i,i+BATCH).map(async token=>{
-      try{
-        const raw=await rpc('eth_call',[{to:token,data:calldata},'latest']);
-        return BigInt(raw||'0x0');
-      }catch{return 0n}
+      try{const raw=await rpc('eth_call',[{to:token,data:calldata},'latest']);return BigInt(raw||'0x0');}
+      catch{return 0n}
     }));
     if(balances.some(v=>v>0n))return true;
   }
@@ -18180,8 +18209,8 @@ populateTlnWalletDropdown();
 bindWalletDropdown();
 setupProjectUserTabs();
 void renderProjectAdminContractRegistry();
-populateProjectWalletFilter();await primeProjectReferralDecimals();await loadProjectWalletSnapshots();
-$('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;bindStep6LifecycleControls();resetDiscoveryProcess($('wallet').value);setStepState(1,'bereit');if(!CURRENT_TEAM_PROJECT_FOREST)setStepState(7,'bereit');updateProcessButtons();log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok');if(ethers.isAddress($('wallet').value))await restoreDiscoveryResultSnapshot($('wallet').value);await restoreTeamTreeFromPersistentCache()}
+populateProjectWalletFilter();await primeProjectReferralDecimals();await loadProjectWalletSnapshots({withHistoricalValuation:false});
+$('projectCount').textContent=`${projectTokens.length} aktive Underlying-Projekt-Token + ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus Supabase geladen.`;$('projectTokens').innerHTML=projectTokens.map(x=>`<tr><td>${esc(x.symbol||x.label||'–')}</td><td>${esc(x.tln_vow_category||x.defi_category||'–')}</td><td class="mono">${esc(norm(x.address))}</td></tr>`).join('')||'<tr><td colspan="3">Keine Projekt-Token.</td></tr>';$('stakingContracts').innerHTML=stakingContracts.filter(x=>x.classify_transfers).map(x=>`<tr><td><b>${esc(stakingContractLabel(x))}</b></td><td>${esc(x.role||'–')}</td><td class="mono">${esc(norm(x.contract_address))}</td><td>${esc(x.pair_label||'–')}</td><td><span class="muted">dynamisch aus SC</span></td></tr>`).join('')||'<tr><td colspan="5">Keine Staking-Contracts.</td></tr>';$('refresh').disabled=!tlnWallets.length;bindStep6LifecycleControls();resetDiscoveryProcess($('wallet').value);setStepState(1,'bereit');if(!CURRENT_TEAM_PROJECT_FOREST)setStepState(7,'bereit');updateProcessButtons();log(`Initialisiert: ${projectTokens.length} aktive Projekt-Token, ${HISTORICAL_STAKING_ASSETS.size} historische Staking-Assets aus predefined_tokens, ${stakingContracts.filter(x=>x.classify_transfers).length} klassifizierende Staking-Contracts.`,'ok');if(ethers.isAddress($('wallet').value))await restoreDiscoveryResultSnapshot($('wallet').value)}
 $('refresh').onclick=processBaseData;
 $('stepStaking').onclick=processStakingDiscovery;
 $('stepDuration').onclick=processDuration;

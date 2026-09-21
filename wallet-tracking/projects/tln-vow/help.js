@@ -1,7 +1,8 @@
+// Phase 5.77 · 21.09.2026 17:08:17 CEST: TLN/VOW Haupttab trennt Current State von Team-, LP-History- und 31.12.-History-Loads; Wallet-Token-Prüfung gebündelt via Multicall3 mit Fallback. Build 20260921-170817.
 (() => {
-// WalletTracking · TLN/VOW Hilfe · Build 20260921-141307
+// WalletTracking · TLN/VOW Hilfe · Build 20260921-170817
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260921-141307";
+const HELP_MODULE_BUILD="20260921-170817";
 const HELP_MODULE_TIMESTAMP="21.09.2026 14:13:07 CEST";
 function renderTlnVowHelp(){
   const el=document.getElementById("tlnVowHelpContent");
@@ -31,4 +32,4 @@ else renderTlnVowHelp();
 
 // Phase 5.42: Fehlende historische Stake/Ende/Unstake-USD-Werte werden als noch nicht persistierte Bewertung kenntlich; bestehende Step-6-/Detailbewertung ermittelt fehlende Zeitpunkte gezielt nach und bewahrt vorhandene Werte.
 
-// Phase 5.75 · 21.09.2026 14:13:07 CEST: Dashboard-Summary löst beim App-Start kein ensureInitialized() mehr aus; Aktualisierung nach bewusstem TLN/VOW-Init. Build 20260921-141307.
+// Phase 5.75 · 21.09.2026 14:13:07 CEST: Dashboard-Summary löst beim App-Start kein ensureInitialized() mehr aus; Aktualisierung nach bewusstem TLN/VOW-Init. Build 20260921-170817.

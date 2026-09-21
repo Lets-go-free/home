@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.76 · 21.09.2026 16:25:41 CEST · Build 20260921-162541 */
+/* WalletTracking Phase 5.77 · 21.09.2026 17:08:17 CEST · Build 20260921-170817 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1422,7 +1422,9 @@ function showTab(name) {
           const overviewBtn = [...tlnSubtabs].find(b => /Übersicht/.test(b.textContent || ""));
           if (overviewBtn) openTlnDiscoveryTab("overview", overviewBtn);
         }
-        return maybeAutoRefreshProject('tln_vow','bsc','tlnvowLpBscContent');
+        // Phase 5.77: Der reine TLN/VOW-Einstieg darf keine LP-Historie/Scan-States
+        // für alle Wallets laden. LP-Caches werden erst im LP-/Kurse-und-Pools-Kontext gelesen.
+        return null;
       })
       .catch(e=>console.warn('TLN/VOW Projekt-Autoload:',e));
   }
@@ -1512,7 +1514,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-help",level:2,label:"Hilfe",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[["DAO1 Hilfe","JS-Modul","–","–","Tab öffnen"]]},
 
   {id:"cache-audit",level:0,label:"⚡ Cache-/Request-Audit",status:"in_progress",idea:"Cache-/Request-Audit und Startoptimierung",start:"🟢 Session-Audit + kein Auto-loadAll",daily:"kein Blind-Refresh",open:"Tab-Marker + Messung",manual:"gezielte Vergleichsläufe",details:[
-    ["Request-Inventar","Session/RAM","Supabase Tabellen + cache_data_versions","RPC/API je tatsächlich ausgeführtem Call","Phase 5.76: fetch-basierter Audit misst Request-Signatur, Scope/Filter, Aufrufer, Dauer, HTTP-Status und Content-Length/Range; DATA_VERSIONS im Systemtab wird in-flight dedupliziert, 30 s wiederverwendet und DAO-Teamstände werden vor dem Status-Update aggregiert, damit kein Render-/Request-Feedbackloop entsteht; Start-/Tab-/Refresh-Marker segmentieren den Lauf"],
+    ["Request-Inventar","Session/RAM","Supabase Tabellen + cache_data_versions","RPC/API je tatsächlich ausgeführtem Call","Phase 5.77: Audit bleibt aktiv; zusätzlich werden DAO-History-Reads pro Wallet innerhalb der Session geteilt, DAO-Partner-Scan-State gebündelt gelesen und TLN/VOW trennt Main-Tab, Team, LP-History und 31.12.-Bewertung stärker. DATA_VERSIONS bleibt in-flight dedupliziert und 30 s gecacht; Start-/Tab-/Refresh-Marker segmentieren den Lauf"],
     ["Shared Loads","RAM pro App-Lauf","globale/öffentliche Cache-Tabellen","–","Identische DB-Reads/Graph-Paginierungen innerhalb eines Laufs einmal laden und teilen"],
     ["Delta-Invalidierung","IndexedDB/local cache","DATA_VERSIONS + rootsKey + sync_cursor/last_scanned_block","Chain Head + kleiner Overlap","Nur bei Versions-/Scope-/Cursor-Abweichung nachziehen; kein Blind-Rebuild"],
     ["Current State vs History","zentraler Current-State-Cache","NFT/Ownership/Projektcaches","historische Reads nur bei Bedarf","Aktuelle Bestände nie auf Kaufpreis/Lifecycle/historische DID-Auflösung warten lassen"],
@@ -1614,7 +1616,7 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"&&document.getElement
 function renderAdminDocumentation(){
   const el=document.getElementById("adminDocumentation"); if(!el)return;
   el.innerHTML=`
-  <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.76</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW wird nicht allein für die Dashboard-Summary initialisiert. NFT-Current-State wird sofort aus der zentralen Registry gezeigt; globale Ersterwerbs-/Kaufpreis-Historie startet erst beim NFT-Tab.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Monica 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
+  <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.77</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW lädt beim Projekt-Einstieg keine LP-Historie automatisch; Team-Cache und historische 31.12.-Bewertung werden erst im passenden Kontext geladen. NFT-Current-State wird sofort aus der zentralen Registry gezeigt.</p><p><strong>DAO:</strong> Bot-Claims und Referral-Rewards teilen sich denselben Session-History-Cache; Partner-Scan-State wird gebündelt gelesen und identische laufende Partner-Jobs werden dedupliziert.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Monica 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
   <div class="custom-token-card"><h3 style="margin-top:0">1. Architekturregeln</h3><div class="note">
   <p><strong>Neuester Stand:</strong> Änderungen immer auf dem zuletzt ausgelieferten Stand aufbauen.</p>
   <p><strong>Supabase als Konfigurationsquelle:</strong> Chain-, Provider-, Projekt- und Token-Konfiguration möglichst datenbankgesteuert; keine neue fachliche Chain-Hardcodierung.</p>

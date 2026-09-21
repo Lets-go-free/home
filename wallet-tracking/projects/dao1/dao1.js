@@ -1,8 +1,9 @@
+// Phase 5.77: DAO-History wird innerhalb der Session pro Wallet gemeinsam für Übersicht/Bot-Claims/Referral-Rewards wiederverwendet; Partner-Bot-Scan-State wird vorab gebündelt und in-flight dedupliziert.
 // Phase 5.75: Cache-/Request-Audit: zentrale NFT-/Ownership-RAM-Daten werden für Dashboard/Initialload geteilt, historische Metadaten blockieren den DAO-Start nicht mehr und identische Tree-Scans werden in-flight dedupliziert.
 // Phase 5.73: Team-Bot-Bestand nutzt dieselbe zentrale nft_cache-Klassifikation wie der NFT-Tab; Trading-Bot-Contracts werden daraus abgeleitet, Bestand und Kaufpreis-Abdeckung werden getrennt angezeigt.
 // Phase 5.69: Partner-Identity und Bot-Bestand laufen unabhaengig; ein langsamer Identity-Contract darf Bot-Zahlen nicht blockieren.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
-// WalletTracking Phase 5.75 · 21.09.2026 14:13:07 CEST · Build 20260921-141307
+// WalletTracking Phase 5.77 · 21.09.2026 17:08:17 CEST · Build 20260921-170817
 window.DAO1Project = (() => {
   const PROJECT_KEY = "dao1";
   const PROJECT_NAME = "DAO1";
@@ -119,6 +120,12 @@ window.DAO1Project = (() => {
   const TOKEN_FLOW_SCAN_TYPE = "token_flows_wallet_v2";
   let transactionRows = [];
   let transactionAssetFlows = [];
+  // Phase 5.77: gemeinsame Session-Caches für DAO-Historie. Claims, Referral-Rewards
+  // und Übersicht dürfen dieselben bereits gelesenen Supabase-Zeilen wiederverwenden.
+  const daoHistoryTxCache=new Map();
+  const daoHistoryFlowCache=new Map();
+  const daoHistoryTxInflight=new Map();
+  const daoHistoryFlowInflight=new Map();
   let txFilterWallet = "";
   const dao1TodayIso=()=>{
     const d=new Date();
@@ -2651,6 +2658,10 @@ window.DAO1Project = (() => {
 
   async function saveAssetFlowRows(rows){
     if(!rows?.length)return;
+    // Persistierte Änderungen invalidieren nur die betroffenen Session-Scopes.
+    const changedWalletIds=new Set(rows.map(r=>String(r?.wallet_id||"")).filter(Boolean));
+    for(const id of changedWalletIds)daoHistoryFlowCache.delete(`wallet:${id}`);
+    daoHistoryFlowCache.delete("all");
     const BATCH=500;
     for(let i=0;i<rows.length;i+=BATCH){
       const {error}=await sb.from("project_transaction_asset_flows")
@@ -2659,23 +2670,32 @@ window.DAO1Project = (() => {
     }
   }
 
-  async function loadAssetFlowRows(address=null){
-    const rows=[];
-    let offset=0;
-    while(true){
-      let q=sb.from("project_transaction_asset_flows").select("*")
-        .eq("user_id",getContext?.().currentUser.id)
-        .eq("project_key",PROJECT_KEY)
-        .eq("chain_key",CHAIN_KEY);
-      if(address)q=q.eq("wallet_id",walletIdForAddress(address));
-      const {data,error}=await q.order("block_number",{ascending:false}).range(offset,offset+DB_PAGE_SIZE-1);
-      if(error)throw error;
-      const page=data||[];
-      rows.push(...page);
-      if(page.length<DB_PAGE_SIZE)break;
-      offset+=DB_PAGE_SIZE;
-    }
-    return rows.map(hydratePrivateWalletAddress);
+  async function loadAssetFlowRows(address=null,{force=false}={}){
+    const cacheKey=address?`wallet:${walletIdForAddress(address)}`:"all";
+    if(!force&&daoHistoryFlowCache.has(cacheKey))return daoHistoryFlowCache.get(cacheKey);
+    if(!force&&daoHistoryFlowInflight.has(cacheKey))return daoHistoryFlowInflight.get(cacheKey);
+    const job=(async()=>{
+      const rows=[];
+      let offset=0;
+      while(true){
+        let q=sb.from("project_transaction_asset_flows").select("*")
+          .eq("user_id",getContext?.().currentUser.id)
+          .eq("project_key",PROJECT_KEY)
+          .eq("chain_key",CHAIN_KEY);
+        if(address)q=q.eq("wallet_id",walletIdForAddress(address));
+        const {data,error}=await q.order("block_number",{ascending:false}).range(offset,offset+DB_PAGE_SIZE-1);
+        if(error)throw error;
+        const page=data||[];
+        rows.push(...page);
+        if(page.length<DB_PAGE_SIZE)break;
+        offset+=DB_PAGE_SIZE;
+      }
+      const hydrated=rows.map(hydratePrivateWalletAddress);
+      daoHistoryFlowCache.set(cacheKey,hydrated);
+      return hydrated;
+    })();
+    daoHistoryFlowInflight.set(cacheKey,job);
+    try{return await job;}finally{daoHistoryFlowInflight.delete(cacheKey);}
   }
 
   async function loadAllAssetFlowRows(wallets){
@@ -3140,6 +3160,9 @@ window.DAO1Project = (() => {
 
   async function saveTransactionRows(rows){
     if(!rows.length)return;
+    const changedWalletIds=new Set(rows.map(r=>String(r?.wallet_id||"")).filter(Boolean));
+    for(const id of changedWalletIds)daoHistoryTxCache.delete(`wallet:${id}`);
+    daoHistoryTxCache.delete("all");
     const {error}=await sb.from("project_transactions")
       .upsert(rows,{onConflict:"user_id,project_key,chain_key,wallet_id,tx_hash"});
     if(error)throw error;
@@ -3156,28 +3179,37 @@ window.DAO1Project = (() => {
     }
   }
 
-  async function loadTransactionRows(address=null,status=null){
-    const rows=[];
-    let offset=0;
-    while(true){
-      let q=sb.from("project_transactions")
-        .select("*")
-        .eq("user_id",getContext?.().currentUser.id)
-        .eq("project_key",PROJECT_KEY)
-        .eq("chain_key",CHAIN_KEY);
-      if(address)q=q.eq("wallet_id",walletIdForAddress(address));
-      const {data,error}=await q
-        .order("block_number",{ascending:false})
-        .order("tx_hash",{ascending:true})
-        .range(offset,offset+DB_PAGE_SIZE-1);
-      if(error)throw error;
-      const page=data||[];
-      rows.push(...page);
-      if(status && page.length) setTransactionStatus("loading",`Gespeicherte Transaktionen werden geladen… ${rows.length}`);
-      if(page.length<DB_PAGE_SIZE)break;
-      offset+=DB_PAGE_SIZE;
-    }
-    return rows.map(hydratePrivateWalletAddress);
+  async function loadTransactionRows(address=null,status=null,{force=false}={}){
+    const cacheKey=address?`wallet:${walletIdForAddress(address)}`:"all";
+    if(!force&&daoHistoryTxCache.has(cacheKey))return daoHistoryTxCache.get(cacheKey);
+    if(!force&&daoHistoryTxInflight.has(cacheKey))return daoHistoryTxInflight.get(cacheKey);
+    const job=(async()=>{
+      const rows=[];
+      let offset=0;
+      while(true){
+        let q=sb.from("project_transactions")
+          .select("*")
+          .eq("user_id",getContext?.().currentUser.id)
+          .eq("project_key",PROJECT_KEY)
+          .eq("chain_key",CHAIN_KEY);
+        if(address)q=q.eq("wallet_id",walletIdForAddress(address));
+        const {data,error}=await q
+          .order("block_number",{ascending:false})
+          .order("tx_hash",{ascending:true})
+          .range(offset,offset+DB_PAGE_SIZE-1);
+        if(error)throw error;
+        const page=data||[];
+        rows.push(...page);
+        if(status && page.length) setTransactionStatus("loading",`Gespeicherte Transaktionen werden geladen… ${rows.length}`);
+        if(page.length<DB_PAGE_SIZE)break;
+        offset+=DB_PAGE_SIZE;
+      }
+      const hydrated=rows.map(hydratePrivateWalletAddress);
+      daoHistoryTxCache.set(cacheKey,hydrated);
+      return hydrated;
+    })();
+    daoHistoryTxInflight.set(cacheKey,job);
+    try{return await job;}finally{daoHistoryTxInflight.delete(cacheKey);}
   }
 
   async function loadAllApertumTransactionRows(wallets,status=null){
@@ -4114,6 +4146,8 @@ window.DAO1Project = (() => {
   const dao1PartnerIdentityStats=new Map();
   let dao1PartnerBotRefreshRunning=false;
   let dao1PartnerBotCacheLoaded=false;
+  const dao1PartnerBotScanStateCache=new Map();
+  const dao1PartnerBotRefreshInflight=new Map();
 
   function dao1TeamAliasKey(did,mode=dao1TeamTreeMode){return `${mode==="aptmdao"?"aptmdao":"dao1"}:did:${String(did||"").trim()}`;}
   function dao1TeamAliasFor(did,mode){const direct=dao1TeamAliases[dao1TeamAliasKey(did,mode)];return direct?String(direct).trim():"";}
@@ -5361,13 +5395,29 @@ window.DAO1Project = (() => {
     // aus den ERC-721-Transfers der bekannten Bot-Contracts rekonstruiert.
     try{const {error}=await sb.from("dao_partner_bot_lifecycle_cache").select("wallet_address").eq("user_id",getContext().currentUser.id).eq("project_key",PROJECT_KEY).limit(1);if(error)throw error;}catch(e){console.warn("DAO Partner-Bot Statistik-Cache",e);}
   }
+  function dao1PartnerBotDueFromState(hash,data){
+    const age=data?.last_scanned_at?Date.now()-new Date(data.last_scanned_at).getTime():Infinity;
+    return {due:!data||data.status!=="ok"||age>=86400000,hash};
+  }
+  async function dao1PrefetchPartnerBotScanStates(wallets){
+    const uid=getContext?.()?.currentUser?.id;if(!uid||!wallets?.length)return;
+    const pairs=await Promise.all(wallets.map(async wallet=>({wallet:lower(wallet),hash:await dao1WalletHash(wallet)})));
+    const missing=pairs.filter(x=>!dao1PartnerBotScanStateCache.has(x.hash));if(!missing.length)return;
+    try{
+      const {data,error}=await sb.from("dao_partner_bot_scan_state").select("wallet_hash,last_scanned_at,status").eq("user_id",uid).eq("project_key",PROJECT_KEY).in("wallet_hash",missing.map(x=>x.hash));
+      if(error)throw error;const by=new Map((data||[]).map(r=>[String(r.wallet_hash||""),r]));
+      for(const x of missing)dao1PartnerBotScanStateCache.set(x.hash,by.get(x.hash)||null);
+    }catch(e){console.warn("DAO Partner-Bot Scan-State Prefetch",e);}
+  }
   async function dao1PartnerBotScanDue(wallet){
-    try{const hash=await dao1WalletHash(wallet),uid=getContext?.()?.currentUser?.id;if(!uid)return {due:false,hash};const {data,error}=await sb.from("dao_partner_bot_scan_state").select("last_scanned_at,status").eq("user_id",uid).eq("project_key",PROJECT_KEY).eq("wallet_hash",hash).maybeSingle();if(error)throw error;const age=data?.last_scanned_at?Date.now()-new Date(data.last_scanned_at).getTime():Infinity;return {due:!data||data.status!=="ok"||age>=86400000,hash};}catch(e){console.warn("DAO Partner-Bot Scan-State",e);return {due:true,hash:await dao1WalletHash(wallet)};}
+    const hash=await dao1WalletHash(wallet),uid=getContext?.()?.currentUser?.id;if(!uid)return {due:false,hash};
+    if(dao1PartnerBotScanStateCache.has(hash))return dao1PartnerBotDueFromState(hash,dao1PartnerBotScanStateCache.get(hash));
+    try{const {data,error}=await sb.from("dao_partner_bot_scan_state").select("last_scanned_at,status").eq("user_id",uid).eq("project_key",PROJECT_KEY).eq("wallet_hash",hash).maybeSingle();if(error)throw error;dao1PartnerBotScanStateCache.set(hash,data||null);return dao1PartnerBotDueFromState(hash,data||null);}catch(e){console.warn("DAO Partner-Bot Scan-State",e);return {due:true,hash};}
   }
   async function dao1SavePartnerBotScanState(hash,status,errorText=""){
-    const uid=getContext?.()?.currentUser?.id;if(!uid)return;const now=new Date().toISOString();try{await sb.from("dao_partner_bot_scan_state").upsert({user_id:uid,project_key:PROJECT_KEY,wallet_hash:hash,last_scanned_at:now,status,last_error:errorText||null,updated_at:now},{onConflict:"user_id,project_key,wallet_hash"});}catch(e){console.warn("DAO Partner-Bot Scan-State speichern",e);}
+    const uid=getContext?.()?.currentUser?.id;if(!uid)return;const now=new Date().toISOString();try{await sb.from("dao_partner_bot_scan_state").upsert({user_id:uid,project_key:PROJECT_KEY,wallet_hash:hash,last_scanned_at:now,status,last_error:errorText||null,updated_at:now},{onConflict:"user_id,project_key,wallet_hash"});dao1PartnerBotScanStateCache.set(hash,{last_scanned_at:now,status});}catch(e){console.warn("DAO Partner-Bot Scan-State speichern",e);}
   }
-  async function dao1RefreshOnePartnerBots(node){
+  async function dao1RefreshOnePartnerBotsCore(node){
     const wallet=lower(node.wallet),hadIdentity=dao1PartnerIdentityStats.has(wallet),hadStats=dao1PartnerBotStats.has(wallet);
     try{
       // Die Kachel braucht bei jedem frischen Seitenlauf den aktuellen NFT-Besitz. Das ist
@@ -5400,8 +5450,15 @@ window.DAO1Project = (() => {
     }
   }
 
+  async function dao1RefreshOnePartnerBots(node){
+    const wallet=lower(node?.wallet||"");if(!wallet)return false;
+    if(dao1PartnerBotRefreshInflight.has(wallet))return dao1PartnerBotRefreshInflight.get(wallet);
+    const job=dao1RefreshOnePartnerBotsCore(node);dao1PartnerBotRefreshInflight.set(wallet,job);
+    try{return await job;}finally{dao1PartnerBotRefreshInflight.delete(wallet);}
+  }
+
   async function dao1EnsurePartnerBots(graph){
-    if(dao1PartnerBotRefreshRunning)return;dao1PartnerBotRefreshRunning=true;try{await dao1LoadPartnerBotStatsCache();const partners=[...graph.nodes.values()].filter(n=>!n.own&&!n.upstream&&n.primary);let changed=false;for(let i=0;i<partners.length;i+=3){const batch=partners.slice(i,i+3);const r=await Promise.all(batch.map(dao1RefreshOnePartnerBots));changed=r.some(Boolean)||changed;if(changed&&document.getElementById("dao1TeamTreePanel"))renderDAO1TeamTreePanel();await new Promise(res=>setTimeout(res,0));}}finally{dao1PartnerBotRefreshRunning=false;}
+    if(dao1PartnerBotRefreshRunning)return;dao1PartnerBotRefreshRunning=true;try{await dao1LoadPartnerBotStatsCache();const partners=[...graph.nodes.values()].filter(n=>!n.own&&!n.upstream&&n.primary);await dao1PrefetchPartnerBotScanStates(partners.map(n=>n.wallet));let changed=false;for(let i=0;i<partners.length;i+=3){const batch=partners.slice(i,i+3);const r=await Promise.all(batch.map(dao1RefreshOnePartnerBots));changed=r.some(Boolean)||changed;if(changed&&document.getElementById("dao1TeamTreePanel"))renderDAO1TeamTreePanel();await new Promise(res=>setTimeout(res,0));}}finally{dao1PartnerBotRefreshRunning=false;}
   }
 
   function bindDAO1TeamTreeControls(st){
