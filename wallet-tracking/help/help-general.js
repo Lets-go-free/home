@@ -18,7 +18,7 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260921-141307";
+const HELP_MODULE_BUILD="20260921-162541";
 const HELP_MODULE_TIMESTAMP="19.09.2026 01:36:47 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
@@ -66,3 +66,5 @@ else renderGeneralHelp();
 // Phase 5.74 · 21.09.2026 13:48:40 CEST: Nächster Entwicklungsfokus ist ein zentraler Cache-/Request-Audit. App-Start bleibt cache-first; identische parallele Supabase-/RPC-Abfragen sollen über In-Flight-Reuse zusammengeführt, große globale Datenbestände pro Session nur einmal geladen und Delta-Scans über DATA_VERSIONS/Scope/rootsKey/Cursor/Overlap gesteuert werden. Current State darf nicht auf historische Kaufpreis-/Lifecycle-/DID-Aufbereitung warten. Build 20260921-134840.
 
 // Phase 5.75 · 21.09.2026 14:13:07 CEST: Zentraler Session-Request-Audit aktiv; kein automatisches loadAll() beim Login; TLN/VOW-Dashboard startet keine Discovery-Initialisierung; NFT-History erst im NFT-Tab. Build 20260921-141307.
+
+// Phase 5.76 · 21.09.2026 16:25:41 CEST: Request-Audit/Systemübersicht-Hotfix. cache_data_versions wird im Systemtab in-flight dedupliziert und kurz wiederverwendet; DAO-Team-Versionen werden vor dem UI-Status zusammengeführt, damit kein rekursiver Requestloop entsteht. Build 20260921-162541.

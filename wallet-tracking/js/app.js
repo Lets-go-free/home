@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.75 · 21.09.2026 14:13:07 CEST · Build 20260921-141307 */
+/* WalletTracking Phase 5.76 · 21.09.2026 16:25:41 CEST · Build 20260921-162541 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -1512,7 +1512,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-help",level:2,label:"Hilfe",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[["DAO1 Hilfe","JS-Modul","–","–","Tab öffnen"]]},
 
   {id:"cache-audit",level:0,label:"⚡ Cache-/Request-Audit",status:"in_progress",idea:"Cache-/Request-Audit und Startoptimierung",start:"🟢 Session-Audit + kein Auto-loadAll",daily:"kein Blind-Refresh",open:"Tab-Marker + Messung",manual:"gezielte Vergleichsläufe",details:[
-    ["Request-Inventar","Session/RAM","Supabase Tabellen + cache_data_versions","RPC/API je tatsächlich ausgeführtem Call","Phase 5.75: fetch-basierter Audit misst Request-Signatur, Scope/Filter, Aufrufer, Dauer, HTTP-Status und Content-Length/Range; Start-/Tab-/Refresh-Marker segmentieren den Lauf"],
+    ["Request-Inventar","Session/RAM","Supabase Tabellen + cache_data_versions","RPC/API je tatsächlich ausgeführtem Call","Phase 5.76: fetch-basierter Audit misst Request-Signatur, Scope/Filter, Aufrufer, Dauer, HTTP-Status und Content-Length/Range; DATA_VERSIONS im Systemtab wird in-flight dedupliziert, 30 s wiederverwendet und DAO-Teamstände werden vor dem Status-Update aggregiert, damit kein Render-/Request-Feedbackloop entsteht; Start-/Tab-/Refresh-Marker segmentieren den Lauf"],
     ["Shared Loads","RAM pro App-Lauf","globale/öffentliche Cache-Tabellen","–","Identische DB-Reads/Graph-Paginierungen innerhalb eines Laufs einmal laden und teilen"],
     ["Delta-Invalidierung","IndexedDB/local cache","DATA_VERSIONS + rootsKey + sync_cursor/last_scanned_block","Chain Head + kleiner Overlap","Nur bei Versions-/Scope-/Cursor-Abweichung nachziehen; kein Blind-Rebuild"],
     ["Current State vs History","zentraler Current-State-Cache","NFT/Ownership/Projektcaches","historische Reads nur bei Bedarf","Aktuelle Bestände nie auf Kaufpreis/Lifecycle/historische DID-Auflösung warten lassen"],
@@ -1547,7 +1547,29 @@ function adminSystemIdeaStatus(row){
 function adminSystemStatusMeta(status){return ({done:["🟢","Erledigt"],in_progress:["🟡","In Arbeit"],error:["🔴","Fehlerhaft"],planning:["⚪","In Planung"]})[status]||["⚪","In Planung"]}
 function wtSystemDataKey(row){if(row.id==="tracking")return "tracking";if(row.id==="dao-team")return "dao-team";if(row.id==="tln-team")return "tln-team";if(row.id.startsWith("dao"))return "dao";if(row.id.startsWith("tln"))return "tln";return row.id}
 function wtSystemCurrentText(row,childrenMap){if(childrenMap.has(row.id))return "–";const own=WT_DATA_STATUS[wtSystemDataKey(row)];return own?wtDataStatusText(wtSystemDataKey(row)):"Aktualisierungszeitpunkt noch nicht verfügbar"}
-async function refreshAdminSystemDataVersions(){if(!sb||!isAdmin)return;try{const {data,error}=await sb.from("cache_data_versions").select("namespace,cache_key,data_version,sync_cursor,updated_at").in("namespace",["dao1","tln-vow"]);if(error)throw error;for(const r of data||[]){const key=r.namespace==="dao1"&&["legacy-tree","aptmdao-tree"].includes(r.cache_key)?"dao-team":r.namespace==="tln-vow"&&r.cache_key==="smartnode-global-graph"?"tln-team":null;if(key)setWtDataStatus(key,{updatedAt:r.sync_cursor||r.updated_at,cacheAt:r.updated_at,source:"cache"})}}catch(e){console.warn("Systemübersicht DATA_VERSIONS",e)}}
+let adminSystemDataVersionsPromise=null;
+let adminSystemDataVersionsLoadedAt=0;
+async function refreshAdminSystemDataVersions({force=false}={}){
+  if(!sb||!isAdmin)return;
+  const now=Date.now();
+  if(!force&&adminSystemDataVersionsLoadedAt&&now-adminSystemDataVersionsLoadedAt<30000)return;
+  if(adminSystemDataVersionsPromise)return adminSystemDataVersionsPromise;
+  adminSystemDataVersionsPromise=(async()=>{
+    try{
+      const {data,error}=await sb.from("cache_data_versions").select("namespace,cache_key,data_version,sync_cursor,updated_at").in("namespace",["dao1","tln-vow"]);
+      if(error)throw error;
+      const rows=Array.isArray(data)?data:[];
+      const newest=(items)=>items.slice().sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0))[0]||null;
+      const dao=newest(rows.filter(r=>r.namespace==="dao1"&&["legacy-tree","aptmdao-tree"].includes(r.cache_key)));
+      const tln=newest(rows.filter(r=>r.namespace==="tln-vow"&&r.cache_key==="smartnode-global-graph"));
+      if(dao)setWtDataStatus("dao-team",{updatedAt:dao.sync_cursor||dao.updated_at,cacheAt:dao.updated_at,source:"cache"});
+      if(tln)setWtDataStatus("tln-team",{updatedAt:tln.sync_cursor||tln.updated_at,cacheAt:tln.updated_at,source:"cache"});
+      adminSystemDataVersionsLoadedAt=Date.now();
+    }catch(e){console.warn("Systemübersicht DATA_VERSIONS",e)}
+    finally{adminSystemDataVersionsPromise=null;}
+  })();
+  return adminSystemDataVersionsPromise;
+}
 function requestAuditAggregateRows(){
   const groups=new Map();
   for(const e of WT_REQUEST_AUDIT.entries){
@@ -1592,7 +1614,7 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"&&document.getElement
 function renderAdminDocumentation(){
   const el=document.getElementById("adminDocumentation"); if(!el)return;
   el.innerHTML=`
-  <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.75</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW wird nicht allein für die Dashboard-Summary initialisiert. NFT-Current-State wird sofort aus der zentralen Registry gezeigt; globale Ersterwerbs-/Kaufpreis-Historie startet erst beim NFT-Tab.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Monica 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
+  <div class="custom-token-card"><h3 style="margin-top:0">Cache-/Request-Audit · Phase 5.76</h3><div class="note"><p><strong>Aktiv:</strong> Der Admin-Systemtab misst im laufenden Browser-Tab Supabase-/RPC-/API-Requests mit Signatur, Filter/Scope, Aufrufer, Dauer und Status. Login, Tab-Wechsel und manuelle Refreshs werden als Marker erfasst.</p><p><strong>Startoptimierung:</strong> Seitenreload startet kein <code>loadAll()</code> mehr. TLN/VOW wird nicht allein für die Dashboard-Summary initialisiert. NFT-Current-State wird sofort aus der zentralen Registry gezeigt; globale Ersterwerbs-/Kaufpreis-Historie startet erst beim NFT-Tab.</p><p><strong>Regel:</strong> Current State (Wallet/NFT/Bot/aktuelle Positionen) bleibt von History (Kaufpreis, Lifecycle, historischer DID-Besitz) getrennt.</p><p><strong>Regression DAO:</strong> Monica 0x568281…fe4940 muss DAO1 #21044, APTMDAO #7803, 9 Mining-Bots und 1 Trading-Bot liefern.</p></div></div>
   <div class="custom-token-card"><h3 style="margin-top:0">1. Architekturregeln</h3><div class="note">
   <p><strong>Neuester Stand:</strong> Änderungen immer auf dem zuletzt ausgelieferten Stand aufbauen.</p>
   <p><strong>Supabase als Konfigurationsquelle:</strong> Chain-, Provider-, Projekt- und Token-Konfiguration möglichst datenbankgesteuert; keine neue fachliche Chain-Hardcodierung.</p>
