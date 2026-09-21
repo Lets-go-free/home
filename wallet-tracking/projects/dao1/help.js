@@ -116,3 +116,12 @@ else renderDAO1Help();
    zuerst den aktuellen ERC-721-Walletbestand. Historische Erwerbs-, Kaufpreis- und DID-Zuordnung
    werden nachgelagert ermittelt und blockieren die Bestandsanzeige nicht.
 */
+
+
+/* Phase 5.66 · 21.09.2026 03:22:39 CEST
+   Korrektur 5.64/5.65: Partnerkarten verwenden keinen breiten Explorer-/address/nft-Snapshot mehr.
+   Aktuelle DAO1-/APTMDAO-DIDs und Bot-Bestaende werden ausschliesslich contract-gezielt aus
+   ERC-721-Transferhistorien der bekannten Identity-/Bot-Contracts rekonstruiert. Der bekannte
+   Miner-Contract zaehlt aktuelle Token unabhaengig von Kaufpreis oder Einzelklassifikation als Mining-Bots.
+   Historische Kauf-/Lifecycle-Aufbereitung bleibt nachgelagert und blockiert die Kachel nicht.
+*/
