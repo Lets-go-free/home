@@ -1,3 +1,4 @@
+// Phase 5.87 · 22.09.2026 01:36:51 CEST: DAO1 Self-Heal für vor 5.82 hinzugefügte Wallets: fehlende/invollständige NFT-Ownership wird aus dem zentralen Current-State erkannt und gezielt nachgezogen; bekannte DID-Contracts werden ohne manuelle project_nfts-Klassifizierung korrekt gezählt. Build 20260922-013651.
 // Phase 5.86 · 22.09.2026 01:06:00 CEST: DAO1 Übersicht verwendet die bestehenden allgemeinen Summary-Karten; Bot-Summen zählen nur den eindeutigen aktuellen Bestand, historische/Transfer-Zuordnungen bleiben Detaildaten. Build 20260922-010600.
 // Phase 5.85 · 22.09.2026 00:53:12 CEST: Hotfix – DAO1 Übersicht wird beim ersten Öffnen des Projekts sofort gerendert, ohne dass der Übersicht-Untertab zuerst manuell angeklickt werden muss. Build 20260922-005312.
 // Phase 5.84 · 22.09.2026 00:38:20 CEST: DAO1 Übersicht erhält cache-basierte Summary-Kacheln für Wallets, Bots, DIDs/Membership, Bot-Claims, Referral-Rewards und wallet-zentrierte Team-Partner. Build 20260922-003820.
@@ -386,6 +387,7 @@ window.DAO1Project = (() => {
     // Historische NFT-Namen werden ebenfalls nachgelagert und blockieren den Current-State-Start nicht.
     enrichHistoricalNftNames().then(()=>renderNftClassification()).catch(e=>console.warn("Historische NFT-Metadaten:",e));
     updateVisibility();
+    reconcileLegacyDaoWallets().catch(e=>console.warn("DAO1 Legacy-Wallet-Abgleich",e));
   }
 
   function assetMatches(chain, address, isNative, ctx) {
@@ -469,9 +471,22 @@ window.DAO1Project = (() => {
     );
   }
 
+  function walletHasProjectNft(wallet){
+    const walletId=String(wallet?.dbId||wallet?.id||"");
+    const address=lower(walletAddress(wallet)||"");
+    if(walletId&&window.isCentralNftCacheLoaded?.()){
+      const cached=window.getCachedNftsForWalletId?.(walletId);
+      if(Array.isArray(cached)&&cached.some(n=>String(n?.chain||"")===CHAIN_KEY&&!(n?.possibleSpam||n?.userMarkedSpam)))return true;
+    }
+    return ownershipRows.some(o=>
+      String(o?.chain_key||CHAIN_KEY)===CHAIN_KEY &&
+      (String(o?.wallet_id||"")===walletId || (!!address&&lower(o?.wallet_address||"")===address))
+    );
+  }
+
   function projectWallets() {
     const ctx = getContext?.();
-    return (ctx?.wallets || []).filter(walletHasProjectAsset);
+    return (ctx?.wallets || []).filter(w=>walletHasProjectAsset(w)||walletHasProjectNft(w));
   }
 
   function walletAddress(wallet) {
@@ -767,6 +782,177 @@ window.DAO1Project = (() => {
         image:n.image || null,
         current:true
       }));
+  }
+
+  // Phase 5.87: Wallets, die vor dem gezielten New-Wallet-Bootstrap aus 5.82
+  // hinzugefügt wurden, können einen aktuellen nft_cache besitzen, ohne dass
+  // project_nft_ownership vollständig aufgebaut wurde. Dieser Self-Heal erkennt
+  // ausschließlich solche Lücken aus bereits vorhandenem Current State und lädt
+  // nur die betroffenen NFT-Transferketten nach.
+  const DAO1_NFT_BOOTSTRAP_TYPE="project:dao1:nft-bootstrap";
+  const DAO1_NFT_BOOTSTRAP_VERSION=1;
+  let dao1LegacyWalletReconcilePromise=null;
+  let dao1LegacyWalletReconcileDone=false;
+
+  function dao1CachedCurrentNftsForWallet(wallet){
+    const walletId=String(wallet?.dbId||wallet?.id||"");
+    if(!walletId||!window.isCentralNftCacheLoaded?.())return null;
+    const rows=window.getCachedNftsForWalletId?.(walletId);
+    if(!Array.isArray(rows))return null;
+    return rows
+      .filter(n=>String(n?.chain||"")===CHAIN_KEY)
+      .filter(n=>!(n?.possibleSpam||n?.userMarkedSpam))
+      .map(n=>({
+        id:String(n?.tokenId??""),
+        contract:lower(n?.tokenAddress||""),
+        name:n?.name||n?.collectionName||`NFT #${n?.tokenId??""}`,
+        collectionName:n?.collectionName||""
+      }))
+      .filter(n=>n.id&&n.contract);
+  }
+
+  async function dao1LoadWalletBootstrapStates(wallets){
+    const ctx=getContext?.();if(!ctx?.currentUser?.id||!wallets?.length)return new Map();
+    const ids=wallets.map(w=>String(w?.dbId||w?.id||"")).filter(Boolean);
+    if(!ids.length)return new Map();
+    try{
+      const {data,error}=await sb.from("wallet_refresh_state")
+        .select("wallet_id,data_version,last_checked_at,last_refreshed_at,last_result")
+        .eq("user_id",ctx.currentUser.id)
+        .eq("chain_key",CHAIN_KEY)
+        .eq("data_type",DAO1_NFT_BOOTSTRAP_TYPE)
+        .in("wallet_id",ids);
+      if(error)throw error;
+      return new Map((data||[]).map(r=>[String(r.wallet_id),r]));
+    }catch(e){
+      console.warn("DAO1 Wallet-Bootstrap-Status lesen",e);
+      return new Map();
+    }
+  }
+
+  async function dao1SaveWalletBootstrapState(wallet,result,details=""){
+    const ctx=getContext?.(),walletId=String(wallet?.dbId||wallet?.id||"");
+    if(!ctx?.currentUser?.id||!walletId)return null;
+    const now=new Date().toISOString();
+    const payload={
+      user_id:ctx.currentUser.id,
+      wallet_id:walletId,
+      chain_key:CHAIN_KEY,
+      data_type:DAO1_NFT_BOOTSTRAP_TYPE,
+      data_version:DAO1_NFT_BOOTSTRAP_VERSION,
+      last_checked_at:now,
+      last_refreshed_at:result==="complete"?now:null,
+      last_result:details?`${result}:${details}`:result,
+      updated_at:now
+    };
+    try{
+      const {data,error}=await sb.from("wallet_refresh_state")
+        .upsert(payload,{onConflict:"user_id,wallet_id,chain_key,data_type"})
+        .select().single();
+      if(error)throw error;
+      return data;
+    }catch(e){
+      console.warn("DAO1 Wallet-Bootstrap-Status speichern",e);
+      return null;
+    }
+  }
+
+  function dao1OwnershipNeedsRepair(wallet,nft){
+    const walletId=String(wallet?.dbId||wallet?.id||"");
+    const address=lower(walletAddress(wallet)||"");
+    const contract=lower(nft?.contract||""),id=String(nft?.id||"");
+    const row=ownershipRows.find(o=>
+      String(o?.chain_key||CHAIN_KEY)===CHAIN_KEY &&
+      lower(o?.nft_contract||"")===contract &&
+      String(o?.nft_id??"")===id &&
+      !!o?.is_current &&
+      (String(o?.wallet_id||"")===walletId || (!!address&&lower(o?.wallet_address||"")===address))
+    );
+    if(!row)return true;
+    return !(Number(row.owned_from_block||0)>0) || !row.owned_from_at;
+  }
+
+  async function dao1EnsureIntrinsicClassifications(nfts){
+    const missing=[];
+    for(const n of (nfts||[])){
+      const contract=lower(n?.contract||""),id=String(n?.id||"");
+      if(!contract||!id||classificationFor(contract,id))continue;
+      if(contract===lower(DAO1_OLD_DID_CONTRACT)){
+        missing.push({
+          project_key:PROJECT_KEY,chain_key:CHAIN_KEY,nft_contract:contract,nft_id:Number(id),
+          nft_name:n?.name||`DID #${id}`,category:"Identity",subtype:"DID",enabled:true
+        });
+      }
+    }
+    if(!missing.length)return 0;
+    try{
+      const {error}=await sb.from("project_nfts").upsert(missing,{onConflict:"project_key,chain_key,nft_contract,nft_id"});
+      if(error)throw error;
+      await loadProjectNfts();
+      return missing.length;
+    }catch(e){
+      console.warn("DAO1 intrinsische NFT-Klassifikation",e);
+      return 0;
+    }
+  }
+
+  async function reconcileLegacyDaoWallets(){
+    if(dao1LegacyWalletReconcileDone)return {skipped:true};
+    if(dao1LegacyWalletReconcilePromise)return dao1LegacyWalletReconcilePromise;
+    dao1LegacyWalletReconcilePromise=(async()=>{
+      const ctx=getContext?.();
+      if(!ctx?.currentUser||!window.isCentralNftCacheLoaded?.())return {deferred:true};
+      const wallets=(ctx.wallets||[]).filter(w=>walletAddress(w)).filter(w=>{
+        const cached=dao1CachedCurrentNftsForWallet(w);
+        const walletId=String(w?.dbId||w?.id||""),address=lower(walletAddress(w)||"");
+        const hasOwnership=ownershipRows.some(o=>String(o?.wallet_id||"")===walletId||lower(o?.wallet_address||"")===address);
+        return (Array.isArray(cached)&&cached.length>0)||hasOwnership||walletHasProjectAsset(w);
+      });
+      if(!wallets.length){dao1LegacyWalletReconcileDone=true;return {ok:true,wallets:0,repaired:0};}
+      const states=await dao1LoadWalletBootstrapStates(wallets);
+      let repaired=0,failed=0,classified=0;
+      const allCurrent=[];
+      for(const wallet of wallets){
+        const current=dao1CachedCurrentNftsForWallet(wallet);
+        if(!Array.isArray(current))continue;
+        allCurrent.push(...current);
+        const walletId=String(wallet.dbId||wallet.id||"");
+        const state=states.get(walletId);
+        const stateComplete=Number(state?.data_version||0)>=DAO1_NFT_BOOTSTRAP_VERSION &&
+          String(state?.last_result||"").startsWith("complete");
+        const gaps=current.filter(n=>dao1OwnershipNeedsRepair(wallet,n));
+        if(stateComplete&&!gaps.length)continue;
+        if(!gaps.length){
+          await dao1SaveWalletBootstrapState(wallet,"complete","0 gaps");
+          continue;
+        }
+
+        let cursor=0,localFailed=0;
+        async function worker(){
+          while(cursor<gaps.length){
+            const n=gaps[cursor++];
+            try{await discoverOwnershipForNft(n.id,n.contract,n.name);repaired++;}
+            catch(e){localFailed++;failed++;console.warn("DAO1 Legacy-Wallet Self-Heal",wallet?.label||walletId,n,e);}
+          }
+        }
+        await Promise.all(Array.from({length:Math.min(2,gaps.length)},worker));
+        await loadOwnershipCache();
+        const remaining=gaps.filter(n=>dao1OwnershipNeedsRepair(wallet,n)).length;
+        if(!remaining&&localFailed===0)await dao1SaveWalletBootstrapState(wallet,"complete",`${gaps.length} repaired`);
+        else await dao1SaveWalletBootstrapState(wallet,"partial",`${remaining} offen`);
+      }
+      classified=await dao1EnsureIntrinsicClassifications(allCurrent);
+      await loadOwnershipCache();
+      await loadDAO1OwnedDidRoots(true).catch(()=>{});
+      renderNftClassification();
+      renderDAO1TeamTreePanel();
+      const overview=document.getElementById("dao1-subtab-overview");
+      if(overview&&overview.style.display!=="none")await renderDAO1BotOverview();
+      dao1LegacyWalletReconcileDone=true;
+      return {ok:failed===0,repaired,failed,classified};
+    })();
+    try{return await dao1LegacyWalletReconcilePromise;}
+    finally{dao1LegacyWalletReconcilePromise=null;}
   }
 
   function nftIdsForWallet(address) {
@@ -4711,7 +4897,7 @@ window.DAO1Project = (() => {
     const a=lower(wallet||"");if(!a)return [];
     const rows=ownershipRows.filter(o=>lower(o.wallet_address||walletAddress(walletByDbId(o.wallet_id))||"")===a);
     const seen=new Set(),out=[];
-    for(const o of rows){const key=`${lower(o.nft_contract)}|${o.nft_id}`;if(seen.has(key))continue;seen.add(key);const cls=classificationFor(o.nft_contract,o.nft_id);out.push({id:String(o.nft_id),contract:lower(o.nft_contract),name:cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`,subtype:cls?.subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,owned_from_block:Number(o.owned_from_block||0)||0,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null,acquisition_tx_hash:o.acquisition_tx_hash||null,purchase:null,current_wallet:!!o.is_current?a:""});}
+    for(const o of rows){const key=`${lower(o.nft_contract)}|${o.nft_id}`;if(seen.has(key))continue;seen.add(key);const cls=classificationFor(o.nft_contract,o.nft_id),name=cls?.nft_name||o.nft_name||`NFT #${o.nft_id}`,subtype=cls?.subtype||dao1TeamProjectNftSubtype(o.nft_contract,o.nft_id,name,"");out.push({id:String(o.nft_id),contract:lower(o.nft_contract),name,subtype:subtype||"nicht klassifiziert",current:!!o.is_current,owned_from_at:o.owned_from_at||null,owned_from_block:Number(o.owned_from_block||0)||0,acquisition_verified:!!o.acquisition_verified,acquisition_kind:o.acquisition_kind||null,acquisition_tx_hash:o.acquisition_tx_hash||null,purchase:null,current_wallet:!!o.is_current?a:""});}
     return out;
   }
   function dao1TeamOwnHistoricalBotCandidates(){
@@ -6820,6 +7006,8 @@ window.DAO1Project = (() => {
     if(aptm?.edges)dao1TeamDiscovery.aptmdao.edges=aptm.edges;
     renderDAO1TeamTreePanel();
     await loadDashboardSummary().catch(()=>{});
+    const remaining=(dao1CachedCurrentNftsForWallet(wallet)||[]).filter(n=>dao1OwnershipNeedsRepair(wallet,n)).length;
+    await dao1SaveWalletBootstrapState(wallet,remaining?"partial":"complete",remaining?`${remaining} offen`:"new-wallet bootstrap");
     return {ok:true,ownership,txSync};
   }
 

@@ -1,3 +1,4 @@
+// Phase 5.87 · 22.09.2026 01:36:51 CEST: DAO1-Wallets aus älteren Releases werden beim ersten Projektaufruf selbstheilend auf fehlende NFT-Ownership geprüft; NFT-Status unterscheidet Besitzhistorie und Kaufpreisprüfung klar. Build 20260922-013651.
 // Phase 5.86 · 22.09.2026 01:06:00 CEST: DAO1 Projektübersicht nutzt konsistente Summary-Karten; Bot-Zahlen entsprechen dem eindeutigen aktuellen Bestand. Build 20260922-010600.
 // Phase 5.84 · 22.09.2026 00:38:20 CEST: Dashboard-Projekt-Summaries sind beim Start cache-only korrekt; Summary-Präzision folgt predefined_tokens. DAO1 Übersicht zeigt eigene Projekt-Summary-Kacheln. Build 20260922-003820.
 // Phase 5.82 · 21.09.2026 23:57:38 CEST: Datengetriebene Chain-Logos und gezielter Erstaufbau neuer/gespeicherter Wallets dokumentiert. Build 20260921-235738.
@@ -24,8 +25,8 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260921-235738";
-const HELP_MODULE_TIMESTAMP="21.09.2026 23:57:38 CEST";
+const HELP_MODULE_BUILD="20260922-013651";
+const HELP_MODULE_TIMESTAMP="22.09.2026 01:36:51 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;
@@ -58,7 +59,7 @@ function renderGeneralHelp(){
 
       <div class="custom-token-card"><h3 style="margin-top:0">🏦 Projekte</h3><p class="note"><strong>Projektspezifische Bedienung und Fachlogik gehören nicht in dieses allgemeine Handbuch.</strong> Der Hauptpunkt „DeFi-Projekte“ öffnet zuerst eine neutrale Übersicht und lädt dabei bewusst noch keine projektspezifischen Daten. Öffne danach TLN/VOW, DAO1 oder ein anderes DeFi-Projekt und dort den eigenen Unter-Tab „Hilfe“. Dort werden projektspezifische Tabs, Datenquellen, Cache-/Refresh-Regeln, Statusmodelle und Besonderheiten dokumentiert.</p></div>
 
-      <div class="custom-token-card"><h3 style="margin-top:0">⚡ Cache- &amp; Ladeprinzip</h3><p class="note">WalletTracking arbeitet cache-first: vorhandene bestätigte Daten werden sofort angezeigt. Ein Seitenreload startet keinen breiten <code>loadAll()</code>-On-Chain-Lauf mehr; eine fällige Aktualisierung wird angezeigt und bewusst ausgelöst. Große globale Datenbestände sollen innerhalb eines App-Laufs gemeinsam wiederverwendet werden; TLN/VOW bündelt dafür Projekt-Wallet-Prüfung und Snapshot-Lesen, DAO kann öffentlichen Partner-Current-State zusätzlich 24h im Browsercache wiederverwenden. Aktuelle Bestände (Wallet/NFT/Bot/Position) bleiben technisch von historischen Kaufpreis-, Lifecycle- und DID-Zuordnungen getrennt. Deshalb lädt die zentrale NFT-Registry beim Start den Current State, während globale Ersterwerbs- und Kaufpreis-Historie erst beim NFT-Tab nachläuft. Im Admin-Systemtab zeigt der Request-Audit Supabase-/RPC-/API-Signaturen, Scope/Filter, Anzahl und Laufzeiten des aktuellen Browser-Tabs. Die Startoptimierung wurde in Phase 5.80 als abgeschlossen dokumentiert; weitere Performance-Umbauten erfolgen nur noch bei konkretem Messbeleg.</p></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">⚡ Cache- &amp; Ladeprinzip</h3><p class="note">WalletTracking arbeitet cache-first: vorhandene bestätigte Daten werden sofort angezeigt. Bei DAO1/APTMDAO prüft Phase 5.87 zusätzlich einmalig, ob ältere, vor dem gezielten Wallet-Erstaufbau hinzugefügte Wallets im zentralen NFT-Current-State vorhanden sind, aber in <code>project_nft_ownership</code> noch Lücken haben. Nur solche fehlenden/invollständigen Ownership-Historien werden gezielt nachgezogen; bereits vollständige Wallets bleiben cache-only. Ein Seitenreload startet keinen breiten <code>loadAll()</code>-On-Chain-Lauf mehr; eine fällige Aktualisierung wird angezeigt und bewusst ausgelöst. Große globale Datenbestände sollen innerhalb eines App-Laufs gemeinsam wiederverwendet werden; TLN/VOW bündelt dafür Projekt-Wallet-Prüfung und Snapshot-Lesen, DAO kann öffentlichen Partner-Current-State zusätzlich 24h im Browsercache wiederverwenden. Aktuelle Bestände (Wallet/NFT/Bot/Position) bleiben technisch von historischen Kaufpreis-, Lifecycle- und DID-Zuordnungen getrennt. Deshalb lädt die zentrale NFT-Registry beim Start den Current State, während globale Ersterwerbs- und Kaufpreis-Historie erst beim NFT-Tab nachläuft. Im Admin-Systemtab zeigt der Request-Audit Supabase-/RPC-/API-Signaturen, Scope/Filter, Anzahl und Laufzeiten des aktuellen Browser-Tabs. Die Startoptimierung wurde in Phase 5.80 als abgeschlossen dokumentiert; weitere Performance-Umbauten erfolgen nur noch bei konkretem Messbeleg.</p></div>
 
       <div class="custom-token-card"><h3 style="margin-top:0">💬 Support</h3><p class="note">Wenn Daten fehlen oder eine Abfrage fehlschlägt, sende möglichst Projekt/Chain, Wallet-Bezeichnung, betroffene Funktion sowie die sichtbare Fehlermeldung oder Tx. Private Keys und Seed-Phrases gehören niemals in den Chat.</p></div>`;
 }
