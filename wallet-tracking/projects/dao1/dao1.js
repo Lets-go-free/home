@@ -1,3 +1,4 @@
+// Phase 5.86 · 22.09.2026 01:06:00 CEST: DAO1 Übersicht verwendet die bestehenden allgemeinen Summary-Karten; Bot-Summen zählen nur den eindeutigen aktuellen Bestand, historische/Transfer-Zuordnungen bleiben Detaildaten. Build 20260922-010600.
 // Phase 5.85 · 22.09.2026 00:53:12 CEST: Hotfix – DAO1 Übersicht wird beim ersten Öffnen des Projekts sofort gerendert, ohne dass der Übersicht-Untertab zuerst manuell angeklickt werden muss. Build 20260922-005312.
 // Phase 5.84 · 22.09.2026 00:38:20 CEST: DAO1 Übersicht erhält cache-basierte Summary-Kacheln für Wallets, Bots, DIDs/Membership, Bot-Claims, Referral-Rewards und wallet-zentrierte Team-Partner. Build 20260922-003820.
 // Phase 5.79: DAO Team vereinfacht: nur noch eine wallet-zentrierte User-Ansicht; alte/neue Einzelgraphen bleiben intern/DEV-Nachweis, nicht als normale Tabs.
@@ -5157,15 +5158,25 @@ window.DAO1Project = (() => {
     }
     return [...by.values()].sort((a,b)=>String(b.owned_from_at||"").localeCompare(String(a.owned_from_at||""))||Number(b.id)-Number(a.id));
   }
+  function dao1CurrentBotRows(rows){
+    const by=new Map();
+    for(const n of rows||[]){
+      if(n?.current===false||!dao1TeamIsBot(n))continue;
+      const key=`${lower(n.contract||"")}|${String(n.id??"")}`;
+      if(!by.has(key))by.set(key,n);
+    }
+    return [...by.values()];
+  }
   function dao1BotOverviewTableHtml(rows,loading=false){
     const purchaseGroups=new Map(),claimGroups=new Map();
     for(const n of rows){
       if(n.purchase?.amount>0){const k=`${n.purchase.contract||""}|${n.purchase.symbol}`,g=purchaseGroups.get(k)||{amount:0,symbol:n.purchase.symbol,contract:n.purchase.contract};g.amount+=n.purchase.amount;purchaseGroups.set(k,g);}
       for(const c of dao1BotClaimTotalsForNft(n.id)){const k=`${c.contract||""}|${c.symbol}`,g=claimGroups.get(k)||{amount:0,symbol:c.symbol,contract:c.contract};g.amount+=c.amount;claimGroups.set(k,g);}
     }
-    const mining=rows.filter(n=>n.subtype==="Mining-Bot").length,trading=rows.filter(n=>n.subtype==="Trading-Bot").length;
-    return `<div class="custom-token-card"><div class="chain-title">🤖 Bots</div><div class="note">Zentrale NFT-Basis, ergänzt um DAO1-spezifische Lifecycle-Daten. Kaufpreis = Lizenz-/Bot-Kauf. Trading-Guthaben wird getrennt geführt und erst angezeigt, sobald Funding-Transaktion und Bot-ID on-chain eindeutig verknüpft sind. Claims bleiben je Währung getrennt.</div></div>
-      <div class="project-summary" style="margin-top:12px"><div class="custom-token-card project-summary-box"><span class="field-label">Mining-Bots</span><strong>${mining}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Trading-Bots</span><strong>${trading}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Kaufpreise</span><strong>${dao1MultiAssetText([...purchaseGroups.values()])}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Geclaimt</span><strong>${dao1MultiAssetText([...claimGroups.values()])}</strong></div></div>
+    const current=dao1CurrentBotRows(rows), mining=current.filter(n=>n.subtype==="Mining-Bot").length,trading=current.filter(n=>n.subtype==="Trading-Bot").length;
+    const historical=Math.max(0,(rows||[]).length-current.length);
+    return `<div class="custom-token-card"><div class="chain-title">🤖 Bots</div><div class="note">Zentrale NFT-Basis, ergänzt um DAO1-spezifische Lifecycle-Daten. Die Summary zählt ausschließlich den eindeutigen aktuellen Bestand; historische bzw. zwischen eigenen Wallets transferierte Zuordnungen bleiben nur in der Detailtabelle sichtbar. Kaufpreis = Lizenz-/Bot-Kauf. Trading-Guthaben wird getrennt geführt und erst angezeigt, sobald Funding-Transaktion und Bot-ID on-chain eindeutig verknüpft sind. Claims bleiben je Währung getrennt.</div></div>
+      <div class="project-summary" style="margin-top:12px"><div class="custom-token-card project-summary-box"><span class="field-label">Mining-Bots</span><strong>${mining}</strong><div class="note">aktueller Bestand</div></div><div class="custom-token-card project-summary-box"><span class="field-label">Trading-Bots</span><strong>${trading}</strong><div class="note">aktueller Bestand</div></div><div class="custom-token-card project-summary-box"><span class="field-label">Kaufpreise</span><strong>${dao1MultiAssetText([...purchaseGroups.values()])}</strong></div><div class="custom-token-card project-summary-box"><span class="field-label">Geclaimt</span><strong>${dao1MultiAssetText([...claimGroups.values()])}</strong></div>${historical?`<div class="custom-token-card project-summary-box"><span class="field-label">Historische/Transfer-Zuordnungen</span><strong>${historical}</strong><div class="note">nicht im aktuellen Bot-Bestand</div></div>`:''}</div>
       ${loading?'<div class="status info" style="margin-top:12px"><strong>Bot-Lifecycle wird ergänzt …</strong><div class="note">Kauftransaktionen werden on-chain geprüft.</div></div>':""}
       <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden;margin-top:12px"><div class="chain-table-wrap project-data-table"><table><thead><tr><th>Typ</th><th>Bot</th><th>Name</th><th>Wallet</th><th>Erworben am</th><th>Kaufpreis</th><th>Trading-Guthaben</th><th>Geclaimt</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(n=>`<tr><td>${escapeHtml(n.subtype)}</td><td><strong>#${escapeHtml(n.id)}</strong></td><td><strong>${escapeHtml(n.name)}</strong></td><td>${escapeHtml(n.walletLabel)}<div class="meta">${teamShortAddress(n.wallet)}</div></td><td>${n.owned_from_at?dao1TeamDate(n.owned_from_at):"nicht ermittelt"}</td><td>${dao1TeamPurchaseText(n)}</td><td>${n.subtype==="Trading-Bot"?"noch nicht ermittelt":"–"}</td><td>${dao1MultiAssetText(dao1BotClaimTotalsForNft(n.id))}</td><td>${escapeHtml(dao1TeamBotStatus(n))}</td></tr>`).join(""):'<tr><td colspan="9" class="empty">Keine klassifizierten Bots im aktuellen NFT-Bestand.</td></tr>'}</tbody></table></div></div>`;
   }
@@ -5190,16 +5201,16 @@ window.DAO1Project = (() => {
     return {dids:current.filter(n=>n.subtype==="DID").length,memberships:current.filter(n=>n.subtype==="DAO / Membership").length};
   }
   function dao1OverviewSummaryHtml(rows,periods,teamCount){
-    const currentBots=rows.filter(n=>n.current!==false), mining=currentBots.filter(n=>n.subtype==="Mining-Bot").length,trading=currentBots.filter(n=>n.subtype==="Trading-Bot").length;
+    const currentBots=dao1CurrentBotRows(rows), mining=currentBots.filter(n=>n.subtype==="Mining-Bot").length,trading=currentBots.filter(n=>n.subtype==="Trading-Bot").length;
     const nfts=dao1OverviewNftStats(), wallets=allProjectWalletOptions().length;
-    return `<div class="project-overview-grid">
-      <div class="project-overview-card"><span class="k">Wallet-Sicht</span><span class="v">${wallets}</span><div class="muted">DAO1/APTM-Wallet(s)</div></div>
-      <div class="project-overview-card"><span class="k">Mining-Bots</span><span class="v">${mining}</span><div class="muted">aktueller Bestand</div></div>
-      <div class="project-overview-card"><span class="k">Trading-Bots</span><span class="v">${trading}</span><div class="muted">aktueller Bestand</div></div>
-      <div class="project-overview-card"><span class="k">DIDs / Memberships</span><span class="v">${nfts.dids} / ${nfts.memberships}</span><div class="muted">aktueller Bestand</div></div>
-      <div class="project-overview-card"><span class="k">Bot-Claims</span><span class="v" style="font-size:1rem">${dao1OverviewAssetLines(periods?.rewards?.total)}</span></div>
-      <div class="project-overview-card"><span class="k">Referral-Rewards</span><span class="v" style="font-size:1rem">${dao1OverviewAssetLines(periods?.referralRewards?.total)}</span></div>
-      <div class="project-overview-card"><span class="k">Team-Partner sichtbar</span><span class="v">${teamCount==null?'–':teamCount}</span><div class="muted">wallet-zentriert · 1 Wallet = 1 Partner</div></div>
+    return `<div class="project-summary dao1-overview-summary" style="margin-top:0">
+      <div class="custom-token-card project-summary-box"><span class="field-label">Wallet-Sicht</span><strong>${wallets}</strong><div class="note">DAO1/APTM-Wallet(s)</div></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Mining-Bots</span><strong>${mining}</strong><div class="note">aktueller eindeutiger Bestand</div></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Trading-Bots</span><strong>${trading}</strong><div class="note">aktueller eindeutiger Bestand</div></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">DIDs / Memberships</span><strong>${nfts.dids} / ${nfts.memberships}</strong><div class="note">aktueller Bestand</div></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Bot-Claims</span><strong style="font-size:1rem">${dao1OverviewAssetLines(periods?.rewards?.total)}</strong></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Referral-Rewards</span><strong style="font-size:1rem">${dao1OverviewAssetLines(periods?.referralRewards?.total)}</strong></div>
+      <div class="custom-token-card project-summary-box"><span class="field-label">Team-Partner sichtbar</span><strong>${teamCount==null?'–':teamCount}</strong><div class="note">wallet-zentriert · 1 Wallet = 1 Partner</div></div>
     </div>`;
   }
 

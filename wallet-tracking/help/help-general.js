@@ -1,3 +1,4 @@
+// Phase 5.86 · 22.09.2026 01:06:00 CEST: DAO1 Projektübersicht nutzt konsistente Summary-Karten; Bot-Zahlen entsprechen dem eindeutigen aktuellen Bestand. Build 20260922-010600.
 // Phase 5.84 · 22.09.2026 00:38:20 CEST: Dashboard-Projekt-Summaries sind beim Start cache-only korrekt; Summary-Präzision folgt predefined_tokens. DAO1 Übersicht zeigt eigene Projekt-Summary-Kacheln. Build 20260922-003820.
 // Phase 5.82 · 21.09.2026 23:57:38 CEST: Datengetriebene Chain-Logos und gezielter Erstaufbau neuer/gespeicherter Wallets dokumentiert. Build 20260921-235738.
 // Phase 5.81 · 21.09.2026 23:36:49 CEST: Vollständige Einzel-Wallet-Löschung dokumentiert; Snapshots, 31.12.-Bestände, History/Projekt-/Cache-Daten und Summen werden bereinigt bzw. aus verbleibenden Quellen neu aufgebaut. Build 20260921-233649.
