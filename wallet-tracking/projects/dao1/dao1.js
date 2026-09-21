@@ -1,4 +1,4 @@
-// Phase 5.63: Wallet-Speicherung startet den gezielten DAO-Erstaufbau; direkte Uplines werden an jeder eigenen Wallet grafisch angebunden.
+// Phase 5.64: Partner-DIDs werden aus aktuellem ERC-721-Besitz ergaenzt; Bot-Anzahlen basieren ausschliesslich auf aktuellem Bestand.
 // Phase 5.60: Direkte DAO1/APTMDAO-Uplines bleiben oberhalb eigener Wallets sichtbar; weiter geladene Ancestors werden nicht mehr als zusätzliche Team-Roots gerendert.
 // WalletTracking Phase 5.54 · 20.09.2026 12:18:01 CEST · Build 20260920-121801
 window.DAO1Project = (() => {
@@ -4099,6 +4099,10 @@ window.DAO1Project = (() => {
   const dao1TeamBlockTimeCache=new Map();
   const dao1TeamPartnerDetailsCache=new Map();
   const dao1PartnerBotStats=new Map();
+  // Aktuell on-chain gehaltene DAO1-/APTMDAO-DIDs fremder Partner-Wallets.
+  // Diese Identitaeten sind unabhaengig davon, ob die jeweilige DID-Kante bereits
+  // im persoenlichen Tree-Slice enthalten ist (z. B. nach nachtraeglich erfasstem Root).
+  const dao1PartnerIdentityStats=new Map();
   let dao1PartnerBotRefreshRunning=false;
   let dao1PartnerBotCacheLoaded=false;
 
@@ -4183,6 +4187,14 @@ window.DAO1Project = (() => {
     const ensure=(wallet)=>{const a=lower(wallet);if(!a)return null;if(!nodes.has(a))nodes.set(a,{wallet:a,own:own.has(a),upstream:false,dao1Dids:new Set(),aptmdaoDids:new Set(),relations:[],primary:null});return nodes.get(a);};
     for(const r of dao1OwnedDidRoots){const n=ensure(r.wallet_address);if(n)n.dao1Dids.add(Number(r.did));}
     for(const r of aptmdaoOwnedDidRoots){const n=ensure(r.wallet_address);if(n)n.aptmdaoDids.add(Number(r.did));}
+    // Partner-Identitaeten kommen zusaetzlich direkt aus dem aktuellen ERC-721-Besitz.
+    // So verliert die wallet-zentrierte Sicht eine zweite DID nicht nur deshalb, weil
+    // deren Tree-Kante im aktuell geladenen Slice noch nicht enthalten war.
+    for(const [wallet,ids] of dao1PartnerIdentityStats){
+      const n=ensure(wallet);if(!n)continue;
+      for(const id of ids?.legacy||[])n.dao1Dids.add(Number(id));
+      for(const id of ids?.aptmdao||[])n.aptmdaoDids.add(Number(id));
+    }
     for(const rel of [...dao1ReachableRelations("legacy"),...dao1ReachableRelations("aptmdao")]){
       const n=ensure(rel.childWallet);if(!n)continue;(rel.system==="aptmdao"?n.aptmdaoDids:n.dao1Dids).add(rel.childDid);n.relations.push(rel);
     }
@@ -4725,6 +4737,24 @@ window.DAO1Project = (() => {
       if(to===a)for(const id of ids)held.add(String(id));
     }
     return [...held];
+  }
+
+  async function dao1TeamFetchPartnerIdentity(wallet){
+    const a=lower(wallet);if(!/^0x[0-9a-f]{40}$/.test(a))return {legacy:[],aptmdao:[]};
+    const result={legacy:[],aptmdao:[]};
+    for(const [system,contract] of [["legacy",lower(DAO1_OLD_DID_CONTRACT)],["aptmdao",lower(APTMDAO_NFT_CONTRACT)]]){
+      const rows=await loadWalletNftTransferHistory(a,contract);
+      const held=new Set();
+      for(const t of dao1TeamSortTransfersAsc(rows)){
+        const ids=transferTokenIds(t);if(!ids.length)continue;
+        const from=transferFromAddress(t),to=transferToAddress(t);
+        if(from===a&&to!==a)for(const id of ids)held.delete(String(id));
+        if(to===a)for(const id of ids)held.add(String(id));
+      }
+      result[system]=[...held].map(Number).filter(x=>Number.isFinite(x)&&x>0).sort((x,y)=>x-y);
+    }
+    dao1PartnerIdentityStats.set(a,result);
+    return result;
   }
 
   async function dao1TeamFetchPartnerNfts(wallet,mode=dao1TeamTreeMode){
@@ -5273,11 +5303,14 @@ window.DAO1Project = (() => {
     if(!modal)return;const esc=e=>{if(e.key==="Escape"&&modal.isConnected){modal.remove();document.removeEventListener("keydown",esc);}};
     document.addEventListener("keydown",esc,{passive:true});
   }
-  function dao1BotStatsFromRows(rows){let mining=0,trading=0;for(const n of rows||[]){const t=String(n.subtype||n.bot_type||n.name||"").toLowerCase();if(t.includes("trading"))trading++;else if(t.includes("min")||t.includes("solar"))mining++;}return {mining,trading,loadedAt:new Date().toISOString()};}
+  function dao1BotStatsFromRows(rows,{currentOnly=false}={}){let mining=0,trading=0;for(const n of rows||[]){if(currentOnly&&n.current!==true)continue;const t=String(n.subtype||n.bot_type||n.name||"").toLowerCase();if(t.includes("trading"))trading++;else if(t.includes("min")||t.includes("solar"))mining++;}return {mining,trading,loadedAt:new Date().toISOString()};}
   async function dao1WalletHash(wallet){const bytes=new TextEncoder().encode(lower(wallet));const buf=await crypto.subtle.digest("SHA-256",bytes);return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("");}
   async function dao1LoadPartnerBotStatsCache(){
     if(dao1PartnerBotCacheLoaded||!sb||!getContext?.()?.currentUser)return;dao1PartnerBotCacheLoaded=true;
-    try{const {data,error}=await sb.from("dao_partner_bot_lifecycle_cache").select("wallet_address,bot_id,bot_type").eq("user_id",getContext().currentUser.id).eq("project_key",PROJECT_KEY);if(error)throw error;const by=new Map();for(const r of data||[]){const w=lower(r.wallet_address);if(!w)continue;if(!by.has(w))by.set(w,[]);by.get(w).push(r);}for(const [w,rows] of by)dao1PartnerBotStats.set(w,dao1BotStatsFromRows(rows));}catch(e){console.warn("DAO Partner-Bot Statistik-Cache",e);}
+    // Lifecycle = Erwerbshistorie, nicht aktueller Bestand. Daraus duerfen keine
+    // Bot-Anzahlen der Kachel abgeleitet werden. Der aktuelle Bestand wird gezielt
+    // aus den ERC-721-Transfers der bekannten Bot-Contracts rekonstruiert.
+    try{const {error}=await sb.from("dao_partner_bot_lifecycle_cache").select("wallet_address").eq("user_id",getContext().currentUser.id).eq("project_key",PROJECT_KEY).limit(1);if(error)throw error;}catch(e){console.warn("DAO Partner-Bot Statistik-Cache",e);}
   }
   async function dao1PartnerBotScanDue(wallet){
     try{const hash=await dao1WalletHash(wallet),uid=getContext?.()?.currentUser?.id;if(!uid)return {due:false,hash};const {data,error}=await sb.from("dao_partner_bot_scan_state").select("last_scanned_at,status").eq("user_id",uid).eq("project_key",PROJECT_KEY).eq("wallet_hash",hash).maybeSingle();if(error)throw error;const age=data?.last_scanned_at?Date.now()-new Date(data.last_scanned_at).getTime():Infinity;return {due:!data||data.status!=="ok"||age>=86400000,hash};}catch(e){console.warn("DAO Partner-Bot Scan-State",e);return {due:true,hash:await dao1WalletHash(wallet)};}
@@ -5286,12 +5319,24 @@ window.DAO1Project = (() => {
     const uid=getContext?.()?.currentUser?.id;if(!uid)return;const now=new Date().toISOString();try{await sb.from("dao_partner_bot_scan_state").upsert({user_id:uid,project_key:PROJECT_KEY,wallet_hash:hash,last_scanned_at:now,status,last_error:errorText||null,updated_at:now},{onConflict:"user_id,project_key,wallet_hash"});}catch(e){console.warn("DAO Partner-Bot Scan-State speichern",e);}
   }
   async function dao1RefreshOnePartnerBots(node){
-    const wallet=lower(node.wallet),due=await dao1PartnerBotScanDue(wallet);if(!due.due)return false;
-    try{let nfts=(await dao1TeamFetchPartnerNfts(wallet,"wallet")).filter(n=>dao1TeamIsBot(n)&&!dao1TeamIsIdentityNft(n));dao1PartnerBotStats.set(wallet,dao1BotStatsFromRows(nfts));
+    const wallet=lower(node.wallet),hadIdentity=dao1PartnerIdentityStats.has(wallet),hadStats=dao1PartnerBotStats.has(wallet);
+    try{
+      // Die Kachel braucht bei jedem frischen Seitenlauf den aktuellen NFT-Besitz. Das ist
+      // bewusst unabhaengig vom 24h-Lifecycle-Scan: Transferhistorien der bekannten
+      // Contracts sind gecacht/inkrementell und Kaufpreis-Evidenz wird hier nicht verlangt.
+      if(!hadIdentity)await dao1TeamFetchPartnerIdentity(wallet);
+      let nfts=(await dao1TeamFetchPartnerNfts(wallet,"wallet")).filter(n=>dao1TeamIsBot(n)&&!dao1TeamIsIdentityNft(n));
+      dao1PartnerBotStats.set(wallet,dao1BotStatsFromRows(nfts,{currentOnly:true}));
+      const due=await dao1PartnerBotScanDue(wallet);
+      if(!due.due)return !hadIdentity||!hadStats;
       let cursor=0;async function worker(){while(cursor<nfts.length){const n=nfts[cursor++],acq=await dao1TeamAcquisitionForNft(n,wallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;if(acq.sourceWallet)n.source_wallet=acq.sourceWallet;if(acq.acquisitionKind)n.acquisition_kind=acq.acquisitionKind;const a=await dao1TeamResolveBotAssignment(n,wallet,acq);n.assigned_system=a.system;n.assigned_did=a.did;n.assignment_type=a.type;n.assigned_parent_did=a.parentDid||0;}}
       await Promise.all(Array.from({length:Math.min(2,nfts.length)},worker));await Promise.all(nfts.filter(n=>n.assigned_system&&n.assigned_did).map(n=>saveDAO1PartnerBotLifecycle(n,wallet)));await dao1SavePartnerBotScanState(due.hash,"ok");return true;
-    }catch(e){await dao1SavePartnerBotScanState(due.hash,"error",String(e?.message||e).slice(0,500));console.warn("DAO Partner-Bot Refresh",wallet,e);return false;}
+    }catch(e){
+      try{const due=await dao1PartnerBotScanDue(wallet);await dao1SavePartnerBotScanState(due.hash,"error",String(e?.message||e).slice(0,500));}catch(_){}
+      console.warn("DAO Partner-Bot Refresh",wallet,e);return false;
+    }
   }
+
   async function dao1EnsurePartnerBots(graph){
     if(dao1PartnerBotRefreshRunning)return;dao1PartnerBotRefreshRunning=true;try{await dao1LoadPartnerBotStatsCache();const partners=[...graph.nodes.values()].filter(n=>!n.own&&!n.upstream&&n.primary);let changed=false;for(let i=0;i<partners.length;i+=3){const batch=partners.slice(i,i+3);const r=await Promise.all(batch.map(dao1RefreshOnePartnerBots));changed=r.some(Boolean)||changed;if(changed&&document.getElementById("dao1TeamTreePanel"))renderDAO1TeamTreePanel();await new Promise(res=>setTimeout(res,0));}}finally{dao1PartnerBotRefreshRunning=false;}
   }

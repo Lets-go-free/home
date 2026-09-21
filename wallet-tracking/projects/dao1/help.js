@@ -99,3 +99,13 @@ else renderDAO1Help();
  * Transaktionen/Claims und DID-Roots gezielt für diese Wallet nachgeführt. Ein
  * manueller Projekt-Refresh ist für den Erstaufbau nicht erforderlich.
  */
+
+/* Phase 5.64 · 21.09.2026 02:08:16 CEST
+   Wallet-zentrierter Team-Baum: fremde Partner-Wallets werden fuer beide Identity-Contracts
+   gezielt auf aktuell gehaltene DAO1- und APTMDAO-DIDs geprueft. Dadurch bleibt eine zweite
+   DID sichtbar, auch wenn ihre Kante im geladenen persoenlichen Tree-Slice noch fehlt.
+   Bot-Anzahlen in Partnerkarten stammen ausschliesslich aus dem aktuellen ERC-721-Bestand
+   der bekannten Bot-Contracts; Kaufpreis, Kauf-Tx und Lifecycle-Zuordnung sind keine
+   Voraussetzung fuer die Anzahl. Membership-Ablaufdaten bleiben offen, bis die konkrete
+   on-chain Expiry-Quelle fuer DAO1 und APTMDAO verifiziert ist.
+*/

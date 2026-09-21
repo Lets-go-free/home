@@ -898,3 +898,11 @@ window.adminIdeasFilterState = adminIdeasFilterState;
  * - DAO-Team: direkte Uplines an jeder eigenen Wallet grafisch anbinden.
  * - Dashboard-To-dos projektweise gruppieren; Details standardmäßig zuklappen.
  */
+
+/* Phase 5.64 · 21.09.2026 02:08:16 CEST
+   DAO-Team: Partner-Identity wird wallet-zentriert fuer DAO1 und APTMDAO aus aktuellem
+   ERC-721-Besitz ergaenzt. Partner-Bot-Anzahlen = aktueller Bestand, unabhaengig von
+   Kaufpreis-/Lifecycle-Evidenz. Membership getrennt nach DAO1/APTMDAO mit Ablaufdatum
+   anzeigen, sobald die jeweilige on-chain Expiry-Quelle belastbar verifiziert ist;
+   unbekannt darf nie als fehlende Membership dargestellt werden.
+*/
