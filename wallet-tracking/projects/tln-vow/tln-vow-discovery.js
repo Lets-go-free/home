@@ -1,10 +1,13 @@
+// Phase 5.84 · 22.09.2026 00:38:20 CEST: Dashboard-Reward-Summary wird cache-only bereits beim App-Start aus persistenten Discovery-Snapshots normalisiert; Projektübersicht nutzt summary_decimals aus predefined_tokens. Build 20260922-003820.
 // Phase 5.83 · 22.09.2026 00:14:45 CEST: Referral-Rewards normalisieren persistierte Raw-Units robust über verifizierte Contract-Decimals; alte Snapshot-Fallbacks und DEV-Renderer verwenden denselben Human-Amount-Pfad. Build 20260922-001445.
 // Phase 5.82 · 21.09.2026 23:57:38 CEST: Wallet-Speichern aktualisiert TLN/VOW gezielt nur dann sofort, wenn das Modul in der Session bereits initialisiert ist; sonst bleibt der Erstaufbau lazy. Build 20260921-235738.
 // Phase 5.78: TLN/VOW-Init bündelt Current-State-Walletprüfung projektweit, lädt Discovery-Snapshots per DB-Batch/Sessioncache und vermeidet RPC für bekannte Referral-Decmals; Team/History bleiben lazy.
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260922-001445';
+const BUILD_ID='20260922-003820';
+let dashboardContextGetter=null;
+function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
 let loanEngine=null;
 function initCentralLoanEngine(){
@@ -196,7 +199,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='22.09.2026 00:14:45 CEST';
+const APP_VERSION='22.09.2026 00:38:20 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},
@@ -11442,14 +11445,14 @@ function projectReferralRowsForPayload(payload,wallet){
   }
   return out;
 }
-function projectDashboardRewardPeriods(){
+function projectDashboardRewardPeriods(entries=[...PROJECT_WALLET_SNAPSHOTS.entries()]){
   const empty=()=>({total:new Map(),previousYear:new Map(),year:new Map(),month:new Map()});
   const rewards=empty(),referralRewards=empty(),bonusRewards=empty(),now=new Date(),year=now.getFullYear(),prevYear=year-1,month=now.getMonth();
   const periodKeys=value=>{const n=Number(value||0),d=new Date(n>1e12?n:n*1000);if(!Number.isFinite(d.getTime()))return [];const out=["total"];if(d.getFullYear()===prevYear)out.push("previousYear");if(d.getFullYear()===year){out.push("year");if(d.getMonth()===month)out.push("month");}return out;};
   const add=(bucket,keys,address,symbol,amount)=>{const n=Number(amount||0);if(!keys.length||!Number.isFinite(n)||n===0)return;const a=norm(address||"")||null,id=a||`symbol:${String(symbol||"TOKEN").toLowerCase()}`;for(const period of keys){const map=bucket[period],key=`bsc|${id}`,cur=map.get(key)||{chain:"bsc",address:a,assetId:id,symbol:projectTokenSymbol(a,symbol),amount:0};cur.amount+=n;map.set(key,cur);}};
   // Dashboard immer über alle eigenen TLN/VOW-Snapshots; ein Detailtab-Filter darf
   // die globale Dashboard-Summary nicht verändern. Bonus-Rewards bleiben separat.
-  for(const [wallet,payload] of PROJECT_WALLET_SNAPSHOTS.entries()){
+  for(const [wallet,payload] of entries){
     for(const row of projectRewardRowsForPayload(payload)){const c=row?.claim||{};add(rewards,periodKeys(rewardClaimTimestamp(c)),c.token,c.symbol||c.tokenSymbol,c.amount);}
     for(const row of projectReferralRowsForPayload(payload,wallet)){const m=row?.mint||{};add(referralRewards,periodKeys(row.timestamp),m.token,m.symbol,Number(m.amountHuman||projectReferralMintHumanAmount(m)));}
     for(const row of projectBonusRowsForPayload(payload)){const c=row?.claim||{};add(bonusRewards,periodKeys(rewardClaimTimestamp(c)),c.token,c.symbol||c.tokenSymbol,c.amount);}
@@ -11480,11 +11483,10 @@ function projectAggregateData(){
   bonusRows.sort((a,b)=>rewardClaimTimestamp(a.claim)-rewardClaimTimestamp(b.claim));
   return {scoped,lots,stakingByToken,referralByToken,bonusByToken,referralRows,bonusRows,stakingClaims,referralClaims,bonusClaims,lastChecked};
 }
-function projectTokenTotalsHtml(map,empty='–',digits=8){
+function projectTokenTotalsHtml(map,empty='–'){
   const rows=[...(map||new Map()).values()].filter(x=>x.amount||x.count).sort((a,b)=>String(a.symbol).localeCompare(String(b.symbol)));
   if(!rows.length)return `<span class="muted">${esc(empty)}</span>`;
-  const d=Math.max(0,Math.min(12,Number(digits)||0));
-  return rows.map(x=>`<div><b>${Number(x.amount||0).toLocaleString('de-CH',{minimumFractionDigits:d,maximumFractionDigits:d})}</b> ${esc(x.symbol)} <span class="muted">· ${x.count} Zahlung(en)</span></div>`).join('');
+  return rows.map(x=>`<div><b>${displayTokenAmount(Number(x.amount||0),x.symbol,{address:x.address,summary:true})}</b> ${esc(x.symbol)} <span class="muted">· ${x.count} Zahlung(en)</span></div>`).join('');
 }
 function renderProjectOverview(){
   const el=$('projectOverviewContent');if(!el)return;
@@ -11500,8 +11502,8 @@ function renderProjectOverview(){
     <div class="project-overview-card"><span class="k">Staking-Positionen</span><span class="v">${lots.length}</span><div class="muted">${active.length} offen · ${closed.length} beendet</div></div>
     <div class="project-overview-card"><span class="k">Offener Staking-Einsatz</span><span class="v">${displayTokenAmount(lpOpen,'LP',{kind:'lp',summary:true})}</span><div class="muted">LP/LPT gemäß erkannten Positionen</div></div>
     <div class="project-overview-card"><span class="k">Nächstes Vertragsende</span><span class="v" style="font-size:1rem">${nextExpiry?nextExpiry.toLocaleString('de-CH'):'–'}</span></div>
-    <div class="project-overview-card"><span class="k">Staking-Rewards</span><span class="v" style="font-size:1rem">${projectTokenTotalsHtml(d.stakingByToken,'Keine belegten Staking-Rewards',1)}</span></div>
-    <div class="project-overview-card"><span class="k">Referral-Rewards</span><span class="v" style="font-size:1rem">${projectTokenTotalsHtml(d.referralByToken,'Keine belegten Referral-Rewards',1)}</span><div class="muted">Keine Addition unterschiedlicher Token mehr.</div></div>
+    <div class="project-overview-card"><span class="k">Staking-Rewards</span><span class="v" style="font-size:1rem">${projectTokenTotalsHtml(d.stakingByToken,'Keine belegten Staking-Rewards')}</span></div>
+    <div class="project-overview-card"><span class="k">Referral-Rewards</span><span class="v" style="font-size:1rem">${projectTokenTotalsHtml(d.referralByToken,'Keine belegten Referral-Rewards')}</span><div class="muted">Keine Addition unterschiedlicher Token mehr.</div></div>
     <div class="project-overview-card"><span class="k">Bonus-Rewards</span><span class="v" style="font-size:1rem">${projectTokenTotalsHtml(d.bonusByToken,'Keine belegten Bonus-Rewards')}</span></div>
     <div class="project-overview-card"><span class="k">Team-Partner sichtbar</span><span class="v">${teamNodes||'–'}</span><div class="muted">Team wird projektweit on-demand aufgebaut</div></div>
     <div class="project-overview-card"><span class="k">Discovery-Datenstand</span><span class="v" style="font-size:1rem">${esc(checked)}</span><div class="muted">Build ${esc(BUILD_ID)}</div></div>
@@ -18339,19 +18341,33 @@ async function refreshWalletAfterSave(walletId){
   return {ok:true,walletId:String(walletId||''),projectWallets:tlnWallets.length};
 }
 
+async function loadDashboardRewardPeriodsCacheOnly(){
+  const ctx=dashboardContextGetter?.();
+  const uid=ctx?.currentUser?.id;
+  const own=(ctx?.wallets||[]).filter(w=>w?.isOwnWallet!==false);
+  const ids=own.map(w=>String(w?.dbId||w?.id||'')).filter(Boolean);
+  if(!uid||!ids.length)return null;
+  const {data,error}=await sb.from(STAKING_SCAN_CACHE_TABLE)
+    .select('wallet_id,payload')
+    .eq('user_id',uid).eq('chain_key','bsc').eq('cache_key',TECH_CACHE_KEYS.discoveryResults).in('wallet_id',ids);
+  if(error)throw error;
+  const byId=new Map(own.map(w=>[String(w?.dbId||w?.id||''),norm(w?.evm_address||'')]));
+  const entries=[];
+  for(const row of (data||[])){ const wallet=byId.get(String(row.wallet_id||'')); if(wallet&&row?.payload?.kind==='verified_discovery_results')entries.push([wallet,row.payload]); }
+  return projectDashboardRewardPeriods(entries);
+}
+
 window.TLNVOWDiscovery={
+  configure,
   ensureInitialized,
   refreshWalletAfterSave,
   loadDashboardSummary:async()=>{
-    // App-Start darf das komplette Discovery-Modul nicht nur für eine Dashboard-Summary
-    // initialisieren. Bis TLN/VOW bewusst geöffnet wurde, verwendet das Dashboard den
-    // bereits restaurierten lokalen Summary-Cache. Nach init() wird dieselbe Summary
-    // aus den persistenten Projekt-Snapshots aktualisiert.
-    if(!initializationPromise)return {deferred:true};
-    await initializationPromise;
-    if(CURRENT_TEAM_PROJECT_FOREST)renderTeamTree();
-    try{const r=projectDashboardRewardPeriods();window.setDashboardProjectCacheStats?.('tln_vow',{rewards:r.rewards,referralRewards:r.referralRewards,bonusRewards:r.bonusRewards,updatedAt:new Date().toISOString()});}catch(e){console.warn('TLN Dashboard Reward-Summary',e);}
-    return {deferred:false};
+    try{
+      const r=initializationPromise?(await initializationPromise,projectDashboardRewardPeriods()):await loadDashboardRewardPeriodsCacheOnly();
+      if(r)window.setDashboardProjectCacheStats?.('tln_vow',{rewards:r.rewards,referralRewards:r.referralRewards,bonusRewards:r.bonusRewards,updatedAt:new Date().toISOString()});
+      if(initializationPromise&&CURRENT_TEAM_PROJECT_FOREST)renderTeamTree();
+      return {deferred:!initializationPromise,cacheOnly:!initializationPromise};
+    }catch(e){console.warn('TLN Dashboard Reward-Summary',e);return {deferred:!initializationPromise,error:String(e?.message||e)};}
   },
   switchProjectUserTab,
   renderProjectUserView,

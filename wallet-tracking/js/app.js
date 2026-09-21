@@ -470,6 +470,12 @@ async function onLoggedIn(session) {
     await window.DAO1Project.ensureMounted();
   }
 
+  if (window.TLNVOWDiscovery?.configure) {
+    window.TLNVOWDiscovery.configure({
+      getContext: () => ({ currentUser, wallets, tokenFormat: window.WalletTokenFormat })
+    });
+  }
+
   activeChainFilter = new Set(Object.keys(CHAIN_META)); // Chain-Filter IMMER mit allen Chains starten
   renderChainFilter();
   renderWalletInputs();

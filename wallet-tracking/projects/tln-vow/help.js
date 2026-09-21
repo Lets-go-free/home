@@ -1,12 +1,13 @@
-// Phase 5.83 · 22.09.2026 00:14:45 CEST: Referral-Reward-Mengen werden strikt mit technischen Token-decimals normalisiert; Anzeige-/Summary-Kommastellen beeinflussen nur die Darstellung. Alte persistierte Raw-Unit-Snapshots werden beim Lesen kompatibel repariert. Build 20260922-001445.
+// Phase 5.84 · 22.09.2026 00:38:20 CEST: Dashboard-Reward-Summary wird ohne Tab-Besuch cache-only geladen; Summary-Kommastellen kommen aus predefined_tokens. Build 20260922-003820.
+// Phase 5.83 · 22.09.2026 00:38:20 CEST: Referral-Reward-Mengen werden strikt mit technischen Token-decimals normalisiert; Anzeige-/Summary-Kommastellen beeinflussen nur die Darstellung. Alte persistierte Raw-Unit-Snapshots werden beim Lesen kompatibel repariert. Build 20260922-003820.
 // Phase 5.82 · 21.09.2026 23:57:38 CEST: Neue/gespeicherte Wallets werden im globalen Erstaufbau gezielt verarbeitet; TLN/VOW übernimmt sie bei bereits initialisiertem Modul sofort, sonst lazy beim ersten Öffnen. Build 20260921-235738.
 // Phase 5.80 · 21.09.2026 18:15:39 CEST: TLN/VOW Preissnapshot-Read kurzzeitig geteilt; Cache-/Request-Audit Abschlussstand dokumentiert. Build 20260921-181539.
 // Phase 5.78 · 21.09.2026 17:29:35 CEST: TLN/VOW Haupttab bündelt Wallet-Token-Prüfung projektweit, lädt Discovery-Snapshots per DB-Batch/Sessioncache und initialisiert DEX/Provider erst bei „Kurse und Pools“. Build 20260921-172935.
 (() => {
-// WalletTracking · TLN/VOW Hilfe · Build 20260922-001445
+// WalletTracking · TLN/VOW Hilfe · Build 20260922-003820
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260922-001445";
-const HELP_MODULE_TIMESTAMP="22.09.2026 00:14:45 CEST";
+const HELP_MODULE_BUILD="20260922-003820";
+const HELP_MODULE_TIMESTAMP="22.09.2026 00:38:20 CEST";
 function renderTlnVowHelp(){
   const el=document.getElementById("tlnVowHelpContent");
   if(!el)return;

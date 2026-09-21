@@ -1,3 +1,4 @@
+// Phase 5.84 · 22.09.2026 00:38:20 CEST: DAO1 Übersicht erhält cache-basierte Summary-Kacheln für Wallets, Bots, DIDs/Membership, Bot-Claims, Referral-Rewards und wallet-zentrierte Team-Partner. Build 20260922-003820.
 // Phase 5.79: DAO Team vereinfacht: nur noch eine wallet-zentrierte User-Ansicht; alte/neue Einzelgraphen bleiben intern/DEV-Nachweis, nicht als normale Tabs.
 // Phase 5.78: DAO-Team ergänzt einen 24h-IndexedDB-Current-State-Cache pro fremdem Partner-Wallet/NFT-Contract; History/Kaufpreis/DID bleiben separat. Navigation/History-Sessioncache unverändert fachlich.
 // Phase 5.75: Cache-/Request-Audit: zentrale NFT-/Ownership-RAM-Daten werden für Dashboard/Initialload geteilt, historische Metadaten blockieren den DAO-Start nicht mehr und identische Tree-Scans werden in-flight dedupliziert.
@@ -5167,6 +5168,40 @@ window.DAO1Project = (() => {
       ${loading?'<div class="status info" style="margin-top:12px"><strong>Bot-Lifecycle wird ergänzt …</strong><div class="note">Kauftransaktionen werden on-chain geprüft.</div></div>':""}
       <div class="custom-token-card dao1-data-table-card" style="padding:0;overflow:hidden;margin-top:12px"><div class="chain-table-wrap project-data-table"><table><thead><tr><th>Typ</th><th>Bot</th><th>Name</th><th>Wallet</th><th>Erworben am</th><th>Kaufpreis</th><th>Trading-Guthaben</th><th>Geclaimt</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(n=>`<tr><td>${escapeHtml(n.subtype)}</td><td><strong>#${escapeHtml(n.id)}</strong></td><td><strong>${escapeHtml(n.name)}</strong></td><td>${escapeHtml(n.walletLabel)}<div class="meta">${teamShortAddress(n.wallet)}</div></td><td>${n.owned_from_at?dao1TeamDate(n.owned_from_at):"nicht ermittelt"}</td><td>${dao1TeamPurchaseText(n)}</td><td>${n.subtype==="Trading-Bot"?"noch nicht ermittelt":"–"}</td><td>${dao1MultiAssetText(dao1BotClaimTotalsForNft(n.id))}</td><td>${escapeHtml(dao1TeamBotStatus(n))}</td></tr>`).join(""):'<tr><td colspan="9" class="empty">Keine klassifizierten Bots im aktuellen NFT-Bestand.</td></tr>'}</tbody></table></div></div>`;
   }
+  function dao1OverviewAssetLines(rows,empty="–"){
+    const list=Array.isArray(rows)?rows:[]; if(!list.length)return `<span class="muted">${empty}</span>`;
+    return list.slice().sort((a,b)=>String(a.symbol||"").localeCompare(String(b.symbol||""))).map(x=>`<div><strong>${tokenAmount(Number(x.amount||0),{address:x.address,symbol:x.symbol,summary:true})}</strong> ${escapeHtml(x.symbol||"TOKEN")}</div>`).join("");
+  }
+  async function dao1OverviewTeamCount(){
+    try{
+      await loadDAO1OwnedDidRoots(true);
+      const [legacy,aptm]=await Promise.all([loadOldDao1TreeCache(),loadAptmdaoTreeCache()]);
+      const own=dao1OwnWalletSet(), all=new Set(), prev=dao1TeamTreeMode;
+      if(legacy?.edges){dao1TeamTreeMode="legacy";for(const r of legacyTreeRows(legacy.edges)){const w=lower(r.wallet);if(w&&!own.has(w))all.add(w);}}
+      if(aptm?.edges){dao1TeamTreeMode="aptmdao";for(const r of legacyTreeRows(aptm.edges)){const w=lower(r.wallet);if(w&&!own.has(w))all.add(w);}}
+      dao1TeamTreeMode=prev; return all.size;
+    }catch(e){console.warn("DAO1 Übersicht Team-Summary",e);return null;}
+  }
+  function dao1OverviewNftStats(){
+    const seen=new Map();
+    for(const w of allProjectWalletOptions()){for(const n of dao1TeamKnownNfts(walletAddress(w))){const k=`${lower(n.contract)}|${n.id}`;if(!seen.has(k)||n.current)seen.set(k,n);}}
+    const current=[...seen.values()].filter(n=>n.current);
+    return {dids:current.filter(n=>n.subtype==="DID").length,memberships:current.filter(n=>n.subtype==="DAO / Membership").length};
+  }
+  function dao1OverviewSummaryHtml(rows,periods,teamCount){
+    const currentBots=rows.filter(n=>n.current!==false), mining=currentBots.filter(n=>n.subtype==="Mining-Bot").length,trading=currentBots.filter(n=>n.subtype==="Trading-Bot").length;
+    const nfts=dao1OverviewNftStats(), wallets=allProjectWalletOptions().length;
+    return `<div class="project-overview-grid">
+      <div class="project-overview-card"><span class="k">Wallet-Sicht</span><span class="v">${wallets}</span><div class="muted">DAO1/APTM-Wallet(s)</div></div>
+      <div class="project-overview-card"><span class="k">Mining-Bots</span><span class="v">${mining}</span><div class="muted">aktueller Bestand</div></div>
+      <div class="project-overview-card"><span class="k">Trading-Bots</span><span class="v">${trading}</span><div class="muted">aktueller Bestand</div></div>
+      <div class="project-overview-card"><span class="k">DIDs / Memberships</span><span class="v">${nfts.dids} / ${nfts.memberships}</span><div class="muted">aktueller Bestand</div></div>
+      <div class="project-overview-card"><span class="k">Bot-Claims</span><span class="v" style="font-size:1rem">${dao1OverviewAssetLines(periods?.rewards?.total)}</span></div>
+      <div class="project-overview-card"><span class="k">Referral-Rewards</span><span class="v" style="font-size:1rem">${dao1OverviewAssetLines(periods?.referralRewards?.total)}</span></div>
+      <div class="project-overview-card"><span class="k">Team-Partner sichtbar</span><span class="v">${teamCount==null?'–':teamCount}</span><div class="muted">wallet-zentriert · 1 Wallet = 1 Partner</div></div>
+    </div>`;
+  }
+
   let dao1BotOverviewRun=0;
   async function renderDAO1BotOverview(){
     const el=document.getElementById("dao1-subtab-overview");if(!el)return;
@@ -5174,9 +5209,10 @@ window.DAO1Project = (() => {
     try{
       const wallets=allProjectWalletOptions();
       transactionRows=await loadAllApertumTransactionRows(wallets,null);transactionAssetFlows=await loadAllAssetFlowRows(wallets);
-      const rows=dao1BotOverviewRows();el.innerHTML=dao1BotOverviewTableHtml(rows,true);
+      const rows=dao1BotOverviewRows(), periods=dashboardRewardPeriods(transactionRows,transactionAssetFlows), teamCount=await dao1OverviewTeamCount();
+      const summary=dao1OverviewSummaryHtml(rows,periods,teamCount);el.innerHTML=summary+dao1BotOverviewTableHtml(rows,true);
       let cursor=0;async function worker(){while(cursor<rows.length&&run===dao1BotOverviewRun){const n=rows[cursor++];try{const acq=await dao1TeamAcquisitionForNft(n,n.wallet);if(acq.at&&!n.owned_from_at)n.owned_from_at=acq.at;if(acq.txHash){n.acquisition_tx_hash=acq.txHash;n.acquisition_verified=true;}if(acq.purchase)n.purchase=acq.purchase;}catch(e){console.warn("DAO1 Übersicht Bot-Erwerb",n.id,e);}}}
-      await Promise.all(Array.from({length:Math.min(5,rows.length)},worker));if(run===dao1BotOverviewRun)el.innerHTML=dao1BotOverviewTableHtml(rows,false);
+      await Promise.all(Array.from({length:Math.min(5,rows.length)},worker));if(run===dao1BotOverviewRun)el.innerHTML=summary+dao1BotOverviewTableHtml(rows,false);
     }catch(e){console.warn("DAO1 Bot-Übersicht",e);el.innerHTML=`<div class="status warn"><strong>Bot-Übersicht konnte nicht geladen werden.</strong><div class="note">${escapeHtml(e?.message||e)}</div></div>`;}
   }
 
