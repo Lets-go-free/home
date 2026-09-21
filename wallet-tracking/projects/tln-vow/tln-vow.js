@@ -1,3 +1,4 @@
+// Phase 5.80 · 21.09.2026 18:15:39 CEST: gespeicherter Current-Price-Snapshot wird 30s in-flight/session wiederverwendet, damit App-Start und direktes Projektöffnen keinen identischen Supabase-Read erzeugen. Fachliche Preislogik unverändert. Build 20260921-181539.
 // Phase 5.78 · 21.09.2026 17:29:35 CEST: DEX/RPC-Provider werden erst im Kurse/Pools-Untertab initialisiert; bekannte BSC/ETH-Netzwerke nutzen staticNetwork ohne zusätzliche Chain-Erkennung. Build 20260921-172935.
 window.TLNVOWProject = (() => {
 
@@ -77,6 +78,9 @@ let currentPriceCapturedAt = null;
 let currentPriceSource = "live";
 let priceRefreshPromise = null;
 let infrastructurePromise = null;
+let currentPriceSnapshotReadPromise = null;
+let currentPriceSnapshotReadCache = null;
+const CURRENT_PRICE_SNAPSHOT_READ_TTL_MS = 30000;
 
 
 /*
@@ -450,20 +454,30 @@ function hydrateCurrentPriceSnapshot(payload){
   return true;
 }
 
-async function loadCurrentPriceSnapshot(){
-  try{
-    const {data,error}=await sb.from(CURRENT_PRICE_SNAPSHOT_TABLE)
-      .select("captured_at,payload,valuation_version")
-      .eq("project_key",PROJECT_KEY)
-      .eq("valuation_version",CURRENT_PRICE_SNAPSHOT_VERSION)
-      .maybeSingle();
-    if(error) throw error;
-    if(!data?.payload) return null;
-    return {capturedAt:data.captured_at,payload:data.payload,fresh:isTodayZurich(data.captured_at)};
-  }catch(e){
-    console.warn("TLN/VOW Preiscache konnte nicht aus Supabase geladen werden:",e);
-    return null;
+async function loadCurrentPriceSnapshot({force=false}={}){
+  const now=Date.now();
+  if(!force && currentPriceSnapshotReadCache && (now-currentPriceSnapshotReadCache.loadedAt)<CURRENT_PRICE_SNAPSHOT_READ_TTL_MS){
+    return currentPriceSnapshotReadCache.value;
   }
+  if(!force && currentPriceSnapshotReadPromise) return currentPriceSnapshotReadPromise;
+  const run=(async()=>{
+    try{
+      const {data,error}=await sb.from(CURRENT_PRICE_SNAPSHOT_TABLE)
+        .select("captured_at,payload,valuation_version")
+        .eq("project_key",PROJECT_KEY)
+        .eq("valuation_version",CURRENT_PRICE_SNAPSHOT_VERSION)
+        .maybeSingle();
+      if(error) throw error;
+      const value=data?.payload?{capturedAt:data.captured_at,payload:data.payload,fresh:isTodayZurich(data.captured_at)}:null;
+      currentPriceSnapshotReadCache={loadedAt:Date.now(),value};
+      return value;
+    }catch(e){
+      console.warn("TLN/VOW Preiscache konnte nicht aus Supabase geladen werden:",e);
+      return null;
+    }
+  })();
+  if(!force) currentPriceSnapshotReadPromise=run;
+  try{return await run;}finally{if(currentPriceSnapshotReadPromise===run) currentPriceSnapshotReadPromise=null;}
 }
 
 async function saveCurrentPriceSnapshot(){
@@ -480,6 +494,7 @@ async function saveCurrentPriceSnapshot(){
       .upsert(row,{onConflict:"project_key,valuation_version"});
     if(error) throw error;
     currentPriceCapturedAt=capturedAt;
+    currentPriceSnapshotReadCache={loadedAt:Date.now(),value:{capturedAt,payload:row.payload,fresh:true}};
     return true;
   }catch(e){
     console.warn("TLN/VOW Preiscache konnte nicht in Supabase gespeichert werden:",e);
