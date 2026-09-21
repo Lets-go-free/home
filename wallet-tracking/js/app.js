@@ -1,4 +1,4 @@
-/* WalletTracking Phase 5.72 · 21.09.2026 11:57:19 CEST · Build 20260921-115719 */
+/* WalletTracking Phase 5.73 · 21.09.2026 12:22:50 CEST · Build 20260921-122250 */
 // WalletTracking Release 4.91 · 18.09.2026 10:42:44 CEST · Build 20260918-104244
 // ---- Supabase: Auth + Datenbank ----
 const SUPABASE_URL = "https://cfnxuesibpnlgyklzqkj.supabase.co";
@@ -7302,6 +7302,9 @@ function cachedNftsForSelection() {
 window.getCachedNftsForWalletId = function(walletId) {
   const row=nftCaches.get(String(walletId));
   return Array.isArray(row?.nfts) ? row.nfts : [];
+};
+window.getAllCachedNfts = function() {
+  return [...nftCaches.values()].flatMap(row=>Array.isArray(row?.nfts)?row.nfts:[]);
 };
 
 function onNftWalletChange() {

@@ -959,3 +959,10 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    Aktuelle Mining-/Trading-Bot-Zahlen im DAO-Team verwenden die zentrale aktuelle NFT-/Ownership-Klassifikation. Kaufpreis, historische DID-Zuordnung und ownerOf@Block beeinflussen den heutigen Bestand nicht. Referenz Monica: 9 Mining-Bots + 1 Trading-Bot.
    Build 20260921-115719.
 */
+
+/* Phase 5.73 · 21.09.2026 12:22:50 CEST
+   DAO-Team/NFT: aktueller Bot-Bestand nutzt denselben zentralen nft_cache wie der NFT-Tab.
+   Trading-Bot-Contracts werden nur bei eindeutiger Bot-Typ-Evidenz aus dem zentralen Cache übernommen;
+   Kaufpreis-/DID-Historie entscheidet nicht über den Bestand. Summen trennen Bot-Anzahl und Kaufpreis-Abdeckung.
+   Referenz Monica: DAO1 #21044, APTMDAO #7803, 9 Mining-Bots + 1 Trading-Bot.
+   Build 20260921-122250. */
