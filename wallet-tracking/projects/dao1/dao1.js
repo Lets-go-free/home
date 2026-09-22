@@ -1,4 +1,4 @@
-// Phase 5.92 · 22.09.2026 11:01:30 CEST: APTMDAO eth_call im lokalen RPC-Gate freigegeben; RPC-Fehler werden an den aktiven Datenmigrations-Runner gemeldet. Build 20260922-110130.
+// Phase 5.93 · 22.09.2026 12:15:22 CEST: Server-RPC-Proxy passend zum lokalen Gate mit enger APTMDAO ownerOf/Parent-eth_call-Allowlist; Migration v4 kann erneut prüfen. Build 20260922-121522.
 // Phase 5.88 · 22.09.2026 02:20:48 CEST: APTMDAO-Identitäts-NFTs zählen als DID; zentraler NFT-Typadapter für DID/MineBot/TradeBot; manueller NFT-Refresh kann offene Ownership-Lücken gezielt reparieren. Build 20260922-022048.
 // Phase 5.87 · 22.09.2026 01:36:51 CEST: DAO1 Self-Heal für vor 5.82 hinzugefügte Wallets: fehlende/invollständige NFT-Ownership wird aus dem zentralen Current-State erkannt und gezielt nachgezogen; bekannte DID-Contracts werden ohne manuelle project_nfts-Klassifizierung korrekt gezählt. Build 20260922-013651.
 // Phase 5.86 · 22.09.2026 01:06:00 CEST: DAO1 Übersicht verwendet die bestehenden allgemeinen Summary-Karten; Bot-Summen zählen nur den eindeutigen aktuellen Bestand, historische/Transfer-Zuordnungen bleiben Detaildaten. Build 20260922-010600.

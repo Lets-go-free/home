@@ -1,3 +1,4 @@
+// Phase 5.93 · 22.09.2026 12:15:22 CEST: RPC-Proxy-eth_call-Allowlist + SQL 072 für persistenten partial-Migrationsstatus; NFT-Datenmigration v4. Build 20260922-121522.
 // Phase 5.92 · 22.09.2026 11:01:30 CEST: APTMDAO-Metadaten serverseitig über wallet-private; Migrationen kennen partial/failed; APTMDAO ownerOf/Parent eth_call im RPC-Gate freigegeben. Build 20260922-110130.
 // Phase 5.91 · 22.09.2026 10:46:15 CEST: DAO-NFT-Metadatenabrufe überspringen Explorer-Webseiten/external_url-UI-Links und verwenden nur echte Metadata-/Token-URIs; die automatische Datenmigration wird als Version 2 einmalig erneut ausgeführt. Build 20260922-104615.
 // Phase 5.90 · 22.09.2026 03:44:20 CEST: DAO-NFT-Namensauflösung erweitert: Store-/Metadata-Attribute und project_nfts werden für echte Botnamen priorisiert; generische MineBot-#-Namen bleiben Fallback. Bestehende Apertum-NFT-Caches werden per Datenmigration erneut geprüft. Build 20260922-034420.

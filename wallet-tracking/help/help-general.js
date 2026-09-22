@@ -1,3 +1,4 @@
+// Phase 5.93 · 22.09.2026 12:15:22 CEST: RPC-Proxy-eth_call-Allowlist + SQL 072 für persistenten partial-Migrationsstatus; NFT-Datenmigration v4. Build 20260922-121522.
 // Phase 5.92 · 22.09.2026 11:01:30 CEST: Release-/Datenmigrationen melden Teilfehler korrekt; APTMDAO-NFT-Metadaten werden CORS-sicher serverseitig über wallet-private geladen. Build 20260922-110130.
 // Phase 5.91 · 22.09.2026 10:46:15 CEST: NFT-Metadaten werden CORS-sicher geladen: Explorer-Webseiten bzw. external_url-UI-Links sind keine Metadatenquelle; nur echte Metadata-/Token-URIs werden abgefragt. Die Datenmigration wiederholt die Prüfung einmalig automatisch. Build 20260922-104615.
 // Phase 5.90 · 22.09.2026 03:44:20 CEST: Apertum-NFT-Namen werden aus mehreren Store-/Metadata-Feldern und project_nfts zusammengeführt; generische MineBot-#-Namen bleiben letzter Fallback. Die 5.90-Migration prüft vorhandene Apertum-NFT-Caches automatisch erneut. Build 20260922-034420.
