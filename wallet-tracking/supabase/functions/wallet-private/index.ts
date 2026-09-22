@@ -1,3 +1,4 @@
+// Phase 5.92 · 22.09.2026 11:01:30 CEST: Authentifizierter NFT-Metadata-Proxy für api.aptmdao.io/nft/<ID> mit enger Allowlist, Timeout und Größenlimit. Build 20260922-110130.
 // Phase 5.81 · 21.09.2026 23:36:49 CEST · vollständige Einzel-Wallet-Löschung via transaktionaler DB-RPC · Build 20260921-233649
 import { withSupabase } from 'npm:@supabase/server@^1'
 
@@ -208,6 +209,80 @@ async function decryptKnownField(
 
 function randomTestPlaintext(): string {
   return `wallet-tracking-crypto-self-test:${crypto.randomUUID()}`
+}
+
+async function fetchAllowedNftMetadata(rawUrl: unknown): Promise<{found: boolean; status: number; metadata: Record<string, unknown> | null; source_url: string}> {
+  const value = cleanString(rawUrl, 1000)
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error('Ungueltige NFT-Metadaten-URL.')
+  }
+
+  if (url.protocol !== 'https:') {
+    throw new Error('NFT-Metadaten duerfen nur ueber HTTPS geladen werden.')
+  }
+
+  const host = url.hostname.toLowerCase()
+  const allowed = host === 'api.aptmdao.io' && /^\/nft\/\d+\/?$/.test(url.pathname)
+  if (!allowed) {
+    throw new Error('NFT-Metadaten-Domain oder Pfad ist nicht freigegeben.')
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10000)
+  try {
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { 'accept': 'application/json' },
+      signal: controller.signal,
+      redirect: 'error',
+    })
+
+    if (response.status === 404) {
+      return { found: false, status: 404, metadata: null, source_url: url.toString() }
+    }
+
+    if (!response.ok) {
+      throw new Error(`NFT-Metadatenquelle antwortete mit HTTP ${response.status}.`)
+    }
+
+    const contentLength = Number(response.headers.get('content-length') || 0)
+    if (contentLength > 1_000_000) {
+      throw new Error('NFT-Metadatenantwort ist groesser als 1 MB.')
+    }
+
+    const text = await response.text()
+    if (text.length > 1_000_000) {
+      throw new Error('NFT-Metadatenantwort ist groesser als 1 MB.')
+    }
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      throw new Error('NFT-Metadatenquelle lieferte kein gueltiges JSON.')
+    }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('NFT-Metadatenquelle lieferte kein JSON-Objekt.')
+    }
+
+    return {
+      found: true,
+      status: response.status,
+      metadata: parsed as Record<string, unknown>,
+      source_url: url.toString(),
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('NFT-Metadatenquelle hat das Zeitlimit von 10 Sekunden ueberschritten.')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 function cleanString(value: unknown, maxLength: number): string {
@@ -801,6 +876,11 @@ export default {
         }
 
         return json({ ok: true, action })
+      }
+
+      if (action === 'nft_metadata_fetch') {
+        const result = await fetchAllowedNftMetadata(body.url)
+        return json({ ok: true, action, ...result })
       }
 
       if (action === 'wallet_list') {

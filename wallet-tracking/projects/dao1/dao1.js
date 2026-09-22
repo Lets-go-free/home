@@ -1,3 +1,4 @@
+// Phase 5.92 · 22.09.2026 11:01:30 CEST: APTMDAO eth_call im lokalen RPC-Gate freigegeben; RPC-Fehler werden an den aktiven Datenmigrations-Runner gemeldet. Build 20260922-110130.
 // Phase 5.88 · 22.09.2026 02:20:48 CEST: APTMDAO-Identitäts-NFTs zählen als DID; zentraler NFT-Typadapter für DID/MineBot/TradeBot; manueller NFT-Refresh kann offene Ownership-Lücken gezielt reparieren. Build 20260922-022048.
 // Phase 5.87 · 22.09.2026 01:36:51 CEST: DAO1 Self-Heal für vor 5.82 hinzugefügte Wallets: fehlende/invollständige NFT-Ownership wird aus dem zentralen Current-State erkannt und gezielt nachgezogen; bekannte DID-Contracts werden ohne manuelle project_nfts-Klassifizierung korrekt gezählt. Build 20260922-013651.
 // Phase 5.86 · 22.09.2026 01:06:00 CEST: DAO1 Übersicht verwendet die bestehenden allgemeinen Summary-Karten; Bot-Summen zählen nur den eindeutigen aktuellen Bestand, historische/Transfer-Zuordnungen bleiben Detaildaten. Build 20260922-010600.
@@ -1230,7 +1231,7 @@ window.DAO1Project = (() => {
 
 
   async function dao1ApertumRpc(method,params=[]){
-    const allowed=new Set(["eth_blockNumber","eth_getLogs","eth_getBlockByNumber"]);
+    const allowed=new Set(["eth_blockNumber","eth_getLogs","eth_getBlockByNumber","eth_call"]);
     if(!allowed.has(method))throw new Error(`Apertum RPC-Methode nicht erlaubt: ${method}`);
     const {data,error}=await sb.functions.invoke("apertum-rpc-proxy",{
       body:{method,params}
@@ -1245,9 +1246,14 @@ window.DAO1Project = (() => {
           if(payload?.error)detail=payload.error;
         }
       }catch(_){}
+      window.reportWalletTrackingMigrationIssue?.("apertum-rpc",method,new Error(detail));
       throw new Error(detail);
     }
-    if(!data?.ok)throw new Error(data?.error||`apertum-rpc-proxy/${method} fehlgeschlagen.`);
+    if(!data?.ok){
+      const detail=data?.error||`apertum-rpc-proxy/${method} fehlgeschlagen.`;
+      window.reportWalletTrackingMigrationIssue?.("apertum-rpc",method,new Error(detail));
+      throw new Error(detail);
+    }
     return data.result;
   }
 
