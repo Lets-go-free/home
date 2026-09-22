@@ -1,3 +1,4 @@
+// Phase 5.99 · 23.09.2026 00:15:00 CEST: DAO1-Erstimport übernimmt frisch geladene NFT-Daten sofort, prüft native Claim-Auszahlungen über Internal/Trace und bewertet historische APTM-Preise bevorzugt über getReserves am Zielblock. Build 20260923-001500.
 // Phase 5.98 · 22.09.2026 23:40:05 CEST: DAO1-Erstimport nutzt den bereits vollständigen ERC-20-Walletscan und parallelisierte native Claim-Prüfung, um redundante Detailrequests zu vermeiden. Build 20260922-234005.
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: Hilfe ergänzt den sichtbaren Datenjob nach Wallet-Speicherung und transparente Teilfehleranzeige. Build 20260922-213526.
 // Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Release-Paketstruktur korrigiert; Doku-Testliste zentral in Ideen/Systemübersicht ergänzt. Build 20260922-140348.
@@ -35,7 +36,7 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260922-234005";
+const HELP_MODULE_BUILD="20260923-001500";
 const HELP_MODULE_TIMESTAMP="22.09.2026 23:40:05 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");

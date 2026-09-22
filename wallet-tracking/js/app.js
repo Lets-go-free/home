@@ -1,3 +1,4 @@
+// Phase 5.99 · 23.09.2026 00:15:00 CEST: DAO1 Fresh-Build-Fixes: NFT-Runtime-Sync, native Claim-Trace-Fallback und schneller historische Pool-State-Preispfad. Build 20260923-001500.
 // Phase 5.98 · 22.09.2026 23:40:05 CEST: DAO1-Fresh-Import-Performance: ERC-20-Vollscan wird als Evidenz wiederverwendet; Claim-Nativevidenz parallel statt hunderten seriellen Detailrequests. Build 20260922-234005.
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: Wallet-Speichern bleibt bis zum gezielten Lifecycle-Ende im zentralen Ladejob; Teilfehler werden sichtbar gemeldet; Snapshot erst nach fehlerfreiem Fresh-Build. Build 20260922-213526.
 // Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Systemübersicht um „Zu testen“ ergänzt; ZIP-Struktur korrigiert. Build 20260922-140348.
@@ -310,7 +311,7 @@ const DONATION_EVM_ADDRESS = "0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382";
 // Build-Version und Datenversion sind bewusst getrennt. Nur Releases mit echter
 // Datenwirkung registrieren einen Migrationsjob; reine UI-/Text-Releases lösen
 // keinen On-Chain-/API-Neuaufbau aus. Abschluss wird userbezogen in Supabase gespeichert.
-const WT_CURRENT_RELEASE = "5.98";
+const WT_CURRENT_RELEASE = "5.99";
 const WT_RELEASE_REGISTRY = Object.freeze({
   "5.93": {
     title: "NFT-Datenmigration und APTMDAO-RPC wurden korrigiert",

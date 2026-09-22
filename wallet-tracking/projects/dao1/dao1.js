@@ -1,3 +1,4 @@
+// Phase 5.99 · 23.09.2026 00:15:00 CEST: DAO1 Fresh-Build stabilisiert: frisch geladene Apertum-NFTs sofort in DAO1 übernehmen; native Claim-Payouts zusätzlich via RPC-Trace; historische APTM-Preise primär per historischem getReserves statt Log-Massenscan. Build 20260923-001500.
 // Phase 5.98 · 22.09.2026 23:40:05 CEST: DAO1 Fresh-Import beschleunigt: nach vollständigem Wallet-ERC20-Scan keine hunderten Tx-Detailrequests; native Claim-Evidenz parallelisiert und gecacht. Build 20260922-234005.
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: DAO1 Fresh-Build ergänzt inkrementelle ERC-20 Asset-Flows für relevante Wallets; Claim-Logs RPC-first; unnötiger ERC-721/1155-Claim-Request entfernt. Build 20260922-213526.
 // Phase 5.93 · 22.09.2026 12:15:22 CEST: Server-RPC-Proxy passend zum lokalen Gate mit enger APTMDAO ownerOf/Parent-eth_call-Allowlist; Migration v4 kann erneut prüfen. Build 20260922-121522.
@@ -1088,10 +1089,28 @@ window.DAO1Project = (() => {
     // Transferketten-Rekonstruktion läuft danach aber nur noch für NFTs, deren aktueller
     // Besitzerzustand gegenüber project_nft_ownership tatsächlich geändert ist.
     // Unveränderte NFTs werden vollständig aus dem persistenten Ownership-Cache übernommen.
-    if(typeof ctx.refreshApertumNftsForWallet==="function")await ctx.refreshApertumNftsForWallet(wallet,p=>setTransactionStatus("loading",`${statusPrefix}${wallet.label}: Apertum-NFT-Bestand wird abgeglichen…`,`Explorer-Seite ${p} · Besitzerhistorien nur bei Änderungen`));
+    let freshlyLoadedNfts=null;
+    if(typeof ctx.refreshApertumNftsForWallet==="function")freshlyLoadedNfts=await ctx.refreshApertumNftsForWallet(wallet,p=>setTransactionStatus("loading",`${statusPrefix}${wallet.label}: Apertum-NFT-Bestand wird abgeglichen…`,`Explorer-Seite ${p} · Besitzerhistorien nur bei Änderungen`));
     const prev=selectedWalletId;
     selectedWalletId=String(wallet.id);
-    await loadCurrentApertumNfts();
+    // Phase 5.99: refreshApertumNftsForWallet aktualisiert den persistierten Cache sofort,
+    // während der zentrale In-Memory-NFT-Cache dieses Tabs bis zum nächsten globalen
+    // Reload noch den alten Stand enthalten kann. Beim Fresh-Build daher die gerade
+    // geladenen Explorer-NFTs direkt verwenden; sonst konnte die DAO1-Übersicht trotz
+    // erfolgreichem NFT-Import 0 Bots / 0 DIDs anzeigen.
+    if(Array.isArray(freshlyLoadedNfts)){
+      currentApertumNfts=freshlyLoadedNfts
+        .filter(n=>String(n.chain||CHAIN_KEY)===CHAIN_KEY)
+        .filter(n=>!(n.possibleSpam||n.userMarkedSpam))
+        .map(n=>({
+          id:String(n.tokenId),contract:lower(n.tokenAddress),
+          name:n.name||n.collectionName||`NFT #${n.tokenId}`,
+          collectionName:n.collectionName||"",image:n.image||null,current:true
+        }))
+        .filter(n=>n.id&&n.contract);
+    }else{
+      await loadCurrentApertumNfts();
+    }
 
     const currentByKey=new Map(currentApertumNfts.map(n=>[nftOwnershipKey(n.contract,n.id),n]));
     const dbCurrent=ownershipRows.filter(r=>
@@ -1983,6 +2002,67 @@ window.DAO1Project = (() => {
 
   const dao1InternalRewardCache=new Map();
   const dao1InternalRewardInflight=new Map();
+  const dao1TraceRewardCache=new Map();
+  let dao1TraceTransactionSupported=null;
+  let dao1DebugTraceSupported=null;
+
+  function nativeWeiAmount(value){
+    try{
+      if(value==null||value==="")return 0;
+      return Number(BigInt(String(value)))/1e18;
+    }catch{return 0;}
+  }
+  function sumPreferredNativeTransfers(rows,target,source){
+    const valid=(rows||[]).filter(x=>x&&lower(x.to||"")===target&&Number(x.amount||0)>0);
+    if(!valid.length)return 0;
+    const direct=source?valid.filter(x=>lower(x.from||"")===source):valid;
+    return (direct.length?direct:valid).reduce((sum,x)=>sum+Number(x.amount||0),0);
+  }
+  async function rewardFromRpcTrace(txHash,wallet,expectedFrom=null){
+    const hash=String(txHash||"").toLowerCase(),target=lower(wallet),source=lower(expectedFrom||"");
+    const key=`${hash}|${target}|${source}`;
+    if(dao1TraceRewardCache.has(key))return dao1TraceRewardCache.get(key)||0;
+    let amount=0;
+
+    // Avalanche/Subnet-kompatible Nodes unterstützen je nach Client entweder
+    // trace_transaction oder debug_traceTransaction(callTracer). Capability wird
+    // nach dem ersten echten Fehlschlag pro Session abgeschaltet, damit 200+ Claims
+    // nicht denselben unsupported RPC immer wieder probieren.
+    if(dao1TraceTransactionSupported!==false){
+      try{
+        const traces=await rpc("trace_transaction",[hash]);
+        dao1TraceTransactionSupported=true;
+        const rows=(Array.isArray(traces)?traces:[]).map(t=>({
+          from:t?.action?.from||"",to:t?.action?.to||"",amount:nativeWeiAmount(t?.action?.value),
+          failed:!!t?.error
+        })).filter(x=>!x.failed);
+        amount=sumPreferredNativeTransfers(rows,target,source);
+      }catch(e){
+        dao1TraceTransactionSupported=false;
+        console.info("DAO1 trace_transaction nicht verfügbar; debug_traceTransaction-Fallback wird verwendet.",e?.message||e);
+      }
+    }
+    if(!(amount>0) && dao1DebugTraceSupported!==false){
+      try{
+        const root=await rpc("debug_traceTransaction",[hash,{tracer:"callTracer",timeout:"12s"}]);
+        dao1DebugTraceSupported=true;
+        const rows=[];
+        const walk=node=>{
+          if(!node||typeof node!=="object")return;
+          rows.push({from:node.from||"",to:node.to||"",amount:nativeWeiAmount(node.value),failed:!!node.error});
+          for(const c of (node.calls||[]))walk(c);
+        };
+        walk(root);
+        amount=sumPreferredNativeTransfers(rows.filter(x=>!x.failed),target,source);
+      }catch(e){
+        dao1DebugTraceSupported=false;
+        console.info("DAO1 debug_traceTransaction nicht verfügbar; native Auszahlung bleibt ohne Trace-Beweis.",e?.message||e);
+      }
+    }
+    dao1TraceRewardCache.set(key,Number(amount||0));
+    return Number(amount||0);
+  }
+
   async function rewardFromInternalTransactions(txHash,wallet,expectedFrom=null){
     const target=lower(wallet);
     const source=lower(expectedFrom||"");
@@ -1996,7 +2076,7 @@ window.DAO1Project = (() => {
         rows=await fetchAll(`/transactions/${hash}/internal-transactions`);
       }catch(e){
         console.warn("DAO1 Claim Internal Transactions",txHash,e);
-        return 0;
+        return rewardFromRpcTrace(hash,wallet,expectedFrom);
       }
       const valid=[];
       for(const r of rows){
@@ -2010,14 +2090,19 @@ window.DAO1Project = (() => {
           if(amount>0)valid.push({from,amount});
         }catch{}
       }
-      if(!valid.length)return 0;
-      // Bevorzugt weiterhin die direkte Auszahlung vom erwarteten Claim-Contract.
-      // Proxy-/Router-Strukturen dürfen aber einen darunterliegenden Contract als
-      // tatsächlichen Internal-Absender verwenden. Gibt es keinen Direct-Match,
-      // zählt deshalb die nachweislich erfolgreiche native Zahlung an genau das Wallet.
-      const direct=source?valid.filter(x=>x.from===source):valid;
-      const chosen=direct.length?direct:valid;
-      return chosen.reduce((sum,x)=>sum+x.amount,0);
+      if(valid.length){
+        // Bevorzugt weiterhin die direkte Auszahlung vom erwarteten Claim-Contract.
+        // Proxy-/Router-Strukturen dürfen aber einen darunterliegenden Contract als
+        // tatsächlichen Internal-Absender verwenden. Gibt es keinen Direct-Match,
+        // zählt deshalb die nachweislich erfolgreiche native Zahlung an genau das Wallet.
+        const direct=source?valid.filter(x=>x.from===source):valid;
+        const chosen=direct.length?direct:valid;
+        const sum=chosen.reduce((total,x)=>total+x.amount,0);
+        if(sum>0)return sum;
+      }
+      // Blockscout liefert bei historischen Apertum-Claims teilweise eine leere
+      // Internal-Transaction-Liste. Dann gezielt den RPC-Trace derselben Tx prüfen.
+      return rewardFromRpcTrace(hash,wallet,expectedFrom);
     })();
     dao1InternalRewardInflight.set(cacheKey,job);
     try{
@@ -2617,6 +2702,45 @@ window.DAO1Project = (() => {
     return rows;
   }
 
+  const dao1ReservePriceCache=new Map();
+  let dao1HistoricalReserveSupported=null;
+  async function exactPoolPriceFromHistoricalReserves(targetBlock,meta){
+    const block=Number(targetBlock);
+    if(!Number.isFinite(block)||block<APTM_MARKET_START_BLOCK)return null;
+    if(dao1HistoricalReserveSupported===false)return null;
+    if(dao1ReservePriceCache.has(block))return dao1ReservePriceCache.get(block);
+    let row=null;
+    try{
+      // UniswapV2/Pangolin Pair getReserves() = 0x0902f1ac. Eine historische
+      // eth_call-Antwort ist nur 96 Bytes groß und ersetzt für Fresh-Builds den
+      // bisherigen teuren eth_getLogs-Suchlauf über hunderte Sync-Events.
+      const data=await rpc("eth_call",[{to:PAIR_ADDRESS,data:"0x0902f1ac"},hexBlock(block)]);
+      const raw=String(data||"").replace(/^0x/,"");
+      if(raw.length>=128){
+        const r0=BigInt("0x"+raw.slice(0,64)),r1=BigInt("0x"+raw.slice(64,128));
+        const aptmRaw=meta.aptmIs0?r0:r1,usdtRaw=meta.aptmIs0?r1:r0;
+        const aptmDecimals=meta.aptmIs0?meta.d0:meta.d1,usdtDecimals=meta.aptmIs0?meta.d1:meta.d0;
+        const reserveAptm=Number(aptmRaw)/10**aptmDecimals,reserveUsdt=Number(usdtRaw)/10**usdtDecimals;
+        if(reserveAptm>0&&reserveUsdt>0){
+          dao1HistoricalReserveSupported=true;
+          row={
+            project_key:PROJECT_KEY,chain_key:CHAIN_KEY,pool_address:lower(PAIR_ADDRESS),parser_version:PRICE_ANCHOR_VERSION,
+            target_block:block,sync_block:block,log_index:null,tx_hash:null,aptm_usd:reserveUsdt/reserveAptm,
+            scanned_from_block:block,scanned_at:new Date().toISOString()
+          };
+        }
+      }
+    }catch(e){
+      // Kein harter Fehler: nicht jeder konfigurierte RPC ist archivfähig. Nach dem
+      // ersten echten Fehlschlag nicht hunderte weitere historische eth_call-Versuche
+      // erzeugen; die bestehende Sync-Log-Suche bleibt als Fallback erhalten.
+      dao1HistoricalReserveSupported=false;
+      row=null;
+    }
+    dao1ReservePriceCache.set(block,row);
+    return row;
+  }
+
   async function ensureExactPriceAnchors(blocks,status){
     const targets=[...new Set((blocks||[]).map(Number).filter(Number.isFinite))].sort((a,b)=>a-b);
     const map=new Map();
@@ -2628,12 +2752,10 @@ window.DAO1Project = (() => {
     for(const r of validCached)map.set(Number(r.target_block),r);
     if(activePriceJobLog){activePriceJobLog.anchorHits+=validCached.length;priceJobLog(`Anchor-Cache: ${validCached.length}/${targets.length} gültige Zielblöcke · ${nullCached.length} leere Anchor(s) werden neu geprüft`);}
 
-    if(nullCached.length && getContext?.()?.isAdmin){
-      const repaired=await revalidateNullCachedAnchors(nullCached,status);
-      await savePriceAnchors(repaired);
-      for(const r of repaired)map.set(Number(r.target_block),r);
-      if(activePriceJobLog)priceJobLog(`Leere Anchor-Revalidierung: ${repaired.filter(r=>r.aptm_usd!=null).length}/${repaired.length} mit Preis wiederhergestellt`);
-    }else{
+    if(nullCached.length && !getContext?.()?.isAdmin){
+      // Nicht-Admins dürfen globale leere Anchors nicht neu berechnen; vorhandener
+      // negativer Cache bleibt für sie maßgeblich. Admin-Fresh-Builds behandeln leere
+      // Anchors dagegen unten wie fehlende Zielblöcke und versuchen zuerst getReserves.
       for(const r of nullCached)map.set(Number(r.target_block),r);
     }
 
@@ -2647,8 +2769,26 @@ window.DAO1Project = (() => {
     }
 
     const meta=await poolMeta();
-    const clusters=splitAnchorClusters(missing);
-    if(activePriceJobLog)priceJobLog(`${missing.length} neue Zielblöcke · ${clusters.length} lokale Anchor-Cluster`);
+
+    // Phase 5.99: Zuerst exakten Pool-State am Zielblock per historischem getReserves
+    // lesen. Das reduziert einen Fresh-Import mit vielen Claim-Blöcken von großen
+    // eth_getLogs-Antworten auf kleine eth_call-Responses. Nur Blöcke, deren RPC
+    // keine historische State-Abfrage unterstützt, fallen auf die Sync-Log-Suche zurück.
+    const reserveCreated=[];
+    await mapLimited(missing,8,async(block,idx)=>{
+      const row=await exactPoolPriceFromHistoricalReserves(block,meta);
+      if(row){reserveCreated.push(row);map.set(Number(block),row);}
+      if(status && ((idx+1)%25===0 || idx+1===missing.length))status.textContent=`Historische APTM-Preise ${idx+1}/${missing.length} per Pool-State geprüft…`;
+    });
+    if(reserveCreated.length){
+      await savePriceAnchors(reserveCreated);
+      if(activePriceJobLog)priceJobLog(`Reserve-Anchor: ${reserveCreated.length}/${missing.length} Zielblöcke ohne Log-Scan bewertet`);
+    }
+    const stillMissing=missing.filter(b=>!map.has(b));
+    if(!stillMissing.length)return map;
+
+    const clusters=splitAnchorClusters(stillMissing);
+    if(activePriceJobLog)priceJobLog(`${stillMissing.length} Zielblöcke benötigen Sync-Log-Fallback · ${clusters.length} Cluster`);
     const created=[];
     let next=0,done=0;
     async function worker(){
