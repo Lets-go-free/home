@@ -1,3 +1,4 @@
+// Phase 5.88 · 22.09.2026 02:20:48 CEST: APTMDAO-Identitäts-NFTs zählen als DID; zentraler NFT-Typadapter für DID/MineBot/TradeBot; manueller NFT-Refresh kann offene Ownership-Lücken gezielt reparieren. Build 20260922-022048.
 // Phase 5.87 · 22.09.2026 01:36:51 CEST: DAO1 Self-Heal für vor 5.82 hinzugefügte Wallets: fehlende/invollständige NFT-Ownership wird aus dem zentralen Current-State erkannt und gezielt nachgezogen; bekannte DID-Contracts werden ohne manuelle project_nfts-Klassifizierung korrekt gezählt. Build 20260922-013651.
 // Phase 5.86 · 22.09.2026 01:06:00 CEST: DAO1 Übersicht verwendet die bestehenden allgemeinen Summary-Karten; Bot-Summen zählen nur den eindeutigen aktuellen Bestand, historische/Transfer-Zuordnungen bleiben Detaildaten. Build 20260922-010600.
 // Phase 5.85 · 22.09.2026 00:53:12 CEST: Hotfix – DAO1 Übersicht wird beim ersten Öffnen des Projekts sofort gerendert, ohne dass der Übersicht-Untertab zuerst manuell angeklickt werden muss. Build 20260922-005312.
@@ -910,7 +911,7 @@ window.DAO1Project = (() => {
       });
       if(!wallets.length){dao1LegacyWalletReconcileDone=true;return {ok:true,wallets:0,repaired:0};}
       const states=await dao1LoadWalletBootstrapStates(wallets);
-      let repaired=0,failed=0,classified=0;
+      let repaired=0,failed=0,classified=0,remainingTotal=0;
       const allCurrent=[];
       for(const wallet of wallets){
         const current=dao1CachedCurrentNftsForWallet(wallet);
@@ -938,6 +939,7 @@ window.DAO1Project = (() => {
         await Promise.all(Array.from({length:Math.min(2,gaps.length)},worker));
         await loadOwnershipCache();
         const remaining=gaps.filter(n=>dao1OwnershipNeedsRepair(wallet,n)).length;
+        remainingTotal+=remaining;
         if(!remaining&&localFailed===0)await dao1SaveWalletBootstrapState(wallet,"complete",`${gaps.length} repaired`);
         else await dao1SaveWalletBootstrapState(wallet,"partial",`${remaining} offen`);
       }
@@ -948,8 +950,8 @@ window.DAO1Project = (() => {
       renderDAO1TeamTreePanel();
       const overview=document.getElementById("dao1-subtab-overview");
       if(overview&&overview.style.display!=="none")await renderDAO1BotOverview();
-      dao1LegacyWalletReconcileDone=true;
-      return {ok:failed===0,repaired,failed,classified};
+      dao1LegacyWalletReconcileDone=failed===0&&remainingTotal===0;
+      return {ok:failed===0&&remainingTotal===0,repaired,failed,remaining:remainingTotal,classified};
     })();
     try{return await dao1LegacyWalletReconcilePromise;}
     finally{dao1LegacyWalletReconcilePromise=null;}
@@ -4964,6 +4966,14 @@ window.DAO1Project = (() => {
     const byContract=dao1TeamBotContractSubtype(contract);if(byContract)return byContract;
     return "nicht klassifiziert";
   }
+  function classifyNftType(input={}){
+    if(String(input?.chain||CHAIN_KEY)!==CHAIN_KEY)return null;
+    const subtype=dao1TeamProjectNftSubtype(input?.contract||"",input?.id??"",input?.name||"",input?.collection||"");
+    if(subtype==="DID"||subtype==="APTMDAO NFT")return "DID";
+    if(subtype==="Mining-Bot")return "MineBot";
+    if(subtype==="Trading-Bot")return "TradeBot";
+    return null;
+  }
   function dao1TeamIsIdentityNft(n){
     const contract=lower(n?.contract||n?.nft_contract||"");
     if(contract===lower(DAO1_OLD_DID_CONTRACT)||contract===lower(APTMDAO_NFT_CONTRACT))return true;
@@ -5384,7 +5394,7 @@ window.DAO1Project = (() => {
     const seen=new Map();
     for(const w of allProjectWalletOptions()){for(const n of dao1TeamKnownNfts(walletAddress(w))){const k=`${lower(n.contract)}|${n.id}`;if(!seen.has(k)||n.current)seen.set(k,n);}}
     const current=[...seen.values()].filter(n=>n.current);
-    return {dids:current.filter(n=>n.subtype==="DID").length,memberships:current.filter(n=>n.subtype==="DAO / Membership").length};
+    return {dids:current.filter(n=>n.subtype==="DID"||n.subtype==="APTMDAO NFT").length,memberships:current.filter(n=>n.subtype==="DAO / Membership").length};
   }
   function dao1OverviewSummaryHtml(rows,periods,teamCount){
     const currentBots=dao1CurrentBotRows(rows), mining=currentBots.filter(n=>n.subtype==="Mining-Bot").length,trading=currentBots.filter(n=>n.subtype==="Trading-Bot").length;
@@ -6930,6 +6940,44 @@ window.DAO1Project = (() => {
     table.innerHTML = `<div class="chain-table-wrap project-data-table"><table class="chain-admin-table"><thead><tr><th>NFT</th><th>Zeit</th><th>Block</th><th>Reward APTM</th><th>APTM/USD</th><th>Reward USD</th><th>Gas APTM</th><th>Netto APTM</th><th>Tx</th></tr></thead><tbody>${visibleRows.map(x=>`<tr><td>${x.nftName || x.miner.label}<div class="meta">#${x.nftId || x.miner.nft_id}${x.nftSubtype?" · "+x.nftSubtype:""}</div></td><td>${x.timestamp}</td><td>${x.block}</td><td>${fmt(x.reward)}</td><td>${x.price == null ? "–" : fmt(x.price)}</td><td>${usd(x.rewardUsd)}</td><td>${fmt(x.gas)}</td><td>${fmt(x.net)}</td><td><a href="${EXPLORER}/tx/${x.tx}" target="_blank" rel="noopener">${x.tx.slice(0,12)}…</a></td></tr>`).join("")}</tbody></table></div>`;
   }
 
+  async function repairNftOwnershipForWallet(wallet){
+    await ensureLoaded();
+    const ctx=getContext?.();
+    if(!ctx?.currentUser||!wallet)return {nfts:0,checked:0,repaired:0,remaining:0,failed:0};
+    await loadOwnershipCache();
+    const walletId=String(wallet.dbId||wallet.id||"");
+    if(!walletId)return {nfts:0,checked:0,repaired:0,remaining:0,failed:0};
+    let rows=window.getCachedNftsForWalletId?.(walletId);
+    if(!Array.isArray(rows)){
+      const q=await sb.from("nft_cache").select("nfts").eq("user_id",ctx.currentUser.id).eq("wallet_id",walletId).maybeSingle();
+      if(q.error)throw q.error; rows=Array.isArray(q.data?.nfts)?q.data.nfts:[];
+    }
+    const current=rows.filter(n=>String(n?.chain||"")===CHAIN_KEY)
+      .filter(n=>!(n?.possibleSpam||n?.userMarkedSpam))
+      .map(n=>({id:String(n?.tokenId??""),contract:lower(n?.tokenAddress||""),name:n?.name||n?.collectionName||`NFT #${n?.tokenId??""}`}))
+      .filter(n=>n.id&&n.contract);
+    const gaps=current.filter(n=>dao1OwnershipNeedsRepair(wallet,n));
+    let repaired=0,failed=0,cursor=0;
+    async function worker(){
+      while(cursor<gaps.length){
+        const n=gaps[cursor++];
+        try{await discoverOwnershipForNft(n.id,n.contract,n.name);repaired++;}
+        catch(e){failed++;console.warn("DAO1 NFT-Ownership Repair",wallet?.label||walletId,n,e);}
+      }
+    }
+    await Promise.all(Array.from({length:Math.min(2,gaps.length)},worker));
+    await loadOwnershipCache();
+    const remaining=current.filter(n=>dao1OwnershipNeedsRepair(wallet,n)).length;
+    await dao1SaveWalletBootstrapState(wallet,remaining||failed?"partial":"complete",remaining?`${remaining} offen`:`${gaps.length} geprüft`);
+    if(!remaining&&!failed)dao1LegacyWalletReconcileDone=true;
+    else dao1LegacyWalletReconcileDone=false;
+    await dao1EnsureIntrinsicClassifications(current);
+    await loadDAO1OwnedDidRoots(true).catch(()=>{});
+    const overview=document.getElementById("dao1-subtab-overview");
+    if(overview&&overview.style.display!=="none")await renderDAO1BotOverview();
+    return {nfts:current.length,checked:gaps.length,repaired,remaining,failed};
+  }
+
   async function refreshNftOwnershipForWallet(wallet){
     const ctx=getContext?.();
     if(!ctx?.currentUser||!wallet)return {nfts:0,ownership:0,failed:0};
@@ -7099,5 +7147,5 @@ window.DAO1Project = (() => {
     refreshTransactionHistory, repriceCachedTransactionHistory, copyPriceJobLog, exportPriceJobLog, setTransactionFilter,setResultWalletFilter,setClaimNftFilter, enforceDao1DateInput, setDao1DateFromPicker, openDao1DatePicker, exportTransactionsExcel, exportTransactionsPdf, openNftTabForSelectedWallet, showMissingHistoricalPrices, saveManualHistoricalPrice,
     getAptmUsdtPairAddress: () => PAIR_ADDRESS,
     getAptmMarketStartBlock: () => APTM_MARKET_START_BLOCK,
-    historicalAptmPriceAtBlock, refreshNftOwnershipForWallet };
+    historicalAptmPriceAtBlock, refreshNftOwnershipForWallet, repairNftOwnershipForWallet, classifyNftType };
 })();
