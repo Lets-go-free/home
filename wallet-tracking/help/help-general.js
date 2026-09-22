@@ -1,4 +1,4 @@
-// Phase 5.97 · 22.09.2026 23:14:40 CEST: Hilfe ergänzt Erstimport-Laufzeit, Admin-Testmodus bei vollständiger Datenlöschung und präzisere Teilfehleranzeige. Build 20260922-231440.
+// Phase 5.98 · 22.09.2026 23:40:05 CEST: DAO1-Erstimport nutzt den bereits vollständigen ERC-20-Walletscan und parallelisierte native Claim-Prüfung, um redundante Detailrequests zu vermeiden. Build 20260922-234005.
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: Hilfe ergänzt den sichtbaren Datenjob nach Wallet-Speicherung und transparente Teilfehleranzeige. Build 20260922-213526.
 // Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Release-Paketstruktur korrigiert; Doku-Testliste zentral in Ideen/Systemübersicht ergänzt. Build 20260922-140348.
 // Phase 5.94 · 22.09.2026 14:03:48 CEST: Allgemeine Hilfe um vollständige userweite WalletTracking-Datenlöschung ergänzt; Auth-Login bleibt bestehen, lokale Browserdaten werden mitgelöscht. Build 20260922-140348.
@@ -35,8 +35,8 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260922-231440";
-const HELP_MODULE_TIMESTAMP="22.09.2026 23:14:40 CEST";
+const HELP_MODULE_BUILD="20260922-234005";
+const HELP_MODULE_TIMESTAMP="22.09.2026 23:40:05 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;

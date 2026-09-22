@@ -1,4 +1,4 @@
-// Phase 5.97 · 22.09.2026 23:14:40 CEST: Wallet-Erstimport misst Gesamt-/Teilzeiten, Admin-Datenlöschung behält die Auth-Session, Teilfehler bleiben sichtbar; DAO1-Datenstand wird nach Fresh-Build gesetzt. Build 20260922-231440.
+// Phase 5.98 · 22.09.2026 23:40:05 CEST: DAO1-Fresh-Import-Performance: ERC-20-Vollscan wird als Evidenz wiederverwendet; Claim-Nativevidenz parallel statt hunderten seriellen Detailrequests. Build 20260922-234005.
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: Wallet-Speichern bleibt bis zum gezielten Lifecycle-Ende im zentralen Ladejob; Teilfehler werden sichtbar gemeldet; Snapshot erst nach fehlerfreiem Fresh-Build. Build 20260922-213526.
 // Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Systemübersicht um „Zu testen“ ergänzt; ZIP-Struktur korrigiert. Build 20260922-140348.
 // Phase 5.94 · 22.09.2026 14:03:48 CEST: Userweite vollständige WalletTracking-Datenlöschung über transaktionale DB-RPC; Browser-Userdaten werden danach lokal gelöscht und der User abgemeldet. Auth-Login bleibt bestehen. Build 20260922-140348.
@@ -310,7 +310,7 @@ const DONATION_EVM_ADDRESS = "0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382";
 // Build-Version und Datenversion sind bewusst getrennt. Nur Releases mit echter
 // Datenwirkung registrieren einen Migrationsjob; reine UI-/Text-Releases lösen
 // keinen On-Chain-/API-Neuaufbau aus. Abschluss wird userbezogen in Supabase gespeichert.
-const WT_CURRENT_RELEASE = "5.97";
+const WT_CURRENT_RELEASE = "5.98";
 const WT_RELEASE_REGISTRY = Object.freeze({
   "5.93": {
     title: "NFT-Datenmigration und APTMDAO-RPC wurden korrigiert",

@@ -1,4 +1,4 @@
-// Phase 5.97 · 22.09.2026 23:14:40 CEST: neue Miner-Claims nutzen native Internal-APTM-Auszahlung ohne unnötigen ERC-20-Detailscan; Proxy/Router-Absender als Fallback erlaubt; Claim-Summary zeigt Tokenmenge. Build 20260922-231440.
+// Phase 5.98 · 22.09.2026 23:40:05 CEST: DAO1 Fresh-Import beschleunigt: nach vollständigem Wallet-ERC20-Scan keine hunderten Tx-Detailrequests; native Claim-Evidenz parallelisiert und gecacht. Build 20260922-234005.
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: DAO1 Fresh-Build ergänzt inkrementelle ERC-20 Asset-Flows für relevante Wallets; Claim-Logs RPC-first; unnötiger ERC-721/1155-Claim-Request entfernt. Build 20260922-213526.
 // Phase 5.93 · 22.09.2026 12:15:22 CEST: Server-RPC-Proxy passend zum lokalen Gate mit enger APTMDAO ownerOf/Parent-eth_call-Allowlist; Migration v4 kann erneut prüfen. Build 20260922-121522.
 // Phase 5.88 · 22.09.2026 02:20:48 CEST: APTMDAO-Identitäts-NFTs zählen als DID; zentraler NFT-Typadapter für DID/MineBot/TradeBot; manueller NFT-Refresh kann offene Ownership-Lücken gezielt reparieren. Build 20260922-022048.
@@ -1981,36 +1981,69 @@ window.DAO1Project = (() => {
     return total;
   }
 
+  const dao1InternalRewardCache=new Map();
+  const dao1InternalRewardInflight=new Map();
   async function rewardFromInternalTransactions(txHash,wallet,expectedFrom=null){
     const target=lower(wallet);
     const source=lower(expectedFrom||"");
-    let rows=[];
-    try{
-      rows=await fetchAll(`/transactions/${String(txHash||"").toLowerCase()}/internal-transactions`);
-    }catch(e){
-      console.warn("DAO1 Claim Internal Transactions",txHash,e);
-      return 0;
-    }
-    const valid=[];
-    for(const r of rows){
-      const to=lower(H(r?.to) || r?.to_address || r?.to_address_hash || "");
-      const from=lower(H(r?.from) || r?.from_address || r?.from_address_hash || "");
-      if(to!==target)continue;
-      if(r?.error || r?.success===false || String(r?.status||"").toLowerCase()==="error")continue;
+    const hash=String(txHash||"").toLowerCase();
+    const cacheKey=`${hash}|${target}|${source}`;
+    if(dao1InternalRewardCache.has(cacheKey))return dao1InternalRewardCache.get(cacheKey)||0;
+    if(dao1InternalRewardInflight.has(cacheKey))return dao1InternalRewardInflight.get(cacheKey);
+    const job=(async()=>{
+      let rows=[];
       try{
-        const raw=r?.value?.value ?? r?.value ?? "0";
-        const amount=Number(BigInt(String(raw)))/1e18;
-        if(amount>0)valid.push({from,amount});
-      }catch{}
+        rows=await fetchAll(`/transactions/${hash}/internal-transactions`);
+      }catch(e){
+        console.warn("DAO1 Claim Internal Transactions",txHash,e);
+        return 0;
+      }
+      const valid=[];
+      for(const r of rows){
+        const to=lower(H(r?.to) || r?.to_address || r?.to_address_hash || "");
+        const from=lower(H(r?.from) || r?.from_address || r?.from_address_hash || "");
+        if(to!==target)continue;
+        if(r?.error || r?.success===false || String(r?.status||"").toLowerCase()==="error")continue;
+        try{
+          const raw=r?.value?.value ?? r?.value ?? "0";
+          const amount=Number(BigInt(String(raw)))/1e18;
+          if(amount>0)valid.push({from,amount});
+        }catch{}
+      }
+      if(!valid.length)return 0;
+      // Bevorzugt weiterhin die direkte Auszahlung vom erwarteten Claim-Contract.
+      // Proxy-/Router-Strukturen dürfen aber einen darunterliegenden Contract als
+      // tatsächlichen Internal-Absender verwenden. Gibt es keinen Direct-Match,
+      // zählt deshalb die nachweislich erfolgreiche native Zahlung an genau das Wallet.
+      const direct=source?valid.filter(x=>x.from===source):valid;
+      const chosen=direct.length?direct:valid;
+      return chosen.reduce((sum,x)=>sum+x.amount,0);
+    })();
+    dao1InternalRewardInflight.set(cacheKey,job);
+    try{
+      const amount=await job;
+      dao1InternalRewardCache.set(cacheKey,Number(amount||0));
+      return Number(amount||0);
+    }finally{
+      dao1InternalRewardInflight.delete(cacheKey);
     }
-    if(!valid.length)return 0;
-    // Bevorzugt weiterhin die direkte Auszahlung vom erwarteten Claim-Contract.
-    // Proxy-/Router-Strukturen dürfen aber einen darunterliegenden Contract als
-    // tatsächlichen Internal-Absender verwenden. Gibt es keinen Direct-Match,
-    // zählt deshalb die nachweislich erfolgreiche native Zahlung an genau das Wallet.
-    const direct=source?valid.filter(x=>x.from===source):valid;
-    const chosen=direct.length?direct:valid;
-    return chosen.reduce((sum,x)=>sum+x.amount,0);
+  }
+
+  async function mapLimited(items,limit,worker){
+    const input=Array.isArray(items)?items:[];
+    if(!input.length)return [];
+    const out=new Array(input.length);
+    let cursor=0;
+    const count=Math.min(Math.max(1,Number(limit||1)),input.length);
+    async function run(){
+      while(true){
+        const i=cursor++;
+        if(i>=input.length)return;
+        out[i]=await worker(input[i],i);
+      }
+    }
+    await Promise.all(Array.from({length:count},run));
+    return out;
   }
 
   function rpcCandidates(){
@@ -3065,8 +3098,14 @@ window.DAO1Project = (() => {
     return meta;
   }
 
+  const dao1ClaimLogsCache=new Map();
+  const dao1ClaimLogsInflight=new Map();
   async function fetchClaimTransferLogs(txHash){
     const hash=String(txHash||"").toLowerCase();
+    if(!/^0x[0-9a-f]{64}$/.test(hash))return [];
+    if(dao1ClaimLogsCache.has(hash))return dao1ClaimLogsCache.get(hash)||[];
+    if(dao1ClaimLogsInflight.has(hash))return dao1ClaimLogsInflight.get(hash);
+    const job=(async()=>{
 
     // Primär das standardisierte RPC-Receipt verwenden. Historische Blockscout-
     // /transactions/<hash>/logs-Aufrufe liefern auf Apertum teilweise HTTP 400,
@@ -3085,6 +3124,15 @@ window.DAO1Project = (() => {
     }catch(e){
       console.warn("DAO1 Claim Logs via Explorer Fallback",hash,e);
       return [];
+    }
+    })();
+    dao1ClaimLogsInflight.set(hash,job);
+    try{
+      const rows=await job;
+      dao1ClaimLogsCache.set(hash,rows||[]);
+      return rows||[];
+    }finally{
+      dao1ClaimLogsInflight.delete(hash);
     }
   }
 
@@ -3790,7 +3838,7 @@ window.DAO1Project = (() => {
           if(job!==transactionJobToken)return;
           const walletRows=await loadTransactionRows(address,null);
           if(job!==transactionJobToken)return;
-          const claimEnrich=await enrichTransactionsWithClaims(address,null,job);
+          const claimEnrich=await enrichTransactionsWithClaims(address,null,job,{assetFlowScanComplete:true});
           if(job!==transactionJobToken)return;
           // v52: Claim-Preis-Backfill nur nach echter Claim-Anreicherung.
           // Ohne neue/erneuerte Claims werden historische Claim-Preise nicht
@@ -3848,7 +3896,7 @@ window.DAO1Project = (() => {
     }
   }
 
-  async function enrichTransactionsWithClaims(address,status=null,jobToken=transactionJobToken){
+  async function enrichTransactionsWithClaims(address,status=null,jobToken=transactionJobToken,options={}){
     const txs=await loadTransactionRows(address,null);
     // v53: Claims verwenden direkt den persistenten NFT-Cache DES betreffenden Wallets.
     // Dadurch ist die Zuordnung unabhängig davon, welches Wallet im NFT-Tab ausgewählt ist.
@@ -3897,9 +3945,12 @@ window.DAO1Project = (() => {
       const c=claimByHash.get(h);
       const cachedForTx=cachedFlowsByHash.get(h)||[];
       const hasIncoming=cachedForTx.some(f=>String(f.direction||"")==="eingang");
-      // Phase 5.97: Der neue Miner zahlt nativ per Internal Transaction aus.
-      // Ein ERC-20-Detailscan kann dafür keinen Reward-Flow finden und erzeugte
-      // bisher hunderte irreführende "ohne parsebare Token-Flows"-Warnungen.
+      // Phase 5.98: Wenn unmittelbar davor der vollständige Wallet-ERC-20-Scan
+      // erfolgreich lief, sind fehlende Tx-Flows kein Grund für hunderte einzelne
+      // Explorer-Detailrequests. ERC-20-Payouts wären bereits im Wallet-Scan
+      // enthalten; offene Claims werden danach gezielt über native Receipt/Internal-
+      // Evidenz geprüft. Das beseitigt den >10-Minuten-Fresh-Import.
+      if(options?.assetFlowScanComplete===true)return false;
       if(ev.newMiner)return false;
       if(t.claim_nft_id!=null && c?.reward_asset_symbol)return false;
       return !cachedFlowHashes.has(h);
@@ -3951,7 +4002,37 @@ window.DAO1Project = (() => {
       setTransactionStatus("ready",`Keine neuen Claims anzureichern.`,`${allClaimTxs.length.toLocaleString("de-DE")} Claim-Transaktionen (Legacy + neue Mining-Bot-Evidenz) sind bereits assetgenau verarbeitet.`);
       return {updatedClaims:0,detailTargets:detailTargets.length};
     }
-    setTransactionStatus("loading",`${claimTxs.length.toLocaleString("de-DE")} Claim(s) werden assetgenau angereichert…`,`Legacy-Claims werden wie bisher assetgenau geprüft; neue Apertum-Miner-Claims lesen die native APTM-Auszahlung aus der Internal Transaction und verwenden den bereits vorhandenen historischen APTM/USD-Kurs.`);
+    setTransactionStatus("loading",`${claimTxs.length.toLocaleString("de-DE")} Claim(s) werden assetgenau angereichert…`,`ERC-20-Auszahlungen stammen aus dem Wallet-Flow-Cache; native Claim-Auszahlungen werden parallel aus Receipt/Internal-Evidenz ergänzt.`);
+
+    // Phase 5.98: Native Fallback-Evidenz nicht mehr Claim für Claim seriell laden.
+    // Bei 200+ historischen Claims verursachte das mehrere Minuten Wartezeit.
+    // Max. 8 parallele, deduplizierte Requests halten Explorer/RPC moderat belastet.
+    const nativeFallbackByHash=new Map();
+    const nativeTargets=claimTxs.filter(t=>{
+      const h=String(t.tx_hash||"").toLowerCase();
+      return !(flowsByTx.get(h)||[]).some(f=>f.direction==="eingang");
+    });
+    if(nativeTargets.length){
+      setTransactionStatus("loading",`Native Claim-Auszahlungen werden geprüft · ${nativeTargets.length.toLocaleString("de-DE")} Tx…`,`Bis zu 8 Abfragen parallel; bereits gecachte Evidenz wird wiederverwendet.`);
+      await mapLimited(nativeTargets,8,async(t,idx)=>{
+        if(jobToken!==transactionJobToken)return;
+        const h=String(t.tx_hash||"").toLowerCase();
+        const ev=evidenceByHash.get(h);
+        let amount=0;
+        if(ev?.newMiner){
+          amount=await rewardFromInternalTransactions(t.tx_hash,address,t.to_address||DEFAULT_MINER_NFT_CONTRACT);
+        }else{
+          const logs=await fetchClaimTransferLogs(t.tx_hash);
+          amount=rewardFromLogs(logs,address);
+        }
+        nativeFallbackByHash.set(h,Number(amount||0));
+        if((idx+1)%25===0 || idx+1===nativeTargets.length){
+          setTransactionStatus("loading",`Native Claim-Auszahlungen ${idx+1}/${nativeTargets.length} geprüft…`,`Parallelisierte Receipt/Internal-Prüfung; keine einzelnen ERC-20-Detailrequests nach vollständigem Wallet-Flow-Scan.`);
+        }
+      });
+      if(jobToken!==transactionJobToken)return;
+    }
+
     const claimRows=[];
     for(let i=0;i<claimTxs.length;i++){
       if(jobToken!==transactionJobToken)return;
@@ -3988,19 +4069,9 @@ window.DAO1Project = (() => {
         .sort((a,b)=>Number(b.value_usd||0)-Number(a.value_usd||0));
       const primary=incoming[0]||null;
 
-      // Native APTM-Fallback: neue Miner-Generation zahlt per Internal Transaction
-      // direkt vom Apertum-Miner-Contract an das Wallet. Legacy bleibt Log-basiert.
-      let nativeRewardAptm=0;
-      if(!primary){
-        if(isNewMiner){
-          nativeRewardAptm=await rewardFromInternalTransactions(t.tx_hash,address,t.to_address||DEFAULT_MINER_NFT_CONTRACT);
-        }else{
-          try{
-            const logs=await fetchAll(`/transactions/${t.tx_hash}/logs`);
-            nativeRewardAptm=rewardFromLogs(logs,address);
-          }catch(e){console.warn("Claim legacy reward logs:",e);}
-        }
-      }
+      // Native APTM-Fallback wurde für alle offenen Claims bereits parallel
+      // vorab ermittelt. Im Claim-Loop selbst entstehen keine seriellen Netzrequests.
+      const nativeRewardAptm=primary?0:Number(nativeFallbackByHash.get(String(t.tx_hash||"").toLowerCase())||0);
 
       const rewardAmount=primary?Number(primary.amount||0):Number(nativeRewardAptm||0);
       const rewardSymbol=primary?String(primary.token_symbol||"TOKEN"):"APTM";
@@ -7092,7 +7163,7 @@ window.DAO1Project = (() => {
     }
     await syncTargetedReferralWusdt(address);
     await loadTransactionRows(address,null);
-    await enrichTransactionsWithClaims(address,null,transactionJobToken);
+    await enrichTransactionsWithClaims(address,null,transactionJobToken,{assetFlowScanComplete:!flowSync?.skipped});
     await loadDAO1OwnedDidRoots(true);
     const [legacy,aptm]=await Promise.all([loadOldDao1TreeCache(),loadAptmdaoTreeCache()]);
     if(legacy?.edges)dao1TeamDiscovery.legacy.edges=legacy.edges;
