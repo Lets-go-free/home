@@ -1,4 +1,5 @@
 // Phase 5.89 · 22.09.2026 03:05:55 CEST: Zentrales Release-/DATA_MIGRATIONS-Management, userbezogene quittierungspflichtige Release-Popups, automatische NFT-5.88-Normalisierung; Dashboard-Vermögen vertikal responsiv. Build 20260922-030555.
+// Phase 5.90 · 22.09.2026 03:44:20 CEST: Apertum-NFT-Namensresolver erweitert: DAO-Projektname + Store-/Metadata-Attribute werden vor generischem MineBot-Fallback priorisiert; bestehende Apertum-NFT-Caches werden per Datenmigration automatisch erneut geprüft. Build 20260922-034420.
 // Phase 5.88 · 22.09.2026 02:20:48 CEST: NFT-Typfilter, bevorzugte DAO-Store-/Metadata-Namen (Bild + Name + ID), manueller Apertum-Refresh repariert offene Ownership-Lücken gezielt; APTMDAO-Identitäts-NFTs zählen als DID. Build 20260922-022048.
 // Phase 5.87 · 22.09.2026 01:36:51 CEST: NFT-Statusbegriffe präzisiert (Besitzhistorie vs. Kaufpreisprüfung); Systemübersicht dokumentiert DAO1-Self-Heal für ältere Wallet-Erstaufbauten. Build 20260922-013651.
 // Phase 5.86 · 22.09.2026 01:06:00 CEST: Systemübersicht dokumentiert DAO1-Summary als Current-State-Ansicht; historische Bot-Zuordnungen zählen nicht in den aktuellen Bestand. Build 20260922-010600.
@@ -303,17 +304,17 @@ const DONATION_EVM_ADDRESS = "0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382";
 // Build-Version und Datenversion sind bewusst getrennt. Nur Releases mit echter
 // Datenwirkung registrieren einen Migrationsjob; reine UI-/Text-Releases lösen
 // keinen On-Chain-/API-Neuaufbau aus. Abschluss wird userbezogen in Supabase gespeichert.
-const WT_CURRENT_RELEASE = "5.89";
+const WT_CURRENT_RELEASE = "5.90";
 const WT_RELEASE_REGISTRY = Object.freeze({
-  "5.89": {
-    title: "NFT-Daten wurden verbessert",
+  "5.90": {
+    title: "DAO-NFT-Namen werden genauer erkannt",
     userNotice: true,
     dataImpact: true,
-    migrations: ["dao1:nft-metadata-ownership-v2"],
+    migrations: ["dao1:nft-store-metadata-v3"],
     bullets: [
-      "DAO1/APTM-NFTs werden einmalig auf vollständigere Store-/Metadata-Namen und Bilder geprüft.",
-      "APTMDAO-Identitäts-NFTs werden als DID behandelt; offene Besitzhistorien werden gezielt repariert.",
-      "Die Vermögensanzeige im Dashboard wurde für schmalere Ansichten robuster gestaltet."
+      "Apertum-NFTs werden erneut auf den echten DAO-Store-/Metadata-Namen geprüft (z. B. Nebula, Galactic, Lunar oder Solar).",
+      "Neben dem NFT-Namen werden jetzt auch Store-/Metadata-Attribute und vorhandene DAO-Projektbezeichnungen ausgewertet; generische Bezeichnungen wie MineBot #12345 bleiben nur Fallback.",
+      "Bestehende NFT-Caches werden automatisch aktualisiert; Bild, NFT-ID, Kauf-/Besitzhistorie und manuelle Spam-/Safe-Markierungen bleiben erhalten."
     ]
   }
 });
@@ -356,7 +357,7 @@ async function wtMigrationDao1NftMetadataOwnership(){
   return {wallets:refreshedWallets,nfts:nftCount,repaired,remaining};
 }
 const WT_DATA_MIGRATIONS = Object.freeze({
-  "dao1:nft-metadata-ownership-v2": {version:1,release:"5.89",label:"DAO1/APTM NFT-Metadaten & Besitzhistorie",run:wtMigrationDao1NftMetadataOwnership}
+  "dao1:nft-store-metadata-v3": {version:1,release:"5.90",label:"DAO1/APTM Store-Namen, Metadaten & Besitzhistorie",run:wtMigrationDao1NftMetadataOwnership}
 });
 async function runPendingDataMigrations(){
   const state=await wtLoadMigrationStates();
@@ -1681,7 +1682,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
     ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → Root + Downline + Upline der aktuell eigenen DIDs lokal lesen, DB 0 / RPC 0 bei HIT; manueller Update-Pfad inkrementell mit 24-Block-Overlap"],
     ["APTMDAO Team-Kanten","IndexedDB · dao1/aptmdao-tree","Supabase aptmdao_tree_*","Apertum NFT-Mint-Event; RPC nur bei Update/Erstaufbau","Phase 5.39: child/parent/wallet on-chain verifiziert; eigener Graph, max. 20 Ebenen; Migration 063. DAO1/APTMDAO sind eigenständige DID-/Alias-Systeme. Normaler Cache-HIT ohne RPC, Update mit 24-Block-Overlap."],
-    ["DAO Wallet-Team + Partner-Bot-Lifecycle","RAM + Dashboard-Summary","dao1_old_tree_* + aptmdao_tree_* + dao_partner_bot_lifecycle_cache","Apertum RPC/Explorer nur bei Tree-Update bzw. gezielten Partnerdetails","Phase 5.62: Partner-Bots fremder Team-Wallets werden nach Entdeckung zentral in kleinen Batches aktualisiert, per userbezogenem SHA-256-Scan-State max. täglich erneut geprüft und in den bestehenden Lifecycle für Dashboard/Team persistiert. Direkte Uplines bleiben reine Upline-Knoten und werden weder als Downline noch als Partner gezählt. Phase 5.55: DAO1-alt und APTMDAO werden als getrennte vollständige Graphquellen in einen Walletgraph überführt; zentrale aktuelle NFT-/Ownership-Zuordnung hat bei DID→Wallet Vorrang vor historischen Tree-Event-Adressen. Mehrere externe Uplines eines eigenen Wallets werden getrennt nach DAO1/APTMDAO parallel oberhalb des Einstiegsknotens gezeigt. Belegte Upline-Ketten oberhalb eigener DIDs werden als echte Knoten gezeigt; eigene Wallets folgen ihrer DID-Parent-Kante (z. B. #25924 unter #21043) und zählen nicht als Partner. DAO1-only-Partner benötigen keine APTMDAO-DID. Für eigene Wallets ist der zentrale NFT-/Ownership-Bestand die Single Source of Truth; der Team-Baum startet keine parallele NFT-Discovery. Phase 5.88: Der NFT-Tab bietet einen Typfilter (DID, MineBot, Hearts NFT, TradeBot); Apertum-Bots bevorzugen echte Store-/Metadata-Namen vor generischen MineBot-Fallbacks und vervollständigen Bild + Name + ID. Ein manueller NFT-Refresh repariert anschließend nur offene/invollständige DAO-Ownership-Historien. APTMDAO-Identitäts-NFTs werden fachlich als DID gezählt. Phase 5.87 gleicht vor 5.82 hinzugefügte Wallets gegen den zentralen Current-State ab und rekonstruiert fehlende/invollständige Ownership-Historien; bekannte DAO1-DID-Contracts benötigen keine manuelle Typklassifikation. Aktueller Owner und historische Erwerbs-/Kaufdaten bleiben getrennte Eigenschaften desselben NFT-Datensatzes. Root-Erkennung bleibt von aktuellen Projekt-Balances entkoppelt; Ownership wird vor Dashboard-/Tree-Cache geladen. User-Oberfläche: ausschließlich ein wallet-zentrierter DAO-Team-Baum (1 Wallet = 1 Knoten/Partner); separate DAO1-alt/APTMDAO-neu Ansichten sind aus der normalen Navigation entfernt und bleiben nur intern/DEV als getrennte Nachweisgraphen. Standardansicht ist wallet-zentriert. Eigene Wallets werden anhand ihrer belegten DAO1-/APTMDAO-Upline ebenfalls in denselben Baum eingehängt statt künstlich als separate Roots dargestellt; sie zählen nicht als Partner. DAO1-/APTMDAO-DIDs desselben Wallets bleiben on-chain getrennt und werden im Knoten visuell getrennt gezeigt. APTMDAO bestimmt bei zwei belegten Downline-Beziehungen die grafische Position. Bot-Details trennen aktuellen Owner-Bestand von früher auf diesem Wallet gekauften/übertragenen Bots; historische Kaufdaten bleiben am Bot. Neue MinerBot-Käufe lesen die verwendete APTMDAO-DID direkt aus dem Kaufaufruf (Referenz #31722: DID #7315, Parent #23); historische Ownership bleibt Fallback. Eigene Wallets sind aus Letzte Partneraktivitäten ausgeschlossen. Migration 065."],
+    ["DAO Wallet-Team + Partner-Bot-Lifecycle","RAM + Dashboard-Summary","dao1_old_tree_* + aptmdao_tree_* + dao_partner_bot_lifecycle_cache","Apertum RPC/Explorer nur bei Tree-Update bzw. gezielten Partnerdetails","Phase 5.62: Partner-Bots fremder Team-Wallets werden nach Entdeckung zentral in kleinen Batches aktualisiert, per userbezogenem SHA-256-Scan-State max. täglich erneut geprüft und in den bestehenden Lifecycle für Dashboard/Team persistiert. Direkte Uplines bleiben reine Upline-Knoten und werden weder als Downline noch als Partner gezählt. Phase 5.55: DAO1-alt und APTMDAO werden als getrennte vollständige Graphquellen in einen Walletgraph überführt; zentrale aktuelle NFT-/Ownership-Zuordnung hat bei DID→Wallet Vorrang vor historischen Tree-Event-Adressen. Mehrere externe Uplines eines eigenen Wallets werden getrennt nach DAO1/APTMDAO parallel oberhalb des Einstiegsknotens gezeigt. Belegte Upline-Ketten oberhalb eigener DIDs werden als echte Knoten gezeigt; eigene Wallets folgen ihrer DID-Parent-Kante (z. B. #25924 unter #21043) und zählen nicht als Partner. DAO1-only-Partner benötigen keine APTMDAO-DID. Für eigene Wallets ist der zentrale NFT-/Ownership-Bestand die Single Source of Truth; der Team-Baum startet keine parallele NFT-Discovery. Phase 5.90: Apertum-Botnamen werden zusätzlich aus Store-/Metadata-Attributen sowie vorhandenen project_nfts-Bezeichnungen aufgelöst; generische MineBot-#-Namen bleiben letzter Fallback. Die automatische Datenmigration prüft bestehende Apertum-NFT-Caches einmalig erneut. Phase 5.88: Der NFT-Tab bietet einen Typfilter (DID, MineBot, Hearts NFT, TradeBot); Apertum-Bots bevorzugen echte Store-/Metadata-Namen vor generischen MineBot-Fallbacks und vervollständigen Bild + Name + ID. Ein manueller NFT-Refresh repariert anschließend nur offene/invollständige DAO-Ownership-Historien. APTMDAO-Identitäts-NFTs werden fachlich als DID gezählt. Phase 5.87 gleicht vor 5.82 hinzugefügte Wallets gegen den zentralen Current-State ab und rekonstruiert fehlende/invollständige Ownership-Historien; bekannte DAO1-DID-Contracts benötigen keine manuelle Typklassifikation. Aktueller Owner und historische Erwerbs-/Kaufdaten bleiben getrennte Eigenschaften desselben NFT-Datensatzes. Root-Erkennung bleibt von aktuellen Projekt-Balances entkoppelt; Ownership wird vor Dashboard-/Tree-Cache geladen. User-Oberfläche: ausschließlich ein wallet-zentrierter DAO-Team-Baum (1 Wallet = 1 Knoten/Partner); separate DAO1-alt/APTMDAO-neu Ansichten sind aus der normalen Navigation entfernt und bleiben nur intern/DEV als getrennte Nachweisgraphen. Standardansicht ist wallet-zentriert. Eigene Wallets werden anhand ihrer belegten DAO1-/APTMDAO-Upline ebenfalls in denselben Baum eingehängt statt künstlich als separate Roots dargestellt; sie zählen nicht als Partner. DAO1-/APTMDAO-DIDs desselben Wallets bleiben on-chain getrennt und werden im Knoten visuell getrennt gezeigt. APTMDAO bestimmt bei zwei belegten Downline-Beziehungen die grafische Position. Bot-Details trennen aktuellen Owner-Bestand von früher auf diesem Wallet gekauften/übertragenen Bots; historische Kaufdaten bleiben am Bot. Neue MinerBot-Käufe lesen die verwendete APTMDAO-DID direkt aus dem Kaufaufruf (Referenz #31722: DID #7315, Parent #23); historische Ownership bleibt Fallback. Eigene Wallets sind aus Letzte Partneraktivitäten ausgeschlossen. Migration 065."],
     ["DATA_VERSION","IndexedDB Meta","Supabase cache_data_versions","–","Legacy: Migration 057; APTMDAO: Migration 063. Kleine Registry-Gates statt Graph-Vollread bei Cache-HIT."],
     ["Partner-Botdetails","RAM + 24h IndexedDB Current-State","Supabase NFT/Ownership/Lifecycle Caches","Apertum nur bei abgelaufenem/fehlendem Current-State-Cache","Phase 5.78: fremde Partner-Wallet+Contract-Holdings werden 24h browserseitig wiederverwendet; historische Erwerbs-/DID-/Kaufpreislogik bleibt separat und blockgenau"]]},
   {id:"dao-lp",level:2,label:"Liquidity Pools",status:"in_progress",start:"–",daily:"–",open:"DB/Cache",manual:"RPC",details:[["DAO1 LP-Positionen","LP Cache","Supabase LP Cache","Apertum RPC","Beim Untertab öffnen renderProjectLpTab"]]},
@@ -4640,7 +4641,7 @@ async function refreshNftsForWallet(w,onProgress=null,options={}){
         spam:!!n.userMarkedSpam,safe:!!n.userMarkedSafe,
         acquiredAt:n.acquiredAt||null,acquiredBlock:n.acquiredBlock||null,acquisitionTxHash:n.acquisitionTxHash||null,acquisitionSource:n.acquisitionSource||null,
         image:n.image||null,imageSource:n.imageSource||null,metadataUri:n.metadataUri||null,metadataMethod:n.metadataMethod||null,
-        name:n.name||null,collectionName:n.collectionName||null,purchaseEvidence:n.purchaseEvidence||null
+        name:n.name||null,nameSource:n.nameSource||null,collectionName:n.collectionName||null,purchaseEvidence:n.purchaseEvidence||null
       }]));
       found.forEach(n=>{
         const f=oldMap.get(nftKey(n));if(!f)return;
@@ -4649,7 +4650,7 @@ async function refreshNftsForWallet(w,onProgress=null,options={}){
         if(!n.acquisitionTxHash&&f.acquisitionTxHash)n.acquisitionTxHash=f.acquisitionTxHash;if(!n.acquisitionSource&&f.acquisitionSource)n.acquisitionSource=f.acquisitionSource;
         if(!n.image&&f.image)n.image=f.image;if(!n.imageSource&&f.imageSource)n.imageSource=f.imageSource;
         if(!n.metadataUri&&f.metadataUri)n.metadataUri=f.metadataUri;if(!n.metadataMethod&&f.metadataMethod)n.metadataMethod=f.metadataMethod;
-        if(f.name)n.name=bestNftName(n.tokenId,n.collectionName||f.collectionName,n.name,f.name);if(!n.collectionName&&f.collectionName)n.collectionName=f.collectionName;
+        if(f.name)n.name=bestNftName(n.tokenId,n.collectionName||f.collectionName,n.name,f.name);if(!n.nameSource&&f.nameSource)n.nameSource=f.nameSource;if(!n.collectionName&&f.collectionName)n.collectionName=f.collectionName;
         if(!n.purchaseEvidence&&f.purchaseEvidence)n.purchaseEvidence=f.purchaseEvidence;
       });
       walletNfts.push(...found);
@@ -7278,6 +7279,94 @@ function nftMetadataImage(meta) {
   return null;
 }
 
+function nftMetadataNameCandidates(meta) {
+  if(!meta || typeof meta!=="object") return [];
+  const out=[];
+  const add=(value,source,priority=0)=>{
+    if(value==null || (typeof value!=="string" && typeof value!=="number"))return;
+    const v=String(value).trim();
+    if(!v)return;
+    out.push({value:v,source,priority});
+  };
+  add(meta.name,"metadata.name",100);
+  add(meta.title,"metadata.title",96);
+  add(meta.display_name ?? meta.displayName,"metadata.display_name",94);
+  add(meta.bot_name ?? meta.botName,"metadata.bot_name",98);
+  add(meta.model_name ?? meta.modelName,"metadata.model_name",92);
+  add(meta.variant_name ?? meta.variantName,"metadata.variant_name",90);
+  const props=meta.properties&&typeof meta.properties==="object"?meta.properties:null;
+  if(props){
+    add(props.name,"metadata.properties.name",95);
+    add(props.title,"metadata.properties.title",93);
+    add(props.bot_name ?? props.botName,"metadata.properties.bot_name",97);
+    add(props.model_name ?? props.modelName,"metadata.properties.model_name",91);
+  }
+  const attrs=Array.isArray(meta.attributes)?meta.attributes:[];
+  for(const a of attrs){
+    if(!a || typeof a!=="object")continue;
+    const key=String(a.trait_type ?? a.traitType ?? a.name ?? a.key ?? a.title ?? "").trim();
+    const value=a.value ?? a.display_value ?? a.displayValue ?? a.val;
+    if(value==null)continue;
+    const k=key.toLowerCase().replace(/[_-]+/g," ").replace(/\s+/g," ").trim();
+    let priority=0;
+    if(/^(bot )?name$/.test(k))priority=99;
+    else if(/^(bot )?model( name)?$/.test(k))priority=94;
+    else if(/^(bot )?variant( name)?$/.test(k))priority=92;
+    else if(/^(bot )?series( name)?$/.test(k))priority=88;
+    else if(/^(bot )?edition( name)?$/.test(k))priority=86;
+    if(priority)add(value,`metadata.attributes.${key||"value"}`,priority);
+  }
+  return out;
+}
+function bestMetadataStoreName(tokenId,collectionName,...metas){
+  const candidates=[];
+  for(const meta of metas)candidates.push(...nftMetadataNameCandidates(meta));
+  candidates.sort((a,b)=>b.priority-a.priority);
+  for(const c of candidates){
+    if(nftNameQuality(c.value,tokenId,collectionName)>=3)return c;
+  }
+  return null;
+}
+
+let apertureProjectNftNameCache={loadedAt:0,map:new Map()};
+async function loadApertureProjectNftNameMap(force=false){
+  const age=Date.now()-Number(apertureProjectNftNameCache.loadedAt||0);
+  if(!force && age<300000 && apertureProjectNftNameCache.map instanceof Map)return apertureProjectNftNameCache.map;
+  const map=new Map();
+  try{
+    const {data,error}=await sb.from("project_nfts").select("nft_contract,nft_id,nft_name").eq("project_key","dao1").eq("chain_key","apertum").eq("enabled",true);
+    if(error)throw error;
+    for(const r of (data||[])){
+      const contract=lowerAddressForNft(r.nft_contract),id=String(r.nft_id??"");
+      const name=String(r.nft_name||"").trim();
+      if(contract&&id&&name)map.set(`${contract}|${id}`,name);
+    }
+  }catch(e){
+    if(!/does not exist|schema cache/i.test(String(e?.message||"")))console.warn("DAO-NFT-Projektnamen:",e);
+  }
+  for(const o of (nftOwnershipRows||[])){
+    const contract=lowerAddressForNft(o?.nft_contract),id=String(o?.nft_id??"");
+    const name=String(o?.nft_name||"").trim();
+    if(!contract||!id||!name)continue;
+    const key=`${contract}|${id}`,old=map.get(key)||"";
+    map.set(key,bestNftName(id,"",old,name));
+  }
+  apertureProjectNftNameCache={loadedAt:Date.now(),map};
+  return map;
+}
+async function applyApertureCanonicalNames(nfts){
+  if(!Array.isArray(nfts)||!nfts.length)return nfts||[];
+  const names=await loadApertureProjectNftNameMap();
+  for(const n of nfts){
+    const key=`${lowerAddressForNft(n?.tokenAddress)}|${String(n?.tokenId??"")}`;
+    const canonical=names.get(key);
+    if(!canonical)continue;
+    const chosen=bestNftName(n.tokenId,n.collectionName,n.name,canonical);
+    if(chosen!==n.name){n.name=chosen;n.nameSource="dao-project-nft";}
+  }
+  return nfts;
+}
+
 function blockscoutNftSpam(obj) {
   const token=obj?.token || {};
   const flags=[obj?.is_spam,obj?.isSpam,obj?.spam,token?.is_spam,token?.isSpam,token?.spam];
@@ -7324,23 +7413,27 @@ async function enrichApertumNft(chain, nft) {
     const inst=await res.json();
     let meta=inst?.metadata || {};
     const token=inst?.token || {};
+    const collectionName=nft.collectionName||token.name||token.symbol;
     let external=null;
     let image=nft.image || normalizeNftImageUrl(inst?.image_url||inst?.media_url) || nftMetadataImage(meta);
-    let preferredName=bestNftName(nft.tokenId,nft.collectionName||token.name||token.symbol,
-      meta?.name,inst?.name,nft.name,token.name,token.symbol);
-    if(!image || nftNameQuality(preferredName,nft.tokenId,nft.collectionName||token.name||token.symbol)<3){
+    let storeCandidate=bestMetadataStoreName(nft.tokenId,collectionName,meta);
+    let preferredName=bestNftName(nft.tokenId,collectionName,
+      storeCandidate?.value,meta?.name,inst?.name,nft.name,token.name,token.symbol);
+    if(!image || nftNameQuality(preferredName,nft.tokenId,collectionName)<3){
       const uri=inst?.metadata_url||inst?.token_uri||inst?.tokenUri||token?.metadata_url||token?.token_uri||meta?.external_url||null;
       external=uri?await fetchExternalNftMetadata(uri):null;
       if(external){
         meta={...external,...meta};
         image=image || nftMetadataImage(external);
-        preferredName=bestNftName(nft.tokenId,nft.collectionName||token.name||token.symbol,
-          meta?.name,external?.name,inst?.name,nft.name,token.name,token.symbol);
+        storeCandidate=bestMetadataStoreName(nft.tokenId,collectionName,meta,external)||storeCandidate;
+        preferredName=bestNftName(nft.tokenId,collectionName,
+          storeCandidate?.value,meta?.name,external?.name,inst?.name,nft.name,token.name,token.symbol);
       }
     }
     let out={
       ...nft,
       name:preferredName,
+      nameSource:storeCandidate?.value===preferredName?(storeCandidate?.source||"apertum-store-metadata"):(nft.nameSource||null),
       collectionName: nft.collectionName || token.name || token.symbol || null,
       image,
       imageSource:nft.imageSource||(image?"apertum-explorer-metadata":null),
@@ -7469,7 +7562,9 @@ async function fetchApertumNfts(chain,address,onProgress){
       });
     }
   }
-  return [...merged.values()];
+  const result=[...merged.values()];
+  await applyApertureCanonicalNames(result);
+  return result;
 }
 
 function lowerAddressForNft(v){ return String(v||"").toLowerCase(); }
