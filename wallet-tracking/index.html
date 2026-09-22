@@ -1097,6 +1097,15 @@
     </div>
   </div>
 
+  <div id="releaseNoticeModal" class="wt-modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="releaseNoticeTitle">
+    <div class="wt-modal">
+      <h2 id="releaseNoticeTitle">Neu in WalletTracking</h2>
+      <div id="releaseNoticeBody"></div>
+      <div id="releaseNoticeStatus" class="note" style="margin-top:12px;font-weight:700"></div>
+      <div class="wt-modal-actions"><button onclick="acknowledgeReleaseNotice(this)">Schliessen</button></div>
+    </div>
+  </div>
+
   <div id="donationModal" class="wt-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="donationTitle" onclick="if(event.target===this) closeDonationModal()">
     <div class="wt-modal">
       <h2 id="donationTitle">💛 Projekt unterstützen</h2>
@@ -1119,7 +1128,7 @@
   </div>
 
   <footer>
-    Version vom 22.09.2026 02:20:48 CEST · Phase 5.88 · NFT-Metadaten + DID/Ownership-Fix<br>
+    Version vom 22.09.2026 03:05:55 CEST · Phase 5.89 · Release-Management + Datenmigrationen<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1138,11 +1147,11 @@
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20260922-022048"></script>
-<script src="./help/help-general.js?v=20260922-022048"></script>
+<script src="./admin/ideas.js?v=20260922-030555"></script>
+<script src="./help/help-general.js?v=20260922-030555"></script>
 <script src="./projects/tln-vow/help.js?v=20260922-022048"></script>
-<script src="./projects/dao1/help.js?v=20260922-022048"></script>
-<script src="./js/app.js?v=20260922-022048"></script>
+<script src="./projects/dao1/help.js?v=20260922-030555"></script>
+<script src="./js/app.js?v=20260922-030555"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20260922-022048"></script>
 
 
@@ -1161,6 +1170,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 22.09.2026 02:20:48 CEST · Phase 5.88 · Build 20260922-022048</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 22.09.2026 03:05:55 CEST · Phase 5.89 · Build 20260922-030555</div>
 </body>
 </html>

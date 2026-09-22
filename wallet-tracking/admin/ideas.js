@@ -1,3 +1,4 @@
+// Phase 5.89 · 22.09.2026 03:05:55 CEST: Release-Management/Data-Migrations-Runner eingeführt; relevante User-Mitteilungen als quittierungspflichtiges Popup; NFT-5.88-Normalisierung läuft automatisch einmal pro User/Datenversion; Dashboard-Vermögen vertikal responsiv. Build 20260922-030555.
 // Phase 5.88 · 22.09.2026 02:20:48 CEST: NFT-Block abgeschlossen: Typfilter DID/MineBot/Hearts NFT/TradeBot, echte DAO-Store-/Metadata-Namen vor generischen Fallbacks, manueller Apertum-Refresh repariert offene Ownership-Lücken; APTMDAO #4533/#7315 zählen fachlich als DID. Build 20260922-022048.
 // Phase 5.87 · 22.09.2026 01:36:51 CEST: DAO1 Legacy-Wallet-Self-Heal ergänzt: vor 5.82 hinzugefügte Wallets werden auf fehlende NFT-Ownership geprüft und gezielt vervollständigt; DID-Contract-Typisierung ist intrinsic. Build 20260922-013651.
 // Phase 5.86 · 22.09.2026 01:06:00 CEST: DAO1 Übersicht bereinigt: Summary-Layout vereinheitlicht und Bot-Zählung auf eindeutigen aktuellen Bestand konsolidiert. Build 20260922-010600.
@@ -649,6 +650,15 @@ START-/MIGRATIONSLOGIK:
 • nur notwendige Migration/Reklassifikation/Refresh-Jobs auslösen
 • alten Cache möglichst als Fallback behalten, bis Neuaufbau erfolgreich ist
 • Status transparent im UI/Diagnose-Log ausweisen
+
+PHASE 5.89 – BASIS UMGESETZT:
+• zentrale DATA_MIGRATIONS-Registry im App-Core
+• userbezogener persistenter Migrationsstand in Supabase; Version wird erst nach erfolgreichem Job erhöht
+• erster echter Job: DAO1/APTM NFT-Metadaten-/Ownership-Normalisierung aus 5.88 automatisch einmalig nachziehen
+• zentrale Release-Registry für relevante User-Mitteilungen
+• Popup-Mitteilung pro Release/User genau einmal; nur expliziter Klick auf „Schliessen“ quittiert
+• reine UI-/Text-Releases lösen keinen Datenjob aus
+• der weiter unten beschriebene Module-Loader/eigenständige Modul-Build-IDs bleiben als separater Ausbauschritt offen
 
 WICHTIGKEIT: SEHR HOCH. Dieser Umbau sollte erfolgen, bevor deutlich mehr separat austauschbare Module hinzukommen, weil er Build-Anzeige, Browser-Cache, Einzeldatei-Updates und gezielte Datenmigration gemeinsam löst.`
   },

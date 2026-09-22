@@ -1,3 +1,4 @@
+// Phase 5.89 · 22.09.2026 03:05:55 CEST: Zentrales Release-/DATA_MIGRATIONS-Management, userbezogene quittierungspflichtige Release-Popups, automatische NFT-5.88-Normalisierung; Dashboard-Vermögen vertikal responsiv. Build 20260922-030555.
 // Phase 5.88 · 22.09.2026 02:20:48 CEST: NFT-Typfilter, bevorzugte DAO-Store-/Metadata-Namen (Bild + Name + ID), manueller Apertum-Refresh repariert offene Ownership-Lücken gezielt; APTMDAO-Identitäts-NFTs zählen als DID. Build 20260922-022048.
 // Phase 5.87 · 22.09.2026 01:36:51 CEST: NFT-Statusbegriffe präzisiert (Besitzhistorie vs. Kaufpreisprüfung); Systemübersicht dokumentiert DAO1-Self-Heal für ältere Wallet-Erstaufbauten. Build 20260922-013651.
 // Phase 5.86 · 22.09.2026 01:06:00 CEST: Systemübersicht dokumentiert DAO1-Summary als Current-State-Ansicht; historische Bot-Zuordnungen zählen nicht in den aktuellen Bestand. Build 20260922-010600.
@@ -298,6 +299,128 @@ if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",
 const WELCOME_META_KEY = "wallet_tracking_welcome_dismissed_v1";
 const DONATION_EVM_ADDRESS = "0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382";
 
+// ---- Release-Management + einmalige Datenmigrationen (Phase 5.89) ----
+// Build-Version und Datenversion sind bewusst getrennt. Nur Releases mit echter
+// Datenwirkung registrieren einen Migrationsjob; reine UI-/Text-Releases lösen
+// keinen On-Chain-/API-Neuaufbau aus. Abschluss wird userbezogen in Supabase gespeichert.
+const WT_CURRENT_RELEASE = "5.89";
+const WT_RELEASE_REGISTRY = Object.freeze({
+  "5.89": {
+    title: "NFT-Daten wurden verbessert",
+    userNotice: true,
+    dataImpact: true,
+    migrations: ["dao1:nft-metadata-ownership-v2"],
+    bullets: [
+      "DAO1/APTM-NFTs werden einmalig auf vollständigere Store-/Metadata-Namen und Bilder geprüft.",
+      "APTMDAO-Identitäts-NFTs werden als DID behandelt; offene Besitzhistorien werden gezielt repariert.",
+      "Die Vermögensanzeige im Dashboard wurde für schmalere Ansichten robuster gestaltet."
+    ]
+  }
+});
+let wtLastMigrationSummary={storageAvailable:true,results:[]};
+function wtReleaseLocalAckKey(releaseKey){return `wallet_tracking_release_ack_${currentUser?.id||"anon"}_${releaseKey}`;}
+function wtIsMissingReleaseTable(error){
+  const code=String(error?.code||"");const msg=String(error?.message||"").toLowerCase();
+  return code==="PGRST205"||code==="42P01"||msg.includes("user_release_acknowledgements")||msg.includes("user_data_migrations");
+}
+async function wtLoadMigrationStates(){
+  if(!currentUser?.id)return {available:false,rows:new Map()};
+  try{
+    const {data,error}=await sb.from("user_data_migrations").select("migration_key,data_version,status,completed_at,last_error,details").eq("user_id",currentUser.id);
+    if(error)throw error;return {available:true,rows:new Map((data||[]).map(r=>[String(r.migration_key),r]))};
+  }catch(e){
+    if(!wtIsMissingReleaseTable(e))console.warn("Datenmigrationen laden",e);
+    return {available:false,rows:new Map(),error:e};
+  }
+}
+async function wtSaveMigrationState(key,dataVersion,status,extra={}){
+  if(!currentUser?.id)return false;
+  const payload={user_id:currentUser.id,migration_key:key,data_version:Number(dataVersion||0),status,updated_at:new Date().toISOString(),...extra};
+  try{const {error}=await sb.from("user_data_migrations").upsert(payload,{onConflict:"user_id,migration_key"});if(error)throw error;return true;}catch(e){if(!wtIsMissingReleaseTable(e))console.warn("Datenmigration speichern",e);return false;}
+}
+async function wtMigrationDao1NftMetadataOwnership(){
+  await ensureNftCacheLoaded();
+  const targets=wallets.filter(w=>!!walletAddressForChain(w,"apertum"));
+  let refreshedWallets=0,nftCount=0,repaired=0,remaining=0,failed=0;
+  for(const w of targets){
+    const nr=await refreshNftsForWallet(w,null,{onlyChains:["apertum"]});
+    refreshedWallets++;nftCount+=Number(nr?.count||0);failed+=(nr?.errors||[]).length;
+    if(window.DAO1Project?.repairNftOwnershipForWallet){
+      const rr=await window.DAO1Project.repairNftOwnershipForWallet(w);
+      repaired+=Number(rr?.repaired||0);remaining+=Number(rr?.remaining||0);failed+=Number(rr?.failed||0);
+    }
+  }
+  await window.DAO1Project?.loadDashboardSummary?.().catch(()=>{});
+  refreshDashboardProjectSummaries?.().catch(()=>{});
+  if(failed>0)throw new Error(`${failed} NFT-/Ownership-Prüfung(en) konnten nicht vollständig abgeschlossen werden.`);
+  return {wallets:refreshedWallets,nfts:nftCount,repaired,remaining};
+}
+const WT_DATA_MIGRATIONS = Object.freeze({
+  "dao1:nft-metadata-ownership-v2": {version:1,release:"5.89",label:"DAO1/APTM NFT-Metadaten & Besitzhistorie",run:wtMigrationDao1NftMetadataOwnership}
+});
+async function runPendingDataMigrations(){
+  const state=await wtLoadMigrationStates();
+  const summary={storageAvailable:state.available,results:[]};
+  for(const [key,m] of Object.entries(WT_DATA_MIGRATIONS)){
+    const prior=state.rows.get(key);
+    if(prior?.status==="complete"&&Number(prior.data_version||0)>=Number(m.version||1)){summary.results.push({key,label:m.label,status:"already_complete",details:prior.details||null});continue;}
+    if(!state.available){summary.results.push({key,label:m.label,status:"storage_unavailable"});continue;}
+    await wtSaveMigrationState(key,Number(prior?.data_version||0),"running",{started_at:new Date().toISOString(),last_error:null});
+    try{
+      const details=await m.run();
+      await wtSaveMigrationState(key,m.version,"complete",{completed_at:new Date().toISOString(),last_error:null,details});
+      summary.results.push({key,label:m.label,status:"complete",details});
+    }catch(e){
+      const msg=String(e?.message||e);
+      await wtSaveMigrationState(key,Number(prior?.data_version||0),"failed",{completed_at:null,last_error:msg,details:null});
+      summary.results.push({key,label:m.label,status:"failed",error:msg});
+      console.warn("Datenmigration fehlgeschlagen",key,e);
+    }
+  }
+  wtLastMigrationSummary=summary;return summary;
+}
+async function wtReleaseAckState(releaseKey){
+  const localKey=wtReleaseLocalAckKey(releaseKey);let local=false;try{local=localStorage.getItem(localKey)==="1";}catch(_){}
+  if(!currentUser?.id)return local;
+  try{
+    const {data,error}=await sb.from("user_release_acknowledgements").select("release_key").eq("user_id",currentUser.id).eq("release_key",releaseKey).maybeSingle();
+    if(error)throw error;
+    if(data)return true;
+    if(local){await sb.from("user_release_acknowledgements").upsert({user_id:currentUser.id,release_key:releaseKey,acknowledged_at:new Date().toISOString()},{onConflict:"user_id,release_key"});return true;}
+    return false;
+  }catch(e){if(!wtIsMissingReleaseTable(e))console.warn("Release-Quittierung laden",e);return local;}
+}
+function wtReleaseMigrationStatusText(release){
+  const wanted=new Set(release?.migrations||[]),rows=(wtLastMigrationSummary?.results||[]).filter(r=>wanted.has(r.key));
+  if(!rows.length)return release?.dataImpact?"Datenaktualisierung: kein Status verfügbar.":"";
+  if(rows.some(r=>r.status==="failed"))return "Datenaktualisierung: teilweise fehlgeschlagen. Offene Migrationen werden beim nächsten Start erneut versucht.";
+  if(rows.some(r=>r.status==="storage_unavailable"))return "Datenaktualisierung: Migrationsspeicher noch nicht verfügbar. Bitte die mitgelieferte SQL-Migration ausführen.";
+  if(rows.every(r=>["complete","already_complete"].includes(r.status)))return "✓ Datenaktualisierung abgeschlossen";
+  return "Datenaktualisierung wird verwaltet.";
+}
+async function maybeShowReleaseNotice(){
+  const release=WT_RELEASE_REGISTRY[WT_CURRENT_RELEASE];if(!release?.userNotice||await wtReleaseAckState(WT_CURRENT_RELEASE))return false;
+  const modal=document.getElementById("releaseNoticeModal"),title=document.getElementById("releaseNoticeTitle"),body=document.getElementById("releaseNoticeBody"),status=document.getElementById("releaseNoticeStatus");
+  if(!modal)return false;if(title)title.textContent=release.title||`Neu in Version ${WT_CURRENT_RELEASE}`;
+  if(body)body.innerHTML=`<p>Version <strong>${WT_CURRENT_RELEASE}</strong> enthält Änderungen, die deine gespeicherten Daten betreffen können.</p><ul>${(release.bullets||[]).map(x=>`<li>${escapeAttr(x)}</li>`).join("")}</ul>`;
+  if(status){status.textContent=wtReleaseMigrationStatusText(release);status.className="note";}
+  modal.classList.add("open");modal.setAttribute("aria-hidden","false");return true;
+}
+async function acknowledgeReleaseNotice(btn){
+  if(btn){btn.disabled=true;btn.textContent="Wird gespeichert…";}
+  const releaseKey=WT_CURRENT_RELEASE,localKey=wtReleaseLocalAckKey(releaseKey);let saved=false;
+  try{
+    const {error}=await sb.from("user_release_acknowledgements").upsert({user_id:currentUser.id,release_key:releaseKey,acknowledged_at:new Date().toISOString()},{onConflict:"user_id,release_key"});
+    if(error)throw error;saved=true;
+  }catch(e){if(!wtIsMissingReleaseTable(e))console.warn("Release-Quittierung speichern",e);}
+  try{localStorage.setItem(localKey,"1");}catch(_){}
+  const modal=document.getElementById("releaseNoticeModal");modal?.classList.remove("open");modal?.setAttribute("aria-hidden","true");
+  if(btn){btn.disabled=false;btn.textContent="Schliessen";}
+  if(!saved)console.warn("Release-Quittierung nur lokal gespeichert; Supabase-Migration 071 prüfen.");
+  maybeShowWelcomeModal();
+}
+window.acknowledgeReleaseNotice=acknowledgeReleaseNotice;
+
 function maybeShowWelcomeModal() {
   if (!currentUser?.user_metadata?.[WELCOME_META_KEY]) {
     document.getElementById("welcomeModal")?.classList.add("open");
@@ -535,13 +658,17 @@ async function onLoggedIn(session) {
   // (NFT-Tab, DAO-Team, Dashboard/Alerts) sehen damit denselben Bestand, ohne dass
   // der NFT-Tab zuerst geöffnet werden muss. Historische Ersterwerbs-/Kaufpreisarbeit bleibt getrennt.
   await ensureNftCacheLoaded().catch(e=>console.warn("NFT-Registry Start:",e));
+  // Releasegebundene Datenmigrationen laufen genau einmal pro User/Datenversion.
+  // Sie werden vor der Release-Mitteilung abgeschlossen, damit der User den effektiven Status sieht.
+  await runPendingDataMigrations().catch(e=>console.warn("Release-Datenmigrationen",e));
   scheduleGlobalPriceRefresh();
   // Projekt-Grunddaten werden unabhängig vom Öffnen der Detail-Tabs aus ihren persistenten Caches restauriert.
   // Das Dashboard wartet nicht darauf; die Summary-Bridge rendert nach Abschluss erneut.
   if(wallets.length)setTimeout(()=>refreshDashboardProjectSummaries().catch(e=>console.warn("Dashboard Project-Summaries Start",e)),120);
 
   if(!userNavigationTouched) showTab("dashboard");
-  maybeShowWelcomeModal();
+  const releaseNoticeShown=await maybeShowReleaseNotice();
+  if(!releaseNoticeShown)maybeShowWelcomeModal();
 
   // Strikt cache-first: Ein Seiten-Reload startet KEIN loadAll() und damit keine breite
   // Balance-/NFT-/Projekt-On-Chain-Prüfung. Wir zeigen nur an, dass ein Refresh verfügbar ist.
@@ -1573,7 +1700,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"admin-defi",level:1,label:"🏦 DeFi-Projekte",status:"planning",start:"Projekt-Konfig DB",daily:"–",open:"DB",manual:"DB",details:[]},
   {id:"admin-dex",level:1,label:"🔄 DEX",status:"planning",start:"–",daily:"–",open:"DB",manual:"DB",details:[]},
   {id:"admin-hard",level:1,label:"🧪 Hardcoding-Audit",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[]},
-  {id:"admin-system",level:1,label:"🗺️ Systemübersicht",status:"done",idea:"Systemübersicht · Funktionsbaum",start:"–",daily:"–",open:"lokal",manual:"–",details:[["Funktions-/Ladebaum","JS Definition","–","–","Admin-Tab öffnen; Status mit Ideen/TODOs verknüpft"]]},
+  {id:"admin-system",level:1,label:"🗺️ Systemübersicht",status:"done",idea:"Systemübersicht · Funktionsbaum",start:"Release-/Migrationscheck",daily:"–",open:"lokal",manual:"–",details:[["Funktions-/Ladebaum","JS Definition","–","–","Admin-Tab öffnen; Status mit Ideen/TODOs verknüpft"],["Release-Management / DATA_MIGRATIONS","userbezogener Versionsstand","Supabase user_data_migrations + user_release_acknowledgements","gezielte API/RPC nur wenn ein registrierter Migrationsjob dies fachlich verlangt","Phase 5.89: beim Login nur fehlende Datenmigrationen ausführen; Abschluss erst nach Erfolg persistieren. Relevante Release-Mitteilungen erscheinen pro User einmal als quittierungspflichtiges Popup."]]},
   {id:"admin-ideas",level:1,label:"💡 Ideen / Umbau",status:"in_progress",start:"JS geladen",daily:"–",open:"lokal",manual:"–",details:[["Projekt-TODOs","admin/ideas.js","–","–","Datei wird mit Cache-Buster geladen"]]},
   {id:"admin-doc",level:1,label:"📚 Dokumentation",status:"done",start:"–",daily:"–",open:"lokal",manual:"–",details:[]}
 ];
@@ -4494,11 +4621,13 @@ function renderCentralRefreshProgress(lines=[],options={}){
   </details>`;
 }
 async function refreshNftsForWallet(w,onProgress=null,options={}){
-  const chains=nftChains(),skipChains=new Set((options?.skipChains||[]).map(String));
+  const allChains=nftChains(),skipChains=new Set((options?.skipChains||[]).map(String));
+  const onlyChains=Array.isArray(options?.onlyChains)?new Set(options.onlyChains.map(String)):null;
+  const chains=allChains.filter(c=>(!onlyChains||onlyChains.has(c))&&!skipChains.has(c));
+  const refreshSet=new Set(chains);
   const old=nftCaches.get(walletDbId(w));
-  let walletNfts=((old?.nfts)||[]).filter(n=>skipChains.has(String(n?.chain||""))),errors=[];
+  let walletNfts=((old?.nfts)||[]).filter(n=>!refreshSet.has(String(n?.chain||""))),errors=[];
   for(const chain of chains){
-    if(skipChains.has(chain))continue;
     if(!walletAddressForChain(w,chain))continue;
     try{
       onProgress?.(chain);
@@ -4507,11 +4636,30 @@ async function refreshNftsForWallet(w,onProgress=null,options={}){
       else if(provider==='alchemy')found=await fetchNftsForChain(chain,walletAddressForChain(w,chain));
       else continue;
       found.forEach(n=>{n.walletLabel=w.label;n.walletId=walletDbId(w);});
-      const oldMap=new Map(((old?.nfts)||[]).map(n=>[nftKey(n),{spam:!!n.userMarkedSpam,safe:!!n.userMarkedSafe}]));
-      found.forEach(n=>{const f=oldMap.get(nftKey(n));if(f?.spam)n.userMarkedSpam=true;if(f?.safe)n.userMarkedSafe=true;});walletNfts.push(...found);
-    }catch(e){errors.push(`${CHAIN_META[chain]?.label||chain}: ${e.message}`);}
+      const oldMap=new Map(((old?.nfts)||[]).map(n=>[nftKey(n),{
+        spam:!!n.userMarkedSpam,safe:!!n.userMarkedSafe,
+        acquiredAt:n.acquiredAt||null,acquiredBlock:n.acquiredBlock||null,acquisitionTxHash:n.acquisitionTxHash||null,acquisitionSource:n.acquisitionSource||null,
+        image:n.image||null,imageSource:n.imageSource||null,metadataUri:n.metadataUri||null,metadataMethod:n.metadataMethod||null,
+        name:n.name||null,collectionName:n.collectionName||null,purchaseEvidence:n.purchaseEvidence||null
+      }]));
+      found.forEach(n=>{
+        const f=oldMap.get(nftKey(n));if(!f)return;
+        if(f.spam)n.userMarkedSpam=true;if(f.safe)n.userMarkedSafe=true;
+        if(!n.acquiredAt&&f.acquiredAt)n.acquiredAt=f.acquiredAt;if(!n.acquiredBlock&&f.acquiredBlock)n.acquiredBlock=f.acquiredBlock;
+        if(!n.acquisitionTxHash&&f.acquisitionTxHash)n.acquisitionTxHash=f.acquisitionTxHash;if(!n.acquisitionSource&&f.acquisitionSource)n.acquisitionSource=f.acquisitionSource;
+        if(!n.image&&f.image)n.image=f.image;if(!n.imageSource&&f.imageSource)n.imageSource=f.imageSource;
+        if(!n.metadataUri&&f.metadataUri)n.metadataUri=f.metadataUri;if(!n.metadataMethod&&f.metadataMethod)n.metadataMethod=f.metadataMethod;
+        if(f.name)n.name=bestNftName(n.tokenId,n.collectionName||f.collectionName,n.name,f.name);if(!n.collectionName&&f.collectionName)n.collectionName=f.collectionName;
+        if(!n.purchaseEvidence&&f.purchaseEvidence)n.purchaseEvidence=f.purchaseEvidence;
+      });
+      walletNfts.push(...found);
+    }catch(e){
+      errors.push(`${CHAIN_META[chain]?.label||chain}: ${e.message}`);
+      // Bei Teilfehlern niemals den zuletzt bestätigten Bestand dieser Chain wegwerfen.
+      walletNfts.push(...((old?.nfts)||[]).filter(n=>String(n?.chain||"")===chain));
+    }
   }
-  await saveNftCacheForWallet(w,walletNfts,[...new Set([...(old?.selected_chains||[]),...chains.filter(c=>!skipChains.has(c))])]);return {errors,count:walletNfts.length};
+  await saveNftCacheForWallet(w,walletNfts,[...new Set([...(old?.selected_chains||[]),...chains])]);return {errors,count:walletNfts.length};
 }
 async function refreshProjectWallet(w,projectKey='tln_vow',chain='bsc'){
   if(!walletAddressForChain(w,chain))return {skipped:true};
@@ -4971,7 +5119,11 @@ function renderDashboard(){
   root.innerHTML=`
     <div class="dashboard-heading"><div><h2>Persönliches Dashboard</h2><p>Gespeicherter Stand für ${escapeAttr(document.getElementById("globalWalletPersonFilter")?.selectedOptions?.[0]?.textContent||"Eigene Wallets")}</p></div><button onclick="loadAll()">Daten aktualisieren</button></div>
     <section class="dashboard-kpi-grid dashboard-kpi-grid-main">
-      <article class="dashboard-kpi dashboard-kpi-blue dashboard-wealth-kpi"><span class="dashboard-kpi-main-title">Vermögen</span><div class="dashboard-wealth-lines"><div><small>Gesamtvermögen</small><strong>${money(portfolio.totalUsd)}</strong><em>aktuell bewertbarer Cache-Stand</em></div><div><small>Frei verfügbar</small><strong>${money(portfolio.freeUsd)}</strong><em>direkt in ${targetWallets.length} ausgewählten Wallet(s)</em></div><div><small>Aktuell gebunden</small><strong>${boundValue}</strong><em>${portfolio.boundEvidence?`${[...portfolio.projects.entries()].filter(([,x])=>Number(x.boundUsd)>0).map(([k,x])=>`${dashboardProjectTitle(k)} ${money(x.boundUsd)}`).join(" · ")||"aus persistentem Positionscache"}`:"noch kein bewertbarer Positionscache"}</em></div></div></article>
+      <article class="dashboard-kpi dashboard-kpi-blue dashboard-wealth-kpi"><span class="dashboard-kpi-main-title">Vermögen</span><div class="dashboard-wealth-lines" style="display:grid;grid-template-columns:1fr;gap:0">
+        <div style="display:grid;grid-template-columns:minmax(150px,auto) 1fr;gap:16px;align-items:center;padding:10px 0;border-top:1px solid rgba(80,110,160,.16)"><strong style="font-size:clamp(1.35rem,2.2vw,2rem);white-space:nowrap">${money(portfolio.totalUsd)}</strong><span style="font-size:.82rem;line-height:1.35"><b>Gesamtvermögen</b><br><span style="opacity:.78">aktuell bewertbarer Cache-Stand</span></span></div>
+        <div style="display:grid;grid-template-columns:minmax(150px,auto) 1fr;gap:16px;align-items:center;padding:10px 0;border-top:1px solid rgba(80,110,160,.16)"><strong style="font-size:clamp(1.35rem,2.2vw,2rem);white-space:nowrap">${money(portfolio.freeUsd)}</strong><span style="font-size:.82rem;line-height:1.35"><b>Frei verfügbar</b><br><span style="opacity:.78">direkt in ${targetWallets.length} ausgewählten Wallet(s)</span></span></div>
+        <div style="display:grid;grid-template-columns:minmax(150px,auto) 1fr;gap:16px;align-items:center;padding:10px 0;border-top:1px solid rgba(80,110,160,.16)"><strong style="font-size:clamp(1.35rem,2.2vw,2rem);white-space:nowrap">${boundValue}</strong><span style="font-size:.82rem;line-height:1.35"><b>Aktuell gebunden</b><br><span style="opacity:.78">${portfolio.boundEvidence?`${[...portfolio.projects.entries()].filter(([,x])=>Number(x.boundUsd)>0).map(([k,x])=>`${dashboardProjectTitle(k)} ${money(x.boundUsd)}`).join(" · ")||"aus persistentem Positionscache"}`:"noch kein bewertbarer Positionscache"}</span></span></div>
+      </div></article>
       ${rewardKpi("Rewards",globalRewards)}
       ${rewardKpi("Referral Rewards",globalReferralRewards)}
     </section>
