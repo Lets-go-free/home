@@ -1,3 +1,5 @@
+// Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Unveränderte 5.94-Logik, Release-Paketstruktur korrigiert. Build 20260922-140348.
+// Phase 5.94 · 22.09.2026 14:03:48 CEST: Browsercache kann nach vollständiger Userdaten-Löschung sicher geschlossen und vollständig entfernt werden. Build 20260922-140348.
 // Phase 5.59: Browser-Graphcache unterstützt Ancestor-/Upline-Lesen entlang parentKey.
 // WalletTracking · zentraler persistenter Browser-Cache (IndexedDB)
 // Schemaoffen: Payloads werden als vollständige Objekte gespeichert. DB-Spalten dürfen
@@ -79,5 +81,16 @@
     await new Promise((resolve,reject)=>{const r=idx.openKeyCursor(IDBKeyRange.only([namespace,cacheKey]));r.onerror=()=>reject(r.error);r.onsuccess=()=>{const c=r.result;if(!c)return resolve();items.delete(c.primaryKey);c.continue();};});
     tx.objectStore(META_STORE).delete([namespace,cacheKey]);await txDone(tx);
   }
-  window.WalletTrackingBrowserCache={getMeta,getAll,getByKeys,getDescendants,getAncestors,replace,merge,clear,DB_NAME,DB_VERSION};
+  async function destroy(){
+    try{const db=await dbPromise;if(db?.close)db.close();}catch(_){}
+    dbPromise=null;
+    if(!("indexedDB" in window))return;
+    await new Promise((resolve,reject)=>{
+      const req=indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess=()=>resolve();
+      req.onerror=()=>reject(req.error||new Error("IndexedDB konnte nicht gelöscht werden."));
+      req.onblocked=()=>resolve();
+    });
+  }
+  window.WalletTrackingBrowserCache={getMeta,getAll,getByKeys,getDescendants,getAncestors,replace,merge,clear,destroy,DB_NAME,DB_VERSION};
 })();

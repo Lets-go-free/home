@@ -1,3 +1,5 @@
+// Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Unveränderte 5.94-Userdaten-Löschlogik, Release-Paketstruktur korrigiert. Build 20260922-140348.
+// Phase 5.94 · 22.09.2026 14:03:48 CEST: Neue geschützte Aktion user_data_delete ruft die transaktionale Komplettlöschung aller userbezogenen WalletTracking-Daten auf. Build 20260922-140348.
 // Phase 5.92 · 22.09.2026 11:01:30 CEST: Authentifizierter NFT-Metadata-Proxy für api.aptmdao.io/nft/<ID> mit enger Allowlist, Timeout und Größenlimit. Build 20260922-110130.
 // Phase 5.81 · 21.09.2026 23:36:49 CEST · vollständige Einzel-Wallet-Löschung via transaktionaler DB-RPC · Build 20260921-233649
 import { withSupabase } from 'npm:@supabase/server@^1'
@@ -891,6 +893,21 @@ export default {
       if (action === 'wallet_save') {
         const id = await saveWallet(ctx.supabase, key, userId, body.wallet)
         return json({ ok: true, action, id })
+      }
+
+      if (action === 'user_data_delete') {
+        const { data: result, error } = await ctx.supabase.rpc(
+          'wallettracking_delete_all_user_data',
+        )
+
+        if (error) {
+          const hint = /wallettracking_delete_all_user_data|function .* does not exist/i.test(error.message || '')
+            ? ' Migration 073-user-complete-delete.sql zuerst in Supabase ausfuehren.'
+            : ''
+          throw new Error(`Alle WalletTracking-Userdaten loeschen fehlgeschlagen: ${error.message}${hint}`)
+        }
+
+        return json({ ok: true, action, result })
       }
 
       if (action === 'wallet_delete') {

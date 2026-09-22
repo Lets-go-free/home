@@ -1,3 +1,5 @@
+// Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Neues Doku-Kapitel „Zu testen“ mit Wallet hinzufügen, Wallet löschen und sämtliche Daten löschen. ZIP-Struktur korrigiert. Build 20260922-140348.
+// Phase 5.94 · 22.09.2026 14:03:48 CEST: Userweite vollständige Datenlöschung umgesetzt: alle public-Zeilen mit user_id werden transaktional entfernt, globale Cache-Provenienz anonymisiert, Browserdaten gelöscht; Auth-Login bleibt bestehen. Build 20260922-140348.
 // Phase 5.93 · 22.09.2026 12:15:22 CEST: RPC-Proxy-eth_call-Allowlist + SQL 072 für persistenten partial-Migrationsstatus; NFT-Datenmigration v4. Build 20260922-121522.
 // Phase 5.92 · 22.09.2026 11:01:30 CEST: Serverseitiger APTMDAO-Metadata-Proxy über wallet-private; DATA_MIGRATIONS kennt complete/partial/failed und markiert technische Teilfehler nicht mehr als erfolgreich; APTMDAO eth_call für Owner/Parent freigegeben. Build 20260922-110130.
 // Phase 5.91 · 22.09.2026 10:46:15 CEST: NFT-Metadatenresolver CORS-sicher: external_url/Explorer-UI nie als JSON fetchen; nur echte Metadata-/Token-URIs. Migration derselben NFT-Datenfamilie auf Version 2 erzwingt einmalige automatische Wiederholung. Build 20260922-104615.
@@ -34,8 +36,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260922-013651";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "22.09.2026 01:36:51 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260922-140348";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "22.09.2026 14:03:48 CEST";
 // Phase 5.33: Dashboard-Summary validiert und Start weiter entkoppelt. Apertum-native-Fehler behoben: interner Asset-Key "native" wird nie mehr als EVM-Adresse ABI-encodiert. TLN/BSC lp_position_cache wird beim Dashboard-Start walletübergreifend in einem Batch gelesen statt mit Einzelrequest pro Wallet. TLN "davon aktiv" zeigt bei unvollständig verifizierten Lifecycles keine scheinbar endgültige Zahl mehr, sondern bestätigte Aktive plus offene Partner; erst bei vollständiger Lifecycle-Abdeckung wird die Endzahl gesetzt. DAO1 Dashboard-Rewards werden gezielt aus vorhandenen project_transactions + project_transaction_asset_flows gelesen, ohne ensureLoaded()/vollständige DAO1-Tab-Initialisierung. Phase 5.35 ersetzt die frühere USD-Summary: Gesamt/Vorjahr/Jahr/Monat zeigen Originaltoken/-mengen; historische USD-Bewertungen sind dafür nicht erforderlich. DAO1 "aktiv" bleibt bewusst offen: aktueller Code enthält keinen belastbaren Bot-Target-/Completed-Contract-Proof. Reward-Zeilen der Projektkarten wieder als konsistente Kacheln gestaltet. Systemübersicht, Admin-Doku und Hilfe synchronisiert. Build 20260919-140811.
 // Phase 5.30: TLN/VOW-Contracts werden aus der allgemeinen CoinGecko-/GeckoTerminal-Preisermittlung ausgeschlossen und ausschließlich über die bestehende zentrale Projekt-PriceEngine bewertet (BSC PancakeSwap / ETH Uniswap). Dashboard zeigt Contract-Adressen einheitlich nur verkürzt mit Copy-Funktion; vollständige Adressen werden nicht zusätzlich als Symbolzeile ausgegeben. Preisrouten/-berechnungen selbst unverändert.
 // Phase 5.29: Dashboard-Gerüst wird unmittelbar nach Login sichtbar, bevor Chain-/DB-Konfiguration fertig geladen ist. TLN/VOW-Dashboardpreise zeigen tatsächliche DEX-Quelle (BSC PancakeSwap / ETH Uniswap) plus vorhandene Preisroute. DAO1 hat neu „Kurse und Pools“ als reine Sicht auf die bereits bestehende Apertum-Preislogik; keine neue Preisermittlung.
@@ -61,6 +63,34 @@ const ADMIN_IDEAS_MODULE_TIMESTAMP = "22.09.2026 01:36:51 CEST";
 // Phase 5.04: TLN-Team Egress-First korrigiert: der Team-Slice-RPC erhält den definierten SmartNode-Contract statt an einer undefinierten Variable zu scheitern. Damit funktioniert der Supabase-Slice-Erstaufbau wieder ohne Globalgraph-Download. Performance/Egress-Messung bleibt nächster eigener TODO-Block.
 
 const ADMIN_IDEAS = [
+  {
+    status: "open",
+    category: "Zu testen",
+    priority: "high",
+    title: "Zu testen · Wallet- und Datenlöschungs-Flows",
+    desc: `OFFENE TESTS nach Phase 5.94:
+
+• Wallet hinzufügen
+  - neue Wallet erfassen
+  - prüfen, ob nur diese Wallet gezielt initialisiert wird
+  - projektbezogene Daten korrekt erkannt werden
+  - Dashboard und Summen danach stimmen
+
+• Wallet löschen
+  - einzelne Wallet vollständig löschen
+  - prüfen, ob alle walletbezogenen Daten, Snapshots, 31.12.-Bestände, NFTs, Stakings, Claims und technische Caches entfernt bzw. invalidiert sind
+  - Summen danach korrekt aus den verbleibenden Wallets neu aufgebaut werden
+
+• Sämtliche Daten löschen
+  - Funktion Support & Info → Daten & Konto testen
+  - zweistufige Bestätigung prüfen
+  - vollständige serverseitige Löschung prüfen
+  - lokale Browserdaten/IndexedDB prüfen
+  - Logout danach prüfen
+  - erneuter Login muss einen leeren WalletTracking-Stand zeigen; Auth-Login selbst bleibt bestehen
+
+Die Punkte bleiben hier offen, bis sie praktisch getestet und bestätigt wurden.`
+  },
   { status: "open", category: "DAO1", priority: "medium", title: "NFT/Bot manuell als Bonus/Geschenk kennzeichnen", desc: "Erworbene DAO1/APTM-NFTs bzw. Bots optional userbezogen als Bonus/Geschenk markieren. Die On-Chain-Erwerbsdaten bleiben unverändert; die manuelle Klassifizierung erklärt einen Kaufpreis von 0 bzw. einen bewusst fehlenden Kaufpreis. Kein NFT darf allein wegen fehlender Zahlungs-Evidenz automatisch als Bonus eingestuft werden. Optional später Filter/Statistik Gekauft / Bonus-Geschenk / Ungeklärt." },
   {title:"Phase 5.35 · Dashboard Rewards/DAO-Partner",desc:"UMGESETZT: Reward- und Referral-Reward-Summaries zeigen Originalmenge je Chain+Asset/Contract statt USD. DAO-Partner: DAO1 und APTMDAO getrennt; projektweite Hauptzahl dedupliziert nach DID, sobald beide fachlich verifizierten DID-Sets vorliegen. Solange APTMDAO-Parent-Kanten noch nicht bewiesen sind, zeigt das Dashboard transparent nur den DAO1-Mindeststand statt APTMDAO=0 zu erfinden. Fehlende aktuelle Kurse nennen die betroffenen Assets."},
   {title:"Phase 5.36 · Dashboard-Präzision, TLN-Rewards & APTMDAO-Tree",desc:"UMGESETZT: Summary-Kommastellen sind eindeutig: leer = Anzeige übernehmen, 0 = null Nachkommastellen. Dashboard-Token erscheinen nur bei Bestand > 0. TLN/VOW normale Rewards und Referral Rewards werden aus den persistenten Discovery-Snapshots periodisiert in Originaltoken ins Dashboard gespiegelt. Reward-KPIs sind kompakter. Neuer APTMDAO-Tree ist über den verifizierten NFT-Mint-Event child/parent/wallet on-chain dekodiert, besitzt eigenen globalen Supabase-/IndexedDB-Cache (Migration 063), 24-Block-Overlap und dieselbe hierarchische UI wie DAO1. DAO-interne Partnernamen sind walletbezogen, bestehende DID-Aliase bleiben lesbar."},
@@ -567,11 +597,11 @@ OFFEN: Bot-Target/Aktivstatus belastbar on-chain beweisen; Referral-Reward→Par
     desc: "Phase 5.81 umgesetzt: Löschen in „Meine Wallets“ bedeutet vollständiger Purge. Server-/DB-seitig werden alle eindeutig walletbezogenen Bestände, manuelle/automatische Snapshot-Items, Bestand-per-31.12.-Positionen und -Coverage, Gebühren, NFTs, Claims/Rewards, Projekttransaktionen/Asset-Flows, LP-/Staking-/Discovery-/Scan-/Refresh-Caches entfernt. Nicht mehr gültige userbezogene DAO-Partner-Lifecycle-/Scan-Caches werden vollständig invalidiert und später aus verbleibenden Wallets neu aufgebaut. Leere Snapshot-Hüllen werden entfernt; Summen werden nie durch Subtraktion fortgeschrieben, sondern nach Reload aus den verbleibenden Quelldaten neu gebildet. Globale On-Chain-/Registry-/Token-/Contract-Fakten bleiben erhalten."
   },
   {
-    status: "open",
+    status: "done",
     category: "Security & Privacy",
     priority: "high",
     title: "Alle Userdaten vollständig löschen",
-    desc: "Zusätzlich zur fertigen Einzel-Wallet-Löschung eine userweite Funktion vorsehen, die sämtliche persönlichen WalletTracking-Daten löscht (Wallets, userbezogene Projekt-/History-/Cache-Daten, Aliase, UI-Einstellungen und weitere user_id-Daten) und danach lokale Browserdaten bereinigt."
+    desc: "Phase 5.94 umgesetzt: Unter „Support & Info → Daten & Konto“ kann ein User sämtliche WalletTracking-Daten vollständig und transaktional löschen. Die DB-Funktion bereinigt alle public-Basistabellen mit user_id, anonymisiert created_by/updated_by-Provenienz in globalen Caches, ohne globale öffentliche Blockchain-/Registry-/Token-/Contract-Fakten zu löschen. Anschließend werden WalletTracking-IndexedDB, localStorage/sessionStorage entfernt und der User abgemeldet. Das Supabase-Auth-Login bleibt bewusst bestehen."
   },
   {
     status: "done",
@@ -1142,5 +1172,16 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    - __all-Stichtags-Coverage und nicht eindeutig root-gebundene DAO-Partner-Lifecycle-/Scan-Caches werden invalidiert und aus verbleibenden Wallets neu aufgebaut.
    - Leere Snapshot-Hüllen werden entfernt; nach erfolgreicher Löschung erzwingt die App einen Reload, damit Summen ausschließlich aus verbleibenden Quelldaten entstehen.
    - Globale On-Chain-/Registry-/Token-/Contract-Fakten bleiben erhalten.
-   - Userweite Funktion „Alle Userdaten löschen“ bleibt als separater offener Security-Punkt bestehen.
+   - Phase 5.94: Userweite Funktion „Alle WalletTracking-Daten löschen“ umgesetzt. Sämtliche userbezogenen public-Datensätze werden transaktional entfernt; globale öffentliche Fakten bleiben erhalten und User-Provenienz in created_by/updated_by wird anonymisiert. Lokale Browserdaten werden danach gelöscht und der User abgemeldet. Auth-Login bleibt bewusst bestehen.
    Build 20260921-233649. */
+
+
+/* Phase 5.94 · 22.09.2026 14:03:48 CEST
+   Vollständige Userdaten-Löschung:
+   - Neuer Bereich „Support & Info → Daten & Konto“ mit zweistufiger Sicherheitsbestätigung (LÖSCHEN + „Sind Sie sicher?“).
+   - SQL 073 stellt wallettracking_delete_all_user_data() bereit. Zuerst werden vorhandene Wallets über die vollständige Wallet-Purge-Logik entfernt; danach werden alle verbleibenden public-Tabellenzeilen mit user_id des angemeldeten Users generisch und transaktional gelöscht.
+   - created_by/updated_by-Verweise des Users in globalen öffentlichen Cache-/Registry-Daten werden auf NULL anonymisiert, ohne die globalen Fakten selbst zu löschen.
+   - wallet-private stellt ausschließlich für den authentifizierten User die Aktion user_data_delete bereit.
+   - Nach Erfolg: Supabase-Session abmelden, localStorage/sessionStorage und WalletTracking-IndexedDB entfernen.
+   - Auth-Login bleibt bestehen; die Funktion löscht WalletTracking-Daten, nicht den Supabase-Auth-Account.
+   Build 20260922-140348. */

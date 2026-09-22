@@ -104,6 +104,7 @@
           <button type="button" class="tab-btn" id="userChatTabBtn" data-tab="chat" onclick="showTab('chat')">💬 Chat <span id="userChatUnreadBadge" class="chat-unread-badge"></span></button>
           <button type="button" class="tab-btn" id="adminChatTabBtn" data-tab="chat" onclick="showTab('chat')" style="display:none">💬 Admin-Chat <span id="adminChatUnreadBadge" class="chat-unread-badge"></span></button>
           <button type="button" class="tab-btn" data-tab="help" onclick="showTab('help')">❓ Hilfe</button>
+          <button type="button" class="tab-btn" data-tab="account-data" onclick="showTab('account-data')">🗑️ Daten &amp; Konto</button>
         </div></div>
         <div class="tab-nav-group" data-nav-section="wallets"><div class="tab-nav">
           <button type="button" class="tab-btn" data-tab="wallets" onclick="showTab('wallets')">Meine Wallets</button>
@@ -535,6 +536,20 @@
         <div id="adminChatInputRow" style="display:none;gap:8px">
           <input type="text" id="adminChatMessageInput" placeholder="Antwort schreiben..." style="flex:1" onkeydown="if(event.key==='Enter') sendAdminChatMessage()" />
           <button onclick="sendAdminChatMessage()">Senden</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-account-data" class="tab-panel">
+      <div class="custom-token-card">
+        <div class="section-title">🗑️ Daten &amp; Konto</div>
+        <p class="note"><strong>Alle WalletTracking-Daten löschen</strong> entfernt sämtliche zu deinem Login gespeicherten WalletTracking-Daten: Wallets und Adressen, Bestände, Snapshots und 31.12.-Stichtage, persönliche Token, Gebühren, NFTs und Besitzhistorien, Projekttransaktionen, Claims/Rewards, LP-/Staking-/Discovery-/Loan-Daten, persönliche Partner-Aliase, Support-Nachrichten, UI-Einstellungen sowie Release-/Migrationsstände.</p>
+        <p class="note">Globale öffentliche Blockchain-, Token-, Contract-, Preis-/Registry- und gemeinsame On-Chain-Cache-Daten bleiben erhalten. <strong>Dein Login-Konto selbst wird nicht gelöscht</strong>; nach dem Vorgang wirst du abgemeldet und kannst später wieder mit einem leeren WalletTracking-Konto starten.</p>
+        <div style="margin-top:16px;padding:14px;border:1px solid rgba(190,40,40,.45);border-radius:12px;background:rgba(190,40,40,.06)">
+          <strong>Unwiderruflicher Vorgang</strong>
+          <div class="note" style="margin-top:6px">Vor dem Löschen musst du <strong>LÖSCHEN</strong> eingeben und die Sicherheitsabfrage mit „Sind Sie sicher?“ bestätigen.</div>
+          <button id="deleteAllUserDataBtn" class="remove" style="margin-top:12px" onclick="deleteAllWalletTrackingUserData()">Alle WalletTracking-Daten löschen</button>
+          <div id="deleteAllUserDataStatus" class="note" style="margin-top:8px"></div>
         </div>
       </div>
     </div>
@@ -1128,7 +1143,7 @@
   </div>
 
   <footer>
-    Version vom 22.09.2026 12:15:22 CEST · Phase 5.93 · RPC-Proxy & partial-Migrationsstatus<br>
+    Version vom 22.09.2026 14:03:48 CEST · Phase 5.94 · vollständige Userdaten-Löschung<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1137,7 +1152,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<script src="./js/browser-cache.js?v=20260920-224629"></script>
+<script src="./js/browser-cache.js?v=20260922-140348"></script>
 <script src="./js/price-engine.js"></script>
 <script src="./js/lp-engine.js?v=20260921-000207"></script>
 <script src="./js/staking-engine.js"></script>
@@ -1147,11 +1162,11 @@
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20260922-121522"></script>
-<script src="./help/help-general.js?v=20260922-121522"></script>
+<script src="./admin/ideas.js?v=20260922-140348"></script>
+<script src="./help/help-general.js?v=20260922-140348"></script>
 <script src="./projects/tln-vow/help.js?v=20260922-022048"></script>
 <script src="./projects/dao1/help.js?v=20260922-121522"></script>
-<script src="./js/app.js?v=20260922-121522"></script>
+<script src="./js/app.js?v=20260922-140348"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20260922-022048"></script>
 
 
@@ -1170,6 +1185,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 22.09.2026 12:15:22 CEST · Phase 5.93 · Build 20260922-121522</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 22.09.2026 14:03:48 CEST · Phase 5.94 · Build 20260922-140348</div>
 </body>
 </html>

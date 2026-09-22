@@ -1,3 +1,5 @@
+// Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Systemübersicht um „Zu testen“ ergänzt; ZIP-Struktur korrigiert. Build 20260922-140348.
+// Phase 5.94 · 22.09.2026 14:03:48 CEST: Userweite vollständige WalletTracking-Datenlöschung über transaktionale DB-RPC; Browser-Userdaten werden danach lokal gelöscht und der User abgemeldet. Auth-Login bleibt bestehen. Build 20260922-140348.
 // Phase 5.93 · 22.09.2026 12:15:22 CEST: Apertum-RPC-Proxy erlaubt gezielte APTMDAO eth_call-Reads; DATA_MIGRATIONS partial ist DB-seitig vorgesehen; NFT-Migration v4 läuft automatisch erneut. Build 20260922-121522.
 // Phase 5.91 · 22.09.2026 10:46:15 CEST: NFT-Metadatenresolver CORS-sicher: Explorer-Webseiten/external_url werden nie als JSON-Metadaten gefetcht; nur echte Metadata-/Token-URIs. Datenmigration v2 erzwingt eine einmalige saubere Wiederholung. Build 20260922-104615.
 // Phase 5.89 · 22.09.2026 03:05:55 CEST: Zentrales Release-/DATA_MIGRATIONS-Management, userbezogene quittierungspflichtige Release-Popups, automatische NFT-5.88-Normalisierung; Dashboard-Vermögen vertikal responsiv. Build 20260922-030555.
@@ -142,7 +144,7 @@ const MAIN_SECTION_TABS={
   dashboard:["dashboard"],
   overview:["tracking","tax","fees","nfts","approvals"],
   wallets:["wallets","predefined","custom","discovery"],
-  support:["chat","help"],
+  support:["chat","help","account-data"],
   admin:["admin"], projects:["projects-overview","tlnvow","dao1"]
 };
 function mainSectionForTab(name){
@@ -306,7 +308,7 @@ const DONATION_EVM_ADDRESS = "0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382";
 // Build-Version und Datenversion sind bewusst getrennt. Nur Releases mit echter
 // Datenwirkung registrieren einen Migrationsjob; reine UI-/Text-Releases lösen
 // keinen On-Chain-/API-Neuaufbau aus. Abschluss wird userbezogen in Supabase gespeichert.
-const WT_CURRENT_RELEASE = "5.93";
+const WT_CURRENT_RELEASE = "5.94";
 const WT_RELEASE_REGISTRY = Object.freeze({
   "5.93": {
     title: "NFT-Datenmigration und APTMDAO-RPC wurden korrigiert",
@@ -1698,6 +1700,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"chat",level:1,label:"Chat",status:"planning",start:"DB + Realtime",daily:"–",open:"DB",manual:"DB",details:[
     ["Nachrichten","–","Supabase · Chat-Tabellen","–","Login/Tab öffnen/Realtime"],["Ungelesen-Zähler","–","Supabase","–","App-Start"]]},
   {id:"help",level:1,label:"Hilfe",status:"planning",start:"Datei/DOM",daily:"–",open:"lokal",manual:"–",details:[["Allgemeine Hilfe","JS-Modul","–","–","Tab öffnen"]]},
+  {id:"support-data",level:1,label:"🗑️ Daten & Konto",status:"done",idea:"Vollständige userbezogene Datenlöschung",start:"–",daily:"–",open:"cache-only",manual:"User bestätigt Löschung",details:[["Alle WalletTracking-Daten löschen","–","wallettracking_delete_all_user_data() + wallet-private","keine externe API","Phase 5.94: löscht transaktional alle public-Tabellenzeilen mit user_id des angemeldeten Users, anonymisiert created_by/updated_by in globalen Caches, leert lokale Browserdaten und meldet den User ab. Globale öffentliche Blockchain-/Registry-/Token-/Contract-Fakten und das Auth-Login bleiben erhalten."]]},
 
   {id:"walletsgrp",level:0,label:"🧰 Wallets & Token",status:"planning",start:"DB",daily:"–",open:"Cache/DB",manual:"je Funktion",details:[]},
   {id:"wallets",level:1,label:"Meine Wallets",status:"done",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"gezielt speichern / vollständig löschen",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"],["Neue/gespeicherte Wallet · Erstaufbau","nur diese Wallet","Current-State je konfigurierter Chain + NFT/DAO-Target-Refresh; TLN/VOW lazy bzw. Session-Refresh","RPC/API nur für diese Wallet","Phase 5.82: Speichern startet kein breites loadAll() über alle Wallets mehr. Bestehende Wallets bleiben unangetastet; Current State wird gezielt aufgebaut, DAO1/APTMDAO aktualisiert nur diese Wallet und TLN/VOW übernimmt sie sofort, falls das Modul bereits initialisiert ist – sonst beim ersten Öffnen."],["Wallet vollständig löschen","RAM wird nach Erfolg verworfen","wallet-private → transaktionale RPC; walletbezogene Tabellen + Snapshot-/31.12.-Daten + abgeleitete User-Caches","keine globalen Registry-/On-Chain-Fakten","Löschen in Meine Wallets; danach Reload und Neuaufbau aller Summen aus verbleibenden Daten"]]},
@@ -1767,6 +1770,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"admin-hard",level:1,label:"🧪 Hardcoding-Audit",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[]},
   {id:"admin-system",level:1,label:"🗺️ Systemübersicht",status:"done",idea:"Systemübersicht · Funktionsbaum",start:"Release-/Migrationscheck",daily:"–",open:"lokal",manual:"–",details:[["Funktions-/Ladebaum","JS Definition","–","–","Admin-Tab öffnen; Status mit Ideen/TODOs verknüpft"],["Release-Management / DATA_MIGRATIONS","userbezogener Versionsstand","Supabase user_data_migrations + user_release_acknowledgements","gezielte API/RPC nur wenn ein registrierter Migrationsjob dies fachlich verlangt","Phase 5.93: SQL 072 erweitert den DB-Status-Constraint um partial; der Apertum-RPC-Proxy wird mit enger eth_call-Allowlist versioniert/deployed. Phase 5.92: complete/partial/failed wird persistent unterschieden; partial/failed erhöht die Datenversion nicht und wird erneut versucht. Phase 5.89: beim Login nur fehlende Datenmigrationen ausführen; Abschluss erst nach Erfolg persistieren. Relevante Release-Mitteilungen erscheinen pro User einmal als quittierungspflichtiges Popup."]]},
   {id:"admin-ideas",level:1,label:"💡 Ideen / Umbau",status:"in_progress",start:"JS geladen",daily:"–",open:"lokal",manual:"–",details:[["Projekt-TODOs","admin/ideas.js","–","–","Datei wird mit Cache-Buster geladen"]]},
+  {id:"admin-testing",level:1,label:"🧪 Zu testen",status:"in_progress",idea:"Zu testen · Wallet- und Datenlöschungs-Flows",start:"–",daily:"–",open:"lokal",manual:"praktischer Test",details:[["Wallet hinzufügen","–","Wallet-/Projekt-Daten + Caches","projektbezogene Initialisierung","Neue Wallet erfassen; gezielten Erstaufbau, Projekt-Erkennung und Dashboard-Summen prüfen"],["Wallet löschen","–","walletbezogene DB-Daten + Caches","–","Einzel-Wallet-Löschung vollständig prüfen; Summen aus verbleibenden Wallets neu validieren"],["Sämtliche Daten löschen","–","wallettracking_delete_all_user_data() + Browsercache","–","Zweistufige Bestätigung, vollständige serverseitige + lokale Löschung, Logout und leeren Neustand nach Re-Login prüfen"]]},
   {id:"admin-doc",level:1,label:"📚 Dokumentation",status:"done",start:"–",daily:"–",open:"lokal",manual:"–",details:[]}
 ];
 
@@ -3758,6 +3762,61 @@ async function deleteWalletCompletely(w) {
   if (!currentUser || !w?.dbId) throw new Error("Gespeicherte Wallet-ID fehlt.");
   return invokeWalletPrivate("wallet_delete", {wallet_id:String(w.dbId)});
 }
+
+async function clearWalletTrackingLocalUserData() {
+  try {
+    if (window.WalletTrackingBrowserCache?.destroy) {
+      await window.WalletTrackingBrowserCache.destroy();
+    } else if ("indexedDB" in window) {
+      await new Promise(resolve => {
+        const req = indexedDB.deleteDatabase("wallet_tracking_cache");
+        req.onsuccess = req.onerror = req.onblocked = () => resolve();
+      });
+    }
+  } catch (e) {
+    console.warn("Lokalen WalletTracking-IndexedDB-Cache löschen", e);
+  }
+  try { localStorage.clear(); } catch (_) {}
+  try { sessionStorage.clear(); } catch (_) {}
+}
+
+async function deleteAllWalletTrackingUserData() {
+  if (!currentUser?.id) {
+    alert("Bitte zuerst anmelden.");
+    return;
+  }
+
+  const typed = prompt(
+    "Alle deine in WalletTracking gespeicherten Daten werden unwiderruflich gelöscht.\n\n" +
+    "Dazu gehören Wallets, Bestände, Snapshots, 31.12.-Daten, persönliche Token, NFTs, Projekt-/Reward-/Staking-/LP-/Loan-Caches, Partner-Aliase, Support-Nachrichten, UI-Einstellungen sowie Release-/Migrationsstände.\n\n" +
+    "Globale öffentliche Blockchain-/Token-/Contract-/Registry-Daten bleiben erhalten. Dein Login-Konto bleibt bestehen.\n\n" +
+    "Tippe LÖSCHEN, um fortzufahren:"
+  );
+  if (typed !== "LÖSCHEN") return;
+  if (!confirm("Sind Sie sicher?\n\nAlle WalletTracking-Daten dieses Users werden vollständig gelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden.")) return;
+
+  const btn=document.getElementById("deleteAllUserDataBtn");
+  const status=document.getElementById("deleteAllUserDataStatus");
+  if(btn){btn.disabled=true;btn.textContent="Daten werden gelöscht…";}
+  if(status)status.textContent="Vollständige Löschung läuft…";
+
+  try {
+    const result = await invokeWalletPrivate("user_data_delete");
+    if(status)status.textContent=`Serverseitig gelöscht${Number(result?.result?.deleted_rows||0)?`: ${Number(result.result.deleted_rows)} Datensätze`: ""}. Lokale Daten werden entfernt…`;
+
+    try { await sb.auth.signOut(); } catch (e) { console.warn("Abmelden nach vollständiger Datenlöschung", e); }
+    await clearWalletTrackingLocalUserData();
+
+    alert("Alle gespeicherten WalletTracking-Daten wurden vollständig gelöscht. Dein Login-Konto bleibt bestehen. Du wirst jetzt zur leeren Anwendung zurückgeführt.");
+    location.href = REDIRECT_URL;
+  } catch (e) {
+    console.error("Alle WalletTracking-Userdaten löschen", e);
+    if(status)status.textContent="Löschung fehlgeschlagen – es wurde kein erfolgreicher Abschluss bestätigt.";
+    alert("Die vollständige Datenlöschung konnte nicht abgeschlossen werden.\n\n" + (e?.message || e));
+    if(btn){btn.disabled=false;btn.textContent="Alle WalletTracking-Daten löschen";}
+  }
+}
+window.deleteAllWalletTrackingUserData=deleteAllWalletTrackingUserData;
 
 function clearWalletRelatedMemory(w) {
   const walletId = String(w?.dbId || w?.id || "");
