@@ -1,3 +1,5 @@
+// Phase 5.97 · 22.09.2026 23:14:40 CEST: ethers-v6 JsonRpcProvider erhält die Network-Instanz auch in options.staticNetwork; behebt den verbliebenen staticNetwork.matches-Fehler im globalen Preisjob. Build 20260922-231440.
+// Phase 5.96 · 22.09.2026 21:35:26 CEST: ethers-v6 staticNetwork erhält echte Network-Instanzen; behebt „staticNetwork.matches is not a function“ bei Preis-/Pool-Providerinitialisierung. Build 20260922-213526.
 // Phase 5.80 · 21.09.2026 18:15:39 CEST: gespeicherter Current-Price-Snapshot wird 30s in-flight/session wiederverwendet, damit App-Start und direktes Projektöffnen keinen identischen Supabase-Read erzeugen. Fachliche Preislogik unverändert. Build 20260921-181539.
 // Phase 5.78 · 21.09.2026 17:29:35 CEST: DEX/RPC-Provider werden erst im Kurse/Pools-Untertab initialisiert; bekannte BSC/ETH-Netzwerke nutzen staticNetwork ohne zusätzliche Chain-Erkennung. Build 20260921-172935.
 window.TLNVOWProject = (() => {
@@ -298,9 +300,9 @@ async function loadProjectInfrastructure(){
       v3Factory:v3?.factory_address || null
     };
     if(!CONFIG[chain].v2Factory) throw new Error(`${PROJECT_NAME}: Für ${chain} fehlt eine aktive V2-DEX-Factory.`);
-    const staticNetwork=chain==="bsc"?{chainId:56,name:"bsc"}:chain==="eth"?{chainId:1,name:"mainnet"}:undefined;
+    const staticNetwork=chain==="bsc"?ethers.Network.from({chainId:56,name:"bsc"}):chain==="eth"?ethers.Network.from({chainId:1,name:"mainnet"}):undefined;
     providers[chain]=staticNetwork
-      ? new ethers.JsonRpcProvider(CONFIG[chain].rpc,staticNetwork,{staticNetwork:true})
+      ? new ethers.JsonRpcProvider(CONFIG[chain].rpc,staticNetwork,{staticNetwork})
       : new ethers.JsonRpcProvider(CONFIG[chain].rpc);
     graphCache[chain]=null;
     references[chain]=references[chain] || {};

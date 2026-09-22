@@ -1,3 +1,10 @@
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+// Phase 5.97 · 22.09.2026 23:14:40 CEST: Hilfe ergänzt Erstimport-Laufzeit, Admin-Testmodus bei vollständiger Datenlöschung und präzisere Teilfehleranzeige. Build 20260922-231440.
+=======
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
+>>>>>>> Stashed changes
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: Hilfe ergänzt den sichtbaren Datenjob nach Wallet-Speicherung und transparente Teilfehleranzeige. Build 20260922-213526.
 // Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Release-Paketstruktur korrigiert; Doku-Testliste zentral in Ideen/Systemübersicht ergänzt. Build 20260922-140348.
 // Phase 5.94 · 22.09.2026 14:03:48 CEST: Allgemeine Hilfe um vollständige userweite WalletTracking-Datenlöschung ergänzt; Auth-Login bleibt bestehen, lokale Browserdaten werden mitgelöscht. Build 20260922-140348.
@@ -34,8 +41,18 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
+<<<<<<< Updated upstream
 const HELP_MODULE_BUILD="20260922-213526";
 const HELP_MODULE_TIMESTAMP="22.09.2026 21:35:26 CEST";
+=======
+<<<<<<< HEAD
+const HELP_MODULE_BUILD="20260922-231440";
+const HELP_MODULE_TIMESTAMP="22.09.2026 23:14:40 CEST";
+=======
+const HELP_MODULE_BUILD="20260922-213526";
+const HELP_MODULE_TIMESTAMP="22.09.2026 21:35:26 CEST";
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
+>>>>>>> Stashed changes
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;
@@ -43,7 +60,15 @@ function renderGeneralHelp(){
 
       <div class="custom-token-card">
         <h3 style="margin-top:0">Schnellstart</h3>
+<<<<<<< Updated upstream
         <p class="note"><strong>1.</strong> Neue User starten mit einem leeren Dashboard und können dort direkt „Erste Wallet erfassen“ wählen. Unter „Meine Wallets“ jede Wallet als „Eigenes Wallet“ markieren oder einem Besitzer zuordnen. Nach dem Speichern bleibt „Daten werden geladen …“ sichtbar, bis der gezielte Erstaufbau dieser Wallet abgeschlossen ist; bei Teilfehlern wird dies ausdrücklich gemeldet. <strong>2.</strong> Das Dashboard ist die Startseite und zeigt sofort den gespeicherten Stand für den gewählten Personenfilter. <strong>3.</strong> „Daten aktualisieren“ erneuert Bestände und projektübergreifende Daten. <strong>4.</strong> „Preise aktualisieren“ erneuert davon getrennt die aktuellen Kurse und USD-Werte. <strong>5.</strong> Unbekannte Token bei Bedarf unter „Entdecken“ prüfen und als eigene sichere Token übernehmen. Für Projektdetails das jeweilige DeFi-Projekt öffnen.</p>
+=======
+<<<<<<< HEAD
+        <p class="note"><strong>1.</strong> Neue User starten mit einem leeren Dashboard und können dort direkt „Erste Wallet erfassen“ wählen. Unter „Meine Wallets“ jede Wallet als „Eigenes Wallet“ markieren oder einem Besitzer zuordnen. Nach dem Speichern bleibt „Daten werden geladen …“ sichtbar, bis der gezielte Erstaufbau dieser Wallet abgeschlossen ist; danach wird auch die Laufzeit angezeigt. Bei Teilfehlern wird ausdrücklich genannt, wie viele Teilbereiche betroffen sind. <strong>2.</strong> Das Dashboard ist die Startseite und zeigt sofort den gespeicherten Stand für den gewählten Personenfilter. <strong>3.</strong> „Daten aktualisieren“ erneuert Bestände und projektübergreifende Daten. <strong>4.</strong> „Preise aktualisieren“ erneuert davon getrennt die aktuellen Kurse und USD-Werte. <strong>5.</strong> Unbekannte Token bei Bedarf unter „Entdecken“ prüfen und als eigene sichere Token übernehmen. Für Projektdetails das jeweilige DeFi-Projekt öffnen.</p>
+=======
+        <p class="note"><strong>1.</strong> Neue User starten mit einem leeren Dashboard und können dort direkt „Erste Wallet erfassen“ wählen. Unter „Meine Wallets“ jede Wallet als „Eigenes Wallet“ markieren oder einem Besitzer zuordnen. Nach dem Speichern bleibt „Daten werden geladen …“ sichtbar, bis der gezielte Erstaufbau dieser Wallet abgeschlossen ist; bei Teilfehlern wird dies ausdrücklich gemeldet. <strong>2.</strong> Das Dashboard ist die Startseite und zeigt sofort den gespeicherten Stand für den gewählten Personenfilter. <strong>3.</strong> „Daten aktualisieren“ erneuert Bestände und projektübergreifende Daten. <strong>4.</strong> „Preise aktualisieren“ erneuert davon getrennt die aktuellen Kurse und USD-Werte. <strong>5.</strong> Unbekannte Token bei Bedarf unter „Entdecken“ prüfen und als eigene sichere Token übernehmen. Für Projektdetails das jeweilige DeFi-Projekt öffnen.</p>
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
+>>>>>>> Stashed changes
       </div>
 
       <div class="custom-token-card"><h3 style="margin-top:0">🔤 Darstellung</h3><p class="note">Die Hauptnavigation befindet sich als klar gegliederte Seitenleiste links; auf schmalen Displays ordnet sie sich responsiv oberhalb des Inhalts an. Chain- und Token-Identitäten werden in Datentabellen mit kompakten Symbolen unterstützt. Die Schriftgrösse der gesamten Anwendung kann oben im Kopfbereich mit dem Regler „Schrift“ individuell von 85 % bis 125 % eingestellt werden. Die Einstellung wird auf diesem Gerät gespeichert. Farben, Cards, Navigation, Tabs und Tabellen werden zentral über <code>css/wallet-tracking.css</code> gesteuert.</p></div>
@@ -60,7 +85,7 @@ function renderGeneralHelp(){
 
       <div class="custom-token-card"><h3 style="margin-top:0">💸 Gebühren · 🖼️ NFTs · 🔓 Freigaben</h3><p class="note"><strong>Gebühren:</strong> werden walletbezogen gespeichert und gezielt aktualisiert. <strong>NFTs:</strong> werden über die vorgesehenen Wallet-/Projektjobs geladen; Spam-/Sicher-Klassifikationen bleiben getrennt von der eigentlichen On-Chain-Erkennung. <strong>Freigaben:</strong> zeigen Token-Approvals rein lesend an; ein Widerruf erfolgt extern mit der eigenen Wallet.</p></div>
 
-      <div class="custom-token-card"><h3 style="margin-top:0">⚙️ Verwaltung</h3><p class="note"><strong>Meine Wallets:</strong> eigene Wallets verwalten. Beim Speichern einer neuen oder geänderten Wallet wird nur diese Wallet gezielt initialisiert: aktuelle Bestände je vorhandener Adresse werden geladen, NFT-/DAO-Current-State wird für diese Wallet aktualisiert und TLN/VOW übernimmt sie bei bereits geöffnetem Modul sofort bzw. sonst beim ersten Öffnen. Bestehende Wallets werden dabei nicht erneut breit aktualisiert. <strong>Wallet löschen bedeutet vollständig löschen:</strong> Die Wallet wird auch aus manuellen/automatischen Snapshots, „Bestand per 31.12.“, Gebühren, NFTs, Claims/Rewards, Projekttransaktionen, LP-/Staking-/Discovery-Daten sowie daraus abgeleiteten userbezogenen Summen/Caches entfernt. Nach erfolgreichem Löschen lädt WalletTracking neu und baut Summen ausschließlich aus den verbleibenden Daten auf. Globale öffentliche Blockchain-/Registry-Fakten werden nicht gelöscht. <strong>Alle WalletTracking-Daten löschen:</strong> Unter „Support &amp; Info → Daten &amp; Konto“ kann ein User sämtliche eigenen WalletTracking-Daten in einem transaktionalen Vorgang löschen. Dazu gehören auch persönliche Token, Partner-Aliase, Support-Nachrichten, UI-Einstellungen und Release-/Migrationsstände. Globale öffentliche Blockchain-/Registry-/Token-/Contract-Fakten bleiben erhalten. Das Auth-Login selbst bleibt bestehen; nach erfolgreicher Löschung werden lokale Browserdaten entfernt und der User abgemeldet. <strong>Vordefinierte Token:</strong> normale Benutzer sehen die freigegebenen Stammdaten nur lesend; Bearbeitung und technische Verwaltungsfelder sind Admin-Funktionen. <strong>Eigene sichere Token:</strong> persönliche Ergänzungen. <strong>Entdecken:</strong> durchsucht bei Bedarf auch historische Aktivitäten nach früher gehaltenen Token/Positionen.</p></div>
+      <div class="custom-token-card"><h3 style="margin-top:0">⚙️ Verwaltung</h3><p class="note"><strong>Meine Wallets:</strong> eigene Wallets verwalten. Beim Speichern einer neuen oder geänderten Wallet wird nur diese Wallet gezielt initialisiert: aktuelle Bestände je vorhandener Adresse werden geladen, NFT-/DAO-Current-State wird für diese Wallet aktualisiert und TLN/VOW übernimmt sie bei bereits geöffnetem Modul sofort bzw. sonst beim ersten Öffnen. Bestehende Wallets werden dabei nicht erneut breit aktualisiert. <strong>Wallet löschen bedeutet vollständig löschen:</strong> Die Wallet wird auch aus manuellen/automatischen Snapshots, „Bestand per 31.12.“, Gebühren, NFTs, Claims/Rewards, Projekttransaktionen, LP-/Staking-/Discovery-Daten sowie daraus abgeleiteten userbezogenen Summen/Caches entfernt. Nach erfolgreichem Löschen lädt WalletTracking neu und baut Summen ausschließlich aus den verbleibenden Daten auf. Globale öffentliche Blockchain-/Registry-Fakten werden nicht gelöscht. <strong>Alle WalletTracking-Daten löschen:</strong> Unter „Support &amp; Info → Daten &amp; Konto“ kann ein User sämtliche eigenen WalletTracking-Daten in einem transaktionalen Vorgang löschen. Dazu gehören auch persönliche Token, Partner-Aliase, Support-Nachrichten, UI-Einstellungen und Release-/Migrationsstände. Globale öffentliche Blockchain-/Registry-/Token-/Contract-Fakten bleiben erhalten. Das Auth-Login selbst bleibt bestehen. Nach erfolgreicher Löschung werden lokale Browserdaten entfernt; normale User werden abgemeldet, während Admin-Testuser für wiederholte Lifecycle-Tests eingeloggt bleiben und direkt mit einem leeren WalletTracking neu starten. <strong>Vordefinierte Token:</strong> normale Benutzer sehen die freigegebenen Stammdaten nur lesend; Bearbeitung und technische Verwaltungsfelder sind Admin-Funktionen. <strong>Eigene sichere Token:</strong> persönliche Ergänzungen. <strong>Entdecken:</strong> durchsucht bei Bedarf auch historische Aktivitäten nach früher gehaltenen Token/Positionen.</p></div>
 
       <div class="custom-token-card"><h3 style="margin-top:0">🔐 Datenschutz</h3><p class="note">Private Scan-/LP-Caches referenzieren eigene Wallets ausschließlich über die usergebundene wallet_id; eigene Wallet-Adressen werden dort nicht zusätzlich persistent gespeichert. RLS-Schutzregeln verhindern ein versehentliches Wiedereintragen von Klartextadressen. Private Walletdaten, Wallet-Besitzernamen und persönliche Partner-Aliase werden userbezogen verschlüsselt gespeichert. Der Besitzername wird ausschließlich über die geschützte Wallet-Edge-Function gelesen und geschrieben. Öffentliche Blockchain-Daten bleiben naturgemäß öffentlich. Private Namen/Zuordnungen gehören nicht in globale oder öffentliche Caches.</p></div>
 

@@ -1,3 +1,10 @@
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+// Phase 5.97 · 22.09.2026 23:14:40 CEST: Lifecycle-Testdoku ergänzt: native Miner-Claim-Payouts, Reward-Mengen-Summary, Erstimport-Timings, Admin-Session bei Datenlöschung und staticNetwork-Fix. Build 20260922-231440.
+=======
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
+>>>>>>> Stashed changes
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: Lifecycle-Testdoku ergänzt: sichtbarer Wallet-Erstaufbau, DAO1 Asset-Flows/Claim-Auszahlungen und Snapshot erst nach vollständigem Aufbau. Build 20260922-213526.
 // Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Neues Doku-Kapitel „Zu testen“ mit Wallet hinzufügen, Wallet löschen und sämtliche Daten löschen. ZIP-Struktur korrigiert. Build 20260922-140348.
 // Phase 5.94 · 22.09.2026 14:03:48 CEST: Userweite vollständige Datenlöschung umgesetzt: alle public-Zeilen mit user_id werden transaktional entfernt, globale Cache-Provenienz anonymisiert, Browserdaten gelöscht; Auth-Login bleibt bestehen. Build 20260922-140348.
@@ -37,8 +44,18 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
+<<<<<<< Updated upstream
 const ADMIN_IDEAS_MODULE_BUILD = "20260922-213526";
 const ADMIN_IDEAS_MODULE_TIMESTAMP = "22.09.2026 21:35:26 CEST";
+=======
+<<<<<<< HEAD
+const ADMIN_IDEAS_MODULE_BUILD = "20260922-231440";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "22.09.2026 23:14:40 CEST";
+=======
+const ADMIN_IDEAS_MODULE_BUILD = "20260922-213526";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "22.09.2026 21:35:26 CEST";
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
+>>>>>>> Stashed changes
 // Phase 5.33: Dashboard-Summary validiert und Start weiter entkoppelt. Apertum-native-Fehler behoben: interner Asset-Key "native" wird nie mehr als EVM-Adresse ABI-encodiert. TLN/BSC lp_position_cache wird beim Dashboard-Start walletübergreifend in einem Batch gelesen statt mit Einzelrequest pro Wallet. TLN "davon aktiv" zeigt bei unvollständig verifizierten Lifecycles keine scheinbar endgültige Zahl mehr, sondern bestätigte Aktive plus offene Partner; erst bei vollständiger Lifecycle-Abdeckung wird die Endzahl gesetzt. DAO1 Dashboard-Rewards werden gezielt aus vorhandenen project_transactions + project_transaction_asset_flows gelesen, ohne ensureLoaded()/vollständige DAO1-Tab-Initialisierung. Phase 5.35 ersetzt die frühere USD-Summary: Gesamt/Vorjahr/Jahr/Monat zeigen Originaltoken/-mengen; historische USD-Bewertungen sind dafür nicht erforderlich. DAO1 "aktiv" bleibt bewusst offen: aktueller Code enthält keinen belastbaren Bot-Target-/Completed-Contract-Proof. Reward-Zeilen der Projektkarten wieder als konsistente Kacheln gestaltet. Systemübersicht, Admin-Doku und Hilfe synchronisiert. Build 20260919-140811.
 // Phase 5.30: TLN/VOW-Contracts werden aus der allgemeinen CoinGecko-/GeckoTerminal-Preisermittlung ausgeschlossen und ausschließlich über die bestehende zentrale Projekt-PriceEngine bewertet (BSC PancakeSwap / ETH Uniswap). Dashboard zeigt Contract-Adressen einheitlich nur verkürzt mit Copy-Funktion; vollständige Adressen werden nicht zusätzlich als Symbolzeile ausgegeben. Preisrouten/-berechnungen selbst unverändert.
 // Phase 5.29: Dashboard-Gerüst wird unmittelbar nach Login sichtbar, bevor Chain-/DB-Konfiguration fertig geladen ist. TLN/VOW-Dashboardpreise zeigen tatsächliche DEX-Quelle (BSC PancakeSwap / ETH Uniswap) plus vorhandene Preisroute. DAO1 hat neu „Kurse und Pools“ als reine Sicht auf die bereits bestehende Apertum-Preislogik; keine neue Preisermittlung.
@@ -69,13 +86,29 @@ const ADMIN_IDEAS = [
     category: "Zu testen",
     priority: "high",
     title: "Zu testen · Wallet- und Datenlöschungs-Flows",
+<<<<<<< Updated upstream
     desc: `OFFENE TESTS nach Phase 5.96:
+=======
+<<<<<<< HEAD
+    desc: `OFFENE TESTS nach Phase 5.97:
+=======
+    desc: `OFFENE TESTS nach Phase 5.96:
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
+>>>>>>> Stashed changes
 
 • Wallet hinzufügen
   - neue Wallet erfassen
   - prüfen, ob nur diese Wallet gezielt initialisiert wird
   - Ladebalken „Daten werden geladen …“ bleibt bis zum tatsächlichen Job-Ende sichtbar
+<<<<<<< Updated upstream
   - DAO1/APTMDAO: Claim-Tx UND deren ERC-20-Auszahlungen/Asset-Flows müssen beim Fresh-Build reproduzierbar aufgebaut werden
+=======
+<<<<<<< HEAD
+  - DAO1/APTMDAO: Legacy-Claim-Token-Flows sowie native APTM-Internal-Auszahlungen neuer Miner müssen beim Fresh-Build reproduzierbar aufgebaut werden
+=======
+  - DAO1/APTMDAO: Claim-Tx UND deren ERC-20-Auszahlungen/Asset-Flows müssen beim Fresh-Build reproduzierbar aufgebaut werden
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
+>>>>>>> Stashed changes
   - projektbezogene Daten korrekt erkannt werden
   - Snapshot erst nach fehlerfreiem gezieltem Aufbau speichern
   - Dashboard und Summen danach stimmen
@@ -90,8 +123,8 @@ const ADMIN_IDEAS = [
   - zweistufige Bestätigung prüfen
   - vollständige serverseitige Löschung prüfen
   - lokale Browserdaten/IndexedDB prüfen
-  - Logout danach prüfen
-  - erneuter Login muss einen leeren WalletTracking-Stand zeigen; Auth-Login selbst bleibt bestehen
+  - normaler User: Logout danach prüfen; erneuter Login muss einen leeren WalletTracking-Stand zeigen
+  - Admin-Testuser: Supabase-Auth-Session bleibt erhalten, kein neuer Magic Link nötig; leerer Neustart muss trotzdem bestätigt sein
 
 Die Punkte bleiben hier offen, bis sie praktisch getestet und bestätigt wurden.`
   },
@@ -1176,7 +1209,7 @@ window.adminIdeasFilterState = adminIdeasFilterState;
    - __all-Stichtags-Coverage und nicht eindeutig root-gebundene DAO-Partner-Lifecycle-/Scan-Caches werden invalidiert und aus verbleibenden Wallets neu aufgebaut.
    - Leere Snapshot-Hüllen werden entfernt; nach erfolgreicher Löschung erzwingt die App einen Reload, damit Summen ausschließlich aus verbleibenden Quelldaten entstehen.
    - Globale On-Chain-/Registry-/Token-/Contract-Fakten bleiben erhalten.
-   - Phase 5.94: Userweite Funktion „Alle WalletTracking-Daten löschen“ umgesetzt. Sämtliche userbezogenen public-Datensätze werden transaktional entfernt; globale öffentliche Fakten bleiben erhalten und User-Provenienz in created_by/updated_by wird anonymisiert. Lokale Browserdaten werden danach gelöscht und der User abgemeldet. Auth-Login bleibt bewusst bestehen.
+   - Phase 5.94: Userweite Funktion „Alle WalletTracking-Daten löschen“ umgesetzt. Sämtliche userbezogenen public-Datensätze werden transaktional entfernt; globale öffentliche Fakten bleiben erhalten und User-Provenienz in created_by/updated_by wird anonymisiert. Lokale Browserdaten werden danach gelöscht. Normale User werden abgemeldet; Admin-Testuser behalten ausschließlich die Supabase-Auth-Session, damit wiederholte Lifecycle-Tests ohne neuen Magic Link möglich sind. Auth-Login bleibt bewusst bestehen.
    Build 20260921-233649. */
 
 

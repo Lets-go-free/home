@@ -1,3 +1,10 @@
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+// Phase 5.97 · 22.09.2026 23:14:40 CEST: neue Miner-Claims nutzen native Internal-APTM-Auszahlung ohne unnötigen ERC-20-Detailscan; Proxy/Router-Absender als Fallback erlaubt; Claim-Summary zeigt Tokenmenge. Build 20260922-231440.
+=======
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
+>>>>>>> Stashed changes
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: DAO1 Fresh-Build ergänzt inkrementelle ERC-20 Asset-Flows für relevante Wallets; Claim-Logs RPC-first; unnötiger ERC-721/1155-Claim-Request entfernt. Build 20260922-213526.
 // Phase 5.93 · 22.09.2026 12:15:22 CEST: Server-RPC-Proxy passend zum lokalen Gate mit enger APTMDAO ownerOf/Parent-eth_call-Allowlist; Migration v4 kann erneut prüfen. Build 20260922-121522.
 // Phase 5.88 · 22.09.2026 02:20:48 CEST: APTMDAO-Identitäts-NFTs zählen als DID; zentraler NFT-Typadapter für DID/MineBot/TradeBot; manueller NFT-Refresh kann offene Ownership-Lücken gezielt reparieren. Build 20260922-022048.
@@ -1990,19 +1997,26 @@ window.DAO1Project = (() => {
       console.warn("DAO1 Claim Internal Transactions",txHash,e);
       return 0;
     }
-    let total=0;
+    const valid=[];
     for(const r of rows){
       const to=lower(H(r?.to) || r?.to_address || r?.to_address_hash || "");
       const from=lower(H(r?.from) || r?.from_address || r?.from_address_hash || "");
       if(to!==target)continue;
-      if(source && from!==source)continue;
       if(r?.error || r?.success===false || String(r?.status||"").toLowerCase()==="error")continue;
       try{
         const raw=r?.value?.value ?? r?.value ?? "0";
-        total += Number(BigInt(String(raw)))/1e18;
+        const amount=Number(BigInt(String(raw)))/1e18;
+        if(amount>0)valid.push({from,amount});
       }catch{}
     }
-    return total;
+    if(!valid.length)return 0;
+    // Bevorzugt weiterhin die direkte Auszahlung vom erwarteten Claim-Contract.
+    // Proxy-/Router-Strukturen dürfen aber einen darunterliegenden Contract als
+    // tatsächlichen Internal-Absender verwenden. Gibt es keinen Direct-Match,
+    // zählt deshalb die nachweislich erfolgreiche native Zahlung an genau das Wallet.
+    const direct=source?valid.filter(x=>x.from===source):valid;
+    const chosen=direct.length?direct:valid;
+    return chosen.reduce((sum,x)=>sum+x.amount,0);
   }
 
   function rpcCandidates(){
@@ -3889,9 +3903,10 @@ window.DAO1Project = (() => {
       const c=claimByHash.get(h);
       const cachedForTx=cachedFlowsByHash.get(h)||[];
       const hasIncoming=cachedForTx.some(f=>String(f.direction||"")==="eingang");
-      // v52: Beim neuen Miner gilt die Detail-TX erst dann als vollständig,
-      // wenn tatsächlich ein eingehender Reward-Flow vorhanden ist.
-      if(ev.newMiner && !hasIncoming)return true;
+      // Phase 5.97: Der neue Miner zahlt nativ per Internal Transaction aus.
+      // Ein ERC-20-Detailscan kann dafür keinen Reward-Flow finden und erzeugte
+      // bisher hunderte irreführende "ohne parsebare Token-Flows"-Warnungen.
+      if(ev.newMiner)return false;
       if(t.claim_nft_id!=null && c?.reward_asset_symbol)return false;
       return !cachedFlowHashes.has(h);
     });
@@ -4216,9 +4231,13 @@ window.DAO1Project = (() => {
 
   function payoutSummaryLineHtml(symbol,entry){
     const missing=Number(entry?.missingUsd||0);
+    const displaySymbol=String(entry?.symbol||symbol||"TOKEN");
+    const amount=Number(entry?.amount||0);
+    const amountText=tokenAmount(amount,{address:entry?.tokenAddress||null,symbol:displaySymbol});
     return `<tr>
-      <td><strong>${symbol}</strong></td>
+      <td><strong>${displaySymbol}</strong></td>
       <td>${Number(entry?.count||0).toLocaleString("de-DE")} Auszahlung(en)</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums"><strong>${amountText} ${displaySymbol}</strong></td>
       <td style="text-align:right;font-variant-numeric:tabular-nums"><strong>${usd2(Number(entry?.usd||0))}</strong></td>
       <td class="meta">${missing?`${missing.toLocaleString("de-DE")} ohne USD-Wert`:"vollständig bewertet"}</td>
     </tr>`;
@@ -4230,11 +4249,14 @@ window.DAO1Project = (() => {
     let totalUsd=0;
     let missingUsd=0;
 
-    function add(symbol,valueUsd,hasUsd){
+    function add(symbol,amount,valueUsd,hasUsd,tokenAddress=null){
       const sym=String(symbol||"TOKEN")||"TOKEN";
-      if(!byToken.has(sym))byToken.set(sym,{count:0,usd:0,missingUsd:0});
-      const e=byToken.get(sym);
+      const addr=lower(tokenAddress||"")||null;
+      const key=addr?`${sym}|${addr}`:sym;
+      if(!byToken.has(key))byToken.set(key,{symbol:sym,tokenAddress:addr,count:0,amount:0,usd:0,missingUsd:0});
+      const e=byToken.get(key);
       e.count++;
+      const qty=Number(amount||0);if(Number.isFinite(qty))e.amount+=qty;
       if(hasUsd){
         const v=Number(valueUsd||0);
         if(Number.isFinite(v)){e.usd+=v;totalUsd+=v;}
@@ -4250,11 +4272,11 @@ window.DAO1Project = (() => {
         for(const f of flows){
           const sym=isWrappedAptmSymbol(f.token_symbol,f.token_name)?"wAPTM":String(f.token_symbol||f.token_name||"TOKEN");
           const hasUsd=f.value_usd!=null && Number.isFinite(Number(f.value_usd));
-          add(sym,f.value_usd,hasUsd);
+          add(sym,f.amount,f.value_usd,hasUsd,f.token_address);
         }
       }else if(r.claim_reward_aptm!=null){
         const hasUsd=r.claim_reward_usd!=null && Number.isFinite(Number(r.claim_reward_usd));
-        add("APTM",r.claim_reward_usd,hasUsd);
+        add("APTM",r.claim_reward_aptm,r.claim_reward_usd,hasUsd,"native");
       }else{
         unresolvedClaims++;
       }
@@ -4266,11 +4288,14 @@ window.DAO1Project = (() => {
     const byToken=new Map();
     let totalUsd=0;
     let missingUsd=0;
-    function add(symbol,valueUsd,hasUsd){
+    function add(symbol,amount,valueUsd,hasUsd,tokenAddress=null){
       const sym=String(symbol||"TOKEN")||"TOKEN";
-      if(!byToken.has(sym))byToken.set(sym,{count:0,usd:0,missingUsd:0});
-      const e=byToken.get(sym);
+      const addr=lower(tokenAddress||"")||null;
+      const key=addr?`${sym}|${addr}`:sym;
+      if(!byToken.has(key))byToken.set(key,{symbol:sym,tokenAddress:addr,count:0,amount:0,usd:0,missingUsd:0});
+      const e=byToken.get(key);
       e.count++;
+      const qty=Number(amount||0);if(Number.isFinite(qty))e.amount+=qty;
       if(hasUsd){
         const v=Number(valueUsd||0);
         if(Number.isFinite(v)){e.usd+=v;totalUsd+=v;}
@@ -4282,7 +4307,7 @@ window.DAO1Project = (() => {
     for(const r of rows){
       for(const f of (r._referralFlows||[])){
         const hasUsd=f.value_usd!=null && Number.isFinite(Number(f.value_usd));
-        add(f.token_symbol||f.token_name||"TOKEN",f.value_usd,hasUsd);
+        add(f.token_symbol||f.token_name||"TOKEN",f.amount,f.value_usd,hasUsd,f.token_address);
       }
     }
     return {byToken,totalUsd,missingUsd};
@@ -4298,9 +4323,10 @@ window.DAO1Project = (() => {
       <td><strong>${Number(countValue||0).toLocaleString("de-DE")}</strong></td>
       <td></td>
       <td></td>
+      <td></td>
     </tr>`:"";
     const total=`<tr class="payout-summary-total">
-      <td colspan="2"><strong>Total historischer USD-Wert</strong></td>
+      <td colspan="3"><strong>Total historischer USD-Wert</strong></td>
       <td style="text-align:right;font-variant-numeric:tabular-nums"><strong>${usd2(Number(summary.totalUsd||0))}</strong></td>
       <td></td>
     </tr>`;
@@ -4314,6 +4340,7 @@ window.DAO1Project = (() => {
           <thead><tr>
             <th>Token</th>
             <th>Auszahlungen</th>
+            <th style="text-align:right">Reward-Menge</th>
             <th style="text-align:right">Wert in USD hist.</th>
             <th>Status</th>
           </tr></thead>

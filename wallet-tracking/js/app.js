@@ -1,3 +1,10 @@
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+// Phase 5.97 · 22.09.2026 23:14:40 CEST: Wallet-Erstimport misst Gesamt-/Teilzeiten, Admin-Datenlöschung behält die Auth-Session, Teilfehler bleiben sichtbar; DAO1-Datenstand wird nach Fresh-Build gesetzt. Build 20260922-231440.
+=======
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
+>>>>>>> Stashed changes
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: Wallet-Speichern bleibt bis zum gezielten Lifecycle-Ende im zentralen Ladejob; Teilfehler werden sichtbar gemeldet; Snapshot erst nach fehlerfreiem Fresh-Build. Build 20260922-213526.
 // Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Systemübersicht um „Zu testen“ ergänzt; ZIP-Struktur korrigiert. Build 20260922-140348.
 // Phase 5.94 · 22.09.2026 14:03:48 CEST: Userweite vollständige WalletTracking-Datenlöschung über transaktionale DB-RPC; Browser-Userdaten werden danach lokal gelöscht und der User abgemeldet. Auth-Login bleibt bestehen. Build 20260922-140348.
@@ -309,7 +316,15 @@ const DONATION_EVM_ADDRESS = "0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382";
 // Build-Version und Datenversion sind bewusst getrennt. Nur Releases mit echter
 // Datenwirkung registrieren einen Migrationsjob; reine UI-/Text-Releases lösen
 // keinen On-Chain-/API-Neuaufbau aus. Abschluss wird userbezogen in Supabase gespeichert.
+<<<<<<< Updated upstream
 const WT_CURRENT_RELEASE = "5.96";
+=======
+<<<<<<< HEAD
+const WT_CURRENT_RELEASE = "5.97";
+=======
+const WT_CURRENT_RELEASE = "5.96";
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
+>>>>>>> Stashed changes
 const WT_RELEASE_REGISTRY = Object.freeze({
   "5.93": {
     title: "NFT-Datenmigration und APTMDAO-RPC wurden korrigiert",
@@ -1701,7 +1716,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"chat",level:1,label:"Chat",status:"planning",start:"DB + Realtime",daily:"–",open:"DB",manual:"DB",details:[
     ["Nachrichten","–","Supabase · Chat-Tabellen","–","Login/Tab öffnen/Realtime"],["Ungelesen-Zähler","–","Supabase","–","App-Start"]]},
   {id:"help",level:1,label:"Hilfe",status:"planning",start:"Datei/DOM",daily:"–",open:"lokal",manual:"–",details:[["Allgemeine Hilfe","JS-Modul","–","–","Tab öffnen"]]},
-  {id:"support-data",level:1,label:"🗑️ Daten & Konto",status:"done",idea:"Vollständige userbezogene Datenlöschung",start:"–",daily:"–",open:"cache-only",manual:"User bestätigt Löschung",details:[["Alle WalletTracking-Daten löschen","–","wallettracking_delete_all_user_data() + wallet-private","keine externe API","Phase 5.94: löscht transaktional alle public-Tabellenzeilen mit user_id des angemeldeten Users, anonymisiert created_by/updated_by in globalen Caches, leert lokale Browserdaten und meldet den User ab. Globale öffentliche Blockchain-/Registry-/Token-/Contract-Fakten und das Auth-Login bleiben erhalten."]]},
+  {id:"support-data",level:1,label:"🗑️ Daten & Konto",status:"done",idea:"Vollständige userbezogene Datenlöschung",start:"–",daily:"–",open:"cache-only",manual:"User bestätigt Löschung",details:[["Alle WalletTracking-Daten löschen","–","wallettracking_delete_all_user_data() + wallet-private","keine externe API","Phase 5.97: löscht transaktional alle public-Tabellenzeilen mit user_id des angemeldeten Users, anonymisiert created_by/updated_by in globalen Caches und leert lokale Browserdaten. Normale User werden danach abgemeldet; Admin-User behalten für wiederholte Lifecycle-Tests ausschließlich ihre Supabase-Auth-Session und starten leer neu. Globale öffentliche Blockchain-/Registry-/Token-/Contract-Fakten und das Auth-Login bleiben erhalten."]]},
 
   {id:"walletsgrp",level:0,label:"🧰 Wallets & Token",status:"planning",start:"DB",daily:"–",open:"Cache/DB",manual:"je Funktion",details:[]},
   {id:"wallets",level:1,label:"Meine Wallets",status:"done",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"gezielt speichern / vollständig löschen",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"],["Neue/gespeicherte Wallet · Erstaufbau","nur diese Wallet","Current-State je konfigurierter Chain + NFT/DAO-Target-Refresh; TLN/VOW lazy bzw. Session-Refresh","RPC/API nur für diese Wallet","Phase 5.82: Speichern startet kein breites loadAll() über alle Wallets mehr. Bestehende Wallets bleiben unangetastet; Current State wird gezielt aufgebaut, DAO1/APTMDAO aktualisiert nur diese Wallet und TLN/VOW übernimmt sie sofort, falls das Modul bereits initialisiert ist – sonst beim ersten Öffnen."],["Wallet vollständig löschen","RAM wird nach Erfolg verworfen","wallet-private → transaktionale RPC; walletbezogene Tabellen + Snapshot-/31.12.-Daten + abgeleitete User-Caches","keine globalen Registry-/On-Chain-Fakten","Löschen in Meine Wallets; danach Reload und Neuaufbau aller Summen aus verbleibenden Daten"]]},
@@ -1771,7 +1786,15 @@ const ADMIN_SYSTEM_TREE = [
   {id:"admin-hard",level:1,label:"🧪 Hardcoding-Audit",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[]},
   {id:"admin-system",level:1,label:"🗺️ Systemübersicht",status:"done",idea:"Systemübersicht · Funktionsbaum",start:"Release-/Migrationscheck",daily:"–",open:"lokal",manual:"–",details:[["Funktions-/Ladebaum","JS Definition","–","–","Admin-Tab öffnen; Status mit Ideen/TODOs verknüpft"],["Release-Management / DATA_MIGRATIONS","userbezogener Versionsstand","Supabase user_data_migrations + user_release_acknowledgements","gezielte API/RPC nur wenn ein registrierter Migrationsjob dies fachlich verlangt","Phase 5.93: SQL 072 erweitert den DB-Status-Constraint um partial; der Apertum-RPC-Proxy wird mit enger eth_call-Allowlist versioniert/deployed. Phase 5.92: complete/partial/failed wird persistent unterschieden; partial/failed erhöht die Datenversion nicht und wird erneut versucht. Phase 5.89: beim Login nur fehlende Datenmigrationen ausführen; Abschluss erst nach Erfolg persistieren. Relevante Release-Mitteilungen erscheinen pro User einmal als quittierungspflichtiges Popup."]]},
   {id:"admin-ideas",level:1,label:"💡 Ideen / Umbau",status:"in_progress",start:"JS geladen",daily:"–",open:"lokal",manual:"–",details:[["Projekt-TODOs","admin/ideas.js","–","–","Datei wird mit Cache-Buster geladen"]]},
+<<<<<<< Updated upstream
   {id:"admin-testing",level:1,label:"🧪 Zu testen",status:"in_progress",idea:"Zu testen · Wallet- und Datenlöschungs-Flows",start:"–",daily:"–",open:"lokal",manual:"praktischer Test",details:[["Wallet hinzufügen","–","Wallet-/Projekt-Daten + Caches","projektbezogene Initialisierung","Neue Wallet erfassen; sichtbaren Ladebalken bis Job-Ende, DAO1 Claim-Auszahlungen/Asset-Flows, Projekt-Erkennung und Dashboard-Summen prüfen"],["Wallet löschen","–","walletbezogene DB-Daten + Caches","–","Einzel-Wallet-Löschung vollständig prüfen; Summen aus verbleibenden Wallets neu validieren"],["Sämtliche Daten löschen","–","wallettracking_delete_all_user_data() + Browsercache","–","Zweistufige Bestätigung, vollständige serverseitige + lokale Löschung, Logout und leeren Neustand nach Re-Login prüfen"]]},
+=======
+<<<<<<< HEAD
+  {id:"admin-testing",level:1,label:"🧪 Zu testen",status:"in_progress",idea:"Zu testen · Wallet- und Datenlöschungs-Flows",start:"–",daily:"–",open:"lokal",manual:"praktischer Test",details:[["Wallet hinzufügen","–","Wallet-/Projekt-Daten + Caches","projektbezogene Initialisierung","Neue Wallet erfassen; sichtbaren Ladebalken bis Job-Ende, DAO1 Claim-Auszahlungen/Asset-Flows, Projekt-Erkennung und Dashboard-Summen prüfen"],["Wallet löschen","–","walletbezogene DB-Daten + Caches","–","Einzel-Wallet-Löschung vollständig prüfen; Summen aus verbleibenden Wallets neu validieren"],["Sämtliche Daten löschen","–","wallettracking_delete_all_user_data() + Browsercache","–","Zweistufige Bestätigung, vollständige serverseitige + lokale Löschung prüfen; normale User: Logout/Re-Login, Admin-Testuser: Session bleibt erhalten und leerer Neustart ohne neuen Magic Link"]]},
+=======
+  {id:"admin-testing",level:1,label:"🧪 Zu testen",status:"in_progress",idea:"Zu testen · Wallet- und Datenlöschungs-Flows",start:"–",daily:"–",open:"lokal",manual:"praktischer Test",details:[["Wallet hinzufügen","–","Wallet-/Projekt-Daten + Caches","projektbezogene Initialisierung","Neue Wallet erfassen; sichtbaren Ladebalken bis Job-Ende, DAO1 Claim-Auszahlungen/Asset-Flows, Projekt-Erkennung und Dashboard-Summen prüfen"],["Wallet löschen","–","walletbezogene DB-Daten + Caches","–","Einzel-Wallet-Löschung vollständig prüfen; Summen aus verbleibenden Wallets neu validieren"],["Sämtliche Daten löschen","–","wallettracking_delete_all_user_data() + Browsercache","–","Zweistufige Bestätigung, vollständige serverseitige + lokale Löschung, Logout und leeren Neustand nach Re-Login prüfen"]]},
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
+>>>>>>> Stashed changes
   {id:"admin-doc",level:1,label:"📚 Dokumentation",status:"done",start:"–",daily:"–",open:"lokal",manual:"–",details:[]}
 ];
 
@@ -3764,7 +3787,23 @@ async function deleteWalletCompletely(w) {
   return invokeWalletPrivate("wallet_delete", {wallet_id:String(w.dbId)});
 }
 
-async function clearWalletTrackingLocalUserData() {
+function isSupabaseAuthStorageKey(key) {
+  const k=String(key||"");
+  return /^sb-[^-]+-auth-token$/i.test(k) || /supabase.*auth.*token/i.test(k);
+}
+function clearWebStorageExceptAuth(storage,preserveAuthSession=false){
+  try{
+    if(!preserveAuthSession){storage.clear();return;}
+    const keep=new Map();
+    for(let i=0;i<storage.length;i++){
+      const key=storage.key(i);
+      if(key && isSupabaseAuthStorageKey(key))keep.set(key,storage.getItem(key));
+    }
+    storage.clear();
+    for(const [key,value] of keep)if(value!=null)storage.setItem(key,value);
+  }catch(_){}
+}
+async function clearWalletTrackingLocalUserData({preserveAuthSession=false}={}) {
   try {
     if (window.WalletTrackingBrowserCache?.destroy) {
       await window.WalletTrackingBrowserCache.destroy();
@@ -3777,8 +3816,8 @@ async function clearWalletTrackingLocalUserData() {
   } catch (e) {
     console.warn("Lokalen WalletTracking-IndexedDB-Cache löschen", e);
   }
-  try { localStorage.clear(); } catch (_) {}
-  try { sessionStorage.clear(); } catch (_) {}
+  clearWebStorageExceptAuth(localStorage,preserveAuthSession);
+  clearWebStorageExceptAuth(sessionStorage,preserveAuthSession);
 }
 
 async function deleteAllWalletTrackingUserData() {
@@ -3805,11 +3844,19 @@ async function deleteAllWalletTrackingUserData() {
     const result = await invokeWalletPrivate("user_data_delete");
     if(status)status.textContent=`Serverseitig gelöscht${Number(result?.result?.deleted_rows||0)?`: ${Number(result.result.deleted_rows)} Datensätze`: ""}. Lokale Daten werden entfernt…`;
 
-    try { await sb.auth.signOut(); } catch (e) { console.warn("Abmelden nach vollständiger Datenlöschung", e); }
-    await clearWalletTrackingLocalUserData();
+    const keepAdminSession=!!isAdmin;
+    if(!keepAdminSession){
+      try { await sb.auth.signOut(); } catch (e) { console.warn("Abmelden nach vollständiger Datenlöschung", e); }
+    }
+    await clearWalletTrackingLocalUserData({preserveAuthSession:keepAdminSession});
 
-    alert("Alle gespeicherten WalletTracking-Daten wurden vollständig gelöscht. Dein Login-Konto bleibt bestehen. Du wirst jetzt zur leeren Anwendung zurückgeführt.");
-    location.href = REDIRECT_URL;
+    if(keepAdminSession){
+      alert("Alle gespeicherten WalletTracking-Daten wurden vollständig gelöscht. Admin-Testmodus: Du bleibst angemeldet und startest jetzt mit leerem WalletTracking neu.");
+      location.reload();
+    }else{
+      alert("Alle gespeicherten WalletTracking-Daten wurden vollständig gelöscht. Dein Login-Konto bleibt bestehen. Du wirst jetzt zur leeren Anwendung zurückgeführt.");
+      location.href = REDIRECT_URL;
+    }
   } catch (e) {
     console.error("Alle WalletTracking-Userdaten löschen", e);
     if(status)status.textContent="Löschung fehlgeschlagen – es wurde kein erfolgreicher Abschluss bestätigt.";
@@ -3917,46 +3964,101 @@ window.setWalletOwnership=setWalletOwnership;
 
 async function initializeSavedWalletTargeted(w,{isNew=false}={}) {
   if(!w||!currentUser)return {skipped:true};
-  const failures=[];
+  const started=performance.now(),failures=[],timings={};
+  const timed=async(name,fn)=>{
+    const t0=performance.now();
+    try{return await fn();}
+    finally{timings[name]=Math.round(performance.now()-t0);}
+  };
   // Nur diese Wallet neu aufbauen. Bestehende Wallets und deren Caches werden nicht breit aktualisiert.
   walletData[w.id]={};
   const chains=Object.keys(CHAIN_CONFIG).filter(c=>CHAIN_CONFIG[c]?.balanceProvider&&walletAddressForChain(w,c));
-  for(const chain of chains){
-    try{
-      const r=await loadWalletChain(w,chain,false);
-      if(r?.ok===false)throw new Error(r.error||"Bestand konnte nicht geladen werden");
-      await saveWalletRefreshState(w,chain,'balances',{last_checked_at:new Date().toISOString(),last_refreshed_at:new Date().toISOString(),last_result:'refreshed'});
-    }catch(e){failures.push(`${CHAIN_META[chain]?.label||chain}: ${e.message||e}`);}
-  }
+  await timed("Bestände",async()=>{
+    for(const chain of chains){
+      try{
+        const r=await loadWalletChain(w,chain,false);
+        if(r?.ok===false)throw new Error(r.error||"Bestand konnte nicht geladen werden");
+        await saveWalletRefreshState(w,chain,'balances',{last_checked_at:new Date().toISOString(),last_refreshed_at:new Date().toISOString(),last_result:'refreshed'});
+      }catch(e){failures.push(`${CHAIN_META[chain]?.label||chain}: ${e.message||e}`);}
+    }
+  });
 
   // DAO1 besitzt bereits einen gezielten Wallet-Erstaufbau inkl. Apertum-NFT/Ownership/Tx.
   let daoHandledApertum=false;
+<<<<<<< HEAD
+  await timed("DAO1",async()=>{
+    if(w.evm&&window.DAO1Project?.refreshWalletAfterSave){
+      try{
+        const r=await window.DAO1Project.refreshWalletAfterSave(w.dbId||w.id,{isNew});
+        daoHandledApertum=!!r?.ok;
+        if(r?.ok)window.setWtDataStatus?.("dao",{updatedAt:new Date().toISOString(),source:"fresh-build",label:"DAO1 Wallet-Erstaufbau"});
+      }catch(e){failures.push(`DAO1/APTMDAO: ${e.message||e}`);}
+    }
+  });
+=======
   if(w.evm&&window.DAO1Project?.refreshWalletAfterSave){
     try{const r=await window.DAO1Project.refreshWalletAfterSave(w.dbId||w.id,{isNew});daoHandledApertum=!!r?.ok;}
     catch(e){failures.push(`DAO1/APTMDAO: ${e.message||e}`);}
   }
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
 
   // Andere NFT-Chains current-state aktualisieren; Apertum nicht doppelt laden, wenn DAO es bereits erledigt hat.
-  try{
-    const nr=await refreshNftsForWallet(w,null,{skipChains:daoHandledApertum?["apertum"]:[]});
-    if(nr?.errors?.length)failures.push(...nr.errors.map(x=>`NFT: ${x}`));
-    await saveWalletRefreshState(w,'','nft',{last_checked_at:new Date().toISOString(),last_refreshed_at:new Date().toISOString(),last_result:Number(nr?.count||0)===0?'no_nfts':'refreshed'});
-  }catch(e){failures.push(`NFTs: ${e.message||e}`);}
+  await timed("NFTs",async()=>{
+    try{
+      const nr=await refreshNftsForWallet(w,null,{skipChains:daoHandledApertum?["apertum"]:[]});
+      if(nr?.errors?.length)failures.push(...nr.errors.map(x=>`NFT: ${x}`));
+      await saveWalletRefreshState(w,'','nft',{last_checked_at:new Date().toISOString(),last_refreshed_at:new Date().toISOString(),last_result:Number(nr?.count||0)===0?'no_nfts':'refreshed'});
+    }catch(e){failures.push(`NFTs: ${e.message||e}`);}
+  });
 
   // TLN/VOW aktualisiert nur seine Wallet-Auswahl/Current-State-Verknüpfung, falls das Modul bereits offen war.
   // War es noch nie geöffnet, bleibt der Erstaufbau bewusst lazy und verwendet beim ersten Öffnen die neue DB-Wallet.
-  try{await window.TLNVOWDiscovery?.refreshWalletAfterSave?.(w.dbId||w.id);}catch(e){failures.push(`TLN/VOW: ${e.message||e}`);}
+  await timed("TLN/VOW",async()=>{
+    try{await window.TLNVOWDiscovery?.refreshWalletAfterSave?.(w.dbId||w.id);}catch(e){failures.push(`TLN/VOW: ${e.message||e}`);}
+  });
 
+<<<<<<< HEAD
+  await timed("Summen",async()=>{
+    await mergeTlnBscStakingCacheIntoWalletData().catch(()=>{});
+    renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();renderWalletDataFreshness();
+  });
+=======
   await mergeTlnBscStakingCacheIntoWalletData().catch(()=>{});
   renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();renderWalletDataFreshness();
+<<<<<<< Updated upstream
+=======
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
+>>>>>>> Stashed changes
   // Einen neuen Snapshot erst speichern, wenn der gezielte Wallet-/Projektaufbau
   // vollständig durchgelaufen ist. So kann kein partieller Fresh-Build zum neuen
   // Referenzstand für Dashboard oder 31.12.-Folgeprozesse werden.
   if(failures.length===0){
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+    await timed("Snapshot",async()=>{
+      try{await createSnapshot(true);}catch(e){failures.push(`Snapshot: ${e.message||e}`);}
+    });
+  }else timings["Snapshot"]=0;
+  await timed("Projekt-Summaries",()=>refreshDashboardProjectSummaries().catch(()=>{}));
+  const durationMs=Math.round(performance.now()-started);
+  const detail=Object.entries(timings).map(([name,ms])=>`${name} ${Math.round(ms/100)/10}s`).join(" · ");
+  console.info("Wallet-Erstimport Laufzeit",{wallet:w.label||w.id,isNew,durationMs,timings,failures:[...failures]});
+  return {ok:failures.length===0,failures,isNew,durationMs,timings,durationText:formatWalletImportDuration(durationMs),detail};
+}
+
+function formatWalletImportDuration(ms){
+  const sec=Math.max(0,Math.round(Number(ms||0)/1000));
+  if(sec<60)return `${sec} Sek.`;
+  const min=Math.floor(sec/60),rest=sec%60;
+  return `${min} Min. ${String(rest).padStart(2,"0")} Sek.`;
+=======
+>>>>>>> Stashed changes
     try{await createSnapshot(true);}catch(e){failures.push(`Snapshot: ${e.message||e}`);}
   }
   await refreshDashboardProjectSummaries().catch(()=>{});
   return {ok:failures.length===0,failures,isNew};
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
 }
 
 async function saveWallet(id) {
@@ -4023,6 +4125,19 @@ async function saveWallet(id) {
     const r=await runDataJob(isNewWallet?"Neue Wallet · Daten werden geladen …":"Wallet · Daten werden aktualisiert …",
       ()=>initializeSavedWalletTargeted(w,{isNew:isNewWallet}));
     const freshStatus=document.getElementById("saveStatus-"+w.id);
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+    const duration=r?.durationText?` · ${r.durationText}`:"";
+    if(r?.failures?.length){
+      console.warn("Gezielter Wallet-Erstaufbau mit Hinweisen",r.failures,r?.timings||{});
+      if(freshStatus)freshStatus.textContent=`Gespeichert · Daten aufgebaut – ${r.failures.length} Teilbereich${r.failures.length===1?"":"e"} mit Fehler${duration}.`;
+      renderCacheStatusNote(`Wallet gespeichert · Daten aufgebaut – ${r.failures.length} Teilbereich${r.failures.length===1?"":"e"} mit Fehler${duration}.`);
+    }else{
+      if(freshStatus)freshStatus.textContent=`Gespeichert · Daten vollständig aufgebaut${duration}.`;
+      renderCacheStatusNote((isNewWallet?"Neue Wallet vollständig aufgebaut":"Wallet-Daten aktualisiert")+duration+".");
+=======
+>>>>>>> Stashed changes
     if(r?.failures?.length){
       console.warn("Gezielter Wallet-Erstaufbau mit Hinweisen",r.failures);
       if(freshStatus)freshStatus.textContent=`Gespeichert · Aktualisierung teilweise abgeschlossen (${r.failures.length} Hinweis${r.failures.length===1?"":"e"}).`;
@@ -4030,6 +4145,10 @@ async function saveWallet(id) {
     }else{
       if(freshStatus)freshStatus.textContent="Gespeichert · Daten vollständig aufgebaut.";
       renderCacheStatusNote(isNewWallet?"Neue Wallet vollständig aufgebaut.":"Wallet-Daten aktualisiert.");
+<<<<<<< Updated upstream
+=======
+>>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
+>>>>>>> Stashed changes
     }
   }catch(e){
     console.warn("Gezielter Erstaufbau nach Wallet-Speicherung",e);
