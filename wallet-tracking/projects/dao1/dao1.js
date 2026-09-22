@@ -1,4 +1,4 @@
-// Phase 5.95 · 22.09.2026 20:32:07 CEST: Fresh-Build/„Daten aktualisieren“ lädt für das einzige Referral-Wallet die vollständige ERC-20-Asset-Flow-Historie statt nur wUSDT. Dadurch können auch historische DID-Referral-Auszahlungen in wAPTM/wSOL und ältere wUSDT-Flows reproduzierbar aus einem leeren User-Cache aufgebaut werden. Build 20260922-203207.
+// Phase 5.96 · 22.09.2026 21:35:26 CEST: DAO1 Fresh-Build ergänzt inkrementelle ERC-20 Asset-Flows für relevante Wallets; Claim-Logs RPC-first; unnötiger ERC-721/1155-Claim-Request entfernt. Build 20260922-213526.
 // Phase 5.93 · 22.09.2026 12:15:22 CEST: Server-RPC-Proxy passend zum lokalen Gate mit enger APTMDAO ownerOf/Parent-eth_call-Allowlist; Migration v4 kann erneut prüfen. Build 20260922-121522.
 // Phase 5.88 · 22.09.2026 02:20:48 CEST: APTMDAO-Identitäts-NFTs zählen als DID; zentraler NFT-Typadapter für DID/MineBot/TradeBot; manueller NFT-Refresh kann offene Ownership-Lücken gezielt reparieren. Build 20260922-022048.
 // Phase 5.87 · 22.09.2026 01:36:51 CEST: DAO1 Self-Heal für vor 5.82 hinzugefügte Wallets: fehlende/invollständige NFT-Ownership wird aus dem zentralen Current-State erkannt und gezielt nachgezogen; bekannte DID-Contracts werden ohne manuelle project_nfts-Klassifizierung korrekt gezählt. Build 20260922-013651.
@@ -1459,9 +1459,11 @@ window.DAO1Project = (() => {
     if(dao1TxTokenTransfersCache.has(hash))return dao1TxTokenTransfersCache.get(hash);
     if(dao1TxTokenTransfersInflight.has(hash))return dao1TxTokenTransfersInflight.get(hash);
     const job=(async()=>{
+    // Für Claim-/Reward-Auszahlungen benötigen wir ausschließlich fungible Token-Flows.
+    // Der frühere zweite ERC-721/ERC-1155-Aufruf war fachlich unnötig und lieferte
+    // bei einzelnen historischen Transaktionen HTTP 400.
     const candidates=[
-      `${EXPLORER_API}/transactions/${hash}/token-transfers`,
-      `${EXPLORER_API}/transactions/${hash}/token-transfers?type=ERC-721%2CERC-1155`
+      `${EXPLORER_API}/transactions/${hash}/token-transfers`
     ];
     let lastError=null;
     for(const initial of candidates){
@@ -3057,21 +3059,23 @@ window.DAO1Project = (() => {
 
   async function fetchClaimTransferLogs(txHash){
     const hash=String(txHash||"").toLowerCase();
-    let logs=[];
-    try{
-      logs=await fetchAll(`/transactions/${hash}/logs`);
-    }catch(e){
-      console.warn("DAO1 Claim Logs via Explorer",hash,e);
-    }
-    if(logs.length)return logs;
 
-    // Zweite Quelle: RPC-Receipt. Wichtig, falls Blockscout für eine Tx keine
-    // token-transfers liefert, die ERC-20 Transfer-Events aber im Receipt vorhanden sind.
+    // Primär das standardisierte RPC-Receipt verwenden. Historische Blockscout-
+    // /transactions/<hash>/logs-Aufrufe liefern auf Apertum teilweise HTTP 400,
+    // obwohl das Receipt die ERC-20 Transfer-Events vollständig enthält.
     try{
       const receipt=await rpc("eth_getTransactionReceipt",[hash]);
-      return Array.isArray(receipt?.logs)?receipt.logs:[];
+      const logs=Array.isArray(receipt?.logs)?receipt.logs:[];
+      if(logs.length)return logs;
     }catch(e){
       console.warn("DAO1 Claim Logs via RPC Receipt",hash,e);
+    }
+
+    // Explorer nur noch als Fallback, falls das RPC-Receipt keine Logs liefert.
+    try{
+      return await fetchAll(`/transactions/${hash}/logs`);
+    }catch(e){
+      console.warn("DAO1 Claim Logs via Explorer Fallback",hash,e);
       return [];
     }
   }
@@ -3770,12 +3774,11 @@ window.DAO1Project = (() => {
           setTransactionStatus("loading",`Wallet ${i+1}/${targets.length}: ${w.label} wird aktualisiert…`,address);
           const txSync=await syncApertumTransactionCache(address,null);
           if(job!==transactionJobToken)return;
-          // Phase 5.95: Beim einzigen Referral-Wallet muss ein frischer User die
-          // vollständige ERC-20-Flow-Historie reproduzieren können. Der frühere
-          // wUSDT-only-Scan ließ historische DID-Auszahlungen in wAPTM/wSOL und
-          // einzelne ältere Referral-Flows aus einem leeren Cache verschwinden.
-          if(lower(address)===REFERRAL_WALLET) await syncApertumTokenFlowCache(address);
-          else await syncTargetedReferralWusdt(address);
+          // Reward-/Referral-Auszahlungen werden aus persistenten ERC-20 Asset-Flows
+          // aufgebaut. Der Scan ist inkrementell und ergänzt nur neue/überlappende Blöcke.
+          await syncApertumTokenFlowCache(address);
+          if(job!==transactionJobToken)return;
+          await syncTargetedReferralWusdt(address);
           if(job!==transactionJobToken)return;
           const walletRows=await loadTransactionRows(address,null);
           if(job!==transactionJobToken)return;
@@ -7057,11 +7060,16 @@ window.DAO1Project = (() => {
     await loadOwnershipCache();
     const ownership=await refreshWalletNftsAndOwnership(wallet,"Wallet gespeichert · ");
     const txSync=await syncApertumTransactionCache(address,null);
-    // Phase 5.95: Fresh-Build des Referral-Wallets darf nicht von historischen
-    // Caches des Users abhängen. Vollständige ERC-20-Flows dieses Wallets laden;
-    // andere Wallets behalten den schlanken gezielten Pfad.
-    if(lower(address)===REFERRAL_WALLET) await syncApertumTokenFlowCache(address);
-    else await syncTargetedReferralWusdt(address);
+    // Fresh-Build-Lücke bis 5.94: Claim-Tx wurden erkannt, ihre ERC-20-Auszahlungen
+    // aber nicht vollständig aufgebaut. Für echte DAO1/APTMDAO-Wallets (NFT-Bestand)
+    // sowie das bekannte Referral-Wallet wird die Asset-Flow-Historie deshalb direkt
+    // beim Wallet-Bootstrap inkrementell aufgebaut. Andere EVM-Wallets erhalten keinen
+    // unnötigen Apertum-Vollscan.
+    let flowSync={skipped:true,flows:0};
+    if(Number(ownership?.nfts||0)>0 || lower(address)===REFERRAL_WALLET){
+      flowSync=await syncApertumTokenFlowCache(address);
+    }
+    await syncTargetedReferralWusdt(address);
     await loadTransactionRows(address,null);
     await enrichTransactionsWithClaims(address,null,transactionJobToken);
     await loadDAO1OwnedDidRoots(true);
@@ -7072,7 +7080,7 @@ window.DAO1Project = (() => {
     await loadDashboardSummary().catch(()=>{});
     const remaining=(dao1CachedCurrentNftsForWallet(wallet)||[]).filter(n=>dao1OwnershipNeedsRepair(wallet,n)).length;
     await dao1SaveWalletBootstrapState(wallet,remaining?"partial":"complete",remaining?`${remaining} offen`:"new-wallet bootstrap");
-    return {ok:true,ownership,txSync};
+    return {ok:true,ownership,txSync,flowSync};
   }
 
   async function ensureLoaded() {
