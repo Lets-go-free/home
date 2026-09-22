@@ -122,7 +122,7 @@
         <div class="tab-nav-group" data-nav-section="projects"><div class="tab-nav">
           <button type="button" class="tab-btn" data-tab="projects-overview" onclick="showTab('projects-overview')">Übersicht</button>
           <button type="button" class="tab-btn" id="tlnVowTabBtn" data-tab="tlnvow" onclick="showTab('tlnvow')">TLN / VOW</button>
-          <button type="button" class="tab-btn" data-tab="dao1" onclick="showTab('dao1')">DAO1</button>
+          <button type="button" class="tab-btn" id="dao1TabBtn" data-tab="dao1" onclick="showTab('dao1')" style="display:none">DAO1</button>
         </div></div>
         <div class="tab-nav-group" data-nav-section="admin" id="adminNavGroup" style="display:none"><div class="tab-nav">
           <button type="button" class="tab-btn" data-tab="admin" data-open-admin="customtokens" onclick="showTab('admin');showAdminTab('customtokens')">Eigene sichere Token</button>
@@ -1143,7 +1143,7 @@
   </div>
 
   <footer>
-    Version vom 22.09.2026 20:32:07 CEST · Phase 5.95 · DAO1 Fresh-Build Referral-Asset-Flows<br>
+    Version vom 22.09.2026 21:35:26 CEST · Phase 5.96 · Wallet-Lifecycle/Fresh-Build<br>
     Datenquellen: PublicNode-RPCs (kostenlose EVM-Wallet-Bestände), explorer.apertum.io, api.trongrid.io, blockstream.info, xrpscan.com, Alchemy Solana Account Archive, api.coingecko.com + api.geckoterminal.com (Fallback-Kurse) sowie integrierte TLN/VOW-On-Chain-Poolpreise (Vorrang per Contract-Adresse). Alchemy wird aktuell nur noch für verbleibende manuelle Spezialfunktionen (Entdecken, Freigaben, NFTs) verwendet. Gebühren: ETH/Avalanche über Routescan, BSC über NodeReal/BSCTrace, Polygon/Arbitrum/Base über Blockscout. Keine Gewähr für Vollständigkeit oder Richtigkeit der Drittanbieter-Daten.
   </footer>
 </div>
@@ -1157,16 +1157,16 @@
 <script src="./js/lp-engine.js?v=20260921-000207"></script>
 <script src="./js/staking-engine.js"></script>
 <script src="./projects/tln-vow/tln-vow-loans.js?v=20260915-173339"></script>
-<script src="./projects/tln-vow/tln-vow.js?v=20260922-022048"></script>
-<script src="./projects/dao1/dao1.js?v=20260922-203207"></script>
+<script src="./projects/tln-vow/tln-vow.js?v=20260922-213526"></script>
+<script src="./projects/dao1/dao1.js?v=20260922-213526"></script>
 
 <!-- Ausgelagerte Module: normale Script-Tags mit Cache-Buster.
      Kein dynamischer document.write-Loader mehr. -->
-<script src="./admin/ideas.js?v=20260922-203207"></script>
-<script src="./help/help-general.js?v=20260922-140348"></script>
+<script src="./admin/ideas.js?v=20260922-213526"></script>
+<script src="./help/help-general.js?v=20260922-213526"></script>
 <script src="./projects/tln-vow/help.js?v=20260922-022048"></script>
 <script src="./projects/dao1/help.js?v=20260922-121522"></script>
-<script src="./js/app.js?v=20260922-203207"></script>
+<script src="./js/app.js?v=20260922-213526"></script>
 <script src="./projects/tln-vow/tln-vow-discovery.js?v=20260922-022048"></script>
 
 
@@ -1185,6 +1185,6 @@
 
 
 
-<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 22.09.2026 20:32:07 CEST · Phase 5.95 · Build 20260922-203207</div>
+<div id="buildVersion" style="position:fixed;right:10px;bottom:8px;z-index:9999;font-size:11px;opacity:.72;background:var(--card,#fff);padding:4px 7px;border-radius:6px;border:1px solid rgba(128,128,128,.25)">Version: 22.09.2026 21:35:26 CEST · Phase 5.96 · Build 20260922-213526</div>
 </body>
 </html>
