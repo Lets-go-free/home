@@ -1,10 +1,4 @@
-<<<<<<< Updated upstream
-=======
-<<<<<<< HEAD
 // Phase 5.97 · 22.09.2026 23:14:40 CEST: neue Miner-Claims nutzen native Internal-APTM-Auszahlung ohne unnötigen ERC-20-Detailscan; Proxy/Router-Absender als Fallback erlaubt; Claim-Summary zeigt Tokenmenge. Build 20260922-231440.
-=======
->>>>>>> 8b7f1844cb00ddfc541e0c8e2a62fdcef70d04fe
->>>>>>> Stashed changes
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: DAO1 Fresh-Build ergänzt inkrementelle ERC-20 Asset-Flows für relevante Wallets; Claim-Logs RPC-first; unnötiger ERC-721/1155-Claim-Request entfernt. Build 20260922-213526.
 // Phase 5.93 · 22.09.2026 12:15:22 CEST: Server-RPC-Proxy passend zum lokalen Gate mit enger APTMDAO ownerOf/Parent-eth_call-Allowlist; Migration v4 kann erneut prüfen. Build 20260922-121522.
 // Phase 5.88 · 22.09.2026 02:20:48 CEST: APTMDAO-Identitäts-NFTs zählen als DID; zentraler NFT-Typadapter für DID/MineBot/TradeBot; manueller NFT-Refresh kann offene Ownership-Lücken gezielt reparieren. Build 20260922-022048.
