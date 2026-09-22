@@ -1,3 +1,5 @@
+// Phase 6.01 · 23.09.2026 00:38:40 CEST: Lifecycle-/Architektur-Audit in bestehenden Admin-Audit-Tab integriert; Stabilitätsreihenfolge und Fresh-Build-Konsolidierung als nächster Schwerpunkt dokumentiert. Build 20260923-003840.
+// Phase 6.00 · 23.09.2026 00:26:45 CEST: TLN Dashboard cache-only UUID-Fehler (local1 -> uuid) beim Fresh-Import behoben und als Lifecycle-Testpunkt dokumentiert. Build 20260923-002645.
 // Phase 5.99 · 23.09.2026 00:15:00 CEST: Fresh-Build: frisch geladene DAO1-NFTs sofort verwenden; native Claim-Auszahlungen via Internal+RPC-Trace; historische APTM-Preise via getReserves vor Log-Fallback. Build 20260923-001500.
 // Phase 5.98 · 22.09.2026 23:40:05 CEST: DAO1-Fresh-Import >10 Min analysiert/korrigiert: kein redundanter Claim-Tx-Detailscan nach vollständigem ERC-20-Walletscan; native Evidenz parallelisiert/gecacht. Build 20260922-234005.
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: Lifecycle-Testdoku ergänzt: sichtbarer Wallet-Erstaufbau, DAO1 Asset-Flows/Claim-Auszahlungen und Snapshot erst nach vollständigem Aufbau. Build 20260922-213526.
@@ -31,6 +33,7 @@
 // Phase 5.41: Dashboard-Projektwerte in frei/gebunden/gesamt aufgesplittet; TLN/VOW-LP-Doppelzählung zwischen walletData und lp_position_cache verhindert; aktuelle Preise mit Asset-refreshedAt; DAO1/APTMDAO Partner-Bots tree-spezifisch über eindeutige Erwerbs-Tx-Evidenz getrennt; evidenzbasierter Partner-Bot-Lifecycle persistent (Migration 065) und als Cache-Quelle für letzte Partneraktivitäten. Unklare Bot-Zuordnungen werden keinem Tree geraten.
 // Phase 5.40: Dashboard-Audit fortgesetzt: Preisrefresh stale-while-refresh (alter gültiger Snapshot bleibt sichtbar), Kursliste zweispaltig/kompakt, Reward-Assets periodenübergreifend zeilengleich, TLN Partner-Staking-TODO mit Ladezustand, gebundener Wert mit Projektaufschlüsselung, letzte bestätigte Partneraktivitäten aus Projektcaches. DAO1-Bot-Kauf-Aktivitäten bleiben bis zu einem belastbaren persistenten Partner-NFT-Eventcache offen.
 // WalletTracking · Ideen / Umbau
+// STABILITÄTSAUDIT 6.01 (verbindlicher nächster Schwerpunkt): Kein Rewrite. Kritisch sind Fresh-Build-Parität, ehrlicher Lifecycle-Abschlussstatus, DAO1 Payout-/Asset-Flow-Konsolidierung, NFT Read-Model und Fresh-Import-Performance. Neue große Funktions-/Chain-Erweiterungen erst nach Konsolidierung dieser Punkte. Audit wird im bestehenden Admin-Tab „Audit“ gepflegt; kein separates Audit-Dokument als führende Quelle.
 // Phase 5.83 · 22.09.2026 00:14:45 CEST: TLN/VOW Referral-Rewards: Raw-Units-/Decimals-Regression in Summary, Partneransicht und DEV-Diagnose behoben; persistierte Alt-Snapshots werden über verifizierte Contract-Decimals normalisiert. Build 20260922-001445.
 // Phase 5.82 · 22.09.2026 01:36:51 CEST: Chain-Logos über public.chains.icon_path zentralisiert; Standard-SVGs ergänzt. Wallet-Speichern verwendet gezielten Erstaufbau nur für die gespeicherte Wallet statt loadAll() über alle Wallets; DAO current-state targeted, TLN/VOW lazy/session-aware. Build 20260922-013651.
 // Phase 5.81 · 21.09.2026 23:36:49 CEST: Einzelne Wallet vollständig löschen umgesetzt: serverseitig/transaktionaler Purge inkl. Snapshots, 31.12.-Beständen, Projekt-/History-/Cache-Daten und Invalidierung abgeleiteter User-Summaries; globale On-Chain-/Registry-Fakten bleiben erhalten. Userweite Funktion „Alle Daten löschen“ bleibt separat offen. Build 20260921-233649.
@@ -39,8 +42,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260923-001500";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "22.09.2026 23:40:05 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260923-003840";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "23.09.2026 00:38:40 CEST";
 // Phase 5.33: Dashboard-Summary validiert und Start weiter entkoppelt. Apertum-native-Fehler behoben: interner Asset-Key "native" wird nie mehr als EVM-Adresse ABI-encodiert. TLN/BSC lp_position_cache wird beim Dashboard-Start walletübergreifend in einem Batch gelesen statt mit Einzelrequest pro Wallet. TLN "davon aktiv" zeigt bei unvollständig verifizierten Lifecycles keine scheinbar endgültige Zahl mehr, sondern bestätigte Aktive plus offene Partner; erst bei vollständiger Lifecycle-Abdeckung wird die Endzahl gesetzt. DAO1 Dashboard-Rewards werden gezielt aus vorhandenen project_transactions + project_transaction_asset_flows gelesen, ohne ensureLoaded()/vollständige DAO1-Tab-Initialisierung. Phase 5.35 ersetzt die frühere USD-Summary: Gesamt/Vorjahr/Jahr/Monat zeigen Originaltoken/-mengen; historische USD-Bewertungen sind dafür nicht erforderlich. DAO1 "aktiv" bleibt bewusst offen: aktueller Code enthält keinen belastbaren Bot-Target-/Completed-Contract-Proof. Reward-Zeilen der Projektkarten wieder als konsistente Kacheln gestaltet. Systemübersicht, Admin-Doku und Hilfe synchronisiert. Build 20260919-140811.
 // Phase 5.30: TLN/VOW-Contracts werden aus der allgemeinen CoinGecko-/GeckoTerminal-Preisermittlung ausgeschlossen und ausschließlich über die bestehende zentrale Projekt-PriceEngine bewertet (BSC PancakeSwap / ETH Uniswap). Dashboard zeigt Contract-Adressen einheitlich nur verkürzt mit Copy-Funktion; vollständige Adressen werden nicht zusätzlich als Symbolzeile ausgegeben. Preisrouten/-berechnungen selbst unverändert.
 // Phase 5.29: Dashboard-Gerüst wird unmittelbar nach Login sichtbar, bevor Chain-/DB-Konfiguration fertig geladen ist. TLN/VOW-Dashboardpreise zeigen tatsächliche DEX-Quelle (BSC PancakeSwap / ETH Uniswap) plus vorhandene Preisroute. DAO1 hat neu „Kurse und Pools“ als reine Sicht auf die bereits bestehende Apertum-Preislogik; keine neue Preisermittlung.
@@ -71,9 +74,10 @@ const ADMIN_IDEAS = [
     category: "Zu testen",
     priority: "high",
     title: "Zu testen · Wallet- und Datenlöschungs-Flows",
-    desc: `OFFENE TESTS nach Phase 5.99:
+    desc: `OFFENE TESTS nach Phase 6.01:
 - Fresh-Import 5.99: DAO1-Wallet mit 200+ Claims erneut testen; prüfen, ob aktuelle NFTs/Bots sofort sichtbar sind, native APTM-Auszahlungen ermittelt werden und historische USD-Werte ohne großen Sync-Log-Massenscan erscheinen.
 - Laufzeit/Requests vergleichen mit 5.98 (8 Min. 59 Sek., 1.722 Requests); Ziel: deutlich weniger RPC-Volumen und kürzerer Erstimport.
+- TLN Dashboard-Summary beim Fresh-Import: keine Supabase-400/22P02 mehr; transiente IDs wie local1 dürfen nie als wallet_id-UUID gefiltert werden.
 
 • Wallet hinzufügen
   - neue Wallet erfassen

@@ -1,3 +1,5 @@
+// Phase 6.01 · 23.09.2026 00:38:40 CEST: Lifecycle-/Architektur-Audit in bestehenden Admin-Audit-Tab integriert; Hardcoding-Audit bleibt als eigener Abschnitt erhalten. Build 20260923-003840.
+// Phase 6.00 · 23.09.2026 00:26:45 CEST: TLN Dashboard-Summary schützt Supabase-UUID-Filter vor transienten lokalen Wallet-IDs beim Fresh-Import. Build 20260923-002645.
 // Phase 5.99 · 23.09.2026 00:15:00 CEST: DAO1 Fresh-Build-Fixes: NFT-Runtime-Sync, native Claim-Trace-Fallback und schneller historische Pool-State-Preispfad. Build 20260923-001500.
 // Phase 5.98 · 22.09.2026 23:40:05 CEST: DAO1-Fresh-Import-Performance: ERC-20-Vollscan wird als Evidenz wiederverwendet; Claim-Nativevidenz parallel statt hunderten seriellen Detailrequests. Build 20260922-234005.
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: Wallet-Speichern bleibt bis zum gezielten Lifecycle-Ende im zentralen Ladejob; Teilfehler werden sichtbar gemeldet; Snapshot erst nach fehlerfreiem Fresh-Build. Build 20260922-213526.
@@ -311,7 +313,7 @@ const DONATION_EVM_ADDRESS = "0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382";
 // Build-Version und Datenversion sind bewusst getrennt. Nur Releases mit echter
 // Datenwirkung registrieren einen Migrationsjob; reine UI-/Text-Releases lösen
 // keinen On-Chain-/API-Neuaufbau aus. Abschluss wird userbezogen in Supabase gespeichert.
-const WT_CURRENT_RELEASE = "5.99";
+const WT_CURRENT_RELEASE = "6.01";
 const WT_RELEASE_REGISTRY = Object.freeze({
   "5.93": {
     title: "NFT-Datenmigration und APTMDAO-RPC wurden korrigiert",
@@ -1714,7 +1716,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"analysis",level:0,label:"📊 Übersicht & Analyse",status:"in_progress",start:"Dashboard sofort + Caches",daily:"kein allgemeiner Auto-Refresh",open:"Cache lazy",manual:"je Funktion",details:[["App-Start-Inventar","RAM/Automated Cache","Chain-/Token-/Wallet-Basis · Refresh-State · automatisierter Bestand · Preis-Snapshot","keine allgemeine Preis-/On-chain-Aktualisierung beim Start","Phase 5.75: Der normale Login zeigt persistierte Current-State-Caches und startet kein loadAll() mehr. Projekt- und Historienjobs laufen nur über ihren jeweiligen Tab bzw. eine explizite Aktion; eine neue Wallet behält ihren gezielten Erstaufbau."]]},
   {id:"dashboard",level:1,label:"Dashboard · Startseite",status:"in_progress",idea:"Project-Summary-Cache",start:"sofort + Cache",daily:"Grunddaten + Preise",open:"RAM",manual:"Daten/Preise",details:[
     ["Vermögenskennzahlen","RAM aus Automated Snapshot","bereits geladener Bestands-Cache","kein allgemeiner Start-RPC","Dashboard sofort aus Cache. Phase 5.75: Ein normaler Seitenreload startet keinen allgemeinen Grunddatenlauf; Aktualisierung erfolgt gezielt manuell, beim Erstaufbau einer neuen Wallet oder über projektspezifische Tab-Logik."],
-    ["Project-Summary","localStorage Anzeige-Cache + Projektcaches","TLN/DAO Projektcaches","keine eigene Discovery","Projektmodule schreiben bestätigte Summary-Werte zurück; TLN Team nutzt denselben Forest/Lifecycle. TLN Staking-/Referral-/Bonus-Rewards und DAO Rewards/Referral Rewards sind in Originaltoken angeschlossen; DAO1/APTMDAO-Bezüge stammen aus getrennten Tree-Caches; die übergreifende Partnerzahl wird wallet-zentriert dedupliziert (1 Wallet = 1 Partner), während die beiden Einzelzahlen separat sichtbar bleiben. DAO-Aktivstatus bleibt bis zum Bot-Target-Proof offen."],
+    ["Project-Summary","localStorage Anzeige-Cache + Projektcaches","TLN/DAO Projektcaches","keine eigene Discovery","Projektmodule schreiben bestätigte Summary-Werte zurück; Phase 6.00: TLN cache-only DB-Summaries verwenden ausschließlich persistierte UUID-wallet_id-Werte; transiente Client-IDs wie local1 werden bis zur DB-Zuordnung übersprungen. TLN Team nutzt denselben Forest/Lifecycle. TLN Staking-/Referral-/Bonus-Rewards und DAO Rewards/Referral Rewards sind in Originaltoken angeschlossen; DAO1/APTMDAO-Bezüge stammen aus getrennten Tree-Caches; die übergreifende Partnerzahl wird wallet-zentriert dedupliziert (1 Wallet = 1 Partner), während die beiden Einzelzahlen separat sichtbar bleiben. DAO-Aktivstatus bleibt bis zum Bot-Target-Proof offen."],
     ["Erststart ohne Wallet","lokale UI","–","–","Dashboard bleibt Startseite und erklärt den Ablauf; Ein-Klick-Aktion legt eine neue Wallet-Zeile an. Nach Speichern startet automatisch der Grunddaten-Erstaufbau."],
     ["Dashboard-Kurse","RAM","wallet_global_current_price_snapshot + predefined_tokens.dashboard_visible + TLN/VOW Projekt-PriceEngine","global alle 15 Min. bei aktivem Client + manuell","App-Start lädt den globalen Snapshot. Pro :00/:15/:30/:45 claimt genau ein aktiver Client den globalen Refresh-Slot. TLN/VOW: BSC PancakeSwap / ETH Uniswap; kein CoinGecko-/GeckoTerminal-Fallback."],
     ["Projekt-Kacheln","RAM + Project-Summary","predefined_tokens + persistente Projektcaches","keine eigene Discovery","Breite Karten; Projektwert wird zusätzlich in frei verfügbar / aktuell gebunden / gesamt aufgesplittet. LP-Staking wird nur einmal gezählt, auch wenn walletData und lp_position_cache dieselbe Position enthalten. Kursliste automatisch bei Bestand > USD 1; „immer anzeigen“ erlaubt Bestand 0; Projekt-Token nur bei belegter Projektbeteiligung. Reward-Summaries nutzen Summary-Kommastellen (leer = Anzeige übernehmen, 0 = keine Nachkommastellen). Fehlende Summary-Werte bleiben – bis ein fachlicher Cache sie bestätigt."],
@@ -2103,6 +2105,25 @@ const HARDCODING_AUDIT_ITEMS = [
   {severity:"keep", area:"Credentials", item:"Frontend-Keys", detail:"Alchemy/PublicNode/NodeReal nicht in public.chains verschieben. Später separat über Proxy/Secret-Strategie lösen."}
 ];
 
+const LIFECYCLE_ARCH_AUDIT_ITEMS = [
+  {severity:"critical", area:"Fresh-Build-Parität", finding:"Neuer User kann nach identischem Wallet-Import einen anderen fachlichen Zustand als ein langjähriger User erreichen.", action:"Fresh-Build als verbindlichen Reproduzierbarkeitstest behandeln; bestehende Alt-Caches nie als Referenz voraussetzen."},
+  {severity:"critical", area:"DAO1 Lifecycle-Abschluss", finding:"Teilpfade können intern partial/leer bleiben, während der übergeordnete Wallet-Job trotzdem als vollständig aufgebaut erscheint.", action:"Einheitlichen Statusvertrag complete / partial / failed / deferred einführen und bis zum zentralen Abschlussstatus propagieren."},
+  {severity:"critical", area:"DAO1 Claims / Payouts", finding:"Claim-Erkennung, ERC-20-Flows, native Values, Internals, Receipts und Traces bilden heute mehrere sich ergänzende Payout-Pfade.", action:"Eine kanonische Payout-/Asset-Flow-Schicht definieren; Detailansichten und Dashboard ausschließlich daraus lesen lassen."},
+  {severity:"high", area:"NFT / Bot Current State", finding:"nft_cache, project_nft_ownership und DAO1-Runtime-Caches können zeitweise unterschiedliche Zustände liefern.", action:"nft_cache + project_nft_ownership als persistente Wahrheiten definieren; Runtime nur als abgeleitete Session-Sicht verwenden."},
+  {severity:"high", area:"Performance Fresh-Import", finding:"Messlauf einer DAO1-Wallet: 8:59 min, 1'722 Requests und ca. 263 MB Transfer.", action:"Request-Audit pro Lifecycle-Teiljob auswerten; doppelte History-/RPC-Scans entfernen und Ergebnisse teiljobübergreifend wiederverwenden."},
+  {severity:"high", area:"Wallet-ID Lifecycle", finding:"Transiente IDs wie local1 konnten bis in UUID-DB-Filter gelangen (6.00 korrigierter konkreter Fall).", action:"DB-Zugriffe ausschließlich mit persistierter dbId/UUID erlauben; lokale Client-ID nur für UI verwenden."},
+  {severity:"high", area:"Snapshot-Gate", finding:"Snapshots dürfen fachlich erst entstehen, wenn alle dafür erforderlichen Teiljobs vollständig sind.", action:"Snapshot an den neuen Lifecycle-Statusvertrag koppeln; partial/deferred darf keinen finalen Snapshot erzeugen."},
+  {severity:"medium", area:"Fehlerbehandlung", finding:"Mehrere optionale catch(()=>{})-Pfade erschweren die Unterscheidung zwischen bewusst optional und fachlich unvollständig.", action:"Fehlerklassen unterscheiden: optional, retryable, partial, fatal; zentrale Diagnose statt stiller Fehler."},
+  {severity:"medium", area:"Cache-Ownership", finding:"Wallet-, User-, Projekt- und globale Caches sind nicht überall explizit klassifiziert.", action:"Jeden persistenten Cache mit Scope, Source of Truth, Invalidierung und Delete-Verhalten dokumentieren."},
+  {severity:"good", area:"Komplette Userdaten-Löschung", finding:"Transaktionale DB-Löschung plus Abschlussprüfung ist architektonisch robust aufgebaut.", action:"Beibehalten; nur Regressionstests und Scope-Dokumentation ergänzen."},
+  {severity:"good", area:"Projekttrennung", finding:"TLN/VOW und DAO1/APTM sind fachlich getrennte Projektmodule mit gemeinsamer Infrastruktur.", action:"Beibehalten; gemeinsame Infrastruktur konsolidieren, ohne projektspezifische Fachlogik zu vermischen."}
+];
+function lifecycleAuditBadge(i){
+  if(i.severity==="critical")return '<span class="badge unsafe">kritisch</span>';
+  if(i.severity==="high")return '<span class="badge" style="background:rgba(220,80,50,.15);color:#dc5032">hoch</span>';
+  if(i.severity==="medium")return '<span class="badge" style="background:rgba(240,185,11,.15);color:#f0b90b">mittel</span>';
+  return '<span class="badge safe">stabil</span>';
+}
 function renderHardcodingAudit(){
   const el=document.getElementById("adminHardcodingAudit");
   if(!el || !isAdmin)return;
@@ -2111,9 +2132,19 @@ function renderHardcodingAudit(){
     : i.severity==="review"
       ? '<span class="badge" style="background:rgba(240,185,11,.15);color:#f0b90b">prüfen</span>'
       : '<span class="badge safe">bewusst belassen</span>';
-  el.innerHTML=`<table><thead><tr><th>Status</th><th>Bereich</th><th>Fund</th><th>Bewertung / nächster Schritt</th></tr></thead><tbody>
-    ${HARDCODING_AUDIT_ITEMS.map(i=>`<tr><td>${badge(i)}</td><td>${escapeAttr(i.area)}</td><td>${escapeAttr(i.item)}</td><td>${escapeAttr(i.detail)}</td></tr>`).join("")}
-  </tbody></table>`;
+  const lifecycleRows=LIFECYCLE_ARCH_AUDIT_ITEMS.map(i=>`<tr><td>${lifecycleAuditBadge(i)}</td><td>${escapeAttr(i.area)}</td><td>${escapeAttr(i.finding)}</td><td>${escapeAttr(i.action)}</td></tr>`).join("");
+  const hardcodingRows=HARDCODING_AUDIT_ITEMS.map(i=>`<tr><td>${badge(i)}</td><td>${escapeAttr(i.area)}</td><td>${escapeAttr(i.item)}</td><td>${escapeAttr(i.detail)}</td></tr>`).join("");
+  el.innerHTML=`
+    <div class="custom-token-card" style="margin-bottom:16px">
+      <h3 style="margin-top:0">Lifecycle-/Architektur-Audit · Phase 6.01</h3>
+      <div class="note" style="margin-bottom:10px"><strong>Entscheidung:</strong> Kein Rewrite. Feature-Freeze für neue große Funktionen, bis die kritischen Fresh-Build-/Lifecycle-Punkte konsolidiert sind. Reihenfolge: (1) Lifecycle-Statusvertrag, (2) Request-/Performance-Audit pro Teiljob, (3) DAO1 History/Payout konsolidieren, (4) NFT Read-Model konsolidieren, danach Chain-Erweiterungen.</div>
+      <div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1180px"><thead><tr><th>Status</th><th>Bereich</th><th>Audit-Befund</th><th>Ziel / nächster Schritt</th></tr></thead><tbody>${lifecycleRows}</tbody></table></div>
+    </div>
+    <div class="custom-token-card">
+      <h3 style="margin-top:0">Hardcoding-Rest-Audit</h3>
+      <div class="note" style="margin-bottom:10px">Chain-/Provider-/Projekt-Konfiguration soll möglichst datenbankgesteuert bleiben. Bewusst globale Service-Konfigurationen sind kein automatischer Fehler.</div>
+      <div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1100px"><thead><tr><th>Status</th><th>Bereich</th><th>Fund</th><th>Bewertung / nächster Schritt</th></tr></thead><tbody>${hardcodingRows}</tbody></table></div>
+    </div>`;
 }
 
 const ADMIN_CHAIN_FIELDS = [
