@@ -1,3 +1,4 @@
+// Phase 5.95 · 22.09.2026 20:32:07 CEST: Fresh-Build/„Daten aktualisieren“ lädt für das einzige Referral-Wallet die vollständige ERC-20-Asset-Flow-Historie statt nur wUSDT. Dadurch können auch historische DID-Referral-Auszahlungen in wAPTM/wSOL und ältere wUSDT-Flows reproduzierbar aus einem leeren User-Cache aufgebaut werden. Build 20260922-203207.
 // Phase 5.93 · 22.09.2026 12:15:22 CEST: Server-RPC-Proxy passend zum lokalen Gate mit enger APTMDAO ownerOf/Parent-eth_call-Allowlist; Migration v4 kann erneut prüfen. Build 20260922-121522.
 // Phase 5.88 · 22.09.2026 02:20:48 CEST: APTMDAO-Identitäts-NFTs zählen als DID; zentraler NFT-Typadapter für DID/MineBot/TradeBot; manueller NFT-Refresh kann offene Ownership-Lücken gezielt reparieren. Build 20260922-022048.
 // Phase 5.87 · 22.09.2026 01:36:51 CEST: DAO1 Self-Heal für vor 5.82 hinzugefügte Wallets: fehlende/invollständige NFT-Ownership wird aus dem zentralen Current-State erkannt und gezielt nachgezogen; bekannte DID-Contracts werden ohne manuelle project_nfts-Klassifizierung korrekt gezählt. Build 20260922-013651.
@@ -3769,7 +3770,12 @@ window.DAO1Project = (() => {
           setTransactionStatus("loading",`Wallet ${i+1}/${targets.length}: ${w.label} wird aktualisiert…`,address);
           const txSync=await syncApertumTransactionCache(address,null);
           if(job!==transactionJobToken)return;
-          await syncTargetedReferralWusdt(address);
+          // Phase 5.95: Beim einzigen Referral-Wallet muss ein frischer User die
+          // vollständige ERC-20-Flow-Historie reproduzieren können. Der frühere
+          // wUSDT-only-Scan ließ historische DID-Auszahlungen in wAPTM/wSOL und
+          // einzelne ältere Referral-Flows aus einem leeren Cache verschwinden.
+          if(lower(address)===REFERRAL_WALLET) await syncApertumTokenFlowCache(address);
+          else await syncTargetedReferralWusdt(address);
           if(job!==transactionJobToken)return;
           const walletRows=await loadTransactionRows(address,null);
           if(job!==transactionJobToken)return;
@@ -7051,7 +7057,11 @@ window.DAO1Project = (() => {
     await loadOwnershipCache();
     const ownership=await refreshWalletNftsAndOwnership(wallet,"Wallet gespeichert · ");
     const txSync=await syncApertumTransactionCache(address,null);
-    await syncTargetedReferralWusdt(address);
+    // Phase 5.95: Fresh-Build des Referral-Wallets darf nicht von historischen
+    // Caches des Users abhängen. Vollständige ERC-20-Flows dieses Wallets laden;
+    // andere Wallets behalten den schlanken gezielten Pfad.
+    if(lower(address)===REFERRAL_WALLET) await syncApertumTokenFlowCache(address);
+    else await syncTargetedReferralWusdt(address);
     await loadTransactionRows(address,null);
     await enrichTransactionsWithClaims(address,null,transactionJobToken);
     await loadDAO1OwnedDidRoots(true);
