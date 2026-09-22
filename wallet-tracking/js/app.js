@@ -1,4 +1,4 @@
-// Phase 5.95 · 22.09.2026 20:32:07 CEST: DAO1-Fresh-Build des Referral-Wallets vervollständigt historische ERC-20-Asset-Flows (wUSDT/wAPTM/wSOL) statt vom Alt-User-Cache abzuhängen. Systemübersicht aktualisiert. Build 20260922-203207.
+// Phase 5.96 · 22.09.2026 21:35:26 CEST: Wallet-Speichern bleibt bis zum gezielten Lifecycle-Ende im zentralen Ladejob; Teilfehler werden sichtbar gemeldet; Snapshot erst nach fehlerfreiem Fresh-Build. Build 20260922-213526.
 // Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Systemübersicht um „Zu testen“ ergänzt; ZIP-Struktur korrigiert. Build 20260922-140348.
 // Phase 5.94 · 22.09.2026 14:03:48 CEST: Userweite vollständige WalletTracking-Datenlöschung über transaktionale DB-RPC; Browser-Userdaten werden danach lokal gelöscht und der User abgemeldet. Auth-Login bleibt bestehen. Build 20260922-140348.
 // Phase 5.93 · 22.09.2026 12:15:22 CEST: Apertum-RPC-Proxy erlaubt gezielte APTMDAO eth_call-Reads; DATA_MIGRATIONS partial ist DB-seitig vorgesehen; NFT-Migration v4 läuft automatisch erneut. Build 20260922-121522.
@@ -309,7 +309,7 @@ const DONATION_EVM_ADDRESS = "0x76882e6Fc045391Ba4F19d8a15eA4D8699Ff7382";
 // Build-Version und Datenversion sind bewusst getrennt. Nur Releases mit echter
 // Datenwirkung registrieren einen Migrationsjob; reine UI-/Text-Releases lösen
 // keinen On-Chain-/API-Neuaufbau aus. Abschluss wird userbezogen in Supabase gespeichert.
-const WT_CURRENT_RELEASE = "5.95";
+const WT_CURRENT_RELEASE = "5.96";
 const WT_RELEASE_REGISTRY = Object.freeze({
   "5.93": {
     title: "NFT-Datenmigration und APTMDAO-RPC wurden korrigiert",
@@ -1704,7 +1704,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"support-data",level:1,label:"🗑️ Daten & Konto",status:"done",idea:"Vollständige userbezogene Datenlöschung",start:"–",daily:"–",open:"cache-only",manual:"User bestätigt Löschung",details:[["Alle WalletTracking-Daten löschen","–","wallettracking_delete_all_user_data() + wallet-private","keine externe API","Phase 5.94: löscht transaktional alle public-Tabellenzeilen mit user_id des angemeldeten Users, anonymisiert created_by/updated_by in globalen Caches, leert lokale Browserdaten und meldet den User ab. Globale öffentliche Blockchain-/Registry-/Token-/Contract-Fakten und das Auth-Login bleiben erhalten."]]},
 
   {id:"walletsgrp",level:0,label:"🧰 Wallets & Token",status:"planning",start:"DB",daily:"–",open:"Cache/DB",manual:"je Funktion",details:[]},
-  {id:"wallets",level:1,label:"Meine Wallets",status:"done",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"gezielt speichern / vollständig löschen",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"],["Neue/gespeicherte Wallet · Erstaufbau","nur diese Wallet","Current-State je konfigurierter Chain + NFT/DAO-Target-Refresh; TLN/VOW lazy bzw. Session-Refresh","RPC/API nur für diese Wallet","Phase 5.95: Speichern bleibt strikt walletbezogen. Beim einzigen DAO1-Referral-Wallet wird zusätzlich die vollständige ERC-20-Asset-Flow-Historie dieser Wallet aufgebaut, damit wUSDT/wAPTM/wSOL-Referral-Auszahlungen auch bei einem komplett neuen User reproduzierbar sind; andere Wallets bleiben auf dem schlanken gezielten Pfad. Phase 5.82: kein breites loadAll() über bestehende Wallets."],["Wallet vollständig löschen","RAM wird nach Erfolg verworfen","wallet-private → transaktionale RPC; walletbezogene Tabellen + Snapshot-/31.12.-Daten + abgeleitete User-Caches","keine globalen Registry-/On-Chain-Fakten","Löschen in Meine Wallets; danach Reload und Neuaufbau aller Summen aus verbleibenden Daten"]]},
+  {id:"wallets",level:1,label:"Meine Wallets",status:"done",start:"Edge · 1 Liste",daily:"–",open:"bereits geladen",manual:"gezielt speichern / vollständig löschen",details:[["Wallet-Konfiguration + Besitzer","RAM nach Login","wallet-private · verschlüsselte Wallet-Felder; is_own_wallet","–","App-Start: eine wallet_list-Abfrage; Besitzerfilter arbeitet danach nur im RAM"],["Neue/gespeicherte Wallet · Erstaufbau","nur diese Wallet","Current-State je konfigurierter Chain + NFT/DAO-Target-Refresh; TLN/VOW lazy bzw. Session-Refresh","RPC/API nur für diese Wallet","Phase 5.82: Speichern startet kein breites loadAll() über alle Wallets mehr. Bestehende Wallets bleiben unangetastet; Current State wird gezielt aufgebaut, DAO1/APTMDAO aktualisiert nur diese Wallet und TLN/VOW übernimmt sie sofort, falls das Modul bereits initialisiert ist – sonst beim ersten Öffnen."],["Wallet vollständig löschen","RAM wird nach Erfolg verworfen","wallet-private → transaktionale RPC; walletbezogene Tabellen + Snapshot-/31.12.-Daten + abgeleitete User-Caches","keine globalen Registry-/On-Chain-Fakten","Löschen in Meine Wallets; danach Reload und Neuaufbau aller Summen aus verbleibenden Daten"]]},
   {id:"predefined",level:1,label:"Vordefinierte Token",status:"in_progress",start:"DB",daily:"–",open:"RAM",manual:"DB neu",details:[["Vordefinierte Token + Dashboard-Flag","RAM","Supabase · predefined_tokens.dashboard_visible","–","App-Start; Flag bedeutet „immer anzeigen“. Positive Bestände > USD 1 erscheinen automatisch; Flag-Änderung nur Admin, danach Dashboard aus RAM neu rendern"]]},
   {id:"custom",level:1,label:"Eigene sichere Token",status:"planning",start:"DB",daily:"–",open:"RAM",manual:"DB",details:[["User-Token","RAM","Supabase · userbezogene Token","–","App-Start"]]},
   {id:"discovery",level:1,label:"🔍 Entdecken",status:"planning",start:"–",daily:"–",open:"DB-Cache",manual:"On-chain/API",details:[["Discovery-Ergebnis","RAM nach Lazy Load","Supabase Discovery-Cache","Alchemy/EVM + freie Quellen","Erst beim Öffnen des Tabs; Scan nur manuell"]]},
@@ -1718,7 +1718,7 @@ const ADMIN_SYSTEM_TREE = [
     ["Projekt-Kacheln","RAM + Project-Summary","predefined_tokens + persistente Projektcaches","keine eigene Discovery","Breite Karten; Projektwert wird zusätzlich in frei verfügbar / aktuell gebunden / gesamt aufgesplittet. LP-Staking wird nur einmal gezählt, auch wenn walletData und lp_position_cache dieselbe Position enthalten. Kursliste automatisch bei Bestand > USD 1; „immer anzeigen“ erlaubt Bestand 0; Projekt-Token nur bei belegter Projektbeteiligung. Reward-Summaries nutzen Summary-Kommastellen (leer = Anzeige übernehmen, 0 = keine Nachkommastellen). Fehlende Summary-Werte bleiben – bis ein fachlicher Cache sie bestätigt."],
     ["Personenfilter","RAM","verschlüsselte Wallet-Besitzer aus wallet-private","–","Eigene Wallets / alle Personen / bestimmte Person; keine Zusatzabfrage"]]},
   {id:"tracking",level:1,label:"Wallet-Tracking · Token-Übersicht",status:"in_progress",idea:"Browser-Cache + DATA_VERSIONS",start:"gespeicherter Stand",daily:"Preise frisch",open:"Cache",manual:"Bestände + Projekte + NFTs",details:[
-    ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain nur bei gezieltem Refresh","Start zeigt Cache sofort und startet keinen allgemeinen Auto-Refresh. Neue Wallet: gezielter Erstaufbau nur für diese Wallet direkt nach Speichern; kein loadAll() über bestehende Wallets. Projekte aktualisieren nur ihren relevanten Wallet-Scope bzw. bleiben lazy."],
+    ["Wallet-Bestände","Automated Cache / RAM","Supabase Refresh-State","RPC je Chain nur bei gezieltem Refresh","Start zeigt Cache sofort und startet keinen allgemeinen Auto-Refresh. Neue Wallet: gezielter Erstaufbau nur für diese Wallet direkt nach Speichern; kein loadAll() über bestehende Wallets. Der zentrale Ladebalken bleibt bis zum Abschluss von Beständen, Projekt-/NFT-/Reward-Daten, Summaries und erfolgreichem Snapshot sichtbar. DAO1/APTMDAO baut für relevante Wallets die ERC-20 Asset-Flows inkrementell mit auf. Projekte aktualisieren nur ihren relevanten Wallet-Scope bzw. bleiben lazy."],
     ["Aktuelle Kurse","Globaler 15-Minuten-Snapshot/RAM","wallet_global_current_price_snapshot","Preis-APIs + DEX/Pool RPC","Global :00/:15/:30/:45 nur bei aktivem Client; ein atomarer Slot-Claim verhindert Doppeljobs. Phase 5.41: stale-while-refresh – der letzte gültige Snapshot bleibt während Refresh/Teilfehler aktiv; tatsächlich neu geladene Assetpreise tragen zusätzlich refreshedAt. Alte Einzelpreise werden dadurch nicht als im aktuellen Lauf erneuert interpretiert. Keine Historisierung dieses aktuellen Snapshots."],
     ["TLN/VOW LP & Staking im Bestand","RAM/DB-Cache","Supabase Projekt-/Staking-Caches","BSC RPC","Im fälligen Grunddaten-Hintergrundlauf; vollständige Projekt-Discovery bleibt separat"]]},
   {id:"tax",level:1,label:"🧾 Bestandesaufnahme per 31.12",status:"planning",start:"–",daily:"–",open:"DB-Snapshots",manual:"historisch",details:[["Snapshots","RAM nach Lazy Load","Supabase Snapshots","–","Manuelle Snapshots und Jahresbestand erst beim Öffnen des Tabs"],["Historische Bewertung","Cache","Supabase Preis-/LP-Historie","Archive RPC/API bei Bedarf","Stichtagsberechnung"]]},
@@ -1746,7 +1746,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"dao-prices",level:2,label:"Kurse und Pools",status:"in_progress",start:"–",daily:"–",open:"vorhandener Preis-Cache",manual:"zentrale Preisaktualisierung",details:[["DAO1 aktuelle Kurse/Preisrouten","RAM/zentraler Preiscache","bestehende DAO1/Apertum Preislogik","Apertum DEX nur bei zentraler Preisaktualisierung","Tab zeigt ausschließlich bereits ermittelte Preise, Routen und Pools; keine eigene Preisermittlung"]]},
   {id:"dao-tx",level:2,label:"Transaktionen",status:"in_progress",start:"–",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Apertum Transaktionshistorie","RAM","Supabase zentrale Historie/Asset-Flows","Apertum RPC/Explorer","Wallet-Wechsel Cache; Daten aktualisieren lädt neue Chain-Daten"]]},
   {id:"dao-claims",level:2,label:"Bot-Claims",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Bot Claims","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase project_transactions + project_transaction_asset_flows","Apertum nur bei manueller Aktualisierung","Dashboard summiert Originaltoken/-mengen aus vorhandenen Asset-Flows; keine USD-Umrechnung; Detailansicht lazy"]]},
-  {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase Tx/Flow Cache","Apertum nur bei Fresh-Build/manueller Aktualisierung","Phase 5.95: Für das einzige Referral-Wallet wird beim Fresh-Build und bei ‚Daten aktualisieren‘ die vollständige ERC-20-Flow-Historie inkrementell geladen; damit sind DID-Referral-Auszahlungen in wUSDT, wAPTM, wSOL usw. aus leerem User-Cache reproduzierbar. Dashboard und Detail verwenden danach dieselben Referral-Regeln."]]},
+  {id:"dao-ref",level:2,label:"Referral Rewards",status:"in_progress",start:"Summary aus DB-Cache",daily:"–",open:"DB-Cache",manual:"Delta/On-chain",details:[["Referral Rewards","Dashboard: aggregierter Tx-/Asset-Flow-Cache; Detail: RAM","Supabase Tx/Flow Cache","Apertum nur bei manueller Aktualisierung","Dashboard und Detail verwenden dieselben Referral-Regeln; nur relevantes DAO1 Referral-Wallet"]]},
   {id:"dao-team",level:2,label:"Team",status:"in_progress",start:"–",daily:"–",open:"🟢 IDB + Version",manual:"🟡 On-chain Update",details:[
     ["Legacy Team-Kanten","IndexedDB · dao1/legacy-tree","Supabase dao1_old_tree_*","Apertum RPC nur bei manueller Aktualisierung","Normaler Tab-Aufruf 🟢: IDB + DATA_VERSIONS → Root + Downline + Upline der aktuell eigenen DIDs lokal lesen, DB 0 / RPC 0 bei HIT; manueller Update-Pfad inkrementell mit 24-Block-Overlap"],
     ["APTMDAO Team-Kanten","IndexedDB · dao1/aptmdao-tree","Supabase aptmdao_tree_*","Apertum NFT-Mint-Event; RPC nur bei Update/Erstaufbau","Phase 5.39: child/parent/wallet on-chain verifiziert; eigener Graph, max. 20 Ebenen; Migration 063. DAO1/APTMDAO sind eigenständige DID-/Alias-Systeme. Normaler Cache-HIT ohne RPC, Update mit 24-Block-Overlap."],
@@ -1771,7 +1771,7 @@ const ADMIN_SYSTEM_TREE = [
   {id:"admin-hard",level:1,label:"🧪 Hardcoding-Audit",status:"planning",start:"–",daily:"–",open:"lokal",manual:"–",details:[]},
   {id:"admin-system",level:1,label:"🗺️ Systemübersicht",status:"done",idea:"Systemübersicht · Funktionsbaum",start:"Release-/Migrationscheck",daily:"–",open:"lokal",manual:"–",details:[["Funktions-/Ladebaum","JS Definition","–","–","Admin-Tab öffnen; Status mit Ideen/TODOs verknüpft"],["Release-Management / DATA_MIGRATIONS","userbezogener Versionsstand","Supabase user_data_migrations + user_release_acknowledgements","gezielte API/RPC nur wenn ein registrierter Migrationsjob dies fachlich verlangt","Phase 5.93: SQL 072 erweitert den DB-Status-Constraint um partial; der Apertum-RPC-Proxy wird mit enger eth_call-Allowlist versioniert/deployed. Phase 5.92: complete/partial/failed wird persistent unterschieden; partial/failed erhöht die Datenversion nicht und wird erneut versucht. Phase 5.89: beim Login nur fehlende Datenmigrationen ausführen; Abschluss erst nach Erfolg persistieren. Relevante Release-Mitteilungen erscheinen pro User einmal als quittierungspflichtiges Popup."]]},
   {id:"admin-ideas",level:1,label:"💡 Ideen / Umbau",status:"in_progress",start:"JS geladen",daily:"–",open:"lokal",manual:"–",details:[["Projekt-TODOs","admin/ideas.js","–","–","Datei wird mit Cache-Buster geladen"]]},
-  {id:"admin-testing",level:1,label:"🧪 Zu testen",status:"in_progress",idea:"Zu testen · Wallet- und Datenlöschungs-Flows",start:"–",daily:"–",open:"lokal",manual:"praktischer Test",details:[["Wallet hinzufügen","–","Wallet-/Projekt-Daten + Caches","projektbezogene Initialisierung","Neue Wallet erfassen; gezielten Erstaufbau, Projekt-Erkennung und Dashboard-Summen prüfen"],["Wallet löschen","–","walletbezogene DB-Daten + Caches","–","Einzel-Wallet-Löschung vollständig prüfen; Summen aus verbleibenden Wallets neu validieren"],["Sämtliche Daten löschen","–","wallettracking_delete_all_user_data() + Browsercache","–","Zweistufige Bestätigung, vollständige serverseitige + lokale Löschung, Logout und leeren Neustand nach Re-Login prüfen"]]},
+  {id:"admin-testing",level:1,label:"🧪 Zu testen",status:"in_progress",idea:"Zu testen · Wallet- und Datenlöschungs-Flows",start:"–",daily:"–",open:"lokal",manual:"praktischer Test",details:[["Wallet hinzufügen","–","Wallet-/Projekt-Daten + Caches","projektbezogene Initialisierung","Neue Wallet erfassen; sichtbaren Ladebalken bis Job-Ende, DAO1 Claim-Auszahlungen/Asset-Flows, Projekt-Erkennung und Dashboard-Summen prüfen"],["Wallet löschen","–","walletbezogene DB-Daten + Caches","–","Einzel-Wallet-Löschung vollständig prüfen; Summen aus verbleibenden Wallets neu validieren"],["Sämtliche Daten löschen","–","wallettracking_delete_all_user_data() + Browsercache","–","Zweistufige Bestätigung, vollständige serverseitige + lokale Löschung, Logout und leeren Neustand nach Re-Login prüfen"]]},
   {id:"admin-doc",level:1,label:"📚 Dokumentation",status:"done",start:"–",daily:"–",open:"lokal",manual:"–",details:[]}
 ];
 
@@ -3932,7 +3932,7 @@ async function initializeSavedWalletTargeted(w,{isNew=false}={}) {
   // DAO1 besitzt bereits einen gezielten Wallet-Erstaufbau inkl. Apertum-NFT/Ownership/Tx.
   let daoHandledApertum=false;
   if(w.evm&&window.DAO1Project?.refreshWalletAfterSave){
-    try{const r=await window.DAO1Project.refreshWalletAfterSave(w.dbId||w.id);daoHandledApertum=!!r?.ok;}
+    try{const r=await window.DAO1Project.refreshWalletAfterSave(w.dbId||w.id,{isNew});daoHandledApertum=!!r?.ok;}
     catch(e){failures.push(`DAO1/APTMDAO: ${e.message||e}`);}
   }
 
@@ -3949,7 +3949,12 @@ async function initializeSavedWalletTargeted(w,{isNew=false}={}) {
 
   await mergeTlnBscStakingCacheIntoWalletData().catch(()=>{});
   renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();renderWalletDataFreshness();
-  try{await createSnapshot(true);}catch(e){failures.push(`Snapshot: ${e.message||e}`);}
+  // Einen neuen Snapshot erst speichern, wenn der gezielte Wallet-/Projektaufbau
+  // vollständig durchgelaufen ist. So kann kein partieller Fresh-Build zum neuen
+  // Referenzstand für Dashboard oder 31.12.-Folgeprozesse werden.
+  if(failures.length===0){
+    try{await createSnapshot(true);}catch(e){failures.push(`Snapshot: ${e.message||e}`);}
+  }
   await refreshDashboardProjectSummaries().catch(()=>{});
   return {ok:failures.length===0,failures,isNew};
 }
@@ -4009,9 +4014,29 @@ async function saveWallet(id) {
   renderWalletInputs();
   renderGlobalWalletPersonFilter();
   renderDashboard();
-  initializeSavedWalletTargeted(w,{isNew:isNewWallet}).then(r=>{
-    if(r?.failures?.length)console.warn("Gezielter Wallet-Erstaufbau mit Hinweisen",r.failures);
-  }).catch(e=>console.warn("Gezielter Erstaufbau nach Wallet-Speicherung",e));
+
+  // Der Wallet-Aufbau ist fachlich Teil des Speichervorgangs und darf nicht als
+  // unsichtbares Promise im Hintergrund weiterlaufen. Der zentrale Datenjob hält
+  // „Daten werden geladen …“ sichtbar und sperrt die Navigation bis Bestände,
+  // Projekt-/NFT-/Reward-Daten, Summaries und (bei Erfolg) Snapshot fertig sind.
+  try{
+    const r=await runDataJob(isNewWallet?"Neue Wallet · Daten werden geladen …":"Wallet · Daten werden aktualisiert …",
+      ()=>initializeSavedWalletTargeted(w,{isNew:isNewWallet}));
+    const freshStatus=document.getElementById("saveStatus-"+w.id);
+    if(r?.failures?.length){
+      console.warn("Gezielter Wallet-Erstaufbau mit Hinweisen",r.failures);
+      if(freshStatus)freshStatus.textContent=`Gespeichert · Aktualisierung teilweise abgeschlossen (${r.failures.length} Hinweis${r.failures.length===1?"":"e"}).`;
+      renderCacheStatusNote(`Wallet gespeichert · Aktualisierung mit ${r.failures.length} Hinweis${r.failures.length===1?"":"en"} teilweise abgeschlossen.`);
+    }else{
+      if(freshStatus)freshStatus.textContent="Gespeichert · Daten vollständig aufgebaut.";
+      renderCacheStatusNote(isNewWallet?"Neue Wallet vollständig aufgebaut.":"Wallet-Daten aktualisiert.");
+    }
+  }catch(e){
+    console.warn("Gezielter Erstaufbau nach Wallet-Speicherung",e);
+    const freshStatus=document.getElementById("saveStatus-"+w.id);
+    if(freshStatus)freshStatus.textContent="Gespeichert · Datenaufbau fehlgeschlagen.";
+    renderCacheStatusNote(`Wallet gespeichert · Datenaufbau teilweise fehlgeschlagen: ${e?.message||e}`);
+  }
 }
 
 // Format-Validierung pro Chain (Länge/Präfix/Zeichensatz) - rein strukturell, keine
