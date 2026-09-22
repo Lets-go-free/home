@@ -1,3 +1,4 @@
+// Phase 5.96 · 22.09.2026 21:35:26 CEST: Hilfe ergänzt den sichtbaren Datenjob nach Wallet-Speicherung und transparente Teilfehleranzeige. Build 20260922-213526.
 // Phase 5.94 Rebuild · 22.09.2026 14:03:48 CEST: Release-Paketstruktur korrigiert; Doku-Testliste zentral in Ideen/Systemübersicht ergänzt. Build 20260922-140348.
 // Phase 5.94 · 22.09.2026 14:03:48 CEST: Allgemeine Hilfe um vollständige userweite WalletTracking-Datenlöschung ergänzt; Auth-Login bleibt bestehen, lokale Browserdaten werden mitgelöscht. Build 20260922-140348.
 // Phase 5.93 · 22.09.2026 12:15:22 CEST: RPC-Proxy-eth_call-Allowlist + SQL 072 für persistenten partial-Migrationsstatus; NFT-Datenmigration v4. Build 20260922-121522.
@@ -33,8 +34,8 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260922-140348";
-const HELP_MODULE_TIMESTAMP="22.09.2026 14:03:48 CEST";
+const HELP_MODULE_BUILD="20260922-213526";
+const HELP_MODULE_TIMESTAMP="22.09.2026 21:35:26 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;
@@ -42,7 +43,7 @@ function renderGeneralHelp(){
 
       <div class="custom-token-card">
         <h3 style="margin-top:0">Schnellstart</h3>
-        <p class="note"><strong>1.</strong> Neue User starten mit einem leeren Dashboard und können dort direkt „Erste Wallet erfassen“ wählen. Unter „Meine Wallets“ jede Wallet als „Eigenes Wallet“ markieren oder einem Besitzer zuordnen. <strong>2.</strong> Das Dashboard ist die Startseite und zeigt sofort den gespeicherten Stand für den gewählten Personenfilter. <strong>3.</strong> „Daten aktualisieren“ erneuert Bestände und projektübergreifende Daten. <strong>4.</strong> „Preise aktualisieren“ erneuert davon getrennt die aktuellen Kurse und USD-Werte. <strong>5.</strong> Unbekannte Token bei Bedarf unter „Entdecken“ prüfen und als eigene sichere Token übernehmen. Für Projektdetails das jeweilige DeFi-Projekt öffnen.</p>
+        <p class="note"><strong>1.</strong> Neue User starten mit einem leeren Dashboard und können dort direkt „Erste Wallet erfassen“ wählen. Unter „Meine Wallets“ jede Wallet als „Eigenes Wallet“ markieren oder einem Besitzer zuordnen. Nach dem Speichern bleibt „Daten werden geladen …“ sichtbar, bis der gezielte Erstaufbau dieser Wallet abgeschlossen ist; bei Teilfehlern wird dies ausdrücklich gemeldet. <strong>2.</strong> Das Dashboard ist die Startseite und zeigt sofort den gespeicherten Stand für den gewählten Personenfilter. <strong>3.</strong> „Daten aktualisieren“ erneuert Bestände und projektübergreifende Daten. <strong>4.</strong> „Preise aktualisieren“ erneuert davon getrennt die aktuellen Kurse und USD-Werte. <strong>5.</strong> Unbekannte Token bei Bedarf unter „Entdecken“ prüfen und als eigene sichere Token übernehmen. Für Projektdetails das jeweilige DeFi-Projekt öffnen.</p>
       </div>
 
       <div class="custom-token-card"><h3 style="margin-top:0">🔤 Darstellung</h3><p class="note">Die Hauptnavigation befindet sich als klar gegliederte Seitenleiste links; auf schmalen Displays ordnet sie sich responsiv oberhalb des Inhalts an. Chain- und Token-Identitäten werden in Datentabellen mit kompakten Symbolen unterstützt. Die Schriftgrösse der gesamten Anwendung kann oben im Kopfbereich mit dem Regler „Schrift“ individuell von 85 % bis 125 % eingestellt werden. Die Einstellung wird auf diesem Gerät gespeichert. Farben, Cards, Navigation, Tabs und Tabellen werden zentral über <code>css/wallet-tracking.css</code> gesteuert.</p></div>
