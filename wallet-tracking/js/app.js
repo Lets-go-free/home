@@ -1,4 +1,4 @@
-// Phase 6.01 · 23.09.2026 00:38:40 CEST: Lifecycle-/Architektur-Audit in bestehenden Admin-Audit-Tab integriert; Hardcoding-Audit bleibt als eigener Abschnitt erhalten. Build 20260923-003840.
+// Phase 6.02 · 23.09.2026 00:56:50 CEST: Audit P1 umgesetzt: DAO1-Lifecycle propagiert complete / partial / failed / deferred bis zum zentralen Wallet-Abschlussstatus. Build 20260923-005650.
 // Phase 6.00 · 23.09.2026 00:26:45 CEST: TLN Dashboard-Summary schützt Supabase-UUID-Filter vor transienten lokalen Wallet-IDs beim Fresh-Import. Build 20260923-002645.
 // Phase 5.99 · 23.09.2026 00:15:00 CEST: DAO1 Fresh-Build-Fixes: NFT-Runtime-Sync, native Claim-Trace-Fallback und schneller historische Pool-State-Preispfad. Build 20260923-001500.
 // Phase 5.98 · 22.09.2026 23:40:05 CEST: DAO1-Fresh-Import-Performance: ERC-20-Vollscan wird als Evidenz wiederverwendet; Claim-Nativevidenz parallel statt hunderten seriellen Detailrequests. Build 20260922-234005.
@@ -2106,7 +2106,7 @@ const HARDCODING_AUDIT_ITEMS = [
 ];
 
 const LIFECYCLE_ARCH_AUDIT_ITEMS = [
-  {priority:"P1", workStatus:"offen", severity:"critical", area:"DAO1 Lifecycle-Abschluss", finding:"Teilpfade können intern partial/leer bleiben, während der übergeordnete Wallet-Job trotzdem als vollständig aufgebaut erscheint.", action:"Einheitlichen Statusvertrag complete / partial / failed / deferred einführen und bis zum zentralen Abschlussstatus propagieren."},
+  {priority:"P1", workStatus:"erledigt", severity:"critical", area:"DAO1 Lifecycle-Abschluss", finding:"Teilpfade konnten intern partial/leer bleiben, während der übergeordnete Wallet-Job trotzdem als vollständig aufgebaut erschien.", action:"Phase 6.02: Einheitlicher Statusvertrag complete / partial / failed / deferred ist in DAO1 eingeführt und wird bis zum zentralen Wallet-Abschlussstatus propagiert; apertureHandled ist davon getrennt."},
   {priority:"P2", workStatus:"offen", severity:"high", area:"Snapshot-Gate", finding:"Snapshots dürfen fachlich erst entstehen, wenn alle dafür erforderlichen Teiljobs vollständig sind.", action:"Snapshot an den neuen Lifecycle-Statusvertrag koppeln; partial/deferred darf keinen finalen Snapshot erzeugen."},
   {priority:"P3", workStatus:"offen", severity:"critical", area:"Fresh-Build-Parität", finding:"Neuer User kann nach identischem Wallet-Import einen anderen fachlichen Zustand als ein langjähriger User erreichen.", action:"Fresh-Build als verbindlichen Reproduzierbarkeitstest behandeln; bestehende Alt-Caches nie als Referenz voraussetzen."},
   {priority:"P4", workStatus:"offen", severity:"high", area:"Performance Fresh-Import", finding:"Messlauf einer DAO1-Wallet: 8:59 min, 1'722 Requests und ca. 263 MB Transfer.", action:"Request-Audit pro Lifecycle-Teiljob auswerten; doppelte History-/RPC-Scans entfernen und Ergebnisse teiljobübergreifend wiederverwenden."},
@@ -2142,7 +2142,7 @@ function renderHardcodingAudit(){
   const hardcodingRows=HARDCODING_AUDIT_ITEMS.map(i=>`<tr><td>${badge(i)}</td><td>${escapeAttr(i.area)}</td><td>${escapeAttr(i.item)}</td><td>${escapeAttr(i.detail)}</td></tr>`).join("");
   el.innerHTML=`
     <div class="custom-token-card" style="margin-bottom:16px">
-      <h3 style="margin-top:0">Lifecycle-/Architektur-Audit · Phase 6.01</h3>
+      <h3 style="margin-top:0">Lifecycle-/Architektur-Audit · Phase 6.02</h3>
       <div class="note" style="margin-bottom:10px"><strong>Entscheidung:</strong> Kein Rewrite. Feature-Freeze für neue große Funktionen, bis die offenen Lifecycle-Punkte konsolidiert sind. <strong>Steuerungsregel:</strong> Die Tabelle ist die führende Quelle. Bearbeitet wird jeweils die höchste offene Arbeitspriorität P1–P9. <strong>Arbeitspriorität</strong> bestimmt die Reihenfolge; <strong>Risiko</strong> beschreibt unabhängig davon die fachliche/technische Auswirkung. Abgeschlossene Punkte auf „erledigt“ setzen; stabile Punkte ohne Umbau bleiben auf „beobachten“.</div>
       <div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1450px"><thead><tr><th>Prio</th><th>Arbeitsstatus</th><th>Risiko</th><th>Bereich</th><th>Audit-Befund</th><th>Ziel / nächster Schritt</th></tr></thead><tbody>${lifecycleRows}</tbody></table></div>
     </div>
@@ -4000,14 +4000,23 @@ async function initializeSavedWalletTargeted(w,{isNew=false}={}) {
   });
 
   // DAO1 besitzt bereits einen gezielten Wallet-Erstaufbau inkl. Apertum-NFT/Ownership/Tx.
-  let daoHandledApertum=false;
+  // Audit P1: Der DAO1-Teilstatus wird unverändert bis zum zentralen Abschlussstatus
+  // propagiert. apertureHandled ist davon getrennt, damit ein partieller DAO1-Lauf
+  // keinen zweiten allgemeinen Apertum-NFT-Scan auslöst.
+  let daoHandledApertum=false,daoLifecycle=null;
   await timed("DAO1",async()=>{
     if(w.evm&&window.DAO1Project?.refreshWalletAfterSave){
       try{
         const r=await window.DAO1Project.refreshWalletAfterSave(w.dbId||w.id,{isNew});
-        daoHandledApertum=!!r?.ok;
-        if(r?.ok)window.setWtDataStatus?.("dao",{updatedAt:new Date().toISOString(),source:"fresh-build",label:"DAO1 Wallet-Erstaufbau"});
-      }catch(e){failures.push(`DAO1/APTMDAO: ${e.message||e}`);}
+        daoHandledApertum=!!(r?.apertureHandled??r?.ok);
+        const status=["complete","partial","failed","deferred"].includes(r?.status)?r.status:(r?.ok?"complete":"failed");
+        daoLifecycle={status,parts:r?.parts||{},result:r};
+        if(status==="failed")failures.push("DAO1/APTMDAO: Lifecycle fehlgeschlagen");
+        if(status==="complete")window.setWtDataStatus?.("dao",{updatedAt:new Date().toISOString(),source:"fresh-build",label:"DAO1 Wallet-Erstaufbau"});
+      }catch(e){
+        daoLifecycle={status:"failed",parts:{},error:e?.message||String(e)};
+        failures.push(`DAO1/APTMDAO: ${e.message||e}`);
+      }
     }
   });
 
@@ -4041,8 +4050,9 @@ async function initializeSavedWalletTargeted(w,{isNew=false}={}) {
   await timed("Projekt-Summaries",()=>refreshDashboardProjectSummaries().catch(()=>{}));
   const durationMs=Math.round(performance.now()-started);
   const detail=Object.entries(timings).map(([name,ms])=>`${name} ${Math.round(ms/100)/10}s`).join(" · ");
-  console.info("Wallet-Erstimport Laufzeit",{wallet:w.label||w.id,isNew,durationMs,timings,failures:[...failures]});
-  return {ok:failures.length===0,failures,isNew,durationMs,timings,durationText:formatWalletImportDuration(durationMs),detail};
+  const lifecycleStatus=failures.length?"failed":(daoLifecycle?.status&&daoLifecycle.status!=="complete"?daoLifecycle.status:"complete");
+  console.info("Wallet-Erstimport Laufzeit",{wallet:w.label||w.id,isNew,durationMs,timings,lifecycleStatus,daoLifecycle,failures:[...failures]});
+  return {ok:lifecycleStatus==="complete",status:lifecycleStatus,parts:{dao1:daoLifecycle},failures,isNew,durationMs,timings,durationText:formatWalletImportDuration(durationMs),detail};
 }
 
 function formatWalletImportDuration(ms){
@@ -4121,6 +4131,12 @@ async function saveWallet(id) {
       console.warn("Gezielter Wallet-Erstaufbau mit Hinweisen",r.failures,r?.timings||{});
       if(freshStatus)freshStatus.textContent=`Gespeichert · Daten aufgebaut – ${r.failures.length} Teilbereich${r.failures.length===1?"":"e"} mit Fehler${duration}.`;
       renderCacheStatusNote(`Wallet gespeichert · Daten aufgebaut – ${r.failures.length} Teilbereich${r.failures.length===1?"":"e"} mit Fehler${duration}.`);
+    }else if(r?.status==="partial"){
+      if(freshStatus)freshStatus.textContent=`Gespeichert · Daten teilweise aufgebaut${duration}.`;
+      renderCacheStatusNote(`Wallet gespeichert · Lifecycle teilweise abgeschlossen${duration}.`);
+    }else if(r?.status==="deferred"){
+      if(freshStatus)freshStatus.textContent=`Gespeichert · Datenaufbau teilweise zurückgestellt${duration}.`;
+      renderCacheStatusNote(`Wallet gespeichert · Lifecycle teilweise zurückgestellt${duration}.`);
     }else{
       if(freshStatus)freshStatus.textContent=`Gespeichert · Daten vollständig aufgebaut${duration}.`;
       renderCacheStatusNote((isNewWallet?"Neue Wallet vollständig aufgebaut":"Wallet-Daten aktualisiert")+duration+".");

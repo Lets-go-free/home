@@ -1,3 +1,4 @@
+// Phase 6.02 · 23.09.2026 00:56:50 CEST: Audit P1 abgeschlossen: DAO1-Lifecycle-Status complete / partial / failed / deferred wird bis zum zentralen Wallet-Abschlussstatus propagiert; P2 Snapshot-Gate bleibt nächster Audit-Punkt. Build 20260923-005650.
 // Phase 6.01 · 23.09.2026 00:38:40 CEST: Lifecycle-/Architektur-Audit in bestehenden Admin-Audit-Tab integriert; Stabilitätsreihenfolge und Fresh-Build-Konsolidierung als nächster Schwerpunkt dokumentiert. Build 20260923-003840.
 // Phase 6.00 · 23.09.2026 00:26:45 CEST: TLN Dashboard cache-only UUID-Fehler (local1 -> uuid) beim Fresh-Import behoben und als Lifecycle-Testpunkt dokumentiert. Build 20260923-002645.
 // Phase 5.99 · 23.09.2026 00:15:00 CEST: Fresh-Build: frisch geladene DAO1-NFTs sofort verwenden; native Claim-Auszahlungen via Internal+RPC-Trace; historische APTM-Preise via getReserves vor Log-Fallback. Build 20260923-001500.
@@ -42,8 +43,8 @@
 // Künftig sollen Inhalts-/Status-/Prioritätsänderungen nach Möglichkeit nur in dieser Datei erfolgen.
 // Die Hauptseite lädt diese Datei bei jedem Seitenaufruf mit Cache-Buster neu.
 
-const ADMIN_IDEAS_MODULE_BUILD = "20260923-003840";
-const ADMIN_IDEAS_MODULE_TIMESTAMP = "23.09.2026 00:38:40 CEST";
+const ADMIN_IDEAS_MODULE_BUILD = "20260923-005650";
+const ADMIN_IDEAS_MODULE_TIMESTAMP = "23.09.2026 00:56:50 CEST";
 // Phase 5.33: Dashboard-Summary validiert und Start weiter entkoppelt. Apertum-native-Fehler behoben: interner Asset-Key "native" wird nie mehr als EVM-Adresse ABI-encodiert. TLN/BSC lp_position_cache wird beim Dashboard-Start walletübergreifend in einem Batch gelesen statt mit Einzelrequest pro Wallet. TLN "davon aktiv" zeigt bei unvollständig verifizierten Lifecycles keine scheinbar endgültige Zahl mehr, sondern bestätigte Aktive plus offene Partner; erst bei vollständiger Lifecycle-Abdeckung wird die Endzahl gesetzt. DAO1 Dashboard-Rewards werden gezielt aus vorhandenen project_transactions + project_transaction_asset_flows gelesen, ohne ensureLoaded()/vollständige DAO1-Tab-Initialisierung. Phase 5.35 ersetzt die frühere USD-Summary: Gesamt/Vorjahr/Jahr/Monat zeigen Originaltoken/-mengen; historische USD-Bewertungen sind dafür nicht erforderlich. DAO1 "aktiv" bleibt bewusst offen: aktueller Code enthält keinen belastbaren Bot-Target-/Completed-Contract-Proof. Reward-Zeilen der Projektkarten wieder als konsistente Kacheln gestaltet. Systemübersicht, Admin-Doku und Hilfe synchronisiert. Build 20260919-140811.
 // Phase 5.30: TLN/VOW-Contracts werden aus der allgemeinen CoinGecko-/GeckoTerminal-Preisermittlung ausgeschlossen und ausschließlich über die bestehende zentrale Projekt-PriceEngine bewertet (BSC PancakeSwap / ETH Uniswap). Dashboard zeigt Contract-Adressen einheitlich nur verkürzt mit Copy-Funktion; vollständige Adressen werden nicht zusätzlich als Symbolzeile ausgegeben. Preisrouten/-berechnungen selbst unverändert.
 // Phase 5.29: Dashboard-Gerüst wird unmittelbar nach Login sichtbar, bevor Chain-/DB-Konfiguration fertig geladen ist. TLN/VOW-Dashboardpreise zeigen tatsächliche DEX-Quelle (BSC PancakeSwap / ETH Uniswap) plus vorhandene Preisroute. DAO1 hat neu „Kurse und Pools“ als reine Sicht auf die bereits bestehende Apertum-Preislogik; keine neue Preisermittlung.
@@ -74,10 +75,11 @@ const ADMIN_IDEAS = [
     category: "Zu testen",
     priority: "high",
     title: "Zu testen · Wallet- und Datenlöschungs-Flows",
-    desc: `OFFENE TESTS nach Phase 6.01:
+    desc: `OFFENE TESTS nach Phase 6.02:
 - Fresh-Import 5.99: DAO1-Wallet mit 200+ Claims erneut testen; prüfen, ob aktuelle NFTs/Bots sofort sichtbar sind, native APTM-Auszahlungen ermittelt werden und historische USD-Werte ohne großen Sync-Log-Massenscan erscheinen.
 - Laufzeit/Requests vergleichen mit 5.98 (8 Min. 59 Sek., 1.722 Requests); Ziel: deutlich weniger RPC-Volumen und kürzerer Erstimport.
 - TLN Dashboard-Summary beim Fresh-Import: keine Supabase-400/22P02 mehr; transiente IDs wie local1 dürfen nie als wallet_id-UUID gefiltert werden.
+- Audit P1 Regression: DAO1-Teilfehler müssen als partial/failed/deferred bis zum zentralen Wallet-Abschlussstatus sichtbar bleiben; kein partial-Lauf darf als „vollständig aufgebaut“ angezeigt werden. Snapshot-Verhalten wird separat in P2 korrigiert.
 
 • Wallet hinzufügen
   - neue Wallet erfassen

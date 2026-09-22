@@ -1,3 +1,4 @@
+// Phase 6.02 · 23.09.2026 00:56:50 CEST: Audit P1 – DAO1 Wallet-Bootstrap führt explizite Teiljob- und Gesamtstatus complete / partial / failed / deferred; persistierter Bootstrap-Status und zentrale Propagation. Build 20260923-005650.
 // Phase 5.99 · 23.09.2026 00:15:00 CEST: DAO1 Fresh-Build stabilisiert: frisch geladene Apertum-NFTs sofort in DAO1 übernehmen; native Claim-Payouts zusätzlich via RPC-Trace; historische APTM-Preise primär per historischem getReserves statt Log-Massenscan. Build 20260923-001500.
 // Phase 5.98 · 22.09.2026 23:40:05 CEST: DAO1 Fresh-Import beschleunigt: nach vollständigem Wallet-ERC20-Scan keine hunderten Tx-Detailrequests; native Claim-Evidenz parallelisiert und gecacht. Build 20260922-234005.
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: DAO1 Fresh-Build ergänzt inkrementelle ERC-20 Asset-Flows für relevante Wallets; Claim-Logs RPC-first; unnötiger ERC-721/1155-Claim-Request entfernt. Build 20260922-213526.
@@ -7280,39 +7281,118 @@ window.DAO1Project = (() => {
     };
   }
 
+  const DAO1_LIFECYCLE_STATUS=new Set(["complete","partial","failed","deferred"]);
+  function dao1LifecyclePart(status,detail="",meta={}){
+    const normalized=DAO1_LIFECYCLE_STATUS.has(status)?status:"failed";
+    return {status:normalized,detail:String(detail||""),required:meta.required!==false,...meta};
+  }
+  function dao1AggregateLifecycle(parts){
+    const required=Object.values(parts||{}).filter(p=>p?.required!==false);
+    if(required.some(p=>p?.status==="failed"))return "failed";
+    if(required.some(p=>p?.status==="partial"))return "partial";
+    if(required.some(p=>p?.status==="deferred"))return "deferred";
+    return "complete";
+  }
+  async function dao1RunLifecyclePart(parts,key,fn,{required=true,successStatus=null}={}){
+    try{
+      const result=await fn();
+      const derived=typeof successStatus==="function"?successStatus(result):successStatus;
+      const status=DAO1_LIFECYCLE_STATUS.has(derived)?derived:"complete";
+      parts[key]=dao1LifecyclePart(status,"",{required,result});
+      return result;
+    }catch(e){
+      const message=e?.message||String(e);
+      console.warn(`DAO1 Lifecycle ${key}`,e);
+      parts[key]=dao1LifecyclePart("failed",message,{required,error:message});
+      return null;
+    }
+  }
+
   async function refreshWalletAfterSave(walletId){
     await ensureLoaded();
     const ctx=getContext?.();
     const wallet=(ctx?.wallets||[]).find(w=>String(w.dbId||w.id||"")===String(walletId||""));
     const address=walletAddress(wallet);
-    if(!wallet||!address)return {skipped:true};
-    // Nur die gespeicherte Wallet: NFT-Bestand/Ownership, Projekt-Tx/Claims und
-    // danach die eigenen DAO1-/APTMDAO-DID-Roots. Bestehende Wallets werden nicht
-    // pauschal neu gescannt.
-    await loadOwnershipCache();
-    const ownership=await refreshWalletNftsAndOwnership(wallet,"Wallet gespeichert · ");
-    const txSync=await syncApertumTransactionCache(address,null);
-    // Fresh-Build-Lücke bis 5.94: Claim-Tx wurden erkannt, ihre ERC-20-Auszahlungen
-    // aber nicht vollständig aufgebaut. Für echte DAO1/APTMDAO-Wallets (NFT-Bestand)
-    // sowie das bekannte Referral-Wallet wird die Asset-Flow-Historie deshalb direkt
-    // beim Wallet-Bootstrap inkrementell aufgebaut. Andere EVM-Wallets erhalten keinen
-    // unnötigen Apertum-Vollscan.
+    if(!wallet||!address)return {ok:false,status:"deferred",skipped:true,apertumHandled:false,parts:{wallet:dao1LifecyclePart("deferred","Wallet nicht persistent auflösbar")}};
+
+    // Phase 6.02 / Audit P1: Jeder fachlich relevante Teiljob meldet einen expliziten
+    // Lifecycle-Status. Der Gesamtstatus wird nur hier aggregiert und anschließend bis
+    // zum zentralen Wallet-Erstaufbau propagiert. Optionale Anzeige-/Cache-Teile dürfen
+    // den fachlichen DAO1-Abschluss nicht künstlich verschlechtern.
+    const parts={};
+    await dao1RunLifecyclePart(parts,"ownershipCache",()=>loadOwnershipCache());
+    const ownership=await dao1RunLifecyclePart(parts,"nftOwnership",()=>refreshWalletNftsAndOwnership(wallet,"Wallet gespeichert · "),{
+      successStatus:r=>Number(r?.failed||0)>0?"partial":"complete"
+    });
+    const projectRelevant=Number(ownership?.nfts||0)>0 || lower(address)===REFERRAL_WALLET;
+
+    const txSync=await dao1RunLifecyclePart(parts,"transactions",()=>syncApertumTransactionCache(address,null));
+
+    // Asset-Flows sind nur für echte DAO1/APTMDAO-Wallets bzw. das Referral-Wallet
+    // erforderlich. Für andere EVM-Wallets ist das bewusste Überspringen "deferred",
+    // aber optional und verschlechtert den Lifecycle-Gesamtstatus nicht.
     let flowSync={skipped:true,flows:0};
-    if(Number(ownership?.nfts||0)>0 || lower(address)===REFERRAL_WALLET){
-      flowSync=await syncApertumTokenFlowCache(address);
+    if(projectRelevant){
+      flowSync=await dao1RunLifecyclePart(parts,"assetFlows",()=>syncApertumTokenFlowCache(address));
+    }else{
+      parts.assetFlows=dao1LifecyclePart("deferred","Für diese EVM-Wallet kein DAO1/APTMDAO-Asset belegt.",{required:false});
     }
-    await syncTargetedReferralWusdt(address);
-    await loadTransactionRows(address,null);
-    await enrichTransactionsWithClaims(address,null,transactionJobToken,{assetFlowScanComplete:!flowSync?.skipped});
-    await loadDAO1OwnedDidRoots(true);
-    const [legacy,aptm]=await Promise.all([loadOldDao1TreeCache(),loadAptmdaoTreeCache()]);
+
+    let referralSync={skipped:true,flows:0,synthetic:0};
+    if(lower(address)===REFERRAL_WALLET){
+      referralSync=await dao1RunLifecyclePart(parts,"referralRewards",()=>syncTargetedReferralWusdt(address));
+    }else{
+      parts.referralRewards=dao1LifecyclePart("deferred","Kein DAO1-Referral-Wallet.",{required:false});
+    }
+
+    await dao1RunLifecyclePart(parts,"transactionReadModel",()=>loadTransactionRows(address,null),{required:projectRelevant});
+    let claimSync={skipped:!projectRelevant};
+    if(projectRelevant){
+      claimSync=await dao1RunLifecyclePart(parts,"claims",()=>enrichTransactionsWithClaims(address,null,transactionJobToken,{assetFlowScanComplete:!flowSync?.skipped}),{
+        successStatus:r=>r==null?"deferred":"complete"
+      });
+    }else{
+      parts.claims=dao1LifecyclePart("deferred","Keine DAO1/APTMDAO-Claim-Quelle belegt.",{required:false});
+    }
+
+    await dao1RunLifecyclePart(parts,"didRoots",()=>loadDAO1OwnedDidRoots(true),{required:projectRelevant});
+    const treeCaches=await dao1RunLifecyclePart(parts,"teamCaches",()=>Promise.all([loadOldDao1TreeCache(),loadAptmdaoTreeCache()]),{required:false});
+    const [legacy,aptm]=Array.isArray(treeCaches)?treeCaches:[null,null];
     if(legacy?.edges)dao1TeamDiscovery.legacy.edges=legacy.edges;
     if(aptm?.edges)dao1TeamDiscovery.aptmdao.edges=aptm.edges;
     renderDAO1TeamTreePanel();
-    await loadDashboardSummary().catch(()=>{});
+
+    await dao1RunLifecyclePart(parts,"dashboardSummary",()=>loadDashboardSummary(),{required:false});
+
     const remaining=(dao1CachedCurrentNftsForWallet(wallet)||[]).filter(n=>dao1OwnershipNeedsRepair(wallet,n)).length;
-    await dao1SaveWalletBootstrapState(wallet,remaining?"partial":"complete",remaining?`${remaining} offen`:"new-wallet bootstrap");
-    return {ok:true,ownership,txSync,flowSync};
+    if(remaining>0){
+      parts.ownershipConsistency=dao1LifecyclePart("partial",`${remaining} Ownership-Lücke(n) offen`,{required:true,remaining});
+    }else{
+      parts.ownershipConsistency=dao1LifecyclePart("complete","",{required:true,remaining:0});
+    }
+
+    let status=dao1AggregateLifecycle(parts);
+    const stateRow=await dao1SaveWalletBootstrapState(wallet,status,status==="complete"?"wallet bootstrap":Object.entries(parts).filter(([,p])=>p?.required!==false&&p?.status!=="complete").map(([k,p])=>`${k}=${p.status}`).join(", "));
+    if(!stateRow){
+      // Der fachliche Aufbau kann vorhanden sein, aber ohne persistierten Abschlussstatus
+      // ist der Lifecycle nicht beweisbar vollständig. Das wird als partial propagiert.
+      parts.bootstrapState=dao1LifecyclePart("partial","wallet_refresh_state konnte nicht gespeichert werden",{required:true});
+      status=dao1AggregateLifecycle(parts);
+    }else{
+      parts.bootstrapState=dao1LifecyclePart("complete","",{required:true});
+    }
+
+    return {
+      ok:status==="complete",
+      status,
+      apertureHandled:true,
+      parts,
+      ownership,
+      txSync,
+      flowSync,
+      referralSync,
+      claimSync
+    };
   }
 
   async function ensureLoaded() {
