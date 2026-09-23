@@ -1,4 +1,4 @@
-// Phase 6.02 · 23.09.2026 00:56:50 CEST: Audit P1 umgesetzt: DAO1-Lifecycle propagiert complete / partial / failed / deferred bis zum zentralen Wallet-Abschlussstatus. Build 20260923-005650.
+// Phase 6.03 · 23.09.2026 01:44:44 CEST: Audit P2 umgesetzt: Automatische Fresh-Build-Snapshots werden nur noch bei vollständig abgeschlossenem Lifecycle erzeugt; partial / deferred / failed blockieren den finalen Snapshot. Build 20260923-014444.
 // Phase 6.00 · 23.09.2026 00:26:45 CEST: TLN Dashboard-Summary schützt Supabase-UUID-Filter vor transienten lokalen Wallet-IDs beim Fresh-Import. Build 20260923-002645.
 // Phase 5.99 · 23.09.2026 00:15:00 CEST: DAO1 Fresh-Build-Fixes: NFT-Runtime-Sync, native Claim-Trace-Fallback und schneller historische Pool-State-Preispfad. Build 20260923-001500.
 // Phase 5.98 · 22.09.2026 23:40:05 CEST: DAO1-Fresh-Import-Performance: ERC-20-Vollscan wird als Evidenz wiederverwendet; Claim-Nativevidenz parallel statt hunderten seriellen Detailrequests. Build 20260922-234005.
@@ -2107,7 +2107,7 @@ const HARDCODING_AUDIT_ITEMS = [
 
 const LIFECYCLE_ARCH_AUDIT_ITEMS = [
   {priority:"P1", workStatus:"erledigt", severity:"critical", area:"DAO1 Lifecycle-Abschluss", finding:"Teilpfade konnten intern partial/leer bleiben, während der übergeordnete Wallet-Job trotzdem als vollständig aufgebaut erschien.", action:"Phase 6.02: Einheitlicher Statusvertrag complete / partial / failed / deferred ist in DAO1 eingeführt und wird bis zum zentralen Wallet-Abschlussstatus propagiert; apertureHandled ist davon getrennt."},
-  {priority:"P2", workStatus:"offen", severity:"high", area:"Snapshot-Gate", finding:"Snapshots dürfen fachlich erst entstehen, wenn alle dafür erforderlichen Teiljobs vollständig sind.", action:"Snapshot an den neuen Lifecycle-Statusvertrag koppeln; partial/deferred darf keinen finalen Snapshot erzeugen."},
+  {priority:"P2", workStatus:"erledigt", severity:"high", area:"Snapshot-Gate", finding:"Snapshots dürfen fachlich erst entstehen, wenn alle dafür erforderlichen Teiljobs vollständig sind.", action:"Phase 6.03: Automatischer Fresh-Build-Snapshot ist an den Lifecycle-Statusvertrag gekoppelt; nur complete ist zugelassen, partial/deferred/failed blockieren den finalen Snapshot und werden im Snapshot-Gate protokolliert."},
   {priority:"P3", workStatus:"offen", severity:"critical", area:"Fresh-Build-Parität", finding:"Neuer User kann nach identischem Wallet-Import einen anderen fachlichen Zustand als ein langjähriger User erreichen.", action:"Fresh-Build als verbindlichen Reproduzierbarkeitstest behandeln; bestehende Alt-Caches nie als Referenz voraussetzen."},
   {priority:"P4", workStatus:"offen", severity:"high", area:"Performance Fresh-Import", finding:"Messlauf einer DAO1-Wallet: 8:59 min, 1'722 Requests und ca. 263 MB Transfer.", action:"Request-Audit pro Lifecycle-Teiljob auswerten; doppelte History-/RPC-Scans entfernen und Ergebnisse teiljobübergreifend wiederverwenden."},
   {priority:"P5", workStatus:"offen", severity:"critical", area:"DAO1 Claims / Payouts", finding:"Claim-Erkennung, ERC-20-Flows, native Values, Internals, Receipts und Traces bilden heute mehrere sich ergänzende Payout-Pfade.", action:"Eine kanonische Payout-/Asset-Flow-Schicht definieren; Detailansichten und Dashboard ausschließlich daraus lesen lassen."},
@@ -2142,7 +2142,7 @@ function renderHardcodingAudit(){
   const hardcodingRows=HARDCODING_AUDIT_ITEMS.map(i=>`<tr><td>${badge(i)}</td><td>${escapeAttr(i.area)}</td><td>${escapeAttr(i.item)}</td><td>${escapeAttr(i.detail)}</td></tr>`).join("");
   el.innerHTML=`
     <div class="custom-token-card" style="margin-bottom:16px">
-      <h3 style="margin-top:0">Lifecycle-/Architektur-Audit · Phase 6.02</h3>
+      <h3 style="margin-top:0">Lifecycle-/Architektur-Audit · Phase 6.03</h3>
       <div class="note" style="margin-bottom:10px"><strong>Entscheidung:</strong> Kein Rewrite. Feature-Freeze für neue große Funktionen, bis die offenen Lifecycle-Punkte konsolidiert sind. <strong>Steuerungsregel:</strong> Die Tabelle ist die führende Quelle. Bearbeitet wird jeweils die höchste offene Arbeitspriorität P1–P9. <strong>Arbeitspriorität</strong> bestimmt die Reihenfolge; <strong>Risiko</strong> beschreibt unabhängig davon die fachliche/technische Auswirkung. Abgeschlossene Punkte auf „erledigt“ setzen; stabile Punkte ohne Umbau bleiben auf „beobachten“.</div>
       <div class="chain-table-wrap"><table class="chain-admin-table" style="min-width:1450px"><thead><tr><th>Prio</th><th>Arbeitsstatus</th><th>Risiko</th><th>Bereich</th><th>Audit-Befund</th><th>Ziel / nächster Schritt</th></tr></thead><tbody>${lifecycleRows}</tbody></table></div>
     </div>
@@ -4039,20 +4039,39 @@ async function initializeSavedWalletTargeted(w,{isNew=false}={}) {
     await mergeTlnBscStakingCacheIntoWalletData().catch(()=>{});
     renderResults();renderSafeTokenTable();renderCustomTokenList();renderAllocationChart();renderDashboard();renderWalletDataFreshness();
   });
-  // Einen neuen Snapshot erst speichern, wenn der gezielte Wallet-/Projektaufbau
-  // vollständig durchgelaufen ist. So kann kein partieller Fresh-Build zum neuen
-  // Referenzstand für Dashboard oder 31.12.-Folgeprozesse werden.
-  if(failures.length===0){
+  // Audit P2 / Snapshot-Gate: Ein automatischer Fresh-Build-Snapshot ist ein
+  // finaler Referenzstand. Er darf deshalb nur entstehen, wenn alle erforderlichen
+  // Teiljobs vollständig abgeschlossen sind. Der in P1 eingeführte DAO1-Statusvertrag
+  // ist dafür die führende Information; partial / deferred / failed werden nicht
+  // durch einen Snapshot als scheinbar vollständig konserviert.
+  const preSnapshotLifecycleStatus=failures.length?"failed":(daoLifecycle?.status&&daoLifecycle.status!=="complete"?daoLifecycle.status:"complete");
+  const snapshotGate={
+    status:"deferred",
+    eligible:failures.length===0&&preSnapshotLifecycleStatus==="complete",
+    reason:failures.length?"Teiljob-Fehler vorhanden":(preSnapshotLifecycleStatus!=="complete"?`Lifecycle ${preSnapshotLifecycleStatus}`:"")
+  };
+  if(snapshotGate.eligible){
     await timed("Snapshot",async()=>{
-      try{await createSnapshot(true);}catch(e){failures.push(`Snapshot: ${e.message||e}`);}
+      try{
+        await createSnapshot(true);
+        snapshotGate.status="complete";
+        snapshotGate.reason="";
+      }catch(e){
+        snapshotGate.status="failed";
+        snapshotGate.reason=e?.message||String(e);
+        failures.push(`Snapshot: ${e.message||e}`);
+      }
     });
-  }else timings["Snapshot"]=0;
+  }else{
+    timings["Snapshot"]=0;
+    console.info("Wallet Fresh-Build Snapshot-Gate",{wallet:w.label||w.id,lifecycleStatus:preSnapshotLifecycleStatus,daoLifecycleStatus:daoLifecycle?.status||null,failures:[...failures],snapshotGate});
+  }
   await timed("Projekt-Summaries",()=>refreshDashboardProjectSummaries().catch(()=>{}));
   const durationMs=Math.round(performance.now()-started);
   const detail=Object.entries(timings).map(([name,ms])=>`${name} ${Math.round(ms/100)/10}s`).join(" · ");
-  const lifecycleStatus=failures.length?"failed":(daoLifecycle?.status&&daoLifecycle.status!=="complete"?daoLifecycle.status:"complete");
-  console.info("Wallet-Erstimport Laufzeit",{wallet:w.label||w.id,isNew,durationMs,timings,lifecycleStatus,daoLifecycle,failures:[...failures]});
-  return {ok:lifecycleStatus==="complete",status:lifecycleStatus,parts:{dao1:daoLifecycle},failures,isNew,durationMs,timings,durationText:formatWalletImportDuration(durationMs),detail};
+  const lifecycleStatus=failures.length?"failed":preSnapshotLifecycleStatus;
+  console.info("Wallet-Erstimport Laufzeit",{wallet:w.label||w.id,isNew,durationMs,timings,lifecycleStatus,daoLifecycle,snapshotGate,failures:[...failures]});
+  return {ok:lifecycleStatus==="complete",status:lifecycleStatus,parts:{dao1:daoLifecycle,snapshot:snapshotGate},failures,isNew,durationMs,timings,durationText:formatWalletImportDuration(durationMs),detail};
 }
 
 function formatWalletImportDuration(ms){

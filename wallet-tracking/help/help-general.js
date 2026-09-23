@@ -1,4 +1,4 @@
-// Phase 6.02 · 23.09.2026 00:56:50 CEST: Wallet-Erstaufbau zeigt den propagierten DAO1-Lifecycle-Status complete / partial / failed / deferred statt Teilzustände als vollständig zu melden. Build 20260923-005650.
+// Phase 6.03 · 23.09.2026 01:44:44 CEST: Fresh-Build-Snapshot-Gate dokumentiert: automatische Referenz-Snapshots entstehen nur bei Lifecycle complete; partial / deferred / failed bleiben ohne finalen Snapshot. Build 20260923-014444.
 // Phase 5.99 · 23.09.2026 00:15:00 CEST: DAO1-Erstimport übernimmt frisch geladene NFT-Daten sofort, prüft native Claim-Auszahlungen über Internal/Trace und bewertet historische APTM-Preise bevorzugt über getReserves am Zielblock. Build 20260923-001500.
 // Phase 5.98 · 22.09.2026 23:40:05 CEST: DAO1-Erstimport nutzt den bereits vollständigen ERC-20-Walletscan und parallelisierte native Claim-Prüfung, um redundante Detailrequests zu vermeiden. Build 20260922-234005.
 // Phase 5.96 · 22.09.2026 21:35:26 CEST: Hilfe ergänzt den sichtbaren Datenjob nach Wallet-Speicherung und transparente Teilfehleranzeige. Build 20260922-213526.
@@ -37,8 +37,8 @@
 (() => {
 // WalletTracking · Allgemeine Hilfe
 // Eigenständiges Hilfe-Modul. Künftige Inhaltsänderungen sollen möglichst nur hier erfolgen.
-const HELP_MODULE_BUILD="20260923-005650";
-const HELP_MODULE_TIMESTAMP="23.09.2026 00:56:50 CEST";
+const HELP_MODULE_BUILD="20260923-014444";
+const HELP_MODULE_TIMESTAMP="23.09.2026 01:44:44 CEST";
 function renderGeneralHelp(){
   const el=document.getElementById("generalHelpContent");
   if(!el)return;
@@ -46,7 +46,7 @@ function renderGeneralHelp(){
 
       <div class="custom-token-card">
         <h3 style="margin-top:0">Schnellstart</h3>
-        <p class="note"><strong>1.</strong> Neue User starten mit einem leeren Dashboard und können dort direkt „Erste Wallet erfassen“ wählen. Unter „Meine Wallets“ jede Wallet als „Eigenes Wallet“ markieren oder einem Besitzer zuordnen. Nach dem Speichern bleibt „Daten werden geladen …“ sichtbar, bis der gezielte Erstaufbau dieser Wallet abgeschlossen ist; danach wird auch die Laufzeit angezeigt. DAO1-Teiljobs führen zusätzlich einen expliziten Lifecycle-Status (complete / partial / failed / deferred), der bis zum zentralen Wallet-Abschlussstatus erhalten bleibt; ein partieller Aufbau wird nicht als vollständig angezeigt. <strong>2.</strong> Das Dashboard ist die Startseite und zeigt sofort den gespeicherten Stand für den gewählten Personenfilter. <strong>3.</strong> „Daten aktualisieren“ erneuert Bestände und projektübergreifende Daten. <strong>4.</strong> „Preise aktualisieren“ erneuert davon getrennt die aktuellen Kurse und USD-Werte. <strong>5.</strong> Unbekannte Token bei Bedarf unter „Entdecken“ prüfen und als eigene sichere Token übernehmen. Für Projektdetails das jeweilige DeFi-Projekt öffnen.</p>
+        <p class="note"><strong>1.</strong> Neue User starten mit einem leeren Dashboard und können dort direkt „Erste Wallet erfassen“ wählen. Unter „Meine Wallets“ jede Wallet als „Eigenes Wallet“ markieren oder einem Besitzer zuordnen. Nach dem Speichern bleibt „Daten werden geladen …“ sichtbar, bis der gezielte Erstaufbau dieser Wallet abgeschlossen ist; danach wird auch die Laufzeit angezeigt. DAO1-Teiljobs führen zusätzlich einen expliziten Lifecycle-Status (complete / partial / failed / deferred), der bis zum zentralen Wallet-Abschlussstatus erhalten bleibt; ein partieller Aufbau wird nicht als vollständig angezeigt. Ein automatischer Fresh-Build-Snapshot wird nur bei Lifecycle complete als finaler Referenzstand gespeichert; partial, deferred oder failed blockieren diesen Snapshot. <strong>2.</strong> Das Dashboard ist die Startseite und zeigt sofort den gespeicherten Stand für den gewählten Personenfilter. <strong>3.</strong> „Daten aktualisieren“ erneuert Bestände und projektübergreifende Daten. <strong>4.</strong> „Preise aktualisieren“ erneuert davon getrennt die aktuellen Kurse und USD-Werte. <strong>5.</strong> Unbekannte Token bei Bedarf unter „Entdecken“ prüfen und als eigene sichere Token übernehmen. Für Projektdetails das jeweilige DeFi-Projekt öffnen.</p>
       </div>
 
       <div class="custom-token-card"><h3 style="margin-top:0">🔤 Darstellung</h3><p class="note">Die Hauptnavigation befindet sich als klar gegliederte Seitenleiste links; auf schmalen Displays ordnet sie sich responsiv oberhalb des Inhalts an. Chain- und Token-Identitäten werden in Datentabellen mit kompakten Symbolen unterstützt. Die Schriftgrösse der gesamten Anwendung kann oben im Kopfbereich mit dem Regler „Schrift“ individuell von 85 % bis 125 % eingestellt werden. Die Einstellung wird auf diesem Gerät gespeichert. Farben, Cards, Navigation, Tabs und Tabellen werden zentral über <code>css/wallet-tracking.css</code> gesteuert.</p></div>
