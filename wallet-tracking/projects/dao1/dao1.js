@@ -1,3 +1,4 @@
+// Phase 6.04 · 23.09.2026 02:51:28 CEST: Audit P3 Fresh-Build-Parität: historische NFT-Kandidaten aus Wallet-Transferhistorie bekannter Projekt-Contracts; Ownership deterministisch ohne Alt-Cache-Voraussetzung; Legacy-Self-Heal vom automatischen Fresh-Build entkoppelt. Build 20260923-025128.
 // Phase 6.03 · 23.09.2026 01:44:44 CEST: Release-Metadaten mit Audit P2 synchronisiert; DAO1-Lifecycle-Vertrag aus P1 unverändert, wird vom zentralen Fresh-Build-Snapshot-Gate ausgewertet. Build 20260923-014444.
 // Phase 5.99 · 23.09.2026 00:15:00 CEST: DAO1 Fresh-Build stabilisiert: frisch geladene Apertum-NFTs sofort in DAO1 übernehmen; native Claim-Payouts zusätzlich via RPC-Trace; historische APTM-Preise primär per historischem getReserves statt Log-Massenscan. Build 20260923-001500.
 // Phase 5.98 · 22.09.2026 23:40:05 CEST: DAO1 Fresh-Import beschleunigt: nach vollständigem Wallet-ERC20-Scan keine hunderten Tx-Detailrequests; native Claim-Evidenz parallelisiert und gecacht. Build 20260922-234005.
@@ -393,7 +394,10 @@ window.DAO1Project = (() => {
     // Historische NFT-Namen werden ebenfalls nachgelagert und blockieren den Current-State-Start nicht.
     enrichHistoricalNftNames().then(()=>renderNftClassification()).catch(e=>console.warn("Historische NFT-Metadaten:",e));
     updateVisibility();
-    reconcileLegacyDaoWallets().catch(e=>console.warn("DAO1 Legacy-Wallet-Abgleich",e));
+    // Audit P3: Der Legacy-Self-Heal ist kein Bestandteil mehr der Fresh-Build-
+    // Korrektheit und darf nicht parallel vor dem eigentlichen Wallet-Bootstrap laufen.
+    // Bestehende Altbestände bleiben ein separater Legacy-/Reparaturpfad; die
+    // Fresh-Build-Korrektheit hängt nicht mehr von diesem Session-Self-Heal ab.
   }
 
   function assetMatches(chain, address, isNative, ctx) {
@@ -878,6 +882,23 @@ window.DAO1Project = (() => {
     return !(Number(row.owned_from_block||0)>0) || !row.owned_from_at;
   }
 
+  function dao1OwnershipCandidateNeedsRepair(wallet,nft){
+    if(nft?.historical===true || nft?.current===false){
+      const walletId=String(wallet?.dbId||wallet?.id||"");
+      const address=lower(walletAddress(wallet)||"");
+      const contract=lower(nft?.contract||""),id=String(nft?.id||"");
+      const row=ownershipRows.find(o=>
+        String(o?.chain_key||CHAIN_KEY)===CHAIN_KEY &&
+        lower(o?.nft_contract||"")===contract &&
+        String(o?.nft_id??"")===id &&
+        (String(o?.wallet_id||"")===walletId || (!!address&&lower(o?.wallet_address||"")===address))
+      );
+      if(!row)return true;
+      return !(Number(row.owned_from_block||0)>0) || !row.owned_from_at;
+    }
+    return dao1OwnershipNeedsRepair(wallet,nft);
+  }
+
   async function dao1EnsureIntrinsicClassifications(nfts){
     const missing=[];
     for(const n of (nfts||[])){
@@ -914,7 +935,7 @@ window.DAO1Project = (() => {
         const hasOwnership=ownershipRows.some(o=>String(o?.wallet_id||"")===walletId||lower(o?.wallet_address||"")===address);
         return (Array.isArray(cached)&&cached.length>0)||hasOwnership||walletHasProjectAsset(w);
       });
-      if(!wallets.length){dao1LegacyWalletReconcileDone=true;return {ok:true,wallets:0,repaired:0};}
+      if(!wallets.length)return {deferred:true,wallets:0,repaired:0};
       const states=await dao1LoadWalletBootstrapStates(wallets);
       let repaired=0,failed=0,classified=0,remainingTotal=0;
       const allCurrent=[];
@@ -1082,7 +1103,7 @@ window.DAO1Project = (() => {
     }
   }
 
-  async function refreshWalletNftsAndOwnership(wallet,statusPrefix=""){
+  async function refreshWalletNftsAndOwnership(wallet,statusPrefix="",options={}){
     const ctx=getContext?.(),address=walletAddress(wallet);if(!ctx?.currentUser||!address)return {nfts:0,ownership:0,failed:0,changed:0,skipped:0};
     const walletId=String(wallet.dbId||wallet.id||"");
 
@@ -1120,7 +1141,22 @@ window.DAO1Project = (() => {
       !!r.is_current
     );
     const dbCurrentByKey=new Map(dbCurrent.map(r=>[nftOwnershipKey(r.nft_contract,r.nft_id),r]));
+    const walletAddressLower=lower(address);
+    const dbAnyByKey=new Map(ownershipRows.filter(r=>
+      String(r.chain_key||CHAIN_KEY)===CHAIN_KEY &&
+      (String(r.wallet_id||"")===walletId || lower(r.wallet_address||"")===walletAddressLower)
+    ).map(r=>[nftOwnershipKey(r.nft_contract,r.nft_id),r]));
+    const historicalCandidates=Array.isArray(options?.historicalCandidates)?options.historicalCandidates:[];
     const affected=new Map();
+
+    // Audit P3: Historische NFTs eines Fresh-Builds kommen aus der unabhängigen
+    // Wallet-Transferhistorie, nicht aus einem bereits existierenden User-Ownership-Cache.
+    // Damit können auch heute nicht mehr gehaltene Bots/DIDs reproduzierbar aufgebaut werden.
+    for(const n of historicalCandidates){
+      const key=nftOwnershipKey(n?.contract,n?.id);
+      if(!n?.contract||!n?.id||currentByKey.has(key)||dbAnyByKey.has(key))continue;
+      affected.set(key,{...n,historical:true,current:false});
+    }
 
     // Neu in dieser Wallet: Historie dieses NFT neu zusammensetzen.
     for(const [key,n] of currentByKey){
@@ -1139,7 +1175,7 @@ window.DAO1Project = (() => {
     if(!affected.size){
       selectedWalletId=prev;
       setTransactionStatus("loading",`${statusPrefix}${wallet.label}: NFT-Besitz unverändert.`,`${currentByKey.size} aktuelle NFT(s) aus Cache bestätigt · keine Transferketten neu geladen.`);
-      return {nfts:currentByKey.size,ownership:0,failed:0,changed:0,skipped:unchanged};
+      return {nfts:currentByKey.size,historicalCandidates:historicalCandidates.length,ownership:0,failed:0,changed:0,skipped:unchanged};
     }
 
     const changedNfts=[...affected.values()];
@@ -1154,7 +1190,7 @@ window.DAO1Project = (() => {
     }
     selectedWalletId=prev;
     await loadOwnershipCache();
-    return {nfts:currentByKey.size,ownership:saved,failed,changed:changedNfts.length,skipped:unchanged};
+    return {nfts:currentByKey.size,historicalCandidates:historicalCandidates.length,ownership:saved,failed,changed:changedNfts.length,skipped:unchanged};
   }
 
   async function discoverMinerNfts() {
@@ -1179,21 +1215,25 @@ window.DAO1Project = (() => {
   }
 
 
-  async function loadWalletNftTransferHistory(address,nftContract){
+  async function loadWalletNftTransferHistory(address,nftContract,{strict=false}={}){
     const contract=lower(nftContract);
     const key=`${lower(address)}|${contract}`;
     const cached=ownershipWalletTransferCache.get(key);
-    if(cached && Date.now()-cached.at<5*60*1000)return cached.rows;
+    if(cached && Date.now()-cached.at<5*60*1000){
+      if(strict&&cached.complete===false)throw new Error(`NFT-Transferhistorie unvollständig: ${contract}`);
+      return cached.rows;
+    }
 
     const base=`${EXPLORER_API}/addresses/${address}/token-transfers`;
     const directions=["to","from"];
     const merged=new Map();
-    let lastError=null;
+    let lastError=null,directionalSuccess=0,fallbackSuccess=false;
 
     for(const filter of directions){
       try{
         const initial=`${base}?type=${encodeURIComponent("ERC-721,ERC-1155")}&token=${encodeURIComponent(contract)}&filter=${filter}`;
         const rows=await fetchPagedUrl(initial,500);
+        directionalSuccess++;
         for(const t of rows){
           if(!isNonSpamNftTransfer(t))continue;
           merged.set(nftTransferDedupeKey(t),t);
@@ -1204,10 +1244,14 @@ window.DAO1Project = (() => {
       }
     }
 
-    if(!merged.size){
+    // Wenn einer der Richtungs-Endpunkte fehlt, ist die Historie noch nicht beweisbar
+    // vollständig. Dann immer den ungefilterten Contract-Endpunkt als Vollständigkeits-
+    // Fallback lesen – auch wenn die andere Richtung bereits Treffer geliefert hat.
+    if(directionalSuccess<directions.length){
       try{
         const initial=`${base}?type=${encodeURIComponent("ERC-721,ERC-1155")}&token=${encodeURIComponent(contract)}`;
         const rows=await fetchPagedUrl(initial,500);
+        fallbackSuccess=true;
         for(const t of rows){
           if(!isNonSpamNftTransfer(t))continue;
           merged.set(nftTransferDedupeKey(t),t);
@@ -1215,10 +1259,72 @@ window.DAO1Project = (() => {
       }catch(e){lastError=e;}
     }
 
+    const complete=directionalSuccess===directions.length||fallbackSuccess;
     const rows=[...merged.values()];
-    if(!rows.length&&lastError)console.warn("Apertum Wallet-NFT-Transferhistorie:",address,contract,lastError);
-    ownershipWalletTransferCache.set(key,{at:Date.now(),rows});
+    if(!complete&&lastError){
+      console.warn("Apertum Wallet-NFT-Transferhistorie:",address,contract,lastError);
+      if(strict)throw lastError;
+    }
+    ownershipWalletTransferCache.set(key,{at:Date.now(),rows,complete});
     return rows;
+  }
+
+  function dao1HistoricalNftContracts(){
+    const contracts=new Set([
+      lower(DEFAULT_MINER_NFT_CONTRACT),
+      lower(DAO1_OLD_DID_CONTRACT),
+      lower(APTMDAO_NFT_CONTRACT)
+    ]);
+    for(const n of (projectNfts||[])){
+      const c=lower(n?.nft_contract||"");
+      if(c)contracts.add(c);
+    }
+    for(const n of (currentApertumNfts||[])){
+      const c=lower(n?.contract||n?.tokenAddress||"");
+      if(c)contracts.add(c);
+    }
+    return [...contracts].filter(Boolean);
+  }
+
+  async function discoverHistoricalNftCandidatesForWallet(wallet,statusPrefix=""){
+    const address=walletAddress(wallet);
+    if(!address)return {candidates:[],contracts:0,failedContracts:0,transfers:0};
+    const candidates=new Map();
+    const contracts=dao1HistoricalNftContracts();
+    let failedContracts=0,transfers=0;
+    for(let i=0;i<contracts.length;i++){
+      const contract=contracts[i];
+      setTransactionStatus("loading",`${statusPrefix}${wallet.label}: historische NFT-Kandidaten werden ermittelt…`,
+        `Contract ${i+1}/${contracts.length} · Fresh-Build liest Wallet-Transferhistorie unabhängig von bestehenden User-Caches.`);
+      try{
+        const rows=await loadWalletNftTransferHistory(address,contract,{strict:true});
+        transfers+=rows.length;
+        for(const t of rows){
+          const token=t?.token||{};
+          const seenContract=lower(token.address||token.address_hash||t.token_address||t.token_address_hash||contract);
+          if(seenContract!==contract)continue;
+          for(const id of transferTokenIds(t)){
+            if(!/^\d+$/.test(String(id)))continue;
+            const key=nftOwnershipKey(contract,id);
+            const cls=classificationFor(contract,id);
+            const metaName=nftMetaById.get(key)?.name;
+            candidates.set(key,{
+              id:String(id),contract,
+              name:cls?.nft_name||metaName||nftNameFromTransfer(t)||`NFT #${id}`,
+              historical:true,current:false,evidence:"wallet-transfer-history"
+            });
+          }
+        }
+      }catch(e){
+        failedContracts++;
+        console.warn("DAO1 historische NFT-Kandidaten",wallet?.label||address,contract,e);
+      }
+    }
+    console.info("DAO1 Fresh-Build historische NFT-Kandidaten",{
+      wallet:wallet?.label||address,address,contracts:contracts.length,failedContracts,
+      transfers,candidates:candidates.size
+    });
+    return {candidates:[...candidates.values()],contracts:contracts.length,failedContracts,transfers};
   }
 
   function transferTokenIds(t){
@@ -7321,10 +7427,20 @@ window.DAO1Project = (() => {
     // den fachlichen DAO1-Abschluss nicht künstlich verschlechtern.
     const parts={};
     await dao1RunLifecyclePart(parts,"ownershipCache",()=>loadOwnershipCache());
-    const ownership=await dao1RunLifecyclePart(parts,"nftOwnership",()=>refreshWalletNftsAndOwnership(wallet,"Wallet gespeichert · "),{
+
+    // Audit P3: Fresh-Build-Parität. Historische NFT-Kandidaten werden aus der
+    // unabhängigen Wallet-Transferhistorie der bekannten DAO1/APTMDAO-Contracts
+    // rekonstruiert. Ein bestehender project_nft_ownership-Altbestand ist dafür
+    // ausdrücklich keine Voraussetzung.
+    const historicalDiscovery=await dao1RunLifecyclePart(parts,"historicalNftDiscovery",()=>discoverHistoricalNftCandidatesForWallet(wallet,"Wallet gespeichert · "),{
+      successStatus:r=>Number(r?.failedContracts||0)>0?"partial":"complete"
+    });
+    const ownership=await dao1RunLifecyclePart(parts,"nftOwnership",()=>refreshWalletNftsAndOwnership(wallet,"Wallet gespeichert · ",{
+      historicalCandidates:historicalDiscovery?.candidates||[]
+    }),{
       successStatus:r=>Number(r?.failed||0)>0?"partial":"complete"
     });
-    const projectRelevant=Number(ownership?.nfts||0)>0 || lower(address)===REFERRAL_WALLET;
+    const projectRelevant=Number(ownership?.nfts||0)>0 || Number(ownership?.historicalCandidates||0)>0 || lower(address)===REFERRAL_WALLET;
 
     const txSync=await dao1RunLifecyclePart(parts,"transactions",()=>syncApertumTransactionCache(address,null));
 
@@ -7364,7 +7480,13 @@ window.DAO1Project = (() => {
 
     await dao1RunLifecyclePart(parts,"dashboardSummary",()=>loadDashboardSummary(),{required:false});
 
-    const remaining=(dao1CachedCurrentNftsForWallet(wallet)||[]).filter(n=>dao1OwnershipNeedsRepair(wallet,n)).length;
+    const consistencyCandidates=new Map();
+    for(const n of (dao1CachedCurrentNftsForWallet(wallet)||[]))consistencyCandidates.set(nftOwnershipKey(n.contract,n.id),n);
+    for(const n of (historicalDiscovery?.candidates||[])){
+      const key=nftOwnershipKey(n.contract,n.id);
+      if(!consistencyCandidates.has(key))consistencyCandidates.set(key,n);
+    }
+    const remaining=[...consistencyCandidates.values()].filter(n=>dao1OwnershipCandidateNeedsRepair(wallet,n)).length;
     if(remaining>0){
       parts.ownershipConsistency=dao1LifecyclePart("partial",`${remaining} Ownership-Lücke(n) offen`,{required:true,remaining});
     }else{
