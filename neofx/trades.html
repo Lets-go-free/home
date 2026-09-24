@@ -3,14 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>neo.FX Trades-Übersicht</title>
+    <title>TagMarkets Trades-Übersicht</title>
     <link rel="stylesheet" href="css/neofx-style.css">
+    <style>
+        .neo-input {
+            padding: 9px 10px;
+            border: 2px solid #cbd5e0;
+            border-radius: 8px;
+            font-size: 0.95em;
+            background: white;
+            color: #2d3748;
+            font-family: inherit;
+        }
+        .neo-input:focus {
+            outline: none;
+            border-color: #4a5568;
+        }
+        .neo-btn {
+            padding: 10px 16px;
+            background: #2d3748;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .neo-btn:hover { background: #1a202c; }
+        .neo-btn-small {
+            padding: 4px 10px;
+            background: none;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            color: #4a5568;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-family: inherit;
+        }
+        .neo-btn-small:hover { background: #edf2f7; }
+        #tradesTable td.text-left, #accountsTable td { text-align: left !important; }
+        #accountsTable { width: auto !important; min-width: 600px; }
+        #accountsTable th { width: auto !important; text-align: left !important; }
+        #accountsTable input.neo-input { min-width: 260px; }
+        #tradesTable td:last-child { min-width: 130px; }
+        #accountsTable td.table-center { text-align: center !important; }
+        .kategorie-select {
+            padding: 4px 6px;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            font-size: 0.95em;
+            font-family: inherit;
+            background: white;
+        }
+        .kategorie-select.manuell {
+            border-color: #f59e0b;
+            background: #fffbeb;
+        }
+    </style>
 </head>
 <body>
 
 <div class="container">
     <div class="hero">
-        <h1>neo.FX Trades-Übersicht</h1>
+        <h1>TagMarkets Trades-Übersicht</h1>
         <p>Live-Performance Tracking</p>
     </div>
 
@@ -126,30 +182,66 @@
             </div>
         </div>
 
-        <!-- Trades Tabelle -->
-        <div id="tradesContainer" style="display: none;">
+        <!-- Trading-Konten -->
+        <div id="accountsContainer" style="margin-bottom: 30px;">
+            <h3 style="margin-bottom: 20px;">Trading-Konten</h3>
+            <p class="info-box">
+                <strong>Hinweis:</strong> Die Konten und die manuell geänderten Kategorien werden vorerst nur in diesem Browser gespeichert. Mit der Umstellung auf Supabase werden sie zentral abgelegt.
+            </p>
+            <div class="table-container-small">
+                <table id="accountsTable" style="width: 100%; border-collapse: collapse;">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr style="background: #2d3748; color: white;">
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Account</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Strategie</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Hebel</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #4a5568;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="accountsBody"></tbody>
+                </table>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 15px;">
+                <input id="newAccount" type="text" placeholder="Account-Nr." class="neo-input" style="width: 160px;">
+                <input id="newStrategie" type="text" placeholder="Strategie" class="neo-input" style="width: 220px;">
+                <select id="newHebel" class="neo-input" style="width: 110px;">
+                    <option value="">Hebel</option>
+                    <option value="x12">x12</option>
+                    <option value="x24">x24</option>
+                </select>
+                <button type="button" class="neo-btn" onclick="addAccount()">Konto hinzufügen</button>
+                <span id="accountMessage" style="font-size: 0.9em; color: #dc2626;"></span>
+            </div>
+        </div>
+
+        <!-- Alle Trades (Daten von Tag Markets) -->
+        <div id="tradesContainer">
             <h3 style="margin-bottom: 20px;">Alle Trades</h3>
 
             <div class="table-container">
                 <table id="tradesTable" style="width: 100%; border-collapse: collapse;">
                     <thead style="position: sticky; top: 0; z-index: 10;">
                         <tr style="background: #2d3748; color: white;">
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568; width: 80px;">Datum</th>
-                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568; width: 100px;">Account</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Einzahlung<br>$</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">$ mit<br>Hebel</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Saldo<br>Einzahlung<br>mit Hebel</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 80px;">Profit</th>
-                            <th style="padding: 12px; text-align: center; border: 1px solid #4a5568; width: 80px;">Gewinn/<br>Verlust</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto<br>Profit %<br>(Hebel)</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Brutto<br>Profit %<br>(effektiv)</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 80px;">Gebühren</th>
-                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568; width: 90px;">Kommissionen</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Platform</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Ticket</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Account</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Open Time</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Type</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Volume</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Symbol</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Open Price</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">S/L</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">T/P</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Closed Time</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Close Price</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Commission</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Taxes</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Swap</th>
+                            <th style="padding: 12px; text-align: right; border: 1px solid #4a5568;">Profit/Amount</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #4a5568;">Kategorie</th>
                         </tr>
                     </thead>
-                    <tbody id="tradesBody">
-                        <!-- Wird dynamisch gefüllt -->
-                    </tbody>
+                    <tbody id="tradesBody"></tbody>
                 </table>
             </div>
         </div>
@@ -157,7 +249,7 @@
     </div>
 
     <div class="footer-link">
-        <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu neo.FX</a>
+        <a href="index.html">← Zurück zur Haupt-Erklärungsseite zu TagMarkets</a>
     </div>
 </div>
 
@@ -176,7 +268,6 @@ async function loadData() {
     document.getElementById('errorMessage').style.display = 'none';
     document.getElementById('uebersichtContainer').style.display = 'none';
     document.getElementById('gewinneContainer').style.display = 'none';
-    document.getElementById('tradesContainer').style.display = 'none';
 
     try {
         // Lade nur noch Trades-Daten
@@ -187,7 +278,7 @@ async function loadData() {
         // Speichere alle Trades global
         allTradesData = tradesData;
         
-        // Erstelle Account-Filter
+        // Erstelle Account-Filter (Accounts aus Google Sheets + Tag Markets)
         populateAccountFilter(tradesData);
         
         // Zeige alle Daten (kein Filter aktiv)
@@ -200,7 +291,6 @@ async function loadData() {
         document.getElementById('uebersichtContainer').style.display = 'block';
         document.getElementById('gewinneContainer').style.display = 'block';
         document.getElementById('weeklyOverviewContainer').style.display = 'block';
-        document.getElementById('tradesContainer').style.display = 'block';
         
     } catch (error) {
         console.error('Fehler beim Laden:', error);
@@ -276,9 +366,14 @@ function parseCSVRow(row) {
 
 function populateAccountFilter(trades) {
     // Hole eindeutige Account-Werte
-    const accounts = [...new Set(trades.map(t => t.Account).filter(a => a && a.trim()))].sort();
+    const accounts = [...new Set([
+        ...trades.map(t => t.Account),
+        ...mt5Trades.map(t => t.account),
+        ...loadAccounts().map(a => a.account)
+    ].filter(a => a && String(a).trim()))].sort();
     
     const select = document.getElementById('accountFilter');
+    const previous = select.value;
     // Behalte "Alle Accounts" Option
     select.innerHTML = '<option value="">Alle Accounts</option>';
     
@@ -288,6 +383,7 @@ function populateAccountFilter(trades) {
         option.textContent = account;
         select.appendChild(option);
     });
+    if (accounts.includes(previous)) select.value = previous;
 }
 
 function filterByAccount() {
@@ -311,7 +407,7 @@ function filterByAccount() {
     displayGenericTable(gewinneCalculated, 'gewinneHead', 'gewinneBody');
     displayGewinneProAccount(gewinneProAccount);
     displayWeeklyOverview(weeklyOverview);
-    displayTrades(filteredTrades);
+    displayTrades(selectedAccount);
 }
 
 function calculateUebersicht(trades) {
@@ -1101,198 +1197,326 @@ function displayGenericTable(data, headId, bodyId) {
     });
 }
 
-function displayTrades(trades) {
+// ============================================================
+// Trades von Tag Markets (vom Screenshot abgetippt)
+// Später: Daten kommen aus Supabase
+// ============================================================
+const TAGMARKETS_TRADES = [
+    // platform, ticket, account, openTime, type, volume, symbol, openPrice, sl, tp, closedTime, closePrice, commission, taxes, swap, profit
+    ['MT5', '125935879', '50988820', '2026-07-12 21:53:12', 'Accounting (Balance)', 0, '', 0, 0, 0, '2026-07-12 21:53:12', 0, 0, 0, 0, 240.00],
+    ['MT5', '126576084', '50988820', '2026-07-13 08:16:27', 'Buy', 0.0001, 'XAUUSD.f', 4066.64, 0, 0, '2026-07-13 08:29:25', 4058.35, -0.00183, 0, 0, 0.15],
+    ['MT5', '127385866', '50988820', '2026-07-13 15:43:27', 'Buy', 0.0001, 'XAUUSD.f', 4063.5, 0, 0, '2026-07-13 15:49:24', 4066.94, -0.00183, 0, 0, -0.06],
+    ['MT5', '128141014', '50988820', '2026-07-14 07:51:04', 'Buy', 0.0001, 'XAUUSD.f', 4017.7, 0, 0, '2026-07-14 07:55:55', 4019.29, -0.00183, 0, 0, -0.03],
+    ['MT5', '128761403', '50988820', '2026-07-14 08:30:53', 'Sell', 0.0001, 'XAUUSD.f', 4024.24, 0, 0, '2026-07-14 09:08:09', 4031.42, -0.00183, 0, 0, 0.13],
+    ['MT5', '129615880', '50988820', '2026-07-15 08:31:12', 'Sell', 0.0001, 'XAUUSD.f', 4025.35, 0, 0, '2026-07-15 08:41:16', 4032.65, -0.00183, 0, 0, 0.13],
+    ['MT5', '130355409', '50988820', '2026-07-15 15:13:35', 'Sell', 0.0001, 'XAUUSD.f', 4036.97, 0, 0, '2026-07-15 15:24:38', 4038.43, -0.00183, 0, 0, 0.03],
+    ['MT5', '131189185', '50988820', '2026-07-16 08:45:23', 'Buy', 0.0001, 'XAUUSD.f', 4032.12, 0, 0, '2026-07-16 08:57:20', 4029.38, -0.00183, 0, 0, 0.05],
+    ['MT5', '132136306', '50988820', '2026-07-17 09:35:22', 'Buy', 0.0001, 'XAUUSD.f', 4003.55, 0, 0, '2026-07-17 10:48:29', 3998.12, -0.00183, 0, 0, 0.10],
+    ['MT5', '132681900', '50988820', '2026-07-18 09:16:07', 'Accounting (Balance)', 0, '', 0, 0, 0, '2026-07-18 09:16:07', 0, 0, 0, 0, -0.15],
+    ['MT5', '133446884', '50988820', '2026-07-20 11:10:48', 'Sell', 0.0001, 'XAUUSD.f', 4020.21, 0, 0, '2026-07-20 11:19:04', 4025.69, -0.00183, 0, 0, 0.10],
+    ['MT5', '134216116', '50988820', '2026-07-20 17:51:46', 'Buy', 0.0001, 'XAUUSD.f', 4010.12, 0, 0, '2026-07-20 17:59:42', 4006.31, -0.00183, 0, 0, 0.07],
+    ['MT5', '135087985', '50988820', '2026-07-21 09:41:33', 'Sell', 0.0001, 'XAUUSD.f', 4075.28, 0, 0, '2026-07-21 09:54:41', 4080.12, -0.00183, 0, 0, 0.09],
+    ['MT5', '135971604', '50988820', '2026-07-21 19:41:05', 'Buy', 0.0001, 'XAUUSD.f', 4074.65, 0, 0, '2026-07-21 19:44:14', 4072.23, -0.00183, 0, 0, 0.04],
+    ['MT5', '136793517', '50988820', '2026-07-22 07:00:59', 'Buy', 0.0001, 'XAUUSD.f', 4130.33, 0, 0, '2026-07-22 08:02:01', 4128.13, -0.00183, 0, 0, 0.04],
+    ['MT5', '137632755', '50988820', '2026-07-22 22:54:35', 'Sell', 0.0001, 'XAUUSD.f', 4129.52, 0, 0, '2026-07-22 23:03:30', 4130.76, -0.00183, 0, 0, 0.02],
+    ['MT5', '138388883', '50988820', '2026-07-23 07:48:08', 'Sell', 0.0001, 'XAUUSD.f', 4123.62, 0, 0, '2026-07-23 08:07:30', 4121.62, -0.00183, 0, 0, -0.04],
+    ['MT5', '139071014', '50988820', '2026-07-23 12:20:23', 'Buy', 0.0001, 'XAUUSD.f', 4096.12, 0, 0, '2026-07-23 13:30:45', 4093.06, -0.00183, 0, 0, 0.06],
+    ['MT5', '139979582', '50988820', '2026-07-24 08:50:08', 'Buy', 0.0001, 'XAUUSD.f', 4028.48, 0, 0, '2026-07-24 09:00:10', 4024.09, -0.00183, 0, 0, 0.08]
+];
+
+const KATEGORIEN = ['Einzahlung', 'Gebühren', 'Auszahlung'];
+const STORAGE_KATEGORIE = 'neofx_kategorie_overrides';
+const STORAGE_ACCOUNTS = 'neofx_accounts';
+
+// Eindeutiger Schlüssel: Kombination Account + Ticket
+function tradeKey(account, ticket) {
+    return String(account).trim() + '|' + String(ticket).trim();
+}
+
+// Trades einlesen - jede Kombination Account/Ticket nur 1x
+function buildTrades(rows) {
+    const map = new Map();
+    rows.forEach(r => {
+        const t = {
+            platform: r[0], ticket: String(r[1]), account: String(r[2]),
+            openTime: r[3], type: r[4], volume: r[5], symbol: r[6],
+            openPrice: r[7], sl: r[8], tp: r[9], closedTime: r[10], closePrice: r[11],
+            commission: r[12], taxes: r[13], swap: r[14], profit: r[15]
+        };
+        const key = tradeKey(t.account, t.ticket);
+        if (map.has(key)) {
+            console.warn('Doppelter Eintrag übersprungen:', key);
+            return;
+        }
+        map.set(key, t);
+    });
+    return [...map.values()];
+}
+
+const mt5Trades = buildTrades(TAGMARKETS_TRADES);
+
+// ---------- Speicher (vorerst Browser, später Supabase) ----------
+function storageGet(key, fallback) {
+    try {
+        const v = localStorage.getItem(key);
+        return v ? JSON.parse(v) : fallback;
+    } catch (e) {
+        return fallback;
+    }
+}
+
+function storageSet(key, value) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+        console.error('Speichern nicht möglich:', e);
+    }
+}
+
+// ---------- Kategorie ----------
+function isAccounting(trade) {
+    return trade.type.toLowerCase().startsWith('accounting');
+}
+
+function autoKategorie(trade) {
+    if (!isAccounting(trade)) return '';
+    if (trade.profit > 0) return 'Einzahlung';
+    if (trade.profit < 0) return 'Gebühren';
+    return '';
+}
+
+function getKategorie(trade) {
+    const overrides = storageGet(STORAGE_KATEGORIE, {});
+    const key = tradeKey(trade.account, trade.ticket);
+    return overrides[key] || autoKategorie(trade);
+}
+
+function setKategorie(account, ticket, value) {
+    const overrides = storageGet(STORAGE_KATEGORIE, {});
+    const key = tradeKey(account, ticket);
+    const trade = mt5Trades.find(t => tradeKey(t.account, t.ticket) === key);
+    // Entspricht der Wert der Automatik, wird die manuelle Änderung entfernt
+    if (!value || (trade && value === autoKategorie(trade))) {
+        delete overrides[key];
+    } else {
+        overrides[key] = value;
+    }
+    storageSet(STORAGE_KATEGORIE, overrides);
+    displayTrades(document.getElementById('accountFilter').value);
+}
+
+// ---------- Trading-Konten ----------
+// Bekannte Konten (Startwerte)
+const ACCOUNTS_START = [
+    { account: '50988820', strategie: '', hebel: 'x24' }
+];
+
+function loadAccounts() {
+    const saved = storageGet(STORAGE_ACCOUNTS, null);
+    if (saved) {
+        // Leere Felder mit bekannten Startwerten ergänzen
+        let changed = false;
+        ACCOUNTS_START.forEach(start => {
+            const acc = saved.find(a => a.account === start.account);
+            if (!acc) return;
+            if (!acc.hebel && start.hebel) { acc.hebel = start.hebel; changed = true; }
+            if (!acc.strategie && start.strategie) { acc.strategie = start.strategie; changed = true; }
+        });
+        if (changed) storageSet(STORAGE_ACCOUNTS, saved);
+        return saved;
+    }
+    // Startwert: bekannte Konten + Accounts aus den Trades
+    const start = ACCOUNTS_START.map(a => ({ ...a }));
+    [...new Set(mt5Trades.map(t => t.account))].forEach(acc => {
+        if (!start.some(a => a.account === acc)) start.push({ account: acc, strategie: '', hebel: '' });
+    });
+    storageSet(STORAGE_ACCOUNTS, start);
+    return start;
+}
+
+function saveAccounts(accounts) {
+    storageSet(STORAGE_ACCOUNTS, accounts);
+}
+
+function displayAccounts() {
+    const tbody = document.getElementById('accountsBody');
+    tbody.innerHTML = '';
+    const accounts = loadAccounts().sort((a, b) => a.account.localeCompare(b.account));
+
+    accounts.forEach(acc => {
+        const row = tbody.insertRow();
+
+        const c0 = row.insertCell();
+        c0.textContent = acc.account;
+
+        const c1 = row.insertCell();
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'neo-input';
+        inp.style.width = '100%';
+        inp.value = acc.strategie;
+        inp.placeholder = 'Strategie eingeben';
+        inp.onchange = () => updateAccount(acc.account, 'strategie', inp.value.trim());
+        c1.appendChild(inp);
+
+        const c2 = row.insertCell();
+        const sel = document.createElement('select');
+        sel.className = 'neo-input';
+        ['', 'x12', 'x24'].forEach(h => {
+            const o = document.createElement('option');
+            o.value = h;
+            o.textContent = h || '–';
+            if (h === acc.hebel) o.selected = true;
+            sel.appendChild(o);
+        });
+        sel.onchange = () => updateAccount(acc.account, 'hebel', sel.value);
+        c2.appendChild(sel);
+
+        const c3 = row.insertCell();
+        c3.classList.add('table-center');
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'neo-btn-small';
+        del.textContent = 'Löschen';
+        del.onclick = () => deleteAccount(acc.account);
+        c3.appendChild(del);
+    });
+}
+
+function addAccount() {
+    const msg = document.getElementById('accountMessage');
+    msg.textContent = '';
+    const account = document.getElementById('newAccount').value.trim();
+    const strategie = document.getElementById('newStrategie').value.trim();
+    const hebel = document.getElementById('newHebel').value;
+
+    if (!account) {
+        msg.textContent = 'Bitte Account-Nr. eingeben.';
+        return;
+    }
+    const accounts = loadAccounts();
+    if (accounts.some(a => a.account === account)) {
+        msg.textContent = 'Diesen Account gibt es schon.';
+        return;
+    }
+    accounts.push({ account, strategie, hebel });
+    saveAccounts(accounts);
+
+    document.getElementById('newAccount').value = '';
+    document.getElementById('newStrategie').value = '';
+    document.getElementById('newHebel').value = '';
+    displayAccounts();
+    populateAccountFilter(allTradesData);
+}
+
+function updateAccount(account, field, value) {
+    const accounts = loadAccounts();
+    const acc = accounts.find(a => a.account === account);
+    if (!acc) return;
+    acc[field] = value;
+    saveAccounts(accounts);
+}
+
+function deleteAccount(account) {
+    if (!confirm('Account ' + account + ' wirklich löschen?')) return;
+    saveAccounts(loadAccounts().filter(a => a.account !== account));
+    displayAccounts();
+}
+
+// ---------- Tabelle "Alle Trades" ----------
+function formatPlain(value) {
+    return String(value);
+}
+
+function displayTrades(selectedAccount) {
     const tbody = document.getElementById('tradesBody');
     tbody.innerHTML = '';
 
-    // Heutiges Datum (ohne Uhrzeit)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    // Sortiere Trades nach Datum absteigend (neueste zuerst)
-    const sortedTrades = [...trades].sort((a, b) => {
-        const dateA = parseDate(a.Datum);
-        const dateB = parseDate(b.Datum);
-        return dateB - dateA; // Absteigend
-    });
-    
-    // Initialisiere Summen für Total-Zeile
-    let totalEinzahlung = 0;
-    let totalMitHebel = 0;
+    let trades = mt5Trades;
+    if (selectedAccount) {
+        trades = trades.filter(t => t.account === selectedAccount);
+    }
+
+    // Neueste zuerst
+    const sorted = [...trades].sort((a, b) => b.openTime.localeCompare(a.openTime));
+
+    let totalCommission = 0;
+    let totalTaxes = 0;
+    let totalSwap = 0;
     let totalProfit = 0;
-    let totalBruttoGewinnProzentHebel = 0;
-    let totalBruttoGewinnProzentEffektiv = 0;
-    let totalGebuehren = 0;
-    let totalKommissionen = 0;
 
-    sortedTrades.forEach((trade) => {
-        // Parse Datum
-        const tradeDate = parseDate(trade.Datum);
-        
-        // Überspringe Trades mit Datum > heute
-        if (tradeDate > today) {
-            return;
-        }
-        
-        // Überspringe leere Zeilen - mind. eine dieser Spalten muss befüllt sein
-        const einzahlung = parseNumber(trade['Einzahlung $']);
-        const profit = parseNumber(trade.Profit);
-        const gebuehren = parseNumber(trade['Gebühren']);
-        
-        // Kommissionen - flexible Spaltensuche (nicht "Kommissionen Total")
-        const keys = Object.keys(trade);
-        const kommissionenKey = keys.find(k => {
-            const normalized = k.toLowerCase().trim();
-            return normalized === 'kommissionen' || (normalized.includes('kommission') && !normalized.includes('total'));
-        });
-        const kommissionen = kommissionenKey ? parseNumber(trade[kommissionenKey]) : 0;
-        
-        if (einzahlung === 0 && profit === 0 && gebuehren === 0 && kommissionen === 0) {
-            return; // Zeile überspringen
-        }
-        
-        // Sammle Werte für Total-Zeile
-        totalEinzahlung += parseNumber(trade['Einzahlung $']);
-        totalMitHebel += parseNumber(trade['$ mit Hebel'] || trade['$ mit 24x Hebel']);
-        totalProfit += parseNumber(trade.Profit);
-        totalBruttoGewinnProzentHebel += parseNumber(trade['Brutto Profit in % auf Hebel']);
-        totalBruttoGewinnProzentEffektiv += parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
-        totalGebuehren += parseNumber(trade['Gebühren']);
-        totalKommissionen += kommissionen;
-        
+    sorted.forEach(t => {
+        totalCommission += t.commission;
+        totalTaxes += t.taxes;
+        totalSwap += t.swap;
+        totalProfit += t.profit;
+
         const row = tbody.insertRow();
-
-        // Parse Gewinn/Verlust Text
-        const gewinnVerlustText = (trade['Gewinn oder Verlust'] || '').toString().toLowerCase();
-        const isGewinn = gewinnVerlustText.includes('gewinn');
-        const isVerlust = gewinnVerlustText.includes('verlust');
-        
-        // Färbe Zeile bei Gewinn/Verlust
-        if (isVerlust) {
-            row.classList.add('verlust-row');
-        } else if (isGewinn) {
-            row.classList.add('gewinn-row');
-        }
-
-        // Datum
-        const cell0 = row.insertCell(0);
-        cell0.textContent = trade.Datum || '-';
-        
-        // Account
-        const cell1 = row.insertCell(1);
-        cell1.textContent = trade.Account || '-';
-        
-        // Einzahlung $ (ohne Kommastellen)
-        const cell2 = row.insertCell(2);
-        cell2.textContent = formatCurrencyNoDecimals(parseNumber(trade['Einzahlung $']));
-        
-        // $ mit Hebel (ohne Kommastellen) - Spaltenname geändert
-        const cell3 = row.insertCell(3);
-        const hebelValue = parseNumber(trade['$ mit Hebel'] || trade['$ mit 24x Hebel']); // Fallback für alte Daten
-        cell3.textContent = formatCurrencyNoDecimals(hebelValue);
-        
-        // Saldo Einzahlung mit Hebel (ohne Kommastellen)
-        const cell4 = row.insertCell(4);
-        cell4.textContent = formatCurrencyNoDecimals(parseNumber(trade['Saldo Einzahlung mit Hebel']));
-        
-        // Profit
-        const cell5 = row.insertCell(5);
-        const profitValue = parseNumber(trade.Profit);
-        cell5.textContent = formatCurrency(profitValue);
-        if (profitValue > 0) cell5.classList.add('table-positive');
-        else if (profitValue < 0) cell5.classList.add('table-negative');
-        
-        // Gewinn oder Verlust (TEXT)
-        const cell6 = row.insertCell(6);
-        cell6.classList.add('table-center');
-        cell6.textContent = trade['Gewinn oder Verlust'] || '-';
-        if (isGewinn) cell6.classList.add('table-positive');
-        else if (isVerlust) cell6.classList.add('table-negative');
-        
-        // Brutto Profit % (Hebel)
-        const profit24x = parseNumber(trade['Brutto Profit in % auf Hebel']);
-        const cell7 = row.insertCell(7);
-        cell7.textContent = profit24x.toFixed(3) + '%';
-        if (profit24x > 0) cell7.classList.add('table-positive');
-        else if (profit24x < 0) cell7.classList.add('table-negative');
-        
-        // Brutto Profit % (effektiv)
-        const profitEffektiv = parseNumber(trade['Brutto-Profit in % auf effektive Einzahlung']);
-        const cell8 = row.insertCell(8);
-        cell8.textContent = profitEffektiv.toFixed(3) + '%';
-        if (profitEffektiv > 0) cell8.classList.add('table-positive');
-        else if (profitEffektiv < 0) cell8.classList.add('table-negative');
-        
-        // Gebühren (jetzt VOR Kommissionen)
-        const cell9 = row.insertCell(9);
-        cell9.textContent = formatCurrency(parseNumber(trade['Gebühren']));
-        
-        // Kommissionen - jetzt an letzter Stelle
-        // Verwende "Kommissionen" (nicht "Kommissionen Total")
-        const cell10 = row.insertCell(10);
-        const tradeKeys2 = Object.keys(trade);
-        // Suche exakt nach "Kommissionen" (ohne "Total")
-        const kommissionenKey2 = tradeKeys2.find(k => {
-            const normalized = k.toLowerCase().trim();
-            return normalized === 'kommissionen' || (normalized.includes('kommission') && !normalized.includes('total'));
+        const values = [
+            [t.platform, true], [t.ticket, true], [t.account, true], [t.openTime, true],
+            [t.type, true], [formatPlain(t.volume), false], [t.symbol, true],
+            [formatPlain(t.openPrice), false], [formatPlain(t.sl), false], [formatPlain(t.tp), false],
+            [t.closedTime, true], [formatPlain(t.closePrice), false], [formatPlain(t.commission), false],
+            [formatPlain(t.taxes), false], [formatPlain(t.swap), false]
+        ];
+        values.forEach(([v, left]) => {
+            const c = row.insertCell();
+            c.textContent = v;
+            if (left) c.classList.add('text-left');
         });
-        const kommissionenValue = kommissionenKey2 ? parseNumber(trade[kommissionenKey2]) : 0;
-        cell10.textContent = formatCurrency(kommissionenValue);
+
+        // Profit/Amount
+        const cp = row.insertCell();
+        cp.textContent = t.profit.toFixed(2);
+        if (t.profit > 0) cp.classList.add('table-positive');
+        else if (t.profit < 0) cp.classList.add('table-negative');
+
+        // Kategorie (nur bei Accounting-Einträgen)
+        const ck = row.insertCell();
+        ck.classList.add('text-left');
+        if (isAccounting(t)) {
+            const kat = getKategorie(t);
+            const sel = document.createElement('select');
+            sel.className = 'kategorie-select';
+            if (kat !== autoKategorie(t)) {
+                sel.classList.add('manuell');
+                sel.title = 'Manuell geändert (automatisch wäre: ' + (autoKategorie(t) || 'keine') + ')';
+            }
+            if (!kat) {
+                const o = document.createElement('option');
+                o.value = '';
+                o.textContent = '–';
+                sel.appendChild(o);
+            }
+            KATEGORIEN.forEach(k => {
+                const o = document.createElement('option');
+                o.value = k;
+                o.textContent = k;
+                if (k === kat) o.selected = true;
+                sel.appendChild(o);
+            });
+            sel.onchange = () => setKategorie(t.account, t.ticket, sel.value);
+            ck.appendChild(sel);
+        } else {
+            ck.textContent = '';
+        }
     });
-    
-    // Füge Total-Zeile hinzu
+
+    // Total-Zeile
     const totalRow = tbody.insertRow();
     totalRow.classList.add('total-row');
-    
-    // Datum
-    const tcell0 = totalRow.insertCell(0);
-    tcell0.textContent = 'Total';
-    
-    // Account
-    const tcell1 = totalRow.insertCell(1);
-    tcell1.textContent = '';
-    
-    // Einzahlung $
-    const tcell2 = totalRow.insertCell(2);
-    tcell2.textContent = formatCurrencyNoDecimals(totalEinzahlung);
-    
-    // $ mit Hebel
-    const tcell3 = totalRow.insertCell(3);
-    tcell3.textContent = formatCurrencyNoDecimals(totalMitHebel);
-    
-    // Saldo Einzahlung mit Hebel
-    const tcell4 = totalRow.insertCell(4);
-    tcell4.textContent = '';
-    
-    // Profit
-    const tcell5 = totalRow.insertCell(5);
-    tcell5.textContent = formatCurrency(totalProfit);
-    if (totalProfit > 0) tcell5.classList.add('table-positive');
-    else if (totalProfit < 0) tcell5.classList.add('table-negative');
-    
-    // Gewinn/Verlust
-    const tcell6 = totalRow.insertCell(6);
-    tcell6.textContent = '';
-    
-    // Brutto Profit % (Hebel)
-    const tcell7 = totalRow.insertCell(7);
-    tcell7.textContent = totalBruttoGewinnProzentHebel.toFixed(3) + '%';
-    if (totalBruttoGewinnProzentHebel > 0) tcell7.classList.add('table-positive');
-    else if (totalBruttoGewinnProzentHebel < 0) tcell7.classList.add('table-negative');
-    
-    // Brutto Profit % (effektiv)
-    const tcell8 = totalRow.insertCell(8);
-    tcell8.textContent = totalBruttoGewinnProzentEffektiv.toFixed(3) + '%';
-    if (totalBruttoGewinnProzentEffektiv > 0) tcell8.classList.add('table-positive');
-    else if (totalBruttoGewinnProzentEffektiv < 0) tcell8.classList.add('table-negative');
-    
-    // Gebühren
-    const tcell9 = totalRow.insertCell(9);
-    tcell9.textContent = formatCurrency(totalGebuehren);
-    
-    // Kommissionen
-    const tcell10 = totalRow.insertCell(10);
-    tcell10.textContent = formatCurrency(totalKommissionen);
+    for (let i = 0; i < 17; i++) {
+        const c = totalRow.insertCell();
+        if (i === 0) c.textContent = 'Total';
+        if (i === 12) c.textContent = totalCommission.toFixed(5);
+        if (i === 13) c.textContent = totalTaxes.toFixed(2);
+        if (i === 14) c.textContent = totalSwap.toFixed(2);
+        if (i === 15) {
+            c.textContent = totalProfit.toFixed(2);
+            if (totalProfit > 0) c.classList.add('table-positive');
+            else if (totalProfit < 0) c.classList.add('table-negative');
+        }
+    }
 }
 
 function parseDate(dateString) {
@@ -1342,8 +1566,13 @@ function formatCurrencyNoDecimals(value) {
     return value < 0 ? '-$' + formatted : '$' + formatted;
 }
 
-// Lade Daten beim Seitenaufruf
-window.onload = loadData;
+// Beim Seitenaufruf: Konten und Trades sofort anzeigen, danach Google-Sheets-Daten laden
+window.onload = () => {
+    displayAccounts();
+    populateAccountFilter([]);
+    displayTrades('');
+    loadData();
+};
 </script>
 
 </body>
