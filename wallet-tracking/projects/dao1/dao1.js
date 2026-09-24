@@ -1,3 +1,4 @@
+// Phase 6.12 · 24.09.2026 18:30:01 CEST: P3 Realtest abgeschlossen; Kaufpreis-Evidenz wird für den NFT-Tab persistent vorgewärmt. P4: Fresh-Build speichert ERC-20-Flows nur einmal roh und bewertet historische USD-Werte gezielt im Claim-/Detailpfad statt jede Explorer-Seite doppelt zu persistieren/bewerten. Build 20260924-183001.
 // Phase 6.11 · 24.09.2026 17:32:01 CEST: P3 Kaufpreis-Regression behoben: Zahlungsresolver zentralisiert; preisloser Wallet-Eingang fällt auf globale NFT-Lifecycle-Kauf-Tx zurück; Resolver v3 revidiert alte Negativbefunde. Build 20260924-173201.
 // Phase 6.10 · 24.09.2026 16:30:30 CEST: P3 Kaufpreis-/Ersterwerb-Diagnose und P4 Lifecycle-Timings; Kontrollfälle #38483/#40938 protokollieren Erwerbs-Tx und Zahlungskandidaten. Build 20260924-163030.
 // Phase 6.09 · 24.09.2026 14:22:47 CEST: Audit P3 Cache-Priorität korrigiert: frischer DB-Ownership-Read darf im selben Fresh-Build nicht mehr durch einen älteren Shared-Cache überschrieben werden. Build 20260924-142247.
@@ -3665,7 +3666,7 @@ window.DAO1Project = (() => {
     return {flows:rows.length,synthetic:synthetic.length};
   }
 
-  async function syncApertumTokenFlowCache(address){
+  async function syncApertumTokenFlowCache(address,{deferValuation=false}={}){
     const ctx=getContext?.();
     const state=await getTokenFlowScanState(address);
     const fromBlock=state?.last_scanned_block?Math.max(0,Number(state.last_scanned_block)-CLAIM_SCAN_BUFFER_BLOCKS):null;
@@ -3754,14 +3755,15 @@ window.DAO1Project = (() => {
         });
       }
 
-      // Wichtig für Robustheit: jede erfolgreiche Explorer-Seite sofort persistieren.
-      // Zuerst Rohdaten sichern, anschließend bewerten und nochmals anreichern.
+      // Phase 6.12 / P4: Eine Explorer-Seite wird nur einmal persistiert. Beim Fresh-Build
+      // werden die Roh-Flows sofort dauerhaft gesichert; historische USD-Bewertung ist
+      // für Ownership, Kaufpreis in Token und Claim-Erkennung nicht erforderlich und
+      // wird deshalb gezielt im Claim-/Detailpfad nachgezogen. Im manuellen Vollrefresh
+      // darf weiterhin vor dem einmaligen Persistieren vollständig bewertet werden.
       if(pageRows.length){
+        if(!deferValuation)await valueAssetFlows(pageRows);
         await saveAssetFlowRows(pageRows);
         saved+=pageRows.length;
-
-        await valueAssetFlows(pageRows);
-        await saveAssetFlowRows(pageRows);
 
         const synthetic=[];
         const byTx=new Map();
@@ -3798,7 +3800,7 @@ window.DAO1Project = (() => {
     // Scan-State nur nach vollständigem Durchlauf fortschreiben. Dadurch kann ein
     // abgebrochener Vollscan niemals fälschlich als abgeschlossen markiert werden.
     if(maxSeen)await saveTokenFlowScanState(address,maxSeen);
-    return {flows:saved,synthetic:syntheticCount,maxSeen};
+    return {flows:saved,synthetic:syntheticCount,maxSeen,deferredValuation:deferValuation?saved:0};
   }
 
   async function getTransactionScanState(address){
@@ -7678,7 +7680,10 @@ window.DAO1Project = (() => {
     // aber optional und verschlechtert den Lifecycle-Gesamtstatus nicht.
     let flowSync={skipped:true,flows:0};
     if(projectRelevant){
-      flowSync=await dao1RunLifecyclePart(parts,"assetFlows",()=>syncApertumTokenFlowCache(address));
+      // P4: Fresh-Build braucht vollständige Token-Flows, aber nicht deren komplette
+      // historische USD-Bewertung. Claim-relevante Flows werden unmittelbar danach
+      // gezielt bewertet; übrige Detailwerte bleiben cache-first/lazy.
+      flowSync=await dao1RunLifecyclePart(parts,"assetFlows",()=>syncApertumTokenFlowCache(address,{deferValuation:true}));
     }else{
       parts.assetFlows=dao1LifecyclePart("deferred","Für diese EVM-Wallet kein DAO1/APTMDAO-Asset belegt.",{required:false});
     }
