@@ -1,4 +1,4 @@
-// Phase 6.07 · 24.09.2026 12:12:33 CEST: Audit P3 Fresh-Read-Readback: Ownership-Mutationen erzwingen nach laufenden Alt-Reads einen neuen DB-Readback; Fresh-Build protokolliert Schreib-/Readback-Mengen. Build 20260924-121233.
+// Phase 6.08 · 24.09.2026 12:31:39 CEST: Audit P3 trennt Lifecycle-Besitzabdeckung vom strengeren Ownership-/Erwerbs-Repair; DB-Fresh-Read bleibt als Verifikation aktiv. Build 20260924-123139.
 // Phase 6.04 · 23.09.2026 02:51:28 CEST: Audit P3 Fresh-Build-Parität: historische NFT-Kandidaten aus Wallet-Transferhistorie bekannter Projekt-Contracts; Ownership deterministisch ohne Alt-Cache-Voraussetzung; Legacy-Self-Heal vom automatischen Fresh-Build entkoppelt. Build 20260923-025128.
 // Phase 6.03 · 23.09.2026 01:44:44 CEST: Release-Metadaten mit Audit P2 synchronisiert; DAO1-Lifecycle-Vertrag aus P1 unverändert, wird vom zentralen Fresh-Build-Snapshot-Gate ausgewertet. Build 20260923-014444.
 // Phase 5.99 · 23.09.2026 00:15:00 CEST: DAO1 Fresh-Build stabilisiert: frisch geladene Apertum-NFTs sofort in DAO1 übernehmen; native Claim-Payouts zusätzlich via RPC-Trace; historische APTM-Preise primär per historischem getReserves statt Log-Massenscan. Build 20260923-001500.
@@ -889,7 +889,7 @@ window.DAO1Project = (() => {
     return !(Number(row.owned_from_block||0)>0) || !row.owned_from_at;
   }
 
-  function dao1OwnershipCandidateNeedsRepair(wallet,nft){
+  function dao1OwnershipLifecycleCovered(wallet,nft){
     const walletId=String(wallet?.dbId||wallet?.id||"");
     const address=lower(walletAddress(wallet)||"");
     const contract=lower(nft?.contract||""),id=String(nft?.id||"");
@@ -899,33 +899,28 @@ window.DAO1Project = (() => {
       String(o?.nft_id??"")===id &&
       (String(o?.wallet_id||"")===walletId || (!!address&&lower(o?.wallet_address||"")===address))
     );
-    if(!rows.length)return true;
+    if(!rows.length)return false;
 
+    // Audit P3 / Phase 6.08: Lifecycle-Konsistenz und Enrichment-Repair sind zwei
+    // verschiedene Qualitätsstufen. Für den Lifecycle muss nur belastbar belegt sein,
+    // dass die Wallet das NFT aktuell besitzt bzw. historisch besessen hat. Ein fehlender
+    // Erwerbsbeginn/Kaufpreis bleibt weiterhin Sache des strengeren Repair-Pfads
+    // dao1OwnershipNeedsRepair() und darf den gesamten Wallet-Bootstrap nicht dauerhaft
+    // auf partial halten.
     if(nft?.historical===true || nft?.current===false){
-      // Historische Ownership darf auch dann als belegter Besitz gelten, wenn der
-      // Explorer den ursprünglichen Eingang nicht mehr vollständig liefert, aber ein
-      // on-chain Abgang AUS der eigenen Wallet vorhanden ist. In diesem Fall bleibt
-      // owned_from_* bewusst null; owned_to_* ist die belegte Besitz-Evidenz.
-      const evidenced=rows.some(row=>{
-        const hasEntry=(Number(row.owned_from_block||0)>0) && !!row.owned_from_at;
-        const hasExit=(Number(row.owned_to_block||0)>0) && !!row.owned_to_at && !row.is_current;
-        return hasEntry||hasExit;
-      });
-      return !evidenced;
+      return rows.some(row=>
+        !!row.is_current ||
+        (Number(row.owned_from_block||0)>0) || !!row.owned_from_at ||
+        (Number(row.owned_to_block||0)>0) || !!row.owned_to_at ||
+        row.acquisition_kind==="outgoing_transfer_evidence_only" ||
+        row.acquisition_kind==="current_state_evidence_only"
+      );
     }
 
-    // Audit P3: Für CURRENT-State-Konsistenz ist ein expliziter, persistierter
-    // Current-State-Evidence-Datensatz ausreichend. Er beweist den aktuellen Besitz,
-    // NICHT den Erwerbsbeginn. Der normale Repair-Pfad (dao1OwnershipNeedsRepair)
-    // bleibt absichtlich strenger, damit ein später verfügbarer Eingang weiterhin
-    // nachgezogen werden kann.
-    const currentEvidence=rows.some(row=>
-      !!row.is_current && (
-        ((Number(row.owned_from_block||0)>0) && !!row.owned_from_at) ||
-        row.acquisition_kind==="current_state_evidence_only"
-      )
-    );
-    return !currentEvidence;
+    // Aktueller Besitz ist für den Lifecycle ausreichend belegt, sobald nach dem
+    // Fresh-Readback ein persistierter is_current-Datensatz für genau diese Wallet
+    // existiert. Ob dessen owned_from_* vollständig ist, bleibt bewusst offen.
+    return rows.some(row=>!!row.is_current);
   }
 
   async function dao1EnsureIntrinsicClassifications(nfts){
@@ -7629,9 +7624,9 @@ window.DAO1Project = (() => {
       const key=nftOwnershipKey(n.contract,n.id);
       if(!consistencyCandidates.has(key))consistencyCandidates.set(key,n);
     }
-    const remaining=[...consistencyCandidates.values()].filter(n=>dao1OwnershipCandidateNeedsRepair(wallet,n)).length;
+    const remaining=[...consistencyCandidates.values()].filter(n=>!dao1OwnershipLifecycleCovered(wallet,n)).length;
     if(remaining>0){
-      parts.ownershipConsistency=dao1LifecyclePart("partial",`${remaining} Ownership-Lücke(n) offen`,{required:true,remaining});
+      parts.ownershipConsistency=dao1LifecyclePart("partial",`${remaining} Lifecycle-Ownership-Lücke(n) offen`,{required:true,remaining});
     }else{
       parts.ownershipConsistency=dao1LifecyclePart("complete","",{required:true,remaining:0});
     }
