@@ -1,3 +1,4 @@
+// Phase 6.10 · 24.09.2026 16:30:30 CEST: P3 Kaufpreis-/Ersterwerb-Diagnose und P4 Lifecycle-Timings; Kontrollfälle #38483/#40938 protokollieren Erwerbs-Tx und Zahlungskandidaten. Build 20260924-163030.
 // Phase 6.09 · 24.09.2026 14:22:47 CEST: Audit P3 Cache-Priorität korrigiert: frischer DB-Ownership-Read darf im selben Fresh-Build nicht mehr durch einen älteren Shared-Cache überschrieben werden. Build 20260924-142247.
 // Phase 6.08 · 24.09.2026 12:31:39 CEST: Audit P3 trennt Lifecycle-Besitzabdeckung vom strengeren Ownership-/Erwerbs-Repair; DB-Fresh-Read bleibt als Verifikation aktiv. Build 20260924-123139.
 // Phase 6.04 · 23.09.2026 02:51:28 CEST: Audit P3 Fresh-Build-Parität: historische NFT-Kandidaten aus Wallet-Transferhistorie bekannter Projekt-Contracts; Ownership deterministisch ohne Alt-Cache-Voraussetzung; Legacy-Self-Heal vom automatischen Fresh-Build entkoppelt. Build 20260923-025128.
@@ -5755,7 +5756,7 @@ window.DAO1Project = (() => {
         }
       }catch(e){console.warn("DAO1 Team Partner-NFT Erwerb",nft,wallet,e);}
     }
-    let purchase=null,txDetail=null;
+    let purchase=null,txDetail=null,paymentCandidates=[];
     let systemEvidence=null,systemEvidenceType=null;
     if(txHash){
       try{
@@ -5796,6 +5797,7 @@ window.DAO1Project = (() => {
           }
           if(nativeInternal>0)pays.push({amount:nativeInternal,symbol:"APTM",contract:"native",block,timestamp:at,evidence:"internal_tx"});
         }catch(e){console.warn("DAO1 Kaufpreis Internal Transactions",txHash,e);}
+        paymentCandidates=pays.map(p=>({amount:Number(p.amount||0),symbol:String(p.symbol||""),contract:p.contract||null,evidence:p.evidence||"erc20",block:Number(p.block||block||0)||null,timestamp:p.timestamp||at||null}));
         // Gleiche Assets aus unterschiedlichen technischen Ebenen nicht doppelt zählen.
         // Direkter tx.value und Internal-Call können denselben wirtschaftlichen Wert spiegeln;
         // bei mehreren nativen Kandidaten wird daher nur ein eindeutiger Betrag akzeptiert.
@@ -5815,7 +5817,16 @@ window.DAO1Project = (() => {
     }
     const parsedPurchaseDid=dao1PurchaseDidFromInput(txDetail?.raw_input||txDetail?.input||txDetail?.data||"");
     const purchaseParentDid=parsedPurchaseDid?await dao1AptmdaoParentDid(parsedPurchaseDid):0;
-    const result={txHash,at,block,purchase,sourceWallet,acquisitionKind,systemEvidence,systemEvidenceType,purchaseDid:parsedPurchaseDid||0,purchaseParentDid};
+    const result={txHash,at,block,purchase,sourceWallet,acquisitionKind,systemEvidence,systemEvidenceType,purchaseDid:parsedPurchaseDid||0,purchaseParentDid,paymentCandidates};
+    if(["38483","40938"].includes(String(nft.id))){
+      console.info("DAO1 NFT Kaufpreis-Diagnose",{
+        nft:`${lower(nft.contract)}#${String(nft.id)}`,
+        acquisitionWallet:a,
+        inputEvidence:{owned_from_at:nft.owned_from_at||null,owned_from_block:Number(nft.owned_from_block||0)||null,acquisition_tx_hash:nft.acquisition_tx_hash||null,acquisition_kind:nft.acquisition_kind||null},
+        resolved:{txHash,at,block,sourceWallet,acquisitionKind,purchase,paymentCandidates},
+        control38483:String(nft.id)==="38483"?{knownPurchaseTx:"0x31cd019cbba0c36c631debde1d9d3d020cd4671dc39d669a8f489eb026251de2",knownPayment:"10000 wUSDT",txMatchesKnown:lower(txHash||"")==="0x31cd019cbba0c36c631debde1d9d3d020cd4671dc39d669a8f489eb026251de2"}:null
+      });
+    }
     dao1TeamPartnerDetailsCache.set(cacheKey,result);return result;
   }
   function dao1TeamPurchaseText(n){
@@ -7560,21 +7571,23 @@ window.DAO1Project = (() => {
     return "complete";
   }
   async function dao1RunLifecyclePart(parts,key,fn,{required=true,successStatus=null}={}){
+    const started=performance.now();
     try{
       const result=await fn();
       const derived=typeof successStatus==="function"?successStatus(result):successStatus;
       const status=DAO1_LIFECYCLE_STATUS.has(derived)?derived:"complete";
-      parts[key]=dao1LifecyclePart(status,"",{required,result});
+      parts[key]=dao1LifecyclePart(status,"",{required,result,durationMs:Math.round(performance.now()-started)});
       return result;
     }catch(e){
       const message=e?.message||String(e);
       console.warn(`DAO1 Lifecycle ${key}`,e);
-      parts[key]=dao1LifecyclePart("failed",message,{required,error:message});
+      parts[key]=dao1LifecyclePart("failed",message,{required,error:message,durationMs:Math.round(performance.now()-started)});
       return null;
     }
   }
 
   async function refreshWalletAfterSave(walletId){
+    const lifecycleStarted=performance.now();
     await ensureLoaded();
     const ctx=getContext?.();
     const wallet=(ctx?.wallets||[]).find(w=>String(w.dbId||w.id||"")===String(walletId||""));
@@ -7664,6 +7677,14 @@ window.DAO1Project = (() => {
       parts.bootstrapState=dao1LifecyclePart("complete","",{required:true});
     }
 
+    console.info("DAO1 Fresh-Build Lifecycle-Timings",{
+      wallet:wallet?.label||walletId,
+      walletId:String(walletId||""),
+      address:lower(address),
+      status,
+      totalMs:Math.round(performance.now()-lifecycleStarted),
+      parts:Object.fromEntries(Object.entries(parts).map(([key,p])=>[key,{status:p?.status,required:p?.required!==false,durationMs:Number(p?.durationMs||0)}]))
+    });
     return {
       ok:status==="complete",
       status,

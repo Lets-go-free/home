@@ -1,3 +1,4 @@
+// Phase 6.10 · 24.09.2026 16:30:30 CEST: Appweite Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260924-163030.
 // Phase 6.09 · 24.09.2026 14:22:47 CEST: Release-Metadaten mit Audit P3 Ownership-Cache-Prioritätsfix synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260924-142247.
 // Phase 6.08 · 24.09.2026 12:31:39 CEST: Release-Metadaten mit Audit P3 synchronisiert; TLN/VOW-Fachlogik unverändert. Build 20260924-123139.
 // Phase 6.05 · 24.09.2026 11:12:50 CEST: Release-Metadaten synchronisiert; TLN/VOW-Fachlogik unveraendert. Build 20260924-111250.
@@ -10,7 +11,7 @@
 // Phase 5.75: Dashboard-Summary initialisiert TLN/VOW nicht mehr beim App-Start; lokale Summary bleibt cache-first, Projekt-Snapshots aktualisieren erst nach bewusstem TLN/VOW-Init.
 /* TLN/VOW Discovery shared engine · Build 20260919-182627 */
 (()=>{
-const BUILD_ID='20260924-142247';
+const BUILD_ID='20260924-163030';
 let dashboardContextGetter=null;
 function configure(options={}){ dashboardContextGetter=typeof options.getContext==='function'?options.getContext:dashboardContextGetter; }
 
@@ -204,7 +205,7 @@ const ALCHEMY_BSC_URL="https://bnb-mainnet.g.alchemy.com/v2/"+encodeURIComponent
 const ZERO='0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC=ethers.id('Transfer(address,address,uint256)').toLowerCase();
 const STAKE_EVENT_TOPIC=ethers.id('Stake(address,uint256,uint256)').toLowerCase();
-const APP_VERSION='24.09.2026 14:22:47 CEST';
+const APP_VERSION='24.09.2026 16:30:30 CEST';
 const TLN_ID_TEST_VECTORS=[
   {wallet:'0xbE44d90daD6308AE0b762908D70260c62410346E',nodeId:'7205',evidenceTx:'0xd6e06e112b5f6ff1e7af5671e4171733d3927bd817e73e9b8051b91c8c16825d'},
   {wallet:'0x956b58D7E29981046924aB4E978831534B75De71',nodeId:'17652',evidenceTx:null},

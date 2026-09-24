@@ -1,3 +1,4 @@
+// Phase 6.10 · 24.09.2026 16:30:30 CEST: P3 Fresh-Build-Finalisierung: Ownership/Global-First/Purchase-Readmodel werden nach DAO1-Aufbau frisch geladen und NFT-UI neu gerendert; P4 erhält Lifecycle-Timings. Build 20260924-163030.
 // Phase 6.09 · 24.09.2026 14:22:47 CEST: Audit P3 Ursache nachgewiesen: Dashboard/Shared-Cache ueberschrieb den frischen DB-Ownership-Read; Cache-Priorität korrigiert. P3 bleibt bis Retest in Arbeit. Build 20260924-142247.
 // Phase 6.08 · 24.09.2026 12:31:39 CEST: Audit P3 Lifecycle-Konsistenz bewertet persistierte Besitzabdeckung getrennt vom Enrichment-Repair; P3 bleibt bis Retest in Arbeit. Build 20260924-123139.
 // Phase 6.04 · 23.09.2026 02:51:28 CEST: Audit P3 umgesetzt: DAO1 Fresh-Build rekonstruiert historische NFT-Kandidaten aus unabhängiger Wallet-Transferhistorie statt aus vorhandenem User-Ownership-Cache; Legacy-Self-Heal ist vom automatischen Fresh-Build entkoppelt. Build 20260923-025128.
@@ -2111,8 +2112,8 @@ const HARDCODING_AUDIT_ITEMS = [
 const LIFECYCLE_ARCH_AUDIT_ITEMS = [
   {priority:"P1", workStatus:"erledigt", severity:"critical", area:"DAO1 Lifecycle-Abschluss", finding:"Teilpfade konnten intern partial/leer bleiben, während der übergeordnete Wallet-Job trotzdem als vollständig aufgebaut erschien.", action:"Phase 6.02: Einheitlicher Statusvertrag complete / partial / failed / deferred ist in DAO1 eingeführt und wird bis zum zentralen Wallet-Abschlussstatus propagiert; apertureHandled ist davon getrennt."},
   {priority:"P2", workStatus:"erledigt", severity:"high", area:"Snapshot-Gate", finding:"Snapshots dürfen fachlich erst entstehen, wenn alle dafür erforderlichen Teiljobs vollständig sind.", action:"Phase 6.03: Automatischer Fresh-Build-Snapshot ist an den Lifecycle-Statusvertrag gekoppelt; nur complete ist zugelassen, partial/deferred/failed blockieren den finalen Snapshot und werden im Snapshot-Gate protokolliert."},
-  {priority:"P3", workStatus:"in Arbeit", severity:"critical", area:"Fresh-Build-Parität", finding:"Praxistest 6.08: 20 Ownership-Perioden werden korrekt geschrieben und frisch aus der DB gelesen (totalRows=20, walletRows=20), die Lifecycle-Prüfung sah danach dennoch 20 Lücken. Codeanalyse belegt die Ursache: loadDashboardSummary() rief loadOwnershipCache({preferShared:true}) auf und ersetzte den frischen DB-Stand wieder durch den älteren zentralen Shared-Cache derselben Session.", action:"Phase 6.09 korrigiert die Cache-Priorität zentral: Ein frischer DB-Ownership-Stand ist innerhalb derselben User-Session autoritativ und darf von preferShared nicht heruntergestuft werden. Shared-Cache bleibt Start-/Fallback-Quelle, force=true bleibt garantierter DB-Read. P3 bleibt bis Retest in Arbeit; ownershipConsistency muss danach complete sein."},
-  {priority:"P4", workStatus:"offen", severity:"high", area:"Performance Fresh-Import", finding:"Messläufe: 6.03 ca. 9:14 min / 1'757 Requests / 263 MB; 6.04 ca. 10:59 min / 1'450 Requests / 192 MB. Laufzeit bleibt trotz weniger Requests hoch.", action:"Request-Audit pro Lifecycle-Teiljob auswerten; doppelte History-/RPC-Scans entfernen und Ergebnisse teiljobübergreifend wiederverwenden."},
+  {priority:"P3", workStatus:"in Arbeit", severity:"critical", area:"Fresh-Build-Parität", finding:"6.09-Retest: Lifecycle und ownershipConsistency sind complete, aber der NFT-Tab zeigte den finalen Ownership-/Erwerbsstand erst nach Hard-Refresh. Danach waren Erwerbsdatum/Wallet/Block sichtbar; Kaufpreise blieben teilweise offen bzw. negativ. Zusätzlich konnte die UI eine spätere verifizierte Transferperiode als 'Erstmals erworben' verwenden statt der frühesten eigenen Besitz-Evidenz.", action:"Phase 6.10 finalisiert den Fresh-Build ohne Browser-Reload: project_nft_ownership wird frisch eingelesen, globaler Ersterwerb und zentrale Kaufpreis-Evidenz werden für die neue Wallet nachgezogen und der NFT-Tab neu gerendert. 'Erstmals erworben' ist strikt die früheste eigene Besitz-Evidenz; deren Entry-Tx wird an den Preisresolver weitergegeben. P3 bleibt bis Realtest mit korrekten Kaufpreisen in Arbeit."},
+  {priority:"P4", workStatus:"in Arbeit", severity:"high", area:"Performance Fresh-Import", finding:"Messläufe: 6.03 ca. 9:14 min / 1'757 Requests / 263 MB; 6.04 ca. 10:59 min / 1'450 Requests / 192 MB. Laufzeit bleibt trotz weniger Requests hoch.", action:"Request-Audit pro Lifecycle-Teiljob auswerten; doppelte History-/RPC-Scans entfernen und Ergebnisse teiljobübergreifend wiederverwenden."},
   {priority:"P5", workStatus:"offen", severity:"critical", area:"DAO1 Claims / Payouts", finding:"Claim-Erkennung, ERC-20-Flows, native Values, Internals, Receipts und Traces bilden heute mehrere sich ergänzende Payout-Pfade.", action:"Eine kanonische Payout-/Asset-Flow-Schicht definieren; Detailansichten und Dashboard ausschließlich daraus lesen lassen."},
   {priority:"P6", workStatus:"offen", severity:"high", area:"NFT / Bot Current State", finding:"nft_cache, project_nft_ownership und DAO1-Runtime-Caches können zeitweise unterschiedliche Zustände liefern.", action:"nft_cache + project_nft_ownership als persistente Wahrheiten definieren; Runtime nur als abgeleitete Session-Sicht verwenden."},
   {priority:"P7", workStatus:"offen", severity:"high", area:"Wallet-ID Lifecycle", finding:"Transiente IDs wie local1 konnten bis in UUID-DB-Filter gelangen (6.00 korrigierter konkreter Fall).", action:"DB-Zugriffe ausschließlich mit persistierter dbId/UUID erlauben; lokale Client-ID nur für UI verwenden."},
@@ -4030,6 +4031,25 @@ async function initializeSavedWalletTargeted(w,{isNew=false}={}) {
       if(nr?.errors?.length)failures.push(...nr.errors.map(x=>`NFT: ${x}`));
       await saveWalletRefreshState(w,'','nft',{last_checked_at:new Date().toISOString(),last_refreshed_at:new Date().toISOString(),last_result:Number(nr?.count||0)===0?'no_nfts':'refreshed'});
     }catch(e){failures.push(`NFTs: ${e.message||e}`);}
+  });
+
+  // P3 Fresh-Build-Finalisierung: DAO1 hat Ownership bereits persistent aufgebaut.
+  // Der zentrale NFT-Tab muss denselben finalen DB-Stand noch im selben Lauf übernehmen,
+  // statt bis zum nächsten Hard-Refresh mit dem Startzustand weiterzurendern. Gleichzeitig
+  // wird die Kaufpreis-Evidenz für genau diese neue Wallet aus der frühesten eigenen
+  // Erwerbs-Tx nachgezogen.
+  await timed("NFT-Finalisierung",async()=>{
+    try{
+      await loadNftOwnershipCacheFromDb();
+      await ensureNftGlobalFirstOwnedLoaded();
+      await enrichCentralNftPurchaseEvidence({walletIds:[String(w.dbId||w.id)]});
+      lastNftFindings=cachedNftsForSelection();
+      renderNftResults(lastNftFindings,[]);
+      onNftWalletChange();
+    }catch(e){
+      console.warn("NFT Fresh-Build Finalisierung",e);
+      failures.push(`NFT-Finalisierung: ${e.message||e}`);
+    }
   });
 
   // TLN/VOW aktualisiert nur seine Wallet-Auswahl/Current-State-Verknüpfung, falls das Modul bereits offen war.
@@ -8004,11 +8024,20 @@ function nftOwnershipInfo(n){
   if(globalFirst){
     const fb=Number(first?.owned_from_block||0),gb=Number(globalFirst.owned_from_block||0);
     if(gb>0 && (fb<=0 || gb<fb)){
+      // Der globale Transfercache kann einen früheren Eingang belegen als der userbezogene
+      // Ownership-Read. In diesem Fall müssen Datum, Wallet UND Erwerbs-Tx aus derselben
+      // Evidenz stammen; sonst würde die Preisprüfung eine spätere Transfer-Tx mit einem
+      // früheren Erwerbsdatum vermischen.
       first={
         ...first,
         owned_from_block:gb,
         owned_from_at:globalFirst.owned_from_at||null,
         wallet_address:globalFirst.wallet_address||first?.wallet_address||null,
+        wallet_id:null,
+        entry_tx_hash:globalFirst.tx_hash||null,
+        acquisition_tx_hash:globalFirst.tx_hash||null,
+        acquisition_verified:false,
+        acquisition_kind:"wallet_receipt_only",
         _source:"global-transfer-cache"
       };
     }
@@ -8018,17 +8047,20 @@ function nftOwnershipInfo(n){
   const walletRows=rows.filter(r=>String(r.wallet_id||"")===walletId)
     .sort((x,y)=>Number(x.owned_from_block||0)-Number(y.owned_from_block||0));
   const current=walletRows.find(r=>r.is_current)||walletRows[walletRows.length-1]||null;
-  const acquisitionVerified=rows.some(r=>r.acquisition_verified===true);
-  const acquisitionRow=rows.find(r=>r.acquisition_verified===true)||null;
+
+  // "Erstmals von dir erworben" muss immer auf der frühesten eigenen Besitz-Evidenz
+  // beruhen. Eine spätere verifizierte Transferperiode darf den Ersterwerb nicht ersetzen.
+  // Auch eine noch nicht als Kauf verifizierte Entry-Tx bleibt für den Preisresolver wertvoll.
+  const acquisitionVerified=first?.acquisition_verified===true;
   return {
     known:true,
     acquisitionVerified,
-    acquisitionKind:acquisitionRow?.acquisition_kind||first?.acquisition_kind||"wallet_receipt_only",
-    acquisitionTxHash:acquisitionRow?.acquisition_tx_hash||null,
-    firstOwnedAt:acquisitionRow?.owned_from_at||first?.owned_from_at||null,
-    firstOwnedBlock:Number(acquisitionRow?.owned_from_block||first?.owned_from_block||0)||null,
-    firstOwnedWalletId:String(acquisitionRow?.wallet_id||first?.wallet_id||""),
-    firstOwnedWalletAddress:acquisitionRow?.wallet_address||first?.wallet_address||globalFirst?.wallet_address||null,
+    acquisitionKind:first?.acquisition_kind||"wallet_receipt_only",
+    acquisitionTxHash:first?.acquisition_tx_hash||first?.entry_tx_hash||null,
+    firstOwnedAt:first?.owned_from_at||null,
+    firstOwnedBlock:Number(first?.owned_from_block||0)||null,
+    firstOwnedWalletId:String(first?.wallet_id||""),
+    firstOwnedWalletAddress:first?.wallet_address||globalFirst?.wallet_address||null,
     walletSinceAt:current?.owned_from_at||null,
     walletSinceBlock:Number(current?.owned_from_block||0)||null,
     currentWalletId:String(current?.wallet_id||walletId||""),
@@ -8797,10 +8829,12 @@ function nftPurchaseText(n){
   return "Kaufpreis-Prüfung offen";
 }
 
-async function enrichCentralNftPurchaseEvidence({force=false}={}){
+async function enrichCentralNftPurchaseEvidence({force=false,walletIds=null}={}){
   if(!currentUser||!window.DAO1Project?.resolveNftPurchaseEvidence)return 0;
   let changed=0;
+  const walletScope=walletIds?new Set((Array.isArray(walletIds)?walletIds:[walletIds]).map(String)):null;
   for(const [walletId,row] of nftCaches){
+    if(walletScope&&!walletScope.has(String(walletId)))continue;
     const list=Array.isArray(row?.nfts)?row.nfts:[];let rowChanged=false;
     for(const n of list){
       if(String(n?.chain||"")!=="apertum")continue;
