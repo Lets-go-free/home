@@ -1,3 +1,4 @@
+// Phase 6.05 · 24.09.2026 11:12:50 CEST: Audit P3 Nachbesserung: historische Ownership mit belegtem Wallet-Abgang wird als Evidence-only-Periode gespeichert; unbekannter Erwerbsbeginn bleibt bewusst null. Build 20260924-111250.
 // Phase 6.04 · 23.09.2026 02:51:28 CEST: Audit P3 Fresh-Build-Parität: historische NFT-Kandidaten aus Wallet-Transferhistorie bekannter Projekt-Contracts; Ownership deterministisch ohne Alt-Cache-Voraussetzung; Legacy-Self-Heal vom automatischen Fresh-Build entkoppelt. Build 20260923-025128.
 // Phase 6.03 · 23.09.2026 01:44:44 CEST: Release-Metadaten mit Audit P2 synchronisiert; DAO1-Lifecycle-Vertrag aus P1 unverändert, wird vom zentralen Fresh-Build-Snapshot-Gate ausgewertet. Build 20260923-014444.
 // Phase 5.99 · 23.09.2026 00:15:00 CEST: DAO1 Fresh-Build stabilisiert: frisch geladene Apertum-NFTs sofort in DAO1 übernehmen; native Claim-Payouts zusätzlich via RPC-Trace; historische APTM-Preise primär per historischem getReserves statt Log-Massenscan. Build 20260923-001500.
@@ -887,14 +888,23 @@ window.DAO1Project = (() => {
       const walletId=String(wallet?.dbId||wallet?.id||"");
       const address=lower(walletAddress(wallet)||"");
       const contract=lower(nft?.contract||""),id=String(nft?.id||"");
-      const row=ownershipRows.find(o=>
+      const rows=ownershipRows.filter(o=>
         String(o?.chain_key||CHAIN_KEY)===CHAIN_KEY &&
         lower(o?.nft_contract||"")===contract &&
         String(o?.nft_id??"")===id &&
         (String(o?.wallet_id||"")===walletId || (!!address&&lower(o?.wallet_address||"")===address))
       );
-      if(!row)return true;
-      return !(Number(row.owned_from_block||0)>0) || !row.owned_from_at;
+      if(!rows.length)return true;
+      // Historische Ownership darf auch dann als belegter Besitz gelten, wenn der
+      // Explorer den ursprünglichen Eingang nicht mehr vollständig liefert, aber ein
+      // on-chain Abgang AUS der eigenen Wallet vorhanden ist. In diesem Fall bleibt
+      // owned_from_* bewusst null; owned_to_* ist die belegte Besitz-Evidenz.
+      const evidenced=rows.some(row=>{
+        const hasEntry=(Number(row.owned_from_block||0)>0) && !!row.owned_from_at;
+        const hasExit=(Number(row.owned_to_block||0)>0) && !!row.owned_to_at && !row.is_current;
+        return hasEntry||hasExit;
+      });
+      return !evidenced;
     }
     return dao1OwnershipNeedsRepair(wallet,nft);
   }
@@ -1858,6 +1868,51 @@ window.DAO1Project = (() => {
     }
 
     for(const open of openByWallet.values())ownPeriods.push(open);
+
+    // Audit P3 Nachbesserung: Einige historische NFTs sind in der heutigen Explorer-
+    // Historie nur noch durch einen belegten Abgang AUS einer eigenen Wallet sichtbar.
+    // Das beweist den früheren Besitz, aber NICHT dessen Beginn. Statt den Startzeitpunkt
+    // zu erfinden, persistieren wir einen geschlossenen Evidence-only-Abschnitt mit
+    // owned_from_* = null und dem verifizierten Abgang als owned_to_*. Dadurch bleibt
+    // der Fresh-Build reproduzierbar und die UI darf einen unbekannten Ersterwerb auch
+    // weiterhin als unbekannt anzeigen.
+    if(!ownPeriods.length){
+      const outgoingEvidence=new Map();
+      for(const row of normalizedChain){
+        const from=row.from;
+        if(!from||!tracked.has(from)||!(Number(row.block||0)>0)||!row.ts)continue;
+        const walletId=walletIdForAddress(from);
+        const key=String(walletId);
+        const prev=outgoingEvidence.get(key);
+        if(prev && Number(prev.owned_to_block||0)<=Number(row.block||0))continue;
+        outgoingEvidence.set(key,{
+          user_id:ctx.currentUser.id,
+          project_key:PROJECT_KEY,
+          chain_key:CHAIN_KEY,
+          nft_contract:nftContract,
+          nft_id:Number(nftId),
+          nft_name:nftName,
+          wallet_id:walletId,
+          owned_from_block:null,
+          owned_from_at:null,
+          owned_to_block:Number(row.block||0),
+          owned_to_at:row.ts,
+          is_current:false,
+          entry_from_address:null,
+          entry_tx_hash:null,
+          acquisition_kind:"outgoing_transfer_evidence_only",
+          acquisition_verified:false,
+          acquisition_tx_hash:null
+        });
+      }
+      ownPeriods.push(...outgoingEvidence.values());
+      if(ownPeriods.length){
+        console.info("DAO1 NFT historische Ownership nur durch Abgang belegt",{
+          nft:`${nftContract}#${nftId}`,
+          periods:ownPeriods.map(r=>({wallet_id:r.wallet_id,to_block:r.owned_to_block,to_at:r.owned_to_at}))
+        });
+      }
+    }
     if(!ownPeriods.length)return 0;
 
 
@@ -1871,14 +1926,15 @@ window.DAO1Project = (() => {
       const firstPeriod=rebuilt[0];
       const zero="0x0000000000000000000000000000000000000000";
       const entryFrom=lower(firstPeriod.entry_from_address||"");
-      let acquisitionKind="wallet_receipt_only";
+      const evidenceOnly=firstPeriod.acquisition_kind==="outgoing_transfer_evidence_only";
+      let acquisitionKind=evidenceOnly?"outgoing_transfer_evidence_only":"wallet_receipt_only";
       let acquisitionVerified=false;
 
       // Direkter Mint an eigene Wallet = sicherer on-chain Ersterwerb.
-      if(entryFrom===zero){
+      if(!evidenceOnly && entryFrom===zero){
         acquisitionKind="mint_to_own_wallet";
         acquisitionVerified=true;
-      }else if(firstPeriod.entry_tx_hash){
+      }else if(!evidenceOnly && firstPeriod.entry_tx_hash){
         // Sekundärkauf / Kaufvertrag: wenn in derselben Tx eine ERC-20-Zahlung
         // von derselben eigenen Wallet ausgeht, werten wir den Eingang als Kauf.
         try{

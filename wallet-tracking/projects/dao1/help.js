@@ -1,3 +1,4 @@
+// Phase 6.05 · 24.09.2026 11:12:50 CEST: Historische outgoing-only NFT-Ownership wird als belegte Abgangsperiode mit unbekanntem Erwerbsbeginn behandelt; kein Datum wird erfunden. Build 20260924-111250.
 // Phase 6.04 · 23.09.2026 02:51:28 CEST: DAO1-Hilfe ergänzt Fresh-Build-Parität: aktuelle und historische NFT-/Ownership-Daten werden reproduzierbar aus Current State plus unabhängiger Wallet-Transferhistorie aufgebaut; Legacy-Self-Heal ist vom automatischen Fresh-Build entkoppelt. Build 20260923-025128.
 // Phase 6.03 · 23.09.2026 01:44:44 CEST: DAO1-Hilfe ergänzt die Wirkung des Lifecycle-Status auf das zentrale Fresh-Build-Snapshot-Gate: nur complete darf einen finalen automatischen Snapshot erzeugen. Build 20260923-014444.
 // Phase 5.93 · 22.09.2026 12:15:22 CEST: RPC-Proxy-eth_call-Allowlist + SQL 072 für persistenten partial-Migrationsstatus; NFT-Datenmigration v4. Build 20260922-121522.
