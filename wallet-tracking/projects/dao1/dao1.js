@@ -1,4 +1,4 @@
-// Phase 6.06 · 24.09.2026 11:48:55 CEST: Audit P3 Current-State-Evidenz: aktueller Besitz wird bei fehlendem historischen Eingang als current_state_evidence_only persistiert; Erwerbs-/Preis-Repair bleibt separat offen. Build 20260924-114855.
+// Phase 6.07 · 24.09.2026 12:12:33 CEST: Audit P3 Fresh-Read-Readback: Ownership-Mutationen erzwingen nach laufenden Alt-Reads einen neuen DB-Readback; Fresh-Build protokolliert Schreib-/Readback-Mengen. Build 20260924-121233.
 // Phase 6.04 · 23.09.2026 02:51:28 CEST: Audit P3 Fresh-Build-Parität: historische NFT-Kandidaten aus Wallet-Transferhistorie bekannter Projekt-Contracts; Ownership deterministisch ohne Alt-Cache-Voraussetzung; Legacy-Self-Heal vom automatischen Fresh-Build entkoppelt. Build 20260923-025128.
 // Phase 6.03 · 23.09.2026 01:44:44 CEST: Release-Metadaten mit Audit P2 synchronisiert; DAO1-Lifecycle-Vertrag aus P1 unverändert, wird vom zentralen Fresh-Build-Snapshot-Gate ausgewertet. Build 20260923-014444.
 // Phase 5.99 · 23.09.2026 00:15:00 CEST: DAO1 Fresh-Build stabilisiert: frisch geladene Apertum-NFTs sofort in DAO1 übernehmen; native Claim-Payouts zusätzlich via RPC-Trace; historische APTM-Preise primär per historischem getReserves statt Log-Massenscan. Build 20260923-001500.
@@ -652,17 +652,22 @@ window.DAO1Project = (() => {
         </tbody></table></div>`;
   }
 
-  async function loadOwnershipCache({preferShared=false}={}) {
+  async function loadOwnershipCache({preferShared=false,force=false}={}) {
     const ctx = getContext?.();
     if (!sb || !ctx?.currentUser) return;
-    // App-Start/Dashboard verwenden die bereits zentral geladene Ownership-Registry.
-    // Mutations-/Refreshpfade rufen die Funktion ohne preferShared auf und lesen bewusst frisch aus DB.
-    if(preferShared && window.isCentralNftCacheLoaded?.()){
+    // App-Start/Dashboard dürfen die bereits zentral geladene Ownership-Registry verwenden.
+    // Nach Mutationen muss force=true dagegen einen garantiert neuen DB-Read auslösen.
+    // Ein bereits laufender älterer Read wird zuerst abgewartet, damit er den danach
+    // eingelesenen frischen Stand nicht zeitversetzt wieder überschreiben kann.
+    if(force && ownershipLoadPromise){
+      try{await ownershipLoadPromise;}catch(_e){}
+    }
+    if(!force && preferShared && window.isCentralNftCacheLoaded?.()){
       const shared=window.getCentralNftOwnershipRows?.();
       if(Array.isArray(shared)){ownershipRows=shared.map(hydratePrivateWalletAddress);return ownershipRows;}
     }
-    if(ownershipLoadPromise)return ownershipLoadPromise;
-    ownershipLoadPromise=(async()=>{
+    if(!force && ownershipLoadPromise)return ownershipLoadPromise;
+    const readPromise=(async()=>{
       const { data, error } = await sb.from("project_nft_ownership")
         .select("*")
         .eq("user_id", ctx.currentUser.id)
@@ -676,7 +681,8 @@ window.DAO1Project = (() => {
       ownershipRows = (data || []).map(hydratePrivateWalletAddress);
       return ownershipRows;
     })();
-    try{return await ownershipLoadPromise;}finally{ownershipLoadPromise=null;}
+    ownershipLoadPromise=readPromise;
+    try{return await readPromise;}finally{if(ownershipLoadPromise===readPromise)ownershipLoadPromise=null;}
   }
 
 
@@ -986,14 +992,14 @@ window.DAO1Project = (() => {
           }
         }
         await Promise.all(Array.from({length:Math.min(2,gaps.length)},worker));
-        await loadOwnershipCache();
+        await loadOwnershipCache({force:true});
         const remaining=gaps.filter(n=>dao1OwnershipNeedsRepair(wallet,n)).length;
         remainingTotal+=remaining;
         if(!remaining&&localFailed===0)await dao1SaveWalletBootstrapState(wallet,"complete",`${gaps.length} repaired`);
         else await dao1SaveWalletBootstrapState(wallet,"partial",`${remaining} offen`);
       }
       classified=await dao1EnsureIntrinsicClassifications(allCurrent);
-      await loadOwnershipCache();
+      await loadOwnershipCache({force:true});
       await loadDAO1OwnedDidRoots(true).catch(()=>{});
       renderNftClassification();
       renderDAO1TeamTreePanel();
@@ -1217,8 +1223,19 @@ window.DAO1Project = (() => {
       catch(e){failed++;console.warn("NFT Ownership inkrementell",n,e);}
     }
     selectedWalletId=prev;
-    await loadOwnershipCache();
-    return {nfts:currentByKey.size,historicalCandidates:historicalCandidates.length,ownership:saved,failed,changed:changedNfts.length,skipped:unchanged};
+    const readback=await loadOwnershipCache({force:true});
+    const readbackWalletRows=(readback||[]).filter(o=>
+      String(o?.wallet_id||"")===walletId || lower(o?.wallet_address||"")===lower(address)
+    );
+    console.info("DAO1 NFT Ownership Fresh-Readback",{
+      wallet:wallet.label||walletId,
+      address:lower(address),
+      writtenPeriods:saved,
+      changedNfts:changedNfts.length,
+      totalRows:Array.isArray(readback)?readback.length:0,
+      walletRows:readbackWalletRows.length
+    });
+    return {nfts:currentByKey.size,historicalCandidates:historicalCandidates.length,ownership:saved,failed,changed:changedNfts.length,skipped:unchanged,readbackRows:readbackWalletRows.length};
   }
 
   async function discoverMinerNfts() {
